@@ -134,5 +134,13 @@ found anywhere, see `../DECISIONS.md` D-15 and
   why this is a consistency bonus and *not* independent-oracle confirmation (outspace and UAPKI's
   `dstu8845.c` share identical internal function/table names — likely shared lineage, not two
   independent implementations of the standard).
-- Kalyna/Kupyna self-test data not yet cross-checked against this project's own vectors/Rust
-  output — worth doing before leaning on it further (see `TASKS.md`).
+- Kupyna: `dstu7564_self_test_hash`'s 12 cases (null/8/512/760/1024/2048-bit, both 256/512) are
+  byte-for-byte identical to `crates/dstu-core/tests/vectors/kupyna/kupyna-{256,512}.json`
+  (verified 2026-07-22) — same official vector set already exercised by `cargo test`, so this is a
+  same-source confirmation, not a second independent reading. `dstu7564_self_test_kmac` (3 cases,
+  KMAC-256/384/512) is genuinely new data not in this project's vectors at all — KMAC isn't
+  implemented here yet, so it's unchecked, left for whenever `crypto_auth` gets built (see
+  `../DECISIONS.md` D-16 update, `../TASKS.md`).
+- Kalyna self-test data (ECB/CBC/OFB/CFB/CTR/CMAC/XTS/KW/CCM/GMAC/GCM) not yet cross-checked
+  against this project's own vectors/Rust output — worth doing before leaning on it further,
+  directly relevant to the open D-05 tension (see `TASKS.md`).

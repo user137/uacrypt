@@ -418,9 +418,28 @@ caveat rather than leaning on "state-certified" as a bare credential.
 **Immediate payoff:** every DSTU primitive in scope has a `*_self_test()` with hardcoded KAT data.
 DSTU 4145's matched the official text + Bouncy Castle exactly (D-14). Strumok's is the first KAT
 found anywhere for that algorithm (D-15). Kalyna's covers CCM/GMAC/GCM directly relevant to D-05's
-open tension, and Kupyna's appears to reuse the same official vector set already in this project's
-`kupyna-256.json` — **neither cross-checked yet**, left for follow-up rather than done under time
-pressure in the same pass as Strumok/4145.
+open tension — **not yet cross-checked against our code, left for follow-up.** Kupyna's is in two
+parts (see the 2026-07-22 update below): the hash self-test is now cross-checked; the KMAC
+self-test is a new, separate open item.
+
+**Update 2026-07-22 — Kupyna cross-check done for the hash, opened a new item for KMAC:**
+`dstu7564_self_test_hash()` in `oracles/uapki/library/uapkic/src/dstu7564.c` turned out to be the
+*exact same* 12 official cases (null/8/512/760/1024/2048-bit for both 256 and 512) already
+transcribed from the designers' paper into `kupyna-256.json`/`kupyna-512.json` — a byte-for-byte
+diff (all 12 cases) confirms this, not just an eyeball match. Since `cargo test` already verifies
+this project's Rust output against those same files, this closes the "Kupyna cross-check" item
+from above, but it's a same-vector-set confirmation (like the Kalyna/Bouncy Castle lineage note in
+`oracles/README.md`), not a second independent reading — UAPKI is reproducing the same published
+numbers, not deriving its own.
+
+The self-test file also has a separate `dstu7564_self_test_kmac()` — 3 cases (KMAC-256/384/512,
+fixed 31-byte message, key length equal to the tag length) that are **not** in this project's test
+vectors at all, because KMAC (a Kupyna-based MAC) isn't implemented here yet. This is this
+project's Kalyna-CCM/GMAC/GCM-equivalent for Kupyna: directly relevant to the still-open
+`crypto_auth`/`crypto_onetimeauth` construction question (`TASKS.md` Phase 2/API-surface —
+"Kupyna-based MAC... exact mode name TBD"), not yet cross-checked against anything of ours because
+there's no Rust KMAC to check it against yet. Left for follow-up, same as Kalyna's CCM/GMAC/GCM —
+not scheduled ahead of where `crypto_auth` already sits in `TASKS.md`.
 
 **Rejected:** treating "fork of Cryptonite" as disqualifying by itself. Rejected because forking
 existing code and adding a formal expertise review is a reasonable, common lineage for a

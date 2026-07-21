@@ -37,10 +37,13 @@ test-vector check (or unit test) is written before the primitive it verifies, no
 - [x] Implement Kupyna (256/512) — `dstu_core::hazmat::kupyna` (`Kupyna256`/`Kupyna512`),
       citation in `DECISIONS.md` D-10. **Confirmed green 2026-07-22**: `cargo test`, `cargo miri
       test` (no UB), `cargo clippy -- -D warnings`, and `no_std` build all pass; independently
-      cross-checked against real Bouncy Castle via the .NET and Java oracle harnesses. Still
-      missing: `cargo fuzz` actually run (scaffold exists), the streaming (`update`/`finalize`)
-      API (current API is one-shot `digest()` only), and the high-level API split (D-09) has no
-      wrapper here yet — this is `hazmat` only.
+      cross-checked against real Bouncy Castle via the .NET and Java oracle harnesses, and (same
+      day, D-16 update) UAPKI's `dstu7564_self_test_hash` matches byte-for-byte too — same
+      official vector set, not a new independent reading, but confirms UAPKI's numbers agree.
+      Still missing: `cargo fuzz` actually run (scaffold exists), the streaming
+      (`update`/`finalize`) API (current API is one-shot `digest()` only), the high-level API
+      split (D-09) has no wrapper here yet — this is `hazmat` only — and KMAC (Kupyna-based MAC,
+      see the `crypto_auth` line below) isn't implemented at all yet.
 - [x] **Blocker lifted 2026-07-22 (D-15/D-16), not fully resolved:** found
       https://github.com/specinfo-ua/UAPKI (state-expertise pedigree, see `ORACLES.md`), whose
       `dstu8845.c` self-test is comment-attributed to `// ДСТУ 8845:2019` in its own source — the
@@ -71,7 +74,9 @@ test-vector check (or unit test) is written before the primitive it verifies, no
       authoritative source (priced, see `ORACLES.md`); blocks `crypto_secretbox` design
 - [ ] `crypto_secretbox` equivalent (encrypt-then-MAC construction, once D-05 is resolved)
 - [ ] `crypto_auth`/`crypto_onetimeauth` equivalent (Kupyna-based MAC or a Kalyna CMAC-like mode
-      — exact mode name TBD against the full DSTU 7624 text)
+      — exact mode name TBD against the full DSTU 7624 text). `oracles/uapki/`'s
+      `dstu7564_self_test_kmac` (KMAC-256/384/512, D-16 update 2026-07-22) is unused KAT data
+      waiting for whenever this gets built — not cross-checked, since there's no KMAC impl yet
 - [ ] `crypto_kdf` equivalent (HKDF-like construction over Kupyna)
 - [ ] `crypto_secretstream` equivalent (chunked authenticated encryption over Strumok or
       Kalyna-CTR)
