@@ -16,6 +16,13 @@ work here now, this is no longer a "no toolchain" environment. The workspace has
   still open (streaming API, `cargo fuzz` not yet actually run, no high-level wrapper yet).
 - `crates/dstutool` — the CLI binary, still a placeholder `main.rs`.
 
+`cargo xtask <command>` (see `xtask/`, aliased via `.cargo/config.toml`) is the one cross-platform
+build/QA entry point — same command on Linux/Windows/macOS, no new install beyond `cargo` itself.
+`cargo xtask ci` runs the mandatory checks then best-effort runs miri/fuzz/audit/deny/oracle
+harnesses, printing an install hint for whichever optional tool isn't present rather than failing.
+See `DECISIONS.md` D-12 and `README.md` "Development commands". Use this instead of writing a new
+one-off shell/PowerShell script for any build/QA task.
+
 Official test vectors are extracted and verified for Kalyna and Kupyna:
 `crates/dstu-core/tests/vectors/{kalyna,kupyna}/*.json` — see `ORACLES.md` for provenance and
 format. These vectors have additionally been run against real Bouncy Castle (Java and .NET, via
@@ -53,10 +60,17 @@ Algorithms in scope:
   nothing for the user to misconfigure.
 - Publish the core crate to crates.io.
 - Prebuilt binaries for Windows/Linux via GitHub Releases (not "clone and build yourself").
-- **Core must be `no_std`-compatible from day one** (Cargo feature flags `std` / `alloc` /
-  `no_std`), so embedded targets (STM32 on ARM Cortex-M, ESP32 on Xtensa/RISC-V — genuinely
-  different architectures, not variations of one) can be added later without a core rewrite.
-  Real-hardware validation is a separate post-MVP phase.
+- **No hardware or OS lock-in — platform-agnostic by construction.** This targets both ends
+  genuinely, not just one with lip service to the other: full PCs/servers (Windows, Linux, macOS,
+  x86-64/ARM64) *and* microcontrollers (STM32 on ARM Cortex-M, ESP32 on Xtensa/RISC-V — genuinely
+  different architectures, not variations of one). Concretely:
+  - **Core must be `no_std`-compatible from day one** (Cargo feature flags `std` / `alloc` /
+    `no_std`) so embedded targets can be added later without a core rewrite. Real-hardware
+    validation is a separate post-MVP phase.
+  - No dependency, API choice, or build assumption may quietly assume a specific OS (e.g.
+    Windows-only path handling, a Unix-only syscall) or a specific CPU family (e.g. an intrinsic
+    with no portable fallback) unless it's isolated behind a feature flag with a working
+    alternative for the platforms it excludes.
   - Important distinction: no_std/embedded compilation support ≠ resistance to hardware
     side-channel attacks (SPA/DPA). The latter needs a separate, expensive hardware audit; until
     one exists, side-channel resistance must never be claimed.
@@ -89,7 +103,8 @@ Algorithms in scope:
 | `docs/pseudocode/*.md` | before writing a primitive's Rust implementation | the transcription changes or a new ambiguity/discrepancy is found | per-algorithm pseudocode — from-spec for Kalyna/Kupyna/Strumok, from-oracle-code for DSTU 4145 (no spec paper exists), each cross-checked and with any ambiguity flagged inline |
 | `docs/rust_ai_ruleset.md` | general Rust code-style questions | never (external ruleset, treat as canonical as-is) | generic Rust engineering conventions |
 | `docs/cross-language-style-guide.md` | writing or reviewing non-Rust code (oracle harnesses, future language bindings) | a new language is added, or a cross-language principle needs adjusting | cross-language naming/style principles and the per-language reference table; generalizes `docs/rust_ai_ruleset.md`, doesn't replace it |
-| `README.md` | need the human-facing project overview or repo tree | repo structure changes | GitHub-facing description, top-level directory map |
+| `README.md` | need the human-facing project overview or repo tree | repo structure changes | GitHub-facing description, top-level directory map, build/install instructions |
+| `xtask/src/main.rs` | adding or changing a build/QA subcommand | a new tool enters the QA stack or an existing command's invocation changes | the actual cross-platform build/QA command implementations (README.md documents usage, this owns behavior) |
 
 `docs/rust_ai_ruleset.md` §7 (async/tokio) does not apply to the `no_std`-first core — it's only
 relevant if a future CLI or binding layer adds async I/O.

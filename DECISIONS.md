@@ -219,3 +219,31 @@ already paid for itself once, before a single external dependency was ever added
 allow-list itself remains unproven against a real dependency (the "license was not encountered"
 warnings are expected noise given zero deps still use those licenses) until `subtle`, `zeroize`,
 `getrandom`, or `argon2` (see `docs/dstu-crypto-project.md` libsodium mapping) actually land.
+
+## D-12: `cargo xtask` as the one cross-platform build/QA entry point
+
+A developer on Linux/Windows/macOS runs the exact same command — `cargo xtask ci`, `cargo xtask
+build`, etc. — rather than three OS-specific scripts (`.sh`/`.ps1`/`Makefile`) that inevitably
+drift out of sync. Implemented as a plain Rust binary crate at `xtask/`, invoked via a `.cargo/
+config.toml` alias (`cargo xtask ...` → `cargo run --manifest-path xtask/Cargo.toml ...`). It has
+zero dependencies itself and is kept out of the root `[workspace]` (its own `Cargo.toml` declares
+an empty `[workspace]` table) so it never appears in the dependency graph `deny.toml`/`SECURITY.md`
+police for the actual crypto crates. Each subcommand shells out to a tool already documented in
+`README.md` (cargo, miri, cargo-fuzz, cargo-audit, cargo-deny, Maven, the .NET SDK); optional tools
+are checked for availability first and print an install hint rather than a raw "command not found"
+if missing, so `cargo xtask ci` degrades gracefully on a machine that only has `cargo` so far
+instead of hard-failing on the first optional layer.
+
+**Rejected:** a Python script. Rejected for the same reason this whole decision exists — it would
+add exactly the kind of "install a thing first" dependency the script is supposed to remove, on top
+of `python`/`python3` already being broken Windows Store stub binaries in at least one dev
+environment (see `.claude.local.md`). Also rejected: `make` (not native on Windows, and this
+project's own MinGW note already documents preferring `cmake --build` over invoking `make`
+directly); `just` (a real cross-platform command runner, but still a separate binary to install
+before the "one command" story even starts — `cargo` is the one tool this project can always
+assume, since it's needed to build at all). `xtask` is the only option that adds zero new
+install step.
+
+**Scope note:** this covers *building and developing*, not *using* `dstutool` — end-users get
+prebuilt GitHub Releases binaries per the MVP scope, no Rust toolchain required on their side. See
+`README.md` "Building from source" vs. "Using dstutool".

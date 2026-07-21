@@ -1,0 +1,4 @@
+# `xtask` is deliberately its own workspace (see xtask/Cargo.toml), not a member of the root
+# workspace, so this alias points cargo at it explicitly. See README.md "Development commands".
+[alias]
+xtask = "run --manifest-path xtask/Cargo.toml --package xtask --"

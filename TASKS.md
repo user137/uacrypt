@@ -167,6 +167,16 @@ convention invented per language.
       `oracles/bouncycastle-java/` clone. **Actually built and run**, both via raw `javac`/`java`
       (JDK 8) and via Maven (installed 2026-07-22, see `.claude.local.md`): same result, all 22
       cases passed both ways.
+- [x] `cargo xtask` cross-platform build/QA runner (2026-07-22, D-12) — one command
+      (`cargo xtask build|test|fmt|clippy|ci|miri|fuzz|audit|deny|oracle-java|oracle-dotnet`) for
+      Linux/Windows/macOS instead of separate shell/PowerShell scripts. Plain Rust binary at
+      `xtask/`, own `[workspace]` so it stays out of `dstu-core`'s dependency graph, invoked via the
+      `.cargo/config.toml` alias. Optional-tool subcommands check availability and print an install
+      hint instead of failing raw. **Actually run locally**: `cargo xtask ci` — mandatory checks
+      (fmt/build/test/clippy) pass, then correctly reported `cargo-miri`/`cargo-fuzz`/`mvn` as
+      missing in that shell session with install hints while `cargo audit`, `cargo deny check`, and
+      the .NET oracle harness (all 22 cases) ran and passed. README.md "Building from source" /
+      "Development commands" document the per-OS install + usage.
 - [ ] Extract Bouncy Castle's own DSTU 4145 known-answer test data
       (`DSTU4145Test.java`/`.cs`) into `crates/dstu-core/tests/vectors/dstu4145/*.json` — this is
       the harness's highest-value target since BC's DSTU 4145 is a genuinely independent

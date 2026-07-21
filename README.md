@@ -4,9 +4,10 @@ An open Rust library for modern Ukrainian cryptographic standards (DSTU) — in 
 spirit of **libsodium** (hard, safe defaults, hard to misuse), not OpenSSL
 (flexible, easy to misuse the API).
 
-**Status: early planning stage.** The core hasn't been written yet — see `crates/`
-for the current (empty) workspace skeleton and `docs/dstu-crypto-project.md` for
-the full scope.
+**Status:** first primitive landed — `dstu_core::hazmat::kupyna` (Kupyna-256/512) is implemented,
+tested against official DSTU test vectors, and cross-checked against real Bouncy Castle. Everything
+else in the table below is still to come. See `TASKS.md` for the phase-by-phase backlog and
+`docs/dstu-crypto-project.md` for the full scope.
 
 ## Algorithms in scope
 
@@ -28,30 +29,85 @@ Full MVP scope, architectural decisions, and the libsodium API mapping are in
 ├── CLAUDE.md              # operating guide for AI agents in this repo
 ├── SECURITY.md            # threat model, hard constraints, supply-chain vetting
 ├── DECISIONS.md           # architectural decisions with rejected alternatives
+├── TASKS.md               # phase-by-phase task backlog and progress state
 ├── LICENSE-MIT
 ├── LICENSE-APACHE
+├── .cargo/config.toml     # `cargo xtask` alias
+├── xtask/                 # cross-platform build/QA runner, see "Development commands" below
 ├── docs/
 │   ├── dstu-crypto-project.md        # main project spec (scope, API mapping)
+│   ├── pseudocode/                   # per-algorithm pseudocode, cross-checked against oracles
 │   ├── rust_ai_ruleset.md            # generic Rust ruleset for AI assistants
-│   ├── rust-crypto-claude-advice.md  # source advice, distributed into CLAUDE/SECURITY/DECISIONS
+│   ├── cross-language-style-guide.md # naming/style conventions for non-Rust code
 │   └── papers/                       # reference PDFs (specs, cryptanalysis, hardware papers)
-└── crates/                # Cargo workspace
-    ├── dstu-core/          # core: Kalyna + Kupyna + Strumok
-    └── dstutool/           # CLI binary on top of the core
+├── crates/                # Cargo workspace
+│   ├── dstu-core/          # core: Kalyna + Kupyna + Strumok
+│   └── dstutool/           # CLI binary on top of the core
+└── tests/oracle-harness/   # Java/.NET harnesses that verify test vectors against real Bouncy Castle
 ```
 
-## Development
+## Building from source
 
-The workspace is still empty (a build skeleton with no real primitives yet). Once
-the core exists:
+You need Rust (the only hard requirement — everything else below is optional and only needed for
+specific commands). No admin rights required on any platform.
+
+- **Linux / macOS:**
+  ```
+  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+  ```
+- **Windows:** `winget install Rustlang.Rustup` (or download `rustup-init.exe` from
+  [rustup.rs](https://rustup.rs) directly). This project builds against the GNU host toolchain
+  (`x86_64-pc-windows-gnu`) to avoid a Visual Studio Build Tools dependency; run
+  `rustup default stable-x86_64-pc-windows-gnu` if `rustup-init` didn't already pick it.
+
+`rustup` reads `rust-toolchain.toml` and installs the pinned `stable` channel plus `clippy`/
+`rustfmt` automatically the first time you run any `cargo` command in this repo.
+
+Then, on any platform:
 
 ```
+git clone <this repo>
+cd cipher_ua
 cargo build --workspace
 cargo test --workspace
 ```
 
+## Development commands
+
+`cargo xtask <command>` is the one cross-platform entry point for build/test/QA — the same command
+on Linux, Windows, and macOS (see `DECISIONS.md` D-12 for why this exists instead of separate
+shell/PowerShell scripts). Run `cargo xtask help` for the full list; the essentials:
+
+```
+cargo xtask build     # cargo build --workspace, both --all-features and no_std (--no-default-features)
+cargo xtask test      # cargo test --workspace --all-features
+cargo xtask fmt       # cargo fmt --all (add --check to verify without writing)
+cargo xtask clippy    # cargo clippy --workspace --all-features -- -D warnings
+cargo xtask ci        # the four above, then best-effort for miri/fuzz/audit/deny/oracle harnesses
+```
+
+The optional layers each check their own tool is installed first and print an install hint instead
+of a raw error if it's missing (`cargo xtask miri`, `fuzz`, `audit`, `deny`, `oracle-java`,
+`oracle-dotnet`) — see `SECURITY.md` for why these are required in CI even though they're optional
+locally.
+
 Before implementing any primitive, read `SECURITY.md` (hard constraints, mandatory
 dual-oracle verification) and `DECISIONS.md` (architectural decisions already made).
+
+## Using `dstutool`
+
+Not yet available — `dstutool` is currently a placeholder binary. Once implemented, the plan (see
+`CLAUDE.md` MVP scope) is prebuilt binaries via GitHub Releases for Windows/Linux/macOS, so using it
+will not require installing Rust or building from source at all.
+
+## Embedded / `no_std` targets
+
+`dstu-core` is `no_std`-compatible from day one (`cargo build --no-default-features`, checked by
+`cargo xtask build` and in CI on every push). This means it *compiles* for microcontroller targets
+(e.g. `rustup target add thumbv7em-none-eabihf` for STM32 Cortex-M, or the relevant Xtensa/RISC-V
+target for ESP32) — it is **not** a claim that it has been validated on real hardware, and
+specifically **not** a claim of resistance to hardware side-channel attacks (SPA/DPA), which would
+need a separate, dedicated hardware audit. Real-hardware validation is a distinct post-MVP phase.
 
 ## License
 
