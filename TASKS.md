@@ -122,10 +122,9 @@ Mirrors the table in `docs/dstu-crypto-project.md` "Concrete API shape" — that
 prose/rationale version, this is the checklist version. Keep both in sync when a status changes.
 Two-layer split (`hazmat` now, high-level "easy" layer later) decided in `DECISIONS.md` D-09.
 
-- [~] `hazmat::kupyna` (`Kupyna256`, `Kupyna512`) — written test-first, citation in D-10, not yet
-      confirmed green (see Phase 1 above)
-- [ ] `hazmat::kalyna` (5 variants) — not started, no blocker, vectors exist
-- [ ] `hazmat::strumok` — blocked on the vector gap (see Phase 1 above)
+- [x] `hazmat::kupyna` (`Kupyna256`, `Kupyna512`) — confirmed green, citation in D-10 (see Phase 1)
+- [x] `hazmat::kalyna` (5 variants) — confirmed green, citation in D-13 (see Phase 1)
+- [ ] `hazmat::strumok` — unblocked (UAPKI-attributed vectors), not yet implemented (see Phase 1)
 - [ ] `hazmat::dstu4145` — not started; needs BC known-answer vectors extracted first (Phase 2)
 - [ ] `hazmat::dstu9041` — hard-blocked, zero source material (see `ORACLES.md`)
 - [ ] high-level "easy" layer (name TBD) — not started; nothing needs it yet (no keyed/nonce-based

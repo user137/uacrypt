@@ -428,3 +428,60 @@ production PKI library, not evidence of low quality — the caveat is about not 
 the review covers, not about excluding the source. Also rejected: keeping the full ~30MB clone.
 Pruned for the same reason cryptonite/Bouncy Castle were — this project needs the crypto
 primitives, not the ASN.1/PKCS#11/browser-integration layers around them.
+
+## D-17: Reviewed project positioning against UAPKI — no overlap, no scope change
+
+Finding UAPKI (D-16) raised the obvious question directly: is this project reimplementing
+something UAPKI already provides? Answer, after reading its actual scope rather than assuming from
+the algorithm list: **no — different layer, different language ecosystem, different platform
+reach.** Recorded here because the question will come up again (a future contributor, a future
+`li0ard`-style "why not just use X" suggestion) and shouldn't need re-researching from scratch.
+
+**What UAPKI actually is**, based on its own README and directory structure (`uapkif` ASN.1 codec,
+`cm-pkcs11`/`cm-pkcs12` private-key storage, `uapki` JSON-facing sign/verify/CSR/certificate API,
+`hostapp` Chrome/Firefox native-messaging host, `integration/{Android,Java,Browser}` bindings, Diia
+test certificates in its fixtures): a **PKI/e-signature application SDK** — the layer above crypto
+primitives, aimed at developers building document-signing and government e-service integrations
+(matches Ukraine's Diia/e-government signing ecosystem). Its `uapkic` crypto-primitives library
+exists to serve that stack, not as a standalone product other projects are expected to depend on.
+
+**What this project is**, per `CLAUDE.md`/`docs/dstu-crypto-project.md` unchanged: a libsodium-style
+**crypto-primitives library** — hard, safe, misuse-resistant Kalyna/Kupyna/Strumok/DSTU 4145/DSTU
+9041 building blocks in Rust, plus a minimal CLI. No ASN.1, no certificates, no CSR, no browser
+integration, no PKCS#11/12 — all of that is explicitly not this project's job.
+
+| Axis | UAPKI | This project |
+|---|---|---|
+| Abstraction level | PKI application (sign/verify documents, certs) | Crypto primitive (building block) |
+| Language / ecosystem | C/C++, bound into Java/Kotlin | Rust, crates.io |
+| Platform reach | Full OS only (Win/Linux/macOS/iOS/Android) | + embedded/`no_std` (STM32/ESP32) from day one |
+| Audience | E-signature/e-government app developers | Rust developers who need the algorithms themselves |
+| DSTU 9041 | **Not implemented** (absent from its own algorithm list) | Planned, currently hard-blocked (no source material) |
+
+**Verdict: the niches don't overlap, they stack** — a PKI SDK like UAPKI could in principle be
+*built on* a primitives library like this one; this project could never replace what UAPKI does
+without becoming a completely different, much larger product (ASN.1, certificate chains, revocation
+checking, browser extension packaging) that's explicitly out of scope. Confirms rather than
+undermines the existing "genuinely open niche in the Rust ecosystem" finding in
+`docs/dstu-crypto-project.md` "Resources found": if a safe, audited Rust implementation of these
+algorithms already existed, a project needing them for a C/C++-native PKI stack like UAPKI would
+more likely bind to it via FFI than hand-roll everything in raw C again. That it didn't is
+circumstantial evidence the gap is real, not that the space is occupied.
+
+**Phases reviewed for overlap risk, none found:** Phase 2's construction layer
+(`crypto_secretbox`/`auth`/`kdf`/`secretstream`/`kx`/`sign`) is libsodium-style thin builders over
+the primitives, not PKI functionality. Phase 3's language bindings target the same primitives
+UAPKI's own bindings don't expose (UAPKI's Java/Kotlin/Browser bindings bridge its *PKI* API, not
+raw Kalyna/Kupyna/Strumok/4145 access) — different purpose even where the target language
+overlaps. Phase 4 (STM32/ESP32) has no UAPKI equivalent at all. No task in `TASKS.md` touches
+ASN.1, X.509, CSR, PKCS#11/12, or browser signing — nothing needed adjusting.
+
+**Not acted on now, noted for later:** `dstu-core` could someday expose a C ABI, which a PKI stack
+like UAPKI could adopt in place of re-implementing primitives in raw C. Purely speculative — no
+scope change, no task added, just recorded so it isn't rediscovered as if new.
+
+**Rejected:** treating "an established player already exists" as a reason to reconsider the
+project. Rejected because UAPKI operates one layer up and in a different language ecosystem — the
+existence of a mature PKI SDK says nothing about whether a safe, `no_std`-capable Rust
+implementation of the underlying algorithms is worth having, and the crates.io check (D-06/this
+entry) suggests it currently doesn't exist anywhere.

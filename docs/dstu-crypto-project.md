@@ -177,6 +177,18 @@ changes.
 
 ## Resources found
 
+- **[specinfo-ua/UAPKI](https://github.com/specinfo-ua/UAPKI)** (found 2026-07-22, user-supplied)
+  — a fork of Cryptonite with a cited 2021 Ukrainian state crypto-expertise conclusion. A full
+  PKI/e-signature application SDK (ASN.1, certificate/CSR handling, PKCS#11/12 key storage, a
+  browser native-messaging host, Android/Java/Kotlin bindings) built on a C crypto-primitives
+  library (`uapkic`) covering Kalyna, Kupyna, Strumok, and DSTU 4145 — **not DSTU 9041**, which is
+  absent from its own supported-algorithms list. Used as an oracle: pruned clone at
+  `oracles/uapki/`, self-test KAT data cross-referenced for DSTU 4145/Strumok (see `ORACLES.md`,
+  `DECISIONS.md` D-14/D-15/D-16). **Reviewed for scope overlap with this project — none found; see
+  D-17.** UAPKI operates one layer up (PKI application, not crypto primitive), in a different
+  language ecosystem (C/C++ → Java/Kotlin, not Rust), and doesn't reach embedded targets at all —
+  this project's niche (a safe, `no_std`-capable Rust implementation of the algorithms themselves)
+  remains open and unchanged.
 - **[privat-it/cryptonite](https://github.com/privat-it/cryptonite)** —
   PrivatBank's library. License **BSD-2-Clause** (verified) — a legally
   clean base to fork/port from. Written in C, covers Kalyna, Kupyna, DSTU
@@ -208,6 +220,9 @@ changes.
 - **crates.io**: the `kupyna` crate exists, but is dead — one version from
   December 2016, no updates since. The `kalyna`, `strumok`, `dstu4145`
   crates don't exist at all — a genuinely open niche in the Rust ecosystem.
+  Reinforced by the UAPKI finding (D-17): a mature C/C++ PKI stack needing these exact
+  algorithms chose to hand-roll them in C rather than bind to an existing safe Rust
+  implementation — circumstantial evidence the gap is real, not that the space is occupied.
 
 ## State certification (for reference, not an MVP blocker)
 
