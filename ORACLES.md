@@ -13,12 +13,20 @@ correlated — that inversion is the main thing this document has to make explic
 1. The standard's own author's reference implementation (Roman Oliynykov for Kalyna/Kupyna).
 2. The official standard text / designers' published paper itself.
 3. A mature, independently audited library (Bouncy Castle).
-4. A production library whose audit has lapsed (cryptonite — certified 2016–2021, nothing since).
+4. A production library whose audit has lapsed (cryptonite — certified 2016–2021, nothing since) —
+   **UAPKI (added 2026-07-22) is a fork of this same lineage**, with an additional cited Ukrainian
+   state crypto-expertise conclusion for the UAPKI project specifically (2021; see `DECISIONS.md`
+   D-16 for exactly what that does and doesn't certify — the conclusion predates and doesn't cover
+   this project's pinned commit). Treat it as sitting at this tier for Kalyna/Kupyna/DSTU 4145
+   (same underlying lineage as cryptonite), except for **Strumok, where it's the only source found
+   at all** — no cryptonite equivalent exists to compare it against, so its self-declared
+   `// ДСТУ 8845:2019` attribution is taken on the library's word, not cross-tiered against
+   anything above it.
 5. An unofficial, single-maintainer, unaudited implementation (outspace/dstu8845).
 6. Excluded — untrusted provenance (`li0ard`, see D-07 in `DECISIONS.md`).
 
 **Legal portability** (can code be copied/ported, or only used to check numbers):
-- MIT / BSD-2-Clause (Bouncy Castle, cryptonite) — portable with attribution.
+- MIT / BSD-2-Clause (Bouncy Castle, cryptonite, UAPKI) — portable with attribution.
 - No LICENSE file (Roman Oliynykov's repos, outspace/dstu8845) — full copyright, no permission
   granted, verification-only, copying is not legally available regardless of code quality.
 
@@ -81,6 +89,11 @@ project funding changes rather than re-researched from scratch.
   question (its native CCM/GCM `encrypt_mac` API on Kalyna alone).
 - **Quaternary:** `oracles/bouncycastle-{java,dotnet}/` (MIT, actively maintained, audited) — good
   cross-check on modes and wrap behavior.
+- **Added 2026-07-22: `oracles/uapki/`** (fork of Cryptonite, state-expertise pedigree — see
+  `oracles/README.md` for the exact caveat on what that does and doesn't certify). Its
+  `dstu7624_self_test` covers ECB/CBC/OFB/CFB/CTR/CMAC/XTS/KW/CCM/GMAC/GCM — directly relevant to
+  the still-open D-05 question — but **not yet cross-checked** against this project's own vectors
+  or Rust output; treat as an available-but-unverified data point until that happens.
 - Supplementary, not authoritative: `docs/papers/Dolgov_5-22.pdf` contains a C-like pseudocode
   description of Kalyna (`Kalyna_Cipher`, `Kalyna_InvCipher`, `Kalyna_S_boxes`,
   `Kalyna_KeyExpansion_Ksigma`), but its surrounding Ukrainian prose doesn't extract cleanly via
@@ -107,42 +120,46 @@ project funding changes rather than re-researched from scratch.
 - **Secondary code oracle:** `oracles/kupyna-reference/` (Roman Oliynykov, author) — verify-only,
   no license.
 - **Tertiary:** `oracles/cryptonite/`, `oracles/bouncycastle-{java,dotnet}/`.
+- **Added 2026-07-22:** `oracles/uapki/`'s `dstu7564_self_test` — same official vector set as
+  `Kupyna.pdf` by the look of it (identical message patterns: `0xFF`, sequential `0x00..0xFF`,
+  same bit-length cases), not yet diffed byte-for-byte against our JSON vectors. See
+  `oracles/README.md` for the state-expertise pedigree caveat.
 
 ### Strumok (DSTU 8845)
 - **Pseudocode:** `docs/pseudocode/strumok.md` — transcribed from `Strumok.pdf`, cross-checked
-  structurally (never numerically — no vectors exist, see below) against the outspace oracle; one
-  FSM-update ambiguity in the paper's extraction resolved from the oracle and flagged as such.
-- **No trustworthy code oracle exists, and no test vectors have been found anywhere in this
-  project's holdings.** Checked directly (not assumed): `docs/papers/Strumok.pdf` (the designers'
-  paper, Gorbenko/Kuznetsov et al.) gives the full algorithmic description — Init/Next/Strm/FSM/T
-  functions, GF(2^64) arithmetic — but contains zero test vectors (confirmed by scanning for
-  hex runs of 16+ characters; the only hex-like hit is a bitmask constant, not a vector).
-  `docs/papers/Strumok_verilog.pdf` (Ukrainian, Verilog HDL implementation writeup) and
-  `docs/papers/Speed_of_modern_stream_ciphers.pdf` (benchmarking paper, same author group) were
-  also scanned the same way — no hex runs in either.
-- `oracles/strumok-dstu8845/` (outspace) is unofficial — not written by the standard's designers,
-  no independent audit, no license. `li0ard/strumok` is excluded outright (D-07).
-- **Gap, stated plainly and now confirmed by direct search, not assumption:** of the three MVP
-  algorithms, Strumok has the weakest verification story, with no official test vectors located
-  in any source surveyed so far. Locating or generating trustworthy Strumok vectors (the official
-  DSTU 8845 text itself, an NDA'd/paywalled version of the standard, or a state-certified
-  implementation) is a prerequisite before implementation, not an afterthought.
-- **The official text was priced (2026-07-21): 7,027.80 UAH for 53 pages** — see "Official DSTU
-  text — purchase cost" above. Deemed cost-prohibitive for now; the gap above stands until that
-  changes or another source of vectors turns up.
-- **`Strumok_verilog.pdf` re-checked 2026-07-22 for a hardware testbench KAT** (a Verilog testbench
-  would be a second, independent oracle if one existed) — has a real text layer, searched for
-  test-vector/testbench/keystream sections and long hex runs; nothing found beyond Verilog module
-  signal declarations. Confirms this is a synthesis/architecture writeup, not a source of vectors.
-- **Gray vectors added 2026-07-22 to unblock implementation** (D-15):
-  `crates/dstu-core/tests/vectors/strumok/gray/keystream-{256,512}.json`, generated by running
-  `oracles/strumok-dstu8845/` itself (`tests/oracle-harness/strumok-gray-generator/
-  generate_gray_vectors.c`) against chosen key/IV/length combinations — **not official, not
-  independent verification, a regression anchor only.** Every file is marked
-  `"status": "GRAY VECTOR - NOT OFFICIAL"` in the JSON itself, not just here. Passing these means a
-  future Rust port agrees with this one unaudited reference; it says nothing about whether that
-  reference is DSTU-conformant. Replace with real vectors immediately if the pending info request
-  (`docs/dstu9041-8845-info-request-draft.md`) or a purchase ever produces the official text.
+  structurally against the outspace oracle; one FSM-update ambiguity in the paper's extraction
+  resolved from the oracle and flagged as such.
+- **No test vectors in `docs/papers/`.** Checked directly (not assumed): `docs/papers/Strumok.pdf`
+  (the designers' paper, Gorbenko/Kuznetsov et al.) gives the full algorithmic description but
+  contains zero test vectors (confirmed by scanning for hex runs of 16+ characters — the only hit
+  is a bitmask constant, not a vector). `docs/papers/Strumok_verilog.pdf` (Verilog HDL writeup,
+  re-checked 2026-07-22 specifically for a hardware testbench KAT — has a real text layer,
+  searched for test-vector/testbench/keystream sections, nothing beyond module signal
+  declarations) and `docs/papers/Speed_of_modern_stream_ciphers.pdf` were also scanned — no hex
+  runs in either. The official standard text itself was priced (2026-07-21) at 7,027.80 UAH for
+  53 pages — see "Official DSTU text — purchase cost" above; not purchased.
+- **Test vectors found 2026-07-22 in `oracles/uapki/`** (D-15):
+  `crates/dstu-core/tests/vectors/strumok/keystream-{256,512}.json`, transcribed from
+  `library/uapkic/src/dstu8845.c`'s `dstu8845_self_test()`, whose source comments the block
+  `// ДСТУ 8845:2019` — i.e. attributed by UAPKI's own authors to the standard, not invented by
+  this project. **Not the same as having the official text**: this project has not independently
+  confirmed these values against the paid DSTU 8845:2019 document itself, only against UAPKI's
+  claim about them. Every vector file's `"status"` field says so plainly. See `oracles/README.md`
+  for UAPKI's pedigree (state-expertise conclusion, fork of Cryptonite) and its exact limits (tied
+  to a specific certified build, not this cloned commit).
+- **Cross-check, not independent confirmation:** the UAPKI values were reproduced byte-for-byte by
+  running `oracles/strumok-dstu8845/` (outspace, unofficial, no license) on the same inputs
+  (`tests/oracle-harness/strumok-cross-check/cross_check_against_uapki.c`). This is *not* treated
+  as two independent implementations agreeing — outspace's `strumok.c` and UAPKI's `dstu8845.c`
+  share identical internal function/table names (`dstu8845_init`, `dstu8845_crypt`, `T0..T7`),
+  which reads as shared lineage rather than independent authorship from the spec (the same trap
+  D-07/the Kalyna provenance correction caught elsewhere in this file). Treat it as a consistency
+  bonus on top of the UAPKI attribution, not a second oracle. `li0ard/strumok` remains excluded
+  outright (D-07).
+- **Status, stated plainly:** better than "no vectors, self-invented gray inputs" (this project's
+  own 2026-07-22 earlier attempt, since superseded), still short of "official." Locating the
+  standard text itself, or a source that independently transcribes its own annexed vectors the
+  way `DSTU_4145-2002.pdf` Annex Б does, remains open — see `TASKS.md`.
 
 ### DSTU 4145 (signature)
 - **Official text now in hand** (`docs/papers/DSTU_4145-2002.pdf`, added 2026-07-22) — corrects the
@@ -161,10 +178,16 @@ project funding changes rather than re-researched from scratch.
   which is what makes this a genuinely dual-sourced vector rather than a single by-eye
   transcription off a 150 DPI scan. This also upgrades Bouncy Castle's own standing for this one
   algorithm: `test163()` passing is now confirmed DSTU-conformant against the standard's own
-  example, not just an internally-consistent BC fixture. The Annex B.2 (optimal normal basis,
-  GF(2^173)) example was **not** cross-checked this way — BC's `test173()` uses different curve
-  parameters (a separate, unrelated KAT), so that example currently rests on the scan transcription
-  alone; treat it as unverified-transcription if it's ever extracted.
+  example, not just an internally-consistent BC fixture. **Triple-checked 2026-07-22:**
+  `oracles/uapki/library/uapkic/src/dstu4145.c`'s `dstu4145_self_test()` (explicitly commented
+  `// ДСТУ 4145-2002. Додаток Б` in its own source) carries the same `d`/`Q`/`r`/`s` values —
+  byte-identical once UAPKI's little-endian storage is reversed. Three sources (the standard
+  text itself, Bouncy Castle, and a state-expertise-pedigreed library) now agree on this one
+  example — about as solid as a single test vector gets without running the paid official text
+  through this project's own eyes. The Annex B.2 (optimal normal basis, GF(2^173)) example was
+  **not** cross-checked this way — BC's `test173()` uses different curve parameters (a separate,
+  unrelated KAT), so that example currently rests on the scan transcription alone; treat it as
+  unverified-transcription if it's ever extracted.
 - **Pseudocode:** `docs/pseudocode/dstu4145.md` — still transcribed from the Bouncy Castle Java
   signer as of this writing; re-deriving it against the official spec sections above (now that they
   exist) is a follow-up, not yet done — see `TASKS.md`.

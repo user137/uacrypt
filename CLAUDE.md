@@ -105,7 +105,7 @@ Algorithms in scope:
 | `SECURITY.md` | before writing any crypto primitive or adding a dependency | threat model or hard constraints change | threat model, hard constraints, supply-chain vetting |
 | `DECISIONS.md` | need the reason behind an architectural choice | a new architectural decision is made | decisions + rejected alternatives, with citations |
 | `ORACLES.md` | before implementing or verifying any primitive | oracle trust ranking changes, or a new oracle/vector source is added | oracle trust matrix, per-algorithm oracle map, test-vector convention, list of reference implementations (`oracles/README.md` links here rather than duplicating) |
-| `docs/pseudocode/*.md` | before writing a primitive's Rust implementation | the transcription changes or a new ambiguity/discrepancy is found | per-algorithm pseudocode — from-spec for Kalyna/Kupyna/Strumok, from-oracle-code for DSTU 4145 (no spec paper exists), each cross-checked and with any ambiguity flagged inline |
+| `docs/pseudocode/*.md` | before writing a primitive's Rust implementation | the transcription changes or a new ambiguity/discrepancy is found | per-algorithm pseudocode — from-spec for Kalyna/Kupyna/Strumok, from-oracle-code for DSTU 4145 (official text now exists too — see the doc's 2026-07-22 update note — but the pseudocode itself isn't re-derived from it yet), each cross-checked and with any ambiguity flagged inline |
 | `docs/rust_ai_ruleset.md` | general Rust code-style questions | never (external ruleset, treat as canonical as-is) | generic Rust engineering conventions |
 | `docs/cross-language-style-guide.md` | writing or reviewing non-Rust code (oracle harnesses, future language bindings) | a new language is added, or a cross-language principle needs adjusting | cross-language naming/style principles and the per-language reference table; generalizes `docs/rust_ai_ruleset.md`, doesn't replace it |
 | `README.md` | need the human-facing project overview or repo tree | repo structure changes | GitHub-facing description, top-level directory map, build/install instructions |
@@ -171,9 +171,11 @@ check) is in `docs/dstu-crypto-project.md` "Resources found".
 
 ## Roadmap notes
 
-- Official documentation PDFs live in `docs/papers/`. Test vectors have already been extracted
-  and verified for Kalyna and Kupyna (`crates/dstu-core/tests/vectors/`); Strumok has none in any
-  source surveyed so far — confirmed gap, see `ORACLES.md`.
+- Official documentation PDFs live in `docs/papers/`, including `DSTU_4145-2002.pdf` (added
+  2026-07-22 — a scan, see `.claude.local.md` for the render-then-read workflow). Test vectors are
+  extracted and verified for Kalyna, Kupyna, and DSTU 4145
+  (`crates/dstu-core/tests/vectors/{kalyna,kupyna,dstu4145}/`); Strumok's are UAPKI-attributed, not
+  yet confirmed against the paid official text — see `ORACLES.md`/`DECISIONS.md` D-15/D-16.
 - Verify own implementation against Kalyna-reference and the other oracles in `ORACLES.md`.
 - Hardware validation on STM32/ESP32 is a distinct post-MVP phase, and is not a claim of
   side-channel resistance (see MVP scope above).

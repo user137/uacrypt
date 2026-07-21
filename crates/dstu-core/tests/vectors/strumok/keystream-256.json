@@ -1,0 +1,34 @@
+{
+  "algorithm": "Strumok (DSTU 8845:2019), 256-bit key",
+  "status": "UAPKI-attributed, not independently confirmed against the paid official text",
+  "provenance": "Transcribed from oracles/uapki/library/uapkic/src/dstu8845.c dstu8845_self_test() (commit c64181c3b1cd437139119d83bffb5ab090b1cdd6), whose source comments the block '// ДСТУ 8845:2019' - i.e. the library's own authors claim these are the standard's worked-answer values, not self-invented test inputs. UAPKI is a fork of Cryptonite (PrivatBank) and its README cites an official Ukrainian state crypto-expertise conclusion (No 04/05/02-2096, 2021) for the project generally - see ORACLES.md for the exact caveats on what that pedigree does and doesn't establish (the conclusion covers a specific certified build, not this cloned commit). This project has NOT independently confirmed these values against the official (paid) DSTU 8845:2019 text itself.",
+  "cross_check": "Independently reproduced byte-for-byte by running oracles/strumok-dstu8845/ (outspace, a separate BSD-2-Clause C implementation) on the same key/IV inputs. Treat this as a consistency bonus, not independent-oracle confirmation: outspace and UAPKI's dstu8845.c share identical internal function/table names (dstu8845_init, dstu8845_crypt, T0..T7) - a strong signal of shared lineage rather than two people implementing from the spec independently (see DECISIONS.md D-15).",
+  "key_bits": 256,
+  "note": "key/iv/keystream are the raw little-endian byte layout of the uint64_t[]/ByteArray buffers as consumed by dstu8845_init()/produced by dstu8845_crypt() in both reference implementations - not a DSTU-defined big-endian encoding. keystream is dstu8845_crypt() applied to an all-zero 64-byte input buffer, i.e. the raw keystream (crypt XORs with input).",
+  "cases": [
+    {
+      "name": "k1_iv1",
+      "key_hex": "0000000000000000000000000000000000000000000000000000000000000080",
+      "iv_hex": "0000000000000000000000000000000000000000000000000000000000000000",
+      "keystream_hex": "CA66DC4553D142E48A4066CC0E707DF441E677544B28CBB4B024412E09C9AFA2D9A7116BA25F8E7272F9688C28B9A7E64CA48BDE0636EB70E73D3EBD5679EDAC"
+    },
+    {
+      "name": "k2_iv1",
+      "key_hex": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "iv_hex": "0000000000000000000000000000000000000000000000000000000000000000",
+      "keystream_hex": "1D5DA9C7380B51A74F65B8158AA25ECDB273031D77E2E2C5EEFCD5869682AE98B8DB23C565DFBD451F0050D9CD3FA932518CAF88B57F2A75D41242663627E99D"
+    },
+    {
+      "name": "k1_iv2",
+      "key_hex": "0000000000000000000000000000000000000000000000000000000000000080",
+      "iv_hex": "0100000000000000020000000000000003000000000000000400000000000000",
+      "keystream_hex": "CD2A5A8B50A244FE42271DD24E5B35AF719E7AA5D6FDD7DCEBB59F73D27B265D722083B296EE2EB247A8A9DA4C6ADEC7F280268193DAD572E02CDA937ECB0A4A"
+    },
+    {
+      "name": "k2_iv2",
+      "key_hex": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "iv_hex": "0100000000000000020000000000000003000000000000000400000000000000",
+      "keystream_hex": "CDABA5CED9EFD0E61E400E9B1ABA781E8107BA022CEAFBBC9487E08A5875D31B09C214E121CF93549AE6D0C77C5DCD66FA070D38F3B9CDA5E49C4E4D1AD64029"
+    }
+  ]
+}

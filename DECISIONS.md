@@ -324,6 +324,13 @@ passing was previously "BC agrees with itself" (a hardcoded constant an internal
 check); it's now confirmed to reproduce the official standard's own published example, i.e. BC's
 `DSTU4145Signer` is independently confirmed DSTU-conformant, not just internally consistent.
 
+**Third source added 2026-07-22:** `oracles/uapki/` (see `ORACLES.md`/`oracles/README.md` — a fork
+of Cryptonite with a cited Ukrainian state crypto-expertise conclusion, pedigree caveats noted
+there) carries the identical `d`/`Q`/`r`/`s` values in `dstu4145.c`'s `dstu4145_self_test()`, whose
+source comments `// ДСТУ 4145-2002. Додаток Б`. Byte-identical once UAPKI's little-endian storage
+is reversed. Three independent sources (the standard text read directly, Bouncy Castle, and a
+state-expertise-pedigreed library) now agree on this one example.
+
 **Not cross-checked the same way:** Annex B.2 (optimal normal basis, GF(2^173)). BC's `test173()`
 uses different curve parameters — a separate, unrelated KAT, not a match to this example. If B.2 is
 ever extracted, it must be labeled `unverified-transcription` unless another independent source is
@@ -340,42 +347,84 @@ weaker provenance than Kalyna/Kupyna/Strumok's spec-transcriptions. No GF(2^m) b
 elliptic-curve arithmetic exists in `dstu-core` yet, so this vector cannot be exercised by any Rust
 code yet — see `TASKS.md` Phase 2.
 
-## D-15: Strumok "gray" vectors — a labeled, temporary unblock, not verification
+## D-15: Strumok vectors — sourced from UAPKI's self-test, not self-invented
 
-Strumok has had zero test vectors from any source since D-06/D-10 — official text priced at
-7,027.80 UAH (see "Official DSTU text — purchase cost" in `ORACLES.md`), no hardware testbench KAT
-in `Strumok_verilog.pdf` (checked 2026-07-22, nothing found), `outspace/dstu8845` is the only
-runnable implementation and it is unaudited (no license, not written by the standard's designers —
-see `ORACLES.md`). This has blocked Phase 1 implementation entirely.
+Strumok had zero test vectors from any source since D-06/D-10 — official text priced at 7,027.80
+UAH (see "Official DSTU text — purchase cost" in `ORACLES.md`), no hardware testbench KAT in
+`Strumok_verilog.pdf` (checked 2026-07-22, nothing found). This blocked Phase 1 implementation
+entirely.
 
-**Decision:** generate "gray" vectors by running `oracles/strumok-dstu8845/` itself against chosen
-inputs (key/IV/output-length combinations, both 256- and 512-bit keys) and committing the output as
-`crates/dstu-core/tests/vectors/strumok/gray/keystream-{256,512}.json`. The generator
-(`tests/oracle-harness/strumok-gray-generator/generate_gray_vectors.c`) is a small C program
-compiled directly against the pinned oracle source — not part of any build or CI, run once,
-reproducible if re-run (confirmed: re-compiling and re-running from a clean checkout reproduced
-byte-identical output). This unblocks a Rust port from being written test-first at all, which
-`SECURITY.md`'s "test-first, always" rule otherwise has no vectors to point at.
+**First attempt, since superseded:** generate self-invented "gray" vectors by running
+`oracles/strumok-dstu8845/` (outspace, unaudited, no license) against arbitrary chosen inputs.
+Committed, then replaced within the same session once a better source turned up — see below. The
+generator that produced them still exists in git history but the vector files themselves were
+deleted, not kept alongside the replacement (unlike the original plan for this entry), because the
+new vectors' inputs are a superset in spirit (same key-size coverage) and there was no reason to
+carry two unrelated input sets forward.
 
-**What this does and does not prove, stated as plainly as possible:** these vectors prove a future
-Rust port agrees with `outspace/dstu8845`. They prove **nothing** about whether that agreement
-matches the real DSTU 8845:2019 standard — the vectors and the (eventual) Rust implementation trace
-to the exact same single unaudited source, so passing them is self-consistency, which
-`SECURITY.md`'s dual-oracle requirement explicitly calls insufficient on its own. This is a
-deliberate, temporary exception to that requirement, not a quiet way around it — every gray vector
-file says so in its own `"status"` field, `ORACLES.md`'s Strumok section says so, and any future
-`TASKS.md`/`CLAUDE.md` status line for Strumok must say "regression-anchored, not independently
-verified" — never "confirmed"/"green" the way Kalyna/Kupyna are worded, until real vectors exist.
+**What actually landed:** the user pointed at https://github.com/specinfo-ua/UAPKI (cloned,
+pinned to commit `c64181c3b1cd437139119d83bffb5ab090b1cdd6`, pruned to `library/uapkic/` — see
+`oracles/README.md`). Its `dstu8845.c` has a `dstu8845_self_test()` whose source comments the
+block `// ДСТУ 8845:2019` — the library's own authors attribute these 8 key/IV/keystream cases to
+the standard itself, not to arbitrary self-testing. Adopted these as
+`crates/dstu-core/tests/vectors/strumok/keystream-{256,512}.json`, labeled
+`"status": "UAPKI-attributed, not independently confirmed against the paid official text"` in
+each file.
 
-**Rejected:** waiting for official vectors before writing any Strumok code. Rejected because the
-wait has no defined end date (purchase cost hasn't dropped, the info request in
-`docs/dstu9041-8845-info-request-draft.md` hasn't been sent/answered) and structural implementation
-work — GF(2^64) arithmetic, the FSM, the T-function — can be written and structurally cross-checked
-against the oracle's source right now per the existing pseudocode doc; there's no reason to block
-that on vectors that only the *final numeric check* needs.
+**What this does and does not prove, stated as plainly as possible:** this is stronger provenance
+than the superseded gray vectors (an attribution claim from a library with a cited state
+crypto-expertise pedigree, not values this project invented) but still short of "official" — this
+project has not read the paid DSTU 8845:2019 text itself to confirm UAPKI's claim.
+`oracles/strumok-dstu8845/` (outspace) reproduces the same 8 cases byte-for-byte
+(`tests/oracle-harness/strumok-cross-check/cross_check_against_uapki.c`) — **deliberately not
+counted as independent-oracle confirmation**: outspace's `strumok.c` and UAPKI's `dstu8845.c`
+share identical internal function/table names (`dstu8845_init`, `dstu8845_crypt`, `T0..T7`), which
+reads as shared lineage rather than two people implementing from the spec independently. This is
+the same trap this project already caught once this session for Kalyna
+(`bouncycastle-java`'s `DSTU7624Engine.java` crediting Oliynykov's C code as its source rather
+than being an independent read) — noticing the pattern the second time is the point of writing
+these decisions down.
 
-**Follow-up, not optional:** the moment real DSTU 8845 vectors exist from any source, (1) add them
-alongside (not instead of — keep the gray ones as an oracle-agreement regression check) with
-`"status": "official"`, and (2) run them against `outspace/dstu8845` itself, since this decision
-never established that the oracle is correct — only that a future Rust port can be checked against
-it consistently in the meantime.
+**Rejected:** waiting for the official text before writing any Strumok code. Rejected because the
+wait has no defined end date and structural implementation work — GF(2^64) arithmetic, the FSM,
+the T-function — can be written and structurally cross-checked against oracle source right now per
+the existing pseudocode doc; there's no reason to block that on vectors that only the *final
+numeric check* needs.
+
+**Any future status line for Strumok** (`TASKS.md`, `CLAUDE.md`, `docs/dstu-crypto-project.md`)
+must say "UAPKI-attributed, not confirmed against the official text" — never "confirmed"/"green"
+the way Kalyna/Kupyna are worded, until this project reads the actual DSTU 8845:2019 text itself
+or another source that independently transcribes its own vectors (the way `DSTU_4145-2002.pdf`
+Annex Б does) turns up.
+
+## D-16: UAPKI added as an oracle — state-expertise pedigree, precisely scoped
+
+https://github.com/specinfo-ua/UAPKI (user-supplied) is a fork of Cryptonite whose README cites
+"Expert conclusion on the results of the Ukrainian state expertise in the field of cryptographic
+protection of information No 04/05/02-2096 from 21.07.2021." Cloned and pinned to commit
+`c64181c3b1cd437139119d83bffb5ab090b1cdd6`, then pruned to `library/uapkic/` (the crypto-primitives
+library) plus `LICENSE`/`AUTHORS`/`README.md` — same "selected files only" convention as Bouncy
+Castle/cryptonite, dropping the ASN.1 layer, private-key-storage modules, the JSON-facing PKI
+library, and the browser-integration/build scaffolding (none of that is a crypto-primitive
+reference). BSD-2-Clause, already on `deny.toml`'s allow-list.
+
+**What the pedigree does and does not establish:** `CLAUDE.md`'s own "State certification" section
+already notes certification is tied to the hash of a specific build. The 2021 conclusion predates
+this project's cloned commit (pushed 2026) by years, so this is "certified pedigree, plausibly the
+same team/process," never "this exact clone is the certified artifact." Treated accordingly
+throughout `ORACLES.md`/`oracles/README.md` — every reference to UAPKI in this project states the
+caveat rather than leaning on "state-certified" as a bare credential.
+
+**Immediate payoff:** every DSTU primitive in scope has a `*_self_test()` with hardcoded KAT data.
+DSTU 4145's matched the official text + Bouncy Castle exactly (D-14). Strumok's is the first KAT
+found anywhere for that algorithm (D-15). Kalyna's covers CCM/GMAC/GCM directly relevant to D-05's
+open tension, and Kupyna's appears to reuse the same official vector set already in this project's
+`kupyna-256.json` — **neither cross-checked yet**, left for follow-up rather than done under time
+pressure in the same pass as Strumok/4145.
+
+**Rejected:** treating "fork of Cryptonite" as disqualifying by itself. Rejected because forking
+existing code and adding a formal expertise review is a reasonable, common lineage for a
+production PKI library, not evidence of low quality — the caveat is about not *overclaiming* what
+the review covers, not about excluding the source. Also rejected: keeping the full ~30MB clone.
+Pruned for the same reason cryptonite/Bouncy Castle were — this project needs the crypto
+primitives, not the ASN.1/PKCS#11/browser-integration layers around them.

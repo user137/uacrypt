@@ -92,4 +92,47 @@ self-contained), and the Kupyna-combination advice may apply to a different mode
 security profile within the standard — unconfirmed either way without the official DSTU 7624
 text (not among the PDFs in `../docs/papers/`). Do not resolve this from cryptonite's code alone
 before checking the primary source; this needs a citation, not an inference from a 2016
-third-party implementation.
+third-party implementation. **Update 2026-07-22:** `uapki/` below independently exposes the same
+CCM/GMAC/GCM self-test structure for Kalyna — still not a resolution (see the caveats in that
+section), but a second data point for whichever direction D-05 is eventually settled.
+
+## UAPKI (fork of Cryptonite, BSD-2-Clause, state-expertise pedigree)
+
+`uapki/` — from https://github.com/specinfo-ua/UAPKI, pinned commit
+`c64181c3b1cd437139119d83bffb5ab090b1cdd6` (2026-07-21). BSD-2-Clause per its root `LICENSE`
+(verified via `gh api repos/specinfo-ua/UAPKI --jq .license`). Pruned to `library/uapkic/`
+(the crypto-primitives library — symmetric/stream ciphers, hashes, MACs, signatures, the
+GF(2^m)/EC math underneath DSTU 4145) plus the top-level `LICENSE`/`AUTHORS`/`README.md`; dropped
+`uapkif` (ASN.1), `cm-pkcs11`/`cm-pkcs12` (private-key storage), `uapki` (the JSON-facing PKI
+library), `hostapp`/`integration`/`doc`/`test` (browser messaging host, language bindings, the
+higher-level PKI test app with its own certs/JKS fixtures) — none of that is a crypto-primitive
+reference, same "selected files only" convention as Bouncy Castle/cryptonite above.
+
+**Pedigree, stated precisely:** the repo's own README cites "Expert conclusion on the results of
+the Ukrainian state expertise in the field of cryptographic protection of information No
+04/05/02-2096 from 21.07.2021" for the UAPKI project generally. Per this project's own
+`CLAUDE.md` ("State certification"), such certification is tied to the hash of a *specific build*
+— the 2021 conclusion does not certify commit `c64181c3` (pushed 2026), which postdates it by
+years. Treat this as "certified pedigree, plausibly reviewed by the same team/process," never as
+"this exact clone is the certified artifact."
+
+**Every DSTU primitive in this project's scope has a `*_self_test()` function with hardcoded
+known-answer data** in `library/uapkic/src/`: `dstu4145_self_test` (signature),
+`dstu7564_self_test` (Kupyna hash + KMAC), `dstu7624_self_test` (Kalyna — ECB/CBC/OFB/CFB/CTR/
+CMAC/XTS/KW/CCM/GMAC/GCM, i.e. covers the D-05 tension directly), `dstu8845_self_test` (Strumok,
+comment-attributed `// ДСТУ 8845:2019` in the source — the first Strumok KAT this project has
+found anywhere, see `../DECISIONS.md` D-15 and
+`crates/dstu-core/tests/vectors/strumok/keystream-{256,512}.json`).
+
+**Cross-checked so far:**
+- DSTU 4145: `dstu4145_self_test`'s `d`/`Q`/`r`/`s` (byte-reversed from UAPKI's little-endian
+  storage) are byte-identical to `docs/papers/DSTU_4145-2002.pdf` Annex Б.1 and to Bouncy Castle's
+  `DSTU4145Test.java` `test163()` — three independent sources now agree on this one example (see
+  `../DECISIONS.md` D-14).
+- Strumok: `dstu8845_self_test`'s 8 key/IV/keystream cases were reproduced byte-for-byte by
+  running `../strumok-dstu8845/` (outspace) on the same inputs — see `../DECISIONS.md` D-15 for
+  why this is a consistency bonus and *not* independent-oracle confirmation (outspace and UAPKI's
+  `dstu8845.c` share identical internal function/table names — likely shared lineage, not two
+  independent implementations of the standard).
+- Kalyna/Kupyna self-test data not yet cross-checked against this project's own vectors/Rust
+  output — worth doing before leaning on it further (see `TASKS.md`).
