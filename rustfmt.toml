@@ -1,0 +1,9 @@
+# Explicit, not just relying on whatever rustfmt version's defaults happen to be - pins the style
+# so it can't silently drift between contributors/CI/rustfmt releases. Stable-channel options
+# only (see rust-toolchain.toml: channel = "stable") - nightly-only rustfmt options would be
+# silently ignored (or warn) on this toolchain, which defeats the point of pinning them here.
+
+edition = "2021"
+newline_style = "Unix"
+max_width = 100
+use_small_heuristics = "Default"

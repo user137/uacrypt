@@ -138,6 +138,14 @@ convention invented per language.
 - [x] `cargo fuzz` scaffold added (`crates/dstu-core/fuzz/`, target `kupyna`) — required by
       `SECURITY.md`. Wired into the CI smoke job; a local nightly+miri toolchain now exists here
       too if a quick local run is ever wanted, though CI is still the primary path.
+- [x] `cargo audit` + `cargo deny` (2026-07-22, D-11) — elevated to the same required-CI standing
+      as miri/fuzz in `SECURITY.md`; policy in `deny.toml`. Wired into `.github/workflows/rust.yml`
+      via `rustsec/audit-check` / `EmbarkStudios/cargo-deny-action`. **Actually run locally, not
+      just installed**: `cargo audit` — 0 vulnerabilities. `cargo deny check` — all four categories
+      (`advisories`, `bans`, `licenses`, `sources`) pass, but only after a real fix: it caught
+      `dstutool`'s `dstu-core = { path = "../dstu-core" }` dependency as a "wildcard dependency"
+      (no `version` pinned — would also block publishing to crates.io as-is). Fixed by adding
+      `version = "0.0.0"`. Genuine first catch from this tooling, not just a clean no-op.
 - [x] ~~C oracle harness~~ **dropped 2026-07-22.** Attempted against cryptonite (pinned commit
       `3618d340`) with a real, newly-installed GCC 16.1: cryptonite's own source fails to compile
       on a modern compiler (implicit-function-declaration errors in

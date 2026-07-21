@@ -6,4 +6,4 @@ license = "MIT OR Apache-2.0"
 description = "CLI over dstu-core"
 
 [dependencies]
-dstu-core = { path = "../dstu-core" }
+dstu-core = { path = "../dstu-core", version = "0.0.0" }

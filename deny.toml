@@ -1,0 +1,38 @@
+# cargo-deny policy. Currently checks an empty dependency tree (dstu-core/dstutool have zero
+# external dependencies) - this file exists so the policy is enforced automatically the moment a
+# dependency is added, rather than relying on someone remembering to check SECURITY.md's
+# supply-chain table by hand. See SECURITY.md "Supply-chain vetting".
+
+[graph]
+all-features = true
+
+[licenses]
+version = 2
+# Permissive licenses compatible with this project's own dual MIT/Apache-2.0 (see LICENSE-MIT,
+# LICENSE-APACHE) - the common set used by RustCrypto and most of the Rust crypto ecosystem this
+# project expects to eventually depend on (subtle, zeroize, getrandom, argon2, thiserror, etc).
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-3.0",
+]
+confidence-threshold = 0.8
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+# No specific crate denies yet - nothing in DECISIONS.md D-07 (the li0ard exclusion) publishes
+# to crates.io, so there's no package name to ban here. Revisit if that changes.
+
+[advisories]
+version = 2
+yanked = "deny"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

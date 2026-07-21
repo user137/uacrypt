@@ -186,3 +186,36 @@ field in those files).
 - **Still missing:** `cargo fuzz` has a scaffold (`crates/dstu-core/fuzz/`, target `kupyna`) but
   has not actually been run yet (required by `SECURITY.md`); the streaming (`update`/`finalize`)
   API doesn't exist (one-shot `digest()` only); no high-level "easy" wrapper (D-09) yet.
+
+## D-11: `cargo audit` and `cargo deny` are required CI layers, same standing as miri/fuzz
+
+`SECURITY.md`'s "Supply-chain vetting" table existed only as a manual process ("fill in per
+dependency before merging") with no automated enforcement — inconsistent with how strictly this
+project already treats `cargo miri`/`cargo fuzz` (named explicitly as required, not optional).
+Added `cargo audit` (RustSec advisory database — known vulnerabilities, yanked crates) and
+`cargo deny` (license allowlist, duplicate/banned crates, dependency-source allowlist — policy in
+`deny.toml`) as CI jobs in `.github/workflows/rust.yml`, and elevated them to the same
+non-optional standing in `SECURITY.md`.
+
+**Rejected:** leaving supply-chain vetting as a manual, human-remembered step. Rejected because
+the whole point of `SECURITY.md`'s hard-constraints section is that these things don't rely on
+someone remembering — the same reasoning that already justified making `cargo miri`/`cargo fuzz`
+mandatory applies identically here.
+
+**`deny.toml` policy, briefly:** allow-list of permissive licenses compatible with this project's
+own dual MIT/Apache-2.0 (MIT, Apache-2.0, BSD-2/3-Clause, ISC, Unicode-3.0— the common set used
+by RustCrypto and most of the Rust crypto ecosystem this project expects to eventually depend on);
+deny unknown registries/git sources (crates.io only); deny yanked crates. No specific crate bans
+yet — `li0ard` (D-07) doesn't publish anything to crates.io this project would ever depend on, so
+there's no package name to ban here; revisit if that changes.
+
+**Status, confirmed 2026-07-22 by actually installing and running both locally (not just
+writing the config):** `cargo audit` — 0 vulnerabilities against the current (empty) dependency
+tree. `cargo deny check` — all four categories pass, but not trivially: it caught a real issue on
+first run — `dstutool`'s `dstu-core = { path = "../dstu-core" }` dependency had no `version`
+pinned, flagged as a "wildcard dependency" (`bans` category) and would also have blocked
+publishing `dstutool` to crates.io as-is. Fixed by adding `version = "0.0.0"`. So this tooling has
+already paid for itself once, before a single external dependency was ever added — the license
+allow-list itself remains unproven against a real dependency (the "license was not encountered"
+warnings are expected noise given zero deps still use those licenses) until `subtle`, `zeroize`,
+`getrandom`, or `argon2` (see `docs/dstu-crypto-project.md` libsodium mapping) actually land.

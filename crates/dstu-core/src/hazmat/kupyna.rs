@@ -172,6 +172,7 @@ fn mix_columns(state: &mut [[u8; ROWS]]) {
 }
 
 /// XOR-based round-constant addition (psi-xor), used by `T`/`P`. Kupyna.pdf Section 6.2.
+#[allow(clippy::cast_possible_truncation)] // col < MAX_COLUMNS (16), always fits u8
 fn add_round_constant_xor(state: &mut [[u8; ROWS]], round: u8) {
     for (col, column) in state.iter_mut().enumerate() {
         column[0] ^= (col as u8).wrapping_mul(0x10) ^ round;
@@ -179,6 +180,7 @@ fn add_round_constant_xor(state: &mut [[u8; ROWS]], round: u8) {
 }
 
 /// Modulo-2^64-add round-constant addition (psi-add), used by `T+`/`Q`. Kupyna.pdf Section 6.2.
+#[allow(clippy::cast_possible_truncation)] // columns - 1 - col < MAX_COLUMNS (16), always fits u8
 fn add_round_constant_add(state: &mut [[u8; ROWS]], round: u8) {
     let columns = state.len();
     for (col, column) in state.iter_mut().enumerate() {
@@ -190,6 +192,7 @@ fn add_round_constant_add(state: &mut [[u8; ROWS]], round: u8) {
 }
 
 /// `T` (Kupyna.pdf Section 6.1): `rounds` iterations of xor-constant -> S-box -> shift -> mix.
+#[allow(clippy::cast_possible_truncation)] // rounds is 10 or 14 (Table 1), always fits u8
 fn t_transform(state: &mut [[u8; ROWS]], rounds: usize, last_row_shift: usize) {
     for round in 0..rounds {
         add_round_constant_xor(state, round as u8);
@@ -200,6 +203,7 @@ fn t_transform(state: &mut [[u8; ROWS]], rounds: usize, last_row_shift: usize) {
 }
 
 /// `T+` (Kupyna.pdf Section 6.1): same as `T` but with the mod-add constant.
+#[allow(clippy::cast_possible_truncation)] // rounds is 10 or 14 (Table 1), always fits u8
 fn t_plus_transform(state: &mut [[u8; ROWS]], rounds: usize, last_row_shift: usize) {
     for round in 0..rounds {
         add_round_constant_add(state, round as u8);
@@ -241,6 +245,7 @@ fn bytes_to_columns(bytes: &[u8], columns: usize) -> [[u8; ROWS]; MAX_COLUMNS] {
 /// Shared implementation for both Kupyna variants. Returns a 64-byte buffer; callers truncate to
 /// `output_bytes` (the low `output_bytes` bytes are the actual digest, per `Kupyna256`/`Kupyna512`
 /// below - this function always fills starting at index 0).
+#[allow(clippy::cast_possible_truncation)] // block_bytes is 64 or 128, always fits u8
 fn digest_generic(
     message: &[u8],
     columns: usize,
@@ -319,6 +324,7 @@ pub struct Kupyna256;
 
 impl Kupyna256 {
     /// Hashes `message` (byte-aligned only) and returns the 256-bit digest.
+    #[must_use]
     pub fn digest(message: &[u8]) -> [u8; 32] {
         let full = digest_generic(message, 8, 10, 7, 32);
         let mut out = [0u8; 32];
@@ -332,6 +338,7 @@ pub struct Kupyna512;
 
 impl Kupyna512 {
     /// Hashes `message` (byte-aligned only) and returns the 512-bit digest.
+    #[must_use]
     pub fn digest(message: &[u8]) -> [u8; 64] {
         digest_generic(message, 16, 14, 11, 64)
     }
