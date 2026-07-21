@@ -56,6 +56,11 @@ the actual DSTU 7624 standard text (not currently among `docs/papers/`) before t
 finalized either way — see `oracles/README.md` "Cryptonite" section for the full note. Do not
 resolve this from cryptonite's code alone; it's a 2016 third-party implementation, not the spec.
 
+The official text was priced (2026-07-21) to check on this directly: 29,967.60 UAH for 227 pages
+(includes Amendment No. 1:2016) via `fnd-store.uas.gov.ua/documents/4228` — see `ORACLES.md`
+"Official DSTU text — purchase cost". Deemed cost-prohibitive for now; this tension stays open
+until either the price becomes viable or another authoritative source turns up.
+
 ## D-06: Reference/oracle repositories are for test-vector comparison only
 
 Kalyna-reference, cryptonite, outspace/dstu8845 are consulted only to cross-verify test vectors,
@@ -112,11 +117,72 @@ If ever taken up, treat as a pair (Skelya + Vershyna together, mirroring the cla
 pair) as a distinct Phase 3 / post-quantum track, with an explicit documented warning that its
 cryptanalysis maturity is lower than this project's classical DSTU primitives.
 
-## Open question: no_std vs. safe high-level API default randomness
+## D-09: Two-layer API — `hazmat` (no_std, no RNG) + a future high-level "easy" layer (std/alloc-gated)
 
-Not yet decided. Precedent (orion): in a `no_std` build, orion's high-level "hard to misuse"
-API is unavailable because it depends on `OsRng`, which doesn't exist in `no_std` — only its
-low-level `hazardous` module works there. This directly tensions with D-01 (`no_std`-first) and
-the project's own libsodium-style "safe defaults" goal (see `docs/dstu-crypto-project.md`): on
-embedded targets, either the safe high-level API needs an injected RNG source, or it's simply
-unavailable and only the low-level API ships. Resolve before the high-level API is designed.
+The crate's public surface is split the way orion's is: a low-level `dstu_core::hazmat` module
+containing direct algorithm implementations with no forced RNG dependency and no safety rails
+(caller manages keys/nonces/IVs explicitly where an algorithm needs them) — available in `no_std`
+builds — and, layered on top of it later, a higher-level "easy" API mirroring libsodium's
+`crypto_*` functions (auto-generated nonces via `OsRng`/`getrandom`, misuse-resistant defaults).
+The high-level layer is `std` (or at least `alloc` + an injected RNG) gated, since safe automatic
+nonce/key generation needs an RNG source that plain `no_std` doesn't provide.
+
+**Rejected:** a single unified API with no low/high split. Rejected because it forces a choice
+this project can't make once and be done with: either the whole crate depends on `OsRng` (breaking
+`no_std`/embedded support, against D-01), or the whole crate exposes raw hazmat-style functions
+only (breaking the libsodium-style "hard to misuse by default" goal that's this project's whole
+reason for existing over rolling your own OpenSSL-style flexible API). The two-layer split lets
+both goals hold, each in the layer where it applies — this was an **open question** in an earlier
+draft of this file; resolved now because the first primitive (Kupyna, below) needed a home and the
+split had to be decided before any code landed under it.
+
+**Status:** `dstu_core::hazmat::kupyna` (Kupyna-256/512) is implemented against this split — see
+below. The high-level "easy" layer does not exist yet; nothing in this project needs it before a
+keyed/nonce-based primitive (Strumok, or the `crypto_secretbox` construction) is reached.
+
+## D-10: Kupyna (DSTU 7564:2014) implemented in `dstu_core::hazmat::kupyna`
+
+One-shot `Kupyna256::digest`/`Kupyna512::digest`, ported from `docs/pseudocode/kupyna.md`.
+
+**Citations:**
+- Algorithm structure (padding, `T`/`T⁺` compression, output transformation): the designers'
+  paper, `docs/papers/Kupyna.pdf`, Sections 4–6, as already transcribed into
+  `docs/pseudocode/kupyna.md`.
+- S-box and MDS-matrix constants: taken byte-for-byte from
+  `oracles/kupyna-reference/tables.c` (Roman Oliynykov, Kupyna's own author). Confirmed two ways
+  before trusting them: (1) byte-for-byte identical to Kalyna's `sboxes_enc` in
+  `oracles/kalyna-reference/tables.c` — the same author's two separate reference repos agree
+  exactly, consistent with both papers stating the S-boxes are shared; (2) matches the papers'
+  own worked example (`S0(0x23) = 0x4F`, Kalyna.pdf §5.3 / Kupyna.pdf §6.3) at the exact table
+  index it should. This is a constants transcription, not a code port, and not subject to the
+  D-06 "don't copy oracle code" restriction — the S-box/MDS tables are themselves part of the
+  published specification (Appendix A), the same way AES's S-box is a spec constant rather than
+  someone's implementation choice.
+- Byte-matrix layout (`state[column][row]`, not a word-packed AES-style representation): mirrors
+  `oracles/kupyna-reference/kupyna.c` directly (not Bouncy Castle's T-table-fused version) —
+  chosen deliberately for transcription safety since this implementation could not be
+  compiled/tested locally (no Rust toolchain available in this environment; see
+  `.claude.local.md`) and the simpler, more literal port carries less risk of an
+  unverifiable transposition/endianness bug than an optimized bit-twiddled one.
+
+**Scope limitation, not a gap to silently paper over:** only byte-aligned messages are supported
+(the public API takes `&[u8]`, which cannot represent a bit-level length anyway). This matches
+the extracted test vectors exactly — the paper's bit-level cases (N=510/655/33/1) were already
+excluded from `crates/dstu-core/tests/vectors/kupyna/*.json` for the same reason (see the `note`
+field in those files).
+
+**Verification status, updated 2026-07-22 after installing a local toolchain (see
+`.claude.local.md`): confirmed green, not just written.**
+- `cargo test --workspace`: passes, both `Kupyna256`/`Kupyna512` official-vector tests.
+- `cargo miri test --workspace`: passes, no UB detected — satisfies the `SECURITY.md` requirement.
+- `cargo clippy --all-features -- -D warnings`: clean (one `manual_memcpy` lint fixed in
+  `shift_bytes`, no logic change).
+- `cargo build --no-default-features` (the `no_std` path): compiles clean.
+- Additionally cross-checked against real Bouncy Castle (not this project's own port) via
+  `tests/oracle-harness/{dotnet,java}/`, both using the published NuGet/Maven packages: all 10
+  Kalyna cases + all 12 Kupyna cases pass. Same caveat as always applies to that cross-check —
+  BC's Kalyna/Kupyna is a port of the same C reference, so this mainly confirms the vector
+  extraction, not a fully independent second implementation.
+- **Still missing:** `cargo fuzz` has a scaffold (`crates/dstu-core/fuzz/`, target `kupyna`) but
+  has not actually been run yet (required by `SECURITY.md`); the streaming (`update`/`finalize`)
+  API doesn't exist (one-shot `digest()` only); no high-level "easy" wrapper (D-09) yet.

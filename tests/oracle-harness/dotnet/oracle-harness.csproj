@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <AssemblyName>oracle-harness</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Published NuGet package, not the vendored oracles/bouncycastle-dotnet/ clone: that clone
+         is a "selected files only" partial copy (see oracles/README.md) and won't build
+         standalone. Using the real package is also consistent with DECISIONS.md D-02 (Bouncy
+         Castle is a real dependency for bindings, not something we vendor). -->
+    <PackageReference Include="BouncyCastle.Cryptography" Version="2.6.2" />
+  </ItemGroup>
+
+</Project>

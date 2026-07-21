@@ -138,6 +138,43 @@ constructions (AEAD from Kalyna+Kupyna, KDF from Kupyna, ECDH from the
 signature curve) plus the deliberate decision to leave Argon2 and the system
 CSPRNG without "Ukrainization".
 
+## Concrete API shape
+
+Turning the mapping above into an actual Rust module layout, and fixing the one structural
+question that has to be settled before any code lands: whether the crate exposes one unified API
+or splits into layers. **Decided (D-09 in `DECISIONS.md`): two layers**, same shape as orion:
+
+- **`dstu_core::hazmat::*`** — direct algorithm implementations. No forced RNG dependency, no
+  auto-generated nonces, caller passes keys/nonces/IVs explicitly where the algorithm needs them.
+  Available in `no_std` builds (D-01) — this is the layer that can exist before any randomness
+  question is settled, and the layer every primitive lands in first.
+- **A future high-level "easy" layer** (name TBD, not built yet) — libsodium-style `crypto_*`
+  ergonomics on top of `hazmat`: auto-generated nonces via `OsRng`/`getrandom`, misuse-resistant
+  defaults, the actual point of building this library "in the spirit of libsodium" instead of
+  OpenSSL. `std` (or at least `alloc` + an injected RNG) gated, since safe automatic nonce
+  generation needs an RNG source `no_std` doesn't provide by itself.
+
+Module-by-module status (libsodium name → `dstu_core` module → status):
+
+| libsodium equivalent | `dstu_core` module | Status |
+|---|---|---|
+| `crypto_generichash` | `hazmat::kupyna` (`Kupyna256`, `Kupyna512`) | **Implemented** — one-shot `digest()`, byte-aligned messages only. See D-10 in `DECISIONS.md`. |
+| `crypto_stream` | `hazmat::strumok` | Blocked — no test vectors exist for Strumok (see `ORACLES.md`); not started. |
+| `hazmat::kalyna` (block primitive, not directly libsodium-mapped) | `hazmat::kalyna` | Not started; vectors exist, no blocker — next candidate after Kupyna. |
+| `crypto_sign` | `hazmat::dstu4145` | Not started; has pseudocode + a genuinely independent oracle (Bouncy Castle), no vectors extracted yet — see `ORACLES.md`. |
+| `crypto_box` | `hazmat::dstu9041` | Hard-blocked — zero source material exists for DSTU 9041 (see `ORACLES.md`); cannot start. |
+| `crypto_secretbox` | *(future construction over `hazmat::kalyna` + `hazmat::kupyna`)* | Blocked on D-05 (the Kalyna+Kupyna vs. Kalyna-alone CCM/GCM tension) — needs the official DSTU 7624 text or another authoritative source. |
+| `crypto_auth`/`crypto_onetimeauth` | *(future construction over `hazmat::kupyna`)* | Needs `hazmat::kalyna`/`hazmat::kupyna` done first; not started. |
+| `crypto_kdf` | *(future construction over `hazmat::kupyna`)* | Same as above. |
+| `crypto_kx` | *(future construction over `hazmat::dstu4145`/`dstu9041`)* | Needs both curve implementations to exist; DSTU 9041 side is hard-blocked. |
+| `crypto_secretstream` | *(future construction over `hazmat::strumok`/`hazmat::kalyna`)* | Needs its underlying primitive done first. |
+| `crypto_pwhash` | *(not DSTU — plain Argon2id, wrapped at the high-level layer only)* | Not started; low priority, no blocker. |
+| `randombytes` | *(not DSTU — OS CSPRNG via `getrandom`, used only by the future high-level layer)* | Not started; no blocker, but only needed once the high-level layer exists. |
+
+This table is the authoritative "what's actually implemented right now" for the API surface —
+`TASKS.md` tracks the same work at the task-checklist level; update both when a module's status
+changes.
+
 ## Resources found
 
 - **[privat-it/cryptonite](https://github.com/privat-it/cryptonite)** —

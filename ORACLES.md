@@ -36,6 +36,26 @@ against oracles.** Never port or copy oracle source into `crates/`, regardless o
 license. Everything below assumes that model — oracles here answer "who do we check our numbers
 against," not "what do we translate into Rust."
 
+## Official DSTU text — purchase cost (checked 2026-07-21)
+
+Official texts are sold per-page via `fnd-store.uas.gov.ua` (see also the free catalog at
+`uas.gov.ua/natsionalnyi-fond-nd/kataloh-natsionalnykh-standartiv-ta-k` to confirm validity before
+paying). Checked listings for the three standards this project would most benefit from:
+
+| Standard | Pages | Price (UAH) | Listing |
+|---|---|---|---|
+| ДСТУ 9041:2020 | 40 | 5,304.00 | `fnd-store.uas.gov.ua/documents/42241` |
+| ДСТУ 8845:2019 (Strumok) | 53 | 7,027.80 | `fnd-store.uas.gov.ua/documents/39053` |
+| ДСТУ 7624:2014 (Kalyna, incl. Amendment No. 1:2016) | 227 | 29,967.60 | `fnd-store.uas.gov.ua/documents/4228` |
+
+All three land at roughly the same ≈132.6 UAH/page rate (the state-set per-page tariff for
+official reproduction) — Kalyna's total is simply large because the document is large (227
+pages, folding in its 2016 amendment), not a different rate. **Verdict: cost-prohibitive for this
+project at this time** — combined total is ~42,300 UAH (~$1,000 USD) for all three, against a
+volunteer open-source project's budget. Not pursued for now; each per-algorithm section below
+notes what specifically the official text would have resolved, so this can be revisited if
+project funding changes rather than re-researched from scratch.
+
 ## Per-algorithm oracle map
 
 ### Kalyna (DSTU 7624)
@@ -107,6 +127,9 @@ against," not "what do we translate into Rust."
   in any source surveyed so far. Locating or generating trustworthy Strumok vectors (the official
   DSTU 8845 text itself, an NDA'd/paywalled version of the standard, or a state-certified
   implementation) is a prerequisite before implementation, not an afterthought.
+- **The official text was priced (2026-07-21): 7,027.80 UAH for 53 pages** — see "Official DSTU
+  text — purchase cost" above. Deemed cost-prohibitive for now; the gap above stands until that
+  changes or another source of vectors turns up.
 
 ### DSTU 4145 (signature)
 - **Pseudocode:** `docs/pseudocode/dstu4145.md` — transcribed directly from the Bouncy Castle
@@ -146,12 +169,15 @@ against," not "what do we translate into Rust."
 - No `docs/pseudocode/dstu9041.md` exists as a result — there is currently nothing credibly
   sourceable to write one from. Revisit if the actual DSTU 9041:2020 standard text is ever
   obtained, or if a legibly-OCR'd copy of the Skorobahatko thesis surfaces.
+- **The official text was priced (2026-07-21): 5,304.00 UAH for 40 pages** — see "Official DSTU
+  text — purchase cost" above. This is the only algorithm in this project with zero sources of
+  any kind, so it's the strongest case for revisiting the purchase if budget ever allows — but
+  deemed cost-prohibitive for now, same as the other two.
 
 ## Test-vector convention
 
-Populated for Kalyna and Kupyna; the loader still waits for the first primitive (a `tests/*.rs`
-harness calling `dstu_core` functions that don't exist yet would break the buildable skeleton —
-that part is genuinely premature, the data is not).
+Populated for Kalyna and Kupyna. The Rust loader exists now (`crates/dstu-core/tests/kupyna.rs`,
+per D-10) — the earlier "waits for the first primitive" caveat no longer applies to Kupyna.
 
 - Vectors live at `crates/dstu-core/tests/vectors/<algorithm>/<case>.json` — one file per
   block/key-size or hash-size variant, plain hex fields, human-diffable, not a binary blob.
@@ -159,9 +185,17 @@ that part is genuinely premature, the data is not).
   an unattributed vector is not admissible, by the same logic as `SECURITY.md`'s "no primitive
   without a cited spec section." Every hex field has been length/validity-checked programmatically
   against its declared bit size before being committed here — see the PDF extraction notes below.
-- Integration tests in `crates/dstu-core/tests/<algorithm>.rs` will load these files and assert
-  against the implementation — black-box, per `docs/rust_ai_ruleset.md` §11 — once a primitive
-  exists to test.
+- Integration tests in `crates/dstu-core/tests/<algorithm>.rs` load these files and assert against
+  the Rust implementation — black-box, per `docs/rust_ai_ruleset.md` §11.
+- **Same files, consumed cross-language too:** `tests/oracle-harness/{java,dotnet}/` run these
+  vectors against real Bouncy Castle directly (not the Rust port), via the published Maven/NuGet
+  packages — one vector format, multiple independent consumers. Both actually run and pass (all
+  10 Kalyna + all 12 Kupyna cases). No cryptonite/C harness — tried on 2026-07-22 with a real
+  local GCC and dropped: cryptonite's own source doesn't compile clean on a modern compiler
+  (unrelated to Kalyna/Kupyna — an error in `dstu4145_prng_internal.c`), and the added value was
+  already modest given the two harnesses above already independently confirm these vectors. See
+  `TASKS.md` "Infrastructure" for the full note; `cryptonite` is still used as a read-only
+  reference (e.g. the D-05 CCM/GCM finding below), just not a runnable harness.
 - Real shape, from `crates/dstu-core/tests/vectors/kalyna/128-128.json`:
   ```json
   {

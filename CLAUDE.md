@@ -4,18 +4,27 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-Scaffold stage — the Cargo workspace exists and builds, but no crypto primitives are implemented
-yet. `cargo build --workspace` and `cargo test --workspace` are real, currently-passing commands
-(there's just nothing in them to fail). The workspace has two crates:
+First primitive landed and confirmed green. A local toolchain (Rust, a C compiler, Maven) was
+installed into this environment on 2026-07-22 — see `.claude.local.md`; `cargo`/`gcc`/`mvn` all
+work here now, this is no longer a "no toolchain" environment. The workspace has two crates:
 
-- `crates/dstu-core` — the library (`std`/`alloc` feature flags in place per D-01, `lib.rs` is
-  still an empty `no_std`-compatible stub).
-- `crates/dstutool` — the CLI binary, currently a placeholder `main.rs`.
+- `crates/dstu-core` — the library (`std`/`alloc` feature flags per D-01). `dstu_core::hazmat`
+  exists with one primitive: `kupyna::{Kupyna256, Kupyna512}` (one-shot `digest()` only, no
+  streaming API yet). Written test-first against `crates/dstu-core/tests/kupyna.rs`, citation in
+  `DECISIONS.md` D-10. **Confirmed**: `cargo test`, `cargo miri test` (no UB), `cargo clippy --
+  -D warnings`, and the `no_std` build all pass. Check `TASKS.md` Phase 1 for exactly what's
+  still open (streaming API, `cargo fuzz` not yet actually run, no high-level wrapper yet).
+- `crates/dstutool` — the CLI binary, still a placeholder `main.rs`.
 
-Official test vectors are already extracted and verified for Kalyna and Kupyna, ready for the
-first primitive to consume: `crates/dstu-core/tests/vectors/{kalyna,kupyna}/*.json` — see
-`ORACLES.md` for provenance and format. No test-runner (`tests/*.rs`) exists yet; writing one
-before a primitive exists to test would break the buildable skeleton.
+Official test vectors are extracted and verified for Kalyna and Kupyna:
+`crates/dstu-core/tests/vectors/{kalyna,kupyna}/*.json` — see `ORACLES.md` for provenance and
+format. These vectors have additionally been run against real Bouncy Castle (Java and .NET, via
+the published packages, not the vendored oracle clones) in `tests/oracle-harness/{java,dotnet}/`
+and passed in full — see `TASKS.md` "Infrastructure". No C/cryptonite harness — tried and
+dropped, see `TASKS.md` and `ORACLES.md` for why.
+
+The concrete module-by-module API surface (what's implemented, what's blocked, and why) lives in
+`docs/dstu-crypto-project.md` "Concrete API shape" and is tracked as a checklist in `TASKS.md`.
 
 The full spec lives in `docs/dstu-crypto-project.md`. Read it before planning any implementation
 work — it is the source of truth for scope and architecture decisions below.
@@ -72,6 +81,7 @@ Algorithms in scope:
 
 | File | Read when | Update when | Canonical owner of |
 |---|---|---|---|
+| `TASKS.md` | starting or resuming any work session | a task is started, finished, or newly discovered | phase-by-phase task backlog and progress state — status only, not rationale |
 | `docs/dstu-crypto-project.md` | planning scope, API design, algorithm choices | scope or API-mapping decisions change | project scope, libsodium API mapping |
 | `SECURITY.md` | before writing any crypto primitive or adding a dependency | threat model or hard constraints change | threat model, hard constraints, supply-chain vetting |
 | `DECISIONS.md` | need the reason behind an architectural choice | a new architectural decision is made | decisions + rejected alternatives, with citations |

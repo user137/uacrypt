@@ -4,6 +4,15 @@ Cargo.lock
 *.pdb
 .claude.local.md
 
+# Oracle-harness build artifacts and fetched dependencies (Java/.NET) — fetched fresh via
+# Maven/NuGet at build time (see tests/oracle-harness/*/README or TASKS.md "Infrastructure"),
+# never vendored or committed, same rule as /oracles below.
+/tests/oracle-harness/java/lib/
+/tests/oracle-harness/java/out/
+/tests/oracle-harness/java/target/
+/tests/oracle-harness/dotnet/bin/
+/tests/oracle-harness/dotnet/obj/
+
 # Third-party reference implementations, used only as oracles for local test-vector
 # cross-verification (see oracles/README.md, DECISIONS.md D-02/D-06). Never vendored into
 # crates/, never committed or published — regardless of the upstream license.

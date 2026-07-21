@@ -1,0 +1,41 @@
+name: oracle-harness
+
+# Cross-checks crates/dstu-core/tests/vectors/*.json against Bouncy Castle (published packages,
+# not the vendored oracle clones). See TASKS.md "Infrastructure" for rationale and status.
+#
+# No cryptonite/C job here on purpose: it was tried and dropped (2026-07-22) - cryptonite's own
+# source doesn't build clean on a modern GCC (implicit-function-declaration errors in
+# dstu4145_prng_internal.c, unrelated to Kalyna/Kupyna), and its added evidentiary value was
+# already modest (Kalyna/Kupyna are independently confirmed by the two jobs below). Not worth
+# patching a vetted third-party oracle's source to make a lower-value check build. See
+# ORACLES.md / oracles/README.md - cryptonite is still used as a read-only reference (e.g. the
+# D-05 CCM/GCM finding), just not as a runnable CI harness.
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  dotnet:
+    name: .NET (Bouncy Castle NuGet)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - working-directory: tests/oracle-harness/dotnet
+        run: dotnet run
+
+  java:
+    name: Java (Bouncy Castle Maven)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - working-directory: tests/oracle-harness/java
+        run: mvn -q compile exec:java
