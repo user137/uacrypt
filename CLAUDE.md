@@ -10,8 +10,8 @@ cryptanalysis and hardware implementation). There is no Cargo.toml, no build, no
 commands to run. Do not invent tooling or commands that aren't there yet — check this file's
 "Project status" section is still accurate before assuming otherwise.
 
-The full spec lives in `docs/dstu-crypto-project.md` (written in Ukrainian). Read it before planning
-any implementation work — it is the source of truth for scope and architecture decisions below.
+The full spec lives in `docs/dstu-crypto-project.md`. Read it before planning any implementation
+work — it is the source of truth for scope and architecture decisions below.
 
 ## What this project is
 
@@ -83,6 +83,10 @@ Full detail and rationale in `SECURITY.md` — this is the compressed version so
 
 ## Agent discipline
 
+- **Test-first, always.** Write the failing test before the implementation — a unit test, or for
+  crypto code, a test-vector check (see dual-oracle verification above). Never write the
+  implementation first and backfill tests afterward. This applies to every function, not just
+  primitives.
 - **Three-attempts rule**: if the same problem survives 3 different approaches (especially
   toolchain/build/CI issues), stop, report what was tried and what's still unknown, and wait for
   direction — don't self-authorize a 4th attempt.
