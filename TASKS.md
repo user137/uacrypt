@@ -31,9 +31,13 @@ test-vector check (or unit test) is written before the primitive it verifies, no
       official vectors, first attempt, no debugging needed), `cargo clippy -- -D warnings`, `cargo
       fmt --check`, and the `no_std` build all pass. S-box/MDS tables shared with `hazmat::kupyna`
       via a new `hazmat::tables` module rather than duplicated (D-13). `cargo miri test` also
-      confirmed clean (no UB, all 5 variants, ~158s). Still open: no independent second-oracle
-      cross-check (Java/.NET harnesses don't cover Kalyna vectors yet), no mode of operation
-      (D-05), `dstutool` doesn't call this yet.
+      confirmed clean (no UB, all 5 variants, ~158s). Same day (D-16 update): UAPKI's
+      `dstu7624_ecb_self_test` (single-block case, all 5 variants × encrypt/decrypt) matches
+      byte-for-byte too — same official vector set, not a new independent reading. Still open: no
+      independent second-oracle cross-check (Java/.NET harnesses don't cover Kalyna vectors yet),
+      no mode of operation (D-05) — UAPKI's CBC/OFB/CFB/CTR/CMAC/XTS/KW/CCM/GMAC/GCM self-tests are
+      unused KAT data waiting for whenever modes get built, same as Kupyna's KMAC below —
+      `dstutool` doesn't call this yet.
 - [x] Implement Kupyna (256/512) — `dstu_core::hazmat::kupyna` (`Kupyna256`/`Kupyna512`),
       citation in `DECISIONS.md` D-10. **Confirmed green 2026-07-22**: `cargo test`, `cargo miri
       test` (no UB), `cargo clippy -- -D warnings`, and `no_std` build all pass; independently

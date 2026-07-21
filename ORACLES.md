@@ -91,9 +91,15 @@ project funding changes rather than re-researched from scratch.
   cross-check on modes and wrap behavior.
 - **Added 2026-07-22: `oracles/uapki/`** (fork of Cryptonite, state-expertise pedigree — see
   `oracles/README.md` for the exact caveat on what that does and doesn't certify). Its
-  `dstu7624_self_test` covers ECB/CBC/OFB/CFB/CTR/CMAC/XTS/KW/CCM/GMAC/GCM — directly relevant to
-  the still-open D-05 question — but **not yet cross-checked** against this project's own vectors
-  or Rust output; treat as an available-but-unverified data point until that happens.
+  `dstu7624_self_test` covers ECB/CBC/OFB/CFB/CTR/CMAC/XTS/KW/CCM/GMAC/GCM. **ECB cross-checked
+  (same day):** all 10 `dstu7624_ecb_self_test` cases run ECB with `data_len == block_size`, i.e.
+  plain single-block encryption — diffed byte-for-byte (script) against
+  `{128-128,128-256,256-256,256-512,512-512}.json`'s encryption/decryption cases and all 10 match
+  exactly. Same official vector set as `Kalyna.pdf` (not independent new data), but confirms UAPKI
+  reproduces it correctly. **CBC/OFB/CFB/CTR/CMAC/XTS/KW/CCM/GMAC/GCM remain unchecked** — genuine
+  new data, since no Rust mode-of-operation exists yet to check them against; CCM/GMAC/GCM
+  specifically are directly relevant to the still-open D-05 question, left for whenever a mode
+  gets built (see `DECISIONS.md` D-16 update, `TASKS.md`).
 - Supplementary, not authoritative: `docs/papers/Dolgov_5-22.pdf` contains a C-like pseudocode
   description of Kalyna (`Kalyna_Cipher`, `Kalyna_InvCipher`, `Kalyna_S_boxes`,
   `Kalyna_KeyExpansion_Ksigma`), but its surrounding Ukrainian prose doesn't extract cleanly via

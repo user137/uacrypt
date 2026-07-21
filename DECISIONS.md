@@ -441,6 +441,18 @@ project's Kalyna-CCM/GMAC/GCM-equivalent for Kupyna: directly relevant to the st
 there's no Rust KMAC to check it against yet. Left for follow-up, same as Kalyna's CCM/GMAC/GCM —
 not scheduled ahead of where `crypto_auth` already sits in `TASKS.md`.
 
+**Update 2026-07-22 (same pass) — Kalyna's ECB self-test cross-checked too:** all 10 cases in
+`dstu7624_ecb_self_test()` run ECB with `data_len == block_size`, i.e. plain single-block
+encryption, one case per variant per direction (5 variants × encrypt/decrypt). Byte-for-byte diff
+(script, not eyeball) against `{128-128,128-256,256-256,256-512,512-512}.json` — all 10 match
+exactly. Same relationship as Kupyna's hash above: same official `Kalyna.pdf` vector set UAPKI is
+reproducing, not new independent evidence, but it does confirm UAPKI's numbers agree and closes the
+"Kalyna self-test not yet cross-checked" line from above **for the single-block case only**.
+CBC/OFB/CFB/CTR/CMAC/XTS/KW/CCM/GMAC/GCM remain genuinely uncross-checked new data — no Rust mode
+of operation exists to run them against yet. CCM/GMAC/GCM specifically stay the live D-05 data
+point; left for whenever a mode of operation gets built, not pulled forward ahead of where D-05
+already sits in `TASKS.md`.
+
 **Rejected:** treating "fork of Cryptonite" as disqualifying by itself. Rejected because forking
 existing code and adding a formal expertise review is a reasonable, common lineage for a
 production PKI library, not evidence of low quality — the caveat is about not *overclaiming* what

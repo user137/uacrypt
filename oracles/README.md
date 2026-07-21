@@ -141,6 +141,11 @@ found anywhere, see `../DECISIONS.md` D-15 and
   KMAC-256/384/512) is genuinely new data not in this project's vectors at all — KMAC isn't
   implemented here yet, so it's unchecked, left for whenever `crypto_auth` gets built (see
   `../DECISIONS.md` D-16 update, `../TASKS.md`).
-- Kalyna self-test data (ECB/CBC/OFB/CFB/CTR/CMAC/XTS/KW/CCM/GMAC/GCM) not yet cross-checked
-  against this project's own vectors/Rust output — worth doing before leaning on it further,
-  directly relevant to the open D-05 tension (see `TASKS.md`).
+- Kalyna: `dstu7624_ecb_self_test`'s 10 cases (ECB with `data_len == block_size`, i.e. plain
+  single-block encryption) are byte-for-byte identical (verified 2026-07-22) to all five
+  `crates/dstu-core/tests/vectors/kalyna/*.json` files' encryption/decryption cases — same
+  official vector set already exercised by `cargo test`, same-source confirmation as Kupyna's
+  hash above, not a second independent reading. The other self-tests — CBC/OFB/CFB/CTR/CMAC/XTS/
+  KW/CCM/GMAC/GCM — remain unchecked: genuine new data, with no Rust mode-of-operation
+  implemented yet to check them against. CCM/GMAC/GCM specifically bear directly on the open D-05
+  tension; left for whenever a mode of operation gets built (see `../DECISIONS.md` D-16 update).
