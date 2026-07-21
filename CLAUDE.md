@@ -4,11 +4,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-Planning stage — no source code exists yet. The repository currently contains only the project
-spec (`docs/dstu-crypto-project.md`) and reference PDFs (academic papers on Kalyna, Kupyna, Strumok
-cryptanalysis and hardware implementation). There is no Cargo.toml, no build, no lint, no test
-commands to run. Do not invent tooling or commands that aren't there yet — check this file's
-"Project status" section is still accurate before assuming otherwise.
+Scaffold stage — the Cargo workspace exists and builds, but no crypto primitives are implemented
+yet. `cargo build --workspace` and `cargo test --workspace` are real, currently-passing commands
+(there's just nothing in them to fail). The workspace has two crates:
+
+- `crates/dstu-core` — the library (`std`/`alloc` feature flags in place per D-01, `lib.rs` is
+  still an empty `no_std`-compatible stub).
+- `crates/dstutool` — the CLI binary, currently a placeholder `main.rs`.
+
+Official test vectors are already extracted and verified for Kalyna and Kupyna, ready for the
+first primitive to consume: `crates/dstu-core/tests/vectors/{kalyna,kupyna}/*.json` — see
+`ORACLES.md` for provenance and format. No test-runner (`tests/*.rs`) exists yet; writing one
+before a primitive exists to test would break the buildable skeleton.
 
 The full spec lives in `docs/dstu-crypto-project.md`. Read it before planning any implementation
 work — it is the source of truth for scope and architecture decisions below.
@@ -59,8 +66,10 @@ Algorithms in scope:
 | `docs/dstu-crypto-project.md` | planning scope, API design, algorithm choices | scope or API-mapping decisions change | project scope, libsodium API mapping |
 | `SECURITY.md` | before writing any crypto primitive or adding a dependency | threat model or hard constraints change | threat model, hard constraints, supply-chain vetting |
 | `DECISIONS.md` | need the reason behind an architectural choice | a new architectural decision is made | decisions + rejected alternatives, with citations |
-| `ORACLES.md` | before implementing or verifying any primitive | oracle trust ranking changes, or a new oracle/vector source is added | oracle trust matrix, per-algorithm oracle map, test-vector convention |
+| `ORACLES.md` | before implementing or verifying any primitive | oracle trust ranking changes, or a new oracle/vector source is added | oracle trust matrix, per-algorithm oracle map, test-vector convention, list of reference implementations (`oracles/README.md` links here rather than duplicating) |
+| `docs/pseudocode/*.md` | before writing a primitive's Rust implementation | the transcription changes or a new ambiguity/discrepancy is found | per-algorithm pseudocode — from-spec for Kalyna/Kupyna/Strumok, from-oracle-code for DSTU 4145 (no spec paper exists), each cross-checked and with any ambiguity flagged inline |
 | `docs/rust_ai_ruleset.md` | general Rust code-style questions | never (external ruleset, treat as canonical as-is) | generic Rust engineering conventions |
+| `README.md` | need the human-facing project overview or repo tree | repo structure changes | GitHub-facing description, top-level directory map |
 
 `docs/rust_ai_ruleset.md` §7 (async/tokio) does not apply to the `no_std`-first core — it's only
 relevant if a future CLI or binding layer adds async I/O.
@@ -76,8 +85,8 @@ Full detail and rationale in `SECURITY.md` — this is the compressed version so
 - No homegrown primitives — where DSTU has a real gap (pwhash, CSPRNG), use the established
   international primitive (Argon2id, OS `getrandom`), see D-03/D-04 in `DECISIONS.md`.
 - **Dual-oracle verification is mandatory**: official DSTU test vectors *and* an independent
-  reference implementation (Kalyna-reference, cryptonite, Bouncy Castle — see "Reference
-  implementations and oracles" below). Self-consistent tests passing is not sufficient evidence.
+  reference implementation (Kalyna-reference, cryptonite, Bouncy Castle — see `ORACLES.md` for the
+  per-algorithm map). Self-consistent tests passing is not sufficient evidence.
 - `cargo miri test` and `cargo fuzz` are required layers, not optional tooling.
 - This is the software-side complement to the SPA/DPA note above: constant-time discipline
   reduces exposure but is never itself a side-channel-resistance claim.
@@ -99,29 +108,10 @@ Full detail and rationale in `SECURITY.md` — this is the compressed version so
 
 ## Reference implementations and oracles
 
-These exist for **test-vector verification only** — do not copy code directly unless a license
-explicitly permits it:
-
-- **[privat-it/cryptonite](https://github.com/privat-it/cryptonite)** — PrivatBank's library,
-  BSD-2-Clause (verified license, legally clean to fork/port from). C, covers Kalyna, Kupyna,
-  DSTU 4145 + legacy GOST algorithms + Western algorithms for compat. Has Java/Android JNI
-  bindings. Caveat: 2016-era code; the state "expert opinion" certification lapsed 2021-11-25 and
-  was not renewed publicly; no recent independent audit.
-- **[Roman-Oliynykov/Kalyna-reference](https://github.com/Roman-Oliynykov/Kalyna-reference)** — C
-  implementation by the actual author of the Kalyna standard. That author's GitHub
-  (Roman-Oliynykov) also has a Kupyna reference implementation and some documentation. **No
-  LICENSE file** — oracle for test-vector comparison only, never copy code from it.
-- **[outspace/dstu8845](https://github.com/outspace/dstu8845)** — Strumok in C, unofficial.
-- **Bouncy Castle** (Java/.NET) — mature production DSTU 4145 signature implementation
-  (`DSTU4145Signer`); see "Second priority" above.
-- **Ecognize/libukrypto** — WIP OpenSSL engine for DSTU, appears stalled. Useful only as a CLI
-  architecture reference, not a code donor.
-- **Excluded: the `li0ard` GitHub account** (TypeScript/Go packages for Kalyna/Kupyna/Strumok/DSTU
-  4145). Not a dependency, not an oracle, not referenced anywhere in this project — flagged as an
-  untrusted supply-chain source with unverified maintainer provenance. See D-07 in `DECISIONS.md`.
-- **crates.io**: the `kupyna` crate exists but is dead (single release, December 2016, no updates
-  since). `kalyna`, `strumok`, `dstu4145` crates don't exist at all — a genuine open niche in the
-  Rust ecosystem.
+Canonical detail — trust ranking, per-algorithm oracle map, local clones under `oracles/`, and
+the `li0ard` exclusion (D-07) — lives in `ORACLES.md`. Do not duplicate that list here; the full
+resource survey (including non-oracle references like Ecognize/libukrypto and the crates.io niche
+check) is in `docs/dstu-crypto-project.md` "Resources found".
 
 ## State certification (informational, not an MVP blocker)
 
@@ -134,8 +124,9 @@ explicitly permits it:
 
 ## Roadmap notes
 
-- Obtain official documentation PDFs with test vectors from each DSTU algorithm's authors as
-  reference documentation (already collected in this repo's root as PDFs).
-- Verify own implementation against Kalyna-reference and other oracles listed above.
+- Official documentation PDFs live in `docs/papers/`. Test vectors have already been extracted
+  and verified for Kalyna and Kupyna (`crates/dstu-core/tests/vectors/`); Strumok has none in any
+  source surveyed so far — confirmed gap, see `ORACLES.md`.
+- Verify own implementation against Kalyna-reference and the other oracles in `ORACLES.md`.
 - Hardware validation on STM32/ESP32 is a distinct post-MVP phase, and is not a claim of
   side-channel resistance (see MVP scope above).

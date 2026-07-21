@@ -2,6 +2,7 @@
 **/*.rs.bk
 Cargo.lock
 *.pdb
+.claude.local.md
 
 # Third-party reference implementations, used only as oracles for local test-vector
 # cross-verification (see oracles/README.md, DECISIONS.md D-02/D-06). Never vendored into

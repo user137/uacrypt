@@ -39,6 +39,10 @@ against," not "what do we translate into Rust."
 ## Per-algorithm oracle map
 
 ### Kalyna (DSTU 7624)
+- **Pseudocode:** `docs/pseudocode/kalyna.md` — transcribed from the paper below, cross-checked
+  against both the reference C oracle and `bouncycastle-java`'s independent Java implementation;
+  the two agreeing let the k=2l key-schedule branch (originally ambiguous from the paper's own
+  notation) be resolved with confidence rather than left open.
 - **Highest-trust source: `docs/papers/Kalyna.pdf`**, Appendix B — "A New Encryption Standard of
   Ukraine: The Kalyna Block Cipher" (Oliynykov et al.), the designers' own published paper.
   Ranks above the reference-implementation oracles below: it's the formal specification itself,
@@ -60,6 +64,9 @@ against," not "what do we translate into Rust."
   is ever needed, not transcribed here to avoid injecting OCR/extraction errors into a crypto spec.
 
 ### Kupyna (DSTU 7564)
+- **Pseudocode:** `docs/pseudocode/kupyna.md` — transcribed from the paper below, cross-checked
+  against the reference C oracle; one extraction gap (the IV formula) resolved from the oracle
+  and flagged as such.
 - **Highest-trust source: `docs/papers/Kupyna.pdf`**, Appendix B — "A New Standard of Ukraine:
   The Kupyna Hash Function" (Oliynykov et al.), same standing as the Kalyna paper above.
   **Test vectors extracted and verified** into
@@ -72,6 +79,9 @@ against," not "what do we translate into Rust."
 - **Tertiary:** `oracles/cryptonite/`, `oracles/bouncycastle-{java,dotnet}/`.
 
 ### Strumok (DSTU 8845)
+- **Pseudocode:** `docs/pseudocode/strumok.md` — transcribed from `Strumok.pdf`, cross-checked
+  structurally (never numerically — no vectors exist, see below) against the outspace oracle; one
+  FSM-update ambiguity in the paper's extraction resolved from the oracle and flagged as such.
 - **No trustworthy code oracle exists, and no test vectors have been found anywhere in this
   project's holdings.** Checked directly (not assumed): `docs/papers/Strumok.pdf` (the designers'
   paper, Gorbenko/Kuznetsov et al.) gives the full algorithmic description — Init/Next/Strm/FSM/T
@@ -89,6 +99,9 @@ against," not "what do we translate into Rust."
   implementation) is a prerequisite before implementation, not an afterthought.
 
 ### DSTU 4145 (signature)
+- **Pseudocode:** `docs/pseudocode/dstu4145.md` — transcribed directly from the Bouncy Castle
+  Java signer (no spec paper exists to transcribe from instead, unlike Kalyna/Kupyna/Strumok —
+  see the note at the top of that file on this different provenance).
 - **Primary:** `oracles/bouncycastle-{java,dotnet}/` (MIT, audited, decades in production) — the
   best-supported algorithm in this project by oracle quality.
 - **Secondary:** `oracles/cryptonite/dstu4145*` (BSD-2-Clause, stale since 2016).
