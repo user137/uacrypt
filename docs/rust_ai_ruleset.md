@@ -3,71 +3,71 @@ Comprehensive System Prompt / Ruleset for AI Assistants (Claude Code, Cursor)
 
 ## 1. Fundamental Memory & Ownership Patterns
 * **RAII (Resource Acquisition Is Initialization)**:
-  * Інкапсулюй ресурси (файли, сокети, локи) у структури. Завжди покладайся на автоматичний виклик `Drop` замість ручного закриття/звільнення.
+  * Encapsulate resources (files, sockets, locks) in structs. Always rely on the automatic `Drop` call instead of manual closing/freeing.
 * **Borrow Checker-Friendly Design**:
-  * Дотримуйся принципу **Single Ownership**. Уникайте циклічних посилань.
-  * Якщо можливий розрив володіння, віддавай перевагу **Arena Allocation** (наприклад, через crate `typed-arena` або index-based arrays) замість каскаду `Arc<Mutex<T>>`.
+  * Follow the **Single Ownership** principle. Avoid cyclic references.
+  * If a break in ownership is possible, prefer **Arena Allocation** (e.g. via the `typed-arena` crate or index-based arrays) over a cascade of `Arc<Mutex<T>>`.
 * **Zero-Cost Abstractions & Zero-Copy**:
-  * Використовуй **`Cow<'a, T>`** (Clone-On-Write) для випадків, коли дані частіше читаються, ніж модифікуються.
-  * Приймай у функціях запозичені типи за їхніми **Deref Target** (`&str` замість `&String`, `&[T]` замість `&Vec<T>`).
+  * Use **`Cow<'a, T>`** (Clone-On-Write) for cases where data is read more often than it's modified.
+  * Accept borrowed types by their **Deref Target** in functions (`&str` instead of `&String`, `&[T]` instead of `&Vec<T>`).
 
 ## 2. Type System & Compile-Time Guarantees
 * **Type-State Pattern (Compile-Time State Machine)**:
-  * Кодуй стан системи через Generics та Zero-Sized Types (`PhantomData<T>`). Переходи між станами повинні споживати об'єкт через `self` (Move semantics).
+  * Encode system state via Generics and Zero-Sized Types (`PhantomData<T>`). Transitions between states must consume the object via `self` (move semantics).
 * **Newtype Pattern**:
-  * Огортай примітивні типи у кортежні структури (`struct UserId(u64);`), щоб виключити класичну помилку `Primitive Obsession` та переплутування аргументів.
+  * Wrap primitive types in tuple structs (`struct UserId(u64);`) to rule out the classic `Primitive Obsession` mistake and mixed-up arguments.
 * **Exhaustive Pattern Matching & Algebraic Data Types (ADT)**:
-  * Моделюй взаємовиключні дані через `enum`.
-  * Не використовуй wildcard `_` у `match` без критичної потреби, щоб розширення `enum` автоматично викликало помилки компіляції в місцях обробки.
+  * Model mutually exclusive data via `enum`.
+  * Don't use a wildcard `_` in `match` without critical need, so that extending the `enum` automatically triggers compile errors at every handling site.
 * **Make Illegal States Unrepresentable**:
-  * Конструюй структури так, щоб невалідний стан об'єкта був неможливий на рівні типів (відсутність "прапорців" `is_valid`, `is_connected` всередині структур).
+  * Design structs so that an invalid state of the object is impossible at the type level (no `is_valid`, `is_connected` "flags" inside structs).
 
 ## 3. API Conventions & Standard Traits
 * **C-CONVENTION (Rust API Guidelines)**:
-  * `to_` — дороговартісна конвертація (`to_string()`).
-  * `as_` — безкоштовне запозичення (`as_bytes()`).
-  * `into_` — конвертація із поглинанням володіння (`into_vec()`).
+  * `to_` — an expensive conversion (`to_string()`).
+  * `as_` — a free borrow (`as_bytes()`).
+  * `into_` — a conversion that consumes ownership (`into_vec()`).
 * **Canonical Trait Implementations**:
-  * Для всіх публічних типів обов'язково реалізовувати або деDerived: `Debug`, `Send`, `Sync` (якщо безпечно), `Default`.
-  * Замість методів `parse()` чи `from_...()` реалізовуй канонічні трейти `From<T>`, `TryFrom<T>`, `FromStr`.
+  * For all public types, it's mandatory to implement or derive: `Debug`, `Send`, `Sync` (if safe), `Default`.
+  * Instead of `parse()` or `from_...()` methods, implement the canonical traits `From<T>`, `TryFrom<T>`, `FromStr`.
 
 ## 4. Error Handling Architecture
 * **Panic-Free Production Code**:
-  * Повна заборона `.unwrap()`, `.expect()`, `panic!()` та `unreachable!()` у продакшн-коді.
+  * Full ban on `.unwrap()`, `.expect()`, `panic!()`, and `unreachable!()` in production code.
 * **Error Separation (Libraries vs Applications)**:
-  * **Library Errors (Domain Errors)**: Використовуй `thiserror` для створення строго типізованих `enum Error`.
-  * **Application Errors (Contextual Errors)**: Використовуй `anyhow::Result` або `eyre::Result` із додаванням контексту через `.context("...")`.
+  * **Library Errors (Domain Errors)**: Use `thiserror` to create strictly typed `enum Error` types.
+  * **Application Errors (Contextual Errors)**: Use `anyhow::Result` or `eyre::Result` with added context via `.context("...")`.
 
 ## 5. Idiomatic Performance & Functional Pipeline
 * **Internal Iteration & Bound-Check Elimination**:
-  * Надавай перевагу ітераторним ланцюжкам (`map`, `filter`, `fold`, `collect`) замість явних циклів `for i in 0..len` — це дозволяє компілятору прибирати перевірки меж масиву (Bound Checks).
+  * Prefer iterator chains (`map`, `filter`, `fold`, `collect`) over explicit `for i in 0..len` loops — this lets the compiler eliminate bounds checks.
 * **Small-Buffer Optimization (SBO)**:
-  * Використовуй `SmallVec` або `ArrayVec` для колекцій, де середня кількість елементів мала і відома на етапі компіляції.
+  * Use `SmallVec` or `ArrayVec` for collections where the average element count is small and known at compile time.
 
 ## 6. Safety & Unsafe Code Boundaries
 * **Encapsulated Unsafe & Soundness**:
-  * Весь `unsafe` код повинен бути ізольований у найменшому можливому модулі із safe-обгорткою.
+  * All `unsafe` code must be isolated in the smallest possible module with a safe wrapper.
 * **Safety Invariant Documentation**:
-  * Кожна `unsafe fn` або блок `unsafe` зобов'язані мати коментар у форматі:
-    `// SAFETY: <обґрунтування, чому інваріанти пам'яті дотримані>`.
+  * Every `unsafe fn` or `unsafe` block must carry a comment in the format:
+    `// SAFETY: <justification for why memory invariants are upheld>`.
 
 ## 7. Concurrency & Async
 * **Send & Sync Boundaries**:
-  * Перевіряй потокобезпеку на рівні типів: `Send` (передача між потоками), `Sync` (доступ з кількох потоків через посилання).
+  * Check thread safety at the type level: `Send` (transfer between threads), `Sync` (access from multiple threads via a reference).
 * **Non-Blocking Async Execution**:
-  * Уникнення будь-яких синхронних / blocking I/O чи довготривалих CPU-bound обчислень всередині async-тасок. Для обчислень використовувати `tokio::task::spawn_blocking`.
+  * Avoid any synchronous/blocking I/O or long-running CPU-bound computation inside async tasks. Use `tokio::task::spawn_blocking` for computation.
 
-## 8. Visibility & Modularity (Інкапсуляція)
-* **Principle of Least Privilege (Мінімальна видимість)**:
-  * Заборонено використовувати `pub` за замовчуванням. Всі внутрішні структури та функції мають бути `pub(crate)`, `pub(super)` або приватними.
-  * Експортуй назовні (через `pub`) виключно фінальний публічний API крейту.
+## 8. Visibility & Modularity (Encapsulation)
+* **Principle of Least Privilege**:
+  * `pub` by default is forbidden. All internal structs and functions must be `pub(crate)`, `pub(super)`, or private.
+  * Export outward (via `pub`) only the crate's final public API.
 * **Workspace Pattern**:
-  * Для середніх і великих проєктів розбивай моноліт на незалежні крейти через `[workspace]`. Кожен крейт має відповідати за один домен.
+  * For medium and large projects, split the monolith into independent crates via `[workspace]`. Each crate should own one domain.
 
-## 9. Lints & Static Analysis (Контроль якості)
+## 9. Lints & Static Analysis (Quality Control)
 * **Clippy as a Compiler**:
-  * AI має генерувати код, який проходить перевірку з увімкненими педантичними лінтерами.
-  * Вимагається додавати на рівні `lib.rs` / `main.rs` директиви:
+  * The AI must generate code that passes review with pedantic lints enabled.
+  * The following directives are required at the `lib.rs` / `main.rs` level:
     ```rust
     #![warn(clippy::pedantic)]
     #![deny(clippy::unwrap_used, clippy::expect_used)]
@@ -75,20 +75,20 @@ Comprehensive System Prompt / Ruleset for AI Assistants (Claude Code, Cursor)
 
 ## 10. Documentation & Doc-tests
 * **Executable Documentation**:
-  * Усі публічні структури, трейти та функції (з модифікатором `pub`) зобов'язані мати `///` Rustdoc-коментар.
-  * Документація для ключових функцій **повинна містити приклади коду** в блоках ` ```rust `, які автоматично стають інтеграційними тестами (Doc-tests).
+  * All public structs, traits, and functions (marked `pub`) must have a `///` Rustdoc comment.
+  * Documentation for key functions **must include code examples** in ` ```rust ` blocks, which automatically become integration tests (doc-tests).
 * **Enforce Documentation**:
-  * Для бібліотечних крейтів використовувати директиву `#![warn(missing_docs)]`.
+  * For library crates, use the `#![warn(missing_docs)]` directive.
 
-## 11. Testing Conventions (Тестування)
+## 11. Testing Conventions
 * **Inline Unit Tests**:
-  * Модульні тести для перевірки приватної логіки повинні знаходитись у тому ж файлі, що й тестований код, у модулі `#[cfg(test)] mod tests { ... }`.
+  * Unit tests for verifying private logic should live in the same file as the code under test, in a `#[cfg(test)] mod tests { ... }` module.
 * **Black-Box Integration Tests**:
-  * Тестування публічного API має виноситися в окрему директорію `tests/` у корені проєкту.
+  * Testing of the public API should be moved to a separate `tests/` directory at the project root.
 * **Trait-based Dependency Injection**:
-  * Для можливості мокування (mocking) залежностей у тестах (наприклад, доступу до БД або мережі), абстрагуй їх через трейти, приймаючи як `&dyn Trait` або `impl Trait`.
+  * To make dependencies mockable in tests (e.g. DB or network access), abstract them behind traits, accepting them as `&dyn Trait` or `impl Trait`.
 
-## 12. Macros Boundaries (Межі макросів)
+## 12. Macros Boundaries
 * **Compile-Time Awareness**:
-  * Заборонено створювати нові кастомні **Procedural Macros** без критичної на те потреби, оскільки вони драматично збільшують час компіляції.
-  * Для кодогенерації чи уникнення дублювання (Boilerplate) надавай перевагу декларативним макросам (`macro_rules!`) або системі Generics/Traits.
+  * Creating new custom **procedural macros** is forbidden without a critical need for it, since they dramatically increase compile time.
+  * For code generation or avoiding duplication (boilerplate), prefer declarative macros (`macro_rules!`) or the Generics/Traits system.

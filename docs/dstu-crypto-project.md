@@ -1,157 +1,171 @@
-# Відкрита крипто-бібліотека українських стандартів ДСТУ
+# Open crypto library for Ukrainian DSTU standards
 
-## Ідея
+## Idea
 
-Відкритий проєкт (бібліотека + консольний додаток) для сучасних українських
-криптографічних стандартів. Мета: будь-який розробник чи користувач може
-прийти й за хвилину отримати еталонну реалізацію без гемору —
-за духом **libsodium** (жорсткі, безпечні дефолти), а **не** за духом
-OpenSSL (гнучкий, легко неправильно використати API).
+An open project (library + CLI application) for modern Ukrainian cryptographic
+standards. Goal: any developer or user can show up and get a reference
+implementation within a minute, without hassle — in the spirit of
+**libsodium** (hard, safe defaults), and **not** in the spirit of OpenSSL
+(flexible, easy to misuse the API).
 
-## Алгоритми в скоупі
+## Algorithms in scope
 
-| Алгоритм | Стандарт | Тип |
+| Algorithm | Standard | Type |
 |---|---|---|
-| Калина | ДСТУ 7624:2014 | симетричний блоковий шифр |
-| Купина | ДСТУ 7564:2014 | геш-функція |
-| Strumok | ДСТУ 8845:2019 | потоковий шифр |
-| — | ДСТУ 4145-2002 | електронний підпис на еліптичних кривих |
-| — | ДСТУ 9041:2020 | асиметричне шифрування (скручені криві Едвардса) |
+| Kalyna | DSTU 7624:2014 | symmetric block cipher |
+| Kupyna | DSTU 7564:2014 | hash function |
+| Strumok | DSTU 8845:2019 | stream cipher |
+| — | DSTU 4145-2002 | digital signature on elliptic curves |
+| — | DSTU 9041:2020 | asymmetric encryption (twisted Edwards curves) |
 
-## MVP (перша черга)
+## MVP (first priority)
 
-- Rust-ядро: Калина + Купина + Strumok, звірене з офіційними тестовими
-  векторами ДСТУ.
-- Один CLI-бінарник поверх ядра (умовна назва `dstutool`), з підкомандами
-  на кшталт `dstutool encrypt --key ... --in file --out file` — режим,
-  nonce/IV тощо жорстко зашиті, користувачу нема що неправильно
-  сконфігурувати.
-- Публікація ядра на crates.io.
-- Готові білди під Windows/Linux у GitHub Releases (не "клонуй і збирай").
-- Ядро писати **no_std-сумісним з дня 1** (Cargo feature-флаги
-  `std` / `alloc` / `no_std`), щоб підтримку вбудованих платформ (STM32 на
-  ARM Cortex-M, ESP32 на Xtensa/RISC-V — це різні архітектури, не варіації
-  однієї) додати пізніше без переписування ядра. Валідація на реальному
-  залізі — окремий етап після MVP. Важливе застереження: підтримка
-  компіляції під мікроконтролер ≠ стійкість до апаратних side-channel атак
-  (SPA/DPA) — останнє вимагає окремого, дорожчого апаратного аудиту, і поки
-  такого аудиту нема, це явно не заявляється.
+- Rust core: Kalyna + Kupyna + Strumok, cross-checked against official DSTU
+  test vectors.
+- A single CLI binary on top of the core (working name `dstutool`), with
+  subcommands like `dstutool encrypt --key ... --in file --out file` — mode,
+  nonce/IV, etc. are hardcoded so there's nothing for the user to
+  misconfigure.
+- Publish the core to crates.io.
+- Prebuilt binaries for Windows/Linux via GitHub Releases (not "clone and
+  build it yourself").
+- Write the core to be **`no_std`-compatible from day one** (Cargo feature
+  flags `std` / `alloc` / `no_std`), so support for embedded platforms (STM32
+  on ARM Cortex-M, ESP32 on Xtensa/RISC-V — these are different
+  architectures, not variations of one) can be added later without rewriting
+  the core. Validation on real hardware is a separate post-MVP phase.
+  Important caveat: support for compiling to a microcontroller ≠ resistance
+  to hardware side-channel attacks (SPA/DPA) — the latter requires a
+  separate, more expensive hardware audit, and until such an audit exists,
+  this is explicitly not claimed.
 
-## Друга черга (не MVP)
+## Second priority (not MVP)
 
-- Мовні биндинги: Python, JavaScript, Java, .NET, C++.
-- ДСТУ 4145 у власному ядрі окремо не переписувати — для Java/.NET
-  інтегрувати/обгортати Bouncy Castle (там уже є зріла реалізація), для
-  Rust — портувати з опертям на нього ж як другий оракул звірки.
+- Language bindings: Python, JavaScript, Java, .NET, C++.
+- Do not separately reimplement DSTU 4145 in the native core — for
+  Java/.NET, integrate/wrap Bouncy Castle (a mature implementation already
+  exists there); for Rust, port it while relying on Bouncy Castle as a
+  second verification oracle.
 
-## Мапінг на API libsodium (функціональна копія на ДСТУ)
+## Mapping onto the libsodium API (a functional copy built on DSTU)
 
-Мета: покрити функціонал libsodium еквівалентами на українських алгоритмах зі
-схожим API. ДСТУ 7624 (Калина) прямим текстом вимагає для конфіденційності +
-цілісності комбінувати шифр із ДСТУ 7564 (Купина) на різних ключах — тобто
-AEAD не йде "з коробки" як AES-GCM, це власна конструкція encrypt-then-MAC,
-яку треба спроєктувати, а не готовий примітив зі стандарту.
+Goal: cover libsodium's functionality with equivalents built on Ukrainian
+algorithms, with a similar API. DSTU 7624 (Kalyna) explicitly requires
+combining the cipher with DSTU 7564 (Kupyna) on different keys to get
+confidentiality + integrity — that is, AEAD doesn't come "out of the box"
+like AES-GCM; it's a custom encrypt-then-MAC construction that has to be
+designed, not a ready-made primitive from the standard.
 
-**Пряма заміна (нативний ДСТУ-відповідник є):**
+**Direct replacement (a native DSTU counterpart exists):**
 
-- `crypto_generichash` (BLAKE2b) → Купина (ДСТУ 7564).
-- `crypto_stream` (XSalsa20) → Strumok (ДСТУ 8845).
-- `crypto_sign` (Ed25519) → ДСТУ 4145.
-- `crypto_box` (X25519 + AEAD) → ДСТУ 9041:2020 (асиметричне шифрування на
-  скручених кривих Едвардса), концептуально та ж роль — деталі роботи
-  перевірити на практиці під час реалізації.
+- `crypto_generichash` (BLAKE2b) → Kupyna (DSTU 7564).
+- `crypto_stream` (XSalsa20) → Strumok (DSTU 8845).
+- `crypto_sign` (Ed25519) → DSTU 4145.
+- `crypto_box` (X25519 + AEAD) → DSTU 9041:2020 (asymmetric encryption on
+  twisted Edwards curves), conceptually the same role — verify the details
+  in practice during implementation.
 
-**Треба конструювати з наявних примітивів (не бракує алгоритму, бракує
-API-обгортки):**
+**Needs to be constructed from existing primitives (not a missing algorithm,
+a missing API wrapper):**
 
-- `crypto_secretbox` (симетричне AEAD) → Kalyna в режимі шифрування
-  (CTR/OFB-подібний) + окремий MAC на базі Купини, encrypt-then-MAC, різні
-  ключі — саме так, як радить сам текст ДСТУ 7624. Головний архітектурний
-  момент API: secretbox-еквівалент — власна конструкція поверх двох
-  стандартів, не один примітив.
-- `crypto_auth` / `crypto_onetimeauth` (MAC) → HMAC на базі Купини, або
-  CMAC-подібний режим самої Калини (у стандарті є режими для автентифікації
-  повідомлень — конкретну назву режиму звірити з повним текстом ДСТУ).
-- `crypto_kx` (обмін ключами) → Diffie-Hellman на кривих ДСТУ 4145/9041. Не
-  окремий стандарт, а конструкція на базі вже наявної кривої.
-- `crypto_kdf` (деривація ключів) → HKDF-подібна конструкція на базі Купини.
-  Окремого національного KDF-стандарту немає.
-- `crypto_secretstream` (потокове автентифіковане шифрування великих файлів
-  шматками) → конструкція поверх Strumok або Kalyna-CTR + автентифікація
-  кожного чанку. Питання дизайну API, не пошуку алгоритму.
+- `crypto_secretbox` (symmetric AEAD) → Kalyna in an encryption mode
+  (CTR/OFB-like) + a separate MAC based on Kupyna, encrypt-then-MAC,
+  different keys — exactly as the DSTU 7624 text itself advises. The main
+  architectural point of the API: the secretbox equivalent is our own
+  construction on top of two standards, not a single primitive.
+- `crypto_auth` / `crypto_onetimeauth` (MAC) → HMAC based on Kupyna, or a
+  CMAC-like mode of Kalyna itself (the standard has message-authentication
+  modes — the exact mode name should be checked against the full DSTU text).
+- `crypto_kx` (key exchange) → Diffie-Hellman on the curves from DSTU
+  4145/9041. Not a separate standard, but a construction built on an
+  already-existing curve.
+- `crypto_kdf` (key derivation) → an HKDF-like construction based on Kupyna.
+  There's no separate national KDF standard.
+- `crypto_secretstream` (streaming authenticated encryption of large files in
+  chunks) → a construction on top of Strumok or Kalyna-CTR + authentication
+  of each chunk. A matter of API design, not algorithm search.
 
-**Реальні порожнечі (ДСТУ нічого не пропонує):**
+**Real gaps (DSTU offers nothing):**
 
-- `crypto_pwhash` (Argon2id) — жодного українського стандарту немає. Argon2 —
-  переможець відкритого міжнародного конкурсу (Password Hashing Competition),
-  добре проаудичений; безпекової причини уникати його немає. Рішення:
-  залишити Argon2 як є, чесно позначити в документації як єдиний не-ДСТУ
-  компонент і чому.
-- `crypto_shorthash` (SipHash) — некритичний компонент, прямого
-  ДСТУ-еквіваленту немає; в MVP можна пропустити або зробити усічену Купину.
-- `randombytes` (CSPRNG) — не питання ДСТУ. Не винаходити "національний"
-  генератор випадкових чисел — найнебезпечніша ділянка для самостійного
-  винаходу. Використовувати системний CSPRNG ОС (`getrandom` у Rust), як і
-  сам libsodium.
+- `crypto_pwhash` (Argon2id) — there's no Ukrainian standard for this at
+  all. Argon2 is the winner of an open international competition (Password
+  Hashing Competition), well audited; there's no security reason to avoid
+  it. Decision: keep Argon2 as is, and honestly flag it in the documentation
+  as the one non-DSTU component, and why.
+- `crypto_shorthash` (SipHash) — a non-critical component, no direct DSTU
+  equivalent; can be skipped in the MVP or a truncated Kupyna can be used.
+- `randombytes` (CSPRNG) — not a DSTU question at all. Do not invent a
+  "national" random number generator — that's the single most dangerous area
+  for a homegrown design. Use the OS's system CSPRNG (`getrandom` in Rust),
+  same as libsodium itself does.
 
-**Підсумок пріоритету:** Kalyna + Kupyna + Strumok + ДСТУ 4145 дають основу
-для secretbox/stream/generichash/sign. ДСТУ 9041 закриває box. Інженерна
-робота, якої немає готовою в жодному з текстів ДСТУ — три конструкції (AEAD
-з Kalyna+Kupyna, KDF з Kupyna, ECDH з кривої підпису) плюс свідоме рішення
-залишити Argon2 і системний CSPRNG без "українізації".
+**Priority summary:** Kalyna + Kupyna + Strumok + DSTU 4145 give the
+foundation for secretbox/stream/generichash/sign. DSTU 9041 covers box. The
+engineering work that isn't ready-made in any DSTU text — three
+constructions (AEAD from Kalyna+Kupyna, KDF from Kupyna, ECDH from the
+signature curve) plus the deliberate decision to leave Argon2 and the system
+CSPRNG without "Ukrainization".
 
-## Знайдені ресурси
+## Resources found
 
 - **[privat-it/cryptonite](https://github.com/privat-it/cryptonite)** —
-  бібліотека ПриватБанку. Ліцензія **BSD-2-Clause** (перевірено) — легально
-  чиста база для форку/порту. Мова C, покриває Калину, Купину, ДСТУ 4145 +
-  легасі (ГОСТ 28147, ГОСТ 34.310/311) + західні алгоритми для сумісності.
-  Є Java/Android JNI-биндинги. Мінус: код 2016 року, державний "експертний
-  висновок" діяв до 25.11.2021 і не поновлювався публічно, свіжого
-  незалежного аудиту немає.
+  PrivatBank's library. License **BSD-2-Clause** (verified) — a legally
+  clean base to fork/port from. Written in C, covers Kalyna, Kupyna, DSTU
+  4145 + legacy (GOST 28147, GOST 34.310/311) + Western algorithms for
+  compatibility. Has Java/Android JNI bindings. Downside: 2016-era code, the
+  state "expert opinion" certification was valid until 2021-11-25 and hasn't
+  been publicly renewed, no recent independent audit.
 - **[Roman-Oliynykov/Kalyna-reference](https://github.com/Roman-Oliynykov/Kalyna-reference)**
-  — реалізація мовою C від автора самого стандарту Калини. **У репозиторії
-  — https://github.com/Roman-Oliynykov - це репо автора алгоритмів, Калини, Купини, Струмка. Там же є реалізація Купини від нього і деяка документація.
-  немає файлу LICENSE** — використовувати лише як оракул для звірки
-  тестових векторів, **не копіювати код напряму**.
-- **dstu8845 https://github.com/outspace/dstu8845** - струмок реалізація на С (це наче не офіційна реалізація)
-- **dstu8845 https://github.com/li0ard/strumok** - струмок реалізація на Тайпсрикпт (не офіційна реалізація)
-- **Bouncy Castle** (Java та .NET) — уже має зрілу продакшн-реалізацію
-  підпису ДСТУ 4145 (`DSTU4145Signer`), в експлуатації десятиліттями,
-  з постійним зовнішнім аудитом. Підпис для Java/.NET не переписувати —
-  інтегрувати/обгортати.
-- **Ecognize/libukrypto** (GitHub) — WIP OpenSSL-engine саме під ДСТУ.
-  Позначений як WIP, схоже застиг — корисний як приклад архітектури CLI,
-  не як код-донор.
-- **li0ard** (GitHub) — фрагментовані одноосібні пакети (TypeScript/Go)
-  для Kalyna/Kupyna/Strumok/ДСТУ 4145. Живі (оновлення 2025 року), але без
-  незалежного аудиту й без єдиної консистентної архітектури.
-- **crates.io**: крейт `kupyna` існує, але мертвий — одна версія від
-  грудня 2016-го, відтоді жодного оновлення. Крейтів `kalyna`, `strumok`,
-  `dstu4145` не існує взагалі — реальна вільна ніша в Rust-екосистемі.
+  — a C implementation by the author of the Kalyna standard itself. **In the
+  repository — https://github.com/Roman-Oliynykov — this is the repo of the
+  algorithms' author: Kalyna, Kupyna, Strumok. It also contains his Kupyna
+  implementation and some documentation. There is no LICENSE file** — use
+  only as an oracle for cross-checking test vectors, **do not copy the code
+  directly**.
+- **dstu8845 https://github.com/outspace/dstu8845** — a Strumok
+  implementation in C (apparently not the official implementation).
+- **dstu8845 https://github.com/li0ard/strumok** — a Strumok implementation
+  in TypeScript (not the official implementation).
+- **Bouncy Castle** (Java and .NET) — already has a mature production
+  implementation of the DSTU 4145 signature (`DSTU4145Signer`), in use for
+  decades, with continuous external audit. Don't rewrite the signature for
+  Java/.NET — integrate/wrap it.
+- **Ecognize/libukrypto** (GitHub) — a WIP OpenSSL engine specifically for
+  DSTU. Marked as WIP, appears stalled — useful as an example of CLI
+  architecture, not as a code donor.
+- **li0ard** (GitHub) — fragmented single-author packages (TypeScript/Go)
+  for Kalyna/Kupyna/Strumok/DSTU 4145. Alive (2025 updates), but without
+  independent audit and without a single consistent architecture.
+- **crates.io**: the `kupyna` crate exists, but is dead — one version from
+  December 2016, no updates since. The `kalyna`, `strumok`, `dstu4145`
+  crates don't exist at all — a genuinely open niche in the Rust ecosystem.
 
-## Державна сертифікація (для довідки, не блокер MVP)
+## State certification (for reference, not an MVP blocker)
 
-- Регулятор: **Адміністрація Держспецзв'язку**. Обов'язкова експертиза
-  застосовується лише якщо засіб використовується для захисту державних
-  інформресурсів чи інформації, захист якої вимагає закон. Відкрита
-  бібліотека на GitHub/GitLab сама по собі — добровільна категорія.
-- Процедура: замовник самостійно обирає ліцензовану приватну "експертну
-  організацію", укладає з нею договір на дослідження; на основі результатів
-  Адміністрація Держспецзв'язку видає експертний висновок.
-- Вартість: комерційна, фіксованого державного тарифу нема — залежить від
-  конкретної експертної організації й обсягу роботи.
-- Термін дії висновку індивідуальний для кожного випадку (приклад, не
-  норма: висновок на cryptonite діяв 2016→2021, ~5 років). Для програмного
-  засобу висновок прив'язаний до хешу конкретної збірки коду — зміна коду
-  потенційно вимагає повторної експертизи.
-- Положення про держекспертизу КЗІ востаннє оновлене наказом Адміністрації
-  Держспецзв'язку від 24.04.2026 № 302.
+- Regulator: **Administration of the State Service for Special
+  Communications** (Держспецзв'язку). Mandatory expert review only applies
+  if the tool is used to protect state information resources or information
+  whose protection is required by law. An open library on GitHub/GitLab by
+  itself is a voluntary category.
+- Procedure: the customer independently chooses a licensed private "expert
+  organization", enters into a contract with it for the study; based on the
+  results, the Administration of the State Service for Special
+  Communications issues an expert opinion.
+- Cost: commercial, there's no fixed state tariff — depends on the specific
+  expert organization and the scope of work.
+- The validity period of the opinion is individual to each case (an example,
+  not a norm: the opinion on cryptonite was valid 2016→2021, ~5 years). For
+  a software tool, the opinion is tied to the hash of a specific build —
+  changing the code potentially requires re-certification.
+- The regulation on state expert review of cryptographic information
+  protection tools was last updated by order of the Administration of the
+  State Service for Special Communications dated 2026-04-24 No. 302.
 
-## На горизонті
+## On the horizon
 
-- Отримати офіційні PDF документації від авторів кожної реалізації ДСТУ
-  (Калина, Купина, Strumok, ДСТУ 4145) з тестовими векторами як еталонну
-  документацію.
-- Звірити власну реалізацію проти Kalyna-reference та інших оракулів.
-- Апаратна валідація на STM32/ESP32 — окремий етап після MVP.
+- Obtain official documentation PDFs from the authors of each DSTU
+  implementation (Kalyna, Kupyna, Strumok, DSTU 4145) with test vectors as
+  reference documentation.
+- Cross-check our own implementation against Kalyna-reference and other
+  oracles.
+- Hardware validation on STM32/ESP32 — a separate phase after the MVP.

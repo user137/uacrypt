@@ -1,57 +1,59 @@
 # dstu-crypto (working name)
 
-Відкрита Rust-бібліотека для сучасних українських криптографічних стандартів ДСТУ —
-у дусі **libsodium** (жорсткі, безпечні дефолти, важко неправильно використати),
-а не OpenSSL (гнучкий, легко зловжити API).
+An open Rust library for modern Ukrainian cryptographic standards (DSTU) — in the
+spirit of **libsodium** (hard, safe defaults, hard to misuse), not OpenSSL
+(flexible, easy to misuse the API).
 
-**Статус: рання стадія планування.** Ядро ще не написане — дивись `crates/` для поточного
-(порожнього) скелета workspace і `docs/dstu-crypto-project.md` для повного скоупу.
+**Status: early planning stage.** The core hasn't been written yet — see `crates/`
+for the current (empty) workspace skeleton and `docs/dstu-crypto-project.md` for
+the full scope.
 
-## Алгоритми в скоупі
+## Algorithms in scope
 
-| Алгоритм | Стандарт | Тип |
+| Algorithm | Standard | Type |
 |---|---|---|
-| Калина | ДСТУ 7624:2014 | симетричний блоковий шифр |
-| Купина | ДСТУ 7564:2014 | геш-функція |
-| Strumok | ДСТУ 8845:2019 | потоковий шифр |
-| — | ДСТУ 4145-2002 | підпис на еліптичних кривих |
-| — | ДСТУ 9041:2020 | асиметричне шифрування (скручені криві Едвардса) |
+| Kalyna | DSTU 7624:2014 | symmetric block cipher |
+| Kupyna | DSTU 7564:2014 | hash function |
+| Strumok | DSTU 8845:2019 | stream cipher |
+| — | DSTU 4145-2002 | digital signature on elliptic curves |
+| — | DSTU 9041:2020 | asymmetric encryption (twisted Edwards curves) |
 
-Повний опис MVP-скоупу, архітектурних рішень і мапінгу на API libsodium —
-у `docs/dstu-crypto-project.md`.
+Full MVP scope, architectural decisions, and the libsodium API mapping are in
+`docs/dstu-crypto-project.md`.
 
-## Структура репозиторію
+## Repository structure
 
 ```
 .
-├── CLAUDE.md            # операційний гайд для AI-агентів у цьому репо
-├── SECURITY.md           # threat model, hard constraints, supply-chain vetting
-├── DECISIONS.md          # архітектурні рішення з відхиленими альтернативами
+├── CLAUDE.md              # operating guide for AI agents in this repo
+├── SECURITY.md            # threat model, hard constraints, supply-chain vetting
+├── DECISIONS.md           # architectural decisions with rejected alternatives
 ├── LICENSE-MIT
 ├── LICENSE-APACHE
 ├── docs/
-│   ├── dstu-crypto-project.md   # основна специфікація проєкту (скоуп, API-мапінг)
-│   ├── rust_ai_ruleset.md       # загальний Rust-ruleset для AI-асистентів
-│   ├── rust-crypto-claude-advice.md  # джерело порад, розподілених по CLAUDE/SECURITY/DECISIONS
-│   └── papers/                  # референсні PDF (специфікації, криптоаналіз, апаратні статті)
-└── crates/               # Cargo workspace
-    ├── dstu-core/        # ядро: Kalyna + Kupyna + Strumok
-    └── dstutool/         # CLI-бінарник поверх ядра
+│   ├── dstu-crypto-project.md        # main project spec (scope, API mapping)
+│   ├── rust_ai_ruleset.md            # generic Rust ruleset for AI assistants
+│   ├── rust-crypto-claude-advice.md  # source advice, distributed into CLAUDE/SECURITY/DECISIONS
+│   └── papers/                       # reference PDFs (specs, cryptanalysis, hardware papers)
+└── crates/                # Cargo workspace
+    ├── dstu-core/          # core: Kalyna + Kupyna + Strumok
+    └── dstutool/           # CLI binary on top of the core
 ```
 
-## Розробка
+## Development
 
-Workspace ще порожній (build-скелет без реальних примітивів). Коли ядро з'явиться:
+The workspace is still empty (a build skeleton with no real primitives yet). Once
+the core exists:
 
 ```
 cargo build --workspace
 cargo test --workspace
 ```
 
-Перед реалізацією будь-якого примітиву — прочитати `SECURITY.md` (hard constraints,
-обов'язкова dual-oracle верифікація) і `DECISIONS.md` (уже прийняті архітектурні рішення).
+Before implementing any primitive, read `SECURITY.md` (hard constraints, mandatory
+dual-oracle verification) and `DECISIONS.md` (architectural decisions already made).
 
-## Ліцензія
+## License
 
-Подвійна ліцензія MIT / Apache-2.0, на вибір користувача — стандарт для Rust-екосистеми.
-Див. `LICENSE-MIT` та `LICENSE-APACHE`.
+Dual-licensed under MIT / Apache-2.0, at the user's choice — the standard for the
+Rust ecosystem. See `LICENSE-MIT` and `LICENSE-APACHE`.
