@@ -39,30 +39,54 @@ against," not "what do we translate into Rust."
 ## Per-algorithm oracle map
 
 ### Kalyna (DSTU 7624)
-- **Primary:** `oracles/kalyna-reference/` (Roman Oliynykov, the standard's author) — verify-only,
-  no license.
-- **Secondary:** `oracles/cryptonite/` (BSD-2-Clause). Also the source of the still-open D-05
+- **Highest-trust source: `docs/papers/Kalyna.pdf`**, Appendix B — "A New Encryption Standard of
+  Ukraine: The Kalyna Block Cipher" (Oliynykov et al.), the designers' own published paper.
+  Ranks above the reference-implementation oracles below: it's the formal specification itself,
+  not a third-party implementation of it. **Test vectors extracted and verified** (full round
+  traces cross-checked for hex validity and expected byte length) into
+  `crates/dstu-core/tests/vectors/kalyna/{128-128,128-256,256-256,256-512,512-512}.json` —
+  encryption and decryption KEY/PLAINTEXT/CIPHERTEXT triples for all five variants.
+- **Secondary code oracle:** `oracles/kalyna-reference/` (Roman Oliynykov, same author) — same
+  vectors re-derivable from `main.c`, verify-only, no license.
+- **Tertiary:** `oracles/cryptonite/` (BSD-2-Clause). Also the source of the still-open D-05
   question (its native CCM/GCM `encrypt_mac` API on Kalyna alone).
-- **Tertiary:** `oracles/bouncycastle-{java,dotnet}/` (MIT, actively maintained, audited) — good
+- **Quaternary:** `oracles/bouncycastle-{java,dotnet}/` (MIT, actively maintained, audited) — good
   cross-check on modes and wrap behavior.
-- **Test vectors:** `oracles/kalyna-reference/main.c` has vectors published by the author —
-  highest-trust source available for this algorithm.
+- Supplementary, not authoritative: `docs/papers/Dolgov_5-22.pdf` contains a C-like pseudocode
+  description of Kalyna (`Kalyna_Cipher`, `Kalyna_InvCipher`, `Kalyna_S_boxes`,
+  `Kalyna_KeyExpansion_Ksigma`), but its surrounding Ukrainian prose doesn't extract cleanly via
+  `pdftotext` (font-encoding issue with no ToUnicode CMap) and it carries no test vectors of its
+  own — `Kalyna.pdf` remains the reference; this one is a secondary read if the pseudocode angle
+  is ever needed, not transcribed here to avoid injecting OCR/extraction errors into a crypto spec.
 
 ### Kupyna (DSTU 7564)
-- **Primary:** `oracles/kupyna-reference/` (Roman Oliynykov, author) — verify-only, no license.
-- **Secondary:** `oracles/cryptonite/`, `oracles/bouncycastle-{java,dotnet}/`.
-- **Test vectors:** `oracles/kupyna-reference/main.c`.
+- **Highest-trust source: `docs/papers/Kupyna.pdf`**, Appendix B — "A New Standard of Ukraine:
+  The Kupyna Hash Function" (Oliynykov et al.), same standing as the Kalyna paper above.
+  **Test vectors extracted and verified** into
+  `crates/dstu-core/tests/vectors/kupyna/{kupyna-256,kupyna-512}.json` — six byte-aligned
+  message-length cases each (0, 8, 512, 760/1536, 1024, 2048 bits). The paper also publishes
+  bit-level (non-byte-aligned) cases at N=510/655 (both variants) and N=33/1 (Kupyna-512 only);
+  deliberately not transcribed — see the `note` field in those JSON files for why.
+- **Secondary code oracle:** `oracles/kupyna-reference/` (Roman Oliynykov, author) — verify-only,
+  no license.
+- **Tertiary:** `oracles/cryptonite/`, `oracles/bouncycastle-{java,dotnet}/`.
 
 ### Strumok (DSTU 8845)
-- **No trustworthy code oracle exists.** `oracles/strumok-dstu8845/` (outspace) is unofficial —
-  not written by the standard's designers, no independent audit, no license. `li0ard/strumok` is
-  excluded outright (D-07).
-- Test vectors must be sourced from `docs/papers/Strumok.pdf` (the designers' own paper),
-  wherever it publishes them — not from outspace's code, whose numbers are only as trustworthy as
-  outspace itself.
-- **Gap, stated plainly:** of the three MVP algorithms, Strumok has the weakest verification
-  story. Confirming vectors against the paper is a prerequisite before implementation, not an
-  afterthought.
+- **No trustworthy code oracle exists, and no test vectors have been found anywhere in this
+  project's holdings.** Checked directly (not assumed): `docs/papers/Strumok.pdf` (the designers'
+  paper, Gorbenko/Kuznetsov et al.) gives the full algorithmic description — Init/Next/Strm/FSM/T
+  functions, GF(2^64) arithmetic — but contains zero test vectors (confirmed by scanning for
+  hex runs of 16+ characters; the only hex-like hit is a bitmask constant, not a vector).
+  `docs/papers/Strumok_verilog.pdf` (Ukrainian, Verilog HDL implementation writeup) and
+  `docs/papers/Speed_of_modern_stream_ciphers.pdf` (benchmarking paper, same author group) were
+  also scanned the same way — no hex runs in either.
+- `oracles/strumok-dstu8845/` (outspace) is unofficial — not written by the standard's designers,
+  no independent audit, no license. `li0ard/strumok` is excluded outright (D-07).
+- **Gap, stated plainly and now confirmed by direct search, not assumption:** of the three MVP
+  algorithms, Strumok has the weakest verification story, with no official test vectors located
+  in any source surveyed so far. Locating or generating trustworthy Strumok vectors (the official
+  DSTU 8845 text itself, an NDA'd/paywalled version of the standard, or a state-certified
+  implementation) is a prerequisite before implementation, not an afterthought.
 
 ### DSTU 4145 (signature)
 - **Primary:** `oracles/bouncycastle-{java,dotnet}/` (MIT, audited, decades in production) — the
@@ -79,25 +103,38 @@ against," not "what do we translate into Rust."
 
 ## Test-vector convention
 
-Not built yet — no primitive exists to test against. Decided now so the first primitive follows
-it from day one, per the test-first rule in `CLAUDE.md`:
+Populated for Kalyna and Kupyna; the loader still waits for the first primitive (a `tests/*.rs`
+harness calling `dstu_core` functions that don't exist yet would break the buildable skeleton —
+that part is genuinely premature, the data is not).
 
-- Vectors live at `crates/dstu-core/tests/vectors/<algorithm>/<case>.json` — one file per case,
-  plain hex fields, human-diffable, not a binary blob.
-- Every vector file records its **source** (which oracle, or which spec section) — an
-  unattributed vector is not admissible, by the same logic as `SECURITY.md`'s "no primitive
-  without a cited spec section."
-- Integration tests in `crates/dstu-core/tests/<algorithm>.rs` load these files and assert against
-  the implementation — black-box, per `docs/rust_ai_ruleset.md` §11.
-- Illustrative shape only (not a real vector):
+- Vectors live at `crates/dstu-core/tests/vectors/<algorithm>/<case>.json` — one file per
+  block/key-size or hash-size variant, plain hex fields, human-diffable, not a binary blob.
+- Every vector file records its **source** (which paper/oracle, down to the appendix section) —
+  an unattributed vector is not admissible, by the same logic as `SECURITY.md`'s "no primitive
+  without a cited spec section." Every hex field has been length/validity-checked programmatically
+  against its declared bit size before being committed here — see the PDF extraction notes below.
+- Integration tests in `crates/dstu-core/tests/<algorithm>.rs` will load these files and assert
+  against the implementation — black-box, per `docs/rust_ai_ruleset.md` §11 — once a primitive
+  exists to test.
+- Real shape, from `crates/dstu-core/tests/vectors/kalyna/128-128.json`:
   ```json
   {
-    "source": "oracles/kalyna-reference/main.c, author test case 1",
-    "key_hex": "...",
-    "plaintext_hex": "...",
-    "ciphertext_hex": "..."
+    "algorithm": "Kalyna-128/128",
+    "block_bits": 128,
+    "key_bits": 128,
+    "source": "docs/papers/Kalyna.pdf, Appendix B.2.6 (...)",
+    "cases": [
+      { "name": "encryption", "key_hex": "...", "plaintext_hex": "...", "ciphertext_hex": "..." }
+    ]
   }
   ```
 
-Building the actual `tests/vectors/` tree and loader waits for the first primitive — an empty
-scaffold or a `todo!()` harness would be speculative ahead of any code to test.
+**PDF extraction notes (for re-deriving or extending these):** `docs/papers/*.pdf` were converted
+with `pdftotext -layout` (Cyrillic-only PDFs like `Dolgov_5-22.pdf` and `Strumok_verilog.pdf` lose
+their prose to a font-encoding issue — no ToUnicode CMap — but English papers and embedded hex
+survive intact). Page-footer numbers routinely get injected mid-hex-block by `pdftotext`
+(observed and corrected during extraction: stray `"64"`, `"96"`, `"36"`, `"18"`, `"34"` splitting
+what should have been one contiguous hex run) — always re-verify against a wide context window
+around each value, and length-check every field against its declared bit size before trusting it;
+a plausible-looking but truncated or corrupted vector is worse than no vector, since it fails a
+correct implementation silently.
