@@ -159,9 +159,9 @@ Module-by-module status (libsodium name → `dstu_core` module → status):
 | libsodium equivalent | `dstu_core` module | Status |
 |---|---|---|
 | `crypto_generichash` | `hazmat::kupyna` (`Kupyna256`, `Kupyna512`) | **Implemented** — one-shot `digest()`, byte-aligned messages only. See D-10 in `DECISIONS.md`. |
-| `crypto_stream` | `hazmat::strumok` | Blocked — no test vectors exist for Strumok (see `ORACLES.md`); not started. |
-| `hazmat::kalyna` (block primitive, not directly libsodium-mapped) | `hazmat::kalyna` | Not started; vectors exist, no blocker — next candidate after Kupyna. |
-| `crypto_sign` | `hazmat::dstu4145` | Not started; has pseudocode + a genuinely independent oracle (Bouncy Castle), no vectors extracted yet — see `ORACLES.md`. |
+| `crypto_stream` | `hazmat::strumok` | Unblocked, not started — no *official* vectors exist yet, but "gray" regression-anchor vectors do (D-15, see `ORACLES.md`); ready to implement test-first against those. |
+| `hazmat::kalyna` (block primitive, not directly libsodium-mapped) | `hazmat::kalyna` (`Kalyna128_128`/`Kalyna128_256`/`Kalyna256_256`/`Kalyna256_512`/`Kalyna512_512`) | **Implemented** — single-block `encrypt`/`decrypt`, all 5 variants, no mode of operation. See D-13 in `DECISIONS.md`. |
+| `crypto_sign` | `hazmat::dstu4145` | Not started; official standard text now in hand plus a dual-sourced test vector (D-14), pseudocode still BC-derived pending re-derivation from the spec, no GF(2^m)/EC arithmetic in the tree yet — see `ORACLES.md`. |
 | `crypto_box` | `hazmat::dstu9041` | Hard-blocked — zero source material exists for DSTU 9041 (see `ORACLES.md`); cannot start. |
 | `crypto_secretbox` | *(future construction over `hazmat::kalyna` + `hazmat::kupyna`)* | Blocked on D-05 (the Kalyna+Kupyna vs. Kalyna-alone CCM/GCM tension) — needs the official DSTU 7624 text or another authoritative source. |
 | `crypto_auth`/`crypto_onetimeauth` | *(future construction over `hazmat::kupyna`)* | Needs `hazmat::kalyna`/`hazmat::kupyna` done first; not started. |

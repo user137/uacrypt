@@ -4,6 +4,7 @@
 Cargo.lock
 *.pdb
 .claude.local.md
+/.claude/
 
 # Oracle-harness build artifacts and fetched dependencies (Java/.NET) — fetched fresh via
 # Maven/NuGet at build time (see tests/oracle-harness/*/README or TASKS.md "Infrastructure"),

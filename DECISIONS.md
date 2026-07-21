@@ -247,3 +247,135 @@ install step.
 **Scope note:** this covers *building and developing*, not *using* `dstutool` — end-users get
 prebuilt GitHub Releases binaries per the MVP scope, no Rust toolchain required on their side. See
 `README.md` "Building from source" vs. "Using dstutool".
+
+## D-13: Kalyna implementation — citation, table sharing, and verification status
+
+`dstu_core::hazmat::kalyna` (`crates/dstu-core/src/hazmat/kalyna.rs`) implements all five DSTU
+7624:2014 variants (128/128, 128/256, 256/256, 256/512, 512/512) from `docs/pseudocode/kalyna.md`,
+structurally mirroring `oracles/kalyna-reference/kalyna.c` round-for-round and
+key-schedule-step-for-step (S-box layer, row permutation, MDS linear layer, both round-key
+addition mechanisms κ/ψ, and the full three-part key schedule: `Kt`, even-indexed keys with the
+`k=l`/`k=2l` branch, odd-indexed keys via byte rotation).
+
+**Table sharing:** moved the S-box/MDS-matrix tables out of `kupyna.rs` into a new `pub(crate)`
+`hazmat::tables` module (`SBOXES`, `SBOXES_DEC`, `MDS_MATRIX`, `MDS_INV_MATRIX`, `gf_mul`,
+`apply_matrix`), used by both Kalyna and Kupyna. D-10 already *asserted* Kupyna's S-box/MDS data
+is byte-identical to Kalyna's — sharing the literal table makes that identity structural instead
+of two hand-copied literals that could silently drift. `Kupyna256`/`Kupyna512` were re-tested
+after the move to confirm the refactor didn't change behavior.
+
+**Rejected:** duplicating the tables into `kalyna.rs` to avoid touching the already-green Kupyna
+module. Rejected because the duplication risk (a second manual transcription of a 1024-byte S-box
+table) was strictly worse than the regression risk of moving a `const` and a pure function, which
+the existing Kupyna test suite + `cargo miri test` + oracle harnesses re-verify in seconds.
+
+**Verification status, confirmed 2026-07-22 (test-first: `crates/dstu-core/tests/kalyna.rs` written
+against the vectors before the implementation existed, per `CLAUDE.md` "Agent discipline"):**
+- `cargo test --workspace --all-features`: all 5 variants pass against the official vectors in
+  `crates/dstu-core/tests/vectors/kalyna/*.json` (10 cases: one independent encryption + one
+  independent decryption pair per variant, not round-trips — see the `note` field in each vector
+  file). Passed on the first implementation attempt, no debugging needed.
+- `cargo clippy --all-features -- -D warnings`: clean after two `needless_range_loop` fixes
+  (rewritten as iteration over `round_keys` slices instead of indexing by a range variable).
+- `cargo build --no-default-features` (the `no_std` path): compiles clean — the implementation
+  uses only fixed-size stack arrays, no heap allocation, matching Kupyna's style.
+- `cargo fmt --all -- --check`: clean.
+- `cargo miri test --workspace`: **confirmed clean, no UB** (all 5 variants pass under Miri too,
+  ~158s — the 512/512 variant's 18-round schedule makes this the slowest test in the suite).
+- **Still missing:** no independent second-oracle cross-check yet (the Java/.NET Bouncy Castle
+  harnesses in `tests/oracle-harness/{java,dotnet}/` only cover Kalyna/Kupyna vectors already, not
+  re-run against this new code path — see `TASKS.md` "Infrastructure" for wiring); no CBC/CTR/CCM
+  mode (D-05 is still open); `dstutool` CLI doesn't call this yet.
+
+**On the pseudocode doc's provenance caveat** (the k=2l key-schedule reading rests on one C-reference
+lineage, not confirmed independently against the official DSTU text): the official test vectors are
+the acceptance test here — all 5 variants, including both k=l and k=2l branches, pass byte-for-byte
+against DSTU-published input/output pairs. A wrong reading of the ambiguous spec notation would
+show up as a vector failure regardless of why the internal key-schedule mechanism happens to be
+correct. The caveat remains about *why* the mechanism is shaped this way, not about whether this
+implementation is DSTU-conformant.
+
+## D-14: DSTU 4145-2002 official standard obtained — dual-sourced test vector
+
+`docs/papers/DSTU_4145-2002.pdf` (added 2026-07-22) is the official standard text — a scan with no
+text layer (`pdftotext` yields nothing), rendered to PNG via `pdftoppm` (poppler, installed the
+same day specifically for this — see `.claude.local.md`) and read visually. This corrects the
+"no official text exists for DSTU 4145" claim that `docs/pseudocode/dstu4145.md` and `ORACLES.md`
+carried until now — DSTU 4145 is no longer the one algorithm exempted from the "cited spec section"
+hard constraint in `CLAUDE.md`.
+
+Annex B (Додаток Б, pages 18-21) contains a full worked signature example with real numbers, in
+both polynomial basis (GF(2^163)) and optimal normal basis (GF(2^173)). The GF(2^163) example
+(Annex B.1) was transcribed into `crates/dstu-core/tests/vectors/dstu4145/gf2m163.json` and then
+checked against `oracles/bouncycastle-java/.../DSTU4145Test.java`'s `test163()` — a hardcoded KAT
+that does not derive from this PDF. Every field (curve `a`/`b`, base point, order `n`, private key
+`d`, public key `Q`, hash value, ephemeral `e`, signature `r`/`s`) matched exactly.
+
+**Why this matters beyond "one more vector":** transcribing a 163-bit field element by eye off a
+150 DPI scan is exactly the kind of error that produces a silently-wrong "official" vector — one
+that would later make a *correct* Rust implementation look broken. The BC match closes that gap:
+either both the scan-reading and BC's independently-maintained hardcoded constant are wrong in the
+same way (implausible — different people, different years, different codebases), or the
+transcription is correct. This is a genuinely dual-sourced vector, not a single by-eye reading
+blessed as ground truth.
+
+It also upgrades Bouncy Castle's own standing for this one algorithm specifically: `test163()`
+passing was previously "BC agrees with itself" (a hardcoded constant an internal test happens to
+check); it's now confirmed to reproduce the official standard's own published example, i.e. BC's
+`DSTU4145Signer` is independently confirmed DSTU-conformant, not just internally consistent.
+
+**Not cross-checked the same way:** Annex B.2 (optimal normal basis, GF(2^173)). BC's `test173()`
+uses different curve parameters — a separate, unrelated KAT, not a match to this example. If B.2 is
+ever extracted, it must be labeled `unverified-transcription` unless another independent source is
+found, per the same reasoning above.
+
+**Rejected:** treating the scan transcription as sufficient on its own ("I read the numbers
+carefully"). Rejected because `SECURITY.md`'s dual-oracle requirement exists precisely to catch
+this class of error, and a from-scratch cross-check against an already-existing, independently
+maintained oracle cost nothing here — there was no reason to settle for single-sourced.
+
+**Still open:** the pseudocode doc (`docs/pseudocode/dstu4145.md`) is not yet re-derived against the
+official text's Sections 5-13 — it remains a Bouncy Castle code-transcription for now, which is a
+weaker provenance than Kalyna/Kupyna/Strumok's spec-transcriptions. No GF(2^m) binary-field or
+elliptic-curve arithmetic exists in `dstu-core` yet, so this vector cannot be exercised by any Rust
+code yet — see `TASKS.md` Phase 2.
+
+## D-15: Strumok "gray" vectors — a labeled, temporary unblock, not verification
+
+Strumok has had zero test vectors from any source since D-06/D-10 — official text priced at
+7,027.80 UAH (see "Official DSTU text — purchase cost" in `ORACLES.md`), no hardware testbench KAT
+in `Strumok_verilog.pdf` (checked 2026-07-22, nothing found), `outspace/dstu8845` is the only
+runnable implementation and it is unaudited (no license, not written by the standard's designers —
+see `ORACLES.md`). This has blocked Phase 1 implementation entirely.
+
+**Decision:** generate "gray" vectors by running `oracles/strumok-dstu8845/` itself against chosen
+inputs (key/IV/output-length combinations, both 256- and 512-bit keys) and committing the output as
+`crates/dstu-core/tests/vectors/strumok/gray/keystream-{256,512}.json`. The generator
+(`tests/oracle-harness/strumok-gray-generator/generate_gray_vectors.c`) is a small C program
+compiled directly against the pinned oracle source — not part of any build or CI, run once,
+reproducible if re-run (confirmed: re-compiling and re-running from a clean checkout reproduced
+byte-identical output). This unblocks a Rust port from being written test-first at all, which
+`SECURITY.md`'s "test-first, always" rule otherwise has no vectors to point at.
+
+**What this does and does not prove, stated as plainly as possible:** these vectors prove a future
+Rust port agrees with `outspace/dstu8845`. They prove **nothing** about whether that agreement
+matches the real DSTU 8845:2019 standard — the vectors and the (eventual) Rust implementation trace
+to the exact same single unaudited source, so passing them is self-consistency, which
+`SECURITY.md`'s dual-oracle requirement explicitly calls insufficient on its own. This is a
+deliberate, temporary exception to that requirement, not a quiet way around it — every gray vector
+file says so in its own `"status"` field, `ORACLES.md`'s Strumok section says so, and any future
+`TASKS.md`/`CLAUDE.md` status line for Strumok must say "regression-anchored, not independently
+verified" — never "confirmed"/"green" the way Kalyna/Kupyna are worded, until real vectors exist.
+
+**Rejected:** waiting for official vectors before writing any Strumok code. Rejected because the
+wait has no defined end date (purchase cost hasn't dropped, the info request in
+`docs/dstu9041-8845-info-request-draft.md` hasn't been sent/answered) and structural implementation
+work — GF(2^64) arithmetic, the FSM, the T-function — can be written and structurally cross-checked
+against the oracle's source right now per the existing pseudocode doc; there's no reason to block
+that on vectors that only the *final numeric check* needs.
+
+**Follow-up, not optional:** the moment real DSTU 8845 vectors exist from any source, (1) add them
+alongside (not instead of — keep the gray ones as an oracle-agreement regression check) with
+`"status": "official"`, and (2) run them against `outspace/dstu8845` itself, since this decision
+never established that the oracle is correct — only that a future Rust port can be checked against
+it consistently in the meantime.

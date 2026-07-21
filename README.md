@@ -4,10 +4,11 @@ An open Rust library for modern Ukrainian cryptographic standards (DSTU) — in 
 spirit of **libsodium** (hard, safe defaults, hard to misuse), not OpenSSL
 (flexible, easy to misuse the API).
 
-**Status:** first primitive landed — `dstu_core::hazmat::kupyna` (Kupyna-256/512) is implemented,
-tested against official DSTU test vectors, and cross-checked against real Bouncy Castle. Everything
-else in the table below is still to come. See `TASKS.md` for the phase-by-phase backlog and
-`docs/dstu-crypto-project.md` for the full scope.
+**Status:** two primitives landed — `dstu_core::hazmat::kupyna` (Kupyna-256/512, cross-checked
+against real Bouncy Castle) and `dstu_core::hazmat::kalyna` (all 5 block/key-size variants,
+single-block encrypt/decrypt, no mode of operation yet), both tested against official DSTU test
+vectors. Everything else in the table below is still to come. See `TASKS.md` for the phase-by-phase
+backlog and `docs/dstu-crypto-project.md` for the full scope.
 
 ## Algorithms in scope
 

@@ -1,0 +1,27 @@
+{
+  "algorithm": "DSTU 4145-2002 digital signature, GF(2^163), polynomial basis",
+  "field_bits": 163,
+  "reduction_polynomial": "x^163 + x^7 + x^6 + x^3 + 1",
+  "source": "docs/papers/DSTU_4145-2002.pdf, Annex B.1 (Додаток Б.1, pages 18-19) - the standard's own worked example. Independently cross-checked byte-for-byte against oracles/bouncycastle-java/core/src/test/java/org/bouncycastle/crypto/test/DSTU4145Test.java test163() (a hardcoded KAT, not derived from this PDF) - every field below matches exactly, which is what makes this vector genuinely dual-sourced rather than a single by-eye transcription off a scan.",
+  "note": "The worked example starts from an already-computed hash value H(T) rather than a literal message T, so this vector exercises everything from 'reduce the hash to a field element' onward, not message hashing itself (Kupyna is already verified separately). 'e' is the pinned ephemeral value used by the sign direction in the standard's example - a real implementation must only use this fixed value for KAT reproduction, never for actual signing (see DSTU4145Signer's ParametersWithRandom/TestRandomData usage in the Bouncy Castle oracle for the same convention). The verify direction (Q, hash, r, s -> valid) is the RNG-free check and the one to implement/test first; the sign direction additionally requires exposing a fixed-ephemeral seam.",
+  "curve": {
+    "a": "1",
+    "b": "5FF6108462A2DC8210AB403925E638A19C1455D21"
+  },
+  "base_point": {
+    "x": "72D867F93A93AC27DF9FF01AFFE74885C8C540420",
+    "y": "0224A9C3947852B97C5599D5F4AB81122ADC3FD9B"
+  },
+  "order_n": "400000000000000000002BEC12BE2262D39BCF14D",
+  "private_key_d": "183F60FDF7951FF47D67193F8D073790C1C9B5A3E",
+  "public_key_q": {
+    "x": "057DE7FDE023FF929CB6AC785CE4B79CF64ABDC2DA",
+    "y": "3E85444324BCF06AD85ABF6AD7B5F34770532B9AA"
+  },
+  "hash_h_of_t": "09C9C44277910C9AAEE486883A2EB95B7180166DDF73532EEB76EDAEF52247FF",
+  "ephemeral_e": "1025E40BD97DB012B7A1D79DE8E12932D247F61C6",
+  "signature": {
+    "r": "274EA2C0CAA014A0D80A424F59ADE7A93068D08A7",
+    "s": "2100D86957331832B8E8C230F5BD6A332B3615ACA"
+  }
+}
