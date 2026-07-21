@@ -99,16 +99,28 @@ Kσ ← η(π(τ(Kσ)))
 constant `φ` (initialized to `0x0001000100010001` repeated per state word, doubled — shifted left
 by 1 bit — once per round key generated) and a rotating view of the encryption key. The paper's
 notation (`L_{k,l}(K ⊞ 16i)` / `R_{k,l}(K ⊞ 64⌊i/4⌋)`, Section 7.2) denotes this as arithmetic
-addition on `K`, but **two independent oracles agree the actual mechanism is a word-level
-rotation, not arithmetic addition** — `oracles/kalyna-reference/kalyna.c`'s `Rotate()` (C, Roman
-Oliynykov) and `oracles/bouncycastle-java/.../DSTU7624Engine.java`'s `workingKeyExpandEven` (Java,
-independently authored, MIT) both rotate the whole key buffer by one 64-bit word per round-key
-pair rather than adding a constant. Treated here as resolved, not merely oracle-sourced: two
-unrelated implementations of the same spec converging on identical structure is exactly the
-cross-check `ORACLES.md` calls for, stronger than either oracle alone. The `⊞`/`L`/`R` notation in
-the paper most likely denotes this rotate-and-split operation and lost fidelity in
-`pdftotext` extraction (consistent with the systemic notation-symbol loss already documented in
-`ORACLES.md`), rather than describing a different operation the code doesn't implement.
+addition on `K`, but both code oracles agree the actual mechanism is a word-level rotation, not
+arithmetic addition — `oracles/kalyna-reference/kalyna.c`'s `Rotate()` (C, Roman Oliynykov) and
+`oracles/bouncycastle-java/.../DSTU7624Engine.java`'s `workingKeyExpandEven` (Java, MIT) both
+rotate the whole key buffer by one 64-bit word per round-key pair rather than adding a constant.
+
+**Correction on provenance:** an earlier draft of this document treated the Java/C agreement as
+two *independent* implementations converging on the same reading of the ambiguous spec text —
+that overstated it. `DSTU7624Engine.java`'s own header comment credits
+"Roman Oliynykov's native C implementation" as its source, i.e. it is a port/adaptation of the
+same C reference, not an independent-from-spec reimplementation (confirmed by reading the file:
+it uses `Pack.littleEndianToLong`-style plumbing on top of the same round/key-schedule structure,
+right down to variable naming). So this is one lineage read twice, not two lineages agreeing —
+weaker evidence than originally claimed, though still useful: it confirms the *port* preserved
+the mechanism faithfully rather than reinterpreting the paper's notation differently, which rules
+out a transcription slip specific to the C code. The rotate-vs-addition reading is kept as the
+working interpretation on that basis, not on a since-withdrawn "two independent oracles" claim.
+The `⊞`/`L`/`R` notation in the paper most likely denotes this rotate-and-split operation and
+lost fidelity in `pdftotext` extraction (consistent with the systemic notation-symbol loss already
+documented in `ORACLES.md`), rather than describing a different operation the code doesn't
+implement — but this rests on one lineage, and re-deriving it from the DSTU 7624 standard text
+itself (not currently in `docs/papers/`) would be worth doing before relying on it for a
+security-critical implementation detail.
 
 Helper — one round-key computation from a base value and the round constant:
 

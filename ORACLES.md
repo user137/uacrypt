@@ -40,9 +40,14 @@ against," not "what do we translate into Rust."
 
 ### Kalyna (DSTU 7624)
 - **Pseudocode:** `docs/pseudocode/kalyna.md` — transcribed from the paper below, cross-checked
-  against both the reference C oracle and `bouncycastle-java`'s independent Java implementation;
-  the two agreeing let the k=2l key-schedule branch (originally ambiguous from the paper's own
-  notation) be resolved with confidence rather than left open.
+  against the reference C oracle. Its k=2l key-schedule branch (originally ambiguous from the
+  paper's own notation) is read as a word-rotation rather than arithmetic addition, corroborated
+  by `bouncycastle-java`'s `DSTU7624Engine.java` — **note this is not a second independent
+  reading**: that file's own header credits Oliynykov's C code as its source, so it's a faithful
+  port, not an independent implementation (same is true of `DSTU7564Digest.java` for Kupyna
+  below). See the "Correction on provenance" note in `docs/pseudocode/kalyna.md` for why this
+  still has some value (rules out a C-specific transcription slip) without being the strong
+  cross-check it was first described as.
 - **Highest-trust source: `docs/papers/Kalyna.pdf`**, Appendix B — "A New Encryption Standard of
   Ukraine: The Kalyna Block Cipher" (Oliynykov et al.), the designers' own published paper.
   Ranks above the reference-implementation oracles below: it's the formal specification itself,
@@ -66,7 +71,12 @@ against," not "what do we translate into Rust."
 ### Kupyna (DSTU 7564)
 - **Pseudocode:** `docs/pseudocode/kupyna.md` — transcribed from the paper below, cross-checked
   against the reference C oracle; one extraction gap (the IV formula) resolved from the oracle
-  and flagged as such.
+  and flagged as such. Additionally checked (2026-07-21) against
+  `bouncycastle-java/.../DSTU7564Digest.java` — same structure confirmed (`state[0] = blockSize`
+  for the IV; `P`/`Q` constant-addition and the fused S-box/shift/mix T-tables match), but this is
+  the same "not independent" caveat as Kalyna: that file's header also credits Oliynykov's
+  `Kupyna-reference` C code as its source. Treat as corroboration of a faithful port, not a second
+  independent reading.
 - **Highest-trust source: `docs/papers/Kupyna.pdf`**, Appendix B — "A New Standard of Ukraine:
   The Kupyna Hash Function" (Oliynykov et al.), same standing as the Kalyna paper above.
   **Test vectors extracted and verified** into

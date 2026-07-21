@@ -42,10 +42,22 @@ DSTU 7624 (Kalyna, incl. wrap/MAC modes).
 
 Unlike the no-license C repos above, MIT *would* permit vendoring this into our own tree with
 attribution. It's still kept oracle-only and gitignored here, for consistency: these are Java/C#
-files with no direct role in a Rust crate — their value is as a second, independently-audited
+files with no direct role in a Rust crate — their value is as an independently-audited
 implementation to diff behavior against, not as code to build on. If Java/.NET bindings are
 built later (per `../DECISIONS.md` D-02 — wrap Bouncy Castle rather than reimplement DSTU 4145),
 that's a real dependency added to those bindings' own build files, not a copy from this folder.
+
+**Correction, checked 2026-07-21 while auditing `docs/pseudocode/*.md` against these sources:**
+"independently-audited" was previously written as if it also meant "independently implemented" —
+that's only true for **DSTU 4145**. `DSTU7624Engine.java` (Kalyna) and `DSTU7564Digest.java`
+(Kupyna) both carry a header comment crediting "Roman Oliynykov's native C implementation" as
+their source — they are ports/adaptations of the same `kalyna-reference`/`kupyna-reference` C
+code above, not independent re-derivations from the spec. `DSTU4145Signer.java` carries no such
+comment and reads as Bouncy Castle's own implementation — genuinely independent of the C oracles
+here. Matters for how much weight to give a Kalyna/Kupyna "the two oracles agree" observation
+(same lineage, corroborates faithful porting — not a second independent reading) versus a DSTU
+4145 one (actually independent). See the "Correction on provenance" note in
+`../docs/pseudocode/kalyna.md` for where this mattered in practice.
 
 ## Cryptonite (PrivatBank, BSD-2-Clause)
 

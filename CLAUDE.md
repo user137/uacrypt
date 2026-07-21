@@ -102,6 +102,13 @@ Full detail and rationale in `SECURITY.md` — this is the compressed version so
 
 ## Agent discipline
 
+- **UTF-8 everywhere, no exceptions.** Every text file in this repo — source, docs, config,
+  test-vector JSON — is UTF-8, without a byte-order mark. This matters concretely here: the
+  project mixes English docs with Ukrainian source material (paper titles, standard names,
+  commit/PR text when the user writes Ukrainian) and extracts hex/text from PDFs via `pdftotext`
+  on Windows, all of which can silently introduce UTF-16, a BOM, or a Windows codepage (e.g.
+  CP1251) if a tool's default isn't checked. Verify encoding when creating or editing a file if
+  there's any doubt, rather than assuming the tool defaulted correctly.
 - **Test-first, always.** Write the failing test before the implementation — a unit test, or for
   crypto code, a test-vector check (see dual-oracle verification above). Never write the
   implementation first and backfill tests afterward. This applies to every function, not just
