@@ -253,3 +253,10 @@ changes.
 - Cross-check our own implementation against Kalyna-reference and other
   oracles.
 - Hardware validation on STM32/ESP32 — a separate phase after the MVP.
+- **Speculative, long-term, not MVP, not scheduled in any `TASKS.md` phase:** `dstu-core` could
+  someday expose a C ABI (`cdylib`/`staticlib` + a plain-C header) so that C/C++ PKI stacks —
+  UAPKI (see D-17) is the concrete example that prompted this — could adopt this project's
+  audited Rust primitives instead of maintaining their own C implementations of the same
+  algorithms. Purely a "don't forget this occurred to us" note: no design work done, no task
+  created, no commitment implied. Revisit only if a concrete need or request for it shows up —
+  don't let it quietly expand MVP scope in the meantime.
