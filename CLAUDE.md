@@ -59,6 +59,15 @@ Algorithms in scope:
   Bouncy Castle (mature existing implementation, `DSTU4145Signer`, decades in production,
   continuous external audit); for Rust, port with Bouncy Castle as a second verification oracle.
 
+## Explicitly out of scope
+
+- **Post-quantum DSTU 8961:2019 (Skelya) / DSTU 9212:2023 (Vershyna)** — do not implement, and do
+  not propose implementing, without a separate explicit decision from the project owner. See D-08
+  in `DECISIONS.md` for the full rationale (different math class from the rest of this project,
+  complexity on the order of all five in-scope algorithms combined, immature cryptanalysis, no
+  vetted oracle exists). If this is ever picked up, `docs/dstu-crypto-project.md` "Post-quantum
+  track" has the fuller context.
+
 ## Documentation map
 
 | File | Read when | Update when | Canonical owner of |

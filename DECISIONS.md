@@ -83,6 +83,35 @@ acceptable risk regardless of the code's apparent quality or activity level. If 
 revisiting later, it requires a new, independently verifiable trust basis, not just an audit of
 the code itself.
 
+## D-08: Post-quantum DSTU 8961:2019 (Skelya) and DSTU 9212:2023 (Vershyna) are out of scope
+
+Not implemented, and not to be proposed for implementation, without a separate explicit decision
+from the project owner.
+
+**What they are** (context only, for if this is ever revisited): DSTU 8961:2019 "Skelya" —
+post-quantum key encapsulation (KEM) and asymmetric encryption on algebraic lattices, the same
+problem class as CRYSTALS-Kyber or FrodoKEM, a Ukrainian variant. DSTU 9212:2023 "Vershyna" —
+post-quantum digital signature on algebraic lattices with rejection sampling, the post-quantum
+counterpart to DSTU 4145.
+
+**Rejected:** folding these into the current MVP/second-priority scope alongside
+Kalyna/Kupyna/Strumok/DSTU 4145/DSTU 9041. Rejected because:
+- Qualitatively different mathematics (polynomial rings, noise sampling, CPA-to-CCA transforms)
+  versus the classical-curve/block-cipher math the rest of this project uses.
+- Implementation complexity comparable to all five other in-scope algorithms combined, with a
+  higher risk of silent correctness bugs specific to this class — constant-time rejection
+  sampling, decryption failure rate, sensitivity to ring-parameter choice.
+- Cryptanalysis is younger and thinner here than for internationally vetted PQ schemes: published
+  work questions Skelya's "unusual field/ring choice" and probes potential attacks via sub-ring
+  structure.
+- No vetted Rust implementation of either algorithm exists to start from or use as an oracle —
+  would be written from zero, with none of the dual-oracle safety net the rest of this project
+  relies on.
+
+If ever taken up, treat as a pair (Skelya + Vershyna together, mirroring the classical 4145+9041
+pair) as a distinct Phase 3 / post-quantum track, with an explicit documented warning that its
+cryptanalysis maturity is lower than this project's classical DSTU primitives.
+
 ## Open question: no_std vs. safe high-level API default randomness
 
 Not yet decided. Precedent (orion): in a `no_std` build, orion's high-level "hard to misuse"

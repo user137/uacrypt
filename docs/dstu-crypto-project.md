@@ -47,6 +47,38 @@ implementation within a minute, without hassle — in the spirit of
   exists there); for Rust, port it while relying on Bouncy Castle as a
   second verification oracle.
 
+## Post-quantum track (explicitly out of scope)
+
+**DSTU 8961:2019 "Skelya" and DSTU 9212:2023 "Vershyna" are deliberately not part of this
+project's scope.** Do not implement either, and do not propose implementing either, without a
+separate explicit decision from the project owner — see D-08 in `DECISIONS.md`.
+
+What they are, for context if this is ever revisited:
+
+- **DSTU 8961:2019 "Skelya"** — a post-quantum key encapsulation mechanism (KEM) and asymmetric
+  encryption scheme on algebraic lattices. Same problem class as CRYSTALS-Kyber or FrodoKEM; a
+  Ukrainian variant.
+- **DSTU 9212:2023 "Vershyna"** — a post-quantum digital signature scheme on algebraic lattices
+  with rejection sampling. The post-quantum counterpart to DSTU 4145.
+
+Why not now:
+
+- Qualitatively different mathematics (polynomial rings, noise sampling, CPA-to-CCA transforms)
+  compared to the rest of this project (Kalyna/Kupyna/Strumok/DSTU 4145/DSTU 9041 are all
+  classical cryptography).
+- Implementation complexity comparable to all five other algorithms combined, with a higher risk
+  of silent correctness bugs: constant-time rejection sampling, decryption failure rate,
+  sensitivity to the choice of ring parameters.
+- Younger and thinner cryptanalysis than internationally vetted PQ schemes — published work
+  questions Skelya's "unusual field/ring choice" and probes potential attacks via sub-ring
+  structure.
+- No vetted Rust implementation of either algorithm exists — would have to be written from zero,
+  without the dual-oracle safety net (`ORACLES.md`) the rest of this project relies on.
+
+If this is ever taken up, treat it as a pair (Skelya + Vershyna together, mirroring the classical
+4145+9041 pair) as a distinct Phase 3 / post-quantum track, with an explicit documented warning
+that its cryptanalysis maturity is lower than this project's classical DSTU primitives.
+
 ## Mapping onto the libsodium API (a functional copy built on DSTU)
 
 Goal: cover libsodium's functionality with equivalents built on Ukrainian

@@ -113,6 +113,29 @@ against," not "what do we translate into Rust."
   implementation surveyed (Kalyna/Kupyna-reference predate it, cryptonite is 2016, Bouncy Castle
   doesn't implement it). When this algorithm is reached, it starts from spec text alone with no
   cross-check available, unless one is found or built first.
+- **Web search performed (2026-07-21), no GitHub implementation found** for DSTU 9041:2020 in any
+  language — confirms the above is not just an unsearched gap.
+- **Two candidate papers checked for pseudocode, both dead ends:**
+  - Skorobahatko, bachelor's thesis, KPI, 2023 ("Аналіз стійкості алгоритму гібридного шифрування
+    за ДСТУ 9041:2020 та його модифікацій до розрізнювальних атак") — the one paper found that
+    actually analyzes *this* algorithm's steps (its abstract explicitly frames it as chosen-
+    plaintext/chosen-ciphertext resistance analysis of the DSTU 9041:2020 hybrid encryption
+    scheme, referencing DSTU 7624:2014 too). Downloaded from
+    `https://ela.kpi.ua/server/api/core/bitstreams/12932ea1-d36a-468a-b4a0-504309a90fbd/content`
+    and run through `pdftotext -layout` — same font-encoding failure as `Dolgov_5-22.pdf` and
+    `Strumok_verilog.pdf` (no ToUnicode CMap): every word of Ukrainian prose extracts as blank
+    space, only section numbers and the odd English loanword survive. Unusable for transcription
+    as-is; would need a different extraction path (OCR on rendered pages, or a
+    manually-copy-pasted version) before it could feed a pseudocode doc.
+  - Ivanov/Kuznetsov et al., ITCE 2020 №1 (`itce.vntu.edu.ua`, downloaded and extracted cleanly —
+    English abstract intact) — topically adjacent but not this algorithm: it's about base-point
+    selection algorithms for Edwards curves in the context of the **DSTU 4145-2002 signature**
+    standard, not the DSTU 9041:2020 hybrid short-message-encryption algorithm. Useful background
+    on Edwards-curve arithmetic in the Ukrainian standards ecosystem, not a source to transcribe
+    pseudocode from for this algorithm.
+- No `docs/pseudocode/dstu9041.md` exists as a result — there is currently nothing credibly
+  sourceable to write one from. Revisit if the actual DSTU 9041:2020 standard text is ever
+  obtained, or if a legibly-OCR'd copy of the Skorobahatko thesis surfaces.
 
 ## Test-vector convention
 
