@@ -124,8 +124,6 @@ CSPRNG without "Ukrainization".
   directly**.
 - **dstu8845 https://github.com/outspace/dstu8845** — a Strumok
   implementation in C (apparently not the official implementation).
-- **dstu8845 https://github.com/li0ard/strumok** — a Strumok implementation
-  in TypeScript (not the official implementation).
 - **Bouncy Castle** (Java and .NET) — already has a mature production
   implementation of the DSTU 4145 signature (`DSTU4145Signer`), in use for
   decades, with continuous external audit. Don't rewrite the signature for
@@ -133,9 +131,11 @@ CSPRNG without "Ukrainization".
 - **Ecognize/libukrypto** (GitHub) — a WIP OpenSSL engine specifically for
   DSTU. Marked as WIP, appears stalled — useful as an example of CLI
   architecture, not as a code donor.
-- **li0ard** (GitHub) — fragmented single-author packages (TypeScript/Go)
-  for Kalyna/Kupyna/Strumok/DSTU 4145. Alive (2025 updates), but without
-  independent audit and without a single consistent architecture.
+- **Excluded: the `li0ard` GitHub account** (TypeScript/Go packages for
+  Kalyna/Kupyna/Strumok/DSTU 4145). Not used as a dependency, not used as an
+  oracle, not linked from anywhere in this project — flagged as an untrusted
+  supply-chain source with unverified maintainer provenance. See D-07 in
+  `DECISIONS.md`.
 - **crates.io**: the `kupyna` crate exists, but is dead — one version from
   December 2016, no updates since. The `kalyna`, `strumok`, `dstu4145`
   crates don't exist at all — a genuinely open niche in the Rust ecosystem.

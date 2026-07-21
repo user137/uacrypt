@@ -48,16 +48,40 @@ authentication keys.
 (Kupyna) on separate keys — there is no single-primitive AEAD in the standard to call instead. See
 `docs/dstu-crypto-project.md` libsodium-mapping section.
 
+**Not yet reconciled:** PrivatBank's cryptonite (`oracles/cryptonite/src/cryptonite/c/dstu7624.h`)
+exposes `dstu7624_init_ccm` / `dstu7624_init_gcm` with a paired `dstu7624_encrypt_mac` /
+`dstu7624_decrypt_mac` API — Kalyna alone, in CCM/GCM-style modes, producing authenticated
+ciphertext without Kupyna. This is in tension with the rejection above and needs checking against
+the actual DSTU 7624 standard text (not currently among `docs/papers/`) before this decision is
+finalized either way — see `oracles/README.md` "Cryptonite" section for the full note. Do not
+resolve this from cryptonite's code alone; it's a 2016 third-party implementation, not the spec.
+
 ## D-06: Reference/oracle repositories are for test-vector comparison only
 
-Kalyna-reference, cryptonite, outspace/dstu8845, li0ard/strumok, li0ard's other packages are
-consulted only to cross-verify test vectors, never as a source to copy code from directly.
+Kalyna-reference, cryptonite, outspace/dstu8845 are consulted only to cross-verify test vectors,
+never as a source to copy code from directly.
 
 **Rejected:** forking/porting code directly from these repos as a shortcut. Rejected on a
 per-repo basis: Kalyna-reference has no LICENSE file at all (no legal basis to copy); cryptonite is
 BSD-2-Clause (legally forkable) but is 2016-era code whose state certification lapsed in 2021 and
 has had no independent audit since — copying it would import unaudited, stale code under the
 project's own name. See `docs/dstu-crypto-project.md` "Reference implementations and oracles".
+
+## D-07: The `li0ard` GitHub account is excluded entirely — untrusted supply chain
+
+`li0ard`'s TypeScript/Go packages for Kalyna/Kupyna/Strumok/DSTU 4145 are not used as a
+dependency, not used as an oracle, and not linked from any project documentation. This is
+stricter than D-06: other unaudited repos there are at least allowed as oracles; `li0ard` is
+excluded from that category too.
+
+**Rejected:** treating `li0ard`'s packages as one more unaudited-but-usable oracle, the same
+tier as `outspace/dstu8845`. Rejected per the project owner's explicit call: unverified maintainer
+identity and provenance, flagged as a potential compromise/trust risk. For a library implementing
+Ukrainian national cryptographic standards, code or oracle input from a maintainer whose identity
+and origin cannot be verified — and who is suspected of ties to a hostile state — is not an
+acceptable risk regardless of the code's apparent quality or activity level. If this needs
+revisiting later, it requires a new, independently verifiable trust basis, not just an audit of
+the code itself.
 
 ## Open question: no_std vs. safe high-level API default randomness
 

@@ -2,3 +2,10 @@
 **/*.rs.bk
 Cargo.lock
 *.pdb
+
+# Third-party reference implementations, used only as oracles for local test-vector
+# cross-verification (see oracles/README.md, DECISIONS.md D-02/D-06). Never vendored into
+# crates/, never committed or published — regardless of the upstream license.
+# oracles/README.md itself stays tracked so the reasoning survives a fresh clone.
+/oracles/*
+!/oracles/README.md

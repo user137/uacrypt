@@ -59,6 +59,7 @@ Algorithms in scope:
 | `docs/dstu-crypto-project.md` | planning scope, API design, algorithm choices | scope or API-mapping decisions change | project scope, libsodium API mapping |
 | `SECURITY.md` | before writing any crypto primitive or adding a dependency | threat model or hard constraints change | threat model, hard constraints, supply-chain vetting |
 | `DECISIONS.md` | need the reason behind an architectural choice | a new architectural decision is made | decisions + rejected alternatives, with citations |
+| `ORACLES.md` | before implementing or verifying any primitive | oracle trust ranking changes, or a new oracle/vector source is added | oracle trust matrix, per-algorithm oracle map, test-vector convention |
 | `docs/rust_ai_ruleset.md` | general Rust code-style questions | never (external ruleset, treat as canonical as-is) | generic Rust engineering conventions |
 
 `docs/rust_ai_ruleset.md` §7 (async/tokio) does not apply to the `no_std`-first core — it's only
@@ -111,14 +112,13 @@ explicitly permits it:
   (Roman-Oliynykov) also has a Kupyna reference implementation and some documentation. **No
   LICENSE file** — oracle for test-vector comparison only, never copy code from it.
 - **[outspace/dstu8845](https://github.com/outspace/dstu8845)** — Strumok in C, unofficial.
-- **[li0ard/strumok](https://github.com/li0ard/strumok)** — Strumok in TypeScript, unofficial.
 - **Bouncy Castle** (Java/.NET) — mature production DSTU 4145 signature implementation
   (`DSTU4145Signer`); see "Second priority" above.
 - **Ecognize/libukrypto** — WIP OpenSSL engine for DSTU, appears stalled. Useful only as a CLI
   architecture reference, not a code donor.
-- **li0ard** GitHub account — fragmented single-author TypeScript/Go packages for
-  Kalyna/Kupyna/Strumok/DSTU 4145. Actively updated (2025) but no independent audit and no
-  consistent shared architecture across them.
+- **Excluded: the `li0ard` GitHub account** (TypeScript/Go packages for Kalyna/Kupyna/Strumok/DSTU
+  4145). Not a dependency, not an oracle, not referenced anywhere in this project — flagged as an
+  untrusted supply-chain source with unverified maintainer provenance. See D-07 in `DECISIONS.md`.
 - **crates.io**: the `kupyna` crate exists but is dead (single release, December 2016, no updates
   since). `kalyna`, `strumok`, `dstu4145` crates don't exist at all — a genuine open niche in the
   Rust ecosystem.
