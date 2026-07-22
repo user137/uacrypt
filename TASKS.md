@@ -90,7 +90,14 @@ test-vector check (or unit test) is written before the primitive it verifies, no
 - [ ] Publish `dstu-core` to crates.io
 - [ ] Prebuilt Windows/Linux binaries via GitHub Releases
 - [ ] Re-confirm the `no_std` build still passes (all feature-flag combinations) as each
-      primitive lands — don't let this regress silently
+      primitive lands — don't let this regress silently. Ongoing by design, not a one-time item —
+      **last re-checked 2026-07-22** (post D-28/29/30/31): all four `dstu-core` feature
+      combinations build clean — `--no-default-features` (bare no_std),
+      `--no-default-features --features alloc` (no_std + alloc), `--features alloc` (std + alloc),
+      `--all-features`. `alloc` remains an unused placeholder feature (no code gated on it yet, per
+      D-01), so this confirms no regression rather than adding new coverage. `cargo xtask build`
+      (workspace `--all-features` + `--no-default-features`, which also exercises `dstutool`
+      linking against a no_std-built `dstu-core`) still passes too.
 
 ## Testing & hardening — deeper verification beyond test vectors
 
@@ -131,8 +138,13 @@ resistance (SPA/DPA — explicitly out of scope per `SECURITY.md`/`CLAUDE.md` "M
       Bouncy Castle harnesses, unchanged.
 - [ ] **Actually run `cargo fuzz`** for all three primitives — attempted 2026-07-22, blocked by a
       confirmed GNU/MinGW-toolchain incompatibility (libFuzzer-on-Windows is MSVC-only upstream),
-      not a skipped step; full detail in the Phase 1 line above. Still open until it runs somewhere
-      that can — CI (Linux) or a machine with the MSVC toolchain.
+      not a skipped step; full detail in the Phase 1 line above. **Re-checked 2026-07-22, same
+      session as D-28/29/30/31**: `cargo +nightly fuzz run kupyna -- -max_total_time=10` still
+      fails identically (`error: address sanitizer is not supported for this target` for
+      `x86_64-pc-windows-gnu`) — unchanged root cause, not re-litigated further per the
+      three-attempts rule (`CLAUDE.md`), since this is the same confirmed upstream limitation, not
+      a new bug. Still open until it runs somewhere that can — CI (Linux, already wired in
+      `.github/workflows/rust.yml`'s `fuzz-smoke` job) or a machine with the MSVC toolchain.
 - [x] **`Zeroize`/`ZeroizeOnDrop` on live key-material.** `zeroize` 1.9 added
       (`default-features = false, features = ["derive"]`, `no_std`-compatible — first real
       dependency in `dstu-core`, `DECISIONS.md` D-20). Strumok's `Core` (LFSR/FSM state) derives
