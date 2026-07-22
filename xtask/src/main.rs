@@ -59,7 +59,7 @@ fn print_usage() {
          \x20 ci             fmt --check + build + test + clippy, then best-effort for the optional tools below\n\n\
          Optional (each checks its tool is installed first and prints an install hint if not):\n\
          \x20 miri           cargo +nightly miri test --workspace\n\
-         \x20 fuzz           short cargo-fuzz smoke run against the kupyna target\n\
+         \x20 fuzz           short cargo-fuzz smoke run against the kupyna/kalyna/strumok targets\n\
          \x20 audit          cargo audit (RustSec advisories)\n\
          \x20 deny           cargo deny check (licenses, bans, sources)\n\
          \x20 oracle-java    run the Java/Bouncy Castle oracle harness via Maven\n\
@@ -154,18 +154,28 @@ fn fuzz() -> bool {
     if !require("cargo-fuzz", "cargo install cargo-fuzz --locked") {
         return false;
     }
-    run(
-        "cargo",
-        &[
-            "+nightly",
-            "fuzz",
-            "run",
-            "kupyna",
-            "--",
-            "-max_total_time=60",
-        ],
-        Some(Path::new("crates/dstu-core")),
-    )
+    // Note (see TASKS.md "Testing & hardening"): libFuzzer-on-Windows only works with the MSVC
+    // target, not this project's GNU host toolchain - these targets build and run on Linux/macOS
+    // CI or an MSVC host, but not on a GNU-toolchain Windows dev machine. Not a bug in this
+    // command; a confirmed upstream limitation.
+    for target in ["kupyna", "kalyna", "strumok"] {
+        let ok = run(
+            "cargo",
+            &[
+                "+nightly",
+                "fuzz",
+                "run",
+                target,
+                "--",
+                "-max_total_time=60",
+            ],
+            Some(Path::new("crates/dstu-core")),
+        );
+        if !ok {
+            return false;
+        }
+    }
+    true
 }
 
 fn audit() -> bool {

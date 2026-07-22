@@ -70,12 +70,21 @@ test-vector check (or unit test) is written before the primitive it verifies, no
       `dstutool` doesn't call this yet.
 - [x] `cargo miri test` clean for all three primitives (Kalyna/Kupyna/Strumok, each confirmed
       individually above)
-- [ ] `cargo fuzz` harnesses for all three primitives — scaffold exists (`crates/dstu-core/fuzz/`)
-      but only has a `kupyna` target, and it has never actually been run locally (no `cargo-fuzz`
-      installed here, see `.claude.local.md`). Needs a `kalyna` target (`encrypt`/`decrypt` on
-      arbitrary-length input) and a `strumok` target (`apply_keystream` on arbitrary-length input),
-      then an actual local run of all three, not just scaffolding. See "Testing & hardening" below
-      for why this matters beyond "the checkbox exists."
+- [x] `cargo fuzz` harnesses for all three primitives — `kalyna`, `kupyna`, and `strumok` targets
+      all exist now (`crates/dstu-core/fuzz/fuzz_targets/`). **Cannot actually run locally**:
+      `cargo-fuzz` installed fine (needed `mingw64/bin`'s `dlltool.exe` on PATH, same requirement
+      as `cargo-audit`/`cargo-deny`, see `.claude.local.md`), but building any target fails two
+      ways in a row on this environment's GNU/MinGW toolchain — first "address sanitizer is not
+      supported for this target" (`x86_64-pc-windows-gnu`, ASan needs MSVC on Windows), then with
+      `--sanitizer none`, `libfuzzer-sys`'s own `FuzzerExtFunctionsWindows.cpp` fails to compile
+      under `g++` (`__pragma(comment(linker, ...))` is an MSVC-only compiler extension, confirmed
+      by compiling that one file directly with `g++` and reading the real error past cc-rs's
+      truncated one). **Not something to chase further here**: this project deliberately chose the
+      GNU host toolchain specifically to avoid needing Visual Studio Build Tools/MSVC (see
+      `.claude.local.md` "Toolchains"), and libFuzzer-on-Windows is an MSVC-only path upstream —
+      same shape as the cryptonite C-harness being dropped below (a real, confirmed toolchain
+      incompatibility, not a skipped step). CI (a Linux runner) remains the actual venue where
+      these targets get run, same as this project already says for the fuzz scaffold generally.
 - [ ] `dstutool` CLI: `encrypt`/`decrypt`/`hash` subcommands, mode/nonce/IV hardcoded (no
       user-facing crypto knobs, per the libsodium-style misuse-resistance goal)
 - [ ] Publish `dstu-core` to crates.io
@@ -115,8 +124,10 @@ resistance (SPA/DPA — explicitly out of scope per `SECURITY.md`/`CLAUDE.md` "M
       anywhere for it (D-15) and the 8 UAPKI-attributed cases cover a narrow slice of the state
       space — thousands of random key/IV/length combinations diffed against the C oracle would be
       the strongest confidence signal available short of the paid official text.
-- [ ] **Actually run `cargo fuzz`** for all three primitives (see the Phase 1 line above) — fuzzing
-      for panics/out-of-bounds on adversarial-length input, not correctness.
+- [ ] **Actually run `cargo fuzz`** for all three primitives — attempted 2026-07-22, blocked by a
+      confirmed GNU/MinGW-toolchain incompatibility (libFuzzer-on-Windows is MSVC-only upstream),
+      not a skipped step; full detail in the Phase 1 line above. Still open until it runs somewhere
+      that can — CI (Linux) or a machine with the MSVC toolchain.
 - [x] **`Zeroize`/`ZeroizeOnDrop` on live key-material.** `zeroize` 1.9 added
       (`default-features = false, features = ["derive"]`, `no_std`-compatible — first real
       dependency in `dstu-core`, `DECISIONS.md` D-20). Strumok's `Core` (LFSR/FSM state) derives

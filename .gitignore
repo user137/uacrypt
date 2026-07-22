@@ -1,5 +1,8 @@
 /target
 /xtask/target
+/crates/dstu-core/fuzz/target
+/crates/dstu-core/fuzz/corpus
+/crates/dstu-core/fuzz/artifacts
 **/*.rs.bk
 Cargo.lock
 *.pdb
