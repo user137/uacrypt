@@ -55,17 +55,19 @@ speed instead.
 **Updated 2026-07-22 after D-28** (full S-box+shift+MDS fusion for encrypt, see below) — D-27
 figures kept for the record:
 
-| Variant | Before D-27 | After D-27 | **After D-28** | Oliynykov C | UAPKI |
-|---|---|---|---|---|---|
-| 128-128 | 4606 | 2354 | **1041** | 13019 | 222 |
-| 128-256 | 6284 | 2999 | **1283** | 19119 | 261 |
-| 256-256 | 11412 | 5443 | **1956** | 35810 | 578 |
-| 256-512 | 14031 | 6645 | **2296** | 45520 | 663 |
-| 512-512 | 27223 | 12735 | **4006** | 91406 | 879 |
+| Variant | Before D-27 | After D-27 | **After D-28** | UAPKI |
+|---|---|---|---|---|
+| 128-128 | 4606 | 2354 | **1041** | 222 |
+| 128-256 | 6284 | 2999 | **1283** | 261 |
+| 256-256 | 11412 | 5443 | **1956** | 578 |
+| 256-512 | 14031 | 6645 | **2296** | 663 |
+| 512-512 | 27223 | 12735 | **4006** | 879 |
 
-**After D-28: ~12.5-19.9x faster than Oliynykov's reference C (was ~7-8x), ~3.4-4.9x slower than
-UAPKI (was ~10.6-14.5x)** — decrypt (not fused this pass, see below) improved too, ~36-40%, purely
-from the key schedule sharing the now-fused `encipher_round`.
+**After D-28: ~3.4-4.9x slower than UAPKI (was ~10.6-14.5x)** — decrypt (not fused this pass, see
+below) improved too, ~36-40%, purely from the key schedule sharing the now-fused `encipher_round`.
+Oliynykov's reference C is excluded from this and the other performance tables below — it's a
+correctness oracle (auditability-first, not speed-optimized, see "Implementations compared" above),
+not a relevant performance baseline.
 
 **Updated again 2026-07-22 after D-29** (`ExpandedKey` — key schedule cached across calls instead
 of redone every time):
@@ -116,12 +118,10 @@ New baseline: `kalyna-decryptfusion-2026-07-22`.
 | Before D-27 (256) | 2.17 | 5.26 | 5.85 |
 | After D-27 (256) | 5.80 | 13.30 | 14.57 |
 | **After D-28** (256) | **39.53** | **91.72** | **98.60** |
-| Oliynykov C (256) | 0.26 | 0.59 | 0.60 |
 | UAPKI (256) | 29.93 | 88.88 | 95.48 |
 | Before D-27 (512) | 1.26 | 3.44 | 4.10 |
 | After D-27 (512) | 3.54 | 8.91 | 10.57 |
 | **After D-28** (512) | **26.89** | **69.26** | **80.99** |
-| Oliynykov C (512) | 0.14 | 0.37 | 0.43 |
 | UAPKI (512) | 18.50 | 74.46 | 85.92 |
 
 **After D-28: Kupyna-256 is now 1.03-1.45x *faster* than UAPKI (crossed over from ~6.7x slower);
@@ -161,8 +161,10 @@ would" — added 2026-07-22 (`TASKS.md`, D-28/29/30 follow-up) as a second, comp
 `crates/dstutool`'s new `kalyna-block encrypt`/`decrypt` subcommand (single block, file in/file
 out — no mode of operation, deliberately not named `encrypt`/`decrypt` at the top level so it
 can't be confused with the future file-plus-mode CLI blocked on D-05) run as an actual external
-process against equivalent scratchpad CLI wrappers for Oliynykov's reference C and UAPKI (not
-committed, same convention as the C benchmark harnesses elsewhere in this file).
+process against an equivalent scratchpad CLI wrapper for UAPKI (not committed, same convention as
+the C benchmark harnesses elsewhere in this file). Oliynykov's reference C was wrapped too during
+this run but is left out of the tables below, same reasoning as the in-process tables above — it's
+a correctness oracle, not a performance baseline.
 
 Each tool takes `--iterations N` and repeats the same in-memory block op `N` times in one process
 invocation (`--raw-schedule` re-expands the key every iteration; without it, the key schedule is
@@ -180,16 +182,16 @@ crypto" are different questions and this comparison can answer both without hidi
 
 **N = 20000 iterations, same machine, same day:**
 
-| Variant | Direction | Schedule | dstutool per-op | Oliynykov C per-op | UAPKI per-op |
-|---|---|---|---|---|---|
-| 128-128 | encrypt | cached | **127 ns** | 10982 ns | 201 ns |
-| 128-128 | encrypt | raw | **1060 ns** | 28580 ns | 17366 ns |
-| 128-128 | decrypt | cached | **140 ns** | 11153 ns | 196 ns |
-| 128-128 | decrypt | raw | **1562 ns** | 28580 ns | 17562 ns |
-| 512-512 | encrypt | cached | 552 ns | 74068 ns | **476 ns** |
-| 512-512 | encrypt | raw | 3941 ns | 173369 ns | **22922 ns** |
-| 512-512 | decrypt | cached | 673 ns | 74884 ns | **510 ns** |
-| 512-512 | decrypt | raw | 4922 ns | 171900 ns | **22570 ns** |
+| Variant | Direction | Schedule | dstutool per-op | UAPKI per-op |
+|---|---|---|---|---|
+| 128-128 | encrypt | cached | **127 ns** | 201 ns |
+| 128-128 | encrypt | raw | **1060 ns** | 17366 ns |
+| 128-128 | decrypt | cached | **140 ns** | 196 ns |
+| 128-128 | decrypt | raw | **1562 ns** | 17562 ns |
+| 512-512 | encrypt | cached | 552 ns | **476 ns** |
+| 512-512 | encrypt | raw | 3941 ns | **22922 ns** |
+| 512-512 | decrypt | cached | 673 ns | **510 ns** |
+| 512-512 | decrypt | raw | 4922 ns | **22570 ns** |
 
 `dstutool`'s cached (`ExpandedKey`) per-op numbers land within a few percent of the in-process
 `criterion` numbers above (e.g. 128-128 encrypt: 127 ns here vs 132 ns in-process) — the CLI
@@ -200,16 +202,16 @@ wrapper (file I/O, argument parsing) adds essentially no measurable overhead onc
 given variant, not a message-length-dependent figure the way Kupyna/Strumok's are; block size is
 16 bytes for 128-128, 64 bytes for 512-512):**
 
-| Variant | Direction | Schedule | dstutool MB/s | Oliynykov C MB/s | UAPKI MB/s |
-|---|---|---|---|---|---|
-| 128-128 | encrypt | cached | **125.98** | 1.46 | 79.60 |
-| 128-128 | encrypt | raw | **15.09** | 0.56 | 0.92 |
-| 128-128 | decrypt | cached | **114.29** | 1.43 | 81.63 |
-| 128-128 | decrypt | raw | **10.24** | 0.56 | 0.91 |
-| 512-512 | encrypt | cached | 115.94 | 0.86 | **134.45** |
-| 512-512 | encrypt | raw | **16.24** | 0.37 | 2.79 |
-| 512-512 | decrypt | cached | 95.10 | 0.85 | **125.49** |
-| 512-512 | decrypt | raw | **13.00** | 0.37 | 2.84 |
+| Variant | Direction | Schedule | dstutool MB/s | UAPKI MB/s |
+|---|---|---|---|---|
+| 128-128 | encrypt | cached | **125.98** | 79.60 |
+| 128-128 | encrypt | raw | **15.09** | 0.92 |
+| 128-128 | decrypt | cached | **114.29** | 81.63 |
+| 128-128 | decrypt | raw | **10.24** | 0.91 |
+| 512-512 | encrypt | cached | 115.94 | **134.45** |
+| 512-512 | encrypt | raw | **16.24** | 2.79 |
+| 512-512 | decrypt | cached | 95.10 | **125.49** |
+| 512-512 | decrypt | raw | **13.00** | 2.84 |
 
 Same numbers as the `ns`/op table above, just re-expressed - MB/s is the more natural unit for
 comparing against Kupyna/Strumok's throughput tables below, even though for a fixed-size block
@@ -220,14 +222,14 @@ directly comparable across variants the way Kupyna-256 vs Kupyna-512 at the same
 **Whole-invocation wall-clock (same runs, `wall_ns`), showing process-spawn overhead is roughly
 constant across implementations, not crypto-dependent:**
 
-| Variant | Direction | Schedule | dstutool wall | Oliynykov C wall | UAPKI wall |
-|---|---|---|---|---|---|
-| 128-128 | encrypt | cached | 63.2 ms | 282.8 ms | 65.2 ms |
-| 512-512 | encrypt | cached | 70.9 ms | 1548.0 ms | 70.2 ms |
-| 512-512 | encrypt | raw | 138.9 ms | 3533.3 ms | 520.9 ms |
+| Variant | Direction | Schedule | dstutool wall | UAPKI wall |
+|---|---|---|---|---|
+| 128-128 | encrypt | cached | 63.2 ms | 65.2 ms |
+| 512-512 | encrypt | cached | 70.9 ms | 70.2 ms |
+| 512-512 | encrypt | raw | 138.9 ms | 520.9 ms |
 
 Subtracting each run's own internal `total_ns` from `wall_ns` gives a process-startup estimate of
-**~60-63 ms for all three binaries** in the cached cases — i.e. on this machine, process creation
+**~60-63 ms for both binaries** in the cached cases — i.e. on this machine, process creation
 (and whatever else Windows does before `main()` runs, including antivirus scanning of a freshly
 built binary - this session already saw one such Defender flag on a MinGW binary) costs roughly
 the same regardless of which implementation is inside, and completely dominates wall-clock time at
@@ -250,16 +252,13 @@ there's no cached-vs-raw distinction to report.
 
 **64 KB message, N = 2000 iterations, same machine, same day:**
 
-| Variant | dstutool per-op | dstutool MB/s | Oliynykov C per-op | Oliynykov C MB/s | UAPKI per-op | UAPKI MB/s |
-|---|---|---|---|---|---|---|
-| Kupyna-256 | 696128 ns | **94.14** | 94894488 ns | 0.69 | 624459 ns | **104.95** |
-| Kupyna-512 | 869777 ns | **75.35** | 132675168 ns | 0.49 | 740713 ns | **88.48** |
+| Variant | dstutool per-op | dstutool MB/s | UAPKI per-op | UAPKI MB/s |
+|---|---|---|---|---|
+| Kupyna-256 | 696128 ns | **94.14** | 624459 ns | **104.95** |
+| Kupyna-512 | 869777 ns | **75.35** | 740713 ns | **88.48** |
 
 Consistent with the in-process numbers earlier in this file (Kupyna-256 at 65536 B: 98.60 MB/s
-in-process vs 94.14 MB/s here) - the CLI wrapper's overhead is noise at this buffer size. Oliynykov's
-reference C is dramatically slower here for the same reason it is in-process (D-27's doc comment:
-`MixColumns` there is an 8-iteration bit-serial `GF(2^8)` loop, no table anywhere) - the binary
-comparison doesn't change *why*, it just confirms the gap survives running as an actual process.
+in-process vs 94.14 MB/s here) - the CLI wrapper's overhead is noise at this buffer size.
 
 ### Strumok (`strumok-crypt`)
 
