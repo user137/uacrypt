@@ -690,3 +690,48 @@ covers 16/32 but not the 64-byte keys Kalyna256_512/Kalyna512_512/Strumok512 use
 `vec(..., N)` + `copy_from_slice` approach works uniformly for every size without depending on
 which fixed-size helpers happen to be exported, at the cost of one extra allocation per test case
 — irrelevant next to what property testing already costs.
+
+## D-22: Strumok differential-tested against `outspace/dstu8845` over 4000 random cases
+
+`TASKS.md` "Testing & hardening" flagged Strumok as the highest-value target for differential
+testing specifically: no official DSTU 8845:2019 vectors exist anywhere (D-15), and the 8
+UAPKI-attributed fixed vectors adopted so far cover a narrow slice of the key/IV/length space.
+
+**What was built**, two pieces, same split as the existing Java/.NET oracle harnesses (Rust
+generates/computes, an external tool independently recomputes and diffs) — not wired into
+`cargo test` itself, so a plain `cargo test` still needs no C toolchain:
+- `crates/dstu-core/examples/strumok_diff_cases.rs` — a `cargo run --example` binary. Deterministic
+  `splitmix64` PRNG (fixed seed; not cryptographic, doesn't need to be — this only needs varied
+  inputs, not unpredictable ones), generates random key/IV/length triples for both key sizes, runs
+  them through this project's own `Strumok256`/`Strumok512`, and prints
+  `<variant> <key_hex> <iv_hex> <keystream_hex>` lines.
+- `tests/oracle-harness/strumok-differential/diff_against_outspace.c` — reads those lines, decodes
+  hex, recomputes the keystream independently via `oracles/strumok-dstu8845/` (outspace)'s own
+  `dstu8845_init`/`dstu8845_crypt`, and reports any byte mismatch plus a final count. Build/run
+  command is in the file's own header comment (same convention as the sibling
+  `strumok-cross-check/` harness).
+
+**Result: 4000/4000 cases matched** (2000 iterations × 2 key sizes), zero mismatches, on the first
+run after fixing one harness-only bug (a zero-length case's empty `keystream_hex` field confused
+the C driver's `sscanf`-based line parser — fixed by generating length `1..=300` instead of
+`0..=300`, since the zero-length case is already covered by the `chunk_invariance` unit tests in
+`tests/strumok.rs`; not a crypto bug, a test-harness parsing limitation).
+
+**Same lineage caveat as D-15 applies**: outspace and UAPKI share internal naming/structure, so
+this is not *independent* confirmation the way a Bouncy-Castle-style differential test would be —
+but it does exercise vastly more of the key/IV/length state space than 8 fixed points, catching the
+class of bug (a subtle indexing/off-by-one that only misbehaves for specific inputs) that fixed
+vectors alone might miss.
+
+**Scoped to Strumok only, not Kalyna/Kupyna, deliberately:** those two already carry two layers of
+dual-oracle verification (official vectors + real Bouncy Castle via the Java/.NET harnesses,
+`DECISIONS.md` D-10/D-13) — a random-input differential test there is the same *pattern* but with
+much lower marginal value than for Strumok, which had the least verification coverage of the
+three. Extending this same generator+differ split to `oracles/kalyna-reference/`/`cryptonite` and
+`oracles/kupyna-reference/` is a straightforward follow-up if ever prioritized, not a gap being
+hidden — noted in `TASKS.md`.
+
+**Rejected:** wiring this into `cargo test`/CI directly. Rejected because it would make the
+ordinary test suite depend on a C toolchain being present, which none of the vector/proptest/fuzz
+tests currently require — same reasoning that already keeps the Java/.NET oracle harnesses as
+separate `cargo xtask` targets rather than folded into `cargo test --workspace`.

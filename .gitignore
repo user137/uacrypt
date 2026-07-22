@@ -17,6 +17,10 @@ Cargo.lock
 /tests/oracle-harness/java/target/
 /tests/oracle-harness/dotnet/bin/
 /tests/oracle-harness/dotnet/obj/
+# Compiled C oracle-harness drivers (gcc output built ad hoc per the build command in each .c
+# file's own doc comment, never checked in) - same convention as the two rules above.
+/tests/oracle-harness/*/*.exe
+/tests/oracle-harness/*/*.o
 
 # Third-party reference implementations, used only as oracles for local test-vector
 # cross-verification (see oracles/README.md, DECISIONS.md D-02/D-06). Never vendored into
