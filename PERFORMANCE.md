@@ -77,18 +77,25 @@ speed instead.
 
 ### Strumok (`apply_keystream`, MB/s — higher is better)
 
+**Updated 2026-07-22 after D-26** (ring buffer + precomputed `T0..T7` tables, see below) — figures
+before that change are kept for the record, not deleted, since they're the actual measurement the
+optimization was checked against:
+
 | | 64 B | 1024 B | 65536 B |
 |---|---|---|---|
-| This project (256) | 29.36 | 118.67 | 144.27 |
+| This project, before D-26 (256) | 29.36 | 118.67 | 144.27 |
+| This project, **after D-26** (256) | 195.86 | 553.58 | **639.47** |
 | outspace (256) | 198.89 | 1461.07 | 2055.05 |
 | UAPKI (256) | 132.60 | 442.73 | 588.71 |
-| This project (512) | 30.31 | 115.92 | 145.61 |
+| This project, before D-26 (512) | 30.31 | 115.92 | 145.61 |
+| This project, **after D-26** (512) | 198.70 | 545.19 | **639.83** |
 | outspace (512) | 230.29 | 1443.74 | 2131.68 |
 | UAPKI (512) | 103.28 | 511.11 | 556.20 |
 
-**~4-5x slower than UAPKI, ~13-15x slower than outspace** at 64 KB (no naive/reference-grade
-Strumok implementation exists to compare against for the "correctness-first" side of this story —
-see `ORACLES.md`, no official DSTU 8845 reference implementation is publicly known to exist).
+**After D-26: now *faster* than UAPKI's Strumok, ~3.2x slower than outspace** (was ~4-5x slower
+than UAPKI, ~13-15x slower than outspace, before). No naive/reference-grade Strumok implementation
+exists to compare against for the "correctness-first" side of this story — see `ORACLES.md`, no
+official DSTU 8845 reference implementation is publicly known to exist.
 
 ## What the gap is, honestly
 
@@ -99,20 +106,23 @@ sketched-not-scheduled task for closing this):
 
 - **Kalyna/Kupyna**: `hazmat::tables` shares S-box/MDS tables between the two (D-13) but doesn't
   *combine* them the way UAPKI's `p_boxrowcol` does (S-box + row/column permutation folded into one
-  lookup).
-- **Strumok, two distinct, additive causes**: (1) `oracles/strumok-dstu8845/strumok.c`'s
-  `next_stream()` is one fully-unrolled function that updates each state word in place via modular
-  indexing — it never physically moves the 16-word state array. This project's `next_step`
-  (`crates/dstu-core/src/hazmat/strumok.rs`) calls `s.copy_within(1..16, 0)` once per step (a real
-  120-byte move), 16 times per 16-word output block — the literal-shift-vs-ring-buffer trade
-  documented in D-18. (2) Separately, outspace's `T(w)` is 8 precomputed combined tables
-  (`T0[byte0]^...^T7[byte7]`, S-box + MDS folded per byte position — 8 lookups total for the whole
-  function); this project's `t_function` does 8 S-box lookups *then* a full MDS matrix-multiply via
-  `apply_matrix`/`gf_mul` (up to 64 `GF(2^8)` multiplications) as a separate step. UAPKI's Strumok
-  sits between the two (see the table above) — consistent with it sharing at least the
-  combined-table idea but not confirmed in detail here.
+  lookup). **Not done yet** — next in line, see `TASKS.md`.
+- **Strumok, two distinct, additive causes — both fixed 2026-07-22, see D-26**: (1)
+  `oracles/strumok-dstu8845/strumok.c`'s `next_stream()` is one fully-unrolled function that
+  updates each state word in place via modular indexing — it never physically moves the 16-word
+  state array. This project's `next_step` used to call `s.copy_within(1..16, 0)` once per step (a
+  real 120-byte move), 16 times per 16-word output block — the literal-shift-vs-ring-buffer trade
+  documented in D-18 — now replaced with a `head`-indexed ring buffer, no data movement. (2)
+  Separately, outspace's `T(w)` is 8 precomputed combined tables (`T0[byte0]^...^T7[byte7]`, S-box
+  + MDS folded per byte position — 8 lookups total for the whole function); this project's
+  `t_function` used to do 8 S-box lookups *then* a full MDS matrix-multiply via
+  `apply_matrix`/`gf_mul` (up to 64 `GF(2^8)` multiplications) as a separate step — now the same 8
+  precomputed tables, transcribed from outspace directly. The remaining ~3.2x gap to outspace after
+  both fixes is a smaller, unchased residual (some other implementation detail, not root-caused
+  further here).
 - **Neither gap is a correctness or `no_std` concern** — all of it is pure throughput, addressable later
-  without touching the current, already-verified algorithm logic.
+  without touching the already-verified algorithm logic (confirmed for Strumok's fix: all existing
+  tests, including the 4000-case outspace differential harness, still pass unchanged).
 
 None of this changes any implementation's standing as a correctness oracle (`ORACLES.md`) — a
 reference implementation's whole reason for existing is auditable clarity, not speed, and UAPKI's
@@ -131,6 +141,19 @@ To check a future change against it:
 ```
 cargo bench -p dstu-core --bench kalyna --bench kupyna --bench strumok -- --baseline initial-2026-07-22
 ```
+
+**Updated 2026-07-22, same day**: once Strumok's ring-buffer/T-table change (D-26) landed, a second
+baseline was saved specifically for Strumok, so future Strumok changes are checked against the
+*optimized* form rather than the old, since-fixed one:
+
+```
+cargo bench -p dstu-core --bench strumok -- --save-baseline strumok-optimized-2026-07-22
+cargo bench -p dstu-core --bench strumok -- --baseline strumok-optimized-2026-07-22  # to check
+```
+
+`initial-2026-07-22` still exists and is kept as-is for Kalyna/Kupyna (unchanged since it was
+saved) - only Strumok has a newer baseline. Update this section again once Kalyna/Kupyna's
+combined-table optimization (sketched in `TASKS.md`) lands, the same way.
 
 `target/criterion/` is gitignored (as usual for `target/`), so this baseline lives only on whatever
 machine last ran the save command above — it is **not** a portable, cross-machine regression gate

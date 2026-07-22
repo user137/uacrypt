@@ -988,3 +988,44 @@ sign/verify against an already-fixed, already-validated curve, which is all this
 far; noted as future scope in the pseudocode doc rather than silently dropped.
 
 **Not yet done**: the other 9 curve sizes (not needed unless a use case calls for them).
+
+## D-26: Strumok switched from a shifting state array to a ring buffer, and to precomputed T-tables
+
+`PERFORMANCE.md` (D-23's follow-up) quantified a real, root-caused gap to UAPKI/outspace for
+Strumok specifically — two distinct, additive causes found by reading `oracles/strumok-dstu8845
+/strumok.c` directly: (1) `next_step` shifted the whole 16-word state array
+(`s.copy_within(1..16, 0)`) every step, a real 120-byte move outspace's fully-unrolled
+`next_stream()` never does; (2) `t_function` computed the `T` substitution at runtime (8 S-box
+lookups + a full `GF(2^8)` MDS matrix-multiply via `apply_matrix`/`gf_mul`) instead of 8
+precomputed combined tables the way outspace's `T0..T7` do.
+
+**Both fixed 2026-07-22, sketched as a `TASKS.md` item first, then implemented the same day**:
+
+- `next_step`/`strm` now take a `head: usize` index into the same fixed `[u64; 16]` array instead
+  of shifting it. Logical `S[k]` lives at physical index `(head + k) & 15`; each step overwrites
+  physical index `head` with the new feedback value (the slot holding old `S[0]` is exactly the
+  slot that becomes new `S[15]` once `head` advances — verified algebraically, same reasoning as
+  the ladder's infinity-start argument in D-25) and advances `head` by one. No data movement.
+- `t_function` now does `T0[byte0] ^ T1[byte1] ^ ... ^ T7[byte7]`, 8 lookups. `T0..T7` are
+  transcribed directly from `oracles/strumok-dstu8845/strumok.c` — the exact same byte-for-byte
+  cross-check already established when the runtime version was first written (computing `T` via
+  `hazmat::tables` and diffing all 2048 entries against these same oracle tables) already covers
+  them, so no new verification work was needed to trust the transcription itself, only to confirm
+  the *wiring* is correct (below).
+
+**Verified**: all 6 existing tests pass unchanged (official UAPKI-attributed vectors, chunk-
+invariance, involution `proptest`), plus the outspace differential harness re-run fresh —
+4000/4000 matched, same as before this change. `cargo clippy -- -D warnings`, `cargo fmt --check`,
+and the `no_std` build all still pass.
+
+**Result**: ~77-85% reduction in `apply_keystream` time across all measured buffer sizes (`cargo
+bench -- --baseline initial-2026-07-22`) — e.g. at 64 KB, both key sizes went from ~144-146 MB/s to
+~639-640 MB/s, which now *beats* UAPKI's Strumok (~557-589 MB/s) and closes most (not all) of the
+gap to outspace (~2055-2132 MB/s, still ahead — likely a remaining implementation-detail
+difference not chased further here). New baseline saved as
+`strumok-optimized-2026-07-22`; `PERFORMANCE.md` has the full before/after table.
+
+**Not done in this pass**: the equivalent combined-table optimization for Kalyna/Kupyna
+(`hazmat::tables`, shared between them) — same category of work, sketched in the same `TASKS.md`
+item, bigger surgery since it touches both algorithms' round functions and Kalyna's decrypt
+direction too. Next in line, not started yet.

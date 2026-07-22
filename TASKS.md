@@ -163,26 +163,26 @@ resistance (SPA/DPA — explicitly out of scope per `SECURITY.md`/`CLAUDE.md` "M
       purely to benchmark it; outspace's own ~12-15x-faster numbers (likely using a rotating
       buffer, per `PERFORMANCE.md`) now give an *external* read on that tradeoff's rough scale
       without needing to build one ourselves.
-- [ ] **Not scheduled, sketched only:** close (some of) the gap to UAPKI/outspace documented in
-      `PERFORMANCE.md`, root-caused by reading `oracles/strumok-dstu8845/strumok.c` directly
-      (2026-07-22) rather than guessed at:
-      - **Strumok**: outspace's `next_stream()` never physically shifts its 16-word state array —
-        it's one fully-unrolled function updating each `S[i]` in place via modular indexing, no
-        `memmove` anywhere. This project's `next_step` (`crates/dstu-core/src/hazmat/strumok.rs`)
-        calls `s.copy_within(1..16, 0)` once per step (120 bytes moved), 16 times per 16-word
-        output block. Separately, outspace's `T(w)` is 8 precomputed combined tables
-        (`T0[byte0]^...^T7[byte7]`, S-box + MDS folded together per byte position) — 8 lookups
-        total; this project's `t_function` does 8 S-box lookups *then* a full MDS matrix-multiply
-        via `apply_matrix`/`gf_mul` (up to 64 GF(2^8) multiplications) separately. Two distinct,
-        additive causes, not one.
-      - **Kalyna/Kupyna**: same shape as Strumok's T-table point — UAPKI's `p_boxrowcol` (S-box +
-        row/column permutation combined into one lookup) vs. this project's `hazmat::tables`
-        sharing S-box/MDS tables between the two algorithms (D-13) but not combining them.
-      - Both are pure throughput work, addressable without touching already-verified algorithm
-        logic or this project's constant-time posture (D-19/D-25) — a ring-buffer/combined-table
-        rewrite changes *how* a value is computed, not *whether* the computation depends on a
-        secret in a new way. Natural place to revisit alongside the DSTU 4145 comb-method note
-        above (Phase 2) — same category of "known, deliberately deferred" performance work.
+- [x] **Strumok: close the gap to UAPKI/outspace documented in `PERFORMANCE.md`**, root-caused by
+      reading `oracles/strumok-dstu8845/strumok.c` directly (2026-07-22) rather than guessed at, then
+      fixed the same day (`DECISIONS.md` D-26). Two distinct, additive causes, both closed: (1)
+      outspace's `next_stream()` never physically shifts its 16-word state array — replaced this
+      project's `s.copy_within(1..16, 0)`-per-step with a `head`-indexed ring buffer, no data
+      movement. (2) outspace's `T(w)` is 8 precomputed combined tables
+      (`T0[byte0]^...^T7[byte7]`) — transcribed those directly (same byte-for-byte cross-check
+      already covering them), replacing the runtime 8-S-box-lookups-then-MDS-matrix-multiply.
+      **Result: ~77-85% time reduction, now faster than UAPKI's Strumok, ~3.2x slower than outspace
+      (was ~4-5x/~13-15x before)** — full before/after table in `PERFORMANCE.md`. Verified: all 6
+      existing tests unchanged, the 4000-case outspace differential harness re-run fresh
+      (4000/4000), `clippy`/`fmt`/`no_std` all pass. New `criterion` baseline saved
+      (`strumok-optimized-2026-07-22`).
+- [ ] **Not scheduled, sketched only: Kalyna/Kupyna combined S-box+MDS tables.** Same shape as the
+      Strumok T-table fix above — UAPKI's `p_boxrowcol` (S-box + row/column permutation combined
+      into one lookup) vs. this project's `hazmat::tables` sharing S-box/MDS tables between the two
+      algorithms (D-13) but not combining them. Bigger surgery than Strumok's fix: touches the
+      shared table module both algorithms use, plus Kalyna's decrypt direction and inverse tables.
+      Pure throughput work, addressable without touching already-verified algorithm logic or this
+      project's constant-time posture (D-19/D-25). Next in line for this same performance pass.
 
 ## Phase 2 — libsodium-equivalent construction layer, DSTU 4145 + 9041
 
