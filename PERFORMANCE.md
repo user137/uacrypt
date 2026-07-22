@@ -83,10 +83,29 @@ of redone every time):
 the raw `encrypt` function (schedule redone every call) is still the ~3.4-4.9x-slower number above;
 `ExpandedKey` is the API a caller doing more than one block under the same key should use, and is
 also the API any future mode of operation (D-05) will need regardless of speed, to avoid redoing
-the schedule per block. **Decrypt is now the whole remaining story**: `decipher_round` was never
-fused (see D-28 and below), so decrypt-block-only is 3.2-6.9x slower than encrypt-block-only, and
-that gap — not the key schedule — is now the dominant reason Kalyna's raw `decrypt` function still
-trails UAPKI. New baseline: `kalyna-expandedkey-2026-07-22`.
+the schedule per block. Decrypt (not fused yet at this point) was 3.2-6.9x slower than
+encrypt-block-only — see D-30, resolved below.
+
+**Updated a third time 2026-07-22 after D-30** (decrypt round fused too — equivalent-inverse-cipher
+restructuring, transformed interior round keys):
+
+| Variant, block-only (schedule cached) | This project | UAPKI |
+|---|---|---|
+| 128-128 encrypt | 132 ns | 222 ns |
+| 128-128 decrypt | **144 ns** (was 433 ns) | 222 ns |
+| 256-256 encrypt | 268 ns | 578 ns |
+| 256-256 decrypt | **323 ns** (was 1435 ns) | 578 ns |
+| 512-512 encrypt | 573 ns | 879 ns |
+| 512-512 decrypt | **691 ns** (was 3934 ns) | 879 ns |
+
+**Kalyna decrypt-block-only is now faster than UAPKI across every variant measured too** — combined
+with D-29's encrypt result, this closes essentially the entire gap to UAPKI for `ExpandedKey`, the
+API any real multi-block caller (or future mode of operation) would actually use. The raw one-shot
+`decrypt` function (schedule *and* the new key-transform both recomputed every call) is a more
+mixed picture: slightly slower for the two smallest variants (the extra `nr-1` key-transform calls
+aren't offset by round fusion at low round counts) but substantially faster for the three largest —
+an honest tradeoff of the one-shot convenience path, not a regression in the path that matters.
+New baseline: `kalyna-decryptfusion-2026-07-22`.
 
 ### Kupyna (digest, MB/s — higher is better)
 
@@ -152,13 +171,16 @@ sketched-not-scheduled task for closing this):
   encrypt round (and Kupyna's, which shares the table) this way, closing Kupyna's gap to UAPKI
   almost entirely and Kalyna's encrypt gap substantially. D-29 then added `ExpandedKey` (schedule
   cached once, reused across calls) — with the schedule cached, Kalyna encrypt is now *faster* than
-  UAPKI for every variant measured. **What's left, concretely, is only Kalyna's decrypt round**:
-  `decipher_round` was never fused — `inv_sub_bytes` runs last in the existing round, not first, so
-  the same direct table-swap trick doesn't apply; it needs restructuring into an equivalent-inverse-
-  cipher form (transform the round keys once during key expansion so `inv_sub_bytes` moves to the
-  front of the round, the same way AES's `EqInvCipher` does) — staged separately in `TASKS.md`, not
-  done yet. Decrypt-block-only is currently 3.2-6.9x slower than encrypt-block-only, confirming
-  this is now the single largest remaining, already-scoped, not-yet-closed gap.
+  UAPKI for every variant measured. D-30 fused the decrypt round too, via an equivalent-inverse-
+  cipher restructuring (interior round keys transformed once — `DK[j] = apply_matrix(K[j],
+  MDS_INV_TABLE)` — so `inv_sub_bytes` effectively moves to the front of each interior round,
+  mirroring `encipher_round`'s shape). **With that, `ExpandedKey`'s encrypt *and* decrypt are both
+  faster than UAPKI across every variant measured** — the gap this section used to describe is, as
+  of D-30, closed for the schedule-cached API. What remains is honest, not hidden: the *raw*
+  one-shot `encrypt`/`decrypt` functions (which redo the schedule, and now decrypt's key transform
+  too, on every call) are still slower than UAPKI's own one-shot calls for the reasons above — that
+  gap is inherent to the one-shot API shape, not something further table fusion closes, and
+  `ExpandedKey` exists specifically for callers who want the schedule-cached numbers instead.
 - **Strumok, two distinct, additive causes — both fixed 2026-07-22, see D-26**: (1)
   `oracles/strumok-dstu8845/strumok.c`'s `next_stream()` is one fully-unrolled function that
   updates each state word in place via modular indexing — it never physically moves the 16-word
@@ -227,11 +249,19 @@ cargo bench -p dstu-core --bench kalyna -- --save-baseline kalyna-expandedkey-20
 cargo bench -p dstu-core --bench kalyna -- --baseline kalyna-expandedkey-2026-07-22  # to check
 ```
 
-`initial-2026-07-22` and `kalyna-kupyna-optimized-2026-07-22` are now both superseded for
-Kalyna/Kupyna (`kalyna-kupyna-fused-2026-07-22` for the two shared benches, `kalyna-expandedkey-
-2026-07-22` for Kalyna specifically, since it also has the new `ExpandedKey` bench functions the
-other baseline doesn't) and Strumok is still tracked against `strumok-optimized-2026-07-22` — kept
-only as historical records, not what new changes should be checked against.
+**Updated a fourth time 2026-07-22, same day**: D-30's decrypt fusion landed, so a sixth baseline
+supersedes `kalyna-expandedkey-2026-07-22` for Kalyna:
+
+```
+cargo bench -p dstu-core --bench kalyna -- --save-baseline kalyna-decryptfusion-2026-07-22
+cargo bench -p dstu-core --bench kalyna -- --baseline kalyna-decryptfusion-2026-07-22  # to check
+```
+
+`initial-2026-07-22`, `kalyna-kupyna-optimized-2026-07-22`, and `kalyna-expandedkey-2026-07-22` are
+now all superseded for Kalyna (by `kalyna-decryptfusion-2026-07-22`, or `kalyna-kupyna-fused-2026-
+07-22` for the two benches shared with Kupyna) and Strumok is still tracked against
+`strumok-optimized-2026-07-22` — kept only as historical records, not what new changes should be
+checked against.
 
 `target/criterion/` is gitignored (as usual for `target/`), so this baseline lives only on whatever
 machine last ran the save command above — it is **not** a portable, cross-machine regression gate

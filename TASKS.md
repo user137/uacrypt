@@ -242,12 +242,34 @@ resistance (SPA/DPA — explicitly out of scope per `SECURITY.md`/`CLAUDE.md` "M
          512-512: 568 ns encrypt vs 3934 ns decrypt) — decrypt fusion (stage 4) is now clearly the
          single largest remaining gap, not the key schedule. New baseline:
          `kalyna-expandedkey-2026-07-22`.
-      4. **Not done yet, now the clear priority**: decrypt-direction fusion (equivalent-inverse-
-         cipher restructuring, see stage 1's note — `inv_sub_bytes` runs last in the existing round,
-         needs the round keys transformed once during key expansion so it can move to the front,
-         the same way AES's `EqInvCipher` does), re-run `cargo bench` against
-         `kalyna-expandedkey-2026-07-22`, update `PERFORMANCE.md`, save a new baseline, add a
-         `DECISIONS.md` entry.
+      4. [x] **Decrypt-direction fusion, done, see `DECISIONS.md` D-30**. `decipher_round`'s
+         mix-then-permute-then-substitute order isn't directly fusable (opposite of encrypt's
+         substitute-first order) - fixed by regrouping the *whole* decrypt sequence (not just one
+         round): `IS`/`IP` commute (same row-invariance as D-28) and the GF(2^8)-linear `IM`
+         distributes over XOR, so `[IP;IS;XOR(K);IM]` = `[IS;IP;IM;XOR(IM(K))]` - substitute-
+         permute-mix, `encipher_round`'s exact shape, using transformed interior keys `DK[j] =
+         apply_matrix(K[j], MDS_INV_TABLE)`. New `tables::SBOX_MDS_DEC` (same `const fn` pattern),
+         new `hazmat::kalyna::fused_inv_round` (gather direction is `inv_shift_rows`'s, opposite
+         sign from `encipher_round`'s). `ExpandedKey` extended with a `dec_keys` field, precomputed
+         once in `new()` so caching doesn't reintroduce `nr-1` `apply_matrix` calls into every
+         `decrypt_block`. Verified: new `proptest` suite (4 cases spanning every real
+         `(nb, nr)` pair) checking the restructured decrypt against a kept-for-reference naive
+         three-pass version over **random round-key schedules and ciphertexts** (not just fixed
+         vectors - this transform moves *where* keys apply, a subtler bug class than D-28's
+         per-round fusion), a new exhaustive `SBOX_MDS_DEC` unit test, all official vectors
+         (including real decrypt vectors)/proptests/`ExpandedKey` tests unchanged, Oliynykov
+         differential harness re-run fresh (15000/15000 encrypt cases - this harness doesn't
+         exercise `KalynaDecipher`, so it doesn't independently re-check decrypt beyond the vectors
+         and naive-vs-fused proptest above; a cheap possible extension, not done), `clippy`/`fmt`/
+         `no_std` all pass. **Result**: decrypt-block-only improved 66-82% (e.g. 512-512: 3934 ns ->
+         691 ns) - **`ExpandedKey`'s encrypt and decrypt are both now faster than UAPKI across every
+         variant measured**, closing essentially the entire gap for the schedule-cached API (the
+         raw one-shot functions still trail UAPKI somewhat, an accepted tradeoff of that API shape).
+         New baseline: `kalyna-decryptfusion-2026-07-22`.
+
+      **Stage 2 (`Column` -> `u64` representation) remains not done** - given the results above
+      (Kalyna at/above UAPKI parity for the cached-schedule API, Kupyna at/above parity), expected
+      further payoff is small; revisit only if a future profiling pass shows it's still worth it.
 
 ## Phase 2 — libsodium-equivalent construction layer, DSTU 4145 + 9041
 

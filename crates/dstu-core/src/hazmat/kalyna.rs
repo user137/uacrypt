@@ -11,7 +11,9 @@
 //! (`crypto_secretbox`-equivalent) is a separate, higher-level primitive - see `DECISIONS.md` D-05
 //! and `docs/dstu-crypto-project.md` "Concrete API shape".
 
-use super::tables::{apply_matrix, MDS_INV_TABLE, ROWS, SBOXES, SBOXES_DEC, SBOX_MDS};
+use super::tables::{
+    apply_matrix, MDS_INV_TABLE, ROWS, SBOXES, SBOXES_DEC, SBOX_MDS, SBOX_MDS_DEC,
+};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 /// One 64-bit state/key word, byte-for-byte (index 0 = least-significant byte - see
@@ -136,10 +138,58 @@ fn encipher_round(state: &mut [Column]) {
 }
 
 /// One decryption round, run in reverse: tau^-1 -> pi^-1 -> eta^-1 (`DecipherRound`).
+///
+/// No production code path calls this directly anymore - `decrypt_with_schedule` uses
+/// `fused_inv_round` instead (D-30). Kept as the independent reference
+/// `tests::fused_decrypt_matches_naive` checks the restructured decrypt against, same pattern as
+/// `sub_bytes`/`shift_rows` above (D-28).
+#[allow(dead_code)]
 fn decipher_round(state: &mut [Column]) {
     apply_matrix(state, &MDS_INV_TABLE);
     inv_shift_rows(state);
     inv_sub_bytes(state);
+}
+
+/// One *interior* decrypt round, restructured (D-30, `DECISIONS.md`) into the same
+/// substitute-then-permute-then-mix shape as `encipher_round`, fused the same way over
+/// `tables::SBOX_MDS_DEC`. Valid via the identity `IM(IP(IS(x)) XOR K) = IM(IP(IS(x))) XOR IM(K)`
+/// (`IM` = the MDS-inverse mix is GF(2^8)-linear, so it distributes over XOR) combined with
+/// `IS`/`IP` commuting (same row-invariance fact `encipher_round` relies on) - see D-30 for the
+/// full derivation. The caller must XOR the *transformed* key `DK[j] = apply_matrix(K[j],
+/// MDS_INV_TABLE)` afterward, not the original `K[j]` - see `transform_keys_for_decrypt`.
+///
+/// The gather direction is `inv_shift_rows`'s, not `encipher_round`'s (`shift_rows`) - opposite
+/// index arithmetic, since this undoes the permutation rather than performing it: output column
+/// `out_col` reads from input column `(out_col + shift) % nb`, not `(out_col - shift) % nb`.
+fn fused_inv_round(state: &mut [Column]) {
+    let nb = state.len();
+    debug_assert!(nb.is_power_of_two());
+    let nb_mask = nb - 1;
+    let mut result = [ZERO_COLUMN; MAX_NB];
+    for (out_col, out_word) in result[..nb].iter_mut().enumerate() {
+        let mut acc = 0u64;
+        for row in 0..ROWS {
+            let shift = row * nb / ROWS;
+            let src_col = (out_col + shift) & nb_mask;
+            let byte = state[src_col][row];
+            acc ^= SBOX_MDS_DEC[row][byte as usize];
+        }
+        *out_word = acc.to_le_bytes();
+    }
+    state.copy_from_slice(&result[..nb]);
+}
+
+/// Transforms the interior round keys (`K[1..nr]`) for use with `fused_inv_round`: `DK[j] =
+/// apply_matrix(K[j], MDS_INV_TABLE)` - see `fused_inv_round`'s doc comment for why. `K[0]`/`K[nr]`
+/// (the mod-2^64 whitening keys) are copied through untransformed and unused by the fused loop -
+/// mod-add doesn't distribute over XOR the way the GF(2^8)-linear MDS does, so those two stay at
+/// the decrypt sequence's two ends, exactly as before (D-30).
+fn transform_keys_for_decrypt(round_keys: &RoundKeys, nb: usize, nr: usize) -> RoundKeys {
+    let mut dec_keys = *round_keys;
+    for key in dec_keys.iter_mut().take(nr).skip(1) {
+        apply_matrix(&mut key[..nb], &MDS_INV_TABLE);
+    }
+    dec_keys
 }
 
 /// `base` sandwiched by two encipher rounds with `tmp` added/XORed/added around them - the shared
@@ -337,10 +387,13 @@ fn encrypt_with_schedule(
     out
 }
 
-/// Runs the decryption rounds against an already-expanded key schedule. See
-/// `encrypt_with_schedule`.
+/// Runs the decryption rounds against an already-expanded key schedule and its `dec_keys`
+/// transform (`transform_keys_for_decrypt`) - the equivalent-inverse-cipher restructuring, D-30.
+/// `round_keys[0]`/`round_keys[nr]` (untransformed) are used for the two whitening steps at the
+/// ends; `dec_keys[1..nr]` (transformed) are used by the fused interior rounds.
 fn decrypt_with_schedule(
     round_keys: &RoundKeys,
+    dec_keys: &RoundKeys,
     ciphertext: &[u8],
     nb: usize,
     nr: usize,
@@ -348,11 +401,13 @@ fn decrypt_with_schedule(
     let mut state = columns_from_bytes(ciphertext, nb);
 
     sub_round_key(&mut state[..nb], &round_keys[nr][..nb]);
-    for round_key in round_keys[1..nr].iter().rev() {
-        decipher_round(&mut state[..nb]);
-        xor_round_key(&mut state[..nb], &round_key[..nb]);
+    apply_matrix(&mut state[..nb], &MDS_INV_TABLE);
+    for dec_key in dec_keys[1..nr].iter().rev() {
+        fused_inv_round(&mut state[..nb]);
+        xor_round_key(&mut state[..nb], &dec_key[..nb]);
     }
-    decipher_round(&mut state[..nb]);
+    inv_shift_rows(&mut state[..nb]);
+    inv_sub_bytes(&mut state[..nb]);
     sub_round_key(&mut state[..nb], &round_keys[0][..nb]);
 
     let mut out = [0u8; MAX_NB * ROWS];
@@ -392,8 +447,10 @@ fn decrypt_generic(
     nr: usize,
 ) -> [u8; MAX_NB * ROWS] {
     let mut round_keys = key_expand(key, nb, nk, nr);
-    let out = decrypt_with_schedule(&round_keys, ciphertext, nb, nr);
+    let mut dec_keys = transform_keys_for_decrypt(&round_keys, nb, nr);
+    let out = decrypt_with_schedule(&round_keys, &dec_keys, ciphertext, nb, nr);
     round_keys.zeroize();
+    dec_keys.zeroize();
     out
 }
 
@@ -443,6 +500,10 @@ macro_rules! kalyna_variant {
         #[derive(Zeroize, ZeroizeOnDrop)]
         pub struct $expanded_name {
             round_keys: RoundKeys,
+            /// `transform_keys_for_decrypt`'s output (D-30) - precomputed here, not per
+            /// `decrypt_block` call, so caching the schedule doesn't reintroduce `nr - 1`
+            /// `apply_matrix` calls into every decrypt.
+            dec_keys: RoundKeys,
         }
 
         impl $expanded_name {
@@ -451,8 +512,11 @@ macro_rules! kalyna_variant {
             /// schedule the same way the raw `encrypt`/`decrypt` functions already zeroize theirs.
             #[must_use]
             pub fn new(key: &[u8; $key_bytes]) -> Self {
+                let round_keys = key_expand(key, $nb, $nk, $nr);
+                let dec_keys = transform_keys_for_decrypt(&round_keys, $nb, $nr);
                 Self {
-                    round_keys: key_expand(key, $nb, $nk, $nr),
+                    round_keys,
+                    dec_keys,
                 }
             }
 
@@ -468,7 +532,7 @@ macro_rules! kalyna_variant {
             /// Decrypts one block using the cached schedule - no `key_expand` call.
             #[must_use]
             pub fn decrypt_block(&self, block: &[u8; $block_bytes]) -> [u8; $block_bytes] {
-                let out = decrypt_with_schedule(&self.round_keys, block, $nb, $nr);
+                let out = decrypt_with_schedule(&self.round_keys, &self.dec_keys, block, $nb, $nr);
                 let mut result = [0u8; $block_bytes];
                 result.copy_from_slice(&out[..$block_bytes]);
                 result
@@ -532,4 +596,81 @@ mod fused_round_tests {
             prop_assert_eq!(fused, naive);
         }
     }
+}
+
+/// D-30's equivalent-inverse-cipher restructuring is a much less obvious transform than D-28's
+/// forward fusion (it moves *where* each round key is applied, not just how a round is computed) -
+/// checked here against the untransformed decrypt (`decipher_round`, still `#[allow(dead_code)]`
+/// in production) over random round-key schedules and ciphertexts, not just the fixed key
+/// schedules real vectors happen to produce.
+#[cfg(test)]
+mod decrypt_fusion_tests {
+    use super::{
+        columns_from_bytes, decipher_round, decrypt_with_schedule, sub_round_key,
+        transform_keys_for_decrypt, xor_round_key, Column, MAX_NB, ROUND_KEYS_LEN, ROWS,
+        ZERO_COLUMN,
+    };
+    use proptest::prelude::*;
+
+    type RoundKeys = [[Column; MAX_NB]; ROUND_KEYS_LEN];
+
+    /// The pre-D-30 form (three-pass `decipher_round`, untransformed keys), kept only here as the
+    /// independent reference the restructured `decrypt_with_schedule` is checked against.
+    fn naive_decrypt_with_schedule(
+        round_keys: &RoundKeys,
+        ciphertext: &[u8],
+        nb: usize,
+        nr: usize,
+    ) -> [u8; MAX_NB * ROWS] {
+        let mut state = columns_from_bytes(ciphertext, nb);
+        sub_round_key(&mut state[..nb], &round_keys[nr][..nb]);
+        for round_key in round_keys[1..nr].iter().rev() {
+            decipher_round(&mut state[..nb]);
+            xor_round_key(&mut state[..nb], &round_key[..nb]);
+        }
+        decipher_round(&mut state[..nb]);
+        sub_round_key(&mut state[..nb], &round_keys[0][..nb]);
+
+        let mut out = [0u8; MAX_NB * ROWS];
+        for c in 0..nb {
+            out[c * ROWS..(c + 1) * ROWS].copy_from_slice(&state[c]);
+        }
+        out
+    }
+
+    fn arb_round_key_bytes(nb: usize, nr: usize) -> impl Strategy<Value = Vec<u8>> {
+        proptest::collection::vec(any::<u8>(), (nr + 1) * nb * ROWS)
+    }
+
+    fn arb_block(nb: usize) -> impl Strategy<Value = Vec<u8>> {
+        proptest::collection::vec(any::<u8>(), nb * ROWS)
+    }
+
+    macro_rules! fusion_matches_naive_test {
+        ($test_name:ident, $nb:literal, $nr:literal) => {
+            proptest! {
+                #[test]
+                fn $test_name(
+                    key_bytes in arb_round_key_bytes($nb, $nr),
+                    ciphertext in arb_block($nb),
+                ) {
+                    let mut round_keys: RoundKeys = [[ZERO_COLUMN; MAX_NB]; ROUND_KEYS_LEN];
+                    for i in 0..=$nr {
+                        let start = i * $nb * ROWS;
+                        round_keys[i] = columns_from_bytes(&key_bytes[start..start + $nb * ROWS], $nb);
+                    }
+
+                    let dec_keys = transform_keys_for_decrypt(&round_keys, $nb, $nr);
+                    let naive = naive_decrypt_with_schedule(&round_keys, &ciphertext, $nb, $nr);
+                    let fused = decrypt_with_schedule(&round_keys, &dec_keys, &ciphertext, $nb, $nr);
+                    prop_assert_eq!(naive, fused);
+                }
+            }
+        };
+    }
+
+    fusion_matches_naive_test!(decrypt_fusion_matches_naive_nb2_nr10, 2, 10);
+    fusion_matches_naive_test!(decrypt_fusion_matches_naive_nb4_nr14, 4, 14);
+    fusion_matches_naive_test!(decrypt_fusion_matches_naive_nb4_nr18, 4, 18);
+    fusion_matches_naive_test!(decrypt_fusion_matches_naive_nb8_nr18, 8, 18);
 }

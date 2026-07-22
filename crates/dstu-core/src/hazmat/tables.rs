@@ -4433,6 +4433,30 @@ const fn build_sbox_mds() -> [[u64; 256]; ROWS] {
 
 pub(crate) const SBOX_MDS: [[u64; 256]; ROWS] = build_sbox_mds();
 
+/// Combined inverse-S-box + inverse-MDS lookup for Kalyna's decrypt direction (D-28 follow-up,
+/// `DECISIONS.md` D-30): `SBOX_MDS_DEC[row][byte] = MDS_INV_TABLE[row][SBOXES_DEC[row % 4][byte]]`.
+/// Decrypt's *un-transformed* round order is mix-then-substitute (opposite of encrypt), which by
+/// itself isn't fusable this way - `hazmat::kalyna::fused_inv_round` uses this table only after an
+/// equivalent-inverse-cipher restructuring (transformed interior round keys, `DK[j] =
+/// apply_matrix(K[j], MDS_INV_TABLE)`) that reorders each interior round to substitute-then-mix,
+/// the same shape `SBOX_MDS`/`encipher_round` already use - see D-30 for the derivation.
+const fn build_sbox_mds_dec() -> [[u64; 256]; ROWS] {
+    let mut table = [[0u64; 256]; ROWS];
+    let mut row = 0;
+    while row < ROWS {
+        let mut byte = 0usize;
+        while byte < 256 {
+            let substituted = SBOXES_DEC[row % 4][byte] as usize;
+            table[row][byte] = MDS_INV_TABLE[row][substituted];
+            byte += 1;
+        }
+        row += 1;
+    }
+    table
+}
+
+pub(crate) const SBOX_MDS_DEC: [[u64; 256]; ROWS] = build_sbox_mds_dec();
+
 /// Exhaustively confirms `MDS_TABLE`/`MDS_INV_TABLE` (generated, D-27) against `gf_mul` +
 /// `MDS_MATRIX`/`MDS_INV_MATRIX` (the original, still-verified computation) - every input row and
 /// every possible byte value, not a sample. This is what justifies `gf_mul`/`MDS_MATRIX`/
@@ -4441,7 +4465,8 @@ pub(crate) const SBOX_MDS: [[u64; 256]; ROWS] = build_sbox_mds();
 #[cfg(test)]
 mod tests {
     use super::{
-        gf_mul, MDS_INV_MATRIX, MDS_INV_TABLE, MDS_MATRIX, MDS_TABLE, ROWS, SBOXES, SBOX_MDS,
+        gf_mul, MDS_INV_MATRIX, MDS_INV_TABLE, MDS_MATRIX, MDS_TABLE, ROWS, SBOXES, SBOXES_DEC,
+        SBOX_MDS, SBOX_MDS_DEC,
     };
 
     fn expected_column(matrix: &[[u8; ROWS]; ROWS], in_row: usize, byte: u8) -> u64 {
@@ -4487,6 +4512,20 @@ mod tests {
                     SBOX_MDS[row][byte as usize],
                     expected_column(&MDS_MATRIX, row, substituted),
                     "SBOX_MDS[{row}][{byte}] mismatch"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn sbox_mds_dec_matches_gf_mul_and_sbox_dec_exhaustively() {
+        for row in 0..ROWS {
+            for byte in 0..=u8::MAX {
+                let substituted = SBOXES_DEC[row % 4][byte as usize];
+                assert_eq!(
+                    SBOX_MDS_DEC[row][byte as usize],
+                    expected_column(&MDS_INV_MATRIX, row, substituted),
+                    "SBOX_MDS_DEC[{row}][{byte}] mismatch"
                 );
             }
         }

@@ -1179,3 +1179,73 @@ schedule-cached case; `kalyna_512_512_encrypt_block_only` is 568 ns vs UAPKI's 8
 3934 ns decrypt) - this was already visible before `ExpandedKey` (D-27/D-28 never fused the decrypt
 round) but is now the single largest remaining gap, since encrypt (with a cached key) has
 essentially closed the distance to UAPKI. New baseline: `kalyna-expandedkey-2026-07-22`.
+
+## D-30: Kalyna decrypt round fused too - equivalent-inverse-cipher restructuring
+
+Follow-up to D-28/D-29, same day (`TASKS.md` D-28 stage 4, the item both those entries deferred as
+"the fiddly inverse direction"). D-29 left decrypt as the single largest remaining gap to UAPKI
+(decrypt-block-only 3.2-6.9x slower than encrypt-block-only). The reason D-28's direct table-fusion
+trick doesn't apply to decrypt: the existing `decipher_round` order is mix-then-permute-then-
+substitute (`apply_matrix(MDS_INV)` first, `inv_sub_bytes` last) - the *opposite* of encrypt's
+substitute-then-permute-then-mix, so there's no single raw byte to feed a combined lookup table
+before it gets linearly mixed with 7 others.
+
+**The fix regroups the *whole* decrypt sequence, not just one round, using two identities**:
+`IS`/`IP` (inverse-S-box, inverse-shift-rows) commute (same row-invariance fact D-28 already
+relies on: substitution is row-indexed, the permutation only moves columns); and `IM` (the
+GF(2^8)-linear inverse-MDS mix) distributes over XOR, so `IM(x XOR k) = IM(x) XOR IM(k)`. Grouping
+one interior round as `[IP; IS; XOR(K); IM]` (rather than the original `[IM; IP; IS; XOR(K)]`) and
+applying both identities: `IP;IS = IS;IP` (commute), then `XOR(K); IM = IM; XOR(IM(K))` (push the
+key past the now-adjacent `IM`), gives `[IS; IP; IM; XOR(IM(K))]` - substitute-permute-mix, then
+the *transformed* key, exactly `encipher_round`'s shape. Doing this for every interior round chains
+into: one leading bare `apply_matrix(MDS_INV)` (nothing to push it into, it's adjacent to the
+mod-add `K_nr` whitening, which doesn't distribute over XOR the way GF(2^8)-linear ops do), `nr-1`
+fused rounds (`fused_inv_round`, over a new `tables::SBOX_MDS_DEC = MDS_INV_TABLE[row][SBOXES_DEC[
+row % 4][byte]]`, same `const fn` composition pattern as `SBOX_MDS`) each followed by
+`XOR(DK[j])` where `DK[j] = apply_matrix(K[j], MDS_INV_TABLE)`, then one trailing bare
+`inv_shift_rows; inv_sub_bytes`, then the `K_0` whitening. `fused_inv_round`'s gather index is
+`inv_shift_rows`'s direction (`src_col = (out_col + shift) % nb`), the opposite sign from
+`encipher_round`'s (`(out_col + nb - shift) % nb`) - it undoes the permutation rather than
+performing it.
+
+**A first derivation attempt was wrong and was caught before implementation, not after**: grouping
+as `[IS; XOR(K); IM; IP]` (pushing the key *forward* through both `IM` and `IP`) lands the key
+right before the *next* round's substitution step, which just recreates the original problem one
+round later (substitution still ends up seeing a value that depends on a runtime key, blocking
+table fusion) - a dead end, not a bug, caught by re-deriving on paper (with a second opinion) before
+writing any code, per `CLAUDE.md`'s "research before implementation."
+
+**`ExpandedKey` updated to precompute `DK[1..nr]` once in `new()`** (a new `dec_keys` field,
+alongside the existing `round_keys`, both `Zeroize`/`ZeroizeOnDrop`), not per `decrypt_block` call -
+otherwise caching the schedule would reintroduce `nr - 1` `apply_matrix` calls into every decrypt,
+undoing part of D-29's win. The raw `decrypt_generic` computes `dec_keys` once per call (same
+one-shot cost class as `key_expand` itself) via a new `transform_keys_for_decrypt` helper.
+
+**Verified**: a new `proptest` suite (`hazmat::kalyna::decrypt_fusion_tests`, four cases spanning
+every real `(nb, nr)` combination) checks the restructured `decrypt_with_schedule` against a
+kept-for-reference `naive_decrypt_with_schedule` (the untransformed three-pass `decipher_round`
+loop, `decipher_round` itself now `#[allow(dead_code)]`) over **random round-key schedules and
+random ciphertexts** - not just the fixed schedules real vectors happen to produce, since this
+transform moves *where* each key is applied, a subtler class of bug than D-28's per-round fusion.
+A new exhaustive `hazmat::tables::tests::sbox_mds_dec_matches_gf_mul_and_sbox_dec_exhaustively`
+test. All existing official vectors (including the real DSTU 7624 *decryption* vectors), `proptest`
+round-trips, and `ExpandedKey`'s own proptests re-run unchanged. The Oliynykov differential harness
+re-run fresh (15000/15000 encrypt cases, bit-identical) - note this harness only exercises
+`KalynaEncipher`, not `KalynaDecipher`, so it doesn't independently re-verify decrypt beyond what
+the official vectors and the naive-vs-fused proptest already cover; extending it to decrypt was not
+done this pass (`oracles/kalyna-reference/kalyna.h` does expose `KalynaDecipher`, so it's a small,
+cheap addition if ever wanted). `clippy`, `fmt`, `no_std` all pass.
+
+**Result** (`cargo bench -- --baseline kalyna-expandedkey-2026-07-22`): with the schedule cached,
+decrypt-block-only improved **66-82%** (e.g. 128-128: 433 ns -> 144 ns; 512-512: 3934 ns -> 691 ns)
+- now roughly on par with encrypt-block-only (which barely moved, as expected) instead of 3.2-6.9x
+slower. **Kalyna decrypt-block-only is now faster than UAPKI across every variant measured** (e.g.
+128-128: 144 ns vs UAPKI's 222 ns; 512-512: 691 ns vs 879 ns) - combined with D-29's encrypt result,
+this closes essentially the entire gap to UAPKI for the schedule-cached (`ExpandedKey`) API, the
+one any real multi-block caller or future mode of operation would use. The raw one-shot `decrypt`
+function (schedule recomputed every call, now also recomputing `dec_keys`) is a more mixed
+picture: regressed slightly for the two smallest variants (128-128: +11%, 128-256: +4.5% - the
+extra `nr - 1` key-transform `apply_matrix` calls aren't offset by the round fusion at low round
+counts) but improved substantially for the larger ones (256-256: -17%, 256-512: -22%, 512-512:
+-33%) - an honest tradeoff of the one-shot convenience path, not a regression in the path that
+matters (`ExpandedKey`). New baseline: `kalyna-decryptfusion-2026-07-22`.
