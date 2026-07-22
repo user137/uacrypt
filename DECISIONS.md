@@ -516,3 +516,54 @@ project. Rejected because UAPKI operates one layer up and in a different languag
 existence of a mature PKI SDK says nothing about whether a safe, `no_std`-capable Rust
 implementation of the underlying algorithms is worth having, and the crates.io check (D-06/this
 entry) suggests it currently doesn't exist anywhere.
+
+## D-18: Strumok implemented in `dstu_core::hazmat::strumok` — citation and verification status
+
+Ported from `docs/pseudocode/strumok.md` (from-spec, `docs/papers/Strumok.pdf` Sections 2-9),
+structurally cross-checked against both `oracles/strumok-dstu8845/strumok.c` (outspace) and
+`oracles/uapki/library/uapkic/src/dstu8845.c` (UAPKI), and verified test-first against the
+UAPKI-attributed vectors (`crates/dstu-core/tests/vectors/strumok/keystream-{256,512}.json`, D-15)
+— **all 8 cases pass on the first implementation, `cargo test`/`clippy -D warnings`/`fmt --check`/
+`no_std` build/`cargo miri test` all clean.**
+
+**Two things had to be sourced independently of the pseudocode doc, both verified before writing
+any Rust:**
+- The `T` nonlinear substitution (Section 7) is exactly one Kalyna/Kupyna round's `eta`+`tau`
+  applied to a single 64-bit word — confirmed by computing it via the existing
+  `hazmat::tables::{SBOXES, MDS_MATRIX, apply_matrix}` (already shared by Kalyna/Kupyna, D-10) and
+  diffing all 2048 entries of both oracles' precomputed `T0..T7` tables against that computation,
+  byte-for-byte, with a script (not eyeballed). Zero mismatches. This means `T` needed no new
+  tables of its own.
+- `mul_alpha`/`mul_alpha_inv` (Sections 8-9) belong to a different field construction (GF(2^64) via
+  the LFSR's own feedback polynomial) not derivable from the Kalyna/Kupyna tables. Transcribed
+  from UAPKI's `mul_T`/`invmul_T` (256 x `u64` each), cross-checked byte-for-byte against
+  outspace's `strumok_alpha_mul`/`strumok_alphainv_mul` — same lineage as the D-15 caveat (not
+  independent confirmation of correctness by itself), but does confirm transcription accuracy
+  across two separately-obtained copies.
+
+**Implemented as a literal 16-word shift register**, not the rotating in-place buffer both oracles
+use for throughput. Before writing any Rust, this was verified in a standalone script: implementing
+the shift-register form of `Next`/`Strm` per `docs/pseudocode/strumok.md` directly against the
+byte-for-byte-transcribed tables above reproduced all 8 UAPKI-attributed keystream vectors exactly.
+Chosen over a 1:1 port of the rotating buffer because it is mechanically checkable against the
+pseudocode doc's own `Next(S_i, mode)` description without re-deriving the rotated indexing by
+hand — lower risk of a silent off-by-one for a first implementation of a primitive with, as of this
+writing, no officially-confirmed vectors to catch one.
+
+**Provenance ceiling, unchanged from D-15:** this closes "Strumok has zero vectors, implement
+test-first" (`TASKS.md` Phase 1) — it does **not** upgrade the vectors' status. They remain
+"UAPKI-attributed, not confirmed against the paid official DSTU 8845:2019 text." If that text is
+ever obtained, re-verify against it before calling this primitive "confirmed" the way Kalyna/Kupyna
+are worded.
+
+**Rejected:** porting the rotating-buffer/in-place-rotation form 1:1 from the oracle. Rejected for
+the reason above (mechanical fidelity to the spec's own description is easier to audit than
+mechanical fidelity to a throughput optimization); the two were confirmed equivalent in the
+pre-implementation script check, so nothing was lost by choosing the clearer form.
+
+**Rejected:** treating "T can be computed instead of tabulated" as a reason to also compute
+`mul_alpha`/`mul_alpha_inv` on the fly instead of tabulating them. Rejected because, unlike `T`,
+these have no known reduction to the already-shared Kalyna/Kupyna GF(2^8) arithmetic — the
+underlying field polynomial for Strumok's own GF(2^64) tower was never located in
+extractable form in `docs/papers/Strumok.pdf` (see `docs/pseudocode/strumok.md`), so the tables
+are the practical source, cited accordingly rather than presented as derived from first principles.

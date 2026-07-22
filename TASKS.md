@@ -58,11 +58,18 @@ test-vector check (or unit test) is written before the primitive it verifies, no
       consistency bonus, not independent confirmation — see D-15) via
       `tests/oracle-harness/strumok-cross-check/cross_check_against_uapki.c`. **Still not
       "official"**: not confirmed against the paid DSTU 8845:2019 text itself.
-- [ ] Implement Strumok test-first against the vectors above, structurally cross-checked against
-      `outspace/dstu8845`'s source per the existing pseudocode doc. Any status line for this work
-      must say "UAPKI-attributed, not confirmed against the official text" — never
-      "confirmed"/"green" the way Kalyna/Kupyna are worded (D-15).
-- [ ] `cargo miri test` clean for all three primitives
+- [x] Implement Strumok (256/512-bit key) — `dstu_core::hazmat::strumok` (`Strumok256`/
+      `Strumok512`), citation in `DECISIONS.md` D-18. **Confirmed 2026-07-22**: all 8
+      UAPKI-attributed keystream cases pass on the first attempt, `cargo test`, `cargo clippy -- -D
+      warnings`, `cargo fmt --check`, `no_std` build, and `cargo miri test` all clean. Structurally
+      cross-checked against both `outspace/dstu8845` and `oracles/uapki/.../dstu8845.c` per the
+      pseudocode doc; the `T` substitution reuses the shared `hazmat::tables` (no new tables
+      needed), `mul_alpha`/`mul_alpha_inv` tables transcribed and cross-checked byte-for-byte
+      between the two oracles. **Status line, not to be dropped**: "UAPKI-attributed, not confirmed
+      against the official text" (D-15) — implementing this did not change that provenance ceiling.
+      `dstutool` doesn't call this yet.
+- [x] `cargo miri test` clean for all three primitives (Kalyna/Kupyna/Strumok, each confirmed
+      individually above)
 - [ ] `cargo fuzz` harnesses for all three primitives
 - [ ] `dstutool` CLI: `encrypt`/`decrypt`/`hash` subcommands, mode/nonce/IV hardcoded (no
       user-facing crypto knobs, per the libsodium-style misuse-resistance goal)
@@ -133,7 +140,8 @@ Two-layer split (`hazmat` now, high-level "easy" layer later) decided in `DECISI
 
 - [x] `hazmat::kupyna` (`Kupyna256`, `Kupyna512`) — confirmed green, citation in D-10 (see Phase 1)
 - [x] `hazmat::kalyna` (5 variants) — confirmed green, citation in D-13 (see Phase 1)
-- [ ] `hazmat::strumok` — unblocked (UAPKI-attributed vectors), not yet implemented (see Phase 1)
+- [x] `hazmat::strumok` (`Strumok256`, `Strumok512`) — confirmed green, citation in D-18 (see
+      Phase 1)
 - [ ] `hazmat::dstu4145` — not started; needs BC known-answer vectors extracted first (Phase 2)
 - [ ] `hazmat::dstu9041` — hard-blocked, zero source material (see `ORACLES.md`)
 - [ ] high-level "easy" layer (name TBD) — not started; nothing needs it yet (no keyed/nonce-based

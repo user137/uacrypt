@@ -4,21 +4,25 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-First primitive landed and confirmed green. A local toolchain (Rust, a C compiler, Maven) was
-installed into this environment on 2026-07-22 — see `.claude.local.md`; `cargo`/`gcc`/`mvn` all
-work here now, this is no longer a "no toolchain" environment. The workspace has two crates:
+All three of Phase 1's MVP primitives have landed and are confirmed green. A local toolchain
+(Rust, a C compiler, Maven) was installed into this environment on 2026-07-22 — see
+`.claude.local.md`; `cargo`/`gcc`/`mvn` all work here now, this is no longer a "no toolchain"
+environment. The workspace has two crates:
 
 - `crates/dstu-core` — the library (`std`/`alloc` feature flags per D-01). `dstu_core::hazmat` has
-  two primitives: `kupyna::{Kupyna256, Kupyna512}` (one-shot `digest()` only, no streaming API
-  yet, citation `DECISIONS.md` D-10) and `kalyna::{Kalyna128_128, Kalyna128_256, Kalyna256_256,
+  three primitives: `kupyna::{Kupyna256, Kupyna512}` (one-shot `digest()` only, no streaming API
+  yet, citation `DECISIONS.md` D-10), `kalyna::{Kalyna128_128, Kalyna128_256, Kalyna256_256,
   Kalyna256_512, Kalyna512_512}` (single-block `encrypt`/`decrypt`, no mode of operation, citation
-  `DECISIONS.md` D-13). Both written test-first, both share S-box/MDS tables via the internal
-  `hazmat::tables` module rather than duplicating them. **Confirmed**: `cargo test`, `cargo clippy
-  -- -D warnings`, `cargo fmt --check`, and the `no_std` build all pass for both. Kupyna's `cargo
-  miri test` is confirmed clean; Kalyna's is queued (heavier, still running as of the last check —
-  see `DECISIONS.md` D-13). Check `TASKS.md` Phase 1 for exactly what's still open (Kalyna's
-  independent second-oracle cross-check, Kupyna's streaming API, `cargo fuzz` not yet actually run,
-  no high-level wrapper yet, no mode of operation for Kalyna).
+  `DECISIONS.md` D-13), and `strumok::{Strumok256, Strumok512}` (keystream generation via
+  `apply_keystream`, citation `DECISIONS.md` D-18 — vectors are UAPKI-attributed, not confirmed
+  against the official DSTU 8845:2019 text itself, see D-15). All three written test-first;
+  Kalyna/Kupyna share S-box/MDS tables via the internal `hazmat::tables` module rather than
+  duplicating them, and Strumok's `T` substitution reuses those same shared tables too (only its
+  `mul_alpha`/`mul_alpha_inv` tables are new, since that field construction isn't shared). All
+  three are **confirmed**: `cargo test`, `cargo clippy -- -D warnings`, `cargo fmt --check`, the
+  `no_std` build, and `cargo miri test` all pass. Check `TASKS.md` Phase 1 for exactly what's still
+  open (independent second-oracle cross-check for Kalyna, Kupyna's streaming API, `cargo fuzz` not
+  yet actually run, no high-level wrapper yet, no mode of operation for Kalyna).
 - `crates/dstutool` — the CLI binary, still a placeholder `main.rs`.
 
 `cargo xtask <command>` (see `xtask/`, aliased via `.cargo/config.toml`) is the one cross-platform

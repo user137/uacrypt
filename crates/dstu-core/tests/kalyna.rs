@@ -9,7 +9,7 @@ use dstu_core::hazmat::kalyna::{
 
 fn decode_hex(s: &str) -> Vec<u8> {
     assert!(
-        s.len() % 2 == 0,
+        s.len().is_multiple_of(2),
         "odd-length hex string in test vector: {s}"
     );
     (0..s.len())

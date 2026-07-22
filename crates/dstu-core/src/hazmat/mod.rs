@@ -8,4 +8,5 @@
 
 pub mod kalyna;
 pub mod kupyna;
+pub mod strumok;
 mod tables;
