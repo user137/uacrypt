@@ -613,3 +613,50 @@ documented decision *is* the control, not a missing test.
 undiscussed gap. Rejected because a "hard constraint" that's silently false is worse than a
 precisely-scoped one — the whole point of writing these down is so a future contributor (or this
 project's own next session) doesn't have to rediscover the contradiction from scratch.
+
+## D-20: `zeroize`/`ZeroizeOnDrop` added — first real dependency, scoped to what's actually live
+
+`SECURITY.md`'s hard constraints require `Zeroize`/`ZeroizeOnDrop` on all key-material types; no
+primitive implemented it (`TASKS.md` "Testing & hardening", item added 2026-07-22 while reviewing
+what "tested" should mean beyond test vectors). Closed for the two primitives that actually hold
+key-derived state right now:
+
+- **`zeroize` 1.9 added to `dstu-core/Cargo.toml`** with `default-features = false, features =
+  ["derive"]` — keeps it `no_std`-compatible (no implicit `alloc`/`std` pull-in, confirmed:
+  `cargo build --no-default-features` still passes) per this project's platform-agnostic
+  requirement (`CLAUDE.md` MVP scope). First real entry in `SECURITY.md`'s supply-chain table,
+  which existed as an empty placeholder until now — RustCrypto-maintained, the de facto standard
+  for this in the Rust crypto ecosystem, `cargo audit`/`cargo deny` both clean with it added.
+- **Strumok**: `hazmat::strumok::Core` (the LFSR/FSM state — `s`, `r0`, `r1`, plus the buffered
+  keystream fragment `block`) derives `#[derive(Zeroize, ZeroizeOnDrop)]`. This is genuinely live
+  key-derived state for the lifetime of a `Strumok256`/`Strumok512` value, so `ZeroizeOnDrop` (not
+  just a manual clear at one call site) is the right fit — it's cleared whenever the value goes out
+  of scope, not only after one particular method call. `Strumok256`/`Strumok512` need no `Drop` of
+  their own: dropping a newtype struct drops its field, which runs `Core`'s derived `Drop`.
+- **Kalyna**: `encrypt_generic`/`decrypt_generic` call `round_keys.zeroize()` (plain `Zeroize`, not
+  `ZeroizeOnDrop` — there's no long-lived value to attach `Drop` to, since Kalyna's API is
+  stateless static functions per D-13) immediately after the round-key schedule's last use, before
+  the function returns. A plain overwrite risks dead-store elimination since the array is about to
+  go out of scope anyway; `zeroize()`'s volatile write is specifically what prevents that.
+- **Kupyna: intentionally untouched.** `Kupyna256`/`Kupyna512`'s only public API is unkeyed
+  `digest(message)` — there is no key material anywhere in the current code to zeroize. This will
+  become relevant once KMAC (Kupyna-based MAC, `oracles/uapki/`'s `dstu7564_self_test_kmac`,
+  `TASKS.md`'s `crypto_auth` line) is implemented, not before; noted here so its absence reads as a
+  deliberate scope boundary, not an oversight.
+
+**Not done in this pass, left as a known follow-up:** Kalyna's *intermediate* key-schedule scratch
+buffers (`kt` in `key_expand_kt`, `initial_data`/`tmv` in `key_expand_even`, the byte-flattening
+`bytes` buffer in `key_expand_odd`) are not individually zeroized — only the final, complete
+`round_keys` array each of them feeds into. Those intermediates hold key-derived material too, for
+a shorter stack lifetime each. Going byte-buffer-by-byte-buffer through the key schedule is real
+additional hardening, but it's a materially bigger diff across more call sites for a marginal
+reduction in an already-small window (stack memory that's about to be overwritten by the next
+function call in the common case); scoped out of this pass rather than silently forgotten.
+
+**Rejected:** implementing `Zeroize` by hand (manual overwrite loops) instead of pulling in the
+`zeroize` crate. Rejected per `SECURITY.md`'s own existing guidance and this project's "no
+homegrown primitives where an established one exists" principle (D-03/D-04's reasoning applies
+equally to infrastructure like this, not just algorithms) — hand-rolled zeroing is exactly the
+"looks right, isn't" problem the crate exists to solve (compiler dead-store elimination on a plain
+overwrite), and reinventing it earns no more scrutiny than reviewing the crate's ~10-year-old,
+widely-depended-upon approach.

@@ -61,6 +61,7 @@ Explicitly out of scope (until stated otherwise):
 
 | Crate | Maintainer/developer | Reproducible builds | Independent audit | CVE history |
 |---|---|---|---|---|
+| `zeroize` 1.9 (+ `zeroize_derive`) | RustCrypto org — the de facto standard crate for this in the Rust crypto ecosystem, used by nearly every RustCrypto primitive | Standard `cargo`/crates.io build, no custom build script beyond the derive proc-macro | Not separately audited as a standalone crate, but its volatile-write approach is the same one used across audited RustCrypto crates | Clean per `cargo audit` (D-11) as of 2026-07-22, see `DECISIONS.md` D-20 |
 | _(fill in per dependency before merging)_ | | | | |
 
 ## Reporting vulnerabilities

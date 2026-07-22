@@ -12,3 +12,6 @@ name = "dstu_core"
 default = ["std"]
 std = []
 alloc = []
+
+[dependencies]
+zeroize = { version = "1.9.0", default-features = false, features = ["derive"] }

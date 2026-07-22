@@ -31,6 +31,7 @@
 //! `crypto_stream`'s job, see `docs/dstu-crypto-project.md` "Concrete API shape").
 
 use super::tables::{apply_matrix, MDS_MATRIX, ROWS, SBOXES};
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 /// `alpha` multiplication table, indexed by the byte shifted out of the top of the word.
 /// Source: `oracles/uapki/library/uapkic/src/dstu8845.c` `mul_T` (see module doc for the
@@ -284,6 +285,14 @@ fn strm(s: &[u64; 16], r0: u64, r1: u64) -> u64 {
 }
 
 /// Shared state machine for both key sizes - only `init_state`'s key-length branch differs.
+///
+/// `s`/`r0`/`r1` are the LFSR/FSM state, derived directly from the key and IV and never public;
+/// `block` is a buffered fragment of already-derived keystream. All of it is key-derived secret
+/// state for as long as this value is alive, so it is cleared on drop (`ZeroizeOnDrop`) rather
+/// than left for whatever happened to occupy that stack slot next - see `SECURITY.md`'s
+/// `Zeroize`/`ZeroizeOnDrop` hard constraint. `Strumok256`/`Strumok512` need no `Drop` impl of
+/// their own: dropping a newtype struct drops its field, which runs `Core`'s derived one.
+#[derive(Zeroize, ZeroizeOnDrop)]
 struct Core {
     s: [u64; 16],
     r0: u64,

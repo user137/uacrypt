@@ -12,6 +12,7 @@
 //! and `docs/dstu-crypto-project.md` "Concrete API shape".
 
 use super::tables::{apply_matrix, MDS_INV_MATRIX, MDS_MATRIX, ROWS, SBOXES, SBOXES_DEC};
+use zeroize::Zeroize;
 
 /// One 64-bit state/key word, byte-for-byte (index 0 = least-significant byte - see
 /// `oracles/kalyna-reference/kalyna.c` `SubBytes`, which reads word bytes low-to-high against
@@ -286,7 +287,7 @@ fn encrypt_generic(
     nk: usize,
     nr: usize,
 ) -> [u8; MAX_NB * ROWS] {
-    let round_keys = key_expand(key, nb, nk, nr);
+    let mut round_keys = key_expand(key, nb, nk, nr);
     let mut state = columns_from_bytes(plaintext, nb);
 
     add_round_key(&mut state[..nb], &round_keys[0][..nb]);
@@ -296,6 +297,11 @@ fn encrypt_generic(
     }
     encipher_round(&mut state[..nb]);
     add_round_key(&mut state[..nb], &round_keys[nr][..nb]);
+    // Last use of the derived key schedule - clear it rather than leave it for whatever the
+    // stack slot holds next (see SECURITY.md's Zeroize/ZeroizeOnDrop hard constraint, DECISIONS.md
+    // D-20). A plain overwrite could be optimized away as a dead store since the array is about to
+    // go out of scope anyway; `zeroize()` uses a volatile write specifically to prevent that.
+    round_keys.zeroize();
 
     let mut out = [0u8; MAX_NB * ROWS];
     for c in 0..nb {
@@ -312,7 +318,7 @@ fn decrypt_generic(
     nk: usize,
     nr: usize,
 ) -> [u8; MAX_NB * ROWS] {
-    let round_keys = key_expand(key, nb, nk, nr);
+    let mut round_keys = key_expand(key, nb, nk, nr);
     let mut state = columns_from_bytes(ciphertext, nb);
 
     sub_round_key(&mut state[..nb], &round_keys[nr][..nb]);
@@ -322,6 +328,7 @@ fn decrypt_generic(
     }
     decipher_round(&mut state[..nb]);
     sub_round_key(&mut state[..nb], &round_keys[0][..nb]);
+    round_keys.zeroize();
 
     let mut out = [0u8; MAX_NB * ROWS];
     for c in 0..nb {

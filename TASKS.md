@@ -117,13 +117,15 @@ resistance (SPA/DPA — explicitly out of scope per `SECURITY.md`/`CLAUDE.md` "M
       the strongest confidence signal available short of the paid official text.
 - [ ] **Actually run `cargo fuzz`** for all three primitives (see the Phase 1 line above) — fuzzing
       for panics/out-of-bounds on adversarial-length input, not correctness.
-- [ ] **`Zeroize`/`ZeroizeOnDrop` on all key-material types** (Kalyna's key slices, Kupyna's
-      internal state, Strumok's `Core` — its `s`/`r0`/`r1` LFSR state is derived from the key and
-      never cleared today), per `SECURITY.md`'s hard constraint — **not implemented in any
-      primitive yet**, an existing gap this project already tracked in the abstract but hasn't
-      acted on. Note for whoever picks this up: "testing that zeroization happened" isn't a
-      hand-rolled memory-inspection test (the compiler can elide a plain overwrite) — use the
-      `zeroize` crate, which solves the volatile-write problem; don't reinvent it.
+- [x] **`Zeroize`/`ZeroizeOnDrop` on live key-material.** `zeroize` 1.9 added
+      (`default-features = false, features = ["derive"]`, `no_std`-compatible — first real
+      dependency in `dstu-core`, `DECISIONS.md` D-20). Strumok's `Core` (LFSR/FSM state) derives
+      `ZeroizeOnDrop`; Kalyna's `encrypt_generic`/`decrypt_generic` call `round_keys.zeroize()`
+      after last use. Kupyna intentionally untouched — its only API is unkeyed `digest()`, no key
+      material exists yet (relevant again once KMAC lands). **Not exhaustive**: Kalyna's
+      intermediate key-schedule scratch buffers (`kt`, `initial_data`/`tmv`, the rotation buffer in
+      `key_expand_odd`) are still cleared only via the final `round_keys` zeroize, not individually
+      — a deliberate scope cut, not an oversight, see D-20.
 - [x] **Constant-time audit + an explicit decision.** Confirmed the secret-dependent indexing
       exists in all three primitives (`SBOXES`/`SBOXES_DEC` in `kalyna.rs`/`kupyna.rs`/
       `strumok.rs`, plus `MUL_ALPHA`/`MUL_ALPHA_INV` in `strumok.rs`). Documented and scoped as an
