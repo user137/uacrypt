@@ -430,6 +430,24 @@ have *something* - that is exactly the failure mode this project's "no homegrown
 
 - [ ] STM32 (ARM Cortex-M) real-hardware validation
 - [ ] ESP32 (Xtensa/RISC-V) real-hardware validation
+- [ ] **Stretch goal, not a near-term target: Arduino Uno (ATmega328P, 8-bit AVR) — user has one
+      available, 2026-07-22.** Raised as "could we hypothetically try this," not a firm ask.
+      Materially harder than the STM32/ESP32 items above, for a concrete, measured reason, not a
+      vague "8-bit is old" concern: Rust's AVR target is nightly-only/tier-3 (`avr-hal`/`ravedude`
+      ecosystem), and this project's *current* Kalyna/Kupyna tables (`hazmat::tables::SBOX_MDS`/
+      `SBOX_MDS_DEC`, added by D-28's fusion) are `[[u64; 256]; 8]` each — **16 KB per table, 32 KB
+      for both, which alone equals the ATmega328P's entire flash (32 KB)**, before any actual code;
+      naively RAM-resident (no `PROGMEM`-style placement) they'd also be ~16x the chip's 2 KB SRAM.
+      Checked what the *pre-D-27* tables looked like for comparison: `SBOXES`/`SBOXES_DEC` (1 KB
+      each) plus two 8x8-byte matrices (~2.1 KB total, `gf_mul` itself is a table-free bit loop) —
+      an order of magnitude smaller and flash-plausible, but Strumok's `MUL_ALPHA`/`MUL_ALPHA_INV`
+      (2 KB each, unrelated to the Kalyna/Kupyna fusion work, present since D-18) push even that
+      older baseline past half the chip's flash on their own. **Bottom line**: even the smallest
+      historical table set would need real AVR-specific work (constants placed in program memory
+      via `avr-hal`'s progmem mechanisms, not just "add the target") to leave any RAM at all for
+      the round-key schedule/state - not a quick add-a-target job, and today's fused tables make it
+      substantially worse than when this was last measured. Revisit only if there's real interest,
+      not opportunistically.
 - [ ] Keep the SPA/DPA non-claim intact throughout (`no_std` compiling ≠ side-channel resistance
       — see `CLAUDE.md` MVP scope section)
 - [ ] **Not scheduled, sketched only:** constant-time S-boxes (masked-select or bitsliced —
