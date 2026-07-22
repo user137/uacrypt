@@ -27,7 +27,12 @@ Explicitly out of scope (until stated otherwise):
 - No primitive is implemented without citing the specific spec section (DSTU text, page/clause,
   or the author's reference-implementation source) it was verified against. Record the citation
   in `DECISIONS.md`.
-- No secret-dependent branching or array indexing.
+- No secret-dependent branching. Secret-dependent array indexing is limited to fixed-latency
+  table lookups mirroring the DSTU reference implementations (S-box/GF-multiplication substitution
+  tables) — a documented, currently-accepted software cache-timing exposure, scoped identically to
+  the hardware side-channel carve-out below (see `DECISIONS.md` D-19 for the full rationale and
+  exact scope). Anything beyond that — an index that depends on a *comparison outcome*, or
+  variable-time table selection — is still prohibited without exception.
 - All comparisons involving secret data use `subtle::ConstantTimeEq`, never `==`.
 - All key-material types implement `Zeroize` / `ZeroizeOnDrop`.
 - No secret material (keys, nonces derived from secrets, plaintexts) in logs, panics, or error

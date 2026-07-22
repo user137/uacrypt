@@ -93,3 +93,51 @@ keystream_test!(
     Strumok512,
     64
 );
+
+/// `apply_keystream` buffers a partial 64-bit word internally (`Core::block`/`block_pos` in
+/// `strumok.rs`) whenever a call doesn't end on an 8-byte boundary. Every vector test above calls
+/// it exactly once, on a length that happens to be a multiple of 8 - that never exercises the
+/// buffer across a call boundary. This test asserts that splitting the same total length into
+/// arbitrary, non-8-aligned chunks produces byte-for-byte the same output as one call on the
+/// concatenated buffer - the boundary case a buffering off-by-one would hide in.
+macro_rules! chunk_invariance_test {
+    ($test_name:ident, $variant:ty, $key_len:literal) => {
+        #[test]
+        fn $test_name() {
+            let mut key = [0u8; $key_len];
+            for (i, b) in key.iter_mut().enumerate() {
+                *b = i as u8;
+            }
+            let mut iv = [0u8; 32];
+            for (i, b) in iv.iter_mut().enumerate() {
+                *b = (i as u8).wrapping_mul(7).wrapping_add(1);
+            }
+
+            // Deliberately not a round multiple of 8, and includes chunk lengths both smaller
+            // and larger than one word, plus a zero-length chunk (must be a no-op).
+            let chunk_lens = [1usize, 8, 3, 0, 5, 13, 2, 7, 21, 4];
+            let total: usize = chunk_lens.iter().sum();
+
+            let mut whole = vec![0u8; total];
+            <$variant>::new(&key, &iv).apply_keystream(&mut whole);
+
+            let mut chunked = vec![0u8; total];
+            let mut cipher = <$variant>::new(&key, &iv);
+            let mut offset = 0;
+            for len in chunk_lens {
+                cipher.apply_keystream(&mut chunked[offset..offset + len]);
+                offset += len;
+            }
+
+            assert_eq!(
+                chunked,
+                whole,
+                "{}: chunked apply_keystream diverged from one-shot output",
+                stringify!($variant)
+            );
+        }
+    };
+}
+
+chunk_invariance_test!(strumok_256_chunk_invariance, Strumok256, 32);
+chunk_invariance_test!(strumok_512_chunk_invariance, Strumok512, 64);

@@ -567,3 +567,49 @@ these have no known reduction to the already-shared Kalyna/Kupyna GF(2^8) arithm
 underlying field polynomial for Strumok's own GF(2^64) tower was never located in
 extractable form in `docs/papers/Strumok.pdf` (see `docs/pseudocode/strumok.md`), so the tables
 are the practical source, cited accordingly rather than presented as derived from first principles.
+
+## D-19: Table-based S-box lookups are a documented, accepted software-timing exception
+
+`SECURITY.md`'s hard constraints say "No secret-dependent branching or array indexing" without
+qualification. Every primitive shipped so far violates the array-indexing half of that literally:
+`SBOXES[row % 4][*byte as usize]` (`kalyna.rs`, `kupyna.rs`, `strumok.rs`), `SBOXES_DEC[...]`
+(Kalyna decryption), and `MUL_ALPHA`/`MUL_ALPHA_INV[...]` (Strumok) all index a lookup table using
+a byte derived from secret key/state material. This was flagged 2026-07-22 while reviewing what
+"tested" should mean beyond test vectors (see `TASKS.md` "Testing & hardening") — a real,
+previously-undocumented gap between a written constraint and the shipped code, not a hypothetical.
+
+**Decision: accept it, scoped and explicit, rather than silently ship a contradiction.** Rationale:
+- This is the same class of exposure as AES's classic T-table/S-box cache-timing attacks (Bernstein
+  2005, Osvik/Shamir/Tromer 2006) — well-understood, not a novel risk introduced here.
+- `SECURITY.md`'s own threat model already carves out hardware side-channels (SPA/DPA) as
+  explicitly out of scope, on the grounds that software constant-time discipline "reduces exposure
+  but is not equivalent to... side-channel resistance," which needs a dedicated hardware audit.
+  Cache-timing from data-dependent table indices sits in the same family of risk (a
+  microarchitectural side channel, not a pure-software timing leak from branching/comparison) —
+  treating it identically (documented, not claimed as resistant, not blocking MVP) is consistent
+  rather than a special carve-out invented for convenience.
+- The alternative — bitslicing or constant-time table lookups (e.g. AES-style bitsliced S-boxes,
+  or masked/gather-based lookups) — is a substantial rewrite of every primitive's core substitution
+  layer, not a small patch, and would need its own from-spec verification pass per algorithm. Not
+  something to take on silently inside a "let's write more tests" pass.
+
+**What this does and does not cover:** this exception is scoped to *table-based substitution
+lookups mirroring the DSTU reference implementations themselves* (S-boxes, and Strumok's
+`mul_alpha`/`mul_alpha_inv`) — all of which are C oracles that make the identical trade-off, so
+this project's exposure is no worse than the reference implementations it's verified against. It
+does **not** authorize secret-dependent *branching* (`if`/`match` on secret values) or
+secret-dependent *comparison* (still `subtle::ConstantTimeEq`, never `==`, per the unchanged rest
+of that constraint) — those remain prohibited without qualification.
+
+**`SECURITY.md` updated to say this precisely** rather than leave the absolute "never" standing
+next to code that already violates it — a constraint nobody reads accurately isn't enforcing
+anything. If constant-time S-boxes are ever built (e.g. as part of the post-MVP hardware validation
+phase, `TASKS.md` Phase 4, where the SPA/DPA question gets a real audit anyway), this exception
+narrows accordingly; until then, no test can cleanly catch a timing leak of this kind
+(dudect-style statistical tools exist but are noisy and platform-dependent, not a CI gate), so the
+documented decision *is* the control, not a missing test.
+
+**Rejected:** leaving the constraint unqualified and treating the violation as an unstated,
+undiscussed gap. Rejected because a "hard constraint" that's silently false is worse than a
+precisely-scoped one — the whole point of writing these down is so a future contributor (or this
+project's own next session) doesn't have to rediscover the contradiction from scratch.

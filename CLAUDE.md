@@ -124,8 +124,11 @@ Full detail and rationale in `SECURITY.md` — this is the compressed version so
 
 - No primitive without a cited spec section (DSTU clause or reference-implementation source) —
   citation goes in `DECISIONS.md`.
-- No secret-dependent branching/indexing; secret comparisons via `subtle::ConstantTimeEq`, never
-  `==`; all key material is `Zeroize`/`ZeroizeOnDrop`; no secret material in logs.
+- No secret-dependent branching. Secret-dependent array indexing is allowed only for fixed-latency
+  S-box/GF-multiplication table lookups mirroring the DSTU reference implementations — documented
+  software-timing exception, see D-19 in `DECISIONS.md`, not a license to add more of this
+  category casually. Secret comparisons via `subtle::ConstantTimeEq`, never `==`; all key material
+  is `Zeroize`/`ZeroizeOnDrop`; no secret material in logs.
 - No homegrown primitives — where DSTU has a real gap (pwhash, CSPRNG), use the established
   international primitive (Argon2id, OS `getrandom`), see D-03/D-04 in `DECISIONS.md`.
 - **Dual-oracle verification is mandatory**: official DSTU test vectors *and* an independent

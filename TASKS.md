@@ -95,12 +95,11 @@ never will be, so as not to imply otherwise: cryptanalytic strength of the algor
 (that's the DSTU designers' responsibility, not this library's), and hardware side-channel
 resistance (SPA/DPA — explicitly out of scope per `SECURITY.md`/`CLAUDE.md` "MVP scope").
 
-- [ ] **Chunk/split-invariance test for `Strumok::apply_keystream`.** All 8 current vectors call it
-      once, on a buffer whose length is a multiple of 8. The internal partial-word buffer
-      (`block_pos`/`block` in `strumok.rs`) is never exercised across a call boundary. Add a test
-      asserting that calling `apply_keystream` in arbitrary-sized chunks (e.g. 3 bytes, then 5,
-      then 13, ...) produces byte-for-byte the same output as one call on the concatenated buffer —
-      this is exactly where a buffering off-by-one would hide, and it is currently untested.
+- [x] **Chunk/split-invariance test for `Strumok::apply_keystream`.** Added
+      `strumok_{256,512}_chunk_invariance` in `crates/dstu-core/tests/strumok.rs` — splits a fixed
+      total length into arbitrary, non-8-aligned chunks (including a zero-length one) and asserts
+      byte-for-byte identity against one call on the concatenated buffer. **Passed on the first
+      attempt** — no buffering bug found, but the path was genuinely untested before this.
 - [ ] **Round-trip property tests** (needs a dependency decision + supply-chain vetting per
       `SECURITY.md`'s table — `proptest` is the natural candidate): Kalyna's
       `decrypt(encrypt(key, block), key) == block` over randomly generated keys/blocks, for all 5
@@ -125,18 +124,14 @@ resistance (SPA/DPA — explicitly out of scope per `SECURITY.md`/`CLAUDE.md` "M
       acted on. Note for whoever picks this up: "testing that zeroization happened" isn't a
       hand-rolled memory-inspection test (the compiler can elide a plain overwrite) — use the
       `zeroize` crate, which solves the volatile-write problem; don't reinvent it.
-- [ ] **Constant-time audit + an explicit decision, not just a test:** `SBOXES[j % 4][byte as
-      usize]` (identical pattern in `kalyna.rs`, `kupyna.rs`, `strumok.rs`) is array indexing keyed
-      on a secret byte — the exact thing `SECURITY.md`'s hard constraints list ("No
-      secret-dependent branching or array indexing") prohibits, and the classic AES-style
-      cache-timing surface. This is a real, currently-undocumented tension between a written
-      constraint and the actual code, found 2026-07-22 while reviewing what else needs testing —
-      not a hypothetical. No test cleanly catches this (dudect-style statistical timing tests exist
-      but are noisy/platform-dependent); what's needed is a `DECISIONS.md` entry that either (a)
-      explicitly accepts table-based S-boxes as a scoped exception — consistent with SPA/DPA
-      already being out of scope, which most software crypto libraries do — or (b) commits to a
-      bitsliced/constant-time S-box implementation later. Silence on this is the wrong outcome
-      either way.
+- [x] **Constant-time audit + an explicit decision.** Confirmed the secret-dependent indexing
+      exists in all three primitives (`SBOXES`/`SBOXES_DEC` in `kalyna.rs`/`kupyna.rs`/
+      `strumok.rs`, plus `MUL_ALPHA`/`MUL_ALPHA_INV` in `strumok.rs`). Documented and scoped as an
+      accepted software-timing exception in `DECISIONS.md` D-19 (same family as the already-out-
+      of-scope SPA/DPA carve-out, since every reference C implementation makes the identical
+      trade-off) — `SECURITY.md`'s hard-constraint wording updated to say this precisely instead of
+      standing as an absolute "never" next to code that already violated it. Branching and
+      comparisons on secret data remain prohibited without exception, unchanged.
 - [ ] **`criterion` benchmarks** — quantify the cost of design choices made along the way (e.g.
       Strumok's literal 16-word shift vs. the oracles' rotating in-place buffer, `DECISIONS.md`
       D-18) and catch performance regressions. Explicitly not a claim of meaningful cross-algorithm
