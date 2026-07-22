@@ -4,7 +4,9 @@
 //! fixed, project-controlled vector shape.
 
 use dstu_core::hazmat::kalyna::{
-    Kalyna128_128, Kalyna128_256, Kalyna256_256, Kalyna256_512, Kalyna512_512,
+    Kalyna128_128, Kalyna128_128ExpandedKey, Kalyna128_256, Kalyna128_256ExpandedKey,
+    Kalyna256_256, Kalyna256_256ExpandedKey, Kalyna256_512, Kalyna256_512ExpandedKey,
+    Kalyna512_512, Kalyna512_512ExpandedKey,
 };
 use proptest::prelude::*;
 
@@ -187,3 +189,111 @@ roundtrip_proptest!(kalyna_128_256_roundtrip, Kalyna128_256, 32, 16);
 roundtrip_proptest!(kalyna_256_256_roundtrip, Kalyna256_256, 32, 32);
 roundtrip_proptest!(kalyna_256_512_roundtrip, Kalyna256_512, 64, 32);
 roundtrip_proptest!(kalyna_512_512_roundtrip, Kalyna512_512, 64, 64);
+
+/// `ExpandedKey` (D-28 stage 3) must be interchangeable with the raw `encrypt`/`decrypt`
+/// functions for every input, not just "usually agree" - property-tested over random keys/blocks,
+/// same rationale as `roundtrip_proptest!` above.
+macro_rules! expanded_key_matches_raw_proptest {
+    ($test_name:ident, $variant:ty, $expanded:ty, $key_len:literal, $block_len:literal) => {
+        proptest! {
+            #[test]
+            fn $test_name(
+                key_bytes in prop::collection::vec(any::<u8>(), $key_len),
+                block_bytes in prop::collection::vec(any::<u8>(), $block_len),
+            ) {
+                let mut key = [0u8; $key_len];
+                key.copy_from_slice(&key_bytes);
+                let mut block = [0u8; $block_len];
+                block.copy_from_slice(&block_bytes);
+
+                let expanded = <$expanded>::new(&key);
+
+                let raw_ciphertext = <$variant>::encrypt(&key, &block);
+                let expanded_ciphertext = expanded.encrypt_block(&block);
+                prop_assert_eq!(raw_ciphertext, expanded_ciphertext);
+
+                let raw_plaintext = <$variant>::decrypt(&key, &raw_ciphertext);
+                let expanded_plaintext = expanded.decrypt_block(&raw_ciphertext);
+                prop_assert_eq!(raw_plaintext, block);
+                prop_assert_eq!(expanded_plaintext, block);
+            }
+        }
+    };
+}
+
+expanded_key_matches_raw_proptest!(
+    kalyna_128_128_expanded_key_matches_raw,
+    Kalyna128_128,
+    Kalyna128_128ExpandedKey,
+    16,
+    16
+);
+expanded_key_matches_raw_proptest!(
+    kalyna_128_256_expanded_key_matches_raw,
+    Kalyna128_256,
+    Kalyna128_256ExpandedKey,
+    32,
+    16
+);
+expanded_key_matches_raw_proptest!(
+    kalyna_256_256_expanded_key_matches_raw,
+    Kalyna256_256,
+    Kalyna256_256ExpandedKey,
+    32,
+    32
+);
+expanded_key_matches_raw_proptest!(
+    kalyna_256_512_expanded_key_matches_raw,
+    Kalyna256_512,
+    Kalyna256_512ExpandedKey,
+    64,
+    32
+);
+expanded_key_matches_raw_proptest!(
+    kalyna_512_512_expanded_key_matches_raw,
+    Kalyna512_512,
+    Kalyna512_512ExpandedKey,
+    64,
+    64
+);
+
+/// Encrypting/decrypting many blocks from one `ExpandedKey` must give the same answer every time
+/// (the schedule is reused, not recomputed) - not covered by the single-call proptest above.
+macro_rules! expanded_key_reused_across_blocks_proptest {
+    ($test_name:ident, $expanded:ty, $key_len:literal, $block_len:literal) => {
+        proptest! {
+            #[test]
+            fn $test_name(
+                key_bytes in prop::collection::vec(any::<u8>(), $key_len),
+                block_a in prop::collection::vec(any::<u8>(), $block_len),
+                block_b in prop::collection::vec(any::<u8>(), $block_len),
+            ) {
+                let mut key = [0u8; $key_len];
+                key.copy_from_slice(&key_bytes);
+                let mut a = [0u8; $block_len];
+                a.copy_from_slice(&block_a);
+                let mut b = [0u8; $block_len];
+                b.copy_from_slice(&block_b);
+
+                let expanded = <$expanded>::new(&key);
+                let ciphertext_a = expanded.encrypt_block(&a);
+                let ciphertext_b = expanded.encrypt_block(&b);
+                prop_assert_eq!(expanded.decrypt_block(&ciphertext_a), a);
+                prop_assert_eq!(expanded.decrypt_block(&ciphertext_b), b);
+            }
+        }
+    };
+}
+
+expanded_key_reused_across_blocks_proptest!(
+    kalyna_128_128_expanded_key_reused,
+    Kalyna128_128ExpandedKey,
+    16,
+    16
+);
+expanded_key_reused_across_blocks_proptest!(
+    kalyna_512_512_expanded_key_reused,
+    Kalyna512_512ExpandedKey,
+    64,
+    64
+);

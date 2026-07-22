@@ -65,9 +65,28 @@ figures kept for the record:
 
 **After D-28: ~12.5-19.9x faster than Oliynykov's reference C (was ~7-8x), ~3.4-4.9x slower than
 UAPKI (was ~10.6-14.5x)** — decrypt (not fused this pass, see below) improved too, ~36-40%, purely
-from the key schedule sharing the now-fused `encipher_round`. Key-schedule caching (`TASKS.md`
-stage 3, `ExpandedKey`) is still to come and should close most of the remaining gap, since
-`key_expand` is still redone on every single `encrypt`/`decrypt` call.
+from the key schedule sharing the now-fused `encipher_round`.
+
+**Updated again 2026-07-22 after D-29** (`ExpandedKey` — key schedule cached across calls instead
+of redone every time):
+
+| Variant, block-only (schedule cached) | This project | UAPKI |
+|---|---|---|
+| 128-128 encrypt | **133 ns** | 222 ns |
+| 128-128 decrypt | 433 ns | 222 ns |
+| 256-256 encrypt | **268 ns** | 578 ns |
+| 256-256 decrypt | 1435 ns | 578 ns |
+| 512-512 encrypt | **568 ns** | 879 ns |
+| 512-512 decrypt | 3934 ns | 879 ns |
+
+**Encrypt, with the schedule cached, is now *faster* than UAPKI across every variant measured** —
+the raw `encrypt` function (schedule redone every call) is still the ~3.4-4.9x-slower number above;
+`ExpandedKey` is the API a caller doing more than one block under the same key should use, and is
+also the API any future mode of operation (D-05) will need regardless of speed, to avoid redoing
+the schedule per block. **Decrypt is now the whole remaining story**: `decipher_round` was never
+fused (see D-28 and below), so decrypt-block-only is 3.2-6.9x slower than encrypt-block-only, and
+that gap — not the key schedule — is now the dominant reason Kalyna's raw `decrypt` function still
+trails UAPKI. New baseline: `kalyna-expandedkey-2026-07-22`.
 
 ### Kupyna (digest, MB/s — higher is better)
 
@@ -131,11 +150,15 @@ sketched-not-scheduled task for closing this):
   permute columns), so they commute, and the combined `SBOX_MDS` table doesn't depend on `nb` at
   all — only the *gather index* does, which is cheap arithmetic, not a table. D-28 fused Kalyna's
   encrypt round (and Kupyna's, which shares the table) this way, closing Kupyna's gap to UAPKI
-  almost entirely and Kalyna's encrypt gap substantially. Kalyna's *decrypt* round is not fused yet
-  (`inv_sub_bytes` runs last, not first, so it needs restructuring, not just a table swap — staged
-  separately in `TASKS.md`), and Kalyna's key schedule is still recomputed on every single call
-  (`ExpandedKey`, `TASKS.md` stage 3, not done yet) — both remaining, concrete, already-scoped work,
-  not an unexplained residual.
+  almost entirely and Kalyna's encrypt gap substantially. D-29 then added `ExpandedKey` (schedule
+  cached once, reused across calls) — with the schedule cached, Kalyna encrypt is now *faster* than
+  UAPKI for every variant measured. **What's left, concretely, is only Kalyna's decrypt round**:
+  `decipher_round` was never fused — `inv_sub_bytes` runs last in the existing round, not first, so
+  the same direct table-swap trick doesn't apply; it needs restructuring into an equivalent-inverse-
+  cipher form (transform the round keys once during key expansion so `inv_sub_bytes` moves to the
+  front of the round, the same way AES's `EqInvCipher` does) — staged separately in `TASKS.md`, not
+  done yet. Decrypt-block-only is currently 3.2-6.9x slower than encrypt-block-only, confirming
+  this is now the single largest remaining, already-scoped, not-yet-closed gap.
 - **Strumok, two distinct, additive causes — both fixed 2026-07-22, see D-26**: (1)
   `oracles/strumok-dstu8845/strumok.c`'s `next_stream()` is one fully-unrolled function that
   updates each state word in place via modular indexing — it never physically moves the 16-word
@@ -195,10 +218,20 @@ cargo bench -p dstu-core --bench kalyna --bench kupyna -- --save-baseline kalyna
 cargo bench -p dstu-core --bench kalyna --bench kupyna -- --baseline kalyna-kupyna-fused-2026-07-22  # to check
 ```
 
+**Updated a third time 2026-07-22, same day**: D-29's `ExpandedKey` added new bench functions
+(`*_encrypt_block_only`/`*_decrypt_block_only` in `benches/kalyna.rs`), so a fifth baseline covers
+those too (Kupyna is unaffected by D-29, no new baseline needed there):
+
+```
+cargo bench -p dstu-core --bench kalyna -- --save-baseline kalyna-expandedkey-2026-07-22
+cargo bench -p dstu-core --bench kalyna -- --baseline kalyna-expandedkey-2026-07-22  # to check
+```
+
 `initial-2026-07-22` and `kalyna-kupyna-optimized-2026-07-22` are now both superseded for
-Kalyna/Kupyna (by `kalyna-kupyna-fused-2026-07-22`) and Strumok is still tracked against
-`strumok-optimized-2026-07-22` — kept only as historical records, not what new changes should be
-checked against.
+Kalyna/Kupyna (`kalyna-kupyna-fused-2026-07-22` for the two shared benches, `kalyna-expandedkey-
+2026-07-22` for Kalyna specifically, since it also has the new `ExpandedKey` bench functions the
+other baseline doesn't) and Strumok is still tracked against `strumok-optimized-2026-07-22` — kept
+only as historical records, not what new changes should be checked against.
 
 `target/criterion/` is gitignored (as usual for `target/`), so this baseline lives only on whatever
 machine last ran the save command above — it is **not** a portable, cross-machine regression gate

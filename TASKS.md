@@ -220,21 +220,34 @@ resistance (SPA/DPA — explicitly out of scope per `SECURITY.md`/`CLAUDE.md` "M
          also -36% to -40% purely from the faster key schedule. **Kupyna -85% to -87%, now at or
          above UAPKI's own speed** (256: 1.03-1.45x faster; 512: roughly at parity) — full
          before/after in `PERFORMANCE.md`. New baseline: `kalyna-kupyna-fused-2026-07-22`.
-      2. **Not done yet**: `Column` representation `[u8; 8]` -> `u64` directly (removes remaining
-         `from_le_bytes`/`to_le_bytes` churn) — touches `kalyna.rs`/`kupyna.rs`/`tables.rs` and the
-         key-schedule helpers (`shift_left_words`/`rotate_words_left`/`rotate_bytes_left`).
-      3. **Not done yet**: `ExpandedKey`-equivalent for Kalyna (new public type, user's explicit
-         go-ahead 2026-07-22) — caches `key_expand`'s output so repeated `encrypt`/`decrypt` calls
-         under the same key don't redo the schedule (still redone every call as of stage 1); the
-         diagnostic in stage 0 above suggests this alone could close most of Kalyna's remaining
-         ~3.4-4.9x gap. Also a prerequisite for any future mode of operation (D-05) to not be
-         accidentally catastrophic on throughput. Exact shape (owns `zeroize`d round keys, `From`/
-         constructor takes the raw key, `encrypt_block`/`decrypt_block` take only the block) to be
-         finalized when this stage starts; keep the existing raw-key `encrypt`/`decrypt` functions
-         too (thin wrappers) so no existing caller/test breaks.
-      4. **Not done yet**: decrypt-direction fusion (equivalent-inverse-cipher restructuring, see
-         stage 1's note), re-run `cargo bench` against `kalyna-kupyna-fused-2026-07-22`, update
-         `PERFORMANCE.md`, save a new baseline, add a `DECISIONS.md` entry.
+      2. **Not done yet, and now lower priority than stage 4 below** — see stage 3's result: with
+         the schedule cached, Kalyna encrypt is already faster than UAPKI, and Kupyna is at/above
+         parity, so the remaining `[u8; 8]` -> `u64` conversion-churn cleanup has much smaller
+         expected payoff than originally estimated (most of it was already implicitly removed by
+         D-28's single-pass gather, which accumulates as `u64` internally already). Revisit only if
+         stage 4 (decrypt fusion) doesn't close enough of the remaining gap on its own.
+      3. [x] **`ExpandedKey`-equivalent for Kalyna, done, see `DECISIONS.md` D-29** — one
+         `${Variant}ExpandedKey` struct per variant (`Kalyna128_128ExpandedKey`, etc., via the same
+         macro), `::new(key)` runs `key_expand` once (`Zeroize`/`ZeroizeOnDrop`), `.encrypt_block`/
+         `.decrypt_block` reuse the cached schedule. Raw `encrypt`/`decrypt` untouched (still the
+         one-shot convenience path); both now call shared `encrypt_with_schedule`/`decrypt_with_
+         schedule` helpers so there's one round-logic implementation, not two. Verified: new
+         `proptest` suites (`ExpandedKey` matches raw functions for every random input; reused
+         across multiple blocks correctly), Kalyna differential harness re-run fresh (7500/7500,
+         bit-identical), `clippy`/`fmt`/`no_std` all pass. **Result, confirms the stage-0 diagnostic
+         was right to prioritize this**: new `*_encrypt_block_only`/`*_decrypt_block_only` bench
+         functions (key expanded once outside the timed loop) show Kalyna encrypt with a cached
+         schedule is now **faster than UAPKI for every variant measured** (e.g. 128-128: 133 ns vs
+         UAPKI's 222 ns). **Decrypt-block-only is 3.2-6.9x slower than encrypt-block-only** (e.g.
+         512-512: 568 ns encrypt vs 3934 ns decrypt) — decrypt fusion (stage 4) is now clearly the
+         single largest remaining gap, not the key schedule. New baseline:
+         `kalyna-expandedkey-2026-07-22`.
+      4. **Not done yet, now the clear priority**: decrypt-direction fusion (equivalent-inverse-
+         cipher restructuring, see stage 1's note — `inv_sub_bytes` runs last in the existing round,
+         needs the round keys transformed once during key expansion so it can move to the front,
+         the same way AES's `EqInvCipher` does), re-run `cargo bench` against
+         `kalyna-expandedkey-2026-07-22`, update `PERFORMANCE.md`, save a new baseline, add a
+         `DECISIONS.md` entry.
 
 ## Phase 2 — libsodium-equivalent construction layer, DSTU 4145 + 9041
 

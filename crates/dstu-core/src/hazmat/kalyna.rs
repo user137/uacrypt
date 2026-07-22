@@ -12,7 +12,7 @@
 //! and `docs/dstu-crypto-project.md` "Concrete API shape".
 
 use super::tables::{apply_matrix, MDS_INV_TABLE, ROWS, SBOXES, SBOXES_DEC, SBOX_MDS};
-use zeroize::Zeroize;
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 /// One 64-bit state/key word, byte-for-byte (index 0 = least-significant byte - see
 /// `oracles/kalyna-reference/kalyna.c` `SubBytes`, which reads word bytes low-to-high against
@@ -300,7 +300,7 @@ fn key_expand_odd(round_keys: &mut [[Column; MAX_NB]; ROUND_KEYS_LEN], nb: usize
     }
 }
 
-fn key_expand(key: &[u8], nb: usize, nk: usize, nr: usize) -> [[Column; MAX_NB]; ROUND_KEYS_LEN] {
+fn key_expand(key: &[u8], nb: usize, nk: usize, nr: usize) -> RoundKeys {
     let kt = key_expand_kt(key, nb, nk);
     let mut round_keys = [[ZERO_COLUMN; MAX_NB]; ROUND_KEYS_LEN];
     key_expand_even(key, &kt, nb, nk, nr, &mut round_keys);
@@ -308,16 +308,18 @@ fn key_expand(key: &[u8], nb: usize, nk: usize, nr: usize) -> [[Column; MAX_NB];
     round_keys
 }
 
-/// Shared implementation for all five variants' encryption. Returns a `MAX_NB*ROWS`-byte buffer;
-/// callers truncate to `nb*ROWS` (the actual block size).
-fn encrypt_generic(
-    key: &[u8],
+type RoundKeys = [[Column; MAX_NB]; ROUND_KEYS_LEN];
+
+/// Runs the encryption rounds against an already-expanded key schedule - shared by
+/// `encrypt_generic` (expands, uses once, zeroizes) and `ExpandedKey::encrypt_block` (reuses a
+/// cached schedule across many calls, D-28 stage 3). Returns a `MAX_NB*ROWS`-byte buffer; callers
+/// truncate to `nb*ROWS` (the actual block size).
+fn encrypt_with_schedule(
+    round_keys: &RoundKeys,
     plaintext: &[u8],
     nb: usize,
-    nk: usize,
     nr: usize,
 ) -> [u8; MAX_NB * ROWS] {
-    let mut round_keys = key_expand(key, nb, nk, nr);
     let mut state = columns_from_bytes(plaintext, nb);
 
     add_round_key(&mut state[..nb], &round_keys[0][..nb]);
@@ -327,16 +329,57 @@ fn encrypt_generic(
     }
     encipher_round(&mut state[..nb]);
     add_round_key(&mut state[..nb], &round_keys[nr][..nb]);
-    // Last use of the derived key schedule - clear it rather than leave it for whatever the
-    // stack slot holds next (see SECURITY.md's Zeroize/ZeroizeOnDrop hard constraint, DECISIONS.md
-    // D-20). A plain overwrite could be optimized away as a dead store since the array is about to
-    // go out of scope anyway; `zeroize()` uses a volatile write specifically to prevent that.
-    round_keys.zeroize();
 
     let mut out = [0u8; MAX_NB * ROWS];
     for c in 0..nb {
         out[c * ROWS..(c + 1) * ROWS].copy_from_slice(&state[c]);
     }
+    out
+}
+
+/// Runs the decryption rounds against an already-expanded key schedule. See
+/// `encrypt_with_schedule`.
+fn decrypt_with_schedule(
+    round_keys: &RoundKeys,
+    ciphertext: &[u8],
+    nb: usize,
+    nr: usize,
+) -> [u8; MAX_NB * ROWS] {
+    let mut state = columns_from_bytes(ciphertext, nb);
+
+    sub_round_key(&mut state[..nb], &round_keys[nr][..nb]);
+    for round_key in round_keys[1..nr].iter().rev() {
+        decipher_round(&mut state[..nb]);
+        xor_round_key(&mut state[..nb], &round_key[..nb]);
+    }
+    decipher_round(&mut state[..nb]);
+    sub_round_key(&mut state[..nb], &round_keys[0][..nb]);
+
+    let mut out = [0u8; MAX_NB * ROWS];
+    for c in 0..nb {
+        out[c * ROWS..(c + 1) * ROWS].copy_from_slice(&state[c]);
+    }
+    out
+}
+
+/// Shared implementation for all five variants' encryption: expands the key, runs the rounds,
+/// zeroizes the one-shot schedule. Returns a `MAX_NB*ROWS`-byte buffer; callers truncate to
+/// `nb*ROWS` (the actual block size). See `ExpandedKey` (D-28 stage 3) for callers that need to
+/// encrypt/decrypt many blocks under the same key without redoing `key_expand` every time.
+fn encrypt_generic(
+    key: &[u8],
+    plaintext: &[u8],
+    nb: usize,
+    nk: usize,
+    nr: usize,
+) -> [u8; MAX_NB * ROWS] {
+    let mut round_keys = key_expand(key, nb, nk, nr);
+    let out = encrypt_with_schedule(&round_keys, plaintext, nb, nr);
+    // Last use of the derived key schedule - clear it rather than leave it for whatever the
+    // stack slot holds next (see SECURITY.md's Zeroize/ZeroizeOnDrop hard constraint, DECISIONS.md
+    // D-20). A plain overwrite could be optimized away as a dead store since the array is about to
+    // go out of scope anyway; `zeroize()` uses a volatile write specifically to prevent that.
+    round_keys.zeroize();
     out
 }
 
@@ -349,26 +392,13 @@ fn decrypt_generic(
     nr: usize,
 ) -> [u8; MAX_NB * ROWS] {
     let mut round_keys = key_expand(key, nb, nk, nr);
-    let mut state = columns_from_bytes(ciphertext, nb);
-
-    sub_round_key(&mut state[..nb], &round_keys[nr][..nb]);
-    for round_key in round_keys[1..nr].iter().rev() {
-        decipher_round(&mut state[..nb]);
-        xor_round_key(&mut state[..nb], &round_key[..nb]);
-    }
-    decipher_round(&mut state[..nb]);
-    sub_round_key(&mut state[..nb], &round_keys[0][..nb]);
+    let out = decrypt_with_schedule(&round_keys, ciphertext, nb, nr);
     round_keys.zeroize();
-
-    let mut out = [0u8; MAX_NB * ROWS];
-    for c in 0..nb {
-        out[c * ROWS..(c + 1) * ROWS].copy_from_slice(&state[c]);
-    }
     out
 }
 
 macro_rules! kalyna_variant {
-    ($name:ident, $key_bytes:literal, $block_bytes:literal, $nb:literal, $nk:literal, $nr:literal) => {
+    ($name:ident, $expanded_name:ident, $key_bytes:literal, $block_bytes:literal, $nb:literal, $nk:literal, $nr:literal) => {
         #[doc = concat!(
                             stringify!($block_bytes), "-byte block, ", stringify!($key_bytes),
                             "-byte key, ", stringify!($nr), " rounds."
@@ -400,14 +430,58 @@ macro_rules! kalyna_variant {
                 result
             }
         }
+
+        #[doc = concat!(
+            "Cached round-key schedule for [`", stringify!($name), "`] - `key_expand` runs once, ",
+            "in [`new`](Self::new), instead of once per [`encrypt`](Self::encrypt_block)/",
+            "[`decrypt`](Self::decrypt_block) call. Use this instead of the raw `", stringify!($name),
+            "::encrypt`/`decrypt` functions whenever multiple blocks are encrypted/decrypted under ",
+            "the same key - `TASKS.md` D-28 stage 3: on this project's own measurements, the ",
+            "schedule was ~60-79% of ", stringify!($name), "'s single-call time, so reusing it ",
+            "across calls is the largest remaining lever against re-expanding it every time."
+        )]
+        #[derive(Zeroize, ZeroizeOnDrop)]
+        pub struct $expanded_name {
+            round_keys: RoundKeys,
+        }
+
+        impl $expanded_name {
+            /// Expands `key` once. Reuse the returned value for as many blocks as needed under
+            /// this key; drop it (or let it go out of scope) once done, which zeroizes the cached
+            /// schedule the same way the raw `encrypt`/`decrypt` functions already zeroize theirs.
+            #[must_use]
+            pub fn new(key: &[u8; $key_bytes]) -> Self {
+                Self {
+                    round_keys: key_expand(key, $nb, $nk, $nr),
+                }
+            }
+
+            /// Encrypts one block using the cached schedule - no `key_expand` call.
+            #[must_use]
+            pub fn encrypt_block(&self, block: &[u8; $block_bytes]) -> [u8; $block_bytes] {
+                let out = encrypt_with_schedule(&self.round_keys, block, $nb, $nr);
+                let mut result = [0u8; $block_bytes];
+                result.copy_from_slice(&out[..$block_bytes]);
+                result
+            }
+
+            /// Decrypts one block using the cached schedule - no `key_expand` call.
+            #[must_use]
+            pub fn decrypt_block(&self, block: &[u8; $block_bytes]) -> [u8; $block_bytes] {
+                let out = decrypt_with_schedule(&self.round_keys, block, $nb, $nr);
+                let mut result = [0u8; $block_bytes];
+                result.copy_from_slice(&out[..$block_bytes]);
+                result
+            }
+        }
     };
 }
 
-kalyna_variant!(Kalyna128_128, 16, 16, 2, 2, 10);
-kalyna_variant!(Kalyna128_256, 32, 16, 2, 4, 14);
-kalyna_variant!(Kalyna256_256, 32, 32, 4, 4, 14);
-kalyna_variant!(Kalyna256_512, 64, 32, 4, 8, 18);
-kalyna_variant!(Kalyna512_512, 64, 64, 8, 8, 18);
+kalyna_variant!(Kalyna128_128, Kalyna128_128ExpandedKey, 16, 16, 2, 2, 10);
+kalyna_variant!(Kalyna128_256, Kalyna128_256ExpandedKey, 32, 16, 2, 4, 14);
+kalyna_variant!(Kalyna256_256, Kalyna256_256ExpandedKey, 32, 32, 4, 4, 14);
+kalyna_variant!(Kalyna256_512, Kalyna256_512ExpandedKey, 64, 32, 4, 8, 18);
+kalyna_variant!(Kalyna512_512, Kalyna512_512ExpandedKey, 64, 64, 8, 8, 18);
 
 #[cfg(test)]
 mod fused_round_tests {
