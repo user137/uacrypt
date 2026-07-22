@@ -196,6 +196,27 @@ crypto" are different questions and this comparison can answer both without hidi
 wrapper (file I/O, argument parsing) adds essentially no measurable overhead once amortized over
 20000 iterations, which is the sanity check this comparison exists to provide.
 
+**Same runs, as throughput (MB/s = block size / per-op time — a single-block cipher's "MB/s" at a
+given variant, not a message-length-dependent figure the way Kupyna/Strumok's are; block size is
+16 bytes for 128-128, 64 bytes for 512-512):**
+
+| Variant | Direction | Schedule | dstutool MB/s | Oliynykov C MB/s | UAPKI MB/s |
+|---|---|---|---|---|---|
+| 128-128 | encrypt | cached | **125.98** | 1.46 | 79.60 |
+| 128-128 | encrypt | raw | **15.09** | 0.56 | 0.92 |
+| 128-128 | decrypt | cached | **114.29** | 1.43 | 81.63 |
+| 128-128 | decrypt | raw | **10.24** | 0.56 | 0.91 |
+| 512-512 | encrypt | cached | 115.94 | 0.86 | **134.45** |
+| 512-512 | encrypt | raw | **16.24** | 0.37 | 2.79 |
+| 512-512 | decrypt | cached | 95.10 | 0.85 | **125.49** |
+| 512-512 | decrypt | raw | **13.00** | 0.37 | 2.84 |
+
+Same numbers as the `ns`/op table above, just re-expressed - MB/s is the more natural unit for
+comparing against Kupyna/Strumok's throughput tables below, even though for a fixed-size block
+cipher it's really "block size ÷ time" rather than a size-independent rate the way a hash/stream
+cipher's MB/s is (a 512-512 block is 4x the bytes of a 128-128 block per op, so its MB/s isn't
+directly comparable across variants the way Kupyna-256 vs Kupyna-512 at the same message size is).
+
 **Whole-invocation wall-clock (same runs, `wall_ns`), showing process-spawn overhead is roughly
 constant across implementations, not crypto-dependent:**
 
