@@ -4403,6 +4403,36 @@ pub(crate) fn apply_matrix(state: &mut [[u8; ROWS]], table: &[[u64; 256]; ROWS])
     }
 }
 
+/// Combined S-box + MDS forward lookup: `SBOX_MDS[row][byte] = MDS_TABLE[row][SBOXES[row %
+/// 4][byte]]` - the contribution a raw (pre-substitution) byte sitting at row `row` makes to the
+/// output column once substituted and mixed. Computed by the compiler at build time by directly
+/// composing the two already-verified tables above (`const fn`, `while`-loop since `for`/iterators
+/// aren't allowed in const context) - no hand transcription, no generation script, so there is no
+/// new correctness risk beyond `SBOXES`/`MDS_TABLE` themselves.
+///
+/// This is `nb`/block-size independent, unlike `D-27`'s stated blocker for full S-box+shift+MDS
+/// fusion assumed: `sub_bytes` substitutes per row, and `shift_rows`/Kupyna's `shift_bytes` permute
+/// columns while preserving row - the two operations commute, so this table alone (no per-variant
+/// copies) is enough. The `nb`- or `columns`-dependent part is only the *gather index* used by the
+/// caller (`hazmat::kalyna::encipher_round`, `hazmat::kupyna::t_transform`/`t_plus_transform`),
+/// which is cheap arithmetic on `nb`/`shift`, not a table. See `DECISIONS.md` D-28.
+const fn build_sbox_mds() -> [[u64; 256]; ROWS] {
+    let mut table = [[0u64; 256]; ROWS];
+    let mut row = 0;
+    while row < ROWS {
+        let mut byte = 0usize;
+        while byte < 256 {
+            let substituted = SBOXES[row % 4][byte] as usize;
+            table[row][byte] = MDS_TABLE[row][substituted];
+            byte += 1;
+        }
+        row += 1;
+    }
+    table
+}
+
+pub(crate) const SBOX_MDS: [[u64; 256]; ROWS] = build_sbox_mds();
+
 /// Exhaustively confirms `MDS_TABLE`/`MDS_INV_TABLE` (generated, D-27) against `gf_mul` +
 /// `MDS_MATRIX`/`MDS_INV_MATRIX` (the original, still-verified computation) - every input row and
 /// every possible byte value, not a sample. This is what justifies `gf_mul`/`MDS_MATRIX`/
@@ -4410,7 +4440,9 @@ pub(crate) fn apply_matrix(state: &mut [[u8; ROWS]], table: &[[u64; 256]; ROWS])
 /// are the independent reference this test checks the fast tables against, not dead weight.
 #[cfg(test)]
 mod tests {
-    use super::{gf_mul, MDS_INV_MATRIX, MDS_INV_TABLE, MDS_MATRIX, MDS_TABLE, ROWS};
+    use super::{
+        gf_mul, MDS_INV_MATRIX, MDS_INV_TABLE, MDS_MATRIX, MDS_TABLE, ROWS, SBOXES, SBOX_MDS,
+    };
 
     fn expected_column(matrix: &[[u8; ROWS]; ROWS], in_row: usize, byte: u8) -> u64 {
         let mut word = 0u64;
@@ -4441,6 +4473,20 @@ mod tests {
                     MDS_INV_TABLE[in_row][byte as usize],
                     expected_column(&MDS_INV_MATRIX, in_row, byte),
                     "MDS_INV_TABLE[{in_row}][{byte}] mismatch"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn sbox_mds_matches_gf_mul_and_sbox_exhaustively() {
+        for row in 0..ROWS {
+            for byte in 0..=u8::MAX {
+                let substituted = SBOXES[row % 4][byte as usize];
+                assert_eq!(
+                    SBOX_MDS[row][byte as usize],
+                    expected_column(&MDS_MATRIX, row, substituted),
+                    "SBOX_MDS[{row}][{byte}] mismatch"
                 );
             }
         }

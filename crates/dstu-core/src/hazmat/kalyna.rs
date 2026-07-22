@@ -11,7 +11,7 @@
 //! (`crypto_secretbox`-equivalent) is a separate, higher-level primitive - see `DECISIONS.md` D-05
 //! and `docs/dstu-crypto-project.md` "Concrete API shape".
 
-use super::tables::{apply_matrix, MDS_INV_TABLE, MDS_TABLE, ROWS, SBOXES, SBOXES_DEC};
+use super::tables::{apply_matrix, MDS_INV_TABLE, ROWS, SBOXES, SBOXES_DEC, SBOX_MDS};
 use zeroize::Zeroize;
 
 /// One 64-bit state/key word, byte-for-byte (index 0 = least-significant byte - see
@@ -28,6 +28,13 @@ const ROUND_KEYS_LEN: usize = 19;
 const ZERO_COLUMN: Column = [0u8; ROWS];
 
 /// S-box layer (eta): `state[col][row] <- S_{row mod 4}(state[col][row])`.
+///
+/// No production code path calls this directly anymore - `encipher_round` fuses this with
+/// `shift_rows`/`apply_matrix` via `tables::SBOX_MDS` (D-28). Kept as the independent reference
+/// `tests::fused_encipher_round_matches_naive` checks the fused round against (same "kept for the
+/// exhaustive/property test, invisible to `cargo clippy`'s default invocation" pattern as
+/// `hazmat::tables`' `MDS_MATRIX`/`gf_mul`, D-27).
+#[allow(dead_code)]
 fn sub_bytes(state: &mut [Column]) {
     for column in state.iter_mut() {
         for (row, byte) in column.iter_mut().enumerate() {
@@ -48,6 +55,10 @@ fn inv_sub_bytes(state: &mut [Column]) {
 /// Row permutation (pi): row `r` rotated right by `⌊r·nb/8⌋` columns, `nb` = `state.len()`
 /// (`docs/pseudocode/kalyna.md` "Building blocks", cross-checked against the oracle's `ShiftRows`
 /// group-size derivation).
+///
+/// No production code path calls this directly anymore - see `sub_bytes`'s doc comment, same
+/// "kept for the fused-round reference test" reasoning (D-28).
+#[allow(dead_code)]
 fn shift_rows(state: &mut [Column]) {
     let nb = state.len();
     let mut shifted = [ZERO_COLUMN; MAX_NB];
@@ -98,11 +109,30 @@ fn xor_round_key(state: &mut [Column], key: &[Column]) {
     }
 }
 
-/// One encryption round: eta -> pi -> tau (`EncipherRound` in the oracle).
+/// One encryption round: eta -> pi -> tau (`EncipherRound` in the oracle), fused into a single
+/// gather-and-XOR pass over `tables::SBOX_MDS` (D-28) instead of three separate passes
+/// (`sub_bytes` -> `shift_rows` -> `apply_matrix`). Valid because `sub_bytes` acts per-row and
+/// `shift_rows` preserves row (only permutes columns), so the two commute: substituting a byte
+/// then moving it to column `(col + shift) % nb` gives the same result as moving it first then
+/// substituting. That means, for output column `out_col`, row `row`'s contribution comes from
+/// input column `(out_col + nb - shift) % nb` - a plain gather, cheap arithmetic on `nb`/`shift`,
+/// not a table (see `tables::build_sbox_mds`'s doc comment for why no per-`nb` tables are needed).
 fn encipher_round(state: &mut [Column]) {
-    sub_bytes(state);
-    shift_rows(state);
-    apply_matrix(state, &MDS_TABLE);
+    let nb = state.len();
+    debug_assert!(nb.is_power_of_two());
+    let nb_mask = nb - 1;
+    let mut result = [ZERO_COLUMN; MAX_NB];
+    for (out_col, out_word) in result[..nb].iter_mut().enumerate() {
+        let mut acc = 0u64;
+        for row in 0..ROWS {
+            let shift = row * nb / ROWS;
+            let src_col = (out_col + nb - shift) & nb_mask;
+            let byte = state[src_col][row];
+            acc ^= SBOX_MDS[row][byte as usize];
+        }
+        *out_word = acc.to_le_bytes();
+    }
+    state.copy_from_slice(&result[..nb]);
 }
 
 /// One decryption round, run in reverse: tau^-1 -> pi^-1 -> eta^-1 (`DecipherRound`).
@@ -378,3 +408,54 @@ kalyna_variant!(Kalyna128_256, 32, 16, 2, 4, 14);
 kalyna_variant!(Kalyna256_256, 32, 32, 4, 4, 14);
 kalyna_variant!(Kalyna256_512, 64, 32, 4, 8, 18);
 kalyna_variant!(Kalyna512_512, 64, 64, 8, 8, 18);
+
+#[cfg(test)]
+mod fused_round_tests {
+    use super::{apply_matrix, encipher_round, shift_rows, sub_bytes, Column, MAX_NB, ZERO_COLUMN};
+    use crate::hazmat::tables::MDS_TABLE;
+    use proptest::prelude::*;
+
+    /// The pre-D-28 three-pass form, kept only here as the independent reference the fused
+    /// `encipher_round` is checked against.
+    fn naive_encipher_round(state: &mut [Column]) {
+        sub_bytes(state);
+        shift_rows(state);
+        apply_matrix(state, &MDS_TABLE);
+    }
+
+    fn arb_state(nb: usize) -> impl Strategy<Value = Vec<Column>> {
+        proptest::collection::vec(proptest::array::uniform8(any::<u8>()), nb)
+    }
+
+    proptest! {
+        #[test]
+        fn fused_encipher_round_matches_naive_nb2(state in arb_state(2)) {
+            let mut fused = [ZERO_COLUMN; MAX_NB];
+            fused[..2].copy_from_slice(&state);
+            let mut naive = fused;
+            encipher_round(&mut fused[..2]);
+            naive_encipher_round(&mut naive[..2]);
+            prop_assert_eq!(fused, naive);
+        }
+
+        #[test]
+        fn fused_encipher_round_matches_naive_nb4(state in arb_state(4)) {
+            let mut fused = [ZERO_COLUMN; MAX_NB];
+            fused[..4].copy_from_slice(&state);
+            let mut naive = fused;
+            encipher_round(&mut fused[..4]);
+            naive_encipher_round(&mut naive[..4]);
+            prop_assert_eq!(fused, naive);
+        }
+
+        #[test]
+        fn fused_encipher_round_matches_naive_nb8(state in arb_state(8)) {
+            let mut fused = [ZERO_COLUMN; MAX_NB];
+            fused[..8].copy_from_slice(&state);
+            let mut naive = fused;
+            encipher_round(&mut fused[..8]);
+            naive_encipher_round(&mut naive[..8]);
+            prop_assert_eq!(fused, naive);
+        }
+    }
+}

@@ -1081,3 +1081,62 @@ pass deliberately didn't attempt (see "narrower scope" above). New `criterion` b
 size, unlike Strumok's fixed 16-word state), a bigger and more invasive change than this pass's
 "one shared function, both algorithms benefit" scope. Sketched as a possible further step, not
 scheduled.
+
+## D-28: Full S-box+shift+MDS fusion for Kalyna encrypt + Kupyna - correcting D-27's stated blocker
+
+Follow-up to D-27, planned 2026-07-22 (`TASKS.md`), implemented the same day. D-27 assumed full
+fusion needed per-`nb` tables because Kalyna's row-shift offset depends on block size - **this was
+wrong**. `sub_bytes` substitutes per row; `shift_rows`/Kupyna's `shift_bytes` permute *columns*
+while preserving row. The two operations therefore commute (substituting a byte then moving it to
+column `(col + shift) % nb` gives the same result as moving it first, then substituting), so the
+combined table `SBOX_MDS[row][byte] = MDS_TABLE[row][SBOXES[row % 4][byte]]` doesn't depend on `nb`
+at all - one shared table, computed by the compiler at build time (`const fn build_sbox_mds`,
+composing the two already-verified tables directly - no hand transcription, no generation script,
+no new correctness risk beyond `SBOXES`/`MDS_TABLE` themselves). The `nb`/`columns` dependence
+lives entirely in the *gather index* used by the caller: for output column `out_col`, row `row`'s
+contribution comes from input column `(out_col + nb - shift) mod nb` - cheap arithmetic on the
+already-existing `nb`/`shift` variables, not a table.
+
+**Scope, this pass**: the forward direction only - Kalyna's `encipher_round` (used by encrypt *and*
+by the key schedule's `round_key_from`/`key_expand_kt`, so both benefit) and Kupyna's new
+`sub_shift_mix` (replacing `sub_bytes -> shift_bytes -> mix_columns` in both `t_transform` and
+`t_plus_transform`; Kupyna's round-constant add stays an untouched pre-step, since `add_round_
+constant_add`'s mod-2^64 add can carry across the whole word and doesn't commute with a per-byte
+gather the way XOR-based operations do). Kalyna's *decrypt* direction (`decipher_round`) is
+deliberately left as D-27's three-pass form in this same commit - `inv_sub_bytes` runs *last*
+in the existing decrypt round, not first, so it can't fuse the same direct way; a follow-up entry
+covers whether/how that gets addressed.
+
+**Correctness-critical fix found during implementation, not anticipated in the plan**: the first
+working version computed the gather index with `%` (`(out_col + nb - shift) % nb`). Since `nb` and
+`columns` are runtime values (not compile-time constants), LLVM cannot prove they're powers of two
+and emits a real integer-division instruction per byte gathered - this alone made Kupyna's first
+fused version **5-8% *slower*** than pre-fusion D-27, despite doing genuinely less work per round.
+Both `nb` (2/4/8) and Kupyna's `columns` (8/16) are *always* powers of two by construction (the
+DSTU 7624/7564 variant table has no other block sizes), so `% nb` was replaced with `& (nb - 1)`
+(`debug_assert!(nb.is_power_of_two())` documents the invariant the bitmask relies on) - this one
+change was the difference between a regression and the result below. Lesson for future table/index
+work in this codebase: a runtime modulo by a value that's *always* a power of two in practice is
+not free just because the divisor happens to be one - the compiler needs to be told, or it emits
+the general case.
+
+**Verified**: two new `proptest` suites (`hazmat::kalyna::fused_round_tests`, `hazmat::kupyna::
+fused_round_tests`) checking the fused round against a kept-for-this-purpose naive three-pass
+reference (`sub_bytes`/`shift_rows`/`shift_bytes`/`mix_columns`, now `#[allow(dead_code)]` in
+production, same "kept as the independent reference" pattern as D-27's `gf_mul`/`MDS_MATRIX`) across
+random states for every `nb`/`columns` value; a new exhaustive `hazmat::tables::tests::sbox_mds_
+matches_gf_mul_and_sbox_exhaustively` test; all existing official vectors, `proptest` round-trips,
+and both Oliynykov differential harnesses re-run fresh (12500/12500 Kalyna cases including decrypt
+round-trips, 4000/4000 Kupyna cases - bit-identical, confirming the decrypt path is unaffected).
+`clippy`, `fmt`, and the `no_std` build all pass.
+
+**Result** (`cargo bench -- --baseline kalyna-kupyna-optimized-2026-07-22`, full table in
+`PERFORMANCE.md`): Kalyna encrypt **-55% to -68%** further reduction (e.g. 128-128: 2354 ns -> 1041
+ns; 512-512: 12735 ns -> 4006 ns) - decrypt also improved **-36% to -40%** purely from the faster
+key schedule sharing `encipher_round`, even though `decipher_round` itself is untouched. Kupyna
+improved **-85% to -87%** (e.g. Kupyna-256 at 64 KB: 14.57 -> 98.6 MB/s). Against UAPKI: Kalyna is
+now **~3.4-4.9x slower** (was ~10.6-14.5x after D-27) with key-schedule caching (`TASKS.md` stage 3,
+not done yet) still to come; **Kupyna is now at or above UAPKI's own speed** (256: 1.03-1.45x
+*faster*; 512: 0.93-1.45x, roughly at parity) - both far beyond this task's original "2-3x of
+UAPKI" expectation, because the actual dominant cost turned out to be the runtime-modulo bug above,
+not an inherent limit of the fused-table approach. New baseline: `kalyna-kupyna-fused-2026-07-22`.

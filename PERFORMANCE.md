@@ -52,38 +52,45 @@ speed instead.
 
 ### Kalyna (single-block encrypt, nanoseconds — lower is better)
 
-**Updated 2026-07-22 after D-27** (precomputed `MDS_TABLE`, see below) — pre-D-27 figures kept for
-the record:
+**Updated 2026-07-22 after D-28** (full S-box+shift+MDS fusion for encrypt, see below) — D-27
+figures kept for the record:
 
-| Variant | This project, before D-27 | This project, **after D-27** | Oliynykov C | UAPKI |
-|---|---|---|---|---|
-| 128-128 | 4606 | **2354** | 13019 | 222 |
-| 128-256 | 6284 | **2999** | 19119 | 261 |
-| 256-256 | 11412 | **5443** | 35810 | 578 |
-| 256-512 | 14031 | **6645** | 45520 | 663 |
-| 512-512 | 27223 | **12735** | 91406 | 879 |
+| Variant | Before D-27 | After D-27 | **After D-28** | Oliynykov C | UAPKI |
+|---|---|---|---|---|---|
+| 128-128 | 4606 | 2354 | **1041** | 13019 | 222 |
+| 128-256 | 6284 | 2999 | **1283** | 19119 | 261 |
+| 256-256 | 11412 | 5443 | **1956** | 35810 | 578 |
+| 256-512 | 14031 | 6645 | **2296** | 45520 | 663 |
+| 512-512 | 27223 | 12735 | **4006** | 91406 | 879 |
 
-**After D-27: ~7-8x faster than Oliynykov's reference C (was ~3-4x), ~10.6-14.5x slower than UAPKI
-(was ~17-31x)** — roughly halves the gap to UAPKI without closing it (see "What the gap is,
-honestly" for why some of it remains).
+**After D-28: ~12.5-19.9x faster than Oliynykov's reference C (was ~7-8x), ~3.4-4.9x slower than
+UAPKI (was ~10.6-14.5x)** — decrypt (not fused this pass, see below) improved too, ~36-40%, purely
+from the key schedule sharing the now-fused `encipher_round`. Key-schedule caching (`TASKS.md`
+stage 3, `ExpandedKey`) is still to come and should close most of the remaining gap, since
+`key_expand` is still redone on every single `encrypt`/`decrypt` call.
 
 ### Kupyna (digest, MB/s — higher is better)
 
-**Updated 2026-07-22 after D-27**:
+**Updated 2026-07-22 after D-28**:
 
 | | 64 B | 1024 B | 65536 B |
 |---|---|---|---|
-| This project, before D-27 (256) | 2.17 | 5.26 | 5.85 |
-| This project, **after D-27** (256) | 5.80 | 13.30 | **14.57** |
+| Before D-27 (256) | 2.17 | 5.26 | 5.85 |
+| After D-27 (256) | 5.80 | 13.30 | 14.57 |
+| **After D-28** (256) | **39.53** | **91.72** | **98.60** |
 | Oliynykov C (256) | 0.26 | 0.59 | 0.60 |
 | UAPKI (256) | 29.93 | 88.88 | 95.48 |
-| This project, before D-27 (512) | 1.26 | 3.44 | 4.10 |
-| This project, **after D-27** (512) | 3.54 | 8.91 | **10.57** |
+| Before D-27 (512) | 1.26 | 3.44 | 4.10 |
+| After D-27 (512) | 3.54 | 8.91 | 10.57 |
+| **After D-28** (512) | **26.89** | **69.26** | **80.99** |
 | Oliynykov C (512) | 0.14 | 0.37 | 0.43 |
 | UAPKI (512) | 18.50 | 74.46 | 85.92 |
 
-**After D-27: ~24-25x faster than Oliynykov's reference C (was ~9-12x), ~6.6-8.1x slower than
-UAPKI (was ~14-21x)** — same "roughly halves the gap" story as Kalyna.
+**After D-28: Kupyna-256 is now 1.03-1.45x *faster* than UAPKI (crossed over from ~6.7x slower);
+Kupyna-512 is at rough parity (0.93-1.45x, i.e. within ~7% either side)** — the full fusion plus a
+correctness/performance fix (see D-28: a runtime `%` by `nb`/`columns` was replaced with a bitmask,
+since both are always powers of two but not compile-time constants) closed essentially the entire
+gap, far beyond this task's original "2-3x of UAPKI" expectation.
 
 ### Strumok (`apply_keystream`, MB/s — higher is better)
 
@@ -114,15 +121,21 @@ This project's MVP deliberately chose correctness and `no_std`/embedded-portabil
 causes — read directly from the other implementations' source, not guessed at (`TASKS.md` has the
 sketched-not-scheduled task for closing this):
 
-- **Kalyna/Kupyna, partially fixed 2026-07-22, see D-27**: `hazmat::tables`' shared `apply_matrix`
-  used to compute every `GF(2^8)` multiplication via `gf_mul` at call time (up to 64 per column) —
-  now a precomputed `MDS_TABLE`/`MDS_INV_TABLE` (8 lookups + 7 XORs instead), roughly halving the
-  gap to UAPKI (see the tables above). The remaining gap is UAPKI's `p_boxrowcol` combining S-box
-  *and* the row/column permutation into the same lookup, which this project's `sub_bytes` ->
-  `shift_rows` -> `apply_matrix` still does as three separate passes — deliberately not attempted
-  this pass (D-27's "narrower scope" note): Kalyna's row-shift offset depends on block size
-  (`nb`), so fully fusing it would need per-variant tables, a bigger change than "one shared
-  function, both algorithms benefit at once."
+- **Kalyna/Kupyna, D-27 then D-28, both 2026-07-22**: `hazmat::tables`' shared `apply_matrix` used
+  to compute every `GF(2^8)` multiplication via `gf_mul` at call time (up to 64 per column) — D-27
+  switched it to a precomputed `MDS_TABLE`/`MDS_INV_TABLE` (8 lookups + 7 XORs instead), roughly
+  halving the gap to UAPKI. D-27 assumed the remaining gap (UAPKI's `p_boxrowcol` combining S-box
+  *and* the row/column permutation into one lookup) couldn't be closed without per-`nb` tables,
+  since Kalyna's row-shift offset depends on block size — **this assumption was wrong**, corrected
+  in D-28: `sub_bytes` is row-indexed and `shift_rows`/Kupyna's `shift_bytes` preserve row (only
+  permute columns), so they commute, and the combined `SBOX_MDS` table doesn't depend on `nb` at
+  all — only the *gather index* does, which is cheap arithmetic, not a table. D-28 fused Kalyna's
+  encrypt round (and Kupyna's, which shares the table) this way, closing Kupyna's gap to UAPKI
+  almost entirely and Kalyna's encrypt gap substantially. Kalyna's *decrypt* round is not fused yet
+  (`inv_sub_bytes` runs last, not first, so it needs restructuring, not just a table swap — staged
+  separately in `TASKS.md`), and Kalyna's key schedule is still recomputed on every single call
+  (`ExpandedKey`, `TASKS.md` stage 3, not done yet) — both remaining, concrete, already-scoped work,
+  not an unexplained residual.
 - **Strumok, two distinct, additive causes — both fixed 2026-07-22, see D-26**: (1)
   `oracles/strumok-dstu8845/strumok.c`'s `next_stream()` is one fully-unrolled function that
   updates each state word in place via modular indexing — it never physically moves the 16-word
@@ -175,9 +188,17 @@ cargo bench -p dstu-core --bench kalyna --bench kupyna -- --save-baseline kalyna
 cargo bench -p dstu-core --bench kalyna --bench kupyna -- --baseline kalyna-kupyna-optimized-2026-07-22  # to check
 ```
 
-`initial-2026-07-22` is now superseded for both Kalyna/Kupyna (by `kalyna-kupyna-optimized-2026-07
--22`) and Strumok (by `strumok-optimized-2026-07-22`) — kept only as the historical "before either
-optimization" record, not the one to check new changes against.
+**Updated again 2026-07-22, same day**: D-28's full fusion landed, so a fourth baseline was saved:
+
+```
+cargo bench -p dstu-core --bench kalyna --bench kupyna -- --save-baseline kalyna-kupyna-fused-2026-07-22
+cargo bench -p dstu-core --bench kalyna --bench kupyna -- --baseline kalyna-kupyna-fused-2026-07-22  # to check
+```
+
+`initial-2026-07-22` and `kalyna-kupyna-optimized-2026-07-22` are now both superseded for
+Kalyna/Kupyna (by `kalyna-kupyna-fused-2026-07-22`) and Strumok is still tracked against
+`strumok-optimized-2026-07-22` — kept only as historical records, not what new changes should be
+checked against.
 
 `target/criterion/` is gitignored (as usual for `target/`), so this baseline lives only on whatever
 machine last ran the save command above — it is **not** a portable, cross-machine regression gate

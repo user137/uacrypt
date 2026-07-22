@@ -12,12 +12,19 @@
 //! a bit-level length anyway. This matches the extracted test vectors exactly (see the `note`
 //! field in `crates/dstu-core/tests/vectors/kupyna/*.json`).
 
-use super::tables::{apply_matrix, MDS_TABLE, ROWS, SBOXES};
+use super::tables::{apply_matrix, MDS_TABLE, ROWS, SBOXES, SBOX_MDS};
 
 const MAX_COLUMNS: usize = 16;
 const MAX_BLOCK_BYTES: usize = MAX_COLUMNS * ROWS;
 
 /// S-box layer (kappa): `state[col][row] <- S_{row mod 4}(state[col][row])`.
+///
+/// No production code path calls this directly anymore - `sub_shift_mix` fuses this with
+/// `shift_bytes`/`mix_columns` via `tables::SBOX_MDS` (D-28). Kept as the independent reference
+/// `tests::fused_sub_shift_mix_matches_naive` checks the fused round against (same pattern as
+/// `hazmat::kalyna`'s `sub_bytes`/`shift_rows`, D-28, and `hazmat::tables`' `MDS_MATRIX`/`gf_mul`,
+/// D-27).
+#[allow(dead_code)]
 fn sub_bytes(state: &mut [[u8; ROWS]]) {
     for column in state.iter_mut() {
         for (row, byte) in column.iter_mut().enumerate() {
@@ -28,6 +35,9 @@ fn sub_bytes(state: &mut [[u8; ROWS]]) {
 
 /// Row permutation (pi): row `r` (0..=6) rotated right by `r`; the last row rotated right by
 /// `last_row_shift` (7 for Kupyna-256's l=512, 11 for Kupyna-512's l=1024).
+///
+/// No production code path calls this directly anymore - see `sub_bytes`'s doc comment (D-28).
+#[allow(dead_code)]
 fn shift_bytes(state: &mut [[u8; ROWS]], last_row_shift: usize) {
     let columns = state.len();
     let mut shifted = [[0u8; ROWS]; MAX_COLUMNS];
@@ -41,8 +51,33 @@ fn shift_bytes(state: &mut [[u8; ROWS]], last_row_shift: usize) {
 }
 
 /// Linear layer (tau): each column multiplied by the MDS matrix over GF(2^8).
+///
+/// No production code path calls this directly anymore - see `sub_bytes`'s doc comment (D-28).
+#[allow(dead_code)]
 fn mix_columns(state: &mut [[u8; ROWS]]) {
     apply_matrix(state, &MDS_TABLE);
+}
+
+/// Fused `sub_bytes -> shift_bytes -> mix_columns`, one gather-and-XOR pass over
+/// `tables::SBOX_MDS` instead of three separate passes (D-28) - see `hazmat::kalyna::encipher_
+/// round`'s doc comment for why this is valid (S-box is row-indexed, the row permutation preserves
+/// row, so the two commute) and why it needs no per-`columns` tables, only a cheap gather index.
+fn sub_shift_mix(state: &mut [[u8; ROWS]], last_row_shift: usize) {
+    let columns = state.len();
+    debug_assert!(columns.is_power_of_two());
+    let columns_mask = columns - 1;
+    let mut result = [[0u8; ROWS]; MAX_COLUMNS];
+    for (out_col, out_word) in result[..columns].iter_mut().enumerate() {
+        let mut acc = 0u64;
+        for row in 0..ROWS {
+            let shift = if row == ROWS - 1 { last_row_shift } else { row };
+            let src_col = (out_col + columns - shift) & columns_mask;
+            let byte = state[src_col][row];
+            acc ^= SBOX_MDS[row][byte as usize];
+        }
+        *out_word = acc.to_le_bytes();
+    }
+    state[..columns].copy_from_slice(&result[..columns]);
 }
 
 /// XOR-based round-constant addition (psi-xor), used by `T`/`P`. Kupyna.pdf Section 6.2.
@@ -70,9 +105,7 @@ fn add_round_constant_add(state: &mut [[u8; ROWS]], round: u8) {
 fn t_transform(state: &mut [[u8; ROWS]], rounds: usize, last_row_shift: usize) {
     for round in 0..rounds {
         add_round_constant_xor(state, round as u8);
-        sub_bytes(state);
-        shift_bytes(state, last_row_shift);
-        mix_columns(state);
+        sub_shift_mix(state, last_row_shift);
     }
 }
 
@@ -81,9 +114,7 @@ fn t_transform(state: &mut [[u8; ROWS]], rounds: usize, last_row_shift: usize) {
 fn t_plus_transform(state: &mut [[u8; ROWS]], rounds: usize, last_row_shift: usize) {
     for round in 0..rounds {
         add_round_constant_add(state, round as u8);
-        sub_bytes(state);
-        shift_bytes(state, last_row_shift);
-        mix_columns(state);
+        sub_shift_mix(state, last_row_shift);
     }
 }
 
@@ -215,5 +246,45 @@ impl Kupyna512 {
     #[must_use]
     pub fn digest(message: &[u8]) -> [u8; 64] {
         digest_generic(message, 16, 14, 11, 64)
+    }
+}
+
+#[cfg(test)]
+mod fused_round_tests {
+    use super::{mix_columns, shift_bytes, sub_bytes, sub_shift_mix, MAX_COLUMNS, ROWS};
+    use proptest::prelude::*;
+
+    /// The pre-D-28 three-pass form, kept only here as the independent reference the fused
+    /// `sub_shift_mix` is checked against.
+    fn naive_sub_shift_mix(state: &mut [[u8; ROWS]], last_row_shift: usize) {
+        sub_bytes(state);
+        shift_bytes(state, last_row_shift);
+        mix_columns(state);
+    }
+
+    fn arb_state(columns: usize) -> impl Strategy<Value = Vec<[u8; ROWS]>> {
+        proptest::collection::vec(proptest::array::uniform8(any::<u8>()), columns)
+    }
+
+    proptest! {
+        #[test]
+        fn fused_sub_shift_mix_matches_naive_256(state in arb_state(8)) {
+            let mut fused = [[0u8; ROWS]; MAX_COLUMNS];
+            fused[..8].copy_from_slice(&state);
+            let mut naive = fused;
+            sub_shift_mix(&mut fused[..8], 7);
+            naive_sub_shift_mix(&mut naive[..8], 7);
+            prop_assert_eq!(fused, naive);
+        }
+
+        #[test]
+        fn fused_sub_shift_mix_matches_naive_512(state in arb_state(16)) {
+            let mut fused = [[0u8; ROWS]; MAX_COLUMNS];
+            fused[..16].copy_from_slice(&state);
+            let mut naive = fused;
+            sub_shift_mix(&mut fused[..16], 11);
+            naive_sub_shift_mix(&mut naive[..16], 11);
+            prop_assert_eq!(fused, naive);
+        }
     }
 }
