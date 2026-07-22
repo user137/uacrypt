@@ -70,13 +70,78 @@ test-vector check (or unit test) is written before the primitive it verifies, no
       `dstutool` doesn't call this yet.
 - [x] `cargo miri test` clean for all three primitives (Kalyna/Kupyna/Strumok, each confirmed
       individually above)
-- [ ] `cargo fuzz` harnesses for all three primitives
+- [ ] `cargo fuzz` harnesses for all three primitives — scaffold exists (`crates/dstu-core/fuzz/`)
+      but only has a `kupyna` target, and it has never actually been run locally (no `cargo-fuzz`
+      installed here, see `.claude.local.md`). Needs a `kalyna` target (`encrypt`/`decrypt` on
+      arbitrary-length input) and a `strumok` target (`apply_keystream` on arbitrary-length input),
+      then an actual local run of all three, not just scaffolding. See "Testing & hardening" below
+      for why this matters beyond "the checkbox exists."
 - [ ] `dstutool` CLI: `encrypt`/`decrypt`/`hash` subcommands, mode/nonce/IV hardcoded (no
       user-facing crypto knobs, per the libsodium-style misuse-resistance goal)
 - [ ] Publish `dstu-core` to crates.io
 - [ ] Prebuilt Windows/Linux binaries via GitHub Releases
 - [ ] Re-confirm the `no_std` build still passes (all feature-flag combinations) as each
       primitive lands — don't let this regress silently
+
+## Testing & hardening — deeper verification beyond test vectors
+
+Test vectors answer one question: does the primitive produce the standard's expected output for a
+handful of fixed inputs. They do not answer whether the *code* leaks secrets, runs at an acceptable
+speed, or degrades safely on adversarial/malformed input — raised 2026-07-22 while reviewing what
+"done" means for Kalyna/Kupyna/Strumok now that all three pass their vectors. Split deliberately
+from Phase 1 above: none of this blocks calling the primitives implemented, but none of it should
+be skipped before calling them *production-ready*. Two things are explicitly **not** goals here and
+never will be, so as not to imply otherwise: cryptanalytic strength of the algorithms themselves
+(that's the DSTU designers' responsibility, not this library's), and hardware side-channel
+resistance (SPA/DPA — explicitly out of scope per `SECURITY.md`/`CLAUDE.md` "MVP scope").
+
+- [ ] **Chunk/split-invariance test for `Strumok::apply_keystream`.** All 8 current vectors call it
+      once, on a buffer whose length is a multiple of 8. The internal partial-word buffer
+      (`block_pos`/`block` in `strumok.rs`) is never exercised across a call boundary. Add a test
+      asserting that calling `apply_keystream` in arbitrary-sized chunks (e.g. 3 bytes, then 5,
+      then 13, ...) produces byte-for-byte the same output as one call on the concatenated buffer —
+      this is exactly where a buffering off-by-one would hide, and it is currently untested.
+- [ ] **Round-trip property tests** (needs a dependency decision + supply-chain vetting per
+      `SECURITY.md`'s table — `proptest` is the natural candidate): Kalyna's
+      `decrypt(encrypt(key, block), key) == block` over randomly generated keys/blocks, for all 5
+      variants; Strumok's keystream applied twice with the same key/IV is its own inverse (XOR
+      property). Two fixed vectors per Kalyna variant is thin coverage — a property test explodes
+      that for near-zero added maintenance cost.
+- [ ] **Differential testing against the C oracles over many random inputs**, not just the fixed
+      vectors — `oracles/kalyna-reference/`+`cryptonite` for Kalyna, `oracles/kupyna-reference/`
+      for Kupyna, `oracles/strumok-dstu8845/`+`oracles/uapki/` for Strumok (a shared-lineage oracle
+      is still a fine correctness check here — the D-15 "not independent" caveat is about
+      *verification independence*, not about whether it's useful for "does our Rust match a
+      reference"). Highest-value item for Strumok specifically, since zero official vectors exist
+      anywhere for it (D-15) and the 8 UAPKI-attributed cases cover a narrow slice of the state
+      space — thousands of random key/IV/length combinations diffed against the C oracle would be
+      the strongest confidence signal available short of the paid official text.
+- [ ] **Actually run `cargo fuzz`** for all three primitives (see the Phase 1 line above) — fuzzing
+      for panics/out-of-bounds on adversarial-length input, not correctness.
+- [ ] **`Zeroize`/`ZeroizeOnDrop` on all key-material types** (Kalyna's key slices, Kupyna's
+      internal state, Strumok's `Core` — its `s`/`r0`/`r1` LFSR state is derived from the key and
+      never cleared today), per `SECURITY.md`'s hard constraint — **not implemented in any
+      primitive yet**, an existing gap this project already tracked in the abstract but hasn't
+      acted on. Note for whoever picks this up: "testing that zeroization happened" isn't a
+      hand-rolled memory-inspection test (the compiler can elide a plain overwrite) — use the
+      `zeroize` crate, which solves the volatile-write problem; don't reinvent it.
+- [ ] **Constant-time audit + an explicit decision, not just a test:** `SBOXES[j % 4][byte as
+      usize]` (identical pattern in `kalyna.rs`, `kupyna.rs`, `strumok.rs`) is array indexing keyed
+      on a secret byte — the exact thing `SECURITY.md`'s hard constraints list ("No
+      secret-dependent branching or array indexing") prohibits, and the classic AES-style
+      cache-timing surface. This is a real, currently-undocumented tension between a written
+      constraint and the actual code, found 2026-07-22 while reviewing what else needs testing —
+      not a hypothetical. No test cleanly catches this (dudect-style statistical timing tests exist
+      but are noisy/platform-dependent); what's needed is a `DECISIONS.md` entry that either (a)
+      explicitly accepts table-based S-boxes as a scoped exception — consistent with SPA/DPA
+      already being out of scope, which most software crypto libraries do — or (b) commits to a
+      bitsliced/constant-time S-box implementation later. Silence on this is the wrong outcome
+      either way.
+- [ ] **`criterion` benchmarks** — quantify the cost of design choices made along the way (e.g.
+      Strumok's literal 16-word shift vs. the oracles' rotating in-place buffer, `DECISIONS.md`
+      D-18) and catch performance regressions. Explicitly not a claim of meaningful cross-algorithm
+      or cross-language comparison — those numbers are inherently rough and shouldn't be presented
+      as more precise than they are.
 
 ## Phase 2 — libsodium-equivalent construction layer, DSTU 4145 + 9041
 
