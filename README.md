@@ -95,6 +95,13 @@ locally.
 Before implementing any primitive, read `SECURITY.md` (hard constraints, mandatory
 dual-oracle verification) and `DECISIONS.md` (architectural decisions already made).
 
+## Performance
+
+`cargo bench -p dstu-core --bench kalyna --bench kupyna --bench strumok` (`criterion`). See
+`PERFORMANCE.md` for recorded baseline numbers, a comparison against the algorithm designers'
+reference C implementation and against UAPKI (a real, production PKI library), and how to check a
+change against the saved regression baseline.
+
 ## Using `dstutool`
 
 Not yet available — `dstutool` is currently a placeholder binary. Once implemented, the plan (see

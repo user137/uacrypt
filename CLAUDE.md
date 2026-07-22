@@ -113,6 +113,7 @@ Algorithms in scope:
 | `docs/rust_ai_ruleset.md` | general Rust code-style questions | never (external ruleset, treat as canonical as-is) | generic Rust engineering conventions |
 | `docs/cross-language-style-guide.md` | writing or reviewing non-Rust code (oracle harnesses, future language bindings) | a new language is added, or a cross-language principle needs adjusting | cross-language naming/style principles and the per-language reference table; generalizes `docs/rust_ai_ruleset.md`, doesn't replace it |
 | `README.md` | need the human-facing project overview or repo tree | repo structure changes | GitHub-facing description, top-level directory map, build/install instructions |
+| `PERFORMANCE.md` | need this project's benchmark numbers, or comparing against another implementation's speed | new numbers are measured, or a new comparison implementation is benchmarked | benchmark methodology, recorded numbers, comparisons against reference C/UAPKI/outspace, the saved `criterion --baseline` for regression tracking |
 | `xtask/src/main.rs` | adding or changing a build/QA subcommand | a new tool enters the QA stack or an existing command's invocation changes | the actual cross-platform build/QA command implementations (README.md documents usage, this owns behavior) |
 
 `docs/rust_ai_ruleset.md` §7 (async/tokio) does not apply to the `no_std`-first core — it's only
@@ -156,9 +157,38 @@ Full detail and rationale in `SECURITY.md` — this is the compressed version so
   direction — don't self-authorize a 4th attempt.
 - **Research before implementation**: no primitive written from memory. Verify against the
   primary source (specific DSTU clause, or real reference-implementation code) before writing it,
-  and record the citation in `DECISIONS.md`.
+  and record the citation in `DECISIONS.md`. **If only a reference implementation is available
+  (the primary spec text doesn't exist yet or hasn't been read)**, treat that citation as
+  provisional, not equivalent to a primary-source check — say so explicitly in `DECISIONS.md`
+  (Strumok's "UAPKI-attributed, not confirmed against the official text" framing, D-15, is the
+  pattern to copy) and re-verify against the primary text as soon as it's available, rather than
+  letting the provisional citation quietly age into being treated as settled. Also: **porting logic
+  from a reference implementation means porting its calling convention too**, not just its
+  internals — a reference implementation's function can have its own input/output convention (byte
+  order, sign, units) that differs from the primary spec's, and copying the internal logic without
+  also adopting (or consciously translating) that convention is a distinct failure mode from
+  getting the math wrong. This is exactly how DSTU 4145's `hash_to_field` broke: transcribed from
+  Bouncy Castle's `hash2FieldElement` (which expects its `hash` parameter pre-reversed relative to
+  the standard's own byte convention) without adopting or flagging that requirement — see
+  `DECISIONS.md` D-25's follow-up entries and `docs/pseudocode/dstu4145.md`.
 - **Don't trust green tests alone for security-critical code** — see dual-oracle verification
-  above.
+  above. Two sharper corollaries, both learned the hard way on DSTU 4145 (D-25):
+  - **A test-vector fix that isn't traceable to a specific citation is suspect.** If making a test
+    pass requires changing the test's own input transformation (reversing bytes, reordering
+    fields, etc.), that change needs a cited reason (a spec section, or independently-confirmed
+    reference-implementation behavior) before being accepted as correct — not just "now the
+    numbers match." An unexplained transform that merely produces the expected output is more
+    likely masking a real bug in the implementation than fixing a genuine test-setup mistake; two
+    wrong steps can cancel out into a right-looking answer (exactly what happened here — a wrong
+    `hash_to_field` plus a manually-added test-side reversal produced the correct number for the
+    one vector on hand, for reasons that only became clear once the primary source was read).
+  - **Check what a fixed vector actually exercises, not just whether it passes.** A vector that
+    supplies a derived value directly (e.g. a public key `Q`) rather than deriving it from what the
+    vector also gives you (e.g. a private key `d`) does not test that derivation step at all, no
+    matter how many times it's run. Before calling a multi-step primitive (key generation + sign +
+    verify, etc.) "vector-verified," check which steps the vector's given inputs/outputs actually
+    reach — anything a fixed vector doesn't reach needs its own test (a property test over random
+    inputs, per D-21/D-25, is the tool already established here for exactly this).
 
 ## Reference implementations and oracles
 

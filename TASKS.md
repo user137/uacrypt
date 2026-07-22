@@ -152,13 +152,37 @@ resistance (SPA/DPA — explicitly out of scope per `SECURITY.md`/`CLAUDE.md` "M
       comparisons on secret data remain prohibited without exception, unchanged.
 - [x] **`criterion` benchmarks.** Added as a dev-dependency, three bench targets
       (`crates/dstu-core/benches/{kalyna,kupyna,strumok}.rs`, `cargo bench -p dstu-core`) covering
-      every variant of all three primitives. Absolute throughput only, not a regression baseline
-      committed anywhere yet (criterion's own `target/criterion/` comparison-across-runs already
-      works locally). **Did not** implement a second Strumok state-transition form just to quantify
-      the literal-shift-vs-ring-buffer tradeoff mentioned in D-18 — that would mean building and
-      maintaining a second implementation purely to benchmark it, out of proportion for this pass;
-      the benchmark reports Strumok's own absolute throughput instead, honestly scoped in the
-      file's doc comment as not answering that specific comparison.
+      every variant of all three primitives. **Extended 2026-07-22**: numbers, machine, a named
+      regression baseline (`--save-baseline initial-2026-07-22`), and a same-machine comparison
+      against Oliynykov's reference C, UAPKI, and outspace all now live in `PERFORMANCE.md` (new
+      canonical file, see `CLAUDE.md`'s documentation map) — this project's Rust beats the
+      reference C (correctness/clarity-optimized) but is meaningfully slower than UAPKI/outspace
+      (production-optimized), a real and now-quantified gap, not just a theoretical one. **Did not**
+      implement a second Strumok state-transition form just to quantify the literal-shift-vs-ring-
+      buffer tradeoff mentioned in D-18 — that would still mean maintaining a second implementation
+      purely to benchmark it; outspace's own ~12-15x-faster numbers (likely using a rotating
+      buffer, per `PERFORMANCE.md`) now give an *external* read on that tradeoff's rough scale
+      without needing to build one ourselves.
+- [ ] **Not scheduled, sketched only:** close (some of) the gap to UAPKI/outspace documented in
+      `PERFORMANCE.md`, root-caused by reading `oracles/strumok-dstu8845/strumok.c` directly
+      (2026-07-22) rather than guessed at:
+      - **Strumok**: outspace's `next_stream()` never physically shifts its 16-word state array —
+        it's one fully-unrolled function updating each `S[i]` in place via modular indexing, no
+        `memmove` anywhere. This project's `next_step` (`crates/dstu-core/src/hazmat/strumok.rs`)
+        calls `s.copy_within(1..16, 0)` once per step (120 bytes moved), 16 times per 16-word
+        output block. Separately, outspace's `T(w)` is 8 precomputed combined tables
+        (`T0[byte0]^...^T7[byte7]`, S-box + MDS folded together per byte position) — 8 lookups
+        total; this project's `t_function` does 8 S-box lookups *then* a full MDS matrix-multiply
+        via `apply_matrix`/`gf_mul` (up to 64 GF(2^8) multiplications) separately. Two distinct,
+        additive causes, not one.
+      - **Kalyna/Kupyna**: same shape as Strumok's T-table point — UAPKI's `p_boxrowcol` (S-box +
+        row/column permutation combined into one lookup) vs. this project's `hazmat::tables`
+        sharing S-box/MDS tables between the two algorithms (D-13) but not combining them.
+      - Both are pure throughput work, addressable without touching already-verified algorithm
+        logic or this project's constant-time posture (D-19/D-25) — a ring-buffer/combined-table
+        rewrite changes *how* a value is computed, not *whether* the computation depends on a
+        secret in a new way. Natural place to revisit alongside the DSTU 4145 comb-method note
+        above (Phase 2) — same category of "known, deliberately deferred" performance work.
 
 ## Phase 2 — libsodium-equivalent construction layer, DSTU 4145 + 9041
 
@@ -179,14 +203,52 @@ resistance (SPA/DPA — explicitly out of scope per `SECURITY.md`/`CLAUDE.md` "M
       byte-for-byte against Bouncy Castle's own hardcoded KAT (`DSTU4145Test.java` `test163()`) —
       see `DECISIONS.md` D-14 and `ORACLES.md`. A genuinely dual-sourced vector, not just a scan
       transcription.
-- [ ] DSTU 4145: re-derive `docs/pseudocode/dstu4145.md` against the official text's Sections 5-13
-      now that they exist, rather than leaving it as a pure Bouncy Castle code-transcription (see
-      the doc's 2026-07-22 update note)
-- [ ] DSTU 4145: implement GF(2^m) binary-field + elliptic-curve arithmetic in Rust (does not
-      exist in the tree yet — this is the actual prerequisite for a Rust port, bigger than just
-      the signature logic itself)
-- [ ] DSTU 4145: port the signature scheme to Rust from `docs/pseudocode/dstu4145.md` (once
-      re-derived), verified against the `gf2m163.json` vector and Bouncy Castle as the oracle (D-02)
+- [x] DSTU 4145: re-derive `docs/pseudocode/dstu4145.md` against the official text's Sections 5-13,
+      rather than leaving it as a pure Bouncy Castle code-transcription. **Done 2026-07-22**: read
+      Sections 5, 9, 11-13 directly (rendered PDF pages), every algorithm in the doc now cites its
+      own section/page. **Found a second real bug doing this** (beyond the `Q = -d·G` one already
+      found via the property test, below): `hash_to_field` had the wrong algorithm entirely (copied
+      BC's byte-reversal without also adopting BC's reversed-input convention) — reading §5.9
+      directly showed the correct algorithm needs no reversal at all. Fixed; full detail in
+      `DECISIONS.md` D-25's follow-up entry and the pseudocode doc itself, not duplicated here.
+- [x] DSTU 4145: implement GF(2^m) binary-field + elliptic-curve arithmetic in Rust for the m=163
+      curve (the actual prerequisite for a Rust port, bigger than just the signature logic
+      itself). **Landed 2026-07-22**: `dstu_core::hazmat::dstu4145::gf2m163` (field add/multiply/
+      square/invert) and `dstu_core::hazmat::dstu4145::curve163` (point double/add — public-data
+      only — and a constant-time Montgomery-ladder `scalar_multiply`, safe for secret scalars).
+      Citation and the branchless-posture decision in `DECISIONS.md` D-25. Test-first against
+      generated unit-level vectors (`tests/vectors/dstu4145/gf2m163_arith.json`, Bouncy Castle as
+      sole oracle at this granularity — see D-25), including a small-scalar (`k=1..=32`) check
+      against repeated addition to exercise the ladder's leading-zero-bits path — all green first
+      try (`cargo test`, `cargo clippy -- -D warnings`, `cargo fmt --check`, `no_std` build;
+      `cargo miri test` run separately, see below). **Still missing**: only the m=163 curve
+      exists — the other 9 curve sizes in `DSTU4145NamedCurves.java` aren't wired up (not needed
+      unless a use case calls for them).
+- [x] DSTU 4145: port the signature scheme to Rust from `docs/pseudocode/dstu4145.md`, verified
+      against the `gf2m163.json` vector (D-02). **Landed 2026-07-22**:
+      `dstu_core::hazmat::dstu4145::scalar::Scalar` (mod-`n` integer arithmetic, deliberately a
+      distinct type from `gf2m163::FieldElement` — see D-25's follow-up entry on why) and
+      `dstu_core::hazmat::dstu4145::signature::{sign, verify}`. Both directions verified against
+      the official Annex B.1 worked example — `verify` accepts it, `sign` with the vector's pinned
+      ephemeral reproduces `(r, s)` exactly — plus a `proptest` round trip over random keys/hashes.
+      **Two real bugs found and fixed in the process** (full detail in D-25's follow-up entry, not
+      duplicated here): a genuine doc error — `docs/pseudocode/dstu4145.md` said `Q = d·G`, but
+      Bouncy Castle's own `DSTU4145KeyPairGenerator` negates it (`Q = -d·G`), confirmed against that
+      source and, once the pseudocode re-derivation above happened, confirmed a second time directly
+      from §9.2's own text — and a `hash_to_field` algorithm bug caught only by that re-derivation
+      (see the item above). The round-trip property test is what caught the `Q` bug — the fixed
+      vector alone never exercises key derivation. **Still not done**: the other 9 curve sizes.
+- [ ] **Not scheduled, sketched only:** replace `gf2m163`'s bit-serial field multiplication
+      (163-iteration shift-and-mask, `DECISIONS.md` D-25 — deliberately correctness-first, not
+      speed) with a comb method (`Guide to Elliptic Curve Cryptography` Algorithm 2.34/2.36, the
+      same source already cited for the current reduction/ladder code) once correctness work here
+      is otherwise done. Motivation: this is the main reason `cargo miri test` on
+      `dstu4145_signature`'s `proptest` round trip is slow (a single `sign`+`verify` call runs
+      `Point::scalar_multiply`'s 163-iteration ladder three times, each ladder step doing several
+      163-iteration field multiplies). Purely a performance change — correctness and the
+      branchless posture (D-25) must both still hold after it; no new test-vector work needed
+      since the existing `gf2m163_arith.json`/`gf2m163.json` checks already pin the arithmetic's
+      expected output.
 - [ ] **Blocked entirely:** DSTU 9041 — zero source material exists (no paper, no oracle, no
       pseudocode; see `ORACLES.md`). Nothing here can start until the official text is obtained
       or another authoritative source turns up
