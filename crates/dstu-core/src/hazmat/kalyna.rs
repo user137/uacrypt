@@ -11,7 +11,7 @@
 //! (`crypto_secretbox`-equivalent) is a separate, higher-level primitive - see `DECISIONS.md` D-05
 //! and `docs/dstu-crypto-project.md` "Concrete API shape".
 
-use super::tables::{apply_matrix, MDS_INV_MATRIX, MDS_MATRIX, ROWS, SBOXES, SBOXES_DEC};
+use super::tables::{apply_matrix, MDS_INV_TABLE, MDS_TABLE, ROWS, SBOXES, SBOXES_DEC};
 use zeroize::Zeroize;
 
 /// One 64-bit state/key word, byte-for-byte (index 0 = least-significant byte - see
@@ -102,12 +102,12 @@ fn xor_round_key(state: &mut [Column], key: &[Column]) {
 fn encipher_round(state: &mut [Column]) {
     sub_bytes(state);
     shift_rows(state);
-    apply_matrix(state, &MDS_MATRIX);
+    apply_matrix(state, &MDS_TABLE);
 }
 
 /// One decryption round, run in reverse: tau^-1 -> pi^-1 -> eta^-1 (`DecipherRound`).
 fn decipher_round(state: &mut [Column]) {
-    apply_matrix(state, &MDS_INV_MATRIX);
+    apply_matrix(state, &MDS_INV_TABLE);
     inv_shift_rows(state);
     inv_sub_bytes(state);
 }

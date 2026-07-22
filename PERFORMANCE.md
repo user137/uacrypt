@@ -52,28 +52,38 @@ speed instead.
 
 ### Kalyna (single-block encrypt, nanoseconds — lower is better)
 
-| Variant | This project | Oliynykov C | UAPKI |
-|---|---|---|---|
-| 128-128 | 4606 | 13019 | 222 |
-| 128-256 | 6284 | 19119 | 261 |
-| 256-256 | 11412 | 35810 | 578 |
-| 256-512 | 14031 | 45520 | 663 |
-| 512-512 | 27223 | 91406 | 879 |
+**Updated 2026-07-22 after D-27** (precomputed `MDS_TABLE`, see below) — pre-D-27 figures kept for
+the record:
 
-**~3-4x faster than Oliynykov's reference C, ~17-31x slower than UAPKI.**
+| Variant | This project, before D-27 | This project, **after D-27** | Oliynykov C | UAPKI |
+|---|---|---|---|---|
+| 128-128 | 4606 | **2354** | 13019 | 222 |
+| 128-256 | 6284 | **2999** | 19119 | 261 |
+| 256-256 | 11412 | **5443** | 35810 | 578 |
+| 256-512 | 14031 | **6645** | 45520 | 663 |
+| 512-512 | 27223 | **12735** | 91406 | 879 |
+
+**After D-27: ~7-8x faster than Oliynykov's reference C (was ~3-4x), ~10.6-14.5x slower than UAPKI
+(was ~17-31x)** — roughly halves the gap to UAPKI without closing it (see "What the gap is,
+honestly" for why some of it remains).
 
 ### Kupyna (digest, MB/s — higher is better)
 
+**Updated 2026-07-22 after D-27**:
+
 | | 64 B | 1024 B | 65536 B |
 |---|---|---|---|
-| This project (256) | 2.17 | 5.26 | 5.85 |
+| This project, before D-27 (256) | 2.17 | 5.26 | 5.85 |
+| This project, **after D-27** (256) | 5.80 | 13.30 | **14.57** |
 | Oliynykov C (256) | 0.26 | 0.59 | 0.60 |
 | UAPKI (256) | 29.93 | 88.88 | 95.48 |
-| This project (512) | 1.26 | 3.44 | 4.10 |
+| This project, before D-27 (512) | 1.26 | 3.44 | 4.10 |
+| This project, **after D-27** (512) | 3.54 | 8.91 | **10.57** |
 | Oliynykov C (512) | 0.14 | 0.37 | 0.43 |
 | UAPKI (512) | 18.50 | 74.46 | 85.92 |
 
-**~9-12x faster than Oliynykov's reference C, ~14-21x slower than UAPKI.**
+**After D-27: ~24-25x faster than Oliynykov's reference C (was ~9-12x), ~6.6-8.1x slower than
+UAPKI (was ~14-21x)** — same "roughly halves the gap" story as Kalyna.
 
 ### Strumok (`apply_keystream`, MB/s — higher is better)
 
@@ -104,9 +114,15 @@ This project's MVP deliberately chose correctness and `no_std`/embedded-portabil
 causes — read directly from the other implementations' source, not guessed at (`TASKS.md` has the
 sketched-not-scheduled task for closing this):
 
-- **Kalyna/Kupyna**: `hazmat::tables` shares S-box/MDS tables between the two (D-13) but doesn't
-  *combine* them the way UAPKI's `p_boxrowcol` does (S-box + row/column permutation folded into one
-  lookup). **Not done yet** — next in line, see `TASKS.md`.
+- **Kalyna/Kupyna, partially fixed 2026-07-22, see D-27**: `hazmat::tables`' shared `apply_matrix`
+  used to compute every `GF(2^8)` multiplication via `gf_mul` at call time (up to 64 per column) —
+  now a precomputed `MDS_TABLE`/`MDS_INV_TABLE` (8 lookups + 7 XORs instead), roughly halving the
+  gap to UAPKI (see the tables above). The remaining gap is UAPKI's `p_boxrowcol` combining S-box
+  *and* the row/column permutation into the same lookup, which this project's `sub_bytes` ->
+  `shift_rows` -> `apply_matrix` still does as three separate passes — deliberately not attempted
+  this pass (D-27's "narrower scope" note): Kalyna's row-shift offset depends on block size
+  (`nb`), so fully fusing it would need per-variant tables, a bigger change than "one shared
+  function, both algorithms benefit at once."
 - **Strumok, two distinct, additive causes — both fixed 2026-07-22, see D-26**: (1)
   `oracles/strumok-dstu8845/strumok.c`'s `next_stream()` is one fully-unrolled function that
   updates each state word in place via modular indexing — it never physically moves the 16-word
@@ -151,9 +167,17 @@ cargo bench -p dstu-core --bench strumok -- --save-baseline strumok-optimized-20
 cargo bench -p dstu-core --bench strumok -- --baseline strumok-optimized-2026-07-22  # to check
 ```
 
-`initial-2026-07-22` still exists and is kept as-is for Kalyna/Kupyna (unchanged since it was
-saved) - only Strumok has a newer baseline. Update this section again once Kalyna/Kupyna's
-combined-table optimization (sketched in `TASKS.md`) lands, the same way.
+**Updated again 2026-07-22, same day**: Kalyna/Kupyna's `MDS_TABLE` change (D-27) landed too, so a
+third baseline was saved for them:
+
+```
+cargo bench -p dstu-core --bench kalyna --bench kupyna -- --save-baseline kalyna-kupyna-optimized-2026-07-22
+cargo bench -p dstu-core --bench kalyna --bench kupyna -- --baseline kalyna-kupyna-optimized-2026-07-22  # to check
+```
+
+`initial-2026-07-22` is now superseded for both Kalyna/Kupyna (by `kalyna-kupyna-optimized-2026-07
+-22`) and Strumok (by `strumok-optimized-2026-07-22`) — kept only as the historical "before either
+optimization" record, not the one to check new changes against.
 
 `target/criterion/` is gitignored (as usual for `target/`), so this baseline lives only on whatever
 machine last ran the save command above — it is **not** a portable, cross-machine regression gate

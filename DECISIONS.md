@@ -1029,3 +1029,55 @@ difference not chased further here). New baseline saved as
 (`hazmat::tables`, shared between them) — same category of work, sketched in the same `TASKS.md`
 item, bigger surgery since it touches both algorithms' round functions and Kalyna's decrypt
 direction too. Next in line, not started yet.
+
+## D-27: Kalyna/Kupyna's shared `apply_matrix` switched to precomputed MDS tables
+
+Follow-up to D-26, same day: `PERFORMANCE.md` showed Kalyna/Kupyna meaningfully slower than UAPKI,
+root-caused to `hazmat::tables::apply_matrix` computing every `GF(2^8)` multiplication via
+`gf_mul` at call time (up to 64 calls per column) where UAPKI's `p_boxrowcol` uses a combined
+lookup table instead.
+
+**Narrower scope than Strumok's T-table fix, deliberately**: Kalyna's round order is
+`sub_bytes -> shift_rows -> apply_matrix` (eta, then pi, then tau) - `shift_rows` moves S-boxed
+bytes *across columns* before the MDS step, so S-box and MDS can't be folded into one lookup the
+way Strumok's `T(w)` could (Strumok has no analogous cross-column permutation in its `T`
+substitution). Scoped this pass to just `apply_matrix` itself, which both Kalyna *and* Kupyna
+already share via `hazmat::tables` (D-13) - one fix, both algorithms benefit, no need to touch
+`sub_bytes`/`shift_rows` or risk the S-box+shift+MDS full fusion UAPKI does.
+
+**`MDS_TABLE`/`MDS_INV_TABLE`** (`[[u64; 256]; 8]` each): `MDS_TABLE[in_row][byte]` is the 8-byte
+column (packed as one `u64`) that a single byte sitting at input row `in_row` contributes to
+`MDS_MATRIX * column` - `apply_matrix` becomes 8 table lookups + 7 XORs per column instead of 64
+`gf_mul` calls. **Generated, not hand-transcribed**: a one-off Python script computed both tables
+directly from this file's own `gf_mul`/`MDS_MATRIX`/`MDS_INV_MATRIX` (already verified, D-13),
+then cross-checked the table-based result against the original loop-based computation over 2000
+random columns (0 mismatches) before the generated file was ever written - correctness rests on
+the pre-existing, already-verified `gf_mul` and matrices, not a new external source.
+
+**A permanent, exhaustive regression test was added, not just the one-off Python check**:
+`hazmat::tables::tests::{mds_table,mds_inv_table}_matches_gf_mul_exhaustively` checks all
+`8 x 256` entries of both tables against `gf_mul` directly, every time `cargo test` runs - this is
+also why `gf_mul`/`MDS_MATRIX`/`MDS_INV_MATRIX` are still in the source with `#[allow(dead_code)]`
+even though no production code path calls them anymore: they're the independent reference these
+tests check the fast tables against, not leftover dead weight. (`cargo clippy`'s default invocation
+doesn't build `#[cfg(test)]` code, hence the explicit `allow` rather than relying on test usage to
+suppress the warning.)
+
+**Verified**: both exhaustive unit tests pass; all existing Kalyna official vectors + `proptest`
+round-trips + Kupyna official vectors unchanged; the Kalyna and Kupyna differential harnesses
+against Oliynykov's reference C re-run fresh (2500/2500 and 2000/2000, same as D-24). `clippy`,
+`fmt`, and the `no_std` build all still pass.
+
+**Result**: ~48-55% time reduction for every Kalyna variant/direction, ~60-65% for Kupyna
+(`cargo bench -- --baseline initial-2026-07-22`) — e.g. Kalyna-128-128 encrypt 4.6 µs -> 2.35 µs;
+Kupyna-256 at 64 KB, 5.85 -> 14.57 MB/s. Closes roughly half the gap to UAPKI (Kalyna-128-128:
+was ~20.7x slower than UAPKI, now ~10.6x; Kupyna-256 at 1 KB: was ~16.9x, now ~6.7x) — doesn't
+close it entirely, since UAPKI's `p_boxrowcol` folds the row/column permutation in too, which this
+pass deliberately didn't attempt (see "narrower scope" above). New `criterion` baseline saved as
+`kalyna-kupyna-optimized-2026-07-22`; `PERFORMANCE.md` has the full before/after table.
+
+**Not done**: fusing `sub_bytes`/`shift_rows` into the combined table too (UAPKI's full
+`p_boxrowcol` approach) - would need per-`nb` tables (Kalyna's row-shift offset depends on block
+size, unlike Strumok's fixed 16-word state), a bigger and more invasive change than this pass's
+"one shared function, both algorithms benefit" scope. Sketched as a possible further step, not
+scheduled.

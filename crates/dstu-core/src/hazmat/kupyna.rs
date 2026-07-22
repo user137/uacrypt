@@ -12,7 +12,7 @@
 //! a bit-level length anyway. This matches the extracted test vectors exactly (see the `note`
 //! field in `crates/dstu-core/tests/vectors/kupyna/*.json`).
 
-use super::tables::{apply_matrix, MDS_MATRIX, ROWS, SBOXES};
+use super::tables::{apply_matrix, MDS_TABLE, ROWS, SBOXES};
 
 const MAX_COLUMNS: usize = 16;
 const MAX_BLOCK_BYTES: usize = MAX_COLUMNS * ROWS;
@@ -42,7 +42,7 @@ fn shift_bytes(state: &mut [[u8; ROWS]], last_row_shift: usize) {
 
 /// Linear layer (tau): each column multiplied by the MDS matrix over GF(2^8).
 fn mix_columns(state: &mut [[u8; ROWS]]) {
-    apply_matrix(state, &MDS_MATRIX);
+    apply_matrix(state, &MDS_TABLE);
 }
 
 /// XOR-based round-constant addition (psi-xor), used by `T`/`P`. Kupyna.pdf Section 6.2.

@@ -176,13 +176,20 @@ resistance (SPA/DPA — explicitly out of scope per `SECURITY.md`/`CLAUDE.md` "M
       existing tests unchanged, the 4000-case outspace differential harness re-run fresh
       (4000/4000), `clippy`/`fmt`/`no_std` all pass. New `criterion` baseline saved
       (`strumok-optimized-2026-07-22`).
-- [ ] **Not scheduled, sketched only: Kalyna/Kupyna combined S-box+MDS tables.** Same shape as the
-      Strumok T-table fix above — UAPKI's `p_boxrowcol` (S-box + row/column permutation combined
-      into one lookup) vs. this project's `hazmat::tables` sharing S-box/MDS tables between the two
-      algorithms (D-13) but not combining them. Bigger surgery than Strumok's fix: touches the
-      shared table module both algorithms use, plus Kalyna's decrypt direction and inverse tables.
-      Pure throughput work, addressable without touching already-verified algorithm logic or this
-      project's constant-time posture (D-19/D-25). Next in line for this same performance pass.
+- [x] **Kalyna/Kupyna: precomputed MDS tables** (`DECISIONS.md` D-27, same day). Narrower than the
+      full UAPKI `p_boxrowcol` fusion (S-box + row/column permutation + MDS all combined) —
+      `hazmat::tables::apply_matrix` alone was switched to precomputed `MDS_TABLE`/`MDS_INV_TABLE`
+      (8 lookups + 7 XORs instead of up to 64 `gf_mul` calls per column), shared by both algorithms
+      since `apply_matrix` already was. `sub_bytes`/`shift_rows` untouched — Kalyna's row-shift
+      offset depends on block size, so fully fusing S-box+shift+MDS the way UAPKI does would need
+      per-variant tables, a bigger change deliberately not attempted this pass. **Result: ~48-55%
+      time reduction for every Kalyna variant/direction, ~60-65% for Kupyna** — roughly halves the
+      gap to UAPKI without closing it (full before/after in `PERFORMANCE.md`). Verified: a new
+      *exhaustive* unit test (`hazmat::tables::tests`, all 8x256 entries per table) plus every
+      existing Kalyna/Kupyna vector/proptest/differential-harness check, all unchanged.
+      `clippy`/`fmt`/`no_std` pass. New baseline: `kalyna-kupyna-optimized-2026-07-22`.
+      **Not done**: the full S-box+shift+MDS fusion (per-`nb` tables) — sketched, not scheduled,
+      would close the remaining gap but is a materially bigger change.
 
 ## Phase 2 — libsodium-equivalent construction layer, DSTU 4145 + 9041
 
