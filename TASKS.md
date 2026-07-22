@@ -332,7 +332,13 @@ resistance (SPA/DPA — explicitly out of scope per `SECURITY.md`/`CLAUDE.md` "M
       clock speed, not a correctness concern), `cargo xtask fmt --check`, `cargo xtask clippy` (all
       clean), and all four `dstu-core` feature-flag combinations (bare no_std, no_std+alloc,
       std+alloc, all-features) built individually too. First real confirmation on non-x86 hardware
-      for this project.
+      for this project. **Same day, extended to performance**: `cargo bench -p dstu-core --bench
+      kalyna --bench kupyna --bench strumok` also run on the Pi and added to `PERFORMANCE.md`
+      alongside the existing Ryzen dev-machine numbers — this project's own code, no UAPKI/
+      Oliynykov/outspace comparison there (those aren't built on the Pi). Result: the Pi is a
+      consistent, unremarkable ~1.6-2.2x slower than the Ryzen dev machine across all three
+      algorithms (Kalyna ~1.8-2.1x, Kupyna ~2.0-2.2x, Strumok ~1.6-1.7x) — no architecture-specific
+      cliff or anomaly, just the expected gap between a Cortex-A76 and a modern desktop x86-64 core.
 
 ## Next up (blocked): a safe mode of operation for Kalyna
 

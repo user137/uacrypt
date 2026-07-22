@@ -31,8 +31,18 @@ faster alternative — so this project tracks its own numbers deliberately, not 
   implementations (the "Nx faster/slower" figures below) are far more robust than any single
   absolute number, since machine load affects all of them together.
 
-**Machine**: AMD Ryzen 5 PRO 4650U (6 cores / 12 threads, ~2.1 GHz base), Windows 11 Pro.
-**Recorded**: 2026-07-22.
+**Dev machine**: AMD Ryzen 5 PRO 4650U (6 cores / 12 threads, ~2.1 GHz base), Windows 11 Pro. All
+UAPKI/Oliynykov/outspace comparison numbers below are from this machine only - those oracles
+aren't built on the Raspberry Pi (see below), so it contributes no comparison columns, only this
+project's own numbers.
+
+**Raspberry Pi**: Raspberry Pi 5 Model B, Broadcom BCM2712 / ARM Cortex-A76 (4 cores, 2.4 GHz),
+Debian 12 (bookworm), `aarch64-unknown-linux-gnu` - the ARM/Linux hardware rig `TASKS.md` "Testing
+& hardening" tracks (`.claude.local.md` has access details). Added 2026-07-22 to check this
+project's own numbers across a genuinely different CPU architecture, not just a different OS.
+
+**Recorded**: 2026-07-22 (dev machine); 2026-07-22, later the same day (Raspberry Pi, once the rig
+existed).
 
 ## Implementations compared
 
@@ -53,7 +63,9 @@ speed instead.
 ### Kalyna (single-block encrypt, nanoseconds — lower is better)
 
 **Updated 2026-07-22 after D-28** (full S-box+shift+MDS fusion for encrypt, see below) — D-27
-figures kept for the record:
+figures kept for the record. **All figures in this table: AMD Ryzen 5 PRO 4650U (dev machine) only**
+— this is a historical optimization-progress snapshot predating the Raspberry Pi rig, see the
+block-only table further below for the cross-CPU comparison:
 
 | Variant | Before D-27 | After D-27 | **After D-28** | UAPKI |
 |---|---|---|---|---|
@@ -70,7 +82,8 @@ correctness oracle (auditability-first, not speed-optimized, see "Implementation
 not a relevant performance baseline.
 
 **Updated again 2026-07-22 after D-29** (`ExpandedKey` — key schedule cached across calls instead
-of redone every time):
+of redone every time). **All figures in this table: AMD Ryzen 5 PRO 4650U only** (also predates the
+Pi rig):
 
 | Variant, block-only (schedule cached) | This project | UAPKI |
 |---|---|---|
@@ -91,14 +104,14 @@ encrypt-block-only — see D-30, resolved below.
 **Updated a third time 2026-07-22 after D-30** (decrypt round fused too — equivalent-inverse-cipher
 restructuring, transformed interior round keys):
 
-| Variant, block-only (schedule cached) | This project | UAPKI |
-|---|---|---|
-| 128-128 encrypt | 132 ns | 222 ns |
-| 128-128 decrypt | **144 ns** (was 433 ns) | 222 ns |
-| 256-256 encrypt | 268 ns | 578 ns |
-| 256-256 decrypt | **323 ns** (was 1435 ns) | 578 ns |
-| 512-512 encrypt | 573 ns | 879 ns |
-| 512-512 decrypt | **691 ns** (was 3934 ns) | 879 ns |
+| Variant, block-only (schedule cached) | This project (Ryzen 5 4650U) | This project (Pi 5 / Cortex-A76) | UAPKI (Ryzen 5 4650U) |
+|---|---|---|---|
+| 128-128 encrypt | 132 ns | 241 ns | 222 ns |
+| 128-128 decrypt | **144 ns** (was 433 ns) | 266 ns | 222 ns |
+| 256-256 encrypt | 268 ns | 521 ns | 578 ns |
+| 256-256 decrypt | **323 ns** (was 1435 ns) | 572 ns | 578 ns |
+| 512-512 encrypt | 573 ns | 1185 ns | 879 ns |
+| 512-512 decrypt | **691 ns** (was 3934 ns) | 1268 ns | 879 ns |
 
 **Kalyna decrypt-block-only is now faster than UAPKI across every variant measured too** — combined
 with D-29's encrypt result, this closes essentially the entire gap to UAPKI for `ExpandedKey`, the
@@ -109,26 +122,41 @@ aren't offset by round fusion at low round counts) but substantially faster for 
 an honest tradeoff of the one-shot convenience path, not a regression in the path that matters.
 New baseline: `kalyna-decryptfusion-2026-07-22`.
 
+**Raspberry Pi column added 2026-07-22, `this project`'s own numbers only** — no UAPKI is built
+there (see "Machine" above), so this is a same-code, cross-architecture comparison, not a
+cross-implementation one. The Pi is consistently ~1.8-2.1x slower than the Ryzen dev machine across
+every variant/direction (e.g. 128-128 encrypt: 241 ns vs 132 ns, ~1.8x; 512-512 encrypt: 1185 ns vs
+573 ns, ~2.1x) — a plausible, roughly uniform ratio given the Pi 5's Cortex-A76 (an out-of-order
+core, but a smaller, more power-efficient design than a modern desktop x86-64 core) runs at a
+similar clock (2.4 GHz vs ~2.1 GHz base on the Ryzen) with less per-cycle throughput; nothing here
+suggests an architecture-specific correctness or performance cliff, just the expected "smaller
+core, still fast" gap.
+
 ### Kupyna (digest, MB/s — higher is better)
 
 **Updated 2026-07-22 after D-28**:
 
 | | 64 B | 1024 B | 65536 B |
 |---|---|---|---|
-| Before D-27 (256) | 2.17 | 5.26 | 5.85 |
-| After D-27 (256) | 5.80 | 13.30 | 14.57 |
-| **After D-28** (256) | **39.53** | **91.72** | **98.60** |
-| UAPKI (256) | 29.93 | 88.88 | 95.48 |
-| Before D-27 (512) | 1.26 | 3.44 | 4.10 |
-| After D-27 (512) | 3.54 | 8.91 | 10.57 |
-| **After D-28** (512) | **26.89** | **69.26** | **80.99** |
-| UAPKI (512) | 18.50 | 74.46 | 85.92 |
+| Before D-27 (256, Ryzen) | 2.17 | 5.26 | 5.85 |
+| After D-27 (256, Ryzen) | 5.80 | 13.30 | 14.57 |
+| **After D-28** (256, Ryzen) | **39.53** | **91.72** | **98.60** |
+| After D-28 (256, Raspberry Pi 5) | 19.04 | 44.00 | 48.13 |
+| UAPKI (256, Ryzen) | 29.93 | 88.88 | 95.48 |
+| Before D-27 (512, Ryzen) | 1.26 | 3.44 | 4.10 |
+| After D-27 (512, Ryzen) | 3.54 | 8.91 | 10.57 |
+| **After D-28** (512, Ryzen) | **26.89** | **69.26** | **80.99** |
+| After D-28 (512, Raspberry Pi 5) | 12.29 | 31.18 | 36.92 |
+| UAPKI (512, Ryzen) | 18.50 | 74.46 | 85.92 |
 
 **After D-28: Kupyna-256 is now 1.03-1.45x *faster* than UAPKI (crossed over from ~6.7x slower);
 Kupyna-512 is at rough parity (0.93-1.45x, i.e. within ~7% either side)** — the full fusion plus a
 correctness/performance fix (see D-28: a runtime `%` by `nb`/`columns` was replaced with a bitmask,
 since both are always powers of two but not compile-time constants) closed essentially the entire
-gap, far beyond this task's original "2-3x of UAPKI" expectation.
+gap, far beyond this task's original "2-3x of UAPKI" expectation. **Raspberry Pi rows added
+2026-07-22, this project's own numbers only** (no UAPKI built there) — roughly 2.0-2.2x slower than
+the same code on the Ryzen dev machine, a similar ratio to Kalyna's above and consistent with the
+Pi 5's Cortex-A76 vs. the Ryzen's per-core throughput, not an architecture-specific anomaly.
 
 ### Strumok (`apply_keystream`, MB/s — higher is better)
 
@@ -138,19 +166,25 @@ optimization was checked against:
 
 | | 64 B | 1024 B | 65536 B |
 |---|---|---|---|
-| This project, before D-26 (256) | 29.36 | 118.67 | 144.27 |
-| This project, **after D-26** (256) | 195.86 | 553.58 | **639.47** |
-| outspace (256) | 198.89 | 1461.07 | 2055.05 |
-| UAPKI (256) | 132.60 | 442.73 | 588.71 |
-| This project, before D-26 (512) | 30.31 | 115.92 | 145.61 |
-| This project, **after D-26** (512) | 198.70 | 545.19 | **639.83** |
-| outspace (512) | 230.29 | 1443.74 | 2131.68 |
-| UAPKI (512) | 103.28 | 511.11 | 556.20 |
+| This project, before D-26 (256, Ryzen) | 29.36 | 118.67 | 144.27 |
+| This project, **after D-26** (256, Ryzen) | 195.86 | 553.58 | **639.47** |
+| This project, after D-26 (256, Raspberry Pi 5) | 123.02 | 332.15 | 371.88 |
+| outspace (256, Ryzen) | 198.89 | 1461.07 | 2055.05 |
+| UAPKI (256, Ryzen) | 132.60 | 442.73 | 588.71 |
+| This project, before D-26 (512, Ryzen) | 30.31 | 115.92 | 145.61 |
+| This project, **after D-26** (512, Ryzen) | 198.70 | 545.19 | **639.83** |
+| This project, after D-26 (512, Raspberry Pi 5) | 123.17 | 332.12 | 371.25 |
+| outspace (512, Ryzen) | 230.29 | 1443.74 | 2131.68 |
+| UAPKI (512, Ryzen) | 103.28 | 511.11 | 556.20 |
 
 **After D-26: now *faster* than UAPKI's Strumok, ~3.2x slower than outspace** (was ~4-5x slower
 than UAPKI, ~13-15x slower than outspace, before). No naive/reference-grade Strumok implementation
 exists to compare against for the "correctness-first" side of this story — see `ORACLES.md`, no
-official DSTU 8845 reference implementation is publicly known to exist.
+official DSTU 8845 reference implementation is publicly known to exist. **Raspberry Pi rows added
+2026-07-22, this project's own numbers only** (no outspace/UAPKI built there) — the Pi is ~1.6-1.7x
+slower than the Ryzen dev machine here, a smaller gap than Kalyna/Kupyna's ~1.8-2.2x above, and it
+widens slightly with message size (~1.6x at 64 B, ~1.72x at 65536 B) rather than shrinking - not
+chased further, this is a cross-CPU comparison note, not a regression investigation.
 
 ## Binary-level (process) comparison
 
