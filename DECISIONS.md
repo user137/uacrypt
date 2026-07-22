@@ -1249,3 +1249,60 @@ extra `nr - 1` key-transform `apply_matrix` calls aren't offset by the round fus
 counts) but improved substantially for the larger ones (256-256: -17%, 256-512: -22%, 512-512:
 -33%) - an honest tradeoff of the one-shot convenience path, not a regression in the path that
 matters (`ExpandedKey`). New baseline: `kalyna-decryptfusion-2026-07-22`.
+
+## D-31: `dstutool` gets its first real command - `kalyna-block`, for a binary-level benchmark
+
+Follow-up to D-28/29/30, same day. All the Kalyna/Kupyna performance work so far was measured
+in-process (`criterion` calling Rust directly, or a C harness calling C directly) - the user asked
+for a binary-vs-binary comparison instead ("наче це бінарник, а не частини" - as if it's a binary,
+not parts), to see the whole tool the way a user would run it, not just the internal function.
+
+**Why this isn't `dstutool encrypt --key ... --in file --out file`** (the command CLAUDE.md's MVP
+scope actually specifies): that command implies a mode of operation over arbitrary-length files,
+which doesn't exist yet - blocked on D-05 (needs the official DSTU 7624 text or another
+authoritative source to pick a construction). `hazmat::kalyna` can only encrypt/decrypt exactly one
+block. Naming this new command `kalyna-block encrypt`/`decrypt` instead of the reserved
+`encrypt`/`decrypt` names keeps it unambiguous that this is a single-block, `hazmat`-scoped tool
+for this benchmark (and for anyone who explicitly wants raw single-block access), not the eventual
+file tool - so building it now doesn't quietly pre-empt or confuse the real D-05-gated design
+decision.
+
+**Shape**: `dstutool kalyna-block encrypt/decrypt --variant <128-128|...|512-512> --key <path>
+--in <path> --out <path> [--iterations N] [--raw-schedule]`. Key/block/output are raw binary files
+of the variant's exact byte length (no hex encoding - simplest, and matches how the comparison C
+tools read bytes too). `--iterations N` (default 1) repeats the same in-memory op `N` times before
+writing the final result, for benchmarking; `--raw-schedule` selects `dstu_core`'s raw one-shot
+`encrypt`/`decrypt` (re-expands the key schedule every iteration) instead of the default
+`ExpandedKey` (schedule expanded once, D-29) - both numbers matter for the same reason they did in
+`benches/kalyna.rs`. Logic lives in a new `src/lib.rs` (testable directly) with `main.rs` as a
+thin wrapper mapping `Result` to a process exit code - `#[deny(clippy::unwrap_used,
+clippy::expect_used)]` was already set in the placeholder `main.rs`, carried through properly here
+(all fallible paths return `CliError`, not a panic).
+
+**A real bug caught by the tests written alongside this** (not test-first in the strict sense this
+project otherwise holds itself to for primitives, given this is a thin CLI wrapper, not a crypto
+primitive - but tested before being exercised manually): the first `key_len`/`block_len`
+implementation grouped match arms by *block* size instead of *key* size, giving `Kalyna128_256` a
+16-byte `key_len()` instead of the correct 32 - caught immediately by
+`variant_lengths_match_dstu_core`, fixed before any manual testing. A concrete demonstration of why
+even "obviously simple" CLI plumbing gets tests, not just the algorithms.
+
+**Comparison CLIs for Oliynykov's reference C and UAPKI** (scratchpad-only, same convention as this
+file's other C comparisons - not committed): mirror `kalyna-block`'s exact file interface and
+flags, so the three binaries are invoked identically. All three cross-checked to produce
+byte-identical ciphertext/plaintext for the same key/block before any timing run.
+
+**Result**: full before/after tables in `PERFORMANCE.md`'s new "Binary-level (process) comparison"
+section. Headline finding: `dstutool`'s cached (`ExpandedKey`) per-op numbers match the in-process
+`criterion` numbers within a few percent (e.g. 128-128 encrypt: 127 ns here vs 132 ns in-process) -
+the CLI adds no meaningful overhead once amortized. Process-spawn overhead (~60-63 ms on this
+machine, likely including Windows Defender scanning a freshly-built binary, per this session's
+earlier note) is **roughly the same across all three binaries**, dominating whole-invocation
+wall-clock time and confirming that `wall_ns` (which this comparison reports too, not hidden)
+mostly measures the OS, not the crypto - `per_op_ns` is what actually reflects implementation
+speed, same conclusion as D-28/29/30's in-process numbers.
+
+**Next, tracked in `TASKS.md`, explicitly NOT unblocked by this entry**: a safe mode of operation
+for Kalyna is next in priority per the user's request, but D-05 (needs the official DSTU 7624 text
+or another authoritative source before any construction is chosen) is still the real gate - this
+entry building a single-block CLI for benchmarking does not resolve or bypass that.

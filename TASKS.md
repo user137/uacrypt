@@ -270,6 +270,28 @@ resistance (SPA/DPA — explicitly out of scope per `SECURITY.md`/`CLAUDE.md` "M
       **Stage 2 (`Column` -> `u64` representation) remains not done** - given the results above
       (Kalyna at/above UAPKI parity for the cached-schedule API, Kupyna at/above parity), expected
       further payoff is small; revisit only if a future profiling pass shows it's still worth it.
+- [x] **Binary-level (process) comparison, done, see `DECISIONS.md` D-31**. The in-process numbers
+      above don't reflect running the tool as an actual external process - added `dstutool`'s first
+      real command, `kalyna-block encrypt`/`decrypt` (single block, file in/file out, deliberately
+      not named `encrypt`/`decrypt` at the top level - that's reserved for the future file-plus-
+      mode CLI, blocked below), plus scratchpad (uncommitted) comparison CLIs for Oliynykov's
+      reference C and UAPKI with the same file interface, all three cross-checked byte-identical
+      before timing. **Result**: `dstutool`'s per-op numbers (schedule cached) match the in-process
+      `criterion` numbers within a few percent - full tables in `PERFORMANCE.md` "Binary-level
+      (process) comparison". Process-spawn overhead (~60-63 ms on this machine) is roughly the
+      same across all three binaries, confirming it reflects the OS, not the crypto.
+
+## Next up (blocked): a safe mode of operation for Kalyna
+
+User flagged this as the next priority (2026-07-22, same session as D-28/29/30/31) - **but this is
+still gated on D-05**, unchanged: `DECISIONS.md` D-05 needs the official DSTU 7624 text or another
+authoritative source before *any* mode of operation (CTR/CBC/GCM/whatever DSTU 7624 actually
+specifies) can be chosen. Building `dstutool kalyna-block` (D-31) does not unblock this - it's
+still single-block-only by design. Do not build an ad-hoc/arbitrary mode (e.g. naive ECB) just to
+have *something* - that is exactly the failure mode this project's "no homegrown primitives"/
+"research before implementation" discipline (`CLAUDE.md`) exists to prevent. When D-05 resolves:
+`crypto_secretbox` (Phase 2, below) is the actual deliverable; `dstutool`'s reserved `encrypt`/
+`decrypt` command names (CLAUDE.md MVP scope) are the CLI surface once a real mode exists.
 
 ## Phase 2 — libsodium-equivalent construction layer, DSTU 4145 + 9041
 

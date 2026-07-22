@@ -104,9 +104,22 @@ change against the saved regression baseline.
 
 ## Using `dstutool`
 
-Not yet available — `dstutool` is currently a placeholder binary. Once implemented, the plan (see
-`CLAUDE.md` MVP scope) is prebuilt binaries via GitHub Releases for Windows/Linux/macOS, so using it
-will not require installing Rust or building from source at all.
+The planned file-level `dstutool encrypt`/`decrypt` (mode of operation over arbitrary-length
+files, see `CLAUDE.md` MVP scope) is not available yet — blocked on `DECISIONS.md` D-05 until a
+mode of operation is chosen. What exists today is `kalyna-block`, a single-block (no mode, no
+padding), `hazmat`-scoped command added for a binary-level performance comparison
+(`PERFORMANCE.md`, `DECISIONS.md` D-31):
+
+```
+cargo build -p dstutool --release
+dstutool kalyna-block encrypt --variant 128-128 --key key.bin --in block.bin --out ct.bin
+dstutool kalyna-block decrypt --variant 128-128 --key key.bin --in ct.bin --out pt.bin
+```
+
+`--key`/`--in`/`--out` are raw binary files of the variant's exact byte length (16/32/64 bytes
+depending on variant — see `--variant`'s five values). Once the file-plus-mode CLI lands, it will
+use the `encrypt`/`decrypt` command names directly; prebuilt binaries via GitHub Releases for
+Windows/Linux/macOS (see `CLAUDE.md` MVP scope) are still planned for that point, not this one.
 
 ## Embedded / `no_std` targets
 

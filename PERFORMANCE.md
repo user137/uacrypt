@@ -152,6 +152,71 @@ than UAPKI, ~13-15x slower than outspace, before). No naive/reference-grade Stru
 exists to compare against for the "correctness-first" side of this story — see `ORACLES.md`, no
 official DSTU 8845 reference implementation is publicly known to exist.
 
+## Binary-level (process) comparison
+
+All the numbers above are **in-process**: `criterion` calling a Rust function directly, or a C
+harness calling a C function directly, in the same process, no process-spawn cost included. That's
+the right tool for measuring the algorithm itself, but it's not literally "run the tool as a user
+would" — added 2026-07-22 (`TASKS.md`, D-28/29/30 follow-up) as a second, complementary comparison:
+`crates/dstutool`'s new `kalyna-block encrypt`/`decrypt` subcommand (single block, file in/file
+out — no mode of operation, deliberately not named `encrypt`/`decrypt` at the top level so it
+can't be confused with the future file-plus-mode CLI blocked on D-05) run as an actual external
+process against equivalent scratchpad CLI wrappers for Oliynykov's reference C and UAPKI (not
+committed, same convention as the C benchmark harnesses elsewhere in this file).
+
+Each tool takes `--iterations N` and repeats the same in-memory block op `N` times in one process
+invocation (`--raw-schedule` re-expands the key every iteration; without it, the key schedule is
+expanded once before the loop, matching `ExpandedKey`/each C library's own key-setup-once
+convention) — this amortizes one-time process startup over many operations rather than spawning a
+process per block, which would measure OS process creation, not crypto (a single block op is
+100s of nanoseconds to a few microseconds; process creation on this machine is tens of
+milliseconds, three-plus orders of magnitude larger). Two numbers are reported for each run: the
+whole invocation's wall-clock time (`wall_ns`, includes the one process startup + all N
+iterations) and the amortized per-operation time the tool itself measures internally
+(`per_op_ns`) — reported both because "how long does it take to run the tool" and "how fast is the
+crypto" are different questions and this comparison can answer both without hiding either.
+
+**N = 20000 iterations, same machine, same day:**
+
+| Variant | Direction | Schedule | dstutool per-op | Oliynykov C per-op | UAPKI per-op |
+|---|---|---|---|---|---|
+| 128-128 | encrypt | cached | **127 ns** | 10982 ns | 201 ns |
+| 128-128 | encrypt | raw | **1060 ns** | 28580 ns | 17366 ns |
+| 128-128 | decrypt | cached | **140 ns** | 11153 ns | 196 ns |
+| 128-128 | decrypt | raw | **1562 ns** | 28580 ns | 17562 ns |
+| 512-512 | encrypt | cached | 552 ns | 74068 ns | **476 ns** |
+| 512-512 | encrypt | raw | 3941 ns | 173369 ns | **22922 ns** |
+| 512-512 | decrypt | cached | 673 ns | 74884 ns | **510 ns** |
+| 512-512 | decrypt | raw | 4922 ns | 171900 ns | **22570 ns** |
+
+`dstutool`'s cached (`ExpandedKey`) per-op numbers land within a few percent of the in-process
+`criterion` numbers above (e.g. 128-128 encrypt: 127 ns here vs 132 ns in-process) — the CLI
+wrapper (file I/O, argument parsing) adds essentially no measurable overhead once amortized over
+20000 iterations, which is the sanity check this comparison exists to provide.
+
+**Whole-invocation wall-clock (same runs, `wall_ns`), showing process-spawn overhead is roughly
+constant across implementations, not crypto-dependent:**
+
+| Variant | Direction | Schedule | dstutool wall | Oliynykov C wall | UAPKI wall |
+|---|---|---|---|---|---|
+| 128-128 | encrypt | cached | 63.2 ms | 282.8 ms | 65.2 ms |
+| 512-512 | encrypt | cached | 70.9 ms | 1548.0 ms | 70.2 ms |
+| 512-512 | encrypt | raw | 138.9 ms | 3533.3 ms | 520.9 ms |
+
+Subtracting each run's own internal `total_ns` from `wall_ns` gives a process-startup estimate of
+**~60-63 ms for all three binaries** in the cached cases — i.e. on this machine, process creation
+(and whatever else Windows does before `main()` runs, including antivirus scanning of a freshly
+built binary - this session already saw one such Defender flag on a MinGW binary) costs roughly
+the same regardless of which implementation is inside, and completely dominates wall-clock time at
+low iteration counts. This is why the amortized `per_op_ns` column, not `wall_ns`, is the number
+that reflects the crypto itself — `wall_ns` mostly answers "how fast does a fresh process start on
+this machine," which none of these implementations control.
+
+**Reproducing**: `cargo build -p dstutool --release`, then `target/release/dstutool kalyna-block
+encrypt --variant <variant> --key <path> --in <path> --out <path> --iterations <N>
+[--raw-schedule]`. The Oliynykov/UAPKI comparison CLIs are one-off C wrappers (same file interface
+and flags) built the same way as this file's other C comparisons - not committed.
+
 ## What the gap is, honestly
 
 This project's MVP deliberately chose correctness and `no_std`/embedded-portability first
