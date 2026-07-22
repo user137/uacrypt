@@ -147,11 +147,15 @@ resistance (SPA/DPA — explicitly out of scope per `SECURITY.md`/`CLAUDE.md` "M
       trade-off) — `SECURITY.md`'s hard-constraint wording updated to say this precisely instead of
       standing as an absolute "never" next to code that already violated it. Branching and
       comparisons on secret data remain prohibited without exception, unchanged.
-- [ ] **`criterion` benchmarks** — quantify the cost of design choices made along the way (e.g.
-      Strumok's literal 16-word shift vs. the oracles' rotating in-place buffer, `DECISIONS.md`
-      D-18) and catch performance regressions. Explicitly not a claim of meaningful cross-algorithm
-      or cross-language comparison — those numbers are inherently rough and shouldn't be presented
-      as more precise than they are.
+- [x] **`criterion` benchmarks.** Added as a dev-dependency, three bench targets
+      (`crates/dstu-core/benches/{kalyna,kupyna,strumok}.rs`, `cargo bench -p dstu-core`) covering
+      every variant of all three primitives. Absolute throughput only, not a regression baseline
+      committed anywhere yet (criterion's own `target/criterion/` comparison-across-runs already
+      works locally). **Did not** implement a second Strumok state-transition form just to quantify
+      the literal-shift-vs-ring-buffer tradeoff mentioned in D-18 — that would mean building and
+      maintaining a second implementation purely to benchmark it, out of proportion for this pass;
+      the benchmark reports Strumok's own absolute throughput instead, honestly scoped in the
+      file's doc comment as not answering that specific comparison.
 
 ## Phase 2 — libsodium-equivalent construction layer, DSTU 4145 + 9041
 

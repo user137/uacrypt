@@ -17,4 +17,17 @@ alloc = []
 zeroize = { version = "1.9.0", default-features = false, features = ["derive"] }
 
 [dev-dependencies]
+criterion = "0.8.2"
 proptest = "1.11.0"
+
+[[bench]]
+name = "kalyna"
+harness = false
+
+[[bench]]
+name = "kupyna"
+harness = false
+
+[[bench]]
+name = "strumok"
+harness = false

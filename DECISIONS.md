@@ -735,3 +735,23 @@ hidden — noted in `TASKS.md`.
 ordinary test suite depend on a C toolchain being present, which none of the vector/proptest/fuzz
 tests currently require — same reasoning that already keeps the Java/.NET oracle harnesses as
 separate `cargo xtask` targets rather than folded into `cargo test --workspace`.
+
+## D-23: `criterion` benchmarks added for all three primitives
+
+Last item in `TASKS.md` "Testing & hardening". `criterion` 0.8 added as a dev-dependency, three
+bench targets (`crates/dstu-core/benches/{kalyna,kupyna,strumok}.rs`, `cargo bench -p dstu-core`),
+covering every Kalyna variant's `encrypt`/`decrypt`, both Kupyna sizes' `digest` at a few message
+lengths, and both Strumok sizes' `apply_keystream` at a few buffer lengths.
+
+**Scoped to absolute throughput + regression tracking, not the shift-vs-ring-buffer comparison
+that motivated this item in the first place.** Quantifying D-18's literal-16-word-shift-vs.
+rotating-in-place-buffer tradeoff for Strumok properly would mean implementing the ring-buffer
+form here too, purely to benchmark it — a second implementation to maintain for a number, not
+proportionate to what this pass is for. The benchmark instead reports Strumok's own absolute
+throughput and says so plainly in its own doc comment, rather than implying a comparison that
+wasn't actually made. `std::hint::black_box` used throughout (not `criterion::black_box`, which is
+deprecated in the version pulled in) to prevent the optimizer from eliding the benchmarked calls.
+
+This closes every item in `TASKS.md` "Testing & hardening" except "actually run `cargo fuzz`",
+which stays open pending CI or a machine with the MSVC toolchain (D-22's sibling finding, not a
+gap in this entry).
