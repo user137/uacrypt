@@ -208,6 +208,10 @@ resistance (SPA/DPA — explicitly out of scope per `SECURITY.md`/`CLAUDE.md` "M
 - [ ] ESP32 (Xtensa/RISC-V) real-hardware validation
 - [ ] Keep the SPA/DPA non-claim intact throughout (`no_std` compiling ≠ side-channel resistance
       — see `CLAUDE.md` MVP scope section)
+- [ ] **Not scheduled, sketched only:** constant-time S-boxes (masked-select or bitsliced —
+      `DECISIONS.md` D-19's "Future path" note has both options and why it's a bigger project than
+      it looks), narrowing the software-timing exception D-19 documents. Natural place to revisit
+      this alongside the hardware side-channel audit above, not before.
 
 ## Explicitly out of scope — not scheduled in any phase
 

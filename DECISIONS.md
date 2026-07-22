@@ -614,6 +614,31 @@ undiscussed gap. Rejected because a "hard constraint" that's silently false is w
 precisely-scoped one — the whole point of writing these down is so a future contributor (or this
 project's own next session) doesn't have to rediscover the contradiction from scratch.
 
+**Future path, sketched 2026-07-22, not scheduled anywhere:** if this exception is ever narrowed,
+two known approaches, in increasing order of speed and implementation cost:
+- **Masked constant-time select** (simpler): replace `table[secret_byte]` with a full linear scan
+  over all 256 entries, selecting the right one via `subtle`-style constant-time comparison/select
+  instead of direct indexing — memory access pattern becomes identical regardless of the secret
+  byte. Straightforward to implement, but roughly 256x the reads per substituted byte, a real
+  throughput cost across `sub_bytes`'s ~`nb*8` bytes/round × up to 18 rounds/block for Kalyna.
+- **Bitslicing** (faster, harder): rewrite each S-box as a boolean circuit (AND/OR/XOR/NOT) over
+  individual bits, the standard approach for constant-time AES. Complicated here specifically
+  because Kalyna/Kupyna have **four** distinct S-boxes, not AES's one — four circuits to derive
+  (or one, if the four turn out to be affine-equivalent to each other, unconfirmed as of this
+  writing) — and bitslicing is most efficient when batching multiple blocks in parallel, which
+  would change the single-block API shape this project currently exposes.
+- **Why this is a bigger project than it first looks**, regardless of which approach: (1) four
+  S-boxes to handle, not one, plus Strumok's separate `mul_alpha`/`mul_alpha_inv` tables (a
+  different field, needing their own treatment); (2) the existing test suite (vectors, proptest,
+  differential, fuzz) only proves *functional* correctness — proving actual constant-time behavior
+  needs genuinely new tooling (dudect-style statistical timing tests) this project doesn't have
+  yet, and that tooling is itself notoriously noisy to trust; (3) this project's platform-agnostic
+  promise (`CLAUDE.md` MVP scope) rules out a SIMD-only fast path (e.g. `pshufb`/`vtbl`-based
+  lookups, the fastest practical constant-time S-box technique) without also building a portable
+  fallback for targets without those instructions, roughly doubling the work. Comparable in scope
+  to implementing another primitive from scratch, not a small patch — the natural place for this
+  is alongside the post-MVP hardware validation phase (`TASKS.md` Phase 4), not before.
+
 ## D-20: `zeroize`/`ZeroizeOnDrop` added — first real dependency, scoped to what's actually live
 
 `SECURITY.md`'s hard constraints require `Zeroize`/`ZeroizeOnDrop` on all key-material types; no
