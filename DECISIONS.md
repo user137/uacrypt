@@ -1465,3 +1465,48 @@ gap is, honestly" section both got a dated correction noting the Ryzen-specific 
 "beats UAPKI" claim, rather than silently leaving an now-incomplete claim standing - per this
 project's own standard for correcting prior statements (see `CLAUDE.md` "Never silently deprecate
 a document" applied at sentence granularity here, not just file granularity).
+
+## D-34: One performance-testing method from now on - built binary, real process, MB/s only
+
+Prompted directly by D-33: reconciling "this project beats UAPKI" (in-process `criterion` vs. a
+raw C timing loop) against the binary-level numbers already in `PERFORMANCE.md` (D-31, `dstutool`
+vs. a scratchpad UAPKI CLI wrapper) surfaced a real inconsistency on the *same* Ryzen machine -
+Kupyna-256 at 65536 B reads **98.60 MB/s (this project) vs. 95.48 MB/s (UAPKI)** in-process, but
+**94.14 MB/s (this project) vs. 104.95 MB/s (UAPKI)** at the binary level - opposite winners,
+~10% apart either way, most likely measurement-methodology noise (a raw single-shot C timing loop
+has no warmup/outlier-trimming the way `criterion`'s sampling does) rather than a real effect, but
+exactly the kind of ambiguity that follows from comparing two different measurement methods against
+each other instead of one. The user's own framing: a real user of this project never calls
+`dstu_core::hazmat::kalyna::encrypt` from their own Rust process the way `criterion` does - they run
+a *program*, the way libsodium's own benchmarking culture (and this project's MVP goal of being a
+libsodium-shaped tool, `CLAUDE.md`) already treats as the unit that matters. Decision, going
+forward: **the only performance comparison this project publishes is binary-level - a built CLI
+(`dstutool` for this project, an equivalent thin CLI wrapper with the same file-based interface for
+every oracle) invoked as a real external process - reported exclusively in MB/s**, for every
+algorithm, every implementation/oracle compared, and every platform measured (Ryzen dev machine,
+Raspberry Pi, and any future one). No more `ns`/op tables, no more `wall_ns` process-overhead
+tables as a "result" (that overhead was already confirmed negligible once amortized, D-31 - it
+doesn't need its own table repeated every time), and no more using in-process `criterion` numbers as
+a cross-implementation comparison.
+
+**What this does *not* change**: `cargo bench`/`criterion` remains this project's own internal
+regression-tracking tool (`DECISIONS.md` D-23, the saved `--baseline` mechanism) - useful for
+noticing a Rust-side regression between commits on one machine, a different job than comparing
+against another implementation entirely. It simply stops being used for the *cross-implementation*
+comparison`PERFORMANCE.md` is actually for.
+
+**MB/s for a fixed-size block cipher (Kalyna)**: still computed as `block_size_bytes / per_op_time`
+(D-31's existing convention, kept) - not a message-length-dependent rate the way Kupyna/Strumok's
+is, but reported the same unit for a consistent table shape across all three algorithms, which is
+exactly what "one metric" means here.
+
+**Practical effect on `PERFORMANCE.md`**: the entire "## Results" (in-process) section is marked
+superseded with a dated banner rather than deleted (`CLAUDE.md` "never silently deprecate a
+document," applied at section granularity) - its historical optimization-progress narrative (D-27
+through D-30's incremental fixes) is still worth keeping as a record of what was tried and in what
+order, just no longer the authoritative comparison. "## Binary-level (process) comparison" becomes
+the single canonical section, rebuilt with Ryzen *and* Raspberry Pi columns for every
+implementation/oracle now built on both machines (`dstutool`, UAPKI, outspace for Strumok;
+Oliynykov's reference C stays excluded per the user's earlier, unchanged decision that a
+correctness-only oracle isn't a performance baseline - this session's "test every oracle" request
+is about the *method*, not about un-excluding an oracle already excluded for an orthogonal reason).

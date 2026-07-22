@@ -58,7 +58,15 @@ Kalyna/Kupyna official test vectors matched Oliynykov's reference and Bouncy Cas
 already-trusted oracles for correctness — this is the same set of implementations, measured for
 speed instead.
 
-## Results
+## Results (historical - superseded by "Binary-level comparison" below, see D-34)
+
+**Superseded 2026-07-22, see `DECISIONS.md` D-34**: this whole section is in-process `criterion`
+numbers - useful at the time for tracking each optimization's progress commit-by-commit, but no
+longer this project's cross-implementation comparison method. Kept for the historical record of
+what was tried and in what order (D-27 through D-30's incremental fixes), not deleted, but **"##
+Binary-level (process) comparison" further below is now the single canonical comparison** - a
+built CLI run as a real process, MB/s only, every implementation, every platform measured. Do not
+cite the tables in this section as a current performance claim.
 
 ### Kalyna (single-block encrypt, nanoseconds — lower is better)
 
@@ -194,147 +202,105 @@ does *not* flip on the Pi**: this project still beats UAPKI there too, by ~1.1-1
 for the full cross-architecture writeup, including why Strumok behaves differently from Kalyna/
 Kupyna here.
 
-## Binary-level (process) comparison
+## Binary-level (process) comparison — canonical, see D-34
 
-All the numbers above are **in-process**: `criterion` calling a Rust function directly, or a C
-harness calling a C function directly, in the same process, no process-spawn cost included. That's
-the right tool for measuring the algorithm itself, but it's not literally "run the tool as a user
-would" — added 2026-07-22 (`TASKS.md`, D-28/29/30 follow-up) as a second, complementary comparison:
-`crates/dstutool`'s new `kalyna-block encrypt`/`decrypt` subcommand (single block, file in/file
-out — no mode of operation, deliberately not named `encrypt`/`decrypt` at the top level so it
-can't be confused with the future file-plus-mode CLI blocked on D-05) run as an actual external
-process against an equivalent scratchpad CLI wrapper for UAPKI (not committed, same convention as
-the C benchmark harnesses elsewhere in this file). Oliynykov's reference C was wrapped too during
-this run but is left out of the tables below, same reasoning as the in-process tables above — it's
-a correctness oracle, not a performance baseline.
+**This is the only methodology this project uses for cross-implementation performance
+comparisons, per `DECISIONS.md` D-34** (added 2026-07-22, after a same-machine discrepancy between
+the in-process and binary-level Kupyna numbers surfaced exactly why mixing methods is a problem —
+see D-34): a built CLI — `dstutool` for this project, an equivalent thin CLI wrapper with the same
+file-based interface for each oracle — run as a real external process, on each machine measured.
+**One metric only: MB/s.** No `ns`/op tables, no `wall_ns` tables — process-spawn overhead was
+already confirmed negligible once amortized over `N` iterations (tens of milliseconds of one-time
+startup vs. the seconds-long timed loop; not re-measured every time since it doesn't change).
 
-Each tool takes `--iterations N` and repeats the same in-memory block op `N` times in one process
-invocation (`--raw-schedule` re-expands the key every iteration; without it, the key schedule is
-expanded once before the loop, matching `ExpandedKey`/each C library's own key-setup-once
-convention) — this amortizes one-time process startup over many operations rather than spawning a
-process per block, which would measure OS process creation, not crypto (a single block op is
-100s of nanoseconds to a few microseconds; process creation on this machine is tens of
-milliseconds, three-plus orders of magnitude larger). Two numbers are reported for each run: the
-whole invocation's wall-clock time (`wall_ns`, includes the one process startup + all N
-iterations) and the amortized per-operation time the tool itself measures internally
-(`per_op_ns`) — reported both because "how long does it take to run the tool" and "how fast is the
-crypto" are different questions and this comparison can answer both without hiding either.
+Each tool takes `--iterations N` and repeats the same in-memory block/digest/keystream op `N` times
+in one process invocation (`--raw-schedule`, where applicable, re-expands the key every iteration;
+without it, the key schedule is expanded once before the loop, matching `ExpandedKey`/each C
+library's own key-setup-once convention) — this amortizes the one-time process startup over many
+operations rather than spawning a process per operation, which would measure OS process creation,
+not crypto.
+
+**Machines**: both the Ryzen 5 PRO 4650U dev machine and the Raspberry Pi 5 (see "Methodology"
+above) now have `dstutool` plus a CLI wrapper for UAPKI built; outspace's Strumok wrapper is built
+on both too. Oliynykov's reference C stays excluded from these tables — a deliberate, unchanged
+decision (not revisited by moving to a single method): it's a correctness oracle, not a performance
+baseline (see "Implementations compared" above).
 
 ### Kalyna (`kalyna-block encrypt`/`decrypt`)
 
-**N = 20000 iterations, same machine, same day:**
+MB/s = block size / per-op time (16 bytes for 128-128, 64 bytes for 512-512) — not a
+message-length-dependent rate the way Kupyna/Strumok's is, but the same unit for a consistent
+table shape. **N = 20000 iterations on both machines:**
 
-| Variant | Direction | Schedule | dstutool per-op | UAPKI per-op |
-|---|---|---|---|---|
-| 128-128 | encrypt | cached | **127 ns** | 201 ns |
-| 128-128 | encrypt | raw | **1060 ns** | 17366 ns |
-| 128-128 | decrypt | cached | **140 ns** | 196 ns |
-| 128-128 | decrypt | raw | **1562 ns** | 17562 ns |
-| 512-512 | encrypt | cached | 552 ns | **476 ns** |
-| 512-512 | encrypt | raw | 3941 ns | **22922 ns** |
-| 512-512 | decrypt | cached | 673 ns | **510 ns** |
-| 512-512 | decrypt | raw | 4922 ns | **22570 ns** |
+| Variant | Direction | Schedule | dstutool (Ryzen) | UAPKI (Ryzen) | dstutool (Pi 5) | UAPKI (Pi 5) |
+|---|---|---|---|---|---|---|
+| 128-128 | encrypt | cached | **125.98** | 79.60 | 44.69 | **87.43** |
+| 128-128 | encrypt | raw | **15.09** | 0.92 | **6.71** | 0.32 |
+| 128-128 | decrypt | cached | **114.29** | 81.63 | 40.61 | **84.21** |
+| 128-128 | decrypt | raw | **10.24** | 0.91 | **5.12** | 0.32 |
+| 512-512 | encrypt | cached | 115.94 | **134.45** | 54.05 | **100.00** |
+| 512-512 | encrypt | raw | **16.24** | 2.79 | **12.36** | 1.14 |
+| 512-512 | decrypt | cached | 95.10 | **125.49** | 49.84 | **100.63** |
+| 512-512 | decrypt | raw | **13.00** | 2.84 | **10.31** | 1.14 |
 
-`dstutool`'s cached (`ExpandedKey`) per-op numbers land within a few percent of the in-process
-`criterion` numbers above (e.g. 128-128 encrypt: 127 ns here vs 132 ns in-process) — the CLI
-wrapper (file I/O, argument parsing) adds essentially no measurable overhead once amortized over
-20000 iterations, which is the sanity check this comparison exists to provide.
-
-**Same runs, as throughput (MB/s = block size / per-op time — a single-block cipher's "MB/s" at a
-given variant, not a message-length-dependent figure the way Kupyna/Strumok's are; block size is
-16 bytes for 128-128, 64 bytes for 512-512):**
-
-| Variant | Direction | Schedule | dstutool MB/s | UAPKI MB/s |
-|---|---|---|---|---|
-| 128-128 | encrypt | cached | **125.98** | 79.60 |
-| 128-128 | encrypt | raw | **15.09** | 0.92 |
-| 128-128 | decrypt | cached | **114.29** | 81.63 |
-| 128-128 | decrypt | raw | **10.24** | 0.91 |
-| 512-512 | encrypt | cached | 115.94 | **134.45** |
-| 512-512 | encrypt | raw | **16.24** | 2.79 |
-| 512-512 | decrypt | cached | 95.10 | **125.49** |
-| 512-512 | decrypt | raw | **13.00** | 2.84 |
-
-Same numbers as the `ns`/op table above, just re-expressed - MB/s is the more natural unit for
-comparing against Kupyna/Strumok's throughput tables below, even though for a fixed-size block
-cipher it's really "block size ÷ time" rather than a size-independent rate the way a hash/stream
-cipher's MB/s is (a 512-512 block is 4x the bytes of a 128-128 block per op, so its MB/s isn't
-directly comparable across variants the way Kupyna-256 vs Kupyna-512 at the same message size is).
-
-**Whole-invocation wall-clock (same runs, `wall_ns`), showing process-spawn overhead is roughly
-constant across implementations, not crypto-dependent:**
-
-| Variant | Direction | Schedule | dstutool wall | UAPKI wall |
-|---|---|---|---|---|
-| 128-128 | encrypt | cached | 63.2 ms | 65.2 ms |
-| 512-512 | encrypt | cached | 70.9 ms | 70.2 ms |
-| 512-512 | encrypt | raw | 138.9 ms | 520.9 ms |
-
-Subtracting each run's own internal `total_ns` from `wall_ns` gives a process-startup estimate of
-**~60-63 ms for both binaries** in the cached cases — i.e. on this machine, process creation
-(and whatever else Windows does before `main()` runs, including antivirus scanning of a freshly
-built binary - this session already saw one such Defender flag on a MinGW binary) costs roughly
-the same regardless of which implementation is inside, and completely dominates wall-clock time at
-low iteration counts. This is why the amortized `per_op_ns` column, not `wall_ns`, is the number
-that reflects the crypto itself — `wall_ns` mostly answers "how fast does a fresh process start on
-this machine," which none of these implementations control.
+Confirms D-33's in-process finding via the canonical method too: **on the Pi, UAPKI wins the
+cached (schedule-cached, real-usage) case** — this project trails by roughly 1.9-2.0x there
+(e.g. 512-512 encrypt: 100.00 vs 54.05) — the reverse of the Ryzen result, where this project
+leads by ~1.4-1.9x. The *raw* (schedule-redone-every-call) case doesn't flip on either machine:
+UAPKI's raw numbers are dramatically worse everywhere (its per-call key setup is expensive), so
+this project wins raw on both platforms regardless of the cached-case reversal.
 
 **Reproducing**: `cargo build -p dstutool --release`, then `target/release/dstutool kalyna-block
 encrypt --variant <variant> --key <path> --in <path> --out <path> --iterations <N>
-[--raw-schedule]`. The Oliynykov/UAPKI comparison CLIs are one-off C wrappers (same file interface
-and flags) built the same way as this file's other C comparisons - not committed.
+[--raw-schedule]`. The UAPKI comparison CLI is a one-off C wrapper (same file interface and flags)
+built the same way as this file's other C comparisons — not committed; built fresh on each machine
+against `library/uapkic`'s pinned commit (`ORACLES.md`).
 
 ### Kupyna (`kupyna-digest`)
 
-Added 2026-07-22, same session, extending the binary-level comparison to Kupyna (D-31 follow-up) -
-unlike Kalyna, no mode-of-operation blocker applies here: `Kupyna256`/`Kupyna512::digest` already
-take an arbitrary-length message, so `kupyna-digest --variant <256|512> --in <path> --out <path>
-[--iterations N]` is a complete, real feature, not a scoped-down benchmarking scaffold. No key, so
-there's no cached-vs-raw distinction to report.
+`Kupyna256`/`Kupyna512::digest` already take an arbitrary-length message, so `kupyna-digest
+--variant <256|512> --in <path> --out <path> [--iterations N]` is a complete, real feature, not a
+scoped-down benchmarking scaffold. No key, so no cached-vs-raw distinction. **64 KB message, N =
+2000 iterations on both machines:**
 
-**64 KB message, N = 2000 iterations, same machine, same day:**
-
-| Variant | dstutool per-op | dstutool MB/s | UAPKI per-op | UAPKI MB/s |
+| Variant | dstutool (Ryzen) | UAPKI (Ryzen) | dstutool (Pi 5) | UAPKI (Pi 5) |
 |---|---|---|---|---|
-| Kupyna-256 | 696128 ns | **94.14** | 624459 ns | **104.95** |
-| Kupyna-512 | 869777 ns | **75.35** | 740713 ns | **88.48** |
+| Kupyna-256 | 94.14 | **104.95** | 48.18 | **71.87** |
+| Kupyna-512 | 75.35 | **88.48** | 36.64 | **60.56** |
 
-Consistent with the in-process numbers earlier in this file (Kupyna-256 at 65536 B: 98.60 MB/s
-in-process vs 94.14 MB/s here) - the CLI wrapper's overhead is noise at this buffer size.
+**UAPKI wins on both machines here, at the binary level** — this is the discrepancy D-34
+documents: the (now-superseded) in-process table above claimed this project was 1.03-1.45x
+*faster* than UAPKI on Ryzen, but the binary-level numbers here (measured the same day, same
+machine) put UAPKI ahead by a similar small margin instead (~10-17%). Kept as-is, not "corrected"
+to agree with the in-process figure — this is exactly the kind of cross-method disagreement D-34
+exists to stop producing, and the binary-level number is the one this project now treats as
+authoritative. The Pi gap is larger and in the same direction (UAPKI ahead by ~1.5-1.7x there).
+
+**Reproducing**: same pattern as Kalyna's.
 
 ### Strumok (`strumok-crypt`)
 
-Added 2026-07-22, same session (D-31 follow-up) - also no mode-of-operation blocker:
 `Strumok256`/`Strumok512::apply_keystream` already XOR an arbitrary-length buffer, so
 `strumok-crypt --variant <256|512> --key <path> --iv <path> --in <path> --out <path>
 [--iterations N] [--raw-schedule]` is a complete feature. `--raw-schedule` re-initializes the
-cipher fresh before every iteration (matching `benches/strumok.rs`'s own per-iteration `Strumok256
-::new(...).apply_keystream(...)` convention); the default continues one cipher's state across all
-`iterations` calls instead (a real continuous stream, cheaper - no repeated init).
+cipher fresh before every iteration; the default continues one cipher's state across all
+`iterations` calls instead (a real continuous stream, cheaper — no repeated init). **64 KB
+message, N = 2000 iterations on both machines:**
 
-**64 KB message, N = 2000 iterations, same machine, same day - MB/s (higher is better):**
+| Variant | Schedule | dstutool (Ryzen) | outspace (Ryzen) | UAPKI (Ryzen) | dstutool (Pi 5) | outspace (Pi 5) | UAPKI (Pi 5) |
+|---|---|---|---|---|---|---|---|
+| Strumok-256 | cached | 516.32 | **1957.65** | 624.44 | 372.95 | **1164.99** | 326.66 |
+| Strumok-256 | raw | 545.73 | **1975.15** | 627.41 | 367.15 | **1117.29** | 321.21 |
+| Strumok-512 | cached | 534.30 | **2001.26** | 584.87 | 372.11 | **1165.81** | 327.93 |
+| Strumok-512 | raw | 529.50 | **1892.23** | 608.52 | 367.04 | **1117.74** | 321.15 |
 
-| Variant | Schedule | dstutool | outspace | UAPKI |
-|---|---|---|---|---|
-| Strumok-256 | cached | 516.32 | **1957.65** | 624.44 |
-| Strumok-256 | raw | 545.73 | **1975.15** | 627.41 |
-| Strumok-512 | cached | 534.30 | **2001.26** | 584.87 |
-| Strumok-512 | raw | 529.50 | **1892.23** | 608.52 |
+Unlike Kalyna/Kupyna, this project beats UAPKI on **both** machines here (Ryzen: ~1.1-1.9x; Pi:
+~1.1-1.6x, a smaller margin but the same direction) — outspace remains fastest everywhere by a
+wide margin on both platforms. Consistent with D-33's in-process finding that Strumok's advantage,
+unlike Kalyna/Kupyna's, doesn't depend on which CPU architecture is running it.
 
-Two things worth calling out: (1) `dstutool`'s cached-vs-raw difference is small (unlike Kalyna's,
-where caching the key schedule closed most of the gap to UAPKI) - Strumok's per-message `Init` cost
-is small relative to processing a 64 KB buffer, so there isn't much setup cost left to amortize
-away at this buffer size. (2) These numbers are somewhat below the in-process `criterion` figures
-earlier in this file (639 MB/s there vs ~516-546 MB/s here for Strumok-256) - still the same order
-of magnitude and the same relative ranking (outspace fastest, UAPKI next, this project third), but
-the gap is a bit wider than Kalyna's in-process/binary agreement was; not investigated further this
-pass (background machine load during this run is the most likely cause, not a wrapper-specific
-regression - the wrapper's own logic is identical in shape to `kalyna-block`'s, which *did* match
-closely).
-
-**Reproducing**: same pattern as Kalyna's, `dstutool kupyna-digest`/`strumok-crypt`; the
-Oliynykov/outspace/UAPKI comparison CLIs are one-off C wrappers with the same file interface, not
-committed.
+**Reproducing**: same pattern as Kalyna's; the outspace/UAPKI comparison CLIs are one-off C
+wrappers with the same file interface, not committed — built fresh on each machine.
 
 ## What the gap is, honestly
 
@@ -365,11 +331,16 @@ sketched-not-scheduled task for closing this):
   too, on every call) are still slower than UAPKI's own one-shot calls for the reasons above — that
   gap is inherent to the one-shot API shape, not something further table fusion closes, and
   `ExpandedKey` exists specifically for callers who want the schedule-cached numbers instead.
-  **Scope correction, 2026-07-22, after building UAPKI on the Raspberry Pi too (D-33)**: the
-  "faster than UAPKI" claim above holds on the Ryzen dev machine specifically, not universally —
-  on the Pi's ARM core, UAPKI is faster than this project's Kalyna and Kupyna there (reversed),
-  while Strumok's "faster than UAPKI" result holds on both. See D-33 for the numbers and the
-  (untested) hypotheses for why Kalyna/Kupyna's ratio flips but Strumok's doesn't.
+  **Scope correction, 2026-07-22, after building UAPKI on the Raspberry Pi too (D-33) and moving to
+  a single binary-level testing method (D-34)**: the "faster than UAPKI" claim above was based on
+  in-process `criterion` numbers on the Ryzen dev machine, and does not hold as broadly as it
+  reads. On the Pi's ARM core, UAPKI is faster than this project's Kalyna and Kupyna (reversed).
+  **For Kupyna specifically, it doesn't even hold at the binary level on Ryzen** - D-34 found
+  UAPKI slightly ahead there too (~10-17%) once measured as a real built-binary process instead of
+  an in-process function call, a discrepancy that's exactly why this project no longer treats
+  in-process numbers as the comparison of record. Strumok's "faster than UAPKI" result is the one
+  that holds everywhere - both platforms, both methods. See D-33/D-34 for the numbers and D-33's
+  (untested) hypotheses for why Kalyna/Kupyna's ratio is architecture-sensitive but Strumok's isn't.
 - **Strumok, two distinct, additive causes — both fixed 2026-07-22, see D-26**: (1)
   `oracles/strumok-dstu8845/strumok.c`'s `next_stream()` is one fully-unrolled function that
   updates each state word in place via modular indexing — it never physically moves the 16-word

@@ -351,6 +351,20 @@ resistance (SPA/DPA — explicitly out of scope per `SECURITY.md`/`CLAUDE.md` "M
       the most explanatory), not chased further this pass. `PERFORMANCE.md`'s Results tables and
       "What the gap is, honestly" section both got a scope correction noting the Ryzen-specific
       claim.
+      **Extended a third time, same day, see `DECISIONS.md` D-34**: user asked for one single
+      testing method and metric going forward - a real built binary (`dstutool`, and an equivalent
+      thin CLI wrapper for every oracle), MB/s only, for every algorithm/implementation/platform,
+      no more in-process `criterion` numbers used as the cross-implementation comparison. Rebuilt
+      the full binary-level matrix on **both** machines (Kalyna N=20000 cached+raw x 2 variants,
+      Kupyna/Strumok N=2000 at 64 KB) for `dstutool` + UAPKI (+ outspace for Strumok) - Oliynykov's
+      reference C stays excluded (unchanged decision, correctness oracle not a performance one).
+      Confirmed D-33's Kalyna/Kupyna-flips-on-ARM finding survives the switch to the canonical
+      method, and surfaced a further discrepancy: Kupyna's binary-level numbers show UAPKI ahead
+      **on Ryzen too** (~10-17%), contradicting the in-process table's opposite claim - exactly the
+      kind of cross-method disagreement that motivated standardizing on one method. `PERFORMANCE.md`
+      restructured: "## Results" (in-process) marked superseded/historical with a dated banner, not
+      deleted; "## Binary-level (process) comparison" is now the single canonical section with
+      Ryzen+Pi columns for every implementation, MB/s only.
 
 ## Next up (blocked): a safe mode of operation for Kalyna
 
