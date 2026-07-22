@@ -190,6 +190,53 @@ resistance (SPA/DPA — explicitly out of scope per `SECURITY.md`/`CLAUDE.md` "M
       `clippy`/`fmt`/`no_std` pass. New baseline: `kalyna-kupyna-optimized-2026-07-22`.
       **Not done**: the full S-box+shift+MDS fusion (per-`nb` tables) — sketched, not scheduled,
       would close the remaining gap but is a materially bigger change.
+- [ ] **Kalyna/Kupyna: close the remaining gap to UAPKI** (planned 2026-07-22, not started — full
+      plan below, staged so each part can be verified independently before the next starts).
+      Correction to D-27's stated blocker: full S-box+shift+MDS fusion does **not** need per-`nb`
+      tables after all — `sub_bytes` is row-indexed and `shift_rows`/`shift_bytes` preserve row
+      (only move columns), so they commute; the fused table itself (`SBOX_MDS[row][byte] =
+      MDS_TABLE[row][SBOXES[row % 4][byte]]`) is `nb`-independent, one shared table for Kalyna
+      encrypt and Kupyna. The block-size dependence lives only in the *gather index*
+      (`out_col[j] = XOR over row of SBOX_MDS[row][in_col[(j - shift(row, nb)) mod nb][row]]`),
+      cheap arithmetic on the already-existing `nb`/`shift` variables, not a table per variant.
+      0. **Fix the benchmark first** — `benches/kalyna.rs` times `encrypt()`/`decrypt()` per
+         iteration, which re-runs `key_expand` every call; `PERFORMANCE.md`'s methodology text
+         claims the schedule is cached outside the timed loop (true for UAPKI's C harness, **not**
+         true for this project's own bench — an inconsistency to fix, not carry forward). Add a
+         bench variant that expands the key once outside `b.iter` and times only the block
+         operation, to get an honest schedule-vs-round split before claiming any new number closes
+         the gap.
+      1. **Fused forward table, shared** (`SBOX_MDS`/`SBOX_MDS_INV`, `hazmat::tables`): replaces
+         Kalyna's `sub_bytes -> shift_rows -> apply_matrix` and Kupyna's equivalent three-pass
+         round with one gather-and-XOR pass. Verify: exhaustive test that
+         `SBOX_MDS[row][byte] == MDS_TABLE[row][SBOXES[row % 4][byte]]` for all 8x256 entries (same
+         pattern as D-27's `mds_table_matches_gf_mul_exhaustively`), plus the existing Oliynykov
+         differential harnesses re-run **bit-identical**, plus all vectors/proptests unchanged.
+         Kalyna *decrypt* is the fiddly inverse direction (`inv_sub_bytes` runs *last* in
+         `decipher_round`, after `MDS_INV`, not first) — stage this as its own sub-step once
+         encrypt+Kupyna land, likely needs restructuring into an equivalent-inverse-cipher form
+         (transformed round keys, `AES` `EqInvCipher`-style) rather than a direct table swap.
+      2. **`Column` representation: `[u8; 8]` -> `u64` directly** — removes the
+         `from_le_bytes`/`to_le_bytes` churn on every `add_round_key`/`xor_round_key`/table-lookup
+         call once step 1's gather produces a `u64` per column anyway. Touches
+         `kalyna.rs`/`kupyna.rs`/`tables.rs` and the key-schedule helpers
+         (`shift_left_words`/`rotate_words_left`/`rotate_bytes_left`) — a real but mechanical
+         refactor, re-verify the same way as step 1.
+      3. **`ExpandedKey`-equivalent for Kalyna** (new public type, user's explicit go-ahead
+         2026-07-22 despite being an API-shape change, not a pure internal optimization): caches
+         `key_expand`'s output so repeated `encrypt`/`decrypt` calls under the same key don't
+         redo the schedule — closes roughly the other half of Kalyna's (not Kupyna's, it has no
+         key) gap to UAPKI, and is a prerequisite for any future mode of operation (D-05) to not be
+         accidentally catastrophic on throughput. Exact shape (owns `zeroize`d round keys, `From`/
+         constructor takes the raw key, `encrypt_block`/`decrypt_block` take only the block) to be
+         finalized when this stage starts; keep the existing raw-key `encrypt`/`decrypt` functions
+         too (thin wrappers) so no existing caller/test breaks.
+      4. Re-run `cargo bench` against the `kalyna-kupyna-optimized-2026-07-22` baseline, update
+         `PERFORMANCE.md` (new before/after table, revised "What the gap is, honestly" —
+         **expectation, not a promise**: fused tables + `u64` + key caching should land Kalyna/
+         Kupyna around 2-3x of UAPKI, not parity — UAPKI also has manual unrolling, no bounds
+         checks, register-level tuning this project isn't chasing), save a new baseline, add a
+         `DECISIONS.md` entry once implemented (citation + verification, same shape as D-26/D-27).
 
 ## Phase 2 — libsodium-equivalent construction layer, DSTU 4145 + 9041
 
