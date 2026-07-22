@@ -154,23 +154,108 @@ fn fuzz() -> bool {
     if !require("cargo-fuzz", "cargo install cargo-fuzz --locked") {
         return false;
     }
-    // Note (see TASKS.md "Testing & hardening"): libFuzzer-on-Windows only works with the MSVC
-    // target, not this project's GNU host toolchain - these targets build and run on Linux/macOS
-    // CI or an MSVC host, but not on a GNU-toolchain Windows dev machine. Not a bug in this
-    // command; a confirmed upstream limitation.
+    // Note (see TASKS.md "Testing & hardening", DECISIONS.md D-32): libFuzzer-on-Windows only
+    // works with the MSVC target, not this project's default GNU host toolchain - a real, confirmed
+    // upstream limitation, not a bug here. On Linux/macOS the native toolchain already supports
+    // ASan, so this runs directly; on Windows it additionally needs a nightly-x86_64-pc-windows-msvc
+    // rustup toolchain plus a Visual Studio C++ toolset (for `link.exe` and the ASan runtime DLL,
+    // both only on PATH once `vcvars64.bat` is sourced) - genuinely separate tools, not just a cargo
+    // target add, so this is the one other real per-OS branch in this file (see the `mvn`/`mvn.cmd`
+    // one in `command_for`).
+    #[cfg(windows)]
+    {
+        fuzz_windows_msvc()
+    }
+    #[cfg(not(windows))]
+    {
+        fuzz_targets(&["cargo", "+nightly", "fuzz", "run"])
+    }
+}
+
+#[cfg(not(windows))]
+fn fuzz_targets(prefix: &[&str]) -> bool {
     for target in ["kupyna", "kalyna", "strumok"] {
-        let ok = run(
-            "cargo",
-            &[
-                "+nightly",
-                "fuzz",
-                "run",
-                target,
-                "--",
-                "-max_total_time=60",
-            ],
-            Some(Path::new("crates/dstu-core")),
+        let mut args = prefix.to_vec();
+        args.push(target);
+        args.extend(["--", "-max_total_time=60"]);
+        let ok = run(args[0], &args[1..], Some(Path::new("crates/dstu-core")));
+        if !ok {
+            return false;
+        }
+    }
+    true
+}
+
+/// Finds `vcvars64.bat` via `vswhere.exe`'s fixed, well-known install path (itself not on PATH,
+/// same reason `command_for` special-cases `mvn.cmd` - a Windows tool that isn't just `cargo`).
+#[cfg(windows)]
+fn find_vcvars64() -> Option<String> {
+    let vswhere = r"C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe";
+    if !Path::new(vswhere).exists() {
+        return None;
+    }
+    let output = Command::new(vswhere)
+        .args(["-latest", "-property", "installationPath"])
+        .output()
+        .ok()?;
+    let install_path = String::from_utf8(output.stdout).ok()?;
+    let install_path = install_path.trim();
+    if install_path.is_empty() {
+        return None;
+    }
+    let vcvars = format!(r"{install_path}\VC\Auxiliary\Build\vcvars64.bat");
+    Path::new(&vcvars).exists().then_some(vcvars)
+}
+
+#[cfg(windows)]
+fn rustup_toolchain_installed(name: &str) -> bool {
+    Command::new("rustup")
+        .args(["toolchain", "list"])
+        .output()
+        .is_ok_and(|o| {
+            String::from_utf8_lossy(&o.stdout)
+                .lines()
+                .any(|line| line.starts_with(name))
+        })
+}
+
+#[cfg(windows)]
+fn fuzz_windows_msvc() -> bool {
+    use std::os::windows::process::CommandExt;
+
+    let Some(vcvars) = find_vcvars64() else {
+        eprintln!(
+            "xtask: no Visual Studio C++ toolset found (vswhere.exe absent or reported nothing) \
+             - skipping fuzz.\n  install: Visual Studio Build Tools, \"Desktop development with \
+             C++\" workload"
         );
+        return false;
+    };
+    const MSVC_TOOLCHAIN: &str = "nightly-x86_64-pc-windows-msvc";
+    if !rustup_toolchain_installed(MSVC_TOOLCHAIN) {
+        eprintln!(
+            "xtask: rustup toolchain '{MSVC_TOOLCHAIN}' not installed - skipping fuzz.\n  install \
+             with: rustup toolchain install {MSVC_TOOLCHAIN}"
+        );
+        return false;
+    }
+    for target in ["kupyna", "kalyna", "strumok"] {
+        let inner = format!(
+            "cargo +{MSVC_TOOLCHAIN} fuzz run --target x86_64-pc-windows-msvc {target} -- \
+             -max_total_time=60"
+        );
+        let full = format!("call \"{vcvars}\" >nul && {inner}");
+        println!("+ cmd /C {full}");
+        // `raw_arg` (not `arg`/`args`) is load-bearing here: `full` already contains its own
+        // `"..."` quoting for cmd.exe's parser (around the vcvars path, which has spaces).
+        // Rust's normal Windows argument quoting would re-escape those embedded quotes and
+        // corrupt the command line - confirmed by hitting exactly that ("is not recognized as an
+        // internal or external command") before switching to `raw_arg`.
+        let mut command = Command::new("cmd");
+        command.arg("/C");
+        command.raw_arg(&full);
+        command.current_dir("crates/dstu-core");
+        let ok = command.status().is_ok_and(|s| s.success());
         if !ok {
             return false;
         }

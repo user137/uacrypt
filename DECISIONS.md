@@ -1333,3 +1333,61 @@ Comparison CLIs added for Oliynykov's Kupyna reference C, UAPKI's `dstu7564`, ou
 `dstu8845`, and UAPKI's `dstu8845` (all scratchpad-only, not committed, same convention as
 `kalyna-block`'s comparison CLIs) - all four cross-checked byte-identical against `dstutool`
 before timing. Full result tables in `PERFORMANCE.md`.
+
+## D-32: `cargo fuzz` actually run on this machine, all three targets - the MSVC blocker wasn't wrong, just avoidable here
+
+`TASKS.md`/D-23 left "actually run `cargo fuzz`" open, blocked on a confirmed toolchain fact:
+libFuzzer's Address Sanitizer needs the MSVC target on Windows, and this project's default
+toolchain is the GNU host (`x86_64-pc-windows-gnu`, chosen specifically to avoid needing Visual
+Studio Build Tools, `.claude.local.md` "Toolchains"). That technical finding was correct and still
+is - ASan genuinely doesn't support the GNU target. **What changed 2026-07-22, same session as
+D-28 through D-31**: the user pointed out Visual Studio 2022 (with the MSVC C++ toolset) is
+already installed on this machine, for unrelated reasons - so the objection to using MSVC here
+("would mean installing Visual Studio just for this one command") no longer applies. This is a
+statement about this machine's environment, not a reversal of the earlier finding.
+
+**What made it actually work, three separate things, each confirmed necessary by hitting the
+failure without it**:
+1. `rustup toolchain install nightly-x86_64-pc-windows-msvc` - an *additional* toolchain
+   (default toolchains stay GNU-host, unchanged for everything else in this project).
+2. Running from a shell with `vcvars64.bat` sourced first. Not just for `link.exe` at build time -
+   confirmed the hard way that without it, the build itself succeeds (rustc can locate MSVC via
+   the registry on its own) but the resulting fuzz binary then fails at *run* time with
+   `STATUS_DLL_NOT_FOUND (0xc0000135)`, because the ASan runtime DLL isn't on `PATH` without
+   vcvars.
+3. Passing `cargo fuzz run --target x86_64-pc-windows-msvc` explicitly. `cargo-fuzz`'s own
+   `--target` flag defaults to `x86_64-pc-windows-gnu` unconditionally (confirmed via `cargo fuzz
+   run --help`) regardless of which toolchain invokes it - omitting this flag reproduces the exact
+   original "address sanitizer is not supported for this target" failure even when running under
+   the msvc toolchain, which is what made the first retry attempt look like it hadn't changed
+   anything.
+
+**Result**: all three fuzz targets run clean, 60-second smoke run each (matching
+`.github/workflows/rust.yml`'s existing `fuzz-smoke` job convention, not a long campaign), zero
+crashes:
+
+| Target | Runs (60s) | Coverage (edges/features) |
+|---|---|---|
+| `kupyna` | 182,746 | 87 / 213 |
+| `kalyna` | 169,851 | 773 / 1341 |
+| `strumok` | 1,466,215 | 101 / 163 |
+
+Coverage plateaued well before the 60s mark for all three (visible in the raw libFuzzer output) -
+expected for a short smoke run against a small, already-well-tested surface (single-block/
+fixed-key-size operations), not evidence of a shallow harness. This is a smoke-level signal, same
+standing as the CI job it mirrors - not a substitute for a longer campaign if one is ever run
+deliberately.
+
+**`xtask fuzz` updated to do this automatically on Windows** (see `xtask/src/main.rs`): detects a
+Visual Studio C++ toolset via `vswhere.exe` (fixed, well-known install path even though it isn't
+itself on `PATH`) and the `nightly-x86_64-pc-windows-msvc` rustup toolchain; if both are present,
+runs each target through `cmd /C` with `vcvars64.bat` sourced first, same invocation as the manual
+steps above. If either is missing, prints an install hint and skips (same pattern `require()`
+already uses for every other optional tool) rather than failing `cargo xtask ci` outright - a
+machine without Visual Studio installed (e.g. CI, or a GNU-only dev box) still gets a clean
+best-effort skip, unchanged from before this entry.
+
+**Not claiming this resolves the CI gap**: `.github/workflows/rust.yml`'s `fuzz-smoke` job on
+Linux remains the actual, unconditional per-push check - this only makes the optional local
+`cargo xtask fuzz` path usable on a Windows dev machine that happens to have Visual Studio
+installed, which is not guaranteed for every contributor's machine the way the GNU toolchain is.

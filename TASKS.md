@@ -85,6 +85,10 @@ test-vector check (or unit test) is written before the primitive it verifies, no
       same shape as the cryptonite C-harness being dropped below (a real, confirmed toolchain
       incompatibility, not a skipped step). CI (a Linux runner) remains the actual venue where
       these targets get run, same as this project already says for the fuzz scaffold generally.
+      **Update, later the same day**: this machine turned out to already have Visual Studio
+      installed for unrelated reasons, so the objection above ("would mean installing MSVC just for
+      this") stopped applying here specifically — see "Testing & hardening" below and `DECISIONS.md`
+      D-32 for how it was actually run.
 - [ ] `dstutool` CLI: `encrypt`/`decrypt`/`hash` subcommands, mode/nonce/IV hardcoded (no
       user-facing crypto knobs, per the libsodium-style misuse-resistance goal)
 - [ ] Publish `dstu-core` to crates.io
@@ -136,15 +140,21 @@ resistance (SPA/DPA — explicitly out of scope per `SECURITY.md`/`CLAUDE.md` "M
       reference implementations already behind Bouncy Castle's own ports, not a new independent
       oracle) — the real independent second reading for Kalyna/Kupyna remains the Java/.NET
       Bouncy Castle harnesses, unchanged.
-- [ ] **Actually run `cargo fuzz`** for all three primitives — attempted 2026-07-22, blocked by a
+- [x] **Actually run `cargo fuzz`** for all three primitives — attempted 2026-07-22, blocked by a
       confirmed GNU/MinGW-toolchain incompatibility (libFuzzer-on-Windows is MSVC-only upstream),
-      not a skipped step; full detail in the Phase 1 line above. **Re-checked 2026-07-22, same
-      session as D-28/29/30/31**: `cargo +nightly fuzz run kupyna -- -max_total_time=10` still
-      fails identically (`error: address sanitizer is not supported for this target` for
-      `x86_64-pc-windows-gnu`) — unchanged root cause, not re-litigated further per the
-      three-attempts rule (`CLAUDE.md`), since this is the same confirmed upstream limitation, not
-      a new bug. Still open until it runs somewhere that can — CI (Linux, already wired in
-      `.github/workflows/rust.yml`'s `fuzz-smoke` job) or a machine with the MSVC toolchain.
+      not a skipped step; full detail in the Phase 1 line above. **Done later the same day, see
+      `DECISIONS.md` D-32**: this machine turned out to already have Visual Studio 2022 (MSVC C++
+      toolset) installed — not the upstream limitation being wrong, just no longer applicable here.
+      Installed the `nightly-x86_64-pc-windows-msvc` rustup toolchain, ran each target through a
+      `vcvars64.bat`-sourced shell with `--target x86_64-pc-windows-msvc` passed explicitly (both
+      steps load-bearing, not optional — see D-32). **Result: all three targets ran a 60-second
+      smoke each (matching CI's `fuzz-smoke` convention), zero crashes** — kupyna 182,746 runs
+      (87/213 coverage), kalyna 169,851 runs (773/1341 coverage), strumok 1,466,215 runs (101/163
+      coverage), all coverage plateaus reached well inside the 60s window. `xtask fuzz` updated to
+      do this automatically on Windows when both prerequisites are present, falling back to a clean
+      skip (same as every other optional tool) otherwise. CI's Linux `fuzz-smoke` job remains the
+      actual per-push check; this closes the "never actually run anywhere" gap for local dev on a
+      machine that happens to have Visual Studio, which isn't guaranteed for every contributor.
 - [x] **`Zeroize`/`ZeroizeOnDrop` on live key-material.** `zeroize` 1.9 added
       (`default-features = false, features = ["derive"]`, `no_std`-compatible — first real
       dependency in `dstu-core`, `DECISIONS.md` D-20). Strumok's `Core` (LFSR/FSM state) derives
