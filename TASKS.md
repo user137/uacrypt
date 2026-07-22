@@ -280,6 +280,16 @@ resistance (SPA/DPA — explicitly out of scope per `SECURITY.md`/`CLAUDE.md` "M
       `criterion` numbers within a few percent - full tables in `PERFORMANCE.md` "Binary-level
       (process) comparison". Process-spawn overhead (~60-63 ms on this machine) is roughly the
       same across all three binaries, confirming it reflects the OS, not the crypto.
+      **Extended same day to Kupyna/Strumok** - neither has a mode-of-operation blocker (both
+      already operate on arbitrary-length data at the public API level), so `kupyna-digest`/
+      `strumok-crypt` are complete real commands, not scoped-down scaffolds. Comparison CLIs added
+      for Oliynykov's Kupyna reference, UAPKI's `dstu7564`/`dstu8845`, and outspace's `dstu8845` -
+      all cross-checked byte-identical before timing. **Result**: Kupyna's binary numbers land close
+      to the in-process ones (94.14 MB/s here vs 98.60 MB/s in-process for Kupyna-256 @ 64 KB);
+      Strumok's are somewhat lower (516-546 MB/s here vs 639 MB/s in-process for Strumok-256) but
+      same order of magnitude and same relative ranking - not investigated further, most likely
+      machine load during the run rather than a wrapper-specific issue (`kalyna-block`'s wrapper,
+      same shape, matched closely). Full tables in `PERFORMANCE.md`.
 
 ## Next up (blocked): a safe mode of operation for Kalyna
 

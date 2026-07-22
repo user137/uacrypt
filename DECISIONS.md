@@ -1306,3 +1306,30 @@ speed, same conclusion as D-28/29/30's in-process numbers.
 for Kalyna is next in priority per the user's request, but D-05 (needs the official DSTU 7624 text
 or another authoritative source before any construction is chosen) is still the real gate - this
 entry building a single-block CLI for benchmarking does not resolve or bypass that.
+
+**Extended same day to Kupyna and Strumok** - the user asked for the same binary-vs-binary
+treatment, and unlike Kalyna, *neither* has a mode-of-operation blocker: `Kupyna256`/`Kupyna512
+::digest` already takes an arbitrary-length message (no block-size restriction on the public API),
+and `Strumok256`/`Strumok512::apply_keystream` already XORs the keystream into a buffer of any
+length - both are already their libsodium-equivalent's full scope (`crypto_generichash`/
+`crypto_stream` respectively, per `docs/dstu-crypto-project.md`'s API table), so these two new
+commands are genuinely complete features, not scoped-down benchmarking scaffolds the way
+`kalyna-block` is.
+
+- **`kupyna-digest --variant <256|512> --in <path> --out <path> [--iterations N]`**: hashes
+  `--in`, writes the digest to `--out`. No key, so no cached-vs-raw distinction exists to expose
+  (unlike Kalyna/Strumok) - `--iterations` just repeats the (idempotent) digest call for timing.
+- **`strumok-crypt --variant <256|512> --key <path> --iv <path> --in <path> --out <path>
+  [--iterations N] [--raw-schedule]`**: applies the keystream to `--in`. `--raw-schedule` re-runs
+  `Strumok*::new` fresh before every iteration (re-applied to a fresh copy of the original buffer
+  each time) - this matches `benches/strumok.rs`'s own convention (`Strumok256::new(...)
+  .apply_keystream(...)` inside every `criterion` iteration), so it's the number to sanity-check
+  against the in-process figures. The default continues the same cipher state across `iterations`
+  calls instead (a real continuous stream, no repeated init) - cheaper, though for Strumok the two
+  numbers turned out close (init is small relative to a 64 KB buffer) - see `PERFORMANCE.md` for
+  why this differs from Kalyna, where cached vs raw was a much bigger gap.
+
+Comparison CLIs added for Oliynykov's Kupyna reference C, UAPKI's `dstu7564`, outspace's
+`dstu8845`, and UAPKI's `dstu8845` (all scratchpad-only, not committed, same convention as
+`kalyna-block`'s comparison CLIs) - all four cross-checked byte-identical against `dstutool`
+before timing. Full result tables in `PERFORMANCE.md`.

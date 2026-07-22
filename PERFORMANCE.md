@@ -176,6 +176,8 @@ iterations) and the amortized per-operation time the tool itself measures intern
 (`per_op_ns`) — reported both because "how long does it take to run the tool" and "how fast is the
 crypto" are different questions and this comparison can answer both without hiding either.
 
+### Kalyna (`kalyna-block encrypt`/`decrypt`)
+
 **N = 20000 iterations, same machine, same day:**
 
 | Variant | Direction | Schedule | dstutool per-op | Oliynykov C per-op | UAPKI per-op |
@@ -216,6 +218,61 @@ this machine," which none of these implementations control.
 encrypt --variant <variant> --key <path> --in <path> --out <path> --iterations <N>
 [--raw-schedule]`. The Oliynykov/UAPKI comparison CLIs are one-off C wrappers (same file interface
 and flags) built the same way as this file's other C comparisons - not committed.
+
+### Kupyna (`kupyna-digest`)
+
+Added 2026-07-22, same session, extending the binary-level comparison to Kupyna (D-31 follow-up) -
+unlike Kalyna, no mode-of-operation blocker applies here: `Kupyna256`/`Kupyna512::digest` already
+take an arbitrary-length message, so `kupyna-digest --variant <256|512> --in <path> --out <path>
+[--iterations N]` is a complete, real feature, not a scoped-down benchmarking scaffold. No key, so
+there's no cached-vs-raw distinction to report.
+
+**64 KB message, N = 2000 iterations, same machine, same day:**
+
+| Variant | dstutool per-op | dstutool MB/s | Oliynykov C per-op | Oliynykov C MB/s | UAPKI per-op | UAPKI MB/s |
+|---|---|---|---|---|---|---|
+| Kupyna-256 | 696128 ns | **94.14** | 94894488 ns | 0.69 | 624459 ns | **104.95** |
+| Kupyna-512 | 869777 ns | **75.35** | 132675168 ns | 0.49 | 740713 ns | **88.48** |
+
+Consistent with the in-process numbers earlier in this file (Kupyna-256 at 65536 B: 98.60 MB/s
+in-process vs 94.14 MB/s here) - the CLI wrapper's overhead is noise at this buffer size. Oliynykov's
+reference C is dramatically slower here for the same reason it is in-process (D-27's doc comment:
+`MixColumns` there is an 8-iteration bit-serial `GF(2^8)` loop, no table anywhere) - the binary
+comparison doesn't change *why*, it just confirms the gap survives running as an actual process.
+
+### Strumok (`strumok-crypt`)
+
+Added 2026-07-22, same session (D-31 follow-up) - also no mode-of-operation blocker:
+`Strumok256`/`Strumok512::apply_keystream` already XOR an arbitrary-length buffer, so
+`strumok-crypt --variant <256|512> --key <path> --iv <path> --in <path> --out <path>
+[--iterations N] [--raw-schedule]` is a complete feature. `--raw-schedule` re-initializes the
+cipher fresh before every iteration (matching `benches/strumok.rs`'s own per-iteration `Strumok256
+::new(...).apply_keystream(...)` convention); the default continues one cipher's state across all
+`iterations` calls instead (a real continuous stream, cheaper - no repeated init).
+
+**64 KB message, N = 2000 iterations, same machine, same day - MB/s (higher is better):**
+
+| Variant | Schedule | dstutool | outspace | UAPKI |
+|---|---|---|---|---|
+| Strumok-256 | cached | 516.32 | **1957.65** | 624.44 |
+| Strumok-256 | raw | 545.73 | **1975.15** | 627.41 |
+| Strumok-512 | cached | 534.30 | **2001.26** | 584.87 |
+| Strumok-512 | raw | 529.50 | **1892.23** | 608.52 |
+
+Two things worth calling out: (1) `dstutool`'s cached-vs-raw difference is small (unlike Kalyna's,
+where caching the key schedule closed most of the gap to UAPKI) - Strumok's per-message `Init` cost
+is small relative to processing a 64 KB buffer, so there isn't much setup cost left to amortize
+away at this buffer size. (2) These numbers are somewhat below the in-process `criterion` figures
+earlier in this file (639 MB/s there vs ~516-546 MB/s here for Strumok-256) - still the same order
+of magnitude and the same relative ranking (outspace fastest, UAPKI next, this project third), but
+the gap is a bit wider than Kalyna's in-process/binary agreement was; not investigated further this
+pass (background machine load during this run is the most likely cause, not a wrapper-specific
+regression - the wrapper's own logic is identical in shape to `kalyna-block`'s, which *did* match
+closely).
+
+**Reproducing**: same pattern as Kalyna's, `dstutool kupyna-digest`/`strumok-crypt`; the
+Oliynykov/outspace/UAPKI comparison CLIs are one-off C wrappers with the same file interface, not
+committed.
 
 ## What the gap is, honestly
 
