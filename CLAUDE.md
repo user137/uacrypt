@@ -21,9 +21,14 @@ environment. The workspace has two crates:
   `mul_alpha`/`mul_alpha_inv` tables are new, since that field construction isn't shared). All
   three are **confirmed**: `cargo test`, `cargo clippy -- -D warnings`, `cargo fmt --check`, the
   `no_std` build, and `cargo miri test` all pass. Check `TASKS.md` Phase 1 for exactly what's still
-  open (independent second-oracle cross-check for Kalyna, Kupyna's streaming API, `cargo fuzz` not
-  yet actually run, no high-level wrapper yet, no mode of operation for Kalyna).
-- `crates/dstutool` — the CLI binary, still a placeholder `main.rs`.
+  open (independent second-oracle cross-check for Kalyna, Kupyna's streaming API, no high-level
+  wrapper yet, no mode of operation for Kalyna). `cargo fuzz` has now actually been run (all three
+  targets, smoke runs, zero crashes) on a Windows dev machine with Visual Studio installed, via the
+  MSVC toolchain/target (`DECISIONS.md` D-32) — CI (Linux) remains the unconditional per-push check.
+- `crates/dstutool` — no longer a placeholder: `kalyna-block encrypt/decrypt`, `kupyna-digest`, and
+  `strumok-crypt` subcommands exist (`DECISIONS.md` D-31), used for binary-level performance
+  comparisons (`PERFORMANCE.md`) — still not the eventual file-plus-mode-of-operation CLI the MVP
+  scope below describes, which stays blocked on D-05.
 
 `cargo xtask <command>` (see `xtask/`, aliased via `.cargo/config.toml`) is the one cross-platform
 build/QA entry point — same command on Linux/Windows/macOS, no new install beyond `cargo` itself.
@@ -75,7 +80,9 @@ Algorithms in scope:
   different architectures, not variations of one). Concretely:
   - **Core must be `no_std`-compatible from day one** (Cargo feature flags `std` / `alloc` /
     `no_std`) so embedded targets can be added later without a core rewrite. Real-hardware
-    validation is a separate post-MVP phase.
+    validation is a separate post-MVP phase. The non-embedded ARM64/Linux half of this claim now
+    has a real hardware rig checking it (a Raspberry Pi, `TASKS.md` "Testing & hardening" — access
+    details in `.claude.local.md`, not committed); the bare-metal STM32/ESP32 half is still Phase 4.
   - No dependency, API choice, or build assumption may quietly assume a specific OS (e.g.
     Windows-only path handling, a Unix-only syscall) or a specific CPU family (e.g. an intrinsic
     with no portable fallback) unless it's isolated behind a feature flag with a working
@@ -113,7 +120,7 @@ Algorithms in scope:
 | `docs/rust_ai_ruleset.md` | general Rust code-style questions | never (external ruleset, treat as canonical as-is) | generic Rust engineering conventions |
 | `docs/cross-language-style-guide.md` | writing or reviewing non-Rust code (oracle harnesses, future language bindings) | a new language is added, or a cross-language principle needs adjusting | cross-language naming/style principles and the per-language reference table; generalizes `docs/rust_ai_ruleset.md`, doesn't replace it |
 | `README.md` | need the human-facing project overview or repo tree | repo structure changes | GitHub-facing description, top-level directory map, build/install instructions |
-| `PERFORMANCE.md` | need this project's benchmark numbers, or comparing against another implementation's speed | new numbers are measured, or a new comparison implementation is benchmarked | benchmark methodology, recorded numbers, comparisons against reference C/UAPKI/outspace, the saved `criterion --baseline` for regression tracking |
+| `PERFORMANCE.md` | need this project's benchmark numbers, or comparing against another implementation's speed | new numbers are measured, or a new comparison implementation is benchmarked | benchmark methodology (cross-implementation comparisons are binary-level/MB/s only, `DECISIONS.md` D-34 — `cargo bench`/`criterion` is for internal regression tracking only, never a cross-implementation claim), recorded numbers, comparisons against reference C/UAPKI/outspace, the saved `criterion --baseline` for regression tracking |
 | `xtask/src/main.rs` | adding or changing a build/QA subcommand | a new tool enters the QA stack or an existing command's invocation changes | the actual cross-platform build/QA command implementations (README.md documents usage, this owns behavior) |
 
 `docs/rust_ai_ruleset.md` §7 (async/tokio) does not apply to the `no_std`-first core — it's only
