@@ -44,27 +44,60 @@ Full MVP scope, architectural decisions, and the libsodium API mapping are in
 ├── crates/                # Cargo workspace
 │   ├── dstu-core/          # core: Kalyna + Kupyna + Strumok
 │   └── dstutool/           # CLI binary on top of the core
-└── tests/oracle-harness/   # Java/.NET harnesses that verify test vectors against real Bouncy Castle
+├── tests/oracle-harness/   # Java/.NET/C harnesses that verify test vectors against real Bouncy Castle
+└── oracles/                # reference implementations used as oracles - not vendored, see oracles/README.md
 ```
 
+## Requirements
+
+Rust is the only hard requirement — everything else in this table is optional and only needed for
+the specific `cargo xtask` command listed. No admin rights required on any platform for any of it.
+
+| Tool | Needed for | Linux / macOS | Windows |
+|---|---|---|---|
+| Rust (stable, via `rustup`) | everything | `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \| sh` | `winget install Rustlang.Rustup` (or `rustup-init.exe` from [rustup.rs](https://rustup.rs)) |
+| C/C++ compiler | `cargo xtask fuzz` (`libfuzzer-sys` builds C++); building the manual C oracle-differential harnesses under `tests/oracle-harness/*-differential/` | usually preinstalled; else your distro's `gcc`/`build-essential` package | MinGW-w64 GCC (e.g. `winget install BrechtSanders.WinLibs.POSIX.UCRT`) builds the crate and those harnesses; **`cargo xtask fuzz` additionally needs real MSVC**, see below |
+| `cargo-fuzz` | `cargo xtask fuzz` | `cargo install cargo-fuzz --locked` — runs directly against the native nightly toolchain | see "`cargo fuzz` on Windows" below |
+| `miri` (nightly component) | `cargo xtask miri` | `rustup component add miri --toolchain nightly` | same |
+| `cargo-audit` / `cargo-deny` | `cargo xtask audit` / `cargo xtask deny` | `cargo install cargo-audit --locked` / `cargo install cargo-deny --locked` | same install commands, but each needs `dlltool.exe` on `PATH` first — comes with a MinGW-w64 install (e.g. the WinLibs package above), not with `rustup` alone |
+| JDK 8+ and Maven 3.6+ | `cargo xtask oracle-java` (cross-check against real Bouncy Castle) | your distro's packages, or Maven's binary zip if unpackaged | same |
+| .NET SDK 8 or 9 | `cargo xtask oracle-dotnet` (cross-check against real Bouncy Castle) | [dotnet.microsoft.com](https://dotnet.microsoft.com/download) | same |
+
+This project builds against the GNU host toolchain on Windows (`x86_64-pc-windows-gnu`) by default,
+specifically to avoid a Visual Studio dependency for ordinary building/testing — run `rustup
+default stable-x86_64-pc-windows-gnu` if `rustup-init` didn't already pick it. `rustup` reads
+`rust-toolchain.toml` and installs the pinned `stable` channel plus `clippy`/`rustfmt` automatically
+the first time you run any `cargo` command in this repo.
+
+The reference implementations used as correctness oracles (`oracles/kalyna-reference`, UAPKI,
+etc.) are **not** vendored in this repo — see `oracles/README.md` for what each one is and where to
+get it. You only need them for the manual differential harnesses; ordinary `cargo build`/`cargo
+test`/`cargo xtask ci` need none of it.
+
+### `cargo fuzz` on Windows needs MSVC, not this project's default GNU toolchain
+
+libFuzzer's Address Sanitizer only supports the MSVC target on Windows — the default
+`x86_64-pc-windows-gnu` toolchain above cannot build or run fuzz targets at all, no matter which
+flags are passed (`DECISIONS.md` D-32 has the full diagnosis). To run `cargo xtask fuzz` locally on
+Windows:
+
+1. Install Visual Studio (or just the Build Tools) with the "Desktop development with C++"
+   workload.
+2. `rustup toolchain install nightly-x86_64-pc-windows-msvc` — an *additional* toolchain; this does
+   not change the project's default GNU host toolchain used for everything else.
+3. Run `cargo xtask fuzz`. It finds the Visual Studio install itself (via `vswhere.exe`'s fixed
+   path) and the toolchain above, then runs each target through a `vcvars64.bat`-sourced shell with
+   `--target x86_64-pc-windows-msvc` — both the environment and the explicit target flag are
+   required, not just the extra toolchain (`DECISIONS.md` D-32 explains why: without `vcvars64.bat`
+   the ASan runtime DLL isn't found at run time, even though the build itself succeeds; without the
+   explicit `--target`, `cargo-fuzz` defaults back to the GNU target regardless of which toolchain
+   invoked it).
+
+Without a Visual Studio C++ toolset installed, `cargo xtask fuzz` prints an install hint and skips
+cleanly on Windows, same as any other missing optional tool — CI (Linux) remains the actual,
+unconditional venue where fuzz targets run on every push.
+
 ## Building from source
-
-You need Rust (the only hard requirement — everything else below is optional and only needed for
-specific commands). No admin rights required on any platform.
-
-- **Linux / macOS:**
-  ```
-  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-  ```
-- **Windows:** `winget install Rustlang.Rustup` (or download `rustup-init.exe` from
-  [rustup.rs](https://rustup.rs) directly). This project builds against the GNU host toolchain
-  (`x86_64-pc-windows-gnu`) to avoid a Visual Studio Build Tools dependency; run
-  `rustup default stable-x86_64-pc-windows-gnu` if `rustup-init` didn't already pick it.
-
-`rustup` reads `rust-toolchain.toml` and installs the pinned `stable` channel plus `clippy`/
-`rustfmt` automatically the first time you run any `cargo` command in this repo.
-
-Then, on any platform:
 
 ```
 git clone <this repo>
