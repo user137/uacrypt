@@ -755,3 +755,46 @@ deprecated in the version pulled in) to prevent the optimizer from eliding the b
 This closes every item in `TASKS.md` "Testing & hardening" except "actually run `cargo fuzz`",
 which stays open pending CI or a machine with the MSVC toolchain (D-22's sibling finding, not a
 gap in this entry).
+
+## D-24: Kalyna and Kupyna differential-tested too, for parity with Strumok (D-22)
+
+D-22 explicitly scoped random-input differential testing to Strumok only, reasoning that Kalyna
+and Kupyna already carry two verification layers (official vectors + real Bouncy Castle) so the
+marginal value would be lower. Raised back for a second look: leaving only Strumok
+differential-tested reads, from the outside, as "why was Strumok singled out for this much
+scrutiny and not the other two" — a fair question to pre-empt rather than leave for someone else to
+ask later, even though the original reasoning about marginal *verification* value still holds.
+Closed the gap so the effort is visibly even across all three, not just the justification for it.
+
+Same two-piece split as D-22 (Rust generates cases + its own output via `cargo run --example`, a C
+driver independently recomputes and diffs — not wired into `cargo test`):
+
+- **Kalyna**: `crates/dstu-core/examples/kalyna_diff_cases.rs` + `tests/oracle-harness/
+  kalyna-differential/diff_against_reference.c`, against `oracles/kalyna-reference/` (Roman
+  Oliynykov, the algorithm's own author). **2500/2500 random cases matched** (500 per variant × 5
+  variants), 0 mismatches, first run clean.
+- **Kupyna**: `crates/dstu-core/examples/kupyna_diff_cases.rs` + `tests/oracle-harness/
+  kupyna-differential/diff_against_reference.c`, against `oracles/kupyna-reference/` (same
+  authors). **2000/2000 random cases matched** (1000 per variant × 2 sizes), 0 mismatches — after
+  fixing one harness-only bug: the C driver's fixed-size line buffer was sized for `message_hex`
+  alone (`MAX_MESSAGE_BYTES*2 + 64`) and didn't leave room for the trailing `hash_hex` field too,
+  so `fgets` silently truncated the longest lines and desynced the following read — not a crypto
+  bug, caught and fixed by sizing the buffer for both fields.
+- **Kalyna's harness reuses the byte-packing convention already established for the Strumok
+  harness** (raw little-endian `memcpy` onto `uint64_t[]`, confirmed against
+  `oracles/kalyna-reference/main.c`'s own vector layout). **Kupyna's oracle API takes raw bytes +
+  a bit-length directly** (`KupynaHash(ctx, data, msg_nbits, hash)`), needing no word-packing at
+  all — the simplest of the three harnesses to write.
+
+**Same "not independent, still useful" framing as D-22**: `kalyna-reference`/`kupyna-reference`
+are Roman Oliynykov's own reference C code, the same lineage Bouncy Castle's `DSTU7624Engine.java`/
+`DSTU7564Digest.java` port from (`oracles/README.md`'s "Correction on provenance" note) — so this
+doesn't add a *new* independent oracle, it re-exercises the existing one over far more of the
+input space than the fixed vectors alone. The real, independent second reading for these two
+remains the Java/.NET Bouncy Castle harnesses, unchanged by this entry.
+
+**Not extended to Kalyna's decrypt direction or to a Kalyna/Kupyna round-trip check** in this
+differential harness specifically — encrypt-only for Kalyna, hash-only for Kupyna (there's no
+"decrypt" for a hash). Round-trip correctness for Kalyna is already covered separately by the
+`proptest` round-trip tests (D-21); duplicating that inside the differential harness too would
+add C-side complexity for a property already verified in Rust.

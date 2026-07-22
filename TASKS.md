@@ -115,17 +115,20 @@ resistance (SPA/DPA — explicitly out of scope per `SECURITY.md`/`CLAUDE.md` "M
       key/IV returns the original data, in `tests/strumok.rs`. All 16 property tests (256 generated
       cases each) passed on the first attempt. Kupyna intentionally skipped — no round-trip
       property exists for a hash; its `cargo fuzz` target covers the property that would matter.
-- [x] **Differential testing against a C oracle over many random inputs — done for Strumok**, the
-      highest-value target (zero official vectors exist anywhere for it, D-15). `cargo run
-      --example strumok_diff_cases -p dstu-core` (deterministic PRNG) piped into
+- [x] **Differential testing against a C oracle over many random inputs — done for all three.**
+      Strumok first (the highest-value target — zero official vectors exist anywhere for it,
+      D-15): `cargo run --example strumok_diff_cases -p dstu-core` piped into
       `tests/oracle-harness/strumok-differential/diff_against_outspace.c` (against
-      `oracles/strumok-dstu8845/`) — **4000/4000 random cases matched, 0 mismatches**. Full detail
-      and the shared-lineage caveat (same as D-15 — this confirms consistency, not independence)
-      in `DECISIONS.md` D-22.
-  - [ ] Same pattern, not yet extended to Kalyna (`oracles/kalyna-reference/`+`cryptonite`) or
-        Kupyna (`oracles/kupyna-reference/`) — lower marginal value there since both already carry
-        two verification layers (official vectors + real Bouncy Castle), but a straightforward
-        follow-up if ever prioritized, not a hidden gap.
+      `oracles/strumok-dstu8845/`) — **4000/4000 random cases matched**. `DECISIONS.md` D-22.
+      Extended to Kalyna and Kupyna for parity (D-24), so the scrutiny is visibly even across all
+      three rather than looking Strumok-only: `kalyna_diff_cases.rs` +
+      `kalyna-differential/diff_against_reference.c` against `oracles/kalyna-reference/` —
+      **2500/2500 matched**; `kupyna_diff_cases.rs` + `kupyna-differential/
+      diff_against_reference.c` against `oracles/kupyna-reference/` — **2000/2000 matched**. All
+      three carry the same "not independent, still useful" caveat (these are the same-lineage
+      reference implementations already behind Bouncy Castle's own ports, not a new independent
+      oracle) — the real independent second reading for Kalyna/Kupyna remains the Java/.NET
+      Bouncy Castle harnesses, unchanged.
 - [ ] **Actually run `cargo fuzz`** for all three primitives — attempted 2026-07-22, blocked by a
       confirmed GNU/MinGW-toolchain incompatibility (libFuzzer-on-Windows is MSVC-only upstream),
       not a skipped step; full detail in the Phase 1 line above. Still open until it runs somewhere
