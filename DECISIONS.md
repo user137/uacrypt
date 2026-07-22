@@ -660,3 +660,33 @@ equally to infrastructure like this, not just algorithms) — hand-rolled zeroin
 "looks right, isn't" problem the crate exists to solve (compiler dead-store elimination on a plain
 overwrite), and reinventing it earns no more scrutiny than reviewing the crate's ~10-year-old,
 widely-depended-upon approach.
+
+## D-21: `proptest` round-trip tests added for Kalyna and Strumok
+
+`TASKS.md` "Testing & hardening" flagged that Kalyna has only 2 fixed key/block pairs per variant
+(the official vectors) verifying `decrypt(encrypt(x)) == x`, and Strumok's involution property
+(`apply_keystream` applied twice with the same key/IV returns the original bytes) had no coverage
+beyond the 8 fixed keystream cases. Added as a dev-dependency (`proptest = "1.11"`, dev-only — does
+not affect the `no_std` build, confirmed: `cargo build --no-default-features` still passes with no
+proptest in the dependency graph at all outside `cargo test`).
+
+- **Kalyna**: `crates/dstu-core/tests/kalyna.rs` — one property test per variant, random key and
+  block bytes (via `prop::collection::vec(any::<u8>(), N)`, copied into the fixed-size arrays the
+  API takes), asserting `decrypt(encrypt(key, block), key) == block`.
+- **Strumok**: `crates/dstu-core/tests/strumok.rs` — random key/IV/data, asserting that applying
+  `apply_keystream` twice (two fresh cipher instances constructed from the same key/IV, so the
+  keystream is re-derived identically both times) returns the original data.
+- **All 16 property tests (256 generated cases each, proptest's default) passed on the first
+  attempt** — meaningful signal given `DECISIONS.md` D-18 already noted only 8 fixed points existed
+  for Strumok; this exercises a far larger slice of the key/IV/length space without needing any
+  new oracle.
+- **Kupyna intentionally has no round-trip proptest**: a hash function has no inverse to check
+  this way. Its existing `cargo fuzz` target already covers "does it panic on arbitrary-length
+  input," which is the property that would matter here instead.
+
+**Rejected:** `prop::array::uniformN` (proptest's built-in fixed-size-array strategies) for the
+larger key sizes (64 bytes) — not obviously available for every size this project needs (128/256
+covers 16/32 but not the 64-byte keys Kalyna256_512/Kalyna512_512/Strumok512 use). The
+`vec(..., N)` + `copy_from_slice` approach works uniformly for every size without depending on
+which fixed-size helpers happen to be exported, at the cost of one extra allocation per test case
+— irrelevant next to what property testing already costs.

@@ -15,3 +15,6 @@ alloc = []
 
 [dependencies]
 zeroize = { version = "1.9.0", default-features = false, features = ["derive"] }
+
+[dev-dependencies]
+proptest = "1.11.0"

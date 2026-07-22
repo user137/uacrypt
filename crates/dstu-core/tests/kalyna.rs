@@ -6,6 +6,7 @@
 use dstu_core::hazmat::kalyna::{
     Kalyna128_128, Kalyna128_256, Kalyna256_256, Kalyna256_512, Kalyna512_512,
 };
+use proptest::prelude::*;
 
 fn decode_hex(s: &str) -> Vec<u8> {
     assert!(
@@ -155,3 +156,34 @@ variant_test!(
     64,
     64
 );
+
+/// Two fixed key/block pairs per variant (the official vectors above) is thin coverage for
+/// `decrypt(encrypt(key, block), key) == block`. Property-testing this over random keys/blocks
+/// costs almost nothing extra and exercises far more of the state space than the fixed vectors
+/// alone - see `TASKS.md` "Testing & hardening".
+macro_rules! roundtrip_proptest {
+    ($test_name:ident, $variant:ty, $key_len:literal, $block_len:literal) => {
+        proptest! {
+            #[test]
+            fn $test_name(
+                key_bytes in prop::collection::vec(any::<u8>(), $key_len),
+                block_bytes in prop::collection::vec(any::<u8>(), $block_len),
+            ) {
+                let mut key = [0u8; $key_len];
+                key.copy_from_slice(&key_bytes);
+                let mut block = [0u8; $block_len];
+                block.copy_from_slice(&block_bytes);
+
+                let ciphertext = <$variant>::encrypt(&key, &block);
+                let plaintext = <$variant>::decrypt(&key, &ciphertext);
+                prop_assert_eq!(plaintext, block);
+            }
+        }
+    };
+}
+
+roundtrip_proptest!(kalyna_128_128_roundtrip, Kalyna128_128, 16, 16);
+roundtrip_proptest!(kalyna_128_256_roundtrip, Kalyna128_256, 32, 16);
+roundtrip_proptest!(kalyna_256_256_roundtrip, Kalyna256_256, 32, 32);
+roundtrip_proptest!(kalyna_256_512_roundtrip, Kalyna256_512, 64, 32);
+roundtrip_proptest!(kalyna_512_512_roundtrip, Kalyna512_512, 64, 64);

@@ -100,12 +100,12 @@ resistance (SPA/DPA — explicitly out of scope per `SECURITY.md`/`CLAUDE.md` "M
       total length into arbitrary, non-8-aligned chunks (including a zero-length one) and asserts
       byte-for-byte identity against one call on the concatenated buffer. **Passed on the first
       attempt** — no buffering bug found, but the path was genuinely untested before this.
-- [ ] **Round-trip property tests** (needs a dependency decision + supply-chain vetting per
-      `SECURITY.md`'s table — `proptest` is the natural candidate): Kalyna's
-      `decrypt(encrypt(key, block), key) == block` over randomly generated keys/blocks, for all 5
-      variants; Strumok's keystream applied twice with the same key/IV is its own inverse (XOR
-      property). Two fixed vectors per Kalyna variant is thin coverage — a property test explodes
-      that for near-zero added maintenance cost.
+- [x] **Round-trip property tests.** `proptest` 1.11 added as a dev-dependency (`DECISIONS.md`
+      D-21) — doesn't touch the `no_std` build. Kalyna: one `decrypt(encrypt(key, block)) == block`
+      test per variant in `tests/kalyna.rs`. Strumok: `apply_keystream` applied twice with the same
+      key/IV returns the original data, in `tests/strumok.rs`. All 16 property tests (256 generated
+      cases each) passed on the first attempt. Kupyna intentionally skipped — no round-trip
+      property exists for a hash; its `cargo fuzz` target covers the property that would matter.
 - [ ] **Differential testing against the C oracles over many random inputs**, not just the fixed
       vectors — `oracles/kalyna-reference/`+`cryptonite` for Kalyna, `oracles/kupyna-reference/`
       for Kupyna, `oracles/strumok-dstu8845/`+`oracles/uapki/` for Strumok (a shared-lineage oracle

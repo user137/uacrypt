@@ -5,6 +5,7 @@
 //! project-controlled vector shape.
 
 use dstu_core::hazmat::strumok::{Strumok256, Strumok512};
+use proptest::prelude::*;
 
 fn decode_hex(s: &str) -> Vec<u8> {
     assert!(
@@ -141,3 +142,35 @@ macro_rules! chunk_invariance_test {
 
 chunk_invariance_test!(strumok_256_chunk_invariance, Strumok256, 32);
 chunk_invariance_test!(strumok_512_chunk_invariance, Strumok512, 64);
+
+/// A stream cipher's keystream XOR is its own inverse: applying it twice with the same key/IV
+/// must return the original bytes. Property-tested over random keys/IVs/data instead of relying
+/// only on the fixed vectors above - see `TASKS.md` "Testing & hardening".
+macro_rules! xor_involution_proptest {
+    ($test_name:ident, $variant:ty, $key_len:literal) => {
+        proptest! {
+            #[test]
+            fn $test_name(
+                key_bytes in prop::collection::vec(any::<u8>(), $key_len),
+                iv_bytes in prop::collection::vec(any::<u8>(), 32),
+                data in prop::collection::vec(any::<u8>(), 0..300),
+            ) {
+                let mut key = [0u8; $key_len];
+                key.copy_from_slice(&key_bytes);
+                let mut iv = [0u8; 32];
+                iv.copy_from_slice(&iv_bytes);
+
+                let mut buf = data.clone();
+                <$variant>::new(&key, &iv).apply_keystream(&mut buf);
+                // Fresh cipher instance, same key/IV - re-derives the identical keystream from
+                // the start, so applying it again must undo the first pass.
+                <$variant>::new(&key, &iv).apply_keystream(&mut buf);
+
+                prop_assert_eq!(buf, data);
+            }
+        }
+    };
+}
+
+xor_involution_proptest!(strumok_256_apply_keystream_is_involution, Strumok256, 32);
+xor_involution_proptest!(strumok_512_apply_keystream_is_involution, Strumok512, 64);

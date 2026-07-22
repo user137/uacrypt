@@ -20,4 +20,18 @@ test = false
 doc = false
 bench = false
 
+[[bin]]
+name = "kalyna"
+path = "fuzz_targets/kalyna.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "strumok"
+path = "fuzz_targets/strumok.rs"
+test = false
+doc = false
+bench = false
+
 [workspace]
