@@ -339,6 +339,18 @@ resistance (SPA/DPA — explicitly out of scope per `SECURITY.md`/`CLAUDE.md` "M
       consistent, unremarkable ~1.6-2.2x slower than the Ryzen dev machine across all three
       algorithms (Kalyna ~1.8-2.1x, Kupyna ~2.0-2.2x, Strumok ~1.6-1.7x) — no architecture-specific
       cliff or anomaly, just the expected gap between a Cortex-A76 and a modern desktop x86-64 core.
+      **Extended again the same day**: user asked whether UAPKI itself was benchmarked on the Pi
+      too, for a genuinely adequate cross-platform comparison of the same code (a fair point - the
+      "we beat UAPKI" claim needs UAPKI measured on *both* machines, not just this project). Built
+      UAPKI's `library/uapkic` natively on the Pi (plain `cmake`/`gcc`, same pinned commit as the
+      Ryzen build) and reused the exact same scratchpad C timing harnesses that produced the
+      original Ryzen UAPKI numbers. **Result, see `DECISIONS.md` D-33**: Kalyna and Kupyna's "we
+      beat UAPKI" result *reverses* on the Pi - UAPKI is faster there by up to ~1.9x - while
+      Strumok's holds on both platforms (smaller margin on the Pi). Three untested hypotheses
+      recorded in D-33 (LLVM/aarch64 codegen quality for this dense bit-manipulation pattern being
+      the most explanatory), not chased further this pass. `PERFORMANCE.md`'s Results tables and
+      "What the gap is, honestly" section both got a scope correction noting the Ryzen-specific
+      claim.
 
 ## Next up (blocked): a safe mode of operation for Kalyna
 

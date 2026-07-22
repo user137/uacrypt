@@ -104,16 +104,17 @@ encrypt-block-only — see D-30, resolved below.
 **Updated a third time 2026-07-22 after D-30** (decrypt round fused too — equivalent-inverse-cipher
 restructuring, transformed interior round keys):
 
-| Variant, block-only (schedule cached) | This project (Ryzen 5 4650U) | This project (Pi 5 / Cortex-A76) | UAPKI (Ryzen 5 4650U) |
-|---|---|---|---|
-| 128-128 encrypt | 132 ns | 241 ns | 222 ns |
-| 128-128 decrypt | **144 ns** (was 433 ns) | 266 ns | 222 ns |
-| 256-256 encrypt | 268 ns | 521 ns | 578 ns |
-| 256-256 decrypt | **323 ns** (was 1435 ns) | 572 ns | 578 ns |
-| 512-512 encrypt | 573 ns | 1185 ns | 879 ns |
-| 512-512 decrypt | **691 ns** (was 3934 ns) | 1268 ns | 879 ns |
+| Variant, block-only (schedule cached) | This project (Ryzen 5 4650U) | This project (Pi 5 / Cortex-A76) | UAPKI (Ryzen 5 4650U) | UAPKI (Pi 5 / Cortex-A76) |
+|---|---|---|---|---|
+| 128-128 encrypt | 132 ns | 241 ns | 222 ns | 233 ns |
+| 128-128 decrypt | **144 ns** (was 433 ns) | 266 ns | 222 ns | 233 ns |
+| 256-256 encrypt | 268 ns | 521 ns | 578 ns | 348 ns |
+| 256-256 decrypt | **323 ns** (was 1435 ns) | 572 ns | 578 ns | 348 ns |
+| 512-512 encrypt | 573 ns | 1185 ns | 879 ns | 632 ns |
+| 512-512 decrypt | **691 ns** (was 3934 ns) | 1268 ns | 879 ns | 632 ns |
 
-**Kalyna decrypt-block-only is now faster than UAPKI across every variant measured too** — combined
+**Kalyna decrypt-block-only is now faster than UAPKI across every variant measured too (on the
+Ryzen dev machine - see the Pi correction just below the table)** — combined
 with D-29's encrypt result, this closes essentially the entire gap to UAPKI for `ExpandedKey`, the
 API any real multi-block caller (or future mode of operation) would actually use. The raw one-shot
 `decrypt` function (schedule *and* the new key-transform both recomputed every call) is a more
@@ -122,15 +123,14 @@ aren't offset by round fusion at low round counts) but substantially faster for 
 an honest tradeoff of the one-shot convenience path, not a regression in the path that matters.
 New baseline: `kalyna-decryptfusion-2026-07-22`.
 
-**Raspberry Pi column added 2026-07-22, `this project`'s own numbers only** — no UAPKI is built
-there (see "Machine" above), so this is a same-code, cross-architecture comparison, not a
-cross-implementation one. The Pi is consistently ~1.8-2.1x slower than the Ryzen dev machine across
-every variant/direction (e.g. 128-128 encrypt: 241 ns vs 132 ns, ~1.8x; 512-512 encrypt: 1185 ns vs
-573 ns, ~2.1x) — a plausible, roughly uniform ratio given the Pi 5's Cortex-A76 (an out-of-order
-core, but a smaller, more power-efficient design than a modern desktop x86-64 core) runs at a
-similar clock (2.4 GHz vs ~2.1 GHz base on the Ryzen) with less per-cycle throughput; nothing here
-suggests an architecture-specific correctness or performance cliff, just the expected "smaller
-core, still fast" gap.
+**UAPKI (Pi 5) column added 2026-07-22, after building `library/uapkic` natively on the Pi**
+(same pinned commit as the Ryzen build, plain `cmake`/`gcc`, no Windows-specific workaround
+needed - see D-33) **specifically so the "beats UAPKI" claim above could be checked cross-
+architecture, not just asserted from one machine.** It does not hold on the Pi: **UAPKI is faster
+than this project's Kalyna there, by ~1.5-1.9x** (e.g. 512-512: 632 ns vs 1185 ns) - the reverse
+of the Ryzen result, where this project wins by ~1.4-1.9x. Same code, same D-28 fusion, opposite
+outcome depending on CPU architecture - see D-33 for the fuller writeup and the (untested)
+hypotheses for why, since chasing the actual cause is future work, not done here.
 
 ### Kupyna (digest, MB/s — higher is better)
 
@@ -143,20 +143,24 @@ core, still fast" gap.
 | **After D-28** (256, Ryzen) | **39.53** | **91.72** | **98.60** |
 | After D-28 (256, Raspberry Pi 5) | 19.04 | 44.00 | 48.13 |
 | UAPKI (256, Ryzen) | 29.93 | 88.88 | 95.48 |
+| UAPKI (256, Raspberry Pi 5) | 22.94 | 63.94 | 72.61 |
 | Before D-27 (512, Ryzen) | 1.26 | 3.44 | 4.10 |
 | After D-27 (512, Ryzen) | 3.54 | 8.91 | 10.57 |
 | **After D-28** (512, Ryzen) | **26.89** | **69.26** | **80.99** |
 | After D-28 (512, Raspberry Pi 5) | 12.29 | 31.18 | 36.92 |
 | UAPKI (512, Ryzen) | 18.50 | 74.46 | 85.92 |
+| UAPKI (512, Raspberry Pi 5) | 16.82 | 49.53 | 60.53 |
 
 **After D-28: Kupyna-256 is now 1.03-1.45x *faster* than UAPKI (crossed over from ~6.7x slower);
 Kupyna-512 is at rough parity (0.93-1.45x, i.e. within ~7% either side)** — the full fusion plus a
 correctness/performance fix (see D-28: a runtime `%` by `nb`/`columns` was replaced with a bitmask,
 since both are always powers of two but not compile-time constants) closed essentially the entire
 gap, far beyond this task's original "2-3x of UAPKI" expectation. **Raspberry Pi rows added
-2026-07-22, this project's own numbers only** (no UAPKI built there) — roughly 2.0-2.2x slower than
-the same code on the Ryzen dev machine, a similar ratio to Kalyna's above and consistent with the
-Pi 5's Cortex-A76 vs. the Ryzen's per-core throughput, not an architecture-specific anomaly.
+2026-07-22** — this project's own code is ~2.0-2.2x slower than the same code on the Ryzen dev
+machine (consistent with Kalyna's ratio above), but **UAPKI's own Pi numbers don't slow down by
+nearly as much (~1.2-1.4x vs its Ryzen numbers)** — so on the Pi, UAPKI is actually *faster* than
+this project's Kupyna (~1.2-1.6x, e.g. 65536 B/256: 72.61 vs 48.13 MB/s), reversing the "we beat
+UAPKI" result that holds on Ryzen. Same flip as Kalyna's, see D-33.
 
 ### Strumok (`apply_keystream`, MB/s — higher is better)
 
@@ -171,20 +175,24 @@ optimization was checked against:
 | This project, after D-26 (256, Raspberry Pi 5) | 123.02 | 332.15 | 371.88 |
 | outspace (256, Ryzen) | 198.89 | 1461.07 | 2055.05 |
 | UAPKI (256, Ryzen) | 132.60 | 442.73 | 588.71 |
+| UAPKI (256, Raspberry Pi 5) | 75.07 | 271.63 | 333.80 |
 | This project, before D-26 (512, Ryzen) | 30.31 | 115.92 | 145.61 |
 | This project, **after D-26** (512, Ryzen) | 198.70 | 545.19 | **639.83** |
 | This project, after D-26 (512, Raspberry Pi 5) | 123.17 | 332.12 | 371.25 |
 | outspace (512, Ryzen) | 230.29 | 1443.74 | 2131.68 |
 | UAPKI (512, Ryzen) | 103.28 | 511.11 | 556.20 |
+| UAPKI (512, Raspberry Pi 5) | 94.98 | 278.59 | 326.71 |
 
 **After D-26: now *faster* than UAPKI's Strumok, ~3.2x slower than outspace** (was ~4-5x slower
 than UAPKI, ~13-15x slower than outspace, before). No naive/reference-grade Strumok implementation
 exists to compare against for the "correctness-first" side of this story — see `ORACLES.md`, no
 official DSTU 8845 reference implementation is publicly known to exist. **Raspberry Pi rows added
-2026-07-22, this project's own numbers only** (no outspace/UAPKI built there) — the Pi is ~1.6-1.7x
-slower than the Ryzen dev machine here, a smaller gap than Kalyna/Kupyna's ~1.8-2.2x above, and it
-widens slightly with message size (~1.6x at 64 B, ~1.72x at 65536 B) rather than shrinking - not
-chased further, this is a cross-CPU comparison note, not a regression investigation.
+2026-07-22** — this project's own code is ~1.6-1.7x slower than the same code on the Ryzen dev
+machine (smaller gap than Kalyna/Kupyna's ~1.8-2.2x above). **Unlike Kalyna/Kupyna, this result
+does *not* flip on the Pi**: this project still beats UAPKI there too, by ~1.1-1.6x (e.g. 64 B/256:
+123.02 vs 75.07 MB/s) — a smaller margin than Ryzen's ~1.1-1.9x but the same direction. See D-33
+for the full cross-architecture writeup, including why Strumok behaves differently from Kalyna/
+Kupyna here.
 
 ## Binary-level (process) comparison
 
@@ -357,6 +365,11 @@ sketched-not-scheduled task for closing this):
   too, on every call) are still slower than UAPKI's own one-shot calls for the reasons above — that
   gap is inherent to the one-shot API shape, not something further table fusion closes, and
   `ExpandedKey` exists specifically for callers who want the schedule-cached numbers instead.
+  **Scope correction, 2026-07-22, after building UAPKI on the Raspberry Pi too (D-33)**: the
+  "faster than UAPKI" claim above holds on the Ryzen dev machine specifically, not universally —
+  on the Pi's ARM core, UAPKI is faster than this project's Kalyna and Kupyna there (reversed),
+  while Strumok's "faster than UAPKI" result holds on both. See D-33 for the numbers and the
+  (untested) hypotheses for why Kalyna/Kupyna's ratio flips but Strumok's doesn't.
 - **Strumok, two distinct, additive causes — both fixed 2026-07-22, see D-26**: (1)
   `oracles/strumok-dstu8845/strumok.c`'s `next_stream()` is one fully-unrolled function that
   updates each state word in place via modular indexing — it never physically moves the 16-word

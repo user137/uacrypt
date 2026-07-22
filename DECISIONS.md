@@ -1391,3 +1391,77 @@ best-effort skip, unchanged from before this entry.
 Linux remains the actual, unconditional per-push check - this only makes the optional local
 `cargo xtask fuzz` path usable on a Windows dev machine that happens to have Visual Studio
 installed, which is not guaranteed for every contributor's machine the way the GNU toolchain is.
+
+## D-33: UAPKI built on the Raspberry Pi too - the "we beat UAPKI" claim doesn't hold on ARM for Kalyna/Kupyna
+
+The Raspberry Pi rig (`TASKS.md` "Testing & hardening", `.claude.local.md`) so far only ran this
+project's own `cargo bench` there - the "faster than UAPKI" claims in D-28/D-29/D-30 and
+`PERFORMANCE.md` were only ever checked on the Ryzen dev machine. The user asked directly whether
+UAPKI was benchmarked on the Pi too, "so there's an adequate comparison across platforms of the
+same code" - a fair challenge, since a same-code cross-architecture comparison (this project on
+Ryzen vs. this project on Pi) and a same-machine cross-implementation comparison (this project vs.
+UAPKI, both on Ryzen) don't add up to the actual claim being made ("this project beats UAPKI"),
+which implicitly needs UAPKI measured on the *same* second machine too.
+
+**What was built, reusing artifacts already on disk from the original Ryzen measurement session**
+(not re-created from scratch): the pruned `library/uapkic` source tree (`CMakeLists.txt`, `src/`,
+`include/`) and the two scratchpad C timing harnesses that produced the existing Ryzen "UAPKI"
+figures (`bench_uapki.c` - Kalyna ECB single-block encrypt + Kupyna digest at 64/1024/65536 B;
+`bench_strumok_uapki.c` - Strumok keystream at the same three sizes) were copied to the Pi over
+SSH, built with plain `cmake -DUAPKI_LIBS_TYPE=STATIC -DUAPKI_DISABLE_COPY=ON` + `gcc -O2` (no
+Windows-specific `RESOURCE_RC`/`windres` workaround needed on Linux - CMake's `if(WIN32)` branch
+already skips that path), and run the same way as on Windows. Same pinned commit
+(`c64181c3b1cd437139119d83bffb5ab090b1cdd6`, `oracles/README.md`) as the existing Ryzen build, so
+this is genuinely the same code on both platforms, matching what "this project" already was.
+
+**Result - Kalyna and Kupyna's "we beat UAPKI" result reverses on the Pi, Strumok's doesn't**:
+
+| Algorithm | Ryzen ratio (this project vs UAPKI) | Pi ratio (this project vs UAPKI) |
+|---|---|---|
+| Kalyna (block-only, cached) | 1.4-1.9x **faster** | 1.03-1.9x **slower** |
+| Kupyna (digest) | 0.93-1.45x, roughly at parity or **faster** | 1.2-1.6x **slower** |
+| Strumok (`apply_keystream`) | 1.15-1.9x **faster** | 1.1-1.6x **faster** (smaller margin) |
+
+Full per-size numbers are in `PERFORMANCE.md`'s three Results tables, now with a `UAPKI
+(Raspberry Pi 5)` column/row alongside the Ryzen one. Kalyna's 512-512 case is the starkest: 1185
+ns (this project) vs 632 ns (UAPKI) on the Pi - UAPKI is ~1.9x faster there, versus this project
+being ~1.5x faster than UAPKI on the same variant on Ryzen.
+
+**Why this is plausible, not a red flag - three untested hypotheses, in order of how much they'd
+explain, none investigated further this pass** (flagged explicitly as speculative, per this
+project's own "don't overclaim a root cause" discipline - see the Strumok/outspace residual gap in
+`PERFORMANCE.md`'s "What the gap is, honestly" for the established precedent of naming a gap
+without chasing it):
+
+1. **LLVM (rustc's backend) vs GCC codegen quality for this specific bit-manipulation pattern may
+   differ between the x86-64 and aarch64 backends.** D-28's fused round is dense 64-bit
+   shift/mask/XOR gather logic (`SBOX_MDS`/`SBOX_MDS_DEC` lookups combined via shifts) - if LLVM's
+   aarch64 backend generates comparatively less efficient code for this exact shape than its
+   x86-64 backend does (relative to GCC's aarch64 backend, which built UAPKI on both platforms),
+   that alone could explain a compiler-pair-specific, not algorithm-specific, reversal. This is the
+   single most explanatory candidate since it's the one variable that changed asymmetrically
+   (Rust/LLVM vs C/GCC, on both architectures) rather than symmetrically (both toolchains moving to
+   ARM together).
+2. **UAPKI's own Kalyna/Kupyna table layout (`p_boxrowcol`, per D-27's doc comment) may simply
+   suit ARM's load/store pipeline better** than this project's packed-`u64`-per-row gather,
+   independent of compiler - byte-oriented table access vs. 64-bit-word gather-then-shift could
+   have different relative costs on Cortex-A76 than on Zen2.
+3. **Strumok's lack of a reversal is itself a data point**: its D-26 optimization (ring buffer +
+   `T0..T7` tables) is a more straightforward "8 lookups XORed together" shape than Kalyna/Kupyna's
+   gather-and-shift-to-reposition-a-byte pattern - if hypothesis 1 or 2 is right, a simpler access
+   pattern would be expected to be less sensitive to the architecture/compiler difference, which is
+   consistent with what was actually measured.
+
+**Not chased further this pass**: no disassembly comparison, no perf-counter profiling on either
+machine, no attempt to build `dstu-core` with GCC-via-`cranelift`/a different LLVM version to
+isolate the compiler-vs-layout question. This is a real, measured, cross-architecture finding
+worth a documented follow-up if performance work on Kalyna/Kupyna resumes, not a fire to put out
+now - the code is still correct on both platforms (`TASKS.md`'s ARM build/test task, unaffected),
+and this project's MVP scope (`CLAUDE.md`) never promised the Ryzen speed advantage generalizes to
+every architecture, only that the code compiles and runs correctly on more than one.
+
+**Scope corrections applied**: `PERFORMANCE.md`'s Kalyna/Kupyna Results tables and the "What the
+gap is, honestly" section both got a dated correction noting the Ryzen-specific scope of the
+"beats UAPKI" claim, rather than silently leaving an now-incomplete claim standing - per this
+project's own standard for correcting prior statements (see `CLAUDE.md` "Never silently deprecate
+a document" applied at sentence granularity here, not just file granularity).
