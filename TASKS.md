@@ -312,24 +312,27 @@ resistance (SPA/DPA — explicitly out of scope per `SECURITY.md`/`CLAUDE.md` "M
       same order of magnitude and same relative ranking - not investigated further, most likely
       machine load during the run rather than a wrapper-specific issue (`kalyna-block`'s wrapper,
       same shape, matched closely). Full tables in `PERFORMANCE.md`.
-- [x] **Build and test on a real ARM Linux machine (Raspberry Pi) — done 2026-07-22.** Distinct
-      from Phase 4's STM32/ESP32 hardware validation below: a Raspberry Pi running Linux is a full
-      `std` target (`aarch64-unknown-linux-gnu` here — 64-bit Raspberry Pi OS, Debian 12/bookworm,
-      confirmed via `uname -a`), not the bare-metal `no_std` embedded path — this checks the "no
-      CPU-family lock-in" half of `CLAUDE.md`'s MVP scope (no intrinsic or build assumption that
-      quietly only works on x86-64), while the STM32/ESP32 line items check the no-OS half.
-      **What was done**: repo synced to the Pi over SSH (`tar` piped through `ssh`, excluding
-      `target/`, `oracles/` and `docs/papers/` — none needed for a build/test check), `rustup`
-      installed fresh (`stable-aarch64-unknown-linux-gnu` 1.97.1, same `stable` channel this
-      project pins via `rust-toolchain.toml`), then the exact same commands as on the x86-64 dev
-      machine — no new script, per `DECISIONS.md` D-12. **Result, all green**: `cargo xtask build`
-      (both `--all-features` and `--no-default-features`), `cargo xtask test` (11/11 test binaries
-      passed, 0 failures — including the DSTU 4145 signature roundtrip test, which took ~125s here
-      vs a few seconds on the x86-64 dev machine, expected given the Pi's much lower clock speed,
-      not a correctness concern), `cargo xtask fmt --check`, `cargo xtask clippy` (all clean), and
-      all four `dstu-core` feature-flag combinations (bare no_std, no_std+alloc, std+alloc,
-      all-features) built individually too, same matrix as the dev-machine re-check earlier this
-      session. First real confirmation on non-x86 hardware for this project.
+- [ ] **Build and test on a real ARM Linux machine (Raspberry Pi).** Distinct from Phase 4's
+      STM32/ESP32 hardware validation below: a Raspberry Pi running Linux is a full `std` target
+      (`aarch64-unknown-linux-gnu` here — 64-bit Raspberry Pi OS, Debian 12/bookworm, confirmed via
+      `uname -a`), not the bare-metal `no_std` embedded path — this checks the "no CPU-family
+      lock-in" half of `CLAUDE.md`'s MVP scope (no intrinsic or build assumption that quietly only
+      works on x86-64), while the STM32/ESP32 line items check the no-OS half. **Ongoing by
+      design, not a one-time item** — a standing rig now exists for this (access details, re-sync
+      steps, and the full re-run command are in `.claude.local.md`, not here, since they're
+      machine-specific/credentialed, not project-general) — re-run periodically, especially after
+      any change touching `hazmat::kalyna`/`kupyna`/`strumok` internals that could hide an
+      architecture-specific assumption an x86-64-only dev machine wouldn't catch.
+      **First run, 2026-07-22, all green**: repo synced over SSH, `rustup` installed fresh
+      (`stable-aarch64-unknown-linux-gnu` 1.97.1, matching this project's pinned `stable` channel),
+      then the exact same commands as the x86-64 dev machine — no new script, per `DECISIONS.md`
+      D-12. `cargo xtask build` (both `--all-features` and `--no-default-features`), `cargo xtask
+      test` (11/11 test binaries passed, 0 failures — the DSTU 4145 signature roundtrip test took
+      ~125s here vs a few seconds on the x86-64 dev machine, expected given the Pi's much lower
+      clock speed, not a correctness concern), `cargo xtask fmt --check`, `cargo xtask clippy` (all
+      clean), and all four `dstu-core` feature-flag combinations (bare no_std, no_std+alloc,
+      std+alloc, all-features) built individually too. First real confirmation on non-x86 hardware
+      for this project.
 
 ## Next up (blocked): a safe mode of operation for Kalyna
 
