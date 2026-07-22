@@ -312,6 +312,17 @@ resistance (SPA/DPA — explicitly out of scope per `SECURITY.md`/`CLAUDE.md` "M
       same order of magnitude and same relative ranking - not investigated further, most likely
       machine load during the run rather than a wrapper-specific issue (`kalyna-block`'s wrapper,
       same shape, matched closely). Full tables in `PERFORMANCE.md`.
+- [ ] **Build and test on a real ARM Linux machine (Raspberry Pi) — user has one available,
+      2026-07-22.** Distinct from Phase 4's STM32/ESP32 hardware validation below: a Raspberry Pi
+      running Linux is a full `std` target (`aarch64-unknown-linux-gnu` or
+      `armv7-unknown-linux-gnueabihf` depending on OS/model), not the bare-metal `no_std` embedded
+      path — this checks the "no CPU-family lock-in" half of `CLAUDE.md`'s MVP scope (no intrinsic
+      or build assumption that quietly only works on x86-64), while the STM32/ESP32 line items check
+      the no-OS half. Concretely: confirm `rustup target add` for the right triple (`uname -m` on
+      the Pi decides which), then `cargo xtask build`/`cargo xtask test` (both feature-flag
+      combinations) succeed there the same as on this x86-64 dev machine — same commands, no new
+      script, per `DECISIONS.md` D-12. Not blocked on anything; just needs to actually be run once
+      on the hardware.
 
 ## Next up (blocked): a safe mode of operation for Kalyna
 
