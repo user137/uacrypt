@@ -2113,3 +2113,54 @@ clean; 6 of the 8 `no_std`/`alloc`/`std`/`small-tables` feature combinations re-
 UB, ~22s, no `proptest` in this test file so none of the CI miri-slowness applies here); the
 existing `kupyna.rs` official-vector tests re-run under Miri too, confirming the `KupynaCore`
 refactor didn't disturb the pre-existing streaming/one-shot paths.
+
+## D-45: Kupyna-based KDF (`crypto_kdf` equivalent) - a design decision, not a transcription, no oracle exists
+
+`TASKS.md` T-39, second item from `docs/release-readiness.md`'s ordered plan. **A materially
+different posture from D-44/D-41/D-15**: those are all "provisional pending the primary text" -
+a real reference implementation exists, it's just not confirmed against the official standard yet.
+Here, **no reference implementation of a Kupyna-based KDF exists anywhere** (there is no separate
+DSTU KDF standard - `docs/dstu-crypto-project.md`'s own API mapping already says so), so there is
+nothing to port and no oracle vector to check against, ever. What follows is a from-scratch design
+decision using an established international *pattern*, not a citation to a specific source file.
+
+**Two established patterns were weighed** (full reasoning in `docs/pseudocode/kupyna-kdf.md`,
+not duplicated here): full RFC 5869 HKDF (Extract-then-Expand) vs. libsodium's simpler
+`crypto_kdf_derive_from_key` (one keyed-hash call per subkey, no Extract stage, assumes an already-
+uniform master key). **Chosen: libsodium's shape.** HKDF's own security proof is stated in terms of
+HMAC specifically; `hazmat::kupyna_kmac`'s construction (`H(PAD(K) || PAD(M) || ~K)`) is not HMAC,
+and assuming HKDF's proof transfers to a different keyed construction without justification would
+be exactly the unexamined-assumption failure this project's "no homegrown primitives" discipline
+exists to prevent. Skipping Extract sidesteps that question entirely: the only assumption made is
+that Kupyna-KMAC is a reasonable keyed PRF - the *same* assumption T-38 already makes implicitly by
+using it as a MAC, not a new one. HKDF's Expand stage also has a chaining counter whose off-by-one
+correctness a KAT would normally catch - and no KAT exists here to catch it, so avoiding that
+machinery entirely removed a real risk, not just complexity.
+
+**Construction**: `subkey = KupynaNKmac::mac(master_key, context (8 bytes) || subkey_id as
+little-endian bytes (8 bytes))` - modeled after libsodium's public design *shape* (recalled from its
+documentation, not vendored here as a source to cite a line against), not a byte-for-byte port of
+its BLAKE2b-specific internals (which use BLAKE2b's native `salt`/`personal` parameters - a
+hash-specific feature Kupyna doesn't have). Subkey length is fixed at the chosen variant's MAC size
+(32/48/64 bytes), unlike libsodium's flexible 16-64-byte output - a real constraint from Kupyna
+lacking BLAKE2b's variable-output feature, not an arbitrary restriction. `master_key` is a
+statically-sized `[u8; N]` (not `&[u8]`), so - unlike `kupyna_kmac`'s runtime-checked API - there is
+no wrong-key-length error path at all: callers cannot construct an ill-typed call in the first
+place, one step more misuse-resistant than the layer it's built on.
+
+**Testing, honestly scoped**: no oracle vector exists to write, so verification is determinism,
+distinctness (different `subkey_id`/`context`/`master_key` produce different subkeys - the actual
+security property being claimed, checked via `proptest` over random inputs since it's not a fixed
+case), and an exact byte-layout pin against a manual `kupyna_kmac` call (so a future refactor can't
+silently reorder `context`/`subkey_id` without a test catching it). **None of this can catch "the
+construction itself is wrong" the way a KAT would** - stated plainly in `docs/pseudocode/
+kupyna-kdf.md` rather than implied to carry the same confidence as T-38's dual-oracle vectors.
+
+New module `hazmat::kupyna_kdf` (`Kupyna256Kdf`/`Kupyna384Kdf`/`Kupyna512Kdf`, each one
+`derive_subkey`), built directly on `hazmat::kupyna_kmac` (T-38) with no new low-level primitive.
+**Verified**: all 7 tests (3 determinism/byte-layout-pin cases, 3 `proptest` distinctness suites)
+green on the **first attempt**. `cargo test --workspace`/`clippy -D warnings`/`fmt --check` clean;
+6 of 8 feature combinations re-checked (no new `cfg` gating). `cargo +nightly miri test` hit the
+same pre-existing proptest+Miri isolation crash as everywhere else in this workspace (T-81/T-85) -
+confirmed clean (no UB) with the same local workaround
+(`MIRIFLAGS=-Zmiri-disable-isolation PROPTEST_CASES=8`), ~174s.

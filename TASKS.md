@@ -585,7 +585,29 @@ command names (`CLAUDE.md` MVP scope) are still reserved for whenever that resol
       confirming the `KupynaCore` refactor didn't disturb the pre-existing paths. No CLI wiring yet
       (not required by this task's own scope - `uacrypt` command surface, if wanted, is a separate
       follow-up).
-- [ ] **T-39** `crypto_kdf` equivalent (HKDF-like construction over Kupyna)
+- [x] **T-39** **`crypto_kdf` equivalent - Kupyna-based KDF, implemented 2026-07-24** (`DECISIONS.md`
+      D-45, second item from `docs/release-readiness.md`'s ordered plan). **Different verification
+      posture than T-38/T-81/Strumok**: no DSTU KDF standard exists, so no reference implementation
+      to port and no oracle vector to check against, ever - not "provisional pending the primary
+      text", genuinely un-anchored, stated plainly rather than hedged the same way as the others.
+      Modeled after libsodium's `crypto_kdf_derive_from_key` *shape* (one keyed-hash call per
+      subkey, no separate Extract stage) rather than full RFC 5869 HKDF - HKDF's security proof is
+      stated in terms of HMAC specifically, and `hazmat::kupyna_kmac`'s construction isn't HMAC, so
+      assuming that proof transfers without justification would itself be an unexamined-assumption
+      failure; skipping Extract sidesteps the question (the only assumption made is that Kupyna-
+      KMAC is a reasonable keyed PRF, already implicit in using it as a MAC) and avoids HKDF's
+      Expand chaining-counter, whose off-by-one correctness nothing here could catch without a KAT.
+      New `hazmat::kupyna_kdf` (`Kupyna256Kdf`/`Kupyna384Kdf`/`Kupyna512Kdf`, `derive_subkey`),
+      built directly on `hazmat::kupyna_kmac` (T-38), `master_key` typed as `[u8; N]` (not `&[u8]`)
+      so there's no wrong-key-length error path at all - more misuse-resistant than the layer it's
+      built on, not just a copy of its API. Test-first, **all 7 tests green on the first attempt**
+      (determinism, exact byte-layout pin against a manual `kupyna_kmac` call, three `proptest`
+      distinctness suites - different `subkey_id`/`context`/`master_key` must each produce a
+      different subkey, the actual property being claimed). `cargo test --workspace`/`clippy -D
+      warnings`/`fmt --check` clean; 6 of 8 feature combinations re-checked (no new `cfg`). `cargo
+      +nightly miri test` hit the same pre-existing proptest+Miri isolation crash as every other
+      `proptest`-using file in this workspace (T-81/T-85) - confirmed clean (no UB) with the same
+      local workaround (`MIRIFLAGS=-Zmiri-disable-isolation PROPTEST_CASES=8`, ~174s).
 - [ ] **T-40** `crypto_secretstream` equivalent (chunked authenticated encryption over Strumok or
       Kalyna-CTR)
 - [x] **T-41** DSTU 4145: official standard text obtained (`docs/papers/DSTU_4145-2002.pdf`, 2026-07-22) —

@@ -78,7 +78,7 @@ built yet) is decided but the high-level layer itself doesn't exist for *any* pr
 | `crypto_box` | DSTU 9041 | **Hard-blocked** — zero source material exists for DSTU 9041 anywhere (no paper, no oracle, no pseudocode); cannot start (T-46) |
 | `crypto_secretbox` | Kalyna-CCM, provisionally | Blocked on D-05 (T-36/T-37) |
 | `crypto_auth`/`crypto_onetimeauth` | Kupyna-based KMAC | **Done** (T-38, D-44) — provisional pending the primary text, but dual-oracle with both constructions read |
-| `crypto_kdf` | HKDF-like construction over Kupyna | Not started (T-39) |
+| `crypto_kdf` | Kupyna-based KDF (libsodium `crypto_kdf`-shaped, not HKDF) | **Done** (T-39, D-45) — no DSTU standard or reference implementation exists for this at all, so unlike every other "provisional" row above, there is no oracle vector, ever; verification is determinism + distinctness property tests only |
 | `crypto_kx` | DH on the DSTU 4145/9041 curve | Not started (T-47); DSTU 9041 side hard-blocked |
 | `crypto_secretstream` | Chunked authenticated encryption over Strumok/Kalyna-CTR | Not started (T-40) |
 | `crypto_pwhash` | Not a DSTU question — plain Argon2id | Not started; no blocker, deliberately non-"Ukrainized" (documented decision) |
@@ -116,9 +116,9 @@ In rough dependency order:
 2. **Close Strumok's provenance gap (D-15)**, if the paid DSTU 8845:2019 text becomes available —
    otherwise, the release must state "Strumok vectors are UAPKI-attributed, not primary-confirmed"
    as prominently as the README banner now states the pre-release status generally.
-3. **Build the missing constructions**: `crypto_auth` done (T-38, D-44); `crypto_kdf`/
-   `crypto_secretstream` (T-39/T-40) remain — none are blocked on external material, only on
-   engineering time.
+3. **Build the missing constructions**: `crypto_auth` (T-38, D-44) and `crypto_kdf` (T-39, D-45)
+   done; `crypto_secretstream` (T-40) remains — not blocked on external material, only engineering
+   time.
 4. **Build the high-level layer** (D-09's second layer) over every `hazmat` primitive that's ready —
    this is what actually makes the API "libsodium-equivalent" in feel, not just in algorithm
    coverage.

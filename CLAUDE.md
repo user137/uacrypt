@@ -19,7 +19,11 @@ environment. The workspace has two crates:
   text — same posture as Strumok below) and `kupyna_kmac::{Kupyna256Kmac, Kupyna384Kmac,
   Kupyna512Kmac}` (the `crypto_auth` equivalent, citation `DECISIONS.md` D-44 — provisional too, but
   on stronger dual-oracle evidence than `kalyna_ccm`/Strumok since both reference constructions were
-  read, not just one plus the other's vectors) — and `strumok::{Strumok256, Strumok512}` (keystream generation via
+  read, not just one plus the other's vectors), plus `kupyna_kdf::{Kupyna256Kdf, Kupyna384Kdf,
+  Kupyna512Kdf}` (the `crypto_kdf` equivalent, `DECISIONS.md` D-45, built on `kupyna_kmac` — a
+  from-scratch design following libsodium's `crypto_kdf` shape, since no DSTU KDF standard or
+  reference implementation exists at all; verified by property test only, no oracle vector exists
+  to write) — and `strumok::{Strumok256, Strumok512}` (keystream generation via
   `apply_keystream`, citation `DECISIONS.md` D-18 — vectors are UAPKI-attributed, not confirmed
   against the official DSTU 8845:2019 text itself, see D-15). All three written test-first;
   Kalyna/Kupyna share S-box/MDS tables via the internal `hazmat::tables` module rather than
