@@ -150,10 +150,146 @@ fn bytes_to_columns(bytes: &[u8], columns: usize) -> [[u8; ROWS]; MAX_COLUMNS] {
     out
 }
 
-/// Shared implementation for both Kupyna variants. Returns a 64-byte buffer; callers truncate to
-/// `output_bytes` (the low `output_bytes` bytes are the actual digest, per `Kupyna256`/`Kupyna512`
-/// below - this function always fills starting at index 0).
-#[allow(clippy::cast_possible_truncation)] // block_bytes is 64 or 128, always fits u8
+/// Incremental compression state shared by the one-shot `digest_generic` and the public streaming
+/// `Kupyna256Hasher`/`Kupyna512Hasher` below - `digest_generic` is now just `new` + one `update` +
+/// `finalize`, so there is exactly one implementation of the padding/length-tracking logic, not two.
+struct KupynaCore {
+    h: [[u8; ROWS]; MAX_COLUMNS],
+    /// Bytes not yet folded into `h` - always fewer than `block_bytes()`, per `update`'s invariant.
+    buffer: [u8; MAX_BLOCK_BYTES],
+    buffer_len: usize,
+    /// Total bytes ever passed to `update` - needed for the padding's message-length field, which
+    /// `finalize` cannot otherwise recover once earlier blocks have already been compressed away.
+    total_len: u64,
+    columns: usize,
+    rounds: usize,
+    last_row_shift: usize,
+}
+
+impl KupynaCore {
+    #[allow(clippy::cast_possible_truncation)] // block_bytes is 64 or 128, always fits u8
+    fn new(columns: usize, rounds: usize, last_row_shift: usize) -> Self {
+        let block_bytes = columns * ROWS;
+        let mut h = [[0u8; ROWS]; MAX_COLUMNS];
+        h[0][0] = block_bytes as u8; // official IV - see docs/pseudocode/kupyna.md "Initial value"
+        Self {
+            h,
+            buffer: [0u8; MAX_BLOCK_BYTES],
+            buffer_len: 0,
+            total_len: 0,
+            columns,
+            rounds,
+            last_row_shift,
+        }
+    }
+
+    fn block_bytes(&self) -> usize {
+        self.columns * ROWS
+    }
+
+    fn compress_block(&mut self, block: &[u8]) {
+        let columns_buf = bytes_to_columns(block, self.columns);
+        compress(
+            &mut self.h[..self.columns],
+            &columns_buf[..self.columns],
+            self.rounds,
+            self.last_row_shift,
+        );
+    }
+
+    #[allow(clippy::cast_possible_truncation)] // data.len() here is always << u64::MAX
+    fn update(&mut self, mut data: &[u8]) {
+        self.total_len += data.len() as u64;
+        let block_bytes = self.block_bytes();
+
+        if self.buffer_len > 0 {
+            let take = (block_bytes - self.buffer_len).min(data.len());
+            self.buffer[self.buffer_len..self.buffer_len + take].copy_from_slice(&data[..take]);
+            self.buffer_len += take;
+            data = &data[take..];
+            if self.buffer_len < block_bytes {
+                // Didn't reach a full block - the only way `take` was smaller than the space
+                // available is that `data` ran out, so there is nothing left to process this
+                // call. Returning here (rather than falling through to the remainder-writing
+                // code below) matters: that code unconditionally overwrites `buffer_len` from
+                // `data`'s remainder, which would wipe out this still-partial fill.
+                debug_assert!(data.is_empty());
+                return;
+            }
+            let block = self.buffer;
+            self.compress_block(&block[..block_bytes]);
+            self.buffer_len = 0;
+        }
+
+        let mut full_blocks = data.chunks_exact(block_bytes);
+        for block in &mut full_blocks {
+            self.compress_block(block);
+        }
+        let remainder = full_blocks.remainder();
+        self.buffer[..remainder.len()].copy_from_slice(remainder);
+        self.buffer_len = remainder.len();
+    }
+
+    /// Consumes `self`: pads the buffered tail with the remaining message-length data, runs the
+    /// output transformation, and returns a 64-byte buffer - callers truncate to `output_bytes`,
+    /// same convention `digest_generic` used to return directly.
+    fn finalize(mut self, output_bytes: usize) -> [u8; 64] {
+        let block_bytes = self.block_bytes();
+
+        // Padding: buffered tail || 0x80 || zero bytes || 96-bit little-endian length, sized to
+        // fill whole block(s). `zero_bytes` derived so total length is a multiple of `block_bytes`
+        // - equivalent to the spec's bit-level `d = (-N-97) mod l` formula for byte-aligned N (see
+        // DECISIONS.md D-10 for the derivation).
+        let mut tail = [0u8; 2 * MAX_BLOCK_BYTES];
+        let mut pos = self.buffer_len;
+        tail[..pos].copy_from_slice(&self.buffer[..pos]);
+        tail[pos] = 0x80;
+        pos += 1;
+        let used = pos + 12;
+        let zero_bytes = (block_bytes - (used % block_bytes)) % block_bytes;
+        pos += zero_bytes;
+        let msg_bits: u64 = self.total_len * 8;
+        tail[pos..pos + 8].copy_from_slice(&msg_bits.to_le_bytes());
+        pos += 12; // upper 4 bytes of the 96-bit length field stay zero (total_len fits in u64 bits)
+
+        let tail_blocks = pos / block_bytes;
+        for i in 0..tail_blocks {
+            self.compress_block(&tail[i * block_bytes..(i + 1) * block_bytes]);
+        }
+
+        // Output transformation: H = R_n(T(h_k) xor h_k) (Kupyna.pdf Section 4).
+        let mut t_final = [[0u8; ROWS]; MAX_COLUMNS];
+        t_final[..self.columns].copy_from_slice(&self.h[..self.columns]);
+        t_transform(
+            &mut t_final[..self.columns],
+            self.rounds,
+            self.last_row_shift,
+        );
+        // Two arrays in lockstep by the same index - `digest_generic`'s pre-refactor form of this
+        // loop indexed plain locals and clippy left it alone; indexing through `self.h` here
+        // apparently changes its heuristic (same family of false positive as D-39's three cases).
+        #[allow(clippy::needless_range_loop)]
+        for col in 0..self.columns {
+            for row in 0..ROWS {
+                self.h[col][row] ^= t_final[col][row];
+            }
+        }
+
+        // Truncate to the `output_bytes` most-significant bytes of the column-major byte stream
+        // (mirrors oracles/kupyna-reference/kupyna.c `Trunc`: copies from `state + nbytes -
+        // hash_nbytes`).
+        let mut flat = [0u8; MAX_BLOCK_BYTES];
+        for col in 0..self.columns {
+            flat[col * ROWS..(col + 1) * ROWS].copy_from_slice(&self.h[col]);
+        }
+        let mut out = [0u8; 64];
+        out[..output_bytes].copy_from_slice(&flat[block_bytes - output_bytes..block_bytes]);
+        out
+    }
+}
+
+/// Shared implementation for both Kupyna variants' one-shot `digest()` - now just `KupynaCore`'s
+/// `new`/`update`/`finalize` with the whole message in one `update` call.
 fn digest_generic(
     message: &[u8],
     columns: usize,
@@ -161,70 +297,9 @@ fn digest_generic(
     last_row_shift: usize,
     output_bytes: usize,
 ) -> [u8; 64] {
-    let block_bytes = columns * ROWS;
-
-    let mut h = [[0u8; ROWS]; MAX_COLUMNS];
-    h[0][0] = block_bytes as u8; // official IV - see docs/pseudocode/kupyna.md "Initial value"
-
-    let mut full_blocks = message.chunks_exact(block_bytes);
-    for block in &mut full_blocks {
-        let columns_buf = bytes_to_columns(block, columns);
-        compress(
-            &mut h[..columns],
-            &columns_buf[..columns],
-            rounds,
-            last_row_shift,
-        );
-    }
-    let remainder = full_blocks.remainder();
-
-    // Padding: remainder || 0x80 || zero bytes || 96-bit little-endian length, sized to fill
-    // whole block(s). `zero_bytes` derived so total length is a multiple of `block_bytes` -
-    // equivalent to the spec's bit-level `d = (-N-97) mod l` formula for byte-aligned N (see
-    // DECISIONS.md D-10 for the derivation).
-    let mut tail = [0u8; 2 * MAX_BLOCK_BYTES];
-    let mut pos = remainder.len();
-    tail[..pos].copy_from_slice(remainder);
-    tail[pos] = 0x80;
-    pos += 1;
-    let used = pos + 12;
-    let zero_bytes = (block_bytes - (used % block_bytes)) % block_bytes;
-    pos += zero_bytes;
-    let msg_bits: u64 = (message.len() as u64) * 8;
-    tail[pos..pos + 8].copy_from_slice(&msg_bits.to_le_bytes());
-    pos += 12; // upper 4 bytes of the 96-bit length field stay zero (message.len() fits in u64 bits)
-
-    let tail_blocks = pos / block_bytes;
-    for i in 0..tail_blocks {
-        let block = &tail[i * block_bytes..(i + 1) * block_bytes];
-        let columns_buf = bytes_to_columns(block, columns);
-        compress(
-            &mut h[..columns],
-            &columns_buf[..columns],
-            rounds,
-            last_row_shift,
-        );
-    }
-
-    // Output transformation: H = R_n(T(h_k) xor h_k) (Kupyna.pdf Section 4).
-    let mut t_final = [[0u8; ROWS]; MAX_COLUMNS];
-    t_final[..columns].copy_from_slice(&h[..columns]);
-    t_transform(&mut t_final[..columns], rounds, last_row_shift);
-    for col in 0..columns {
-        for row in 0..ROWS {
-            h[col][row] ^= t_final[col][row];
-        }
-    }
-
-    // Truncate to the `output_bytes` most-significant bytes of the column-major byte stream
-    // (mirrors oracles/kupyna-reference/kupyna.c `Trunc`: copies from `state + nbytes - hash_nbytes`).
-    let mut flat = [0u8; MAX_BLOCK_BYTES];
-    for col in 0..columns {
-        flat[col * ROWS..(col + 1) * ROWS].copy_from_slice(&h[col]);
-    }
-    let mut out = [0u8; 64];
-    out[..output_bytes].copy_from_slice(&flat[block_bytes - output_bytes..block_bytes]);
-    out
+    let mut core = KupynaCore::new(columns, rounds, last_row_shift);
+    core.update(message);
+    core.finalize(output_bytes)
 }
 
 /// Kupyna-256: 512-bit internal state, 10 rounds, 256-bit (32-byte) output.
@@ -249,6 +324,66 @@ impl Kupyna512 {
     #[must_use]
     pub fn digest(message: &[u8]) -> [u8; 64] {
         digest_generic(message, 16, 14, 11, 64)
+    }
+}
+
+/// Streaming Kupyna-256: same construction as [`Kupyna256`], for messages fed incrementally
+/// (e.g. from a reader) instead of available as one contiguous slice up front.
+pub struct Kupyna256Hasher(KupynaCore);
+
+impl Kupyna256Hasher {
+    #[must_use]
+    pub fn new() -> Self {
+        Self(KupynaCore::new(8, 10, 7))
+    }
+
+    /// Feeds more message bytes in. May be called any number of times, with any chunking -
+    /// `Kupyna256Hasher::new().update(a); ...update(b)` is equivalent to one `update(a ++ b)`
+    /// call, and both are equivalent to `Kupyna256::digest(a ++ b)`.
+    pub fn update(&mut self, data: &[u8]) {
+        self.0.update(data);
+    }
+
+    /// Consumes the hasher and returns the 256-bit digest of everything fed via `update`.
+    #[must_use]
+    pub fn finalize(self) -> [u8; 32] {
+        let full = self.0.finalize(32);
+        let mut out = [0u8; 32];
+        out.copy_from_slice(&full[..32]);
+        out
+    }
+}
+
+impl Default for Kupyna256Hasher {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Streaming Kupyna-512 - see [`Kupyna256Hasher`].
+pub struct Kupyna512Hasher(KupynaCore);
+
+impl Kupyna512Hasher {
+    #[must_use]
+    pub fn new() -> Self {
+        Self(KupynaCore::new(16, 14, 11))
+    }
+
+    /// Feeds more message bytes in - see [`Kupyna256Hasher::update`].
+    pub fn update(&mut self, data: &[u8]) {
+        self.0.update(data);
+    }
+
+    /// Consumes the hasher and returns the 512-bit digest of everything fed via `update`.
+    #[must_use]
+    pub fn finalize(self) -> [u8; 64] {
+        self.0.finalize(64)
+    }
+}
+
+impl Default for Kupyna512Hasher {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

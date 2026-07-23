@@ -168,7 +168,7 @@ Module-by-module status (libsodium name → `dstu_core` module → status):
 
 | libsodium equivalent | `dstu_core` module | Status |
 |---|---|---|
-| `crypto_generichash` | `hazmat::kupyna` (`Kupyna256`, `Kupyna512`) | **Implemented** — one-shot `digest()`, byte-aligned messages only. See D-10 in `DECISIONS.md`. |
+| `crypto_generichash` | `hazmat::kupyna` (`Kupyna256`, `Kupyna512`, `Kupyna256Hasher`, `Kupyna512Hasher`) | **Implemented** — one-shot `digest()` and streaming `update`/`finalize` (`TASKS.md` T-83), byte-aligned messages only. See D-10 in `DECISIONS.md`. |
 | `crypto_stream` | `hazmat::strumok` (`Strumok256`, `Strumok512`) | **Implemented** — keystream generation/`apply_keystream`, both key sizes. Vectors are UAPKI-attributed, not confirmed against the *official text* yet. See D-18 in `DECISIONS.md`. |
 | `hazmat::kalyna` (block primitive, not directly libsodium-mapped) | `hazmat::kalyna` (`Kalyna128_128`/`Kalyna128_256`/`Kalyna256_256`/`Kalyna256_512`/`Kalyna512_512`) | **Implemented** — single-block `encrypt`/`decrypt`, all 5 variants. See D-13 in `DECISIONS.md`. |
 | `hazmat::kalyna_ccm` (mode of operation, not directly libsodium-mapped) | `hazmat::kalyna_ccm` (all 5 variants) | **Implemented, provisional** — Kalyna-alone CCM, dual-oracle-verified (UAPKI + Bouncy Castle vectors), not confirmed against the primary DSTU 7624:2014 text. See D-41 in `DECISIONS.md`. Sourced 255-byte plaintext/AAD limit; nonce-generation strategy still undecided (D-40, `TASKS.md` T-82). |

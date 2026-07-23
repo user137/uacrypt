@@ -10,8 +10,9 @@ All three of Phase 1's MVP primitives have landed and are confirmed green. A loc
 environment. The workspace has two crates:
 
 - `crates/dstu-core` — the library (`std`/`alloc` feature flags per D-01). `dstu_core::hazmat` has
-  three primitives: `kupyna::{Kupyna256, Kupyna512}` (one-shot `digest()` only, no streaming API
-  yet, citation `DECISIONS.md` D-10), `kalyna::{Kalyna128_128, Kalyna128_256, Kalyna256_256,
+  three primitives: `kupyna::{Kupyna256, Kupyna512}` (one-shot `digest()`, plus `Kupyna256Hasher`/
+  `Kupyna512Hasher` for streaming `update`/`finalize` as of 2026-07-23, `TASKS.md` T-83, citation
+  `DECISIONS.md` D-10), `kalyna::{Kalyna128_128, Kalyna128_256, Kalyna256_256,
   Kalyna256_512, Kalyna512_512}` (single-block `encrypt`/`decrypt`, citation `DECISIONS.md` D-13) —
   plus, as of 2026-07-23, `kalyna_ccm` (all five variants, a provisional Kalyna-alone CCM mode of
   operation, citation `DECISIONS.md` D-41, still not confirmed against the primary DSTU 7624:2014
@@ -23,8 +24,8 @@ environment. The workspace has two crates:
   `mul_alpha`/`mul_alpha_inv` tables are new, since that field construction isn't shared). All
   three are **confirmed**: `cargo test`, `cargo clippy -- -D warnings`, `cargo fmt --check`, the
   `no_std` build, and `cargo miri test` all pass. Check `TASKS.md` Phase 1 for exactly what's still
-  open (independent second-oracle cross-check for Kalyna, Kupyna's streaming API, no high-level
-  wrapper yet). `kalyna_ccm`'s nonce strategy is resolved (`DECISIONS.md` D-40, `TASKS.md` T-82):
+  open (independent second-oracle cross-check for Kalyna, no high-level wrapper yet). `kalyna_ccm`'s
+  nonce strategy is resolved (`DECISIONS.md` D-40, `TASKS.md` T-82):
   wide random nonce generated at the CLI layer via `getrandom`, not a stateful counter — the
   hazmat-level API itself still takes a caller-supplied nonce (`no_std`-compatible). `cargo
   fuzz` has now actually been run (all three
@@ -170,6 +171,15 @@ Full detail and rationale in `SECURITY.md` — this is the compressed version so
   crypto code, a test-vector check (see dual-oracle verification above). Never write the
   implementation first and backfill tests afterward. This applies to every function, not just
   primitives.
+- **A `hazmat` streaming/incremental API existing does not make the `uacrypt` command wrapping it
+  memory-bounded** (`DECISIONS.md` D-42) — a CLI command has to be deliberately wired to read its
+  input in fixed chunks instead of `std::fs::read`-ing the whole file, every time a new algorithm
+  gains a genuine streaming API (unless its construction truly needs the whole message up front,
+  e.g. a length-prefixed AEAD header — not the same thing as "the current code happens to read it
+  all at once"). Kupyna's `kupyna-digest` does this (T-83/D-42): small chunks for real single-pass
+  use, larger chunks for the `--iterations` benchmark path, sized for each path's actual
+  constraint (memory vs. throughput) rather than copied from another algorithm's numbers.
+  `strumok-crypt` doesn't yet — a known gap, not a silent inconsistency.
 - **Three-attempts rule**: if the same problem survives 3 different approaches (especially
   toolchain/build/CI issues), stop, report what was tried and what's still unknown, and wait for
   direction — don't self-authorize a 4th attempt.

@@ -1954,3 +1954,53 @@ D-40's sibling reasoning in `TASKS.md`'s Phase-1 CCM task write-up: GCM needs a 
 parameterized GF(2^m) field with no existing code in this crate to build on, a materially bigger
 surface for a provisional primitive than CCM's pure composition over the already-verified
 `ExpandedKey::encrypt_block`).
+
+## D-42: `uacrypt` streaming CLI commands must genuinely stream from disk, not just from a library
+
+Raised 2026-07-23 by the user while reviewing T-83 (Kupyna's streaming API): is `uacrypt kupyna-
+digest` "honest" streaming - small, bounded chunks in memory, no hidden whole-file buffering
+anywhere? Answer at the time: `hazmat::kupyna`'s `Kupyna256Hasher`/`Kupyna512Hasher` genuinely are
+(fixed-size internal state, no `alloc`, no I/O in `hazmat` at all) - but `uacrypt kupyna-digest`
+itself was not: it still called `std::fs::read` once and hashed the whole in-memory result. The
+library-level streaming primitive existing does not, by itself, make the CLI that calls it
+memory-bounded - that has to be wired deliberately.
+
+**Decision, and what changed**: `run_digest_command` (`crates/uacrypt/src/lib.rs`) now has two
+paths, both routed through `Kupyna256Hasher`/`Kupyna512Hasher` rather than `Kupyna256::digest`/
+`Kupyna512::digest` directly:
+- **`iterations <= 1` (real single-pass usage)**: streams `--in` from disk via `std::fs::File` +
+  `Read::read` in fixed [`DIGEST_STREAM_CHUNK_BYTES`] = 8 KiB chunks, `update()`-ing and discarding
+  each one - peak memory is bounded by that constant regardless of `--in`'s size, not by the file
+  size. 8 KiB was chosen as a conservative "small, safe default" I/O buffer: large enough that
+  per-`read()` syscall overhead stays negligible, small enough to be a genuine streaming bound
+  rather than "the whole file with a constant's name on it."
+- **`iterations > 1` (D-34's benchmark path)**: still reads the file once, up front - re-reading it
+  from disk on every iteration would reintroduce disk-cache-dependent I/O noise into the exact
+  MB/s figure this path exists to measure, undermining the reason `iterations` exists at all. Each
+  iteration re-hashes that one resident buffer through the same `Hasher`, but fed in much larger
+  [`DIGEST_BENCH_CHUNK_BYTES`] = 1 MiB chunks - tuned for throughput (negligible `update()`-call
+  overhead against a MiB of hashing work) rather than memory footprint, since memory is not the
+  constraint this path is optimizing for. Byte-identical output to calling `digest()` directly is
+  guaranteed by T-83's own chunk-invariance proof at the `hazmat::kupyna` level, so this changes
+  nothing already recorded in `PERFORMANCE.md`.
+
+Both paths verified: a new test (`run_digest_command_streams_multi_chunk_input_correctly`) uses a
+message spanning multiple 8 KiB chunks with a non-aligned remainder, checked against
+`Kupyna512::digest` directly for both the single-pass and benchmark paths; manually re-confirmed
+against the real release binary on a 5 MiB+ file (both paths produced the identical digest).
+
+**Standing policy, not just a one-off fix - apply the same principle to any other algorithm's CLI
+command that is genuinely streamable, whenever it gains its own streaming API**: a library-level
+streaming/incremental API existing (as Strumok's `apply_keystream` already effectively has, proven
+chunk-invariant by T-24) does not by itself make the `uacrypt` command that wraps it
+memory-bounded - each such command has to be deliberately wired to read its input in fixed chunks,
+not `std::fs::read` the whole file, unless the underlying construction genuinely requires the whole
+message up front (Kalyna-CCM's CBC-MAC header needs the plaintext length before processing - not
+relevant in practice given its sourced 255-byte cap, D-41, but a real example of a construction that
+would not qualify). When a command gets this treatment, follow T-83/this entry's shape: a small
+chunk size for real single-pass usage, a larger chunk size for any `--iterations`-style benchmark
+path that must still avoid repeated disk I/O inside the timed region - both sizes chosen for their
+actual constraint (memory footprint vs. throughput), not copied from Kupyna's numbers by default,
+since a cipher's per-call overhead profile is not identical to a hash's. `strumok-crypt` currently
+still does whole-file `std::fs::read` (not changed by this entry - out of this pass's scope) and is
+the natural next candidate whenever it's worth revisiting.

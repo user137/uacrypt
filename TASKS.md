@@ -49,10 +49,37 @@ item they point to is later removed.
       cross-checked against real Bouncy Castle via the .NET and Java oracle harnesses, and (same
       day, D-16 update) UAPKI's `dstu7564_self_test_hash` matches byte-for-byte too — same
       official vector set, not a new independent reading, but confirms UAPKI's numbers agree.
-      Still missing: `cargo fuzz` actually run (scaffold exists), the streaming
-      (`update`/`finalize`) API (current API is one-shot `digest()` only), the high-level API
-      split (D-09) has no wrapper here yet — this is `hazmat` only — and KMAC (Kupyna-based MAC,
-      see the `crypto_auth` line below) isn't implemented at all yet.
+      Still missing: `cargo fuzz` actually run (scaffold exists), the high-level API split (D-09)
+      has no wrapper here yet — this is `hazmat` only — and KMAC (Kupyna-based MAC, see the
+      `crypto_auth` line below) isn't implemented at all yet. **Streaming API added 2026-07-23,
+      see T-83.**
+- [x] **T-83** **Kupyna streaming API - `Kupyna256Hasher`/`Kupyna512Hasher` (`new`/`update`/
+      `finalize`), closing T-11's last gap.** Refactored the shared `digest_generic` into a new
+      internal `KupynaCore` (holds the chaining state `h`, a `MAX_BLOCK_BYTES`-sized partial-block
+      buffer, and a running byte counter for the padding's length field) so the one-shot `digest()`
+      path is now just `new` + one `update` + `finalize` over the same struct - one implementation
+      of the padding/length-tracking logic, not two. No `alloc`/`Vec` used (buffer is a fixed-size
+      array), so this stays `no_std`-compatible without any new `cfg` gating - confirmed by
+      re-running the full 8-combination `no_std`/`alloc`/`std`/`small-tables` build matrix clean.
+      **Test-first, and the discipline caught a real bug**: wrote the official-vector-via-streaming
+      tests, a `Default`-matches-`new` test, a chunk-invariance test (mirroring T-24's Strumok
+      pattern - splitting one message across `update` calls at non-block-aligned boundaries must
+      match one `update` on the whole message), and a `proptest` (arbitrary message, arbitrary
+      split point, streaming must match `digest()`) before writing `update`/`finalize` themselves.
+      The chunk-invariance and `proptest` cases both failed on the first implementation attempt: a
+      partial-fill case (message tail shorter than one block, spread across two `update` calls)
+      was silently discarding the already-buffered bytes' length bookkeeping - the buffer's
+      physical bytes were fine, but the trailing "write `buffer_len` from this call's leftover
+      remainder" step unconditionally overwrote it to the wrong (too-small) value regardless of
+      whether that step actually applied this call. Fixed by returning early after a partial,
+      not-yet-block-full buffer fill instead of falling through to that overwrite - exactly the
+      kind of boundary bug a single-`update`-only test (all the official vectors are, by
+      construction) can never catch, confirming why T-24's pattern was worth copying here rather
+      than skipping it as redundant with the vector tests. All 9 new/updated tests green after the
+      fix, `cargo clippy -- -D warnings`/`cargo fmt --check` clean (one
+      `#[allow(clippy::needless_range_loop)]` needed on the output-transform XOR loop - same
+      lockstep-two-arrays false-positive family as D-39's three cases, `self.h`/`t_final` this
+      time), `cargo miri test` run against the new test file specifically.
 - [x] **T-12** **Blocker lifted 2026-07-22 (D-15/D-16), not fully resolved:** found
       https://github.com/specinfo-ua/UAPKI (state-expertise pedigree, see `ORACLES.md`), whose
       `dstu8845.c` self-test is comment-attributed to `// ДСТУ 8845:2019` in its own source — the

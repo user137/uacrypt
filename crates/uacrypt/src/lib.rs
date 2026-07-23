@@ -23,7 +23,7 @@ use dstu_core::hazmat::kalyna::{
 use dstu_core::hazmat::kalyna_ccm::{
     Kalyna128_128Ccm, Kalyna128_256Ccm, Kalyna256_256Ccm, Kalyna256_512Ccm, Kalyna512_512Ccm,
 };
-use dstu_core::hazmat::kupyna::{Kupyna256, Kupyna512};
+use dstu_core::hazmat::kupyna::{Kupyna256Hasher, Kupyna512Hasher};
 use dstu_core::hazmat::strumok::{Strumok256, Strumok512};
 use std::fmt;
 use std::path::PathBuf;
@@ -617,39 +617,101 @@ pub fn parse_digest_args(args: &[String]) -> Result<DigestArgs, CliError> {
     })
 }
 
+/// Read-buffer size for `kupyna-digest`'s real (`iterations <= 1`) path - deliberately small so
+/// peak memory stays bounded by this constant regardless of `--in`'s size, putting `hazmat::
+/// kupyna`'s `Hasher` (T-83) to its actual intended use rather than just proving it exists. 8 KiB
+/// is a conservative "small, safe default" I/O buffer size - large enough that per-`read()`-call
+/// syscall overhead stays negligible, small enough to still be a genuine streaming bound rather
+/// than "the whole file, just given a constant name."
+const DIGEST_STREAM_CHUNK_BYTES: usize = 8 * 1024;
+
+/// Chunk size for `kupyna-digest`'s benchmark path (`iterations > 1`, D-34). The file is still
+/// read once, up front - re-reading it per iteration would reintroduce disk-cache-dependent I/O
+/// noise into the very MB/s figure this path exists to measure - but each iteration re-hashes that
+/// resident buffer through the same streaming `Hasher` used above, fed in much larger chunks tuned
+/// for throughput rather than memory footprint (`update()` call overhead negligible against 1 MiB
+/// of hashing work, unlike the 8 KiB streaming case above where memory is the actual constraint).
+/// Produces byte-identical output to the one-shot `digest()` this replaced (chunk-invariance
+/// proven directly at the `hazmat::kupyna` level, T-83), so this does not change any number
+/// already recorded in `PERFORMANCE.md`.
+const DIGEST_BENCH_CHUNK_BYTES: usize = 1024 * 1024;
+
 /// Runs `kupyna-digest`: hashes `--in` (arbitrary length - Kupyna has no block-size restriction on
-/// its public API, unlike Kalyna) `iterations` times (the message is fixed, so this is purely for
-/// benchmarking - the digest is identical every time), writes the digest to `--out`, and prints
-/// timing to stderr when `iterations > 1`.
+/// its public API, unlike Kalyna), writes the digest to `--out`, and prints timing to stderr when
+/// `iterations > 1`. `iterations <= 1` streams `--in` from disk in [`DIGEST_STREAM_CHUNK_BYTES`]-
+/// sized chunks (real usage; the message is not re-read, so this is a single genuine pass);
+/// `iterations > 1` is the D-34 benchmark path (see [`DIGEST_BENCH_CHUNK_BYTES`]'s doc comment for
+/// why it reads once and re-hashes in memory instead).
 ///
 /// # Errors
 ///
 /// Returns [`CliError::Io`] if `--in` can't be read or `--out` can't be written.
 #[allow(clippy::cast_precision_loss)] // human-readable MB/s diagnostic, not exact at any realistic byte count
 pub fn run_digest_command(args: &DigestArgs) -> Result<(), CliError> {
-    let message = std::fs::read(&args.in_path).map_err(|e| CliError::Io {
-        path: args.in_path.clone(),
-        message: e.to_string(),
-    })?;
+    use std::io::Read;
+
     let iterations = args.iterations.max(1);
 
-    let start = Instant::now();
-    let digest: Vec<u8> = match args.variant {
-        HashBits::B256 => {
-            let mut out = [0u8; 32];
-            for _ in 0..iterations {
-                out = Kupyna256::digest(&message);
+    macro_rules! stream_from_disk {
+        ($hasher:ty) => {{
+            let mut file = std::fs::File::open(&args.in_path).map_err(|e| CliError::Io {
+                path: args.in_path.clone(),
+                message: e.to_string(),
+            })?;
+            let mut hasher = <$hasher>::new();
+            let mut chunk = [0u8; DIGEST_STREAM_CHUNK_BYTES];
+            let mut total_bytes: u64 = 0;
+            loop {
+                let n = file.read(&mut chunk).map_err(|e| CliError::Io {
+                    path: args.in_path.clone(),
+                    message: e.to_string(),
+                })?;
+                if n == 0 {
+                    break;
+                }
+                hasher.update(&chunk[..n]);
+                total_bytes += n as u64;
             }
-            out.to_vec()
-        }
-        HashBits::B512 => {
-            let mut out = [0u8; 64];
+            (hasher.finalize().to_vec(), total_bytes)
+        }};
+    }
+
+    macro_rules! bench_in_memory {
+        ($hasher:ty, $message:expr) => {{
+            let mut out = None;
             for _ in 0..iterations {
-                out = Kupyna512::digest(&message);
+                let mut hasher = <$hasher>::new();
+                for chunk in $message.chunks(DIGEST_BENCH_CHUNK_BYTES) {
+                    hasher.update(chunk);
+                }
+                out = Some(hasher.finalize().to_vec());
             }
-            out.to_vec()
-        }
-    };
+            out.expect("iterations is clamped to at least 1 above")
+        }};
+    }
+
+    let start;
+    let digest: Vec<u8>;
+    let total_bytes: u64;
+
+    if iterations <= 1 {
+        start = Instant::now();
+        (digest, total_bytes) = match args.variant {
+            HashBits::B256 => stream_from_disk!(Kupyna256Hasher),
+            HashBits::B512 => stream_from_disk!(Kupyna512Hasher),
+        };
+    } else {
+        let message = std::fs::read(&args.in_path).map_err(|e| CliError::Io {
+            path: args.in_path.clone(),
+            message: e.to_string(),
+        })?;
+        total_bytes = message.len() as u64;
+        start = Instant::now();
+        digest = match args.variant {
+            HashBits::B256 => bench_in_memory!(Kupyna256Hasher, message),
+            HashBits::B512 => bench_in_memory!(Kupyna512Hasher, message),
+        };
+    }
     let elapsed = start.elapsed();
 
     std::fs::write(&args.out_path, &digest).map_err(|e| CliError::Io {
@@ -662,7 +724,7 @@ pub fn run_digest_command(args: &DigestArgs) -> Result<(), CliError> {
         let mb_per_s = if per_op_ns == 0 {
             0.0
         } else {
-            (message.len() as f64) / (per_op_ns as f64 / 1e9) / 1e6
+            (total_bytes as f64) / (per_op_ns as f64 / 1e9) / 1e6
         };
         eprintln!(
             "iterations={} total_ns={} per_op_ns={per_op_ns} mb_per_s={mb_per_s:.2}",
@@ -877,6 +939,7 @@ pub fn run(args: &[String]) -> Result<(), CliError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use dstu_core::hazmat::kupyna::{Kupyna256, Kupyna512};
 
     #[test]
     fn variant_parse_roundtrips_known_names() {
@@ -1078,6 +1141,43 @@ mod tests {
         assert_eq!(
             std::fs::read(dir.file("digest_one.bin")).expect("read"),
             std::fs::read(dir.file("digest_many.bin")).expect("read"),
+        );
+    }
+
+    /// `run_digest_command` streams `--in` from disk in fixed-size chunks rather than reading it
+    /// whole (T-83 follow-up) - every test above uses a message far smaller than one chunk, which
+    /// never exercises the multi-chunk read loop. This uses a message several chunk-widths long,
+    /// deliberately not a multiple of the chunk size, and checks both the single-pass streaming
+    /// path (`iterations <= 1`) and the benchmark path (`iterations > 1`, which chunks an
+    /// already-resident buffer instead of re-reading the file) against `hazmat::kupyna` directly.
+    #[test]
+    fn run_digest_command_streams_multi_chunk_input_correctly() {
+        let dir = TempDir::new("digest_multichunk");
+        let len = DIGEST_STREAM_CHUNK_BYTES * 3 + 777;
+        let message: Vec<u8> = (0..len).map(|i| (i as u8).wrapping_mul(97)).collect();
+        std::fs::write(dir.file("msg.bin"), &message).expect("write message");
+
+        let single_pass_args = DigestArgs {
+            variant: HashBits::B512,
+            in_path: dir.file("msg.bin"),
+            out_path: dir.file("digest_single.bin"),
+            iterations: 1,
+        };
+        run_digest_command(&single_pass_args).expect("single-pass run should succeed");
+        assert_eq!(
+            std::fs::read(dir.file("digest_single.bin")).expect("read"),
+            Kupyna512::digest(&message).to_vec()
+        );
+
+        let bench_args = DigestArgs {
+            iterations: 3,
+            out_path: dir.file("digest_bench.bin"),
+            ..single_pass_args
+        };
+        run_digest_command(&bench_args).expect("benchmark-path run should succeed");
+        assert_eq!(
+            std::fs::read(dir.file("digest_bench.bin")).expect("read"),
+            Kupyna512::digest(&message).to_vec()
         );
     }
 
