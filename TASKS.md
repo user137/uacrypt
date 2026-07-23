@@ -395,17 +395,73 @@ resistance (SPA/DPA — explicitly out of scope per `SECURITY.md`/`CLAUDE.md` "M
       deleted; "## Binary-level (process) comparison" is now the single canonical section with
       Ryzen+Pi columns for every implementation, MB/s only.
 
-## Next up (blocked): a safe mode of operation for Kalyna
+## A provisional Kalyna mode of operation - CCM (T-81), with a follow-up still open (T-82)
 
-User flagged this as the next priority (2026-07-22, same session as D-28/29/30/31) - **but this is
-still gated on D-05**, unchanged: `DECISIONS.md` D-05 needs the official DSTU 7624 text or another
-authoritative source before *any* mode of operation (CTR/CBC/GCM/whatever DSTU 7624 actually
-specifies) can be chosen. Building `dstutool kalyna-block` (D-31) does not unblock this - it's
-still single-block-only by design. Do not build an ad-hoc/arbitrary mode (e.g. naive ECB) just to
-have *something* - that is exactly the failure mode this project's "no homegrown primitives"/
-"research before implementation" discipline (`CLAUDE.md`) exists to prevent. When D-05 resolves:
-`crypto_secretbox` (Phase 2, below) is the actual deliverable; `dstutool`'s reserved `encrypt`/
-`decrypt` command names (CLAUDE.md MVP scope) are the CLI surface once a real mode exists.
+Originally flagged as blocked entirely on D-05 (2026-07-22 note, kept below for the record). User
+asked 2026-07-23 for a real (not ad-hoc) interim mode instead of waiting indefinitely on the priced
+primary text - the "do not build an ad-hoc/arbitrary mode just to have *something*" warning below
+was heeded: what got built is dual-oracle-cited (UAPKI + Bouncy Castle), not invented. See
+`DECISIONS.md` D-05 (revised) and D-41 for the full reasoning and citation.
+
+- [x] **T-81** **`hazmat::kalyna_ccm` implemented - DSTU 7624 CCM, all 5 Kalyna variants,
+      provisional pending the primary text** (`DECISIONS.md` D-41, 2026-07-23). Cited to
+      `oracles/uapki/library/uapkic/src/dstu7624.c` (`dstu7624_init_ccm`/`ccm_padd`/
+      `dstu7624_encrypt_ccm`/`dstu7624_decrypt_ccm`/`gamma_gen`), cross-checked byte-for-byte
+      against `oracles/bouncycastle-java`'s `DSTU7624Test.java` CCM vectors for 4 of 5 variants
+      (128/256 has no BC vector - UAPKI-only, flagged in its vector file). New test vectors in
+      `crates/dstu-core/tests/vectors/kalyna-ccm/*.json`; new integration test
+      `crates/dstu-core/tests/kalyna_ccm.rs` (37 tests: official vectors, `proptest` round-trip,
+      five independent tamper-rejection suites - ciphertext/tag/AAD/nonce/wrong-key - all green
+      first attempt). New `uacrypt` subcommand `kalyna-ccm encrypt`/`decrypt` (deliberately not the
+      reserved `encrypt`/`decrypt` names - see the CLI note below), round-tripped and tamper-tested
+      through the real built release binary (`DECISIONS.md` D-34's policy). All 8 `no_std`/`alloc`/
+      `std`/`small-tables` feature combinations re-confirmed clean; `cargo clippy -- -D warnings`/
+      `cargo fmt --check` clean; re-confirmed on the Raspberry Pi rig too (`TASKS.md` T-35's
+      standing "re-run after hazmat changes" rule).
+      **`cargo fuzz` target added** (`crates/dstu-core/fuzz/fuzz_targets/kalyna_ccm.rs`, wired into
+      `xtask fuzz`'s target list) - `open_in_place` is the first code in this crate that makes an
+      authentication decision on fully attacker-controlled input, so the target feeds it
+      never-produced-by-`seal_in_place` ciphertext/tag/AAD directly, not just round-tripped output.
+      A 60s MSVC smoke run (same method as D-32) found zero crashes across all 5 variants (cov 801,
+      110,542 execs) alongside the pre-existing kupyna/kalyna/strumok targets in the same run (all
+      four together: exit 0, no crashes).
+      **`cargo miri test`**: the full suite (including `proptest`) hits a pre-existing
+      proptest+Miri directory-isolation interaction on this Windows dev machine
+      (`GetCurrentDirectoryW` not available under Miri's isolation, from proptest's own
+      failure-persistence file lookup) - confirmed this **already affects** the existing
+      `kalyna.rs`/`strumok.rs` proptest suites too, not something this task introduced, and that
+      the full run is impractically slow under Miri regardless (≈6400 proptest cases interpreted).
+      Scoped instead to the five official-vector tests (`MIRIFLAGS=-Zmiri-disable-isolation cargo
+      +nightly miri test -p dstu-core --test kalyna_ccm official_vector`), which exercises every
+      buffer path for all 5 variants - clean, no UB, ~41s.
+      **A real, sourced scope limit, not a design choice**: plaintext and AAD are each capped at
+      255 bytes (`hazmat::kalyna_ccm::{MAX_PLAINTEXT_LEN, MAX_AAD_LEN}`) - `ccm_padd`'s header
+      encodes both lengths as a single byte each, so this is a property of the construction as
+      extracted, enforced with an error rather than silently truncated.
+- [ ] **T-82** **Kalyna-CCM nonce/counter-width strategy - not decided yet, on purpose**
+      (`DECISIONS.md` D-40). The five `(ccm_nb, q)` pairs T-81 uses are exactly what the
+      cross-oracle vectors specify - real, but not yet a decision about how a *caller* obtains a
+      safe, never-repeating nonce, which is the actual misuse-resistance question (this project's
+      libsodium-style "nothing to misconfigure" goal implies no user-facing tuning knob should
+      exist for this either). Two patterns identified, neither chosen: a TLS-1.3-style internal
+      monotonic counter (uniqueness guaranteed, but needs `&mut self`/persistent state - a bigger
+      API change than it looks) vs. a libsodium-style wide random nonce (stateless, but needs
+      checking whether Kalyna-CCM's narrower, block-size-dependent nonce field, 11-55 bytes across
+      the five variants, is wide enough for the smallest block size to be safe this way). Resolve
+      before treating `hazmat::kalyna_ccm`'s nonce parameter as anything other than "whatever the
+      caller passes, currently uncontrolled."
+
+**Original 2026-07-22 blocked note, kept for the record, superseded by T-81 above**: "User flagged
+this as the next priority (2026-07-22, same session as D-28/29/30/31) - but this is still gated on
+D-05, unchanged: `DECISIONS.md` D-05 needs the official DSTU 7624 text or another authoritative
+source before *any* mode of operation (CTR/CBC/GCM/whatever DSTU 7624 actually specifies) can be
+chosen. Building `dstutool kalyna-block` (D-31) does not unblock this - it's still single-block-only
+by design. Do not build an ad-hoc/arbitrary mode (e.g. naive ECB) just to have *something* - that
+is exactly the failure mode this project's 'no homegrown primitives'/'research before
+implementation' discipline (`CLAUDE.md`) exists to prevent." T-81 satisfies this bar by being
+dual-oracle-cited rather than invented, while D-05 itself (the `crypto_secretbox`/`crypto_auth`
+construction question) stays open - `dstutool`'s (now `uacrypt`'s) reserved `encrypt`/`decrypt`
+command names (`CLAUDE.md` MVP scope) are still reserved for whenever that resolves, unchanged.
 
 ## Phase 2 — libsodium-equivalent construction layer, DSTU 4145 + 9041
 

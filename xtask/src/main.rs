@@ -59,7 +59,7 @@ fn print_usage() {
          \x20 ci             fmt --check + build + test + clippy, then best-effort for the optional tools below\n\n\
          Optional (each checks its tool is installed first and prints an install hint if not):\n\
          \x20 miri           cargo +nightly miri test --workspace\n\
-         \x20 fuzz           short cargo-fuzz smoke run against the kupyna/kalyna/strumok targets\n\
+         \x20 fuzz           short cargo-fuzz smoke run against the kupyna/kalyna/kalyna_ccm/strumok targets\n\
          \x20 audit          cargo audit (RustSec advisories)\n\
          \x20 deny           cargo deny check (licenses, bans, sources)\n\
          \x20 oracle-java    run the Java/Bouncy Castle oracle harness via Maven\n\
@@ -174,7 +174,7 @@ fn fuzz() -> bool {
 
 #[cfg(not(windows))]
 fn fuzz_targets(prefix: &[&str]) -> bool {
-    for target in ["kupyna", "kalyna", "strumok"] {
+    for target in ["kupyna", "kalyna", "kalyna_ccm", "strumok"] {
         let mut args = prefix.to_vec();
         args.push(target);
         args.extend(["--", "-max_total_time=60"]);
@@ -239,7 +239,7 @@ fn fuzz_windows_msvc() -> bool {
         );
         return false;
     }
-    for target in ["kupyna", "kalyna", "strumok"] {
+    for target in ["kupyna", "kalyna", "kalyna_ccm", "strumok"] {
         let inner = format!(
             "cargo +{MSVC_TOOLCHAIN} fuzz run --target x86_64-pc-windows-msvc {target} -- \
              -max_total_time=60"

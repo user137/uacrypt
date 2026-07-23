@@ -96,10 +96,24 @@ project funding changes rather than re-researched from scratch.
   plain single-block encryption — diffed byte-for-byte (script) against
   `{128-128,128-256,256-256,256-512,512-512}.json`'s encryption/decryption cases and all 10 match
   exactly. Same official vector set as `Kalyna.pdf` (not independent new data), but confirms UAPKI
-  reproduces it correctly. **CBC/OFB/CFB/CTR/CMAC/XTS/KW/CCM/GMAC/GCM remain unchecked** — genuine
-  new data, since no Rust mode-of-operation exists yet to check them against; CCM/GMAC/GCM
-  specifically are directly relevant to the still-open D-05 question, left for whenever a mode
-  gets built (see `DECISIONS.md` D-16 update, `TASKS.md`).
+  reproduces it correctly. **CBC/OFB/CFB/CTR/CMAC/XTS/KW/GMAC/GCM remain unchecked** — genuine new
+  data, since no Rust mode-of-operation exists yet to check them against; GMAC/GCM specifically are
+  directly relevant to the still-open D-05 question, left for whenever those modes get built (see
+  `DECISIONS.md` D-16 update, `TASKS.md`).
+- **CCM checked, 2026-07-23** (`DECISIONS.md` D-41, `hazmat::kalyna_ccm`, `TASKS.md` T-81) — a
+  genuine dual-oracle case, not a same-vendor recheck: `dstu7624_ccm_self_test`'s 5 vectors and
+  `bouncycastle-java`'s `DSTU7624Test.java` `CCMModeTests`'s 4 vectors were compared directly (not
+  just each independently against this project's Rust port) and 4 of the 5 UAPKI cases matched a BC
+  case byte-for-byte (128/128, 256/256, 256/512, 512/512) — independent-lineage agreement. The
+  5th (128/256) has no BC vector at all (BC's `CCMModeTests` doesn't cover that variant), so that
+  one case is UAPKI-only, flagged as such in its vector file. **Still provisional** — this
+  cross-oracle agreement is reference-implementation evidence, not a reading of the primary DSTU
+  7624:2014 text; see D-41 and the "not yet confirmed against primary text" caveat repeated in
+  `hazmat::kalyna_ccm`'s module doc comment and every extracted vector file's `source` field. BC's
+  own `KCCMBlockCipher`/`KGCMBlockCipher` construction *source* is not present in this project's
+  vendored sparse checkout of `oracles/bouncycastle-java` (only the test file importing them is) —
+  the cross-check above is against BC's vector *outputs* only, not a second reading of BC's
+  construction code, weaker than "read both implementations."
 - Supplementary, not authoritative: `docs/papers/Dolgov_5-22.pdf` contains a C-like pseudocode
   description of Kalyna (`Kalyna_Cipher`, `Kalyna_InvCipher`, `Kalyna_S_boxes`,
   `Kalyna_KeyExpansion_Ksigma`), but its surrounding Ukrainian prose doesn't extract cleanly via

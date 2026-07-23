@@ -1,0 +1,20 @@
+{
+  "algorithm": "Kalyna-128/256 CCM",
+  "block_bits": 128,
+  "key_bits": 256,
+  "ccm_nb": 4,
+  "tag_bytes": 16,
+  "source": "PROVISIONAL, not confirmed against the primary DSTU 7624:2014 text (DECISIONS.md D-05 revision note, D-41). UAPKI-only (oracles/uapki/library/uapkic/src/dstu7624.c dstu7624_ccm_self_test, ccm_test_data[1]) - no Bouncy Castle CCM vector exists for this variant (BC's CCMModeTests only covers 128/128, 256/256, 256/512, 512/512), so this one case lacks the cross-oracle confirmation the other four variants have. Also the only non-block-aligned (partial final block) case among the five vectors extracted here.",
+  "cases": [
+    {
+      "name": "aead",
+      "key_hex": "000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F",
+      "nonce_hex": "202122232425262728292A2B2C2D2E2F",
+      "aad_hex": "303132333435363738393A3B",
+      "plaintext_hex": "404142434445464748494A4B4C4D4E",
+      "ciphertext_hex": "EF93E26C7D5EB27111A18872259304",
+      "tag_hex": "3585DF9998FE26308ACBA4FC0EB5F2C7",
+      "raw_tag_hex": "6C47296FF6F64D3FB8351B8407E791D5"
+    }
+  ]
+}

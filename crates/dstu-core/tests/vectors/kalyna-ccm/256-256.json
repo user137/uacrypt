@@ -1,0 +1,20 @@
+{
+  "algorithm": "Kalyna-256/256 CCM",
+  "block_bits": 256,
+  "key_bits": 256,
+  "ccm_nb": 4,
+  "tag_bytes": 16,
+  "source": "PROVISIONAL, not confirmed against the primary DSTU 7624:2014 text (DECISIONS.md D-05 revision note, D-41). Byte-identical in both oracles: oracles/bouncycastle-java/core/src/test/java/org/bouncycastle/crypto/test/DSTU7624Test.java CCMModeTests test 2, and oracles/uapki/library/uapkic/src/dstu7624.c dstu7624_ccm_self_test test 3 (ccm_test_data[2]) - independent-lineage cross-check, not the same vendor's number twice.",
+  "cases": [
+    {
+      "name": "aead",
+      "key_hex": "000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F",
+      "nonce_hex": "202122232425262728292A2B2C2D2E2F303132333435363738393A3B3C3D3E3F",
+      "aad_hex": "404142434445464748494A4B4C4D4E4F505152535455565758595A5B5C5D5E5F",
+      "plaintext_hex": "606162636465666768696A6B6C6D6E6F707172737475767778797A7B7C7D7E7F808182838485868788898A8B8C8D8E8F909192939495969798999A9B9C9D9E9F",
+      "ciphertext_hex": "7EC15C54BB553CB1437BE0EFDD2E810F6058497EBCE4408A08A73FADF3F459D56B0103702D13AB73ACD2EB33A8B5E9CFFF5EB21865A6B499C10C810C4BAEBE80",
+      "tag_hex": "9C48AD90A9E12A68380EF1C1B7C83EE1",
+      "raw_tag_hex": "9AB831B4B0BF0FDBC36E4B4FD58F0F00"
+    }
+  ]
+}

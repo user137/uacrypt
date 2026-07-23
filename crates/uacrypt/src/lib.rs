@@ -20,6 +20,9 @@ use dstu_core::hazmat::kalyna::{
     Kalyna256_256, Kalyna256_256ExpandedKey, Kalyna256_512, Kalyna256_512ExpandedKey,
     Kalyna512_512, Kalyna512_512ExpandedKey,
 };
+use dstu_core::hazmat::kalyna_ccm::{
+    Kalyna128_128Ccm, Kalyna128_256Ccm, Kalyna256_256Ccm, Kalyna256_512Ccm, Kalyna512_512Ccm,
+};
 use dstu_core::hazmat::kupyna::{Kupyna256, Kupyna512};
 use dstu_core::hazmat::strumok::{Strumok256, Strumok512};
 use std::fmt;
@@ -42,6 +45,9 @@ pub enum CliError {
         expected: usize,
         actual: usize,
     },
+    PlaintextTooLong,
+    AadTooLong,
+    CcmVerifyFailed,
 }
 
 impl fmt::Display for CliError {
@@ -63,6 +69,27 @@ impl fmt::Display for CliError {
                 expected,
                 actual,
             } => write!(f, "{what} must be exactly {expected} bytes, got {actual}"),
+            CliError::PlaintextTooLong => write!(
+                f,
+                "input exceeds kalyna-ccm's sourced 255-byte limit (see hazmat::kalyna_ccm docs)"
+            ),
+            CliError::AadTooLong => write!(
+                f,
+                "--aad exceeds kalyna-ccm's sourced 255-byte limit (see hazmat::kalyna_ccm docs)"
+            ),
+            CliError::CcmVerifyFailed => {
+                write!(f, "kalyna-ccm: authentication failed - ciphertext, tag, AAD, nonce, or key do not match")
+            }
+        }
+    }
+}
+
+impl From<dstu_core::hazmat::kalyna_ccm::CcmError> for CliError {
+    fn from(err: dstu_core::hazmat::kalyna_ccm::CcmError) -> Self {
+        match err {
+            dstu_core::hazmat::kalyna_ccm::CcmError::PlaintextTooLong => Self::PlaintextTooLong,
+            dstu_core::hazmat::kalyna_ccm::CcmError::AadTooLong => Self::AadTooLong,
+            dstu_core::hazmat::kalyna_ccm::CcmError::TagMismatch => Self::CcmVerifyFailed,
         }
     }
 }
@@ -106,6 +133,18 @@ impl KalynaVariant {
         match self {
             Self::K128_128 | Self::K128_256 => 16,
             Self::K256_256 | Self::K256_512 => 32,
+            Self::K512_512 => 64,
+        }
+    }
+
+    /// CCM authentication tag length in bytes for this variant - see
+    /// `hazmat::kalyna_ccm`'s per-variant `(ccm_nb, q)` constants (cross-oracle-vector-confirmed,
+    /// not chosen by this CLI).
+    #[must_use]
+    pub fn ccm_tag_len(self) -> usize {
+        match self {
+            Self::K128_128 | Self::K128_256 | Self::K256_256 => 16,
+            Self::K256_512 => 32,
             Self::K512_512 => 64,
         }
     }
@@ -313,6 +352,165 @@ pub fn run_block_command(decrypt: bool, args: &BlockArgs) -> Result<(), CliError
             elapsed.as_nanos(),
             per_op_ns
         );
+    }
+
+    Ok(())
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct CcmArgs {
+    pub variant: KalynaVariant,
+    pub key_path: PathBuf,
+    pub nonce_path: PathBuf,
+    pub aad_path: Option<PathBuf>,
+    pub in_path: PathBuf,
+    pub out_path: PathBuf,
+    pub tag_path: PathBuf,
+}
+
+/// Parses `kalyna-ccm encrypt`/`decrypt`'s flags: `--variant`/`--key`/`--nonce`/`--in`/`--out`/
+/// `--tag` required, `--aad` optional (an empty AAD is used if omitted).
+///
+/// # Errors
+///
+/// Same cases as [`parse_block_args`], plus `--nonce`/`--tag` sharing `--key`'s missing-flag
+/// handling.
+pub fn parse_ccm_args(args: &[String]) -> Result<CcmArgs, CliError> {
+    let mut variant = None;
+    let mut key_path = None;
+    let mut nonce_path = None;
+    let mut aad_path = None;
+    let mut in_path = None;
+    let mut out_path = None;
+    let mut tag_path = None;
+
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--variant" => {
+                let v = args.get(i + 1).ok_or(CliError::MissingFlag("variant"))?;
+                variant = Some(
+                    KalynaVariant::parse(v).ok_or_else(|| CliError::UnknownVariant(v.clone()))?,
+                );
+                i += 2;
+            }
+            "--key" => {
+                key_path = Some(PathBuf::from(
+                    args.get(i + 1).ok_or(CliError::MissingFlag("key"))?,
+                ));
+                i += 2;
+            }
+            "--nonce" => {
+                nonce_path = Some(PathBuf::from(
+                    args.get(i + 1).ok_or(CliError::MissingFlag("nonce"))?,
+                ));
+                i += 2;
+            }
+            "--aad" => {
+                aad_path = Some(PathBuf::from(
+                    args.get(i + 1).ok_or(CliError::MissingFlag("aad"))?,
+                ));
+                i += 2;
+            }
+            "--in" => {
+                in_path = Some(PathBuf::from(
+                    args.get(i + 1).ok_or(CliError::MissingFlag("in"))?,
+                ));
+                i += 2;
+            }
+            "--out" => {
+                out_path = Some(PathBuf::from(
+                    args.get(i + 1).ok_or(CliError::MissingFlag("out"))?,
+                ));
+                i += 2;
+            }
+            "--tag" => {
+                tag_path = Some(PathBuf::from(
+                    args.get(i + 1).ok_or(CliError::MissingFlag("tag"))?,
+                ));
+                i += 2;
+            }
+            other => return Err(CliError::UnknownFlag(other.to_string())),
+        }
+    }
+
+    Ok(CcmArgs {
+        variant: variant.ok_or(CliError::MissingFlag("variant"))?,
+        key_path: key_path.ok_or(CliError::MissingFlag("key"))?,
+        nonce_path: nonce_path.ok_or(CliError::MissingFlag("nonce"))?,
+        aad_path,
+        in_path: in_path.ok_or(CliError::MissingFlag("in"))?,
+        out_path: out_path.ok_or(CliError::MissingFlag("out"))?,
+        tag_path: tag_path.ok_or(CliError::MissingFlag("tag"))?,
+    })
+}
+
+/// Runs `kalyna-ccm encrypt`/`decrypt` - see `hazmat::kalyna_ccm`'s module doc comment for the
+/// construction's provisional status and sourced 255-byte plaintext/AAD limit. Encrypt writes
+/// ciphertext to `--out` and the authentication tag to `--tag` (separate files - this CLI does not
+/// invent its own combined wire format). Decrypt reads `--tag`, verifies before writing anything,
+/// and returns [`CliError::CcmVerifyFailed`] without touching `--out` on failure.
+///
+/// # Errors
+///
+/// Returns [`CliError::Io`]/[`CliError::WrongLength`] for file problems (key/nonce/tag must be
+/// exactly the variant's expected length), [`CliError::PlaintextTooLong`]/
+/// [`CliError::AadTooLong`] if `--in`/`--aad` exceed the sourced limit, or
+/// [`CliError::CcmVerifyFailed`] if `decrypt` fails to authenticate.
+pub fn run_ccm_command(decrypt: bool, args: &CcmArgs) -> Result<(), CliError> {
+    let key = read_exact_file(&args.key_path, "key", args.variant.key_len())?;
+    let nonce = read_exact_file(&args.nonce_path, "nonce", args.variant.block_len())?;
+    let aad = match &args.aad_path {
+        Some(path) => std::fs::read(path).map_err(|e| CliError::Io {
+            path: path.clone(),
+            message: e.to_string(),
+        })?,
+        None => Vec::new(),
+    };
+    let input = std::fs::read(&args.in_path).map_err(|e| CliError::Io {
+        path: args.in_path.clone(),
+        message: e.to_string(),
+    })?;
+
+    macro_rules! run_ccm_variant {
+        ($cipher:ty, $key_len:literal, $block_len:literal, $tag_len:literal) => {{
+            let mut key_arr = [0u8; $key_len];
+            key_arr.copy_from_slice(&key);
+            let mut nonce_arr = [0u8; $block_len];
+            nonce_arr.copy_from_slice(&nonce);
+            let cipher = <$cipher>::new(&key_arr);
+
+            let mut buf = input.clone();
+            if decrypt {
+                let tag = read_exact_file(&args.tag_path, "tag", $tag_len)?;
+                let mut tag_arr = [0u8; $tag_len];
+                tag_arr.copy_from_slice(&tag);
+                cipher.open_in_place(&nonce_arr, &aad, &mut buf, &tag_arr)?;
+                (buf, None)
+            } else {
+                let tag = cipher.seal_in_place(&nonce_arr, &aad, &mut buf)?;
+                (buf, Some(tag.to_vec()))
+            }
+        }};
+    }
+
+    let (output, tag) = match args.variant {
+        KalynaVariant::K128_128 => run_ccm_variant!(Kalyna128_128Ccm, 16, 16, 16),
+        KalynaVariant::K128_256 => run_ccm_variant!(Kalyna128_256Ccm, 32, 16, 16),
+        KalynaVariant::K256_256 => run_ccm_variant!(Kalyna256_256Ccm, 32, 32, 16),
+        KalynaVariant::K256_512 => run_ccm_variant!(Kalyna256_512Ccm, 64, 32, 32),
+        KalynaVariant::K512_512 => run_ccm_variant!(Kalyna512_512Ccm, 64, 64, 64),
+    };
+
+    std::fs::write(&args.out_path, &output).map_err(|e| CliError::Io {
+        path: args.out_path.clone(),
+        message: e.to_string(),
+    })?;
+    if let Some(tag) = tag {
+        std::fs::write(&args.tag_path, &tag).map_err(|e| CliError::Io {
+            path: args.tag_path.clone(),
+            message: e.to_string(),
+        })?;
     }
 
     Ok(())
@@ -640,6 +838,15 @@ pub fn run(args: &[String]) -> Result<(), CliError> {
                 None => Err(CliError::MissingFlag("encrypt|decrypt")),
             }
         }
+        Some("kalyna-ccm") => {
+            let rest = &args[1..];
+            match rest.first().map(String::as_str) {
+                Some("encrypt") => run_ccm_command(false, &parse_ccm_args(&rest[1..])?),
+                Some("decrypt") => run_ccm_command(true, &parse_ccm_args(&rest[1..])?),
+                Some(other) => Err(CliError::UnknownCommand(format!("kalyna-ccm {other}"))),
+                None => Err(CliError::MissingFlag("encrypt|decrypt")),
+            }
+        }
         Some("kupyna-digest") => run_digest_command(&parse_digest_args(&args[1..])?),
         Some("strumok-crypt") => run_strumok_command(&parse_strumok_args(&args[1..])?),
         Some(other) => Err(CliError::UnknownCommand(other.to_string())),
@@ -852,6 +1059,142 @@ mod tests {
             std::fs::read(dir.file("digest_one.bin")).expect("read"),
             std::fs::read(dir.file("digest_many.bin")).expect("read"),
         );
+    }
+
+    #[test]
+    fn parse_ccm_args_requires_nonce_and_tag() {
+        let args = vec![
+            "--variant".to_string(),
+            "128-128".to_string(),
+            "--key".to_string(),
+            "k".to_string(),
+        ];
+        assert_eq!(parse_ccm_args(&args), Err(CliError::MissingFlag("nonce")));
+    }
+
+    #[test]
+    fn parse_ccm_args_happy_path_with_optional_aad() {
+        let args = vec![
+            "--variant".to_string(),
+            "256-256".to_string(),
+            "--key".to_string(),
+            "key.bin".to_string(),
+            "--nonce".to_string(),
+            "nonce.bin".to_string(),
+            "--aad".to_string(),
+            "aad.bin".to_string(),
+            "--in".to_string(),
+            "in.bin".to_string(),
+            "--out".to_string(),
+            "out.bin".to_string(),
+            "--tag".to_string(),
+            "tag.bin".to_string(),
+        ];
+        let parsed = parse_ccm_args(&args).expect("valid args should parse");
+        assert_eq!(parsed.variant, KalynaVariant::K256_256);
+        assert_eq!(parsed.aad_path, Some(PathBuf::from("aad.bin")));
+        assert_eq!(parsed.tag_path, PathBuf::from("tag.bin"));
+    }
+
+    #[test]
+    fn parse_ccm_args_aad_defaults_to_none() {
+        let args = vec![
+            "--variant".to_string(),
+            "128-128".to_string(),
+            "--key".to_string(),
+            "key.bin".to_string(),
+            "--nonce".to_string(),
+            "nonce.bin".to_string(),
+            "--in".to_string(),
+            "in.bin".to_string(),
+            "--out".to_string(),
+            "out.bin".to_string(),
+            "--tag".to_string(),
+            "tag.bin".to_string(),
+        ];
+        let parsed = parse_ccm_args(&args).expect("valid args should parse");
+        assert_eq!(parsed.aad_path, None);
+    }
+
+    #[test]
+    fn run_ccm_command_round_trip_matches_dstu_core_directly() {
+        let dir = TempDir::new("kalyna_ccm");
+        let key = [0x11u8; 16];
+        let nonce = [0x22u8; 16];
+        let aad = b"header".to_vec();
+        let plaintext = b"short message".to_vec();
+        std::fs::write(dir.file("key.bin"), key).expect("write key");
+        std::fs::write(dir.file("nonce.bin"), nonce).expect("write nonce");
+        std::fs::write(dir.file("aad.bin"), &aad).expect("write aad");
+        std::fs::write(dir.file("in.bin"), &plaintext).expect("write input");
+
+        let encrypt_args = CcmArgs {
+            variant: KalynaVariant::K128_128,
+            key_path: dir.file("key.bin"),
+            nonce_path: dir.file("nonce.bin"),
+            aad_path: Some(dir.file("aad.bin")),
+            in_path: dir.file("in.bin"),
+            out_path: dir.file("ct.bin"),
+            tag_path: dir.file("tag.bin"),
+        };
+        run_ccm_command(false, &encrypt_args).expect("encrypt should succeed");
+
+        let expected_cipher = Kalyna128_128Ccm::new(&key);
+        let mut expected_buf = plaintext.clone();
+        let expected_tag = expected_cipher
+            .seal_in_place(&nonce, &aad, &mut expected_buf)
+            .expect("direct seal should succeed");
+        assert_eq!(
+            std::fs::read(dir.file("ct.bin")).expect("read"),
+            expected_buf
+        );
+        assert_eq!(
+            std::fs::read(dir.file("tag.bin")).expect("read"),
+            expected_tag.to_vec()
+        );
+
+        let decrypt_args = CcmArgs {
+            in_path: dir.file("ct.bin"),
+            out_path: dir.file("pt.bin"),
+            ..encrypt_args
+        };
+        run_ccm_command(true, &decrypt_args).expect("decrypt should succeed");
+        assert_eq!(std::fs::read(dir.file("pt.bin")).expect("read"), plaintext);
+    }
+
+    #[test]
+    fn run_ccm_command_decrypt_rejects_tampered_ciphertext_without_writing_out() {
+        let dir = TempDir::new("kalyna_ccm_tamper");
+        let key = [0x33u8; 16];
+        let nonce = [0x44u8; 16];
+        let plaintext = b"do not trust me".to_vec();
+        std::fs::write(dir.file("key.bin"), key).expect("write key");
+        std::fs::write(dir.file("nonce.bin"), nonce).expect("write nonce");
+        std::fs::write(dir.file("in.bin"), &plaintext).expect("write input");
+
+        let encrypt_args = CcmArgs {
+            variant: KalynaVariant::K128_128,
+            key_path: dir.file("key.bin"),
+            nonce_path: dir.file("nonce.bin"),
+            aad_path: None,
+            in_path: dir.file("in.bin"),
+            out_path: dir.file("ct.bin"),
+            tag_path: dir.file("tag.bin"),
+        };
+        run_ccm_command(false, &encrypt_args).expect("encrypt should succeed");
+
+        let mut tampered = std::fs::read(dir.file("ct.bin")).expect("read ciphertext");
+        tampered[0] ^= 0x01;
+        std::fs::write(dir.file("ct.bin"), &tampered).expect("write tampered ciphertext");
+
+        let decrypt_args = CcmArgs {
+            in_path: dir.file("ct.bin"),
+            out_path: dir.file("pt.bin"),
+            ..encrypt_args
+        };
+        let result = run_ccm_command(true, &decrypt_args);
+        assert_eq!(result, Err(CliError::CcmVerifyFailed));
+        assert!(!dir.file("pt.bin").exists());
     }
 
     #[test]

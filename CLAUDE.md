@@ -12,8 +12,10 @@ environment. The workspace has two crates:
 - `crates/dstu-core` — the library (`std`/`alloc` feature flags per D-01). `dstu_core::hazmat` has
   three primitives: `kupyna::{Kupyna256, Kupyna512}` (one-shot `digest()` only, no streaming API
   yet, citation `DECISIONS.md` D-10), `kalyna::{Kalyna128_128, Kalyna128_256, Kalyna256_256,
-  Kalyna256_512, Kalyna512_512}` (single-block `encrypt`/`decrypt`, no mode of operation, citation
-  `DECISIONS.md` D-13), and `strumok::{Strumok256, Strumok512}` (keystream generation via
+  Kalyna256_512, Kalyna512_512}` (single-block `encrypt`/`decrypt`, citation `DECISIONS.md` D-13) —
+  plus, as of 2026-07-23, `kalyna_ccm` (all five variants, a provisional Kalyna-alone CCM mode of
+  operation, citation `DECISIONS.md` D-41, still not confirmed against the primary DSTU 7624:2014
+  text — same posture as Strumok below) — and `strumok::{Strumok256, Strumok512}` (keystream generation via
   `apply_keystream`, citation `DECISIONS.md` D-18 — vectors are UAPKI-attributed, not confirmed
   against the official DSTU 8845:2019 text itself, see D-15). All three written test-first;
   Kalyna/Kupyna share S-box/MDS tables via the internal `hazmat::tables` module rather than
@@ -22,7 +24,8 @@ environment. The workspace has two crates:
   three are **confirmed**: `cargo test`, `cargo clippy -- -D warnings`, `cargo fmt --check`, the
   `no_std` build, and `cargo miri test` all pass. Check `TASKS.md` Phase 1 for exactly what's still
   open (independent second-oracle cross-check for Kalyna, Kupyna's streaming API, no high-level
-  wrapper yet, no mode of operation for Kalyna). `cargo fuzz` has now actually been run (all three
+  wrapper yet, `kalyna_ccm`'s nonce-generation strategy still undecided — `TASKS.md` T-82). `cargo
+  fuzz` has now actually been run (all three
   targets, smoke runs, zero crashes) on a Windows dev machine with Visual Studio installed, via the
   MSVC toolchain/target (`DECISIONS.md` D-32) — CI (Linux) remains the unconditional per-push check.
 - `crates/uacrypt` — the CLI binary, renamed 2026-07-23 from its `dstutool` working name
@@ -30,8 +33,10 @@ environment. The workspace has two crates:
   rename still say `dstutool`, left as-is since they're a historical record, not stale docs).
   No longer a placeholder: `kalyna-block encrypt/decrypt`, `kupyna-digest`, and `strumok-crypt`
   subcommands exist (`DECISIONS.md` D-31), used for binary-level performance comparisons
-  (`PERFORMANCE.md`) — still not the eventual file-plus-mode-of-operation CLI the MVP scope below
-  describes, which stays blocked on D-05.
+  (`PERFORMANCE.md`); as of 2026-07-23, `kalyna-ccm encrypt/decrypt` also exists (`DECISIONS.md`
+  D-41) — still deliberately not the reserved top-level `encrypt`/`decrypt` names, since D-05's
+  primary-text confirmation (not just a provisional mode) is what unblocks those, per the
+  file-plus-mode-of-operation CLI the MVP scope below describes.
 
 `cargo xtask <command>` (see `xtask/`, aliased via `.cargo/config.toml`) is the one cross-platform
 build/QA entry point — same command on Linux/Windows/macOS, no new install beyond `cargo` itself.
@@ -200,6 +205,15 @@ Full detail and rationale in `SECURITY.md` — this is the compressed version so
     verify, etc.) "vector-verified," check which steps the vector's given inputs/outputs actually
     reach — anything a fixed vector doesn't reach needs its own test (a property test over random
     inputs, per D-21/D-25, is the tool already established here for exactly this).
+- **A new Cargo feature that changes production behavior (not an inert additive one like
+  `alloc`) breaks `--all-features` as a stand-in for "test the default profile"** — CI needs an
+  explicit default-only step (no extra features) too, or the default path silently drops out of
+  coverage. Learned adding `small-tables` (D-39); `.github/workflows/rust.yml` has the pattern.
+- **Swapping a direct array index (`ARRAY[loop_var]`) for a function call using the same loop
+  variable (`f(loop_var, ...)`) can flip `clippy::needless_range_loop` from clean to a hard
+  error**, even though the loop variable also drives other index arithmetic — a heuristic quirk,
+  not a real readability problem. Resolve with a documented `#[allow]`, don't restructure the
+  loop fighting it (D-39 has the pattern, three instances in `hazmat::kalyna`/`kupyna`).
 
 ## Reference implementations and oracles
 

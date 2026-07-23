@@ -8,6 +8,7 @@
 
 pub mod dstu4145;
 pub mod kalyna;
+pub mod kalyna_ccm;
 pub mod kupyna;
 pub mod strumok;
 mod tables;

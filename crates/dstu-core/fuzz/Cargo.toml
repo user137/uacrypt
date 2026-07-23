@@ -28,6 +28,13 @@ doc = false
 bench = false
 
 [[bin]]
+name = "kalyna_ccm"
+path = "fuzz_targets/kalyna_ccm.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "strumok"
 path = "fuzz_targets/strumok.rs"
 test = false

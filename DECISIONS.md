@@ -37,29 +37,61 @@ a cosmetic one.
 **Rejected:** a custom or "national" random number generator. Rejected because RNG design is the
 single highest-risk area for homegrown cryptography — no benefit justifies the risk here.
 
-## D-05: `secretbox` equivalent is Kalyna encryption + separate Kupyna-based MAC (encrypt-then-MAC)
+## D-05: AEAD working hypothesis is Kalyna-alone CCM, provisional pending the primary text
+(revised 2026-07-23, see D-41's follow-up entry for the original text this replaces)
 
-Symmetric AEAD is built as: Kalyna in a stream-like mode (CTR/OFB-style) for confidentiality, plus
-an independent MAC keyed from Kupyna, encrypt-then-MAC, with distinct encryption and
-authentication keys.
+**Current working hypothesis: Kalyna-alone CCM** (`hazmat::kalyna_ccm`, D-41), not encrypt-then-MAC
+with a separate Kupyna-keyed MAC. This reverses this entry's original stance below - recorded as a
+revision, not a silent overwrite, per `CLAUDE.md`'s "never silently deprecate" rule.
 
-**Rejected:** treating Kalyna alone as an AEAD primitive (à la AES-GCM). Rejected because the DSTU
-7624 text itself specifies that confidentiality + integrity requires combining with DSTU 7564
-(Kupyna) on separate keys — there is no single-primitive AEAD in the standard to call instead. See
-`docs/dstu-crypto-project.md` libsodium-mapping section.
+**Why the reversal, and why it's still provisional:**
+- **New evidence, both independent of each other**: PrivatBank's cryptonite
+  (`oracles/cryptonite/src/cryptonite/c/dstu7624.h`, `dstu7624_init_ccm`/`dstu7624_init_gcm` +
+  `dstu7624_encrypt_mac`/`dstu7624_decrypt_mac`) and Bouncy Castle
+  (`org.bouncycastle.crypto.modes.KCCMBlockCipher`/`KGCMBlockCipher` - DSTU7624-specific, not the
+  generic AES-CCM/GCM classes) **both** implement Kalyna-alone authenticated modes as first-class
+  DSTU 7624 constructions. Two independently-maintained, serious implementations agreeing is
+  meaningfully stronger evidence than cryptonite alone (this entry's original "not yet reconciled"
+  note only had cryptonite to weigh).
+- **Modern AEAD engineering practice points the same way.** Compared against TLS 1.3 and real
+  AES/ChaCha usage (2026-07-23 session, at the user's request): TLS 1.3 (RFC 8446) dropped
+  separate-MAC composition entirely - only combined AEAD suites (AES-GCM, ChaCha20-Poly1305,
+  AES-CCM/CCM_8) are allowed, precisely because hand-rolled MAC-then-encrypt produced a real
+  vulnerability lineage (BEAST, Lucky13, POODLE) from composition mistakes (ordering, timing,
+  padding). AES-GCM/ChaCha20-Poly1305 aren't "one key shared by two unrelated algorithms" either -
+  GCM's `H` subkey and ChaCha20-Poly1305's one-time MAC key are both derived from the same key
+  material inside the single construction, so the caller never manages two keys or an ordering.
+  Encrypt-then-MAC with independent keys is formally sound (Bellare-Namprempre 2000) and is what
+  SSH deliberately chose after the same lesson - but it is more implementation surface
+  (independent key derivation, whole-ciphertext MAC coverage, verify-before-decrypt discipline)
+  than a purpose-built combined AEAD, when one is available. Kalyna-alone CCM is the "one available
+  here" side of that comparison.
+- **Still provisional, not a claim about the primary text.** Nothing above is a reading of the
+  official DSTU 7624:2014 text - it's reference-implementation evidence plus general engineering
+  practice, exactly the class of input this entry's original text said not to resolve the tension
+  from alone. This decision stays open pending that text (still priced/unpurchased, see below);
+  `hazmat::kalyna_ccm` is built and documented as provisional (same posture as Strumok/D-15), and
+  this entry will be revised again (not silently) if the primary text says otherwise.
+- **Scope note**: `hazmat::kalyna_ccm` (D-41) is a standalone hazmat-level primitive users can call
+  directly. It is not, by itself, the `crypto_secretbox`/`crypto_auth` construction (`TASKS.md`
+  T-36/T-37) - those remain blocked on this same D-05 resolution, now with a working hypothesis to
+  build against instead of no hypothesis at all.
 
-**Not yet reconciled:** PrivatBank's cryptonite (`oracles/cryptonite/src/cryptonite/c/dstu7624.h`)
-exposes `dstu7624_init_ccm` / `dstu7624_init_gcm` with a paired `dstu7624_encrypt_mac` /
-`dstu7624_decrypt_mac` API — Kalyna alone, in CCM/GCM-style modes, producing authenticated
-ciphertext without Kupyna. This is in tension with the rejection above and needs checking against
-the actual DSTU 7624 standard text (not currently among `docs/papers/`) before this decision is
-finalized either way — see `oracles/README.md` "Cryptonite" section for the full note. Do not
-resolve this from cryptonite's code alone; it's a 2016 third-party implementation, not the spec.
+**Original text (2026-07-21), superseded above but kept for the record:** Symmetric AEAD was
+decided as Kalyna in a stream-like mode (CTR/OFB-style) for confidentiality, plus an independent
+MAC keyed from Kupyna, encrypt-then-MAC, with distinct encryption and authentication keys. Kalyna
+alone as an AEAD primitive (à la AES-GCM) was rejected, reasoning that the DSTU 7624 text itself
+specifies that confidentiality + integrity requires combining with DSTU 7564 (Kupyna) on separate
+keys - there is no single-primitive AEAD in the standard to call instead. See
+`docs/dstu-crypto-project.md` libsodium-mapping section (itself not yet updated for this revision -
+follow-up needed). This was already flagged the same day as "not yet reconciled" against
+cryptonite's `dstu7624_encrypt_mac` API, which is the tension the revision above resolves
+provisionally, not the first time this tension was noticed.
 
 The official text was priced (2026-07-21) to check on this directly: 29,967.60 UAH for 227 pages
 (includes Amendment No. 1:2016) via `fnd-store.uas.gov.ua/documents/4228` — see `ORACLES.md`
-"Official DSTU text — purchase cost". Deemed cost-prohibitive for now; this tension stays open
-until either the price becomes viable or another authoritative source turns up.
+"Official DSTU text — purchase cost". Deemed cost-prohibitive for now; this decision stays
+provisional until either the price becomes viable or another authoritative source turns up.
 
 ## D-06: Reference/oracle repositories are for test-vector comparison only
 
@@ -1718,3 +1750,111 @@ xtask build` passes.
 **Not done**: `cargo miri test`/`cargo fuzz` specifically under `small-tables` (D-35's stated
 verification bar - official vectors plus differential-oracle harnesses - doesn't require it, and
 neither is re-run here); CI's `miri`/`fuzz-smoke` jobs remain default-profile-only.
+
+## D-40: Kalyna-CCM nonce/counter-width strategy - deferred to its own follow-up task
+
+Raised 2026-07-23 while implementing `hazmat::kalyna_ccm` (D-41): the nonce/counter split
+(`ccm_nb`, and with it the maximum message-count-before-repeat) is a tunable parameter of the CCM
+construction itself, not a fixed constant of DSTU 7624 - confirmed from
+`oracles/uapki/library/uapkic/src/dstu7624.c:4139-4158` (`dstu7624_init_ccm`): counter width
+`nb = ((n_max - 3) >> 3) + 1` bytes, nonce width = `block_len - nb - 1` bytes, both driven by a
+caller-supplied `n_max`. This is the same tradeoff as classical AES-CCM's `L` parameter (NIST SP
+800-38C). D-41's five `(ccm_nb, q)` pairs are exactly what the cross-oracle test vectors specify
+for those five known cases - not a new choice made by this project - but nothing here yet decides
+**how a caller obtains a safe, never-repeating nonce**, which is the actual misuse-resistance
+question (per this project's libsodium-style "nothing for the user to get wrong" goal, no
+user-facing tuning knob should exist for this either).
+
+**Not decided yet, on purpose - tracked as `TASKS.md` T-82, not resolved here:**
+- Nonce reuse under the same key is the most damaging real-world AEAD misuse class. For GCM-style
+  constructions it's catastrophic (full authentication-subkey recovery from two known
+  ciphertext/tag pairs - the reason AES-GCM-SIV, RFC 8452, exists as a remedy). CCM's failure mode
+  on reuse is less catastrophic (its MAC is CBC-MAC-based, not a polynomial hash) but still breaks
+  both confidentiality (recoverable keystream XOR between the two messages) and authentication.
+- Two real-world patterns to choose between: **TLS 1.3's** per-connection monotonic sequence
+  number XORed into a derived IV (uniqueness guaranteed by construction, but needs mutable state
+  tied to the key's lifetime - a bigger API-shape change than it looks, since
+  `hazmat::kalyna_ccm`'s current `seal_in_place`/`open_in_place` take `&self`, not `&mut self`);
+  versus **libsodium's** wide (192-bit, `crypto_secretbox`) random nonce, safe against birthday-
+  bound collision without any state, specifically because the nonce space is wide enough - whether
+  Kalyna-CCM's narrower, block-size-dependent nonce field (11-55 bytes across the five variants,
+  D-41) supports this pattern safely for the smallest block size needs checking before assuming it
+  transfers directly.
+- Resolve this before `hazmat::kalyna_ccm`'s nonce parameter is considered anything other than
+  "whatever the caller passes, currently uncontrolled" - `TASKS.md` T-82 owns finishing this.
+
+## D-41: Kalyna-CCM implemented as the D-05 working hypothesis - provisional, dual-oracle-verified
+
+Follow-up to D-05's revision above, same day (2026-07-23). `dstu_core::hazmat::kalyna_ccm`
+implements DSTU 7624 CCM (all five Kalyna block/key-size variants) as a standalone hazmat-level
+primitive - not `crypto_secretbox` itself, which stays blocked on D-05's primary-text confirmation.
+
+**Citation**: transcribed from `oracles/uapki/library/uapkic/src/dstu7624.c` -
+`dstu7624_init_ccm` (line 4139, the `(ccm_nb, q)` parameterization), `ccm_padd` (line 2621, the
+CBC-MAC authentication header/tag computation), `dstu7624_encrypt_ccm`/`dstu7624_decrypt_ccm`
+(lines 2792/2849, the CTR-keystream composition), `padding` (line 2572, the ISO/IEC 7816-4-style
+0x80-then-zeros pad), and `gamma_gen`/`encrypt_ctr` (lines 2730/2739, the running CTR keystream,
+including its non-obvious "encrypt the nonce once to seed the counter, then increment before every
+real keystream block" indirection - transcribed as-is, not "simplified" to textbook CTR). UAPKI's
+state-expertise pedigree is `ORACLES.md`'s standing trust basis for this source.
+
+**Cross-check, with an explicit caveat on its strength**: all five variants' vectors were checked
+byte-for-byte against `oracles/bouncycastle-java/core/src/test/java/org/bouncycastle/crypto/test/
+DSTU7624Test.java`'s `CCMModeTests` - four of the five (128/128, 256/256, 256/512, 512/512) matched
+UAPKI's own self-test vectors byte-for-byte, an independent-lineage agreement, not the same
+vendor's number twice. **BC's own `KCCMBlockCipher`/`KGCMBlockCipher` Java source is not present in
+this project's vendored sparse checkout of `oracles/bouncycastle-java`** (only the test file
+importing them is) - so this cross-check is against BC's *vector outputs* only, not a second
+reading of BC's construction code, a materially weaker claim than "read both implementations." The
+128/256 variant has no BC vector at all (BC's `CCMModeTests` doesn't cover it) - that one case
+relies on UAPKI alone, flagged in its vector file's `source` field.
+
+**Provisional, not confirmed against the primary text** - same posture as Strumok/D-15, stated in
+the module doc comment, every vector file's `source` field, and this entry.
+
+**A real, sourced scope limit, not a design choice**: `ccm_padd`'s header encodes both the
+plaintext length and the AAD length as a single byte each (`G1[tmp] = (uint8_t) p_data_len`,
+`G2[0] = (uint8_t) a_data_len`) - so this exact construction only correctly authenticates messages
+where both plaintext and AAD are at most 255 bytes. `hazmat::kalyna_ccm::{MAX_PLAINTEXT_LEN,
+MAX_AAD_LEN}` enforce this with an explicit error rather than silently truncating the length field.
+This is also, concretely, the reason this is a genuine *short-message* mode, not just a name.
+
+**API shape, and one deliberate deviation from UAPKI's own function signatures**: UAPKI's
+`dstu7624_decrypt_mac` takes the plaintext (unmasked) tag as a separate caller-supplied parameter
+and doesn't actually use the trailing masked-tag bytes of the ciphertext blob for verification at
+all - an oracle-testing convenience, not a shape a real receiver (who only has the transmitted
+ciphertext+masked-tag blob and the AAD) could reproduce standalone. `hazmat::kalyna_ccm::open_in_
+place` instead recovers the tag by CTR-decrypting the trailing masked-tag bytes itself (mathematically
+equivalent, since XOR-masking is its own inverse) and verifies against that - a self-contained,
+standard AEAD shape (ciphertext+tag as one transmitted unit) rather than requiring an
+out-of-band-known plaintext tag. On verification failure, the buffer is zeroed before returning
+`Err` - the caller can never observe unverified plaintext even transiently, generalizing this
+project's existing "no secret material" discipline to "no unverified plaintext" for AEAD.
+
+**Verified**: all 37 tests pass, first attempt, no debugging needed after the initial `cargo fmt`
+pass - official vectors (all 5 variants, both `seal`/`open` directions, byte-exact ciphertext and
+tag), `proptest` round-trip, and five independent tamper-rejection suites (flipped ciphertext byte,
+flipped tag byte, flipped AAD byte, flipped nonce byte, wrong key - all correctly rejected with the
+buffer zeroed on the ciphertext/nonce cases). `cargo clippy --workspace -- -D warnings` and `cargo
+fmt --check` clean; all 8 `no_std`/`alloc`/`std`/`small-tables` feature combinations (`TASKS.md`
+T-23/T-54) build clean and the CCM test suite passes identically under `small-tables` (needs no
+`cfg` gating of its own - it only calls the existing per-variant `ExpandedKey` API); re-confirmed on
+the Raspberry Pi rig too (`TASKS.md` T-35). `uacrypt`'s new `kalyna-ccm encrypt`/`decrypt`
+subcommand round-tripped a real message through the built release binary and correctly rejected a
+single-byte-flipped ciphertext without writing `--out` (`DECISIONS.md` D-34's "built binary, not
+just in-process" policy). New `cargo fuzz` target (`fuzz_targets/kalyna_ccm.rs`, `TASKS.md` T-81)
+directly attacks `open_in_place` with never-produced-by-`seal_in_place` bytes, not just round-trip
+output - a 60s MSVC smoke run alongside the other three targets found zero crashes (cov 801,
+110,542 execs; all four targets together: exit 0). `cargo miri test` scoped to the five
+official-vector tests (the full `proptest` suite hits a pre-existing proptest+Miri
+directory-isolation interaction on this Windows dev machine, already affecting the
+*already-existing* `kalyna.rs`/`strumok.rs` proptest suites too, not something new introduced here,
+and separately impractically slow to run to completion under Miri regardless) - clean, no UB.
+
+**Not done, by design**: nonce-generation strategy (D-40, `TASKS.md` T-82); wiring this into
+`crypto_secretbox`/`uacrypt`'s reserved top-level `encrypt`/`decrypt` names (still blocked on D-05's
+primary-text confirmation, unchanged by this provisional adoption); GCM (considered, deferred - see
+D-40's sibling reasoning in `TASKS.md`'s Phase-1 CCM task write-up: GCM needs a new, block-size-
+parameterized GF(2^m) field with no existing code in this crate to build on, a materially bigger
+surface for a provisional primitive than CCM's pure composition over the already-verified
+`ExpandedKey::encrypt_block`).

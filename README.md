@@ -4,11 +4,13 @@ An open Rust library for modern Ukrainian cryptographic standards (DSTU) — in 
 spirit of **libsodium** (hard, safe defaults, hard to misuse), not OpenSSL
 (flexible, easy to misuse the API).
 
-**Status:** two primitives landed — `dstu_core::hazmat::kupyna` (Kupyna-256/512, cross-checked
-against real Bouncy Castle) and `dstu_core::hazmat::kalyna` (all 5 block/key-size variants,
-single-block encrypt/decrypt, no mode of operation yet), both tested against official DSTU test
-vectors. Everything else in the table below is still to come. See `TASKS.md` for the phase-by-phase
-backlog and `docs/dstu-crypto-project.md` for the full scope.
+**Status:** `dstu_core::hazmat::kupyna` (Kupyna-256/512, cross-checked against real Bouncy Castle)
+and `dstu_core::hazmat::kalyna` (all 5 block/key-size variants, single-block encrypt/decrypt) have
+landed, both tested against official DSTU test vectors. `dstu_core::hazmat::kalyna_ccm` adds a
+**provisional** Kalyna-alone CCM mode of operation (dual-oracle-verified, not yet confirmed against
+the primary DSTU 7624:2014 text — see `DECISIONS.md` D-41). Everything else in the table below is
+still to come. See `TASKS.md` for the phase-by-phase backlog and `docs/dstu-crypto-project.md` for
+the full scope.
 
 ## Algorithms in scope
 
@@ -145,8 +147,8 @@ change against the saved regression baseline.
 
 The planned file-level `uacrypt encrypt`/`decrypt` (mode of operation over arbitrary-length
 files, see `CLAUDE.md` MVP scope) is not available yet — blocked on `DECISIONS.md` D-05 until a
-mode of operation is chosen. What exists today is `kalyna-block`, a single-block (no mode, no
-padding), `hazmat`-scoped command added for a binary-level performance comparison
+mode of operation is non-provisionally resolved. What exists today: `kalyna-block`, a single-block
+(no mode, no padding), `hazmat`-scoped command added for a binary-level performance comparison
 (`PERFORMANCE.md`, `DECISIONS.md` D-31):
 
 ```
@@ -156,9 +158,28 @@ uacrypt kalyna-block decrypt --variant 128-128 --key key.bin --in ct.bin --out p
 ```
 
 `--key`/`--in`/`--out` are raw binary files of the variant's exact byte length (16/32/64 bytes
-depending on variant — see `--variant`'s five values). Once the file-plus-mode CLI lands, it will
-use the `encrypt`/`decrypt` command names directly; prebuilt binaries via GitHub Releases for
-Windows/Linux/macOS (see `CLAUDE.md` MVP scope) are still planned for that point, not this one.
+depending on variant — see `--variant`'s five values).
+
+`kalyna-ccm` (`DECISIONS.md` D-41) additionally encrypts/authenticates arbitrary-length **short**
+messages (plaintext and `--aad` each capped at 255 bytes — a sourced property of the construction,
+not a CLI restriction, see `hazmat::kalyna_ccm`'s doc comment) using a provisional, dual-oracle-
+verified Kalyna-alone CCM mode, not yet confirmed against the primary DSTU 7624:2014 text:
+
+```
+uacrypt kalyna-ccm encrypt --variant 128-128 --key key.bin --nonce nonce.bin --aad aad.bin --in msg.bin --out ct.bin --tag tag.bin
+uacrypt kalyna-ccm decrypt --variant 128-128 --key key.bin --nonce nonce.bin --aad aad.bin --in ct.bin --out pt.bin --tag tag.bin
+```
+
+`--nonce` is a raw file of exactly the variant's block length (16/32/64 bytes); `--aad` is
+optional (an empty AAD is used if omitted); `decrypt` verifies the tag before writing `--out` and
+fails without writing anything on a mismatch. **Nonces must never repeat under the same key** —
+this CLI does not yet generate or manage them for you (`DECISIONS.md` D-40, `TASKS.md` T-82 tracks
+deciding that).
+
+Neither of these is the eventual file-plus-mode CLI; once that lands (D-05 resolved
+non-provisionally), it will use the reserved `encrypt`/`decrypt` command names directly. Prebuilt
+binaries via GitHub Releases for Windows/Linux/macOS (see `CLAUDE.md` MVP scope) are still planned
+for that point, not this one.
 
 ## Embedded / `no_std` targets
 
