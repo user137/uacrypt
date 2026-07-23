@@ -560,10 +560,31 @@ command names (`CLAUDE.md` MVP scope) are still reserved for whenever that resol
       Kalyna-alone CCM/GCM `encrypt_mac`) — needs the official DSTU 7624 text or another
       authoritative source (priced, see `ORACLES.md`); blocks `crypto_secretbox` design
 - [ ] **T-37** `crypto_secretbox` equivalent (encrypt-then-MAC construction, once D-05 is resolved)
-- [ ] **T-38** `crypto_auth`/`crypto_onetimeauth` equivalent (Kupyna-based MAC or a Kalyna CMAC-like mode
-      — exact mode name TBD against the full DSTU 7624 text). `oracles/uapki/`'s
-      `dstu7564_self_test_kmac` (KMAC-256/384/512, D-16 update 2026-07-22) is unused KAT data
-      waiting for whenever this gets built — not cross-checked, since there's no KMAC impl yet
+- [x] **T-38** **`crypto_auth`/`crypto_onetimeauth` equivalent - Kupyna-based KMAC, implemented
+      2026-07-23** (`DECISIONS.md` D-44, first item from `docs/release-readiness.md`'s ordered
+      plan). Provisional (primary DSTU 7564:2014 text not read - `docs/papers/Kupyna.pdf` names the
+      MAC mode but doesn't describe it), but on **stronger evidence than Strumok/Kalyna-CCM's
+      equivalent caveats**: both `oracles/uapki/library/uapkic/src/dstu7564.c` (`dstu7564_init_kmac`
+      et al.) and the fully independent `oracles/bouncycastle-java/.../macs/DSTU7564Mac.java` were
+      read (not just one plus the other's vectors), and their self-test vectors for all three sizes
+      (MAC-256/384/512) agree byte-for-byte -
+      `crates/dstu-core/tests/vectors/kupyna-kmac/kmac-{256,384,512}.json`. New `hazmat::
+      kupyna_kmac` module (`Kupyna256Kmac`/`Kupyna384Kmac`/`Kupyna512Kmac`, each `mac`/`verify`,
+      the latter constant-time via `subtle::ConstantTimeEq`); required promoting `hazmat::kupyna`'s
+      internal `KupynaCore` and its padding-tail formula to `pub(crate)` so the KMAC construction
+      could drive the same running compression state directly (feeding `PAD(K)`, `M`, `PAD(M)`'s
+      suffix, `~K` in sequence, then one ordinary `finalize`) rather than only through the public
+      one-shot/streaming API. Test-first, **all 6 tests green on the first attempt** (3 official
+      vectors including the MAC-384 truncation case - the only one of the three where `mac_len` is
+      smaller than the underlying digest's natural size, non-negotiable per the advisor consult
+      before implementation - plus wrong-key-length/tampered-MAC/tampered-message rejections).
+      `cargo test --workspace`/`clippy -D warnings`/`fmt --check` clean; 6 of 8 feature
+      combinations re-checked (no `alloc` used, no new `cfg`); `cargo +nightly miri test -p
+      dstu-core --test kupyna_kmac` clean (~22s, no `proptest` in this file so none of the CI
+      miri-slowness applies); existing `kupyna.rs` official-vector tests re-run under Miri too,
+      confirming the `KupynaCore` refactor didn't disturb the pre-existing paths. No CLI wiring yet
+      (not required by this task's own scope - `uacrypt` command surface, if wanted, is a separate
+      follow-up).
 - [ ] **T-39** `crypto_kdf` equivalent (HKDF-like construction over Kupyna)
 - [ ] **T-40** `crypto_secretstream` equivalent (chunked authenticated encryption over Strumok or
       Kalyna-CTR)

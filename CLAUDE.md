@@ -16,7 +16,10 @@ environment. The workspace has two crates:
   Kalyna256_512, Kalyna512_512}` (single-block `encrypt`/`decrypt`, citation `DECISIONS.md` D-13) —
   plus, as of 2026-07-23, `kalyna_ccm` (all five variants, a provisional Kalyna-alone CCM mode of
   operation, citation `DECISIONS.md` D-41, still not confirmed against the primary DSTU 7624:2014
-  text — same posture as Strumok below) — and `strumok::{Strumok256, Strumok512}` (keystream generation via
+  text — same posture as Strumok below) and `kupyna_kmac::{Kupyna256Kmac, Kupyna384Kmac,
+  Kupyna512Kmac}` (the `crypto_auth` equivalent, citation `DECISIONS.md` D-44 — provisional too, but
+  on stronger dual-oracle evidence than `kalyna_ccm`/Strumok since both reference constructions were
+  read, not just one plus the other's vectors) — and `strumok::{Strumok256, Strumok512}` (keystream generation via
   `apply_keystream`, citation `DECISIONS.md` D-18 — vectors are UAPKI-attributed, not confirmed
   against the official DSTU 8845:2019 text itself, see D-15). All three written test-first;
   Kalyna/Kupyna share S-box/MDS tables via the internal `hazmat::tables` module rather than
@@ -230,6 +233,18 @@ Full detail and rationale in `SECURITY.md` — this is the compressed version so
   error**, even though the loop variable also drives other index arithmetic — a heuristic quirk,
   not a real readability problem. Resolve with a documented `#[allow]`, don't restructure the
   loop fighting it (D-39 has the pattern, three instances in `hazmat::kalyna`/`kupyna`).
+- **`rust-toolchain.toml` pins `stable` repo-wide, which silently overrides a CI step's installed
+  nightly toolchain** (`dtolnay/rust-toolchain@nightly`) for any bare `cargo` invocation in the
+  same job — the step doesn't error on the wrong toolchain, it just runs under `stable` and fails
+  confusingly later (e.g. `-Z` flags "only accepted on the nightly compiler"). Any CI step needing
+  nightly (miri, fuzz) must say `cargo +nightly ...` explicitly, same as `xtask` already does
+  locally — confirmed missing in `.github/workflows/rust.yml` for a full day after both jobs were
+  first wired up (T-85), since `xtask`'s own local runs never hit it.
+- **Bumping a workspace crate's version means updating it in (at least) two places**: the crate's
+  own `[package] version`, and any other workspace crate's path-dependency `version =` field
+  pointing at it (`uacrypt`'s `dstu-core = { path = ..., version = "..." }`). Missing the second
+  silently reintroduces the wildcard-dependency problem `cargo deny` once caught (T-75/D-11).
+  Regenerate `Cargo.lock` via a real build afterward, don't hand-edit it (D-43).
 
 ## Reference implementations and oracles
 

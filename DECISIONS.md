@@ -2050,3 +2050,66 @@ bumps.
 
 See `docs/release-readiness.md` (added same day) for the fuller gap analysis - what a genuine
 libsodium-equivalent 1.0 release still needs beyond this version bump.
+
+## D-44: Kupyna-based KMAC (`crypto_auth` equivalent) implemented - dual-oracle, both constructions read
+
+`TASKS.md` T-38, first item worked from `docs/release-readiness.md`'s ordered list (T-38/T-39/
+T-40/T-48). `docs/papers/Kupyna.pdf` states DSTU 7564:2014 "defines both the hash function and its
+additional mode for message authentication code generation" but does not itself describe that mode
+anywhere in its 536 lines (checked directly via `pdftotext` + `grep`, not assumed) - so, same
+posture as Strumok (D-15) and Kalyna-CCM (D-41), this construction is **provisional**, cited to
+reference implementations rather than the primary standard text.
+
+**Stronger evidence than either of those two precedents, though, and worth stating plainly rather
+than hedging identically**: this time **both** implementations' actual construction code was read,
+not just one plus the other's vector output.
+`oracles/uapki/library/uapkic/src/dstu7564.c`'s `dstu7564_init_kmac`/`_update_kmac`/`_final_kmac`
+(its own comment states the construction directly: `HMAC(M,K) = H(PAD(K) || PAD(M) || (~K))`) and
+`oracles/bouncycastle-java/.../macs/DSTU7564Mac.java` (a genuinely independent Java implementation,
+not a port of the C - different vendor, different language, different code shape) agree
+byte-for-byte on all three self-test vectors (MAC-256/384/512) - see `crates/dstu-core/tests/
+vectors/kupyna-kmac/kmac-{256,384,512}.json`, each recording which of BC's `macTests()` cases it
+matches. Full algorithm citation in `docs/pseudocode/kupyna-kmac.md`.
+
+**Construction, briefly** (both oracles agree): key `K` must be exactly `mac_len` bytes (32/48/64 -
+UAPKI hard-enforces this via `CHECK_PARAM`; BC's own code is more permissive but no vector anywhere
+exercises a different length, so this project matches the *stricter*, fully-tested behavior rather
+than building an untested code path). `MAC = H(PAD(K) || PAD(M) || ~K)`, where `PAD(K)` uses `K`'s
+own bit-length, `PAD(M)` uses `M`'s own bit-length (not `K`'s length added in), `~K` is the
+bitwise complement of `K`, and the outermost `H` is Kupyna's completely ordinary finalize, whose own
+length field naturally ends up correct (the true total of everything fed to it) purely from feeding
+those three pieces through `KupynaCore::update` in order - no separate length-tracking needed
+beyond what `KupynaCore` already does. MAC-256 uses Kupyna-256's block structure; **MAC-384 is not
+a separate hash variant** - it and MAC-512 both use Kupyna-512's 1024-bit-block structure, truncated
+to 48 or 64 bytes from the tail respectively (`KupynaCore::finalize`'s existing `output_bytes`
+parameter already does exactly this truncation, reused as-is with `output_bytes = 48` - no new
+truncation logic needed). MAC-384 is the *only* one of the three vectors that exercises this
+truncation-direction question (48 < 64, unlike the other two where `mac_len` equals the underlying
+digest's own natural output size) - non-negotiable to include for exactly that reason, confirmed by
+the advisor consult before implementation.
+
+**Implementation**: new sibling module `hazmat::kupyna_kmac` (`crates/dstu-core/src/hazmat/
+kupyna_kmac.rs`), registered in `hazmat/mod.rs`. Required refactoring `hazmat::kupyna`'s internal
+`KupynaCore`: its padding-tail formula (`0x80` || zero bytes || 96-bit LE length) was extracted from
+`finalize` into a shared `pub(crate)` `kupyna_padding` function, and `KupynaCore` itself (plus
+`new`/`update`/`finalize`/`block_bytes`, plus a new `buffered()` accessor) made `pub(crate)` so
+`kupyna_kmac` can drive the same running compression state through its three-part construction
+directly, rather than only through the public one-shot/streaming API's automatic single-pad-and-
+done semantics. Three public unit structs (`Kupyna256Kmac`/`Kupyna384Kmac`/`Kupyna512Kmac`), each
+with `mac(key, message) -> Result<[u8; N], KmacError>` and a `verify(key, message, expected) ->
+Result<(), KmacError>` using `subtle::ConstantTimeEq` for the tag comparison (per `SECURITY.md`'s
+hard constraint - a MAC verification is exactly the "secret comparison" category that rule exists
+for). `KmacError::WrongKeyLength`/`TagMismatch`. The one subtlety worth flagging for future
+reference: `PAD(M)`'s padding suffix must be fed through `update` as *only the new bytes* (`0x80`
+onward) - the already-buffered tail of `M` is already sitting inside `KupynaCore`'s own buffer from
+the preceding `update(message)` call, so re-including it in the fed slice would double-count it.
+
+**Verified, test-first**: all 6 tests (3 official vectors including MAC-384's truncation case, a
+wrong-key-length rejection, a tampered-MAC rejection, a tampered-message rejection) written before
+the implementation, all green on the **first attempt** - no debugging cycle needed, unlike T-83's
+Kupyna-streaming buffering bug. `cargo test --workspace`/`clippy -D warnings`/`fmt --check` all
+clean; 6 of the 8 `no_std`/`alloc`/`std`/`small-tables` feature combinations re-checked (uses no
+`alloc`, no new `cfg` gating). `cargo +nightly miri test -p dstu-core --test kupyna_kmac` clean (no
+UB, ~22s, no `proptest` in this test file so none of the CI miri-slowness applies here); the
+existing `kupyna.rs` official-vector tests re-run under Miri too, confirming the `KupynaCore`
+refactor didn't disturb the pre-existing streaming/one-shot paths.

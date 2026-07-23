@@ -150,10 +150,38 @@ fn bytes_to_columns(bytes: &[u8], columns: usize) -> [[u8; ROWS]; MAX_COLUMNS] {
     out
 }
 
-/// Incremental compression state shared by the one-shot `digest_generic` and the public streaming
-/// `Kupyna256Hasher`/`Kupyna512Hasher` below - `digest_generic` is now just `new` + one `update` +
-/// `finalize`, so there is exactly one implementation of the padding/length-tracking logic, not two.
-struct KupynaCore {
+/// Kupyna's own padding formula (`0x80` || zero bytes || 96-bit little-endian bit-length, sized so
+/// the result brings `prefix` up to a whole number of `block_bytes`-byte blocks) applied to an
+/// already-buffered `prefix` with a caller-supplied bit-length field. Shared by `KupynaCore::
+/// finalize`'s own padding and `hazmat::kupyna_kmac`'s two independent padding points (`PAD(K)`,
+/// `PAD(M)`), which each need this formula applied with a length value other than `KupynaCore`'s
+/// own running `total_len` - factored out so there is one implementation of this formula, not
+/// three. Returns the padding buffer and how many of its bytes are actually used.
+pub(crate) fn kupyna_padding(
+    prefix: &[u8],
+    msg_bits: u64,
+    block_bytes: usize,
+) -> ([u8; 2 * MAX_BLOCK_BYTES], usize) {
+    let mut tail = [0u8; 2 * MAX_BLOCK_BYTES];
+    let mut pos = prefix.len();
+    tail[..pos].copy_from_slice(prefix);
+    tail[pos] = 0x80;
+    pos += 1;
+    let used = pos + 12;
+    let zero_bytes = (block_bytes - (used % block_bytes)) % block_bytes;
+    pos += zero_bytes;
+    tail[pos..pos + 8].copy_from_slice(&msg_bits.to_le_bytes());
+    pos += 12; // upper 4 bytes of the 96-bit length field stay zero (message lengths fit in u64 bits)
+    (tail, pos)
+}
+
+/// Incremental compression state shared by the one-shot `digest_generic`, the public streaming
+/// `Kupyna256Hasher`/`Kupyna512Hasher` below, and `hazmat::kupyna_kmac` - `digest_generic` is now
+/// just `new` + one `update` + `finalize`, so there is exactly one implementation of the
+/// padding/length-tracking logic, not two. `pub(crate)` (not `pub`) since `kupyna_kmac` needs
+/// direct access to feed its two independent padding points into the same running compression
+/// state, a lower level of control than the public `Kupyna*Hasher` streaming API exposes.
+pub(crate) struct KupynaCore {
     h: [[u8; ROWS]; MAX_COLUMNS],
     /// Bytes not yet folded into `h` - always fewer than `block_bytes()`, per `update`'s invariant.
     buffer: [u8; MAX_BLOCK_BYTES],
@@ -168,7 +196,7 @@ struct KupynaCore {
 
 impl KupynaCore {
     #[allow(clippy::cast_possible_truncation)] // block_bytes is 64 or 128, always fits u8
-    fn new(columns: usize, rounds: usize, last_row_shift: usize) -> Self {
+    pub(crate) fn new(columns: usize, rounds: usize, last_row_shift: usize) -> Self {
         let block_bytes = columns * ROWS;
         let mut h = [[0u8; ROWS]; MAX_COLUMNS];
         h[0][0] = block_bytes as u8; // official IV - see docs/pseudocode/kupyna.md "Initial value"
@@ -183,8 +211,15 @@ impl KupynaCore {
         }
     }
 
-    fn block_bytes(&self) -> usize {
+    pub(crate) fn block_bytes(&self) -> usize {
         self.columns * ROWS
+    }
+
+    /// The currently-buffered, not-yet-compressed tail of everything fed to `update` so far -
+    /// `kupyna_kmac` needs this to correctly compute `PAD(M)`'s length-field padding relative to
+    /// what's actually still buffered, the same way `finalize` below does for its own padding.
+    pub(crate) fn buffered(&self) -> &[u8] {
+        &self.buffer[..self.buffer_len]
     }
 
     fn compress_block(&mut self, block: &[u8]) {
@@ -198,7 +233,7 @@ impl KupynaCore {
     }
 
     #[allow(clippy::cast_possible_truncation)] // data.len() here is always << u64::MAX
-    fn update(&mut self, mut data: &[u8]) {
+    pub(crate) fn update(&mut self, mut data: &[u8]) {
         self.total_len += data.len() as u64;
         let block_bytes = self.block_bytes();
 
@@ -233,24 +268,14 @@ impl KupynaCore {
     /// Consumes `self`: pads the buffered tail with the remaining message-length data, runs the
     /// output transformation, and returns a 64-byte buffer - callers truncate to `output_bytes`,
     /// same convention `digest_generic` used to return directly.
-    fn finalize(mut self, output_bytes: usize) -> [u8; 64] {
+    pub(crate) fn finalize(mut self, output_bytes: usize) -> [u8; 64] {
         let block_bytes = self.block_bytes();
 
         // Padding: buffered tail || 0x80 || zero bytes || 96-bit little-endian length, sized to
-        // fill whole block(s). `zero_bytes` derived so total length is a multiple of `block_bytes`
-        // - equivalent to the spec's bit-level `d = (-N-97) mod l` formula for byte-aligned N (see
-        // DECISIONS.md D-10 for the derivation).
-        let mut tail = [0u8; 2 * MAX_BLOCK_BYTES];
-        let mut pos = self.buffer_len;
-        tail[..pos].copy_from_slice(&self.buffer[..pos]);
-        tail[pos] = 0x80;
-        pos += 1;
-        let used = pos + 12;
-        let zero_bytes = (block_bytes - (used % block_bytes)) % block_bytes;
-        pos += zero_bytes;
+        // fill whole block(s) - equivalent to the spec's bit-level `d = (-N-97) mod l` formula for
+        // byte-aligned N (see DECISIONS.md D-10 for the derivation).
         let msg_bits: u64 = self.total_len * 8;
-        tail[pos..pos + 8].copy_from_slice(&msg_bits.to_le_bytes());
-        pos += 12; // upper 4 bytes of the 96-bit length field stay zero (total_len fits in u64 bits)
+        let (tail, pos) = kupyna_padding(&self.buffer[..self.buffer_len], msg_bits, block_bytes);
 
         let tail_blocks = pos / block_bytes;
         for i in 0..tail_blocks {

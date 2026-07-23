@@ -40,7 +40,7 @@ independent second-oracle cross-check (Bouncy Castle, Java and .NET):
 | Algorithm | Standard | Status |
 |---|---|---|
 | Kalyna | DSTU 7624:2014 | All 5 block/key-size variants, single-block encrypt/decrypt, `ExpandedKey` API. Vector-confirmed + dual-oracle. **Mode of operation**: only the provisional CCM above — no CBC/CFB/OFB/CTR/CMAC/XTS/GMAC from the standard's other ~10 modes are implemented (`TASKS.md` T-10's note: UAPKI's self-tests for those exist as unused KAT data). |
-| Kupyna | DSTU 7564:2014 | Both 256/512 variants, one-shot `digest()` and streaming `Hasher`. Vector-confirmed + dual-oracle. No KMAC (Kupyna-based MAC) yet — UAPKI's `dstu7564_self_test_kmac` vectors sit unused (`TASKS.md` T-38). |
+| Kupyna | DSTU 7564:2014 | Both 256/512 variants, one-shot `digest()` and streaming `Hasher`. Vector-confirmed + dual-oracle. KMAC (`crypto_auth` equivalent) now implemented too — `hazmat::kupyna_kmac`, dual-oracle with both constructions read (`TASKS.md` T-38, `DECISIONS.md` D-44), same provisional-pending-primary-text caveat. |
 | Strumok | DSTU 8845:2019 | Both 256/512-bit key variants, keystream `apply_keystream`. **UAPKI-attributed vectors only** — no independent confirmation against the primary text exists anywhere (D-15) since no such oracle has been found; this is a provenance ceiling, not a code-quality gap. |
 
 DSTU 4145-2002 (digital signatures) is further along than `docs/dstu-crypto-project.md`'s own
@@ -77,7 +77,7 @@ built yet) is decided but the high-level layer itself doesn't exist for *any* pr
 | `crypto_sign` | DSTU 4145 | hazmat done (m=163 only); no high-level wrapper (T-48) |
 | `crypto_box` | DSTU 9041 | **Hard-blocked** — zero source material exists for DSTU 9041 anywhere (no paper, no oracle, no pseudocode); cannot start (T-46) |
 | `crypto_secretbox` | Kalyna-CCM, provisionally | Blocked on D-05 (T-36/T-37) |
-| `crypto_auth`/`crypto_onetimeauth` | Kupyna-based MAC or a Kalyna CMAC-like mode | Not started (T-38); exact mode name needs the full DSTU 7624 text |
+| `crypto_auth`/`crypto_onetimeauth` | Kupyna-based KMAC | **Done** (T-38, D-44) — provisional pending the primary text, but dual-oracle with both constructions read |
 | `crypto_kdf` | HKDF-like construction over Kupyna | Not started (T-39) |
 | `crypto_kx` | DH on the DSTU 4145/9041 curve | Not started (T-47); DSTU 9041 side hard-blocked |
 | `crypto_secretstream` | Chunked authenticated encryption over Strumok/Kalyna-CTR | Not started (T-40) |
@@ -116,8 +116,9 @@ In rough dependency order:
 2. **Close Strumok's provenance gap (D-15)**, if the paid DSTU 8845:2019 text becomes available —
    otherwise, the release must state "Strumok vectors are UAPKI-attributed, not primary-confirmed"
    as prominently as the README banner now states the pre-release status generally.
-3. **Build the missing constructions**: `crypto_auth`/`crypto_kdf`/`crypto_secretstream` (T-38/
-   T-39/T-40) — none are blocked on external material, only on engineering time.
+3. **Build the missing constructions**: `crypto_auth` done (T-38, D-44); `crypto_kdf`/
+   `crypto_secretstream` (T-39/T-40) remain — none are blocked on external material, only on
+   engineering time.
 4. **Build the high-level layer** (D-09's second layer) over every `hazmat` primitive that's ready —
    this is what actually makes the API "libsodium-equivalent" in feel, not just in algorithm
    coverage.

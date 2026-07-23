@@ -144,9 +144,12 @@ project funding changes rather than re-researched from scratch.
   (script, not eyeball) against `kupyna-{256,512}.json`: all 12 cases match exactly. Confirms
   UAPKI reproduces the same official `Kupyna.pdf` vector set already used by `cargo test`, not a
   second independent reading (see `oracles/README.md` for the state-expertise pedigree caveat).
-  The same file's `dstu7564_self_test_kmac` (3 cases, KMAC-256/384/512) is separate, new data —
-  a Kupyna-based MAC this project hasn't implemented yet, relevant to the open `crypto_auth`
-  design question (`TASKS.md`), unchecked because there's nothing of ours to check it against.
+  The same file's `dstu7564_self_test_kmac` (3 cases, KMAC-256/384/512) is separate data, **now
+  implemented** (`hazmat::kupyna_kmac`, `TASKS.md` T-38, `DECISIONS.md` D-44): its construction
+  (`dstu7564_init_kmac`/`_update_kmac`/`_final_kmac`) was read directly, not just its vectors, and
+  cross-checked against `oracles/bouncycastle-java/.../macs/DSTU7564Mac.java` - a fully independent
+  Java implementation whose own construction was also read - byte-for-byte matching on all three
+  self-test vectors. See `docs/pseudocode/kupyna-kmac.md` for the full citation.
 
 ### Strumok (DSTU 8845)
 - **Pseudocode:** `docs/pseudocode/strumok.md` — transcribed from `Strumok.pdf`, cross-checked
