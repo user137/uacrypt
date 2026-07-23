@@ -608,8 +608,31 @@ command names (`CLAUDE.md` MVP scope) are still reserved for whenever that resol
       +nightly miri test` hit the same pre-existing proptest+Miri isolation crash as every other
       `proptest`-using file in this workspace (T-81/T-85) - confirmed clean (no UB) with the same
       local workaround (`MIRIFLAGS=-Zmiri-disable-isolation PROPTEST_CASES=8`, ~174s).
-- [ ] **T-40** `crypto_secretstream` equivalent (chunked authenticated encryption over Strumok or
-      Kalyna-CTR)
+- [ ] **T-40** **Blocked on D-05, not merely unscheduled - re-scoped 2026-07-24** (skipped in the
+      T-38/39/40/48 working order, T-48 taken instead; `docs/release-readiness.md` updated to
+      match). Any *practical* `crypto_secretstream` needs per-chunk authenticated encryption over
+      an unbounded/large chunk size - and this project's only AEAD construction, `hazmat::
+      kalyna_ccm`, caps plaintext/AAD at 255 bytes each (D-41's sourced limit), too small for a
+      realistic streaming chunk. The natural-looking gap-fill (a fresh Strumok-encrypt +
+      Kupyna-KMAC-authenticate encrypt-then-MAC composition, since both primitives already exist)
+      **is exactly the construction D-05 is the open question about** - building it under a
+      "secretstream" banner would silently resolve D-05 on the EtM side without the primary text,
+      the precise "don't build an ad-hoc mode just to have something" failure `CLAUDE.md` names.
+      T-36/T-37 (`crypto_secretbox` = that same composition question) are explicitly blocked on
+      D-05 already; T-40 sits on top of whichever answer T-37 lands on, so it can't be built first.
+      **A user architecture question surfaced and answered while re-scoping this, worth recording**:
+      is Strumok+KMAC EtM "the TLS 1.3 / safe-AES-modes architecture"? No - TLS 1.3 (RFC 8446)
+      removed independently-composed encrypt-then-MAC entirely and allows only combined AEAD
+      suites (AES-GCM, ChaCha20-Poly1305, **AES-CCM**) specifically because composing independent
+      primitives was the surface behind BEAST/Lucky13/POODLE in TLS 1.2. Kalyna-CCM (D-41's
+      provisional hypothesis) is structurally the *closer* match to that lineage - CCM is one of
+      TLS 1.3's own three allowed suites - while a from-scratch Strumok+KMAC EtM would be the
+      SSH-style independent-composition school instead, formally sound (Bellare-Namprempre) but a
+      different, more implementation-surface-heavy design lineage, and not something to back into
+      by default via a secretstream implementation. Chunked Kalyna-CCM (255-byte chunks) remains a
+      possible, if impractical, way to build *something* here without taking a new D-05 stance -
+      not chosen either, just not ruled out. See `TASKS.md` T-70 (the same task under the
+      high-level-layer numbering) and `docs/release-readiness.md`.
 - [x] **T-41** DSTU 4145: official standard text obtained (`docs/papers/DSTU_4145-2002.pdf`, 2026-07-22) —
       its Annex B.1 (GF(2^163), polynomial basis) worked example extracted into
       `crates/dstu-core/tests/vectors/dstu4145/gf2m163.json` and independently cross-checked
@@ -771,13 +794,16 @@ Two-layer split (`hazmat` now, high-level "easy" layer later) decided in `DECISI
 - [ ] **T-65** high-level "easy" layer (name TBD) — not started; nothing needs it yet (no keyed/nonce-based
       primitive is implemented before Strumok or `crypto_secretbox`, both currently blocked)
 - [ ] **T-66** `crypto_secretbox` construction (over `hazmat::kalyna` + `hazmat::kupyna`) — blocked on D-05
-- [ ] **T-67** `crypto_auth`/`crypto_onetimeauth` construction (over `hazmat::kupyna`) — needs
-      `hazmat::kalyna`/`hazmat::kupyna` done first
-- [ ] **T-68** `crypto_kdf` construction (over `hazmat::kupyna`) — needs `hazmat::kupyna` done first
+- [x] **T-67** `crypto_auth`/`crypto_onetimeauth` construction (over `hazmat::kupyna`) — **done, see
+      T-38/`DECISIONS.md` D-44** (`hazmat::kupyna_kmac`). This entry predates T-38's numbering
+      (both track the same work); not renumbered per the "IDs are never reused/renumbered" rule.
+- [x] **T-68** `crypto_kdf` construction (over `hazmat::kupyna`) — **done, see T-39/`DECISIONS.md`
+      D-45** (`hazmat::kupyna_kdf`). Same duplicate-numbering note as T-67 above.
 - [ ] **T-69** `crypto_kx` construction (over `hazmat::dstu4145`/`dstu9041`) — needs both curves; DSTU 9041
       side is hard-blocked
-- [ ] **T-70** `crypto_secretstream` construction (over `hazmat::strumok`/`hazmat::kalyna`) — needs its
-      underlying primitive done first
+- [ ] **T-70** `crypto_secretstream` construction (over `hazmat::strumok`/`hazmat::kalyna`) — **blocked
+      on D-05, see T-40's 2026-07-24 re-scoping note** (same duplicate-numbering situation as
+      T-67/T-68 above, this time both entries staying open together since neither is done).
 - [ ] **T-71** `crypto_pwhash` (plain Argon2id, high-level layer only, not DSTU) — not started, no blocker
 - [ ] **T-72** `randombytes` (OS CSPRNG via `getrandom`, high-level layer only, not DSTU) — not started,
       only needed once the high-level layer exists. **Read `DECISIONS.md` D-04's 2026-07-23

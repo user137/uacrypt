@@ -24,6 +24,11 @@ source. Everything downstream of it inherits the same "provisional" status:
   text either (D-15) — the same category of gap, on a different algorithm.
 - There is no `crypto_secretbox`-equivalent construction at all yet — `hazmat::kalyna_ccm` is a
   standalone hazmat primitive, not wired up as one (`TASKS.md` T-36/T-37, both blocked on D-05).
+- **Confirmed 2026-07-24, scoping T-40**: `crypto_secretstream` is not an independent gap either -
+  it needs the *same* AEAD composition question D-05 asks, just chunked. Building it via a fresh
+  Strumok+KMAC encrypt-then-MAC composition (the obvious-looking gap-fill, since both primitives
+  already exist) would silently answer D-05 on the EtM side without the primary text - exactly the
+  ad-hoc-construction failure this project's own discipline exists to prevent.
 
 A release billed as "current, safe modes" cannot honestly ship on top of constructions the project's
 own documentation already flags as unconfirmed. Closing this gap needs either (a) acquiring the
@@ -80,7 +85,7 @@ built yet) is decided but the high-level layer itself doesn't exist for *any* pr
 | `crypto_auth`/`crypto_onetimeauth` | Kupyna-based KMAC | **Done** (T-38, D-44) — provisional pending the primary text, but dual-oracle with both constructions read |
 | `crypto_kdf` | Kupyna-based KDF (libsodium `crypto_kdf`-shaped, not HKDF) | **Done** (T-39, D-45) — no DSTU standard or reference implementation exists for this at all, so unlike every other "provisional" row above, there is no oracle vector, ever; verification is determinism + distinctness property tests only |
 | `crypto_kx` | DH on the DSTU 4145/9041 curve | Not started (T-47); DSTU 9041 side hard-blocked |
-| `crypto_secretstream` | Chunked authenticated encryption over Strumok/Kalyna-CTR | Not started (T-40) |
+| `crypto_secretstream` | Chunked authenticated encryption over Strumok/Kalyna-CTR | **Blocked on D-05, not merely unscheduled** (T-40, re-scoped 2026-07-24) — needs per-chunk AEAD over a large chunk size, and the only AEAD here (`kalyna_ccm`) caps at 255 bytes; the natural gap-fill (a fresh Strumok+KMAC encrypt-then-MAC) *is* the D-05 question, so building it here would silently resolve D-05 on the EtM side without the primary text |
 | `crypto_pwhash` | Not a DSTU question — plain Argon2id | Not started; no blocker, deliberately non-"Ukrainized" (documented decision) |
 | `randombytes` | Not a DSTU question — OS CSPRNG via `getrandom` | Only exists inside `uacrypt` (CLI-only, D-04 addendum); no core-crate high-level wrapper yet |
 
@@ -117,8 +122,11 @@ In rough dependency order:
    otherwise, the release must state "Strumok vectors are UAPKI-attributed, not primary-confirmed"
    as prominently as the README banner now states the pre-release status generally.
 3. **Build the missing constructions**: `crypto_auth` (T-38, D-44) and `crypto_kdf` (T-39, D-45)
-   done; `crypto_secretstream` (T-40) remains — not blocked on external material, only engineering
-   time.
+   done, neither blocked on external material. `crypto_secretstream` (T-40) turned out to **not**
+   belong in this "just engineering time" bucket on closer look (2026-07-24) - it needs per-chunk
+   AEAD over a realistic chunk size, and the only AEAD here (`kalyna_ccm`) caps at 255 bytes; the
+   natural gap-fill construction is the same one D-05/T-36/T-37 are blocked on, so it moves to
+   step 1's dependency instead of running in parallel with it.
 4. **Build the high-level layer** (D-09's second layer) over every `hazmat` primitive that's ready —
    this is what actually makes the API "libsodium-equivalent" in feel, not just in algorithm
    coverage.
