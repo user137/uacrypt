@@ -873,8 +873,26 @@ convention invented per language.
          still exercises every proptest code path under Miri's UB checker at least once, rather
          than skipping those paths' Miri coverage entirely the way a skip-list would have.
       Verified via `gh run view --json jobs` + `gh api .../actions/jobs/<id>/logs` per job (not
-      guessed from the summary page), then a real `gh run watch` after each push confirming
-      fuzz/audit/build went green immediately and miri went green after the env-var fix.
+      guessed from the summary page); `gh run watch` after each push confirmed fuzz/audit/build
+      went green immediately - **miri itself did not**, see the follow-up below (correcting an
+      earlier over-optimistic note here that assumed it would).
+      **Follow-up, 2026-07-23/24: `PROPTEST_CASES=1` did not actually bound the miri job's
+      wall-clock time.** Watched it directly rather than assuming success: it ran past an hour with
+      no sign of finishing, and three separate pushes each started their own miri run, which
+      GitHub Actions does not cancel automatically - three concurrent ~1h+ runs stacked up before
+      this was caught. Root cause understood, not just observed: at least one proptest suite
+      (`dstu4145_sign_verify_roundtrip`, whose `sign`+`verify` calls run `Point::scalar_multiply`'s
+      163-iteration constant-time ladder three times each - already flagged in T-45 as the slowest
+      thing in this codebase under Miri) is dominated by *per-case interpretation cost*, not case
+      *count* - cutting `PROPTEST_CASES` from 256 to 1 doesn't help when a single case is itself
+      the bottleneck. Cancelled all three stale runs (`gh run cancel`). Fixed two things, not the
+      underlying slowness itself (deferred, see the timeout comment in `rust.yml`): added a
+      top-level `concurrency` group (`cancel-in-progress: true`) so a new push cancels a still-
+      running previous one instead of piling up, and `timeout-minutes: 30` on the `miri` job
+      specifically so a run that can't finish fails fast and frees the runner rather than
+      occupying it for hours. **Still open**: whether 30 minutes is actually enough, and if not,
+      the real fix is scoping `miri` away from the specific slow suite(s) (or proptest entirely),
+      not raising the timeout further - noted inline in `rust.yml` for whoever hits this next.
 - [x] **T-80** Extract Bouncy Castle's own DSTU 4145 known-answer test data — done as
       `crates/dstu-core/tests/vectors/dstu4145/gf2m163.json` (2026-07-22, D-14), transcribed from
       the official standard's own Annex B.1 worked example and cross-checked against

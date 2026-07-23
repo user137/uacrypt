@@ -5,6 +5,14 @@ on:
     branches: [main, master]
   pull_request:
 
+# A push while a previous run on the same branch is still in progress (e.g. the miri job below,
+# which can run long) now cancels the stale run instead of letting it pile up alongside the new
+# one - confirmed necessary 2026-07-23/24 after three concurrent miri runs (up to ~1h each) stacked
+# up across a few pushes in one session (TASKS.md T-85's follow-up).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   CARGO_TERM_COLOR: always
 
@@ -40,6 +48,14 @@ jobs:
   miri:
     name: cargo miri test
     runs-on: ubuntu-latest
+    # Fail fast instead of hanging for hours: even with PROPTEST_CASES=1 below, at least one
+    # compute-heavy proptest suite (dstu4145_sign_verify_roundtrip's constant-time scalar_multiply
+    # ladder, TASKS.md T-45) still ran past an hour under Miri interpretation on 2026-07-23/24 - a
+    # single case's per-instruction interpretation cost, not case *count*, dominates there, so
+    # reducing cases alone did not bound this job's wall-clock time the way it was expected to.
+    # If this timeout is hit repeatedly, the next step is scoping this job away from that specific
+    # suite (or proptest entirely), not raising the timeout further.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@nightly
