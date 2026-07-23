@@ -804,8 +804,28 @@ convention invented per language.
          anyway, ahead of T-18's release-binary work); `xtask/Cargo.lock` and
          `crates/dstu-core/fuzz/Cargo.lock` stay ignored (separate `[workspace]`s, not read by this
          check, no reason to change them).
-      Verified via `gh run view --json jobs` + `gh api .../actions/jobs/<id>/logs` per job, not
-      guessed from the summary page.
+      3. **Fixing (1) exposed a fourth, deeper bug**: with `+nightly` actually taking effect, `cargo
+         miri test --workspace` now really ran and immediately hit `error: unsupported operation:
+         getcwd not available when isolation is enabled` — proptest's failure-persistence lookup
+         calls `std::env::current_dir`, which Miri's isolation blocks. This is the **same
+         cross-platform interaction T-81 already found and worked around on the Windows dev
+         machine** (there described as `GetCurrentDirectoryW`), now confirmed to hit Linux CI too -
+         meaning this "mandatory" CI job had in fact never completed successfully since it was
+         first wired up (T-73), masked first by the toolchain bug above. Considered scoping the job
+         down to vector-only tests the way T-81 did locally (`-- official_vector`), but that doesn't
+         generalize: `proptest!` blocks are spread across 8 files (`kalyna.rs`, `kalyna_ccm.rs`,
+         `kupyna.rs`, `strumok.rs`, `dstu4145_signature.rs`, plus the in-`src` `fused_*`/
+         `decrypt_fusion_*` suites in `hazmat::kalyna`/`kupyna`) with no shared substring to filter
+         on - a manual `--skip` list would need ~9 separate patterns and silently stop covering any
+         new proptest test added later without a matching update. Fixed instead with two env vars
+         on the miri job, no skip list: `MIRIFLAGS=-Zmiri-disable-isolation` (fixes the crash) plus
+         `PROPTEST_CASES=1` (proptest reads this to cut every suite from its default 256 cases to
+         1) - keeps the *whole* workspace's Miri run bounded without excluding any test file, and
+         still exercises every proptest code path under Miri's UB checker at least once, rather
+         than skipping those paths' Miri coverage entirely the way a skip-list would have.
+      Verified via `gh run view --json jobs` + `gh api .../actions/jobs/<id>/logs` per job (not
+      guessed from the summary page), then a real `gh run watch` after each push confirming
+      fuzz/audit/build went green immediately and miri went green after the env-var fix.
 - [x] **T-80** Extract Bouncy Castle's own DSTU 4145 known-answer test data — done as
       `crates/dstu-core/tests/vectors/dstu4145/gf2m163.json` (2026-07-22, D-14), transcribed from
       the official standard's own Annex B.1 worked example and cross-checked against

@@ -48,7 +48,15 @@ jobs:
       # `+nightly` is required despite the nightly install above: rust-toolchain.toml pins
       # `stable` repo-wide, which overrides rustup's default toolchain for any cargo invocation
       # inside this checkout.
+      # MIRIFLAGS: proptest's failure-persistence lookup calls `getcwd`, which Miri's isolation
+      # blocks (pre-existing, cross-platform - T-81 hit the same thing on Windows dev). PROPTEST_CASES=1
+      # keeps every proptest suite in the workspace (spread across ~8 files with no shared naming
+      # convention to filter on) from making this job impractically slow under interpretation,
+      # while still exercising each one at least once under Miri rather than skipping them outright.
       - run: cargo +nightly miri test --workspace
+        env:
+          MIRIFLAGS: -Zmiri-disable-isolation
+          PROPTEST_CASES: 1
 
   fuzz-smoke:
     name: cargo fuzz (short smoke run, not a full campaign)
