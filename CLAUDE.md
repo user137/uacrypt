@@ -24,7 +24,9 @@ environment. The workspace has two crates:
   three are **confirmed**: `cargo test`, `cargo clippy -- -D warnings`, `cargo fmt --check`, the
   `no_std` build, and `cargo miri test` all pass. Check `TASKS.md` Phase 1 for exactly what's still
   open (independent second-oracle cross-check for Kalyna, Kupyna's streaming API, no high-level
-  wrapper yet, `kalyna_ccm`'s nonce-generation strategy still undecided — `TASKS.md` T-82). `cargo
+  wrapper yet). `kalyna_ccm`'s nonce strategy is resolved (`DECISIONS.md` D-40, `TASKS.md` T-82):
+  wide random nonce generated at the CLI layer via `getrandom`, not a stateful counter — the
+  hazmat-level API itself still takes a caller-supplied nonce (`no_std`-compatible). `cargo
   fuzz` has now actually been run (all three
   targets, smoke runs, zero crashes) on a Windows dev machine with Visual Studio installed, via the
   MSVC toolchain/target (`DECISIONS.md` D-32) — CI (Linux) remains the unconditional per-push check.

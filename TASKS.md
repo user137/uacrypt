@@ -395,7 +395,7 @@ resistance (SPA/DPA — explicitly out of scope per `SECURITY.md`/`CLAUDE.md` "M
       deleted; "## Binary-level (process) comparison" is now the single canonical section with
       Ryzen+Pi columns for every implementation, MB/s only.
 
-## A provisional Kalyna mode of operation - CCM (T-81), with a follow-up still open (T-82)
+## A provisional Kalyna mode of operation - CCM (T-81), plus its nonce-strategy follow-up (T-82)
 
 Originally flagged as blocked entirely on D-05 (2026-07-22 note, kept below for the record). User
 asked 2026-07-23 for a real (not ad-hoc) interim mode instead of waiting indefinitely on the priced
@@ -438,18 +438,27 @@ was heeded: what got built is dual-oracle-cited (UAPKI + Bouncy Castle), not inv
       255 bytes (`hazmat::kalyna_ccm::{MAX_PLAINTEXT_LEN, MAX_AAD_LEN}`) - `ccm_padd`'s header
       encodes both lengths as a single byte each, so this is a property of the construction as
       extracted, enforced with an error rather than silently truncated.
-- [ ] **T-82** **Kalyna-CCM nonce/counter-width strategy - not decided yet, on purpose**
-      (`DECISIONS.md` D-40). The five `(ccm_nb, q)` pairs T-81 uses are exactly what the
-      cross-oracle vectors specify - real, but not yet a decision about how a *caller* obtains a
-      safe, never-repeating nonce, which is the actual misuse-resistance question (this project's
-      libsodium-style "nothing to misconfigure" goal implies no user-facing tuning knob should
-      exist for this either). Two patterns identified, neither chosen: a TLS-1.3-style internal
-      monotonic counter (uniqueness guaranteed, but needs `&mut self`/persistent state - a bigger
-      API change than it looks) vs. a libsodium-style wide random nonce (stateless, but needs
-      checking whether Kalyna-CCM's narrower, block-size-dependent nonce field, 11-55 bytes across
-      the five variants, is wide enough for the smallest block size to be safe this way). Resolve
-      before treating `hazmat::kalyna_ccm`'s nonce parameter as anything other than "whatever the
-      caller passes, currently uncontrolled."
+- [x] **T-82** **Kalyna-CCM nonce strategy resolved 2026-07-23: wide random nonce, no stateful
+      counter** (`DECISIONS.md` D-40's resolution). D-40's original "11-55 bytes" nonce-width
+      figure was a measurement error, not a real constraint - it was `tmp` (the CBC-MAC-header
+      slice), not the caller-facing nonce parameter, which is the *full block* (16/16/32/32/64
+      bytes = 128/128/256/256/512 bits). Even the narrowest case (128 bits) comfortably clears the
+      birthday bound for a stated per-key rekey guideline (~2^48 messages), so the libsodium-style
+      pattern was safe all along. Chose it over a TLS-1.3-style internal monotonic counter mainly
+      because a counter's uniqueness guarantee depends on durable cross-reboot state, which this
+      project's Phase-4 embedded targets (T-55/T-56) can't be assumed to have - a reset-to-zero
+      counter would silently reintroduce nonce reuse. `hazmat::kalyna_ccm`'s own signature is
+      unchanged (still `no_std`-compatible, caller-supplied full-block nonce - it can't call
+      `getrandom` for an embedded caller). What changed: `uacrypt kalyna-ccm encrypt` no longer
+      accepts `--nonce` as an input - it generates one via `getrandom` and writes it to `--nonce`,
+      so there is nothing left for a CLI caller to reuse by mistake; `decrypt` is unchanged (still
+      reads the value `encrypt` produced). New `CliError::Random`, `getrandom` added as a
+      `uacrypt`-only dependency (std-only CLI, no `no_std` impact). Verified test-first: the
+      existing CLI round-trip test rewritten to no longer assume a fixed nonce (compares against a
+      direct `hazmat` call using the *generated* nonce instead), plus a new test asserting two
+      encrypt calls on identical key/plaintext produce different nonces - both pass, plus a manual
+      real-binary round-trip (two encrypts confirmed different nonce bytes, decrypt recovered the
+      plaintext), `cargo clippy -- -D warnings`/`cargo fmt --check`/`cargo xtask build` all clean.
 
 **Original 2026-07-22 blocked note, kept for the record, superseded by T-81 above**: "User flagged
 this as the next priority (2026-07-22, same session as D-28/29/30/31) - but this is still gated on
@@ -646,7 +655,12 @@ Two-layer split (`hazmat` now, high-level "easy" layer later) decided in `DECISI
       underlying primitive done first
 - [ ] **T-71** `crypto_pwhash` (plain Argon2id, high-level layer only, not DSTU) — not started, no blocker
 - [ ] **T-72** `randombytes` (OS CSPRNG via `getrandom`, high-level layer only, not DSTU) — not started,
-      only needed once the high-level layer exists
+      only needed once the high-level layer exists. **Read `DECISIONS.md` D-04's 2026-07-23
+      addendum before starting**: it records a forward-looking RNG-architecture recommendation
+      (trait injection as `dstu-core`'s own core pattern, an optional `std`-gated convenience
+      wrapper on top, `getrandom` as an unconditional dependency reserved for application binaries
+      like `uacrypt` only) so this doesn't reintroduce a hard `getrandom` dependency into the
+      `no_std` core by accident.
 
 ## Infrastructure — CI and oracle harnesses
 

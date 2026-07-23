@@ -48,6 +48,7 @@ pub enum CliError {
     PlaintextTooLong,
     AadTooLong,
     CcmVerifyFailed,
+    Random(String),
 }
 
 impl fmt::Display for CliError {
@@ -80,6 +81,7 @@ impl fmt::Display for CliError {
             CliError::CcmVerifyFailed => {
                 write!(f, "kalyna-ccm: authentication failed - ciphertext, tag, AAD, nonce, or key do not match")
             }
+            CliError::Random(message) => write!(f, "failed to generate a random nonce: {message}"),
         }
     }
 }
@@ -361,6 +363,8 @@ pub fn run_block_command(decrypt: bool, args: &BlockArgs) -> Result<(), CliError
 pub struct CcmArgs {
     pub variant: KalynaVariant,
     pub key_path: PathBuf,
+    /// Output path on `encrypt` (a fresh random nonce is generated and written here, `DECISIONS.md`
+    /// D-40), input path on `decrypt` (must be the value `encrypt` produced).
     pub nonce_path: PathBuf,
     pub aad_path: Option<PathBuf>,
     pub in_path: PathBuf,
@@ -369,7 +373,9 @@ pub struct CcmArgs {
 }
 
 /// Parses `kalyna-ccm encrypt`/`decrypt`'s flags: `--variant`/`--key`/`--nonce`/`--in`/`--out`/
-/// `--tag` required, `--aad` optional (an empty AAD is used if omitted).
+/// `--tag` required, `--aad` optional (an empty AAD is used if omitted). `--nonce` is always
+/// required as a *path* by the parser, but [`run_ccm_command`] treats it as an output on encrypt
+/// and an input on decrypt - see [`CcmArgs::nonce_path`].
 ///
 /// # Errors
 ///
@@ -447,19 +453,33 @@ pub fn parse_ccm_args(args: &[String]) -> Result<CcmArgs, CliError> {
 
 /// Runs `kalyna-ccm encrypt`/`decrypt` - see `hazmat::kalyna_ccm`'s module doc comment for the
 /// construction's provisional status and sourced 255-byte plaintext/AAD limit. Encrypt writes
-/// ciphertext to `--out` and the authentication tag to `--tag` (separate files - this CLI does not
-/// invent its own combined wire format). Decrypt reads `--tag`, verifies before writing anything,
-/// and returns [`CliError::CcmVerifyFailed`] without touching `--out` on failure.
+/// ciphertext to `--out`, the authentication tag to `--tag`, **and a freshly-generated random
+/// nonce to `--nonce`** (separate files - this CLI does not invent its own combined wire format).
+/// `--nonce` is an *output* on encrypt, not an input: per `DECISIONS.md` D-40, the nonce is never
+/// caller-supplied here, so there is nothing for a caller to accidentally reuse across two
+/// encryptions under the same key. Decrypt reads `--nonce` (the value encrypt produced) and
+/// `--tag`, verifies before writing anything, and returns [`CliError::CcmVerifyFailed`] without
+/// touching `--out` on failure.
 ///
 /// # Errors
 ///
 /// Returns [`CliError::Io`]/[`CliError::WrongLength`] for file problems (key/nonce/tag must be
-/// exactly the variant's expected length), [`CliError::PlaintextTooLong`]/
-/// [`CliError::AadTooLong`] if `--in`/`--aad` exceed the sourced limit, or
-/// [`CliError::CcmVerifyFailed`] if `decrypt` fails to authenticate.
+/// exactly the variant's expected length on decrypt), [`CliError::PlaintextTooLong`]/
+/// [`CliError::AadTooLong`] if `--in`/`--aad` exceed the sourced limit, [`CliError::Random`] if the
+/// OS CSPRNG fails on encrypt, or [`CliError::CcmVerifyFailed`] if `decrypt` fails to authenticate.
 pub fn run_ccm_command(decrypt: bool, args: &CcmArgs) -> Result<(), CliError> {
     let key = read_exact_file(&args.key_path, "key", args.variant.key_len())?;
-    let nonce = read_exact_file(&args.nonce_path, "nonce", args.variant.block_len())?;
+    let nonce = if decrypt {
+        read_exact_file(&args.nonce_path, "nonce", args.variant.block_len())?
+    } else {
+        let mut generated = vec![0u8; args.variant.block_len()];
+        getrandom::fill(&mut generated).map_err(|e| CliError::Random(e.to_string()))?;
+        std::fs::write(&args.nonce_path, &generated).map_err(|e| CliError::Io {
+            path: args.nonce_path.clone(),
+            message: e.to_string(),
+        })?;
+        generated
+    };
     let aad = match &args.aad_path {
         Some(path) => std::fs::read(path).map_err(|e| CliError::Io {
             path: path.clone(),
@@ -1118,13 +1138,16 @@ mod tests {
 
     #[test]
     fn run_ccm_command_round_trip_matches_dstu_core_directly() {
+        // Encrypt no longer takes `--nonce` as an input (T-82/D-40: the CLI generates a fresh
+        // random nonce itself and writes it to `--nonce`, so there is nothing for a caller to
+        // misconfigure) - so this can no longer compare against a fixed-nonce direct `hazmat`
+        // call. It instead round-trips purely through the CLI and separately checks the nonce
+        // file that came out was actually used (by re-deriving the tag/ciphertext from it).
         let dir = TempDir::new("kalyna_ccm");
         let key = [0x11u8; 16];
-        let nonce = [0x22u8; 16];
         let aad = b"header".to_vec();
         let plaintext = b"short message".to_vec();
         std::fs::write(dir.file("key.bin"), key).expect("write key");
-        std::fs::write(dir.file("nonce.bin"), nonce).expect("write nonce");
         std::fs::write(dir.file("aad.bin"), &aad).expect("write aad");
         std::fs::write(dir.file("in.bin"), &plaintext).expect("write input");
 
@@ -1139,11 +1162,16 @@ mod tests {
         };
         run_ccm_command(false, &encrypt_args).expect("encrypt should succeed");
 
+        let generated_nonce = std::fs::read(dir.file("nonce.bin")).expect("read generated nonce");
+        assert_eq!(generated_nonce.len(), 16);
+
+        let mut nonce_arr = [0u8; 16];
+        nonce_arr.copy_from_slice(&generated_nonce);
         let expected_cipher = Kalyna128_128Ccm::new(&key);
         let mut expected_buf = plaintext.clone();
         let expected_tag = expected_cipher
-            .seal_in_place(&nonce, &aad, &mut expected_buf)
-            .expect("direct seal should succeed");
+            .seal_in_place(&nonce_arr, &aad, &mut expected_buf)
+            .expect("direct seal with the generated nonce should succeed");
         assert_eq!(
             std::fs::read(dir.file("ct.bin")).expect("read"),
             expected_buf
@@ -1163,13 +1191,46 @@ mod tests {
     }
 
     #[test]
+    fn run_ccm_command_encrypt_generates_a_fresh_nonce_each_call() {
+        let dir = TempDir::new("kalyna_ccm_fresh_nonce");
+        let key = [0x55u8; 16];
+        let plaintext = b"same input twice".to_vec();
+        std::fs::write(dir.file("key.bin"), key).expect("write key");
+        std::fs::write(dir.file("in.bin"), &plaintext).expect("write input");
+
+        let base_args = CcmArgs {
+            variant: KalynaVariant::K128_128,
+            key_path: dir.file("key.bin"),
+            nonce_path: dir.file("nonce1.bin"),
+            aad_path: None,
+            in_path: dir.file("in.bin"),
+            out_path: dir.file("ct1.bin"),
+            tag_path: dir.file("tag1.bin"),
+        };
+        run_ccm_command(false, &base_args).expect("first encrypt should succeed");
+
+        let second_args = CcmArgs {
+            nonce_path: dir.file("nonce2.bin"),
+            out_path: dir.file("ct2.bin"),
+            tag_path: dir.file("tag2.bin"),
+            ..base_args
+        };
+        run_ccm_command(false, &second_args).expect("second encrypt should succeed");
+
+        let nonce1 = std::fs::read(dir.file("nonce1.bin")).expect("read nonce1");
+        let nonce2 = std::fs::read(dir.file("nonce2.bin")).expect("read nonce2");
+        assert_ne!(
+            nonce1, nonce2,
+            "two encrypt calls with the same key/plaintext must not reuse a nonce"
+        );
+    }
+
+    #[test]
     fn run_ccm_command_decrypt_rejects_tampered_ciphertext_without_writing_out() {
         let dir = TempDir::new("kalyna_ccm_tamper");
         let key = [0x33u8; 16];
-        let nonce = [0x44u8; 16];
         let plaintext = b"do not trust me".to_vec();
         std::fs::write(dir.file("key.bin"), key).expect("write key");
-        std::fs::write(dir.file("nonce.bin"), nonce).expect("write nonce");
         std::fs::write(dir.file("in.bin"), &plaintext).expect("write input");
 
         let encrypt_args = CcmArgs {

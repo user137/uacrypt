@@ -170,11 +170,13 @@ uacrypt kalyna-ccm encrypt --variant 128-128 --key key.bin --nonce nonce.bin --a
 uacrypt kalyna-ccm decrypt --variant 128-128 --key key.bin --nonce nonce.bin --aad aad.bin --in ct.bin --out pt.bin --tag tag.bin
 ```
 
-`--nonce` is a raw file of exactly the variant's block length (16/32/64 bytes); `--aad` is
+`--nonce` is a raw file of exactly the variant's block length (16/32/64 bytes) — but it's an
+**output** on `encrypt`, not an input: `encrypt` generates a fresh random nonce itself (via the OS
+CSPRNG) and writes it there, so there is nothing for you to supply or accidentally reuse. `decrypt`
+reads `--nonce` back (the value `encrypt` produced) as an input, same as `--tag`. `--aad` is
 optional (an empty AAD is used if omitted); `decrypt` verifies the tag before writing `--out` and
-fails without writing anything on a mismatch. **Nonces must never repeat under the same key** —
-this CLI does not yet generate or manage them for you (`DECISIONS.md` D-40, `TASKS.md` T-82 tracks
-deciding that).
+fails without writing anything on a mismatch. See `DECISIONS.md` D-40 for why a random nonce is
+safe here (128 bits minimum across all five variants) and its per-key message-count guideline.
 
 Neither of these is the eventual file-plus-mode CLI; once that lands (D-05 resolved
 non-provisionally), it will use the reserved `encrypt`/`decrypt` command names directly. Prebuilt

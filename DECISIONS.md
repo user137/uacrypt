@@ -37,6 +37,47 @@ a cosmetic one.
 **Rejected:** a custom or "national" random number generator. Rejected because RNG design is the
 single highest-risk area for homegrown cryptography — no benefit justifies the risk here.
 
+**Addendum 2026-07-23, forward-looking only - no code changed by this note**: T-82's resolution
+added `getrandom` as a dependency, but scoped to `crates/uacrypt` only (a `std`-only application
+binary), never `crates/dstu-core` (the `no_std` library core) - deliberately, not by omission.
+Recorded here because the user raised the right next question while reviewing T-82: what happens
+when *this* `getrandom` call runs on a machine or controller with no exposed RNG source? Confirmed
+by reading `getrandom` 0.3.4's own source (`backends.rs`): on a target it doesn't recognize
+(bare-metal/embedded, no OS), it **fails to compile** with an explicit `compile_error!` pointing at
+its own "custom backend" documentation - not a silent fallback to weak entropy, not a runtime
+panic. On a *recognized* OS target where the source is transiently unavailable, `getrandom::fill`
+returns `Err`, which `uacrypt` already propagates as `CliError::Random` rather than panicking or
+proceeding with bad randomness. Neither failure mode is a problem for `uacrypt` specifically, since
+it only ever targets real OSes - but it is exactly why `getrandom` must never become a `dstu-core`
+dependency by default: that would make the entire `no_std` build (this project's whole embedded
+argument, `TASKS.md` T-55/T-56) fail to compile for every downstream firmware author who doesn't
+register a custom entropy backend, even if their firmware never calls the function that needed it.
+
+This matches an architecture write-up the user did with Gemini (`rust_nostd_csprng_architecture.md`,
+not committed to this repo - an external research artifact, referenced here for the decision it
+informs, not reproduced) surveying three patterns for RNG in cross-platform `no_std` Rust:
+(1) trait injection (`RngCore + CryptoRng` parameters, the caller supplies the RNG - `ed25519-
+dalek`/`x25519-dalek`'s own convention), (2) an optional `std` Cargo feature that layers a
+convenience wrapper calling the OS CSPRNG automatically on top of (1)'s core, (3) calling
+`getrandom` unconditionally, which is ergonomic for OS targets but pushes the `register_custom_
+getrandom`-equivalent burden onto every embedded consumer even ones that never need it. That
+survey's own recommendation - core library logic uses (1), an optional `std`-gated wrapper adds
+(2)'s convenience, (3) is fine only for an application binary that is never itself consumed as a
+`no_std` dependency - is **exactly** this project's existing `std`/`alloc`/`no_std` feature-flag
+split (D-01) applied to entropy specifically, and is the pattern to follow once real work starts
+on: `TASKS.md` T-72 (`randombytes`, `crypto_secretbox`/DSTU-4145-signing's internal ephemeral-
+scalar generation if either ever needs to generate rather than receive random material) and T-48
+(`crypto_sign`, if DSTU 4145 key/nonce generation moves inside the Rust port rather than staying
+caller-supplied the way `hazmat::dstu4145`/`hazmat::kalyna_ccm` both currently require). Nothing
+in `hazmat` needs this today - every keyed/nonce-taking primitive in this crate (`kalyna_ccm`,
+`dstu4145::sign`) takes its randomness as an explicit caller-supplied parameter, matching pattern
+(1)'s spirit already without an actual `RngCore` trait bound (D-09's low-level hazmat layer is
+deliberately "caller supplies everything," full stop) - this addendum is a note for the *future*
+easy/high-level layer (T-65), not a gap in what exists now. `uacrypt`'s direct, unconditional
+`getrandom` call (pattern 3) is correct for it specifically because it is an application, never a
+`no_std` library dependency of anything else - the distinction the user's question was really
+probing, confirmed correct rather than assumed.
+
 ## D-05: AEAD working hypothesis is Kalyna-alone CCM, provisional pending the primary text
 (revised 2026-07-23, see D-41's follow-up entry for the original text this replaces)
 
@@ -1782,6 +1823,61 @@ user-facing tuning knob should exist for this either).
   transfers directly.
 - Resolve this before `hazmat::kalyna_ccm`'s nonce parameter is considered anything other than
   "whatever the caller passes, currently uncontrolled" - `TASKS.md` T-82 owns finishing this.
+
+**Resolved 2026-07-23, same day (`TASKS.md` T-82): wide random nonce, no stateful counter -
+correcting a measurement error above, not just picking a side.**
+
+The "11-55 bytes across the five variants" figure above is wrong about *which* bytes the caller
+actually controls. Rereading `hazmat::kalyna_ccm.rs` itself (not just the abstract UAPKI formula):
+`tmp = block_len - ccm_nb - 1` is only the slice of the nonce that feeds `ccm_padd`'s CBC-MAC
+header (`G1`) - it is **not** the caller-facing nonce parameter. `seal_in_place`/`open_in_place`
+both take `nonce: &[u8; $block_bytes]`, the **full block**, and `Gamma::new` seeds the CTR
+keystream from `E_K(nonce_block)` over the whole thing. So the entropy that actually needs to be
+unique per (key, message) is `block_bytes` wide, not `tmp` wide - 16/16/32/32/64 bytes (128/128/
+256/256/512 bits) across the five variants, not 11-55 bytes. That changes the safety conclusion:
+even the narrowest case (the two 128-bit-block variants) has a 128-bit nonce, the same width as a
+standard CBC IV and wider than AES-GCM's usual 96-bit nonce - comfortably enough for the
+libsodium-style pattern to hold, not just the TLS-1.3-style counter.
+
+**Decision: the wide-random-nonce pattern, not an internal monotonic counter.** Two reasons, not
+one:
+1. **Birthday-bound math holds with margin.** For `n` messages under one key with independent
+   random 128-bit nonces, collision probability is roughly `n^2 / 2^129`. Keeping that under
+   `2^-32` allows `n` up to roughly `2^48` messages under a single key for the 128-bit-block
+   variants - a real, statable per-key rekey guideline, not "basically infinite" (the 256/512-bit
+   variants' 216-440-bit nonces make this bound irrelevant in practice, no guideline needed there).
+2. **A monotonic counter needs durable state across restarts to actually guarantee uniqueness,
+   and this project's own MVP scope rules that out as a default.** TLS 1.3's approach works
+   because a TLS connection's counter lives exactly as long as the connection. This project's
+   Phase-4 targets (`TASKS.md` T-55/T-56, STM32/ESP32) cannot be assumed to have durable,
+   wear-levelled storage for a persistent per-key counter - a counter that silently resets to zero
+   on power loss/reset reintroduces exactly the nonce-reuse this was meant to prevent, invisibly.
+   A wide random nonce needs only a CSPRNG (`getrandom`, already the established primitive per
+   D-03/D-04) and carries no cross-reboot state requirement. Matches this project's existing
+   "no OS/hardware lock-in" and "nothing for the caller to misconfigure" goals better than the
+   stateful alternative would.
+
+**One caveat that makes the safety claim actually hold, not just the bare birthday bound**:
+`increment_counter` (`kalyna_ccm.rs`) carries over the *full* block width - there is no reserved,
+zeroed counter suffix the way classical CCM's `L`-parameter framing implies. Two independently-
+random nonces that happen to land numerically close therefore produce keystreams that *overlap*
+partway through, not just collide outright on an exact match. What keeps this safe in practice is
+D-41's sourced 255-byte plaintext cap: the counter only advances a handful of blocks per message
+(≤16 blocks even for the 128-bit-block variants), a negligible span against a 2^128 counter space -
+so a near-miss between two random nonces still essentially never produces overlapping keystream in
+practice. This is a real interlock between two already-shipped decisions (the 255-byte cap and the
+nonce width), not an independent safety margin - stated explicitly so a future change to either one
+re-checks the other.
+
+**What actually changed in code** (`crates/uacrypt/src/lib.rs`, not `hazmat::kalyna_ccm` itself -
+the hazmat-level API is deliberately left as "caller supplies a full-block nonce," per D-09's
+two-layer split, since a `no_std` hazmat primitive cannot assume an OS CSPRNG exists to generate
+one for an embedded caller): `uacrypt kalyna-ccm encrypt` no longer accepts `--nonce` as an input -
+it generates one via `getrandom` and writes it to `--nonce` instead, so there is nothing left for a
+CLI caller to reuse by mistake. `decrypt` is unchanged (still reads `--nonce` as input - it has to,
+that's the value `encrypt` produced). This is the concrete realization of "nothing to
+misconfigure" for the one user-facing surface that exists today; it does not touch
+`hazmat::kalyna_ccm`'s own signature, and it is not `crypto_secretbox` (still D-05-blocked).
 
 ## D-41: Kalyna-CCM implemented as the D-05 working hypothesis - provisional, dual-oracle-verified
 

@@ -28,11 +28,20 @@
 //!
 //! The nonce is a full block-size buffer (matching the vectors, which supply a full-block IV even
 //! though `ccm_padd` only consumes a `block_len - ccm_nb - 1`-byte prefix of it for the
-//! authentication header - the remaining bytes still feed the CTR keystream). **Nonce-generation
-//! strategy (internal counter vs. wide random value) and the exact `(ccm_nb, q)` safe-default
-//! rationale are deferred to their own follow-up task** (`TASKS.md`, next unused ID after this
-//! module's) - the five `(ccm_nb, q)` pairs used here are exactly what the cross-oracle vectors
-//! confirm, not a new choice made by this module.
+//! authentication header - the remaining bytes still feed the CTR keystream, and it is the *full*
+//! block that seeds it via `Gamma::new`). **Strategy resolved, `DECISIONS.md` D-40/`TASKS.md`
+//! T-82**: this module always treats the nonce as caller-supplied, never generating one itself -
+//! `no_std` callers may have no OS CSPRNG to call. The recommended pattern for any caller that
+//! *does* have one is a fresh, independently-random full-block nonce per message under a given
+//! key (a libsodium-style wide random nonce, not a TLS-1.3-style stateful counter - a counter's
+//! uniqueness guarantee needs durable cross-reboot state this project can't assume for its
+//! embedded targets). The narrowest variants (128-bit block) have a 128-bit nonce, safe for
+//! roughly 2^48 messages under one key by the birthday bound - see D-40 for the full margin and
+//! the caveat about `increment_counter` carrying over the full block width, which makes that bound
+//! contingent on this module's own 255-byte plaintext cap. `uacrypt kalyna-ccm encrypt` (the CLI
+//! layer) implements this recommendation by generating the nonce itself via `getrandom` rather
+//! than accepting one - the five `(ccm_nb, q)` pairs used here remain exactly what the cross-oracle
+//! vectors confirm, not a new choice made by this module.
 
 use subtle::ConstantTimeEq;
 use zeroize::Zeroize;
@@ -333,8 +342,9 @@ macro_rules! kalyna_ccm_variant {
             }
 
             /// Encrypts `buf` in place (plaintext -> ciphertext) and returns the masked
-            /// authentication tag. `nonce` must never repeat under the same key (see the module
-            /// doc comment - nonce-generation strategy is deferred to its own follow-up task).
+            /// authentication tag. `nonce` must never repeat under the same key - see the module
+            /// doc comment's "Nonce" section for the recommended generation strategy
+            /// (`DECISIONS.md` D-40) and this variant's safe per-key message-count margin.
             ///
             /// # Errors
             ///
