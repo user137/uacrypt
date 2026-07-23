@@ -72,14 +72,17 @@ exception for S-box/GF-multiplication table lookups, matching every reference im
 ## What's missing for the libsodium-equivalent surface
 
 From `docs/dstu-crypto-project.md`'s own mapping table, the two-layer design (D-09: `hazmat::*` now,
-a future high-level `crypto_*`-ergonomics layer with auto-generated nonces via `getrandom`, not
-built yet) is decided but the high-level layer itself doesn't exist for *any* primitive:
+a future high-level `crypto_*`-ergonomics layer on top) is decided; `crypto_sign` (below) is now the
+first primitive with that high-level layer actually built, via `dstu_core::crypto_sign` — notably
+*without* the `getrandom`-based auto-nonce shape D-09 originally anticipated (D-46's deterministic
+nonce needs no RNG at all). `crypto_generichash`/`crypto_stream`/`crypto_auth`/`crypto_kdf` still
+have no high-level wrapper, only their `hazmat` forms:
 
 | libsodium equivalent | Native DSTU path | Status |
 |---|---|---|
 | `crypto_generichash` | Kupyna | hazmat done; no high-level wrapper |
 | `crypto_stream` | Strumok | hazmat done (provisional vectors); no high-level wrapper |
-| `crypto_sign` | DSTU 4145 | hazmat done (m=163 only); no high-level wrapper (T-48) |
+| `crypto_sign` | DSTU 4145 | **Done** (T-48, D-46) — hazmat (m=163 only) plus a high-level `dstu_core::crypto_sign` wrapper; deterministic (Kupyna-KMAC-derived, RFC-6979-style) nonce, not caller-random, eliminating nonce-reuse key recovery from the wrapper's surface. Public-key encoding is a plain uncompressed 42-byte form, explicitly not the DSTU §6.9/§6.10 compressed format |
 | `crypto_box` | DSTU 9041 | **Hard-blocked** — zero source material exists for DSTU 9041 anywhere (no paper, no oracle, no pseudocode); cannot start (T-46) |
 | `crypto_secretbox` | Kalyna-CCM, provisionally | Blocked on D-05 (T-36/T-37) |
 | `crypto_auth`/`crypto_onetimeauth` | Kupyna-based KMAC | **Done** (T-38, D-44) — provisional pending the primary text, but dual-oracle with both constructions read |
@@ -89,9 +92,9 @@ built yet) is decided but the high-level layer itself doesn't exist for *any* pr
 | `crypto_pwhash` | Not a DSTU question — plain Argon2id | Not started; no blocker, deliberately non-"Ukrainized" (documented decision) |
 | `randombytes` | Not a DSTU question — OS CSPRNG via `getrandom` | Only exists inside `uacrypt` (CLI-only, D-04 addendum); no core-crate high-level wrapper yet |
 
-Every row below `crypto_generichash`/`crypto_stream`/`crypto_sign` in this table is empty — the
-"functional copy of libsodium" goal is currently three raw algorithms plus one provisional mode of
-operation, not an API surface a libsodium user would recognize as equivalent yet.
+`crypto_box`/`crypto_secretbox`/`crypto_kx`/`crypto_secretstream` remain empty or blocked — the
+"functional copy of libsodium" goal has real algorithm coverage (`crypto_sign`/`crypto_auth`/
+`crypto_kdf` done) but is not yet an API surface a libsodium user would recognize as complete.
 
 ## What's missing for the CLI / release-mechanics surface
 
@@ -128,10 +131,12 @@ In rough dependency order:
    natural gap-fill construction is the same one D-05/T-36/T-37 are blocked on, so it moves to
    step 1's dependency instead of running in parallel with it.
 4. **Build the high-level layer** (D-09's second layer) over every `hazmat` primitive that's ready —
-   this is what actually makes the API "libsodium-equivalent" in feel, not just in algorithm
-   coverage.
-5. **DSTU 4145 polish**: wrap `crypto_sign` (T-48); decide whether the other 9 curve sizes matter
-   for 1.0 or can stay m=163-only.
+   `crypto_sign` (step 5) is the first module built there; `crypto_auth`/`crypto_kdf` (step 3) don't
+   have high-level wrappers yet either, only their `hazmat` forms.
+5. **DSTU 4145 polish**: `crypto_sign` wrapper **done** (T-48, D-46) — deterministic nonce, not
+   caller-random; decide whether the other 9 curve sizes matter for 1.0 or can stay m=163-only, and
+   whether the DSTU §6.9/§6.10 compressed point encoding is needed for 1.0 (the wrapper currently
+   ships only an uncompressed 42-byte form).
 6. **DSTU 9041 stays out of scope for 1.0** unless source material is found — don't block the rest
    of the release on a hard-blocked item with no known path forward.
 7. **Mechanical release work**: `uacrypt`'s real `encrypt`/`decrypt`/`hash` commands (T-16, itself

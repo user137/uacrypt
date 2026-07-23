@@ -2164,3 +2164,88 @@ green on the **first attempt**. `cargo test --workspace`/`clippy -D warnings`/`f
 same pre-existing proptest+Miri isolation crash as everywhere else in this workspace (T-81/T-85) -
 confirmed clean (no UB) with the same local workaround
 (`MIRIFLAGS=-Zmiri-disable-isolation PROPTEST_CASES=8`), ~174s.
+
+## D-46: `crypto_sign` (DSTU 4145 wrapper, T-48) - deterministic nonce derivation, not caller-random
+
+`TASKS.md` T-48, last item from the user's ordered list (`docs/release-readiness.md` step 5). The
+first module in the high-level "easy" layer D-09 planned but never built - a real architectural
+precedent, not just another primitive wrapper, so it's recorded here in more depth than a typical
+task entry.
+
+**The fork, and why it wasn't decided silently**: `hazmat::dstu4145::signature::sign` takes its
+ephemeral nonce `e` as a caller-supplied parameter (matching Bouncy Castle's `DSTU4145Signer`,
+confirmed by reading it - `random` field, `SecureRandom`-backed). A `crypto_sign` wrapper has to
+resolve this one way: either add an RNG dependency (`std`-gated `getrandom`, or a `RngCore` trait
+bound at the hazmat layer, the D-04-addendum-anticipated shape) and generate `e` fresh each call,
+or derive `e` deterministically from `(d, message)` so no randomness is needed at signing time at
+all. This is a real security-posture fork, not an implementation detail: nonce reuse is *the*
+catastrophic failure mode of this signature family (a reused/predictable `k` leaks the private key
+outright - the PS3 root-key disclosure, several Bitcoin wallet thefts, all trace to exactly this).
+Put to the project owner rather than picked silently (same posture as T-40's re-scoping question).
+**Chosen: deterministic**, matching Ed25519/libsodium's own misuse-resistant design rather than the
+classical DSA-family default - this is what "libsodium-equivalent, safe by construction" (the
+project's own stated release goal) actually implies for a signature scheme, and it eliminates an
+entire bug class from the wrapper's caller surface rather than documenting around it.
+
+**Construction**: an RFC 6979-*style* adaptation, not a literal port - RFC 6979's own construction
+and proof are stated in terms of HMAC specifically, and `hazmat::kupyna_kmac`'s construction is not
+HMAC (the same non-transferable-proof reasoning D-45 already applied to HKDF). What's kept from
+RFC 6979 is the shape: derive the nonce from a PRF keyed by the private key, seeded with the
+message hash, with rejection-sampling on an out-of-range result - not RFC 6979's specific HMAC-DRBG
+iteration (`V`/`K` state machine), which doesn't have an obvious KMAC-based equivalent and would be
+inventing new unverified machinery for no proven benefit here. Concretely:
+`e = reduce_mod_n(Kupyna256Kmac::mac(key = zero-pad(d, 32), message = hash || counter))`, counter
+starting at 0 and incrementing on the ~`2^-163`-probability chance that `hazmat`'s own sign()
+rejects the result (`F_e == 0`, `r == 0`, or `s == 0` - see `signature::sign`'s doc comment). `d`'s
+21-byte value is left-padded with zeros to `Kupyna256Kmac`'s required 32-byte key length - an
+embedding, not a truncation, so no bits of `d` are dropped. `Scalar::reduce_wide_bytes` (new,
+`pub(crate)`, `hazmat::dstu4145::scalar`) folds the 32-byte KMAC output into a valid scalar via the
+same bit-serial constant-time reduction `reduce_mod_n` already uses for multiplication products,
+generalized to arbitrary input width.
+
+**No oracle exists for this specific construction** (same honest-scoping posture as D-45's KDF) -
+no reference implementation derives DSTU 4145 nonces this way, so there's nothing to cross-check
+the *derivation* against. What *is* oracle-checked: `VerifyingKey::verifying_key()`'s `Q = -d*G`
+computation, against the official Annex B.1 worked example's own `(d, Q)` pair
+(`tests/vectors/dstu4145/gf2m163.json`) - this reuses `hazmat`'s already-vector-confirmed point
+arithmetic, so it's a real external check, just not of the nonce derivation itself. Sign/verify
+correctness is tested via round-trip, tamper-rejection (message, signature bytes, wrong verifying
+key), and a `proptest` sweep over random keys/messages - the same posture `dstu4145_signature.rs`'s
+own round-trip test already established for the raw hazmat layer.
+
+**Two smaller decisions bundled into the same module**:
+- `sign`/`verify` take a raw `message: &[u8]`, hashed internally with Kupyna-256
+  (`hazmat::kupyna::Kupyna256`) - matching libsodium's own `crypto_sign(message, ...)` ergonomics.
+  `hazmat::dstu4145::signature` itself stays digest-agnostic by its own design, unaffected.
+- `VerifyingKey::to_uncompressed_bytes`/`from_uncompressed_bytes` use a plain 42-byte `x || y`
+  encoding, **not** the DSTU 4145 standard's own compressed point encoding (official text
+  §6.9/§6.10, Bouncy Castle's `DSTU4145PointEncoder.java`) - that encoding isn't implemented
+  anywhere in this project (`docs/pseudocode/dstu4145.md` already flagged it as future,
+  unrelated-to-sign/verify work). Stated explicitly in the module doc so it can't be mistaken for
+  spec-compliant interoperable serialization; tracked as its own future task rather than folded
+  into T-48's scope.
+
+`Scalar` also gained `#[derive(Zeroize)]` this session (not `ZeroizeOnDrop` - incompatible with
+`Scalar` being `Copy` and used by-value pervasively throughout `hazmat::dstu4145`, `E0184`) -
+closing a pre-existing gap against `CLAUDE.md`'s "all key material is `Zeroize`/`ZeroizeOnDrop`"
+hard constraint that predates this task. `crypto_sign::SigningKey` (the actual key-material holder
+in the new module) implements `Drop` calling `.zeroize()` on its inner `Scalar` explicitly.
+
+**Verified**: 9 new tests (determinism, official-vector `Q` cross-check, round-trip, 3
+tamper-rejection variants, 2 invalid-key rejections, 1 `proptest` sweep) all green on first attempt
+after fixing test constants (initial fixed test scalars accidentally exceeded the curve order `n`,
+caught immediately by `from_bytes`'s own validation - not a construction bug). Full workspace
+`cargo test --all-features` green (no regressions in the other 84 tests). `clippy -D warnings`
+clean after two fixes (`expect_used` on the KMAC call - resolved via `unreachable!()` behind a
+`let...else`, matching the crate's `#![deny(clippy::expect_used)]`; `manual_let_else`). `fmt --check`
+clean. `no_std` (no-default-features), `alloc`-only, and `small-tables` builds all clean - the new
+module uses no heap allocation, all fixed-size arrays. `cargo +nightly miri test` (local,
+`MIRIFLAGS=-Zmiri-disable-isolation`) hit the same slow-suite issue T-85 already documents for
+`dstu4145_signature`'s own proptest (each sign+verify runs the 163-iteration scalar ladder several
+times, and Miri interprets every step) - the 8 non-proptest tests completed with no UB reported,
+but the `dstu4145_crypto_sign_roundtrip` proptest was still running after ~21 minutes and was killed
+locally rather than left unbounded, matching T-85's own stated posture ("if 30 minutes proves
+insufficient, the real fix is scoping miri away from the slow suite, not raising the timeout
+further"). Not re-run to completion locally; CI's already-tuned miri job (`PROPTEST_CASES=1`, lower
+than the local `PROPTEST_CASES=2` attempted here, plus the existing 30-minute job timeout) is the
+authoritative check for this file, same as it already is for `dstu4145_signature.rs`.

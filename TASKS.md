@@ -689,7 +689,38 @@ command names (`CLAUDE.md` MVP scope) are still reserved for whenever that resol
       pseudocode; see `ORACLES.md`). Nothing here can start until the official text is obtained
       or another authoritative source turns up
 - [ ] **T-47** `crypto_kx` equivalent (Diffie–Hellman on the DSTU 4145/9041 curve — needs both to exist)
-- [ ] **T-48** `crypto_sign` equivalent wrapping the Rust DSTU 4145 port
+- [x] **T-48** **Done 2026-07-24** (`DECISIONS.md` D-46) - `crypto_sign` equivalent wrapping the
+      Rust DSTU 4145 port, third of the T-38/39/40/48 working order (T-40 re-scoped as blocked, so
+      this ran third rather than fourth). The first module in the high-level "easy" layer D-09
+      planned but never built. **A real security-posture fork was surfaced and put to the project
+      owner rather than picked silently** (same posture as T-40's re-scoping question): should the
+      ephemeral signing nonce be caller-random (matching Bouncy Castle's `SecureRandom`-backed
+      reference) or derived deterministically? Chosen: **deterministic**, RFC-6979-*style* (not a
+      literal port - RFC 6979 is HMAC-specific, `hazmat::kupyna_kmac` isn't HMAC), keyed by the
+      private key and seeded with the Kupyna-256 message hash, via a new `Scalar::reduce_wide_bytes`
+      (`pub(crate)`, same bit-serial constant-time reduction style as `reduce_mod_n`). Eliminates
+      nonce-reuse key recovery (the PS3/Bitcoin-wallet failure class) from the wrapper's caller
+      surface entirely - matches Ed25519/libsodium's own misuse-resistant design, not the classical
+      DSA-family default. No oracle exists for this specific derivation (same honest-scoping
+      posture as D-45's KDF); what *is* oracle-checked is `Q = -d*G` against the official Annex B.1
+      worked example. New `dstu_core::crypto_sign` module (`SigningKey`/`VerifyingKey`/`Signature`,
+      `ed25519-dalek`-style naming per D-04's addendum) hashes raw messages internally with
+      Kupyna-256 (libsodium `crypto_sign(message, ...)` ergonomics); `to_uncompressed_bytes` is a
+      plain 42-byte `x || y` encoding, explicitly **not** the DSTU §6.9/§6.10 compressed point
+      format (not implemented anywhere in this project, tracked separately). `Scalar` also gained
+      `#[derive(Zeroize)]` (not `ZeroizeOnDrop` - incompatible with `Copy`, `E0184`), closing a
+      pre-existing key-material-hygiene gap; `SigningKey` implements `Drop` zeroizing its inner
+      scalar. Test-first: 9 new tests (determinism, official-vector `Q` cross-check, round-trip, 3
+      tamper-rejection variants, 2 invalid-key rejections, 1 `proptest` sweep), all green after
+      fixing test constants that initially exceeded the curve order (caught immediately by
+      `from_bytes`'s own validation, not a construction bug). Full workspace `cargo test
+      --all-features` green (no regressions), `clippy -D warnings` clean (two fixes:
+      `expect_used` on the KMAC call resolved via `unreachable!()` behind `let...else`,
+      `manual_let_else`), `fmt --check` clean, `no_std`/`alloc`-only/`small-tables` builds all
+      clean. Local `cargo +nightly miri test` hit the same known slow-suite issue as
+      `dstu4145_signature`'s own proptest (T-85) - 8 of 9 tests completed with no UB, the proptest
+      itself was killed locally after ~21 minutes rather than left unbounded; CI's already-tuned
+      job (`PROPTEST_CASES=1`, 30-min timeout) is the authoritative miri check for this file.
 
 ## Phase 3 — Language bindings (not MVP)
 

@@ -32,8 +32,12 @@ environment. The workspace has two crates:
   three are **confirmed**: `cargo test`, `cargo clippy -- -D warnings`, `cargo fmt --check`, the
   `no_std` build, and `cargo miri test` all pass. Kalyna's independent second-oracle cross-check
   (Java/.NET vs. real Bouncy Castle) is done and re-confirmed 2026-07-23 - an older "still open"
-  note here was simply stale (`TASKS.md` T-10). Check `TASKS.md` Phase 1 for what's still actually
-  open (no high-level wrapper yet). `kalyna_ccm`'s
+  note here was simply stale (`TASKS.md` T-10). As of 2026-07-24, `dstu_core::crypto_sign`
+  (`SigningKey`/`VerifyingKey`/`Signature`, `TASKS.md` T-48, `DECISIONS.md` D-46) is the first
+  high-level `crypto_*`-ergonomics module built on top of `hazmat` (D-09's second layer) — wraps
+  `hazmat::dstu4145`, deterministic (Kupyna-KMAC-derived, not caller-random) nonce, no RNG
+  dependency. Check `TASKS.md` Phase 1 for what else is still open (`crypto_generichash`/
+  `crypto_stream`/`crypto_auth`/`crypto_kdf` have no high-level wrapper yet). `kalyna_ccm`'s
   nonce strategy is resolved (`DECISIONS.md` D-40, `TASKS.md` T-82):
   wide random nonce generated at the CLI layer via `getrandom`, not a stateful counter — the
   hazmat-level API itself still takes a caller-supplied nonce (`no_std`-compatible). `cargo

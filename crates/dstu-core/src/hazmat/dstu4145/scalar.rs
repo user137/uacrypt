@@ -13,8 +13,13 @@
 //! `gf2m163`'s field reduction.
 
 use super::curve163;
+use zeroize::Zeroize;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+// Not `ZeroizeOnDrop`: `Scalar` is `Copy` and used by-value pervasively (arithmetic ops, hazmat
+// `sign`/`verify` signatures) - `ZeroizeOnDrop`'s `Drop` impl is incompatible with `Copy` (E0184).
+// Callers holding a `Scalar` they want zeroized on drop (e.g. `crypto_sign::SigningKey`) call
+// `.zeroize()` explicitly instead.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Zeroize)]
 pub struct Scalar([u64; 3]);
 
 impl Scalar {
@@ -50,6 +55,25 @@ impl Scalar {
     #[must_use]
     pub fn multiply(self, other: Self) -> Self {
         Scalar(reduce_mod_n(mul3(self.0, other.0)))
+    }
+
+    /// Reduces an arbitrary-length big-endian byte string mod `n`, via the same bit-serial
+    /// restoring reduction as `reduce_mod_n` (constant-time, always processes every input bit
+    /// regardless of value) - used by `crypto_sign`'s deterministic nonce derivation to fold a
+    /// wider KMAC output (32+ bytes) into a valid scalar, the same role `reduce_mod_n` plays for a
+    /// multiplication product.
+    #[must_use]
+    pub(crate) fn reduce_wide_bytes(bytes: &[u8]) -> Self {
+        let n = Self::n();
+        let mut r = [0u64; 3];
+        for &byte in bytes {
+            for bit in (0..8).rev() {
+                let bit_val = u64::from((byte >> bit) & 1);
+                r = shl1_or(r, bit_val);
+                r = cond_sub_if_ge(r, n);
+            }
+        }
+        Scalar(r)
     }
 }
 
