@@ -23,8 +23,10 @@ environment. The workspace has two crates:
   duplicating them, and Strumok's `T` substitution reuses those same shared tables too (only its
   `mul_alpha`/`mul_alpha_inv` tables are new, since that field construction isn't shared). All
   three are **confirmed**: `cargo test`, `cargo clippy -- -D warnings`, `cargo fmt --check`, the
-  `no_std` build, and `cargo miri test` all pass. Check `TASKS.md` Phase 1 for exactly what's still
-  open (independent second-oracle cross-check for Kalyna, no high-level wrapper yet). `kalyna_ccm`'s
+  `no_std` build, and `cargo miri test` all pass. Kalyna's independent second-oracle cross-check
+  (Java/.NET vs. real Bouncy Castle) is done and re-confirmed 2026-07-23 - an older "still open"
+  note here was simply stale (`TASKS.md` T-10). Check `TASKS.md` Phase 1 for what's still actually
+  open (no high-level wrapper yet). `kalyna_ccm`'s
   nonce strategy is resolved (`DECISIONS.md` D-40, `TASKS.md` T-82):
   wide random nonce generated at the CLI layer via `getrandom`, not a stateful counter — the
   hazmat-level API itself still takes a caller-supplied nonce (`no_std`-compatible). `cargo
@@ -176,10 +178,11 @@ Full detail and rationale in `SECURITY.md` — this is the compressed version so
   input in fixed chunks instead of `std::fs::read`-ing the whole file, every time a new algorithm
   gains a genuine streaming API (unless its construction truly needs the whole message up front,
   e.g. a length-prefixed AEAD header — not the same thing as "the current code happens to read it
-  all at once"). Kupyna's `kupyna-digest` does this (T-83/D-42): small chunks for real single-pass
-  use, larger chunks for the `--iterations` benchmark path, sized for each path's actual
-  constraint (memory vs. throughput) rather than copied from another algorithm's numbers.
-  `strumok-crypt` doesn't yet — a known gap, not a silent inconsistency.
+  all at once"). Both `kupyna-digest` (T-83/D-42) and `strumok-crypt` (D-42) do this now: small
+  chunks for real single-pass use, larger (or unchanged in-memory) chunks for the `--iterations`
+  benchmark path, sized for each path's actual constraint (memory vs. throughput) rather than
+  copied from another algorithm's numbers — for a cipher this means chunking both the disk read
+  *and* the disk write, since output length equals input length, unlike a hash.
 - **Three-attempts rule**: if the same problem survives 3 different approaches (especially
   toolchain/build/CI issues), stop, report what was tried and what's still unknown, and wait for
   direction — don't self-authorize a 4th attempt.

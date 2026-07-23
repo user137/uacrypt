@@ -2001,6 +2001,21 @@ would not qualify). When a command gets this treatment, follow T-83/this entry's
 chunk size for real single-pass usage, a larger chunk size for any `--iterations`-style benchmark
 path that must still avoid repeated disk I/O inside the timed region - both sizes chosen for their
 actual constraint (memory footprint vs. throughput), not copied from Kupyna's numbers by default,
-since a cipher's per-call overhead profile is not identical to a hash's. `strumok-crypt` currently
-still does whole-file `std::fs::read` (not changed by this entry - out of this pass's scope) and is
-the natural next candidate whenever it's worth revisiting.
+since a cipher's per-call overhead profile is not identical to a hash's.
+
+**`strumok-crypt` done too, same day (2026-07-23)**: unlike a hash, a stream cipher's output is the
+same length as its input, so genuine streaming here means chunking *both* the disk read and the
+disk write, not just the read - `run_strumok_command`'s `iterations <= 1` path now reads a
+[`STRUMOK_STREAM_CHUNK_BYTES`] = 8 KiB chunk, `apply_keystream`s it in place, writes it, and
+discards it, relying directly on `Strumok::apply_keystream`'s own chunk-invariance (`TASKS.md`
+T-24) to make one-chunk-at-a-time equivalent to one call on the whole buffer. `--raw-schedule` has
+no effect on this path - with exactly one iteration, constructing the cipher fresh vs. once is not
+observably different, so the streaming path always constructs it once regardless of the flag.
+`iterations > 1` (the benchmark path) is untouched: it still reads the whole file once up front,
+for the same reason as `kupyna-digest`'s benchmark path (repeated per-iteration disk reads would
+put I/O noise into the timed MB/s figure) - no artificial in-memory chunking was added there,
+since (unlike Kupyna's per-block compression) `apply_keystream`'s cost has no chunk-size-dependent
+behavior worth exercising once the data is already resident. Verified: a new test
+(`run_strumok_command_streams_multi_chunk_input_correctly`, a message spanning multiple chunks with
+a non-aligned remainder, checked against `Strumok512::new(...).apply_keystream(...)` directly) and
+a manual round-trip through the real release binary on a 3 MiB+ file.

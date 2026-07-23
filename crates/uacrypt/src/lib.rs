@@ -821,16 +821,32 @@ pub fn parse_strumok_args(args: &[String]) -> Result<StrumokArgs, CliError> {
     })
 }
 
+/// Read/write chunk size for `strumok-crypt`'s real (`iterations <= 1`) path - same rationale and
+/// size as `kupyna-digest`'s [`DIGEST_STREAM_CHUNK_BYTES`] (D-42): small enough that peak memory
+/// stays bounded by this constant rather than `--in`'s size, large enough that per-syscall
+/// overhead (now on *both* the read and the write side, unlike a hash which only reads) stays
+/// negligible. `Strumok::apply_keystream`'s own chunk-invariance (`TASKS.md` T-24) is exactly what
+/// makes feeding it one chunk at a time - instead of the whole file - safe to begin with.
+const STRUMOK_STREAM_CHUNK_BYTES: usize = 8 * 1024;
+
 /// Runs `strumok-crypt`: applies the keystream to `--in` (arbitrary length).
 ///
-/// `--raw-schedule` re-initializes the cipher (`Strumok*::new`) fresh before every iteration and
-/// re-applies it to a fresh copy of the original buffer each time - this matches
-/// `benches/strumok.rs`'s own convention (`Strumok256::new(...).apply_keystream(...)` inside every
-/// `b.iter`), so it's the number to sanity-check against the in-process `criterion` figures. The
-/// default (no flag) initializes once and applies the keystream `iterations` times continuing the
-/// same state (a real continuous stream) - the cheaper, steady-state-throughput number, same
-/// `--raw-schedule` meaning ("skip the cached/steady-state path, redo the expensive setup every
-/// time") as `kalyna-block`'s flag of the same name.
+/// `iterations <= 1` (real usage) streams `--in` to `--out` through [`STRUMOK_STREAM_CHUNK_BYTES`]-
+/// sized chunks - read, `apply_keystream` in place, write, discard - so peak memory is bounded
+/// regardless of file size (D-42, same treatment as `kupyna-digest`/T-83). `--raw-schedule` has no
+/// effect here: with exactly one iteration, constructing the cipher fresh vs. once makes no
+/// observable difference, so this path always constructs it once.
+///
+/// `iterations > 1` is the D-34 benchmark path, unchanged: `--raw-schedule` re-initializes the
+/// cipher (`Strumok*::new`) fresh before every iteration and re-applies it to a fresh copy of the
+/// original buffer each time - this matches `benches/strumok.rs`'s own convention
+/// (`Strumok256::new(...).apply_keystream(...)` inside every `b.iter`), so it's the number to
+/// sanity-check against the in-process `criterion` figures. The default (no flag) initializes once
+/// and applies the keystream `iterations` times continuing the same state (a real continuous
+/// stream) - the cheaper, steady-state-throughput number. This path still reads the whole file
+/// once up front (not streamed) - re-reading it from disk every iteration would reintroduce
+/// disk-cache-dependent I/O noise into the timed MB/s figure, the same reasoning as
+/// `kupyna-digest`'s benchmark path in D-42.
 ///
 /// # Errors
 ///
@@ -838,17 +854,63 @@ pub fn parse_strumok_args(args: &[String]) -> Result<StrumokArgs, CliError> {
 /// [`CliError::WrongLength`] if `--key`/`--iv` aren't the variant's expected length.
 #[allow(clippy::cast_precision_loss)] // human-readable MB/s diagnostic, not exact at any realistic byte count
 pub fn run_strumok_command(args: &StrumokArgs) -> Result<(), CliError> {
+    use std::io::{Read, Write};
+
     let key_len = match args.variant {
         HashBits::B256 => 32,
         HashBits::B512 => 64,
     };
     let key = read_exact_file(&args.key_path, "key", key_len)?;
     let iv = read_exact_file(&args.iv_path, "IV", 32)?;
+    let iterations = args.iterations.max(1);
+
+    if iterations <= 1 {
+        macro_rules! stream_variant {
+            ($cipher:ty, $key_len:literal) => {{
+                let mut key_arr = [0u8; $key_len];
+                key_arr.copy_from_slice(&key);
+                let mut iv_arr = [0u8; 32];
+                iv_arr.copy_from_slice(&iv);
+
+                let mut in_file = std::fs::File::open(&args.in_path).map_err(|e| CliError::Io {
+                    path: args.in_path.clone(),
+                    message: e.to_string(),
+                })?;
+                let mut out_file =
+                    std::fs::File::create(&args.out_path).map_err(|e| CliError::Io {
+                        path: args.out_path.clone(),
+                        message: e.to_string(),
+                    })?;
+                let mut cipher = <$cipher>::new(&key_arr, &iv_arr);
+                let mut chunk = [0u8; STRUMOK_STREAM_CHUNK_BYTES];
+                loop {
+                    let n = in_file.read(&mut chunk).map_err(|e| CliError::Io {
+                        path: args.in_path.clone(),
+                        message: e.to_string(),
+                    })?;
+                    if n == 0 {
+                        break;
+                    }
+                    cipher.apply_keystream(&mut chunk[..n]);
+                    out_file.write_all(&chunk[..n]).map_err(|e| CliError::Io {
+                        path: args.out_path.clone(),
+                        message: e.to_string(),
+                    })?;
+                }
+            }};
+        }
+
+        match args.variant {
+            HashBits::B256 => stream_variant!(Strumok256, 32),
+            HashBits::B512 => stream_variant!(Strumok512, 64),
+        }
+        return Ok(());
+    }
+
     let input = std::fs::read(&args.in_path).map_err(|e| CliError::Io {
         path: args.in_path.clone(),
         message: e.to_string(),
     })?;
-    let iterations = args.iterations.max(1);
 
     macro_rules! run_strumok_variant {
         ($cipher:ty, $key_len:literal) => {{
@@ -1424,5 +1486,38 @@ mod tests {
         run_strumok_command(&decrypt_args).expect("decrypt should succeed");
 
         assert_eq!(std::fs::read(dir.file("pt.bin")).expect("read"), plaintext);
+    }
+
+    /// `run_strumok_command` streams `--in` to `--out` in fixed-size chunks for real (`iterations
+    /// <= 1`) usage rather than reading the whole file (D-42's policy, applied here after
+    /// `kupyna-digest`). Every test above uses a message far smaller than one chunk, which never
+    /// exercises the multi-chunk read/apply/write loop or a chunk boundary falling mid-keystream
+    /// (the exact case T-24's `apply_keystream` chunk-invariance property test already covers at
+    /// the `hazmat` level - this checks the CLI wiring puts it to use correctly end to end).
+    #[test]
+    fn run_strumok_command_streams_multi_chunk_input_correctly() {
+        let dir = TempDir::new("strumok_multichunk");
+        let key = [0x22u8; 64];
+        let iv = [0x33u8; 32];
+        let len = STRUMOK_STREAM_CHUNK_BYTES * 2 + 555; // deliberately not chunk-aligned
+        let plaintext: Vec<u8> = (0..len).map(|i| (i as u8).wrapping_mul(61)).collect();
+        std::fs::write(dir.file("key.bin"), key).expect("write key");
+        std::fs::write(dir.file("iv.bin"), iv).expect("write iv");
+        std::fs::write(dir.file("in.bin"), &plaintext).expect("write input");
+
+        let args = StrumokArgs {
+            variant: HashBits::B512,
+            key_path: dir.file("key.bin"),
+            iv_path: dir.file("iv.bin"),
+            in_path: dir.file("in.bin"),
+            out_path: dir.file("out.bin"),
+            iterations: 1,
+            raw_schedule: false,
+        };
+        run_strumok_command(&args).expect("strumok command should succeed");
+
+        let mut expected = plaintext.clone();
+        Strumok512::new(&key, &iv).apply_keystream(&mut expected);
+        assert_eq!(std::fs::read(dir.file("out.bin")).expect("read"), expected);
     }
 }

@@ -38,11 +38,16 @@ item they point to is later removed.
       via a new `hazmat::tables` module rather than duplicated (D-13). `cargo miri test` also
       confirmed clean (no UB, all 5 variants, ~158s). Same day (D-16 update): UAPKI's
       `dstu7624_ecb_self_test` (single-block case, all 5 variants × encrypt/decrypt) matches
-      byte-for-byte too — same official vector set, not a new independent reading. Still open: no
-      independent second-oracle cross-check (Java/.NET harnesses don't cover Kalyna vectors yet),
-      no mode of operation (D-05) — UAPKI's CBC/OFB/CFB/CTR/CMAC/XTS/KW/CCM/GMAC/GCM self-tests are
-      unused KAT data waiting for whenever modes get built, same as Kupyna's KMAC below —
-      `dstutool` doesn't call this yet.
+      byte-for-byte too — same official vector set, not a new independent reading.
+      **Independent second-oracle cross-check was actually already closed by T-77/T-78
+      (2026-07-21/22, before this bullet was last edited) — this note was simply stale, not a real
+      gap.** Re-confirmed fresh 2026-07-23: both the Java and .NET harnesses run real Bouncy
+      Castle's `DSTU7624Engine` against all 5 Kalyna variants (10/10 cases each) — found and fixed
+      a real bug doing so, see `xtask oracle-java`'s note below. Remaining gap, unchanged: no mode
+      of operation confirmed against the primary text (D-05; `hazmat::kalyna_ccm`, D-41, is a
+      provisional interim, not this) — UAPKI's CBC/OFB/CFB/CTR/CMAC/XTS/KW/CCM/GMAC/GCM self-tests
+      beyond what CCM already used are unused KAT data waiting for whenever more modes get built,
+      same as Kupyna's KMAC below.
 - [x] **T-11** Implement Kupyna (256/512) — `dstu_core::hazmat::kupyna` (`Kupyna256`/`Kupyna512`),
       citation in `DECISIONS.md` D-10. **Confirmed green 2026-07-22**: `cargo test`, `cargo miri
       test` (no UB), `cargo clippy -- -D warnings`, and `no_std` build all pass; independently
@@ -80,6 +85,22 @@ item they point to is later removed.
       `#[allow(clippy::needless_range_loop)]` needed on the output-transform XOR loop - same
       lockstep-two-arrays false-positive family as D-39's three cases, `self.h`/`t_final` this
       time), `cargo miri test` run against the new test file specifically.
+- [x] **T-84** **`uacrypt kupyna-digest`/`strumok-crypt` made genuinely streaming from disk
+      (`DECISIONS.md` D-42), same day.** User asked directly whether T-83's streaming was
+      "honest" - small bounded chunks in memory, nothing quietly buffered whole. Answer at the
+      hazmat level was yes; at the CLI level, no - both commands still did one whole-file
+      `std::fs::read`. Fixed for real single-pass use (`iterations <= 1`): `kupyna-digest` reads
+      an 8 KiB chunk at a time via `Kupyna*Hasher`; `strumok-crypt` reads an 8 KiB chunk, applies
+      the keystream in place, writes it, and discards it (chunking both read *and* write, since a
+      cipher's output length equals its input length, unlike a hash) - relying on
+      `Strumok::apply_keystream`'s own chunk-invariance (T-24) for correctness. The `--iterations`
+      benchmark path for both commands deliberately still reads the whole file once up front (D-34:
+      re-reading per iteration would put disk I/O noise into the timed MB/s figure), then re-hashes/
+      re-applies through larger in-memory chunks. Verified: new multi-chunk tests for both commands
+      (non-chunk-aligned message lengths, checked against `hazmat` directly) plus manual round-trips
+      through the real release binary (kupyna-digest on 5 MiB+, strumok-crypt on 3 MiB+), all
+      matching. Recorded as standing policy for any future streaming CLI work in `CLAUDE.md`'s
+      Agent discipline section, not just a one-off fix.
 - [x] **T-12** **Blocker lifted 2026-07-22 (D-15/D-16), not fully resolved:** found
       https://github.com/specinfo-ua/UAPKI (state-expertise pedigree, see `ORACLES.md`), whose
       `dstu8845.c` self-test is comment-attributed to `// ДСТУ 8845:2019` in its own source — the
@@ -737,6 +758,18 @@ convention invented per language.
       `oracles/bouncycastle-java/` clone. **Actually built and run**, both via raw `javac`/`java`
       (JDK 8) and via Maven (installed 2026-07-22, see `.claude.local.md`): same result, all 22
       cases passed both ways.
+      **Bug found and fixed 2026-07-23, re-running this via `cargo xtask oracle-java` specifically
+      (not raw `mvn`) for the Kalyna second-oracle cross-check above**: `xtask`'s own invocation,
+      `mvn -f tests/oracle-harness/java/pom.xml -q compile exec:java` run from the repo root,
+      failed with `NoSuchFileException` on `OracleHarness`'s relative vectors path -
+      `exec:java`'s forked JVM does not inherit the project directory as its working directory
+      just because `-f` pointed at its POM, unlike `dotnet run --project ...` which does handle
+      this correctly. Confirmed the fix by `cd`-ing into `tests/oracle-harness/java/` and running
+      plain `mvn -q compile exec:java` directly (passed clean) before changing anything. Fixed in
+      `xtask/src/main.rs`'s `oracle_java()`: pass the project directory as `run`'s `dir` parameter
+      instead of `-f`, matching how every other per-crate `xtask` command already sets its working
+      directory. Re-ran after the fix: all 22 cases (10 Kalyna + 12 Kupyna) pass via
+      `cargo xtask oracle-java` now, matching the raw-`mvn` result exactly.
 - [x] **T-79** `cargo xtask` cross-platform build/QA runner (2026-07-22, D-12) — one command
       (`cargo xtask build|test|fmt|clippy|ci|miri|fuzz|audit|deny|oracle-java|oracle-dotnet`) for
       Linux/Windows/macOS instead of separate shell/PowerShell scripts. Plain Rust binary at

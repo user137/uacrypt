@@ -281,16 +281,18 @@ fn oracle_java() -> bool {
     if !require("mvn", "see README.md \"Building from source\" (Maven)") {
         return false;
     }
+    // `OracleHarness.findVectorsDir()` resolves a relative `../../../crates/...` path assuming
+    // its cwd is this project directory - true for a plain `mvn` invocation from inside it, but
+    // NOT for `mvn -f tests/oracle-harness/java/pom.xml ...` run from the repo root: `-f` only
+    // selects which POM to build, it doesn't relocate exec:java's forked JVM's working directory.
+    // Confirmed the hard way: `-f` from the repo root resolved the vectors path to a
+    // nonexistent location outside the repo (`NoSuchFileException`), while `cd`-ing into the
+    // project directory first and running plain `mvn -q compile exec:java` worked. Passing this
+    // as `dir` (not `-f`) fixes it for both invocation shapes.
     run(
         "mvn",
-        &[
-            "-f",
-            "tests/oracle-harness/java/pom.xml",
-            "-q",
-            "compile",
-            "exec:java",
-        ],
-        None,
+        &["-q", "compile", "exec:java"],
+        Some(Path::new("tests/oracle-harness/java")),
     )
 }
 
