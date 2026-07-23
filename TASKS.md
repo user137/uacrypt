@@ -428,6 +428,12 @@ resistance (SPA/DPA — explicitly out of scope per `SECURITY.md`/`CLAUDE.md` "M
       the most explanatory), not chased further this pass. `PERFORMANCE.md`'s Results tables and
       "What the gap is, honestly" section both got a scope correction noting the Ryzen-specific
       claim.
+      **Re-run 2026-07-23, triggered by new `hazmat` changes since the last run** (`kalyna_ccm`,
+      T-81, and Kupyna's streaming `KupynaCore`, T-83) - re-synced via the same tar+ssh approach,
+      `cargo xtask ci` on the Pi. All mandatory checks green, including the new suites: 37
+      `kalyna_ccm` tests and 9 Kupyna-streaming tests, both passing on `aarch64` with no
+      architecture-specific surprise. Optional tools (miri/fuzz/audit/deny/Maven/.NET) still not
+      installed on the Pi, same as before - not a new gap, unchanged from the first run.
       **Extended a third time, same day, see `DECISIONS.md` D-34**: user asked for one single
       testing method and metric going forward - a real built binary (`dstutool`, and an equivalent
       thin CLI wrapper for every oracle), MB/s only, for every algorithm/implementation/platform,
@@ -780,6 +786,26 @@ convention invented per language.
       missing in that shell session with install hints while `cargo audit`, `cargo deny check`, and
       the .NET oracle harness (all 22 cases) ran and passed. README.md "Building from source" /
       "Development commands" document the per-OS install + usage.
+- [x] **T-85** **First real GitHub Actions run after the push (2026-07-23) surfaced 3 independent CI
+      bugs, all now fixed** — the local `cargo xtask ci` had masked all three, since it either skips
+      the tool (miri/fuzz not installed locally at the time each was wired up) or never exercised
+      the exact failure path (audit, run locally before `Cargo.lock` existed to be gitignored).
+      1. `cargo miri test`/`cargo fuzz run` both silently ran under **`stable`**, not the `nightly`
+         toolchain `dtolnay/rust-toolchain@nightly` installs — `rust-toolchain.toml` pins `stable`
+         repo-wide, which overrides rustup's default toolchain for any `cargo` invocation inside the
+         checkout, regardless of what the Action set as default. `xtask/src/main.rs` already knew
+         this (`cargo +nightly miri test`/`cargo +nightly fuzz run`, written when D-32 was chased
+         down) — the CI YAML just never got the same treatment. Fixed: `.github/workflows/rust.yml`
+         both jobs now say `cargo +nightly miri test --workspace` / `cargo +nightly fuzz run ...`.
+      2. `cargo audit` failed with `Couldn't load ./Cargo.lock: entity not found` — `.gitignore` had
+         a blanket `Cargo.lock` rule (matching every depth), so the workspace-root lockfile
+         `rustsec/audit-check` reads was simply never in the checkout. Fixed: root `Cargo.lock`
+         un-ignored and committed (needed for `cargo audit`/reproducible `uacrypt` binary builds
+         anyway, ahead of T-18's release-binary work); `xtask/Cargo.lock` and
+         `crates/dstu-core/fuzz/Cargo.lock` stay ignored (separate `[workspace]`s, not read by this
+         check, no reason to change them).
+      Verified via `gh run view --json jobs` + `gh api .../actions/jobs/<id>/logs` per job, not
+      guessed from the summary page.
 - [x] **T-80** Extract Bouncy Castle's own DSTU 4145 known-answer test data — done as
       `crates/dstu-core/tests/vectors/dstu4145/gf2m163.json` (2026-07-22, D-14), transcribed from
       the official standard's own Annex B.1 worked example and cross-checked against

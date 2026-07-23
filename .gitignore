@@ -4,7 +4,8 @@
 /crates/dstu-core/fuzz/corpus
 /crates/dstu-core/fuzz/artifacts
 **/*.rs.bk
-Cargo.lock
+/xtask/Cargo.lock
+/crates/dstu-core/fuzz/Cargo.lock
 *.pdb
 .claude.local.md
 /.claude/

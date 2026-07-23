@@ -45,7 +45,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@nightly
         with:
           components: miri
-      - run: cargo miri test --workspace
+      # `+nightly` is required despite the nightly install above: rust-toolchain.toml pins
+      # `stable` repo-wide, which overrides rustup's default toolchain for any cargo invocation
+      # inside this checkout.
+      - run: cargo +nightly miri test --workspace
 
   fuzz-smoke:
     name: cargo fuzz (short smoke run, not a full campaign)
@@ -54,7 +57,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@nightly
       - run: cargo install cargo-fuzz --locked
-      - run: cargo fuzz run kupyna -- -max_total_time=60
+      # Same rust-toolchain.toml override as the miri job above - `+nightly` is not optional here.
+      - run: cargo +nightly fuzz run kupyna -- -max_total_time=60
         working-directory: crates/dstu-core
 
   audit:
