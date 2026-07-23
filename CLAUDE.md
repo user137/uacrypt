@@ -25,10 +25,13 @@ environment. The workspace has two crates:
   wrapper yet, no mode of operation for Kalyna). `cargo fuzz` has now actually been run (all three
   targets, smoke runs, zero crashes) on a Windows dev machine with Visual Studio installed, via the
   MSVC toolchain/target (`DECISIONS.md` D-32) — CI (Linux) remains the unconditional per-push check.
-- `crates/dstutool` — no longer a placeholder: `kalyna-block encrypt/decrypt`, `kupyna-digest`, and
-  `strumok-crypt` subcommands exist (`DECISIONS.md` D-31), used for binary-level performance
-  comparisons (`PERFORMANCE.md`) — still not the eventual file-plus-mode-of-operation CLI the MVP
-  scope below describes, which stays blocked on D-05.
+- `crates/uacrypt` — the CLI binary, renamed 2026-07-23 from its `dstutool` working name
+  (`DECISIONS.md` D-36; older `DECISIONS.md`/`TASKS.md`/`PERFORMANCE.md` entries predating the
+  rename still say `dstutool`, left as-is since they're a historical record, not stale docs).
+  No longer a placeholder: `kalyna-block encrypt/decrypt`, `kupyna-digest`, and `strumok-crypt`
+  subcommands exist (`DECISIONS.md` D-31), used for binary-level performance comparisons
+  (`PERFORMANCE.md`) — still not the eventual file-plus-mode-of-operation CLI the MVP scope below
+  describes, which stays blocked on D-05.
 
 `cargo xtask <command>` (see `xtask/`, aliased via `.cargo/config.toml`) is the one cross-platform
 build/QA entry point — same command on Linux/Windows/macOS, no new install beyond `cargo` itself.
@@ -69,8 +72,8 @@ Algorithms in scope:
 ## MVP scope (first priority)
 
 - Rust core implementing Kalyna + Kupyna + Strumok, verified against official DSTU test vectors.
-- Single CLI binary over the core (working name `dstutool`), e.g.
-  `dstutool encrypt --key ... --in file --out file` — mode, nonce/IV etc. are hardcoded so there's
+- Single CLI binary over the core (`uacrypt`, `DECISIONS.md` D-36), e.g.
+  `uacrypt encrypt --key ... --in file --out file` — mode, nonce/IV etc. are hardcoded so there's
   nothing for the user to misconfigure.
 - Publish the core crate to crates.io.
 - Prebuilt binaries for Windows/Linux via GitHub Releases (not "clone and build yourself").
@@ -113,6 +116,7 @@ Algorithms in scope:
 |---|---|---|---|
 | `TASKS.md` | starting or resuming any work session | a task is started, finished, or newly discovered | phase-by-phase task backlog and progress state — status only, not rationale |
 | `docs/dstu-crypto-project.md` | planning scope, API design, algorithm choices | scope or API-mapping decisions change | project scope, libsodium API mapping |
+| `docs/resource-profiles.md` | choosing/explaining `fused` vs `small-tables`, sizing a target's flash budget | the profile split's memory/speed numbers change, or a new MCU tier is added to the sizing guide | `small-tables` feature memory/speed numbers (`DECISIONS.md` D-35/D-38/D-39), per-target profile recommendation |
 | `SECURITY.md` | before writing any crypto primitive or adding a dependency | threat model or hard constraints change | threat model, hard constraints, supply-chain vetting |
 | `DECISIONS.md` | need the reason behind an architectural choice | a new architectural decision is made | decisions + rejected alternatives, with citations |
 | `ORACLES.md` | before implementing or verifying any primitive | oracle trust ranking changes, or a new oracle/vector source is added | oracle trust matrix, per-algorithm oracle map, test-vector convention, list of reference implementations (`oracles/README.md` links here rather than duplicating) |

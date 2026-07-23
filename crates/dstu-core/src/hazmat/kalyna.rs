@@ -12,7 +12,7 @@
 //! and `docs/dstu-crypto-project.md` "Concrete API shape".
 
 use super::tables::{
-    apply_matrix, MDS_INV_TABLE, ROWS, SBOXES, SBOXES_DEC, SBOX_MDS, SBOX_MDS_DEC,
+    apply_inverse_matrix, forward_sbox_mds, inverse_sbox_mds, ROWS, SBOXES, SBOXES_DEC,
 };
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
@@ -126,11 +126,14 @@ fn encipher_round(state: &mut [Column]) {
     let mut result = [ZERO_COLUMN; MAX_NB];
     for (out_col, out_word) in result[..nb].iter_mut().enumerate() {
         let mut acc = 0u64;
+        // `row` also drives `shift`/`src_col` and is passed to `forward_sbox_mds`, not just a
+        // direct single-collection index - not a real `iter().enumerate()` candidate.
+        #[allow(clippy::needless_range_loop)]
         for row in 0..ROWS {
             let shift = row * nb / ROWS;
             let src_col = (out_col + nb - shift) & nb_mask;
             let byte = state[src_col][row];
-            acc ^= SBOX_MDS[row][byte as usize];
+            acc ^= forward_sbox_mds(row, byte);
         }
         *out_word = acc.to_le_bytes();
     }
@@ -145,7 +148,7 @@ fn encipher_round(state: &mut [Column]) {
 /// `sub_bytes`/`shift_rows` above (D-28).
 #[allow(dead_code)]
 fn decipher_round(state: &mut [Column]) {
-    apply_matrix(state, &MDS_INV_TABLE);
+    apply_inverse_matrix(state);
     inv_shift_rows(state);
     inv_sub_bytes(state);
 }
@@ -168,11 +171,13 @@ fn fused_inv_round(state: &mut [Column]) {
     let mut result = [ZERO_COLUMN; MAX_NB];
     for (out_col, out_word) in result[..nb].iter_mut().enumerate() {
         let mut acc = 0u64;
+        // Same non-enumerate-candidate shape as `encipher_round` above.
+        #[allow(clippy::needless_range_loop)]
         for row in 0..ROWS {
             let shift = row * nb / ROWS;
             let src_col = (out_col + shift) & nb_mask;
             let byte = state[src_col][row];
-            acc ^= SBOX_MDS_DEC[row][byte as usize];
+            acc ^= inverse_sbox_mds(row, byte);
         }
         *out_word = acc.to_le_bytes();
     }
@@ -187,7 +192,7 @@ fn fused_inv_round(state: &mut [Column]) {
 fn transform_keys_for_decrypt(round_keys: &RoundKeys, nb: usize, nr: usize) -> RoundKeys {
     let mut dec_keys = *round_keys;
     for key in dec_keys.iter_mut().take(nr).skip(1) {
-        apply_matrix(&mut key[..nb], &MDS_INV_TABLE);
+        apply_inverse_matrix(&mut key[..nb]);
     }
     dec_keys
 }
@@ -401,7 +406,7 @@ fn decrypt_with_schedule(
     let mut state = columns_from_bytes(ciphertext, nb);
 
     sub_round_key(&mut state[..nb], &round_keys[nr][..nb]);
-    apply_matrix(&mut state[..nb], &MDS_INV_TABLE);
+    apply_inverse_matrix(&mut state[..nb]);
     for dec_key in dec_keys[1..nr].iter().rev() {
         fused_inv_round(&mut state[..nb]);
         xor_round_key(&mut state[..nb], &dec_key[..nb]);
@@ -549,8 +554,8 @@ kalyna_variant!(Kalyna512_512, Kalyna512_512ExpandedKey, 64, 64, 8, 8, 18);
 
 #[cfg(test)]
 mod fused_round_tests {
-    use super::{apply_matrix, encipher_round, shift_rows, sub_bytes, Column, MAX_NB, ZERO_COLUMN};
-    use crate::hazmat::tables::MDS_TABLE;
+    use super::{encipher_round, shift_rows, sub_bytes, Column, MAX_NB, ZERO_COLUMN};
+    use crate::hazmat::tables::apply_forward_matrix;
     use proptest::prelude::*;
 
     /// The pre-D-28 three-pass form, kept only here as the independent reference the fused
@@ -558,7 +563,7 @@ mod fused_round_tests {
     fn naive_encipher_round(state: &mut [Column]) {
         sub_bytes(state);
         shift_rows(state);
-        apply_matrix(state, &MDS_TABLE);
+        apply_forward_matrix(state);
     }
 
     fn arb_state(nb: usize) -> impl Strategy<Value = Vec<Column>> {

@@ -1,4 +1,4 @@
-# cargo-deny policy. Currently checks an empty dependency tree (dstu-core/dstutool have zero
+# cargo-deny policy. Currently checks an empty dependency tree (dstu-core/uacrypt have zero
 # external dependencies) - this file exists so the policy is enforced automatically the moment a
 # dependency is added, rather than relying on someone remembering to check SECURITY.md's
 # supply-chain table by hand. See SECURITY.md "Supply-chain vetting".

@@ -5,10 +5,10 @@ use std::process::ExitCode;
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    match dstutool::run(&args) {
+    match uacrypt::run(&args) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
-            eprintln!("dstutool: {e}");
+            eprintln!("uacrypt: {e}");
             ExitCode::FAILURE
         }
     }

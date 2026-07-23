@@ -1510,3 +1510,211 @@ implementation/oracle now built on both machines (`dstutool`, UAPKI, outspace fo
 Oliynykov's reference C stays excluded per the user's earlier, unchanged decision that a
 correctness-only oracle isn't a performance baseline - this session's "test every oracle" request
 is about the *method*, not about un-excluding an oracle already excluded for an orthogonal reason).
+
+## D-35: Two resource profiles (small-tables vs fused), one codebase, one test suite
+
+Follow-up to the D-27/D-28/D-30 fused-table work, prompted by planning Phase 4 embedded targets:
+those tables (`MDS_TABLE`/`MDS_INV_TABLE`, D-27; `SBOX_MDS`/`SBOX_MDS_DEC`, D-28/D-30) plus
+Strumok's `T0..T7` (D-26) total **~86 KB of `const` data** (Kalyna/Kupyna ~66 KB, Strumok ~20 KB —
+measured directly off `hazmat::tables.rs`/`hazmat::strumok.rs`, not the earlier ~36 KB estimate
+given in conversation, which missed that `MDS_TABLE`/`MDS_INV_TABLE` are still live production
+code, not superseded by `SBOX_MDS`/`SBOX_MDS_DEC`). On a memory-mapped-flash 32-bit target
+(Cortex-M/Xtensa/RISC-V, XIP) this costs flash, not SRAM; on AVR's Harvard architecture it costs
+SRAM outright unless placed in `PROGMEM` with AVR-specific access code. Either way, the smallest
+targets in scope (STM32 L0/F0/G0 entry parts at 16-64 KB flash; ATmega328P at 32 KB flash/2 KB
+SRAM) cannot hold ~86 KB of tables regardless of architecture.
+
+**Decision**: not two separate implementations. One codebase, a new Cargo feature on `dstu-core`
+gates which table strategy the shared round functions call:
+
+- Default (unchanged): today's fused tables (`SBOX_MDS`/`SBOX_MDS_DEC`/`MDS_TABLE`/
+  `MDS_INV_TABLE`, Strumok's `T0..T7`) - full speed, ~86 KB of `const` data.
+- New small-tables feature: the pre-D-26/D-27 path - `SBOXES`/`SBOXES_DEC` (2 KB) + table-free
+  `gf_mul` for Kalyna/Kupyna (~2.1 KB total), Strumok's `T` computed at runtime from those same
+  shared tables instead of its own `T0..T7` (adds ~0 KB, reuses Kalyna/Kupyna's tables) - slower,
+  ~2-6 KB total. This is not new code to write: it is D-27's own kept-for-testing reference path
+  (`gf_mul`/`MDS_MATRIX`/`MDS_INV_MATRIX`, currently `#[allow(dead_code)]`) and Strumok's
+  pre-D-26 runtime-`T` computation, promoted from dead test-only code to a real `cfg`-selected
+  production path instead of being deleted or left unreachable.
+
+**Why this doesn't double the verification burden**: official DSTU vectors and the differential
+oracle harnesses (Oliynykov/UAPKI/outspace) check input/output pairs, not which internal table
+strategy produced them - the same test suite runs unchanged against both feature states. This is
+the same shape the project already runs for the four existing `no_std`/`alloc`/`std` feature
+combinations (`TASKS.md` "Re-confirm the `no_std` build still passes") - CI gains one more
+build+test matrix entry (`--features small-tables`), not new tests to write or maintain. Two
+independent full implementations would have been the actually expensive path, since each would
+need its own dual-oracle confirmation; a `cfg`-gated shared round function reusing the same
+verified math does not.
+
+**Not decided here**: the feature's public name, `dstutool`'s working name, and the project's own
+(GitHub) name are all still open - see `TASKS.md` Phase 1/Phase 4 for the naming subtask. Also not
+decided: whether `small-tables` on AVR is sufficient on its own, or still needs `PROGMEM`
+placement work on top (`TASKS.md` Phase 4's existing Arduino stretch-goal note) - the Harvard-
+architecture SRAM-copy problem is orthogonal to which table set is chosen and isn't solved by this
+decision alone.
+
+## D-36: `dstutool`'s real name is `uacrypt` (`TASKS.md` T-21)
+
+Researched naming conventions in the libsodium-adjacent/security-CLI space before proposing
+options: smallstep's "The Poetics of CLI Command Names" (concrete anti-patterns - never use
+"tool"/"kit"/"util"/"easy" in a command name, since `dstutool` already does; don't bind the name to
+a specific protocol/standard that may age out, the exact regret `openssl`'s own naming is called
+out for) plus real precedent from Frank Denis's libsodium-adjacent tools (`minisign`, `age`/`rage`,
+`sq`) - short, easy to type without Shift, pronounceable the same way worldwide. Three candidate
+directions were given (a short "thoughtful meaningless" word like `step`/`age`; continuing this
+project's existing Ukrainian nature-word theme the way `Kalyna`/`Kupyna`/`Strumok` already are, not
+acronyms; a Ukraine+crypto portmanteau) - user picked the portmanteau direction, name **`uacrypt`**.
+
+**Scope of this decision**: names the CLI binary only (`TASKS.md` T-21). Explicitly does not
+resolve T-20 (the small-tables/fused feature-flag public name, D-35) or T-22 (the project's own
+GitHub name) - `uacrypt` is not automatically assumed for either, pending confirmation.
+
+**Not yet done**: the actual rename (`crates/dstutool` package/binary name in `Cargo.toml`,
+`README.md`, `docs/dstu-crypto-project.md`, and any place `dstutool` is invoked from
+`xtask`/CI/`PERFORMANCE.md`) - this entry records the naming decision itself, not the mechanical
+follow-through.
+
+## D-37: `uacrypt` rename executed; also adopted as the project's own (GitHub) name (T-22)
+
+Follow-up to D-36, same day: user confirmed both open questions at once - do the D-36 rename now,
+and reuse `uacrypt` for `TASKS.md` T-22 (the project's own/GitHub name) too, rather than treating
+the CLI binary and the project as separately-named. Precedent for a project and its flagship CLI
+sharing one name exists in the same libsodium-adjacent space D-36's research drew from (`age` is
+both the tool and the project) - not a new pattern invented here.
+
+**Executed**:
+- `git mv crates/dstutool crates/uacrypt`; `Cargo.toml` `[package] name`/`[lib] name` both
+  `uacrypt`; root workspace `Cargo.toml` member path updated; `deny.toml`'s comment updated.
+- `main.rs`/`lib.rs` internal references (`uacrypt::run`, the `uacrypt: {e}` error prefix, doc
+  comments, the `uacrypt_test_` temp-dir prefix used by `main.rs`'s own tests) updated.
+- `README.md`: title changed from "dstu-crypto (working name)" to `uacrypt` (this *is* T-22 -
+  the project's own name, not just the CLI's), directory-tree entry, the "Using `uacrypt`"
+  section, and its `cargo build -p uacrypt`/`uacrypt kalyna-block ...` example commands.
+- `SECURITY.md`, `docs/dstu-crypto-project.md`, `CLAUDE.md` - each place that named the CLI
+  `dstutool` (working name) now says `uacrypt`, citing this entry.
+- `PERFORMANCE.md`'s **canonical** "Binary-level (process) comparison" section (D-34) - column
+  headers, prose, and the `cargo build -p uacrypt --release` / `target/release/uacrypt
+  kalyna-block ...` reproduction commands - updated, since this section's commands need to
+  actually work today, unlike a historical record. The measured numbers themselves are unchanged
+  (same binary, same behavior, name only) - a one-line note added explaining the rename rather
+  than silently changing what the numbers were labeled under.
+
+**Deliberately left unchanged**: `DECISIONS.md`'s own earlier entries (D-26 through D-34, D-36
+above), `TASKS.md`'s historical `[x]` narrative entries, and `PERFORMANCE.md`'s superseded
+"## Results" section all still say `dstutool` - each describes what was literally built and
+measured under that name *at the time*, and rewriting history to match a later rename would be
+the "silently deprecate a document" failure mode `CLAUDE.md` and this project's own D-34 precedent
+(dated-banner-not-deletion) both warn against. `docs/dstu-crypto-project.md`'s own filename was
+**not** renamed - it names its *content* (the DSTU crypto project spec), not the product, and
+renaming it would break a large number of existing cross-references (`CLAUDE.md`'s documentation
+map, `TASKS.md`, every `DECISIONS.md` entry citing it) for no functional benefit; same reasoning
+applies to `dstu-core`'s crate name, which was never in scope of T-21/T-22 (it names the *library*,
+which is not "uacrypt" - `uacrypt` is specifically the CLI/project name, not the core crate).
+
+**Verified**: `cargo build --workspace`, `cargo test -p uacrypt` (15/15 passed), `cargo clippy
+--workspace -- -D warnings`, `cargo fmt --check` all clean post-rename on the Ryzen dev machine.
+`Cargo.lock` regenerated by the build rather than hand-edited. Not yet re-run: the `no_std`
+feature-flag matrix, Raspberry Pi re-sync, or CI - none of this rename touches `dstu-core` or its
+feature flags, so no regression is expected, but per `TASKS.md`'s standing "re-confirm as each
+change lands" discipline these should still be re-checked before the next release, not assumed.
+
+**Still open**: T-20 (the small-tables/fused feature-flag public name, D-35) is the one remaining
+naming decision - not resolved by this entry.
+
+## D-38: Resource-profile feature keeps its working name - `small-tables`, no rebrand (T-20)
+
+Follow-up to D-35/D-36/D-37, same day - the last open naming decision (`TASKS.md` T-20). Asked
+whether reusing `uacrypt` for this too would be a problem: **it would be the wrong kind of name for
+what this is.** T-21/T-22 (D-36/D-37) named user-facing products (a CLI someone types, a project
+someone finds on GitHub) where a short, memorable, marketable identity earns its keep. A
+`Cargo.toml` feature flag is a technical/internal identifier read by `cargo build --features ...`
+and `#[cfg(feature = "...")]` - Rust ecosystem convention there favors plain, descriptive,
+kebab-case names (`derive`, `serde`, `std`) over branding, and this project already has two such
+features (`std`, `alloc` in `dstu-core/Cargo.toml`) with exactly that plain style.
+
+**Decision**: no rebrand. The working name from D-35's own text - **`small-tables`** - becomes the
+actual Cargo feature name once implemented; the default fused-table path stays nameless (it's the
+absence of the feature, not a feature of its own). Checked for conflicts: `small-tables` doesn't
+collide with `std`/`alloc`, hyphens are valid in Cargo feature names, and `dstu-core` has zero
+external dependencies (`SECURITY.md`/`deny.toml`) so no cross-crate feature-unification risk.
+
+**Not done here**: this closes the naming question only. `TASKS.md` Phase 4's "Two-resource-profile
+split" item (the actual `[features] small-tables = []` entry plus `cfg`-gating
+`gf_mul`/`MDS_MATRIX`/`SBOXES` vs. `SBOX_MDS`/`SBOX_MDS_DEC`/`T0..T7`, D-35's "promote from
+dead_code to production path") is still open, unstarted.
+
+All three `TASKS.md` T-19 naming decisions (T-20/T-21/T-22) are now resolved.
+
+## D-39: `small-tables` implemented - D-35's design executed (`TASKS.md` T-54)
+
+Follow-up to D-35/D-38, same day: user asked to implement D-35/D-38 directly rather than leave
+them as a naming/design decision only. Executed the design D-35 already specified, essentially
+unchanged - this entry records what building it actually required, including one design
+refinement D-35 hadn't spelled out.
+
+**Cargo**: `dstu-core/Cargo.toml` gets `small-tables = []`, independent of `std`/`alloc`/default.
+
+**`hazmat/tables.rs`** - all the profile-switching logic lives here, not spread across the
+callers:
+- `MDS_TABLE`/`MDS_INV_TABLE` (D-27), `SBOX_MDS`/`SBOX_MDS_DEC` (D-28/D-30), and their `build_
+  sbox_mds`/`build_sbox_mds_dec` `const fn`s are now `#[cfg(not(feature = "small-tables"))]` - not
+  compiled at all under the feature, not merely dead-code-eliminated. `MDS_MATRIX`/`MDS_INV_
+  MATRIX`/`gf_mul` stay unconditional (D-27's small reference matrices/function) since
+  `small-tables` needs them as live production code, not just a test reference anymore.
+- New: `apply_matrix_via_gf_mul` (the pre-D-27 `apply_matrix` body, reconstructed - 64 `gf_mul`
+  calls per column) and `mds_column_via_gf_mul` (one output column's worth, computed on demand -
+  literally the exhaustive test's own `expected_column` helper, promoted from test-only to a real
+  function, same formula, zero new correctness risk since it's the same code).
+- **Design refinement over D-35's text**: rather than gate kalyna.rs/kupyna.rs/strumok.rs's call
+  sites with their own `#[cfg]`, four small role-based wrapper functions do it once, here:
+  `apply_forward_matrix`/`apply_inverse_matrix` (whole-column MDS, each with two `#[cfg]`
+  implementations, same name) and `forward_sbox_mds`/`inverse_sbox_mds` (one gathered byte's
+  fused S-box+MDS contribution, same pattern). Callers everywhere else - `kalyna.rs`'s
+  `encipher_round`/`fused_inv_round`/`decipher_round`/`transform_keys_for_decrypt`/`decrypt_with_
+  schedule`, `kupyna.rs`'s `sub_shift_mix`/`mix_columns`, and both modules' test code - call these
+  four functions unconditionally and never import `MDS_TABLE`/`SBOX_MDS`/etc. directly. Net effect:
+  D-35's "no cfg spread across callers" intent, but achieved by centralizing the *interface*, not
+  by hoping dead-code elimination would strip the unused profile.
+- Exhaustive `mod tests` (checks `MDS_TABLE`/`SBOX_MDS` against `gf_mul`) is `#[cfg(all(test,
+  not(feature = "small-tables")))]` - nothing to exhaustively check under `small-tables`, since
+  that profile's production code *is* the `gf_mul` computation, not a table checked against it.
+
+**`hazmat/strumok.rs`**: `T0..T7` (D-26, 16 KB) are `#[cfg(not(feature = "small-tables"))]`;
+`t_function` has two `#[cfg]` bodies - default keeps the `T0..T7` XOR-lookup, `small-tables`
+reverts to exactly the pre-D-26 form the module doc already described ("originally computed at
+runtime via `hazmat::tables::{SBOXES, MDS_MATRIX, apply_matrix}`") - one `SBOXES` substitution per
+byte of the word, then `apply_forward_matrix` treats the 8-byte word as one MDS column.
+`MUL_ALPHA`/`MUL_ALPHA_INV` untouched (D-35 already noted these aren't swappable - different field
+construction, not derivable from Kalyna/Kupyna's tables).
+
+**Unanticipated correctness/tooling issue, not in D-35's plan**: swapping `SBOX_MDS[row][byte]`
+(direct 2D-array index) for `forward_sbox_mds(row, byte)` (function call) changed clippy's
+`needless_range_loop` analysis in three gather loops (`encipher_round`, `fused_inv_round`,
+`sub_shift_mix`) plus the new `mds_column_via_gf_mul` - confirmed via `git stash` that the
+pre-change code was clippy-clean and the refactor itself (not a toolchain drift) triggered the new
+warnings, most likely because clippy no longer sees a second array indexed by the same loop
+variable once one side becomes a function argument instead of `array[row]`. Not a real
+readability problem - `row` still drives `shift`/`src_col` arithmetic, not a plain
+single-collection enumerate candidate - so resolved with four documented `#[allow(clippy::
+needless_range_loop)]`, same pattern as this file's existing `#[allow(clippy::cast_possible_
+truncation)]` overrides.
+
+**CI** (`.github/workflows/rust.yml`): `--all-features` used to be this project's stand-in for
+"build/test/lint the default profile" (since `alloc` is an inert placeholder, D-01). It no longer
+is, now that `--all-features` also enables `small-tables`, which changes production code paths -
+left as-is, the default (fused) profile would have silently dropped out of CI coverage entirely.
+Added explicit default-profile build/test/clippy steps (no extra features) and matching
+`--features dstu-core/small-tables` steps, keeping `--all-features` as a third pass that exercises
+both profiles' flags at once. All new step commands run locally first, not just written into the
+YAML on faith.
+
+**Verified**: official Kalyna/Kupyna/Strumok vectors, `proptest` round-trips, and (default profile
+only) the fused-vs-naive/decrypt-fusion property tests all pass under both profiles; `cargo
+clippy -- -D warnings` and `cargo fmt --check` clean on both; the existing 4-way `no_std`/`alloc`/
+`std` matrix re-confirmed with `small-tables` added to each (8 combinations, `cargo build`); `cargo
+xtask build` passes.
+
+**Not done**: `cargo miri test`/`cargo fuzz` specifically under `small-tables` (D-35's stated
+verification bar - official vectors plus differential-oracle harnesses - doesn't require it, and
+neither is re-run here); CI's `miri`/`fuzz-smoke` jobs remain default-profile-only.

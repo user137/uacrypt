@@ -1,4 +1,4 @@
-# dstu-crypto (working name)
+# uacrypt
 
 An open Rust library for modern Ukrainian cryptographic standards (DSTU) — in the
 spirit of **libsodium** (hard, safe defaults, hard to misuse), not OpenSSL
@@ -23,6 +23,11 @@ backlog and `docs/dstu-crypto-project.md` for the full scope.
 Full MVP scope, architectural decisions, and the libsodium API mapping are in
 `docs/dstu-crypto-project.md`.
 
+`dstu-core` builds in two resource profiles - fast/table-heavy (default) or small/flash-friendly
+(`--features dstu-core/small-tables`, for constrained MCUs). Same output either way, real memory
+vs. speed trade-off - see `docs/resource-profiles.md` for the numbers and which one fits your
+target.
+
 ## Repository structure
 
 ```
@@ -37,13 +42,14 @@ Full MVP scope, architectural decisions, and the libsodium API mapping are in
 ├── xtask/                 # cross-platform build/QA runner, see "Development commands" below
 ├── docs/
 │   ├── dstu-crypto-project.md        # main project spec (scope, API mapping)
+│   ├── resource-profiles.md          # fused vs small-tables: memory/speed numbers, which to pick
 │   ├── pseudocode/                   # per-algorithm pseudocode, cross-checked against oracles
 │   ├── rust_ai_ruleset.md            # generic Rust ruleset for AI assistants
 │   ├── cross-language-style-guide.md # naming/style conventions for non-Rust code
 │   └── papers/                       # reference PDFs (specs, cryptanalysis, hardware papers)
 ├── crates/                # Cargo workspace
 │   ├── dstu-core/          # core: Kalyna + Kupyna + Strumok
-│   └── dstutool/           # CLI binary on top of the core
+│   └── uacrypt/            # CLI binary on top of the core
 ├── tests/oracle-harness/   # Java/.NET/C harnesses that verify test vectors against real Bouncy Castle
 └── oracles/                # reference implementations used as oracles - not vendored, see oracles/README.md
 ```
@@ -135,18 +141,18 @@ dual-oracle verification) and `DECISIONS.md` (architectural decisions already ma
 reference C implementation and against UAPKI (a real, production PKI library), and how to check a
 change against the saved regression baseline.
 
-## Using `dstutool`
+## Using `uacrypt`
 
-The planned file-level `dstutool encrypt`/`decrypt` (mode of operation over arbitrary-length
+The planned file-level `uacrypt encrypt`/`decrypt` (mode of operation over arbitrary-length
 files, see `CLAUDE.md` MVP scope) is not available yet — blocked on `DECISIONS.md` D-05 until a
 mode of operation is chosen. What exists today is `kalyna-block`, a single-block (no mode, no
 padding), `hazmat`-scoped command added for a binary-level performance comparison
 (`PERFORMANCE.md`, `DECISIONS.md` D-31):
 
 ```
-cargo build -p dstutool --release
-dstutool kalyna-block encrypt --variant 128-128 --key key.bin --in block.bin --out ct.bin
-dstutool kalyna-block decrypt --variant 128-128 --key key.bin --in ct.bin --out pt.bin
+cargo build -p uacrypt --release
+uacrypt kalyna-block encrypt --variant 128-128 --key key.bin --in block.bin --out ct.bin
+uacrypt kalyna-block decrypt --variant 128-128 --key key.bin --in ct.bin --out pt.bin
 ```
 
 `--key`/`--in`/`--out` are raw binary files of the variant's exact byte length (16/32/64 bytes

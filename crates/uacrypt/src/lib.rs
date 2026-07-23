@@ -1,11 +1,11 @@
 #![warn(clippy::pedantic)]
 #![deny(clippy::unwrap_used, clippy::expect_used)]
 
-//! `dstutool`'s testable logic - `main.rs` is a thin wrapper that calls [`run`] and maps the
+//! `uacrypt`'s testable logic - `main.rs` is a thin wrapper that calls [`run`] and maps the
 //! result to a process exit code.
 //!
 //! **`kalyna-block` is deliberately not named `encrypt`/`decrypt`** - those names are reserved for
-//! the future file-plus-mode-of-operation CLI (`CLAUDE.md` MVP scope: `dstutool encrypt --key ...
+//! the future file-plus-mode-of-operation CLI (`CLAUDE.md` MVP scope: `uacrypt encrypt --key ...
 //! --in file --out file`), which is blocked on `DECISIONS.md` D-05 (no mode of operation exists
 //! yet - official DSTU 7624 text or another authoritative source needed first). This command only
 //! does what `hazmat::kalyna` actually supports: exactly one block, no mode, no padding - so it
@@ -769,7 +769,7 @@ mod tests {
     impl TempDir {
         fn new(label: &str) -> Self {
             let path =
-                std::env::temp_dir().join(format!("dstutool_test_{label}_{}", std::process::id()));
+                std::env::temp_dir().join(format!("uacrypt_test_{label}_{}", std::process::id()));
             std::fs::create_dir_all(&path).expect("create temp dir for test");
             Self(path)
         }

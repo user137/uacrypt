@@ -22,8 +22,8 @@ implementation within a minute, without hassle — in the spirit of
 
 - Rust core: Kalyna + Kupyna + Strumok, cross-checked against official DSTU
   test vectors.
-- A single CLI binary on top of the core (working name `dstutool`), with
-  subcommands like `dstutool encrypt --key ... --in file --out file` — mode,
+- A single CLI binary on top of the core (`uacrypt`, `DECISIONS.md` D-36), with
+  subcommands like `uacrypt encrypt --key ... --in file --out file` — mode,
   nonce/IV, etc. are hardcoded so there's nothing for the user to
   misconfigure.
 - Publish the core to crates.io.

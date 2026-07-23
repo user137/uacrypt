@@ -12,6 +12,10 @@ name = "dstu_core"
 default = ["std"]
 std = []
 alloc = []
+# Resource profile for constrained targets (DECISIONS.md D-35/D-38): swaps the fused S-box+MDS
+# lookup tables (~86 KB of `const` data) for the pre-D-26/D-27 gf_mul-based path (~6 KB) at the
+# cost of throughput. Independent of std/alloc/no_std - can combine with any of them.
+small-tables = []
 
 [dependencies]
 zeroize = { version = "1.9.0", default-features = false, features = ["derive"] }

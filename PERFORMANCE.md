@@ -4,6 +4,10 @@ Canonical home for this project's benchmark numbers, methodology, and comparison
 implementations. `DECISIONS.md` D-23 records *why* benchmarking exists at all and links here
 rather than duplicating the numbers; update this file, not D-23, when new numbers are measured.
 
+**Fused-vs-`small-tables` numbers live separately**, in `docs/resource-profiles.md` - that's an
+internal resource-profile trade-off (`DECISIONS.md` D-35/D-38/D-39), not a cross-implementation
+comparison, so it doesn't belong in this file's scope.
+
 ## Why this is tracked at all
 
 Performance is not a footnote for these algorithms. Kalyna's own design paper states high software
@@ -207,7 +211,8 @@ Kupyna here.
 **This is the only methodology this project uses for cross-implementation performance
 comparisons, per `DECISIONS.md` D-34** (added 2026-07-22, after a same-machine discrepancy between
 the in-process and binary-level Kupyna numbers surfaced exactly why mixing methods is a problem —
-see D-34): a built CLI — `dstutool` for this project, an equivalent thin CLI wrapper with the same
+see D-34): a built CLI — `uacrypt` for this project (renamed 2026-07-23 from `dstutool`, D-36 —
+same binary, same numbers below, name only), an equivalent thin CLI wrapper with the same
 file-based interface for each oracle — run as a real external process, on each machine measured.
 **One metric only: MB/s.** No `ns`/op tables, no `wall_ns` tables — process-spawn overhead was
 already confirmed negligible once amortized over `N` iterations (tens of milliseconds of one-time
@@ -221,7 +226,7 @@ operations rather than spawning a process per operation, which would measure OS 
 not crypto.
 
 **Machines**: both the Ryzen 5 PRO 4650U dev machine and the Raspberry Pi 5 (see "Methodology"
-above) now have `dstutool` plus a CLI wrapper for UAPKI built; outspace's Strumok wrapper is built
+above) now have `uacrypt` plus a CLI wrapper for UAPKI built; outspace's Strumok wrapper is built
 on both too. Oliynykov's reference C stays excluded from these tables — a deliberate, unchanged
 decision (not revisited by moving to a single method): it's a correctness oracle, not a performance
 baseline (see "Implementations compared" above).
@@ -232,7 +237,7 @@ MB/s = block size / per-op time (16 bytes for 128-128, 64 bytes for 512-512) —
 message-length-dependent rate the way Kupyna/Strumok's is, but the same unit for a consistent
 table shape. **N = 20000 iterations on both machines:**
 
-| Variant | Direction | Schedule | dstutool (Ryzen) | UAPKI (Ryzen) | dstutool (Pi 5) | UAPKI (Pi 5) |
+| Variant | Direction | Schedule | uacrypt (Ryzen) | UAPKI (Ryzen) | uacrypt (Pi 5) | UAPKI (Pi 5) |
 |---|---|---|---|---|---|---|
 | 128-128 | encrypt | cached | **125.98** | 79.60 | 44.69 | **87.43** |
 | 128-128 | encrypt | raw | **15.09** | 0.92 | **6.71** | 0.32 |
@@ -250,7 +255,7 @@ leads by ~1.4-1.9x. The *raw* (schedule-redone-every-call) case doesn't flip on 
 UAPKI's raw numbers are dramatically worse everywhere (its per-call key setup is expensive), so
 this project wins raw on both platforms regardless of the cached-case reversal.
 
-**Reproducing**: `cargo build -p dstutool --release`, then `target/release/dstutool kalyna-block
+**Reproducing**: `cargo build -p uacrypt --release`, then `target/release/uacrypt kalyna-block
 encrypt --variant <variant> --key <path> --in <path> --out <path> --iterations <N>
 [--raw-schedule]`. The UAPKI comparison CLI is a one-off C wrapper (same file interface and flags)
 built the same way as this file's other C comparisons — not committed; built fresh on each machine
@@ -263,7 +268,7 @@ against `library/uapkic`'s pinned commit (`ORACLES.md`).
 scoped-down benchmarking scaffold. No key, so no cached-vs-raw distinction. **64 KB message, N =
 2000 iterations on both machines:**
 
-| Variant | dstutool (Ryzen) | UAPKI (Ryzen) | dstutool (Pi 5) | UAPKI (Pi 5) |
+| Variant | uacrypt (Ryzen) | UAPKI (Ryzen) | uacrypt (Pi 5) | UAPKI (Pi 5) |
 |---|---|---|---|---|
 | Kupyna-256 | 94.14 | **104.95** | 48.18 | **71.87** |
 | Kupyna-512 | 75.35 | **88.48** | 36.64 | **60.56** |
@@ -287,7 +292,7 @@ cipher fresh before every iteration; the default continues one cipher's state ac
 `iterations` calls instead (a real continuous stream, cheaper — no repeated init). **64 KB
 message, N = 2000 iterations on both machines:**
 
-| Variant | Schedule | dstutool (Ryzen) | outspace (Ryzen) | UAPKI (Ryzen) | dstutool (Pi 5) | outspace (Pi 5) | UAPKI (Pi 5) |
+| Variant | Schedule | uacrypt (Ryzen) | outspace (Ryzen) | UAPKI (Ryzen) | uacrypt (Pi 5) | outspace (Pi 5) | UAPKI (Pi 5) |
 |---|---|---|---|---|---|---|---|
 | Strumok-256 | cached | 516.32 | **1957.65** | 624.44 | 372.95 | **1164.99** | 326.66 |
 | Strumok-256 | raw | 545.73 | **1975.15** | 627.41 | 367.15 | **1117.29** | 321.21 |

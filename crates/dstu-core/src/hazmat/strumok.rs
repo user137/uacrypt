@@ -15,6 +15,8 @@
 //! (transcribed from `oracles/strumok-dstu8845/strumok.c`, the same byte-for-byte cross-check
 //! already covers them) - a large, measured throughput win (`PERFORMANCE.md`), since it replaces
 //! 8 S-box lookups plus a full `GF(2^8)` matrix-multiply with 8 table lookups XOR-ed together.
+//! **The `small-tables` feature (`DECISIONS.md` D-35/D-38) reverts `t_function` to exactly this
+//! pre-D-26 runtime form** - `T0..T7`'s 16 KB isn't compiled at all in that profile.
 //!
 //! `MUL_ALPHA`/`MUL_ALPHA_INV` (Sections 8-9, multiplication by the LFSR feedback polynomial's
 //! generator in GF(2^64)) are **not** derivable from the Kalyna/Kupyna tables - they belong to a
@@ -182,6 +184,7 @@ const MUL_ALPHA_INV: [u64; 256] = [
     0x3fe73cfca9cb0000, 0x781bfafd23520000, 0xb102adfea0e40000, 0xf6fe6bff2a7d0000,
 ];
 
+#[cfg(not(feature = "small-tables"))]
 #[rustfmt::skip]
 #[allow(clippy::unreadable_literal)] // kept byte-for-byte diffable against the oracle source
 const T0: [u64; 256] = [
@@ -251,6 +254,7 @@ const T0: [u64; 256] = [
     0x7C917CC71569ED7C, 0x8B9D8B2C1D96168B, 0x5613568AE9BF4556, 0x80BA807427A73A80,
 ];
 
+#[cfg(not(feature = "small-tables"))]
 #[rustfmt::skip]
 #[allow(clippy::unreadable_literal)] // kept byte-for-byte diffable against the oracle source
 const T1: [u64; 256] = [
@@ -320,6 +324,7 @@ const T1: [u64; 256] = [
     0xFCC776A86F3BC7C7, 0xE7C04EBA7A27C0C0, 0x8D2955F6DFA42929, 0xACD7F6C81F7BD7D7,
 ];
 
+#[cfg(not(feature = "small-tables"))]
 #[rustfmt::skip]
 #[allow(clippy::unreadable_literal)] // kept byte-for-byte diffable against the oracle source
 const T2: [u64; 256] = [
@@ -389,6 +394,7 @@ const T2: [u64; 256] = [
     0xF8932AD2C7F8F83F, 0x0C602824300C0C3C, 0x74872551CD7474B9, 0x671F4F28816767E6,
 ];
 
+#[cfg(not(feature = "small-tables"))]
 #[rustfmt::skip]
 #[allow(clippy::unreadable_literal)] // kept byte-for-byte diffable against the oracle source
 const T3: [u64; 256] = [
@@ -458,6 +464,7 @@ const T3: [u64; 256] = [
     0x82EFB84157571657, 0xD85A416C1B1B771B, 0x537A9AA7E0E047E0, 0x2F5B3A996161F861,
 ];
 
+#[cfg(not(feature = "small-tables"))]
 #[rustfmt::skip]
 #[allow(clippy::unreadable_literal)] // kept byte-for-byte diffable against the oracle source
 const T4: [u64; 256] = [
@@ -527,6 +534,7 @@ const T4: [u64; 256] = [
     0x1569ED7C7C917CC7, 0x1D96168B8B9D8B2C, 0xE9BF45565613568A, 0x27A73A8080BA8074,
 ];
 
+#[cfg(not(feature = "small-tables"))]
 #[rustfmt::skip]
 #[allow(clippy::unreadable_literal)] // kept byte-for-byte diffable against the oracle source
 const T5: [u64; 256] = [
@@ -596,6 +604,7 @@ const T5: [u64; 256] = [
     0x6F3BC7C7FCC776A8, 0x7A27C0C0E7C04EBA, 0xDFA429298D2955F6, 0x1F7BD7D7ACD7F6C8,
 ];
 
+#[cfg(not(feature = "small-tables"))]
 #[rustfmt::skip]
 #[allow(clippy::unreadable_literal)] // kept byte-for-byte diffable against the oracle source
 const T6: [u64; 256] = [
@@ -665,6 +674,7 @@ const T6: [u64; 256] = [
     0xC7F8F83FF8932AD2, 0x300C0C3C0C602824, 0xCD7474B974872551, 0x816767E6671F4F28,
 ];
 
+#[cfg(not(feature = "small-tables"))]
 #[rustfmt::skip]
 #[allow(clippy::unreadable_literal)] // kept byte-for-byte diffable against the oracle source
 const T7: [u64; 256] = [
@@ -746,7 +756,8 @@ fn mul_alpha_inv(w: u64) -> u64 {
 }
 
 /// `T(w)`: 8 precomputed combined tables (S-box + MDS folded per byte position), one lookup per
-/// byte, XOR-ed together - see module doc.
+/// byte, XOR-ed together - see module doc. Default resource profile.
+#[cfg(not(feature = "small-tables"))]
 fn t_function(w: u64) -> u64 {
     T0[(w & 0xff) as usize]
         ^ T1[((w >> 8) & 0xff) as usize]
@@ -756,6 +767,20 @@ fn t_function(w: u64) -> u64 {
         ^ T5[((w >> 40) & 0xff) as usize]
         ^ T6[((w >> 48) & 0xff) as usize]
         ^ T7[((w >> 56) & 0xff) as usize]
+}
+
+/// `T(w)`, `small-tables` resource profile (`DECISIONS.md` D-35/D-38): no `T0..T7` (16 KB), just
+/// the shared Kalyna/Kupyna S-box + MDS (`super::tables`) applied to `w` treated as one 8-byte
+/// column - exactly `T`'s original pre-D-26 form (see module doc), before it got its own
+/// precomputed tables.
+#[cfg(feature = "small-tables")]
+fn t_function(w: u64) -> u64 {
+    let mut column = w.to_le_bytes();
+    for (row, byte) in column.iter_mut().enumerate() {
+        *byte = super::tables::SBOXES[row % 4][*byte as usize];
+    }
+    super::tables::apply_forward_matrix(core::slice::from_mut(&mut column));
+    u64::from_le_bytes(column)
 }
 
 /// `FSM(x, y, z) = (x +64 y) xor z` (`docs/pseudocode/strumok.md` Section 6).

@@ -12,7 +12,7 @@
 //! a bit-level length anyway. This matches the extracted test vectors exactly (see the `note`
 //! field in `crates/dstu-core/tests/vectors/kupyna/*.json`).
 
-use super::tables::{apply_matrix, MDS_TABLE, ROWS, SBOXES, SBOX_MDS};
+use super::tables::{apply_forward_matrix, forward_sbox_mds, ROWS, SBOXES};
 
 const MAX_COLUMNS: usize = 16;
 const MAX_BLOCK_BYTES: usize = MAX_COLUMNS * ROWS;
@@ -55,7 +55,7 @@ fn shift_bytes(state: &mut [[u8; ROWS]], last_row_shift: usize) {
 /// No production code path calls this directly anymore - see `sub_bytes`'s doc comment (D-28).
 #[allow(dead_code)]
 fn mix_columns(state: &mut [[u8; ROWS]]) {
-    apply_matrix(state, &MDS_TABLE);
+    apply_forward_matrix(state);
 }
 
 /// Fused `sub_bytes -> shift_bytes -> mix_columns`, one gather-and-XOR pass over
@@ -69,11 +69,14 @@ fn sub_shift_mix(state: &mut [[u8; ROWS]], last_row_shift: usize) {
     let mut result = [[0u8; ROWS]; MAX_COLUMNS];
     for (out_col, out_word) in result[..columns].iter_mut().enumerate() {
         let mut acc = 0u64;
+        // `row` also drives `shift`/`src_col` and is passed to `forward_sbox_mds`, not just a
+        // direct single-collection index - not a real `iter().enumerate()` candidate.
+        #[allow(clippy::needless_range_loop)]
         for row in 0..ROWS {
             let shift = if row == ROWS - 1 { last_row_shift } else { row };
             let src_col = (out_col + columns - shift) & columns_mask;
             let byte = state[src_col][row];
-            acc ^= SBOX_MDS[row][byte as usize];
+            acc ^= forward_sbox_mds(row, byte);
         }
         *out_word = acc.to_le_bytes();
     }

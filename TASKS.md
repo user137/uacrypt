@@ -8,24 +8,29 @@ linked from here, not duplicated.
 Per `CLAUDE.md`'s "Agent discipline": every implementation task below is test-first — the
 test-vector check (or unit test) is written before the primitive it verifies, not after.
 
+Every checklist item carries a stable `T-NN` ID (assigned in document order, added 2026-07-23) so
+it can be referenced elsewhere without quoting its full text — new items get the next unused
+number appended to the end of this list; existing IDs are never renumbered or reused, even if the
+item they point to is later removed.
+
 ## Phase 0 — Scaffold (done)
 
-- [x] Cargo workspace (`dstu-core` + `dstutool`), dual MIT/Apache-2.0 licensing
-- [x] `no_std`/`alloc`/`std` feature flags in place from the first commit (D-01)
-- [x] Docs translated to English; repo structure split per GitHub/Rust-crypto conventions
-- [x] `SECURITY.md`, `DECISIONS.md`, `ORACLES.md` written
-- [x] Oracle infrastructure pulled and vetted: `kalyna-reference`, `kupyna-reference`,
+- [x] **T-01** Cargo workspace (`dstu-core` + `dstutool`), dual MIT/Apache-2.0 licensing
+- [x] **T-02** `no_std`/`alloc`/`std` feature flags in place from the first commit (D-01)
+- [x] **T-03** Docs translated to English; repo structure split per GitHub/Rust-crypto conventions
+- [x] **T-04** `SECURITY.md`, `DECISIONS.md`, `ORACLES.md` written
+- [x] **T-05** Oracle infrastructure pulled and vetted: `kalyna-reference`, `kupyna-reference`,
       `outspace/dstu8845`, `bouncycastle-{java,dotnet}`, `cryptonite` (see `oracles/README.md`)
-- [x] `li0ard` excluded as untrusted supply chain (D-07)
-- [x] Kalyna (5 variants) + Kupyna (2 variants) official test vectors extracted from the
+- [x] **T-06** `li0ard` excluded as untrusted supply chain (D-07)
+- [x] **T-07** Kalyna (5 variants) + Kupyna (2 variants) official test vectors extracted from the
       designers' papers into `crates/dstu-core/tests/vectors/`
-- [x] Per-algorithm pseudocode docs: Kalyna, Kupyna, Strumok, DSTU 4145
+- [x] **T-08** Per-algorithm pseudocode docs: Kalyna, Kupyna, Strumok, DSTU 4145
       (`docs/pseudocode/*.md`)
-- [x] Post-quantum track (DSTU 8961/9212) explicitly excluded from scope (D-08)
+- [x] **T-09** Post-quantum track (DSTU 8961/9212) explicitly excluded from scope (D-08)
 
 ## Phase 1 — MVP: Kalyna + Kupyna + Strumok core
 
-- [x] Implement Kalyna (all 5 block/key-size variants) — `dstu_core::hazmat::kalyna`
+- [x] **T-10** Implement Kalyna (all 5 block/key-size variants) — `dstu_core::hazmat::kalyna`
       (`Kalyna128_128`/`Kalyna128_256`/`Kalyna256_256`/`Kalyna256_512`/`Kalyna512_512`), citation
       in `DECISIONS.md` D-13. **Confirmed 2026-07-22**: `cargo test` (all 5 variants against the
       official vectors, first attempt, no debugging needed), `cargo clippy -- -D warnings`, `cargo
@@ -38,7 +43,7 @@ test-vector check (or unit test) is written before the primitive it verifies, no
       no mode of operation (D-05) — UAPKI's CBC/OFB/CFB/CTR/CMAC/XTS/KW/CCM/GMAC/GCM self-tests are
       unused KAT data waiting for whenever modes get built, same as Kupyna's KMAC below —
       `dstutool` doesn't call this yet.
-- [x] Implement Kupyna (256/512) — `dstu_core::hazmat::kupyna` (`Kupyna256`/`Kupyna512`),
+- [x] **T-11** Implement Kupyna (256/512) — `dstu_core::hazmat::kupyna` (`Kupyna256`/`Kupyna512`),
       citation in `DECISIONS.md` D-10. **Confirmed green 2026-07-22**: `cargo test`, `cargo miri
       test` (no UB), `cargo clippy -- -D warnings`, and `no_std` build all pass; independently
       cross-checked against real Bouncy Castle via the .NET and Java oracle harnesses, and (same
@@ -48,7 +53,7 @@ test-vector check (or unit test) is written before the primitive it verifies, no
       (`update`/`finalize`) API (current API is one-shot `digest()` only), the high-level API
       split (D-09) has no wrapper here yet — this is `hazmat` only — and KMAC (Kupyna-based MAC,
       see the `crypto_auth` line below) isn't implemented at all yet.
-- [x] **Blocker lifted 2026-07-22 (D-15/D-16), not fully resolved:** found
+- [x] **T-12** **Blocker lifted 2026-07-22 (D-15/D-16), not fully resolved:** found
       https://github.com/specinfo-ua/UAPKI (state-expertise pedigree, see `ORACLES.md`), whose
       `dstu8845.c` self-test is comment-attributed to `// ДСТУ 8845:2019` in its own source — the
       first real KAT found anywhere for this algorithm. Adopted as
@@ -58,7 +63,7 @@ test-vector check (or unit test) is written before the primitive it verifies, no
       consistency bonus, not independent confirmation — see D-15) via
       `tests/oracle-harness/strumok-cross-check/cross_check_against_uapki.c`. **Still not
       "official"**: not confirmed against the paid DSTU 8845:2019 text itself.
-- [x] Implement Strumok (256/512-bit key) — `dstu_core::hazmat::strumok` (`Strumok256`/
+- [x] **T-13** Implement Strumok (256/512-bit key) — `dstu_core::hazmat::strumok` (`Strumok256`/
       `Strumok512`), citation in `DECISIONS.md` D-18. **Confirmed 2026-07-22**: all 8
       UAPKI-attributed keystream cases pass on the first attempt, `cargo test`, `cargo clippy -- -D
       warnings`, `cargo fmt --check`, `no_std` build, and `cargo miri test` all clean. Structurally
@@ -68,9 +73,9 @@ test-vector check (or unit test) is written before the primitive it verifies, no
       between the two oracles. **Status line, not to be dropped**: "UAPKI-attributed, not confirmed
       against the official text" (D-15) — implementing this did not change that provenance ceiling.
       `dstutool` doesn't call this yet.
-- [x] `cargo miri test` clean for all three primitives (Kalyna/Kupyna/Strumok, each confirmed
+- [x] **T-14** `cargo miri test` clean for all three primitives (Kalyna/Kupyna/Strumok, each confirmed
       individually above)
-- [x] `cargo fuzz` harnesses for all three primitives — `kalyna`, `kupyna`, and `strumok` targets
+- [x] **T-15** `cargo fuzz` harnesses for all three primitives — `kalyna`, `kupyna`, and `strumok` targets
       all exist now (`crates/dstu-core/fuzz/fuzz_targets/`). **Cannot actually run locally**:
       `cargo-fuzz` installed fine (needed `mingw64/bin`'s `dlltool.exe` on PATH, same requirement
       as `cargo-audit`/`cargo-deny`, see `.claude.local.md`), but building any target fails two
@@ -89,11 +94,35 @@ test-vector check (or unit test) is written before the primitive it verifies, no
       installed for unrelated reasons, so the objection above ("would mean installing MSVC just for
       this") stopped applying here specifically — see "Testing & hardening" below and `DECISIONS.md`
       D-32 for how it was actually run.
-- [ ] `dstutool` CLI: `encrypt`/`decrypt`/`hash` subcommands, mode/nonce/IV hardcoded (no
+- [ ] **T-16** `uacrypt` CLI: `encrypt`/`decrypt`/`hash` subcommands, mode/nonce/IV hardcoded (no
       user-facing crypto knobs, per the libsodium-style misuse-resistance goal)
-- [ ] Publish `dstu-core` to crates.io
-- [ ] Prebuilt Windows/Linux binaries via GitHub Releases
-- [ ] Re-confirm the `no_std` build still passes (all feature-flag combinations) as each
+- [ ] **T-17** Publish `dstu-core` to crates.io
+- [ ] **T-18** Prebuilt Windows/Linux binaries via GitHub Releases
+- [x] **T-19** **Naming subtask, all three decisions made 2026-07-23** (T-20/T-21/T-22 below) -
+      unblocks T-17/T-18, which are still separately open (a decided name isn't a crates.io
+      publish or a built release binary):
+  - [x] **T-20** Public name for the two resource profiles from `DECISIONS.md` D-35, decided
+        2026-07-23 (`DECISIONS.md` D-38): the working name **is** the public name - Cargo feature
+        `small-tables`, default/fused path stays nameless (no feature flag needed for it, it's
+        just the absence of `small-tables`). Deliberately not given a branded name the way
+        `uacrypt` (T-21/T-22) was - a `Cargo.toml` feature flag is a technical identifier, not a
+        product name. Not checked further than the naming decision itself - the actual `cfg`-gated
+        implementation is `TASKS.md` Phase 4's "Two-resource-profile split" item, still open.
+  - [x] **T-21** `dstutool`'s real name is **`uacrypt`** (`DECISIONS.md` D-36, decided and
+        executed 2026-07-23): `crates/dstutool` renamed to `crates/uacrypt` (`git mv`), package
+        and `[lib]` name in `Cargo.toml` updated, root `Cargo.toml` workspace member, `deny.toml`
+        comment, `main.rs`/`lib.rs` internal references, `README.md`, `SECURITY.md`,
+        `docs/dstu-crypto-project.md`, `CLAUDE.md`, and `PERFORMANCE.md`'s canonical binary-level
+        section all updated. `cargo build --workspace`/`test -p uacrypt` (15/15)/`clippy -D
+        warnings`/`fmt --check` all pass post-rename. Historical entries in `DECISIONS.md`/
+        `TASKS.md`/`PERFORMANCE.md`'s superseded "Results" section still say `dstutool` on
+        purpose — that was the accurate name at the time, not left stale.
+  - [x] **T-22** The project's own name for GitHub is **`uacrypt`** too (decided 2026-07-23, same
+        session as T-21 - not a separate name). `README.md`'s title updated from
+        "dstu-crypto (working name)" to `uacrypt`. No git remote exists yet to actually create/
+        rename a GitHub repo against - this records the chosen name for whenever one is created,
+        it doesn't perform any GitHub-side action.
+- [ ] **T-23** Re-confirm the `no_std` build still passes (all feature-flag combinations) as each
       primitive lands — don't let this regress silently. Ongoing by design, not a one-time item —
       **last re-checked 2026-07-22** (post D-28/29/30/31): all four `dstu-core` feature
       combinations build clean — `--no-default-features` (bare no_std),
@@ -115,18 +144,18 @@ never will be, so as not to imply otherwise: cryptanalytic strength of the algor
 (that's the DSTU designers' responsibility, not this library's), and hardware side-channel
 resistance (SPA/DPA — explicitly out of scope per `SECURITY.md`/`CLAUDE.md` "MVP scope").
 
-- [x] **Chunk/split-invariance test for `Strumok::apply_keystream`.** Added
+- [x] **T-24** **Chunk/split-invariance test for `Strumok::apply_keystream`.** Added
       `strumok_{256,512}_chunk_invariance` in `crates/dstu-core/tests/strumok.rs` — splits a fixed
       total length into arbitrary, non-8-aligned chunks (including a zero-length one) and asserts
       byte-for-byte identity against one call on the concatenated buffer. **Passed on the first
       attempt** — no buffering bug found, but the path was genuinely untested before this.
-- [x] **Round-trip property tests.** `proptest` 1.11 added as a dev-dependency (`DECISIONS.md`
+- [x] **T-25** **Round-trip property tests.** `proptest` 1.11 added as a dev-dependency (`DECISIONS.md`
       D-21) — doesn't touch the `no_std` build. Kalyna: one `decrypt(encrypt(key, block)) == block`
       test per variant in `tests/kalyna.rs`. Strumok: `apply_keystream` applied twice with the same
       key/IV returns the original data, in `tests/strumok.rs`. All 16 property tests (256 generated
       cases each) passed on the first attempt. Kupyna intentionally skipped — no round-trip
       property exists for a hash; its `cargo fuzz` target covers the property that would matter.
-- [x] **Differential testing against a C oracle over many random inputs — done for all three.**
+- [x] **T-26** **Differential testing against a C oracle over many random inputs — done for all three.**
       Strumok first (the highest-value target — zero official vectors exist anywhere for it,
       D-15): `cargo run --example strumok_diff_cases -p dstu-core` piped into
       `tests/oracle-harness/strumok-differential/diff_against_outspace.c` (against
@@ -140,7 +169,7 @@ resistance (SPA/DPA — explicitly out of scope per `SECURITY.md`/`CLAUDE.md` "M
       reference implementations already behind Bouncy Castle's own ports, not a new independent
       oracle) — the real independent second reading for Kalyna/Kupyna remains the Java/.NET
       Bouncy Castle harnesses, unchanged.
-- [x] **Actually run `cargo fuzz`** for all three primitives — attempted 2026-07-22, blocked by a
+- [x] **T-27** **Actually run `cargo fuzz`** for all three primitives — attempted 2026-07-22, blocked by a
       confirmed GNU/MinGW-toolchain incompatibility (libFuzzer-on-Windows is MSVC-only upstream),
       not a skipped step; full detail in the Phase 1 line above. **Done later the same day, see
       `DECISIONS.md` D-32**: this machine turned out to already have Visual Studio 2022 (MSVC C++
@@ -155,7 +184,7 @@ resistance (SPA/DPA — explicitly out of scope per `SECURITY.md`/`CLAUDE.md` "M
       skip (same as every other optional tool) otherwise. CI's Linux `fuzz-smoke` job remains the
       actual per-push check; this closes the "never actually run anywhere" gap for local dev on a
       machine that happens to have Visual Studio, which isn't guaranteed for every contributor.
-- [x] **`Zeroize`/`ZeroizeOnDrop` on live key-material.** `zeroize` 1.9 added
+- [x] **T-28** **`Zeroize`/`ZeroizeOnDrop` on live key-material.** `zeroize` 1.9 added
       (`default-features = false, features = ["derive"]`, `no_std`-compatible — first real
       dependency in `dstu-core`, `DECISIONS.md` D-20). Strumok's `Core` (LFSR/FSM state) derives
       `ZeroizeOnDrop`; Kalyna's `encrypt_generic`/`decrypt_generic` call `round_keys.zeroize()`
@@ -164,7 +193,7 @@ resistance (SPA/DPA — explicitly out of scope per `SECURITY.md`/`CLAUDE.md` "M
       intermediate key-schedule scratch buffers (`kt`, `initial_data`/`tmv`, the rotation buffer in
       `key_expand_odd`) are still cleared only via the final `round_keys` zeroize, not individually
       — a deliberate scope cut, not an oversight, see D-20.
-- [x] **Constant-time audit + an explicit decision.** Confirmed the secret-dependent indexing
+- [x] **T-29** **Constant-time audit + an explicit decision.** Confirmed the secret-dependent indexing
       exists in all three primitives (`SBOXES`/`SBOXES_DEC` in `kalyna.rs`/`kupyna.rs`/
       `strumok.rs`, plus `MUL_ALPHA`/`MUL_ALPHA_INV` in `strumok.rs`). Documented and scoped as an
       accepted software-timing exception in `DECISIONS.md` D-19 (same family as the already-out-
@@ -172,7 +201,7 @@ resistance (SPA/DPA — explicitly out of scope per `SECURITY.md`/`CLAUDE.md` "M
       trade-off) — `SECURITY.md`'s hard-constraint wording updated to say this precisely instead of
       standing as an absolute "never" next to code that already violated it. Branching and
       comparisons on secret data remain prohibited without exception, unchanged.
-- [x] **`criterion` benchmarks.** Added as a dev-dependency, three bench targets
+- [x] **T-30** **`criterion` benchmarks.** Added as a dev-dependency, three bench targets
       (`crates/dstu-core/benches/{kalyna,kupyna,strumok}.rs`, `cargo bench -p dstu-core`) covering
       every variant of all three primitives. **Extended 2026-07-22**: numbers, machine, a named
       regression baseline (`--save-baseline initial-2026-07-22`), and a same-machine comparison
@@ -185,7 +214,7 @@ resistance (SPA/DPA — explicitly out of scope per `SECURITY.md`/`CLAUDE.md` "M
       purely to benchmark it; outspace's own ~12-15x-faster numbers (likely using a rotating
       buffer, per `PERFORMANCE.md`) now give an *external* read on that tradeoff's rough scale
       without needing to build one ourselves.
-- [x] **Strumok: close the gap to UAPKI/outspace documented in `PERFORMANCE.md`**, root-caused by
+- [x] **T-31** **Strumok: close the gap to UAPKI/outspace documented in `PERFORMANCE.md`**, root-caused by
       reading `oracles/strumok-dstu8845/strumok.c` directly (2026-07-22) rather than guessed at, then
       fixed the same day (`DECISIONS.md` D-26). Two distinct, additive causes, both closed: (1)
       outspace's `next_stream()` never physically shifts its 16-word state array — replaced this
@@ -198,7 +227,7 @@ resistance (SPA/DPA — explicitly out of scope per `SECURITY.md`/`CLAUDE.md` "M
       existing tests unchanged, the 4000-case outspace differential harness re-run fresh
       (4000/4000), `clippy`/`fmt`/`no_std` all pass. New `criterion` baseline saved
       (`strumok-optimized-2026-07-22`).
-- [x] **Kalyna/Kupyna: precomputed MDS tables** (`DECISIONS.md` D-27, same day). Narrower than the
+- [x] **T-32** **Kalyna/Kupyna: precomputed MDS tables** (`DECISIONS.md` D-27, same day). Narrower than the
       full UAPKI `p_boxrowcol` fusion (S-box + row/column permutation + MDS all combined) —
       `hazmat::tables::apply_matrix` alone was switched to precomputed `MDS_TABLE`/`MDS_INV_TABLE`
       (8 lookups + 7 XORs instead of up to 64 `gf_mul` calls per column), shared by both algorithms
@@ -212,7 +241,7 @@ resistance (SPA/DPA — explicitly out of scope per `SECURITY.md`/`CLAUDE.md` "M
       `clippy`/`fmt`/`no_std` pass. New baseline: `kalyna-kupyna-optimized-2026-07-22`.
       **Not done**: the full S-box+shift+MDS fusion (per-`nb` tables) — sketched, not scheduled,
       would close the remaining gap but is a materially bigger change.
-- [x] **Kalyna/Kupyna: close the remaining gap to UAPKI** (planned 2026-07-22, stages 0-1 done the
+- [x] **T-33** **Kalyna/Kupyna: close the remaining gap to UAPKI** (planned 2026-07-22, stages 0-1 done the
       same day, see `DECISIONS.md` D-28 — stages 2-3 below still open).
       0. **Fixed the benchmark's methodology gap** — confirmed (temporary internal diagnostic,
          not committed) that `key_expand` was ~59-63% of Kalyna-128-128/512-512's per-call time,
@@ -292,7 +321,7 @@ resistance (SPA/DPA — explicitly out of scope per `SECURITY.md`/`CLAUDE.md` "M
       **Stage 2 (`Column` -> `u64` representation) remains not done** - given the results above
       (Kalyna at/above UAPKI parity for the cached-schedule API, Kupyna at/above parity), expected
       further payoff is small; revisit only if a future profiling pass shows it's still worth it.
-- [x] **Binary-level (process) comparison, done, see `DECISIONS.md` D-31**. The in-process numbers
+- [x] **T-34** **Binary-level (process) comparison, done, see `DECISIONS.md` D-31**. The in-process numbers
       above don't reflect running the tool as an actual external process - added `dstutool`'s first
       real command, `kalyna-block encrypt`/`decrypt` (single block, file in/file out, deliberately
       not named `encrypt`/`decrypt` at the top level - that's reserved for the future file-plus-
@@ -312,7 +341,7 @@ resistance (SPA/DPA — explicitly out of scope per `SECURITY.md`/`CLAUDE.md` "M
       same order of magnitude and same relative ranking - not investigated further, most likely
       machine load during the run rather than a wrapper-specific issue (`kalyna-block`'s wrapper,
       same shape, matched closely). Full tables in `PERFORMANCE.md`.
-- [ ] **Build and test on a real ARM Linux machine (Raspberry Pi).** Distinct from Phase 4's
+- [ ] **T-35** **Build and test on a real ARM Linux machine (Raspberry Pi).** Distinct from Phase 4's
       STM32/ESP32 hardware validation below: a Raspberry Pi running Linux is a full `std` target
       (`aarch64-unknown-linux-gnu` here — 64-bit Raspberry Pi OS, Debian 12/bookworm, confirmed via
       `uname -a`), not the bare-metal `no_std` embedded path — this checks the "no CPU-family
@@ -380,24 +409,24 @@ have *something* - that is exactly the failure mode this project's "no homegrown
 
 ## Phase 2 — libsodium-equivalent construction layer, DSTU 4145 + 9041
 
-- [ ] Resolve the D-05 open tension (Kalyna+Kupyna encrypt-then-MAC vs. cryptonite's
+- [ ] **T-36** Resolve the D-05 open tension (Kalyna+Kupyna encrypt-then-MAC vs. cryptonite's
       Kalyna-alone CCM/GCM `encrypt_mac`) — needs the official DSTU 7624 text or another
       authoritative source (priced, see `ORACLES.md`); blocks `crypto_secretbox` design
-- [ ] `crypto_secretbox` equivalent (encrypt-then-MAC construction, once D-05 is resolved)
-- [ ] `crypto_auth`/`crypto_onetimeauth` equivalent (Kupyna-based MAC or a Kalyna CMAC-like mode
+- [ ] **T-37** `crypto_secretbox` equivalent (encrypt-then-MAC construction, once D-05 is resolved)
+- [ ] **T-38** `crypto_auth`/`crypto_onetimeauth` equivalent (Kupyna-based MAC or a Kalyna CMAC-like mode
       — exact mode name TBD against the full DSTU 7624 text). `oracles/uapki/`'s
       `dstu7564_self_test_kmac` (KMAC-256/384/512, D-16 update 2026-07-22) is unused KAT data
       waiting for whenever this gets built — not cross-checked, since there's no KMAC impl yet
-- [ ] `crypto_kdf` equivalent (HKDF-like construction over Kupyna)
-- [ ] `crypto_secretstream` equivalent (chunked authenticated encryption over Strumok or
+- [ ] **T-39** `crypto_kdf` equivalent (HKDF-like construction over Kupyna)
+- [ ] **T-40** `crypto_secretstream` equivalent (chunked authenticated encryption over Strumok or
       Kalyna-CTR)
-- [x] DSTU 4145: official standard text obtained (`docs/papers/DSTU_4145-2002.pdf`, 2026-07-22) —
+- [x] **T-41** DSTU 4145: official standard text obtained (`docs/papers/DSTU_4145-2002.pdf`, 2026-07-22) —
       its Annex B.1 (GF(2^163), polynomial basis) worked example extracted into
       `crates/dstu-core/tests/vectors/dstu4145/gf2m163.json` and independently cross-checked
       byte-for-byte against Bouncy Castle's own hardcoded KAT (`DSTU4145Test.java` `test163()`) —
       see `DECISIONS.md` D-14 and `ORACLES.md`. A genuinely dual-sourced vector, not just a scan
       transcription.
-- [x] DSTU 4145: re-derive `docs/pseudocode/dstu4145.md` against the official text's Sections 5-13,
+- [x] **T-42** DSTU 4145: re-derive `docs/pseudocode/dstu4145.md` against the official text's Sections 5-13,
       rather than leaving it as a pure Bouncy Castle code-transcription. **Done 2026-07-22**: read
       Sections 5, 9, 11-13 directly (rendered PDF pages), every algorithm in the doc now cites its
       own section/page. **Found a second real bug doing this** (beyond the `Q = -d·G` one already
@@ -405,7 +434,7 @@ have *something* - that is exactly the failure mode this project's "no homegrown
       BC's byte-reversal without also adopting BC's reversed-input convention) — reading §5.9
       directly showed the correct algorithm needs no reversal at all. Fixed; full detail in
       `DECISIONS.md` D-25's follow-up entry and the pseudocode doc itself, not duplicated here.
-- [x] DSTU 4145: implement GF(2^m) binary-field + elliptic-curve arithmetic in Rust for the m=163
+- [x] **T-43** DSTU 4145: implement GF(2^m) binary-field + elliptic-curve arithmetic in Rust for the m=163
       curve (the actual prerequisite for a Rust port, bigger than just the signature logic
       itself). **Landed 2026-07-22**: `dstu_core::hazmat::dstu4145::gf2m163` (field add/multiply/
       square/invert) and `dstu_core::hazmat::dstu4145::curve163` (point double/add — public-data
@@ -418,7 +447,7 @@ have *something* - that is exactly the failure mode this project's "no homegrown
       `cargo miri test` run separately, see below). **Still missing**: only the m=163 curve
       exists — the other 9 curve sizes in `DSTU4145NamedCurves.java` aren't wired up (not needed
       unless a use case calls for them).
-- [x] DSTU 4145: port the signature scheme to Rust from `docs/pseudocode/dstu4145.md`, verified
+- [x] **T-44** DSTU 4145: port the signature scheme to Rust from `docs/pseudocode/dstu4145.md`, verified
       against the `gf2m163.json` vector (D-02). **Landed 2026-07-22**:
       `dstu_core::hazmat::dstu4145::scalar::Scalar` (mod-`n` integer arithmetic, deliberately a
       distinct type from `gf2m163::FieldElement` — see D-25's follow-up entry on why) and
@@ -432,7 +461,7 @@ have *something* - that is exactly the failure mode this project's "no homegrown
       from §9.2's own text — and a `hash_to_field` algorithm bug caught only by that re-derivation
       (see the item above). The round-trip property test is what caught the `Q` bug — the fixed
       vector alone never exercises key derivation. **Still not done**: the other 9 curve sizes.
-- [ ] **Not scheduled, sketched only:** replace `gf2m163`'s bit-serial field multiplication
+- [ ] **T-45** **Not scheduled, sketched only:** replace `gf2m163`'s bit-serial field multiplication
       (163-iteration shift-and-mask, `DECISIONS.md` D-25 — deliberately correctness-first, not
       speed) with a comb method (`Guide to Elliptic Curve Cryptography` Algorithm 2.34/2.36, the
       same source already cited for the current reduction/ladder code) once correctness work here
@@ -443,26 +472,71 @@ have *something* - that is exactly the failure mode this project's "no homegrown
       branchless posture (D-25) must both still hold after it; no new test-vector work needed
       since the existing `gf2m163_arith.json`/`gf2m163.json` checks already pin the arithmetic's
       expected output.
-- [ ] **Blocked entirely:** DSTU 9041 — zero source material exists (no paper, no oracle, no
+- [ ] **T-46** **Blocked entirely:** DSTU 9041 — zero source material exists (no paper, no oracle, no
       pseudocode; see `ORACLES.md`). Nothing here can start until the official text is obtained
       or another authoritative source turns up
-- [ ] `crypto_kx` equivalent (Diffie–Hellman on the DSTU 4145/9041 curve — needs both to exist)
-- [ ] `crypto_sign` equivalent wrapping the Rust DSTU 4145 port
+- [ ] **T-47** `crypto_kx` equivalent (Diffie–Hellman on the DSTU 4145/9041 curve — needs both to exist)
+- [ ] **T-48** `crypto_sign` equivalent wrapping the Rust DSTU 4145 port
 
 ## Phase 3 — Language bindings (not MVP)
 
-- [ ] Python bindings
-- [ ] JavaScript bindings
-- [ ] Java binding (wraps Bouncy Castle `DSTU4145Signer` directly, per D-02 — does not use the
+- [ ] **T-49** Python bindings
+- [ ] **T-50** JavaScript bindings
+- [ ] **T-51** Java binding (wraps Bouncy Castle `DSTU4145Signer` directly, per D-02 — does not use the
       Rust DSTU 4145 port)
-- [ ] .NET binding (wraps Bouncy Castle `Dstu4145Signer` directly, per D-02)
-- [ ] C++ bindings
+- [ ] **T-52** .NET binding (wraps Bouncy Castle `Dstu4145Signer` directly, per D-02)
+- [ ] **T-53** C++ bindings
 
 ## Phase 4 — Hardware validation (post-MVP)
 
-- [ ] STM32 (ARM Cortex-M) real-hardware validation
-- [ ] ESP32 (Xtensa/RISC-V) real-hardware validation
-- [ ] **Stretch goal, not a near-term target: Arduino Uno (ATmega328P, 8-bit AVR) — user has one
+- [x] **T-54** **Two-resource-profile split, done 2026-07-23 (`DECISIONS.md` D-35/D-38/D-39)** -
+      `dstu-core`'s `small-tables` Cargo feature (independent of `std`/`alloc`, combines with
+      either): `tables.rs`'s `MDS_TABLE`/`MDS_INV_TABLE`/`SBOX_MDS`/`SBOX_MDS_DEC` and Strumok's
+      `T0..T7` (~86 KB total) are now `#[cfg(not(feature = "small-tables"))]` - not compiled at all
+      under the feature, not just unused. In their place: `apply_matrix_via_gf_mul`/
+      `mds_column_via_gf_mul` (promoted from D-27's kept-for-testing `gf_mul`/`MDS_MATRIX`/
+      `MDS_INV_MATRIX` reference path) and Strumok's `t_function` reverted to its pre-D-26
+      runtime-`SBOXES`+`apply_forward_matrix` form - ~2-6 KB of `const` data instead. `kalyna.rs`/
+      `kupyna.rs`/`strumok.rs` call four small `cfg`-transparent wrapper functions
+      (`apply_forward_matrix`/`apply_inverse_matrix`/`forward_sbox_mds`/`inverse_sbox_mds`, all in
+      `tables.rs`) instead of the raw tables directly, so neither caller module needs its own
+      `cfg` - the entire profile split is contained in `tables.rs` (+ `t_function`'s two variants
+      in `strumok.rs`). **Verified**: both profiles' official vectors, `proptest` round-trips, and
+      the fused-vs-naive/decrypt-fusion property tests (default profile only - `small-tables` has
+      nothing to compare against since it computes the naive form directly) all pass; `cargo
+      clippy -- -D warnings` and `cargo fmt --check` clean on both; the existing 4-combination
+      `no_std`/`alloc`/`std` matrix (`TASKS.md` T-23) re-checked with `small-tables` added to each,
+      8 combinations total, all build clean; `cargo xtask build` passes. **Three
+      `#[allow(clippy::needless_range_loop)]` added** (`encipher_round`/`fused_inv_round`/
+      `sub_shift_mix`'s gather loops, plus `mds_column_via_gf_mul`'s) - calling a function with the
+      loop variable instead of directly indexing a second array changed clippy's needless-range-
+      loop heuristic (false positive: `row` also drives `shift`/`src_col`, not a plain
+      single-collection enumerate candidate; confirmed via `git stash` that the pre-existing code
+      was clippy-clean and only the `SBOX_MDS[row]` -> `forward_sbox_mds(row, ...)` refactor
+      triggered it). **CI updated** (`.github/workflows/rust.yml`): `--all-features` used to be a
+      stand-in for "test the default profile" (since `alloc` is an inert placeholder) but now also
+      flips on `small-tables`, which changes production behavior - added explicit default-profile
+      steps (no extra features) alongside new `--features dstu-core/small-tables` steps and kept
+      `--all-features` as a third, combined-everything pass; all four step groups verified locally
+      before committing to the workflow file, not just written and assumed correct. **Not done**:
+      `cargo miri test`/`cargo fuzz` under `small-tables` specifically (not required by D-35's
+      verification bar, but not re-run either) - CI's `miri`/`fuzz-smoke` jobs still only run
+      default-profile `cargo miri test --workspace`/`cargo fuzz run kupyna`, unchanged. **Same
+      day, follow-up**: real measured memory/speed numbers for both profiles (per-algorithm,
+      `uacrypt` release binary, same method as `PERFORMANCE.md`'s binary-level comparison)
+      written up in the new `docs/resource-profiles.md`, plus a plain-language sizing guide
+      mapping typical MCU flash budgets to which profile fits - linked from `README.md` and
+      `CLAUDE.md`'s documentation map. Kalyna/Kupyna are ~20-43x slower under `small-tables`
+      (their whole round is the swapped step); Strumok is only ~4-4.5x slower (the swapped step is
+      a smaller fraction of its per-word cost). Measured once on the Ryzen dev machine only, not
+      the full multi-baseline protocol - good enough to size the trade-off, not a tracked
+      regression baseline.
+- [ ] **T-55** STM32 (ARM Cortex-M) real-hardware validation - entry-level parts (L0/F0/G0, 16-64 KB flash)
+      need the small-tables profile above; mid-range and up (F1/F3/G4/F4/F7/H7) have flash to
+      spare for the default fused profile.
+- [ ] **T-56** ESP32 (Xtensa/RISC-V) real-hardware validation - flash (4 MB+) and SRAM (320-520 KB) both
+      comfortably cover the default fused profile; no need for small-tables here.
+- [ ] **T-57** **Stretch goal, not a near-term target: Arduino Uno (ATmega328P, 8-bit AVR) — user has one
       available, 2026-07-22.** Raised as "could we hypothetically try this," not a firm ask.
       Materially harder than the STM32/ESP32 items above, for a concrete, measured reason, not a
       vague "8-bit is old" concern: Rust's AVR target is nightly-only/tier-3 (`avr-hal`/`ravedude`
@@ -480,9 +554,9 @@ have *something* - that is exactly the failure mode this project's "no homegrown
       the round-key schedule/state - not a quick add-a-target job, and today's fused tables make it
       substantially worse than when this was last measured. Revisit only if there's real interest,
       not opportunistically.
-- [ ] Keep the SPA/DPA non-claim intact throughout (`no_std` compiling ≠ side-channel resistance
+- [ ] **T-58** Keep the SPA/DPA non-claim intact throughout (`no_std` compiling ≠ side-channel resistance
       — see `CLAUDE.md` MVP scope section)
-- [ ] **Not scheduled, sketched only:** constant-time S-boxes (masked-select or bitsliced —
+- [ ] **T-59** **Not scheduled, sketched only:** constant-time S-boxes (masked-select or bitsliced —
       `DECISIONS.md` D-19's "Future path" note has both options and why it's a bigger project than
       it looks), narrowing the software-timing exception D-19 documents. Natural place to revisit
       this alongside the hardware side-channel audit above, not before.
@@ -498,24 +572,24 @@ Mirrors the table in `docs/dstu-crypto-project.md` "Concrete API shape" — that
 prose/rationale version, this is the checklist version. Keep both in sync when a status changes.
 Two-layer split (`hazmat` now, high-level "easy" layer later) decided in `DECISIONS.md` D-09.
 
-- [x] `hazmat::kupyna` (`Kupyna256`, `Kupyna512`) — confirmed green, citation in D-10 (see Phase 1)
-- [x] `hazmat::kalyna` (5 variants) — confirmed green, citation in D-13 (see Phase 1)
-- [x] `hazmat::strumok` (`Strumok256`, `Strumok512`) — confirmed green, citation in D-18 (see
+- [x] **T-60** `hazmat::kupyna` (`Kupyna256`, `Kupyna512`) — confirmed green, citation in D-10 (see Phase 1)
+- [x] **T-61** `hazmat::kalyna` (5 variants) — confirmed green, citation in D-13 (see Phase 1)
+- [x] **T-62** `hazmat::strumok` (`Strumok256`, `Strumok512`) — confirmed green, citation in D-18 (see
       Phase 1)
-- [ ] `hazmat::dstu4145` — not started; needs BC known-answer vectors extracted first (Phase 2)
-- [ ] `hazmat::dstu9041` — hard-blocked, zero source material (see `ORACLES.md`)
-- [ ] high-level "easy" layer (name TBD) — not started; nothing needs it yet (no keyed/nonce-based
+- [ ] **T-63** `hazmat::dstu4145` — not started; needs BC known-answer vectors extracted first (Phase 2)
+- [ ] **T-64** `hazmat::dstu9041` — hard-blocked, zero source material (see `ORACLES.md`)
+- [ ] **T-65** high-level "easy" layer (name TBD) — not started; nothing needs it yet (no keyed/nonce-based
       primitive is implemented before Strumok or `crypto_secretbox`, both currently blocked)
-- [ ] `crypto_secretbox` construction (over `hazmat::kalyna` + `hazmat::kupyna`) — blocked on D-05
-- [ ] `crypto_auth`/`crypto_onetimeauth` construction (over `hazmat::kupyna`) — needs
+- [ ] **T-66** `crypto_secretbox` construction (over `hazmat::kalyna` + `hazmat::kupyna`) — blocked on D-05
+- [ ] **T-67** `crypto_auth`/`crypto_onetimeauth` construction (over `hazmat::kupyna`) — needs
       `hazmat::kalyna`/`hazmat::kupyna` done first
-- [ ] `crypto_kdf` construction (over `hazmat::kupyna`) — needs `hazmat::kupyna` done first
-- [ ] `crypto_kx` construction (over `hazmat::dstu4145`/`dstu9041`) — needs both curves; DSTU 9041
+- [ ] **T-68** `crypto_kdf` construction (over `hazmat::kupyna`) — needs `hazmat::kupyna` done first
+- [ ] **T-69** `crypto_kx` construction (over `hazmat::dstu4145`/`dstu9041`) — needs both curves; DSTU 9041
       side is hard-blocked
-- [ ] `crypto_secretstream` construction (over `hazmat::strumok`/`hazmat::kalyna`) — needs its
+- [ ] **T-70** `crypto_secretstream` construction (over `hazmat::strumok`/`hazmat::kalyna`) — needs its
       underlying primitive done first
-- [ ] `crypto_pwhash` (plain Argon2id, high-level layer only, not DSTU) — not started, no blocker
-- [ ] `randombytes` (OS CSPRNG via `getrandom`, high-level layer only, not DSTU) — not started,
+- [ ] **T-71** `crypto_pwhash` (plain Argon2id, high-level layer only, not DSTU) — not started, no blocker
+- [ ] **T-72** `randombytes` (OS CSPRNG via `getrandom`, high-level layer only, not DSTU) — not started,
       only needed once the high-level layer exists
 
 ## Infrastructure — CI and oracle harnesses
@@ -526,7 +600,7 @@ right now). Every harness below consumes the same `crates/dstu-core/tests/vector
 files already used by the Rust tests — one vector format, multiple consumers, not a second
 convention invented per language.
 
-- [x] Rust CI (`.github/workflows/rust.yml`) written and **locally confirmed green** (2026-07-22,
+- [x] **T-73** Rust CI (`.github/workflows/rust.yml`) written and **locally confirmed green** (2026-07-22,
       after installing a Rust toolchain in this environment — see `.claude.local.md`): `cargo fmt
       --check` clean, `cargo build --workspace` (both `--all-features` and
       `--no-default-features`, confirming `no_std` still compiles), `cargo test --workspace`
@@ -534,10 +608,10 @@ convention invented per language.
       clean after one fix (`manual_memcpy` in `shift_bytes`). **Kupyna is now confirmed correct**,
       not just written — see D-10 update. `cargo miri test` run separately (see below); CI itself
       still activates properly only once pushed to a GitHub remote.
-- [x] `cargo fuzz` scaffold added (`crates/dstu-core/fuzz/`, target `kupyna`) — required by
+- [x] **T-74** `cargo fuzz` scaffold added (`crates/dstu-core/fuzz/`, target `kupyna`) — required by
       `SECURITY.md`. Wired into the CI smoke job; a local nightly+miri toolchain now exists here
       too if a quick local run is ever wanted, though CI is still the primary path.
-- [x] `cargo audit` + `cargo deny` (2026-07-22, D-11) — elevated to the same required-CI standing
+- [x] **T-75** `cargo audit` + `cargo deny` (2026-07-22, D-11) — elevated to the same required-CI standing
       as miri/fuzz in `SECURITY.md`; policy in `deny.toml`. Wired into `.github/workflows/rust.yml`
       via `rustsec/audit-check` / `EmbarkStudios/cargo-deny-action`. **Actually run locally, not
       just installed**: `cargo audit` — 0 vulnerabilities. `cargo deny check` — all four categories
@@ -545,7 +619,7 @@ convention invented per language.
       `dstutool`'s `dstu-core = { path = "../dstu-core" }` dependency as a "wildcard dependency"
       (no `version` pinned — would also block publishing to crates.io as-is). Fixed by adding
       `version = "0.0.0"`. Genuine first catch from this tooling, not just a clean no-op.
-- [x] ~~C oracle harness~~ **dropped 2026-07-22.** Attempted against cryptonite (pinned commit
+- [x] **T-76** ~~C oracle harness~~ **dropped 2026-07-22.** Attempted against cryptonite (pinned commit
       `3618d340`) with a real, newly-installed GCC 16.1: cryptonite's own source fails to compile
       on a modern compiler (implicit-function-declaration errors in
       `dstu4145_prng_internal.c` — unrelated to Kalyna/Kupyna, a real incompatibility in the
@@ -556,17 +630,17 @@ convention invented per language.
       harnesses below already), not worth patching a vetted oracle's source to keep this alive.
       `cryptonite` remains a **read-only** reference (see `ORACLES.md` / `oracles/README.md`, the
       D-05 CCM/GCM finding) — just not a runnable CI harness. `tests/oracle-harness/c/` removed.
-- [x] .NET oracle harness (`tests/oracle-harness/dotnet/`) — uses the **published
+- [x] **T-77** .NET oracle harness (`tests/oracle-harness/dotnet/`) — uses the **published
       `BouncyCastle.Cryptography` 2.6.2** NuGet package, not the vendored partial clone in
       `oracles/bouncycastle-dotnet/` (that's "selected files only" and won't build standalone —
       see `oracles/README.md`). **Actually built and run in this environment**: all 10 Kalyna
       cases + all 12 Kupyna cases passed against real Bouncy Castle output.
-- [x] Java oracle harness (`tests/oracle-harness/java/`) — same approach, published
+- [x] **T-78** Java oracle harness (`tests/oracle-harness/java/`) — same approach, published
       `bcprov-jdk18on:1.85` from Maven Central rather than the vendored
       `oracles/bouncycastle-java/` clone. **Actually built and run**, both via raw `javac`/`java`
       (JDK 8) and via Maven (installed 2026-07-22, see `.claude.local.md`): same result, all 22
       cases passed both ways.
-- [x] `cargo xtask` cross-platform build/QA runner (2026-07-22, D-12) — one command
+- [x] **T-79** `cargo xtask` cross-platform build/QA runner (2026-07-22, D-12) — one command
       (`cargo xtask build|test|fmt|clippy|ci|miri|fuzz|audit|deny|oracle-java|oracle-dotnet`) for
       Linux/Windows/macOS instead of separate shell/PowerShell scripts. Plain Rust binary at
       `xtask/`, own `[workspace]` so it stays out of `dstu-core`'s dependency graph, invoked via the
@@ -576,7 +650,7 @@ convention invented per language.
       missing in that shell session with install hints while `cargo audit`, `cargo deny check`, and
       the .NET oracle harness (all 22 cases) ran and passed. README.md "Building from source" /
       "Development commands" document the per-OS install + usage.
-- [x] Extract Bouncy Castle's own DSTU 4145 known-answer test data — done as
+- [x] **T-80** Extract Bouncy Castle's own DSTU 4145 known-answer test data — done as
       `crates/dstu-core/tests/vectors/dstu4145/gf2m163.json` (2026-07-22, D-14), transcribed from
       the official standard's own Annex B.1 worked example and cross-checked against
       `DSTU4145Test.java` `test163()` rather than extracted from the BC test file directly — same

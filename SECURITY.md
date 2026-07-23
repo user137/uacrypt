@@ -51,7 +51,7 @@ Explicitly out of scope (until stated otherwise):
 - `cargo audit` (RustSec advisory database — known vulnerabilities, yanked crates) and
   `cargo deny` (license policy, duplicate/banned crates, dependency-source allowlist — policy in
   `deny.toml`) are required CI layers, same standing as `cargo miri`/`cargo fuzz` above. Currently
-  check an empty dependency tree (zero external dependencies in `dstu-core`/`dstutool` so far) —
+  check an empty dependency tree (zero external dependencies in `dstu-core`/`uacrypt` so far) —
   that's not a reason to treat them as inactive; they're the automated enforcement of the
   supply-chain table below, and must stay green as soon as any dependency is added.
 - `unsafe` code is isolated to the smallest possible module with a safe wrapper, and every

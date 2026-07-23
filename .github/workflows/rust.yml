@@ -18,8 +18,22 @@ jobs:
         with:
           components: clippy, rustfmt
       - run: cargo fmt --all -- --check
-      - run: cargo build --workspace --all-features
+      # Default (fused-table) resource profile - DECISIONS.md D-35/D-38/D-39. `--all-features`
+      # below also turns on `small-tables`, which changes production behavior (not just adds an
+      # unrelated flag the way `alloc` does), so it no longer stands in for "test the default
+      # profile" the way it used to - these explicit no-extra-features steps cover that instead.
+      - run: cargo build --workspace
       - run: cargo build --workspace --no-default-features
+      - run: cargo test --workspace
+      - run: cargo clippy --workspace -- -D warnings
+      # small-tables resource profile (DECISIONS.md D-35/D-38/D-39) - constrained-target table set.
+      - run: cargo build --workspace --features dstu-core/small-tables
+      - run: cargo build --workspace --no-default-features --features dstu-core/small-tables
+      - run: cargo test --workspace --features dstu-core/small-tables
+      - run: cargo clippy --workspace --features dstu-core/small-tables -- -D warnings
+      # Every feature on at once, both profiles' flags combined - catches interaction bugs neither
+      # side alone would.
+      - run: cargo build --workspace --all-features
       - run: cargo test --workspace --all-features
       - run: cargo clippy --workspace --all-features -- -D warnings
 
