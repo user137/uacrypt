@@ -1,6 +1,6 @@
 [package]
 name = "dstu-core"
-version = "0.0.0"
+version = "0.1.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 description = "Rust implementations of Ukrainian DSTU cryptographic standards (Kalyna, Kupyna, Strumok)"

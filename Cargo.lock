@@ -207,7 +207,7 @@ checksum = "460fbee9c2c2f33933d720630a6a0bac33ba7053db5344fac858d4b8952d77d5"
 
 [[package]]
 name = "dstu-core"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "criterion",
  "proptest",
@@ -715,7 +715,7 @@ dependencies = [
 
 [[package]]
 name = "uacrypt"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "dstu-core",
  "getrandom 0.3.4",

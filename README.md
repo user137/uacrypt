@@ -1,5 +1,12 @@
 # uacrypt
 
+**v0.1.0 — pre-release / work in progress.** Not a complete library or CLI yet, not audited, not
+production-ready, and **not a claim of side-channel resistance**. Core primitives (Kalyna, Kupyna)
+are dual-oracle-verified against official test vectors; Strumok and the Kalyna-CCM mode are
+provisional (not yet confirmed against their primary standard text — see `DECISIONS.md` D-15/D-41).
+No file-level `encrypt`/`decrypt` command exists yet (blocked on D-05). See `SECURITY.md` for the
+full threat model and hard constraints, and the Status paragraph below for what's actually done.
+
 An open Rust library for modern Ukrainian cryptographic standards (DSTU) — in the
 spirit of **libsodium** (hard, safe defaults, hard to misuse), not OpenSSL
 (flexible, easy to misuse the API).

@@ -2019,3 +2019,34 @@ behavior worth exercising once the data is already resident. Verified: a new tes
 (`run_strumok_command_streams_multi_chunk_input_correctly`, a message spanning multiple chunks with
 a non-aligned remainder, checked against `Strumok512::new(...).apply_keystream(...)` directly) and
 a manual round-trip through the real release binary on a 3 MiB+ file.
+
+## D-43: First real version number - `0.0.0` -> `0.1.0`, README pre-release banner
+
+Raised 2026-07-23 by the user: the workspace's crates had sat at the Cargo default placeholder
+`version = "0.0.0"` since the project's scaffold (Phase 0) - not a real semver value, and not
+publishable to crates.io as-is (crates.io rejects `0.0.0`). With the CI push/audit work just
+finished, the user asked for a real version plus a visible pre-release/WIP marker on the GitHub
+README, since the project is neither a complete library (no file-level `encrypt`/`decrypt`, D-05
+still open) nor a complete CLI yet.
+
+**Decision**: `0.1.0`, not a `0.1.0-alpha.N` pre-release tag. Under semver, the entire `0.x` range
+already means "unstable, may break without a major bump" - that's the correct signal for where this
+project actually is, and a pre-release suffix is a crates.io-publish-mechanics lever (yanking,
+pre-release opt-in installs) better deferred to the actual first publish (`TASKS.md` T-17), not
+decided speculatively now. Both `crates/dstu-core/Cargo.toml` and `crates/uacrypt/Cargo.toml`
+bumped together, including `uacrypt`'s `dstu-core = { path = "...", version = "0.1.0" }` path-dep
+version (missing this second spot would silently leave the wildcard-dependency problem T-75 already
+fixed once). `xtask/Cargo.toml` deliberately left at `0.0.0` - separate `[workspace]`, dev-only
+tool, never published, no reason to version it the same way.
+
+**README**: a banner added at the very top (`README.md`, above the existing "An open Rust library
+for..." paragraph, which stays as-is) stating the version, pre-release/WIP status, and - since this
+is a crypto library, not just any 0.x project - the same safety caveats `SECURITY.md` already
+states: not audited, not production-ready, no side-channel-resistance claim, Strumok/Kalyna-CCM
+still provisional (D-15/D-41), no file-level `encrypt`/`decrypt` yet (D-05). A WIP notice on a
+crypto library is a safety statement, not cosmetics - it must not undersell what's still missing.
+`Cargo.lock` regenerated via `cargo build --workspace` (not hand-edited) to pick up both version
+bumps.
+
+See `docs/release-readiness.md` (added same day) for the fuller gap analysis - what a genuine
+libsodium-equivalent 1.0 release still needs beyond this version bump.

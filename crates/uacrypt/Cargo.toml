@@ -1,6 +1,6 @@
 [package]
 name = "uacrypt"
-version = "0.0.0"
+version = "0.1.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 description = "CLI over dstu-core"
@@ -9,5 +9,5 @@ description = "CLI over dstu-core"
 name = "uacrypt"
 
 [dependencies]
-dstu-core = { path = "../dstu-core", version = "0.0.0" }
+dstu-core = { path = "../dstu-core", version = "0.1.0" }
 getrandom = "0.3.4"

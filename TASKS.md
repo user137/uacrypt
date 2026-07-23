@@ -170,6 +170,34 @@ item they point to is later removed.
         "dstu-crypto (working name)" to `uacrypt`. No git remote exists yet to actually create/
         rename a GitHub repo against - this records the chosen name for whenever one is created,
         it doesn't perform any GitHub-side action.
+- [x] **T-86** First real version number, `0.0.0` -> `0.1.0` for both `dstu-core` and `uacrypt`
+      (`DECISIONS.md` D-43, 2026-07-23) - `0.0.0` was the unmodified Cargo scaffold default, not a
+      real semver value, and not publishable to crates.io as-is. `0.1.0` chosen over a
+      `-alpha.N` pre-release tag: the whole `0.x` range already signals "unstable, may break" under
+      semver, which matches this project's actual state honestly; a pre-release suffix is deferred
+      to the real crates.io publish (T-17) rather than decided now. Both crates' `version` bumped
+      together, including `uacrypt`'s `dstu-core` path-dependency version (the same wildcard-dep
+      spot T-75 fixed once already) - missing it would silently reintroduce that problem.
+      `Cargo.lock` regenerated via a real build, not hand-edited. README.md got a pre-release/WIP
+      banner at the top stating the version and the same safety caveats `SECURITY.md` already
+      carries (not audited, no side-channel-resistance claim, Strumok/Kalyna-CCM still provisional,
+      no file-level `encrypt`/`decrypt` yet) - a WIP notice on a crypto library is a safety
+      statement, not cosmetics, so it states what's missing rather than reading as marketing.
+- [ ] **T-87** **Release-readiness audit for a genuine libsodium-equivalent 1.0** (requested
+      2026-07-23, same session as T-86): a full gap analysis of what exists vs. what a real release
+      needs - libsodium-shaped API/command surface, matching documentation, a crates.io publish
+      with the complete algorithm set built and tested, and critically every mode of operation in
+      that set being a *current, safe* one (not provisional/unconfirmed). Written up as
+      `docs/release-readiness.md` (new file, added to `CLAUDE.md`'s documentation map) rather than
+      folded into `dstu-crypto-project.md`, so it's independently updatable as the gap closes.
+      **Headline finding, not to be buried under an optimistic checklist**: this goal is currently
+      blocked, not just incomplete - `DECISIONS.md` D-05 (Kalyna's mode-of-operation question) is
+      still formally open pending the priced primary DSTU 7624:2014 text, Kalyna-CCM is provisional
+      (D-41), Strumok is UAPKI-attributed not primary-confirmed (D-15), and there is no
+      `crypto_secretbox`-equivalent AEAD yet (T-36/T-37, both blocked on D-05). A release that
+      claims "current, safe modes" cannot honestly ship on top of provisional/unconfirmed
+      constructions - see `docs/release-readiness.md` for the full breakdown and what would need to
+      change first.
 - [ ] **T-23** Re-confirm the `no_std` build still passes (all feature-flag combinations) as each
       primitive lands — don't let this regress silently. Ongoing by design, not a one-time item —
       **last re-checked 2026-07-22** (post D-28/29/30/31): all four `dstu-core` feature
