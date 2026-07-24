@@ -94,6 +94,16 @@ fn gf2m163_generator_matches_vector() {
     assert_eq!(Point::generator(), Point::Affine(gx, gy));
 }
 
+// `Point::double`/`add` each call `FieldElement::invert`, itself a 162-step square-and-multiply
+// exponentiation (gf2m163.rs, D-25) - as expensive per call as `scalar_multiply`'s ladder, not
+// cheaper for being a single point operation. Looping this over 20-40 vector cases is what makes
+// these two tests too slow to interpret under Miri (confirmed empirically: >40 min and still not
+// finished for these two tests alone, TASKS.md T-100) - excluded from CI's required Miri gate for
+// cost reasons; `cargo test` (required, fast) still covers this every push.
+#[cfg_attr(
+    miri,
+    ignore = "FieldElement::invert's 162-step exponentiation, looped over many vector cases, is too slow to interpret under Miri - see TASKS.md T-100"
+)]
 #[test]
 fn gf2m163_point_double_matches_bouncy_castle() {
     let json = include_str!("vectors/dstu4145/gf2m163_arith.json");
@@ -109,6 +119,10 @@ fn gf2m163_point_double_matches_bouncy_castle() {
     }
 }
 
+#[cfg_attr(
+    miri,
+    ignore = "FieldElement::invert's 162-step exponentiation, looped over many vector cases, is too slow to interpret under Miri - see TASKS.md T-100"
+)]
 #[test]
 fn gf2m163_point_add_matches_bouncy_castle() {
     let json = include_str!("vectors/dstu4145/gf2m163_arith.json");
@@ -125,6 +139,13 @@ fn gf2m163_point_add_matches_bouncy_castle() {
     }
 }
 
+// `scalar_multiply`'s 163-iteration constant-time ladder takes minutes per call to interpret
+// under Miri (TASKS.md T-100/T-85/D-46), not seconds - excluded from CI's required Miri gate for
+// cost reasons; `cargo test` (required, fast) still covers this every push.
+#[cfg_attr(
+    miri,
+    ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see TASKS.md T-100"
+)]
 #[test]
 fn gf2m163_scalar_multiply_matches_bouncy_castle() {
     let json = include_str!("vectors/dstu4145/gf2m163_arith.json");
@@ -148,6 +169,10 @@ fn gf2m163_scalar_multiply_matches_bouncy_castle() {
 /// `scalar_multiply` is meant to run the same fixed 163 iterations regardless (see its doc
 /// comment on the infinity-starting ladder) - cross-check small scalars against repeated
 /// `Point::add`, which has no such fixed-width concern, to exercise that path directly.
+#[cfg_attr(
+    miri,
+    ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see TASKS.md T-100"
+)]
 #[test]
 fn gf2m163_scalar_multiply_matches_repeated_addition_for_small_scalars() {
     let g = Point::generator();

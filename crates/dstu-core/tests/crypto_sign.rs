@@ -64,6 +64,15 @@ fn small_scalar(low_byte: u8) -> [u8; 21] {
     out
 }
 
+// Every #[test] below (except the two from_bytes rejection tests, which never derive a public
+// key) calls `verifying_key()`/`sign`/`verify`, each running `Point::scalar_multiply`'s
+// 163-iteration constant-time ladder at least once - interpreting that under Miri takes minutes
+// per call (TASKS.md T-100/T-85/D-46), not seconds. Excluded from CI's required Miri gate only;
+// `cargo test` (required, fast) and property/vector coverage are unaffected.
+#[cfg_attr(
+    miri,
+    ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see TASKS.md T-100"
+)]
 #[test]
 fn verifying_key_matches_official_worked_example_q() {
     let json = include_str!("vectors/dstu4145/gf2m163.json");
@@ -85,6 +94,10 @@ fn verifying_key_matches_official_worked_example_q() {
     );
 }
 
+#[cfg_attr(
+    miri,
+    ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see TASKS.md T-100"
+)]
 #[test]
 fn sign_is_deterministic() {
     let signing_key = SigningKey::from_bytes(&small_scalar(0x11)).expect("nonzero, below n");
@@ -93,6 +106,10 @@ fn sign_is_deterministic() {
     assert_eq!(sig_a.to_bytes(), sig_b.to_bytes());
 }
 
+#[cfg_attr(
+    miri,
+    ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see TASKS.md T-100"
+)]
 #[test]
 fn sign_verify_roundtrip() {
     let signing_key = SigningKey::from_bytes(&small_scalar(0x2A)).expect("nonzero, below n");
@@ -101,6 +118,10 @@ fn sign_verify_roundtrip() {
     assert!(verifying_key.verify(b"a real message", &sig));
 }
 
+#[cfg_attr(
+    miri,
+    ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see TASKS.md T-100"
+)]
 #[test]
 fn tampered_message_is_rejected() {
     let signing_key = SigningKey::from_bytes(&small_scalar(0x2A)).expect("nonzero, below n");
@@ -109,6 +130,10 @@ fn tampered_message_is_rejected() {
     assert!(!verifying_key.verify(b"a different message", &sig));
 }
 
+#[cfg_attr(
+    miri,
+    ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see TASKS.md T-100"
+)]
 #[test]
 fn tampered_signature_is_rejected() {
     let signing_key = SigningKey::from_bytes(&small_scalar(0x2A)).expect("nonzero, below n");
@@ -119,6 +144,10 @@ fn tampered_signature_is_rejected() {
     assert!(!verifying_key.verify(b"a real message", &sig));
 }
 
+#[cfg_attr(
+    miri,
+    ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see TASKS.md T-100"
+)]
 #[test]
 fn wrong_verifying_key_is_rejected() {
     let signing_key_a = SigningKey::from_bytes(&small_scalar(0x2A)).expect("nonzero, below n");
@@ -141,6 +170,7 @@ fn from_bytes_rejects_scalar_at_or_above_order() {
 }
 
 proptest! {
+    #[cfg_attr(miri, ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see TASKS.md T-100")]
     #[test]
     fn dstu4145_crypto_sign_roundtrip(
         d_bytes in prop::collection::vec(any::<u8>(), 20),

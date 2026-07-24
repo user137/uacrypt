@@ -48,14 +48,27 @@ jobs:
   miri:
     name: cargo miri test
     runs-on: ubuntu-latest
-    # Fail fast instead of hanging for hours: even with PROPTEST_CASES=1 below, at least one
-    # compute-heavy proptest suite (dstu4145_sign_verify_roundtrip's constant-time scalar_multiply
-    # ladder, TASKS.md T-45) still ran past an hour under Miri interpretation on 2026-07-23/24 - a
-    # single case's per-instruction interpretation cost, not case *count*, dominates there, so
-    # reducing cases alone did not bound this job's wall-clock time the way it was expected to.
-    # If this timeout is hit repeatedly, the next step is scoping this job away from that specific
-    # suite (or proptest entirely), not raising the timeout further.
-    timeout-minutes: 30
+    # This job never completed on any push before TASKS.md T-100 (D-59) - PROPTEST_CASES=1 alone
+    # didn't bound its wall-clock time, because the bottleneck is per-case interpretation cost, not
+    # case *count*: every #[test] that calls `Point::scalar_multiply` (DSTU 4145's 163-iteration
+    # constant-time ladder) *or* `FieldElement::invert` (its own 162-step exponentiation, called by
+    # `Point::add`/`double` too) - not just the two proptest suites originally suspected - takes
+    # minutes per call under Miri's interpreter. Fixed at the source, not here: those tests now
+    # carry `#[cfg_attr(miri, ignore = "...")]` (dstu4145_curve.rs, dstu4145_gf2m.rs,
+    # dstu4145_signature.rs, crypto_sign.rs), so this stays the one-liner below rather than a
+    # skip-list duplicating test names in two places (a CI-side skip list was considered and
+    # rejected once already, T-85 - same drift risk: a new EC-heavy test added later without the
+    # attribute silently reintroduces the timeout, but at least it's discoverable in the same file
+    # as the test, not a remote yaml). `cargo test` (the `test` job above) still runs these tests
+    # every push, unaffected - only Miri's UB-checking of the ladder/inversion is skipped, for cost
+    # reasons, not correctness ones.
+    # What remains after that fix is bounded but still genuinely slow (interpreted block-cipher-mode
+    # tests, not EC math) - measured locally at ~84 minutes for all of `dstu-core` alone (D-59's
+    # full table), a materially different situation from the open-ended runaway case the old 30-min
+    # cap was set against, so raising it here is the correct response, not a repeat of that mistake.
+    # 150 min = ~2.5x the measured dstu-core total, leaving margin for a slower/shared CI runner and
+    # the (separately tracked, T-102) uacrypt portion this fix doesn't touch.
+    timeout-minutes: 150
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@nightly

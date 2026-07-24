@@ -1363,7 +1363,7 @@ GMAC work above) — process/documentation gaps, not code-correctness bugs
       reconciling its tables and the "Concrete path to a genuinely safe, complete release" section
       against current `TASKS.md`/`DECISIONS.md` state before it's trusted again as the up-to-date
       gap analysis.
-- [ ] **T-100** **`cargo miri test` has never once passed in CI, in this repository's whole
+- [x] **T-100** **`cargo miri test` has never once passed in CI, in this repository's whole
       history** — found during the same `advisor()` audit, verified via `gh run list`/`gh run view`,
       not assumed from a red badge. All 16 `rust` workflow runs to date: the two runs before
       `dtolnay/rust-toolchain@nightly`'s `+nightly` fix landed (2026-07-23) failed the `cargo miri
@@ -1394,6 +1394,42 @@ GMAC work above) — process/documentation gaps, not code-correctness bugs
       Miri entirely (property-tested outside Miri is still real coverage) or give it its own
       long-running, non-blocking job. Not: raising `timeout-minutes` further — already ruled out by
       the comment above and by T-85's own text.
+      **Resolved 2026-07-25, see `DECISIONS.md` D-59 for the full measurement trail.** The
+      remediation direction above assumed the two `proptest` suites were the whole problem —
+      measured first, and they weren't: any `#[test]` calling `Point::scalar_multiply` (the
+      163-iteration ladder) or `FieldElement::invert` (its own 162-step exponentiation, called by
+      `Point::add`/`double` too) costs minutes under Miri, proptest or not. Fixed by tagging every
+      such test with `#[cfg_attr(miri, ignore = "...")]` at the source (`dstu4145_curve.rs`,
+      `dstu4145_gf2m.rs`, `dstu4145_signature.rs`, `crypto_sign.rs`) rather than a CI-side skip
+      list (T-85 already rejected that shape once). **Verified**: a full, unattended,
+      run-to-completion `cargo +nightly miri test --workspace` (the exact CI invocation) — every
+      `dstu-core` target passed, 0 UB, 0 failures, real total approx. 5044s (~84 min), full
+      per-target table in D-59. `timeout-minutes` raised from 30 to 150 (~2.5x measured, real
+      margin for a slower CI runner) — D-59 explains why this is the correct response now, not a
+      repeat of the "don't just raise the timeout" mistake the 30-min cap was set against (that cap
+      was against an *unbounded* single case; what remains now is bounded, just slow).
+      **New finding, not fixed here, tracked separately as T-102**: the full run reached
+      `uacrypt`'s own lib tests for the first time ever (previously always timed out first) and hit
+      a *different* failure there — `CreateDirectoryW` unsupported by Miri on Windows, inside
+      `tests::TempDir::new`. Plausibly the same Windows-host-Miri-gap family as T-81's
+      `GetCurrentDirectoryW` finding, not confirmed on Linux (CI's actual host).
+      **Explicit scope of the claim**: verified locally, completely, for `dstu-core`. **Not**
+      verified that CI's own Linux runner now passes end-to-end — that conclusion needs an actual
+      push (explicit-request-only) to confirm, stated here rather than assumed.
+- [ ] **T-102** **`uacrypt`'s own lib tests fail under `cargo miri test` on this Windows dev
+      machine — `CreateDirectoryW` unsupported by Miri's Windows-host foreign-function shim, even
+      with `MIRIFLAGS=-Zmiri-disable-isolation`.** Surfaced 2026-07-25 as a side effect of T-100/D-59
+      (the workspace Miri run never reached `uacrypt`'s tests before, always timing out on the
+      EC-ladder problem first). First hit inside `tests::TempDir::new` (`crates/uacrypt/src/
+      lib.rs:1312`) by `run_ccm_command_decrypt_rejects_tampered_ciphertext_without_writing_out`;
+      16 of `uacrypt`'s test functions use the same `TempDir` helper, so most tests past that point
+      would hit the identical wall. **Working hypothesis, explicitly not confirmed**: same family
+      as T-81's `GetCurrentDirectoryW`-under-Miri-isolation finding — Miri's Windows filesystem
+      shims are less complete than its Unix ones (a known upstream characteristic), so this is
+      plausibly clean on CI's actual Linux runner. Needs either a real Linux confirmation (the
+      Raspberry Pi rig, `TASKS.md` "Testing & hardening", doesn't have Miri installed yet per its
+      last re-run note — would need `rustup component add miri` there first) or watching the actual
+      CI run once one happens, not a guess written down as settled.
 - [ ] **T-101** **`hazmat::kalyna_cfb`'s multi-call panic is a closed doc note, not an open design
       question — it should be one.** Found alongside T-100 in the same `advisor()` audit: T-91/D-53
       already record a real, reachable out-of-bounds slice index in `encrypt_in_place`/
@@ -1449,7 +1485,13 @@ its own plan-mode pass. 10/10 `hazmat` mode coverage complete.
 
 **Step 1 (current) - Trust/correctness gaps before more feature surface (T-97 through T-101, in
 this order)**:
-T-100 first (real CI Miri backstop for everything after), then T-101 (`kalyna_cfb` → `Result`,
+T-100 first (real CI Miri backstop for everything after) - **DONE, see D-59**: real root cause was
+broader than expected (any EC-ladder/field-inversion call, not just the two proptest suites), fixed
+by tagging every such test `#[cfg_attr(miri, ignore)]` at the source; `dstu-core` verified clean
+locally end-to-end (~84 min), `timeout-minutes` raised 30 → 150 accordingly. Surfaced a new,
+separately-tracked finding (T-102, `uacrypt`'s own tests hit a Windows-only Miri filesystem gap) -
+not itself resolved by this step, and CI's own Linux-runner conclusion is still unconfirmed pending
+a push. Then T-101 (`kalyna_cfb` → `Result`,
 own test-first pass), then T-98 (fuzz targets - after T-101, since `kalyna_cfb`'s shape will have
 changed), T-97 (trivial `SECURITY.md` table row, any time), T-99 last (reconcile
 `docs/release-readiness.md` against the state *after* the rest of this step and Step 0).

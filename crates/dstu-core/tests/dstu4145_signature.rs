@@ -63,6 +63,16 @@ fn hash(json: &str) -> Vec<u8> {
     decode_hex(extract(json, "hash_h_of_t"))
 }
 
+// Every #[test] below calls `sign`/`verify`, which each run `Point::scalar_multiply`'s
+// 163-iteration constant-time ladder at least once - interpreting that under Miri takes minutes
+// per call (TASKS.md T-100/T-85/D-46), not seconds, so these are excluded from CI's required
+// Miri gate specifically (not `cargo test`, which stays required and fast). Property/vector
+// coverage of this file is unaffected outside Miri; only UB-checking under Miri's interpreter is
+// skipped here, for cost reasons, not correctness ones.
+#[cfg_attr(
+    miri,
+    ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see TASKS.md T-100"
+)]
 #[test]
 fn gf2m163_worked_example_verifies() {
     let json = include_str!("vectors/dstu4145/gf2m163.json");
@@ -80,6 +90,10 @@ fn gf2m163_worked_example_verifies() {
     );
 }
 
+#[cfg_attr(
+    miri,
+    ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see TASKS.md T-100"
+)]
 #[test]
 fn gf2m163_tampered_signature_is_rejected() {
     let json = include_str!("vectors/dstu4145/gf2m163.json");
@@ -99,6 +113,10 @@ fn gf2m163_tampered_signature_is_rejected() {
     );
 }
 
+#[cfg_attr(
+    miri,
+    ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see TASKS.md T-100"
+)]
 #[test]
 fn gf2m163_worked_example_signs_with_pinned_ephemeral() {
     // Reproduces the official Annex B.1 worked example's (r, s) exactly, using the vector's
@@ -117,6 +135,10 @@ fn gf2m163_worked_example_signs_with_pinned_ephemeral() {
     assert_eq!(s, expected_s, "s mismatch");
 }
 
+#[cfg_attr(
+    miri,
+    ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see TASKS.md T-100"
+)]
 #[test]
 fn gf2m163_wrong_hash_is_rejected() {
     let json = include_str!("vectors/dstu4145/gf2m163.json");
@@ -148,6 +170,7 @@ fn gf2m163_wrong_hash_is_rejected() {
 // alone. (This exact property test is what caught the Q = -d*G vs d*G discrepancy above - the
 // fixed vector uses a pre-computed Q and never exercised key derivation itself.)
 proptest! {
+    #[cfg_attr(miri, ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see TASKS.md T-100")]
     #[test]
     fn dstu4145_sign_verify_roundtrip(
         d_bytes in prop::collection::vec(any::<u8>(), 20),

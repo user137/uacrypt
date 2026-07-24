@@ -72,6 +72,14 @@ fn field_of(obj: &str, key: &str) -> Option<FieldElement> {
     extract_all(obj, key).first().map(|s| field(s))
 }
 
+// `FieldElement::invert` is a 162-step square-and-multiply exponentiation (gf2m163.rs, D-25) -
+// as expensive per call as `Point::scalar_multiply`'s ladder. This test's 20 "invert" cases (of
+// its 80 total field_cases) alone make it too slow to interpret under Miri - excluded from CI's
+// required Miri gate for cost reasons; `cargo test` (required, fast) still covers this every push.
+#[cfg_attr(
+    miri,
+    ignore = "FieldElement::invert's 162-step exponentiation is too slow to interpret under Miri - see TASKS.md T-100"
+)]
 #[test]
 fn gf2m163_field_arithmetic_matches_bouncy_castle() {
     let json = include_str!("vectors/dstu4145/gf2m163_arith.json");
@@ -123,6 +131,10 @@ fn gf2m163_one_is_multiplicative_identity() {
     }
 }
 
+#[cfg_attr(
+    miri,
+    ignore = "FieldElement::invert's 162-step exponentiation, looped over all field cases, is too slow to interpret under Miri - see TASKS.md T-100"
+)]
 #[test]
 fn gf2m163_invert_is_involution_via_reciprocal() {
     // a * a^-1 == 1 for every nonzero `a` exercised by the generator (all cases use nonzero field

@@ -3461,3 +3461,103 @@ kalyna_xts` (`MIRIFLAGS=-Zmiri-disable-isolation PROPTEST_CASES=8`): clean, no U
 **10/10 DSTU 7624 modes now implemented at `hazmat`.** Next: the user-approved "Roadmap to a
 genuinely complete product" in `TASKS.md` - trust/correctness fixes (T-97-T-101), full
 `small-tables` verification for Stage B-E, then the `crypto_*` frontend work.
+
+## D-59: `cargo miri test`'s CI job (T-100) - real root cause was broader than the two proptest
+suites originally suspected; fixed by tagging every EC-heavy test, not by raising the timeout alone
+
+**The premise going in was wrong, and measuring first caught it.** T-100's own text (and the
+`rust.yml` comment it quotes) named `dstu4145_sign_verify_roundtrip`/`dstu4145_crypto_sign_roundtrip`
+- the two `proptest` suites - as the suite(s) responsible for the miri job never completing.
+Before editing `rust.yml`, timed the two files' *non-proptest* tests locally
+(`MIRIFLAGS=-Zmiri-disable-isolation`, matching CI): they did not complete either. Root cause,
+confirmed by reading `hazmat::dstu4145::gf2m163::FieldElement::invert` (a direct 162-step
+square-and-multiply exponentiation, no Itoh-Tsujii acceleration, D-25) and
+`hazmat::dstu4145::curve163::Point::scalar_multiply` (the 163-iteration constant-time ladder,
+already documented): **any** call to either - not just inside a `proptest` closure - costs minutes
+under Miri's interpreter, because both are ~162-163-step loops of full-width GF(2^163) field
+multiplications, and `Point::add`/`Point::double` each call `invert` internally for the slope
+computation. A single fixed-vector `verify()` call is therefore comparable in Miri cost to a single
+proptest case, not orders of magnitude cheaper as assumed.
+
+**Fix: `#[cfg_attr(miri, ignore = "...")]` on every `#[test]` that reaches `scalar_multiply` or
+`invert`, not a CI-side skip list.** T-85 already rejected a yaml skip list for this exact job (a
+~9-entry list that "would silently stop covering any new proptest test added later without a
+matching update") - the same drift risk applies to a two-entry list, just smaller. Gating at the
+test's own source keeps `rust.yml`'s invocation a one-line `cargo +nightly miri test --workspace`
+that cannot drift out of sync with the yaml, and Miri's own output shows each skip explicitly
+(`... ignored, <reason>`) rather than silently. Tagged, with the measured/inferred reason recorded
+in each attribute's own message:
+- `crates/dstu-core/tests/dstu4145_signature.rs`: all 4 fixed-vector tests + the proptest (all call
+  `sign`/`verify`, each running the ladder).
+- `crates/dstu-core/tests/crypto_sign.rs`: 5 of 7 fixed-vector tests + the proptest (call
+  `verifying_key()`/`sign`/`verify`) - `from_bytes_rejects_zero_scalar`/
+  `from_bytes_rejects_scalar_at_or_above_order` untouched, they reject before ever deriving a
+  public key, confirmed fast (0.05s combined for the whole file's 2 surviving tests).
+- `crates/dstu-core/tests/dstu4145_curve.rs`: `gf2m163_point_add_matches_bouncy_castle` (40 vector
+  cases) and `gf2m163_point_double_matches_bouncy_castle` (20 cases) - each case calls `invert`.
+  `gf2m163_generator_matches_vector` (an equality check, no field arithmetic) untouched.
+- `crates/dstu-core/tests/dstu4145_gf2m.rs`: `gf2m163_field_arithmetic_matches_bouncy_castle` (20 of
+  its 80 cases are `"invert"`) and `gf2m163_invert_is_involution_via_reciprocal` (loops `invert`
+  over all 20 field cases). `gf2m163_round_trip_be_bytes`/`gf2m163_one_is_multiplicative_identity`
+  (no `invert` calls) untouched.
+
+**Verified in stages, scoped before workspace-wide, per the project's own "measure, don't assume"
+discipline**: `dstu4145_curve.rs` + `dstu4145_gf2m.rs` alone, scoped (`-p dstu-core --test
+dstu4145_curve --test dstu4145_gf2m`): 4.55s and 47.60s respectively, all previously-hanging tests
+now show `ignored, <reason>`. `crypto_sign.rs` alone: 1.12s (2 passed, 7 ignored). Then one
+full, **unattended, run-to-completion** `cargo +nightly miri test --workspace`
+(`MIRIFLAGS=-Zmiri-disable-isolation PROPTEST_CASES=1`, the exact CI invocation) - not killed early
+this time, unlike the first attempt (which hung on `dstu4145_curve.rs`'s now-fixed `point_double`
+for 40+ minutes with zero completed results, the evidence that motivated broadening the fix past
+the two proptest suites). Every `dstu-core` target's real `finished in Xs`, this machine:
+
+| target | time (s) | target | time (s) |
+|---|---|---|---|
+| lib (unit tests) | 910.28 | kalyna_ctr | 112.72 |
+| crypto_pwhash | 0.10 | kalyna_ecb | 115.58 |
+| crypto_secretbox | 78.46 | kalyna_gcm | 185.86 |
+| crypto_sign | 1.12 | kalyna_gmac | 245.29 |
+| dstu4145_curve | 4.49 | kalyna_kw | 457.44 |
+| dstu4145_gf2m | 47.95 | kalyna_ofb | 126.46 |
+| dstu4145_signature | 0.48 | kalyna_xts | 667.63 |
+| kalyna | 207.08 | kupyna | 119.12 |
+| kalyna_cbc | 144.51 | kupyna_kdf | 64.08 |
+| kalyna_ccm | 559.07 | kupyna_kmac | 18.16 |
+| kalyna_cfb | 801.31 | randombytes | 0.90 |
+| kalyna_cmac | 137.08 | strumok | 38.43 |
+
+**Total: 5043.60s (~84 minutes) for all of `dstu-core`, every target passing, 0 UB, 0 failures.**
+This is genuinely bounded (the run completed) but far past the 30-minute cap the job carried before
+this fix - the cap was set against a *different*, unbounded failure mode (T-85's note: a single
+proptest case "ran past an hour with no sign of finishing," cost scaling with an EC-ladder call
+count that had no ceiling in a workspace run at the time). What remains after this fix is finite
+and dominated by real, if slow, interpreted block-cipher-mode work - `kalyna_cfb` (801s) and
+`kalyna_xts`/`kalyna_kw`/`kalyna_ccm` (457-668s) are the largest non-EC contributors, consistent
+with those being the modes with the most `proptest` surface (tamper-rejection suites, ciphertext
+stealing, wrapping-round bounds). **Raising `timeout-minutes` is therefore the correct response
+here, not a repeat of the mistake the 30-minute cap was set against** - bounded-but-slow is a
+materially different situation from open-ended. Set to **150** (2.5x the measured ~84-minute
+`dstu-core` total, leaving real margin for a shared/contended GitHub Actions runner being slower
+than this dev machine, plus the still-untested `uacrypt` portion below).
+
+**A second, previously-unreachable finding, NOT fixed here - filed as `TASKS.md` T-102.** The
+full-workspace run never got far enough to reach `uacrypt`'s own lib tests before this fix (the
+job always died on the EC-ladder timeout first). Now it does, and `uacrypt`'s tests fail on *this*
+Windows dev machine: `error: unsupported operation: can't call foreign function \`CreateDirectoryW\`
+on OS \`windows\`` inside `tests::TempDir::new` (`crates/uacrypt/src/lib.rs:1312`), first hit by
+`run_ccm_command_decrypt_rejects_tampered_ciphertext_without_writing_out` - 16 of `uacrypt`'s test
+functions use the same `TempDir` helper, so most of them past that point would hit the identical
+wall. **Working hypothesis, not confirmed**: this is the same *family* of gap T-81 already
+documented (`GetCurrentDirectoryW` unsupported under Miri's Windows-host isolation) - Miri's
+Windows filesystem shims are less complete than its Unix ones, a known upstream characteristic, not
+a bug in this project's code. Plausibly Linux-CI-clean, since CI runs `ubuntu-latest` and Miri's
+Unix `mkdir` shim is more mature - but **not verified on Linux**, and stating it as settled without
+that verification would repeat exactly the unverified-claim pattern T-100 itself was filed to
+correct. Left open (T-102) rather than guessed at.
+
+**Explicit scope boundary on the claim below**: this entry verifies the `dstu-core`-side fix (the
+actual subject of T-100 - the EC-ladder/field-inversion timeout) completely and locally. It does
+**not** verify that `cargo +nightly miri test --workspace` now passes end-to-end on CI's own
+Linux runner - that conclusion is unconfirmed pending a push (push is explicit-request-only,
+per this project's standing git-safety posture). `rust.yml`'s miri-job comment updated to cite this
+entry instead of the pre-fix problem description.
