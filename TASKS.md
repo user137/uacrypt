@@ -1289,6 +1289,7 @@ needed) — non-negotiable per D-53, not optional per mode.
       before Stage D was called done: `hazmat::gf2m_wide::field_axiom_tests` (identity, commutative,
       associative, distributive via `proptest`, plus deterministic all-ones/all-zero max-degree
       cases for all 3 field sizes), 21 tests, all green first attempt, `clippy`/`fmt`/`no_std` clean.
+      `cargo +nightly miri test -p dstu-core --lib field_axiom_tests`: clean, no UB, 21/21, ~475s.
 - [ ] **T-96** XTS (#9) — Stage E, not started, sequenced strictly after T-95 (reuses its GF(2^m)
       module — confirmed identical `f[]` parameterization to GCM/GMAC). Adds ciphertext-stealing for
       the final partial block — the one genuinely novel piece of logic in the whole 10-mode set.
@@ -1313,6 +1314,9 @@ GMAC work above) — process/documentation gaps, not code-correctness bugs
       length/index arithmetic in each (KW's `r <= 20` bound, GCM/GMAC's padding-marker byte-offset
       math). Scope: add targets for the four new modes, then decide whether CI should rotate through
       all fuzz targets (e.g. one per job matrix entry) instead of hardcoding `kupyna` alone.
+      **`hazmat::kalyna_cfb` (T-91) is the sharpest instance of this gap** — see T-100 below, it's
+      the one module where a known reachable panic, zero fuzz coverage, and (per T-100) no completed
+      Miri run all intersect.
 - [ ] **T-99** `docs/release-readiness.md` is stale — written 2026-07-23/24, before this session's
       Stage A-D mode-of-operation work. It states GCM/KW/XTS as "not built" and names GCM as the
       unblock path for `crypto_secretstream` (T-40, still blocked on the 255-byte CCM cap
@@ -1322,3 +1326,34 @@ GMAC work above) — process/documentation gaps, not code-correctness bugs
       reconciling its tables and the "Concrete path to a genuinely safe, complete release" section
       against current `TASKS.md`/`DECISIONS.md` state before it's trusted again as the up-to-date
       gap analysis.
+- [ ] **T-100** **`cargo miri test` has never once passed in CI, in this repository's whole
+      history** — found during the same `advisor()` audit, verified via `gh run list`/`gh run view`,
+      not assumed from a red badge. All 16 `rust` workflow runs to date: the two runs before
+      `dtolnay/rust-toolchain@nightly`'s `+nightly` fix landed (2026-07-23) failed the `cargo miri
+      test` job fast (13s/51s — the toolchain-override bug `CLAUDE.md`'s Agent-discipline section
+      already documents); every one of the 14 runs since has instead **timed out at 30 minutes on
+      the same job** (`gh run view` on a recent run confirms: `build, test, fmt, clippy`/`fuzz`/
+      `audit`/`deny` all pass; only `cargo miri test` fails, with "The job has exceeded the maximum
+      execution time of 30m0s"). Net effect: the miri job went from failing fast on a config bug to
+      failing slow on a suite-runtime problem, but has **never actually completed**, on any push,
+      including every commit from this entire session's Stage A-D mode-of-operation work.
+      This matters beyond "a CI badge is red": `SECURITY.md` names `cargo miri test` a *required*
+      layer, same standing as fuzz/audit/deny, and several `DECISIONS.md` entries explicitly defer
+      an incomplete *local* Miri run to CI as the authoritative backstop — D-46 names
+      `dstu4145_crypto_sign_roundtrip` specifically ("CI's already-tuned miri job... is the
+      authoritative check for this file," after the local run was killed at ~21 minutes, still
+      running). That backstop has never actually fired for this suite. **This does not mean
+      GCM/GMAC/KW/CMAC's own scoped local Miri runs this session are in doubt** — those were each
+      run standalone against their own test file (`--test kalyna_gmac`, `--lib field_axiom_tests`,
+      etc.) and completed with real pass/fail results, unaffected by the full-`--workspace` CI job's
+      timeout. The gap is specifically the full-workspace run, and specifically the proptest suites
+      too slow for Miri's interpretation overhead (T-45/T-85's already-diagnosed cause).
+      **Remediation direction, already written into the repo and never executed** — the miri job's
+      own comment in `.github/workflows/rust.yml` states it: *"If this timeout is hit repeatedly, the
+      next step is scoping this job away from that specific suite (or proptest entirely), not
+      raising the timeout further."* Concretely: split CI's miri job into (a) a fast pass over
+      every non-proptest-heavy test target (the same per-file scoping already used locally all
+      session for new modules), and (b) either drop the ladder-heavy DSTU 4145 proptest suite from
+      Miri entirely (property-tested outside Miri is still real coverage) or give it its own
+      long-running, non-blocking job. Not: raising `timeout-minutes` further — already ruled out by
+      the comment above and by T-85's own text.
