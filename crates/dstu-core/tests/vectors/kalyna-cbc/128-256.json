@@ -1,0 +1,21 @@
+{
+  "algorithm": "Kalyna-CBC-128/256",
+  "block_bits": 128,
+  "key_bits": 256,
+  "source": "oracles/uapki/library/uapkic/src/dstu7624.c dstu7624_cbc_self_test, cbc_test_data[1] and [6] (key/iv byte lengths select the variant) - programmatically extracted, not hand-transcribed. cbc_test_data declares 10 cases but the self-test loop only checks i<9 (the 10th is dead code, never verified) - excluded, not used.",
+  "cases": [
+    {
+      "note": "Original self-test data field is 46 bytes (not block-aligned) - the harness applies ISO/IEC 7816-4 padding (append 0x80, zero-pad to the next block multiple) before calling encrypt, since this module does not pad internally (see the module doc). plaintext_hex below is the already-padded 48-byte value the self-test actually encrypts (original + \"8000\"), matching what hazmat::kalyna_cbc itself expects as input.",
+      "key_hex": "000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F",
+      "iv_hex": "202122232425262728292A2B2C2D2E2F",
+      "plaintext_hex": "303132333435363738393A3B3C3D3E3F404142434445464748494A4B4C4D4E4F505152535455565758595A5B5C5D8000",
+      "ciphertext_hex": "13EA15843AD14C50BC03ECEF1F43E398E4217752D3EB046AC393DACC5CA1D6FA0EB9FCEB229362B4F1565527EE3D8433"
+    },
+    {
+      "key_hex": "1F1E1D1C1B1A191817161514131211100F0E0D0C0B0A09080706050403020100",
+      "iv_hex": "2F2E2D2C2B2A29282726252423222120",
+      "plaintext_hex": "BC8F026FC603ECE05C24FDE87542730999B381870882AC0535D4368C4BABD81B884E96E853EE7E055262D9D204FBE212",
+      "ciphertext_hex": "5F5E5D5C5B5A595857565554535251504F4E4D4C4B4A494847464544434241403F3E3D3C3B3A39383736353433323130"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "algorithm": "Kalyna-CBC-128/128",
+  "block_bits": 128,
+  "key_bits": 128,
+  "source": "oracles/uapki/library/uapkic/src/dstu7624.c dstu7624_cbc_self_test, cbc_test_data[0] and [5] (key/iv byte lengths select the variant) - programmatically extracted, not hand-transcribed. cbc_test_data declares 10 cases but the self-test loop only checks i<9 (the 10th is dead code in the harness, never verified) - excluded here, not used.",
+  "cases": [
+    {
+      "key_hex": "000102030405060708090A0B0C0D0E0F",
+      "iv_hex": "101112131415161718191A1B1C1D1E1F",
+      "plaintext_hex": "202122232425262728292A2B2C2D2E2F303132333435363738393A3B3C3D3E3F404142434445464748494A4B4C4D4E4F",
+      "ciphertext_hex": "A73625D7BE994E85469A9FAABCEDAAB6DBC5F65DD77BB35E06BD7D1D8EAFC8624D6CB31CE189C82B8979F2936DE9BF14"
+    },
+    {
+      "key_hex": "0F0E0D0C0B0A09080706050403020100",
+      "iv_hex": "1F1E1D1C1B1A19181716151413121110",
+      "plaintext_hex": "88F2F048BA696170E3818915E0DBC0AFA6F141FEBC2F817138DA4AAB2DBF9CE490A488C9C82AC83FB0A6C0EEB64CFD22",
+      "ciphertext_hex": "4F4E4D4C4B4A494847464544434241403F3E3D3C3B3A393837363534333231302F2E2D2C2B2A29282726252423222120"
+    }
+  ]
+}

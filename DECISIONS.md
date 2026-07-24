@@ -2895,3 +2895,25 @@ green on the first attempt**, confirming the `used_gamma_len` bookkeeping transc
 without needing a debugging pass. `cargo test --workspace --all-features`/`clippy -D warnings`/
 `fmt --check` clean (one `doc_markdown` lint fix); bare `no_std` build re-confirmed. Misuse warning
 states OFB's IV-reuse failure mode explicitly (same catastrophic-keystream-reuse class as CTR).
+
+**Stage A, third piece: `hazmat::kalyna_cbc`** (`TASKS.md` T-90). Cited to `encrypt_cbc`/
+`decrypt_cbc` (`dstu7624.c` L3145-3184/L3886-3918)/`dstu7624_init_cbc` (L3936-3953) - textbook
+`C_i = E_K(P_i XOR C_{i-1})`, `&mut self` chaining register carried across calls like `kalyna_ofb`.
+Two verification-risk items from this entry's own earlier research resolved concretely:
+- **The dead 10th self-test vector was excluded, not verified-then-used** - uapki's own harness
+  loop (`for (i = 0; i < 9; i++)`) never checks it, so it carries no evidentiary weight; the
+  `512-512` vector file's `source` field states this plainly rather than silently omitting the
+  case with no explanation.
+- **The one non-block-aligned case** (128/256 variant, cbc_test_data[1], 46-byte plaintext) needed
+  ISO/IEC 7816-4 padding applied before it could be used - `hazmat::kalyna_cbc` rejects non-aligned
+  input itself (matches `encrypt_cbc`'s own `in->len % block_len` check, no padding scheme baked
+  in, same "hazmat has no rails" posture as every mode in this roadmap). The vector file stores the
+  already-padded 48-byte plaintext with an inline `note` field explaining the transformation and
+  citing the reason - the exact "unexplained transform" pattern `CLAUDE.md`'s citation discipline
+  flags as suspect, addressed by documenting it rather than silently editing the vector.
+Test-first, 15 tests (3 per variant): official vectors, length validation
+(`InvalidLength`), and a `proptest` multi-call-chaining suite confirming the chaining register
+correctly carries state across separate `encrypt_in_place` calls (block-aligned chunks). **All 15
+green on the first attempt**, including the padding-transformed vector - confirms the byte-count
+arithmetic (46 + 2 padding bytes = 48) was right without a debugging pass. `cargo test --workspace
+--all-features`/`clippy -D warnings`/`fmt --check` clean; bare `no_std` build re-confirmed.

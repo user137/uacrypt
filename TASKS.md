@@ -1157,15 +1157,25 @@ needed) — non-negotiable per D-53, not optional per mode.
       `clippy -D warnings`/`fmt --check` clean (one doc-markdown fix); bare `no_std` build
       re-confirmed. Carries the mode's misuse warning per D-53's requirement (IV reuse under the
       same key is catastrophic, same class of failure as CTR's).
-- [ ] **T-90** CBC (#5) — Stage A, not started. Cited to `encrypt_cbc`/`decrypt_cbc`
-      (L3145-3184/L3886-3918)/`dstu7624_init_cbc` (L3936-3953). **Verification risk carried from
-      D-53's research**: uapki's self-test harness declares 10 vectors but its loop only checks 9
-      (`i<9`) — the 10th is dead code; verify independently before reusing, don't assume it's
-      correct just because it's present. Self-test data uses ISO/IEC 7816-4 padding for non-block-
-      aligned cases — `hazmat::kalyna_cbc` itself should reject non-block-aligned input (matching
-      `encrypt_cbc`'s own `in->len % block_len` check) rather than pad internally, same "hazmat has
-      no rails" posture as every other mode here; the test harness applies the same padding uapki's
-      self-test does before calling encrypt, not the module itself.
+- [x] **T-90** **CBC (#5) done, see `DECISIONS.md` D-53** — `hazmat::kalyna_cbc`
+      (`Kalyna128_128Cbc`...`Kalyna512_512Cbc`, `encrypt_in_place`/`decrypt_in_place`, `&mut self` -
+      stateful across calls, like `kalyna_ofb`). Cited to `encrypt_cbc`/`decrypt_cbc`
+      (L3145-3184/L3886-3918)/`dstu7624_init_cbc` (L3936-3953) - textbook `C_i = E_K(P_i XOR
+      C_{i-1})`. **Excluded the dead 10th self-test vector as planned** - uapki's own harness loop
+      only checks `i<9`, so it was never removed from the JSON, it was simply never included;
+      `tests/vectors/kalyna-cbc/512-512.json`'s `source` field states this explicitly. **The one
+      non-block-aligned case (128/256 variant, 46-byte plaintext) needed ISO/IEC 7816-4 padding
+      applied before storing the vector** - `hazmat::kalyna_cbc` itself rejects non-aligned input
+      (matching `encrypt_cbc`'s own check, no padding scheme baked in, same "hazmat has no rails"
+      posture as every mode in this batch); the vector file stores the already-padded 48-byte
+      plaintext with an explicit `note` field citing the transformation and its reason, not a
+      silent edit - exactly the "unexplained transform" trap `CLAUDE.md`'s citation discipline
+      warns about, avoided by documenting it inline. Test-first, 15 tests (3 per variant): official
+      vectors, length validation, and a `proptest` multi-call-chaining suite (the register carries
+      over between calls, same as OFB) - **all 15 tests green on the first attempt**, including the
+      padding-transformed vector, confirming the byte-count math was right without a debugging
+      pass. `cargo test --workspace --all-features`/`clippy -D warnings`/`fmt --check` clean; bare
+      `no_std` build re-confirmed.
 - [ ] **T-91** CFB (#3) — Stage A, not started. Cited to `encrypt_cfb`/`decrypt_cfb`
       (L3186-3234/L3762-3810)/`dstu7624_init_cfb` (L3971-3994). Most internal-state complexity of
       Stage A — variable feedback width `q` ∈ {1,8,16,32,64 bytes} requires careful transcription of
