@@ -720,6 +720,29 @@ command names (`CLAUDE.md` MVP scope) are still reserved for whenever that resol
       blocked regardless, but on the reason already given earlier in this same entry
       (`hazmat::kalyna_ccm`'s 255-byte cap, not D-05's status) - unchanged by T-37 landing, since
       T-37 itself only wraps that same capped primitive rather than widening it.
+      **Correction 2026-07-24 (this entry's own "needs GCM, not yet built" premise is now stale) -
+      found during a full-project `advisor()` audit, not by returning to this task directly**: GCM
+      landed this session (T-95, `DECISIONS.md` D-56) - and, materially, **`hazmat::kalyna_gcm` has
+      no `MAX_PLAINTEXT_LEN`/`MAX_AAD_LEN` cap at all** (D-56 states this explicitly: "no
+      `MAX_AAD_LEN`/`MAX_PLAINTEXT_LEN` cap was needed at all, unlike `kalyna_ccm`'s sourced
+      255-byte limit," since `q` is a pure truncation of a full-block tag, not a length encoded into
+      the construction the way CCM's single-byte length field is). This changes the shape of the fix,
+      not just its blocker status: **the arbitrary-length problem `crypto_secretstream`/T-40 was
+      scoped to solve via chunking may not need chunking at all** - swapping `crypto_secretbox`'s
+      backing construction from `Kalyna256_256Ccm` to a `KalynaNNN_NNNGcm` variant would lift the
+      255-byte cap directly, no per-chunk streaming design required for the message body itself (a
+      practical streaming API for very large files - not re-buffering the whole plaintext in memory -
+      is still a separate, real question, same as every other `uacrypt` command per D-42's standing
+      policy, but that's an I/O-chunking problem, not a construction-capacity one). **Still not
+      started, and still a real fork to resolve deliberately, not silently**: CCM-vs-GCM as
+      `crypto_secretbox`'s construction has no settling DSTU citation either way (D-05's own
+      ten-mode list treats both as legitimate combined AEAD modes), so D-47's tie-breaker governs -
+      and GCM inherits D-56's own provisional status (uapki + BC-vector-only, same weaker-claim
+      caveat as CCM/D-41), so switching constructions does not change the "provisional pending
+      primary text" posture either way, only the length cap. Whether this becomes a straight
+      construction swap inside the existing `crypto_secretbox`, a distinct new `crypto_secretbox_gcm`/
+      renamed module, or the actual `crypto_secretstream` API T-40's name promises is an open design
+      question for whenever this is picked up, not decided here.
 - [x] **T-41** DSTU 4145: official standard text obtained (`docs/papers/DSTU_4145-2002.pdf`, 2026-07-22) —
       its Annex B.1 (GF(2^163), polynomial basis) worked example extracted into
       `crates/dstu-core/tests/vectors/dstu4145/gf2m163.json` and independently cross-checked
