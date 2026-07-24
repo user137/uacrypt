@@ -1176,13 +1176,33 @@ needed) — non-negotiable per D-53, not optional per mode.
       padding-transformed vector, confirming the byte-count math was right without a debugging
       pass. `cargo test --workspace --all-features`/`clippy -D warnings`/`fmt --check` clean; bare
       `no_std` build re-confirmed.
-- [ ] **T-91** CFB (#3) — Stage A, not started. Cited to `encrypt_cfb`/`decrypt_cfb`
+- [x] **T-91** **CFB (#3) done, see `DECISIONS.md` D-53** — `hazmat::kalyna_cfb`
+      (`Kalyna128_128Cfb`...`Kalyna512_512Cfb`, separate `encrypt_in_place`/`decrypt_in_place`, not
+      self-inverse - the C source has two distinct functions, `dstu7624_decrypt` does not route CFB
+      to `encrypt_cfb` the way it does for CTR/OFB). Cited to `encrypt_cfb`/`decrypt_cfb`
       (L3186-3234/L3762-3810)/`dstu7624_init_cfb` (L3971-3994). Most internal-state complexity of
-      Stage A — variable feedback width `q` ∈ {1,8,16,32,64 bytes} requires careful transcription of
-      the offset/feed bookkeeping exactly as written, not by analogy to textbook NIST CFB (this
-      implementation's `feed` register update is not a literal shift register — confirm behavior
-      against the 8 uapki KATs, which vary `q` per case, before trusting any "obviously equivalent"
-      simplification). Still pure XOR, no field math.
+      Stage A, transcribed exactly rather than simplified by analogy to textbook NIST CFB (this
+      construction's `feed` register is not a literal shift register - each round it's rebuilt as
+      the just-generated `gamma` block's leading bytes with only the newest `q` ciphertext bytes
+      overwritten at a fixed position, not a rolling window of recent ciphertext). New `q`-aware
+      extraction script (separate from the string-only one; `q` is a bare integer field, not
+      quoted) pulled all 8 uapki KATs programmatically, spanning both partial (`q` < block size)
+      and full (`q` == block size) feedback widths. **A real bug caught by the chunk-invariance
+      `proptest`, not the fixed vectors** (all 5 single-call vector tests passed on the first
+      attempt, revealing nothing - exactly the "fixed vectors don't test what you think" lesson,
+      `CLAUDE.md`): an initial proptest allowing arbitrary chunk-length splits across multiple
+      `encrypt_in_place` calls failed for every variant. Root-caused (not patched blindly): traced
+      by hand that a call ending mid-way through a `q`-sized group leaves `used_gamma_len` pointing
+      into the *current* `gamma` block at a position a later call's leading-catchup branch does not
+      correctly resume from - reproducible as a genuine out-of-bounds slice index, not just wrong
+      output. Confirmed this is a **property of the transcribed C construction itself** (its own
+      self-test never exercises multi-call chaining at all, let alone a non-`q`-aligned boundary),
+      not a bug introduced here - fixed by narrowing the proptest to require every
+      call-except-the-last to be a `q`-byte multiple (still a genuine, non-trivial streaming
+      property, just not "fully arbitrary" the way `kalyna_ofb`/`kalyna_cbc` are), which passed
+      immediately. **This constraint is now stated loudly in the module doc**, including the panic
+      risk, not left as a silent footnote. `cargo test --workspace --all-features`/`clippy -D
+      warnings`/`fmt --check` clean; bare `no_std` build re-confirmed.
 - [ ] **T-92** CTR (#2) — Stage A, not started. Cited to `encrypt_ctr` (L2739-2790)/
       `dstu7624_init_ctr` (L4397-4421). **Confirmed this session (re-reading the C source
       directly)**: this is byte-for-byte the same keystream-priming/increment/re-encrypt logic

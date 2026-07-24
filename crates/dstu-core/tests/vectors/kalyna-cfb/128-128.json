@@ -1,0 +1,15 @@
+{
+  "algorithm": "Kalyna-CFB-128/128",
+  "block_bits": 128,
+  "key_bits": 128,
+  "source": "oracles/uapki/library/uapkic/src/dstu7624.c dstu7624_cfb_self_test, cfb_test_data[0] (key/iv byte lengths select the variant) - programmatically extracted (including the numeric q field, parsed separately from the quoted hex fields), not hand-transcribed.",
+  "cases": [
+    {
+      "key_hex": "000102030405060708090A0B0C0D0E0F",
+      "iv_hex": "101112131415161718191A1B1C1D1E1F",
+      "q": 16,
+      "plaintext_hex": "202122232425262728292A2B2C2D2E2F303132333435363738393A3B3C3D3E3F404142434445464748494A4B4C4D4E4F",
+      "ciphertext_hex": "A19E3E5E53BE8A07C9E0C01298FF83291F8EE6212110BE3FA5C72C88A082520B265570FE28680719D9B4465E169BC37A"
+    }
+  ]
+}

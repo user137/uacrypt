@@ -2917,3 +2917,40 @@ correctly carries state across separate `encrypt_in_place` calls (block-aligned 
 green on the first attempt**, including the padding-transformed vector - confirms the byte-count
 arithmetic (46 + 2 padding bytes = 48) was right without a debugging pass. `cargo test --workspace
 --all-features`/`clippy -D warnings`/`fmt --check` clean; bare `no_std` build re-confirmed.
+
+**Stage A, fourth piece: `hazmat::kalyna_cfb`** (`TASKS.md` T-91) - the most internally complex
+mode in this batch, and the first one where the fixed vectors alone didn't catch a real bug. Cited
+to `encrypt_cfb`/`decrypt_cfb` (`dstu7624.c` L3186-3234/L3762-3810)/`dstu7624_init_cfb`
+(L3971-3994). **Genuinely two separate functions, not self-inverse** - confirmed `dstu7624_decrypt`
+does *not* route CFB to `encrypt_cfb` the way it does for CTR/OFB, so this module has distinct
+`encrypt_in_place`/`decrypt_in_place` methods, differing in whether the `feed` register absorbs the
+just-computed output or the raw input bytes (both are ciphertext, read from different places).
+**Transcribed exactly, not simplified by analogy to textbook NIST CFB** (`CLAUDE.md`'s explicit
+warning against this) - this construction's `feed` register is not a rolling shift window; each
+round it's rebuilt from the just-generated `gamma` block's own leading bytes with only the newest
+`q` ciphertext bytes overwritten at a fixed position. New extraction script (`q` is a bare integer
+field in the C struct, not a quoted hex string like the other three fields, so the existing
+string-only extractor needed a second, targeted regex pass) pulled all 8 uapki KATs, spanning both
+partial (`q` < block size) and full (`q` == block size) feedback widths - the partial case is the
+one genuinely novel path relative to every other mode in this roadmap.
+
+**A real bug, caught by the chunk-invariance `proptest`, not the fixed vectors - exactly the
+"green fixed-vector tests don't mean security-critical code is correct" lesson `CLAUDE.md`
+states explicitly**: all 5 single-call official-vector tests passed on the first attempt (they
+only ever exercise one `encrypt`/`decrypt` call each, matching `dstu7624.c`'s own self-test, which
+never chains multiple calls together) - revealing nothing about multi-call state handling. An
+initial `proptest` allowing arbitrary chunk-length splits across several `encrypt_in_place` calls
+failed for every variant. **Root-caused by hand-tracing the state machine, not by patching until
+green**: a call ending mid-way through a `q`-sized group leaves `used_gamma_len` pointing into the
+*current* `gamma` block at a position a later call's leading-catchup branch does not correctly
+resume from - concretely reproducible as an out-of-bounds slice index (`gamma[offset..offset+q]`
+with `offset+q` exceeding the block size), not merely wrong output. **Confirmed this is a property
+of the transcribed C construction itself, not a bug introduced in the port** - `dstu7624.c`'s own
+self-test never exercises multi-call chaining at all, so this combination was never validated
+upstream either. Fixed by narrowing the proptest's contract to require every call except the last
+to be a `q`-byte multiple (still a real, non-trivial streaming property - just not "fully
+arbitrary" the way `kalyna_ofb`/`kalyna_cbc` are) - passed immediately once narrowed. **This
+constraint, including the panic risk, is now stated loudly in the module doc**, not left as a
+footnote a caller could miss - a silent-wrong-output failure would have been worse, but an
+undocumented panic is still a real misuse trap for a `hazmat` API. `cargo test --workspace
+--all-features`/`clippy -D warnings`/`fmt --check` clean; bare `no_std` build re-confirmed.
