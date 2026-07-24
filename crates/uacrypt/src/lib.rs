@@ -738,6 +738,68 @@ pub fn run_digest_command(args: &DigestArgs) -> Result<(), CliError> {
 }
 
 #[derive(Debug, PartialEq, Eq)]
+pub struct HashArgs {
+    pub in_path: PathBuf,
+    pub out_path: PathBuf,
+}
+
+/// Parses `hash`'s flags (`--in`/`--out`, both required). No `--variant` (fixed to Kupyna-256, see
+/// [`run_hash_command`]'s doc comment) and no `--iterations` (that's `kupyna-digest`'s D-34
+/// benchmark-only flag, not something a real user of `hash` needs).
+///
+/// # Errors
+///
+/// Returns [`CliError::MissingFlag`] or [`CliError::UnknownFlag`].
+pub fn parse_hash_args(args: &[String]) -> Result<HashArgs, CliError> {
+    let mut in_path = None;
+    let mut out_path = None;
+
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--in" => {
+                in_path = Some(PathBuf::from(
+                    args.get(i + 1).ok_or(CliError::MissingFlag("in"))?,
+                ));
+                i += 2;
+            }
+            "--out" => {
+                out_path = Some(PathBuf::from(
+                    args.get(i + 1).ok_or(CliError::MissingFlag("out"))?,
+                ));
+                i += 2;
+            }
+            other => return Err(CliError::UnknownFlag(other.to_string())),
+        }
+    }
+
+    Ok(HashArgs {
+        in_path: in_path.ok_or(CliError::MissingFlag("in"))?,
+        out_path: out_path.ok_or(CliError::MissingFlag("out"))?,
+    })
+}
+
+/// Runs `hash`: hashes `--in` with Kupyna-256, writes the 32-byte digest to `--out`. Fixed to
+/// Kupyna-256 - no `--variant` knob (D-47's "no knob when a safe default exists"; `crypto_sign`
+/// already established Kupyna-256 as this project's own default message-hash choice, `DECISIONS.md`
+/// D-46). Delegates to [`run_digest_command`] with `iterations: 1` rather than duplicating its
+/// streaming loop - this reuses `kupyna-digest`'s already-tested, genuinely-streaming-from-disk
+/// (D-42, 8 KiB chunks) implementation directly, so `hash` inherits its memory-bounded property
+/// without new code to verify it. Unlike `encrypt`/`decrypt`, `hash` has no message-length cap.
+///
+/// # Errors
+///
+/// Returns [`CliError::Io`] if `--in` can't be read or `--out` can't be written.
+pub fn run_hash_command(args: &HashArgs) -> Result<(), CliError> {
+    run_digest_command(&DigestArgs {
+        variant: HashBits::B256,
+        in_path: args.in_path.clone(),
+        out_path: args.out_path.clone(),
+        iterations: 1,
+    })
+}
+
+#[derive(Debug, PartialEq, Eq)]
 pub struct StrumokArgs {
     pub variant: HashBits,
     pub key_path: PathBuf,
@@ -994,6 +1056,7 @@ pub fn run(args: &[String]) -> Result<(), CliError> {
         }
         Some("kupyna-digest") => run_digest_command(&parse_digest_args(&args[1..])?),
         Some("strumok-crypt") => run_strumok_command(&parse_strumok_args(&args[1..])?),
+        Some("hash") => run_hash_command(&parse_hash_args(&args[1..])?),
         Some(other) => Err(CliError::UnknownCommand(other.to_string())),
         None => Err(CliError::UnknownCommand(String::new())),
     }
@@ -1241,6 +1304,88 @@ mod tests {
         assert_eq!(
             std::fs::read(dir.file("digest_bench.bin")).expect("read"),
             Kupyna512::digest(&message).to_vec()
+        );
+    }
+
+    #[test]
+    fn parse_hash_args_happy_path() {
+        let args = vec![
+            "--in".to_string(),
+            "msg.bin".to_string(),
+            "--out".to_string(),
+            "digest.bin".to_string(),
+        ];
+        assert_eq!(
+            parse_hash_args(&args),
+            Ok(HashArgs {
+                in_path: PathBuf::from("msg.bin"),
+                out_path: PathBuf::from("digest.bin"),
+            })
+        );
+    }
+
+    #[test]
+    fn parse_hash_args_requires_in_and_out() {
+        assert_eq!(
+            parse_hash_args(&["--out".to_string(), "digest.bin".to_string()]),
+            Err(CliError::MissingFlag("in"))
+        );
+        assert_eq!(
+            parse_hash_args(&["--in".to_string(), "msg.bin".to_string()]),
+            Err(CliError::MissingFlag("out"))
+        );
+    }
+
+    #[test]
+    fn parse_hash_args_rejects_unknown_flag() {
+        assert_eq!(
+            parse_hash_args(&["--variant".to_string(), "256".to_string()]),
+            Err(CliError::UnknownFlag("--variant".to_string()))
+        );
+    }
+
+    /// `hash` is fixed to Kupyna-256 (no `--variant` knob) and must genuinely stream a multi-chunk,
+    /// non-chunk-aligned message from disk - same shape as
+    /// `run_digest_command_streams_multi_chunk_input_correctly`, but through `run_hash_command`'s own
+    /// dispatch (it delegates to `run_digest_command` internally, this confirms the delegation is
+    /// wired correctly, not just that `run_digest_command` itself works).
+    #[test]
+    fn run_hash_command_matches_dstu_core_kupyna256_directly() {
+        let dir = TempDir::new("hash_multichunk");
+        let len = DIGEST_STREAM_CHUNK_BYTES * 2 + 513;
+        let message: Vec<u8> = (0..len).map(|i| (i as u8).wrapping_mul(53)).collect();
+        std::fs::write(dir.file("msg.bin"), &message).expect("write message");
+
+        let args = HashArgs {
+            in_path: dir.file("msg.bin"),
+            out_path: dir.file("digest.bin"),
+        };
+        run_hash_command(&args).expect("hash run should succeed");
+        assert_eq!(
+            std::fs::read(dir.file("digest.bin")).expect("read"),
+            Kupyna256::digest(&message).to_vec()
+        );
+    }
+
+    #[test]
+    fn run_dispatches_hash_command_correctly() {
+        let dir = TempDir::new("hash_dispatch");
+        std::fs::write(dir.file("msg.bin"), b"dispatch me").expect("write message");
+
+        let args: Vec<String> = [
+            "hash",
+            "--in",
+            dir.file("msg.bin").to_str().expect("valid utf-8 path"),
+            "--out",
+            dir.file("digest.bin").to_str().expect("valid utf-8 path"),
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect();
+        run(&args).expect("hash dispatch should succeed");
+        assert_eq!(
+            std::fs::read(dir.file("digest.bin")).expect("read"),
+            Kupyna256::digest(b"dispatch me").to_vec()
         );
     }
 
