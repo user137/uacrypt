@@ -1,0 +1,18 @@
+{
+  "algorithm": "Kalyna-GMAC-256/256",
+  "block_bits": 256,
+  "key_bits": 256,
+  "source": "oracles/uapki/library/uapkic/src/dstu7624.c dstu7624_gmac_self_test (programmatically extracted). All 5 official vectors are exactly one block long - the ISO/IEC 7816-4 padding-marker branch (non-block-aligned messages) is untested by any official vector, see DECISIONS.md D-57. Single-block input also means these vectors cannot disambiguate multi-block chaining order - D-57 documents a real off-by-one bug found in this same source file (streaming gmac_update/gmac_final, not ported) and the chunk-invariance argument used instead to confirm the multi-block Horner chain this module implements (ported from the one-shot encrypt_gmac, the coherent construction). uapki-only: no Bouncy Castle standalone GMAC class exists (confirmed by search - only GCM-configured KGCMBlockCipher tests, which do not exercise this AAD-less single-stream construction).",
+  "cases": [
+    {
+      "key_hex": "000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F",
+      "message_hex": "404142434445464748494A4B4C4D4E4F505152535455565758595A5B5C5D5E5F",
+      "tag_hex": "FF48B56F2C26CC484B8F5952D7B3E1FE"
+    },
+    {
+      "key_hex": "000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F",
+      "message_hex": "404142434445464748494A4B4C4D4E4F505152535455565758595A5B5C5D5E5F",
+      "tag_hex": "FF48B56F2C26CC484B8F5952D7B3E1FE69577701C50BE96517B33921E44634CD"
+    }
+  ]
+}

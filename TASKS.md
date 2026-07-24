@@ -1249,7 +1249,7 @@ needed) — non-negotiable per D-53, not optional per mode.
       attempt including every official vector. `cargo test --workspace --all-features`/`clippy -D
       warnings`/`fmt --check` clean (two doc-comment fixes); bare `no_std` build re-confirmed.
       Non-aligned KW input remains explicitly out of scope — a distinct future task if ever needed.
-- [ ] **T-95** GCM/GMAC (#7) — Stage D, commit 1 of 2 done (GCM), GMAC still open. `hazmat::gf2m_wide`
+- [x] **T-95** GCM/GMAC (#7) — Stage D, both commits done. `hazmat::gf2m_wide`
       (`Gf2m128`/`Gf2m256`/`Gf2m512`, `DECISIONS.md` D-56) is a from-scratch, correctness-first
       GF(2^m) module (branchless multiply, bit-at-a-time reduction) — not a port of
       `oracles/uapki/library/uapkic/src/math-gf2m-internal.c`'s 1199-line Karatsuba engine (read
@@ -1265,9 +1265,60 @@ needed) — non-negotiable per D-53, not optional per mode.
       first try. `cargo test --workspace --all-features`/`clippy -D warnings`/`fmt --check` clean;
       bare `no_std` build re-confirmed. Oracle-strength corrected from this task's original note
       (below) to: uapki construction + BC-Java vector-only (construction source not vendored, D-41
-      pattern); BC-.NET has nothing for GCM. **GMAC not yet started** — same field module, distinct
-      construction (streaming, single message, no AAD split), own oracle-status question to answer
-      before landing (BC has no standalone GMAC class).
+      pattern); BC-.NET has nothing for GCM.
+      **GMAC (commit 2, `hazmat::kalyna_gmac`, `DECISIONS.md` D-57)**: `advisor()` caught two wrong
+      premises before any code was written — all 5 official vectors are exactly one block (no
+      multi-block vector exists at all), and `dstu7624.c` has *two* GMAC code paths that disagree:
+      the streaming `gmac_update`/`gmac_final` pair has a real, confirmed bug (a stale loop index
+      drops later blocks' content entirely on a single multi-block call, plus a separate OOB-read
+      risk in its non-aligned tail buffering), while the one-shot `encrypt_gmac` is a coherent,
+      correct Horner chain — ported from the latter, not the former. The streaming pair's behavior
+      fed one block per call (not the bug) was hand-traced to agree with `encrypt_gmac` exactly,
+      which is the citation for treating it as a reference bug, not an unresolvable D-47-style fork.
+      One-shot only (no streaming API — only one coherent construction exists to port).
+      Oracle coverage explicitly weaker than GCM's: uapki-only, 5 KATs covering 4 of 5 variants
+      (`Kalyna128_128Gmac` has zero official-vector coverage), no BC standalone GMAC class exists
+      (confirmed by search). Multi-block chaining and the padding-marker branch are proptest-only —
+      one proptest (`changing_any_block_changes_the_tag`) specifically regression-guards the found
+      reference bug's failure mode. 17 tests, all green first attempt. `cargo test --workspace
+      --all-features`/`clippy -D warnings`/`fmt --check` clean; bare `no_std` build re-confirmed.
+      `cargo +nightly miri test -p dstu-core --test kalyna_gmac`: clean, no UB, 17/17, ~916s.
+      **Addendum**: a separately-requested full-project `advisor()` audit (same session) found
+      `hazmat::gf2m_wide` had zero direct tests — GCM/GMAC's own KATs are all block-aligned and
+      never drive the field module's reduction loop through its full top-degree range. Closed
+      before Stage D was called done: `hazmat::gf2m_wide::field_axiom_tests` (identity, commutative,
+      associative, distributive via `proptest`, plus deterministic all-ones/all-zero max-degree
+      cases for all 3 field sizes), 21 tests, all green first attempt, `clippy`/`fmt`/`no_std` clean.
 - [ ] **T-96** XTS (#9) — Stage E, not started, sequenced strictly after T-95 (reuses its GF(2^m)
       module — confirmed identical `f[]` parameterization to GCM/GMAC). Adds ciphertext-stealing for
       the final partial block — the one genuinely novel piece of logic in the whole 10-mode set.
+
+## Findings from a full-project `advisor()` audit (2026-07-24, requested separately from the T-95
+GMAC work above) — process/documentation gaps, not code-correctness bugs
+
+- [ ] **T-97** `SECURITY.md`'s supply-chain vetting table is missing a row for `subtle` — the only
+      dependency in either crate's `Cargo.toml` with no row at all, despite being direct,
+      unconditional (not feature-gated, unlike `getrandom`/`argon2`), and used for every
+      constant-time tag/checksum comparison in the codebase (`kalyna_cmac`/`kalyna_kw`/
+      `kalyna_ccm`/`kalyna_gcm`/`kalyna_gmac`/`dstu4145`). `SECURITY.md` states the table applies
+      "before adding any crypto-adjacent dependency" — this one predates the table's own upkeep,
+      not a new gap, but still an open one. Add maintainer/reproducible-build/audit/CVE-history
+      columns matching the existing `zeroize` row's level of detail.
+- [ ] **T-98** CI's `fuzz-smoke` job (`.github/workflows/rust.yml`) runs only the `kupyna` target.
+      `crates/dstu-core/fuzz/fuzz_targets/` also has `kalyna`, `kalyna_ccm`, and `strumok` — none of
+      the three run in CI, only ever locally per D-32's note. `SECURITY.md` calls `cargo fuzz`
+      required, not optional, for every parser of untrusted input bytes, which most of these are.
+      Separately: **no fuzz target exists at all**, locally or in CI, for any of the four modes
+      landed this session — `kalyna_cmac`, `kalyna_kw`, `kalyna_gcm`, `kalyna_gmac` — despite real
+      length/index arithmetic in each (KW's `r <= 20` bound, GCM/GMAC's padding-marker byte-offset
+      math). Scope: add targets for the four new modes, then decide whether CI should rotate through
+      all fuzz targets (e.g. one per job matrix entry) instead of hardcoding `kupyna` alone.
+- [ ] **T-99** `docs/release-readiness.md` is stale — written 2026-07-23/24, before this session's
+      Stage A-D mode-of-operation work. It states GCM/KW/XTS as "not built" and names GCM as the
+      unblock path for `crypto_secretstream` (T-40, still blocked on the 255-byte CCM cap
+      specifically, not on GCM's existence as this doc currently implies). Per `CLAUDE.md`'s doc
+      map, this file's owner is "gap analysis... update when... a new construction lands" — CBC,
+      OFB, CFB, CTR, CMAC, KW, GCM, and GMAC all landed since its last real update. Needs a pass
+      reconciling its tables and the "Concrete path to a genuinely safe, complete release" section
+      against current `TASKS.md`/`DECISIONS.md` state before it's trusted again as the up-to-date
+      gap analysis.

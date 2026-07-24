@@ -97,10 +97,23 @@ project funding changes rather than re-researched from scratch.
   plain single-block encryption — diffed byte-for-byte (script) against
   `{128-128,128-256,256-256,256-512,512-512}.json`'s encryption/decryption cases and all 10 match
   exactly. Same official vector set as `Kalyna.pdf` (not independent new data), but confirms UAPKI
-  reproduces it correctly. **CBC/OFB/CFB/CTR/CMAC/XTS/KW/GMAC/GCM remain unchecked** — genuine new
-  data, since no Rust mode-of-operation exists yet to check them against; GMAC/GCM specifically are
-  directly relevant to D-05 (resolved on assumption 2026-07-24, still not primary-confirmed), left
-  for whenever those modes get built (see `DECISIONS.md` D-16 update, `TASKS.md`).
+  reproduces it correctly. **CBC/OFB/CFB/CTR/XTS remain unchecked** — genuine new data, since no
+  Rust mode-of-operation exists yet to check them against; GCM/GMAC specifically were directly
+  relevant to D-05 (resolved on assumption 2026-07-24, still not primary-confirmed) and have since
+  been checked (below) as those modes were built (see `DECISIONS.md` D-16 update, `TASKS.md`).
+- **GCM checked, 2026-07-24** (`DECISIONS.md` D-56, `hazmat::kalyna_gcm`, `TASKS.md` T-95) — uapki's
+  6 `dstu7624_gcm_self_test` vectors plus a vector-only cross-check against
+  `bouncycastle-java`'s `DSTU7624Test.java` GCM tests (construction source not vendored — same
+  weaker-claim caveat as CCM above). BC-.NET has no GCM class at all.
+- **GMAC checked, 2026-07-24** (`DECISIONS.md` D-57, `hazmat::kalyna_gmac`, `TASKS.md` T-95) —
+  uapki-only, 5 `dstu7624_gmac_self_test` vectors covering 4 of 5 Kalyna variants
+  (`Kalyna128_128` has none). No Bouncy Castle standalone GMAC class exists in either port
+  (confirmed by search — BC-Java's "GCM/GMAC test N" cases configure `KGCMBlockCipher` for AEAD,
+  not this AAD-less single-stream construction, so they don't corroborate it even as a vector-only
+  check). Weaker coverage than GCM's, stated plainly in D-57 rather than implied to be equal by
+  proximity. Also: `dstu7624.c` itself has two disagreeing GMAC code paths (D-57) — the streaming
+  `gmac_update`/`gmac_final` pair has a confirmed bug on multi-block single-call input, not ported;
+  `hazmat::kalyna_gmac` ports the coherent one-shot `encrypt_gmac` instead.
 - **CCM checked, 2026-07-23** (`DECISIONS.md` D-41, `hazmat::kalyna_ccm`, `TASKS.md` T-81) — a
   genuine dual-oracle case, not a same-vendor recheck: `dstu7624_ccm_self_test`'s 5 vectors and
   `bouncycastle-java`'s `DSTU7624Test.java` `CCMModeTests`'s 4 vectors were compared directly (not

@@ -136,3 +136,90 @@ macro_rules! gf2m_field {
 gf2m_field!(Gf2m128, 2, 4, 128, 7, 2, 1);
 gf2m_field!(Gf2m256, 4, 8, 256, 10, 5, 2);
 gf2m_field!(Gf2m512, 8, 16, 512, 8, 5, 2);
+
+/// This module has no standalone official test vectors (D-56 - no such oracle exists anywhere;
+/// [`super::kalyna_gcm`]/[`super::kalyna_gmac`] only exercise it jointly, through their own KATs,
+/// all of which are block-aligned and so never drive `reduce`'s loop through its full degree
+/// range). `advisor()` flagged this as a real gap before Stage D was declared done: nothing
+/// confirms the reduction's top-degree terms (`degree` near `$limbs2 * 64 - 1`, close to
+/// `poly_mul_wide`'s maximum possible output degree) are handled correctly, only that the
+/// low/mid-degree terms official vectors happen to reach are. These are direct field-axiom tests -
+/// identity, commutativity, associativity, distributivity, and the two most schedule-adjacent
+/// inputs for a shift-based reduction (an all-`0x00` and an all-`0xFF` element, i.e. the two
+/// extremes `poly_mul_wide` can produce) - not a substitute for a real oracle vector if one is ever
+/// found, but real evidence the module is actually exercised rather than incidentally passed
+/// through by five accidentally-easy KATs.
+#[cfg(test)]
+mod field_axiom_tests {
+    use super::{Gf2m128, Gf2m256, Gf2m512};
+    use proptest::prelude::*;
+
+    macro_rules! field_axioms {
+        ($mod_name:ident, $elem:ident, $limbs:literal) => {
+            mod $mod_name {
+                use super::*;
+
+                const ONE: $elem = {
+                    let mut limbs = [0u64; $limbs];
+                    limbs[0] = 1;
+                    $elem(limbs)
+                };
+                const ALL_ONES: $elem = $elem([u64::MAX; $limbs]);
+
+                fn arb_element() -> impl Strategy<Value = $elem> {
+                    proptest::collection::vec(any::<u64>(), $limbs).prop_map(|v| {
+                        let mut limbs = [0u64; $limbs];
+                        limbs.copy_from_slice(&v);
+                        $elem(limbs)
+                    })
+                }
+
+                #[test]
+                fn adding_an_element_to_itself_is_zero() {
+                    // Characteristic 2: a XOR a == 0, independent of `multiply`/`reduce`.
+                    assert_eq!(ALL_ONES.add(ALL_ONES), $elem::ZERO);
+                }
+
+                #[test]
+                fn all_ones_times_one_is_all_ones() {
+                    // The two extremes together: `poly_mul_wide`'s maximum-degree input against
+                    // the one input `reduce` must leave untouched.
+                    assert_eq!(ALL_ONES.multiply(ONE), ALL_ONES);
+                }
+
+                #[test]
+                fn all_ones_squared_does_not_panic() {
+                    // Drives `reduce`'s loop through its full top-to-bottom degree range - the
+                    // one case none of the official (block-aligned) GCM/GMAC vectors can reach.
+                    let _ = ALL_ONES.multiply(ALL_ONES);
+                }
+
+                proptest! {
+                    #[test]
+                    fn multiply_by_one_is_identity(a in arb_element()) {
+                        prop_assert_eq!(a.multiply(ONE), a);
+                    }
+
+                    #[test]
+                    fn multiply_is_commutative(a in arb_element(), b in arb_element()) {
+                        prop_assert_eq!(a.multiply(b), b.multiply(a));
+                    }
+
+                    #[test]
+                    fn multiply_is_associative(a in arb_element(), b in arb_element(), c in arb_element()) {
+                        prop_assert_eq!(a.multiply(b).multiply(c), a.multiply(b.multiply(c)));
+                    }
+
+                    #[test]
+                    fn multiply_distributes_over_add(a in arb_element(), b in arb_element(), c in arb_element()) {
+                        prop_assert_eq!(a.multiply(b.add(c)), a.multiply(b).add(a.multiply(c)));
+                    }
+                }
+            }
+        };
+    }
+
+    field_axioms!(gf2m128, Gf2m128, 2);
+    field_axioms!(gf2m256, Gf2m256, 4);
+    field_axioms!(gf2m512, Gf2m512, 8);
+}

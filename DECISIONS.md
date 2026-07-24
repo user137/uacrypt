@@ -3152,11 +3152,17 @@ task changes that - still deferred, no decision made here.
 
 DSTU 7624:2014 mode #7 (GCM). This is the roadmap's "one real investment": new GF(2^m) field
 arithmetic at three sizes, landed together with GCM in one commit because **no standalone `gf2m`
-test vectors exist anywhere in the oracle** (confirmed by search) - the field module and GCM can
-only be verified jointly, against GCM's own KATs. GMAC (`gmac_update`/`gmac_final`/`encrypt_gmac`)
-is deliberately a separate, second commit - same field module, different construction shape
-(streaming, single message, no AAD/ciphertext split), and its own oracle-status question to answer
-honestly rather than inherit GCM's by proximity.
+test vectors exist anywhere in the oracle** (confirmed by search) - the field module and GCM could
+**at the time this commit landed** only be verified jointly, against GCM's own (block-aligned) KATs.
+**Updated in D-57's addendum**: a later same-session `advisor()` audit found this joint-only
+verification left the reduction step's top-degree terms genuinely unexercised (no block-aligned KAT
+drives it there) and added `hazmat::gf2m_wide::field_axiom_tests` - direct, oracle-independent
+coverage (identity/commutative/associative/distributive plus max-degree deterministic cases) that
+closes that specific gap. See D-57 for the full account; not restated here to avoid two sources of
+truth for the same fix. GMAC (`gmac_update`/`gmac_final`/`encrypt_gmac`) is deliberately a separate,
+second commit - same field module, different construction shape (streaming, single message, no
+AAD/ciphertext split), and its own oracle-status question to answer honestly rather than inherit
+GCM's by proximity.
 
 **Research discipline for this stage, since it was the largest single piece of the whole roadmap**:
 `oracles/uapki/library/uapkic/src/math-gf2m-internal.c` (1199 lines) was read structurally, not
@@ -3251,3 +3257,120 @@ oracle-status write-up), then Stage E (XTS, T-96, sequenced after this stage sin
 field module). Public `crypto_secretbox` surface unchanged - whether GCM ever becomes its backing
 construction instead of or alongside CCM remains explicitly deferred, unchanged from the original
 Stage-A-era roadmap note.
+
+## D-57: `hazmat::kalyna_gmac` (T-95, Stage D, commit 2 of 2) - ported from `encrypt_gmac`, not
+`gmac_update`/`gmac_final`, after finding a real multi-block bug in the streaming pair
+
+DSTU 7624:2014 mode #7's MAC-only sibling, closing out Stage D (GCM/GMAC). Same
+`hazmat::gf2m_wide` field module as D-56's GCM commit - no new field arithmetic needed. Consulted
+`advisor()` before writing any code, as planned; it corrected two things in the working premise at
+once, both load-bearing.
+
+**What `advisor()` caught**: the plan going in was to port `gmac_update`/`gmac_final` (the
+streaming pair reachable via `dstu7624_update_mac`/`dstu7624_final_mac`, the shape this crate's
+other streaming modes already use, and the exact pair the self-test itself calls) and disambiguate
+a suspected indexing bug empirically against the multi-block official vectors. Both premises were
+wrong. First: **all 5 official GMAC vectors are exactly one block long** (16/32/32/32/64 bytes
+against block sizes 16/32/32/32/64 - confirmed by measuring the extracted hex, not assumed) - no
+official vector has more than one block, so no empirical disambiguation of multi-block chaining was
+ever possible against them. Second: `dstu7624.c` has a **second, independent** GMAC construction,
+`encrypt_gmac` (lines 3572-3620), whose loop is a plain, correct Horner chain (`B = (B XOR block) *
+H` per block, no special-cased first iteration) - and *that* is the coherent one to port, not the
+streaming pair.
+
+**The bug itself**, hand-traced and confirmed, not assumed: `gmac_update`'s post-multiply loop does
+`kalyna_xor(&data_buf[i], B, block_len, B)` using the *current* loop index `i` - for a single call
+carrying 2 full blocks (block1 at `data_buf[0]`, block2 at `data_buf[block_len]`), this re-reads
+`data_buf[0]` (block1) a second time instead of advancing to `data_buf[block_len]` (block2). Traced
+through fully: the resulting accumulator is a function of block1 and the message length only -
+**block2's bytes are never read at all**. `gmac_update`'s separate non-aligned tail-buffering branch
+has its own, distinct problem: `tail_len` is computed as the *padding complement* to the next block
+boundary rather than the true leftover-byte count, then used as a `memcpy` length from a buffer
+offset that doesn't leave that many bytes remaining - an out-of-bounds read for any non-aligned
+input spanning more than one block in a single call. Both bugs live only in the streaming pair;
+`encrypt_gmac`'s one-shot loop has neither (its padding step allocates `data_len + block_len` up
+front, and its accumulation loop has no stale index).
+
+**Why this isn't just "pick whichever gives an answer"**: the streaming pair, fed **one block per
+`update` call** instead of one large call, does *not* hit either bug, and reduces to the exact same
+Horner chain `encrypt_gmac` computes (hand-traced: call 1 leaves `B = block1*H`; call 2 leaves
+`B = (block1*H XOR block2)*H`, identical to `encrypt_gmac`'s two-block result). That agreement is
+the citation for treating `encrypt_gmac`'s construction as the intended one and the streaming pair's
+single-large-call behavior as a bug to route around, not a second legitimate reading with no
+tiebreaker (the D-47-tiebreaker situation earlier stages like `kalyna_kw`'s round-counter fork hit) -
+here the reference disagrees with *itself*, and the chunk-invariant reading is the one that survives
+both code paths agreeing.
+
+**Construction ported** (`encrypt_gmac`, one-shot only - see below for why streaming isn't exposed):
+`H = E_K(0)` once; message padded with the same `0x80`-then-zeros marker `kalyna_cmac`/`kalyna_kw`/
+`kalyna_gcm` already use (only when `len % block_len != 0`); `acc = 0`, then per padded block:
+`acc = (acc XOR block) * H`. Length block: the **padded** message bit-length (little-endian `u64`)
+at a fixed low-8-byte offset, every other byte zero - confirmed by hand-tracing `dstu7624.c`'s
+`H[0] = data_len << 3` (only the first `u64` word is set, `memset` zeroed the rest, at every block
+size tested including 256/512-bit) - **not** `kalyna_gcm`'s two-value, half-block-offset-scaled
+layout (D-56's divergence 3), since GMAC has only one stream, not an AAD/ciphertext split to keep
+separate. Final tag = `E_K(length_block XOR acc)`, truncated by the caller to their chosen `q`
+(8..=block_bytes) - mirroring `kalyna_gcm`'s own truncation convention exactly. `verify` uses
+`subtle::ConstantTimeEq`, **not** `dstu7624.c`'s raw `memcmp` - same deliberate safety fix already
+applied to `kalyna_kw`'s checksum check, `kalyna_cmac`'s tag verify, and `kalyna_gcm`'s tag verify
+(D-47 tie-breaker #2).
+
+**Not streaming.** Only one coherent code path exists to port (`encrypt_gmac`, one-shot), so unlike
+`kalyna_cfb`/`kalyna_ctr`/etc. there is no streaming state machine to transcribe at all here - same
+one-shot shape `kalyna_cmac` already established for this crate's other from-scratch MAC module, not
+a new pattern.
+
+**Oracle coverage - weaker than D-56's GCM, stated plainly, not glossed over**: uapki-only, 5 KATs
+(`dstu7624_gmac_self_test`), covering `Kalyna128_256`, `Kalyna256_256` (×2, a q=16-vs-q=32
+truncation-consistency pair sharing key/message), `Kalyna256_512`, and `Kalyna512_512` -
+**`Kalyna128_128Gmac` has zero official-vector coverage**, uapki's self-test simply never exercises
+that variant. Every vector is exactly one block, so **no official vector exercises multi-block
+chaining, the `0x80` padding-marker branch, or the length-block placement for a message requiring
+more than one block** - all three are proptest-only, covered by `tests/kalyna_gmac.rs`'s
+`mac_then_verify_roundtrips` (non-aligned lengths, up to 3 blocks) and, specifically targeting the
+found reference bug's failure mode, `changing_any_block_changes_the_tag` (flips a single byte
+anywhere across a guaranteed-2-full-block message and asserts the tag changes - this property is
+exactly what the streaming pair's stale-index bug would violate if it had been ported faithfully).
+Confirmed no Bouncy Castle standalone GMAC class exists (`grep`-searched both `oracles/
+bouncycastle-java` and a `.cs` search for a .NET equivalent) - `DSTU7624Test.java`'s "GCM/GMAC test
+N" cases configure `KGCMBlockCipher` for AEAD and do not exercise this AAD-less single-stream
+construction, so they are not a usable oracle here the way they were (vector-only) for D-56's GCM.
+
+17 tests, **all green on the first attempt**, including all 4 covered official-vector variants and
+the found-bug regression proptest. `cargo test --workspace --all-features`, `clippy -D warnings`,
+`fmt --check`, and the bare `no_std` build all clean. `cargo +nightly miri test -p dstu-core --test
+kalyna_gmac` (`MIRIFLAGS=-Zmiri-disable-isolation PROPTEST_CASES=8`): clean, no UB, 17/17, ~916s.
+
+**Addendum, same session, requested as a separate full-project review**: the user asked for a sober
+`advisor()`-driven audit of this file and the shipped implementations against the project's own
+stated goal/niche, independent of the GMAC work above. One finding from that audit was a real gap
+in *this* stage specifically, closed before Stage D could honestly be called done: `hazmat::gf2m_wide`
+had **zero direct tests** - D-56 already states no standalone `gf2m` oracle vectors exist anywhere,
+so the field module was verified only jointly, through GCM/GMAC's own KATs, every one of which is
+block-aligned. `advisor()` pointed out that block-aligned inputs never drive `reduce`'s loop through
+its full top-degree range (`degree` from `$limbs2 * 64 - 1` down to `$m`) - nothing established the
+shift/XOR terms near the top of that range are computed correctly, only that the low/mid-degree
+terms the KATs happen to reach are. Added `hazmat::gf2m_wide::field_axiom_tests` (inline
+`#[cfg(test)]`, since the module is private - `mod gf2m_wide;`, not `pub mod` - so an integration
+test file can't reach it): identity, commutativity, associativity, and distributivity via
+`proptest`, plus three deterministic cases specifically targeting the gap - `ALL_ONES.multiply(ONE)
+== ALL_ONES` and `ALL_ONES.multiply(ALL_ONES)` (the two extremes `poly_mul_wide` can produce,
+maximum-degree input, drives `reduce` through its complete range) for all three field sizes. 21
+tests, all green first attempt (`cargo test -p dstu-core --lib field_axiom_tests --all-features`);
+`clippy -D warnings`/`fmt --check`/bare `no_std` build all re-confirmed clean with this addition. A
+scoped `cargo +nightly miri test -p dstu-core --lib field_axiom_tests` run was also launched - pure
+integer arithmetic, no `unsafe`, so it cannot invalidate the field-axiom result above regardless of
+outcome; its pass/fail is recorded in `TASKS.md` T-95 once it lands rather than held here as a
+blocking condition on this entry. Not a substitute for a real oracle vector if one is ever found,
+but real evidence the module is exercised by more than five accidentally-easy KATs. The audit's
+other findings (`subtle` missing a row in `SECURITY.md`'s
+dependency-vetting table despite being a direct, unconditional, crypto-critical dependency; CI's
+`fuzz-smoke` job covers only 1 of 4 existing fuzz targets, and none of the four modes landed this
+session - `kalyna_cmac`/`kalyna_kw`/`kalyna_gcm`/`kalyna_gmac` - have a fuzz target at all;
+`docs/release-readiness.md` now stale, still stating GCM/KW/XTS as "not built" after this session
+landed GCM/KW/GMAC) are process/documentation follow-ups, tracked as new `TASKS.md` items rather
+than fixed inline here, since they're outside this stage's actual scope.
+
+**Stage D complete** (both GCM and GMAC landed, plus the field-axiom coverage gap `advisor()` found
+and closed). Next: Stage E (XTS, T-96), its own plan-mode pass, sequenced after this stage since it
+reuses `hazmat::gf2m_wide`.
