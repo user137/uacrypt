@@ -1224,11 +1224,18 @@ needed) — non-negotiable per D-53, not optional per mode.
       after the pre-emptive fix. `cargo test --workspace --all-features`/`clippy -D warnings`/
       `fmt --check` clean (one `doc_markdown` fix, same lint `kalyna_ofb` hit); bare `no_std` build
       re-confirmed.
-- [ ] **T-93** CMAC (#4) — Stage B, not started. See D-53 for the oracle/scope summary
-      (`DECISIONS.md`) — strongest whole-block oracle of the non-AEAD modes (BC's `DSTU7624Mac` is a
-      full independent construction, Java and .NET), but its padding/partial-block branch is
-      uapki-only-verifiable (BC throws on non-block-aligned input) — record that single-oracle
-      sub-case explicitly when this lands, same posture as Strumok's UAPKI-only caveat (D-15).
+- [x] **T-93** CMAC (#4) — Stage B, done. `hazmat::kalyna_cmac` (`DECISIONS.md` D-54): CBC-MAC over
+      all blocks but the last, then the held-back last block XORed against a subkey (`E_K` of a
+      near-zero padding-flag block, not a GF-doubling subkey the way AES-CMAC does it) and encrypted
+      once more. One-shot API (`mac`/`verify`, `q` fixed at 16 bytes — the only value any oracle
+      exercises), mirroring `hazmat::kupyna_kmac`'s shape rather than the C source's incremental
+      buffering. Oracle coverage exactly as anticipated: Kalyna128_128/512_512 dual-oracle
+      (block-aligned, BC `DSTU7624Mac` corroborates); Kalyna128_256 single-oracle
+      uapki-only (the padding branch — BC throws on non-block-aligned input); Kalyna256_256/256_512
+      have no vector at all, covered by the shared-logic argument plus a `proptest` round-trip. 11
+      tests, all green first attempt including the padding-branch vector. `cargo test
+      --workspace --all-features`/`clippy -D warnings`/`fmt --check` clean (one `doc_markdown` fix);
+      bare `no_std` build re-confirmed.
 - [ ] **T-94** KW (#10) — Stage C, not started. Strongest oracle of all 10 modes — full independent
       BC construction source in both Java (`DSTU7624WrapEngine.java`) and .NET
       (`Dstu7624WrapEngine.cs`), not just vectors. Read both alongside uapki's C before transcribing,

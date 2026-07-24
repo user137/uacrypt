@@ -1,0 +1,13 @@
+{
+  "algorithm": "Kalyna-CMAC-128/128",
+  "block_bits": 128,
+  "key_bits": 128,
+  "source": "oracles/uapki/library/uapkic/src/dstu7624.c dstu7624_cmac_self_test (case 0, programmatically extracted, not hand-transcribed). Message is exactly 3 blocks (48 bytes, block-aligned) - exercises the no-padding branch only. Dual-oracle: byte-for-byte corroborated by oracles/bouncycastle-java/.../test/DSTU7624Test.java MacTests() test 1 (new DSTU7624Mac(128, 128)).",
+  "cases": [
+    {
+      "key_hex": "000102030405060708090A0B0C0D0E0F",
+      "message_hex": "202122232425262728292A2B2C2D2E2F303132333435363738393A3B3C3D3E3F404142434445464748494A4B4C4D4E4F",
+      "mac_hex": "123B4EAB8E63ECF3E645A99C1115E241"
+    }
+  ]
+}

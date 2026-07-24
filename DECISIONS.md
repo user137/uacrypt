@@ -2990,3 +2990,72 @@ Stage D (GCM/GMAC, T-95, the one real new-primitive investment - GF(2^m) field a
 field sizes), Stage E (XTS, T-96, sequenced after D). Public `crypto_secretbox` surface unchanged
 throughout Stage A, as designed - none of these five modes are AEAD-shaped, so none was ever a
 candidate for a public entry point (D-05/D-47).
+
+## D-54: `hazmat::kalyna_cmac` (T-93, Stage B) - one-shot API, `q` fixed at 16 bytes, single-oracle padding-branch gap recorded
+
+DSTU 7624:2014 mode #4. Cited to `oracles/uapki/library/uapkic/src/dstu7624.c`'s `cmac_update`/
+`cmac_final` (lines 4221-4310), `padding` (lines 2572-2592), `dstu7624_init_cmac` (lines 4070-4087);
+`Dstu7624Ctx`'s running MAC state confirmed zero-initialized via `dstu7624_alloc`'s
+`CALLOC_CHECKED`, not IV-seeded. **Not** GF-doubling-subkey CMAC/OMAC the way AES-CMAC derives its
+subkeys - read from source, not assumed by analogy to the more familiar NIST construction
+(`CLAUDE.md`'s "porting logic means porting its calling convention too" discipline, applied here to
+avoid *inventing* a convention the DSTU construction doesn't actually use). The real algorithm:
+CBC-MAC over every block except the last, then the held-back last block (padded with a single
+`0x80` byte plus zeros if not block-aligned, unpadded if it is) gets XORed against a subkey - itself
+just `E_K` of a near-zero block whose only nonzero byte is a 0/1 padding flag, no field-doubling
+anywhere - and the combined block is encrypted once more; the tag is the first `q` bytes of that
+final encryption.
+
+**API restructured from the C source's incremental buffering into a one-shot whole-message
+computation** (`Kalyna*Cmac::mac(key, message) -> [u8; 16]`, `verify(key, message, expected) ->
+Result<(), CmacError>`), following `hazmat::kupyna_kmac`'s (D-44) shape exactly rather than
+re-deriving `cmac_update`'s multi-call state machine: nothing in this crate consumes an incremental
+MAC yet (`kupyna_kmac` was in the same position before any `crypto_auth` wrapper existed), and nothing
+requires it now. Verified this restructuring is semantically identical to the C source by hand-tracing
+both the aligned and non-aligned branches against `cmac_update`/`cmac_final` directly, not by
+pattern-matching test output against expected numbers - both branches are independently exercised by
+the official vectors below, so passing them is real evidence for the restructuring, not just a shape
+check. `q` is fixed at 16 bytes for all five variants rather than exposed as a runtime knob (the C
+source allows `1..=block_len`): every available oracle vector, uapki's and Bouncy Castle's alike,
+uses `q = 16` regardless of block size - it is the only value any oracle has ever exercised, and
+`SECURITY.md`'s "no primitive without a cited test" rule forbids shipping a wider, untested `q` range.
+Key stays the fixed-size `&[u8; $key_bytes]` array every Stage-A module already uses, so (unlike
+`KmacError::WrongKeyLength`) no key-length error variant is needed - `mac()` is infallible.
+`verify()` uses `subtle::ConstantTimeEq` for the tag comparison (`SECURITY.md`'s constant-time-compare
+rule for secret material), same as `kupyna_kmac::verify`.
+
+**Oracle coverage, stated plainly per variant, not glossed over**: 3 uapki KATs
+(`dstu7624_cmac_self_test`, programmatically extracted, not hand-transcribed) map to 3 of the 5
+variants:
+- **Kalyna128_128** (48-byte, block-aligned message - no-padding branch): dual-oracle, corroborated
+  byte-for-byte by `oracles/bouncycastle-java/.../DSTU7624Test.java` `MacTests()` test 1
+  (`new DSTU7624Mac(128, 128)`).
+- **Kalyna128_256** (94-byte message, **not** block-aligned - the padding branch): **single-oracle,
+  uapki only**. Bouncy Castle's `DSTU7624Mac` throws on non-block-aligned input, so it structurally
+  cannot corroborate this branch - same posture as Strumok's D-15 UAPKI-only caveat, flagged here
+  rather than silently treated as dual-oracle-verified. This was the exact caveat `TASKS.md` T-93
+  anticipated before this task started.
+- **Kalyna512_512** (128-byte, block-aligned): dual-oracle, corroborated by `MacTests()` test 2
+  (`new DSTU7624Mac(512, 128)`).
+- **Kalyna256_256, Kalyna256_512**: **no oracle vector at all**, from either vendored oracle. Coverage
+  rests on the shared-logic argument (identical macro-generated code path, only `block_bytes`/
+  `key_bytes` differ, and the underlying `encrypt_block` for these two variants is already
+  independently dual-oracle-verified via `hazmat::kalyna`, D-13) plus a `proptest` round-trip
+  (mac-then-verify, tamper-detection on both the tag and the message, across arbitrary-length -
+  including non-block-aligned - messages so the padding branch gets generic coverage beyond the one
+  official vector's fixed 94-byte length) run across all five variants, not just the two uncovered
+  ones - same posture already used for CTR's uncovered variants (T-92/D-53).
+
+11 tests total (6 official/fixed + a `proptest` suite per variant, 5 variants), all green on the first attempt
+including the padding-branch vector - no debugging pass needed, unlike CFB's/CTR's earlier catches.
+`cargo test --workspace --all-features` clean; `clippy -D warnings` needed one `doc_markdown` fix
+(`` `XOR`ed ``, the same lint every prior Stage-A/B module doc has hit); `fmt --check` clean; bare
+`no_std` build re-confirmed (pure `hazmat` addition, no new dependency, no `cfg` gating needed).
+Misuse warning states this module provides no key separation from any encryption key and recommends a
+future `crypto_auth` wrapper, matching `kupyna_kmac`'s own framing - no such wrapper exists yet for
+either MAC.
+
+**Stage B done.** Remaining: Stage C (KW, T-94, the strongest oracle of all 10 modes - full
+independent Bouncy Castle construction source in both Java and .NET), Stage D (GCM/GMAC, T-95),
+Stage E (XTS, T-96). Public `crypto_secretbox` surface unchanged - CMAC isn't AEAD-shaped, so it was
+never a candidate for a public entry point (D-05/D-47).
