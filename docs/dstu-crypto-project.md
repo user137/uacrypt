@@ -25,7 +25,10 @@ implementation within a minute, without hassle — in the spirit of
 - A single CLI binary on top of the core (`uacrypt`, `DECISIONS.md` D-36), with
   subcommands like `uacrypt encrypt --key ... --in file --out file` — mode,
   nonce/IV, etc. are hardcoded so there's nothing for the user to
-  misconfigure.
+  misconfigure. **Built** (`TASKS.md` T-16, `DECISIONS.md` D-52) — currently
+  bounded to ≤255-byte messages (inherited from `crypto_secretbox`'s
+  Kalyna-CCM construction, D-51/D-41), not arbitrary-length files yet;
+  `crypto_secretstream` (T-40) is the tracked follow-up.
 - Publish the core to crates.io.
 - Prebuilt binaries for Windows/Linux via GitHub Releases (not "clone and
   build it yourself").

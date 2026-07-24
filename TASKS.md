@@ -142,11 +142,41 @@ item they point to is later removed.
       installed for unrelated reasons, so the objection above ("would mean installing MSVC just for
       this") stopped applying here specifically — see "Testing & hardening" below and `DECISIONS.md`
       D-32 for how it was actually run.
-- [ ] **T-16** `uacrypt` CLI: `encrypt`/`decrypt`/`hash` subcommands, mode/nonce/IV hardcoded (no
-      user-facing crypto knobs, per the libsodium-style misuse-resistance goal). Reserved names were
-      gated on `crypto_secretbox` (T-37) existing first — **that gate cleared 2026-07-24, T-37 is
-      now done (`DECISIONS.md` D-51)** — T-16 itself is unblocked to start but still not built; the
-      CLI wiring is separate work, not a byproduct of T-37 landing.
+- [x] **T-16** **Done 2026-07-24, same session as T-37, see `DECISIONS.md` D-52** — `uacrypt`'s
+      reserved `encrypt`/`decrypt`/`hash` are real top-level commands now, mode/nonce/algorithm all
+      hardcoded, no user-facing crypto knobs. `encrypt`/`decrypt` are a thin wrapper over
+      `dstu_core::crypto_secretbox` (T-37/D-51): new `SecretboxArgs { key_path, in_path, out_path }`
+      - no `--nonce`/`--tag`/`--aad`/`--variant`, since `crypto_secretbox` itself already removed
+      every one of those knobs. **Approval checkpoint surfaced and resolved with the user before
+      implementation**: `crypto_secretbox` caps messages at 255 bytes, and a command literally named
+      `encrypt --in file --out file` silently failing past that would be a real usability trap,
+      especially next to `hash` which handles files of any size — asked directly via
+      `AskUserQuestion`, user chose **build all three now, cap made loud** (new
+      `CliError::MessageTooLong` with an explicit "255-byte limit... see `TASKS.md` T-40" message,
+      never silent truncation) over deferring `encrypt`/`decrypt` to `crypto_secretstream` (T-40).
+      Two more new `CliError` variants (`Truncated`, `SecretboxVerifyFailed`) plus a
+      `From<SecretboxError>` impl mirroring the existing `From<CcmError>` one — deliberately not
+      reusing `PlaintextTooLong`/`CcmVerifyFailed`, whose `Display` text is hardcoded to say
+      "kalyna-ccm" and would print a wrong command name. `hash` is fixed to Kupyna-256 (D-47's
+      "no knob when a safe default exists"; `crypto_sign` already established Kupyna-256 as this
+      project's own default message-hash choice) — new `HashArgs { in_path, out_path }`, no
+      `--variant`/`--iterations`, implemented by **delegating to the existing `run_digest_command`**
+      (`DigestArgs { variant: B256, iterations: 1, .. }`) rather than duplicating its
+      already-tested, genuinely-streaming-from-disk (D-42) loop — `hash` inherits that
+      memory-bounded property for free, no cap of its own. Test-first, 12 new tests (all green
+      first attempt): `parse_secretbox_args`/`parse_hash_args` happy-path/missing-flag/
+      unknown-flag, a round-trip test cross-checked against a direct `dstu_core::crypto_secretbox`
+      call, fresh-nonce-per-call, tamper-rejection-without-writing-`--out`, oversized-input
+      rejection, a multi-chunk streamed-hash check against `Kupyna256::digest` directly, and two
+      tests calling the public `run()` dispatcher directly (not just the `run_*_command`
+      functions) for both new command groups, since the three new top-level match arms are new
+      wiring needing their own coverage. `cargo test --workspace --all-features`/`clippy -D
+      warnings`/`fmt --check` all clean. Split into 3 commits per the user's request (`hash`;
+      `encrypt`/`decrypt` + `CliError` plumbing; docs), not one combined commit like T-37's.
+      README.md/`CLAUDE.md`/`docs/dstu-crypto-project.md` all updated to state the 255-byte cap
+      loudly, not as a footnote — `CLAUDE.md`'s own MVP-scope example line previously read as
+      implying arbitrary-file support, now corrected. No `uacrypt keygen` command added (out of
+      this task's stated scope, same gap `kalyna-block`/`kalyna-ccm` already have).
 - [ ] **T-17** Publish `dstu-core` to crates.io
 - [ ] **T-18** Prebuilt Windows/Linux binaries via GitHub Releases
 - [x] **T-19** **Naming subtask, all three decisions made 2026-07-23** (T-20/T-21/T-22 below) -

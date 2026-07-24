@@ -156,12 +156,12 @@ choose from, safe or otherwise.
 
 ## What's missing for the CLI / release-mechanics surface
 
-- **T-16**: no `uacrypt encrypt`/`decrypt`/`hash` top-level commands — those names stayed reserved
-  until `crypto_secretbox` (T-37) was actually built, not merely until D-05 resolved. **T-37 is now
-  done (D-51), so T-16 is unblocked to start** — it just isn't built yet; the CLI wiring is separate
-  work. What exists (`kalyna-block`, `kalyna-ccm`, `kupyna-digest`, `strumok-crypt`) is
-  hazmat-scoped and was built for binary-level performance comparison, not the intended end-user
-  surface.
+- **T-16 is done, see `DECISIONS.md` D-52**: `uacrypt encrypt`/`decrypt`/`hash` are real top-level
+  commands now, over `dstu_core::crypto_secretbox` (`encrypt`/`decrypt`) and Kupyna-256 (`hash`).
+  **`encrypt`/`decrypt` inherit `crypto_secretbox`'s 255-byte cap** — a loud error, never silent
+  truncation, an explicit user decision over deferring to `crypto_secretstream` (T-40). `hash` has
+  no such limit. `kalyna-block`/`kalyna-ccm`/`kupyna-digest`/`strumok-crypt` remain as the
+  hazmat-scoped, multi-variant tools underneath, unchanged.
 - **T-17**: `dstu-core` not published to crates.io. Now unblocked mechanically (D-43's version bump),
   but publishing a `0.1.0` that is honest about D-05 (adopted on assumption, not primary-confirmed)/
   D-15/D-41's provisional status is a judgment call for the project owner, not an engineering
@@ -203,10 +203,9 @@ In rough dependency order:
    ships only an uncompressed 42-byte form).
 6. **DSTU 9041 stays out of scope for 1.0** unless source material is found — don't block the rest
    of the release on a hard-blocked item with no known path forward.
-7. **Mechanical release work**: `uacrypt`'s real `encrypt`/`decrypt`/`hash` commands (T-16, now
-   unblocked to start now that `crypto_secretbox`/T-37 is built, D-51 — just not built itself yet),
-   crates.io publish (T-17), GitHub Releases binaries (T-18), and a documentation pass aimed at an
-   external consumer rather than an AI-agent-facing repo.
+7. **Mechanical release work**: `uacrypt`'s real `encrypt`/`decrypt`/`hash` commands are now done
+   (T-16, D-52) — remaining: crates.io publish (T-17), GitHub Releases binaries (T-18), and a
+   documentation pass aimed at an external consumer rather than an AI-agent-facing repo.
 
 Steps 1-2 are the load-bearing ones: everything else can be built in parallel, but a release that
 skips them is a release of provisional cryptography labeled as final, which is exactly the outcome

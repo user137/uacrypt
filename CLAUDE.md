@@ -60,8 +60,15 @@ environment. The workspace has two crates:
   ≤255-byte messages** (inherits `hazmat::kalyna_ccm`'s D-41 cap — errors rather than truncating)
   and still provisional pending the primary DSTU 7624:2014 text (unchanged by this task) —
   `crypto_secretstream` (T-40) remains open for the arbitrary-length case. Folded into the existing
-  `std` feature, not a new dedicated one, since no new dependency is introduced. Unblocks `TASKS.md`
-  T-16 (`uacrypt`'s reserved `encrypt`/`decrypt` commands) to start; T-16 itself not built yet.
+  `std` feature, not a new dedicated one, since no new dependency is introduced. Unblocked
+  `TASKS.md` T-16 (`uacrypt`'s reserved `encrypt`/`decrypt` commands) to start - **T-16 itself is
+  now done too, same session** (`DECISIONS.md` D-52): `uacrypt encrypt`/`decrypt`/`hash` are real
+  commands. `encrypt`/`decrypt` are a thin CLI wrapper over `crypto_secretbox` - `--key`/`--in`/
+  `--out` only, inheriting its 255-byte cap (loud error, not silent truncation - a deliberate
+  product choice made with the user, not a default assumption, since a command named `encrypt`
+  silently failing past 255 bytes would be a real usability trap). `hash` is fixed to Kupyna-256,
+  no length cap, delegates to `kupyna-digest`'s already-streaming implementation rather than
+  duplicating it.
 - `crates/uacrypt` — the CLI binary, renamed 2026-07-23 from its `dstutool` working name
   (`DECISIONS.md` D-36; older `DECISIONS.md`/`TASKS.md`/`PERFORMANCE.md` entries predating the
   rename still say `dstutool`, left as-is since they're a historical record, not stale docs).
@@ -73,8 +80,11 @@ environment. The workspace has two crates:
   sources - `oracles/uapki`'s own ten-mode list and Ukrainian Wikipedia's matching mode table, see
   `DECISIONS.md` D-05's latest revision), and those reserved names' other gate,
   `dstu_core::crypto_secretbox` actually being built (T-37), cleared the same day too (`DECISIONS.md`
-  D-51) — `uacrypt`'s own `encrypt`/`decrypt` commands (`TASKS.md` T-16) are unblocked to start but
-  still not built, per the file-plus-mode-of-operation CLI the MVP scope below describes.
+  D-51) — `uacrypt`'s own `encrypt`/`decrypt`/`hash` commands (`TASKS.md` T-16, `DECISIONS.md` D-52)
+  are now built too, same session, per the file-plus-mode-of-operation CLI the MVP scope below
+  describes - with one caveat the MVP scope's own example line doesn't state: `encrypt`/`decrypt`
+  handle at most 255 bytes (inherits `crypto_secretbox`'s cap), not arbitrary-length files; `hash`
+  has no such limit.
 
 `cargo xtask <command>` (see `xtask/`, aliased via `.cargo/config.toml`) is the one cross-platform
 build/QA entry point — same command on Linux/Windows/macOS, no new install beyond `cargo` itself.
@@ -117,7 +127,10 @@ Algorithms in scope:
 - Rust core implementing Kalyna + Kupyna + Strumok, verified against official DSTU test vectors.
 - Single CLI binary over the core (`uacrypt`, `DECISIONS.md` D-36), e.g.
   `uacrypt encrypt --key ... --in file --out file` — mode, nonce/IV etc. are hardcoded so there's
-  nothing for the user to misconfigure.
+  nothing for the user to misconfigure. **Built** (`TASKS.md` T-16, `DECISIONS.md` D-52) - with a
+  caveat this example line doesn't otherwise convey: `encrypt`/`decrypt` are currently bounded to
+  ≤255-byte messages (inherited from `crypto_secretbox`'s Kalyna-CCM construction, D-51/D-41), not
+  arbitrary-length files yet - `crypto_secretstream` (T-40) is the tracked follow-up for that.
 - Publish the core crate to crates.io.
 - Prebuilt binaries for Windows/Linux via GitHub Releases (not "clone and build yourself").
 - **No hardware or OS lock-in — platform-agnostic by construction.** This targets both ends

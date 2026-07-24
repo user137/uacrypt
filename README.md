@@ -153,16 +153,31 @@ change against the saved regression baseline.
 
 ## Using `uacrypt`
 
-The planned file-level `uacrypt encrypt`/`decrypt` (mode of operation over arbitrary-length
-files, see `CLAUDE.md` MVP scope) is not available yet — `DECISIONS.md` D-05 was resolved on
-assumption (Kalyna-alone), and the `crypto_secretbox` construction it waited on is now built too
-(`TASKS.md` T-37, `DECISIONS.md` D-51, itself bounded to ≤255-byte messages) — `uacrypt`'s own
-`encrypt`/`decrypt` commands are unblocked to start but still not built. What exists today:
-`kalyna-block`, a single-block (no mode, no padding), `hazmat`-scoped command added for a
-binary-level performance comparison (`PERFORMANCE.md`, `DECISIONS.md` D-31):
+`uacrypt encrypt`/`decrypt`/`hash` (`TASKS.md` T-16, `DECISIONS.md` D-52) are the real,
+misuse-resistant top-level commands — mode, nonce, and algorithm are all hardcoded, nothing to
+misconfigure:
 
 ```
 cargo build -p uacrypt --release
+uacrypt encrypt --key key.bin --in message.bin --out sealed.bin
+uacrypt decrypt --key key.bin --in sealed.bin --out message.bin
+uacrypt hash --in file.bin --out digest.bin
+```
+
+**`encrypt`/`decrypt` handle messages up to 255 bytes only** — `dstu_core::crypto_secretbox`
+(`TASKS.md` T-37, `DECISIONS.md` D-51) is built over a Kalyna-CCM construction with a sourced
+255-byte cap (`DECISIONS.md` D-41); larger input is rejected with a clear error, never silently
+truncated. `--key` is a raw 32-byte file (`crypto_secretbox::SecretKey`'s size — no `uacrypt
+keygen` command exists yet, generate one via any 32-byte-CSPRNG source). `encrypt` draws a fresh
+random nonce internally on every call and embeds it in `--out`; there is no `--nonce` flag to
+supply or reuse by mistake. Larger files need `TASKS.md` T-40's `crypto_secretstream`, not built
+yet. **`hash` has no such limit** — it streams `--in` from disk in fixed-size chunks regardless of
+size, fixed to Kupyna-256 (32-byte digest, no `--variant` choice).
+
+What exists below this level: `kalyna-block`, a single-block (no mode, no padding), `hazmat`-scoped
+command added for a binary-level performance comparison (`PERFORMANCE.md`, `DECISIONS.md` D-31):
+
+```
 uacrypt kalyna-block encrypt --variant 128-128 --key key.bin --in block.bin --out ct.bin
 uacrypt kalyna-block decrypt --variant 128-128 --key key.bin --in ct.bin --out pt.bin
 ```
@@ -188,10 +203,11 @@ optional (an empty AAD is used if omitted); `decrypt` verifies the tag before wr
 fails without writing anything on a mismatch. See `DECISIONS.md` D-40 for why a random nonce is
 safe here (128 bits minimum across all five variants) and its per-key message-count guideline.
 
-Neither of these is the eventual file-plus-mode CLI; once that lands (`crypto_secretbox` built), it
-will use the reserved `encrypt`/`decrypt` command names directly. Prebuilt
-binaries via GitHub Releases for Windows/Linux/macOS (see `CLAUDE.md` MVP scope) are still planned
-for that point, not this one.
+Neither `kalyna-block` nor `kalyna-ccm` is the `encrypt`/`decrypt` surface above - both stay as
+lower-level, hazmat-scoped tools (`kalyna-block` for exactly one block, `kalyna-ccm` for full
+control over variant/nonce/AAD/tag as separate files) for anyone who explicitly wants that. Prebuilt
+binaries via GitHub Releases for Windows/Linux/macOS (see `CLAUDE.md` MVP scope) are still planned,
+not built yet.
 
 ## Embedded / `no_std` targets
 

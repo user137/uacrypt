@@ -2746,3 +2746,74 @@ not-yet-primary-text-confirmed status (D-41) - this module does not add or remov
 that question, it only wraps the primitive that already carries it. `TASKS.md` T-16 (`uacrypt`'s
 reserved `encrypt`/`decrypt` commands) is now unblocked to *start* (its stated gate was
 `crypto_secretbox` existing, not D-05's status) - not built as part of this task.
+
+## D-52: `uacrypt encrypt`/`decrypt`/`hash` (T-16) implemented - the 255-byte cap made loud, not deferred
+
+Same session as D-51, immediately after. What got built: `uacrypt`'s reserved top-level `encrypt`/
+`decrypt`/`hash` commands (`crates/uacrypt/src/lib.rs`) - three new flat `run()` match arms (not
+nested like `kalyna-ccm`'s own `encrypt`/`decrypt` sub-match, matching `TASKS.md` T-16's own text
+listing three separate top-level names).
+
+**The approval checkpoint, put to the user rather than resolved silently**: `crypto_secretbox`
+(D-51) caps messages at 255 bytes. A command literally named `encrypt --in file --out file`,
+sitting right next to `hash` (which handles files of any size), silently failing on any file over
+255 bytes is a real usability trap - worse than a knob, since nothing warns the user until it
+fails, and `CLAUDE.md`'s own MVP-scope example line (`uacrypt encrypt --key ... --in file --out
+file`) reads as "encrypt a file" with no size caveat at all. Two options were put to the user via
+`AskUserQuestion`: (A) build all three now with the cap made loud (explicit error text, README/
+`CLAUDE.md` reconciled to state it up front), or (B) ship `hash` only, defer `encrypt`/`decrypt`
+until `crypto_secretstream` (T-40, chunked AEAD) lands, so the reserved names never debut in a
+crippled 255-byte-only form. **User chose (A)** - build all three now, cap made loud. This is a
+product decision, recorded here rather than left implicit in the code, since a future session
+revisiting T-40 needs to know this was a deliberate choice to ship the capped version, not an
+oversight that "should" have deferred.
+
+**`encrypt`/`decrypt` design, mechanical once `crypto_secretbox` existed**: new
+`SecretboxArgs { key_path, in_path, out_path }` - no `--nonce`/`--tag`/`--aad`/`--variant`, because
+`crypto_secretbox` itself already removed every one of those knobs (D-51: single fixed variant,
+internal nonce, no AAD, one combined output blob). `run_secretbox_command(decrypt, args)` reads the
+32-byte key via the existing `read_exact_file` helper, reads `--in` whole (no streaming - the
+construction caps it at 255 bytes, same reasoning `kalyna-ccm` already uses), calls
+`crypto_secretbox::seal`/`open`, writes `--out`. Three new `CliError` variants
+(`MessageTooLong`/`Truncated`/`SecretboxVerifyFailed`) plus
+`impl From<SecretboxError> for CliError`, mirroring the existing `From<CcmError>` impl exactly -
+**deliberately not reusing** `PlaintextTooLong`/`CcmVerifyFailed`, whose `Display` text is
+hardcoded to say "kalyna-ccm" (confirmed by reading it directly) and would print a wrong/confusing
+command name from `encrypt`/`decrypt`. `MessageTooLong`'s message states the 255-byte figure
+explicitly and points at `TASKS.md` T-40 as the future lift - the loud-cap requirement from the
+approval checkpoint above, not a generic "too long."
+
+**`hash` design**: fixed to Kupyna-256, no `--variant` knob (D-47's "no knob when a safe default
+exists"; `crypto_sign` already established Kupyna-256 as this project's own default message-hash
+choice, D-46 - not a new precedent). No `--iterations` either (that's `kupyna-digest`'s D-34
+benchmark-only flag, irrelevant to a real user of `hash`). `run_hash_command` **delegates to the
+existing `run_digest_command`** by constructing `DigestArgs { variant: HashBits::B256, iterations:
+1, .. }` rather than duplicating its streaming loop - reuses `kupyna-digest`'s already-tested,
+genuinely-streaming-from-disk (D-42, 8 KiB chunks) implementation directly, so `hash` inherits its
+memory-bounded property, and has no message-length cap at all (unlike `encrypt`/`decrypt` - a
+deliberate, stated asymmetry, not an inconsistency).
+
+**Not built, matching existing precedent, not new scope**: no `uacrypt keygen` subcommand - neither
+`kalyna-block` nor `kalyna-ccm` before it offer one either, a `--key` file must already exist.
+`SecretKey::generate()` already exists in `dstu_core` if a future task wants to wire it up.
+
+**Verification, test-first**: 12 new tests, all green on the first attempt -
+`parse_secretbox_args`/`parse_hash_args` happy-path/missing-flag/unknown-flag,
+`run_secretbox_command_round_trip_matches_dstu_core_directly` (cross-checked against a direct
+`crypto_secretbox::open` call), `run_secretbox_command_encrypt_generates_a_fresh_nonce_each_call`
+(two encrypts of identical key/plaintext differ in their leading 32 bytes),
+`run_secretbox_command_decrypt_rejects_tampered_ciphertext_without_writing_out`,
+`run_secretbox_command_oversized_plaintext_is_rejected`,
+`run_hash_command_matches_dstu_core_kupyna256_directly` (non-chunk-aligned multi-chunk message,
+checked against `Kupyna256::digest` directly), and `run_dispatches_hash_command_correctly`/
+`run_dispatches_encrypt_and_decrypt_correctly` - calling the public `run()` function directly, not
+just the `run_*_command` functions, since the three new top-level match arms are new wiring that
+needed its own coverage. Full workspace `cargo test --workspace --all-features` green (no
+regressions), `cargo clippy --workspace --all-features -- -D warnings`/`cargo fmt --all -- --check`
+clean (one `cargo fmt` pass needed on a line that exceeded the wrap width).
+
+**Execution structure, per the user's explicit request**: split into three commits rather than one
+combined commit like D-51's - `hash` first (simplest, no new `CliError` variants), then
+`encrypt`/`decrypt` plus the `CliError`/`From` plumbing, then documentation
+(`README.md`/`CLAUDE.md`/`docs/dstu-crypto-project.md`/`docs/release-readiness.md`/`TASKS.md`/this
+entry) - each commit independently green.
