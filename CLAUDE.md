@@ -199,6 +199,19 @@ Full detail and rationale in `SECURITY.md` — this is the compressed version so
   on Windows, all of which can silently introduce UTF-16, a BOM, or a Windows codepage (e.g.
   CP1251) if a tool's default isn't checked. Verify encoding when creating or editing a file if
   there's any doubt, rather than assuming the tool defaulted correctly.
+- **`WebFetch`'s summarization is unreliable on Cyrillic/font-encoding-broken PDFs and wikitext**
+  (produced both a false "no relevant content" and a fabricated-sounding claim on the same D-05
+  research session, 2026-07-24) — for any DSTU-related Cyrillic source, fetch raw text/wikitext
+  directly (`curl`) or render pages to PNG and read them; never trust a `WebFetch` prompt's answer
+  about one at face value. See `DECISIONS.md` D-05's 2026-07-24 revision for the concrete case.
+- **Excluding a dependency's own feature doesn't stop its transitive dependencies' *default*
+  features from turning on anyway** — confirmed via `cargo tree -e normal --features <feature>`,
+  not assumed, adding `argon2` (D-50): skipping `argon2`'s own `rand` feature didn't keep `rand_core`
+  out, because `argon2`'s manifest enables its `password-hash` dependency without
+  `default-features = false`, and `password-hash`'s own defaults include `rand_core`. Cargo feature
+  unification is additive-only — nothing in *this* project's `Cargo.toml` can suppress a transitive
+  default another dependency itself requested. Always verify with `cargo tree`, don't assume a
+  feature flag fully scopes what it looks like it scopes.
 - **Test-first, always.** Write the failing test before the implementation — a unit test, or for
   crypto code, a test-vector check (see dual-oracle verification above). Never write the
   implementation first and backfill tests afterward. This applies to every function, not just
