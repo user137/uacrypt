@@ -94,7 +94,11 @@ text (not among the PDFs in `../docs/papers/`). Do not resolve this from crypton
 before checking the primary source; this needs a citation, not an inference from a 2016
 third-party implementation. **Update 2026-07-22:** `uapki/` below independently exposes the same
 CCM/GMAC/GCM self-test structure for Kalyna — still not a resolution (see the caveats in that
-section), but a second data point for whichever direction D-05 is eventually settled.
+section), but a second data point for whichever direction D-05 is eventually settled. **Update
+2026-07-24: D-05 was resolved on assumption in exactly this direction** (Kalyna-alone, not
+Kalyna+Kupyna EtM) — corroborated further by Ukrainian Wikipedia's independently-sourced ten-mode
+table matching UAPKI's own self-test list mode-for-mode. Still not a primary-text reading; see
+`../DECISIONS.md` D-05's latest revision for the full picture.
 
 ## UAPKI (fork of Cryptonite, BSD-2-Clause, state-expertise pedigree)
 

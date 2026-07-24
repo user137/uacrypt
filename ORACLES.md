@@ -85,8 +85,9 @@ project funding changes rather than re-researched from scratch.
   encryption and decryption KEY/PLAINTEXT/CIPHERTEXT triples for all five variants.
 - **Secondary code oracle:** `oracles/kalyna-reference/` (Roman Oliynykov, same author) — same
   vectors re-derivable from `main.c`, verify-only, no license.
-- **Tertiary:** `oracles/cryptonite/` (BSD-2-Clause). Also the source of the still-open D-05
-  question (its native CCM/GCM `encrypt_mac` API on Kalyna alone).
+- **Tertiary:** `oracles/cryptonite/` (BSD-2-Clause). Also the original source of the D-05
+  question (its native CCM/GCM `encrypt_mac` API on Kalyna alone) — D-05 was later resolved on
+  assumption in this same direction, see below and `DECISIONS.md` D-05.
 - **Quaternary:** `oracles/bouncycastle-{java,dotnet}/` (MIT, actively maintained, audited) — good
   cross-check on modes and wrap behavior.
 - **Added 2026-07-22: `oracles/uapki/`** (fork of Cryptonite, state-expertise pedigree — see
@@ -98,8 +99,8 @@ project funding changes rather than re-researched from scratch.
   exactly. Same official vector set as `Kalyna.pdf` (not independent new data), but confirms UAPKI
   reproduces it correctly. **CBC/OFB/CFB/CTR/CMAC/XTS/KW/GMAC/GCM remain unchecked** — genuine new
   data, since no Rust mode-of-operation exists yet to check them against; GMAC/GCM specifically are
-  directly relevant to the still-open D-05 question, left for whenever those modes get built (see
-  `DECISIONS.md` D-16 update, `TASKS.md`).
+  directly relevant to D-05 (resolved on assumption 2026-07-24, still not primary-confirmed), left
+  for whenever those modes get built (see `DECISIONS.md` D-16 update, `TASKS.md`).
 - **CCM checked, 2026-07-23** (`DECISIONS.md` D-41, `hazmat::kalyna_ccm`, `TASKS.md` T-81) — a
   genuine dual-oracle case, not a same-vendor recheck: `dstu7624_ccm_self_test`'s 5 vectors and
   `bouncycastle-java`'s `DSTU7624Test.java` `CCMModeTests`'s 4 vectors were compared directly (not
@@ -120,6 +121,23 @@ project funding changes rather than re-researched from scratch.
   `pdftotext` (font-encoding issue with no ToUnicode CMap) and it carries no test vectors of its
   own — `Kalyna.pdf` remains the reference; this one is a secondary read if the pseudocode angle
   is ever needed, not transcribed here to avoid injecting OCR/extraction errors into a crypto spec.
+- **Checked 2026-07-24, ruled out for the D-05 mode-of-operation question**:
+  `docs/papers/Kalyna_construction_principles_ZI_2015.pdf` (Горбенко/Олійников/Казимиров et al.,
+  "Принципи побудови і основні властивості нового національного стандарту блокового шифрування
+  України", Захист інформації 17(2), 2015 — same author group as `Kalyna.pdf`) and
+  `docs/papers/Kalyna_vs_international_standards_2018.pdf` (Єфіменко/Байлюк/Покотило, 2018,
+  comparison against AES/RC4/3DES). Both read in full (rendered to PNG, same font-encoding gap as
+  `Dolgov_5-22.pdf` blocks `pdftotext`) — both are exclusively about the block cipher's internal
+  SPN structure (S-box/MDS-matrix design choices, speed comparisons), neither mentions modes of
+  operation or Kupyna combination anywhere. Kept in `docs/papers/` as legitimate secondary sources
+  for the cipher's design rationale, not for D-05.
+- **The actual D-05 mode-of-operation evidence found 2026-07-24**: Ukrainian Wikipedia's "Калина
+  (шифр)" article publishes a ten-mode table (ECB/CTR/CFB/CMAC/CBC/OFB/GCM+GMAC/CCM/XTS/KW, each
+  with its security service) that matches — mode-for-mode — this project's own
+  `oracles/uapki/`-derived note above (`dstu7624_self_test`'s ten-mode coverage), independently
+  arrived at from a different source. See `DECISIONS.md` D-05's 2026-07-24 revision for the full
+  table, the sourcing caveats, and why this was adopted as a working assumption rather than treated
+  as a primary-text reading.
 
 ### Kupyna (DSTU 7564)
 - **Pseudocode:** `docs/pseudocode/kupyna.md` — transcribed from the paper below, cross-checked

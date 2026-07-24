@@ -143,7 +143,9 @@ item they point to is later removed.
       this") stopped applying here specifically — see "Testing & hardening" below and `DECISIONS.md`
       D-32 for how it was actually run.
 - [ ] **T-16** `uacrypt` CLI: `encrypt`/`decrypt`/`hash` subcommands, mode/nonce/IV hardcoded (no
-      user-facing crypto knobs, per the libsodium-style misuse-resistance goal)
+      user-facing crypto knobs, per the libsodium-style misuse-resistance goal). Reserved names
+      gated on `crypto_secretbox` (T-37) existing first - D-05's 2026-07-24 resolution-on-assumption
+      (T-36) unblocks starting T-37, but T-16 itself still needs T-37 built, not just unblocked.
 - [ ] **T-17** Publish `dstu-core` to crates.io
 - [ ] **T-18** Prebuilt Windows/Linux binaries via GitHub Releases
 - [x] **T-19** **Naming subtask, all three decisions made 2026-07-23** (T-20/T-21/T-22 below) -
@@ -560,10 +562,20 @@ command names (`CLAUDE.md` MVP scope) are still reserved for whenever that resol
 
 ## Phase 2 — libsodium-equivalent construction layer, DSTU 4145 + 9041
 
-- [ ] **T-36** Resolve the D-05 open tension (Kalyna+Kupyna encrypt-then-MAC vs. cryptonite's
-      Kalyna-alone CCM/GCM `encrypt_mac`) — needs the official DSTU 7624 text or another
-      authoritative source (priced, see `ORACLES.md`); blocks `crypto_secretbox` design
-- [ ] **T-37** `crypto_secretbox` equivalent (encrypt-then-MAC construction, once D-05 is resolved)
+- [x] **T-36** **Adopted as a working assumption 2026-07-24, see `DECISIONS.md` D-05's latest
+      revision** — Kalyna-alone (CCM/GCM/KW, not Kalyna+Kupyna encrypt-then-MAC), on top of D-41's
+      UAPKI+Bouncy-Castle evidence: this project's own already-vendored `oracles/uapki/`
+      `dstu7624_self_test` ten-mode list and Ukrainian Wikipedia's independently-sourced ten-mode
+      table for "Калина (шифр)" agree mode-for-mode. **Still not primary-text-confirmed** — the
+      official DSTU 7624:2014 text remains priced/unpurchased (`ORACLES.md`); this is a decision to
+      build forward on assumption, not a claim the question is settled, and gets revised again if
+      the primary text ever contradicts it. Unblocks T-37/T-16/T-40 to *start* (design against a
+      working hypothesis instead of no hypothesis at all) — none of those are built yet, only the
+      blocker on starting them is resolved.
+- [ ] **T-37** `crypto_secretbox` equivalent — unblocked 2026-07-24 (see T-36/D-05), not started.
+      Per D-47: only the confidentiality+integrity modes (CCM - done, `hazmat::kalyna_ccm` - or GCM/
+      KW, neither built) are eligible; the standard's other modes (ECB/CTR/CFB/CBC/OFB/CMAC alone)
+      must never become this construction's public entry point.
 - [x] **T-38** **`crypto_auth`/`crypto_onetimeauth` equivalent - Kupyna-based KMAC, implemented
       2026-07-23** (`DECISIONS.md` D-44, first item from `docs/release-readiness.md`'s ordered
       plan). Provisional (primary DSTU 7564:2014 text not read - `docs/papers/Kupyna.pdf` names the
@@ -612,9 +624,16 @@ command names (`CLAUDE.md` MVP scope) are still reserved for whenever that resol
       +nightly miri test` hit the same pre-existing proptest+Miri isolation crash as every other
       `proptest`-using file in this workspace (T-81/T-85) - confirmed clean (no UB) with the same
       local workaround (`MIRIFLAGS=-Zmiri-disable-isolation PROPTEST_CASES=8`, ~174s).
-- [ ] **T-40** **Blocked on D-05, not merely unscheduled - re-scoped 2026-07-24** (skipped in the
-      T-38/39/40/48 working order, T-48 taken instead; `docs/release-readiness.md` updated to
-      match). Any *practical* `crypto_secretstream` needs per-chunk authenticated encryption over
+- [ ] **T-40** **D-05's blocker status changed 2026-07-24 (see T-36) - not unblocked in practice
+      yet, though.** D-05 is now Kalyna-alone (CCM/GCM/KW) as a working assumption, not fully open -
+      so the specific worry below (building this would silently resolve D-05 on the EtM side) no
+      longer applies verbatim. But `hazmat::kalyna_ccm`'s own 255-byte plaintext/AAD cap (D-41)
+      still makes it unusable for a realistic streaming chunk size as-is - a real `crypto_secretstream`
+      needs either a widened/chunked Kalyna-AEAD construction or GCM (not yet built, needs new
+      GF(2^128) arithmetic), not a straight reuse of the existing CCM module. Still not started;
+      the paragraph below (originally written when D-05 was fully open) is kept for the
+      "don't build an ad-hoc Strumok+KMAC EtM gap-fill" reasoning, which still holds regardless of
+      D-05's status - Kalyna-alone is the adopted answer, an EtM composition still isn't:
       an unbounded/large chunk size - and this project's only AEAD construction, `hazmat::
       kalyna_ccm`, caps plaintext/AAD at 255 bytes each (D-41's sourced limit), too small for a
       realistic streaming chunk. The natural-looking gap-fill (a fresh Strumok-encrypt +

@@ -4,7 +4,8 @@
 production-ready, and **not a claim of side-channel resistance**. Core primitives (Kalyna, Kupyna)
 are dual-oracle-verified against official test vectors; Strumok and the Kalyna-CCM mode are
 provisional (not yet confirmed against their primary standard text — see `DECISIONS.md` D-15/D-41).
-No file-level `encrypt`/`decrypt` command exists yet (blocked on D-05). See `SECURITY.md` for the
+No file-level `encrypt`/`decrypt` command exists yet (waiting on `crypto_secretbox` actually being
+built, not on D-05's status — see `DECISIONS.md` D-05). See `SECURITY.md` for the
 full threat model and hard constraints, and the Status paragraph below for what's actually done.
 
 An open Rust library for modern Ukrainian cryptographic standards (DSTU) — in the
@@ -153,8 +154,9 @@ change against the saved regression baseline.
 ## Using `uacrypt`
 
 The planned file-level `uacrypt encrypt`/`decrypt` (mode of operation over arbitrary-length
-files, see `CLAUDE.md` MVP scope) is not available yet — blocked on `DECISIONS.md` D-05 until a
-mode of operation is non-provisionally resolved. What exists today: `kalyna-block`, a single-block
+files, see `CLAUDE.md` MVP scope) is not available yet — `DECISIONS.md` D-05 was resolved on
+assumption (Kalyna-alone), so this now waits on the `crypto_secretbox` construction actually being
+built (`TASKS.md` T-37), not on D-05's status. What exists today: `kalyna-block`, a single-block
 (no mode, no padding), `hazmat`-scoped command added for a binary-level performance comparison
 (`PERFORMANCE.md`, `DECISIONS.md` D-31):
 
@@ -185,8 +187,8 @@ optional (an empty AAD is used if omitted); `decrypt` verifies the tag before wr
 fails without writing anything on a mismatch. See `DECISIONS.md` D-40 for why a random nonce is
 safe here (128 bits minimum across all five variants) and its per-key message-count guideline.
 
-Neither of these is the eventual file-plus-mode CLI; once that lands (D-05 resolved
-non-provisionally), it will use the reserved `encrypt`/`decrypt` command names directly. Prebuilt
+Neither of these is the eventual file-plus-mode CLI; once that lands (`crypto_secretbox` built), it
+will use the reserved `encrypt`/`decrypt` command names directly. Prebuilt
 binaries via GitHub Releases for Windows/Linux/macOS (see `CLAUDE.md` MVP scope) are still planned
 for that point, not this one.
 

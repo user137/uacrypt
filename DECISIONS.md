@@ -134,6 +134,85 @@ The official text was priced (2026-07-21) to check on this directly: 29,967.60 U
 "Official DSTU text — purchase cost". Deemed cost-prohibitive for now; this decision stays
 provisional until either the price becomes viable or another authoritative source turns up.
 
+**Adopted as the project's working assumption, 2026-07-24** (user's explicit direction: proceed on
+assumption now, correct later if the primary text says otherwise, never silently) — two
+independent, non-primary sources now corroborate Kalyna-alone as the standard's own official
+answer, not just reference-implementation agreement:
+
+- **Already-vendored, predates this session's research**: `ORACLES.md`'s own note (2026-07-22) that
+  `oracles/uapki/`'s `dstu7624_self_test` covers exactly ten named modes - `ECB/CBC/OFB/CFB/CTR/
+  CMAC/XTS/KW/CCM/GMAC/GCM` - as the standard's own mode set, GCM/GMAC counted as one combined
+  entry. This was sitting in this project's own tracking before today, unconnected to D-05 by name
+  until now.
+- **New 2026-07-24**: Ukrainian Wikipedia's "Калина (шифр)" article (raw wikitext fetched and read
+  directly, not trusted from a summarized fetch - see the false starts below) publishes a table of
+  **the same ten modes**, numbered 1-10, with each mode's official notation and the exact security
+  service it provides:
+
+  | # | Mode | Notation | Security service |
+  |---|---|---|---|
+  | 1 | Проста заміна (базове перетворення) | ECB | Confidentiality only |
+  | 2 | Гамування | CTR | Confidentiality only |
+  | 3 | Гамування зі зворотним зв'язком за шифротекстом | CFB | Confidentiality only |
+  | 4 | Вироблення імітовставки | CMAC | Integrity only |
+  | 5 | Зчеплення шифроблоків | CBC | Confidentiality only |
+  | 6 | Гамування зі зворотним зв'язком за шифрогамою | OFB | Confidentiality only |
+  | 7 | Вибіркове гамування із прискореним виробленням імітовставки | GCM, GMAC | **Confidentiality + integrity (GCM)**, integrity only (GMAC) |
+  | 8 | Вироблення імітовставки і гамування | **CCM** | **Confidentiality + integrity** |
+  | 9 | Індексована заміна | XTS | Confidentiality only |
+  | 10 | Захист ключових даних | KW | **Confidentiality + integrity** |
+
+  The article's own mode-notation format - `«Калина-I/k-позначення режиму-параметри режиму»`,
+  worked example `«Калина-256/512-ССМ-32,128»` (256-bit block, 512-bit key, CCM, message length
+  bound 2^32 bytes, 128-bit tag) - matches `hazmat::kalyna_ccm`'s own parameterization almost
+  exactly, independently arrived at. Kupyna is mentioned in the article only in an unrelated
+  context (mandatory alongside Kalyna for DSTU 4145-2002 signature hashing since 2022, per a
+  Ministry of Digital Transformation order - nothing to do with encryption modes). **This is still
+  a secondary source, not the primary text** - the table carries no inline citation to a specific
+  standard clause - but its ten-mode count matches Oliynykov's own paper's already-cited "ten modes
+  of operation" figure, and its detail (exact notation grammar, an amendment number matching
+  `ORACLES.md`'s own pricing-page record) is difficult to explain as anything other than a
+  transcription by someone who read the real standard.
+- **Two other candidate papers by the standard's own authors (Горбенко/Олійников/Казимиров et al.)
+  were fetched and read this session specifically looking for mode-of-operation detail, and ruled
+  out** - recorded so this research isn't repeated: `docs/papers/
+  Kalyna_construction_principles_ZI_2015.pdf` ("Принципи побудови і основні властивості нового
+  національного стандарту блокового шифрування України", Захист інформації 17(2), 2015) and
+  `docs/papers/Kalyna_vs_international_standards_2018.pdf` (Єфіменко/Байлюк/Покотило, 2018) are
+  both exclusively about the block cipher's internal SPN structure (S-box/MDS-matrix choice, speed
+  vs. AES/GOST/"Кузнечик") - confirmed by reading every page's content (rendered to PNG and read
+  directly, `pdftotext` fails on both from the same font-encoding gap as `Dolgov_5-22.pdf`), neither
+  mentions modes of operation or Kupyna combination at all. `docs/papers/Dolgov_5-22.pdf` (already
+  in this repo, re-checked) is the same - cipher internals only, its own `ВИСНОВКИ` section says so
+  explicitly.
+- **False starts, worth recording so they aren't repeated**: a first-pass web search's own
+  synthesized summary claimed DSTU 7624:2014 "can be used together with DSTU 7564 [Kupyna]... with
+  different encryption and authentication keys required" - the opposite conclusion from the one
+  adopted above. Traced to no actual quotable source (not in either paper above, not in the
+  Wikipedia article); it was a search-engine aggregation artifact, not a real citation, and was
+  discarded once the raw Wikipedia wikitext was fetched and read directly instead of trusting a
+  summarized fetch. Two separate `WebFetch` summaries of Cyrillic PDFs this session also produced
+  unreliable or hedged non-answers on a font-encoding-broken document (same known gap as
+  `Dolgov_5-22.pdf`) - the pattern going forward is: **always fetch raw text/wikitext or render to
+  image and read directly for Cyrillic sources; never trust a `WebFetch` summarization prompt's
+  answer about one at face value**, since the underlying small model handles broken Cyrillic
+  extraction unreliably and has produced both false positives and false negatives this session.
+
+**Only the AEAD-shaped modes are ever candidates for a public entry point, per D-47.** Of the ten,
+only CCM (#8, already `hazmat::kalyna_ccm`), GCM (#7, not yet implemented - needs new GF(2^128)
+field arithmetic this crate doesn't have, see the original kalyna_ccm planning note), and KW (#10,
+not yet implemented) provide both confidentiality and integrity. ECB/CTR/CFB/CBC/OFB
+(confidentiality-only) and bare CMAC (integrity-only) are real, standard-defined modes but **must
+never be wired up as a public `crypto_secretbox`/`uacrypt encrypt`-`decrypt` entry point on their
+own** - D-47's "expose only safe modes of operation, never an unsafe/legacy one as a public entry
+point" rule applies literally here, now with a concrete list of which of the standard's own ten
+modes count as which.
+
+**Still not primary-text-confirmed.** This paragraph is an explicit, user-directed decision to
+proceed on assumption, not a claim that the question is closed - if the priced primary text (or
+another authoritative source) is ever acquired and contradicts any of the above, this entry gets
+revised again, the same way it was revised on 2026-07-23 and again here, never silently.
+
 ## D-06: Reference/oracle repositories are for test-vector comparison only
 
 Kalyna-reference, cryptonite, outspace/dstu8845 are consulted only to cross-verify test vectors,

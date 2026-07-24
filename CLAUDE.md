@@ -59,9 +59,12 @@ environment. The workspace has two crates:
   No longer a placeholder: `kalyna-block encrypt/decrypt`, `kupyna-digest`, and `strumok-crypt`
   subcommands exist (`DECISIONS.md` D-31), used for binary-level performance comparisons
   (`PERFORMANCE.md`); as of 2026-07-23, `kalyna-ccm encrypt/decrypt` also exists (`DECISIONS.md`
-  D-41) — still deliberately not the reserved top-level `encrypt`/`decrypt` names, since D-05's
-  primary-text confirmation (not just a provisional mode) is what unblocks those, per the
-  file-plus-mode-of-operation CLI the MVP scope below describes.
+  D-41) — still deliberately not the reserved top-level `encrypt`/`decrypt` names: D-05 was
+  resolved on assumption 2026-07-24 (Kalyna-alone, corroborated by two independent non-primary
+  sources - `oracles/uapki`'s own ten-mode list and Ukrainian Wikipedia's matching mode table, see
+  `DECISIONS.md` D-05's latest revision), but those reserved names still wait on `crypto_secretbox`
+  (T-37) actually being built, not merely on D-05's status, per the file-plus-mode-of-operation CLI
+  the MVP scope below describes.
 
 `cargo xtask <command>` (see `xtask/`, aliased via `.cargo/config.toml`) is the one cross-platform
 build/QA entry point — same command on Linux/Windows/macOS, no new install beyond `cargo` itself.

@@ -109,8 +109,10 @@ a missing API wrapper):**
 
 - `crypto_secretbox` (symmetric AEAD) → **provisionally** Kalyna-alone CCM
   (`hazmat::kalyna_ccm`, `DECISIONS.md` D-41), not the encrypt-then-MAC
-  construction originally described here — still blocked from being wired up
-  as `crypto_secretbox` itself pending D-05's primary-text confirmation. The
+  construction originally described here — **D-05 adopted this direction as a
+  working assumption 2026-07-24** (still not primary-text-confirmed, see
+  `DECISIONS.md` D-05's latest revision), so wiring `hazmat::kalyna_ccm` up as
+  `crypto_secretbox` (T-37) can now start; it just hasn't been built yet. The
   original encrypt-then-MAC framing (Kalyna in an encryption mode + a
   separate Kupyna-based MAC, different keys) remains a live alternative if
   the primary text ends up requiring it; not chosen over CCM for any reason
@@ -174,7 +176,7 @@ Module-by-module status (libsodium name → `dstu_core` module → status):
 | `hazmat::kalyna_ccm` (mode of operation, not directly libsodium-mapped) | `hazmat::kalyna_ccm` (all 5 variants) | **Implemented, provisional** — Kalyna-alone CCM, dual-oracle-verified (UAPKI + Bouncy Castle vectors), not confirmed against the primary DSTU 7624:2014 text. See D-41 in `DECISIONS.md`. Sourced 255-byte plaintext/AAD limit; nonce-generation strategy still undecided (D-40, `TASKS.md` T-82). |
 | `crypto_sign` | `hazmat::dstu4145` + `dstu_core::crypto_sign` | **Implemented (m=163 curve only)** — `hazmat` has `GF(2^163)` field arithmetic, point add/double, constant-time scalar multiplication, and `sign`/`verify`, all verified against the official standard's own Annex B.1 worked example plus a `proptest` round-trip (`TASKS.md` T-41/T-43/T-44, `DECISIONS.md` D-25). The high-level `crypto_sign` wrapper (T-48, done 2026-07-24, `DECISIONS.md` D-46) now exists too — `SigningKey`/`VerifyingKey`/`Signature`, deterministic (not caller-random) nonce derivation via Kupyna-KMAC. The other 9 named curve sizes aren't wired up. |
 | `crypto_box` | `hazmat::dstu9041` | Hard-blocked — zero source material exists for DSTU 9041 (see `ORACLES.md`); cannot start. |
-| `crypto_secretbox` | *(future construction over `hazmat::kalyna_ccm`, provisionally — see D-05/D-41)* | Blocked on D-05 (the Kalyna-alone CCM/GCM vs. Kalyna+Kupyna encrypt-then-MAC tension) — `hazmat::kalyna_ccm` exists as a standalone provisional primitive, but wiring it up as `crypto_secretbox` itself still needs the official DSTU 7624 text or another authoritative source before D-05 is non-provisionally resolved. |
+| `crypto_secretbox` | *(future construction over `hazmat::kalyna_ccm`, provisionally — see D-05/D-41)* | Unblocked to start 2026-07-24 (D-05 adopted Kalyna-alone on assumption, T-36) — `hazmat::kalyna_ccm` exists as a standalone provisional primitive; wiring it up as `crypto_secretbox` (T-37) is no longer blocked on D-05's status, just not built yet. Still not primary-text-confirmed. |
 | `crypto_auth`/`crypto_onetimeauth` | `hazmat::kupyna_kmac` (`Kupyna256Kmac`/`Kupyna384Kmac`/`Kupyna512Kmac`) | **Implemented, provisional** — Kupyna-based KMAC, both UAPKI's and Bouncy Castle's constructions read and cross-checked byte-for-byte on all three sizes, not confirmed against the primary DSTU 7564:2014 text. See D-44 in `DECISIONS.md`. |
 | `crypto_kdf` | `hazmat::kupyna_kdf` (`Kupyna256Kdf`/`Kupyna384Kdf`/`Kupyna512Kdf`) | **Implemented** — modeled after libsodium's `crypto_kdf_derive_from_key` shape over `hazmat::kupyna_kmac`, not full RFC 5869 HKDF. No DSTU standard or reference implementation exists for this construction, so unlike the rest of this table's "provisional" rows, there is no oracle vector at all, ever — see D-45 in `DECISIONS.md`. |
 | `crypto_kx` | *(future construction over `hazmat::dstu4145`/`dstu9041`)* | Needs both curve implementations to exist; DSTU 9041 side is hard-blocked. |
