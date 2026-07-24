@@ -1,0 +1,13 @@
+{
+  "algorithm": "Kalyna-KW-128/128",
+  "block_bits": 128,
+  "key_bits": 128,
+  "source": "oracles/uapki/library/uapkic/src/dstu7624.c dstu7624_kw_self_test (case 0, programmatically extracted). Block-aligned plaintext (16 bytes, exactly 1 block) - only uapki's no-padding branch is in scope for hazmat::kalyna_kw (DECISIONS.md D-55); the non-aligned/padding branch is deliberately out of scope. Shared-lineage corroboration, not independent dual-oracle: this ciphertext matches oracles/bouncycastle-java's DSTU7624Test.java KeyWrapTests test 1's expectedWrappedText byte-for-byte, but Bouncy Castle .NET's DSTU7624WrapEngine is a structural port of the Java one (see D-55), not a second independent implementation.",
+  "cases": [
+    {
+      "key_hex": "000102030405060708090A0B0C0D0E0F",
+      "plaintext_hex": "101112131415161718191A1B1C1D1E1F",
+      "ciphertext_hex": "1DC91DC6E52575F6DBED25ADDA95A1B6AD3E15056E489738972C199FB9EE2913"
+    }
+  ]
+}

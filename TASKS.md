@@ -1236,10 +1236,19 @@ needed) — non-negotiable per D-53, not optional per mode.
       tests, all green first attempt including the padding-branch vector. `cargo test
       --workspace --all-features`/`clippy -D warnings`/`fmt --check` clean (one `doc_markdown` fix);
       bare `no_std` build re-confirmed.
-- [ ] **T-94** KW (#10) — Stage C, not started. Strongest oracle of all 10 modes — full independent
-      BC construction source in both Java (`DSTU7624WrapEngine.java`) and .NET
-      (`Dstu7624WrapEngine.cs`), not just vectors. Read both alongside uapki's C before transcribing,
-      per `CLAUDE.md`'s "porting logic means porting its calling convention too" lesson.
+- [x] **T-94** KW (#10) — Stage C, done. `hazmat::kalyna_kw` (`DECISIONS.md` D-55): half-block
+      Feistel-like network, read from uapki's C and both BC ports (correcting this task's original
+      "strongest oracle of all 10" framing — BC's .NET port is a structural port of its Java one,
+      one lineage not two, caught via `advisor()`). Found and resolved a real round-counter-width
+      fork (uapki: 1-byte tweak; BC: 4-byte LE) by hard-bounding input (`r <= 20`) so the fork is
+      unreachable rather than picking a side without primary-text proof. Scope-cut to block-aligned
+      input only (matches BC's own restriction, sidesteps a real latent fragility in uapki's
+      non-aligned-branch length recovery — full 5-variant KAT coverage preserved). Added a checksum
+      verification on `unwrap` that uapki's C omits but both BC ports have (`ChecksumMismatch`).
+      In-place API on caller buffers, fixed-size stack arrays, no `alloc`. 16 tests, all green first
+      attempt including every official vector. `cargo test --workspace --all-features`/`clippy -D
+      warnings`/`fmt --check` clean (two doc-comment fixes); bare `no_std` build re-confirmed.
+      Non-aligned KW input remains explicitly out of scope — a distinct future task if ever needed.
 - [ ] **T-95** GCM/GMAC (#7) — Stage D, not started, the one real investment in this roadmap. Needs
       new GF(2^m) field arithmetic at **three** field sizes (m=128/256/512, one per Kalyna block
       size — not one fixed GF(2^128) the way AES-GCM's GHASH is). First task: read

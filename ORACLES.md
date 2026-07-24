@@ -115,6 +115,18 @@ project funding changes rather than re-researched from scratch.
   vendored sparse checkout of `oracles/bouncycastle-java` (only the test file importing them is) —
   the cross-check above is against BC's vector *outputs* only, not a second reading of BC's
   construction code, weaker than "read both implementations."
+- **KW checked 2026-07-24** (`DECISIONS.md` D-55, `hazmat::kalyna_kw`, `TASKS.md` T-94) — read
+  `DSTU7624WrapEngine.java` and `Dstu7624WrapEngine.cs` in full, not just their test vectors.
+  **Correction to this file's own earlier "quaternary ... good cross-check" framing above**: the
+  .NET port is a structural port of the Java one (identical method shapes, matching commented-out
+  debug lines carried across) — one construction lineage, not two independent readings, for KW
+  specifically (and likely for the base engine too, though that wasn't re-audited here). This
+  reading also surfaced a real fork uapki's C doesn't share with either BC port (round-counter tweak
+  width: uapki XORs 1 byte, BC XORs 4 little-endian bytes) — provably unobservable in every existing
+  vector (`v <= 255` in all cases) and resolved in the Rust port by hard-bounding input so the fork
+  can never be reached, not by picking a side. See D-55 for the full account, including a second,
+  independent finding (a latent length-recovery fragility in uapki's own non-block-aligned KW
+  branch) that led to a deliberate scope-cut, not just an oracle-strength correction.
 - Supplementary, not authoritative: `docs/papers/Dolgov_5-22.pdf` contains a C-like pseudocode
   description of Kalyna (`Kalyna_Cipher`, `Kalyna_InvCipher`, `Kalyna_S_boxes`,
   `Kalyna_KeyExpansion_Ksigma`), but its surrounding Ukrainian prose doesn't extract cleanly via

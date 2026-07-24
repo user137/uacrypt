@@ -3055,7 +3055,95 @@ Misuse warning states this module provides no key separation from any encryption
 future `crypto_auth` wrapper, matching `kupyna_kmac`'s own framing - no such wrapper exists yet for
 either MAC.
 
-**Stage B done.** Remaining: Stage C (KW, T-94, the strongest oracle of all 10 modes - full
-independent Bouncy Castle construction source in both Java and .NET), Stage D (GCM/GMAC, T-95),
-Stage E (XTS, T-96). Public `crypto_secretbox` surface unchanged - CMAC isn't AEAD-shaped, so it was
-never a candidate for a public entry point (D-05/D-47).
+**Stage B done.** Remaining: Stage C (KW, T-94), Stage D (GCM/GMAC, T-95), Stage E (XTS, T-96).
+Public `crypto_secretbox` surface unchanged - CMAC isn't AEAD-shaped, so it was never a candidate
+for a public entry point (D-05/D-47). *(2026-07-24 correction: this entry originally called KW "the
+strongest oracle of all 10 modes - full independent Bouncy Castle construction source in both Java
+and .NET." D-55 found that framing overstated - Bouncy Castle's .NET port is a structural port of
+its Java one, not an independent second reading, so it's one lineage, not two. See D-55.)*
+
+## D-55: `hazmat::kalyna_kw` (T-94, Stage C) - block-aligned input only, added checksum check, round-counter fork bounded out rather than resolved
+
+DSTU 7624:2014 mode #10 (key wrap), a half-block Feistel-like network over an accumulator `B` and a
+shifting queue of the remaining half-blocks plus one appended all-zero "checksum" block. Cited to
+`oracles/uapki/library/uapkic/src/dstu7624.c`'s `encrypt_kw` (lines 3672-3755), `decrypt_kw` (lines
+3812-3884), `dstu7624_init_kw` (lines 3955-3969), cross-read against
+`oracles/bouncycastle-java/.../engines/DSTU7624WrapEngine.java` and
+`oracles/bouncycastle-dotnet/.../engines/Dstu7624WrapEngine.cs` (both read in full, per this
+roadmap's original instruction not to transcribe KW from a single source).
+
+**Correction to this roadmap's original framing** (`DECISIONS.md` D-53, `TASKS.md` T-94's original
+note): KW was scoped as "the strongest oracle of all 10 modes - full independent Bouncy Castle
+construction source in both Java and .NET." Reading both files line-by-line found this overstated:
+BC's .NET `Dstu7624WrapEngine.cs` is a structural port of the Java `DSTU7624WrapEngine.java` (same
+method shapes, even matching commented-out debug `Console.WriteLine` lines carried across from the
+Java `System.out`-equivalent). This is **one construction lineage (BC) vs. one (uapki)**, not
+2-vs-1 - caught by `advisor()` mid-research, not assumed. Corrected in D-54's closing paragraph too.
+
+**A real fork, not just a framing correction.** uapki's C XORs only the low byte of the round
+counter into the tweak position (`size_t i` implicitly truncated by assignment into a `uint8_t`
+slot); both BC ports XOR a full 4-byte little-endian encoding (`Pack.UInt32_To_LE`/
+`intToBytes`). Provably identical whenever the largest round counter used, `v`, is `<= 255` (the
+LE encoding's upper 3 bytes are zero in that range, so XORing them is a no-op either way) -
+genuinely unresolved above that, since no DSTU 7624:2014 primary text exists in this repo (227
+pages, paid, not purchased - `ORACLES.md`) to break the tie, and the two implementations are one
+lineage as established above. All 9 official uapki KATs have `v <= 54` (confirmed by a small
+extraction/analysis script), so they cannot and do not disambiguate.
+
+**Resolved by making the fork unreachable, not by picking a side** (advisor's recommendation,
+adopted): implement the 4-byte little-endian tweak, and hard-bound input so `v` can never exceed
+255 - `v = 12r + 6 <= 255 ⟹ r <= 20` (`r` = number of `block_len`-sized chunks of plaintext),
+independent of block size. `wrap`/`unwrap` return `KwError::InvalidLength` above that bound rather
+than emit ciphertext from an unverified-construction region. `r <= 20` is generous for key-wrapping's
+actual purpose (up to 320/640/1280 bytes of key material depending on block size) - D-47 tie-breaker
+#2 (libsodium's hard-bound-over-flexibility posture) once no primary text settles it.
+
+**Second deviation: scope-cut to block-aligned input only, not uapki's padding branch.** uapki's
+non-aligned branch appends a little-endian bit-length field plus `0x80`-style padding, then
+`decrypt_kw` recovers the original length by scanning backward for the last nonzero byte through
+the appended checksum block. Hand-traced this: it depends on the real plaintext's own last byte
+being nonzero to land correctly - a plaintext legitimately ending in `0x00` could make this
+heuristic over-consume into real data. All 9 KATs happen to avoid triggering this (confirmed by the
+self-test's own round-trip check passing), so it's a **real, latent fragility in uapki's C itself**,
+not a transcription risk here - but porting it faithfully would import that fragility. Both BC ports
+sidestep this entirely (`wrap`/`Wrap` throw on non-aligned input, no KW padding scheme of their own
+at all). Adopted BC's restriction instead, for three reasons: matches `hazmat::kalyna_cbc`/
+`kalyna_cfb`'s already-established "no padding of its own" convention used everywhere else in this
+crate's mode set; avoids inheriting an identified correctness fragility; and the 5 block-aligned
+KATs already give full 5-variant coverage (one aligned vector per Kalyna128_128/128_256/256_256/
+256_512/512_512), so nothing is lost per-variant by cutting the padding branch. The 4 non-aligned
+KATs are explicitly out of scope, not silently dropped - a distinct future task if arbitrary-length
+KW input is ever needed, not assumed to be "coming later automatically."
+
+**Third deviation: added the checksum verification uapki's C omits.** `decrypt_kw` never checks the
+recovered trailing block is actually all-zero; it returns whatever bytes result. Both BC ports
+explicitly compare it against zero and throw on mismatch - KW's only tamper-evidence mechanism.
+Added this check (`subtle::ConstantTimeEq`, `SECURITY.md`'s constant-time-comparison rule - the
+checksum block is a function of secret key material through the whole Feistel network) - a
+deliberate, cited safety addition via D-47 tie-breaker #2, not an omission being silently carried
+over.
+
+**API**: in-place on caller-supplied buffers (`wrap`/`unwrap` write into a caller-provided `out`
+slice), fixed-size stack arrays bounded by `MAX_R = 20` (`[[u8; half_bytes]; 41]` at most) - no
+`Vec`/`alloc`, matching `hazmat::kalyna_ccm`'s no-heap-allocation precedent (the only other
+multi-block-buffer hazmat module in this crate). `KwError { InvalidLength, ChecksumMismatch }`.
+
+**Oracle coverage**: 5 uapki KATs (one per Kalyna variant, all block-aligned, programmatically
+extracted), with the `Kalyna128_128` case additionally matching BC Java's `KeyWrapTests` `test 1`
+`expectedWrappedText` byte-for-byte - real corroboration for the tested range, framed honestly as
+shared-lineage agreement, not independent dual-oracle. `proptest` round-trip (`wrap` then `unwrap`
+recovers the original plaintext) across all 5 variants and `r` in `1..=20`. 16 tests total, **all
+green on the first attempt** including every official vector (wrap and unwrap) - the careful
+cross-source structural verification during planning (advisor consult, hand-tracing both directions
+against all three sources before writing any code) paid off directly here, unlike CFB's/CTR's
+mid-implementation catches. `cargo test --workspace --all-features` clean; `clippy -D warnings`
+needed two doc-comment fixes (unbalanced backticks in a doc comment mixing inline code and a link,
+an accidental markdown list item from a line starting with `- `, both citation-inert formatting
+issues); `fmt --check` clean; bare `no_std` build re-confirmed (no `alloc` needed, per the
+fixed-size-buffer design above).
+
+**Stage C done.** Remaining: Stage D (GCM/GMAC, T-95, the one real new-primitive investment - GF(2^m)
+field arithmetic at three field sizes), Stage E (XTS, T-96, sequenced after D). Public
+`crypto_secretbox` surface unchanged - KW is AEAD-*shaped* in the D-05/D-47 sense (confidentiality +
+integrity) so it remains a theoretical future candidate, same standing as GCM, but nothing in this
+task changes that - still deferred, no decision made here.
