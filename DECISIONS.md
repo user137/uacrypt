@@ -114,9 +114,9 @@ revision, not a silent overwrite, per `CLAUDE.md`'s "never silently deprecate" r
   `hazmat::kalyna_ccm` is built and documented as provisional (same posture as Strumok/D-15), and
   this entry will be revised again (not silently) if the primary text says otherwise.
 - **Scope note**: `hazmat::kalyna_ccm` (D-41) is a standalone hazmat-level primitive users can call
-  directly. It is not, by itself, the `crypto_secretbox`/`crypto_auth` construction (`TASKS.md`
-  T-36/T-37) - those remain blocked on this same D-05 resolution, now with a working hypothesis to
-  build against instead of no hypothesis at all.
+  directly. It is not, by itself, the `crypto_secretbox` construction - that's
+  `dstu_core::crypto_secretbox` (`TASKS.md` T-37, `DECISIONS.md` D-51, built 2026-07-24 against this
+  entry's working hypothesis), inheriting the same provisional status as `hazmat::kalyna_ccm` itself.
 
 **Original text (2026-07-21), superseded above but kept for the record:** Symmetric AEAD was
 decided as Kalyna in a stream-like mode (CTR/OFB-style) for confidentiality, plus an independent
@@ -2653,3 +2653,96 @@ anywhere in this crate today, same reasoning D-48 applied to deferring a `Crypto
 recorded here as a documented gap, not silently dropped, should a real consumer appear. No
 `uacrypt` CLI subcommand either (T-71 scoped this to the core crate only, matching `crypto_sign`'s
 own precedent of landing without CLI wiring first).
+
+## D-51: `crypto_secretbox` (T-37) implemented - single fixed Kalyna-CCM variant, internal nonce, combined wire format, no AAD
+
+Plan reviewed with the advisor before implementation, 2026-07-24. What got built:
+`dstu_core::crypto_secretbox::{seal, open, SecretKey, SecretboxError, MAX_MESSAGE_LEN}`
+(`src/crypto_secretbox.rs`) - a high-level, misuse-resistant wrapper over the already-provisional
+`hazmat::kalyna_ccm` (D-41), the first construction actually built against D-05's Kalyna-alone
+working assumption (T-36).
+
+**Four forks resolved here, none with a settling DSTU citation, so D-47's tie-breaker rule
+governs all of them**:
+
+1. **Single fixed construction, not all five Kalyna-CCM variants.** Considered exposing all five
+   `hazmat::kalyna_ccm` variants the way `hazmat` itself does, by analogy with
+   `crypto_pwhash::Strength`'s small enum of safe presets - rejected. `Strength` is a genuine
+   per-context cost/security tradeoff the caller must actually make (interactive vs. offline
+   attack budget); the Kalyna-CCM variant is not that kind of choice, it's exactly the knob D-47
+   criterion 2 says to delete when one safe default exists (same reasoning `crypto_sign` already
+   applied by exposing only the one m=163 curve, D-46). `Kalyna256_256Ccm` chosen as the sole
+   construction: 256-bit key, and the widest nonce available at that key size (32 bytes) among the
+   five variants, for the best random-nonce collision margin.
+2. **Nonce generated internally, never caller-supplied.** Extends `uacrypt kalyna-ccm encrypt`'s
+   own CLI-layer behavior (D-40/T-82) down into the library itself, via
+   `crate::randombytes::randombytes_buf` - there is nothing left for a `crypto_secretbox` caller to
+   accidentally reuse across two `seal` calls under the same key, matching D-47 criterion 2's "hard
+   defaults" bar more directly than libsodium's own C API does (libsodium's `crypto_secretbox_easy`
+   still takes the nonce as a caller-supplied parameter).
+3. **Combined `nonce (32) || ciphertext || tag (16)` wire format**, one `Vec<u8>` in, one `Vec<u8>`
+   out - the ciphertext+tag half matches libsodium's own `crypto_secretbox_easy` combined-output
+   ergonomics (as opposed to its detached-tag sibling). The nonce is embedded too, which
+   `crypto_secretbox_easy` itself does not do (libsodium keeps the nonce as a separate
+   caller-managed parameter even in its combined form) - a deliberate step further, matching this
+   task's decision 2 above (nonce is never caller-supplied at all), not an exact parallel to cite as
+   "the same as libsodium." `hazmat::kalyna_ccm` itself stays detached-tag (`seal_in_place`/
+   `open_in_place`, hazmat callers manage buffers explicitly) - `crypto_secretbox` is the layer that
+   picks one concrete framing.
+4. **No AAD parameter exposed.** libsodium's own `crypto_secretbox` has no associated-data
+   parameter at all (that's `crypto_aead`'s job); `hazmat::kalyna_ccm` does take AAD, but exposing
+   it here would silently turn this module into a different primitive than its name promises.
+   Empty AAD (`&[]`) is passed to `kalyna_ccm` internally, unconditionally. A `crypto_aead` wrapper
+   exposing AAD is a possible separate future task, not folded into this one.
+
+**Not a general-purpose secretbox - stated prominently in the module doc, not buried in an error
+path**: inherits `hazmat::kalyna_ccm`'s 255-byte plaintext/AAD cap (D-41 - `ccm_padd`'s header
+encodes both lengths as a single byte, a real construction limit). `seal` returns
+`Err(SecretboxError::MessageTooLong)` on oversized input, never truncates;
+`docs/release-readiness.md` already scoped `crypto_secretbox`'s CCM-backed build to exactly this
+"<255-byte case." `crypto_secretstream` (`TASKS.md` T-40) remains the tracked follow-up for
+arbitrary-length messages - a widened/chunked AEAD or GCM, neither built yet.
+
+**`open` rejects truncated input before slicing** - anything shorter than 48 bytes (nonce + tag)
+returns `Err(SecretboxError::Truncated)` immediately rather than panicking on attacker-controlled
+short input, the advisor's flagged fuzz-relevant property (no dedicated fuzz target added this
+pass - `hazmat::kalyna_ccm`'s own target already covers the primitive underneath; a
+`crypto_secretbox`-specific target is a natural but not required follow-up).
+
+**Key type**: `SecretKey([u8; 32])`, hand-written `Drop` calling `.zeroize()` - the same pattern
+`crypto_sign::SigningKey` already uses (not `#[derive(ZeroizeOnDrop)]`), for consistency across the
+high-level layer. `SecretKey::generate()` added (libsodium's `crypto_secretbox_keygen`
+equivalent) so "how do I make a key" is never a caller decision either.
+
+**Gating**: `#[cfg(feature = "std")] pub mod crypto_secretbox;`, folded into the existing `std`
+feature rather than given its own dedicated feature the way `pwhash` was (D-50) - no new
+dependency is introduced (reuses `zeroize`/`randombytes`, already direct dependencies), unlike
+`pwhash`'s comparatively heavy `argon2`/`password-hash`/`blake2`/`base64ct` pull. Confirmed via
+`cargo tree -p dstu-core --no-default-features -e normal`: `getrandom` (and therefore
+`crypto_secretbox`) is genuinely absent from the bare `no_std` dependency graph.
+
+**Verification - no external oracle exists for this specific framing** (own construction over an
+already-oracle-verified primitive, same posture as `crypto_kdf`/`crypto_sign`): test-first, 12
+tests in `tests/crypto_secretbox.rs`, all green on the first attempt after fixing one derive
+error (`SecretboxError` initially derived `Clone, Copy, PartialEq, Eq`; `RandomError`, the wrapped
+`getrandom::Error` type, implements none of those - dropped to a plain `#[derive(Debug)]`,
+matching `PwHashError`'s own precedent). Covers: `proptest` round trip (0..=255 bytes), a
+byte-layout pin against a direct `hazmat::kalyna_ccm::Kalyna256_256Ccm` call using the nonce `seal`
+actually drew (confirms the wire format is exactly what the module doc promises, not just "round
+trips"), fresh-nonce-per-call, four tamper-rejection cases (nonce/ciphertext/tag/wrong-key),
+oversized-plaintext rejection, zero-length and max-length (255-byte) edge cases, and
+truncated-input rejection at four short lengths. Full workspace `cargo test --workspace
+--all-features` green (no regressions), `cargo clippy --workspace --all-features -- -D warnings`/
+`cargo fmt --all -- --check` clean, all four `no_std`/`alloc`/`std`/`small-tables`-independent
+build combinations re-confirmed (`crypto_secretbox` correctly absent everywhere `std` isn't
+enabled). `cargo +nightly miri test -p dstu-core --test crypto_secretbox` clean (no UB, ~146s,
+including the `proptest` suite - no isolation-crash workaround needed beyond the standard
+`MIRIFLAGS=-Zmiri-disable-isolation` already used elsewhere, since `PROPTEST_CASES=8` kept this
+particular suite's per-case cost low, unlike `dstu4145_sign_verify_roundtrip`'s ladder-heavy cases,
+T-45/T-85).
+
+**Still provisional, unchanged by this task**: inherits `hazmat::kalyna_ccm`'s own
+not-yet-primary-text-confirmed status (D-41) - this module does not add or remove evidence toward
+that question, it only wraps the primitive that already carries it. `TASKS.md` T-16 (`uacrypt`'s
+reserved `encrypt`/`decrypt` commands) is now unblocked to *start* (its stated gate was
+`crypto_secretbox` existing, not D-05's status) - not built as part of this task.

@@ -11,8 +11,11 @@
 //! `CLAUDE.md`'s citation discipline). See `DECISIONS.md` D-05 (revised) and D-41 for the full
 //! citation and the reasoning for choosing this construction over encrypt-then-MAC.
 //!
-//! This module is a standalone hazmat-level primitive, not the eventual `crypto_secretbox`
-//! (`TASKS.md` T-36/T-37, still blocked on D-05's primary-text confirmation).
+//! This module is a standalone hazmat-level primitive, not `crypto_secretbox` itself - see
+//! `dstu_core::crypto_secretbox` (`TASKS.md` T-37, `DECISIONS.md` D-51) for the high-level wrapper
+//! built on top of it (a single fixed variant, `Kalyna256_256Ccm`, with an internally-generated
+//! nonce and a combined output format) - both still inherit this module's own not-primary-text-
+//! confirmed status.
 //!
 //! # Hard length limit - sourced, not chosen
 //!

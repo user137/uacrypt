@@ -4,6 +4,8 @@
 
 #[cfg(feature = "pwhash")]
 pub mod crypto_pwhash;
+#[cfg(feature = "std")]
+pub mod crypto_secretbox;
 pub mod crypto_sign;
 pub mod hazmat;
 #[cfg(feature = "std")]

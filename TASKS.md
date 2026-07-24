@@ -143,9 +143,10 @@ item they point to is later removed.
       this") stopped applying here specifically — see "Testing & hardening" below and `DECISIONS.md`
       D-32 for how it was actually run.
 - [ ] **T-16** `uacrypt` CLI: `encrypt`/`decrypt`/`hash` subcommands, mode/nonce/IV hardcoded (no
-      user-facing crypto knobs, per the libsodium-style misuse-resistance goal). Reserved names
-      gated on `crypto_secretbox` (T-37) existing first - D-05's 2026-07-24 resolution-on-assumption
-      (T-36) unblocks starting T-37, but T-16 itself still needs T-37 built, not just unblocked.
+      user-facing crypto knobs, per the libsodium-style misuse-resistance goal). Reserved names were
+      gated on `crypto_secretbox` (T-37) existing first — **that gate cleared 2026-07-24, T-37 is
+      now done (`DECISIONS.md` D-51)** — T-16 itself is unblocked to start but still not built; the
+      CLI wiring is separate work, not a byproduct of T-37 landing.
 - [ ] **T-17** Publish `dstu-core` to crates.io
 - [ ] **T-18** Prebuilt Windows/Linux binaries via GitHub Releases
 - [x] **T-19** **Naming subtask, all three decisions made 2026-07-23** (T-20/T-21/T-22 below) -
@@ -204,6 +205,13 @@ item they point to is later removed.
       D-47's rule, and fixed two claims that had gone stale since T-48 landed (the doc incorrectly
       still said "no `crypto_sign` wrapper exists yet" and that `docs/dstu-crypto-project.md`'s own
       mapping table was out of date on that point - it wasn't).
+      **Refreshed again, same day, after T-37 landed (`DECISIONS.md` D-51)**: a `crypto_secretbox`
+      equivalent now exists, so "there is no `crypto_secretbox`-equivalent AEAD yet" above is stale
+      - but the headline finding itself is otherwise unchanged, not weakened: what got built is
+      still provisional (inherits `hazmat::kalyna_ccm`'s not-primary-text-confirmed status, D-41)
+      and bounded to <=255-byte messages (T-40's `crypto_secretstream` remains open for the general
+      case) - a release still cannot honestly claim "current, safe modes" on top of it. See
+      `docs/release-readiness.md` for the updated breakdown.
 - [ ] **T-23** Re-confirm the `no_std` build still passes (all feature-flag combinations) as each
       primitive lands — don't let this regress silently. Ongoing by design, not a one-time item —
       **last re-checked 2026-07-22** (post D-28/29/30/31): all four `dstu-core` feature
@@ -572,10 +580,31 @@ command names (`CLAUDE.md` MVP scope) are still reserved for whenever that resol
       the primary text ever contradicts it. Unblocks T-37/T-16/T-40 to *start* (design against a
       working hypothesis instead of no hypothesis at all) — none of those are built yet, only the
       blocker on starting them is resolved.
-- [ ] **T-37** `crypto_secretbox` equivalent — unblocked 2026-07-24 (see T-36/D-05), not started.
-      Per D-47: only the confidentiality+integrity modes (CCM - done, `hazmat::kalyna_ccm` - or GCM/
-      KW, neither built) are eligible; the standard's other modes (ECB/CTR/CFB/CBC/OFB/CMAC alone)
-      must never become this construction's public entry point.
+- [x] **T-37** **Done 2026-07-24, see `DECISIONS.md` D-51** — `dstu_core::crypto_secretbox::{seal,
+      open, SecretKey, SecretboxError, MAX_MESSAGE_LEN}`, plan reviewed with the advisor first. A
+      single fixed construction (`hazmat::kalyna_ccm::Kalyna256_256Ccm` — 256-bit key, widest nonce
+      at that key size), never all five variants (D-47's "delete the knob" criterion, not
+      `crypto_pwhash::Strength`'s "genuine tradeoff" shape); nonce generated internally via
+      `randombytes_buf`, never caller-supplied; combined `nonce(32) || ciphertext || tag(16)`
+      output; no AAD parameter (libsodium's own `crypto_secretbox` has none either — that's
+      `crypto_aead`'s job, not folded in here). **Still bounded to ≤255-byte messages** — inherits
+      `hazmat::kalyna_ccm`'s sourced cap (D-41); `seal` errors (`SecretboxError::MessageTooLong`),
+      never truncates; this is the headline caveat, stated first in the module doc, not an
+      afterthought. `open` rejects input shorter than 48 bytes before slicing (no panic on
+      attacker-controlled truncated input). `SecretKey::generate()` added (libsodium's
+      `crypto_secretbox_keygen` equivalent). Test-first, 12 tests in `tests/crypto_secretbox.rs`,
+      all green after one derive fix (`SecretboxError` can't derive `Clone`/`Copy`/`PartialEq`/`Eq`
+      since it wraps `RandomError`, which implements none of those — dropped to plain `Debug`,
+      matching `PwHashError`'s precedent) — round-trip `proptest`, a byte-layout pin against a
+      direct `hazmat::kalyna_ccm` call, fresh-nonce-per-call, 4-way tamper rejection, oversized/
+      zero/max-length edges, truncated-input rejection. `cargo test --workspace --all-features`/
+      `clippy -D warnings`/`fmt --check` all clean; all four `no_std`/`alloc`/`std`/`small-tables`-
+      independent combinations re-confirmed, `crypto_secretbox` (folded into `std`, no dedicated
+      feature — no new dependency) correctly absent everywhere `std` isn't enabled, confirmed via
+      `cargo tree -e normal`. `cargo +nightly miri test` clean, ~146s, no UB. Still inherits
+      `hazmat::kalyna_ccm`'s not-yet-primary-text-confirmed status (D-41) unchanged. **Unblocks
+      T-16 to start** (its stated gate was `crypto_secretbox` existing, not D-05's status) — T-16
+      itself not built.
 - [x] **T-38** **`crypto_auth`/`crypto_onetimeauth` equivalent - Kupyna-based KMAC, implemented
       2026-07-23** (`DECISIONS.md` D-44, first item from `docs/release-readiness.md`'s ordered
       plan). Provisional (primary DSTU 7564:2014 text not read - `docs/papers/Kupyna.pdf` names the
@@ -656,6 +685,11 @@ command names (`CLAUDE.md` MVP scope) are still reserved for whenever that resol
       possible, if impractical, way to build *something* here without taking a new D-05 stance -
       not chosen either, just not ruled out. See `TASKS.md` T-70 (the same task under the
       high-level-layer numbering) and `docs/release-readiness.md`.
+      **Correction, same day, after T-37 landed (`DECISIONS.md` D-51)**: the line above saying
+      "T-36/T-37 ... are explicitly blocked on D-05" is now stale - T-37 is done. T-40 remains
+      blocked regardless, but on the reason already given earlier in this same entry
+      (`hazmat::kalyna_ccm`'s 255-byte cap, not D-05's status) - unchanged by T-37 landing, since
+      T-37 itself only wraps that same capped primitive rather than widening it.
 - [x] **T-41** DSTU 4145: official standard text obtained (`docs/papers/DSTU_4145-2002.pdf`, 2026-07-22) —
       its Annex B.1 (GF(2^163), polynomial basis) worked example extracted into
       `crates/dstu-core/tests/vectors/dstu4145/gf2m163.json` and independently cross-checked
@@ -850,7 +884,9 @@ Two-layer split (`hazmat` now, high-level "easy" layer later) decided in `DECISI
 - [ ] **T-64** `hazmat::dstu9041` — hard-blocked, zero source material (see `ORACLES.md`)
 - [ ] **T-65** high-level "easy" layer (name TBD) — not started; nothing needs it yet (no keyed/nonce-based
       primitive is implemented before Strumok or `crypto_secretbox`, both currently blocked)
-- [ ] **T-66** `crypto_secretbox` construction (over `hazmat::kalyna` + `hazmat::kupyna`) — blocked on D-05
+- [x] **T-66** **Done, see T-37/`DECISIONS.md` D-51** (`hazmat::kalyna_ccm`-based, not
+      `hazmat::kupyna` — D-05 was resolved toward Kalyna-alone, not the encrypt-then-MAC framing
+      this entry's own text originally described). Same duplicate-numbering note as T-67/T-68.
 - [x] **T-67** `crypto_auth`/`crypto_onetimeauth` construction (over `hazmat::kupyna`) — **done, see
       T-38/`DECISIONS.md` D-44** (`hazmat::kupyna_kmac`). This entry predates T-38's numbering
       (both track the same work); not renumbered per the "IDs are never reused/renumbered" rule.

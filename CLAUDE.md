@@ -52,7 +52,16 @@ environment. The workspace has two crates:
   `TASKS.md` T-71, `DECISIONS.md` D-49/D-50) wraps the vetted `argon2` crate behind a new dedicated
   `pwhash` feature (off by default, not folded into `std`) — the deliberately non-DSTU
   `crypto_pwhash` component, with `Strength::{Interactive,Moderate,Sensitive}` citing libsodium's
-  own `OPSLIMIT`/`MEMLIMIT_*` constants exactly, no raw cost-parameter knob exposed.
+  own `OPSLIMIT`/`MEMLIMIT_*` constants exactly, no raw cost-parameter knob exposed. Same day,
+  `dstu_core::crypto_secretbox` (`seal`/`open`/`SecretKey`, `TASKS.md` T-37, `DECISIONS.md` D-51) is
+  the first `crypto_secretbox` equivalent — a single fixed `hazmat::kalyna_ccm::Kalyna256_256Ccm`
+  construction (D-47's "delete the knob" criterion, not all five variants), internally-generated
+  nonce, combined `nonce||ciphertext||tag` output, deliberately no AAD parameter. **Still bounded to
+  ≤255-byte messages** (inherits `hazmat::kalyna_ccm`'s D-41 cap — errors rather than truncating)
+  and still provisional pending the primary DSTU 7624:2014 text (unchanged by this task) —
+  `crypto_secretstream` (T-40) remains open for the arbitrary-length case. Folded into the existing
+  `std` feature, not a new dedicated one, since no new dependency is introduced. Unblocks `TASKS.md`
+  T-16 (`uacrypt`'s reserved `encrypt`/`decrypt` commands) to start; T-16 itself not built yet.
 - `crates/uacrypt` — the CLI binary, renamed 2026-07-23 from its `dstutool` working name
   (`DECISIONS.md` D-36; older `DECISIONS.md`/`TASKS.md`/`PERFORMANCE.md` entries predating the
   rename still say `dstutool`, left as-is since they're a historical record, not stale docs).
@@ -62,9 +71,10 @@ environment. The workspace has two crates:
   D-41) — still deliberately not the reserved top-level `encrypt`/`decrypt` names: D-05 was
   resolved on assumption 2026-07-24 (Kalyna-alone, corroborated by two independent non-primary
   sources - `oracles/uapki`'s own ten-mode list and Ukrainian Wikipedia's matching mode table, see
-  `DECISIONS.md` D-05's latest revision), but those reserved names still wait on `crypto_secretbox`
-  (T-37) actually being built, not merely on D-05's status, per the file-plus-mode-of-operation CLI
-  the MVP scope below describes.
+  `DECISIONS.md` D-05's latest revision), and those reserved names' other gate,
+  `dstu_core::crypto_secretbox` actually being built (T-37), cleared the same day too (`DECISIONS.md`
+  D-51) — `uacrypt`'s own `encrypt`/`decrypt` commands (`TASKS.md` T-16) are unblocked to start but
+  still not built, per the file-plus-mode-of-operation CLI the MVP scope below describes.
 
 `cargo xtask <command>` (see `xtask/`, aliased via `.cargo/config.toml`) is the one cross-platform
 build/QA entry point — same command on Linux/Windows/macOS, no new install beyond `cargo` itself.

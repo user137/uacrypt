@@ -155,10 +155,11 @@ change against the saved regression baseline.
 
 The planned file-level `uacrypt encrypt`/`decrypt` (mode of operation over arbitrary-length
 files, see `CLAUDE.md` MVP scope) is not available yet — `DECISIONS.md` D-05 was resolved on
-assumption (Kalyna-alone), so this now waits on the `crypto_secretbox` construction actually being
-built (`TASKS.md` T-37), not on D-05's status. What exists today: `kalyna-block`, a single-block
-(no mode, no padding), `hazmat`-scoped command added for a binary-level performance comparison
-(`PERFORMANCE.md`, `DECISIONS.md` D-31):
+assumption (Kalyna-alone), and the `crypto_secretbox` construction it waited on is now built too
+(`TASKS.md` T-37, `DECISIONS.md` D-51, itself bounded to ≤255-byte messages) — `uacrypt`'s own
+`encrypt`/`decrypt` commands are unblocked to start but still not built. What exists today:
+`kalyna-block`, a single-block (no mode, no padding), `hazmat`-scoped command added for a
+binary-level performance comparison (`PERFORMANCE.md`, `DECISIONS.md` D-31):
 
 ```
 cargo build -p uacrypt --release
