@@ -4,12 +4,12 @@
 //! `uacrypt`'s testable logic - `main.rs` is a thin wrapper that calls [`run`] and maps the
 //! result to a process exit code.
 //!
-//! **`kalyna-block` is deliberately not named `encrypt`/`decrypt`** - those names are reserved for
-//! the future file-plus-mode-of-operation CLI (`CLAUDE.md` MVP scope: `uacrypt encrypt --key ...
-//! --in file --out file`), which is blocked on `DECISIONS.md` D-05 (no mode of operation exists
-//! yet - official DSTU 7624 text or another authoritative source needed first). This command only
-//! does what `hazmat::kalyna` actually supports: exactly one block, no mode, no padding - so it
-//! can't be mistaken for that future command.
+//! **`kalyna-block` is deliberately not named `encrypt`/`decrypt`** - those names are the real
+//! top-level commands now (`TASKS.md` T-16, `DECISIONS.md` D-52), built over
+//! `dstu_core::crypto_secretbox` (T-37, D-51). This command only does what `hazmat::kalyna` actually
+//! supports: exactly one block, no mode, no padding - so it can't be mistaken for `encrypt`/
+//! `decrypt`, which handle a whole file (up to `crypto_secretbox`'s own 255-byte cap - see
+//! [`run_secretbox_command`]'s doc comment).
 //!
 //! The `--iterations`/`--raw-schedule` flags exist for the binary-vs-binary performance comparison
 //! in `PERFORMANCE.md` (`TASKS.md`, D-28/29/30 follow-up) - with `iterations <= 1` this is just a
@@ -49,6 +49,9 @@ pub enum CliError {
     AadTooLong,
     CcmVerifyFailed,
     Random(String),
+    MessageTooLong,
+    Truncated,
+    SecretboxVerifyFailed,
 }
 
 impl fmt::Display for CliError {
@@ -82,6 +85,20 @@ impl fmt::Display for CliError {
                 write!(f, "kalyna-ccm: authentication failed - ciphertext, tag, AAD, nonce, or key do not match")
             }
             CliError::Random(message) => write!(f, "failed to generate a random nonce: {message}"),
+            CliError::MessageTooLong => write!(
+                f,
+                "input exceeds encrypt/decrypt's 255-byte limit (dstu_core::crypto_secretbox is \
+                 built on a Kalyna-CCM construction with a sourced 255-byte cap, DECISIONS.md \
+                 D-41/D-51 - larger files need TASKS.md T-40's crypto_secretstream, not built yet)"
+            ),
+            CliError::Truncated => write!(
+                f,
+                "--in is too short to be valid encrypt output (missing nonce and/or tag)"
+            ),
+            CliError::SecretboxVerifyFailed => write!(
+                f,
+                "decrypt: authentication failed - --in, --key, or the file itself do not match"
+            ),
         }
     }
 }
@@ -92,6 +109,18 @@ impl From<dstu_core::hazmat::kalyna_ccm::CcmError> for CliError {
             dstu_core::hazmat::kalyna_ccm::CcmError::PlaintextTooLong => Self::PlaintextTooLong,
             dstu_core::hazmat::kalyna_ccm::CcmError::AadTooLong => Self::AadTooLong,
             dstu_core::hazmat::kalyna_ccm::CcmError::TagMismatch => Self::CcmVerifyFailed,
+        }
+    }
+}
+
+impl From<dstu_core::crypto_secretbox::SecretboxError> for CliError {
+    fn from(err: dstu_core::crypto_secretbox::SecretboxError) -> Self {
+        use dstu_core::crypto_secretbox::SecretboxError;
+        match err {
+            SecretboxError::MessageTooLong => Self::MessageTooLong,
+            SecretboxError::Truncated => Self::Truncated,
+            SecretboxError::TagMismatch => Self::SecretboxVerifyFailed,
+            SecretboxError::Random(e) => Self::Random(e.to_string()),
         }
     }
 }
@@ -533,6 +562,98 @@ pub fn run_ccm_command(decrypt: bool, args: &CcmArgs) -> Result<(), CliError> {
             message: e.to_string(),
         })?;
     }
+
+    Ok(())
+}
+
+const SECRETBOX_KEY_LEN: usize = 32;
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct SecretboxArgs {
+    pub key_path: PathBuf,
+    pub in_path: PathBuf,
+    pub out_path: PathBuf,
+}
+
+/// Parses `encrypt`/`decrypt`'s flags (`--key`/`--in`/`--out`, all required). No `--nonce`/`--tag`/
+/// `--aad`/`--variant` - `dstu_core::crypto_secretbox` (D-51) already removed every one of those
+/// knobs: a single fixed construction, an internally-generated nonce, no AAD, and one combined
+/// output blob, so there is nothing left here for a CLI flag to expose.
+///
+/// # Errors
+///
+/// Returns [`CliError::MissingFlag`] or [`CliError::UnknownFlag`].
+pub fn parse_secretbox_args(args: &[String]) -> Result<SecretboxArgs, CliError> {
+    let mut key_path = None;
+    let mut in_path = None;
+    let mut out_path = None;
+
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--key" => {
+                key_path = Some(PathBuf::from(
+                    args.get(i + 1).ok_or(CliError::MissingFlag("key"))?,
+                ));
+                i += 2;
+            }
+            "--in" => {
+                in_path = Some(PathBuf::from(
+                    args.get(i + 1).ok_or(CliError::MissingFlag("in"))?,
+                ));
+                i += 2;
+            }
+            "--out" => {
+                out_path = Some(PathBuf::from(
+                    args.get(i + 1).ok_or(CliError::MissingFlag("out"))?,
+                ));
+                i += 2;
+            }
+            other => return Err(CliError::UnknownFlag(other.to_string())),
+        }
+    }
+
+    Ok(SecretboxArgs {
+        key_path: key_path.ok_or(CliError::MissingFlag("key"))?,
+        in_path: in_path.ok_or(CliError::MissingFlag("in"))?,
+        out_path: out_path.ok_or(CliError::MissingFlag("out"))?,
+    })
+}
+
+/// Runs `encrypt`/`decrypt` over `dstu_core::crypto_secretbox` (D-51). `--in` is read whole, not
+/// streamed - the construction itself caps messages at
+/// [`dstu_core::crypto_secretbox::MAX_MESSAGE_LEN`] (255) bytes, so there is no large-file case to
+/// stream for (same reasoning `kalyna-ccm` already uses). On `encrypt`, `--out` receives `seal`'s
+/// combined `nonce || ciphertext || tag` blob directly - a fresh nonce is drawn internally on every
+/// call, never caller-supplied. On `decrypt`, `--out` is only written if authentication succeeds.
+///
+/// # Errors
+///
+/// Returns [`CliError::WrongLength`] if `--key` isn't exactly 32 bytes, [`CliError::MessageTooLong`]
+/// if `--in` exceeds the 255-byte limit, [`CliError::Truncated`] if `--in` (on `decrypt`) is too
+/// short to contain a nonce and tag, [`CliError::SecretboxVerifyFailed`] if decryption fails to
+/// authenticate, or [`CliError::Io`] for file read/write failures.
+pub fn run_secretbox_command(decrypt: bool, args: &SecretboxArgs) -> Result<(), CliError> {
+    let key_bytes = read_exact_file(&args.key_path, "key", SECRETBOX_KEY_LEN)?;
+    let mut key_arr = [0u8; SECRETBOX_KEY_LEN];
+    key_arr.copy_from_slice(&key_bytes);
+    let key = dstu_core::crypto_secretbox::SecretKey::from_bytes(key_arr);
+
+    let input = std::fs::read(&args.in_path).map_err(|e| CliError::Io {
+        path: args.in_path.clone(),
+        message: e.to_string(),
+    })?;
+
+    let output = if decrypt {
+        dstu_core::crypto_secretbox::open(&key, &input)?
+    } else {
+        dstu_core::crypto_secretbox::seal(&key, &input)?
+    };
+
+    std::fs::write(&args.out_path, &output).map_err(|e| CliError::Io {
+        path: args.out_path.clone(),
+        message: e.to_string(),
+    })?;
 
     Ok(())
 }
@@ -1057,6 +1178,8 @@ pub fn run(args: &[String]) -> Result<(), CliError> {
         Some("kupyna-digest") => run_digest_command(&parse_digest_args(&args[1..])?),
         Some("strumok-crypt") => run_strumok_command(&parse_strumok_args(&args[1..])?),
         Some("hash") => run_hash_command(&parse_hash_args(&args[1..])?),
+        Some("encrypt") => run_secretbox_command(false, &parse_secretbox_args(&args[1..])?),
+        Some("decrypt") => run_secretbox_command(true, &parse_secretbox_args(&args[1..])?),
         Some(other) => Err(CliError::UnknownCommand(other.to_string())),
         None => Err(CliError::UnknownCommand(String::new())),
     }
@@ -1564,6 +1687,209 @@ mod tests {
         let result = run_ccm_command(true, &decrypt_args);
         assert_eq!(result, Err(CliError::CcmVerifyFailed));
         assert!(!dir.file("pt.bin").exists());
+    }
+
+    #[test]
+    fn parse_secretbox_args_happy_path() {
+        let args = vec![
+            "--key".to_string(),
+            "key.bin".to_string(),
+            "--in".to_string(),
+            "msg.bin".to_string(),
+            "--out".to_string(),
+            "sealed.bin".to_string(),
+        ];
+        assert_eq!(
+            parse_secretbox_args(&args),
+            Ok(SecretboxArgs {
+                key_path: PathBuf::from("key.bin"),
+                in_path: PathBuf::from("msg.bin"),
+                out_path: PathBuf::from("sealed.bin"),
+            })
+        );
+    }
+
+    #[test]
+    fn parse_secretbox_args_requires_key_in_out() {
+        assert_eq!(
+            parse_secretbox_args(&["--in".to_string(), "m".to_string()]),
+            Err(CliError::MissingFlag("key"))
+        );
+        assert_eq!(
+            parse_secretbox_args(&["--key".to_string(), "k".to_string()]),
+            Err(CliError::MissingFlag("in"))
+        );
+        assert_eq!(
+            parse_secretbox_args(&[
+                "--key".to_string(),
+                "k".to_string(),
+                "--in".to_string(),
+                "m".to_string(),
+            ]),
+            Err(CliError::MissingFlag("out"))
+        );
+    }
+
+    #[test]
+    fn parse_secretbox_args_rejects_unknown_flag() {
+        assert_eq!(
+            parse_secretbox_args(&["--nonce".to_string(), "n.bin".to_string()]),
+            Err(CliError::UnknownFlag("--nonce".to_string()))
+        );
+    }
+
+    #[test]
+    fn run_secretbox_command_round_trip_matches_dstu_core_directly() {
+        let dir = TempDir::new("secretbox_roundtrip");
+        let key_bytes = [0x22u8; 32];
+        let plaintext = b"short message".to_vec();
+        std::fs::write(dir.file("key.bin"), key_bytes).expect("write key");
+        std::fs::write(dir.file("in.bin"), &plaintext).expect("write input");
+
+        let encrypt_args = SecretboxArgs {
+            key_path: dir.file("key.bin"),
+            in_path: dir.file("in.bin"),
+            out_path: dir.file("sealed.bin"),
+        };
+        run_secretbox_command(false, &encrypt_args).expect("encrypt should succeed");
+
+        let sealed = std::fs::read(dir.file("sealed.bin")).expect("read sealed output");
+        let key = dstu_core::crypto_secretbox::SecretKey::from_bytes(key_bytes);
+        let opened_directly =
+            dstu_core::crypto_secretbox::open(&key, &sealed).expect("direct open should succeed");
+        assert_eq!(opened_directly, plaintext);
+
+        let decrypt_args = SecretboxArgs {
+            in_path: dir.file("sealed.bin"),
+            out_path: dir.file("pt.bin"),
+            ..encrypt_args
+        };
+        run_secretbox_command(true, &decrypt_args).expect("decrypt should succeed");
+        assert_eq!(std::fs::read(dir.file("pt.bin")).expect("read"), plaintext);
+    }
+
+    #[test]
+    fn run_secretbox_command_encrypt_generates_a_fresh_nonce_each_call() {
+        let dir = TempDir::new("secretbox_fresh_nonce");
+        let key = [0x44u8; 32];
+        let plaintext = b"same input twice".to_vec();
+        std::fs::write(dir.file("key.bin"), key).expect("write key");
+        std::fs::write(dir.file("in.bin"), &plaintext).expect("write input");
+
+        let base_args = SecretboxArgs {
+            key_path: dir.file("key.bin"),
+            in_path: dir.file("in.bin"),
+            out_path: dir.file("sealed1.bin"),
+        };
+        run_secretbox_command(false, &base_args).expect("first encrypt should succeed");
+
+        let second_args = SecretboxArgs {
+            out_path: dir.file("sealed2.bin"),
+            ..base_args
+        };
+        run_secretbox_command(false, &second_args).expect("second encrypt should succeed");
+
+        let sealed1 = std::fs::read(dir.file("sealed1.bin")).expect("read sealed1");
+        let sealed2 = std::fs::read(dir.file("sealed2.bin")).expect("read sealed2");
+        assert_ne!(
+            &sealed1[..32],
+            &sealed2[..32],
+            "two encrypt calls with the same key/plaintext must not reuse a nonce"
+        );
+    }
+
+    #[test]
+    fn run_secretbox_command_decrypt_rejects_tampered_ciphertext_without_writing_out() {
+        let dir = TempDir::new("secretbox_tamper");
+        let key = [0x66u8; 32];
+        let plaintext = b"do not trust me".to_vec();
+        std::fs::write(dir.file("key.bin"), key).expect("write key");
+        std::fs::write(dir.file("in.bin"), &plaintext).expect("write input");
+
+        let encrypt_args = SecretboxArgs {
+            key_path: dir.file("key.bin"),
+            in_path: dir.file("in.bin"),
+            out_path: dir.file("sealed.bin"),
+        };
+        run_secretbox_command(false, &encrypt_args).expect("encrypt should succeed");
+
+        let mut tampered = std::fs::read(dir.file("sealed.bin")).expect("read sealed");
+        let last = tampered.len() - 1;
+        tampered[last] ^= 0x01;
+        std::fs::write(dir.file("sealed.bin"), &tampered).expect("write tampered output");
+
+        let decrypt_args = SecretboxArgs {
+            in_path: dir.file("sealed.bin"),
+            out_path: dir.file("pt.bin"),
+            ..encrypt_args
+        };
+        let result = run_secretbox_command(true, &decrypt_args);
+        assert_eq!(result, Err(CliError::SecretboxVerifyFailed));
+        assert!(!dir.file("pt.bin").exists());
+    }
+
+    #[test]
+    fn run_secretbox_command_oversized_plaintext_is_rejected() {
+        let dir = TempDir::new("secretbox_too_long");
+        let key = [0x77u8; 32];
+        let too_long = vec![0u8; dstu_core::crypto_secretbox::MAX_MESSAGE_LEN + 1];
+        std::fs::write(dir.file("key.bin"), key).expect("write key");
+        std::fs::write(dir.file("in.bin"), &too_long).expect("write input");
+
+        let args = SecretboxArgs {
+            key_path: dir.file("key.bin"),
+            in_path: dir.file("in.bin"),
+            out_path: dir.file("sealed.bin"),
+        };
+        let result = run_secretbox_command(false, &args);
+        assert_eq!(result, Err(CliError::MessageTooLong));
+        assert!(!dir.file("sealed.bin").exists());
+    }
+
+    #[test]
+    fn run_dispatches_encrypt_and_decrypt_correctly() {
+        let dir = TempDir::new("secretbox_dispatch");
+        let key = [0x88u8; 32];
+        std::fs::write(dir.file("key.bin"), key).expect("write key");
+        std::fs::write(dir.file("in.bin"), b"dispatch me").expect("write input");
+
+        let key_str = dir
+            .file("key.bin")
+            .to_str()
+            .expect("valid utf-8 path")
+            .to_string();
+        let encrypt_args: Vec<String> = [
+            "encrypt",
+            "--key",
+            key_str.as_str(),
+            "--in",
+            dir.file("in.bin").to_str().expect("valid utf-8 path"),
+            "--out",
+            dir.file("sealed.bin").to_str().expect("valid utf-8 path"),
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect();
+        run(&encrypt_args).expect("encrypt dispatch should succeed");
+
+        let decrypt_args: Vec<String> = [
+            "decrypt",
+            "--key",
+            key_str.as_str(),
+            "--in",
+            dir.file("sealed.bin").to_str().expect("valid utf-8 path"),
+            "--out",
+            dir.file("pt.bin").to_str().expect("valid utf-8 path"),
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect();
+        run(&decrypt_args).expect("decrypt dispatch should succeed");
+
+        assert_eq!(
+            std::fs::read(dir.file("pt.bin")).expect("read"),
+            b"dispatch me"
+        );
     }
 
     #[test]
