@@ -302,6 +302,17 @@ Full detail and rationale in `SECURITY.md` — this is the compressed version so
   nightly (miri, fuzz) must say `cargo +nightly ...` explicitly, same as `xtask` already does
   locally — confirmed missing in `.github/workflows/rust.yml` for a full day after both jobs were
   first wired up (T-85), since `xtask`'s own local runs never hit it.
+- **CI's `cargo miri test` job has never once passed** (checked via `gh run view`, not assumed
+  from a green badge) — it times out at 30 min on the slow DSTU-4145 proptest suite (T-45/T-85's
+  diagnosed cause) on every push since the toolchain fix landed. Several `DECISIONS.md` entries
+  defer an incomplete *local* Miri run to "CI as the authoritative check" (e.g. D-46) — that
+  backstop has never actually fired. Verify a CI job's real conclusion before citing it as
+  passing; see `TASKS.md` T-100 for the fix direction (scope the job away from that suite).
+- **uapki's C test-vector struct literals use adjacent string-literal concatenation across
+  `\`-continued lines** — a naive "grab every quoted string in file order" extractor desyncs the
+  field count (bit OFB, D-53; guarded against for every mode since). Parse brace-delimited case
+  blocks and concatenate adjacent string tokens per field — don't flatten the whole file's quoted
+  strings into one list.
 - **Bumping a workspace crate's version means updating it in (at least) two places**: the crate's
   own `[package] version`, and any other workspace crate's path-dependency `version =` field
   pointing at it (`uacrypt`'s `dstu-core = { path = ..., version = "..." }`). Missing the second
