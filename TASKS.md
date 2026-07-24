@@ -1380,3 +1380,31 @@ GMAC work above) — process/documentation gaps, not code-correctness bugs
       Miri entirely (property-tested outside Miri is still real coverage) or give it its own
       long-running, non-blocking job. Not: raising `timeout-minutes` further — already ruled out by
       the comment above and by T-85's own text.
+- [ ] **T-101** **`hazmat::kalyna_cfb`'s multi-call panic is a closed doc note, not an open design
+      question — it should be one.** Found alongside T-100 in the same `advisor()` audit: T-91/D-53
+      already record a real, reachable out-of-bounds slice index in `encrypt_in_place`/
+      `decrypt_in_place` when a caller's call boundaries don't respect the `q`-byte-multiple
+      constraint (found by `proptest`, not the fixed vectors — see T-91's own entry above for the
+      full trace). That was resolved by narrowing the proptest's contract and stating the
+      constraint loudly in the module doc — and T-91 was then marked done. **Nothing in `TASKS.md`
+      currently tracks whether that's the right resolution.** `SECURITY.md`'s threat model states
+      explicitly: "Attacker who can supply malformed/adversarial input... must not panic, must not
+      read out of bounds." A `hazmat` API that panics on a caller-permitted call pattern (the type
+      system does not prevent a non-`q`-aligned intermediate call) is arguably still in tension with
+      that line, even with the risk documented — a documented panic is not the same as an absent
+      one, and `hazmat`'s whole framing ("no safety rails, caller manages state explicitly") doesn't
+      obviously extend to "caller must avoid a specific undocumented-until-you-read-the-source input
+      shape or get a panic." Open question, not a pre-decided answer: should `encrypt_in_place`/
+      `decrypt_in_place` instead return `Result<(), CfbError>` (a new, checked
+      `NonAlignedIntermediateCall` variant or similar) on a call that would hit the unsupported
+      boundary, matching the "no primitive without a checked error path for malformed input" posture
+      `kalyna_ecb`/`kalyna_cbc`/`kalyna_kw`/`kalyna_gcm`/`kalyna_gmac` all already have for their own
+      length-validation cases (`InvalidLength`, etc.) — or is a documented panic acceptable here
+      specifically because `hazmat`'s contract is "read the docs before calling," a real distinction
+      from a public-facing `crypto_*`/`uacrypt` surface where SECURITY.md's "must not panic" line
+      unambiguously applies? **Sharpened by T-98/T-100**: this is also the one module with zero fuzz
+      coverage and (per T-100) no completed CI Miri run — so today, nothing would actually catch a
+      regression in either direction if this specific input shape's behavior changed. Needs a
+      decision (put to the project owner, matching this project's own "real security-posture forks
+      get decided explicitly, not silently" precedent — D-46/T-40's re-scoping questions are the
+      model to follow), not just a fix picked unilaterally.
