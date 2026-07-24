@@ -37,6 +37,16 @@ or (b) shipping 1.0 with the provisional status stated as loudly in the public A
 already is internally — a scope/marketing decision, not an engineering one, and one the project
 owner should make explicitly rather than have it default one way silently.
 
+**Note on `DECISIONS.md` D-47 (added 2026-07-24) and D-05**: D-47's tie-breaker rule (TLS 1.3
+lessons + libsodium API shape + safe-modes-only, for forks with no settling DSTU citation) is
+retroactively the same reasoning D-05's Kalyna-CCM working hypothesis already used — it doesn't
+newly resolve D-05, and D-47 says so explicitly ("a real spec citation always outranks this rule").
+It means the project now has a *named, reusable* fallback for option (b) above, rather than an ad
+hoc one — useful if the primary text is never acquired and the owner decides to ship 1.0 on the
+working-hypothesis basis instead of waiting indefinitely. It does not change the headline finding:
+D-05 is still formally open, and that choice (wait vs. ship-as-provisional) is still the owner's to
+make, not something this rule makes automatically.
+
 ## What's actually done (the solid part)
 
 Three primitives are implemented and confirmed against official test vectors, each with an
@@ -45,19 +55,21 @@ independent second-oracle cross-check (Bouncy Castle, Java and .NET):
 | Algorithm | Standard | Status |
 |---|---|---|
 | Kalyna | DSTU 7624:2014 | All 5 block/key-size variants, single-block encrypt/decrypt, `ExpandedKey` API. Vector-confirmed + dual-oracle. **Mode of operation**: only the provisional CCM above — no CBC/CFB/OFB/CTR/CMAC/XTS/GMAC from the standard's other ~10 modes are implemented (`TASKS.md` T-10's note: UAPKI's self-tests for those exist as unused KAT data). |
-| Kupyna | DSTU 7564:2014 | Both 256/512 variants, one-shot `digest()` and streaming `Hasher`. Vector-confirmed + dual-oracle. KMAC (`crypto_auth` equivalent) now implemented too — `hazmat::kupyna_kmac`, dual-oracle with both constructions read (`TASKS.md` T-38, `DECISIONS.md` D-44), same provisional-pending-primary-text caveat. |
+| Kupyna | DSTU 7564:2014 | Both 256/512 variants, one-shot `digest()` and streaming `Hasher`. Vector-confirmed + dual-oracle. KMAC (`crypto_auth` equivalent) now implemented too — `hazmat::kupyna_kmac`, dual-oracle with both constructions read (`TASKS.md` T-38, `DECISIONS.md` D-44), same provisional-pending-primary-text caveat. KDF (`crypto_kdf` equivalent) built on top of that KMAC — `hazmat::kupyna_kdf` (T-39, D-45); no DSTU standard or reference implementation exists for this construction at all, so unlike the KMAC row there is no oracle vector, ever — verified by determinism/distinctness property tests only. |
 | Strumok | DSTU 8845:2019 | Both 256/512-bit key variants, keystream `apply_keystream`. **UAPKI-attributed vectors only** — no independent confirmation against the primary text exists anywhere (D-15) since no such oracle has been found; this is a provenance ceiling, not a code-quality gap. |
 
-DSTU 4145-2002 (digital signatures) is further along than `docs/dstu-crypto-project.md`'s own
-"Concrete API shape" table currently states (that table is stale on this point — flagged here,
-should be corrected there too): the m=163 curve's `GF(2^163)` field arithmetic, point
+DSTU 4145-2002 (digital signatures): the m=163 curve's `GF(2^163)` field arithmetic, point
 add/double/constant-time scalar multiplication, and `sign`/`verify` are all implemented
 (`hazmat::dstu4145`), verified against the official standard's own Annex B.1 worked example plus a
 `proptest` round-trip, with two real bugs (a `Q = d·G` vs `Q = -d·G` sign error, a `hash_to_field`
 calling-convention bug) found and fixed by re-deriving from the primary text directly rather than
-trusting a single reference-implementation transcription (`DECISIONS.md` D-25). Only the m=163 curve
-is wired up (9 other named curve sizes in Bouncy Castle's own enumeration are not); no `crypto_sign`
-wrapper exists yet (T-48).
+trusting a single reference-implementation transcription (`DECISIONS.md` D-25). **The high-level
+`crypto_sign` wrapper is also done** (T-48, D-46 — a stale "no wrapper exists yet" claim
+here, and a stale "table is out of date" claim about `docs/dstu-crypto-project.md`'s own mapping
+table, are both corrected 2026-07-24; that table has been current on this point since T-48 landed) —
+`dstu_core::crypto_sign::{SigningKey, VerifyingKey, Signature}`, deterministic (Kupyna-KMAC-derived)
+nonce, no RNG dependency. Only the m=163 curve is wired up (9 other named curve sizes in Bouncy
+Castle's own enumeration are not).
 
 Engineering infrastructure that a real release needs is genuinely in place: `no_std`/`alloc`/`std`
 feature-flag split confirmed across 8 build combinations including a `small-tables` constrained-MCU

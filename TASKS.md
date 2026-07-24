@@ -197,7 +197,11 @@ item they point to is later removed.
       `crypto_secretbox`-equivalent AEAD yet (T-36/T-37, both blocked on D-05). A release that
       claims "current, safe modes" cannot honestly ship on top of provisional/unconfirmed
       constructions - see `docs/release-readiness.md` for the full breakdown and what would need to
-      change first.
+      change first. **Refreshed 2026-07-24** (still open - headline finding unchanged, D-05 is
+      still the blocker): updated to reflect `crypto_pwhash`/`randombytes` landing (T-71/T-72) and
+      D-47's rule, and fixed two claims that had gone stale since T-48 landed (the doc incorrectly
+      still said "no `crypto_sign` wrapper exists yet" and that `docs/dstu-crypto-project.md`'s own
+      mapping table was out of date on that point - it wasn't).
 - [ ] **T-23** Re-confirm the `no_std` build still passes (all feature-flag combinations) as each
       primitive lands — don't let this regress silently. Ongoing by design, not a one-time item —
       **last re-checked 2026-07-22** (post D-28/29/30/31): all four `dstu-core` feature
