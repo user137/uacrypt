@@ -3147,3 +3147,107 @@ field arithmetic at three field sizes), Stage E (XTS, T-96, sequenced after D). 
 `crypto_secretbox` surface unchanged - KW is AEAD-*shaped* in the D-05/D-47 sense (confidentiality +
 integrity) so it remains a theoretical future candidate, same standing as GCM, but nothing in this
 task changes that - still deferred, no decision made here.
+
+## D-56: `hazmat::gf2m_wide` + `hazmat::kalyna_gcm` (T-95, Stage D, commit 1 of 2) - GCM landed; three real divergences from AES-GCM found by reading, not assumed; GMAC deferred to its own commit
+
+DSTU 7624:2014 mode #7 (GCM). This is the roadmap's "one real investment": new GF(2^m) field
+arithmetic at three sizes, landed together with GCM in one commit because **no standalone `gf2m`
+test vectors exist anywhere in the oracle** (confirmed by search) - the field module and GCM can
+only be verified jointly, against GCM's own KATs. GMAC (`gmac_update`/`gmac_final`/`encrypt_gmac`)
+is deliberately a separate, second commit - same field module, different construction shape
+(streaming, single message, no AAD/ciphertext split), and its own oracle-status question to answer
+honestly rather than inherit GCM's by proximity.
+
+**Research discipline for this stage, since it was the largest single piece of the whole roadmap**:
+`oracles/uapki/library/uapkic/src/math-gf2m-internal.c` (1199 lines) was read structurally, not
+transcribed - a generic, word-size-dependent, Karatsuba-multiplication-based multi-precision GF(2^m)
+library (`gf2m_alloc`, `gf2m_mod`, `gf2m_mod_mul`, plus elliptic-curve operations this project
+doesn't need here). Confirmed no reusable code, matching the precedent already set by
+`hazmat::dstu4145::gf2m163` (D-25) - only a *style* reference (branchless shift-and-XOR), not ported.
+Consulted `advisor()` before finalizing the implementation plan - it caught a real gap (below) before
+any code was written, and confirmed three genuine AES-GCM-divergent details by independently tracing
+the same source.
+
+**The gap `advisor()` caught**: `dstu7624.c`'s GCM/GMAC code calls `gf2m_mul(ctx, block_len, arg1,
+arg2, out)` (lines 2963-3001) - a byte-pointer wrapper, **not** `gf2m_mod_mul` (the `WordArray`-typed
+function in `math-gf2m-internal.c`, a different signature this session initially conflated with it).
+Reading `gf2m_mul` found it's a thin wrapper: `wa_alloc_from_uint8` → `gf2m_mod_mul` → `wa_to_uint8`,
+and those conversions are themselves just `uint8_to_uint64`/`uint64_to_uint8`
+(`byte-utils-internal.c` lines 133-177) - a **plain `memcpy` reinterpretation** of the byte buffer as
+native-endian `uint64` words (with a swap only if the host is big-endian, never true on any target
+this project builds for). Net effect, derived (not guessed): **byte `i` of a block maps to bits
+`[8i, 8i+8)` of the field element, LSB-first within each byte** - i.e. byte 0 holds the lowest-degree
+terms, a fully little-endian polynomial representation. **This is a distinct convention from
+`gf2m163`**, which serializes big-endian (DSTU 4145's own convention, D-14) - the two GF(2^m) modules
+in this crate do not share a byte-order convention, and assuming they did would have repeated the
+`hash_to_field` calling-convention mistake `CLAUDE.md`'s agent-discipline section already warns
+about, generalized to a second standard. Per `advisor()`'s explicit warning, this derivation was
+treated as a hypothesis, not a settled fact, until the smallest official GCM vector confirmed it -
+**which it did, on the first attempt**, closing the loop on the one open representation question.
+
+**Three genuine divergences from textbook AES-GCM, `advisor()`-confirmed via independent tracing of
+the same source, all transcribed as found rather than completed from familiar-construction memory**:
+1. **Double-encrypted counter.** `gamma_old = E_K(iv)` once; each keystream block is
+   `E_K(gamma_old_incremented)`, not `E_K(iv_incremented)` directly the way NIST GCM's `J0`-based
+   counter works. The increment touches only the low 64 bits of `gamma_old` (as a little-endian
+   integer), never the rest of the block. Independent implementation from `hazmat::kalyna_ctr`'s own
+   counter logic - not shared code, same "three similar lines beats a premature abstraction across an
+   already-verified boundary" reasoning applied to every prior mode's counter in this roadmap.
+2. **Horner-accumulate over AAD then ciphertext, with an asymmetric padding scheme, and no length
+   block folded into the multiply chain.** `H = E_K(0)` once; `B = 0`, then for each AAD block
+   (**plain zero-padded**, no marker byte, if the last one is partial) and then each ciphertext block
+   (**`0x80`-then-zeros padded** - the same `padding()` construction `hazmat::kalyna_cmac`/
+   `hazmat::kalyna_kw` use, confirmed by reading the actual call site, not assumed symmetric with
+   AAD's padding just because both precede a GHASH-style accumulation): `B = (B XOR block) * H`.
+3. **Tag = block-cipher-encrypt of `(accumulator XOR length block)`, not XOR with a keystream
+   block the way NIST GCM's `E_K(J0)` works.** The length block holds the AAD bit-length
+   (little-endian `u64`) in the low half-block and the ciphertext bit-length in the high half-block -
+   but that second field is the ***padded*** ciphertext length, not the true plaintext length, a
+   direct consequence of `dstu7624.c` reusing the same length variable after its own padding step
+   mutates it. Confirmed by hand-tracing the C variable's actual value at each point, not assumed.
+
+**None of the 6 official GCM vectors have non-block-aligned plaintext** - divergence 2's `0x80`
+padding-marker branch is transcribed as found but not oracle-exercised by any KAT. Covered instead by
+the `proptest` round-trip in `tests/kalyna_gcm.rs`, which generates non-aligned lengths generically.
+Recorded honestly, not glossed over.
+
+**API**: `hazmat::gf2m_wide` (`Gf2m128`/`Gf2m256`/`Gf2m512`, one macro-generated struct per field
+size) - branchless shift-and-select carry-less multiply (mirrors `gf2m163::poly_mul_wide` exactly),
+then a simple bit-at-a-time top-down modular reduction (not `gf2m163::reduce`'s word-offset-optimized
+closed form, which was hand-derived specifically for `m=163`/64-bit words and doesn't generalize to
+three more field sizes without redoing that derivation three times - correctness-first over
+speed-first, same posture `gf2m163` itself already established, D-25). Reduction polynomials cited
+from `dstu7624_init_gcm`'s `f[]` triples: `x^128+x^7+x^2+x+1`, `x^256+x^10+x^5+x^2+1`,
+`x^512+x^8+x^5+x^2+1`. `hazmat::kalyna_gcm` (`encrypt`/`decrypt`, in-place on caller buffers, no
+`alloc`/`Vec` - correctness-independent from `q`, which is a pure truncation of a full-block-length
+tag the caller applies themselves, so no `MAX_AAD_LEN`/`MAX_PLAINTEXT_LEN` cap was needed at all,
+unlike `kalyna_ccm`'s sourced 255-byte limit). `decrypt`'s tag check uses `subtle::ConstantTimeEq`,
+**not** `dstu7624.c`'s raw `memcmp` - a deliberate, cited safety fix via D-47 tie-breaker #2, same
+pattern already applied to `kalyna_kw`'s checksum check and `kalyna_cmac`'s tag verify; on mismatch,
+`plaintext_out` is zeroed before returning `Err`, matching `kalyna_ccm`'s "never observe unverified
+plaintext" contract.
+
+**Oracle coverage**: uapki construction (6 KATs, one per Kalyna variant plus a bonus q=16-vs-q=32
+truncation-consistency pair for `Kalyna256_256`, sharing the same key/iv/aad/plaintext) + a
+vector-only cross-check against `oracles/bouncycastle-java`'s `DSTU7624Test.java` `GCMModeTests`
+(`KGCMBlockCipher`'s construction source is not vendored in this repo's sparse checkout) - same
+weaker-claim caveat `DECISIONS.md` D-41 already states for CCM, stated explicitly rather than
+implying a stronger claim by proximity to KW's earlier lineage-correction. BC-.NET has no GCM class
+at all.
+
+14 tests, **all green on the first attempt** including every official vector and the tag-truncation
+consistency check - the smallest KAT (case 0, single-AAD-block, two-plaintext-block) was run in
+isolation first, per the plan's debugging order, before the full suite; it passed immediately,
+confirming the representation derivation above without needing to fall back to suspect #2 (reduction)
+or #3 (byte order as a real bug, not just an unconfirmed hypothesis). `cargo test --workspace
+--all-features` clean; `clippy -D warnings` needed two classes of fixes (signed-to-unsigned cast
+warnings in `gf2m_wide`'s reduction loop - rewrote `degree`/`bit_index` as `u32` throughout instead
+of `i32`, and unbalanced-backtick doc-comment fixes mixing inline code with a linked identifier,
+same citation-inert formatting class every prior stage has hit at least once); `fmt --check` clean
+after one auto-format pass; bare `no_std` build re-confirmed (no `alloc` needed).
+
+**Commit 1 of Stage D done.** Remaining: commit 2 (GMAC, same field module, its own construction and
+oracle-status write-up), then Stage E (XTS, T-96, sequenced after this stage since it reuses this
+field module). Public `crypto_secretbox` surface unchanged - whether GCM ever becomes its backing
+construction instead of or alongside CCM remains explicitly deferred, unchanged from the original
+Stage-A-era roadmap note.

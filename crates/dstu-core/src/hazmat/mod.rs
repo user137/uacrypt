@@ -7,6 +7,7 @@
 //! See `docs/dstu-crypto-project.md` "Concrete API shape" and `DECISIONS.md` D-09.
 
 pub mod dstu4145;
+mod gf2m_wide;
 pub mod kalyna;
 pub mod kalyna_cbc;
 pub mod kalyna_ccm;
@@ -14,6 +15,7 @@ pub mod kalyna_cfb;
 pub mod kalyna_cmac;
 pub mod kalyna_ctr;
 pub mod kalyna_ecb;
+pub mod kalyna_gcm;
 pub mod kalyna_kw;
 pub mod kalyna_ofb;
 pub mod kupyna;

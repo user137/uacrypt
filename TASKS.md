@@ -1249,14 +1249,25 @@ needed) — non-negotiable per D-53, not optional per mode.
       attempt including every official vector. `cargo test --workspace --all-features`/`clippy -D
       warnings`/`fmt --check` clean (two doc-comment fixes); bare `no_std` build re-confirmed.
       Non-aligned KW input remains explicitly out of scope — a distinct future task if ever needed.
-- [ ] **T-95** GCM/GMAC (#7) — Stage D, not started, the one real investment in this roadmap. Needs
-      new GF(2^m) field arithmetic at **three** field sizes (m=128/256/512, one per Kalyna block
-      size — not one fixed GF(2^128) the way AES-GCM's GHASH is). First task: read
-      `oracles/uapki/library/uapkic/src/gf2m.c` (not yet examined by this project) — its call sites
-      suggest a generic, block-size-parameterized library, worth mirroring in Rust from the start
-      rather than repeating `gf2m163`'s three-times-hardcoded approach (D-25). BC-Java vector-only
-      cross-check (construction source not vendored — same weaker-claim caveat D-41 states for CCM);
-      BC-.NET has nothing for GCM at all.
+- [ ] **T-95** GCM/GMAC (#7) — Stage D, commit 1 of 2 done (GCM), GMAC still open. `hazmat::gf2m_wide`
+      (`Gf2m128`/`Gf2m256`/`Gf2m512`, `DECISIONS.md` D-56) is a from-scratch, correctness-first
+      GF(2^m) module (branchless multiply, bit-at-a-time reduction) — not a port of
+      `oracles/uapki/library/uapkic/src/math-gf2m-internal.c`'s 1199-line Karatsuba engine (read
+      structurally, confirmed no reusable code, same posture as `gf2m163`/D-25). `hazmat::kalyna_gcm`
+      transcribes three real divergences from textbook AES-GCM (double-encrypted counter,
+      asymmetric AAD/ciphertext padding before the Horner-style GHASH accumulation, tag = block
+      encrypt of accumulator XOR length-block rather than XOR with a keystream block) —
+      `advisor()`-confirmed by independent tracing, and caught a real gap first (the actual
+      `gf2m_mul` byte-pointer wrapper, distinct from `gf2m_mod_mul`, whose byte/bit representation
+      had to be derived from `uint8_to_uint64`'s plain little-endian `memcpy` semantics, then
+      vector-confirmed rather than assumed). 14 tests, all green first attempt including every
+      official vector — the byte-order derivation and all three divergences were correct on the
+      first try. `cargo test --workspace --all-features`/`clippy -D warnings`/`fmt --check` clean;
+      bare `no_std` build re-confirmed. Oracle-strength corrected from this task's original note
+      (below) to: uapki construction + BC-Java vector-only (construction source not vendored, D-41
+      pattern); BC-.NET has nothing for GCM. **GMAC not yet started** — same field module, distinct
+      construction (streaming, single message, no AAD split), own oracle-status question to answer
+      before landing (BC has no standalone GMAC class).
 - [ ] **T-96** XTS (#9) — Stage E, not started, sequenced strictly after T-95 (reuses its GF(2^m)
       module — confirmed identical `f[]` parameterization to GCM/GMAC). Adds ciphertext-stealing for
       the final partial block — the one genuinely novel piece of logic in the whole 10-mode set.

@@ -1,0 +1,16 @@
+{
+  "algorithm": "Kalyna-GCM-128/256",
+  "block_bits": 128,
+  "key_bits": 256,
+  "source": "oracles/uapki/library/uapkic/src/dstu7624.c dstu7624_gcm_self_test (case 1, programmatically extracted). Block-aligned plaintext (32 bytes, 2 blocks). See 128-128.json's note for the DECISIONS.md D-56 oracle-strength and padding-branch-untested caveats.",
+  "cases": [
+    {
+      "key_hex": "000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F",
+      "iv_hex": "202122232425262728292A2B2C2D2E2F",
+      "aad_hex": "303132333435363738393A3B3C3D3E3F",
+      "plaintext_hex": "505152535455565758595A5B5C5D5E5F606162636465666768696A6B6C6D6E6F",
+      "ciphertext_hex": "FF83F27C6D4EA26101B1986235831406A297940D6C0E695596D612623E0E7CDC",
+      "tag_hex": "3C474281AFEAE4FD6D61E995258747AB"
+    }
+  ]
+}
