@@ -1313,9 +1313,23 @@ needed) — non-negotiable per D-53, not optional per mode.
       associative, distributive via `proptest`, plus deterministic all-ones/all-zero max-degree
       cases for all 3 field sizes), 21 tests, all green first attempt, `clippy`/`fmt`/`no_std` clean.
       `cargo +nightly miri test -p dstu-core --lib field_axiom_tests`: clean, no UB, 21/21, ~475s.
-- [ ] **T-96** XTS (#9) — Stage E, not started, sequenced strictly after T-95 (reuses its GF(2^m)
-      module — confirmed identical `f[]` parameterization to GCM/GMAC). Adds ciphertext-stealing for
-      the final partial block — the one genuinely novel piece of logic in the whole 10-mode set.
+- [x] **T-96** XTS (#9) — Stage E done, see `DECISIONS.md` D-58. **10/10 DSTU 7624 modes now
+      implemented at `hazmat`.** Reuses `hazmat::gf2m_wide` unchanged (same `f[]` as GCM/GMAC).
+      Ciphertext-stealing derivation hand-traced and generalized for any `k >= 1` full blocks
+      before the partial tail — a real transcription bug (wrong half of the saved block stolen
+      into the "combined" block) was caught immediately by the official vectors (all 10 vectors
+      failed identically on the stealing cases, aligned cases passed), fixed with a one-line
+      change, confirmed against the C source's own index arithmetic rather than patched until
+      green. Also closes a real unchecked-underflow gap in the reference (`encrypt_xts`'s
+      `plain_size - block_len` has no guard for `plain_size < block_len`) the same way T-101
+      resolved `kalyna_cfb`'s panic — `Result<(), XtsError>` with `InvalidLength`, not inherited
+      UB. Official-vector coverage is unusually strong: one aligned + one ciphertext-stealing KAT
+      per variant (10 total), and — unlike GCM/GMAC/KW this session — the stealing branch itself
+      is vector-covered for all 5 variants, not proptest-only. Dual-oracle for the aligned cases
+      only (Bouncy Castle's `XTSModeTests` matches all 5, vector-only, construction source not
+      vendored); zero BC corroboration for any stealing case. 11 tests, all green after the one
+      fix. `cargo test --workspace --all-features`/`clippy -D warnings`/`fmt --check` clean; bare
+      `no_std` build re-confirmed.
 
 ## Findings from a full-project `advisor()` audit (2026-07-24, requested separately from the T-95
 GMAC work above) — process/documentation gaps, not code-correctness bugs
@@ -1430,12 +1444,11 @@ is the direction, not a license to skip that pass):
   complete product" right now - "small tables" means the software `small-tables` Cargo profile,
   verified by build/test on this machine and the Raspberry Pi, not physical MCU hardware.
 
-**Step 0 (do first, per explicit user instruction) - T-96: XTS (#9), Stage E, the 10th and last
-DSTU 7624 mode.** Own plan-mode pass before implementation. Reuses `hazmat::gf2m_wide` (same `f[]`
-parameterization, confirmed in D-53). Adds ciphertext stealing for the final partial block - the
-one genuinely new piece of logic across all 10 modes. Closes out full 10/10 `hazmat` mode coverage.
+**Step 0 - DONE, see T-96/D-58.** XTS (#9), Stage E, the 10th and last DSTU 7624 mode, landed with
+its own plan-mode pass. 10/10 `hazmat` mode coverage complete.
 
-**Step 1 - Trust/correctness gaps before more feature surface (T-97 through T-101, in this order)**:
+**Step 1 (current) - Trust/correctness gaps before more feature surface (T-97 through T-101, in
+this order)**:
 T-100 first (real CI Miri backstop for everything after), then T-101 (`kalyna_cfb` → `Result`,
 own test-first pass), then T-98 (fuzz targets - after T-101, since `kalyna_cfb`'s shape will have
 changed), T-97 (trivial `SECURITY.md` table row, any time), T-99 last (reconcile

@@ -19,6 +19,7 @@ pub mod kalyna_gcm;
 pub mod kalyna_gmac;
 pub mod kalyna_kw;
 pub mod kalyna_ofb;
+pub mod kalyna_xts;
 pub mod kupyna;
 pub mod kupyna_kdf;
 pub mod kupyna_kmac;

@@ -3374,3 +3374,90 @@ than fixed inline here, since they're outside this stage's actual scope.
 **Stage D complete** (both GCM and GMAC landed, plus the field-axiom coverage gap `advisor()` found
 and closed). Next: Stage E (XTS, T-96), its own plan-mode pass, sequenced after this stage since it
 reuses `hazmat::gf2m_wide`.
+
+## D-58: `hazmat::kalyna_xts` (T-96, Stage E) - the 10th and last DSTU 7624 mode; a real
+ciphertext-stealing bug caught by the official vectors, and an unchecked-underflow gap found and
+closed, not inherited
+
+DSTU 7624:2014 mode #9, closing out full 10/10 mode-of-operation coverage at `hazmat` (D-53's
+roadmap). Cited to `oracles/uapki/library/uapkic/src/dstu7624.c`'s `encrypt_xts`/`decrypt_xts`
+(lines 3003-3141) and `dstu7624_init_xts` (lines 4089-4132). Reuses `hazmat::gf2m_wide`
+(`Gf2m128`/`Gf2m256`/`Gf2m512`) unchanged - `dstu7624_init_xts`'s `f[]` triples confirmed
+byte-for-byte identical to GCM/GMAC's (D-56), no new field arithmetic needed. Requested this
+session with an explicit sequencing instruction from the project owner: implement this (the last
+remaining DSTU 7624 mode) before starting the broader post-audit roadmap (`TASKS.md`'s "Roadmap to
+a genuinely complete product" section) that was approved the same session.
+
+**Confidentiality only, and that's the correct choice here, not a compromise** - the one mode among
+all 10 where a non-AEAD construction is by design, not a misuse trap: disk-sector encryption
+deliberately leaves integrity to the filesystem layer (D-05's own mode table already tags #9
+"Confidentiality only"; `docs/release-readiness.md`'s use-case table already states this for the
+"full-disk encryption" row). The module doc explains *why* this is fine here specifically, not just
+the generic "no MAC, be careful" warning every other confidentiality-only mode in this crate carries.
+
+**Ciphertext-stealing derivation, hand-traced and generalized, not assumed from textbook XTS-AES**:
+`encrypt_xts`/`decrypt_xts` transcribed directly, then re-derived by hand for two different official
+vectors (`k = 1` and `k = 2` full blocks before the partial tail) to confirm the control flow
+generalizes to any `k >= 1` rather than being special-cased per vector. Let `k = buffer.len() /
+block_bytes`, `r = buffer.len() % block_bytes`. Encrypt: blocks `0..k-1` get sequential tweaks
+`1..k`, encrypted normally in place. The block at `(k-1)*block_bytes` (already encrypted with
+tweak `k`) is saved aside; a "combined" block is built from the real tail (`r` bytes) followed by
+the **last** `block_bytes - r` bytes of that saved block, encrypted with tweak `k+1`, then swapped
+into position `(k-1)*block_bytes`; the saved block's **first** `r` bytes become the truncated final
+output at `k*block_bytes`. Decrypt is the precise inverse (advances the tweak one step further to
+recover the "combined" plaintext first, reconstructs the `(k-1)`-th block from the real ciphertext
+tail plus the combined plaintext's stolen suffix, then swaps).
+
+**A real transcription bug, caught by the official vectors on the very first run, not a debugging
+afterthought**: the first implementation attempt took the **first** `block_bytes - r` bytes of the
+saved block for the "combined" block's tail instead of the **last** `block_bytes - r` bytes - all
+10 official-vector tests failed identically on the ciphertext-stealing cases (the aligned cases
+passed), with the failing block's *second half* matching expected output exactly and the first half
+completely wrong - a clean signature that immediately localized the bug to which half of the saved
+block gets stolen, not a broader logic error. Re-read the C source's own index arithmetic (`i -
+block_len` at the exact point the `memcpy` fires, not the position after the later `i -=` line) to
+confirm the correct half, fixed with a one-line change (`scratch[r..]` in place of `scratch[..
+block_bytes - r]`), re-ran - all 10 vectors and all 5 proptest suites passed immediately after.
+`decrypt_in_place`'s equivalent step was independently re-traced against the same C source before
+writing it and found already correct on the first attempt - not assumed correct by symmetry with
+the (buggy) encrypt side.
+
+**A real gap found in the reference, not ported**: `encrypt_xts`'s `loop_len = plain_size -
+block_len` (unsigned `size_t`) has no guard against `plain_size < block_len` - such an input
+underflows to a huge value, and the main loop would read/write far past the buffer.
+`decrypt_xts` has a *partial* guard (`plain_size < 2*block_len ? 0 : plain_size - 2*block_len`) at
+a different threshold, which doesn't rescue the encrypt side. Same class of gap as
+`hazmat::kalyna_kw`'s non-aligned branch (D-55) and `hazmat::kalyna_cfb`'s multi-call panic (just
+resolved this same session to a checked error, `TASKS.md` T-101, per the project owner's explicit
+direction) - resolved the same way here rather than as a fresh improvisation:
+`encrypt_in_place`/`decrypt_in_place` return `Result<(), XtsError>` and reject `buffer.len() <
+block_bytes` via `XtsError::InvalidLength` up front. This is not a scope cut relative to the real
+construction - ciphertext stealing has no meaning below one full block by definition - only a guard
+against an input the reference's own arithmetic was never checked against.
+
+**API**: in-place on the caller's buffer (`encrypt_in_place`/`decrypt_in_place`, same shape as
+`kalyna_cbc`/`kalyna_cfb`/`kalyna_ofb`), no `alloc`/`Vec` - a fixed `[u8; block_bytes]` stack
+scratch (mirroring `kalyna_kw`'s fixed-size-buffer precedent) replaces the C's own
+`plain_size + padded_len` heap allocation for the ciphertext-stealing swap step only; every other
+byte is written directly into the caller's slice.
+
+**Official vectors - full double coverage, not the usual single-branch-untested gap**:
+`dstu7624_xts_self_test` (10 KATs, programmatically extracted - handling the same adjacent
+string-literal concatenation across `\`-continued lines that already caught a real parsing bug for
+OFB, D-53) gives **one aligned and one ciphertext-stealing case per Kalyna variant** - unlike every
+other new mode this session (GCM/GMAC/KW), XTS's stealing branch is officially vector-covered for
+all 5 variants, not proptest-only. **Dual-oracle for the aligned case only**:
+`oracles/bouncycastle-java`'s `DSTU7624Test.java` `XTSModeTests` (`KXTSBlockCipher`) has 5 tests,
+confirmed byte-for-byte matching uapki's cases 0/2/4/6/8 (the five *aligned* cases, one per
+variant) - construction source not vendored, same weaker vector-only claim as D-56's GCM entry. BC
+has **zero** corroboration for any of the 5 stealing cases - stated honestly, not implied
+dual-oracle by proximity to the aligned case's stronger claim.
+
+11 tests (5 official-vector, 1 `InvalidLength` regression test, 5 `proptest` round-trip suites),
+all green after the one fix above. `cargo test --workspace --all-features`, `clippy -D warnings`,
+`fmt --check`, bare `no_std` build all clean. `cargo +nightly miri test -p dstu-core --test
+kalyna_xts` (`MIRIFLAGS=-Zmiri-disable-isolation PROPTEST_CASES=8`): clean, no UB, 11/11, ~670s.
+
+**10/10 DSTU 7624 modes now implemented at `hazmat`.** Next: the user-approved "Roadmap to a
+genuinely complete product" in `TASKS.md` - trust/correctness fixes (T-97-T-101), full
+`small-tables` verification for Stage B-E, then the `crypto_*` frontend work.

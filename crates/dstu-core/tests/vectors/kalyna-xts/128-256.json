@@ -1,0 +1,22 @@
+{
+  "algorithm": "Kalyna-XTS-128-256",
+  "block_bits": 128,
+  "key_bits": 256,
+  "source": "oracles/uapki/library/uapkic/src/dstu7624.c dstu7624_xts_self_test (programmatically extracted, handling adjacent string-literal concatenation across backslash-continued lines - same extraction risk class as OFB, D-53). 'aligned' = block-aligned plaintext (simple loop, no ciphertext stealing); 'stealing' = non-block-aligned plaintext (ciphertext-stealing branch). Dual-oracle for the aligned case only: oracles/bouncycastle-java's DSTU7624Test.java XTSModeTests (KXTSBlockCipher) tests 1-5 match these five aligned vectors byte-for-byte, one per variant (construction source not vendored - same weaker vector-only claim as D-56's GCM entry). The stealing case has zero BC corroboration for any variant - uapki-only, flagged here rather than implied dual-oracle by proximity.",
+  "cases": [
+    {
+      "case": "aligned",
+      "key_hex": "000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F",
+      "iv_hex": "202122232425262728292A2B2C2D2E2F",
+      "plaintext_hex": "303132333435363738393A3B3C3D3E3F404142434445464748494A4B4C4D4E4F",
+      "ciphertext_hex": "830AC78A6F629CB4C7D5D156FD84955BD0998CA1E0BC1FF135676BF2A2598FA1"
+    },
+    {
+      "case": "stealing",
+      "key_hex": "000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F",
+      "iv_hex": "202122232425262728292A2B2C2D2E2F",
+      "plaintext_hex": "303132333435363738393A3B3C3D3E3F404142434445464748494A4B4C4D4E4F505152535455565758",
+      "ciphertext_hex": "830AC78A6F629CB4C7D5D156FD84955B470EEFDDEE38B59F0D836B65635B0A63D0998CA1E0BC1FF135"
+    }
+  ]
+}

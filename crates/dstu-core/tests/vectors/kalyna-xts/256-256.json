@@ -1,0 +1,22 @@
+{
+  "algorithm": "Kalyna-XTS-256-256",
+  "block_bits": 256,
+  "key_bits": 256,
+  "source": "oracles/uapki/library/uapkic/src/dstu7624.c dstu7624_xts_self_test (programmatically extracted, handling adjacent string-literal concatenation across backslash-continued lines - same extraction risk class as OFB, D-53). 'aligned' = block-aligned plaintext (simple loop, no ciphertext stealing); 'stealing' = non-block-aligned plaintext (ciphertext-stealing branch). Dual-oracle for the aligned case only: oracles/bouncycastle-java's DSTU7624Test.java XTSModeTests (KXTSBlockCipher) tests 1-5 match these five aligned vectors byte-for-byte, one per variant (construction source not vendored - same weaker vector-only claim as D-56's GCM entry). The stealing case has zero BC corroboration for any variant - uapki-only, flagged here rather than implied dual-oracle by proximity.",
+  "cases": [
+    {
+      "case": "aligned",
+      "key_hex": "000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F",
+      "iv_hex": "202122232425262728292A2B2C2D2E2F303132333435363738393A3B3C3D3E3F",
+      "plaintext_hex": "404142434445464748494A4B4C4D4E4F505152535455565758595A5B5C5D5E5F606162636465666768696A6B6C6D6E6F707172737475767778797A7B7C7D7E7F808182838485868788898A8B8C8D8E8F909192939495969798999A9B9C9D9E9F",
+      "ciphertext_hex": "E0E51EAEA6A3134600758EA7F87E88025D8B82897C8DB099B843054C3A51883756913571530BA8FA23003E337627E698674B807E847EC6B2292627736562F9F62B2DE9E6AAC5DF74C09A0C5CF80280174AEC9BDD4E73F7D63EDBC29A6922637A"
+    },
+    {
+      "case": "stealing",
+      "key_hex": "000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F",
+      "iv_hex": "202122232425262728292A2B2C2D2E2F303132333435363738393A3B3C3D3E3F",
+      "plaintext_hex": "404142434445464748494A4B4C4D4E4F505152535455565758595A5B5C5D5E5F606162636465666768696A6B6C6D6E6F707172737475767778797A7B7C7D7E7F80",
+      "ciphertext_hex": "E0E51EAEA6A3134600758EA7F87E88025D8B82897C8DB099B843054C3A5188374F5254E38066B77FA14FEE3292464B607E8AF1398B2A91C4480B698D64D13AE856"
+    }
+  ]
+}
