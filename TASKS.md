@@ -1138,9 +1138,25 @@ needed) — non-negotiable per D-53, not optional per mode.
       green first attempt. `cargo test --workspace --all-features`/`clippy -D warnings`/`fmt --check`
       clean; bare `no_std` and `--all-features` builds re-confirmed (pure `hazmat` addition, no `cfg`
       needed). Carries the loudest misuse warning of the batch (ECB's pattern-leakage failure mode).
-- [ ] **T-89** OFB (#6) — Stage A, not started. Cited to `encrypt_ofb` (L3624-3670)/
-      `dstu7624_init_ofb` (L3996-4013). Self-inverse (decrypt = encrypt); simplest stateful mode
-      (keystream has no plaintext/ciphertext feedback at all). 9 uapki KATs.
+- [x] **T-89** **OFB (#6) done, see `DECISIONS.md` D-53** — `hazmat::kalyna_ofb`
+      (`Kalyna128_128Ofb`...`Kalyna512_512Ofb`, `apply_in_place`, `&mut self` - genuinely stateful,
+      not per-call stateless like `kalyna_ecb`). Cited to `encrypt_ofb` (L3624-3670)/
+      `dstu7624_init_ofb` (L3996-4013); `dstu7624_decrypt` confirmed routing OFB to the same
+      `encrypt_ofb` in the C source - self-inverse, one method, not separate encrypt/decrypt. New
+      vector files `tests/vectors/kalyna-ofb/*.json` (all 5 variants, 9 uapki KATs total, split by
+      key/iv byte length) - **programmatically extracted** via a small Node script that parses the
+      C source's struct literals directly (including reversing C's adjacent-string-literal
+      concatenation across `\`-continued lines), not eyeballed/hand-transcribed - the same class of
+      transcription risk `CLAUDE.md` warns about. Test-first, 10 tests (2 per variant): official
+      vectors (encrypt then self-inverse decrypt), plus a `proptest` chunk-invariance suite (same
+      discipline as Strumok's T-24) confirming the `used_gamma_len` bookkeeping across multiple
+      `apply_in_place` calls at arbitrary boundaries matches one call over the whole buffer — **all
+      10 tests green on the first attempt**, confirming the transcription (including the subtle
+      "gamma always regenerates every loop iteration, `used_gamma_len` tracks how much of the last
+      block was actually used" logic) was correct. `cargo test --workspace --all-features`/
+      `clippy -D warnings`/`fmt --check` clean (one doc-markdown fix); bare `no_std` build
+      re-confirmed. Carries the mode's misuse warning per D-53's requirement (IV reuse under the
+      same key is catastrophic, same class of failure as CTR's).
 - [ ] **T-90** CBC (#5) — Stage A, not started. Cited to `encrypt_cbc`/`decrypt_cbc`
       (L3145-3184/L3886-3918)/`dstu7624_init_cbc` (L3936-3953). **Verification risk carried from
       D-53's research**: uapki's self-test harness declares 10 vectors but its loop only checks 9

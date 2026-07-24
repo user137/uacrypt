@@ -2873,3 +2873,25 @@ buffer), and the multi-block-independence `proptest`. `cargo test --workspace --
 (pure `hazmat` addition, no new dependency, no `cfg` gating needed). Carries the loudest misuse
 warning of the whole batch, per the requirement above - ECB's pattern-leakage failure mode is the
 textbook "don't do this" example across virtually every cryptography guide.
+
+**Stage A, second piece: `hazmat::kalyna_ofb`** (`TASKS.md` T-89). Cited to `encrypt_ofb`
+(`dstu7624.c` L3624-3670)/`dstu7624_init_ofb` (L3996-4013); confirmed `dstu7624_decrypt` routes OFB
+to the same `encrypt_ofb` function - self-inverse, one `apply_in_place` method, not separate
+encrypt/decrypt. Genuinely stateful (`&mut self`, unlike `kalyna_ecb`'s per-call `&self`) - keystream
+`gamma` self-updates via `gamma = E_K(gamma)` every loop iteration regardless of whether a full
+block of data remains, with `used_gamma_len` tracking how much of the last-generated block was
+actually consumed so a later call can resume from the unused tail. New vector files
+`tests/vectors/kalyna-ofb/*.json` (5 variants, 9 uapki KATs) - **programmatically extracted**, not
+hand-transcribed: a small Node script parses `dstu7624_ofb_self_test`'s struct literal directly out
+of the C source, including reversing C's adjacent-string-literal concatenation across `\`-continued
+lines (the same vectors first looked like 58 fields instead of the expected 36 = 9 cases x 4 fields
+until that concatenation was handled) - this is exactly the class of manual-transcription risk
+`CLAUDE.md`'s citation discipline warns about, avoided here by extracting programmatically instead
+of reading hex by eye. Test-first, 10 tests (2 per variant): official vectors (encrypt then
+self-inverse decrypt-via-second-instance), plus a `proptest` chunk-invariance suite (arbitrary
+non-block-aligned split points across multiple `apply_in_place` calls must match one call over the
+whole buffer - same discipline already established for `hazmat::strumok`, T-24) - **all 10 tests
+green on the first attempt**, confirming the `used_gamma_len` bookkeeping transcription was correct
+without needing a debugging pass. `cargo test --workspace --all-features`/`clippy -D warnings`/
+`fmt --check` clean (one `doc_markdown` lint fix); bare `no_std` build re-confirmed. Misuse warning
+states OFB's IV-reuse failure mode explicitly (same catastrophic-keystream-reuse class as CTR).

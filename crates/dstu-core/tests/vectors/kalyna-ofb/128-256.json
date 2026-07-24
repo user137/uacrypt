@@ -1,0 +1,14 @@
+{
+  "algorithm": "Kalyna-OFB-128/256",
+  "block_bits": 128,
+  "key_bits": 256,
+  "source": "oracles/uapki/library/uapkic/src/dstu7624.c dstu7624_ofb_self_test, ofb_test_data[5] (key/iv byte lengths select the variant) - programmatically extracted, not hand-transcribed.",
+  "cases": [
+    {
+      "key_hex": "1F1E1D1C1B1A191817161514131211100F0E0D0C0B0A09080706050403020100",
+      "iv_hex": "2F2E2D2C2B2A29282726252423222120",
+      "plaintext_hex": "1A66CFBFEC00C6D52E39923E858DD64B214AB787798D3D5059A6B498AD66B34EAC48C4074BEC0D98C6",
+      "ciphertext_hex": "5F5E5D5C5B5A595857565554535251504F4E4D4C4B4A494847464544434241403F3E3D3C3B3A393837"
+    }
+  ]
+}
