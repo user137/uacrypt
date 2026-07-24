@@ -2817,3 +2817,59 @@ combined commit like D-51's - `hash` first (simplest, no new `CliError` variants
 `encrypt`/`decrypt` plus the `CliError`/`From` plumbing, then documentation
 (`README.md`/`CLAUDE.md`/`docs/dstu-crypto-project.md`/`docs/release-readiness.md`/`TASKS.md`/this
 entry) - each commit independently green.
+
+## D-53: Full DSTU 7624 mode-of-operation coverage at `hazmat` - roadmap, and ECB (#1) as Stage A's first piece
+
+User asked to implement all 10 official DSTU 7624:2014 modes (`ORACLES.md`'s ten-mode list, D-05)
+at the `hazmat` layer, as a complete standards-faithful primitive set - independent of the public
+`crypto_secretbox` question, which stays exactly as restricted as D-05/D-47 already require (only
+GCM/CCM/KW are ever candidates for a public entry point; the other 7 modes never get one, full
+stop). Full plan (staged by cost/oracle-strength, all citations to
+`oracles/uapki/library/uapkic/src/dstu7624.c`, two research passes reading the C source directly):
+
+- **Stage A** (this entry covers the first piece, ECB): ECB(#1)/OFB(#6)/CBC(#5)/CFB(#3)/CTR(#2) -
+  thin XOR-chaining wrappers over `hazmat::kalyna`, no new field arithmetic.
+- **Stage B** (not started): CMAC(#4) - no field math either; strongest whole-block oracle of the
+  non-AEAD modes (BC's `DSTU7624Mac` is a full independent construction in Java and .NET, not just
+  vectors) - but its padding/partial-block branch is uapki-only-verifiable, BC throws on
+  non-block-aligned input.
+- **Stage C** (not started): KW(#10) - no field math; the single strongest oracle of all 10 modes,
+  full independent BC construction source in *both* Java and .NET.
+- **Stage D** (not started): GCM/GMAC(#7) - needs new GF(2^m) field arithmetic at **three** field
+  sizes (m=128/256/512, one per Kalyna block size, not one fixed GF(2^128) the way AES-GCM's GHASH
+  is) - the one real investment in this roadmap. `hazmat::dstu4145::gf2m163` gives no reusable code
+  (hardcoded 3-limb, m=163-specific), only a reusable style reference (D-25's branchless
+  shift-and-XOR technique). BC-Java vector-only cross-check (construction source not vendored, same
+  weaker-claim caveat D-41 already states for CCM); BC-.NET has nothing for GCM at all.
+- **Stage E** (not started): XTS(#9) - reuses Stage D's GF(2^m) module (confirmed identical `f[]`
+  parameterization to GCM/GMAC), sequenced strictly after D. Adds ciphertext-stealing for the final
+  partial block - the one genuinely novel piece of logic in the whole 10-mode set.
+- CCM(#8) already done (T-81/D-41), untouched by this plan.
+
+**Per-mode requirement, all five raw/non-AEAD modules (A/B/E, i.e. every mode except the AEAD-eligible
+GCM/KW)**: the module doc must carry an explicit misuse warning - no integrity, don't use for new
+designs without a specific reason, prefer `crypto_secretbox` unless the raw mode is genuinely needed.
+Shipping ECB/CBC/CFB/OFB with a neutral doc comment would contradict this project's own
+misuse-resistance identity; the "hazmat-complete, frontend-restricted" split only holds together if
+hazmat's own docs carry that weight, not just the CLI/high-level layer.
+
+**This entry's actual delivered piece: `hazmat::kalyna_ecb`** (`Kalyna128_128Ecb`...`Kalyna512_512Ecb`,
+`encrypt_in_place`/`decrypt_in_place`, `TASKS.md` T-88). Cited to `dstu7624.c`'s `encrypt_ecb`/
+`decrypt_ecb` (lines 2899-2961) and `dstu7624_init_ecb` (lines 3920-3934) - no chaining state at all,
+a per-block loop over the already-verified block cipher (D-13). **No new vector file**: confirmed
+(programmatic extraction, not eyeballed - a Node script pulled every quoted hex string from
+`dstu7624_ecb_self_test`'s struct literal directly from the C source) that all 10 of its self-test
+cases are single-block, because `dstu7624_init_ecb`'s block size is set to the exact length of that
+case's one data blob - and those 10 vectors are byte-for-byte the same official designer vectors
+(`docs/papers/Kalyna.pdf` Appendix B) already in `tests/vectors/kalyna/*.json`, reused (not
+duplicated into a new file) by `tests/kalyna_ecb.rs`. ECB's one genuinely new property - multi-block
+independence, not chaining - has no vector anywhere to check (uapki's own self-test never exercises
+it either), verified instead by a `proptest` directly against the already-oracle-verified raw block
+primitive (`ExpandedKey::encrypt_block` called once per block, compared to `Kalyna*Ecb`'s own
+multi-block output). Test-first, 15 tests (3 per variant x 5 variants), all green first attempt:
+single-block-matches-raw-vectors, length-validation (`InvalidLength` on a non-block-multiple
+buffer), and the multi-block-independence `proptest`. `cargo test --workspace --all-features`/
+`clippy -D warnings`/`fmt --check` clean; bare `no_std` and `--all-features` builds both re-confirmed
+(pure `hazmat` addition, no new dependency, no `cfg` gating needed). Carries the loudest misuse
+warning of the whole batch, per the requirement above - ECB's pattern-leakage failure mode is the
+textbook "don't do this" example across virtually every cryptography guide.

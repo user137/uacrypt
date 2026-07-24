@@ -1112,3 +1112,78 @@ value given the `pdftotext` extraction hazards already hit, but modest. The DSTU
 where a genuinely independent oracle actually buys something. Strumok has no harness above because
 no trustworthy runnable oracle exists for it at all (`outspace/dstu8845` is unofficial, unaudited)
 — a harness can't manufacture verification authority that doesn't exist upstream.
+
+## Full DSTU 7624 mode-of-operation coverage at `hazmat` (T-88 onward)
+
+Only CCM (#8, T-81) was implemented before this. User asked 2026-07-24 for all 10 official modes at
+`hazmat`, independent of the public `crypto_secretbox` question (still restricted to GCM/CCM/KW
+candidates only, per D-05/D-47 — unchanged, not reopened per mode). Full 5-stage roadmap (by
+cost/oracle-strength) recorded in `DECISIONS.md` D-53. Stage A = ECB/OFB/CBC/CFB/CTR (no new field
+arithmetic); Stage B = CMAC; Stage C = KW; Stage D = GCM/GMAC (needs new GF(2^m) at three field
+sizes); Stage E = XTS (reuses Stage D's field module). Every raw/non-AEAD module's doc must carry an
+explicit misuse warning (no integrity, prefer `crypto_secretbox` unless the raw mode is genuinely
+needed) — non-negotiable per D-53, not optional per mode.
+
+- [x] **T-88** **ECB (#1) done, see `DECISIONS.md` D-53** — `hazmat::kalyna_ecb`
+      (`Kalyna128_128Ecb`...`Kalyna512_512Ecb`, `encrypt_in_place`/`decrypt_in_place`), cited to
+      `dstu7624.c`'s `encrypt_ecb`/`decrypt_ecb` (L2899-2961)/`dstu7624_init_ecb` (L3920-3934) — a
+      per-block loop over the already-verified `hazmat::kalyna` block cipher (D-13), no chaining
+      state. **No new vector file** — programmatic extraction (Node script pulling every quoted hex
+      string directly from the C source, not eyeballed) confirmed all 10 uapki self-test cases are
+      single-block (block size = that case's own data length) and byte-for-byte the same official
+      designer vectors already in `tests/vectors/kalyna/*.json` — `tests/kalyna_ecb.rs` reuses those
+      files rather than duplicating them. The one genuinely new property (multi-block independence,
+      not chaining) has no vector anywhere to check — verified by `proptest` directly against
+      `ExpandedKey::encrypt_block` called once per block. Test-first, 15 tests (3 x 5 variants), all
+      green first attempt. `cargo test --workspace --all-features`/`clippy -D warnings`/`fmt --check`
+      clean; bare `no_std` and `--all-features` builds re-confirmed (pure `hazmat` addition, no `cfg`
+      needed). Carries the loudest misuse warning of the batch (ECB's pattern-leakage failure mode).
+- [ ] **T-89** OFB (#6) — Stage A, not started. Cited to `encrypt_ofb` (L3624-3670)/
+      `dstu7624_init_ofb` (L3996-4013). Self-inverse (decrypt = encrypt); simplest stateful mode
+      (keystream has no plaintext/ciphertext feedback at all). 9 uapki KATs.
+- [ ] **T-90** CBC (#5) — Stage A, not started. Cited to `encrypt_cbc`/`decrypt_cbc`
+      (L3145-3184/L3886-3918)/`dstu7624_init_cbc` (L3936-3953). **Verification risk carried from
+      D-53's research**: uapki's self-test harness declares 10 vectors but its loop only checks 9
+      (`i<9`) — the 10th is dead code; verify independently before reusing, don't assume it's
+      correct just because it's present. Self-test data uses ISO/IEC 7816-4 padding for non-block-
+      aligned cases — `hazmat::kalyna_cbc` itself should reject non-block-aligned input (matching
+      `encrypt_cbc`'s own `in->len % block_len` check) rather than pad internally, same "hazmat has
+      no rails" posture as every other mode here; the test harness applies the same padding uapki's
+      self-test does before calling encrypt, not the module itself.
+- [ ] **T-91** CFB (#3) — Stage A, not started. Cited to `encrypt_cfb`/`decrypt_cfb`
+      (L3186-3234/L3762-3810)/`dstu7624_init_cfb` (L3971-3994). Most internal-state complexity of
+      Stage A — variable feedback width `q` ∈ {1,8,16,32,64 bytes} requires careful transcription of
+      the offset/feed bookkeeping exactly as written, not by analogy to textbook NIST CFB (this
+      implementation's `feed` register update is not a literal shift register — confirm behavior
+      against the 8 uapki KATs, which vary `q` per case, before trusting any "obviously equivalent"
+      simplification). Still pure XOR, no field math.
+- [ ] **T-92** CTR (#2) — Stage A, not started. Cited to `encrypt_ctr` (L2739-2790)/
+      `dstu7624_init_ctr` (L4397-4421). **Confirmed this session (re-reading the C source
+      directly)**: this is byte-for-byte the same keystream-priming/increment/re-encrypt logic
+      `hazmat::kalyna_ccm`'s internal `Gamma` component already implements and has shipped,
+      dual-oracle-verified, miri-clean, since T-81 (CCM calls this exact `encrypt_ctr` internally).
+      **Do not refactor `kalyna_ccm.rs` to share code with the new CTR module** — per D-53/`CLAUDE.md`'s
+      own "three similar lines beats a premature abstraction" rule, a shared abstraction across that
+      boundary is a regression risk in already-verified AEAD code not worth the DRY win; CTR gets its
+      own independent implementation and tests. Only 1 uapki KAT exists — cross-check against BC's
+      vectors (`DSTU7624Test.java` test IDs 24-27, `KCTRBlockCipher`) for additional coverage.
+- [ ] **T-93** CMAC (#4) — Stage B, not started. See D-53 for the oracle/scope summary
+      (`DECISIONS.md`) — strongest whole-block oracle of the non-AEAD modes (BC's `DSTU7624Mac` is a
+      full independent construction, Java and .NET), but its padding/partial-block branch is
+      uapki-only-verifiable (BC throws on non-block-aligned input) — record that single-oracle
+      sub-case explicitly when this lands, same posture as Strumok's UAPKI-only caveat (D-15).
+- [ ] **T-94** KW (#10) — Stage C, not started. Strongest oracle of all 10 modes — full independent
+      BC construction source in both Java (`DSTU7624WrapEngine.java`) and .NET
+      (`Dstu7624WrapEngine.cs`), not just vectors. Read both alongside uapki's C before transcribing,
+      per `CLAUDE.md`'s "porting logic means porting its calling convention too" lesson.
+- [ ] **T-95** GCM/GMAC (#7) — Stage D, not started, the one real investment in this roadmap. Needs
+      new GF(2^m) field arithmetic at **three** field sizes (m=128/256/512, one per Kalyna block
+      size — not one fixed GF(2^128) the way AES-GCM's GHASH is). First task: read
+      `oracles/uapki/library/uapkic/src/gf2m.c` (not yet examined by this project) — its call sites
+      suggest a generic, block-size-parameterized library, worth mirroring in Rust from the start
+      rather than repeating `gf2m163`'s three-times-hardcoded approach (D-25). BC-Java vector-only
+      cross-check (construction source not vendored — same weaker-claim caveat D-41 states for CCM);
+      BC-.NET has nothing for GCM at all.
+- [ ] **T-96** XTS (#9) — Stage E, not started, sequenced strictly after T-95 (reuses its GF(2^m)
+      module — confirmed identical `f[]` parameterization to GCM/GMAC). Adds ciphertext-stealing for
+      the final partial block — the one genuinely novel piece of logic in the whole 10-mode set.

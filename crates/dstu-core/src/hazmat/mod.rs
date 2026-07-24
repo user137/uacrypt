@@ -9,6 +9,7 @@
 pub mod dstu4145;
 pub mod kalyna;
 pub mod kalyna_ccm;
+pub mod kalyna_ecb;
 pub mod kupyna;
 pub mod kupyna_kdf;
 pub mod kupyna_kmac;
