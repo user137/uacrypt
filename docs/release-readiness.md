@@ -89,8 +89,8 @@ have no high-level wrapper, only their `hazmat` forms:
 | `crypto_kdf` | Kupyna-based KDF (libsodium `crypto_kdf`-shaped, not HKDF) | **Done** (T-39, D-45) — no DSTU standard or reference implementation exists for this at all, so unlike every other "provisional" row above, there is no oracle vector, ever; verification is determinism + distinctness property tests only |
 | `crypto_kx` | DH on the DSTU 4145/9041 curve | Not started (T-47); DSTU 9041 side hard-blocked |
 | `crypto_secretstream` | Chunked authenticated encryption over Strumok/Kalyna-CTR | **Blocked on D-05, not merely unscheduled** (T-40, re-scoped 2026-07-24) — needs per-chunk AEAD over a large chunk size, and the only AEAD here (`kalyna_ccm`) caps at 255 bytes; the natural gap-fill (a fresh Strumok+KMAC encrypt-then-MAC) *is* the D-05 question, so building it here would silently resolve D-05 on the EtM side without the primary text |
-| `crypto_pwhash` | Not a DSTU question — plain Argon2id | Not started; no blocker, deliberately non-"Ukrainized" (documented decision) |
-| `randombytes` | Not a DSTU question — OS CSPRNG via `getrandom` | Only exists inside `uacrypt` (CLI-only, D-04 addendum); no core-crate high-level wrapper yet |
+| `crypto_pwhash` | Not a DSTU question — plain Argon2id | **Done** (T-71, D-49/D-50) — over the `argon2` crate, dedicated `pwhash` feature (off by default, not folded into `std`); `Strength` presets mirror libsodium's own `OPSLIMIT`/`MEMLIMIT_*` constants exactly |
+| `randombytes` | Not a DSTU question — OS CSPRNG via `getrandom` | **Done** (T-72, D-48) — `dstu_core::randombytes::randombytes_buf`, `std`-gated over an optional `getrandom` dependency; a plain function, deliberately not a generic `CryptoRng` trait since nothing in this crate consumes one yet |
 
 `crypto_box`/`crypto_secretbox`/`crypto_kx`/`crypto_secretstream` remain empty or blocked — the
 "functional copy of libsodium" goal has real algorithm coverage (`crypto_sign`/`crypto_auth`/

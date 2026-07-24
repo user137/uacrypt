@@ -40,10 +40,19 @@ environment. The workspace has two crates:
   `crypto_stream`/`crypto_auth`/`crypto_kdf` have no high-level wrapper yet). `kalyna_ccm`'s
   nonce strategy is resolved (`DECISIONS.md` D-40, `TASKS.md` T-82):
   wide random nonce generated at the CLI layer via `getrandom`, not a stateful counter — the
-  hazmat-level API itself still takes a caller-supplied nonce (`no_std`-compatible). `cargo
+  hazmat-level API itself still takes a caller-supplied nonce (`no_std`-compatible). As of
+  2026-07-24, `dstu_core::randombytes::randombytes_buf` (`TASKS.md` T-72, `DECISIONS.md` D-48) is
+  the first core-crate `randombytes` wrapper — `std`-gated over an optional `getrandom`
+  dependency, deliberately a plain function rather than a generic `CryptoRng` trait since nothing
+  in this crate consumes one yet. `cargo
   fuzz` has now actually been run (all three
   targets, smoke runs, zero crashes) on a Windows dev machine with Visual Studio installed, via the
   MSVC toolchain/target (`DECISIONS.md` D-32) — CI (Linux) remains the unconditional per-push check.
+  Also as of 2026-07-24, `dstu_core::crypto_pwhash` (`hash_password`/`verify_password`/`Strength`,
+  `TASKS.md` T-71, `DECISIONS.md` D-49/D-50) wraps the vetted `argon2` crate behind a new dedicated
+  `pwhash` feature (off by default, not folded into `std`) — the deliberately non-DSTU
+  `crypto_pwhash` component, with `Strength::{Interactive,Moderate,Sensitive}` citing libsodium's
+  own `OPSLIMIT`/`MEMLIMIT_*` constants exactly, no raw cost-parameter knob exposed.
 - `crates/uacrypt` — the CLI binary, renamed 2026-07-23 from its `dstutool` working name
   (`DECISIONS.md` D-36; older `DECISIONS.md`/`TASKS.md`/`PERFORMANCE.md` entries predating the
   rename still say `dstutool`, left as-is since they're a historical record, not stale docs).
@@ -158,6 +167,12 @@ Full detail and rationale in `SECURITY.md` — this is the compressed version so
 
 - No primitive without a cited spec section (DSTU clause or reference-implementation source) —
   citation goes in `DECISIONS.md`.
+- **When an architectural fork has no settling DSTU citation** (spec silent/ambiguous/unavailable —
+  D-05's gap is the recurring case): resolve via `DECISIONS.md` D-47's ranked tie-breaker — (1) TLS
+  1.3 lessons/modern AEAD consensus (combined constructions over hand-composed ones), (2)
+  libsodium's API shape (hard defaults, no misconfigurable knobs), (3) expose only safe modes of
+  operation, never an unsafe/legacy one as a public entry point. A real spec citation always outranks
+  this rule once one exists — it's for gaps, not a license to design by analogy instead of by spec.
 - No secret-dependent branching. Secret-dependent array indexing is allowed only for fixed-latency
   S-box/GF-multiplication table lookups mirroring the DSTU reference implementations — documented
   software-timing exception, see D-19 in `DECISIONS.md`, not a license to add more of this

@@ -820,7 +820,10 @@ Two-layer split (`hazmat` now, high-level "easy" layer later) decided in `DECISI
 - [x] **T-61** `hazmat::kalyna` (5 variants) — confirmed green, citation in D-13 (see Phase 1)
 - [x] **T-62** `hazmat::strumok` (`Strumok256`, `Strumok512`) — confirmed green, citation in D-18 (see
       Phase 1)
-- [ ] **T-63** `hazmat::dstu4145` — not started; needs BC known-answer vectors extracted first (Phase 2)
+- [x] **T-63** `hazmat::dstu4145` — **done, see T-42/T-44/`DECISIONS.md` D-25** (`sign`/`verify` on the
+      163-bit curve, dual-oracle verified). This entry predates T-42/T-44's numbering (same
+      duplicate-numbering situation as T-67/T-68); not renumbered per the "IDs are never
+      reused/renumbered" rule.
 - [ ] **T-64** `hazmat::dstu9041` — hard-blocked, zero source material (see `ORACLES.md`)
 - [ ] **T-65** high-level "easy" layer (name TBD) — not started; nothing needs it yet (no keyed/nonce-based
       primitive is implemented before Strumok or `crypto_secretbox`, both currently blocked)
@@ -835,14 +838,47 @@ Two-layer split (`hazmat` now, high-level "easy" layer later) decided in `DECISI
 - [ ] **T-70** `crypto_secretstream` construction (over `hazmat::strumok`/`hazmat::kalyna`) — **blocked
       on D-05, see T-40's 2026-07-24 re-scoping note** (same duplicate-numbering situation as
       T-67/T-68 above, this time both entries staying open together since neither is done).
-- [ ] **T-71** `crypto_pwhash` (plain Argon2id, high-level layer only, not DSTU) — not started, no blocker
-- [ ] **T-72** `randombytes` (OS CSPRNG via `getrandom`, high-level layer only, not DSTU) — not started,
-      only needed once the high-level layer exists. **Read `DECISIONS.md` D-04's 2026-07-23
-      addendum before starting**: it records a forward-looking RNG-architecture recommendation
-      (trait injection as `dstu-core`'s own core pattern, an optional `std`-gated convenience
-      wrapper on top, `getrandom` as an unconditional dependency reserved for application binaries
-      like `uacrypt` only) so this doesn't reintroduce a hard `getrandom` dependency into the
-      `no_std` core by accident.
+- [x] **T-71** **Done 2026-07-24, see `DECISIONS.md` D-49 (crate vetting) and D-50
+      (implementation)**: `dstu_core::crypto_pwhash::{hash_password, verify_password, Strength}`
+      over `argon2` 0.5.3 (`RustCrypto/password-hashes`, dual MIT/Apache-2.0, MSRV 1.65 - D-49's
+      initial "1.85" was the `master`/`0.6.0-rc` branch's figure, corrected). New dedicated
+      `pwhash` Cargo feature (`= ["std", "dep:argon2"]`, off by default per D-50's reasoning - not
+      folded into `std` the way `getrandom` was in D-48). Every constant cited to libsodium's real
+      `crypto_pwhash_argon2id.h`/`pwhash_argon2id.c` source, not invented: `Strength::{Interactive,
+      Moderate, Sensitive}` map exactly onto `OPSLIMIT`/`MEMLIMIT_*`, parallelism fixed at 1 lane
+      (libsodium's own hardcoded choice, not a knob), 16-byte salt, 32-byte hash. Salt comes from
+      this crate's own `randombytes_buf` (not `password_hash`'s `rand_core`-based
+      `SaltString::generate`) - though `rand_core 0.6.4` still enters the dependency tree
+      transitively regardless (argon2's own manifest enables `password-hash`'s default features,
+      which include `rand_core`; genuinely unused by this project's own code, confirmed absent
+      from every `no_std` build, see D-50 and the new `SECURITY.md` row). 7 new tests (5 in
+      `tests/crypto_pwhash.rs`, 2 inline in `src/crypto_pwhash.rs`): round-trip,
+      wrong-password-rejected, malformed-string-rejected, fresh-salt-per-call, each cheap
+      `Strength`'s params actually appear in its own PHC string (not just a round-trip that would
+      pass even if `Strength` were silently ignored), the RFC 9106 (IETF primary source) Argon2id
+      test vector run directly against the `argon2` dependency (bypassing this module's own `p=1`
+      wrapper), and `Sensitive`'s params checked directly (a real hash at that tier took ~85s in
+      debug - too slow for every CI push, see D-50). Full workspace `cargo test --workspace
+      --all-features` green, `cargo clippy --workspace --all-features -- -D warnings`/`cargo fmt
+      --all -- --check` clean, all four `no_std`/`alloc`/`small-tables` combinations unaffected
+      (`pwhash` never enabled there, confirmed via `cargo tree`). Targeted `cargo miri test`
+      (RFC 9106 vector + params-only test) clean, ~55s - a full real-preset hash was not attempted
+      under Miri, impractical for the same reason as D-41's kalyna_ccm proptest issue (see D-50).
+      **Not built**: libsodium's raw `crypto_pwhash()` KDF form (no consumer yet, same deferral
+      reasoning as D-48's `CryptoRng` trait) and no `uacrypt` CLI subcommand (core crate only, like
+      `crypto_sign`'s own initial landing).
+- [x] **T-72** **Done 2026-07-24, see `DECISIONS.md` D-48**: `dstu_core::randombytes::
+      randombytes_buf(buf) -> Result<(), RandomError>` - `std`-gated over an optional `getrandom =
+      "0.3.4"` dependency (`std = ["dep:getrandom"]`), confirmed absent from the `no_std`/`alloc`/
+      `small-tables` build graphs. Deliberately minimal per D-47's libsodium-minimal-surface
+      criterion and advisor review: no generic `CryptoRng` trait re-export, since nothing in this
+      crate consumes one yet (`crypto_sign` is deterministic, `hazmat` is caller-supplies-
+      everything, `crypto_secretbox`/DSTU-4145-keygen are blocked/nonexistent) - D-04's own
+      trait-injection recommendation stays deferred to that trait's first real consumer, not built
+      speculatively. The `rand_core`/`getrandom` `sys_rng`-feature research for that future
+      consumer is recorded in D-48, not discarded. 4 new tests (buffer filled, two draws differ,
+      zero-length ok, sub-slice write doesn't touch surrounding bytes) - no oracle exists for OS
+      randomness by definition, same posture as `hazmat::kupyna_kdf`'s distinctness tests.
 
 ## Infrastructure — CI and oracle harnesses
 

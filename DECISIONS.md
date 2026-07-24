@@ -2249,3 +2249,328 @@ insufficient, the real fix is scoping miri away from the slow suite, not raising
 further"). Not re-run to completion locally; CI's already-tuned miri job (`PROPTEST_CASES=1`, lower
 than the local `PROPTEST_CASES=2` attempted here, plus the existing 30-minute job timeout) is the
 authoritative check for this file, same as it already is for `dstu4145_signature.rs`.
+
+## D-47: Standing tie-breaker rule for architectural forks - TLS 1.3 lessons + libsodium API shape + safe-only modes
+
+Requested explicitly by the project owner as a general rule, not tied to one primitive: this
+project has hit the same *shape* of fork twice now (D-05/D-41's mode-of-operation choice for
+Kalyna, D-46's nonce-generation choice for `crypto_sign`) and resolved both the same way without
+that reasoning ever being written down as a reusable rule. This entry makes it explicit so future
+forks don't each re-derive it from scratch, and so a fork's resolution can be checked against a
+written rule rather than re-argued each time.
+
+**The rule**: when an architectural fork has no single DSTU citation that settles it (the primary
+spec is silent, ambiguous, or not yet available - the actual recurring situation in this project,
+not a hypothetical), resolve it by three ranked criteria, in order:
+
+1. **Modern AEAD/crypto engineering consensus, TLS 1.3 as the reference point.** TLS 1.3 (RFC 8446)
+   dropped every hand-composed construction (separate MAC-then-encrypt, CBC+HMAC) and allows only
+   combined, misuse-resistant constructions (AES-GCM, ChaCha20-Poly1305, AES-CCM) - not a stylistic
+   preference, but the direct empirical response to a real vulnerability lineage from hand-rolled
+   composition (BEAST, Lucky13, POODLE, all tracing to composition mistakes: ordering, timing,
+   padding). When a fork is "hand-compose two primitives" vs. "use a single combined construction,"
+   default to the combined one. This is the reasoning D-41 already applied to justify Kalyna-alone
+   CCM over encrypt-then-MAC; D-47 generalizes it instead of leaving it embedded in one entry.
+2. **libsodium's API shape**: minimal surface, hard defaults, nothing left for the caller to
+   configure that could be configured wrong. Concretely: no algorithm/mode/parameter choice exposed
+   as a public knob when one safe default exists (this is already `CLAUDE.md`'s stated project
+   identity - "hard, safe defaults, misuse-resistant API... rather than OpenSSL" - D-47 makes it an
+   explicit tie-breaker criterion, not just a mission statement). D-46's deterministic-nonce choice
+   for `crypto_sign` (matching Ed25519/libsodium, eliminating caller-managed entropy entirely rather
+   than documenting a nonce-reuse risk) is the precedent for this criterion specifically.
+3. **Expose only safe modes of operation, full stop.** If a construction has both a safe and an
+   unsafe/legacy mode (e.g. a mode requiring caller-managed nonce uniqueness with no misuse-resistant
+   fallback, or a legacy/classical variant kept only for interop), the unsafe mode does not get a
+   public `dstu_core`/`uacrypt` entry point - not even behind a flag - unless a real, named caller
+   need forces it (at which point that need, and the resulting risk, gets its own `DECISIONS.md`
+   entry, not a silent addition). This is the same posture already implicit in `uacrypt` reserving
+   `encrypt`/`decrypt` for only the eventual fully-safe construction (D-31/D-41's provisional-CLI-
+   naming discipline) rather than exposing raw block-cipher or CCM-with-caller-nonce as top-level
+   commands.
+
+**Scope and limits, stated so this can't be over-applied**: this rule governs *forks with no
+settling DSTU citation* - it does not license overriding an actual primary-spec requirement once
+D-05 resolves, or any other case where the standard itself is unambiguous. `CLAUDE.md`'s existing
+hard constraint ("no primitive without a cited spec section... citation goes in `DECISIONS.md`")
+stays senior to this rule wherever both could apply: a real citation wins over TLS 1.3 precedent or
+libsodium-shape preference every time. This rule is for the gaps, not a general license to design
+by analogy instead of by spec.
+
+**Applying it retroactively**: D-41 (Kalyna-CCM) and D-46 (`crypto_sign` nonce) already followed
+this reasoning before it was written down - re-cited here as the two data points the rule is
+generalized from, not re-litigated or changed.
+
+## D-48: `randombytes` (T-72) - a plain `randombytes_buf` function, not a generic RNG trait
+
+Not a DSTU question at all (`docs/dstu-crypto-project.md` already says so) - the OS CSPRNG wrapper,
+same role `getrandom` already plays inside `uacrypt` (T-82/D-40), now given a real `dstu_core`
+entry point per `docs/release-readiness.md` step 4's "no core-crate high-level wrapper yet" gap.
+
+**What was built, deliberately minimal**: `dstu_core::randombytes::randombytes_buf(buf: &mut [u8])
+-> Result<(), RandomError>`, `std`-gated, over `getrandom::fill` - the direct equivalent of
+libsodium's own `randombytes_buf(buf, size)`, a concrete function, not a generic parameter. `std`
+now activates an optional `getrandom = "0.3.4"` dependency (`std = ["dep:getrandom"]`) rather than
+an unconditional one - `getrandom` never enters the `no_std`/`alloc`/`small-tables` build graphs at
+all (confirmed: all three still build clean), so it can never trip `getrandom`'s own
+`compile_error!` on an unrecognized bare-metal target (`DECISIONS.md` D-04's addendum). This is not
+a violation of that addendum's "never `crates/dstu-core`" line - that line was about T-82's
+*unconditional* addition; an optional, feature-gated dependency that compiles out entirely when the
+feature is off is the different case the addendum's own pattern (2) (an optional `std` convenience
+wrapper "on top of" pattern (1)'s core) already anticipated.
+
+**A larger design was researched and explicitly not built - recorded here so the research isn't
+lost, not discarded**: the initial plan (before this entry) was to also add a generic
+`pub use rand_core::CryptoRng` re-export, so future constructions (`crypto_secretbox` once D-05
+resolves, DSTU 4145 key generation if it moves in-crate) could accept `&mut impl CryptoRng`
+directly, following D-04 addendum's own cited "trait injection... `RngCore`+`CryptoRng`,
+ed25519-dalek/x25519-dalek's own convention" pattern. Caught before implementation (advisor review):
+**there is no current consumer** of that trait anywhere in this crate - `crypto_sign` is
+deterministic (D-46, no RNG), `hazmat` is "caller supplies everything" by design (D-09), and
+anything that *would* consume it (`crypto_secretbox`, DSTU 4145 key generation) is blocked on D-05
+or doesn't exist yet. Adding it now would mean an unconsumed re-export permanently dragging a
+pre-1.0 dependency into a crate intended for crates.io publication (T-17) - exactly the kind of
+speculative abstraction this project's own discipline (and D-47's own libsodium-minimal-surface
+criterion, ranked above "match an ecosystem convention") argues against. Deferred to the trait's
+first real consumer, per D-04's own framing ("nothing needs it today").
+
+**What the deferred research found, verified against real registry sources, not memory** (to
+execute when a consumer exists, not now):
+- `rand_core` 0.10.1 is the *current* version, but it just deprecated its own `RngCore`/
+  `TryRngCore` trait names in favor of `Rng`/`TryRng` (`CryptoRng` stays as a marker trait, now
+  `Rng + TryCryptoRng<Error = Infallible>`) - a breaking, pre-1.0 redesign, confirmed by reading
+  its `src/lib.rs` directly (registry cache), not assumed from the name D-04's addendum used.
+- `ed25519-dalek` 3.0.0 (current, checked via a real `cargo fetch`) confirms the trait-injection
+  pattern is still alive and matches D-04's citation - but gated behind an optional `rand_core`
+  Cargo feature pinned to `rand_core = "0.10"`, consumed only by `SigningKey::generate<R:
+  CryptoRng + ?Sized>(csprng: &mut R)`. Its default (no-feature) signing path is deterministic,
+  same posture this project already chose independently for `crypto_sign` in D-46 - real
+  cross-project convergence on the same answer, not just a citation match.
+- `getrandom` 0.4.2 (a real minor-version-equivalent bump from this project's current 0.3.4, not
+  yet adopted) ships an optional `sys_rng` feature (`getrandom::SysRng`, re-exporting `rand_core`
+  itself so a downstream crate doesn't even need its own version-pinned `rand_core` dependency) -
+  a ready-made, upstream-maintained `rand_core::CryptoRng` implementation over the OS CSPRNG.
+  **When a real consumer lands**: bump to `getrandom = "0.4.2"` with `features = ["sys_rng"]`
+  instead of hand-rolling an `OsRng` wrapper - avoids writing new security-relevant glue code for
+  something upstream already provides and matches `ed25519-dalek`'s own demonstrated usage.
+
+**Only `randombytes_buf` is implemented** - libsodium's `randombytes_uniform`/`randombytes_random`/
+`randombytes_buf_deterministic` are not built and not planned as part of T-72; this closes the gap,
+it doesn't claim full `randombytes` API parity.
+
+**Verified**: 4 new tests (buffer actually gets filled, two draws don't collide, zero-length
+doesn't error, a sub-slice write doesn't touch bytes outside it) - no oracle exists for OS
+randomness by definition, same posture already established for `hazmat::kupyna_kdf`'s distinctness
+tests (D-45). Full workspace `cargo test --all-features` green (no regressions). `cargo clippy
+--workspace --all-features -- -D warnings` and `cargo fmt --check` clean workspace-wide. `no_std`
+(no-default-features), `alloc`-only, and `small-tables` builds all confirmed clean;
+`cargo tree -e no-dev --no-default-features` confirms `getrandom` is absent from that dependency
+graph outright, not just unused at runtime. `cargo +nightly miri test --test randombytes`
+(targeted, not the full-workspace suite) is clean, no UB, ~1s - this module has no scalar-ladder
+equivalent to the T-85/D-46 slow-suite issue, so a targeted run was both sufficient and fast enough
+to actually complete, unlike D-46's admittedly-incomplete full-suite attempt. `cargo audit`/
+`cargo deny check` both clean for the new `getrandom` dependency (via a full `cargo xtask ci` run
+covering fuzz/audit/deny/oracle-harness layers - that run's captured log was truncated to its last
+~100 lines by the background-output mechanism, losing the miri section specifically, which is why
+miri was re-run standalone above rather than cited from that log). A `getrandom` row was added to
+`SECURITY.md`'s supply-chain table alongside `zeroize`'s existing one.
+
+**Bonus consolidation, behavior-preserving**: `uacrypt`'s existing direct `getrandom::fill` call
+(T-82's CCM nonce generation) now goes through `dstu_core::randombytes::randombytes_buf` instead,
+and `uacrypt`'s own direct `getrandom` dependency was removed from its `Cargo.toml` - one call site
+and one version pin for OS randomness in this workspace, not two. All 23 existing `uacrypt` tests
+(including the CCM fresh-nonce-per-call test) still pass unchanged; `cargo clippy --workspace
+--all-features -- -D warnings` and `cargo fmt --check` both clean workspace-wide.
+
+## D-49: `argon2` crate vetted for T-71 (`crypto_pwhash`) - not yet adopted, research only
+
+Per `CLAUDE.md`'s "research before implementation" discipline, the candidate crate T-71 flagged
+2026-07-24 (`docs/dstu-crypto-project.md`'s libsodium mapping, `TASKS.md` T-71) was vetted against
+real registry/repo sources before any code was written - no `crypto_pwhash` implementation exists
+yet, this entry only records the vetting so it isn't redone from scratch when T-71 is picked up.
+
+**Crate**: `argon2` (`RustCrypto/password-hashes` monorepo, `argon2/` subdirectory), maintainer
+"RustCrypto Developers" (org-maintained, not a single-person crate). Latest stable `0.5.3`
+(released 2024-01-20, a docs/big-endian-support maintenance release, not a feature bump); a
+pre-release `0.6.0-rc.8` also exists on the `master` branch but is not the stable channel this
+project would pin - if T-71 is picked up before `0.6.0` stabilizes, pin `0.5.3`, not the rc.
+License dual `MIT OR Apache-2.0` (matches this project's own license, `Cargo.toml`). MSRV `1.65`
+(the stable `0.5.3` tag's own `rust-version` field, checked directly - not the `master`/`0.6.0-rc`
+branch's `1.85`, an easy mixup this entry initially made and is correcting here rather than
+silently), comfortably under this project's `rust-toolchain.toml` (unpinned `stable`, always
+newer). Downloads
+~40M total / ~17M recent (crates.io) - the de facto standard Argon2 implementation in the Rust
+ecosystem, not a niche alternative (`argon2-rs`/`rust-argon2` are the other candidates in this
+space and were not chosen - RustCrypto org maintenance and shared dependency surface with
+`blake2`/`password-hash`/`zeroize`, already-vetted or already-used crates in this workspace, was
+the deciding factor over a from-scratch comparison).
+
+**`no_std` compatibility, checked against this project's MVP hard constraint**: the crate's own
+README states explicit support for "embedded (i.e. `no_std`) environments, including ones without
+`alloc` support" - relevant because Argon2's memory-hard design normally implies a large working
+buffer, so a caller-supplied-buffer no-alloc path existing at all is worth confirming rather than
+assuming. The `0.5.3` tag's actual `[features] default` (checked directly, not assumed) is
+`["alloc", "password-hash", "rand"]` - none of the three appropriate to enable unconditionally for
+a `no_std` core build, mirroring the `std`-gating pattern already established for `getrandom`
+itself (D-48). See D-50 for how this was actually wired (feature-gated behind a new dedicated
+`pwhash` feature, not folded into `std`, and with `rand` deliberately left off).
+
+**Audit status - checked, not assumed**: no independent third-party audit (NCC Group, Cure53,
+Trail of Bits) of the `argon2` crate specifically was found. This is a real gap, not an oversight
+in the search - NCC Group's RustCrypto-adjacent audit work (Dec 2019) covered the AEAD crates
+(AES-GCM, ChaCha20Poly1305), and Cure53's RustCrypto audit covered `xsalsa20poly1305`/`crypto_box`
+- neither touched `password-hashes`. `TASKS.md` T-71's existing "not yet vetted for a specific
+audit of *that* crate" caveat is confirmed accurate, not stale.
+
+**CVE/advisory history**: clean. Checked both the local `cargo audit` advisory database already
+cached on this machine (`~/.cargo/advisory-db`, no `crates/argon2` directory exists in it at all)
+and the upstream `RustSec/advisory-db` repository directly (no advisory directory for this crate)
+- two independent checks, not one.
+
+**Conclusion**: `argon2` clears this project's supply-chain bar (`SECURITY.md`) on every axis
+checked except independent audit, which is a real, disclosed gap rather than a blocker - the same
+posture already accepted for `zeroize`/`getrandom` in this workspace (D-20, D-48), both also
+RustCrypto-ecosystem-standard and also not independently audited as standalone crates. **Not yet
+added as a dependency** - this entry is vetting only; adoption (Cargo.toml entry, `std`-gating
+design, actual `crypto_pwhash` API) is T-71's own implementation step, still to come.
+
+## D-50: `crypto_pwhash` (T-71) implemented over `argon2` 0.5.3 - dedicated `pwhash` feature, libsodium's own Argon2id parameter choices, `rand_core` enters transitively despite that
+
+User approved implementation 2026-07-24, immediately after D-49's vetting. What got built:
+`dstu_core::crypto_pwhash::{hash_password, verify_password, Strength}` (`src/crypto_pwhash.rs`) -
+`hash_password(password: &[u8], strength: Strength) -> Result<String, PwHashError>` produces a
+self-describing PHC string; `verify_password(password: &[u8], hash: &str) -> bool` re-derives
+params from that string and returns a single pass/fail signal (`false` for both a wrong password
+and a malformed string - libsodium's own `crypto_pwhash_str_verify` convention, nothing for a
+caller to mishandle by branching differently on the two failure modes).
+
+**Every constant is cited to libsodium's real C source, not assumed from memory** - read directly,
+not recalled:
+- `crypto_pwhash_argon2id.h`: `SALTBYTES` = 16, `OPSLIMIT_INTERACTIVE/MODERATE/SENSITIVE` = 2/3/4,
+  `MEMLIMIT_INTERACTIVE/MODERATE/SENSITIVE` = 67108864/268435456/1073741824 bytes (64/256/1024
+  MiB).
+- `pwhash_argon2id.c`: `STR_HASHBYTES` = 32 (the PHC-string variant's fixed output length - not
+  user-configurable, so `Params::new(..., None)` defaulting to `argon2`'s own 32-byte default
+  lines up by construction, not coincidence left unverified); `crypto_pwhash_argon2id_str`'s own
+  `argon2id_hash_encoded((uint32_t) opslimit, (uint32_t) (memlimit / 1024U), (uint32_t) 1U, ...)`
+  call - parallelism is hardcoded to 1 lane, confirmed at the call site, not inferred from the
+  header (the header has no lanes constant at all). `Strength`'s three variants map directly onto
+  the three named tiers (`m_cost` = `MEMLIMIT / 1024`, `t_cost` = `OPSLIMIT`, `p_cost` = 1 always)
+  - no raw `m_cost`/`t_cost`/`p_cost` knob is exposed publicly, per D-47's "libsodium API shape, no
+  misconfigurable knobs" criterion applied literally: libsodium itself only exposes the three named
+  presets, not the raw values, so this module doesn't either.
+
+**`zeroize` feature enabled on `argon2` - caught by advisor review before declaring done, not
+found independently**: the first pass built `argon2` with `features = ["alloc",
+"password-hash"]` only, missing `argon2`'s own `zeroize` feature - confirmed from its `lib.rs`
+(fetched during D-49's research, re-read here) that `initial_hash.zeroize()` and its internal
+memory-block wipe are both `#[cfg(feature = "zeroize")]`-gated, off unless requested. Left off,
+`argon2`'s internal state derived from the raw password would be left in freed-but-not-wiped
+memory - directly in tension with this project's own hard constraint that all key material is
+`Zeroize`/`ZeroizeOnDrop` (`CLAUDE.md`, `SECURITY.md`). Fixed by adding `"zeroize"` to the
+`argon2` dependency's feature list - no new crate pulled in, `zeroize` is already a direct
+`dstu-core` dependency (D-20). Re-verified after the fix: `cargo test -p dstu-core --features
+pwhash` and the integration suite both still green, `cargo clippy --workspace --all-features -- -D
+warnings`/`cargo fmt --all -- --check` both clean, all four `no_std`/`alloc`/`small-tables`
+combinations still unaffected.
+
+**`cargo audit`/`cargo deny check` - run and confirmed clean, not skipped**: `SECURITY.md` states
+both "must stay green as soon as any dependency is added," and this task added roughly a dozen new
+crates to the tree (`argon2`, `password-hash`, `blake2`, `base64ct`, `rand_core`, `cpufeatures`,
+`generic-array`, `block-buffer`, `crypto-common`, `digest`, `typenum`, `version_check`) - a build/
+test/clippy/fmt sweep alone says nothing about licenses, bans, or advisories on any of them.
+`cargo audit`: 116 crate dependencies scanned, zero advisories. `cargo deny check`: `advisories
+ok, bans ok, licenses ok, sources ok` - `bans ok` specifically confirms no duplicate-version
+conflict between `password-hash`'s `rand_core 0.6.4` and `proptest`'s own `rand`/`rand_core`
+dependency chain (a real risk worth checking, not assuming away, given `proptest` is already a
+dev-dependency of this crate). The two pre-existing `license-not-encountered` warnings
+(`BSD-2-Clause`/`ISC` unmatched allowances in `deny.toml`) are unrelated to this task, already
+present before this session.
+
+**Salt generation reuses this crate's own `randombytes_buf`, not `password_hash`'s
+`SaltString::generate`**: `SaltString::encode_b64(&salt_bytes)` takes raw bytes directly (checked
+against `password-hash` 0.5.0's real source, not assumed) - `randombytes_buf` draws 16 bytes
+(`crypto_pwhash_argon2id_SALTBYTES`), `encode_b64` wraps them into the PHC-string salt field. This
+was the intended way to avoid this module depending on `rand_core`/`OsRng` directly, and it
+succeeds at that narrow goal (this module's own code never touches `rand_core`) - but see the next
+paragraph for why the dependency shows up in the tree anyway.
+
+**A real correction caught by actually building, not assumed clean**: `rand_core 0.6.4` compiles
+into the dependency graph whenever `pwhash` is enabled, *despite* deliberately excluding argon2's
+own `rand` feature. Confirmed via `cargo tree -p dstu-core --features pwhash -e normal`: `argon2
+0.5.3`'s own `Cargo.toml` depends on `password-hash = { version = "0.5", optional = true }` without
+`default-features = false`, and `password-hash 0.5.0`'s own `[features] default = ["rand_core"]` -
+so enabling argon2's `password-hash` feature at all (needed for `PasswordHash`/`PasswordHasher`/
+`SaltString`, i.e. required for this module's entire approach) unconditionally pulls in
+`password-hash`'s default features too, including `rand_core`, via Cargo's additive-only feature
+unification. There is no Cargo mechanism in `dstu-core`'s own manifest to suppress a transitive
+dependency's defaults that another dependency (`argon2`) itself requested - this is not a bug in
+this project's Cargo.toml, it is `argon2` 0.5.3's own manifest not passing
+`default-features = false` on its `password-hash` dependency. Net effect: `rand_core` is compiled,
+genuinely unused by any code this project wrote (`SaltString::generate`/`OsRng` are never called
+here), and confirmed absent from every `no_std`/`alloc`/`small-tables` build (`cargo tree -p
+dstu-core -e no-dev --no-default-features[--features dstu-core/small-tables]`, both clean) since
+`pwhash` is never enabled there. A `rand_core 0.6.4` row was added to `SECURITY.md`'s supply-chain
+table alongside `argon2`'s own - transitive-only dependencies still get vetted here, not just
+direct ones, since they still execute in the final binary.
+
+**Feature gating: a dedicated `pwhash` feature, not folded into `std` (D-48's own precedent)** -
+`pwhash = ["std", "dep:argon2"]`, off by default. Reasoning, stated rather than left implicit:
+Argon2's dependency surface (`base64ct`/`blake2`/`password-hash`, now transitively `rand_core` per
+above) is meaningfully heavier than `getrandom`'s single small crate, and most of this project's
+`std`-feature users (a Linux/Windows/macOS binary, say) have no use for a password-hashing KDF at
+all - forcing it in unconditionally with `std` would be the wrong default for a project whose own
+MVP scope explicitly targets constrained/embedded consumers too. No new CI plumbing was needed:
+unlike `small-tables` (D-39), `pwhash` is purely additive and never alters the default code path,
+so the existing `cargo test --workspace` (default features, `.github/workflows/rust.yml`) and
+`cargo test --workspace --all-features` (which now also covers `pwhash`) already provide full
+coverage without a new explicit step.
+
+**Test-first, dual-oracle discipline applied even though this project didn't write the
+algorithm**: no DSTU vector exists (`crypto_pwhash` is deliberately non-DSTU, D-03), but "no
+homegrown primitives, verify before trusting" still applies to *this project's own use* of a
+third-party crate, so:
+- `tests/crypto_pwhash.rs` (5 tests): round-trip, wrong-password-rejected, malformed-string-
+  rejected-not-a-panic, two-calls-use-different-salts, and (the load-bearing one, per this
+  project's own "check what a fixed vector actually exercises" lesson, `CLAUDE.md`) each cheap
+  `Strength` variant's PHC string is asserted to actually contain that variant's own `m=...,t=...`
+  substring - a plain round-trip test would pass even if `Strength` were silently ignored inside
+  `hash_password`, since `verify_password` re-derives params from whatever string it's given.
+- `src/crypto_pwhash.rs`'s own `#[cfg(test)]` module: RFC 9106 (IETF, primary source) Appendix A's
+  Argon2id test vector (password/salt/secret/associated-data all fixed patterned bytes, `p=4`,
+  `m=32` KiB, `t=3`, tag `0d640df5...e659`) run directly against a raw `Argon2` construction
+  (bypassing `hash_password`'s PHC-string layer and fixed `p=1` entirely) - confirms the `argon2`
+  dependency itself is spec-correct before trusting it through this module's own wrapper.
+- `Strength::Sensitive`'s own params (1024 MiB, t=4) are checked directly against a constructed
+  `Params` rather than through a real `hash_password` call - a real hash at that tier took ~85s in
+  an unoptimized debug build (too expensive to pay on every CI push for marginal signal, since
+  `Interactive`/`Moderate` already prove `Strength` flows through the identical code path).
+
+**Verified**: `cargo test -p dstu-core --features pwhash` (7 new tests, all green); `cargo test
+--workspace --all-features` (full workspace, no regressions); `cargo clippy --workspace
+--all-features -- -D warnings` and `cargo fmt --all -- --check` both clean; all four `no_std`/
+`alloc`/`small-tables` build combinations confirmed clean (`pwhash` never enabled there); `cargo
+tree` confirms `argon2`/`rand_core`/`password-hash`/`blake2`/`base64ct` are absent from every
+`no_std`-profile dependency graph.
+
+**`cargo miri test` - scoped, same class of impracticality as D-41's kalyna_ccm proptest issue**:
+this module contains no `unsafe` code of its own (it only calls a safe-Rust dependency), so the
+incremental UB-detection value of a full Miri run here is low to begin with, unlike hazmat-level
+modules that manipulate raw byte buffers directly. What was actually run: the RFC 9106 vector test
+(32 KiB memory) - `MIRIFLAGS=-Zmiri-disable-isolation cargo +nightly miri test --features pwhash
+--lib crypto_pwhash::tests::argon2_dependency_matches_rfc9106_argon2id_vector` - clean, no UB,
+~55s; and `sensitive_preset_has_libsodiums_sensitive_params` (no real hashing, params-only) -
+clean, ~1s. A real `hash_password` call at any named `Strength` tier (64/256/1024 MiB) was not
+attempted under Miri: Argon2 is deliberately memory-hard, and Miri's interpretation overhead
+compounds with both the memory size and iteration count that make it memory-hard in the first
+place - the 32 KiB vector alone took 55s, so the smallest real preset (2048x the memory, `t=2`
+instead of `t=3`) is reasonably estimated at hours, not minutes. Not attempted, not silently
+assumed clean - the 32 KiB vector test already exercises the identical `Argon2::hash_password_into`
+code path with no unsafe code involved, so the marginal Miri value of also running a real
+Interactive-tier hash is close to zero for the cost.
+
+**Not built, deliberately out of scope**: libsodium's raw `crypto_pwhash()` (arbitrary-length KDF
+output from password+salt, for key derivation rather than password storage) has no consumer
+anywhere in this crate today, same reasoning D-48 applied to deferring a `CryptoRng` trait -
+recorded here as a documented gap, not silently dropped, should a real consumer appear. No
+`uacrypt` CLI subcommand either (T-71 scoped this to the core crate only, matching `crypto_sign`'s
+own precedent of landing without CLI wiring first).

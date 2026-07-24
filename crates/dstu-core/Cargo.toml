@@ -10,16 +10,40 @@ name = "dstu_core"
 
 [features]
 default = ["std"]
-std = []
+std = ["dep:getrandom"]
 alloc = []
 # Resource profile for constrained targets (DECISIONS.md D-35/D-38): swaps the fused S-box+MDS
 # lookup tables (~86 KB of `const` data) for the pre-D-26/D-27 gf_mul-based path (~6 KB) at the
 # cost of throughput. Independent of std/alloc/no_std - can combine with any of them.
 small-tables = []
+# `crypto_pwhash` (T-71, DECISIONS.md D-49/D-50): a dedicated feature, not folded into `std`
+# (D-48's precedent) - Argon2's dependency surface (base64ct/blake2/password-hash) is heavier than
+# `getrandom`'s, and most `std`-feature users on this project's non-server targets have no use for
+# a password-hashing KDF. Requires `std` (needs `randombytes` for the salt, and `String`/PHC-string
+# allocation).
+pwhash = ["std", "dep:argon2"]
 
 [dependencies]
 zeroize = { version = "1.9.0", default-features = false, features = ["derive"] }
 subtle = { version = "2.6.1", default-features = false }
+# Optional, `std`-gated (DECISIONS.md D-48): never compiled for a `no_std` build, so it can never
+# trip getrandom's own compile_error! on an unrecognized embedded target (D-04 addendum).
+getrandom = { version = "0.3.4", default-features = false, optional = true }
+# Optional, `pwhash`-gated (DECISIONS.md D-49/D-50): vetted 2026-07-24, pinned to the stable
+# `0.5.3` release (not the `0.6.0-rc` prerelease on `master`). `rand` feature deliberately
+# excluded - salt bytes come from this crate's own `randombytes_buf`, not `password_hash`'s
+# `rand_core`-based `SaltString::generate`. This does NOT keep `rand_core` out of the dependency
+# tree, though: confirmed via `cargo tree` that `argon2 0.5.3`'s own Cargo.toml enables its
+# `password-hash` dependency's *default* features (doesn't itself pass
+# `default-features = false`), and `password-hash 0.5.0`'s defaults include `rand_core` - a
+# transitive default this crate's own Cargo.toml has no way to override (Cargo feature
+# unification is additive-only). `rand_core 0.6.4` is therefore compiled but genuinely unused by
+# this module's own code (we never call `SaltString::generate`/`OsRng`) - see D-50.
+# `zeroize` feature enabled (not a new crate - `zeroize` is already a direct dependency above):
+# without it, `argon2`'s own internal memory blocks and initial hash (both derived from the raw
+# password) are left in freed-but-not-wiped memory - this crate's own hard constraint requires all
+# key material to be Zeroize/ZeroizeOnDrop, and a password being hashed is exactly that.
+argon2 = { version = "0.5.3", default-features = false, features = ["alloc", "password-hash", "zeroize"], optional = true }
 
 [dev-dependencies]
 criterion = "0.8.2"

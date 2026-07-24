@@ -473,7 +473,8 @@ pub fn run_ccm_command(decrypt: bool, args: &CcmArgs) -> Result<(), CliError> {
         read_exact_file(&args.nonce_path, "nonce", args.variant.block_len())?
     } else {
         let mut generated = vec![0u8; args.variant.block_len()];
-        getrandom::fill(&mut generated).map_err(|e| CliError::Random(e.to_string()))?;
+        dstu_core::randombytes::randombytes_buf(&mut generated)
+            .map_err(|e| CliError::Random(e.to_string()))?;
         std::fs::write(&args.nonce_path, &generated).map_err(|e| CliError::Io {
             path: args.nonce_path.clone(),
             message: e.to_string(),

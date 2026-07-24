@@ -179,8 +179,8 @@ Module-by-module status (libsodium name → `dstu_core` module → status):
 | `crypto_kdf` | `hazmat::kupyna_kdf` (`Kupyna256Kdf`/`Kupyna384Kdf`/`Kupyna512Kdf`) | **Implemented** — modeled after libsodium's `crypto_kdf_derive_from_key` shape over `hazmat::kupyna_kmac`, not full RFC 5869 HKDF. No DSTU standard or reference implementation exists for this construction, so unlike the rest of this table's "provisional" rows, there is no oracle vector at all, ever — see D-45 in `DECISIONS.md`. |
 | `crypto_kx` | *(future construction over `hazmat::dstu4145`/`dstu9041`)* | Needs both curve implementations to exist; DSTU 9041 side is hard-blocked. |
 | `crypto_secretstream` | *(future construction over `hazmat::strumok`/`hazmat::kalyna`)* | Both underlying primitives now implemented; the construction itself not started. |
-| `crypto_pwhash` | *(not DSTU — plain Argon2id, wrapped at the high-level layer only)* | Not started; low priority, no blocker. |
-| `randombytes` | *(not DSTU — OS CSPRNG via `getrandom`, used only by the future high-level layer)* | Not started; no blocker, but only needed once the high-level layer exists. |
+| `crypto_pwhash` | `dstu_core::crypto_pwhash` (`hash_password`/`verify_password`/`Strength`) | **Done** (T-71, D-49/D-50) — not DSTU, plain Argon2id over the `argon2` crate, dedicated `pwhash` feature (off by default). `Strength::{Interactive,Moderate,Sensitive}` mirror libsodium's own `OPSLIMIT`/`MEMLIMIT_*` presets exactly, cited to its C source. No `uacrypt` CLI subcommand yet. |
+| `randombytes` | `dstu_core::randombytes::randombytes_buf` | **Done** (T-72, D-48) — `std`-gated over an optional `getrandom` dependency, absent from `no_std`/`alloc`/`small-tables` builds. |
 
 This table is the authoritative "what's actually implemented right now" for the API surface —
 `TASKS.md` tracks the same work at the task-checklist level; update both when a module's status
