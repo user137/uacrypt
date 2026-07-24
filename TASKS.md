@@ -1408,3 +1408,68 @@ GMAC work above) — process/documentation gaps, not code-correctness bugs
       decision (put to the project owner, matching this project's own "real security-posture forks
       get decided explicitly, not silently" precedent — D-46/T-40's re-scoping questions are the
       model to follow), not just a fix picked unilaterally.
+
+## Roadmap to a genuinely complete product (2026-07-24, user-approved sequencing)
+
+Recorded here (not only in a session's ephemeral plan file) per the user's explicit instruction:
+this sequencing must survive a memory clear or a new session. Supersedes any earlier "what's next"
+framing in `docs/release-readiness.md` (T-99 will reconcile that document once this sequence is
+under way). User's stated goal, verbatim in spirit: not rushing crates.io publication (T-17/T-18
+deliberately last); instead, a genuinely complete core library across **both** resource profiles
+(fused/performance and `small-tables`, D-35/D-38/D-39) plus a complete libsodium-shaped high-level
+(`crypto_*`) frontend over everything already in `hazmat`.
+
+Three forks the user resolved explicitly when this roadmap was approved (each gets its own
+plan-mode pass when its step comes, per this project's standing discipline - the resolution below
+is the direction, not a license to skip that pass):
+- **T-101**: `hazmat::kalyna_cfb`'s documented panic on non-aligned intermediate calls becomes a
+  checked `Result`, not a documented exception.
+- **T-40**: `crypto_secretbox` migrates from Kalyna-CCM to Kalyna-GCM - removes the 255-byte cap
+  directly (GCM encodes no length into its construction, D-56), no chunked-streaming needed.
+- Real embedded hardware validation (STM32/ESP32, Phase 4) is explicitly **out of scope** for "a
+  complete product" right now - "small tables" means the software `small-tables` Cargo profile,
+  verified by build/test on this machine and the Raspberry Pi, not physical MCU hardware.
+
+**Step 0 (do first, per explicit user instruction) - T-96: XTS (#9), Stage E, the 10th and last
+DSTU 7624 mode.** Own plan-mode pass before implementation. Reuses `hazmat::gf2m_wide` (same `f[]`
+parameterization, confirmed in D-53). Adds ciphertext stealing for the final partial block - the
+one genuinely new piece of logic across all 10 modes. Closes out full 10/10 `hazmat` mode coverage.
+
+**Step 1 - Trust/correctness gaps before more feature surface (T-97 through T-101, in this order)**:
+T-100 first (real CI Miri backstop for everything after), then T-101 (`kalyna_cfb` → `Result`,
+own test-first pass), then T-98 (fuzz targets - after T-101, since `kalyna_cfb`'s shape will have
+changed), T-97 (trivial `SECURITY.md` table row, any time), T-99 last (reconcile
+`docs/release-readiness.md` against the state *after* the rest of this step and Step 0).
+
+**Step 2 - Close the `small-tables`/full feature-matrix verification gap for Stage B-D + XTS.**
+CMAC/KW/GCM/GMAC (D-54-D-57) and the new XTS were only confirmed against a bare `no_std` build,
+not the full 8-combination matrix (`no_std`/`alloc`/`std`/`small-tables`) the way earlier stages
+(D-39, D-41) were. Run and document explicitly, same detail level as D-39/D-41 - directly serves
+the user's stated "small tables" priority.
+
+**Step 3 - The libsodium-shaped `crypto_*` frontend over everything in `hazmat`**:
+1. `crypto_secretbox` → Kalyna-GCM internally (`Kalyna256_256Gcm`, keeps the 32-byte nonce),
+   drops the 255-byte cap and `MessageTooLong`. Inherits GCM's own provisional status (D-56).
+   Consequence for `uacrypt encrypt`/`decrypt`: an AEAD tag needs the full plaintext/ciphertext, so
+   true block-at-a-time disk streaming (D-42's standing policy) isn't possible here without a
+   separate chunked construction - document that limitation plainly rather than silently implying
+   unbounded memory use.
+2. `crypto_generichash`/`crypto_auth`/`crypto_kdf` - mostly a documentation reconciliation pass;
+   decide whether a dedicated re-export module is needed for naming parity with
+   `crypto_sign`/`crypto_secretbox`/`crypto_pwhash`, or a table entry suffices.
+3. `crypto_stream` (Strumok) high-level wrapper - whether the IV is auto-generated (hidden from the
+   caller, like `crypto_secretbox`'s nonce) or stays explicit is its own fork, decided when this is
+   actually picked up.
+4. KW stays `hazmat`-only - libsodium has no direct equivalent, state this explicitly in
+   `docs/dstu-crypto-project.md` rather than leaving it a silent gap.
+5. `crypto_kx`/`crypto_box` (DSTU 9041) remain hard-blocked, not scheduled by this roadmap.
+
+**Step 4 (last, not before) - publication.** T-17 (crates.io) and T-18 (GitHub Releases binaries) -
+deliberately last, per "not rushing publication."
+
+Verification at every step, no exceptions, unchanged from this session's established practice:
+`cargo test --workspace --all-features`, `cargo clippy --workspace --all-features -- -D warnings`,
+`cargo fmt --all -- --check`, `cargo build -p dstu-core --no-default-features`, and - once Step 1's
+T-100 lands - a Miri run that actually completes rather than times out. Each step gets a
+`DECISIONS.md` entry with citations and a `TASKS.md` status update. Commit after green; push only
+on explicit request.
