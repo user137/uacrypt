@@ -1203,16 +1203,27 @@ needed) — non-negotiable per D-53, not optional per mode.
       immediately. **This constraint is now stated loudly in the module doc**, including the panic
       risk, not left as a silent footnote. `cargo test --workspace --all-features`/`clippy -D
       warnings`/`fmt --check` clean; bare `no_std` build re-confirmed.
-- [ ] **T-92** CTR (#2) — Stage A, not started. Cited to `encrypt_ctr` (L2739-2790)/
-      `dstu7624_init_ctr` (L4397-4421). **Confirmed this session (re-reading the C source
-      directly)**: this is byte-for-byte the same keystream-priming/increment/re-encrypt logic
-      `hazmat::kalyna_ccm`'s internal `Gamma` component already implements and has shipped,
-      dual-oracle-verified, miri-clean, since T-81 (CCM calls this exact `encrypt_ctr` internally).
-      **Do not refactor `kalyna_ccm.rs` to share code with the new CTR module** — per D-53/`CLAUDE.md`'s
-      own "three similar lines beats a premature abstraction" rule, a shared abstraction across that
-      boundary is a regression risk in already-verified AEAD code not worth the DRY win; CTR gets its
-      own independent implementation and tests. Only 1 uapki KAT exists — cross-check against BC's
-      vectors (`DSTU7624Test.java` test IDs 24-27, `KCTRBlockCipher`) for additional coverage.
+- [x] **T-92** **CTR (#2) done, see `DECISIONS.md` D-53 - Stage A complete, all five modes shipped**
+      — `hazmat::kalyna_ctr` (`Kalyna128_128Ctr`...`Kalyna512_512Ctr`, `apply_in_place`, self-inverse
+      like `kalyna_ofb`). Cited to `encrypt_ctr` (L2739-2790)/`dstu7624_init_ctr` (L4397-4421) -
+      confirmed byte-for-byte the same keystream-priming/increment/re-encrypt logic
+      `hazmat::kalyna_ccm`'s internal `Gamma` already implements (CCM calls this exact `encrypt_ctr`
+      internally) - written as its own independent implementation, not shared code, per the plan's
+      explicit "don't touch verified AEAD code for a DRY win" instruction. **A real transcription
+      bug caught before it ever reached the test run**: the first draft of `apply_in_place` omitted
+      the leading "consume any leftover keystream bytes one at a time" loop that both the C source
+      and `kalyna_ccm`'s own `Gamma::apply` have, jumping straight to "regenerate if fully
+      exhausted" - caught by re-comparing against `Gamma::apply`'s exact structure before running
+      anything, not by a failing test. Two-oracle vector file (uapki's single KAT plus a genuinely
+      independent second Bouncy Castle vector, `DSTU7624Test.java` `KCTRBlockCipher` test #25 - test
+      #24 matches uapki's own vector byte-for-byte, same dual-lineage relationship already seen for
+      CCM/GCM/KW) - both only cover Kalyna128_128, the one variant either oracle has any CTR vector
+      for; the other four variants rely on the shared-logic argument above plus the chunk-invariance
+      `proptest`, run across all five variants with genuinely arbitrary call boundaries (no
+      `q`-alignment restriction, unlike `kalyna_cfb`). **All 6 tests green on the first attempt**
+      after the pre-emptive fix. `cargo test --workspace --all-features`/`clippy -D warnings`/
+      `fmt --check` clean (one `doc_markdown` fix, same lint `kalyna_ofb` hit); bare `no_std` build
+      re-confirmed.
 - [ ] **T-93** CMAC (#4) — Stage B, not started. See D-53 for the oracle/scope summary
       (`DECISIONS.md`) — strongest whole-block oracle of the non-AEAD modes (BC's `DSTU7624Mac` is a
       full independent construction, Java and .NET), but its padding/partial-block branch is

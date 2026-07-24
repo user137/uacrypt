@@ -2954,3 +2954,39 @@ constraint, including the panic risk, is now stated loudly in the module doc**, 
 footnote a caller could miss - a silent-wrong-output failure would have been worse, but an
 undocumented panic is still a real misuse trap for a `hazmat` API. `cargo test --workspace
 --all-features`/`clippy -D warnings`/`fmt --check` clean; bare `no_std` build re-confirmed.
+
+**Stage A, fifth and final piece: `hazmat::kalyna_ctr`** (`TASKS.md` T-92) - Stage A is now
+complete, all five modes shipped. Cited to `encrypt_ctr` (`dstu7624.c` L2739-2790)/
+`dstu7624_init_ctr` (L4397-4421) - confirmed byte-for-byte the same keystream-priming/increment/
+re-encrypt logic `hazmat::kalyna_ccm`'s internal `Gamma` component already implements (CCM calls
+this exact `encrypt_ctr` internally). Written as its own independent implementation per this
+roadmap's standing instruction not to refactor `kalyna_ccm.rs` to share code across that boundary -
+shipped, dual-oracle-verified, miri-clean AEAD code is not worth a DRY win's regression risk
+(`CLAUDE.md`'s "three similar lines beats a premature abstraction" rule, applied literally, same
+reasoning already stated when this task was originally scoped).
+
+**A real transcription bug caught before it ever reached a test run, by re-comparing against
+`Gamma::apply`'s own structure rather than trusting a "should be equivalent" simplification**: the
+first draft of `apply_in_place` jumped straight from "check if fully exhausted, regenerate if so"
+to the main block loop, omitting the leading "consume any leftover keystream bytes one at a time"
+while-loop that both the C source and `kalyna_ccm`'s own `Gamma::apply` have for the case where a
+previous call left a *partially* (not fully) used keystream block. Caught and fixed by direct
+comparison against the already-verified `Gamma::apply` code before running anything - the kind of
+side-by-side check this module's own doc comment explicitly invites, given how closely it mirrors
+that component. Two-oracle vector file: uapki's single KAT plus a genuinely independent second
+Bouncy Castle vector (`DSTU7624Test.java` `KCTRBlockCipher` test #25 - test #24 matches uapki's own
+vector byte-for-byte, the same dual-lineage relationship already established for CCM/GCM/KW) - both
+only cover Kalyna128_128, the only variant either vendored oracle has any CTR vector for; the other
+four variants rely on the shared-logic argument above plus a chunk-invariance `proptest` run across
+all five variants with genuinely arbitrary call boundaries (no `q`-alignment restriction, unlike
+`kalyna_cfb` - CTR's counter-increment bookkeeping has no equivalent complication). **All 6 tests
+green on the first attempt** once the pre-emptive fix was in place. `cargo test --workspace
+--all-features`/`clippy -D warnings`/`fmt --check` clean (one `doc_markdown` fix, same lint
+`kalyna_ofb` hit); bare `no_std` build re-confirmed.
+
+**Stage A summary**: ECB/OFB/CBC/CFB/CTR all done (T-88 through T-92), 6 of 10 DSTU 7624 modes now
+implemented at `hazmat` including CCM (T-81). Remaining: Stage B (CMAC, T-93), Stage C (KW, T-94),
+Stage D (GCM/GMAC, T-95, the one real new-primitive investment - GF(2^m) field arithmetic at three
+field sizes), Stage E (XTS, T-96, sequenced after D). Public `crypto_secretbox` surface unchanged
+throughout Stage A, as designed - none of these five modes are AEAD-shaped, so none was ever a
+candidate for a public entry point (D-05/D-47).
