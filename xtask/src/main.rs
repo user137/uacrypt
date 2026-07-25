@@ -59,7 +59,7 @@ fn print_usage() {
          \x20 ci             fmt --check + build + test + clippy, then best-effort for the optional tools below\n\n\
          Optional (each checks its tool is installed first and prints an install hint if not):\n\
          \x20 miri           cargo +nightly miri test --workspace\n\
-         \x20 fuzz           short cargo-fuzz smoke run against the kupyna/kalyna/kalyna_ccm/strumok targets\n\
+         \x20 fuzz           short cargo-fuzz smoke run against every target (see FUZZ_TARGETS)\n\
          \x20 audit          cargo audit (RustSec advisories)\n\
          \x20 deny           cargo deny check (licenses, bans, sources)\n\
          \x20 oracle-java    run the Java/Bouncy Castle oracle harness via Maven\n\
@@ -172,9 +172,25 @@ fn fuzz() -> bool {
     }
 }
 
+/// Kept in sync by hand with `crates/dstu-core/fuzz/Cargo.toml`'s `[[bin]]` entries and
+/// `.github/workflows/rust.yml`'s `fuzz-smoke` matrix (T-98) - no single source of truth cargo
+/// exposes for "every fuzz target name" short of parsing that file. Used on both platforms
+/// (`fuzz_targets` below and `fuzz_windows_msvc` further down).
+const FUZZ_TARGETS: [&str; 9] = [
+    "kupyna",
+    "kalyna",
+    "kalyna_ccm",
+    "strumok",
+    "kalyna_cmac",
+    "kalyna_kw",
+    "kalyna_gcm",
+    "kalyna_gmac",
+    "kalyna_cfb",
+];
+
 #[cfg(not(windows))]
 fn fuzz_targets(prefix: &[&str]) -> bool {
-    for target in ["kupyna", "kalyna", "kalyna_ccm", "strumok"] {
+    for target in FUZZ_TARGETS {
         let mut args = prefix.to_vec();
         args.push(target);
         args.extend(["--", "-max_total_time=60"]);
@@ -239,7 +255,7 @@ fn fuzz_windows_msvc() -> bool {
         );
         return false;
     }
-    for target in ["kupyna", "kalyna", "kalyna_ccm", "strumok"] {
+    for target in FUZZ_TARGETS {
         let inner = format!(
             "cargo +{MSVC_TOOLCHAIN} fuzz run --target x86_64-pc-windows-msvc {target} -- \
              -max_total_time=60"

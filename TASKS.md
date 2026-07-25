@@ -1342,7 +1342,7 @@ GMAC work above) — process/documentation gaps, not code-correctness bugs
       "before adding any crypto-adjacent dependency" — this one predates the table's own upkeep,
       not a new gap, but still an open one. Add maintainer/reproducible-build/audit/CVE-history
       columns matching the existing `zeroize` row's level of detail.
-- [ ] **T-98** CI's `fuzz-smoke` job (`.github/workflows/rust.yml`) runs only the `kupyna` target.
+- [x] **T-98** CI's `fuzz-smoke` job (`.github/workflows/rust.yml`) runs only the `kupyna` target.
       `crates/dstu-core/fuzz/fuzz_targets/` also has `kalyna`, `kalyna_ccm`, and `strumok` — none of
       the three run in CI, only ever locally per D-32's note. `SECURITY.md` calls `cargo fuzz`
       required, not optional, for every parser of untrusted input bytes, which most of these are.
@@ -1354,6 +1354,17 @@ GMAC work above) — process/documentation gaps, not code-correctness bugs
       **`hazmat::kalyna_cfb` (T-91) is the sharpest instance of this gap** — see T-100 below, it's
       the one module where a known reachable panic, zero fuzz coverage, and (per T-100) no completed
       Miri run all intersect.
+      **Resolved 2026-07-25, see `DECISIONS.md` D-61.** Five new targets added
+      (`kalyna_cmac`/`kalyna_kw`/`kalyna_gcm`/`kalyna_gmac`/`kalyna_cfb`, the last one done after
+      T-101 as planned since its shape changed), following the two established local patterns
+      (`kalyna.rs`'s plain round-trip, `kalyna_ccm.rs`'s round-trip-plus-direct-attack-surface).
+      CI's own open question — rotate through all targets vs. hardcode one — decided: `fuzz-smoke`
+      is now a 9-entry `strategy: matrix` job, one job per target in parallel. `xtask`'s two
+      hardcoded 4-target lists collapsed into one shared `FUZZ_TARGETS` const. **Verified**: all 5
+      new targets type-check clean under the MSVC toolchain (D-32's method); 60s smoke runs, zero
+      crashes — `kalyna_cmac` 115,853 runs, `kalyna_kw` 48,309, `kalyna_gcm` 203,779, `kalyna_gmac`
+      214,015, `kalyna_cfb` 87,519. Full non-fuzz workspace verification unaffected. CI's own matrix
+      run unconfirmed pending a push.
 - [ ] **T-99** `docs/release-readiness.md` is stale — written 2026-07-23/24, before this session's
       Stage A-D mode-of-operation work. It states GCM/KW/XTS as "not built" and names GCM as the
       unblock path for `crypto_secretstream` (T-40, still blocked on the 255-byte CCM cap
@@ -1514,8 +1525,10 @@ divisibility test; `CfbError` enum matches `KwError`/`GcmError`/`CcmError`'s con
 stated behavior narrowing (the `q == block_bytes` trailing-partial case) covered by its own
 regression test, not left incidental. All verification clean, including a scoped Miri run
 (585.27s, 0 UB). Then T-98 (fuzz targets - after T-101, since `kalyna_cfb`'s shape has now
-changed), T-97 (trivial `SECURITY.md` table row, any time), T-99 last (reconcile
-`docs/release-readiness.md` against the state *after* the rest of this step and Step 0).
+changed) - **DONE, see D-61**: 5 new targets, CI's `fuzz-smoke` now a 9-target matrix (was hardcoded
+to `kupyna` alone), zero crashes across all new targets' smoke runs. Then T-97 (trivial
+`SECURITY.md` table row, any time), T-99 last (reconcile `docs/release-readiness.md` against the
+state *after* the rest of this step and Step 0).
 
 **Step 2 - Close the `small-tables`/full feature-matrix verification gap for Stage B-D + XTS.**
 CMAC/KW/GCM/GMAC (D-54-D-57) and the new XTS were only confirmed against a bare `no_std` build,

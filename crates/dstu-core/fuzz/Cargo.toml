@@ -41,4 +41,39 @@ test = false
 doc = false
 bench = false
 
+[[bin]]
+name = "kalyna_cmac"
+path = "fuzz_targets/kalyna_cmac.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "kalyna_kw"
+path = "fuzz_targets/kalyna_kw.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "kalyna_gcm"
+path = "fuzz_targets/kalyna_gcm.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "kalyna_gmac"
+path = "fuzz_targets/kalyna_gmac.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "kalyna_cfb"
+path = "fuzz_targets/kalyna_cfb.rs"
+test = false
+doc = false
+bench = false
+
 [workspace]

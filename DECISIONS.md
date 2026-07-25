@@ -3618,3 +3618,53 @@ clean. `cargo +nightly miri test -p dstu-core --test kalyna_cfb`
 (`MIRIFLAGS=-Zmiri-disable-isolation PROPTEST_CASES=1`, matching T-100/D-59's CI convention): clean,
 0 UB, 25/25, 585.27s (comparable to D-59's 801.31s for this same file's *previous*, smaller test
 set - the new tests are small and fixed-shape, no proptest case-count blowup).
+
+## D-61: Fuzz coverage extended to all five Stage B-E modes; CI's `fuzz-smoke` job now a 9-target matrix (T-98)
+
+`SECURITY.md` calls `cargo fuzz` required, not optional, for every parser of untrusted input bytes.
+Before this: CI's `fuzz-smoke` job ran only `kupyna`; `kalyna`/`kalyna_ccm`/`strumok` had targets
+but never ran in CI (only ever locally, D-32); `kalyna_cmac`/`kalyna_kw`/`kalyna_gcm`/`kalyna_gmac`/
+`kalyna_cfb` (all landed this session, plus `kalyna_cfb`'s T-91/T-101 history) had **no fuzz target
+at all**, anywhere - the sharpest gap being `kalyna_cfb`, the one module where a known-until-T-101
+panic, zero fuzz coverage, and (until T-100) no completed CI Miri run all intersected.
+
+**Five new targets added** (`crates/dstu-core/fuzz/fuzz_targets/{kalyna_cmac,kalyna_kw,kalyna_gcm,
+kalyna_gmac,kalyna_cfb}.rs`), each following one of the two patterns already established by
+`kalyna.rs` (plain block-cipher round-trip, arbitrary bytes through decrypt too) and `kalyna_ccm.rs`
+(round-trip plus a direct-attack-surface call with bytes never produced by the crate's own encrypt
+path):
+- `kalyna_cmac`/`kalyna_gmac`: `mac`/`verify` over arbitrary key/message/tag content and length -
+  `gmac`'s tag length is deliberately allowed to fall outside the valid `8..=block_bytes` range,
+  exercising `GmacError::InvalidLength` under fuzzing, not just the unit tests.
+- `kalyna_kw`: a block-aligned round-trip (`wrap` then `unwrap`, capped at 5 blocks, comfortably
+  under `MAX_R`), plus arbitrary (often non-block-aligned, over-long, or out-buffer-mismatched)
+  bytes straight into both functions - the exact caller-supplied-length class the module's own doc
+  comment names as what its fixed-size internal buffers depend on the length check to guard.
+- `kalyna_gcm`: round-trip via `encrypt`/`decrypt`, plus `decrypt` fed arbitrary ciphertext and an
+  attacker-chosen (possibly out-of-range) tag length, mirroring `kalyna_ccm`'s
+  authentication-decision-on-attacker-input framing.
+- `kalyna_cfb`: multiple `encrypt_in_place` calls with fuzzer-controlled (almost always
+  non-`q`-aligned) chunk boundaries on the same cipher instance - the exact misuse pattern T-101/
+  D-60 turned from a panic into `Err(CfbError::NonAlignedIntermediateCall)`; `Err` is discarded, not
+  asserted against, since it's now an expected outcome, not a fuzz finding - only a panic is.
+
+**CI decision, explicitly named as open in T-98's own text**: whether to rotate through all fuzz
+targets instead of hardcoding `kupyna` alone. Resolved: `fuzz-smoke` is now a 9-entry
+`strategy: matrix` job (one job per target, parallel, each with its own pass/fail) rather than a
+sequential loop in one job - smoke runs are cheap (60s each) and this gives per-target visibility a
+single bundled job wouldn't. `xtask`'s own two hardcoded 4-target lists (`fuzz_targets` for
+non-Windows, the loop inside `fuzz_windows_msvc`) replaced with one shared `FUZZ_TARGETS` const
+listing all 9 - both call sites and the CI matrix must still be kept in sync by hand with `fuzz/
+Cargo.toml`'s `[[bin]]` entries (no single source of truth cargo exposes for "every fuzz target
+name" short of parsing that file), a pre-existing manual-sync tradeoff, not a new one introduced
+here.
+
+**Verified**: all 5 new targets type-check clean under the MSVC toolchain (`cargo fuzz check
+--target x86_64-pc-windows-msvc`, D-32's local method - the GNU host toolchain still can't build
+`libfuzzer-sys` at all on Windows, unchanged limitation). 60-second smoke runs, zero crashes:
+`kalyna_cmac` 115,853 runs, `kalyna_kw` 48,309 runs, `kalyna_gcm` 203,779 runs, `kalyna_gmac`
+214,015 runs, `kalyna_cfb` 87,519 runs. `xtask` itself (`cargo build`/`clippy -D warnings`/`fmt
+--check --manifest-path xtask/Cargo.toml`, xtask being its own standalone workspace, not a root
+workspace member) clean. Full non-fuzz workspace verification (`cargo test --workspace
+--all-features`, `clippy -D warnings`, `fmt --check`, bare `no_std` build) unaffected, re-confirmed
+clean. CI's own matrix run is unconfirmed pending a push, same standing caveat as D-59/D-60.

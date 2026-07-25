@@ -90,12 +90,24 @@ jobs:
   fuzz-smoke:
     name: cargo fuzz (short smoke run, not a full campaign)
     runs-on: ubuntu-latest
+    # T-98: this job used to hardcode just the `kupyna` target, leaving kalyna/kalyna_ccm/strumok
+    # (which already had targets) and every Stage B-E mode-of-operation module (which didn't)
+    # unfuzzed in CI - only ever run locally per D-32's note. A matrix runs every target that
+    # exists (one job per entry, in parallel, each with its own pass/fail rather than one job
+    # silently covering only the first target listed) rather than a sequential loop in one job -
+    # this list must be kept in sync with `crates/dstu-core/fuzz/Cargo.toml`'s `[[bin]]` entries by
+    # hand (no single source of truth cargo exposes for "every fuzz target name" short of parsing
+    # that file), same manual-sync tradeoff `xtask fuzz`'s own target lists already accept.
+    strategy:
+      matrix:
+        target:
+          [kupyna, kalyna, kalyna_ccm, strumok, kalyna_cmac, kalyna_kw, kalyna_gcm, kalyna_gmac, kalyna_cfb]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@nightly
       - run: cargo install cargo-fuzz --locked
       # Same rust-toolchain.toml override as the miri job above - `+nightly` is not optional here.
-      - run: cargo +nightly fuzz run kupyna -- -max_total_time=60
+      - run: cargo +nightly fuzz run ${{ matrix.target }} -- -max_total_time=60
         working-directory: crates/dstu-core
 
   audit:
