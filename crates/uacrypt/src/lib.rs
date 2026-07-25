@@ -1356,7 +1356,218 @@ pub fn run_strumok_command(args: &StrumokArgs) -> Result<(), CliError> {
     Ok(())
 }
 
+/// `true` for `--help`/`-h` - checked against every token in a (sub)command's remaining args
+/// (not just the first one), so `uacrypt kalyna-block encrypt --key k --help` still shows help
+/// instead of failing on a missing `--in`/`--out`.
+fn is_help_flag(s: &str) -> bool {
+    s == "--help" || s == "-h"
+}
+
+const TOP_LEVEL_HELP: &str = "\
+uacrypt - a CLI over dstu-core, Ukrainian DSTU cryptographic standards (Kalyna, Kupyna, Strumok).
+
+Pre-release, provisional, not independently audited - see SECURITY.md/DECISIONS.md in the project
+repository for the full threat model and citations (D-05: Kalyna's mode of operation is an adopted
+assumption, not primary-text confirmed; D-15: Strumok is UAPKI-attributed, not primary-text
+confirmed).
+
+USAGE:
+    uacrypt <command> [flags]
+    uacrypt <command> --help    show that command's flags and an example invocation
+
+EVERYDAY COMMANDS:
+    encrypt         Encrypt a file of any size with a 32-byte key (authenticated, streamed).
+    decrypt         Decrypt a file produced by `encrypt`.
+    hash            Compute a Kupyna-256 digest of a file of any size.
+
+LOWER-LEVEL COMMANDS (benchmarking/interop - most users want the three above instead):
+    kalyna-block    Single Kalyna block encrypt/decrypt - exactly one block, no file support.
+    kalyna-ccm      Kalyna-CCM authenticated encryption - messages/AAD capped at 255 bytes.
+    kupyna-digest   Kupyna hash with a selectable variant (256/512) and a benchmark --iterations flag.
+    strumok-crypt   Strumok keystream cipher - NOT authenticated, tampering is never detected.
+
+Run `uacrypt <command> --help` for that command's flags and an example.
+";
+
+const ENCRYPT_HELP: &str = "\
+uacrypt encrypt - encrypt a file of any size with a 32-byte key.
+
+Streamed in bounded memory chunks (no whole-file buffering) and authenticated: `decrypt` detects
+any tampering with the output rather than silently returning wrong plaintext. Built on
+dstu_core::crypto_secretstream (see DECISIONS.md D-68).
+
+USAGE:
+    uacrypt encrypt --key <path> --in <path> --out <path>
+
+FLAGS:
+    --key <path>    a 32-byte binary key file (exactly 32 bytes, not a passphrase)
+    --in <path>     file to encrypt
+    --out <path>    where to write the encrypted output
+
+EXAMPLE:
+    uacrypt encrypt --key key.bin --in report.pdf --out report.pdf.enc
+
+Notes:
+    - --key must be exactly 32 raw bytes - generate one with any OS CSPRNG, e.g.
+      `head -c32 /dev/urandom > key.bin` on Linux/macOS.
+    - --in and --out may be the same path (encrypts in place); --out is only replaced after the
+      whole file is written and verified, so a failure never leaves partial output.
+";
+
+const DECRYPT_HELP: &str = "\
+uacrypt decrypt - decrypt a file produced by `encrypt`, using the same 32-byte key.
+
+Streamed in bounded memory chunks and authenticated: a wrong key or a tampered/truncated file is
+rejected with an error before anything is written to --out, rather than producing wrong plaintext.
+
+USAGE:
+    uacrypt decrypt --key <path> --in <path> --out <path>
+
+FLAGS:
+    --key <path>    the same 32-byte binary key file used for `encrypt`
+    --in <path>     the encrypted file (must be real `encrypt` output)
+    --out <path>    where to write the decrypted output
+
+EXAMPLE:
+    uacrypt decrypt --key key.bin --in report.pdf.enc --out report.pdf
+
+Notes:
+    - --in and --out may be the same path (decrypts in place).
+    - Fails loudly (no --out written) on a wrong key, a wrong/tampered file, or a file produced by
+      an older uacrypt version - the on-disk format is not yet stable pre-1.0.
+";
+
+const HASH_HELP: &str = "\
+uacrypt hash - compute a Kupyna-256 digest of a file of any size.
+
+Fixed to Kupyna-256 (no --variant knob) - for the other Kupyna variant or benchmarking, see
+`kupyna-digest --help`. Streams the input from disk in bounded chunks, so file size is not a
+memory concern.
+
+USAGE:
+    uacrypt hash --in <path> --out <path>
+
+FLAGS:
+    --in <path>     file to hash
+    --out <path>    where to write the 32-byte digest
+
+EXAMPLE:
+    uacrypt hash --in report.pdf --out report.pdf.kupyna256
+";
+
+const KALYNA_BLOCK_HELP: &str = "\
+uacrypt kalyna-block - encrypt or decrypt exactly one Kalyna block, no mode of operation.
+
+Low-level: this is a single block-cipher call, not a file-encryption tool - it does not chain
+multiple blocks or add padding. For encrypting a whole file, use `encrypt`/`decrypt` instead.
+
+USAGE:
+    uacrypt kalyna-block encrypt --variant <v> --key <path> --in <path> --out <path>
+    uacrypt kalyna-block decrypt --variant <v> --key <path> --in <path> --out <path>
+
+FLAGS:
+    --variant <v>      one of 128-128, 128-256, 256-256, 256-512, 512-512 (block/key size in bits)
+    --key <path>       key file - must be exactly the variant's key length
+    --in <path>        input file - must be exactly one block (the variant's block length)
+    --out <path>       where to write the one-block result
+    --iterations <n>   (benchmarking only) repeat the operation n times, print timing to stderr
+    --raw-schedule     (benchmarking only) re-expand the key schedule on every iteration
+
+EXAMPLE:
+    uacrypt kalyna-block encrypt --variant 128-128 --key key.bin --in block.bin --out block.enc
+";
+
+const KALYNA_CCM_HELP: &str = "\
+uacrypt kalyna-ccm - Kalyna-CCM authenticated encryption (provisional, DECISIONS.md D-41).
+
+Messages and AAD are capped at 255 bytes each (see hazmat::kalyna_ccm docs) - for larger files use
+`encrypt`/`decrypt` instead, which have no such cap.
+
+USAGE:
+    uacrypt kalyna-ccm encrypt --variant <v> --key <path> --nonce <path> --in <path> --out <path> --tag <path> [--aad <path>]
+    uacrypt kalyna-ccm decrypt --variant <v> --key <path> --nonce <path> --in <path> --out <path> --tag <path> [--aad <path>]
+
+FLAGS:
+    --variant <v>    one of 128-128, 128-256, 256-256, 256-512, 512-512
+    --key <path>     key file - must be exactly the variant's key length
+    --nonce <path>   encrypt: OUTPUT, a fresh random nonce is generated and written here.
+                     decrypt: INPUT, must be the nonce file `encrypt` produced.
+    --aad <path>     optional - additional authenticated data (not encrypted, but tamper-checked)
+    --in <path>      plaintext (encrypt) or ciphertext (decrypt), <=255 bytes
+    --out <path>     ciphertext (encrypt) or plaintext (decrypt)
+    --tag <path>     encrypt: OUTPUT auth tag. decrypt: INPUT, must be encrypt's tag.
+
+EXAMPLE:
+    uacrypt kalyna-ccm encrypt --variant 128-256 --key key.bin --nonce nonce.bin --in msg.bin \\
+        --out msg.enc --tag tag.bin
+";
+
+const KUPYNA_DIGEST_HELP: &str = "\
+uacrypt kupyna-digest - Kupyna hash with a selectable variant, for benchmarking/interop.
+
+For everyday hashing, `hash` is simpler (fixed to Kupyna-256, no --variant flag needed).
+
+USAGE:
+    uacrypt kupyna-digest --variant <v> --in <path> --out <path> [--iterations <n>]
+
+FLAGS:
+    --variant <v>      256 or 512
+    --in <path>        file to hash
+    --out <path>       where to write the digest
+    --iterations <n>   (benchmarking only) re-hash n times, print timing/MB-per-s to stderr
+
+EXAMPLE:
+    uacrypt kupyna-digest --variant 512 --in report.pdf --out report.pdf.kupyna512
+";
+
+const STRUMOK_CRYPT_HELP: &str = "\
+uacrypt strumok-crypt - Strumok keystream cipher (XOR-based), for benchmarking/interop.
+
+WARNING: NOT authenticated. A tampered output file decrypts silently into wrong plaintext instead
+of an error - there is no tag to detect it. For a file cipher that detects tampering, use
+`encrypt`/`decrypt` instead. Also never reuse the same --key/--iv pair for two different messages -
+doing so lets an attacker recover both messages by XORing the two ciphertexts together.
+
+USAGE:
+    uacrypt strumok-crypt --variant <v> --key <path> --iv <path> --in <path> --out <path> \\
+        [--iterations <n>] [--raw-schedule]
+
+FLAGS:
+    --variant <v>      256 or 512 (key size in bits; IV is always 32 bytes)
+    --key <path>       key file - must be exactly the variant's key length
+    --iv <path>        IV file - must be exactly 32 bytes
+    --in <path>        file to encrypt or decrypt (same operation either way - XOR keystream)
+    --out <path>       where to write the result
+    --iterations <n>   (benchmarking only) repeat n times, print timing/MB-per-s to stderr
+    --raw-schedule     (benchmarking only) re-initialize the cipher fresh on every iteration
+
+EXAMPLE:
+    uacrypt strumok-crypt --variant 256 --key key.bin --iv iv.bin --in msg.bin --out msg.enc
+";
+
+/// Prints one command's `--help` text to stdout. `command` is expected to be one of the literal
+/// top-level command names [`run`] matches on; anything else falls back to [`TOP_LEVEL_HELP`]
+/// rather than panicking, since this is only ever called with a string [`run`] just matched.
+fn print_command_help(command: &str) {
+    let text = match command {
+        "encrypt" => ENCRYPT_HELP,
+        "decrypt" => DECRYPT_HELP,
+        "hash" => HASH_HELP,
+        "kalyna-block" => KALYNA_BLOCK_HELP,
+        "kalyna-ccm" => KALYNA_CCM_HELP,
+        "kupyna-digest" => KUPYNA_DIGEST_HELP,
+        "strumok-crypt" => STRUMOK_CRYPT_HELP,
+        _ => TOP_LEVEL_HELP,
+    };
+    println!("{text}");
+}
+
 /// Top-level dispatch - `args` excludes the program name (`std::env::args().skip(1)`).
+///
+/// `uacrypt` with no arguments and `uacrypt --help`/`-h` both print [`TOP_LEVEL_HELP`] and return
+/// `Ok(())` - a friendlier default than an error for a CLI's most common first invocation. Every
+/// command also accepts `--help`/`-h` anywhere among its own arguments to print that command's own
+/// help instead of running it (`TASKS.md` T-108).
 ///
 /// # Errors
 ///
@@ -1364,8 +1575,20 @@ pub fn run_strumok_command(args: &StrumokArgs) -> Result<(), CliError> {
 /// relevant `parse_*_args`/`run_*_command` returns for the matched one.
 pub fn run(args: &[String]) -> Result<(), CliError> {
     match args.first().map(String::as_str) {
+        None => {
+            print_command_help("");
+            Ok(())
+        }
+        Some(cmd) if is_help_flag(cmd) => {
+            print_command_help("");
+            Ok(())
+        }
         Some("kalyna-block") => {
             let rest = &args[1..];
+            if rest.iter().any(|a| is_help_flag(a)) {
+                print_command_help("kalyna-block");
+                return Ok(());
+            }
             match rest.first().map(String::as_str) {
                 Some("encrypt") => run_block_command(false, &parse_block_args(&rest[1..])?),
                 Some("decrypt") => run_block_command(true, &parse_block_args(&rest[1..])?),
@@ -1375,6 +1598,10 @@ pub fn run(args: &[String]) -> Result<(), CliError> {
         }
         Some("kalyna-ccm") => {
             let rest = &args[1..];
+            if rest.iter().any(|a| is_help_flag(a)) {
+                print_command_help("kalyna-ccm");
+                return Ok(());
+            }
             match rest.first().map(String::as_str) {
                 Some("encrypt") => run_ccm_command(false, &parse_ccm_args(&rest[1..])?),
                 Some("decrypt") => run_ccm_command(true, &parse_ccm_args(&rest[1..])?),
@@ -1382,13 +1609,42 @@ pub fn run(args: &[String]) -> Result<(), CliError> {
                 None => Err(CliError::MissingFlag("encrypt|decrypt")),
             }
         }
-        Some("kupyna-digest") => run_digest_command(&parse_digest_args(&args[1..])?),
-        Some("strumok-crypt") => run_strumok_command(&parse_strumok_args(&args[1..])?),
-        Some("hash") => run_hash_command(&parse_hash_args(&args[1..])?),
-        Some("encrypt") => run_secretstream_command(false, &parse_secretstream_args(&args[1..])?),
-        Some("decrypt") => run_secretstream_command(true, &parse_secretstream_args(&args[1..])?),
+        Some("kupyna-digest") => {
+            if args[1..].iter().any(|a| is_help_flag(a)) {
+                print_command_help("kupyna-digest");
+                return Ok(());
+            }
+            run_digest_command(&parse_digest_args(&args[1..])?)
+        }
+        Some("strumok-crypt") => {
+            if args[1..].iter().any(|a| is_help_flag(a)) {
+                print_command_help("strumok-crypt");
+                return Ok(());
+            }
+            run_strumok_command(&parse_strumok_args(&args[1..])?)
+        }
+        Some("hash") => {
+            if args[1..].iter().any(|a| is_help_flag(a)) {
+                print_command_help("hash");
+                return Ok(());
+            }
+            run_hash_command(&parse_hash_args(&args[1..])?)
+        }
+        Some("encrypt") => {
+            if args[1..].iter().any(|a| is_help_flag(a)) {
+                print_command_help("encrypt");
+                return Ok(());
+            }
+            run_secretstream_command(false, &parse_secretstream_args(&args[1..])?)
+        }
+        Some("decrypt") => {
+            if args[1..].iter().any(|a| is_help_flag(a)) {
+                print_command_help("decrypt");
+                return Ok(());
+            }
+            run_secretstream_command(true, &parse_secretstream_args(&args[1..])?)
+        }
         Some(other) => Err(CliError::UnknownCommand(other.to_string())),
-        None => Err(CliError::UnknownCommand(String::new())),
     }
 }
 
@@ -2532,5 +2788,86 @@ mod tests {
         let mut expected = plaintext.clone();
         Strumok512::new(&key, &iv).apply_keystream(&mut expected);
         assert_eq!(std::fs::read(dir.file("out.bin")).expect("read"), expected);
+    }
+
+    // T-108: `--help`/`-h` handling. These call the public `run()` dispatcher directly (not just
+    // the parser/runner functions) since the help check happens in `run()` itself, before any
+    // `parse_*_args` call - a missing required flag alongside `--help` must still print help and
+    // succeed, not fail on the missing flag.
+
+    #[test]
+    fn run_no_args_prints_top_level_help_and_succeeds() {
+        assert!(run(&[]).is_ok());
+    }
+
+    #[test]
+    fn run_top_level_help_flag_succeeds() {
+        assert!(run(&["--help".to_string()]).is_ok());
+        assert!(run(&["-h".to_string()]).is_ok());
+    }
+
+    #[test]
+    fn run_unknown_command_is_still_an_error() {
+        assert_eq!(
+            run(&["bogus".to_string()]),
+            Err(CliError::UnknownCommand("bogus".to_string()))
+        );
+    }
+
+    #[test]
+    fn run_per_command_help_succeeds_without_other_required_flags() {
+        for command in [
+            "encrypt",
+            "decrypt",
+            "hash",
+            "kalyna-block",
+            "kalyna-ccm",
+            "kupyna-digest",
+            "strumok-crypt",
+        ] {
+            assert!(
+                run(&[command.to_string(), "--help".to_string()]).is_ok(),
+                "{command} --help should succeed"
+            );
+        }
+    }
+
+    #[test]
+    fn run_kalyna_subcommand_help_succeeds_before_and_after_encrypt_decrypt() {
+        assert!(run(&["kalyna-block".to_string(), "--help".to_string()]).is_ok());
+        assert!(run(&[
+            "kalyna-block".to_string(),
+            "encrypt".to_string(),
+            "--help".to_string()
+        ])
+        .is_ok());
+        assert!(run(&[
+            "kalyna-ccm".to_string(),
+            "decrypt".to_string(),
+            "-h".to_string()
+        ])
+        .is_ok());
+    }
+
+    #[test]
+    fn run_help_flag_takes_priority_over_missing_required_flags() {
+        // `--key k` alone is missing --in/--out, which would normally error - --help must still
+        // win and print help instead of surfacing that MissingFlag error.
+        assert!(run(&[
+            "kalyna-block".to_string(),
+            "encrypt".to_string(),
+            "--key".to_string(),
+            "k".to_string(),
+            "--help".to_string()
+        ])
+        .is_ok());
+    }
+
+    #[test]
+    fn print_command_help_falls_back_to_top_level_for_unrecognized_name() {
+        // Not a behavior a real caller can trigger through `run()` (every call site passes a
+        // literal it just matched), but documents the fallback explicitly rather than leaving it
+        // an untested assumption.
+        print_command_help("not-a-real-command");
     }
 }

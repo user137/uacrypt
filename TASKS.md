@@ -223,7 +223,7 @@ item they point to is later removed.
       metadata gap, not this one, correctly still open). `cargo xtask fmt --check`/`build`/`clippy`
       all clean - doc-only change, no source touched. No `DECISIONS.md` entry - packaging hygiene,
       nothing architectural to record (same call T-97 made for its own trivial doc fix).
-- [ ] **T-108** User-friendly `--help`/usage text for the `uacrypt` binary, in plain language a
+- [x] **T-108** User-friendly `--help`/usage text for the `uacrypt` binary, in plain language a
       non-cryptographer can follow - requested 2026-07-25. **Confirmed gap**: `uacrypt`'s `run()`
       dispatcher (`crates/uacrypt/src/lib.rs`) has no `--help`/`-h` handling at all right now - an
       unrecognized argument (including `--help` itself) just falls through to
@@ -235,8 +235,42 @@ item they point to is later removed.
       example invocation - not just a flag/type dump. Should explain the few hard, easy-to-miss
       constraints in the same plain language (`encrypt`/`decrypt` needs a 32-byte key; `--in`/
       `--out` can't be the same path for the `kalyna-*` raw commands; `hash` has no length cap).
-      Not started - not blocking T-17/T-18, but worth landing before `uacrypt` reaches people who
-      aren't already reading `README.md`/`CLAUDE.md`.
+      **Correction found while writing the help text, not assumed**: the "`--in`/`--out` can't be
+      the same path for the `kalyna-*` raw commands" constraint above is actually false - empirically
+      checked (not guessed) by building the release binary and running `kalyna-block encrypt`/
+      `decrypt` and `kalyna-ccm encrypt`/`decrypt` with `--in`/`--out` pointing at the identical
+      path: both round-trip correctly on every command, because every one of them fully reads its
+      input into an owned buffer (`read_exact_file`/`std::fs::read`) before ever opening `--out` for
+      writing. This constraint is *not* stated anywhere in the shipped help text, since it isn't
+      real.
+      **Done 2026-07-25.** Added `is_help_flag`, a `TOP_LEVEL_HELP` const plus one per-command help
+      const (`ENCRYPT_HELP`/`DECRYPT_HELP`/`HASH_HELP`/`KALYNA_BLOCK_HELP`/`KALYNA_CCM_HELP`/
+      `KUPYNA_DIGEST_HELP`/`STRUMOK_CRYPT_HELP`), and `print_command_help` (falls back to
+      `TOP_LEVEL_HELP` for an unrecognized name - not reachable through `run()` itself, but tested
+      directly rather than left an unverified assumption) to `crates/uacrypt/src/lib.rs`. `run()`
+      now treats `uacrypt` with no args and `uacrypt --help`/`-h` identically - print
+      `TOP_LEVEL_HELP`, return `Ok(())` (a deliberate behavior change from the old `None =>
+      Err(CliError::UnknownCommand(...))`, confirmed via grep that no existing test relied on that
+      arm before changing it). Every command checks its *entire* remaining argument list for
+      `--help`/`-h` (not just the first token) before parsing, so e.g. `kalyna-block encrypt --key k
+      --help` prints help instead of failing on the missing `--in`/`--out` - `kalyna-block`/
+      `kalyna-ccm` also accept `--help` before the `encrypt`/`decrypt` sub-subcommand is even given.
+      Help text plain-language notes cover the real constraints instead of the false one above:
+      `encrypt`/`decrypt` need a 32-byte key and may safely share `--in`/`--out`; `kalyna-ccm` caps
+      messages/AAD at 255 bytes; `strumok-crypt` is explicitly flagged as **not authenticated** with
+      a key/IV-reuse warning; `hash` has no length cap. 8 new tests (all green): no-args and
+      `--help`/`-h` at top level, an unknown command still errors, every one of the 7 top-level
+      commands' `--help` succeeds without their other required flags, `kalyna-block`/`kalyna-ccm`
+      accept `--help` both before and after the `encrypt`/`decrypt` sub-subcommand, `--help`
+      alongside an otherwise-incomplete flag set still wins over `MissingFlag`, and the
+      unrecognized-name fallback in `print_command_help` itself. Manually exercised the built debug
+      binary for `uacrypt`, `uacrypt --help`, `kalyna-ccm --help`, `strumok-crypt -h`,
+      `kalyna-block encrypt --key k --help`, and an unknown command, confirming both the printed
+      text and exit codes (0 for help, 1 for `unknown command`) match what the tests check.
+      Verified: full `cargo test --workspace --all-features` (55/55 `uacrypt` tests including the 8
+      new ones, plus `dstu-core`'s own suite, all green, exit 0), `cargo clippy --workspace
+      --all-features -- -D warnings` clean, `cargo fmt --all -- --check` clean. No `DECISIONS.md`
+      entry - CLI ergonomics, nothing architectural.
 - [x] **T-109** Complete `Cargo.toml` publish metadata for both crates - requested 2026-07-25
       (libsodium/crates.io best-practice review, see `docs/release-readiness.md` "Libsodium API
       surface and crates.io publishing audit"). Neither `dstu-core/Cargo.toml` nor
@@ -341,6 +375,38 @@ item they point to is later removed.
       hash" entry point) or has its own domain-separated multi-part construction the way Ed25519ph
       does (not just "hash it yourself first") - check the primary DSTU 4145 text/pseudocode before
       writing anything, per this file's standing "no primitive written from memory" rule. Not
+      started.
+- [ ] **T-114** **Persona-based user-journey gap analysis - a hybrid state/interaction diagram, not
+      a plain feature checklist** - requested 2026-07-25. Distinct from `docs/release-readiness.md`'s
+      existing gap analysis (which is organized by *construction* - is this mode of operation
+      current/safe) and from `docs/dstu-crypto-project.md`'s API-mapping table (organized by
+      *libsodium function name*): this one is organized by *hypothetical engineer persona and the
+      states/interactions they'd actually walk through* - discover, integrate, configure, verify,
+      ship - to surface gaps neither of the other two views would catch (an existing feature can
+      still leave a persona stuck if the doc/tooling connecting the steps around it is missing).
+      Scope - three personas, each as its own state/interaction diagram (Mermaid `stateDiagram`/
+      flowchart, per this project's usual doc conventions) with a paired want-vs-have-vs-gap table
+      per state:
+      1. **Binary user, performance-focused** - picks up `uacrypt` to encrypt/hash/benchmark files
+         from the CLI, cares about throughput and prebuilt binaries, not Rust API ergonomics.
+      2. **Library user, performance-focused** - depends on `dstu-core` directly from `Cargo.toml`,
+         cares about the `crypto_*`/`hazmat` API split, `ExpandedKey`-style cached-schedule paths,
+         and `PERFORMANCE.md`'s numbers.
+      3. **Constrained-target (microcontroller) user** - needs the `no_std`/`small-tables` minimal
+         footprint variant (STM32/ESP32-class targets, `docs/resource-profiles.md`), cares about
+         flash/RAM budget and build-time feature selection, not raw throughput.
+      For each persona, walk the realistic sequence (e.g. "find the project" -> "pick
+      binary vs. library vs. minimal-footprint variant" -> "get a prebuilt artifact or add the
+      dependency" -> "configure feature flags" -> "verify it does what's claimed (vectors/
+      benchmarks/flash size)" -> "ship") and mark, per step, what already exists (cite the file/doc)
+      versus what's missing - this should surface real, previously-uncatalogued gaps (a candidate
+      one, not yet confirmed: T-18's prebuilt-binaries gap directly blocks step 1 of persona 1's
+      journey, which the release-readiness doc's construction-level view doesn't frame the same
+      way). Cross-reference `docs/release-readiness.md`, `docs/resource-profiles.md`,
+      `docs/dstu-crypto-project.md`, `README.md`, and `PERFORMANCE.md` rather than re-deriving their
+      content - this task's value is the persona/journey framing itself, not a fourth copy of the
+      same feature list. Output as a new doc (exact filename/location TBD when started - candidate:
+      `docs/user-journey-gaps.md`) added to `CLAUDE.md`'s documentation map once created. Not
       started.
 - [x] **T-19** **Naming subtask, all three decisions made 2026-07-23** (T-20/T-21/T-22 below) -
       unblocks T-17/T-18, which are still separately open (a decided name isn't a crates.io
@@ -2033,10 +2099,21 @@ full detail)**:
    above.** `dstu_core::lib.rs`, `uacrypt::lib.rs`, and `uacrypt::main.rs` all now carry a top
    doc-comment stating D-05/D-15's provisional status and the no-side-channel-claim, pointing at
    `SECURITY.md`/`DECISIONS.md`; build/clippy (incl. the `doc_lazy_continuation` gotcha)/fmt clean.
-   T-108 (`uacrypt --help`), T-111 (CHANGELOG + empirically-measured MSRV, not just a version number
-   guess), T-113 (multi-part `crypto_sign` - **check the DSTU 4145 primary text first**, this may
-   collapse to a much smaller `sign_digest`/`verify_digest` entry point than "streaming signer"
-   implies) - all not started, in this order. **T-108 is next.**
+6. **T-108 (`uacrypt --help`) - DONE, see `TASKS.md` T-108's own entry above.** Top-level and
+   per-command `--help`/`-h` implemented in `crates/uacrypt/src/lib.rs`; full `cargo test
+   --workspace --all-features` (55/55 `uacrypt` tests incl. 8 new)/`clippy -D warnings`/`fmt --check`
+   all confirmed green (not left "still in flight" - the backgrounded run finished before this note
+   was last edited). **Real gap found and corrected while writing the help text**: T-108's own
+   original scope wording claimed `--in`/`--out` can't share a path for the `kalyna-*` raw commands
+   - empirically false (checked via the release binary, not assumed) since every command fully
+   reads its input before ever opening `--out`. The shipped help text states the real constraints
+   instead, not that one.
+   T-111 (CHANGELOG + empirically-measured MSRV, not just a version number guess), T-113
+   (multi-part `crypto_sign` - **check the DSTU 4145 primary text first**, this may collapse to a
+   much smaller `sign_digest`/`verify_digest` entry point than "streaming signer" implies), and
+   **T-114** (persona-based user-journey gap analysis - a hybrid state/interaction diagram from
+   three personas' side, see T-114's own entry above - requested 2026-07-25, after T-113 in this
+   list since it's newer) - all not started, in this order. **T-111 is next.**
 - **Publication (T-17/T-18) is explicitly out of this plan** - gated on the user asking for it by
   name, not simply queued behind Step 5. Do not start it as a side effect of finishing Step 5.
 - The 2026-07-25 libsodium/crates.io research pass also produced a set of **deliberate non-tasks**
