@@ -3678,3 +3678,39 @@ here.
 workspace member) clean. Full non-fuzz workspace verification (`cargo test --workspace
 --all-features`, `clippy -D warnings`, `fmt --check`, bare `no_std` build) unaffected, re-confirmed
 clean. CI's own matrix run is unconfirmed pending a push, same standing caveat as D-59/D-60.
+
+## D-62: `small-tables`/full feature-matrix verification for Stage B-E (T-93-T-96, D-54-D-58) - roadmap Step 2
+
+CMAC/KW/GCM/GMAC (D-54-D-57) and XTS (D-58) each landed with only "bare `no_std` build
+re-confirmed" recorded, not the full 8-combination matrix D-39/D-41 established as this project's
+own standard for a new `hazmat` addition. Structurally low-risk to begin with: all five modes are
+built entirely on the existing per-variant `ExpandedKey` API (`encrypt_block`/`decrypt_block`),
+never touching `hazmat::tables`' `SBOX_MDS`/`MDS_TABLE`/`gf_mul` machinery directly - the same
+reasoning D-41 already gave for CCM needing "no `cfg` gating of its own." This entry is the
+explicit run-and-document pass the roadmap's Step 2 asked for, not a design decision.
+
+**8-combination `dstu-core` crate-level build matrix** (`cargo build -p dstu-core`, D-39/D-41's
+exact shape - the 4-way `no_std`/`alloc`/`std`/`all-features` matrix from T-23, each without and
+with `small-tables`): all 8 combinations build clean -
+`--no-default-features`; `--no-default-features --features alloc`; `--features alloc`;
+`--all-features` (already includes `small-tables`); and the same four again with `small-tables`
+added explicitly (`--features small-tables`; `--features alloc,small-tables`; the
+`--no-default-features` pairing of each). `--all-features` covers the 8th combination on its own,
+since it already turns `small-tables` on.
+
+**Test suites, run specifically under `small-tables`** (`cargo test -p dstu-core --features
+small-tables --test kalyna_cmac --test kalyna_kw --test kalyna_gcm --test kalyna_gmac --test
+kalyna_xts`) - all 5 files pass identically to the default profile, same as D-41's CCM precedent:
+`kalyna_cmac` 11/11, `kalyna_gcm` 14/14, `kalyna_gmac` 17/17, `kalyna_kw` 16/16, `kalyna_xts`
+11/11 (69 tests total, 0 failures). `cargo clippy --workspace --features dstu-core/small-tables --
+-D warnings` and the same without the feature both clean; `cargo fmt --all -- --check` clean;
+`cargo build --workspace --no-default-features --features dstu-core/small-tables` (workspace-level,
+`uacrypt` included) clean.
+
+**Not done, deliberately out of scope for this pass**: a fresh Raspberry Pi re-run (D-41's own
+"re-confirmed on the Pi too" was a bonus on top of its own 8-combination matrix, not part of what
+the roadmap's Step 2 text itself asked for here) and `cargo miri test`/`cargo fuzz` specifically
+under `small-tables` (D-35's stated verification bar for the resource-profile split - official
+vectors plus differential-oracle harnesses - doesn't require either, matching D-39's own "Not
+done" line for the original `small-tables` implementation). Revisit only if a `small-tables`-specific
+regression is ever suspected, not proactively.

@@ -1578,6 +1578,15 @@ CMAC/KW/GCM/GMAC (D-54-D-57) and the new XTS were only confirmed against a bare 
 not the full 8-combination matrix (`no_std`/`alloc`/`std`/`small-tables`) the way earlier stages
 (D-39, D-41) were. Run and document explicitly, same detail level as D-39/D-41 - directly serves
 the user's stated "small tables" priority.
+**DONE, see `DECISIONS.md` D-62.** Low-risk by construction (all five modes call only the existing
+per-variant `ExpandedKey` API, never `hazmat::tables` directly - same reasoning D-41 already gave
+for CCM), confirmed rather than assumed: all 8 `dstu-core` crate-level build combinations clean;
+all 5 modules' test suites (69 tests total) pass identically under `small-tables`; `clippy -D
+warnings`/`fmt --check` clean on both profiles; workspace-level `no_std`+`small-tables` build
+clean. Miri/fuzz under `small-tables` and a fresh Pi re-run both deliberately out of scope for this
+pass, matching D-39's own precedent.
+
+**Step 2 complete.** Next: Step 3 (the libsodium-shaped `crypto_*` frontend).
 
 **Step 3 - The libsodium-shaped `crypto_*` frontend over everything in `hazmat`**:
 1. `crypto_secretbox` → Kalyna-GCM internally (`Kalyna256_256Gcm`, keeps the 32-byte nonce),
