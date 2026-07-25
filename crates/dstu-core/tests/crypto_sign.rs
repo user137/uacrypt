@@ -12,6 +12,7 @@
 
 use dstu_core::crypto_sign::SigningKey;
 use dstu_core::hazmat::dstu4145::gf2m163::FieldElement;
+use dstu_core::hazmat::kupyna::{Kupyna256, Kupyna256Hasher};
 use proptest::prelude::*;
 
 fn decode_hex(s: &str) -> Vec<u8> {
@@ -156,6 +157,62 @@ fn wrong_verifying_key_is_rejected() {
     assert!(!signing_key_b
         .verifying_key()
         .verify(b"a real message", &sig));
+}
+
+// T-113: `sign_digest`/`verify_digest` let a caller hash a large/streamed message themselves
+// (via `Kupyna256Hasher`) instead of `sign`/`verify` hashing the whole message in one call.
+#[cfg_attr(
+    miri,
+    ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see TASKS.md T-100"
+)]
+#[test]
+fn sign_digest_matches_sign_on_the_same_message() {
+    let signing_key = SigningKey::from_bytes(&small_scalar(0x2A)).expect("nonzero, below n");
+    let digest = Kupyna256::digest(b"a real message");
+    assert_eq!(
+        signing_key.sign(b"a real message").to_bytes(),
+        signing_key.sign_digest(&digest).to_bytes(),
+        "sign() must be equivalent to hashing then sign_digest()"
+    );
+}
+
+#[cfg_attr(
+    miri,
+    ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see TASKS.md T-100"
+)]
+#[test]
+fn sign_digest_verify_digest_roundtrip_with_streamed_hash() {
+    let signing_key = SigningKey::from_bytes(&small_scalar(0x2A)).expect("nonzero, below n");
+    let verifying_key = signing_key.verifying_key();
+
+    // A message hashed incrementally in chunks, as a caller with a large file would.
+    let mut hasher = Kupyna256Hasher::new();
+    hasher.update(b"a real ");
+    hasher.update(b"message");
+    let digest = hasher.finalize();
+
+    assert_eq!(digest, Kupyna256::digest(b"a real message"));
+
+    let sig = signing_key.sign_digest(&digest);
+    assert!(verifying_key.verify_digest(&digest, &sig));
+}
+
+#[cfg_attr(
+    miri,
+    ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see TASKS.md T-100"
+)]
+#[test]
+fn verify_digest_rejects_tampered_digest() {
+    let signing_key = SigningKey::from_bytes(&small_scalar(0x2A)).expect("nonzero, below n");
+    let verifying_key = signing_key.verifying_key();
+    let digest = Kupyna256::digest(b"a real message");
+    let sig = signing_key.sign_digest(&digest);
+
+    // hash_to_field (§5.9) only consumes the digest's own last 21 bytes (`docs/pseudocode/
+    // dstu4145.md`), so the flipped byte must land inside that range for this to be a real tamper.
+    let mut wrong_digest = digest;
+    wrong_digest[31] ^= 1;
+    assert!(!verifying_key.verify_digest(&wrong_digest, &sig));
 }
 
 #[test]

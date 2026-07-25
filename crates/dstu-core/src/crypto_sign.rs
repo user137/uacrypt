@@ -19,6 +19,17 @@
 //!   `crypto_sign(message, ...)` ergonomics. `hazmat::dstu4145::signature` itself stays
 //!   digest-agnostic (its own doc comment's stated design), unaffected by this choice.
 //!
+//! **Large/streamed messages (`TASKS.md` T-113): `sign_digest`/`verify_digest`.** DSTU 4145 signs
+//! a hash of the message, not a domain-separated multi-part construction (`docs/pseudocode/
+//! dstu4145.md` §5.9/§9/§10: `h ← hash_to_field(H(T))`) - so there is no "streaming signer" to
+//! build, only a need to let the hash itself be computed incrementally. `sign`/`verify` above
+//! still take the whole message and hash it with one `Kupyna256::digest` call, which needs it all
+//! in memory at once; `sign_digest`/`verify_digest` instead take an already-computed 32-byte
+//! Kupyna-256 digest directly, so a caller with a large or streamed message can hash it themselves
+//! via `hazmat::kupyna::Kupyna256Hasher::{new, update, finalize}` (already `no_std`-compatible,
+//! bounded memory regardless of message size) and pass the result in. `sign`/`verify` are now thin
+//! wrappers over these two.
+//!
 //! `VerifyingKey::to_uncompressed_bytes`/`from_uncompressed_bytes` use a plain 42-byte `x || y`
 //! encoding, **not** the DSTU 4145 standard's own compressed point encoding (official text
 //! §6.9/§6.10, `DSTU4145PointEncoder.java` in Bouncy Castle) - that encoding isn't implemented
@@ -99,18 +110,26 @@ impl SigningKey {
     }
 
     /// Signs `message`, hashing it with Kupyna-256 and deriving the ephemeral nonce
-    /// deterministically (see the module doc, `DECISIONS.md` D-46). The hazmat-level degenerate
-    /// rejections (`F_e == 0`, `r == 0`, `s == 0`, each ~`2^-163`) are retried here with the next
-    /// nonce-derivation counter rather than surfaced to the caller - safe to retry because the
-    /// nonce is re-derived, not reused.
+    /// deterministically (see the module doc, `DECISIONS.md` D-46). A thin wrapper over
+    /// [`Self::sign_digest`] - see that method, and the module doc's T-113 note, for signing a
+    /// message too large to hold in memory whole.
     #[must_use]
     pub fn sign(&self, message: &[u8]) -> Signature {
-        let hash = Kupyna256::digest(message);
+        self.sign_digest(&Kupyna256::digest(message))
+    }
+
+    /// Signs an already-computed 32-byte Kupyna-256 digest directly - for messages hashed
+    /// incrementally via `hazmat::kupyna::Kupyna256Hasher` rather than held whole in memory (see
+    /// the module doc's T-113 note). The hazmat-level degenerate rejections (`F_e == 0`, `r == 0`,
+    /// `s == 0`, each ~`2^-163`) are retried here with the next nonce-derivation counter rather
+    /// than surfaced to the caller - safe to retry because the nonce is re-derived, not reused.
+    #[must_use]
+    pub fn sign_digest(&self, digest: &[u8; 32]) -> Signature {
         let g = Point::generator();
         let mut counter: u8 = 0;
         loop {
-            let e = derive_nonce(self.0, &hash, counter);
-            if let Some((r, s)) = signature::sign(&hash, self.0, e, g) {
+            let e = derive_nonce(self.0, digest, counter);
+            if let Some((r, s)) = signature::sign(digest, self.0, e, g) {
                 return Signature { r, s };
             }
             counter = counter.wrapping_add(1);
@@ -139,11 +158,20 @@ impl VerifyingKey {
         VerifyingKey(Point::Affine(x, y))
     }
 
+    /// A thin wrapper over [`Self::verify_digest`] - see that method, and the module doc's T-113
+    /// note, for verifying a message too large to hold in memory whole.
     #[must_use]
     pub fn verify(&self, message: &[u8], sig: &Signature) -> bool {
-        let hash = Kupyna256::digest(message);
+        self.verify_digest(&Kupyna256::digest(message), sig)
+    }
+
+    /// Verifies against an already-computed 32-byte Kupyna-256 digest directly - for messages
+    /// hashed incrementally via `hazmat::kupyna::Kupyna256Hasher` rather than held whole in memory
+    /// (see the module doc's T-113 note).
+    #[must_use]
+    pub fn verify_digest(&self, digest: &[u8; 32], sig: &Signature) -> bool {
         let g = Point::generator();
-        signature::verify(&hash, &sig.r, &sig.s, self.0, g)
+        signature::verify(digest, &sig.r, &sig.s, self.0, g)
     }
 }
 

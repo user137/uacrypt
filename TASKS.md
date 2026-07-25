@@ -379,18 +379,18 @@ item they point to is later removed.
       `doc_markdown` gotcha this file's Agent-discipline section already flags - clean), and `cargo
       fmt --all -- --check` all pass. Doc-only change - `cargo test`/Miri not re-run. No
       `DECISIONS.md` entry - same packaging/doc-hygiene call as T-107/T-109/T-110.
-- [ ] **T-113** Multi-part/streaming `crypto_sign` for large messages - found during the 2026-07-25
-      libsodium API audit (see `docs/release-readiness.md`). `dstu_core::crypto_sign` currently only
-      signs an in-memory `&[u8]` in one call; libsodium's `crypto_sign_ed25519ph` (`_init`/`_update`/
-      `_final_create`/`_final_verify`) lets a caller sign/verify a large file without holding it
-      entirely in memory. This is the same memory-boundedness gap D-42 already names for CLI
-      commands (`kupyna-digest`/`strumok-crypt` already chunk their disk I/O) applied to signing
-      instead. Needs research before implementation, not assumed: whether DSTU 4145 signs a message
-      digest directly (in which case this may be as simple as exposing a "sign a precomputed Kupyna
-      hash" entry point) or has its own domain-separated multi-part construction the way Ed25519ph
-      does (not just "hash it yourself first") - check the primary DSTU 4145 text/pseudocode before
-      writing anything, per this file's standing "no primitive written from memory" rule. Not
-      started.
+- [x] **T-113** **DONE 2026-07-26, see `DECISIONS.md` D-70.** Multi-part/streaming `crypto_sign` for
+      large messages - found during the 2026-07-25 libsodium API audit (see
+      `docs/release-readiness.md`). Research done first, per this file's standing "no primitive
+      written from memory" rule: `docs/pseudocode/dstu4145.md` §5.9/§9/§10 confirms DSTU 4145 signs
+      a message digest directly (`h ← hash_to_field(H(T))`), not a domain-separated multi-part
+      construction the way `crypto_sign_ed25519ph` is - so the task collapsed to
+      `SigningKey::sign_digest`/`VerifyingKey::verify_digest` over an already-computed 32-byte
+      Kupyna-256 digest, with `sign`/`verify` becoming thin wrappers over them. A caller with a
+      large/streamed message hashes it themselves via the already-existing
+      `hazmat::kupyna::Kupyna256Hasher` (T-83) and passes the digest straight in - the same
+      memory-boundedness gap D-42 names for CLI commands, closed here without needing a new
+      streaming construction. Full workspace test/clippy/fmt/`no_std` build all clean.
 - [ ] **T-114** **Persona-based user-journey gap analysis - a hybrid state/interaction diagram, not
       a plain feature checklist** - requested 2026-07-25. Distinct from `docs/release-readiness.md`'s
       existing gap analysis (which is organized by *construction* - is this mode of operation
@@ -2072,14 +2072,19 @@ around it.
    `zeroize`/`subtle` and their transitives, has already produced one surprising transitive-feature
    result, D-50 - don't assume a floor without measuring it). Budget accordingly; this is not a
    same-size item as T-107/T-109/T-110/T-112 above despite living in the same step. Not started.
-8. **T-113 - multi-part/streaming `crypto_sign`.** Advisor flag, check before scheduling as real
-   feature work: **first verify what DSTU 4145 actually signs.** If (as the advisor's reading
-   suggests, unconfirmed) DSTU 4145 signs a hash of the message the way most EC signature schemes
-   do - not a domain-separated multi-part construction the way Ed25519ph is - this task may collapse
-   from "build a streaming signer" to "expose a `sign_digest`/`verify_digest` entry point over the
-   existing `hazmat::kupyna::Hasher`," an hour of work, not a project. Check the primary DSTU 4145
-   text/pseudocode first (`docs/pseudocode/dstu4145.md`), per this file's standing "no primitive
-   written from memory" rule, before estimating or starting implementation. Not started.
+- [x] **T-113 - multi-part/streaming `crypto_sign`. DONE 2026-07-26, see `DECISIONS.md` D-70.** The
+      advisor's flag was confirmed against the primary text first, per this file's own "no
+      primitive/estimate from memory" rule: `docs/pseudocode/dstu4145.md` §5.9/§9/§10 signs a hash
+      of the message (`h ← hash_to_field(H(T))`), not a domain-separated multi-part construction -
+      so the task collapsed exactly as flagged, to `SigningKey::sign_digest`/
+      `VerifyingKey::verify_digest` over an already-computed 32-byte Kupyna-256 digest, with
+      `sign`/`verify` becoming thin wrappers over them. Callers with a large/streamed message hash
+      it themselves via the already-existing `hazmat::kupyna::Kupyna256Hasher` (T-83) and pass the
+      digest straight in - nothing new needed at the hashing layer. Tests added: same-message
+      equivalence, a streamed-hash round-trip, and a tampered-digest rejection (the tamper had to
+      land in the digest's own last 21 bytes - `hash_to_field` ignores the rest, a real gotcha hit
+      writing the first draft of that test, see D-70). Verified: full workspace test (12/12 in
+      `crypto_sign.rs`, all else unchanged)/clippy/fmt/`no_std` build all clean.
 
 **Deliberately not tasks, carried forward by reference, not re-derived**: the 2026-07-25 libsodium
 audit's open questions for the project owner (detached-API variants for `crypto_secretbox`/
@@ -2155,7 +2160,15 @@ full detail)**:
    MSRV measured (not guessed) at `1.87.0` - the real floor turned out to be this crate's own
    unconditional use of `u64`/`usize::is_multiple_of`, not any dependency's declared floor (those
    topped out lower, at 1.85/1.86). `rust-version` set on both `Cargo.toml`s, a build-only `msrv`
-   CI job added, `CHANGELOG.md` written. **T-113 is next.**
+   CI job added, `CHANGELOG.md` written.
+8. **T-113 - DONE 2026-07-26, see `TASKS.md` T-113's own entry above and `DECISIONS.md` D-70.** The
+   advisor's flag held: DSTU 4145 signs a hash of the message (`docs/pseudocode/dstu4145.md`
+   §5.9/§9/§10), not a multi-part construction, so the task collapsed to
+   `SigningKey::sign_digest`/`VerifyingKey::verify_digest` over an already-computed 32-byte
+   Kupyna-256 digest, with `sign`/`verify` becoming thin wrappers - callers with a large/streamed
+   message hash it themselves via the already-existing `hazmat::kupyna::Kupyna256Hasher` (T-83).
+   Full workspace test/clippy/fmt/`no_std` build all clean. **T-114 is next** (persona-based
+   user-journey gap analysis, T-114's own entry above).
 - **Publication (T-17/T-18) is explicitly out of this plan** - gated on the user asking for it by
   name, not simply queued behind Step 5. Do not start it as a side effect of finishing Step 5.
 - The 2026-07-25 libsodium/crates.io research pass also produced a set of **deliberate non-tasks**

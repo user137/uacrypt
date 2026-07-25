@@ -4366,3 +4366,47 @@ churning five call sites for a crate that isn't published yet.
 **`CHANGELOG.md` (Keep a Changelog format) added** - first version of the file, `0.1.0` is
 unreleased so there is one `## [Unreleased]` section (Added/Changed), not a reconstructed
 per-commit history.
+
+## D-70: `crypto_sign::sign_digest`/`verify_digest` (T-113) - the advisor's flag confirmed, collapsed to a small addition
+
+**Checked the primary text first, per this file's own standing "no primitive/estimate from memory"
+rule, before scheduling T-113 as real feature work.** `docs/pseudocode/dstu4145.md` §5.9/§9/§10 is
+unambiguous: DSTU 4145 signs `h ← hash_to_field(H(T))` - a hash of the message, computed once and
+consumed as a single field element - not a domain-separated multi-part construction the way
+Ed25519ph is. The advisor's hypothesis (raised when this roadmap item was scoped) held: there is no
+"streaming signer" to design, only a need to let the hash itself be computed incrementally instead
+of requiring the whole message in memory for one `Kupyna256::digest` call.
+
+**Shape**: `SigningKey::sign_digest(&self, digest: &[u8; 32]) -> Signature` and
+`VerifyingKey::verify_digest(&self, digest: &[u8; 32], sig: &Signature) -> bool` added to
+`dstu_core::crypto_sign`, taking an already-computed Kupyna-256 digest directly. `sign`/`verify` are
+now thin wrappers (`self.sign_digest(&Kupyna256::digest(message))` /
+`self.verify_digest(&Kupyna256::digest(message), sig)`) - no behavior change for existing callers,
+confirmed by a same-message equivalence test (`sign_digest_matches_sign_on_the_same_message`). A
+caller with a large or streamed message now hashes it themselves via the already-existing
+`hazmat::kupyna::Kupyna256Hasher::{new, update, finalize}` (already `no_std`-compatible, bounded
+memory regardless of message size, T-83) and passes the resulting digest straight in - nothing new
+needed at the hashing layer, only at this wrapper's entry points.
+
+**Tests added** (`tests/crypto_sign.rs`): correctness (`sign_digest` matches `sign` on the same
+message; a digest produced by streaming `Kupyna256Hasher` in two chunks matches the one-shot
+`Kupyna256::digest` and round-trips through `sign_digest`/`verify_digest`) and rejection
+(`verify_digest_rejects_tampered_digest`). One real gotcha hit writing the rejection test: the first
+attempt flipped `digest[0]`, which passed verification unchanged - not a bug, but `hash_to_field`
+(§5.9, see the docstring in `docs/pseudocode/dstu4145.md`) only consumes the digest's own **last**
+21 bytes, so a byte outside that window is provably inert. Fixed by flipping `digest[31]` instead,
+with a comment explaining why the byte position matters here (a case this project's own "check what
+a fixed vector actually exercises" discipline generalizes to: check what a *tamper* actually
+exercises, not just whether the assertion is phrased correctly).
+
+**No new Miri run** - `sign_digest`/`verify_digest` reuse the exact same `signature::sign`/`verify`
+and `Point::scalar_multiply` calls the original `sign`/`verify` already made; the new tests are
+`#[cfg_attr(miri, ignore)]` for the same reason every other `crypto_sign` test already is (the
+163-iteration EC ladder, T-100), so a Miri run would exercise zero new code paths, not skipped
+verification.
+
+**Verified**: `cargo test --workspace --all-features` (dstu-core's `crypto_sign.rs`: 12/12,
+including the 3 new tests; full workspace: all green), `cargo clippy --workspace --all-features -- -D
+warnings` clean, `cargo fmt --all -- --check` clean, `cargo build -p dstu-core --no-default-features`
+clean (`crypto_sign` is an unconditional module, confirming this addition didn't accidentally
+introduce a `std`/`alloc` requirement).
