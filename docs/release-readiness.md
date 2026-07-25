@@ -119,13 +119,15 @@ first primitive with that high-level layer actually built, via `dstu_core::crypt
 nonce needs no RNG at all). `crypto_auth`/`crypto_kdf` are done too (T-38/T-39, D-44/D-45), now with
 high-level wrappers as well (T-105, D-66, roadmap Step 3 item 2, 2026-07-25). `crypto_generichash`
 also got its high-level module the same day (T-105, D-66) — a bare re-export, not a new wrapper
-(see the table below for why). `crypto_stream` genuinely still has no high-level wrapper, only its
-`hazmat` form:
+(see the table below for why). `crypto_stream` got its high-level wrapper too, same roadmap Step,
+one day later (item 3, `DECISIONS.md` D-67) — internally-generated IV, confirmed with the project
+owner rather than assumed (this was the one fork the roadmap itself left open, unlike the other
+three). Every high-level module in Step 3 is now done:
 
 | libsodium equivalent | Native DSTU path | Status |
 |---|---|---|
 | `crypto_generichash` | Kupyna | **Done** (T-105, D-66) — `dstu_core::crypto_generichash`, a bare re-export of `hazmat::kupyna` under the top-level namespace; no new logic (no knob to hide, no DSTU keyed/variable-length-output equivalent to wrap) |
-| `crypto_stream` | Strumok | hazmat done (provisional vectors); no high-level wrapper |
+| `crypto_stream` | Strumok | **Done** (roadmap Step 3 item 3, D-67) — `dstu_core::crypto_stream`, single 256-bit variant, hidden/internally-generated IV (confirmed with the project owner), `iv \|\| ciphertext` output, **no authentication** (`decrypt` never fails on tampered input) — hazmat vectors still provisional (D-18) |
 | `crypto_sign` | DSTU 4145 | **Done** (T-48, D-46) — hazmat (m=163 only) plus a high-level `dstu_core::crypto_sign` wrapper; deterministic (Kupyna-KMAC-derived, RFC-6979-style) nonce, not caller-random, eliminating nonce-reuse key recovery from the wrapper's surface. Public-key encoding is a plain uncompressed 42-byte form, explicitly not the DSTU §6.9/§6.10 compressed format |
 | `crypto_box` | DSTU 9041 | **Hard-blocked** — zero source material exists for DSTU 9041 anywhere (no paper, no oracle, no pseudocode); cannot start (T-46) |
 | `crypto_secretbox` | Kalyna-GCM, provisionally | **Done** (T-37, D-51), **migrated 2026-07-25 from Kalyna-CCM to Kalyna-GCM** (roadmap Step 3 item 1, D-63) — single fixed `Kalyna256_256Gcm` construction, internal nonce, combined output, no caller-facing AAD (nonce passed as AAD internally to bind it into the tag, D-63); no message-length cap, still not primary-text-confirmed |
@@ -155,7 +157,7 @@ it's one of the combined ones).
 | Scenario | Needs | DSTU mode/primitive | Combined AEAD (safe)? | Status | Safe alternative if missing |
 |---|---|---|---|---|---|
 | Radio/telemetry, small packets (walkie-talkie, sensor commands) | AEAD on a short message (< 255 bytes) | Kalyna-**CCM** (mode #8) | Yes | **Done** (`hazmat::kalyna_ccm`) | not needed |
-| Streaming audio, confidentiality only, no per-frame auth | Low-latency keystream | Strumok | No — confidentiality-only by itself | Done, but no integrity | Wrap each frame in Kalyna-CCM instead of bare Strumok if integrity is required |
+| Streaming audio, confidentiality only, no per-frame auth | Low-latency keystream | Strumok | No — confidentiality-only by itself | Done, but no integrity — `hazmat::strumok` and now `dstu_core::crypto_stream` (D-67) at the high level | Wrap each frame in Kalyna-CCM/`crypto_secretbox` instead of bare Strumok/`crypto_stream` if integrity is required |
 | Encrypt one message, any size | `crypto_secretbox` equivalent | Kalyna-GCM | Yes | **Done** (`dstu_core::crypto_secretbox`, T-37, D-51, migrated to GCM 2026-07-25, D-63 — no length cap) | not needed |
 | Encrypt a large file / continuous stream, without buffering it all in memory | Chunked AEAD | GCM (#7) | Yes | `hazmat::kalyna_gcm` **done** (D-56); `crypto_secretbox` now uses it (D-63) but still reads/writes the whole file at once — a genuinely chunked `crypto_secretstream` wrapper (T-40) is not built yet | not needed once wrapped |
 | Full-disk encryption (random-access sectors) | Disk-mode cipher | XTS (#9) | No, by design — integrity is deliberately left to the filesystem layer, a recognized special case, not a gap | **Done** (`hazmat::kalyna_xts`, T-96/D-58) | None needed — this is the one standard case where a non-AEAD mode is the *correct* choice, not a compromise |

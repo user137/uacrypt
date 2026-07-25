@@ -570,7 +570,28 @@ resistance (SPA/DPA — explicitly out of scope per `SECURITY.md`/`CLAUDE.md` "M
       type's `generate()` is `std`-gated. New tests (`tests/crypto_auth.rs`, `tests/crypto_kdf.rs`,
       `tests/crypto_generichash.rs`) follow the D-64/D-65 three-category convention where it
       applies. Verified: full workspace test/clippy/fmt clean, plus `no_std`/`no_std+alloc`/
-      `no_std+small-tables` builds of `dstu-core`. Not yet committed.
+      `no_std+small-tables` builds of `dstu-core`. Committed and pushed (`1578ea0`).
+- [x] **T-106** **`crypto_stream` high-level module, roadmap Step 3 item 3, see `DECISIONS.md`
+      D-67.** Unlike T-105's fork, this one *was* an explicit open fork in the roadmap's own text
+      ("whether the IV is auto-generated ... or stays explicit is its own fork, decided when this
+      is actually picked up") - put to the project owner directly via `AskUserQuestion` before
+      implementing, not decided unilaterally. Chosen: hidden/internally-generated IV, matching
+      `crypto_secretbox`'s nonce precedent (D-51). Single 256-bit variant (`Strumok256` only,
+      D-47's "delete the knob", matching T-105's precedent), opaque `Zeroize`-on-drop `Key`,
+      `iv (32) || ciphertext` wire format, **no authentication** (`hazmat::strumok` is a bare
+      keystream generator - `decrypt` never fails on tampered input, mirrors
+      `hazmat::kalyna_xts`'s documented no-integrity-by-design property) - functions named
+      `encrypt`/`decrypt`, deliberately not `seal`/`open`, so the naming itself signals "this does
+      not authenticate" the way `crypto_secretbox`'s `seal`/`open` signals that it does. Whole
+      module `std`-gated (needs `Vec<u8>`, same reason as `crypto_secretbox`, unlike T-105's three
+      fixed-array modules). New tests (`tests/crypto_stream.rs`) adapt `crypto_secretbox.rs`'s own
+      test shape for zero authentication: no tamper-rejection tests exist (no tag to tamper),
+      replaced with tests pinning the *absence* of rejection directly
+      (`wrong_key_produces_different_plaintext_not_an_error`,
+      `tampered_ciphertext_does_not_error_but_produces_garbage`), the same convention
+      `tests/kalyna_xts.rs` already established. Verified: full workspace test/clippy/fmt clean,
+      plus `no_std`/`no_std+alloc`/`no_std+small-tables` builds of `dstu-core` (confirms
+      `crypto_stream` is correctly absent from all three). Not yet committed.
 
 ## A provisional Kalyna mode of operation - CCM (T-81), plus its nonce-strategy follow-up (T-82)
 
@@ -1680,12 +1701,33 @@ pass, matching D-39's own precedent.
    Verified: full workspace `cargo test`/`clippy -D warnings`/`fmt --check` clean, plus `no_std`,
    `no_std+alloc`, and `no_std+small-tables` builds of `dstu-core` all clean (confirming the
    unconditional-module choice actually holds, not just assumed from the `#[cfg]` placement).
-3. `crypto_stream` (Strumok) high-level wrapper - whether the IV is auto-generated (hidden from the
-   caller, like `crypto_secretbox`'s nonce) or stays explicit is its own fork, decided when this is
-   actually picked up.
-4. KW stays `hazmat`-only - libsodium has no direct equivalent, state this explicitly in
-   `docs/dstu-crypto-project.md` rather than leaving it a silent gap.
-5. `crypto_kx`/`crypto_box` (DSTU 9041) remain hard-blocked, not scheduled by this roadmap.
+3. **DONE 2026-07-25, see `DECISIONS.md` D-67 (T-106).** `crypto_stream` (Strumok) high-level
+   wrapper. Unlike Step 3 item 2's fork, this one *was* an explicit open fork in the roadmap text
+   itself, so it was put to the project owner directly before implementing (`AskUserQuestion`):
+   **hidden/internally-generated IV**, matching `crypto_secretbox`'s nonce precedent (D-51) rather
+   than the explicit-IV alternative. Single 256-bit variant (`Strumok256` only, D-47's "delete the
+   knob", matching D-66's `crypto_auth`/`crypto_kdf` precedent), opaque `Zeroize`-on-drop `Key`,
+   `iv (32) || ciphertext` wire format. **No authentication** - `hazmat::strumok` is a bare
+   keystream generator, so `decrypt` never fails on tampered input (mirrors `hazmat::kalyna_xts`'s
+   documented no-integrity-by-design property, not a gap) - functions are named `encrypt`/
+   `decrypt`, deliberately not `seal`/`open`, to avoid implying the tamper-evidence
+   `crypto_secretbox` actually has. Whole module is `std`-gated (needs `Vec<u8>`, same reason as
+   `crypto_secretbox`, unlike D-66's three fixed-array modules). Tests
+   (`tests/crypto_stream.rs`) follow `crypto_secretbox.rs`'s own test shape, adapted for zero
+   authentication: no tamper-*rejection* tests (there is no tag), replaced with tests that pin the
+   *absence* of rejection directly (`wrong_key_produces_different_plaintext_not_an_error`,
+   `tampered_ciphertext_does_not_error_but_produces_garbage`), same convention
+   `tests/kalyna_xts.rs` already established. Verified: full workspace test/clippy/fmt clean, plus
+   `no_std`/`no_std+alloc`/`no_std+small-tables` builds of `dstu-core` (confirms `crypto_stream` is
+   correctly absent from all three, matching its `std`-only gate).
+4. **DONE 2026-07-25, see `DECISIONS.md` D-66's addendum.** KW stays `hazmat`-only - added an
+   explicit row for `hazmat::kalyna_kw` to `docs/dstu-crypto-project.md`'s canonical mapping table
+   (it had none before), stating why: libsodium itself has no key-wrap primitive to map onto, so
+   this is a documented gap in libsodium parity, not an oversight.
+5. **DONE 2026-07-25, see `DECISIONS.md` D-66's addendum.** `crypto_kx`/`crypto_box` (DSTU 9041)
+   confirmed still hard-blocked - re-checked against `ORACLES.md`/`TASKS.md` T-46/T-47 rather than
+   assumed unchanged, still zero source material found anywhere. No doc changes needed (existing
+   rows were already accurate); confirmation recorded rather than left a silent no-op.
 
 **Step 4 (last, not before) - publication.** T-17 (crates.io) and T-18 (GitHub Releases binaries) -
 deliberately last, per "not rushing publication."
@@ -1705,14 +1747,21 @@ and misuse test-coverage audits over the same migration, `DECISIONS.md` D-64/D-6
 verified, and committed - see `git log` (`db10345`, `11eecf7`) rather than trusting this note's own
 prior "no commit has been made yet" claim, which went stale the moment those commits landed.
 
-**Step 3 item 2 (`crypto_generichash`/`crypto_auth`/`crypto_kdf`, T-105, D-66) is now done and
-verified too** - see the Step 3 entry above for the shape (bare re-export for `crypto_generichash`,
-thin `Zeroize`-key wrappers for `crypto_auth`/`crypto_kdf`, both single-256-bit-variant). Full
-workspace `cargo test --workspace --all-features` last confirmed clean; `no_std`/`no_std+alloc`/
-`no_std+small-tables` builds of `dstu-core` clean; `clippy -D warnings`/`fmt --check` clean. **Not
-yet committed** - confirm with the user before committing (standing "commit only when asked" rule).
+**Step 3 item 2 (`crypto_generichash`/`crypto_auth`/`crypto_kdf`, T-105, D-66) is done, verified,
+committed, and pushed** - see the Step 3 entry above for the shape (bare re-export for
+`crypto_generichash`, thin `Zeroize`-key wrappers for `crypto_auth`/`crypto_kdf`, both
+single-256-bit-variant). `git log` shows `1578ea0` on `origin/master`.
+
+**Step 3 is now fully complete - all five items done.** Item 3 (`crypto_stream`, T-106, D-67):
+hidden IV, single 256-bit variant, no authentication (see the Step 3 entry above for the full
+shape) - the one fork the roadmap left genuinely open, put to the project owner directly before
+implementing rather than decided unilaterally. Items 4 (KW documented `hazmat`-only) and 5
+(`crypto_kx`/`crypto_box` reconfirmed hard-blocked) are documentation-only, see D-66's addendum.
+Full workspace `cargo test --workspace --all-features` last confirmed clean; `no_std`/
+`no_std+alloc`/`no_std+small-tables` builds of `dstu-core` clean; `clippy -D warnings`/
+`fmt --check` clean. **Not yet committed** - confirm with the user before committing (standing
+"commit only when asked" rule).
 
 **Not yet done - the actual next steps**:
-- Step 3 items 3-5 (`crypto_stream` Strumok wrapper; document KW as `hazmat`-only; confirm
-  `crypto_kx`/`crypto_box` stay hard-blocked) - not started.
-- Step 4 (T-17 crates.io publish, T-18 GitHub Releases) - not started, deliberately last.
+- Step 4 (T-17 crates.io publish, T-18 GitHub Releases) - not started, deliberately last, per
+  "not rushing publication."

@@ -80,7 +80,17 @@ environment. The workspace has two crates:
   wrap), `crypto_auth`/`crypto_kdf` are thin wrappers exposing only the 256-bit
   `Kupyna256Kmac`/`Kupyna256Kdf` variant behind an opaque `Zeroize`-on-drop key type (D-47's
   "delete the knob", same as `crypto_secretbox`'s single Kalyna variant), all three unconditional
-  (`no_std`-compatible) except each key type's `std`-gated `generate()`.
+  (`no_std`-compatible) except each key type's `std`-gated `generate()`. One day later, roadmap
+  Step 3 item 3 (`TASKS.md` T-106, `DECISIONS.md` D-67) landed too: `dstu_core::crypto_stream`
+  (`encrypt`/`decrypt`/`Key`, single `Strumok256` variant only) — the one roadmap fork left
+  genuinely open in `TASKS.md`'s own text, put to the project owner directly before implementing
+  (not decided unilaterally the way D-66's own fork was, a gap flagged after the fact): the IV is
+  hidden/internally-generated, matching `crypto_secretbox`'s nonce precedent. **No authentication**
+  — `hazmat::strumok` is a bare keystream generator, so `decrypt` never fails on tampered input,
+  which is exactly why the functions are named `encrypt`/`decrypt` and not `seal`/`open`.
+  `crypto_stream` is `std`-gated at the whole-module level (needs `Vec<u8>`), unlike the other
+  three's per-item gating, since it can't avoid `alloc` the way fixed-array modules can — Step 3 is
+  now fully complete (all five items done).
 - `crates/uacrypt` — the CLI binary, renamed 2026-07-23 from its `dstutool` working name
   (`DECISIONS.md` D-36; older `DECISIONS.md`/`TASKS.md`/`PERFORMANCE.md` entries predating the
   rename still say `dstutool`, left as-is since they're a historical record, not stale docs).

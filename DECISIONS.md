@@ -4003,3 +4003,99 @@ per-item `std`-gating section above for why this matters here specifically).
 (mapping table rows and the "no high-level wrapper" prose), `TASKS.md` (roadmap Step 3 item 2
 marked done, RESUME HERE section updated - including correcting its own stale "no commit has been
 made yet" claim from before D-63/D-64/D-65/T-103/T-104 were actually committed).
+
+**Addendum 2026-07-25 - roadmap Step 3 items 4 and 5 (no code change, documentation/confirmation
+only)**:
+- **Item 4 (KW stays `hazmat`-only)**: `docs/release-readiness.md`'s use-case table already stated
+  this ("hazmat-only, libsodium has no direct equivalent to wrap at the high level"); the gap was
+  that `docs/dstu-crypto-project.md`'s own canonical libsodium-mapping table (the one this
+  documentation map names the actual owner of that mapping) had no `hazmat::kalyna_kw` row at all.
+  Added one, explicit about *why* there's no wrapper: libsodium itself has no key-wrap primitive to
+  map onto, so this is a documented gap in libsodium parity, not an oversight or a future
+  `crypto_kw` waiting to be built.
+- **Item 5 (`crypto_kx`/`crypto_box` stay hard-blocked)**: re-checked against `ORACLES.md` and
+  `TASKS.md` T-46/T-47 rather than assumed unchanged - still zero DSTU 9041 source material
+  (no paper, oracle, or pseudocode) anywhere this project has looked. Both
+  `docs/dstu-crypto-project.md`'s and `docs/release-readiness.md`'s existing rows for these two
+  already say so accurately; no doc changes needed, confirmation recorded here per this project's
+  "confirmed, not assumed" convention rather than left as a silent no-op.
+
+## D-67: `crypto_stream` high-level module (T-106) - roadmap Step 3 item 3
+
+Unlike D-66's fork (Step 3 item 2), this roadmap step named its own open question explicitly in
+`TASKS.md`'s own text: "whether the IV is auto-generated (hidden from the caller, like
+`crypto_secretbox`'s nonce) or stays explicit is its own fork, decided when this is actually picked
+up." Put to the project owner directly via `AskUserQuestion` before writing any code, not decided
+unilaterally the way D-66's fork was (a framing gap D-66 itself was called out for after the fact -
+see this project's advisor-review discipline). **Chosen: hidden/internally-generated IV**, matching
+`crypto_secretbox`'s own nonce precedent (D-51) - `hazmat::strumok`'s own module doc carries a
+"never reuse the same key+IV pair" warning backed by a dedicated catastrophic-two-time-pad test
+(`reusing_key_and_iv_leaks_plaintext_xor`, T-103), which weighed toward removing that footgun from
+the caller's surface entirely, the same reasoning D-51 gave for secretbox's nonce.
+
+**Shape**: `dstu_core::crypto_stream::{encrypt, decrypt, Key, StreamError}`, wrapping
+`hazmat::strumok::Strumok256` only - the other variant (`Strumok512`) stays `hazmat`-only, matching
+D-66's "delete the knob" precedent for `crypto_auth`/`crypto_kdf` (single 256-bit variant, not all
+available sizes). `Key` is an opaque, `Zeroize`-on-drop 32-byte type (`generate()`/`from_bytes()`/
+`as_bytes()`), same shape as D-66's `Key`/`MasterKey`. Wire format: `iv (32 bytes) || ciphertext
+(plaintext.len() bytes)` - no tag, since Strumok is a bare keystream generator with nothing to
+authenticate with.
+
+**No authentication - and the naming says so on purpose.** `decrypt` never fails on tampered input:
+there is no tag, so a modified `sealed` value produces different, silently-wrong plaintext instead
+of an error - the same documented no-integrity-by-design property `hazmat::kalyna_xts` already has
+(`tampered_ciphertext_does_not_error_but_produces_garbage`, T-93/D-58). This module's functions are
+named `encrypt`/`decrypt`, **not** `seal`/`open` - `crypto_secretbox` reserves `seal`/`open`
+specifically to signal "this authenticates" (an intentional naming distinction, not an
+afterthought), and using the same verbs here for a primitive with zero tamper-evidence would blur
+that signal for anyone skimming function names alone. The module doc's "No authentication" section
+states this loudly and points callers needing integrity at `crypto_secretbox` (or a future
+`crypto_secretstream`, T-40) instead.
+
+**`std`-gating differs from D-66's three modules.** `encrypt`/`decrypt` return `Vec<u8>` (arbitrary
+message length, same reason `crypto_secretbox` needs it) - unlike D-66's `crypto_generichash`/
+`crypto_auth`/`crypto_kdf`, which only ever move fixed-size arrays and so could stay unconditional
+with just `generate()` gated per-item, `crypto_stream` genuinely cannot avoid `Vec` at all, so the
+*whole module* is `#[cfg(feature = "std")]`-gated in `lib.rs`, exactly matching `crypto_secretbox`'s
+own precedent rather than D-66's per-item pattern. Confirmed, not assumed: `cargo build -p
+dstu-core --no-default-features`/`--features alloc`/`--features small-tables` all build clean with
+`crypto_stream` correctly absent from all three (it only appears in the `--all-features` /
+default-`std` build).
+
+**Tests** (`tests/crypto_stream.rs`) adapt `tests/crypto_secretbox.rs`'s own test shape for zero
+authentication rather than reusing it verbatim: `round_trip`, `zero_length_plaintext_round_trips`,
+`large_message_round_trips`, `two_calls_use_different_ivs`,
+`truncated_input_is_rejected_not_a_panic`, `wire_format_is_iv_then_ciphertext`, and a
+`round_trip_property` proptest all carry over directly. The tamper-*rejection* tests
+(`crypto_secretbox`'s `wrong_key_is_rejected`/`tampered_*_is_rejected`) have no equivalent here -
+there is no tag to make them meaningful - replaced with two tests pinning the *absence* of
+rejection instead: `wrong_key_produces_different_plaintext_not_an_error` and
+`tampered_ciphertext_does_not_error_but_produces_garbage`, matching `tests/kalyna_xts.rs`'s already-
+established convention for the same documented property on a different primitive.
+
+**Provenance**: unchanged from `hazmat::strumok`'s own D-18 status - UAPKI-attributed vectors, not
+yet confirmed against the primary DSTU 8845:2019 text.
+
+**Verification**: `cargo test -p dstu-core --all-features --test crypto_stream` - 9/9 passed on
+first run (coverage over already-correct code, consistent with D-64/D-65/D-66's own observation
+that this is expected, not a red flag). `cargo clippy --workspace --all-features -- -D warnings`
+and `cargo fmt --all -- --check` both clean. `cargo doc -p dstu-core --no-deps --all-features` with
+`RUSTDOCFLAGS="-D warnings"` - zero errors originating from `crypto_stream.rs` itself (several
+pre-existing errors in unrelated `hazmat::kalyna_*` files exist independently of this change, out
+of scope here - `rustdoc -D warnings` isn't yet part of this project's standing verification set).
+`cargo build -p dstu-core --no-default-features`/`--features alloc`/`--features small-tables` all
+clean. **Scoped Miri run - DONE, matching D-63's roadmap-mandated bar**: `MIRIFLAGS=
+-Zmiri-disable-isolation PROPTEST_CASES=8 cargo +nightly miri test -p dstu-core --test
+crypto_stream` - **9/9 passed, 0 UB, 119.85s**. First attempt omitted `MIRIFLAGS` and failed on
+`round_trip_property` with `GetCurrentDirectoryW not available when isolation is enabled`
+(proptest's failure-persistence `getcwd` call, the same class of Windows-Miri-isolation gap this
+project has hit and documented repeatedly, e.g. T-102) - not a bug in this module, fixed by setting
+the flag this project already uses everywhere else for exactly this reason. Full workspace `cargo
+test --workspace --all-features` re-confirmed clean after `crypto_stream` landed (exit code 0,
+every crate's suite passing, including the new `tests/crypto_stream.rs`).
+
+**Docs updated**: `docs/dstu-crypto-project.md` (mapping table row, "high-level easy layer" prose),
+`docs/release-readiness.md` (mapping table row, the "no high-level wrapper" prose, and the
+"Streaming audio" use-case scenario row), `TASKS.md` (roadmap Step 3 item 3 marked done, backlog
+entry T-106 added, RESUME HERE section updated to record Step 3 as fully complete),
+`CLAUDE.md`'s own running project-status paragraph.

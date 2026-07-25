@@ -172,20 +172,23 @@ or splits into layers. **Decided (D-09 in `DECISIONS.md`): two layers**, same sh
   auto-generated nonces via `getrandom` where the construction needs one, misuse-resistant
   defaults, the actual point of building this library "in the spirit of libsodium" instead of
   OpenSSL. `crypto_sign`/`crypto_secretbox`/`crypto_pwhash`/`crypto_auth`/`crypto_kdf`/
-  `crypto_generichash` all now exist here (D-46/D-51/D-49-D-50/D-66) — not every module in this
-  layer needs `std`/an RNG (`crypto_sign`'s nonce is deterministic, `crypto_generichash`/
-  `crypto_auth`/`crypto_kdf`'s `from_bytes`/`mac`/`derive_subkey` paths take a caller-supplied key
-  and need none either), only the specific `generate()`-style convenience constructors that draw
-  fresh key material from the OS CSPRNG are `std`-gated.
+  `crypto_generichash`/`crypto_stream` all now exist here (D-46/D-51/D-49-D-50/D-66/D-67) — not
+  every module in this layer needs `std`/an RNG (`crypto_sign`'s nonce is deterministic,
+  `crypto_generichash`/`crypto_auth`/`crypto_kdf`'s `from_bytes`/`mac`/`derive_subkey` paths take a
+  caller-supplied key and need none either), only the specific `generate()`-style convenience
+  constructors that draw fresh key material from the OS CSPRNG are `std`-gated (`crypto_stream` is
+  the one exception gated at the whole-module level — its `Vec<u8>`-returning `encrypt`/`decrypt`
+  need `std` unconditionally, same reason `crypto_secretbox` is whole-module-gated too).
 
 Module-by-module status (libsodium name → `dstu_core` module → status):
 
 | libsodium equivalent | `dstu_core` module | Status |
 |---|---|---|
 | `crypto_generichash` | `dstu_core::crypto_generichash` (a bare re-export of `hazmat::kupyna`'s `Kupyna256`/`Kupyna512`/`Kupyna256Hasher`/`Kupyna512Hasher`) | **Implemented** — one-shot `digest()` and streaming `update`/`finalize` (`TASKS.md` T-83), byte-aligned messages only. Now reachable under the top-level `crypto_*` namespace too, not just `hazmat` (`TASKS.md` T-105, `DECISIONS.md` D-66) — a bare re-export, not a new wrapper, since there's no knob to hide and no libsodium value-add (variable output length, optional key) with a DSTU equivalent to re-derive. See D-10/D-66 in `DECISIONS.md`. |
-| `crypto_stream` | `hazmat::strumok` (`Strumok256`, `Strumok512`) | **Implemented** — keystream generation/`apply_keystream`, both key sizes. Vectors are UAPKI-attributed, not confirmed against the *official text* yet. See D-18 in `DECISIONS.md`. |
+| `crypto_stream` | `dstu_core::crypto_stream` (`encrypt`/`decrypt`/`Key`, over `hazmat::strumok::Strumok256` only) + `hazmat::strumok` (`Strumok256`, `Strumok512`, both sizes) | **Implemented** — keystream generation/`apply_keystream` at `hazmat`, both key sizes. High-level wrapper added (roadmap Step 3 item 3, `DECISIONS.md` D-67): single 256-bit variant, internally-generated IV (hidden from the caller, confirmed with the project owner — the same choice `crypto_secretbox` made for its nonce, D-51), combined `iv \|\| ciphertext` output. **No authentication** — `decrypt` never fails on tampered input, unlike `crypto_secretbox`; named `encrypt`/`decrypt` rather than `seal`/`open` specifically to avoid implying tamper-evidence. Vectors are UAPKI-attributed, not confirmed against the *official text* yet. See D-18/D-67 in `DECISIONS.md`. |
 | `hazmat::kalyna` (block primitive, not directly libsodium-mapped) | `hazmat::kalyna` (`Kalyna128_128`/`Kalyna128_256`/`Kalyna256_256`/`Kalyna256_512`/`Kalyna512_512`) | **Implemented** — single-block `encrypt`/`decrypt`, all 5 variants. See D-13 in `DECISIONS.md`. |
 | `hazmat::kalyna_ccm` (mode of operation, not directly libsodium-mapped) | `hazmat::kalyna_ccm` (all 5 variants) | **Implemented, provisional** — Kalyna-alone CCM, dual-oracle-verified (UAPKI + Bouncy Castle vectors), not confirmed against the primary DSTU 7624:2014 text. See D-41 in `DECISIONS.md`. Sourced 255-byte plaintext/AAD limit; nonce-generation strategy still undecided (D-40, `TASKS.md` T-82). |
+| *(no libsodium equivalent — key wrapping/envelope encryption)* | `hazmat::kalyna_kw` (all 5 variants) | **Implemented, `hazmat`-only, deliberately no high-level `crypto_*` wrapper** — libsodium itself has no dedicated key-wrap primitive to map to (roadmap Step 3 item 4, `DECISIONS.md` D-66's addendum), so this stays a documented gap in the libsodium-parity surface rather than an invented, non-libsodium-shaped `crypto_kw`. Dual-oracle-verified, not confirmed against the primary DSTU 7624:2014 text. See D-55 in `DECISIONS.md`. |
 | `crypto_sign` | `hazmat::dstu4145` + `dstu_core::crypto_sign` | **Implemented (m=163 curve only)** — `hazmat` has `GF(2^163)` field arithmetic, point add/double, constant-time scalar multiplication, and `sign`/`verify`, all verified against the official standard's own Annex B.1 worked example plus a `proptest` round-trip (`TASKS.md` T-41/T-43/T-44, `DECISIONS.md` D-25). The high-level `crypto_sign` wrapper (T-48, done 2026-07-24, `DECISIONS.md` D-46) now exists too — `SigningKey`/`VerifyingKey`/`Signature`, deterministic (not caller-random) nonce derivation via Kupyna-KMAC. The other 9 named curve sizes aren't wired up. |
 | `crypto_box` | `hazmat::dstu9041` | Hard-blocked — zero source material exists for DSTU 9041 (see `ORACLES.md`); cannot start. |
 | `crypto_secretbox` | `dstu_core::crypto_secretbox` (`seal`/`open`/`SecretKey`), over `hazmat::kalyna_gcm::Kalyna256_256Gcm` | **Implemented, provisional** — single fixed Kalyna-GCM variant (not all five), internal nonce, combined `nonce\|\|ciphertext\|\|tag` output, no caller-facing AAD (the nonce is passed as `kalyna_gcm`'s AAD internally, to bind it into the tag — D-63). Migrated 2026-07-25 from an earlier Kalyna-CCM construction, removing its 255-byte message cap entirely. Still not primary-text-confirmed (inherits D-56). See D-51/D-63 in `DECISIONS.md`. |
