@@ -591,7 +591,9 @@ resistance (SPA/DPA — explicitly out of scope per `SECURITY.md`/`CLAUDE.md` "M
       `tampered_ciphertext_does_not_error_but_produces_garbage`), the same convention
       `tests/kalyna_xts.rs` already established. Verified: full workspace test/clippy/fmt clean,
       plus `no_std`/`no_std+alloc`/`no_std+small-tables` builds of `dstu-core` (confirms
-      `crypto_stream` is correctly absent from all three). Not yet committed.
+      `crypto_stream` is correctly absent from all three). Scoped Miri run clean (9/9, 0 UB,
+      119.85s, `MIRIFLAGS=-Zmiri-disable-isolation PROPTEST_CASES=8`). Committed and pushed
+      (`82045cf`).
 
 ## A provisional Kalyna mode of operation - CCM (T-81), plus its nonce-strategy follow-up (T-82)
 
@@ -1759,8 +1761,8 @@ implementing rather than decided unilaterally. Items 4 (KW documented `hazmat`-o
 (`crypto_kx`/`crypto_box` reconfirmed hard-blocked) are documentation-only, see D-66's addendum.
 Full workspace `cargo test --workspace --all-features` last confirmed clean; `no_std`/
 `no_std+alloc`/`no_std+small-tables` builds of `dstu-core` clean; `clippy -D warnings`/
-`fmt --check` clean. **Not yet committed** - confirm with the user before committing (standing
-"commit only when asked" rule).
+`fmt --check` clean; scoped Miri on `crypto_stream` clean (9/9, 0 UB, 119.85s). **Committed and
+pushed** (`82045cf`, user confirmed pushing this batch too before it landed).
 
 **Not yet done - the actual next steps**:
 - Step 4 (T-17 crates.io publish, T-18 GitHub Releases) - not started, deliberately last, per
