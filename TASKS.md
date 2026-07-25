@@ -391,8 +391,9 @@ item they point to is later removed.
       `hazmat::kupyna::Kupyna256Hasher` (T-83) and passes the digest straight in - the same
       memory-boundedness gap D-42 names for CLI commands, closed here without needing a new
       streaming construction. Full workspace test/clippy/fmt/`no_std` build all clean.
-- [ ] **T-114** **Persona-based user-journey gap analysis - a hybrid state/interaction diagram, not
-      a plain feature checklist** - requested 2026-07-25. Distinct from `docs/release-readiness.md`'s
+- [x] **T-114** **DONE 2026-07-26, see `docs/user-journey-gaps.md`.** **Persona-based user-journey
+      gap analysis - a hybrid state/interaction diagram, not a plain feature checklist** - requested
+      2026-07-25. Distinct from `docs/release-readiness.md`'s
       existing gap analysis (which is organized by *construction* - is this mode of operation
       current/safe) and from `docs/dstu-crypto-project.md`'s API-mapping table (organized by
       *libsodium function name*): this one is organized by *hypothetical engineer persona and the
@@ -421,8 +422,25 @@ item they point to is later removed.
       `docs/dstu-crypto-project.md`, `README.md`, and `PERFORMANCE.md` rather than re-deriving their
       content - this task's value is the persona/journey framing itself, not a fourth copy of the
       same feature list. Output as a new doc (exact filename/location TBD when started - candidate:
-      `docs/user-journey-gaps.md`) added to `CLAUDE.md`'s documentation map once created. Not
-      started.
+      `docs/user-journey-gaps.md`) added to `CLAUDE.md`'s documentation map once created.
+      **Done 2026-07-26** - written to the candidate filename, all three personas as Mermaid
+      `stateDiagram-v2` diagrams with a per-state want-vs-have-vs-gap table, added to `CLAUDE.md`'s
+      documentation map. The candidate gap named in this task's own text (T-18 blocking persona 1
+      step 1) was confirmed, not just repeated, plus two more found the same way (previously
+      uncatalogued at the construction level): no `uacrypt keygen` command blocks persona 1's very
+      first action (both crate READMEs only say "generate one via any 32-byte-CSPRNG source," no
+      worked example); no crates.io/docs.rs presence blocks persona 2's "add dependency" step and
+      leaves T-110's `docs.rs` metadata inert; and, checked by grep rather than assumed (no
+      `thumbv7em`/`xtensa`/`riscv32` string anywhere in the repo's CI config or `xtask`), no
+      bare-metal cross-compile of `dstu-core` has ever actually been run for persona 3 - every
+      `no_std` build checked in CI targets the host triple, which proves no `std`/`alloc` leaks
+      through but not that the crate cross-compiles for a real MCU toolchain. None of the three are
+      self-assigned new task numbers, per this task's own scope - recorded as candidates for the
+      project owner to triage. Also fixed, found while cross-checking this task against the
+      roadmap's own Step 5 text (`TASKS.md` "Roadmap to a genuinely complete product," items 4-7):
+      four lines there still said "Not started" for T-110/T-112/T-108/T-111 despite those tasks'
+      own entries above being `[x]` done - the exact "stale 'not started' line next to a done line"
+      failure mode `CLAUDE.md`'s agent-discipline section calls out by name, from the D-68 session.
 - [x] **T-19** **Naming subtask, all three decisions made 2026-07-23** (T-20/T-21/T-22 below) -
       unblocks T-17/T-18, which are still separately open (a decided name isn't a crates.io
       publish or a built release binary):
@@ -2061,17 +2079,22 @@ around it.
    empirical MSRV measurement, not a guess). `cargo publish --dry-run -p dstu-core --allow-dirty`
    now shows zero metadata warnings; category slugs verified live against crates.io's real API.
 4. **T-110 - `[package.metadata.docs.rs]` with `all-features = true`** on both crates - already
-   verified safe (`small-tables` gates no `pub` item). Not started.
+   verified safe (`small-tables` gates no `pub` item). **Done 2026-07-25, see `TASKS.md` T-110's own
+   entry above.**
 5. **T-112 - crate-level `#![doc]` provisional-status warning** for both crates, pointing back at
-   `SECURITY.md`/`DECISIONS.md` rather than re-arguing the citations inline. Not started.
-6. **T-108 - user-friendly `--help`/usage text for `uacrypt`.** Not started.
+   `SECURITY.md`/`DECISIONS.md` rather than re-arguing the citations inline. **Done 2026-07-25, see
+   `TASKS.md` T-112's own entry above.**
+6. **T-108 - user-friendly `--help`/usage text for `uacrypt`.** **Done 2026-07-25, see `TASKS.md`
+   T-108's own entry above.**
 7. **T-111 - `CHANGELOG.md` + a real, empirically-determined MSRV.** Advisor flag, keep this split
    in mind when scoping the work: the `CHANGELOG.md` half is a writing task, but MSRV is **not** -
    it means actually installing two or three candidate older toolchains and running the full
    8-combination feature matrix on each (this project's own dependency tree, `argon2`/`getrandom`/
    `zeroize`/`subtle` and their transitives, has already produced one surprising transitive-feature
    result, D-50 - don't assume a floor without measuring it). Budget accordingly; this is not a
-   same-size item as T-107/T-109/T-110/T-112 above despite living in the same step. Not started.
+   same-size item as T-107/T-109/T-110/T-112 above despite living in the same step. **Done
+   2026-07-26, see `DECISIONS.md` D-69 and `TASKS.md` T-111's own entry above** - MSRV
+   empirically measured at 1.87.0.
 - [x] **T-113 - multi-part/streaming `crypto_sign`. DONE 2026-07-26, see `DECISIONS.md` D-70.** The
       advisor's flag was confirmed against the primary text first, per this file's own "no
       primitive/estimate from memory" rule: `docs/pseudocode/dstu4145.md` §5.9/§9/§10 signs a hash

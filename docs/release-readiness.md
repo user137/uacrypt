@@ -9,6 +9,11 @@ safe**, not provisional. This document is that analysis. It synthesizes existing
 duplicating it — update the source-of-truth file first when something here changes, then this
 document's summary.
 
+**See also `docs/user-journey-gaps.md` (`TASKS.md` T-114)** for a persona/journey-organized
+companion view — it surfaces gaps this document's construction-organized framing doesn't (e.g. no
+`uacrypt keygen` command, no bare-metal cross-compile ever run) rather than duplicating this
+document's findings.
+
 ## Headline finding
 
 **Updated 2026-07-24: D-05 is no longer formally open — adopted as a working assumption, still not

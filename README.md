@@ -54,6 +54,8 @@ target.
 ├── xtask/                 # cross-platform build/QA runner, see "Development commands" below
 ├── docs/
 │   ├── dstu-crypto-project.md        # main project spec (scope, API mapping)
+│   ├── release-readiness.md          # gap analysis: current state vs. a libsodium-equivalent 1.0
+│   ├── user-journey-gaps.md          # persona/journey-organized companion gap analysis
 │   ├── resource-profiles.md          # fused vs small-tables: memory/speed numbers, which to pick
 │   ├── pseudocode/                   # per-algorithm pseudocode, cross-checked against oracles
 │   ├── rust_ai_ruleset.md            # generic Rust ruleset for AI assistants
