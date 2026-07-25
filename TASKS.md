@@ -491,6 +491,29 @@ item they point to is later removed.
       section updated to cite this verification instead of only asserting compilability from the
       host build; `docs/user-journey-gaps.md`'s persona-3 row/bottom-line updated to match. No
       `DECISIONS.md` entry - a verification pass, not an architectural decision.
+- [x] **T-117** **DONE 2026-07-26.** Fixed a real doc bug in `crates/dstu-core/README.md`'s
+      `## Example` block, found by actually walking persona 2's journey with real commands rather
+      than re-reading the document (user-requested: "прогони віртуально... як реально поведеться
+      програма, а не як ти хочеш щоб вона повелась"). The example as written did not compile:
+      `SecretKey::generate()` returns `Result<SecretKey, SecretboxError>` and `seal()` returns
+      `Result<Vec<u8>, SecretboxError>` (both can fail on an OS CSPRNG error - `crypto_secretbox.rs`
+      lines 108/132), but the example used both as if they were the bare value, with no
+      `.expect`/`?`. Confirmed empirically: created a scratch crate depending on `dstu-core` via a
+      path dependency (the only way to depend on it at all pre-T-17) and pasted the example
+      verbatim - `cargo build` failed with two `E0308` type-mismatch errors citing exactly this.
+      **Never caught by `cargo test`** because the README isn't wired in via `include_str!`/
+      `#[doc]` anywhere in `lib.rs`, so it's not a doctest - this is a class of bug the existing test
+      suite structurally cannot catch, only an actual run can. Fixed by adding `.expect(...)` to
+      both calls, then re-verified in the same scratch crate: builds and runs clean, prints the
+      round-tripped plaintext. Also confirmed for the record during the same walkthrough (not new
+      findings, re-confirming what T-17/T-114 already claimed): `gh release list` on the real repo
+      returns empty (no GitHub Releases exist, persona 1's Acquire gap is real, not assumed) and
+      `cargo add dstu-core` fails with "could not be found in registry index" (persona 2's Add
+      Dependency gap is real). Persona 1's full CLI golden path (`keygen` -> `encrypt` -> `decrypt`
+      round-trip, plus `hash`) and its two rejection paths (wrong key, single-byte-flip tamper) were
+      also run against the actual release binary, not assumed from the unit tests - both correctly
+      reject without writing `--out`, matching `crypto_secretstream`'s documented behavior. No
+      `DECISIONS.md` entry - a documentation correctness fix, not an architectural decision.
 - [x] **T-19** **Naming subtask, all three decisions made 2026-07-23** (T-20/T-21/T-22 below) -
       unblocks T-17/T-18, which are still separately open (a decided name isn't a crates.io
       publish or a built release binary):

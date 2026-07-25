@@ -43,8 +43,10 @@ the same codebase, no CPU-family or OS lock-in by design.
 ```rust
 use dstu_core::crypto_secretbox::{seal, open, SecretKey};
 
-let key = SecretKey::generate(); // std-gated, draws from the OS CSPRNG
-let sealed = seal(&key, b"message");
+// std-gated, draws from the OS CSPRNG - both this and seal/open return Result (each can fail on
+// an OS CSPRNG error; open also fails on a wrong key or tampered input).
+let key = SecretKey::generate().expect("OS CSPRNG should not fail");
+let sealed = seal(&key, b"message").expect("OS CSPRNG should not fail");
 let opened = open(&key, &sealed).expect("authentic ciphertext");
 assert_eq!(opened, b"message");
 ```
