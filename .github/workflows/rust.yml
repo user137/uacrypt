@@ -125,3 +125,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: EmbarkStudios/cargo-deny-action@v2
+
+  msrv:
+    name: MSRV build (1.87.0)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # `dtolnay/rust-toolchain@1.87.0` installs 1.87.0 but does NOT make it active - this repo's
+      # own `rust-toolchain.toml` pins `channel = "stable"` and silently overrides a bare `cargo`
+      # invocation regardless (the same T-85 gotcha the miri/fuzz jobs above already work around),
+      # so every step below says `cargo +1.87.0` explicitly.
+      - uses: dtolnay/rust-toolchain@1.87.0
+      # Build-only, both profiles (DECISIONS.md D-69): the MSRV floor (`u64`/`usize::is_multiple_of`,
+      # unconditional in `hazmat::kalyna_kw`/`kalyna_cbc`/`kalyna_ecb`/`kalyna_ccm`) isn't behind
+      # any feature gate, so a single `--all-features` build already exercises it; the
+      # `--no-default-features` counterpart is checked anyway rather than assumed, matching
+      # D-39/D-41/D-62's own build-matrix precedent. Deliberately not running `clippy` (an older
+      # `clippy` fires lints the pinned-`stable` job's newer one doesn't - this project has no
+      # intention of satisfying two `clippy` versions forever) or the full test suite (already
+      # confirmed locally that it compiles at this floor, see D-69; re-running it on every push
+      # would double CI time for a floor the `stable`-pinned `test` job already exercises at a
+      # newer version anyway).
+      - run: cargo +1.87.0 build --workspace --all-features
+      - run: cargo +1.87.0 build --workspace --no-default-features

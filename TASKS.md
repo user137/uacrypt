@@ -331,16 +331,31 @@ item they point to is later removed.
       fmt --all -- --check`, and `cargo clippy --workspace --all-features -- -D warnings` all clean;
       `cargo test`/`no_std` build/Miri not re-run, nothing in their scope changed. No `DECISIONS.md`
       entry - packaging hygiene, nothing architectural (same call T-107/T-109 made).
-- [ ] **T-111** `CHANGELOG.md` (Keep a Changelog format) + a declared MSRV - requested 2026-07-25.
-      No changelog file exists at all yet; `rust-version` is absent from both `Cargo.toml` files, and
-      `rust-toolchain.toml` only pins `channel = "stable"` (a floating target, not a minimum). Scope:
-      pick and record an actual MSRV (needs a real `cargo +<msrv> build` check across feature
-      combinations, not a guess), add `rust-version` to both `Cargo.toml`s, and add an MSRV CI job.
-      **Known trap, don't rediscover it**: this project's own `rust-toolchain.toml` pin already
-      silently overrode a CI step's installed nightly toolchain once (the miri/fuzz `+nightly`
-      gotcha in this file's "Agent discipline" section, T-85) - an MSRV job that runs a bare `cargo
-      build` in the same job as an installed MSRV toolchain will silently build under `stable`
-      instead unless it says `cargo +<msrv-version> build` explicitly. Not started.
+- [x] **T-111** `CHANGELOG.md` (Keep a Changelog format) + a declared MSRV - requested 2026-07-25.
+      **Done 2026-07-26, see `DECISIONS.md` D-69.** MSRV measured, not guessed: `cargo metadata
+      --filter-platform` (both Linux and Windows-gnu targets) showed the dependency graph's own
+      declared floors top out at 1.85 (`zeroize`, `base64ct` via `argon2`'s `pwhash` feature,
+      `getrandom` via `proptest`/`rand`) and 1.86 (`criterion` and its `clap` bench-harness
+      dependency, both dev-dep-only) - neither is the real constraint. Real-toolchain bisection
+      (installed `1.85.0`/`1.86.0`/`1.87.0` via `rustup`, built with each) found the actual floor
+      is this crate's own unconditional use of `u64`/`usize::is_multiple_of`
+      (`hazmat::kalyna_kw`/`kalyna_cbc`/`kalyna_ecb`/`kalyna_ccm`), stabilized in **1.87.0**: 1.86
+      fails with `E0658` at every call site, 1.87 builds and compiles the full `--all-features`
+      test suite clean. `rust-version = "1.87.0"` added to both `Cargo.toml`s; a new `msrv` job in
+      `.github/workflows/rust.yml` pins `dtolnay/rust-toolchain@1.87.0` and build-only-verifies
+      (`--all-features` + `--no-default-features`) on `ubuntu-latest`, explicitly `cargo +1.87.0`
+      to avoid `rust-toolchain.toml`'s `stable` pin silently swallowing it (the known T-85 trap this
+      task's own text warned about). `CHANGELOG.md` added at the repo root, Keep a Changelog
+      format, one `[Unreleased]` section (0.1.0 is still unpublished) - Added/Changed only, not a
+      reconstructed per-commit history; the `uacrypt encrypt`/`decrypt` wire-format's two breaking
+      changes this session (`crypto_secretbox` -> Kalyna-GCM -> `crypto_secretstream`) are the one
+      real piece of history worth recording under Changed. Verified: `cargo fmt --all -- --check`,
+      `cargo build --workspace --all-features`, `cargo clippy --workspace --all-features -- -D
+      warnings` all clean on the default `stable` toolchain; MSRV floor itself confirmed via direct
+      `cargo +1.87.0-x86_64-pc-windows-msvc build --workspace --all-features --target
+      x86_64-pc-windows-msvc` (the `-msvc` host triple, not `-gnu` - `1.85.0`/`1.86.0` under
+      `-gnu` hit an unrelated `dlltool.exe`-not-found link error on this dev machine, see D-69's
+      toolchain note; CI's own `ubuntu-latest` runner doesn't have this quirk).
 - [x] **T-112** Crate-level `#![doc]` provisional-status warning for both crates - requested
       2026-07-25. `README.md` already has a pre-release/WIP banner (T-86/D-43: version, "not
       audited," Strumok/Kalyna-CCM/D-05's provisional status), but a docs.rs visitor who never opens
@@ -2113,7 +2128,12 @@ full detail)**:
    much smaller `sign_digest`/`verify_digest` entry point than "streaming signer" implies), and
    **T-114** (persona-based user-journey gap analysis - a hybrid state/interaction diagram from
    three personas' side, see T-114's own entry above - requested 2026-07-25, after T-113 in this
-   list since it's newer) - all not started, in this order. **T-111 is next.**
+   list since it's newer) - all not started, in this order.
+7. **T-111 - DONE 2026-07-26, see `TASKS.md` T-111's own entry above and `DECISIONS.md` D-69.**
+   MSRV measured (not guessed) at `1.87.0` - the real floor turned out to be this crate's own
+   unconditional use of `u64`/`usize::is_multiple_of`, not any dependency's declared floor (those
+   topped out lower, at 1.85/1.86). `rust-version` set on both `Cargo.toml`s, a build-only `msrv`
+   CI job added, `CHANGELOG.md` written. **T-113 is next.**
 - **Publication (T-17/T-18) is explicitly out of this plan** - gated on the user asking for it by
   name, not simply queued behind Step 5. Do not start it as a side effect of finishing Step 5.
 - The 2026-07-25 libsodium/crates.io research pass also produced a set of **deliberate non-tasks**

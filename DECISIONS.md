@@ -4304,3 +4304,65 @@ CLAUDE.md's own doc map (`docs/release-readiness.md` owns "a new construction la
 `docs/dstu-crypto-project.md` owns "scope or API-mapping decisions change") - is recorded here as a
 process note: D-67 (the closest prior analogue, one item earlier in this same roadmap) listed both
 files in its own "Docs updated" line and this entry originally didn't; don't repeat the omission.
+
+## D-69: MSRV set to 1.87.0 (T-111) - the binding floor is this crate's own code, not a dependency
+
+**Measured, not guessed** (`cargo metadata --format-version 1 --all-features --filter-platform
+<target>`, both `x86_64-unknown-linux-gnu` and `x86_64-pc-windows-gnu`, then real `cargo
++<toolchain> build` runs, per this file's standing "no primitive/claim from memory" discipline
+applied to tooling claims too): the dependency graph's own declared floors top out at `1.85` (`zeroize` 1.9.0, `base64ct` 1.8.3 via
+`argon2`'s `pwhash` feature, `getrandom` 0.4.3 pulled in transitively by `proptest`/`rand`) and
+`1.86` (`criterion` 0.8.2 itself, plus `clap` 4.6.4 - not `uacrypt`'s CLI, which is hand-parsed;
+`clap` is `criterion`'s own bench-harness dependency, confirmed via `Cargo.lock`'s `[[package]]`
+entry for `criterion`, not assumed from the name alone). Both are dev-dependency-only, not reached
+by a bare `cargo build --workspace`. None of those are the real constraint.
+
+**The actual floor is `dstu_core`'s own use of `u64::is_multiple_of`/`usize::is_multiple_of`**
+(`unsigned_is_multiple_of`, rust-lang/rust#128101), used unconditionally (not behind any feature
+gate) in `hazmat::kalyna_kw`, `hazmat::kalyna_cbc`, `hazmat::kalyna_ecb`, `hazmat::kalyna_ccm`, and
+across most of the `tests/` suite. Confirmed by bisection with real toolchains, not inferred from
+the tracking issue number alone: `cargo +1.86.0-x86_64-pc-windows-msvc build --workspace --target
+x86_64-pc-windows-msvc` fails with `E0658: use of unstable library feature
+'unsigned_is_multiple_of'` (31 errors, all at `is_multiple_of` call sites); `cargo
++1.87.0-x86_64-pc-windows-msvc build --workspace --all-features` and `cargo
++1.87.0-x86_64-pc-windows-msvc test --workspace --all-features --no-run` (compiles every test
+binary, including `--all-features`) both succeed. `--no-default-features` and
+`--no-default-features --features small-tables` also confirmed clean at 1.87 - moot for this
+specific floor since the triggering calls aren't feature-gated, but checked anyway rather than
+assumed, matching D-39/D-41/D-62's own precedent for a new build-matrix claim.
+
+**Toolchain note, specific to this dev machine, not a project-wide finding**: `1.85.0`/`1.86.0`
+under the `-x86_64-pc-windows-gnu` host triple failed at the link step (`dlltool.exe` not found)
+even with the `rust-mingw` component installed - a self-contained-linker default that changed
+between this machine's `stable` (1.97.1) and these older releases, unrelated to this crate's own
+code. Worked around by installing the `-x86_64-pc-windows-msvc` variant of each candidate instead
+(this machine already has Visual Studio/`link.exe, per D-32's Miri/fuzz precedent) and building
+with `--target x86_64-pc-windows-msvc` explicitly. Not a `no_std`/portability regression - CI
+verifies the real MSRV floor on `ubuntu-latest`, where this quirk doesn't apply.
+
+**Declared**: `rust-version = "1.87.0"` added to both `crates/dstu-core/Cargo.toml` and
+`crates/uacrypt/Cargo.toml`. Scope is build + `cargo test` (confirmed both) + `cargo bench`
+(`criterion` 0.8.2's own floor is `1.86`, already below `1.87`, so it's covered without being the
+binding case). New CI
+job (`.github/workflows/rust.yml`) pins `dtolnay/rust-toolchain@1.87.0` and runs `cargo +1.87.0
+build --workspace --all-features` plus the `--no-default-features` counterpart, on
+`ubuntu-latest`, separate from the main `test` job - build-only, deliberately not running `clippy`
+at MSRV (an older `clippy` fires lints the pinned-`stable` job's newer `clippy` doesn't, and this
+project has no intention of satisfying two `clippy` versions in perpetuity) and not running the
+full test suite at MSRV in CI (already confirmed locally that it compiles; re-running it on every
+push doubles CI time for a floor that `rust-toolchain.toml`'s `stable` pin already exercises at a
+newer version every push anyway).
+
+**Why this is a `DECISIONS.md` entry and not packaging hygiene like T-107/T-109/T-110/T-112**: the
+measurement was genuinely surprising - a naive "check `cargo metadata` for the highest declared
+`rust_version`" pass would have landed on `1.85` or `1.86` and silently shipped an MSRV that broke
+on this crate's own code, not a dependency's. `is_multiple_of` was not chosen deliberately for its
+stabilization version; it was written as ordinary idiomatic Rust without checking against an MSRV
+target, since no MSRV had been declared yet at the time. Left as-is rather than rewritten to
+`% ... == 0` to artificially lower the number to `1.85` - T-111's stated scope is "pick and record
+an actual MSRV," not "minimize it," and a two-version gap from the dependency floor doesn't justify
+churning five call sites for a crate that isn't published yet.
+
+**`CHANGELOG.md` (Keep a Changelog format) added** - first version of the file, `0.1.0` is
+unreleased so there is one `## [Unreleased]` section (Added/Changed), not a reconstructed
+per-commit history.
