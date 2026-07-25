@@ -26,10 +26,11 @@ implementation within a minute, without hassle — in the spirit of
   subcommands like `uacrypt encrypt --key ... --in file --out file` — mode,
   nonce/IV, etc. are hardcoded so there's nothing for the user to
   misconfigure. **Built** (`TASKS.md` T-16, `DECISIONS.md` D-52) — no message-
-  length cap since `crypto_secretbox` migrated to Kalyna-GCM (D-63), but `--in`
-  is still read whole into memory (an AEAD tag needs the full
-  plaintext/ciphertext up front), so this is not yet block-at-a-time disk
-  streaming; `crypto_secretstream` (T-40) is the tracked follow-up for that.
+  length cap since `crypto_secretbox` migrated to Kalyna-GCM (D-63). As of
+  2026-07-25, `encrypt`/`decrypt` are rewired onto `dstu_core::crypto_secretstream`
+  (`TASKS.md` T-40/T-70, `DECISIONS.md` D-68) instead — genuinely block-at-a-time
+  disk streaming on both `--in` and `--out`, not whole-buffer I/O anymore, a
+  breaking wire-format change from the prior `crypto_secretbox`-backed format.
 - Publish the core to crates.io.
 - Prebuilt binaries for Windows/Linux via GitHub Releases (not "clone and
   build it yourself").
@@ -134,8 +135,13 @@ a missing API wrapper):**
 - `crypto_kdf` (key derivation) → an HKDF-like construction based on Kupyna.
   There's no separate national KDF standard.
 - `crypto_secretstream` (streaming authenticated encryption of large files in
-  chunks) → a construction on top of Strumok or Kalyna-CTR + authentication
-  of each chunk. A matter of API design, not algorithm search.
+  chunks) → originally sketched here as a construction on top of Strumok or
+  Kalyna-CTR + separate per-chunk authentication. **Built 2026-07-25 as
+  something narrower and simpler instead**, see `TASKS.md` T-40/T-70 and
+  `DECISIONS.md` D-68: tag-per-chunk framing over `hazmat::kalyna_gcm` (already
+  a combined AEAD, no separate MAC step needed) plus `hazmat::kupyna_kmac` for
+  header-derived subkeys/rekeying — not Strumok or Kalyna-CTR at all. This
+  entry is kept as the historical planning note, not corrected in place.
 
 **Real gaps (DSTU offers nothing):**
 
@@ -195,7 +201,7 @@ Module-by-module status (libsodium name → `dstu_core` module → status):
 | `crypto_auth`/`crypto_onetimeauth` | `dstu_core::crypto_auth` (`auth`/`verify`/`Key`, over `hazmat::kupyna_kmac::Kupyna256Kmac` only) + `hazmat::kupyna_kmac` (`Kupyna256Kmac`/`Kupyna384Kmac`/`Kupyna512Kmac`, all three sizes) | **Implemented, provisional** — Kupyna-based KMAC, both UAPKI's and Bouncy Castle's constructions read and cross-checked byte-for-byte on all three sizes, not confirmed against the primary DSTU 7564:2014 text. High-level wrapper added `TASKS.md` T-105/`DECISIONS.md` D-66: only the 256-bit size is exposed (D-47's "delete the knob"), key is an opaque `Zeroize`-on-drop `Key` type, which also forecloses `WrongKeyLength` at this layer. See D-44/D-66 in `DECISIONS.md`. |
 | `crypto_kdf` | `dstu_core::crypto_kdf` (`MasterKey::derive_subkey`, over `hazmat::kupyna_kdf::Kupyna256Kdf` only) + `hazmat::kupyna_kdf` (`Kupyna256Kdf`/`Kupyna384Kdf`/`Kupyna512Kdf`, all three sizes) | **Implemented** — modeled after libsodium's `crypto_kdf_derive_from_key` shape over `hazmat::kupyna_kmac`, not full RFC 5869 HKDF. No DSTU standard or reference implementation exists for this construction, so unlike the rest of this table's "provisional" rows, there is no oracle vector at all, ever. High-level wrapper added `TASKS.md` T-105/`DECISIONS.md` D-66, same "delete the knob" / opaque `Zeroize`-on-drop key shape as `crypto_auth` above. See D-45/D-66 in `DECISIONS.md`. |
 | `crypto_kx` | *(future construction over `hazmat::dstu4145`/`dstu9041`)* | Needs both curve implementations to exist; DSTU 9041 side is hard-blocked. |
-| `crypto_secretstream` | *(future construction over `hazmat::strumok`/`hazmat::kalyna`)* | Both underlying primitives now implemented; the construction itself not started. |
+| `crypto_secretstream` | `dstu_core::crypto_secretstream` (`PushState`/`PullState`/`Key`/`Tag`), over `hazmat::kalyna_gcm::Kalyna256_256Gcm` + `hazmat::kupyna_kmac::Kupyna256Kmac` | **Implemented, provisional** (`TASKS.md` T-40/T-70, `DECISIONS.md` D-68) — a from-scratch tag-per-chunk framing (full `MESSAGE`/`PUSH`/`REKEY`/`FINAL` set, libsodium's `crypto_secretstream_xchacha20poly1305` shape per D-47's tie-breaker since no DSTU streaming-AEAD standard exists), not the Strumok/Kalyna-CTR sketch this table originally guessed. Caller-buffer, `no_std`-capable API (per-item `std` gating). No oracle vector exists for this construction, ever (same posture as `crypto_kdf`, D-45) — verified by property/tamper/misuse tests only. Inherits `hazmat::kalyna_gcm`'s D-56 not-primary-confirmed status. `uacrypt encrypt`/`decrypt` rewired onto it the same session, a breaking wire-format change from the prior `crypto_secretbox`-backed blob format. |
 | `crypto_pwhash` | `dstu_core::crypto_pwhash` (`hash_password`/`verify_password`/`Strength`) | **Done** (T-71, D-49/D-50) — not DSTU, plain Argon2id over the `argon2` crate, dedicated `pwhash` feature (off by default). `Strength::{Interactive,Moderate,Sensitive}` mirror libsodium's own `OPSLIMIT`/`MEMLIMIT_*` presets exactly, cited to its C source. No `uacrypt` CLI subcommand yet. |
 | `randombytes` | `dstu_core::randombytes::randombytes_buf` | **Done** (T-72, D-48) — `std`-gated over an optional `getrandom` dependency, absent from `no_std`/`alloc`/`small-tables` builds. |
 

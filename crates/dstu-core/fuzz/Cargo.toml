@@ -76,4 +76,11 @@ test = false
 doc = false
 bench = false
 
+[[bin]]
+name = "crypto_secretstream"
+path = "fuzz_targets/crypto_secretstream.rs"
+test = false
+doc = false
+bench = false
+
 [workspace]

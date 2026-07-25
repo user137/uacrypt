@@ -6,10 +6,11 @@
 //!
 //! **`kalyna-block` is deliberately not named `encrypt`/`decrypt`** - those names are the real
 //! top-level commands now (`TASKS.md` T-16, `DECISIONS.md` D-52), built over
-//! `dstu_core::crypto_secretbox` (T-37, D-51). This command only does what `hazmat::kalyna` actually
-//! supports: exactly one block, no mode, no padding - so it can't be mistaken for `encrypt`/
-//! `decrypt`, which handle a whole file, no length cap (see [`run_secretbox_command`]'s doc
-//! comment for the memory-use consequence of that).
+//! `dstu_core::crypto_secretstream` (T-40/T-70, `DECISIONS.md` D-68 - migrated from
+//! `dstu_core::crypto_secretbox`/D-51, which stays a separate, still-tested library primitive, not
+//! removed). This command only does what `hazmat::kalyna` actually supports: exactly one block, no
+//! mode, no padding - so it can't be mistaken for `encrypt`/`decrypt`, which handle a whole file of
+//! any size with bounded memory (see [`run_secretstream_command`]'s doc comment).
 //!
 //! The `--iterations`/`--raw-schedule` flags exist for the binary-vs-binary performance comparison
 //! in `PERFORMANCE.md` (`TASKS.md`, D-28/29/30 follow-up) - with `iterations <= 1` this is just a
@@ -49,8 +50,11 @@ pub enum CliError {
     AadTooLong,
     CcmVerifyFailed,
     Random(String),
-    Truncated,
-    SecretboxVerifyFailed,
+    SecretstreamTruncated,
+    SecretstreamVerifyFailed,
+    SecretstreamUnknownTag,
+    SecretstreamTrailingData,
+    SecretstreamChunkTooLarge,
 }
 
 impl fmt::Display for CliError {
@@ -84,13 +88,24 @@ impl fmt::Display for CliError {
                 write!(f, "kalyna-ccm: authentication failed - ciphertext, tag, AAD, nonce, or key do not match")
             }
             CliError::Random(message) => write!(f, "failed to generate a random nonce: {message}"),
-            CliError::Truncated => write!(
+            CliError::SecretstreamTruncated => write!(
                 f,
-                "--in is too short to be valid encrypt output (missing nonce and/or tag)"
+                "--in ends before a Final chunk was ever read - truncated or not real encrypt output"
             ),
-            CliError::SecretboxVerifyFailed => write!(
+            CliError::SecretstreamVerifyFailed => write!(
                 f,
                 "decrypt: authentication failed - --in, --key, or the file itself do not match"
+            ),
+            CliError::SecretstreamUnknownTag => {
+                write!(f, "decrypt: unrecognized chunk tag in --in - not real encrypt output")
+            }
+            CliError::SecretstreamTrailingData => write!(
+                f,
+                "decrypt: extra data found in --in after the final chunk - not real encrypt output"
+            ),
+            CliError::SecretstreamChunkTooLarge => write!(
+                f,
+                "decrypt: a chunk length in --in exceeds this build's maximum chunk size - not real encrypt output"
             ),
         }
     }
@@ -106,13 +121,17 @@ impl From<dstu_core::hazmat::kalyna_ccm::CcmError> for CliError {
     }
 }
 
-impl From<dstu_core::crypto_secretbox::SecretboxError> for CliError {
-    fn from(err: dstu_core::crypto_secretbox::SecretboxError) -> Self {
-        use dstu_core::crypto_secretbox::SecretboxError;
+impl From<dstu_core::crypto_secretstream::SecretstreamError> for CliError {
+    fn from(err: dstu_core::crypto_secretstream::SecretstreamError) -> Self {
+        use dstu_core::crypto_secretstream::SecretstreamError;
         match err {
-            SecretboxError::Truncated => Self::Truncated,
-            SecretboxError::TagMismatch => Self::SecretboxVerifyFailed,
-            SecretboxError::Random(e) => Self::Random(e.to_string()),
+            SecretstreamError::TagMismatch => Self::SecretstreamVerifyFailed,
+            SecretstreamError::UnknownTag => Self::SecretstreamUnknownTag,
+            SecretstreamError::Random(e) => Self::Random(e.to_string()),
+            SecretstreamError::InvalidLength | SecretstreamError::StreamFinalized => unreachable!(
+                "uacrypt always supplies matching buffer lengths and never calls push/pull \
+                 again after a Final chunk"
+            ),
         }
     }
 }
@@ -558,24 +577,38 @@ pub fn run_ccm_command(decrypt: bool, args: &CcmArgs) -> Result<(), CliError> {
     Ok(())
 }
 
-const SECRETBOX_KEY_LEN: usize = 32;
+const SECRETSTREAM_KEY_LEN: usize = 32;
+const SECRETSTREAM_HEADER_LEN: usize = 32;
+const SECRETSTREAM_TAG_LEN: usize = 16;
+
+/// Read/write chunk size for `encrypt`'s real streaming path - same rationale and size as
+/// `kupyna-digest`/`strumok-crypt`'s own constants (D-42): small enough that peak memory stays
+/// bounded by this constant rather than `--in`'s size. `decrypt` also uses this same constant as
+/// the on-disk record-length ceiling it enforces on every chunk it parses (see
+/// [`run_secretstream_decrypt`]) - correct only because encoder and decoder share one binary and
+/// therefore one build of this constant; a `decrypt` reading a file from a build with a *larger*
+/// `SECRETSTREAM_CHUNK_BYTES` would wrongly reject its legitimately-larger chunks as
+/// [`CliError::SecretstreamChunkTooLarge`]. Not a concern while this value has never changed
+/// across a release, but worth a real `SECRETSTREAM_MAX_CHUNK_BYTES` split (distinct from the
+/// encoder's own chunk size) the day it ever does.
+const SECRETSTREAM_CHUNK_BYTES: usize = 8 * 1024;
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct SecretboxArgs {
+pub struct SecretstreamArgs {
     pub key_path: PathBuf,
     pub in_path: PathBuf,
     pub out_path: PathBuf,
 }
 
 /// Parses `encrypt`/`decrypt`'s flags (`--key`/`--in`/`--out`, all required). No `--nonce`/`--tag`/
-/// `--aad`/`--variant` - `dstu_core::crypto_secretbox` (D-51) already removed every one of those
-/// knobs: a single fixed construction, an internally-generated nonce, no AAD, and one combined
-/// output blob, so there is nothing left here for a CLI flag to expose.
+/// `--aad`/`--variant` - `dstu_core::crypto_secretstream` (D-68) already removed every one of those
+/// knobs: a single fixed construction, an internally-generated header, no caller-facing AAD, and
+/// one chunked output stream, so there is nothing left here for a CLI flag to expose.
 ///
 /// # Errors
 ///
 /// Returns [`CliError::MissingFlag`] or [`CliError::UnknownFlag`].
-pub fn parse_secretbox_args(args: &[String]) -> Result<SecretboxArgs, CliError> {
+pub fn parse_secretstream_args(args: &[String]) -> Result<SecretstreamArgs, CliError> {
     let mut key_path = None;
     let mut in_path = None;
     let mut out_path = None;
@@ -605,54 +638,224 @@ pub fn parse_secretbox_args(args: &[String]) -> Result<SecretboxArgs, CliError> 
         }
     }
 
-    Ok(SecretboxArgs {
+    Ok(SecretstreamArgs {
         key_path: key_path.ok_or(CliError::MissingFlag("key"))?,
         in_path: in_path.ok_or(CliError::MissingFlag("in"))?,
         out_path: out_path.ok_or(CliError::MissingFlag("out"))?,
     })
 }
 
-/// Runs `encrypt`/`decrypt` over `dstu_core::crypto_secretbox` (D-51, migrated to Kalyna-GCM by
-/// D-63). `--in` is read whole via `std::fs::read`, not streamed - **this is unchanged by the
-/// GCM migration and now means something different than it used to**: the old Kalyna-CCM
-/// construction capped messages at 255 bytes, so "read whole" was free (bounded memory by
-/// construction); Kalyna-GCM has no such cap, so a large `--in` file now means a correspondingly
-/// large in-memory buffer, not a `MessageTooLong` rejection. An AEAD tag needs the full
-/// plaintext/ciphertext up front, so this can't become block-at-a-time streaming (D-42's standing
-/// policy) without a genuinely different, chunked construction - `TASKS.md` T-40
-/// (`crypto_secretstream`) is that separately-tracked follow-up, not built yet. On `encrypt`,
-/// `--out` receives `seal`'s combined `nonce || ciphertext || tag` blob directly - a fresh nonce is
-/// drawn internally on every call, never caller-supplied. On `decrypt`, `--out` is only written if
-/// authentication succeeds.
+/// Appends a fixed suffix to `path` rather than using `Path::with_extension` (which would replace
+/// an existing extension) or `format!("{}", path.display())` (lossy on non-UTF-8 paths) - an
+/// `OsString` append is correct for both cases and still lands next to `out_path`, which
+/// [`run_secretstream_command`] needs so the final `std::fs::rename` stays on the same filesystem.
+fn secretstream_temp_path(out_path: &std::path::Path) -> PathBuf {
+    let mut name = out_path.as_os_str().to_os_string();
+    name.push(".secretstream-tmp");
+    PathBuf::from(name)
+}
+
+fn read_exact_or_truncated(
+    file: &mut std::fs::File,
+    buf: &mut [u8],
+    path: &std::path::Path,
+) -> Result<(), CliError> {
+    use std::io::Read;
+    match file.read_exact(buf) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
+            Err(CliError::SecretstreamTruncated)
+        }
+        Err(e) => Err(CliError::Io {
+            path: path.to_path_buf(),
+            message: e.to_string(),
+        }),
+    }
+}
+
+/// Encrypts `in_path` into `tmp_path` (the caller renames onto the real `--out` only after this
+/// returns `Ok`) using [`dstu_core::crypto_secretstream::PushState`]. One-chunk-ahead buffering
+/// (`cur`/`next`) is what lets the last chunk be tagged
+/// [`Tag::Final`](dstu_core::crypto_secretstream::Tag::Final) without a second pass over the file -
+/// including the empty-input case, which produces a single zero-length `Final` chunk.
+fn run_secretstream_encrypt(
+    key: &dstu_core::crypto_secretstream::Key,
+    in_path: &PathBuf,
+    tmp_path: &PathBuf,
+) -> Result<(), CliError> {
+    use dstu_core::crypto_secretstream::{PushState, Tag};
+    use std::io::{Read, Write};
+
+    let (mut push, header) = PushState::init(key)?;
+
+    let mut in_file = std::fs::File::open(in_path).map_err(|e| CliError::Io {
+        path: in_path.clone(),
+        message: e.to_string(),
+    })?;
+    let mut out_file = std::fs::File::create(tmp_path).map_err(|e| CliError::Io {
+        path: tmp_path.clone(),
+        message: e.to_string(),
+    })?;
+    out_file.write_all(&header).map_err(|e| CliError::Io {
+        path: tmp_path.clone(),
+        message: e.to_string(),
+    })?;
+
+    let read_chunk = |file: &mut std::fs::File, buf: &mut [u8]| -> Result<usize, CliError> {
+        file.read(buf).map_err(|e| CliError::Io {
+            path: in_path.clone(),
+            message: e.to_string(),
+        })
+    };
+
+    let mut cur = vec![0u8; SECRETSTREAM_CHUNK_BYTES];
+    let mut cur_len = read_chunk(&mut in_file, &mut cur)?;
+    loop {
+        let mut next = vec![0u8; SECRETSTREAM_CHUNK_BYTES];
+        let next_len = read_chunk(&mut in_file, &mut next)?;
+        let tag = if next_len == 0 {
+            Tag::Final
+        } else {
+            Tag::Message
+        };
+
+        let mut ciphertext = vec![0u8; cur_len];
+        let auth_tag = push.push(tag, &cur[..cur_len], &mut ciphertext)?;
+
+        #[allow(clippy::cast_possible_truncation)]
+        // cur_len <= SECRETSTREAM_CHUNK_BYTES, always << u32::MAX
+        let chunk_len = cur_len as u32;
+        out_file
+            .write_all(&[tag.to_byte()])
+            .and_then(|()| out_file.write_all(&chunk_len.to_le_bytes()))
+            .and_then(|()| out_file.write_all(&ciphertext))
+            .and_then(|()| out_file.write_all(&auth_tag))
+            .map_err(|e| CliError::Io {
+                path: tmp_path.clone(),
+                message: e.to_string(),
+            })?;
+
+        if next_len == 0 {
+            break;
+        }
+        cur = next;
+        cur_len = next_len;
+    }
+
+    Ok(())
+}
+
+/// Decrypts `in_path` into `tmp_path` (the caller renames onto the real `--out` only after this
+/// returns `Ok`) using [`dstu_core::crypto_secretstream::PullState`]. Stops as soon as a
+/// [`Tag::Final`](dstu_core::crypto_secretstream::Tag::Final) chunk verifies, then checks for
+/// trailing bytes - both an early EOF (no `Final` ever seen, via [`read_exact_or_truncated`]) and
+/// leftover bytes after `Final` are rejected, not silently accepted.
+fn run_secretstream_decrypt(
+    key: &dstu_core::crypto_secretstream::Key,
+    in_path: &PathBuf,
+    tmp_path: &PathBuf,
+) -> Result<(), CliError> {
+    use dstu_core::crypto_secretstream::{PullState, Tag};
+    use std::io::{Read, Write};
+
+    let mut in_file = std::fs::File::open(in_path).map_err(|e| CliError::Io {
+        path: in_path.clone(),
+        message: e.to_string(),
+    })?;
+    let mut out_file = std::fs::File::create(tmp_path).map_err(|e| CliError::Io {
+        path: tmp_path.clone(),
+        message: e.to_string(),
+    })?;
+
+    let mut header = [0u8; SECRETSTREAM_HEADER_LEN];
+    read_exact_or_truncated(&mut in_file, &mut header, in_path)?;
+    let mut pull = PullState::init(key, &header);
+
+    loop {
+        let mut prefix = [0u8; 5];
+        read_exact_or_truncated(&mut in_file, &mut prefix, in_path)?;
+        let tag_byte = prefix[0];
+        let chunk_len = u32::from_le_bytes([prefix[1], prefix[2], prefix[3], prefix[4]]) as usize;
+        if chunk_len > SECRETSTREAM_CHUNK_BYTES {
+            return Err(CliError::SecretstreamChunkTooLarge);
+        }
+
+        let mut ciphertext = vec![0u8; chunk_len];
+        read_exact_or_truncated(&mut in_file, &mut ciphertext, in_path)?;
+        let mut auth_tag = [0u8; SECRETSTREAM_TAG_LEN];
+        read_exact_or_truncated(&mut in_file, &mut auth_tag, in_path)?;
+
+        let mut plaintext = vec![0u8; chunk_len];
+        let tag = pull.pull(tag_byte, &ciphertext, &auth_tag, &mut plaintext)?;
+        out_file.write_all(&plaintext).map_err(|e| CliError::Io {
+            path: tmp_path.clone(),
+            message: e.to_string(),
+        })?;
+
+        if tag == Tag::Final {
+            break;
+        }
+    }
+
+    let mut probe = [0u8; 1];
+    let trailing = in_file.read(&mut probe).map_err(|e| CliError::Io {
+        path: in_path.clone(),
+        message: e.to_string(),
+    })?;
+    if trailing != 0 {
+        return Err(CliError::SecretstreamTrailingData);
+    }
+
+    Ok(())
+}
+
+/// Runs `encrypt`/`decrypt` over `dstu_core::crypto_secretstream` (T-40/T-70, `DECISIONS.md` D-68 -
+/// migrated from `dstu_core::crypto_secretbox`/D-51, which stays a separate library primitive, not
+/// removed). Unlike the old `crypto_secretbox`-backed command, `--in` is read and `--out` is
+/// written in [`SECRETSTREAM_CHUNK_BYTES`]-sized chunks (D-42) - peak memory stays bounded
+/// regardless of `--in`'s size, on both `encrypt` and `decrypt`, matching `kupyna-digest`/
+/// `strumok-crypt`'s existing streaming discipline. `--out` is written to a temp file next to it
+/// first and only `std::fs::rename`d onto the real path once the whole stream verifies (`encrypt`
+/// can only fail on OS-CSPRNG/IO errors, but `decrypt` can fail mid-stream on a tampered/truncated
+/// `--in` - this keeps "no partial output on failure" true under genuine streaming I/O the same
+/// way the old whole-buffer command got it for free).
+///
+/// **Breaking wire-format change from the old `crypto_secretbox`-backed command** (D-68) - a file
+/// `encrypt` produced before this migration cannot be read by this `decrypt`, and vice versa.
+/// Acceptable pre-1.0 (`README.md`'s pre-release banner), called out explicitly rather than left
+/// implicit.
 ///
 /// # Errors
 ///
-/// Returns [`CliError::WrongLength`] if `--key` isn't exactly 32 bytes, [`CliError::Truncated`] if
-/// `--in` (on `decrypt`) is too short to contain a nonce and tag, [`CliError::SecretboxVerifyFailed`]
-/// if decryption fails to authenticate, or [`CliError::Io`] for file read/write failures.
-pub fn run_secretbox_command(decrypt: bool, args: &SecretboxArgs) -> Result<(), CliError> {
-    let key_bytes = read_exact_file(&args.key_path, "key", SECRETBOX_KEY_LEN)?;
-    let mut key_arr = [0u8; SECRETBOX_KEY_LEN];
+/// Returns [`CliError::WrongLength`] if `--key` isn't exactly 32 bytes,
+/// [`CliError::SecretstreamTruncated`] if `--in` (on `decrypt`) ends before a `Final` chunk is
+/// read, [`CliError::SecretstreamVerifyFailed`] if a chunk fails authentication,
+/// [`CliError::SecretstreamUnknownTag`]/[`CliError::SecretstreamChunkTooLarge`] for a malformed
+/// chunk record, [`CliError::SecretstreamTrailingData`] if bytes remain after `Final`, or
+/// [`CliError::Io`] for file read/write failures - `--out` is left untouched on every error path.
+pub fn run_secretstream_command(decrypt: bool, args: &SecretstreamArgs) -> Result<(), CliError> {
+    let key_bytes = read_exact_file(&args.key_path, "key", SECRETSTREAM_KEY_LEN)?;
+    let mut key_arr = [0u8; SECRETSTREAM_KEY_LEN];
     key_arr.copy_from_slice(&key_bytes);
-    let key = dstu_core::crypto_secretbox::SecretKey::from_bytes(key_arr);
+    let key = dstu_core::crypto_secretstream::Key::from_bytes(key_arr);
 
-    let input = std::fs::read(&args.in_path).map_err(|e| CliError::Io {
-        path: args.in_path.clone(),
-        message: e.to_string(),
-    })?;
-
-    let output = if decrypt {
-        dstu_core::crypto_secretbox::open(&key, &input)?
+    let tmp_path = secretstream_temp_path(&args.out_path);
+    let result = if decrypt {
+        run_secretstream_decrypt(&key, &args.in_path, &tmp_path)
     } else {
-        dstu_core::crypto_secretbox::seal(&key, &input)?
+        run_secretstream_encrypt(&key, &args.in_path, &tmp_path)
     };
 
-    std::fs::write(&args.out_path, &output).map_err(|e| CliError::Io {
-        path: args.out_path.clone(),
-        message: e.to_string(),
-    })?;
-
-    Ok(())
+    match result {
+        Ok(()) => std::fs::rename(&tmp_path, &args.out_path).map_err(|e| CliError::Io {
+            path: args.out_path.clone(),
+            message: e.to_string(),
+        }),
+        Err(e) => {
+            let _ = std::fs::remove_file(&tmp_path);
+            Err(e)
+        }
+    }
 }
 
 /// The two hash/key sizes shared by Kupyna (output width) and Strumok (key width) - `"256"`/
@@ -1175,8 +1378,8 @@ pub fn run(args: &[String]) -> Result<(), CliError> {
         Some("kupyna-digest") => run_digest_command(&parse_digest_args(&args[1..])?),
         Some("strumok-crypt") => run_strumok_command(&parse_strumok_args(&args[1..])?),
         Some("hash") => run_hash_command(&parse_hash_args(&args[1..])?),
-        Some("encrypt") => run_secretbox_command(false, &parse_secretbox_args(&args[1..])?),
-        Some("decrypt") => run_secretbox_command(true, &parse_secretbox_args(&args[1..])?),
+        Some("encrypt") => run_secretstream_command(false, &parse_secretstream_args(&args[1..])?),
+        Some("decrypt") => run_secretstream_command(true, &parse_secretstream_args(&args[1..])?),
         Some(other) => Err(CliError::UnknownCommand(other.to_string())),
         None => Err(CliError::UnknownCommand(String::new())),
     }
@@ -1687,7 +1890,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_secretbox_args_happy_path() {
+    fn parse_secretstream_args_happy_path() {
         let args = vec![
             "--key".to_string(),
             "key.bin".to_string(),
@@ -1697,8 +1900,8 @@ mod tests {
             "sealed.bin".to_string(),
         ];
         assert_eq!(
-            parse_secretbox_args(&args),
-            Ok(SecretboxArgs {
+            parse_secretstream_args(&args),
+            Ok(SecretstreamArgs {
                 key_path: PathBuf::from("key.bin"),
                 in_path: PathBuf::from("msg.bin"),
                 out_path: PathBuf::from("sealed.bin"),
@@ -1707,17 +1910,17 @@ mod tests {
     }
 
     #[test]
-    fn parse_secretbox_args_requires_key_in_out() {
+    fn parse_secretstream_args_requires_key_in_out() {
         assert_eq!(
-            parse_secretbox_args(&["--in".to_string(), "m".to_string()]),
+            parse_secretstream_args(&["--in".to_string(), "m".to_string()]),
             Err(CliError::MissingFlag("key"))
         );
         assert_eq!(
-            parse_secretbox_args(&["--key".to_string(), "k".to_string()]),
+            parse_secretstream_args(&["--key".to_string(), "k".to_string()]),
             Err(CliError::MissingFlag("in"))
         );
         assert_eq!(
-            parse_secretbox_args(&[
+            parse_secretstream_args(&[
                 "--key".to_string(),
                 "k".to_string(),
                 "--in".to_string(),
@@ -1728,148 +1931,169 @@ mod tests {
     }
 
     #[test]
-    fn parse_secretbox_args_rejects_unknown_flag() {
+    fn parse_secretstream_args_rejects_unknown_flag() {
         assert_eq!(
-            parse_secretbox_args(&["--nonce".to_string(), "n.bin".to_string()]),
+            parse_secretstream_args(&["--nonce".to_string(), "n.bin".to_string()]),
             Err(CliError::UnknownFlag("--nonce".to_string()))
         );
     }
 
     #[test]
-    fn run_secretbox_command_round_trip_matches_dstu_core_directly() {
-        let dir = TempDir::new("secretbox_roundtrip");
+    fn run_secretstream_command_round_trip_matches_dstu_core_directly() {
+        let dir = TempDir::new("secretstream_roundtrip");
         let key_bytes = [0x22u8; 32];
         let plaintext = b"short message".to_vec();
         std::fs::write(dir.file("key.bin"), key_bytes).expect("write key");
         std::fs::write(dir.file("in.bin"), &plaintext).expect("write input");
 
-        let encrypt_args = SecretboxArgs {
+        let encrypt_args = SecretstreamArgs {
             key_path: dir.file("key.bin"),
             in_path: dir.file("in.bin"),
             out_path: dir.file("sealed.bin"),
         };
-        run_secretbox_command(false, &encrypt_args).expect("encrypt should succeed");
+        run_secretstream_command(false, &encrypt_args).expect("encrypt should succeed");
 
-        let sealed = std::fs::read(dir.file("sealed.bin")).expect("read sealed output");
-        let key = dstu_core::crypto_secretbox::SecretKey::from_bytes(key_bytes);
-        let opened_directly =
-            dstu_core::crypto_secretbox::open(&key, &sealed).expect("direct open should succeed");
-        assert_eq!(opened_directly, plaintext);
-
-        let decrypt_args = SecretboxArgs {
+        let decrypt_args = SecretstreamArgs {
             in_path: dir.file("sealed.bin"),
             out_path: dir.file("pt.bin"),
             ..encrypt_args
         };
-        run_secretbox_command(true, &decrypt_args).expect("decrypt should succeed");
+        run_secretstream_command(true, &decrypt_args).expect("decrypt should succeed");
         assert_eq!(std::fs::read(dir.file("pt.bin")).expect("read"), plaintext);
     }
 
     #[test]
-    fn run_secretbox_command_encrypt_generates_a_fresh_nonce_each_call() {
-        let dir = TempDir::new("secretbox_fresh_nonce");
+    fn run_secretstream_command_encrypt_generates_a_fresh_header_each_call() {
+        let dir = TempDir::new("secretstream_fresh_header");
         let key = [0x44u8; 32];
         let plaintext = b"same input twice".to_vec();
         std::fs::write(dir.file("key.bin"), key).expect("write key");
         std::fs::write(dir.file("in.bin"), &plaintext).expect("write input");
 
-        let base_args = SecretboxArgs {
+        let base_args = SecretstreamArgs {
             key_path: dir.file("key.bin"),
             in_path: dir.file("in.bin"),
             out_path: dir.file("sealed1.bin"),
         };
-        run_secretbox_command(false, &base_args).expect("first encrypt should succeed");
+        run_secretstream_command(false, &base_args).expect("first encrypt should succeed");
 
-        let second_args = SecretboxArgs {
+        let second_args = SecretstreamArgs {
             out_path: dir.file("sealed2.bin"),
             ..base_args
         };
-        run_secretbox_command(false, &second_args).expect("second encrypt should succeed");
+        run_secretstream_command(false, &second_args).expect("second encrypt should succeed");
 
         let sealed1 = std::fs::read(dir.file("sealed1.bin")).expect("read sealed1");
         let sealed2 = std::fs::read(dir.file("sealed2.bin")).expect("read sealed2");
         assert_ne!(
-            &sealed1[..32],
-            &sealed2[..32],
-            "two encrypt calls with the same key/plaintext must not reuse a nonce"
+            &sealed1[..SECRETSTREAM_HEADER_LEN],
+            &sealed2[..SECRETSTREAM_HEADER_LEN],
+            "two encrypt calls with the same key/plaintext must not reuse a header"
         );
     }
 
     #[test]
-    fn run_secretbox_command_decrypt_rejects_tampered_ciphertext_without_writing_out() {
-        let dir = TempDir::new("secretbox_tamper");
+    fn run_secretstream_command_decrypt_rejects_tampered_ciphertext_without_writing_out() {
+        let dir = TempDir::new("secretstream_tamper");
         let key = [0x66u8; 32];
         let plaintext = b"do not trust me".to_vec();
         std::fs::write(dir.file("key.bin"), key).expect("write key");
         std::fs::write(dir.file("in.bin"), &plaintext).expect("write input");
 
-        let encrypt_args = SecretboxArgs {
+        let encrypt_args = SecretstreamArgs {
             key_path: dir.file("key.bin"),
             in_path: dir.file("in.bin"),
             out_path: dir.file("sealed.bin"),
         };
-        run_secretbox_command(false, &encrypt_args).expect("encrypt should succeed");
+        run_secretstream_command(false, &encrypt_args).expect("encrypt should succeed");
 
         let mut tampered = std::fs::read(dir.file("sealed.bin")).expect("read sealed");
-        let last = tampered.len() - 1;
-        tampered[last] ^= 0x01;
+        // Byte just past the header - inside the single chunk's ciphertext.
+        tampered[SECRETSTREAM_HEADER_LEN] ^= 0x01;
         std::fs::write(dir.file("sealed.bin"), &tampered).expect("write tampered output");
 
-        let decrypt_args = SecretboxArgs {
+        let decrypt_args = SecretstreamArgs {
             in_path: dir.file("sealed.bin"),
             out_path: dir.file("pt.bin"),
             ..encrypt_args
         };
-        let result = run_secretbox_command(true, &decrypt_args);
-        assert_eq!(result, Err(CliError::SecretboxVerifyFailed));
+        let result = run_secretstream_command(true, &decrypt_args);
+        assert_eq!(result, Err(CliError::SecretstreamVerifyFailed));
         assert!(!dir.file("pt.bin").exists());
     }
 
-    /// A file larger than the old Kalyna-CCM construction's 255-byte cap now round-trips through
-    /// `run_secretbox_command` end to end - proving the removed cap (D-63) actually reaches the CLI
-    /// layer, not just `dstu_core::crypto_secretbox` in isolation.
+    /// A file several chunks long (`SECRETSTREAM_CHUNK_BYTES` = 8 KiB) round-trips end to end -
+    /// proving the chunked framing actually reaches multiple records, not just a single-chunk
+    /// happy path.
     #[test]
-    fn run_secretbox_command_message_larger_than_the_old_255_byte_cap_round_trips() {
-        let dir = TempDir::new("secretbox_large");
+    fn run_secretstream_command_multi_chunk_message_round_trips() {
+        let dir = TempDir::new("secretstream_large");
         let key = [0x77u8; 32];
-        let large = vec![0x42u8; 4096];
+        let large: Vec<u8> = (0..SECRETSTREAM_CHUNK_BYTES * 3 + 777)
+            .map(|i| (i % 256) as u8)
+            .collect();
         std::fs::write(dir.file("key.bin"), key).expect("write key");
         std::fs::write(dir.file("in.bin"), &large).expect("write input");
 
-        let encrypt_args = SecretboxArgs {
+        let encrypt_args = SecretstreamArgs {
             key_path: dir.file("key.bin"),
             in_path: dir.file("in.bin"),
             out_path: dir.file("sealed.bin"),
         };
-        run_secretbox_command(false, &encrypt_args).expect("encrypt should succeed");
+        run_secretstream_command(false, &encrypt_args).expect("encrypt should succeed");
 
-        let decrypt_args = SecretboxArgs {
+        let decrypt_args = SecretstreamArgs {
             key_path: dir.file("key.bin"),
             in_path: dir.file("sealed.bin"),
             out_path: dir.file("out.bin"),
         };
-        run_secretbox_command(true, &decrypt_args).expect("decrypt should succeed");
+        run_secretstream_command(true, &decrypt_args).expect("decrypt should succeed");
 
         let round_tripped = std::fs::read(dir.file("out.bin")).expect("read output");
         assert_eq!(round_tripped, large);
+    }
+
+    /// "Fool" test - an empty `--in` is a degenerate but entirely legal input: a single
+    /// zero-length `Final` chunk, not an error.
+    #[test]
+    fn run_secretstream_command_empty_file_round_trips() {
+        let dir = TempDir::new("secretstream_empty");
+        let key = [0x11u8; 32];
+        std::fs::write(dir.file("key.bin"), key).expect("write key");
+        std::fs::write(dir.file("in.bin"), []).expect("write empty input");
+
+        let encrypt_args = SecretstreamArgs {
+            key_path: dir.file("key.bin"),
+            in_path: dir.file("in.bin"),
+            out_path: dir.file("sealed.bin"),
+        };
+        run_secretstream_command(false, &encrypt_args).expect("encrypt should succeed");
+
+        let decrypt_args = SecretstreamArgs {
+            key_path: dir.file("key.bin"),
+            in_path: dir.file("sealed.bin"),
+            out_path: dir.file("out.bin"),
+        };
+        run_secretstream_command(true, &decrypt_args).expect("decrypt should succeed");
+        assert_eq!(std::fs::read(dir.file("out.bin")).expect("read output"), []);
     }
 
     /// "Fool" test - a key file that's the wrong length (a common real mistake: a truncated
     /// download, a copy-paste that dropped bytes) must be a clean, typed error, not a panic or a
     /// silently-zero-padded key.
     #[test]
-    fn run_secretbox_command_wrong_key_length_is_rejected() {
-        let dir = TempDir::new("secretbox_wrong_key_len");
+    fn run_secretstream_command_wrong_key_length_is_rejected() {
+        let dir = TempDir::new("secretstream_wrong_key_len");
         std::fs::write(dir.file("key.bin"), [0u8; 31]).expect("write short key");
         std::fs::write(dir.file("in.bin"), b"data").expect("write input");
 
-        let args = SecretboxArgs {
+        let args = SecretstreamArgs {
             key_path: dir.file("key.bin"),
             in_path: dir.file("in.bin"),
             out_path: dir.file("out.bin"),
         };
         assert_eq!(
-            run_secretbox_command(false, &args),
+            run_secretstream_command(false, &args),
             Err(CliError::WrongLength {
                 what: "key",
                 expected: 32,
@@ -1882,17 +2106,17 @@ mod tests {
     /// "Fool" test - pointing `--in` at a path that doesn't exist at all (typo'd filename) must be
     /// a clean `Io` error, not a panic.
     #[test]
-    fn run_secretbox_command_nonexistent_input_is_io_error_not_panic() {
-        let dir = TempDir::new("secretbox_no_input");
+    fn run_secretstream_command_nonexistent_input_is_io_error_not_panic() {
+        let dir = TempDir::new("secretstream_no_input");
         std::fs::write(dir.file("key.bin"), [0u8; 32]).expect("write key");
 
-        let args = SecretboxArgs {
+        let args = SecretstreamArgs {
             key_path: dir.file("key.bin"),
             in_path: dir.file("does_not_exist.bin"),
             out_path: dir.file("out.bin"),
         };
         assert!(matches!(
-            run_secretbox_command(false, &args),
+            run_secretstream_command(false, &args),
             Err(CliError::Io { .. })
         ));
         assert!(!dir.file("out.bin").exists());
@@ -1901,52 +2125,53 @@ mod tests {
     /// "Fool" test - pointing `--in` at a directory instead of a file (an easy copy-paste mistake
     /// with a path variable) must be a clean `Io` error, not a panic.
     #[test]
-    fn run_secretbox_command_directory_as_input_is_io_error_not_panic() {
-        let dir = TempDir::new("secretbox_dir_input");
+    fn run_secretstream_command_directory_as_input_is_io_error_not_panic() {
+        let dir = TempDir::new("secretstream_dir_input");
         std::fs::write(dir.file("key.bin"), [0u8; 32]).expect("write key");
         std::fs::create_dir_all(dir.file("a_directory")).expect("create sub-directory");
 
-        let args = SecretboxArgs {
+        let args = SecretstreamArgs {
             key_path: dir.file("key.bin"),
             in_path: dir.file("a_directory"),
             out_path: dir.file("out.bin"),
         };
         assert!(matches!(
-            run_secretbox_command(false, &args),
+            run_secretstream_command(false, &args),
             Err(CliError::Io { .. })
         ));
         assert!(!dir.file("out.bin").exists());
     }
 
     /// "Fool" test - passing the same path for `--in` and `--out` (an easy mistake when scripting
-    /// "encrypt this file in place"). `--in` is read fully into memory before `--out` is ever
-    /// written, so this is safe by construction, not by luck - this pins that it stays that way.
+    /// "encrypt this file in place"). The temp-file-then-rename atomicity (module doc) is what
+    /// keeps this safe under genuine streaming I/O, not a whole-buffer read like the old
+    /// `crypto_secretbox`-backed command relied on.
     #[test]
-    fn run_secretbox_command_in_and_out_same_path_round_trips() {
-        let dir = TempDir::new("secretbox_same_path");
+    fn run_secretstream_command_in_and_out_same_path_round_trips() {
+        let dir = TempDir::new("secretstream_same_path");
         let key = [0x55u8; 32];
         let plaintext = b"overwrite me in place".to_vec();
         std::fs::write(dir.file("key.bin"), key).expect("write key");
         std::fs::write(dir.file("data.bin"), &plaintext).expect("write input");
 
-        let encrypt_args = SecretboxArgs {
+        let encrypt_args = SecretstreamArgs {
             key_path: dir.file("key.bin"),
             in_path: dir.file("data.bin"),
             out_path: dir.file("data.bin"),
         };
-        run_secretbox_command(false, &encrypt_args).expect("in-place encrypt should succeed");
+        run_secretstream_command(false, &encrypt_args).expect("in-place encrypt should succeed");
         assert_ne!(
             std::fs::read(dir.file("data.bin")).expect("read"),
             plaintext,
             "the file must now hold sealed output, not the original plaintext"
         );
 
-        let decrypt_args = SecretboxArgs {
+        let decrypt_args = SecretstreamArgs {
             key_path: dir.file("key.bin"),
             in_path: dir.file("data.bin"),
             out_path: dir.file("data.bin"),
         };
-        run_secretbox_command(true, &decrypt_args).expect("in-place decrypt should succeed");
+        run_secretstream_command(true, &decrypt_args).expect("in-place decrypt should succeed");
         assert_eq!(
             std::fs::read(dir.file("data.bin")).expect("read"),
             plaintext
@@ -1956,22 +2181,92 @@ mod tests {
     /// "Fool" test - decrypting a file that was never produced by `encrypt` at all (random garbage
     /// of plausible length, not a tampered-but-otherwise-real sealed file) must fail cleanly and
     /// must not write `--out` - a distinct code path from
-    /// `run_secretbox_command_decrypt_rejects_tampered_ciphertext_without_writing_out`, which
-    /// starts from real `seal` output.
+    /// `run_secretstream_command_decrypt_rejects_tampered_ciphertext_without_writing_out`, which
+    /// starts from real `encrypt` output.
     #[test]
-    fn run_secretbox_command_decrypt_rejects_never_sealed_garbage_without_writing_out() {
-        let dir = TempDir::new("secretbox_garbage");
+    fn run_secretstream_command_decrypt_rejects_never_sealed_garbage_without_writing_out() {
+        let dir = TempDir::new("secretstream_garbage");
         std::fs::write(dir.file("key.bin"), [0x88u8; 32]).expect("write key");
         std::fs::write(dir.file("garbage.bin"), [0x99u8; 64]).expect("write garbage");
 
-        let args = SecretboxArgs {
+        let args = SecretstreamArgs {
             key_path: dir.file("key.bin"),
             in_path: dir.file("garbage.bin"),
             out_path: dir.file("out.bin"),
         };
+        // 64 bytes of garbage: the first 32 are read as a header (always succeeds - any bytes are
+        // a valid header), then the next 5 bytes are read as a chunk prefix - the 0x99 length
+        // bytes decode to a chunk_len far larger than SECRETSTREAM_CHUNK_BYTES, so this fails the
+        // sanity bound before ever reaching authentication.
         assert_eq!(
-            run_secretbox_command(true, &args),
-            Err(CliError::SecretboxVerifyFailed)
+            run_secretstream_command(true, &args),
+            Err(CliError::SecretstreamChunkTooLarge)
+        );
+        assert!(!dir.file("out.bin").exists());
+    }
+
+    /// "Attack" test (D-64) - `--in` cut off before a `Final` chunk was ever written must be
+    /// rejected as truncated, not silently accepted as a shorter message.
+    #[test]
+    fn run_secretstream_command_decrypt_rejects_truncated_stream_without_writing_out() {
+        let dir = TempDir::new("secretstream_truncated");
+        let key = [0x33u8; 32];
+        let plaintext = b"a message that gets cut short".to_vec();
+        std::fs::write(dir.file("key.bin"), key).expect("write key");
+        std::fs::write(dir.file("in.bin"), &plaintext).expect("write input");
+
+        let encrypt_args = SecretstreamArgs {
+            key_path: dir.file("key.bin"),
+            in_path: dir.file("in.bin"),
+            out_path: dir.file("sealed.bin"),
+        };
+        run_secretstream_command(false, &encrypt_args).expect("encrypt should succeed");
+
+        let sealed = std::fs::read(dir.file("sealed.bin")).expect("read sealed");
+        let cut = &sealed[..sealed.len() - 1];
+        std::fs::write(dir.file("truncated.bin"), cut).expect("write truncated output");
+
+        let decrypt_args = SecretstreamArgs {
+            key_path: dir.file("key.bin"),
+            in_path: dir.file("truncated.bin"),
+            out_path: dir.file("out.bin"),
+        };
+        assert_eq!(
+            run_secretstream_command(true, &decrypt_args),
+            Err(CliError::SecretstreamTruncated)
+        );
+        assert!(!dir.file("out.bin").exists());
+    }
+
+    /// "Attack" test (D-64) - extra bytes appended after a legitimate `Final` chunk (an extension/
+    /// append attack) must be rejected, not silently ignored.
+    #[test]
+    fn run_secretstream_command_decrypt_rejects_trailing_data_without_writing_out() {
+        let dir = TempDir::new("secretstream_trailing");
+        let key = [0x99u8; 32];
+        let plaintext = b"legit message".to_vec();
+        std::fs::write(dir.file("key.bin"), key).expect("write key");
+        std::fs::write(dir.file("in.bin"), &plaintext).expect("write input");
+
+        let encrypt_args = SecretstreamArgs {
+            key_path: dir.file("key.bin"),
+            in_path: dir.file("in.bin"),
+            out_path: dir.file("sealed.bin"),
+        };
+        run_secretstream_command(false, &encrypt_args).expect("encrypt should succeed");
+
+        let mut extended = std::fs::read(dir.file("sealed.bin")).expect("read sealed");
+        extended.push(0xAA);
+        std::fs::write(dir.file("extended.bin"), &extended).expect("write extended output");
+
+        let decrypt_args = SecretstreamArgs {
+            key_path: dir.file("key.bin"),
+            in_path: dir.file("extended.bin"),
+            out_path: dir.file("out.bin"),
+        };
+        assert_eq!(
+            run_secretstream_command(true, &decrypt_args),
+            Err(CliError::SecretstreamTrailingData)
         );
         assert!(!dir.file("out.bin").exists());
     }

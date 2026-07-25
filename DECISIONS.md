@@ -4099,3 +4099,208 @@ every crate's suite passing, including the new `tests/crypto_stream.rs`).
 "Streaming audio" use-case scenario row), `TASKS.md` (roadmap Step 3 item 3 marked done, backlog
 entry T-106 added, RESUME HERE section updated to record Step 3 as fully complete),
 `CLAUDE.md`'s own running project-status paragraph.
+
+## D-68: `crypto_secretstream` (T-40/T-70) - roadmap Step 5 item 1, a from-scratch chunked AEAD, and `uacrypt encrypt`/`decrypt` migrate to it
+
+`crypto_secretbox`/`uacrypt encrypt`/`decrypt` (D-51, migrated to Kalyna-GCM by D-63) still read
+`--in` whole into memory - an AEAD tag needs the full plaintext/ciphertext up front. T-40 (roadmap
+Step 5's own explicit "T-40 first" ordering, user-approved 2026-07-25, advisor-reviewed) closes that
+gap with a genuinely chunked construction. Own plan-mode pass taken first, per this roadmap's
+standing convention for real feature work (unlike the packaging items in the same step).
+
+**No DSTU citation - from scratch, D-47's tie-breaker rule applied.** No DSTU standard defines a
+streaming/chunked AEAD mode. Followed libsodium's `crypto_secretstream_xchacha20poly1305` shape
+(tag-per-chunk framing, `FINAL` tag whose absence signals truncation) over this crate's own
+primitives instead of ChaCha20-Poly1305 - same posture `kupyna_kdf` (D-45) already established:
+**no oracle vector exists for this construction, ever**, verification is property-test-only.
+
+**Three forks put to the project owner directly** (D-66/D-67 precedent - decide explicitly, don't
+pick silently), all resolved 2026-07-25 before writing any code:
+- **Tag set**: chose the **full libsodium set** (`MESSAGE`/`PUSH`/`REKEY`/`FINAL`), not the
+  minimal two-tag set recommended as the D-47-consistent default. `uacrypt encrypt`/`decrypt` itself
+  only ever emits `MESSAGE`/`FINAL` (no sub-message boundaries or key-rotation need for one file),
+  but the library implements and tests all four, since a future caller may need `PUSH`/`REKEY`.
+- **API shape**: chose **caller-supplied `&mut [u8]` chunk buffers**, not `Vec`-returning - the
+  `push`/`pull` step machinery is a stricter `no_std` fit than any other high-level `crypto_*`
+  module's equivalent step (per-item `std` gating, only `PushState::init`'s header generation needs
+  it, matching `crypto_auth`/`crypto_kdf`'s pattern rather than `crypto_stream`'s whole-module
+  gate). **Correction, caught in review before this entry was finalized**: `PushState::init` is
+  `PushState`'s *only* constructor, so under `no_std` a caller can build a `PullState` but has no
+  way to start a new stream at all - the module is decrypt-only without `std` (D-09's "`hazmat`
+  never generates its own randomness" reasoning, unchanged, but the module doc originally implied a
+  more symmetric `no_std` story than the code actually has). An unconditional
+  `PushState::from_header(key, header)` (caller supplies the header instead of it being drawn
+  internally) would close this gap, but that's a scope question for the project owner, not
+  something to build unilaterally under CLAUDE.md's "no speculative features" rule - flagged here,
+  not shipped.
+- **Scope**: chose **library and `uacrypt encrypt`/`decrypt` rewiring together**, not library-only -
+  reasoning given: if a session ends partway through this step, the substantive item should already
+  be fully landed end to end, not left as an unused library with the CLI still on the old primitive.
+
+**Construction.** `PushState::init` draws a random 32-byte header and derives the stream's initial
+subkey as `Kupyna256Kmac::mac(key = master_key, message = header)` - `hazmat::kupyna_kmac`'s `mac()`
+takes an arbitrary-length message under a fixed 32-byte key, unlike `crypto_kdf`'s
+`derive_subkey(subkey_id: u64, context: &[u8; 8])`, which can't absorb an arbitrary-length header
+(confirmed by reading both signatures before designing, not assumed). This is the standing
+nonce/IV-coverage rule (see D-63, and CLAUDE.md's "Crypto engineering hard constraints" section,
+which names this construction by name as a case to re-check) applied at stream-setup time instead
+of per-chunk AAD: since the subkey itself is a function of the header, a tampered header derives
+the wrong subkey and the very first chunk's tag fails closed - confirmed by
+`tampered_header_is_rejected` in `tests/crypto_secretstream.rs`, not just asserted in a doc comment.
+
+Each chunk is encrypted with `hazmat::kalyna_gcm::Kalyna256_256Gcm` (same variant `crypto_secretbox`
+already uses) under a 32-byte IV that is all-zero except its low 8 bytes, which hold a `u64` chunk
+counter - monotonically increasing, tracked identically on both sides, **never transmitted, never
+reset (including across a `Rekey`)**. The counter and the chunk's tag byte are passed together as
+`kalyna_gcm`'s `aad` (`counter.to_le_bytes() || [tag_byte]`) - the same "bind out-of-band data into
+the tag via AEAD's own AAD mechanism" pattern D-63 established for `crypto_secretbox`'s nonce.
+Binding the counter into AAD, rather than trusting a transmitted position, is what defeats
+reordering, interior chunk drops, and splicing a chunk from a different stream: a receiver always
+verifies against *its own* expected counter, so anything not exactly next-in-sequence fails its tag
+check; splicing from a different stream fails for a second, independent reason too (a different
+random header derives a different subkey). Flipping the transmitted tag byte itself (e.g.
+`Final`→`Message`, to hide truncation from a caller) is caught the same way - `pull()` uses the
+wire-read `tag_byte` directly as part of the AAD it verifies, so a flipped byte changes the AAD and
+fails the tag check before the wrong `Tag` is ever trusted or returned.
+
+**`Rekey`**: `new_subkey = Kupyna256Kmac::mac(key = current_subkey, message = b"DSTU-secretstream-rekey")`
+- one-way (KMAC), so a compromised later subkey doesn't recover earlier chunks' key (the
+forward-secrecy property libsodium's own rekey exists for). Pinned by
+`rekey_changes_the_subkey_and_old_subkey_no_longer_decrypts`, which checks both directions: a
+correctly-tracking `PullState` decrypts chunks on both sides of the rekey, and a `PullState` that
+never processed the `Rekey` chunk (still on the initial subkey/counter) fails to decrypt the
+post-rekey chunk.
+
+**`Final`**: marks the state finalized (`is_finalized()`); any further `push`/`pull` call on that
+state errors. This is what makes truncation detectable - a caller reaching end-of-input without
+ever having seen `Final` knows the stream was cut short. The check itself lives in the caller's I/O
+loop (`is_finalized()` is the primitive this module provides for it), since only the caller knows
+when its input is exhausted - `uacrypt decrypt` is the concrete example (see below).
+
+**Placement**: `dstu_core::crypto_secretstream`, not a new `hazmat` module - a single fixed
+composition (D-47 "delete the knob"), not a family of variants, matching `crypto_secretbox`'s
+precedent (no separate `hazmat` layer) rather than `kupyna_kdf`'s (whose multi-variant family
+needed one).
+
+**Tests** (`tests/crypto_secretstream.rs`, 22 tests, all passed on first write - coverage over
+already-correct code, consistent with D-64/D-65/D-66's own observation that this is expected, not a
+red flag): round-trip (single chunk, zero-length final chunk, multi-chunk, `Push` boundary
+reported back correctly), the rekey forward-secrecy pair above, and the full D-64/D-65 pass -
+wrong key, tampered header/ciphertext/tag, flipped tag byte, dropped interior chunk, swapped
+chunks, spliced chunk from a different stream, push/pull-after-`Final` rejected, all-zero key
+round-trips (degenerate-but-legal), mismatched buffer lengths rejected, unknown tag byte rejected,
+plus a `round_trip_property` proptest over random chunk counts/sizes/tag sequences.
+
+**`uacrypt encrypt`/`decrypt` rewired** (`crates/uacrypt/src/lib.rs`) - `crypto_secretbox` itself is
+**not removed or deprecated**, it stays a separate, still-tested library primitive (libsodium itself
+keeps both APIs published side by side); only the CLI's `encrypt`/`decrypt` subcommands switch their
+backing construction. New on-disk format: `header (32 bytes)` then repeated
+`tag_byte (1) || chunk_len (4, LE u32) || ciphertext (chunk_len) || auth_tag (16)` records until a
+`Final`-tagged record. `SECRETSTREAM_CHUNK_BYTES = 8 * 1024` matches `DIGEST_STREAM_CHUNK_BYTES`/
+`STRUMOK_STREAM_CHUNK_BYTES` (D-42) - both `--in` reads and `--out` writes are now genuinely
+chunked, on both `encrypt` and `decrypt`, unlike the old whole-buffer command.
+
+**Breaking wire-format change, called out explicitly**: a file the old `crypto_secretbox`-backed
+`encrypt` produced cannot be read by the new `decrypt`, and vice versa. Acceptable pre-1.0
+(`README.md`'s pre-release banner) - a deliberate, recorded trade, not an oversight.
+
+**Atomicity preserved under genuine streaming I/O**: the old command computed the whole output in
+memory before one `std::fs::write`, so a failure never touched `--out` for free. Streaming write
+can't get that for free - `run_secretstream_command` writes to `<out_path>.secretstream-tmp`
+(`OsString` append, not `Path::with_extension`/`format!("{}", path.display())`, so it's correct
+for both an already-extensioned `--out` and a non-UTF-8 path) and only `std::fs::rename`s it onto
+the real `--out` after the whole stream verifies, deleting the temp file on every error path
+instead - preserves D-65's "no partial output on failure" guarantee, now doing real work instead of
+getting it for free from whole-buffer I/O. `--in`/`--out` same-path still round-trips
+(`run_secretstream_command_in_and_out_same_path_round_trips`) because the input `File` handle is
+fully read and out of scope before the rename runs.
+
+**One CLI-layer hardening addition beyond the plan**: `decrypt`'s chunk-record parser rejects any
+`chunk_len` field greater than `SECRETSTREAM_CHUNK_BYTES` before ever allocating a buffer for it
+(`CliError::SecretstreamChunkTooLarge`) - a real `encrypt`-produced file never has a chunk longer
+than that constant, so a larger value in untrusted `--in` is definitionally corrupted or hostile,
+and allocating an attacker-controlled `Vec` sized directly off an unvalidated `u32` length field
+would otherwise be a memory-exhaustion footgun parsing untrusted input. Exercised by
+`run_secretstream_command_decrypt_rejects_never_sealed_garbage_without_writing_out`.
+
+**New `CliError` variants** (`SecretstreamTruncated`/`SecretstreamVerifyFailed`/
+`SecretstreamUnknownTag`/`SecretstreamTrailingData`/`SecretstreamChunkTooLarge`), each with distinct
+`Display` text, matching this project's own precedent of not reusing another command's hardcoded
+message (`PlaintextTooLong`/`CcmVerifyFailed` vs. `Truncated`/`SecretboxVerifyFailed`, before this
+change). The old `CliError::Truncated`/`SecretboxVerifyFailed` variants and the
+`From<SecretboxError>` impl backing them are removed outright, not left dormant - nothing produces
+them once `encrypt`/`decrypt` no longer call `crypto_secretbox`, and this project's standing rule is
+to delete unused code rather than leave backwards-compatibility scaffolding behind.
+
+**CLI tests** (`crates/uacrypt/src/lib.rs`'s `tests` module) mirror the library's three categories at
+the file-I/O level: round trip (single-chunk, multi-chunk spanning `SECRETSTREAM_CHUNK_BYTES * 3 +
+777` bytes, and an empty file), tampered ciphertext / truncated stream / trailing-data-after-`Final`
+all rejected with no `--out` written, wrong key length, nonexistent/directory `--in`, `--in`/`--out`
+same-path, and never-`encrypt`-produced garbage input.
+
+**Verification**: `cargo test -p dstu-core --all-features --test crypto_secretstream` - 22/22
+passed. `cargo test -p uacrypt --all-features` - 48/48 passed (including the 16 rewritten/new
+`secretstream`-named tests). `cargo test --workspace --all-features` - full suite green. `cargo
+clippy --workspace --all-features -- -D warnings` and the `small-tables` variant both clean (one
+real finding along the way: `clippy::doc_markdown` on an unbacktick'd "ChaCha20-Poly1305" in the
+module doc, fixed inline - the exact trap CLAUDE.md's "Agent discipline" section already names).
+`cargo fmt --all --check` clean. `cargo build -p dstu-core --no-default-features`/`--features
+alloc`/`--features small-tables`/`--all-features` all build clean, confirming `crypto_secretstream`
+compiles correctly across the feature matrix (per-item `std` gating, not a whole-module gate).
+Scoped Miri (`MIRIFLAGS=-Zmiri-disable-isolation PROPTEST_CASES=8 cargo +nightly miri test -p
+dstu-core --test crypto_secretstream`) - **22/22 passed, 0 UB, 1276.00s (~21.3 min)** - noticeably
+slower than `crypto_secretbox`'s ~19 min (D-63), as expected for a multi-chunk construction with
+more state per test (advisor flagged this ahead of time, `PROPTEST_CASES=8` was set from the
+start rather than discovered the hard way). Full workspace `cargo test --workspace --all-features`
+re-run after the `uacrypt` rewire landed - clean, every crate's suite passing. `round_trip_property`
+widened, same review pass, to actually cover random tag sequences (`Push`/`Rekey` on non-final
+chunks via a `non_final_tag` helper, not just `Message`), matching this entry's own "verified by
+property test" claim precisely rather than leaving `Push`/`Rekey` covered only by their dedicated
+unit tests. **The recorded Miri run above predates this widening** - it covers the file as it stood
+before `round_trip_property` was broadened, not the broadened version; re-running Miri specifically
+for that widening wasn't judged necessary, since `Push`/`Rekey`'s code paths were already exercised
+under Miri via the dedicated `rekey_changes_the_subkey_and_old_subkey_no_longer_decrypts` unit test
+in the same 22/22 run - the widening adds property-test *coverage breadth*, not a previously-
+Miri-unchecked code path. Stated explicitly per this project's own D-25 lesson ("check what a test
+actually exercised, not just whether it passes") rather than leaving a reader to assume the 1276.00s
+figure reflects the post-widening test file.
+
+**Fuzz coverage** (CLAUDE.md: "`cargo fuzz` ... a required layer, not optional tooling"; D-61's
+precedent of extending coverage whenever a new attacker-input-parsing surface lands) - added
+`fuzz_targets/crypto_secretstream.rs` (10th target, `fuzz/Cargo.toml` `[[bin]]` entry,
+`.github/workflows/rust.yml`'s `fuzz-smoke` matrix). Exercises `PullState::pull` on fully
+attacker-controlled `tag_byte`/ciphertext/tag/length combinations never produced by a real `push`
+(the same "direct attack surface" pattern `kalyna_gcm`'s/`kalyna_kw`'s fuzz targets already use) as
+well as a push/pull round trip with attacker-influenced tag sequences. Local smoke run (D-32's
+documented MSVC-toolchain/`vcvars64` workflow, `x86_64-pc-windows-msvc` target) - **71,780 runs in
+60s, zero crashes**. `uacrypt decrypt`'s CLI-layer `chunk_len`-vs-`SECRETSTREAM_CHUNK_BYTES` bound
+(`CliError::SecretstreamChunkTooLarge`) is a sanity check the fuzzer's coverage complements, not
+duplicates - the fuzz target exercises the library's own `pull()` directly, not the CLI's on-disk
+framing parser.
+
+**Two accuracy corrections made during review, before this entry was first committed** (not found
+after the fact): the `no_std` claim above is now correctly scoped to the `push`/`pull` step
+machinery, not the whole module (see the API-shape fork's correction note); and
+`SecretstreamError::Random` is `#[cfg(feature = "std")]` on an otherwise-unconditional, non-
+`#[non_exhaustive]` public enum - this crate's first module with that shape (`crypto_secretbox`/
+`crypto_stream` are whole-module `std`-gated, so their error types never hit it). Cargo feature
+unification is additive, so any dependency in a build graph enabling this crate's `std` feature
+changes `SecretstreamError`'s variant count for every consumer of it, including ones that only
+asked for the `no_std` surface. Not a problem pre-1.0, and not a reason to add `#[non_exhaustive]`
+speculatively (CLAUDE.md's "no speculative features" rule) - recorded so a future consumer-facing
+break doesn't get diagnosed from scratch.
+
+**Docs updated**: `TASKS.md` (T-40/T-70 marked done, Step 5 next-steps list updated), `CLAUDE.md`'s
+own running project-status paragraph (both the `dstu-core` module list and the `uacrypt` bullet),
+`docs/release-readiness.md` (every stale "not started"/"still open" T-40 mention across the
+headline finding, the libsodium-mapping table, the use-case table, the bottom-line paragraph, the
+CLI section, and the libsodium-audit section - all corrected to Done, not just the newest one
+added), `docs/dstu-crypto-project.md` (the MVP-scope bullet, the original Strumok/Kalyna-CTR
+planning sketch corrected in place with a note rather than silently rewritten, and the "Concrete API
+shape" mapping table row), and `README.md` (the stale "no file-level encrypt/decrypt command exists
+yet" opening note, and the `encrypt`/`decrypt` usage section's construction/wire-format description).
+Missing this pass entirely on the first write of this entry - caught by `advisor()` review citing
+CLAUDE.md's own doc map (`docs/release-readiness.md` owns "a new construction lands",
+`docs/dstu-crypto-project.md` owns "scope or API-mapping decisions change") - is recorded here as a
+process note: D-67 (the closest prior analogue, one item earlier in this same roadmap) listed both
+files in its own "Docs updated" line and this entry originally didn't; don't repeat the omission.

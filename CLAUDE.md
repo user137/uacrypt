@@ -90,7 +90,29 @@ environment. The workspace has two crates:
   which is exactly why the functions are named `encrypt`/`decrypt` and not `seal`/`open`.
   `crypto_stream` is `std`-gated at the whole-module level (needs `Vec<u8>`), unlike the other
   three's per-item gating, since it can't avoid `alloc` the way fixed-array modules can — Step 3 is
-  now fully complete (all five items done).
+  now fully complete (all five items done). As of 2026-07-25, roadmap Step 5 item 1 (`TASKS.md`
+  T-40/T-70, `DECISIONS.md` D-68) landed: `dstu_core::crypto_secretstream`
+  (`PushState`/`PullState`/`Key`/`Tag`) — a genuinely chunked/streaming AEAD, the one remaining
+  functional gap between `crypto_secretbox`'s whole-buffer AEAD and covering large files with
+  bounded memory. No DSTU standard defines a streaming AEAD mode, so (D-47's tie-breaker) this
+  follows libsodium's `crypto_secretstream_xchacha20poly1305` shape — tag-per-chunk framing (full
+  `Message`/`Push`/`Rekey`/`Final` tag set, the user's explicit choice over the minimal two-tag
+  set) over `hazmat::kalyna_gcm` (same `Kalyna256_256Gcm` variant `crypto_secretbox` uses) with
+  per-chunk subkey/counter/AAD binding built on `hazmat::kupyna_kmac` for header-derived subkeys and
+  one-way `Rekey` forward secrecy — over `ChaCha20-Poly1305`. Caller-supplied `&mut [u8]` chunk
+  buffers (the user's explicit choice over `Vec`-returning), per-item `std`-gated (only
+  `PushState::init`'s header generation needs it) — a stricter `no_std` fit than any other
+  high-level `crypto_*` module built so far. `uacrypt encrypt`/`decrypt` were rewired to it the same
+  session (the user's explicit scope choice, not library-only) — a breaking wire-format change from
+  the old `crypto_secretbox`-backed command (new chunked on-disk format, `--in`/`--out` genuinely
+  streamed in `SECRETSTREAM_CHUNK_BYTES`-sized chunks, temp-file-then-rename atomicity so "no
+  partial output on failure" still holds under real streaming I/O), called out explicitly as
+  acceptable pre-1.0 rather than left implicit; `crypto_secretbox` itself is not removed, it stays a
+  separate, still-tested library primitive. No oracle vector exists for this construction, ever
+  (same posture as `crypto_kdf`, D-45) — verified by property test, tamper (D-64), and misuse (D-65)
+  coverage instead: 22/22 library tests and 48/48 `uacrypt` tests passed on first write, full
+  workspace suite/clippy/fmt/`no_std` feature matrix all clean, scoped Miri 22/22 passed with 0 UB
+  in 1276.00s (~21.3 min).
 - `crates/uacrypt` — the CLI binary, renamed 2026-07-23 from its `dstutool` working name
   (`DECISIONS.md` D-36; older `DECISIONS.md`/`TASKS.md`/`PERFORMANCE.md` entries predating the
   rename still say `dstutool`, left as-is since they're a historical record, not stale docs).
@@ -105,7 +127,12 @@ environment. The workspace has two crates:
   D-51) — `uacrypt`'s own `encrypt`/`decrypt`/`hash` commands (`TASKS.md` T-16, `DECISIONS.md` D-52)
   are now built too, same session, per the file-plus-mode-of-operation CLI the MVP scope below
   describes. `encrypt`/`decrypt`'s message-length cap was later removed (D-63) — see "MVP scope"
-  below for the current-state detail; `hash` has no such limit either.
+  below for the current-state detail; `hash` has no such limit either. **As of 2026-07-25,
+  `encrypt`/`decrypt` are rewired onto `dstu_core::crypto_secretstream` instead of
+  `crypto_secretbox`** (`TASKS.md` T-40/T-70, `DECISIONS.md` D-68) — a genuinely chunked, memory-
+  bounded on-disk format, a breaking change from the prior `crypto_secretbox`-backed blob format
+  (acceptable pre-1.0, called out explicitly rather than left implicit). `hash` and `kalyna-ccm`
+  are unaffected.
 
 `cargo xtask <command>` (see `xtask/`, aliased via `.cargo/config.toml`) is the one cross-platform
 build/QA entry point — same command on Linux/Windows/macOS, no new install beyond `cargo` itself.
@@ -151,9 +178,10 @@ Algorithms in scope:
   nothing for the user to misconfigure. **Built** (`TASKS.md` T-16, `DECISIONS.md` D-52). **As of
   2026-07-25 (`DECISIONS.md` D-63), `encrypt`/`decrypt` have no message-length cap** -
   `crypto_secretbox` migrated from Kalyna-CCM to Kalyna-GCM, which encodes no length limit into
-  itself - but `--in` is still read whole into memory (an AEAD tag needs the full
-  plaintext/ciphertext up front), not yet block-at-a-time disk streaming; `crypto_secretstream`
-  (T-40) is the tracked follow-up for that.
+  itself. **Same day, `encrypt`/`decrypt` were rewired again onto `dstu_core::crypto_secretstream`
+  (`TASKS.md` T-40/T-70, `DECISIONS.md` D-68)** - `--in`/`--out` are now genuinely streamed in
+  fixed-size chunks (block-at-a-time disk I/O, D-42's standing policy), not read whole into memory
+  - the tracked follow-up D-63 itself named is now done, not still open.
 - Publish the core crate to crates.io.
 - Prebuilt binaries for Windows/Linux via GitHub Releases (not "clone and build yourself").
 - **No hardware or OS lock-in — platform-agnostic by construction.** This targets both ends

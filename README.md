@@ -4,9 +4,11 @@
 production-ready, and **not a claim of side-channel resistance**. Core primitives (Kalyna, Kupyna)
 are dual-oracle-verified against official test vectors; Strumok and the Kalyna-CCM mode are
 provisional (not yet confirmed against their primary standard text — see `DECISIONS.md` D-15/D-41).
-No file-level `encrypt`/`decrypt` command exists yet (waiting on `crypto_secretbox` actually being
-built, not on D-05's status — see `DECISIONS.md` D-05). See `SECURITY.md` for the
-full threat model and hard constraints, and the Status paragraph below for what's actually done.
+**`crypto_secretstream` — the construction backing `encrypt`/`decrypt` — is provisional in a
+stronger sense still**: it's a from-scratch chunked-AEAD framing with no DSTU standard defining
+anything like it, so unlike Strumok/Kalyna-CCM, no primary text or oracle vector can ever exist to
+confirm it against (see `DECISIONS.md` D-68). See `SECURITY.md` for the full threat model and hard
+constraints, and the Status paragraph below for what's actually done.
 
 An open Rust library for modern Ukrainian cryptographic standards (DSTU) — in the
 spirit of **libsodium** (hard, safe defaults, hard to misuse), not OpenSSL
@@ -164,18 +166,19 @@ uacrypt decrypt --key key.bin --in sealed.bin --out message.bin
 uacrypt hash --in file.bin --out digest.bin
 ```
 
-**`encrypt`/`decrypt` have no message-length cap** — `dstu_core::crypto_secretbox`
-(`TASKS.md` T-37, `DECISIONS.md` D-51) migrated from a Kalyna-CCM construction (255-byte cap,
-`DECISIONS.md` D-41) to Kalyna-GCM (`DECISIONS.md` D-63), which encodes no length into itself.
-This does **not** mean unbounded-memory streaming, though: `--in` is still read whole into memory
-(an AEAD tag needs the full plaintext/ciphertext up front), so a large input file means a
-correspondingly large in-memory buffer — `TASKS.md` T-40's `crypto_secretstream` remains the
-tracked follow-up for genuinely chunked encryption, not built yet. `--key` is a raw 32-byte file
-(`crypto_secretbox::SecretKey`'s size — no `uacrypt keygen` command exists yet, generate one via
-any 32-byte-CSPRNG source). `encrypt` draws a fresh random nonce internally on every call and
-embeds it in `--out`; there is no `--nonce` flag to supply or reuse by mistake. **`hash` has no
-such limit either** — it streams `--in` from disk in fixed-size chunks regardless of size, fixed to
-Kupyna-256 (32-byte digest, no `--variant` choice).
+**`encrypt`/`decrypt` have no message-length cap and stream `--in`/`--out` in fixed-size chunks** —
+as of 2026-07-25 they're built over `dstu_core::crypto_secretstream` (`TASKS.md` T-40/T-70,
+`DECISIONS.md` D-68), a genuinely chunked construction over `hazmat::kalyna_gcm`, not the earlier
+whole-buffer `crypto_secretbox` (`TASKS.md` T-37, `DECISIONS.md` D-51/D-63) - a large input file no
+longer means a correspondingly large in-memory buffer. **Breaking wire-format change**: a file the
+prior `crypto_secretbox`-backed `encrypt` produced cannot be read by this `decrypt`, and vice versa
+- acceptable pre-1.0. `crypto_secretbox` itself is unchanged and still available as a library
+primitive for whole-message use, just no longer what this CLI command uses. `--key` is a raw
+32-byte file (`crypto_secretstream::Key`'s size — no `uacrypt keygen` command exists yet, generate
+one via any 32-byte-CSPRNG source). `encrypt` draws a fresh random header internally on every call
+and embeds it in `--out`; there is no `--nonce`/`--header` flag to supply or reuse by mistake.
+**`hash` has no such limit either** — it streams `--in` from disk in fixed-size chunks regardless of
+size, fixed to Kupyna-256 (32-byte digest, no `--variant` choice).
 
 What exists below this level: `kalyna-block`, a single-block (no mode, no padding), `hazmat`-scoped
 command added for a binary-level performance comparison (`PERFORMANCE.md`, `DECISIONS.md` D-31):

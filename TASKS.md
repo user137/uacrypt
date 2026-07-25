@@ -856,8 +856,34 @@ command names (`CLAUDE.md` MVP scope) are still reserved for whenever that resol
       +nightly miri test` hit the same pre-existing proptest+Miri isolation crash as every other
       `proptest`-using file in this workspace (T-81/T-85) - confirmed clean (no UB) with the same
       local workaround (`MIRIFLAGS=-Zmiri-disable-isolation PROPTEST_CASES=8`, ~174s).
-- [ ] **T-40** **D-05's blocker status changed 2026-07-24 (see T-36) - not unblocked in practice
-      yet, though.** D-05 is now Kalyna-alone (CCM/GCM/KW) as a working assumption, not fully open -
+- [x] **T-40** **Done 2026-07-25, see `DECISIONS.md` D-68.** `dstu_core::crypto_secretstream`
+      (`PushState`/`PullState`/`Key`/`Tag`/`SecretstreamError`) landed - a from-scratch chunked AEAD
+      (no DSTU citation exists, D-47's tie-breaker applied, libsodium's `crypto_secretstream_
+      xchacha20poly1305` shape over `hazmat::kalyna_gcm`/`hazmat::kupyna_kmac` instead of
+      ChaCha20-Poly1305) with the full libsodium tag set (`Message`/`Push`/`Rekey`/`Final`) and a
+      caller-buffer, per-item-`std`-gated API (stricter `no_std` fit than any other high-level
+      `crypto_*` module so far). `uacrypt encrypt`/`decrypt` rewired to it too, same session, per
+      the user's chosen scope - a breaking wire-format change from the old `crypto_secretbox`-backed
+      command, called out explicitly (D-68), acceptable pre-1.0. `crypto_secretbox` itself is not
+      removed, stays a separate tested primitive. 22/22 library tests + 48/48 `uacrypt` tests passed
+      first write; full workspace `cargo test`/`clippy -D warnings` (default and `small-tables`)/
+      `fmt --check`/no_std feature matrix all clean; scoped Miri 22/22 passed, 0 UB, 1276.00s
+      (~21.3 min, slower than `crypto_secretbox`'s ~19 min as advisor-predicted for a multi-chunk
+      construction). A 10th `cargo fuzz` target (`fuzz_targets/crypto_secretstream.rs`, CLAUDE.md's
+      "required layer" rule, D-61's precedent) fuzzes `PullState::pull` directly on
+      attacker-controlled input - local MSVC smoke run 71,780 executions, 0 crashes (D-32's
+      documented workflow). Post-first-draft `advisor()` review caught and fixed two real gaps
+      before this was considered done: `docs/release-readiness.md`/`docs/dstu-crypto-project.md`/
+      `README.md` all had stale "not started" T-40 mentions across several sections each (the doc
+      map assigns exactly this update to those files, not just `TASKS.md`/`CLAUDE.md`), and D-68's
+      own `no_std` claim overstated what's actually unconditional (`PushState::init` is
+      `PushState`'s only constructor, so the module is decrypt-only without `std`) - both fixed, see
+      `DECISIONS.md` D-68 for the full corrected write-up. The T-40/T-70 duplicate-numbering entries
+      below/elsewhere are the same task - see T-70's own entry for its own closing note.
+      **History below kept for the design-fork trail that led here, superseded by the "Done" note
+      above, not deleted**: **D-05's blocker status changed 2026-07-24 (see T-36) - not unblocked
+      in practice yet, though.** D-05 is now Kalyna-alone (CCM/GCM/KW) as a working assumption, not
+      fully open -
       so the specific worry below (building this would silently resolve D-05 on the EtM side) no
       longer applies verbatim. But `hazmat::kalyna_ccm`'s own 255-byte plaintext/AAD cap (D-41)
       still makes it unusable for a realistic streaming chunk size as-is - a real `crypto_secretstream`
@@ -1120,9 +1146,14 @@ Two-layer split (`hazmat` now, high-level "easy" layer later) decided in `DECISI
       D-45** (`hazmat::kupyna_kdf`). Same duplicate-numbering note as T-67 above.
 - [ ] **T-69** `crypto_kx` construction (over `hazmat::dstu4145`/`dstu9041`) — needs both curves; DSTU 9041
       side is hard-blocked
-- [ ] **T-70** `crypto_secretstream` construction (over `hazmat::strumok`/`hazmat::kalyna`) — **blocked
-      on D-05, see T-40's 2026-07-24 re-scoping note** (same duplicate-numbering situation as
-      T-67/T-68 above, this time both entries staying open together since neither is done).
+- [x] **T-70** **Done 2026-07-25 - same task as T-40, see that entry and `DECISIONS.md` D-68 for the
+      full write-up.** Built over `hazmat::kalyna_gcm`/`hazmat::kupyna_kmac`, not
+      `hazmat::strumok`/`hazmat::kalyna` as this stub originally guessed - Strumok has no place in
+      an AEAD construction (it's a bare keystream generator, no tag), and Kalyna enters only via its
+      already-built GCM mode, not a fresh composition. No longer blocked on D-05 either - that
+      blocker was about *which* combined-AEAD mode to build (D-05 was later resolved to
+      Kalyna-alone), and `crypto_secretstream` ended up using the already-decided GCM mode rather
+      than re-opening that question.
 - [x] **T-71** **Done 2026-07-24, see `DECISIONS.md` D-49 (crate vetting) and D-50
       (implementation)**: `dstu_core::crypto_pwhash::{hash_password, verify_password, Strength}`
       over `argon2` 0.5.3 (`RustCrypto/password-hashes`, dual MIT/Apache-2.0, MSRV 1.65 - D-49's
@@ -1845,17 +1876,14 @@ User explicitly chose "T-40 first" over "hygiene first" when offered both, reaso
 ends partway through the step, the substantive item should already be done, not the cheap items
 around it.
 
-1. **T-40 - `crypto_secretstream`, genuinely chunked/streaming AEAD.** The one item here that is
-   real feature work, not packaging - gets its **own plan-mode pass when its turn comes**, per this
-   roadmap's own standing convention (see the "Three forks" note near the top of this section). Do
-   not start implementation without that pass: the construction shape (chunked Kalyna-GCM framing,
-   how truncation is detected, tag-per-chunk vs. running-MAC) is an open design question, not a
-   known quantity - `hazmat::kalyna_gcm` has no length cap (D-56) but has never been used in a
-   multi-chunk framing, and the 2026-07-25 libsodium audit (`docs/release-readiness.md` "Libsodium
-   API surface and crates.io publishing audit") confirmed the actual design bar to hit: libsodium's
-   `crypto_secretstream_xchacha20poly1305` uses a tag-per-chunk scheme (MESSAGE/PUSH/REKEY/FINAL)
-   specifically so a missing FINAL tag before EOF detects stream truncation - not just per-chunk
-   authentication. Not started.
+1. **T-40 - `crypto_secretstream`, genuinely chunked/streaming AEAD - Done 2026-07-25, see
+   `DECISIONS.md` D-68 and `TASKS.md` T-40's own entry.** Own plan-mode pass taken first, per this
+   roadmap's standing convention. Landed as `dstu_core::crypto_secretstream` (tag-per-chunk framing
+   over `hazmat::kalyna_gcm`, full MESSAGE/PUSH/REKEY/FINAL tag set, caller-buffer `no_std`-capable
+   API) plus a same-session `uacrypt encrypt`/`decrypt` rewire onto it (breaking wire-format change
+   from the old `crypto_secretbox`-backed command, called out explicitly). Fully verified: 22/22 +
+   48/48 tests, full workspace suite, clippy/fmt/no_std matrix clean, scoped Miri 22/22 passed 0 UB
+   in 1276.00s.
 2. **T-107 - per-crate `README.md`** for `dstu-core`/`uacrypt`, `readme` field in each `Cargo.toml`.
    Not started.
 3. **T-109 - `Cargo.toml` publish metadata** (`repository`/`homepage`/`documentation`/`keywords`/
@@ -1922,17 +1950,14 @@ pushed** (`82045cf`, user confirmed pushing this batch too before it landed).
 
 **Not yet done - the actual next steps (2026-07-25, Step 5 approved, see the Step 5 entry above for
 full detail)**:
-1. **T-40 - `crypto_secretstream`** (genuinely chunked/streaming AEAD) - leads Step 5, user's
-   explicit choice over "hygiene first" (advisor-recommended, user-confirmed): it is the one real
-   functional gap in this step, everything after it is packaging/metadata that doesn't depend on it.
-   Needs its own plan-mode pass before implementation - construction shape is an open design
-   question, not a known quantity. Not started.
+1. **T-40 - `crypto_secretstream` - DONE, see the Step 5 entry above and `DECISIONS.md` D-68.**
+   `uacrypt encrypt`/`decrypt` rewired to it in the same session, per the user's chosen scope.
 2. T-107 (per-crate README), T-109 (`Cargo.toml` metadata + LICENSE files), T-110 (docs.rs
    metadata), T-112 (crate-level provisional-status doc warning), T-108 (`uacrypt --help`), T-111
    (CHANGELOG + empirically-measured MSRV, not just a version number guess), T-113 (multi-part
    `crypto_sign` - **check the DSTU 4145 primary text first**, this may collapse to a much smaller
    `sign_digest`/`verify_digest` entry point than "streaming signer" implies) - all not started, in
-   this order.
+   this order. **T-107 is next.**
 - **Publication (T-17/T-18) is explicitly out of this plan** - gated on the user asking for it by
   name, not simply queued behind Step 5. Do not start it as a side effect of finishing Step 5.
 - The 2026-07-25 libsodium/crates.io research pass also produced a set of **deliberate non-tasks**

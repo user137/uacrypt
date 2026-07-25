@@ -9,6 +9,7 @@ pub mod crypto_kdf;
 pub mod crypto_pwhash;
 #[cfg(feature = "std")]
 pub mod crypto_secretbox;
+pub mod crypto_secretstream;
 pub mod crypto_sign;
 #[cfg(feature = "std")]
 pub mod crypto_stream;
