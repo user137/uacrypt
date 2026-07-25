@@ -197,6 +197,87 @@ item they point to is later removed.
       zero infrastructure exists yet - `.github/workflows/` has only `rust.yml`/`oracle-harness.yml`,
       no release/cross-compilation/binary-packaging workflow at all. This is unstarted work, not a
       near-miss.
+- [ ] **T-107** Add a per-crate `README.md` to `crates/dstu-core/` and `crates/uacrypt/`, and set
+      each crate's `readme` field in its own `Cargo.toml`. **Found during T-17's 2026-07-25
+      readiness check**: only the workspace-root `README.md` exists; `cargo package` only reaches
+      files inside each crate's own directory, so the crates.io page for either crate would
+      currently render with no README at all - not cosmetic for a crypto library. Blocks T-17
+      (do this before the real `cargo publish`, not after). Not started - user explicitly said not
+      to rush publication yet, will signal when to pick this up.
+- [ ] **T-108** User-friendly `--help`/usage text for the `uacrypt` binary, in plain language a
+      non-cryptographer can follow - requested 2026-07-25. **Confirmed gap**: `uacrypt`'s `run()`
+      dispatcher (`crates/uacrypt/src/lib.rs`) has no `--help`/`-h` handling at all right now - an
+      unrecognized argument (including `--help` itself) just falls through to
+      `CliError::UnknownCommand`, and `None` (no args) does the same rather than printing usage.
+      Scope: top-level `uacrypt --help`/`uacrypt` (no args) listing every command
+      (`encrypt`/`decrypt`/`hash`/`kalyna-block`/`kalyna-ccm`/`kupyna-digest`/`strumok-crypt`) in
+      plain terms (what it's for, when to reach for it vs. the plain `encrypt`/`decrypt`/`hash`
+      trio), plus a per-command `uacrypt <command> --help` showing its actual flags with a short
+      example invocation - not just a flag/type dump. Should explain the few hard, easy-to-miss
+      constraints in the same plain language (`encrypt`/`decrypt` needs a 32-byte key; `--in`/
+      `--out` can't be the same path for the `kalyna-*` raw commands; `hash` has no length cap).
+      Not started - not blocking T-17/T-18, but worth landing before `uacrypt` reaches people who
+      aren't already reading `README.md`/`CLAUDE.md`.
+- [ ] **T-109** Complete `Cargo.toml` publish metadata for both crates - requested 2026-07-25
+      (libsodium/crates.io best-practice review, see `docs/release-readiness.md` "Libsodium API
+      surface and crates.io publishing audit"). Neither `dstu-core/Cargo.toml` nor
+      `uacrypt/Cargo.toml` sets `repository`/`homepage`/`documentation`/`keywords`/`categories`/
+      `rust-version` - confirmed by reading both files directly 2026-07-25, only `license` and
+      `description` are present. **Not a hard `cargo publish` blocker** - `cargo publish --dry-run
+      -p dstu-core` already succeeds today with just those two fields (T-17's readiness check),
+      only warning about the missing `documentation`/`homepage`/`repository` trio - so this is a
+      quality/discoverability gap, not a publish-blocking one, and any secondary-source claim that
+      `repository` is mandatory (one research pass said so) is contradicted by that dry-run and
+      should not be trusted over it. `categories` must be picked from crates.io's actual fixed
+      taxonomy (e.g. a `cryptography` slug, a `no-std` slug if one exists) - verify the real slugs
+      at publish time, don't guess from memory. Also add a physical `LICENSE-MIT`/`LICENSE-APACHE`
+      copy inside `crates/dstu-core/` and `crates/uacrypt/` - confirmed via `cargo package --list`
+      2026-07-25 that neither crate's packaged tarball currently includes either license file (they
+      only exist at the repo root, which `cargo package` never reaches); the `license` SPDX field
+      alone satisfies the registry, but shipping without the actual license text is not the
+      ecosystem norm (RustCrypto crates ship a physical copy per crate). Blocks T-17 alongside
+      T-107, same "do before the real publish" reasoning. Not started.
+- [ ] **T-110** Add `[package.metadata.docs.rs]` with `all-features = true` to both `Cargo.toml`
+      files, so docs.rs actually documents the `pwhash`/`alloc` (and `small-tables`) cfg-gated
+      surface instead of only the `std`-only default build - requested 2026-07-25. **Checked
+      2026-07-25, `small-tables` is safe to include**: grepped every `#[cfg(feature =
+      "small-tables")]` site in `crates/dstu-core/src` - all of them are private items inside
+      `hazmat::tables`/`hazmat::strumok` (internal S-box/MDS table-vs-`gf_mul` swap, D-35/D-38), none
+      gate a `pub` item, so `all-features = true` cannot make docs.rs render the constrained-MCU
+      path as if it were the default one - the concern that would have blocked this (CLAUDE.md's own
+      "`small-tables` breaks `--all-features` as a stand-in for the default profile" CI note) turned
+      out not to apply to *documented* surface, only to *tested* behavior. Not started.
+- [ ] **T-111** `CHANGELOG.md` (Keep a Changelog format) + a declared MSRV - requested 2026-07-25.
+      No changelog file exists at all yet; `rust-version` is absent from both `Cargo.toml` files, and
+      `rust-toolchain.toml` only pins `channel = "stable"` (a floating target, not a minimum). Scope:
+      pick and record an actual MSRV (needs a real `cargo +<msrv> build` check across feature
+      combinations, not a guess), add `rust-version` to both `Cargo.toml`s, and add an MSRV CI job.
+      **Known trap, don't rediscover it**: this project's own `rust-toolchain.toml` pin already
+      silently overrode a CI step's installed nightly toolchain once (the miri/fuzz `+nightly`
+      gotcha in this file's "Agent discipline" section, T-85) - an MSRV job that runs a bare `cargo
+      build` in the same job as an installed MSRV toolchain will silently build under `stable`
+      instead unless it says `cargo +<msrv-version> build` explicitly. Not started.
+- [ ] **T-112** Crate-level `#![doc]` provisional-status warning for both crates - requested
+      2026-07-25. `README.md` already has a pre-release/WIP banner (T-86/D-43: version, "not
+      audited," Strumok/Kalyna-CCM/D-05's provisional status), but a docs.rs visitor who never opens
+      the GitHub repo never sees it - rustdoc's own generated landing page is the only thing they're
+      guaranteed to see. Scope: a short top-of-crate doc comment (`dstu_core::lib.rs` and
+      `uacrypt::main.rs`/`lib.rs`) stating the same provisional facts (D-05 Kalyna-alone is an
+      adopted assumption not a primary-text confirmation, Strumok is UAPKI-attributed not
+      DSTU-8845-confirmed per D-15, no independent third-party audit) - point back at `SECURITY.md`/
+      `DECISIONS.md` rather than re-arguing the citations inline. Not started.
+- [ ] **T-113** Multi-part/streaming `crypto_sign` for large messages - found during the 2026-07-25
+      libsodium API audit (see `docs/release-readiness.md`). `dstu_core::crypto_sign` currently only
+      signs an in-memory `&[u8]` in one call; libsodium's `crypto_sign_ed25519ph` (`_init`/`_update`/
+      `_final_create`/`_final_verify`) lets a caller sign/verify a large file without holding it
+      entirely in memory. This is the same memory-boundedness gap D-42 already names for CLI
+      commands (`kupyna-digest`/`strumok-crypt` already chunk their disk I/O) applied to signing
+      instead. Needs research before implementation, not assumed: whether DSTU 4145 signs a message
+      digest directly (in which case this may be as simple as exposing a "sign a precomputed Kupyna
+      hash" entry point) or has its own domain-separated multi-part construction the way Ed25519ph
+      does (not just "hash it yourself first") - check the primary DSTU 4145 text/pseudocode before
+      writing anything, per this file's standing "no primitive written from memory" rule. Not
+      started.
 - [x] **T-19** **Naming subtask, all three decisions made 2026-07-23** (T-20/T-21/T-22 below) -
       unblocks T-17/T-18, which are still separately open (a decided name isn't a crates.io
       publish or a built release binary):
@@ -1749,8 +1830,65 @@ pass, matching D-39's own precedent.
    assumed unchanged, still zero source material found anywhere. No doc changes needed (existing
    rows were already accurate); confirmation recorded rather than left a silent no-op.
 
-**Step 4 (last, not before) - publication.** T-17 (crates.io) and T-18 (GitHub Releases binaries) -
-deliberately last, per "not rushing publication."
+**Step 4 - publication.** T-17 (crates.io) and T-18 (GitHub Releases binaries). **Not queued behind
+Step 5 - gated on an explicit request, not simply "last in line."** 2026-07-25: user confirmed
+publication stays out of the plan entirely until they ask for it by name; do not start T-17/T-18
+work as a side effect of finishing Step 5.
+
+**Step 5 (2026-07-25, user-approved sequencing, advisor-reviewed) - close the remaining functional
+gap, then the crates.io/libsodium hygiene findings from the same session's research pass.** Ordering
+rationale: T-40 leads because it is the one item below that closes a real functional gap (three
+separate mentions in `docs/release-readiness.md` name it as the last thing standing between "safe
+modes only" and actually covering the large-file/streaming use case) - everything else in this step
+is packaging/documentation/metadata that doesn't depend on it and doesn't unblock it either way.
+User explicitly chose "T-40 first" over "hygiene first" when offered both, reasoning: if a session
+ends partway through the step, the substantive item should already be done, not the cheap items
+around it.
+
+1. **T-40 - `crypto_secretstream`, genuinely chunked/streaming AEAD.** The one item here that is
+   real feature work, not packaging - gets its **own plan-mode pass when its turn comes**, per this
+   roadmap's own standing convention (see the "Three forks" note near the top of this section). Do
+   not start implementation without that pass: the construction shape (chunked Kalyna-GCM framing,
+   how truncation is detected, tag-per-chunk vs. running-MAC) is an open design question, not a
+   known quantity - `hazmat::kalyna_gcm` has no length cap (D-56) but has never been used in a
+   multi-chunk framing, and the 2026-07-25 libsodium audit (`docs/release-readiness.md` "Libsodium
+   API surface and crates.io publishing audit") confirmed the actual design bar to hit: libsodium's
+   `crypto_secretstream_xchacha20poly1305` uses a tag-per-chunk scheme (MESSAGE/PUSH/REKEY/FINAL)
+   specifically so a missing FINAL tag before EOF detects stream truncation - not just per-chunk
+   authentication. Not started.
+2. **T-107 - per-crate `README.md`** for `dstu-core`/`uacrypt`, `readme` field in each `Cargo.toml`.
+   Not started.
+3. **T-109 - `Cargo.toml` publish metadata** (`repository`/`homepage`/`documentation`/`keywords`/
+   `categories`/`rust-version`) + physical per-crate `LICENSE-MIT`/`LICENSE-APACHE` copies. Not
+   started.
+4. **T-110 - `[package.metadata.docs.rs]` with `all-features = true`** on both crates - already
+   verified safe (`small-tables` gates no `pub` item). Not started.
+5. **T-112 - crate-level `#![doc]` provisional-status warning** for both crates, pointing back at
+   `SECURITY.md`/`DECISIONS.md` rather than re-arguing the citations inline. Not started.
+6. **T-108 - user-friendly `--help`/usage text for `uacrypt`.** Not started.
+7. **T-111 - `CHANGELOG.md` + a real, empirically-determined MSRV.** Advisor flag, keep this split
+   in mind when scoping the work: the `CHANGELOG.md` half is a writing task, but MSRV is **not** -
+   it means actually installing two or three candidate older toolchains and running the full
+   8-combination feature matrix on each (this project's own dependency tree, `argon2`/`getrandom`/
+   `zeroize`/`subtle` and their transitives, has already produced one surprising transitive-feature
+   result, D-50 - don't assume a floor without measuring it). Budget accordingly; this is not a
+   same-size item as T-107/T-109/T-110/T-112 above despite living in the same step. Not started.
+8. **T-113 - multi-part/streaming `crypto_sign`.** Advisor flag, check before scheduling as real
+   feature work: **first verify what DSTU 4145 actually signs.** If (as the advisor's reading
+   suggests, unconfirmed) DSTU 4145 signs a hash of the message the way most EC signature schemes
+   do - not a domain-separated multi-part construction the way Ed25519ph is - this task may collapse
+   from "build a streaming signer" to "expose a `sign_digest`/`verify_digest` entry point over the
+   existing `hazmat::kupyna::Hasher`," an hour of work, not a project. Check the primary DSTU 4145
+   text/pseudocode first (`docs/pseudocode/dstu4145.md`), per this file's standing "no primitive
+   written from memory" rule, before estimating or starting implementation. Not started.
+
+**Deliberately not tasks, carried forward by reference, not re-derived**: the 2026-07-25 libsodium
+audit's open questions for the project owner (detached-API variants for `crypto_secretbox`/
+`crypto_auth`/`crypto_sign` - conflicts with D-47's "delete the knob"; `randombytes_uniform` - no
+consumer exists) and its no-DSTU-angle list (`crypto_shorthash`, hex/base64 helpers, `sodium_pad`,
+nonce-counter helpers, raw `crypto_scalarmult`, `crypto_box_seal`) all live in
+`docs/release-readiness.md`'s "Libsodium API surface and crates.io publishing audit" section, not
+here - don't re-litigate them without new information.
 
 Verification at every step, no exceptions, unchanged from this session's established practice:
 `cargo test --workspace --all-features`, `cargo clippy --workspace --all-features -- -D warnings`,
@@ -1782,6 +1920,22 @@ Full workspace `cargo test --workspace --all-features` last confirmed clean; `no
 `fmt --check` clean; scoped Miri on `crypto_stream` clean (9/9, 0 UB, 119.85s). **Committed and
 pushed** (`82045cf`, user confirmed pushing this batch too before it landed).
 
-**Not yet done - the actual next steps**:
-- Step 4 (T-17 crates.io publish, T-18 GitHub Releases) - not started, deliberately last, per
-  "not rushing publication."
+**Not yet done - the actual next steps (2026-07-25, Step 5 approved, see the Step 5 entry above for
+full detail)**:
+1. **T-40 - `crypto_secretstream`** (genuinely chunked/streaming AEAD) - leads Step 5, user's
+   explicit choice over "hygiene first" (advisor-recommended, user-confirmed): it is the one real
+   functional gap in this step, everything after it is packaging/metadata that doesn't depend on it.
+   Needs its own plan-mode pass before implementation - construction shape is an open design
+   question, not a known quantity. Not started.
+2. T-107 (per-crate README), T-109 (`Cargo.toml` metadata + LICENSE files), T-110 (docs.rs
+   metadata), T-112 (crate-level provisional-status doc warning), T-108 (`uacrypt --help`), T-111
+   (CHANGELOG + empirically-measured MSRV, not just a version number guess), T-113 (multi-part
+   `crypto_sign` - **check the DSTU 4145 primary text first**, this may collapse to a much smaller
+   `sign_digest`/`verify_digest` entry point than "streaming signer" implies) - all not started, in
+   this order.
+- **Publication (T-17/T-18) is explicitly out of this plan** - gated on the user asking for it by
+  name, not simply queued behind Step 5. Do not start it as a side effect of finishing Step 5.
+- The 2026-07-25 libsodium/crates.io research pass also produced a set of **deliberate non-tasks**
+  (detached-API question, `randombytes_uniform`, no-DSTU-angle items) - these live in
+  `docs/release-readiness.md`'s new audit section, not `TASKS.md` - don't re-derive them as tasks
+  without new information surfacing.

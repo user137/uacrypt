@@ -204,6 +204,66 @@ DSTU-native mode of any kind to choose from, safe or otherwise.
   Rust-crate-only 1.0, but relevant if "libsodium-equivalent" is read to include libsodium's
   multi-language reach.
 
+## Libsodium API surface and crates.io publishing audit (2026-07-25)
+
+Requested 2026-07-25: an audit of libsodium's actual official API (doc.libsodium.org) beyond the
+core constructions already tracked above, plus a review of crates.io/RustCrypto-ecosystem
+publishing norms, to find anything neither implemented nor tracked as a task. Findings that turned
+into real actionable work are `TASKS.md` T-109 through T-113 (Cargo.toml metadata, per-crate
+LICENSE files, `docs.rs` metadata, `CHANGELOG.md`/MSRV, crate-level provisional-status doc warning,
+multi-part `crypto_sign`) - this section records the rest: corrections, and gaps deliberately **not**
+scheduled, so a future session doesn't re-derive the same conclusions from scratch.
+
+**Correction to prior assumptions**: libsodium's `crypto_kdf` is BLAKE2b-based subkey derivation
+only - there is no separate `crypto_kdf_hkdf_*` family to map against. Nothing to reconcile against
+`dstu_core::crypto_kdf`; the two are already the same shape.
+
+**Confirms an existing gap rather than finding a new one**: libsodium's
+`crypto_secretstream_xchacha20poly1305` uses four tags (MESSAGE/PUSH/REKEY/FINAL), where the
+absence of a FINAL tag before EOF is what detects stream truncation - this is the actual design bar
+`crypto_secretstream` (T-40, still not started) needs to hit, not just per-chunk authentication.
+Worth keeping in mind when T-40 is picked up.
+
+**Open questions for the project owner - not resolved here, not scheduled as tasks**:
+
+- **Detached API variants** (`crypto_secretbox_detached`, `crypto_sign_detached` - tag/signature
+  returned separately from ciphertext/message rather than concatenated into one blob). libsodium
+  ships both combined and detached forms for these; this project's own `crypto_secretbox`/
+  `crypto_sign` deliberately ship one shape only, per `DECISIONS.md` D-47's "delete the knob"
+  tie-breaker. Adding a detached entry point is a second knob, which is exactly what D-47 says to
+  avoid absent a concrete reason - a real use case exists in the wild (storing a MAC/signature in a
+  database column separate from a large blob) but none exists in this project yet. Flagged as a
+  question, not resolved unilaterally the way T-105's fork was (a mistake this project already
+  caught itself making once, see `DECISIONS.md` D-66/D-67's process-lesson note) - needs the
+  owner's call before it becomes a task.
+- **`randombytes_uniform`** (unbiased bounded random integer). No consumer exists anywhere in this
+  codebase today - the same "no `CryptoRng` trait, nothing consumes one yet" reasoning
+  `DECISIONS.md` D-48 already gave for keeping `randombytes_buf` a plain function applies here too,
+  and CLAUDE.md's own "no speculative features" rule forbids adding it ahead of a real use.
+  Revisit if/when a concrete caller needs a bounded random index/range without modulo bias.
+
+**No DSTU angle - deliberately not scheduled, not an oversight**:
+
+- `crypto_shorthash` (SipHash-2-4, explicitly non-collision-resistant, for hash-table/DoS
+  resistance use) - no DSTU standard defines or implies anything like it.
+- `sodium_bin2hex`/`_hex2bin`, `sodium_bin2base64`/`_base642bin`, `sodium_pad`/`_unpad` - generic
+  encoding/padding utilities, not cryptographic primitives; not DSTU-scoped, and standard Rust
+  crates (`hex`, `base64`) already cover this need if/when the CLI wants it.
+- `sodium_increment`/`_add`/`_compare` (constant-time nonce-counter arithmetic) - this project's
+  nonces are randomly generated everywhere (`crypto_secretbox`, `crypto_stream`, `kalyna_ccm`/`gcm`),
+  never counter-based, so there is no counter to increment.
+- Raw `crypto_scalarmult`/`_base` (bare X25519-shaped ECDH as its own public primitive, distinct
+  from `crypto_kx`) - `hazmat::dstu4145` has the underlying point arithmetic internally but exposes
+  no public raw scalar-multiplication entry point, and libsodium's own docs steer callers toward
+  `crypto_kx` instead of this lower-level primitive anyway. `crypto_kx`'s DSTU 9041 path is already
+  hard-blocked (T-46/T-47); a raw scalar-mult entry point would face the identical blocker with no
+  independent use case pulling it out ahead of `crypto_kx` itself.
+- `crypto_box_seal`/`_seal_open` (anonymous/sealed-box encryption) - a sub-feature of `crypto_box`,
+  which is already hard-blocked on DSTU 9041 (T-46) having zero source material. Not a new blocker.
+- `crypto_pwhash`'s Argon2i13/legacy scryptsalsa208sha256 variants - already deliberately narrowed
+  to Argon2id only (T-71/D-49/D-50), matching libsodium's own current recommended default; the other
+  variants exist in libsodium for legacy interop, not because they're preferred.
+
 ## Concrete path to a genuinely safe, complete release
 
 **Superseded 2026-07-25 (T-99) by `TASKS.md`'s "Roadmap to a genuinely complete product"** (recorded
