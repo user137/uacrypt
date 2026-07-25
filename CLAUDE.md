@@ -441,6 +441,27 @@ Full detail and rationale in `SECURITY.md` — this is the compressed version so
   with a much shorter, single unique line from the same block instead. Worked immediately when
   this happened editing `kalyna_gcm.rs`'s doc comment (2026-07-25); don't burn the three-attempts
   budget on the same failing anchor shape.
+- **Before declaring a multi-file feature/construction "done," grep its own task ID (e.g. `T-40`)
+  across every file the doc map's "Update when" column implicates for that kind of change** — not
+  just the one or two docs you remember touching. Landing `crypto_secretstream` (D-68) initially
+  updated only `TASKS.md`/`CLAUDE.md`; `docs/release-readiness.md`, `docs/dstu-crypto-project.md`,
+  and `README.md` all still said "not started" in multiple places until an `advisor()` pass caught
+  it by name-checking the doc map. A stale "not started" line next to your own new "Done" line is
+  a worse outcome than never mentioning the doc at all.
+- **Adding a new `cargo fuzz` target means syncing three places, not one**: `fuzz/Cargo.toml`'s
+  `[[bin]]` entry, `.github/workflows/rust.yml`'s `fuzz-smoke` matrix, and `xtask/src/main.rs`'s
+  `FUZZ_TARGETS` array (`cargo xtask fuzz`/`ci`'s own source of truth, D-12) — missing the third one
+  means the project's designated single QA entry point silently skips the new target. All three
+  carry an explicit "kept in sync by hand" comment; still missed one on the first pass adding
+  `crypto_secretstream`'s target (D-68).
+- **A `#[cfg(feature = "std")]`-gated variant on an otherwise-unconditional public error enum
+  (not `#[non_exhaustive]`) changes that enum's variant count under Cargo's additive feature
+  unification** — any dependency in the build graph enabling this crate's `std` feature changes the
+  enum for every consumer, including ones that only asked for the `no_std` surface. First hit on
+  `crypto_secretstream::SecretstreamError` (D-68, whose other high-level modules are either
+  whole-module `std`-gated or have no such mixed-variant enum). Not a reason to add
+  `#[non_exhaustive]` speculatively — just verify this shape is intentional and record it, don't
+  discover it from a downstream break.
 
 ## Reference implementations and oracles
 
