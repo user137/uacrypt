@@ -140,6 +140,31 @@ fn buffer_shorter_than_one_block_is_rejected_not_undefined() {
     }
 }
 
+/// XTS is confidentiality-only by design (`docs/release-readiness.md`'s "Full-disk encryption"
+/// row) - there is no tag, so tampering ciphertext must never error, only silently decrypt to
+/// garbage. Pins that this is the actual behavior, not an accident: integrity for disk sectors is
+/// deliberately left to a layer above (the filesystem), unlike every AEAD mode in this crate.
+#[test]
+fn tampered_ciphertext_does_not_error_but_produces_garbage() {
+    let case = &cases(include_str!("vectors/kalyna-xts/128-128.json"))[0];
+    let mut key = [0u8; 16];
+    key.copy_from_slice(&case.key);
+    let mut iv = [0u8; 16];
+    iv.copy_from_slice(&case.iv);
+    let cipher = Kalyna128_128Xts::new(&key);
+
+    let mut tampered = case.ciphertext.clone();
+    tampered[0] ^= 0x01;
+
+    cipher
+        .decrypt_in_place(&iv, &mut tampered)
+        .expect("XTS has no tag to fail - tampering must not error");
+    assert_ne!(
+        tampered, case.plaintext,
+        "tampered ciphertext must decrypt to something other than the original plaintext"
+    );
+}
+
 macro_rules! roundtrip_proptest {
     ($mod_name:ident, $variant:ty, $key_len:literal, $block_len:literal) => {
         mod $mod_name {

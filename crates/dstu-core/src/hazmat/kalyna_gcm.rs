@@ -47,6 +47,19 @@
 //! enough to forge tags. `decrypt`'s tag check uses `subtle::ConstantTimeEq`, **not** `dstu7624.c`'s
 //! raw `memcmp` - a deliberate, cited safety fix (`DECISIONS.md` D-56), matching the same pattern
 //! already applied to [`super::kalyna_kw`]'s checksum check and [`super::kalyna_cmac`]'s tag verify.
+//!
+//! # Warning: the tag does not cover `iv`
+//!
+//! Unlike NIST AES-GCM (whose tag derives from `E_K(J0)`, `J0` being IV-derived), divergence 3
+//! above means this construction's tag is a function of AAD and ciphertext only - `iv` never
+//! enters the accumulator, only the keystream. Tampering `iv` alone, with `aad`/`ciphertext`/`tag`
+//! left untouched, does **not** fail `decrypt`'s tag check; it silently produces different
+//! (wrong) plaintext instead. Any caller who transmits `iv` alongside the ciphertext (as opposed
+//! to deriving it from an already-authenticated channel state) and needs tampering of that
+//! transmitted `iv` to be detected **must** pass it as (or fold it into) `aad` - it is not
+//! authenticated for free. [`crate::crypto_secretbox`] does exactly this (`DECISIONS.md` D-63);
+//! see `tests/kalyna_gcm.rs`'s `tampered_iv_alone_does_not_fail_the_tag_check` for the property
+//! pinned directly at this layer.
 
 use subtle::ConstantTimeEq;
 

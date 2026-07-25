@@ -128,6 +128,27 @@ fn kupyna_512_streaming_single_update_matches_official_vectors() {
     }
 }
 
+/// A single flipped input bit must not produce the same digest - the cheapest possible check that
+/// the implementation isn't accidentally collapsing distinct inputs (e.g. a truncation or
+/// constant-folding bug), not a substitute for the official vectors' correctness check above.
+#[test]
+fn single_bit_change_produces_a_different_digest() {
+    let json = include_str!("vectors/kupyna/kupyna-256.json");
+    let message = decode_hex(extract_all(json, "message_hex")[0]);
+
+    let original = Kupyna256::digest(&message);
+    let mut flipped = message.clone();
+    if flipped.is_empty() {
+        flipped.push(0x01);
+    } else {
+        flipped[0] ^= 0x01;
+    }
+    assert_ne!(Kupyna256::digest(&flipped), original);
+
+    let original = Kupyna512::digest(&message);
+    assert_ne!(Kupyna512::digest(&flipped), original);
+}
+
 /// `Default` must agree with `new()` - a plain sanity check, not a security property, but cheap
 /// insurance against the two ever drifting apart.
 #[test]

@@ -124,6 +124,20 @@ fn tampered_ciphertext_is_rejected() {
 }
 
 #[test]
+fn wrong_key_is_rejected() {
+    let case = &cases(include_str!("vectors/kalyna-kw/128-128.json"))[0];
+    let mut wrong_key = [0u8; 16];
+    wrong_key.copy_from_slice(&case.key);
+    wrong_key[0] ^= 0x01;
+
+    let mut out = vec![0u8; case.plaintext.len()];
+    assert_eq!(
+        Kalyna128_128Kw::unwrap(&wrong_key, &case.ciphertext, &mut out),
+        Err(KwError::ChecksumMismatch)
+    );
+}
+
+#[test]
 fn non_block_aligned_plaintext_is_rejected() {
     let key = [0u8; 16];
     let plaintext = [0u8; 17];

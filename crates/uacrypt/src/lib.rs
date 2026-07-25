@@ -8,8 +8,8 @@
 //! top-level commands now (`TASKS.md` T-16, `DECISIONS.md` D-52), built over
 //! `dstu_core::crypto_secretbox` (T-37, D-51). This command only does what `hazmat::kalyna` actually
 //! supports: exactly one block, no mode, no padding - so it can't be mistaken for `encrypt`/
-//! `decrypt`, which handle a whole file (up to `crypto_secretbox`'s own 255-byte cap - see
-//! [`run_secretbox_command`]'s doc comment).
+//! `decrypt`, which handle a whole file, no length cap (see [`run_secretbox_command`]'s doc
+//! comment for the memory-use consequence of that).
 //!
 //! The `--iterations`/`--raw-schedule` flags exist for the binary-vs-binary performance comparison
 //! in `PERFORMANCE.md` (`TASKS.md`, D-28/29/30 follow-up) - with `iterations <= 1` this is just a
@@ -49,7 +49,6 @@ pub enum CliError {
     AadTooLong,
     CcmVerifyFailed,
     Random(String),
-    MessageTooLong,
     Truncated,
     SecretboxVerifyFailed,
 }
@@ -85,12 +84,6 @@ impl fmt::Display for CliError {
                 write!(f, "kalyna-ccm: authentication failed - ciphertext, tag, AAD, nonce, or key do not match")
             }
             CliError::Random(message) => write!(f, "failed to generate a random nonce: {message}"),
-            CliError::MessageTooLong => write!(
-                f,
-                "input exceeds encrypt/decrypt's 255-byte limit (dstu_core::crypto_secretbox is \
-                 built on a Kalyna-CCM construction with a sourced 255-byte cap, DECISIONS.md \
-                 D-41/D-51 - larger files need TASKS.md T-40's crypto_secretstream, not built yet)"
-            ),
             CliError::Truncated => write!(
                 f,
                 "--in is too short to be valid encrypt output (missing nonce and/or tag)"
@@ -117,7 +110,6 @@ impl From<dstu_core::crypto_secretbox::SecretboxError> for CliError {
     fn from(err: dstu_core::crypto_secretbox::SecretboxError) -> Self {
         use dstu_core::crypto_secretbox::SecretboxError;
         match err {
-            SecretboxError::MessageTooLong => Self::MessageTooLong,
             SecretboxError::Truncated => Self::Truncated,
             SecretboxError::TagMismatch => Self::SecretboxVerifyFailed,
             SecretboxError::Random(e) => Self::Random(e.to_string()),
@@ -620,19 +612,24 @@ pub fn parse_secretbox_args(args: &[String]) -> Result<SecretboxArgs, CliError> 
     })
 }
 
-/// Runs `encrypt`/`decrypt` over `dstu_core::crypto_secretbox` (D-51). `--in` is read whole, not
-/// streamed - the construction itself caps messages at
-/// [`dstu_core::crypto_secretbox::MAX_MESSAGE_LEN`] (255) bytes, so there is no large-file case to
-/// stream for (same reasoning `kalyna-ccm` already uses). On `encrypt`, `--out` receives `seal`'s
-/// combined `nonce || ciphertext || tag` blob directly - a fresh nonce is drawn internally on every
-/// call, never caller-supplied. On `decrypt`, `--out` is only written if authentication succeeds.
+/// Runs `encrypt`/`decrypt` over `dstu_core::crypto_secretbox` (D-51, migrated to Kalyna-GCM by
+/// D-63). `--in` is read whole via `std::fs::read`, not streamed - **this is unchanged by the
+/// GCM migration and now means something different than it used to**: the old Kalyna-CCM
+/// construction capped messages at 255 bytes, so "read whole" was free (bounded memory by
+/// construction); Kalyna-GCM has no such cap, so a large `--in` file now means a correspondingly
+/// large in-memory buffer, not a `MessageTooLong` rejection. An AEAD tag needs the full
+/// plaintext/ciphertext up front, so this can't become block-at-a-time streaming (D-42's standing
+/// policy) without a genuinely different, chunked construction - `TASKS.md` T-40
+/// (`crypto_secretstream`) is that separately-tracked follow-up, not built yet. On `encrypt`,
+/// `--out` receives `seal`'s combined `nonce || ciphertext || tag` blob directly - a fresh nonce is
+/// drawn internally on every call, never caller-supplied. On `decrypt`, `--out` is only written if
+/// authentication succeeds.
 ///
 /// # Errors
 ///
-/// Returns [`CliError::WrongLength`] if `--key` isn't exactly 32 bytes, [`CliError::MessageTooLong`]
-/// if `--in` exceeds the 255-byte limit, [`CliError::Truncated`] if `--in` (on `decrypt`) is too
-/// short to contain a nonce and tag, [`CliError::SecretboxVerifyFailed`] if decryption fails to
-/// authenticate, or [`CliError::Io`] for file read/write failures.
+/// Returns [`CliError::WrongLength`] if `--key` isn't exactly 32 bytes, [`CliError::Truncated`] if
+/// `--in` (on `decrypt`) is too short to contain a nonce and tag, [`CliError::SecretboxVerifyFailed`]
+/// if decryption fails to authenticate, or [`CliError::Io`] for file read/write failures.
 pub fn run_secretbox_command(decrypt: bool, args: &SecretboxArgs) -> Result<(), CliError> {
     let key_bytes = read_exact_file(&args.key_path, "key", SECRETBOX_KEY_LEN)?;
     let mut key_arr = [0u8; SECRETBOX_KEY_LEN];
@@ -1828,22 +1825,264 @@ mod tests {
         assert!(!dir.file("pt.bin").exists());
     }
 
+    /// A file larger than the old Kalyna-CCM construction's 255-byte cap now round-trips through
+    /// `run_secretbox_command` end to end - proving the removed cap (D-63) actually reaches the CLI
+    /// layer, not just `dstu_core::crypto_secretbox` in isolation.
     #[test]
-    fn run_secretbox_command_oversized_plaintext_is_rejected() {
-        let dir = TempDir::new("secretbox_too_long");
+    fn run_secretbox_command_message_larger_than_the_old_255_byte_cap_round_trips() {
+        let dir = TempDir::new("secretbox_large");
         let key = [0x77u8; 32];
-        let too_long = vec![0u8; dstu_core::crypto_secretbox::MAX_MESSAGE_LEN + 1];
+        let large = vec![0x42u8; 4096];
         std::fs::write(dir.file("key.bin"), key).expect("write key");
-        std::fs::write(dir.file("in.bin"), &too_long).expect("write input");
+        std::fs::write(dir.file("in.bin"), &large).expect("write input");
 
-        let args = SecretboxArgs {
+        let encrypt_args = SecretboxArgs {
             key_path: dir.file("key.bin"),
             in_path: dir.file("in.bin"),
             out_path: dir.file("sealed.bin"),
         };
-        let result = run_secretbox_command(false, &args);
-        assert_eq!(result, Err(CliError::MessageTooLong));
-        assert!(!dir.file("sealed.bin").exists());
+        run_secretbox_command(false, &encrypt_args).expect("encrypt should succeed");
+
+        let decrypt_args = SecretboxArgs {
+            key_path: dir.file("key.bin"),
+            in_path: dir.file("sealed.bin"),
+            out_path: dir.file("out.bin"),
+        };
+        run_secretbox_command(true, &decrypt_args).expect("decrypt should succeed");
+
+        let round_tripped = std::fs::read(dir.file("out.bin")).expect("read output");
+        assert_eq!(round_tripped, large);
+    }
+
+    /// "Fool" test - a key file that's the wrong length (a common real mistake: a truncated
+    /// download, a copy-paste that dropped bytes) must be a clean, typed error, not a panic or a
+    /// silently-zero-padded key.
+    #[test]
+    fn run_secretbox_command_wrong_key_length_is_rejected() {
+        let dir = TempDir::new("secretbox_wrong_key_len");
+        std::fs::write(dir.file("key.bin"), [0u8; 31]).expect("write short key");
+        std::fs::write(dir.file("in.bin"), b"data").expect("write input");
+
+        let args = SecretboxArgs {
+            key_path: dir.file("key.bin"),
+            in_path: dir.file("in.bin"),
+            out_path: dir.file("out.bin"),
+        };
+        assert_eq!(
+            run_secretbox_command(false, &args),
+            Err(CliError::WrongLength {
+                what: "key",
+                expected: 32,
+                actual: 31,
+            })
+        );
+        assert!(!dir.file("out.bin").exists());
+    }
+
+    /// "Fool" test - pointing `--in` at a path that doesn't exist at all (typo'd filename) must be
+    /// a clean `Io` error, not a panic.
+    #[test]
+    fn run_secretbox_command_nonexistent_input_is_io_error_not_panic() {
+        let dir = TempDir::new("secretbox_no_input");
+        std::fs::write(dir.file("key.bin"), [0u8; 32]).expect("write key");
+
+        let args = SecretboxArgs {
+            key_path: dir.file("key.bin"),
+            in_path: dir.file("does_not_exist.bin"),
+            out_path: dir.file("out.bin"),
+        };
+        assert!(matches!(
+            run_secretbox_command(false, &args),
+            Err(CliError::Io { .. })
+        ));
+        assert!(!dir.file("out.bin").exists());
+    }
+
+    /// "Fool" test - pointing `--in` at a directory instead of a file (an easy copy-paste mistake
+    /// with a path variable) must be a clean `Io` error, not a panic.
+    #[test]
+    fn run_secretbox_command_directory_as_input_is_io_error_not_panic() {
+        let dir = TempDir::new("secretbox_dir_input");
+        std::fs::write(dir.file("key.bin"), [0u8; 32]).expect("write key");
+        std::fs::create_dir_all(dir.file("a_directory")).expect("create sub-directory");
+
+        let args = SecretboxArgs {
+            key_path: dir.file("key.bin"),
+            in_path: dir.file("a_directory"),
+            out_path: dir.file("out.bin"),
+        };
+        assert!(matches!(
+            run_secretbox_command(false, &args),
+            Err(CliError::Io { .. })
+        ));
+        assert!(!dir.file("out.bin").exists());
+    }
+
+    /// "Fool" test - passing the same path for `--in` and `--out` (an easy mistake when scripting
+    /// "encrypt this file in place"). `--in` is read fully into memory before `--out` is ever
+    /// written, so this is safe by construction, not by luck - this pins that it stays that way.
+    #[test]
+    fn run_secretbox_command_in_and_out_same_path_round_trips() {
+        let dir = TempDir::new("secretbox_same_path");
+        let key = [0x55u8; 32];
+        let plaintext = b"overwrite me in place".to_vec();
+        std::fs::write(dir.file("key.bin"), key).expect("write key");
+        std::fs::write(dir.file("data.bin"), &plaintext).expect("write input");
+
+        let encrypt_args = SecretboxArgs {
+            key_path: dir.file("key.bin"),
+            in_path: dir.file("data.bin"),
+            out_path: dir.file("data.bin"),
+        };
+        run_secretbox_command(false, &encrypt_args).expect("in-place encrypt should succeed");
+        assert_ne!(
+            std::fs::read(dir.file("data.bin")).expect("read"),
+            plaintext,
+            "the file must now hold sealed output, not the original plaintext"
+        );
+
+        let decrypt_args = SecretboxArgs {
+            key_path: dir.file("key.bin"),
+            in_path: dir.file("data.bin"),
+            out_path: dir.file("data.bin"),
+        };
+        run_secretbox_command(true, &decrypt_args).expect("in-place decrypt should succeed");
+        assert_eq!(
+            std::fs::read(dir.file("data.bin")).expect("read"),
+            plaintext
+        );
+    }
+
+    /// "Fool" test - decrypting a file that was never produced by `encrypt` at all (random garbage
+    /// of plausible length, not a tampered-but-otherwise-real sealed file) must fail cleanly and
+    /// must not write `--out` - a distinct code path from
+    /// `run_secretbox_command_decrypt_rejects_tampered_ciphertext_without_writing_out`, which
+    /// starts from real `seal` output.
+    #[test]
+    fn run_secretbox_command_decrypt_rejects_never_sealed_garbage_without_writing_out() {
+        let dir = TempDir::new("secretbox_garbage");
+        std::fs::write(dir.file("key.bin"), [0x88u8; 32]).expect("write key");
+        std::fs::write(dir.file("garbage.bin"), [0x99u8; 64]).expect("write garbage");
+
+        let args = SecretboxArgs {
+            key_path: dir.file("key.bin"),
+            in_path: dir.file("garbage.bin"),
+            out_path: dir.file("out.bin"),
+        };
+        assert_eq!(
+            run_secretbox_command(true, &args),
+            Err(CliError::SecretboxVerifyFailed)
+        );
+        assert!(!dir.file("out.bin").exists());
+    }
+
+    /// "Fool" test - hashing an empty file must succeed and produce Kupyna-256's real empty-input
+    /// digest, not an error - an empty file is a degenerate but entirely legal input.
+    #[test]
+    fn run_hash_command_empty_file_produces_the_empty_input_digest() {
+        let dir = TempDir::new("hash_empty");
+        std::fs::write(dir.file("empty.bin"), []).expect("write empty file");
+
+        let args = HashArgs {
+            in_path: dir.file("empty.bin"),
+            out_path: dir.file("digest.bin"),
+        };
+        run_hash_command(&args).expect("hashing an empty file must succeed");
+
+        let digest = std::fs::read(dir.file("digest.bin")).expect("read digest");
+        assert_eq!(
+            digest,
+            dstu_core::hazmat::kupyna::Kupyna256::digest(&[]).to_vec()
+        );
+    }
+
+    /// "Fool" test - `--iterations 0` (a plausible off-by-one from a user expecting "0 extra
+    /// iterations") must behave exactly like `--iterations 1`, not silently skip hashing and write
+    /// an empty/missing digest.
+    #[test]
+    fn run_digest_command_iterations_zero_behaves_like_one() {
+        let dir = TempDir::new("digest_iterations_zero");
+        let message = b"same input, different iterations value";
+        std::fs::write(dir.file("msg.bin"), message).expect("write message");
+
+        run_digest_command(&DigestArgs {
+            variant: HashBits::B256,
+            in_path: dir.file("msg.bin"),
+            out_path: dir.file("digest_zero.bin"),
+            iterations: 0,
+        })
+        .expect("iterations=0 must still hash successfully");
+        run_digest_command(&DigestArgs {
+            variant: HashBits::B256,
+            in_path: dir.file("msg.bin"),
+            out_path: dir.file("digest_one.bin"),
+            iterations: 1,
+        })
+        .expect("iterations=1 baseline");
+
+        assert_eq!(
+            std::fs::read(dir.file("digest_zero.bin")).expect("read"),
+            std::fs::read(dir.file("digest_one.bin")).expect("read")
+        );
+    }
+
+    /// "Fool" test - a key file that's the wrong length for the chosen Kalyna variant must be a
+    /// clean typed error, not a panic - the `kalyna-ccm` counterpart to the `encrypt`/`decrypt`
+    /// version of this test above.
+    #[test]
+    fn run_ccm_command_wrong_key_length_is_rejected() {
+        let dir = TempDir::new("ccm_wrong_key_len");
+        std::fs::write(dir.file("key.bin"), [0u8; 15]).expect("write short key"); // K128_128 wants 16
+        std::fs::write(dir.file("in.bin"), b"data").expect("write input");
+
+        let args = CcmArgs {
+            variant: KalynaVariant::K128_128,
+            key_path: dir.file("key.bin"),
+            nonce_path: dir.file("nonce.bin"),
+            aad_path: None,
+            in_path: dir.file("in.bin"),
+            out_path: dir.file("out.bin"),
+            tag_path: dir.file("tag.bin"),
+        };
+        assert_eq!(
+            run_ccm_command(false, &args),
+            Err(CliError::WrongLength {
+                what: "key",
+                expected: 16,
+                actual: 15,
+            })
+        );
+        assert!(!dir.file("out.bin").exists());
+    }
+
+    /// "Fool" test - on `decrypt`, a `--nonce` file of the wrong length (e.g. hand-edited or copied
+    /// from a different variant) must be a clean typed error, not a panic or silent truncation.
+    #[test]
+    fn run_ccm_command_wrong_nonce_length_on_decrypt_is_rejected() {
+        let dir = TempDir::new("ccm_wrong_nonce_len");
+        std::fs::write(dir.file("key.bin"), [0u8; 16]).expect("write key");
+        std::fs::write(dir.file("nonce.bin"), [0u8; 15]).expect("write short nonce"); // wants 16
+        std::fs::write(dir.file("tag.bin"), [0u8; 16]).expect("write tag");
+        std::fs::write(dir.file("in.bin"), b"ciphertext-ish!!").expect("write input");
+
+        let args = CcmArgs {
+            variant: KalynaVariant::K128_128,
+            key_path: dir.file("key.bin"),
+            nonce_path: dir.file("nonce.bin"),
+            aad_path: None,
+            in_path: dir.file("in.bin"),
+            out_path: dir.file("out.bin"),
+            tag_path: dir.file("tag.bin"),
+        };
+        assert_eq!(
+            run_ccm_command(true, &args),
+            Err(CliError::WrongLength {
+                what: "nonce",
+                expected: 16,
+                actual: 15,
+            })
+        );
+        assert!(!dir.file("out.bin").exists());
     }
 
     #[test]

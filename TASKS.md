@@ -520,6 +520,40 @@ resistance (SPA/DPA — explicitly out of scope per `SECURITY.md`/`CLAUDE.md` "M
       restructured: "## Results" (in-process) marked superseded/historical with a dated banner, not
       deleted; "## Binary-level (process) comparison" is now the single canonical section with
       Ryzen+Pi columns for every implementation, MB/s only.
+- [x] **T-103** **Adversarial-test coverage audit across every primitive, see `DECISIONS.md` D-64.**
+      User-requested 2026-07-25, directly prompted by D-63's finding that a real
+      nonce-authentication gap existed purely because a "does tampering get rejected" test was
+      simply absent. Surveyed every `tests/*.rs` file for tamper/wrong-key/reject coverage before
+      writing anything. Added: `wrong_key_is_rejected` to `kalyna_gcm`/`kalyna_gmac`/`kalyna_kw`/
+      `kalyna_cmac`/`kupyna_kmac` (each had tampered-message/tag coverage but not this), plus
+      `tampered_tag_is_rejected` to `kalyna_gcm` specifically (the current `crypto_secretbox`
+      construction, highest priority); `single_bit_change_produces_a_different_digest` to `kupyna`;
+      a new module-doc "Warning: never reuse the same key+IV pair" section plus
+      `reusing_key_and_iv_leaks_plaintext_xor` (pins the two-time-pad property directly) and
+      `different_key_produces_different_keystream` to `hazmat::strumok`/`tests/strumok.rs`;
+      `tampered_ciphertext_does_not_error_but_produces_garbage` to `kalyna_xts` (pins its
+      documented no-integrity-by-design property). `crypto_sign`/`hazmat::dstu4145` and
+      `crypto_secretbox` reviewed, already solid, no additions. Plain confidentiality-only block
+      modes (CBC/CFB/OFB/CTR/ECB) deliberately excluded - no tag, so no "reject tampering"
+      semantics exist to test. All 12 new tests passed on first run - this closes coverage gaps, no
+      bug found. Full workspace test/clippy/fmt all clean.
+- [x] **T-104** **"Fool" (misuse-resistance) test coverage audit, complementing T-103, see
+      `DECISIONS.md` D-65.** User-requested 2026-07-25, same day as T-103 - naive/incorrect *usage*
+      rather than active tampering. `advisor()` consulted before scoping (user explicitly suggested
+      this); its survey-first-and-check-type-signatures approach held up exactly. Library additions
+      to `kalyna_gcm`: `tag_length_out_of_range_is_rejected` (parity with `kalyna_gmac`, which
+      already had it), `all_zero_key_round_trips`. CLI additions to `uacrypt` (9 tests): wrong-length
+      key files on `encrypt`/`kalyna-ccm` → `WrongLength`; nonexistent/directory `--in` → `Io`, not a
+      panic; same-path `--in`/`--out` round-trips safely (read-before-write, confirmed not
+      incidental); never-sealed garbage on `decrypt` fails clean with no partial `--out`; empty-file
+      `hash` succeeds; `--iterations 0` behaves like `1`; wrong-length `--nonce` on `kalyna-ccm
+      decrypt` → `WrongLength`. **Finding, not a gap**: most `hazmat`-level "wrong length" misuse is
+      structurally foreclosed by fixed-size-array constructors (`[u8; N]`, not a slice) - recorded
+      in D-65 rather than tested, per the new `CLAUDE.md` rule below. All 11 new tests passed on
+      first run. `CLAUDE.md`'s "Test-first, always" bullet extended: every new primitive/command
+      now ships correctness + rejection (D-64) + misuse (D-65) tests by default, with the
+      type-signature-foreclosure and first-run-pass clauses spelled out so this doesn't read as a
+      contradiction of test-first later. Full workspace test/clippy/fmt all clean.
 
 ## A provisional Kalyna mode of operation - CCM (T-81), plus its nonce-strategy follow-up (T-82)
 
@@ -1589,12 +1623,21 @@ pass, matching D-39's own precedent.
 **Step 2 complete.** Next: Step 3 (the libsodium-shaped `crypto_*` frontend).
 
 **Step 3 - The libsodium-shaped `crypto_*` frontend over everything in `hazmat`**:
-1. `crypto_secretbox` → Kalyna-GCM internally (`Kalyna256_256Gcm`, keeps the 32-byte nonce),
-   drops the 255-byte cap and `MessageTooLong`. Inherits GCM's own provisional status (D-56).
-   Consequence for `uacrypt encrypt`/`decrypt`: an AEAD tag needs the full plaintext/ciphertext, so
-   true block-at-a-time disk streaming (D-42's standing policy) isn't possible here without a
-   separate chunked construction - document that limitation plainly rather than silently implying
-   unbounded memory use.
+1. **DONE 2026-07-25, see `DECISIONS.md` D-63.** `crypto_secretbox` migrated to Kalyna-GCM
+   internally (`Kalyna256_256Gcm`, keeps the 32-byte nonce), dropping the 255-byte cap and
+   `MessageTooLong` (`CliError::MessageTooLong` deleted from `uacrypt` too) entirely, not just
+   raising it. Inherits GCM's own provisional status (D-56). `uacrypt encrypt`/`decrypt` still read
+   `--in` whole into memory - documented plainly in `README.md`/`docs/dstu-crypto-project.md`/
+   `docs/release-readiness.md`, not silently implied as unbounded-memory streaming;
+   `crypto_secretstream` (T-40) remains the tracked follow-up for genuinely chunked I/O. A real
+   nonce-authentication gap was found and fixed during the migration (DSTU Kalyna-GCM's tag doesn't
+   cover the IV, unlike CCM's B0 block - `seal`/`open` now pass the nonce as `kalyna_gcm`'s internal
+   AAD to bind it into the tag) - see D-63's full write-up. Verified: full workspace test/clippy/fmt/
+   no_std build all clean, CLI-layer round-trip test for a >255-byte file added. **Scoped Miri run
+   on `crypto_secretbox` - DONE**: 11/11 passed, 0 UB, 1135.80s (~19 min) with `PROPTEST_CASES=8`
+   (T-100's own precedent; a first attempt at the default 256 cases was killed after ~40 CPU-minutes
+   with zero output - not stuck, genuinely just that slow under interpretation). **Step 3 item 1 is
+   now fully verified end to end, nothing outstanding.**
 2. `crypto_generichash`/`crypto_auth`/`crypto_kdf` - mostly a documentation reconciliation pass;
    decide whether a dedicated re-export module is needed for naming parity with
    `crypto_sign`/`crypto_secretbox`/`crypto_pwhash`, or a table entry suffices.
@@ -1614,3 +1657,31 @@ Verification at every step, no exceptions, unchanged from this session's establi
 T-100 lands - a Miri run that actually completes rather than times out. Each step gets a
 `DECISIONS.md` entry with citations and a `TASKS.md` status update. Commit after green; push only
 on explicit request.
+
+### RESUME HERE (state as of 2026-07-25, saved for a memory-clear/new-session handoff)
+
+**Step 3 item 1 (`crypto_secretbox` → Kalyna-GCM, D-63) is fully done and fully verified** -
+including the scoped Miri run (11/11, 0 UB, 1135.80s). Nothing outstanding on it.
+
+**Two unplanned, user-requested follow-on passes landed the same day, both fully done and
+verified** (not part of the original roadmap - inserted here because they touched the exact same
+migration and the user asked for them immediately after): **T-103** (adversarial/"attack" test
+coverage audit, `DECISIONS.md` D-64) and **T-104** (misuse/"fool" test coverage audit, `DECISIONS.md`
+D-65, `advisor()`-consulted). Both added tests across `kalyna_gcm`/`kalyna_gmac`/`kalyna_kw`/
+`kalyna_cmac`/`kupyna_kmac`/`kupyna`/`strumok`/`kalyna_xts`/`uacrypt`, all passing on first run, plus
+a new standing `CLAUDE.md` rule (extends "Test-first, always") requiring correctness + rejection +
+misuse tests by default for every future primitive/command. The full-workspace re-run after
+T-103/T-104's changes also completed clean (0 failed across every package).
+
+**Everything from this session's work (D-63, D-64, D-65, T-103, T-104) is now verified end to end -
+nothing left running, nothing left to check.**
+
+**Not yet done - the actual next steps**:
+- No commit has been made yet for any of this session's work. Per standing "commit only when the
+  user asks" (not "commit after green" from the Verification paragraph above, which describes what
+  a commit should contain once made, not a standing authorization to make one) - confirm with the
+  user before committing.
+- Step 3 items 2-5 (`crypto_generichash`/`crypto_auth`/`crypto_kdf` doc reconciliation;
+  `crypto_stream` Strumok wrapper; document KW as `hazmat`-only; confirm `crypto_kx`/`crypto_box`
+  stay hard-blocked) - not started.
+- Step 4 (T-17 crates.io publish, T-18 GitHub Releases) - not started, deliberately last.

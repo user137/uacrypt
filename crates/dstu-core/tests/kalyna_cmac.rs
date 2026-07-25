@@ -119,6 +119,21 @@ fn tampered_message_is_rejected() {
 }
 
 #[test]
+fn wrong_key_is_rejected() {
+    let case = &cases(include_str!("vectors/kalyna-cmac/128-128.json"))[0];
+    let mut key = [0u8; 16];
+    key.copy_from_slice(&case.key);
+    let mac = Kalyna128_128Cmac::mac(&key, &case.message);
+
+    let mut wrong_key = key;
+    wrong_key[0] ^= 0x01;
+    assert_eq!(
+        Kalyna128_128Cmac::verify(&wrong_key, &case.message, &mac),
+        Err(CmacError::TagMismatch)
+    );
+}
+
+#[test]
 fn empty_message_does_not_panic() {
     let key = [0u8; 16];
     let mac = Kalyna128_128Cmac::mac(&key, &[]);

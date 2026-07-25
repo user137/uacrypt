@@ -164,15 +164,18 @@ uacrypt decrypt --key key.bin --in sealed.bin --out message.bin
 uacrypt hash --in file.bin --out digest.bin
 ```
 
-**`encrypt`/`decrypt` handle messages up to 255 bytes only** — `dstu_core::crypto_secretbox`
-(`TASKS.md` T-37, `DECISIONS.md` D-51) is built over a Kalyna-CCM construction with a sourced
-255-byte cap (`DECISIONS.md` D-41); larger input is rejected with a clear error, never silently
-truncated. `--key` is a raw 32-byte file (`crypto_secretbox::SecretKey`'s size — no `uacrypt
-keygen` command exists yet, generate one via any 32-byte-CSPRNG source). `encrypt` draws a fresh
-random nonce internally on every call and embeds it in `--out`; there is no `--nonce` flag to
-supply or reuse by mistake. Larger files need `TASKS.md` T-40's `crypto_secretstream`, not built
-yet. **`hash` has no such limit** — it streams `--in` from disk in fixed-size chunks regardless of
-size, fixed to Kupyna-256 (32-byte digest, no `--variant` choice).
+**`encrypt`/`decrypt` have no message-length cap** — `dstu_core::crypto_secretbox`
+(`TASKS.md` T-37, `DECISIONS.md` D-51) migrated from a Kalyna-CCM construction (255-byte cap,
+`DECISIONS.md` D-41) to Kalyna-GCM (`DECISIONS.md` D-63), which encodes no length into itself.
+This does **not** mean unbounded-memory streaming, though: `--in` is still read whole into memory
+(an AEAD tag needs the full plaintext/ciphertext up front), so a large input file means a
+correspondingly large in-memory buffer — `TASKS.md` T-40's `crypto_secretstream` remains the
+tracked follow-up for genuinely chunked encryption, not built yet. `--key` is a raw 32-byte file
+(`crypto_secretbox::SecretKey`'s size — no `uacrypt keygen` command exists yet, generate one via
+any 32-byte-CSPRNG source). `encrypt` draws a fresh random nonce internally on every call and
+embeds it in `--out`; there is no `--nonce` flag to supply or reuse by mistake. **`hash` has no
+such limit either** — it streams `--in` from disk in fixed-size chunks regardless of size, fixed to
+Kupyna-256 (32-byte digest, no `--variant` choice).
 
 What exists below this level: `kalyna-block`, a single-block (no mode, no padding), `hazmat`-scoped
 command added for a binary-level performance comparison (`PERFORMANCE.md`, `DECISIONS.md` D-31):

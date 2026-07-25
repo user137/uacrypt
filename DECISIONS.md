@@ -3714,3 +3714,194 @@ under `small-tables` (D-35's stated verification bar for the resource-profile sp
 vectors plus differential-oracle harnesses - doesn't require either, matching D-39's own "Not
 done" line for the original `small-tables` implementation). Revisit only if a `small-tables`-specific
 regression is ever suspected, not proactively.
+
+## D-63: `crypto_secretbox` migrates from Kalyna-CCM to Kalyna-GCM, removing the 255-byte cap - roadmap Step 3 item 1
+
+`dstu_core::crypto_secretbox` (T-37, D-51) wrapped `hazmat::kalyna_ccm::Kalyna256_256Ccm`, whose
+`ccm_padd` header encodes plaintext/AAD length into a single byte each - a real 255-byte
+construction limit (D-41), always documented as an interim tradeoff pending a construction with no
+such cap. `hazmat::kalyna_gcm::Kalyna256_256Gcm` (D-56) now exists and encodes no length into
+itself at all, so the roadmap (user-approved 2026-07-24, "Roadmap to a genuinely complete product"
+Step 3 item 1) called for migrating onto it.
+
+**Construction**: `Kalyna256_256Gcm` - same 32-byte key and 32-byte nonce width as the previous
+`Kalyna256_256Ccm`, so `SecretKey`/`NONCE_LEN` are unchanged. Tag stays 16 bytes, truncated from
+GCM's own full 32-byte tag via the same prefix-comparison convention `hazmat::kalyna_gcm` already
+supports - not a new knob, matching the old tag length and libsodium's own `crypto_secretbox` tag
+size. Wire format is unchanged in shape: `nonce (32) || ciphertext (now unbounded) || tag (16)`.
+
+**Cap removed entirely, not just relaxed**: `SecretboxError::MessageTooLong` is deleted, not left
+dormant - GCM's construction has no such limit, and this project's own convention is not to leave a
+dead variant around pre-1.0. `crates/uacrypt/src/lib.rs`'s `CliError::MessageTooLong` (variant,
+`Display` arm, `From` impl arm) is deleted for the same reason. This does **not** make
+`uacrypt encrypt`/`decrypt` memory-bounded for large files: `--in` is still read whole via
+`std::fs::read` (unchanged code, D-42's chunking policy doesn't apply here since an AEAD tag needs
+the full plaintext/ciphertext up front under a single-shot construction) - a large input file now
+means a correspondingly large in-memory buffer, not a `MessageTooLong` rejection.
+`crypto_secretstream` (T-40) remains the separately-tracked, not-yet-started follow-up for a
+genuinely chunked construction; this migration does not attempt that.
+
+**A real nonce-authentication gap was found and fixed during this migration, not part of the
+original plan.** Unlike NIST AES-GCM (tag = `E_K(J0)`, `J0` IV-derived), DSTU Kalyna-GCM's own tag
+construction (D-56 divergence 3) is `E_K(accumulator XOR length_block)`, computed purely from AAD
+and ciphertext - the IV/nonce is never mixed into the tag at all, only into the keystream. Verified
+directly by reading `hazmat::kalyna_ccm::compute_tag` (its first CBC-MAC block copies the nonce in
+directly, `g1[..tmp].copy_from_slice(&nonce[..tmp])` - CCM genuinely does authenticate the nonce)
+against `hazmat::kalyna_gcm`'s tag computation (no nonce input at all). For `crypto_secretbox`'s
+self-contained `nonce || ciphertext || tag` wire format, an unauthenticated nonce means an attacker
+could flip bits in the transmitted nonce prefix and have `open` "succeed" against different,
+attacker-uncontrolled-but-unverified plaintext instead of failing closed - a genuine
+tamper-evidence regression versus the old CCM-based construction, caught by writing
+`tampered_nonce_is_rejected` during the migration (test-first caught it before it shipped, not a
+post-hoc audit finding). **Fix**: `seal`/`open` now pass the nonce itself as `kalyna_gcm`'s `aad`
+parameter internally (`cipher.encrypt(&nonce, &nonce, ...)` / `cipher.decrypt(&nonce, &nonce, ...)`)
+- binding it into the tag via the construction's own designed AAD-authentication mechanism.
+`crypto_secretbox`'s public API still exposes no caller-facing AAD parameter; this is purely an
+internal implementation detail. `hazmat::kalyna_gcm`'s own module doc gained a new "Warning: the
+tag does not cover `iv`" section, and `tests/kalyna_gcm.rs` gained a dedicated
+`tampered_iv_alone_does_not_fail_the_tag_check` test pinning the property directly at the hazmat
+layer, so future callers of that primitive are warned at the source, not left to rediscover this
+the same way.
+
+**Provenance**: inherits `hazmat::kalyna_gcm`'s own D-56 provisional status (dual-oracle-cited via
+UAPKI + Bouncy Castle vectors, not yet confirmed against the primary DSTU 7624:2014 text) -
+unchanged by this migration.
+
+**Verification**: `cargo test --workspace --all-features` clean (0 failures across every crate,
+including `crypto_secretbox.rs` 11/11 and `kalyna_gcm.rs` 15/15, the latter including the new
+nonce-tamper test). `cargo clippy --workspace --all-features -- -D warnings` and
+`cargo fmt --all -- --check` both clean. `cargo build -p dstu-core --no-default-features` (no_std)
+clean. A file larger than the old 255-byte cap round-trips through the real `run_secretbox_command`
+CLI dispatcher end to end (`run_secretbox_command_message_larger_than_the_old_255_byte_cap_round_trips`),
+proving the removed cap actually reaches the CLI layer, not just the core crate in isolation.
+Scoped `cargo +nightly miri test -p dstu-core --test crypto_secretbox` run and timed - **11/11
+passed, 0 UB, 1135.80s (~19 min)**, `PROPTEST_CASES=8` (T-100's own precedent; the default 256
+cases at up to 2048 bytes each was tried first, killed after ~40 CPU-minutes with zero output -
+not stuck, genuinely just that slow under interpretation, not worth burning further). Confirms GCM
+has no EC-ladder-class cost, unlike the DSTU 4145 suite that has caused CI's Miri job to time out
+(T-100/T-102) - `crypto_secretbox`'s own Miri run completes in real time, just slowly.
+
+**Docs updated**: `README.md`, `docs/dstu-crypto-project.md` (MVP-scope bullet, the
+"needs to be constructed" `crypto_secretbox` bullet, and its mapping-table row),
+`docs/release-readiness.md` (all `crypto_secretbox`/`crypto_secretstream`-related rows and
+narrative mentions), `CLAUDE.md`'s own running project-status paragraph.
+
+## D-64: Adversarial-test coverage audit across every primitive - user-requested, prompted directly by D-63's nonce-authentication gap
+
+D-63 found a real security-relevant gap (`crypto_secretbox`'s tag not covering the nonce) purely by
+noticing an *absent* test, not from a code walkthrough - prompting the direct question: where else
+might a "does this reject tampering" test simply not exist yet? Surveyed every file under
+`crates/dstu-core/tests/` for existing tamper/wrong-key/reject-style coverage (`grep` for
+`tamper|wrong_key|reject` test names, then a full test-name listing for each AEAD/MAC/signature
+file to catch differently-named equivalents) before writing anything, per this project's own
+"check what a fixed vector actually exercises, not just whether it passes" discipline (`CLAUDE.md`
+Agent discipline) applied one level up - to test *files*, not just individual vectors.
+
+**Findings and additions** (all new tests pass on first run, no bugs found - this closes coverage
+gaps, it does not fix a regression):
+
+- `hazmat::kalyna_gcm` (the current `crypto_secretbox` construction, highest-priority gap): had
+  `tampered_ciphertext_is_rejected`/`tampered_aad_is_rejected` but **no `tampered_tag_is_rejected`
+  and no `wrong_key_is_rejected`** - both added, matching `kalyna_ccm.rs`'s existing coverage shape
+  (which already had all five: ciphertext/tag/aad/nonce/wrong-key).
+- `hazmat::kalyna_gmac`, `hazmat::kalyna_kw`, `hazmat::kalyna_cmac`, `hazmat::kupyna_kmac`: each had
+  tampered-message/tampered-tag coverage but **no `wrong_key_is_rejected`** test (a MAC/key-wrap
+  verifying against a message it never touched with the right key is a distinct failure mode from
+  "the tag itself was flipped" - both need their own test). One added to each, following each
+  file's own existing helper/`Case`-struct conventions exactly (no new abstractions introduced).
+- `hazmat::kupyna` (hash, no reject/accept semantics to test the same way): added
+  `single_bit_change_produces_a_different_digest` - the cheapest sanity check that the
+  implementation isn't silently collapsing distinct inputs (a truncation/constant-folding-class
+  bug class the official vectors alone wouldn't necessarily catch, since they're a fixed small
+  set).
+- `hazmat::strumok`: **the module doc had no warning at all about key+IV reuse** - a real
+  documentation gap, not just a missing test, for the single most consequential misuse of any
+  stream cipher (the "two-time pad" break: `ciphertext_a XOR ciphertext_b` recovers
+  `plaintext_a XOR plaintext_b` with zero key material). Added a "Warning: never reuse the same
+  key+IV pair" module-doc section (mirroring `hazmat::kalyna_gcm`'s existing "tag does not cover
+  iv" warning pattern from D-56/D-63) plus a test (`reusing_key_and_iv_leaks_plaintext_xor`)
+  demonstrating the XOR-recovery property directly, and a `different_key_produces_different_keystream`
+  sanity check.
+- `hazmat::kalyna_xts`: had no tamper test at all. Unlike every AEAD mode in this crate, XTS is
+  confidentiality-only *by design* (disk-sector integrity is deliberately left to the filesystem
+  layer, already documented in `docs/release-readiness.md`'s "Full-disk encryption" row) - added
+  `tampered_ciphertext_does_not_error_but_produces_garbage`, pinning that tampering silently
+  produces wrong plaintext rather than erroring, so this documented design choice doesn't quietly
+  regress into looking like a bug (or get "fixed" into erroring) without the test flagging it.
+- `crypto_sign`/`hazmat::dstu4145` and `crypto_secretbox`: reviewed, already had solid coverage
+  (`tampered_message_is_rejected`, `tampered_signature_is_rejected`, `wrong_verifying_key_is_rejected`,
+  scalar-range edge cases for signatures; the full nonce/ciphertext/tag/wrong-key set for
+  secretbox, from D-63) - no additions needed.
+- Plain confidentiality-only block modes with no authentication
+  (`kalyna_cbc`/`kalyna_cfb`/`kalyna_ofb`/`kalyna_ctr`/`kalyna_ecb`) deliberately excluded from this
+  pass: there is no "reject tampering" semantics to test for a mode with no tag by design, and
+  their existing length-validation tests already cover the only real reject-path they have.
+
+**Verification**: `cargo test --workspace --all-features` clean, `cargo clippy --workspace
+--all-features -- -D warnings` clean (caught and fixed one `clippy::doc_markdown` hit on the new
+Strumok warning - `XOR`-ed needed backticks), `cargo fmt --all -- --check` clean.
+
+## D-65: "Fool" (misuse-resistance) test coverage audit, complementing D-64's "attack" pass - `advisor()` consulted before scoping
+
+User-requested follow-up to D-64: same class of question ("where else might a real gap be hiding,
+found only by an absent test"), but for naive/incorrect *usage* rather than active tampering -
+wrong-length key files, nonexistent/directory input paths, same-path in/out, degenerate-but-legal
+input, decrypting never-sealed garbage. `advisor()` consulted before writing anything (per this
+project's own "call advisor before substantive work" discipline) and its scoping held up
+end-to-end: survey first against the existing 36-test `uacrypt` inventory to avoid duplicating
+`parse_*_rejects_unknown_flag`/`parse_*_requires_*` coverage that already existed; most
+library-level misuse is structurally foreclosed by fixed-size-array type signatures, not a test gap
+(see below); and the constructive suggestions (in/out same-path, never-sealed garbage, empty-file
+hash, `--iterations 0`, GCM tag-length-out-of-range parity with `kalyna_gmac`) were exactly the set
+implemented, each verified as a genuine, previously-untested runtime path before writing a test for
+it.
+
+**Structurally foreclosed misuse categories - recorded here per the new `CLAUDE.md` rule, not
+tested**: every direct `hazmat` constructor/method (`SecretKey::from_bytes`, `Kalyna*Gcm::new`,
+every mode's `encrypt`/`decrypt`/`new`, every IV/nonce parameter) takes a fixed-size `[u8; N]` array,
+not a slice - "wrong key/nonce/IV length" at the `hazmat` API surface is a compile error, not a
+runtime path, for every one of these. A test asserting this would only prove the Rust type checker
+works, which is noise, not coverage. This is exactly why "wrong length" only becomes a genuine
+runtime misuse case at the `uacrypt` CLI layer (which reads raw bytes from a file into a `Vec<u8>`
+first, losing the compile-time guarantee) - the CLI-layer tests below are not redundant with this
+finding, they cover a genuinely different boundary.
+
+**Library-level additions** (`hazmat::kalyna_gcm`, the current `crypto_secretbox` construction,
+same priority ordering as D-64):
+- `tag_length_out_of_range_is_rejected` - `kalyna_gmac.rs` already had this; the GCM counterpart
+  (identical `8..=block_bytes` bound in `decrypt`) only had a *buffer*-length test
+  (`mismatched_output_buffer_length_is_rejected`), not a *tag*-length one - a real parity gap.
+- `all_zero_key_round_trips` - the "I'll test with an obviously-fake key" mistake must still work
+  correctly, not hit some special-cased path; there is no (and should be no) key-strength
+  validation in this construction, so a trivial-looking key must round-trip like any other.
+
+**CLI-level additions** (`crates/uacrypt/src/lib.rs`'s existing in-process `run_*` test
+convention - no new process-spawning harness introduced, matching precedent):
+- `run_secretbox_command_wrong_key_length_is_rejected` / `run_ccm_command_wrong_key_length_is_rejected`
+  - a 31/15-byte key file → `CliError::WrongLength`, `--out` never created.
+- `run_secretbox_command_nonexistent_input_is_io_error_not_panic` /
+  `_directory_as_input_is_io_error_not_panic` - typo'd path and directory-as-file both a clean
+  `CliError::Io`, confirmed not a panic.
+- `run_secretbox_command_in_and_out_same_path_round_trips` - encrypting/decrypting "in place" (a
+  plausible scripting mistake) works correctly because `--in` is read fully into memory before
+  `--out` is ever written - safe by construction, now pinned so it stays that way rather than
+  relying on that being incidental.
+- `run_secretbox_command_decrypt_rejects_never_sealed_garbage_without_writing_out` - random bytes
+  that were never real `seal` output (not a tampered-but-real sealed file, a distinct code path
+  from the existing tampered-ciphertext test) still fail cleanly with no partial `--out` write.
+- `run_hash_command_empty_file_produces_the_empty_input_digest` - an empty file is degenerate but
+  legal input and must succeed, not error.
+- `run_digest_command_iterations_zero_behaves_like_one` - pins the existing
+  `args.iterations.max(1)` clamp (already-correct code, not a fix) so `--iterations 0` demonstrably
+  behaves like `1` rather than silently doing nothing.
+- `run_ccm_command_wrong_nonce_length_on_decrypt_is_rejected` - a hand-edited/wrong-variant `--nonce`
+  file on decrypt is `CliError::WrongLength`, not a panic or silent truncation.
+
+All 11 new tests (2 library, 9 CLI) passed on first run - coverage additions, no bug found, same as
+D-64. `CLAUDE.md`'s "Test-first, always" bullet extended with the three-category rule (correctness/
+rejection/misuse) plus the type-signature-foreclosure and first-run-pass clauses above, per the
+user's explicit request that this become a standing default for future primitives/commands, not a
+one-off pass.
+
+**Verification**: `cargo test --workspace --all-features`, `cargo clippy --workspace
+--all-features -- -D warnings`, and `cargo fmt --all -- --check` all clean.

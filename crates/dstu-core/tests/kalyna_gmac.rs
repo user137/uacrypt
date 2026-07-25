@@ -123,6 +123,19 @@ fn tampered_message_is_rejected() {
 }
 
 #[test]
+fn wrong_key_is_rejected() {
+    let case = &cases(include_str!("vectors/kalyna-gmac/128-256.json"))[0];
+    let mut wrong_key = [0u8; 32];
+    wrong_key.copy_from_slice(&case.key);
+    wrong_key[0] ^= 0x01;
+
+    assert_eq!(
+        Kalyna128_256Gmac::verify(&wrong_key, &case.message, &case.tag),
+        Err(GmacError::TagMismatch)
+    );
+}
+
+#[test]
 fn tag_length_out_of_range_is_rejected() {
     let case = &cases(include_str!("vectors/kalyna-gmac/128-256.json"))[0];
     let mut key = [0u8; 32];

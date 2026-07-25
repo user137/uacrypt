@@ -30,28 +30,32 @@ against this working hypothesis" situation:
   sources above (mode #8, "Вироблення імітовставки і гамування").
 - Strumok's entire vector set is still UAPKI-attributed, not confirmed against the paid DSTU
   8845:2019 text (D-15) — a separate, unrelated gap on a different algorithm, unaffected by D-05.
-- **`crypto_secretbox` (T-37) is done, see `DECISIONS.md` D-51** — a single fixed construction
-  (`hazmat::kalyna_ccm::Kalyna256_256Ccm`, not all five variants, per D-47's "delete the knob"
-  criterion), internally-generated nonce, combined `nonce || ciphertext || tag` output, no AAD
-  parameter. **Still bounded to ≤255 bytes** (inherits `hazmat::kalyna_ccm`'s D-41 cap — `seal`
-  errors rather than truncating) and still provisional (inherits D-41's not-primary-confirmed
-  status) — this closes the "no wrapper exists" gap, not the underlying primary-text or
-  message-length gaps. Per D-47 and D-05's own ten-mode breakdown, only CCM (done, this is what
-  `crypto_secretbox` wraps), GCM (**now built**, D-56, updated 2026-07-25 - a stale "not built, needs new GF(2^128) field
-  arithmetic" claim here is corrected, that arithmetic was built for it), and KW (**now built**,
-  D-55) provide confidentiality+integrity and are eligible as its
-  construction. ECB/CTR/CFB/CBC/OFB/XTS (confidentiality-only) and bare CMAC/GMAC (integrity-only)
-  — all real, standard-defined modes — must never become a public `crypto_secretbox`/`uacrypt
-  encrypt`/`decrypt` entry point on their own.
+- **`crypto_secretbox` (T-37) is done, see `DECISIONS.md` D-51** — a single fixed construction,
+  internally-generated nonce, combined `nonce || ciphertext || tag` output, no caller-facing AAD
+  parameter. **Migrated 2026-07-25 from Kalyna-CCM to Kalyna-GCM** (roadmap Step 3 item 1,
+  `DECISIONS.md` D-63) — `hazmat::kalyna_gcm::Kalyna256_256Gcm`, not all five variants, per D-47's
+  "delete the knob" criterion. **The 255-byte cap is gone entirely, not just raised**
+  (`SecretboxError::MessageTooLong` was removed, not left dormant) — GCM encodes no length into its
+  construction the way CCM's header did. This does not make `uacrypt encrypt`/`decrypt` streaming:
+  `--in` is still read whole into memory, so a large file now means a correspondingly large buffer
+  rather than a rejection. Still provisional (inherits `hazmat::kalyna_gcm`'s D-56
+  not-primary-confirmed status). One security-relevant detail the migration surfaced: unlike CCM,
+  DSTU Kalyna-GCM's tag does not cover the IV/nonce at all (D-56 divergence 3) — for a
+  self-contained `nonce || ciphertext || tag` blob that would have silently regressed
+  tamper-evidence on the nonce prefix, so `seal`/`open` now pass the nonce itself as `kalyna_gcm`'s
+  AAD internally to bind it into the tag (still no caller-facing AAD parameter). Caught by a test
+  during the migration, not assumed — see D-63.
 - `crypto_secretstream` (T-40): the D-05-blocking concern (an ad hoc Strumok+KMAC EtM gap-fill
   would silently resolve D-05) no longer applies verbatim now that D-05 has an adopted answer.
   **Updated 2026-07-25 (T-99)**: `hazmat::kalyna_gcm` now exists (D-56) and, unlike CCM, encodes no
-  length cap into its construction - so the blocker is no longer "the primitive doesn't exist," it's
-  specifically that nothing has wired a `crypto_secretstream` (or a GCM-based `crypto_secretbox`)
-  wrapper around it yet. `hazmat::kalyna_ccm`'s own 255-byte plaintext/AAD cap (D-41) remains real
-  and unchanged, but it's `crypto_secretbox`'s current construction's limit, not evidence that a
-  GCM-based alternative is unbuildable. Still not started - this is the roadmap's Step 3 item 1
-  (`TASKS.md` "Roadmap to a genuinely complete product"), not yet reached.
+  length cap into its construction — and as of the same day, `crypto_secretbox` itself has been
+  migrated onto it (D-63), removing the 255-byte cap at the `crypto_secretbox`/`uacrypt`
+  `encrypt`/`decrypt` layer. What remains open is genuinely chunked/streaming encryption — reading
+  and writing in fixed-size blocks rather than the whole file at once — since an AEAD tag still
+  needs the full plaintext/ciphertext up front under the current single-shot construction.
+  `hazmat::kalyna_ccm`'s own 255-byte plaintext/AAD cap (D-41) is unaffected and still real, but
+  `crypto_secretbox` no longer uses that construction. `crypto_secretstream` itself — a distinct,
+  genuinely chunked wrapper — is still not started.
 
 A release billed as "current, safe modes" still cannot honestly ship on top of an
 assumption-adopted, non-primary-confirmed construction without saying so exactly as loudly as
@@ -123,16 +127,17 @@ genuinely still have no high-level wrapper, only their `hazmat` forms:
 | `crypto_stream` | Strumok | hazmat done (provisional vectors); no high-level wrapper |
 | `crypto_sign` | DSTU 4145 | **Done** (T-48, D-46) — hazmat (m=163 only) plus a high-level `dstu_core::crypto_sign` wrapper; deterministic (Kupyna-KMAC-derived, RFC-6979-style) nonce, not caller-random, eliminating nonce-reuse key recovery from the wrapper's surface. Public-key encoding is a plain uncompressed 42-byte form, explicitly not the DSTU §6.9/§6.10 compressed format |
 | `crypto_box` | DSTU 9041 | **Hard-blocked** — zero source material exists for DSTU 9041 anywhere (no paper, no oracle, no pseudocode); cannot start (T-46) |
-| `crypto_secretbox` | Kalyna-CCM, provisionally | **Done** (T-37, D-51) — single fixed `Kalyna256_256Ccm` construction, internal nonce, combined output, no AAD; still ≤255-byte-bounded and not primary-text-confirmed |
+| `crypto_secretbox` | Kalyna-GCM, provisionally | **Done** (T-37, D-51), **migrated 2026-07-25 from Kalyna-CCM to Kalyna-GCM** (roadmap Step 3 item 1, D-63) — single fixed `Kalyna256_256Gcm` construction, internal nonce, combined output, no caller-facing AAD (nonce passed as AAD internally to bind it into the tag, D-63); no message-length cap, still not primary-text-confirmed |
 | `crypto_auth`/`crypto_onetimeauth` | Kupyna-based KMAC | **Done** (T-38, D-44) — provisional pending the primary text, but dual-oracle with both constructions read |
 | `crypto_kdf` | Kupyna-based KDF (libsodium `crypto_kdf`-shaped, not HKDF) | **Done** (T-39, D-45) — no DSTU standard or reference implementation exists for this at all, so unlike every other "provisional" row above, there is no oracle vector, ever; verification is determinism + distinctness property tests only |
 | `crypto_kx` | DH on the DSTU 4145/9041 curve | Not started (T-47); DSTU 9041 side hard-blocked |
-| `crypto_secretstream` | Chunked authenticated encryption, Kalyna-alone | D-05's blocker resolved 2026-07-24 (T-40). **Updated 2026-07-25 (T-99)**: `hazmat::kalyna_gcm` now exists (D-56) and has no length cap, unlike `kalyna_ccm` (255-byte cap, D-41) — the blocker is now "no wrapper built yet" (roadmap Step 3 item 1), not "no eligible primitive exists" |
+| `crypto_secretstream` | Chunked authenticated encryption, Kalyna-alone | D-05's blocker resolved 2026-07-24 (T-40). **Updated 2026-07-25 (T-99/D-63)**: `hazmat::kalyna_gcm` now exists (D-56) and has no length cap, unlike `kalyna_ccm` (255-byte cap, D-41) — and `crypto_secretbox` itself is now built on it (D-63), removing the 255-byte cap at that layer. What remains for this row specifically is genuinely chunked/streaming encryption (fixed-size blocks rather than whole-file-in-memory), not yet built |
 | `crypto_pwhash` | Not a DSTU question — plain Argon2id | **Done** (T-71, D-49/D-50) — over the `argon2` crate, dedicated `pwhash` feature (off by default, not folded into `std`); `Strength` presets mirror libsodium's own `OPSLIMIT`/`MEMLIMIT_*` constants exactly |
 | `randombytes` | Not a DSTU question — OS CSPRNG via `getrandom` | **Done** (T-72, D-48) — `dstu_core::randombytes::randombytes_buf`, `std`-gated over an optional `getrandom` dependency; a plain function, deliberately not a generic `CryptoRng` trait since nothing in this crate consumes one yet |
 
 `crypto_box`/`crypto_kx`/`crypto_secretstream` remain empty or blocked — `crypto_secretbox` is now
-done too (T-37, D-51), but ≤255-byte-bounded and provisional. The "functional copy of libsodium"
+done too (T-37, D-51/D-63), no message-length cap since the Kalyna-GCM migration, but still
+provisional. The "functional copy of libsodium"
 goal has real algorithm coverage (`crypto_sign`/`crypto_auth`/`crypto_kdf`/`crypto_secretbox` done)
 but is not yet an API surface a libsodium user would recognize as complete.
 
@@ -150,8 +155,8 @@ it's one of the combined ones).
 |---|---|---|---|---|---|
 | Radio/telemetry, small packets (walkie-talkie, sensor commands) | AEAD on a short message (< 255 bytes) | Kalyna-**CCM** (mode #8) | Yes | **Done** (`hazmat::kalyna_ccm`) | not needed |
 | Streaming audio, confidentiality only, no per-frame auth | Low-latency keystream | Strumok | No — confidentiality-only by itself | Done, but no integrity | Wrap each frame in Kalyna-CCM instead of bare Strumok if integrity is required |
-| Encrypt one message ≤ 255 bytes | `crypto_secretbox` equivalent | Kalyna-CCM | Yes | **Done** (`dstu_core::crypto_secretbox`, T-37, D-51) | not needed |
-| Encrypt a large file / continuous stream (> 255 bytes at once) | Chunked AEAD | GCM (#7) | Yes | `hazmat::kalyna_gcm` **done** (D-56), no `crypto_secretstream`/`crypto_secretbox` wrapper yet (T-40, roadmap Step 3 item 1) | not needed once wrapped |
+| Encrypt one message, any size | `crypto_secretbox` equivalent | Kalyna-GCM | Yes | **Done** (`dstu_core::crypto_secretbox`, T-37, D-51, migrated to GCM 2026-07-25, D-63 — no length cap) | not needed |
+| Encrypt a large file / continuous stream, without buffering it all in memory | Chunked AEAD | GCM (#7) | Yes | `hazmat::kalyna_gcm` **done** (D-56); `crypto_secretbox` now uses it (D-63) but still reads/writes the whole file at once — a genuinely chunked `crypto_secretstream` wrapper (T-40) is not built yet | not needed once wrapped |
 | Full-disk encryption (random-access sectors) | Disk-mode cipher | XTS (#9) | No, by design — integrity is deliberately left to the filesystem layer, a recognized special case, not a gap | **Done** (`hazmat::kalyna_xts`, T-96/D-58) | None needed — this is the one standard case where a non-AEAD mode is the *correct* choice, not a compromise |
 | TLS-style record layer (browser, high throughput) | Per-record chunked AEAD | Same gap as the large-file row | Yes | Same as the large-file row — `hazmat::kalyna_gcm` done, no high-level wrapper yet | not needed once wrapped |
 | Key exchange / handshake (ECDHE-equivalent) | Key agreement | DSTU 9041 (`crypto_kx`) | No mode exists at all | **Hard-blocked** — zero source material (no paper, oracle, or pseudocode, `TASKS.md` T-46/T-47) | **No safe DSTU replacement exists.** The only realistic path is a non-DSTU primitive (e.g. X25519) under the same "no homegrown primitive where DSTU has a real gap" precedent as Argon2id (D-03) — an explicit scope decision for the project owner, not an engineering task |
@@ -162,13 +167,15 @@ it's one of the combined ones).
 | Key wrapping (envelope encryption) | Key wrap | Kalyna-**KW** (mode #10) | Yes | **Done** (`hazmat::kalyna_kw`, D-55) — `hazmat`-only, libsodium has no direct equivalent to wrap at the high level (roadmap Step 3 item 4) | not needed |
 | Nonces, salts, ephemeral values | CSPRNG | `randombytes` | Yes | **Done** | not needed |
 
-**Bottom line, updated 2026-07-25 (T-99)**: for message-level and small-packet use cases (radio, API
-auth, signatures, KDF, password storage, and now ≤255-byte secretbox messages, T-37/D-51) the
-safe-modes-only constraint is already fully sufficient — wrapper code exists. For bulk/streaming use
-cases (large files, TLS-style record layers), the underlying gap has narrowed from "no eligible
-primitive" to "no high-level wrapper" — `hazmat::kalyna_gcm` (D-56) now exists and is eligible, it
-just isn't wired into a `crypto_secretstream`/GCM-based `crypto_secretbox` yet (roadmap Step 3 item
-1). **The one use case with no safe DSTU answer at all is key exchange** (`crypto_kx`/DSTU 9041) —
+**Bottom line, updated 2026-07-25 (T-99/D-63)**: for message-level and small-packet use cases
+(radio, API auth, signatures, KDF, password storage, and now unbounded-size secretbox messages,
+T-37/D-51/D-63) the safe-modes-only constraint is already fully sufficient — wrapper code exists.
+For bulk/streaming use cases (large files, TLS-style record layers), the underlying gap has
+narrowed further: `hazmat::kalyna_gcm` (D-56) now exists and `crypto_secretbox` itself is built on
+it (D-63, roadmap Step 3 item 1, done), so there's no more length cap at that layer — what remains
+is genuinely chunked/streaming I/O (fixed-size blocks rather than the whole file in memory), which
+needs a distinct `crypto_secretstream` construction (T-40), not yet built. **The one use case with
+no safe DSTU answer at all is key exchange** (`crypto_kx`/DSTU 9041) —
 this is a real scope boundary, not something "safe modes only" can route around, since there is no
 DSTU-native mode of any kind to choose from, safe or otherwise.
 
@@ -176,10 +183,12 @@ DSTU-native mode of any kind to choose from, safe or otherwise.
 
 - **T-16 is done, see `DECISIONS.md` D-52**: `uacrypt encrypt`/`decrypt`/`hash` are real top-level
   commands now, over `dstu_core::crypto_secretbox` (`encrypt`/`decrypt`) and Kupyna-256 (`hash`).
-  **`encrypt`/`decrypt` inherit `crypto_secretbox`'s 255-byte cap** — a loud error, never silent
-  truncation, an explicit user decision over deferring to `crypto_secretstream` (T-40). `hash` has
-  no such limit. `kalyna-block`/`kalyna-ccm`/`kupyna-digest`/`strumok-crypt` remain as the
-  hazmat-scoped, multi-variant tools underneath, unchanged.
+  **`encrypt`/`decrypt` no longer have a message-length cap**, since `crypto_secretbox`'s migration
+  to Kalyna-GCM (D-63) removed it — `--in` is still read whole into memory, though (unchanged code),
+  so a large file means a correspondingly large in-memory buffer, not a rejection; genuinely
+  chunked I/O is still `crypto_secretstream`'s (T-40) job, not built yet. `hash` has no length
+  limit either, and streams from disk already. `kalyna-block`/`kalyna-ccm`/`kupyna-digest`/
+  `strumok-crypt` remain as the hazmat-scoped, multi-variant tools underneath, unchanged.
 - **T-17**: `dstu-core` not published to crates.io. Now unblocked mechanically (D-43's version bump),
   but publishing a `0.1.0` that is honest about D-05 (adopted on assumption, not primary-confirmed)/
   D-15/D-41's provisional status is a judgment call for the project owner, not an engineering
@@ -209,20 +218,21 @@ In rough dependency order:
    Wikipedia's independently-sourced ten-mode table), still not a reading of the priced primary
    DSTU 7624:2014 text. Acquiring that text (or another authoritative source) and confirming or
    revising against it remains open and would upgrade this from "assumption" to "confirmed" —
-   `crypto_secretbox` (T-37) is now built against it (D-51), inheriting the same provisional
-   status, not a resolution of it.
+   `crypto_secretbox` (T-37, migrated to Kalyna-GCM 2026-07-25 by D-63) is built against it,
+   inheriting the same provisional status, not a resolution of it.
 2. **Close Strumok's provenance gap (D-15)**, if the paid DSTU 8845:2019 text becomes available —
    otherwise, the release must state "Strumok vectors are UAPKI-attributed, not primary-confirmed"
    as prominently as the README banner now states the pre-release status generally.
 3. **Build the missing constructions**: `crypto_auth` (T-38, D-44), `crypto_kdf` (T-39, D-45), and
-   `crypto_secretbox` (T-37, D-51) all done, none blocked on external material — the Kalyna-CCM
+   `crypto_secretbox` (T-37, D-51) all done, none blocked on external material — the Kalyna-alone
    working hypothesis (only CCM/GCM/KW eligible, per D-47, see the headline finding) is what
-   `crypto_secretbox` is built against, inheriting its provisional status and 255-byte cap.
-   **Updated 2026-07-25 (T-99)**: `hazmat::kalyna_gcm` (D-56) and `hazmat::kalyna_kw` (D-55) - the
-   two constructions this step originally meant by "missing" for `crypto_secretstream` - are both
-   now built too, at the `hazmat` level. `crypto_secretstream` (T-40) itself is still not started -
-   the remaining blocker is "no wrapper wired to GCM yet" (roadmap Step 3 item 1), not "no eligible
-   primitive exists."
+   `crypto_secretbox` is built against, inheriting its provisional status.
+   **Updated 2026-07-25 (T-99/D-63)**: `hazmat::kalyna_gcm` (D-56) and `hazmat::kalyna_kw` (D-55) -
+   the two constructions this step originally meant by "missing" for `crypto_secretstream` - are
+   both built at the `hazmat` level, and `crypto_secretbox` itself has now migrated onto
+   `kalyna_gcm` (roadmap Step 3 item 1, D-63), removing its 255-byte cap entirely.
+   `crypto_secretstream` (T-40) itself is still not started - the remaining blocker is "no
+   genuinely chunked wrapper exists," not "no eligible primitive exists."
 4. **Build the high-level layer** (D-09's second layer) over every `hazmat` primitive that's ready —
    `crypto_sign` (step 5) is the first module built there. `crypto_auth`/`crypto_kdf` (step 3) are
    done too - a stale "don't have high-level wrappers yet either" claim here is corrected 2026-07-25

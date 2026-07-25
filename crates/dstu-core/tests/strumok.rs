@@ -174,3 +174,44 @@ macro_rules! xor_involution_proptest {
 
 xor_involution_proptest!(strumok_256_apply_keystream_is_involution, Strumok256, 32);
 xor_involution_proptest!(strumok_512_apply_keystream_is_involution, Strumok512, 64);
+
+#[test]
+fn different_key_produces_different_keystream() {
+    let iv = [0x24u8; 32];
+    let mut buf_a = [0u8; 64];
+    let mut buf_b = [0u8; 64];
+    Strumok256::new(&[0x11u8; 32], &iv).apply_keystream(&mut buf_a);
+    Strumok256::new(&[0x22u8; 32], &iv).apply_keystream(&mut buf_b);
+    assert_ne!(buf_a, buf_b);
+}
+
+/// Pins `hazmat::strumok`'s module doc "Warning: never reuse the same key+IV pair" directly - not
+/// a bug, the defining weakness of every stream cipher used this way. Reusing key+IV across two
+/// messages must let `ciphertext_a XOR ciphertext_b` recover `plaintext_a XOR plaintext_b` with no
+/// key material at all. If this test ever starts failing, the module doc's warning is stale, not
+/// fixed - update the doc, don't just delete this test.
+#[test]
+fn reusing_key_and_iv_leaks_plaintext_xor() {
+    let key = [0x77u8; 32];
+    let iv = [0x24u8; 32];
+    let plaintext_a = b"attack at dawn!!".to_vec();
+    let plaintext_b = b"defend at dusk!!".to_vec();
+    assert_eq!(plaintext_a.len(), plaintext_b.len());
+
+    let mut ciphertext_a = plaintext_a.clone();
+    Strumok256::new(&key, &iv).apply_keystream(&mut ciphertext_a);
+    let mut ciphertext_b = plaintext_b.clone();
+    Strumok256::new(&key, &iv).apply_keystream(&mut ciphertext_b);
+
+    let ciphertext_xor: Vec<u8> = ciphertext_a
+        .iter()
+        .zip(&ciphertext_b)
+        .map(|(a, b)| a ^ b)
+        .collect();
+    let plaintext_xor: Vec<u8> = plaintext_a
+        .iter()
+        .zip(&plaintext_b)
+        .map(|(a, b)| a ^ b)
+        .collect();
+    assert_eq!(ciphertext_xor, plaintext_xor);
+}

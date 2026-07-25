@@ -95,6 +95,18 @@ fn wrong_key_length_is_rejected() {
 }
 
 #[test]
+fn wrong_key_is_rejected() {
+    let case = &cases(include_str!("vectors/kupyna-kmac/kmac-256.json"))[0];
+    let mut wrong_key = case.key.clone();
+    wrong_key[0] ^= 0x01;
+    let mac = Kupyna256Kmac::mac(&case.key, &case.message).unwrap();
+    assert_eq!(
+        Kupyna256Kmac::verify(&wrong_key, &case.message, &mac),
+        Err(KmacError::TagMismatch)
+    );
+}
+
+#[test]
 fn tampered_mac_is_rejected() {
     let case = &cases(include_str!("vectors/kupyna-kmac/kmac-256.json"))[0];
     let mut mac = Kupyna256Kmac::mac(&case.key, &case.message).unwrap();

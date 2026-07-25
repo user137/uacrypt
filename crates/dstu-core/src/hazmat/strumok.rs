@@ -37,6 +37,16 @@
 //! Only raw keystream generation/XOR is provided here - no key/IV management beyond what
 //! `Init` (Section 3) requires, no higher-level nonce or AEAD construction (that is
 //! `crypto_stream`'s job, see `docs/dstu-crypto-project.md` "Concrete API shape").
+//!
+//! # Warning: never reuse the same key+IV pair for two different messages
+//!
+//! This is inherent to every stream cipher, not a bug here: two messages `XOR`-ed with the *same*
+//! keystream (same key, same IV) let an attacker recover `plaintext_a XOR plaintext_b` directly
+//! from `ciphertext_a XOR ciphertext_b`, with no key material needed at all (the classic "two-time
+//! pad" break). `apply_keystream`/`Strumok256`/`Strumok512` have no state to detect or prevent
+//! this - a fresh IV per message is entirely the caller's responsibility. See
+//! `tests/strumok.rs`'s `reusing_key_and_iv_leaks_plaintext_xor` for the property pinned directly,
+//! the same pattern `hazmat::kalyna_gcm`'s nonce-coverage warning uses (D-56/D-63).
 
 use zeroize::{Zeroize, ZeroizeOnDrop};
 

@@ -25,10 +25,11 @@ implementation within a minute, without hassle — in the spirit of
 - A single CLI binary on top of the core (`uacrypt`, `DECISIONS.md` D-36), with
   subcommands like `uacrypt encrypt --key ... --in file --out file` — mode,
   nonce/IV, etc. are hardcoded so there's nothing for the user to
-  misconfigure. **Built** (`TASKS.md` T-16, `DECISIONS.md` D-52) — currently
-  bounded to ≤255-byte messages (inherited from `crypto_secretbox`'s
-  Kalyna-CCM construction, D-51/D-41), not arbitrary-length files yet;
-  `crypto_secretstream` (T-40) is the tracked follow-up.
+  misconfigure. **Built** (`TASKS.md` T-16, `DECISIONS.md` D-52) — no message-
+  length cap since `crypto_secretbox` migrated to Kalyna-GCM (D-63), but `--in`
+  is still read whole into memory (an AEAD tag needs the full
+  plaintext/ciphertext up front), so this is not yet block-at-a-time disk
+  streaming; `crypto_secretstream` (T-40) is the tracked follow-up for that.
 - Publish the core to crates.io.
 - Prebuilt binaries for Windows/Linux via GitHub Releases (not "clone and
   build it yourself").
@@ -111,15 +112,18 @@ designed, not a ready-made primitive from the standard.
 a missing API wrapper):**
 
 - `crypto_secretbox` (symmetric AEAD) → **Done** (T-37, `DECISIONS.md` D-51),
-  **provisionally**, over Kalyna-alone CCM (`hazmat::kalyna_ccm::Kalyna256_256Ccm`
-  specifically — a single fixed variant, not all five — `DECISIONS.md` D-41/D-47),
-  not the encrypt-then-MAC construction originally described here. Inherits
-  `hazmat::kalyna_ccm`'s own not-primary-text-confirmed status (D-05's latest
-  revision) and its 255-byte message cap — `dstu_core::crypto_secretbox::seal`
-  errors rather than truncating past that limit. The original encrypt-then-MAC
-  framing (Kalyna in an encryption mode + a separate Kupyna-based MAC, different
-  keys) remains a live alternative if the primary text ends up requiring it; not
-  chosen over CCM for any reason beyond "no primary text yet to decide between
+  **provisionally**, over Kalyna-alone GCM (`hazmat::kalyna_gcm::Kalyna256_256Gcm`
+  specifically — a single fixed variant, not all five — `DECISIONS.md`
+  D-51/D-47), not the encrypt-then-MAC construction originally described here.
+  Migrated from an earlier Kalyna-CCM construction (255-byte cap, D-41) to
+  Kalyna-GCM 2026-07-25 (roadmap Step 3 item 1, `DECISIONS.md` D-63), which
+  removes that cap entirely — `dstu_core::crypto_secretbox::seal` no longer has
+  a `MessageTooLong` error at all. Inherits `hazmat::kalyna_gcm`'s own
+  not-primary-text-confirmed status (D-56, dual-oracle-cited via UAPKI + Bouncy
+  Castle vectors in the meantime). The original encrypt-then-MAC framing
+  (Kalyna in an encryption mode + a separate Kupyna-based MAC, different keys)
+  remains a live alternative if the primary text ends up requiring it; not
+  chosen over GCM for any reason beyond "no primary text yet to decide between
   them."
 - `crypto_auth` / `crypto_onetimeauth` (MAC) → HMAC based on Kupyna, or a
   CMAC-like mode of Kalyna itself (the standard has message-authentication
@@ -180,7 +184,7 @@ Module-by-module status (libsodium name → `dstu_core` module → status):
 | `hazmat::kalyna_ccm` (mode of operation, not directly libsodium-mapped) | `hazmat::kalyna_ccm` (all 5 variants) | **Implemented, provisional** — Kalyna-alone CCM, dual-oracle-verified (UAPKI + Bouncy Castle vectors), not confirmed against the primary DSTU 7624:2014 text. See D-41 in `DECISIONS.md`. Sourced 255-byte plaintext/AAD limit; nonce-generation strategy still undecided (D-40, `TASKS.md` T-82). |
 | `crypto_sign` | `hazmat::dstu4145` + `dstu_core::crypto_sign` | **Implemented (m=163 curve only)** — `hazmat` has `GF(2^163)` field arithmetic, point add/double, constant-time scalar multiplication, and `sign`/`verify`, all verified against the official standard's own Annex B.1 worked example plus a `proptest` round-trip (`TASKS.md` T-41/T-43/T-44, `DECISIONS.md` D-25). The high-level `crypto_sign` wrapper (T-48, done 2026-07-24, `DECISIONS.md` D-46) now exists too — `SigningKey`/`VerifyingKey`/`Signature`, deterministic (not caller-random) nonce derivation via Kupyna-KMAC. The other 9 named curve sizes aren't wired up. |
 | `crypto_box` | `hazmat::dstu9041` | Hard-blocked — zero source material exists for DSTU 9041 (see `ORACLES.md`); cannot start. |
-| `crypto_secretbox` | `dstu_core::crypto_secretbox` (`seal`/`open`/`SecretKey`), over `hazmat::kalyna_ccm::Kalyna256_256Ccm` | **Implemented, provisional** — single fixed Kalyna-CCM variant (not all five), internal nonce, combined `nonce\|\|ciphertext\|\|tag` output, no AAD. Still not primary-text-confirmed (inherits D-41) and bounded to ≤255-byte messages. See D-51 in `DECISIONS.md`. |
+| `crypto_secretbox` | `dstu_core::crypto_secretbox` (`seal`/`open`/`SecretKey`), over `hazmat::kalyna_gcm::Kalyna256_256Gcm` | **Implemented, provisional** — single fixed Kalyna-GCM variant (not all five), internal nonce, combined `nonce\|\|ciphertext\|\|tag` output, no caller-facing AAD (the nonce is passed as `kalyna_gcm`'s AAD internally, to bind it into the tag — D-63). Migrated 2026-07-25 from an earlier Kalyna-CCM construction, removing its 255-byte message cap entirely. Still not primary-text-confirmed (inherits D-56). See D-51/D-63 in `DECISIONS.md`. |
 | `crypto_auth`/`crypto_onetimeauth` | `hazmat::kupyna_kmac` (`Kupyna256Kmac`/`Kupyna384Kmac`/`Kupyna512Kmac`) | **Implemented, provisional** — Kupyna-based KMAC, both UAPKI's and Bouncy Castle's constructions read and cross-checked byte-for-byte on all three sizes, not confirmed against the primary DSTU 7564:2014 text. See D-44 in `DECISIONS.md`. |
 | `crypto_kdf` | `hazmat::kupyna_kdf` (`Kupyna256Kdf`/`Kupyna384Kdf`/`Kupyna512Kdf`) | **Implemented** — modeled after libsodium's `crypto_kdf_derive_from_key` shape over `hazmat::kupyna_kmac`, not full RFC 5869 HKDF. No DSTU standard or reference implementation exists for this construction, so unlike the rest of this table's "provisional" rows, there is no oracle vector at all, ever — see D-45 in `DECISIONS.md`. |
 | `crypto_kx` | *(future construction over `hazmat::dstu4145`/`dstu9041`)* | Needs both curve implementations to exist; DSTU 9041 side is hard-blocked. |

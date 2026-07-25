@@ -186,6 +186,79 @@ fn tampered_aad_is_rejected() {
 }
 
 #[test]
+fn tampered_tag_is_rejected() {
+    let case = &cases(include_str!("vectors/kalyna-gcm/128-128.json"))[0];
+    let mut key = [0u8; 16];
+    key.copy_from_slice(&case.key);
+    let mut iv = [0u8; 16];
+    iv.copy_from_slice(&case.iv);
+    let cipher = Kalyna128_128Gcm::new(&key);
+
+    let mut tampered_tag = case.tag.clone();
+    let last = tampered_tag.len() - 1;
+    tampered_tag[last] ^= 0x01;
+
+    let mut out = vec![0u8; case.plaintext.len()];
+    assert_eq!(
+        cipher.decrypt(&iv, &case.aad, &case.ciphertext, &tampered_tag, &mut out),
+        Err(GcmError::TagMismatch)
+    );
+    assert!(out.iter().all(|&b| b == 0), "plaintext leaked on failure");
+}
+
+#[test]
+fn wrong_key_is_rejected() {
+    let case = &cases(include_str!("vectors/kalyna-gcm/128-128.json"))[0];
+    let mut wrong_key = [0u8; 16];
+    wrong_key.copy_from_slice(&case.key);
+    wrong_key[0] ^= 0x01;
+    let mut iv = [0u8; 16];
+    iv.copy_from_slice(&case.iv);
+    let cipher = Kalyna128_128Gcm::new(&wrong_key);
+
+    let mut out = vec![0u8; case.plaintext.len()];
+    assert_eq!(
+        cipher.decrypt(&iv, &case.aad, &case.ciphertext, &case.tag, &mut out),
+        Err(GcmError::TagMismatch)
+    );
+    assert!(out.iter().all(|&b| b == 0), "plaintext leaked on failure");
+}
+
+/// Pins the module doc's "Warning: the tag does not cover `iv`" section directly (D-56 divergence
+/// 3) - a documented DSTU 7624 GCM construction property, not a bug: `decrypt` accepts a tampered
+/// `iv` (tag check still passes) but silently returns wrong plaintext instead of erroring. If this
+/// test ever starts failing, the module doc's warning is stale, not fixed - update the doc, don't
+/// just delete this test.
+#[test]
+fn tampered_iv_alone_does_not_fail_the_tag_check() {
+    let case = &cases(include_str!("vectors/kalyna-gcm/128-128.json"))[0];
+    let mut key = [0u8; 16];
+    key.copy_from_slice(&case.key);
+    let mut tampered_iv = [0u8; 16];
+    tampered_iv.copy_from_slice(&case.iv);
+    tampered_iv[0] ^= 0x01;
+    let cipher = Kalyna128_128Gcm::new(&key);
+
+    let mut out = vec![0u8; case.plaintext.len()];
+    assert!(
+        cipher
+            .decrypt(
+                &tampered_iv,
+                &case.aad,
+                &case.ciphertext,
+                &case.tag,
+                &mut out
+            )
+            .is_ok(),
+        "the tag must not depend on iv under this construction"
+    );
+    assert_ne!(
+        out, case.plaintext,
+        "wrong iv must still produce wrong (garbage) plaintext, even though the tag check passes"
+    );
+}
+
+#[test]
 fn mismatched_output_buffer_length_is_rejected() {
     let key = [0u8; 16];
     let iv = [0u8; 16];
@@ -196,6 +269,56 @@ fn mismatched_output_buffer_length_is_rejected() {
         cipher.encrypt(&iv, &[], &plaintext, &mut wrong_out),
         Err(GcmError::InvalidLength)
     );
+}
+
+/// Parity with `kalyna_gmac.rs`'s `tag_length_out_of_range_is_rejected` - GCM's `decrypt` has the
+/// identical `8..=block_bytes` bound, but only the output-buffer-length branch of that check had a
+/// test above; the tag-length branch specifically was untested.
+#[test]
+fn tag_length_out_of_range_is_rejected() {
+    let case = &cases(include_str!("vectors/kalyna-gcm/128-128.json"))[0];
+    let mut key = [0u8; 16];
+    key.copy_from_slice(&case.key);
+    let mut iv = [0u8; 16];
+    iv.copy_from_slice(&case.iv);
+    let cipher = Kalyna128_128Gcm::new(&key);
+    let mut out = vec![0u8; case.plaintext.len()];
+
+    let too_short = &case.tag[..7];
+    assert_eq!(
+        cipher.decrypt(&iv, &case.aad, &case.ciphertext, too_short, &mut out),
+        Err(GcmError::InvalidLength)
+    );
+
+    let mut too_long = case.tag.clone();
+    too_long.push(0);
+    assert_eq!(
+        cipher.decrypt(&iv, &case.aad, &case.ciphertext, &too_long, &mut out),
+        Err(GcmError::InvalidLength)
+    );
+}
+
+/// The "I'll just use an all-zero key to test with" mistake must still round-trip correctly, not
+/// silently degrade into some special-cased weak path - there is no key-strength validation in
+/// this construction (nor should there be; that is a caller policy question, not this primitive's
+/// job), so a trivial-looking key must behave like any other.
+#[test]
+fn all_zero_key_round_trips() {
+    let key = [0u8; 16];
+    let iv = [0u8; 16];
+    let cipher = Kalyna128_128Gcm::new(&key);
+    let plaintext = b"the caller chose a bad key, not this primitive's problem".to_vec();
+
+    let mut ciphertext = vec![0u8; plaintext.len()];
+    let tag = cipher
+        .encrypt(&iv, &[], &plaintext, &mut ciphertext)
+        .expect("all-zero key is still a valid key");
+
+    let mut recovered = vec![0u8; ciphertext.len()];
+    cipher
+        .decrypt(&iv, &[], &ciphertext, &tag, &mut recovered)
+        .expect("round-trip under the same all-zero key must succeed");
+    assert_eq!(recovered, plaintext);
 }
 
 macro_rules! roundtrip_proptest {

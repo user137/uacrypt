@@ -56,6 +56,21 @@ Explicitly out of scope (until stated otherwise):
   supply-chain table below, and must stay green as soon as any dependency is added.
 - `unsafe` code is isolated to the smallest possible module with a safe wrapper, and every
   `unsafe fn`/block carries a `// SAFETY: ...` comment stating the invariant that makes it sound.
+- **Any self-contained wire format that transmits a nonce/IV alongside ciphertext+tag as one blob
+  a caller trusts as a unit (`crypto_secretbox`-style) must confirm the underlying construction's
+  tag actually authenticates that nonce/IV — by reading the tag-computation code, never by
+  assumption.** Not every AEAD construction does this: DSTU Kalyna-GCM's tag is computed purely
+  from AAD and ciphertext (`E_K(accumulator XOR length_block)`) — the IV only seeds the keystream,
+  it never enters the tag — unlike Kalyna-CCM (nonce folded into the first CBC-MAC block) or NIST
+  AES-GCM (`J0` is nonce-derived). If the nonce is unauthenticated and ships inside a blob nobody
+  separately verifies, an attacker can tamper the nonce prefix and the receiver decrypts "success"
+  against different, attacker-uncontrolled-but-unverified plaintext instead of getting a tag
+  failure — a real loss of tamper-evidence, not a theoretical one. The fix is to bind the nonce
+  into the tag using the construction's own AAD mechanism (pass the nonce itself as `aad`), not to
+  add an ad hoc secondary check. Found and fixed in `crypto_secretbox`'s Kalyna-CCM→Kalyna-GCM
+  migration (`DECISIONS.md` D-63) via a tamper test written during that migration, not caught by
+  code review after the fact — re-verify this for every future combined-AEAD wire format
+  (`crypto_secretstream`/T-40 included), it is not a one-time fix.
 
 ## Supply-chain vetting (apply before adding any crypto-adjacent dependency)
 

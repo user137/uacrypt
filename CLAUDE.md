@@ -68,7 +68,18 @@ environment. The workspace has two crates:
   product choice made with the user, not a default assumption, since a command named `encrypt`
   silently failing past 255 bytes would be a real usability trap). `hash` is fixed to Kupyna-256,
   no length cap, delegates to `kupyna-digest`'s already-streaming implementation rather than
-  duplicating it.
+  duplicating it. **As of 2026-07-25 (roadmap Step 3 item 1, `DECISIONS.md` D-63),
+  `crypto_secretbox` migrated from Kalyna-CCM to `hazmat::kalyna_gcm::Kalyna256_256Gcm`** — the
+  255-byte cap and `SecretboxError::MessageTooLong` are gone entirely, not just raised (GCM encodes
+  no length into its construction the way CCM's header did); `uacrypt encrypt`/`decrypt` inherit
+  the removed cap but still read `--in` whole into memory, so a large file now means a
+  correspondingly large buffer, not a rejection — `crypto_secretstream` (T-40) remains the tracked
+  follow-up for genuinely chunked I/O. The migration surfaced a real nonce-authentication gap not
+  in the original plan: DSTU Kalyna-GCM's tag (unlike CCM's) never covers the IV/nonce (D-56
+  divergence 3), which for `crypto_secretbox`'s self-contained `nonce||ciphertext||tag` blob would
+  have let an attacker tamper the nonce prefix without failing the tag check — fixed by passing the
+  nonce as `kalyna_gcm`'s internal AAD in both `seal`/`open` (still no caller-facing AAD parameter),
+  caught by a test written during the migration itself, not discovered after the fact.
 - `crates/uacrypt` — the CLI binary, renamed 2026-07-23 from its `dstutool` working name
   (`DECISIONS.md` D-36; older `DECISIONS.md`/`TASKS.md`/`PERFORMANCE.md` entries predating the
   rename still say `dstutool`, left as-is since they're a historical record, not stale docs).
@@ -82,9 +93,10 @@ environment. The workspace has two crates:
   `dstu_core::crypto_secretbox` actually being built (T-37), cleared the same day too (`DECISIONS.md`
   D-51) — `uacrypt`'s own `encrypt`/`decrypt`/`hash` commands (`TASKS.md` T-16, `DECISIONS.md` D-52)
   are now built too, same session, per the file-plus-mode-of-operation CLI the MVP scope below
-  describes - with one caveat the MVP scope's own example line doesn't state: `encrypt`/`decrypt`
-  handle at most 255 bytes (inherits `crypto_secretbox`'s cap), not arbitrary-length files; `hash`
-  has no such limit.
+  describes. **As of 2026-07-25, `encrypt`/`decrypt` no longer have a message-length cap** —
+  `crypto_secretbox`'s migration to Kalyna-GCM (D-63) removed it — but `--in` is still read whole
+  into memory (unchanged code), so a large file means a correspondingly large in-memory buffer, not
+  a rejection; `hash` continues to have no such limit either.
 
 `cargo xtask <command>` (see `xtask/`, aliased via `.cargo/config.toml`) is the one cross-platform
 build/QA entry point — same command on Linux/Windows/macOS, no new install beyond `cargo` itself.
@@ -127,10 +139,12 @@ Algorithms in scope:
 - Rust core implementing Kalyna + Kupyna + Strumok, verified against official DSTU test vectors.
 - Single CLI binary over the core (`uacrypt`, `DECISIONS.md` D-36), e.g.
   `uacrypt encrypt --key ... --in file --out file` — mode, nonce/IV etc. are hardcoded so there's
-  nothing for the user to misconfigure. **Built** (`TASKS.md` T-16, `DECISIONS.md` D-52) - with a
-  caveat this example line doesn't otherwise convey: `encrypt`/`decrypt` are currently bounded to
-  ≤255-byte messages (inherited from `crypto_secretbox`'s Kalyna-CCM construction, D-51/D-41), not
-  arbitrary-length files yet - `crypto_secretstream` (T-40) is the tracked follow-up for that.
+  nothing for the user to misconfigure. **Built** (`TASKS.md` T-16, `DECISIONS.md` D-52). **As of
+  2026-07-25 (`DECISIONS.md` D-63), `encrypt`/`decrypt` have no message-length cap** -
+  `crypto_secretbox` migrated from Kalyna-CCM to Kalyna-GCM, which encodes no length limit into
+  itself - but `--in` is still read whole into memory (an AEAD tag needs the full
+  plaintext/ciphertext up front), not yet block-at-a-time disk streaming; `crypto_secretstream`
+  (T-40) is the tracked follow-up for that.
 - Publish the core crate to crates.io.
 - Prebuilt binaries for Windows/Linux via GitHub Releases (not "clone and build yourself").
 - **No hardware or OS lock-in — platform-agnostic by construction.** This targets both ends
@@ -212,6 +226,19 @@ Full detail and rationale in `SECURITY.md` — this is the compressed version so
 - `cargo miri test` and `cargo fuzz` are required layers, not optional tooling.
 - This is the software-side complement to the SPA/DPA note above: constant-time discipline
   reduces exposure but is never itself a side-channel-resistance claim.
+- **Any wire format that bundles a nonce/IV together with ciphertext+tag into one self-contained
+  blob (a `crypto_secretbox`-style construction) must verify — by reading the construction's actual
+  tag computation, not assuming — that the tag covers that nonce/IV.** Not every AEAD does: DSTU
+  Kalyna-GCM's tag is `E_K(acc XOR length_block)`, a function of AAD+ciphertext only (D-56
+  divergence 3) — the nonce only seeds the keystream, unlike CCM (whose B0 block folds the nonce
+  into the CBC-MAC) or NIST AES-GCM (`J0` is nonce-derived). If the nonce isn't covered and it
+  travels in the same blob a caller trusts as one unit, an attacker can tamper the nonce prefix and
+  have decryption "succeed" against wrong, unverified plaintext instead of failing closed. Fix by
+  passing the nonce as the construction's own AAD parameter (binding it into the tag through the
+  mechanism the construction already provides for exactly this), not by inventing a new check. See
+  `DECISIONS.md` D-63 for the concrete case (`crypto_secretbox`'s Kalyna-CCM→Kalyna-GCM migration)
+  — check this again for every future combined-AEAD wrapper (`crypto_secretstream`/T-40 included),
+  don't assume it only applied once.
 
 ## Agent discipline
 
@@ -239,6 +266,23 @@ Full detail and rationale in `SECURITY.md` — this is the compressed version so
   crypto code, a test-vector check (see dual-oracle verification above). Never write the
   implementation first and backfill tests afterward. This applies to every function, not just
   primitives.
+  - **Every new primitive/mode/wrapper/CLI command ships three test categories, not one**:
+    (1) correctness against a vector/oracle, (2) **rejection** — tampered ciphertext/tag/aad/nonce
+    and wrong key, wherever a tag or checksum exists to tamper with (the "attack" pass, D-64) —
+    and (3) **misuse** — invalid lengths/args/paths, a nonexistent or directory `--in`, same-path
+    `--in`/`--out`, degenerate-but-legal input (empty file, all-zero key, `--iterations 0`)
+    succeeding rather than erroring, and no partial output written on failure (the "fool" pass,
+    D-65). Skipping either category because "it'll obviously pass" is exactly backwards — D-63's
+    nonce-authentication gap and this pass's several `wrong_key_is_rejected` gaps were both found
+    by noticing an *absent* test, not a code walkthrough.
+  - **Where a misuse category is foreclosed by the type signature** (e.g. `SecretKey::from_bytes`
+    taking `[u8; 32]` makes "wrong key length" uncompilable, not just untested), **record that in
+    `DECISIONS.md` as a finding, don't write a test that only proves the compiler works** — that's
+    noise under this project's no-speculative-tests rule, not coverage.
+  - **Rejection/misuse tests passing on first write is expected, not a test-first violation.**
+    They are coverage for a code path that already exists and is already correct, not red-green
+    development of new behavior — don't read "passed immediately" as a reason to doubt or skip
+    them.
 - **A `hazmat` streaming/incremental API existing does not make the `uacrypt` command wrapping it
   memory-bounded** (`DECISIONS.md` D-42) — a CLI command has to be deliberately wired to read its
   input in fixed chunks instead of `std::fs::read`-ing the whole file, every time a new algorithm
@@ -308,6 +352,16 @@ Full detail and rationale in `SECURITY.md` — this is the compressed version so
   defer an incomplete *local* Miri run to "CI as the authoritative check" (e.g. D-46) — that
   backstop has never actually fired. Verify a CI job's real conclusion before citing it as
   passing; see `TASKS.md` T-100 for the fix direction (scope the job away from that suite).
+- **Any scoped local `cargo +nightly miri test` on a file with a `proptest!` block needs
+  `PROPTEST_CASES` cut down explicitly, not just left at its default 256** — even for primitives
+  with no EC-ladder cost (T-100/D-59's fix only covers scalar-multiplication-heavy tests via
+  `cfg_attr(miri, ignore)`). Hit this running `crypto_secretbox`'s Miri suite (D-63): the default
+  256 cases at up to 2048 bytes each ran ~40 CPU-minutes with zero output before being killed, not
+  stuck — Miri's per-instruction interpretation overhead alone makes that impractical. Set
+  `$env:PROPTEST_CASES = "8"` (PowerShell) before the run; that same suite then completed in
+  1135.80s (~19 min), 0 UB. If a background Miri run shows a stuck-looking empty output file,
+  check `Get-Process -Id <pid> | Select CPU` before assuming it's hung — real CPU time still
+  accumulating means it's genuinely working, just slow under interpretation.
 - **uapki's C test-vector struct literals use adjacent string-literal concatenation across
   `\`-continued lines** — a naive "grab every quoted string in file order" extractor desyncs the
   field count (bit OFB, D-53; guarded against for every mode since). Parse brace-delimited case
@@ -318,6 +372,38 @@ Full detail and rationale in `SECURITY.md` — this is the compressed version so
   pointing at it (`uacrypt`'s `dstu-core = { path = ..., version = "..." }`). Missing the second
   silently reintroduces the wildcard-dependency problem `cargo deny` once caught (T-75/D-11).
   Regenerate `Cargo.lock` via a real build afterward, don't hand-edit it (D-43).
+- **Porting a `crypto_secretbox`-style wrapper onto a new underlying AEAD construction (or building
+  a new one) means re-deriving, not assuming, whether that construction's tag covers a
+  caller-transmitted nonce/IV.** Migrating `crypto_secretbox` from Kalyna-CCM to Kalyna-GCM (D-63)
+  carried over CCM's implicit assumption that the nonce is authenticated — it isn't, under GCM
+  (D-56 divergence 3: tag is AAD+ciphertext only, nonce only seeds the keystream). For a
+  self-contained `nonce || ciphertext || tag` blob, that would have let an attacker tamper the
+  nonce prefix and get "successful" decryption of wrong plaintext instead of a tag failure — caught
+  by a tamper-test written during the migration itself, not by assuming the old construction's
+  properties carried forward. See the "Crypto engineering hard constraints" section above for the
+  standing rule this became; re-check it for every future combined-AEAD wrapper, especially
+  `crypto_secretstream` (T-40) — don't assume this was a one-off fix specific to GCM.
+- **This project's doc comments are long, citation-dense prose** (by design — every claim cites a
+  `DECISIONS.md`/`TASKS.md`/spec reference inline), which makes them prone to
+  `clippy::doc_lazy_continuation` under `-D warnings`: any line starting with `**bold` or `- dash`
+  (even mid-sentence, not intentionally a markdown list) gets read by clippy/rustdoc as an
+  unindented list-item continuation and hard-errors. Concretely hit twice writing D-63's doc
+  comments in one session. **Prevention**: don't start a doc-comment line with `**` or `- ` unless
+  actually writing a markdown list; run `cargo clippy --workspace --all-features -- -D warnings`
+  (and `cargo fmt --all`) right after writing or editing any doc comment, not deferred to a final
+  batch check at the end of the task — catching it while the paragraph is still fresh is a
+  one-line reword, catching it later means re-deriving which of several new doc sections broke.
+  Same lint pass also flags `clippy::doc_markdown`: an inline all-caps or CamelCase-ish word used
+  as a verb (e.g. "two messages XORed") reads as an unbackticked code identifier — wrap it in
+  backticks (`` `XOR`-ed ``) rather than rewording around it. Hit writing `hazmat::strumok`'s
+  key/IV-reuse warning (D-64/D-65 session) — same "run clippy right after writing the doc
+  comment" prevention habit catches this too.
+- **When `Edit` fails with "String to replace not found" on an anchor that `Read` shows as
+  byte-identical**, don't retry the same long multi-line anchor a second time (root cause is
+  usually invisible whitespace/encoding, not a typo you'll spot by re-reading) — immediately retry
+  with a much shorter, single unique line from the same block instead. Worked immediately when
+  this happened editing `kalyna_gcm.rs`'s doc comment (2026-07-25); don't burn the three-attempts
+  budget on the same failing anchor shape.
 
 ## Reference implementations and oracles
 
