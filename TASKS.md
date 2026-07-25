@@ -280,7 +280,7 @@ item they point to is later removed.
       `cargo fmt --all -- --check`, `cargo clippy --workspace --all-features -- -D warnings`, and
       `cargo build --workspace --all-features` all clean (metadata-only change, no source touched,
       so `cargo test`/`no_std` build/Miri were not re-run - nothing in their scope changed).
-- [ ] **T-110** Add `[package.metadata.docs.rs]` with `all-features = true` to both `Cargo.toml`
+- [x] **T-110** Add `[package.metadata.docs.rs]` with `all-features = true` to both `Cargo.toml`
       files, so docs.rs actually documents the `pwhash`/`alloc` (and `small-tables`) cfg-gated
       surface instead of only the `std`-only default build - requested 2026-07-25. **Checked
       2026-07-25, `small-tables` is safe to include**: grepped every `#[cfg(feature =
@@ -289,7 +289,14 @@ item they point to is later removed.
       gate a `pub` item, so `all-features = true` cannot make docs.rs render the constrained-MCU
       path as if it were the default one - the concern that would have blocked this (CLAUDE.md's own
       "`small-tables` breaks `--all-features` as a stand-in for the default profile" CI note) turned
-      out not to apply to *documented* surface, only to *tested* behavior. Not started.
+      out not to apply to *documented* surface, only to *tested* behavior.
+      **Done 2026-07-25.** `[package.metadata.docs.rs]` with `all-features = true` added to both
+      `crates/dstu-core/Cargo.toml` and `crates/uacrypt/Cargo.toml` (the latter has no features of
+      its own today, added for consistency and so it's already correct if one is ever introduced).
+      Metadata-only change, same class as T-109: `cargo build --workspace --all-features`, `cargo
+      fmt --all -- --check`, and `cargo clippy --workspace --all-features -- -D warnings` all clean;
+      `cargo test`/`no_std` build/Miri not re-run, nothing in their scope changed. No `DECISIONS.md`
+      entry - packaging hygiene, nothing architectural (same call T-107/T-109 made).
 - [ ] **T-111** `CHANGELOG.md` (Keep a Changelog format) + a declared MSRV - requested 2026-07-25.
       No changelog file exists at all yet; `rust-version` is absent from both `Cargo.toml` files, and
       `rust-toolchain.toml` only pins `channel = "stable"` (a floating target, not a minimum). Scope:
@@ -2006,11 +2013,13 @@ full detail)**:
    `rust-version` deliberately deferred to T-111; physical `LICENSE-MIT`/`LICENSE-APACHE` now ship
    in both crates' tarballs; `cargo publish --dry-run -p dstu-core --allow-dirty` shows no more
    metadata warnings.
-4. T-110 (docs.rs metadata), T-112 (crate-level provisional-status doc warning), T-108 (`uacrypt
-   --help`), T-111 (CHANGELOG + empirically-measured MSRV, not just a version number guess), T-113
-   (multi-part `crypto_sign` - **check the DSTU 4145 primary text first**, this may collapse to a
-   much smaller `sign_digest`/`verify_digest` entry point than "streaming signer" implies) - all
-   not started, in this order. **T-110 is next.**
+4. **T-110 (docs.rs metadata) - DONE, see `TASKS.md` T-110's own entry above.** `[package.metadata.
+   docs.rs]` with `all-features = true` added to both crates' `Cargo.toml`; build/clippy/fmt clean.
+   T-112 (crate-level provisional-status doc warning), T-108 (`uacrypt --help`), T-111 (CHANGELOG +
+   empirically-measured MSRV, not just a version number guess), T-113 (multi-part `crypto_sign` -
+   **check the DSTU 4145 primary text first**, this may collapse to a much smaller
+   `sign_digest`/`verify_digest` entry point than "streaming signer" implies) - all not started, in
+   this order. **T-112 is next.**
 - **Publication (T-17/T-18) is explicitly out of this plan** - gated on the user asking for it by
   name, not simply queued behind Step 5. Do not start it as a side effect of finishing Step 5.
 - The 2026-07-25 libsodium/crates.io research pass also produced a set of **deliberate non-tasks**

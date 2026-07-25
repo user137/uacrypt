@@ -14,6 +14,9 @@ categories = ["cryptography", "no-std", "algorithms"]
 [lib]
 name = "dstu_core"
 
+[package.metadata.docs.rs]
+all-features = true
+
 [features]
 default = ["std"]
 std = ["dep:getrandom"]

@@ -14,5 +14,8 @@ categories = ["cryptography", "command-line-utilities"]
 [lib]
 name = "uacrypt"
 
+[package.metadata.docs.rs]
+all-features = true
+
 [dependencies]
 dstu-core = { path = "../dstu-core", version = "0.1.0" }
