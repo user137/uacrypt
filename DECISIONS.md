@@ -3905,3 +3905,101 @@ one-off pass.
 
 **Verification**: `cargo test --workspace --all-features`, `cargo clippy --workspace
 --all-features -- -D warnings`, and `cargo fmt --all -- --check` all clean.
+
+## D-66: `crypto_generichash`/`crypto_auth`/`crypto_kdf` high-level modules (T-105) - roadmap Step 3 item 2
+
+`TASKS.md`'s roadmap left this step's shape as an explicit fork: "decide whether a dedicated
+re-export module is needed for naming parity with `crypto_sign`/`crypto_secretbox`/`crypto_pwhash`,
+or a table entry suffices." Resolved by building the modules, not settling for documentation alone
+- Step 3's own stated goal is "the libsodium-shaped `crypto_* `frontend over everything in
+`hazmat`," and a caller browsing `dstu_core`'s top-level modules for `crypto_auth` and finding
+nothing there (having to already know to look under `hazmat::kupyna_kmac` instead) is exactly the
+discoverability gap that goal exists to close, independent of whether new logic is warranted.
+
+**The three modules are not one shape, though** - inspecting each `hazmat` primitive's actual API
+before wrapping it (per this project's "research before implementation" discipline) showed real
+differences:
+
+- **`crypto_generichash`** (`dstu_core::crypto_generichash`) is a bare `pub use` of
+  `hazmat::kupyna::{Kupyna256, Kupyna512, Kupyna256Hasher, Kupyna512Hasher}` - no new type, no new
+  logic. `hazmat::kupyna`'s `digest()`/`Hasher` API already has nothing left to hide (no algorithm
+  knob beyond output size, no nonce, no length cap), and libsodium's own `crypto_generichash`
+  value-adds over a bare hash function - a caller-chosen variable output length, and an optional
+  key for keyed hashing - have no DSTU equivalent to re-derive: Kupyna has no variable-output mode,
+  and DSTU 7564:2014's own keyed construction is a distinct primitive (`hazmat::kupyna_kmac`),
+  already surfaced separately as `crypto_auth` below, not a parameter of this one. Writing a
+  wrapper type here would only be indirection with no behavior behind it. **Both `Kupyna256` and
+  `Kupyna512` are re-exported here, unlike `crypto_auth`/`crypto_kdf`'s single-variant choice
+  below** - not an inconsistency: libsodium's own `crypto_generichash` is itself variable-output
+  (the caller picks the digest length), so exposing both Kupyna sizes is the direct DSTU analogue
+  of that choice, whereas libsodium's `crypto_auth`/`crypto_kdf` are fixed-output by design, which
+  is what D-47's "delete the knob" is matching for those two.
+- **`crypto_auth`** (`dstu_core::crypto_auth::{auth, verify, Key}`) and **`crypto_kdf`**
+  (`dstu_core::crypto_kdf::MasterKey::derive_subkey`) are thin wrappers, matching each other's
+  shape exactly. Two departures from their respective `hazmat` APIs, both D-47's "delete the knob"
+  criterion (the same rule `crypto_secretbox` applied to Kalyna's five variants, D-51):
+  - **Only the 256-bit size is exposed** - `hazmat::kupyna_kmac`/`hazmat::kupyna_kdf` each also
+    have 384/512-bit variants (`Kupyna384Kmac`/`Kupyna512Kmac`, `Kupyna384Kdf`/`Kupyna512Kdf`),
+    left `hazmat`-only, matching this crate's existing default-to-256-bit convention
+    (`crypto_secretbox`'s `Kalyna256_256Gcm`, `crypto_sign`'s internal `Kupyna256` message hash).
+  - **The key is an opaque, `Zeroize`-on-drop type** (`Key` for `crypto_auth`, `MasterKey` for
+    `crypto_kdf`) constructed only via `from_bytes([u8; 32])` or a `generate()` convenience
+    constructor - not a raw `&[u8]`/`[u8; 32]` the caller manages themselves. For `crypto_auth`
+    this also **forecloses `hazmat::kupyna_kmac::KmacError::WrongKeyLength` at this layer
+    entirely**: `Key` can only ever be exactly 32 bytes, so `auth()` is infallible and `verify()`'s
+    error type ([`TagMismatch`]) has exactly one variant. Per `CLAUDE.md`'s own documented
+    convention for this exact situation, this is recorded here as a type-signature foreclosure,
+    not something requiring a test that would only prove the compiler works. `crypto_kdf` has no
+    equivalent error to foreclose - `hazmat::kupyna_kdf::Kupyna256Kdf::derive_subkey` was already
+    infallible before this wrapper.
+
+**`std` gating is per-item, not per-module** - a deliberate departure from `crypto_secretbox`'s
+whole-module `#[cfg(feature = "std")]` gate. All three new modules are declared unconditionally in
+`lib.rs` (no `#[cfg]`), unlike `crypto_secretbox` (which needs `Vec<u8>` for its output) - none of
+`crypto_generichash`/`crypto_auth`/`crypto_kdf` needs `alloc` at all, every input/output is a
+fixed-size array, so gating the whole module the same way would have been a needless `no_std`
+regression: this crate's stated MVP priority is `no_std`-from-day-one (`CLAUDE.md`), and
+`hazmat::kupyna_kmac`/`hazmat::kupyna_kdf` are themselves already used unconditionally inside
+`crypto_sign` without a `std` gate. Only `Key::generate()`/`MasterKey::generate()` - the
+convenience constructors that draw fresh key material from the OS CSPRNG via
+`crate::randombytes::randombytes_buf` - are individually `#[cfg(feature = "std")]`-gated, mirroring
+`crypto_secretbox::SecretKey::generate()`'s own reason for existing (D-51) without forcing the rest
+of the module through the same gate. Confirmed, not assumed: `cargo build -p dstu-core
+--no-default-features` (bare `no_std`), `--features alloc`, and `--features small-tables` all build
+clean with these three modules present.
+
+**Tests** (`tests/crypto_auth.rs`, `tests/crypto_kdf.rs`, `tests/crypto_generichash.rs`) follow the
+D-64/D-65 three-category convention where it actually applies, not by rote: correctness
+(delegation - each wrapper's output is asserted equal to a direct call into the already
+official-vector-tested `hazmat` layer, since the underlying construction itself is not
+re-verified here), rejection (`crypto_auth` only - tampered tag, tampered message, wrong key, all
+`Err(TagMismatch)`; `crypto_kdf` has no tag or checksum to tamper with, so this category is
+genuinely absent, not skipped by oversight), and misuse (empty message / all-zero key for
+`crypto_auth`, all-zero master key for `crypto_kdf` - both degenerate-but-legal, both must succeed).
+`crypto_generichash`'s own test file has no rejection/misuse category at all: it is a bare
+re-export with zero new logic, so its only new, independently-testable fact is that the re-export
+path itself resolves to the same `hazmat` behavior - a smoke test, not a gap.
+
+**Provenance**: unchanged from each wrapped `hazmat` primitive - `crypto_generichash` inherits
+`hazmat::kupyna`'s D-10 status, `crypto_auth` inherits `hazmat::kupyna_kmac`'s D-44 (dual-oracle,
+not yet primary-text-confirmed), `crypto_kdf` inherits `hazmat::kupyna_kdf`'s D-45 (no oracle
+vector exists for this construction at all, ever).
+
+**Verification**: `cargo test --workspace --all-features` clean (new test files: 8/8 `crypto_auth`,
+5/5 `crypto_kdf`, 2/2 `crypto_generichash`, all passed on first run - coverage additions, no bug
+found, consistent with D-64/D-65's own observation that this is expected for new coverage over
+already-correct code, not a red flag). `cargo clippy --workspace --all-features -- -D warnings` and
+`cargo fmt --all -- --check` both clean (one fix needed along the way: `crypto_auth::auth()`
+initially used `.expect(...)` on the `Kupyna256Kmac::mac` call to discharge the
+type-signature-foreclosed `WrongKeyLength` case - `CLAUDE.md`'s `#![deny(clippy::expect_used)]`
+rejects that crate-wide, same as `crypto_secretbox::seal` already had to route around via a
+`let Ok(...) else { unreachable!(...) }` pattern instead; fixed the same way here). `cargo build -p
+dstu-core --no-default-features`/`--features alloc`/`--features small-tables` all clean (see the
+per-item `std`-gating section above for why this matters here specifically).
+
+**Docs updated**: `docs/dstu-crypto-project.md` (mapping table rows for all three, plus the
+"high-level easy layer" prose paragraph, which was stale - it still said "not built yet" despite
+`crypto_sign`/`crypto_secretbox`/`crypto_pwhash` already existing), `docs/release-readiness.md`
+(mapping table rows and the "no high-level wrapper" prose), `TASKS.md` (roadmap Step 3 item 2
+marked done, RESUME HERE section updated - including correcting its own stale "no commit has been
+made yet" claim from before D-63/D-64/D-65/T-103/T-104 were actually committed).

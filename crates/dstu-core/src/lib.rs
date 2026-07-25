@@ -2,6 +2,9 @@
 #![warn(clippy::pedantic)]
 #![deny(clippy::unwrap_used, clippy::expect_used)]
 
+pub mod crypto_auth;
+pub mod crypto_generichash;
+pub mod crypto_kdf;
 #[cfg(feature = "pwhash")]
 pub mod crypto_pwhash;
 #[cfg(feature = "std")]

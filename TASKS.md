@@ -554,6 +554,23 @@ resistance (SPA/DPA — explicitly out of scope per `SECURITY.md`/`CLAUDE.md` "M
       now ships correctness + rejection (D-64) + misuse (D-65) tests by default, with the
       type-signature-foreclosure and first-run-pass clauses spelled out so this doesn't read as a
       contradiction of test-first later. Full workspace test/clippy/fmt all clean.
+- [x] **T-105** **`crypto_generichash`/`crypto_auth`/`crypto_kdf` high-level modules, roadmap
+      Step 3 item 2, see `DECISIONS.md` D-66.** The roadmap left this step's shape as an open fork
+      ("dedicated re-export module... or a table entry suffices") without the user resolving it in
+      advance, unlike the roadmap's other three named forks - resolved this session by building the
+      modules, on the reasoning that Step 3's own stated goal is discoverability under
+      `dstu_core::crypto_*`, not just documentation accuracy; flag for confirmation if that reading
+      is wrong. Two judgment calls made along the way: (1) `crypto_generichash` is a bare `pub use`
+      of `hazmat::kupyna` (nothing to wrap - no knob to hide, no DSTU keyed/variable-length-output
+      equivalent to re-derive), while `crypto_auth`/`crypto_kdf` are thin wrappers adding an opaque
+      `Zeroize`-on-drop key type; (2) both wrappers expose only the 256-bit
+      `Kupyna256Kmac`/`Kupyna256Kdf` variant (D-47's "delete the knob", matching
+      `crypto_secretbox`'s single-Kalyna-variant precedent), leaving the 384/512-bit sizes
+      `hazmat`-only. All three modules are unconditional (`no_std`-compatible), only each key
+      type's `generate()` is `std`-gated. New tests (`tests/crypto_auth.rs`, `tests/crypto_kdf.rs`,
+      `tests/crypto_generichash.rs`) follow the D-64/D-65 three-category convention where it
+      applies. Verified: full workspace test/clippy/fmt clean, plus `no_std`/`no_std+alloc`/
+      `no_std+small-tables` builds of `dstu-core`. Not yet committed.
 
 ## A provisional Kalyna mode of operation - CCM (T-81), plus its nonce-strategy follow-up (T-82)
 
@@ -1638,9 +1655,31 @@ pass, matching D-39's own precedent.
    (T-100's own precedent; a first attempt at the default 256 cases was killed after ~40 CPU-minutes
    with zero output - not stuck, genuinely just that slow under interpretation). **Step 3 item 1 is
    now fully verified end to end, nothing outstanding.**
-2. `crypto_generichash`/`crypto_auth`/`crypto_kdf` - mostly a documentation reconciliation pass;
-   decide whether a dedicated re-export module is needed for naming parity with
-   `crypto_sign`/`crypto_secretbox`/`crypto_pwhash`, or a table entry suffices.
+2. **DONE 2026-07-25, see `DECISIONS.md` D-66 (T-105).** Unlike this roadmap's three other named
+   forks (T-101/T-40/embedded-HW scope, all resolved by the user in advance when the roadmap was
+   approved), this fork was resolved by implementation this session, not a prior user decision -
+   flag for confirmation if the reasoning below doesn't hold up. Chosen: dedicated re-export/wrapper
+   modules, not a bare table entry - matches Step 3's own "libsodium-shaped frontend" goal
+   (discoverability under `dstu_core::crypto_*`, not just `hazmat::*`). Shape differs by primitive,
+   not one-size-fits-all: `crypto_generichash` is a bare `pub use` of `hazmat::kupyna` (nothing to
+   wrap - no knob to hide, no DSTU keyed/variable-length-output equivalent to re-derive);
+   `crypto_auth`/`crypto_kdf` are thin wrappers adding an opaque `Zeroize`-on-drop key type
+   (`Key`/`MasterKey`) and exposing only the 256-bit variant (D-47's "delete the knob", matching
+   `crypto_secretbox`'s single-Kalyna-variant precedent) over `Kupyna256Kmac`/`Kupyna256Kdf` - the
+   other two sizes stay `hazmat`-only. `Key`'s fixed-length constructor forecloses
+   `KmacError::WrongKeyLength` at this layer entirely (a type-signature foreclosure, not an
+   untested path, per `CLAUDE.md`'s own documented convention for this case). All three modules are
+   unconditional (`no_std`-compatible, no `std`/`alloc` cfg-gate) except each key type's own
+   `generate()` convenience constructor, which is `#[cfg(feature = "std")]`-gated per-item (needs
+   `randombytes`) rather than gating the whole module the way `crypto_secretbox` does (that module
+   needs `Vec` for its output; these don't). New test files (`tests/crypto_auth.rs`,
+   `tests/crypto_kdf.rs`, `tests/crypto_generichash.rs`) follow the D-64/D-65 three-category
+   convention where applicable: correctness (delegation to the already-vector-tested `hazmat`
+   layer) + rejection (tampered tag, wrong key - `crypto_auth` only, `crypto_kdf` has no tag to
+   tamper) + misuse (empty message, all-zero key/master-key succeeding rather than erroring).
+   Verified: full workspace `cargo test`/`clippy -D warnings`/`fmt --check` clean, plus `no_std`,
+   `no_std+alloc`, and `no_std+small-tables` builds of `dstu-core` all clean (confirming the
+   unconditional-module choice actually holds, not just assumed from the `#[cfg]` placement).
 3. `crypto_stream` (Strumok) high-level wrapper - whether the IV is auto-generated (hidden from the
    caller, like `crypto_secretbox`'s nonce) or stays explicit is its own fork, decided when this is
    actually picked up.
@@ -1660,28 +1699,20 @@ on explicit request.
 
 ### RESUME HERE (state as of 2026-07-25, saved for a memory-clear/new-session handoff)
 
-**Step 3 item 1 (`crypto_secretbox` → Kalyna-GCM, D-63) is fully done and fully verified** -
-including the scoped Miri run (11/11, 0 UB, 1135.80s). Nothing outstanding on it.
+**Step 3 item 1 (`crypto_secretbox` → Kalyna-GCM, D-63) is fully done, fully verified, and
+committed** - including the scoped Miri run (11/11, 0 UB, 1135.80s). `T-103`/`T-104` (adversarial
+and misuse test-coverage audits over the same migration, `DECISIONS.md` D-64/D-65) are also done,
+verified, and committed - see `git log` (`db10345`, `11eecf7`) rather than trusting this note's own
+prior "no commit has been made yet" claim, which went stale the moment those commits landed.
 
-**Two unplanned, user-requested follow-on passes landed the same day, both fully done and
-verified** (not part of the original roadmap - inserted here because they touched the exact same
-migration and the user asked for them immediately after): **T-103** (adversarial/"attack" test
-coverage audit, `DECISIONS.md` D-64) and **T-104** (misuse/"fool" test coverage audit, `DECISIONS.md`
-D-65, `advisor()`-consulted). Both added tests across `kalyna_gcm`/`kalyna_gmac`/`kalyna_kw`/
-`kalyna_cmac`/`kupyna_kmac`/`kupyna`/`strumok`/`kalyna_xts`/`uacrypt`, all passing on first run, plus
-a new standing `CLAUDE.md` rule (extends "Test-first, always") requiring correctness + rejection +
-misuse tests by default for every future primitive/command. The full-workspace re-run after
-T-103/T-104's changes also completed clean (0 failed across every package).
-
-**Everything from this session's work (D-63, D-64, D-65, T-103, T-104) is now verified end to end -
-nothing left running, nothing left to check.**
+**Step 3 item 2 (`crypto_generichash`/`crypto_auth`/`crypto_kdf`, T-105, D-66) is now done and
+verified too** - see the Step 3 entry above for the shape (bare re-export for `crypto_generichash`,
+thin `Zeroize`-key wrappers for `crypto_auth`/`crypto_kdf`, both single-256-bit-variant). Full
+workspace `cargo test --workspace --all-features` last confirmed clean; `no_std`/`no_std+alloc`/
+`no_std+small-tables` builds of `dstu-core` clean; `clippy -D warnings`/`fmt --check` clean. **Not
+yet committed** - confirm with the user before committing (standing "commit only when asked" rule).
 
 **Not yet done - the actual next steps**:
-- No commit has been made yet for any of this session's work. Per standing "commit only when the
-  user asks" (not "commit after green" from the Verification paragraph above, which describes what
-  a commit should contain once made, not a standing authorization to make one) - confirm with the
-  user before committing.
-- Step 3 items 2-5 (`crypto_generichash`/`crypto_auth`/`crypto_kdf` doc reconciliation;
-  `crypto_stream` Strumok wrapper; document KW as `hazmat`-only; confirm `crypto_kx`/`crypto_box`
-  stay hard-blocked) - not started.
+- Step 3 items 3-5 (`crypto_stream` Strumok wrapper; document KW as `hazmat`-only; confirm
+  `crypto_kx`/`crypto_box` stay hard-blocked) - not started.
 - Step 4 (T-17 crates.io publish, T-18 GitHub Releases) - not started, deliberately last.

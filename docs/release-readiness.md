@@ -116,20 +116,21 @@ From `docs/dstu-crypto-project.md`'s own mapping table, the two-layer design (D-
 a future high-level `crypto_*`-ergonomics layer on top) is decided; `crypto_sign` (below) is now the
 first primitive with that high-level layer actually built, via `dstu_core::crypto_sign` — notably
 *without* the `getrandom`-based auto-nonce shape D-09 originally anticipated (D-46's deterministic
-nonce needs no RNG at all). `crypto_auth`/`crypto_kdf` are done too (T-38/T-39, D-44/D-45) — a stale
-"still have no high-level wrapper" claim about them here is corrected 2026-07-25 (T-99), the table
-below has been correct on this point since those tasks landed. `crypto_generichash`/`crypto_stream`
-genuinely still have no high-level wrapper, only their `hazmat` forms:
+nonce needs no RNG at all). `crypto_auth`/`crypto_kdf` are done too (T-38/T-39, D-44/D-45), now with
+high-level wrappers as well (T-105, D-66, roadmap Step 3 item 2, 2026-07-25). `crypto_generichash`
+also got its high-level module the same day (T-105, D-66) — a bare re-export, not a new wrapper
+(see the table below for why). `crypto_stream` genuinely still has no high-level wrapper, only its
+`hazmat` form:
 
 | libsodium equivalent | Native DSTU path | Status |
 |---|---|---|
-| `crypto_generichash` | Kupyna | hazmat done; no high-level wrapper |
+| `crypto_generichash` | Kupyna | **Done** (T-105, D-66) — `dstu_core::crypto_generichash`, a bare re-export of `hazmat::kupyna` under the top-level namespace; no new logic (no knob to hide, no DSTU keyed/variable-length-output equivalent to wrap) |
 | `crypto_stream` | Strumok | hazmat done (provisional vectors); no high-level wrapper |
 | `crypto_sign` | DSTU 4145 | **Done** (T-48, D-46) — hazmat (m=163 only) plus a high-level `dstu_core::crypto_sign` wrapper; deterministic (Kupyna-KMAC-derived, RFC-6979-style) nonce, not caller-random, eliminating nonce-reuse key recovery from the wrapper's surface. Public-key encoding is a plain uncompressed 42-byte form, explicitly not the DSTU §6.9/§6.10 compressed format |
 | `crypto_box` | DSTU 9041 | **Hard-blocked** — zero source material exists for DSTU 9041 anywhere (no paper, no oracle, no pseudocode); cannot start (T-46) |
 | `crypto_secretbox` | Kalyna-GCM, provisionally | **Done** (T-37, D-51), **migrated 2026-07-25 from Kalyna-CCM to Kalyna-GCM** (roadmap Step 3 item 1, D-63) — single fixed `Kalyna256_256Gcm` construction, internal nonce, combined output, no caller-facing AAD (nonce passed as AAD internally to bind it into the tag, D-63); no message-length cap, still not primary-text-confirmed |
-| `crypto_auth`/`crypto_onetimeauth` | Kupyna-based KMAC | **Done** (T-38, D-44) — provisional pending the primary text, but dual-oracle with both constructions read |
-| `crypto_kdf` | Kupyna-based KDF (libsodium `crypto_kdf`-shaped, not HKDF) | **Done** (T-39, D-45) — no DSTU standard or reference implementation exists for this at all, so unlike every other "provisional" row above, there is no oracle vector, ever; verification is determinism + distinctness property tests only |
+| `crypto_auth`/`crypto_onetimeauth` | Kupyna-based KMAC | **Done** (T-38, D-44) — provisional pending the primary text, but dual-oracle with both constructions read. High-level wrapper (T-105, D-66) added 2026-07-25: `dstu_core::crypto_auth`, single 256-bit variant, opaque `Zeroize`-on-drop `Key` type |
+| `crypto_kdf` | Kupyna-based KDF (libsodium `crypto_kdf`-shaped, not HKDF) | **Done** (T-39, D-45) — no DSTU standard or reference implementation exists for this at all, so unlike every other "provisional" row above, there is no oracle vector, ever; verification is determinism + distinctness property tests only. High-level wrapper (T-105, D-66) added 2026-07-25: `dstu_core::crypto_kdf`, same single-variant/opaque-key shape as `crypto_auth` |
 | `crypto_kx` | DH on the DSTU 4145/9041 curve | Not started (T-47); DSTU 9041 side hard-blocked |
 | `crypto_secretstream` | Chunked authenticated encryption, Kalyna-alone | D-05's blocker resolved 2026-07-24 (T-40). **Updated 2026-07-25 (T-99/D-63)**: `hazmat::kalyna_gcm` now exists (D-56) and has no length cap, unlike `kalyna_ccm` (255-byte cap, D-41) — and `crypto_secretbox` itself is now built on it (D-63), removing the 255-byte cap at that layer. What remains for this row specifically is genuinely chunked/streaming encryption (fixed-size blocks rather than whole-file-in-memory), not yet built |
 | `crypto_pwhash` | Not a DSTU question — plain Argon2id | **Done** (T-71, D-49/D-50) — over the `argon2` crate, dedicated `pwhash` feature (off by default, not folded into `std`); `Strength` presets mirror libsodium's own `OPSLIMIT`/`MEMLIMIT_*` constants exactly |

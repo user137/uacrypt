@@ -73,7 +73,14 @@ environment. The workspace has two crates:
   divergence 3), which for `crypto_secretbox`'s self-contained `nonce||ciphertext||tag` blob would
   have let an attacker tamper the nonce prefix without failing the tag check — fixed by passing the
   nonce as `kalyna_gcm`'s internal AAD in both `seal`/`open` (still no caller-facing AAD parameter),
-  caught by a test written during the migration itself, not discovered after the fact.
+  caught by a test written during the migration itself, not discovered after the fact. Same day,
+  roadmap Step 3 item 2 (`TASKS.md` T-105, `DECISIONS.md` D-66) landed too: `dstu_core::
+  crypto_generichash`/`crypto_auth`/`crypto_kdf`, the high-level `crypto_*` modules for Kupyna's
+  hash, KMAC, and KDF — `crypto_generichash` is a bare re-export of `hazmat::kupyna` (nothing to
+  wrap), `crypto_auth`/`crypto_kdf` are thin wrappers exposing only the 256-bit
+  `Kupyna256Kmac`/`Kupyna256Kdf` variant behind an opaque `Zeroize`-on-drop key type (D-47's
+  "delete the knob", same as `crypto_secretbox`'s single Kalyna variant), all three unconditional
+  (`no_std`-compatible) except each key type's `std`-gated `generate()`.
 - `crates/uacrypt` — the CLI binary, renamed 2026-07-23 from its `dstutool` working name
   (`DECISIONS.md` D-36; older `DECISIONS.md`/`TASKS.md`/`PERFORMANCE.md` entries predating the
   rename still say `dstutool`, left as-is since they're a historical record, not stale docs).
