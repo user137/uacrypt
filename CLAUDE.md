@@ -54,13 +54,11 @@ environment. The workspace has two crates:
   `crypto_pwhash` component, with `Strength::{Interactive,Moderate,Sensitive}` citing libsodium's
   own `OPSLIMIT`/`MEMLIMIT_*` constants exactly, no raw cost-parameter knob exposed. Same day,
   `dstu_core::crypto_secretbox` (`seal`/`open`/`SecretKey`, `TASKS.md` T-37, `DECISIONS.md` D-51) is
-  the first `crypto_secretbox` equivalent — a single fixed `hazmat::kalyna_ccm::Kalyna256_256Ccm`
-  construction (D-47's "delete the knob" criterion, not all five variants), internally-generated
-  nonce, combined `nonce||ciphertext||tag` output, deliberately no AAD parameter. **Still bounded to
-  ≤255-byte messages** (inherits `hazmat::kalyna_ccm`'s D-41 cap — errors rather than truncating)
-  and still provisional pending the primary DSTU 7624:2014 text (unchanged by this task) —
-  `crypto_secretstream` (T-40) remains open for the arbitrary-length case. Folded into the existing
-  `std` feature, not a new dedicated one, since no new dependency is introduced. Unblocked
+  the first `crypto_secretbox` equivalent (D-47's "delete the knob" criterion, not all five
+  variants), internally-generated nonce, combined `nonce||ciphertext||tag` output, deliberately no
+  AAD parameter — originally a single fixed `hazmat::kalyna_ccm::Kalyna256_256Ccm` construction,
+  since migrated to Kalyna-GCM (D-63, below), which removed the original 255-byte cap. Folded into
+  the existing `std` feature, not a new dedicated one, since no new dependency is introduced. Unblocked
   `TASKS.md` T-16 (`uacrypt`'s reserved `encrypt`/`decrypt` commands) to start - **T-16 itself is
   now done too, same session** (`DECISIONS.md` D-52): `uacrypt encrypt`/`decrypt`/`hash` are real
   commands. `encrypt`/`decrypt` are a thin CLI wrapper over `crypto_secretbox` - `--key`/`--in`/
@@ -68,13 +66,9 @@ environment. The workspace has two crates:
   product choice made with the user, not a default assumption, since a command named `encrypt`
   silently failing past 255 bytes would be a real usability trap). `hash` is fixed to Kupyna-256,
   no length cap, delegates to `kupyna-digest`'s already-streaming implementation rather than
-  duplicating it. **As of 2026-07-25 (roadmap Step 3 item 1, `DECISIONS.md` D-63),
-  `crypto_secretbox` migrated from Kalyna-CCM to `hazmat::kalyna_gcm::Kalyna256_256Gcm`** — the
-  255-byte cap and `SecretboxError::MessageTooLong` are gone entirely, not just raised (GCM encodes
-  no length into its construction the way CCM's header did); `uacrypt encrypt`/`decrypt` inherit
-  the removed cap but still read `--in` whole into memory, so a large file now means a
-  correspondingly large buffer, not a rejection — `crypto_secretstream` (T-40) remains the tracked
-  follow-up for genuinely chunked I/O. The migration surfaced a real nonce-authentication gap not
+  duplicating it. **`crypto_secretbox` migrated from Kalyna-CCM to `hazmat::kalyna_gcm::Kalyna256_256Gcm`
+  (roadmap Step 3 item 1, `DECISIONS.md` D-63)** — cap/caveat detail is in "MVP scope" below, not
+  repeated here. The migration surfaced a real nonce-authentication gap not
   in the original plan: DSTU Kalyna-GCM's tag (unlike CCM's) never covers the IV/nonce (D-56
   divergence 3), which for `crypto_secretbox`'s self-contained `nonce||ciphertext||tag` blob would
   have let an attacker tamper the nonce prefix without failing the tag check — fixed by passing the
@@ -93,10 +87,8 @@ environment. The workspace has two crates:
   `dstu_core::crypto_secretbox` actually being built (T-37), cleared the same day too (`DECISIONS.md`
   D-51) — `uacrypt`'s own `encrypt`/`decrypt`/`hash` commands (`TASKS.md` T-16, `DECISIONS.md` D-52)
   are now built too, same session, per the file-plus-mode-of-operation CLI the MVP scope below
-  describes. **As of 2026-07-25, `encrypt`/`decrypt` no longer have a message-length cap** —
-  `crypto_secretbox`'s migration to Kalyna-GCM (D-63) removed it — but `--in` is still read whole
-  into memory (unchanged code), so a large file means a correspondingly large in-memory buffer, not
-  a rejection; `hash` continues to have no such limit either.
+  describes. `encrypt`/`decrypt`'s message-length cap was later removed (D-63) — see "MVP scope"
+  below for the current-state detail; `hash` has no such limit either.
 
 `cargo xtask <command>` (see `xtask/`, aliased via `.cargo/config.toml`) is the one cross-platform
 build/QA entry point — same command on Linux/Windows/macOS, no new install beyond `cargo` itself.
