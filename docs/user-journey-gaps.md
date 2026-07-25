@@ -96,31 +96,35 @@ stateDiagram-v2
     VerifyFlashSize --> Ship
     Ship --> [*]
 
-    CrossCompile --> Discover: no target ever actually built here
 ```
+
+`CrossCompile`'s back-edge to `Discover` (present in the original 2026-07-25 version of this
+diagram, labeled "no target ever actually built here") is removed as of `TASKS.md` T-116 - real
+cross-compiles now exist for two target families, see the table below. `VerifyFlashSize` still has
+no real linked-artifact measurement behind it (see that row) - not yet a fully closed state.
 
 | State | Want | Have | Gap |
 |---|---|---|---|
 | Discover | Understand `no_std` support exists and what it means concretely | `README.md` "Embedded / `no_std` targets" section; `CLAUDE.md` MVP scope states the no-hardware-lock-in goal explicitly | none |
 | Pick profile | Decide `fused` vs `small-tables` for their flash budget | `docs/resource-profiles.md` "Which one do I need?" sizing table, by target family and typical flash size | none |
 | Configure features | Know the exact Cargo invocation | `docs/resource-profiles.md` "How to build each" section gives the literal `cargo build --no-default-features --features small-tables` commands | none |
-| Cross-compile to a real target | Build (even just build, not flash) for `thumbv7em-none-eabihf` (STM32) or an Xtensa/RISC-V ESP32 target | **This has never been done anywhere in this repo.** Confirmed by grep, not assumed: no `rust-toolchain.toml`/CI workflow/`xtask` command references `thumbv7em`, `xtensa`, or `riscv32` at all — every `no_std` build checked in CI or by `xtask` (`cargo build --no-default-features`) targets the **host** triple (`x86_64-*`), which proves the code has no `std`/`alloc` API surface leaking through, but never proves it actually cross-compiles for an ARM Cortex-M/Xtensa toolchain (different linker, no host `libc`, etc.) | **Real, previously-uncatalogued gap, and the sharpest one in this document.** `README.md`'s own wording is careful and technically correct ("this means it *compiles* for microcontroller targets... it is not a claim that it has been validated on real hardware") — but that claim itself has never been mechanically checked either. `TASKS.md` T-55/T-56 (STM32/ESP32 real-hardware validation) are Phase 4, explicitly post-MVP and out of scope for T-114's parent roadmap — but a bare *cross-compile* check (no flashing, no hardware) is a much smaller ask than full hardware validation, and nothing that small currently exists as a task at any phase |
-| Verify flash size | Confirm the ~86 KB / ~6.1 KB table numbers translate to a real linked binary on their target | `docs/resource-profiles.md`'s memory table is measured directly off `hazmat::tables.rs`/`hazmat::strumok.rs` source constants (accurate for what it measures) — but there is no `cargo size`/`.map`-file output from an actual cross-compiled artifact anywhere, only source-level constant sizes | Same root gap as above: without a real cross-compiled binary, the flash-size claim is a sum of `const` array sizes, not a measurement of a linked artifact (which would also include the runtime/panic-handler/monomorphization overhead a real MCU build carries) |
+| Cross-compile to a real target | Build (even just build, not flash) for `thumbv7em-none-eabihf` (STM32) or an Xtensa/RISC-V ESP32 target | **Closed 2026-07-26, see `TASKS.md` T-116.** All 4 `no_std`/`alloc`/`small-tables` combinations, both dev and release profiles, now build clean for `thumbv7em-none-eabihf` (STM32 Cortex-M) and `riscv32imc-unknown-none-elf` (ESP32-C3-class RISC-V), both installed via plain `rustup target add` | Xtensa (the *other* ESP32 family) needs a custom toolchain (`espup`, not plain `rustup`) and was not attempted - a smaller, separately-flaggable remaining gap, not the sharp one this row used to describe |
+| Verify flash size | Confirm the ~86 KB / ~6.1 KB table numbers translate to a real linked binary on their target | T-116 also produced a real `thumbv7em-none-eabihf` release-profile `.rlib` size (1.4 MB `fused` / 1.2 MB `small-tables`) alongside `docs/resource-profiles.md`'s existing source-constant-derived table | **Still open, explicitly** - an `.rlib` isn't a linked, dead-code-eliminated firmware image, so this isn't the same number a real flashed binary would show. Closing this fully needs an actual firmware binary crate (entry point, panic handler, `memory.x`) that doesn't exist in this repo - flagged as a further candidate, not self-assigned |
 | Ship | Flash and run on real hardware | Phase 4 (T-55/T-56), explicitly post-MVP | Correctly out of scope, not a gap against this roadmap |
 
-**Bottom line**: persona 3's journey is well-served right up to the point of actually pressing the
-build button for a real embedded target — that step has never been exercised, which means the
-"compiles for microcontroller targets" claim in `README.md`, while carefully worded, currently rests
-on `no_std` compiling for the *host* triple, not on any cross-compiled evidence. This is smaller in
-scope than T-55/T-56 (no flashing or physical board needed, just a `rustup target add` + `cargo
-build --target ...` run) and is not currently tracked as a task at any phase.
+**Bottom line**: persona 3's journey now has real cross-compiled evidence behind the "compiles for
+microcontroller targets" claim (T-116), closing this document's sharpest original finding. What
+remains open is narrower than before: Xtensa specifically (needs `espup`, not attempted), and a true
+linked flash-size measurement (needs a firmware binary crate this repo doesn't have) - both smaller
+asks than the original "has anyone ever tried this" gap.
 
 ## Cross-persona findings
 
-- **The single highest-value new finding**: persona 3's cross-compile gap. It's cheap to close (no
-  hardware required) and sits directly behind a claim `README.md` already makes in careful, hedged
-  language — the hedge is correct, but the thing it's hedging *against verifying* has never been
-  attempted.
+- **The single highest-value finding when this document was first written**: persona 3's
+  cross-compile gap. It sat directly behind a claim `README.md` already made in careful, hedged
+  language — the hedge was correct, but the thing it was hedging *against verifying* had never been
+  attempted. **Closed 2026-07-26, see `TASKS.md` T-116** — real cross-compiles now exist for two
+  target families (thumbv7em/STM32, riscv32imc/ESP32-C3-class), no hardware required to get there.
 - **`uacrypt keygen`'s absence** (persona 1) was already-tracked at the construction level
   (`randombytes` "Done") but read very differently once framed as "can this specific persona finish
   their journey" — the answer was no, at the very first concrete step. **Closed 2026-07-26, see
@@ -130,6 +134,6 @@ build --target ...` run) and is not currently tracked as a task at any phase.
   construction level as T-17, explicitly gated on an owner request rather than queued automatically.
 - The three findings above were not proposed as new task numbers when this document was first
   written, per T-114's own scope ("this task's value is the persona/journey framing itself") — they
-  were recorded as candidates for the project owner to triage. One (`uacrypt keygen`) has since been
-  triaged into T-115 and closed; the cross-compile check and crates.io publication remain open
-  candidates.
+  were recorded as candidates for the project owner to triage. Two (`uacrypt keygen`, T-115; the
+  cross-compile check, T-116) have since been triaged and closed; crates.io publication (T-17)
+  remains open, still explicitly gated on an owner request.

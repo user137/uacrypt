@@ -221,10 +221,14 @@ not built yet.
 ## Embedded / `no_std` targets
 
 `dstu-core` is `no_std`-compatible from day one (`cargo build --no-default-features`, checked by
-`cargo xtask build` and in CI on every push). This means it *compiles* for microcontroller targets
-(e.g. `rustup target add thumbv7em-none-eabihf` for STM32 Cortex-M, or the relevant Xtensa/RISC-V
-target for ESP32) — it is **not** a claim that it has been validated on real hardware, and
-specifically **not** a claim of resistance to hardware side-channel attacks (SPA/DPA), which would
+`cargo xtask build` and in CI on every push, but only against the **host** triple). **Cross-compiling
+for a real embedded target is separately confirmed** (`TASKS.md` T-116, 2026-07-26): all 4
+`no_std`/`alloc`/`small-tables` combinations build clean, both dev and release profiles, for
+`thumbv7em-none-eabihf` (STM32 Cortex-M) and `riscv32imc-unknown-none-elf` (ESP32-C3-class
+RISC-V) via plain `rustup target add` — no custom toolchain needed for either. This means it
+*compiles* for real microcontroller targets — it is **not** a claim that it has been validated on
+real hardware, and specifically **not** a claim of resistance to hardware side-channel attacks
+(SPA/DPA), which would
 need a separate, dedicated hardware audit. Real-hardware validation is a distinct post-MVP phase.
 
 ## License

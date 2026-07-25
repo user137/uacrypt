@@ -465,6 +465,32 @@ item they point to is later removed.
       `DECISIONS.md` entry - CLI ergonomics exposing an already-decided construction
       (`crypto_secretstream::Key::generate`, D-68), nothing architectural, same call T-108 made for
       `--help` text.
+- [x] **T-116** **DONE 2026-07-26.** Bare-metal cross-compile verification - triaged from a candidate
+      gap T-114 found and confirmed by grep (no `thumbv7em`/`xtensa`/`riscv32` string anywhere in CI
+      config or `xtask` before this task): every `no_std` build this project checks, in CI or
+      locally, targets the **host** triple (`x86_64-*`), which proves no `std`/`alloc` API surface
+      leaks through but never proved `dstu-core` actually cross-compiles for a real MCU toolchain
+      (different linker, no host `libc`). Scope deliberately kept small per the candidate's own
+      framing - a bare cross-compile check, not Phase 4's real-hardware validation (T-55/T-56,
+      flashing/running on a physical board, still untouched and still post-MVP).
+      `rustup target add thumbv7em-none-eabihf` (STM32 Cortex-M) and `rustup target add
+      riscv32imc-unknown-none-elf` (ESP32-C3-class RISC-V) both installed with a plain `rustup`
+      command - no custom toolchain/espup needed for either (Xtensa, the *other* ESP32 family, does
+      need a custom toolchain and was not attempted here - out of scope for this pass). All 4
+      `no_std`/`alloc`/`small-tables` feature combinations built clean for both targets (8 builds
+      total, `cargo build -p dstu-core --no-default-features [--features alloc|small-tables|
+      alloc,small-tables] --target <target>`), plus a release-profile build for
+      `thumbv7em-none-eabihf`'s `fused`/`small-tables` pair specifically (1.4 MB / 1.2 MB `.rlib`
+      size respectively) - **explicitly not a flash-size measurement**: an unlinked `.rlib` still
+      carries every function plus debug metadata, not the dead-code-eliminated, linked output a real
+      firmware image would produce, so this doesn't supersede `docs/resource-profiles.md`'s existing
+      source-constant-derived table, only adds "and it really does cross-compile" evidence next to
+      it. A true linked flash-size number would need an actual firmware binary crate (entry point,
+      panic handler, `memory.x` linker script) that doesn't exist in this repo - not built here,
+      flagged as a further candidate, not self-assigned. `README.md`'s "Embedded / `no_std` targets"
+      section updated to cite this verification instead of only asserting compilability from the
+      host build; `docs/user-journey-gaps.md`'s persona-3 row/bottom-line updated to match. No
+      `DECISIONS.md` entry - a verification pass, not an architectural decision.
 - [x] **T-19** **Naming subtask, all three decisions made 2026-07-23** (T-20/T-21/T-22 below) -
       unblocks T-17/T-18, which are still separately open (a decided name isn't a crates.io
       publish or a built release binary):
