@@ -3561,3 +3561,60 @@ actual subject of T-100 - the EC-ladder/field-inversion timeout) completely and 
 Linux runner - that conclusion is unconfirmed pending a push (push is explicit-request-only,
 per this project's standing git-safety posture). `rust.yml`'s miri-job comment updated to cite this
 entry instead of the pre-fix problem description.
+
+## D-60: `hazmat::kalyna_cfb`'s documented panic (T-91/D-53) becomes a checked `Result` (T-101)
+
+Own plan-mode pass, per the roadmap's explicit requirement for this specific fork (`TASKS.md`
+"Roadmap to a genuinely complete product," Step 1). Resolution direction was pre-approved by the
+project owner when the roadmap was recorded; this entry is the actual derivation and design, not
+just execution of a foregone conclusion.
+
+**Root cause, traced by hand against both the Rust port and `oracles/uapki/.../dstu7624.c`'s
+`encrypt_cfb`/`decrypt_cfb` (identical unchecked-index construction in the reference too - this is
+a property of the transcribed algorithm, not a Rust-side bug).** `used_gamma_len` is the byte
+position within the current `gamma`/`feed` block a later call resumes from. The bulk loop indexes
+`self.gamma[offset..offset + q]` directly, which is in-bounds exactly when `offset % q == 0` -
+this covers every position the bulk loop ever needs (0, q, 2q, ..., block_bytes - q, and
+block_bytes itself, since `block_bytes % q == 0` for all 12 admissible `(block_bytes, q)`
+combinations this crate constructs: `q ∈ {1, 8, 16, 32, 64}`, `block_bytes ∈ {16, 32, 64}`, `q ≤
+block_bytes` - now an executable fact, not an assertion, via the new
+`feedback_width_divides_block_length` test in `tests/kalyna_cfb.rs`, one per variant). The leading
+"catch-up" loop (`while offset < self.q`) only does real work when `offset < q`, which is only
+reachable from a trailing partial-group call when `q == block_bytes` (there, the post-priming
+resume position is 0). For `q < block_bytes` the post-priming resume position (`block_bytes - q`)
+is always `>= q`, so a trailing-partial call there leaves `offset` neither `< q` (catch-up doesn't
+fire) nor a multiple of `q` (bulk loop indexes out of range or reads the wrong data) - the exact
+panic T-91/D-53 found via `proptest`, not the fixed vectors.
+
+**Fix: `used_gamma_len % q == 0` checked on entry to both `encrypt_in_place`/`decrypt_in_place`,
+returning `Err` instead of proceeding.** `InvalidFeedbackWidth` (a bare struct, only used by
+`new()`) replaced by a `CfbError` enum (`InvalidFeedbackWidth`, `NonAlignedIntermediateCall`),
+matching the established one-enum-per-mode convention (`KwError`, `GcmError`, `CcmError` in the
+sibling `kalyna_kw`/`kalyna_gcm`/`kalyna_ccm` modules - same derive set, no `std::error::Error`
+impl). `new()`'s return type changes accordingly; no other module references the old type name
+(`grep`-confirmed before starting). Existing round-trip/vector logic in both functions is otherwise
+untouched, now returning `Ok(())` instead of falling off the end.
+
+**Real, stated behavior change, not a no-op refactor**: in the narrow `q == block_bytes` case, a
+trailing partial-group call followed by another call happens to succeed today via the catch-up
+loop - an undocumented tolerance, not a guaranteed contract (the module doc already states the
+q-multiple-per-call rule unconditionally, no `q == block_bytes` carve-out). Enforcing
+`used_gamma_len % q == 0` uniformly matches the documented contract rather than narrowing an
+explicit guarantee, but this one specific call pattern does newly return `Err` where it previously
+succeeded. Asserted directly, not left to an incidental loop iteration:
+`trailing_partial_call_with_q_equal_to_block_len_is_rejected`, one per variant.
+
+**Verified, test-first** (`tests/kalyna_cfb.rs`, 3 new tests + `.unwrap()` added to all 6 existing
+call sites that previously ignored the `()` return): `feedback_width_divides_block_length` (the
+divisibility fact, all 5 variants), `non_aligned_intermediate_call_is_rejected` (a deliberate
+non-`q`-aligned intermediate call followed by another, asserts
+`Err(CfbError::NonAlignedIntermediateCall)` for both `encrypt_in_place`/`decrypt_in_place`, every
+admissible `q > 1` per variant - `q = 1` skipped, every length is trivially `q`-aligned there),
+`trailing_partial_call_with_q_equal_to_block_len_is_rejected` (the behavior-narrowing regression
+above). All 25 tests (22 existing + 3 new, x5 variants where applicable) green on the first
+attempt. `cargo test --workspace --all-features`, `cargo clippy --workspace --all-features -- -D
+warnings`, `cargo fmt --all -- --check`, `cargo build -p dstu-core --no-default-features` all
+clean. `cargo +nightly miri test -p dstu-core --test kalyna_cfb`
+(`MIRIFLAGS=-Zmiri-disable-isolation PROPTEST_CASES=1`, matching T-100/D-59's CI convention): clean,
+0 UB, 25/25, 585.27s (comparable to D-59's 801.31s for this same file's *previous*, smaller test
+set - the new tests are small and fixed-shape, no proptest case-count blowup).

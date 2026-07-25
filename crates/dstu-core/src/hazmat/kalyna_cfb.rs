@@ -32,17 +32,30 @@
 //! **but unlike [`super::kalyna_ofb`]/[`super::kalyna_cbc`], call boundaries are not arbitrary.**
 //! Every call except the last must supply a length that is a multiple of `q` - a call boundary
 //! landing mid-way through a `q`-sized group leaves the internal state referencing a position a
-//! later call's own bookkeeping cannot correctly resume from, **and will panic (an out-of-bounds
-//! slice index), not silently produce wrong output** - this is a transcribed property of
+//! later call's own bookkeeping cannot correctly resume from. This is a transcribed property of
 //! `dstu7624.c`'s own construction (its self-test never exercises multi-call chaining with a
-//! non-`q`-aligned boundary either), confirmed directly (not assumed) by `tests/kalyna_cfb.rs`'s
-//! `proptest`, which restricts intermediate chunk lengths to multiples of `q` for exactly this
-//! reason.
+//! non-`q`-aligned boundary either, and the reference has no bounds checking there at all),
+//! confirmed directly (not assumed) by `tests/kalyna_cfb.rs`'s `proptest`, which restricts
+//! intermediate chunk lengths to multiples of `q` for exactly this reason.
+//!
+//! **Checked, not a panic** (`TASKS.md` T-101, `DECISIONS.md`): both methods return
+//! [`Result<(), CfbError>`] and reject a call with `Err(CfbError::NonAlignedIntermediateCall)`
+//! rather than indexing out of bounds if the internal state isn't currently at a `q`-aligned
+//! resume point - `used_gamma_len % q == 0` is checked on entry, which is both necessary and
+//! sufficient given `block_bytes % q == 0` for every `(block_bytes, q)` pair this crate
+//! constructs (`tests/kalyna_cfb.rs`'s `feedback_width_divides_block_length` makes this an
+//! executable fact per variant, not just an argument in this comment).
 
-/// `q` is not one of the DSTU-defined feedback widths (1, 8, 16, 32, or 64 bytes), or exceeds the
-/// block size.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct InvalidFeedbackWidth;
+pub enum CfbError {
+    /// `q` is not one of the DSTU-defined feedback widths (1, 8, 16, 32, or 64 bytes), or exceeds
+    /// the block size.
+    InvalidFeedbackWidth,
+    /// A call was made while the internal state wasn't at a `q`-aligned resume point - the
+    /// previous call ended mid-way through a `q`-sized group (a length that wasn't a multiple of
+    /// `q`) and was not, in fact, the last call. See the module doc comment.
+    NonAlignedIntermediateCall,
+}
 
 macro_rules! kalyna_cfb_variant {
     ($name:ident, $expanded:ident, $key_bytes:literal, $block_bytes:literal) => {
@@ -64,14 +77,14 @@ macro_rules! kalyna_cfb_variant {
             ///
             /// # Errors
             ///
-            /// Returns [`InvalidFeedbackWidth`] if `q` fails either check.
+            /// Returns [`CfbError::InvalidFeedbackWidth`] if `q` fails either check.
             pub fn new(
                 key: &[u8; $key_bytes],
                 iv: &[u8; $block_bytes],
                 q: usize,
-            ) -> Result<Self, InvalidFeedbackWidth> {
+            ) -> Result<Self, CfbError> {
                 if q == 0 || q > $block_bytes || !matches!(q, 1 | 8 | 16 | 32 | 64) {
-                    return Err(InvalidFeedbackWidth);
+                    return Err(CfbError::InvalidFeedbackWidth);
                 }
                 Ok(Self {
                     key: super::kalyna::$expanded::new(key),
@@ -84,7 +97,17 @@ macro_rules! kalyna_cfb_variant {
 
             /// Encrypts `buf` in place. See the module doc comment for the `feed`/`gamma`
             /// bookkeeping this transcribes.
-            pub fn encrypt_in_place(&mut self, buf: &mut [u8]) {
+            ///
+            /// # Errors
+            ///
+            /// Returns [`CfbError::NonAlignedIntermediateCall`] if the internal state isn't at a
+            /// `q`-aligned resume point - see the module doc comment's "not arbitrary" call
+            /// boundary rule.
+            pub fn encrypt_in_place(&mut self, buf: &mut [u8]) -> Result<(), CfbError> {
+                if self.used_gamma_len % self.q != 0 {
+                    return Err(CfbError::NonAlignedIntermediateCall);
+                }
+
                 let mut data_off = 0usize;
                 let mut offset = self.used_gamma_len;
 
@@ -121,12 +144,23 @@ macro_rules! kalyna_cfb_variant {
                 }
 
                 self.used_gamma_len = offset;
+                Ok(())
             }
 
             /// Decrypts `buf` in place. See the module doc comment for why this is not simply
             /// [`Self::encrypt_in_place`] run again - the `feed` register absorbs the raw
             /// ciphertext bytes read from `buf`, not the just-computed plaintext.
-            pub fn decrypt_in_place(&mut self, buf: &mut [u8]) {
+            ///
+            /// # Errors
+            ///
+            /// Returns [`CfbError::NonAlignedIntermediateCall`] if the internal state isn't at a
+            /// `q`-aligned resume point - see the module doc comment's "not arbitrary" call
+            /// boundary rule.
+            pub fn decrypt_in_place(&mut self, buf: &mut [u8]) -> Result<(), CfbError> {
+                if self.used_gamma_len % self.q != 0 {
+                    return Err(CfbError::NonAlignedIntermediateCall);
+                }
+
                 let mut data_off = 0usize;
                 let mut offset = self.used_gamma_len;
 
@@ -167,6 +201,7 @@ macro_rules! kalyna_cfb_variant {
                 }
 
                 self.used_gamma_len = offset;
+                Ok(())
             }
         }
     };

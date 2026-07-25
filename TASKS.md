@@ -1430,7 +1430,7 @@ GMAC work above) — process/documentation gaps, not code-correctness bugs
       Raspberry Pi rig, `TASKS.md` "Testing & hardening", doesn't have Miri installed yet per its
       last re-run note — would need `rustup component add miri` there first) or watching the actual
       CI run once one happens, not a guess written down as settled.
-- [ ] **T-101** **`hazmat::kalyna_cfb`'s multi-call panic is a closed doc note, not an open design
+- [x] **T-101** **`hazmat::kalyna_cfb`'s multi-call panic is a closed doc note, not an open design
       question — it should be one.** Found alongside T-100 in the same `advisor()` audit: T-91/D-53
       already record a real, reachable out-of-bounds slice index in `encrypt_in_place`/
       `decrypt_in_place` when a caller's call boundaries don't respect the `q`-byte-multiple
@@ -1458,6 +1458,23 @@ GMAC work above) — process/documentation gaps, not code-correctness bugs
       decision (put to the project owner, matching this project's own "real security-posture forks
       get decided explicitly, not silently" precedent — D-46/T-40's re-scoping questions are the
       model to follow), not just a fix picked unilaterally.
+      **Resolved 2026-07-25, own plan-mode pass per the roadmap's requirement, see `DECISIONS.md`
+      D-60 for the full root-cause trace and design.** Answer: `Result`, not a documented panic —
+      `encrypt_in_place`/`decrypt_in_place` now return `Result<(), CfbError>`
+      (`InvalidFeedbackWidth`/`NonAlignedIntermediateCall`, replacing the bare
+      `InvalidFeedbackWidth` struct, matching `KwError`/`GcmError`/`CcmError`'s one-enum-per-mode
+      convention). The exact safety predicate — `used_gamma_len % q == 0` — was derived by hand by
+      tracing the bulk loop's indexing, checked on entry, and turned into an executable fact (not
+      just a doc argument) via a new `feedback_width_divides_block_length` test confirming
+      `block_bytes % q == 0` for every admissible `(block_bytes, q)` pair. **Real behavior change,
+      not a no-op**: the narrow `q == block_bytes` case previously tolerated a trailing-partial-then-
+      resume pattern via the catch-up loop (undocumented, never guaranteed) — now rejected too,
+      matching the module doc's unconditional q-multiple rule; asserted with its own dedicated
+      regression test rather than left to an incidental proptest iteration. **Verified**: 3 new
+      tests × 5 variants, all 25 (22 existing + 3 new) green first attempt; full workspace
+      `cargo test`/`clippy -D warnings`/`fmt --check`/bare `no_std` build all clean; scoped
+      `cargo +nightly miri test -p dstu-core --test kalyna_cfb` (T-100/D-59's CI-matching
+      `MIRIFLAGS`/`PROPTEST_CASES=1` convention) clean, 0 UB, 25/25, 585.27s.
 
 ## Roadmap to a genuinely complete product (2026-07-24, user-approved sequencing)
 
@@ -1491,8 +1508,12 @@ by tagging every such test `#[cfg_attr(miri, ignore)]` at the source; `dstu-core
 locally end-to-end (~84 min), `timeout-minutes` raised 30 → 150 accordingly. Surfaced a new,
 separately-tracked finding (T-102, `uacrypt`'s own tests hit a Windows-only Miri filesystem gap) -
 not itself resolved by this step, and CI's own Linux-runner conclusion is still unconfirmed pending
-a push. Then T-101 (`kalyna_cfb` → `Result`,
-own test-first pass), then T-98 (fuzz targets - after T-101, since `kalyna_cfb`'s shape will have
+a push. Then T-101 (`kalyna_cfb` → `Result`) - **DONE, see D-60**: own plan-mode pass, safety
+predicate (`used_gamma_len % q == 0`) derived by hand and verified executable via a new
+divisibility test; `CfbError` enum matches `KwError`/`GcmError`/`CcmError`'s convention; a real,
+stated behavior narrowing (the `q == block_bytes` trailing-partial case) covered by its own
+regression test, not left incidental. All verification clean, including a scoped Miri run
+(585.27s, 0 UB). Then T-98 (fuzz targets - after T-101, since `kalyna_cfb`'s shape has now
 changed), T-97 (trivial `SECURITY.md` table row, any time), T-99 last (reconcile
 `docs/release-readiness.md` against the state *after* the rest of this step and Step 0).
 

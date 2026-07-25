@@ -6,7 +6,8 @@
 //! register, transcribed exactly rather than simplified by analogy.
 
 use dstu_core::hazmat::kalyna_cfb::{
-    Kalyna128_128Cfb, Kalyna128_256Cfb, Kalyna256_256Cfb, Kalyna256_512Cfb, Kalyna512_512Cfb,
+    CfbError, Kalyna128_128Cfb, Kalyna128_256Cfb, Kalyna256_256Cfb, Kalyna256_512Cfb,
+    Kalyna512_512Cfb,
 };
 use proptest::prelude::*;
 
@@ -94,14 +95,103 @@ macro_rules! variant_test {
                     let mut buf = case.plaintext.clone();
                     <$variant>::new(&key, &iv, case.q)
                         .expect("valid q in vector")
-                        .encrypt_in_place(&mut buf);
+                        .encrypt_in_place(&mut buf)
+                        .unwrap();
                     assert_eq!(buf, case.ciphertext, "encrypt mismatch, q={}", case.q);
 
                     <$variant>::new(&key, &iv, case.q)
                         .expect("valid q in vector")
-                        .decrypt_in_place(&mut buf);
+                        .decrypt_in_place(&mut buf)
+                        .unwrap();
                     assert_eq!(buf, case.plaintext, "decrypt mismatch, q={}", case.q);
                 }
+            }
+
+            /// `block_len % q == 0` for every `q` this crate's `new()` admits is the safety fact
+            /// `CfbError::NonAlignedIntermediateCall`'s precondition check (`used_gamma_len % q ==
+            /// 0`) relies on to be a complete safety condition, not just a heuristic - encoded here
+            /// as an executable check per variant rather than only argued in `DECISIONS.md`.
+            #[test]
+            fn feedback_width_divides_block_length() {
+                for q in [1usize, 8, 16, 32, 64] {
+                    if q > $block_len {
+                        continue;
+                    }
+                    assert_eq!(
+                        $block_len % q,
+                        0,
+                        "block_len={} not divisible by q={}",
+                        $block_len,
+                        q
+                    );
+                }
+            }
+
+            /// A call boundary landing mid-way through a `q`-sized group (i.e. not the final call)
+            /// used to panic (out-of-bounds slice index, T-91/D-53) - now checked, see
+            /// `DECISIONS.md` for T-101. `q=1` is skipped: every length is a multiple of 1, so this
+            /// misuse pattern is unreachable for it.
+            #[test]
+            fn non_aligned_intermediate_call_is_rejected() {
+                let key = [0x11u8; $key_len];
+                let iv = [0x22u8; $block_len];
+
+                for q in [8usize, 16, 32, 64] {
+                    if q > $block_len {
+                        continue;
+                    }
+
+                    let mut cipher = <$variant>::new(&key, &iv, q).unwrap();
+                    let mut first = vec![0u8; q - 1];
+                    cipher
+                        .encrypt_in_place(&mut first)
+                        .expect("length < q may be a valid final call, must not itself fail");
+                    let mut second = vec![0u8; 1];
+                    assert_eq!(
+                        cipher.encrypt_in_place(&mut second),
+                        Err(CfbError::NonAlignedIntermediateCall),
+                        "encrypt: resuming after a non-q-aligned intermediate call must be \
+                         rejected, q={q}"
+                    );
+
+                    let mut cipher = <$variant>::new(&key, &iv, q).unwrap();
+                    let mut first = vec![0u8; q - 1];
+                    cipher
+                        .decrypt_in_place(&mut first)
+                        .expect("length < q may be a valid final call, must not itself fail");
+                    let mut second = vec![0u8; 1];
+                    assert_eq!(
+                        cipher.decrypt_in_place(&mut second),
+                        Err(CfbError::NonAlignedIntermediateCall),
+                        "decrypt: resuming after a non-q-aligned intermediate call must be \
+                         rejected, q={q}"
+                    );
+                }
+            }
+
+            /// Regression guard, T-101: before the checked-`Result` fix, this exact `q ==
+            /// block_len` trailing-partial-then-resume pattern happened to succeed (the leading
+            /// catch-up loop covers it in that one case) even though the module doc's q-multiple
+            /// rule is unconditional. Enforcing the documented contract uniformly means this now
+            /// returns `Err` too - asserted explicitly, not left to an incidental loop iteration of
+            /// `non_aligned_intermediate_call_is_rejected` above, so the behavior change isn't
+            /// silently uncovered.
+            #[test]
+            fn trailing_partial_call_with_q_equal_to_block_len_is_rejected() {
+                let key = [0x33u8; $key_len];
+                let iv = [0x44u8; $block_len];
+                let q = $block_len;
+
+                let mut cipher = <$variant>::new(&key, &iv, q).unwrap();
+                let mut first = vec![0u8; q - 1];
+                cipher
+                    .encrypt_in_place(&mut first)
+                    .expect("length < q may be a valid final call, must not itself fail");
+                let mut second = vec![0u8; 1];
+                assert_eq!(
+                    cipher.encrypt_in_place(&mut second),
+                    Err(CfbError::NonAlignedIntermediateCall)
+                );
             }
 
             proptest! {
@@ -136,7 +226,8 @@ macro_rules! variant_test {
                         let mut whole = data.clone();
                         <$variant>::new(&key_arr, &iv_arr, q)
                             .unwrap()
-                            .encrypt_in_place(&mut whole);
+                            .encrypt_in_place(&mut whole)
+                            .unwrap();
 
                         let mut chunked = data.clone();
                         let mut cipher = <$variant>::new(&key_arr, &iv_arr, q).unwrap();
@@ -144,14 +235,14 @@ macro_rules! variant_test {
                         for units in &chunk_units {
                             let len = (units * q).min(chunked.len() - offset);
                             let end = offset + len;
-                            cipher.encrypt_in_place(&mut chunked[offset..end]);
+                            cipher.encrypt_in_place(&mut chunked[offset..end]).unwrap();
                             offset = end;
                             if offset >= chunked.len() {
                                 break;
                             }
                         }
                         if offset < chunked.len() {
-                            cipher.encrypt_in_place(&mut chunked[offset..]);
+                            cipher.encrypt_in_place(&mut chunked[offset..]).unwrap();
                         }
 
                         prop_assert_eq!(&whole, &chunked, "q={}", q);
@@ -160,7 +251,8 @@ macro_rules! variant_test {
                         let mut recovered = whole.clone();
                         <$variant>::new(&key_arr, &iv_arr, q)
                             .unwrap()
-                            .decrypt_in_place(&mut recovered);
+                            .decrypt_in_place(&mut recovered)
+                            .unwrap();
                         prop_assert_eq!(&recovered, &data, "round trip, q={}", q);
                     }
                 }
