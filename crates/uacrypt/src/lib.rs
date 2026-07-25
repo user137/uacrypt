@@ -4,6 +4,13 @@
 //! `uacrypt`'s testable logic - `main.rs` is a thin wrapper that calls [`run`] and maps the
 //! result to a process exit code.
 //!
+//! **Pre-release and provisional - not independently audited.** The Kalyna-alone mode of
+//! operation backing `encrypt`/`decrypt`/`kalyna-ccm` rests on an adopted assumption, not a
+//! confirmation against the primary DSTU 7624:2014 text (`DECISIONS.md` D-05). `strumok-crypt` is
+//! UAPKI-attributed only, not confirmed against the primary DSTU 8845:2019 text (`DECISIONS.md`
+//! D-15). See `SECURITY.md`/`DECISIONS.md` in the project repository for the full threat model,
+//! citations, and per-construction status.
+//!
 //! **`kalyna-block` is deliberately not named `encrypt`/`decrypt`** - those names are the real
 //! top-level commands now (`TASKS.md` T-16, `DECISIONS.md` D-52), built over
 //! `dstu_core::crypto_secretstream` (T-40/T-70, `DECISIONS.md` D-68 - migrated from

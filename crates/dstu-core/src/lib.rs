@@ -1,3 +1,14 @@
+//! Rust implementations of Ukrainian DSTU cryptographic standards (Kalyna, Kupyna, Strumok).
+//!
+//! **Pre-release and provisional — not independently audited.** Kalyna and Kupyna are
+//! dual-oracle-verified against official test vectors. The Kalyna-alone mode of operation
+//! (`hazmat::kalyna_ccm`, `hazmat::kalyna_gcm`, and everything built on them) rests on an adopted
+//! assumption, not a confirmation against the primary DSTU 7624:2014 text (`DECISIONS.md` D-05).
+//! Strumok is UAPKI-attributed only, not confirmed against the primary DSTU 8845:2019 text
+//! (`DECISIONS.md` D-15). This crate makes **no claim of side-channel (SPA/DPA) resistance**. See
+//! `SECURITY.md` and `DECISIONS.md` in the project repository for the full threat model, citations,
+//! and per-construction status.
+
 #![cfg_attr(not(feature = "std"), no_std)]
 #![warn(clippy::pedantic)]
 #![deny(clippy::unwrap_used, clippy::expect_used)]

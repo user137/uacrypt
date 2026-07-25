@@ -307,7 +307,7 @@ item they point to is later removed.
       gotcha in this file's "Agent discipline" section, T-85) - an MSRV job that runs a bare `cargo
       build` in the same job as an installed MSRV toolchain will silently build under `stable`
       instead unless it says `cargo +<msrv-version> build` explicitly. Not started.
-- [ ] **T-112** Crate-level `#![doc]` provisional-status warning for both crates - requested
+- [x] **T-112** Crate-level `#![doc]` provisional-status warning for both crates - requested
       2026-07-25. `README.md` already has a pre-release/WIP banner (T-86/D-43: version, "not
       audited," Strumok/Kalyna-CCM/D-05's provisional status), but a docs.rs visitor who never opens
       the GitHub repo never sees it - rustdoc's own generated landing page is the only thing they're
@@ -315,7 +315,21 @@ item they point to is later removed.
       `uacrypt::main.rs`/`lib.rs`) stating the same provisional facts (D-05 Kalyna-alone is an
       adopted assumption not a primary-text confirmation, Strumok is UAPKI-attributed not
       DSTU-8845-confirmed per D-15, no independent third-party audit) - point back at `SECURITY.md`/
-      `DECISIONS.md` rather than re-arguing the citations inline. Not started.
+      `DECISIONS.md` rather than re-arguing the citations inline.
+      **Done 2026-07-25.** `crates/dstu-core/src/lib.rs` got a top `//!` block (before the existing
+      `no_std`/lint attributes) naming D-05 (Kalyna-alone mode-of-operation is an adopted
+      assumption, not primary-text confirmed), D-15 (Strumok is UAPKI-attributed only), and the
+      no-side-channel-claim - pointing at `SECURITY.md`/`DECISIONS.md` rather than re-arguing them.
+      `crates/uacrypt/src/lib.rs` got the same facts folded into its existing doc-comment block
+      (which already covers `kalyna-block` naming), phrased for the CLI's own command names
+      (`encrypt`/`decrypt`/`kalyna-ccm`, `strumok-crypt`). `crates/uacrypt/src/main.rs` had no doc
+      comment at all before this - added a short one pointing at `lib.rs`'s fuller version rather
+      than duplicating the same paragraph a third time. Verified: `cargo build --workspace
+      --all-features`, `cargo build -p dstu-core --no-default-features`, `cargo clippy --workspace
+      --all-features -- -D warnings` (checked specifically for the `doc_lazy_continuation`/
+      `doc_markdown` gotcha this file's Agent-discipline section already flags - clean), and `cargo
+      fmt --all -- --check` all pass. Doc-only change - `cargo test`/Miri not re-run. No
+      `DECISIONS.md` entry - same packaging/doc-hygiene call as T-107/T-109/T-110.
 - [ ] **T-113** Multi-part/streaming `crypto_sign` for large messages - found during the 2026-07-25
       libsodium API audit (see `docs/release-readiness.md`). `dstu_core::crypto_sign` currently only
       signs an in-memory `&[u8]` in one call; libsodium's `crypto_sign_ed25519ph` (`_init`/`_update`/
@@ -2015,11 +2029,14 @@ full detail)**:
    metadata warnings.
 4. **T-110 (docs.rs metadata) - DONE, see `TASKS.md` T-110's own entry above.** `[package.metadata.
    docs.rs]` with `all-features = true` added to both crates' `Cargo.toml`; build/clippy/fmt clean.
-   T-112 (crate-level provisional-status doc warning), T-108 (`uacrypt --help`), T-111 (CHANGELOG +
-   empirically-measured MSRV, not just a version number guess), T-113 (multi-part `crypto_sign` -
-   **check the DSTU 4145 primary text first**, this may collapse to a much smaller
-   `sign_digest`/`verify_digest` entry point than "streaming signer" implies) - all not started, in
-   this order. **T-112 is next.**
+5. **T-112 (crate-level provisional-status doc warning) - DONE, see `TASKS.md` T-112's own entry
+   above.** `dstu_core::lib.rs`, `uacrypt::lib.rs`, and `uacrypt::main.rs` all now carry a top
+   doc-comment stating D-05/D-15's provisional status and the no-side-channel-claim, pointing at
+   `SECURITY.md`/`DECISIONS.md`; build/clippy (incl. the `doc_lazy_continuation` gotcha)/fmt clean.
+   T-108 (`uacrypt --help`), T-111 (CHANGELOG + empirically-measured MSRV, not just a version number
+   guess), T-113 (multi-part `crypto_sign` - **check the DSTU 4145 primary text first**, this may
+   collapse to a much smaller `sign_digest`/`verify_digest` entry point than "streaming signer"
+   implies) - all not started, in this order. **T-108 is next.**
 - **Publication (T-17/T-18) is explicitly out of this plan** - gated on the user asking for it by
   name, not simply queued behind Step 5. Do not start it as a side effect of finishing Step 5.
 - The 2026-07-25 libsodium/crates.io research pass also produced a set of **deliberate non-tasks**
