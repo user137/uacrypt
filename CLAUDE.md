@@ -2,6 +2,15 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Communication language
+
+Respond to the project owner in Ukrainian by default in this repository — don't wait for them to
+switch language first (requested explicitly 2026-07-25; complements, doesn't replace, the global
+"use Ukrainian when the user writes in Ukrainian" rule in `~/.claude/CLAUDE.md`, and mirrors the
+same note already in `.claude.local.md`, recorded here too since that file isn't committed). This
+governs conversational replies only — code, identifiers, commit messages, and this repo's own docs
+stay in whatever language they already use.
+
 ## Project status
 
 All three of Phase 1's MVP primitives have landed and are confirmed green. A local toolchain
