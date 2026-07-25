@@ -177,8 +177,26 @@ item they point to is later removed.
       loudly, not as a footnote — `CLAUDE.md`'s own MVP-scope example line previously read as
       implying arbitrary-file support, now corrected. No `uacrypt keygen` command added (out of
       this task's stated scope, same gap `kalyna-block`/`kalyna-ccm` already have).
-- [ ] **T-17** Publish `dstu-core` to crates.io
-- [ ] **T-18** Prebuilt Windows/Linux binaries via GitHub Releases
+- [ ] **T-17** Publish `dstu-core` to crates.io. **Readiness-checked (not performed) 2026-07-25,
+      Step 4 of the roadmap, user explicitly asked to assess without actually publishing**:
+      `cargo publish --dry-run -p dstu-core` packages, verifies, and compiles cleanly from the
+      packaged tarball (130 files, 764.7 KiB / 184.6 KiB compressed). One warning, not a blocker:
+      "manifest has no documentation, homepage or repository" (`repository`/`homepage`/
+      `documentation` fields absent from `crates/dstu-core/Cargo.toml`). **Real gap found**:
+      neither `crates/dstu-core/` nor `crates/uacrypt/` has its own `README.md`, and neither
+      `Cargo.toml` sets a `readme` field - only the workspace-root `README.md` exists, which
+      `cargo package` does not reach (packaging only includes files inside each crate's own
+      directory) - so the crates.io page would render with **no README at all** as things stand,
+      not a cosmetic issue for a crate whose entire pitch is "read this before you trust it with
+      key material." Publish order also confirmed mechanically: `cargo publish --dry-run -p
+      uacrypt` fails today with "no matching package named `dstu-core` found" (its path dependency
+      can't resolve against the registry until `dstu-core` is actually published first) - expected,
+      not a bug, just fixes the required order (`dstu-core` before `uacrypt`). None of this touched
+      the actual crates.io registry - `--dry-run` uploads nothing.
+- [ ] **T-18** Prebuilt Windows/Linux binaries via GitHub Releases. **Readiness-checked 2026-07-25**:
+      zero infrastructure exists yet - `.github/workflows/` has only `rust.yml`/`oracle-harness.yml`,
+      no release/cross-compilation/binary-packaging workflow at all. This is unstarted work, not a
+      near-miss.
 - [x] **T-19** **Naming subtask, all three decisions made 2026-07-23** (T-20/T-21/T-22 below) -
       unblocks T-17/T-18, which are still separately open (a decided name isn't a crates.io
       publish or a built release binary):
