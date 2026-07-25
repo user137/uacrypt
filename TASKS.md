@@ -197,13 +197,32 @@ item they point to is later removed.
       zero infrastructure exists yet - `.github/workflows/` has only `rust.yml`/`oracle-harness.yml`,
       no release/cross-compilation/binary-packaging workflow at all. This is unstarted work, not a
       near-miss.
-- [ ] **T-107** Add a per-crate `README.md` to `crates/dstu-core/` and `crates/uacrypt/`, and set
+- [x] **T-107** Add a per-crate `README.md` to `crates/dstu-core/` and `crates/uacrypt/`, and set
       each crate's `readme` field in its own `Cargo.toml`. **Found during T-17's 2026-07-25
       readiness check**: only the workspace-root `README.md` exists; `cargo package` only reaches
       files inside each crate's own directory, so the crates.io page for either crate would
       currently render with no README at all - not cosmetic for a crypto library. Blocks T-17
-      (do this before the real `cargo publish`, not after). Not started - user explicitly said not
-      to rush publication yet, will signal when to pick this up.
+      (do this before the real `cargo publish`, not after).
+      **Done 2026-07-25 (Step 5 item 2 of the roadmap).** Each README is crate-scoped, not a copy
+      of the root one: `dstu-core/README.md` covers the `hazmat`/`crypto_*` two-layer split, the
+      feature-flag table (`std`/`alloc`/`small-tables`/`pwhash`), a `crypto_secretbox` usage
+      example, and the same provisional-status/no-side-channel-claim safety framing the root
+      README and `SECURITY.md` already carry; `uacrypt/README.md` covers the actual command set
+      (`encrypt`/`decrypt`/`hash` plus the lower-level `kalyna-block`/`kalyna-ccm`/`kupyna-digest`/
+      `strumok-crypt`) with real, verified flag names (cross-checked against `parse_*_args` in
+      `crates/uacrypt/src/lib.rs` rather than copied from memory - `kupyna-digest`/`strumok-crypt`
+      needed direct verification since the root README's own command walkthrough doesn't cover
+      them). Neither README links a `LICENSE-MIT`/`LICENSE-APACHE` copy inside its own crate
+      directory - no such physical copy exists yet, that's T-109's scope, not this task's; the
+      wording says "in the project repository" rather than implying a local file. Both `Cargo.toml`
+      files got `readme = "README.md"`. **Verified**: `cargo package --list -p dstu-core`/`-p
+      uacrypt` both now include `README.md` in the packaged file list (confirmed via direct
+      `grep`, not assumed); `cargo publish --dry-run -p dstu-core` re-run and its file count rose
+      130 -> 133 (both new `README.md`s plus their surrounding directory listing), with the
+      pre-existing "no documentation, homepage or repository" warning unchanged (that's T-109's
+      metadata gap, not this one, correctly still open). `cargo xtask fmt --check`/`build`/`clippy`
+      all clean - doc-only change, no source touched. No `DECISIONS.md` entry - packaging hygiene,
+      nothing architectural to record (same call T-97 made for its own trivial doc fix).
 - [ ] **T-108** User-friendly `--help`/usage text for the `uacrypt` binary, in plain language a
       non-cryptographer can follow - requested 2026-07-25. **Confirmed gap**: `uacrypt`'s `run()`
       dispatcher (`crates/uacrypt/src/lib.rs`) has no `--help`/`-h` handling at all right now - an
@@ -1885,7 +1904,9 @@ around it.
    48/48 tests, full workspace suite, clippy/fmt/no_std matrix clean, scoped Miri 22/22 passed 0 UB
    in 1276.00s.
 2. **T-107 - per-crate `README.md`** for `dstu-core`/`uacrypt`, `readme` field in each `Cargo.toml`.
-   Not started.
+   **Done 2026-07-25, see `TASKS.md` T-107's own entry above** - both READMEs written crate-scoped
+   (not copies of the root one), `cargo package --list` confirms both now ship, dry-run publish
+   file count rose 130 -> 133, `xtask fmt`/`build`/`clippy` clean.
 3. **T-109 - `Cargo.toml` publish metadata** (`repository`/`homepage`/`documentation`/`keywords`/
    `categories`/`rust-version`) + physical per-crate `LICENSE-MIT`/`LICENSE-APACHE` copies. Not
    started.
@@ -1952,12 +1973,14 @@ pushed** (`82045cf`, user confirmed pushing this batch too before it landed).
 full detail)**:
 1. **T-40 - `crypto_secretstream` - DONE, see the Step 5 entry above and `DECISIONS.md` D-68.**
    `uacrypt encrypt`/`decrypt` rewired to it in the same session, per the user's chosen scope.
-2. T-107 (per-crate README), T-109 (`Cargo.toml` metadata + LICENSE files), T-110 (docs.rs
-   metadata), T-112 (crate-level provisional-status doc warning), T-108 (`uacrypt --help`), T-111
-   (CHANGELOG + empirically-measured MSRV, not just a version number guess), T-113 (multi-part
-   `crypto_sign` - **check the DSTU 4145 primary text first**, this may collapse to a much smaller
-   `sign_digest`/`verify_digest` entry point than "streaming signer" implies) - all not started, in
-   this order. **T-107 is next.**
+2. **T-107 - per-crate `README.md` - DONE, see `TASKS.md` T-107's own entry above.** Both crates
+   now package their own README; `cargo package --list`/dry-run publish both confirm it.
+3. T-109 (`Cargo.toml` metadata + LICENSE files), T-110 (docs.rs metadata), T-112 (crate-level
+   provisional-status doc warning), T-108 (`uacrypt --help`), T-111 (CHANGELOG + empirically-
+   measured MSRV, not just a version number guess), T-113 (multi-part `crypto_sign` - **check the
+   DSTU 4145 primary text first**, this may collapse to a much smaller `sign_digest`/
+   `verify_digest` entry point than "streaming signer" implies) - all not started, in this order.
+   **T-109 is next.**
 - **Publication (T-17/T-18) is explicitly out of this plan** - gated on the user asking for it by
   name, not simply queued behind Step 5. Do not start it as a side effect of finishing Step 5.
 - The 2026-07-25 libsodium/crates.io research pass also produced a set of **deliberate non-tasks**
