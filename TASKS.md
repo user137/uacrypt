@@ -1370,7 +1370,7 @@ GMAC work above) — process/documentation gaps, not code-correctness bugs
       crashes — `kalyna_cmac` 115,853 runs, `kalyna_kw` 48,309, `kalyna_gcm` 203,779, `kalyna_gmac`
       214,015, `kalyna_cfb` 87,519. Full non-fuzz workspace verification unaffected. CI's own matrix
       run unconfirmed pending a push.
-- [ ] **T-99** `docs/release-readiness.md` is stale — written 2026-07-23/24, before this session's
+- [x] **T-99** `docs/release-readiness.md` is stale — written 2026-07-23/24, before this session's
       Stage A-D mode-of-operation work. It states GCM/KW/XTS as "not built" and names GCM as the
       unblock path for `crypto_secretstream` (T-40, still blocked on the 255-byte CCM cap
       specifically, not on GCM's existence as this doc currently implies). Per `CLAUDE.md`'s doc
@@ -1379,6 +1379,26 @@ GMAC work above) — process/documentation gaps, not code-correctness bugs
       reconciling its tables and the "Concrete path to a genuinely safe, complete release" section
       against current `TASKS.md`/`DECISIONS.md` state before it's trusted again as the up-to-date
       gap analysis.
+      **Resolved 2026-07-25, full pass against current state (Step 0 through Step 1 of the
+      roadmap).** Corrected throughout: the Kalyna mode-of-operation table row (was "only the
+      provisional CCM... no CBC/CFB/OFB/CTR/CMAC/XTS/GMAC", now correctly states 10/10 modes
+      implemented, D-54 through D-58); the headline finding's `crypto_secretbox`/
+      `crypto_secretstream` bullets (GCM/KW were claimed "not built", both now built at `hazmat`,
+      D-55/D-56 — `crypto_secretstream`'s real remaining blocker restated as "no wrapper wired yet",
+      not "no eligible primitive exists"); the "libsodium equivalent surface" table and its intro
+      paragraph (a real internal contradiction fixed — the prose said `crypto_auth`/`crypto_kdf`
+      had "no high-level wrapper" while the table right below it already correctly said "Done");
+      the use-case coverage table (large-file/TLS-record-layer/XTS/KW rows all updated from "Not
+      built" to their real current status); the "Concrete path" section's steps 3-4 (same
+      GCM/KW-now-built correction). Added an explicit banner noting `TASKS.md`'s own roadmap now
+      supersedes this document's "Concrete path" section as the authoritative sequencing (per that
+      roadmap's own stated intent), without deleting or renumbering the historical reasoning behind
+      steps 1-2, which remain load-bearing. Also folded in this session's own T-100/T-101/T-98/T-97
+      results, including the CI Miri pass confirmed the same day (see `TASKS.md` T-100's own
+      update) — the engineering-infrastructure paragraph previously understated the Miri/fuzz CI
+      history as "wired in" when the job had in fact never completed on any push before today.
+      Doc-only change, no `DECISIONS.md` entry (nothing architectural, a reconciliation pass against
+      already-recorded decisions).
 - [x] **T-100** **`cargo miri test` has never once passed in CI, in this repository's whole
       history** — found during the same `advisor()` audit, verified via `gh run list`/`gh run view`,
       not assumed from a red badge. All 16 `rust` workflow runs to date: the two runs before
@@ -1429,10 +1449,15 @@ GMAC work above) — process/documentation gaps, not code-correctness bugs
       a *different* failure there — `CreateDirectoryW` unsupported by Miri on Windows, inside
       `tests::TempDir::new`. Plausibly the same Windows-host-Miri-gap family as T-81's
       `GetCurrentDirectoryW` finding, not confirmed on Linux (CI's actual host).
-      **Explicit scope of the claim**: verified locally, completely, for `dstu-core`. **Not**
-      verified that CI's own Linux runner now passes end-to-end — that conclusion needs an actual
-      push (explicit-request-only) to confirm, stated here rather than assumed.
-- [ ] **T-102** **`uacrypt`'s own lib tests fail under `cargo miri test` on this Windows dev
+      **Confirmed on CI 2026-07-25, pushed with T-101 (commit `859241a`)**: `cargo miri test`
+      passed on GitHub's `ubuntu-latest` runner for the first time ever (`gh run view 30157361074`
+      — miri job 37m55s, comfortably inside the 150-minute budget, all 5 jobs green). Notably
+      *faster* than this session's local Windows measurement (~84 min for `dstu-core` alone) - the
+      GitHub Linux runner outperformed the local dev machine, not the other way the raised-timeout
+      margin was sized for, though sizing that margin without this data in hand was still correct.
+      The "verified locally... CI conclusion unconfirmed" caveat that stood here no longer applies -
+      full detail in `DECISIONS.md` D-59's own update.
+- [x] **T-102** **`uacrypt`'s own lib tests fail under `cargo miri test` on this Windows dev
       machine — `CreateDirectoryW` unsupported by Miri's Windows-host foreign-function shim, even
       with `MIRIFLAGS=-Zmiri-disable-isolation`.** Surfaced 2026-07-25 as a side effect of T-100/D-59
       (the workspace Miri run never reached `uacrypt`'s tests before, always timing out on the
@@ -1446,6 +1471,12 @@ GMAC work above) — process/documentation gaps, not code-correctness bugs
       Raspberry Pi rig, `TASKS.md` "Testing & hardening", doesn't have Miri installed yet per its
       last re-run note — would need `rustup component add miri` there first) or watching the actual
       CI run once one happens, not a guess written down as settled.
+      **Confirmed 2026-07-25**: the hypothesis was right. CI's `cargo miri test` run (`gh run view
+      30157361074`, 37m55s, pushed with T-100/T-101 commit `859241a`) covers the full workspace,
+      `uacrypt` included, and passed clean — no `CreateDirectoryW`/`TempDir` failure on GitHub's
+      `ubuntu-latest` runner. This is genuinely a Windows-host-only Miri filesystem-shim gap, not a
+      cross-platform one; no code change needed. Confirmed by watching the actual CI run, not the
+      Raspberry-Pi-Miri-install path sketched above (unnecessary now).
 - [x] **T-101** **`hazmat::kalyna_cfb`'s multi-call panic is a closed doc note, not an open design
       question — it should be one.** Found alongside T-100 in the same `advisor()` audit: T-91/D-53
       already record a real, reachable out-of-bounds slice index in `encrypt_in_place`/
@@ -1533,8 +1564,14 @@ regression test, not left incidental. All verification clean, including a scoped
 changed) - **DONE, see D-61**: 5 new targets, CI's `fuzz-smoke` now a 9-target matrix (was hardcoded
 to `kupyna` alone), zero crashes across all new targets' smoke runs. Then T-97 (trivial
 `SECURITY.md` table row, any time) - **DONE**: `subtle` row added, maintainer verified via
-crates.io's API rather than assumed. T-99 last (current step): reconcile
-`docs/release-readiness.md` against the state *after* the rest of this step and Step 0.
+crates.io's API rather than assumed. T-99 last - **DONE**: full reconciliation pass against
+Step 0 + Step 1's own results, corrected mode-of-operation tables, the crypto_secretbox/
+crypto_secretstream GCM/KW-now-built claims, a real prose/table self-contradiction on
+crypto_auth/crypto_kdf, and the Miri/fuzz CI history; added a banner pointing to this roadmap as
+the current authoritative sequencing.
+
+**Step 1 complete.** All five items (T-100, T-101, T-98, T-97, T-99) done, in the order specified.
+Next: Step 2 (`small-tables` verification for Stage B-E).
 
 **Step 2 - Close the `small-tables`/full feature-matrix verification gap for Stage B-D + XTS.**
 CMAC/KW/GCM/GMAC (D-54-D-57) and the new XTS were only confirmed against a bare `no_std` build,

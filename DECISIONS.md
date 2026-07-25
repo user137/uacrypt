@@ -3562,6 +3562,16 @@ Linux runner - that conclusion is unconfirmed pending a push (push is explicit-r
 per this project's standing git-safety posture). `rust.yml`'s miri-job comment updated to cite this
 entry instead of the pre-fix problem description.
 
+**Confirmed on CI 2026-07-25, pushed with T-101 (commit `859241a`)**: `cargo miri test` passed on
+GitHub's own `ubuntu-latest` runner for the first time in this repository's whole history (`gh run
+view 30157361074` - all 5 jobs green: deny 32s, audit 3m24s, **miri 37m55s**, build/test/fmt/clippy
+21m14s, fuzz-smoke 1m54s). 37m55s is comfortably inside the 150-minute budget and, notably, also
+faster than this session's local Windows measurement (~84 min for `dstu-core` alone, D-59's own
+table) - the GitHub Linux runner outperformed the local dev machine here rather than being slower,
+the opposite of what "leave real margin for a slower CI runner" assumed, though the margin was still
+the right call to make without that data in hand. The scope boundary above no longer applies: this
+is a real, checked CI result, not a local-only claim.
+
 ## D-60: `hazmat::kalyna_cfb`'s documented panic (T-91/D-53) becomes a checked `Result` (T-101)
 
 Own plan-mode pass, per the roadmap's explicit requirement for this specific fork (`TASKS.md`
