@@ -5,6 +5,11 @@ edition = "2021"
 license = "MIT OR Apache-2.0"
 description = "CLI over dstu-core"
 readme = "README.md"
+repository = "https://github.com/user137/uacrypt"
+homepage = "https://github.com/user137/uacrypt"
+documentation = "https://docs.rs/uacrypt"
+keywords = ["dstu", "cli", "cryptography", "kalyna", "kupyna"]
+categories = ["cryptography", "command-line-utilities"]
 
 [lib]
 name = "uacrypt"

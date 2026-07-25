@@ -5,6 +5,11 @@ edition = "2021"
 license = "MIT OR Apache-2.0"
 description = "Rust implementations of Ukrainian DSTU cryptographic standards (Kalyna, Kupyna, Strumok)"
 readme = "README.md"
+repository = "https://github.com/user137/uacrypt"
+homepage = "https://github.com/user137/uacrypt"
+documentation = "https://docs.rs/dstu-core"
+keywords = ["dstu", "kalyna", "kupyna", "strumok", "cryptography"]
+categories = ["cryptography", "no-std", "algorithms"]
 
 [lib]
 name = "dstu_core"

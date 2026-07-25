@@ -237,7 +237,7 @@ item they point to is later removed.
       `--out` can't be the same path for the `kalyna-*` raw commands; `hash` has no length cap).
       Not started - not blocking T-17/T-18, but worth landing before `uacrypt` reaches people who
       aren't already reading `README.md`/`CLAUDE.md`.
-- [ ] **T-109** Complete `Cargo.toml` publish metadata for both crates - requested 2026-07-25
+- [x] **T-109** Complete `Cargo.toml` publish metadata for both crates - requested 2026-07-25
       (libsodium/crates.io best-practice review, see `docs/release-readiness.md` "Libsodium API
       surface and crates.io publishing audit"). Neither `dstu-core/Cargo.toml` nor
       `uacrypt/Cargo.toml` sets `repository`/`homepage`/`documentation`/`keywords`/`categories`/
@@ -255,7 +255,31 @@ item they point to is later removed.
       only exist at the repo root, which `cargo package` never reaches); the `license` SPDX field
       alone satisfies the registry, but shipping without the actual license text is not the
       ecosystem norm (RustCrypto crates ship a physical copy per crate). Blocks T-17 alongside
-      T-107, same "do before the real publish" reasoning. Not started.
+      T-107, same "do before the real publish" reasoning.
+      **Done 2026-07-25.** `repository`/`homepage` both point at
+      `https://github.com/user137/uacrypt` (the actual `git remote -v` origin - no separate project
+      website exists, so homepage deliberately duplicates repository rather than being invented);
+      `documentation` is the crate's own future docs.rs URL (`https://docs.rs/dstu-core` /
+      `https://docs.rs/uacrypt`). `categories` slugs verified live against crates.io's real API
+      (`GET /api/v1/categories`, not guessed from memory per this task's own instruction) -
+      `dstu-core` = `["cryptography", "no-std", "algorithms"]`, `uacrypt` =
+      `["cryptography", "command-line-utilities"]`. `keywords` (max 5, crates.io limit):
+      `dstu-core` = `["dstu", "kalyna", "kupyna", "strumok", "cryptography"]`, `uacrypt` =
+      `["dstu", "cli", "cryptography", "kalyna", "kupyna"]`. **`rust-version` deliberately left out
+      of this task's scope** - T-111 owns picking and empirically verifying a real MSRV (not a
+      guess), adding it there rather than here avoids recording an unverified number now and
+      re-deriving it later. Physical `LICENSE-MIT`/`LICENSE-APACHE` copies added to both
+      `crates/dstu-core/` and `crates/uacrypt/` (byte-identical copies of the repo-root files,
+      confirmed plain ASCII, no encoding issues). Verified: `cargo publish --dry-run -p dstu-core
+      --allow-dirty` succeeds with **no metadata warnings at all** now (the prior
+      `documentation`/`homepage`/`repository` warning trio is gone), packaged file count rose 133 ->
+      135 (the two new license files); `cargo publish --dry-run -p uacrypt --allow-dirty` still
+      fails on `no matching package named dstu-core found in crates.io index`, expected and
+      unchanged - `uacrypt` path-depends on unpublished `dstu-core`, same pre-existing gate T-17's
+      own readiness check already documented, not a regression from this task.
+      `cargo fmt --all -- --check`, `cargo clippy --workspace --all-features -- -D warnings`, and
+      `cargo build --workspace --all-features` all clean (metadata-only change, no source touched,
+      so `cargo test`/`no_std` build/Miri were not re-run - nothing in their scope changed).
 - [ ] **T-110** Add `[package.metadata.docs.rs]` with `all-features = true` to both `Cargo.toml`
       files, so docs.rs actually documents the `pwhash`/`alloc` (and `small-tables`) cfg-gated
       surface instead of only the `std`-only default build - requested 2026-07-25. **Checked
@@ -1908,8 +1932,10 @@ around it.
    (not copies of the root one), `cargo package --list` confirms both now ship, dry-run publish
    file count rose 130 -> 133, `xtask fmt`/`build`/`clippy` clean.
 3. **T-109 - `Cargo.toml` publish metadata** (`repository`/`homepage`/`documentation`/`keywords`/
-   `categories`/`rust-version`) + physical per-crate `LICENSE-MIT`/`LICENSE-APACHE` copies. Not
-   started.
+   `categories`) + physical per-crate `LICENSE-MIT`/`LICENSE-APACHE` copies. **Done 2026-07-25, see
+   `TASKS.md` T-109's own entry above** - `rust-version` deliberately deferred to T-111 (needs
+   empirical MSRV measurement, not a guess). `cargo publish --dry-run -p dstu-core --allow-dirty`
+   now shows zero metadata warnings; category slugs verified live against crates.io's real API.
 4. **T-110 - `[package.metadata.docs.rs]` with `all-features = true`** on both crates - already
    verified safe (`small-tables` gates no `pub` item). Not started.
 5. **T-112 - crate-level `#![doc]` provisional-status warning** for both crates, pointing back at
@@ -1975,12 +2001,16 @@ full detail)**:
    `uacrypt encrypt`/`decrypt` rewired to it in the same session, per the user's chosen scope.
 2. **T-107 - per-crate `README.md` - DONE, see `TASKS.md` T-107's own entry above.** Both crates
    now package their own README; `cargo package --list`/dry-run publish both confirm it.
-3. T-109 (`Cargo.toml` metadata + LICENSE files), T-110 (docs.rs metadata), T-112 (crate-level
-   provisional-status doc warning), T-108 (`uacrypt --help`), T-111 (CHANGELOG + empirically-
-   measured MSRV, not just a version number guess), T-113 (multi-part `crypto_sign` - **check the
-   DSTU 4145 primary text first**, this may collapse to a much smaller `sign_digest`/
-   `verify_digest` entry point than "streaming signer" implies) - all not started, in this order.
-   **T-109 is next.**
+3. **T-109 (`Cargo.toml` metadata + LICENSE files) - DONE, see `TASKS.md` T-109's own entry
+   above.** `repository`/`homepage`/`documentation`/`keywords`/`categories` all set on both crates,
+   `rust-version` deliberately deferred to T-111; physical `LICENSE-MIT`/`LICENSE-APACHE` now ship
+   in both crates' tarballs; `cargo publish --dry-run -p dstu-core --allow-dirty` shows no more
+   metadata warnings.
+4. T-110 (docs.rs metadata), T-112 (crate-level provisional-status doc warning), T-108 (`uacrypt
+   --help`), T-111 (CHANGELOG + empirically-measured MSRV, not just a version number guess), T-113
+   (multi-part `crypto_sign` - **check the DSTU 4145 primary text first**, this may collapse to a
+   much smaller `sign_digest`/`verify_digest` entry point than "streaming signer" implies) - all
+   not started, in this order. **T-110 is next.**
 - **Publication (T-17/T-18) is explicitly out of this plan** - gated on the user asking for it by
   name, not simply queued behind Step 5. Do not start it as a side effect of finishing Step 5.
 - The 2026-07-25 libsodium/crates.io research pass also produced a set of **deliberate non-tasks**
