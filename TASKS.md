@@ -1334,7 +1334,7 @@ needed) — non-negotiable per D-53, not optional per mode.
 ## Findings from a full-project `advisor()` audit (2026-07-24, requested separately from the T-95
 GMAC work above) — process/documentation gaps, not code-correctness bugs
 
-- [ ] **T-97** `SECURITY.md`'s supply-chain vetting table is missing a row for `subtle` — the only
+- [x] **T-97** `SECURITY.md`'s supply-chain vetting table is missing a row for `subtle` — the only
       dependency in either crate's `Cargo.toml` with no row at all, despite being direct,
       unconditional (not feature-gated, unlike `getrandom`/`argon2`), and used for every
       constant-time tag/checksum comparison in the codebase (`kalyna_cmac`/`kalyna_kw`/
@@ -1342,6 +1342,11 @@ GMAC work above) — process/documentation gaps, not code-correctness bugs
       "before adding any crypto-adjacent dependency" — this one predates the table's own upkeep,
       not a new gap, but still an open one. Add maintainer/reproducible-build/audit/CVE-history
       columns matching the existing `zeroize` row's level of detail.
+      **Resolved 2026-07-25.** Row added: maintainer verified via crates.io's own API (not assumed
+      from memory) — `dalek-cryptography` org (isis lovecruft/Henry de Valence, the
+      `curve25519-dalek`/`ed25519-dalek` team); no `build.rs` in the published source (checked the
+      downloaded crate directly); `cargo audit` clean as of 2026-07-25. Doc-only, no `DECISIONS.md`
+      entry — trivial per the roadmap's own framing, nothing architectural to record.
 - [x] **T-98** CI's `fuzz-smoke` job (`.github/workflows/rust.yml`) runs only the `kupyna` target.
       `crates/dstu-core/fuzz/fuzz_targets/` also has `kalyna`, `kalyna_ccm`, and `strumok` — none of
       the three run in CI, only ever locally per D-32's note. `SECURITY.md` calls `cargo fuzz`
@@ -1527,8 +1532,9 @@ regression test, not left incidental. All verification clean, including a scoped
 (585.27s, 0 UB). Then T-98 (fuzz targets - after T-101, since `kalyna_cfb`'s shape has now
 changed) - **DONE, see D-61**: 5 new targets, CI's `fuzz-smoke` now a 9-target matrix (was hardcoded
 to `kupyna` alone), zero crashes across all new targets' smoke runs. Then T-97 (trivial
-`SECURITY.md` table row, any time), T-99 last (reconcile `docs/release-readiness.md` against the
-state *after* the rest of this step and Step 0).
+`SECURITY.md` table row, any time) - **DONE**: `subtle` row added, maintainer verified via
+crates.io's API rather than assumed. T-99 last (current step): reconcile
+`docs/release-readiness.md` against the state *after* the rest of this step and Step 0.
 
 **Step 2 - Close the `small-tables`/full feature-matrix verification gap for Stage B-D + XTS.**
 CMAC/KW/GCM/GMAC (D-54-D-57) and the new XTS were only confirmed against a bare `no_std` build,
