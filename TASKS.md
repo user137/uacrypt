@@ -764,6 +764,28 @@ resistance (SPA/DPA — explicitly out of scope per `SECURITY.md`/`CLAUDE.md` "M
       restructured: "## Results" (in-process) marked superseded/historical with a dated banner, not
       deleted; "## Binary-level (process) comparison" is now the single canonical section with
       Ryzen+Pi columns for every implementation, MB/s only.
+      **Re-run 2026-07-26, user-requested ("tests through building the binary and verifying it"),
+      first run since T-111's MSRV/CHANGELOG change and the whole roadmap Step 3/5 surface
+      (`crypto_secretbox`/`crypto_secretstream`/`crypto_auth`/`crypto_kdf`/`crypto_stream` etc.) -
+      none of that had been re-checked on real ARM hardware yet.** Re-synced via the standard
+      tar+ssh approach, `cargo xtask ci` on the Pi: all mandatory checks green (`fmt --check`,
+      `build --workspace` both `--all-features` and `--no-default-features`, `test --workspace
+      --all-features` - every suite passed, 0 failures, including the newer `crypto_secretstream`/
+      `crypto_auth`/`crypto_kdf`/`crypto_stream` tests not present at the last Pi run - and `clippy
+      --workspace --all-features -- -D warnings`); optional layers (miri/fuzz/audit/deny/mvn/dotnet)
+      still not installed there, same as every prior run, not a new gap. **New for this pass, not
+      done on a prior Pi re-run: an actual `cargo build --release -p uacrypt` on the Pi, then the
+      resulting `target/release/uacrypt` binary (confirmed `file`-checked as a real `ARM aarch64`
+      ELF, not just trusting the target triple) exercised directly** - `--help`, `hash` (32-byte
+      Kupyna-256 digest, deterministic across two runs, and **byte-identical to the same input
+      hashed by the x86-64 dev machine's own release binary** - `126d90...fcfd61a` on both,
+      confirming Kupyna is bit-for-bit architecture-independent, not just "tests pass on both"),
+      `encrypt`/`decrypt` round-trip (500 KB random file, plus the empty-file and same-path-`--in`/
+      `--out` misuse-adjacent cases from D-65's convention), wrong-key rejection, and a tampered-
+      ciphertext byte flip correctly rejected with no partial `--out` file written on disk failure -
+      all matching the correctness/rejection/misuse categories D-64/D-65 already established, just
+      re-verified against the real compiled artifact on real hardware instead of `cargo test`.
+      Temp files cleaned up after (`/tmp/*.bin`/`*.enc`/`*.dec`/`*.log` on the Pi).
 - [x] **T-103** **Adversarial-test coverage audit across every primitive, see `DECISIONS.md` D-64.**
       User-requested 2026-07-25, directly prompted by D-63's finding that a real
       nonce-authentication gap existed purely because a "does tampering get rejected" test was
