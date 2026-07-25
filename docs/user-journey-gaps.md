@@ -27,14 +27,17 @@ stateDiagram-v2
     Ship --> [*]
 
     Acquire --> Discover: no prebuilt binary found
-    GenerateKey --> Discover: no keygen tool found
 ```
+
+`GenerateKey`'s own back-edge to `Discover` (present in the original 2026-07-25 version of this
+diagram) is removed as of `TASKS.md` T-115 - `uacrypt keygen` now closes that path, see the table
+below.
 
 | State | Want | Have | Gap |
 |---|---|---|---|
 | Discover | Find the project, understand what it does and its current maturity | `README.md` top banner states v0.1.0 pre-release status plainly | none |
 | Acquire | A prebuilt binary for their OS, no Rust toolchain required | **None exists.** `README.md` "Building from source" is the only path (`cargo build -p uacrypt --release`); T-18 (GitHub Releases binaries) is explicitly gated on the owner asking by name, not queued | **Real, blocking gap.** This is the same one T-114's own task text flagged as a candidate — confirmed here, not assumed: a user who doesn't already have `rustup` cannot get `uacrypt` at all today |
-| Generate a key | A `uacrypt keygen` command, or at least a documented one-liner | **No such command.** Both `crates/dstu-core/README.md` and `crates/uacrypt/README.md` say only "generate one via any 32-byte-CSPRNG source" — no worked example given anywhere (not even `openssl rand -out key.bin 32` or a PowerShell equivalent) | **Real, blocking gap, previously uncatalogued.** `randombytes` is marked "Done" in `release-readiness.md`'s construction-level table (it exists as a *library* function, `dstu_core::randombytes::randombytes_buf`), which is exactly why the construction-level view never surfaces this: the CLI has no command exposing it, so persona 1's very first action — get a key onto disk — has no path that doesn't leave the CLI |
+| Generate a key | A `uacrypt keygen` command, or at least a documented one-liner | **Closed 2026-07-26, see `TASKS.md` T-115.** `uacrypt keygen --out key.bin` now exists — draws a fresh 32-byte key from the OS CSPRNG via `crypto_secretstream::Key::generate`, writes it in the exact format `encrypt`/`decrypt --key` expect | none, as of T-115 |
 | Run `encrypt`/`decrypt`/`hash` | A misuse-resistant command with no mode/nonce to configure | `README.md` "Using `uacrypt`" documents `encrypt`/`decrypt`/`hash` fully, including that they're genuinely chunked (T-40/D-68) with no message-length cap | none, once a key exists |
 | Verify it does what's claimed | Confirm round-trip correctness and see real throughput numbers | `cargo test --workspace` for correctness; `PERFORMANCE.md` "Binary-level (process) comparison" section for real `uacrypt`-binary MB/s numbers, `docs/resource-profiles.md` for the `fused`/`small-tables` speed table | none — but both require building from source (same toolchain dependency as Acquire) |
 | Ship | Deploy the binary into their own workflow/pipeline | No install-script, package-manager entry (Homebrew/Scoop/apt), or Docker image exists; not tracked as a task anywhere | Gap, but downstream of and smaller than the Acquire gap above — not worth its own task until T-18 lands |
@@ -118,10 +121,15 @@ build --target ...` run) and is not currently tracked as a task at any phase.
   hardware required) and sits directly behind a claim `README.md` already makes in careful, hedged
   language — the hedge is correct, but the thing it's hedging *against verifying* has never been
   attempted.
-- **`uacrypt keygen`'s absence** (persona 1) and **crates.io/docs.rs absence** (persona 2) are both
-  already-tracked at the construction level (`randombytes` "Done," T-17 gated) but read very
-  differently once framed as "can this specific persona finish their journey" — in both cases the
-  answer is currently no, at an early, concrete step.
-- None of the three findings above are proposed here as new task numbers — per this task's own
-  scope (`TASKS.md` T-114: "this task's value is the persona/journey framing itself"), they are
-  recorded as candidates for the project owner to triage, not self-assigned.
+- **`uacrypt keygen`'s absence** (persona 1) was already-tracked at the construction level
+  (`randombytes` "Done") but read very differently once framed as "can this specific persona finish
+  their journey" — the answer was no, at the very first concrete step. **Closed 2026-07-26, see
+  `TASKS.md` T-115** — the project owner triaged this candidate into a real task the same day it
+  was found.
+- **Crates.io/docs.rs absence** (persona 2) is the same shape of gap, still open — tracked at the
+  construction level as T-17, explicitly gated on an owner request rather than queued automatically.
+- The three findings above were not proposed as new task numbers when this document was first
+  written, per T-114's own scope ("this task's value is the persona/journey framing itself") — they
+  were recorded as candidates for the project owner to triage. One (`uacrypt keygen`) has since been
+  triaged into T-115 and closed; the cross-compile check and crates.io publication remain open
+  candidates.

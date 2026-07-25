@@ -1128,6 +1128,57 @@ pub fn run_hash_command(args: &HashArgs) -> Result<(), CliError> {
 }
 
 #[derive(Debug, PartialEq, Eq)]
+pub struct KeygenArgs {
+    pub out_path: PathBuf,
+}
+
+/// Parses `keygen`'s flags (`--out`, required - no other flag exists; there is nothing to
+/// configure about a random 32-byte key).
+///
+/// # Errors
+///
+/// Returns [`CliError::MissingFlag`] or [`CliError::UnknownFlag`].
+pub fn parse_keygen_args(args: &[String]) -> Result<KeygenArgs, CliError> {
+    let mut out_path = None;
+
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--out" => {
+                out_path = Some(PathBuf::from(
+                    args.get(i + 1).ok_or(CliError::MissingFlag("out"))?,
+                ));
+                i += 2;
+            }
+            other => return Err(CliError::UnknownFlag(other.to_string())),
+        }
+    }
+
+    Ok(KeygenArgs {
+        out_path: out_path.ok_or(CliError::MissingFlag("out"))?,
+    })
+}
+
+/// Runs `keygen`: draws a fresh 32-byte key from the OS CSPRNG
+/// ([`dstu_core::crypto_secretstream::Key::generate`]) and writes it raw to `--out` - the same
+/// 32-byte format `encrypt`/`decrypt --key` already expects, closing the gap
+/// `docs/user-journey-gaps.md` named (persona 1's first action had no CLI path before this: both
+/// crate READMEs only said "generate one via any 32-byte-CSPRNG source," no command to do it).
+///
+/// # Errors
+///
+/// Returns [`CliError::Random`] if the OS CSPRNG fails, or [`CliError::Io`] if `--out` can't be
+/// written (e.g. it names a directory).
+pub fn run_keygen_command(args: &KeygenArgs) -> Result<(), CliError> {
+    let key = dstu_core::crypto_secretstream::Key::generate()
+        .map_err(|e| CliError::Random(e.to_string()))?;
+    std::fs::write(&args.out_path, key.as_bytes()).map_err(|e| CliError::Io {
+        path: args.out_path.clone(),
+        message: e.to_string(),
+    })
+}
+
+#[derive(Debug, PartialEq, Eq)]
 pub struct StrumokArgs {
     pub variant: HashBits,
     pub key_path: PathBuf,
@@ -1376,6 +1427,7 @@ USAGE:
     uacrypt <command> --help    show that command's flags and an example invocation
 
 EVERYDAY COMMANDS:
+    keygen          Generate a fresh random 32-byte key for `encrypt`/`decrypt`.
     encrypt         Encrypt a file of any size with a 32-byte key (authenticated, streamed).
     decrypt         Decrypt a file produced by `encrypt`.
     hash            Compute a Kupyna-256 digest of a file of any size.
@@ -1387,6 +1439,23 @@ LOWER-LEVEL COMMANDS (benchmarking/interop - most users want the three above ins
     strumok-crypt   Strumok keystream cipher - NOT authenticated, tampering is never detected.
 
 Run `uacrypt <command> --help` for that command's flags and an example.
+";
+
+const KEYGEN_HELP: &str = "\
+uacrypt keygen - generate a fresh random 32-byte key for `encrypt`/`decrypt`.
+
+Draws from the OS CSPRNG (dstu_core::randombytes, via crypto_secretstream::Key::generate) and
+writes the raw 32 bytes to --out - the exact format `encrypt`/`decrypt --key` expect. Overwrites
+--out if it already exists, same as every other command here that writes a file.
+
+USAGE:
+    uacrypt keygen --out <path>
+
+FLAGS:
+    --out <path>    where to write the 32-byte key
+
+EXAMPLE:
+    uacrypt keygen --out key.bin
 ";
 
 const ENCRYPT_HELP: &str = "\
@@ -1408,8 +1477,7 @@ EXAMPLE:
     uacrypt encrypt --key key.bin --in report.pdf --out report.pdf.enc
 
 Notes:
-    - --key must be exactly 32 raw bytes - generate one with any OS CSPRNG, e.g.
-      `head -c32 /dev/urandom > key.bin` on Linux/macOS.
+    - --key must be exactly 32 raw bytes - generate one with `uacrypt keygen --out key.bin`.
     - --in and --out may be the same path (encrypts in place); --out is only replaced after the
       whole file is written and verified, so a failure never leaves partial output.
 ";
@@ -1550,6 +1618,7 @@ EXAMPLE:
 /// rather than panicking, since this is only ever called with a string [`run`] just matched.
 fn print_command_help(command: &str) {
     let text = match command {
+        "keygen" => KEYGEN_HELP,
         "encrypt" => ENCRYPT_HELP,
         "decrypt" => DECRYPT_HELP,
         "hash" => HASH_HELP,
@@ -1629,6 +1698,13 @@ pub fn run(args: &[String]) -> Result<(), CliError> {
                 return Ok(());
             }
             run_hash_command(&parse_hash_args(&args[1..])?)
+        }
+        Some("keygen") => {
+            if args[1..].iter().any(|a| is_help_flag(a)) {
+                print_command_help("keygen");
+                return Ok(());
+            }
+            run_keygen_command(&parse_keygen_args(&args[1..])?)
         }
         Some("encrypt") => {
             if args[1..].iter().any(|a| is_help_flag(a)) {
@@ -1928,6 +2004,111 @@ mod tests {
             parse_hash_args(&["--variant".to_string(), "256".to_string()]),
             Err(CliError::UnknownFlag("--variant".to_string()))
         );
+    }
+
+    #[test]
+    fn parse_keygen_args_happy_path() {
+        let args = vec!["--out".to_string(), "key.bin".to_string()];
+        assert_eq!(
+            parse_keygen_args(&args),
+            Ok(KeygenArgs {
+                out_path: PathBuf::from("key.bin"),
+            })
+        );
+    }
+
+    #[test]
+    fn parse_keygen_args_requires_out() {
+        assert_eq!(parse_keygen_args(&[]), Err(CliError::MissingFlag("out")));
+    }
+
+    #[test]
+    fn parse_keygen_args_rejects_unknown_flag() {
+        assert_eq!(
+            parse_keygen_args(&["--variant".to_string(), "256".to_string()]),
+            Err(CliError::UnknownFlag("--variant".to_string()))
+        );
+    }
+
+    #[test]
+    fn run_keygen_command_writes_a_32_byte_key_usable_by_encrypt() {
+        let dir = TempDir::new("keygen");
+        let args = KeygenArgs {
+            out_path: dir.file("key.bin"),
+        };
+        run_keygen_command(&args).expect("keygen should succeed");
+
+        let key_bytes = std::fs::read(dir.file("key.bin")).expect("read generated key");
+        assert_eq!(key_bytes.len(), 32);
+
+        // The generated key is a real, usable crypto_secretstream key, not just 32 arbitrary
+        // bytes - round-trip it through encrypt/decrypt to prove it, rather than only checking
+        // the length.
+        std::fs::write(dir.file("msg.bin"), b"keygen output must actually work").expect("write");
+        let enc_args = SecretstreamArgs {
+            key_path: dir.file("key.bin"),
+            in_path: dir.file("msg.bin"),
+            out_path: dir.file("msg.enc"),
+        };
+        run_secretstream_command(false, &enc_args).expect("encrypt with generated key");
+        let dec_args = SecretstreamArgs {
+            key_path: dir.file("key.bin"),
+            in_path: dir.file("msg.enc"),
+            out_path: dir.file("msg.dec"),
+        };
+        run_secretstream_command(true, &dec_args).expect("decrypt with generated key");
+        assert_eq!(
+            std::fs::read(dir.file("msg.dec")).expect("read decrypted"),
+            b"keygen output must actually work"
+        );
+    }
+
+    #[test]
+    fn run_keygen_command_produces_distinct_keys_each_call() {
+        let dir = TempDir::new("keygen_distinct");
+        run_keygen_command(&KeygenArgs {
+            out_path: dir.file("key1.bin"),
+        })
+        .expect("first keygen should succeed");
+        run_keygen_command(&KeygenArgs {
+            out_path: dir.file("key2.bin"),
+        })
+        .expect("second keygen should succeed");
+
+        let key1 = std::fs::read(dir.file("key1.bin")).expect("read key1");
+        let key2 = std::fs::read(dir.file("key2.bin")).expect("read key2");
+        assert_ne!(key1, key2, "two keygen calls must not produce the same key");
+    }
+
+    /// "Fool" test - pointing `--out` at a directory (an easy copy-paste mistake) must be a clean
+    /// `Io` error, not a panic, same convention as `run_secretstream_command`'s directory tests.
+    #[test]
+    fn run_keygen_command_directory_as_out_is_io_error_not_panic() {
+        let dir = TempDir::new("keygen_dir_out");
+        std::fs::create_dir_all(dir.file("a_directory")).expect("create sub-directory");
+
+        let args = KeygenArgs {
+            out_path: dir.file("a_directory"),
+        };
+        assert!(matches!(
+            run_keygen_command(&args),
+            Err(CliError::Io { .. })
+        ));
+    }
+
+    #[test]
+    fn run_keygen_dispatches_through_top_level_run() {
+        let dir = TempDir::new("keygen_dispatch");
+        let args: Vec<String> = [
+            "keygen",
+            "--out",
+            dir.file("key.bin").to_str().expect("valid utf-8 path"),
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect();
+        run(&args).expect("keygen dispatch should succeed");
+        assert_eq!(std::fs::read(dir.file("key.bin")).expect("read").len(), 32);
     }
 
     /// `hash` is fixed to Kupyna-256 (no `--variant` knob) and must genuinely stream a multi-chunk,
@@ -2817,6 +2998,7 @@ mod tests {
     #[test]
     fn run_per_command_help_succeeds_without_other_required_flags() {
         for command in [
+            "keygen",
             "encrypt",
             "decrypt",
             "hash",

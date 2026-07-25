@@ -441,6 +441,30 @@ item they point to is later removed.
       four lines there still said "Not started" for T-110/T-112/T-108/T-111 despite those tasks'
       own entries above being `[x]` done - the exact "stale 'not started' line next to a done line"
       failure mode `CLAUDE.md`'s agent-discipline section calls out by name, from the D-68 session.
+- [x] **T-115** **DONE 2026-07-26.** `uacrypt keygen` command - triaged from a candidate gap T-114
+      found (persona 1's very first action had no CLI path: both crate READMEs only said "generate
+      one via any 32-byte-CSPRNG source," no worked example). `uacrypt keygen --out <path>` draws a
+      fresh 32-byte key from the OS CSPRNG (`dstu_core::crypto_secretstream::Key::generate`, already
+      existed as a library method - no new construction, purely a CLI wrapper) and writes it raw -
+      the exact 32-byte format `encrypt`/`decrypt --key` already expect. No other flags: nothing to
+      misconfigure about a random key. `--out` is written with a plain `std::fs::write` (no
+      temp-file-then-rename), same convention as `kalyna-ccm`'s nonce/tag outputs and `hash`'s
+      digest - a single small fixed-size write, not the larger streamed-output case that needs
+      atomicity. Tests (7 new, all green): parse happy-path/missing-`--out`/unknown-flag; a
+      correctness test that round-trips a generated key through real `encrypt`/`decrypt` (not just
+      checking the output is 32 bytes); a distinctness test (two calls must not produce the same
+      key, same convention as `kalyna-ccm`/`crypto_secretstream`'s fresh-nonce/fresh-header tests,
+      since there's no oracle vector for "is this actually random"); a "fool" test (`--out` pointing
+      at a directory is a clean `Io` error, not a panic); and a `run()`-level dispatch test.
+      `--help`/top-level help text updated (`KEYGEN_HELP`, added to `TOP_LEVEL_HELP`'s EVERYDAY
+      COMMANDS list and `print_command_help`'s match arm), `ENCRYPT_HELP`'s note pointing at
+      `uacrypt keygen` instead of an external CSPRNG one-liner. `README.md`/both crate READMEs/
+      `docs/user-journey-gaps.md` updated to match (the gap-analysis doc's persona-1 table row and
+      diagram back-edge both updated to reflect the closed gap, not left stale). Verified: full
+      `cargo test --workspace --all-features`/`clippy -D warnings`/`fmt --check` all clean. No
+      `DECISIONS.md` entry - CLI ergonomics exposing an already-decided construction
+      (`crypto_secretstream::Key::generate`, D-68), nothing architectural, same call T-108 made for
+      `--help` text.
 - [x] **T-19** **Naming subtask, all three decisions made 2026-07-23** (T-20/T-21/T-22 below) -
       unblocks T-17/T-18, which are still separately open (a decided name isn't a crates.io
       publish or a built release binary):

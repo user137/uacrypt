@@ -163,6 +163,7 @@ misconfigure:
 
 ```
 cargo build -p uacrypt --release
+uacrypt keygen --out key.bin
 uacrypt encrypt --key key.bin --in message.bin --out sealed.bin
 uacrypt decrypt --key key.bin --in sealed.bin --out message.bin
 uacrypt hash --in file.bin --out digest.bin
@@ -176,8 +177,8 @@ longer means a correspondingly large in-memory buffer. **Breaking wire-format ch
 prior `crypto_secretbox`-backed `encrypt` produced cannot be read by this `decrypt`, and vice versa
 - acceptable pre-1.0. `crypto_secretbox` itself is unchanged and still available as a library
 primitive for whole-message use, just no longer what this CLI command uses. `--key` is a raw
-32-byte file (`crypto_secretstream::Key`'s size — no `uacrypt keygen` command exists yet, generate
-one via any 32-byte-CSPRNG source). `encrypt` draws a fresh random header internally on every call
+32-byte file (`crypto_secretstream::Key`'s size) — `uacrypt keygen --out key.bin` generates one from
+the OS CSPRNG (`TASKS.md` T-115). `encrypt` draws a fresh random header internally on every call
 and embeds it in `--out`; there is no `--nonce`/`--header` flag to supply or reuse by mistake.
 **`hash` has no such limit either** — it streams `--in` from disk in fixed-size chunks regardless of
 size, fixed to Kupyna-256 (32-byte digest, no `--variant` choice).

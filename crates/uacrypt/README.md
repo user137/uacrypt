@@ -13,6 +13,7 @@ verification status — every command below inherits it.
 ```
 cargo build -p uacrypt --release
 
+uacrypt keygen --out key.bin
 uacrypt encrypt --key key.bin --in message.bin --out sealed.bin
 uacrypt decrypt --key key.bin --in sealed.bin --out message.bin
 uacrypt hash --in file.bin --out digest.bin
@@ -40,7 +41,8 @@ encrypts/authenticates arbitrary-length **short** messages (plaintext and `--aad
 255 bytes, a sourced property of the construction) using a provisional, dual-oracle-verified
 Kalyna-alone CCM mode, not yet confirmed against the primary DSTU 7624:2014 text.
 
-No `uacrypt keygen` command exists yet — generate key material via any 32-byte-CSPRNG source.
+`uacrypt keygen --out key.bin` generates a fresh 32-byte key from the OS CSPRNG, in the exact
+format `encrypt`/`decrypt --key` expect.
 
 ## Status and safety
 
