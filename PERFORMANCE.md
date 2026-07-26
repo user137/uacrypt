@@ -330,6 +330,37 @@ consistent with GCM/GHASH-style field-multiplication throughput being a differen
 CCM's per-call allocation cost. Byte-for-byte cross-checked against the real `uacrypt` binary before
 timing (unlike CCM, GCM's wire format matches: same-length ciphertext, tag returned separately).
 
+**Root-caused and fixed 2026-07-26, `TASKS.md` T-125, `DECISIONS.md` D-76**: an isolated timing
+diagnostic (`hazmat::gf2m_wide`'s `field_axiom_tests::isolated_timing_*`, comparing
+`Gf2m*::multiply` in isolation against a single `ExpandedKey::encrypt_block`) measured the field
+multiply at **89.6% (m=128), 91.8% (m=256), and 94.3% (m=512) of GCM's total per-block cost** —
+confirming, with a number instead of an inference, that `poly_mul_wide`'s O(m²) bit-serial multiply
+was the actual bottleneck, not the block cipher (this *is* the profiling T-125 originally called
+for, not a guess). Fixed by replacing `poly_mul_wide` with a 4-bit-window comb method (precompute
+`T[i] = a*i` for all 16 nibble values, walk the other operand's nibbles most-significant-first) —
+`m/4` accumulator iterations instead of `m`, verified against every existing GCM/GMAC/XTS official
+vector and the field-axiom property tests (no new correctness test needed — a multiply
+implementation swap is exactly what those already check). Measured ~1.8-2.3x faster on the multiply
+itself (narrower than a pure iteration-count argument predicts; not chased further). **Re-measured,
+same 64 B/1 MiB scale:**
+
+| Variant | uacrypt 64 B (MB/s) | UAPKI 64 B (MB/s) | uacrypt 1 MiB (MB/s) | UAPKI 1 MiB (MB/s) |
+|---|---|---|---|---|
+| 128-128 | **18.48** | 11.60 | **18.20** | 12.67 |
+| 128-256 | **15.79** | 11.39 | **16.99** | 12.63 |
+| 256-256 | **16.19** | 14.61 | 16.60 | **18.10** |
+| 256-512 | **14.84** | 13.53 | 15.99 | **17.71** |
+| 512-512 | **10.21** | 4.27 | **12.60** | 4.75 |
+
+**This project's own GCM throughput improved ~1.7-2.3x across every variant** (e.g. 512-512 at
+1 MiB: 5.41 → 12.60 MB/s), UAPKI's numbers unchanged as expected. **T-125's original finding — the
+256-256/256-512 variants losing by >2x at 1 MiB — is resolved**: the gap narrowed from ~2.14-2.18x
+to **~1.09-1.11x**, safely under the 2x line that flagged it in the first place; 128-128/128-256
+flip from trailing to *leading* (~1.35-1.44x), and 512-512's lead widens further (~2.65x, up from
+~1.15x). Kalyna-GMAC (same field arithmetic, one multiply per block) improved by the same
+mechanism — re-measured at the existing 1-block scale, this project's own throughput roughly
+doubled on every variant (e.g. 512-512: 4.76 → 12.91 MB/s), widening an already-large lead further.
+
 **Reproducing**: `target/release/uacrypt kalyna-gcm encrypt --variant <v> --key <path> --nonce
 <path> --in <path> --out <path> --tag <path> --iterations <N>`.
 
@@ -444,6 +475,22 @@ UAPKI-side multi-block streaming bug, D-57), N = 5000, Ryzen only:**
 This project wins by ~4-8x on every variant, same cause as CMAC's small-message case (UAPKI's
 per-call `ByteArray`/ctx setup cost, not a per-byte throughput difference — the message here is only
 one block, so setup cost is nearly the whole cost).
+
+**Re-measured 2026-07-26 after the `gf2m_wide` comb-multiply fix (see Kalyna-GCM's section above,
+`TASKS.md` T-125, `DECISIONS.md` D-76)** — same shape (one field multiply per block), same win
+mechanism as GCM, at the existing 1-block scale:
+
+| Variant | uacrypt (MB/s) | UAPKI (MB/s) |
+|---|---|---|
+| 128-128 | **16.84** | 0.87 |
+| 128-256 | **16.90** | 0.82 |
+| 256-256 | **16.71** | 1.55 |
+| 256-512 | **16.14** | 1.34 |
+| 512-512 | **12.91** | 1.70 |
+
+This project's own throughput roughly doubled or better on every variant (e.g. 512-512: 4.76 →
+12.91 MB/s), widening an already-large lead (~10-19x now, up from ~4-8x) — UAPKI's own numbers held
+steady, as expected (nothing changed on its side).
 
 **Reproducing**: `target/release/uacrypt kalyna-gmac compute --variant <v> --key <path> --in <path>
 --out <path> --iterations <N>`.
@@ -576,24 +623,32 @@ benchmark choice).
 | Kalyna-CMAC | 256-256 | 119.26 | **254.70** | Yes - within 4% |
 | Kalyna-CMAC | 256-512 | 92.84 | **205.47** | Yes - within 5% |
 | Kalyna-CMAC | 512-512 | 108.68 | **152.77** | Yes - within 2% |
-| Kalyna-GCM | 128-128 | 10.51 | **12.60** | Yes - within 1% |
-| Kalyna-GCM | 128-256 | 10.16 | **12.25** | Yes - within 2% |
-| Kalyna-GCM | 256-256 | 8.31 | **15.87** | Roughly - ~12% lower than the 1 MiB row's 18.12, within this methodology's noise band |
-| Kalyna-GCM | 256-512 | 8.10 | **17.45** | Yes - within 1% |
-| Kalyna-GCM | 512-512 | **5.50** | 4.77 | Yes - within 2%, still leads |
+| Kalyna-GCM (pre-comb-multiply-fix) | 128-128 | 10.51 | **12.60** | Yes - within 1% |
+| Kalyna-GCM (pre-comb-multiply-fix) | 128-256 | 10.16 | **12.25** | Yes - within 2% |
+| Kalyna-GCM (pre-comb-multiply-fix) | 256-256 | 8.31 | **15.87** | Roughly - ~12% lower than the 1 MiB row's 18.12, within this methodology's noise band |
+| Kalyna-GCM (pre-comb-multiply-fix) | 256-512 | 8.10 | **17.45** | Yes - within 1% |
+| Kalyna-GCM (pre-comb-multiply-fix) | 512-512 | **5.50** | 4.77 | Yes - within 2%, still leads |
 | Kupyna-256 | - | 95.52 | **143.03** | Roughly - UAPKI's lead widens slightly (was ~1.37x at 1 MiB, ~1.50x at 10 MiB) |
 | Kupyna-512 | - | 77.94 | **114.49** | Roughly - same widening pattern (~1.45x to ~1.47x) |
 | Strumok-256 | - | **648.67** | 581.13 | No - this project now leads at 10 MiB (was UAPKI ahead ~1.10x at 1 MiB) |
 | Strumok-512 | - | **636.16** | 631.02 | Roughly at parity (was UAPKI ahead ~1.10x at 1 MiB) |
 
-**CMAC/GCM confirm D-76's finding #1 directly**: their 10 MiB ratios track the already-published
-1 MiB ratios closely (within ~5%), meaning nothing about T-127's schedule-caching fix changed
-CMAC's numbers at this scale (expected - the schedule cost was already amortized over tens of
-thousands of block-cipher calls) and GCM was untouched by either fix (expected - its field multiply
-is against the dense, key-derived `H`, not a fixed constant, so T-126 doesn't apply). Kupyna/
-Strumok are also within noise of their existing 1 MiB numbers, as expected (neither fix touches
-either primitive). XTS is the one mode whose numbers moved, and moved by exactly the margin T-126's
-root cause predicts.
+**CMAC confirms D-76's finding #1 directly**: its 10 MiB ratios track the already-published 1 MiB
+ratios closely (within ~5%), meaning nothing about T-127's schedule-caching fix changed CMAC's
+numbers at this scale (expected - the schedule cost was already amortized over tens of thousands of
+block-cipher calls). Kupyna/Strumok are also within noise of their existing 1 MiB numbers, as
+expected (neither fix touches either primitive). XTS is the one mode whose numbers moved at the
+time this pass was run, by exactly the margin T-126's root cause predicts.
+
+**GCM's row above is superseded, same day, by the comb-multiply fix (`TASKS.md` T-125,
+`DECISIONS.md` D-76)** - it was measured *before* that fix landed, kept here only as the historical
+"was this a message-size artifact" check it was run for (answer: no, the 1 MiB and 10 MiB numbers
+agreed, so the >2x gap this pass investigated was real steady-state throughput, not overhead noise
+- exactly what justified treating it as a genuine bottleneck worth root-causing rather than a
+measurement quirk). The Kalyna-GCM section above has the post-fix numbers; a fresh 10 MiB GCM point
+wasn't re-run this session (the 1 MiB numbers already reproduce cleanly against 64 B and against the
+isolated field-multiply timing, so a third confirmation at 10 MiB wasn't judged necessary here) -
+flagged for whoever next touches this table, not silently assumed unchanged.
 
 **Reproducing**: same commands as each mode's own section above, with `--iterations 50` and a
 10 MiB (`10485760`-byte) `--in` file.
@@ -684,6 +739,21 @@ sketched-not-scheduled task for closing this):
   2-block-of-key-material benchmark it wasn't, and removing it narrowed UAPKI's lead by roughly
   14-31% across all five variants (see the Kalyna-KW section above) without eliminating it - the
   residual matches the core-round-function gap described in the point above.
+- **Kalyna-GCM/GMAC, T-125, 2026-07-26**: an isolated timing diagnostic measured
+  `hazmat::gf2m_wide`'s field multiply at 89.6% (m=128) to 94.3% (m=512) of GCM's per-block cost -
+  the O(m²) bit-serial `poly_mul_wide`, not the block cipher, was the actual bottleneck (this is the
+  profiling T-125's own text asked for, not an inference from aggregate numbers). Fixed with a
+  4-bit-window comb multiply (same technique class as real-world GF(2^m) implementations, verified
+  against every existing GCM/GMAC/XTS vector and property test, no new correctness test needed).
+  This project's own GCM throughput improved ~1.7-2.3x across every variant; the 256-256/256-512
+  cells that originally triggered T-125 (>2x slower at 1 MiB) narrowed to ~1.09-1.11x, and
+  128-128/128-256/512-512 flipped from trailing or roughly-tied to clearly leading. GMAC (same field
+  arithmetic) improved by the same mechanism, roughly doubling an already-large lead. **What this
+  does not answer**: why UAPKI specifically wins the mid-size (256-*) variants and loses at the
+  extremes (128-*/512-512) - the working hypothesis (not measured, from reading `gf2m_mul`,
+  `dstu7624.c:2963-3001`) is that UAPKI's own Karatsuba multiply pays 3 heap allocations per call,
+  amortized differently across the fewer-but-larger blocks a bigger `m` produces - flagged as the
+  open remainder, not settled.
 - **Neither gap is a correctness or `no_std` concern** — all of it is pure throughput, addressable later
   without touching the already-verified algorithm logic (confirmed for Strumok's fix: all existing
   tests, including the 4000-case outspace differential harness, still pass unchanged).

@@ -4970,3 +4970,80 @@ alloc`/`--features small-tables` builds all clean. Full numbers for both fixes, 
 re-measurement pass across every mode without an inherent length cap (requested the same session,
 to rule out any remaining per-call setup-cost noise), are in `PERFORMANCE.md`'s Kalyna-XTS/Kalyna-KW
 sections and its new "10 MiB re-measurement pass" subsection.
+
+## D-76 continued: T-125's own GCM/GMAC finding, root-caused and fixed the same day
+
+Requested as a direct follow-up ("continue the investigation where we still lag by a multiple") -
+of the gaps left in this file's first half, T-125's own Kalyna-GCM 256-256/256-512 anomaly (~2.1-2.2x
+at 1 MiB) was the only one still genuinely multiple-fold and unexplained; the core-round-function gap
+(finding #1 above, ~1.3-2.7x) was flagged by `advisor()` as *not* the next target - `hazmat::kalyna.rs`
+is the crate's most load-bearing, most-fused file (D-28/D-29/D-30), and the user's own condition
+("only if safe and doesn't affect cryptographic strength") argued for the more contained target
+first.
+
+**`advisor()`'s specific direction, followed exactly**: GCM's per-block cost is one block-cipher
+call plus one general `Gf2m*::multiply` against the dense, key-derived `H` - with this project's own
+already-published numbers (Kalyna-block cached: 124.51 MB/s at 256-256; Kalyna-GCM: 8.31 MB/s), ~93%
+of GCM's time already had to be the field multiply, arithmetically, with no profiler needed. The
+open question was never "where does the time go" but "why does UAPKI's Karatsuba+malloc multiply
+win at m=256 and lose at m=512" - answerable by isolating the multiply's own cost, not by profiling
+GCM as a whole.
+
+**Isolated timing, three field widths** (`hazmat::gf2m_wide::field_axiom_tests::isolated_timing_*`,
+`#[ignore]`d manual-`Instant` diagnostics, `cargo test --release -- --ignored --nocapture`): a single
+`Gf2m128::multiply` costs 8.58x a `Kalyna128_128ExpandedKey::encrypt_block` (1525.5 ns vs. 177.8 ns);
+`Gf2m256` costs 11.22x (3837.5 vs. 341.9 ns); `Gf2m512` costs 16.51x (11407.5 vs. 691.0 ns) - i.e.
+the field multiply is 89.6%/91.8%/94.3% of GCM's total per-block cost, rising with `m` exactly as
+`poly_mul_wide`'s O(m²) schoolbook cost predicts. This *is* T-125's own requested profiling step,
+done with a scratch timing harness rather than an external profiler (`perf` isn't readily available
+on this Windows dev machine) - the isolation (multiply alone vs. block-cipher alone) gives the same
+answer a call-graph profiler would, for this specific question.
+
+**Fix, `advisor()`-specified**: a 4-bit-window comb multiply, chosen over an 8-bit window because
+`a` (the operand the table is keyed on) changes every block in GCM's Horner accumulation - a
+256-entry table (8-bit window) would be rebuilt from scratch every single multiply, strictly worse
+than the 16-entry table a 4-bit window needs. Construction: `T[0] = 0`, `T[1] = a`, then for
+`i in 1..8`: `T[2i] = T[i] << 1`, `T[2i+1] = T[2i] XOR a` (the standard doubling recursion, 7
+shift+XOR pairs, all at the double-width `$limbs2` size since even `T[15]` already exceeds `$limbs`
+width). The other operand is then walked nibble-by-nibble, most-significant-first: shift the
+accumulator left by 4 bits, `XOR` in `T[nibble]`, repeat for `m/4` nibbles - `m/4` accumulator
+iterations instead of the previous bit-serial method's `m`. `reduce` (the O(m) bit-at-a-time
+modular-reduction step) was left untouched, per `advisor()`'s explicit note that it's a much smaller
+fraction of the total (~512 iterations at m=512 vs. `poly_mul_wide`'s pre-fix ~16,384 word-ops) -
+revisit only if a future measurement shows otherwise, not assumed now.
+
+**Correctness gate**: no new test written for the multiply-implementation swap itself, per
+`advisor()`'s explicit direction - the four existing field-axiom property tests
+(`multiply_is_commutative`/`_associative`/`_distributes_over_add`/`multiply_by_one_is_identity`)
+already check exactly the property a broken comb implementation would violate, and all five official
+GCM vectors, five GMAC vectors, and five XTS vectors (XTS doesn't call `poly_mul_wide` at all since
+T-126's `double()`, but exercises `reduce`/`Self` the same way) are an unchanged, independent,
+byte-exact gate. All passed on first run. Full workspace `cargo test --workspace --all-features`
+(every test binary, 0 failures), `clippy --workspace --all-features -- -D warnings`/`fmt --all --
+--check` clean (one more `clippy::doc_markdown` "XORing" hit, same previously-documented lint shape),
+and the `--no-default-features`/`--features alloc`/`--features small-tables` build matrix all clean.
+
+**Measured speedup**: ~1.8-2.3x faster on the multiply alone (narrower than the ~4-6x a pure
+iteration-count argument predicts - `advisor()` flagged this as worth investigating if pursued
+further, not chased here; likely candidates are the table-build overhead and the indexed `T[nibble]`
+lookup costing more than the old branchless masked-`XOR` per bit did, but this is inferred from the
+mechanism, not measured). Re-measuring the isolated ratio after the fix: `Gf2m128` drops to 4.28x
+the block cipher (was 8.58x), `Gf2m256` to 5.80x (was 11.22x), `Gf2m512` to 7.03x (was 16.51x) -
+consistent with the ~1.8-2.3x multiply speedup at each width. Binary-level GCM throughput improved
+~1.7-2.3x across every variant (`PERFORMANCE.md` has the full table); T-125's own trigger - the
+256-256/256-512 cells losing by >2x at 1 MiB - narrowed from ~2.14-2.18x to **~1.09-1.11x**, closing
+the task. GMAC (identical field-arithmetic shape) improved by the same mechanism, roughly doubling
+an already-large lead.
+
+**What this does not resolve, stated plainly rather than left implicit**: why UAPKI specifically
+wins the mid-size (256-*) variants and loses at both extremes (128-*/512-512) even after this fix -
+a candidate mechanism exists (UAPKI's own `gf2m_mul`, `dstu7624.c:2963-3001`, pays 3 heap allocations
+per call via its Karatsuba path, `math-gf2m-internal.c:840-1002`, amortized differently across the
+fewer-but-larger blocks a bigger `m` produces per message), read from source but never measured in
+isolation the way this decision's own multiply-vs-block-cipher numbers were. Do not present it as
+settled in a future pass without first doing the equivalent isolation on UAPKI's own side.
+
+**The `#[ignore]`d isolated-timing tests are a deliberate, retained diagnostic, not leftover
+scaffolding** - `advisor()`'s explicit call: they are this fix's own before/after instrument (already
+re-run once, above), kept for the same purpose on any future `gf2m_wide` change, not a correctness
+assertion (hence `#[ignore]`, not part of the normal `cargo test` run).

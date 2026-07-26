@@ -14,14 +14,20 @@
 //! calling-convention mistake `CLAUDE.md`'s agent-discipline section warns about, generalized to a
 //! second standard.
 //!
-//! **Correctness-first, not speed-first** (same posture as `gf2m163`, `DECISIONS.md` D-25): a
-//! branchless bit-select shift-and-add multiply (mirroring `gf2m163::poly_mul_wide`'s technique
-//! exactly), then a simple bit-at-a-time top-down modular reduction - not `gf2m163::reduce`'s
-//! word-offset-optimized closed form (hand-derived specifically for `m=163`/64-bit words, does not
-//! generalize to three more field sizes without redoing that derivation three times), and not
+//! **Originally correctness-first, not speed-first** (same posture as `gf2m163`, `DECISIONS.md`
+//! D-25): a branchless bit-select shift-and-add multiply (mirroring `gf2m163::poly_mul_wide`'s
+//! technique exactly), then a simple bit-at-a-time top-down modular reduction. **Multiplication
+//! was measured (`TASKS.md` T-125) to be 89.6-94.3% of `kalyna_gcm`/`kalyna_gmac`'s per-block cost,
+//! not the block cipher, and was switched to a 4-bit-window comb method** (`DECISIONS.md` D-76, see
+//! `poly_mul_wide`'s own doc comment for the technique); `reduce` is still the original
+//! bit-at-a-time top-down method, not `gf2m163::reduce`'s word-offset-optimized closed form
+//! (hand-derived specifically for `m=163`/64-bit words, does not generalize to three more field
+//! sizes without redoing that derivation three times), and not
 //! `oracles/uapki/library/uapkic/src/math-gf2m-internal.c`'s Karatsuba-based library either (no
 //! reusable code there, confirmed by reading it - only a style precedent already followed by
-//! `gf2m163`).
+//! `gf2m163`). `reduce` was measured to be a small fraction of the total (`poly_mul_wide` was
+//! ~16,384 word-ops at m=512 pre-fix vs. `reduce`'s ~512 bit-serial iterations there), so it
+//! wasn't touched; revisit only if a future measurement shows otherwise.
 
 macro_rules! gf2m_field {
     ($elem:ident, $limbs:literal, $limbs2:literal, $m:literal, $f1:literal, $f2:literal, $f3:literal) => {
@@ -105,23 +111,51 @@ macro_rules! gf2m_field {
                 Self(out)
             }
 
-            /// Binary-polynomial (carry-less) multiplication into a double-width product - the
-            /// right-to-left shift-and-add method, branchless bit-select in place of an `if`,
-            /// mirroring `gf2m163::poly_mul_wide` exactly (`DECISIONS.md` D-25).
+            /// Binary-polynomial (carry-less) multiplication into a double-width product - a
+            /// 4-bit-window comb method (`DECISIONS.md` D-76 / `TASKS.md` T-125's field-multiply
+            /// root cause, `advisor()`-directed): precompute `T[i] = a*i` for every nibble value
+            /// `i` in `0..16` (`T[0] = 0`, `T[1] = a`, `T[2i] = T[i] << 1`, `T[2i+1] = T[2i] XOR
+            /// a]` - the standard doubling construction, 7 shift+XOR pairs), then walk `b`'s
+            /// nibbles most-significant-first, shifting the accumulator left by 4 bits and `XOR`ing
+            /// in `T[nibble]` each step. This is `m/4` accumulator iterations instead of the
+            /// previous bit-serial method's `m`, each doing one 4-bit shift instead of four 1-bit
+            /// ones - measured ~1.8-2.3x faster on the multiply alone (narrower than the ~4-6x a
+            /// pure iteration-count argument predicts, most likely the table-build overhead plus
+            /// the indexed `T[nibble]` lookup costing more than the old branchless masked-`XOR`
+            /// per bit did - not chased further, see the `isolated_timing_*` diagnostics in
+            /// `field_axiom_tests` below for the measured numbers), which for
+            /// [`super::kalyna_gcm`]/[`super::kalyna_gmac`] (where this multiply was measured to be
+            /// 89.6-94.3% of the per-block cost before this change, not the block cipher)
+            /// translates directly to throughput. Was the previous right-to-left bit-serial method
+            /// mirroring `gf2m163::poly_mul_wide` (`DECISIONS.md` D-25); that citation's
+            /// *technique* no longer applies here; `gf2m163` itself is untouched.
             fn poly_mul_wide(a: &[u64; $limbs], b: &[u64; $limbs]) -> [u64; $limbs2] {
-                let mut acc = [0u64; $limbs2];
-                let mut shifted = [0u64; $limbs2];
-                shifted[..$limbs].copy_from_slice(b);
+                let mut a_wide = [0u64; $limbs2];
+                a_wide[..$limbs].copy_from_slice(a);
 
-                for bit_index in 0u32..$m {
-                    let limb = (bit_index / 64) as usize;
-                    let bit = bit_index % 64;
-                    let bit_value = (a[limb] >> bit) & 1;
-                    let mask = 0u64.wrapping_sub(bit_value);
-                    for i in 0..$limbs2 {
-                        acc[i] ^= shifted[i] & mask;
+                let mut t: [[u64; $limbs2]; 16] = [[0u64; $limbs2]; 16];
+                t[1] = a_wide;
+                for i in 1..8usize {
+                    let mut doubled = t[i];
+                    Self::shl1(&mut doubled);
+                    t[2 * i] = doubled;
+                    let mut with_a = doubled;
+                    for w in 0..$limbs2 {
+                        with_a[w] ^= t[1][w];
                     }
-                    Self::shl1(&mut shifted);
+                    t[2 * i + 1] = with_a;
+                }
+
+                let mut acc = [0u64; $limbs2];
+                let nibbles = $m / 4;
+                for k in (0..nibbles).rev() {
+                    Self::shl4(&mut acc);
+                    let word = k / 16;
+                    let shift = (k % 16) * 4;
+                    let nibble = ((b[word] >> shift) & 0xF) as usize;
+                    for w in 0..$limbs2 {
+                        acc[w] ^= t[nibble][w];
+                    }
                 }
 
                 acc
@@ -133,6 +167,17 @@ macro_rules! gf2m_field {
                 for limb in x.iter_mut() {
                     let next_carry = *limb >> 63;
                     *limb = (*limb << 1) | carry;
+                    carry = next_carry;
+                }
+            }
+
+            /// Left-shifts a `$limbs2`-limb little-endian array by exactly 4 bits, in place - the
+            /// per-nibble accumulator shift `poly_mul_wide`'s comb method uses.
+            fn shl4(x: &mut [u64; $limbs2]) {
+                let mut carry = 0u64;
+                for limb in x.iter_mut() {
+                    let next_carry = *limb >> 60;
+                    *limb = (*limb << 4) | carry;
                     carry = next_carry;
                 }
             }
@@ -279,4 +324,153 @@ mod field_axiom_tests {
     field_axioms!(gf2m128, Gf2m128, 2);
     field_axioms!(gf2m256, Gf2m256, 4);
     field_axioms!(gf2m512, Gf2m512, 8);
+
+    // TEMPORARY investigation for T-125 (`DECISIONS.md` D-76 follow-up) - not a permanent test,
+    // remove after the field-multiply-vs-block-cipher ratio is recorded. `#[ignore]`d since it's a
+    // manual-timing diagnostic, not a correctness assertion; run with `--release --ignored
+    // --nocapture` for a meaningful number.
+    #[test]
+    #[ignore]
+    fn isolated_timing_gf2m256_multiply_vs_kalyna256_256_encrypt_block() {
+        use std::hint::black_box;
+        use std::time::Instant;
+
+        let key = [0x11u8; 32];
+        let cipher = super::super::kalyna::Kalyna256_256ExpandedKey::new(&key);
+        let block = [0x22u8; 32];
+
+        let a = Gf2m256([
+            0x1111_1111_1111_1111u64,
+            0x2222_2222_2222_2222,
+            0x3333_3333_3333_3333,
+            0x4444_4444_4444_4444,
+        ]);
+        let b = Gf2m256([
+            0x5555_5555_5555_5555u64,
+            0x6666_6666_6666_6666,
+            0x7777_7777_7777_7777,
+            0x8888_8888_8888_8888,
+        ]);
+
+        const N: u32 = 2_000_000;
+
+        let start = Instant::now();
+        let mut acc_block = block;
+        for _ in 0..N {
+            acc_block = black_box(cipher.encrypt_block(black_box(&acc_block)));
+        }
+        let block_elapsed = start.elapsed();
+        black_box(acc_block);
+
+        let start = Instant::now();
+        let mut acc = a;
+        for _ in 0..N {
+            acc = black_box(acc.multiply(black_box(b)));
+        }
+        let mult_elapsed = start.elapsed();
+        black_box(acc);
+
+        let block_ns = block_elapsed.as_nanos() as f64 / f64::from(N);
+        let mult_ns = mult_elapsed.as_nanos() as f64 / f64::from(N);
+        eprintln!(
+            "encrypt_block: {block_ns:.1} ns/op | Gf2m256::multiply: {mult_ns:.1} ns/op | ratio (multiply/block) = {:.2}x",
+            mult_ns / block_ns
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn isolated_timing_gf2m128_multiply_vs_kalyna128_128_encrypt_block() {
+        use std::hint::black_box;
+        use std::time::Instant;
+
+        let key = [0x11u8; 16];
+        let cipher = super::super::kalyna::Kalyna128_128ExpandedKey::new(&key);
+        let block = [0x22u8; 16];
+
+        let a = Gf2m128([0x1111_1111_1111_1111u64, 0x2222_2222_2222_2222]);
+        let b = Gf2m128([0x5555_5555_5555_5555u64, 0x6666_6666_6666_6666]);
+
+        const N: u32 = 2_000_000;
+
+        let start = Instant::now();
+        let mut acc_block = block;
+        for _ in 0..N {
+            acc_block = black_box(cipher.encrypt_block(black_box(&acc_block)));
+        }
+        let block_elapsed = start.elapsed();
+        black_box(acc_block);
+
+        let start = Instant::now();
+        let mut acc = a;
+        for _ in 0..N {
+            acc = black_box(acc.multiply(black_box(b)));
+        }
+        let mult_elapsed = start.elapsed();
+        black_box(acc);
+
+        let block_ns = block_elapsed.as_nanos() as f64 / f64::from(N);
+        let mult_ns = mult_elapsed.as_nanos() as f64 / f64::from(N);
+        eprintln!(
+            "encrypt_block: {block_ns:.1} ns/op | Gf2m128::multiply: {mult_ns:.1} ns/op | ratio (multiply/block) = {:.2}x",
+            mult_ns / block_ns
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn isolated_timing_gf2m512_multiply_vs_kalyna512_512_encrypt_block() {
+        use std::hint::black_box;
+        use std::time::Instant;
+
+        let key = [0x11u8; 64];
+        let cipher = super::super::kalyna::Kalyna512_512ExpandedKey::new(&key);
+        let block = [0x22u8; 64];
+
+        let a = Gf2m512([
+            0x1111_1111_1111_1111u64,
+            0x2222_2222_2222_2222,
+            0x3333_3333_3333_3333,
+            0x4444_4444_4444_4444,
+            0x1111_1111_1111_1111u64,
+            0x2222_2222_2222_2222,
+            0x3333_3333_3333_3333,
+            0x4444_4444_4444_4444,
+        ]);
+        let b = Gf2m512([
+            0x5555_5555_5555_5555u64,
+            0x6666_6666_6666_6666,
+            0x7777_7777_7777_7777,
+            0x8888_8888_8888_8888,
+            0x5555_5555_5555_5555u64,
+            0x6666_6666_6666_6666,
+            0x7777_7777_7777_7777,
+            0x8888_8888_8888_8888,
+        ]);
+
+        const N: u32 = 2_000_000;
+
+        let start = Instant::now();
+        let mut acc_block = block;
+        for _ in 0..N {
+            acc_block = black_box(cipher.encrypt_block(black_box(&acc_block)));
+        }
+        let block_elapsed = start.elapsed();
+        black_box(acc_block);
+
+        let start = Instant::now();
+        let mut acc = a;
+        for _ in 0..N {
+            acc = black_box(acc.multiply(black_box(b)));
+        }
+        let mult_elapsed = start.elapsed();
+        black_box(acc);
+
+        let block_ns = block_elapsed.as_nanos() as f64 / f64::from(N);
+        let mult_ns = mult_elapsed.as_nanos() as f64 / f64::from(N);
+        eprintln!(
+            "encrypt_block: {block_ns:.1} ns/op | Gf2m512::multiply: {mult_ns:.1} ns/op | ratio (multiply/block) = {:.2}x",
+            mult_ns / block_ns
+        );
+    }
 }

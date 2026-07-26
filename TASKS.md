@@ -809,7 +809,7 @@ item they point to is later removed.
       107118 ns) - a much wider gap than any other variant/mode measured (most are within 2x either
       direction), flagged for follow-up, not root-caused in this session. This dev machine only
       (Ryzen 5 PRO 4650U) - the Raspberry Pi rig was out of scope for this pass, not re-run.
-- [ ] **T-125** Investigate every mode/variant where this project runs more than 2x slower than
+- [x] **T-125** **DONE 2026-07-26.** Investigate every mode/variant where this project runs more than 2x slower than
       UAPKI at the 1 MiB message size specifically - requested 2026-07-26, straight from T-121's own
       binary-level numbers (`PERFORMANCE.md`, D-34 methodology, MB/s only). Scoped deliberately to
       the 1 MiB data points only (not the smaller 64 B/1 KB/64 KB/one-block/two-block points measured
@@ -860,18 +860,43 @@ item they point to is later removed.
         than ours by ~2.7x (128-128) down to ~1.3x (512-512, the one variant CMAC also shows as
         "under 2x").** This is a core Kalyna-cipher-level gap, not a mode-of-operation issue - see
         T-126's follow-up scope note below for why it isn't tackled as part of *this* task.
-      - **Kalyna-GCM's non-monotonic 256-*/nb pattern stays genuinely open.** Neither implementation
-        uses a precomputed GHASH-style table (both do a real per-block multiply against the actual
-        field element `H`, not a fixed sparse constant - a structurally different case from XTS's
-        tweak-doubling, see T-126) - `advisor()` explicitly flagged the subagent's composite
-        "two opposite trends compound at nb=4" narrative as unfalsifiable and directed cutting it
-        from scope rather than writing an unproven mechanism into this file. **Still needs `perf`/
-        instrumented profiling, not more source reading, before this task can close.**
+      - **Kalyna-GCM's non-monotonic 256-*/nb pattern stays genuinely open at this point.** Neither
+        implementation uses a precomputed GHASH-style table (both do a real per-block multiply
+        against the actual field element `H`, not a fixed sparse constant - a structurally different
+        case from XTS's tweak-doubling, see T-126) - `advisor()` explicitly flagged the subagent's
+        composite "two opposite trends compound at nb=4" narrative as unfalsifiable and directed
+        cutting it from scope rather than writing an unproven mechanism into this file. **Root-caused
+        with a real measurement later the same day** (see below) - not left open.
       - Two new, more actionable findings surfaced along the way, split into their own tasks since
         each has an independent, containable, safe fix: **T-126** (Kalyna-XTS's separate 512-512
         anomaly, now root-caused) and **T-127** (a real per-call key-schedule cost hiding in the
         `hazmat::kalyna_cmac`/`kalyna_gmac`/`kalyna_kw` API shape, not just this task's benchmark
         harness).
+
+      **Fully resolved later the same day, user-requested continuation ("continue investigating
+      where we still lag by a multiple"), `advisor()` consulted before and after implementing:**
+      isolated timing (`hazmat::gf2m_wide::field_axiom_tests::isolated_timing_*`, comparing
+      `Gf2m*::multiply` against a single `ExpandedKey::encrypt_block` in isolation) measured the
+      field multiply at **89.6% (m=128), 91.8% (m=256), 94.3% (m=512) of GCM's per-block cost** -
+      confirming with a real number, not an inference, that `poly_mul_wide`'s O(m²) bit-serial
+      multiply was the bottleneck, not the block cipher (this is the `perf`-equivalent profiling
+      this task's own text asked for). Fixed by replacing `poly_mul_wide` with a 4-bit-window comb
+      method (`T[i] = a*i` precomputed for all 16 nibbles, walk the other operand's nibbles MSB-first
+      - `m/4` accumulator iterations instead of `m`), verified against every existing GCM/GMAC/XTS
+      official vector and the field-axiom property tests (a multiply-implementation swap needs no
+      new correctness test - those already check exactly the property that would break). Measured
+      ~1.8-2.3x faster on the multiply itself. **Re-measured GCM/GMAC binary throughput**: this
+      project's own GCM improved ~1.7-2.3x across every variant; the 256-256/256-512 cells that
+      triggered this task in the first place (>2x slower at 1 MiB) narrowed from ~2.14-2.18x to
+      **~1.09-1.11x**, well under the 2x line; 128-128/128-256/512-512 flip from trailing/tied to
+      clearly leading. GMAC (same field arithmetic) improved by the same mechanism, roughly doubling
+      an already-large lead. Full numbers in `PERFORMANCE.md`'s Kalyna-GCM/Kalyna-GMAC sections.
+      **What remains genuinely open, stated as such**: why UAPKI specifically wins the mid-size
+      (256-*) variants and loses at the extremes - a working hypothesis exists (UAPKI's own
+      Karatsuba `gf2m_mul` pays 3 heap allocations per call, amortized differently across fewer,
+      larger blocks at bigger `m`), but it was read from source, not measured - do not treat it as
+      settled without independent confirmation. Full workspace `test --all-features` (every binary,
+      0 failures)/`clippy -D warnings`/`fmt`/feature-matrix all clean throughout.
 - [x] **T-126** **DONE 2026-07-26, fixed and re-measured, same session as T-125's follow-up.** `hazmat::gf2m_wide.rs` has no specialization
       for "multiply by the fixed generator `x`" (the constant literally named `two` in
       `kalyna_xts.rs`, e.g. line 100/113/134/161/170/182/193/195). Every tweak-doubling call -
