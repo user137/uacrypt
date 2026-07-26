@@ -503,6 +503,16 @@ Full detail and rationale in `SECURITY.md` — this is the compressed version so
   the user discover them one at a time by reading `DECISIONS.md` later (`advisor()`'s explicit
   flag, three forks in one session: T-122's `generate()` shape, T-124's `sign-keygen`/
   `sign-pubkey` widening, T-123's capability-vs-mechanism-parity call).
+- **When writing a benchmark/comparison wrapper, verify the timer excludes one-time setup (ctx
+  alloc + key-schedule init) — don't assume copying an existing wrapper function's structure to a
+  new mode carries the same guarantee.** Confirmed the hard way extending the UAPKI comparison
+  wrapper to GMAC (`DECISIONS.md` D-80): `run_gmac` was copied from `run_cmac`'s original shape,
+  which itself timed the whole loop (`alloc`+`init_*` included) rather than just the MAC call,
+  while `uacrypt`'s own command caches its schedule outside the loop. Invisible at bulk message
+  sizes (CMAC's 10 MiB was unaffected — setup cost is noise against milliseconds of real work) but
+  decisive at small ones (GMAC's 1-block message made a real ~1.1-2.9x gap look like a bogus
+  ~4-24x one). Any new wrapper function needs its own `t0`/`now_ns()` placed *after* the
+  setup/init call, verified per-function, not inherited from a sibling's code.
 
 ## Reference implementations and oracles
 
