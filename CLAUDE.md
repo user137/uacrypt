@@ -477,6 +477,32 @@ Full detail and rationale in `SECURITY.md` — this is the compressed version so
   whole-module `std`-gated or have no such mixed-variant enum). Not a reason to add
   `#[non_exhaustive]` speculatively — just verify this shape is intentional and record it, don't
   discover it from a downstream break.
+- **`getrandom` 0.3's custom RNG backend (relevant to any future no_std/embedded RNG work,
+  `TASKS.md` T-123/`DECISIONS.md` D-74) is a compile-time/link-time mechanism** — a
+  `--cfg getrandom_backend="custom"` flag (via `RUSTFLAGS`/`.cargo/config.toml`) plus an
+  `extern "Rust" fn __getrandom_v03_custom` resolved at link time — **not** a runtime-swappable
+  callback the way libsodium's `randombytes_set_implementation()` is. Don't build a home-grown
+  pluggable-RNG registry to match that shape; it would duplicate a mechanism `getrandom` already
+  provides (the same D-03/D-04 reasoning against homegrown RNG code). To prove a target-agnostic
+  link-time hook like this actually resolves, test it on the host — it doesn't care about target
+  OS, so this doesn't require standing up real bare-metal firmware infrastructure
+  (entry point/panic handler/linker script) just to verify one mechanism.
+- **A Cargo feature/build combination outside the usual `clippy --all-features`/default-profile
+  runs can hide a real `dead_code` warning** until that exact combination is actually built (e.g.
+  `--no-default-features --features <narrow-feature>`) — confirmed adding the `getrandom` feature
+  (D-74): a helper function only reachable under that one narrower combination needed its own
+  matching `#[cfg]`, invisible from clippy on default or `--all-features` alone. Build-check every
+  entry in the feature matrix individually, not just the two usual profiles.
+- **When a README example must mirror a doctest's code verbatim, diff the two programmatically**
+  (extract the fenced block from each, `diff`) rather than eyeballing — caught a real silent drift
+  this way while expanding `crates/dstu-core/README.md` (T-120/D-75): the README's own copy had
+  quietly dropped part of an example the doctest still had.
+- **When a session accumulates more than one design fork resolved by implementation rather than
+  by asking first** (flagged for confirmation in `DECISIONS.md`, the D-66/D-72 pattern), surface
+  all of them together in one end-of-turn message before moving on to the next task — don't let
+  the user discover them one at a time by reading `DECISIONS.md` later (`advisor()`'s explicit
+  flag, three forks in one session: T-122's `generate()` shape, T-124's `sign-keygen`/
+  `sign-pubkey` widening, T-123's capability-vs-mechanism-parity call).
 
 ## Reference implementations and oracles
 
