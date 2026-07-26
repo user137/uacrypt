@@ -33,9 +33,10 @@
 //! **Keypair generation (`TASKS.md` T-122): [`SigningKey::generate`].** `from_bytes` above only
 //! ever *validates* a caller-supplied `d` - until this method existed there was no way to obtain a
 //! valid `d` through the public API at all, without reaching into `hazmat` internals
-//! (`curve163::order()` isn't part of this module's own surface). `#[cfg(feature = "std")]`-gated
-//! (needs `crate::randombytes`), matching every other `crypto_*` module's own `Key::generate`
-//! convention (`crypto_secretbox`/`crypto_auth`/`crypto_kdf`/`crypto_stream`/`crypto_secretstream`).
+//! (`curve163::order()` isn't part of this module's own surface). `#[cfg(any(feature = "std",
+//! feature = "getrandom"))]`-gated (needs `crate::randombytes`, `TASKS.md` T-123/`DECISIONS.md`
+//! D-74), matching every other `crypto_*` module's own `Key::generate` convention
+//! (`crypto_secretbox`/`crypto_auth`/`crypto_kdf`/`crypto_stream`/`crypto_secretstream`).
 //!
 //! `VerifyingKey::to_uncompressed_bytes`/`from_uncompressed_bytes` use a plain 42-byte `x || y`
 //! encoding, **not** the DSTU 4145 standard's own compressed point encoding (official text
@@ -43,6 +44,30 @@
 //! anywhere in this project yet (`docs/pseudocode/dstu4145.md`'s existing note lists it as future
 //! work, unrelated to sign/verify itself). Anyone needing interoperable, spec-compliant public-key
 //! serialization must wait for that, tracked separately in `TASKS.md`.
+//!
+//! # Example
+//!
+//! A signature proves a message came from whoever holds the signing key and hasn't been altered
+//! since - unlike [`crate::crypto_secretbox`], it does not hide the message's contents, only
+//! attests to its origin and integrity. Both the success path and a rejected forgery are shown
+//! below (`TASKS.md` T-120's own requirement - a signature example that only shows the happy path
+//! doesn't demonstrate the primitive actually does what it claims).
+//!
+//! ```rust
+//! use dstu_core::crypto_sign::SigningKey;
+//!
+//! let signing_key = SigningKey::generate().expect("OS CSPRNG should not fail");
+//! let verifying_key = signing_key.verifying_key(); // safe to share/publish
+//!
+//! let message = b"a message whose origin and integrity matter";
+//! let signature = signing_key.sign(message);
+//! assert!(verifying_key.verify(message, &signature));
+//!
+//! // A different message, or a signature from a different key, must fail to verify.
+//! assert!(!verifying_key.verify(b"a different message", &signature));
+//! let other_key = SigningKey::generate().expect("OS CSPRNG should not fail");
+//! assert!(!other_key.verifying_key().verify(message, &signature));
+//! ```
 
 use crate::hazmat::dstu4145::curve163::{self, Point};
 use crate::hazmat::dstu4145::gf2m163::FieldElement;
@@ -124,7 +149,7 @@ impl SigningKey {
     ///
     /// Returns [`crate::randombytes::RandomError`] if the OS CSPRNG fails while drawing a
     /// candidate.
-    #[cfg(feature = "std")]
+    #[cfg(any(feature = "std", feature = "getrandom"))]
     pub fn generate() -> Result<Self, crate::randombytes::RandomError> {
         loop {
             let mut candidate = [0u8; 21];

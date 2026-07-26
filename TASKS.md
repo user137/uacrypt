@@ -558,7 +558,7 @@ item they point to is later removed.
       also run against the actual release binary, not assumed from the unit tests - both correctly
       reject without writing `--out`, matching `crypto_secretstream`'s documented behavior. No
       `DECISIONS.md` entry - a documentation correctness fix, not an architectural decision.
-- [ ] **T-120** Locally-verified, beginner-friendly usage examples across every doc surface, for
+- [x] **T-120** Locally-verified, beginner-friendly usage examples across every doc surface, for
       every *safe* mode - requested 2026-07-26 by the project owner. Two distinct audiences, both
       in scope, not just one:
       1. **`uacrypt` binary users** - real, copy-pasteable examples for every top-level
@@ -598,6 +598,31 @@ item they point to is later removed.
       and the failure path (a tampered message or wrong key fails verification) - a signature
       example that only shows the happy path doesn't demonstrate the primitive actually does what
       it claims, same reasoning as D-64's "attack pass" for AEAD tests.
+      **DONE 2026-07-26, see `DECISIONS.md` D-75.** The original scoping note above about a missing
+      `uacrypt sign`/`verify` CLI was already stale by the time this task was picked up - T-124
+      closed that gap earlier the same session, so this task documents a CLI surface that now fully
+      exists (`sign-keygen`/`sign-pubkey`/`sign`/`verify` added to `README.md`'s "Using `uacrypt`"
+      section, with a real captured transcript of `verify`'s exit-0/exit-1 behavior). Library-side:
+      one real rustdoc doctest (`cargo test -p dstu-core --doc`) added per `crypto_*` module -
+      `secretbox` (converts T-117's pre-existing README-only example into one with actual ongoing
+      regression coverage), `secretstream`, `sign` (success **and** rejected-forgery paths, per this
+      task's own explicit requirement), `auth`, `kdf`, `generichash`, `stream` (explicitly shows the
+      *lack* of tamper detection, contrasting every other module's rejection behavior), `pwhash`
+      (`Strength::Interactive` for doctest speed). Zero doctests existed anywhere in this crate
+      before this task - a green field. Verified across every combination that matters: default
+      features (7/7, `pwhash` correctly absent), `--all-features` (8/8), `--features small-tables`
+      (7/7, confirming the "same API, both resource profiles" requirement). `crates/dstu-core/
+      README.md`'s single-example section expanded to one subsection per module, code blocks
+      copy-pasted verbatim from the doctests and diffed programmatically against the actual source
+      to guarantee they can't silently drift - the diff itself caught one real omission (the
+      README's `crypto_secretstream` example had dropped the tamper-rejection tail the doctest
+      kept), fixed rather than left as an apparent intentional trim. Real bug caught while writing,
+      not after: the first `crypto_auth` example draft tripped `clippy::doc_lazy_continuation`
+      (`CLAUDE.md`'s own named gotcha), fixed by rewording immediately per that section's own
+      prescribed prevention habit. Verified: full `cargo test --workspace --all-features` (including
+      every new doctest), `clippy -D warnings` under default/`small-tables`/`--all-features`, `fmt
+      --check`, and the `dstu-core` `no_std`/`alloc`/`small-tables`/`getrandom` build matrix, all
+      clean.
 - [x] **T-122** `dstu_core::crypto_sign::SigningKey` has no keypair-generation constructor - found
       2026-07-26 via a full libsodium-API-surface audit requested by the project owner
       (`docs/release-readiness.md` "round 2", triggered by the owner's frustration that gaps like
@@ -642,7 +667,7 @@ item they point to is later removed.
       `crypto_sign` integration suite (14/14), full `cargo test --workspace`, `clippy -D warnings`
       under default/`small-tables`/`--all-features`, `fmt --check`, and the full `dstu-core`
       feature-combination build matrix, all clean with zero warnings.
-- [ ] **T-123** No pluggable/custom RNG backend for `no_std`/embedded `randombytes` - found
+- [x] **T-123** No pluggable/custom RNG backend for `no_std`/embedded `randombytes` - found
       2026-07-26, same libsodium-API-surface audit as T-122 (libsodium's own
       `randombytes_set_implementation()`/custom-RNG doc exists specifically for this). Today,
       `dstu_core::randombytes::randombytes_buf` is `std`-gated over `getrandom` with no equivalent
@@ -654,6 +679,39 @@ item they point to is later removed.
       that the core `no_std`-compiles (`CLAUDE.md` MVP scope), never that `randombytes` works there.
       Revisit when T-55/T-56 (real hardware validation) is picked up, or sooner if a concrete
       embedded consumer needs it earlier.
+      **DONE 2026-07-26 - user asked for it sooner than the Phase-4-adjacent deferral above
+      anticipated, see `DECISIONS.md` D-74.** `advisor()` consulted before touching `Cargo.toml`
+      (own plan-mode pass, D-67/D-68's standing practice for a design fork): getrandom 0.3 already
+      *is* the pluggable-RNG mechanism libsodium's `randombytes_set_implementation()` plays the same
+      role for - decision is **capability parity, not mechanism parity** (getrandom's backend choice
+      is a compile-time/link-time choice the final binary makes, not a runtime-swappable function
+      pointer), so no home-grown registry was built on top - that would duplicate an established
+      upstream primitive, the same class of risk D-03/D-04 already rejected for the RNG itself. New
+      Cargo feature `getrandom = ["dep:getrandom"]` (independent of `std`, which now reads
+      `std = ["getrandom"]`) makes `randombytes` and every `Key::generate`/`SigningKey::generate`
+      reachable on a bare `no_std` build for a caller who configures one of getrandom's own non-OS
+      backends themselves (typically `custom`). Widened `#[cfg(feature = "std")]` to
+      `#[cfg(any(feature = "std", feature = "getrandom"))]` at every RNG-only gate, enumerated
+      deliberately: `lib.rs`'s `pub mod randombytes`; `crypto_sign::SigningKey::generate` +
+      `Scalar::from_candidate_bytes`; `crypto_auth::Key::generate`; `crypto_kdf::Key::generate`;
+      `crypto_secretstream::Key::generate` **and** `PushState::init`; `SecretstreamError::Random`'s
+      variant/`Display` arm/`From` impl (the exact "cfg-gated variant on an otherwise-unconditional
+      enum" shape `CLAUDE.md` already flags by name from D-68). `crypto_secretbox`/`crypto_stream`
+      untouched - their gate is `Vec`/alloc, not RNG. Verified empirically both directions on
+      `thumbv7em-none-eabihf` (already installed for T-116): fails with getrandom's own
+      `compile_error!` without a backend `--cfg`, succeeds with `getrandom_backend="custom"` set -
+      re-confirming, not assuming, D-04's addendum still holds. End-to-end link-time+runtime proof
+      (the T-117 "ran, not should-work" standard): a scratch crate with a real
+      `__getrandom_v03_custom` extern fn, built and run on the host (the mechanism is target-
+      agnostic), byte-for-byte matched its deliberately-fake fill pattern through both
+      `randombytes_buf` and `crypto_auth::Key::generate()`. `randombytes.rs`'s module doc and the
+      T-122-era stale "`std`-gated" doc comments in `crypto_sign.rs`/`scalar.rs` rewritten in the
+      same pass. Not added as a `cargo test --no-default-features --features getrandom` CI step -
+      unrelated pre-existing `proptest`/`Vec` strategies elsewhere need `alloc` regardless, matching
+      why CI's own no_std check has only ever been build-only. Full `cargo test --workspace`
+      (default features) unaffected, `clippy -D warnings` under default/`small-tables`/
+      `--all-features`/`-p dstu-core --no-default-features --features getrandom`, `fmt --check`, and
+      the build matrix (host + `thumbv7em-none-eabihf`, with/without the feature) all clean.
 - [x] **T-124** `uacrypt` has no `sign`/`verify` CLI commands - found 2026-07-26, same audit as
       T-122/T-123. `dstu_core::crypto_sign` (T-48/D-46) exists only as a library API - confirmed via
       `grep` across `crates/uacrypt/src/lib.rs`'s command dispatch, no `sign`/`verify` arm anywhere.

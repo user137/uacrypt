@@ -73,6 +73,46 @@
 //! new stream - this module is decrypt-only without `std` (D-09's "`hazmat` never generates its
 //! own randomness" reasoning, unchanged, but worth stating plainly rather than implying the whole
 //! module is symmetric under `no_std`).
+//!
+//! # Example
+//!
+//! A real caller processes a large file one bounded-size chunk at a time (see `uacrypt`'s own
+//! `encrypt`/`decrypt` commands for that shape); this example uses one chunk for clarity. Each
+//! chunk is authenticated individually - a tampered chunk, a dropped/reordered chunk, or one
+//! spliced from a different stream all fail closed at [`PullState::pull`], never producing wrong
+//! plaintext silently.
+//!
+//! ```rust
+//! use dstu_core::crypto_secretstream::{Key, PushState, PullState, Tag};
+//!
+//! let key = Key::generate().expect("OS CSPRNG should not fail");
+//! let plaintext = b"a whole file, conceptually split into chunks";
+//!
+//! // Sender side: one chunk, marked Final since it's the only (and therefore last) one.
+//! let (mut push, header) = PushState::init(&key).expect("OS CSPRNG should not fail");
+//! let mut ciphertext = vec![0u8; plaintext.len()];
+//! let tag = push
+//!     .push(Tag::Final, plaintext, &mut ciphertext)
+//!     .expect("push before finalization");
+//!
+//! // Receiver side: needs the key and the transmitted header, ciphertext, and tag.
+//! let mut pull = PullState::init(&key, &header);
+//! let mut decrypted = vec![0u8; ciphertext.len()];
+//! let read_tag = pull
+//!     .pull(Tag::Final.to_byte(), &ciphertext, &tag, &mut decrypted)
+//!     .expect("authentic chunk");
+//! assert_eq!(read_tag, Tag::Final);
+//! assert_eq!(decrypted, plaintext);
+//!
+//! // A tampered ciphertext byte is rejected, not silently decrypted into garbage.
+//! let mut tampered = ciphertext.clone();
+//! tampered[0] ^= 1;
+//! let mut pull2 = PullState::init(&key, &header);
+//! let mut out = vec![0u8; tampered.len()];
+//! assert!(pull2
+//!     .pull(Tag::Final.to_byte(), &tampered, &tag, &mut out)
+//!     .is_err());
+//! ```
 
 use crate::hazmat::kalyna_gcm::{GcmError, Kalyna256_256Gcm};
 use crate::hazmat::kupyna_kmac::Kupyna256Kmac;
@@ -99,7 +139,7 @@ impl Key {
     /// # Errors
     ///
     /// Returns [`crate::randombytes::RandomError`] if the OS CSPRNG fails.
-    #[cfg(feature = "std")]
+    #[cfg(any(feature = "std", feature = "getrandom"))]
     pub fn generate() -> Result<Self, crate::randombytes::RandomError> {
         let mut bytes = [0u8; 32];
         crate::randombytes::randombytes_buf(&mut bytes)?;
@@ -164,7 +204,7 @@ pub enum SecretstreamError {
     /// closed this state.
     StreamFinalized,
     /// [`PushState::init`]'s OS CSPRNG call failed while generating a header.
-    #[cfg(feature = "std")]
+    #[cfg(any(feature = "std", feature = "getrandom"))]
     Random(crate::randombytes::RandomError),
 }
 
@@ -177,7 +217,7 @@ impl fmt::Display for SecretstreamError {
             SecretstreamError::StreamFinalized => {
                 write!(f, "stream already finalized, no more chunks accepted")
             }
-            #[cfg(feature = "std")]
+            #[cfg(any(feature = "std", feature = "getrandom"))]
             SecretstreamError::Random(e) => write!(f, "{e}"),
         }
     }
@@ -185,7 +225,7 @@ impl fmt::Display for SecretstreamError {
 
 impl core::error::Error for SecretstreamError {}
 
-#[cfg(feature = "std")]
+#[cfg(any(feature = "std", feature = "getrandom"))]
 impl From<crate::randombytes::RandomError> for SecretstreamError {
     fn from(e: crate::randombytes::RandomError) -> Self {
         SecretstreamError::Random(e)
@@ -235,7 +275,7 @@ impl PushState {
     /// # Errors
     ///
     /// Returns [`SecretstreamError::Random`] if the OS CSPRNG fails.
-    #[cfg(feature = "std")]
+    #[cfg(any(feature = "std", feature = "getrandom"))]
     pub fn init(key: &Key) -> Result<(Self, [u8; 32]), SecretstreamError> {
         let mut header = [0u8; 32];
         crate::randombytes::randombytes_buf(&mut header)?;

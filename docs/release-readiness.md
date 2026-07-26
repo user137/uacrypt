@@ -311,7 +311,7 @@ doesn't need re-deriving from the table alone next time.
 | SHA-2/SHA-3/HMAC-SHA-2/Keccak-f[1600]/Poly1305/Ristretto | none | Foreign-algorithm interop exposures, not a "do we have a hash/MAC" gap - Kupyna/Kupyna-KMAC already fill that role above |
 | `randombytes_buf` | `randombytes_buf` | Done |
 | `randombytes_uniform` | none | No consumer - not scheduled |
-| Custom RNG backend (`randombytes_set_implementation`) | none | **Missing - T-123**, Phase-4-adjacent (embedded hardware) |
+| Custom RNG backend (`randombytes_set_implementation`) | new `getrandom` Cargo feature | Done (T-123, D-74) - capability parity, not mechanism parity (see the entry below) |
 | `sodium_mlock`/guarded memory | none | **Open question for the owner**, not a task - see below |
 | `uacrypt` CLI: `keygen`/`encrypt`/`decrypt`/`hash` | all present | Done |
 | `uacrypt` CLI: `sign`/`verify` | `sign-keygen`/`sign-pubkey`/`sign`/`verify` | Done (T-124, D-73) |
@@ -343,13 +343,22 @@ this family was factually wrong, not a scoping judgment, and needed fixing on it
   against the curve order, not a modulo reduction).
 - **No pluggable/custom RNG backend for `no_std`/embedded targets** - libsodium documents
   `randombytes_set_implementation()`/`advanced/custom_rng.md` specifically so a caller can swap in a
-  hardware TRNG or other custom entropy source. `dstu_core::randombytes::randombytes_buf` is
-  `std`-gated over `getrandom` with no equivalent hook - correctly absent from `no_std` builds today
-  (nothing promises otherwise), but there is no tracked path for a STM32/ESP32 caller to get
-  `randombytes`-shaped functionality at all once real hardware validation (Phase 4, `TASKS.md`
-  T-55/T-56) starts needing fresh keys/nonces on-device without a host OS's CSPRNG. See `TASKS.md`
-  T-123 - Phase-4-adjacent, not an MVP blocker (MVP only claims `no_std` *compiles*, never claimed
-  `randombytes` works there).
+  hardware TRNG or other custom entropy source. `dstu_core::randombytes::randombytes_buf` was
+  `std`-gated over `getrandom` with no equivalent hook - correctly absent from `no_std` builds
+  (nothing promised otherwise), but there was no tracked path for a STM32/ESP32 caller to get
+  `randombytes`-shaped functionality at all without a host OS's CSPRNG. **Done 2026-07-26, see
+  `TASKS.md` T-123 and `DECISIONS.md` D-74** - a new `getrandom` Cargo feature (narrower than `std`,
+  independent of it) makes `randombytes`/every `Key::generate` reachable on a bare `no_std` build,
+  for a caller who has configured one of `getrandom` 0.3's own non-OS backends themselves (most
+  commonly `custom`). **Capability parity with libsodium's `randombytes_set_implementation()`, not
+  mechanism parity, deliberately**: `getrandom` 0.3's backend selection is a compile-time/link-time
+  choice the final binary makes (an `extern "Rust"` symbol resolved at link time), not a
+  runtime-swappable function pointer the way libsodium's setter is - `dstu-core` does not implement
+  its own pluggable-backend registry on top, since `getrandom` already fills that role and a second
+  one would duplicate an established mechanism (the same D-03/D-04 reasoning that already rejected
+  a homegrown RNG). Verified end-to-end (not just "compiles"): a scratch crate defining a real
+  `__getrandom_v03_custom` extern fn, built and *run*, proved the hook resolves at link time and
+  actually produces the bytes `randombytes_buf`/`Key::generate` return.
 - **`uacrypt` has no `sign`/`verify` CLI commands** - `dstu_core::crypto_sign` (T-48/D-46) exists
   only as a library API, confirmed via `grep` across `crates/uacrypt/src/lib.rs`'s command
   dispatch. First surfaced as a scoping note on `TASKS.md` T-120 (doc-examples task, which

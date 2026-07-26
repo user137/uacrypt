@@ -25,5 +25,5 @@ pub mod crypto_sign;
 #[cfg(feature = "std")]
 pub mod crypto_stream;
 pub mod hazmat;
-#[cfg(feature = "std")]
+#[cfg(any(feature = "std", feature = "getrandom"))]
 pub mod randombytes;

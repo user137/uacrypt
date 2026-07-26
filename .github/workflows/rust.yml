@@ -39,6 +39,13 @@ jobs:
       - run: cargo build --workspace --no-default-features --features dstu-core/small-tables
       - run: cargo test --workspace --features dstu-core/small-tables
       - run: cargo clippy --workspace --features dstu-core/small-tables -- -D warnings
+      # `getrandom` feature (DECISIONS.md D-74, TASKS.md T-123): makes `randombytes`/`Key::generate`
+      # reachable on a bare `no_std` build without pulling in `std`/`alloc` - build-only, not
+      # `cargo test`, since unrelated pre-existing `proptest`/`Vec` strategies elsewhere in
+      # `hazmat::kupyna`'s test suite need `alloc` regardless of this feature (confirmed by trying
+      # it, not assumed) - same reason the bare `no_std` check above is build-only too.
+      - run: cargo build -p dstu-core --no-default-features --features getrandom
+      - run: cargo clippy -p dstu-core --no-default-features --features getrandom -- -D warnings
       # Every feature on at once, both profiles' flags combined - catches interaction bugs neither
       # side alone would.
       - run: cargo build --workspace --all-features

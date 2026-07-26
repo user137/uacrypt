@@ -16,6 +16,26 @@
 //! implementation of "a KDF using Kupyna" exists anywhere, so - unlike every other module in this
 //! crate - there is no oracle vector for this construction, ever (D-45); verification is
 //! determinism/distinctness property tests only, inherited unchanged from `hazmat::kupyna_kdf`.
+//!
+//! # Example
+//!
+//! Derives many independent-looking subkeys from one master key, instead of generating and storing
+//! a fresh random key per purpose - useful when you want, say, a separate encryption key and MAC
+//! key derived from one secret rather than managing two unrelated secrets.
+//!
+//! ```rust
+//! use dstu_core::crypto_kdf::MasterKey;
+//!
+//! let master_key = MasterKey::generate().expect("OS CSPRNG should not fail");
+//!
+//! let encryption_subkey = master_key.derive_subkey(0, b"encrypt_");
+//! let mac_subkey = master_key.derive_subkey(1, b"mac_key_");
+//!
+//! // Different subkey_id (holding context fixed) gives a different, unrelated-looking subkey.
+//! assert_ne!(encryption_subkey, mac_subkey);
+//! // Deterministic: the same id/context always re-derives the same subkey.
+//! assert_eq!(encryption_subkey, master_key.derive_subkey(0, b"encrypt_"));
+//! ```
 
 use crate::hazmat::kupyna_kdf::Kupyna256Kdf;
 use zeroize::Zeroize;
@@ -37,7 +57,7 @@ impl MasterKey {
     /// # Errors
     ///
     /// Returns [`crate::randombytes::RandomError`] if the OS CSPRNG fails.
-    #[cfg(feature = "std")]
+    #[cfg(any(feature = "std", feature = "getrandom"))]
     pub fn generate() -> Result<Self, crate::randombytes::RandomError> {
         let mut bytes = [0u8; 32];
         crate::randombytes::randombytes_buf(&mut bytes)?;

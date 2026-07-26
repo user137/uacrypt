@@ -4681,3 +4681,184 @@ suite unaffected - no `hazmat` code changed beyond `crypto_sign::SigningKey::to_
 clippy --workspace -- -D warnings` / `--features dstu-core/small-tables` / `--all-features` (all
 three clean), `cargo fmt --all -- --check`, and the `dstu-core` build matrix
 (`--no-default-features`/`+alloc`/`--all-features`) all clean.
+
+## D-74: A new `getrandom` Cargo feature makes `randombytes` reachable on `no_std` - capability parity with `randombytes_set_implementation()`, not mechanism parity - T-123
+
+`docs/release-readiness.md`'s 2026-07-26 re-audit found `dstu_core::randombytes::randombytes_buf`
+(and every `Key::generate`/`SigningKey::generate` built on it) unconditionally `std`-gated - correct
+per D-04's addendum (unconditionally pulling `getrandom` into a bare `no_std` build would break
+compilation for every embedded consumer who never calls the function that needed it), but it also
+meant there was no tracked path *at all* for a real embedded caller (STM32/ESP32, Phase 4) to get
+fresh key/nonce material through this crate, once one actually needs to - libsodium's own
+`randombytes_set_implementation()`/`advanced/custom_rng.md` exists specifically for this case.
+
+**Researched before designing anything** (`CLAUDE.md`'s "no primitive/infra decision from memory"
+rule applies here too, not just cryptographic primitives) - `advisor()` consulted before touching
+`Cargo.toml`, per this project's standing "own plan-mode pass before an architectural fork" practice
+(D-67/D-68's precedent). Read `getrandom 0.3.4`'s actual vendored source
+(`~/.cargo/registry/.../getrandom-0.3.4/src/backends/custom.rs`, `Cargo.toml`) rather than recalling
+its API from memory: backend selection is controlled by a `getrandom_backend` `--cfg` flag (set via
+`RUSTFLAGS` or `.cargo/config.toml`'s `rustflags`, by the **final binary crate**, never by a library
+dependency), not a Cargo feature `getrandom` itself exposes. The `custom` backend specifically
+requires the final binary to define `extern "Rust" fn __getrandom_v03_custom(dest, len) -> Result<(),
+Error>`, resolved at **link time**, not registered at runtime.
+
+**Decision: capability parity with libsodium's `randombytes_set_implementation()`, not mechanism
+parity.** `getrandom` 0.3's backend system already *is* the pluggable-RNG mechanism libsodium's
+setter plays the same role for - building a second, `dstu-core`-owned runtime-pluggable
+registry (a `static`/`AtomicPtr` function-pointer slot) on top would duplicate an already-established
+upstream primitive, the exact class of homegrown-RNG-adjacent risk D-03/D-04 already rejected once
+for the RNG itself, and would add global mutable state plus an init-order footgun ("what does
+`randombytes_buf` do if nothing was registered yet?") - a misuse surface D-47's "delete the knob"
+criterion says to remove, not add. `advisor()`'s explicit recommendation, taken as-is rather than
+independently re-litigated: don't build the registry, don't spend an `AskUserQuestion` on it.
+
+**Mechanism**: a new Cargo feature `getrandom = ["dep:getrandom"]`, and `std = ["getrandom"]` (was
+`std = ["dep:getrandom"]`) - `getrandom` is the narrower half of what `std` already enabled,
+independent of it, so a `no_std` build can opt into RNG capability without opting into `std`/`alloc`
+at all. `#![cfg_attr(not(feature = "std"), no_std)]` in `lib.rs` is unaffected - the crate stays
+`#![no_std]` under `getrandom` alone, exactly the shape an embedded consumer needs. Every site whose
+only reason for being `#[cfg(feature = "std")]`-gated was "needs `crate::randombytes`" widened to
+`#[cfg(any(feature = "std", feature = "getrandom"))]`, enumerated deliberately (per `advisor()`'s
+explicit list) rather than trusting a global find-replace: `lib.rs`'s `pub mod randombytes`;
+`crypto_sign::SigningKey::generate` (T-122) and its `hazmat::dstu4145::scalar::Scalar::
+from_candidate_bytes` helper; `crypto_auth::Key::generate`; `crypto_kdf::Key::generate`;
+`crypto_secretstream::Key::generate` **and** `PushState::init` (two items, not one - caught by
+`advisor()` before it became a compile error the way D-68's own `SecretstreamError::Random` mixed-
+variant-enum finding was discovered *after* the fact); and `SecretstreamError::Random`'s variant,
+`Display` arm, and `From<RandomError>` impl (the exact "cfg-gated variant on an otherwise-
+unconditional public enum" shape `CLAUDE.md`'s own agent-discipline section flags by name from that
+D-68 finding). `crypto_secretbox`/`crypto_stream` deliberately untouched - their whole-module gate is
+`Vec`/`alloc`, not RNG, out of this task's scope.
+
+**Verified empirically, both directions, before writing any code beyond the `Cargo.toml` change**
+(per `advisor()`'s explicit instruction to run the spike before touching anything else): using the
+`thumbv7em-none-eabihf` target already installed for T-116,
+`cargo build -p dstu-core --no-default-features --features getrandom --target thumbv7em-none-eabihf`
+**fails** with `getrandom`'s own `compile_error!` ("target is not supported... define a custom
+backend") when no backend `--cfg` is set - re-confirming D-04's addendum's claim still holds, not
+assumed unchanged - and **succeeds** once `RUSTFLAGS='--cfg getrandom_backend="custom"'` is set,
+with `randombytes_buf` itself now compiled in (not just `getrandom` the dependency). The *host*
+build (`--no-default-features`, no `getrandom` feature at all) is unaffected either way - confirming
+this feature is additive/opt-in, not a change to the existing bare-`no_std` default D-04 protects.
+
+**End-to-end link-time+runtime proof, the T-117 standard ("ran," not "should work")**: an `.rlib`
+cross-build proves compilation, not that the `extern "Rust"` hook actually resolves and executes at
+link time - that distinction is T-116's own recorded caveat about `.rlib` cross-builds, and building
+a real linked bare-metal firmware binary just to prove this one mechanism would need an entry point/
+panic handler/`memory.x` this repo doesn't have (the same gap T-116 already flagged as a separate,
+un-self-assigned candidate). Since `getrandom`'s custom-backend mechanism is target-agnostic - it
+works identically on the host, since it's a Rust-level `extern` symbol, not an OS syscall - the
+link-time+runtime proof was done on the host instead: a scratch crate (path-dependency on
+`dstu-core` with `default-features = false, features = ["getrandom"]`, `.cargo/config.toml` setting
+the same `getrandom_backend = "custom"` rustflag) defines a real `__getrandom_v03_custom` that fills
+with an obviously-non-OS deterministic pattern (`0xAB + i`, not a real CSPRNG - the point is proving
+*this* function ran, not producing real entropy) and calls both `randombytes_buf` directly and
+`crypto_auth::Key::generate()` through it. Built and run for real: output byte-for-byte matched the
+fake pattern through both call paths, proving the extern symbol resolved at link time, actually
+executed, and every widened `generate()` genuinely reaches through to it - not merely that the crate
+compiles for an embedded target in isolation.
+
+**Doc/CI updates**: `randombytes.rs`'s own module doc rewritten (was: "must never become a `no_std`
+core dependency" - now stale, since it explicitly can via `getrandom`; explains the two opt-in paths
+and the capability/mechanism-parity distinction), `crypto_sign.rs`/`scalar.rs`'s stale
+"`#[cfg(feature = "std")]`-gated" doc-comment prose fixed in the same pass (not left as the exact
+"stale line next to your new line" failure `CLAUDE.md`'s agent-discipline section already names
+from D-68), `crates/dstu-core/README.md`'s feature-flag table gained a `getrandom` row,
+`docs/release-readiness.md`'s "Custom RNG backend" row and its "no tracked path" bullet both updated
+to Done rather than left contradicting this entry.
+
+**Verified**: full `cargo test --workspace` unaffected (all suites still green on default features -
+this feature is inert-additive on the host, `getrandom` picks its OS backend automatically with no
+cfg set, so unlike `small-tables` this does **not** need its own `--all-features`-bypasses-default
+CI concern), `cargo clippy --workspace -- -D warnings` / `--features dstu-core/small-tables` /
+`--all-features` / `-p dstu-core --no-default-features --features getrandom` (all four clean),
+`cargo fmt --all -- --check`, `cargo build -p dstu-core --no-default-features --features getrandom`
+on both the host and `thumbv7em-none-eabihf` (with and without the backend cfg, as above). Deliberately
+not added as a `cargo test --no-default-features --features getrandom` CI step - unrelated
+pre-existing `proptest`/`Vec`-based strategies elsewhere in `hazmat::kupyna`'s test suite need
+`alloc` regardless of this feature, so a `no_std` *test* run was never a supported combination
+(CI's own convention is `cargo build --no-default-features`, build-only, for exactly this reason) -
+confirmed by trying it and reading the actual error, not assumed.
+
+## D-75: Locally-verified usage examples across every `crypto_*` module and `uacrypt` command - T-120
+
+Requested 2026-07-26: beginner-friendly, actually-run examples for both audiences (`uacrypt` binary
+users, `dstu-core` library users), across every safe construction, in both resource profiles. The
+task's own scope note about a missing `sign`/`verify` CLI was already stale by the time this task
+was picked up - T-124 closed that gap earlier the same session - so this task documents a CLI
+surface that now fully exists, not a partial one.
+
+**Wired in as real doctests (`cargo test -p dstu-core --doc`), not README-only prose** - the task's
+own stated preference ("prefer wiring examples in as real doctests... wherever the surface allows
+it, so this class of bug gets ongoing regression coverage instead of a one-time manual check"), and
+directly responsive to T-117's own lesson: the pre-existing `crypto_secretbox` README example
+silently didn't compile for months because nothing ever actually ran it. Zero doctests existed
+anywhere in this crate before this task (`cargo test -p dstu-core --doc` returned "0 tests" going
+in) - a green field, not an extension of existing coverage.
+
+**One doctest added per `crypto_*` module** (`# Example` section in each module's own top-level doc
+comment), each explaining in plain language what the construction protects against - and, critically,
+what it does *not* protect against, since that's the more common misuse:
+- `crypto_secretbox` - encrypt a whole in-memory message; success path plus a tampered-ciphertext
+  rejection (the module already had a README example, T-117 - converted into a real doctest here,
+  not left as the one construction without ongoing regression coverage).
+- `crypto_secretstream` - a single-chunk round trip (real multi-chunk streaming is `uacrypt
+  encrypt`/`decrypt`'s own job, already covered by its own test suite) plus a tampered-chunk
+  rejection.
+- `crypto_sign` - **both the success path and a rejected forgery**, per this task's own explicit
+  requirement ("a signature example that only shows the happy path doesn't demonstrate the
+  primitive actually does what it claims", D-64's reasoning extended to documentation) - a
+  different message and a different signing key both correctly fail to verify.
+- `crypto_auth` - MAC compute/verify plus a tampered-message rejection, framed against `crypto_sign`
+  explicitly ("proves someone who has the key, not specifically you").
+- `crypto_kdf` - derive two subkeys from one master key, framed as the alternative to managing two
+  unrelated secrets; distinctness (different `subkey_id`) and determinism (same inputs, same
+  output) both shown.
+- `crypto_generichash` - one-shot vs. incremental hashing of the same message produce the same
+  digest, framed against `crypto_auth` explicitly (no secret key, so no proof of origin).
+- `crypto_stream` - encrypt/decrypt round-trip, **plus the contrasting failure mode**: a tampered
+  ciphertext byte does *not* error, it silently decrypts to different garbage - the opposite of
+  every other example's rejection behavior, called out explicitly so a reader doesn't assume all
+  `crypto_*` modules authenticate.
+- `crypto_pwhash` - `hash_password`/`verify_password` round trip, `Strength::Interactive` used
+  deliberately (fastest of the three presets) so the doctest itself doesn't take real seconds and
+  hundreds of MiB per test run the way `Moderate`/`Sensitive` would.
+
+**Real bug found and fixed while writing these, not just executing a checklist**: the very first
+attempt at the `crypto_auth` example tripped `clippy::doc_lazy_continuation` (`CLAUDE.md`'s own
+named gotcha) - a sentence read as an unindented markdown list continuation because it started a
+line with `- unlike a signature...`. Fixed by rewording rather than indenting (the sentence wasn't
+actually a list item), caught by running `cargo clippy --workspace -- -D warnings` immediately after
+writing the doc comment, exactly the prevention habit `CLAUDE.md` already prescribes for this class
+of lint.
+
+**Verified across every combination that matters, not just the default**: `cargo test -p dstu-core
+--doc` (7/7, `pwhash` correctly absent - it's feature-gated), `--all-features` (8/8, `pwhash`
+included), and `--features small-tables` (7/7) - confirming the task's own explicit requirement
+that a library user picking `small-tables` sees the identical API, not a guess. `cargo build -p
+dstu-core` under the full `no_std`/`alloc`/`small-tables`/`getrandom`/`--all-features` combination
+matrix all clean (doc comments alone cannot break a non-doctest build, but confirmed anyway since
+`#[cfg]`-gated code was touched nowhere in this task - only doc comments).
+
+**`crates/dstu-core/README.md`'s single `crypto_secretbox`-only `## Example` section expanded to
+`## Examples`, one subsection per module** - code blocks copy-pasted verbatim from the doctests
+(diffed programmatically against each module's actual doc-comment source, not eyeballed) so the two
+copies cannot silently drift apart while both describe the same behavior; a byte-identical copy
+found and fixed one real divergence during that diff (the README's `crypto_secretstream` example
+had been trimmed to omit the tamper-rejection tail the doctest kept - restored to match rather than
+left as an intentional-looking omission).
+
+**CLI side (`uacrypt` binary users)**: every command in `README.md`'s "Using `uacrypt`" section and
+`crates/uacrypt/README.md`'s command list was re-run against the real release binary
+(`cargo build -p uacrypt --release`) before being confirmed accurate, not assumed unchanged since
+T-107/T-115/T-124 last touched them - `keygen`/`encrypt`/`decrypt`/`hash` round-trip correctly;
+`sign-keygen`/`sign-pubkey`/`sign`/`verify` (T-124, new since T-120 was originally scoped) added to
+`README.md`'s CLI section with a real, run-for-real transcript showing both `verify`'s exit-`0`
+silent success and its exit-`1` loud failure on a tampered file - the transcript's exact stdout/
+stderr text and exit codes were captured from an actual run, not composed from reading the source.
+
+**Verified**: `cargo test --workspace --all-features` (all suites, including the new doctests),
+`cargo clippy --workspace -- -D warnings` / `--features dstu-core/small-tables` / `--all-features`
+(all three clean, after the `doc_lazy_continuation` fix above), `cargo fmt --all -- --check`, and
+the `dstu-core` `no_std` build matrix, all clean.

@@ -41,6 +41,30 @@
 //!
 //! Inherits `hazmat::strumok`'s own D-18 status: vectors are UAPKI-attributed, not confirmed
 //! against the primary DSTU 8845:2019 text.
+//!
+//! # Example
+//!
+//! Confidentiality only, **no integrity** (see the "No authentication whatsoever" section above) -
+//! prefer [`crate::crypto_secretbox`]/[`crate::crypto_secretstream`] unless you specifically need a
+//! bare keystream cipher and are handling authentication yourself. Note what tampering does here,
+//! in contrast to `crypto_secretbox`'s example above: `decrypt` never errors, it just returns
+//! different, silently-wrong plaintext.
+//!
+//! ```rust
+//! use dstu_core::crypto_stream::{encrypt, decrypt, Key};
+//!
+//! let key = Key::generate().expect("OS CSPRNG should not fail");
+//! let sealed = encrypt(&key, b"message").expect("OS CSPRNG should not fail");
+//! let opened = decrypt(&key, &sealed).expect("sealed is at least IV-length");
+//! assert_eq!(opened, b"message");
+//!
+//! // Tampering is not detected - decrypt "succeeds" with garbage plaintext instead of erroring.
+//! let mut tampered = sealed.clone();
+//! let last = tampered.len() - 1;
+//! tampered[last] ^= 1;
+//! let garbage = decrypt(&key, &tampered).expect("still at least IV-length, so still Ok");
+//! assert_ne!(garbage, b"message");
+//! ```
 
 use crate::hazmat::strumok::Strumok256;
 use crate::randombytes::{randombytes_buf, RandomError};

@@ -49,6 +49,29 @@
 //! full 32-byte tag, via the same prefix-comparison convention `hazmat::kalyna_gcm`/`kalyna_gmac`
 //! already support) matches the previous construction's tag length and libsodium's own
 //! `crypto_secretbox` tag size - a fixed choice, not a new knob.
+//!
+//! # Example
+//!
+//! Encrypts a whole in-memory message under a freshly generated key. `seal`/`open` protect both
+//! confidentiality (nobody without the key can read the message) and integrity (`open` rejects
+//! anything tampered with, rather than returning wrong plaintext) - see below for the "tampered
+//! ciphertext is rejected" case, `TASKS.md` T-120's own required failure-path example.
+//!
+//! ```rust
+//! use dstu_core::crypto_secretbox::{seal, open, SecretKey};
+//!
+//! let key = SecretKey::generate().expect("OS CSPRNG should not fail");
+//! let sealed = seal(&key, b"message").expect("OS CSPRNG should not fail");
+//! let opened = open(&key, &sealed).expect("authentic ciphertext");
+//! assert_eq!(opened, b"message");
+//!
+//! // Tampering with the sealed blob (ciphertext, tag, or nonce) is detected, not silently
+//! // "decrypted" into wrong plaintext.
+//! let mut tampered = sealed.clone();
+//! let last = tampered.len() - 1;
+//! tampered[last] ^= 1;
+//! assert!(open(&key, &tampered).is_err());
+//! ```
 
 use crate::hazmat::kalyna_gcm::{GcmError, Kalyna256_256Gcm};
 use crate::randombytes::{randombytes_buf, RandomError};

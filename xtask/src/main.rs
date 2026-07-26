@@ -52,7 +52,7 @@ fn print_usage() {
     eprintln!(
         "cargo xtask <command>\n\n\
          Always available (only need cargo/rustup, see README.md \"Building from source\"):\n\
-         \x20 build          cargo build --workspace, both --all-features and --no-default-features (no_std check)\n\
+         \x20 build          cargo build --workspace, --all-features + --no-default-features (no_std check) + dstu-core's no_std/getrandom combo (D-74)\n\
          \x20 test           cargo test --workspace --all-features\n\
          \x20 fmt [--check]  cargo fmt --all, or --check to verify without writing\n\
          \x20 clippy         cargo clippy --workspace --all-features -- -D warnings\n\
@@ -109,6 +109,22 @@ fn build() -> bool {
         && run(
             "cargo",
             &["build", "--workspace", "--no-default-features"],
+            None,
+        )
+        // `getrandom` feature (DECISIONS.md D-74, TASKS.md T-123): `--all-features` above already
+        // covers it combined with `std`, but this is the one combination that proves `randombytes`
+        // reaches a bare `no_std` build without `std`/`alloc` at all - not covered by either call
+        // above.
+        && run(
+            "cargo",
+            &[
+                "build",
+                "-p",
+                "dstu-core",
+                "--no-default-features",
+                "--features",
+                "getrandom",
+            ],
             None,
         )
 }

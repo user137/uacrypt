@@ -12,6 +12,24 @@
 //! (`STR_HASHBYTES`), and three named strength presets mirroring
 //! `OPSLIMIT`/`MEMLIMIT_{INTERACTIVE,MODERATE,SENSITIVE}` exactly - no raw `m_cost`/`t_cost` knob
 //! exposed, per D-47's "libsodium API shape, no misconfigurable knobs" criterion.
+//!
+//! # Example
+//!
+//! For hashing passwords before storing them (never a general-purpose hash - deliberately slow and
+//! memory-hard so guessing many candidate passwords against a stolen hash is expensive).
+//! [`Strength::Interactive`] is used below so this example runs quickly; a real login system would
+//! usually want [`Strength::Moderate`] or [`Strength::Sensitive`] instead (both take real seconds
+//! and hundreds of MiB, deliberately, so not run here).
+//!
+//! ```rust
+//! use dstu_core::crypto_pwhash::{hash_password, verify_password, Strength};
+//!
+//! let stored_hash = hash_password(b"correct horse battery staple", Strength::Interactive)
+//!     .expect("OS CSPRNG should not fail");
+//!
+//! assert!(verify_password(b"correct horse battery staple", &stored_hash));
+//! assert!(!verify_password(b"wrong guess", &stored_hash));
+//! ```
 
 use crate::randombytes::{randombytes_buf, RandomError};
 use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};

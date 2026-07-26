@@ -60,10 +60,11 @@ impl Scalar {
     /// add a data-dependent-branch timing signal beyond the "how many draws until one was
     /// accepted" every rejection-sampling scheme inherently has.
     ///
-    /// `#[cfg(feature = "std")]`-gated: its only caller, `crypto_sign::SigningKey::generate`,
-    /// needs `crate::randombytes` (std-gated itself) to draw candidates in the first place - a
-    /// bare `no_std` build has no way to call this, so it would otherwise be dead code there.
-    #[cfg(feature = "std")]
+    /// Gated the same way its only caller (`crypto_sign::SigningKey::generate`) is: needs
+    /// `crate::randombytes` to draw candidates in the first place (`std` or the narrower
+    /// `getrandom` feature, `TASKS.md` T-123/`DECISIONS.md` D-74) - a build with neither has no way
+    /// to call this, so it would otherwise be dead code there.
+    #[cfg(any(feature = "std", feature = "getrandom"))]
     #[must_use]
     pub(crate) fn from_candidate_bytes(bytes: &[u8; 21]) -> Option<Self> {
         let limbs = limbs_from_be_bytes(bytes);
@@ -202,7 +203,7 @@ fn shl1_or(x: [u64; 3], bit: u64) -> [u64; 3] {
     out
 }
 
-#[cfg(all(test, feature = "std"))]
+#[cfg(all(test, any(feature = "std", feature = "getrandom")))]
 mod from_candidate_bytes_tests {
     use super::{curve163, Scalar};
 

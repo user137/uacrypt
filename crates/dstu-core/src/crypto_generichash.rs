@@ -14,5 +14,26 @@
 //! reasoning for why this module is a re-export rather than a table entry (discoverability under
 //! this crate's `crypto_*` namespace) and why it is a re-export rather than a wrapper with new
 //! logic (nothing left to wrap).
+//!
+//! # Example
+//!
+//! A hash gives a fixed-size fingerprint of a message - useful for checking a file wasn't
+//! corrupted or changed, but (unlike [`crate::crypto_auth`]) it needs no secret key, so anyone can
+//! compute or forge one; it is not proof of origin. One-shot for a whole in-memory message
+//! ([`Kupyna256::digest`]), or incremental via [`Kupyna256Hasher`] for a large/streamed one (e.g.
+//! `uacrypt hash`'s own chunked file reading) - both produce the same digest for the same bytes.
+//!
+//! ```rust
+//! use dstu_core::crypto_generichash::{Kupyna256, Kupyna256Hasher};
+//!
+//! let whole = Kupyna256::digest(b"hello world");
+//!
+//! let mut hasher = Kupyna256Hasher::new();
+//! hasher.update(b"hello ");
+//! hasher.update(b"world");
+//! let streamed = hasher.finalize();
+//!
+//! assert_eq!(whole, streamed);
+//! ```
 
 pub use crate::hazmat::kupyna::{Kupyna256, Kupyna256Hasher, Kupyna512, Kupyna512Hasher};

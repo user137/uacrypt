@@ -195,6 +195,37 @@ and embeds it in `--out`; there is no `--nonce`/`--header` flag to supply or reu
 **`hash` has no such limit either** — it streams `--in` from disk in fixed-size chunks regardless of
 size, fixed to Kupyna-256 (32-byte digest, no `--variant` choice).
 
+`uacrypt sign-keygen`/`sign-pubkey`/`sign`/`verify` (`TASKS.md` T-124, `DECISIONS.md` D-73) are the
+digital-signature equivalent, built over `dstu_core::crypto_sign` (DSTU 4145): a signature proves a
+file came from whoever holds the signing key and hasn't been changed since — unlike `encrypt`, it
+does not hide the file's contents, only attests to who signed it and that it's unmodified. Every
+command below was run for real against the release binary before being written here:
+
+```
+uacrypt sign-keygen --out signing.key
+uacrypt sign-pubkey --key signing.key --out verifying.key
+uacrypt sign --key signing.key --in message.bin --out message.bin.sig
+uacrypt verify --key verifying.key --in message.bin --sig message.bin.sig
+```
+
+`sign-keygen`'s output (`signing.key`, 21 raw bytes) is secret — keep it like any other private key.
+`sign-pubkey` derives the matching `verifying.key` (42 raw bytes) from it, safe to share or publish.
+`verify` prints nothing and exits `0` on a valid signature; on a tampered file, a tampered signature,
+or the wrong verifying key, it exits `1` with an error and writes nothing — it does not, and cannot,
+silently accept a mismatch:
+
+```
+$ uacrypt verify --key verifying.key --in message.bin --sig message.bin.sig
+$ echo $?
+0
+
+$ echo "tampered" > message.bin
+$ uacrypt verify --key verifying.key --in message.bin --sig message.bin.sig
+uacrypt: verify: signature does not verify - message, signature, or key do not match
+$ echo $?
+1
+```
+
 What exists below this level: `kalyna-block`, a single-block (no mode, no padding), `hazmat`-scoped
 command added for a binary-level performance comparison (`PERFORMANCE.md`, `DECISIONS.md` D-31):
 

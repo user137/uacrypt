@@ -16,6 +16,25 @@
 //!
 //! Provenance is otherwise identical to the `hazmat` layer: dual-oracle-cited, not yet confirmed
 //! against the primary DSTU 7564:2014 text (D-44).
+//!
+//! # Example
+//!
+//! A MAC lets two parties who share a secret key confirm a message hasn't been altered in transit.
+//! Unlike a signature, either party can both create and check a tag (there's no "public" half), so
+//! this only proves "someone who has the key", not "specifically you".
+//!
+//! ```rust
+//! use dstu_core::crypto_auth::{auth, verify, Key};
+//!
+//! let key = Key::generate().expect("OS CSPRNG should not fail");
+//! let message = b"a message both parties want to confirm is unmodified";
+//!
+//! let tag = auth(&key, message);
+//! assert!(verify(&key, message, &tag).is_ok());
+//!
+//! // A tampered message, or the wrong key, is rejected.
+//! assert!(verify(&key, b"a different message", &tag).is_err());
+//! ```
 
 use crate::hazmat::kupyna_kmac::{KmacError, Kupyna256Kmac};
 use core::fmt;
@@ -37,7 +56,7 @@ impl Key {
     /// # Errors
     ///
     /// Returns [`crate::randombytes::RandomError`] if the OS CSPRNG fails.
-    #[cfg(feature = "std")]
+    #[cfg(any(feature = "std", feature = "getrandom"))]
     pub fn generate() -> Result<Self, crate::randombytes::RandomError> {
         let mut bytes = [0u8; 32];
         crate::randombytes::randombytes_buf(&mut bytes)?;
