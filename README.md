@@ -14,13 +14,20 @@ An open Rust library for modern Ukrainian cryptographic standards (DSTU) — in 
 spirit of **libsodium** (hard, safe defaults, hard to misuse), not OpenSSL
 (flexible, easy to misuse the API).
 
-**Status:** `dstu_core::hazmat::kupyna` (Kupyna-256/512, cross-checked against real Bouncy Castle)
-and `dstu_core::hazmat::kalyna` (all 5 block/key-size variants, single-block encrypt/decrypt) have
-landed, both tested against official DSTU test vectors. `dstu_core::hazmat::kalyna_ccm` adds a
-**provisional** Kalyna-alone CCM mode of operation (dual-oracle-verified, not yet confirmed against
-the primary DSTU 7624:2014 text — see `DECISIONS.md` D-41). Everything else in the table below is
-still to come. See `TASKS.md` for the phase-by-phase backlog and `docs/dstu-crypto-project.md` for
-the full scope.
+**Status:** all three in-scope DSTU primitives are implemented at `hazmat` — Kupyna (256/512,
+cross-checked against real Bouncy Castle), Kalyna (all 5 block/key-size variants, full DSTU 7624
+mode-of-operation coverage: ECB/CBC/CFB/OFB/CTR/CMAC/KW/CCM/GCM/GMAC/XTS), and Strumok (keystream
+generation, `DECISIONS.md` D-15 — UAPKI-attributed vectors, not yet primary-text-confirmed).
+`hazmat::kalyna_ccm`/`kalyna_gcm` and Strumok remain **provisional** in that same sense (dual-oracle
+but not primary-DSTU-text-confirmed, `DECISIONS.md` D-15/D-41/D-56). DSTU 4145 signatures
+(`hazmat::dstu4145`) are also implemented and vector-confirmed. On top of `hazmat`, the
+libsodium-shaped `crypto_*` layer (`crypto_secretbox`, `crypto_secretstream`, `crypto_sign`,
+`crypto_auth`, `crypto_kdf`, `crypto_generichash`, `crypto_stream`, `crypto_pwhash`, `randombytes`)
+and the `uacrypt` CLI (`keygen`/`encrypt`/`decrypt`/`hash`, plus `--help`/`--version`) are built and
+tested — see "Using `uacrypt`" below. DSTU 9041 is hard-blocked (no source material). See
+`TASKS.md` for the phase-by-phase backlog, `docs/dstu-crypto-project.md`'s "Concrete API shape" for
+the authoritative module-by-module status table, and `docs/release-readiness.md` for the gap
+analysis against a complete 1.0.
 
 ## Algorithms in scope
 
@@ -48,8 +55,12 @@ target.
 ├── SECURITY.md            # threat model, hard constraints, supply-chain vetting
 ├── DECISIONS.md           # architectural decisions with rejected alternatives
 ├── TASKS.md               # phase-by-phase task backlog and progress state
+├── CHANGELOG.md           # Keep a Changelog-format release history
+├── ORACLES.md             # oracle trust ranking, per-algorithm oracle map, test-vector provenance
+├── PERFORMANCE.md         # benchmark methodology and recorded numbers
 ├── LICENSE-MIT
 ├── LICENSE-APACHE
+├── .github/workflows/     # CI (rust.yml, oracle-harness.yml) and the release workflow (release.yml)
 ├── .cargo/config.toml     # `cargo xtask` alias
 ├── xtask/                 # cross-platform build/QA runner, see "Development commands" below
 ├── docs/
