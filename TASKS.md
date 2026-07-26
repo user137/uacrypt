@@ -558,6 +558,93 @@ item they point to is later removed.
       also run against the actual release binary, not assumed from the unit tests - both correctly
       reject without writing `--out`, matching `crypto_secretstream`'s documented behavior. No
       `DECISIONS.md` entry - a documentation correctness fix, not an architectural decision.
+- [ ] **T-120** Locally-verified, beginner-friendly usage examples across every doc surface, for
+      every *safe* mode - requested 2026-07-26 by the project owner. Two distinct audiences, both
+      in scope, not just one:
+      1. **`uacrypt` binary users** - real, copy-pasteable examples for every top-level
+         misuse-resistant command (`keygen`, `encrypt`/`decrypt`, `hash`) in `README.md`/
+         `crates/uacrypt/README.md` (T-107). **Real gap surfaced while scoping this**: there is no
+         `uacrypt sign`/`verify` CLI command at all - `dstu_core::crypto_sign` exists only as a
+         library API (T-48, D-46), never wrapped for the CLI. This task does not silently assume
+         that gap away or invent a CLI command as a side effect of writing docs (that would be a
+         speculative feature, `CLAUDE.md`) - it documents sign/verify at the library level (below)
+         and flags the missing CLI wrapper as a separate, explicitly out-of-scope-for-this-task
+         finding for the project owner to triage into its own task, the same way T-114's candidate
+         gaps were (`uacrypt keygen`, T-115; the cross-compile check, T-116).
+      2. **`dstu-core` library users** - usage examples in `crates/dstu-core/README.md` (T-107)
+         and/or rustdoc covering the full `crypto_*` high-level surface (`secretbox`,
+         `secretstream`, `sign`/`verify`, `auth`, `kdf`, `generichash`, `stream`, `pwhash`), not
+         just the one `crypto_secretbox` example that exists today - **and** both resource
+         profiles: the default fused/performance-optimized build and `--features
+         dstu-core/small-tables` (`docs/resource-profiles.md`) for constrained
+         microcontroller targets, since a library user picking `small-tables` needs to see that the
+         same API works identically, not guess. Written for engineers across the skill range, not
+         assuming prior cryptography background - explain *what* each example protects against in
+         plain terms (same register `--help`'s T-108 plain-language notes already established),
+         not just the function calls.
+      **Hard requirement, non-negotiable**: every single example must be **actually run on this
+      machine** before being written into a doc, with an explicit, stated-in-advance pass
+      criterion per example (exact command(s), expected exit code, expected output - byte-for-byte
+      round-trip match for encrypt/decrypt, a `true`/valid signature for sign/verify, the specific
+      digest value for hash, etc.) - not asserted from reading the API and assumed correct. This is
+      not a new process invented for this task: it's T-117's own lesson, generalized - a
+      `crypto_secretbox` README example silently failed to compile (`SecretKey::generate`/`seal`
+      both return `Result`, the example didn't handle it) because it was never actually run, and
+      `cargo test` structurally cannot catch a bug in a doc example that isn't wired in as a
+      doctest. Prefer wiring examples in as real doctests (`cargo test --doc`) or a scratch-crate
+      path-dependency run (T-117's own verification method) wherever the surface allows it, so this
+      class of bug gets ongoing regression coverage instead of a one-time manual check.
+      Sign/verify examples explicitly must show both the success path (valid signature verifies)
+      and the failure path (a tampered message or wrong key fails verification) - a signature
+      example that only shows the happy path doesn't demonstrate the primitive actually does what
+      it claims, same reasoning as D-64's "attack pass" for AEAD tests.
+- [ ] **T-122** `dstu_core::crypto_sign::SigningKey` has no keypair-generation constructor - found
+      2026-07-26 via a full libsodium-API-surface audit requested by the project owner
+      (`docs/release-readiness.md` "round 2", triggered by the owner's frustration that gaps like
+      this keep surfacing one at a time instead of being caught systematically). Confirmed by
+      reading `crates/dstu-core/src/crypto_sign.rs` directly, not assumed: `SigningKey::from_bytes`
+      is the *only* constructor, and it requires the caller to already have a valid raw 21-byte
+      private scalar (`1 <= d < n`, `n` = the curve order) - there is no `generate()`/
+      `crypto_sign_keypair()`-equivalent, and no public way to correctly rejection-sample a valid
+      `d` without reaching into `hazmat` internals (`curve163::order()` isn't part of the public
+      `crypto_sign` surface). Same class of gap T-115 closed for `crypto_secretstream::Key`
+      (`uacrypt keygen`) - without this, nothing can actually start signing through the public API
+      cold. Scope: a `std`-gated `SigningKey::generate()` (or `from_seed`-style deterministic
+      variant, project owner's call which shape) drawing from `dstu_core::randombytes`, with proper
+      rejection sampling against `curve163::order()` (uniform, not modulo-biased - the `subtle`/
+      constant-time discipline `SECURITY.md` already requires elsewhere should apply to the
+      rejection loop too, not just the final scalar use). Needs its own test coverage per
+      `CLAUDE.md`'s three-category rule: correctness (generated key signs/verifies successfully,
+      property-tested over many generations), a distinctness property test (two generated keys
+      differ), and misuse coverage for whatever's still reachable after `generate()`'s own type
+      signature forecloses the rest.
+- [ ] **T-123** No pluggable/custom RNG backend for `no_std`/embedded `randombytes` - found
+      2026-07-26, same libsodium-API-surface audit as T-122 (libsodium's own
+      `randombytes_set_implementation()`/custom-RNG doc exists specifically for this). Today,
+      `dstu_core::randombytes::randombytes_buf` is `std`-gated over `getrandom` with no equivalent
+      hook - correctly absent from `no_std` builds (nothing currently promises otherwise), but there
+      is no tracked path for a caller on real embedded hardware (STM32/ESP32, Phase 4 -
+      `TASKS.md` T-55/T-56) to get `randombytes`-shaped fresh key/nonce material at all once
+      real-hardware validation starts needing it, since there's no host OS CSPRNG to call through
+      `getrandom` on bare metal. **Phase-4-adjacent, not an MVP blocker** - MVP's own claim is only
+      that the core `no_std`-compiles (`CLAUDE.md` MVP scope), never that `randombytes` works there.
+      Revisit when T-55/T-56 (real hardware validation) is picked up, or sooner if a concrete
+      embedded consumer needs it earlier.
+- [ ] **T-124** `uacrypt` has no `sign`/`verify` CLI commands - found 2026-07-26, same audit as
+      T-122/T-123. `dstu_core::crypto_sign` (T-48/D-46) exists only as a library API - confirmed via
+      `grep` across `crates/uacrypt/src/lib.rs`'s command dispatch, no `sign`/`verify` arm anywhere.
+      First surfaced as an explicit scoping note on T-120 (the doc-examples task documents this gap
+      rather than closing it); this is the task that actually closes it. Scope: top-level
+      `uacrypt sign --key ... --in ... --out ...` / `uacrypt verify --key ... --in ... --sig ...`,
+      matching the plain-language, misuse-resistant shape of `encrypt`/`decrypt`/`hash` (not a
+      hazmat-scoped tool like `kalyna-block`) - blocked on T-122 landing first, since there is
+      currently no way to obtain a `SigningKey` through the public API to begin with. `--key` for
+      `verify` is the 42-byte uncompressed `VerifyingKey` encoding; `SigningKey`'s own key file
+      format is the project owner's call (raw 21-byte scalar vs. something else) once T-122 settles
+      the generation shape. Three-category test coverage per `CLAUDE.md`: correctness (round-trip
+      sign→verify), rejection (D-64 - tampered message, tampered signature, wrong key all fail
+      verification, matching T-120's explicit "show the failure path too" requirement), misuse
+      (D-65 - wrong-length key/signature file, missing `--in`).
 - [x] **T-118** **DONE 2026-07-26.** `uacrypt --version`/`-V` - found missing while preparing for
       T-19/T-119's GitHub release (user-requested: smoke-test advice from `advisor()` flagged this
       as the one defect "actively embarrassing in a release artifact" - a downloaded binary with no

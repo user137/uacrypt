@@ -275,6 +275,97 @@ FINAL property, hitting this bar exactly.
   to Argon2id only (T-71/D-49/D-50), matching libsodium's own current recommended default; the other
   variants exist in libsodium for legacy interop, not because they're preferred.
 
+## Libsodium API surface audit, round 2 (2026-07-26)
+
+Requested 2026-07-26 by the project owner, explicitly framed as "this keeps happening" - new
+libsodium-shaped gaps (most recently: no `uacrypt` CLI for `crypto_sign`) kept surfacing one at a
+time in unrelated sessions instead of being caught by a systematic pass, despite round 1 above
+existing. This pass re-fetched libsodium's *current* official API table of contents directly
+(`raw.githubusercontent.com/jedisct1/libsodium-doc/master/SUMMARY.md` plus the individual per-family
+doc pages, not memory) rather than relying on round 1's list, specifically because libsodium's own
+API surface has grown since round 1 - it now documents AEGIS-256/AEGIS-128L, AES256-GCM,
+IP address encryption (`crypto_ipcrypt_*`), and post-quantum `crypto_kem`/ML-KEM768, none of which
+existed in what round 1 checked against. Full section-by-section table is in the conversation this
+request came from, not duplicated here; this section records what actually changed as a result.
+
+**Stale claim corrected**: round 1's "Correction to prior assumptions" above (no separate
+`crypto_kdf_hkdf_*` family exists) is **itself now wrong** - current libsodium documents
+`crypto_kdf_hkdf_sha256_*`/`crypto_kdf_hkdf_sha512_*` (`key_derivation/hkdf.md`), a second,
+distinct KDF family alongside the BLAKE2b-based `crypto_kdf` this project already maps against.
+This is RFC 5869 HKDF specifically - HMAC-SHA256/512-based, not DSTU-native, offered by libsodium
+as a standards-interop option alongside its own simpler `crypto_kdf`. **Still not scheduled as a
+task** - same reasoning as the "No DSTU angle" list below (no DSTU standard defines an HKDF
+analogue, and `dstu_core::crypto_kdf` already covers the "derive a subkey from a master key" need
+this project has an actual consumer for) - but the prior claim that libsodium simply doesn't have
+this family was factually wrong, not a scoping judgment, and needed fixing on its own.
+
+**Real, previously-undocumented gaps found - added to `TASKS.md`**:
+
+- **`dstu_core::crypto_sign::SigningKey` has no keypair-generation constructor at all** - only
+  `from_bytes(d: &[u8; 21])`, which requires the caller to already possess a valid private scalar
+  (`1 <= d < n`, checked and rejected via `Option::None` otherwise). There is no
+  `crypto_sign_keypair()`/`crypto_sign_seed_keypair()` equivalent - no way to generate a fresh
+  identity through the public API without external help, and no public way for a caller to even
+  perform the correct rejection-sampling-against-curve-order themselves without reaching into
+  `hazmat` internals. This is the same class of journey-blocking gap T-115 closed for
+  `crypto_secretstream::Key` (`uacrypt keygen`) - confirmed by reading the actual source
+  (`crates/dstu-core/src/crypto_sign.rs`), not assumed from the API-mapping table, which had marked
+  `crypto_sign` "Implemented" without this distinction. See `TASKS.md` T-122.
+- **No pluggable/custom RNG backend for `no_std`/embedded targets** - libsodium documents
+  `randombytes_set_implementation()`/`advanced/custom_rng.md` specifically so a caller can swap in a
+  hardware TRNG or other custom entropy source. `dstu_core::randombytes::randombytes_buf` is
+  `std`-gated over `getrandom` with no equivalent hook - correctly absent from `no_std` builds today
+  (nothing promises otherwise), but there is no tracked path for a STM32/ESP32 caller to get
+  `randombytes`-shaped functionality at all once real hardware validation (Phase 4, `TASKS.md`
+  T-55/T-56) starts needing fresh keys/nonces on-device without a host OS's CSPRNG. See `TASKS.md`
+  T-123 - Phase-4-adjacent, not an MVP blocker (MVP only claims `no_std` *compiles*, never claimed
+  `randombytes` works there).
+- **`uacrypt` has no `sign`/`verify` CLI commands** - `dstu_core::crypto_sign` (T-48/D-46) exists
+  only as a library API, confirmed via `grep` across `crates/uacrypt/src/lib.rs`'s command
+  dispatch. First surfaced as a scoping note on `TASKS.md` T-120 (doc-examples task, which
+  documents the gap rather than closing it); this round makes it a real implementation task in its
+  own right. See `TASKS.md` T-124.
+
+**No DSTU/PQ angle - additions to round 1's list, deliberately not scheduled**:
+
+- **`crypto_kem`/ML-KEM768** (post-quantum key encapsulation, new in current libsodium) - this is
+  NIST's ML-KEM (Kyber), not a DSTU standard. Post-quantum primitives are explicitly out of this
+  project's scope without a separate owner decision (`DECISIONS.md` D-08, currently scoped to the
+  *DSTU* post-quantum standards Skelya/Vershyna specifically) - the same reasoning extends to a
+  non-DSTU PQ KEM a fortiori. Recorded here so it isn't independently "discovered" and proposed
+  again without the context that this was already considered.
+- **IP address encryption** (`crypto_ipcrypt_*`, deterministic/ND/NDX/PFX modes) - a genuinely new,
+  niche libsodium feature (format-preserving encryption of IP addresses for log anonymization). No
+  DSTU standard addresses this, and no evident use case in a general-purpose DSTU crypto library.
+- **AEGIS-256/AEGIS-128L, AES256-GCM as `crypto_aead_*` choices** - these are alternative AEAD
+  *cipher* choices libsodium offers alongside ChaCha20-Poly1305, not missing functionality - this
+  project already made its combined-AEAD choice (Kalyna-CCM/GCM, `DECISIONS.md` D-47's "delete the
+  knob") and isn't in the business of offering a cipher menu.
+- **SHA-2, SHA-3, HMAC-SHA-2, Keccak-f[1600] (raw), Poly1305 one-time auth, the
+  ChaCha20/XChaCha20/Salsa20/XSalsa20 stream-cipher family** - all non-DSTU primitives libsodium
+  exposes for interop with external systems/standards. This project made the "Kupyna is the hash,
+  Kupyna-KMAC is the MAC, Strumok is the stream cipher" calls already (D-10/D-44/D-18); none of
+  these has a consumer requiring interop with a non-DSTU external system today.
+- **Ed25519↔Curve25519 conversion, Ristretto/finite-field-arithmetic helpers** - Curve25519-specific
+  internals with no DSTU 4145/9041 analogue (different curve family entirely).
+
+**Flagged as an open question for the project owner, not resolved here (security-relevant, a real
+scope commitment either way)**:
+
+- **Guarded/locked secret memory** (`sodium_mlock`/`munlock`, `sodium_malloc`/`free`,
+  `sodium_mprotect_noaccess`/`readonly`/`readwrite` - `helpers/memory_management.md`). This project's
+  `Zeroize`/`ZeroizeOnDrop` discipline (D-20) covers *erasing* key material after use; it does not
+  cover *preventing* key material from being paged to swap/hibernation while still in use, or
+  guard-page-based use-after-free/overflow detection around it - a materially different, `std`/OS-only
+  guarantee (no bare-metal equivalent exists, so this could never be a `no_std`-uniform primitive the
+  way `Zeroize` is). Not unilaterally scoped in either direction here, same posture as the existing
+  "detached API variants" question above - needs the owner's call on whether this project's threat
+  model (`SECURITY.md`) wants it before it becomes a task.
+
+`docs/dstu-crypto-project.md`'s "Concrete API shape" table (the authoritative implementation-status
+table) is unaffected by this round - none of the findings above change any *existing* module's
+status, they're additions (new tasks) or corrections to this file's own prior audit text.
+
 ## Concrete path to a genuinely safe, complete release
 
 **Superseded 2026-07-25 (T-99) by `TASKS.md`'s "Roadmap to a genuinely complete product"** (recorded
