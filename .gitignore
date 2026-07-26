@@ -22,6 +22,12 @@
 # file's own doc comment, never checked in) - same convention as the two rules above.
 /tests/oracle-harness/*/*.exe
 /tests/oracle-harness/*/*.o
+# uapki-cmac-bench (T-133/D-83) links against UAPKI's prebuilt DLL, downloaded fresh per its own
+# build recipe, not vendored - the DLL itself and the gendef/dlltool-generated import lib are
+# local build products, same as the .exe above.
+/tests/oracle-harness/uapki-cmac-bench/*.dll
+/tests/oracle-harness/uapki-cmac-bench/*.def
+/tests/oracle-harness/uapki-cmac-bench/*.a
 
 # Third-party reference implementations, used only as oracles for local test-vector
 # cross-verification (see oracles/README.md, DECISIONS.md D-02/D-06). Never vendored into

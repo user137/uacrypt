@@ -5314,3 +5314,209 @@ Lesson for future wrapper code, any mode: **the timer must start after every one
 already does this - copying an existing wrapper function's *shape* without checking where it places
 `now_ns()` relative to setup carries this bug forward silently**, exactly what happened copying
 `run_cmac`'s structure into `run_gmac` without re-deriving the timer placement from first principles.
+
+## D-81: T-130 resolved - Windows Miri/proptest hang is mechanism-wide, not Kalyna-specific, and attempt four's untried flag combination actually works
+
+Requested 2026-07-26 by the perf/hygiene roadmap's own Tier B: before trusting the tier ordering
+(T-130 gates Tier C's Miri done-bar), resolve the roadmap's explicit open question - does T-130's
+Windows Miri hang reproduce on `hazmat::kupyna`/Strumok's proptest suites too, or is it specific to
+`hazmat::kalyna`? Not assumed either way, per the roadmap's own instruction, even though the
+mechanism (proptest's failure-persistence code calling `std::env::current_dir()`, which Miri's
+default isolation blocks) plainly has nothing to do with Kalyna's code specifically.
+
+**Step 1 - routing question, cheapest discriminator first (`advisor()`'s explicit suggestion)**:
+ran `cargo +nightly miri test -p dstu-core --lib
+hazmat::kupyna::fused_round_tests::fused_sub_shift_mix_matches_naive_256` with **no flags at all** -
+a single fast, no-key-schedule Kupyna proptest function. It aborted with the identical
+`GetCurrentDirectoryW not available when isolation is enabled` panic, the identical stack trace
+through `proptest::test_runner::failure_persistence::file::absolutize_source_file` ->
+`std::env::current_dir`, as T-130's original `hazmat::kalyna` finding. **Confirmed: this is a
+proptest-mechanism-wide Windows/Miri interaction, not anything about Kalyna's code** - answers the
+open question without touching Kalyna at all, and without risking another multi-minute wait on an
+ambiguous flag combination.
+
+**Step 2 - attempt four, the combination T-130's own text named as untried**:
+`MIRIFLAGS=-Zmiri-disable-isolation` *and* `PROPTEST_DISABLE_FAILURE_PERSISTENCE=1` together (not
+either alone - attempt 2 tried disable-isolation alone, attempt 3 tried the persistence env var
+alone under default isolation and hit the same `current_dir()` error, since isolation was hiding
+the env var from the interpreted program), plus `PROPTEST_CASES=8` (D-63's already-established
+scoped-Miri lesson: leaving `PROPTEST_CASES` at its default 256 is impractical under Miri's
+interpretation overhead, unrelated to whether the run is actually stuck). Run against the same
+Kupyna function: **completed cleanly in 28.01s, 1 passed.** Immediately re-ran the identical
+combination against `hazmat::kalyna::fused_round_tests::fused_encipher_round_matches_naive_nb2`
+(the same module T-130 was originally diagnosed against) to confirm the fix isn't Kupyna-specific
+either: **completed cleanly in 28.87s, 1 passed.** Toolchain: `miri 0.1.0 (87e5904f5e 2026-07-20)`,
+`nightly-x86_64-pc-windows-gnu` - the same toolchain T-130's three prior attempts used, so this is
+a flag-combination fix, not a toolchain-version fix.
+
+**Attempt 2's original "hung" read is corrected, not just superseded**: T-130 recorded ~35 minutes
+wall time against ~0.8s of CPU on the `miri.exe` PID as "genuinely stuck." Re-checking the same
+diagnostic on a fresh disable-isolation run this session (`Get-Process | Select Id, ProcessName,
+CPU`) showed the `miri.exe` process had already accumulated **22.70s of CPU within about the first
+30 seconds of wall time** - real, active computation, not stalled. Attempt 2 was very likely
+progressing the entire 35 minutes (interpretation of a 256-case proptest run under Miri is simply
+that slow) rather than deadlocked; it was never given the reduced `PROPTEST_CASES` or the
+persistence-env-var fix that made attempt 4 tractable, so "stuck" and "slow" were never actually
+distinguished at the time. Filed here as a general lesson for reading Miri CPU tea-leaves: with
+`cargo miri test`'s parent/child process structure, check CPU across the whole `cargo`/`cargo-miri`/
+`miri` process tree, not one PID in isolation, before concluding a run is deadlocked rather than
+merely slow.
+
+**Practical fix for any future `hazmat::kalyna`/`kupyna` Miri run on this Windows host**: set both
+`MIRIFLAGS=-Zmiri-disable-isolation` and `PROPTEST_DISABLE_FAILURE_PERSISTENCE=1`, and keep
+`PROPTEST_CASES` low (8, matching D-63's precedent) for anything beyond a single quick function -
+this is now a routine invocation pattern for this project on this host, not a one-off workaround.
+
+**Follow-up, same session: full-module confirmation, not just the single-function proof.** Ran
+`cargo +nightly miri test -p dstu-core --lib hazmat::kalyna::` (all three existing proptest modules
+- `fused_round_tests`, `const_round_tests` (T-128's own new differential suite), and
+`decrypt_fusion_tests` - 13 functions total) under the same fixed combination. **13/13 passed, 0
+UB, finished in 511.16s (~8.5 min).** This is the Miri layer T-129/T-134/T-135's own done-bar
+requires and that CI has never once produced (T-100) - now available locally on this host for the
+module it matters most for. T-129 in particular (Tier C's most invasive Kalyna change) can now get
+a real local Miri pass as part of its own safety net, not just the workspace test/clippy/fmt/
+feature-matrix/fuzz layers T-128 shipped with.
+
+## D-82: CMAC re-measured at 64 B with a timer-placement-fixed wrapper - T-138, and a real UAPKI CMAC-reuse quirk found in the process
+
+Direct follow-up to D-80's GMAC timer-placement finding, requested by the perf/hygiene roadmap's
+Tier A item 2: the currently-published 64 B/1 MiB CMAC table (`PERFORMANCE.md`, "New command this
+session, T-121") was measured by an earlier, uncommitted UAPKI wrapper this session never
+inherited or inspected - no way to confirm from here whether it placed its timer correctly (before
+or after `dstu7624_alloc`/`dstu7624_init_cmac`), the same ambiguity D-80 resolved for GMAC.
+
+**Recipe** (scratch-only, not committed, per this project's standing "C comparisons aren't
+committed" policy, `PERFORMANCE.md`'s own "Reproducing the C comparisons" section): downloaded the
+signed `uapki-v2.0.12-win-amd64-signed.zip` release asset (same as D-71/D-78), `gendef`/`dlltool`
+to build an import lib, wrote a fresh `cmac_bench.c` against the vendored
+`oracles/uapki/library/uapkic/include/dstu7624.h`/`byte-array.h` headers - `<variant> <key_path>
+<in_path> <out_path> <iterations>`, printing `iterations=.. total_ns=.. per_op_ns=..` to stderr,
+matching `uacrypt`'s own convention exactly. Timer placed explicitly after `dstu7624_alloc` +
+`dstu7624_init_cmac` (the one-time Kalyna key-schedule expansion, analogous to `uacrypt`'s cached
+`ExpandedKey`), matching D-80's fix and every other mode's wrapper convention.
+
+**Byte-identity verified first, at `--iterations 1`** (fresh `ctx` per run): all 5 variants' tags
+matched `uacrypt`'s own `kalyna-cmac compute` output exactly.
+
+**A real correctness quirk found and confirmed before trusting multi-iteration timing, not
+assumed**: wrote a standalone probe (`probe.c`) that calls `dstu7624_init_cmac` once, then
+`dstu7624_update_mac`/`dstu7624_final_mac` four times in a row on the *same* message without
+re-initializing - each of the 4 calls returned a **different** tag. Root cause, confirmed by
+reading `dstu7624.c` directly: `cmac_final` computes the tag by reading `ctx->state` (the running
+CBC-MAC chaining value) and `ctx->mode.cmac.last_block`/`lblock_len`, but never resets either
+afterward - `dstu7624_init_cmac`'s call to `dstu7624_init` is the only code path that zeroes
+`ctx->state`. Reusing a `ctx` across independent messages via `update_mac`/`final_mac` alone (no
+reinit) silently accumulates stale chaining state from the previous message into the next
+computation - a real API footgun in UAPKI's own C interface, not something to route around
+silently: DSTU 7624's CMAC construction itself is correct, this is purely about how a *caller*
+must sequence UAPKI's stateful update/final split for a fresh message (call `init_cmac` again, not
+just `update_mac`/`final_mac`).
+
+**This does not invalidate a multi-iteration throughput measurement, verified by reasoning about
+the actual code path, not assumed**: `crypt_basic_transform` (Kalyna's block cipher, invoked by
+both `cmac_update`'s chaining loop and `cmac_final`'s last-block encryption) has no secret- or
+data-length-dependent branching (this project's own D-19 constant-time-table-lookup discipline,
+and UAPKI's own implementation matches that shape) - so every iteration of the timed loop performs
+the identical number of block-cipher invocations and memory operations regardless of what garbage
+is in `ctx->state`. Only the *value* produced past iteration 1 is not independently meaningful;
+correctness is established once, at `--iterations 1` with a fresh `ctx`, which is exactly what the
+byte-identity check above already does. This is why the wrapper only writes out iteration 0's tag,
+documented inline in `cmac_bench.c` itself rather than left implicit.
+
+**Re-measured, N = 500000, 64 B, both directions**:
+
+| Variant | uacrypt compute (MB/s) | UAPKI compute (MB/s) | uacrypt verify (MB/s) | Ratio |
+|---|---|---|---|---|
+| 128-128 | 161.21 | 120.98 | 131.96 | 1.33x |
+| 128-256 | 119.40 | 99.53 | 101.75 | 1.20x |
+| 256-256 | 95.10 | 87.19 | 83.44 | 1.09x |
+| 256-512 | 74.33 | 72.98 | 67.16 | 1.02x |
+| 512-512 | 67.80 | 46.65 | 62.02 | 1.45x |
+
+**The real small-message lead is ~1.0-1.45x, not the previously-published ~6-8x** - the same
+corrective shape D-80 found for GMAC (there ~4-24x claimed vs ~1.1-2.9x real), here even more
+pronounced. `PERFORMANCE.md`'s CMAC section updated with the corrected table and commentary, old
+table left in place (not deleted) with the correction appended after it, matching this project's
+own "don't silently overwrite, append the correction" convention already used for GMAC.
+
+**Flagged, not chased further**: `uacrypt`'s own 64 B number jumped far more (29.92 → 161.21 MB/s
+at 128-128, ~5.4x) than T-128's isolated round-function benchmark predicts (~51-54% i.e. ~2x at
+`nb=2`) - the original 64 B row's exact `--iterations` count and wrapper vintage are unknown
+(predates this session's numbering convention), so whether it shares some of GMAC's original bug
+shape on `uacrypt`'s own side cannot be ruled out from here. Consistent with an already-flagged
+pattern in this same file (the 10 MiB CMAC table's 128-128 jump also exceeded T-128's prediction) -
+not treated as newly alarming, but not silently smoothed over either.
+
+## D-83: The Kalyna-CMAC vs. UAPKI comparison wrapper is now committed - T-133, a deliberate exception to the "C comparisons aren't committed" policy
+
+T-133 (formalize the byte-for-byte UAPKI comparison into a "committed, reusable script" rather
+than an ad hoc habit) directly conflicts with `PERFORMANCE.md`'s own "Reproducing the C
+comparisons" text, which states these harnesses are deliberately *not* committed ("one-off, and
+pulling in a full UAPKI build is a lot of scaffolding for something that isn't run again
+regularly"). `CLAUDE.md`'s documentation map names `PERFORMANCE.md` the canonical owner of
+benchmark methodology - reversing that policy is not a sequencing detail the perf/hygiene
+roadmap's own approval covers, so this was put to the project owner directly (`AskUserQuestion`,
+2026-07-26) rather than decided unilaterally, even though the "isn't run again regularly"
+rationale looked plainly outdated (this exact wrapper was rebuilt from scratch three times in one
+week for T-131/T-133/T-138). **Answer: commit it.**
+
+**What's committed**: `tests/oracle-harness/uapki-cmac-bench/cmac_bench.c` - the CMAC-only wrapper
+built for T-138's 64 B re-measurement (see D-82), cleaned up with a full doc-comment header
+(purpose, build recipe, usage, and the CMAC-context-reuse quirk D-82 found, so a future session
+doesn't have to rediscover any of it). Matches this repo's existing `tests/oracle-harness/*`
+convention (`kalyna-differential/`, `strumok-cross-check/`, etc. - source only, built fresh
+on-demand) with one difference worth flagging: those siblings link against vendored oracle
+*source* (`oracles/*`, itself gitignored per D-02/D-06 but present locally once fetched); this one
+links against UAPKI's official prebuilt Windows DLL, which isn't vendored source at all - the
+DLL/import-lib build step (`gh release download` + `gendef`/`dlltool`) is documented in the file's
+own header, and the resulting `.dll`/`.def`/`.a` artifacts are gitignored
+(`.gitignore` additions, same rationale as the pre-existing `*.exe`/`*.o` rules for this
+directory). Rebuilt from the committed source and re-verified byte-identical against `uacrypt`
+(128-128, `--iterations 1000`) before considering this done - the committed copy is not just
+assumed to match the scratch version it was cleaned up from.
+
+**Scope, deliberately narrow**: only CMAC is committed. The other 8 modes this project publishes
+UAPKI comparisons for (block/GCM/GMAC/KW/XTS/CCM, plus Kupyna/Strumok) stay scratch-only/rebuilt-
+fresh, per `PERFORMANCE.md`'s now-updated methodology text - promote another mode's wrapper to
+committed the same way if it starts recurring the way CMAC's did, rather than committing all nine
+preemptively on the strength of one mode's pattern. `PERFORMANCE.md`'s "Methodology" and
+"Reproducing the C comparisons" sections, and the CMAC section's own "Reproducing" line, all
+updated to reflect this specific exception rather than reading as a blanket policy reversal.
+
+## D-84: T-136's encrypt/decrypt asymmetry confirmed to already show up at the isolated round-function level, at exactly the nb=4 boundary - cause still open
+
+T-136 asked for "a `criterion` differential benchmark isolating `encipher_round_n::<4>` against
+`fused_inv_round_n::<4>` alone (no surrounding mode-of-operation overhead)" as the first concrete
+step toward explaining why Kalyna-block/XTS/KW's decrypt (or unwrap) direction runs *faster* than
+encrypt specifically on the 256-256/256-512 variants (`nb=4`), and not on the 128-bit/512-bit
+variants. **No new code was needed**: `benches/kalyna.rs`'s existing `_encrypt_block_only`/
+`_decrypt_block_only` pairs (added for T-128, cached `ExpandedKey`, no key-expansion overhead) are
+already exactly this isolated measurement - single block, schedule cached outside the timed loop,
+nothing else in the call path. Ran `cargo bench -p dstu-core --bench kalyna -- block_only` and
+read the existing numbers rather than duplicating them with new code.
+
+**Result** (median of each 3-point CI):
+
+| Variant (nb) | encrypt_block_only | decrypt_block_only | Faster direction |
+|---|---|---|---|
+| 128-128 (nb=2) | 73.04 ns | 83.84 ns | encrypt (~13% faster) |
+| 128-256 (nb=2) | 102.34 ns | 114.39 ns | encrypt (~11% faster) |
+| 256-256 (nb=4) | 225.35 ns | 197.39 ns | **decrypt** (~14% faster) |
+| 256-512 (nb=4) | 287.11 ns | 248.49 ns | **decrypt** (~15% faster) |
+| 512-512 (nb=8) | 463.49 ns | 631.19 ns | encrypt (~36% faster) |
+
+**This answers T-136's own diagnostic question**: the asymmetry already shows up at the isolated
+round-function level (no mode-of-operation bookkeeping, no I/O, no key-schedule cost) - so the
+cause is confirmed to be in `encipher_round_n`/`fused_inv_round_n` themselves (or how they compile
+at `nb=4` specifically), not in Kalyna-XTS/KW's surrounding mode-of-operation code, ruling out one
+of T-136's two branches (mode-of-operation-level cause) directly rather than by inference. The
+flip is sharp and specific to `nb=4` - `nb=2` and `nb=8` both favor encrypt, only `nb=4` favors
+decrypt, on both variants that share it.
+
+**Not resolved by this measurement, deliberately left open per T-136's own remaining candidates**:
+*why* the round functions themselves are asymmetric at exactly `nb=4` - the inverse table
+(`SBOX_MDS_DEC`) cache-line behavior, compiler codegen/register-allocation differences between the
+two functions' `nb=4` monomorphization, or a branch-predictor/instruction-cache effect are all
+still untested hypotheses from T-136's own text. This session's contribution is narrowing the
+search space (confirmed round-function-level, not elsewhere) and providing an already-real
+`criterion` baseline for whoever investigates further - not a root cause.

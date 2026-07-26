@@ -24,11 +24,19 @@ faster alternative — so this project tracks its own numbers deliberately, not 
 - **Rust**: `cargo bench -p dstu-core --bench kalyna --bench kupyna --bench strumok` (`criterion`
   0.8, `DECISIONS.md` D-23). Release-profile, `std::hint::black_box` around every benchmarked call
   so the optimizer can't elide it.
-- **C comparisons**: one-off timing harnesses (not committed to this repo — see "Reproducing"
-  below), built with `gcc -O2` for a fair optimization-level comparison, run on the same machine on
-  the same day. Each measures many iterations of a single encrypt/hash/keystream call (key
-  schedule/init done once outside the timed loop, matching how the Rust benches and each C
-  implementation's own natural API boundary work) and reports mean nanoseconds per call.
+- **C comparisons**: one-off timing harnesses, built with `gcc -O2` for a fair optimization-level
+  comparison, run on the same machine on the same day. Each measures many iterations of a single
+  encrypt/hash/keystream call (key schedule/init done once outside the timed loop, matching how the
+  Rust benches and each C implementation's own natural API boundary work) and reports mean
+  nanoseconds per call. **Not committed to this repo by default** (see "Reproducing" below) — the
+  rationale (a lot of scaffolding for something that isn't run again regularly) held until this
+  mode/oracle pairing was actually rebuilt and rerun multiple times in one week (T-131/T-133/T-138).
+  **First exception, 2026-07-26 (`DECISIONS.md` D-83)**: the Kalyna-CMAC vs. UAPKI wrapper is now
+  committed at `tests/oracle-harness/uapki-cmac-bench/cmac_bench.c` (source only — the DLL/import
+  lib it links against are downloaded/built fresh per its own doc-comment recipe, same "vendor
+  nothing prebuilt" posture `oracles/` already has). The other 8 modes' UAPKI comparisons remain
+  scratch-only/rebuilt-fresh for now — promote a mode to committed the same way if it starts getting
+  rebuilt repeatedly, don't do it preemptively for a mode measured once.
 - **Not a rigorous academic benchmark suite**: no CPU pinning, no isolated core, no disabled
   frequency scaling — real numbers from a real development machine, useful for relative comparison
   and regression tracking, not for citing as an authoritative cycles-per-byte figure. Ratios between
@@ -647,6 +655,56 @@ some could be CMAC-specific effects T-128's isolated round-function benchmark do
 per-block overhead outside the round function itself scaling differently at 10 MiB than at 1 MiB).
 Not root-caused further here — noted for whoever next touches this table, not assumed settled.
 
+**Re-measured 2026-07-26 at 64 B, N = 500000 (T-138, `DECISIONS.md` D-82)** — a direct follow-up to
+D-80's GMAC timer-placement finding: the original 64 B/1 MiB table above was measured by an earlier,
+uncommitted wrapper this session never inherited, so there was no way to confirm it placed its timer
+correctly. Rebuilt a fresh wrapper with the timer explicitly placed after `dstu7624_alloc`/
+`dstu7624_init_cmac` (matching every other mode's convention, D-80's fix). **Byte-identity verified
+first, at `--iterations 1`** (a fresh, correctly-initialized `ctx` for each of the 5 variants) — all
+5 tags matched `uacrypt`'s own byte-for-byte. **A real correctness quirk found and confirmed by a
+standalone probe before trusting any multi-iteration timing**: `dstu7624_final_mac` never resets
+its CMAC chaining state (`ctx->state`) or buffered-tail length, so calling `update_mac`/`final_mac`
+repeatedly on the same `ctx` without re-`init_cmac` produces a *different* tag on every iteration
+past the first (confirmed directly: 4 repeated calls on the same message each returned a distinct
+tag). **This does not invalidate the timing** — `crypt_basic_transform`'s block cipher is
+constant-time/constant-work regardless of the garbage state flowing in (no secret- or
+length-dependent branching), so every iteration still performs the identical amount of arithmetic;
+only the *value* computed past iteration 1 is not independently meaningful, which is fine for a
+pure throughput measurement (correctness is what `--iterations 1`'s byte-identity check above
+already confirms). Documented in the wrapper's own source rather than assumed silently.
+
+| Variant | uacrypt compute (MB/s) | UAPKI compute (MB/s) | uacrypt verify (MB/s) | Ratio (compute) |
+|---|---|---|---|---|
+| 128-128 | **161.21** | 120.98 | 131.96 | 1.33x |
+| 128-256 | **119.40** | 99.53 | 101.75 | 1.20x |
+| 256-256 | **95.10** | 87.19 | 83.44 | 1.09x |
+| 256-512 | **74.33**\* | 72.98 | 67.16 | 1.02x |
+| 512-512 | **67.80** | 46.65 | 62.02 | 1.45x |
+
+\*Effectively tied — within normal run-to-run noise at this message size, not a decisive lead
+either way.
+UAPKI has no separate `verify` entry point (a MAC verify is a compute + `memcmp`, negligibly
+different cost, matching the already-established "compute/verify symmetric within noise on both
+implementations" finding above) — only `uacrypt`'s own verify column is shown.
+
+**The real small-message lead is ~1.0-1.45x, not the previously-published ~6-8x.** Same corrective
+shape as D-80's GMAC finding, and larger in relative terms: this project no longer has a wide
+small-message advantage over UAPKI for CMAC, just a modest one, on the same T-128-improved code the
+10 MiB table above already reflects. **`uacrypt`'s own 64 B number also jumped far more than T-128's
+isolated round-function measurement alone would predict** (29.92 → 161.21 MB/s at 128-128, ~5.4x,
+versus T-128's own `nb=2` block-only ~51-54% i.e. ~2x) — flagged, not root-caused: the original 64 B
+row's exact `--iterations` count and wrapper vintage are unknown (predates this session's fixed
+wrapper and this file's own "N=" annotation convention), so whether it carried a comparable
+timer-placement or low-iteration-count noise issue on `uacrypt`'s own side cannot be ruled out from
+here. Consistent with the already-flagged pattern two paragraphs above (128-128's 10 MiB jump also
+exceeded prediction) - not an isolated one-off.
+
+**Reproducing**: same `uacrypt` command as above at `--iterations 500000`; the UAPKI-side wrapper is
+now committed at `tests/oracle-harness/uapki-cmac-bench/cmac_bench.c` (`DECISIONS.md` D-83 - build
+recipe in the file's own doc comment), taking `<variant> <key_path> <in_path> <out_path>
+<iterations>` and printing `iterations=.. total_ns=.. per_op_ns=..` to stderr, matching `uacrypt`'s
+own convention.
+
 ### Kalyna-GMAC (`kalyna-gmac compute`)
 
 New command this session (T-121, D-71) — same shape as CMAC but no nonce, tag is the variant's full
@@ -1241,8 +1299,12 @@ an intentional performance change.
 
 ## Reproducing the C comparisons
 
-Not committed to this repo (one-off, and pulling in a full UAPKI build is a lot of scaffolding for
-something that isn't run again regularly) — but fully reproducible:
+Not committed to this repo by default (one-off, and pulling in a full UAPKI build is a lot of
+scaffolding for something that isn't run again regularly) — but fully reproducible. **Exception:
+the Kalyna-CMAC vs. UAPKI wrapper is committed** (`tests/oracle-harness/uapki-cmac-bench/
+cmac_bench.c`, `DECISIONS.md` D-83) since it had been rebuilt from scratch repeatedly in one week
+(T-131/T-133/T-138) — promote another mode's wrapper the same way if it starts recurring, rather
+than committing all of them preemptively.
 
 1. **Oliynykov reference C**: build `oracles/kalyna-reference`/`oracles/kupyna-reference` directly
    (`gcc -O2 -I oracles/kalyna-reference <bench.c> oracles/kalyna-reference/{kalyna,tables}.c`),

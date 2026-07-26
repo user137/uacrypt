@@ -1081,14 +1081,13 @@ item they point to is later removed.
       changes - same safety-net bar as T-128 (differential test against the current const-generic
       version, not just the original naive reference; full test/clippy/fmt/feature-matrix/Miri/fuzz
       pass) since this file is the crate's most load-bearing, most-fused module.
-- [ ] **T-130** Not started. Local `cargo +nightly miri test` on `hazmat::kalyna` fails/hangs on
-      Windows for a reason distinct from T-100's already-diagnosed cause (T-100 is CI's 30-minute
-      timeout on the slow DSTU-4145 proptest suite; this is a Windows-specific Miri/proptest
-      interaction that blocks the run from completing at all, on any suite that uses
-      `proptest!`-backed tests, not just DSTU-4145's). Found 2026-07-26 investigating T-128: three
-      attempts, all failed the same way (full detail in `DECISIONS.md` D-77's Miri bullet) - (1)
-      default isolation aborts because proptest's failure-persistence file logic calls
-      `std::env::current_dir()`, which Miri's isolation blocks
+- [x] **T-130** **Resolved 2026-07-26, see `DECISIONS.md` D-81.** Local `cargo +nightly miri test`
+      on `hazmat::kalyna` failing/hanging on Windows, distinct from T-100's already-diagnosed cause
+      (T-100 is CI's 30-minute timeout on the slow DSTU-4145 proptest suite; this was a
+      Windows-specific Miri/proptest interaction blocking the run from completing at all). Found
+      2026-07-26 investigating T-128: three attempts, all failed the same way (full detail in
+      `DECISIONS.md` D-77's Miri bullet) - (1) default isolation aborts because proptest's
+      failure-persistence file logic calls `std::env::current_dir()`, which Miri's isolation blocks
       (`GetCurrentDirectoryW not available when isolation is enabled`); (2) the error's own
       suggested fix, `MIRIFLAGS=-Zmiri-disable-isolation`, appeared to hang instead of completing -
       ~35 minutes wall time against ~0.8s of actual CPU time on the `miri.exe` process, confirmed
@@ -1097,17 +1096,22 @@ item they point to is later removed.
       the file-persistence code path entirely rather than disabling isolation) hit the identical
       `current_dir()` error - implying Miri's default isolation hides environment variables from
       the interpreted program too, so proptest's own env-var-driven opt-out silently never took
-      effect. **Needs investigation, not another blind retry** - candidates worth checking before
-      trying a fourth flag combination: whether `-Zmiri-disable-isolation` genuinely hangs on
-      *any* `hazmat::kalyna` proptest (isolate to a single, fast test function first, rather than
-      the full 13-function suite, to separate "slow" from "stuck"); whether a newer/older
-      `nightly` toolchain or Miri version changes this; whether the `windows-gnu` host target
-      (this machine's rustup default, distinct from the `windows-msvc` target `xtask` already uses
-      for fuzzing, D-32) is specifically implicated, given Miri's Windows environment/filesystem
-      emulation is less mature than its Unix support; or whether disabling isolation *and* the
-      persistence env var together (not tried - stopped at the three-attempts rule, `CLAUDE.md`'s
-      standing policy) resolves it. Does not block correctness work - the differential/property
-      tests this would check already run and pass under plain `cargo test`; only Miri's UB-detection
+      effect. **Attempt four (2026-07-26, `DECISIONS.md` D-81)**: confirmed first, not assumed,
+      that the hang is proptest-mechanism-wide, not Kalyna-specific - a single fast `hazmat::kupyna`
+      proptest function under default isolation (no flags) hit the identical `current_dir()` abort.
+      Then ran the one untried combination named above - `-Zmiri-disable-isolation` *and*
+      `PROPTEST_DISABLE_FAILURE_PERSISTENCE=1` together, plus `PROPTEST_CASES=8` (D-63's precedent)
+      - against both the Kupyna function and `hazmat::kalyna`'s own
+      `fused_encipher_round_matches_naive_nb2`: **both completed cleanly in ~28-29s**, not stuck.
+      Attempt 2's "~0.8s CPU in 35 min" read as stuck is now understood to have been genuinely slow,
+      not deadlocked - a fresh disable-isolation run's `miri.exe` PID showed real CPU accumulating
+      within the first 30s once checked properly this session. **Practical fix for future runs on
+      this host**: set both env vars, keep `PROPTEST_CASES` low. **Full-`hazmat::kalyna`-module
+      confirmation, same session**: all 13 existing proptest functions across
+      `fused_round_tests`/`const_round_tests`/`decrypt_fusion_tests` passed under Miri with this
+      combination - 13/13, 0 UB, 511.16s (~8.5 min) - see `DECISIONS.md` D-81's follow-up. This is
+      the Miri done-bar Tier C's own tasks (T-129/T-134/T-135) require, now actually achievable on
+      this host. Does not block correctness work - the differential/property tests this would check
       layer is unavailable for this module until this is resolved.
 - [x] **T-131** **DONE 2026-07-26.** **Policy made 2026-07-26, user-requested**: 10 MiB is now a mandatory
       message size for every binary-level (process) comparison table in `PERFORMANCE.md`, not an
@@ -1241,6 +1245,18 @@ item they point to is later removed.
       instead (5 own-round-trip checks). 100 total identity/consistency checks across all 9 Kalyna
       modes this project publishes, done in one session. Formalized as reusable shell sweeps
       (`uapki_compare.sh`/`uapki_compare2.sh`/`uapki_compare3.sh`, scratch-only), not committed.
+      **Done 2026-07-26, see `DECISIONS.md` D-83**: the "formalize into a committed, reusable
+      script" half of this task conflicted with `PERFORMANCE.md`'s own documented "C comparisons
+      aren't committed" methodology policy - put to the project owner directly rather than decided
+      unilaterally (`AskUserQuestion`). **Answer: commit it.** `tests/oracle-harness/
+      uapki-cmac-bench/cmac_bench.c` is now committed (CMAC only, the mode this session's T-138
+      work already needed) - source only, matching this repo's existing `tests/oracle-harness/*`
+      convention, with a full doc-comment header (build recipe, usage, and D-82's CMAC-reuse-quirk
+      finding inline so it isn't re-discovered later). Rebuilt from the committed copy and
+      re-verified byte-identical against `uacrypt` before calling this done. **Scope deliberately
+      narrow**: only CMAC, not all 9 modes - the other 8 stay scratch-only until one of them starts
+      recurring the same way. `PERFORMANCE.md`'s methodology text updated to describe this as a
+      named exception, not a blanket reversal.
 - [ ] **T-134** Not started. `hazmat::kupyna.rs`'s `sub_shift_mix` (line 65) has the exact same
       shape T-128 just fixed in `hazmat::kalyna.rs`'s `encipher_round` - found 2026-07-26, checking
       whether Strumok/Kupyna share the same nuance T-128 fixed for Kalyna (they don't both: Strumok
@@ -1352,6 +1368,17 @@ item they point to is later removed.
       Not a correctness concern - encrypt/decrypt round-trip correctly on every existing test vector
       and property test regardless of which direction happens to run faster; this is purely a
       performance-curiosity task, not gating any release-readiness item.
+      **First measurement done 2026-07-26, see `DECISIONS.md` D-84** (perf/hygiene roadmap Tier B
+      item 5): the isolated `criterion` differential benchmark this task asked for already existed
+      - `benches/kalyna.rs`'s `_encrypt_block_only`/`_decrypt_block_only` pairs (T-128, cached
+      schedule, no mode-of-operation overhead) are exactly that measurement, no new code needed.
+      **Confirmed: the asymmetry already shows up at the isolated round-function level** - decrypt
+      beats encrypt by ~14-15% at `nb=4` (256-256/256-512) specifically, while encrypt beats decrypt
+      at both `nb=2` (~11-13%) and `nb=8` (~36%). This rules out a mode-of-operation-level cause
+      directly (confirms it's in `encipher_round_n`/`fused_inv_round_n` themselves or their `nb=4`
+      codegen) - but the actual *why* (table cache-line behavior, compiler codegen, branch
+      predictor) remains open, per this task's own remaining candidates below. Still not started
+      on the deeper investigation.
 - [ ] **T-137** Not started. Hypothetical/goodwill task, proposed by the user 2026-07-26 directly
       off T-131/D-78's XTS finding ("XTS: цей проєкт випереджає UAPKI у 3.2-15.1x") - since UAPKI is
       a real dependency of this project's own verification story (an oracle, `ORACLES.md`), fixing
@@ -1380,7 +1407,7 @@ item they point to is later removed.
       allocation-per-block-avoiding functions' behavior for GCM/GMAC's own `gf2m_mul` call sites
       (they must keep using the general path - do not accidentally narrow `gf2m_mul` itself, add a
       new sibling function instead).
-- [ ] **T-138** Not started. Follow-up flagged by D-80's GMAC finding, 2026-07-26: the wrapper bug
+- [x] **T-138** **Done 2026-07-26, see `DECISIONS.md` D-82.** Follow-up flagged by D-80's GMAC finding, 2026-07-26: the wrapper bug
       found there (timing a per-call `alloc`/`init_*` setup cost inside the same window as the
       actual operation, while `uacrypt`'s own command excludes it) was specific to this session's
       freshly-written `run_gmac`/`run_cmac` functions, both now fixed and re-verified. But
@@ -1397,6 +1424,17 @@ item they point to is later removed.
       timing needs re-taking. Compare against the existing "~6-8x, small-message crossover" claim in
       `PERFORMANCE.md`'s CMAC section and correct it if the real number differs materially, the same
       way D-80 corrected GMAC's.
+      **Done, `DECISIONS.md` D-82**: rebuilt the wrapper fresh (prior one was scratch-only, gone),
+      timer placed after `alloc`/`init_cmac` per D-80's fix, byte-identity re-verified at
+      `--iterations 1` (all 5 variants match `uacrypt` exactly). **Found and confirmed via a
+      standalone probe a real UAPKI API footgun in the process**: reusing a `ctx` across
+      `update_mac`/`final_mac` calls without re-`init_cmac` silently accumulates stale CBC-MAC
+      chaining state (`cmac_final` never resets `ctx->state`) - each repeated call on the same
+      message returned a different tag. Confirmed this doesn't invalidate throughput timing (Kalyna's
+      block cipher does constant work regardless of input value, D-19) - only correctness needed the
+      fresh-`ctx` `--iterations 1` check. **Real result: the small-message lead is ~1.0-1.45x, not
+      the previously-published ~6-8x** - same corrective shape as D-80's GMAC finding, more
+      pronounced here. `PERFORMANCE.md`'s CMAC section updated with the corrected table.
 - [x] **T-19** **Naming subtask, all three decisions made 2026-07-23** (T-20/T-21/T-22 below) -
       unblocks T-17/T-18, which are still separately open (a decided name isn't a crates.io
       publish or a built release binary):
@@ -1434,7 +1472,7 @@ item they point to is later removed.
       carries (not audited, no side-channel-resistance claim, Strumok/Kalyna-CCM still provisional,
       no file-level `encrypt`/`decrypt` yet) - a WIP notice on a crypto library is a safety
       statement, not cosmetics, so it states what's missing rather than reading as marketing.
-- [ ] **T-87** **Release-readiness audit for a genuine libsodium-equivalent 1.0** (requested
+- [x] **T-87** **Release-readiness audit for a genuine libsodium-equivalent 1.0** (requested
       2026-07-23, same session as T-86): a full gap analysis of what exists vs. what a real release
       needs - libsodium-shaped API/command surface, matching documentation, a crates.io publish
       with the complete algorithm set built and tested, and critically every mode of operation in
@@ -1460,6 +1498,18 @@ item they point to is later removed.
       and bounded to <=255-byte messages (T-40's `crypto_secretstream` remains open for the general
       case) - a release still cannot honestly claim "current, safe modes" on top of it. See
       `docs/release-readiness.md` for the updated breakdown.
+      **Verified current 2026-07-26, per the perf/hygiene roadmap's Tier A item 1**: this task's own
+      narrative above wasn't kept in sync (still frames D-05 as "still the blocker" and Kalyna-CCM
+      as the live construction), but `docs/release-readiness.md`'s actual headline finding was kept
+      current by each landing task's own session in the meantime (D-05's 2026-07-24
+      resolution-on-assumption, `crypto_secretbox`'s D-63 Kalyna-CCM->GCM migration removing the
+      255-byte cap, `crypto_secretstream`'s D-68 landing) - not by a dedicated T-87 refresh pass.
+      Grepped `255-byte`, `no crypto_secretbox`, `D-05 is still the blocker`, `not started` across
+      `docs/release-readiness.md`, `docs/dstu-crypto-project.md`, and `README.md`: no stale hits -
+      every "not started" line remaining (crates.io/T-17, `crypto_box`/`crypto_kx` on hard-blocked
+      DSTU 9041) is genuinely still true, not overtaken by later work. **Closing this task as
+      verified-current rather than requiring a rewrite** - the premise that these docs had drifted
+      stale did not hold when checked directly, only this entry's own text had.
 - [ ] **T-23** Re-confirm the `no_std` build still passes (all feature-flag combinations) as each
       primitive lands — don't let this regress silently. Ongoing by design, not a one-time item —
       **last re-checked 2026-07-22** (post D-28/29/30/31): all four `dstu-core` feature
@@ -1469,6 +1519,17 @@ item they point to is later removed.
       D-01), so this confirms no regression rather than adding new coverage. `cargo xtask build`
       (workspace `--all-features` + `--no-default-features`, which also exercises `dstutool`
       linking against a no_std-built `dstu-core`) still passes too.
+      **Re-checked again 2026-07-26** (perf/hygiene roadmap Tier A item 3, overdue by this task's
+      own trigger since T-128's const-generic Kalyna refactor touched `hazmat::kalyna` internals
+      directly): all four base combinations still build clean individually
+      (`--no-default-features`, `--no-default-features --features alloc`, `--features alloc`,
+      `--all-features`), `cargo xtask build`'s three checks (workspace `--all-features`, workspace
+      `--no-default-features`, `dstu-core --no-default-features --features getrandom`, per D-74's
+      own lesson about narrower combinations hiding `dead_code`) all clean, and - per D-39/D-74's
+      standing "check every entry individually, not just the two usual profiles" lesson -
+      `--features pwhash`, `--features small-tables`, and
+      `--no-default-features --features small-tables` each individually confirmed clean too. No
+      regression from T-128's const-generic round functions.
 
 ## Testing & hardening — deeper verification beyond test vectors
 
@@ -1760,6 +1821,17 @@ resistance (SPA/DPA — explicitly out of scope per `SECURITY.md`/`CLAUDE.md` "M
       all matching the correctness/rejection/misuse categories D-64/D-65 already established, just
       re-verified against the real compiled artifact on real hardware instead of `cargo test`.
       Temp files cleaned up after (`/tmp/*.bin`/`*.enc`/`*.dec`/`*.log` on the Pi).
+      **Re-run again 2026-07-26, perf/hygiene roadmap Tier A item 3, specifically to catch T-128's
+      const-generic `hazmat::kalyna` refactor** (the standing "re-run after any change touching
+      `hazmat::kalyna`/`kupyna`/`strumok` internals" trigger, and this is exactly that kind of
+      change): re-synced via the standard tar+ssh approach, `cargo xtask ci` on the Pi. All
+      mandatory checks green - `fmt --all -- --check`, `build --workspace` (`--all-features`,
+      `--no-default-features`, and `dstu-core --no-default-features --features getrandom`),
+      `test --workspace --all-features` (every suite passed including the newer T-128 const-generic
+      differential tests and the 8 `dstu-core` doctests), `clippy --workspace --all-features -- -D
+      warnings` clean. Optional layers (miri/fuzz/audit/deny/mvn/dotnet) still not installed there,
+      unchanged from every prior run. No architecture-specific regression from T-128's const-generic
+      round functions on `aarch64`.
 - [x] **T-103** **Adversarial-test coverage audit across every primitive, see `DECISIONS.md` D-64.**
       User-requested 2026-07-25, directly prompted by D-63's finding that a real
       nonce-authentication gap existed purely because a "does tampering get rejected" test was
@@ -3159,3 +3231,118 @@ full detail)**:
   (detached-API question, `randombytes_uniform`, no-DSTU-angle items) - these live in
   `docs/release-readiness.md`'s new audit section, not `TASKS.md` - don't re-derive them as tasks
   without new information surfacing.
+
+## Roadmap: perf/hygiene/investigation cluster (2026-07-26, user-approved sequencing)
+
+Recorded here, not only in a session's ephemeral plan, per the same standing instruction as the
+Step 0-5 roadmap above: this sequencing must survive a memory clear or a new session. Scope is
+every task open as of 2026-07-26 **except** T-17 (crates.io - separately gated on an explicit
+request, see above, not part of this sequence at all). Four tiers, not a flat list - later tiers
+depend on earlier ones, items within a tier don't depend on each other.
+
+**Open question, resolved 2026-07-26 (see `DECISIONS.md` D-81)**: T-130's Miri/Windows proptest
+hang was diagnosed against `hazmat::kalyna`'s suite specifically; confirmed **mechanism-wide, not
+Kalyna-specific** (reproduced identically on a `hazmat::kupyna` proptest under default isolation),
+and then resolved outright - attempt four's combination (`-Zmiri-disable-isolation` +
+`PROPTEST_DISABLE_FAILURE_PERSISTENCE=1` + `PROPTEST_CASES=8`) works on both modules, and the full
+13-function `hazmat::kalyna` proptest suite passed under Miri (0 UB, 511.16s). **T-130 does not
+move ahead of Tier C - it's fully closed before Tier C starts**, which is better than the
+conditional reordering this question originally anticipated: Tier C's own Miri done-bar is now
+achievable, not merely gated on a still-open investigation.
+
+**Tier A - cheap, no `hazmat` risk, fixes the repo's own documentation honesty:**
+1. **T-87** - refresh `docs/release-readiness.md`. Its own headline text still reads as if D-05 is
+   unresolved and no `crypto_secretbox`/streaming AEAD exists - both stale, superseded by D-63/
+   D-66/D-67/D-68 and D-05's 2026-07-24 resolution-on-assumption. Grep the stale phrases
+   (`255-byte`, `no crypto_secretbox`, `D-05 is still the blocker`, `not started`) across
+   `docs/release-readiness.md`, `docs/dstu-crypto-project.md`, `README.md` before rewriting -
+   same "grep your own task ID across every doc-map file" discipline `CLAUDE.md` already states.
+2. **T-138 + T-133, one session** - both need the same scratch-only `uapki_bench.exe`; doing them
+   together avoids rebuilding it twice. Re-measure CMAC at 64 B for D-80's timer-placement bug
+   (T-138), and formalize the byte-for-byte UAPKI comparison into a committed, reusable
+   script/procedure rather than an ad hoc habit (T-133).
+   **T-138 done 2026-07-26, `DECISIONS.md` D-82. T-133 done 2026-07-26, `DECISIONS.md` D-83** -
+   the project owner chose "commit it" when asked; `tests/oracle-harness/uapki-cmac-bench/
+   cmac_bench.c` is now committed (CMAC only, deliberately narrow scope).
+3. **T-23 + T-35, re-run now** - both say "ongoing by design" but both were last checked
+   2026-07-22, before T-128's const-generic Kalyna refactor. Not ambient hygiene right now -
+   overdue by their own stated trigger ("any change touching `hazmat::kalyna`/`kupyna`/`strumok`
+   internals"). Re-run the full feature matrix locally (T-23) and the Raspberry Pi rig (T-35)
+   before trusting either as current.
+
+**Tier B - investigation that gates Tier C:**
+4. **T-130** - **Done 2026-07-26, see `DECISIONS.md` D-81.** Resolved via attempt four
+   (`-Zmiri-disable-isolation` + `PROPTEST_DISABLE_FAILURE_PERSISTENCE=1` + `PROPTEST_CASES=8`),
+   confirmed mechanism-wide (not Kalyna-specific) and confirmed at full-module scale (13/13
+   `hazmat::kalyna` proptests, 0 UB). Tier C's Miri done-bar is now achievable.
+5. **T-136** - **First measurement done 2026-07-26, see `DECISIONS.md` D-84.** An isolated
+   `criterion` differential benchmark of `encipher_round_n::<4>` against `fused_inv_round_n::<4>`
+   alone (the existing `benches/kalyna.rs` block-only pair already was this measurement) confirmed
+   the decrypt/encrypt asymmetry shows up at the round-function level itself, before T-129 touches
+   either function's internals. Root cause (why, not just where) is still open - T-136 itself
+   stays open for that, this roadmap's own narrower ask (measure it now, before it's lost) is met.
+
+**Tier C - perf rewrites, each gets its own `advisor()` consultation and its own plan-mode pass
+before any code is written (this roadmap's own sequencing call does not substitute for either -
+write that into each step's own session, don't read "advisor was consulted" as already satisfied):**
+6. **T-134** - Kupyna `sub_shift_mix` const-generic-over-`COLUMNS` (direct T-128 analogue, best
+   specified, largest predicted win at `COLUMNS=8`).
+7. **T-135** - Strumok `apply_keystream` batched/fixed-index rewrite (specified directly against
+   `oracles/strumok-dstu8845/strumok.c`'s `next_stream_full_crypt`).
+8. **T-129** - Kalyna word-wide gather in `encipher_round_n`/`fused_inv_round_n` (most invasive;
+   open question is whether whole-`u64` loads fit the existing `SBOX_MDS` table layout or need a
+   new one - resolve that in the T-129-specific `advisor()` pass, not here).
+
+**Tier D - gated on the user, not to be executed unilaterally:**
+9. **T-137** - investigate and verify the UAPKI XTS `gf2m_mul`-specialization fix locally (against
+   `dstu7624_xts_self_test`) freely; **opening an issue or PR on `specinfo-ua/UAPKI` needs its own
+   explicit go-ahead when this step is reached** - do not treat "the fix works locally" as
+   authorization to publish it upstream.
+
+**Excluded from this sequence entirely, with reason (not "later steps" - re-adding any of these
+without new information re-litigates a decision already made):** `T-45` (sketched only, not
+scheduled) - `T-46`/`T-47`/`T-64`/`T-65`/`T-69` (DSTU 9041, zero source material, hard-blocked) -
+`T-49`-`T-53` (language bindings, second priority per `CLAUDE.md`) - `T-55`-`T-59` (Phase 4
+hardware validation, the Step 0-5 roadmap already resolved this out of scope for "a complete
+product" right now) - `T-58` (a standing non-claim to keep intact, not a task with an end state).
+
+Verification bar per tier, unchanged from the Step 0-5 roadmap's own established practice:
+`cargo test --workspace --all-features`, `cargo clippy --workspace --all-features -- -D
+warnings`, `cargo fmt --all -- --check`, the `no_std` feature matrix, and - for Tier C only - a
+Miri run that actually completes (gated on Tier B's T-130 finding, not assumed). Each completed
+item gets its own `DECISIONS.md` entry with citations and a status update at its own `T-NN` line
+above; this section only tracks sequencing, not outcomes - don't duplicate result detail here that
+belongs at the task's own entry.
+
+### RESUME HERE (state as of 2026-07-26, saved for a memory-clear/new-session handoff)
+
+**Tier A fully done. Tier B fully done (T-136's own deeper root-cause investigation stays open as
+its own task, but the roadmap's narrower ask - measure the asymmetry before T-129 changes it - is
+met). Ready to start Tier C.** Completed this session: the open question (T-130 is mechanism-wide,
+not Kalyna-specific, `DECISIONS.md` D-81); **T-130** itself (full fix found and confirmed at
+full-module scale, 13/13 `hazmat::kalyna` proptests under Miri, 0 UB); **T-87** (verified docs
+already current, closed without a rewrite); **T-23** (all feature combinations re-confirmed clean
+post-T-128); **T-35** (Pi re-run, all green, no regression); **T-138** (CMAC re-measured at 64 B
+with a timer-placement-fixed wrapper, `DECISIONS.md` D-82 - real lead is ~1.0-1.45x, not the
+previously-published ~6-8x, plus a real UAPKI CMAC-context-reuse quirk found); **T-133** (asked
+the project owner whether to commit the UAPKI comparison wrapper given it conflicted with
+`PERFORMANCE.md`'s own "not committed" policy - answer was yes, `tests/oracle-harness/
+uapki-cmac-bench/cmac_bench.c` is now committed, `DECISIONS.md` D-83, CMAC only, deliberately
+narrow); **T-136** (the existing `benches/kalyna.rs` block-only pair already was the isolated
+measurement this task asked for - confirmed the encrypt/decrypt asymmetry shows up at the
+round-function level itself, `DECISIONS.md` D-84, ruling out a mode-of-operation-level cause;
+T-136's own deeper "why" stays open as a separate task).
+**Next concrete action**: Tier C, in the stated order (T-134, T-135, T-129) - **each of these three
+needs its own `advisor()` consultation and its own plan-mode pass before any code is written**, per
+the roadmap's own explicit instruction repeated here so it isn't skipped: this roadmap's own
+sequencing call does not substitute for either. Start with T-134 (Kupyna `sub_shift_mix`
+const-generic-over-`COLUMNS`, the most directly T-128-analogous and best-specified of the three).
+Tier D (T-137, the UAPKI XTS upstream fix) only on explicit request when reached - investigating/
+verifying locally is fine, opening an issue/PR upstream is not.
+**Also outstanding, not part of this roadmap's own sequence but flagged during this session**: a
+substantial amount of doc-only work (`TASKS.md`/`DECISIONS.md`/`PERFORMANCE.md`/`.gitignore`, plus
+the new `tests/oracle-harness/uapki-cmac-bench/cmac_bench.c` file) is uncommitted as of this save -
+this project's standing rule is no git commits without an explicit user request, so this was left
+for the user to review/commit rather than committed automatically. Update this paragraph as each
+item completes, same convention as the Step 0-5 roadmap's own "RESUME HERE" section above - don't
+let it go stale while the rest of the section is edited.
