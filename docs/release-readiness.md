@@ -285,8 +285,36 @@ existing. This pass re-fetched libsodium's *current* official API table of conte
 doc pages, not memory) rather than relying on round 1's list, specifically because libsodium's own
 API surface has grown since round 1 - it now documents AEGIS-256/AEGIS-128L, AES256-GCM,
 IP address encryption (`crypto_ipcrypt_*`), and post-quantum `crypto_kem`/ML-KEM768, none of which
-existed in what round 1 checked against. Full section-by-section table is in the conversation this
-request came from, not duplicated here; this section records what actually changed as a result.
+existed in what round 1 checked against. Full section-by-section table below; the rest of this
+section records what actually changed as a result (new tasks, corrections, scope notes) so this
+doesn't need re-deriving from the table alone next time.
+
+| libsodium family | Our equivalent | Status |
+|---|---|---|
+| `crypto_generichash` (BLAKE2b) | `crypto_generichash` (Kupyna) | Done |
+| `crypto_shorthash` (SipHash) | none | No DSTU angle, no consumer - not scheduled |
+| XOF (extendable-output hash) | none | Kupyna has no XOF mode, no DSTU angle |
+| `crypto_secretbox` | `crypto_secretbox` (Kalyna-GCM) | Done, provisional (D-56) |
+| `crypto_secretstream` | `crypto_secretstream` | Done |
+| `crypto_auth`/`crypto_onetimeauth` | `crypto_auth` (Kupyna-KMAC) | Done (Poly1305-shaped one-time-key MAC specifically has no DSTU analogue) |
+| AEAD family (ChaCha20-Poly1305/AEGIS-256/AEGIS-128L/AES256-GCM) | Kalyna-CCM/GCM | Not a gap - alternative cipher *choices*, already decided (D-47) |
+| IP address encryption (`crypto_ipcrypt_*`) | none | No DSTU angle, no use case - not scheduled |
+| `crypto_box` (+ sealed boxes) | `hazmat::dstu9041` | Hard-blocked (T-46, zero source material) |
+| `crypto_sign` sign/verify | `hazmat::dstu4145` + `crypto_sign` | Done |
+| `crypto_sign` keypair generation | `SigningKey::generate()` | **Missing - T-122** |
+| `crypto_kem`/ML-KEM768 (post-quantum) | none | Explicitly out of scope, D-08's spirit - recorded so it isn't rediscovered |
+| `crypto_pwhash` (+ `_str`/`_str_verify`) | `crypto_pwhash` (Argon2id) | Done - `hash_password` already returns the same opaque-string shape as `_str` |
+| `crypto_kdf` | `crypto_kdf` (Kupyna-KDF) | Done |
+| `crypto_kdf_hkdf_*` (RFC 5869 HKDF) | none | No DSTU angle - not scheduled (see stale-claim correction below) |
+| `crypto_kx` | none | Not started (T-47), blocked on DSTU 9041 |
+| `crypto_stream` | `crypto_stream` (Strumok) | Done |
+| SHA-2/SHA-3/HMAC-SHA-2/Keccak-f[1600]/Poly1305/Ristretto | none | Foreign-algorithm interop exposures, not a "do we have a hash/MAC" gap - Kupyna/Kupyna-KMAC already fill that role above |
+| `randombytes_buf` | `randombytes_buf` | Done |
+| `randombytes_uniform` | none | No consumer - not scheduled |
+| Custom RNG backend (`randombytes_set_implementation`) | none | **Missing - T-123**, Phase-4-adjacent (embedded hardware) |
+| `sodium_mlock`/guarded memory | none | **Open question for the owner**, not a task - see below |
+| `uacrypt` CLI: `keygen`/`encrypt`/`decrypt`/`hash` | all present | Done |
+| `uacrypt` CLI: `sign`/`verify` | none | **Missing - T-124**, blocked on T-122 |
 
 **Stale claim corrected**: round 1's "Correction to prior assumptions" above (no separate
 `crypto_kdf_hkdf_*` family exists) is **itself now wrong** - current libsodium documents
