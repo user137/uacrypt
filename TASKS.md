@@ -1109,7 +1109,7 @@ item they point to is later removed.
       standing policy) resolves it. Does not block correctness work - the differential/property
       tests this would check already run and pass under plain `cargo test`; only Miri's UB-detection
       layer is unavailable for this module until this is resolved.
-- [ ] **T-131** Not started. **Policy made 2026-07-26, user-requested**: 10 MiB is now a mandatory
+- [x] **T-131** **DONE 2026-07-26.** **Policy made 2026-07-26, user-requested**: 10 MiB is now a mandatory
       message size for every binary-level (process) comparison table in `PERFORMANCE.md`, not an
       ad hoc addition (`PERFORMANCE.md`'s "Methodology" section has the durable policy text) - every
       variable-length-message mode's table must carry a 10 MiB row/column going forward. Exempt,
@@ -1135,6 +1135,43 @@ item they point to is later removed.
       exactly the UAPKI-side rebuild and re-comparison, nothing more - `advisor()`'s explicit
       direction was not to publish a half-rebuilt UAPKI comparison next to fresh `uacrypt`-only
       numbers, so this stays a separate task rather than being folded into the sweep already done.
+      **CMAC and XTS done, same day (`DECISIONS.md` D-78)**: downloaded the signed
+      `uapki-v2.0.12-win-amd64-signed.zip` release asset, `gendef`/`dlltool` to build an import lib
+      against the prebuilt `uapkic.dll`, wrote a small C wrapper (`uapki_bench.exe`, scratch-only,
+      not committed) calling `dstu7624_init_cmac`/`update_mac`/`final_mac` and
+      `dstu7624_init_xts`/`encrypt`/`decrypt` directly, matching `uacrypt`'s own file-based
+      `--variant`/`--key`/`--in`/`--out`/`--tag`/`--tweak`/`--iterations` CLI shape. Byte-for-byte
+      cross-checked against the real `uacrypt` binary first (all 5 variants, both directions each -
+      15 identity checks, all matched) before trusting any timing - this doubles as T-133's first
+      concrete instance, not a separate effort. **`PERFORMANCE.md`'s CMAC/XTS 10 MiB tables now
+      carry a real UAPKI column**: CMAC - UAPKI still wins by ~1.1-1.9x (T-129's byte-wise-gather
+      gap is exactly what's left uncaptured by T-128). XTS - this project now leads UAPKI by a much
+      wider margin than any other mode in this file (3.2-15.1x), root-caused by reading
+      `dstu7624.c` directly: UAPKI's `encrypt_xts`/`decrypt_xts` call the fully generic `gf2m_mul`
+      (three heap-allocated `WordArray`s, full O(m²) modular multiply) to do the tweak's
+      "multiply by 2" every block, where this project's `Gf2m*::double()` (T-126/D-76) is an O(m),
+      allocation-free shift-and-reduce - not a bug on UAPKI's side, just an unspecialized shared
+      code path. **Remaining scope closed, same day (`DECISIONS.md` D-80)**: extended
+      `uapki_bench.exe` to block (ECB), GCM, GMAC, KW, and CCM. Block/GCM/GMAC/KW byte-for-byte
+      cross-checked against `uacrypt` (both directions, all 5 variants each - 40 identity checks,
+      all matched); CCM confirmed still not byte-comparable (same D-71 wire-convention finding,
+      now root-caused directly from `dstu7624_encrypt_ccm`/`_decrypt_ccm`'s source rather than
+      cited secondhand), kept self-consistent-only (5 own-round-trip checks, all passed). All 9
+      Kalyna modes/primitives this project publishes now have a real, same-session, byte-verified
+      UAPKI column except CCM (by design, wire-format mismatch) - T-131 is complete. **A real
+      timing-methodology bug was found and fixed while extending to GMAC**: the wrapper's
+      `run_gmac` (copied from `run_cmac`'s original structure) timed `dstu7624_alloc`/
+      `dstu7624_init_gmac` inside the same window as the actual MAC computation, while `uacrypt`'s
+      own GMAC command excludes schedule setup the same way every other mode does - for a
+      one-block message this inflated UAPKI's apparent cost enough that the project's
+      long-published "~4-24x uacrypt lead" GMAC conclusion was substantially an artifact of this
+      asymmetry, not a real property of GMAC. Fixed (timer moved to after `init_gmac`); the real
+      gap is **~1.1-2.9x**, not ~4-24x. CMAC was checked against the identical bug and found not
+      materially affected (10 MiB bulk work dwarfs per-call setup cost the way one block cannot) -
+      see `PERFORMANCE.md`'s GMAC section for the full before/after. **Follow-up flagged, not
+      chased here**: historical small-message CMAC (64 B) and CCM numbers, measured by an earlier
+      uncommitted wrapper this session never inherited, could carry the same class of bug -
+      tracked as T-138.
       **A real, unexplained finding surfaced doing the `uacrypt`-only half**: Kalyna-block/XTS/KW's
       decrypt/unwrap direction is *not* symmetric with encrypt/wrap the way GCM/CMAC/CCM's is - on
       some variants (256-256/256-512) the reverse direction now runs *faster*, not just similarly.
@@ -1194,7 +1231,16 @@ item they point to is later removed.
       than keeping tag separate, a different wire convention entirely, D-71 - CCM's timing numbers
       are already flagged "UAPKI-self-consistent, not cross-tool-verified" for this exact reason).
       Depends on the same UAPKI comparison-CLI wrapper T-131 needs - natural to build alongside that
-      task rather than as a fully separate rebuild.
+      task rather than as a fully separate rebuild. **First concrete instance done 2026-07-26, as
+      part of T-131's CMAC/XTS wrapper work (`DECISIONS.md` D-78)**: byte-for-byte diffed
+      `uacrypt`'s and the new UAPKI wrapper's CMAC tags and XTS ciphertext (all 5 variants, both
+      directions) before any timing was trusted - all 15 pairs matched exactly. **Extended
+      same day (`DECISIONS.md` D-80) to block/GCM/GMAC/KW** - 40 more identity checks (both
+      directions, all 5 variants each), all matched; CCM confirmed genuinely not comparable
+      (D-71's wire-convention finding, root-caused directly this time) and kept self-consistent-only
+      instead (5 own-round-trip checks). 100 total identity/consistency checks across all 9 Kalyna
+      modes this project publishes, done in one session. Formalized as reusable shell sweeps
+      (`uapki_compare.sh`/`uapki_compare2.sh`/`uapki_compare3.sh`, scratch-only), not committed.
 - [ ] **T-134** Not started. `hazmat::kupyna.rs`'s `sub_shift_mix` (line 65) has the exact same
       shape T-128 just fixed in `hazmat::kalyna.rs`'s `encipher_round` - found 2026-07-26, checking
       whether Strumok/Kupyna share the same nuance T-128 fixed for Kalyna (they don't both: Strumok
@@ -1279,6 +1325,78 @@ item they point to is later removed.
       before/after baseline, and note `hazmat::strumok.rs`'s existing `#[cfg(feature =
       "small-tables")]` branch on `t_function` - whatever batching shape is chosen must keep working
       under both resource profiles, not silently assume the default `fused` one.
+- [ ] **T-136** Not started. User-requested 2026-07-26, after T-131/D-78's fresh 10 MiB tables kept
+      surfacing the same unexplained shape: Kalyna-block/XTS/KW's decrypt (or unwrap) direction is
+      *not* symmetric with encrypt (or wrap) the way GCM/CMAC/CCM's is - on some variants
+      (256-256/256-512, consistently, across all three modes) the reverse direction runs *faster*
+      than the forward one, not just similarly, and this survived T-128's own const-generic fix
+      rather than being explained by it. Currently attributed only to "`encipher_round_n` and
+      `fused_inv_round_n` are genuinely different code paths" (T-128/D-77) - true, but not itself an
+      explanation of *why* the direction that wins flips specifically at the 256-256/256-512
+      boundary and nowhere else, or why the effect is large enough to show up consistently across
+      three structurally different modes (raw block cipher, disk-sector XTS, Feistel-like KW) built
+      on the same two functions. **Needs actual investigation, not another restatement of the
+      known-different-code-paths fact**: candidates worth checking before concluding anything -
+      whether `fused_inv_round_n`'s inverse S-box/MDS table (`SBOX_MDS_DEC`, see
+      `hazmat::tables.rs`) has different cache-line/lookup behavior than the forward table at
+      `nb=4` specifically; whether the compiler's loop-unrolling/register-allocation choices for
+      `encipher_round_n::<4>` vs `fused_inv_round_n::<4>` differ in a way visible in generated
+      assembly (`cargo asm` or `objdump` on the release binary); whether this is instruction-cache
+      or branch-predictor-related rather than a property of the algorithm at all (would predict the
+      effect moving or disappearing on the Raspberry Pi's different microarchitecture - a concrete,
+      checkable prediction, not just a hypothesis). A `criterion` differential benchmark isolating
+      `encipher_round_n::<4>` against `fused_inv_round_n::<4>` alone (no surrounding mode-of-
+      operation overhead) is the natural first measurement - if the asymmetry already shows up at
+      that isolated level, the cause is in the round functions themselves; if it only shows up in
+      the full CLI-level numbers, the cause is elsewhere (I/O, mode-of-operation bookkeeping, etc.).
+      Not a correctness concern - encrypt/decrypt round-trip correctly on every existing test vector
+      and property test regardless of which direction happens to run faster; this is purely a
+      performance-curiosity task, not gating any release-readiness item.
+- [ ] **T-137** Not started. Hypothetical/goodwill task, proposed by the user 2026-07-26 directly
+      off T-131/D-78's XTS finding ("XTS: цей проєкт випереджає UAPKI у 3.2-15.1x") - since UAPKI is
+      a real dependency of this project's own verification story (an oracle, `ORACLES.md`), fixing
+      the root cause found here and sending it back upstream as a small, welcome contribution ("as
+      a thank-you to them," the user's framing) rather than just quietly benefiting from having
+      found it. **The concrete fix, if pursued**: `oracles/uapki/library/uapkic/src/dstu7624.c`'s
+      `encrypt_xts`/`decrypt_xts` (lines 3003-3067/3069 onward) call the fully generic `gf2m_mul`
+      (lines 2963-3001, three heap-allocated `WordArray`s, full O(m²) modular multiply) to compute
+      the XTS tweak's "multiply by the fixed generator" step every block - mathematically just an
+      O(m) shift-plus-conditional-XOR-reduction (exactly what this project's own `Gf2m*::double()`,
+      T-126/D-76, already does correctly and fast). A specialized `gf2m_mul_by_generator`-style
+      function (or equivalent inline fast path) in their own `dstu7624.c`, used only by
+      `encrypt_xts`/`decrypt_xts`'s tweak update (not touching `gf2m_mul`'s general path, which
+      GCM/GMAC's own field multiply genuinely needs), would close this without touching UAPKI's
+      correctness-relevant code at all - a pure, low-risk optimization PR, not a behavior change.
+      **Explicitly a hypothetical/exploratory task, not authorized to execute yet**: this project's
+      own `CLAUDE.md`/session norms require explicit confirmation before any action visible to
+      others or affecting a shared/external system (opening an issue or PR on someone else's
+      GitHub repo squarely qualifies) - this task is to work out *whether* the fix is real,
+      draft it, and verify it against UAPKI's own test vectors/self-test locally first, then check
+      back with the user before actually opening anything on `specinfo-ua/UAPKI`. **Prerequisite
+      work before any PR could be drafted**: read UAPKI's `CONTRIBUTING`/license terms and PR
+      conventions (if any exist in the repo), confirm the fix doesn't change `encrypt_xts`/
+      `decrypt_xts`'s output for any existing UAPKI-side test vector or self-test
+      (`dstu7624_xts_self_test`, `dstu7624.c:5171`), and confirm it doesn't change the two
+      allocation-per-block-avoiding functions' behavior for GCM/GMAC's own `gf2m_mul` call sites
+      (they must keep using the general path - do not accidentally narrow `gf2m_mul` itself, add a
+      new sibling function instead).
+- [ ] **T-138** Not started. Follow-up flagged by D-80's GMAC finding, 2026-07-26: the wrapper bug
+      found there (timing a per-call `alloc`/`init_*` setup cost inside the same window as the
+      actual operation, while `uacrypt`'s own command excludes it) was specific to this session's
+      freshly-written `run_gmac`/`run_cmac` functions, both now fixed and re-verified. But
+      **historical small-message CMAC (64 B) and CCM numbers already published in `PERFORMANCE.md`
+      were measured by an earlier, uncommitted UAPKI wrapper this session never inherited or
+      inspected** - there is no way to confirm from here whether that wrapper placed its timer
+      correctly (matching `uacrypt`'s cached-schedule convention) or made the same mistake D-80
+      found and fixed in `run_gmac`. Given GMAC's real gap turned out to be ~1.1-2.9x rather than
+      the previously-believed ~4-24x, a similar correction to CMAC's 64 B row or CCM's small-message
+      numbers (currently self-consistent-only anyway, so less exposed) is plausible, not confirmed.
+      **Action**: re-measure CMAC at 64 B using the now-fixed, extended `uapki_bench.exe`
+      (`kalyna-cmac compute/verify` already supports arbitrary message sizes - just re-run at 64 B
+      instead of only 10 MiB), byte-identity already established for this wrapper, so only the
+      timing needs re-taking. Compare against the existing "~6-8x, small-message crossover" claim in
+      `PERFORMANCE.md`'s CMAC section and correct it if the real number differs materially, the same
+      way D-80 corrected GMAC's.
 - [x] **T-19** **Naming subtask, all three decisions made 2026-07-23** (T-20/T-21/T-22 below) -
       unblocks T-17/T-18, which are still separately open (a decided name isn't a crates.io
       publish or a built release binary):

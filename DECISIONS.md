@@ -5164,3 +5164,153 @@ indexing, the oversized always-zeroed scratch buffer, and a separate copy-back p
 User's explicit instruction: do not build an equivalent for the `small-tables` feature - that
 profile deliberately trades throughput for a smaller table footprint (D-35/D-38/D-39), and a
 word-wide gather is a throughput-only change with no meaning under that tradeoff.
+
+## D-78: UAPKI comparison-CLI wrapper rebuilt for CMAC/XTS - T-131/T-133
+
+Requested 2026-07-26: "Чому в таблиці не має uapki? Треба ж з чимось порівнювати" - the user
+noticed `PERFORMANCE.md`'s freshly re-measured 10 MiB tables (post-T-128) had no UAPKI column and
+asked why, making clear the `uacrypt`-only half of T-131 wasn't the actual ask.
+
+**`advisor()`'s direction**: don't write seven wrappers - check first whether `oracles/uapki` has a
+committed `bench.c` harness to reuse; if not, write one wrapper binary covering CMAC and XTS first
+(largest T-128 gains, per `PERFORMANCE.md`'s +86%/+95% cells), verify byte-identical before
+trusting any timing, and don't touch `hazmat` code - nothing about this task needs a source change.
+**No `bench.c` exists in the vendored `oracles/uapki` tree** (verified: `find` for the filename
+returned nothing, and `grep` for `cmd_kw` across the whole tree matches only `dstu7624.c`) - so the
+harness `PERFORMANCE.md`'s T-127/D-76 entry cites ("reading the UAPKI benchmark harness directly -
+`bench.c`'s `cmd_kw`") came from somewhere outside this committed clone (the release zip, an
+uncommitted download, or the citation itself needs re-checking). Not chased further here - flagged
+so that T-127 citation isn't silently assumed re-derivable from what's actually in the repo.
+
+**Mechanics, matching D-71's already-documented method**: downloaded
+`uapki-v2.0.12-win-amd64-signed.zip` (`gh release download v2.0.12 --repo specinfo-ua/UAPKI`,
+confirmed via `gh api .../releases` this asset exists for the exact version this project already
+cites), extracted `uapkic.dll`, `gendef uapkic.dll` then
+`dlltool -d uapkic.def -l libuapkic.a -D uapkic.dll` to build an import lib, confirmed every needed
+symbol (`dstu7624_alloc`/`_init_cmac`/`_init_xts`/`_encrypt`/`_decrypt`/`_update_mac`/`_final_mac`/
+`_free`, `ba_alloc_from_uint8`/`_get_buf_const`/`_get_len`/`_free`) is actually exported in the
+generated `.def` before writing any C. Wrote `uapki_bench.c` (scratch-only, not committed) against
+the vendored `oracles/uapki/library/uapkic/include/*.h` headers (source-available locally, calling
+into the prebuilt DLL - the header/DLL version pairing was not independently re-verified beyond
+both being v2.0.12-labeled, consistent with this project's existing `oracles/uapki` pin), mirroring
+`uacrypt`'s own `kalyna-cmac compute|verify`/`kalyna-xts encrypt|decrypt` file-based CLI shape
+exactly (`--variant`/`--key`/`--in`/`--out`/`--tag`/`--tweak`/`--iterations`), timed with
+`QueryPerformanceCounter` around only the `dstu7624_encrypt`/`_decrypt`/`_update_mac`+`_final_mac`
+call itself, not surrounding setup. Compiled clean on the first attempt (`gcc -O2 ... -luapkic`).
+
+**Verification gate, run before any timing was trusted (this is also T-133's first concrete
+instance, not a separate effort)**: byte-diffed `uacrypt`'s and the wrapper's output for all 5
+variants - CMAC compute (tag), CMAC verify (cross-checked each implementation's tag against the
+other's), XTS encrypt (ciphertext), XTS decrypt (round-tripped back to the original plaintext,
+checked against both implementations' own ciphertext). All 15 identity checks matched exactly. No
+adjustment was made to force a match anywhere - matching D-25's standing warning against
+unexplained transforms that merely produce the expected output.
+
+**Timing taken same session, nothing else CPU-heavy running** (learned from an earlier discarded
++4.9% spurious "regression" this session caused by contemporaneous Miri background load, D-77's own
+narrative) - both binaries run back-to-back at 10 MiB, N=50, both directions:
+
+- **CMAC**: UAPKI still wins, ~1.1-1.9x depending on variant (128-128: 235.86 vs 199.82 MB/s;
+  256-256: 263.40 vs 142.44 MB/s) - narrower than the pre-T-128 1 MiB table's ~1.4-2.2x gap, and
+  exactly the residual T-129 (byte-wise gather vs UAPKI's word-wide `BT_xor*`) predicts is still
+  open. Not a new finding - confirms T-128 closed part of CMAC's gap, not all of it, with a number
+  instead of an inference.
+- **XTS**: this project leads by 3.2-15.1x, the widest margin of any mode measured in this entire
+  file. Root-caused by reading `dstu7624.c` directly, not guessed: `encrypt_xts`/`decrypt_xts`
+  (lines 3003/3069) call the fully generic `gf2m_mul` (lines 2963-3001) to compute the tweak's
+  "multiply by 2" every block - `gf2m_mul` heap-allocates three `WordArray`s
+  (`wa_alloc_from_uint8` x2, `wa_alloc` x1) and runs a full O(m²) modular multiply for a step that
+  is mathematically just a one-bit shift plus a fixed conditional reduction. This project's
+  `Gf2m*::double()` (T-126/D-76) is exactly that O(m), allocation-free operation. **Confirms and
+  extends what the 1 MiB table already flagged for 512-512 specifically** ("3 allocations per
+  call... dominating UAPKI's own XTS throughput at scale") - now shown to hold across every
+  variant, and to widen further once T-128 also sped up this project's own block-cipher path.
+  **Not a bug on UAPKI's side** - `gf2m_mul` is correct, and is shared with GCM/GMAC's own field
+  multiply, where a full multiply genuinely is needed; it is simply not specialized for XTS's one
+  fixed multiplicand the way this project's `double()` is.
+
+**Scope left open**: block/CCM/GCM/GMAC/KW have no rebuilt UAPKI wrapper yet - `uapki_bench.exe`
+can be extended with the remaining `dstu7624_init_*` calls rather than rebuilt from scratch, tracked
+under T-131's remaining scope, not a new task.
+
+## D-79: Byte-identity-verified UAPKI comparison made the standing methodology - policy, not just this session's practice
+
+Decided 2026-07-26, prompted directly by the user after seeing D-78's CMAC/XTS results: a
+`uacrypt`-only table with UAPKI's column simply absent ("wrapper not rebuilt this session, see
+T-131" - the pattern every mode's table used right after T-128) is a stopgap, not an acceptable
+resting state for this project's canonical comparison method (D-34). Going forward, per
+`PERFORMANCE.md`'s "Methodology" section (new bullet, same entry point as the 10 MiB and
+both-directions policies): any new or refreshed binary-level table must (1) build or extend a C
+wrapper against the pinned prebuilt `uapkic.dll` for that mode, (2) byte-diff its output against
+the real `uacrypt` binary for every variant/direction *before* trusting any timing - this is T-133's
+standing check, not a one-off - and (3) time both binaries back-to-back in the same session with
+nothing else CPU-heavy running.
+
+Not retroactive - block/CCM/GCM/GMAC/KW's existing `uacrypt`-only 2026-07-26 tables stay published
+as-is, flagged for a real UAPKI column the next time each is touched, not backfilled here just to
+satisfy the new policy immediately.
+
+## D-80: UAPKI wrapper extended to block/GCM/GMAC/KW/CCM - and a real GMAC timing bug found in the process
+
+Requested 2026-07-26, directly off the user noticing the previous overview table collapsed each
+mode to one number and asked why decrypt/verify/unwrap comparisons against UAPKI were missing -
+D-79's new policy said every future table needs both directions *and* a real UAPKI column, so this
+extends `uapki_bench.exe` (T-131/D-78) to the five modes D-79 flagged as not-yet-rebuilt: block
+(ECB), GCM, GMAC, KW, CCM.
+
+**Mechanics**: read `dstu7624.h`/`dstu7624.c` directly for each mode's API shape rather than
+assuming symmetry with CMAC/XTS - `dstu7624_encrypt`/`_decrypt` already dispatch ECB and KW (same
+functions XTS already used), GCM/CCM go through `dstu7624_encrypt_mac`/`_decrypt_mac`, GMAC through
+`update_mac`/`final_mac` (same shape as CMAC). CCM's tag/nonce-length/`n_max` parameters were
+derived from `hazmat::kalyna_ccm.rs`'s own `kalyna_ccm_variant!` macro invocations (`ccm_nb` values
+{4,4,4,6,8}, `q` values {16,16,16,32,64}) and matched to UAPKI's `nb=((n_max-3)>>3)+1` formula
+(`dstu7624_init_ccm`, `dstu7624.c:4139`) by picking `n_max` in the valid range for each target `nb`.
+
+**Verification gate, same standard as D-78**: byte-diffed every mode/direction/variant before
+trusting any timing. Block (ECB encrypt+decrypt), GCM (encrypt+decrypt, cross-verified each
+implementation decrypting the other's ciphertext), GMAC (compute+verify, cross-verified each
+implementation verifying the other's tag), KW (wrap+unwrap, round-tripped back to original key
+material) - 40 checks, all matched. CCM confirmed **not** byte-comparable, exactly as D-71 already
+documented, now root-caused by reading `dstu7624_encrypt_ccm`/`_decrypt_ccm` directly
+(`dstu7624.c:2792`/`2849`) rather than citing the earlier finding secondhand: `cipher_data` bundles
+a trailing CTR-encrypted checksum suffix that `decrypt_ccm` computes via one CTR pass but never
+actually checks - verification instead recomputes the checksum from decrypted plaintext (`ccm_padd`)
+against a separately-supplied `h_ba` value. There is no single wire-format "tag" on UAPKI's side
+equivalent to `uacrypt`'s separate ciphertext+tag files; CCM stays self-consistent-only (5 UAPKI
+own-round-trip checks, all passed), same posture as before, not forced into a comparison that
+doesn't hold.
+
+**A real bug found while writing this, not by inspection but by the numbers looking wrong**: GMAC's
+freshly-measured 1-block UAPKI numbers came out close to the *old*, already-published ~0.8-1.7 MB/s
+figures - suspicious, since T-125/D-76's comb-multiply fix and T-128's round-function fix should
+both have moved UAPKI's *comparison baseline* not at all (nothing changed on UAPKI's side) but were
+expected to widen this project's own lead, not reproduce the old absolute numbers almost exactly.
+Checking `run_gmac`'s code (copied from `run_cmac`'s original structure) found the actual cause:
+`dstu7624_alloc`/`dstu7624_init_gmac` were timed *inside* the same window as
+`update_mac`/`final_mac`, not excluded the way block/GCM/KW/CCM/XTS (written correctly from D-78's
+XTS pattern onward) all do - `uacrypt`'s own GMAC command expands its schedule once outside the
+loop (matching every other mode), so this was comparing "UAPKI cold-starts every call" against
+"uacrypt reuses a cached schedule," not a fair per-op comparison. For a one-block message, the
+cold-start cost dominates enough to make the whole historical "~4-24x uacrypt lead" conclusion
+mostly an artifact of this asymmetry, not a property of GMAC's design. Fixed (moved the timer start
+to after `init_gmac`, matching every other mode), byte-identity re-confirmed unaffected (timing-only
+bug, not a correctness one), re-measured:
+
+**The real gap is ~1.1-2.9x, not ~4-24x.** uacrypt still leads every variant, but the margin this
+project believed existed for the entirety of this table's prior history was substantially inflated
+by the benchmark, not by GMAC. **CMAC was checked against the identical bug and is not materially
+affected** - re-running CMAC's 10 MiB table with the same fix produced numbers within <1% of
+already-published ones, because bulk 10 MiB work dwarfs microseconds of per-call setup the way a
+single block cannot. Both tables are in `PERFORMANCE.md`'s GMAC section with the full before/after
+comparison; not repeated here.
+
+**Flagged, not chased further**: this exact failure mode (timing a cold-start cost inside a loop
+that the counterpart binary excludes) could equally have affected historical small-message CMAC
+(64 B) and CCM numbers measured by an earlier, uncommitted wrapper this session never inherited or
+inspected - those older rows should be treated as unverified against this specific bug, not assumed
+correct by precedent, until someone re-measures them with a wrapper confirmed to exclude setup cost.
+Lesson for future wrapper code, any mode: **the timer must start after every one-time setup call
+(`alloc`/`init_*`) and stop before any teardown (`free`), matching whichever side of the comparison
+already does this - copying an existing wrapper function's *shape* without checking where it places
+`now_ns()` relative to setup carries this bug forward silently**, exactly what happened copying
+`run_cmac`'s structure into `run_gmac` without re-deriving the timer placement from first principles.

@@ -49,6 +49,22 @@ faster alternative — so this project tracks its own numbers deliberately, not 
   this project's own side), `kalyna-ccm` (`MAX_PLAINTEXT_LEN = 255` bytes, a real cap in this
   implementation). **CMAC is not exempt** — it authenticates an arbitrary-length message the same
   way GCM/XTS do, and already has a published 10 MiB row.
+- **Byte-identity-verified UAPKI comparison is now the standard for every future binary-level
+  table** (policy made explicit 2026-07-26, established by T-131/D-78's CMAC/XTS wrapper rebuild —
+  a "`uacrypt`-only, no UAPKI column, wrapper not rebuilt" table is a stopgap, not an acceptable
+  final state, going forward). Concretely, before publishing a new or refreshed comparison table for
+  any mode: (1) build or extend a small C wrapper against the pinned official prebuilt `uapkic.dll`
+  (`gendef`/`dlltool` import lib, no CMake needed — D-71/D-78's method) mirroring `uacrypt`'s own
+  file-based CLI shape for that mode; (2) byte-diff the wrapper's output against the real `uacrypt`
+  binary for the same key/nonce-or-tweak/input, every variant, every direction, **before trusting
+  any timing** — a number from an unverified wrapper is two programs possibly doing different work
+  at different speeds, not a comparison (T-133's standing check, first applied this way in D-78);
+  (3) time both binaries back-to-back in the same session with nothing else CPU-heavy running (a
+  contemporaneous Miri run once produced a spurious +4.9% "regression" this way — discarded, not
+  published, see D-77's narrative). Tables measured before this policy (block/CCM/GCM/GMAC/KW as of
+  2026-07-26) are not retroactively invalidated, but their `uacrypt`-only re-runs should be paired
+  with a real UAPKI column the next time that mode's table is touched, not left permanently
+  `uacrypt`-only.
 - **Both directions are now standard, not just the forward one** (policy made explicit 2026-07-26,
   user-requested — a one-sided table was found to be the norm up to this point and is being
   corrected going forward): every mode's binary-level table must measure `decrypt` alongside
@@ -318,7 +334,25 @@ column, wrapper not rebuilt this session, T-131), cached schedule, both directio
 
 Same `nb=2`-vs-`nb=4`/`nb=8` split T-128's own isolated criterion measurement predicted (~100%+
 gain at `nb=2`, ~17-24% at `nb=4`/`nb=8`) — this CLI-level number (includes process/loop overhead
-`criterion` doesn't) still tracks the mechanism cleanly. **Encrypt/decrypt asymmetry, same pattern
+`criterion` doesn't) still tracks the mechanism cleanly.
+
+**UAPKI column rebuilt same day (T-131/D-78 extension, `DECISIONS.md` D-80)** — byte-for-byte
+confirmed against the real `uacrypt` binary (both directions, all 5 variants) before timing;
+`dstu7624_init_ecb`'s cost is excluded from the timed window here (same convention as GCM/KW/XTS
+below, not the GMAC bug described above — this mode was written correctly from the start):
+
+| Variant | uacrypt encrypt (MB/s) | UAPKI encrypt (MB/s) | uacrypt decrypt (MB/s) | UAPKI decrypt (MB/s) |
+|---|---|---|---|---|
+| 128-128 | **219.18** | 74.07 | **177.78** | 68.67 |
+| 128-256 | **158.42** | 55.75 | **137.93** | 60.38 |
+| 256-256 | **146.79** | 113.07 | **165.80** | 102.89 |
+| 256-512 | **111.50** | 91.69 | **131.15** | 89.64 |
+| 512-512 | **137.63** | 107.02 | 97.41 | **121.44** |
+
+uacrypt leads on 9 of 10 cells (encrypt: every variant; decrypt: 4 of 5) — 512-512 decrypt is the
+one cell where UAPKI now leads, consistent with the encrypt/decrypt asymmetry described below (this
+run's own decrypt numbers differ from the encrypt-only table just above by ~5-8% run-to-run, normal
+noise for this benchmark, not a regression). **Encrypt/decrypt asymmetry, same pattern
 XTS shows above**: 256-256/256-512 decrypt now runs *faster* than encrypt, while 128-128/128-256/
 512-512 keep encrypt ahead — `encipher_round_n`/`fused_inv_round_n` are different code paths
 (T-128/D-77), so the two directions were never guaranteed to move by the same amount.
@@ -351,8 +385,7 @@ against our exact output shape the way the other modes below are.
 **Reproducing**: `target/release/uacrypt kalyna-ccm encrypt --variant <v> --key <path> --nonce
 <path> --in <path> --out <path> --tag <path> --iterations <N>`.
 
-**Updated 2026-07-26, `uacrypt`-only re-run after T-128** (no UAPKI column, wrapper not rebuilt
-this session, T-131), 64 B, N = 5000, both directions:
+**Updated 2026-07-26, re-run after T-128**, 64 B, N = 5000, both directions:
 
 | Variant | uacrypt encrypt (MB/s) | uacrypt decrypt (MB/s) | vs. pre-T-128 encrypt row |
 |---|---|---|---|
@@ -366,6 +399,32 @@ Same `nb=2`/`nb=4`/`nb=8` gain split as Kalyna-block above — CCM is a CTR-mode
 over the same block cipher, so it inherits T-128's round-function speedup directly. Encrypt/decrypt
 symmetric within normal noise (unlike XTS/block above), consistent with CCM's decrypt path being
 essentially the same CTR+MAC work run in the same order.
+
+**UAPKI column added same day (T-131/D-78 extension, `DECISIONS.md` D-80) — still not byte-for-byte
+comparable, same documented reason as before, now confirmed by reading the C source directly rather
+than inferred**: `dstu7624_encrypt_ccm` (`dstu7624.c:2792`) returns `cipher_data` as
+ciphertext-with-a-trailing-CTR-encrypted-checksum-suffix, but `dstu7624_decrypt_ccm` never actually
+verifies against that suffix — it recomputes the checksum from the decrypted plaintext (`ccm_padd`)
+and compares against a separately-supplied `h_ba` value instead, silently discarding the suffix it
+just decrypted. There is no single "tag" file in UAPKI's own convention equivalent to `uacrypt`'s
+separate ciphertext+tag files, so this wrapper preserves UAPKI's own two-value convention
+(`--out` = full `cipher_data` blob, `--tag` = the real `h_ba` verification value) rather than forcing
+a comparison that isn't meaningful. Timed self-consistently (UAPKI encrypts, UAPKI decrypts its own
+output, round-trips confirmed), both directions, same 64 B scale:
+
+| Variant | UAPKI encrypt (MB/s) | UAPKI decrypt (MB/s) |
+|---|---|---|
+| 128-128 | 2.71 | 3.50 |
+| 128-256 | 3.28 | 3.31 |
+| 256-256 | 3.17 | 2.30 |
+| 256-512 | 2.48 | 2.46 |
+| 512-512 | 2.24 | 2.40 |
+
+Still the same ~7-20x uacrypt lead the earlier no-UAPKI-column table implied by comparison to the
+historical pre-T-128 UAPKI row (2.48-3.27 MB/s) — this project's own per-call allocation-free design
+(no heap allocation in `hazmat::kalyna_ccm`, by construction) remains the dominant reason, not
+affected by the GMAC-class setup-timing bug found and fixed elsewhere this session (CCM's wrapper
+was written fresh this turn with the timer already placed after `init_ccm`, matching block/GCM/KW).
 
 ### Kalyna-GCM (`kalyna-gcm encrypt`)
 
@@ -422,13 +481,10 @@ doubled on every variant (e.g. 512-512: 4.76 → 12.91 MB/s), widening an alread
 **Reproducing**: `target/release/uacrypt kalyna-gcm encrypt --variant <v> --key <path> --nonce
 <path> --in <path> --out <path> --tag <path> --iterations <N>`.
 
-**Updated 2026-07-26, `uacrypt`-only, 10 MiB, N = 50** (T-128's const-generic round-function fix,
+**Updated 2026-07-26, 10 MiB, N = 50** (T-128's const-generic round-function fix,
 not a new GCM-specific change — GCM's own field multiply still dominates per-block cost, so the
-improvement here is smaller than T-128's own block-only numbers): **this is a `uacrypt`-only
-re-measurement, not a fresh UAPKI comparison — the UAPKI wrapper wasn't rebuilt this session, see
-T-131**, so no UAPKI column is shown; do not read the absence of a UAPKI number as this project
-having "lost" the comparison, and do not compare these numbers directly against the 1 MiB table
-above's UAPKI column.
+improvement here is smaller than T-128's own block-only numbers); do not compare these numbers
+directly against the 1 MiB table above's UAPKI column (different message size).
 
 | Variant | uacrypt encrypt (MB/s) | uacrypt decrypt (MB/s) |
 |---|---|---|
@@ -437,6 +493,23 @@ above's UAPKI column.
 | 256-256 | 17.09 | 17.09 |
 | 256-512 | 16.59 | 16.60 |
 | 512-512 | 12.84 | 12.84 |
+
+**UAPKI column rebuilt same day (T-131/D-78 extension, `DECISIONS.md` D-80)** — byte-for-byte
+confirmed against `uacrypt` (both directions, all variants), same 10 MiB scale, before timing:
+
+| Variant | uacrypt encrypt (MB/s) | UAPKI encrypt (MB/s) | uacrypt decrypt (MB/s) | UAPKI decrypt (MB/s) |
+|---|---|---|---|---|
+| 128-128 | **19.93** | 12.90 | **19.95** | 12.90 |
+| 128-256 | **19.27** | 12.74 | **19.58** | 12.75 |
+| 256-256 | 17.17 | **18.21** | 17.17 | **18.32** |
+| 256-512 | 16.66 | **17.63** | 16.67 | 15.84 |
+| 512-512 | **12.90** | 4.74 | **12.90** | 4.76 |
+
+Mixed, same pattern the 1 MiB table already showed: uacrypt leads 128-128/128-256/512-512, UAPKI
+leads 256-256/256-512 (barely, and only on encrypt for 256-512 — its own decrypt number dips below
+uacrypt there, within the kind of run-to-run variance already seen elsewhere in this file). Encrypt
+and decrypt are symmetric on both implementations here (unlike XTS/block/KW), consistent with GCM's
+cost being field-multiply-dominated rather than round-function-direction-dependent.
 
 Encrypt/decrypt symmetric within measurement noise (<0.1% apart on every variant), exactly as
 expected — Kalyna-GCM's decrypt path is CTR-mode decryption plus the same GHASH-style tag
@@ -540,23 +613,30 @@ though the exact per-byte cause (table layout, compiler codegen, etc.) isn't iso
 **Reproducing**: `target/release/uacrypt kalyna-cmac compute --variant <v> --key <path> --in <path>
 --out <path> --iterations <N>`.
 
-**Updated 2026-07-26, `uacrypt`-only, 10 MiB, N = 50** (T-128's const-generic round-function fix —
+**Updated 2026-07-26, 10 MiB, N = 50** (T-128's const-generic round-function fix —
 CMAC is pure block-cipher chaining with no other bottleneck diluting it, unlike GCM's field
-multiply, so this is the mode where T-128's gain should show most directly). **`uacrypt`-only, no
-UAPKI column — the wrapper wasn't rebuilt this session, see T-131**; do not compare directly against
-the 1 MiB table's UAPKI column above.
+multiply, so this is the mode where T-128's gain should show most directly).
 
-| Variant | uacrypt compute (MB/s) | uacrypt verify (MB/s) |
-|---|---|---|
-| 128-128 | 199.08 | 200.13 |
-| 128-256 | 147.56 | 147.12 |
-| 256-256 | 142.29 | 142.30 |
-| 256-512 | 111.61 | 111.27 |
-| 512-512 | 137.16 | 137.01 |
+**UAPKI column added same day (`TASKS.md` T-131, `DECISIONS.md` D-78)**: a small C wrapper
+(scratch-only, not committed) calling UAPKI's prebuilt `uapkic.dll` v2.0.12 directly, matching this
+project's own `uacrypt` file-based CLI shape. Byte-for-byte cross-checked against the real
+`uacrypt` binary before trusting any timing (same key/message, all 5 variants, both compute and
+verify) — every pair matched exactly, so both columns below measure the identical CMAC
+construction, not two different behaviors.
 
-Compute/verify symmetric within noise on every variant, as expected — `verify` recomputes the same
-tag internally and compares, so it's the same cost as `compute` plus a cheap constant-time
-comparison.
+| Variant | uacrypt compute (MB/s) | UAPKI compute (MB/s) | uacrypt verify (MB/s) | UAPKI verify (MB/s) |
+|---|---|---|---|---|
+| 128-128 | 199.82 | **235.86** | 198.86 | **236.21** |
+| 128-256 | 147.41 | **182.88** | 147.51 | **182.66** |
+| 256-256 | 142.44 | **263.40** | 142.30 | **265.15** |
+| 256-512 | 111.54 | **214.74** | 111.66 | **214.17** |
+| 512-512 | 137.14 | **150.83** | 137.12 | **151.06** |
+
+**UAPKI still wins CMAC at this message size, by ~1.1-1.9x depending on variant** — T-128 closed
+most of CMAC's gap (compare against the 1 MiB table above, where UAPKI led by ~1.4-2.2x) but not all
+of it, consistent with T-129 (the byte-wise-gather-vs-word-wide-`BT_xor*` difference) still being
+open — that's exactly the residual class of cost T-128 didn't touch. Compute/verify symmetric
+within noise on both implementations, as expected.
 
 Real, substantial improvement over the 1 MiB row above on every variant (e.g. 512-512: 111.03 →
 137.16, ~+23.5%, roughly matching T-128's own `nb=8` block-only gain). **128-128's own jump (106.85
@@ -604,8 +684,7 @@ steady, as expected (nothing changed on its side).
 **Reproducing**: `target/release/uacrypt kalyna-gmac compute --variant <v> --key <path> --in <path>
 --out <path> --iterations <N>`.
 
-**Updated 2026-07-26, `uacrypt`-only re-run after T-128** (no UAPKI column, wrapper not rebuilt this
-session, T-131), 1 block, N = 5000, both directions:
+**Updated 2026-07-26, re-run after T-128**, 1 block, N = 5000, both directions:
 
 | Variant | uacrypt compute (MB/s) | uacrypt verify (MB/s) | vs. pre-T-128 compute row |
 |---|---|---|---|
@@ -622,6 +701,40 @@ function T-128 sped up, so only a small fraction of GMAC's cost is even reachabl
 256-512/512-512's flat-to-slightly-down cells are within normal single-run noise for a
 single-block, N=5000 operation (less averaging than CMAC/CCM's larger workloads), not a real
 regression — flagged honestly rather than smoothed into a false trend.
+
+**UAPKI column rebuilt same day (T-131/D-78 extension, `DECISIONS.md` D-80) — and every UAPKI
+number above this line is now understood to be an overstated gap, not a fresh finding to build on.**
+Building the UAPKI-side wrapper for GMAC surfaced a real timing-methodology bug in the wrapper
+itself: `dstu7624_alloc`/`dstu7624_init_gmac` were timed *inside* the same window as
+`update_mac`/`final_mac`, while `uacrypt`'s own GMAC command (like every mode above) expands its
+schedule once outside the timed loop. For a one-block message, `init_gmac`'s cost swamps the actual
+one-block MAC computation - exactly the "setup cost is nearly the whole cost" explanation already
+given above for the *old* ~4-24x numbers, except that explanation was describing an artifact of
+*how the comparison was built*, not a genuine property of UAPKI's GMAC. Fixed by moving the timer
+start to after `init_gmac` (matching every other mode's convention) and re-measured, same 1-block
+scale, byte-identity re-confirmed unaffected by the fix (the bug was timing-only, not a correctness
+bug):
+
+| Variant | uacrypt compute (MB/s) | UAPKI compute (MB/s) | Ratio (uacrypt/UAPKI) |
+|---|---|---|---|
+| 128-128 | **21.30** | 11.15 | 1.91x |
+| 128-256 | **22.38** | 11.17 | 2.00x |
+| 256-256 | **18.65** | 16.49 | 1.13x |
+| 256-512 | **17.09** | 15.86 | 1.08x |
+| 512-512 | **13.22** | 4.64 | 2.85x |
+
+**The real gap is ~1.1-2.9x, not ~4-24x** - uacrypt still leads on every variant (GMAC's field
+multiply, T-125/D-76's fix, plus T-128's block-cipher gain both help it), but the margin the
+project believed existed for over a year of this table's history was substantially inflated by a
+benchmark bug, not by GMAC's actual design. **CMAC was checked against the same bug and is not
+materially affected** - re-measuring CMAC's 10 MiB table with the identical fix produced numbers
+within <1% of the already-published ones (bulk 10 MiB work dwarfs a few microseconds of per-call
+setup, unlike GMAC's single block) - so CMAC's existing ~1.1-1.9x UAPKI-leads-here conclusion
+stands unchanged. **Flagged, not re-measured here**: this class of bug could equally affect
+historical small-message CMAC (64 B) and CCM numbers measured by an earlier, uncommitted wrapper
+this session didn't inherit or inspect - those rows should be treated as unverified against this
+specific failure mode until someone re-measures them with a wrapper that is confirmed to exclude
+setup cost, not assumed correct by precedent.
 
 ### Kalyna-KW (`kalyna-kw wrap`)
 
@@ -671,8 +784,7 @@ as a KW-specific cause beyond that.
 **Reproducing**: `target/release/uacrypt kalyna-kw wrap --variant <v> --key <path> --in <path> --out
 <path> --iterations <N>`.
 
-**Updated 2026-07-26, `uacrypt`-only re-run after T-128** (no UAPKI column, wrapper not rebuilt this
-session, T-131), 2 blocks of key material, N = 5000, both directions:
+**Updated 2026-07-26, re-run after T-128**, 2 blocks of key material, N = 5000, both directions:
 
 | Variant | uacrypt wrap (MB/s) | uacrypt unwrap (MB/s) | vs. pre-T-128 wrap row |
 |---|---|---|---|
@@ -683,13 +795,31 @@ session, T-131), 2 blocks of key material, N = 5000, both directions:
 | 512-512 | **9.02** | 6.62 | +22.9% (was 7.34) |
 
 Same `nb=2`/`nb=4`/`nb=8` split as Kalyna-block/CCM above — KW's Feistel-like network is pure
-block-cipher chaining (`v = (n-1)*6` rounds, D-55), so it inherits T-128's gain the same way. This
-narrows KW's residual gap to UAPKI further (was ~1.4-2.2x post-T-127, per the table above — a fresh
-UAPKI-side re-measurement is needed to state the new ratio precisely, tracked under T-131).
+block-cipher chaining (`v = (n-1)*6` rounds, D-55), so it inherits T-128's gain the same way.
 Wrap/unwrap show the same encrypt/decrypt-direction asymmetry XTS and Kalyna-block do (256-256/
 256-512 favor the reverse direction, the others favor the forward one) — consistent with
 `encipher_round_n`/`fused_inv_round_n` being genuinely different code paths (T-128/D-77), not
 measurement error.
+
+**UAPKI column rebuilt same day (T-131/D-78 extension, `DECISIONS.md` D-80)** — byte-for-byte
+confirmed (wrap output, and unwrap round-tripping back to the original key material, both
+implementations), same 2-block scale:
+
+| Variant | uacrypt wrap (MB/s) | UAPKI wrap (MB/s) | uacrypt unwrap (MB/s) | UAPKI unwrap (MB/s) |
+|---|---|---|---|---|
+| 128-128 | **14.18** | 13.14 | **11.56** | 9.64 |
+| 128-256 | 10.16 | **10.58** | **8.89** | 7.68 |
+| 256-256 | 9.23 | **16.52** | 10.39 | **12.73** |
+| 256-512 | 7.32 | **10.91** | 8.28 | **10.57** |
+| 512-512 | 9.03 | **10.54** | 6.64 | **12.43** |
+
+This resolves the "fresh UAPKI-side re-measurement needed" note this section previously carried:
+KW's residual gap did **not** close as far as CMAC/XTS's did — UAPKI still leads on 8 of 10 cells
+(uacrypt wins only 128-128 wrap and 128-256/256-256 unwrap), roughly the same ~1.1-1.9x range D-76's
+finding #1 (a genuine round-function speed difference, separate from T-128's own gain) already
+predicted as the expected residual. Consistent with T-128's own docs elsewhere in this file: KW
+inherits the round-function speedup but was never expected to fully close UAPKI's remaining lead by
+itself.
 
 ### Kalyna-XTS (`kalyna-xts encrypt`)
 
@@ -801,8 +931,7 @@ flagged for whoever next touches this table, not silently assumed unchanged.
 **Reproducing**: same commands as each mode's own section above, with `--iterations 50` and a
 10 MiB (`10485760`-byte) `--in` file.
 
-**Updated 2026-07-26, same day, `uacrypt`-only re-run after T-128** (const-generic Kalyna round
-functions — no UAPKI column here either, wrapper not rebuilt this session, T-131):
+**Updated 2026-07-26, same day, re-run after T-128** (const-generic Kalyna round functions):
 
 | Mode | Variant | uacrypt 10 MiB (MB/s) | vs. this table's own pre-T-128 row |
 |---|---|---|---|
@@ -815,6 +944,40 @@ functions — no UAPKI column here either, wrapper not rebuilt this session, T-1
 | Kupyna-512 | - | 81.29 | +4.3% (was 77.94, same reason) |
 | Strumok-256 | - | 653.08 | +0.7% (was 648.67, within noise — T-128 doesn't touch Strumok) |
 | Strumok-512 | - | 654.80 | +2.9% (was 636.16, same reason) |
+
+**UAPKI column for Kalyna-XTS added same day (`TASKS.md` T-131, `DECISIONS.md` D-78)**, same
+wrapper/verification as CMAC's table above (byte-for-byte identical to `uacrypt` on all 5 variants,
+both directions, confirmed before timing):
+
+| Variant | uacrypt encrypt (MB/s) | UAPKI encrypt (MB/s) | Ratio |
+|---|---|---|---|
+| 128-128 | **194.50** | 12.91 | 15.1x |
+| 128-256 | **144.71** | 12.67 | 11.4x |
+| 256-256 | **136.31** | 18.57 | 7.3x |
+| 256-512 | **107.72** | 18.16 | 5.9x |
+| 512-512 | **132.53** | 40.99 | 3.2x |
+
+**This project leads UAPKI's XTS by 3.2-15.1x at 10 MiB — a far larger margin than any other mode
+in this file, and root-caused, not just observed.** UAPKI's `encrypt_xts` (`dstu7624.c:3003-3067`)
+calls the fully generic `gf2m_mul` (`dstu7624.c:2963-3001`) to compute the tweak's "multiply by 2"
+every block — `gf2m_mul` heap-allocates three `WordArray`s (`wa_alloc_from_uint8` x2, `wa_alloc` x1)
+and runs the full O(m²) modular multiply, for a step that is mathematically just a one-bit shift
+plus a conditional reduction. This project's `Gf2m*::double()` (T-126/D-76) does exactly that O(m)
+operation with no heap allocation at all — the same asymmetry the 1 MiB table above already flagged
+for 512-512 specifically (line ~739's "3 allocations per call... dominating UAPKI's own XTS
+throughput at scale") is confirmed here to hold, and to widen, across every variant now that T-128
+also sped up this project's own block-cipher path. **This is not a bug on UAPKI's side** — it is
+correct, just written generically (the same `gf2m_mul` is shared with GCM/GMAC's own field
+multiply, where a full multiply actually is needed) rather than specialized for the one fixed
+multiplicand XTS's tweak update always uses.
+
+The wrapper re-runs `dstu7624_alloc`/`dstu7624_init_xts` every iteration but times only the
+`dstu7624_encrypt`/`_decrypt` call itself, matching `uacrypt`'s own XTS benchmark path (cached
+`ExpandedKey` built once outside the loop) - schedule/init cost is excluded on both sides, so the
+ratio above reflects bulk per-block work, not setup. Disclosed because CMAC's table above uses the
+same exclusion but shows a much smaller ratio (~1.1-1.9x) - a reader shouldn't assume the two tables
+amortize setup differently just because the ratios differ that much; they don't, the difference is
+the genuine per-block cost gap described above.
 
 **XTS improves substantially on every variant, on top of T-126's already-landed fix** — XTS calls
 the Kalyna block cipher directly (via `ExpandedKey::encrypt_block`) for every data unit, so it
@@ -842,6 +1005,22 @@ less than encrypt, ~15% vs ~22%). 256-256 decrypt actually running *faster* than
 a real, measured result here, not a typo — consistent direction with (though larger in magnitude
 than) T-128's own block-only finding that the two directions don't scale identically across block
 sizes. Not root-caused further than "the two round functions are genuinely different code paths."
+
+**UAPKI decrypt column added same day (T-131/D-78)**, same wrapper, byte-for-byte confirmed to
+round-trip back to the original 10 MiB plaintext for both implementations before timing:
+
+| Variant | uacrypt decrypt (MB/s) | UAPKI decrypt (MB/s) | Ratio |
+|---|---|---|---|
+| 128-128 | **172.81** | 12.59 | 13.7x |
+| 128-256 | **128.22** | 12.23 | 10.5x |
+| 256-256 | **153.43** | 18.21 | 8.4x |
+| 256-512 | **122.91** | 17.85 | 6.9x |
+| 512-512 | **99.96** | 42.48 | 2.4x |
+
+Same lead pattern and same root cause as the encrypt table above — `decrypt_xts` (`dstu7624.c:3069`
+onward) calls the identical generic `gf2m_mul` for the same tweak-doubling step, so the per-block
+allocation cost is symmetric between UAPKI's own encrypt/decrypt too (its two columns move together
+within noise, same as this project's).
 
 ## What the gap is, honestly
 
