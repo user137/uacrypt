@@ -1,0 +1,90 @@
+name: release
+
+# Triggered by a `vX.Y.Z` tag push (TASKS.md T-18) - builds the uacrypt binary for
+# Linux/macOS/Windows, packages the dstu-core source distribution the same way `cargo publish`
+# would, and attaches all of it to a GitHub Release. Deliberately GitHub-only, not crates.io
+# (TASKS.md T-17 stays separately gated) - this workflow never runs `cargo publish`.
+on:
+  push:
+    tags:
+      - "v*"
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-binary:
+    name: build uacrypt (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            asset_name: uacrypt-linux-x86_64.tar.gz
+          - os: macos-latest
+            asset_name: uacrypt-macos-aarch64.tar.gz
+          - os: windows-latest
+            asset_name: uacrypt-windows-x86_64.zip
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo build -p uacrypt --release
+      - name: Package (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          set -eu
+          mkdir dist
+          cp target/release/uacrypt dist/
+          cp README.md LICENSE-MIT LICENSE-APACHE dist/
+          tar -czf "${{ matrix.asset_name }}" -C dist .
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item target/release/uacrypt.exe dist/
+          Copy-Item README.md,LICENSE-MIT,LICENSE-APACHE dist/
+          Compress-Archive -Path dist/* -DestinationPath "${{ matrix.asset_name }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset_name }}
+          path: ${{ matrix.asset_name }}
+
+  package-library:
+    name: package dstu-core source distribution
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      # Same packaging `cargo publish` would produce (respects Cargo.toml's include/exclude), but
+      # without actually publishing to crates.io - T-17 stays separately gated. dstu-core has no
+      # path dependencies of its own, so this needs no --no-verify workaround the way packaging
+      # uacrypt (a path dependency on dstu-core, unpublished) would.
+      - run: cargo package -p dstu-core
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dstu-core-source
+          path: target/package/dstu-core-*.crate
+
+  publish-release:
+    name: create GitHub release
+    needs: [build-binary, package-library]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Flatten artifacts into one directory
+        run: |
+          set -eu
+          mkdir -p release-assets
+          find artifacts -type f -exec cp {} release-assets/ \;
+          ls -la release-assets
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: release-assets/*
+          generate_release_notes: true

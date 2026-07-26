@@ -1,11 +1,15 @@
 # Changelog
 
 All notable changes to this project are documented in this file. Format follows
-[Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Nothing has been released yet -
-`0.1.0` is unpublished, so this file has one `[Unreleased]` section rather than a reconstructed
-per-commit history.
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
+
+## [0.1.0] - 2026-07-26
+
+First tagged release - GitHub Releases only (`TASKS.md` T-18); not published to crates.io
+(`TASKS.md` T-17 stays separately gated on an explicit owner request). Everything below predates
+this tag; there is no reconstructed per-commit history before it.
 
 ### Added
 
@@ -21,10 +25,13 @@ per-commit history.
   `crypto_auth`, `crypto_kdf`, `crypto_stream`, `crypto_sign`, `crypto_pwhash` (Argon2id, not a
   DSTU primitive), `randombytes`.
 - `dstu-core`: `no_std`/`alloc`/`std` feature gating, plus an independent `small-tables` resource
-  profile for constrained targets.
-- `uacrypt`: CLI binary over `dstu-core` - `encrypt`/`decrypt` (over `crypto_secretstream`, genuinely
-  chunked disk I/O), `hash` (Kupyna-256), plus `hazmat`-scoped multi-variant tools
-  (`kalyna-block`, `kalyna-ccm`, `kupyna-digest`, `strumok-crypt`).
+  profile for constrained targets. Cross-compilation confirmed for `thumbv7em-none-eabihf`
+  (STM32 Cortex-M) and `riscv32imc-unknown-none-elf` (ESP32-C3-class RISC-V).
+- `uacrypt`: CLI binary over `dstu-core` - `keygen` (fresh 32-byte key from the OS CSPRNG),
+  `encrypt`/`decrypt` (over `crypto_secretstream`, genuinely chunked disk I/O), `hash`
+  (Kupyna-256), plus `hazmat`-scoped multi-variant tools (`kalyna-block`, `kalyna-ccm`,
+  `kupyna-digest`, `strumok-crypt`). Plain-language `--help`/`-h` for every command, `--version`/
+  `-V` at the top level.
 - Official DSTU test vectors for Kalyna, Kupyna, and DSTU 4145; dual-oracle verification
   (Bouncy Castle Java/.NET harnesses) for Kalyna and Kupyna.
 

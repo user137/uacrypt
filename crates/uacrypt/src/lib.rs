@@ -1414,6 +1414,13 @@ fn is_help_flag(s: &str) -> bool {
     s == "--help" || s == "-h"
 }
 
+/// `true` for `--version`/`-V` (the `-V` short form matches `cargo --version`'s own convention,
+/// e.g. `cargo -V`). Only checked at the top level (`uacrypt --version`), unlike `is_help_flag` -
+/// there is no per-subcommand version to report, every command ships as one binary.
+fn is_version_flag(s: &str) -> bool {
+    s == "--version" || s == "-V"
+}
+
 const TOP_LEVEL_HELP: &str = "\
 uacrypt - a CLI over dstu-core, Ukrainian DSTU cryptographic standards (Kalyna, Kupyna, Strumok).
 
@@ -1425,6 +1432,7 @@ confirmed).
 USAGE:
     uacrypt <command> [flags]
     uacrypt <command> --help    show that command's flags and an example invocation
+    uacrypt --version           print the version and exit
 
 EVERYDAY COMMANDS:
     keygen          Generate a fresh random 32-byte key for `encrypt`/`decrypt`.
@@ -1650,6 +1658,10 @@ pub fn run(args: &[String]) -> Result<(), CliError> {
         }
         Some(cmd) if is_help_flag(cmd) => {
             print_command_help("");
+            Ok(())
+        }
+        Some(cmd) if is_version_flag(cmd) => {
+            println!("uacrypt {}", env!("CARGO_PKG_VERSION"));
             Ok(())
         }
         Some("kalyna-block") => {
@@ -2985,6 +2997,20 @@ mod tests {
     fn run_top_level_help_flag_succeeds() {
         assert!(run(&["--help".to_string()]).is_ok());
         assert!(run(&["-h".to_string()]).is_ok());
+    }
+
+    #[test]
+    fn run_version_flag_succeeds() {
+        assert!(run(&["--version".to_string()]).is_ok());
+        assert!(run(&["-V".to_string()]).is_ok());
+    }
+
+    #[test]
+    fn is_version_flag_matches_only_the_two_known_forms() {
+        assert!(is_version_flag("--version"));
+        assert!(is_version_flag("-V"));
+        assert!(!is_version_flag("-v"));
+        assert!(!is_version_flag("version"));
     }
 
     #[test]

@@ -514,6 +514,16 @@ item they point to is later removed.
       also run against the actual release binary, not assumed from the unit tests - both correctly
       reject without writing `--out`, matching `crypto_secretstream`'s documented behavior. No
       `DECISIONS.md` entry - a documentation correctness fix, not an architectural decision.
+- [x] **T-118** **DONE 2026-07-26.** `uacrypt --version`/`-V` - found missing while preparing for
+      T-19/T-119's GitHub release (user-requested: smoke-test advice from `advisor()` flagged this
+      as the one defect "actively embarrassing in a release artifact" - a downloaded binary with no
+      way to ask it what version it is). Prints `uacrypt <CARGO_PKG_VERSION>` and exits 0; checked
+      only at the top level (`is_version_flag`, mirroring `is_help_flag`'s shape) since there is one
+      binary, not a per-command version. `-V` matches `cargo -V`'s own short form. Added to
+      `TOP_LEVEL_HELP`'s USAGE block. 2 new tests (dispatch succeeds for both spellings, a
+      unit test pinning `is_version_flag`'s exact match set) - all green, plus manually run against
+      the real release binary (`uacrypt --version`/`-V` both print `uacrypt 0.1.0`). No
+      `DECISIONS.md` entry - CLI ergonomics, same call T-108/T-115 made.
 - [x] **T-19** **Naming subtask, all three decisions made 2026-07-23** (T-20/T-21/T-22 below) -
       unblocks T-17/T-18, which are still separately open (a decided name isn't a crates.io
       publish or a built release binary):
