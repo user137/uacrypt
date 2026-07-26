@@ -83,6 +83,8 @@ pub enum CliError {
     SecretstreamUnknownTag,
     SecretstreamTrailingData,
     SecretstreamChunkTooLarge,
+    SignKeyInvalid,
+    SignVerifyFailed,
 }
 
 impl fmt::Display for CliError {
@@ -153,6 +155,14 @@ impl fmt::Display for CliError {
             CliError::SecretstreamChunkTooLarge => write!(
                 f,
                 "decrypt: a chunk length in --in exceeds this build's maximum chunk size - not real encrypt output"
+            ),
+            CliError::SignKeyInvalid => write!(
+                f,
+                "--key is not a valid signing key (must be nonzero and less than the curve order - see uacrypt sign-keygen)"
+            ),
+            CliError::SignVerifyFailed => write!(
+                f,
+                "verify: signature does not verify - message, signature, or key do not match"
             ),
         }
     }
@@ -2075,6 +2085,304 @@ pub fn run_keygen_command(args: &KeygenArgs) -> Result<(), CliError> {
     })
 }
 
+/// Read-buffer size for streaming a message through Kupyna-256 on `sign`/`verify`'s behalf
+/// (`TASKS.md` T-124) - same constant value and same reasoning as `kupyna-digest`'s own
+/// [`DIGEST_STREAM_CHUNK_BYTES`] (D-42): `dstu_core::crypto_sign::SigningKey::sign_digest`/
+/// `VerifyingKey::verify_digest` (T-113) exist specifically so a caller can hash a large message
+/// incrementally instead of loading it whole, so `sign`/`verify` use them rather than
+/// `SigningKey::sign`/`VerifyingKey::verify`'s own whole-message convenience wrappers.
+const SIGN_STREAM_CHUNK_BYTES: usize = 8 * 1024;
+
+/// Hashes `path` with Kupyna-256 in [`SIGN_STREAM_CHUNK_BYTES`]-sized chunks, for `sign`/`verify`.
+fn hash_file_streamed(path: &PathBuf) -> Result<[u8; 32], CliError> {
+    use std::io::Read;
+
+    let mut file = std::fs::File::open(path).map_err(|e| CliError::Io {
+        path: path.clone(),
+        message: e.to_string(),
+    })?;
+    let mut hasher = Kupyna256Hasher::new();
+    let mut chunk = [0u8; SIGN_STREAM_CHUNK_BYTES];
+    loop {
+        let n = file.read(&mut chunk).map_err(|e| CliError::Io {
+            path: path.clone(),
+            message: e.to_string(),
+        })?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&chunk[..n]);
+    }
+    Ok(hasher.finalize())
+}
+
+/// Reads a 21-byte signing-key file and validates it via
+/// [`dstu_core::crypto_sign::SigningKey::from_bytes`].
+fn read_signing_key(path: &PathBuf) -> Result<dstu_core::crypto_sign::SigningKey, CliError> {
+    let bytes = read_exact_file(path, "signing key", 21)?;
+    let mut d = [0u8; 21];
+    d.copy_from_slice(&bytes);
+    dstu_core::crypto_sign::SigningKey::from_bytes(&d).ok_or(CliError::SignKeyInvalid)
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct SignKeygenArgs {
+    pub out_path: PathBuf,
+}
+
+/// Parses `sign-keygen`'s flags (`--out`, required - no other flag exists; there is nothing to
+/// configure about a randomly generated signing key, `DECISIONS.md` D-72).
+///
+/// # Errors
+///
+/// Returns [`CliError::MissingFlag`] or [`CliError::UnknownFlag`].
+pub fn parse_sign_keygen_args(args: &[String]) -> Result<SignKeygenArgs, CliError> {
+    let mut out_path = None;
+
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--out" => {
+                out_path = Some(PathBuf::from(
+                    args.get(i + 1).ok_or(CliError::MissingFlag("out"))?,
+                ));
+                i += 2;
+            }
+            other => return Err(CliError::UnknownFlag(other.to_string())),
+        }
+    }
+
+    Ok(SignKeygenArgs {
+        out_path: out_path.ok_or(CliError::MissingFlag("out"))?,
+    })
+}
+
+/// Runs `sign-keygen`: draws a fresh signing key via rejection sampling against the curve order
+/// ([`dstu_core::crypto_sign::SigningKey::generate`], `TASKS.md` T-122/D-72) and writes its raw
+/// 21-byte encoding to `--out`. A separate command from `keygen` rather than a `--type` flag on
+/// it - a flag choosing between two incompatible key shapes (32-byte symmetric vs. 21-byte
+/// signing scalar) is exactly the kind of knob D-47's "delete the knob" criterion avoids;
+/// `sign-keygen` can't be pointed at the wrong algorithm by a typo'd flag value.
+///
+/// # Errors
+///
+/// Returns [`CliError::Random`] if the OS CSPRNG fails, or [`CliError::Io`] if `--out` can't be
+/// written (e.g. it names a directory).
+pub fn run_sign_keygen_command(args: &SignKeygenArgs) -> Result<(), CliError> {
+    let key = dstu_core::crypto_sign::SigningKey::generate()
+        .map_err(|e| CliError::Random(e.to_string()))?;
+    std::fs::write(&args.out_path, key.to_bytes()).map_err(|e| CliError::Io {
+        path: args.out_path.clone(),
+        message: e.to_string(),
+    })
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct SignPubkeyArgs {
+    pub key_path: PathBuf,
+    pub out_path: PathBuf,
+}
+
+/// Parses `sign-pubkey`'s flags (`--key`/`--out`, both required).
+///
+/// # Errors
+///
+/// Returns [`CliError::MissingFlag`] or [`CliError::UnknownFlag`].
+pub fn parse_sign_pubkey_args(args: &[String]) -> Result<SignPubkeyArgs, CliError> {
+    let mut key_path = None;
+    let mut out_path = None;
+
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--key" => {
+                key_path = Some(PathBuf::from(
+                    args.get(i + 1).ok_or(CliError::MissingFlag("key"))?,
+                ));
+                i += 2;
+            }
+            "--out" => {
+                out_path = Some(PathBuf::from(
+                    args.get(i + 1).ok_or(CliError::MissingFlag("out"))?,
+                ));
+                i += 2;
+            }
+            other => return Err(CliError::UnknownFlag(other.to_string())),
+        }
+    }
+
+    Ok(SignPubkeyArgs {
+        key_path: key_path.ok_or(CliError::MissingFlag("key"))?,
+        out_path: out_path.ok_or(CliError::MissingFlag("out"))?,
+    })
+}
+
+/// Runs `sign-pubkey`: reads a 21-byte signing key from `--key`, derives `Q = -d*G`
+/// ([`dstu_core::crypto_sign::SigningKey::verifying_key`]), and writes its 42-byte uncompressed
+/// `x || y` encoding to `--out` - the file format `verify --key` expects.
+///
+/// # Errors
+///
+/// Returns [`CliError::Io`]/[`CliError::WrongLength`] for file problems, or
+/// [`CliError::SignKeyInvalid`] if `--key` isn't a valid signing key.
+pub fn run_sign_pubkey_command(args: &SignPubkeyArgs) -> Result<(), CliError> {
+    let signing_key = read_signing_key(&args.key_path)?;
+    let verifying_key = signing_key.verifying_key();
+    std::fs::write(&args.out_path, verifying_key.to_uncompressed_bytes()).map_err(|e| {
+        CliError::Io {
+            path: args.out_path.clone(),
+            message: e.to_string(),
+        }
+    })
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct SignArgs {
+    pub key_path: PathBuf,
+    pub in_path: PathBuf,
+    pub out_path: PathBuf,
+}
+
+/// Parses `sign`'s flags (`--key`/`--in`/`--out`, all required).
+///
+/// # Errors
+///
+/// Returns [`CliError::MissingFlag`] or [`CliError::UnknownFlag`].
+pub fn parse_sign_args(args: &[String]) -> Result<SignArgs, CliError> {
+    let mut key_path = None;
+    let mut in_path = None;
+    let mut out_path = None;
+
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--key" => {
+                key_path = Some(PathBuf::from(
+                    args.get(i + 1).ok_or(CliError::MissingFlag("key"))?,
+                ));
+                i += 2;
+            }
+            "--in" => {
+                in_path = Some(PathBuf::from(
+                    args.get(i + 1).ok_or(CliError::MissingFlag("in"))?,
+                ));
+                i += 2;
+            }
+            "--out" => {
+                out_path = Some(PathBuf::from(
+                    args.get(i + 1).ok_or(CliError::MissingFlag("out"))?,
+                ));
+                i += 2;
+            }
+            other => return Err(CliError::UnknownFlag(other.to_string())),
+        }
+    }
+
+    Ok(SignArgs {
+        key_path: key_path.ok_or(CliError::MissingFlag("key"))?,
+        in_path: in_path.ok_or(CliError::MissingFlag("in"))?,
+        out_path: out_path.ok_or(CliError::MissingFlag("out"))?,
+    })
+}
+
+/// Runs `sign`: hashes `--in` with Kupyna-256 in bounded-memory chunks
+/// ([`hash_file_streamed`], D-42), signs the digest with `--key`
+/// ([`dstu_core::crypto_sign::SigningKey::sign_digest`], deterministic nonce - D-46), and writes
+/// the 42-byte `r || s` signature to `--out`.
+///
+/// # Errors
+///
+/// Returns [`CliError::Io`]/[`CliError::WrongLength`] for file problems, or
+/// [`CliError::SignKeyInvalid`] if `--key` isn't a valid signing key.
+pub fn run_sign_command(args: &SignArgs) -> Result<(), CliError> {
+    let signing_key = read_signing_key(&args.key_path)?;
+    let digest = hash_file_streamed(&args.in_path)?;
+    let sig = signing_key.sign_digest(&digest);
+    std::fs::write(&args.out_path, sig.to_bytes()).map_err(|e| CliError::Io {
+        path: args.out_path.clone(),
+        message: e.to_string(),
+    })
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct VerifyArgs {
+    pub key_path: PathBuf,
+    pub in_path: PathBuf,
+    pub sig_path: PathBuf,
+}
+
+/// Parses `verify`'s flags (`--key`/`--in`/`--sig`, all required).
+///
+/// # Errors
+///
+/// Returns [`CliError::MissingFlag`] or [`CliError::UnknownFlag`].
+pub fn parse_verify_args(args: &[String]) -> Result<VerifyArgs, CliError> {
+    let mut key_path = None;
+    let mut in_path = None;
+    let mut sig_path = None;
+
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--key" => {
+                key_path = Some(PathBuf::from(
+                    args.get(i + 1).ok_or(CliError::MissingFlag("key"))?,
+                ));
+                i += 2;
+            }
+            "--in" => {
+                in_path = Some(PathBuf::from(
+                    args.get(i + 1).ok_or(CliError::MissingFlag("in"))?,
+                ));
+                i += 2;
+            }
+            "--sig" => {
+                sig_path = Some(PathBuf::from(
+                    args.get(i + 1).ok_or(CliError::MissingFlag("sig"))?,
+                ));
+                i += 2;
+            }
+            other => return Err(CliError::UnknownFlag(other.to_string())),
+        }
+    }
+
+    Ok(VerifyArgs {
+        key_path: key_path.ok_or(CliError::MissingFlag("key"))?,
+        in_path: in_path.ok_or(CliError::MissingFlag("in"))?,
+        sig_path: sig_path.ok_or(CliError::MissingFlag("sig"))?,
+    })
+}
+
+/// Runs `verify`: hashes `--in` with Kupyna-256 in bounded-memory chunks
+/// ([`hash_file_streamed`], D-42), and checks `--sig` against `--key` (a 42-byte uncompressed
+/// verifying key - [`dstu_core::crypto_sign::VerifyingKey::from_uncompressed_bytes`]) via
+/// [`dstu_core::crypto_sign::VerifyingKey::verify_digest`]. Succeeds silently (`Ok(())`, exit 0)
+/// on a valid signature, matching `kalyna-cmac verify`/`kalyna-gmac verify`'s own convention -
+/// there is nothing to write to disk on success, unlike `decrypt`.
+///
+/// # Errors
+///
+/// Returns [`CliError::Io`]/[`CliError::WrongLength`] for file problems, or
+/// [`CliError::SignVerifyFailed`] if the signature does not verify.
+pub fn run_verify_command(args: &VerifyArgs) -> Result<(), CliError> {
+    let key_bytes = read_exact_file(&args.key_path, "verifying key", 42)?;
+    let mut q = [0u8; 42];
+    q.copy_from_slice(&key_bytes);
+    let verifying_key = dstu_core::crypto_sign::VerifyingKey::from_uncompressed_bytes(&q);
+
+    let sig_bytes = read_exact_file(&args.sig_path, "signature", 42)?;
+    let mut sig_arr = [0u8; 42];
+    sig_arr.copy_from_slice(&sig_bytes);
+    let sig = dstu_core::crypto_sign::Signature::from_bytes(&sig_arr);
+
+    let digest = hash_file_streamed(&args.in_path)?;
+    if verifying_key.verify_digest(&digest, &sig) {
+        Ok(())
+    } else {
+        Err(CliError::SignVerifyFailed)
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct StrumokArgs {
     pub variant: HashBits,
@@ -2336,6 +2644,10 @@ EVERYDAY COMMANDS:
     encrypt         Encrypt a file of any size with a 32-byte key (authenticated, streamed).
     decrypt         Decrypt a file produced by `encrypt`.
     hash            Compute a Kupyna-256 digest of a file of any size.
+    sign-keygen     Generate a fresh signing key for `sign`.
+    sign-pubkey     Derive the matching verifying key from a signing key, for `verify`.
+    sign            Sign a file of any size with a signing key (DSTU 4145).
+    verify          Check a `sign` signature against a verifying key.
 
 LOWER-LEVEL COMMANDS (benchmarking/interop - most users want the three above instead):
     kalyna-block    Single Kalyna block encrypt/decrypt - exactly one block, no file support.
@@ -2431,6 +2743,83 @@ FLAGS:
 
 EXAMPLE:
     uacrypt hash --in report.pdf --out report.pdf.kupyna256
+";
+
+const SIGN_KEYGEN_HELP: &str = "\
+uacrypt sign-keygen - generate a fresh signing key for `sign`.
+
+Draws from the OS CSPRNG via rejection sampling against the DSTU 4145 curve order (never a modulo
+reduction, which would bias the result - DECISIONS.md D-72) and writes the raw 21-byte private
+scalar to --out. A separate command from `keygen` - a signing key and an `encrypt`/`decrypt` key
+are different, incompatible things, not two settings of the same command.
+
+USAGE:
+    uacrypt sign-keygen --out <path>
+
+FLAGS:
+    --out <path>    where to write the 21-byte signing key
+
+EXAMPLE:
+    uacrypt sign-keygen --out signing.key
+
+Notes:
+    - Keep this file secret - anyone who has it can sign as you.
+    - Derive the matching public verifying key with `uacrypt sign-pubkey`.
+";
+
+const SIGN_PUBKEY_HELP: &str = "\
+uacrypt sign-pubkey - derive the matching verifying key from a signing key.
+
+Reads --key (a `sign-keygen` output) and writes the 42-byte public verifying key that `verify`
+needs - safe to share, unlike the signing key itself.
+
+USAGE:
+    uacrypt sign-pubkey --key <path> --out <path>
+
+FLAGS:
+    --key <path>    a signing key (from `uacrypt sign-keygen`)
+    --out <path>    where to write the 42-byte verifying key
+
+EXAMPLE:
+    uacrypt sign-pubkey --key signing.key --out verifying.key
+";
+
+const SIGN_HELP: &str = "\
+uacrypt sign - sign a file of any size with a signing key (DSTU 4145).
+
+Hashes --in with Kupyna-256 in bounded memory chunks, then signs the digest (deterministic nonce -
+no RNG involved in signing itself, only in `sign-keygen`). Writes the 42-byte signature to --out.
+
+USAGE:
+    uacrypt sign --key <path> --in <path> --out <path>
+
+FLAGS:
+    --key <path>    a signing key (from `uacrypt sign-keygen`)
+    --in <path>     file to sign
+    --out <path>    where to write the 42-byte signature
+
+EXAMPLE:
+    uacrypt sign --key signing.key --in report.pdf --out report.pdf.sig
+";
+
+const VERIFY_HELP: &str = "\
+uacrypt verify - check a `sign` signature against a verifying key.
+
+Hashes --in the same way `sign` did, then checks --sig against --key (a `sign-pubkey` output).
+Prints nothing and exits 0 on a valid signature; exits with an error (nothing written) if the
+message, signature, or key do not match - a tampered file or a wrong key is detected, not silently
+accepted.
+
+USAGE:
+    uacrypt verify --key <path> --in <path> --sig <path>
+
+FLAGS:
+    --key <path>    a verifying key (from `uacrypt sign-pubkey`)
+    --in <path>     the file that was signed
+    --sig <path>    the signature (from `uacrypt sign`)
+
+EXAMPLE:
+    uacrypt verify --key verifying.key --in report.pdf --sig report.pdf.sig
 ";
 
 const KALYNA_BLOCK_HELP: &str = "\
@@ -2649,6 +3038,10 @@ fn print_command_help(command: &str) {
         "encrypt" => ENCRYPT_HELP,
         "decrypt" => DECRYPT_HELP,
         "hash" => HASH_HELP,
+        "sign-keygen" => SIGN_KEYGEN_HELP,
+        "sign-pubkey" => SIGN_PUBKEY_HELP,
+        "sign" => SIGN_HELP,
+        "verify" => VERIFY_HELP,
         "kalyna-block" => KALYNA_BLOCK_HELP,
         "kalyna-ccm" => KALYNA_CCM_HELP,
         "kalyna-gcm" => KALYNA_GCM_HELP,
@@ -2661,6 +3054,23 @@ fn print_command_help(command: &str) {
         _ => TOP_LEVEL_HELP,
     };
     println!("{text}");
+}
+
+/// Dispatches `sign-keygen`/`sign-pubkey`/`sign`/`verify` - split out of [`run`] for the same
+/// `clippy::pedantic` line-count reason as [`dispatch_kalyna_mode`] (`DECISIONS.md` D-71's
+/// precedent, `TASKS.md` T-124); `cmd` is always one of the four literals [`run`]'s own match arm
+/// already narrowed it to. `rest` excludes both the program name and `cmd` itself.
+fn dispatch_sign_command(cmd: &str, rest: &[String]) -> Result<(), CliError> {
+    if rest.iter().any(|a| is_help_flag(a)) {
+        print_command_help(cmd);
+        return Ok(());
+    }
+    match cmd {
+        "sign-keygen" => run_sign_keygen_command(&parse_sign_keygen_args(rest)?),
+        "sign-pubkey" => run_sign_pubkey_command(&parse_sign_pubkey_args(rest)?),
+        "sign" => run_sign_command(&parse_sign_args(rest)?),
+        _ => run_verify_command(&parse_verify_args(rest)?),
+    }
 }
 
 /// Dispatches `kalyna-gcm`/`kalyna-cmac`/`kalyna-gmac`/`kalyna-kw`/`kalyna-xts` - split out of
@@ -2803,6 +3213,9 @@ pub fn run(args: &[String]) -> Result<(), CliError> {
             }
             run_secretstream_command(true, &parse_secretstream_args(&args[1..])?)
         }
+        Some(cmd @ ("sign-keygen" | "sign-pubkey" | "sign" | "verify")) => {
+            dispatch_sign_command(cmd, &args[1..])
+        }
         Some(other) => Err(CliError::UnknownCommand(other.to_string())),
     }
 }
@@ -2944,6 +3357,16 @@ mod tests {
         fn drop(&mut self) {
             let _ = std::fs::remove_dir_all(&self.0);
         }
+    }
+
+    /// A small, obviously-valid signing-key candidate (`n`'s top byte is `0x04` - see
+    /// `dstu_core::hazmat::dstu4145::curve163::order`) for `sign`/`verify` tests that just need
+    /// *some* valid key, distinguished only by its low byte - same convention as
+    /// `dstu-core`'s own `tests/crypto_sign.rs::small_scalar`.
+    fn small_signing_key(low_byte: u8) -> [u8; 21] {
+        let mut out = [0u8; 21];
+        out[20] = low_byte;
+        out
     }
 
     #[test]
@@ -4104,6 +4527,10 @@ mod tests {
             "encrypt",
             "decrypt",
             "hash",
+            "sign-keygen",
+            "sign-pubkey",
+            "sign",
+            "verify",
             "kalyna-block",
             "kalyna-ccm",
             "kupyna-digest",
@@ -4685,5 +5112,579 @@ mod tests {
                 "{cmd} with an unknown subcommand should be rejected, got {result:?}"
             );
         }
+    }
+
+    // T-124: `sign-keygen`/`sign-pubkey`/`sign`/`verify` - a libsodium/misuse-resistant CLI over
+    // `dstu_core::crypto_sign` (T-48/D-46, keypair generation T-122/D-72).
+
+    #[test]
+    fn parse_sign_keygen_args_happy_path() {
+        let args = vec!["--out".to_string(), "signing.key".to_string()];
+        assert_eq!(
+            parse_sign_keygen_args(&args),
+            Ok(SignKeygenArgs {
+                out_path: PathBuf::from("signing.key"),
+            })
+        );
+    }
+
+    #[test]
+    fn parse_sign_keygen_args_requires_out() {
+        assert_eq!(
+            parse_sign_keygen_args(&[]),
+            Err(CliError::MissingFlag("out"))
+        );
+    }
+
+    #[test]
+    fn parse_sign_keygen_args_rejects_unknown_flag() {
+        assert_eq!(
+            parse_sign_keygen_args(&["--variant".to_string(), "256".to_string()]),
+            Err(CliError::UnknownFlag("--variant".to_string()))
+        );
+    }
+
+    #[test]
+    fn parse_sign_pubkey_args_happy_path() {
+        let args = vec![
+            "--key".to_string(),
+            "signing.key".to_string(),
+            "--out".to_string(),
+            "verifying.key".to_string(),
+        ];
+        assert_eq!(
+            parse_sign_pubkey_args(&args),
+            Ok(SignPubkeyArgs {
+                key_path: PathBuf::from("signing.key"),
+                out_path: PathBuf::from("verifying.key"),
+            })
+        );
+    }
+
+    #[test]
+    fn parse_sign_pubkey_args_requires_key_and_out() {
+        assert_eq!(
+            parse_sign_pubkey_args(&[]),
+            Err(CliError::MissingFlag("key"))
+        );
+        assert_eq!(
+            parse_sign_pubkey_args(&["--key".to_string(), "k".to_string()]),
+            Err(CliError::MissingFlag("out"))
+        );
+    }
+
+    #[test]
+    fn parse_sign_pubkey_args_rejects_unknown_flag() {
+        assert_eq!(
+            parse_sign_pubkey_args(&["--variant".to_string(), "256".to_string()]),
+            Err(CliError::UnknownFlag("--variant".to_string()))
+        );
+    }
+
+    #[test]
+    fn parse_sign_args_happy_path() {
+        let args = vec![
+            "--key".to_string(),
+            "signing.key".to_string(),
+            "--in".to_string(),
+            "msg.bin".to_string(),
+            "--out".to_string(),
+            "msg.sig".to_string(),
+        ];
+        assert_eq!(
+            parse_sign_args(&args),
+            Ok(SignArgs {
+                key_path: PathBuf::from("signing.key"),
+                in_path: PathBuf::from("msg.bin"),
+                out_path: PathBuf::from("msg.sig"),
+            })
+        );
+    }
+
+    #[test]
+    fn parse_sign_args_requires_all_of_key_in_out() {
+        assert_eq!(parse_sign_args(&[]), Err(CliError::MissingFlag("key")));
+        assert_eq!(
+            parse_sign_args(&["--key".to_string(), "k".to_string()]),
+            Err(CliError::MissingFlag("in"))
+        );
+        assert_eq!(
+            parse_sign_args(&[
+                "--key".to_string(),
+                "k".to_string(),
+                "--in".to_string(),
+                "i".to_string(),
+            ]),
+            Err(CliError::MissingFlag("out"))
+        );
+    }
+
+    #[test]
+    fn parse_sign_args_rejects_unknown_flag() {
+        assert_eq!(
+            parse_sign_args(&["--variant".to_string(), "256".to_string()]),
+            Err(CliError::UnknownFlag("--variant".to_string()))
+        );
+    }
+
+    #[test]
+    fn parse_verify_args_happy_path() {
+        let args = vec![
+            "--key".to_string(),
+            "verifying.key".to_string(),
+            "--in".to_string(),
+            "msg.bin".to_string(),
+            "--sig".to_string(),
+            "msg.sig".to_string(),
+        ];
+        assert_eq!(
+            parse_verify_args(&args),
+            Ok(VerifyArgs {
+                key_path: PathBuf::from("verifying.key"),
+                in_path: PathBuf::from("msg.bin"),
+                sig_path: PathBuf::from("msg.sig"),
+            })
+        );
+    }
+
+    #[test]
+    fn parse_verify_args_requires_all_of_key_in_sig() {
+        assert_eq!(parse_verify_args(&[]), Err(CliError::MissingFlag("key")));
+        assert_eq!(
+            parse_verify_args(&["--key".to_string(), "k".to_string()]),
+            Err(CliError::MissingFlag("in"))
+        );
+        assert_eq!(
+            parse_verify_args(&[
+                "--key".to_string(),
+                "k".to_string(),
+                "--in".to_string(),
+                "i".to_string(),
+            ]),
+            Err(CliError::MissingFlag("sig"))
+        );
+    }
+
+    #[test]
+    fn parse_verify_args_rejects_unknown_flag() {
+        assert_eq!(
+            parse_verify_args(&["--variant".to_string(), "256".to_string()]),
+            Err(CliError::UnknownFlag("--variant".to_string()))
+        );
+    }
+
+    /// Full golden path: `sign-keygen` -> `sign-pubkey` -> `sign` -> `verify`, entirely through
+    /// the CLI layer, matching how a real user would actually use this feature.
+    #[cfg_attr(
+        miri,
+        ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see TASKS.md T-100"
+    )]
+    #[test]
+    fn sign_verify_golden_path_round_trips() {
+        let dir = TempDir::new("sign_golden_path");
+        run_sign_keygen_command(&SignKeygenArgs {
+            out_path: dir.file("signing.key"),
+        })
+        .expect("sign-keygen should succeed");
+        run_sign_pubkey_command(&SignPubkeyArgs {
+            key_path: dir.file("signing.key"),
+            out_path: dir.file("verifying.key"),
+        })
+        .expect("sign-pubkey should succeed");
+        std::fs::write(dir.file("msg.bin"), b"a real message to sign").expect("write message");
+        run_sign_command(&SignArgs {
+            key_path: dir.file("signing.key"),
+            in_path: dir.file("msg.bin"),
+            out_path: dir.file("msg.sig"),
+        })
+        .expect("sign should succeed");
+
+        let sig_bytes = std::fs::read(dir.file("msg.sig")).expect("read signature");
+        assert_eq!(sig_bytes.len(), 42);
+        let key_bytes = std::fs::read(dir.file("verifying.key")).expect("read verifying key");
+        assert_eq!(key_bytes.len(), 42);
+
+        run_verify_command(&VerifyArgs {
+            key_path: dir.file("verifying.key"),
+            in_path: dir.file("msg.bin"),
+            sig_path: dir.file("msg.sig"),
+        })
+        .expect("verify should succeed on the real signature");
+    }
+
+    #[cfg_attr(
+        miri,
+        ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see TASKS.md T-100"
+    )]
+    #[test]
+    fn run_sign_command_matches_dstu_core_directly() {
+        let dir = TempDir::new("sign_matches_dstu_core");
+        let signing_key = dstu_core::crypto_sign::SigningKey::generate()
+            .expect("OS CSPRNG available in test environment");
+        std::fs::write(dir.file("signing.key"), signing_key.to_bytes()).expect("write key");
+        std::fs::write(dir.file("msg.bin"), b"cross-check me").expect("write message");
+
+        run_sign_command(&SignArgs {
+            key_path: dir.file("signing.key"),
+            in_path: dir.file("msg.bin"),
+            out_path: dir.file("msg.sig"),
+        })
+        .expect("sign should succeed");
+
+        let expected = signing_key.sign(b"cross-check me").to_bytes();
+        let actual = std::fs::read(dir.file("msg.sig")).expect("read signature");
+        assert_eq!(actual, expected);
+    }
+
+    #[cfg_attr(
+        miri,
+        ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see TASKS.md T-100"
+    )]
+    #[test]
+    fn run_sign_keygen_command_produces_distinct_keys_each_call() {
+        let dir = TempDir::new("sign_keygen_distinct");
+        run_sign_keygen_command(&SignKeygenArgs {
+            out_path: dir.file("key1.bin"),
+        })
+        .expect("first sign-keygen should succeed");
+        run_sign_keygen_command(&SignKeygenArgs {
+            out_path: dir.file("key2.bin"),
+        })
+        .expect("second sign-keygen should succeed");
+
+        let key1 = std::fs::read(dir.file("key1.bin")).expect("read key1");
+        let key2 = std::fs::read(dir.file("key2.bin")).expect("read key2");
+        assert_ne!(
+            key1, key2,
+            "two sign-keygen calls must not produce the same key"
+        );
+    }
+
+    #[test]
+    fn run_sign_keygen_command_directory_as_out_is_io_error_not_panic() {
+        let dir = TempDir::new("sign_keygen_dir_out");
+        std::fs::create_dir_all(dir.file("a_directory")).expect("create sub-directory");
+        assert!(matches!(
+            run_sign_keygen_command(&SignKeygenArgs {
+                out_path: dir.file("a_directory"),
+            }),
+            Err(CliError::Io { .. })
+        ));
+    }
+
+    #[test]
+    fn run_sign_pubkey_command_directory_as_out_is_io_error_not_panic() {
+        let dir = TempDir::new("sign_pubkey_dir_out");
+        std::fs::create_dir_all(dir.file("a_directory")).expect("create sub-directory");
+        std::fs::write(dir.file("signing.key"), small_signing_key(0x11)).expect("write key");
+        assert!(matches!(
+            run_sign_pubkey_command(&SignPubkeyArgs {
+                key_path: dir.file("signing.key"),
+                out_path: dir.file("a_directory"),
+            }),
+            Err(CliError::Io { .. })
+        ));
+    }
+
+    #[test]
+    fn run_sign_pubkey_command_wrong_key_length_is_rejected() {
+        let dir = TempDir::new("sign_pubkey_wrong_len");
+        std::fs::write(dir.file("signing.key"), [0x11u8; 20]).expect("write short key");
+        assert_eq!(
+            run_sign_pubkey_command(&SignPubkeyArgs {
+                key_path: dir.file("signing.key"),
+                out_path: dir.file("verifying.key"),
+            }),
+            Err(CliError::WrongLength {
+                what: "signing key",
+                expected: 21,
+                actual: 20,
+            })
+        );
+    }
+
+    #[test]
+    fn run_sign_command_wrong_key_length_is_rejected() {
+        let dir = TempDir::new("sign_wrong_len");
+        std::fs::write(dir.file("signing.key"), [0x11u8; 20]).expect("write short key");
+        std::fs::write(dir.file("msg.bin"), b"hello").expect("write message");
+        assert_eq!(
+            run_sign_command(&SignArgs {
+                key_path: dir.file("signing.key"),
+                in_path: dir.file("msg.bin"),
+                out_path: dir.file("msg.sig"),
+            }),
+            Err(CliError::WrongLength {
+                what: "signing key",
+                expected: 21,
+                actual: 20,
+            })
+        );
+    }
+
+    /// A zero scalar is the right length (21 bytes) but not a valid private key - a distinct
+    /// misuse case from the wrong-length one above, and one only `SignKeyInvalid` (not
+    /// `WrongLength`) can report.
+    #[test]
+    fn run_sign_command_zero_key_is_rejected() {
+        let dir = TempDir::new("sign_zero_key");
+        std::fs::write(dir.file("signing.key"), [0u8; 21]).expect("write zero key");
+        std::fs::write(dir.file("msg.bin"), b"hello").expect("write message");
+        assert_eq!(
+            run_sign_command(&SignArgs {
+                key_path: dir.file("signing.key"),
+                in_path: dir.file("msg.bin"),
+                out_path: dir.file("msg.sig"),
+            }),
+            Err(CliError::SignKeyInvalid)
+        );
+    }
+
+    #[test]
+    fn run_sign_command_nonexistent_input_is_io_error_not_panic() {
+        let dir = TempDir::new("sign_missing_in");
+        std::fs::write(dir.file("signing.key"), small_signing_key(0x11)).expect("write key");
+        assert!(matches!(
+            run_sign_command(&SignArgs {
+                key_path: dir.file("signing.key"),
+                in_path: dir.file("does_not_exist.bin"),
+                out_path: dir.file("msg.sig"),
+            }),
+            Err(CliError::Io { .. })
+        ));
+    }
+
+    #[cfg_attr(
+        miri,
+        ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see TASKS.md T-100"
+    )]
+    #[test]
+    fn run_verify_command_rejects_tampered_message() {
+        let dir = TempDir::new("verify_tampered_message");
+        run_sign_keygen_command(&SignKeygenArgs {
+            out_path: dir.file("signing.key"),
+        })
+        .expect("sign-keygen should succeed");
+        run_sign_pubkey_command(&SignPubkeyArgs {
+            key_path: dir.file("signing.key"),
+            out_path: dir.file("verifying.key"),
+        })
+        .expect("sign-pubkey should succeed");
+        std::fs::write(dir.file("msg.bin"), b"original message").expect("write message");
+        run_sign_command(&SignArgs {
+            key_path: dir.file("signing.key"),
+            in_path: dir.file("msg.bin"),
+            out_path: dir.file("msg.sig"),
+        })
+        .expect("sign should succeed");
+
+        std::fs::write(dir.file("msg.bin"), b"tampered message").expect("tamper the message");
+        assert_eq!(
+            run_verify_command(&VerifyArgs {
+                key_path: dir.file("verifying.key"),
+                in_path: dir.file("msg.bin"),
+                sig_path: dir.file("msg.sig"),
+            }),
+            Err(CliError::SignVerifyFailed)
+        );
+    }
+
+    #[cfg_attr(
+        miri,
+        ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see TASKS.md T-100"
+    )]
+    #[test]
+    fn run_verify_command_rejects_tampered_signature() {
+        let dir = TempDir::new("verify_tampered_sig");
+        run_sign_keygen_command(&SignKeygenArgs {
+            out_path: dir.file("signing.key"),
+        })
+        .expect("sign-keygen should succeed");
+        run_sign_pubkey_command(&SignPubkeyArgs {
+            key_path: dir.file("signing.key"),
+            out_path: dir.file("verifying.key"),
+        })
+        .expect("sign-pubkey should succeed");
+        std::fs::write(dir.file("msg.bin"), b"a message").expect("write message");
+        run_sign_command(&SignArgs {
+            key_path: dir.file("signing.key"),
+            in_path: dir.file("msg.bin"),
+            out_path: dir.file("msg.sig"),
+        })
+        .expect("sign should succeed");
+
+        let mut sig = std::fs::read(dir.file("msg.sig")).expect("read signature");
+        sig[41] ^= 1;
+        std::fs::write(dir.file("msg.sig"), &sig).expect("tamper the signature");
+
+        assert_eq!(
+            run_verify_command(&VerifyArgs {
+                key_path: dir.file("verifying.key"),
+                in_path: dir.file("msg.bin"),
+                sig_path: dir.file("msg.sig"),
+            }),
+            Err(CliError::SignVerifyFailed)
+        );
+    }
+
+    #[cfg_attr(
+        miri,
+        ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see TASKS.md T-100"
+    )]
+    #[test]
+    fn run_verify_command_rejects_wrong_key() {
+        let dir = TempDir::new("verify_wrong_key");
+        run_sign_keygen_command(&SignKeygenArgs {
+            out_path: dir.file("signing_a.key"),
+        })
+        .expect("sign-keygen a should succeed");
+        run_sign_keygen_command(&SignKeygenArgs {
+            out_path: dir.file("signing_b.key"),
+        })
+        .expect("sign-keygen b should succeed");
+        run_sign_pubkey_command(&SignPubkeyArgs {
+            key_path: dir.file("signing_b.key"),
+            out_path: dir.file("verifying_b.key"),
+        })
+        .expect("sign-pubkey b should succeed");
+        std::fs::write(dir.file("msg.bin"), b"a message").expect("write message");
+        run_sign_command(&SignArgs {
+            key_path: dir.file("signing_a.key"),
+            in_path: dir.file("msg.bin"),
+            out_path: dir.file("msg.sig"),
+        })
+        .expect("sign with key a should succeed");
+
+        assert_eq!(
+            run_verify_command(&VerifyArgs {
+                key_path: dir.file("verifying_b.key"),
+                in_path: dir.file("msg.bin"),
+                sig_path: dir.file("msg.sig"),
+            }),
+            Err(CliError::SignVerifyFailed)
+        );
+    }
+
+    #[test]
+    fn run_verify_command_wrong_key_length_is_rejected() {
+        let dir = TempDir::new("verify_wrong_key_len");
+        std::fs::write(dir.file("verifying.key"), [0x11u8; 41]).expect("write short key");
+        std::fs::write(dir.file("msg.bin"), b"hello").expect("write message");
+        std::fs::write(dir.file("msg.sig"), [0x22u8; 42]).expect("write signature");
+        assert_eq!(
+            run_verify_command(&VerifyArgs {
+                key_path: dir.file("verifying.key"),
+                in_path: dir.file("msg.bin"),
+                sig_path: dir.file("msg.sig"),
+            }),
+            Err(CliError::WrongLength {
+                what: "verifying key",
+                expected: 42,
+                actual: 41,
+            })
+        );
+    }
+
+    #[test]
+    fn run_verify_command_wrong_signature_length_is_rejected() {
+        let dir = TempDir::new("verify_wrong_sig_len");
+        std::fs::write(dir.file("verifying.key"), [0x11u8; 42]).expect("write key");
+        std::fs::write(dir.file("msg.bin"), b"hello").expect("write message");
+        std::fs::write(dir.file("msg.sig"), [0x22u8; 41]).expect("write short signature");
+        assert_eq!(
+            run_verify_command(&VerifyArgs {
+                key_path: dir.file("verifying.key"),
+                in_path: dir.file("msg.bin"),
+                sig_path: dir.file("msg.sig"),
+            }),
+            Err(CliError::WrongLength {
+                what: "signature",
+                expected: 42,
+                actual: 41,
+            })
+        );
+    }
+
+    #[test]
+    fn run_verify_command_nonexistent_input_is_io_error_not_panic() {
+        let dir = TempDir::new("verify_missing_in");
+        std::fs::write(dir.file("verifying.key"), [0x11u8; 42]).expect("write key");
+        std::fs::write(dir.file("msg.sig"), [0x22u8; 42]).expect("write signature");
+        assert!(matches!(
+            run_verify_command(&VerifyArgs {
+                key_path: dir.file("verifying.key"),
+                in_path: dir.file("does_not_exist.bin"),
+                sig_path: dir.file("msg.sig"),
+            }),
+            Err(CliError::Io { .. })
+        ));
+    }
+
+    #[cfg_attr(
+        miri,
+        ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see TASKS.md T-100"
+    )]
+    #[test]
+    fn sign_verify_dispatch_through_top_level_run() {
+        let dir = TempDir::new("sign_verify_dispatch");
+        let path = |p: &std::path::Path| p.to_str().expect("valid utf-8 path").to_string();
+
+        let keygen: Vec<String> = ["sign-keygen", "--out", &path(&dir.file("signing.key"))]
+            .into_iter()
+            .map(String::from)
+            .collect();
+        run(&keygen).expect("sign-keygen dispatch should succeed");
+
+        let pubkey: Vec<String> = [
+            "sign-pubkey",
+            "--key",
+            &path(&dir.file("signing.key")),
+            "--out",
+            &path(&dir.file("verifying.key")),
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect();
+        run(&pubkey).expect("sign-pubkey dispatch should succeed");
+
+        std::fs::write(dir.file("msg.bin"), b"dispatch me").expect("write message");
+        let sign: Vec<String> = [
+            "sign",
+            "--key",
+            &path(&dir.file("signing.key")),
+            "--in",
+            &path(&dir.file("msg.bin")),
+            "--out",
+            &path(&dir.file("msg.sig")),
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect();
+        run(&sign).expect("sign dispatch should succeed");
+
+        let verify: Vec<String> = [
+            "verify",
+            "--key",
+            &path(&dir.file("verifying.key")),
+            "--in",
+            &path(&dir.file("msg.bin")),
+            "--sig",
+            &path(&dir.file("msg.sig")),
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect();
+        run(&verify).expect("verify dispatch should succeed on a real signature");
+    }
+
+    #[test]
+    fn run_unknown_sign_family_subcommand_is_rejected() {
+        // Unlike `kalyna-gcm`/etc., `sign`/`verify`/`sign-keygen`/`sign-pubkey` are flat top-level
+        // commands with no sub-subcommand - an unrecognized flag surfaces as `UnknownFlag`, not
+        // `UnknownCommand`, since `dispatch_sign_command` hands `rest` straight to `parse_*_args`.
+        assert_eq!(
+            run(&["sign".to_string(), "--bogus".to_string()]),
+            Err(CliError::UnknownFlag("--bogus".to_string()))
+        );
     }
 }

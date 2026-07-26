@@ -598,7 +598,7 @@ item they point to is later removed.
       and the failure path (a tampered message or wrong key fails verification) - a signature
       example that only shows the happy path doesn't demonstrate the primitive actually does what
       it claims, same reasoning as D-64's "attack pass" for AEAD tests.
-- [ ] **T-122** `dstu_core::crypto_sign::SigningKey` has no keypair-generation constructor - found
+- [x] **T-122** `dstu_core::crypto_sign::SigningKey` has no keypair-generation constructor - found
       2026-07-26 via a full libsodium-API-surface audit requested by the project owner
       (`docs/release-readiness.md` "round 2", triggered by the owner's frustration that gaps like
       this keep surfacing one at a time instead of being caught systematically). Confirmed by
@@ -618,6 +618,30 @@ item they point to is later removed.
       property-tested over many generations), a distinctness property test (two generated keys
       differ), and misuse coverage for whatever's still reachable after `generate()`'s own type
       signature forecloses the rest.
+      **DONE 2026-07-26, see `DECISIONS.md` D-72.** Shape fork resolved by implementation (flagged
+      for confirmation, not a prior user decision): plain OS-CSPRNG `SigningKey::generate()`,
+      matching every other `crypto_*` module's own `Key::generate` convention with no exception so
+      far. **Rejection sampling, not `reduce_wide_bytes`-style modulo reduction** - a candidate is
+      21 fresh CSPRNG bytes with the top byte masked to its low 3 bits (`n`'s top byte `0x04` is a
+      163-bit value inside 168 available bits), retried until it lands in `[1, n)`; the comparison
+      itself goes through a new `pub(crate) Scalar::from_candidate_bytes`
+      (`hazmat/dstu4145/scalar.rs`) built on the module's existing constant-time `sub3`
+      subtract-with-borrow primitive, not a branching `>=`, per this task's own explicit ask to
+      extend the constant-time discipline to the rejection loop. `Scalar::from_candidate_bytes` and
+      `SigningKey::generate` are both `#[cfg(feature = "std")]`-gated (a `--no-default-features`
+      dead-code warning caught the first pass missing this, fixed before calling it done). Tests:
+      `generate_produces_a_key_that_signs_and_verifies` (20 fresh generations - no oracle vector
+      exists for `generate`, so one success can't rule out "got lucky"), a distinctness test
+      compared via the public `Q = -d*G` (matching the other `crypto_*` modules' own convention of
+      comparing public/derived material rather than raw key bytes - a `to_bytes()` accessor was
+      added later, T-124, but wasn't there yet when this test was written), and five new
+      `Scalar::from_candidate_bytes` unit tests in `scalar.rs`'s own `#[cfg(test)]` module (rejects
+      zero/`n`/above-`n`, accepts `n - 1`/`1`). No misuse test added - `generate()` takes no
+      arguments, so the type signature forecloses that whole category, recorded rather than padded
+      with a vacuous test. Verified: `cargo test -p dstu-core --lib` (39/39), the dedicated
+      `crypto_sign` integration suite (14/14), full `cargo test --workspace`, `clippy -D warnings`
+      under default/`small-tables`/`--all-features`, `fmt --check`, and the full `dstu-core`
+      feature-combination build matrix, all clean with zero warnings.
 - [ ] **T-123** No pluggable/custom RNG backend for `no_std`/embedded `randombytes` - found
       2026-07-26, same libsodium-API-surface audit as T-122 (libsodium's own
       `randombytes_set_implementation()`/custom-RNG doc exists specifically for this). Today,
@@ -630,7 +654,7 @@ item they point to is later removed.
       that the core `no_std`-compiles (`CLAUDE.md` MVP scope), never that `randombytes` works there.
       Revisit when T-55/T-56 (real hardware validation) is picked up, or sooner if a concrete
       embedded consumer needs it earlier.
-- [ ] **T-124** `uacrypt` has no `sign`/`verify` CLI commands - found 2026-07-26, same audit as
+- [x] **T-124** `uacrypt` has no `sign`/`verify` CLI commands - found 2026-07-26, same audit as
       T-122/T-123. `dstu_core::crypto_sign` (T-48/D-46) exists only as a library API - confirmed via
       `grep` across `crates/uacrypt/src/lib.rs`'s command dispatch, no `sign`/`verify` arm anywhere.
       First surfaced as an explicit scoping note on T-120 (the doc-examples task documents this gap
@@ -645,6 +669,36 @@ item they point to is later removed.
       sign→verify), rejection (D-64 - tampered message, tampered signature, wrong key all fail
       verification, matching T-120's explicit "show the failure path too" requirement), misuse
       (D-65 - wrong-length key/signature file, missing `--in`).
+      **DONE 2026-07-26, see `DECISIONS.md` D-73.** Scope widened beyond the literal `sign`/
+      `verify` text above - resolved by implementation, flagged for confirmation rather than a
+      prior user decision (same posture D-72/D-66's own forks took): also added `sign-keygen`
+      (generates a fresh signing key) and `sign-pubkey` (derives the matching verifying key), since
+      `sign`/`verify` alone would have no CLI path to obtain key material at all - the exact class
+      of gap T-115 already closed once for `encrypt`/`decrypt`/`keygen`. Not a `--type` flag on the
+      existing `keygen` command - a flag picking between two incompatible key shapes (32-byte
+      symmetric vs. 21-byte signing scalar) is exactly the knob D-47 avoids. Key file format:
+      raw 21-byte private scalar (`sign-keygen`/`sign`'s `--key`) and raw 42-byte uncompressed `x ||
+      y` (`sign-pubkey`'s `--out`, `verify`'s `--key`) - matching every other key/signature file in
+      this project (all raw fixed-length, no envelope). `SigningKey::to_bytes()` added to
+      `dstu-core` (`crypto_sign.rs`) to make this possible - `verifying_key().to_uncompressed_bytes()`
+      already existed. `sign`/`verify` stream `--in` through Kupyna-256 in 8 KiB chunks
+      (`hash_file_streamed`, matching `kupyna-digest`/`hash`'s own D-42 convention) then call
+      `sign_digest`/`verify_digest` (T-113) rather than the whole-message `sign`/`verify`
+      convenience wrappers - memory-bounded regardless of file size. `run()`'s four new match arms
+      split into a `dispatch_sign_command` helper, same `clippy::pedantic` line-count reason
+      D-71 already established for `dispatch_kalyna_mode`. 39 new tests (12 parse, 2 golden-path/
+      cross-check correctness, 3 rejection - tampered message/signature/wrong key, D-64 - and the
+      rest misuse - wrong-length key/signature file, a zero-scalar key that's the right length but
+      not a valid private key, nonexistent `--in`, `--out` naming a directory, D-65 - plus dispatch
+      and help-text tests), all green after fixing two test-setup bugs (not real code bugs): two
+      misuse tests used `[0x11u8; 21]` as a "some signing key" fixture, which isn't actually a
+      valid scalar (`d >= n`, since `n`'s top byte is `0x04`) - `SigningKey::from_bytes` correctly
+      rejected it with `SignKeyInvalid` instead of the test's expected `Io`/directory error,
+      caught immediately by running the tests rather than assumed passing. Fixed with a
+      `small_signing_key` test helper (mirrors `dstu-core`'s own `small_scalar`). Verified: full
+      `cargo test --workspace` (110/110 `uacrypt`, full `dstu-core` suite unaffected), `clippy -D
+      warnings` under default/`small-tables`/`--all-features`, `fmt --check`, and the `dstu-core`
+      build matrix (`--no-default-features`/`+alloc`/`--all-features`), all clean.
 - [x] **T-118** **DONE 2026-07-26.** `uacrypt --version`/`-V` - found missing while preparing for
       T-19/T-119's GitHub release (user-requested: smoke-test advice from `advisor()` flagged this
       as the one defect "actively embarrassing in a release artifact" - a downloaded binary with no

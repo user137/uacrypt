@@ -215,6 +215,63 @@ fn verify_digest_rejects_tampered_digest() {
     assert!(!verifying_key.verify_digest(&wrong_digest, &sig));
 }
 
+// T-122: `SigningKey::generate()` draws `d` from the OS CSPRNG via rejection sampling. Run
+// several times, not once - a single success can't distinguish "always produces a valid,
+// working key" from "got lucky this run" the way a fixed vector would.
+#[cfg_attr(
+    miri,
+    ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see TASKS.md T-100"
+)]
+#[test]
+fn generate_produces_a_key_that_signs_and_verifies() {
+    for _ in 0..20 {
+        let signing_key = SigningKey::generate().expect("OS CSPRNG available in test environment");
+        let verifying_key = signing_key.verifying_key();
+        let sig = signing_key.sign(b"a freshly generated key can sign");
+        assert!(verifying_key.verify(b"a freshly generated key can sign", &sig));
+    }
+}
+
+// T-124: `uacrypt sign-keygen` needs to persist a generated key to a file, so `to_bytes()` must
+// round-trip through `from_bytes()` back to an equivalent key (same `verifying_key()`/signatures) -
+// not just "returns 21 bytes."
+#[cfg_attr(
+    miri,
+    ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see TASKS.md T-100"
+)]
+#[test]
+fn to_bytes_round_trips_through_from_bytes() {
+    let original = SigningKey::generate().expect("OS CSPRNG available in test environment");
+    let bytes = original.to_bytes();
+    let restored = SigningKey::from_bytes(&bytes).expect("generate() always produces a valid d");
+    assert_eq!(
+        original.verifying_key().to_uncompressed_bytes(),
+        restored.verifying_key().to_uncompressed_bytes()
+    );
+    let sig = restored.sign(b"round-tripped key can still sign");
+    assert!(original
+        .verifying_key()
+        .verify(b"round-tripped key can still sign", &sig));
+}
+
+// No oracle vector exists for "is this actually random" (same posture as `crypto_secretbox`'s
+// `two_calls_use_different_nonces`/`crypto_stream`'s `two_calls_use_different_ivs`) - compare via
+// the public `Q = -d*G` rather than `to_bytes()`, matching the other `crypto_*` modules' own
+// distinctness tests, which compare public/derived material rather than raw key bytes.
+#[cfg_attr(
+    miri,
+    ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see TASKS.md T-100"
+)]
+#[test]
+fn two_calls_to_generate_produce_different_keys() {
+    let a = SigningKey::generate().expect("OS CSPRNG available in test environment");
+    let b = SigningKey::generate().expect("OS CSPRNG available in test environment");
+    assert_ne!(
+        a.verifying_key().to_uncompressed_bytes(),
+        b.verifying_key().to_uncompressed_bytes()
+    );
+}
+
 #[test]
 fn from_bytes_rejects_zero_scalar() {
     assert!(SigningKey::from_bytes(&[0u8; 21]).is_none());

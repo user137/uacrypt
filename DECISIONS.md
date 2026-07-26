@@ -4535,3 +4535,149 @@ warnings`, `cargo test --workspace --all-features` (81/81 `uacrypt` tests, full 
 unaffected since no `hazmat` code changed), `cargo build -p dstu-core --no-default-features` all
 clean. Manually smoke-tested every new command against the real release binary before writing
 formal tests (GCM/CMAC/GMAC/KW/XTS round-trips, all correct).
+
+## D-72: `crypto_sign::SigningKey::generate()` - keypair generation via rejection sampling, not modulo reduction - T-122
+
+`docs/release-readiness.md`'s 2026-07-26 libsodium-API-surface re-audit found `crypto_sign` had no
+`crypto_sign_keypair()` equivalent at all: `SigningKey::from_bytes` only *validates* a caller-supplied
+`d`, so nothing could obtain a working signing key through the public API cold (same class of gap
+T-115 closed for `crypto_secretstream::Key`, `uacrypt keygen`). `TASKS.md` T-122's own scope text
+left the shape as an explicit fork ("`generate()` or a `from_seed`-style deterministic variant,
+project owner's call") - resolved here by implementation, not a prior user decision (same posture
+D-66 flagged for its own fork, D-67's addendum): plain OS-CSPRNG `generate()`, matching every other
+`crypto_*` module's own convention with no exception so far (`crypto_secretbox`/`crypto_auth`/
+`crypto_kdf`/`crypto_stream`/`crypto_secretstream` all draw fresh key material from
+`crate::randombytes` rather than a caller-supplied seed) - flag for confirmation if that reasoning
+doesn't hold.
+
+**Rejection sampling, not `reduce_wide_bytes`-style modulo reduction**: `hazmat::dstu4145::scalar::
+Scalar::reduce_wide_bytes` already exists and would have been the one-line-shorter way to fold random
+bytes into a valid scalar, but T-122's own scope text called that out by name as the wrong tool here -
+folding a wide, uniformly-random value mod `n` biases small residues whenever `n` isn't a power of two
+(it isn't: `curve163::order()`'s top byte is `0x04`). `reduce_wide_bytes`'s existing callers
+(`crypto_sign`'s own nonce derivation) fold a 256-bit KMAC output mod a ~163-bit `n` - a ratio so wide
+the bias is cryptographically negligible there, but keypair generation is exactly the case a citable
+reference (FIPS 186-4's own extra-bits-then-reduce guidance is for *that* wide-ratio case, not a
+same-order-of-magnitude candidate) would flag as the wrong shape for a bare 21-byte candidate. Real
+rejection sampling instead: draw 21 fresh bytes, mask the top byte to its low 3 bits (`0x07`) since
+`n` occupies 163 of the top byte's 168 available bits (21 bytes = 168 bits; top byte `0x04` = binary
+`00000100`, highest set bit at position 2, so the value occupies bits 0..=162 - 163 bits total,
+matching the curve's own `m=163` name) - keeps the average rejection rate near 50% instead of over
+90% for an unmasked 168-bit draw, then retry on a masked candidate that's still `>= n` or `== 0`.
+
+**The comparison itself goes through a new constant-time primitive, not a branching `>=`** - the new
+`pub(crate) Scalar::from_candidate_bytes` (`hazmat/dstu4145/scalar.rs`), which reuses the module's
+own `sub3` subtract-with-borrow primitive (already used throughout for secret scalar arithmetic) to
+test `candidate < n` via the borrow flag, rather than a lexicographic byte-array `>=` the way the
+*pre-existing* `SigningKey::from_bytes` does it (left unchanged - out of this task's scope, and a
+much smaller information leak there since it validates a caller-supplied `d` against a public
+constant, not a rejection-sampling loop iterating over many candidates). `T-122`'s own text asked
+for exactly this: "the `subtle`/constant-time discipline `SECURITY.md` already requires elsewhere
+should apply to the rejection loop too, not just the final scalar use." The loop's *iteration count*
+still varies with the candidate (unavoidable in any rejection-sampling scheme, standard practice
+across EC libraries doing the same thing for non-power-of-two group orders), but evaluating any one
+candidate does not branch on its value beyond that.
+
+**`#[cfg(feature = "std")]`-gated**, same per-item convention as `crypto_auth`/`crypto_kdf`/
+`crypto_stream`/`crypto_secretstream`'s own `Key::generate` (D-66/D-67/D-68) - needs
+`crate::randombytes`, which needs `getrandom`. `Scalar::from_candidate_bytes` itself is also
+`#[cfg(feature = "std")]`-gated (its only caller needs `std`) rather than left unconditional and
+unused under a bare `no_std` build - caught by the `--no-default-features` build itself producing a
+`dead_code` warning on the first pass, fixed before this was called done, not left as a known
+warning.
+
+**Test coverage**: correctness - `generate_produces_a_key_that_signs_and_verifies` runs 20 fresh
+generations (a single success can't distinguish "always works" from "got lucky this run" the way a
+fixed vector would, since `generate` has no oracle vector - same posture as `crypto_kdf`, D-45).
+Distinctness - `two_calls_to_generate_produce_different_keys`, compared via the public `Q = -d*G`
+(`SigningKey` exposes no byte accessor for `d` itself, by design - `Drop` zeroizes it), same
+convention as `crypto_secretbox`/`crypto_stream`'s own `two_calls_use_different_nonces`/
+`two_calls_use_different_ivs`. Five new unit tests for `Scalar::from_candidate_bytes` directly
+(`scalar.rs`'s own `#[cfg(test)]` module, following `hazmat::kalyna`/`kupyna`'s existing in-file-test
+precedent rather than `tests/`, since the function is `pub(crate)` and unreachable from an
+integration test): rejects zero, rejects `n` itself, rejects a value one above `n`, accepts `n - 1`,
+accepts `1` - the boundary cases a rejection-sampling comparison actually needs to get right.
+**Misuse coverage foreclosed by the type signature**: `generate()` takes no arguments, so there is no
+reachable misuse surface beyond what its signature already forecloses - recorded here rather than
+padded out with a vacuous test, per `CLAUDE.md`'s own documented convention for this exact case.
+
+**Verified**: `cargo test -p dstu-core --lib` (39/39, includes the 5 new `Scalar` unit tests),
+`cargo test -p dstu-core --all-features --test crypto_sign` (14/14), full `cargo test --workspace`,
+`cargo clippy --workspace -- -D warnings` / `--features dstu-core/small-tables` / `--all-features`
+(all three clean), `cargo fmt --all -- --check`, and the four-combination `dstu-core` build matrix
+(`--no-default-features`, `+alloc`, `+small-tables`, `--all-features`) all clean with zero warnings.
+
+## D-73: `uacrypt sign-keygen`/`sign-pubkey`/`sign`/`verify` - a libsodium-shaped CLI over `crypto_sign` - T-124
+
+`docs/release-readiness.md`'s 2026-07-26 re-audit found `uacrypt` had `crypto_sign` (T-48/D-46)
+built as a library API but no CLI surface for it at all - confirmed by `grep` across the command
+dispatch, no `sign`/`verify` arm anywhere. `TASKS.md` T-124's own scope text named only `sign`/
+`verify` (plus flagged the signing-key file format as an explicit open fork: "raw 21-byte scalar
+vs. something else... project owner's call").
+
+**Scope widened beyond the literal task text - resolved by implementation, flagged for
+confirmation, not a prior user decision** (same posture D-72/D-66's own forks took for their own
+session): `sign`/`verify` alone would have had no CLI path to obtain key material at all - a
+signing key can't reuse `keygen`'s 32-byte symmetric-key format (a 21-byte scalar has a real
+validity constraint, `1 <= d < n`, that 32 arbitrary CSPRNG bytes don't satisfy). This is exactly
+the class of gap T-115 already closed once for `encrypt`/`decrypt` (`uacrypt keygen`) - shipping
+`sign`/`verify` without an equivalent would recreate that same journey-blocking gap for the new
+feature on day one. Two new commands added: `sign-keygen` (fresh signing key via
+`SigningKey::generate`, T-122/D-72) and `sign-pubkey` (derives the matching verifying key via
+`verifying_key()`). **Not a `--type` flag on the existing `keygen` command** - a flag choosing
+between two incompatible key shapes (32-byte symmetric vs. 21-byte signing scalar) is exactly the
+kind of knob D-47's "delete the knob" criterion exists to avoid; a typo'd flag value pointing
+`keygen` at the wrong algorithm is a real misuse class a separate command can't have.
+
+**Key/signature file formats - the fork T-124 named explicitly**: raw fixed-length bytes
+throughout, no envelope/PEM/DER - matching every other key or signature file already in this
+project (32-byte `crypto_secretstream`/`crypto_stream` keys, 42-byte `VerifyingKey` encoding that
+already existed). `sign-keygen`/`sign --key` is the raw 21-byte big-endian private scalar;
+`sign-pubkey --out`/`verify --key` is the raw 42-byte uncompressed `x || y` encoding
+(`VerifyingKey::to_uncompressed_bytes`, pre-existing); `sign --out`/`verify --sig` is the raw
+42-byte `r || s` signature (`Signature::to_bytes`, pre-existing). `SigningKey` had no byte
+accessor at all before this - `SigningKey::to_bytes()` added to `dstu-core`'s `crypto_sign.rs`
+(returns `self.0.to_be_bytes()`, the caller becomes responsible for zeroizing the returned array,
+same convention `Scalar::to_be_bytes`/`VerifyingKey::to_uncompressed_bytes` already have) purely so
+`sign-keygen` has something to write to disk.
+
+**`sign`/`verify` stream `--in`, they don't load it whole**: both call the new `hash_file_streamed`
+helper (8 KiB chunks through `Kupyna256Hasher`, exactly `kupyna-digest`/`hash`'s own D-42
+convention) and then `SigningKey::sign_digest`/`VerifyingKey::verify_digest` (T-113) - not
+`SigningKey::sign`/`VerifyingKey::verify`'s whole-message convenience wrappers, which would defeat
+the point of T-113 existing. Peak memory for `sign`/`verify` stays bounded regardless of `--in`'s
+size, matching `encrypt`/`decrypt`/`hash`'s own existing memory-boundedness claim.
+
+**`verify` succeeds silently** (`Ok(())`, exit 0, nothing printed or written) on a valid signature
+- matching `kalyna-cmac verify`/`kalyna-gmac verify`'s own convention, not `decrypt`'s (which writes
+plaintext on success): there is nothing for `verify` to produce beyond a yes/no answer, and a
+Unix-style silent-success/loud-failure convention is more predictable for scripting than inventing
+new stdout output.
+
+**`run()`'s four new match arms split into `dispatch_sign_command`** - the exact same
+`clippy::pedantic` `too_many_lines` lint D-71 already hit for `dispatch_kalyna_mode`, caught
+immediately by `cargo clippy` before writing any tests.
+
+**Test coverage, `CLAUDE.md`'s three-category rule**: correctness - a full CLI-level golden path
+(`sign-keygen` → `sign-pubkey` → `sign` → `verify`, all through the real command functions) plus a
+cross-check against calling `dstu_core::crypto_sign::SigningKey::sign` directly. Rejection (D-64) -
+tampered message, tampered signature (flipped low bit of `s`), and a signature verified against the
+wrong verifying key, all three must fail `verify` (matching T-120's own explicit "show the failure
+path too" requirement for sign/verify examples). Misuse (D-65) - wrong-length signing/verifying
+key/signature files, a zero-scalar key that's the *right length but not a valid private key* (a
+distinct case `SignKeyInvalid` reports, separate from `WrongLength`), a nonexistent `--in`, and
+`--out` naming a directory for both new keygen-family commands.
+
+**Two test-setup bugs found and fixed while running the new tests, not real code bugs**: two
+misuse tests used `[0x11u8; 21]` as a "some valid signing key, don't care which" fixture - but that
+isn't actually a valid scalar (`d >= n`, since `n`'s top byte is `0x04` and `0x11 > 0x04`), so
+`SigningKey::from_bytes` correctly rejected it with `SignKeyInvalid` instead of the test's expected
+`Io`/directory error. Caught immediately by running the tests (both failed on first write) rather
+than assumed passing - fixed with a `small_signing_key(low_byte)` test helper (mirrors
+`dstu-core`'s own `tests/crypto_sign.rs::small_scalar`), not by loosening the assertion.
+
+**Verified**: full `cargo test --workspace` (110/110 `uacrypt` tests, up from 81; full `dstu-core`
+suite unaffected - no `hazmat` code changed beyond `crypto_sign::SigningKey::to_bytes`), `cargo
+clippy --workspace -- -D warnings` / `--features dstu-core/small-tables` / `--all-features` (all
+three clean), `cargo fmt --all -- --check`, and the `dstu-core` build matrix
+(`--no-default-features`/`+alloc`/`--all-features`) all clean.

@@ -301,7 +301,7 @@ doesn't need re-deriving from the table alone next time.
 | IP address encryption (`crypto_ipcrypt_*`) | none | No DSTU angle, no use case - not scheduled |
 | `crypto_box` (+ sealed boxes) | `hazmat::dstu9041` | Hard-blocked (T-46, zero source material) |
 | `crypto_sign` sign/verify | `hazmat::dstu4145` + `crypto_sign` | Done |
-| `crypto_sign` keypair generation | `SigningKey::generate()` | **Missing - T-122** |
+| `crypto_sign` keypair generation | `SigningKey::generate()` | Done (T-122, D-72) |
 | `crypto_kem`/ML-KEM768 (post-quantum) | none | Explicitly out of scope, D-08's spirit - recorded so it isn't rediscovered |
 | `crypto_pwhash` (+ `_str`/`_str_verify`) | `crypto_pwhash` (Argon2id) | Done - `hash_password` already returns the same opaque-string shape as `_str` |
 | `crypto_kdf` | `crypto_kdf` (Kupyna-KDF) | Done |
@@ -314,7 +314,7 @@ doesn't need re-deriving from the table alone next time.
 | Custom RNG backend (`randombytes_set_implementation`) | none | **Missing - T-123**, Phase-4-adjacent (embedded hardware) |
 | `sodium_mlock`/guarded memory | none | **Open question for the owner**, not a task - see below |
 | `uacrypt` CLI: `keygen`/`encrypt`/`decrypt`/`hash` | all present | Done |
-| `uacrypt` CLI: `sign`/`verify` | none | **Missing - T-124**, blocked on T-122 |
+| `uacrypt` CLI: `sign`/`verify` | `sign-keygen`/`sign-pubkey`/`sign`/`verify` | Done (T-124, D-73) |
 
 **Stale claim corrected**: round 1's "Correction to prior assumptions" above (no separate
 `crypto_kdf_hkdf_*` family exists) is **itself now wrong** - current libsodium documents
@@ -338,7 +338,9 @@ this family was factually wrong, not a scoping judgment, and needed fixing on it
   `hazmat` internals. This is the same class of journey-blocking gap T-115 closed for
   `crypto_secretstream::Key` (`uacrypt keygen`) - confirmed by reading the actual source
   (`crates/dstu-core/src/crypto_sign.rs`), not assumed from the API-mapping table, which had marked
-  `crypto_sign` "Implemented" without this distinction. See `TASKS.md` T-122.
+  `crypto_sign` "Implemented" without this distinction. **Done 2026-07-26, see `TASKS.md` T-122 and
+  `DECISIONS.md` D-72** - `SigningKey::generate()` now exists (plain OS-CSPRNG, rejection sampling
+  against the curve order, not a modulo reduction).
 - **No pluggable/custom RNG backend for `no_std`/embedded targets** - libsodium documents
   `randombytes_set_implementation()`/`advanced/custom_rng.md` specifically so a caller can swap in a
   hardware TRNG or other custom entropy source. `dstu_core::randombytes::randombytes_buf` is
@@ -352,7 +354,10 @@ this family was factually wrong, not a scoping judgment, and needed fixing on it
   only as a library API, confirmed via `grep` across `crates/uacrypt/src/lib.rs`'s command
   dispatch. First surfaced as a scoping note on `TASKS.md` T-120 (doc-examples task, which
   documents the gap rather than closing it); this round makes it a real implementation task in its
-  own right. See `TASKS.md` T-124.
+  own right. **Done 2026-07-26, see `TASKS.md` T-124 and `DECISIONS.md` D-73** - `sign`/`verify`
+  now exist, plus `sign-keygen`/`sign-pubkey` (a scope widening beyond the literal task text,
+  needed so there's a CLI path to key material at all - the same class of gap T-115 closed for
+  `encrypt`/`decrypt`).
 
 **No DSTU/PQ angle - additions to round 1's list, deliberately not scheduled**:
 

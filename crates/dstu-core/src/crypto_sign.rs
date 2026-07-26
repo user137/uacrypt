@@ -30,6 +30,13 @@
 //! bounded memory regardless of message size) and pass the result in. `sign`/`verify` are now thin
 //! wrappers over these two.
 //!
+//! **Keypair generation (`TASKS.md` T-122): [`SigningKey::generate`].** `from_bytes` above only
+//! ever *validates* a caller-supplied `d` - until this method existed there was no way to obtain a
+//! valid `d` through the public API at all, without reaching into `hazmat` internals
+//! (`curve163::order()` isn't part of this module's own surface). `#[cfg(feature = "std")]`-gated
+//! (needs `crate::randombytes`), matching every other `crypto_*` module's own `Key::generate`
+//! convention (`crypto_secretbox`/`crypto_auth`/`crypto_kdf`/`crypto_stream`/`crypto_secretstream`).
+//!
 //! `VerifyingKey::to_uncompressed_bytes`/`from_uncompressed_bytes` use a plain 42-byte `x || y`
 //! encoding, **not** the DSTU 4145 standard's own compressed point encoding (official text
 //! §6.9/§6.10, `DSTU4145PointEncoder.java` in Bouncy Castle) - that encoding isn't implemented
@@ -100,6 +107,46 @@ impl SigningKey {
             return None;
         }
         Some(SigningKey(Scalar::from_be_bytes(d)))
+    }
+
+    /// Generates a fresh signing key from the OS CSPRNG - libsodium's `crypto_sign_keypair()`
+    /// equivalent (its public-key half is [`Self::verifying_key`]). `d` is drawn via **rejection
+    /// sampling**, uniform over `[1, n)`, never a modulo reduction - `n` is not a power of two, so
+    /// `candidate mod n` would bias small residues (`TASKS.md` T-122). `n`'s top byte is `0x04`
+    /// (`hazmat::dstu4145::curve163::order`'s own doc comment: `n` is a 163-bit value inside 21
+    /// bytes/168 bits), so masking each candidate's top byte down to its low 3 bits (`0x07`) keeps
+    /// the rejection rate near 50% instead of over 90% for an unmasked 168-bit draw. The
+    /// range/nonzero check itself goes through [`Scalar::from_candidate_bytes`]'s constant-time
+    /// comparison, not a branching `>=`, so evaluating one candidate adds no data-dependent-branch
+    /// timing signal beyond the draw count every rejection-sampling scheme inherently has.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::randombytes::RandomError`] if the OS CSPRNG fails while drawing a
+    /// candidate.
+    #[cfg(feature = "std")]
+    pub fn generate() -> Result<Self, crate::randombytes::RandomError> {
+        loop {
+            let mut candidate = [0u8; 21];
+            crate::randombytes::randombytes_buf(&mut candidate)?;
+            candidate[0] &= 0x07;
+            let scalar = Scalar::from_candidate_bytes(&candidate);
+            candidate.zeroize();
+            if let Some(scalar) = scalar {
+                return Ok(SigningKey(scalar));
+            }
+        }
+    }
+
+    /// Returns `d`'s big-endian 21-byte encoding, so a generated key can be persisted (e.g.
+    /// `uacrypt sign-keygen`, `TASKS.md` T-124) and later reloaded via [`Self::from_bytes`]. The
+    /// caller becomes responsible for zeroizing the returned array once done with it - the same
+    /// convention `hazmat::dstu4145::scalar::Scalar::to_be_bytes` and
+    /// `VerifyingKey::to_uncompressed_bytes` already have (this module has no wrapper type for a
+    /// bare byte array to hang a `Drop` impl off of).
+    #[must_use]
+    pub fn to_bytes(&self) -> [u8; 21] {
+        self.0.to_be_bytes()
     }
 
     #[must_use]

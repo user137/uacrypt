@@ -52,6 +52,27 @@ impl Scalar {
         limbs_from_be_bytes(&curve163::order())
     }
 
+    /// Builds a scalar from a big-endian 21-byte candidate, but only if it lies in `[1, n)` - the
+    /// valid private-key range. Used by `crypto_sign::SigningKey::generate`'s rejection-sampling
+    /// loop (`TASKS.md` T-122): the comparison against `n` goes through the same constant-time
+    /// subtract-and-select primitive (`sub3`'s borrow flag) the rest of this module already uses
+    /// for secret arithmetic, rather than a branching `>=`, so evaluating one candidate doesn't
+    /// add a data-dependent-branch timing signal beyond the "how many draws until one was
+    /// accepted" every rejection-sampling scheme inherently has.
+    ///
+    /// `#[cfg(feature = "std")]`-gated: its only caller, `crypto_sign::SigningKey::generate`,
+    /// needs `crate::randombytes` (std-gated itself) to draw candidates in the first place - a
+    /// bare `no_std` build has no way to call this, so it would otherwise be dead code there.
+    #[cfg(feature = "std")]
+    #[must_use]
+    pub(crate) fn from_candidate_bytes(bytes: &[u8; 21]) -> Option<Self> {
+        let limbs = limbs_from_be_bytes(bytes);
+        let (_, borrow) = sub3(limbs, Self::n());
+        let in_range = borrow == 1; // borrow == 1 <=> limbs < n
+        let nonzero = limbs != [0, 0, 0];
+        (in_range && nonzero).then_some(Scalar(limbs))
+    }
+
     #[must_use]
     pub fn multiply(self, other: Self) -> Self {
         Scalar(reduce_mod_n(mul3(self.0, other.0)))
@@ -179,4 +200,42 @@ fn shl1_or(x: [u64; 3], bit: u64) -> [u64; 3] {
         carry = next_carry;
     }
     out
+}
+
+#[cfg(all(test, feature = "std"))]
+mod from_candidate_bytes_tests {
+    use super::{curve163, Scalar};
+
+    #[test]
+    fn rejects_zero() {
+        assert!(Scalar::from_candidate_bytes(&[0u8; 21]).is_none());
+    }
+
+    #[test]
+    fn rejects_n_itself() {
+        assert!(Scalar::from_candidate_bytes(&curve163::order()).is_none());
+    }
+
+    #[test]
+    fn rejects_above_n() {
+        let mut above_n = curve163::order();
+        above_n[20] += 1; // n's low byte is 0x4D, room to increment without carrying
+        assert!(Scalar::from_candidate_bytes(&above_n).is_none());
+    }
+
+    #[test]
+    fn accepts_n_minus_one() {
+        let mut n_minus_one = curve163::order();
+        n_minus_one[20] -= 1;
+        let scalar = Scalar::from_candidate_bytes(&n_minus_one).expect("n - 1 is in [1, n)");
+        assert_eq!(scalar.to_be_bytes(), n_minus_one);
+    }
+
+    #[test]
+    fn accepts_one() {
+        let mut one = [0u8; 21];
+        one[20] = 1;
+        let scalar = Scalar::from_candidate_bytes(&one).expect("1 is in [1, n)");
+        assert_eq!(scalar.to_be_bytes(), one);
+    }
 }

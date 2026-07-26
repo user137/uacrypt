@@ -23,8 +23,9 @@ but not primary-DSTU-text-confirmed, `DECISIONS.md` D-15/D-41/D-56). DSTU 4145 s
 (`hazmat::dstu4145`) are also implemented and vector-confirmed. On top of `hazmat`, the
 libsodium-shaped `crypto_*` layer (`crypto_secretbox`, `crypto_secretstream`, `crypto_sign`,
 `crypto_auth`, `crypto_kdf`, `crypto_generichash`, `crypto_stream`, `crypto_pwhash`, `randombytes`)
-and the `uacrypt` CLI (`keygen`/`encrypt`/`decrypt`/`hash`, plus `--help`/`--version`) are built and
-tested — see "Using `uacrypt`" below. DSTU 9041 is hard-blocked (no source material). See
+and the `uacrypt` CLI (`keygen`/`encrypt`/`decrypt`/`hash`, `sign-keygen`/`sign-pubkey`/`sign`/
+`verify`, plus `--help`/`--version`) are built and tested — see "Using `uacrypt`" below. DSTU 9041
+is hard-blocked (no source material). See
 `TASKS.md` for the phase-by-phase backlog, `docs/dstu-crypto-project.md`'s "Concrete API shape" for
 the authoritative module-by-module status table, and `docs/release-readiness.md` for the gap
 analysis against a complete 1.0.

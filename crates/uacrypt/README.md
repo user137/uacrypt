@@ -17,6 +17,11 @@ uacrypt keygen --out key.bin
 uacrypt encrypt --key key.bin --in message.bin --out sealed.bin
 uacrypt decrypt --key key.bin --in sealed.bin --out message.bin
 uacrypt hash --in file.bin --out digest.bin
+
+uacrypt sign-keygen --out signing.key
+uacrypt sign-pubkey --key signing.key --out verifying.key
+uacrypt sign --key signing.key --in file.bin --out file.bin.sig
+uacrypt verify --key verifying.key --in file.bin --sig file.bin.sig
 ```
 
 `encrypt`/`decrypt` have no message-length cap and stream `--in`/`--out` in fixed-size chunks —
@@ -25,6 +30,14 @@ whole-buffer one. `--key` is a raw 32-byte file; `encrypt` draws a fresh random 
 on every call and embeds it in `--out` — there is no `--nonce`/`--header` flag to supply or reuse
 by mistake. `hash` streams `--in` from disk in fixed-size chunks regardless of size, fixed to
 Kupyna-256 (32-byte digest, no `--variant` choice).
+
+`sign`/`verify` are the DSTU 4145 digital-signature equivalent, built over `dstu_core::crypto_sign`
+(deterministic nonce — no RNG involved in signing itself, only in `sign-keygen`). Both stream
+`--in` through Kupyna-256 in fixed-size chunks before signing/checking the digest, so file size is
+not a memory concern. `--key` for `sign` is a raw 21-byte private scalar (`sign-keygen`'s output);
+`--key` for `verify` is a raw 42-byte uncompressed public point (`sign-pubkey`'s output, safe to
+share); the signature itself is a raw 42-byte file. `verify` prints nothing and exits 0 on a valid
+signature, or exits with an error (nothing written) if the message, signature, or key don't match.
 
 Lower-level, `hazmat`-scoped commands also exist for anyone who wants direct control instead of the
 misuse-resistant trio above:
