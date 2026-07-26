@@ -467,6 +467,32 @@ session; `hazmat::kalyna_kw`'s Feistel-like network runs many more block-cipher 
 key material than a CMAC/GCM pass over the same length would (proportional to `v = (n-1)*6` rounds,
 `DECISIONS.md` D-55), which may explain the reversal, but this wasn't confirmed by profiling.
 
+**Root-caused and partially fixed 2026-07-26, `TASKS.md` T-127, `DECISIONS.md` D-76**: reading the
+UAPKI benchmark harness directly (`bench.c`'s `cmd_kw`) confirmed `dstu7624_init_kw` is called once,
+*outside* its `--iterations` loop - while `uacrypt`'s own `kalyna-kw wrap`/`unwrap` called
+`hazmat::kalyna_kw::wrap`/`unwrap`, which re-expand the full Kalyna key schedule *every* call
+(`kalyna_kw.rs`'s `wrap` used to build a fresh `ExpandedKey` internally, with no way for a caller to
+avoid it). Fixed by adding `wrap_with_cipher`/`unwrap_with_cipher` (take an already-expanded cipher)
+and wiring `run_kw_command`'s benchmark loop to build the schedule once, same as
+`kalyna-block`/`kalyna-gcm`/`kalyna-xts` already did. **Re-measured, same 2-block-key-material
+scale, N = 5000, Ryzen only:**
+
+| Variant | uacrypt (MB/s) | UAPKI (MB/s) | uacrypt before (MB/s) | Gap before | Gap after |
+|---|---|---|---|---|---|
+| 128-128 | 7.06 | **12.91** | 5.38 | 2.38x | 1.83x |
+| 128-256 | 4.99 | **10.50** | 4.07 | 2.69x | 2.10x |
+| 256-256 | 7.23 | **16.22** | 6.33 | 2.59x | 2.24x |
+| 256-512 | 6.14 | **10.85** | 5.12 | 2.06x | 1.77x |
+| 512-512 | 7.34 | **10.34** | 5.83 | 1.80x | 1.41x |
+
+UAPKI's own numbers didn't move (noise-level differences only, as expected - nothing changed on
+its side). This project's own throughput improved 14-31% on every variant purely from removing the
+redundant per-call schedule expansion, narrowing UAPKI's lead on every variant but not eliminating
+it - confirming the schedule-redo cost was a real, measurable, partial contributor to this gap, not
+the sole cause. The residual gap (~1.4-2.2x) is consistent with D-76's finding #1 (a genuine
+core-round-function speed difference, ~1.3-2.7x depending on variant) - not investigated further
+as a KW-specific cause beyond that.
+
 **Reproducing**: `target/release/uacrypt kalyna-kw wrap --variant <v> --key <path> --in <path> --out
 <path> --iterations <N>`.
 
@@ -492,8 +518,85 @@ a uniform "UAPKI's XTS is just faster" result, it's specific to the largest key/
 investigated further this session (`hazmat::kalyna_xts` itself was not touched — only a new CLI
 wrapper around the existing implementation was added) — see `TASKS.md` T-121 for the standing note.
 
+**Root-caused and fixed 2026-07-26, `TASKS.md` T-126, `DECISIONS.md` D-76**: `hazmat::gf2m_wide.rs`
+had no fast path for "multiply by the fixed generator `x`" (the `two` constant XTS's tweak-doubling
+uses every block) - every call paid the fully general O(m²) schoolbook `multiply` for what is
+mathematically an O(m/64) shift-plus-conditional-XOR. Added `double()` (verified byte-identical to
+`multiply(two)` by a property test over all three field widths before being wired in) and switched
+`kalyna_xts.rs`'s tweak update to call it. **Re-measured at the exact same 512 B/4096 B scale as the
+original finding above, Ryzen only:**
+
+| Variant | uacrypt 512 B (MB/s) | UAPKI 512 B (MB/s) | uacrypt 4096 B (MB/s) | UAPKI 4096 B (MB/s) |
+|---|---|---|---|---|
+| 128-128 | **100.12** | 12.75 | **106.18** | 12.77 |
+| 128-256 | **73.54** | 12.55 | **76.30** | 12.34 |
+| 256-256 | **110.82** | 17.93 | **112.15** | 16.10 |
+| 256-512 | **88.63** | 17.80 | **87.76** | 18.17 |
+| 512-512 | **97.92** | 39.27 | **104.19** | 43.97 |
+
+**Every variant improved substantially, not just 512-512** - the wasted general-multiply work exists
+at every field width, just less visibly before this fix pushed it past the "dramatic outlier"
+threshold at m=512 (D-76's O(m) total waste per message reasoning: `poly_mul_wide`'s cost is O(m²)
+per multiply, so even at m=128 it was real, avoidable work). **The 512-512 anomaly itself is fully
+reversed**: previously ~4.4-4.6x *slower* than UAPKI, now **~2.4-2.5x faster** (97.92/104.19 vs.
+39.27/43.97 MB/s) - UAPKI's own numbers barely moved (39.27/43.97 vs. the original 36.35/38.24,
+noise-level, as expected since nothing changed on its side). Confirmed again independently at 10 MiB
+(`--iterations 50`, well past any per-call setup-cost noise): 512-512 lands at 104.60 MB/s, squarely
+in the middle of the other four variants' 74-115 MB/s band, not an outlier at all anymore -
+UAPKI's own 10 MiB numbers (12.70-43.11 MB/s) drop sharply with block size shrinking (128-128's
+655,360 16-byte blocks vs. 512-512's 163,840 64-byte blocks for the same 10 MiB) - consistent with
+the per-field-multiply heap allocation cost found in `gf2m_mul` (`dstu7624.c:2963-3001`, 3 allocations
+per call) dominating UAPKI's own XTS throughput at scale, worse for smaller blocks (more of them per
+message), the opposite direction from this project's now-fixed per-multiply cost (which no longer
+depends on block count at all, only on `m`).
+
 **Reproducing**: `target/release/uacrypt kalyna-xts encrypt --variant <v> --key <path> --tweak
 <path> --in <path> --out <path> --iterations <N>`.
+
+### 10 MiB re-measurement pass (T-125 follow-up, requested 2026-07-26)
+
+Every mode whose input length isn't inherently capped was re-measured at 10 MiB (`--iterations 50`)
+specifically to push past any remaining per-call setup-cost noise and confirm the numbers above are
+steady-state throughput, not an artifact of the message sizes measured so far. **Modes with an
+inherent length cap are excluded, and why**: `kalyna-block` (single block only, no arbitrary-length
+mode exists for it), `kalyna-kw` (`MAX_R = 20` blocks, `DECISIONS.md` D-55), `kalyna-gmac` (measured
+at exactly one block by design, D-57's UAPKI multi-block streaming bug workaround), `kalyna-ccm`
+(`MAX_PLAINTEXT_LEN = 255` bytes, a property of the DSTU CCM construction as implemented here, not a
+benchmark choice).
+
+| Mode | Variant | uacrypt (MB/s) | UAPKI (MB/s) | Matches 1 MiB number? |
+|---|---|---|---|---|
+| Kalyna-XTS | 128-128 | **102.59** | 12.70 | No - improved ~3.7x by T-126's fix (no prior 1 MiB point existed) |
+| Kalyna-XTS | 128-256 | **74.05** | 12.50 | No - improved ~2.9x (T-126) |
+| Kalyna-XTS | 256-256 | **115.16** | 18.46 | No - improved ~6.6x (T-126) |
+| Kalyna-XTS | 256-512 | **90.50** | 18.01 | No - improved ~5.4x (T-126) |
+| Kalyna-XTS | 512-512 | **104.60** | 43.11 | No - improved ~12.6x (T-126), no longer an outlier |
+| Kalyna-CMAC | 128-128 | 102.46 | **232.46** | Yes - within 4% of the 1 MiB row above |
+| Kalyna-CMAC | 128-256 | 75.23 | **178.01** | Yes - within 2% |
+| Kalyna-CMAC | 256-256 | 119.26 | **254.70** | Yes - within 4% |
+| Kalyna-CMAC | 256-512 | 92.84 | **205.47** | Yes - within 5% |
+| Kalyna-CMAC | 512-512 | 108.68 | **152.77** | Yes - within 2% |
+| Kalyna-GCM | 128-128 | 10.51 | **12.60** | Yes - within 1% |
+| Kalyna-GCM | 128-256 | 10.16 | **12.25** | Yes - within 2% |
+| Kalyna-GCM | 256-256 | 8.31 | **15.87** | Roughly - ~12% lower than the 1 MiB row's 18.12, within this methodology's noise band |
+| Kalyna-GCM | 256-512 | 8.10 | **17.45** | Yes - within 1% |
+| Kalyna-GCM | 512-512 | **5.50** | 4.77 | Yes - within 2%, still leads |
+| Kupyna-256 | - | 95.52 | **143.03** | Roughly - UAPKI's lead widens slightly (was ~1.37x at 1 MiB, ~1.50x at 10 MiB) |
+| Kupyna-512 | - | 77.94 | **114.49** | Roughly - same widening pattern (~1.45x to ~1.47x) |
+| Strumok-256 | - | **648.67** | 581.13 | No - this project now leads at 10 MiB (was UAPKI ahead ~1.10x at 1 MiB) |
+| Strumok-512 | - | **636.16** | 631.02 | Roughly at parity (was UAPKI ahead ~1.10x at 1 MiB) |
+
+**CMAC/GCM confirm D-76's finding #1 directly**: their 10 MiB ratios track the already-published
+1 MiB ratios closely (within ~5%), meaning nothing about T-127's schedule-caching fix changed
+CMAC's numbers at this scale (expected - the schedule cost was already amortized over tens of
+thousands of block-cipher calls) and GCM was untouched by either fix (expected - its field multiply
+is against the dense, key-derived `H`, not a fixed constant, so T-126 doesn't apply). Kupyna/
+Strumok are also within noise of their existing 1 MiB numbers, as expected (neither fix touches
+either primitive). XTS is the one mode whose numbers moved, and moved by exactly the margin T-126's
+root cause predicts.
+
+**Reproducing**: same commands as each mode's own section above, with `--iterations 50` and a
+10 MiB (`10485760`-byte) `--in` file.
 
 ## What the gap is, honestly
 
@@ -547,6 +650,40 @@ sketched-not-scheduled task for closing this):
   precomputed tables, transcribed from outspace directly. The remaining ~3.2x gap to outspace after
   both fixes is a smaller, unchased residual (some other implementation detail, not root-caused
   further here).
+- **Kalyna-XTS, T-126, 2026-07-26**: `hazmat::gf2m_wide`'s field-element `multiply` had no fast path
+  for the fixed-constant case XTS's tweak-doubling always needs (multiply by the generator `x`) -
+  every tweak update paid a full general O(m²) schoolbook multiply for what is mathematically an
+  O(m/64) shift-plus-conditional-XOR. Fixed by adding `double()`. Closed the 512-512 variant's
+  4.4-4.6x-slower anomaly entirely (now ~2.4-2.5x *faster* than UAPKI at the same message sizes) and
+  substantially improved the other four variants too (this waste existed at every field width, just
+  less visibly before m=512 pushed it past "dramatic outlier"). See the Kalyna-XTS section above for
+  the full before/after numbers.
+- **The block-level "rough parity with UAPKI" claim (the very first table in this file, "Kalyna
+  (single-block encrypt, nanoseconds")) is itself a measurement artifact, found 2026-07-26
+  (`DECISIONS.md` D-76)**: UAPKI's `encrypt_ecb`/`decrypt_ecb` allocate twice and free once per call
+  (`dstu7624.c:2916,2922`), which dominates the timing of a single 16-64 byte block. Proven from
+  numbers already in this file, no new measurement needed: UAPKI's own CMAC-at-1-MiB throughput
+  (allocation-free `cmac_update`/`cmac_final`) is 1.33-2.71x *faster* than UAPKI's own block-cached
+  number for the same variant - impossible unless the block number under-measures UAPKI's true
+  per-block speed. This project's own CMAC-at-1-MiB tracks its own block-cached number within ~1.5%
+  on every variant, confirming *this project's* block-level numbers needed no such correction. **The
+  true core-round-function gap, with allocation removed from both sides, is larger than the
+  block-level table implies** - UAPKI's round function is genuinely faster, ~2.7x at 128-128
+  narrowing to ~1.3x at 512-512 - a core Kalyna-cipher-level gap, not specific to any mode. This is
+  why Kalyna-CMAC's own gap (this file's CMAC section) needs no CMAC-specific explanation: it's
+  simply exposing the real round-function gap directly, without the block-level table's allocation
+  contamination.
+- **Kalyna-CMAC/KW's `hazmat` API re-expanded the full key schedule on every call, T-127,
+  2026-07-26**: `kalyna_cmac.rs`'s `mac`/`kalyna_kw.rs`'s `wrap`/`unwrap` took raw key bytes and
+  built a fresh `ExpandedKey` internally every call, unlike `kalyna-block`/`gcm`/`xts`. Confirmed
+  UAPKI's own benchmark harness (`bench.c`'s `cmd_kw`) caches its schedule once outside its own
+  iteration loop - so this was a genuine asymmetry, not just an assumption. Fixed by adding
+  `mac_with_cipher`/`wrap_with_cipher`/`unwrap_with_cipher` (take an already-expanded cipher) and
+  wiring `uacrypt`'s benchmark loops to use them. For CMAC's own large-message benchmarks this cost
+  was already amortized to nothing (confirmed unchanged after the fix); for KW's much smaller
+  2-block-of-key-material benchmark it wasn't, and removing it narrowed UAPKI's lead by roughly
+  14-31% across all five variants (see the Kalyna-KW section above) without eliminating it - the
+  residual matches the core-round-function gap described in the point above.
 - **Neither gap is a correctness or `no_std` concern** — all of it is pure throughput, addressable later
   without touching the already-verified algorithm logic (confirmed for Strumok's fix: all existing
   tests, including the 4000-case outspace differential harness, still pass unchanged).

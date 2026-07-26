@@ -839,6 +839,123 @@ item they point to is later removed.
       - measured at 512 B/4096 B, not 1 MiB, so it's out of this task's literal scope even though it
       may turn out to share a root cause; cross-reference, don't silently fold the two together
       without confirming that first.
+
+      **Partially resolved 2026-07-26, same day, user-requested follow-up with `advisor()` consulted
+      twice (`DECISIONS.md` D-76) - source reading plus arithmetic on already-published
+      `PERFORMANCE.md` numbers, no profiler used:**
+      - **Kalyna-block's "rough parity with UAPKI" claim (the baseline this whole task measures
+        against) is itself a measurement artifact, not a true round-function comparison.** UAPKI's
+        `encrypt_ecb`/`decrypt_ecb` (`dstu7624.c:2916,2922`) does two heap allocations
+        (`ba_to_uint64_with_alloc`, `ba_alloc_from_uint64`) plus one `free` per call - for a single
+        16-64 byte block this dominates the measured time. Proof needs no new measurement: UAPKI's
+        *own* CMAC-at-1-MiB throughput is 1.33-2.71x **faster** than UAPKI's *own* block-cached
+        number for the same variant (e.g. 128-128: 235.47 vs 86.86 MB/s) - impossible for a
+        construction built from chained calls to that same block cipher, unless the block number is
+        artificially low. `cmac_update`/`cmac_final` do zero heap allocation (confirmed by reading
+        the source), so CMAC's number is the clean one. Our own CMAC-at-1-MiB tracks our own
+        block-cached number within ~1.5% on every variant (exactly what an allocation-free chain
+        should do), confirming our block-level number was already clean and needs no correction.
+        **Conclusion: the true core-round-function gap, with allocation removed on both sides, is
+        larger than the block-level table suggested - UAPKI's round function is genuinely faster
+        than ours by ~2.7x (128-128) down to ~1.3x (512-512, the one variant CMAC also shows as
+        "under 2x").** This is a core Kalyna-cipher-level gap, not a mode-of-operation issue - see
+        T-126's follow-up scope note below for why it isn't tackled as part of *this* task.
+      - **Kalyna-GCM's non-monotonic 256-*/nb pattern stays genuinely open.** Neither implementation
+        uses a precomputed GHASH-style table (both do a real per-block multiply against the actual
+        field element `H`, not a fixed sparse constant - a structurally different case from XTS's
+        tweak-doubling, see T-126) - `advisor()` explicitly flagged the subagent's composite
+        "two opposite trends compound at nb=4" narrative as unfalsifiable and directed cutting it
+        from scope rather than writing an unproven mechanism into this file. **Still needs `perf`/
+        instrumented profiling, not more source reading, before this task can close.**
+      - Two new, more actionable findings surfaced along the way, split into their own tasks since
+        each has an independent, containable, safe fix: **T-126** (Kalyna-XTS's separate 512-512
+        anomaly, now root-caused) and **T-127** (a real per-call key-schedule cost hiding in the
+        `hazmat::kalyna_cmac`/`kalyna_gmac`/`kalyna_kw` API shape, not just this task's benchmark
+        harness).
+- [x] **T-126** **DONE 2026-07-26, fixed and re-measured, same session as T-125's follow-up.** `hazmat::gf2m_wide.rs` has no specialization
+      for "multiply by the fixed generator `x`" (the constant literally named `two` in
+      `kalyna_xts.rs`, e.g. line 100/113/134/161/170/182/193/195). Every tweak-doubling call -
+      once per block, unavoidable in XTS's design - goes through the fully general
+      `poly_mul_wide` (schoolbook shift-and-add, O(m²)) plus a bit-at-a-time `reduce`, when
+      multiplying by `x` specifically is mathematically just a single left-shift of the whole
+      element plus a conditional XOR of the reduction polynomial when the top bit was set - O(m/64)
+      word ops (~16 for m=512) instead of O(m²) (~16,384 word-XORs for m=512, roughly 1000x more
+      work than necessary). Cost scales as **O(m²) per multiply × O(1/m) multiplies per message ≈
+      O(m) total waste per message** - worst at m=512 (the 512-512 variant), which is exactly the
+      one variant that blows up; 128-128/256-256 pay proportionally far less of this tax. **Why this
+      doesn't generalize to GCM's own field multiply** (T-125's still-open item above): XTS
+      multiplies by a *fixed, sparse* constant (avoidable waste, unique to this specific call
+      pattern), while GCM's Horner accumulation multiplies the running accumulator by `H`, a *dense,
+      key-derived* operand - a genuinely general multiply in any implementation, nothing to
+      specialize away. This asymmetry is what makes XTS containable and GCM not.
+      **Fix**: add a `double()`/`mul_by_x` method to each `gf2m_field!` instantiation in
+      `gf2m_wide.rs` (shift + conditional reduction-polynomial XOR), verified by a property test
+      against the existing general `multiply(self, TWO)` before being wired into
+      `kalyna_xts.rs`'s tweak update - must produce byte-identical output to the current path (this
+      is a speed-only change to an internal helper, not a new field-arithmetic definition), so
+      existing XTS official vectors and property tests are the correctness gate, not a new oracle.
+      Does not touch `Gf2m128`/`Gf2m256`'s existing behavior at all.
+      **Implemented and re-measured, same day**: `double()` added to each `gf2m_field!` instance
+      (`crates/dstu-core/src/hazmat/gf2m_wide.rs`), verified byte-identical to `multiply(two)` by a
+      new property test (`field_axiom_tests::double_matches_general_multiply_by_two`, all three
+      field widths, plus an `ALL_ONES`-specific case for the carry-out-of-every-word edge), then
+      `kalyna_xts.rs`'s tweak update switched to call it (the now-unused `$two` macro parameter
+      removed from `kalyna_xts_variant!` and its 5 call sites). Full workspace test suite green
+      (`cargo test --workspace --all-features`, every test binary 0 failures, including all 12
+      `kalyna_xts` tests/vectors and the new `gf2m_wide` property tests), `clippy -D warnings`/`fmt`
+      clean, `--no-default-features`/`--features alloc`/`--features small-tables` all build clean.
+      **Re-measured at the exact 512 B/4096 B scale T-121 originally flagged**: 512-512 XTS goes
+      from ~4.4-4.6x *slower* than UAPKI to **~2.4-2.5x faster** (97.92/104.19 vs. 39.27/43.97 MB/s,
+      UAPKI's own numbers essentially unchanged); every other variant improved substantially too
+      (this waste existed at every field width, not just m=512 - full numbers in `PERFORMANCE.md`'s
+      Kalyna-XTS section and its new "10 MiB re-measurement pass" subsection).
+- [x] **T-127** **DONE 2026-07-26.** `hazmat::kalyna_cmac`/`kalyna_gmac`/`kalyna_kw`'s one-shot `mac`/`wrap`/`unwrap`
+      functions re-expand the full Kalyna key schedule on every call - found 2026-07-26, same
+      session as T-125's follow-up, `advisor()`-directed.** Confirmed by reading the source:
+      `kalyna_cmac.rs:52` (`let cipher = super::kalyna::$expanded::new(key);` inside `mac`) and
+      `kalyna_kw.rs:95` (same pattern inside `wrap`) both take raw `&[u8; N]` key bytes and build a
+      fresh `ExpandedKey` internally every call - unlike `kalyna-block`/`kalyna-gcm`/`kalyna-xts`,
+      which accept an already-expanded cipher object built once by the caller. This is not just a
+      benchmark-harness quirk (though it is also that - `uacrypt`'s own `run_cmac_command`/
+      `run_gmac_command`/`run_kw_command` `--iterations` loops call `mac()`/`wrap()`/`unwrap()` fresh
+      every iteration, so they measure schedule-redone-every-call whether or not that's what the
+      caller intended): **any real caller MACing or wrapping more than one message under the same
+      key today pays a full key-schedule expansion per call**, with no way to avoid it at the
+      current API surface. For CMAC's own 1-MiB benchmark this cost is amortized to near-nothing
+      (tens of thousands of block-cipher calls per call, confirmed by T-125's finding that our
+      CMAC-at-1-MiB tracks our own block-cached number within ~1.5%) - but for KW (2-20 block input,
+      only ~30-240 block-cipher calls total per call) and GMAC (T-121 measured it at exactly one
+      block) this cost is *not* amortized and is a plausible, previously-unexplained cause of KW's
+      long-standing "we have zero heap allocations yet UAPKI still wins by 1.8-2.7x" result
+      (`PERFORMANCE.md`, "not root-caused" as of T-121/D-71). **Caveat, stated plainly**: confirmed
+      only on our side - the UAPKI C benchmark wrapper isn't committed to this repo (per
+      `PERFORMANCE.md`'s "Reproducing" sections), so whether *its* KW/CMAC/GMAC wrapper caches its
+      own schedule is inferred from `PERFORMANCE.md`'s documented benchmarking convention, not
+      independently verified.
+      **Fix**: add `ExpandedKey`-accepting variants of `mac`/`wrap`/`unwrap` (mirroring the pattern
+      `kalyna-block`/`gcm`/`xts` already use), with the existing raw-key-bytes functions becoming
+      thin wrappers over them for source compatibility - a pure API addition/refactor, not a change
+      to any construction's logic, so existing tests are the correctness gate. Update `uacrypt`'s
+      three benchmark loops to use the cached-schedule entry point, matching the convention
+      `PERFORMANCE.md`'s "Methodology" section already documents for every other mode.
+      **Implemented and re-measured, same day**: added `mac_with_cipher`/`verify_with_cipher` to
+      `kalyna_cmac.rs`/`kalyna_gmac.rs` and `wrap_with_cipher`/`unwrap_with_cipher` to `kalyna_kw.rs`
+      (existing `mac`/`verify`/`wrap`/`unwrap` now thin wrappers that build the `ExpandedKey` once
+      and delegate); `uacrypt`'s `run_cmac_command`/`run_gmac_command`/`run_kw_command` benchmark
+      loops rewired to build the cipher once outside `--iterations`. The "confirmed only on our
+      side" caveat above is resolved for KW: read UAPKI's own `bench.c`'s `cmd_kw` directly and
+      confirmed `dstu7624_init_kw` is called once, outside its own iteration loop - the asymmetry
+      was real, not just inferred. Full workspace test suite green (every binary 0 failures),
+      `clippy -D warnings`/`fmt` clean (two `clippy::doc_markdown` hits on "MACing" fixed per
+      `CLAUDE.md`'s own named gotcha for this lint, one `clippy::cast_sign_loss` hit in the same
+      session's `gf2m_wide.rs` change fixed by type-annotating the reduction-term array as `u32`).
+      **Re-measured, same 2-block-key-material KW scale UAPKI's harness already used**: this
+      project's own KW throughput improved 14-31% across all five variants purely from removing the
+      redundant per-call schedule expansion (UAPKI's numbers unchanged, as expected), narrowing its
+      lead from ~1.8-2.7x to ~1.4-2.2x without eliminating it - the residual matches D-76's
+      core-round-function-gap finding, not a further KW-specific cause. CMAC's own numbers are
+      unchanged at the 1-MiB scale already published, exactly as predicted (the schedule cost was
+      already amortized to nothing there) - full numbers in `PERFORMANCE.md`'s Kalyna-KW section.
 - [x] **T-19** **Naming subtask, all three decisions made 2026-07-23** (T-20/T-21/T-22 below) -
       unblocks T-17/T-18, which are still separately open (a decided name isn't a crates.io
       publish or a built release binary):

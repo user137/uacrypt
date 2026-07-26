@@ -73,7 +73,9 @@ macro_rules! kalyna_kw_variant {
 
         impl $name {
             /// Wraps `plaintext` (block-aligned, `1..=MAX_R` blocks) into `out`, which must be
-            /// exactly one block longer than `plaintext`.
+            /// exactly one block longer than `plaintext` - expands the key schedule fresh on every
+            /// call. Prefer [`Self::wrap_with_cipher`] for a caller that wraps more than one
+            /// message under the same key.
             ///
             /// # Errors
             ///
@@ -81,6 +83,25 @@ macro_rules! kalyna_kw_variant {
             /// block size, longer than `MAX_R` blocks, or `out`'s length doesn't match.
             pub fn wrap(
                 key: &[u8; $key_bytes],
+                plaintext: &[u8],
+                out: &mut [u8],
+            ) -> Result<(), KwError> {
+                let cipher = super::kalyna::$expanded::new(key);
+                Self::wrap_with_cipher(&cipher, plaintext, out)
+            }
+
+            /// Wraps `plaintext` using an already-expanded key schedule - the cached-schedule
+            /// counterpart to [`Self::wrap`]. `DECISIONS.md` D-76 / `TASKS.md` T-127: `wrap`
+            /// re-derives the full Kalyna round-key schedule on every call, which for KW's typically
+            /// small (`1..=MAX_R`-block) inputs is not amortized the way it is for a large message -
+            /// an avoidable cost for any caller wrapping more than one key under the same
+            /// wrapping key.
+            ///
+            /// # Errors
+            ///
+            /// Same cases as [`Self::wrap`].
+            pub fn wrap_with_cipher(
+                cipher: &super::kalyna::$expanded,
                 plaintext: &[u8],
                 out: &mut [u8],
             ) -> Result<(), KwError> {
@@ -92,7 +113,6 @@ macro_rules! kalyna_kw_variant {
                     return Err(KwError::InvalidLength);
                 }
 
-                let cipher = super::kalyna::$expanded::new(key);
                 let r = plaintext.len() / $block_bytes;
                 let n = 2 * (r + 1);
                 let v = (n - 1) * 6;
@@ -140,7 +160,9 @@ macro_rules! kalyna_kw_variant {
             }
 
             /// Unwraps `ciphertext` (block-aligned, at least 2 blocks) into `out`, which must be
-            /// exactly one block shorter than `ciphertext`.
+            /// exactly one block shorter than `ciphertext` - expands the key schedule fresh on
+            /// every call. Prefer [`Self::unwrap_with_cipher`] for a caller that unwraps more than
+            /// one message under the same key.
             ///
             /// # Errors
             ///
@@ -153,6 +175,21 @@ macro_rules! kalyna_kw_variant {
                 ciphertext: &[u8],
                 out: &mut [u8],
             ) -> Result<(), KwError> {
+                let cipher = super::kalyna::$expanded::new(key);
+                Self::unwrap_with_cipher(&cipher, ciphertext, out)
+            }
+
+            /// Unwraps `ciphertext` using an already-expanded key schedule - the cached-schedule
+            /// counterpart to [`Self::unwrap`]. Same rationale as [`Self::wrap_with_cipher`].
+            ///
+            /// # Errors
+            ///
+            /// Same cases as [`Self::unwrap`].
+            pub fn unwrap_with_cipher(
+                cipher: &super::kalyna::$expanded,
+                ciphertext: &[u8],
+                out: &mut [u8],
+            ) -> Result<(), KwError> {
                 if ciphertext.len() < 2 * $block_bytes
                     || !ciphertext.len().is_multiple_of($block_bytes)
                     || (ciphertext.len() / $block_bytes - 1) > MAX_R
@@ -161,7 +198,6 @@ macro_rules! kalyna_kw_variant {
                     return Err(KwError::InvalidLength);
                 }
 
-                let cipher = super::kalyna::$expanded::new(key);
                 let r = ciphertext.len() / $block_bytes - 1;
                 let n = 2 * (r + 1);
                 let v = (n - 1) * 6;

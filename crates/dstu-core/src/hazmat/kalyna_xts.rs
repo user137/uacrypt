@@ -56,7 +56,7 @@ fn xor_block(buf: &mut [u8], other: &[u8]) {
 }
 
 macro_rules! kalyna_xts_variant {
-    ($name:ident, $expanded:ident, $key_bytes:literal, $block_bytes:literal, $gf:ty, $two:expr) => {
+    ($name:ident, $expanded:ident, $key_bytes:literal, $block_bytes:literal, $gf:ty) => {
         #[doc = concat!(
             "XTS mode over [`super::kalyna::", stringify!($expanded), "`] - see the module doc ",
             "comment for the citation, the ciphertext-stealing derivation, and the misuse note."
@@ -88,7 +88,6 @@ macro_rules! kalyna_xts_variant {
                 if n < $block_bytes {
                     return Err(XtsError::InvalidLength);
                 }
-                let two: $gf = $two;
                 let mut gamma = <$gf>::from_le_bytes(&self.key.encrypt_block(iv));
 
                 let k = n / $block_bytes;
@@ -97,7 +96,7 @@ macro_rules! kalyna_xts_variant {
                 if r == 0 {
                     let mut off = 0usize;
                     while off < n {
-                        gamma = gamma.multiply(two);
+                        gamma = gamma.double();
                         let block = &mut buffer[off..off + $block_bytes];
                         xor_block(block, &gamma.to_le_bytes());
                         let mut tmp = [0u8; $block_bytes];
@@ -110,7 +109,7 @@ macro_rules! kalyna_xts_variant {
                 } else {
                     // Blocks 0..k-1 get sequential tweaks 1..k, encrypted normally in place.
                     for i in 0..k {
-                        gamma = gamma.multiply(two);
+                        gamma = gamma.double();
                         let off = i * $block_bytes;
                         let block = &mut buffer[off..off + $block_bytes];
                         xor_block(block, &gamma.to_le_bytes());
@@ -131,7 +130,7 @@ macro_rules! kalyna_xts_variant {
                     combined[..r].copy_from_slice(&buffer[tail_off..tail_off + r]);
                     combined[r..].copy_from_slice(&scratch[r..]);
 
-                    gamma = gamma.multiply(two);
+                    gamma = gamma.double();
                     xor_block(&mut combined, &gamma.to_le_bytes());
                     let enc = self.key.encrypt_block(&combined);
                     combined = enc;
@@ -158,7 +157,6 @@ macro_rules! kalyna_xts_variant {
                 if n < $block_bytes {
                     return Err(XtsError::InvalidLength);
                 }
-                let two: $gf = $two;
                 let mut gamma = <$gf>::from_le_bytes(&self.key.encrypt_block(iv));
 
                 let k = n / $block_bytes;
@@ -167,7 +165,7 @@ macro_rules! kalyna_xts_variant {
                 if r == 0 {
                     let mut off = 0usize;
                     while off < n {
-                        gamma = gamma.multiply(two);
+                        gamma = gamma.double();
                         let block = &mut buffer[off..off + $block_bytes];
                         xor_block(block, &gamma.to_le_bytes());
                         let mut tmp = [0u8; $block_bytes];
@@ -179,7 +177,7 @@ macro_rules! kalyna_xts_variant {
                     }
                 } else {
                     for i in 0..(k - 1) {
-                        gamma = gamma.multiply(two);
+                        gamma = gamma.double();
                         let off = i * $block_bytes;
                         let block = &mut buffer[off..off + $block_bytes];
                         xor_block(block, &gamma.to_le_bytes());
@@ -190,9 +188,9 @@ macro_rules! kalyna_xts_variant {
                         xor_block(block, &gamma.to_le_bytes());
                     }
 
-                    gamma = gamma.multiply(two); // tweak_k
+                    gamma = gamma.double(); // tweak_k
                     let gamma_k = gamma;
-                    let gamma_k_plus_1 = gamma.multiply(two);
+                    let gamma_k_plus_1 = gamma.double();
 
                     let last_off = (k - 1) * $block_bytes;
                     let tail_off = k * $block_bytes;
@@ -220,43 +218,8 @@ macro_rules! kalyna_xts_variant {
     };
 }
 
-kalyna_xts_variant!(
-    Kalyna128_128Xts,
-    Kalyna128_128ExpandedKey,
-    16,
-    16,
-    Gf2m128,
-    Gf2m128([2u64, 0])
-);
-kalyna_xts_variant!(
-    Kalyna128_256Xts,
-    Kalyna128_256ExpandedKey,
-    32,
-    16,
-    Gf2m128,
-    Gf2m128([2u64, 0])
-);
-kalyna_xts_variant!(
-    Kalyna256_256Xts,
-    Kalyna256_256ExpandedKey,
-    32,
-    32,
-    Gf2m256,
-    Gf2m256([2u64, 0, 0, 0])
-);
-kalyna_xts_variant!(
-    Kalyna256_512Xts,
-    Kalyna256_512ExpandedKey,
-    64,
-    32,
-    Gf2m256,
-    Gf2m256([2u64, 0, 0, 0])
-);
-kalyna_xts_variant!(
-    Kalyna512_512Xts,
-    Kalyna512_512ExpandedKey,
-    64,
-    64,
-    Gf2m512,
-    Gf2m512([2u64, 0, 0, 0, 0, 0, 0, 0])
-);
+kalyna_xts_variant!(Kalyna128_128Xts, Kalyna128_128ExpandedKey, 16, 16, Gf2m128);
+kalyna_xts_variant!(Kalyna128_256Xts, Kalyna128_256ExpandedKey, 32, 16, Gf2m128);
+kalyna_xts_variant!(Kalyna256_256Xts, Kalyna256_256ExpandedKey, 32, 32, Gf2m256);
+kalyna_xts_variant!(Kalyna256_512Xts, Kalyna256_512ExpandedKey, 64, 32, Gf2m256);
+kalyna_xts_variant!(Kalyna512_512Xts, Kalyna512_512ExpandedKey, 64, 64, Gf2m512);

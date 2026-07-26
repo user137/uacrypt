@@ -63,12 +63,27 @@ macro_rules! kalyna_gmac_variant {
         pub struct $name;
 
         impl $name {
-            /// Computes the full-block-length GMAC tag of `message` under `key`. Callers truncate
-            /// to their chosen `q` (between 8 and one full block) themselves, per the source
-            /// construction - matching [`super::kalyna_gcm`]'s own tag-truncation convention.
+            /// Computes the full-block-length GMAC tag of `message` under `key` - expands the key
+            /// schedule fresh on every call. Prefer [`Self::mac_with_cipher`] for a caller that
+            /// computes a MAC for more than one message under the same key. Callers truncate to their chosen `q`
+            /// (between 8 and one full block) themselves, per the source construction - matching
+            /// [`super::kalyna_gcm`]'s own tag-truncation convention.
             #[must_use]
             pub fn mac(key: &[u8; $key_bytes], message: &[u8]) -> [u8; $block_bytes] {
                 let cipher = super::kalyna::$expanded::new(key);
+                Self::mac_with_cipher(&cipher, message)
+            }
+
+            /// Computes the full-block-length GMAC tag of `message` using an already-expanded key
+            /// schedule - the cached-schedule counterpart to [`Self::mac`]. Same rationale as
+            /// [`super::kalyna_cmac`]'s own `mac_with_cipher` (`DECISIONS.md` D-76 / `TASKS.md`
+            /// T-127): `mac` re-derives the full Kalyna round-key schedule on every call, an
+            /// avoidable cost for any caller computing a MAC for more than one message under the same key.
+            #[must_use]
+            pub fn mac_with_cipher(
+                cipher: &super::kalyna::$expanded,
+                message: &[u8],
+            ) -> [u8; $block_bytes] {
                 let h_key = <$gf>::from_le_bytes(&cipher.encrypt_block(&[0u8; $block_bytes]));
 
                 let msg_len = message.len();
@@ -123,10 +138,26 @@ macro_rules! kalyna_gmac_variant {
                 message: &[u8],
                 tag: &[u8],
             ) -> Result<(), GmacError> {
+                let cipher = super::kalyna::$expanded::new(key);
+                Self::verify_with_cipher(&cipher, message, tag)
+            }
+
+            /// The cached-schedule counterpart to [`Self::verify`] - see
+            /// [`Self::mac_with_cipher`]'s doc comment for why this exists.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`GmacError::InvalidLength`] if `tag.len()` is outside 8 bytes to one full
+            /// block, or [`GmacError::TagMismatch`] if authentication fails.
+            pub fn verify_with_cipher(
+                cipher: &super::kalyna::$expanded,
+                message: &[u8],
+                tag: &[u8],
+            ) -> Result<(), GmacError> {
                 if !(8..=$block_bytes).contains(&tag.len()) {
                     return Err(GmacError::InvalidLength);
                 }
-                let expected = Self::mac(key, message);
+                let expected = Self::mac_with_cipher(cipher, message);
                 if bool::from(expected[..tag.len()].ct_eq(tag)) {
                     Ok(())
                 } else {

@@ -985,10 +985,14 @@ pub fn run_cmac_command(verify: bool, args: &CmacArgs) -> Result<(), CliError> {
     };
 
     let iterations = args.iterations.max(1);
+    // `_with_cipher` (`DECISIONS.md` D-76 / `TASKS.md` T-127): the key schedule is expanded once
+    // outside this loop, matching `kalyna-block`/`kalyna-gcm`/`kalyna-xts`'s own cached-schedule
+    // convention - `<$mac>::mac`'s raw-key-bytes form would otherwise re-expand it every iteration.
     macro_rules! run_cmac_variant {
-        ($mac:ty, $key_len:literal) => {{
+        ($mac:ty, $expanded:ty, $key_len:literal) => {{
             let mut key_arr = [0u8; $key_len];
             key_arr.copy_from_slice(&key);
+            let cipher = <$expanded>::new(&key_arr);
 
             let start = std::time::Instant::now();
             let mut tag = [0u8; 16];
@@ -996,10 +1000,10 @@ pub fn run_cmac_command(verify: bool, args: &CmacArgs) -> Result<(), CliError> {
                 if verify {
                     let mut expected = [0u8; 16];
                     expected.copy_from_slice(tag_in.as_ref().unwrap());
-                    <$mac>::verify(&key_arr, &message, &expected)
+                    <$mac>::verify_with_cipher(&cipher, &message, &expected)
                         .map_err(|_| CliError::CmacVerifyFailed)?;
                 } else {
-                    tag = <$mac>::mac(&key_arr, &message);
+                    tag = <$mac>::mac_with_cipher(&cipher, &message);
                 }
             }
             (tag, start.elapsed())
@@ -1007,11 +1011,21 @@ pub fn run_cmac_command(verify: bool, args: &CmacArgs) -> Result<(), CliError> {
     }
 
     let (tag, elapsed) = match args.variant {
-        KalynaVariant::K128_128 => run_cmac_variant!(Kalyna128_128Cmac, 16),
-        KalynaVariant::K128_256 => run_cmac_variant!(Kalyna128_256Cmac, 32),
-        KalynaVariant::K256_256 => run_cmac_variant!(Kalyna256_256Cmac, 32),
-        KalynaVariant::K256_512 => run_cmac_variant!(Kalyna256_512Cmac, 64),
-        KalynaVariant::K512_512 => run_cmac_variant!(Kalyna512_512Cmac, 64),
+        KalynaVariant::K128_128 => {
+            run_cmac_variant!(Kalyna128_128Cmac, Kalyna128_128ExpandedKey, 16)
+        }
+        KalynaVariant::K128_256 => {
+            run_cmac_variant!(Kalyna128_256Cmac, Kalyna128_256ExpandedKey, 32)
+        }
+        KalynaVariant::K256_256 => {
+            run_cmac_variant!(Kalyna256_256Cmac, Kalyna256_256ExpandedKey, 32)
+        }
+        KalynaVariant::K256_512 => {
+            run_cmac_variant!(Kalyna256_512Cmac, Kalyna256_512ExpandedKey, 64)
+        }
+        KalynaVariant::K512_512 => {
+            run_cmac_variant!(Kalyna512_512Cmac, Kalyna512_512ExpandedKey, 64)
+        }
     };
 
     if !verify {
@@ -1143,19 +1157,22 @@ pub fn run_gmac_command(verify: bool, args: &GmacArgs) -> Result<(), CliError> {
     };
 
     let iterations = args.iterations.max(1);
+    // `_with_cipher` (`DECISIONS.md` D-76 / `TASKS.md` T-127) - same cached-schedule convention as
+    // `run_cmac_command` above.
     macro_rules! run_gmac_variant {
-        ($mac:ty, $key_len:literal, $block_len:literal) => {{
+        ($mac:ty, $expanded:ty, $key_len:literal, $block_len:literal) => {{
             let mut key_arr = [0u8; $key_len];
             key_arr.copy_from_slice(&key);
+            let cipher = <$expanded>::new(&key_arr);
 
             let start = std::time::Instant::now();
             let mut tag = [0u8; $block_len];
             for _ in 0..iterations {
                 if verify {
-                    <$mac>::verify(&key_arr, &message, tag_in.as_ref().unwrap())
+                    <$mac>::verify_with_cipher(&cipher, &message, tag_in.as_ref().unwrap())
                         .map_err(|_| CliError::GmacVerifyFailed)?;
                 } else {
-                    tag = <$mac>::mac(&key_arr, &message);
+                    tag = <$mac>::mac_with_cipher(&cipher, &message);
                 }
             }
             (tag.to_vec(), start.elapsed())
@@ -1163,11 +1180,21 @@ pub fn run_gmac_command(verify: bool, args: &GmacArgs) -> Result<(), CliError> {
     }
 
     let (tag, elapsed) = match args.variant {
-        KalynaVariant::K128_128 => run_gmac_variant!(Kalyna128_128Gmac, 16, 16),
-        KalynaVariant::K128_256 => run_gmac_variant!(Kalyna128_256Gmac, 32, 16),
-        KalynaVariant::K256_256 => run_gmac_variant!(Kalyna256_256Gmac, 32, 32),
-        KalynaVariant::K256_512 => run_gmac_variant!(Kalyna256_512Gmac, 64, 32),
-        KalynaVariant::K512_512 => run_gmac_variant!(Kalyna512_512Gmac, 64, 64),
+        KalynaVariant::K128_128 => {
+            run_gmac_variant!(Kalyna128_128Gmac, Kalyna128_128ExpandedKey, 16, 16)
+        }
+        KalynaVariant::K128_256 => {
+            run_gmac_variant!(Kalyna128_256Gmac, Kalyna128_256ExpandedKey, 32, 16)
+        }
+        KalynaVariant::K256_256 => {
+            run_gmac_variant!(Kalyna256_256Gmac, Kalyna256_256ExpandedKey, 32, 32)
+        }
+        KalynaVariant::K256_512 => {
+            run_gmac_variant!(Kalyna256_512Gmac, Kalyna256_512ExpandedKey, 64, 32)
+        }
+        KalynaVariant::K512_512 => {
+            run_gmac_variant!(Kalyna512_512Gmac, Kalyna512_512ExpandedKey, 64, 64)
+        }
     };
 
     if !verify {
@@ -1280,10 +1307,15 @@ pub fn run_kw_command(unwrap: bool, args: &KwArgs) -> Result<(), CliError> {
     })?;
 
     let iterations = args.iterations.max(1);
+    // `_with_cipher` (`DECISIONS.md` D-76 / `TASKS.md` T-127) - same cached-schedule convention as
+    // `run_cmac_command`/`run_gmac_command` above; this is the one benchmark T-127 identified where
+    // the redone-every-call schedule cost isn't amortized by message size (KW's input is at most
+    // `MAX_R` blocks), so this fix has the most direct effect on KW's own reported numbers.
     macro_rules! run_kw_variant {
-        ($kw:ty, $key_len:literal, $block_len:literal) => {{
+        ($kw:ty, $expanded:ty, $key_len:literal, $block_len:literal) => {{
             let mut key_arr = [0u8; $key_len];
             key_arr.copy_from_slice(&key);
+            let cipher = <$expanded>::new(&key_arr);
 
             let out_len = if unwrap {
                 input
@@ -1298,7 +1330,7 @@ pub fn run_kw_command(unwrap: bool, args: &KwArgs) -> Result<(), CliError> {
             let start = std::time::Instant::now();
             for _ in 0..iterations {
                 if unwrap {
-                    <$kw>::unwrap(&key_arr, &input, &mut out).map_err(|e| match e {
+                    <$kw>::unwrap_with_cipher(&cipher, &input, &mut out).map_err(|e| match e {
                         dstu_core::hazmat::kalyna_kw::KwError::InvalidLength => {
                             CliError::KwInvalidLength
                         }
@@ -1307,7 +1339,7 @@ pub fn run_kw_command(unwrap: bool, args: &KwArgs) -> Result<(), CliError> {
                         }
                     })?;
                 } else {
-                    <$kw>::wrap(&key_arr, &input, &mut out)
+                    <$kw>::wrap_with_cipher(&cipher, &input, &mut out)
                         .map_err(|_| CliError::KwInvalidLength)?;
                 }
             }
@@ -1316,11 +1348,21 @@ pub fn run_kw_command(unwrap: bool, args: &KwArgs) -> Result<(), CliError> {
     }
 
     let (output, elapsed) = match args.variant {
-        KalynaVariant::K128_128 => run_kw_variant!(Kalyna128_128Kw, 16, 16),
-        KalynaVariant::K128_256 => run_kw_variant!(Kalyna128_256Kw, 32, 16),
-        KalynaVariant::K256_256 => run_kw_variant!(Kalyna256_256Kw, 32, 32),
-        KalynaVariant::K256_512 => run_kw_variant!(Kalyna256_512Kw, 64, 32),
-        KalynaVariant::K512_512 => run_kw_variant!(Kalyna512_512Kw, 64, 64),
+        KalynaVariant::K128_128 => {
+            run_kw_variant!(Kalyna128_128Kw, Kalyna128_128ExpandedKey, 16, 16)
+        }
+        KalynaVariant::K128_256 => {
+            run_kw_variant!(Kalyna128_256Kw, Kalyna128_256ExpandedKey, 32, 16)
+        }
+        KalynaVariant::K256_256 => {
+            run_kw_variant!(Kalyna256_256Kw, Kalyna256_256ExpandedKey, 32, 32)
+        }
+        KalynaVariant::K256_512 => {
+            run_kw_variant!(Kalyna256_512Kw, Kalyna256_512ExpandedKey, 64, 32)
+        }
+        KalynaVariant::K512_512 => {
+            run_kw_variant!(Kalyna512_512Kw, Kalyna512_512ExpandedKey, 64, 64)
+        }
     };
 
     std::fs::write(&args.out_path, &output).map_err(|e| CliError::Io {

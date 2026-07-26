@@ -46,11 +46,24 @@ macro_rules! kalyna_cmac_variant {
         pub struct $name;
 
         impl $name {
-            /// Computes the 16-byte CMAC tag of `message` under `key`.
+            /// Computes the 16-byte CMAC tag of `message` under `key` - expands the key schedule
+            /// fresh on every call. Prefer [`Self::mac_with_cipher`] for a caller computing a MAC
+            /// for more than one message under the same key (see its doc comment for why).
             #[must_use]
             pub fn mac(key: &[u8; $key_bytes], message: &[u8]) -> [u8; 16] {
                 let cipher = super::kalyna::$expanded::new(key);
+                Self::mac_with_cipher(&cipher, message)
+            }
 
+            /// Computes the 16-byte CMAC tag of `message` using an already-expanded key schedule -
+            /// the cached-schedule counterpart to [`Self::mac`]. `DECISIONS.md` D-76 / `TASKS.md`
+            /// T-127: `mac` re-derives the full Kalyna round-key schedule on every invocation, an
+            /// avoidable cost (comparable to several block-cipher calls) for any caller computing a MAC for more
+            /// than one message under the same key - this method lets such a caller build the
+            /// schedule once and reuse it, exactly like [`super::kalyna_gcm`]/[`super::kalyna_xts`]
+            /// already do for their own modes.
+            #[must_use]
+            pub fn mac_with_cipher(cipher: &super::kalyna::$expanded, message: &[u8]) -> [u8; 16] {
                 let len = message.len();
                 let chain_len = if len == 0 {
                     0
@@ -102,7 +115,23 @@ macro_rules! kalyna_cmac_variant {
                 message: &[u8],
                 expected: &[u8; 16],
             ) -> Result<(), CmacError> {
-                let tag = Self::mac(key, message);
+                let cipher = super::kalyna::$expanded::new(key);
+                Self::verify_with_cipher(&cipher, message, expected)
+            }
+
+            /// The cached-schedule counterpart to [`Self::verify`] - see
+            /// [`Self::mac_with_cipher`]'s doc comment for why this exists.
+            ///
+            /// # Errors
+            ///
+            /// Returns `Err(CmacError::TagMismatch)` if the recomputed tag doesn't match
+            /// `expected`.
+            pub fn verify_with_cipher(
+                cipher: &super::kalyna::$expanded,
+                message: &[u8],
+                expected: &[u8; 16],
+            ) -> Result<(), CmacError> {
+                let tag = Self::mac_with_cipher(cipher, message);
                 if tag.ct_eq(expected).into() {
                     Ok(())
                 } else {

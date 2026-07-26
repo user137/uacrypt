@@ -68,6 +68,43 @@ macro_rules! gf2m_field {
                 Self::reduce(Self::poly_mul_wide(&self.0, &other.0))
             }
 
+            /// Multiplies by the field generator `x` directly, instead of going through the
+            /// general [`Self::multiply`] path against a `2` (= `x^1`) operand - see
+            /// `DECISIONS.md` D-76 / `TASKS.md` T-126: [`super::kalyna_xts`]'s once-per-block
+            /// tweak-doubling is exactly this fixed-constant case, and paying the general path's
+            /// full O(m^2) schoolbook multiply for it is unneeded work that scales worst at the
+            /// largest `m` (512). `x`'s only nonzero bit is bit 1, so multiplying by it is a
+            /// single left-shift of the whole element - O(m/64) word ops - plus, only when the
+            /// shifted-out top bit (degree `m-1`) was set, one XOR of the reduction polynomial's
+            /// low-degree terms to substitute for the `x^m` term that shifted out of range
+            /// (`x^m = x^f1 + x^f2 + x^f3 + 1` mod the reduction polynomial - the same identity
+            /// [`Self::reduce`] uses, applied once instead of once per set bit). Must stay
+            /// byte-identical to `self.multiply(Self` with only bit 1 set `)` - checked directly
+            /// against it by `field_axiom_tests::double_matches_general_multiply_by_two` below,
+            /// not just asserted; this is a speed-only specialization, not a new field-arithmetic
+            /// definition.
+            #[must_use]
+            pub fn double(self) -> Self {
+                let top_bit = (self.0[$limbs - 1] >> 63) & 1;
+                let mut out = [0u64; $limbs];
+                let mut carry = 0u64;
+                for i in 0..$limbs {
+                    let next_carry = self.0[i] >> 63;
+                    out[i] = (self.0[i] << 1) | carry;
+                    carry = next_carry;
+                }
+                if top_bit == 1 {
+                    out[0] ^= 1;
+                    let terms: [u32; 3] = [$f1, $f2, $f3];
+                    for term in terms {
+                        let l = (term / 64) as usize;
+                        let b = term % 64;
+                        out[l] ^= 1u64 << b;
+                    }
+                }
+                Self(out)
+            }
+
             /// Binary-polynomial (carry-less) multiplication into a double-width product - the
             /// right-to-left shift-and-add method, branchless bit-select in place of an `if`,
             /// mirroring `gf2m163::poly_mul_wide` exactly (`DECISIONS.md` D-25).
@@ -164,6 +201,11 @@ mod field_axiom_tests {
                     limbs[0] = 1;
                     $elem(limbs)
                 };
+                const TWO: $elem = {
+                    let mut limbs = [0u64; $limbs];
+                    limbs[0] = 2;
+                    $elem(limbs)
+                };
                 const ALL_ONES: $elem = $elem([u64::MAX; $limbs]);
 
                 fn arb_element() -> impl Strategy<Value = $elem> {
@@ -194,7 +236,22 @@ mod field_axiom_tests {
                     let _ = ALL_ONES.multiply(ALL_ONES);
                 }
 
+                #[test]
+                fn double_of_all_ones_matches_general_multiply_by_two() {
+                    // The one input `double`'s shift can carry out of every word at once - the
+                    // `double`-specific analogue of `all_ones_squared_does_not_panic` above.
+                    assert_eq!(ALL_ONES.double(), ALL_ONES.multiply(TWO));
+                }
+
                 proptest! {
+                    #[test]
+                    fn double_matches_general_multiply_by_two(a in arb_element()) {
+                        // `TASKS.md` T-126 / `DECISIONS.md` D-76: `double` must be byte-identical
+                        // to the general path it replaces in `kalyna_xts`'s tweak update, not just
+                        // asymptotically faster - this is the correctness gate for that swap.
+                        prop_assert_eq!(a.double(), a.multiply(TWO));
+                    }
+
                     #[test]
                     fn multiply_by_one_is_identity(a in arb_element()) {
                         prop_assert_eq!(a.multiply(ONE), a);

@@ -4862,3 +4862,111 @@ stderr text and exit codes were captured from an actual run, not composed from r
 `cargo clippy --workspace -- -D warnings` / `--features dstu-core/small-tables` / `--all-features`
 (all three clean, after the `doc_lazy_continuation` fix above), `cargo fmt --all -- --check`, and
 the `dstu-core` `no_std` build matrix, all clean.
+
+## D-76: T-125 follow-up - block-level benchmark contamination found, XTS/CMAC-GMAC-KW root causes split into T-126/T-127
+
+Requested 2026-07-26, same day as T-121/T-125: rather than profiling T-125's open GCM/CMAC
+non-monotonic pattern directly, the request was to reason from Kalyna's actual algorithmic
+complexity (round count, block-cipher-call count per mode) against `PERFORMANCE.md`'s already-
+published numbers, with `advisor()` consulted at each step before committing to a mechanism -
+`CLAUDE.md`'s "read directly from the other implementation's source, not guessed at" rule extended
+to performance claims, not just correctness ones.
+
+**First pass, rejected.** A research subagent proposed a `[ZERO_COLUMN; MAX_NB]` fixed-size scratch
+buffer in `hazmat::kalyna.rs`'s round functions as the mechanism explaining why 512-512 (`nb=8`)
+outperforms 128-*/256-* relatively in both CMAC and GCM. `advisor()` falsified this on the first
+call: the theory predicts *worst* relative performance at `nb=2` (most wasted, zeroed buffer space)
+and *best* at `nb=8` (buffer fully used) - but `PERFORMANCE.md`'s own block-level table (the one
+measurement that isolates the round function from any mode-of-operation cost) shows the *opposite*
+ordering (128-128 leads UAPKI by 24%, 512-512 trails by 4%). A mechanism that predicts the wrong
+sign on data already in hand is not evidence, however plausible it reads - discarded without
+further investigation.
+
+**Second pass, three findings confirmed by direct source reading, not narrative:**
+
+1. **The block-level "rough parity with UAPKI" claim is a measurement artifact.** UAPKI's
+   `encrypt_ecb`/`decrypt_ecb` (`dstu7624.c:2899-2961`) call `ba_to_uint64_with_alloc` then
+   `ba_alloc_from_uint64` - two heap allocations plus a `free`, every call - to convert to/from its
+   public `ByteArray` type. For a single 16-64 byte block this allocation is a large fraction of the
+   measured time. This needed no new benchmark to prove: UAPKI's *own* CMAC-at-1-MiB throughput
+   (`cmac_update`/`cmac_final`, confirmed heap-allocation-free by reading the source) is 1.33-2.71x
+   **faster** than UAPKI's *own* block-cached number for the same variant - which is impossible for
+   a construction built from chained calls to that same block cipher unless the block number
+   under-measures UAPKI's true per-block speed. Our own CMAC-at-1-MiB tracks our own block-cached
+   number within ~1.5% on every variant, exactly what an allocation-free chain predicts, confirming
+   *our* block-level number needed no such correction. **Net effect: the true core-round-function
+   gap (allocation removed from both sides) is larger than the block-level table showed - UAPKI's
+   round function is genuinely faster than ours, ~2.7x at 128-128 narrowing to ~1.3x at 512-512.**
+   This is a core-cipher-level finding, not specific to any mode, and explains why T-125's CMAC
+   cells look the way they do without needing a CMAC-specific cause at all.
+2. **Kalyna-XTS's separate 512-512 anomaly (T-121/D-71) is root-caused** - split out to **T-126**.
+   `hazmat::gf2m_wide.rs` has no fast path for "multiply by the fixed generator `x`"; XTS's
+   once-per-block tweak-doubling (`kalyna_xts.rs`'s `gamma.multiply(two)`) pays the full general
+   O(m²) schoolbook multiply for what is mathematically an O(m/64) shift-plus-conditional-XOR
+   operation. Cost scales as roughly O(m) total waste per message (O(m²) per multiply × O(1/m)
+   multiplies), worst exactly at m=512 - matching the one variant that blows up. Confirmed *not* to
+   generalize to GCM's own field multiply: GCM's Horner accumulation multiplies by `H`, a dense
+   key-derived operand, which is a genuinely general multiply in any implementation, nothing to
+   specialize away - this is why XTS is containable and GCM (still open, see below) isn't.
+3. **`hazmat::kalyna_cmac`/`kalyna_gmac`/`kalyna_kw`'s one-shot API re-expands the full key schedule
+   on every call** - split out to **T-127**. `kalyna_cmac.rs:52`/`kalyna_kw.rs:95` both construct a
+   fresh `ExpandedKey` from raw key bytes inside `mac`/`wrap`, unlike `kalyna-block`/`gcm`/`xts`,
+   which take an already-expanded cipher object. Confirmed on our side by reading the source; the
+   corresponding claim about UAPKI's own (uncommitted) benchmark wrapper is *inferred* from
+   `PERFORMANCE.md`'s documented convention, not independently verified - stated as such, not
+   overclaimed. This is a real API gap affecting production callers too, not just a benchmark
+   artifact: any caller MACing/wrapping more than one message under one key pays a full schedule
+   expansion every call today, with no way to avoid it.
+
+**Left open, deliberately**: GCM's non-monotonic 256-*/nb-dependent pattern. `advisor()` explicitly
+directed cutting the subagent's composite "two opposite trends compound at nb=4" explanation from
+scope - neither implementation uses a precomputed GHASH-style table, so this doesn't reduce to
+finding 3's "specialize the fixed-constant case" fix, and no mechanism found by source reading
+alone predicted the right shape without also being unfalsifiable. Needs `perf`/instrumented
+profiling, per T-125's own original framing - not resolved here, and not guessed at just to close
+the task.
+
+Both T-126 and T-127's fixes are speed-only: T-126 must produce byte-identical output to the
+existing general `multiply`, verified against it directly rather than a new derivation; T-127 adds
+an additional entry point that reuses the exact same `ExpandedKey`/schedule logic already used
+elsewhere, with the existing raw-key functions kept as thin wrappers - neither changes any
+construction's cryptographic logic, so existing tests (vectors, tamper/misuse coverage, property
+tests) remain the correctness gate, no new oracle needed.
+
+**Both implemented and re-measured the same day**, per the project owner's explicit condition that
+a fix only proceeds if it's safe and doesn't touch cryptographic strength or the algorithm itself -
+both qualified (pure speed specializations/API additions, not construction changes) and were built
+test-first as usual:
+
+- **T-126**: `double()` added to `gf2m_wide.rs`'s `gf2m_field!` macro (shift-plus-conditional-XOR,
+  O(m/64)), with a property test (`double_matches_general_multiply_by_two`, all three field widths,
+  plus an `ALL_ONES`-specific carry-out case) written *before* wiring it into `kalyna_xts.rs`'s
+  tweak update, per this project's test-first standing rule. Re-measured at the exact 512 B/4096 B
+  scale the original T-121 finding used: the 512-512 anomaly (previously ~4.4-4.6x slower than
+  UAPKI) is now **~2.4-2.5x faster**, and all four other variants improved substantially too -
+  confirming the mechanism applied to every field width, not just the one that had crossed into
+  "dramatic outlier" territory. Independently re-confirmed at 10 MiB (`--iterations 50`): 512-512
+  lands in the middle of the other variants' throughput band, not an outlier at all.
+- **T-127**: `mac_with_cipher`/`verify_with_cipher` added to `kalyna_cmac.rs`/`kalyna_gmac.rs`,
+  `wrap_with_cipher`/`unwrap_with_cipher` added to `kalyna_kw.rs`; `uacrypt`'s three corresponding
+  benchmark loops rewired to build the `ExpandedKey` once outside `--iterations`, closing the
+  finding's own stated caveat along the way - `bench.c`'s `cmd_kw` was read directly and confirmed
+  to already cache its own schedule outside its loop, so the asymmetry this task fixed was real,
+  not merely inferred from convention. Re-measured at KW's existing 2-block-of-key-material scale:
+  this project's own throughput improved 14-31% across all five variants (UAPKI's own numbers held
+  steady, as expected), narrowing its lead from ~1.8-2.7x to ~1.4-2.2x without eliminating it - the
+  residual is consistent with, and not distinguished further from, the core-round-function gap
+  found in this decision's first half. CMAC's own already-published 1-MiB numbers were confirmed
+  unchanged after the fix, exactly as predicted (the schedule cost was already amortized to nothing
+  at that scale).
+
+Full verification for both: `cargo test --workspace --all-features` (every test binary, 0
+failures - including all 12 `kalyna_xts` tests, 12 `kalyna_cmac`, 18 `kalyna_gmac`, 17 `kalyna_kw`,
+and 43 `dstu-core` lib tests covering the new `gf2m_wide` property tests), `cargo clippy
+--workspace --all-features -- -D warnings` and `cargo fmt --all -- --check` clean (two
+`clippy::doc_markdown` "MACing" hits and one `clippy::cast_sign_loss` hit fixed along the way, both
+previously-documented lint shapes in `CLAUDE.md`), and `--no-default-features`/`--features
+alloc`/`--features small-tables` builds all clean. Full numbers for both fixes, plus the new 10 MiB
+re-measurement pass across every mode without an inherent length cap (requested the same session,
+to rule out any remaining per-call setup-cost noise), are in `PERFORMANCE.md`'s Kalyna-XTS/Kalyna-KW
+sections and its new "10 MiB re-measurement pass" subsection.
