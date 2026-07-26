@@ -1118,16 +1118,30 @@ item they point to is later removed.
       material, not a message), `kalyna-gmac` (one-block-only measurement, D-57's UAPKI streaming-
       bug workaround - an oracle limitation, not this project's own), `kalyna-ccm` (255-byte
       `MAX_PLAINTEXT_LEN` cap). **CMAC is not exempt** - it takes an arbitrary-length message like
-      GCM/XTS and already has a published 10 MiB row. **This task is the deferred, expensive half**: a
+      GCM/XTS and already has a published 10 MiB row. **Second policy, same day, also
+      user-requested**: both directions are now standard too, not just the forward one - every
+      table must measure `decrypt` alongside `encrypt`, `verify` alongside `compute`, `unwrap`
+      alongside `wrap`, not whichever direction happened to be measured first (Strumok is exempt -
+      `apply_keystream` is its own inverse; Kupyna has no inverse direction, being a hash).
+      **This task is the deferred, expensive half**: a
       fresh UAPKI comparison-CLI wrapper rebuild (`gendef`/`dlltool` off the prebuilt `uapkic.dll`
       per T-121/D-71, or from-source CMake) plus per-mode wrapper code matching each mode's own
       quirks already documented (GMAC's one-block workaround for its streaming-path bug, D-57;
       CCM's different wire convention from D-71) - not committed to this repo per
-      `PERFORMANCE.md`'s "Reproducing" section, rebuilt fresh each time it's needed. Should re-run
-      *every* mode's UAPKI comparison at 10 MiB, not just the ones this session's own `uacrypt`-only
-      sweep (`TASKS.md`, same date) happened to cover - `advisor()`'s explicit direction was not to
-      publish a half-rebuilt UAPKI comparison next to fresh `uacrypt`-only numbers, so this stays a
-      separate task rather than being folded into the sweep already done.
+      `PERFORMANCE.md`'s "Reproducing" section, rebuilt fresh each time it's needed. **The
+      `uacrypt`-only half is now fully done, same day**: all 7 Kalyna modes (block/CCM/GCM/CMAC/
+      GMAC/KW/XTS) re-measured post-T-128, both directions each, at their policy-mandated sizes -
+      see each mode's own `PERFORMANCE.md` section for the numbers. What's left for this task is
+      exactly the UAPKI-side rebuild and re-comparison, nothing more - `advisor()`'s explicit
+      direction was not to publish a half-rebuilt UAPKI comparison next to fresh `uacrypt`-only
+      numbers, so this stays a separate task rather than being folded into the sweep already done.
+      **A real, unexplained finding surfaced doing the `uacrypt`-only half**: Kalyna-block/XTS/KW's
+      decrypt/unwrap direction is *not* symmetric with encrypt/wrap the way GCM/CMAC/CCM's is - on
+      some variants (256-256/256-512) the reverse direction now runs *faster*, not just similarly.
+      Consistent with `encipher_round_n`/`fused_inv_round_n` (T-128/D-77) being genuinely different
+      code paths that were never guaranteed to gain identically, but not root-caused further than
+      that here - see each mode's own section for the actual numbers, not smoothed into a symmetric
+      claim that isn't true.
 - [x] **T-132** **DONE 2026-07-26.** Memory-requirements audit, user-requested, for both resource
       profiles (`fused`/`small-tables`) - `docs/resource-profiles.md` already covered flash/const-
       table footprint (D-35/D-38/D-39) but nothing about per-mode RAM/stack cost, a different axis

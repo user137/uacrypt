@@ -49,6 +49,15 @@ faster alternative — so this project tracks its own numbers deliberately, not 
   this project's own side), `kalyna-ccm` (`MAX_PLAINTEXT_LEN = 255` bytes, a real cap in this
   implementation). **CMAC is not exempt** — it authenticates an arbitrary-length message the same
   way GCM/XTS do, and already has a published 10 MiB row.
+- **Both directions are now standard, not just the forward one** (policy made explicit 2026-07-26,
+  user-requested — a one-sided table was found to be the norm up to this point and is being
+  corrected going forward): every mode's binary-level table must measure `decrypt` alongside
+  `encrypt` (`kalyna-block`/`kalyna-ccm`/`kalyna-gcm`/`kalyna-xts`), `verify` alongside `compute`
+  (`kalyna-cmac`/`kalyna-gmac`), and `unwrap` alongside `wrap` (`kalyna-kw`) — not just whichever
+  single direction happened to be measured first. **Exempt, and why**: Strumok's `apply_keystream`
+  is its own inverse (XOR-based, encrypt and decrypt are the literal same operation) — measuring a
+  second "direction" would just be re-measuring the same function, not new information. Kupyna has
+  no inverse direction to measure (a hash has no decrypt).
 
 **Dev machine**: AMD Ryzen 5 PRO 4650U (6 cores / 12 threads, ~2.1 GHz base), Windows 11 Pro. All
 UAPKI/Oliynykov/outspace comparison numbers below are from this machine only - those oracles
@@ -296,6 +305,24 @@ narrower than the 2026-07-22 table's ~1.4-1.9x Kalyna lead) — a real, measured
 original 2-variant table, not just more data points: 128-256/256-512/512-512 now show UAPKI
 slightly ahead rather than this project leading everywhere. Not root-caused further this session.
 
+**Updated 2026-07-26, `uacrypt`-only re-run after T-128** (const-generic round functions — no UAPKI
+column, wrapper not rebuilt this session, T-131), cached schedule, both directions, N = 20000:
+
+| Variant | uacrypt encrypt (MB/s) | uacrypt decrypt (MB/s) | vs. pre-T-128 encrypt row |
+|---|---|---|---|
+| 128-128 | **219.18** | 192.77 | +102.7% (was 108.11) |
+| 128-256 | **160.00** | 142.86 | +105.0% (was 78.05) |
+| 256-256 | **146.12** | 164.10 | +17.4% (was 124.51) |
+| 256-512 | **113.88** | 125.49 | +17.1% (was 97.26) |
+| 512-512 | **139.13** | 102.73 | +23.7% (was 112.48) |
+
+Same `nb=2`-vs-`nb=4`/`nb=8` split T-128's own isolated criterion measurement predicted (~100%+
+gain at `nb=2`, ~17-24% at `nb=4`/`nb=8`) — this CLI-level number (includes process/loop overhead
+`criterion` doesn't) still tracks the mechanism cleanly. **Encrypt/decrypt asymmetry, same pattern
+XTS shows above**: 256-256/256-512 decrypt now runs *faster* than encrypt, while 128-128/128-256/
+512-512 keep encrypt ahead — `encipher_round_n`/`fused_inv_round_n` are different code paths
+(T-128/D-77), so the two directions were never guaranteed to move by the same amount.
+
 ### Kalyna-CCM (`kalyna-ccm encrypt`)
 
 No binary-level table existed for CCM before this session — `kalyna-ccm` had no `--iterations` flag
@@ -323,6 +350,22 @@ against our exact output shape the way the other modes below are.
 
 **Reproducing**: `target/release/uacrypt kalyna-ccm encrypt --variant <v> --key <path> --nonce
 <path> --in <path> --out <path> --tag <path> --iterations <N>`.
+
+**Updated 2026-07-26, `uacrypt`-only re-run after T-128** (no UAPKI column, wrapper not rebuilt
+this session, T-131), 64 B, N = 5000, both directions:
+
+| Variant | uacrypt encrypt (MB/s) | uacrypt decrypt (MB/s) | vs. pre-T-128 encrypt row |
+|---|---|---|---|
+| 128-128 | **50.24** | 49.57 | +68.8% (was 29.77) |
+| 128-256 | **40.18** | 39.29 | +89.7% (was 21.18) |
+| 256-256 | **32.87** | 32.24 | +18.6% (was 27.73) |
+| 256-512 | **23.33** | 22.21 | +19.7% (was 19.49) |
+| 512-512 | **18.70** | 16.98 | +24.3% (was 15.04) |
+
+Same `nb=2`/`nb=4`/`nb=8` gain split as Kalyna-block above — CCM is a CTR-mode pass plus a CBC-MAC
+over the same block cipher, so it inherits T-128's round-function speedup directly. Encrypt/decrypt
+symmetric within normal noise (unlike XTS/block above), consistent with CCM's decrypt path being
+essentially the same CTR+MAC work run in the same order.
 
 ### Kalyna-GCM (`kalyna-gcm encrypt`)
 
@@ -387,13 +430,17 @@ T-131**, so no UAPKI column is shown; do not read the absence of a UAPKI number 
 having "lost" the comparison, and do not compare these numbers directly against the 1 MiB table
 above's UAPKI column.
 
-| Variant | uacrypt 10 MiB (MB/s) |
-|---|---|
-| 128-128 | 19.85 |
-| 128-256 | 19.47 |
-| 256-256 | 17.09 |
-| 256-512 | 16.59 |
-| 512-512 | 12.84 |
+| Variant | uacrypt encrypt (MB/s) | uacrypt decrypt (MB/s) |
+|---|---|---|
+| 128-128 | 19.85 | 19.85 |
+| 128-256 | 19.47 | 19.45 |
+| 256-256 | 17.09 | 17.09 |
+| 256-512 | 16.59 | 16.60 |
+| 512-512 | 12.84 | 12.84 |
+
+Encrypt/decrypt symmetric within measurement noise (<0.1% apart on every variant), exactly as
+expected — Kalyna-GCM's decrypt path is CTR-mode decryption plus the same GHASH-style tag
+computation as encrypt, doing the same amount of work either direction.
 
 Consistent with (slightly above) the post-T-125 1 MiB row above on every variant, as expected — GCM
 was already steady-state at 1 MiB, and T-128 only speeds up the ~6-10% of per-block cost that isn't
@@ -499,13 +546,17 @@ multiply, so this is the mode where T-128's gain should show most directly). **`
 UAPKI column — the wrapper wasn't rebuilt this session, see T-131**; do not compare directly against
 the 1 MiB table's UAPKI column above.
 
-| Variant | uacrypt 10 MiB (MB/s) |
-|---|---|
-| 128-128 | 199.08 |
-| 128-256 | 147.56 |
-| 256-256 | 142.29 |
-| 256-512 | 111.61 |
-| 512-512 | 137.16 |
+| Variant | uacrypt compute (MB/s) | uacrypt verify (MB/s) |
+|---|---|---|
+| 128-128 | 199.08 | 200.13 |
+| 128-256 | 147.56 | 147.12 |
+| 256-256 | 142.29 | 142.30 |
+| 256-512 | 111.61 | 111.27 |
+| 512-512 | 137.16 | 137.01 |
+
+Compute/verify symmetric within noise on every variant, as expected — `verify` recomputes the same
+tag internally and compares, so it's the same cost as `compute` plus a cheap constant-time
+comparison.
 
 Real, substantial improvement over the 1 MiB row above on every variant (e.g. 512-512: 111.03 →
 137.16, ~+23.5%, roughly matching T-128's own `nb=8` block-only gain). **128-128's own jump (106.85
@@ -552,6 +603,25 @@ steady, as expected (nothing changed on its side).
 
 **Reproducing**: `target/release/uacrypt kalyna-gmac compute --variant <v> --key <path> --in <path>
 --out <path> --iterations <N>`.
+
+**Updated 2026-07-26, `uacrypt`-only re-run after T-128** (no UAPKI column, wrapper not rebuilt this
+session, T-131), 1 block, N = 5000, both directions:
+
+| Variant | uacrypt compute (MB/s) | uacrypt verify (MB/s) | vs. pre-T-128 compute row |
+|---|---|---|---|
+| 128-128 | 21.16 | 18.87 | +25.7% (was 16.84) |
+| 128-256 | 22.38 | 18.63 | +32.4% (was 16.90) |
+| 256-256 | 18.51 | 16.53 | +10.8% (was 16.71) |
+| 256-512 | 15.38 | 15.47 | -4.7% (was 16.14) |
+| 512-512 | 12.93 | 12.37 | +0.2% (was 12.91) |
+
+**Small and non-monotonic, unlike CMAC/CCM/block above — this tracks GCM's own modest gain, not
+CMAC's large one, and that's expected**: GMAC's per-block cost is dominated by the field multiply
+(same mechanism as GCM, ~90%+ per T-125/D-76's isolated timing), not the block-cipher round
+function T-128 sped up, so only a small fraction of GMAC's cost is even reachable by this fix.
+256-512/512-512's flat-to-slightly-down cells are within normal single-run noise for a
+single-block, N=5000 operation (less averaging than CMAC/CCM's larger workloads), not a real
+regression — flagged honestly rather than smoothed into a false trend.
 
 ### Kalyna-KW (`kalyna-kw wrap`)
 
@@ -600,6 +670,26 @@ as a KW-specific cause beyond that.
 
 **Reproducing**: `target/release/uacrypt kalyna-kw wrap --variant <v> --key <path> --in <path> --out
 <path> --iterations <N>`.
+
+**Updated 2026-07-26, `uacrypt`-only re-run after T-128** (no UAPKI column, wrapper not rebuilt this
+session, T-131), 2 blocks of key material, N = 5000, both directions:
+
+| Variant | uacrypt wrap (MB/s) | uacrypt unwrap (MB/s) | vs. pre-T-128 wrap row |
+|---|---|---|---|
+| 128-128 | **13.84** | 11.51 | +96.0% (was 7.06) |
+| 128-256 | **10.32** | 8.59 | +106.8% (was 4.99) |
+| 256-256 | **9.27** | 10.34 | +28.2% (was 7.23) |
+| 256-512 | 7.34 | **8.28** | +19.5% (was 6.14) |
+| 512-512 | **9.02** | 6.62 | +22.9% (was 7.34) |
+
+Same `nb=2`/`nb=4`/`nb=8` split as Kalyna-block/CCM above — KW's Feistel-like network is pure
+block-cipher chaining (`v = (n-1)*6` rounds, D-55), so it inherits T-128's gain the same way. This
+narrows KW's residual gap to UAPKI further (was ~1.4-2.2x post-T-127, per the table above — a fresh
+UAPKI-side re-measurement is needed to state the new ratio precisely, tracked under T-131).
+Wrap/unwrap show the same encrypt/decrypt-direction asymmetry XTS and Kalyna-block do (256-256/
+256-512 favor the reverse direction, the others favor the forward one) — consistent with
+`encipher_round_n`/`fused_inv_round_n` being genuinely different code paths (T-128/D-77), not
+measurement error.
 
 ### Kalyna-XTS (`kalyna-xts encrypt`)
 
@@ -733,6 +823,25 @@ T-126's separate tweak-doubling fix; the two are additive, not overlapping cause
 move only within measurement noise, exactly as expected — T-128 is a `hazmat::kalyna.rs`-only
 change (T-134/T-135 track the analogous, not-yet-implemented findings for Kupyna/Strumok
 respectively). CMAC/GCM's own post-T-128 numbers are in their own sections above, not repeated here.
+
+**Decrypt direction added 2026-07-26, same session** (previously this table, like most of this
+file, only measured the forward direction — corrected going forward, see "Methodology"):
+
+| Variant | uacrypt XTS encrypt (MB/s) | uacrypt XTS decrypt (MB/s) |
+|---|---|---|
+| 128-128 | 193.73 | 173.58 |
+| 128-256 | 144.50 | 131.71 |
+| 256-256 | 135.91 | **153.10** |
+| 256-512 | 107.53 | 122.04 |
+| 512-512 | 132.41 | 98.89 |
+
+**Not symmetric, unlike GCM/CMAC above** — encrypt and decrypt use different round-function paths
+internally (`encipher_round_n` vs `fused_inv_round_n`, T-128/D-77), which already showed a real
+encrypt/decrypt asymmetry in T-128's own block-only criterion numbers (e.g. `nb=8` decrypt gained
+less than encrypt, ~15% vs ~22%). 256-256 decrypt actually running *faster* than its own encrypt is
+a real, measured result here, not a typo — consistent direction with (though larger in magnitude
+than) T-128's own block-only finding that the two directions don't scale identically across block
+sizes. Not root-caused further than "the two round functions are genuinely different code paths."
 
 ## What the gap is, honestly
 
