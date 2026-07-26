@@ -513,6 +513,19 @@ Full detail and rationale in `SECURITY.md` — this is the compressed version so
   decisive at small ones (GMAC's 1-block message made a real ~1.1-2.9x gap look like a bogus
   ~4-24x one). Any new wrapper function needs its own `t0`/`now_ns()` placed *after* the
   setup/init call, verified per-function, not inherited from a sibling's code.
+- **After a const-generic rewrite (T-128/T-134 pattern) removes every production caller of an old
+  runtime-parameterized function, expect a BATCH of `never used` clippy errors, not just one** -
+  every function down that old call chain becomes genuinely dead at once (T-134: 7 functions -
+  `sub_shift_mix`, both `add_round_constant_*`, `t_transform`/`t_plus_transform`, `compress`,
+  `bytes_to_columns` - all needed `#[allow(dead_code)]` the moment `compress_block`/`finalize`
+  stopped calling them). Run clippy right after rewiring the call site and add the attribute to
+  the whole batch in one pass, don't fix them one at a time as clippy re-reports each.
+- **A benchmark wrapper for an unkeyed/schedule-free primitive (hash digest) must call its
+  init/context-setup INSIDE the timed loop, not hoist it out** - the opposite of D-80's
+  cached-schedule lesson for CMAC/CCM. `uacrypt`'s own `bench_in_memory!` constructs a fresh
+  `Hasher` every iteration since there's no key schedule to amortize; a fair UAPKI-side wrapper
+  must re-init every iteration too - this also sidesteps D-82's CMAC-style context-reuse quirk,
+  since state is never stale when re-initialized every call.
 
 ## Reference implementations and oracles
 
