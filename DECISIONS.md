@@ -4410,3 +4410,128 @@ including the 3 new tests; full workspace: all green), `cargo clippy --workspace
 warnings` clean, `cargo fmt --all -- --check` clean, `cargo build -p dstu-core --no-default-features`
 clean (`crypto_sign` is an unconditional module, confirming this addition didn't accidentally
 introduce a `std`/`alloc` requirement).
+
+## D-71: Five new `uacrypt` benchmark CLI commands (GCM/CMAC/GMAC/KW/XTS) for an expanded UAPKI comparison - T-121
+
+User requested an updated, expanded binary-level performance comparison against UAPKI
+(`PERFORMANCE.md`, canonical since D-34), with the explicit choice (via `AskUserQuestion`) to add
+real CLI exposure for the five DSTU 7624 modes that had none at all - GCM, CMAC, KW, GMAC, XTS -
+over the narrower option of just re-measuring the existing four commands' coverage.
+
+**Same precedent as D-31 exactly**: these are `hazmat`-scoped benchmarking/interop tools, not the
+safe, misuse-resistant top-level `encrypt`/`decrypt`/`hash` surface (T-16, D-52) - explicit
+variant/key/nonce/tag as separate files, no hidden defaults, named `kalyna-gcm`/`kalyna-cmac`/
+`kalyna-gmac`/`kalyna-kw`/`kalyna-xts` rather than anything that could be mistaken for the reserved
+top-level names. `kalyna-ccm` (pre-existing, D-41) also gained `--iterations` in this same session -
+it had none before, so its own per-op cost was previously unmeasurable through the binary at all,
+an oversight this task closed as a byproduct of needing it for GCM's own comparable benchmark.
+
+**Shapes, one per mode, matching each `hazmat` module's real API** (checked by reading each module
+directly, not assumed from `kalyna-ccm`'s shape):
+
+- `kalyna-gcm encrypt/decrypt` - same file interface as `kalyna-ccm` (`--variant --key --nonce --aad
+  --in --out --tag --iterations`), tag always the variant's full block length (no `--tag-len` knob -
+  D-47's "delete the knob", same call `crypto_secretbox` made for its own fixed-length tag).
+- `kalyna-cmac compute/verify` - MAC-only, no encryption: `compute --out <tag>` /
+  `verify --tag <path>`. Tag is always 16 bytes (`hazmat::kalyna_cmac`'s own fixed `q`, D-54).
+- `kalyna-gmac compute/verify` - same shape as `kalyna-cmac`, but **no `--nonce` flag** - checked by
+  reading `hazmat::kalyna_gmac` directly rather than assumed from GCM's shape (a wrong assumption
+  caught before writing any code): `mac`/`verify` take no IV at all, unlike GCM. Tag is the
+  variant's full block length, same as GCM's.
+- `kalyna-kw wrap/unwrap` - `--variant --key --in --out`, no `--iterations`-adjacent flags beyond
+  that. `--in` must be block-aligned (1..=20 blocks for `wrap`, `hazmat::kalyna_kw`'s own `MAX_R`
+  bound).
+- `kalyna-xts encrypt/decrypt` - `--variant --key --tweak --in --out`. `--tweak` is one block's
+  worth of bytes (the "data unit" tweak seed `hazmat::kalyna_xts::encrypt_in_place`'s `iv` parameter
+  actually takes) - **not** a sector index this CLI derives on the caller's behalf; the help text
+  says so explicitly so a caller encodes their own sector index into a block-length buffer
+  themselves if that's their use case.
+
+**`run()`'s dispatch match arm was split into a new `dispatch_kalyna_mode` helper** purely to stay
+under `clippy::pedantic`'s `too_many_lines` lint (100-line default) once five more command arms were
+added - `cmd`/`rest` passed through unchanged, no behavior change, just a mechanical extraction
+(caught immediately by `cargo clippy --workspace --all-features -- -D warnings`, fixed before
+writing any tests).
+
+**Test coverage, proportionate per `CLAUDE.md`'s three-category rule**: these are thin CLI wrappers
+over already-vector-verified `hazmat` primitives (Kalyna itself is the primitive under test; GCM/
+CMAC/GMAC/KW/XTS are already dual-oracle-verified modes of operation, D-56/D-54/D-57/D-55), so
+correctness here means a round-trip through the CLI matches a direct `hazmat` call, not a fresh
+vector derivation. Rejection (D-64) wherever a tag/checksum exists to tamper (GCM tag, CMAC/GMAC
+tag, KW's checksum block). **XTS has no rejection category by design** - confidentiality-only mode,
+no tag at all (`hazmat::kalyna_xts`'s own module doc comment: this is the correct, standard design
+for disk-sector encryption, not a gap) - recorded as a finding via the one misuse test that *is*
+reachable (input shorter than one block), not padded out with a vacuous test. Misuse (D-65):
+wrong-length key, missing `--tag`/`--out` depending on subcommand, non-block-aligned KW input. 17
+new tests total (64 -> 81), all green on first write - expected for coverage of already-correct code
+paths, not a test-first violation (same framing D-64/D-65's own original session used).
+
+**UAPKI comparison - faster path found than `PERFORMANCE.md`'s documented CMake build**: the
+official `specinfo-ua/UAPKI` GitHub repo publishes a signed prebuilt Windows `uapkic.dll`
+(`v2.0.12`), confirmed via `gh api repos/specinfo-ua/UAPKI/releases` and `objdump -p` (exports every
+symbol needed, only depends on `KERNEL32`/`ADVAPI32` - no VC++ redistributable). `gendef`+`dlltool`
+(already on this machine, part of the WinLibs MinGW install, `.claude.local.md`) generates a plain
+import lib, so a one-off C wrapper links against it with bare `gcc` - no CMake, no `resource.rc`
+UTF-16/`windres` workaround needed at all. This supersedes `PERFORMANCE.md`'s CMake recipe as the
+faster local path on this machine; the CMake path remains documented there for anyone without a
+prebuilt-binary option (e.g. CI, a different OS/arch).
+
+**Two real UAPKI-side findings from cross-checking the wrapper byte-for-byte against the real
+`uacrypt` release binary before any timing run** (same discipline D-31 established - "all three
+cross-checked to produce byte-identical ciphertext/plaintext... before any timing run"), both found
+by reading `oracles/uapki/library/uapkic/src/dstu7624.c` directly, not assumed:
+
+1. **GMAC**: UAPKI's own generic `dstu7624_update_mac`/`dstu7624_final_mac` streaming path
+   disagrees with itself on multi-block input given in one call - this is **not a new bug**, it's
+   `DECISIONS.md` D-57's already-documented finding (the same stale-index bug in `gmac_update` that
+   `hazmat::kalyna_gmac` was deliberately ported from `encrypt_gmac` to avoid), re-confirmed
+   empirically here for the first time against a real byte-for-byte comparison rather than only
+   hand-traced. Worked around for the benchmark by using exactly one block of input, which the
+   buggy path handles correctly (the bug only manifests across a block boundary within one call) -
+   a clean timing number, not a correctness claim about UAPKI's multi-block GMAC.
+2. **CCM wire format differs from ours**: `dstu7624_encrypt_ccm`'s `cipher_data` output is
+   `ciphertext || CTR-encrypted(tag)` concatenated into one buffer (`ba_join(pdata_buf_part,
+   h_part)` in the source) - not a same-length ciphertext with the tag returned separately, the
+   convention `hazmat::kalyna_ccm::seal_in_place`/this project's own `kalyna-ccm` CLI both use. Not
+   a bug on either side, just a different framing choice neither `DECISIONS.md` D-41 nor D-55's
+   citation work had previously had reason to compare at this level of detail. Consequence for this
+   session: CCM's timing number is UAPKI-self-consistent (its own encrypt round-trips through its
+   own decrypt) rather than cross-tool byte-verified the way the other eight compared modes are -
+   correctness of *our* CCM implementation is unaffected (already dual-oracle-verified, D-41), this
+   only affects what this particular ad hoc benchmark wrapper could verify about UAPKI's side.
+   Also found in the same reading pass: `dstu7624_init_ccm`'s `n_max` parameter is not literally
+   "the message's bit length" despite the header doc's phrasing - it's a small, mostly
+   message-length-independent protocol constant (confirmed against UAPKI's own
+   `dstu7624_ccm_self_test` vectors: `n_max=32` for every `q=16` case regardless of whether the
+   plaintext was 15 or 133 bytes) - the wrapper hardcodes `n_max` from `q` alone (32/48/64 for
+   `q=16/32/64`) rather than deriving it from the actual message length, matching those vectors'
+   own pattern.
+
+Separately, `key_wrap_dstu7624`/`key_unwrap_dstu7624` (exported by the DLL, initially assumed to be
+the UAPKI equivalent of `hazmat::kalyna_kw`) turned out to be a **different construction entirely**
+on inspection of `keywrap.c`: a CMS-style key-wrap per a separate technical specification
+(RFC 5652-adjacent, per its own doc comment), with a hardcoded 32-byte block size and its own
+internal CMAC+CFB framing plus a fixed IV - not the raw DSTU 7624 mode-of-operation #10 this
+project's `hazmat::kalyna_kw` implements. The correct comparison point is `dstu7624_init_kw` +
+`dstu7624_encrypt`/`decrypt` (the same `encrypt_kw`/`decrypt_kw` functions D-55 already cites) -
+used instead, and cross-checked byte-identical against `uacrypt kalyna-kw wrap`.
+
+**Results**: full new tables in `PERFORMANCE.md`'s "Binary-level (process) comparison" section,
+dated 2026-07-26. All 5 Kalyna variants now covered for block/CCM/GCM (previously only 2); new GCM/
+CMAC/GMAC/KW/XTS subsections; larger message sizes (1 MiB) added alongside the existing 64 B/1 KB/
+64 KB points for Kupyna/Strumok/CMAC/GCM. This dev machine only (Ryzen 5 PRO 4650U) - the Raspberry
+Pi rig was out of scope for this pass.
+
+**Real finding, not assumed**: Kalyna-XTS on the 512-512 variant specifically runs 4-4.6x *slower*
+in this project's own implementation than in UAPKI's (e.g. 4096 B sector: 492481 ns vs. 107118 ns) -
+a much wider gap than any other variant or mode measured in this session (most are within 2x either
+direction, and several beat UAPKI outright). Not root-caused here - flagged for a follow-up
+investigation, not a regression introduced by this session's own changes (XTS itself, `hazmat::
+kalyna_xts`, was not touched - only a new CLI wrapper was added around the existing, already-tested
+implementation).
+
+**Verified**: `cargo fmt --all -- --check`, `cargo clippy --workspace --all-features -- -D
+warnings`, `cargo test --workspace --all-features` (81/81 `uacrypt` tests, full `dstu-core` suite
+unaffected since no `hazmat` code changed), `cargo build -p dstu-core --no-default-features` all
+clean. Manually smoke-tested every new command against the real release binary before writing
+formal tests (GCM/CMAC/GMAC/KW/XTS round-trips, all correct).

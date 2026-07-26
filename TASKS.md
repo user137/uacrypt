@@ -655,6 +655,78 @@ item they point to is later removed.
       unit test pinning `is_version_flag`'s exact match set) - all green, plus manually run against
       the real release binary (`uacrypt --version`/`-V` both print `uacrypt 0.1.0`). No
       `DECISIONS.md` entry - CLI ergonomics, same call T-108/T-115 made.
+- [x] **T-121** **DONE 2026-07-26.** Expanded, retested binary-level performance comparison against
+      UAPKI (`PERFORMANCE.md` D-34's canonical methodology) - user-requested: broaden the existing
+      four benchmark commands' file-size/variant coverage *and* add CLI exposure for the five DSTU
+      7624 modes that had none at all (GCM, CMAC, KW, GMAC, XTS - all already implemented and
+      dual-oracle-verified at `hazmat`, see `docs/dstu-crypto-project.md`'s API table), user's
+      explicit choice over the narrower "just re-measure the existing four" option.
+      **Five new `uacrypt` CLI commands** (`DECISIONS.md` D-71, following D-31's precedent exactly -
+      `hazmat`-scoped benchmarking/interop tools, not the safe top-level surface): `kalyna-gcm
+      encrypt/decrypt`, `kalyna-cmac compute/verify`, `kalyna-gmac compute/verify`, `kalyna-kw
+      wrap/unwrap`, `kalyna-xts encrypt/decrypt`. `kalyna-ccm` (pre-existing) also gained
+      `--iterations` - it had none before, so its own per-op cost was previously unmeasurable
+      through the binary at all. 17 new tests (round-trip against `hazmat` directly, D-64 tamper
+      rejection wherever a tag/checksum exists, D-65 misuse coverage, dispatch smoke tests) - XTS has
+      no rejection category by design (confidentiality-only mode, no tag - documented as a finding,
+      not a gap, same pattern `CLAUDE.md` already establishes for other foreclosed categories).
+      `run()`'s match arm split into a new `dispatch_kalyna_mode` helper to stay under
+      `clippy::pedantic`'s line-count lint. Full workspace `fmt`/`clippy -D warnings`/
+      `test --all-features` (81 `uacrypt` tests, up from 64)/`--no-default-features` build all clean.
+      **UAPKI comparison**: `library/uapkic`'s prebuilt signed Windows DLL (`uapkic-v2.0.12`,
+      `specinfo-ua/UAPKI` GitHub release) linked via a `gendef`/`dlltool`-generated import lib -
+      faster and simpler than `PERFORMANCE.md`'s documented CMake/`resource.rc` build-from-source
+      path, skipped entirely this session. A one-off C wrapper (scratchpad-only, not committed, same
+      convention as every other C comparison in this file) cross-checked byte-identical against the
+      real `uacrypt` release binary before any timing run, for every mode except two, both found by
+      reading UAPKI's own source, not assumed: **GMAC** disagrees with itself on multi-block input in
+      one call (UAPKI's own `gmac_update`/`gmac_final` streaming path has a stale-index bug distinct
+      from the coherent `encrypt_gmac` one-shot loop our `hazmat::kalyna_gmac` was ported from - this
+      is `DECISIONS.md` D-57's already-documented finding, re-confirmed empirically here, not a new
+      bug) - worked around by benchmarking exactly one block, which sidesteps the buggy path cleanly;
+      **CCM** turned out to use a different wire convention than ours (UAPKI's `cipher_data` output
+      bundles an extra CTR-encrypted tag block onto the ciphertext rather than keeping tag separate,
+      confirmed by reading `dstu7624_encrypt_ccm`/`decrypt_ccm` directly) - not a bug, just a
+      different framing choice, so CCM's timing number is UAPKI-self-consistent (encrypt-then-decrypt
+      round-trips through itself) rather than cross-tool-verified the way the other eight modes are.
+      **New results in `PERFORMANCE.md`'s "Binary-level (process) comparison" section**, dated
+      2026-07-26: all 5 Kalyna variants (previously only 2) for block/CCM/GCM, new GCM/CMAC/GMAC/
+      KW/XTS subsections, larger message sizes added to Kupyna/Strumok/CMAC/GCM (1 MiB, previously
+      capped at 64 KB). Real finding, not assumed: **Kalyna-XTS on the 512-512 variant is this
+      project's own implementation running 4-4.6x *slower* than UAPKI** (e.g. 4096 B: 492481 ns vs.
+      107118 ns) - a much wider gap than any other variant/mode measured (most are within 2x either
+      direction), flagged for follow-up, not root-caused in this session. This dev machine only
+      (Ryzen 5 PRO 4650U) - the Raspberry Pi rig was out of scope for this pass, not re-run.
+- [ ] **T-125** Investigate every mode/variant where this project runs more than 2x slower than
+      UAPKI at the 1 MiB message size specifically - requested 2026-07-26, straight from T-121's own
+      binary-level numbers (`PERFORMANCE.md`, D-34 methodology, MB/s only). Scoped deliberately to
+      the 1 MiB data points only (not the smaller 64 B/1 KB/64 KB/one-block/two-block points measured
+      elsewhere in the same tables, several of which also show a >2x gap but at message sizes too
+      small for per-call setup-cost noise to be ruled out as the cause - see T-121/D-71's own
+      per-mode writeups for those). At 1 MiB, six cells across two modes cross the 2x line (computed
+      from `PERFORMANCE.md`'s actual published numbers, not re-measured here):
+      - **Kalyna-GCM**: 256-256 (8.33 vs 18.12 MB/s, ~2.18x) and 256-512 (8.17 vs 17.48 MB/s, ~2.14x).
+        128-128/128-256 stay under 2x (~1.19x/1.24x); 512-512 is not behind at all (this project
+        actually leads, 5.41 vs 4.70).
+      - **Kalyna-CMAC**: 128-128 (106.85 vs 235.47 MB/s, ~2.20x), 128-256 (77.19 vs 182.48 MB/s,
+        ~2.36x), 256-256 (123.36 vs 265.00 MB/s, ~2.15x), 256-512 (97.26 vs 215.42 MB/s, ~2.22x).
+        512-512 stays under 2x (~1.41x).
+      - Kupyna-256/512 and Strumok-256/512's own 1 MiB points are all under 2x (~1.10-1.45x) - not in
+        scope for this task, listed here only so a future pass doesn't re-derive the same negative
+        result.
+      **Pattern worth checking first, not yet confirmed as the actual cause**: every affected cell is
+      a "256-*" key-size Kalyna variant for GCM and a "*-128"/"*-256" block-size variant for CMAC -
+      512-512 is the one variant that stays under 2x in both modes. Whether this is the same
+      per-byte-throughput bottleneck each mode's own `PERFORMANCE.md` writeup already gestures at
+      (GHASH-style field multiplication for GCM, `hazmat::kalyna_cmac`'s own per-round cost for CMAC)
+      or something else entirely (table layout, codegen, cache behavior at the larger 1 MiB working
+      set) is exactly what this task needs to determine - by profiling/reading the actual hot path,
+      not guessing from the aggregate numbers alone, matching this project's own standing practice
+      (`CLAUDE.md`: "read directly from the other implementation's source, not guessed at"). Kalyna-
+      XTS's own 512-512 anomaly (~4.4-4.6x, flagged in T-121/D-71) is a related but *separate* finding
+      - measured at 512 B/4096 B, not 1 MiB, so it's out of this task's literal scope even though it
+      may turn out to share a root cause; cross-reference, don't silently fold the two together
+      without confirming that first.
 - [x] **T-19** **Naming subtask, all three decisions made 2026-07-23** (T-20/T-21/T-22 below) -
       unblocks T-17/T-18, which are still separately open (a decided name isn't a crates.io
       publish or a built release binary):

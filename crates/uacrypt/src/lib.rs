@@ -31,6 +31,21 @@ use dstu_core::hazmat::kalyna::{
 use dstu_core::hazmat::kalyna_ccm::{
     Kalyna128_128Ccm, Kalyna128_256Ccm, Kalyna256_256Ccm, Kalyna256_512Ccm, Kalyna512_512Ccm,
 };
+use dstu_core::hazmat::kalyna_cmac::{
+    Kalyna128_128Cmac, Kalyna128_256Cmac, Kalyna256_256Cmac, Kalyna256_512Cmac, Kalyna512_512Cmac,
+};
+use dstu_core::hazmat::kalyna_gcm::{
+    Kalyna128_128Gcm, Kalyna128_256Gcm, Kalyna256_256Gcm, Kalyna256_512Gcm, Kalyna512_512Gcm,
+};
+use dstu_core::hazmat::kalyna_gmac::{
+    Kalyna128_128Gmac, Kalyna128_256Gmac, Kalyna256_256Gmac, Kalyna256_512Gmac, Kalyna512_512Gmac,
+};
+use dstu_core::hazmat::kalyna_kw::{
+    Kalyna128_128Kw, Kalyna128_256Kw, Kalyna256_256Kw, Kalyna256_512Kw, Kalyna512_512Kw,
+};
+use dstu_core::hazmat::kalyna_xts::{
+    Kalyna128_128Xts, Kalyna128_256Xts, Kalyna256_256Xts, Kalyna256_512Xts, Kalyna512_512Xts,
+};
 use dstu_core::hazmat::kupyna::{Kupyna256Hasher, Kupyna512Hasher};
 use dstu_core::hazmat::strumok::{Strumok256, Strumok512};
 use std::fmt;
@@ -56,6 +71,12 @@ pub enum CliError {
     PlaintextTooLong,
     AadTooLong,
     CcmVerifyFailed,
+    GcmVerifyFailed,
+    CmacVerifyFailed,
+    GmacVerifyFailed,
+    KwInvalidLength,
+    KwChecksumMismatch,
+    XtsInvalidLength,
     Random(String),
     SecretstreamTruncated,
     SecretstreamVerifyFailed,
@@ -93,6 +114,25 @@ impl fmt::Display for CliError {
             ),
             CliError::CcmVerifyFailed => {
                 write!(f, "kalyna-ccm: authentication failed - ciphertext, tag, AAD, nonce, or key do not match")
+            }
+            CliError::GcmVerifyFailed => {
+                write!(f, "kalyna-gcm: authentication failed - ciphertext, tag, AAD, nonce, or key do not match")
+            }
+            CliError::CmacVerifyFailed => {
+                write!(f, "kalyna-cmac: authentication failed - message, tag, or key do not match")
+            }
+            CliError::GmacVerifyFailed => {
+                write!(f, "kalyna-gmac: authentication failed - message, tag, or key do not match")
+            }
+            CliError::KwInvalidLength => write!(
+                f,
+                "kalyna-kw: --in must be block-aligned and within the variant's MAX_R block limit (see hazmat::kalyna_kw docs)"
+            ),
+            CliError::KwChecksumMismatch => {
+                write!(f, "kalyna-kw: unwrap failed - the recovered checksum block was not all-zero (wrong key or tampered input)")
+            }
+            CliError::XtsInvalidLength => {
+                write!(f, "kalyna-xts: --in must be at least one block long")
             }
             CliError::Random(message) => write!(f, "failed to generate a random nonce: {message}"),
             CliError::SecretstreamTruncated => write!(
@@ -417,12 +457,15 @@ pub struct CcmArgs {
     pub in_path: PathBuf,
     pub out_path: PathBuf,
     pub tag_path: PathBuf,
+    /// (benchmarking only, `TASKS.md` T-120) repeats seal/open `iterations` times over the same
+    /// in-memory buffer before writing the final result - same convention as [`BlockArgs`].
+    pub iterations: u32,
 }
 
 /// Parses `kalyna-ccm encrypt`/`decrypt`'s flags: `--variant`/`--key`/`--nonce`/`--in`/`--out`/
-/// `--tag` required, `--aad` optional (an empty AAD is used if omitted). `--nonce` is always
-/// required as a *path* by the parser, but [`run_ccm_command`] treats it as an output on encrypt
-/// and an input on decrypt - see [`CcmArgs::nonce_path`].
+/// `--tag` required, `--aad`/`--iterations` optional (an empty AAD is used if omitted). `--nonce`
+/// is always required as a *path* by the parser, but [`run_ccm_command`] treats it as an output on
+/// encrypt and an input on decrypt - see [`CcmArgs::nonce_path`].
 ///
 /// # Errors
 ///
@@ -436,6 +479,7 @@ pub fn parse_ccm_args(args: &[String]) -> Result<CcmArgs, CliError> {
     let mut in_path = None;
     let mut out_path = None;
     let mut tag_path = None;
+    let mut iterations = 1u32;
 
     let mut i = 0;
     while i < args.len() {
@@ -483,6 +527,13 @@ pub fn parse_ccm_args(args: &[String]) -> Result<CcmArgs, CliError> {
                 ));
                 i += 2;
             }
+            "--iterations" => {
+                let v = args.get(i + 1).ok_or(CliError::MissingFlag("iterations"))?;
+                iterations = v
+                    .parse()
+                    .map_err(|_| CliError::InvalidIterations(v.clone()))?;
+                i += 2;
+            }
             other => return Err(CliError::UnknownFlag(other.to_string())),
         }
     }
@@ -495,6 +546,7 @@ pub fn parse_ccm_args(args: &[String]) -> Result<CcmArgs, CliError> {
         in_path: in_path.ok_or(CliError::MissingFlag("in"))?,
         out_path: out_path.ok_or(CliError::MissingFlag("out"))?,
         tag_path: tag_path.ok_or(CliError::MissingFlag("tag"))?,
+        iterations,
     })
 }
 
@@ -540,6 +592,7 @@ pub fn run_ccm_command(decrypt: bool, args: &CcmArgs) -> Result<(), CliError> {
         message: e.to_string(),
     })?;
 
+    let iterations = args.iterations.max(1);
     macro_rules! run_ccm_variant {
         ($cipher:ty, $key_len:literal, $block_len:literal, $tag_len:literal) => {{
             let mut key_arr = [0u8; $key_len];
@@ -548,21 +601,33 @@ pub fn run_ccm_command(decrypt: bool, args: &CcmArgs) -> Result<(), CliError> {
             nonce_arr.copy_from_slice(&nonce);
             let cipher = <$cipher>::new(&key_arr);
 
-            let mut buf = input.clone();
-            if decrypt {
+            let tag_in = if decrypt {
                 let tag = read_exact_file(&args.tag_path, "tag", $tag_len)?;
                 let mut tag_arr = [0u8; $tag_len];
                 tag_arr.copy_from_slice(&tag);
-                cipher.open_in_place(&nonce_arr, &aad, &mut buf, &tag_arr)?;
-                (buf, None)
+                Some(tag_arr)
             } else {
-                let tag = cipher.seal_in_place(&nonce_arr, &aad, &mut buf)?;
-                (buf, Some(tag.to_vec()))
+                None
+            };
+
+            let start = std::time::Instant::now();
+            let mut buf = input.clone();
+            let mut tag_out = None;
+            for _ in 0..iterations {
+                buf = input.clone();
+                if decrypt {
+                    cipher.open_in_place(&nonce_arr, &aad, &mut buf, tag_in.as_ref().unwrap())?;
+                } else {
+                    let tag = cipher.seal_in_place(&nonce_arr, &aad, &mut buf)?;
+                    tag_out = Some(tag.to_vec());
+                }
             }
+            let elapsed = start.elapsed();
+            (buf, tag_out, elapsed)
         }};
     }
 
-    let (output, tag) = match args.variant {
+    let (output, tag, elapsed) = match args.variant {
         KalynaVariant::K128_128 => run_ccm_variant!(Kalyna128_128Ccm, 16, 16, 16),
         KalynaVariant::K128_256 => run_ccm_variant!(Kalyna128_256Ccm, 32, 16, 16),
         KalynaVariant::K256_256 => run_ccm_variant!(Kalyna256_256Ccm, 32, 32, 16),
@@ -579,6 +644,838 @@ pub fn run_ccm_command(decrypt: bool, args: &CcmArgs) -> Result<(), CliError> {
             path: args.tag_path.clone(),
             message: e.to_string(),
         })?;
+    }
+
+    if args.iterations > 1 {
+        let per_op_ns = elapsed.as_nanos() / u128::from(args.iterations);
+        eprintln!(
+            "iterations={} total_ns={} per_op_ns={}",
+            args.iterations,
+            elapsed.as_nanos(),
+            per_op_ns
+        );
+    }
+
+    Ok(())
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct GcmArgs {
+    pub variant: KalynaVariant,
+    /// encrypt: OUTPUT, a fresh random nonce is generated and written here. decrypt: INPUT, must
+    /// be the nonce file `encrypt` produced - same convention as [`CcmArgs::nonce_path`] (D-40).
+    pub key_path: PathBuf,
+    pub nonce_path: PathBuf,
+    pub aad_path: Option<PathBuf>,
+    pub in_path: PathBuf,
+    pub out_path: PathBuf,
+    /// Always the variant's full block length (no `--tag-len` knob) - `hazmat::kalyna_gcm` allows
+    /// a caller-truncated tag, but this benchmark CLI doesn't expose that choice (D-47's "delete
+    /// the knob", same call `crypto_secretbox` already made for its own fixed-length tag).
+    pub tag_path: PathBuf,
+    pub iterations: u32,
+}
+
+/// Parses `kalyna-gcm encrypt`/`decrypt`'s flags - same shape as [`parse_ccm_args`].
+///
+/// # Errors
+///
+/// Same cases as [`parse_ccm_args`].
+pub fn parse_gcm_args(args: &[String]) -> Result<GcmArgs, CliError> {
+    let mut variant = None;
+    let mut key_path = None;
+    let mut nonce_path = None;
+    let mut aad_path = None;
+    let mut in_path = None;
+    let mut out_path = None;
+    let mut tag_path = None;
+    let mut iterations = 1u32;
+
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--variant" => {
+                let v = args.get(i + 1).ok_or(CliError::MissingFlag("variant"))?;
+                variant = Some(
+                    KalynaVariant::parse(v).ok_or_else(|| CliError::UnknownVariant(v.clone()))?,
+                );
+                i += 2;
+            }
+            "--key" => {
+                key_path = Some(PathBuf::from(
+                    args.get(i + 1).ok_or(CliError::MissingFlag("key"))?,
+                ));
+                i += 2;
+            }
+            "--nonce" => {
+                nonce_path = Some(PathBuf::from(
+                    args.get(i + 1).ok_or(CliError::MissingFlag("nonce"))?,
+                ));
+                i += 2;
+            }
+            "--aad" => {
+                aad_path = Some(PathBuf::from(
+                    args.get(i + 1).ok_or(CliError::MissingFlag("aad"))?,
+                ));
+                i += 2;
+            }
+            "--in" => {
+                in_path = Some(PathBuf::from(
+                    args.get(i + 1).ok_or(CliError::MissingFlag("in"))?,
+                ));
+                i += 2;
+            }
+            "--out" => {
+                out_path = Some(PathBuf::from(
+                    args.get(i + 1).ok_or(CliError::MissingFlag("out"))?,
+                ));
+                i += 2;
+            }
+            "--tag" => {
+                tag_path = Some(PathBuf::from(
+                    args.get(i + 1).ok_or(CliError::MissingFlag("tag"))?,
+                ));
+                i += 2;
+            }
+            "--iterations" => {
+                let v = args.get(i + 1).ok_or(CliError::MissingFlag("iterations"))?;
+                iterations = v
+                    .parse()
+                    .map_err(|_| CliError::InvalidIterations(v.clone()))?;
+                i += 2;
+            }
+            other => return Err(CliError::UnknownFlag(other.to_string())),
+        }
+    }
+
+    Ok(GcmArgs {
+        variant: variant.ok_or(CliError::MissingFlag("variant"))?,
+        key_path: key_path.ok_or(CliError::MissingFlag("key"))?,
+        nonce_path: nonce_path.ok_or(CliError::MissingFlag("nonce"))?,
+        aad_path,
+        in_path: in_path.ok_or(CliError::MissingFlag("in"))?,
+        out_path: out_path.ok_or(CliError::MissingFlag("out"))?,
+        tag_path: tag_path.ok_or(CliError::MissingFlag("tag"))?,
+        iterations,
+    })
+}
+
+/// Runs `kalyna-gcm encrypt`/`decrypt` - `hazmat::kalyna_gcm`, benchmark-scoped like
+/// [`run_ccm_command`] (`DECISIONS.md` D-31/D-71). Unlike `kalyna-ccm`, GCM has no sourced
+/// plaintext/AAD length cap.
+///
+/// # Errors
+///
+/// Same cases as [`run_ccm_command`], plus [`CliError::GcmVerifyFailed`] on a failed decrypt.
+pub fn run_gcm_command(decrypt: bool, args: &GcmArgs) -> Result<(), CliError> {
+    let key = read_exact_file(&args.key_path, "key", args.variant.key_len())?;
+    let nonce = if decrypt {
+        read_exact_file(&args.nonce_path, "nonce", args.variant.block_len())?
+    } else {
+        let mut generated = vec![0u8; args.variant.block_len()];
+        dstu_core::randombytes::randombytes_buf(&mut generated)
+            .map_err(|e| CliError::Random(e.to_string()))?;
+        std::fs::write(&args.nonce_path, &generated).map_err(|e| CliError::Io {
+            path: args.nonce_path.clone(),
+            message: e.to_string(),
+        })?;
+        generated
+    };
+    let aad = match &args.aad_path {
+        Some(path) => std::fs::read(path).map_err(|e| CliError::Io {
+            path: path.clone(),
+            message: e.to_string(),
+        })?,
+        None => Vec::new(),
+    };
+    let input = std::fs::read(&args.in_path).map_err(|e| CliError::Io {
+        path: args.in_path.clone(),
+        message: e.to_string(),
+    })?;
+
+    let iterations = args.iterations.max(1);
+    macro_rules! run_gcm_variant {
+        ($cipher:ty, $key_len:literal, $block_len:literal) => {{
+            let mut key_arr = [0u8; $key_len];
+            key_arr.copy_from_slice(&key);
+            let mut nonce_arr = [0u8; $block_len];
+            nonce_arr.copy_from_slice(&nonce);
+            let cipher = <$cipher>::new(&key_arr);
+
+            let tag_in = if decrypt {
+                Some(read_exact_file(&args.tag_path, "tag", $block_len)?)
+            } else {
+                None
+            };
+
+            let start = std::time::Instant::now();
+            let mut buf = vec![0u8; input.len()];
+            let mut tag_out = [0u8; $block_len];
+            for _ in 0..iterations {
+                if decrypt {
+                    cipher
+                        .decrypt(&nonce_arr, &aad, &input, tag_in.as_ref().unwrap(), &mut buf)
+                        .map_err(|_| CliError::GcmVerifyFailed)?;
+                } else {
+                    tag_out = cipher
+                        .encrypt(&nonce_arr, &aad, &input, &mut buf)
+                        .expect("ciphertext_out.len() == plaintext.len() by construction");
+                }
+            }
+            let elapsed = start.elapsed();
+            let tag = if decrypt {
+                None
+            } else {
+                Some(tag_out.to_vec())
+            };
+            (buf, tag, elapsed)
+        }};
+    }
+
+    let (output, tag, elapsed) = match args.variant {
+        KalynaVariant::K128_128 => run_gcm_variant!(Kalyna128_128Gcm, 16, 16),
+        KalynaVariant::K128_256 => run_gcm_variant!(Kalyna128_256Gcm, 32, 16),
+        KalynaVariant::K256_256 => run_gcm_variant!(Kalyna256_256Gcm, 32, 32),
+        KalynaVariant::K256_512 => run_gcm_variant!(Kalyna256_512Gcm, 64, 32),
+        KalynaVariant::K512_512 => run_gcm_variant!(Kalyna512_512Gcm, 64, 64),
+    };
+
+    std::fs::write(&args.out_path, &output).map_err(|e| CliError::Io {
+        path: args.out_path.clone(),
+        message: e.to_string(),
+    })?;
+    if let Some(tag) = tag {
+        std::fs::write(&args.tag_path, &tag).map_err(|e| CliError::Io {
+            path: args.tag_path.clone(),
+            message: e.to_string(),
+        })?;
+    }
+
+    if args.iterations > 1 {
+        let per_op_ns = elapsed.as_nanos() / u128::from(args.iterations);
+        eprintln!(
+            "iterations={} total_ns={} per_op_ns={}",
+            args.iterations,
+            elapsed.as_nanos(),
+            per_op_ns
+        );
+    }
+
+    Ok(())
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct CmacArgs {
+    pub variant: KalynaVariant,
+    pub key_path: PathBuf,
+    pub in_path: PathBuf,
+    /// `compute`: OUTPUT, the 16-byte tag is written here. `verify`: unused (see `tag_path`).
+    pub out_path: Option<PathBuf>,
+    /// `verify`: INPUT, the tag to check against. `compute`: unused (see `out_path`).
+    pub tag_path: Option<PathBuf>,
+    pub iterations: u32,
+}
+
+/// Parses `kalyna-cmac compute`/`verify`'s flags: `--variant`/`--key`/`--in` required, plus
+/// `--out` (compute) or `--tag` (verify) depending on the subcommand - [`run_cmac_command`]
+/// decides which one is actually required, since the parser alone can't know which subcommand
+/// called it.
+///
+/// # Errors
+///
+/// [`CliError::MissingFlag`]/[`CliError::UnknownVariant`]/[`CliError::InvalidIterations`]/
+/// [`CliError::UnknownFlag`], same cases as [`parse_block_args`].
+pub fn parse_cmac_args(args: &[String]) -> Result<CmacArgs, CliError> {
+    let mut variant = None;
+    let mut key_path = None;
+    let mut in_path = None;
+    let mut out_path = None;
+    let mut tag_path = None;
+    let mut iterations = 1u32;
+
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--variant" => {
+                let v = args.get(i + 1).ok_or(CliError::MissingFlag("variant"))?;
+                variant = Some(
+                    KalynaVariant::parse(v).ok_or_else(|| CliError::UnknownVariant(v.clone()))?,
+                );
+                i += 2;
+            }
+            "--key" => {
+                key_path = Some(PathBuf::from(
+                    args.get(i + 1).ok_or(CliError::MissingFlag("key"))?,
+                ));
+                i += 2;
+            }
+            "--in" => {
+                in_path = Some(PathBuf::from(
+                    args.get(i + 1).ok_or(CliError::MissingFlag("in"))?,
+                ));
+                i += 2;
+            }
+            "--out" => {
+                out_path = Some(PathBuf::from(
+                    args.get(i + 1).ok_or(CliError::MissingFlag("out"))?,
+                ));
+                i += 2;
+            }
+            "--tag" => {
+                tag_path = Some(PathBuf::from(
+                    args.get(i + 1).ok_or(CliError::MissingFlag("tag"))?,
+                ));
+                i += 2;
+            }
+            "--iterations" => {
+                let v = args.get(i + 1).ok_or(CliError::MissingFlag("iterations"))?;
+                iterations = v
+                    .parse()
+                    .map_err(|_| CliError::InvalidIterations(v.clone()))?;
+                i += 2;
+            }
+            other => return Err(CliError::UnknownFlag(other.to_string())),
+        }
+    }
+
+    Ok(CmacArgs {
+        variant: variant.ok_or(CliError::MissingFlag("variant"))?,
+        key_path: key_path.ok_or(CliError::MissingFlag("key"))?,
+        in_path: in_path.ok_or(CliError::MissingFlag("in"))?,
+        out_path,
+        tag_path,
+        iterations,
+    })
+}
+
+/// Runs `kalyna-cmac compute` (`verify = false`, writes the 16-byte tag to `args.out_path`) or
+/// `kalyna-cmac verify` (`verify = true`, checks `args.tag_path` and returns
+/// [`CliError::CmacVerifyFailed`] on mismatch) - `hazmat::kalyna_cmac`, benchmark-scoped
+/// (`DECISIONS.md` D-31/D-71).
+///
+/// # Errors
+///
+/// [`CliError::Io`]/[`CliError::WrongLength`] for file problems, [`CliError::MissingFlag`] if
+/// `compute` is missing `--out` or `verify` is missing `--tag`, or
+/// [`CliError::CmacVerifyFailed`] if `verify` fails to authenticate.
+pub fn run_cmac_command(verify: bool, args: &CmacArgs) -> Result<(), CliError> {
+    let key = read_exact_file(&args.key_path, "key", args.variant.key_len())?;
+    let message = std::fs::read(&args.in_path).map_err(|e| CliError::Io {
+        path: args.in_path.clone(),
+        message: e.to_string(),
+    })?;
+    let tag_in = if verify {
+        Some(read_exact_file(
+            args.tag_path.as_ref().ok_or(CliError::MissingFlag("tag"))?,
+            "tag",
+            16,
+        )?)
+    } else {
+        None
+    };
+
+    let iterations = args.iterations.max(1);
+    macro_rules! run_cmac_variant {
+        ($mac:ty, $key_len:literal) => {{
+            let mut key_arr = [0u8; $key_len];
+            key_arr.copy_from_slice(&key);
+
+            let start = std::time::Instant::now();
+            let mut tag = [0u8; 16];
+            for _ in 0..iterations {
+                if verify {
+                    let mut expected = [0u8; 16];
+                    expected.copy_from_slice(tag_in.as_ref().unwrap());
+                    <$mac>::verify(&key_arr, &message, &expected)
+                        .map_err(|_| CliError::CmacVerifyFailed)?;
+                } else {
+                    tag = <$mac>::mac(&key_arr, &message);
+                }
+            }
+            (tag, start.elapsed())
+        }};
+    }
+
+    let (tag, elapsed) = match args.variant {
+        KalynaVariant::K128_128 => run_cmac_variant!(Kalyna128_128Cmac, 16),
+        KalynaVariant::K128_256 => run_cmac_variant!(Kalyna128_256Cmac, 32),
+        KalynaVariant::K256_256 => run_cmac_variant!(Kalyna256_256Cmac, 32),
+        KalynaVariant::K256_512 => run_cmac_variant!(Kalyna256_512Cmac, 64),
+        KalynaVariant::K512_512 => run_cmac_variant!(Kalyna512_512Cmac, 64),
+    };
+
+    if !verify {
+        let out_path = args.out_path.as_ref().ok_or(CliError::MissingFlag("out"))?;
+        std::fs::write(out_path, tag).map_err(|e| CliError::Io {
+            path: out_path.clone(),
+            message: e.to_string(),
+        })?;
+    }
+
+    if args.iterations > 1 {
+        let per_op_ns = elapsed.as_nanos() / u128::from(args.iterations);
+        eprintln!(
+            "iterations={} total_ns={} per_op_ns={}",
+            args.iterations,
+            elapsed.as_nanos(),
+            per_op_ns
+        );
+    }
+
+    Ok(())
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct GmacArgs {
+    pub variant: KalynaVariant,
+    pub key_path: PathBuf,
+    pub in_path: PathBuf,
+    pub out_path: Option<PathBuf>,
+    pub tag_path: Option<PathBuf>,
+    pub iterations: u32,
+}
+
+/// Parses `kalyna-gmac compute`/`verify`'s flags - same shape as [`parse_cmac_args`]. **No
+/// `--nonce`**: unlike [`kalyna_gmac`](dstu_core::hazmat::kalyna_gmac), GCM's other MAC-only
+/// sibling, `hazmat::kalyna_gmac::mac`/`verify` take no IV at all (confirmed by reading the
+/// module, not assumed from GCM's shape) - so there is nothing here for a `--nonce` flag to pass.
+///
+/// # Errors
+///
+/// Same cases as [`parse_cmac_args`].
+pub fn parse_gmac_args(args: &[String]) -> Result<GmacArgs, CliError> {
+    let mut variant = None;
+    let mut key_path = None;
+    let mut in_path = None;
+    let mut out_path = None;
+    let mut tag_path = None;
+    let mut iterations = 1u32;
+
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--variant" => {
+                let v = args.get(i + 1).ok_or(CliError::MissingFlag("variant"))?;
+                variant = Some(
+                    KalynaVariant::parse(v).ok_or_else(|| CliError::UnknownVariant(v.clone()))?,
+                );
+                i += 2;
+            }
+            "--key" => {
+                key_path = Some(PathBuf::from(
+                    args.get(i + 1).ok_or(CliError::MissingFlag("key"))?,
+                ));
+                i += 2;
+            }
+            "--in" => {
+                in_path = Some(PathBuf::from(
+                    args.get(i + 1).ok_or(CliError::MissingFlag("in"))?,
+                ));
+                i += 2;
+            }
+            "--out" => {
+                out_path = Some(PathBuf::from(
+                    args.get(i + 1).ok_or(CliError::MissingFlag("out"))?,
+                ));
+                i += 2;
+            }
+            "--tag" => {
+                tag_path = Some(PathBuf::from(
+                    args.get(i + 1).ok_or(CliError::MissingFlag("tag"))?,
+                ));
+                i += 2;
+            }
+            "--iterations" => {
+                let v = args.get(i + 1).ok_or(CliError::MissingFlag("iterations"))?;
+                iterations = v
+                    .parse()
+                    .map_err(|_| CliError::InvalidIterations(v.clone()))?;
+                i += 2;
+            }
+            other => return Err(CliError::UnknownFlag(other.to_string())),
+        }
+    }
+
+    Ok(GmacArgs {
+        variant: variant.ok_or(CliError::MissingFlag("variant"))?,
+        key_path: key_path.ok_or(CliError::MissingFlag("key"))?,
+        in_path: in_path.ok_or(CliError::MissingFlag("in"))?,
+        out_path,
+        tag_path,
+        iterations,
+    })
+}
+
+/// Runs `kalyna-gmac compute`/`verify` - `hazmat::kalyna_gmac`, benchmark-scoped
+/// (`DECISIONS.md` D-31/D-71). Tag length is the variant's full block length (no `--tag-len`
+/// knob, same choice as [`run_gcm_command`]).
+///
+/// # Errors
+///
+/// Same cases as [`run_cmac_command`], plus [`CliError::GmacVerifyFailed`] on a failed `verify`.
+pub fn run_gmac_command(verify: bool, args: &GmacArgs) -> Result<(), CliError> {
+    let key = read_exact_file(&args.key_path, "key", args.variant.key_len())?;
+    let message = std::fs::read(&args.in_path).map_err(|e| CliError::Io {
+        path: args.in_path.clone(),
+        message: e.to_string(),
+    })?;
+    let tag_in = if verify {
+        Some(
+            std::fs::read(args.tag_path.as_ref().ok_or(CliError::MissingFlag("tag"))?).map_err(
+                |e| CliError::Io {
+                    path: args.tag_path.clone().unwrap_or_default(),
+                    message: e.to_string(),
+                },
+            )?,
+        )
+    } else {
+        None
+    };
+
+    let iterations = args.iterations.max(1);
+    macro_rules! run_gmac_variant {
+        ($mac:ty, $key_len:literal, $block_len:literal) => {{
+            let mut key_arr = [0u8; $key_len];
+            key_arr.copy_from_slice(&key);
+
+            let start = std::time::Instant::now();
+            let mut tag = [0u8; $block_len];
+            for _ in 0..iterations {
+                if verify {
+                    <$mac>::verify(&key_arr, &message, tag_in.as_ref().unwrap())
+                        .map_err(|_| CliError::GmacVerifyFailed)?;
+                } else {
+                    tag = <$mac>::mac(&key_arr, &message);
+                }
+            }
+            (tag.to_vec(), start.elapsed())
+        }};
+    }
+
+    let (tag, elapsed) = match args.variant {
+        KalynaVariant::K128_128 => run_gmac_variant!(Kalyna128_128Gmac, 16, 16),
+        KalynaVariant::K128_256 => run_gmac_variant!(Kalyna128_256Gmac, 32, 16),
+        KalynaVariant::K256_256 => run_gmac_variant!(Kalyna256_256Gmac, 32, 32),
+        KalynaVariant::K256_512 => run_gmac_variant!(Kalyna256_512Gmac, 64, 32),
+        KalynaVariant::K512_512 => run_gmac_variant!(Kalyna512_512Gmac, 64, 64),
+    };
+
+    if !verify {
+        let out_path = args.out_path.as_ref().ok_or(CliError::MissingFlag("out"))?;
+        std::fs::write(out_path, tag).map_err(|e| CliError::Io {
+            path: out_path.clone(),
+            message: e.to_string(),
+        })?;
+    }
+
+    if args.iterations > 1 {
+        let per_op_ns = elapsed.as_nanos() / u128::from(args.iterations);
+        eprintln!(
+            "iterations={} total_ns={} per_op_ns={}",
+            args.iterations,
+            elapsed.as_nanos(),
+            per_op_ns
+        );
+    }
+
+    Ok(())
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct KwArgs {
+    pub variant: KalynaVariant,
+    pub key_path: PathBuf,
+    pub in_path: PathBuf,
+    pub out_path: PathBuf,
+    pub iterations: u32,
+}
+
+/// Parses `kalyna-kw wrap`/`unwrap`'s flags: `--variant`/`--key`/`--in`/`--out` required,
+/// `--iterations` optional - same shape as [`parse_block_args`] minus `--raw-schedule` (KW has no
+/// cached-vs-raw distinction to expose, same reason [`kupyna-digest`](parse_digest_args) doesn't).
+///
+/// # Errors
+///
+/// Same cases as [`parse_block_args`].
+pub fn parse_kw_args(args: &[String]) -> Result<KwArgs, CliError> {
+    let mut variant = None;
+    let mut key_path = None;
+    let mut in_path = None;
+    let mut out_path = None;
+    let mut iterations = 1u32;
+
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--variant" => {
+                let v = args.get(i + 1).ok_or(CliError::MissingFlag("variant"))?;
+                variant = Some(
+                    KalynaVariant::parse(v).ok_or_else(|| CliError::UnknownVariant(v.clone()))?,
+                );
+                i += 2;
+            }
+            "--key" => {
+                key_path = Some(PathBuf::from(
+                    args.get(i + 1).ok_or(CliError::MissingFlag("key"))?,
+                ));
+                i += 2;
+            }
+            "--in" => {
+                in_path = Some(PathBuf::from(
+                    args.get(i + 1).ok_or(CliError::MissingFlag("in"))?,
+                ));
+                i += 2;
+            }
+            "--out" => {
+                out_path = Some(PathBuf::from(
+                    args.get(i + 1).ok_or(CliError::MissingFlag("out"))?,
+                ));
+                i += 2;
+            }
+            "--iterations" => {
+                let v = args.get(i + 1).ok_or(CliError::MissingFlag("iterations"))?;
+                iterations = v
+                    .parse()
+                    .map_err(|_| CliError::InvalidIterations(v.clone()))?;
+                i += 2;
+            }
+            other => return Err(CliError::UnknownFlag(other.to_string())),
+        }
+    }
+
+    Ok(KwArgs {
+        variant: variant.ok_or(CliError::MissingFlag("variant"))?,
+        key_path: key_path.ok_or(CliError::MissingFlag("key"))?,
+        in_path: in_path.ok_or(CliError::MissingFlag("in"))?,
+        out_path: out_path.ok_or(CliError::MissingFlag("out"))?,
+        iterations,
+    })
+}
+
+/// Runs `kalyna-kw wrap` (`unwrap = false`, `--in` is the key material to wrap) or
+/// `kalyna-kw unwrap` (`unwrap = true`, `--in` is a wrapped blob) - `hazmat::kalyna_kw`,
+/// benchmark-scoped (`DECISIONS.md` D-31/D-71). `--in` must be block-aligned (1..=20 blocks for
+/// `wrap`, 2..=21 blocks for `unwrap` - see `hazmat::kalyna_kw`'s `MAX_R` bound).
+///
+/// # Errors
+///
+/// [`CliError::Io`]/[`CliError::WrongLength`] for file problems, [`CliError::KwInvalidLength`] if
+/// `--in` isn't block-aligned or within `MAX_R`, or [`CliError::KwChecksumMismatch`] if `unwrap`'s
+/// trailing checksum block doesn't verify.
+pub fn run_kw_command(unwrap: bool, args: &KwArgs) -> Result<(), CliError> {
+    let key = read_exact_file(&args.key_path, "key", args.variant.key_len())?;
+    let input = std::fs::read(&args.in_path).map_err(|e| CliError::Io {
+        path: args.in_path.clone(),
+        message: e.to_string(),
+    })?;
+
+    let iterations = args.iterations.max(1);
+    macro_rules! run_kw_variant {
+        ($kw:ty, $key_len:literal, $block_len:literal) => {{
+            let mut key_arr = [0u8; $key_len];
+            key_arr.copy_from_slice(&key);
+
+            let out_len = if unwrap {
+                input
+                    .len()
+                    .checked_sub($block_len)
+                    .ok_or(CliError::KwInvalidLength)?
+            } else {
+                input.len() + $block_len
+            };
+            let mut out = vec![0u8; out_len];
+
+            let start = std::time::Instant::now();
+            for _ in 0..iterations {
+                if unwrap {
+                    <$kw>::unwrap(&key_arr, &input, &mut out).map_err(|e| match e {
+                        dstu_core::hazmat::kalyna_kw::KwError::InvalidLength => {
+                            CliError::KwInvalidLength
+                        }
+                        dstu_core::hazmat::kalyna_kw::KwError::ChecksumMismatch => {
+                            CliError::KwChecksumMismatch
+                        }
+                    })?;
+                } else {
+                    <$kw>::wrap(&key_arr, &input, &mut out)
+                        .map_err(|_| CliError::KwInvalidLength)?;
+                }
+            }
+            (out, start.elapsed())
+        }};
+    }
+
+    let (output, elapsed) = match args.variant {
+        KalynaVariant::K128_128 => run_kw_variant!(Kalyna128_128Kw, 16, 16),
+        KalynaVariant::K128_256 => run_kw_variant!(Kalyna128_256Kw, 32, 16),
+        KalynaVariant::K256_256 => run_kw_variant!(Kalyna256_256Kw, 32, 32),
+        KalynaVariant::K256_512 => run_kw_variant!(Kalyna256_512Kw, 64, 32),
+        KalynaVariant::K512_512 => run_kw_variant!(Kalyna512_512Kw, 64, 64),
+    };
+
+    std::fs::write(&args.out_path, &output).map_err(|e| CliError::Io {
+        path: args.out_path.clone(),
+        message: e.to_string(),
+    })?;
+
+    if args.iterations > 1 {
+        let per_op_ns = elapsed.as_nanos() / u128::from(args.iterations);
+        eprintln!(
+            "iterations={} total_ns={} per_op_ns={}",
+            args.iterations,
+            elapsed.as_nanos(),
+            per_op_ns
+        );
+    }
+
+    Ok(())
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct XtsArgs {
+    pub variant: KalynaVariant,
+    pub key_path: PathBuf,
+    /// One block's worth of bytes - the "data unit" tweak seed (`hazmat::kalyna_xts`'s `iv`
+    /// parameter), not a sector index this CLI derives on the caller's behalf.
+    pub tweak_path: PathBuf,
+    pub in_path: PathBuf,
+    pub out_path: PathBuf,
+    pub iterations: u32,
+}
+
+/// Parses `kalyna-xts encrypt`/`decrypt`'s flags: `--variant`/`--key`/`--tweak`/`--in`/`--out`
+/// required, `--iterations` optional.
+///
+/// # Errors
+///
+/// Same cases as [`parse_block_args`], plus `--tweak` sharing `--key`'s missing-flag handling.
+pub fn parse_xts_args(args: &[String]) -> Result<XtsArgs, CliError> {
+    let mut variant = None;
+    let mut key_path = None;
+    let mut tweak_path = None;
+    let mut in_path = None;
+    let mut out_path = None;
+    let mut iterations = 1u32;
+
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--variant" => {
+                let v = args.get(i + 1).ok_or(CliError::MissingFlag("variant"))?;
+                variant = Some(
+                    KalynaVariant::parse(v).ok_or_else(|| CliError::UnknownVariant(v.clone()))?,
+                );
+                i += 2;
+            }
+            "--key" => {
+                key_path = Some(PathBuf::from(
+                    args.get(i + 1).ok_or(CliError::MissingFlag("key"))?,
+                ));
+                i += 2;
+            }
+            "--tweak" => {
+                tweak_path = Some(PathBuf::from(
+                    args.get(i + 1).ok_or(CliError::MissingFlag("tweak"))?,
+                ));
+                i += 2;
+            }
+            "--in" => {
+                in_path = Some(PathBuf::from(
+                    args.get(i + 1).ok_or(CliError::MissingFlag("in"))?,
+                ));
+                i += 2;
+            }
+            "--out" => {
+                out_path = Some(PathBuf::from(
+                    args.get(i + 1).ok_or(CliError::MissingFlag("out"))?,
+                ));
+                i += 2;
+            }
+            "--iterations" => {
+                let v = args.get(i + 1).ok_or(CliError::MissingFlag("iterations"))?;
+                iterations = v
+                    .parse()
+                    .map_err(|_| CliError::InvalidIterations(v.clone()))?;
+                i += 2;
+            }
+            other => return Err(CliError::UnknownFlag(other.to_string())),
+        }
+    }
+
+    Ok(XtsArgs {
+        variant: variant.ok_or(CliError::MissingFlag("variant"))?,
+        key_path: key_path.ok_or(CliError::MissingFlag("key"))?,
+        tweak_path: tweak_path.ok_or(CliError::MissingFlag("tweak"))?,
+        in_path: in_path.ok_or(CliError::MissingFlag("in"))?,
+        out_path: out_path.ok_or(CliError::MissingFlag("out"))?,
+        iterations,
+    })
+}
+
+/// Runs `kalyna-xts encrypt`/`decrypt` - `hazmat::kalyna_xts`, benchmark-scoped
+/// (`DECISIONS.md` D-31/D-71). Confidentiality-only, no tag - see the module doc comment for why
+/// that's the correct design for this mode, not a gap. `--in` must be at least one block long.
+///
+/// # Errors
+///
+/// [`CliError::Io`]/[`CliError::WrongLength`] for file problems, or
+/// [`CliError::XtsInvalidLength`] if `--in` is shorter than one block.
+pub fn run_xts_command(decrypt: bool, args: &XtsArgs) -> Result<(), CliError> {
+    let key = read_exact_file(&args.key_path, "key", args.variant.key_len())?;
+    let tweak = read_exact_file(&args.tweak_path, "tweak", args.variant.block_len())?;
+    let input = std::fs::read(&args.in_path).map_err(|e| CliError::Io {
+        path: args.in_path.clone(),
+        message: e.to_string(),
+    })?;
+
+    let iterations = args.iterations.max(1);
+    macro_rules! run_xts_variant {
+        ($xts:ty, $key_len:literal, $block_len:literal) => {{
+            let mut key_arr = [0u8; $key_len];
+            key_arr.copy_from_slice(&key);
+            let mut tweak_arr = [0u8; $block_len];
+            tweak_arr.copy_from_slice(&tweak);
+            let cipher = <$xts>::new(&key_arr);
+
+            let start = std::time::Instant::now();
+            let mut buf = input.clone();
+            for _ in 0..iterations {
+                buf = input.clone();
+                if decrypt {
+                    cipher
+                        .decrypt_in_place(&tweak_arr, &mut buf)
+                        .map_err(|_| CliError::XtsInvalidLength)?;
+                } else {
+                    cipher
+                        .encrypt_in_place(&tweak_arr, &mut buf)
+                        .map_err(|_| CliError::XtsInvalidLength)?;
+                }
+            }
+            (buf, start.elapsed())
+        }};
+    }
+
+    let (output, elapsed) = match args.variant {
+        KalynaVariant::K128_128 => run_xts_variant!(Kalyna128_128Xts, 16, 16),
+        KalynaVariant::K128_256 => run_xts_variant!(Kalyna128_256Xts, 32, 16),
+        KalynaVariant::K256_256 => run_xts_variant!(Kalyna256_256Xts, 32, 32),
+        KalynaVariant::K256_512 => run_xts_variant!(Kalyna256_512Xts, 64, 32),
+        KalynaVariant::K512_512 => run_xts_variant!(Kalyna512_512Xts, 64, 64),
+    };
+
+    std::fs::write(&args.out_path, &output).map_err(|e| CliError::Io {
+        path: args.out_path.clone(),
+        message: e.to_string(),
+    })?;
+
+    if args.iterations > 1 {
+        let per_op_ns = elapsed.as_nanos() / u128::from(args.iterations);
+        eprintln!(
+            "iterations={} total_ns={} per_op_ns={}",
+            args.iterations,
+            elapsed.as_nanos(),
+            per_op_ns
+        );
     }
 
     Ok(())
@@ -1443,6 +2340,11 @@ EVERYDAY COMMANDS:
 LOWER-LEVEL COMMANDS (benchmarking/interop - most users want the three above instead):
     kalyna-block    Single Kalyna block encrypt/decrypt - exactly one block, no file support.
     kalyna-ccm      Kalyna-CCM authenticated encryption - messages/AAD capped at 255 bytes.
+    kalyna-gcm      Kalyna-GCM authenticated encryption - no message-length cap.
+    kalyna-cmac     Kalyna-CMAC message authentication (compute/verify a tag, no encryption).
+    kalyna-gmac     Kalyna-GMAC message authentication (compute/verify a tag, no encryption).
+    kalyna-kw       Kalyna key wrap/unwrap - wraps block-aligned key material, not a general cipher.
+    kalyna-xts      Kalyna-XTS disk-sector mode - confidentiality only, no tag, by design.
     kupyna-digest   Kupyna hash with a selectable variant (256/512) and a benchmark --iterations flag.
     strumok-crypt   Strumok keystream cipher - NOT authenticated, tampering is never detected.
 
@@ -1572,10 +2474,127 @@ FLAGS:
     --in <path>      plaintext (encrypt) or ciphertext (decrypt), <=255 bytes
     --out <path>     ciphertext (encrypt) or plaintext (decrypt)
     --tag <path>     encrypt: OUTPUT auth tag. decrypt: INPUT, must be encrypt's tag.
+    --iterations <n> (benchmarking only) repeat the operation n times, print timing to stderr
 
 EXAMPLE:
     uacrypt kalyna-ccm encrypt --variant 128-256 --key key.bin --nonce nonce.bin --in msg.bin \\
         --out msg.enc --tag tag.bin
+";
+
+const KALYNA_GCM_HELP: &str = "\
+uacrypt kalyna-gcm - Kalyna-GCM authenticated encryption (provisional, DECISIONS.md D-56).
+
+Benchmarking/interop tool (DECISIONS.md D-31/D-71), same shape as `kalyna-ccm` but with no
+message-length cap - for everyday use, `encrypt`/`decrypt` (crypto_secretstream) are simpler and
+already stream to disk.
+
+USAGE:
+    uacrypt kalyna-gcm encrypt --variant <v> --key <path> --nonce <path> --in <path> --out <path> --tag <path> [--aad <path>] [--iterations <n>]
+    uacrypt kalyna-gcm decrypt --variant <v> --key <path> --nonce <path> --in <path> --out <path> --tag <path> [--aad <path>] [--iterations <n>]
+
+FLAGS:
+    --variant <v>    one of 128-128, 128-256, 256-256, 256-512, 512-512
+    --key <path>     key file - must be exactly the variant's key length
+    --nonce <path>   encrypt: OUTPUT, a fresh random nonce is generated and written here.
+                     decrypt: INPUT, must be the nonce file `encrypt` produced.
+    --aad <path>     optional - additional authenticated data (not encrypted, but tamper-checked)
+    --in <path>      plaintext (encrypt) or ciphertext (decrypt), any length
+    --out <path>     ciphertext (encrypt) or plaintext (decrypt)
+    --tag <path>     encrypt: OUTPUT auth tag (full block length). decrypt: INPUT, must be encrypt's tag.
+    --iterations <n> (benchmarking only) repeat the operation n times, print timing to stderr
+
+EXAMPLE:
+    uacrypt kalyna-gcm encrypt --variant 128-256 --key key.bin --nonce nonce.bin --in msg.bin \\
+        --out msg.enc --tag tag.bin
+";
+
+const KALYNA_CMAC_HELP: &str = "\
+uacrypt kalyna-cmac - Kalyna-CMAC message authentication, for benchmarking/interop (DECISIONS.md D-31/D-71).
+
+Computes or verifies a 16-byte tag over a message - no encryption. Do not reuse this key for any
+encryption mode in this crate (see hazmat::kalyna_cmac docs for why).
+
+USAGE:
+    uacrypt kalyna-cmac compute --variant <v> --key <path> --in <path> --out <path> [--iterations <n>]
+    uacrypt kalyna-cmac verify --variant <v> --key <path> --in <path> --tag <path> [--iterations <n>]
+
+FLAGS:
+    --variant <v>    one of 128-128, 128-256, 256-256, 256-512, 512-512
+    --key <path>     key file - must be exactly the variant's key length
+    --in <path>      message to authenticate
+    --out <path>     compute: OUTPUT, where to write the 16-byte tag
+    --tag <path>     verify: INPUT, the tag to check against
+    --iterations <n> (benchmarking only) repeat the operation n times, print timing to stderr
+
+EXAMPLE:
+    uacrypt kalyna-cmac compute --variant 128-128 --key key.bin --in msg.bin --out tag.bin
+";
+
+const KALYNA_GMAC_HELP: &str = "\
+uacrypt kalyna-gmac - Kalyna-GMAC message authentication, for benchmarking/interop (DECISIONS.md D-31/D-71).
+
+Computes or verifies a full-block-length tag over a message - no encryption, no nonce (unlike
+kalyna-gcm, hazmat::kalyna_gmac takes none). Do not reuse this key for any encryption mode.
+
+USAGE:
+    uacrypt kalyna-gmac compute --variant <v> --key <path> --in <path> --out <path> [--iterations <n>]
+    uacrypt kalyna-gmac verify --variant <v> --key <path> --in <path> --tag <path> [--iterations <n>]
+
+FLAGS:
+    --variant <v>    one of 128-128, 128-256, 256-256, 256-512, 512-512
+    --key <path>     key file - must be exactly the variant's key length
+    --in <path>      message to authenticate
+    --out <path>     compute: OUTPUT, where to write the tag (full block length)
+    --tag <path>     verify: INPUT, the tag to check against
+    --iterations <n> (benchmarking only) repeat the operation n times, print timing to stderr
+
+EXAMPLE:
+    uacrypt kalyna-gmac compute --variant 128-128 --key key.bin --in msg.bin --out tag.bin
+";
+
+const KALYNA_KW_HELP: &str = "\
+uacrypt kalyna-kw - Kalyna key wrap/unwrap, for benchmarking/interop (DECISIONS.md D-31/D-71).
+
+Wraps block-aligned key material (1..=20 blocks) into a blob one block longer, with a checksum
+block for tamper-evidence - not a general-purpose cipher, see hazmat::kalyna_kw docs.
+
+USAGE:
+    uacrypt kalyna-kw wrap --variant <v> --key <path> --in <path> --out <path> [--iterations <n>]
+    uacrypt kalyna-kw unwrap --variant <v> --key <path> --in <path> --out <path> [--iterations <n>]
+
+FLAGS:
+    --variant <v>    one of 128-128, 128-256, 256-256, 256-512, 512-512
+    --key <path>     key file - must be exactly the variant's key length
+    --in <path>      key material to wrap (block-aligned) or a wrapped blob to unwrap
+    --out <path>     wrapped blob (wrap) or recovered key material (unwrap)
+    --iterations <n> (benchmarking only) repeat the operation n times, print timing to stderr
+
+EXAMPLE:
+    uacrypt kalyna-kw wrap --variant 128-128 --key kek.bin --in key-to-wrap.bin --out wrapped.bin
+";
+
+const KALYNA_XTS_HELP: &str = "\
+uacrypt kalyna-xts - Kalyna-XTS disk-sector mode, for benchmarking/interop (DECISIONS.md D-31/D-71).
+
+Confidentiality only, no tag - the correct design for disk-sector encryption, not a gap (see
+hazmat::kalyna_xts docs). --in must be at least one block long.
+
+USAGE:
+    uacrypt kalyna-xts encrypt --variant <v> --key <path> --tweak <path> --in <path> --out <path> [--iterations <n>]
+    uacrypt kalyna-xts decrypt --variant <v> --key <path> --tweak <path> --in <path> --out <path> [--iterations <n>]
+
+FLAGS:
+    --variant <v>    one of 128-128, 128-256, 256-256, 256-512, 512-512
+    --key <path>     key file - must be exactly the variant's key length
+    --tweak <path>   one block's worth of bytes - the data-unit tweak seed (e.g. a sector index
+                     encoded into a block-length buffer by the caller; this CLI does not derive one)
+    --in <path>      plaintext (encrypt) or ciphertext (decrypt), at least one block
+    --out <path>     ciphertext (encrypt) or plaintext (decrypt)
+    --iterations <n> (benchmarking only) repeat the operation n times, print timing to stderr
+
+EXAMPLE:
+    uacrypt kalyna-xts encrypt --variant 128-128 --key key.bin --tweak tweak.bin --in sector.bin \\
+        --out sector.enc
 ";
 
 const KUPYNA_DIGEST_HELP: &str = "\
@@ -1632,11 +2651,60 @@ fn print_command_help(command: &str) {
         "hash" => HASH_HELP,
         "kalyna-block" => KALYNA_BLOCK_HELP,
         "kalyna-ccm" => KALYNA_CCM_HELP,
+        "kalyna-gcm" => KALYNA_GCM_HELP,
+        "kalyna-cmac" => KALYNA_CMAC_HELP,
+        "kalyna-gmac" => KALYNA_GMAC_HELP,
+        "kalyna-kw" => KALYNA_KW_HELP,
+        "kalyna-xts" => KALYNA_XTS_HELP,
         "kupyna-digest" => KUPYNA_DIGEST_HELP,
         "strumok-crypt" => STRUMOK_CRYPT_HELP,
         _ => TOP_LEVEL_HELP,
     };
     println!("{text}");
+}
+
+/// Dispatches `kalyna-gcm`/`kalyna-cmac`/`kalyna-gmac`/`kalyna-kw`/`kalyna-xts` - split out of
+/// [`run`] purely to keep that function under `clippy::pedantic`'s line-count lint (`DECISIONS.md`
+/// D-71); `cmd` is always one of the five literals [`run`]'s own match arm already narrowed it to.
+/// `rest` excludes both the program name and `cmd` itself.
+fn dispatch_kalyna_mode(cmd: &str, rest: &[String]) -> Result<(), CliError> {
+    if rest.iter().any(|a| is_help_flag(a)) {
+        print_command_help(cmd);
+        return Ok(());
+    }
+    let sub = rest.first().map(String::as_str);
+    match cmd {
+        "kalyna-gcm" => match sub {
+            Some("encrypt") => run_gcm_command(false, &parse_gcm_args(&rest[1..])?),
+            Some("decrypt") => run_gcm_command(true, &parse_gcm_args(&rest[1..])?),
+            Some(other) => Err(CliError::UnknownCommand(format!("kalyna-gcm {other}"))),
+            None => Err(CliError::MissingFlag("encrypt|decrypt")),
+        },
+        "kalyna-cmac" => match sub {
+            Some("compute") => run_cmac_command(false, &parse_cmac_args(&rest[1..])?),
+            Some("verify") => run_cmac_command(true, &parse_cmac_args(&rest[1..])?),
+            Some(other) => Err(CliError::UnknownCommand(format!("kalyna-cmac {other}"))),
+            None => Err(CliError::MissingFlag("compute|verify")),
+        },
+        "kalyna-gmac" => match sub {
+            Some("compute") => run_gmac_command(false, &parse_gmac_args(&rest[1..])?),
+            Some("verify") => run_gmac_command(true, &parse_gmac_args(&rest[1..])?),
+            Some(other) => Err(CliError::UnknownCommand(format!("kalyna-gmac {other}"))),
+            None => Err(CliError::MissingFlag("compute|verify")),
+        },
+        "kalyna-kw" => match sub {
+            Some("wrap") => run_kw_command(false, &parse_kw_args(&rest[1..])?),
+            Some("unwrap") => run_kw_command(true, &parse_kw_args(&rest[1..])?),
+            Some(other) => Err(CliError::UnknownCommand(format!("kalyna-kw {other}"))),
+            None => Err(CliError::MissingFlag("wrap|unwrap")),
+        },
+        _ => match sub {
+            Some("encrypt") => run_xts_command(false, &parse_xts_args(&rest[1..])?),
+            Some("decrypt") => run_xts_command(true, &parse_xts_args(&rest[1..])?),
+            Some(other) => Err(CliError::UnknownCommand(format!("kalyna-xts {other}"))),
+            None => Err(CliError::MissingFlag("encrypt|decrypt")),
+        },
+    }
 }
 
 /// Top-level dispatch - `args` excludes the program name (`std::env::args().skip(1)`).
@@ -1689,6 +2757,9 @@ pub fn run(args: &[String]) -> Result<(), CliError> {
                 Some(other) => Err(CliError::UnknownCommand(format!("kalyna-ccm {other}"))),
                 None => Err(CliError::MissingFlag("encrypt|decrypt")),
             }
+        }
+        Some(cmd @ ("kalyna-gcm" | "kalyna-cmac" | "kalyna-gmac" | "kalyna-kw" | "kalyna-xts")) => {
+            dispatch_kalyna_mode(cmd, &args[1..])
         }
         Some("kupyna-digest") => {
             if args[1..].iter().any(|a| is_help_flag(a)) {
@@ -2246,6 +3317,7 @@ mod tests {
             in_path: dir.file("in.bin"),
             out_path: dir.file("ct.bin"),
             tag_path: dir.file("tag.bin"),
+            iterations: 1,
         };
         run_ccm_command(false, &encrypt_args).expect("encrypt should succeed");
 
@@ -2293,6 +3365,7 @@ mod tests {
             in_path: dir.file("in.bin"),
             out_path: dir.file("ct1.bin"),
             tag_path: dir.file("tag1.bin"),
+            iterations: 1,
         };
         run_ccm_command(false, &base_args).expect("first encrypt should succeed");
 
@@ -2328,6 +3401,7 @@ mod tests {
             in_path: dir.file("in.bin"),
             out_path: dir.file("ct.bin"),
             tag_path: dir.file("tag.bin"),
+            iterations: 1,
         };
         run_ccm_command(false, &encrypt_args).expect("encrypt should succeed");
 
@@ -2794,6 +3868,7 @@ mod tests {
             in_path: dir.file("in.bin"),
             out_path: dir.file("out.bin"),
             tag_path: dir.file("tag.bin"),
+            iterations: 1,
         };
         assert_eq!(
             run_ccm_command(false, &args),
@@ -2824,6 +3899,7 @@ mod tests {
             in_path: dir.file("in.bin"),
             out_path: dir.file("out.bin"),
             tag_path: dir.file("tag.bin"),
+            iterations: 1,
         };
         assert_eq!(
             run_ccm_command(true, &args),
@@ -3077,5 +4153,537 @@ mod tests {
         // literal it just matched), but documents the fallback explicitly rather than leaving it
         // an untested assumption.
         print_command_help("not-a-real-command");
+    }
+
+    // --- kalyna-gcm (T-120/D-71) ---
+
+    #[test]
+    fn run_gcm_command_round_trip_matches_dstu_core_directly() {
+        let dir = TempDir::new("kalyna_gcm");
+        let key = [0x11u8; 16];
+        let aad = b"header".to_vec();
+        let plaintext = b"a message of any length, unlike kalyna-ccm".to_vec();
+        std::fs::write(dir.file("key.bin"), key).expect("write key");
+        std::fs::write(dir.file("aad.bin"), &aad).expect("write aad");
+        std::fs::write(dir.file("in.bin"), &plaintext).expect("write input");
+
+        let encrypt_args = GcmArgs {
+            variant: KalynaVariant::K128_128,
+            key_path: dir.file("key.bin"),
+            nonce_path: dir.file("nonce.bin"),
+            aad_path: Some(dir.file("aad.bin")),
+            in_path: dir.file("in.bin"),
+            out_path: dir.file("ct.bin"),
+            tag_path: dir.file("tag.bin"),
+            iterations: 1,
+        };
+        run_gcm_command(false, &encrypt_args).expect("encrypt should succeed");
+
+        let generated_nonce = std::fs::read(dir.file("nonce.bin")).expect("read generated nonce");
+        let mut nonce_arr = [0u8; 16];
+        nonce_arr.copy_from_slice(&generated_nonce);
+        let expected_cipher = Kalyna128_128Gcm::new(&key);
+        let mut expected_ct = vec![0u8; plaintext.len()];
+        let expected_tag = expected_cipher
+            .encrypt(&nonce_arr, &aad, &plaintext, &mut expected_ct)
+            .expect("direct encrypt with the generated nonce should succeed");
+        assert_eq!(
+            std::fs::read(dir.file("ct.bin")).expect("read"),
+            expected_ct
+        );
+        assert_eq!(
+            std::fs::read(dir.file("tag.bin")).expect("read"),
+            expected_tag.to_vec()
+        );
+
+        let decrypt_args = GcmArgs {
+            in_path: dir.file("ct.bin"),
+            out_path: dir.file("pt.bin"),
+            ..encrypt_args
+        };
+        run_gcm_command(true, &decrypt_args).expect("decrypt should succeed");
+        assert_eq!(std::fs::read(dir.file("pt.bin")).expect("read"), plaintext);
+    }
+
+    #[test]
+    fn run_gcm_command_iterations_greater_than_one_still_decrypts_correctly() {
+        // "Correctness" for the benchmark loop itself: repeating encrypt N times over the same
+        // nonce/plaintext must still leave a valid, decryptable final ciphertext/tag on disk -
+        // not just "doesn't crash". `run_gcm_command`'s loop re-encrypts the same plaintext under
+        // the same (call-local) nonce every iteration, so the final result is deterministic and
+        // must round-trip through `decrypt` exactly like the `iterations: 1` case does.
+        let dir = TempDir::new("kalyna_gcm_iterations");
+        let key = [0x22u8; 32];
+        let plaintext = b"benchmark me a few times".to_vec();
+        std::fs::write(dir.file("key.bin"), key).expect("write key");
+        std::fs::write(dir.file("in.bin"), &plaintext).expect("write input");
+
+        let encrypt_args = GcmArgs {
+            variant: KalynaVariant::K256_256,
+            key_path: dir.file("key.bin"),
+            nonce_path: dir.file("nonce.bin"),
+            aad_path: None,
+            in_path: dir.file("in.bin"),
+            out_path: dir.file("ct.bin"),
+            tag_path: dir.file("tag.bin"),
+            iterations: 5,
+        };
+        run_gcm_command(false, &encrypt_args).expect("iterated encrypt should succeed");
+
+        let decrypt_args = GcmArgs {
+            in_path: dir.file("ct.bin"),
+            out_path: dir.file("pt.bin"),
+            iterations: 1,
+            ..encrypt_args
+        };
+        run_gcm_command(true, &decrypt_args).expect("decrypt should succeed");
+        assert_eq!(std::fs::read(dir.file("pt.bin")).expect("read"), plaintext);
+    }
+
+    #[test]
+    fn run_gcm_command_decrypt_rejects_tampered_ciphertext_without_writing_out() {
+        let dir = TempDir::new("kalyna_gcm_tamper");
+        let key = [0x33u8; 16];
+        let plaintext = b"do not trust me either".to_vec();
+        std::fs::write(dir.file("key.bin"), key).expect("write key");
+        std::fs::write(dir.file("in.bin"), &plaintext).expect("write input");
+
+        let encrypt_args = GcmArgs {
+            variant: KalynaVariant::K128_128,
+            key_path: dir.file("key.bin"),
+            nonce_path: dir.file("nonce.bin"),
+            aad_path: None,
+            in_path: dir.file("in.bin"),
+            out_path: dir.file("ct.bin"),
+            tag_path: dir.file("tag.bin"),
+            iterations: 1,
+        };
+        run_gcm_command(false, &encrypt_args).expect("encrypt should succeed");
+
+        let mut tampered = std::fs::read(dir.file("ct.bin")).expect("read ciphertext");
+        tampered[0] ^= 0x01;
+        std::fs::write(dir.file("ct.bin"), &tampered).expect("write tampered ciphertext");
+
+        let decrypt_args = GcmArgs {
+            in_path: dir.file("ct.bin"),
+            out_path: dir.file("pt.bin"),
+            ..encrypt_args
+        };
+        let result = run_gcm_command(true, &decrypt_args);
+        assert_eq!(result, Err(CliError::GcmVerifyFailed));
+        assert!(!dir.file("pt.bin").exists());
+    }
+
+    #[test]
+    fn run_gcm_command_wrong_key_length_is_rejected() {
+        let dir = TempDir::new("gcm_wrong_key_len");
+        std::fs::write(dir.file("key.bin"), [0u8; 15]).expect("write short key"); // K128_128 wants 16
+        std::fs::write(dir.file("in.bin"), b"data").expect("write input");
+
+        let args = GcmArgs {
+            variant: KalynaVariant::K128_128,
+            key_path: dir.file("key.bin"),
+            nonce_path: dir.file("nonce.bin"),
+            aad_path: None,
+            in_path: dir.file("in.bin"),
+            out_path: dir.file("out.bin"),
+            tag_path: dir.file("tag.bin"),
+            iterations: 1,
+        };
+        assert_eq!(
+            run_gcm_command(false, &args),
+            Err(CliError::WrongLength {
+                what: "key",
+                expected: 16,
+                actual: 15,
+            })
+        );
+        assert!(!dir.file("out.bin").exists());
+    }
+
+    // --- kalyna-cmac (T-120/D-71) ---
+
+    #[test]
+    fn run_cmac_command_round_trip_matches_dstu_core_directly() {
+        let dir = TempDir::new("kalyna_cmac");
+        let key = [0x44u8; 16];
+        let message = b"authenticate me".to_vec();
+        std::fs::write(dir.file("key.bin"), key).expect("write key");
+        std::fs::write(dir.file("in.bin"), &message).expect("write message");
+
+        let compute_args = CmacArgs {
+            variant: KalynaVariant::K128_128,
+            key_path: dir.file("key.bin"),
+            in_path: dir.file("in.bin"),
+            out_path: Some(dir.file("tag.bin")),
+            tag_path: None,
+            iterations: 1,
+        };
+        run_cmac_command(false, &compute_args).expect("compute should succeed");
+
+        let expected_tag = Kalyna128_128Cmac::mac(&key, &message);
+        assert_eq!(
+            std::fs::read(dir.file("tag.bin")).expect("read"),
+            expected_tag.to_vec()
+        );
+
+        let verify_args = CmacArgs {
+            out_path: None,
+            tag_path: Some(dir.file("tag.bin")),
+            ..compute_args
+        };
+        run_cmac_command(true, &verify_args).expect("verify should succeed against its own tag");
+    }
+
+    #[test]
+    fn run_cmac_command_verify_rejects_tampered_tag() {
+        let dir = TempDir::new("kalyna_cmac_tamper");
+        let key = [0x55u8; 16];
+        let message = b"do not forge me".to_vec();
+        std::fs::write(dir.file("key.bin"), key).expect("write key");
+        std::fs::write(dir.file("in.bin"), &message).expect("write message");
+
+        let mut tag = Kalyna128_128Cmac::mac(&key, &message);
+        tag[0] ^= 0x01;
+        std::fs::write(dir.file("tag.bin"), tag).expect("write tampered tag");
+
+        let verify_args = CmacArgs {
+            variant: KalynaVariant::K128_128,
+            key_path: dir.file("key.bin"),
+            in_path: dir.file("in.bin"),
+            out_path: None,
+            tag_path: Some(dir.file("tag.bin")),
+            iterations: 1,
+        };
+        assert_eq!(
+            run_cmac_command(true, &verify_args),
+            Err(CliError::CmacVerifyFailed)
+        );
+    }
+
+    #[test]
+    fn run_cmac_command_verify_without_tag_flag_is_rejected() {
+        let dir = TempDir::new("kalyna_cmac_missing_tag");
+        std::fs::write(dir.file("key.bin"), [0u8; 16]).expect("write key");
+        std::fs::write(dir.file("in.bin"), b"data").expect("write message");
+
+        let args = CmacArgs {
+            variant: KalynaVariant::K128_128,
+            key_path: dir.file("key.bin"),
+            in_path: dir.file("in.bin"),
+            out_path: None,
+            tag_path: None,
+            iterations: 1,
+        };
+        assert_eq!(
+            run_cmac_command(true, &args),
+            Err(CliError::MissingFlag("tag"))
+        );
+    }
+
+    // --- kalyna-gmac (T-120/D-71) ---
+
+    #[test]
+    fn run_gmac_command_round_trip_matches_dstu_core_directly() {
+        let dir = TempDir::new("kalyna_gmac");
+        let key = [0x66u8; 16];
+        let message = b"authenticate me, no nonce needed".to_vec();
+        std::fs::write(dir.file("key.bin"), key).expect("write key");
+        std::fs::write(dir.file("in.bin"), &message).expect("write message");
+
+        let compute_args = GmacArgs {
+            variant: KalynaVariant::K128_128,
+            key_path: dir.file("key.bin"),
+            in_path: dir.file("in.bin"),
+            out_path: Some(dir.file("tag.bin")),
+            tag_path: None,
+            iterations: 1,
+        };
+        run_gmac_command(false, &compute_args).expect("compute should succeed");
+
+        let expected_tag = Kalyna128_128Gmac::mac(&key, &message);
+        assert_eq!(
+            std::fs::read(dir.file("tag.bin")).expect("read"),
+            expected_tag.to_vec()
+        );
+
+        let verify_args = GmacArgs {
+            out_path: None,
+            tag_path: Some(dir.file("tag.bin")),
+            ..compute_args
+        };
+        run_gmac_command(true, &verify_args).expect("verify should succeed against its own tag");
+    }
+
+    #[test]
+    fn run_gmac_command_verify_rejects_tampered_tag() {
+        let dir = TempDir::new("kalyna_gmac_tamper");
+        let key = [0x77u8; 16];
+        let message = b"do not forge me either".to_vec();
+        std::fs::write(dir.file("key.bin"), key).expect("write key");
+        std::fs::write(dir.file("in.bin"), &message).expect("write message");
+
+        let mut tag = Kalyna128_128Gmac::mac(&key, &message);
+        tag[0] ^= 0x01;
+        std::fs::write(dir.file("tag.bin"), tag).expect("write tampered tag");
+
+        let verify_args = GmacArgs {
+            variant: KalynaVariant::K128_128,
+            key_path: dir.file("key.bin"),
+            in_path: dir.file("in.bin"),
+            out_path: None,
+            tag_path: Some(dir.file("tag.bin")),
+            iterations: 1,
+        };
+        assert_eq!(
+            run_gmac_command(true, &verify_args),
+            Err(CliError::GmacVerifyFailed)
+        );
+    }
+
+    // --- kalyna-kw (T-120/D-71) ---
+
+    #[test]
+    fn run_kw_command_round_trip_matches_dstu_core_directly() {
+        let dir = TempDir::new("kalyna_kw");
+        let key = [0x88u8; 16];
+        let key_material = [0x99u8; 32]; // 2 blocks, block-aligned
+        std::fs::write(dir.file("key.bin"), key).expect("write key");
+        std::fs::write(dir.file("in.bin"), key_material).expect("write key material");
+
+        let wrap_args = KwArgs {
+            variant: KalynaVariant::K128_128,
+            key_path: dir.file("key.bin"),
+            in_path: dir.file("in.bin"),
+            out_path: dir.file("wrapped.bin"),
+            iterations: 1,
+        };
+        run_kw_command(false, &wrap_args).expect("wrap should succeed");
+
+        let mut expected_wrapped = [0u8; 48];
+        Kalyna128_128Kw::wrap(&key, &key_material, &mut expected_wrapped)
+            .expect("direct wrap should succeed");
+        assert_eq!(
+            std::fs::read(dir.file("wrapped.bin")).expect("read"),
+            expected_wrapped.to_vec()
+        );
+
+        let unwrap_args = KwArgs {
+            in_path: dir.file("wrapped.bin"),
+            out_path: dir.file("unwrapped.bin"),
+            ..wrap_args
+        };
+        run_kw_command(true, &unwrap_args).expect("unwrap should succeed");
+        assert_eq!(
+            std::fs::read(dir.file("unwrapped.bin")).expect("read"),
+            key_material.to_vec()
+        );
+    }
+
+    #[test]
+    fn run_kw_command_unwrap_rejects_tampered_wrapped_blob() {
+        let dir = TempDir::new("kalyna_kw_tamper");
+        let key = [0xAAu8; 16];
+        let key_material = [0xBBu8; 16];
+        std::fs::write(dir.file("key.bin"), key).expect("write key");
+        std::fs::write(dir.file("in.bin"), key_material).expect("write key material");
+
+        let wrap_args = KwArgs {
+            variant: KalynaVariant::K128_128,
+            key_path: dir.file("key.bin"),
+            in_path: dir.file("in.bin"),
+            out_path: dir.file("wrapped.bin"),
+            iterations: 1,
+        };
+        run_kw_command(false, &wrap_args).expect("wrap should succeed");
+
+        let mut tampered = std::fs::read(dir.file("wrapped.bin")).expect("read wrapped");
+        tampered[0] ^= 0x01;
+        std::fs::write(dir.file("wrapped.bin"), &tampered).expect("write tampered blob");
+
+        let unwrap_args = KwArgs {
+            in_path: dir.file("wrapped.bin"),
+            out_path: dir.file("unwrapped.bin"),
+            ..wrap_args
+        };
+        let result = run_kw_command(true, &unwrap_args);
+        assert!(
+            result == Err(CliError::KwChecksumMismatch)
+                || matches!(result, Err(CliError::KwInvalidLength)),
+            "tampering must be rejected, got {result:?}"
+        );
+        assert!(!dir.file("unwrapped.bin").exists());
+    }
+
+    #[test]
+    fn run_kw_command_non_block_aligned_input_is_rejected() {
+        let dir = TempDir::new("kalyna_kw_misaligned");
+        std::fs::write(dir.file("key.bin"), [0u8; 16]).expect("write key");
+        std::fs::write(dir.file("in.bin"), [0u8; 17]).expect("write misaligned key material"); // not a multiple of 16
+
+        let args = KwArgs {
+            variant: KalynaVariant::K128_128,
+            key_path: dir.file("key.bin"),
+            in_path: dir.file("in.bin"),
+            out_path: dir.file("out.bin"),
+            iterations: 1,
+        };
+        assert_eq!(run_kw_command(false, &args), Err(CliError::KwInvalidLength));
+        assert!(!dir.file("out.bin").exists());
+    }
+
+    // --- kalyna-xts (T-120/D-71) ---
+
+    #[test]
+    fn run_xts_command_round_trip_matches_dstu_core_directly() {
+        let dir = TempDir::new("kalyna_xts");
+        let key = [0xCCu8; 16];
+        let tweak = [0xDDu8; 16];
+        let sector = [0xEEu8; 40]; // not block-aligned - exercises ciphertext stealing
+        std::fs::write(dir.file("key.bin"), key).expect("write key");
+        std::fs::write(dir.file("tweak.bin"), tweak).expect("write tweak");
+        std::fs::write(dir.file("in.bin"), sector).expect("write sector");
+
+        let encrypt_args = XtsArgs {
+            variant: KalynaVariant::K128_128,
+            key_path: dir.file("key.bin"),
+            tweak_path: dir.file("tweak.bin"),
+            in_path: dir.file("in.bin"),
+            out_path: dir.file("ct.bin"),
+            iterations: 1,
+        };
+        run_xts_command(false, &encrypt_args).expect("encrypt should succeed");
+
+        let cipher = Kalyna128_128Xts::new(&key);
+        let mut expected = sector.to_vec();
+        cipher
+            .encrypt_in_place(&tweak, &mut expected)
+            .expect("direct encrypt should succeed");
+        assert_eq!(std::fs::read(dir.file("ct.bin")).expect("read"), expected);
+
+        let decrypt_args = XtsArgs {
+            in_path: dir.file("ct.bin"),
+            out_path: dir.file("pt.bin"),
+            ..encrypt_args
+        };
+        run_xts_command(true, &decrypt_args).expect("decrypt should succeed");
+        assert_eq!(
+            std::fs::read(dir.file("pt.bin")).expect("read"),
+            sector.to_vec()
+        );
+    }
+
+    #[test]
+    fn run_xts_command_input_shorter_than_one_block_is_rejected() {
+        // No rejection/tamper-tag test exists for XTS - by design, it is confidentiality-only
+        // (see hazmat::kalyna_xts's module doc comment), so there is no tag to tamper with. This
+        // is the one "fool" category that IS reachable: an input too short for even one block.
+        let dir = TempDir::new("kalyna_xts_short");
+        std::fs::write(dir.file("key.bin"), [0u8; 16]).expect("write key");
+        std::fs::write(dir.file("tweak.bin"), [0u8; 16]).expect("write tweak");
+        std::fs::write(dir.file("in.bin"), [0u8; 8]).expect("write short sector"); // < 16-byte block
+
+        let args = XtsArgs {
+            variant: KalynaVariant::K128_128,
+            key_path: dir.file("key.bin"),
+            tweak_path: dir.file("tweak.bin"),
+            in_path: dir.file("in.bin"),
+            out_path: dir.file("out.bin"),
+            iterations: 1,
+        };
+        assert_eq!(
+            run_xts_command(false, &args),
+            Err(CliError::XtsInvalidLength)
+        );
+        assert!(!dir.file("out.bin").exists());
+    }
+
+    // --- dispatch smoke tests for the five new commands (T-120/D-71) ---
+
+    #[test]
+    fn run_dispatches_all_five_new_kalyna_mode_commands_help() {
+        for cmd in [
+            "kalyna-gcm",
+            "kalyna-cmac",
+            "kalyna-gmac",
+            "kalyna-kw",
+            "kalyna-xts",
+        ] {
+            assert!(
+                run(&[cmd.to_string(), "--help".to_string()]).is_ok(),
+                "{cmd} --help should succeed"
+            );
+        }
+    }
+
+    #[test]
+    fn run_kalyna_gcm_dispatch_round_trips_through_the_top_level_command() {
+        let dir = TempDir::new("dispatch_gcm");
+        std::fs::write(dir.file("key.bin"), [0u8; 16]).expect("write key");
+        std::fs::write(dir.file("in.bin"), b"dispatch me").expect("write input");
+
+        let path = |p: &std::path::Path| p.to_str().expect("valid utf-8 path").to_string();
+        let encrypt: Vec<String> = [
+            "kalyna-gcm",
+            "encrypt",
+            "--variant",
+            "128-128",
+            "--key",
+            &path(&dir.file("key.bin")),
+            "--nonce",
+            &path(&dir.file("nonce.bin")),
+            "--in",
+            &path(&dir.file("in.bin")),
+            "--out",
+            &path(&dir.file("ct.bin")),
+            "--tag",
+            &path(&dir.file("tag.bin")),
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect();
+        run(&encrypt).expect("encrypt dispatch should succeed");
+
+        let decrypt: Vec<String> = [
+            "kalyna-gcm",
+            "decrypt",
+            "--variant",
+            "128-128",
+            "--key",
+            &path(&dir.file("key.bin")),
+            "--nonce",
+            &path(&dir.file("nonce.bin")),
+            "--in",
+            &path(&dir.file("ct.bin")),
+            "--out",
+            &path(&dir.file("pt.bin")),
+            "--tag",
+            &path(&dir.file("tag.bin")),
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect();
+        run(&decrypt).expect("decrypt dispatch should succeed");
+        assert_eq!(
+            std::fs::read(dir.file("pt.bin")).expect("read"),
+            b"dispatch me".to_vec()
+        );
+    }
+
+    #[test]
+    fn run_unknown_subcommand_for_each_new_mode_is_rejected() {
+        for cmd in [
+            "kalyna-gcm",
+            "kalyna-cmac",
+            "kalyna-gmac",
+            "kalyna-kw",
+            "kalyna-xts",
+        ] {
+            let result = run(&[cmd.to_string(), "not-a-real-subcommand".to_string()]);
+            assert!(
+                matches!(result, Err(CliError::UnknownCommand(_))),
+                "{cmd} with an unknown subcommand should be rejected, got {result:?}"
+            );
+        }
     }
 }

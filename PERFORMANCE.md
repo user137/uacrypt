@@ -261,6 +261,78 @@ encrypt --variant <variant> --key <path> --in <path> --out <path> --iterations <
 built the same way as this file's other C comparisons — not committed; built fresh on each machine
 against `library/uapkic`'s pinned commit (`ORACLES.md`).
 
+**Updated 2026-07-26 (`TASKS.md` T-121, `DECISIONS.md` D-71)**: expanded to all 5 variants (was 2),
+Ryzen dev machine only this pass — the Pi rig was out of scope. `N = 20000`. **UAPKI wrapper built
+against the official prebuilt `uapkic-v2.0.12` Windows DLL** (`gendef`/`dlltool` import lib, no
+CMake — see D-71) instead of a from-source build; cross-checked byte-identical against the real
+`uacrypt` release binary before timing. UAPKI's *raw* (schedule-redone-per-call) numbers were not
+re-measured for the 3 newly-added variants this pass — only cached-schedule, all 5:
+
+| Variant | Direction | uacrypt cached (MB/s) | UAPKI cached (MB/s) | uacrypt raw (MB/s) |
+|---|---|---|---|---|
+| 128-128 | encrypt | **108.11** | 86.86 | 14.65 |
+| 128-256 | encrypt | 78.05 | **78.20** | 12.05 |
+| 256-256 | encrypt | **124.51** | 121.12 | 16.53 |
+| 256-512 | encrypt | 97.26 | **107.20** | 14.05 |
+| 512-512 | encrypt | 112.48 | **117.26** | 15.94 |
+
+Roughly at parity across all 5 variants at the cached-schedule level (within ~1-10% either way,
+narrower than the 2026-07-22 table's ~1.4-1.9x Kalyna lead) — a real, measured difference from the
+original 2-variant table, not just more data points: 128-256/256-512/512-512 now show UAPKI
+slightly ahead rather than this project leading everywhere. Not root-caused further this session.
+
+### Kalyna-CCM (`kalyna-ccm encrypt`)
+
+No binary-level table existed for CCM before this session — `kalyna-ccm` had no `--iterations` flag
+at all until T-121 added one (D-71). **64 B message, N = 5000, all 5 variants, Ryzen only:**
+
+| Variant | uacrypt (MB/s) | UAPKI (MB/s) |
+|---|---|---|
+| 128-128 | **29.77** | 2.48 |
+| 128-256 | **21.18** | 3.27 |
+| 256-256 | **27.73** | 3.16 |
+| 256-512 | **19.49** | 2.39 |
+| 512-512 | **15.04** | 1.94 |
+
+**This project wins by a wide margin (~7-12x) on every variant** — the opposite pattern from
+Kalyna-block/GCM above. Cause found by reading UAPKI's own source, not guessed: `hazmat::kalyna_ccm`
+works entirely on fixed-size stack arrays (no heap allocation, by design — see its module doc
+comment's no-alloc precedent), while UAPKI's `dstu7624_encrypt_ccm`/`ccm_padd` allocate multiple
+`ByteArray`s per call (`CALLOC_CHECKED`/`ba_alloc_from_uint8` for the auth-data buffer, the
+plaintext-length buffer, the CTR output, the join) — for a 64-byte message the allocation overhead
+dominates the actual block-cipher work. **Not a byte-for-byte cross-tool-verified number** (D-71):
+UAPKI's CCM `cipher_data` output bundles an extra CTR-encrypted tag block into the ciphertext rather
+than returning tag separately (a different wire convention, not a bug), so this timing is
+UAPKI-self-consistent (its own encrypt round-trips through its own decrypt) rather than compared
+against our exact output shape the way the other modes below are.
+
+**Reproducing**: `target/release/uacrypt kalyna-ccm encrypt --variant <v> --key <path> --nonce
+<path> --in <path> --out <path> --tag <path> --iterations <N>`.
+
+### Kalyna-GCM (`kalyna-gcm encrypt`)
+
+New command this session (T-121, D-71) — no message-length cap, unlike CCM. **All 5 variants, 64 B
+and 1 MiB, Ryzen only:**
+
+| Variant | uacrypt 64 B (MB/s) | UAPKI 64 B (MB/s) | uacrypt 1 MiB (MB/s) | UAPKI 1 MiB (MB/s) |
+|---|---|---|---|---|
+| 128-128 | 15.86 | **11.59**\* | 10.49 | **12.48** |
+| 128-256 | 14.63 | **11.39**\* | 10.08 | **12.46** |
+| 256-256 | 10.99 | **14.67** | 8.33 | **18.12** |
+| 256-512 | 10.28 | **14.17** | 8.17 | **17.48** |
+| 512-512 | **6.07** | 4.19 | **5.41** | 4.70 |
+
+\* uacrypt wins the 64 B case for 128-128/128-256 specifically (15.86/14.63 vs. 11.59/11.39) despite
+losing every other cell in this table — small-message overhead shape differs between the two
+implementations, not investigated further. **UAPKI wins the 1 MiB case on 3 of 5 variants**,
+sometimes by a wide margin (256-256: 18.12 vs. 8.33, ~2.2x) — the reverse of CCM's result above,
+consistent with GCM/GHASH-style field-multiplication throughput being a different bottleneck than
+CCM's per-call allocation cost. Byte-for-byte cross-checked against the real `uacrypt` binary before
+timing (unlike CCM, GCM's wire format matches: same-length ciphertext, tag returned separately).
+
+**Reproducing**: `target/release/uacrypt kalyna-gcm encrypt --variant <v> --key <path> --nonce
+<path> --in <path> --out <path> --tag <path> --iterations <N>`.
+
 ### Kupyna (`kupyna-digest`)
 
 `Kupyna256`/`Kupyna512::digest` already take an arbitrary-length message, so `kupyna-digest
@@ -282,6 +354,18 @@ exists to stop producing, and the binary-level number is the one this project no
 authoritative. The Pi gap is larger and in the same direction (UAPKI ahead by ~1.5-1.7x there).
 
 **Reproducing**: same pattern as Kalyna's.
+
+**Updated 2026-07-26 (T-121/D-71)**: added a 1 MiB data point alongside the existing 64 KB one,
+Ryzen only, same `N = 2000`/`N = 100` split as the Kupyna/Strumok convention below:
+
+| Variant | Size | uacrypt (MB/s) | UAPKI (MB/s) |
+|---|---|---|---|
+| Kupyna-256 | 1 MiB | 99.35 | **136.39** |
+| Kupyna-512 | 1 MiB | 81.68 | **118.19** |
+
+Same direction as the existing 64 B/1 KB/64 KB rows (UAPKI ahead throughout), margin widens slightly
+at 1 MiB (~1.37x/1.45x vs. ~1.05-1.12x at 65536 B) rather than converging — UAPKI's lead grows
+somewhat with message size here, not shrinks.
 
 ### Strumok (`strumok-crypt`)
 
@@ -306,6 +390,110 @@ unlike Kalyna/Kupyna's, doesn't depend on which CPU architecture is running it.
 
 **Reproducing**: same pattern as Kalyna's; the outspace/UAPKI comparison CLIs are one-off C
 wrappers with the same file interface, not committed — built fresh on each machine.
+
+**Updated 2026-07-26 (T-121/D-71)**: added a 1 MiB data point, Ryzen only, uacrypt-vs-UAPKI only
+(outspace not re-measured this pass):
+
+| Variant | Size | uacrypt (MB/s) | UAPKI (MB/s) |
+|---|---|---|---|
+| Strumok-256 | 1 MiB | **656.82** | 722.66 |
+| Strumok-512 | 1 MiB | **655.35** | 723.75 |
+
+Reverses at 1 MiB specifically: UAPKI edges ahead here (~1.10x both variants), unlike every smaller
+size in the existing 64 B/1 KB/64 KB table above where this project wins. A real crossover, not
+noise — worth re-checking at intermediate sizes (e.g. 256 KB) in a future pass to see where exactly
+it flips, not done here.
+
+### Kalyna-CMAC (`kalyna-cmac compute`)
+
+New command this session (T-121, D-71) — MAC-only, no encryption, fixed 16-byte tag regardless of
+variant. **All 5 variants, 64 B and 1 MiB, Ryzen only:**
+
+| Variant | uacrypt 64 B (MB/s) | UAPKI 64 B (MB/s) | uacrypt 1 MiB (MB/s) | UAPKI 1 MiB (MB/s) |
+|---|---|---|---|---|
+| 128-128 | **29.92** | 3.69 | 106.85 | **235.47** |
+| 128-256 | **23.65** | 3.51 | 77.19 | **182.48** |
+| 256-256 | **21.66** | 3.37 | 123.36 | **265.00** |
+| 256-512 | **18.14** | 3.02 | 97.26 | **215.42** |
+| 512-512 | **11.84** | 2.75 | 111.03 | **156.35** |
+
+**Sharp crossover by message size, on every variant**: this project wins small messages by a wide
+margin (~6-8x at 64 B — same per-call-overhead cause as CCM above, `hazmat::kalyna_cmac` has no
+allocation, UAPKI's `dstu7624_init_cmac`/`update_mac`/`final_mac` path does), but UAPKI wins large
+messages by ~1.4-2.2x at 1 MiB — the inverse of the small-message picture. Consistent with a fixed
+per-call setup cost dominating small inputs and raw per-byte throughput dominating large ones,
+though the exact per-byte cause (table layout, compiler codegen, etc.) isn't isolated further here.
+
+**Reproducing**: `target/release/uacrypt kalyna-cmac compute --variant <v> --key <path> --in <path>
+--out <path> --iterations <N>`.
+
+### Kalyna-GMAC (`kalyna-gmac compute`)
+
+New command this session (T-121, D-71) — same shape as CMAC but no nonce, tag is the variant's full
+block length. **All 5 variants, exactly one block of message (see D-71 for why: sidesteps a known
+UAPKI-side multi-block streaming bug, D-57), N = 5000, Ryzen only:**
+
+| Variant | uacrypt (MB/s) | UAPKI (MB/s) |
+|---|---|---|
+| 128-128 | **6.50** | 0.84 |
+| 128-256 | **5.94** | 0.83 |
+| 256-256 | **6.35** | 1.55 |
+| 256-512 | **6.01** | 1.40 |
+| 512-512 | **4.76** | 1.72 |
+
+This project wins by ~4-8x on every variant, same cause as CMAC's small-message case (UAPKI's
+per-call `ByteArray`/ctx setup cost, not a per-byte throughput difference — the message here is only
+one block, so setup cost is nearly the whole cost).
+
+**Reproducing**: `target/release/uacrypt kalyna-gmac compute --variant <v> --key <path> --in <path>
+--out <path> --iterations <N>`.
+
+### Kalyna-KW (`kalyna-kw wrap`)
+
+New command this session (T-121, D-71) — wraps block-aligned key material, output is one block
+longer than the input. **All 5 variants, 2 blocks of key material, N = 5000, Ryzen only:**
+
+| Variant | uacrypt (MB/s) | UAPKI (MB/s) |
+|---|---|---|
+| 128-128 | 5.38 | **12.80** |
+| 128-256 | 4.07 | **10.93** |
+| 256-256 | 6.33 | **16.39** |
+| 256-512 | 5.12 | **10.54** |
+| 512-512 | 5.83 | **10.49** |
+
+**UAPKI wins by ~1.8-2.7x on every variant** — the opposite of CMAC/GMAC/CCM's small-message
+pattern above, despite KW's input here being similarly small (32-128 bytes). Not root-caused this
+session; `hazmat::kalyna_kw`'s Feistel-like network runs many more block-cipher calls per byte of
+key material than a CMAC/GCM pass over the same length would (proportional to `v = (n-1)*6` rounds,
+`DECISIONS.md` D-55), which may explain the reversal, but this wasn't confirmed by profiling.
+
+**Reproducing**: `target/release/uacrypt kalyna-kw wrap --variant <v> --key <path> --in <path> --out
+<path> --iterations <N>`.
+
+### Kalyna-XTS (`kalyna-xts encrypt`)
+
+New command this session (T-121, D-71) — confidentiality-only disk-sector mode. **All 5 variants,
+512 B and 4096 B sectors, Ryzen only:**
+
+| Variant | uacrypt 512 B (MB/s) | UAPKI 512 B (MB/s) | uacrypt 4096 B (MB/s) | UAPKI 4096 B (MB/s) |
+|---|---|---|---|---|
+| 128-128 | **27.78** | 12.84 | **27.41** | 13.12 |
+| 128-256 | **25.15** | 12.56 | **25.01** | 12.79 |
+| 256-256 | 16.89 | **18.30** | 16.90 | **18.67** |
+| 256-512 | 16.43 | **17.97** | 16.54 | **18.16** |
+| 512-512 | **8.28** | 36.35 | **8.32** | 38.24 |
+
+**Real finding, flagged for follow-up, not root-caused here**: the 512-512 variant is a dramatic
+outlier — UAPKI runs **4.4-4.6x faster** than this project's own implementation there (36.35/38.24
+vs. 8.28/8.32 MB/s), a much wider gap than any other variant/mode measured in this entire session
+(every other cell in every table above is within ~2.7x, most within 2x). 128-128/128-256 show the
+opposite pattern (this project ~2x ahead), and 256-256/256-512 are roughly at parity — so this isn't
+a uniform "UAPKI's XTS is just faster" result, it's specific to the largest key/block variant. Not
+investigated further this session (`hazmat::kalyna_xts` itself was not touched — only a new CLI
+wrapper around the existing implementation was added) — see `TASKS.md` T-121 for the standing note.
+
+**Reproducing**: `target/release/uacrypt kalyna-xts encrypt --variant <v> --key <path> --tweak
+<path> --in <path> --out <path> --iterations <N>`.
 
 ## What the gap is, honestly
 
@@ -449,6 +637,17 @@ something that isn't run again regularly) — but fully reproducible:
    `resource.rc` is UTF-16 and `windres` chokes on it — set `RESOURCE_RC` to empty in a working
    copy of the CMakeLists, not needed for a benchmark), then time `dstu7624_encrypt` /
    `dstu7564_init`+`update`+`final` / `dstu8845_crypt` through the public `ByteArray`-based API.
+   **Faster alternative on Windows, found 2026-07-26 (T-121/D-71)**: the official
+   `specinfo-ua/UAPKI` GitHub repo publishes a signed prebuilt `uapkic.dll` as a release asset
+   (confirmed via `gh api repos/specinfo-ua/UAPKI/releases`) — exports every symbol needed, no
+   VC++ redistributable dependency. `gendef uapkic.dll && dlltool -d uapkic.def -l libuapkic.a -D
+   uapkic.dll` (both already on this machine via the WinLibs MinGW install, `.claude.local.md`)
+   produces a plain import lib, so a C wrapper links with bare `gcc -luapkic` — skips CMake and the
+   `resource.rc` workaround entirely. Use the vendored headers in `oracles/uapki/library/uapkic/
+   include/` for exact signatures regardless of which build path is used; if in doubt whether a
+   prebuilt DLL's ABI matches the vendored headers, `dstu7624_self_test()`/`dstu7564_self_test()`/
+   `dstu8845_self_test()` (all exported) are a fast sanity check before trusting any numbers from
+   it.
 3. **outspace**: build `oracles/strumok-dstu8845` the same way as the existing
    `tests/oracle-harness/strumok-differential/` harness does, time `dstu8845_crypt` in a loop.
 
