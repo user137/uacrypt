@@ -58,6 +58,18 @@ Kalyna512_512 caller does, even though 128-128's real round-key material is a qu
 flagged as a problem to fix here — just a real number the resource-constrained cases from the
 sizing table below should account for.
 
+**Same pattern on `KupynaCore` after T-134** (`DECISIONS.md` D-85): T-134 made Kupyna's *compute*
+path (`sub_shift_mix`/`compress` and friends) const-generic over `COLUMNS`, the direct analogue of
+T-128's Kalyna fix above — but, same as T-128 for Kalyna, deliberately left `KupynaCore`'s own
+*storage* untouched (`advisor()`'s explicit scope call during T-134: genericizing the struct itself
+buys no throughput, since its fields are touched once per `update`, not once per round). `h`/
+`buffer` are still `MAX_COLUMNS`(16)-sized regardless of variant: `[[u8; ROWS]; MAX_COLUMNS]` +
+`[u8; MAX_BLOCK_BYTES]` = `128 + 128` = **256 bytes** per live `Kupyna256Hasher`/`Kupyna512Hasher`
+(or `KupynaCore` inside `kupyna_kmac`/`kupyna_kdf`), even though Kupyna-256's real working state is
+half that width. Const-genericizing `KupynaCore` itself would halve this to 128 bytes for
+Kupyna-256 specifically - flagged in D-85 as a real memory win worth a separate follow-up task, not
+pursued as part of T-134's throughput-only scope.
+
 **GCM/GMAC's field multiply builds a transient 16-entry comb table on the stack, once per call
 to `poly_mul_wide`** (`hazmat::gf2m_wide.rs`, T-125's 4-bit-window comb method, `DECISIONS.md`
 D-76) — new since this doc was first written, and genuinely a *stack* cost, not a *flash* one

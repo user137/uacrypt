@@ -1257,7 +1257,7 @@ item they point to is later removed.
       narrow**: only CMAC, not all 9 modes - the other 8 stay scratch-only until one of them starts
       recurring the same way. `PERFORMANCE.md`'s methodology text updated to describe this as a
       named exception, not a blanket reversal.
-- [ ] **T-134** Not started. `hazmat::kupyna.rs`'s `sub_shift_mix` (line 65) has the exact same
+- [x] **T-134** **Done 2026-07-27, see `DECISIONS.md` D-85.** `hazmat::kupyna.rs`'s `sub_shift_mix` (line 65) has the exact same
       shape T-128 just fixed in `hazmat::kalyna.rs`'s `encipher_round` - found 2026-07-26, checking
       whether Strumok/Kupyna share the same nuance T-128 fixed for Kalyna (they don't both: Strumok
       is unaffected, see below). `let columns = state.len()` reads a runtime `usize` even though
@@ -1291,6 +1291,23 @@ item they point to is later removed.
       differs (one-time setup, not per-step) - so `next_step`/`strm` never had a `MAX_NB`-style
       oversized buffer or a runtime block-size parameter to fix in the first place. **Strumok does
       have a different, separately-found performance nuance - see T-135 below.**
+      **Resolution (2026-07-27, `DECISIONS.md` D-85)**: matched the predicted analogy exactly -
+      `advisor()`'s narrower design call was to keep `KupynaCore` itself runtime-parameterized
+      (genericizing it would ripple into `kupyna_kmac.rs`/`kupyna_kdf.rs` for zero throughput gain,
+      since its `buffer`/`total_len` fields are touched once per `update`, not once per round) and
+      only const-genericize the hot path (`sub_shift_mix_n`, `add_round_constant_{xor,add}_n`,
+      `t_transform_n`/`t_plus_transform_n`, `compress_n`, `bytes_to_columns_n`), dispatched via a
+      2-arm `match self.columns` at both `compress_block` and `finalize`'s own `t_transform` call
+      (the latter a second hot call site added during implementation, not in the original note).
+      Measured: Kupyna-256 -29 to -31% (64B/1024B/65536B), Kupyna-512 -17 to -19%, both within the
+      predicted ranges. Full verification bar passed (workspace tests incl. official
+      `kupyna`/`kupyna-kmac` vectors, clippy/fmt, full feature matrix incl. `small-tables`, scoped
+      Miri 8/8 0 UB). `KupynaCore` const-genericizing itself is flagged as a separate follow-up
+      (a memory win for `resource-profiles.md`'s MCU tiers), not pursued here.
+      **Binary-level UAPKI re-measurement added same day, on request** - `PERFORMANCE.md`'s Kupyna
+      section has the full table: `uacrypt`'s real throughput rose +41-47%/+21-29%, cross-validating
+      the `criterion` numbers above; UAPKI's former ~1.1-1.5x lead is closed for Kupyna-256
+      (~1.0-1.1x now) and narrowed but not closed for Kupyna-512 (~1.19-1.20x, was ~1.45x).
 - [ ] **T-135** Not started. `hazmat::strumok.rs`'s `apply_keystream` (line 923) works word-at-a-
       time then byte-at-a-time, where `oracles/strumok-dstu8845/strumok.c`'s equivalent path
       (`next_stream_full_crypt`, line 815, called from `dstu8845_crypt`'s main loop, line 1090)
@@ -3285,8 +3302,9 @@ achievable, not merely gated on a still-open investigation.
 **Tier C - perf rewrites, each gets its own `advisor()` consultation and its own plan-mode pass
 before any code is written (this roadmap's own sequencing call does not substitute for either -
 write that into each step's own session, don't read "advisor was consulted" as already satisfied):**
-6. **T-134** - Kupyna `sub_shift_mix` const-generic-over-`COLUMNS` (direct T-128 analogue, best
-   specified, largest predicted win at `COLUMNS=8`).
+6. **T-134** - **Done 2026-07-27, see `DECISIONS.md` D-85.** Kupyna `sub_shift_mix`
+   const-generic-over-`COLUMNS`, `advisor()`-consulted and plan-mode-approved before implementation.
+   Measured -29 to -31% (Kupyna-256) / -17 to -19% (Kupyna-512), matching the predicted ranges.
 7. **T-135** - Strumok `apply_keystream` batched/fixed-index rewrite (specified directly against
    `oracles/strumok-dstu8845/strumok.c`'s `next_stream_full_crypt`).
 8. **T-129** - Kalyna word-wide gather in `encipher_round_n`/`fused_inv_round_n` (most invasive;
@@ -3314,35 +3332,23 @@ item gets its own `DECISIONS.md` entry with citations and a status update at its
 above; this section only tracks sequencing, not outcomes - don't duplicate result detail here that
 belongs at the task's own entry.
 
-### RESUME HERE (state as of 2026-07-26, saved for a memory-clear/new-session handoff)
+### RESUME HERE (state as of 2026-07-27, saved for a memory-clear/new-session handoff)
 
 **Tier A fully done. Tier B fully done (T-136's own deeper root-cause investigation stays open as
 its own task, but the roadmap's narrower ask - measure the asymmetry before T-129 changes it - is
-met). Ready to start Tier C.** Completed this session: the open question (T-130 is mechanism-wide,
-not Kalyna-specific, `DECISIONS.md` D-81); **T-130** itself (full fix found and confirmed at
-full-module scale, 13/13 `hazmat::kalyna` proptests under Miri, 0 UB); **T-87** (verified docs
-already current, closed without a rewrite); **T-23** (all feature combinations re-confirmed clean
-post-T-128); **T-35** (Pi re-run, all green, no regression); **T-138** (CMAC re-measured at 64 B
-with a timer-placement-fixed wrapper, `DECISIONS.md` D-82 - real lead is ~1.0-1.45x, not the
-previously-published ~6-8x, plus a real UAPKI CMAC-context-reuse quirk found); **T-133** (asked
-the project owner whether to commit the UAPKI comparison wrapper given it conflicted with
-`PERFORMANCE.md`'s own "not committed" policy - answer was yes, `tests/oracle-harness/
-uapki-cmac-bench/cmac_bench.c` is now committed, `DECISIONS.md` D-83, CMAC only, deliberately
-narrow); **T-136** (the existing `benches/kalyna.rs` block-only pair already was the isolated
-measurement this task asked for - confirmed the encrypt/decrypt asymmetry shows up at the
-round-function level itself, `DECISIONS.md` D-84, ruling out a mode-of-operation-level cause;
-T-136's own deeper "why" stays open as a separate task).
-**Next concrete action**: Tier C, in the stated order (T-134, T-135, T-129) - **each of these three
-needs its own `advisor()` consultation and its own plan-mode pass before any code is written**, per
-the roadmap's own explicit instruction repeated here so it isn't skipped: this roadmap's own
-sequencing call does not substitute for either. Start with T-134 (Kupyna `sub_shift_mix`
-const-generic-over-`COLUMNS`, the most directly T-128-analogous and best-specified of the three).
+met). Tier C started: T-134 done, T-135/T-129 remain.** Prior session closed all of Tier A/B (T-130
+Miri fix, T-87/T-23/T-35 doc/hygiene re-checks, T-138/T-133 CMAC re-measurement, T-136's first
+asymmetry measurement) - that work was committed and pushed (`3ad95ed`), so the "also outstanding,
+uncommitted doc work" note that used to be here is stale and has been removed. This session:
+**T-134** (Kupyna `sub_shift_mix` const-generic-over-`COLUMNS`, `DECISIONS.md` D-85) - `advisor()`
+consulted, plan-mode pass approved, then implemented: measured -29 to -31% (Kupyna-256) / -17 to
+-19% (Kupyna-512), matching T-134's own predicted ranges. Full verification bar passed (workspace
+tests incl. official vectors, clippy/fmt, full feature matrix incl. `small-tables`, scoped Miri 8/8
+0 UB).
+**Next concrete action**: Tier C's remaining two, in the stated order (T-135, then T-129) - **each
+still needs its own `advisor()` consultation and its own plan-mode pass before any code is
+written**, per the roadmap's own explicit instruction repeated here so it isn't skipped. Continue
+with T-135 (Strumok `apply_keystream` batched/fixed-index rewrite, specified directly against
+`oracles/strumok-dstu8845/strumok.c`'s `next_stream_full_crypt`).
 Tier D (T-137, the UAPKI XTS upstream fix) only on explicit request when reached - investigating/
 verifying locally is fine, opening an issue/PR upstream is not.
-**Also outstanding, not part of this roadmap's own sequence but flagged during this session**: a
-substantial amount of doc-only work (`TASKS.md`/`DECISIONS.md`/`PERFORMANCE.md`/`.gitignore`, plus
-the new `tests/oracle-harness/uapki-cmac-bench/cmac_bench.c` file) is uncommitted as of this save -
-this project's standing rule is no git commits without an explicit user request, so this was left
-for the user to review/commit rather than committed automatically. Update this paragraph as each
-item completes, same convention as the Step 0-5 roadmap's own "RESUME HERE" section above - don't
-let it go stale while the rest of the section is edited.

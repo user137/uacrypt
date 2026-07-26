@@ -62,6 +62,12 @@ fn mix_columns(state: &mut [[u8; ROWS]]) {
 /// `tables::SBOX_MDS` instead of three separate passes (D-28) - see `hazmat::kalyna::encipher_
 /// round`'s doc comment for why this is valid (S-box is row-indexed, the row permutation preserves
 /// row, so the two commute) and why it needs no per-`columns` tables, only a cheap gather index.
+///
+/// No production code path calls this directly anymore as of T-134 (`DECISIONS.md` D-85) -
+/// `KupynaCore::compress_block`/`finalize` dispatch to the const-generic `sub_shift_mix_n` instead.
+/// Kept as the independent reference `const_shift_mix_tests` checks the const-generic twin against,
+/// same pattern as `sub_bytes`/`shift_bytes`/`mix_columns` above.
+#[allow(dead_code)]
 fn sub_shift_mix(state: &mut [[u8; ROWS]], last_row_shift: usize) {
     let columns = state.len();
     debug_assert!(columns.is_power_of_two());
@@ -83,7 +89,34 @@ fn sub_shift_mix(state: &mut [[u8; ROWS]], last_row_shift: usize) {
     state[..columns].copy_from_slice(&result[..columns]);
 }
 
+/// Const-generic twin of `sub_shift_mix` (T-134, direct analogue of `hazmat::kalyna`'s
+/// `encipher_round_n`, `DECISIONS.md` T-128/D-77) - `COLUMNS` (always 8 or 16, verified against
+/// every `KupynaCore::new`/`digest_generic`/`kmac_generic` call site) is known at compile time, so
+/// `result` is exactly `COLUMNS` wide (no `MAX_COLUMNS`-oversized zeroing) and every bounds check
+/// on `state`/`result` is eliminated by monomorphization.
+fn sub_shift_mix_n<const COLUMNS: usize>(state: &mut [[u8; ROWS]; COLUMNS], last_row_shift: usize) {
+    debug_assert!(COLUMNS.is_power_of_two());
+    let columns_mask = COLUMNS - 1;
+    let mut result = [[0u8; ROWS]; COLUMNS];
+    for (out_col, out_word) in result.iter_mut().enumerate() {
+        let mut acc = 0u64;
+        #[allow(clippy::needless_range_loop)]
+        for row in 0..ROWS {
+            let shift = if row == ROWS - 1 { last_row_shift } else { row };
+            let src_col = (out_col + COLUMNS - shift) & columns_mask;
+            let byte = state[src_col][row];
+            acc ^= forward_sbox_mds(row, byte);
+        }
+        *out_word = acc.to_le_bytes();
+    }
+    *state = result;
+}
+
 /// XOR-based round-constant addition (psi-xor), used by `T`/`P`. Kupyna.pdf Section 6.2.
+///
+/// No production code path calls this directly anymore as of T-134 (`DECISIONS.md` D-85) - see
+/// `sub_shift_mix`'s doc comment.
+#[allow(dead_code)]
 #[allow(clippy::cast_possible_truncation)] // col < MAX_COLUMNS (16), always fits u8
 fn add_round_constant_xor(state: &mut [[u8; ROWS]], round: u8) {
     for (col, column) in state.iter_mut().enumerate() {
@@ -91,7 +124,19 @@ fn add_round_constant_xor(state: &mut [[u8; ROWS]], round: u8) {
     }
 }
 
+/// Const-generic twin of `add_round_constant_xor` - see `sub_shift_mix_n`.
+#[allow(clippy::cast_possible_truncation)] // col < COLUMNS <= 16, always fits u8
+fn add_round_constant_xor_n<const COLUMNS: usize>(state: &mut [[u8; ROWS]; COLUMNS], round: u8) {
+    for (col, column) in state.iter_mut().enumerate() {
+        column[0] ^= (col as u8).wrapping_mul(0x10) ^ round;
+    }
+}
+
 /// Modulo-2^64-add round-constant addition (psi-add), used by `T+`/`Q`. Kupyna.pdf Section 6.2.
+///
+/// No production code path calls this directly anymore as of T-134 (`DECISIONS.md` D-85) - see
+/// `sub_shift_mix`'s doc comment.
+#[allow(dead_code)]
 #[allow(clippy::cast_possible_truncation)] // columns - 1 - col < MAX_COLUMNS (16), always fits u8
 fn add_round_constant_add(state: &mut [[u8; ROWS]], round: u8) {
     let columns = state.len();
@@ -103,7 +148,22 @@ fn add_round_constant_add(state: &mut [[u8; ROWS]], round: u8) {
     }
 }
 
+/// Const-generic twin of `add_round_constant_add` - see `sub_shift_mix_n`.
+#[allow(clippy::cast_possible_truncation)] // COLUMNS - 1 - col < COLUMNS <= 16, always fits u8
+fn add_round_constant_add_n<const COLUMNS: usize>(state: &mut [[u8; ROWS]; COLUMNS], round: u8) {
+    for (col, column) in state.iter_mut().enumerate() {
+        let top_byte = ((COLUMNS - 1 - col) as u8).wrapping_mul(0x10) ^ round;
+        let addend = u64::from_le_bytes([0xF3, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, top_byte]);
+        let word = u64::from_le_bytes(*column).wrapping_add(addend);
+        *column = word.to_le_bytes();
+    }
+}
+
 /// `T` (Kupyna.pdf Section 6.1): `rounds` iterations of xor-constant -> S-box -> shift -> mix.
+///
+/// No production code path calls this directly anymore as of T-134 (`DECISIONS.md` D-85) - see
+/// `sub_shift_mix`'s doc comment.
+#[allow(dead_code)]
 #[allow(clippy::cast_possible_truncation)] // rounds is 10 or 14 (Table 1), always fits u8
 fn t_transform(state: &mut [[u8; ROWS]], rounds: usize, last_row_shift: usize) {
     for round in 0..rounds {
@@ -113,6 +173,10 @@ fn t_transform(state: &mut [[u8; ROWS]], rounds: usize, last_row_shift: usize) {
 }
 
 /// `T+` (Kupyna.pdf Section 6.1): same as `T` but with the mod-add constant.
+///
+/// No production code path calls this directly anymore as of T-134 (`DECISIONS.md` D-85) - see
+/// `sub_shift_mix`'s doc comment.
+#[allow(dead_code)]
 #[allow(clippy::cast_possible_truncation)] // rounds is 10 or 14 (Table 1), always fits u8
 fn t_plus_transform(state: &mut [[u8; ROWS]], rounds: usize, last_row_shift: usize) {
     for round in 0..rounds {
@@ -121,7 +185,37 @@ fn t_plus_transform(state: &mut [[u8; ROWS]], rounds: usize, last_row_shift: usi
     }
 }
 
+/// Const-generic twin of `t_transform` - see `sub_shift_mix_n`. `ROUNDS` is a second const generic
+/// (always 10 or 14, paired one-to-one with `COLUMNS` - verified alongside `COLUMNS` itself) so the
+/// round loop itself is a compile-time-known trip count, not just bounds-check elimination.
+#[allow(clippy::cast_possible_truncation)] // round < ROUNDS <= 14, always fits u8
+fn t_transform_n<const COLUMNS: usize, const ROUNDS: usize>(
+    state: &mut [[u8; ROWS]; COLUMNS],
+    last_row_shift: usize,
+) {
+    for round in 0..ROUNDS {
+        add_round_constant_xor_n(state, round as u8);
+        sub_shift_mix_n(state, last_row_shift);
+    }
+}
+
+/// Const-generic twin of `t_plus_transform` - see `t_transform_n`.
+#[allow(clippy::cast_possible_truncation)] // round < ROUNDS <= 14, always fits u8
+fn t_plus_transform_n<const COLUMNS: usize, const ROUNDS: usize>(
+    state: &mut [[u8; ROWS]; COLUMNS],
+    last_row_shift: usize,
+) {
+    for round in 0..ROUNDS {
+        add_round_constant_add_n(state, round as u8);
+        sub_shift_mix_n(state, last_row_shift);
+    }
+}
+
 /// One compression step: `h <- T+(m) xor T(h xor m) xor h` (Kupyna.pdf Section 4).
+///
+/// No production code path calls this directly anymore as of T-134 (`DECISIONS.md` D-85) - see
+/// `sub_shift_mix`'s doc comment.
+#[allow(dead_code)]
 fn compress(h: &mut [[u8; ROWS]], block: &[[u8; ROWS]], rounds: usize, last_row_shift: usize) {
     let columns = h.len();
     let mut t_input = [[0u8; ROWS]; MAX_COLUMNS];
@@ -141,13 +235,77 @@ fn compress(h: &mut [[u8; ROWS]], block: &[[u8; ROWS]], rounds: usize, last_row_
     }
 }
 
+/// Const-generic twin of `compress` - see `sub_shift_mix_n`. `t_input`/`q_input` are exactly
+/// `COLUMNS` wide here (not `MAX_COLUMNS`), which is the actual "2x wasted zeroing" T-134 names for
+/// Kupyna-256 (`COLUMNS=8` against a 16-wide scratch buffer) - the round-loop trip count above is
+/// only half of the fix.
+fn compress_n<const COLUMNS: usize, const ROUNDS: usize>(
+    h: &mut [[u8; ROWS]; COLUMNS],
+    block: &[[u8; ROWS]; COLUMNS],
+    last_row_shift: usize,
+) {
+    let mut t_input = [[0u8; ROWS]; COLUMNS];
+    let mut q_input = [[0u8; ROWS]; COLUMNS];
+    for col in 0..COLUMNS {
+        for row in 0..ROWS {
+            t_input[col][row] = h[col][row] ^ block[col][row];
+            q_input[col][row] = block[col][row];
+        }
+    }
+    t_transform_n::<COLUMNS, ROUNDS>(&mut t_input, last_row_shift);
+    t_plus_transform_n::<COLUMNS, ROUNDS>(&mut q_input, last_row_shift);
+    for col in 0..COLUMNS {
+        for row in 0..ROWS {
+            h[col][row] ^= t_input[col][row] ^ q_input[col][row];
+        }
+    }
+}
+
 /// Splits a `block_bytes`-long byte slice into `columns` column-major 8-byte words.
+///
+/// No production code path calls this directly anymore as of T-134 (`DECISIONS.md` D-85) - see
+/// `sub_shift_mix`'s doc comment.
+#[allow(dead_code)]
 fn bytes_to_columns(bytes: &[u8], columns: usize) -> [[u8; ROWS]; MAX_COLUMNS] {
     let mut out = [[0u8; ROWS]; MAX_COLUMNS];
     for col in 0..columns {
         out[col].copy_from_slice(&bytes[col * ROWS..col * ROWS + ROWS]);
     }
     out
+}
+
+/// Const-generic twin of `bytes_to_columns` - see `sub_shift_mix_n`.
+fn bytes_to_columns_n<const COLUMNS: usize>(bytes: &[u8]) -> [[u8; ROWS]; COLUMNS] {
+    let mut out = [[0u8; ROWS]; COLUMNS];
+    for (col, word) in out.iter_mut().enumerate() {
+        word.copy_from_slice(&bytes[col * ROWS..col * ROWS + ROWS]);
+    }
+    out
+}
+
+/// Slice-to-array coercion for `KupynaCore::h`'s fixed `MAX_COLUMNS`-wide storage, needed to hand a
+/// `&mut [[u8; ROWS]; COLUMNS]` into the const-generic hot path - copies `hazmat::kalyna`'s
+/// `state_array_mut::<NB>` shape verbatim (`kalyna.rs:425-430`): `unreachable!` instead of
+/// `.unwrap()`/`.expect()` only because `lib.rs` denies both crate-wide (D-19/SECURITY.md), not
+/// because this conversion can actually fail - every call site below passes `COLUMNS` in
+/// `{8, 16}`, both `<= MAX_COLUMNS`.
+fn state_array_mut_kupyna<const COLUMNS: usize>(
+    full: &mut [[u8; ROWS]; MAX_COLUMNS],
+) -> &mut [[u8; ROWS]; COLUMNS] {
+    match (&mut full[..COLUMNS]).try_into() {
+        Ok(array) => array,
+        Err(_) => unreachable!("KupynaCore only ever constructs COLUMNS <= MAX_COLUMNS"),
+    }
+}
+
+/// Owned-copy counterpart of `state_array_mut_kupyna`, for `finalize`'s `t_final` scratch (which
+/// must be independent of `self.h`, not an alias into it) - same shape, same `unreachable!`
+/// rationale.
+fn h_to_array<const COLUMNS: usize>(h: &[[u8; ROWS]; MAX_COLUMNS]) -> [[u8; ROWS]; COLUMNS] {
+    match h[..COLUMNS].try_into() {
+        Ok(array) => array,
+        Err(_) => unreachable!("KupynaCore only ever constructs columns=8 or 16"),
+    }
 }
 
 /// Kupyna's own padding formula (`0x80` || zero bytes || 96-bit little-endian bit-length, sized so
@@ -190,6 +348,13 @@ pub(crate) struct KupynaCore {
     /// `finalize` cannot otherwise recover once earlier blocks have already been compressed away.
     total_len: u64,
     columns: usize,
+    /// Never read after construction as of T-134 (`DECISIONS.md` D-85): `compress_block`/`finalize`
+    /// now select `ROUNDS` as a const generic via the `columns` match arm instead. Kept as a
+    /// stored field (not removed from `new`'s signature) to avoid rippling a breaking-signature
+    /// change into `kupyna_kmac.rs`'s `kmac_generic`/`kmac_variant!` call sites, which is out of
+    /// this task's scope per its own `advisor()`-reviewed plan (`KupynaCore` stays
+    /// runtime-parameterized end-to-end, only its hot path is const-generic).
+    #[allow(dead_code)]
     rounds: usize,
     last_row_shift: usize,
 }
@@ -222,14 +387,26 @@ impl KupynaCore {
         &self.buffer[..self.buffer_len]
     }
 
+    /// Dispatches into the const-generic hot path (T-134, `DECISIONS.md` D-85) - `self.columns` is
+    /// always 8 or 16 (verified against every construction call site: `Kupyna256Hasher`/
+    /// `digest_generic`/`kmac_generic` for Kupyna256/Kupyna384/Kupyna512), so this match is a
+    /// one-time-per-block branch on a value that's constant for the lifetime of a given `self`, not
+    /// a per-round cost - see this task's `advisor()`-reviewed plan for why `KupynaCore` itself
+    /// stays runtime-parameterized rather than becoming const-generic end-to-end.
     fn compress_block(&mut self, block: &[u8]) {
-        let columns_buf = bytes_to_columns(block, self.columns);
-        compress(
-            &mut self.h[..self.columns],
-            &columns_buf[..self.columns],
-            self.rounds,
-            self.last_row_shift,
-        );
+        match self.columns {
+            8 => {
+                let columns_buf = bytes_to_columns_n::<8>(block);
+                let h = state_array_mut_kupyna::<8>(&mut self.h);
+                compress_n::<8, 10>(h, &columns_buf, self.last_row_shift);
+            }
+            16 => {
+                let columns_buf = bytes_to_columns_n::<16>(block);
+                let h = state_array_mut_kupyna::<16>(&mut self.h);
+                compress_n::<16, 14>(h, &columns_buf, self.last_row_shift);
+            }
+            _ => unreachable!("KupynaCore::new only ever constructed with columns=8 or 16"),
+        }
     }
 
     #[allow(clippy::cast_possible_truncation)] // data.len() here is always << u64::MAX
@@ -282,22 +459,35 @@ impl KupynaCore {
             self.compress_block(&tail[i * block_bytes..(i + 1) * block_bytes]);
         }
 
-        // Output transformation: H = R_n(T(h_k) xor h_k) (Kupyna.pdf Section 4).
-        let mut t_final = [[0u8; ROWS]; MAX_COLUMNS];
-        t_final[..self.columns].copy_from_slice(&self.h[..self.columns]);
-        t_transform(
-            &mut t_final[..self.columns],
-            self.rounds,
-            self.last_row_shift,
-        );
-        // Two arrays in lockstep by the same index - `digest_generic`'s pre-refactor form of this
-        // loop indexed plain locals and clippy left it alone; indexing through `self.h` here
-        // apparently changes its heuristic (same family of false positive as D-39's three cases).
+        // Output transformation: H = R_n(T(h_k) xor h_k) (Kupyna.pdf Section 4). Dispatches into
+        // the const-generic `t_transform_n` (T-134, `DECISIONS.md` D-85) - same rationale as
+        // `compress_block` above: this runs once per `finalize`, not once per round, but for
+        // single-block messages it's a comparable share of total work to one `compress_block`
+        // call, so it gets the same treatment rather than being left on the slow path.
+        //
+        // Two arrays in lockstep by the same index (`self.h`/`t_final`) - same documented false
+        // positive as `state_array_mut_kupyna`'s callers, D-39's established pattern.
         #[allow(clippy::needless_range_loop)]
-        for col in 0..self.columns {
-            for row in 0..ROWS {
-                self.h[col][row] ^= t_final[col][row];
+        match self.columns {
+            8 => {
+                let mut t_final = h_to_array::<8>(&self.h);
+                t_transform_n::<8, 10>(&mut t_final, self.last_row_shift);
+                for col in 0..8 {
+                    for row in 0..ROWS {
+                        self.h[col][row] ^= t_final[col][row];
+                    }
+                }
             }
+            16 => {
+                let mut t_final = h_to_array::<16>(&self.h);
+                t_transform_n::<16, 14>(&mut t_final, self.last_row_shift);
+                for col in 0..16 {
+                    for row in 0..ROWS {
+                        self.h[col][row] ^= t_final[col][row];
+                    }
+                }
+            }
+            _ => unreachable!("KupynaCore only ever constructs columns=8 or 16"),
         }
 
         // Truncate to the `output_bytes` most-significant bytes of the column-major byte stream
@@ -450,4 +640,75 @@ mod fused_round_tests {
             prop_assert_eq!(fused, naive);
         }
     }
+}
+
+/// T-134's const-generic specialization (`sub_shift_mix_n`/`compress_n`) is a performance-motivated
+/// refactor of the *same* algorithm as the retained runtime-`columns` `sub_shift_mix`/`compress`,
+/// not a new derivation - so the check here is new-vs-old equality over random state, for every
+/// `COLUMNS` value the crate actually instantiates (8, 16), rather than re-deriving correctness
+/// against `naive_sub_shift_mix` again (that's `fused_round_tests`'s job). Mirrors
+/// `hazmat::kalyna`'s `const_round_tests` exactly (`DECISIONS.md` T-128/D-77).
+#[cfg(test)]
+mod const_shift_mix_tests {
+    use super::{
+        bytes_to_columns, bytes_to_columns_n, compress, compress_n, sub_shift_mix, sub_shift_mix_n,
+        ROWS,
+    };
+    use proptest::prelude::*;
+
+    fn arb_state<const COLUMNS: usize>() -> impl Strategy<Value = [[u8; ROWS]; COLUMNS]> {
+        proptest::collection::vec(proptest::array::uniform8(any::<u8>()), COLUMNS).prop_map(|v| {
+            let mut out = [[0u8; ROWS]; COLUMNS];
+            out.copy_from_slice(&v);
+            out
+        })
+    }
+
+    macro_rules! const_matches_dyn_test {
+        ($shift_mix_test:ident, $compress_test:ident, $bytes_test:ident, $columns:literal, $rounds:literal, $last_row_shift:literal) => {
+            proptest! {
+                #[test]
+                fn $shift_mix_test(state in arb_state::<$columns>()) {
+                    let mut dynamic = state;
+                    let mut constant = state;
+                    sub_shift_mix(&mut dynamic[..], $last_row_shift);
+                    sub_shift_mix_n::<$columns>(&mut constant, $last_row_shift);
+                    prop_assert_eq!(dynamic, constant);
+                }
+
+                #[test]
+                fn $compress_test(h in arb_state::<$columns>(), block in arb_state::<$columns>()) {
+                    let mut dynamic = h;
+                    let mut constant = h;
+                    compress(&mut dynamic[..], &block[..], $rounds, $last_row_shift);
+                    compress_n::<$columns, $rounds>(&mut constant, &block, $last_row_shift);
+                    prop_assert_eq!(dynamic, constant);
+                }
+
+                #[test]
+                fn $bytes_test(bytes in proptest::collection::vec(any::<u8>(), $columns * ROWS)) {
+                    let dynamic = bytes_to_columns(&bytes, $columns);
+                    let constant = bytes_to_columns_n::<$columns>(&bytes);
+                    prop_assert_eq!(&dynamic[..$columns], &constant[..]);
+                }
+            }
+        };
+    }
+
+    const_matches_dyn_test!(
+        sub_shift_mix_n_matches_dyn_columns8,
+        compress_n_matches_dyn_columns8,
+        bytes_to_columns_n_matches_dyn_columns8,
+        8,
+        10,
+        7
+    );
+    const_matches_dyn_test!(
+        sub_shift_mix_n_matches_dyn_columns16,
+        compress_n_matches_dyn_columns16,
+        bytes_to_columns_n_matches_dyn_columns16,
+        16,
+        14,
+        11
+    );
 }

@@ -561,6 +561,35 @@ Same direction as the existing 64 B/1 KB/64 KB rows (UAPKI ahead throughout), ma
 at 1 MiB (~1.37x/1.45x vs. ~1.05-1.12x at 65536 B) rather than converging — UAPKI's lead grows
 somewhat with message size here, not shrinks.
 
+**Updated 2026-07-27 (T-134, `DECISIONS.md` D-85)**: `sub_shift_mix`/`compress` became const-generic
+over `COLUMNS`, so all three rows above are superseded. Fresh Ryzen-only wrapper (`kupyna_bench.c`,
+scratch-only per this section's methodology, same `dstu7564_init`/`update`/`final` calls repeated
+*inside* the timed loop every iteration - matching `uacrypt`'s own `bench_in_memory!` macro, which
+constructs a fresh `Kupyna*Hasher` every iteration too, so there is no schedule/setup cost to
+exclude here the way Kalyna's key expansion needs excluding). Byte-identity verified against
+`uacrypt kupyna-digest` at `--iterations 1` before trusting any timing, both variants:
+
+| Variant | Size | uacrypt (MB/s) | UAPKI (MB/s) | vs. this table's own pre-T-134 row |
+|---|---|---|---|---|
+| Kupyna-256 | 64 KB | **137.92** | 126.87 | uacrypt +46.5% (was 94.14); UAPKI ahead by 1.17x pre-T-134, uacrypt now ahead by 1.09x |
+| Kupyna-512 | 64 KB | 97.18 | **116.73** | uacrypt +29.0% (was 75.35); UAPKI still ahead, margin narrows to 1.20x (was 1.17x) |
+| Kupyna-256 | 1 MiB | **139.35** | 137.61 | uacrypt +40.3% (was 99.35); UAPKI's 1.37x lead is gone, roughly at parity (1.01x) |
+| Kupyna-512 | 1 MiB | 98.73 | **117.39** | uacrypt +20.9% (was 81.68); UAPKI still ahead, margin narrows to 1.19x (was 1.45x) |
+| Kupyna-256 | 10 MiB | 139.52 | **149.66** | uacrypt +41.7% (was 98.44); UAPKI still ahead, margin narrows to 1.07x (was ~1.45x) |
+| Kupyna-512 | 10 MiB | 98.65 | **117.77** | uacrypt +21.4% (was 81.29); UAPKI still ahead, margin holds at ~1.19x (was ~1.45x) |
+
+`uacrypt`'s own throughput gain (+41-47% for Kupyna-256, +21-29% for Kupyna-512, consistent across
+all three sizes) cross-validates the `criterion` numbers in the "Regression baseline" section below
+(-29 to -31% time / -17 to -19% time respectively) via an independent measurement method, per D-34's
+own reasoning for keeping the two separate. **Kupyna-256 has closed essentially all of UAPKI's
+former lead** (from ~1.1-1.5x down to ~1.0-1.1x, briefly ahead at 64 KB) - consistent with T-134's
+own prediction that Kupyna-256 (half-width, 8 of 16 columns) had the larger fix to gain from.
+**Kupyna-512's gap to UAPKI narrows but doesn't close** (still ~1.19-1.20x UAPKI-ahead at every
+size) - also as predicted, since Kupyna-512 was already full-width and only gained from bounds-check
+elimination/loop unrolling, not buffer-reuse. UAPKI's own absolute numbers moved somewhat between
+sessions too (e.g. 88.48→116.73 MB/s for Kupyna-512/64 KB) - ordinary run-to-run machine variance,
+not a UAPKI code change (UAPKI was not rebuilt or modified between measurements).
+
 ### Strumok (`strumok-crypt`)
 
 `Strumok256`/`Strumok512::apply_keystream` already XOR an arbitrary-length buffer, so
@@ -1003,6 +1032,16 @@ flagged for whoever next touches this table, not silently assumed unchanged.
 | Strumok-256 | - | 653.08 | +0.7% (was 648.67, within noise — T-128 doesn't touch Strumok) |
 | Strumok-512 | - | 654.80 | +2.9% (was 636.16, same reason) |
 
+**Updated 2026-07-27, re-run after T-134** (const-generic Kupyna round functions, `DECISIONS.md`
+D-85) — supersedes this table's own Kupyna rows above, with a UAPKI column added the same pass
+(fresh `kupyna_bench.c` wrapper, byte-identity verified, same as the Kupyna section's own
+"Updated 2026-07-27" block has the full detail):
+
+| Mode | Variant | uacrypt 10 MiB (MB/s) | UAPKI 10 MiB (MB/s) | vs. this table's own pre-T-134 row |
+|---|---|---|---|---|
+| Kupyna-256 | - | **139.52** | 149.66 | +41.7% (was 98.44) |
+| Kupyna-512 | - | 98.65 | **117.77** | +21.4% (was 81.29) |
+
 **UAPKI column for Kalyna-XTS added same day (`TASKS.md` T-131, `DECISIONS.md` D-78)**, same
 wrapper/verification as CMAC's table above (byte-for-byte identical to `uacrypt` on all 5 variants,
 both directions, confirmed before timing):
@@ -1042,8 +1081,10 @@ the Kalyna block cipher directly (via `ExpandedKey::encrypt_block`) for every da
 benefits from T-128's round-function speedup the same way Kalyna-block/CMAC do, independently of
 T-126's separate tweak-doubling fix; the two are additive, not overlapping causes. Kupyna/Strumok
 move only within measurement noise, exactly as expected — T-128 is a `hazmat::kalyna.rs`-only
-change (T-134/T-135 track the analogous, not-yet-implemented findings for Kupyna/Strumok
-respectively). CMAC/GCM's own post-T-128 numbers are in their own sections above, not repeated here.
+change. **T-134 (Kupyna's own analogous const-generic rewrite) landed 2026-07-27** - see the
+"Regression baseline" section below for its measured before/after numbers; T-135 (Strumok's
+still-open analogous finding) remains not-yet-implemented. CMAC/GCM's own post-T-128 numbers are in
+their own sections above, not repeated here.
 
 **Decrypt direction added 2026-07-26, same session** (previously this table, like most of this
 file, only measured the forward direction — corrected going forward, see "Methodology"):
@@ -1289,6 +1330,29 @@ move at all" — bounds-check elimination and full loop unrolling help every siz
 with wasted buffer space). Per D-34, this is criterion-based internal regression tracking only, not
 a cross-implementation claim against UAPKI — the binary-level Kalyna-block table above was not
 re-measured this session (see D-77/T-128).
+
+**Updated 2026-07-27 (`TASKS.md` T-134, `DECISIONS.md` D-85)**: `sub_shift_mix`/`compress` became
+const-generic over `COLUMNS` (Kupyna's own analogue of T-128's Kalyna rewrite), superseding
+`kalyna-kupyna-fused-2026-07-22` as the Kupyna baseline:
+
+```
+cargo bench -p dstu-core --bench kupyna -- --save-baseline kupyna-pre-t134-2026-07-27  # captured before the change
+cargo bench -p dstu-core --bench kupyna -- --baseline kupyna-pre-t134-2026-07-27  # to check
+```
+
+| Benchmark | Before | After | Change |
+|---|---|---|---|
+| Kupyna-256 / 64 B | 1.676 µs | 1.207 µs | −28.9% |
+| Kupyna-512 / 64 B | 2.443 µs | 2.029 µs | −17.0% |
+| Kupyna-256 / 1024 B | 11.396 µs | 8.163 µs | −30.7% |
+| Kupyna-512 / 1024 B | 15.086 µs | 12.425 µs | −18.9% |
+| Kupyna-256 / 65536 B | 660.20 µs | 474.13 µs | −30.4% |
+| Kupyna-512 / 65536 B | 815.52 µs | 667.59 µs | −18.7% |
+
+Per D-34, this is `criterion`-based internal regression tracking only, not a cross-implementation
+claim against UAPKI — Kupyna's binary-level UAPKI comparison table (in its own section above,
+"Updated 2026-07-27") has the independent binary-level re-measurement, which cross-validates these
+numbers via a separate method rather than duplicating them here.
 
 `target/criterion/` is gitignored (as usual for `target/`), so this baseline lives only on whatever
 machine last ran the save command above — it is **not** a portable, cross-machine regression gate

@@ -5520,3 +5520,98 @@ two functions' `nb=4` monomorphization, or a branch-predictor/instruction-cache 
 still untested hypotheses from T-136's own text. This session's contribution is narrowing the
 search space (confirmed round-function-level, not elsewhere) and providing an already-real
 `criterion` baseline for whoever investigates further - not a root cause.
+
+## D-85: T-134 - Kupyna `sub_shift_mix` const-generic-over-`COLUMNS`, direct T-128 analogue, done
+
+Tier C's first item of the 2026-07-26 perf/hygiene roadmap (`TASKS.md`), gated on its own
+`advisor()` consultation and plan-mode pass, both done before any code was written. Same shape as
+T-128/D-77 (`hazmat::kalyna`'s `encipher_round` -> `encipher_round_n<const NB>`): `sub_shift_mix`
+and its per-round neighbors took a runtime `columns: usize` and an oversized `MAX_COLUMNS`(16)-wide
+scratch buffer even though only two values are ever real - verified, not assumed, by grepping every
+`KupynaCore::new`/`digest_generic`/`kmac_generic` call site (`kupyna.rs:337,351,362,394`,
+`kupyna_kmac.rs:123-125` via `kmac_variant!`, `kupyna_kdf.rs:42-44`): the `(columns, rounds,
+last_row_shift)` triple is exactly `(8,10,7)` or `(16,14,11)`, never a third combination
+(Kupyna384Kmac reuses Kupyna-512's `(16,14,11)` state with a truncated 48-byte output, not a
+distinct round shape).
+
+**Design decision, from `advisor()`**: did not make `KupynaCore` itself const-generic. It's shared
+by `kupyna.rs`, `kupyna_kmac.rs`, and (transitively) `kupyna_kdf.rs`; its `buffer`/`buffer_len`/
+`total_len` fields are touched once per `update` call, not once per round, so genericizing the
+whole struct buys no throughput while rippling a breaking signature change into every caller.
+Instead: `KupynaCore` stays runtime-parameterized, and its two hot call sites
+(`compress_block`, and `finalize`'s own direct `t_transform` call for the output transformation -
+a second hot call site the original task note didn't separately name, added here since it's a
+comparable share of total work to one `compress_block` call for single-block messages) each got a
+2-arm `match self.columns { 8 => ..., 16 => ..., _ => unreachable!() }` dispatching into the
+const-generic path - the match costs nothing (same arm every call for a given hasher, sits at the
+per-block/per-finalize boundary, not inside the per-round loop).
+
+**Implementation** (`crates/dstu-core/src/hazmat/kupyna.rs`): `sub_shift_mix_n`,
+`add_round_constant_xor_n`/`add_round_constant_add_n`, `t_transform_n`/`t_plus_transform_n`
+(`COLUMNS` and `ROUNDS` both const generics, paired one-to-one), `compress_n`, `bytes_to_columns_n`,
+plus `state_array_mut_kupyna`/`h_to_array` (slice/copy-to-array coercions, copying
+`hazmat::kalyna`'s `state_array_mut::<NB>` shape verbatim - `unreachable!` instead of
+`.unwrap()`/`.expect()` only because `lib.rs` denies both crate-wide, D-19/SECURITY.md, not because
+the conversion can fail). `compress_n`'s `t_input`/`q_input` are exactly `COLUMNS` wide, not
+`MAX_COLUMNS` - the actual "2x wasted zeroing" fix for Kupyna-256, not just the round-loop trip
+count. The runtime `sub_shift_mix`/`add_round_constant_xor`/`add_round_constant_add`/
+`t_transform`/`t_plus_transform`/`compress`/`bytes_to_columns` are retained with `#[allow(dead_code)]`
+as the differential-test reference (same treatment as `sub_bytes`/`shift_bytes`/`mix_columns`,
+D-28) - all seven became genuinely unreachable from production code once `compress_block`/
+`finalize` were rewired, which is why each now carries the attribute (missing on the first clippy
+pass, caught immediately by `-D warnings`). `KupynaCore::rounds` is now unread (the match arms hard-
+code `ROUNDS`) but kept as a stored field with a documented `#[allow(dead_code)]` rather than
+removed, to avoid rippling a signature change into `kupyna_kmac.rs`'s call sites - out of this
+task's scope per its own plan.
+
+**Tests, written before the implementation** (test-first, `#[cfg(test)] mod const_shift_mix_tests`,
+mirroring `hazmat::kalyna`'s `const_round_tests`, `kalyna.rs:681-729`): property tests over random
+state proving `sub_shift_mix`/`compress`/`bytes_to_columns` match their `_n` twins exactly, for both
+`COLUMNS ∈ {8, 16}` - 6 new tests, all passing on first write against the already-correct dynamic
+reference (per `CLAUDE.md`'s standing note, this is expected, not a test-first violation). Full
+workspace suite (`cargo test --workspace --all-features`, 300+ tests across both crates, including
+the official `kupyna/*.json` and `kupyna-kmac/*.json` vectors) passed with no regressions.
+`cargo clippy --workspace --all-features -- -D warnings` and `cargo fmt --all -- --check` both
+clean. Full feature matrix built and clippy-checked individually (`--no-default-features`,
+`--no-default-features --features alloc`, `--no-default-features --features small-tables`,
+`--features small-tables`) - the `small-tables` combination matters here specifically since it
+changes `forward_sbox_mds`'s table indirection, per `CLAUDE.md`'s standing caution about narrow
+feature combinations hiding real warnings. Scoped `cargo +nightly miri test --lib hazmat::kupyna`
+under T-130's confirmed-working flags (`MIRIFLAGS=-Zmiri-disable-isolation
+PROPTEST_DISABLE_FAILURE_PERSISTENCE=1 PROPTEST_CASES=8`): 8/8 passed, 0 UB, 180.64s.
+
+**Measured before/after** (`cargo bench --bench kupyna`, fresh `kupyna-pre-t134-2026-07-27`
+baseline saved before the first edit - the existing `kalyna-kupyna-fused-2026-07-22` baseline
+predates T-128 and isn't a valid reference point on its own):
+
+| Benchmark | Before | After | Change |
+|---|---|---|---|
+| Kupyna-256 / 64 B | 1.676 µs | 1.207 µs | **-28.9%** |
+| Kupyna-512 / 64 B | 2.443 µs | 2.029 µs | **-17.0%** |
+| Kupyna-256 / 1024 B | 11.396 µs | 8.163 µs | **-30.7%** |
+| Kupyna-512 / 1024 B | 15.086 µs | 12.425 µs | **-18.9%** |
+| Kupyna-256 / 65536 B | 660.20 µs | 474.13 µs | **-30.4%** |
+| Kupyna-512 / 65536 B | 815.52 µs | 667.59 µs | **-18.7%** |
+
+Matches T-134's own predicted-not-measured direction: Kupyna-256 (half-width, 8 of 16 columns) in
+T-128's `nb=2`/`nb=4` range (~20-55%, measured ~29-31%); Kupyna-512 (already full-width) in T-128's
+`nb=8` range (~15-22%, measured ~17-19%).
+
+**Out of scope, flagged as a follow-up, not folded in here**: const-genericizing `KupynaCore`
+itself would also halve its `h`+`buffer` footprint (256→128 bytes for Kupyna-256), a real memory
+win for `docs/resource-profiles.md`'s MCU tiers - a distinct finding from this task's throughput
+goal, not pursued in this diff per the same "deliberately narrow" discipline T-133 used (D-83).
+
+**Binary-level UAPKI re-measurement, same day, on request**: the numbers above are `criterion`
+(in-process); per D-34 that's internal regression tracking only, never a cross-implementation
+claim. A fresh `kupyna_bench.c` wrapper (scratch-only, same UAPKI-prebuilt-DLL recipe as
+`uapki-cmac-bench`, D-83) was built against `dstu7564_init`/`update`/`final`, called fresh *inside*
+the timed loop every iteration to match `uacrypt`'s own `bench_in_memory!` (no schedule to exclude
+here, unlike Kalyna's key expansion). Byte-identity verified before timing. Real, binary-level
+before/after (64 KB/1 MiB/10 MiB, Ryzen, `PERFORMANCE.md`'s Kupyna section has the full table):
+`uacrypt`'s own throughput rose +41-47% (Kupyna-256) and +21-29% (Kupyna-512) across all three
+sizes - consistent with (cross-validates, via an independent method) the `criterion` deltas above.
+Against UAPKI specifically: Kupyna-256's former ~1.1-1.5x UAPKI lead is now closed to ~1.0-1.1x
+(briefly ahead at 64 KB); Kupyna-512's gap narrows from ~1.45x to ~1.19-1.20x but doesn't close,
+consistent with T-134's own prediction that Kupyna-512 (already full-width) had the smaller fix to
+gain from.
