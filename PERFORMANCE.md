@@ -823,6 +823,46 @@ now all superseded for Kalyna (by `kalyna-decryptfusion-2026-07-22`, or `kalyna-
 `strumok-optimized-2026-07-22` — kept only as historical records, not what new changes should be
 checked against.
 
+**Updated 2026-07-26 (`TASKS.md` T-128, `DECISIONS.md` D-77)**: `encipher_round`/`fused_inv_round`
+became const-generic over block size (see D-77 for the full mechanism), superseding
+`kalyna-decryptfusion-2026-07-22` as the Kalyna baseline:
+
+```
+cargo bench -p dstu-core --bench kalyna -- --save-baseline pre-unroll-2026-07-26  # captured before the change
+cargo bench -p dstu-core --bench kalyna -- --baseline pre-unroll-2026-07-26  # to check
+```
+
+**Before/after comparison, one clean run** (no other CPU-heavy process running concurrently — an
+earlier attempt at this same comparison, taken while a background Miri run was active, produced a
+spurious +4.9% "regression" reading on one cell purely from CPU contention, discarded rather than
+published):
+
+| Variant | Direction | Mode-level (Δ, key-expansion-dominated) | Block-only cached-schedule (Δ, isolates the round function) |
+|---|---|---|---|
+| 128-128 | encrypt | −11.8% | **−53.6%** |
+| 128-128 | decrypt | −6.9% | **−51.9%** |
+| 128-256 | encrypt | −12.3% | **−54.3%** |
+| 128-256 | decrypt | −8.5% | **−51.3%** |
+| 256-256 | encrypt | −5.7% | **−20.2%** |
+| 256-256 | decrypt | −7.1% | **−40.9%** |
+| 256-512 | encrypt | −5.8% | **−19.0%** |
+| 256-512 | decrypt | −7.8% | **−36.5%** |
+| 512-512 | encrypt | −3.2% | **−21.5%** |
+| 512-512 | decrypt | −2.4% | **−15.3%** |
+
+"Mode-level" is the full `encrypt_generic`/`decrypt_generic` call (key expansion + rounds +
+zeroize) — small, sometimes noisy improvement, exactly as expected since key expansion still runs
+through the unchanged runtime-`nb` round functions (the `kalyna_variant!` doc comment's own
+"~60-79% of single-call time is key schedule" note). "Block-only" (`ExpandedKey::encrypt_block`/
+`decrypt_block`, cached schedule) isolates the round function itself — the fair before/after metric
+for this specific change — and shows the real win: largest at `nb=2` (the size that paid the worst
+of the old bounds-check/oversized-buffer waste), smaller but still substantial at `nb=8` (contrary
+to an initial prediction that the largest variant, already using the full buffer width, "might not
+move at all" — bounds-check elimination and full loop unrolling help every size, not only the one
+with wasted buffer space). Per D-34, this is criterion-based internal regression tracking only, not
+a cross-implementation claim against UAPKI — the binary-level Kalyna-block table above was not
+re-measured this session (see D-77/T-128).
+
 `target/criterion/` is gitignored (as usual for `target/`), so this baseline lives only on whatever
 machine last ran the save command above — it is **not** a portable, cross-machine regression gate
 (a laptop today vs. a CI runner tomorrow will disagree on absolute numbers regardless of any code

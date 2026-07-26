@@ -981,6 +981,134 @@ item they point to is later removed.
       core-round-function-gap finding, not a further KW-specific cause. CMAC's own numbers are
       unchanged at the 1-MiB scale already published, exactly as predicted (the schedule cost was
       already amortized to nothing there) - full numbers in `PERFORMANCE.md`'s Kalyna-KW section.
+- [x] **T-128** **DONE 2026-07-26.** `hazmat::kalyna.rs`'s `encipher_round`/`fused_inv_round` take
+      `nb: usize` as a runtime parameter even though every real call site (`kalyna_variant!`'s five
+      variant invocations) supplies a compile-time-known literal (2, 4, or 8) - user-requested,
+      prompted by comparing this project's fused round functions directly against UAPKI's
+      `p_boxrowcol`/`BT_xor128`/`BT_xor256`/`BT_xor512` macros (which are separately compiled per
+      block size, no runtime branch at all). `advisor()` corrected the initial framing before any
+      code was written: the five variants collapse to **three** block sizes (`nb=2`:
+      Kalyna128_128/Kalyna128_256, `nb=4`: Kalyna256_256/Kalyna256_512, `nb=8`: Kalyna512_512) -
+      `nk`/`nr` never reach the round function, so "5 hand-unrolled implementations" would have been
+      two verbatim duplicate pairs, zero extra speed, two more places for encrypt/decrypt to
+      silently diverge. The runtime `nb` causes three compounding costs simultaneously: the
+      interior loop can't be unrolled by the compiler, every `state[..]` access is bounds-checked
+      (a slice, not a fixed-size array), and the intermediate `result: [ZERO_COLUMN; MAX_NB]`
+      buffer is always allocated/zeroed at the full 8-column width even for the most common
+      `nb=2` variant (4x wasted zeroing).
+      **Fix (`advisor()`-directed, "measure the cheap version before hand-unrolling")**: added
+      `encipher_round_n<const NB: usize>`/`fused_inv_round_n<const NB: usize>` alongside the
+      existing runtime-`nb` versions (kept, `#[allow(dead_code)]`, as the differential-test
+      reference and for the rare key-schedule call sites that don't need this - `round_key_from`/
+      `key_expand_kt` still use the original runtime-`nb` functions, since key expansion runs once
+      per `ExpandedKey`/`encrypt_generic` call, not once per round). `encrypt_with_schedule`/
+      `decrypt_with_schedule`/`encrypt_generic`/`decrypt_generic` became `<const NB: usize>` generic
+      (one monomorphized instantiation per block size, matching UAPKI's per-size macro structure);
+      `kalyna_variant!`'s call sites pass `$nb` via turbofish. A new `state_array_mut::<NB>` helper
+      narrows the `[Column; MAX_NB]` scratch buffer's live prefix into `&mut [Column; NB]` via
+      `TryFrom`, using `unreachable!` instead of `.unwrap()`/`.expect()` only because `lib.rs` denies
+      both lints crate-wide (the conversion never actually fails - `NB <= MAX_NB` always holds by
+      construction).
+      **Safety net (`advisor()`-specified, all done before committing)**: a new `const_round_tests`
+      proptest module checks `encipher_round`/`fused_inv_round` (old, runtime-`nb`) against
+      `encipher_round_n`/`fused_inv_round_n` (new, const-generic) over random state, for all three
+      `NB` values and both directions (6 tests) - this is the test that would catch a transposed
+      gather index or off-by-one in the rewrite, distinct from the pre-existing `fused_round_tests`/
+      `decrypt_fusion_tests` (which check the *algorithm*, not this refactor, against a from-scratch
+      naive reference). Full workspace `cargo test --workspace --all-features` green (every binary),
+      `clippy --workspace --all-features -- -D warnings`/`fmt --all -- --check` clean, and
+      `--no-default-features`/`--features alloc`/`--features small-tables`/`--features pwhash` all
+      build individually clean. The full 10-target `cargo xtask fuzz` smoke suite (via the Windows
+      MSVC toolchain, `xtask`'s own `fuzz_windows_msvc`) ran clean, 0 crashes. **Scoped Miri on
+      `hazmat::kalyna` did not complete this session - three different invocations all failed on
+      the same Miri+proptest+Windows tooling interaction, not on anything in this change, split out
+      to its own task, T-130, rather than blocking this commit on it** (user's explicit direction,
+      given every other safety-net layer - differential tests, full workspace suite, clippy/fmt,
+      feature matrix, fuzz - passed clean, and CI's own Miri job has never once passed anyway,
+      T-100): (1) default isolation aborts on `GetCurrentDirectoryW not available` - proptest's
+      failure-persistence file logic calls `std::env::current_dir()`; (2)
+      `MIRIFLAGS=-Zmiri-disable-isolation` (the error message's own suggested fix) appeared to hang -
+      ~35 minutes wall time with only ~0.8s of CPU actually accumulated on the `miri.exe` process
+      (checked via `Get-Process -Id <pid> | Select CPU`, the diagnostic `DECISIONS.md` already
+      documents for telling "slow interpretation" from "genuinely stuck" - this was the latter, not
+      the former, so it was killed rather than waited out further); (3)
+      `PROPTEST_DISABLE_FAILURE_PERSISTENCE=1` with default isolation hit the *same* `current_dir()`
+      error - Miri's default isolation evidently blocks environment-variable visibility from inside
+      the interpreted program too, so proptest's own env-var-driven opt-out never took effect.
+      **This does not weaken the change's own verification** - the 6 new differential-test proptest
+      functions (`const_round_tests`) ran and passed under the normal (non-Miri) `cargo test`, along
+      with every other correctness/regression gate; what's missing is Miri's specific UB-detection
+      layer, not correctness confirmation.
+      **Constant-time**: unaffected - same table lookups (`forward_sbox_mds`/`inverse_sbox_mds`),
+      same D-19 exception, no new secret-dependent branch introduced; const-generic specialization
+      only changes what the compiler knows about loop trip counts and buffer sizes, not what data
+      drives any branch or index.
+      **Measured** (`cargo bench -p dstu-core --bench kalyna -- --baseline pre-unroll-2026-07-26`,
+      criterion, D-34's "internal regression tracking only, never a cross-implementation claim"
+      caveat applies): block-only (cached-schedule, isolates the round function from key-expansion
+      cost) time dropped **~51-54% at `nb=2`, ~19-41% at `nb=4`, ~15-22% at `nb=8`** - see
+      `PERFORMANCE.md`'s "Regression baseline" section for the full per-variant table. Full-call
+      (`encrypt_generic`/`decrypt_generic`, key-expansion-dominated per the `kalyna_variant!` doc
+      comment's own "~60-79% of single-call time is key schedule" note) improved by a much smaller,
+      sometimes-noisy 0-12%, exactly as expected since key expansion still uses the unchanged
+      runtime-`nb` round functions. **Binary-level (`uacrypt` vs UAPKI process comparison, D-34's
+      canonical cross-implementation method) was not re-measured this session** - the UAPKI
+      comparison wrapper isn't committed (rebuilt fresh each session per `PERFORMANCE.md`'s
+      "Reproducing" section) and wasn't rebuilt here; the criterion numbers above are a same-machine,
+      same-binary before/after comparison only, not a new claim against UAPKI's own speed.
+      **What this does not fix, split out to T-129**: the round function still gathers state
+      byte-at-a-time (`state[src_col][row]`, recomputing `src_col`/`shift` every iteration) where
+      UAPKI's `p_boxrowcol`+`BT_xor*` macros operate on whole 64-bit words - a structurally different,
+      more invasive change not attempted here.
+- [ ] **T-129** Not started. `hazmat::kalyna.rs`'s const-generic `encipher_round_n`/
+      `fused_inv_round_n` (T-128) still gather state one byte at a time via `state[src_col][row]`,
+      recomputing `src_col = (out_col + NB - shift) & nb_mask` (or `+ shift` for the inverse) fresh
+      on every one of the `ROWS * NB` iterations - UAPKI's `p_boxrowcol` table plus its
+      `BT_xor128`/`BT_xor256`/`BT_xor512` macros instead load/XOR whole 64-bit words, fewer and
+      wider operations than a byte-wise gather glued together at the end. This is the fifth
+      structural difference identified when comparing `encipher_round` against `p_boxrowcol`
+      directly (2026-07-26 conversation, not previously written to a file) - the other four
+      (runtime `nb`, bounds-checked slice indexing, oversized always-zeroed scratch buffer, a
+      separate copy-back pass) were all closed by T-128's const-generic refactor; this one wasn't
+      attempted there since it's a genuinely different, more invasive restructuring of the gather
+      itself, not just a parameter becoming `const`. **User's explicit scope note**: do not build
+      an equivalent for the `small-tables` feature - that profile deliberately trades throughput
+      for a smaller table footprint (D-35/D-38/D-39), and a word-wide gather is a throughput-only
+      change with no meaning under that tradeoff. Needs its own `advisor()` consultation on the
+      safest concrete shape (whether this can stay expressed in safe Rust as whole-`u64`
+      loads/shifts over the existing `SBOX_MDS` tables, or would require a different table layout)
+      before any implementation, per this project's standing practice for `hazmat::kalyna.rs`
+      changes - same safety-net bar as T-128 (differential test against the current const-generic
+      version, not just the original naive reference; full test/clippy/fmt/feature-matrix/Miri/fuzz
+      pass) since this file is the crate's most load-bearing, most-fused module.
+- [ ] **T-130** Not started. Local `cargo +nightly miri test` on `hazmat::kalyna` fails/hangs on
+      Windows for a reason distinct from T-100's already-diagnosed cause (T-100 is CI's 30-minute
+      timeout on the slow DSTU-4145 proptest suite; this is a Windows-specific Miri/proptest
+      interaction that blocks the run from completing at all, on any suite that uses
+      `proptest!`-backed tests, not just DSTU-4145's). Found 2026-07-26 investigating T-128: three
+      attempts, all failed the same way (full detail in `DECISIONS.md` D-77's Miri bullet) - (1)
+      default isolation aborts because proptest's failure-persistence file logic calls
+      `std::env::current_dir()`, which Miri's isolation blocks
+      (`GetCurrentDirectoryW not available when isolation is enabled`); (2) the error's own
+      suggested fix, `MIRIFLAGS=-Zmiri-disable-isolation`, appeared to hang instead of completing -
+      ~35 minutes wall time against ~0.8s of actual CPU time on the `miri.exe` process, confirmed
+      via `Get-Process -Id <pid> | Select CPU` rather than assumed, then killed; (3)
+      `PROPTEST_DISABLE_FAILURE_PERSISTENCE=1` under default isolation (attempting to route around
+      the file-persistence code path entirely rather than disabling isolation) hit the identical
+      `current_dir()` error - implying Miri's default isolation hides environment variables from
+      the interpreted program too, so proptest's own env-var-driven opt-out silently never took
+      effect. **Needs investigation, not another blind retry** - candidates worth checking before
+      trying a fourth flag combination: whether `-Zmiri-disable-isolation` genuinely hangs on
+      *any* `hazmat::kalyna` proptest (isolate to a single, fast test function first, rather than
+      the full 13-function suite, to separate "slow" from "stuck"); whether a newer/older
+      `nightly` toolchain or Miri version changes this; whether the `windows-gnu` host target
+      (this machine's rustup default, distinct from the `windows-msvc` target `xtask` already uses
+      for fuzzing, D-32) is specifically implicated, given Miri's Windows environment/filesystem
+      emulation is less mature than its Unix support; or whether disabling isolation *and* the
+      persistence env var together (not tried - stopped at the three-attempts rule, `CLAUDE.md`'s
+      standing policy) resolves it. Does not block correctness work - the differential/property
+      tests this would check already run and pass under plain `cargo test`; only Miri's UB-detection
+      layer is unavailable for this module until this is resolved.
 - [x] **T-19** **Naming subtask, all three decisions made 2026-07-23** (T-20/T-21/T-22 below) -
       unblocks T-17/T-18, which are still separately open (a decided name isn't a crates.io
       publish or a built release binary):

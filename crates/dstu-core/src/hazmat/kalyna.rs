@@ -142,8 +142,8 @@ fn encipher_round(state: &mut [Column]) {
 
 /// One decryption round, run in reverse: tau^-1 -> pi^-1 -> eta^-1 (`DecipherRound`).
 ///
-/// No production code path calls this directly anymore - `decrypt_with_schedule` uses
-/// `fused_inv_round` instead (D-30). Kept as the independent reference
+/// No production code path calls this directly anymore - `decrypt_with_schedule` uses the
+/// const-generic `fused_inv_round_n` instead (D-30, T-128). Kept as the independent reference
 /// `tests::fused_decrypt_matches_naive` checks the restructured decrypt against, same pattern as
 /// `sub_bytes`/`shift_rows` above (D-28).
 #[allow(dead_code)]
@@ -164,6 +164,12 @@ fn decipher_round(state: &mut [Column]) {
 /// The gather direction is `inv_shift_rows`'s, not `encipher_round`'s (`shift_rows`) - opposite
 /// index arithmetic, since this undoes the permutation rather than performing it: output column
 /// `out_col` reads from input column `(out_col + shift) % nb`, not `(out_col - shift) % nb`.
+///
+/// No production code path calls this directly anymore (T-128) - `decrypt_with_schedule` uses the
+/// const-generic `fused_inv_round_n` instead. Kept as the independent runtime-`nb` reference
+/// `const_round_tests` checks `fused_inv_round_n` against, same "kept for the differential test"
+/// pattern as `sub_bytes`/`shift_rows`/`decipher_round` above (D-27/D-28).
+#[allow(dead_code)]
 fn fused_inv_round(state: &mut [Column]) {
     let nb = state.len();
     debug_assert!(nb.is_power_of_two());
@@ -182,6 +188,51 @@ fn fused_inv_round(state: &mut [Column]) {
         *out_word = acc.to_le_bytes();
     }
     state.copy_from_slice(&result[..nb]);
+}
+
+/// Const-generic twin of `encipher_round`, specialized per block size (`NB` = `nb`) so the
+/// compiler sees a fixed trip count on both loops and a fixed-size (not `MAX_NB`-sized) scratch
+/// buffer, instead of the runtime-`nb` bounds checks and always-8-wide `result` buffer
+/// `encipher_round` pays regardless of the actual block size - see `encrypt_with_schedule`'s doc
+/// comment for why this matters on the hot (per-round, per-block) path. Same algorithm, same
+/// tables, same gather direction as `encipher_round` - checked against it directly by
+/// `const_round_tests` below rather than assumed equivalent.
+fn encipher_round_n<const NB: usize>(state: &mut [Column; NB]) {
+    debug_assert!(NB.is_power_of_two());
+    let nb_mask = NB - 1;
+    let mut result = [ZERO_COLUMN; NB];
+    for (out_col, out_word) in result.iter_mut().enumerate() {
+        let mut acc = 0u64;
+        // Same non-`iter().enumerate()`-candidate shape as `encipher_round` above.
+        #[allow(clippy::needless_range_loop)]
+        for row in 0..ROWS {
+            let shift = row * NB / ROWS;
+            let src_col = (out_col + NB - shift) & nb_mask;
+            let byte = state[src_col][row];
+            acc ^= forward_sbox_mds(row, byte);
+        }
+        *out_word = acc.to_le_bytes();
+    }
+    *state = result;
+}
+
+/// Const-generic twin of `fused_inv_round` - see `encipher_round_n`.
+fn fused_inv_round_n<const NB: usize>(state: &mut [Column; NB]) {
+    debug_assert!(NB.is_power_of_two());
+    let nb_mask = NB - 1;
+    let mut result = [ZERO_COLUMN; NB];
+    for (out_col, out_word) in result.iter_mut().enumerate() {
+        let mut acc = 0u64;
+        #[allow(clippy::needless_range_loop)]
+        for row in 0..ROWS {
+            let shift = row * NB / ROWS;
+            let src_col = (out_col + shift) & nb_mask;
+            let byte = state[src_col][row];
+            acc ^= inverse_sbox_mds(row, byte);
+        }
+        *out_word = acc.to_le_bytes();
+    }
+    *state = result;
 }
 
 /// Transforms the interior round keys (`K[1..nr]`) for use with `fused_inv_round`: `DK[j] =
@@ -365,28 +416,47 @@ fn key_expand(key: &[u8], nb: usize, nk: usize, nr: usize) -> RoundKeys {
 
 type RoundKeys = [[Column; MAX_NB]; ROUND_KEYS_LEN];
 
+/// Narrows a `[Column; MAX_NB]` buffer's live `NB`-column prefix into a fixed-size `&mut [Column;
+/// NB]` for the const-generic round functions. `NB <= MAX_NB` always holds here - every caller
+/// passes a `kalyna_variant!`-supplied literal (2, 4, or 8) - so the `TryFrom` conversion never
+/// actually fails; `unreachable!` is used instead of `.unwrap()`/`.expect()` only because
+/// `lib.rs` denies both of those lints crate-wide (D-19/SECURITY.md's no-panicking-on-attacker-data
+/// posture - this isn't attacker data, but the lint doesn't distinguish).
+fn state_array_mut<const NB: usize>(full: &mut [Column; MAX_NB]) -> &mut [Column; NB] {
+    match (&mut full[..NB]).try_into() {
+        Ok(array) => array,
+        Err(_) => unreachable!("NB <= MAX_NB is guaranteed by every kalyna_variant! call site"),
+    }
+}
+
 /// Runs the encryption rounds against an already-expanded key schedule - shared by
 /// `encrypt_generic` (expands, uses once, zeroizes) and `ExpandedKey::encrypt_block` (reuses a
 /// cached schedule across many calls, D-28 stage 3). Returns a `MAX_NB*ROWS`-byte buffer; callers
-/// truncate to `nb*ROWS` (the actual block size).
-fn encrypt_with_schedule(
+/// truncate to `NB*ROWS` (the actual block size).
+///
+/// `NB` is a const generic, not the runtime `nb: usize` the pre-T-128 version took, so the
+/// interior loop over `encipher_round_n` gets a compile-time-known trip count per monomorphized
+/// instantiation (one per macro-invocation call site, i.e. per block size 2/4/8) instead of a
+/// runtime branch - see `docs/dstu-crypto-project.md`/`DECISIONS.md` T-128 for the UAPKI
+/// `BT_xor128/256/512`-motivated comparison this responds to.
+fn encrypt_with_schedule<const NB: usize>(
     round_keys: &RoundKeys,
     plaintext: &[u8],
-    nb: usize,
     nr: usize,
 ) -> [u8; MAX_NB * ROWS] {
-    let mut state = columns_from_bytes(plaintext, nb);
+    let mut full_state = columns_from_bytes(plaintext, NB);
+    let state = state_array_mut::<NB>(&mut full_state);
 
-    add_round_key(&mut state[..nb], &round_keys[0][..nb]);
+    add_round_key(state, &round_keys[0][..NB]);
     for round_key in &round_keys[1..nr] {
-        encipher_round(&mut state[..nb]);
-        xor_round_key(&mut state[..nb], &round_key[..nb]);
+        encipher_round_n(state);
+        xor_round_key(state, &round_key[..NB]);
     }
-    encipher_round(&mut state[..nb]);
-    add_round_key(&mut state[..nb], &round_keys[nr][..nb]);
+    encipher_round_n(state);
+    add_round_key(state, &round_keys[nr][..NB]);
 
     let mut out = [0u8; MAX_NB * ROWS];
-    for c in 0..nb {
+    for c in 0..NB {
         out[c * ROWS..(c + 1) * ROWS].copy_from_slice(&state[c]);
     }
     out
@@ -396,27 +466,27 @@ fn encrypt_with_schedule(
 /// transform (`transform_keys_for_decrypt`) - the equivalent-inverse-cipher restructuring, D-30.
 /// `round_keys[0]`/`round_keys[nr]` (untransformed) are used for the two whitening steps at the
 /// ends; `dec_keys[1..nr]` (transformed) are used by the fused interior rounds.
-fn decrypt_with_schedule(
+fn decrypt_with_schedule<const NB: usize>(
     round_keys: &RoundKeys,
     dec_keys: &RoundKeys,
     ciphertext: &[u8],
-    nb: usize,
     nr: usize,
 ) -> [u8; MAX_NB * ROWS] {
-    let mut state = columns_from_bytes(ciphertext, nb);
+    let mut full_state = columns_from_bytes(ciphertext, NB);
+    let state = state_array_mut::<NB>(&mut full_state);
 
-    sub_round_key(&mut state[..nb], &round_keys[nr][..nb]);
-    apply_inverse_matrix(&mut state[..nb]);
+    sub_round_key(state, &round_keys[nr][..NB]);
+    apply_inverse_matrix(state);
     for dec_key in dec_keys[1..nr].iter().rev() {
-        fused_inv_round(&mut state[..nb]);
-        xor_round_key(&mut state[..nb], &dec_key[..nb]);
+        fused_inv_round_n(state);
+        xor_round_key(state, &dec_key[..NB]);
     }
-    inv_shift_rows(&mut state[..nb]);
-    inv_sub_bytes(&mut state[..nb]);
-    sub_round_key(&mut state[..nb], &round_keys[0][..nb]);
+    inv_shift_rows(state);
+    inv_sub_bytes(state);
+    sub_round_key(state, &round_keys[0][..NB]);
 
     let mut out = [0u8; MAX_NB * ROWS];
-    for c in 0..nb {
+    for c in 0..NB {
         out[c * ROWS..(c + 1) * ROWS].copy_from_slice(&state[c]);
     }
     out
@@ -426,15 +496,14 @@ fn decrypt_with_schedule(
 /// zeroizes the one-shot schedule. Returns a `MAX_NB*ROWS`-byte buffer; callers truncate to
 /// `nb*ROWS` (the actual block size). See `ExpandedKey` (D-28 stage 3) for callers that need to
 /// encrypt/decrypt many blocks under the same key without redoing `key_expand` every time.
-fn encrypt_generic(
+fn encrypt_generic<const NB: usize>(
     key: &[u8],
     plaintext: &[u8],
-    nb: usize,
     nk: usize,
     nr: usize,
 ) -> [u8; MAX_NB * ROWS] {
-    let mut round_keys = key_expand(key, nb, nk, nr);
-    let out = encrypt_with_schedule(&round_keys, plaintext, nb, nr);
+    let mut round_keys = key_expand(key, NB, nk, nr);
+    let out = encrypt_with_schedule::<NB>(&round_keys, plaintext, nr);
     // Last use of the derived key schedule - clear it rather than leave it for whatever the
     // stack slot holds next (see SECURITY.md's Zeroize/ZeroizeOnDrop hard constraint, DECISIONS.md
     // D-20). A plain overwrite could be optimized away as a dead store since the array is about to
@@ -444,16 +513,15 @@ fn encrypt_generic(
 }
 
 /// Shared implementation for all five variants' decryption. See `encrypt_generic`.
-fn decrypt_generic(
+fn decrypt_generic<const NB: usize>(
     key: &[u8],
     ciphertext: &[u8],
-    nb: usize,
     nk: usize,
     nr: usize,
 ) -> [u8; MAX_NB * ROWS] {
-    let mut round_keys = key_expand(key, nb, nk, nr);
-    let mut dec_keys = transform_keys_for_decrypt(&round_keys, nb, nr);
-    let out = decrypt_with_schedule(&round_keys, &dec_keys, ciphertext, nb, nr);
+    let mut round_keys = key_expand(key, NB, nk, nr);
+    let mut dec_keys = transform_keys_for_decrypt(&round_keys, NB, nr);
+    let out = decrypt_with_schedule::<NB>(&round_keys, &dec_keys, ciphertext, nr);
     round_keys.zeroize();
     dec_keys.zeroize();
     out
@@ -474,7 +542,7 @@ macro_rules! kalyna_variant {
                 key: &[u8; $key_bytes],
                 block: &[u8; $block_bytes],
             ) -> [u8; $block_bytes] {
-                let out = encrypt_generic(key, block, $nb, $nk, $nr);
+                let out = encrypt_generic::<$nb>(key, block, $nk, $nr);
                 let mut result = [0u8; $block_bytes];
                 result.copy_from_slice(&out[..$block_bytes]);
                 result
@@ -486,7 +554,7 @@ macro_rules! kalyna_variant {
                 key: &[u8; $key_bytes],
                 block: &[u8; $block_bytes],
             ) -> [u8; $block_bytes] {
-                let out = decrypt_generic(key, block, $nb, $nk, $nr);
+                let out = decrypt_generic::<$nb>(key, block, $nk, $nr);
                 let mut result = [0u8; $block_bytes];
                 result.copy_from_slice(&out[..$block_bytes]);
                 result
@@ -528,7 +596,7 @@ macro_rules! kalyna_variant {
             /// Encrypts one block using the cached schedule - no `key_expand` call.
             #[must_use]
             pub fn encrypt_block(&self, block: &[u8; $block_bytes]) -> [u8; $block_bytes] {
-                let out = encrypt_with_schedule(&self.round_keys, block, $nb, $nr);
+                let out = encrypt_with_schedule::<$nb>(&self.round_keys, block, $nr);
                 let mut result = [0u8; $block_bytes];
                 result.copy_from_slice(&out[..$block_bytes]);
                 result
@@ -537,7 +605,7 @@ macro_rules! kalyna_variant {
             /// Decrypts one block using the cached schedule - no `key_expand` call.
             #[must_use]
             pub fn decrypt_block(&self, block: &[u8; $block_bytes]) -> [u8; $block_bytes] {
-                let out = decrypt_with_schedule(&self.round_keys, &self.dec_keys, block, $nb, $nr);
+                let out = decrypt_with_schedule::<$nb>(&self.round_keys, &self.dec_keys, block, $nr);
                 let mut result = [0u8; $block_bytes];
                 result.copy_from_slice(&out[..$block_bytes]);
                 result
@@ -601,6 +669,63 @@ mod fused_round_tests {
             prop_assert_eq!(fused, naive);
         }
     }
+}
+
+/// T-128's const-generic specialization (`encipher_round_n`/`fused_inv_round_n`) is a
+/// performance-motivated refactor of the *same* algorithm as the retained runtime-`nb`
+/// `encipher_round`/`fused_inv_round`, not a new derivation - so the check here is new-vs-old
+/// equality over random state, for every `NB` the crate actually instantiates (2/4/8), rather than
+/// re-deriving correctness against `naive_encipher_round` again (that's `fused_round_tests`'s job).
+/// This is the test that would catch a transposed gather index or an off-by-one in the
+/// const-generic rewrite - see `advisor()`'s guidance cited in `DECISIONS.md` T-128.
+#[cfg(test)]
+mod const_round_tests {
+    use super::{encipher_round, encipher_round_n, fused_inv_round, fused_inv_round_n, Column};
+    use proptest::prelude::*;
+
+    fn arb_state(nb: usize) -> impl Strategy<Value = Vec<Column>> {
+        proptest::collection::vec(proptest::array::uniform8(any::<u8>()), nb)
+    }
+
+    macro_rules! const_matches_dyn_test {
+        ($enc_test:ident, $dec_test:ident, $nb:literal) => {
+            proptest! {
+                #[test]
+                fn $enc_test(state in arb_state($nb)) {
+                    let mut dynamic = state.clone();
+                    let mut constant: [Column; $nb] = state.try_into().unwrap();
+                    encipher_round(&mut dynamic[..]);
+                    encipher_round_n(&mut constant);
+                    prop_assert_eq!(dynamic.as_slice(), constant.as_slice());
+                }
+
+                #[test]
+                fn $dec_test(state in arb_state($nb)) {
+                    let mut dynamic = state.clone();
+                    let mut constant: [Column; $nb] = state.try_into().unwrap();
+                    fused_inv_round(&mut dynamic[..]);
+                    fused_inv_round_n(&mut constant);
+                    prop_assert_eq!(dynamic.as_slice(), constant.as_slice());
+                }
+            }
+        };
+    }
+
+    const_matches_dyn_test!(
+        encipher_round_n_matches_dyn_nb2,
+        fused_inv_round_n_matches_dyn_nb2,
+        2
+    );
+    const_matches_dyn_test!(
+        encipher_round_n_matches_dyn_nb4,
+        fused_inv_round_n_matches_dyn_nb4,
+        4
+    );
+    const_matches_dyn_test!(
+        encipher_round_n_matches_dyn_nb8,
+        fused_inv_round_n_matches_dyn_nb8,
+        8
+    );
 }
 
 /// D-30's equivalent-inverse-cipher restructuring is a much less obvious transform than D-28's
@@ -667,7 +792,7 @@ mod decrypt_fusion_tests {
 
                     let dec_keys = transform_keys_for_decrypt(&round_keys, $nb, $nr);
                     let naive = naive_decrypt_with_schedule(&round_keys, &ciphertext, $nb, $nr);
-                    let fused = decrypt_with_schedule(&round_keys, &dec_keys, &ciphertext, $nb, $nr);
+                    let fused = decrypt_with_schedule::<$nb>(&round_keys, &dec_keys, &ciphertext, $nr);
                     prop_assert_eq!(naive, fused);
                 }
             }

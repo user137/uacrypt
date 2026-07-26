@@ -5047,3 +5047,120 @@ settled in a future pass without first doing the equivalent isolation on UAPKI's
 scaffolding** - `advisor()`'s explicit call: they are this fix's own before/after instrument (already
 re-run once, above), kept for the same purpose on any future `gf2m_wide` change, not a correctness
 assertion (hence `#[ignore]`, not part of the normal `cargo test` run).
+
+## D-77: `encipher_round`/`fused_inv_round` made const-generic over block size - T-128
+
+Requested 2026-07-26 as a direct follow-up to comparing `hazmat::kalyna.rs`'s fused round functions
+against UAPKI's `p_boxrowcol`/`BT_xor128`/`BT_xor256`/`BT_xor512` macros: "unroll the loop into 5
+variant-specific implementations," explicitly conditioned on doing so "with the advisor and maximally
+safely, with tests and everything necessary."
+
+**`advisor()`'s first call reframed the request before any code was written.** The five
+`kalyna_variant!` invocations collapse to **three** distinct block sizes - `encipher_round`/
+`fused_inv_round` depend only on `nb` (`state.len()`), never on `nk`/`nr`: `nb=2`
+(Kalyna128_128/Kalyna128_256), `nb=4` (Kalyna256_256/Kalyna256_512), `nb=8` (Kalyna512_512). UAPKI's
+own three macros (not five) confirm this is the real fork. Writing "5 hand-unrolled
+implementations" would have produced two verbatim duplicate pairs - no extra speed, and two more
+places for the encrypt and decrypt directions to silently diverge from each other over time.
+
+**The actual overhead, per `advisor()`'s diagnosis**: `nb` is a runtime `usize` at a call site where
+every real caller (`kalyna_variant!`) supplies a compile-time-known literal. That single fact causes
+three compounding costs simultaneously: (1) the interior loop over `ROWS`/`nb` can't be unrolled by
+the compiler without a known trip count, (2) every `state[..]` access is bounds-checked because
+`state: &mut [Column]` is a runtime-length slice, not a fixed-size array, and (3) the intermediate
+`result: [ZERO_COLUMN; MAX_NB]` buffer is always allocated and zero-initialized at the full 8-column
+width, 4x more than `nb=2` (the most common variant, 128-bit block) actually needs.
+
+**`advisor()`'s directed fix: thread a `const NB: usize` through the round functions first, measure
+before considering hand-written per-size bodies** - this gives the compiler the same fixed trip count
+and fixed-size buffer hand-unrolling would provide, without duplicating the algorithm five (or even
+three) times. Implemented as new `encipher_round_n<const NB: usize>`/`fused_inv_round_n<const NB:
+usize>` functions, with `encrypt_with_schedule`/`decrypt_with_schedule`/`encrypt_generic`/
+`decrypt_generic` becoming `<const NB: usize>` generic (`kalyna_variant!`'s call sites pass `$nb` via
+turbofish - one monomorphized instantiation per block size, structurally matching UAPKI's per-size
+macro approach). The original runtime-`nb` `encipher_round`/`fused_inv_round` are kept, not deleted -
+`round_key_from`/`key_expand_kt` (key-schedule computation, run once per `ExpandedKey`/
+`encrypt_generic` call rather than once per round) still call them directly, since there's no
+per-block-throughput benefit to specializing a call site that only ever executes 2-3 times per key
+expansion. `fused_inv_round` picked up `#[allow(dead_code)]` (same D-27/D-28 "kept for the
+differential-test reference" pattern already established for `sub_bytes`/`shift_rows`/
+`decipher_round`) since `decrypt_with_schedule` no longer calls it directly.
+
+A new `state_array_mut<const NB: usize>(full: &mut [Column; MAX_NB]) -> &mut [Column; NB]` helper
+narrows the always-`MAX_NB`-sized scratch array's live `NB`-column prefix into the fixed-size
+reference the const-generic round functions need, via `TryFrom`. The conversion can never actually
+fail (`NB <= MAX_NB` holds by construction at every call site), but `lib.rs` denies
+`clippy::unwrap_used`/`clippy::expect_used` crate-wide, so the `Err` arm uses `unreachable!` instead
+of `.unwrap()`/`.expect()` - a lint-compliance detail, not a new fallibility the caller needs to
+handle.
+
+**Safety net, `advisor()`-specified before implementation, all satisfied before committing**:
+- A new differential-test module, `const_round_tests`, checks the retained runtime-`nb`
+  `encipher_round`/`fused_inv_round` against the new `encipher_round_n`/`fused_inv_round_n` over
+  random state, for all three `NB` values and both directions (6 proptest functions) - this is the
+  test that would actually catch a transposed gather index or off-by-one in the rewrite, distinct
+  from the pre-existing `fused_round_tests`/`decrypt_fusion_tests` (which check the *algorithm*
+  against a from-scratch naive reference, not this refactor against the pre-refactor code).
+- Full workspace `cargo test --workspace --all-features` green (every test binary, including all 5
+  Kalyna variants' official vectors and every mode built on top: ECB/CTR/CBC/CFB/OFB/CMAC/KW/GCM/
+  GMAC/XTS/CCM, `crypto_secretbox`/`crypto_secretstream`, `uacrypt`) - this round function is under
+  every one of those, so a wrong output here would be silent wrong ciphertext crate-wide, not a
+  localized bug.
+- `cargo clippy --workspace --all-features -- -D warnings` and `cargo fmt --all -- --check` clean.
+- `--no-default-features`, `--features alloc`, `--features small-tables`, and `--features pwhash`
+  all build individually clean (not just the default profile + `--all-features`, per this project's
+  own standing feature-matrix lesson).
+- Scoped Miri (`crates/dstu-core`, `PROPTEST_CASES=8 cargo +nightly miri test --all-features
+  hazmat::kalyna`) **did not complete this session** - three attempts, all blocked by the same
+  Miri+proptest+Windows tooling interaction rather than anything in this change, split out to
+  **T-130** instead of blocking this commit on it (user's explicit direction, given every other
+  layer below passed clean and CI's own Miri job has never once passed either, T-100): (1) default
+  isolation aborts on `GetCurrentDirectoryW not available when isolation is enabled` - proptest's
+  failure-persistence file logic calls `std::env::current_dir()`; (2)
+  `MIRIFLAGS=-Zmiri-disable-isolation` (the error's own suggested fix) appeared to hang - ~35
+  minutes wall time against ~0.8s of actual CPU time on the `miri.exe` process (checked via
+  `Get-Process -Id <pid> | Select CPU`, this file's own documented diagnostic for telling "slow
+  interpretation" from "genuinely stuck" - this was the latter), killed rather than waited out
+  further; (3) `PROPTEST_DISABLE_FAILURE_PERSISTENCE=1` under default isolation hit the identical
+  `current_dir()` error, implying Miri's default isolation blocks the interpreted program's view of
+  its own environment variables too, so proptest's env-var opt-out never took effect. Does not
+  weaken this change's own correctness verification - the 6 new `const_round_tests` proptest
+  functions ran and passed under the normal (non-Miri) `cargo test --workspace --all-features`
+  along with everything else; only Miri's specific UB-detection layer is missing, not correctness
+  confirmation.
+- The full 10-target `cargo xtask fuzz` smoke suite (Windows MSVC toolchain path,
+  `fuzz_windows_msvc` - `cargo fuzz` alone fails on this machine's default `windows-gnu` target,
+  "address sanitizer is not supported for this target") ran clean, 0 crashes.
+- Constant-time discipline unaffected: same `forward_sbox_mds`/`inverse_sbox_mds` table lookups,
+  same D-19 documented exception, no new secret-dependent branch - const-generic specialization
+  changes only what the compiler knows about loop trip counts and buffer sizes at compile time, not
+  what data drives any branch or array index.
+
+**Measured** (`cargo bench -p dstu-core --bench kalyna -- --baseline pre-unroll-2026-07-26`;
+D-34's "criterion is for internal regression tracking only, never a cross-implementation claim"
+caveat applies - this is a same-machine, before/after comparison, not a new claim against UAPKI):
+block-only (cached-schedule) time - which isolates the round function from key-expansion cost, the
+fair before/after metric for this specific change - dropped substantially at every block size, most
+at the smallest (`nb=2`, the size that pays the worst of the old buffer/bounds-check waste) and
+least but still real at the largest (`nb=8`, contrary to one initial prediction that it "might not
+move at all" since its buffer usage was already full-width - bounds-check elimination and full loop
+unrolling help every size, not only the one with wasted buffer space). Full-call
+(`encrypt_generic`/`decrypt_generic`) improved by a much smaller and sometimes noisy amount, exactly
+as expected: those calls are key-expansion-dominated (the `kalyna_variant!` doc comment's own
+"~60-79% of single-call time is key schedule" note), and key expansion still runs through the
+unchanged runtime-`nb` round functions. Full per-variant numbers are in `PERFORMANCE.md`'s
+"Regression baseline" section, not repeated here. Binary-level (`uacrypt` vs UAPKI process
+comparison, D-34's canonical cross-implementation method) was not re-measured this session - the
+UAPKI comparison wrapper isn't committed to the repo and wasn't rebuilt here.
+
+**What this does not fix, split out to T-129** (a separate, more invasive change, not attempted
+here): the round functions still gather state one byte at a time (`state[src_col][row]`,
+recomputing `src_col`/`shift` fresh on every one of the `ROWS * NB` iterations) where UAPKI's
+`p_boxrowcol` table plus `BT_xor*` macros operate on whole 64-bit words - fewer, wider operations
+than a byte-wise gather. This was the fifth structural difference identified when comparing
+`encipher_round` against `p_boxrowcol` directly; the other four (runtime `nb`, bounds-checked slice
+indexing, the oversized always-zeroed scratch buffer, and a separate copy-back pass building into
+`result` then `copy_from_slice`-ing into `state`) are exactly what this decision's fix closes.
+User's explicit instruction: do not build an equivalent for the `small-tables` feature - that
+profile deliberately trades throughput for a smaller table footprint (D-35/D-38/D-39), and a
+word-wide gather is a throughput-only change with no meaning under that tradeoff.
