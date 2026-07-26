@@ -39,6 +39,59 @@ On AVR (Harvard architecture), a `const` table copies into SRAM at startup unles
 `PROGMEM` with AVR-specific code — `small-tables` avoids that problem entirely by not having a
 table to place.
 
+## RAM/stack: what each mode costs beyond the table data above
+
+**A different axis from the flash/const-table split above, and the same for both profiles** —
+`fused`/`small-tables` only swap *which table data* is linked in; they don't change any struct
+layout or working-set size. Numbers below are computed from the actual struct definitions and
+array literal dimensions in the current tree (`size_of`-equivalent arithmetic, cross-checked
+against the source lines cited), not measured with a memory profiler — a weaker claim than the
+table above's "measured directly off `hazmat::tables.rs`", stated as such rather than inherited.
+
+**Key-schedule storage is `MAX_NB`-sized regardless of variant** — the same oversizing pattern
+`TASKS.md` T-128 fixed on the *compute* side (round functions), still present on the *storage*
+side: `RoundKeys` (`hazmat::kalyna.rs`) is `[[Column; MAX_NB]; ROUND_KEYS_LEN]` = `19 * 8 * 8` =
+**1216 bytes**, the same for every variant — a Kalyna128_128 caller pays the identical footprint a
+Kalyna512_512 caller does, even though 128-128's real round-key material is a quarter the size.
+`ExpandedKey` (the cached-schedule type every `kalyna_variant!` invocation produces) holds two
+(`round_keys` + `dec_keys`) = **2432 bytes** per live instance, again independent of variant. Not
+flagged as a problem to fix here — just a real number the resource-constrained cases from the
+sizing table below should account for.
+
+**GCM/GMAC's field multiply builds a transient 16-entry comb table on the stack, once per call
+to `poly_mul_wide`** (`hazmat::gf2m_wide.rs`, T-125's 4-bit-window comb method, `DECISIONS.md`
+D-76) — new since this doc was first written, and genuinely a *stack* cost, not a *flash* one
+(freed when the call returns, never linked into the binary as `const` data):
+
+| Field width (`m`) | Used by | `t: [[u64; $limbs2]; 16]` | Total incl. `a_wide`/`acc` scratch |
+|---|---|---:|---:|
+| 128 (`Gf2m128`, `$limbs2=4`) | Kalyna128-\* GCM/GMAC | 16 × 4 × 8 = 512 B | ~576 B |
+| 256 (`Gf2m256`, `$limbs2=8`) | Kalyna256-\* GCM/GMAC | 16 × 8 × 8 = 1024 B | ~1152 B |
+| 512 (`Gf2m512`, `$limbs2=16`) | Kalyna512-512 GCM/GMAC | 16 × 16 × 8 = 2048 B | ~2304 B |
+
+This is on the call stack of whatever calls `Gf2m*::multiply` — one block's worth of GCM's Horner
+accumulation, or GMAC's equivalent — not held for the construction's lifetime, and it applies
+identically to `crypto_secretbox`/`crypto_secretstream` too (both built on `Kalyna256_256Gcm`, so
+they pay the `m=256`/~1152 B figure during every chunk's tag computation). **Kalyna-XTS is the
+contrasting case**: T-126 replaced its once-per-block tweak-doubling with `double()` — a handful of
+`u64` shift/XOR locals, no comb table at all — so XTS's own stack cost is negligible regardless of
+variant, unlike GCM/GMAC's.
+
+**`crypto_secretstream`'s `PushState`/`PullState` hold only a 32-byte subkey**, not a cached
+`ExpandedKey` — the smallest persistent state of any construction in this crate, at the cost of
+re-running `Kalyna256_256Gcm::new(&self.subkey)` (a full 2432-byte-schedule expansion, transient
+during the call) on every `push`/`pull` chunk rather than once per stream. A deliberate space/time
+trade in the current implementation, not a bug — noted here since it's directly relevant to "how
+much RAM does this mode cost," not proposed as a change.
+
+**`uacrypt`'s own I/O buffering** (CLI-layer, not `dstu-core`): `SECRETSTREAM_CHUNK_BYTES`/
+`DIGEST_STREAM_CHUNK_BYTES`/`SIGN_STREAM_CHUNK_BYTES`/`STRUMOK_STREAM_CHUNK_BYTES` are all 8 KiB
+(`crates/uacrypt/src/lib.rs`) — `encrypt`/`decrypt` double-buffers two chunks (`cur`+`next`) for
+its rekey-lookahead logic, ~16 KiB peak; the others single-buffer, ~8 KiB peak. Separate from
+these: `DIGEST_BENCH_CHUNK_BYTES` (1 MiB) is the `--iterations`-benchmark path only, sized for
+throughput measurement, not real single-pass use (D-42's own "each streaming command picks a chunk
+size matched to its own constraint" convention).
+
 ## Speed: what that costs you
 
 Measured with a real built binary (`uacrypt`, release build), one process per number, same

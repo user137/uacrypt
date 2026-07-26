@@ -34,6 +34,21 @@ faster alternative — so this project tracks its own numbers deliberately, not 
   and regression tracking, not for citing as an authoritative cycles-per-byte figure. Ratios between
   implementations (the "Nx faster/slower" figures below) are far more robust than any single
   absolute number, since machine load affects all of them together.
+- **10 MiB is now a mandatory message size for every binary-level (process) comparison table**,
+  not an ad hoc addition (policy made explicit 2026-07-26, user-requested) — every mode that takes a
+  variable-length message must include a 10 MiB row/column going forward, in addition to whatever
+  smaller sizes that mode's own table already tracks. Rationale unchanged from when this was first
+  added: at 10 MiB, per-call setup cost (key schedule, process spawn already amortized via
+  `--iterations`) is negligible next to the actual bulk-throughput work, so it isolates steady-state
+  MB/s from initialization noise better than the smaller 64 B/1 KB/64 KB points the "Results"
+  section's older tables still carry. **Exempt, and why** (matching the existing "10 MiB
+  re-measurement pass" section's own list, not a new carve-out): `kalyna-block` (single block only,
+  no variable-length mode exists for it), `kalyna-kw` (`MAX_R = 20` blocks, `DECISIONS.md` D-55 - key
+  material, not a general message), `kalyna-gmac` (measured at exactly one block by design, D-57's
+  UAPKI multi-block streaming-bug workaround — an oracle limitation, not an architectural one on
+  this project's own side), `kalyna-ccm` (`MAX_PLAINTEXT_LEN = 255` bytes, a real cap in this
+  implementation). **CMAC is not exempt** — it authenticates an arbitrary-length message the same
+  way GCM/XTS do, and already has a published 10 MiB row.
 
 **Dev machine**: AMD Ryzen 5 PRO 4650U (6 cores / 12 threads, ~2.1 GHz base), Windows 11 Pro. All
 UAPKI/Oliynykov/outspace comparison numbers below are from this machine only - those oracles

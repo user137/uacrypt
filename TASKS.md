@@ -1109,6 +1109,162 @@ item they point to is later removed.
       standing policy) resolves it. Does not block correctness work - the differential/property
       tests this would check already run and pass under plain `cargo test`; only Miri's UB-detection
       layer is unavailable for this module until this is resolved.
+- [ ] **T-131** Not started. **Policy made 2026-07-26, user-requested**: 10 MiB is now a mandatory
+      message size for every binary-level (process) comparison table in `PERFORMANCE.md`, not an
+      ad hoc addition (`PERFORMANCE.md`'s "Methodology" section has the durable policy text) - every
+      variable-length-message mode's table must carry a 10 MiB row/column going forward. Exempt,
+      matching the pre-existing "10 MiB re-measurement pass" section's own list: `kalyna-block`
+      (single block, no variable-length mode), `kalyna-kw` (`MAX_R = 20` blocks, D-55 - key
+      material, not a message), `kalyna-gmac` (one-block-only measurement, D-57's UAPKI streaming-
+      bug workaround - an oracle limitation, not this project's own), `kalyna-ccm` (255-byte
+      `MAX_PLAINTEXT_LEN` cap). **CMAC is not exempt** - it takes an arbitrary-length message like
+      GCM/XTS and already has a published 10 MiB row. **This task is the deferred, expensive half**: a
+      fresh UAPKI comparison-CLI wrapper rebuild (`gendef`/`dlltool` off the prebuilt `uapkic.dll`
+      per T-121/D-71, or from-source CMake) plus per-mode wrapper code matching each mode's own
+      quirks already documented (GMAC's one-block workaround for its streaming-path bug, D-57;
+      CCM's different wire convention from D-71) - not committed to this repo per
+      `PERFORMANCE.md`'s "Reproducing" section, rebuilt fresh each time it's needed. Should re-run
+      *every* mode's UAPKI comparison at 10 MiB, not just the ones this session's own `uacrypt`-only
+      sweep (`TASKS.md`, same date) happened to cover - `advisor()`'s explicit direction was not to
+      publish a half-rebuilt UAPKI comparison next to fresh `uacrypt`-only numbers, so this stays a
+      separate task rather than being folded into the sweep already done.
+- [x] **T-132** **DONE 2026-07-26.** Memory-requirements audit, user-requested, for both resource
+      profiles (`fused`/`small-tables`) - `docs/resource-profiles.md` already covered flash/const-
+      table footprint (D-35/D-38/D-39) but nothing about per-mode RAM/stack cost, a different axis
+      the user specifically asked to fill in. Added a new "RAM/stack: what each mode costs beyond
+      the table data above" section to `docs/resource-profiles.md`, computed from the actual struct/
+      array definitions in the current tree (not profiled - stated as a weaker claim than the
+      existing table's "measured directly"). **Key findings, none previously documented**: (1)
+      `hazmat::kalyna.rs`'s `RoundKeys` (`[[Column; MAX_NB]; ROUND_KEYS_LEN]`) is 1216 bytes
+      *regardless of variant* - a Kalyna128_128 caller pays the same footprint a Kalyna512_512
+      caller does; `ExpandedKey` holds two (2432 bytes) - the same `MAX_NB`-oversizing pattern
+      T-128 just fixed on the *compute* side, still present on the *storage* side, not fixed here
+      (out of scope, noted only). (2) T-125's 4-bit comb multiply (`gf2m_wide.rs`) builds a
+      transient 16-entry double-width table on the stack *per multiply call* - 512/1024/2048 bytes
+      at m=128/256/512 respectively (verified against the actual `$limbs2` literals in
+      `gf2m_field!`'s three instantiations, not derived from D-76's prose description) - a genuinely
+      new stack cost since `resource-profiles.md` was first written, applying to GCM/GMAC and, by
+      extension, `crypto_secretbox`/`crypto_secretstream` (both built on `Kalyna256_256Gcm`).
+      Kalyna-XTS is the contrasting case: T-126's `double()` needs no such table, negligible stack
+      cost regardless of variant. (3) `crypto_secretstream`'s `PushState`/`PullState` hold only a
+      32-byte subkey (not a cached `ExpandedKey`), the smallest persistent state of any construction
+      here, at the cost of re-expanding the full schedule every chunk rather than once per stream -
+      a deliberate space/time trade, noted as a fact relevant to "how much RAM," not proposed as a
+      change. **Confirmed and stated explicitly**: none of this differs between `fused` and
+      `small-tables` - the profile split only swaps which table data is linked in, not any struct
+      layout or working-set size, so a single RAM/stack table applies to both profiles (only the
+      pre-existing flash/const-table row actually varies by profile).
+- [ ] **T-133** Not started. User-proposed additional verification layer, 2026-07-26: after a
+      performance run, byte-for-byte-compare the actual ciphertext/tag files this project's
+      `uacrypt` produced against UAPKI's own output for the same key/nonce-or-tweak/input, in every
+      mode where both sides are deterministic given identical inputs - a stronger check than "both
+      independently decrypt correctly," since it confirms the two implementations compute the
+      *exact same* intermediate bytes, not just externally-compatible ones. **Correct and already
+      practiced informally, just never as its own named/systematic step**: `TASKS.md` T-34 and
+      T-121 both already record "cross-checked byte-identical against UAPKI before timing" as a
+      one-off pre-benchmark sanity check, for Kalyna-block/CCM/GCM/CMAC/GMAC/KW/XTS/Kupyna/Strumok -
+      this task is to make that an explicit, repeatable verification step (e.g. a small script or
+      documented procedure diffing output files) rather than an incidental habit buried in benchmark
+      session notes, closer to `ORACLES.md`'s "dual-oracle verification is mandatory" standing for
+      test vectors. **Scope, precisely** - only valid where both sides are deterministic for the
+      same inputs: the caller-supplied-nonce/tweak `uacrypt` benchmarking commands
+      (`kalyna-gcm`/`kalyna-ccm`/`kalyna-xts`/`kalyna-cmac`/`kalyna-kw`, which take an explicit
+      `--nonce`/`--tweak` rather than generating one internally, D-31/D-71) - **not** the safe
+      top-level `encrypt`/`decrypt` (nonce/header generated internally per D-40/D-63/D-68, so two
+      runs never produce the same ciphertext even under the same key+plaintext, by design, not a
+      bug to chase here). **Two known, already-documented exceptions where byte-for-byte comparison
+      will *not* match, and must not be read as a new bug if it doesn't**: `kalyna-gmac` (UAPKI's
+      own multi-block streaming path has a stale-index bug distinct from the one-shot path, D-57 -
+      already why GMAC is measured at exactly one block in every timing table) and `kalyna-ccm`
+      (UAPKI's `cipher_data` bundles an extra CTR-encrypted tag block into the ciphertext rather
+      than keeping tag separate, a different wire convention entirely, D-71 - CCM's timing numbers
+      are already flagged "UAPKI-self-consistent, not cross-tool-verified" for this exact reason).
+      Depends on the same UAPKI comparison-CLI wrapper T-131 needs - natural to build alongside that
+      task rather than as a fully separate rebuild.
+- [ ] **T-134** Not started. `hazmat::kupyna.rs`'s `sub_shift_mix` (line 65) has the exact same
+      shape T-128 just fixed in `hazmat::kalyna.rs`'s `encipher_round` - found 2026-07-26, checking
+      whether Strumok/Kupyna share the same nuance T-128 fixed for Kalyna (they don't both: Strumok
+      is unaffected, see below). `let columns = state.len()` reads a runtime `usize` even though
+      only two values are ever real (Kupyna256 always constructs with `columns=8`, Kupyna512 always
+      `columns=16` - `kupyna.rs:362,394`, no per-call variance the way Kalyna's `nb` at least varies
+      per invocation site); the intermediate `result: [[0u8; ROWS]; MAX_COLUMNS]` buffer is always
+      the full 16-column width regardless of the real `columns`, 2x wasted zeroing for Kupyna256 (the
+      exact `MAX_NB`-oversizing pattern, here `MAX_COLUMNS`-oversizing); `state[..columns]` bounds-
+      checks on every access. `sub_shift_mix` is Kupyna's single hottest function - called once per
+      round inside `t_transform`/`t_plus_transform` (10 rounds for Kupyna-256, 14 for Kupyna-512),
+      and `compress` (the per-block compression step) calls both once per block - directly
+      analogous to `encipher_round`'s role in Kalyna. **Expected shape of the fix, by direct
+      analogy to T-128/D-77** (not yet consulted with `advisor()` - do that before writing any
+      code, same as T-128's own process): a `sub_shift_mix_n<const COLUMNS: usize>` alongside the
+      retained runtime-`columns` version (kept for the `#[allow(dead_code)]` differential-test
+      reference, matching `encipher_round`'s treatment), with `t_transform`/`t_plus_transform`/
+      `compress`/`KupynaCore` becoming const-generic over `COLUMNS`, a new differential-test module
+      checking old-vs-new for both `COLUMNS` values (8 and 16), full workspace test/clippy/fmt/
+      feature-matrix pass, and a `criterion` before/after baseline (`benches/kupyna.rs` already
+      exists per the "Regression baseline" section's `kalyna-kupyna-fused-2026-07-22` entry).
+      **Predicted (not measured) direction**: Kupyna256 (8 of 16 columns, the "half-width" case)
+      should see gains in the range T-128 measured for Kalyna's `nb=2`/`nb=4` (~20-55%); Kupyna512
+      (already 16/16 columns, "full-width" already) should see smaller but still real gains in the
+      range T-128 measured for Kalyna's `nb=8` (~15-22%, since even the already-full-width case
+      benefited there from bounds-check elimination and loop unrolling, not just buffer reuse) -
+      stated as a prediction from direct structural analogy, not to be treated as measured until an
+      actual `criterion` run confirms it. **Strumok does not have this *specific* T-128-shaped
+      nuance, checked and confirmed, not assumed**: `hazmat::strumok.rs`'s `Core` state
+      (`s: [u64; 16]`) is already a fixed-size array regardless of the 256/512 key-size variant -
+      DSTU 8845's LFSR size doesn't scale with key size, only `init_state`'s key-length branch
+      differs (one-time setup, not per-step) - so `next_step`/`strm` never had a `MAX_NB`-style
+      oversized buffer or a runtime block-size parameter to fix in the first place. **Strumok does
+      have a different, separately-found performance nuance - see T-135 below.**
+- [ ] **T-135** Not started. `hazmat::strumok.rs`'s `apply_keystream` (line 923) works word-at-a-
+      time then byte-at-a-time, where `oracles/strumok-dstu8845/strumok.c`'s equivalent path
+      (`next_stream_full_crypt`, line 815, called from `dstu8845_crypt`'s main loop, line 1090)
+      batch-generates and fuses the input XOR into one pass over a full 128-byte (16-word) block -
+      found 2026-07-26 digging into the ~3.2-3.9x residual gap to outspace left open after D-26
+      (ring buffer + precomputed `T0..T7` tables - both already landed, this is what's left).
+      **Three compounding differences, read directly from `strumok.c`, not inferred**:
+      (1) **No runtime ring-buffer indexing in outspace at all** - `next_stream_full_crypt` is 16
+      fully-unrolled statements, each touching a *literal* `ctx->S[i]` array index (e.g.
+      `ctx->S[3] = ... ^ ctx->S[0] ^ ... ctx->S[14]`), no modular arithmetic, no `head` pointer.
+      This project's `next_step` (`strumok.rs:857`) takes a `head: &mut usize` and computes
+      `(*head + 11) & 15`/`(*head + 13) & 15`/`(*head + 15) & 15` fresh on *every single step* -
+      real masked-indexing/pointer-chasing overhead where outspace's compiler sees compile-time-
+      known offsets instead (the D-26 ring-buffer fix removed the *data movement* `copy_within`
+      cost, but not this indexing cost - a distinct, still-open overhead). (2) **Batch generation,
+      not one word at a time**: outspace's function produces all 16 output words (128 bytes) per
+      call; this project's `strm`/`next_step` (`strumok.rs:880`/`857`) are separate calls that
+      together produce exactly one 8-byte word, called repeatedly. (3) **Fused input-XOR, not a
+      separate apply pass**: outspace writes `out[i] = in[i] ^ (...)` directly inside the same
+      unrolled loop that advances state - one `u64` XOR per word, no separate loop at all for the
+      bulk (only outspace's own tail path, <128 B, falls back to a per-byte loop). This project's
+      `apply_keystream` (`strumok.rs:923`) is a **byte-at-a-time** loop for the *entire* input, not
+      just a tail: `if self.block_pos == 8 { regenerate 8 bytes }` then `*byte ^=
+      self.block[self.block_pos]; block_pos += 1` for every single byte - one branch check plus one
+      single-byte XOR per byte, versus outspace's one `u64` XOR per 8 bytes with zero per-byte
+      branching in the bulk case. **Coherent with the measured gap size**: a "batch-generate,
+      fixed-index, word-XOR-fused" design against a "one-word-at-a-time, masked-index, byte-XOR"
+      design is exactly the shape of overhead that produces a 3-4x difference, not a smaller
+      constant-factor gap - this is the leading candidate for D-26's still-open "remaining ~3.2x
+      gap... a smaller, unchased residual" note, not confirmed by isolated measurement yet (same
+      "read the source, then verify with a targeted measurement before treating it as settled"
+      standard `DECISIONS.md` D-76 already established for Kalyna-GCM's field-multiply finding).
+      **Fix, by analogy to T-128's own process (not yet consulted with `advisor()` - do that
+      before writing any code)**: a batched, fixed-index `next_stream_full_crypt`-equivalent that
+      generates a whole 128-byte (16-word) block per call using literal (not `head`-indexed)
+      state-slot references, with the input XOR fused into the same pass and applied word-at-a-
+      time (`u64` XOR, not byte-at-a-time) for full blocks, falling back to the existing per-byte
+      path only for a final partial block - mirroring `dstu8845_crypt`'s own two-tier structure
+      exactly. **This changes the *scheduling/batching* of the same state-transition function, not
+      the transition itself** - `next_step`'s underlying math (`mul_alpha`/`mul_alpha_inv`/
+      `t_function`/`fsm`) is untouched, so the existing official test vectors, the
+      `apply_keystream_is_involution` property tests, and the 4000-case outspace differential
+      harness remain the correctness gate; a new differential test comparing the batched path
+      against the current per-word path over random state/key/IV is still needed (same "new-vs-old,
+      not just new-vs-naive" pattern T-128's `const_round_tests` established) before this can be
+      called verified, not assumed correct because it's "just outspace's own approach transcribed."
+      Same safety-net bar as T-128: full workspace test/clippy/fmt/feature-matrix pass, `criterion`
+      before/after baseline, and note `hazmat::strumok.rs`'s existing `#[cfg(feature =
+      "small-tables")]` branch on `t_function` - whatever batching shape is chosen must keep working
+      under both resource profiles, not silently assume the default `fused` one.
 - [x] **T-19** **Naming subtask, all three decisions made 2026-07-23** (T-20/T-21/T-22 below) -
       unblocks T-17/T-18, which are still separately open (a decided name isn't a crates.io
       publish or a built release binary):
