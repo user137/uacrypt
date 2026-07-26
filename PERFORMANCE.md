@@ -379,6 +379,26 @@ doubled on every variant (e.g. 512-512: 4.76 → 12.91 MB/s), widening an alread
 **Reproducing**: `target/release/uacrypt kalyna-gcm encrypt --variant <v> --key <path> --nonce
 <path> --in <path> --out <path> --tag <path> --iterations <N>`.
 
+**Updated 2026-07-26, `uacrypt`-only, 10 MiB, N = 50** (T-128's const-generic round-function fix,
+not a new GCM-specific change — GCM's own field multiply still dominates per-block cost, so the
+improvement here is smaller than T-128's own block-only numbers): **this is a `uacrypt`-only
+re-measurement, not a fresh UAPKI comparison — the UAPKI wrapper wasn't rebuilt this session, see
+T-131**, so no UAPKI column is shown; do not read the absence of a UAPKI number as this project
+having "lost" the comparison, and do not compare these numbers directly against the 1 MiB table
+above's UAPKI column.
+
+| Variant | uacrypt 10 MiB (MB/s) |
+|---|---|
+| 128-128 | 19.85 |
+| 128-256 | 19.47 |
+| 256-256 | 17.09 |
+| 256-512 | 16.59 |
+| 512-512 | 12.84 |
+
+Consistent with (slightly above) the post-T-125 1 MiB row above on every variant, as expected — GCM
+was already steady-state at 1 MiB, and T-128 only speeds up the ~6-10% of per-block cost that isn't
+the field multiply.
+
 ### Kupyna (`kupyna-digest`)
 
 `Kupyna256`/`Kupyna512::digest` already take an arbitrary-length message, so `kupyna-digest
@@ -472,6 +492,29 @@ though the exact per-byte cause (table layout, compiler codegen, etc.) isn't iso
 
 **Reproducing**: `target/release/uacrypt kalyna-cmac compute --variant <v> --key <path> --in <path>
 --out <path> --iterations <N>`.
+
+**Updated 2026-07-26, `uacrypt`-only, 10 MiB, N = 50** (T-128's const-generic round-function fix —
+CMAC is pure block-cipher chaining with no other bottleneck diluting it, unlike GCM's field
+multiply, so this is the mode where T-128's gain should show most directly). **`uacrypt`-only, no
+UAPKI column — the wrapper wasn't rebuilt this session, see T-131**; do not compare directly against
+the 1 MiB table's UAPKI column above.
+
+| Variant | uacrypt 10 MiB (MB/s) |
+|---|---|
+| 128-128 | 199.08 |
+| 128-256 | 147.56 |
+| 256-256 | 142.29 |
+| 256-512 | 111.61 |
+| 512-512 | 137.16 |
+
+Real, substantial improvement over the 1 MiB row above on every variant (e.g. 512-512: 111.03 →
+137.16, ~+23.5%, roughly matching T-128's own `nb=8` block-only gain). **128-128's own jump (106.85
+→ 199.08, ~+86%) is larger than T-128's isolated `nb=2` block-only measurement (~53-54%) predicts**
+— flagged honestly, not smoothed over: some of the gap could be inter-session machine-load variance
+(this table and T-128's own `criterion` numbers were measured in different sessions the same day),
+some could be CMAC-specific effects T-128's isolated round-function benchmark doesn't capture (e.g.
+per-block overhead outside the round function itself scaling differently at 10 MiB than at 1 MiB).
+Not root-caused further here — noted for whoever next touches this table, not assumed settled.
 
 ### Kalyna-GMAC (`kalyna-gmac compute`)
 
@@ -667,6 +710,29 @@ flagged for whoever next touches this table, not silently assumed unchanged.
 
 **Reproducing**: same commands as each mode's own section above, with `--iterations 50` and a
 10 MiB (`10485760`-byte) `--in` file.
+
+**Updated 2026-07-26, same day, `uacrypt`-only re-run after T-128** (const-generic Kalyna round
+functions — no UAPKI column here either, wrapper not rebuilt this session, T-131):
+
+| Mode | Variant | uacrypt 10 MiB (MB/s) | vs. this table's own pre-T-128 row |
+|---|---|---|---|
+| Kalyna-XTS | 128-128 | **193.73** | +88.9% (was 102.59) |
+| Kalyna-XTS | 128-256 | **144.50** | +95.2% (was 74.05) |
+| Kalyna-XTS | 256-256 | **135.91** | +18.0% (was 115.16) |
+| Kalyna-XTS | 256-512 | **107.53** | +18.8% (was 90.50) |
+| Kalyna-XTS | 512-512 | **132.41** | +26.6% (was 104.60) |
+| Kupyna-256 | - | 98.44 | +3.1% (was 95.52, within noise — T-128 doesn't touch Kupyna) |
+| Kupyna-512 | - | 81.29 | +4.3% (was 77.94, same reason) |
+| Strumok-256 | - | 653.08 | +0.7% (was 648.67, within noise — T-128 doesn't touch Strumok) |
+| Strumok-512 | - | 654.80 | +2.9% (was 636.16, same reason) |
+
+**XTS improves substantially on every variant, on top of T-126's already-landed fix** — XTS calls
+the Kalyna block cipher directly (via `ExpandedKey::encrypt_block`) for every data unit, so it
+benefits from T-128's round-function speedup the same way Kalyna-block/CMAC do, independently of
+T-126's separate tweak-doubling fix; the two are additive, not overlapping causes. Kupyna/Strumok
+move only within measurement noise, exactly as expected — T-128 is a `hazmat::kalyna.rs`-only
+change (T-134/T-135 track the analogous, not-yet-implemented findings for Kupyna/Strumok
+respectively). CMAC/GCM's own post-T-128 numbers are in their own sections above, not repeated here.
 
 ## What the gap is, honestly
 
