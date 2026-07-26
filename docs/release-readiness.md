@@ -203,7 +203,10 @@ any kind to choose from, safe or otherwise.
   but publishing a `0.1.0` that is honest about D-05 (adopted on assumption, not primary-confirmed)/
   D-15/D-41's provisional status is a judgment call for the project owner, not an engineering
   blocker.
-- **T-18**: no prebuilt GitHub Releases binaries for Windows/Linux/macOS.
+- **T-18**: **Done 2026-07-26**, see `TASKS.md` T-18/T-119. Prebuilt `uacrypt` binaries for
+  Windows/Linux/macOS (Apple Silicon only), plus a `dstu-core` source distribution, are published
+  as GitHub Release assets on the `v0.1.0` tag via `.github/workflows/release.yml`, verified
+  against the actual downloaded assets (not just a green CI run).
 - No user-facing documentation beyond this repo's own `.md` files exists yet (no rustdoc pass
   dedicated to public API ergonomics, no separate docs site/book) — a real release needs
   API-level docs a consumer reads without first reading `DECISIONS.md`.
@@ -317,8 +320,9 @@ In rough dependency order:
 6. **DSTU 9041 stays out of scope for 1.0** unless source material is found — don't block the rest
    of the release on a hard-blocked item with no known path forward.
 7. **Mechanical release work**: `uacrypt`'s real `encrypt`/`decrypt`/`hash` commands are now done
-   (T-16, D-52) — remaining: crates.io publish (T-17), GitHub Releases binaries (T-18), and a
-   documentation pass aimed at an external consumer rather than an AI-agent-facing repo.
+   (T-16, D-52), and GitHub Releases binaries are too (T-18/T-119, 2026-07-26) — remaining:
+   crates.io publish (T-17, still explicitly gated on an owner request) and a documentation pass
+   aimed at an external consumer rather than an AI-agent-facing repo.
 
 Steps 1-2 are the load-bearing ones: everything else can be built in parallel, but a release that
 skips them is a release of provisional cryptography labeled as final, which is exactly the outcome

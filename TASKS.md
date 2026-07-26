@@ -193,10 +193,54 @@ item they point to is later removed.
       can't resolve against the registry until `dstu-core` is actually published first) - expected,
       not a bug, just fixes the required order (`dstu-core` before `uacrypt`). None of this touched
       the actual crates.io registry - `--dry-run` uploads nothing.
-- [ ] **T-18** Prebuilt Windows/Linux binaries via GitHub Releases. **Readiness-checked 2026-07-25**:
-      zero infrastructure exists yet - `.github/workflows/` has only `rust.yml`/`oracle-harness.yml`,
-      no release/cross-compilation/binary-packaging workflow at all. This is unstarted work, not a
-      near-miss.
+- [x] **T-18/T-119** **DONE 2026-07-26.** Prebuilt Windows/Linux/macOS binaries via GitHub
+      Releases, plus the `dstu-core` library source distribution attached to the same release -
+      user-requested explicitly ("зроби реліз на гітхабі бінарника і самих бібліотек"), scoped down
+      to GitHub-only first (crates.io/T-17 confirmed still separately gated - a different platform
+      with a much less reversible publish step, `AskUserQuestion`-confirmed rather than assumed),
+      then widened from "Windows now, other platforms later" to all three platforms in the same
+      session per a follow-up correction.
+      **Readiness-checked 2026-07-25**: zero infrastructure existed at that point - `.github/
+      workflows/` had only `rust.yml`/`oracle-harness.yml`, no release/cross-compilation/
+      binary-packaging workflow at all.
+      **Pre-release gate, per `advisor()`'s explicit recommendation before touching any tag**:
+      found `uacrypt` had no `--version`/`-V` at all (T-118, fixed first - a release binary that
+      can't self-report its version is "the one defect actively embarrassing in a release
+      artifact"). Re-ran the four mandatory checks directly after `cargo xtask ci` itself was
+      interrupted mid-run (background process killed by an unrelated session interruption, exit
+      code -1/"process exited while detached" - not trusted as a pass since it never reached its
+      own completion, even though the fuzz/audit/deny/oracle-harness portions that did finish were
+      all green) - `fmt --check`/`build --all-features`/`build --no-default-features`/
+      `test --all-features` (64/64 `uacrypt` + full `dstu-core` suite)/`clippy -D warnings` all
+      clean on the direct re-run.
+      `.github/workflows/release.yml` added: on a `v*` tag push, three parallel jobs build
+      `uacrypt --release` on `ubuntu-latest`/`macos-latest`/`windows-latest` (each packaged with
+      `README.md`+both `LICENSE-*` files, `.tar.gz` on Unix/`.zip` on Windows via each runner's
+      native tooling), a fourth packages `dstu-core` exactly the way `cargo publish` would
+      (`cargo package -p dstu-core`, no `--no-verify` needed - `dstu-core` has zero path
+      dependencies, unlike `uacrypt`) without actually publishing to crates.io, and a final job
+      downloads every artifact and creates the GitHub Release via `softprops/action-gh-release`
+      with auto-generated notes. `CHANGELOG.md`'s `[Unreleased]` section split into a real
+      `[0.1.0] - 2026-07-26` entry (Keep a Changelog convention, T-111's own precedent) plus a
+      fresh empty `[Unreleased]` above it, with `keygen`/`--version`/the T-116 cross-compile
+      confirmation folded into the `0.1.0` `### Added` list.
+      Tag `v0.1.0` pushed, workflow run `30180682108` completed green end to end (all 5 jobs),
+      release published (not draft) at 2026-07-26T00:10:48Z with 4 assets: `uacrypt-linux-x86_64.
+      tar.gz`, `uacrypt-macos-aarch64.tar.gz`, `uacrypt-windows-x86_64.zip`, `dstu-core-0.1.0.
+      crate`. **Verified against the real published assets, not just a green CI run**: downloaded
+      `uacrypt-windows-x86_64.zip` and `dstu-core-0.1.0.crate` via `gh release download`, extracted,
+      and ran the real binary standalone (no local `cargo`/toolchain in the extraction directory) -
+      `--version` printed `uacrypt 0.1.0`, a full `keygen` -> `encrypt` -> `decrypt` round-trip
+      matched byte-for-byte; the `.crate` tarball's file listing confirmed a real, complete
+      `cargo package` output (`Cargo.toml`, `src/`, `benches/`, `examples/`, both `LICENSE-*`
+      files, `README.md`). macOS asset is `aarch64` only (GitHub's `macos-latest` runner is Apple
+      Silicon) - an Intel Mac build isn't covered, not previously scoped and not attempted here.
+      Linux/macOS builds use each runner's default host toolchain (Linux GNU, macOS Apple-clang
+      linker) - unlike this project's local Windows dev convention of `x86_64-pc-windows-gnu`, the
+      Windows release asset is built with the runner's default `x86_64-pc-windows-msvc` toolchain
+      specifically so end users need no separate MinGW runtime DLLs alongside the `.exe` - confirmed
+      by the standalone-run smoke test above, not assumed. No `DECISIONS.md` entry - release
+      mechanics/CI plumbing, not an architectural decision about the library itself.
 - [x] **T-107** Add a per-crate `README.md` to `crates/dstu-core/` and `crates/uacrypt/`, and set
       each crate's `readme` field in its own `Cargo.toml`. **Found during T-17's 2026-07-25
       readiness check**: only the workspace-root `README.md` exists; `cargo package` only reaches
@@ -2133,6 +2177,11 @@ pass, matching D-39's own precedent.
 Step 5 - gated on an explicit request, not simply "last in line."** 2026-07-25: user confirmed
 publication stays out of the plan entirely until they ask for it by name; do not start T-17/T-18
 work as a side effect of finishing Step 5.
+**2026-07-26: T-18 explicitly requested and done, see `TASKS.md` T-18/T-119** - GitHub Release
+`v0.1.0` with binaries for all three platforms plus the `dstu-core` source distribution. **T-17
+explicitly re-confirmed as still separately gated in the same request** (`AskUserQuestion` offered
+both "GitHub only" and "GitHub + crates.io"; the owner chose GitHub only) - do not start T-17 work
+as a side effect of T-18 having landed.
 
 **Step 5 (2026-07-25, user-approved sequencing, advisor-reviewed) - close the remaining functional
 gap, then the crates.io/libsodium hygiene findings from the same session's research pass.** Ordering

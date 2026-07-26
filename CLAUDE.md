@@ -191,8 +191,13 @@ Algorithms in scope:
   (`TASKS.md` T-40/T-70, `DECISIONS.md` D-68)** - `--in`/`--out` are now genuinely streamed in
   fixed-size chunks (block-at-a-time disk I/O, D-42's standing policy), not read whole into memory
   - the tracked follow-up D-63 itself named is now done, not still open.
-- Publish the core crate to crates.io.
-- Prebuilt binaries for Windows/Linux via GitHub Releases (not "clone and build yourself").
+- Publish the core crate to crates.io. Not started - `TASKS.md` T-17, explicitly gated on an owner
+  request (re-confirmed 2026-07-26 alongside T-18 landing, below - a GitHub release and a crates.io
+  publish are different platforms with different reversibility, not the same ask).
+- Prebuilt binaries for Windows/Linux via GitHub Releases (not "clone and build yourself"). **Done
+  2026-07-26** (`TASKS.md` T-18/T-119) - also macOS (Apple Silicon), plus a `dstu-core` source
+  distribution attached to the same release, wider than this bullet's original Windows/Linux-only
+  wording. `.github/workflows/release.yml` builds all three platforms on a `v*` tag push.
 - **No hardware or OS lock-in — platform-agnostic by construction.** This targets both ends
   genuinely, not just one with lip service to the other: full PCs/servers (Windows, Linux, macOS,
   x86-64/ARM64) *and* microcontrollers (STM32 on ARM Cortex-M, ESP32 on Xtensa/RISC-V — genuinely

@@ -214,9 +214,10 @@ safe here (128 bits minimum across all five variants) and its per-key message-co
 
 Neither `kalyna-block` nor `kalyna-ccm` is the `encrypt`/`decrypt` surface above - both stay as
 lower-level, hazmat-scoped tools (`kalyna-block` for exactly one block, `kalyna-ccm` for full
-control over variant/nonce/AAD/tag as separate files) for anyone who explicitly wants that. Prebuilt
-binaries via GitHub Releases for Windows/Linux/macOS (see `CLAUDE.md` MVP scope) are still planned,
-not built yet.
+control over variant/nonce/AAD/tag as separate files) for anyone who explicitly wants that.
+**Prebuilt binaries are available via [GitHub Releases](https://github.com/user137/uacrypt/releases)**
+for Windows/Linux/macOS (Apple Silicon), plus a `dstu-core` source distribution - not published to
+crates.io yet (`TASKS.md` T-17).
 
 ## Embedded / `no_std` targets
 

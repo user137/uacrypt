@@ -31,9 +31,11 @@ implementation within a minute, without hassle — in the spirit of
   (`TASKS.md` T-40/T-70, `DECISIONS.md` D-68) instead — genuinely block-at-a-time
   disk streaming on both `--in` and `--out`, not whole-buffer I/O anymore, a
   breaking wire-format change from the prior `crypto_secretbox`-backed format.
-- Publish the core to crates.io.
+- Publish the core to crates.io. Not started - `TASKS.md` T-17, explicitly gated on an owner
+  request, re-confirmed separately from T-18 below when that one was requested (2026-07-26).
 - Prebuilt binaries for Windows/Linux via GitHub Releases (not "clone and
-  build it yourself").
+  build it yourself"). **Done 2026-07-26** (`TASKS.md` T-18/T-119) — also macOS (Apple Silicon),
+  plus a `dstu-core` source distribution on the same release. See `README.md`'s release link.
 - Write the core to be **`no_std`-compatible from day one** (Cargo feature
   flags `std` / `alloc` / `no_std`), so support for embedded platforms (STM32
   on ARM Cortex-M, ESP32 on Xtensa/RISC-V — these are different

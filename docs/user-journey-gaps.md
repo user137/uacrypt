@@ -25,26 +25,28 @@ stateDiagram-v2
     RunCommand --> Verify
     Verify --> Ship
     Ship --> [*]
-
-    Acquire --> Discover: no prebuilt binary found
 ```
 
-`GenerateKey`'s own back-edge to `Discover` (present in the original 2026-07-25 version of this
-diagram) is removed as of `TASKS.md` T-115 - `uacrypt keygen` now closes that path, see the table
-below.
+`Acquire`'s and `GenerateKey`'s back-edges to `Discover` (both present in the original 2026-07-25
+version of this diagram, labeled "no prebuilt binary found" and "no keygen tool found"
+respectively) are both removed now - `TASKS.md` T-18/T-119 and T-115 close each path, see the
+table below.
 
 | State | Want | Have | Gap |
 |---|---|---|---|
 | Discover | Find the project, understand what it does and its current maturity | `README.md` top banner states v0.1.0 pre-release status plainly | none |
-| Acquire | A prebuilt binary for their OS, no Rust toolchain required | **None exists.** `README.md` "Building from source" is the only path (`cargo build -p uacrypt --release`); T-18 (GitHub Releases binaries) is explicitly gated on the owner asking by name, not queued | **Real, blocking gap.** This is the same one T-114's own task text flagged as a candidate — confirmed here, not assumed: a user who doesn't already have `rustup` cannot get `uacrypt` at all today |
+| Acquire | A prebuilt binary for their OS, no Rust toolchain required | **Closed 2026-07-26, see `TASKS.md` T-18/T-119.** GitHub Release `v0.1.0` ships `uacrypt-{linux-x86_64,macos-aarch64,windows-x86_64}` archives, built by `.github/workflows/release.yml` on a tag push. Verified against the actual downloaded Windows asset, not just a green CI run: extracted and ran standalone (no local `cargo`), `--version`/`keygen`/`encrypt`/`decrypt` round-trip all worked | macOS asset is `aarch64`-only (GitHub's `macos-latest` runner) - an Intel Mac build isn't covered, not previously scoped |
 | Generate a key | A `uacrypt keygen` command, or at least a documented one-liner | **Closed 2026-07-26, see `TASKS.md` T-115.** `uacrypt keygen --out key.bin` now exists — draws a fresh 32-byte key from the OS CSPRNG via `crypto_secretstream::Key::generate`, writes it in the exact format `encrypt`/`decrypt --key` expect | none, as of T-115 |
 | Run `encrypt`/`decrypt`/`hash` | A misuse-resistant command with no mode/nonce to configure | `README.md` "Using `uacrypt`" documents `encrypt`/`decrypt`/`hash` fully, including that they're genuinely chunked (T-40/D-68) with no message-length cap | none, once a key exists |
-| Verify it does what's claimed | Confirm round-trip correctness and see real throughput numbers | `cargo test --workspace` for correctness; `PERFORMANCE.md` "Binary-level (process) comparison" section for real `uacrypt`-binary MB/s numbers, `docs/resource-profiles.md` for the `fused`/`small-tables` speed table | none — but both require building from source (same toolchain dependency as Acquire) |
-| Ship | Deploy the binary into their own workflow/pipeline | No install-script, package-manager entry (Homebrew/Scoop/apt), or Docker image exists; not tracked as a task anywhere | Gap, but downstream of and smaller than the Acquire gap above — not worth its own task until T-18 lands |
+| Verify it does what's claimed | Confirm round-trip correctness and see real throughput numbers | `cargo test --workspace` for correctness; `PERFORMANCE.md` "Binary-level (process) comparison" section for real `uacrypt`-binary MB/s numbers, `docs/resource-profiles.md` for the `fused`/`small-tables` speed table | For a *downloaded* binary specifically: correctness is now verifiable without a toolchain (the round-trip smoke test above), but the MB/s numbers still require building from source to reproduce - not re-measured per-platform for the release assets themselves |
+| Ship | Deploy the binary into their own workflow/pipeline | No install-script, package-manager entry (Homebrew/Scoop/apt), or Docker image exists; not tracked as a task anywhere | Smaller gap now that Acquire itself is closed - still not worth its own task, no evidence yet that a real user needs more than a direct download |
 
-**Bottom line**: this persona is blocked at the second state (Acquire) without a Rust toolchain, and
-blocked again at the third (GenerateKey) even with one. Both are cheap, concrete, and previously
-absent from `release-readiness.md`'s per-construction framing.
+**Bottom line**: this persona's journey is now unblocked end to end. Both the original blockers
+(Acquire without a Rust toolchain, GenerateKey even with one) closed the same session they were
+found in, T-18/T-119 and T-115 respectively - a real example of this document's stated purpose:
+gaps neither `release-readiness.md`'s construction-level view nor `dstu-crypto-project.md`'s
+API-mapping table would have framed as "blocking a specific persona," found and closed by walking
+the journey directly.
 
 ## Persona 2 — library user, performance-focused
 
@@ -130,22 +132,30 @@ asks than the original "has anyone ever tried this" gap.
   their journey" — the answer was no, at the very first concrete step. **Closed 2026-07-26, see
   `TASKS.md` T-115** — the project owner triaged this candidate into a real task the same day it
   was found.
-- **Crates.io/docs.rs absence** (persona 2) is the same shape of gap, still open — tracked at the
-  construction level as T-17, explicitly gated on an owner request rather than queued automatically.
-- The three findings above were not proposed as new task numbers when this document was first
-  written, per T-114's own scope ("this task's value is the persona/journey framing itself") — they
-  were recorded as candidates for the project owner to triage. Two (`uacrypt keygen`, T-115; the
-  cross-compile check, T-116) have since been triaged and closed; crates.io publication (T-17)
-  remains open, still explicitly gated on an owner request.
+- **Persona 1's Acquire gap (no prebuilt binary, T-18)** was explicitly gated on an owner request,
+  same as T-17 - and the owner made that request directly ("зроби реліз на гітгабі бінарника і
+  бібліотек"), 2026-07-26. **Closed the same day, see `TASKS.md` T-18/T-119** - real GitHub Release
+  `v0.1.0`, three platform binaries plus the `dstu-core` source distribution, verified against the
+  actual downloaded assets.
+- **Crates.io/docs.rs absence** (persona 2) is the one gap in this whole document still open -
+  tracked at the construction level as T-17, explicitly re-confirmed as still gated on a separate
+  owner request when T-18/T-119 was scoped (GitHub Release ≠ crates.io publish, confirmed via
+  `AskUserQuestion` rather than assumed to mean both).
+- The findings above were not proposed as new task numbers when this document was first written,
+  per T-114's own scope ("this task's value is the persona/journey framing itself") — they were
+  recorded as candidates for the project owner to triage. Three (`uacrypt keygen`, T-115; the
+  cross-compile check, T-116; prebuilt binaries, T-18/T-119) have since been triaged and closed;
+  crates.io publication (T-17) remains open, still explicitly gated on an owner request.
 - **Methodology note, 2026-07-26 (`TASKS.md` T-117)**: this document's original findings were
   produced by reading the cross-referenced docs and reasoning about the journey, not by actually
-  executing each persona's steps. A follow-up pass that did — real `gh release list`, a real
-  `cargo add dstu-core`, a real scratch crate consuming `dstu-core` via a path dependency, the
-  actual release binary run end to end for persona 1 — re-confirmed every finding above as
-  genuinely true (not assumed), and surfaced one the reading-only pass missed entirely:
-  `crates/dstu-core/README.md`'s own top-level `## Example` did not compile (`SecretKey::generate`/
-  `seal` both return `Result`, the example didn't handle it) - invisible to `cargo test` since the
-  README isn't wired in as a doctest, and invisible to a documentation *review* since the example
-  reads correctly, it just doesn't compile. Fixed the same session. The general lesson: for this
-  kind of gap analysis, actually running a persona's steps finds a different class of bug than
-  reading the docs that describe them, even when the docs are accurate about everything else.
+  executing each persona's steps. A follow-up pass that did — real `gh release list` (empty at the
+  time; not anymore, see T-18/T-119 above), a real `cargo add dstu-core`, a real scratch crate
+  consuming `dstu-core` via a path dependency, the actual release binary run end to end for persona
+  1 — re-confirmed every finding above as genuinely true (not assumed), and surfaced one the
+  reading-only pass missed entirely: `crates/dstu-core/README.md`'s own top-level `## Example` did
+  not compile (`SecretKey::generate`/`seal` both return `Result`, the example didn't handle it) -
+  invisible to `cargo test` since the README isn't wired in as a doctest, and invisible to a
+  documentation *review* since the example reads correctly, it just doesn't compile. Fixed the same
+  session. The general lesson: for this kind of gap analysis, actually running a persona's steps
+  finds a different class of bug than reading the docs that describe them, even when the docs are
+  accurate about everything else.
