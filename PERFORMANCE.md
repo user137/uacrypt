@@ -714,10 +714,13 @@ construction, not two different behaviors.
 | 512-512 | 137.14 | **150.83** | 137.12 | **151.06** |
 
 **UAPKI still wins CMAC at this message size, by ~1.1-1.9x depending on variant** — T-128 closed
-most of CMAC's gap (compare against the 1 MiB table above, where UAPKI led by ~1.4-2.2x) but not all
-of it, consistent with T-129 (the byte-wise-gather-vs-word-wide-`BT_xor*` difference) still being
-open — that's exactly the residual class of cost T-128 didn't touch. Compute/verify symmetric
-within noise on both implementations, as expected.
+most of CMAC's gap (compare against the 1 MiB table above, where UAPKI led by ~1.4-2.2x) but not
+all of it. Originally attributed to T-129's byte-wise-gather-vs-word-wide-`BT_xor*` difference as
+the residual class of cost T-128 didn't touch — **T-129 was investigated 2026-07-27 and closed
+without a code change** (`DECISIONS.md` D-88): a measured spike showed the gather is already
+near-optimal at small block sizes and a real regression to "fix" at larger ones, so this residual
+gap's actual cause is still open, not a known-fixable byte-vs-word difference as originally framed.
+Compute/verify symmetric within noise on both implementations, as expected.
 
 Real, substantial improvement over the 1 MiB row above on every variant (e.g. 512-512: 111.03 →
 137.16, ~+23.5%, roughly matching T-128's own `nb=8` block-only gain). **128-128's own jump (106.85

@@ -1060,27 +1060,48 @@ item they point to is later removed.
       byte-at-a-time (`state[src_col][row]`, recomputing `src_col`/`shift` every iteration) where
       UAPKI's `p_boxrowcol`+`BT_xor*` macros operate on whole 64-bit words - a structurally different,
       more invasive change not attempted here.
-- [ ] **T-129** Not started. `hazmat::kalyna.rs`'s const-generic `encipher_round_n`/
-      `fused_inv_round_n` (T-128) still gather state one byte at a time via `state[src_col][row]`,
-      recomputing `src_col = (out_col + NB - shift) & nb_mask` (or `+ shift` for the inverse) fresh
-      on every one of the `ROWS * NB` iterations - UAPKI's `p_boxrowcol` table plus its
-      `BT_xor128`/`BT_xor256`/`BT_xor512` macros instead load/XOR whole 64-bit words, fewer and
-      wider operations than a byte-wise gather glued together at the end. This is the fifth
-      structural difference identified when comparing `encipher_round` against `p_boxrowcol`
-      directly (2026-07-26 conversation, not previously written to a file) - the other four
-      (runtime `nb`, bounds-checked slice indexing, oversized always-zeroed scratch buffer, a
-      separate copy-back pass) were all closed by T-128's const-generic refactor; this one wasn't
-      attempted there since it's a genuinely different, more invasive restructuring of the gather
-      itself, not just a parameter becoming `const`. **User's explicit scope note**: do not build
-      an equivalent for the `small-tables` feature - that profile deliberately trades throughput
-      for a smaller table footprint (D-35/D-38/D-39), and a word-wide gather is a throughput-only
-      change with no meaning under that tradeoff. Needs its own `advisor()` consultation on the
-      safest concrete shape (whether this can stay expressed in safe Rust as whole-`u64`
-      loads/shifts over the existing `SBOX_MDS` tables, or would require a different table layout)
-      before any implementation, per this project's standing practice for `hazmat::kalyna.rs`
-      changes - same safety-net bar as T-128 (differential test against the current const-generic
-      version, not just the original naive reference; full test/clippy/fmt/feature-matrix/Miri/fuzz
-      pass) since this file is the crate's most load-bearing, most-fused module.
+- [x] **T-129** **Investigated and closed 2026-07-27, no code change - see `DECISIONS.md` D-88.**
+      Written rationale was: `encipher_round_n`/`fused_inv_round_n` gather state one byte at a time
+      via `state[src_col][row]`, recomputing `src_col` fresh every iteration, versus UAPKI's
+      `p_boxrowcol`/`BT_xor128`/`BT_xor256`/`BT_xor512` loading/XOR-ing whole 64-bit words. **That
+      premise was checked against the actual `--emit=asm` output before any plan-mode pass, per
+      `advisor()`'s redirect (the same "test before you plan the rewrite" lesson T-139/D-87 already
+      established for Strumok) - and found partly false**, the same way D-87 found for Strumok: at
+      `NB=8` (the const-generic monomorphization examined), the compiled `encipher_round_n::<8>` is
+      64 direct single-byte loads at **literal, compile-time-folded offsets** (no `src_col`
+      recomputation survives - `NB` being const already eliminated it, same as T-128's own fix),
+      **zero bounds-check branches** (each index is `u8`-derived, statically provable in
+      `0..256`), and 8 interleaved XOR-accumulator chains for instruction-level parallelism across
+      output columns - already a well-optimized, not naive, byte-wise gather. **A concrete "word-wide
+      gather" spike was implemented and measured, not just reasoned about**: hoisting
+      `let words: [u64; NB] = core::array::from_fn(|c| u64::from_le_bytes(state[c]));` once per
+      round and reading `((words[src_col] >> (row * 8)) & 0xff) as u8` in place of
+      `state[src_col][row]`. Result, compared byte-for-byte against the baseline `.s`: **`NB=2` -
+      no change at all** (identical instruction count/shape - LLVM already promotes the two column
+      words to registers and extracts bytes via register-resident shifts, confirmed by inspecting
+      `encrypt_with_schedule::<2>`'s inlined body, which already used `movzbl %r11b, %r11d`-style
+      register-to-register extraction, not memory reloads, even before the spike). **`NB=8` - a
+      measurable regression**: the clean 64-load/0-spill baseline became 0 direct-memory byte loads
+      but **34 new spill stores and 71 total stack references** (vs. 34 in the baseline, a ~2x
+      increase in memory traffic) - holding 8 live 64-bit words simultaneously (on top of 8 output
+      accumulators and round-key temporaries) exceeds the ~14-16 available GPRs, exactly the
+      register-pressure failure mode `advisor()` predicted before the spike was run. **`NB=4` - the
+      spike changed LLVM's inlining decision**: `encipher_round_n::<4>` stopped being inlined into
+      `encrypt_with_schedule::<4>`'s round loop and became a real `callq`, introducing call overhead
+      into what is currently a fully-inlined hot loop - a regression in kind, even though its exact
+      magnitude wasn't separately measured. **No code change shipped** - three-for-three
+      no-help-or-regression is a decisive result, not an inconclusive one; per `advisor()`'s framing
+      for the analogous T-139 case, "the hypothesis was wrong" is the complete, valuable outcome
+      here. `criterion` was deliberately not used to validate this (the session's own noise floor
+      was ±5-9% at the time, per D-87 - unmeasurable at the 5-15% scale this change would plausibly
+      have moved things, so asm/spill-count evidence is the basis for this conclusion, stated
+      explicitly rather than dressed up with a noisy benchmark number). `hazmat::kalyna.rs` is
+      unchanged - confirmed via `git diff` showing no delta, plus the existing `const_round_tests`/
+      `fused_round_tests`/`decrypt_fusion_tests` (13/13) and `cargo fmt --all -- --check` passing
+      clean. **This closes the entire Tier C perf/hygiene roadmap** (see the roadmap section
+      below) - T-128/T-134/T-135 shipped real wins, T-136's asymmetry and T-129's gather both ended
+      as investigated-and-explained rather than rewritten, which is a legitimate way for a
+      perf-investigation roadmap to end, not a shortfall against it.
 - [x] **T-130** **Resolved 2026-07-26, see `DECISIONS.md` D-81.** Local `cargo +nightly miri test`
       on `hazmat::kalyna` failing/hanging on Windows, distinct from T-100's already-diagnosed cause
       (T-100 is CI's 30-minute timeout on the slow DSTU-4145 proptest suite; this was a
@@ -1148,8 +1169,11 @@ item they point to is later removed.
       cross-checked against the real `uacrypt` binary first (all 5 variants, both directions each -
       15 identity checks, all matched) before trusting any timing - this doubles as T-133's first
       concrete instance, not a separate effort. **`PERFORMANCE.md`'s CMAC/XTS 10 MiB tables now
-      carry a real UAPKI column**: CMAC - UAPKI still wins by ~1.1-1.9x (T-129's byte-wise-gather
-      gap is exactly what's left uncaptured by T-128). XTS - this project now leads UAPKI by a much
+      carry a real UAPKI column**: CMAC - UAPKI still wins by ~1.1-1.9x (originally attributed to
+      T-129's byte-wise-gather-vs-`BT_xor*` difference; T-129 itself was later investigated and
+      closed 2026-07-27 without a code change, `DECISIONS.md` D-88 - a measured spike showed the
+      gather is already near-optimal or a regression to "fix," so this residual is not the
+      straightforward fixable gap it was originally framed as). XTS - this project now leads UAPKI by a much
       wider margin than any other mode in this file (3.2-15.1x), root-caused by reading
       `dstu7624.c` directly: UAPKI's `encrypt_xts`/`decrypt_xts` call the fully generic `gf2m_mul`
       (three heap-allocated `WordArray`s, full O(m²) modular multiply) to do the tweak's
@@ -3348,9 +3372,9 @@ write that into each step's own session, don't read "advisor was consulted" as a
    fixed-index rewrite, `advisor()`-consulted and plan-mode-approved before implementation.
    `criterion` -53.5 to -64.7% at 1024/65536 B; binary-level gap to outspace closed from ~3.2-3.9x
    to ~1.19-1.25x.
-8. **T-129** - Kalyna word-wide gather in `encipher_round_n`/`fused_inv_round_n` (most invasive;
-   open question is whether whole-`u64` loads fit the existing `SBOX_MDS` table layout or need a
-   new one - resolve that in the T-129-specific `advisor()` pass, not here).
+8. **T-129** - **Investigated and closed 2026-07-27, `DECISIONS.md` D-88.** A measured spike (not
+   just reasoning) showed the word-wide gather is a no-op at `NB=2` (LLVM already does it) and a
+   regression at `NB=4`/`NB=8` (lost inlining / new register spills). No code change shipped.
 
 **Tier D - gated on the user, not to be executed unilaterally:**
 9. **T-137** - investigate and verify the UAPKI XTS `gf2m_mul`-specialization fix locally (against
@@ -3375,22 +3399,21 @@ belongs at the task's own entry.
 
 ### RESUME HERE (state as of 2026-07-27, saved for a memory-clear/new-session handoff)
 
-**Tier A fully done. Tier B fully done (T-136's own deeper root-cause investigation stays open as
-its own task, but the roadmap's narrower ask - measure the asymmetry before T-129 changes it - is
-met). Tier C: T-134 and T-135 done, T-129 remains - the sole item left in this entire roadmap.**
-Prior sessions closed all of Tier A/B (T-130 Miri fix, T-87/T-23/T-35 doc/hygiene re-checks,
-T-138/T-133 CMAC re-measurement, T-136's first asymmetry measurement) and T-134 (Kupyna
-`sub_shift_mix` const-generic-over-`COLUMNS`, `DECISIONS.md` D-85, -29 to -31%/-17 to -19%). This
-session: **T-135** (Strumok `apply_keystream` batched/fixed-index rewrite, `DECISIONS.md` D-86) -
-`advisor()` consulted, plan-mode pass approved, then implemented: `criterion` -53.5 to -64.7% at
-1024/65536 B (no change at 64 B, below the new bulk threshold); binary-level gap to outspace closed
-from ~3.2-3.9x to ~1.19-1.25x. Full verification bar passed (workspace tests, default/`small-
-tables` individually, clippy/fmt, `no_std`/`getrandom` matrix, scoped Miri 4/4 0 UB), plus an
-independent re-run of the 4000-case outspace differential harness (0 mismatches).
-**Next concrete action**: T-129 (Kalyna word-wide gather in `encipher_round_n`/`fused_inv_round_n`)
-- **still needs its own `advisor()` consultation and its own plan-mode pass before any code is
-written**, per the roadmap's own explicit instruction repeated here so it isn't skipped. Its own
-`TASKS.md` entry above flags the open question to resolve in that `advisor()` pass: whether
-whole-`u64` loads fit the existing `SBOX_MDS` table layout or need a new one.
-Tier D (T-137, the UAPKI XTS upstream fix) only on explicit request when reached - investigating/
-verifying locally is fine, opening an issue/PR upstream is not.
+**This entire roadmap (Tiers A-C) is now closed.** Tier A/B closed in prior sessions (T-130 Miri
+fix, T-87/T-23/T-35 doc/hygiene re-checks, T-138/T-133 CMAC re-measurement, T-136's first asymmetry
+measurement - T-136's own deeper root-cause investigation stays open as its own standalone task,
+the roadmap's own narrower ask was already met). Tier C: **T-134** (Kupyna `sub_shift_mix`
+const-generic-over-`COLUMNS`, `DECISIONS.md` D-85, -29 to -31%/-17 to -19%) and **T-135** (Strumok
+`apply_keystream` batched/fixed-index rewrite, `DECISIONS.md` D-86, `criterion` -53.5 to -64.7%,
+binary-level gap to outspace ~3.2-3.9x -> ~1.19-1.25x) both shipped real, measured wins. **T-129**
+(this session) was investigated and closed *without* a code change, `DECISIONS.md` D-88: a
+measured spike (hoisting whole-`u64` column loads, not just reasoning about it) showed the proposed
+"word-wide gather" is a no-op at `NB=2` (LLVM's own optimizer already does the equivalent) and a
+real regression at `NB=4` (lost inlining) and `NB=8` (34 new register spills, ~2x more memory
+traffic than the already-clean baseline) - the same "test the hypothesis via `--emit=asm` before
+planning a rewrite" method `advisor()` established for T-139/D-87 (Strumok's own analogous
+follow-up, also closed without a code change the same day). **Nothing is queued next from this
+roadmap** - T-136's deeper root-cause (why Kalyna decrypt is asymmetrically faster on some variants)
+is the one still-open standalone investigation, not part of this roadmap's own sequencing, and
+Tier D (T-137, the UAPKI XTS upstream fix) remains gated on explicit user request before opening
+anything upstream - investigating/verifying locally is fine, that gate is unchanged.

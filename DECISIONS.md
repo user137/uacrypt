@@ -5828,3 +5828,87 @@ byte-for-byte the same as T-135 left them, confirmed via `grep inline` returning
 existing test suite (`cargo test -p dstu-core --lib strumok --test strumok --all-features`, 10/10)
 plus `cargo fmt --all -- --check` passing clean). Scratch `.s` dumps deleted after inspection, not
 committed.
+
+## D-88: T-129 - Kalyna word-wide gather investigated via a measured spike, not shipped; closes the Tier C perf roadmap
+
+**Premise, from `TASKS.md`'s own T-129 entry**: `encipher_round_n`/`fused_inv_round_n` gather state
+one byte at a time via `state[src_col][row]`, recomputing `src_col` on every one of the `ROWS * NB`
+iterations, versus UAPKI's `p_boxrowcol` table plus `BT_xor128`/`BT_xor256`/`BT_xor512` macros,
+which load/XOR whole 64-bit words. This was the fifth structural difference named comparing
+`encipher_round` against UAPKI's C directly (2026-07-26), left open by T-128's const-generic
+refactor as a "genuinely different, more invasive restructuring" not attempted there.
+
+**`advisor()` consulted before any plan-mode pass, per this project's standing practice for
+`hazmat::kalyna.rs` changes.** Its first and most consequential finding: the premise was already
+partly checked by reading `encipher_round_n::<8>`'s actual `--emit=asm` output before the consult
+(the same discipline established for T-139/D-87 an hour earlier in the same session) - and found
+partly false, mirroring D-87 exactly. The compiled function is 64 single-byte loads at **literal,
+compile-time-folded offsets** (e.g. `movzbl 57(%rcx), %edx`) - `NB` being const already eliminated
+the "`src_col` recomputed every iteration" cost entirely, the same way T-128's own const-generic fix
+did for the runtime-`nb` version. **Zero bounds-check branches** survive (each index is `u8`-
+derived, statically provable within `0..256`). One shared table-base register with fixed `+0/2048/
+…/14336` offsets (`SBOX_MDS`'s 8 row-tables are laid out contiguously, so no per-row address
+recomputation is needed). 8 interleaved XOR-accumulator register chains give the scheduler
+instruction-level parallelism across output columns. This is not a naive byte-wise gather - it is
+already close to what a hand-optimized version would produce.
+
+**`advisor()`'s redirect, mirroring T-139's own lesson explicitly**: don't plan the rewrite, spike
+it - and predicted, before any measurement, that hoisting whole-column-word loads could plausibly
+*regress* `NB=8` specifically (8 live input words + 8 accumulators + temporaries against ~14-16
+GPRs) even if it helped smaller `NB`, and that `NB=2`/`NB=4` (not yet examined, since only the
+`NB=8` monomorphization survives as a standalone symbol) needed checking separately since T-128's
+own per-`nb` deltas were largest at `nb=2` and smallest at `nb=8`.
+
+**The spike, applied and measured, not just reasoned about**: `encipher_round_n` was temporarily
+changed to `let words: [u64; NB] = core::array::from_fn(|c| u64::from_le_bytes(state[c]));` once
+per round, replacing `state[src_col][row]` with `((words[src_col] >> (row * 8)) & 0xff) as u8`.
+Same-source, before/after `--emit=asm` comparison for all three monomorphizations:
+
+- **`NB=2`**: **zero measurable difference.** `encrypt_with_schedule::<2>`'s inlined body (which
+  contains `encipher_round_n::<2>` inline, confirmed no separate symbol exists at this size either
+  before or after) is byte-for-byte identical in instruction count (207 lines, 7 spills, 19 stack
+  references, both before and after). Reading the *baseline* body directly showed why: byte
+  extraction already happens via register-to-register `movzbl %r11b, %r11d`-style moves from an
+  already-loaded 64-bit value, not fresh memory reloads - LLVM's own SROA/mem2reg had already
+  performed the equivalent transformation the spike tried to force by hand.
+- **`NB=8`**: **a measurable regression.** The clean baseline (64 direct single-byte loads, 0 spill
+  stores) became 0 direct-memory byte loads but **34 new spill stores and 71 total stack
+  references** (vs. 0 and 34 respectively in the baseline - roughly double the total memory
+  traffic). Holding 8 live 64-bit column words simultaneously, on top of 8 output accumulators and
+  round-key temporaries, exceeds the available general-purpose register file - exactly the failure
+  mode `advisor()` predicted before the spike was run, not discovered after the fact and
+  rationalized.
+- **`NB=4`**: **a regression in kind.** The spike changed LLVM's own inlining decision:
+  `encipher_round_n::<4>` stopped being inlined into `encrypt_with_schedule::<4>`'s round loop
+  (416 lines, no separate symbol, in the baseline) and became a real, separately-defined function
+  reached via `callq` (76-line caller plus an out-of-line callee, in the spiked build) - introducing
+  real call/return overhead into what is currently a fully-inlined hot loop. Exact magnitude not
+  separately quantified (would need the callee's own body measured on its own), but the direction
+  is unambiguous and consistent with the `NB=8` finding: the extra `[u64; NB]` array construction
+  makes the function look larger/costlier to LLVM's inliner, at exactly the size where the decision
+  was already marginal.
+
+**No code change shipped.** Three monomorphizations, three no-help-or-regression outcomes is a
+decisive result, not an inconclusive one - per the same framing `advisor()` gave for T-139/D-87,
+"the hypothesis was wrong" is the complete and valuable outcome for T-129 too, not a reason to force
+a change that measurably makes the hot path worse at the two block sizes where it does anything at
+all. `hazmat::kalyna.rs` is unchanged from before this investigation - confirmed via `git diff`
+showing no delta (not merely "should be," verified directly), plus `cargo test -p dstu-core --lib
+kalyna --all-features` (13/13, including `const_round_tests`/`fused_round_tests`/
+`decrypt_fusion_tests` for all three block sizes) and `cargo fmt --all -- --check` both passing
+clean after reverting.
+
+**Why `criterion` wasn't used to validate this**: the same session's T-139/D-87 investigation had
+already established this machine's noise floor at ±5-9% between back-to-back runs of *identical*
+code - wider than the 5-15% range a real effect at this level would plausibly move things by. Using
+asm/spill-count evidence instead of a noisy benchmark number, and saying so explicitly, follows
+`advisor()`'s own explicit instruction from that same consult rather than dressing up an
+unreliable delta as a result.
+
+**This closes the entire Tier C perf/hygiene roadmap** (`TASKS.md`'s "RESUME HERE" section,
+2026-07-27): T-128/T-134/T-135 shipped real, measured wins; T-136's asymmetry (first measurement
+done, deeper root cause still open as its own standalone task) and T-129's gather (investigated,
+explained, not rewritten) both ended without further code changes. A perf-investigation roadmap
+ending with two "measured, hypothesis didn't hold" outcomes alongside three real wins is a
+legitimate, complete way for it to close - not a shortfall against what the roadmap set out to
+check.
