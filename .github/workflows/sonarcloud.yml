@@ -1,0 +1,43 @@
+name: sonarcloud
+
+# TASKS.md T-140, DECISIONS.md D-92 - Rust analysis on SonarQube Cloud isn't covered by its
+# zero-config "Automatic Analysis" mode (confirmed by checking specinfo-ua/UAPKI's own workflows,
+# which have no Sonar step at all for their C code - that project relies on Automatic Analysis,
+# which Rust can't use), so this is an explicit CI-based (Scanner-CLI) job, separate from
+# rust.yml's own build/test/clippy/fmt job.
+#
+# Requires a SONAR_TOKEN repository secret (Settings > Secrets and variables > Actions), generated
+# from the SonarQube Cloud project's own "Administration > Analysis Method" page - only exists
+# once the project itself has been created via sonarcloud.io's GitHub OAuth sign-in. Until that
+# secret exists, this workflow will fail at the scan step; it's safe to merge in that state (it
+# doesn't block rust.yml's own required checks) but won't produce a passing run until then.
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sonarcloud:
+    name: SonarQube Cloud (Rust)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # SonarQube Cloud's "New Code" period and blame-based ownership need real git history,
+          # not the default shallow clone.
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      # The analyzer runs its own `cargo clippy` pass by default (sonar.rust.clippy.enabled,
+      # docs.sonarsource.com/sonarqube-cloud/analyzing-source-code/languages/rust) - no separate
+      # report-generation step needed, unlike the external-report-import alternative.
+      - name: SonarQube Cloud Scan
+        uses: SonarSource/sonarqube-scan-action@v7
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

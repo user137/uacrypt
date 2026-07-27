@@ -2691,7 +2691,8 @@ where a genuinely independent oracle actually buys something. Strumok has no har
 no trustworthy runnable oracle exists for it at all (`outspace/dstu8845` is unofficial, unaudited)
 — a harness can't manufacture verification authority that doesn't exist upstream.
 
-- [ ] **T-140** Not started. User-proposed 2026-07-27, directly off watching SonarCloud catch a
+- [ ] **T-140** **CI scaffold prepared 2026-07-27 - blocked on the user's own SonarCloud
+      account/token step, not started until then.** User-proposed 2026-07-27, directly off watching SonarCloud catch a
       real BLOCKER-severity finding on the T-137 UAPKI PR (`specinfo-ua/UAPKI#30`) that neither
       `cargo clippy` nor manual review had surfaced for the analogous Rust code: add SonarQube
       Cloud (SonarCloud) analysis to this project's own GitHub Actions CI, for Rust.
@@ -2722,6 +2723,25 @@ no trustworthy runnable oracle exists for it at all (`outspace/dstu8845` is unof
       in the meantime: `cppcheck` (2.21.0, already installed) for C-style local static analysis
       patterns, and `cargo clippy` itself (already required in CI) as the direct local equivalent
       of what SonarCloud's Rust analysis actually runs under the hood.
+      **Step (3) done ahead of the account existing, 2026-07-27**: `.github/workflows/
+      sonarcloud.yml` (new, separate job from `rust.yml` - installs `dtolnay/rust-toolchain@stable`
+      with `clippy`, full git history via `fetch-depth: 0` for SonarCloud's "New Code"/blame
+      needs, runs `SonarSource/sonarqube-scan-action@v7` - confirmed via web search that
+      `SonarSource/sonarcloud-github-action` is now deprecated in favor of this one, not assumed
+      from an older example) and `sonar-project.properties` at repo root (`sonar.sources`/
+      `sonar.tests` pointing at both crates, `oracles/**`/`target/**` excluded) are both written
+      and committed. **`sonar.projectKey`/`sonar.organization` are explicit placeholders** -
+      confirmed via checking `specinfo-ua/UAPKI`'s own workflows that they have *no* Sonar CI step
+      at all for their C code (they rely on SonarCloud's zero-config "Automatic Analysis" GitHub
+      App mode, which Rust can't use - explains why this project genuinely needs the explicit
+      workflow this task adds, not an assumption). The analyzer runs its own `cargo clippy` pass
+      by default (`sonar.rust.clippy.enabled`) - no separate JSON-report-generation/import step
+      wired in for this first pass, per the docs' own simpler primary path; the
+      `sonar.rust.clippy.reportPaths`/`cargo-sonar` external-report alternative (reusing one of
+      `rust.yml`'s existing 4 clippy invocations instead of a 5th one) is a possible future
+      refinement, not needed to get a first green run. **Untested end-to-end** - can't be, without
+      the account/token existing; will fail at the scan step until `SONAR_TOKEN` is set. Remaining
+      steps are exactly (1)/(2) above, unchanged, both requiring the user directly.
 
 ## Full DSTU 7624 mode-of-operation coverage at `hazmat` (T-88 onward)
 
