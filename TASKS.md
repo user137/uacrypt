@@ -1421,7 +1421,7 @@ item they point to is later removed.
       verified). The remaining ~1.2x gap to outspace stays unexplained at the source-reading level -
       a future pass would need side-by-side GCC-vs-LLVM codegen comparison (register allocation/
       instruction scheduling differences), not another Rust-side hypothesis, if ever chased further.
-- [ ] **T-136** Not started. User-requested 2026-07-26, after T-131/D-78's fresh 10 MiB tables kept
+- [x] **T-136** **Closed 2026-07-27, see `DECISIONS.md` D-95.** User-requested 2026-07-26, after T-131/D-78's fresh 10 MiB tables kept
       surfacing the same unexplained shape: Kalyna-block/XTS/KW's decrypt (or unwrap) direction is
       *not* symmetric with encrypt (or wrap) the way GCM/CMAC/CCM's is - on some variants
       (256-256/256-512, consistently, across all three modes) the reverse direction runs *faster*
@@ -1486,6 +1486,26 @@ item they point to is later removed.
       task's own "performance-curiosity, not gating any release-readiness item" framing; a future
       session should still get an `advisor()` opinion before treating "narrow the arithmetic
       further" as an actionable next step, not just extrapolate from this asm reading alone.
+      **Closing pass, 2026-07-27, see `DECISIONS.md` D-95** (`advisor()` consulted first, per the
+      note above): extended the same spill-count method to `nb=2`/`nb=8` (validated against D-89's
+      own `nb=4` numbers first) - the winning direction has fewer stack references at all three
+      points now, not one, plus a new `nb=8`-specific finding that LLVM simply doesn't inline
+      `encipher_round_n::<8>` (standalone `callq`, zero internal spills) while it fully inlines
+      `fused_inv_round_n::<8>` (a ~450-instruction loop, 151 stack refs) - an inlining-decision
+      asymmetry, not just an index-arithmetic one. **Then ran the task's own predicted cross-check**
+      on the Raspberry Pi "uacipher" rig (aarch64): confirmed the same inlining pattern holds there
+      (so the code shape being compared is genuinely equivalent), then ran the same isolated
+      `cargo bench -p dstu-core --bench kalyna -- block_only` on both machines. **`nb=4` flips
+      winner between x86-64 (decrypt, ~5-12%) and aarch64 (encrypt, ~13-17%)** on code confirmed
+      structurally identical on both platforms - this rules out an algorithmic cause outright and
+      confirms D-89's register-allocation attribution as an **x86-64-specific LLVM codegen
+      artifact**. `nb=2`/`nb=8` keep the same winner on both platforms but at very different
+      magnitudes (e.g. `nb=2`: ~13%->~38%), consistent with the same category of cause scaled
+      differently by each platform's register-file size. **Closed**: the category of cause is now
+      established with real cross-architecture evidence, not just x86-side inference; the finer
+      "why does LLVM's allocator treat the two index expressions differently" question stays
+      unexplained but is explicitly out of scope for what this curiosity task asked. No code
+      changed - `hazmat::kalyna.rs` untouched, `git diff` confirms.
 - [x] **T-137** **Done 2026-07-27 - PR `specinfo-ua/UAPKI#30`, CI fully green (SonarCloud Code
       Analysis + SonarCloud checks both passing), see `DECISIONS.md` D-90/D-91/D-92.**
       Hypothetical/goodwill task, proposed by the user 2026-07-26 directly off T-131/D-78's XTS
@@ -3548,3 +3568,22 @@ roadmap** - T-136's deeper root-cause (why Kalyna decrypt is asymmetrically fast
 is the one still-open standalone investigation, not part of this roadmap's own sequencing, and
 Tier D (T-137, the UAPKI XTS upstream fix) remains gated on explicit user request before opening
 anything upstream - investigating/verifying locally is fine, that gate is unchanged.
+
+### RESUME HERE (state as of 2026-07-27, later same day - saved for a memory-clear/new-session handoff)
+
+Since the note directly above was written: **T-137 is done** (PR `specinfo-ua/UAPKI#30` opened,
+both UAPKI-side CI checks green, D-90/D-91/D-92) - still awaiting upstream maintainer review, out of
+this project's control. **T-140 is done** (SonarCloud+Rust wired up for this repo's own CI, D-93;
+its first two real findings - Cognitive Complexity in `Core::apply_keystream` and `uacrypt::run` -
+fixed and verified with no regression, D-94; reconfirmed on a real push, `8e5a2a8`, all three
+workflows green including a genuinely-passing `cargo miri test` in 2h23m). **T-136 is now also
+closed** (D-95) - the `nb=4` asymmetry was cross-checked on the Raspberry Pi rig and confirmed to be
+an x86-64-specific LLVM codegen artifact (winner flips between x86-64 and aarch64 on structurally
+identical fully-inlined code), not a portable property of the algorithm.
+
+**Nothing is queued next.** Every item this session's roadmap and its two follow-on investigations
+named is either done or explicitly, deliberately gated (T-17 crates.io publish - owner request only;
+Tier D upstream work - same gate). The next session should ask the project owner what to prioritize
+rather than assume a next task - see the open, unstarted, unblocked items list further up this file
+(T-23/T-35 re-checks, or genuinely new-scope items like language bindings/hardware validation, all
+Phase 2+ and none currently in flight).

@@ -6275,3 +6275,88 @@ standing note.
 
 **Full workspace verification after both fixes**: `cargo test --workspace --all-features`,
 `cargo clippy --workspace --all-features -- -D warnings`, `cargo fmt --all -- --check` all clean.
+
+## D-95: T-136 closed - Kalyna's `nb=4` encrypt/decrypt asymmetry confirmed as an x86-64-specific compiler-codegen artifact via a real aarch64 cross-check, not a portable algorithmic property
+
+**Background**: D-89 narrowed `nb=4`'s asymmetry (decrypt beats encrypt by ~14-15%, opposite `nb=2`/
+`nb=8`) to register-allocation pressure (20 vs 14 spill stores, 77 vs 48 total stack references in
+the isolated round-loop body), but from a single data point, with two of its own named follow-ups
+left unattempted: extending the spill count to `nb=2`/`nb=8`, and the cross-architecture check on
+the Raspberry Pi rig (a register-allocation-driven cost should behave differently on aarch64's
+larger register file than a genuinely algorithmic one would). `advisor()` was consulted before this
+pass per D-89's own explicit recommendation, and both follow-ups below are its proposed order, not
+a design decided here.
+
+**Step 1 - spill count extended to `nb=2`/`nb=8`, same isolated-round-loop method as D-89 (validated
+by exact match on the `nb=4` "total stack refs" metric: 77/48, reproduced bit-for-bit before trusting
+the extension)**:
+
+| `NB` | Winner (D-84) | Winner's stack refs | Loser's stack refs |
+|---|---|---|---|
+| 2 | encrypt | 11 | 17 |
+| 4 | decrypt | 48 | 77 |
+| 8 | encrypt | 8 (+0 in the called function) | 151 |
+
+Sign tracks at all three points now, not one: the faster direction always has fewer stack
+references. This is real support for D-89's register-pressure attribution, not just a
+single-point correlation anymore.
+
+**New structural finding at `nb=8`, distinct from D-89's `nb=4` index-arithmetic hypothesis**: LLVM
+does **not** inline `encipher_round_n::<8>` into `encrypt_with_schedule::<8>` - it compiles as a
+standalone function (`callq` from the round loop, confirmed via a real symbol in the `.s` output),
+with **zero** stack spills inside its own body (pure-GPR gather-XOR, ~150 instructions). Meanwhile
+`fused_inv_round_n::<8>` **is** fully inlined into `decrypt_with_schedule::<8>` (no standalone
+symbol), producing a single ~450-instruction loop body with 151 stack references. A non-inlined
+function gets its own independently-scoped register allocation problem, bounded to just that
+function's own live ranges - structurally a very different allocation problem than a monolithic
+inlined loop that must share the allocator's view with the whole calling function. This inlining
+*decision* itself, not just index arithmetic, is a plausible mechanism at this specific size.
+
+**Step 2 - Raspberry Pi "uacipher" cross-check (aarch64, confirmed reachable via `ssh`, repo synced
+per `.claude.local.md`'s documented tar+ssh recipe)**. Confirmed the three confounders advisor
+flagged before trusting the comparison: (1) same `--emit=asm` symbol check on aarch64 shows the
+*identical* inlining pattern - `encipher_round_n::<8>` compiles standalone, `fused_inv_round_n::<8>`
+and both `NB=2`/`NB=4` round functions are fully inlined on both platforms, so the code *shape*
+being compared is the same, not an apples-to-oranges artifact of a different backend's inlining
+heuristic; (2) default feature profile only (`std`, no `small-tables`) on both runs; (3) every ratio
+below is computed **within** its own machine - raw ns are never compared cross-machine (different
+clock, different microarchitecture - that comparison would be meaningless, not a `DECISIONS.md`
+D-34 cross-implementation-claim violation since it's the same code, just stated explicitly so a
+future reader doesn't misread it that way).
+
+`cargo bench -p dstu-core --bench kalyna -- block_only`, same command both machines:
+
+| variant (`NB`) | x86-64 winner / gap | aarch64 (Pi) winner / gap |
+|---|---|---|
+| kalyna_128_128 (2) | encrypt, ~13.1% | encrypt, ~38.2% |
+| kalyna_128_256 (2) | encrypt, ~10.3% | encrypt, ~31.7% |
+| kalyna_256_256 (4) | **decrypt**, ~12.3% | **encrypt**, ~17.4% |
+| kalyna_256_512 (4) | **decrypt**, ~5.1% | **encrypt**, ~13.4% |
+| kalyna_512_512 (8) | encrypt, ~26.6% | encrypt, ~20.3% |
+
+**The `nb=4` result is the decisive one.** Both variants **flip winner** between x86-64 and aarch64,
+on code that is confirmed fully inlined and structurally identical in shape on both platforms. That
+rules out an algorithmic/portable explanation outright - if the cipher's own structure favored one
+direction at this block size, the winner would not flip just from changing the register file/ISA
+backend. This is exactly the "gap disappears or flips -> x86 codegen artifact" outcome advisor named
+as the discriminating result. `nb=2`/`nb=8` keep the *same* winner on both platforms but at
+substantially different magnitudes (13.1%->38.2%, 26.6%->20.3%) - consistent with a
+register-pressure-flavored effect that exists on both ISAs but is scaled differently by each
+platform's register file size (x86-64's 16 GPRs vs aarch64's larger file), though the exact scaling
+mechanism is not derived here.
+
+**Disposition: T-136 closed.** The category of cause is now established with real cross-architecture
+evidence, not just x86-side inference: **x86-64-specific LLVM register-allocation/codegen behavior,
+not a property of the Kalyna algorithm itself.** Per T-136's own text ("performance-curiosity, not
+gating any release-readiness item") and the D-87/D-88 precedent this session already set twice, a
+complete, correctly-scoped investigation that ends in "here is the established cause, no code
+change is warranted" is a full close, not a deferral. What remains genuinely open, and is *not*
+worth reopening this task for, is the finer mechanistic question D-89 already flagged as
+out-of-scope for a curiosity task: the exact instruction-by-instruction reason LLVM's allocator
+treats the forward and inverse round's index arithmetic differently on x86-64 specifically. **No
+code changed** (`git diff` confirms `hazmat::kalyna.rs` untouched) - correct/round-trip behavior on
+every variant and block size was never in question, only which direction happens to run faster.
+
+**Bonus, not scope-creep**: this session's Pi run (fresh sync, build, and a real `cargo bench`
+execution on the rig) partially exercises T-35 (real ARM Linux build/test validation, still open in
+`TASKS.md` under its own separate scope) - noted here for the record, not expanded into.
