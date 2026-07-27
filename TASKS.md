@@ -2691,8 +2691,8 @@ where a genuinely independent oracle actually buys something. Strumok has no har
 no trustworthy runnable oracle exists for it at all (`outspace/dstu8845` is unofficial, unaudited)
 — a harness can't manufacture verification authority that doesn't exist upstream.
 
-- [ ] **T-140** **CI scaffold prepared 2026-07-27 - blocked on the user's own SonarCloud
-      account/token step, not started until then.** User-proposed 2026-07-27, directly off watching SonarCloud catch a
+- [x] **T-140** **Done 2026-07-27 - account/token/properties all wired up, see `DECISIONS.md`
+      D-93.** User-proposed 2026-07-27, directly off watching SonarCloud catch a
       real BLOCKER-severity finding on the T-137 UAPKI PR (`specinfo-ua/UAPKI#30`) that neither
       `cargo clippy` nor manual review had surfaced for the analogous Rust code: add SonarQube
       Cloud (SonarCloud) analysis to this project's own GitHub Actions CI, for Rust.
@@ -2739,9 +2739,20 @@ no trustworthy runnable oracle exists for it at all (`outspace/dstu8845` is unof
       wired in for this first pass, per the docs' own simpler primary path; the
       `sonar.rust.clippy.reportPaths`/`cargo-sonar` external-report alternative (reusing one of
       `rust.yml`'s existing 4 clippy invocations instead of a 5th one) is a possible future
-      refinement, not needed to get a first green run. **Untested end-to-end** - can't be, without
-      the account/token existing; will fail at the scan step until `SONAR_TOKEN` is set. Remaining
-      steps are exactly (1)/(2) above, unchanged, both requiring the user directly.
+      refinement, not needed to get a first green run.
+      **Steps (1)/(2) done 2026-07-27, same day**: user created the SonarCloud org/project via
+      GitHub OAuth and handed the generated token directly in chat (not the recommended
+      `gh secret set`-yourself path this task's own text called for, but already done by the time
+      it happened - the token was never echoed back or logged in any tool output, set via
+      `printf '%s' "$TOKEN" | gh secret set SONAR_TOKEN --repo user137/uacrypt` reading from stdin,
+      not passed as a literal CLI argument, to avoid it showing in a process listing). Confirmed
+      set via `gh secret list` (name/date only, never re-displays the value).
+      `sonar.projectKey=user137_uacrypt`/`sonar.organization=user137` filled in by querying
+      SonarCloud's own API (`api/organizations/search?member=true`, `api/projects/search`) with
+      the now-configured token, rather than guessed from the GitHub-username convention (which
+      happened to match here, but wasn't assumed). **Still genuinely untested end-to-end** - the
+      workflow will run for real on the next push/PR, not verified in this session since that
+      requires a real CI run to observe.
 
 ## Full DSTU 7624 mode-of-operation coverage at `hazmat` (T-88 onward)
 

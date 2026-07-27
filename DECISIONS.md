@@ -6197,3 +6197,39 @@ org-creation step is a hard blocker on the user's own GitHub OAuth action - not 
 agent can perform. `cppcheck` (2.21.0) confirmed already installed locally as a lighter-weight,
 offline pre-check option in the meantime, alongside the `cargo clippy` this project's CI already
 requires.
+
+## D-93: T-140 - SonarCloud account/token wired up same day, project key/org confirmed via API rather than guessed
+
+**Sequence, same session as D-92's scaffold**: the user created the SonarCloud org/project via
+GitHub OAuth (the step D-92 flagged as a hard blocker on the user, unchanged) and pasted the
+generated token directly in chat, rather than setting it themselves via `gh secret set` or the
+GitHub web UI - the path this task's own text had explicitly recommended to avoid exactly this.
+Since it had already happened by the time it was seen, the response was to handle it as carefully
+as possible from that point forward, not to re-litigate the ask: the token was never echoed back
+or printed in any tool output or file, and was set via
+`printf '%s' "$TOKEN" | gh secret set SONAR_TOKEN --repo user137/uacrypt` (reading from stdin) not
+`gh secret set SONAR_TOKEN --body "$TOKEN"` (a literal CLI argument, more likely to surface in a
+process listing or shell history than data piped to a command's stdin). Confirmed set via
+`gh secret list --repo user137/uacrypt` (name and update timestamp only - GitHub's own API design
+never re-displays a secret's value once set, by design, not something this session's own care
+achieved).
+
+**`sonar.projectKey`/`sonar.organization` resolved via SonarCloud's own API, not the GitHub-
+username convention assumed and left as a placeholder in D-92**: `GET
+api/organizations/search?member=true` (using the now-configured token) returned org key `user137`;
+`GET api/projects/search?organization=user137` returned project key `user137_uacrypt`. Both happen
+to match the guessable `<github-username>`/`<username>_<repo>` pattern the SonarCloud OAuth flow
+typically produces, but this was confirmed from the account's own actual state, not assumed from
+that pattern holding - the same "verify, don't guess project-specific properties" standard D-92
+itself already called for.
+
+**Still open, honestly**: the workflow has not been observed running successfully - that requires
+an actual push/PR to trigger `.github/workflows/sonarcloud.yml` for real, which didn't happen
+within this session. First real trigger (next push to `master`, or the next PR) is the actual
+end-to-end confirmation, not yet claimed here.
+
+**A worth-repeating note for future sessions, not just this one**: a secret handed directly in
+chat should be treated as needing rotation regardless of how carefully it's then handled on this
+end - the token traveled through a chat transcript before reaching any tool, which this session's
+own handling can't retroactively undo. Not a code/process finding to fix here, just worth surfacing
+to the user directly rather than silently proceeding as if nothing unusual happened.
