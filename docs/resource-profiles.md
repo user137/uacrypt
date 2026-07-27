@@ -122,6 +122,16 @@ enough to size the trade-off, not a certified regression baseline.
 | Strumok-256 (64 KB, cached) | 610.6 MB/s | 135.9 MB/s | **~4.5x faster** |
 | Strumok-512 (64 KB, cached) | 562.4 MB/s | 139.1 MB/s | **~4.0x faster** |
 
+**Strumok's absolute numbers above predate 2026-07-27's batched/fixed-index `apply_keystream`
+rewrite (`TASKS.md` T-135, `DECISIONS.md` D-86)** — both columns' real throughput is now
+substantially higher (the `fused` column's own `criterion` numbers moved by roughly -53 to -65% in
+time, i.e. ~2.2-2.8x higher MB/s, at message sizes at or above the new 128-byte bulk threshold;
+`small-tables` gets the same batching/indexing win independently of table size, so its own absolute
+number moved too, direction unmeasured here). Not re-measured in this table this pass — the
+**ratio** conclusion below (Strumok's `fused`-vs-`small-tables` gap being much smaller than Kalyna/
+Kupyna's, because only `T`-substitution is swapped) should still roughly hold since both columns
+share the same rewrite, but treat the two absolute MB/s figures above as stale until re-measured.
+
 **Why Strumok's gap is so much smaller than Kalyna/Kupyna's**: Kalyna and Kupyna's *entire* round
 is the S-box+MDS step that the profile swaps out, so the whole cipher slows down by roughly the
 same factor. Strumok's `T`-substitution is only one part of its per-word cost (LFSR feedback,

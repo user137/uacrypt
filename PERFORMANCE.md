@@ -100,10 +100,10 @@ existed).
 
 | | What it is | Optimization posture |
 |---|---|---|
-| **This project** (`dstu_core`) | Rust, `hazmat` layer | Correctness-first MVP: shared S-box/MDS tables (D-13), but no combined/merged tables, no SIMD; Strumok uses a literal 16-word shift register, not a rotating buffer (D-18) |
+| **This project** (`dstu_core`) | Rust, `hazmat` layer | Correctness-first MVP: shared S-box/MDS tables (D-13), but no combined/merged tables, no SIMD; Strumok's original literal 16-word shift register (D-18) was replaced by a ring buffer 2026-07-22 (D-26), and `apply_keystream` gained a batched/fixed-index 128-byte bulk path 2026-07-27 (T-135, D-86) — this table's "Strumok uses a literal shift register" framing is stale and superseded, kept only as the historical record of D-18's original tradeoff |
 | **Oliynykov reference C** (`oracles/kalyna-reference`, `oracles/kupyna-reference`) | The designers' own reference implementation | Optimizes for auditability/clarity, not speed — confirmed by reading the source: `MixColumns` in `kupyna-reference/kupyna.c` computes `GF(2^8)` multiplication via an 8-iteration bit-serial loop (`MultiplyGF`), no precomputed table anywhere |
 | **UAPKI** (`oracles/uapki`, `library/uapkic`) | A real, state-expertise-pedigree PKI library (D-16) | Production-optimized: combined S-box+permutation tables, no correctness/speed tradeoff made in this project's favor |
-| **outspace/dstu8845** | Unofficial Strumok-only implementation (D-15) | Optimized — likely a rotating buffer instead of a full state shift, the exact tradeoff D-18 chose not to make for this project's Strumok |
+| **outspace/dstu8845** | Unofficial Strumok-only implementation (D-15) | Optimized — a rotating buffer plus a batched, fixed-index 128-byte bulk path (`next_stream_full_crypt`); this project matched both (D-26, then T-135/D-86), closing most of the former gap |
 
 Kalyna/Kupyna official test vectors matched Oliynykov's reference and Bouncy Castle already
 (D-13/D-10); UAPKI's own self-test data matched this project's vectors too (D-16). These are
@@ -244,7 +244,11 @@ optimization was checked against:
 | UAPKI (512, Raspberry Pi 5) | 94.98 | 278.59 | 326.71 |
 
 **After D-26: now *faster* than UAPKI's Strumok, ~3.2x slower than outspace** (was ~4-5x slower
-than UAPKI, ~13-15x slower than outspace, before). No naive/reference-grade Strumok implementation
+than UAPKI, ~13-15x slower than outspace, before). **The "~3.2x slower than outspace" figure is
+superseded 2026-07-27 by T-135's batched/fixed-index rewrite (`DECISIONS.md` D-86) — the binary-
+level gap is now ~1.19-1.25x, see the `strumok-crypt` section's "Updated 2026-07-27" block below.
+This table's own in-process 64 B/1024 B/65536 B numbers above were not re-measured this pass, kept
+here as the D-26-era historical record.** No naive/reference-grade Strumok implementation
 exists to compare against for the "correctness-first" side of this story — see `ORACLES.md`, no
 official DSTU 8845 reference implementation is publicly known to exist. **Raspberry Pi rows added
 2026-07-22** — this project's own code is ~1.6-1.7x slower than the same code on the Ryzen dev
@@ -627,7 +631,47 @@ size in the existing 64 B/1 KB/64 KB table above where this project wins. A real
 noise — worth re-checking at intermediate sizes (e.g. 256 KB) in a future pass to see where exactly
 it flips, not done here.
 
-### Kalyna-CMAC (`kalyna-cmac compute`)
+**Updated 2026-07-27 (`TASKS.md` T-135, `DECISIONS.md` D-86)**: `apply_keystream`'s batched/
+fixed-index bulk path re-measured against outspace directly at 10 MiB, `--iterations 50` (this
+project's established 10 MiB convention, matching the 10 MiB re-measurement pass below). Timer
+placement mirrors `uacrypt strumok-crypt`'s own cached-schedule convention exactly (one-time
+`dstu8845_init` inside the timed window, amortized over iterations), so the two numbers are
+directly comparable. Two runs each, Ryzen only (outspace wrapper is scratch-only per the
+"Reproducing" note above, not re-run on the Pi this pass):
+
+| Variant | uacrypt (MB/s) | outspace (MB/s) | Gap |
+|---|---|---|---|
+| Strumok-256 | ~1823-1919 | ~2270-2329 | **~1.19-1.25x** (was ~3.2-3.9x pre-T-135) |
+| Strumok-512 | ~1869-1877 | ~2270-2278 | **~1.21-1.22x** |
+
+`uacrypt`'s own throughput at this message size roughly tripled (was 648.67/636.16 MB/s at the last
+10 MiB measurement, T-128's pass below) — the gap to outspace closes from ~3.2-3.9x down to
+roughly 1.2x, though it does not fully close (D-86 has the reasoning: the FSM's serial dependency
+chain is unchanged and inherently sequential, so some scheduling-level edge for outspace's
+hand-unrolled C likely remains). Correctness cross-checked independently the same session: the
+existing 4000-case `tests/oracle-harness/strumok-differential/diff_against_outspace.c` harness,
+re-run against the rewritten implementation, reported 0 mismatches.
+
+**Full three-way re-measurement, 2026-07-27, same day, on request** (uacrypt/outspace/UAPKI
+together, both message sizes this table already tracks — UAPKI added to the 10 MiB point for the
+first time, closing the gap the earlier T-128-era pass left with only a `uacrypt`-vs-UAPKI column).
+Same three binaries as above and as the original 64 B/1 KB/64 KB table at the top of this section;
+`--iterations 2000` at 64 KB (this table's own established convention), `--iterations 50` at
+10 MiB (the project-wide 10 MiB convention). All cached-schedule, Ryzen only:
+
+| Variant | Size | uacrypt (MB/s) | outspace (MB/s) | UAPKI (MB/s) |
+|---|---|---|---|---|
+| Strumok-256 | 64 KB | **1958.35** | 2372.64 | 708.67 |
+| Strumok-512 | 64 KB | **1870.64** | 2310.24 | 699.94 |
+| Strumok-256 | 10 MiB | **~1870** (avg of the two runs above) | ~2300 (avg) | 628.95 |
+| Strumok-512 | 10 MiB | **~1873** (avg) | ~2274 (avg) | 554.97 |
+
+**`uacrypt` now clearly beats UAPKI at both sizes** (~2.6-2.8x at 64 KB, ~2.9-3.4x at 10 MiB) — a
+reversal from every earlier UAPKI comparison in this section (64 B/1 KB/64 KB: ~1.1-1.9x; the
+1 MiB point: UAPKI briefly ahead ~1.10x). The gap to outspace narrows from ~1.2-1.3x at 64 KB to
+much the same at 10 MiB — consistent, not size-dependent, unlike the old byte-at-a-time
+implementation's behavior. Not re-run on the Pi 5 this pass (all three wrappers here are
+scratch-only, not committed, per this section's own "Reproducing" note).
 
 New command this session (T-121, D-71) — MAC-only, no encryption, fixed 16-byte tag regardless of
 variant. **All 5 variants, 64 B and 1 MiB, Ryzen only:**
@@ -1081,10 +1125,10 @@ the Kalyna block cipher directly (via `ExpandedKey::encrypt_block`) for every da
 benefits from T-128's round-function speedup the same way Kalyna-block/CMAC do, independently of
 T-126's separate tweak-doubling fix; the two are additive, not overlapping causes. Kupyna/Strumok
 move only within measurement noise, exactly as expected — T-128 is a `hazmat::kalyna.rs`-only
-change. **T-134 (Kupyna's own analogous const-generic rewrite) landed 2026-07-27** - see the
-"Regression baseline" section below for its measured before/after numbers; T-135 (Strumok's
-still-open analogous finding) remains not-yet-implemented. CMAC/GCM's own post-T-128 numbers are in
-their own sections above, not repeated here.
+change. **T-134 (Kupyna's own analogous const-generic rewrite) and T-135 (Strumok's batched/fixed-
+index rewrite) both landed 2026-07-27** - see the "Regression baseline" section below for their
+measured before/after numbers. CMAC/GCM's own post-T-128 numbers are in their own sections above,
+not repeated here.
 
 **Decrypt direction added 2026-07-26, same session** (previously this table, like most of this
 file, only measured the forward direction — corrected going forward, see "Methodology"):
@@ -1171,8 +1215,10 @@ sketched-not-scheduled task for closing this):
   `t_function` used to do 8 S-box lookups *then* a full MDS matrix-multiply via
   `apply_matrix`/`gf_mul` (up to 64 `GF(2^8)` multiplications) as a separate step — now the same 8
   precomputed tables, transcribed from outspace directly. The remaining ~3.2x gap to outspace after
-  both fixes is a smaller, unchased residual (some other implementation detail, not root-caused
-  further here).
+  both fixes was root-caused 2026-07-26 and fixed 2026-07-27 (T-135, `DECISIONS.md` D-86): batched,
+  fixed-index 128-byte block generation with the input XOR fused in at `u64` granularity, matching
+  `next_stream_full_crypt`'s own shape — closed the gap to ~1.19-1.25x, not further chased since
+  the remainder is the LFSR/FSM's inherently serial dependency chain.
 - **Kalyna-XTS, T-126, 2026-07-26**: `hazmat::gf2m_wide`'s field-element `multiply` had no fast path
   for the fixed-constant case XTS's tweak-doubling always needs (multiply by the generator `x`) -
   every tweak update paid a full general O(m²) schoolbook multiply for what is mathematically an
@@ -1360,6 +1406,28 @@ machine last ran the save command above — it is **not** a portable, cross-mach
 change). Its value is catching a *relative* regression on the same machine across commits, not
 establishing a portable performance contract. Re-run the save command to refresh the baseline after
 an intentional performance change.
+
+**Updated 2026-07-27 (`TASKS.md` T-135, `DECISIONS.md` D-86)**: `apply_keystream` became a
+batched/fixed-index bulk path over 128-byte blocks (Strumok's own analogue of T-128/T-134's
+unrolling, though via a one-time array rotation rather than const-generic dispatch — see D-86 for
+why), superseding `strumok-optimized-2026-07-22` as the Strumok baseline:
+
+```
+cargo bench -p dstu-core --bench strumok -- --save-baseline strumok-pre-t135-2026-07-27  # captured before the change
+cargo bench -p dstu-core --bench strumok -- --baseline strumok-pre-t135-2026-07-27  # to check
+```
+
+| Benchmark | Change |
+|---|---|
+| Strumok-256 / 64 B | no change (−0.04%, within noise — 64 B never reaches the new 128 B bulk threshold) |
+| Strumok-512 / 64 B | +2.3% (small, real — phase-boundary check overhead with no bulk path to amortize it) |
+| Strumok-256 / 1024 B | **−53.5%** |
+| Strumok-512 / 1024 B | **−53.7%** |
+| Strumok-256 / 65536 B | **−64.7%** |
+| Strumok-512 / 65536 B | **−64.7%** |
+
+Per D-34, this is `criterion`-based internal regression tracking only — the Strumok binary-level
+comparison table below has the independent, cross-implementation re-measurement.
 
 ## Reproducing the C comparisons
 

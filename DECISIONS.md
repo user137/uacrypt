@@ -5615,3 +5615,216 @@ Against UAPKI specifically: Kupyna-256's former ~1.1-1.5x UAPKI lead is now clos
 (briefly ahead at 64 KB); Kupyna-512's gap narrows from ~1.45x to ~1.19-1.20x but doesn't close,
 consistent with T-134's own prediction that Kupyna-512 (already full-width) had the smaller fix to
 gain from.
+
+## D-86: T-135 - Strumok `apply_keystream` batched/fixed-index rewrite, done
+
+**Problem**: `hazmat::strumok.rs`'s `apply_keystream` XORed the keystream byte-at-a-time, with
+`next_step`'s ring-buffer indices (`(head + k) & 15`) recomputed from a runtime `head` on every
+single step - a real, avoidable overhead not present in `oracles/strumok-dstu8845/strumok.c`'s
+`next_stream_full_crypt`, which batch-generates a full 128-byte (16-word) block per call using
+literal state-slot indices and fuses the input XOR into the same pass at `u64` granularity. T-135's
+own `TASKS.md` entry (2026-07-26) identified this as the leading candidate for D-26's still-open
+"remaining ~3.2x gap... a smaller, unchased residual" note.
+
+**`advisor()` consulted before any code was written** (per the roadmap's own repeated instruction),
+followed by a plan-mode pass - both this task's own process requirement, not assumed satisfied by
+an earlier session's general roadmap sequencing call.
+
+**Design chosen, and what was rejected**:
+1. **One-time array rotation (`[u64; 16]::rotate_left`) to normalize `head` to `0`, not a 16-way
+   const-generic dispatch on `head`** (the `hazmat::kalyna`/`kupyna` T-128/T-134 pattern, which
+   would otherwise be the obvious "follow the established pattern" choice). Rejected specifically
+   for code size: 16 fully-unrolled monomorphizations of a 16-step function is a different order of
+   magnitude than T-134's 2 `COLUMNS` instantiations, and this project budgets flash down to 16-64
+   KB STM32 parts (`docs/resource-profiles.md`) and ships a whole `small-tables` feature purely to
+   save 16 KB - code-size discipline outranked pattern-resemblance here. The rotation is cheap in
+   practice: a full 16-step batch is always a net-zero rotation (16 mod 16 == 0), so `head` stays
+   `0` across every subsequent batch within a call and across calls in steady-state streaming use -
+   the rotate fires at most once per `apply_keystream` call, usually never after the first. Note
+   `rotate_left` does make a transient stack copy of secret LFSR state for that one call, the same
+   category as the pre-D-26 `copy_within` this project moved away from - accepted deliberately here
+   (bounded to at most once per call, not once per step, unlike the pre-D-26 cost) rather than
+   treated as free.
+2. **Three-phase `apply_keystream` (drain/bulk/remainder), `block: [u8; 8]` left unwidened.** The
+   bulk path only runs once the existing 8-byte block buffer is empty/aligned; arbitrary chunk
+   sizes and cross-call alignment (the `crypto_stream`/`uacrypt strumok-crypt` streaming use case)
+   still work exactly as before, with no new secret buffer requiring `Zeroize`. Mirrors
+   `dstu8845_crypt`'s own `>=128`-bytes/remainder split.
+3. **The new `next_block` function is derived from *this project's* `strm`+`next_step` call order,
+   not transcribed from the oracle's.** `next_stream_full_crypt` computes its output *after*
+   updating `S[i]`, using the already-advanced `r0`/`r1`; this project's `apply_keystream` always
+   called `strm` (pre-step state) *before* `next_step`. Each of the 16 unrolled steps was derived
+   symbolically from that pair at `head = k` for `k = 0..16`, not adapted from the C by eye - the
+   per-`k` index triples (`prev`/`p11`/`p13`) are spelled out explicitly in `next_block`'s doc
+   table for auditability. Correctness is established by the new differential test (below), not by
+   resemblance to the oracle.
+4. **`chunks_exact(8)`/`from_le_bytes`/`to_le_bytes`, not a pointer cast**, for the 16 input/output
+   words - `&mut [u8]` carries no alignment guarantee in Rust (unlike the oracle's
+   `(uint64_t *)in` cast), so the cast pattern would be UB and a Miri finding. Same "port the
+   calling convention, not just the internals" trap `CLAUDE.md` already records for DSTU 4145's
+   `hash_to_field` (D-25), in a new guise.
+5. No `#[cfg(feature = "small-tables")]` needed on `next_block` itself - it calls whichever
+   `t_function` is already in scope, same as `next_step` does.
+
+**Tests, written before the implementation was trusted** (`hazmat::strumok::tests`, a **unit test
+module inside `strumok.rs` itself**, not `tests/strumok.rs` - an integration test only sees the
+public `Strumok256`/`Strumok512` API, which no longer has the pre-T-135 code path to compare
+against, so private access to `Core`/`strm`/`next_step` was required): a frozen
+`scalar_reference_apply_keystream` (an exact, never-updated copy of the pre-rewrite byte-at-a-time
+algorithm) as the oracle for two proptests (`strumok_256_batched_matches_scalar_reference`,
+`strumok_512_batched_matches_scalar_reference` - random key/IV/data up to 600 bytes, fed both as
+one whole-buffer call and via a randomly cycling sequence of chunk sizes up to 300 bytes, comparing
+against the scalar reference's own whole-buffer output), plus two fixed, deliberately-constructed
+tests: `boundary_lengths_match_scalar_reference` (lengths 127/128/129/135/256/263, straddling the
+new 128-byte threshold) and `mid_word_carry_crosses_bulk_boundary_within_one_call` (a hand-picked
+3-then-258-byte call split so the drain phase's leftover carry lands exactly at the point where the
+*same* second call must enter the bulk path and then fall back to the scalar remainder - the one
+handoff shape a single-shot or call-aligned test can't reach). All four passed on first write
+(expected - coverage for already-written code, not red-green development, per `CLAUDE.md`'s
+"rejection/misuse tests passing immediately" note applied here to a perf-motivated boundary rather
+than a security one). The pre-existing official vectors, `apply_keystream_is_involution` proptest,
+and `chunk_invariance_test!` in `tests/strumok.rs` all still passed unmodified. Full workspace
+suite (`cargo test --workspace --all-features`), default-only and `--features small-tables`
+individually (not just `--all-features`, per D-39's standing lesson), `cargo clippy --workspace
+--all-features -- -D warnings` and `cargo fmt --all -- --check` (both clean after one
+`clippy::unwrap_used` fix - `chunks_exact(8)`'s `try_into().unwrap()` was replaced with an explicit
+`copy_from_slice` into a `[u8; 8]`, since this crate denies `unwrap_used`/`expect_used` crate-wide),
+and the full `no_std`/`getrandom` build matrix (`cargo xtask build`) all passed. Scoped
+`cargo +nightly miri test -p dstu-core --lib strumok` (`MIRIFLAGS=-Zmiri-disable-isolation
+PROPTEST_DISABLE_FAILURE_PERSISTENCE=1 PROPTEST_CASES=8`, T-130/D-81's confirmed-working
+combination): 4/4 passed, 0 UB, 109.98s.
+
+**Independent extra correctness signal, beyond this task's own plan**: re-ran the existing 4000-case
+`tests/oracle-harness/strumok-differential/diff_against_outspace.c` harness (`cargo run --example
+strumok_diff_cases -p dstu-core --release -- 2000 | diff_against_outspace.exe`) against the
+rewritten implementation - **4000 cases checked, 0 mismatches**. This exercises the batched path
+against outspace's own keystream computation directly, not just against this project's own frozen
+scalar reference.
+
+**Measured before/after, `criterion`** (`cargo bench --bench strumok`, fresh
+`strumok-pre-t135-2026-07-27` baseline saved before the first edit - the existing
+`strumok-optimized-2026-07-22` baseline predates this task):
+
+| Benchmark | Change |
+|---|---|
+| Strumok-256 / 64 B | no change (−0.04%, within noise - 64 B never reaches the 128 B bulk threshold) |
+| Strumok-512 / 64 B | +2.3% (small, real regression - the phase-check branches add a little overhead when the bulk path never fires) |
+| Strumok-256 / 1024 B | **−53.5%** |
+| Strumok-512 / 1024 B | **−53.7%** |
+| Strumok-256 / 65536 B | **−64.7%** |
+| Strumok-512 / 65536 B | **−64.7%** |
+
+Per D-34, this is internal regression tracking only. The small 64 B regression is an accepted,
+explicit tradeoff (three phase-boundary checks added to a path that used to be a single loop) for a
+~2.2-2.8x speedup on any message actually large enough to hit the bulk path - not chased further,
+since T-135 exists specifically for the large-message gap to outspace, not the 64 B case.
+
+**Binary-level re-measurement, on this task's own plan (not optional)**: a scratch-only
+`strumok_bench.c` wrapper (not committed, same "one-off C wrapper... not committed" convention
+already documented for Strumok's binary comparisons) was built linking directly against
+`oracles/strumok-dstu8845/strumok.c` (source, not a DLL - unlike the UAPKI comparisons, matching
+`strumok-differential`/`strumok-cross-check`'s existing linkage convention). Its timer placement
+mirrors `uacrypt strumok-crypt`'s own cached-schedule convention exactly (`dstu8845_init` happens
+*after* `t0`, inside the timed window, amortized over `iterations` - matching
+`run_strumok_command`'s `Core::new` placement in `crates/uacrypt/src/lib.rs`, not the stricter
+"exclude all one-time setup" convention `uapki-cmac-bench` uses for a different comparison target)
+so the two numbers are directly comparable. 10 MiB input, `--iterations 50` (this project's
+established 10 MiB re-measurement convention), Ryzen, two runs each to check for noise:
+
+| Variant | uacrypt (MB/s) | outspace (MB/s) | Gap |
+|---|---|---|---|
+| Strumok-256 | ~1823-1919 | ~2270-2329 | **~1.19-1.25x** (was ~3.2-3.9x pre-T-135, ~648.67 MB/s at the last 10 MiB measurement, T-128's pass) |
+| Strumok-512 | ~1869-1877 | ~2270-2278 | **~1.21-1.22x** (was ~636.16 MB/s) |
+
+The gap to outspace closes from ~3.2-3.9x down to roughly 1.2x - most of the T-135 target is
+closed, not fully eliminated. Consistent with the expectation set before implementation: the FSM's
+serial dependency chain (`r1_k = t_function(r0_{k-1})`) is unchanged and inherently sequential, so
+this fix removes indexing/branching/byte-store-reload overhead (confirmed the dominant cost, given
+the ~2.2-2.8x in-process speedup) but does not and cannot address the one structurally serial part
+outspace's own fully-unrolled, compiler-scheduled code likely still has some remaining edge on
+(e.g. instruction-level parallelism the Rust compiler schedules less aggressively across the
+`next_block` macro-expanded steps than a hand-unrolled, hand-scheduled C function might). Not
+investigated further here - T-135's own scope was the batching/indexing overhead specifically, not
+closing the entire residual gap; a future task could dig into the remaining ~1.2x if it's ever
+judged worth chasing.
+
+**Confirmed the win reaches real callers, not just the `--iterations` benchmark path**: the
+`--iterations 50` re-measurement above feeds the whole 10 MiB buffer to `apply_keystream` in one
+call, so it's worth checking the actual single-pass paths chunk large enough to reach the new
+128-byte bulk threshold at all. `uacrypt strumok-crypt`'s real (`iterations <= 1`) path streams
+`--in` to `--out` in `STRUMOK_STREAM_CHUNK_BYTES`-sized pieces (`crates/uacrypt/src/lib.rs:2519`) -
+8 KiB, i.e. 64 full 128-byte blocks per chunk, so the bulk path dominates real CLI usage well
+before the tail. `dstu_core::crypto_stream::encrypt`/`decrypt` (`crypto_stream.rs`) call
+`apply_keystream` once over the entire `Vec<u8>` message, so any message `>= 128` bytes reaches the
+bulk path directly. Neither call site needed changes for this - both already fed `apply_keystream`
+buffers wide enough to benefit.
+
+## D-87: T-139 - investigated why outspace is still ~1.2x ahead post-T-135; hypothesis refuted by reading the actual asm, no code change
+
+**Question, from the user, 2026-07-27**: after T-135/D-86 closed most of the gap to outspace
+(~3.2-3.9x down to ~1.19-1.25x), why is outspace still a bit ahead?
+
+**Initial hypothesis** (source-reading only, not yet verified): `Core::apply_keystream`'s bulk
+loop (`strumok.rs:1024-1036`) round-trips every 128-byte block through memory twice - a pre-loop
+copies `data` into a local `input: [u64; 16]` stack array, `next_block` reads `input[k]`/writes a
+local `out: [u64; 16]`, then a post-loop copies `out` back into `data`. `oracles/strumok-
+dstu8845/strumok.c`'s `next_stream_full_crypt(ctx, in, out)` does one fused unaligned load from
+`in[i]`, XOR, one store to `out[i]`, directly against the caller's buffers - no staging array.
+`next_block` also carried no `#[inline]` hint, unlike the oracle's `static inline`.
+
+**`advisor()` redirected before any plan-mode/rewrite work**: don't plan a rewrite for an untested
+hypothesis - the cheap, decisive experiment is a 2x2 (`#[inline(never)]` vs `#[inline(always)]` on
+`next_block`, `criterion` at 65536 B, the size with the most bulk iterations and least setup
+noise), and if that's ambiguous, read the actual `--emit=asm` output rather than guess further.
+
+**The 2x2 was inconclusive** - not because the experiment was flawed, but because this machine's
+measurement noise floor at the time was far wider than expected. A same-code rerun (no attribute
+change at all, twice in a row) showed ~5-9% swings between separate `cargo bench` invocations -
+wider than `advisor()`'s assumed ±3% band - so `#[inline(never)]`, `#[inline(always)]`, and the
+unannotated default all landed within a few percent of each other, no clear winner or loser
+distinguishable from noise.
+
+**Fell back to reading the generated assembly** (`RUSTFLAGS="--emit=asm" cargo build --release -p
+dstu-core --lib`, then `target/release/deps/dstu_core-<hash>.s`), which settled it decisively:
+- **`next_block` has no separate symbol in the emitted `.s` at all** - grepping for it found only
+  the calling `Core::apply_keystream` symbol (and the `Strumok256`/`Strumok512` thin `jmp` wrappers
+  to it). LLVM inlined it, confirmed by absence, not inferred from behavior.
+- **The `input`/`out` local arrays do not appear as a literal write-then-read-back memory
+  round-trip.** The bulk-loop label's body (`.LBB32_19` in this build) is one long, deeply
+  interleaved sequence of shifts/table-XORs operating on general-purpose registers, with `movq
+  ..., NNN(%rsp)` spills scattered throughout - but those are the register allocator's own spill
+  code for the ~18+ simultaneously-live values (16 state words + `r0`/`r1` + in-flight input/output
+  words), not a semantically distinct "stage to `input`, compute, stage to `out`" sequence. SROA
+  already fused it into the same computation graph the fusion rewrite would have hand-written.
+- **The 128 `T0..T7`/`MUL_ALPHA`/`MUL_ALPHA_INV` table lookups per 128-byte block (8 lookups x 16
+  steps) carry zero bounds-check branches** - each index is derived from a `u8` byte (`(w & 0xff)`,
+  `(w >> 8) & 0xff`, etc.), providing the same array length as the table (`[u64; 256]`), so
+  rustc/LLVM proves the access in-bounds statically and elides the check. The only `cmp`/`jae`
+  found inside the bulk-loop label's own body is the outer `len - pos >= 128` loop-continuation
+  test itself, executed once per 128 bytes, not per lookup. (`panic_bounds_check`/
+  `slice_index_fail` calls do exist elsewhere in the function, but confirmed - by checking their
+  line ranges - to live in the drain/remainder scalar per-byte sections, not the bulk-loop body.)
+
+**Conclusion: the hypothesis was wrong. No fusion rewrite was written.** Both suspected sources of
+overhead (double staging traffic, missed inlining) are already eliminated by LLVM at `-O2`/release
+- writing the fusion by hand would at best reproduce what the compiler already generates, and at
+worst measures as pure noise while being reported as a win, exactly the failure mode `advisor()`
+warned against. Per `advisor()`'s own framing, this is a complete and valuable outcome for T-139,
+not a failed task - the user's question is answered ("it's not the thing I suspected"), and the
+repo doesn't gain unnecessary code churn on already-optimal output.
+
+**What remains unexplained**: the actual ~1.2x residual gap's root cause is still open. The likely
+remaining candidates - GCC vs. rustc/LLVM instruction scheduling/register-allocation differences on
+this specific interleaved-dependency-chain shape, or something in how many registers are actually
+live at once forcing different spill patterns between the two toolchains - would need side-by-side
+GCC-emitted assembly for `next_stream_full_crypt` compared against the `.s` output analyzed here,
+not another source-level Rust hypothesis. Not pursued further this session; flagged as the honest
+open end if this residual is ever judged worth chasing (same posture T-136 already established for
+its own still-open root cause).
+
+**Verification**: no production code changed (the `#[inline(never)]`/`#[inline(always)]`
+attributes used for the 2x2 experiment were both reverted; `next_block`'s signature and body are
+byte-for-byte the same as T-135 left them, confirmed via `grep inline` returning nothing and the
+existing test suite (`cargo test -p dstu-core --lib strumok --test strumok --all-features`, 10/10)
+plus `cargo fmt --all -- --check` passing clean). Scratch `.s` dumps deleted after inspection, not
+committed.

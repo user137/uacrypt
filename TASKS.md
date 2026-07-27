@@ -1308,7 +1308,22 @@ item they point to is later removed.
       section has the full table: `uacrypt`'s real throughput rose +41-47%/+21-29%, cross-validating
       the `criterion` numbers above; UAPKI's former ~1.1-1.5x lead is closed for Kupyna-256
       (~1.0-1.1x now) and narrowed but not closed for Kupyna-512 (~1.19-1.20x, was ~1.45x).
-- [ ] **T-135** Not started. `hazmat::strumok.rs`'s `apply_keystream` (line 923) works word-at-a-
+- [x] **T-135** **Done 2026-07-27, see `DECISIONS.md` D-86.** Batched/fixed-index rewrite landed:
+      a one-time array rotation normalizes `head` to `0` (rejected the T-128/T-134 const-generic-
+      dispatch pattern specifically for code size), a new `next_block` function batch-generates a
+      full 128-byte block with literal indices derived from this project's own `strm`+`next_step`
+      order (not the oracle's), and `apply_keystream` became a three-phase drain/bulk/remainder
+      loop with `block: [u8; 8]` left unwidened. `criterion`: no change at 64 B (below the bulk
+      threshold), **-53.5 to -53.7% at 1024 B, -64.7% at 65536 B**. Binary-level (10 MiB vs.
+      outspace): gap closed from ~3.2-3.9x to **~1.19-1.25x** (not fully eliminated - the FSM's
+      serial dependency chain is unchanged). Correctness: new proptest/boundary/mid-word-carry unit
+      tests inside `hazmat::strumok.rs` (integration tests can't reach the private old-vs-new
+      comparison), full verification bar (workspace tests, default/`small-tables` individually,
+      clippy, fmt, `no_std`/`getrandom` matrix, scoped Miri 4/4 0 UB), plus an independent re-run
+      of the existing 4000-case outspace differential harness - 0 mismatches. `hazmat::strumok.rs`'s
+      original text below is the pre-T-135 description, retained for the historical detail on what
+      changed and why (D-26's ring buffer, the byte-at-a-time gap this task closed):
+      `hazmat::strumok.rs`'s `apply_keystream` (line 923) works word-at-a-
       time then byte-at-a-time, where `oracles/strumok-dstu8845/strumok.c`'s equivalent path
       (`next_stream_full_crypt`, line 815, called from `dstu8845_crypt`'s main loop, line 1090)
       batch-generates and fuses the input XOR into one pass over a full 128-byte (16-word) block -
@@ -1358,6 +1373,30 @@ item they point to is later removed.
       before/after baseline, and note `hazmat::strumok.rs`'s existing `#[cfg(feature =
       "small-tables")]` branch on `t_function` - whatever batching shape is chosen must keep working
       under both resource profiles, not silently assume the default `fused` one.
+- [x] **T-139** **Investigated and closed 2026-07-27, no code change - see `DECISIONS.md` D-87.**
+      User-asked follow-up to T-135/D-86: why outspace is still ~1.2x ahead after T-135. The
+      hypothesis (a double memory round-trip through local `input`/`out: [u64; 16]` stack arrays in
+      `apply_keystream`'s bulk loop, plus `next_block` lacking an `#[inline]` hint unlike the
+      oracle's `static inline`) was **refuted by reading the actual generated assembly**
+      (`RUSTFLAGS="--emit=asm"`), not assumed from source alone, per `advisor()`'s explicit
+      "test the hypothesis before planning the rewrite" redirect: `next_block` has **no separate
+      symbol at all** in the emitted `.s` (fully inlined into `Core::apply_keystream`, confirmed,
+      not guessed), the `input`/`out` arrays do not appear as a literal write-then-read memory
+      round-trip (SROA already promotes them into the same fused, interleaved register/spill
+      computation LLVM builds for the whole unrolled step sequence), and the 128 `T0..T7`/
+      `MUL_ALPHA`/`MUL_ALPHA_INV` table lookups per block carry **zero bounds-check branches** (each
+      index is a `u8`-derived byte, provably in `0..256`, statically elided). The only `cmp`/`jae`
+      inside the bulk-loop label is the outer `len - pos >= 128` loop condition itself, once per
+      128 bytes. **Criterion couldn't resolve this directly** - a same-code, back-to-back rerun
+      showed ~5-9% swings on this machine at the time, wider than the ±3% band `advisor()` expected,
+      so the 2x2 (`#[inline(never)]` vs `#[inline(always)]` vs default) landed inside the noise
+      floor and was inconclusive on its own; the asm reading is what actually settled it. **No
+      fusion rewrite shipped** - per `advisor()`'s own framing, "the hypothesis was wrong" is a
+      complete, valuable outcome here, not a reason to force a change that would measure as noise.
+      `next_block` is unchanged (no stray `#[inline]` attribute left from the 2x2 experiment,
+      verified). The remaining ~1.2x gap to outspace stays unexplained at the source-reading level -
+      a future pass would need side-by-side GCC-vs-LLVM codegen comparison (register allocation/
+      instruction scheduling differences), not another Rust-side hypothesis, if ever chased further.
 - [ ] **T-136** Not started. User-requested 2026-07-26, after T-131/D-78's fresh 10 MiB tables kept
       surfacing the same unexplained shape: Kalyna-block/XTS/KW's decrypt (or unwrap) direction is
       *not* symmetric with encrypt (or wrap) the way GCM/CMAC/CCM's is - on some variants
@@ -3305,8 +3344,10 @@ write that into each step's own session, don't read "advisor was consulted" as a
 6. **T-134** - **Done 2026-07-27, see `DECISIONS.md` D-85.** Kupyna `sub_shift_mix`
    const-generic-over-`COLUMNS`, `advisor()`-consulted and plan-mode-approved before implementation.
    Measured -29 to -31% (Kupyna-256) / -17 to -19% (Kupyna-512), matching the predicted ranges.
-7. **T-135** - Strumok `apply_keystream` batched/fixed-index rewrite (specified directly against
-   `oracles/strumok-dstu8845/strumok.c`'s `next_stream_full_crypt`).
+7. **T-135** - **Done 2026-07-27, see `DECISIONS.md` D-86.** Strumok `apply_keystream` batched/
+   fixed-index rewrite, `advisor()`-consulted and plan-mode-approved before implementation.
+   `criterion` -53.5 to -64.7% at 1024/65536 B; binary-level gap to outspace closed from ~3.2-3.9x
+   to ~1.19-1.25x.
 8. **T-129** - Kalyna word-wide gather in `encipher_round_n`/`fused_inv_round_n` (most invasive;
    open question is whether whole-`u64` loads fit the existing `SBOX_MDS` table layout or need a
    new one - resolve that in the T-129-specific `advisor()` pass, not here).
@@ -3336,19 +3377,20 @@ belongs at the task's own entry.
 
 **Tier A fully done. Tier B fully done (T-136's own deeper root-cause investigation stays open as
 its own task, but the roadmap's narrower ask - measure the asymmetry before T-129 changes it - is
-met). Tier C started: T-134 done, T-135/T-129 remain.** Prior session closed all of Tier A/B (T-130
-Miri fix, T-87/T-23/T-35 doc/hygiene re-checks, T-138/T-133 CMAC re-measurement, T-136's first
-asymmetry measurement) - that work was committed and pushed (`3ad95ed`), so the "also outstanding,
-uncommitted doc work" note that used to be here is stale and has been removed. This session:
-**T-134** (Kupyna `sub_shift_mix` const-generic-over-`COLUMNS`, `DECISIONS.md` D-85) - `advisor()`
-consulted, plan-mode pass approved, then implemented: measured -29 to -31% (Kupyna-256) / -17 to
--19% (Kupyna-512), matching T-134's own predicted ranges. Full verification bar passed (workspace
-tests incl. official vectors, clippy/fmt, full feature matrix incl. `small-tables`, scoped Miri 8/8
-0 UB).
-**Next concrete action**: Tier C's remaining two, in the stated order (T-135, then T-129) - **each
-still needs its own `advisor()` consultation and its own plan-mode pass before any code is
-written**, per the roadmap's own explicit instruction repeated here so it isn't skipped. Continue
-with T-135 (Strumok `apply_keystream` batched/fixed-index rewrite, specified directly against
-`oracles/strumok-dstu8845/strumok.c`'s `next_stream_full_crypt`).
+met). Tier C: T-134 and T-135 done, T-129 remains - the sole item left in this entire roadmap.**
+Prior sessions closed all of Tier A/B (T-130 Miri fix, T-87/T-23/T-35 doc/hygiene re-checks,
+T-138/T-133 CMAC re-measurement, T-136's first asymmetry measurement) and T-134 (Kupyna
+`sub_shift_mix` const-generic-over-`COLUMNS`, `DECISIONS.md` D-85, -29 to -31%/-17 to -19%). This
+session: **T-135** (Strumok `apply_keystream` batched/fixed-index rewrite, `DECISIONS.md` D-86) -
+`advisor()` consulted, plan-mode pass approved, then implemented: `criterion` -53.5 to -64.7% at
+1024/65536 B (no change at 64 B, below the new bulk threshold); binary-level gap to outspace closed
+from ~3.2-3.9x to ~1.19-1.25x. Full verification bar passed (workspace tests, default/`small-
+tables` individually, clippy/fmt, `no_std`/`getrandom` matrix, scoped Miri 4/4 0 UB), plus an
+independent re-run of the 4000-case outspace differential harness (0 mismatches).
+**Next concrete action**: T-129 (Kalyna word-wide gather in `encipher_round_n`/`fused_inv_round_n`)
+- **still needs its own `advisor()` consultation and its own plan-mode pass before any code is
+written**, per the roadmap's own explicit instruction repeated here so it isn't skipped. Its own
+`TASKS.md` entry above flags the open question to resolve in that `advisor()` pass: whether
+whole-`u64` loads fit the existing `SBOX_MDS` table layout or need a new one.
 Tier D (T-137, the UAPKI XTS upstream fix) only on explicit request when reached - investigating/
 verifying locally is fine, opening an issue/PR upstream is not.

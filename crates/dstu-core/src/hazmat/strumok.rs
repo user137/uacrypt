@@ -34,6 +34,14 @@
 //! `next_stream()` uses (there, fully unrolled instead of index-based). No data movement at all,
 //! same output for the same input - see the module's existing test suite, unchanged by this.
 //!
+//! **Switched 2026-07-27 (`TASKS.md` T-135, `DECISIONS.md` D-86) to also batch-generate a full
+//! 128-byte (16-word) block per call** in `Core::apply_keystream`'s bulk phase, fusing the input
+//! XOR into the same pass at `u64` (word) granularity instead of one byte at a time - closing most
+//! of the remaining gap to `next_stream_full_crypt`'s equivalent path left open after D-26. See
+//! `next_block`'s own doc for why this uses a one-time array rotation instead of `next_step`'s
+//! per-step masked `head` indexing, and why not the 16-way const-generic dispatch `hazmat::kalyna`/
+//! `kupyna` use for their own analogous unrolling (`T-128`/`T-134`).
+//!
 //! Only raw keystream generation/XOR is provided here - no key/IV management beyond what
 //! `Init` (Section 3) requires, no higher-level nonce or AEAD construction (that is
 //! `crypto_stream`'s job, see `docs/dstu-crypto-project.md` "Concrete API shape").
@@ -881,6 +889,71 @@ fn strm(s: &[u64; 16], head: usize, r0: u64, r1: u64) -> u64 {
     fsm(s[(head + 15) & 15], r0, r1) ^ s[head]
 }
 
+/// Batched, fixed-index equivalent of 16 back-to-back `strm`+`next_step(init_mode: false)` calls
+/// starting from `head == 0`, fused with the input XOR - `TASKS.md` T-135, `DECISIONS.md` D-86.
+///
+/// **Requires `head == 0` on entry** (the caller rotates `s` once via `[u64; 16]::rotate_left`
+/// before any run of batch calls - see `Core::apply_keystream`'s bulk phase; a full 16-step batch
+/// is always a net-zero rotation, so `head` stays `0` for every subsequent batch in the same run).
+/// Chosen over a 16-way const-generic dispatch on `head` (the `hazmat::kalyna`/`kupyna`
+/// `T-128`/`T-134` pattern) specifically for code size: 16 fully-unrolled monomorphizations of a
+/// 16-step function is a different order of magnitude than those modules' 2-3 `const N`
+/// instantiations, and this project budgets flash down to 16-64 KB STM32 parts (`docs/resource-
+/// profiles.md`) and ships a whole `small-tables` feature to save 16 KB - see D-86 for the full
+/// tradeoff writeup.
+///
+/// Each unrolled step `k` (`0..16`) is mechanically derived from `strm`+`next_step` at
+/// `head = k`, **not** transcribed from `oracles/strumok-dstu8845/strumok.c`'s
+/// `next_stream_full_crypt` - that source computes its output *after* updating `S[i]`, using the
+/// already-advanced `r0`/`r1`; this project's `apply_keystream` calls `strm` (pre-step state)
+/// *before* `next_step`, and the batch below preserves that same evaluation order:
+///
+/// | `k` | reads `s[prev]` at | `p11` (`(k+11)&15`) | `p13` (`(k+13)&15`) |
+/// |---|---|---|---|
+/// | 0..15 | `(k+15)&15` | `(k+11)&15` | `(k+13)&15` |
+///
+/// (the table collapses to that one formula; the `step!` invocations below spell out each `k`'s
+/// three literal indices so they're auditable without re-deriving the modular arithmetic by hand,
+/// the same "kept diffable" rationale the module's table constants use). Correctness is not
+/// asserted from this derivation alone - `tests/strumok.rs`'s `batched_path_matches_scalar_*`
+/// proptest is the actual gate, checked against a kept-unchanged, purely-scalar reference copy of
+/// the pre-T-135 `apply_keystream`.
+fn next_block(s: &mut [u64; 16], r0: &mut u64, r1: &mut u64, input: &[u64; 16]) -> [u64; 16] {
+    let mut out = [0u64; 16];
+
+    macro_rules! step {
+        ($k:expr, $prev:expr, $p11:expr, $p13:expr) => {{
+            let sk = s[$k];
+            out[$k] = input[$k] ^ fsm(s[$prev], *r0, *r1) ^ sk;
+            let new_r1 = t_function(*r0);
+            let new_r0 = r1.wrapping_add(s[$p13]);
+            let feedback = mul_alpha(sk) ^ mul_alpha_inv(s[$p11]) ^ s[$p13];
+            s[$k] = feedback;
+            *r0 = new_r0;
+            *r1 = new_r1;
+        }};
+    }
+
+    step!(0, 15, 11, 13);
+    step!(1, 0, 12, 14);
+    step!(2, 1, 13, 15);
+    step!(3, 2, 14, 0);
+    step!(4, 3, 15, 1);
+    step!(5, 4, 0, 2);
+    step!(6, 5, 1, 3);
+    step!(7, 6, 2, 4);
+    step!(8, 7, 3, 5);
+    step!(9, 8, 4, 6);
+    step!(10, 9, 5, 7);
+    step!(11, 10, 6, 8);
+    step!(12, 11, 7, 9);
+    step!(13, 12, 8, 10);
+    step!(14, 13, 9, 11);
+    step!(15, 14, 10, 12);
+
+    out
+}
+
 /// Shared state machine for both key sizes - only `init_state`'s key-length branch differs.
 ///
 /// `s`/`r0`/`r1` are the LFSR/FSM state, derived directly from the key and IV and never public;
@@ -920,8 +993,50 @@ impl Core {
 
     /// XORs the keystream into `data` in place (applying it to an all-zero buffer yields the raw
     /// keystream, matching `crates/dstu-core/tests/vectors/strumok/keystream-{256,512}.json`).
+    ///
+    /// Three phases (`TASKS.md` T-135, `DECISIONS.md` D-86), mirroring
+    /// `oracles/strumok-dstu8845/strumok.c`'s `dstu8845_crypt` own `>=128`-bytes/remainder split,
+    /// without widening `block`/`block_pos` - so arbitrary chunk sizes and cross-call alignment
+    /// (the `crypto_stream`/`uacrypt strumok-crypt` streaming use case) still work exactly as
+    /// before:
+    /// 1. **Drain** whatever's left in `block` from a previous call, byte-at-a-time, until the
+    ///    buffer is empty or `data` runs out.
+    /// 2. **Bulk**, only once the buffer is empty: rotate `s` so `head == 0` (at most once per
+    ///    call - see `next_block`'s doc), then run `next_block` over each full 128-byte chunk,
+    ///    XOR-ing a whole `u64` word at a time.
+    /// 3. **Remainder**: the original per-byte scalar path for whatever's left (`< 128` bytes),
+    ///    refilling `block`/`block_pos` exactly as before.
     fn apply_keystream(&mut self, data: &mut [u8]) {
-        for byte in data {
+        let len = data.len();
+        let mut pos = 0;
+
+        while pos < len && self.block_pos < 8 {
+            data[pos] ^= self.block[self.block_pos];
+            self.block_pos += 1;
+            pos += 1;
+        }
+
+        if self.block_pos == 8 && len - pos >= 128 {
+            if self.head != 0 {
+                self.s.rotate_left(self.head);
+                self.head = 0;
+            }
+            while len - pos >= 128 {
+                let mut input = [0u64; 16];
+                for (word, chunk) in input.iter_mut().zip(data[pos..pos + 128].chunks_exact(8)) {
+                    let mut bytes = [0u8; 8];
+                    bytes.copy_from_slice(chunk);
+                    *word = u64::from_le_bytes(bytes);
+                }
+                let out = next_block(&mut self.s, &mut self.r0, &mut self.r1, &input);
+                for (chunk, word) in data[pos..pos + 128].chunks_exact_mut(8).zip(out.iter()) {
+                    chunk.copy_from_slice(&word.to_le_bytes());
+                }
+                pos += 128;
+            }
+        }
+
+        while pos < len {
             if self.block_pos == 8 {
                 let z = strm(&self.s, self.head, self.r0, self.r1);
                 self.block = z.to_le_bytes();
@@ -934,8 +1049,9 @@ impl Core {
                 );
                 self.block_pos = 0;
             }
-            *byte ^= self.block[self.block_pos];
+            data[pos] ^= self.block[self.block_pos];
             self.block_pos += 1;
+            pos += 1;
         }
     }
 }
@@ -962,3 +1078,148 @@ macro_rules! strumok_variant {
 
 strumok_variant!(Strumok256, 32);
 strumok_variant!(Strumok512, 64);
+
+/// `TASKS.md` T-135, `DECISIONS.md` D-86: the batched/fixed-index bulk path added to
+/// `Core::apply_keystream` is a scheduling change only, but only a test with private access to
+/// `Core`'s fields can compare it against a frozen copy of the pre-T-135 algorithm (an integration
+/// test in `tests/strumok.rs` only sees the public `Strumok256`/`Strumok512` API, which no longer
+/// has the old code path to compare against) - hence a unit test module here, not there. The
+/// official vectors, `apply_keystream_is_involution`, and `chunk_invariance_test!` all still live
+/// in `tests/strumok.rs` and are unaffected.
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use proptest::prelude::*;
+
+    /// Byte-at-a-time reference, kept exactly as `apply_keystream` was before the T-135 batched
+    /// rewrite - never used outside this test, and deliberately not updated if the production
+    /// three-phase version above ever changes further (that would defeat its purpose as a frozen
+    /// oracle for this one comparison).
+    fn scalar_reference_apply_keystream(core: &mut Core, data: &mut [u8]) {
+        for byte in data {
+            if core.block_pos == 8 {
+                let z = strm(&core.s, core.head, core.r0, core.r1);
+                core.block = z.to_le_bytes();
+                next_step(
+                    &mut core.s,
+                    &mut core.head,
+                    &mut core.r0,
+                    &mut core.r1,
+                    false,
+                );
+                core.block_pos = 0;
+            }
+            *byte ^= core.block[core.block_pos];
+            core.block_pos += 1;
+        }
+    }
+
+    /// Feeds `data` through `apply` via a cycling sequence of `chunk_sizes`-derived chunk lengths
+    /// (clamped to what's left), guaranteeing every byte is consumed regardless of how the sizes
+    /// divide the total - used to fuzz arbitrary call-boundary alignment against `chunk_sizes`
+    /// generated by `proptest`.
+    fn apply_chunked(
+        core: &mut Core,
+        data: &mut [u8],
+        chunk_sizes: &[usize],
+        apply: fn(&mut Core, &mut [u8]),
+    ) {
+        let len = data.len();
+        let mut pos = 0;
+        let mut idx = 0;
+        while pos < len {
+            let want = chunk_sizes[idx % chunk_sizes.len()].max(1);
+            let end = (pos + want).min(len);
+            apply(core, &mut data[pos..end]);
+            pos = end;
+            idx += 1;
+        }
+    }
+
+    macro_rules! batched_matches_scalar_reference_proptest {
+        ($test_name:ident, $key_len:literal) => {
+            proptest! {
+                #[test]
+                fn $test_name(
+                    key_bytes in prop::collection::vec(any::<u8>(), $key_len),
+                    iv_bytes in prop::collection::vec(any::<u8>(), 32),
+                    data in prop::collection::vec(any::<u8>(), 0..600),
+                    chunk_sizes in prop::collection::vec(1usize..300, 1..20),
+                ) {
+                    let mut iv = [0u8; 32];
+                    iv.copy_from_slice(&iv_bytes);
+
+                    let mut new_whole = data.clone();
+                    Core::new(&key_bytes, &iv).apply_keystream(&mut new_whole);
+
+                    let mut new_chunked = data.clone();
+                    apply_chunked(
+                        &mut Core::new(&key_bytes, &iv),
+                        &mut new_chunked,
+                        &chunk_sizes,
+                        Core::apply_keystream,
+                    );
+
+                    let mut old_whole = data.clone();
+                    scalar_reference_apply_keystream(&mut Core::new(&key_bytes, &iv), &mut old_whole);
+
+                    prop_assert_eq!(&new_whole, &old_whole);
+                    prop_assert_eq!(&new_chunked, &old_whole);
+                }
+            }
+        };
+    }
+
+    batched_matches_scalar_reference_proptest!(strumok_256_batched_matches_scalar_reference, 32);
+    batched_matches_scalar_reference_proptest!(strumok_512_batched_matches_scalar_reference, 64);
+
+    /// Fixed lengths straddling the new 128-byte bulk threshold, processed in one shot - the
+    /// `proptest` above already covers this randomly, but a boundary case belongs pinned
+    /// explicitly too (`CLAUDE.md`'s "rejection/misuse" test discipline, applied here to a
+    /// perf-motivated boundary rather than a security one).
+    #[test]
+    fn boundary_lengths_match_scalar_reference() {
+        let key = [0x39u8; 32];
+        let iv = [0x5au8; 32];
+        for &len in &[127usize, 128, 129, 135, 256, 263] {
+            let data = vec![0u8; len];
+
+            let mut new_out = data.clone();
+            Core::new(&key, &iv).apply_keystream(&mut new_out);
+
+            let mut old_out = data.clone();
+            scalar_reference_apply_keystream(&mut Core::new(&key, &iv), &mut old_out);
+
+            assert_eq!(
+                new_out, old_out,
+                "length {len} diverged from scalar reference"
+            );
+        }
+    }
+
+    /// A deliberately constructed (not random) case where a call boundary leaves the block buffer
+    /// mid-word right as the bulk threshold is crossed within the *next* call: the first call (3
+    /// bytes) buffers 5 leftover bytes; the second call (258 bytes) drains those 5, then has
+    /// exactly 253 bytes left - enough to enter the bulk path once (128 bytes) before falling back
+    /// to the scalar remainder for the last 125. Exercises the drain-then-bulk-then-remainder
+    /// handoff within a single `apply_keystream` call, not just across calls.
+    #[test]
+    fn mid_word_carry_crosses_bulk_boundary_within_one_call() {
+        let key = [0x71u8; 64];
+        let iv = [0x2du8; 32];
+        let total = 261;
+        let data = vec![0u8; total];
+
+        let mut new_out = data.clone();
+        {
+            let mut cipher = Core::new(&key, &iv);
+            cipher.apply_keystream(&mut new_out[0..3]);
+            cipher.apply_keystream(&mut new_out[3..total]);
+        }
+
+        let mut old_out = data.clone();
+        scalar_reference_apply_keystream(&mut Core::new(&key, &iv), &mut old_out);
+
+        assert_eq!(new_out, old_out);
+    }
+}
