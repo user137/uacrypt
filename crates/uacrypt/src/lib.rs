@@ -3102,6 +3102,28 @@ fn print_command_help(command: &str) {
 /// `clippy::pedantic` line-count reason as [`dispatch_kalyna_mode`] (`DECISIONS.md` D-71's
 /// precedent, `TASKS.md` T-124); `cmd` is always one of the four literals [`run`]'s own match arm
 /// already narrowed it to. `rest` excludes both the program name and `cmd` itself.
+/// Shared "check `--help` once, then parse-and-run" shape every single-purpose command
+/// (`kupyna-digest`/`strumok-crypt`/`hash`/`keygen`/`encrypt`/`decrypt`) repeated inline in
+/// [`run`] - extracted purely to bring that function's own Cognitive Complexity back under
+/// `SonarCloud`'s threshold (`TASKS.md` T-140, `DECISIONS.md` D-94), the same "split out of `run`
+/// to satisfy a lint on that one function" precedent [`dispatch_kalyna_mode`]/
+/// [`dispatch_sign_command`] already established for `D-71`'s line-count lint. `cmd` is only used
+/// for the help text; `parse`/`run` are each command's own existing `parse_*_args`/
+/// `run_*_command` pair (or a closure over it, for the two `crypto_secretstream` directions that
+/// need a fixed leading `bool`), unchanged.
+fn dispatch_simple<T>(
+    cmd: &str,
+    rest: &[String],
+    parse: impl FnOnce(&[String]) -> Result<T, CliError>,
+    run: impl FnOnce(&T) -> Result<(), CliError>,
+) -> Result<(), CliError> {
+    if rest.iter().any(|a| is_help_flag(a)) {
+        print_command_help(cmd);
+        return Ok(());
+    }
+    run(&parse(rest)?)
+}
+
 fn dispatch_sign_command(cmd: &str, rest: &[String]) -> Result<(), CliError> {
     if rest.iter().any(|a| is_help_flag(a)) {
         print_command_help(cmd);
@@ -3213,48 +3235,28 @@ pub fn run(args: &[String]) -> Result<(), CliError> {
         Some(cmd @ ("kalyna-gcm" | "kalyna-cmac" | "kalyna-gmac" | "kalyna-kw" | "kalyna-xts")) => {
             dispatch_kalyna_mode(cmd, &args[1..])
         }
-        Some("kupyna-digest") => {
-            if args[1..].iter().any(|a| is_help_flag(a)) {
-                print_command_help("kupyna-digest");
-                return Ok(());
-            }
-            run_digest_command(&parse_digest_args(&args[1..])?)
-        }
-        Some("strumok-crypt") => {
-            if args[1..].iter().any(|a| is_help_flag(a)) {
-                print_command_help("strumok-crypt");
-                return Ok(());
-            }
-            run_strumok_command(&parse_strumok_args(&args[1..])?)
-        }
-        Some("hash") => {
-            if args[1..].iter().any(|a| is_help_flag(a)) {
-                print_command_help("hash");
-                return Ok(());
-            }
-            run_hash_command(&parse_hash_args(&args[1..])?)
-        }
+        Some("kupyna-digest") => dispatch_simple(
+            "kupyna-digest",
+            &args[1..],
+            parse_digest_args,
+            run_digest_command,
+        ),
+        Some("strumok-crypt") => dispatch_simple(
+            "strumok-crypt",
+            &args[1..],
+            parse_strumok_args,
+            run_strumok_command,
+        ),
+        Some("hash") => dispatch_simple("hash", &args[1..], parse_hash_args, run_hash_command),
         Some("keygen") => {
-            if args[1..].iter().any(|a| is_help_flag(a)) {
-                print_command_help("keygen");
-                return Ok(());
-            }
-            run_keygen_command(&parse_keygen_args(&args[1..])?)
+            dispatch_simple("keygen", &args[1..], parse_keygen_args, run_keygen_command)
         }
-        Some("encrypt") => {
-            if args[1..].iter().any(|a| is_help_flag(a)) {
-                print_command_help("encrypt");
-                return Ok(());
-            }
-            run_secretstream_command(false, &parse_secretstream_args(&args[1..])?)
-        }
-        Some("decrypt") => {
-            if args[1..].iter().any(|a| is_help_flag(a)) {
-                print_command_help("decrypt");
-                return Ok(());
-            }
-            run_secretstream_command(true, &parse_secretstream_args(&args[1..])?)
-        }
+        Some("encrypt") => dispatch_simple("encrypt", &args[1..], parse_secretstream_args, |a| {
+            run_secretstream_command(false, a)
+        }),
+        Some("decrypt") => dispatch_simple("decrypt", &args[1..], parse_secretstream_args, |a| {
+            run_secretstream_command(true, a)
+        }),
         Some(cmd @ ("sign-keygen" | "sign-pubkey" | "sign" | "verify")) => {
             dispatch_sign_command(cmd, &args[1..])
         }

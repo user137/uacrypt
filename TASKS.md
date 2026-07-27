@@ -2691,8 +2691,8 @@ where a genuinely independent oracle actually buys something. Strumok has no har
 no trustworthy runnable oracle exists for it at all (`outspace/dstu8845` is unofficial, unaudited)
 — a harness can't manufacture verification authority that doesn't exist upstream.
 
-- [x] **T-140** **Done 2026-07-27 - account/token/properties all wired up, see `DECISIONS.md`
-      D-93.** User-proposed 2026-07-27, directly off watching SonarCloud catch a
+- [x] **T-140** **Done 2026-07-27 - account/token/properties wired up (D-93), first two real
+      findings fixed (D-94).** User-proposed 2026-07-27, directly off watching SonarCloud catch a
       real BLOCKER-severity finding on the T-137 UAPKI PR (`specinfo-ua/UAPKI#30`) that neither
       `cargo clippy` nor manual review had surfaced for the analogous Rust code: add SonarQube
       Cloud (SonarCloud) analysis to this project's own GitHub Actions CI, for Rust.
@@ -2750,9 +2750,19 @@ no trustworthy runnable oracle exists for it at all (`outspace/dstu8845` is unof
       `sonar.projectKey=user137_uacrypt`/`sonar.organization=user137` filled in by querying
       SonarCloud's own API (`api/organizations/search?member=true`, `api/projects/search`) with
       the now-configured token, rather than guessed from the GitHub-username convention (which
-      happened to match here, but wasn't assumed). **Still genuinely untested end-to-end** - the
-      workflow will run for real on the next push/PR, not verified in this session since that
-      requires a real CI run to observe.
+      happened to match here, but wasn't assumed).
+      **Actually run end-to-end, not left as "should work in theory"**: the push that added the
+      resolved `projectKey`/`organization` triggered the workflow for real - it failed immediately
+      (`sonar.tests` pointed at `crates/uacrypt/tests`, which doesn't exist - `uacrypt`'s own tests
+      live inline in `src/` as `#[cfg(test)]` modules, unlike `dstu-core`'s real `tests/` dir;
+      assumed the same layout applied to both crates without checking, caught by the actual run).
+      Fixed, pushed again - `success`, confirmed via `gh run list`. Verified it's a genuine
+      analysis, not just "the scanner didn't crash", by querying the API directly:
+      `api/measures/component` returned real numbers (14197 `ncloc`, 0 bugs, 0 vulnerabilities, 2
+      code smells), not zeros/nulls. The user separately rotated `SONAR_TOKEN` afterward (set
+      directly via `gh secret set`, not pasted in chat this time) - re-ran the same workflow run
+      (`gh run rerun`, no new commit needed) to confirm the new token also works, which it did.
+      **The 2 code-smell findings themselves, and their fixes, are their own entry - D-94.**
 
 ## Full DSTU 7624 mode-of-operation coverage at `hazmat` (T-88 onward)
 

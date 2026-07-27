@@ -6233,3 +6233,45 @@ chat should be treated as needing rotation regardless of how carefully it's then
 end - the token traveled through a chat transcript before reaching any tool, which this session's
 own handling can't retroactively undo. Not a code/process finding to fix here, just worth surfacing
 to the user directly rather than silently proceeding as if nothing unusual happened.
+
+## D-94: T-140's first two SonarCloud findings fixed - Cognitive Complexity in `Core::apply_keystream` and `run`
+
+**First real analysis run (D-93) found exactly 2 open issues, both `rust:S3776` (Cognitive
+Complexity), both CRITICAL/CODE_SMELL, no bugs or vulnerabilities**: `hazmat::strumok.rs`'s
+`Core::apply_keystream` (17 vs. 15 allowed) and `uacrypt::run` (the top-level CLI dispatcher,
+same threshold). User confirmed via chat to fix both, citing existing test coverage as the reason
+this is safe - verification below re-confirms that, not just assumes it from the request.
+
+**`apply_keystream` split into `drain`/`bulk`/`remainder`, one private method per phase** (the
+same three phases T-135/D-86 already named and documented) - `apply_keystream` itself is now three
+sequential calls, each helper taking over exactly the loop it used to contain. Pure code
+organization, no math/behavior change. **Verified not just correct but not a performance
+regression either**, given T-135's whole point was eliminating overhead in this exact function:
+- `cargo test -p dstu-core --lib strumok --test strumok --all-features`: all 10 tests pass
+  (T-135's differential/boundary/chunk-invariance/involution/vector suite, unchanged).
+- `RUSTFLAGS="--emit=asm" cargo build --release -p dstu-core --lib`: no separate `drain`/`bulk`/
+  `remainder` symbols exist in the output - all three fully inlined into `apply_keystream`, the
+  same single-caller inlining `next_block` already got (D-87). Confirmed by absence, not assumed.
+- `cargo bench --bench strumok -- --baseline strumok-pre-t135-2026-07-27`: -63.3% at 65536 B,
+  matching T-135's own recorded -64.7% (small variance is ordinary run-to-run noise, not a
+  regression from the split) - the win is fully retained.
+
+**`run` split via a new `dispatch_simple` helper**, applied to the 6 arms
+(`kupyna-digest`/`strumok-crypt`/`hash`/`keygen`/`encrypt`/`decrypt`) that all repeated the
+identical "check `--help` once, then parse-and-run" shape inline. This is the same "extract a
+dispatch helper purely to bring `run`'s own Cognitive/line-count complexity down" precedent
+`dispatch_kalyna_mode`/`dispatch_sign_command` already established for D-71 - not a new pattern,
+extending an existing one to the arms it hadn't reached yet. `kalyna-block`/`kalyna-ccm` (which
+each have their own nested `encrypt|decrypt` sub-match, a genuinely different shape) were left
+inline rather than forced into the same helper. Verified: `cargo test -p uacrypt` - 110/110 passed
+unchanged (the existing CLI test suite already exercises every command's help-flag and dispatch
+path, so this was real coverage, not asserted from the user's own confidence alone).
+
+**Process note**: both fixes hit the identical `clippy::doc_markdown` false-positive on the
+capitalized word `SonarCloud` inside a doc comment (`CLAUDE.md`'s own recorded lesson from the
+`crypto_secretstream`/`hazmat::strumok` session) - caught and fixed immediately by running clippy
+right after writing each doc comment, not deferred to a batch check at the end, per that same
+standing note.
+
+**Full workspace verification after both fixes**: `cargo test --workspace --all-features`,
+`cargo clippy --workspace --all-features -- -D warnings`, `cargo fmt --all -- --check` all clean.

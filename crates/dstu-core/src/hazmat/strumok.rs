@@ -998,45 +998,59 @@ impl Core {
     /// `oracles/strumok-dstu8845/strumok.c`'s `dstu8845_crypt` own `>=128`-bytes/remainder split,
     /// without widening `block`/`block_pos` - so arbitrary chunk sizes and cross-call alignment
     /// (the `crypto_stream`/`uacrypt strumok-crypt` streaming use case) still work exactly as
-    /// before:
-    /// 1. **Drain** whatever's left in `block` from a previous call, byte-at-a-time, until the
-    ///    buffer is empty or `data` runs out.
-    /// 2. **Bulk**, only once the buffer is empty: rotate `s` so `head == 0` (at most once per
-    ///    call - see `next_block`'s doc), then run `next_block` over each full 128-byte chunk,
-    ///    XOR-ing a whole `u64` word at a time.
-    /// 3. **Remainder**: the original per-byte scalar path for whatever's left (`< 128` bytes),
-    ///    refilling `block`/`block_pos` exactly as before.
+    /// before. Split into one method per phase (`DECISIONS.md` D-94) purely to bring each one's
+    /// own Cognitive Complexity under `SonarCloud`'s threshold - same three phases, same math, not
+    /// a behavior change; `drain`/`bulk`/`remainder` are single-caller private methods, expected
+    /// (and verified, D-94) to still inline into one function the same way the un-split version
+    /// did.
     fn apply_keystream(&mut self, data: &mut [u8]) {
-        let len = data.len();
-        let mut pos = 0;
+        let pos = self.drain(data, 0);
+        let pos = self.bulk(data, pos);
+        self.remainder(data, pos);
+    }
 
-        while pos < len && self.block_pos < 8 {
+    /// Phase 1: whatever's left in `block` from a previous call, byte-at-a-time, until the buffer
+    /// is empty or `data` runs out.
+    fn drain(&mut self, data: &mut [u8], mut pos: usize) -> usize {
+        while pos < data.len() && self.block_pos < 8 {
             data[pos] ^= self.block[self.block_pos];
             self.block_pos += 1;
             pos += 1;
         }
+        pos
+    }
 
-        if self.block_pos == 8 && len - pos >= 128 {
-            if self.head != 0 {
-                self.s.rotate_left(self.head);
-                self.head = 0;
-            }
-            while len - pos >= 128 {
-                let mut input = [0u64; 16];
-                for (word, chunk) in input.iter_mut().zip(data[pos..pos + 128].chunks_exact(8)) {
-                    let mut bytes = [0u8; 8];
-                    bytes.copy_from_slice(chunk);
-                    *word = u64::from_le_bytes(bytes);
-                }
-                let out = next_block(&mut self.s, &mut self.r0, &mut self.r1, &input);
-                for (chunk, word) in data[pos..pos + 128].chunks_exact_mut(8).zip(out.iter()) {
-                    chunk.copy_from_slice(&word.to_le_bytes());
-                }
-                pos += 128;
-            }
+    /// Phase 2, only once the block buffer is empty: rotate `s` so `head == 0` (at most once per
+    /// call - see `next_block`'s doc), then run `next_block` over each full 128-byte chunk,
+    /// XOR-ing a whole `u64` word at a time.
+    fn bulk(&mut self, data: &mut [u8], mut pos: usize) -> usize {
+        if self.block_pos != 8 || data.len() - pos < 128 {
+            return pos;
         }
+        if self.head != 0 {
+            self.s.rotate_left(self.head);
+            self.head = 0;
+        }
+        while data.len() - pos >= 128 {
+            let mut input = [0u64; 16];
+            for (word, chunk) in input.iter_mut().zip(data[pos..pos + 128].chunks_exact(8)) {
+                let mut bytes = [0u8; 8];
+                bytes.copy_from_slice(chunk);
+                *word = u64::from_le_bytes(bytes);
+            }
+            let out = next_block(&mut self.s, &mut self.r0, &mut self.r1, &input);
+            for (chunk, word) in data[pos..pos + 128].chunks_exact_mut(8).zip(out.iter()) {
+                chunk.copy_from_slice(&word.to_le_bytes());
+            }
+            pos += 128;
+        }
+        pos
+    }
 
-        while pos < len {
+    /// Phase 3: the original per-byte scalar path for whatever's left (`< 128` bytes), refilling
+    /// `block`/`block_pos` exactly as before.
+    fn remainder(&mut self, data: &mut [u8], mut pos: usize) {
+        while pos < data.len() {
             if self.block_pos == 8 {
                 let z = strm(&self.s, self.head, self.r0, self.r1);
                 self.block = z.to_le_bytes();
