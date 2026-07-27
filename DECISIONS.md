@@ -5912,3 +5912,64 @@ explained, not rewritten) both ended without further code changes. A perf-invest
 ending with two "measured, hypothesis didn't hold" outcomes alongside three real wins is a
 legitimate, complete way for it to close - not a shortfall against what the roadmap set out to
 check.
+
+## D-89: T-136 deeper pass - Kalyna's `nb=4` encrypt/decrypt asymmetry narrowed to register-allocation pressure, not table/branch-predictor effects; root cause still not fully mechanistic
+
+**Background**: `DECISIONS.md` D-84 (2026-07-26) confirmed T-136's asymmetry - decrypt beats
+encrypt by ~14-15% at `nb=4` specifically (256-256/256-512), the opposite direction from `nb=2`
+(~11-13% encrypt-favors) and `nb=8` (~36% encrypt-favors) - already shows up at the isolated
+round-function level (`ExpandedKey::encrypt_block`/`decrypt_block`, cached schedule), ruling out a
+mode-of-operation-level cause. The remaining candidates the task itself named: `SBOX_MDS`/
+`SBOX_MDS_DEC` cache-line behavior, compiler codegen/register-allocation differences, or branch-
+predictor/instruction-cache effects.
+
+**This pass, same session as T-129/D-88, same method**: read `--emit=asm` output for
+`encrypt_with_schedule::<4>` and `decrypt_with_schedule::<4>` directly (both fully inline their
+respective round function at `NB=4` - no standalone `encipher_round_n`/`fused_inv_round_n` symbol
+exists at this size, confirmed by grep). Isolated each function's repeated round-loop body (the
+code between the loop label and its own back-edge `jne`), excluding `decrypt_with_schedule`'s extra
+one-time boundary passes (`apply_inverse_matrix`/`inv_shift_rows`/`inv_sub_bytes` - real, structural
+extra work decrypt does that encrypt's simpler whitening doesn't need, D-30's own equivalent-
+inverse-cipher restructuring, not a mystery) so the comparison is round-loop-to-round-loop, not
+whole-function-to-whole-function.
+
+**Two of the three candidates are directly ruled out, not just deprioritized**:
+- **Branch predictor**: neither loop body contains a single conditional branch - both are
+  straight-line code between the loop's own back-edge jump (same shape T-129/D-88 already found
+  for `encipher_round_n::<8>` in isolation - `NB` being const-generic eliminates all the index
+  arithmetic that would otherwise need branches).
+- **Table/cache-line behavior**: both loops index the same shape of table (`SBOX_MDS`/
+  `SBOX_MDS_DEC`, 8 contiguous 256-entry `[u64; 256]` rows, one shared `leaq`-loaded base register
+  reused via fixed `+0/2048/…/14336`-style offsets) - no structural difference in how either table
+  is accessed.
+
+**Points at register-allocation pressure specifically, measured, not inferred**: isolating just the
+round-loop body at `NB=4`, encrypt's loop has **20 spill stores and 77 total stack references**;
+decrypt's has **14 spill stores and 48 total stack references** - roughly 40% more spill traffic
+for encrypt despite both loops doing the same count of gather-XOR operations per round (28 XOR/pack
+instructions each, confirmed matching). This correlates with, and is a plausible cause of, the
+measured ~14-15% timing gap - more spill/reload traffic per round directly costs cycles.
+
+**Not fully mechanistically explained.** *Why* LLVM's register allocator produces more spill-
+forcing live ranges for the forward round's `(out_col + NB - shift) & nb_mask` index arithmetic
+than the inverse round's `(out_col + shift) & nb_mask` - despite both being equally simple modular
+arithmetic over the same constant `NB=4` - isn't derived here. Pinning that down would need an
+instruction-by-instruction diff of the two loop bodies (which register holds which partial sum
+across which range of instructions), not attempted this pass. Also not run: the task's own
+predicted cross-check (whether the effect moves or disappears on the Raspberry Pi's different
+microarchitecture - a register-allocation-driven cost is intuitively less portable across
+architectures than a genuinely algorithmic one, making this a real, checkable discriminator not yet
+exercised).
+
+**Process note**: `advisor()` returned "temporarily overloaded" when consulted for this pass, so
+this stayed pure investigation (no plan-mode gate needed, since no code was written or considered -
+the same posture T-136's own task text already sets, "performance-curiosity, not gating any
+release-readiness item"). A future session picking this up further should still get an `advisor()`
+opinion before treating "diff the two loop bodies instruction-by-instruction" as an actionable next
+step, rather than extrapolating a fix from this asm reading alone - this pass narrows the
+*category* of cause (compiler codegen/register allocation, not algorithm or hardware-branch-
+prediction), it does not yet identify a *specific, actionable* fix, and per D-87/D-88's own lesson
+this session, an unmeasured intuition about what would help register allocation is exactly the kind
+of thing that needs a spike-and-measure check, not assumption, before any code is written.
+
+**No code changed.** `hazmat::kalyna.rs` untouched (confirmed via `git diff`, no delta).

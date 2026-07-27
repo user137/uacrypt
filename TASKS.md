@@ -1233,7 +1233,7 @@ item they point to is later removed.
       `small-tables` - the profile split only swaps which table data is linked in, not any struct
       layout or working-set size, so a single RAM/stack table applies to both profiles (only the
       pre-existing flash/const-table row actually varies by profile).
-- [ ] **T-133** Not started. User-proposed additional verification layer, 2026-07-26: after a
+- [x] **T-133** **Done 2026-07-26, see `DECISIONS.md` D-83.** User-proposed additional verification layer, 2026-07-26: after a
       performance run, byte-for-byte-compare the actual ciphertext/tag files this project's
       `uacrypt` produced against UAPKI's own output for the same key/nonce-or-tweak/input, in every
       mode where both sides are deterministic given identical inputs - a stronger check than "both
@@ -1457,8 +1457,35 @@ item they point to is later removed.
       at both `nb=2` (~11-13%) and `nb=8` (~36%). This rules out a mode-of-operation-level cause
       directly (confirms it's in `encipher_round_n`/`fused_inv_round_n` themselves or their `nb=4`
       codegen) - but the actual *why* (table cache-line behavior, compiler codegen, branch
-      predictor) remains open, per this task's own remaining candidates below. Still not started
-      on the deeper investigation.
+      predictor) remained open at that point, per this task's own remaining candidates.
+      **Deeper root-cause pass, 2026-07-27, see `DECISIONS.md` D-89** (same session as T-129/D-88,
+      same `--emit=asm` method): read `encrypt_with_schedule::<4>`'s and `decrypt_with_schedule::
+      <4>`'s inlined round-loop bodies directly (both fully inline at `NB=4` - no standalone
+      symbols exist for either round function at this size) and isolated just the repeated loop
+      body (excluding the one-time boundary passes `decrypt_with_schedule` also runs -
+      `apply_inverse_matrix`/`inv_shift_rows`/`inv_sub_bytes` - which exist because decrypt's own
+      whitening rounds can't reuse the fused-gather trick, D-30). **Rules out branch predictor and
+      table cache-line behavior directly - neither loop contains a single conditional branch**
+      (both are straight-line code between the loop's own back-edge jump), and both index the same
+      shape of table (`SBOX_MDS`/`SBOX_MDS_DEC`, 8 contiguous 256-entry `[u64]` rows, one shared
+      base register). **Points at register-allocation pressure specifically**: at `NB=4`, encrypt's
+      isolated round-loop body has **20 spill stores and 77 total stack references**; decrypt's has
+      **14 spill stores and 48 total stack references** - encrypt needs real to real ~40% more
+      register-allocator spill traffic than decrypt for structurally symmetric work (both do the
+      same count of gather-XOR operations per round, confirmed via matching XOR/pack instruction
+      counts). This is a plausible, but not yet fully mechanistically explained, root cause: *why*
+      LLVM's register allocator schedules the forward round's `(out_col + NB - shift) & nb_mask`
+      arithmetic into more live, spill-forcing ranges than the inverse round's `(out_col + shift) &
+      nb_mask` isn't itself derived here - would need an instruction-by-instruction diff of the two
+      loop bodies to pin down precisely, not attempted this pass. **Still open**: the task's own
+      predicted cross-check (does this move or disappear on the Raspberry Pi's different
+      microarchitecture, since register-allocation-driven effects are less architecture-portable
+      than an algorithmic one) was not run this session - flagged for whoever next has Pi access
+      alongside this task. No code change made or considered - `advisor()` was unavailable this
+      session ("temporarily overloaded") so this stayed a pure investigation, consistent with the
+      task's own "performance-curiosity, not gating any release-readiness item" framing; a future
+      session should still get an `advisor()` opinion before treating "narrow the arithmetic
+      further" as an actionable next step, not just extrapolate from this asm reading alone.
 - [ ] **T-137** Not started. Hypothetical/goodwill task, proposed by the user 2026-07-26 directly
       off T-131/D-78's XTS finding ("XTS: цей проєкт випереджає UAPKI у 3.2-15.1x") - since UAPKI is
       a real dependency of this project's own verification story (an oracle, `ORACLES.md`), fixing
