@@ -1486,34 +1486,65 @@ item they point to is later removed.
       task's own "performance-curiosity, not gating any release-readiness item" framing; a future
       session should still get an `advisor()` opinion before treating "narrow the arithmetic
       further" as an actionable next step, not just extrapolate from this asm reading alone.
-- [ ] **T-137** Not started. Hypothetical/goodwill task, proposed by the user 2026-07-26 directly
-      off T-131/D-78's XTS finding ("XTS: цей проєкт випереджає UAPKI у 3.2-15.1x") - since UAPKI is
-      a real dependency of this project's own verification story (an oracle, `ORACLES.md`), fixing
-      the root cause found here and sending it back upstream as a small, welcome contribution ("as
-      a thank-you to them," the user's framing) rather than just quietly benefiting from having
-      found it. **The concrete fix, if pursued**: `oracles/uapki/library/uapkic/src/dstu7624.c`'s
-      `encrypt_xts`/`decrypt_xts` (lines 3003-3067/3069 onward) call the fully generic `gf2m_mul`
-      (lines 2963-3001, three heap-allocated `WordArray`s, full O(m²) modular multiply) to compute
-      the XTS tweak's "multiply by the fixed generator" step every block - mathematically just an
-      O(m) shift-plus-conditional-XOR-reduction (exactly what this project's own `Gf2m*::double()`,
-      T-126/D-76, already does correctly and fast). A specialized `gf2m_mul_by_generator`-style
-      function (or equivalent inline fast path) in their own `dstu7624.c`, used only by
-      `encrypt_xts`/`decrypt_xts`'s tweak update (not touching `gf2m_mul`'s general path, which
-      GCM/GMAC's own field multiply genuinely needs), would close this without touching UAPKI's
-      correctness-relevant code at all - a pure, low-risk optimization PR, not a behavior change.
-      **Explicitly a hypothetical/exploratory task, not authorized to execute yet**: this project's
-      own `CLAUDE.md`/session norms require explicit confirmation before any action visible to
-      others or affecting a shared/external system (opening an issue or PR on someone else's
-      GitHub repo squarely qualifies) - this task is to work out *whether* the fix is real,
-      draft it, and verify it against UAPKI's own test vectors/self-test locally first, then check
-      back with the user before actually opening anything on `specinfo-ua/UAPKI`. **Prerequisite
-      work before any PR could be drafted**: read UAPKI's `CONTRIBUTING`/license terms and PR
-      conventions (if any exist in the repo), confirm the fix doesn't change `encrypt_xts`/
-      `decrypt_xts`'s output for any existing UAPKI-side test vector or self-test
-      (`dstu7624_xts_self_test`, `dstu7624.c:5171`), and confirm it doesn't change the two
-      allocation-per-block-avoiding functions' behavior for GCM/GMAC's own `gf2m_mul` call sites
-      (they must keep using the general path - do not accidentally narrow `gf2m_mul` itself, add a
-      new sibling function instead).
+- [x] **T-137** **Done 2026-07-27 - PR `specinfo-ua/UAPKI#30`, CI fully green (SonarCloud Code
+      Analysis + SonarCloud checks both passing), see `DECISIONS.md` D-90/D-91/D-92.**
+      Hypothetical/goodwill task, proposed by the user 2026-07-26 directly off T-131/D-78's XTS
+      finding ("XTS: цей проєкт випереджає UAPKI у 3.2-15.1x") - since UAPKI is a real dependency of
+      this project's own verification story (an oracle, `ORACLES.md`), fixing root causes found
+      here and sending them back upstream as a small, welcome contribution ("as a thank-you to
+      them," the user's framing) rather than just quietly benefiting from having found them.
+      **Fix 1 - Kalyna XTS's tweak-doubling** (the original finding): `oracles/uapki/library/
+      uapkic/src/dstu7624.c`'s `encrypt_xts`/`decrypt_xts` call the fully generic `gf2m_mul` (3
+      heap-allocated `WordArray`s, full O(m²) modular multiply) every block to multiply the tweak
+      by the fixed generator `2` - mathematically just an O(m) shift-plus-conditional-XOR-
+      reduction, the identical technique and identical field/reduction-polynomial constants already
+      shipped in `dstu-core`'s own `hazmat::gf2m_wide.rs` `Gf2m128/256/512::double()` (cross-checked:
+      XTS's own `f[]` triples in `dstu7624_init_xts` are byte-identical to `dstu7624_init_gmac`'s).
+      Added a new sibling function `gf2m_double(ctx, block_len, arg, out)` right after `gf2m_mul` in
+      the same file - does not touch `gf2m_mul` itself or any GCM/GMAC call site, only the 5 XTS
+      call sites that multiplied by the fixed `two` constant.
+      **Fix 2 - Strumok's byte-at-a-time consumption, user-requested 2026-07-27 same session,
+      extending this task's scope**: `oracles/uapki/library/uapkic/src/dstu8845.c`'s
+      `dstu8845_crypt` already batch-generates a full 128-byte gamma block via `next_gamma()`, but
+      still consumed it one byte at a time (`gamma[ctx->gamma_cntr++]`, a bounds check every byte)
+      - the same class of gap `dstu-core`'s own `hazmat::strumok.rs` `apply_keystream` had before
+      T-135's batched/fixed-index rewrite. Restructured into the same drain/bulk/remainder shape
+      T-135 established: drain to an 8-byte boundary byte-at-a-time, then XOR whole `uint64_t`
+      words directly against `ctx->gamma[]` (a real `uint64_t[16]` struct field - no alignment
+      concern) while a full aligned word remains in the current 128-byte buffer, remainder
+      byte-at-a-time. Does not touch `next_gamma`, key schedule, or IV setup.
+      **Verification, both fixes, done locally** (compiled with gcc/MinGW, whole `uapkic/src/*.c`
+      tree linked directly - no CMake needed, `rc-version.h.in` is missing from this partial
+      vendored clone and blocks the CMake path):
+      - `dstu7624_self_test()` (covers ECB/CBC/CFB/OFB/CTR/CMAC/KW/CCM/GCM/GMAC/XTS, including
+        `dstu7624_xts_self_test`'s 10 official fixed vectors) and `dstu8845_self_test()` (8 fixed
+        Strumok vectors) both return `RET_OK` with both fixes applied together.
+      - **Each fix's self-test-catches-a-real-bug property confirmed directly, not assumed**: a
+        deliberately wrong constant in `gf2m_double`'s reduction step made `dstu7624_self_test()`
+        fail (return 33, not 0); a deliberately wrong word index in the Strumok bulk loop made
+        `dstu8845_self_test()` fail the same way - both reverted immediately after confirming.
+      - **Strumok fix additionally cross-checked against outspace directly** (`dstu8845_crypt`
+        renamed via `-D` compile flags to link both implementations in one binary, avoiding a
+        symbol clash) over 16 one-shot lengths straddling 128 (1/7/8/9/63/64/65/127/128/129/135/
+        200/256/260/384/500) x 2 key sizes, plus 2 multi-call chunk-split cases crossing the
+        128-byte gamma-regeneration boundary mid-call and mid-drain - all matched byte-for-byte
+        (one initial "mismatch" traced to a hand-typed arithmetic error in the test harness itself,
+        not the fix - confirmed by isolating against a frozen copy of the original byte-at-a-time
+        algorithm, corrected, re-ran clean).
+      - `dstu7624_xts_self_test`'s own official vectors passing is itself the confirmation that
+        GCM/GMAC's `gf2m_mul` call sites are unaffected (that self-test suite covers GCM/GMAC too,
+        in the same `dstu7624_self_test()` call).
+      **PR opened 2026-07-27, on explicit user request ("зроби пул реквест"), see `DECISIONS.md`
+      D-91 for the full mechanics**: no `CONTRIBUTING.md`/PR template exists in the upstream repo
+      (checked via `gh api`, not assumed) - forked `specinfo-ua/UAPKI` to `user137/UAPKI`, cloned it
+      fresh rather than reusing the stale local `oracles/uapki/` vendor (which turned out to be a
+      different snapshot - same code, but the vendor predates recent upstream formatting/CRLF
+      changes, caught by diffing before assuming the vendor was current), re-applied both patches
+      against the actual current upstream source, re-verified both self-tests and the outspace
+      differential clean against that fresh copy, added the new 200-byte self-test case there too,
+      pushed branch `fix/xts-strumok-fast-path`, opened
+      **https://github.com/specinfo-ua/UAPKI/pull/30**. `oracles/uapki/` in this repo is unaffected
+      (still gitignored, untouched) - the PR's source lives entirely in the separate fork clone.
 - [x] **T-138** **Done 2026-07-26, see `DECISIONS.md` D-82.** Follow-up flagged by D-80's GMAC finding, 2026-07-26: the wrapper bug
       found there (timing a per-call `alloc`/`init_*` setup cost inside the same window as the
       actual operation, while `uacrypt`'s own command excludes it) was specific to this session's
@@ -2659,6 +2690,38 @@ value given the `pdftotext` extraction hazards already hit, but modest. The DSTU
 where a genuinely independent oracle actually buys something. Strumok has no harness above because
 no trustworthy runnable oracle exists for it at all (`outspace/dstu8845` is unofficial, unaudited)
 — a harness can't manufacture verification authority that doesn't exist upstream.
+
+- [ ] **T-140** Not started. User-proposed 2026-07-27, directly off watching SonarCloud catch a
+      real BLOCKER-severity finding on the T-137 UAPKI PR (`specinfo-ua/UAPKI#30`) that neither
+      `cargo clippy` nor manual review had surfaced for the analogous Rust code: add SonarQube
+      Cloud (SonarCloud) analysis to this project's own GitHub Actions CI, for Rust.
+      **Confirmed, not assumed, before proposing this as free**: SonarCloud is free for public
+      repositories (`uacrypt` is public) - checked via web search, not recalled from training data,
+      per this project's own "verify current state, don't guess" discipline. **Rust support exists
+      since April 2025**, but works by wrapping ~85 `clippy` lints as SonarQube-managed findings
+      plus adding complexity/coverage metrics - not an independent from-scratch Rust analyzer.
+      Since `cargo clippy -- -D warnings` already runs in CI (T-73) and fails the build on any
+      warning, the marginal *new-finding* value here is smaller than it was for UAPKI's C code
+      (which had no equivalent lint gate before this project's PR) - the real value-add is PR-level
+      dashboards/comments and tracking code-quality metrics over time, not catching new bugs
+      `clippy` would have missed. **"Automatic Analysis" (SonarCloud's zero-config mode) does not
+      support Rust** - needs an explicit `sonar-scanner` step in a new/modified GitHub Actions
+      workflow. **Hard blocker on the account-creation step**: linking a SonarCloud organization/
+      project to `user137/uacrypt` requires OAuth authorization of the user's own GitHub account -
+      this is not something Claude Code can do on the user's behalf (no browser OAuth flow
+      available to the agent). **Concrete next steps, in order**: (1) user creates the SonarCloud
+      org/project via sonarcloud.io's GitHub OAuth sign-in and generates a project token; (2)
+      user adds that token as a `SONAR_TOKEN` repo secret (or Claude can, via `gh secret set`, once
+      handed the token value - never ask the user to paste a secret value into chat in plaintext if
+      avoidable, prefer they set it directly via `gh secret set SONAR_TOKEN` themselves or via the
+      GitHub web UI); (3) Claude adds the `sonar-scanner` CI step (installing a Rust toolchain +
+      clippy if not already present in that job, running `cargo clippy --message-format=json` or
+      the scanner's own Rust/clippy ingestion convention - confirm the exact expected input format
+      from Sonar's own docs at implementation time, don't guess it from this task's summary) plus a
+      `sonar-project.properties` file. Local pre-check option confirmed available on this machine
+      in the meantime: `cppcheck` (2.21.0, already installed) for C-style local static analysis
+      patterns, and `cargo clippy` itself (already required in CI) as the direct local equivalent
+      of what SonarCloud's Rust analysis actually runs under the hood.
 
 ## Full DSTU 7624 mode-of-operation coverage at `hazmat` (T-88 onward)
 

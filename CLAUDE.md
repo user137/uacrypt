@@ -526,6 +526,30 @@ Full detail and rationale in `SECURITY.md` — this is the compressed version so
   `Hasher` every iteration since there's no key schedule to amortize; a fair UAPKI-side wrapper
   must re-init every iteration too - this also sidesteps D-82's CMAC-style context-reuse quirk,
   since state is never stale when re-initialized every call.
+- **Before any `hazmat::{kalyna,kupyna,strumok}` perf rewrite, spike it and read the actual
+  `--emit=asm` output - don't plan from source-level reasoning alone.** `RUSTFLAGS="--emit=asm -C
+  debuginfo=0" cargo build --release -p dstu-core --lib` (touch the source first if cargo reports
+  a cached build with no `.s` change). This reversed two planned rewrites in one session: T-139
+  (Strumok double-buffering hypothesis - `next_block` was already fully inlined and SROA'd, zero
+  bounds checks, the hypothesis was simply wrong) and T-129 (Kalyna word-wide gather - already
+  literal-offset and bounds-check-free at `NB=8`; the "fix," once actually spiked, added real
+  register spills instead of removing anything). Both closed with no code change - a complete,
+  valuable outcome, not a shortfall, and not something T-134's own successful const-generic
+  rewrite lets you assume will repeat next time.
+- **`oracles/uapki`'s vendored clone can be stale relative to actual upstream `main`** - confirmed
+  2026-07-27 forking for T-137: a raw `diff` against a fresh clone showed the *entire* file as
+  different, which traced to CRLF-vs-LF line endings only (`diff --strip-trailing-cr`, or
+  normalize both sides first) - the underlying code hadn't drifted at all. Before hand-copying a
+  patch derived from the vendored copy into a fresh clone/fork, diff-normalize and confirm
+  line-number alignment first; don't assume the vendor is current.
+- **When a CI static analyzer (SonarCloud/etc.) flags a finding on your own PR, read its actual
+  symbolic-execution trace, not just the one-line summary, before proposing a fix.** `curl
+  https://sonarcloud.io/api/issues/search?componentKeys=<project>&pullRequest=<N>` returns each
+  issue's `flows` array - the exact assumed path. Confirmed the hard way on
+  `specinfo-ua/UAPKI#30` (T-137): a first fix (`==`→`>=`) addressed a plausible-looking mechanism
+  but not the one the trace actually showed (the flagged path never even entered the loop body
+  the fix touched) - reading the trace directly on round two pinpointed the real gap (the
+  invariant needed establishing at function entry, not inside the loop).
 
 ## Reference implementations and oracles
 

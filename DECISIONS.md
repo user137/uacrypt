@@ -5973,3 +5973,227 @@ this session, an unmeasured intuition about what would help register allocation 
 of thing that needs a spike-and-measure check, not assumption, before any code is written.
 
 **No code changed.** `hazmat::kalyna.rs` untouched (confirmed via `git diff`, no delta).
+
+## D-90: T-137 - two UAPKI local fixes drafted (Kalyna XTS tweak-doubling, Strumok byte-at-a-time consumption), both verified against UAPKI's own self-tests plus a Strumok differential against outspace - not opened upstream
+
+**Scope**: T-137 is explicitly framed as "work out whether the fix is real, draft it, verify it
+locally, then check back with the user before opening anything on `specinfo-ua/UAPKI`" - this
+entry records that verification work, not a decision to publish anything. Both `oracles/uapki/`
+source files touched are entirely gitignored in this project (confirmed via `git status --ignored`)
+- the patches exist only in this local working directory.
+
+**Fix 1 - Kalyna XTS tweak-doubling** (the task's original finding, T-131/D-78). `encrypt_xts`/
+`decrypt_xts` in `oracles/uapki/library/uapkic/src/dstu7624.c` call the fully generic `gf2m_mul`
+(3 heap-allocated `WordArray`s, full O(m²) `gf2m_mod_mul`) every block, always to multiply the
+tweak `gamma` by the fixed generator `two` (`two[0]=2`, the field element `x`). Read `gf2m_mul`,
+`gf2m_mod_mul`, and `Gf2mCtx`'s `f`/`f_ext` fields directly (not assumed) to confirm: multiplying a
+polynomial-basis GF(2^m) element by `x` is a single left-shift of the whole bit-vector, with one
+conditional XOR of the reduction polynomial's low-degree terms substituted for the `x^m` term that
+shifted out of range, only when the pre-shift top bit was set - O(m/64) word ops, not O(m²).
+Confirmed this is the **exact same field and reduction polynomial** `dstu-core`'s own
+`hazmat::gf2m_wide.rs` `Gf2m128/256/512::double()` already implements for GCM/GMAC (T-126/D-76):
+`dstu7624_init_xts`'s `f[]` triples (`{7,2,1}`/`{10,5,2}`/`{8,5,2}` for block_len 16/32/64) are
+byte-identical to `dstu7624_init_gmac`'s - confirmed by reading both initializers side by side, not
+assumed from the shared field size alone. Also confirmed the byte/word convention matches
+(`gf2m_wide.rs`'s own module doc already derived this from `uint8_to_uint64`'s plain little-endian
+`memcpy`, the same conversion `gf2m_mul`'s wrapper uses) - reused that citation rather than
+re-deriving it, per `CLAUDE.md`'s calling-convention-matters lesson.
+
+Added `gf2m_double(Gf2mCtx *ctx, size_t block_len, uint8_t *arg, uint8_t *out)` as a new sibling
+function directly after `gf2m_mul` - no WordArray/heap allocation at all, a local `uint64_t
+words[8]` stack buffer, `uint8_to_uint64`/`uint64_to_uint8` for the byte conversion (reusing UAPKI's
+own existing endian-safe helpers rather than a raw pointer cast), the identical shift-carry-reduce
+loop `Gf2m*::double()` uses, reduction terms read from `ctx->f[1..3]` at runtime (not hardcoded per
+block size, so it's correct for whichever `Gf2mCtx` it's called against). Repointed all 5 XTS call
+sites that multiplied by `two` (`encrypt_xts` x2, `decrypt_xts` x3, one of which chains a second
+doubling into a scratch buffer) to `gf2m_double` instead - `gf2m_mul` itself and all GCM/GMAC call
+sites (which multiply by a genuinely variable secret value, not a fixed constant) are untouched,
+confirmed by grep showing every remaining `gf2m_mul(` call site is GCM/GMAC's.
+
+**Fix 2 - Strumok's byte-at-a-time consumption** (user-requested 2026-07-27, same session,
+extending T-137's scope directly off T-135's own just-shipped fix). Read `oracles/uapki/library/
+uapkic/src/dstu8845.c`'s `dstu8845_crypt` directly: `next_gamma()` already batch-generates a full
+128-byte (16-word) `ctx->gamma[16]` block, but the consuming loop was `while (in_len--) { *in++ ^=
+gamma[ctx->gamma_cntr++]; if (ctx->gamma_cntr == 128) next_gamma(ctx); }` - one byte, one bounds
+check, at a time. This is the identical gap `dstu-core`'s own `hazmat::strumok.rs` `apply_keystream`
+had before T-135 (D-86) - UAPKI already does the "batch-generate a full block" half of the fix but
+not the "consume it word-at-a-time" half. Restructured into the same three-phase shape T-135
+established: drain to an 8-byte `gamma_cntr` boundary byte-at-a-time (whatever partial word is
+left), then `memcpy` 8 bytes into a `uint64_t`, XOR against `ctx->gamma[gamma_cntr/8]` (a real
+`uint64_t[16]` struct field - no alignment concern, unlike a raw `uint8_t*` reinterpretation would
+have), `memcpy` back, advancing 8 bytes at a time while a full word remains before the next
+128-byte regeneration, remainder byte-at-a-time. Loops correctly across multiple regenerations
+within one call (traced by hand for a 250-byte tail crossing two `next_gamma()` calls, then
+confirmed empirically, see below) - `next_gamma()` resets `gamma_cntr = 0` internally, so the bulk
+loop's own `ctx->gamma_cntr < 128` condition re-admits the freshly generated buffer without any
+extra bookkeeping. `next_gamma`, key schedule, and IV setup are untouched.
+
+**Verification, both fixes together, compiled directly with gcc/MinGW** (the vendored `oracles/
+uapki/` clone is missing `rc-version.h.in`, blocking the CMake path - `cmake -G "MinGW Makefiles"`
+failed on `configure_file` for that reason; compiling `uapkic/src/*.c` directly, the same approach
+already used for `uapki-cmac-bench`'s DLL-free siblings, avoided the issue entirely):
+
+- `dstu7624_self_test()` (covers all of ECB/CBC/CFB/OFB/CTR/CMAC/KW/CCM/GCM/GMAC/XTS, including
+  `dstu7624_xts_self_test`'s 10 official fixed vectors) and `dstu8845_self_test()` (8 fixed Strumok
+  vectors) both return `RET_OK` with both fixes applied simultaneously.
+- **Each fix's self-test was confirmed capable of catching a real bug, not just passing vacuously**
+  (the same discipline this session's D-88/D-89 asm-reading work already established for measured
+  claims): a deliberately wrong reduction constant in `gf2m_double` (`words[0] ^= 3` instead of
+  `^= 1`) made `dstu7624_self_test()` return 33, not 0; a deliberately wrong word index in the
+  Strumok bulk loop (`gamma[(gamma_cntr/8) ^ 1]` instead of `gamma[gamma_cntr/8]`) made
+  `dstu8845_self_test()` fail the same way. Both reverted immediately after confirming, correct
+  code re-verified passing before moving on.
+- **Strumok fix additionally cross-checked against outspace directly**, not just UAPKI's own 8
+  fixed vectors: outspace's `strumok.c` compiled to a separate object file with `-D` renames
+  (`dstu8845_alloc` -> `outspace_dstu8845_alloc`, etc.) to avoid a symbol clash when linked into the
+  same test binary as UAPKI's own same-named functions. 16 one-shot lengths straddling the 128-byte
+  threshold (1/7/8/9/63/64/65/127/128/129/135/200/256/260/384/500) x both key sizes, plus 2
+  multi-call chunk-split cases deliberately crossing the 128-byte gamma-regeneration boundary
+  mid-call and mid-drain - all matched byte-for-byte. **One initial "mismatch" traced to a hand-
+  typed arithmetic error in the test harness itself** (`130 + 9 + 250` instead of `130 + 8 + 250`
+  for a 10-chunk split with eight 1-byte chunks in the middle - undercounting the declared total by
+  one byte left the buffer's last byte never processed on the UAPKI side while outspace's one-shot
+  call processed the full declared length) - isolated by comparing the patched function against a
+  frozen copy of the original byte-at-a-time algorithm directly (not the outspace comparison, to
+  rule out which side had the bug), confirmed the patch itself was correct and the harness had the
+  off-by-one, fixed the harness, re-ran clean. Consistent with this project's own standing note
+  (`CLAUDE.md`) that an unexplained transform needed to make a test pass is suspect until the actual
+  cause is found, not just patched over.
+- `dstu7624_xts_self_test`'s pass is itself the confirmation that GCM/GMAC's `gf2m_mul` call sites
+  are unaffected, since `dstu7624_self_test()` runs GCM/GMAC's own self-tests in the same call.
+
+**Not done, deliberately**: no criterion/binary-level timing re-measurement of either fix against
+UAPKI (that's a separate re-confirmation step, not needed to establish correctness, and this task's
+own gate is about correctness/safety before any upstream step, not a fresh performance claim).
+Reading UAPKI's `CONTRIBUTING`/license/PR conventions - the stated prerequisite for actually
+drafting a PR - was not done this pass either. **Nothing opened upstream** - both fixes stay local
+drafts pending the user's own next decision, per this task's standing, unchanged gate.
+
+## D-91: T-137 - PR opened on specinfo-ua/UAPKI (explicit user request), gate cleared
+
+**Explicit go-ahead**: the user asked directly to check UAPKI's PR rules and open a pull request
+with our changes plus tests, following their project's own structure/files - this is the "check
+back with the user before opening anything" step D-90 held open, now satisfied. This entry records
+the mechanics of actually doing it, not a new correctness finding (D-90 already has that).
+
+**Checked UAPKI's contribution conventions before doing anything else, not assumed**: `gh api
+repos/specinfo-ua/UAPKI` and its `.github`/root/`library` contents - no `CONTRIBUTING.md`, no PR
+template, only a CI workflow under `.github/workflows`. License is BSD-2-Clause (permissive,
+confirmed from `LICENSE`). Recent merged PR titles (`gh pr list`) follow a loose `MODULE: short
+description` convention, mixing Ukrainian and English - matched that shape for this PR's title.
+
+**Found the local vendored `oracles/uapki/` clone is stale relative to current upstream** -
+important enough to flag on its own. A line-by-line `diff` between the vendored copy and a fresh
+`main` clone initially showed the *entire* file as different; tracing it down (via `file` and
+`diff --strip-trailing-cr`) showed the real cause was CRLF-vs-LF line endings, not content drift -
+after normalizing line endings, the only real differences were exactly the two patches D-90 already
+made. Confirmed by exact line-number match (`gf2m_mul`/`encrypt_xts`/`decrypt_xts` at the identical
+line numbers in both). This means the underlying algorithm/structure hadn't changed upstream since
+the vendor was fetched, but the encoding/formatting had - re-applying the patch by hand-copying from
+the stale vendor without checking this first could have silently introduced a CRLF/LF mismatch or
+missed a real upstream change. Re-derived and re-applied both patches fresh against the actual
+current `main`, not copy-pasted from the stale vendor.
+
+**Mechanics**: `gh repo fork specinfo-ua/UAPKI --clone=false` (fork to `user137/UAPKI`, none
+existed before), shallow-cloned it into a scratch directory (kept fully separate from this
+project's own `oracles/uapki/`, which stays untouched and gitignored), created branch
+`fix/xts-strumok-fast-path`. Re-applied via PowerShell (not the Edit tool, which doesn't preserve
+CRLF/BOM byte-for-byte the way this repo's files need) both D-90 patches plus a new addition
+requested for this pass: a 200-byte `dstu8845_self_test` case (Strumok-256, `key256_1`/`iv_1`,
+crossing the 128-byte gamma-regeneration boundary once) - the existing 8 fixed vectors are all
+exactly 64 bytes and never exercise more than one `next_gamma()` call per `dstu8845_crypt`
+invocation, so none of them would have caught a boundary-crossing bug in the bulk-XOR restructuring.
+Generated the expected 25-word output using the already-validated patched implementation itself
+(trusted per D-90's extensive differential testing against outspace) - its first 8 words matched
+the existing `k256_1_iv_1` vector byte-for-byte, an unplanned but welcome internal cross-check that
+the 200-byte extension is consistent with the already-trusted 64-byte value, not just internally
+self-consistent.
+
+**Caught and fixed two accidental side effects from the PowerShell-based patching, before
+committing, not after**: (1) writing the file back re-encoded it, which silently dropped
+`dstu8845.c`'s original UTF-8 BOM (`EF BB BF`) - confirmed by comparing first bytes against `git
+show HEAD:...` rather than assuming encoding round-tripped cleanly, then rewrote with the BOM
+explicitly restored so the diff wouldn't carry an unrelated whole-file encoding change. (2) the new
+`gf2m_double` function was missing the blank line separating it from the following `encrypt_xts` -
+cosmetic, but fixed before commit rather than left as PR noise. Re-verified both self-tests
+(`dstu7624_self_test`/`dstu8845_self_test`, including the new 200-byte case) and the outspace
+differential all still pass after both fixes, compiled directly from the fork clone (not the stale
+vendor) - not assuming the copy-over preserved correctness, checking it directly.
+
+**Also re-ran the same negative check D-90 already established, against the fork's own copy**:
+deliberately corrupted the new 200-byte vector's last word, confirmed `dstu8845_self_test` fails
+(not vacuous), reverted, re-confirmed clean.
+
+**Result**: PR opened - **https://github.com/specinfo-ua/UAPKI/pull/30**, title "UAPKIC: fast paths
+for Kalyna-XTS tweak doubling and Strumok gamma consumption", body explains both findings and both
+patches in the structure the user asked for (what was found, what was changed, how it was
+verified), written in English to match this project's own mixed-language PR precedent on the
+upstream repo. `git diff --stat` on the fork branch: 2 files changed (`dstu7624.c`, `dstu8845.c`),
+121 insertions / 6 deletions - no other files touched. This project's own `oracles/uapki/` (the
+stale vendor) was never modified as part of opening the PR - it remains exactly as D-90 left it,
+gitignored, a separate concern from the fork.
+
+## D-92: T-137 - SonarCloud CI on the UAPKI PR, two follow-up rounds to green; T-140 opened for this project's own Rust equivalent
+
+**CI ran automatically on PR #30** (specinfo-ua/UAPKI has SonarCloud wired into `.github/workflows`
+already) and failed the Quality Gate on first push: one BLOCKER (`c:S3519`, "memory access should
+be explicitly bounded to prevent buffer overflows") plus 3 MINOR code-smell findings, all in the
+new code this PR added.
+
+**Round 1 fix - addressed the MINOR findings directly, attempted the BLOCKER by pattern-matching
+the obvious fix**: made `gf2m_double`'s `ctx`/`arg` parameters `const` (both read-only, matching
+`gf2m_mod_mul`'s own existing const-correctness elsewhere in the same file), split a combined
+`uint64_t carry, next_carry, top_bit;` declaration into one identifier per statement. For the
+BLOCKER, changed `if (ctx->gamma_cntr == 128)` to `>= 128` in all three loops - reasoned (and
+confirmed via `assert()` across the existing 32+-case differential/self-test suite) that the
+equality check was safe given the invariant, but SonarCloud's symbolic execution couldn't prove it
+across the new bulk loop's compound condition, and an equality check gives no safety margin if
+that invariant is ever violated by a future change - `>=` is behaviorally identical, strictly more
+robust. Discovered incidentally that this fix made `two[0] = 2` (and the whole `two` buffer in
+`encrypt_xts`) dead code, since `gf2m_double` never takes the multiplier as an input - removed
+both. Pushed, re-ran locally (`-Wall -Wextra` clean, both self-tests, outspace differential all
+still green) before pushing.
+
+**Round 1 result: still failed, same BLOCKER, same line.** Read the actual symbolic-execution
+trace via SonarCloud's public issues API (`api/issues/search`), not just the summary comment - it
+showed the analyzer exploring a path where the bulk loop's *own* condition (`ctx->gamma_cntr <
+128`) is assumed false specifically because `gamma_cntr` is already `>= 128`, **before the loop
+body ever executes even once**, then falling through to the remainder loop with that assumption
+intact. The `==`-to-`>=` change inside each loop body was irrelevant to this specific path, since
+no loop body runs on it at all - the real question the analyzer is asking is "what does this
+function know about `ctx->gamma_cntr`'s value on entry," and the answer, from a purely
+intraprocedural view, is nothing: the invariant that `gamma_cntr` stays in `0..127` is maintained
+across `next_gamma()`/`dstu8845_crypt` call history, not established anywhere within this one
+function. This almost certainly also explains why the *original*, byte-identical remainder loop
+was never flagged before this PR - as unchanged code with no local diff, it wasn't scored against
+the "New Code" Quality Gate, even though the same absence-of-local-proof already existed there.
+
+**Round 2 fix - established the invariant locally, at the point of entry**: added `if
+(ctx->gamma_cntr >= 128) { ctx->gamma_cntr = 0; }` as the first statement after `gamma`/`in`/
+`in_len` are read, before any of the three loops. Purely defensive (the value this "corrects" can
+only be exactly 128, never observed given the actual invariant) but gives the analyzer (and any
+future reader) a fact it can verify by reading four lines, not by trusting call history across two
+functions. Re-verified locally (self-tests + outspace differential, `cppcheck --enable=warning,
+style` also clean, though weaker than SonarCloud's own engine and not treated as equivalent
+confirmation) before pushing.
+
+**Round 2 result: `SonarCloud Code Analysis` and `SonarCloud` both `pass`** (`gh pr checks 30`) -
+PR fully green, no further findings.
+
+**Process note, why this took two rounds instead of one**: the first fix addressed a plausible-
+looking but not the actual mechanism SonarCloud's checker uses - confirmed only by reading the
+tool's own symbolic-execution trace (`flows` array in the issues API response) rather than
+guessing from the one-line message a second time. The same "read the actual trace/output, don't
+pattern-match a fix from the summary" discipline this session already used for `--emit=asm`
+investigations (D-87/D-88) applies just as much to a third-party static analyzer's findings.
+
+**Follow-up recorded as its own task, not folded into this one**: `TASKS.md` T-140 - the user
+asked, mid-session, whether SonarCloud could be added to this project's own GitHub CI for Rust
+specifically, prompted directly by watching it catch something neither `clippy` nor manual review
+had for the UAPKI C code. Confirmed via web search (not recalled): free for public repos, Rust
+support since April 2025 via wrapping ~85 `clippy` lints (not an independent analyzer), "Automatic
+Analysis" doesn't support Rust so it needs an explicit `sonar-scanner` CI step, and the account/
+org-creation step is a hard blocker on the user's own GitHub OAuth action - not something this
+agent can perform. `cppcheck` (2.21.0) confirmed already installed locally as a lighter-weight,
+offline pre-check option in the meantime, alongside the `cargo clippy` this project's CI already
+requires.
