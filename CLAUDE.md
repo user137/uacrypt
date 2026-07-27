@@ -398,12 +398,14 @@ Full detail and rationale in `SECURITY.md` — this is the compressed version so
   nightly (miri, fuzz) must say `cargo +nightly ...` explicitly, same as `xtask` already does
   locally — confirmed missing in `.github/workflows/rust.yml` for a full day after both jobs were
   first wired up (T-85), since `xtask`'s own local runs never hit it.
-- **CI's `cargo miri test` job has never once passed** (checked via `gh run view`, not assumed
-  from a green badge) — it times out at 30 min on the slow DSTU-4145 proptest suite (T-45/T-85's
-  diagnosed cause) on every push since the toolchain fix landed. Several `DECISIONS.md` entries
-  defer an incomplete *local* Miri run to "CI as the authoritative check" (e.g. D-46) — that
-  backstop has never actually fired. Verify a CI job's real conclusion before citing it as
-  passing; see `TASKS.md` T-100 for the fix direction (scope the job away from that suite).
+- **CI's `cargo miri test` job now genuinely passes (fixed by T-100/D-59)** — root cause was
+  broader than the two proptest suites originally suspected (every DSTU 4145 EC-ladder/
+  field-inversion test, not just the proptests), fixed by `#[cfg_attr(miri, ignore)]` on those
+  specific tests plus raising the job's `timeout-minutes` to 150 (measured ~84 min locally for
+  `dstu-core` alone). Reconfirmed on a real push (`8e5a2a8`, 2026-07-27): `success` in 2h23m.
+  The lesson stands regardless: **verify a CI job's real conclusion via `gh run view`, never
+  assume from a green badge or an older note like this one** — this bullet itself was stale for
+  a while after the fix landed.
 - **Any scoped local `cargo +nightly miri test` on a file with a `proptest!` block needs
   `PROPTEST_CASES` cut down explicitly, not just left at its default 256** — even for primitives
   with no EC-ladder cost (T-100/D-59's fix only covers scalar-multiplication-heavy tests via
