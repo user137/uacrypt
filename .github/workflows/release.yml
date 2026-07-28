@@ -9,6 +9,12 @@ on:
     tags:
       - "v*"
 
+# Workflow-level default: build-binary/package-library only read the repo and upload build
+# artifacts. `publish-release` overrides this with `contents: write` (already present below) since
+# it actually creates the GitHub Release (docs/DECISIONS.md D-98).
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
 

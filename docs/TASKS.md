@@ -3624,3 +3624,29 @@ Phase 2+ and none currently in flight).
   to point at all four. `CODE_OF_CONDUCT.md`/`CONTRIBUTING.md` placed in `docs/` (not root),
   consistent with T-141/D-96's just-established convention and GitHub's own recognition of
   community-health files in `docs/` as well as root/`.github/`.
+
+- [x] **T-143** **Done (permissions half) 2026-07-28, see `docs/DECISIONS.md` D-98; the
+  hard-coded-cryptographic-value half is a decision pending the owner, not a code task.** Owner
+  surfaced a GitHub Code Scanning screenshot: 80 open alerts from CodeQL **default setup** (enabled
+  outside this session, distinct from T-140's SonarCloud), 69 `rust/hard-coded-cryptographic-value`
+  (critical) + 11 `actions/missing-workflow-permissions` (medium). Triaged both rule types
+  separately rather than treating "80 alerts" as one problem:
+  - **11 `missing-workflow-permissions`: real, fixed.** Added an explicit `permissions: contents:
+    read` workflow-level default to all four `.github/workflows/*.yml` files, with per-job
+    overrides only where actually needed (`rust.yml`'s `audit` job needs `checks: write` for
+    `rustsec/audit-check`'s annotation; `release.yml`'s `publish-release` already correctly had
+    `contents: write` and was left alone) - confirmed per-job need by reading each job's steps and
+    the two third-party actions' own READMEs, not blanket-copied.
+  - **69 `hard-coded-cryptographic-value`: confirmed false positives across three distinct
+    mechanisms** (test-vector files/test modules; byte-length literals in variant-dispatch macros
+    misread as key material; zero-init buffers immediately overwritten with real runtime/PRNG
+    data), **plus a fourth, more careful pass on `crypto_secretstream.rs:244`** (`chunk_iv`'s
+    constant-zero high bytes are provably harmless by the module's own counter-never-resets +
+    per-stream-subkey design, not just "overwritten later" like the others). See D-98 for the full
+    per-bucket evidence. No code changed - there is no real secret to remove.
+  - **Left open for the owner**: whether to bulk-dismiss the 69 via the Code Scanning API (with
+    `dismissed_reason: "used in tests"` for the test-file ones, `"false positive"` for the rest) or
+    migrate the repo to CodeQL advanced setup (a checked-in workflow) so a `codeql-config.yml` can
+    filter `tests/`/the rule structurally - default setup does not honor a custom config file, only
+    advanced setup does. Not resolved unilaterally: dismissing 69 alerts on a public repo's Security
+    tab is a visible-to-others action.

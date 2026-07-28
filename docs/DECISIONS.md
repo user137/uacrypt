@@ -6480,3 +6480,92 @@ in `.github/` - that is not optional/stylistic, GitHub only discovers
 "Contributing" section (before "License") links all of `docs/CONTRIBUTING.md`,
 `docs/CODE_OF_CONDUCT.md`, and `docs/SECURITY.md`'s vulnerability-reporting process. No source code
 touched - documentation/governance files only.
+
+## D-98: CodeQL default-setup findings triaged - 69 `hard-coded-cryptographic-value` false positives, 11 real `missing-workflow-permissions` fixed (T-143)
+
+Owner surfaced a GitHub "Security and quality" > Code scanning screenshot showing 80 open alerts,
+all newly opened (~20 min old at the time), across two rules: `rust/hard-coded-cryptographic-value`
+(69, severity "critical") and `actions/missing-workflow-permissions` (11, severity "medium").
+Confirmed via `gh api repos/.../code-scanning/default-setup`: `state: configured`,
+`languages: [actions, c-cpp, csharp, java-kotlin, rust]`, `updated_at` the same day - this is
+GitHub's **CodeQL default setup**, enabled outside this session (no workflow file added it, unlike
+`sonarcloud.yml`/T-140 which is a separate, explicit scanner), running on its own weekly schedule.
+Distinct from SonarCloud: two different tools, two different alert surfaces, not to be conflated in
+a future session.
+
+**The 69 `hard-coded-cryptographic-value` alerts are false positives, but for three genuinely
+different reasons - not one blanket excuse.** Sampled representative alerts from every implicated
+file via the Code Scanning API (`gh api repos/.../code-scanning/alerts`), not just the highest-line
+ones, specifically to falsify the "100% false positive" claim rather than assume it:
+
+1. **Test-vector files** (`crates/dstu-core/tests/{kalyna_ccm,kalyna_gcm,kalyna_xts,kalyna_ofb,
+   kalyna_cfb,kalyna_cbc,kalyna_ctr,strumok}.rs`, and `#[cfg(test)]` modules in
+   `hazmat::strumok`/`uacrypt::lib` above line 3267 where its `mod tests` starts) - literal
+   known-answer keys/IVs are *required* for a reproducible crypto test, not a secret exposure. Spot
+   checked `uacrypt/src/lib.rs:5012` (`let key = [0xCCu8; 16];` inside
+   `run_xts_command_round_trip_matches_dstu_core_directly`, an obviously-synthetic pattern-fill
+   value in a named `#[test]` fn) specifically to rule out a real committed key hiding among the
+   higher line numbers - confirmed clean.
+2. **Byte-length literals misread as key material** - `crates/uacrypt/src/lib.rs`'s variant-dispatch
+   macros (`run_ccm_variant!(Kalyna128_128Ccm, 16, 16, 16)`,
+   `run_gcm_variant!(Kalyna256_512Gcm, 64, 32)`, `run_xts_variant!`, `run_strumok_variant!` etc.,
+   lines 641-2630, all *above* the test module) pass `16`/`32`/`64` as key/nonce/tag **byte-length**
+   arguments selecting which Kalyna/Strumok variant to instantiate - not literal key/IV bytes. The
+   query's heuristic flags any numeric literal near a crypto-typed call site regardless of what the
+   literal actually represents.
+3. **Zero-init buffer immediately overwritten with real (non-hardcoded) data** -
+   `crates/dstu-core/examples/strumok_diff_cases.rs:58` (`let mut iv = [0u8; 32]; rng.fill(&mut
+   iv);`, a seeded-PRNG-generated differential-test IV, not a secret) and `uacrypt`'s
+   `run_strumok_variant!`/`run_stream_variant!` macros (`let mut iv_arr = [0u8; 32];
+   iv_arr.copy_from_slice(&iv);`, filled from the CLI's actual `--key`/runtime-provided IV before
+   any use). Both are scratch buffers the analyzer flags before tracking the overwrite.
+
+**`crypto_secretstream.rs:244`'s `chunk_iv` needed a fourth, more careful pass** - the buffer isn't
+fully overwritten (`fn chunk_iv(counter: u64) -> [u8; 32] { let mut iv = [0u8; 32]; iv[..8]
+.copy_from_slice(&counter.to_le_bytes()); iv }` leaves bytes 8..32 permanently zero), so bucket 3's
+framing doesn't apply as-is. Traced the actual safety argument instead of assuming: this module's
+own doc comment (`crypto_secretstream.rs:27-29`) already states the design explicitly - the IV's
+low 8 bytes are a `u64` counter that is "monotonically increasing per chunk... never transmitted
+and **never reset** (including across a `Tag::Rekey`)". Confirmed by grepping every `counter`/
+`rekey` site: `counter` starts at 0 once per `PushState`/`PullState` and only ever increments
+(`self.counter += 1`), including across `Tag::Rekey => rekey(&mut self.subkey)` - the subkey
+changes on rekey, the counter does not reset. So GCM's actual requirement (nonce **uniqueness**
+under a given key, not unpredictability) holds two ways: the counter alone never repeats within one
+state's lifetime, and the subkey is independently unique per stream (random per-header key via
+`docs/DECISIONS.md`'s established pattern). The constant-zero high bytes are provably harmless, not
+merely "immediately overwritten" - a materially different, and more defensible, dismissal rationale
+than bucket 3's.
+
+**Disposition, split in two:**
+- **The 11 `actions/missing-workflow-permissions` alerts are real and fixed in this pass** (not
+  false positives - CLAUDE.md's "fix a CI-run static analyzer's findings in the same pass" applies
+  here by the same logic as the SonarCloud rule, D-93/D-94, even though this scan isn't PR-attached).
+  Added an explicit workflow-level `permissions: contents: read` default to all four workflow files
+  (`rust.yml`, `release.yml`, `oracle-harness.yml`, `sonarcloud.yml`) rather than blanket-copying one
+  block everywhere without checking each job's actual need first:
+  - `release.yml`'s `publish-release` job already had its own `contents: write` override (it creates
+    the GitHub Release) - left untouched, confirmed still correct, not widened.
+  - `rust.yml`'s `audit` job (`rustsec/audit-check@v2`) gets its own override,
+    `contents: read` + `checks: write` - confirmed via the action's own README
+    (`gh api repos/rustsec/audit-check/contents/README.md`) that `checks: write` is what it needs
+    to publish its check-run annotation; deliberately did **not** add the README's other suggested
+    `issues: write`, since this project doesn't currently rely on it auto-opening issues for
+    RustSec advisories and adding it unprompted would be scope creep on a permissions-hardening pass.
+  - Every other job (`test`, `miri`, `fuzz-smoke`, `deny`, `msrv` in `rust.yml`; `build-binary`/
+    `package-library` in `release.yml`; `dotnet`/`java` in `oracle-harness.yml`; `sonarcloud` in
+    `sonarcloud.yml`) only checks out and builds/tests/lints/scans - confirmed by reading each job's
+    actual steps, not assumed - so the workflow-level `contents: read` default is sufficient and
+    correct for all of them.
+- **The 69 `hard-coded-cryptographic-value` alerts are not fixed by a code change** - there is no
+  real secret to remove, and "fixing" a false positive by obscuring a legitimate test vector or a
+  correct-by-design constant would make the code worse, not better. Two mechanisms exist to close
+  them out on GitHub's side: (a) dismiss each alert via `PATCH
+  /repos/{owner}/{repo}/code-scanning/alerts/{n}` with `dismissed_reason` - GitHub's API accepts
+  `"used in tests"` as a distinct reason from `"false positive"`, which is the more accurate label
+  for the ~50-60 test-vector-file alerts (bucket 1) vs. the general `"false positive"` label for
+  buckets 2/3 and the corrected `crypto_secretstream.rs` rationale; or (b) migrate the repo from
+  CodeQL **default setup** to **advanced setup** (a checked-in workflow file), which is required to
+  use a `codeql-config.yml` path/query filter - GitHub does not honor a custom config file under
+  default setup, only under advanced setup. Left as an explicit choice for the project owner (a
+  bulk dismissal of 69 alerts on a public repo's Security tab is a visible-to-others action, not
+  something to take unilaterally) rather than resolved unilaterally in this pass.

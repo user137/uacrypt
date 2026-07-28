@@ -17,6 +17,11 @@ on:
     branches: [main, master]
   pull_request:
 
+# The scan job only reads the repo and calls out to SonarCloud's own server API with SONAR_TOKEN,
+# not GITHUB_TOKEN - read-only contents is sufficient (docs/DECISIONS.md D-98).
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true

@@ -5,6 +5,13 @@ on:
     branches: [main, master]
   pull_request:
 
+# Workflow-level default: every job here only reads the repo (build/test/lint), so the least-
+# privilege GITHUB_TOKEN scope is read-only contents. `audit` overrides this below since
+# rustsec/audit-check needs `checks: write` to publish its check-run annotations
+# (docs/DECISIONS.md D-98).
+permissions:
+  contents: read
+
 # A push while a previous run on the same branch is still in progress (e.g. the miri job below,
 # which can run long) now cancels the stale run instead of letting it pile up alongside the new
 # one - confirmed necessary 2026-07-23/24 after three concurrent miri runs (up to ~1h each) stacked
@@ -120,6 +127,12 @@ jobs:
   audit:
     name: cargo audit (RustSec advisories)
     runs-on: ubuntu-latest
+    # Overrides the workflow-level `contents: read` default: rustsec/audit-check's own README
+    # documents `checks: write` as needed to publish its check-run annotation (docs/DECISIONS.md
+    # D-98) - without it the job would still run but silently lose that annotation.
+    permissions:
+      contents: read
+      checks: write
     steps:
       - uses: actions/checkout@v4
       - uses: rustsec/audit-check@v2

@@ -16,6 +16,11 @@ on:
     branches: [main, master]
   pull_request:
 
+# Both jobs only read the repo and run a local build/test - read-only GITHUB_TOKEN is sufficient
+# (docs/DECISIONS.md D-98).
+permissions:
+  contents: read
+
 jobs:
   dotnet:
     name: .NET (Bouncy Castle NuGet)
