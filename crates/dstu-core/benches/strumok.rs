@@ -1,10 +1,10 @@
 //! Absolute-throughput benchmark for `Strumok256`/`Strumok512::apply_keystream` over a few buffer
-//! sizes. This project's original literal-16-word-shift implementation (`DECISIONS.md` D-18) was
+//! sizes. This project's original literal-16-word-shift implementation (`docs/DECISIONS.md` D-18) was
 //! replaced by a ring buffer 2026-07-22 (D-26), and `apply_keystream` gained a batched, fixed-
-//! index 128-byte bulk path 2026-07-27 (`TASKS.md` T-135, `DECISIONS.md` D-86) - this benchmark
+//! index 128-byte bulk path 2026-07-27 (`docs/TASKS.md` T-135, `docs/DECISIONS.md` D-86) - this benchmark
 //! measures whatever the current implementation is at any given time (an in-process regression
 //! fixed point, not a snapshot of one specific historical design) and does **not** itself compare
-//! against the oracles directly - see `PERFORMANCE.md`'s Strumok section for the binary-level
+//! against the oracles directly - see `docs/PERFORMANCE.md`'s Strumok section for the binary-level
 //! comparison against outspace/UAPKI.
 
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};

@@ -1,4 +1,4 @@
-//! Tests for `dstu_core::crypto_secretstream` (`TASKS.md` T-40/T-70, `DECISIONS.md` D-68) - a
+//! Tests for `dstu_core::crypto_secretstream` (`docs/TASKS.md` T-40/T-70, `docs/DECISIONS.md` D-68) - a
 //! from-scratch chunked/streaming AEAD construction over `hazmat::kalyna_gcm::Kalyna256_256Gcm` +
 //! `hazmat::kupyna_kmac::Kupyna256Kmac`, no DSTU streaming-AEAD standard exists so there is no
 //! oracle vector for this construction, ever - verification here is round-trip, tamper (D-64), and

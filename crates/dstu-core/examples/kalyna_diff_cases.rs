@@ -1,7 +1,7 @@
 //! Generates random Kalyna test cases (key/block per variant) and this project's own Rust
 //! ciphertext for each, for the differential-testing harness in
 //! `tests/oracle-harness/kalyna-differential/` - the Kalyna/Kupyna counterpart to the Strumok
-//! harness in the sibling `strumok-differential/` directory (see `DECISIONS.md` D-22 for why that
+//! harness in the sibling `strumok-differential/` directory (see `docs/DECISIONS.md` D-22 for why that
 //! one exists, and D-24 for why this one was added afterward for parity rather than leaving
 //! Strumok looking like the only primitive that got this level of scrutiny).
 //!

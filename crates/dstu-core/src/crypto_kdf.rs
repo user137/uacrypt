@@ -1,5 +1,5 @@
 //! `crypto_kdf` equivalent (`docs/dstu-crypto-project.md` "Mapping onto the libsodium API",
-//! `TASKS.md` T-105, roadmap Step 3 item 2 - `DECISIONS.md` D-66) - a thin libsodium-ergonomics
+//! `docs/TASKS.md` T-105, roadmap Step 3 item 2 - `docs/DECISIONS.md` D-66) - a thin libsodium-ergonomics
 //! wrapper over [`Kupyna256Kdf`],
 //! matching [`crate::crypto_auth`]'s reasoning exactly: only the 256-bit variant is exposed here
 //! (D-47's "delete the knob", same as `crypto_auth`'s choice among `Kupyna{256,384,512}Kmac`; the

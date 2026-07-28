@@ -1,6 +1,6 @@
 //! Black-box integration test for `dstu_core::hazmat::kalyna_ccm` against the cross-oracle
 //! vectors in `tests/vectors/kalyna-ccm/` (BC + UAPKI, see each vector file's `source` field and
-//! `DECISIONS.md` D-41). Same hand-rolled extractor convention as `tests/kalyna.rs`.
+//! `docs/DECISIONS.md` D-41). Same hand-rolled extractor convention as `tests/kalyna.rs`.
 
 use dstu_core::hazmat::kalyna_ccm::{
     CcmError, Kalyna128_128Ccm, Kalyna128_256Ccm, Kalyna256_256Ccm, Kalyna256_512Ccm,

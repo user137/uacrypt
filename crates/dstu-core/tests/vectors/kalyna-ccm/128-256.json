@@ -4,7 +4,7 @@
   "key_bits": 256,
   "ccm_nb": 4,
   "tag_bytes": 16,
-  "source": "PROVISIONAL, not confirmed against the primary DSTU 7624:2014 text (DECISIONS.md D-05 revision note, D-41). UAPKI-only (oracles/uapki/library/uapkic/src/dstu7624.c dstu7624_ccm_self_test, ccm_test_data[1]) - no Bouncy Castle CCM vector exists for this variant (BC's CCMModeTests only covers 128/128, 256/256, 256/512, 512/512), so this one case lacks the cross-oracle confirmation the other four variants have. Also the only non-block-aligned (partial final block) case among the five vectors extracted here.",
+  "source": "PROVISIONAL, not confirmed against the primary DSTU 7624:2014 text (docs/DECISIONS.md D-05 revision note, D-41). UAPKI-only (oracles/uapki/library/uapkic/src/dstu7624.c dstu7624_ccm_self_test, ccm_test_data[1]) - no Bouncy Castle CCM vector exists for this variant (BC's CCMModeTests only covers 128/128, 256/256, 256/512, 512/512), so this one case lacks the cross-oracle confirmation the other four variants have. Also the only non-block-aligned (partial final block) case among the five vectors extracted here.",
   "cases": [
     {
       "name": "aead",

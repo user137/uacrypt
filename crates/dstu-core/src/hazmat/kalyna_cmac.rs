@@ -5,7 +5,7 @@
 //! `cmac_update`/`cmac_final` (lines 4221-4310), `padding` (lines 2572-2592), and
 //! `dstu7624_init_cmac` (lines 4070-4087); `Dstu7624Ctx` is confirmed zero-initialized
 //! (`dstu7624_alloc`'s `CALLOC_CHECKED`), so the running state starts at the zero block, not an
-//! IV. `DECISIONS.md` D-54 has the full citation, oracle-coverage breakdown, and roadmap context.
+//! IV. `docs/DECISIONS.md` D-54 has the full citation, oracle-coverage breakdown, and roadmap context.
 //!
 //! # One-shot, not streaming
 //!
@@ -56,7 +56,7 @@ macro_rules! kalyna_cmac_variant {
             }
 
             /// Computes the 16-byte CMAC tag of `message` using an already-expanded key schedule -
-            /// the cached-schedule counterpart to [`Self::mac`]. `DECISIONS.md` D-76 / `TASKS.md`
+            /// the cached-schedule counterpart to [`Self::mac`]. `docs/DECISIONS.md` D-76 / `docs/TASKS.md`
             /// T-127: `mac` re-derives the full Kalyna round-key schedule on every invocation, an
             /// avoidable cost (comparable to several block-cipher calls) for any caller computing a MAC for more
             /// than one message under the same key - this method lets such a caller build the
@@ -103,7 +103,7 @@ macro_rules! kalyna_cmac_variant {
             }
 
             /// Recomputes the CMAC tag and compares it against `expected` in constant time
-            /// (`subtle::ConstantTimeEq`, per `SECURITY.md`'s hard constraint on secret
+            /// (`subtle::ConstantTimeEq`, per `docs/SECURITY.md`'s hard constraint on secret
             /// comparisons - a MAC tag is exactly this category).
             ///
             /// # Errors

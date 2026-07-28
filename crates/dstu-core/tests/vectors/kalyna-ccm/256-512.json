@@ -4,7 +4,7 @@
   "key_bits": 512,
   "ccm_nb": 6,
   "tag_bytes": 32,
-  "source": "PROVISIONAL, not confirmed against the primary DSTU 7624:2014 text (DECISIONS.md D-05 revision note, D-41). Byte-identical in both oracles: oracles/bouncycastle-java/core/src/test/java/org/bouncycastle/crypto/test/DSTU7624Test.java CCMModeTests test 3, and oracles/uapki/library/uapkic/src/dstu7624.c dstu7624_ccm_self_test test 4 (ccm_test_data[3]) - independent-lineage cross-check, not the same vendor's number twice.",
+  "source": "PROVISIONAL, not confirmed against the primary DSTU 7624:2014 text (docs/DECISIONS.md D-05 revision note, D-41). Byte-identical in both oracles: oracles/bouncycastle-java/core/src/test/java/org/bouncycastle/crypto/test/DSTU7624Test.java CCMModeTests test 3, and oracles/uapki/library/uapkic/src/dstu7624.c dstu7624_ccm_self_test test 4 (ccm_test_data[3]) - independent-lineage cross-check, not the same vendor's number twice.",
   "cases": [
     {
       "name": "aead",

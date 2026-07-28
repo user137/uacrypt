@@ -1,10 +1,10 @@
 //! GF(2^163) field arithmetic, reduced modulo the pentanomial `x^163 + x^7 + x^6 + x^3 + 1` - the
 //! reduction polynomial of the DSTU 4145-2002 curve dual-sourced in
-//! `tests/vectors/dstu4145/gf2m163.json` (`DECISIONS.md` D-14), matching
+//! `tests/vectors/dstu4145/gf2m163.json` (`docs/DECISIONS.md` D-14), matching
 //! `oracles/bouncycastle-java/.../DSTU4145NamedCurves.java`'s `ECCurve.F2m(163, 3, 6, 7, ...)`
 //! constructor (`k1, k2, k3 = 3, 6, 7`).
 //!
-//! **Branchless by construction** (`DECISIONS.md` D-25): every operation below runs the same
+//! **Branchless by construction** (`docs/DECISIONS.md` D-25): every operation below runs the same
 //! sequence of word ops regardless of the operand values. `multiply` selects each shifted operand
 //! via an all-ones/all-zeros mask derived from a single bit rather than an `if`, and `reduce`'s
 //! word-reduction and final cleanup pass run unconditionally rather than skipping zero words or
@@ -81,7 +81,7 @@ impl FieldElement {
     /// all ones; subtracting 1 clears the lowest bit). Left-to-right square-and-multiply over
     /// that fixed bit pattern is exactly `162` (square, multiply-by-`self`) steps followed by one
     /// final square - the addition chain Itoh-Tsujii accelerates asymptotically, done here in its
-    /// direct form since correctness, not speed, is the goal for this pass (see `DECISIONS.md`
+    /// direct form since correctness, not speed, is the goal for this pass (see `docs/DECISIONS.md`
     /// D-25). Every step always executes regardless of `self`'s value.
     #[must_use]
     pub fn invert(self) -> Self {
@@ -130,7 +130,7 @@ fn shl1(x: &mut [u64; 6]) {
 /// fully-reduced 3-limb field element. Adapted from OpenSSL's generic `BN_GF2m_mod_arr`
 /// (`crypto/bn/bn_gf2m.c`) specialized to `m = 163`, `W = 64` (so `dN = m / W = 2`,
 /// `d0 = m % W = 35`, `d1 = W - d0 = 29`) - with its two data-dependent shortcuts removed for
-/// constant-time behavior (`DECISIONS.md` D-25):
+/// constant-time behavior (`docs/DECISIONS.md` D-25):
 /// - the source removes a source word entirely if it happens to be zero; this always processes
 ///   every word.
 /// - the source loops the final cleanup step until the overflow is zero; this always runs it a
@@ -140,7 +140,7 @@ fn reduce(mut c: [u64; 6]) -> FieldElement {
     // Main pass: reduce words 5, 4, 3 (each covering exponents >= 163) down into words 0..=3.
     // Each source word `zz` contributes its middle-term (7, 6, 3) and constant-term (0)
     // reductions, all of which land split across exactly two destination words `j-2`/`j-3` for
-    // this specific (m, W) pair - see DECISIONS.md D-25 for the derivation of the shift amounts
+    // this specific (m, W) pair - see docs/DECISIONS.md D-25 for the derivation of the shift amounts
     // (28/36, 29/35, 32/32 for the three middle terms, 35/29 for the constant term).
     for j in (3..=5).rev() {
         let zz = c[j];
@@ -155,7 +155,7 @@ fn reduce(mut c: [u64; 6]) -> FieldElement {
     // masks them out of c[2], and folds them into c[0] via the same z^163 = z^7+z^6+z^3+1
     // identity. One pass is provably enough (c[2] is fully masked by the end of it, so a repeat
     // pass reads an all-zero overflow and changes nothing) - run twice anyway as cheap insurance
-    // against a subtle off-by-one in that argument, per DECISIONS.md D-25.
+    // against a subtle off-by-one in that argument, per docs/DECISIONS.md D-25.
     for _ in 0..2 {
         let overflow = c[2] >> 35;
         c[2] = (c[2] << 29) >> 29;

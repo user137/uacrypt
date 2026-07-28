@@ -1,5 +1,5 @@
 //! `crypto_secretbox` equivalent (`docs/dstu-crypto-project.md` "Mapping onto the libsodium API",
-//! `TASKS.md` T-37, `DECISIONS.md` D-51) - a single fixed `hazmat::kalyna_gcm::Kalyna256_256Gcm`
+//! `docs/TASKS.md` T-37, `docs/DECISIONS.md` D-51) - a single fixed `hazmat::kalyna_gcm::Kalyna256_256Gcm`
 //! construction (D-47's tie-breaker rule: no algorithm knob when one safe default exists) with an
 //! internally-generated nonce (never caller-supplied, extending the pattern `uacrypt kalyna-ccm
 //! encrypt`'s CLI layer already used, D-40/T-82) and a combined `nonce || ciphertext || tag` wire
@@ -7,14 +7,14 @@
 //!
 //! # No message-length cap
 //!
-//! Migrated from Kalyna-CCM to Kalyna-GCM 2026-07-25 (roadmap Step 3 item 1, `DECISIONS.md`
+//! Migrated from Kalyna-CCM to Kalyna-GCM 2026-07-25 (roadmap Step 3 item 1, `docs/DECISIONS.md`
 //! D-63) - the original Kalyna-CCM construction capped plaintext/AAD at 255 bytes each (D-41,
 //! `ccm_padd`'s header encoding). GCM encodes no length into its construction at all, so that cap
 //! and `SecretboxError::MessageTooLong` are gone entirely, not just raised. This does not make
 //! disk-file encryption memory-bounded, though: an AEAD tag needs the full plaintext/ciphertext,
 //! so a large message still means a correspondingly large in-memory buffer (see `uacrypt`'s own
 //! `run_secretbox_command` doc comment for the concrete consequence at the CLI layer).
-//! `crypto_secretstream` (`TASKS.md` T-40) remains the separately-tracked follow-up for a
+//! `crypto_secretstream` (`docs/TASKS.md` T-40) remains the separately-tracked follow-up for a
 //! genuinely chunked/streaming construction; this module still does not attempt that.
 //!
 //! # No AAD (caller-facing) - but the nonce is bound into the tag internally
@@ -33,7 +33,7 @@
 //! previous CCM-based construction did not have (CCM's B0 formatting block ties the nonce into its
 //! CBC-MAC). Passing the nonce as AAD closes it using the construction's own designed mechanism
 //! for authenticating out-of-band data, the same way a caller would bind a header to an AEAD tag.
-//! Caught by `tampered_nonce_is_rejected` during this migration, not assumed - see `DECISIONS.md`
+//! Caught by `tampered_nonce_is_rejected` during this migration, not assumed - see `docs/DECISIONS.md`
 //! D-63.
 //!
 //! # Provenance
@@ -55,7 +55,7 @@
 //! Encrypts a whole in-memory message under a freshly generated key. `seal`/`open` protect both
 //! confidentiality (nobody without the key can read the message) and integrity (`open` rejects
 //! anything tampered with, rather than returning wrong plaintext) - see below for the "tampered
-//! ciphertext is rejected" case, `TASKS.md` T-120's own required failure-path example.
+//! ciphertext is rejected" case, `docs/TASKS.md` T-120's own required failure-path example.
 //!
 //! ```rust
 //! use dstu_core::crypto_secretbox::{seal, open, SecretKey};

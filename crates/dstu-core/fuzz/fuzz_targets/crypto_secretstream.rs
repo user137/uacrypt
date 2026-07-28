@@ -3,7 +3,7 @@
 use dstu_core::crypto_secretstream::{Key, PullState, PushState, Tag};
 use libfuzzer_sys::fuzz_target;
 
-// Required by SECURITY.md ("cargo fuzz is required ... not optional"). `PullState::pull` makes an
+// Required by docs/SECURITY.md ("cargo fuzz is required ... not optional"). `PullState::pull` makes an
 // authentication decision on fully attacker-controlled input (tag byte, ciphertext, tag, and
 // length fields) the same way `kalyna_gcm::decrypt` does (D-56/D-68's fuzz precedent) - it must
 // never panic/crash regardless of content or length, including tag bytes outside 0..=3 and

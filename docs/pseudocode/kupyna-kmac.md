@@ -6,7 +6,7 @@ introduction that "the new standard defines both the hash function and its addit
 message authentication code generation" but does not itself describe that mode anywhere in its
 536 lines (checked directly, not assumed - `grep`-scanned for "authentication"/"PAD(K)"/"invert",
 one hit, the sentence just quoted). This pseudocode is therefore transcribed from two independent
-reference implementations, not the primary standard text - see `DECISIONS.md` D-44 for the full
+reference implementations, not the primary standard text - see `docs/DECISIONS.md` D-44 for the full
 provenance discussion, including why the dual-oracle agreement here is stronger evidence than
 Strumok's or Kalyna-CCM's equivalent caveats.
 

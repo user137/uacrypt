@@ -1,4 +1,4 @@
-//! Tests for `dstu_core::crypto_kdf` (`TASKS.md` T-105, `DECISIONS.md` D-66) - the
+//! Tests for `dstu_core::crypto_kdf` (`docs/TASKS.md` T-105, `docs/DECISIONS.md` D-66) - the
 //! libsodium-ergonomics wrapper over `hazmat::kupyna_kdf::Kupyna256Kdf`. `Kupyna256Kdf` itself is
 //! already covered by determinism/distinctness property tests (`tests/kupyna_kdf.rs` - no oracle
 //! vector exists for this construction at all, D-45); this file exercises delegation

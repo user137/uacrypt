@@ -1,15 +1,15 @@
 # Release readiness: what a genuine libsodium-equivalent 1.0 needs
 
-Requested 2026-07-23 (same session as `DECISIONS.md` D-43's `0.0.0` -> `0.1.0` version bump): a gap
+Requested 2026-07-23 (same session as `docs/DECISIONS.md` D-43's `0.0.0` -> `0.1.0` version bump): a gap
 analysis between where this project actually is and the user's stated release goal — a full
 libsodium-style API with matching command surface and documentation, published to crates.io as a
 complete, built-and-tested algorithm set, where **every mode of operation included is current and
 safe**, not provisional. This document is that analysis. It synthesizes existing tracking
-(`TASKS.md`, `DECISIONS.md`, `docs/dstu-crypto-project.md`'s API mapping, `SECURITY.md`) rather than
+(`docs/TASKS.md`, `docs/DECISIONS.md`, `docs/dstu-crypto-project.md`'s API mapping, `docs/SECURITY.md`) rather than
 duplicating it — update the source-of-truth file first when something here changes, then this
 document's summary.
 
-**See also `docs/user-journey-gaps.md` (`TASKS.md` T-114)** for a persona/journey-organized
+**See also `docs/user-journey-gaps.md` (`docs/TASKS.md` T-114)** for a persona/journey-organized
 companion view — it surfaces gaps this document's construction-organized framing doesn't (e.g. no
 `uacrypt keygen` command, no bare-metal cross-compile ever run) rather than duplicating this
 document's findings.
@@ -17,13 +17,13 @@ document's findings.
 ## Headline finding
 
 **Updated 2026-07-24: D-05 is no longer formally open — adopted as a working assumption, still not
-primary-text-confirmed.** `DECISIONS.md` D-05 — whether Kalyna alone is DSTU 7624's intended AEAD
+primary-text-confirmed.** `docs/DECISIONS.md` D-05 — whether Kalyna alone is DSTU 7624's intended AEAD
 construction, or whether confidentiality + integrity requires a separate Kalyna+Kupyna
 encrypt-then-MAC design — was resolved on assumption at the project owner's explicit direction:
 **Kalyna-alone** (CCM/GCM/KW), not encrypt-then-MAC. This is corroborated by two independent
 non-primary sources agreeing mode-for-mode (this project's own already-vendored `oracles/uapki/`
 ten-mode self-test list, and Ukrainian Wikipedia's independently-sourced ten-mode table for the
-"Калина (шифр)" article — see `DECISIONS.md` D-05's 2026-07-24 revision for the full table and
+"Калина (шифр)" article — see `docs/DECISIONS.md` D-05's 2026-07-24 revision for the full table and
 sourcing caveats), on top of D-41's existing UAPKI+Bouncy-Castle reference-implementation evidence.
 **This is still not a reading of the priced primary DSTU 7624:2014 text** — it remains unpurchased,
 and this decision is explicitly provisional, to be revised again (not silently) if that text is
@@ -35,10 +35,10 @@ against this working hypothesis" situation:
   sources above (mode #8, "Вироблення імітовставки і гамування").
 - Strumok's entire vector set is still UAPKI-attributed, not confirmed against the paid DSTU
   8845:2019 text (D-15) — a separate, unrelated gap on a different algorithm, unaffected by D-05.
-- **`crypto_secretbox` (T-37) is done, see `DECISIONS.md` D-51** — a single fixed construction,
+- **`crypto_secretbox` (T-37) is done, see `docs/DECISIONS.md` D-51** — a single fixed construction,
   internally-generated nonce, combined `nonce || ciphertext || tag` output, no caller-facing AAD
   parameter. **Migrated 2026-07-25 from Kalyna-CCM to Kalyna-GCM** (roadmap Step 3 item 1,
-  `DECISIONS.md` D-63) — `hazmat::kalyna_gcm::Kalyna256_256Gcm`, not all five variants, per D-47's
+  `docs/DECISIONS.md` D-63) — `hazmat::kalyna_gcm::Kalyna256_256Gcm`, not all five variants, per D-47's
   "delete the knob" criterion. **The 255-byte cap is gone entirely, not just raised**
   (`SecretboxError::MessageTooLong` was removed, not left dormant) — GCM encodes no length into its
   construction the way CCM's header did. This does not make `uacrypt encrypt`/`decrypt` streaming:
@@ -50,7 +50,7 @@ against this working hypothesis" situation:
   tamper-evidence on the nonce prefix, so `seal`/`open` now pass the nonce itself as `kalyna_gcm`'s
   AAD internally to bind it into the tag (still no caller-facing AAD parameter). Caught by a test
   during the migration, not assumed — see D-63.
-- `crypto_secretstream` (T-40/T-70) — **Done 2026-07-25, see `DECISIONS.md` D-68.** The D-05-blocking
+- `crypto_secretstream` (T-40/T-70) — **Done 2026-07-25, see `docs/DECISIONS.md` D-68.** The D-05-blocking
   concern (an ad hoc Strumok+KMAC EtM gap-fill would silently resolve D-05) no longer applied once
   D-05 got an adopted answer, and the construction that landed doesn't touch that question anyway —
   it's built over the already-decided `hazmat::kalyna_gcm` (D-56), a from-scratch tag-per-chunk
@@ -67,7 +67,7 @@ against this working hypothesis" situation:
 
 A release billed as "current, safe modes" still cannot honestly ship on top of an
 assumption-adopted, non-primary-confirmed construction without saying so exactly as loudly as
-`DECISIONS.md`/`TASKS.md` already do internally — closing that gap fully still needs either (a)
+`docs/DECISIONS.md`/`docs/TASKS.md` already do internally — closing that gap fully still needs either (a)
 acquiring the primary DSTU 7624:2014/8845:2019 texts and re-verifying against them, or (b) shipping
 1.0 with the provisional status stated prominently in the public API/docs. (a) got meaningfully
 cheaper to consider today (two new corroborating sources, no purchase) but hasn't happened; (b) is
@@ -82,7 +82,7 @@ independent second-oracle cross-check (Bouncy Castle, Java and .NET):
 | Algorithm | Standard | Status |
 |---|---|---|
 | Kalyna | DSTU 7624:2014 | All 5 block/key-size variants, single-block encrypt/decrypt, `ExpandedKey` API. Vector-confirmed + dual-oracle. **Mode of operation: all 10/10 DSTU 7624 modes now implemented at `hazmat`**, updated 2026-07-25 (T-99) — ECB/CBC/OFB/CTR/CFB (Stage A), CMAC/KW/GCM/GMAC (Stage B-D, D-54-D-57), XTS (Stage E, T-96/D-58) all landed since this table's last real update. CCM/GCM/KW are the three combined (confidentiality+integrity) modes and the only ones eligible for a public `crypto_secretbox`-style entry point (D-47); ECB/CBC/OFB/CTR/CFB/XTS are confidentiality-only, bare CMAC/GMAC are integrity-only — none of those six may become a public `encrypt`/`decrypt` entry point on their own. All ten still share CCM's original caveat: dual-oracle-verified (UAPKI + Bouncy Castle where available), not primary-DSTU-7624:2014-text-confirmed. |
-| Kupyna | DSTU 7564:2014 | Both 256/512 variants, one-shot `digest()` and streaming `Hasher`. Vector-confirmed + dual-oracle. KMAC (`crypto_auth` equivalent) now implemented too — `hazmat::kupyna_kmac`, dual-oracle with both constructions read (`TASKS.md` T-38, `DECISIONS.md` D-44), same provisional-pending-primary-text caveat. KDF (`crypto_kdf` equivalent) built on top of that KMAC — `hazmat::kupyna_kdf` (T-39, D-45); no DSTU standard or reference implementation exists for this construction at all, so unlike the KMAC row there is no oracle vector, ever — verified by determinism/distinctness property tests only. |
+| Kupyna | DSTU 7564:2014 | Both 256/512 variants, one-shot `digest()` and streaming `Hasher`. Vector-confirmed + dual-oracle. KMAC (`crypto_auth` equivalent) now implemented too — `hazmat::kupyna_kmac`, dual-oracle with both constructions read (`docs/TASKS.md` T-38, `docs/DECISIONS.md` D-44), same provisional-pending-primary-text caveat. KDF (`crypto_kdf` equivalent) built on top of that KMAC — `hazmat::kupyna_kdf` (T-39, D-45); no DSTU standard or reference implementation exists for this construction at all, so unlike the KMAC row there is no oracle vector, ever — verified by determinism/distinctness property tests only. |
 | Strumok | DSTU 8845:2019 | Both 256/512-bit key variants, keystream `apply_keystream`. **UAPKI-attributed vectors only** — no independent confirmation against the primary text exists anywhere (D-15) since no such oracle has been found; this is a provenance ceiling, not a code-quality gap. |
 
 DSTU 4145-2002 (digital signatures): the m=163 curve's `GF(2^163)` field arithmetic, point
@@ -90,7 +90,7 @@ add/double/constant-time scalar multiplication, and `sign`/`verify` are all impl
 (`hazmat::dstu4145`), verified against the official standard's own Annex B.1 worked example plus a
 `proptest` round-trip, with two real bugs (a `Q = d·G` vs `Q = -d·G` sign error, a `hash_to_field`
 calling-convention bug) found and fixed by re-deriving from the primary text directly rather than
-trusting a single reference-implementation transcription (`DECISIONS.md` D-25). **The high-level
+trusting a single reference-implementation transcription (`docs/DECISIONS.md` D-25). **The high-level
 `crypto_sign` wrapper is also done** (T-48, D-46 — a stale "no wrapper exists yet" claim
 here, and a stale "table is out of date" claim about `docs/dstu-crypto-project.md`'s own mapping
 table, are both corrected 2026-07-24; that table has been current on this point since T-48 landed) —
@@ -102,7 +102,7 @@ Engineering infrastructure that a real release needs is genuinely in place: `no_
 feature-flag split confirmed across 8 build combinations including a `small-tables` constrained-MCU
 resource profile (D-35/D-38/D-39); `cargo audit`/`cargo deny` in CI; a cross-platform `cargo xtask`
 build/QA runner (D-12); binary-level (not just in-process) performance comparisons against
-UAPKI/reference-C on both x86-64 and a real Raspberry Pi ARM64 rig (`PERFORMANCE.md`, D-34);
+UAPKI/reference-C on both x86-64 and a real Raspberry Pi ARM64 rig (`docs/PERFORMANCE.md`, D-34);
 zeroization of key material (D-20); a documented, scoped constant-time exception for
 S-box/GF-multiplication table lookups, matching every reference implementation (D-19).
 
@@ -128,7 +128,7 @@ nonce needs no RNG at all). `crypto_auth`/`crypto_kdf` are done too (T-38/T-39, 
 high-level wrappers as well (T-105, D-66, roadmap Step 3 item 2, 2026-07-25). `crypto_generichash`
 also got its high-level module the same day (T-105, D-66) — a bare re-export, not a new wrapper
 (see the table below for why). `crypto_stream` got its high-level wrapper too, same roadmap Step,
-one day later (item 3, `DECISIONS.md` D-67) — internally-generated IV, confirmed with the project
+one day later (item 3, `docs/DECISIONS.md` D-67) — internally-generated IV, confirmed with the project
 owner rather than assumed (this was the one fork the roadmap itself left open, unlike the other
 three). Every high-level module in Step 3 is now done:
 
@@ -171,7 +171,7 @@ it's one of the combined ones).
 | Encrypt a large file / continuous stream, without buffering it all in memory | Chunked AEAD | GCM (#7) | Yes | **Done** (`dstu_core::crypto_secretstream`, T-40/T-70, D-68) — genuinely chunked, `uacrypt encrypt`/`decrypt` rewired onto it | not needed |
 | Full-disk encryption (random-access sectors) | Disk-mode cipher | XTS (#9) | No, by design — integrity is deliberately left to the filesystem layer, a recognized special case, not a gap | **Done** (`hazmat::kalyna_xts`, T-96/D-58) | None needed — this is the one standard case where a non-AEAD mode is the *correct* choice, not a compromise |
 | TLS-style record layer (browser, high throughput) | Per-record chunked AEAD | Same gap as the large-file row | Yes | **Done** — `dstu_core::crypto_secretstream` (T-40/T-70, D-68) is a tag-per-chunk high-level wrapper, the same shape a record layer needs | not needed |
-| Key exchange / handshake (ECDHE-equivalent) | Key agreement | DSTU 9041 (`crypto_kx`) | No mode exists at all | **Hard-blocked** — zero source material (no paper, oracle, or pseudocode, `TASKS.md` T-46/T-47) | **No safe DSTU replacement exists.** The only realistic path is a non-DSTU primitive (e.g. X25519) under the same "no homegrown primitive where DSTU has a real gap" precedent as Argon2id (D-03) — an explicit scope decision for the project owner, not an engineering task |
+| Key exchange / handshake (ECDHE-equivalent) | Key agreement | DSTU 9041 (`crypto_kx`) | No mode exists at all | **Hard-blocked** — zero source material (no paper, oracle, or pseudocode, `docs/TASKS.md` T-46/T-47) | **No safe DSTU replacement exists.** The only realistic path is a non-DSTU primitive (e.g. X25519) under the same "no homegrown primitive where DSTU has a real gap" precedent as Argon2id (D-03) — an explicit scope decision for the project owner, not an engineering task |
 | Digital signatures | Sign/verify | DSTU 4145 (`crypto_sign`) | Yes | **Done** | not needed |
 | Message/API authentication | MAC | Kupyna-KMAC (`crypto_auth`) | Yes (integrity-only is the actual goal here) | **Done** | not needed |
 | Deriving subkeys from a master key | KDF | Kupyna-KDF (`crypto_kdf`) | Yes | **Done** | not needed |
@@ -191,7 +191,7 @@ any kind to choose from, safe or otherwise.
 
 ## What's missing for the CLI / release-mechanics surface
 
-- **T-16 is done, see `DECISIONS.md` D-52**: `uacrypt encrypt`/`decrypt`/`hash` are real top-level
+- **T-16 is done, see `docs/DECISIONS.md` D-52**: `uacrypt encrypt`/`decrypt`/`hash` are real top-level
   commands. **As of 2026-07-25 (T-40, D-68), `encrypt`/`decrypt` are rewired onto
   `dstu_core::crypto_secretstream`** (not `crypto_secretbox` anymore) — genuinely chunked, `--in`/
   `--out` streamed in fixed-size blocks rather than read whole into memory, closing the gap this
@@ -203,13 +203,13 @@ any kind to choose from, safe or otherwise.
   but publishing a `0.1.0` that is honest about D-05 (adopted on assumption, not primary-confirmed)/
   D-15/D-41's provisional status is a judgment call for the project owner, not an engineering
   blocker.
-- **T-18**: **Done 2026-07-26**, see `TASKS.md` T-18/T-119. Prebuilt `uacrypt` binaries for
+- **T-18**: **Done 2026-07-26**, see `docs/TASKS.md` T-18/T-119. Prebuilt `uacrypt` binaries for
   Windows/Linux/macOS (Apple Silicon only), plus a `dstu-core` source distribution, are published
   as GitHub Release assets on the `v0.1.0` tag via `.github/workflows/release.yml`, verified
   against the actual downloaded assets (not just a green CI run).
 - No user-facing documentation beyond this repo's own `.md` files exists yet (no rustdoc pass
   dedicated to public API ergonomics, no separate docs site/book) — a real release needs
-  API-level docs a consumer reads without first reading `DECISIONS.md`.
+  API-level docs a consumer reads without first reading `docs/DECISIONS.md`.
 - Phase 3 (language bindings: Python/JS/Java/.NET/C++) is entirely unstarted — not required for a
   Rust-crate-only 1.0, but relevant if "libsodium-equivalent" is read to include libsodium's
   multi-language reach.
@@ -219,8 +219,8 @@ any kind to choose from, safe or otherwise.
 Requested 2026-07-25: an audit of libsodium's actual official API (doc.libsodium.org) beyond the
 core constructions already tracked above, plus a review of crates.io/RustCrypto-ecosystem
 publishing norms, to find anything neither implemented nor tracked as a task. Findings that turned
-into real actionable work are `TASKS.md` T-109 through T-113 (Cargo.toml metadata, per-crate
-LICENSE files, `docs.rs` metadata, `CHANGELOG.md`/MSRV, crate-level provisional-status doc warning,
+into real actionable work are `docs/TASKS.md` T-109 through T-113 (Cargo.toml metadata, per-crate
+LICENSE files, `docs.rs` metadata, `docs/CHANGELOG.md`/MSRV, crate-level provisional-status doc warning,
 multi-part `crypto_sign`) - this section records the rest: corrections, and gaps deliberately **not**
 scheduled, so a future session doesn't re-derive the same conclusions from scratch.
 
@@ -231,7 +231,7 @@ only - there is no separate `crypto_kdf_hkdf_*` family to map against. Nothing t
 **Confirmed an existing gap, then closed it**: libsodium's `crypto_secretstream_xchacha20poly1305`
 uses four tags (MESSAGE/PUSH/REKEY/FINAL), where the absence of a FINAL tag before EOF is what
 detects stream truncation - this was the actual design bar `crypto_secretstream` needed to hit, not
-just per-chunk authentication. **Done 2026-07-25 (T-40/T-70, `DECISIONS.md` D-68)** -
+just per-chunk authentication. **Done 2026-07-25 (T-40/T-70, `docs/DECISIONS.md` D-68)** -
 `dstu_core::crypto_secretstream` implements the full four-tag set and the truncation-via-missing-
 FINAL property, hitting this bar exactly.
 
@@ -240,16 +240,16 @@ FINAL property, hitting this bar exactly.
 - **Detached API variants** (`crypto_secretbox_detached`, `crypto_sign_detached` - tag/signature
   returned separately from ciphertext/message rather than concatenated into one blob). libsodium
   ships both combined and detached forms for these; this project's own `crypto_secretbox`/
-  `crypto_sign` deliberately ship one shape only, per `DECISIONS.md` D-47's "delete the knob"
+  `crypto_sign` deliberately ship one shape only, per `docs/DECISIONS.md` D-47's "delete the knob"
   tie-breaker. Adding a detached entry point is a second knob, which is exactly what D-47 says to
   avoid absent a concrete reason - a real use case exists in the wild (storing a MAC/signature in a
   database column separate from a large blob) but none exists in this project yet. Flagged as a
   question, not resolved unilaterally the way T-105's fork was (a mistake this project already
-  caught itself making once, see `DECISIONS.md` D-66/D-67's process-lesson note) - needs the
+  caught itself making once, see `docs/DECISIONS.md` D-66/D-67's process-lesson note) - needs the
   owner's call before it becomes a task.
 - **`randombytes_uniform`** (unbiased bounded random integer). No consumer exists anywhere in this
   codebase today - the same "no `CryptoRng` trait, nothing consumes one yet" reasoning
-  `DECISIONS.md` D-48 already gave for keeping `randombytes_buf` a plain function applies here too,
+  `docs/DECISIONS.md` D-48 already gave for keeping `randombytes_buf` a plain function applies here too,
   and CLAUDE.md's own "no speculative features" rule forbids adding it ahead of a real use.
   Revisit if/when a concrete caller needs a bounded random index/range without modulo bias.
 
@@ -327,7 +327,7 @@ analogue, and `dstu_core::crypto_kdf` already covers the "derive a subkey from a
 this project has an actual consumer for) - but the prior claim that libsodium simply doesn't have
 this family was factually wrong, not a scoping judgment, and needed fixing on its own.
 
-**Real, previously-undocumented gaps found - added to `TASKS.md`**:
+**Real, previously-undocumented gaps found - added to `docs/TASKS.md`**:
 
 - **`dstu_core::crypto_sign::SigningKey` has no keypair-generation constructor at all** - only
   `from_bytes(d: &[u8; 21])`, which requires the caller to already possess a valid private scalar
@@ -338,8 +338,8 @@ this family was factually wrong, not a scoping judgment, and needed fixing on it
   `hazmat` internals. This is the same class of journey-blocking gap T-115 closed for
   `crypto_secretstream::Key` (`uacrypt keygen`) - confirmed by reading the actual source
   (`crates/dstu-core/src/crypto_sign.rs`), not assumed from the API-mapping table, which had marked
-  `crypto_sign` "Implemented" without this distinction. **Done 2026-07-26, see `TASKS.md` T-122 and
-  `DECISIONS.md` D-72** - `SigningKey::generate()` now exists (plain OS-CSPRNG, rejection sampling
+  `crypto_sign` "Implemented" without this distinction. **Done 2026-07-26, see `docs/TASKS.md` T-122 and
+  `docs/DECISIONS.md` D-72** - `SigningKey::generate()` now exists (plain OS-CSPRNG, rejection sampling
   against the curve order, not a modulo reduction).
 - **No pluggable/custom RNG backend for `no_std`/embedded targets** - libsodium documents
   `randombytes_set_implementation()`/`advanced/custom_rng.md` specifically so a caller can swap in a
@@ -347,7 +347,7 @@ this family was factually wrong, not a scoping judgment, and needed fixing on it
   `std`-gated over `getrandom` with no equivalent hook - correctly absent from `no_std` builds
   (nothing promised otherwise), but there was no tracked path for a STM32/ESP32 caller to get
   `randombytes`-shaped functionality at all without a host OS's CSPRNG. **Done 2026-07-26, see
-  `TASKS.md` T-123 and `DECISIONS.md` D-74** - a new `getrandom` Cargo feature (narrower than `std`,
+  `docs/TASKS.md` T-123 and `docs/DECISIONS.md` D-74** - a new `getrandom` Cargo feature (narrower than `std`,
   independent of it) makes `randombytes`/every `Key::generate` reachable on a bare `no_std` build,
   for a caller who has configured one of `getrandom` 0.3's own non-OS backends themselves (most
   commonly `custom`). **Capability parity with libsodium's `randombytes_set_implementation()`, not
@@ -361,9 +361,9 @@ this family was factually wrong, not a scoping judgment, and needed fixing on it
   actually produces the bytes `randombytes_buf`/`Key::generate` return.
 - **`uacrypt` has no `sign`/`verify` CLI commands** - `dstu_core::crypto_sign` (T-48/D-46) exists
   only as a library API, confirmed via `grep` across `crates/uacrypt/src/lib.rs`'s command
-  dispatch. First surfaced as a scoping note on `TASKS.md` T-120 (doc-examples task, which
+  dispatch. First surfaced as a scoping note on `docs/TASKS.md` T-120 (doc-examples task, which
   documents the gap rather than closing it); this round makes it a real implementation task in its
-  own right. **Done 2026-07-26, see `TASKS.md` T-124 and `DECISIONS.md` D-73** - `sign`/`verify`
+  own right. **Done 2026-07-26, see `docs/TASKS.md` T-124 and `docs/DECISIONS.md` D-73** - `sign`/`verify`
   now exist, plus `sign-keygen`/`sign-pubkey` (a scope widening beyond the literal task text,
   needed so there's a CLI path to key material at all - the same class of gap T-115 closed for
   `encrypt`/`decrypt`).
@@ -372,7 +372,7 @@ this family was factually wrong, not a scoping judgment, and needed fixing on it
 
 - **`crypto_kem`/ML-KEM768** (post-quantum key encapsulation, new in current libsodium) - this is
   NIST's ML-KEM (Kyber), not a DSTU standard. Post-quantum primitives are explicitly out of this
-  project's scope without a separate owner decision (`DECISIONS.md` D-08, currently scoped to the
+  project's scope without a separate owner decision (`docs/DECISIONS.md` D-08, currently scoped to the
   *DSTU* post-quantum standards Skelya/Vershyna specifically) - the same reasoning extends to a
   non-DSTU PQ KEM a fortiori. Recorded here so it isn't independently "discovered" and proposed
   again without the context that this was already considered.
@@ -381,7 +381,7 @@ this family was factually wrong, not a scoping judgment, and needed fixing on it
   DSTU standard addresses this, and no evident use case in a general-purpose DSTU crypto library.
 - **AEGIS-256/AEGIS-128L, AES256-GCM as `crypto_aead_*` choices** - these are alternative AEAD
   *cipher* choices libsodium offers alongside ChaCha20-Poly1305, not missing functionality - this
-  project already made its combined-AEAD choice (Kalyna-CCM/GCM, `DECISIONS.md` D-47's "delete the
+  project already made its combined-AEAD choice (Kalyna-CCM/GCM, `docs/DECISIONS.md` D-47's "delete the
   knob") and isn't in the business of offering a cipher menu.
 - **SHA-2, SHA-3, HMAC-SHA-2, Keccak-f[1600] (raw), Poly1305 one-time auth, the
   ChaCha20/XChaCha20/Salsa20/XSalsa20 stream-cipher family** - all non-DSTU primitives libsodium
@@ -402,7 +402,7 @@ scope commitment either way)**:
   guarantee (no bare-metal equivalent exists, so this could never be a `no_std`-uniform primitive the
   way `Zeroize` is). Not unilaterally scoped in either direction here, same posture as the existing
   "detached API variants" question above - needs the owner's call on whether this project's threat
-  model (`SECURITY.md`) wants it before it becomes a task.
+  model (`docs/SECURITY.md`) wants it before it becomes a task.
 
 `docs/dstu-crypto-project.md`'s "Concrete API shape" table (the authoritative implementation-status
 table) is unaffected by this round - none of the findings above change any *existing* module's
@@ -410,11 +410,11 @@ status, they're additions (new tasks) or corrections to this file's own prior au
 
 ## Concrete path to a genuinely safe, complete release
 
-**Superseded 2026-07-25 (T-99) by `TASKS.md`'s "Roadmap to a genuinely complete product"** (recorded
+**Superseded 2026-07-25 (T-99) by `docs/TASKS.md`'s "Roadmap to a genuinely complete product"** (recorded
 2026-07-24, user-approved sequencing) — that document is now the current authoritative "what's next"
 plan, kept there specifically so it survives a memory clear or new session. The numbered list below
 is left as a historical snapshot of this document's own earlier reasoning, corrected for factual
-staleness (T-99's job) but not renumbered or resequenced to match the roadmap — read `TASKS.md` for
+staleness (T-99's job) but not renumbered or resequenced to match the roadmap — read `docs/TASKS.md` for
 current sequencing, this section for the reasoning behind steps 1-2 specifically (still load-bearing,
 per the closing paragraph below).
 
@@ -438,7 +438,7 @@ In rough dependency order:
    the two constructions this step originally meant by "missing" for `crypto_secretstream` - are
    both built at the `hazmat` level, and `crypto_secretbox` itself has now migrated onto
    `kalyna_gcm` (roadmap Step 3 item 1, D-63), removing its 255-byte cap entirely.
-   **`crypto_secretstream` (T-40/T-70) is now done too, same day, see `DECISIONS.md` D-68** - the
+   **`crypto_secretstream` (T-40/T-70) is now done too, same day, see `docs/DECISIONS.md` D-68** - the
    genuinely chunked wrapper this step was waiting on is built, `uacrypt encrypt`/`decrypt` rewired
    onto it.
 4. **Build the high-level layer** (D-09's second layer) over every `hazmat` primitive that's ready —

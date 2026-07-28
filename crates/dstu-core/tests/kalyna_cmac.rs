@@ -1,5 +1,5 @@
 //! Black-box integration test for `dstu_core::hazmat::kalyna_cmac` against the cross-oracle
-//! vectors in `tests/vectors/kalyna-cmac/` (`TASKS.md` T-93, `DECISIONS.md` D-54) - uapki KATs for
+//! vectors in `tests/vectors/kalyna-cmac/` (`docs/TASKS.md` T-93, `docs/DECISIONS.md` D-54) - uapki KATs for
 //! all three covered variants, corroborated by Bouncy Castle for the two block-aligned cases
 //! (128-128, 512-512); the 128-256 case exercises the padding branch, which BC structurally cannot
 //! corroborate (`DSTU7624Mac` throws on non-block-aligned input) - see D-54 for the single-oracle

@@ -1,13 +1,13 @@
 // Cross-checks this project's extracted test vectors (crates/dstu-core/tests/vectors/) against
 // Bouncy Castle's own Kalyna (Dstu7624Engine) and Kupyna (Dstu7564Digest) implementations, via
 // the published BouncyCastle.Cryptography NuGet package - not the vendored partial clone under
-// oracles/bouncycastle-dotnet/ (see TASKS.md "Infrastructure" for why).
+// oracles/bouncycastle-dotnet/ (see docs/TASKS.md "Infrastructure" for why).
 //
-// Note on evidentiary value (see ORACLES.md / DECISIONS.md D-10): Bouncy Castle's Kalyna/Kupyna
+// Note on evidentiary value (see docs/ORACLES.md / docs/DECISIONS.md D-10): Bouncy Castle's Kalyna/Kupyna
 // code is itself a port of Roman Oliynykov's C reference, not an independent implementation - a
 // pass here mostly re-confirms this project's own PDF vector extraction, not a second independent
 // reading of the algorithm. Still worth running: the pdftotext extraction hazards documented in
-// ORACLES.md are exactly the kind of error a second consumer of the same vectors can catch.
+// docs/ORACLES.md are exactly the kind of error a second consumer of the same vectors can catch.
 
 using System.Text.Json;
 using Org.BouncyCastle.Crypto.Digests;

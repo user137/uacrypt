@@ -1,5 +1,5 @@
 //! `crypto_generichash` equivalent (`docs/dstu-crypto-project.md` "Mapping onto the libsodium API",
-//! `TASKS.md` T-105, roadmap Step 3 item 2 - `DECISIONS.md` D-66) - a bare re-export of
+//! `docs/TASKS.md` T-105, roadmap Step 3 item 2 - `docs/DECISIONS.md` D-66) - a bare re-export of
 //! [`crate::hazmat::kupyna`]'s one-shot and streaming API under this crate's top-level `crypto_*`
 //! namespace, for naming parity with `crypto_sign`/`crypto_secretbox`/`crypto_pwhash` rather than
 //! a new wrapper.

@@ -3,7 +3,7 @@
 use dstu_core::hazmat::strumok::{Strumok256, Strumok512};
 use libfuzzer_sys::fuzz_target;
 
-// Required by SECURITY.md ("cargo fuzz is required ... not optional"). apply_keystream must
+// Required by docs/SECURITY.md ("cargo fuzz is required ... not optional"). apply_keystream must
 // never panic/crash regardless of key/IV/data content or length (including the zero-length and
 // non-8-aligned cases the chunk-invariance unit test also targets) - not a correctness check,
 // which the vector tests cover.

@@ -1,4 +1,4 @@
-//! Official-vector tests for `hazmat::kupyna_kmac` (DSTU 7564:2014's MAC mode, `DECISIONS.md`
+//! Official-vector tests for `hazmat::kupyna_kmac` (DSTU 7564:2014's MAC mode, `docs/DECISIONS.md`
 //! D-44) - dual-oracle-cited (UAPKI C + Bouncy Castle Java), still provisional pending the primary
 //! standard text, see `docs/pseudocode/kupyna-kmac.md`. Same hand-rolled extractor convention as
 //! `tests/kalyna_ccm.rs`.

@@ -4,8 +4,8 @@
  * `cargo run --example strumok_diff_cases -p dstu-core` - recomputes the keystream independently
  * via oracles/strumok-dstu8845/ (outspace, BSD-2-Clause), and reports any mismatch.
  *
- * Why this matters specifically for Strumok (see TASKS.md "Testing & hardening",
- * DECISIONS.md D-15/D-18): no official DSTU 8845:2019 test vectors exist anywhere in this
+ * Why this matters specifically for Strumok (see docs/TASKS.md "Testing & hardening",
+ * docs/DECISIONS.md D-15/D-18): no official DSTU 8845:2019 test vectors exist anywhere in this
  * project's holdings, and the 8 UAPKI-attributed fixed vectors already adopted cover a narrow
  * slice of the key/IV/length space. This does not fix that provenance gap (outspace shares
  * lineage with UAPKI - not independent confirmation, see D-15) but it does exercise far more of
@@ -90,7 +90,7 @@ int main(void)
         }
 
         /* uint8_to_uint64 in both oracles is a raw memcpy on a little-endian host (x86_64) - see
-         * DECISIONS.md D-15/the sibling harness's comment for the established convention. */
+         * docs/DECISIONS.md D-15/the sibling harness's comment for the established convention. */
         uint64_t key_words[8] = { 0 };
         uint64_t iv_words[4] = { 0 };
         memcpy(key_words, key_bytes, (size_t)key_len);

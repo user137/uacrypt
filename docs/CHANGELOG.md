@@ -7,8 +7,8 @@ All notable changes to this project are documented in this file. Format follows
 
 ## [0.1.0] - 2026-07-26
 
-First tagged release - GitHub Releases only (`TASKS.md` T-18); not published to crates.io
-(`TASKS.md` T-17 stays separately gated on an explicit owner request). Everything below predates
+First tagged release - GitHub Releases only (`docs/TASKS.md` T-18); not published to crates.io
+(`docs/TASKS.md` T-17 stays separately gated on an explicit owner request). Everything below predates
 this tag; there is no reconstructed per-commit history before it.
 
 ### Added
@@ -47,6 +47,6 @@ this tag; there is no reconstructed per-commit history before it.
 
 - Kalyna-alone AEAD mode-of-operation (D-05) and the Strumok test vectors (D-15) are provisional:
   adopted on corroborating evidence, not confirmed against the primary DSTU text. See
-  `SECURITY.md`/`DECISIONS.md` for the full provisional-status caveats.
+  `docs/SECURITY.md`/`docs/DECISIONS.md` for the full provisional-status caveats.
 - No independent third-party security audit has been performed. `no_std` compiling is not a
   side-channel-resistance claim.

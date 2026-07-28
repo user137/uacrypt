@@ -1,5 +1,5 @@
 //! Black-box integration test for `dstu_core::hazmat::kalyna_xts` against the cross-oracle vectors
-//! in `tests/vectors/kalyna-xts/` (`TASKS.md` T-96, `DECISIONS.md` D-58) - one "aligned" (simple
+//! in `tests/vectors/kalyna-xts/` (`docs/TASKS.md` T-96, `docs/DECISIONS.md` D-58) - one "aligned" (simple
 //! loop) and one "stealing" (ciphertext-stealing, non-block-aligned) KAT per Kalyna variant, full
 //! 10-vector coverage of DSTU 7624's last remaining mode. The aligned case is dual-oracle
 //! (uapki + Bouncy Castle `XTSModeTests`, vector-only cross-check - construction source not

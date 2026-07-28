@@ -5,7 +5,7 @@ use dstu_core::hazmat::kalyna::{
 };
 use libfuzzer_sys::fuzz_target;
 
-// Required by SECURITY.md ("cargo fuzz is required ... not optional"). Each variant's
+// Required by docs/SECURITY.md ("cargo fuzz is required ... not optional"). Each variant's
 // encrypt/decrypt must never panic/crash regardless of key or block content - that's the only
 // property this target checks (not correctness, which the vector tests cover).
 macro_rules! fuzz_variant {

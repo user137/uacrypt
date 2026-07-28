@@ -1,6 +1,6 @@
 //! Black-box integration test for `dstu_core::hazmat::strumok` against the UAPKI-attributed
 //! keystream vectors in `tests/vectors/strumok/` — **not** the official DSTU 8845:2019 text
-//! itself (no copy of that has been located; see `ORACLES.md` and `DECISIONS.md` D-15). Same
+//! itself (no copy of that has been located; see `docs/ORACLES.md` and `docs/DECISIONS.md` D-15). Same
 //! hand-rolled extractor as `tests/kalyna.rs`/`tests/kupyna.rs` — no JSON dependency for a fixed,
 //! project-controlled vector shape.
 
@@ -145,7 +145,7 @@ chunk_invariance_test!(strumok_512_chunk_invariance, Strumok512, 64);
 
 /// A stream cipher's keystream XOR is its own inverse: applying it twice with the same key/IV
 /// must return the original bytes. Property-tested over random keys/IVs/data instead of relying
-/// only on the fixed vectors above - see `TASKS.md` "Testing & hardening".
+/// only on the fixed vectors above - see `docs/TASKS.md` "Testing & hardening".
 macro_rules! xor_involution_proptest {
     ($test_name:ident, $variant:ty, $key_len:literal) => {
         proptest! {

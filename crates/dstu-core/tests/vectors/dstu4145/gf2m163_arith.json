@@ -2,7 +2,7 @@
   "algorithm": "DSTU 4145-2002 GF(2^163) field + EC point arithmetic (unit-level, generated)",
   "field_bits": 163,
   "reduction_polynomial": "x^163 + x^7 + x^6 + x^3 + 1",
-  "source": "Generated via Bouncy Castle's ECFieldElement.F2m/ECPoint.F2m (published bcprov-jdk18on 1.85, see ORACLES.md) against the curve/base-point/order already dual-sourced in gf2m163.json - tests/oracle-harness/java/src/main/java/Dstu4145VectorGen.java. Single-oracle at the unit level (BC only), not dual-sourced the way gf2m163.json is - see DECISIONS.md.",
+  "source": "Generated via Bouncy Castle's ECFieldElement.F2m/ECPoint.F2m (published bcprov-jdk18on 1.85, see docs/ORACLES.md) against the curve/base-point/order already dual-sourced in gf2m163.json - tests/oracle-harness/java/src/main/java/Dstu4145VectorGen.java. Single-oracle at the unit level (BC only), not dual-sourced the way gf2m163.json is - see docs/DECISIONS.md.",
   "curve": { "a": "1", "b": "05FF6108462A2DC8210AB403925E638A19C1455D21" },
   "order_n": "0400000000000000000002BEC12BE2262D39BCF14D",
   "base_point": { "x": "072D867F93A93AC27DF9FF01AFFE74885C8C540420", "y": "224A9C3947852B97C5599D5F4AB81122ADC3FD9B" },

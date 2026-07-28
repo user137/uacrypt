@@ -1,4 +1,4 @@
-# SECURITY.md
+# docs/SECURITY.md
 
 Threat model, hard constraints, and dependency vetting for this project. Applies from the first
 line of core code — not a post-MVP addendum.
@@ -26,11 +26,11 @@ Explicitly out of scope (until stated otherwise):
 
 - No primitive is implemented without citing the specific spec section (DSTU text, page/clause,
   or the author's reference-implementation source) it was verified against. Record the citation
-  in `DECISIONS.md`.
+  in `docs/DECISIONS.md`.
 - No secret-dependent branching. Secret-dependent array indexing is limited to fixed-latency
   table lookups mirroring the DSTU reference implementations (S-box/GF-multiplication substitution
   tables) — a documented, currently-accepted software cache-timing exposure, scoped identically to
-  the hardware side-channel carve-out below (see `DECISIONS.md` D-19 for the full rationale and
+  the hardware side-channel carve-out below (see `docs/DECISIONS.md` D-19 for the full rationale and
   exact scope). Anything beyond that — an index that depends on a *comparison outcome*, or
   variable-time table selection — is still prohibited without exception.
 - All comparisons involving secret data use `subtle::ConstantTimeEq`, never `==`.
@@ -68,7 +68,7 @@ Explicitly out of scope (until stated otherwise):
   failure — a real loss of tamper-evidence, not a theoretical one. The fix is to bind the nonce
   into the tag using the construction's own AAD mechanism (pass the nonce itself as `aad`), not to
   add an ad hoc secondary check. Found and fixed in `crypto_secretbox`'s Kalyna-CCM→Kalyna-GCM
-  migration (`DECISIONS.md` D-63) via a tamper test written during that migration, not caught by
+  migration (`docs/DECISIONS.md` D-63) via a tamper test written during that migration, not caught by
   code review after the fact — re-verify this for every future combined-AEAD wire format
   (`crypto_secretstream`/T-40 included), it is not a one-time fix.
 
@@ -77,10 +77,10 @@ Explicitly out of scope (until stated otherwise):
 | Crate | Maintainer/developer | Reproducible builds | Independent audit | CVE history |
 |---|---|---|---|---|
 | `subtle` 2.6.1 | dalek-cryptography org (isis lovecruft, Henry de Valence) — the same team behind `curve25519-dalek`/`ed25519-dalek`; `subtle` is the de facto standard constant-time-comparison primitive those and many other independently audited Rust crypto crates build on | Standard `cargo`/crates.io build, no custom build script (confirmed: no `build.rs` in the published source) | Not separately audited as a standalone crate, but it underpins numerous independently audited crates in the dalek-cryptography/RustCrypto-adjacent ecosystem, same posture as the `zeroize` row below | Clean per `cargo audit` as of 2026-07-25 |
-| `zeroize` 1.9 (+ `zeroize_derive`) | RustCrypto org — the de facto standard crate for this in the Rust crypto ecosystem, used by nearly every RustCrypto primitive | Standard `cargo`/crates.io build, no custom build script beyond the derive proc-macro | Not separately audited as a standalone crate, but its volatile-write approach is the same one used across audited RustCrypto crates | Clean per `cargo audit` (D-11) as of 2026-07-22, see `DECISIONS.md` D-20 |
-| `getrandom` 0.3.4 | rust-random org — the de facto standard OS-CSPRNG-access crate in the Rust ecosystem, dependency of `rand`/`rand_core` and thousands of downstream crates | Standard `cargo`/crates.io build; a small `build.rs` for backend target detection, no code generation | Not separately third-party-audited as a standalone crate; widely relied upon across the ecosystem (including by audited crates) as the standard OS-entropy access point | Clean per `cargo audit` as of 2026-07-24, `dstu-core`-side usage is `std`-gated/optional (`DECISIONS.md` D-48) so it never enters a `no_std` build |
-| `argon2` 0.5.3 (adopted, `pwhash` feature only — `DECISIONS.md` D-49/D-50, T-71) | RustCrypto org (`password-hashes` monorepo) — the de facto standard Argon2 implementation in the Rust ecosystem (~40M downloads) | Standard `cargo`/crates.io build, no custom build script | Not separately third-party-audited as a standalone crate; NCC Group's and Cure53's RustCrypto-adjacent audits covered the AEAD/`xsalsa20poly1305` crates, not `password-hashes` — a real, disclosed gap | Clean per both the local `cargo audit` advisory DB and `RustSec/advisory-db` upstream, checked 2026-07-24 |
-| `rand_core` 0.6.4 (transitive only, via `argon2`→`password-hash`'s own default features — `DECISIONS.md` D-50) | rust-random org — the de facto standard RNG-trait crate in the Rust ecosystem | Standard `cargo`/crates.io build | Not separately third-party-audited as a standalone crate | Clean per `cargo audit` as of 2026-07-24; genuinely unused by any code in this workspace (`SaltString::generate`/`OsRng` are never called), confirmed absent from every `no_std` build since `pwhash` is never enabled there |
+| `zeroize` 1.9 (+ `zeroize_derive`) | RustCrypto org — the de facto standard crate for this in the Rust crypto ecosystem, used by nearly every RustCrypto primitive | Standard `cargo`/crates.io build, no custom build script beyond the derive proc-macro | Not separately audited as a standalone crate, but its volatile-write approach is the same one used across audited RustCrypto crates | Clean per `cargo audit` (D-11) as of 2026-07-22, see `docs/DECISIONS.md` D-20 |
+| `getrandom` 0.3.4 | rust-random org — the de facto standard OS-CSPRNG-access crate in the Rust ecosystem, dependency of `rand`/`rand_core` and thousands of downstream crates | Standard `cargo`/crates.io build; a small `build.rs` for backend target detection, no code generation | Not separately third-party-audited as a standalone crate; widely relied upon across the ecosystem (including by audited crates) as the standard OS-entropy access point | Clean per `cargo audit` as of 2026-07-24, `dstu-core`-side usage is `std`-gated/optional (`docs/DECISIONS.md` D-48) so it never enters a `no_std` build |
+| `argon2` 0.5.3 (adopted, `pwhash` feature only — `docs/DECISIONS.md` D-49/D-50, T-71) | RustCrypto org (`password-hashes` monorepo) — the de facto standard Argon2 implementation in the Rust ecosystem (~40M downloads) | Standard `cargo`/crates.io build, no custom build script | Not separately third-party-audited as a standalone crate; NCC Group's and Cure53's RustCrypto-adjacent audits covered the AEAD/`xsalsa20poly1305` crates, not `password-hashes` — a real, disclosed gap | Clean per both the local `cargo audit` advisory DB and `RustSec/advisory-db` upstream, checked 2026-07-24 |
+| `rand_core` 0.6.4 (transitive only, via `argon2`→`password-hash`'s own default features — `docs/DECISIONS.md` D-50) | rust-random org — the de facto standard RNG-trait crate in the Rust ecosystem | Standard `cargo`/crates.io build | Not separately third-party-audited as a standalone crate | Clean per `cargo audit` as of 2026-07-24; genuinely unused by any code in this workspace (`SaltString::generate`/`OsRng` are never called), confirmed absent from every `no_std` build since `pwhash` is never enabled there |
 | _(fill in per dependency before merging)_ | | | | |
 
 ## Reporting vulnerabilities

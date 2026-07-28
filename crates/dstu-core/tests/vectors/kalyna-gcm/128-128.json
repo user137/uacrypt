@@ -2,7 +2,7 @@
   "algorithm": "Kalyna-GCM-128/128",
   "block_bits": 128,
   "key_bits": 128,
-  "source": "oracles/uapki/library/uapkic/src/dstu7624.c dstu7624_gcm_self_test (case 0, programmatically extracted). Block-aligned plaintext (32 bytes, 2 blocks) - the ISO/IEC 7816-4 padding-marker branch in the ciphertext-accumulation step (DECISIONS.md D-56) is untested by any of the 6 official GCM vectors, none of which have non-aligned plaintext. Dual-oracle: uapki construction + a vector-only cross-check against oracles/bouncycastle-java's DSTU7624Test.java GCMModeTests (construction source not vendored - same weaker-claim caveat as D-41's CCM entry).",
+  "source": "oracles/uapki/library/uapkic/src/dstu7624.c dstu7624_gcm_self_test (case 0, programmatically extracted). Block-aligned plaintext (32 bytes, 2 blocks) - the ISO/IEC 7816-4 padding-marker branch in the ciphertext-accumulation step (docs/DECISIONS.md D-56) is untested by any of the 6 official GCM vectors, none of which have non-aligned plaintext. Dual-oracle: uapki construction + a vector-only cross-check against oracles/bouncycastle-java's DSTU7624Test.java GCMModeTests (construction source not vendored - same weaker-claim caveat as D-41's CCM entry).",
   "cases": [
     {
       "key_hex": "000102030405060708090A0B0C0D0E0F",

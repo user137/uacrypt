@@ -3,7 +3,7 @@
  * Rust ciphertext for each) from stdin - produced by
  * `cargo run --example kalyna_diff_cases -p dstu-core` - recomputes the ciphertext independently
  * via oracles/kalyna-reference/ (Roman Oliynykov et al., the algorithm's own author, verify-only,
- * no license - see ORACLES.md), and reports any mismatch. See DECISIONS.md D-24 for why this
+ * no license - see docs/ORACLES.md), and reports any mismatch. See docs/DECISIONS.md D-24 for why this
  * exists: same pattern as the Strumok differential harness (D-22), added for parity so Kalyna
  * and Kupyna get the same random-input scrutiny Strumok got, not less.
  *
@@ -97,7 +97,7 @@ int main(void)
         }
 
         /* Raw little-endian word packing - see kalyna-reference/main.c's own print()/vector
-         * layout and this project's DECISIONS.md D-13: byte i of the input maps to word i/8,
+         * layout and this project's docs/DECISIONS.md D-13: byte i of the input maps to word i/8,
          * byte i%8 of that word. A plain memcpy onto uint64_t[] does this on a little-endian
          * host (x86_64), same convention as the Strumok harness. */
         uint64_t key_words[8] = { 0 };

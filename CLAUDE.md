@@ -20,20 +20,20 @@ environment. The workspace has two crates:
 
 - `crates/dstu-core` — the library (`std`/`alloc` feature flags per D-01). `dstu_core::hazmat` has
   three primitives: `kupyna::{Kupyna256, Kupyna512}` (one-shot `digest()`, plus `Kupyna256Hasher`/
-  `Kupyna512Hasher` for streaming `update`/`finalize` as of 2026-07-23, `TASKS.md` T-83, citation
-  `DECISIONS.md` D-10), `kalyna::{Kalyna128_128, Kalyna128_256, Kalyna256_256,
-  Kalyna256_512, Kalyna512_512}` (single-block `encrypt`/`decrypt`, citation `DECISIONS.md` D-13) —
+  `Kupyna512Hasher` for streaming `update`/`finalize` as of 2026-07-23, `docs/TASKS.md` T-83, citation
+  `docs/DECISIONS.md` D-10), `kalyna::{Kalyna128_128, Kalyna128_256, Kalyna256_256,
+  Kalyna256_512, Kalyna512_512}` (single-block `encrypt`/`decrypt`, citation `docs/DECISIONS.md` D-13) —
   plus, as of 2026-07-23, `kalyna_ccm` (all five variants, a provisional Kalyna-alone CCM mode of
-  operation, citation `DECISIONS.md` D-41, still not confirmed against the primary DSTU 7624:2014
+  operation, citation `docs/DECISIONS.md` D-41, still not confirmed against the primary DSTU 7624:2014
   text — same posture as Strumok below) and `kupyna_kmac::{Kupyna256Kmac, Kupyna384Kmac,
-  Kupyna512Kmac}` (the `crypto_auth` equivalent, citation `DECISIONS.md` D-44 — provisional too, but
+  Kupyna512Kmac}` (the `crypto_auth` equivalent, citation `docs/DECISIONS.md` D-44 — provisional too, but
   on stronger dual-oracle evidence than `kalyna_ccm`/Strumok since both reference constructions were
   read, not just one plus the other's vectors), plus `kupyna_kdf::{Kupyna256Kdf, Kupyna384Kdf,
-  Kupyna512Kdf}` (the `crypto_kdf` equivalent, `DECISIONS.md` D-45, built on `kupyna_kmac` — a
+  Kupyna512Kdf}` (the `crypto_kdf` equivalent, `docs/DECISIONS.md` D-45, built on `kupyna_kmac` — a
   from-scratch design following libsodium's `crypto_kdf` shape, since no DSTU KDF standard or
   reference implementation exists at all; verified by property test only, no oracle vector exists
   to write) — and `strumok::{Strumok256, Strumok512}` (keystream generation via
-  `apply_keystream`, citation `DECISIONS.md` D-18 — vectors are UAPKI-attributed, not confirmed
+  `apply_keystream`, citation `docs/DECISIONS.md` D-18 — vectors are UAPKI-attributed, not confirmed
   against the official DSTU 8845:2019 text itself, see D-15). All three written test-first;
   Kalyna/Kupyna share S-box/MDS tables via the internal `hazmat::tables` module rather than
   duplicating them, and Strumok's `T` substitution reuses those same shared tables too (only its
@@ -41,66 +41,66 @@ environment. The workspace has two crates:
   three are **confirmed**: `cargo test`, `cargo clippy -- -D warnings`, `cargo fmt --check`, the
   `no_std` build, and `cargo miri test` all pass. Kalyna's independent second-oracle cross-check
   (Java/.NET vs. real Bouncy Castle) is done and re-confirmed 2026-07-23 - an older "still open"
-  note here was simply stale (`TASKS.md` T-10). As of 2026-07-24, `dstu_core::crypto_sign`
-  (`SigningKey`/`VerifyingKey`/`Signature`, `TASKS.md` T-48, `DECISIONS.md` D-46) is the first
+  note here was simply stale (`docs/TASKS.md` T-10). As of 2026-07-24, `dstu_core::crypto_sign`
+  (`SigningKey`/`VerifyingKey`/`Signature`, `docs/TASKS.md` T-48, `docs/DECISIONS.md` D-46) is the first
   high-level `crypto_*`-ergonomics module built on top of `hazmat` (D-09's second layer) — wraps
   `hazmat::dstu4145`, deterministic (Kupyna-KMAC-derived, not caller-random) nonce, no RNG
-  dependency. Check `TASKS.md` Phase 1 for what else is still open (`crypto_generichash`/
+  dependency. Check `docs/TASKS.md` Phase 1 for what else is still open (`crypto_generichash`/
   `crypto_stream`/`crypto_auth`/`crypto_kdf` have no high-level wrapper yet). `kalyna_ccm`'s
-  nonce strategy is resolved (`DECISIONS.md` D-40, `TASKS.md` T-82):
+  nonce strategy is resolved (`docs/DECISIONS.md` D-40, `docs/TASKS.md` T-82):
   wide random nonce generated at the CLI layer via `getrandom`, not a stateful counter — the
   hazmat-level API itself still takes a caller-supplied nonce (`no_std`-compatible). As of
-  2026-07-24, `dstu_core::randombytes::randombytes_buf` (`TASKS.md` T-72, `DECISIONS.md` D-48) is
+  2026-07-24, `dstu_core::randombytes::randombytes_buf` (`docs/TASKS.md` T-72, `docs/DECISIONS.md` D-48) is
   the first core-crate `randombytes` wrapper — `std`-gated over an optional `getrandom`
   dependency, deliberately a plain function rather than a generic `CryptoRng` trait since nothing
   in this crate consumes one yet. `cargo
   fuzz` has now actually been run (all three
   targets, smoke runs, zero crashes) on a Windows dev machine with Visual Studio installed, via the
-  MSVC toolchain/target (`DECISIONS.md` D-32) — CI (Linux) remains the unconditional per-push check.
+  MSVC toolchain/target (`docs/DECISIONS.md` D-32) — CI (Linux) remains the unconditional per-push check.
   Also as of 2026-07-24, `dstu_core::crypto_pwhash` (`hash_password`/`verify_password`/`Strength`,
-  `TASKS.md` T-71, `DECISIONS.md` D-49/D-50) wraps the vetted `argon2` crate behind a new dedicated
+  `docs/TASKS.md` T-71, `docs/DECISIONS.md` D-49/D-50) wraps the vetted `argon2` crate behind a new dedicated
   `pwhash` feature (off by default, not folded into `std`) — the deliberately non-DSTU
   `crypto_pwhash` component, with `Strength::{Interactive,Moderate,Sensitive}` citing libsodium's
   own `OPSLIMIT`/`MEMLIMIT_*` constants exactly, no raw cost-parameter knob exposed. Same day,
-  `dstu_core::crypto_secretbox` (`seal`/`open`/`SecretKey`, `TASKS.md` T-37, `DECISIONS.md` D-51) is
+  `dstu_core::crypto_secretbox` (`seal`/`open`/`SecretKey`, `docs/TASKS.md` T-37, `docs/DECISIONS.md` D-51) is
   the first `crypto_secretbox` equivalent (D-47's "delete the knob" criterion, not all five
   variants), internally-generated nonce, combined `nonce||ciphertext||tag` output, deliberately no
   AAD parameter — originally a single fixed `hazmat::kalyna_ccm::Kalyna256_256Ccm` construction,
   since migrated to Kalyna-GCM (D-63, below), which removed the original 255-byte cap. Folded into
   the existing `std` feature, not a new dedicated one, since no new dependency is introduced. Unblocked
-  `TASKS.md` T-16 (`uacrypt`'s reserved `encrypt`/`decrypt` commands) to start - **T-16 itself is
-  now done too, same session** (`DECISIONS.md` D-52): `uacrypt encrypt`/`decrypt`/`hash` are real
+  `docs/TASKS.md` T-16 (`uacrypt`'s reserved `encrypt`/`decrypt` commands) to start - **T-16 itself is
+  now done too, same session** (`docs/DECISIONS.md` D-52): `uacrypt encrypt`/`decrypt`/`hash` are real
   commands. `encrypt`/`decrypt` are a thin CLI wrapper over `crypto_secretbox` - `--key`/`--in`/
   `--out` only, inheriting its 255-byte cap (loud error, not silent truncation - a deliberate
   product choice made with the user, not a default assumption, since a command named `encrypt`
   silently failing past 255 bytes would be a real usability trap). `hash` is fixed to Kupyna-256,
   no length cap, delegates to `kupyna-digest`'s already-streaming implementation rather than
   duplicating it. **`crypto_secretbox` migrated from Kalyna-CCM to `hazmat::kalyna_gcm::Kalyna256_256Gcm`
-  (roadmap Step 3 item 1, `DECISIONS.md` D-63)** — cap/caveat detail is in "MVP scope" below, not
+  (roadmap Step 3 item 1, `docs/DECISIONS.md` D-63)** — cap/caveat detail is in "MVP scope" below, not
   repeated here. The migration surfaced a real nonce-authentication gap not
   in the original plan: DSTU Kalyna-GCM's tag (unlike CCM's) never covers the IV/nonce (D-56
   divergence 3), which for `crypto_secretbox`'s self-contained `nonce||ciphertext||tag` blob would
   have let an attacker tamper the nonce prefix without failing the tag check — fixed by passing the
   nonce as `kalyna_gcm`'s internal AAD in both `seal`/`open` (still no caller-facing AAD parameter),
   caught by a test written during the migration itself, not discovered after the fact. Same day,
-  roadmap Step 3 item 2 (`TASKS.md` T-105, `DECISIONS.md` D-66) landed too: `dstu_core::
+  roadmap Step 3 item 2 (`docs/TASKS.md` T-105, `docs/DECISIONS.md` D-66) landed too: `dstu_core::
   crypto_generichash`/`crypto_auth`/`crypto_kdf`, the high-level `crypto_*` modules for Kupyna's
   hash, KMAC, and KDF — `crypto_generichash` is a bare re-export of `hazmat::kupyna` (nothing to
   wrap), `crypto_auth`/`crypto_kdf` are thin wrappers exposing only the 256-bit
   `Kupyna256Kmac`/`Kupyna256Kdf` variant behind an opaque `Zeroize`-on-drop key type (D-47's
   "delete the knob", same as `crypto_secretbox`'s single Kalyna variant), all three unconditional
   (`no_std`-compatible) except each key type's `std`-gated `generate()`. One day later, roadmap
-  Step 3 item 3 (`TASKS.md` T-106, `DECISIONS.md` D-67) landed too: `dstu_core::crypto_stream`
+  Step 3 item 3 (`docs/TASKS.md` T-106, `docs/DECISIONS.md` D-67) landed too: `dstu_core::crypto_stream`
   (`encrypt`/`decrypt`/`Key`, single `Strumok256` variant only) — the one roadmap fork left
-  genuinely open in `TASKS.md`'s own text, put to the project owner directly before implementing
+  genuinely open in `docs/TASKS.md`'s own text, put to the project owner directly before implementing
   (not decided unilaterally the way D-66's own fork was, a gap flagged after the fact): the IV is
   hidden/internally-generated, matching `crypto_secretbox`'s nonce precedent. **No authentication**
   — `hazmat::strumok` is a bare keystream generator, so `decrypt` never fails on tampered input,
   which is exactly why the functions are named `encrypt`/`decrypt` and not `seal`/`open`.
   `crypto_stream` is `std`-gated at the whole-module level (needs `Vec<u8>`), unlike the other
   three's per-item gating, since it can't avoid `alloc` the way fixed-array modules can — Step 3 is
-  now fully complete (all five items done). As of 2026-07-25, roadmap Step 5 item 1 (`TASKS.md`
-  T-40/T-70, `DECISIONS.md` D-68) landed: `dstu_core::crypto_secretstream`
+  now fully complete (all five items done). As of 2026-07-25, roadmap Step 5 item 1 (`docs/TASKS.md`
+  T-40/T-70, `docs/DECISIONS.md` D-68) landed: `dstu_core::crypto_secretstream`
   (`PushState`/`PullState`/`Key`/`Tag`) — a genuinely chunked/streaming AEAD, the one remaining
   functional gap between `crypto_secretbox`'s whole-buffer AEAD and covering large files with
   bounded memory. No DSTU standard defines a streaming AEAD mode, so (D-47's tie-breaker) this
@@ -123,22 +123,22 @@ environment. The workspace has two crates:
   workspace suite/clippy/fmt/`no_std` feature matrix all clean, scoped Miri 22/22 passed with 0 UB
   in 1276.00s (~21.3 min).
 - `crates/uacrypt` — the CLI binary, renamed 2026-07-23 from its `dstutool` working name
-  (`DECISIONS.md` D-36; older `DECISIONS.md`/`TASKS.md`/`PERFORMANCE.md` entries predating the
+  (`docs/DECISIONS.md` D-36; older `docs/DECISIONS.md`/`docs/TASKS.md`/`docs/PERFORMANCE.md` entries predating the
   rename still say `dstutool`, left as-is since they're a historical record, not stale docs).
   No longer a placeholder: `kalyna-block encrypt/decrypt`, `kupyna-digest`, and `strumok-crypt`
-  subcommands exist (`DECISIONS.md` D-31), used for binary-level performance comparisons
-  (`PERFORMANCE.md`); as of 2026-07-23, `kalyna-ccm encrypt/decrypt` also exists (`DECISIONS.md`
+  subcommands exist (`docs/DECISIONS.md` D-31), used for binary-level performance comparisons
+  (`docs/PERFORMANCE.md`); as of 2026-07-23, `kalyna-ccm encrypt/decrypt` also exists (`docs/DECISIONS.md`
   D-41) — still deliberately not the reserved top-level `encrypt`/`decrypt` names: D-05 was
   resolved on assumption 2026-07-24 (Kalyna-alone, corroborated by two independent non-primary
   sources - `oracles/uapki`'s own ten-mode list and Ukrainian Wikipedia's matching mode table, see
-  `DECISIONS.md` D-05's latest revision), and those reserved names' other gate,
-  `dstu_core::crypto_secretbox` actually being built (T-37), cleared the same day too (`DECISIONS.md`
-  D-51) — `uacrypt`'s own `encrypt`/`decrypt`/`hash` commands (`TASKS.md` T-16, `DECISIONS.md` D-52)
+  `docs/DECISIONS.md` D-05's latest revision), and those reserved names' other gate,
+  `dstu_core::crypto_secretbox` actually being built (T-37), cleared the same day too (`docs/DECISIONS.md`
+  D-51) — `uacrypt`'s own `encrypt`/`decrypt`/`hash` commands (`docs/TASKS.md` T-16, `docs/DECISIONS.md` D-52)
   are now built too, same session, per the file-plus-mode-of-operation CLI the MVP scope below
   describes. `encrypt`/`decrypt`'s message-length cap was later removed (D-63) — see "MVP scope"
   below for the current-state detail; `hash` has no such limit either. **As of 2026-07-25,
   `encrypt`/`decrypt` are rewired onto `dstu_core::crypto_secretstream` instead of
-  `crypto_secretbox`** (`TASKS.md` T-40/T-70, `DECISIONS.md` D-68) — a genuinely chunked, memory-
+  `crypto_secretbox`** (`docs/TASKS.md` T-40/T-70, `docs/DECISIONS.md` D-68) — a genuinely chunked, memory-
   bounded on-disk format, a breaking change from the prior `crypto_secretbox`-backed blob format
   (acceptable pre-1.0, called out explicitly rather than left implicit). `hash` and `kalyna-ccm`
   are unaffected.
@@ -147,18 +147,18 @@ environment. The workspace has two crates:
 build/QA entry point — same command on Linux/Windows/macOS, no new install beyond `cargo` itself.
 `cargo xtask ci` runs the mandatory checks then best-effort runs miri/fuzz/audit/deny/oracle
 harnesses, printing an install hint for whichever optional tool isn't present rather than failing.
-See `DECISIONS.md` D-12 and `README.md` "Development commands". Use this instead of writing a new
+See `docs/DECISIONS.md` D-12 and `README.md` "Development commands". Use this instead of writing a new
 one-off shell/PowerShell script for any build/QA task.
 
 Official test vectors are extracted and verified for Kalyna and Kupyna:
-`crates/dstu-core/tests/vectors/{kalyna,kupyna}/*.json` — see `ORACLES.md` for provenance and
+`crates/dstu-core/tests/vectors/{kalyna,kupyna}/*.json` — see `docs/ORACLES.md` for provenance and
 format. These vectors have additionally been run against real Bouncy Castle (Java and .NET, via
 the published packages, not the vendored oracle clones) in `tests/oracle-harness/{java,dotnet}/`
-and passed in full — see `TASKS.md` "Infrastructure". No C/cryptonite harness — tried and
-dropped, see `TASKS.md` and `ORACLES.md` for why.
+and passed in full — see `docs/TASKS.md` "Infrastructure". No C/cryptonite harness — tried and
+dropped, see `docs/TASKS.md` and `docs/ORACLES.md` for why.
 
 The concrete module-by-module API surface (what's implemented, what's blocked, and why) lives in
-`docs/dstu-crypto-project.md` "Concrete API shape" and is tracked as a checklist in `TASKS.md`.
+`docs/dstu-crypto-project.md` "Concrete API shape" and is tracked as a checklist in `docs/TASKS.md`.
 
 The full spec lives in `docs/dstu-crypto-project.md`. Read it before planning any implementation
 work — it is the source of truth for scope and architecture decisions below.
@@ -182,20 +182,20 @@ Algorithms in scope:
 ## MVP scope (first priority)
 
 - Rust core implementing Kalyna + Kupyna + Strumok, verified against official DSTU test vectors.
-- Single CLI binary over the core (`uacrypt`, `DECISIONS.md` D-36), e.g.
+- Single CLI binary over the core (`uacrypt`, `docs/DECISIONS.md` D-36), e.g.
   `uacrypt encrypt --key ... --in file --out file` — mode, nonce/IV etc. are hardcoded so there's
-  nothing for the user to misconfigure. **Built** (`TASKS.md` T-16, `DECISIONS.md` D-52). **As of
-  2026-07-25 (`DECISIONS.md` D-63), `encrypt`/`decrypt` have no message-length cap** -
+  nothing for the user to misconfigure. **Built** (`docs/TASKS.md` T-16, `docs/DECISIONS.md` D-52). **As of
+  2026-07-25 (`docs/DECISIONS.md` D-63), `encrypt`/`decrypt` have no message-length cap** -
   `crypto_secretbox` migrated from Kalyna-CCM to Kalyna-GCM, which encodes no length limit into
   itself. **Same day, `encrypt`/`decrypt` were rewired again onto `dstu_core::crypto_secretstream`
-  (`TASKS.md` T-40/T-70, `DECISIONS.md` D-68)** - `--in`/`--out` are now genuinely streamed in
+  (`docs/TASKS.md` T-40/T-70, `docs/DECISIONS.md` D-68)** - `--in`/`--out` are now genuinely streamed in
   fixed-size chunks (block-at-a-time disk I/O, D-42's standing policy), not read whole into memory
   - the tracked follow-up D-63 itself named is now done, not still open.
-- Publish the core crate to crates.io. Not started - `TASKS.md` T-17, explicitly gated on an owner
+- Publish the core crate to crates.io. Not started - `docs/TASKS.md` T-17, explicitly gated on an owner
   request (re-confirmed 2026-07-26 alongside T-18 landing, below - a GitHub release and a crates.io
   publish are different platforms with different reversibility, not the same ask).
 - Prebuilt binaries for Windows/Linux via GitHub Releases (not "clone and build yourself"). **Done
-  2026-07-26** (`TASKS.md` T-18/T-119) - also macOS (Apple Silicon), plus a `dstu-core` source
+  2026-07-26** (`docs/TASKS.md` T-18/T-119) - also macOS (Apple Silicon), plus a `dstu-core` source
   distribution attached to the same release, wider than this bullet's original Windows/Linux-only
   wording. `.github/workflows/release.yml` builds all three platforms on a `v*` tag push.
 - **No hardware or OS lock-in — platform-agnostic by construction.** This targets both ends
@@ -205,7 +205,7 @@ Algorithms in scope:
   - **Core must be `no_std`-compatible from day one** (Cargo feature flags `std` / `alloc` /
     `no_std`) so embedded targets can be added later without a core rewrite. Real-hardware
     validation is a separate post-MVP phase. The non-embedded ARM64/Linux half of this claim now
-    has a real hardware rig checking it (a Raspberry Pi, `TASKS.md` "Testing & hardening" — access
+    has a real hardware rig checking it (a Raspberry Pi, `docs/TASKS.md` "Testing & hardening" — access
     details in `.claude.local.md`, not committed); the bare-metal STM32/ESP32 half is still Phase 4.
   - No dependency, API choice, or build assumption may quietly assume a specific OS (e.g.
     Windows-only path handling, a Unix-only syscall) or a specific CPU family (e.g. an intrinsic
@@ -226,7 +226,7 @@ Algorithms in scope:
 
 - **Post-quantum DSTU 8961:2019 (Skelya) / DSTU 9212:2023 (Vershyna)** — do not implement, and do
   not propose implementing, without a separate explicit decision from the project owner. See D-08
-  in `DECISIONS.md` for the full rationale (different math class from the rest of this project,
+  in `docs/DECISIONS.md` for the full rationale (different math class from the rest of this project,
   complexity on the order of all five in-scope algorithms combined, immature cryptanalysis, no
   vetted oracle exists). If this is ever picked up, `docs/dstu-crypto-project.md` "Post-quantum
   track" has the fuller context.
@@ -235,19 +235,19 @@ Algorithms in scope:
 
 | File | Read when | Update when | Canonical owner of |
 |---|---|---|---|
-| `TASKS.md` | starting or resuming any work session | a task is started, finished, or newly discovered | phase-by-phase task backlog and progress state — status only, not rationale |
+| `docs/TASKS.md` | starting or resuming any work session | a task is started, finished, or newly discovered | phase-by-phase task backlog and progress state — status only, not rationale |
 | `docs/dstu-crypto-project.md` | planning scope, API design, algorithm choices | scope or API-mapping decisions change | project scope, libsodium API mapping |
-| `docs/resource-profiles.md` | choosing/explaining `fused` vs `small-tables`, sizing a target's flash budget | the profile split's memory/speed numbers change, or a new MCU tier is added to the sizing guide | `small-tables` feature memory/speed numbers (`DECISIONS.md` D-35/D-38/D-39), per-target profile recommendation |
-| `docs/release-readiness.md` | assessing distance to a real, complete release; deciding what to build next toward it | a blocking item resolves (esp. D-05), a new construction lands, or the gap analysis otherwise changes | gap analysis between current state and a libsodium-equivalent 1.0 (`DECISIONS.md` D-43, `TASKS.md` T-87) |
-| `docs/user-journey-gaps.md` | assessing whether a real persona (binary user, library user, constrained-target user) can actually complete their journey end to end, not just whether a construction/API exists | a new persona-blocking gap is found or an existing one closes (e.g. T-18/`uacrypt keygen`/crates.io publication) | persona/journey-framed gap analysis (`TASKS.md` T-114) — complements, doesn't replace, `docs/release-readiness.md` (construction-organized) and `docs/dstu-crypto-project.md`'s API-mapping table (libsodium-function-organized) |
-| `SECURITY.md` | before writing any crypto primitive or adding a dependency | threat model or hard constraints change | threat model, hard constraints, supply-chain vetting |
-| `DECISIONS.md` | need the reason behind an architectural choice | a new architectural decision is made | decisions + rejected alternatives, with citations |
-| `ORACLES.md` | before implementing or verifying any primitive | oracle trust ranking changes, or a new oracle/vector source is added | oracle trust matrix, per-algorithm oracle map, test-vector convention, list of reference implementations (`oracles/README.md` links here rather than duplicating) |
+| `docs/resource-profiles.md` | choosing/explaining `fused` vs `small-tables`, sizing a target's flash budget | the profile split's memory/speed numbers change, or a new MCU tier is added to the sizing guide | `small-tables` feature memory/speed numbers (`docs/DECISIONS.md` D-35/D-38/D-39), per-target profile recommendation |
+| `docs/release-readiness.md` | assessing distance to a real, complete release; deciding what to build next toward it | a blocking item resolves (esp. D-05), a new construction lands, or the gap analysis otherwise changes | gap analysis between current state and a libsodium-equivalent 1.0 (`docs/DECISIONS.md` D-43, `docs/TASKS.md` T-87) |
+| `docs/user-journey-gaps.md` | assessing whether a real persona (binary user, library user, constrained-target user) can actually complete their journey end to end, not just whether a construction/API exists | a new persona-blocking gap is found or an existing one closes (e.g. T-18/`uacrypt keygen`/crates.io publication) | persona/journey-framed gap analysis (`docs/TASKS.md` T-114) — complements, doesn't replace, `docs/release-readiness.md` (construction-organized) and `docs/dstu-crypto-project.md`'s API-mapping table (libsodium-function-organized) |
+| `docs/SECURITY.md` | before writing any crypto primitive or adding a dependency | threat model or hard constraints change | threat model, hard constraints, supply-chain vetting |
+| `docs/DECISIONS.md` | need the reason behind an architectural choice | a new architectural decision is made | decisions + rejected alternatives, with citations |
+| `docs/ORACLES.md` | before implementing or verifying any primitive | oracle trust ranking changes, or a new oracle/vector source is added | oracle trust matrix, per-algorithm oracle map, test-vector convention, list of reference implementations (`oracles/README.md` links here rather than duplicating) |
 | `docs/pseudocode/*.md` | before writing a primitive's Rust implementation | the transcription changes or a new ambiguity/discrepancy is found | per-algorithm pseudocode — from-spec for Kalyna/Kupyna/Strumok, from-oracle-code for DSTU 4145 (official text now exists too — see the doc's 2026-07-22 update note — but the pseudocode itself isn't re-derived from it yet), each cross-checked and with any ambiguity flagged inline |
 | `docs/rust_ai_ruleset.md` | general Rust code-style questions | never (external ruleset, treat as canonical as-is) | generic Rust engineering conventions |
 | `docs/cross-language-style-guide.md` | writing or reviewing non-Rust code (oracle harnesses, future language bindings) | a new language is added, or a cross-language principle needs adjusting | cross-language naming/style principles and the per-language reference table; generalizes `docs/rust_ai_ruleset.md`, doesn't replace it |
 | `README.md` | need the human-facing project overview or repo tree | repo structure changes | GitHub-facing description, top-level directory map, build/install instructions |
-| `PERFORMANCE.md` | need this project's benchmark numbers, or comparing against another implementation's speed | new numbers are measured, or a new comparison implementation is benchmarked | benchmark methodology (cross-implementation comparisons are binary-level/MB/s only, `DECISIONS.md` D-34 — `cargo bench`/`criterion` is for internal regression tracking only, never a cross-implementation claim), recorded numbers, comparisons against reference C/UAPKI/outspace, the saved `criterion --baseline` for regression tracking |
+| `docs/PERFORMANCE.md` | need this project's benchmark numbers, or comparing against another implementation's speed | new numbers are measured, or a new comparison implementation is benchmarked | benchmark methodology (cross-implementation comparisons are binary-level/MB/s only, `docs/DECISIONS.md` D-34 — `cargo bench`/`criterion` is for internal regression tracking only, never a cross-implementation claim), recorded numbers, comparisons against reference C/UAPKI/outspace, the saved `criterion --baseline` for regression tracking |
 | `xtask/src/main.rs` | adding or changing a build/QA subcommand | a new tool enters the QA stack or an existing command's invocation changes | the actual cross-platform build/QA command implementations (README.md documents usage, this owns behavior) |
 
 `docs/rust_ai_ruleset.md` §7 (async/tokio) does not apply to the `no_std`-first core — it's only
@@ -255,25 +255,25 @@ relevant if a future CLI or binding layer adds async I/O.
 
 ## Crypto engineering hard constraints
 
-Full detail and rationale in `SECURITY.md` — this is the compressed version so it can't be missed:
+Full detail and rationale in `docs/SECURITY.md` — this is the compressed version so it can't be missed:
 
 - No primitive without a cited spec section (DSTU clause or reference-implementation source) —
-  citation goes in `DECISIONS.md`.
+  citation goes in `docs/DECISIONS.md`.
 - **When an architectural fork has no settling DSTU citation** (spec silent/ambiguous/unavailable —
-  D-05's gap is the recurring case): resolve via `DECISIONS.md` D-47's ranked tie-breaker — (1) TLS
+  D-05's gap is the recurring case): resolve via `docs/DECISIONS.md` D-47's ranked tie-breaker — (1) TLS
   1.3 lessons/modern AEAD consensus (combined constructions over hand-composed ones), (2)
   libsodium's API shape (hard defaults, no misconfigurable knobs), (3) expose only safe modes of
   operation, never an unsafe/legacy one as a public entry point. A real spec citation always outranks
   this rule once one exists — it's for gaps, not a license to design by analogy instead of by spec.
 - No secret-dependent branching. Secret-dependent array indexing is allowed only for fixed-latency
   S-box/GF-multiplication table lookups mirroring the DSTU reference implementations — documented
-  software-timing exception, see D-19 in `DECISIONS.md`, not a license to add more of this
+  software-timing exception, see D-19 in `docs/DECISIONS.md`, not a license to add more of this
   category casually. Secret comparisons via `subtle::ConstantTimeEq`, never `==`; all key material
   is `Zeroize`/`ZeroizeOnDrop`; no secret material in logs.
 - No homegrown primitives — where DSTU has a real gap (pwhash, CSPRNG), use the established
-  international primitive (Argon2id, OS `getrandom`), see D-03/D-04 in `DECISIONS.md`.
+  international primitive (Argon2id, OS `getrandom`), see D-03/D-04 in `docs/DECISIONS.md`.
 - **Dual-oracle verification is mandatory**: official DSTU test vectors *and* an independent
-  reference implementation (Kalyna-reference, cryptonite, Bouncy Castle — see `ORACLES.md` for the
+  reference implementation (Kalyna-reference, cryptonite, Bouncy Castle — see `docs/ORACLES.md` for the
   per-algorithm map). Self-consistent tests passing is not sufficient evidence.
 - `cargo miri test` and `cargo fuzz` are required layers, not optional tooling.
 - This is the software-side complement to the SPA/DPA note above: constant-time discipline
@@ -288,7 +288,7 @@ Full detail and rationale in `SECURITY.md` — this is the compressed version so
   have decryption "succeed" against wrong, unverified plaintext instead of failing closed. Fix by
   passing the nonce as the construction's own AAD parameter (binding it into the tag through the
   mechanism the construction already provides for exactly this), not by inventing a new check. See
-  `DECISIONS.md` D-63 for the concrete case (`crypto_secretbox`'s Kalyna-CCM→Kalyna-GCM migration)
+  `docs/DECISIONS.md` D-63 for the concrete case (`crypto_secretbox`'s Kalyna-CCM→Kalyna-GCM migration)
   — check this again for every future combined-AEAD wrapper (`crypto_secretstream`/T-40 included),
   don't assume it only applied once.
 
@@ -305,7 +305,7 @@ Full detail and rationale in `SECURITY.md` — this is the compressed version so
   (produced both a false "no relevant content" and a fabricated-sounding claim on the same D-05
   research session, 2026-07-24) — for any DSTU-related Cyrillic source, fetch raw text/wikitext
   directly (`curl`) or render pages to PNG and read them; never trust a `WebFetch` prompt's answer
-  about one at face value. See `DECISIONS.md` D-05's 2026-07-24 revision for the concrete case.
+  about one at face value. See `docs/DECISIONS.md` D-05's 2026-07-24 revision for the concrete case.
 - **Excluding a dependency's own feature doesn't stop its transitive dependencies' *default*
   features from turning on anyway** — confirmed via `cargo tree -e normal --features <feature>`,
   not assumed, adding `argon2` (D-50): skipping `argon2`'s own `rand` feature didn't keep `rand_core`
@@ -329,14 +329,14 @@ Full detail and rationale in `SECURITY.md` — this is the compressed version so
     by noticing an *absent* test, not a code walkthrough.
   - **Where a misuse category is foreclosed by the type signature** (e.g. `SecretKey::from_bytes`
     taking `[u8; 32]` makes "wrong key length" uncompilable, not just untested), **record that in
-    `DECISIONS.md` as a finding, don't write a test that only proves the compiler works** — that's
+    `docs/DECISIONS.md` as a finding, don't write a test that only proves the compiler works** — that's
     noise under this project's no-speculative-tests rule, not coverage.
   - **Rejection/misuse tests passing on first write is expected, not a test-first violation.**
     They are coverage for a code path that already exists and is already correct, not red-green
     development of new behavior — don't read "passed immediately" as a reason to doubt or skip
     them.
 - **A `hazmat` streaming/incremental API existing does not make the `uacrypt` command wrapping it
-  memory-bounded** (`DECISIONS.md` D-42) — a CLI command has to be deliberately wired to read its
+  memory-bounded** (`docs/DECISIONS.md` D-42) — a CLI command has to be deliberately wired to read its
   input in fixed chunks instead of `std::fs::read`-ing the whole file, every time a new algorithm
   gains a genuine streaming API (unless its construction truly needs the whole message up front,
   e.g. a length-prefixed AEAD header — not the same thing as "the current code happens to read it
@@ -350,9 +350,9 @@ Full detail and rationale in `SECURITY.md` — this is the compressed version so
   direction — don't self-authorize a 4th attempt.
 - **Research before implementation**: no primitive written from memory. Verify against the
   primary source (specific DSTU clause, or real reference-implementation code) before writing it,
-  and record the citation in `DECISIONS.md`. **If only a reference implementation is available
+  and record the citation in `docs/DECISIONS.md`. **If only a reference implementation is available
   (the primary spec text doesn't exist yet or hasn't been read)**, treat that citation as
-  provisional, not equivalent to a primary-source check — say so explicitly in `DECISIONS.md`
+  provisional, not equivalent to a primary-source check — say so explicitly in `docs/DECISIONS.md`
   (Strumok's "UAPKI-attributed, not confirmed against the official text" framing, D-15, is the
   pattern to copy) and re-verify against the primary text as soon as it's available, rather than
   letting the provisional citation quietly age into being treated as settled. Also: **porting logic
@@ -363,7 +363,7 @@ Full detail and rationale in `SECURITY.md` — this is the compressed version so
   getting the math wrong. This is exactly how DSTU 4145's `hash_to_field` broke: transcribed from
   Bouncy Castle's `hash2FieldElement` (which expects its `hash` parameter pre-reversed relative to
   the standard's own byte convention) without adopting or flagging that requirement — see
-  `DECISIONS.md` D-25's follow-up entries and `docs/pseudocode/dstu4145.md`.
+  `docs/DECISIONS.md` D-25's follow-up entries and `docs/pseudocode/dstu4145.md`.
 - **Don't trust green tests alone for security-critical code** — see dual-oracle verification
   above. Two sharper corollaries, both learned the hard way on DSTU 4145 (D-25):
   - **A test-vector fix that isn't traceable to a specific citation is suspect.** If making a test
@@ -438,7 +438,7 @@ Full detail and rationale in `SECURITY.md` — this is the compressed version so
   standing rule this became; re-check it for every future combined-AEAD wrapper, especially
   `crypto_secretstream` (T-40) — don't assume this was a one-off fix specific to GCM.
 - **This project's doc comments are long, citation-dense prose** (by design — every claim cites a
-  `DECISIONS.md`/`TASKS.md`/spec reference inline), which makes them prone to
+  `docs/DECISIONS.md`/`docs/TASKS.md`/spec reference inline), which makes them prone to
   `clippy::doc_lazy_continuation` under `-D warnings`: any line starting with `**bold` or `- dash`
   (even mid-sentence, not intentionally a markdown list) gets read by clippy/rustdoc as an
   unindented list-item continuation and hard-errors. Concretely hit twice writing D-63's doc
@@ -461,7 +461,7 @@ Full detail and rationale in `SECURITY.md` — this is the compressed version so
 - **Before declaring a multi-file feature/construction "done," grep its own task ID (e.g. `T-40`)
   across every file the doc map's "Update when" column implicates for that kind of change** — not
   just the one or two docs you remember touching. Landing `crypto_secretstream` (D-68) initially
-  updated only `TASKS.md`/`CLAUDE.md`; `docs/release-readiness.md`, `docs/dstu-crypto-project.md`,
+  updated only `docs/TASKS.md`/`CLAUDE.md`; `docs/release-readiness.md`, `docs/dstu-crypto-project.md`,
   and `README.md` all still said "not started" in multiple places until an `advisor()` pass caught
   it by name-checking the doc map. A stale "not started" line next to your own new "Done" line is
   a worse outcome than never mentioning the doc at all.
@@ -480,7 +480,7 @@ Full detail and rationale in `SECURITY.md` — this is the compressed version so
   `#[non_exhaustive]` speculatively — just verify this shape is intentional and record it, don't
   discover it from a downstream break.
 - **`getrandom` 0.3's custom RNG backend (relevant to any future no_std/embedded RNG work,
-  `TASKS.md` T-123/`DECISIONS.md` D-74) is a compile-time/link-time mechanism** — a
+  `docs/TASKS.md` T-123/`docs/DECISIONS.md` D-74) is a compile-time/link-time mechanism** — a
   `--cfg getrandom_backend="custom"` flag (via `RUSTFLAGS`/`.cargo/config.toml`) plus an
   `extern "Rust" fn __getrandom_v03_custom` resolved at link time — **not** a runtime-swappable
   callback the way libsodium's `randombytes_set_implementation()` is. Don't build a home-grown
@@ -500,15 +500,15 @@ Full detail and rationale in `SECURITY.md` — this is the compressed version so
   this way while expanding `crates/dstu-core/README.md` (T-120/D-75): the README's own copy had
   quietly dropped part of an example the doctest still had.
 - **When a session accumulates more than one design fork resolved by implementation rather than
-  by asking first** (flagged for confirmation in `DECISIONS.md`, the D-66/D-72 pattern), surface
+  by asking first** (flagged for confirmation in `docs/DECISIONS.md`, the D-66/D-72 pattern), surface
   all of them together in one end-of-turn message before moving on to the next task — don't let
-  the user discover them one at a time by reading `DECISIONS.md` later (`advisor()`'s explicit
+  the user discover them one at a time by reading `docs/DECISIONS.md` later (`advisor()`'s explicit
   flag, three forks in one session: T-122's `generate()` shape, T-124's `sign-keygen`/
   `sign-pubkey` widening, T-123's capability-vs-mechanism-parity call).
 - **When writing a benchmark/comparison wrapper, verify the timer excludes one-time setup (ctx
   alloc + key-schedule init) — don't assume copying an existing wrapper function's structure to a
   new mode carries the same guarantee.** Confirmed the hard way extending the UAPKI comparison
-  wrapper to GMAC (`DECISIONS.md` D-80): `run_gmac` was copied from `run_cmac`'s original shape,
+  wrapper to GMAC (`docs/DECISIONS.md` D-80): `run_gmac` was copied from `run_cmac`'s original shape,
   which itself timed the whole loop (`alloc`+`init_*` included) rather than just the MAC call,
   while `uacrypt`'s own command caches its schedule outside the loop. Invisible at bulk message
   sizes (CMAC's 10 MiB was unaffected — setup cost is noise against milliseconds of real work) but
@@ -556,7 +556,7 @@ Full detail and rationale in `SECURITY.md` — this is the compressed version so
 ## Reference implementations and oracles
 
 Canonical detail — trust ranking, per-algorithm oracle map, local clones under `oracles/`, and
-the `li0ard` exclusion (D-07) — lives in `ORACLES.md`. Do not duplicate that list here; the full
+the `li0ard` exclusion (D-07) — lives in `docs/ORACLES.md`. Do not duplicate that list here; the full
 resource survey (including non-oracle references like Ecognize/libukrypto and the crates.io niche
 check) is in `docs/dstu-crypto-project.md` "Resources found".
 
@@ -575,7 +575,7 @@ check) is in `docs/dstu-crypto-project.md` "Resources found".
   2026-07-22 — a scan, see `.claude.local.md` for the render-then-read workflow). Test vectors are
   extracted and verified for Kalyna, Kupyna, and DSTU 4145
   (`crates/dstu-core/tests/vectors/{kalyna,kupyna,dstu4145}/`); Strumok's are UAPKI-attributed, not
-  yet confirmed against the paid official text — see `ORACLES.md`/`DECISIONS.md` D-15/D-16.
-- Verify own implementation against Kalyna-reference and the other oracles in `ORACLES.md`.
+  yet confirmed against the paid official text — see `docs/ORACLES.md`/`docs/DECISIONS.md` D-15/D-16.
+- Verify own implementation against Kalyna-reference and the other oracles in `docs/ORACLES.md`.
 - Hardware validation on STM32/ESP32 is a distinct post-MVP phase, and is not a claim of
   side-channel resistance (see MVP scope above).

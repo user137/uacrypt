@@ -1,5 +1,5 @@
 //! Black-box integration test for `dstu_core::hazmat::kalyna_kw` against the cross-oracle vectors
-//! in `tests/vectors/kalyna-kw/` (`TASKS.md` T-94, `DECISIONS.md` D-55) - one block-aligned uapki
+//! in `tests/vectors/kalyna-kw/` (`docs/TASKS.md` T-94, `docs/DECISIONS.md` D-55) - one block-aligned uapki
 //! KAT per Kalyna variant (full 5-variant coverage), shared-BC-lineage corroborated for
 //! Kalyna128_128 only. The non-aligned/padding branch is out of scope for this module (see D-55) -
 //! `wrap`/`unwrap` only accept block-aligned input, matching both Bouncy Castle ports' own
@@ -160,7 +160,7 @@ fn empty_plaintext_is_rejected() {
 
 #[test]
 fn oversized_plaintext_is_rejected() {
-    // r <= 20 is the enforced bound (DECISIONS.md D-55); r = 21 must be rejected.
+    // r <= 20 is the enforced bound (docs/DECISIONS.md D-55); r = 21 must be rejected.
     let key = [0u8; 16];
     let plaintext = [0u8; 16 * 21];
     let mut out = vec![0u8; 16 * 22];
@@ -199,7 +199,7 @@ macro_rules! roundtrip_proptest {
 
             proptest! {
                 /// wrap-then-unwrap must recover the original plaintext for every block-aligned
-                /// length up to the enforced r <= 20 bound (DECISIONS.md D-55).
+                /// length up to the enforced r <= 20 bound (docs/DECISIONS.md D-55).
                 #[test]
                 fn wrap_then_unwrap_roundtrips(
                     key in proptest::collection::vec(any::<u8>(), $key_len),

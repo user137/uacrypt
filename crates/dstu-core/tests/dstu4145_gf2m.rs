@@ -1,6 +1,6 @@
 //! Black-box test for `dstu_core::hazmat::dstu4145::gf2m163` against
 //! `tests/vectors/dstu4145/gf2m163_arith.json` - unit-level field-arithmetic cases generated via
-//! Bouncy Castle's `ECFieldElement.F2m` (single-oracle at this granularity, see `DECISIONS.md`
+//! Bouncy Castle's `ECFieldElement.F2m` (single-oracle at this granularity, see `docs/DECISIONS.md`
 //! D-25; `gf2m163.json`'s signature-level vector is the dual-sourced end-to-end check, once the
 //! point/signature layers exist). Same hand-rolled JSON extractor as `tests/kalyna.rs`/
 //! `tests/kupyna.rs` - no JSON dependency for a fixed, project-controlled vector shape.
@@ -78,7 +78,7 @@ fn field_of(obj: &str, key: &str) -> Option<FieldElement> {
 // required Miri gate for cost reasons; `cargo test` (required, fast) still covers this every push.
 #[cfg_attr(
     miri,
-    ignore = "FieldElement::invert's 162-step exponentiation is too slow to interpret under Miri - see TASKS.md T-100"
+    ignore = "FieldElement::invert's 162-step exponentiation is too slow to interpret under Miri - see docs/TASKS.md T-100"
 )]
 #[test]
 fn gf2m163_field_arithmetic_matches_bouncy_castle() {
@@ -133,7 +133,7 @@ fn gf2m163_one_is_multiplicative_identity() {
 
 #[cfg_attr(
     miri,
-    ignore = "FieldElement::invert's 162-step exponentiation, looped over all field cases, is too slow to interpret under Miri - see TASKS.md T-100"
+    ignore = "FieldElement::invert's 162-step exponentiation, looped over all field cases, is too slow to interpret under Miri - see docs/TASKS.md T-100"
 )]
 #[test]
 fn gf2m163_invert_is_involution_via_reciprocal() {

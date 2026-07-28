@@ -5,7 +5,7 @@ use dstu_core::hazmat::kalyna_gcm::{
 };
 use libfuzzer_sys::fuzz_target;
 
-// Required by SECURITY.md ("cargo fuzz is required ... not optional"). `encrypt`/`decrypt` must
+// Required by docs/SECURITY.md ("cargo fuzz is required ... not optional"). `encrypt`/`decrypt` must
 // never panic/crash regardless of key/iv/aad/plaintext/ciphertext/tag content or length -
 // `decrypt` in particular makes an authentication decision on fully attacker-controlled input, so
 // it's also fuzzed directly with ciphertext/tag bytes never produced by a real `encrypt` call,

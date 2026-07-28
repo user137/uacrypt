@@ -2,7 +2,7 @@
   "algorithm": "Kalyna-KW-256/256",
   "block_bits": 256,
   "key_bits": 256,
-  "source": "oracles/uapki/library/uapkic/src/dstu7624.c dstu7624_kw_self_test (case 3, programmatically extracted). Block-aligned plaintext (96 bytes, 3 blocks) - see the 128-128.json vector's note for the DECISIONS.md D-55 scope-cut and shared-lineage caveat; uapki-only for this variant's exact numbers.",
+  "source": "oracles/uapki/library/uapkic/src/dstu7624.c dstu7624_kw_self_test (case 3, programmatically extracted). Block-aligned plaintext (96 bytes, 3 blocks) - see the 128-128.json vector's note for the docs/DECISIONS.md D-55 scope-cut and shared-lineage caveat; uapki-only for this variant's exact numbers.",
   "cases": [
     {
       "key_hex": "000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F",

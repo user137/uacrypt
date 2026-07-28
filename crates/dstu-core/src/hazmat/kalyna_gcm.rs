@@ -2,7 +2,7 @@
 //! plus a GHASH-like authentication tag, built on [`super::gf2m_wide`]'s field arithmetic. Cited to
 //! `oracles/uapki/library/uapkic/src/dstu7624.c`'s `dstu7624_encrypt_gcm`/`dstu7624_decrypt_gcm`
 //! (lines 3236-3440), `gf2m_mul` (lines 2963-3001), `dstu7624_init_gcm` (lines 4167-4219).
-//! `DECISIONS.md` D-56 has the full citation, the byte/bit representation derivation, and the
+//! `docs/DECISIONS.md` D-56 has the full citation, the byte/bit representation derivation, and the
 //! oracle-coverage breakdown.
 //!
 //! # Not textbook AES-GCM - transcribed as found, not completed from memory
@@ -28,7 +28,7 @@
 //!    step) in the high half-block.
 //!
 //! **None of the 6 official test vectors have non-block-aligned plaintext** - the `0x80` padding
-//! marker in divergence 2 is transcribed as found but not oracle-exercised; see `DECISIONS.md`
+//! marker in divergence 2 is transcribed as found but not oracle-exercised; see `docs/DECISIONS.md`
 //! D-56 and the `proptest` round-trip in `tests/kalyna_gcm.rs`, which does cover it generically.
 //!
 //! # Byte/bit representation
@@ -45,7 +45,7 @@
 //! identical keystream (trivially recoverable via XOR of the two ciphertexts, same failure mode as
 //! [`super::kalyna_ctr`]/[`super::kalyna_ofb`]) *and* reuses the same GHASH key `H`, which can leak
 //! enough to forge tags. `decrypt`'s tag check uses `subtle::ConstantTimeEq`, **not** `dstu7624.c`'s
-//! raw `memcmp` - a deliberate, cited safety fix (`DECISIONS.md` D-56), matching the same pattern
+//! raw `memcmp` - a deliberate, cited safety fix (`docs/DECISIONS.md` D-56), matching the same pattern
 //! already applied to [`super::kalyna_kw`]'s checksum check and [`super::kalyna_cmac`]'s tag verify.
 //!
 //! # Warning: the tag does not cover `iv`
@@ -57,7 +57,7 @@
 //! (wrong) plaintext instead. Any caller who transmits `iv` alongside the ciphertext (as opposed
 //! to deriving it from an already-authenticated channel state) and needs tampering of that
 //! transmitted `iv` to be detected **must** pass it as (or fold it into) `aad` - it is not
-//! authenticated for free. [`crate::crypto_secretbox`] does exactly this (`DECISIONS.md` D-63);
+//! authenticated for free. [`crate::crypto_secretbox`] does exactly this (`docs/DECISIONS.md` D-63);
 //! see `tests/kalyna_gcm.rs`'s `tampered_iv_alone_does_not_fail_the_tag_check` for the property
 //! pinned directly at this layer.
 

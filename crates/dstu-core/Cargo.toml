@@ -23,11 +23,11 @@ default = ["std"]
 std = ["getrandom"]
 getrandom = ["dep:getrandom"]
 alloc = []
-# Resource profile for constrained targets (DECISIONS.md D-35/D-38): swaps the fused S-box+MDS
+# Resource profile for constrained targets (docs/DECISIONS.md D-35/D-38): swaps the fused S-box+MDS
 # lookup tables (~86 KB of `const` data) for the pre-D-26/D-27 gf_mul-based path (~6 KB) at the
 # cost of throughput. Independent of std/alloc/no_std - can combine with any of them.
 small-tables = []
-# `crypto_pwhash` (T-71, DECISIONS.md D-49/D-50): a dedicated feature, not folded into `std`
+# `crypto_pwhash` (T-71, docs/DECISIONS.md D-49/D-50): a dedicated feature, not folded into `std`
 # (D-48's precedent) - Argon2's dependency surface (base64ct/blake2/password-hash) is heavier than
 # `getrandom`'s, and most `std`-feature users on this project's non-server targets have no use for
 # a password-hashing KDF. Requires `std` (needs `randombytes` for the salt, and `String`/PHC-string
@@ -37,10 +37,10 @@ pwhash = ["std", "dep:argon2"]
 [dependencies]
 zeroize = { version = "1.9.0", default-features = false, features = ["derive"] }
 subtle = { version = "2.6.1", default-features = false }
-# Optional, `std`-gated (DECISIONS.md D-48): never compiled for a `no_std` build, so it can never
+# Optional, `std`-gated (docs/DECISIONS.md D-48): never compiled for a `no_std` build, so it can never
 # trip getrandom's own compile_error! on an unrecognized embedded target (D-04 addendum).
 getrandom = { version = "0.3.4", default-features = false, optional = true }
-# Optional, `pwhash`-gated (DECISIONS.md D-49/D-50): vetted 2026-07-24, pinned to the stable
+# Optional, `pwhash`-gated (docs/DECISIONS.md D-49/D-50): vetted 2026-07-24, pinned to the stable
 # `0.5.3` release (not the `0.6.0-rc` prerelease on `master`). `rand` feature deliberately
 # excluded - salt bytes come from this crate's own `randombytes_buf`, not `password_hash`'s
 # `rand_core`-based `SaltString::generate`. This does NOT keep `rand_core` out of the dependency

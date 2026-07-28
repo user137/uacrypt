@@ -1,8 +1,8 @@
 //! Black-box test for `dstu_core::hazmat::dstu4145::signature::verify` against
 //! `tests/vectors/dstu4145/gf2m163.json` - the standard's own Annex B.1 worked example, dual-
-//! sourced against Bouncy Castle's `test163()` (`DECISIONS.md` D-14). This is the first
+//! sourced against Bouncy Castle's `test163()` (`docs/DECISIONS.md` D-14). This is the first
 //! genuinely dual-sourced (not single-BC-oracle) check for anything built on the field/point
-//! arithmetic landed so far - see `DECISIONS.md` D-25's follow-up entry.
+//! arithmetic landed so far - see `docs/DECISIONS.md` D-25's follow-up entry.
 
 use dstu_core::hazmat::dstu4145::curve163::Point;
 use dstu_core::hazmat::dstu4145::gf2m163::FieldElement;
@@ -65,13 +65,13 @@ fn hash(json: &str) -> Vec<u8> {
 
 // Every #[test] below calls `sign`/`verify`, which each run `Point::scalar_multiply`'s
 // 163-iteration constant-time ladder at least once - interpreting that under Miri takes minutes
-// per call (TASKS.md T-100/T-85/D-46), not seconds, so these are excluded from CI's required
+// per call (docs/TASKS.md T-100/T-85/D-46), not seconds, so these are excluded from CI's required
 // Miri gate specifically (not `cargo test`, which stays required and fast). Property/vector
 // coverage of this file is unaffected outside Miri; only UB-checking under Miri's interpreter is
 // skipped here, for cost reasons, not correctness ones.
 #[cfg_attr(
     miri,
-    ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see TASKS.md T-100"
+    ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see docs/TASKS.md T-100"
 )]
 #[test]
 fn gf2m163_worked_example_verifies() {
@@ -92,7 +92,7 @@ fn gf2m163_worked_example_verifies() {
 
 #[cfg_attr(
     miri,
-    ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see TASKS.md T-100"
+    ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see docs/TASKS.md T-100"
 )]
 #[test]
 fn gf2m163_tampered_signature_is_rejected() {
@@ -115,7 +115,7 @@ fn gf2m163_tampered_signature_is_rejected() {
 
 #[cfg_attr(
     miri,
-    ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see TASKS.md T-100"
+    ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see docs/TASKS.md T-100"
 )]
 #[test]
 fn gf2m163_worked_example_signs_with_pinned_ephemeral() {
@@ -137,7 +137,7 @@ fn gf2m163_worked_example_signs_with_pinned_ephemeral() {
 
 #[cfg_attr(
     miri,
-    ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see TASKS.md T-100"
+    ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see docs/TASKS.md T-100"
 )]
 #[test]
 fn gf2m163_wrong_hash_is_rejected() {
@@ -165,12 +165,12 @@ fn gf2m163_wrong_hash_is_rejected() {
 // full round trip (sign(hash, d, e) verifies against Q = -d*G - see signature.rs's module doc)
 // over random 160-bit d/e (comfortably below the curve order n, so Scalar's
 // single-conditional-subtract reduction is exercised without needing an explicit mod-n rejection
-// step in the test itself) and random 32-byte hashes - see TASKS.md "Testing & hardening" for why
+// step in the test itself) and random 32-byte hashes - see docs/TASKS.md "Testing & hardening" for why
 // this project property-tests round trips broadly rather than trusting a single fixed vector
 // alone. (This exact property test is what caught the Q = -d*G vs d*G discrepancy above - the
 // fixed vector uses a pre-computed Q and never exercised key derivation itself.)
 proptest! {
-    #[cfg_attr(miri, ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see TASKS.md T-100")]
+    #[cfg_attr(miri, ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see docs/TASKS.md T-100")]
     #[test]
     fn dstu4145_sign_verify_roundtrip(
         d_bytes in prop::collection::vec(any::<u8>(), 20),
@@ -188,7 +188,7 @@ proptest! {
         let d = Scalar::from_be_bytes(&d_arr);
         let e = Scalar::from_be_bytes(&e_arr);
 
-        // Q = -d*G, not d*G - see signature.rs's module doc / DECISIONS.md D-25's follow-up entry.
+        // Q = -d*G, not d*G - see signature.rs's module doc / docs/DECISIONS.md D-25's follow-up entry.
         let q = match g.scalar_multiply(&d_arr) {
             Point::Affine(x, y) => Point::Affine(x, y).negate(),
             Point::Infinity => return Ok(()), // d = 0 mod n - not reachable with a nonzero 160-bit d

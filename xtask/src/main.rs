@@ -2,10 +2,10 @@
 //! `.cargo/config.toml`). Exists so a developer on Linux/Windows/macOS runs the *same* command
 //! instead of three different shell dialects. Deliberately zero dependencies and deliberately
 //! thin: every subcommand just shells out to a tool that's already documented in README.md /
-//! SECURITY.md, and checks the tool is present first so a missing optional tool (miri, cargo-fuzz,
+//! docs/SECURITY.md, and checks the tool is present first so a missing optional tool (miri, cargo-fuzz,
 //! cargo-audit, cargo-deny, Maven, the .NET SDK) prints an install hint instead of a raw OS error.
 //! Kept out of the main Cargo workspace (own `[workspace]` table above) so this dev-only tool never
-//! shows up in `dstu-core`'s dependency graph that `deny.toml`/`SECURITY.md` are policing.
+//! shows up in `dstu-core`'s dependency graph that `deny.toml`/`docs/SECURITY.md` are policing.
 
 use std::env;
 use std::path::Path;
@@ -111,7 +111,7 @@ fn build() -> bool {
             &["build", "--workspace", "--no-default-features"],
             None,
         )
-        // `getrandom` feature (DECISIONS.md D-74, TASKS.md T-123): `--all-features` above already
+        // `getrandom` feature (docs/DECISIONS.md D-74, docs/TASKS.md T-123): `--all-features` above already
         // covers it combined with `std`, but this is the one combination that proves `randombytes`
         // reaches a bare `no_std` build without `std`/`alloc` at all - not covered by either call
         // above.
@@ -170,7 +170,7 @@ fn fuzz() -> bool {
     if !require("cargo-fuzz", "cargo install cargo-fuzz --locked") {
         return false;
     }
-    // Note (see TASKS.md "Testing & hardening", DECISIONS.md D-32): libFuzzer-on-Windows only
+    // Note (see docs/TASKS.md "Testing & hardening", docs/DECISIONS.md D-32): libFuzzer-on-Windows only
     // works with the MSVC target, not this project's default GNU host toolchain - a real, confirmed
     // upstream limitation, not a bug here. On Linux/macOS the native toolchain already supports
     // ASan, so this runs directly; on Windows it additionally needs a nightly-x86_64-pc-windows-msvc

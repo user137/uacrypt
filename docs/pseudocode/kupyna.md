@@ -3,8 +3,8 @@
 Transcribed from `docs/papers/Kupyna.pdf` (Oliynykov et al., "A New Standard of Ukraine: The
 Kupyna Hash Function"), Sections 3–6. Cross-checked structurally against
 `oracles/kupyna-reference/kupyna.c` (Roman Oliynykov, verify-only, no license — see
-`ORACLES.md`). From-spec restatement for implementation planning, not a source to copy from
-(`DECISIONS.md` D-06).
+`docs/ORACLES.md`). From-spec restatement for implementation planning, not a source to copy from
+(`docs/DECISIONS.md` D-06).
 
 ## Parameters (Section 3, Table 1)
 
@@ -34,7 +34,7 @@ this specific line — it renders as `IV = 1‖0^510` / `1‖0^1023`, ambiguous 
 integer 1 followed by zero bits" and something else. The oracle resolves it unambiguously:
 `ctx->state[0][0] = nbytes` (i.e. the first byte of the all-zero state is set to `l/8` — 64 for
 Kupyna-256, 128 for Kupyna-512), everything else zero. Used here as the authoritative source for
-this one detail per `ORACLES.md`'s extraction-limitation convention; flagged, not silently
+this one detail per `docs/ORACLES.md`'s extraction-limitation convention; flagged, not silently
 assumed.
 
 ```
@@ -91,5 +91,5 @@ Identical in structure to Kalyna's η/π/τ: four S-boxes `S0..S3` from Appendix
 ## Test vectors
 
 Kupyna-256 and Kupyna-512 byte-aligned cases already extracted and verified:
-`crates/dstu-core/tests/vectors/kupyna/*.json` (see `ORACLES.md`). Bit-level (non-byte-aligned)
+`crates/dstu-core/tests/vectors/kupyna/*.json` (see `docs/ORACLES.md`). Bit-level (non-byte-aligned)
 cases from the paper are deliberately not transcribed — see the `note` field in those files.

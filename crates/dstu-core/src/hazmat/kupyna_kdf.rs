@@ -7,7 +7,7 @@
 //! after libsodium's `crypto_kdf_derive_from_key` *shape* (one master key + an id + a context,
 //! a single keyed-hash call per subkey, no separate Extract stage - deliberately not full RFC 5869
 //! HKDF, whose proof is stated in terms of HMAC specifically, which `hazmat::kupyna_kmac`'s
-//! construction is not) using [`super::kupyna_kmac`] (`TASKS.md` T-38) as the underlying keyed
+//! construction is not) using [`super::kupyna_kmac`] (`docs/TASKS.md` T-38) as the underlying keyed
 //! primitive. Full reasoning and citation in `docs/pseudocode/kupyna-kdf.md`.
 
 use super::kupyna_kmac::{Kupyna256Kmac, Kupyna384Kmac, Kupyna512Kmac};

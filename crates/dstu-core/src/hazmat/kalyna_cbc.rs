@@ -1,7 +1,7 @@
 //! Kalyna-CBC: DSTU 7624:2014 mode of operation #5 ("Зчеплення шифроблоків" / cipher block
 //! chaining) - `C_i = E_K(P_i XOR C_{i-1})`, `C_0 = IV`. Cited to
 //! `oracles/uapki/library/uapkic/src/dstu7624.c`'s `encrypt_cbc`/`decrypt_cbc` (lines 3145-3184,
-//! ~3886-3918) and `dstu7624_init_cbc` (lines 3936-3953). `DECISIONS.md` D-53 has the full
+//! ~3886-3918) and `dstu7624_init_cbc` (lines 3936-3953). `docs/DECISIONS.md` D-53 has the full
 //! citation and roadmap context.
 //!
 //! # No integrity, and no padding of its own

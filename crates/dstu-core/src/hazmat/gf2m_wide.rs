@@ -1,7 +1,7 @@
 //! Fixed-width GF(2^m) field arithmetic for DSTU 7624:2014's GCM/GMAC modes (#7) - three field
 //! sizes (`m = 128/256/512`, one per Kalyna block size), each reduced modulo the pentanomial cited
 //! from `oracles/uapki/library/uapkic/src/dstu7624.c`'s `dstu7624_init_gcm`/`dstu7624_init_gmac`
-//! `f[]` triples. `DECISIONS.md` D-56 has the full citation and the byte/bit representation
+//! `f[]` triples. `docs/DECISIONS.md` D-56 has the full citation and the byte/bit representation
 //! derivation.
 //!
 //! **A distinct convention from [`super::dstu4145::gf2m163`]**: that module serializes field
@@ -14,11 +14,11 @@
 //! calling-convention mistake `CLAUDE.md`'s agent-discipline section warns about, generalized to a
 //! second standard.
 //!
-//! **Originally correctness-first, not speed-first** (same posture as `gf2m163`, `DECISIONS.md`
+//! **Originally correctness-first, not speed-first** (same posture as `gf2m163`, `docs/DECISIONS.md`
 //! D-25): a branchless bit-select shift-and-add multiply (mirroring `gf2m163::poly_mul_wide`'s
 //! technique exactly), then a simple bit-at-a-time top-down modular reduction. **Multiplication
-//! was measured (`TASKS.md` T-125) to be 89.6-94.3% of `kalyna_gcm`/`kalyna_gmac`'s per-block cost,
-//! not the block cipher, and was switched to a 4-bit-window comb method** (`DECISIONS.md` D-76, see
+//! was measured (`docs/TASKS.md` T-125) to be 89.6-94.3% of `kalyna_gcm`/`kalyna_gmac`'s per-block cost,
+//! not the block cipher, and was switched to a 4-bit-window comb method** (`docs/DECISIONS.md` D-76, see
 //! `poly_mul_wide`'s own doc comment for the technique); `reduce` is still the original
 //! bit-at-a-time top-down method, not `gf2m163::reduce`'s word-offset-optimized closed form
 //! (hand-derived specifically for `m=163`/64-bit words, does not generalize to three more field
@@ -76,7 +76,7 @@ macro_rules! gf2m_field {
 
             /// Multiplies by the field generator `x` directly, instead of going through the
             /// general [`Self::multiply`] path against a `2` (= `x^1`) operand - see
-            /// `DECISIONS.md` D-76 / `TASKS.md` T-126: [`super::kalyna_xts`]'s once-per-block
+            /// `docs/DECISIONS.md` D-76 / `docs/TASKS.md` T-126: [`super::kalyna_xts`]'s once-per-block
             /// tweak-doubling is exactly this fixed-constant case, and paying the general path's
             /// full O(m^2) schoolbook multiply for it is unneeded work that scales worst at the
             /// largest `m` (512). `x`'s only nonzero bit is bit 1, so multiplying by it is a
@@ -112,7 +112,7 @@ macro_rules! gf2m_field {
             }
 
             /// Binary-polynomial (carry-less) multiplication into a double-width product - a
-            /// 4-bit-window comb method (`DECISIONS.md` D-76 / `TASKS.md` T-125's field-multiply
+            /// 4-bit-window comb method (`docs/DECISIONS.md` D-76 / `docs/TASKS.md` T-125's field-multiply
             /// root cause, `advisor()`-directed): precompute `T[i] = a*i` for every nibble value
             /// `i` in `0..16` (`T[0] = 0`, `T[1] = a`, `T[2i] = T[i] << 1`, `T[2i+1] = T[2i] XOR
             /// a]` - the standard doubling construction, 7 shift+XOR pairs), then walk `b`'s
@@ -127,7 +127,7 @@ macro_rules! gf2m_field {
             /// [`super::kalyna_gcm`]/[`super::kalyna_gmac`] (where this multiply was measured to be
             /// 89.6-94.3% of the per-block cost before this change, not the block cipher)
             /// translates directly to throughput. Was the previous right-to-left bit-serial method
-            /// mirroring `gf2m163::poly_mul_wide` (`DECISIONS.md` D-25); that citation's
+            /// mirroring `gf2m163::poly_mul_wide` (`docs/DECISIONS.md` D-25); that citation's
             /// *technique* no longer applies here; `gf2m163` itself is untouched.
             fn poly_mul_wide(a: &[u64; $limbs], b: &[u64; $limbs]) -> [u64; $limbs2] {
                 let mut a_wide = [0u64; $limbs2];
@@ -291,7 +291,7 @@ mod field_axiom_tests {
                 proptest! {
                     #[test]
                     fn double_matches_general_multiply_by_two(a in arb_element()) {
-                        // `TASKS.md` T-126 / `DECISIONS.md` D-76: `double` must be byte-identical
+                        // `docs/TASKS.md` T-126 / `docs/DECISIONS.md` D-76: `double` must be byte-identical
                         // to the general path it replaces in `kalyna_xts`'s tweak update, not just
                         // asymptotically faster - this is the correctness gate for that swap.
                         prop_assert_eq!(a.double(), a.multiply(TWO));
@@ -325,7 +325,7 @@ mod field_axiom_tests {
     field_axioms!(gf2m256, Gf2m256, 4);
     field_axioms!(gf2m512, Gf2m512, 8);
 
-    // TEMPORARY investigation for T-125 (`DECISIONS.md` D-76 follow-up) - not a permanent test,
+    // TEMPORARY investigation for T-125 (`docs/DECISIONS.md` D-76 follow-up) - not a permanent test,
     // remove after the field-multiply-vs-block-cipher ratio is recorded. `#[ignore]`d since it's a
     // manual-timing diagnostic, not a correctness assertion; run with `--release --ignored
     // --nocapture` for a meaningful number.

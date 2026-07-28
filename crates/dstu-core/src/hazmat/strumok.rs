@@ -4,18 +4,18 @@
 //! `docs/papers/Strumok.pdf` Sections 2-9) and structurally cross-checked against
 //! `oracles/strumok-dstu8845/strumok.c` (outspace, unofficial, no license) and
 //! `oracles/uapki/library/uapkic/src/dstu8845.c` (UAPKI, BSD-2-Clause, state-expertise pedigree -
-//! see `ORACLES.md`). Citation and verification status: `DECISIONS.md` D-18.
+//! see `docs/ORACLES.md`). Citation and verification status: `docs/DECISIONS.md` D-18.
 //!
 //! The `T` nonlinear substitution (Section 7) is exactly one Kalyna/Kupyna round's `eta` (S-box)
 //! composed with `tau` (the MDS linear layer) applied to a single 64-bit word treated as an
 //! 8-byte column. Originally computed at runtime via `hazmat::tables::{SBOXES, MDS_MATRIX,
 //! apply_matrix}` (confirmed, by computing it that way and diffing all 2048 entries byte-for-byte
 //! against both oracles' precomputed `T0..T7` tables, that the two are identical). **Switched
-//! 2026-07-22 (`DECISIONS.md` D-26) to using those same precomputed `T0..T7` tables directly**
+//! 2026-07-22 (`docs/DECISIONS.md` D-26) to using those same precomputed `T0..T7` tables directly**
 //! (transcribed from `oracles/strumok-dstu8845/strumok.c`, the same byte-for-byte cross-check
-//! already covers them) - a large, measured throughput win (`PERFORMANCE.md`), since it replaces
+//! already covers them) - a large, measured throughput win (`docs/PERFORMANCE.md`), since it replaces
 //! 8 S-box lookups plus a full `GF(2^8)` matrix-multiply with 8 table lookups XOR-ed together.
-//! **The `small-tables` feature (`DECISIONS.md` D-35/D-38) reverts `t_function` to exactly this
+//! **The `small-tables` feature (`docs/DECISIONS.md` D-35/D-38) reverts `t_function` to exactly this
 //! pre-D-26 runtime form** - `T0..T7`'s 16 KB isn't compiled at all in that profile.
 //!
 //! `MUL_ALPHA`/`MUL_ALPHA_INV` (Sections 8-9, multiplication by the LFSR feedback polynomial's
@@ -23,7 +23,7 @@
 //! different field construction specific to Strumok's LFSR. Transcribed here from
 //! `oracles/uapki/.../dstu8845.c`'s `mul_T`/`invmul_T` (cross-checked byte-identical against
 //! `oracles/strumok-dstu8845/strumok.c`'s `strumok_alpha_mul`/`strumok_alphainv_mul` - same
-//! lineage per `DECISIONS.md` D-15, so this confirms transcription accuracy, not independence).
+//! lineage per `docs/DECISIONS.md` D-15, so this confirms transcription accuracy, not independence).
 //!
 //! The state-transition function (`Next`, Section 4) originally shifted the 16-word state
 //! register on every step (`s.copy_within(1..16, 0)`) - mechanically checkable against the spec
@@ -34,7 +34,7 @@
 //! `next_stream()` uses (there, fully unrolled instead of index-based). No data movement at all,
 //! same output for the same input - see the module's existing test suite, unchanged by this.
 //!
-//! **Switched 2026-07-27 (`TASKS.md` T-135, `DECISIONS.md` D-86) to also batch-generate a full
+//! **Switched 2026-07-27 (`docs/TASKS.md` T-135, `docs/DECISIONS.md` D-86) to also batch-generate a full
 //! 128-byte (16-word) block per call** in `Core::apply_keystream`'s bulk phase, fusing the input
 //! XOR into the same pass at `u64` (word) granularity instead of one byte at a time - closing most
 //! of the remaining gap to `next_stream_full_crypt`'s equivalent path left open after D-26. See
@@ -787,7 +787,7 @@ fn t_function(w: u64) -> u64 {
         ^ T7[((w >> 56) & 0xff) as usize]
 }
 
-/// `T(w)`, `small-tables` resource profile (`DECISIONS.md` D-35/D-38): no `T0..T7` (16 KB), just
+/// `T(w)`, `small-tables` resource profile (`docs/DECISIONS.md` D-35/D-38): no `T0..T7` (16 KB), just
 /// the shared Kalyna/Kupyna S-box + MDS (`super::tables`) applied to `w` treated as one 8-byte
 /// column - exactly `T`'s original pre-D-26 form (see module doc), before it got its own
 /// precomputed tables.
@@ -890,7 +890,7 @@ fn strm(s: &[u64; 16], head: usize, r0: u64, r1: u64) -> u64 {
 }
 
 /// Batched, fixed-index equivalent of 16 back-to-back `strm`+`next_step(init_mode: false)` calls
-/// starting from `head == 0`, fused with the input XOR - `TASKS.md` T-135, `DECISIONS.md` D-86.
+/// starting from `head == 0`, fused with the input XOR - `docs/TASKS.md` T-135, `docs/DECISIONS.md` D-86.
 ///
 /// **Requires `head == 0` on entry** (the caller rotates `s` once via `[u64; 16]::rotate_left`
 /// before any run of batch calls - see `Core::apply_keystream`'s bulk phase; a full 16-step batch
@@ -959,7 +959,7 @@ fn next_block(s: &mut [u64; 16], r0: &mut u64, r1: &mut u64, input: &[u64; 16]) 
 /// `s`/`r0`/`r1` are the LFSR/FSM state, derived directly from the key and IV and never public;
 /// `block` is a buffered fragment of already-derived keystream. All of it is key-derived secret
 /// state for as long as this value is alive, so it is cleared on drop (`ZeroizeOnDrop`) rather
-/// than left for whatever happened to occupy that stack slot next - see `SECURITY.md`'s
+/// than left for whatever happened to occupy that stack slot next - see `docs/SECURITY.md`'s
 /// `Zeroize`/`ZeroizeOnDrop` hard constraint. `Strumok256`/`Strumok512` need no `Drop` impl of
 /// their own: dropping a newtype struct drops its field, which runs `Core`'s derived one.
 #[derive(Zeroize, ZeroizeOnDrop)]
@@ -994,11 +994,11 @@ impl Core {
     /// XORs the keystream into `data` in place (applying it to an all-zero buffer yields the raw
     /// keystream, matching `crates/dstu-core/tests/vectors/strumok/keystream-{256,512}.json`).
     ///
-    /// Three phases (`TASKS.md` T-135, `DECISIONS.md` D-86), mirroring
+    /// Three phases (`docs/TASKS.md` T-135, `docs/DECISIONS.md` D-86), mirroring
     /// `oracles/strumok-dstu8845/strumok.c`'s `dstu8845_crypt` own `>=128`-bytes/remainder split,
     /// without widening `block`/`block_pos` - so arbitrary chunk sizes and cross-call alignment
     /// (the `crypto_stream`/`uacrypt strumok-crypt` streaming use case) still work exactly as
-    /// before. Split into one method per phase (`DECISIONS.md` D-94) purely to bring each one's
+    /// before. Split into one method per phase (`docs/DECISIONS.md` D-94) purely to bring each one's
     /// own Cognitive Complexity under `SonarCloud`'s threshold - same three phases, same math, not
     /// a behavior change; `drain`/`bulk`/`remainder` are single-caller private methods, expected
     /// (and verified, D-94) to still inline into one function the same way the un-split version
@@ -1093,7 +1093,7 @@ macro_rules! strumok_variant {
 strumok_variant!(Strumok256, 32);
 strumok_variant!(Strumok512, 64);
 
-/// `TASKS.md` T-135, `DECISIONS.md` D-86: the batched/fixed-index bulk path added to
+/// `docs/TASKS.md` T-135, `docs/DECISIONS.md` D-86: the batched/fixed-index bulk path added to
 /// `Core::apply_keystream` is a scheduling change only, but only a test with private access to
 /// `Core`'s fields can compare it against a frozen copy of the pre-T-135 algorithm (an integration
 /// test in `tests/strumok.rs` only sees the public `Strumok256`/`Strumok512` API, which no longer

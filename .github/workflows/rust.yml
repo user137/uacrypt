@@ -8,7 +8,7 @@ on:
 # A push while a previous run on the same branch is still in progress (e.g. the miri job below,
 # which can run long) now cancels the stale run instead of letting it pile up alongside the new
 # one - confirmed necessary 2026-07-23/24 after three concurrent miri runs (up to ~1h each) stacked
-# up across a few pushes in one session (TASKS.md T-85's follow-up).
+# up across a few pushes in one session (docs/TASKS.md T-85's follow-up).
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -26,7 +26,7 @@ jobs:
         with:
           components: clippy, rustfmt
       - run: cargo fmt --all -- --check
-      # Default (fused-table) resource profile - DECISIONS.md D-35/D-38/D-39. `--all-features`
+      # Default (fused-table) resource profile - docs/DECISIONS.md D-35/D-38/D-39. `--all-features`
       # below also turns on `small-tables`, which changes production behavior (not just adds an
       # unrelated flag the way `alloc` does), so it no longer stands in for "test the default
       # profile" the way it used to - these explicit no-extra-features steps cover that instead.
@@ -34,12 +34,12 @@ jobs:
       - run: cargo build --workspace --no-default-features
       - run: cargo test --workspace
       - run: cargo clippy --workspace -- -D warnings
-      # small-tables resource profile (DECISIONS.md D-35/D-38/D-39) - constrained-target table set.
+      # small-tables resource profile (docs/DECISIONS.md D-35/D-38/D-39) - constrained-target table set.
       - run: cargo build --workspace --features dstu-core/small-tables
       - run: cargo build --workspace --no-default-features --features dstu-core/small-tables
       - run: cargo test --workspace --features dstu-core/small-tables
       - run: cargo clippy --workspace --features dstu-core/small-tables -- -D warnings
-      # `getrandom` feature (DECISIONS.md D-74, TASKS.md T-123): makes `randombytes`/`Key::generate`
+      # `getrandom` feature (docs/DECISIONS.md D-74, docs/TASKS.md T-123): makes `randombytes`/`Key::generate`
       # reachable on a bare `no_std` build without pulling in `std`/`alloc` - build-only, not
       # `cargo test`, since unrelated pre-existing `proptest`/`Vec` strategies elsewhere in
       # `hazmat::kupyna`'s test suite need `alloc` regardless of this feature (confirmed by trying
@@ -55,7 +55,7 @@ jobs:
   miri:
     name: cargo miri test
     runs-on: ubuntu-latest
-    # This job never completed on any push before TASKS.md T-100 (D-59) - PROPTEST_CASES=1 alone
+    # This job never completed on any push before docs/TASKS.md T-100 (D-59) - PROPTEST_CASES=1 alone
     # didn't bound its wall-clock time, because the bottleneck is per-case interpretation cost, not
     # case *count*: every #[test] that calls `Point::scalar_multiply` (DSTU 4145's 163-iteration
     # constant-time ladder) *or* `FieldElement::invert` (its own 162-step exponentiation, called by
@@ -143,7 +143,7 @@ jobs:
       # invocation regardless (the same T-85 gotcha the miri/fuzz jobs above already work around),
       # so every step below says `cargo +1.87.0` explicitly.
       - uses: dtolnay/rust-toolchain@1.87.0
-      # Build-only, both profiles (DECISIONS.md D-69): the MSRV floor (`u64`/`usize::is_multiple_of`,
+      # Build-only, both profiles (docs/DECISIONS.md D-69): the MSRV floor (`u64`/`usize::is_multiple_of`,
       # unconditional in `hazmat::kalyna_kw`/`kalyna_cbc`/`kalyna_ecb`/`kalyna_ccm`) isn't behind
       # any feature gate, so a single `--all-features` build already exercises it; the
       # `--no-default-features` counterpart is checked anyway rather than assumed, matching

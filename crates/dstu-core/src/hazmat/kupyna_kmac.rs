@@ -9,7 +9,7 @@
 //! the construction directly - `HMAC(M,K) = H(PAD(K) || PAD(M) || (~K))`) and
 //! `oracles/bouncycastle-java/.../macs/DSTU7564Mac.java` (an independent Java implementation, not
 //! a port of the C above). Both implementations' self-test vectors agree byte-for-byte across all
-//! three MAC sizes - see `crates/dstu-core/tests/vectors/kupyna-kmac/*.json` and `DECISIONS.md`
+//! three MAC sizes - see `crates/dstu-core/tests/vectors/kupyna-kmac/*.json` and `docs/DECISIONS.md`
 //! D-44 for why this is stronger evidence than Strumok's or Kalyna-CCM's equivalent caveats.
 //! Full construction cited step-by-step in `docs/pseudocode/kupyna-kmac.md`.
 
@@ -97,7 +97,7 @@ macro_rules! kmac_variant {
             }
 
             /// Recomputes the MAC and compares it against `expected` in constant time
-            /// (`subtle::ConstantTimeEq`, per `SECURITY.md`'s hard constraint on secret
+            /// (`subtle::ConstantTimeEq`, per `docs/SECURITY.md`'s hard constraint on secret
             /// comparisons - a MAC verification is exactly this category).
             ///
             /// # Errors

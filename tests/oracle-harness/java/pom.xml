@@ -15,7 +15,7 @@
   </properties>
 
   <!-- Published Maven artifact, not the vendored partial clone under
-       oracles/bouncycastle-java/ (see TASKS.md "Infrastructure" and D-02 in DECISIONS.md). -->
+       oracles/bouncycastle-java/ (see docs/TASKS.md "Infrastructure" and D-02 in docs/DECISIONS.md). -->
   <dependencies>
     <dependency>
       <groupId>org.bouncycastle</groupId>

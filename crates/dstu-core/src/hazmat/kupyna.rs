@@ -6,7 +6,7 @@
 //! the T-table-fused optimization Bouncy Castle uses — deliberately, since this port could not be
 //! compiled or run locally (no Rust toolchain available; see `.claude.local.md`), and the more
 //! literal translation carries less risk of an unverifiable transposition bug. Full citation and
-//! verification status: `DECISIONS.md` D-10.
+//! verification status: `docs/DECISIONS.md` D-10.
 //!
 //! Only byte-aligned messages are supported - the public API takes `&[u8]`, which cannot express
 //! a bit-level length anyway. This matches the extracted test vectors exactly (see the `note`
@@ -63,7 +63,7 @@ fn mix_columns(state: &mut [[u8; ROWS]]) {
 /// round`'s doc comment for why this is valid (S-box is row-indexed, the row permutation preserves
 /// row, so the two commute) and why it needs no per-`columns` tables, only a cheap gather index.
 ///
-/// No production code path calls this directly anymore as of T-134 (`DECISIONS.md` D-85) -
+/// No production code path calls this directly anymore as of T-134 (`docs/DECISIONS.md` D-85) -
 /// `KupynaCore::compress_block`/`finalize` dispatch to the const-generic `sub_shift_mix_n` instead.
 /// Kept as the independent reference `const_shift_mix_tests` checks the const-generic twin against,
 /// same pattern as `sub_bytes`/`shift_bytes`/`mix_columns` above.
@@ -90,7 +90,7 @@ fn sub_shift_mix(state: &mut [[u8; ROWS]], last_row_shift: usize) {
 }
 
 /// Const-generic twin of `sub_shift_mix` (T-134, direct analogue of `hazmat::kalyna`'s
-/// `encipher_round_n`, `DECISIONS.md` T-128/D-77) - `COLUMNS` (always 8 or 16, verified against
+/// `encipher_round_n`, `docs/DECISIONS.md` T-128/D-77) - `COLUMNS` (always 8 or 16, verified against
 /// every `KupynaCore::new`/`digest_generic`/`kmac_generic` call site) is known at compile time, so
 /// `result` is exactly `COLUMNS` wide (no `MAX_COLUMNS`-oversized zeroing) and every bounds check
 /// on `state`/`result` is eliminated by monomorphization.
@@ -114,7 +114,7 @@ fn sub_shift_mix_n<const COLUMNS: usize>(state: &mut [[u8; ROWS]; COLUMNS], last
 
 /// XOR-based round-constant addition (psi-xor), used by `T`/`P`. Kupyna.pdf Section 6.2.
 ///
-/// No production code path calls this directly anymore as of T-134 (`DECISIONS.md` D-85) - see
+/// No production code path calls this directly anymore as of T-134 (`docs/DECISIONS.md` D-85) - see
 /// `sub_shift_mix`'s doc comment.
 #[allow(dead_code)]
 #[allow(clippy::cast_possible_truncation)] // col < MAX_COLUMNS (16), always fits u8
@@ -134,7 +134,7 @@ fn add_round_constant_xor_n<const COLUMNS: usize>(state: &mut [[u8; ROWS]; COLUM
 
 /// Modulo-2^64-add round-constant addition (psi-add), used by `T+`/`Q`. Kupyna.pdf Section 6.2.
 ///
-/// No production code path calls this directly anymore as of T-134 (`DECISIONS.md` D-85) - see
+/// No production code path calls this directly anymore as of T-134 (`docs/DECISIONS.md` D-85) - see
 /// `sub_shift_mix`'s doc comment.
 #[allow(dead_code)]
 #[allow(clippy::cast_possible_truncation)] // columns - 1 - col < MAX_COLUMNS (16), always fits u8
@@ -161,7 +161,7 @@ fn add_round_constant_add_n<const COLUMNS: usize>(state: &mut [[u8; ROWS]; COLUM
 
 /// `T` (Kupyna.pdf Section 6.1): `rounds` iterations of xor-constant -> S-box -> shift -> mix.
 ///
-/// No production code path calls this directly anymore as of T-134 (`DECISIONS.md` D-85) - see
+/// No production code path calls this directly anymore as of T-134 (`docs/DECISIONS.md` D-85) - see
 /// `sub_shift_mix`'s doc comment.
 #[allow(dead_code)]
 #[allow(clippy::cast_possible_truncation)] // rounds is 10 or 14 (Table 1), always fits u8
@@ -174,7 +174,7 @@ fn t_transform(state: &mut [[u8; ROWS]], rounds: usize, last_row_shift: usize) {
 
 /// `T+` (Kupyna.pdf Section 6.1): same as `T` but with the mod-add constant.
 ///
-/// No production code path calls this directly anymore as of T-134 (`DECISIONS.md` D-85) - see
+/// No production code path calls this directly anymore as of T-134 (`docs/DECISIONS.md` D-85) - see
 /// `sub_shift_mix`'s doc comment.
 #[allow(dead_code)]
 #[allow(clippy::cast_possible_truncation)] // rounds is 10 or 14 (Table 1), always fits u8
@@ -213,7 +213,7 @@ fn t_plus_transform_n<const COLUMNS: usize, const ROUNDS: usize>(
 
 /// One compression step: `h <- T+(m) xor T(h xor m) xor h` (Kupyna.pdf Section 4).
 ///
-/// No production code path calls this directly anymore as of T-134 (`DECISIONS.md` D-85) - see
+/// No production code path calls this directly anymore as of T-134 (`docs/DECISIONS.md` D-85) - see
 /// `sub_shift_mix`'s doc comment.
 #[allow(dead_code)]
 fn compress(h: &mut [[u8; ROWS]], block: &[[u8; ROWS]], rounds: usize, last_row_shift: usize) {
@@ -263,7 +263,7 @@ fn compress_n<const COLUMNS: usize, const ROUNDS: usize>(
 
 /// Splits a `block_bytes`-long byte slice into `columns` column-major 8-byte words.
 ///
-/// No production code path calls this directly anymore as of T-134 (`DECISIONS.md` D-85) - see
+/// No production code path calls this directly anymore as of T-134 (`docs/DECISIONS.md` D-85) - see
 /// `sub_shift_mix`'s doc comment.
 #[allow(dead_code)]
 fn bytes_to_columns(bytes: &[u8], columns: usize) -> [[u8; ROWS]; MAX_COLUMNS] {
@@ -348,7 +348,7 @@ pub(crate) struct KupynaCore {
     /// `finalize` cannot otherwise recover once earlier blocks have already been compressed away.
     total_len: u64,
     columns: usize,
-    /// Never read after construction as of T-134 (`DECISIONS.md` D-85): `compress_block`/`finalize`
+    /// Never read after construction as of T-134 (`docs/DECISIONS.md` D-85): `compress_block`/`finalize`
     /// now select `ROUNDS` as a const generic via the `columns` match arm instead. Kept as a
     /// stored field (not removed from `new`'s signature) to avoid rippling a breaking-signature
     /// change into `kupyna_kmac.rs`'s `kmac_generic`/`kmac_variant!` call sites, which is out of
@@ -387,7 +387,7 @@ impl KupynaCore {
         &self.buffer[..self.buffer_len]
     }
 
-    /// Dispatches into the const-generic hot path (T-134, `DECISIONS.md` D-85) - `self.columns` is
+    /// Dispatches into the const-generic hot path (T-134, `docs/DECISIONS.md` D-85) - `self.columns` is
     /// always 8 or 16 (verified against every construction call site: `Kupyna256Hasher`/
     /// `digest_generic`/`kmac_generic` for Kupyna256/Kupyna384/Kupyna512), so this match is a
     /// one-time-per-block branch on a value that's constant for the lifetime of a given `self`, not
@@ -450,7 +450,7 @@ impl KupynaCore {
 
         // Padding: buffered tail || 0x80 || zero bytes || 96-bit little-endian length, sized to
         // fill whole block(s) - equivalent to the spec's bit-level `d = (-N-97) mod l` formula for
-        // byte-aligned N (see DECISIONS.md D-10 for the derivation).
+        // byte-aligned N (see docs/DECISIONS.md D-10 for the derivation).
         let msg_bits: u64 = self.total_len * 8;
         let (tail, pos) = kupyna_padding(&self.buffer[..self.buffer_len], msg_bits, block_bytes);
 
@@ -460,7 +460,7 @@ impl KupynaCore {
         }
 
         // Output transformation: H = R_n(T(h_k) xor h_k) (Kupyna.pdf Section 4). Dispatches into
-        // the const-generic `t_transform_n` (T-134, `DECISIONS.md` D-85) - same rationale as
+        // the const-generic `t_transform_n` (T-134, `docs/DECISIONS.md` D-85) - same rationale as
         // `compress_block` above: this runs once per `finalize`, not once per round, but for
         // single-block messages it's a comparable share of total work to one `compress_block`
         // call, so it gets the same treatment rather than being left on the slow path.
@@ -647,7 +647,7 @@ mod fused_round_tests {
 /// not a new derivation - so the check here is new-vs-old equality over random state, for every
 /// `COLUMNS` value the crate actually instantiates (8, 16), rather than re-deriving correctness
 /// against `naive_sub_shift_mix` again (that's `fused_round_tests`'s job). Mirrors
-/// `hazmat::kalyna`'s `const_round_tests` exactly (`DECISIONS.md` T-128/D-77).
+/// `hazmat::kalyna`'s `const_round_tests` exactly (`docs/DECISIONS.md` T-128/D-77).
 #[cfg(test)]
 mod const_shift_mix_tests {
     use super::{

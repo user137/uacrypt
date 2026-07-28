@@ -1,6 +1,6 @@
 # Persona-based user-journey gap analysis
 
-Requested 2026-07-25, written 2026-07-26 (`TASKS.md` T-114). Distinct from the two gap analyses
+Requested 2026-07-25, written 2026-07-26 (`docs/TASKS.md` T-114). Distinct from the two gap analyses
 that already exist: `docs/release-readiness.md` is organized by *construction* (is this mode of
 operation current/safe), and `docs/dstu-crypto-project.md`'s "Concrete API shape" table is organized
 by *libsodium function name*. This document is organized by *persona and the sequence of states they
@@ -9,7 +9,7 @@ feature can still leave a persona stuck if the doc or tooling connecting the ste
 missing. This document's value is that framing itself, not a fourth copy of the same feature list —
 every "have" cell below cites the file that already says so rather than restating its content.
 
-Three personas, in the order `TASKS.md` T-114 named them.
+Three personas, in the order `docs/TASKS.md` T-114 named them.
 
 ## Persona 1 — binary user, performance-focused
 
@@ -29,16 +29,16 @@ stateDiagram-v2
 
 `Acquire`'s and `GenerateKey`'s back-edges to `Discover` (both present in the original 2026-07-25
 version of this diagram, labeled "no prebuilt binary found" and "no keygen tool found"
-respectively) are both removed now - `TASKS.md` T-18/T-119 and T-115 close each path, see the
+respectively) are both removed now - `docs/TASKS.md` T-18/T-119 and T-115 close each path, see the
 table below.
 
 | State | Want | Have | Gap |
 |---|---|---|---|
 | Discover | Find the project, understand what it does and its current maturity | `README.md` top banner states v0.1.0 pre-release status plainly | none |
-| Acquire | A prebuilt binary for their OS, no Rust toolchain required | **Closed 2026-07-26, see `TASKS.md` T-18/T-119.** GitHub Release `v0.1.0` ships `uacrypt-{linux-x86_64,macos-aarch64,windows-x86_64}` archives, built by `.github/workflows/release.yml` on a tag push. Verified against the actual downloaded Windows asset, not just a green CI run: extracted and ran standalone (no local `cargo`), `--version`/`keygen`/`encrypt`/`decrypt` round-trip all worked | macOS asset is `aarch64`-only (GitHub's `macos-latest` runner) - an Intel Mac build isn't covered, not previously scoped |
-| Generate a key | A `uacrypt keygen` command, or at least a documented one-liner | **Closed 2026-07-26, see `TASKS.md` T-115.** `uacrypt keygen --out key.bin` now exists — draws a fresh 32-byte key from the OS CSPRNG via `crypto_secretstream::Key::generate`, writes it in the exact format `encrypt`/`decrypt --key` expect | none, as of T-115 |
+| Acquire | A prebuilt binary for their OS, no Rust toolchain required | **Closed 2026-07-26, see `docs/TASKS.md` T-18/T-119.** GitHub Release `v0.1.0` ships `uacrypt-{linux-x86_64,macos-aarch64,windows-x86_64}` archives, built by `.github/workflows/release.yml` on a tag push. Verified against the actual downloaded Windows asset, not just a green CI run: extracted and ran standalone (no local `cargo`), `--version`/`keygen`/`encrypt`/`decrypt` round-trip all worked | macOS asset is `aarch64`-only (GitHub's `macos-latest` runner) - an Intel Mac build isn't covered, not previously scoped |
+| Generate a key | A `uacrypt keygen` command, or at least a documented one-liner | **Closed 2026-07-26, see `docs/TASKS.md` T-115.** `uacrypt keygen --out key.bin` now exists — draws a fresh 32-byte key from the OS CSPRNG via `crypto_secretstream::Key::generate`, writes it in the exact format `encrypt`/`decrypt --key` expect | none, as of T-115 |
 | Run `encrypt`/`decrypt`/`hash` | A misuse-resistant command with no mode/nonce to configure | `README.md` "Using `uacrypt`" documents `encrypt`/`decrypt`/`hash` fully, including that they're genuinely chunked (T-40/D-68) with no message-length cap | none, once a key exists |
-| Verify it does what's claimed | Confirm round-trip correctness and see real throughput numbers | `cargo test --workspace` for correctness; `PERFORMANCE.md` "Binary-level (process) comparison" section for real `uacrypt`-binary MB/s numbers, `docs/resource-profiles.md` for the `fused`/`small-tables` speed table | For a *downloaded* binary specifically: correctness is now verifiable without a toolchain (the round-trip smoke test above), but the MB/s numbers still require building from source to reproduce - not re-measured per-platform for the release assets themselves |
+| Verify it does what's claimed | Confirm round-trip correctness and see real throughput numbers | `cargo test --workspace` for correctness; `docs/PERFORMANCE.md` "Binary-level (process) comparison" section for real `uacrypt`-binary MB/s numbers, `docs/resource-profiles.md` for the `fused`/`small-tables` speed table | For a *downloaded* binary specifically: correctness is now verifiable without a toolchain (the round-trip smoke test above), but the MB/s numbers still require building from source to reproduce - not re-measured per-platform for the release assets themselves |
 | Ship | Deploy the binary into their own workflow/pipeline | No install-script, package-manager entry (Homebrew/Scoop/apt), or Docker image exists; not tracked as a task anywhere | Smaller gap now that Acquire itself is closed - still not worth its own task, no evidence yet that a real user needs more than a direct download |
 
 **Bottom line**: this persona's journey is now unblocked end to end. Both the original blockers
@@ -51,7 +51,7 @@ the journey directly.
 ## Persona 2 — library user, performance-focused
 
 Depends on `dstu-core` directly from `Cargo.toml`. Cares about the `crypto_*`/`hazmat` split,
-`ExpandedKey`-style cached-schedule paths, and `PERFORMANCE.md`'s numbers.
+`ExpandedKey`-style cached-schedule paths, and `docs/PERFORMANCE.md`'s numbers.
 
 ```mermaid
 stateDiagram-v2
@@ -70,12 +70,12 @@ stateDiagram-v2
 | State | Want | Have | Gap |
 |---|---|---|---|
 | Discover | Find the crate and its API surface | `README.md`, `crates/dstu-core/README.md` | none |
-| Add dependency | `cargo add dstu-core` | **Not published to crates.io** (T-17, explicitly gated on an owner request per the roadmap's Step 4 note, `TASKS.md` line ~2031). Only path today is a git/path dependency. **Empirically re-confirmed 2026-07-26 (`TASKS.md` T-117), not just cited**: `cargo add dstu-core` in a real scratch crate fails with `error: the crate dstu-core could not be found in registry index` | **Real gap, and it compounds another one**: because the crate isn't published, `docs.rs` has never built a page for it either — meaning T-110's `[package.metadata.docs.rs]` `all-features = true` metadata (done, `TASKS.md` T-110) is currently inert. A library user reading only crates.io/docs.rs (the normal Rust discovery path) finds nothing there at all; they'd have to already know to look at GitHub |
+| Add dependency | `cargo add dstu-core` | **Not published to crates.io** (T-17, explicitly gated on an owner request per the roadmap's Step 4 note, `docs/TASKS.md` line ~2031). Only path today is a git/path dependency. **Empirically re-confirmed 2026-07-26 (`docs/TASKS.md` T-117), not just cited**: `cargo add dstu-core` in a real scratch crate fails with `error: the crate dstu-core could not be found in registry index` | **Real gap, and it compounds another one**: because the crate isn't published, `docs.rs` has never built a page for it either — meaning T-110's `[package.metadata.docs.rs]` `all-features = true` metadata (done, `docs/TASKS.md` T-110) is currently inert. A library user reading only crates.io/docs.rs (the normal Rust discovery path) finds nothing there at all; they'd have to already know to look at GitHub |
 | Pick layer | Understand `hazmat::*` vs `crypto_*` and which to reach for | `crates/dstu-core/README.md` "Two layers" section states the split plainly and by name; `docs/dstu-crypto-project.md` "Concrete API shape" has the full module-by-module table | none |
-| Choose construction | Know which `crypto_*`/`hazmat` module fits their use case (AEAD, KDF, signing, streaming...) | `docs/release-readiness.md` "Use-case coverage" table maps scenario → construction directly. **Fixed 2026-07-26 (`TASKS.md` T-117)**: `crates/dstu-core/README.md`'s own `## Example` (the first code a library user actually copy-pastes, for `crypto_secretbox`) did not compile as written — `SecretKey::generate()`/`seal()` both return `Result`, the example used them as bare values. Found by actually building the example in a real path-dependency scratch crate, not by re-reading the doc; never caught by `cargo test` since the README isn't wired in as a doctest | none, as of the T-117 fix — but this class of bug (an uncompiled README example) is structurally invisible to the existing test suite, so a regression here needs a human/agent to actually run the example again, not just `cargo test` passing |
-| Configure (features, cached schedule) | Know which Cargo features to enable, and how to use `ExpandedKey` for repeated-key throughput | `crates/dstu-core/README.md` "Feature flags" table; `hazmat::kalyna`'s `ExpandedKey` type itself — but **no doc page walks through *why*/*when* to use `ExpandedKey` over the bare `encrypt`/`decrypt` functions**, only `PERFORMANCE.md`'s benchmark methodology mentions "cached schedule" in passing (e.g. the `resource-profiles.md` speed table's row labels) | **Minor gap**: a library user optimizing for throughput has to infer the cached-schedule pattern from benchmark row labels rather than being told directly in `dstu-core`'s own README or rustdoc |
-| Verify | Confirm the crate does what it claims, on their own machine | `cargo test --workspace --all-features`; `PERFORMANCE.md`'s full benchmarking + `criterion` baseline instructions (`cargo bench -p dstu-core --bench kalyna --bench kupyna --bench strumok`) | none, once the dependency itself is resolved |
-| Ship | Depend on a stable, versioned release for their own downstream users | No stable crates.io version exists; a git-dependency consumer has no SemVer guarantee across commits, and `CHANGELOG.md` (T-111, done) currently has no public release to anchor to | Same root cause as "Add dependency" above — not a separate gap, a downstream consequence of T-17 |
+| Choose construction | Know which `crypto_*`/`hazmat` module fits their use case (AEAD, KDF, signing, streaming...) | `docs/release-readiness.md` "Use-case coverage" table maps scenario → construction directly. **Fixed 2026-07-26 (`docs/TASKS.md` T-117)**: `crates/dstu-core/README.md`'s own `## Example` (the first code a library user actually copy-pastes, for `crypto_secretbox`) did not compile as written — `SecretKey::generate()`/`seal()` both return `Result`, the example used them as bare values. Found by actually building the example in a real path-dependency scratch crate, not by re-reading the doc; never caught by `cargo test` since the README isn't wired in as a doctest | none, as of the T-117 fix — but this class of bug (an uncompiled README example) is structurally invisible to the existing test suite, so a regression here needs a human/agent to actually run the example again, not just `cargo test` passing |
+| Configure (features, cached schedule) | Know which Cargo features to enable, and how to use `ExpandedKey` for repeated-key throughput | `crates/dstu-core/README.md` "Feature flags" table; `hazmat::kalyna`'s `ExpandedKey` type itself — but **no doc page walks through *why*/*when* to use `ExpandedKey` over the bare `encrypt`/`decrypt` functions**, only `docs/PERFORMANCE.md`'s benchmark methodology mentions "cached schedule" in passing (e.g. the `resource-profiles.md` speed table's row labels) | **Minor gap**: a library user optimizing for throughput has to infer the cached-schedule pattern from benchmark row labels rather than being told directly in `dstu-core`'s own README or rustdoc |
+| Verify | Confirm the crate does what it claims, on their own machine | `cargo test --workspace --all-features`; `docs/PERFORMANCE.md`'s full benchmarking + `criterion` baseline instructions (`cargo bench -p dstu-core --bench kalyna --bench kupyna --bench strumok`) | none, once the dependency itself is resolved |
+| Ship | Depend on a stable, versioned release for their own downstream users | No stable crates.io version exists; a git-dependency consumer has no SemVer guarantee across commits, and `docs/CHANGELOG.md` (T-111, done) currently has no public release to anchor to | Same root cause as "Add dependency" above — not a separate gap, a downstream consequence of T-17 |
 
 **Bottom line**: every step from "Pick layer" onward is well documented and cited; the entire
 persona-2 gap is concentrated at "Add dependency" (no crates.io/docs.rs presence) and its
@@ -101,7 +101,7 @@ stateDiagram-v2
 ```
 
 `CrossCompile`'s back-edge to `Discover` (present in the original 2026-07-25 version of this
-diagram, labeled "no target ever actually built here") is removed as of `TASKS.md` T-116 - real
+diagram, labeled "no target ever actually built here") is removed as of `docs/TASKS.md` T-116 - real
 cross-compiles now exist for two target families, see the table below. `VerifyFlashSize` still has
 no real linked-artifact measurement behind it (see that row) - not yet a fully closed state.
 
@@ -110,7 +110,7 @@ no real linked-artifact measurement behind it (see that row) - not yet a fully c
 | Discover | Understand `no_std` support exists and what it means concretely | `README.md` "Embedded / `no_std` targets" section; `CLAUDE.md` MVP scope states the no-hardware-lock-in goal explicitly | none |
 | Pick profile | Decide `fused` vs `small-tables` for their flash budget | `docs/resource-profiles.md` "Which one do I need?" sizing table, by target family and typical flash size | none |
 | Configure features | Know the exact Cargo invocation | `docs/resource-profiles.md` "How to build each" section gives the literal `cargo build --no-default-features --features small-tables` commands | none |
-| Cross-compile to a real target | Build (even just build, not flash) for `thumbv7em-none-eabihf` (STM32) or an Xtensa/RISC-V ESP32 target | **Closed 2026-07-26, see `TASKS.md` T-116.** All 4 `no_std`/`alloc`/`small-tables` combinations, both dev and release profiles, now build clean for `thumbv7em-none-eabihf` (STM32 Cortex-M) and `riscv32imc-unknown-none-elf` (ESP32-C3-class RISC-V), both installed via plain `rustup target add` | Xtensa (the *other* ESP32 family) needs a custom toolchain (`espup`, not plain `rustup`) and was not attempted - a smaller, separately-flaggable remaining gap, not the sharp one this row used to describe |
+| Cross-compile to a real target | Build (even just build, not flash) for `thumbv7em-none-eabihf` (STM32) or an Xtensa/RISC-V ESP32 target | **Closed 2026-07-26, see `docs/TASKS.md` T-116.** All 4 `no_std`/`alloc`/`small-tables` combinations, both dev and release profiles, now build clean for `thumbv7em-none-eabihf` (STM32 Cortex-M) and `riscv32imc-unknown-none-elf` (ESP32-C3-class RISC-V), both installed via plain `rustup target add` | Xtensa (the *other* ESP32 family) needs a custom toolchain (`espup`, not plain `rustup`) and was not attempted - a smaller, separately-flaggable remaining gap, not the sharp one this row used to describe |
 | Verify flash size | Confirm the ~86 KB / ~6.1 KB table numbers translate to a real linked binary on their target | T-116 also produced a real `thumbv7em-none-eabihf` release-profile `.rlib` size (1.4 MB `fused` / 1.2 MB `small-tables`) alongside `docs/resource-profiles.md`'s existing source-constant-derived table | **Still open, explicitly** - an `.rlib` isn't a linked, dead-code-eliminated firmware image, so this isn't the same number a real flashed binary would show. Closing this fully needs an actual firmware binary crate (entry point, panic handler, `memory.x`) that doesn't exist in this repo - flagged as a further candidate, not self-assigned |
 | Ship | Flash and run on real hardware | Phase 4 (T-55/T-56), explicitly post-MVP | Correctly out of scope, not a gap against this roadmap |
 
@@ -125,16 +125,16 @@ asks than the original "has anyone ever tried this" gap.
 - **The single highest-value finding when this document was first written**: persona 3's
   cross-compile gap. It sat directly behind a claim `README.md` already made in careful, hedged
   language — the hedge was correct, but the thing it was hedging *against verifying* had never been
-  attempted. **Closed 2026-07-26, see `TASKS.md` T-116** — real cross-compiles now exist for two
+  attempted. **Closed 2026-07-26, see `docs/TASKS.md` T-116** — real cross-compiles now exist for two
   target families (thumbv7em/STM32, riscv32imc/ESP32-C3-class), no hardware required to get there.
 - **`uacrypt keygen`'s absence** (persona 1) was already-tracked at the construction level
   (`randombytes` "Done") but read very differently once framed as "can this specific persona finish
   their journey" — the answer was no, at the very first concrete step. **Closed 2026-07-26, see
-  `TASKS.md` T-115** — the project owner triaged this candidate into a real task the same day it
+  `docs/TASKS.md` T-115** — the project owner triaged this candidate into a real task the same day it
   was found.
 - **Persona 1's Acquire gap (no prebuilt binary, T-18)** was explicitly gated on an owner request,
   same as T-17 - and the owner made that request directly ("зроби реліз на гітгабі бінарника і
-  бібліотек"), 2026-07-26. **Closed the same day, see `TASKS.md` T-18/T-119** - real GitHub Release
+  бібліотек"), 2026-07-26. **Closed the same day, see `docs/TASKS.md` T-18/T-119** - real GitHub Release
   `v0.1.0`, three platform binaries plus the `dstu-core` source distribution, verified against the
   actual downloaded assets.
 - **Crates.io/docs.rs absence** (persona 2) is the one gap in this whole document still open -
@@ -146,7 +146,7 @@ asks than the original "has anyone ever tried this" gap.
   recorded as candidates for the project owner to triage. Three (`uacrypt keygen`, T-115; the
   cross-compile check, T-116; prebuilt binaries, T-18/T-119) have since been triaged and closed;
   crates.io publication (T-17) remains open, still explicitly gated on an owner request.
-- **Methodology note, 2026-07-26 (`TASKS.md` T-117)**: this document's original findings were
+- **Methodology note, 2026-07-26 (`docs/TASKS.md` T-117)**: this document's original findings were
   produced by reading the cross-referenced docs and reasoning about the journey, not by actually
   executing each persona's steps. A follow-up pass that did — real `gh release list` (empty at the
   time; not anymore, see T-18/T-119 above), a real `cargo add dstu-core`, a real scratch crate

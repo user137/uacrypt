@@ -9,16 +9,16 @@ import org.bouncycastle.math.ec.ECPoint;
  * Generates unit-level GF(2^163) field-arithmetic and EC point-arithmetic test vectors for the
  * DSTU 4145-2002 curve used in crates/dstu-core/tests/vectors/dstu4145/gf2m163.json (curve
  * params, base point, and order n copied verbatim from that file / DSTU4145Test.java test163(),
- * both already dual-sourced - see DECISIONS.md D-14).
+ * both already dual-sourced - see docs/DECISIONS.md D-14).
  *
  * Unlike gf2m163.json (spec Annex B worked example, cross-checked against BC), this generator
  * makes Bouncy Castle the sole source of truth: it exercises BC's own
  * org.bouncycastle.math.ec.ECFieldElement.F2m / ECPoint.F2m implementation directly and freezes
  * the output. Single-oracle, not dual-sourced at the unit level - documented as such in
- * DECISIONS.md (see the entry citing this file) rather than overclaimed. The reason this exists at
+ * docs/DECISIONS.md (see the entry citing this file) rather than overclaimed. The reason this exists at
  * all: gf2m163.json only has signature-level values (final r, s), nothing at the level of a single
  * field multiplication/inversion or a single point doubling/addition, so it can't test-first the
- * arithmetic layer on its own - see TASKS.md Phase 2 / DSTU 4145.
+ * arithmetic layer on its own - see docs/TASKS.md Phase 2 / DSTU 4145.
  *
  * Deterministic (fixed java.util.Random seed - reproducible per the Java Language Spec's own
  * linear-congruential definition, same reasoning as this project's splitmix64 generators
@@ -61,10 +61,10 @@ public final class Dstu4145VectorGen {
         out.append("  \"field_bits\": 163,\n");
         out.append("  \"reduction_polynomial\": \"x^163 + x^7 + x^6 + x^3 + 1\",\n");
         out.append("  \"source\": \"Generated via Bouncy Castle's ECFieldElement.F2m/ECPoint.F2m ")
-            .append("(published bcprov-jdk18on 1.85, see ORACLES.md) against the curve/base-point/")
+            .append("(published bcprov-jdk18on 1.85, see docs/ORACLES.md) against the curve/base-point/")
             .append("order already dual-sourced in gf2m163.json - tests/oracle-harness/java/src/main")
             .append("/java/Dstu4145VectorGen.java. Single-oracle at the unit level (BC only), not ")
-            .append("dual-sourced the way gf2m163.json is - see DECISIONS.md.\",\n");
+            .append("dual-sourced the way gf2m163.json is - see docs/DECISIONS.md.\",\n");
         out.append("  \"curve\": { \"a\": \"1\", \"b\": \"").append(hex(B)).append("\" },\n");
         out.append("  \"order_n\": \"").append(hex(N)).append("\",\n");
         out.append("  \"base_point\": { \"x\": \"").append(hex(GX)).append("\", \"y\": \"")

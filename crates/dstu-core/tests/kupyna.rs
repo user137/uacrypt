@@ -1,6 +1,6 @@
 //! Black-box integration test for `dstu_core::hazmat::kupyna` against the official test vectors
 //! in `tests/vectors/kupyna/` (extracted from `docs/papers/Kupyna.pdf` Appendix B — see
-//! `ORACLES.md`). No JSON/hex crate dependency: the vector files have a fixed, simple shape
+//! `docs/ORACLES.md`). No JSON/hex crate dependency: the vector files have a fixed, simple shape
 //! controlled by this project, so a tiny inline extractor is safer than adding a dependency for
 //! two fields.
 

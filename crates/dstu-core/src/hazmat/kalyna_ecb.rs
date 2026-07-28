@@ -3,7 +3,7 @@
 //! all. Cited to `oracles/uapki/library/uapkic/src/dstu7624.c`'s `encrypt_ecb`/`decrypt_ecb`
 //! (lines 2899-2961) and `dstu7624_init_ecb` (lines 3920-3934) - a trivial per-block loop calling
 //! the same block-cipher transform `hazmat::kalyna` already implements and dual-oracle-verifies
-//! (D-13). `DECISIONS.md` D-53 has the full citation and verification-approach note.
+//! (D-13). `docs/DECISIONS.md` D-53 has the full citation and verification-approach note.
 //!
 //! # No integrity, and the weakest confidentiality guarantee of any mode in this crate
 //!

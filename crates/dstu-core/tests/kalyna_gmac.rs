@@ -1,5 +1,5 @@
 //! Black-box integration test for `dstu_core::hazmat::kalyna_gmac` against the uapki-only vectors
-//! in `tests/vectors/kalyna-gmac/` (`TASKS.md` T-95, `DECISIONS.md` D-57). Every official vector is
+//! in `tests/vectors/kalyna-gmac/` (`docs/TASKS.md` T-95, `docs/DECISIONS.md` D-57). Every official vector is
 //! exactly one block long - multi-block chaining, the `0x80` padding-marker branch, and the
 //! `Kalyna128_128Gmac` variant (no official vector exists for it at all) are proptest-only, not
 //! oracle-vector-covered. See D-57 for the full honesty note on why this is weaker than D-56's GCM

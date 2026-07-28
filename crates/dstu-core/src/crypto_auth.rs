@@ -1,5 +1,5 @@
 //! `crypto_auth`/`crypto_onetimeauth` equivalent (`docs/dstu-crypto-project.md` "Mapping onto the
-//! libsodium API", `TASKS.md` T-105, roadmap Step 3 item 2 - `DECISIONS.md` D-66) - a thin
+//! libsodium API", `docs/TASKS.md` T-105, roadmap Step 3 item 2 - `docs/DECISIONS.md` D-66) - a thin
 //! libsodium-ergonomics wrapper over [`crate::hazmat::kupyna_kmac::Kupyna256Kmac`].
 //!
 //! Two departures from the raw `hazmat` API, both following D-47's "delete the knob" criterion
@@ -12,7 +12,7 @@
 //!   forecloses `hazmat::kupyna_kmac::KmacError::WrongKeyLength` at this layer entirely: `Key` can
 //!   only ever be exactly 32 bytes (`from_bytes([u8; 32])` or [`Key::generate`]), so [`auth`] is
 //!   infallible and [`verify`]'s error type has only one variant. This is a type-signature
-//!   foreclosure, not an untested code path - see `DECISIONS.md` D-66.
+//!   foreclosure, not an untested code path - see `docs/DECISIONS.md` D-66.
 //!
 //! Provenance is otherwise identical to the `hazmat` layer: dual-oracle-cited, not yet confirmed
 //! against the primary DSTU 7564:2014 text (D-44).

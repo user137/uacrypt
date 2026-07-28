@@ -4,7 +4,7 @@
 //! `oracles/uapki/library/uapkic/src/dstu7624.c`'s `encrypt_kw` (lines 3672-3755), `decrypt_kw`
 //! (lines 3812-3884), and `dstu7624_init_kw` (lines 3955-3969), cross-read against
 //! `oracles/bouncycastle-java/.../engines/DSTU7624WrapEngine.java` and
-//! `oracles/bouncycastle-dotnet/.../engines/Dstu7624WrapEngine.cs`. `DECISIONS.md` D-55 has the
+//! `oracles/bouncycastle-dotnet/.../engines/Dstu7624WrapEngine.cs`. `docs/DECISIONS.md` D-55 has the
 //! full citation and two deliberate deviations from `dstu7624.c`, summarized here:
 //!
 //! # Deviation 1: block-aligned input only, no padding branch
@@ -24,7 +24,7 @@
 //! `dstu7624.c`'s `decrypt_kw` never checks that the recovered trailing block is actually
 //! all-zero; it returns whatever bytes result. Both Bouncy Castle ports do check (KW's only
 //! tamper-evidence mechanism) and reject otherwise. This module adds that check too
-//! (`subtle::ConstantTimeEq`, per `SECURITY.md`'s constant-time-comparison rule - the checksum
+//! (`subtle::ConstantTimeEq`, per `docs/SECURITY.md`'s constant-time-comparison rule - the checksum
 //! block is a function of secret key material through the whole Feistel network) - a deliberate,
 //! cited safety addition, not an omission.
 //!
@@ -91,7 +91,7 @@ macro_rules! kalyna_kw_variant {
             }
 
             /// Wraps `plaintext` using an already-expanded key schedule - the cached-schedule
-            /// counterpart to [`Self::wrap`]. `DECISIONS.md` D-76 / `TASKS.md` T-127: `wrap`
+            /// counterpart to [`Self::wrap`]. `docs/DECISIONS.md` D-76 / `docs/TASKS.md` T-127: `wrap`
             /// re-derives the full Kalyna round-key schedule on every call, which for KW's typically
             /// small (`1..=MAX_R`-block) inputs is not amortized the way it is for a large message -
             /// an avoidable cost for any caller wrapping more than one key under the same

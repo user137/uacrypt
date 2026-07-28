@@ -30,7 +30,7 @@ Two established international patterns were considered:
    call per subkey, `subkey = KeyedHash(key, subkey_id, context)`, with no separate Extract stage -
    because it explicitly assumes the master key is already uniformly random (normally produced by
    `crypto_kdf_keygen`, i.e. straight from the OS CSPRNG), which is exactly this project's own
-   `getrandom`-based key generation story (`DECISIONS.md` D-04). Skipping Extract sidesteps HKDF's
+   `getrandom`-based key generation story (`docs/DECISIONS.md` D-04). Skipping Extract sidesteps HKDF's
    proof-transfer question entirely - the assumption being made is simply "Kupyna-KMAC is a
    reasonable keyed PRF," the *same* assumption already implicitly made by using it as a MAC in
    T-38, not a new, additional one.

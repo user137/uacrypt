@@ -34,7 +34,7 @@ fn two_calls_use_different_salts() {
 /// PHC string - not just whatever `argon2`'s own `Params::default()` happens to be. A roundtrip
 /// test alone would pass even if `Strength` were silently ignored (`verify_password` re-derives
 /// params from the string itself), so this asserts the encoded params directly instead
-/// (`DECISIONS.md` D-49/D-50, `CLAUDE.md`'s "check what a fixed vector actually exercises" lesson).
+/// (`docs/DECISIONS.md` D-49/D-50, `CLAUDE.md`'s "check what a fixed vector actually exercises" lesson).
 ///
 /// `Sensitive` (1024 MiB, t=4) is deliberately not exercised here through a real hash - in an
 /// unoptimized debug build that one preset alone took ~85s, which is too expensive to pay on every

@@ -1,5 +1,5 @@
 //! `crypto_stream` equivalent (`docs/dstu-crypto-project.md` "Mapping onto the libsodium API",
-//! `TASKS.md` roadmap Step 3 item 3, `DECISIONS.md` D-67) - a libsodium-ergonomics wrapper over
+//! `docs/TASKS.md` roadmap Step 3 item 3, `docs/DECISIONS.md` D-67) - a libsodium-ergonomics wrapper over
 //! [`hazmat::strumok::Strumok256`](crate::hazmat::strumok::Strumok256).
 //!
 //! # No authentication whatsoever
@@ -24,7 +24,7 @@
 //! the same choice `crypto_secretbox` made for its nonce (D-51), never caller-supplied. This
 //! matters more here than for most primitives: `hazmat::strumok`'s own module doc carries a
 //! "never reuse the same key+IV pair" warning, backed by a dedicated test
-//! (`reusing_key_and_iv_leaks_plaintext_xor`, `TASKS.md` T-103) pinning the catastrophic two-time-
+//! (`reusing_key_and_iv_leaks_plaintext_xor`, `docs/TASKS.md` T-103) pinning the catastrophic two-time-
 //! pad property directly - reusing a key+IV pair XORs the two plaintexts together, recoverable
 //! without ever breaking the cipher itself. Hiding IV generation removes that footgun from the
 //! caller's surface entirely, at the cost of matching libsodium's own lower-level

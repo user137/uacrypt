@@ -1,7 +1,7 @@
 //! Generates random Strumok test cases (key/IV/length) and this project's own Rust keystream
 //! output for each, for the differential-testing harness in
 //! `tests/oracle-harness/strumok-differential/` (see that directory's README and
-//! `TASKS.md`/`DECISIONS.md` for why: the 8 UAPKI-attributed fixed vectors cover a narrow slice
+//! `docs/TASKS.md`/`docs/DECISIONS.md` for why: the 8 UAPKI-attributed fixed vectors cover a narrow slice
 //! of the key/IV/length space, and Strumok has no official test vectors at all - see D-15).
 //!
 //! Deterministic (fixed PRNG seed) so a mismatch is reproducible without needing to save the

@@ -11,7 +11,7 @@
 /.claude/
 
 # Oracle-harness build artifacts and fetched dependencies (Java/.NET) — fetched fresh via
-# Maven/NuGet at build time (see tests/oracle-harness/*/README or TASKS.md "Infrastructure"),
+# Maven/NuGet at build time (see tests/oracle-harness/*/README or docs/TASKS.md "Infrastructure"),
 # never vendored or committed, same rule as /oracles below.
 /tests/oracle-harness/java/lib/
 /tests/oracle-harness/java/out/
@@ -30,7 +30,7 @@
 /tests/oracle-harness/uapki-cmac-bench/*.a
 
 # Third-party reference implementations, used only as oracles for local test-vector
-# cross-verification (see oracles/README.md, DECISIONS.md D-02/D-06). Never vendored into
+# cross-verification (see oracles/README.md, docs/DECISIONS.md D-02/D-06). Never vendored into
 # crates/, never committed or published — regardless of the upstream license.
 # oracles/README.md itself stays tracked so the reasoning survives a fresh clone.
 /oracles/*

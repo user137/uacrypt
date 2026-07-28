@@ -2,7 +2,7 @@
 //! GHASH-like accumulation over one message stream (no AAD/ciphertext split, no encryption), built
 //! on the same [`super::gf2m_wide`] field arithmetic [`super::kalyna_gcm`] uses. Cited to
 //! `oracles/uapki/library/uapkic/src/dstu7624.c`'s `encrypt_gmac` (lines 3572-3620) and
-//! `dstu7624_init_gmac` (lines 4015-4063). `DECISIONS.md` D-57 has the full citation, the found
+//! `dstu7624_init_gmac` (lines 4015-4063). `docs/DECISIONS.md` D-57 has the full citation, the found
 //! reference bug (below), and the oracle-coverage breakdown.
 //!
 //! # Ported from `encrypt_gmac`, not `gmac_update`/`gmac_final` - a real bug found, not assumed
@@ -76,7 +76,7 @@ macro_rules! kalyna_gmac_variant {
 
             /// Computes the full-block-length GMAC tag of `message` using an already-expanded key
             /// schedule - the cached-schedule counterpart to [`Self::mac`]. Same rationale as
-            /// [`super::kalyna_cmac`]'s own `mac_with_cipher` (`DECISIONS.md` D-76 / `TASKS.md`
+            /// [`super::kalyna_cmac`]'s own `mac_with_cipher` (`docs/DECISIONS.md` D-76 / `docs/TASKS.md`
             /// T-127): `mac` re-derives the full Kalyna round-key schedule on every call, an
             /// avoidable cost for any caller computing a MAC for more than one message under the same key.
             #[must_use]
@@ -124,9 +124,9 @@ macro_rules! kalyna_gmac_variant {
             }
 
             /// Recomputes the GMAC tag and compares its first `tag.len()` bytes against `tag` in
-            /// constant time (`subtle::ConstantTimeEq`, per `SECURITY.md`'s hard constraint on
+            /// constant time (`subtle::ConstantTimeEq`, per `docs/SECURITY.md`'s hard constraint on
             /// secret comparisons) - matching [`super::kalyna_gcm`]'s tag-verify discipline, and,
-            /// like it, a deliberate departure from `dstu7624.c`'s own raw `memcmp` (`DECISIONS.md`
+            /// like it, a deliberate departure from `dstu7624.c`'s own raw `memcmp` (`docs/DECISIONS.md`
             /// D-57).
             ///
             /// # Errors

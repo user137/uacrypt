@@ -1,12 +1,12 @@
 //! `crypto_secretstream` equivalent (`docs/dstu-crypto-project.md` "Mapping onto the libsodium
-//! API", `TASKS.md` T-40/T-70, roadmap Step 5 item 1 - `DECISIONS.md` D-68) - a chunked/streaming
+//! API", `docs/TASKS.md` T-40/T-70, roadmap Step 5 item 1 - `docs/DECISIONS.md` D-68) - a chunked/streaming
 //! AEAD construction so a large message never needs to fit in memory all at once, unlike
 //! [`crate::crypto_secretbox`] (whose underlying AEAD tag needs the whole plaintext/ciphertext up
 //! front).
 //!
 //! # From-scratch construction - no DSTU standard, no oracle vector, ever
 //!
-//! No DSTU standard defines a streaming/chunked AEAD mode. Per `DECISIONS.md` D-47's tie-breaker
+//! No DSTU standard defines a streaming/chunked AEAD mode. Per `docs/DECISIONS.md` D-47's tie-breaker
 //! rule (no citation exists, so: TLS 1.3/modern-AEAD lessons, then libsodium's own API shape), this
 //! follows libsodium's `crypto_secretstream_xchacha20poly1305` shape - tag-per-chunk framing with a
 //! `FINAL` tag whose absence before end-of-input signals truncation - built on this crate's own

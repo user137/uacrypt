@@ -3,12 +3,12 @@
 //! Ported from `docs/pseudocode/kalyna.md` (itself transcribed from the designers' paper,
 //! `docs/papers/Kalyna.pdf` Sections 3-7) and structurally mirrors
 //! `oracles/kalyna-reference/kalyna.c` (Roman Oliynykov et al., verify-only, no license - see
-//! `ORACLES.md`) round-for-round and key-schedule-step-for-step. Shares its S-box/MDS tables
-//! with `hazmat::kupyna` via `hazmat::tables` (see `DECISIONS.md` D-10 for the byte-identity
-//! cross-check). Citation and verification status: `DECISIONS.md` D-13.
+//! `docs/ORACLES.md`) round-for-round and key-schedule-step-for-step. Shares its S-box/MDS tables
+//! with `hazmat::kupyna` via `hazmat::tables` (see `docs/DECISIONS.md` D-10 for the byte-identity
+//! cross-check). Citation and verification status: `docs/DECISIONS.md` D-13.
 //!
 //! Only single-block encrypt/decrypt is provided here - no mode of operation, no padding. A mode
-//! (`crypto_secretbox`-equivalent) is a separate, higher-level primitive - see `DECISIONS.md` D-05
+//! (`crypto_secretbox`-equivalent) is a separate, higher-level primitive - see `docs/DECISIONS.md` D-05
 //! and `docs/dstu-crypto-project.md` "Concrete API shape".
 
 use super::tables::{
@@ -153,7 +153,7 @@ fn decipher_round(state: &mut [Column]) {
     inv_sub_bytes(state);
 }
 
-/// One *interior* decrypt round, restructured (D-30, `DECISIONS.md`) into the same
+/// One *interior* decrypt round, restructured (D-30, `docs/DECISIONS.md`) into the same
 /// substitute-then-permute-then-mix shape as `encipher_round`, fused the same way over
 /// `tables::SBOX_MDS_DEC`. Valid via the identity `IM(IP(IS(x)) XOR K) = IM(IP(IS(x))) XOR IM(K)`
 /// (`IM` = the MDS-inverse mix is GF(2^8)-linear, so it distributes over XOR) combined with
@@ -437,7 +437,7 @@ fn state_array_mut<const NB: usize>(full: &mut [Column; MAX_NB]) -> &mut [Column
 /// `NB` is a const generic, not the runtime `nb: usize` the pre-T-128 version took, so the
 /// interior loop over `encipher_round_n` gets a compile-time-known trip count per monomorphized
 /// instantiation (one per macro-invocation call site, i.e. per block size 2/4/8) instead of a
-/// runtime branch - see `docs/dstu-crypto-project.md`/`DECISIONS.md` T-128 for the UAPKI
+/// runtime branch - see `docs/dstu-crypto-project.md`/`docs/DECISIONS.md` T-128 for the UAPKI
 /// `BT_xor128/256/512`-motivated comparison this responds to.
 fn encrypt_with_schedule<const NB: usize>(
     round_keys: &RoundKeys,
@@ -505,7 +505,7 @@ fn encrypt_generic<const NB: usize>(
     let mut round_keys = key_expand(key, NB, nk, nr);
     let out = encrypt_with_schedule::<NB>(&round_keys, plaintext, nr);
     // Last use of the derived key schedule - clear it rather than leave it for whatever the
-    // stack slot holds next (see SECURITY.md's Zeroize/ZeroizeOnDrop hard constraint, DECISIONS.md
+    // stack slot holds next (see docs/SECURITY.md's Zeroize/ZeroizeOnDrop hard constraint, docs/DECISIONS.md
     // D-20). A plain overwrite could be optimized away as a dead store since the array is about to
     // go out of scope anyway; `zeroize()` uses a volatile write specifically to prevent that.
     round_keys.zeroize();
@@ -566,7 +566,7 @@ macro_rules! kalyna_variant {
             "in [`new`](Self::new), instead of once per [`encrypt`](Self::encrypt_block)/",
             "[`decrypt`](Self::decrypt_block) call. Use this instead of the raw `", stringify!($name),
             "::encrypt`/`decrypt` functions whenever multiple blocks are encrypted/decrypted under ",
-            "the same key - `TASKS.md` D-28 stage 3: on this project's own measurements, the ",
+            "the same key - `docs/TASKS.md` D-28 stage 3: on this project's own measurements, the ",
             "schedule was ~60-79% of ", stringify!($name), "'s single-call time, so reusing it ",
             "across calls is the largest remaining lever against re-expanding it every time."
         )]
@@ -677,7 +677,7 @@ mod fused_round_tests {
 /// equality over random state, for every `NB` the crate actually instantiates (2/4/8), rather than
 /// re-deriving correctness against `naive_encipher_round` again (that's `fused_round_tests`'s job).
 /// This is the test that would catch a transposed gather index or an off-by-one in the
-/// const-generic rewrite - see `advisor()`'s guidance cited in `DECISIONS.md` T-128.
+/// const-generic rewrite - see `advisor()`'s guidance cited in `docs/DECISIONS.md` T-128.
 #[cfg(test)]
 mod const_round_tests {
     use super::{encipher_round, encipher_round_n, fused_inv_round, fused_inv_round_n, Column};

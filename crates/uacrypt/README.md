@@ -5,7 +5,7 @@ spirit of **libsodium**: mode, nonce, and algorithm choices are hardcoded per co
 the caller to misconfigure.
 
 **v0.1.0 — pre-release / work in progress.** Not audited, not a claim of side-channel resistance.
-See `dstu-core`'s README (or the project repository's `SECURITY.md`) for the underlying primitives'
+See `dstu-core`'s README (or the project repository's `docs/SECURITY.md`) for the underlying primitives'
 verification status — every command below inherits it.
 
 ## Commands
@@ -59,8 +59,8 @@ format `encrypt`/`decrypt --key` expect.
 
 ## Status and safety
 
-This is pre-1.0, unaudited software. See the project repository's `SECURITY.md` for the full
-threat model, `DECISIONS.md` for every architectural decision with its citation, and `TASKS.md`
+This is pre-1.0, unaudited software. See the project repository's `docs/SECURITY.md` for the full
+threat model, `docs/DECISIONS.md` for every architectural decision with its citation, and `docs/TASKS.md`
 for what is and isn't done yet.
 
 ## License

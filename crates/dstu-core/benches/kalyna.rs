@@ -1,7 +1,7 @@
 //! Absolute-throughput benchmarks for each Kalyna variant's `encrypt`/`decrypt` - not a claim of
 //! meaningful cross-algorithm or cross-language comparison (those numbers are inherently rough
 //! and machine-dependent), just a fixed point to catch regressions against and to have *some*
-//! number on record. See `TASKS.md` "Testing & hardening" / `DECISIONS.md` D-18's note on the cost
+//! number on record. See `docs/TASKS.md` "Testing & hardening" / `docs/DECISIONS.md` D-18's note on the cost
 //! of design choices.
 
 use criterion::{criterion_group, criterion_main, Criterion};
@@ -26,7 +26,7 @@ macro_rules! bench_variant {
         });
 
         // Block-only timing, key schedule expanded once outside the timed loop - the honest
-        // number PERFORMANCE.md's methodology text always claimed but the two benches above never
+        // number docs/PERFORMANCE.md's methodology text always claimed but the two benches above never
         // actually measured (D-28 stage 0/3: `key_expand` was ~60-79% of the raw functions' time).
         let expanded = <$expanded>::new(&key);
         $c.bench_function(concat!($name, "_encrypt_block_only"), |b| {

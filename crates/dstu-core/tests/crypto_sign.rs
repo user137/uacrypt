@@ -1,6 +1,6 @@
-//! Tests for `dstu_core::crypto_sign` (`crypto_sign` equivalent, `TASKS.md` T-48) - the
+//! Tests for `dstu_core::crypto_sign` (`crypto_sign` equivalent, `docs/TASKS.md` T-48) - the
 //! libsodium-ergonomics wrapper over `hazmat::dstu4145`. Nonce derivation is deterministic
-//! (Kupyna-KMAC, RFC-6979-style - `DECISIONS.md` D-46), so this file has no RNG dependency to
+//! (Kupyna-KMAC, RFC-6979-style - `docs/DECISIONS.md` D-46), so this file has no RNG dependency to
 //! mock: every test below is itself deterministic.
 //!
 //! `verifying_key()`'s `Q = -d*G` derivation is cross-checked against the official Annex B.1
@@ -68,11 +68,11 @@ fn small_scalar(low_byte: u8) -> [u8; 21] {
 // Every #[test] below (except the two from_bytes rejection tests, which never derive a public
 // key) calls `verifying_key()`/`sign`/`verify`, each running `Point::scalar_multiply`'s
 // 163-iteration constant-time ladder at least once - interpreting that under Miri takes minutes
-// per call (TASKS.md T-100/T-85/D-46), not seconds. Excluded from CI's required Miri gate only;
+// per call (docs/TASKS.md T-100/T-85/D-46), not seconds. Excluded from CI's required Miri gate only;
 // `cargo test` (required, fast) and property/vector coverage are unaffected.
 #[cfg_attr(
     miri,
-    ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see TASKS.md T-100"
+    ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see docs/TASKS.md T-100"
 )]
 #[test]
 fn verifying_key_matches_official_worked_example_q() {
@@ -97,7 +97,7 @@ fn verifying_key_matches_official_worked_example_q() {
 
 #[cfg_attr(
     miri,
-    ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see TASKS.md T-100"
+    ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see docs/TASKS.md T-100"
 )]
 #[test]
 fn sign_is_deterministic() {
@@ -109,7 +109,7 @@ fn sign_is_deterministic() {
 
 #[cfg_attr(
     miri,
-    ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see TASKS.md T-100"
+    ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see docs/TASKS.md T-100"
 )]
 #[test]
 fn sign_verify_roundtrip() {
@@ -121,7 +121,7 @@ fn sign_verify_roundtrip() {
 
 #[cfg_attr(
     miri,
-    ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see TASKS.md T-100"
+    ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see docs/TASKS.md T-100"
 )]
 #[test]
 fn tampered_message_is_rejected() {
@@ -133,7 +133,7 @@ fn tampered_message_is_rejected() {
 
 #[cfg_attr(
     miri,
-    ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see TASKS.md T-100"
+    ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see docs/TASKS.md T-100"
 )]
 #[test]
 fn tampered_signature_is_rejected() {
@@ -147,7 +147,7 @@ fn tampered_signature_is_rejected() {
 
 #[cfg_attr(
     miri,
-    ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see TASKS.md T-100"
+    ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see docs/TASKS.md T-100"
 )]
 #[test]
 fn wrong_verifying_key_is_rejected() {
@@ -163,7 +163,7 @@ fn wrong_verifying_key_is_rejected() {
 // (via `Kupyna256Hasher`) instead of `sign`/`verify` hashing the whole message in one call.
 #[cfg_attr(
     miri,
-    ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see TASKS.md T-100"
+    ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see docs/TASKS.md T-100"
 )]
 #[test]
 fn sign_digest_matches_sign_on_the_same_message() {
@@ -178,7 +178,7 @@ fn sign_digest_matches_sign_on_the_same_message() {
 
 #[cfg_attr(
     miri,
-    ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see TASKS.md T-100"
+    ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see docs/TASKS.md T-100"
 )]
 #[test]
 fn sign_digest_verify_digest_roundtrip_with_streamed_hash() {
@@ -199,7 +199,7 @@ fn sign_digest_verify_digest_roundtrip_with_streamed_hash() {
 
 #[cfg_attr(
     miri,
-    ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see TASKS.md T-100"
+    ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see docs/TASKS.md T-100"
 )]
 #[test]
 fn verify_digest_rejects_tampered_digest() {
@@ -220,7 +220,7 @@ fn verify_digest_rejects_tampered_digest() {
 // working key" from "got lucky this run" the way a fixed vector would.
 #[cfg_attr(
     miri,
-    ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see TASKS.md T-100"
+    ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see docs/TASKS.md T-100"
 )]
 #[test]
 fn generate_produces_a_key_that_signs_and_verifies() {
@@ -237,7 +237,7 @@ fn generate_produces_a_key_that_signs_and_verifies() {
 // not just "returns 21 bytes."
 #[cfg_attr(
     miri,
-    ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see TASKS.md T-100"
+    ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see docs/TASKS.md T-100"
 )]
 #[test]
 fn to_bytes_round_trips_through_from_bytes() {
@@ -260,7 +260,7 @@ fn to_bytes_round_trips_through_from_bytes() {
 // distinctness tests, which compare public/derived material rather than raw key bytes.
 #[cfg_attr(
     miri,
-    ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see TASKS.md T-100"
+    ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see docs/TASKS.md T-100"
 )]
 #[test]
 fn two_calls_to_generate_produce_different_keys() {
@@ -284,7 +284,7 @@ fn from_bytes_rejects_scalar_at_or_above_order() {
 }
 
 proptest! {
-    #[cfg_attr(miri, ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see TASKS.md T-100")]
+    #[cfg_attr(miri, ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see docs/TASKS.md T-100")]
     #[test]
     fn dstu4145_crypto_sign_roundtrip(
         d_bytes in prop::collection::vec(any::<u8>(), 20),

@@ -3,8 +3,8 @@
 Transcribed from `docs/papers/Kalyna.pdf` (Oliynykov et al., "A New Encryption Standard of
 Ukraine: The Kalyna Block Cipher"), Sections 3–7. Cross-checked structurally against
 `oracles/kalyna-reference/kalyna.c` (Roman Oliynykov, verify-only, no license — see
-`ORACLES.md`). Not a source to copy from — this is a from-spec restatement for implementation
-planning, per `DECISIONS.md` D-06.
+`docs/ORACLES.md`). Not a source to copy from — this is a from-spec restatement for implementation
+planning, per `docs/DECISIONS.md` D-06.
 
 ## Parameters (Section 3, Table 1)
 
@@ -117,7 +117,7 @@ out a transcription slip specific to the C code. The rotate-vs-addition reading 
 working interpretation on that basis, not on a since-withdrawn "two independent oracles" claim.
 The `⊞`/`L`/`R` notation in the paper most likely denotes this rotate-and-split operation and
 lost fidelity in `pdftotext` extraction (consistent with the systemic notation-symbol loss already
-documented in `ORACLES.md`), rather than describing a different operation the code doesn't
+documented in `docs/ORACLES.md`), rather than describing a different operation the code doesn't
 implement — but this rests on one lineage, and re-deriving it from the DSTU 7624 standard text
 itself (not currently in `docs/papers/`) would be worth doing before relying on it for a
 security-critical implementation detail.
@@ -175,4 +175,4 @@ matching oracle `KeyExpandOdd` / `RotateLeft` (`rotate_bytes = 2*state_size + 3`
 ## Test vectors
 
 All five variants already extracted and verified: `crates/dstu-core/tests/vectors/kalyna/*.json`
-(see `ORACLES.md`).
+(see `docs/ORACLES.md`).

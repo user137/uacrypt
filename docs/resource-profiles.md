@@ -2,7 +2,7 @@
 
 `dstu-core` builds in one of two resource profiles, chosen by a Cargo feature. Both produce
 byte-identical output — same DSTU 7624/7564/8845 math, same test vectors pass either way (see
-`DECISIONS.md` D-35/D-38/D-39). The only difference is a straight trade: flash/ROM footprint
+`docs/DECISIONS.md` D-35/D-38/D-39). The only difference is a straight trade: flash/ROM footprint
 against throughput.
 
 - **`fused` (default, no feature flag needed)** — precomputed S-box+MDS lookup tables. Fast,
@@ -49,7 +49,7 @@ against the source lines cited), not measured with a memory profiler — a weake
 table above's "measured directly off `hazmat::tables.rs`", stated as such rather than inherited.
 
 **Key-schedule storage is `MAX_NB`-sized regardless of variant** — the same oversizing pattern
-`TASKS.md` T-128 fixed on the *compute* side (round functions), still present on the *storage*
+`docs/TASKS.md` T-128 fixed on the *compute* side (round functions), still present on the *storage*
 side: `RoundKeys` (`hazmat::kalyna.rs`) is `[[Column; MAX_NB]; ROUND_KEYS_LEN]` = `19 * 8 * 8` =
 **1216 bytes**, the same for every variant — a Kalyna128_128 caller pays the identical footprint a
 Kalyna512_512 caller does, even though 128-128's real round-key material is a quarter the size.
@@ -58,7 +58,7 @@ Kalyna512_512 caller does, even though 128-128's real round-key material is a qu
 flagged as a problem to fix here — just a real number the resource-constrained cases from the
 sizing table below should account for.
 
-**Same pattern on `KupynaCore` after T-134** (`DECISIONS.md` D-85): T-134 made Kupyna's *compute*
+**Same pattern on `KupynaCore` after T-134** (`docs/DECISIONS.md` D-85): T-134 made Kupyna's *compute*
 path (`sub_shift_mix`/`compress` and friends) const-generic over `COLUMNS`, the direct analogue of
 T-128's Kalyna fix above — but, same as T-128 for Kalyna, deliberately left `KupynaCore`'s own
 *storage* untouched (`advisor()`'s explicit scope call during T-134: genericizing the struct itself
@@ -71,7 +71,7 @@ Kupyna-256 specifically - flagged in D-85 as a real memory win worth a separate 
 pursued as part of T-134's throughput-only scope.
 
 **GCM/GMAC's field multiply builds a transient 16-entry comb table on the stack, once per call
-to `poly_mul_wide`** (`hazmat::gf2m_wide.rs`, T-125's 4-bit-window comb method, `DECISIONS.md`
+to `poly_mul_wide`** (`hazmat::gf2m_wide.rs`, T-125's 4-bit-window comb method, `docs/DECISIONS.md`
 D-76) — new since this doc was first written, and genuinely a *stack* cost, not a *flash* one
 (freed when the call returns, never linked into the binary as `const` data):
 
@@ -107,9 +107,9 @@ size matched to its own constraint" convention).
 ## Speed: what that costs you
 
 Measured with a real built binary (`uacrypt`, release build), one process per number, same
-methodology as `PERFORMANCE.md`'s canonical binary-level comparison (`DECISIONS.md` D-34) — not a
+methodology as `docs/PERFORMANCE.md`'s canonical binary-level comparison (`docs/DECISIONS.md` D-34) — not a
 theoretical estimate. Ryzen 5 PRO 4650U dev machine, Windows. One run each (not the full
-multi-baseline `criterion` protocol `PERFORMANCE.md` uses for cross-implementation claims) — good
+multi-baseline `criterion` protocol `docs/PERFORMANCE.md` uses for cross-implementation claims) — good
 enough to size the trade-off, not a certified regression baseline.
 
 | Algorithm | `fused` | `small-tables` | `fused` is... |
@@ -123,7 +123,7 @@ enough to size the trade-off, not a certified regression baseline.
 | Strumok-512 (64 KB, cached) | 562.4 MB/s | 139.1 MB/s | **~4.0x faster** |
 
 **Strumok's absolute numbers above predate 2026-07-27's batched/fixed-index `apply_keystream`
-rewrite (`TASKS.md` T-135, `DECISIONS.md` D-86)** — both columns' real throughput is now
+rewrite (`docs/TASKS.md` T-135, `docs/DECISIONS.md` D-86)** — both columns' real throughput is now
 substantially higher (the `fused` column's own `criterion` numbers moved by roughly -53 to -65% in
 time, i.e. ~2.2-2.8x higher MB/s, at message sizes at or above the new 128-byte bulk threshold;
 `small-tables` gets the same batching/indexing win independently of table size, so its own absolute
@@ -139,12 +139,12 @@ same factor. Strumok's `T`-substitution is only one part of its per-word cost (L
 slowdown from the part that does.
 
 **Reproducing**: `cargo build -p uacrypt --release [--features dstu-core/small-tables]`, then the
-same `kalyna-block`/`kupyna-digest`/`strumok-crypt` commands `PERFORMANCE.md`'s "Reproducing" notes
+same `kalyna-block`/`kupyna-digest`/`strumok-crypt` commands `docs/PERFORMANCE.md`'s "Reproducing" notes
 document.
 
 ## Which one do I need?
 
-A quick sizing guide by target, from `DECISIONS.md` D-35's survey of typical hardware — flash
+A quick sizing guide by target, from `docs/DECISIONS.md` D-35's survey of typical hardware — flash
 budget is what actually decides this, not a chip-family label:
 
 | Target | Typical flash | Fits `fused` (~86 KB tables)? | Use |
@@ -153,8 +153,8 @@ budget is what actually decides this, not a chip-family label:
 | ESP32 / ESP32-S3 / ESP32-C3 | 4 MB+ | yes, trivially | **`fused`** (default) |
 | STM32 F1/F3/G4/F4/F7/H7 (mid-range and up) | 64 KB – 2 MB | yes | **`fused`** (default) |
 | STM32 L0/F0/G0 entry-level (e.g. L011F4, F030F4) | 16–64 KB | no | **`small-tables`** |
-| Arduino Mega (ATmega2560, AVR) | 256 KB flash, 8 KB SRAM | tables fit flash, but AVR copies `const` to SRAM unless placed in `PROGMEM` — not done here yet | **`small-tables`**, and even then only once `PROGMEM` placement exists (`TASKS.md` Phase 4) |
-| Arduino Uno (ATmega328P, AVR) | 32 KB flash, 2 KB SRAM | no — smaller than even `small-tables`'s footprint would need with room left for code | not viable yet either way (stretch goal, `TASKS.md` Phase 4) |
+| Arduino Mega (ATmega2560, AVR) | 256 KB flash, 8 KB SRAM | tables fit flash, but AVR copies `const` to SRAM unless placed in `PROGMEM` — not done here yet | **`small-tables`**, and even then only once `PROGMEM` placement exists (`docs/TASKS.md` Phase 4) |
+| Arduino Uno (ATmega328P, AVR) | 32 KB flash, 2 KB SRAM | no — smaller than even `small-tables`'s footprint would need with room left for code | not viable yet either way (stretch goal, `docs/TASKS.md` Phase 4) |
 
 If you're not memory-constrained, don't reach for `small-tables` — you'd be trading a large,
 measured speed loss for a save you don't need.
@@ -172,5 +172,5 @@ cargo build -p uacrypt --release --features dstu-core/small-tables
 ```
 
 Both profiles pass the exact same test suite (official DSTU vectors, `proptest` round-trips) —
-`cargo test --features dstu-core/small-tables` — see `DECISIONS.md` D-39 for why one test suite
+`cargo test --features dstu-core/small-tables` — see `docs/DECISIONS.md` D-39 for why one test suite
 covering both is sufficient rather than needing separate verification per profile.

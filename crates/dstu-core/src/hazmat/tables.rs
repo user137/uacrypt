@@ -5,7 +5,7 @@
 //! is structural rather than two hand-copied literals that could silently drift apart.
 //!
 //! `apply_matrix` originally recomputed every `GF(2^8)` multiplication via `gf_mul` on every call
-//! (up to 64 per column). **Switched 2026-07-22 (`DECISIONS.md` D-27) to `MDS_TABLE`/
+//! (up to 64 per column). **Switched 2026-07-22 (`docs/DECISIONS.md` D-27) to `MDS_TABLE`/
 //! `MDS_INV_TABLE`**: for each of the 8 input-row positions and each possible byte value, the
 //! combined 8-byte contribution that byte makes to the output column (i.e. `gf_mul(v,
 //! matrix[out_row][in_row])` for every `out_row`, packed into one `u64`) is precomputed - the same
@@ -22,7 +22,7 @@ pub(crate) const ROWS: usize = 8;
 
 /// Four DSTU 7624/7564 S-boxes (Appendix A), indexed `[row % 4][byte]`. Source:
 /// `oracles/kalyna-reference/tables.c` `sboxes_enc` - cross-checked byte-identical against
-/// `oracles/kupyna-reference/tables.c` `sboxes` (see `DECISIONS.md` D-10).
+/// `oracles/kupyna-reference/tables.c` `sboxes` (see `docs/DECISIONS.md` D-10).
 pub(crate) const SBOXES: [[u8; 256]; 4] = [
     [
         0xa8, 0x43, 0x5f, 0x06, 0x6b, 0x75, 0x6c, 0x59, 0x71, 0xdf, 0x87, 0x95, 0x17, 0xf0, 0xd8,
@@ -231,7 +231,7 @@ pub(crate) const MDS_INV_MATRIX: [[u8; ROWS]; ROWS] = [
 /// `u64`, byte `i` = output row `i`) that a single byte `byte` sitting at input row `in_row`
 /// contributes to `MDS_MATRIX * column` - see module doc for how this was generated and verified.
 ///
-/// Not compiled at all under the `small-tables` feature (`DECISIONS.md` D-35/D-38) - that profile
+/// Not compiled at all under the `small-tables` feature (`docs/DECISIONS.md` D-35/D-38) - that profile
 /// computes this on demand via `gf_mul`/`MDS_MATRIX` instead (`mds_column_via_gf_mul` below),
 /// trading throughput for the ~16 KB this table costs.
 #[cfg(not(feature = "small-tables"))]
@@ -4378,7 +4378,7 @@ pub(crate) const MDS_INV_TABLE: [[u64; 256]; ROWS] = [
 /// GF(2^8) multiplication, reduction polynomial x^8+x^4+x^3+x^2+1 (`0x11D`). Mirrors
 /// `oracles/kalyna-reference/kalyna.c` `MultiplyGF` (and `oracles/kupyna-reference/kupyna.c`
 /// `MultiplyGF`, identical). Under the default (fused-table) profile this is dead in production,
-/// kept only for the exhaustive test below; under `small-tables` (`DECISIONS.md` D-35/D-38) it's a
+/// kept only for the exhaustive test below; under `small-tables` (`docs/DECISIONS.md` D-35/D-38) it's a
 /// live production function, called from `apply_matrix_via_gf_mul`/`mds_column_via_gf_mul` below.
 #[allow(dead_code)]
 pub(crate) fn gf_mul(mut x: u8, mut y: u8) -> u8 {
@@ -4411,7 +4411,7 @@ fn apply_matrix(state: &mut [[u8; ROWS]], table: &[[u64; 256]; ROWS]) {
 }
 
 /// Linear layer (tau) via `gf_mul` directly against `matrix` (`MDS_MATRIX`/`MDS_INV_MATRIX`) - the
-/// `small-tables` resource profile (`DECISIONS.md` D-35/D-38): no precomputed table, 64 `gf_mul`
+/// `small-tables` resource profile (`docs/DECISIONS.md` D-35/D-38): no precomputed table, 64 `gf_mul`
 /// calls per column instead of 8 table lookups. This is exactly `apply_matrix`'s pre-D-27 form.
 #[cfg(feature = "small-tables")]
 fn apply_matrix_via_gf_mul(state: &mut [[u8; ROWS]], matrix: &[[u8; ROWS]; ROWS]) {
@@ -4427,7 +4427,7 @@ fn apply_matrix_via_gf_mul(state: &mut [[u8; ROWS]], matrix: &[[u8; ROWS]; ROWS]
 }
 
 /// Applies the forward MDS linear layer (tau) to every column of `state` - callers don't need
-/// their own `cfg`, this picks the resource-profile-appropriate implementation (`DECISIONS.md`
+/// their own `cfg`, this picks the resource-profile-appropriate implementation (`docs/DECISIONS.md`
 /// D-35/D-38). Used by Kalyna's decrypt-direction whitening step and Kupyna's dead-code `mix_
 /// columns` reference; the fused per-round path uses `forward_sbox_mds` below instead.
 #[cfg(not(feature = "small-tables"))]
@@ -4480,9 +4480,9 @@ fn mds_column_via_gf_mul(matrix: &[[u8; ROWS]; ROWS], in_row: usize, byte: u8) -
 /// columns while preserving row - the two operations commute, so this table alone (no per-variant
 /// copies) is enough. The `nb`- or `columns`-dependent part is only the *gather index* used by the
 /// caller (`hazmat::kalyna::encipher_round`, `hazmat::kupyna::t_transform`/`t_plus_transform`),
-/// which is cheap arithmetic on `nb`/`shift`, not a table. See `DECISIONS.md` D-28.
+/// which is cheap arithmetic on `nb`/`shift`, not a table. See `docs/DECISIONS.md` D-28.
 ///
-/// Not compiled under `small-tables` (`DECISIONS.md` D-35/D-38) - `forward_sbox_mds` below calls
+/// Not compiled under `small-tables` (`docs/DECISIONS.md` D-35/D-38) - `forward_sbox_mds` below calls
 /// `mds_column_via_gf_mul` on demand instead in that profile.
 #[cfg(not(feature = "small-tables"))]
 const fn build_sbox_mds() -> [[u64; 256]; ROWS] {
@@ -4505,7 +4505,7 @@ pub(crate) const SBOX_MDS: [[u64; 256]; ROWS] = build_sbox_mds();
 
 /// One (pre-substitution) byte's combined forward S-box + MDS contribution -
 /// `hazmat::kalyna::encipher_round`/`hazmat::kupyna::sub_shift_mix`'s gather-and-XOR loop calls
-/// this once per input byte, without needing its own `cfg` (`DECISIONS.md` D-35/D-38).
+/// this once per input byte, without needing its own `cfg` (`docs/DECISIONS.md` D-35/D-38).
 #[cfg(not(feature = "small-tables"))]
 pub(crate) fn forward_sbox_mds(row: usize, byte: u8) -> u64 {
     SBOX_MDS[row][byte as usize]
@@ -4516,7 +4516,7 @@ pub(crate) fn forward_sbox_mds(row: usize, byte: u8) -> u64 {
 }
 
 /// Combined inverse-S-box + inverse-MDS lookup for Kalyna's decrypt direction (D-28 follow-up,
-/// `DECISIONS.md` D-30): `SBOX_MDS_DEC[row][byte] = MDS_INV_TABLE[row][SBOXES_DEC[row % 4][byte]]`.
+/// `docs/DECISIONS.md` D-30): `SBOX_MDS_DEC[row][byte] = MDS_INV_TABLE[row][SBOXES_DEC[row % 4][byte]]`.
 /// Decrypt's *un-transformed* round order is mix-then-substitute (opposite of encrypt), which by
 /// itself isn't fusable this way - `hazmat::kalyna::fused_inv_round` uses this table only after an
 /// equivalent-inverse-cipher restructuring (transformed interior round keys, `DK[j] =
@@ -4559,7 +4559,7 @@ pub(crate) fn inverse_sbox_mds(row: usize, byte: u8) -> u64 {
 /// `MDS_INV_MATRIX` still being here even though no production code path calls them anymore: they
 /// are the independent reference this test checks the fast tables against, not dead weight.
 ///
-/// Only meaningful under the default profile - `small-tables` (`DECISIONS.md` D-35/D-38) has no
+/// Only meaningful under the default profile - `small-tables` (`docs/DECISIONS.md` D-35/D-38) has no
 /// `MDS_TABLE`/`SBOX_MDS` to check in the first place, since its production code calls `gf_mul`
 /// directly (this module's own `expected_column` formula, promoted to `mds_column_via_gf_mul`).
 #[cfg(all(test, not(feature = "small-tables")))]

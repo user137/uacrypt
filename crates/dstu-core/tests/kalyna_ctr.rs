@@ -1,5 +1,5 @@
 //! Black-box integration test for `dstu_core::hazmat::kalyna_ctr` against the cross-oracle
-//! vectors in `tests/vectors/kalyna-ctr/` (`TASKS.md` T-92, `DECISIONS.md` D-53) - uapki plus a
+//! vectors in `tests/vectors/kalyna-ctr/` (`docs/TASKS.md` T-92, `docs/DECISIONS.md` D-53) - uapki plus a
 //! genuinely independent second Bouncy Castle vector (`KCTRBlockCipher`), for the one variant
 //! either oracle covers (Kalyna128_128). Other variants rely on this mode sharing its keystream
 //! logic with the already dual-oracle-verified `hazmat::kalyna_ccm` (both call the same

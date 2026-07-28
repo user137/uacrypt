@@ -3,7 +3,7 @@
  * digest for each) from stdin - produced by
  * `cargo run --example kupyna_diff_cases -p dstu-core` - recomputes the digest independently via
  * oracles/kupyna-reference/ (Roman Oliynykov et al., the algorithm's own author, verify-only, no
- * license - see ORACLES.md), and reports any mismatch. See DECISIONS.md D-24 for why this exists:
+ * license - see docs/ORACLES.md), and reports any mismatch. See docs/DECISIONS.md D-24 for why this exists:
  * same pattern as the Strumok/Kalyna differential harnesses (D-22), added for parity.
  *
  * Build and run (from this directory):

@@ -6,7 +6,7 @@ understands "what this is and why," without knowing the local idioms of the othe
 linter) but by the same **principles**, each expressed in the idiom native to its own language.
 
 Applies to this project's non-Rust code — currently `tests/oracle-harness/{java,dotnet}/`, and
-whichever language bindings from `TASKS.md` Phase 3 (Python, JavaScript, Java, .NET, C++) get
+whichever language bindings from `docs/TASKS.md` Phase 3 (Python, JavaScript, Java, .NET, C++) get
 built first. For Rust specifically, `docs/rust_ai_ruleset.md` is the canonical, deeper ruleset —
 this file generalizes the same underlying principles across languages rather than replacing it.
 
@@ -38,7 +38,7 @@ this file generalizes the same underlying principles across languages rather tha
    format is always whichever one that language's own tooling actually parses.
 7. **Unsafe/low-level code is isolated in small, separately-reviewed modules, with an explicit
    comment on why it's safe here.** Rust: minimal `unsafe` block with a `// SAFETY:` comment
-   immediately before it, per `SECURITY.md`'s hard constraint. C++: raw pointers/manual memory
+   immediately before it, per `docs/SECURITY.md`'s hard constraint. C++: raw pointers/manual memory
    only inside a RAII wrapper. C#/Java: `unsafe`/JNI/native calls as a separate, clearly marked
    layer. Python: C extensions/`ctypes` as a separate module, not smeared through the codebase.
    Matters concretely here once FFI-boundary bindings (Phase 3) get built.
@@ -71,12 +71,12 @@ this file generalizes the same underlying principles across languages rather tha
       *helper* code (serialization, CLI parsing, logging, configuration) — there, `std` genuinely
       is almost always enough. For the crypto primitives themselves, the priority is the
       opposite, and is already stated separately: `docs/rust-crypto-claude-advice.md` — its
-      crypto-specific content is distributed into `SECURITY.md`/`DECISIONS.md`/`CLAUDE.md`, see
+      crypto-specific content is distributed into `docs/SECURITY.md`/`docs/DECISIONS.md`/`CLAUDE.md`, see
       that file's own status banner — a trusted, audited implementation is always safer than an
       unaudited one you wrote yourself. "Minimum dependencies" is never a reason to implement
       AES/SHA/ECC yourself outside the actual "this is the reference implementation we're
       writing" task. Any crypto dependency that *is* added still goes through the same
-      supply-chain vetting `SECURITY.md` already requires (maintainer, reproducible builds,
+      supply-chain vetting `docs/SECURITY.md` already requires (maintainer, reproducible builds,
       independent audit, CVE history) — *before* adding it, not after.
 
 ---
@@ -93,13 +93,13 @@ patterns only when needed) still applies, with two refinements specific to this 
   own logical steps — but without "just in case" abstractions the spec doesn't call for, since
   those are exactly what makes checking the code against its source harder. This is why
   `dstu_core::hazmat::kupyna` mirrors `oracles/kupyna-reference/kupyna.c`'s byte-matrix layout
-  directly rather than an optimized, word-packed representation (see `DECISIONS.md` D-10) —
+  directly rather than an optimized, word-packed representation (see `docs/DECISIONS.md` D-10) —
   transcription-safety over elegance, precisely per this principle.
 - **The one exception that always outweighs KISS:** explicit security requirements — constant-time
   execution, side-channel resistance, zeroizing secrets. These aren't stylistic preferences; they
   *are* an "explicit need" in principle 10's own terms, so they're never sacrificed for simplicity
   or readability. KISS operates *inside* the space of solutions that already satisfy the
-  crypto-specific hard constraints (`SECURITY.md`) — not instead of them.
+  crypto-specific hard constraints (`docs/SECURITY.md`) — not instead of them.
 
 ---
 
@@ -129,10 +129,10 @@ patterns only when needed) still applies, with two refinements specific to this 
 - `docs/rust_ai_ruleset.md` stays the canonical, deeper ruleset for Rust specifically (per
   `CLAUDE.md`'s doc map, treated as canonical as-is) — this file doesn't replace or restate it,
   it generalizes the same underlying principles to the other languages this project touches.
-- `SECURITY.md` and `DECISIONS.md` remain canonical for crypto-specific hard constraints
+- `docs/SECURITY.md` and `docs/DECISIONS.md` remain canonical for crypto-specific hard constraints
   (constant-time, `Zeroize`, dual-oracle verification, supply-chain vetting) — principle 11's
   crypto carve-out and the reference-implementation section above point there rather than
   restating it.
 - Applies today to `tests/oracle-harness/{java,dotnet}/` (already follows this — `OracleHarness`
   in PascalCase with `camelCase` methods, `Program.cs`'s local functions in `PascalCase`,
-  matching the table above) and will apply to `TASKS.md` Phase 3 language bindings when built.
+  matching the table above) and will apply to `docs/TASKS.md` Phase 3 language bindings when built.

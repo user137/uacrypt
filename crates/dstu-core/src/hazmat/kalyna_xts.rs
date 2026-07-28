@@ -1,10 +1,10 @@
 //! Kalyna-XTS: DSTU 7624:2014 mode of operation #9 (indexed substitution / disk-sector mode) - the
 //! 10th and last official mode, closing out this crate's full DSTU 7624 mode-of-operation coverage
-//! (`TASKS.md` T-96). Reuses [`super::gf2m_wide`]'s field arithmetic (same `f[]` reduction
+//! (`docs/TASKS.md` T-96). Reuses [`super::gf2m_wide`]'s field arithmetic (same `f[]` reduction
 //! polynomials as [`super::kalyna_gcm`]/[`super::kalyna_gmac`], confirmed byte-for-byte identical
 //! in `dstu7624_init_xts` - no new field module needed). Cited to
 //! `oracles/uapki/library/uapkic/src/dstu7624.c`'s `encrypt_xts`/`decrypt_xts` (lines 3003-3141)
-//! and `dstu7624_init_xts` (lines 4089-4132). `DECISIONS.md` D-58 has the full citation, the
+//! and `dstu7624_init_xts` (lines 4089-4132). `docs/DECISIONS.md` D-58 has the full citation, the
 //! `InvalidLength` finding below, and the oracle-coverage breakdown.
 //!
 //! # Confidentiality only - and that is the *correct* choice here, not a compromise
@@ -36,7 +36,7 @@
 //! (`plain_size < 2*block_len ? 0 : ...`) but at a different threshold, and does not save the
 //! encrypt side either. Matching this crate's established posture for this exact class of gap
 //! (`hazmat::kalyna_kw`'s non-aligned branch, D-55; `hazmat::kalyna_cfb`'s multi-call panic,
-//! resolved to a checked error, `TASKS.md` T-101), `encrypt_in_place`/`decrypt_in_place` reject
+//! resolved to a checked error, `docs/TASKS.md` T-101), `encrypt_in_place`/`decrypt_in_place` reject
 //! `buffer.len() < block_bytes` with [`XtsError::InvalidLength`] instead of inheriting the
 //! underflow - XTS's own ciphertext-stealing scheme requires at least one full block by
 //! construction, so this is not a scope cut relative to the construction's real domain, only a

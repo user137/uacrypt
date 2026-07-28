@@ -2,14 +2,14 @@
 
 Transcribed from `docs/papers/Strumok.pdf` (Gorbenko, Kuznetsov, et al., "'Strumok' Stream
 Cipher"), Sections 2–9 — the designers' own paper, not the DSTU standard text itself (no copy of
-that has been located; see `ORACLES.md`). Cross-checked structurally against
+that has been located; see `docs/ORACLES.md`). Cross-checked structurally against
 `oracles/strumok-dstu8845/strumok.c` (outspace, unofficial, unaudited, no license — the weakest
-oracle in this project per `ORACLES.md`). From-spec restatement for implementation planning, not a
-source to copy from (`DECISIONS.md` D-06).
+oracle in this project per `docs/ORACLES.md`). From-spec restatement for implementation planning, not a
+source to copy from (`docs/DECISIONS.md` D-06).
 
 **Update, 2026-07-22:** at the time the paragraph above was written, no test vectors existed
 anywhere in this project's holdings, so the oracle cross-check confirmed structure only, never
-numeric correctness. That gap is closed — see "Test vectors" below and `DECISIONS.md` D-15/D-18 —
+numeric correctness. That gap is closed — see "Test vectors" below and `docs/DECISIONS.md` D-15/D-18 —
 and `dstu_core::hazmat::strumok` now passes all of them. The provenance ceiling is unchanged
 though: those vectors are UAPKI-attributed, not the official DSTU 8845:2019 text itself.
 
@@ -70,7 +70,7 @@ S_{i+1} ← (s_new, (r1_new, r2_new))
 
 **Ambiguity flagged, not silently resolved:** the paper's step-2 formula for `r1_new` is one of
 the lines lost to `pdftotext`'s columnar-extraction damage on multi-line subscript/superscript
-math (see `ORACLES.md`'s extraction-notes convention) — it renders as
+math (see `docs/ORACLES.md`'s extraction-notes convention) — it renders as
 `r₂^(i+1) = r?^(i+1) +64 s13^(i)`, ambiguous on whether the first term on the RHS is `r2`'s *old*
 or *newly-computed* value. The oracle (`oracles/strumok-dstu8845/strumok.c`, function
 `next_stream`, lines ~719–721) resolves this unambiguously in code: `fsmtmp` (the new `r1`) is
@@ -115,13 +115,13 @@ summary — it's a dense 16-entry mapping the paper gives as two explicit lists 
 
 **Update, 2026-07-22:** the "none exist" finding below was true when this doc was first written;
 it no longer is. `oracles/uapki/library/uapkic/src/dstu8845.c`'s `dstu8845_self_test` supplied the
-first real KAT data found anywhere for this algorithm (`DECISIONS.md` D-15), adopted into
+first real KAT data found anywhere for this algorithm (`docs/DECISIONS.md` D-15), adopted into
 `crates/dstu-core/tests/vectors/strumok/keystream-{256,512}.json` and implemented against
-test-first (`DECISIONS.md` D-18, `dstu_core::hazmat::strumok`). Still not confirmed against the
+test-first (`docs/DECISIONS.md` D-18, `dstu_core::hazmat::strumok`). Still not confirmed against the
 paid official DSTU 8845:2019 text itself — "UAPKI-attributed", not "official". Original note,
 kept for context:
 
 **None exist** in `docs/papers/` at the time this doc was written. Confirmed by direct hex-run
-scan of every Strumok-related PDF there — see `ORACLES.md`'s Strumok section. Implementing this
+scan of every Strumok-related PDF there — see `docs/ORACLES.md`'s Strumok section. Implementing this
 primitive without official vectors was a known, accepted gap, not an oversight; locating or
 generating trustworthy vectors was treated as a prerequisite, not an afterthought.

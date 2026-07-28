@@ -5,7 +5,7 @@
 //! `oracles/uapki/library/uapkic/src/dstu7624.c`'s `encrypt_ofb` (lines 3624-3670) and
 //! `dstu7624_init_ofb` (lines 3996-4013); `dstu7624_decrypt` routes OFB to the same `encrypt_ofb`
 //! function (confirmed in the C source's mode dispatch) - OFB is self-inverse, so this module has
-//! one `apply_in_place`, not separate encrypt/decrypt methods. `DECISIONS.md` D-53 has the full
+//! one `apply_in_place`, not separate encrypt/decrypt methods. `docs/DECISIONS.md` D-53 has the full
 //! citation and roadmap context.
 //!
 //! # No integrity, and pure confidentiality only

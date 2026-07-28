@@ -1,5 +1,5 @@
 //! DSTU 4145-2002's m=163 curve: `y^2 + xy = x^3 + a*x^2 + b` over GF(2^163), `a = 1` - the curve
-//! dual-sourced in `tests/vectors/dstu4145/gf2m163.json` (`DECISIONS.md` D-14), matching
+//! dual-sourced in `tests/vectors/dstu4145/gf2m163.json` (`docs/DECISIONS.md` D-14), matching
 //! `oracles/bouncycastle-java/.../DSTU4145NamedCurves.java`'s `ECCurve.F2m(163, 3, 6, 7, ...)`.
 //!
 //! `double`/`add` below are plain affine formulas with ordinary branches (`==`) on the point
@@ -7,7 +7,7 @@
 //! (`s*G + r*Q`, entirely public inputs), never for a secret scalar's intermediate state.
 //! `scalar_multiply` is the one function used with secret scalars (DSTU 4145 signing's ephemeral
 //! `e`) as well as public ones (`s`, `r` in verification) - same code path either way, so there is
-//! no branch that could leak which case it is (`DECISIONS.md` D-25).
+//! no branch that could leak which case it is (`docs/DECISIONS.md` D-25).
 
 use super::gf2m163::FieldElement;
 
@@ -58,7 +58,7 @@ impl Point {
 
     /// `-P`: for this curve family, negation is `(x, y) -> (x, x + y)` (char-2 identity - see
     /// `double`/`add`'s comment on the same fact). Used to derive a DSTU 4145 public key
-    /// `Q = -d*G` from a private key `d` (`DECISIONS.md` D-25's follow-up note on this - Bouncy
+    /// `Q = -d*G` from a private key `d` (`docs/DECISIONS.md` D-25's follow-up note on this - Bouncy
     /// Castle's `DSTU4145KeyPairGenerator` negates explicitly; the pseudocode doc's "`Q = d*G`"
     /// line undersold this).
     #[must_use]
@@ -95,7 +95,7 @@ impl Point {
     /// Montgomery's method for binary-curve point multiplication (`Guide to Elliptic Curve
     /// Cryptography`, Algorithm 3.40) computes only X/Z-projective coordinates through the main
     /// loop, recovering the affine `y` at the end from the original point. Two adaptations from
-    /// the textbook algorithm, both needed for `DECISIONS.md` D-25's branchless posture:
+    /// the textbook algorithm, both needed for `docs/DECISIONS.md` D-25's branchless posture:
     ///
     /// - The textbook version starts from `(P, 2P)` and loops only over the bits below `k`'s
     ///   *actual* highest set bit - a loop bound that depends on the secret scalar's magnitude.

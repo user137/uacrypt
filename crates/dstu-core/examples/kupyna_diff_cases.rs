@@ -1,6 +1,6 @@
 //! Generates random Kupyna test cases (messages of varying length) and this project's own Rust
 //! digest for each, for the differential-testing harness in
-//! `tests/oracle-harness/kupyna-differential/` - see `DECISIONS.md` D-24 for why this exists
+//! `tests/oracle-harness/kupyna-differential/` - see `docs/DECISIONS.md` D-24 for why this exists
 //! (parity with the Strumok/Kalyna differential harnesses, D-22, so no primitive looks singled
 //! out for extra scrutiny without reason).
 //!

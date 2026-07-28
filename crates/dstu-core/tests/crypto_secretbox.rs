@@ -1,5 +1,5 @@
-//! Tests for `dstu_core::crypto_secretbox` (`TASKS.md` T-37, `DECISIONS.md` D-51, migrated to
-//! Kalyna-GCM by roadmap Step 3 item 1, `DECISIONS.md` D-63) - a single fixed
+//! Tests for `dstu_core::crypto_secretbox` (`docs/TASKS.md` T-37, `docs/DECISIONS.md` D-51, migrated to
+//! Kalyna-GCM by roadmap Step 3 item 1, `docs/DECISIONS.md` D-63) - a single fixed
 //! `hazmat::kalyna_gcm::Kalyna256_256Gcm` construction with an internally-generated nonce and a
 //! combined `nonce || ciphertext || tag` wire format. No external oracle exists for this specific
 //! framing (it's this crate's own construction over an already-oracle-verified primitive), so
@@ -34,7 +34,7 @@ fn zero_length_plaintext_round_trips() {
 }
 
 /// Kalyna-GCM (unlike the previous Kalyna-CCM construction, D-41) encodes no length cap into
-/// itself - `DECISIONS.md` D-63. This message is well past the old 255-byte `kalyna_ccm` limit;
+/// itself - `docs/DECISIONS.md` D-63. This message is well past the old 255-byte `kalyna_ccm` limit;
 /// it succeeding is what proves the cap is actually gone, not just undocumented.
 #[test]
 fn message_larger_than_the_old_255_byte_cap_round_trips() {
@@ -78,7 +78,7 @@ fn wrong_key_is_rejected() {
 }
 
 /// Regression guard for the nonce-as-AAD binding in `seal`/`open` (module doc's "No AAD" section,
-/// `DECISIONS.md` D-63) - `hazmat::kalyna_gcm`'s own tag does not cover `iv` (see that module's
+/// `docs/DECISIONS.md` D-63) - `hazmat::kalyna_gcm`'s own tag does not cover `iv` (see that module's
 /// "Warning" doc section), so this would fail without it.
 #[test]
 fn tampered_nonce_is_rejected() {
@@ -113,7 +113,7 @@ fn tampered_tag_is_rejected() {
 /// using the nonce `seal` actually drew (`CLAUDE.md`'s "check what a fixed vector actually
 /// exercises" - a round-trip-only test would pass even if the layout silently changed shape). The
 /// tag comparison is against the first `TAG_LEN` bytes of GCM's own full-block tag - `seal`
-/// truncates the same way (`DECISIONS.md` D-63), not a new convention invented for this test. The
+/// truncates the same way (`docs/DECISIONS.md` D-63), not a new convention invented for this test. The
 /// direct call passes `nonce` as AAD too, matching `seal`'s internal nonce-binding (module doc's
 /// "No AAD" section) - passing `&[]` here would produce a different tag and fail this test.
 #[test]

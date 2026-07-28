@@ -1,9 +1,9 @@
 name: release
 
-# Triggered by a `vX.Y.Z` tag push (TASKS.md T-18) - builds the uacrypt binary for
+# Triggered by a `vX.Y.Z` tag push (docs/TASKS.md T-18) - builds the uacrypt binary for
 # Linux/macOS/Windows, packages the dstu-core source distribution the same way `cargo publish`
 # would, and attaches all of it to a GitHub Release. Deliberately GitHub-only, not crates.io
-# (TASKS.md T-17 stays separately gated) - this workflow never runs `cargo publish`.
+# (docs/TASKS.md T-17 stays separately gated) - this workflow never runs `cargo publish`.
 on:
   push:
     tags:

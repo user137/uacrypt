@@ -1,14 +1,14 @@
 name: oracle-harness
 
 # Cross-checks crates/dstu-core/tests/vectors/*.json against Bouncy Castle (published packages,
-# not the vendored oracle clones). See TASKS.md "Infrastructure" for rationale and status.
+# not the vendored oracle clones). See docs/TASKS.md "Infrastructure" for rationale and status.
 #
 # No cryptonite/C job here on purpose: it was tried and dropped (2026-07-22) - cryptonite's own
 # source doesn't build clean on a modern GCC (implicit-function-declaration errors in
 # dstu4145_prng_internal.c, unrelated to Kalyna/Kupyna), and its added evidentiary value was
 # already modest (Kalyna/Kupyna are independently confirmed by the two jobs below). Not worth
 # patching a vetted third-party oracle's source to make a lower-value check build. See
-# ORACLES.md / oracles/README.md - cryptonite is still used as a read-only reference (e.g. the
+# docs/ORACLES.md / oracles/README.md - cryptonite is still used as a read-only reference (e.g. the
 # D-05 CCM/GCM finding), just not as a runnable CI harness.
 
 on:

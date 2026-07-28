@@ -3,19 +3,19 @@
 **Provisional, not confirmed against the primary DSTU 7624:2014 text** — same posture as
 `strumok.md`'s UAPKI-attributed caveat (D-15). Transcribed from
 `oracles/uapki/library/uapkic/src/dstu7624.c` (a from-code restatement, not from-spec — the
-official standard text is not currently among `docs/papers/`, see `DECISIONS.md` D-05/D-41), and
+official standard text is not currently among `docs/papers/`, see `docs/DECISIONS.md` D-05/D-41), and
 cross-checked byte-for-byte for 4 of the 5 Kalyna variants against
 `oracles/bouncycastle-java`'s `DSTU7624Test.java` CCM vectors (BC's own `KCCMBlockCipher`/
 `KGCMBlockCipher` construction source is not present in this project's vendored sparse checkout —
 the cross-check is against BC's vector *outputs* only). Not a source to copy from — this is a
-from-code restatement for implementation planning, per `DECISIONS.md` D-06's principle applied to
+from-code restatement for implementation planning, per `docs/DECISIONS.md` D-06's principle applied to
 a C reference instead of a paper.
 
 ## Parameters, per Kalyna variant
 
 `block_len`/`ccm_nb`/`q` (tag length) are cross-oracle-vector-confirmed for these five combinations
 — `ccm_nb` and `q` are otherwise tunable parameters of the construction (`dstu7624_init_ccm`'s
-`n_max`/`q` arguments), not fixed constants of the standard (`DECISIONS.md` D-40).
+`n_max`/`q` arguments), not fixed constants of the standard (`docs/DECISIONS.md` D-40).
 
 | Kalyna variant | `block_len` (bytes) | `ccm_nb` (bytes) | `q` tag length (bytes) | nonce field width (`block_len - ccm_nb - 1`) |
 |---|---|---|---|---|
@@ -140,5 +140,5 @@ public function signature expects the caller to supply.
 ## Rust implementation
 
 `crates/dstu-core/src/hazmat/kalyna_ccm.rs` — see its module doc comment for the exact citation
-line numbers (kept in sync with this document) and `DECISIONS.md` D-41 for the verification
+line numbers (kept in sync with this document) and `docs/DECISIONS.md` D-41 for the verification
 summary.

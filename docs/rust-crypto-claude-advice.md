@@ -1,7 +1,7 @@
 # Advice for CLAUDE.md — Rust cryptographic library
 
 > **Status: distributed.** The crypto-specific content from Part 1 has been moved into
-> `SECURITY.md` (hard constraints, threat model, supply-chain) and `DECISIONS.md` (D-01…D-06).
+> `docs/SECURITY.md` (hard constraints, threat model, supply-chain) and `docs/DECISIONS.md` (D-01…D-06).
 > Agent discipline (three-attempts rule, research before implementation, distrust of "green"
 > tests) is in `CLAUDE.md` ("Agent discipline"). Part 2 (context economy) is already covered by
 > harness practices from `~/.claude/CLAUDE.md` and the global instructions — not duplicated here
@@ -21,18 +21,18 @@ changes to save context/tokens.
 - **A single index file (`CLAUDE.md`)** that lists every other `.md` file with "Read when /
   Update when" columns and a **canonical owner** for each topic. If a topic is already described
   in one file, other files only link to it, never duplicate the table.
-- **`DECISIONS.md`** — architectural decisions *together with the rejected alternatives and the
+- **`docs/DECISIONS.md`** — architectural decisions *together with the rejected alternatives and the
   reason for rejection*. For a crypto library: why a specific set of primitives/curves was chosen,
   why legacy mode isn't supported, why a dependency was accepted or rejected. Write it at the
   moment of the decision, not after the fact.
-- **`SECURITY.md`** — threat model, explicit out-of-scope, a supply-chain dependency-assessment
+- **`docs/SECURITY.md`** — threat model, explicit out-of-scope, a supply-chain dependency-assessment
   table (developer, reproducible builds, independent audit, CVE history) — apply it to every
   crypto crate before adding it. A "Reporting Vulnerabilities" section — private disclosure
   (GitHub Security Advisories), never a public issue.
-- **`TASKS.md` / `TASKS_DONE.md`** — end-to-end task numbering (`T-xx`), acceptance criteria for
+- **`docs/TASKS.md` / `TASKS_DONE.md`** — end-to-end task numbering (`T-xx`), acceptance criteria for
   each. A task moves to "done" NOT because `cargo test` is green — separate verification is
   needed (for crypto: cross-verification against test vectors + an independent implementation).
-- **`CHANGELOG.md`** — one section per release, written at release time with the list of tasks
+- **`docs/CHANGELOG.md`** — one section per release, written at release time with the list of tasks
   since the previous tag.
 - **A "Known test gaps" section** — document flaky tests and the rule "one isolated rerun before
   treating it as a regression", instead of silently ignoring it or endlessly rerunning without
@@ -45,7 +45,7 @@ changes to save context/tokens.
   your own initiative. Especially for toolchain/build/CI problems.
 - **Research before implementation**: no primitive is written "from memory" — check against the
   primary source (a specific section of an RFC/NIST document, real reference-implementation code),
-  not a paraphrase. Record the citation in `DECISIONS.md`.
+  not a paraphrase. Record the citation in `docs/DECISIONS.md`.
 - **Don't trust "green tests" for security-critical code.** Your own implementation must be
   cross-checked against test vectors (NIST CAVP/RFC) **and** an independent crate (`ring`,
   RustCrypto) — not just self-consistency. A bug can slip past your own tests but fail against an
@@ -74,7 +74,7 @@ changes to save context/tokens.
 - **Fuzzing is a required layer**, not optional: `cargo fuzz` for every parser of untrusted input
   bytes (DER/ASN.1, message formats).
 - **Supply-chain check** of every crypto crate before adding it as a dependency — the same table
-  as in `SECURITY.md` (developer, reproducible builds, audit, CVE history).
+  as in `docs/SECURITY.md` (developer, reproducible builds, audit, CVE history).
 
 ---
 
@@ -117,7 +117,7 @@ sessions and for cost (API/keys).
   keyword) instead of printing all of `cargo build`/`cargo test` stdout, when the file is large
   and the nature of the error is already known.
 - **Don't keep documents in context that are already stale/not needed for the current step.** For
-  a very large decisions file (`DECISIONS.md`, which keeps growing) — grep for the heading of the
+  a very large decisions file (`docs/DECISIONS.md`, which keeps growing) — grep for the heading of the
   specific section instead of re-reading the whole file every time.
 - **Load tools for the task, not all at once**, when tools are available via deferred loading
   (search-by-name) — request the whole needed set in one call up front, rather than one at a time

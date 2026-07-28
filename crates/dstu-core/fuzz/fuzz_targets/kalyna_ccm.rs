@@ -5,7 +5,7 @@ use dstu_core::hazmat::kalyna_ccm::{
 };
 use libfuzzer_sys::fuzz_target;
 
-// Required by SECURITY.md ("cargo fuzz is required ... not optional"). `seal_in_place`/
+// Required by docs/SECURITY.md ("cargo fuzz is required ... not optional"). `seal_in_place`/
 // `open_in_place` must never panic/crash regardless of key/nonce/aad/buffer content or length -
 // `open_in_place` in particular is the first code in this crate that makes an authentication
 // decision on fully attacker-controlled input, so it's also fuzzed directly with ciphertext/tag

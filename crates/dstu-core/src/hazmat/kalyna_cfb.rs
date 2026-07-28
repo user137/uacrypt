@@ -3,7 +3,7 @@
 //! re-encrypting a `feed` register that always absorbs the **ciphertext** `q` bytes at a time
 //! (`q` is a caller-chosen feedback width, one of 1/8/16/32/64 bytes). Cited to
 //! `oracles/uapki/library/uapkic/src/dstu7624.c`'s `encrypt_cfb` (lines 3186-3234), `decrypt_cfb`
-//! (lines 3762-3810), and `dstu7624_init_cfb` (lines 3971-3994). `DECISIONS.md` D-53 has the full
+//! (lines 3762-3810), and `dstu7624_init_cfb` (lines 3971-3994). `docs/DECISIONS.md` D-53 has the full
 //! citation and roadmap context.
 //!
 //! # Not a textbook shift register - transcribed exactly, not simplified by analogy
@@ -38,7 +38,7 @@
 //! confirmed directly (not assumed) by `tests/kalyna_cfb.rs`'s `proptest`, which restricts
 //! intermediate chunk lengths to multiples of `q` for exactly this reason.
 //!
-//! **Checked, not a panic** (`TASKS.md` T-101, `DECISIONS.md`): both methods return
+//! **Checked, not a panic** (`docs/TASKS.md` T-101, `docs/DECISIONS.md`): both methods return
 //! [`Result<(), CfbError>`] and reject a call with `Err(CfbError::NonAlignedIntermediateCall)`
 //! rather than indexing out of bounds if the internal state isn't currently at a `q`-aligned
 //! resume point - `used_gamma_len % q == 0` is checked on entry, which is both necessary and

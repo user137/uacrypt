@@ -1,5 +1,5 @@
 //! Black-box integration test for `dstu_core::hazmat::kalyna_ofb` against the cross-oracle
-//! vectors in `tests/vectors/kalyna-ofb/` (`TASKS.md` T-89, `DECISIONS.md` D-53) - programmatically
+//! vectors in `tests/vectors/kalyna-ofb/` (`docs/TASKS.md` T-89, `docs/DECISIONS.md` D-53) - programmatically
 //! extracted from `oracles/uapki/library/uapkic/src/dstu7624.c`'s `dstu7624_ofb_self_test`, not
 //! hand-transcribed. Same hand-rolled extractor convention as `tests/kalyna_ccm.rs`.
 

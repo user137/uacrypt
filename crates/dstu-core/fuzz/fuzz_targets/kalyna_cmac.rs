@@ -5,7 +5,7 @@ use dstu_core::hazmat::kalyna_cmac::{
 };
 use libfuzzer_sys::fuzz_target;
 
-// Required by SECURITY.md ("cargo fuzz is required ... not optional"). `mac`/`verify` must never
+// Required by docs/SECURITY.md ("cargo fuzz is required ... not optional"). `mac`/`verify` must never
 // panic/crash regardless of key/message/tag content or length. Not a correctness check, which the
 // vector/proptest suites cover.
 macro_rules! fuzz_variant {

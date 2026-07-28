@@ -19,9 +19,9 @@ import org.bouncycastle.util.encoders.Hex;
  * Cross-checks this project's extracted test vectors (crates/dstu-core/tests/vectors/) against
  * Bouncy Castle's own Kalyna (DSTU7624Engine) and Kupyna (DSTU7564Digest), via the published
  * bcprov-jdk18on Maven artifact - not the vendored partial clone under
- * oracles/bouncycastle-java/ (see TASKS.md "Infrastructure").
+ * oracles/bouncycastle-java/ (see docs/TASKS.md "Infrastructure").
  *
- * Evidentiary value note (ORACLES.md / DECISIONS.md D-10): Bouncy Castle's Kalyna/Kupyna code is
+ * Evidentiary value note (docs/ORACLES.md / docs/DECISIONS.md D-10): Bouncy Castle's Kalyna/Kupyna code is
  * itself a port of Roman Oliynykov's C reference, not an independent implementation - a pass
  * here mostly re-confirms this project's own PDF vector extraction, not a second independent
  * reading of the algorithm.

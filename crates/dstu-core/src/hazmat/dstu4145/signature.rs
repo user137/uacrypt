@@ -1,9 +1,9 @@
 //! DSTU 4145-2002 sign/verify, transcribed from Bouncy Castle's `DSTU4145Signer`
-//! (`DECISIONS.md` D-02/D-14, `docs/pseudocode/dstu4145.md`) - built on `gf2m163`'s field
+//! (`docs/DECISIONS.md` D-02/D-14, `docs/pseudocode/dstu4145.md`) - built on `gf2m163`'s field
 //! arithmetic, `curve163`'s point arithmetic, and `scalar`'s mod-`n` integer arithmetic.
 //!
 //! **The public key is `Q = -d*G`, not `d*G`** - see `docs/pseudocode/dstu4145.md`'s 2026-07-22
-//! note and `DECISIONS.md` D-25's follow-up entry for how this was found (Bouncy Castle's own
+//! note and `docs/DECISIONS.md` D-25's follow-up entry for how this was found (Bouncy Castle's own
 //! `DSTU4145KeyPairGenerator` negates explicitly; the sign/verify identity only closes under this
 //! convention). Callers deriving `Q` from `d` (e.g. `g.scalar_multiply(d)`) must negate via
 //! `Point::negate` - this module takes `Q` as given rather than computing it, so it can't enforce
@@ -22,7 +22,7 @@ use super::scalar::Scalar;
 /// the rest. In byte terms (§5.1/§5.6's own big-endian convention, `h_0` is the *last* bit of the
 /// hash's last byte): keep the hash's **last** `min(len, 21)` bytes as-is, masking the top byte to
 /// its low 3 bits if a full 21 were taken (163 bits total) - **no byte reversal**, contrary to
-/// what an earlier version of this function did (see `DECISIONS.md` D-25's follow-up-of-a-
+/// what an earlier version of this function did (see `docs/DECISIONS.md` D-25's follow-up-of-a-
 /// follow-up entry: re-deriving this against the official text is what caught it - the previous
 /// version only produced the right answer when its caller manually pre-reversed the hash first,
 /// an easy-to-forget, undocumented API footgun that happened to cancel out against how the

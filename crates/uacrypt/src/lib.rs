@@ -6,21 +6,21 @@
 //!
 //! **Pre-release and provisional - not independently audited.** The Kalyna-alone mode of
 //! operation backing `encrypt`/`decrypt`/`kalyna-ccm` rests on an adopted assumption, not a
-//! confirmation against the primary DSTU 7624:2014 text (`DECISIONS.md` D-05). `strumok-crypt` is
-//! UAPKI-attributed only, not confirmed against the primary DSTU 8845:2019 text (`DECISIONS.md`
-//! D-15). See `SECURITY.md`/`DECISIONS.md` in the project repository for the full threat model,
+//! confirmation against the primary DSTU 7624:2014 text (`docs/DECISIONS.md` D-05). `strumok-crypt` is
+//! UAPKI-attributed only, not confirmed against the primary DSTU 8845:2019 text (`docs/DECISIONS.md`
+//! D-15). See `docs/SECURITY.md`/`docs/DECISIONS.md` in the project repository for the full threat model,
 //! citations, and per-construction status.
 //!
 //! **`kalyna-block` is deliberately not named `encrypt`/`decrypt`** - those names are the real
-//! top-level commands now (`TASKS.md` T-16, `DECISIONS.md` D-52), built over
-//! `dstu_core::crypto_secretstream` (T-40/T-70, `DECISIONS.md` D-68 - migrated from
+//! top-level commands now (`docs/TASKS.md` T-16, `docs/DECISIONS.md` D-52), built over
+//! `dstu_core::crypto_secretstream` (T-40/T-70, `docs/DECISIONS.md` D-68 - migrated from
 //! `dstu_core::crypto_secretbox`/D-51, which stays a separate, still-tested library primitive, not
 //! removed). This command only does what `hazmat::kalyna` actually supports: exactly one block, no
 //! mode, no padding - so it can't be mistaken for `encrypt`/`decrypt`, which handle a whole file of
 //! any size with bounded memory (see [`run_secretstream_command`]'s doc comment).
 //!
 //! The `--iterations`/`--raw-schedule` flags exist for the binary-vs-binary performance comparison
-//! in `PERFORMANCE.md` (`TASKS.md`, D-28/29/30 follow-up) - with `iterations <= 1` this is just a
+//! in `docs/PERFORMANCE.md` (`docs/TASKS.md`, D-28/29/30 follow-up) - with `iterations <= 1` this is just a
 //! single-block file operation.
 
 use dstu_core::hazmat::kalyna::{
@@ -193,7 +193,7 @@ impl From<dstu_core::crypto_secretstream::SecretstreamError> for CliError {
     }
 }
 
-/// The five Kalyna block/key-size variants (`DECISIONS.md` D-13), addressed the same way
+/// The five Kalyna block/key-size variants (`docs/DECISIONS.md` D-13), addressed the same way
 /// `oracles/kalyna-reference`'s own `KalynaInit(block_bits, key_bits)` and this project's
 /// differential harnesses already do: `"<block_bits>-<key_bits>"`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -253,7 +253,7 @@ impl KalynaVariant {
 /// `iterations - 1` of those are purely for timing (the loop's final output is what gets
 /// returned/written). `raw_schedule` selects which of `dstu_core`'s two Kalyna APIs is exercised:
 /// the raw one-shot functions (`key_expand` redone every iteration) or `ExpandedKey` (`key_expand`
-/// once, reused) - see `DECISIONS.md` D-29 for why both numbers matter.
+/// once, reused) - see `docs/DECISIONS.md` D-29 for why both numbers matter.
 fn run_block_op(
     variant: KalynaVariant,
     key: &[u8],
@@ -460,14 +460,14 @@ pub fn run_block_command(decrypt: bool, args: &BlockArgs) -> Result<(), CliError
 pub struct CcmArgs {
     pub variant: KalynaVariant,
     pub key_path: PathBuf,
-    /// Output path on `encrypt` (a fresh random nonce is generated and written here, `DECISIONS.md`
+    /// Output path on `encrypt` (a fresh random nonce is generated and written here, `docs/DECISIONS.md`
     /// D-40), input path on `decrypt` (must be the value `encrypt` produced).
     pub nonce_path: PathBuf,
     pub aad_path: Option<PathBuf>,
     pub in_path: PathBuf,
     pub out_path: PathBuf,
     pub tag_path: PathBuf,
-    /// (benchmarking only, `TASKS.md` T-120) repeats seal/open `iterations` times over the same
+    /// (benchmarking only, `docs/TASKS.md` T-120) repeats seal/open `iterations` times over the same
     /// in-memory buffer before writing the final result - same convention as [`BlockArgs`].
     pub iterations: u32,
 }
@@ -564,7 +564,7 @@ pub fn parse_ccm_args(args: &[String]) -> Result<CcmArgs, CliError> {
 /// construction's provisional status and sourced 255-byte plaintext/AAD limit. Encrypt writes
 /// ciphertext to `--out`, the authentication tag to `--tag`, **and a freshly-generated random
 /// nonce to `--nonce`** (separate files - this CLI does not invent its own combined wire format).
-/// `--nonce` is an *output* on encrypt, not an input: per `DECISIONS.md` D-40, the nonce is never
+/// `--nonce` is an *output* on encrypt, not an input: per `docs/DECISIONS.md` D-40, the nonce is never
 /// caller-supplied here, so there is nothing for a caller to accidentally reuse across two
 /// encryptions under the same key. Decrypt reads `--nonce` (the value encrypt produced) and
 /// `--tag`, verifies before writing anything, and returns [`CliError::CcmVerifyFailed`] without
@@ -771,7 +771,7 @@ pub fn parse_gcm_args(args: &[String]) -> Result<GcmArgs, CliError> {
 }
 
 /// Runs `kalyna-gcm encrypt`/`decrypt` - `hazmat::kalyna_gcm`, benchmark-scoped like
-/// [`run_ccm_command`] (`DECISIONS.md` D-31/D-71). Unlike `kalyna-ccm`, GCM has no sourced
+/// [`run_ccm_command`] (`docs/DECISIONS.md` D-31/D-71). Unlike `kalyna-ccm`, GCM has no sourced
 /// plaintext/AAD length cap.
 ///
 /// # Errors
@@ -961,7 +961,7 @@ pub fn parse_cmac_args(args: &[String]) -> Result<CmacArgs, CliError> {
 /// Runs `kalyna-cmac compute` (`verify = false`, writes the 16-byte tag to `args.out_path`) or
 /// `kalyna-cmac verify` (`verify = true`, checks `args.tag_path` and returns
 /// [`CliError::CmacVerifyFailed`] on mismatch) - `hazmat::kalyna_cmac`, benchmark-scoped
-/// (`DECISIONS.md` D-31/D-71).
+/// (`docs/DECISIONS.md` D-31/D-71).
 ///
 /// # Errors
 ///
@@ -985,7 +985,7 @@ pub fn run_cmac_command(verify: bool, args: &CmacArgs) -> Result<(), CliError> {
     };
 
     let iterations = args.iterations.max(1);
-    // `_with_cipher` (`DECISIONS.md` D-76 / `TASKS.md` T-127): the key schedule is expanded once
+    // `_with_cipher` (`docs/DECISIONS.md` D-76 / `docs/TASKS.md` T-127): the key schedule is expanded once
     // outside this loop, matching `kalyna-block`/`kalyna-gcm`/`kalyna-xts`'s own cached-schedule
     // convention - `<$mac>::mac`'s raw-key-bytes form would otherwise re-expand it every iteration.
     macro_rules! run_cmac_variant {
@@ -1131,7 +1131,7 @@ pub fn parse_gmac_args(args: &[String]) -> Result<GmacArgs, CliError> {
 }
 
 /// Runs `kalyna-gmac compute`/`verify` - `hazmat::kalyna_gmac`, benchmark-scoped
-/// (`DECISIONS.md` D-31/D-71). Tag length is the variant's full block length (no `--tag-len`
+/// (`docs/DECISIONS.md` D-31/D-71). Tag length is the variant's full block length (no `--tag-len`
 /// knob, same choice as [`run_gcm_command`]).
 ///
 /// # Errors
@@ -1157,7 +1157,7 @@ pub fn run_gmac_command(verify: bool, args: &GmacArgs) -> Result<(), CliError> {
     };
 
     let iterations = args.iterations.max(1);
-    // `_with_cipher` (`DECISIONS.md` D-76 / `TASKS.md` T-127) - same cached-schedule convention as
+    // `_with_cipher` (`docs/DECISIONS.md` D-76 / `docs/TASKS.md` T-127) - same cached-schedule convention as
     // `run_cmac_command` above.
     macro_rules! run_gmac_variant {
         ($mac:ty, $expanded:ty, $key_len:literal, $block_len:literal) => {{
@@ -1291,7 +1291,7 @@ pub fn parse_kw_args(args: &[String]) -> Result<KwArgs, CliError> {
 
 /// Runs `kalyna-kw wrap` (`unwrap = false`, `--in` is the key material to wrap) or
 /// `kalyna-kw unwrap` (`unwrap = true`, `--in` is a wrapped blob) - `hazmat::kalyna_kw`,
-/// benchmark-scoped (`DECISIONS.md` D-31/D-71). `--in` must be block-aligned (1..=20 blocks for
+/// benchmark-scoped (`docs/DECISIONS.md` D-31/D-71). `--in` must be block-aligned (1..=20 blocks for
 /// `wrap`, 2..=21 blocks for `unwrap` - see `hazmat::kalyna_kw`'s `MAX_R` bound).
 ///
 /// # Errors
@@ -1307,7 +1307,7 @@ pub fn run_kw_command(unwrap: bool, args: &KwArgs) -> Result<(), CliError> {
     })?;
 
     let iterations = args.iterations.max(1);
-    // `_with_cipher` (`DECISIONS.md` D-76 / `TASKS.md` T-127) - same cached-schedule convention as
+    // `_with_cipher` (`docs/DECISIONS.md` D-76 / `docs/TASKS.md` T-127) - same cached-schedule convention as
     // `run_cmac_command`/`run_gmac_command` above; this is the one benchmark T-127 identified where
     // the redone-every-call schedule cost isn't amortized by message size (KW's input is at most
     // `MAX_R` blocks), so this fix has the most direct effect on KW's own reported numbers.
@@ -1465,7 +1465,7 @@ pub fn parse_xts_args(args: &[String]) -> Result<XtsArgs, CliError> {
 }
 
 /// Runs `kalyna-xts encrypt`/`decrypt` - `hazmat::kalyna_xts`, benchmark-scoped
-/// (`DECISIONS.md` D-31/D-71). Confidentiality-only, no tag - see the module doc comment for why
+/// (`docs/DECISIONS.md` D-31/D-71). Confidentiality-only, no tag - see the module doc comment for why
 /// that's the correct design for this mode, not a gap. `--in` must be at least one block long.
 ///
 /// # Errors
@@ -1765,7 +1765,7 @@ fn run_secretstream_decrypt(
     Ok(())
 }
 
-/// Runs `encrypt`/`decrypt` over `dstu_core::crypto_secretstream` (T-40/T-70, `DECISIONS.md` D-68 -
+/// Runs `encrypt`/`decrypt` over `dstu_core::crypto_secretstream` (T-40/T-70, `docs/DECISIONS.md` D-68 -
 /// migrated from `dstu_core::crypto_secretbox`/D-51, which stays a separate library primitive, not
 /// removed). Unlike the old `crypto_secretbox`-backed command, `--in` is read and `--out` is
 /// written in [`SECRETSTREAM_CHUNK_BYTES`]-sized chunks (D-42) - peak memory stays bounded
@@ -1911,7 +1911,7 @@ const DIGEST_STREAM_CHUNK_BYTES: usize = 8 * 1024;
 /// of hashing work, unlike the 8 KiB streaming case above where memory is the actual constraint).
 /// Produces byte-identical output to the one-shot `digest()` this replaced (chunk-invariance
 /// proven directly at the `hazmat::kupyna` level, T-83), so this does not change any number
-/// already recorded in `PERFORMANCE.md`.
+/// already recorded in `docs/PERFORMANCE.md`.
 const DIGEST_BENCH_CHUNK_BYTES: usize = 1024 * 1024;
 
 /// Runs `kupyna-digest`: hashes `--in` (arbitrary length - Kupyna has no block-size restriction on
@@ -2058,7 +2058,7 @@ pub fn parse_hash_args(args: &[String]) -> Result<HashArgs, CliError> {
 
 /// Runs `hash`: hashes `--in` with Kupyna-256, writes the 32-byte digest to `--out`. Fixed to
 /// Kupyna-256 - no `--variant` knob (D-47's "no knob when a safe default exists"; `crypto_sign`
-/// already established Kupyna-256 as this project's own default message-hash choice, `DECISIONS.md`
+/// already established Kupyna-256 as this project's own default message-hash choice, `docs/DECISIONS.md`
 /// D-46). Delegates to [`run_digest_command`] with `iterations: 1` rather than duplicating its
 /// streaming loop - this reuses `kupyna-digest`'s already-tested, genuinely-streaming-from-disk
 /// (D-42, 8 KiB chunks) implementation directly, so `hash` inherits its memory-bounded property
@@ -2128,7 +2128,7 @@ pub fn run_keygen_command(args: &KeygenArgs) -> Result<(), CliError> {
 }
 
 /// Read-buffer size for streaming a message through Kupyna-256 on `sign`/`verify`'s behalf
-/// (`TASKS.md` T-124) - same constant value and same reasoning as `kupyna-digest`'s own
+/// (`docs/TASKS.md` T-124) - same constant value and same reasoning as `kupyna-digest`'s own
 /// [`DIGEST_STREAM_CHUNK_BYTES`] (D-42): `dstu_core::crypto_sign::SigningKey::sign_digest`/
 /// `VerifyingKey::verify_digest` (T-113) exist specifically so a caller can hash a large message
 /// incrementally instead of loading it whole, so `sign`/`verify` use them rather than
@@ -2173,7 +2173,7 @@ pub struct SignKeygenArgs {
 }
 
 /// Parses `sign-keygen`'s flags (`--out`, required - no other flag exists; there is nothing to
-/// configure about a randomly generated signing key, `DECISIONS.md` D-72).
+/// configure about a randomly generated signing key, `docs/DECISIONS.md` D-72).
 ///
 /// # Errors
 ///
@@ -2200,7 +2200,7 @@ pub fn parse_sign_keygen_args(args: &[String]) -> Result<SignKeygenArgs, CliErro
 }
 
 /// Runs `sign-keygen`: draws a fresh signing key via rejection sampling against the curve order
-/// ([`dstu_core::crypto_sign::SigningKey::generate`], `TASKS.md` T-122/D-72) and writes its raw
+/// ([`dstu_core::crypto_sign::SigningKey::generate`], `docs/TASKS.md` T-122/D-72) and writes its raw
 /// 21-byte encoding to `--out`. A separate command from `keygen` rather than a `--type` flag on
 /// it - a flag choosing between two incompatible key shapes (32-byte symmetric vs. 21-byte
 /// signing scalar) is exactly the kind of knob D-47's "delete the knob" criterion avoids;
@@ -2514,7 +2514,7 @@ pub fn parse_strumok_args(args: &[String]) -> Result<StrumokArgs, CliError> {
 /// size as `kupyna-digest`'s [`DIGEST_STREAM_CHUNK_BYTES`] (D-42): small enough that peak memory
 /// stays bounded by this constant rather than `--in`'s size, large enough that per-syscall
 /// overhead (now on *both* the read and the write side, unlike a hash which only reads) stays
-/// negligible. `Strumok::apply_keystream`'s own chunk-invariance (`TASKS.md` T-24) is exactly what
+/// negligible. `Strumok::apply_keystream`'s own chunk-invariance (`docs/TASKS.md` T-24) is exactly what
 /// makes feeding it one chunk at a time - instead of the whole file - safe to begin with.
 const STRUMOK_STREAM_CHUNK_BYTES: usize = 8 * 1024;
 
@@ -2671,7 +2671,7 @@ fn is_version_flag(s: &str) -> bool {
 const TOP_LEVEL_HELP: &str = "\
 uacrypt - a CLI over dstu-core, Ukrainian DSTU cryptographic standards (Kalyna, Kupyna, Strumok).
 
-Pre-release, provisional, not independently audited - see SECURITY.md/DECISIONS.md in the project
+Pre-release, provisional, not independently audited - see docs/SECURITY.md/DECISIONS.md in the project
 repository for the full threat model and citations (D-05: Kalyna's mode of operation is an adopted
 assumption, not primary-text confirmed; D-15: Strumok is UAPKI-attributed, not primary-text
 confirmed).
@@ -2727,7 +2727,7 @@ uacrypt encrypt - encrypt a file of any size with a 32-byte key.
 
 Streamed in bounded memory chunks (no whole-file buffering) and authenticated: `decrypt` detects
 any tampering with the output rather than silently returning wrong plaintext. Built on
-dstu_core::crypto_secretstream (see DECISIONS.md D-68).
+dstu_core::crypto_secretstream (see docs/DECISIONS.md D-68).
 
 USAGE:
     uacrypt encrypt --key <path> --in <path> --out <path>
@@ -2791,7 +2791,7 @@ const SIGN_KEYGEN_HELP: &str = "\
 uacrypt sign-keygen - generate a fresh signing key for `sign`.
 
 Draws from the OS CSPRNG via rejection sampling against the DSTU 4145 curve order (never a modulo
-reduction, which would bias the result - DECISIONS.md D-72) and writes the raw 21-byte private
+reduction, which would bias the result - docs/DECISIONS.md D-72) and writes the raw 21-byte private
 scalar to --out. A separate command from `keygen` - a signing key and an `encrypt`/`decrypt` key
 are different, incompatible things, not two settings of the same command.
 
@@ -2887,7 +2887,7 @@ EXAMPLE:
 ";
 
 const KALYNA_CCM_HELP: &str = "\
-uacrypt kalyna-ccm - Kalyna-CCM authenticated encryption (provisional, DECISIONS.md D-41).
+uacrypt kalyna-ccm - Kalyna-CCM authenticated encryption (provisional, docs/DECISIONS.md D-41).
 
 Messages and AAD are capped at 255 bytes each (see hazmat::kalyna_ccm docs) - for larger files use
 `encrypt`/`decrypt` instead, which have no such cap.
@@ -2913,9 +2913,9 @@ EXAMPLE:
 ";
 
 const KALYNA_GCM_HELP: &str = "\
-uacrypt kalyna-gcm - Kalyna-GCM authenticated encryption (provisional, DECISIONS.md D-56).
+uacrypt kalyna-gcm - Kalyna-GCM authenticated encryption (provisional, docs/DECISIONS.md D-56).
 
-Benchmarking/interop tool (DECISIONS.md D-31/D-71), same shape as `kalyna-ccm` but with no
+Benchmarking/interop tool (docs/DECISIONS.md D-31/D-71), same shape as `kalyna-ccm` but with no
 message-length cap - for everyday use, `encrypt`/`decrypt` (crypto_secretstream) are simpler and
 already stream to disk.
 
@@ -2940,7 +2940,7 @@ EXAMPLE:
 ";
 
 const KALYNA_CMAC_HELP: &str = "\
-uacrypt kalyna-cmac - Kalyna-CMAC message authentication, for benchmarking/interop (DECISIONS.md D-31/D-71).
+uacrypt kalyna-cmac - Kalyna-CMAC message authentication, for benchmarking/interop (docs/DECISIONS.md D-31/D-71).
 
 Computes or verifies a 16-byte tag over a message - no encryption. Do not reuse this key for any
 encryption mode in this crate (see hazmat::kalyna_cmac docs for why).
@@ -2962,7 +2962,7 @@ EXAMPLE:
 ";
 
 const KALYNA_GMAC_HELP: &str = "\
-uacrypt kalyna-gmac - Kalyna-GMAC message authentication, for benchmarking/interop (DECISIONS.md D-31/D-71).
+uacrypt kalyna-gmac - Kalyna-GMAC message authentication, for benchmarking/interop (docs/DECISIONS.md D-31/D-71).
 
 Computes or verifies a full-block-length tag over a message - no encryption, no nonce (unlike
 kalyna-gcm, hazmat::kalyna_gmac takes none). Do not reuse this key for any encryption mode.
@@ -2984,7 +2984,7 @@ EXAMPLE:
 ";
 
 const KALYNA_KW_HELP: &str = "\
-uacrypt kalyna-kw - Kalyna key wrap/unwrap, for benchmarking/interop (DECISIONS.md D-31/D-71).
+uacrypt kalyna-kw - Kalyna key wrap/unwrap, for benchmarking/interop (docs/DECISIONS.md D-31/D-71).
 
 Wraps block-aligned key material (1..=20 blocks) into a blob one block longer, with a checksum
 block for tamper-evidence - not a general-purpose cipher, see hazmat::kalyna_kw docs.
@@ -3005,7 +3005,7 @@ EXAMPLE:
 ";
 
 const KALYNA_XTS_HELP: &str = "\
-uacrypt kalyna-xts - Kalyna-XTS disk-sector mode, for benchmarking/interop (DECISIONS.md D-31/D-71).
+uacrypt kalyna-xts - Kalyna-XTS disk-sector mode, for benchmarking/interop (docs/DECISIONS.md D-31/D-71).
 
 Confidentiality only, no tag - the correct design for disk-sector encryption, not a gap (see
 hazmat::kalyna_xts docs). --in must be at least one block long.
@@ -3099,13 +3099,13 @@ fn print_command_help(command: &str) {
 }
 
 /// Dispatches `sign-keygen`/`sign-pubkey`/`sign`/`verify` - split out of [`run`] for the same
-/// `clippy::pedantic` line-count reason as [`dispatch_kalyna_mode`] (`DECISIONS.md` D-71's
-/// precedent, `TASKS.md` T-124); `cmd` is always one of the four literals [`run`]'s own match arm
+/// `clippy::pedantic` line-count reason as [`dispatch_kalyna_mode`] (`docs/DECISIONS.md` D-71's
+/// precedent, `docs/TASKS.md` T-124); `cmd` is always one of the four literals [`run`]'s own match arm
 /// already narrowed it to. `rest` excludes both the program name and `cmd` itself.
 /// Shared "check `--help` once, then parse-and-run" shape every single-purpose command
 /// (`kupyna-digest`/`strumok-crypt`/`hash`/`keygen`/`encrypt`/`decrypt`) repeated inline in
 /// [`run`] - extracted purely to bring that function's own Cognitive Complexity back under
-/// `SonarCloud`'s threshold (`TASKS.md` T-140, `DECISIONS.md` D-94), the same "split out of `run`
+/// `SonarCloud`'s threshold (`docs/TASKS.md` T-140, `docs/DECISIONS.md` D-94), the same "split out of `run`
 /// to satisfy a lint on that one function" precedent [`dispatch_kalyna_mode`]/
 /// [`dispatch_sign_command`] already established for `D-71`'s line-count lint. `cmd` is only used
 /// for the help text; `parse`/`run` are each command's own existing `parse_*_args`/
@@ -3138,7 +3138,7 @@ fn dispatch_sign_command(cmd: &str, rest: &[String]) -> Result<(), CliError> {
 }
 
 /// Dispatches `kalyna-gcm`/`kalyna-cmac`/`kalyna-gmac`/`kalyna-kw`/`kalyna-xts` - split out of
-/// [`run`] purely to keep that function under `clippy::pedantic`'s line-count lint (`DECISIONS.md`
+/// [`run`] purely to keep that function under `clippy::pedantic`'s line-count lint (`docs/DECISIONS.md`
 /// D-71); `cmd` is always one of the five literals [`run`]'s own match arm already narrowed it to.
 /// `rest` excludes both the program name and `cmd` itself.
 fn dispatch_kalyna_mode(cmd: &str, rest: &[String]) -> Result<(), CliError> {
@@ -3186,7 +3186,7 @@ fn dispatch_kalyna_mode(cmd: &str, rest: &[String]) -> Result<(), CliError> {
 /// `uacrypt` with no arguments and `uacrypt --help`/`-h` both print [`TOP_LEVEL_HELP`] and return
 /// `Ok(())` - a friendlier default than an error for a CLI's most common first invocation. Every
 /// command also accepts `--help`/`-h` anywhere among its own arguments to print that command's own
-/// help instead of running it (`TASKS.md` T-108).
+/// help instead of running it (`docs/TASKS.md` T-108).
 ///
 /// # Errors
 ///
@@ -5321,7 +5321,7 @@ mod tests {
     /// the CLI layer, matching how a real user would actually use this feature.
     #[cfg_attr(
         miri,
-        ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see TASKS.md T-100"
+        ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see docs/TASKS.md T-100"
     )]
     #[test]
     fn sign_verify_golden_path_round_trips() {
@@ -5358,7 +5358,7 @@ mod tests {
 
     #[cfg_attr(
         miri,
-        ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see TASKS.md T-100"
+        ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see docs/TASKS.md T-100"
     )]
     #[test]
     fn run_sign_command_matches_dstu_core_directly() {
@@ -5382,7 +5382,7 @@ mod tests {
 
     #[cfg_attr(
         miri,
-        ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see TASKS.md T-100"
+        ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see docs/TASKS.md T-100"
     )]
     #[test]
     fn run_sign_keygen_command_produces_distinct_keys_each_call() {
@@ -5500,7 +5500,7 @@ mod tests {
 
     #[cfg_attr(
         miri,
-        ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see TASKS.md T-100"
+        ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see docs/TASKS.md T-100"
     )]
     #[test]
     fn run_verify_command_rejects_tampered_message() {
@@ -5535,7 +5535,7 @@ mod tests {
 
     #[cfg_attr(
         miri,
-        ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see TASKS.md T-100"
+        ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see docs/TASKS.md T-100"
     )]
     #[test]
     fn run_verify_command_rejects_tampered_signature() {
@@ -5573,7 +5573,7 @@ mod tests {
 
     #[cfg_attr(
         miri,
-        ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see TASKS.md T-100"
+        ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see docs/TASKS.md T-100"
     )]
     #[test]
     fn run_verify_command_rejects_wrong_key() {
@@ -5666,7 +5666,7 @@ mod tests {
 
     #[cfg_attr(
         miri,
-        ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see TASKS.md T-100"
+        ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see docs/TASKS.md T-100"
     )]
     #[test]
     fn sign_verify_dispatch_through_top_level_run() {

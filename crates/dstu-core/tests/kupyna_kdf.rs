@@ -1,4 +1,4 @@
-//! Property tests for `hazmat::kupyna_kdf` (`crypto_kdf` equivalent, `DECISIONS.md` D-45) - no
+//! Property tests for `hazmat::kupyna_kdf` (`crypto_kdf` equivalent, `docs/DECISIONS.md` D-45) - no
 //! oracle vector exists anywhere for this construction (see `docs/pseudocode/kupyna-kdf.md`), so
 //! verification here is limited to determinism, distinctness, and an exact byte-layout pin against
 //! a manual `hazmat::kupyna_kmac` call.

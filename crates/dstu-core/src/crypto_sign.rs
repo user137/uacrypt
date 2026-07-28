@@ -1,10 +1,10 @@
 //! `crypto_sign` equivalent (`docs/dstu-crypto-project.md` "Mapping onto the libsodium API",
-//! `TASKS.md` T-48) - a libsodium-ergonomics wrapper over `hazmat::dstu4145::signature`. The first
+//! `docs/TASKS.md` T-48) - a libsodium-ergonomics wrapper over `hazmat::dstu4145::signature`. The first
 //! module in the high-level layer D-09 planned but never built (`docs/release-readiness.md` step
 //! 4) - this session's shape for it: `SigningKey`/`VerifyingKey`/`Signature`, `ed25519-dalek`-style
-//! naming (`DECISIONS.md` D-04's addendum cites that crate's convention).
+//! naming (`docs/DECISIONS.md` D-04's addendum cites that crate's convention).
 //!
-//! Two departures from `hazmat::dstu4145::signature`'s raw API, both documented in `DECISIONS.md`
+//! Two departures from `hazmat::dstu4145::signature`'s raw API, both documented in `docs/DECISIONS.md`
 //! D-46:
 //! - **The ephemeral nonce is derived deterministically** from `(d, message)` via
 //!   `hazmat::kupyna_kmac` (an RFC-6979-style adaptation, not a literal port - RFC 6979 is
@@ -19,7 +19,7 @@
 //!   `crypto_sign(message, ...)` ergonomics. `hazmat::dstu4145::signature` itself stays
 //!   digest-agnostic (its own doc comment's stated design), unaffected by this choice.
 //!
-//! **Large/streamed messages (`TASKS.md` T-113): `sign_digest`/`verify_digest`.** DSTU 4145 signs
+//! **Large/streamed messages (`docs/TASKS.md` T-113): `sign_digest`/`verify_digest`.** DSTU 4145 signs
 //! a hash of the message, not a domain-separated multi-part construction (`docs/pseudocode/
 //! dstu4145.md` §5.9/§9/§10: `h ← hash_to_field(H(T))`) - so there is no "streaming signer" to
 //! build, only a need to let the hash itself be computed incrementally. `sign`/`verify` above
@@ -30,11 +30,11 @@
 //! bounded memory regardless of message size) and pass the result in. `sign`/`verify` are now thin
 //! wrappers over these two.
 //!
-//! **Keypair generation (`TASKS.md` T-122): [`SigningKey::generate`].** `from_bytes` above only
+//! **Keypair generation (`docs/TASKS.md` T-122): [`SigningKey::generate`].** `from_bytes` above only
 //! ever *validates* a caller-supplied `d` - until this method existed there was no way to obtain a
 //! valid `d` through the public API at all, without reaching into `hazmat` internals
 //! (`curve163::order()` isn't part of this module's own surface). `#[cfg(any(feature = "std",
-//! feature = "getrandom"))]`-gated (needs `crate::randombytes`, `TASKS.md` T-123/`DECISIONS.md`
+//! feature = "getrandom"))]`-gated (needs `crate::randombytes`, `docs/TASKS.md` T-123/`docs/DECISIONS.md`
 //! D-74), matching every other `crypto_*` module's own `Key::generate` convention
 //! (`crypto_secretbox`/`crypto_auth`/`crypto_kdf`/`crypto_stream`/`crypto_secretstream`).
 //!
@@ -43,14 +43,14 @@
 //! §6.9/§6.10, `DSTU4145PointEncoder.java` in Bouncy Castle) - that encoding isn't implemented
 //! anywhere in this project yet (`docs/pseudocode/dstu4145.md`'s existing note lists it as future
 //! work, unrelated to sign/verify itself). Anyone needing interoperable, spec-compliant public-key
-//! serialization must wait for that, tracked separately in `TASKS.md`.
+//! serialization must wait for that, tracked separately in `docs/TASKS.md`.
 //!
 //! # Example
 //!
 //! A signature proves a message came from whoever holds the signing key and hasn't been altered
 //! since - unlike [`crate::crypto_secretbox`], it does not hide the message's contents, only
 //! attests to its origin and integrity. Both the success path and a rejected forgery are shown
-//! below (`TASKS.md` T-120's own requirement - a signature example that only shows the happy path
+//! below (`docs/TASKS.md` T-120's own requirement - a signature example that only shows the happy path
 //! doesn't demonstrate the primitive actually does what it claims).
 //!
 //! ```rust
@@ -106,7 +106,7 @@ impl Signature {
 
 /// A DSTU 4145 private key. Signing needs no RNG (see the module doc) - only key generation from
 /// external entropy is the caller's concern, same posture as `hazmat::kalyna_ccm`'s nonce
-/// (`DECISIONS.md` D-40): this module takes `d` as given rather than generating it.
+/// (`docs/DECISIONS.md` D-40): this module takes `d` as given rather than generating it.
 pub struct SigningKey(Scalar);
 
 impl Drop for SigningKey {
@@ -115,7 +115,7 @@ impl Drop for SigningKey {
     }
 }
 
-/// A DSTU 4145 public key `Q = -d*G` (`hazmat::dstu4145::signature`'s module doc / `DECISIONS.md`
+/// A DSTU 4145 public key `Q = -d*G` (`hazmat::dstu4145::signature`'s module doc / `docs/DECISIONS.md`
 /// D-25's follow-up entry on the sign convention).
 #[derive(Clone, Copy)]
 pub struct VerifyingKey(Point);
@@ -137,7 +137,7 @@ impl SigningKey {
     /// Generates a fresh signing key from the OS CSPRNG - libsodium's `crypto_sign_keypair()`
     /// equivalent (its public-key half is [`Self::verifying_key`]). `d` is drawn via **rejection
     /// sampling**, uniform over `[1, n)`, never a modulo reduction - `n` is not a power of two, so
-    /// `candidate mod n` would bias small residues (`TASKS.md` T-122). `n`'s top byte is `0x04`
+    /// `candidate mod n` would bias small residues (`docs/TASKS.md` T-122). `n`'s top byte is `0x04`
     /// (`hazmat::dstu4145::curve163::order`'s own doc comment: `n` is a 163-bit value inside 21
     /// bytes/168 bits), so masking each candidate's top byte down to its low 3 bits (`0x07`) keeps
     /// the rejection rate near 50% instead of over 90% for an unmasked 168-bit draw. The
@@ -164,7 +164,7 @@ impl SigningKey {
     }
 
     /// Returns `d`'s big-endian 21-byte encoding, so a generated key can be persisted (e.g.
-    /// `uacrypt sign-keygen`, `TASKS.md` T-124) and later reloaded via [`Self::from_bytes`]. The
+    /// `uacrypt sign-keygen`, `docs/TASKS.md` T-124) and later reloaded via [`Self::from_bytes`]. The
     /// caller becomes responsible for zeroizing the returned array once done with it - the same
     /// convention `hazmat::dstu4145::scalar::Scalar::to_be_bytes` and
     /// `VerifyingKey::to_uncompressed_bytes` already have (this module has no wrapper type for a
@@ -182,7 +182,7 @@ impl SigningKey {
     }
 
     /// Signs `message`, hashing it with Kupyna-256 and deriving the ephemeral nonce
-    /// deterministically (see the module doc, `DECISIONS.md` D-46). A thin wrapper over
+    /// deterministically (see the module doc, `docs/DECISIONS.md` D-46). A thin wrapper over
     /// [`Self::sign_digest`] - see that method, and the module doc's T-113 note, for signing a
     /// message too large to hold in memory whole.
     #[must_use]
@@ -247,7 +247,7 @@ impl VerifyingKey {
     }
 }
 
-/// Deterministic ephemeral-nonce derivation (`DECISIONS.md` D-46): `e = reduce_mod_n(KMAC(key =
+/// Deterministic ephemeral-nonce derivation (`docs/DECISIONS.md` D-46): `e = reduce_mod_n(KMAC(key =
 /// zero-padded d, message = hash || counter))`, retried with an incremented `counter` on the
 /// ~`2^-163`-probability chance of a zero result or a hazmat-level degenerate rejection. `d`'s
 /// 21-byte big-endian value is left-padded with zeros to `Kupyna256Kmac`'s required 32-byte key

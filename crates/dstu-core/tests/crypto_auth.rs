@@ -1,4 +1,4 @@
-//! Tests for `dstu_core::crypto_auth` (`TASKS.md` T-105, `DECISIONS.md` D-66) - the
+//! Tests for `dstu_core::crypto_auth` (`docs/TASKS.md` T-105, `docs/DECISIONS.md` D-66) - the
 //! libsodium-ergonomics wrapper over `hazmat::kupyna_kmac::Kupyna256Kmac`. `Kupyna256Kmac` itself
 //! is already official-vector-tested (`tests/kupyna_kmac.rs`); this file exercises delegation
 //! (correctness), tamper/wrong-key rejection, and misuse (degenerate-but-legal inputs) at this

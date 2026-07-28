@@ -7,7 +7,7 @@
  * This is a consistency bonus, NOT independent-oracle confirmation: outspace and UAPKI's
  * dstu8845.c share identical internal function/table names (dstu8845_init, dstu8845_crypt,
  * T0..T7), a strong signal of shared lineage rather than two people implementing from the
- * standard independently - see ORACLES.md/DECISIONS.md D-15 for the full reasoning. Not a CI
+ * standard independently - see docs/ORACLES.md/DECISIONS.md D-15 for the full reasoning. Not a CI
  * harness, not run automatically - a one-time check, kept for reproducibility.
  *
  *   gcc -O2 -I ../../../oracles/strumok-dstu8845 cross_check_against_uapki.c \

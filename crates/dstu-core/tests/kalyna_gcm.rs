@@ -1,5 +1,5 @@
 //! Black-box integration test for `dstu_core::hazmat::kalyna_gcm` against the cross-oracle vectors
-//! in `tests/vectors/kalyna-gcm/` (`TASKS.md` T-95, `DECISIONS.md` D-56) - one KAT per Kalyna
+//! in `tests/vectors/kalyna-gcm/` (`docs/TASKS.md` T-95, `docs/DECISIONS.md` D-56) - one KAT per Kalyna
 //! variant (full 5-variant coverage), plus a bonus q=16-vs-q=32 truncation-consistency pair for
 //! Kalyna256_256. All 6 official vectors have block-aligned plaintext - the ISO/IEC 7816-4
 //! padding-marker branch in the ciphertext-accumulation step is untested by any oracle vector, see

@@ -1,7 +1,7 @@
 {
   "algorithm": "Kupyna-KMAC-256",
   "mac_bits": 256,
-  "source": "oracles/uapki/library/uapkic/src/dstu7564.c dstu7564_self_test_kmac (K256/M/KMAC256) - dual-oracle cross-checked byte-for-byte against oracles/bouncycastle-java/.../DSTU7564Test.java macTests() test1, an independent Java implementation (DSTU7564Mac.java), not just a second reading of the same C source. Both cite DSTU 7564:2014 as the source standard; neither is the primary standard text itself - see DECISIONS.md D-44.",
+  "source": "oracles/uapki/library/uapkic/src/dstu7564.c dstu7564_self_test_kmac (K256/M/KMAC256) - dual-oracle cross-checked byte-for-byte against oracles/bouncycastle-java/.../DSTU7564Test.java macTests() test1, an independent Java implementation (DSTU7564Mac.java), not just a second reading of the same C source. Both cite DSTU 7564:2014 as the source standard; neither is the primary standard text itself - see docs/DECISIONS.md D-44.",
   "cases": [
     {
       "key_hex": "1F1E1D1C1B1A191817161514131211100F0E0D0C0B0A09080706050403020100",

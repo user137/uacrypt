@@ -1,10 +1,10 @@
 //! Black-box integration test for `dstu_core::hazmat::kalyna_cbc` against the cross-oracle
-//! vectors in `tests/vectors/kalyna-cbc/` (`TASKS.md` T-90, `DECISIONS.md` D-53) - programmatically
+//! vectors in `tests/vectors/kalyna-cbc/` (`docs/TASKS.md` T-90, `docs/DECISIONS.md` D-53) - programmatically
 //! extracted from `oracles/uapki/library/uapkic/src/dstu7624.c`'s `dstu7624_cbc_self_test`, not
 //! hand-transcribed. Same hand-rolled extractor convention as `tests/kalyna_ofb.rs`.
 //!
 //! Excludes the self-test's 10th declared vector - its own harness loop only checks `i<9`, so that
-//! case is dead code, never actually verified upstream (see `DECISIONS.md` D-53's carried-forward
+//! case is dead code, never actually verified upstream (see `docs/DECISIONS.md` D-53's carried-forward
 //! verification risk).
 
 use dstu_core::hazmat::kalyna_cbc::{

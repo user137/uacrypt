@@ -1,12 +1,12 @@
 //! `crypto_pwhash` equivalent (`docs/dstu-crypto-project.md` "Mapping onto the libsodium API",
-//! `TASKS.md` T-71, `DECISIONS.md` D-03/D-49/D-50) - plain Argon2id, the one deliberately non-DSTU
+//! `docs/TASKS.md` T-71, `docs/DECISIONS.md` D-03/D-49/D-50) - plain Argon2id, the one deliberately non-DSTU
 //! component (no Ukrainian standard covers password hashing). Wraps the `argon2` crate
 //! (`RustCrypto/password-hashes`, vetted in D-49) with libsodium's own `crypto_pwhash_str`/
 //! `crypto_pwhash_str_verify` shape: a self-describing PHC string that embeds algorithm, version,
 //! salt, and parameters, so `verify_password` needs nothing but the password and that string back.
 //!
 //! Every parameter choice here is cited to libsodium's own `crypto_pwhash_argon2id` C source
-//! (`DECISIONS.md` D-50), not invented: only Argon2id (no algorithm knob), a fixed 1-lane
+//! (`docs/DECISIONS.md` D-50), not invented: only Argon2id (no algorithm knob), a fixed 1-lane
 //! parallelism (`pwhash_argon2id.c`'s own `argon2id_hash_encoded(..., (uint32_t) 1U, ...)` call,
 //! not a knob either), a 16-byte salt (`crypto_pwhash_argon2id_SALTBYTES`), a 32-byte hash
 //! (`STR_HASHBYTES`), and three named strength presets mirroring
@@ -112,7 +112,7 @@ impl From<argon2::password_hash::Error> for PwHashError {
 /// (`crypto_pwhash_argon2id_SALTBYTES`) is drawn per call via
 /// [`crate::randombytes::randombytes_buf`], never `password_hash`'s own `rand_core`-based
 /// `SaltString::generate`, so this module pulls in no `CryptoRng` dependency of its own
-/// (`DECISIONS.md` D-48/D-50).
+/// (`docs/DECISIONS.md` D-48/D-50).
 ///
 /// # Errors
 ///

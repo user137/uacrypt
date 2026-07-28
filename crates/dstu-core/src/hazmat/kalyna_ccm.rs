@@ -1,18 +1,18 @@
 //! Kalyna-CCM: a provisional, Kalyna-alone authenticated mode of operation (DSTU 7624:2014 CCM).
 //!
 //! **Provisional, not confirmed against the primary DSTU 7624:2014 text** - the same posture as
-//! Strumok's UAPKI-attributed vectors (`DECISIONS.md` D-15). Ported directly from
+//! Strumok's UAPKI-attributed vectors (`docs/DECISIONS.md` D-15). Ported directly from
 //! `oracles/uapki/library/uapkic/src/dstu7624.c` (`dstu7624_init_ccm` at line 4139, `ccm_padd` at
 //! line 2621, `dstu7624_encrypt_ccm`/`dstu7624_decrypt_ccm` at lines 2792/2849), cross-checked
 //! against `oracles/bouncycastle-java`'s `DSTU7624Test.java` CCM vectors byte-for-byte (BC's own
 //! `KCCMBlockCipher` Java source is not present in this project's sparse vendored checkout, so the
 //! cross-check is against BC's *vector outputs* only, not a second reading of BC's construction
 //! code - a materially weaker claim than "read both implementations", stated explicitly here per
-//! `CLAUDE.md`'s citation discipline). See `DECISIONS.md` D-05 (revised) and D-41 for the full
+//! `CLAUDE.md`'s citation discipline). See `docs/DECISIONS.md` D-05 (revised) and D-41 for the full
 //! citation and the reasoning for choosing this construction over encrypt-then-MAC.
 //!
 //! This module is a standalone hazmat-level primitive, not `crypto_secretbox` itself - see
-//! `dstu_core::crypto_secretbox` (`TASKS.md` T-37, `DECISIONS.md` D-51) for the high-level wrapper
+//! `dstu_core::crypto_secretbox` (`docs/TASKS.md` T-37, `docs/DECISIONS.md` D-51) for the high-level wrapper
 //! built on top of it (a single fixed variant, `Kalyna256_256Ccm`, with an internally-generated
 //! nonce and a combined output format) - both still inherit this module's own not-primary-text-
 //! confirmed status.
@@ -32,7 +32,7 @@
 //! The nonce is a full block-size buffer (matching the vectors, which supply a full-block IV even
 //! though `ccm_padd` only consumes a `block_len - ccm_nb - 1`-byte prefix of it for the
 //! authentication header - the remaining bytes still feed the CTR keystream, and it is the *full*
-//! block that seeds it via `Gamma::new`). **Strategy resolved, `DECISIONS.md` D-40/`TASKS.md`
+//! block that seeds it via `Gamma::new`). **Strategy resolved, `docs/DECISIONS.md` D-40/`docs/TASKS.md`
 //! T-82**: this module always treats the nonce as caller-supplied, never generating one itself -
 //! `no_std` callers may have no OS CSPRNG to call. The recommended pattern for any caller that
 //! *does* have one is a fresh, independently-random full-block nonce per message under a given
@@ -347,7 +347,7 @@ macro_rules! kalyna_ccm_variant {
             /// Encrypts `buf` in place (plaintext -> ciphertext) and returns the masked
             /// authentication tag. `nonce` must never repeat under the same key - see the module
             /// doc comment's "Nonce" section for the recommended generation strategy
-            /// (`DECISIONS.md` D-40) and this variant's safe per-key message-count margin.
+            /// (`docs/DECISIONS.md` D-40) and this variant's safe per-key message-count margin.
             ///
             /// # Errors
             ///

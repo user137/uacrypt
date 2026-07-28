@@ -1,5 +1,5 @@
-//! Black-box integration test for `dstu_core::hazmat::kalyna_ecb` (`TASKS.md` T-88,
-//! `DECISIONS.md` D-53).
+//! Black-box integration test for `dstu_core::hazmat::kalyna_ecb` (`docs/TASKS.md` T-88,
+//! `docs/DECISIONS.md` D-53).
 //!
 //! **No new vector file** - `dstu7624.c`'s own `dstu7624_ecb_self_test` sets each case's block
 //! size to the exact length of that case's single data blob (`dstu7624_init_ecb(ctx, key,

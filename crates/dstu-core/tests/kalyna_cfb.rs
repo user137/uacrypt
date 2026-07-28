@@ -1,5 +1,5 @@
 //! Black-box integration test for `dstu_core::hazmat::kalyna_cfb` against the cross-oracle
-//! vectors in `tests/vectors/kalyna-cfb/` (`TASKS.md` T-91, `DECISIONS.md` D-53) - programmatically
+//! vectors in `tests/vectors/kalyna-cfb/` (`docs/TASKS.md` T-91, `docs/DECISIONS.md` D-53) - programmatically
 //! extracted from `oracles/uapki/library/uapkic/src/dstu7624.c`'s `dstu7624_cfb_self_test`, not
 //! hand-transcribed. Covers both partial (`q` < block size) and full (`q` == block size) feedback
 //! widths - see the module doc comment's warning that this construction is not a textbook shift
@@ -110,7 +110,7 @@ macro_rules! variant_test {
             /// `block_len % q == 0` for every `q` this crate's `new()` admits is the safety fact
             /// `CfbError::NonAlignedIntermediateCall`'s precondition check (`used_gamma_len % q ==
             /// 0`) relies on to be a complete safety condition, not just a heuristic - encoded here
-            /// as an executable check per variant rather than only argued in `DECISIONS.md`.
+            /// as an executable check per variant rather than only argued in `docs/DECISIONS.md`.
             #[test]
             fn feedback_width_divides_block_length() {
                 for q in [1usize, 8, 16, 32, 64] {
@@ -129,7 +129,7 @@ macro_rules! variant_test {
 
             /// A call boundary landing mid-way through a `q`-sized group (i.e. not the final call)
             /// used to panic (out-of-bounds slice index, T-91/D-53) - now checked, see
-            /// `DECISIONS.md` for T-101. `q=1` is skipped: every length is a multiple of 1, so this
+            /// `docs/DECISIONS.md` for T-101. `q=1` is skipped: every length is a multiple of 1, so this
             /// misuse pattern is unreachable for it.
             #[test]
             fn non_aligned_intermediate_call_is_rejected() {

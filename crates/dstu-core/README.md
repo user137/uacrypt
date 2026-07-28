@@ -7,7 +7,7 @@ spirit of **libsodium** (hard, safe defaults, hard to misuse) rather than OpenSS
 **v0.1.0 — pre-release / work in progress.** Not audited, not a claim of side-channel resistance.
 Kalyna and Kupyna are dual-oracle-verified against official test vectors; Strumok and every Kalyna
 mode of operation are provisional — not yet confirmed against their primary standard text (see
-`DECISIONS.md`/`SECURITY.md` in the project repository, not shipped in this package, for the full
+`docs/DECISIONS.md`/`docs/SECURITY.md` in the project repository, not shipped in this package, for the full
 citation trail and threat model). `crypto_secretstream`/`crypto_kdf` have no oracle vector at all
 and never will, since no DSTU standard defines an equivalent construction — verified by property,
 tamper, and misuse tests instead.
@@ -225,9 +225,9 @@ assert!(!verify_password(b"wrong guess", &stored_hash));
 
 ## Status and safety
 
-This is pre-1.0, unaudited software. See the project repository's `SECURITY.md` for the full
-threat model and hard constraints, `DECISIONS.md` for every architectural decision with its
-citation, and `TASKS.md` for what is and isn't done yet. No claim of hardware side-channel
+This is pre-1.0, unaudited software. See the project repository's `docs/SECURITY.md` for the full
+threat model and hard constraints, `docs/DECISIONS.md` for every architectural decision with its
+citation, and `docs/TASKS.md` for what is and isn't done yet. No claim of hardware side-channel
 (SPA/DPA) resistance is made or implied anywhere in this crate.
 
 ## License

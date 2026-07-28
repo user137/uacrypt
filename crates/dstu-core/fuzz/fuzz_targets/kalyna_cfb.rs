@@ -5,7 +5,7 @@ use dstu_core::hazmat::kalyna_cfb::{
 };
 use libfuzzer_sys::fuzz_target;
 
-// Required by SECURITY.md ("cargo fuzz is required ... not optional"). `new`/`encrypt_in_place`
+// Required by docs/SECURITY.md ("cargo fuzz is required ... not optional"). `new`/`encrypt_in_place`
 // must never panic/crash regardless of q/key/iv/buffer content, length, or call-boundary shape -
 // in particular a non-`q`-aligned intermediate call followed by another must return
 // `Err(CfbError::NonAlignedIntermediateCall)` (T-101/D-60), never panic, which this target checks

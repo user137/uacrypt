@@ -5,7 +5,7 @@ use dstu_core::hazmat::kalyna_gmac::{
 };
 use libfuzzer_sys::fuzz_target;
 
-// Required by SECURITY.md ("cargo fuzz is required ... not optional"). `mac`/`verify` must never
+// Required by docs/SECURITY.md ("cargo fuzz is required ... not optional"). `mac`/`verify` must never
 // panic/crash regardless of key/message/tag content or length - including tag lengths outside the
 // valid 8..=block_bytes range, which `verify` must reject with `GmacError::InvalidLength`, not
 // panic on.

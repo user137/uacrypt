@@ -4,7 +4,7 @@
 //! `oracles/uapki/library/uapkic/src/dstu7624.c`'s `encrypt_ctr` (lines 2739-2790) and
 //! `dstu7624_init_ctr` (lines 4397-4421); `dstu7624_decrypt` confirmed routing CTR to the same
 //! `encrypt_ctr` function - CTR is self-inverse, one `apply_in_place`, matching
-//! [`super::kalyna_ofb`]'s shape. `DECISIONS.md` D-53 has the full citation and roadmap context.
+//! [`super::kalyna_ofb`]'s shape. `docs/DECISIONS.md` D-53 has the full citation and roadmap context.
 //!
 //! **This is exactly the keystream-priming/increment/re-encrypt logic
 //! `super::kalyna_ccm`'s internal `Gamma` component already implements** (`hazmat::kalyna_ccm`

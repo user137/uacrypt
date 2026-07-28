@@ -1,4 +1,4 @@
-//! Tests for `dstu_core::crypto_stream` (`TASKS.md` roadmap Step 3 item 3, `DECISIONS.md` D-67) -
+//! Tests for `dstu_core::crypto_stream` (`docs/TASKS.md` roadmap Step 3 item 3, `docs/DECISIONS.md` D-67) -
 //! a single fixed `hazmat::strumok::Strumok256` construction with an internally-generated IV and
 //! a combined `iv || ciphertext` wire format. No tag exists - this module has no rejection
 //! category (D-64's convention does not apply here, see the module doc's "No authentication"

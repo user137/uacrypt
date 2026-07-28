@@ -1,7 +1,7 @@
 # cargo-deny policy. Currently checks an empty dependency tree (dstu-core/uacrypt have zero
 # external dependencies) - this file exists so the policy is enforced automatically the moment a
-# dependency is added, rather than relying on someone remembering to check SECURITY.md's
-# supply-chain table by hand. See SECURITY.md "Supply-chain vetting".
+# dependency is added, rather than relying on someone remembering to check docs/SECURITY.md's
+# supply-chain table by hand. See docs/SECURITY.md "Supply-chain vetting".
 
 [graph]
 all-features = true
@@ -25,7 +25,7 @@ confidence-threshold = 0.8
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"
-# No specific crate denies yet - nothing in DECISIONS.md D-07 (the li0ard exclusion) publishes
+# No specific crate denies yet - nothing in docs/DECISIONS.md D-07 (the li0ard exclusion) publishes
 # to crates.io, so there's no package name to ban here. Revisit if that changes.
 
 [advisories]

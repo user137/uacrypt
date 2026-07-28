@@ -3,7 +3,7 @@
 //! arithmetic. Kept as a **distinct type** specifically so the two can never be mixed up by
 //! accident: both are 3-limb `[u64; 3]` internally, but `FieldElement::add` is XOR and
 //! `FieldElement::multiply` is carryless, while `Scalar::add`/`Scalar::multiply` are ordinary
-//! carrying integer arithmetic reduced mod `n` (`DECISIONS.md` D-25's follow-up note - this was
+//! carrying integer arithmetic reduced mod `n` (`docs/DECISIONS.md` D-25's follow-up note - this was
 //! flagged as the layer's single biggest silent-correctness risk).
 //!
 //! Both operations are branchless throughout: `Scalar` carries the private key `d` and the
@@ -54,7 +54,7 @@ impl Scalar {
 
     /// Builds a scalar from a big-endian 21-byte candidate, but only if it lies in `[1, n)` - the
     /// valid private-key range. Used by `crypto_sign::SigningKey::generate`'s rejection-sampling
-    /// loop (`TASKS.md` T-122): the comparison against `n` goes through the same constant-time
+    /// loop (`docs/TASKS.md` T-122): the comparison against `n` goes through the same constant-time
     /// subtract-and-select primitive (`sub3`'s borrow flag) the rest of this module already uses
     /// for secret arithmetic, rather than a branching `>=`, so evaluating one candidate doesn't
     /// add a data-dependent-branch timing signal beyond the "how many draws until one was
@@ -62,7 +62,7 @@ impl Scalar {
     ///
     /// Gated the same way its only caller (`crypto_sign::SigningKey::generate`) is: needs
     /// `crate::randombytes` to draw candidates in the first place (`std` or the narrower
-    /// `getrandom` feature, `TASKS.md` T-123/`DECISIONS.md` D-74) - a build with neither has no way
+    /// `getrandom` feature, `docs/TASKS.md` T-123/`docs/DECISIONS.md` D-74) - a build with neither has no way
     /// to call this, so it would otherwise be dead code there.
     #[cfg(any(feature = "std", feature = "getrandom"))]
     #[must_use]

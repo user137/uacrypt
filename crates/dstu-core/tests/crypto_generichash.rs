@@ -1,4 +1,4 @@
-//! Smoke test for `dstu_core::crypto_generichash` (`TASKS.md` T-105, `DECISIONS.md` D-66) - a bare
+//! Smoke test for `dstu_core::crypto_generichash` (`docs/TASKS.md` T-105, `docs/DECISIONS.md` D-66) - a bare
 //! re-export of `hazmat::kupyna`, already official-vector-tested under its own path
 //! (`tests/kupyna.rs`). Nothing new to verify behaviorally (see the module doc); this only proves
 //! the re-export path itself is wired correctly.

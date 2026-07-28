@@ -1,12 +1,12 @@
 /*
  * Byte-for-byte and timing comparison of DSTU 7624 CMAC (Kalyna-CMAC) between this project's own
  * `uacrypt kalyna-cmac compute`/`verify` and UAPKI's prebuilt `uapkic.dll`, for all 5 Kalyna
- * variants - `TASKS.md` T-133/T-138, `DECISIONS.md` D-78/D-80/D-82 have the full narrative behind
+ * variants - `docs/TASKS.md` T-133/T-138, `docs/DECISIONS.md` D-78/D-80/D-82 have the full narrative behind
  * why this exists and what it already found (a real UAPKI CMAC-context-reuse quirk, D-82).
  *
  * Unlike this directory's siblings (kalyna-differential/, strumok-cross-check/, which link
  * directly against vendored oracle *source*), UAPKI is compared against its official prebuilt
- * Windows DLL, not a from-source build - `oracles/uapki/` (gitignored, see ORACLES.md for how to
+ * Windows DLL, not a from-source build - `oracles/uapki/` (gitignored, see docs/ORACLES.md for how to
  * fetch it) only vendors the source tree for reading/citation, not a ready-to-link Windows import
  * library.
  *

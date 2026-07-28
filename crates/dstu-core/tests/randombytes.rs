@@ -1,6 +1,6 @@
-//! Tests for `dstu_core::randombytes` (`randombytes` equivalent, `TASKS.md` T-72,
-//! `DECISIONS.md` D-48) - the OS-CSPRNG wrapper (`getrandom`), `std`-gated so the `no_std` core
-//! build never depends on it (`DECISIONS.md` D-04 addendum).
+//! Tests for `dstu_core::randombytes` (`randombytes` equivalent, `docs/TASKS.md` T-72,
+//! `docs/DECISIONS.md` D-48) - the OS-CSPRNG wrapper (`getrandom`), `std`-gated so the `no_std` core
+//! build never depends on it (`docs/DECISIONS.md` D-04 addendum).
 //!
 //! Not a DSTU question, and there's no oracle for OS randomness by definition - verification here
 //! is limited to determinism-of-shape properties (buffer actually gets filled, two calls don't

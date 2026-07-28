@@ -1,8 +1,8 @@
-# TASKS.md
+# docs/TASKS.md
 
 Progress tracker and task backlog for this project, grouped by phase. Check items off as they're
 done; add new items as they're discovered. This file tracks **what** and **status** — the
-**why** behind any decision or blocker lives in `DECISIONS.md`/`ORACLES.md`/`SECURITY.md` and is
+**why** behind any decision or blocker lives in `docs/DECISIONS.md`/`docs/ORACLES.md`/`docs/SECURITY.md` and is
 linked from here, not duplicated.
 
 Per `CLAUDE.md`'s "Agent discipline": every implementation task below is test-first — the
@@ -18,7 +18,7 @@ item they point to is later removed.
 - [x] **T-01** Cargo workspace (`dstu-core` + `dstutool`), dual MIT/Apache-2.0 licensing
 - [x] **T-02** `no_std`/`alloc`/`std` feature flags in place from the first commit (D-01)
 - [x] **T-03** Docs translated to English; repo structure split per GitHub/Rust-crypto conventions
-- [x] **T-04** `SECURITY.md`, `DECISIONS.md`, `ORACLES.md` written
+- [x] **T-04** `docs/SECURITY.md`, `docs/DECISIONS.md`, `docs/ORACLES.md` written
 - [x] **T-05** Oracle infrastructure pulled and vetted: `kalyna-reference`, `kupyna-reference`,
       `outspace/dstu8845`, `bouncycastle-{java,dotnet}`, `cryptonite` (see `oracles/README.md`)
 - [x] **T-06** `li0ard` excluded as untrusted supply chain (D-07)
@@ -32,7 +32,7 @@ item they point to is later removed.
 
 - [x] **T-10** Implement Kalyna (all 5 block/key-size variants) — `dstu_core::hazmat::kalyna`
       (`Kalyna128_128`/`Kalyna128_256`/`Kalyna256_256`/`Kalyna256_512`/`Kalyna512_512`), citation
-      in `DECISIONS.md` D-13. **Confirmed 2026-07-22**: `cargo test` (all 5 variants against the
+      in `docs/DECISIONS.md` D-13. **Confirmed 2026-07-22**: `cargo test` (all 5 variants against the
       official vectors, first attempt, no debugging needed), `cargo clippy -- -D warnings`, `cargo
       fmt --check`, and the `no_std` build all pass. S-box/MDS tables shared with `hazmat::kupyna`
       via a new `hazmat::tables` module rather than duplicated (D-13). `cargo miri test` also
@@ -49,7 +49,7 @@ item they point to is later removed.
       beyond what CCM already used are unused KAT data waiting for whenever more modes get built,
       same as Kupyna's KMAC below.
 - [x] **T-11** Implement Kupyna (256/512) — `dstu_core::hazmat::kupyna` (`Kupyna256`/`Kupyna512`),
-      citation in `DECISIONS.md` D-10. **Confirmed green 2026-07-22**: `cargo test`, `cargo miri
+      citation in `docs/DECISIONS.md` D-10. **Confirmed green 2026-07-22**: `cargo test`, `cargo miri
       test` (no UB), `cargo clippy -- -D warnings`, and `no_std` build all pass; independently
       cross-checked against real Bouncy Castle via the .NET and Java oracle harnesses, and (same
       day, D-16 update) UAPKI's `dstu7564_self_test_hash` matches byte-for-byte too — same
@@ -86,7 +86,7 @@ item they point to is later removed.
       lockstep-two-arrays false-positive family as D-39's three cases, `self.h`/`t_final` this
       time), `cargo miri test` run against the new test file specifically.
 - [x] **T-84** **`uacrypt kupyna-digest`/`strumok-crypt` made genuinely streaming from disk
-      (`DECISIONS.md` D-42), same day.** User asked directly whether T-83's streaming was
+      (`docs/DECISIONS.md` D-42), same day.** User asked directly whether T-83's streaming was
       "honest" - small bounded chunks in memory, nothing quietly buffered whole. Answer at the
       hazmat level was yes; at the CLI level, no - both commands still did one whole-file
       `std::fs::read`. Fixed for real single-pass use (`iterations <= 1`): `kupyna-digest` reads
@@ -102,7 +102,7 @@ item they point to is later removed.
       matching. Recorded as standing policy for any future streaming CLI work in `CLAUDE.md`'s
       Agent discipline section, not just a one-off fix.
 - [x] **T-12** **Blocker lifted 2026-07-22 (D-15/D-16), not fully resolved:** found
-      https://github.com/specinfo-ua/UAPKI (state-expertise pedigree, see `ORACLES.md`), whose
+      https://github.com/specinfo-ua/UAPKI (state-expertise pedigree, see `docs/ORACLES.md`), whose
       `dstu8845.c` self-test is comment-attributed to `// ДСТУ 8845:2019` in its own source — the
       first real KAT found anywhere for this algorithm. Adopted as
       `crates/dstu-core/tests/vectors/strumok/keystream-{256,512}.json` (an earlier, self-invented
@@ -112,7 +112,7 @@ item they point to is later removed.
       `tests/oracle-harness/strumok-cross-check/cross_check_against_uapki.c`. **Still not
       "official"**: not confirmed against the paid DSTU 8845:2019 text itself.
 - [x] **T-13** Implement Strumok (256/512-bit key) — `dstu_core::hazmat::strumok` (`Strumok256`/
-      `Strumok512`), citation in `DECISIONS.md` D-18. **Confirmed 2026-07-22**: all 8
+      `Strumok512`), citation in `docs/DECISIONS.md` D-18. **Confirmed 2026-07-22**: all 8
       UAPKI-attributed keystream cases pass on the first attempt, `cargo test`, `cargo clippy -- -D
       warnings`, `cargo fmt --check`, `no_std` build, and `cargo miri test` all clean. Structurally
       cross-checked against both `outspace/dstu8845` and `oracles/uapki/.../dstu8845.c` per the
@@ -140,9 +140,9 @@ item they point to is later removed.
       these targets get run, same as this project already says for the fuzz scaffold generally.
       **Update, later the same day**: this machine turned out to already have Visual Studio
       installed for unrelated reasons, so the objection above ("would mean installing MSVC just for
-      this") stopped applying here specifically — see "Testing & hardening" below and `DECISIONS.md`
+      this") stopped applying here specifically — see "Testing & hardening" below and `docs/DECISIONS.md`
       D-32 for how it was actually run.
-- [x] **T-16** **Done 2026-07-24, same session as T-37, see `DECISIONS.md` D-52** — `uacrypt`'s
+- [x] **T-16** **Done 2026-07-24, same session as T-37, see `docs/DECISIONS.md` D-52** — `uacrypt`'s
       reserved `encrypt`/`decrypt`/`hash` are real top-level commands now, mode/nonce/algorithm all
       hardcoded, no user-facing crypto knobs. `encrypt`/`decrypt` are a thin wrapper over
       `dstu_core::crypto_secretbox` (T-37/D-51): new `SecretboxArgs { key_path, in_path, out_path }`
@@ -152,7 +152,7 @@ item they point to is later removed.
       `encrypt --in file --out file` silently failing past that would be a real usability trap,
       especially next to `hash` which handles files of any size — asked directly via
       `AskUserQuestion`, user chose **build all three now, cap made loud** (new
-      `CliError::MessageTooLong` with an explicit "255-byte limit... see `TASKS.md` T-40" message,
+      `CliError::MessageTooLong` with an explicit "255-byte limit... see `docs/TASKS.md` T-40" message,
       never silent truncation) over deferring `encrypt`/`decrypt` to `crypto_secretstream` (T-40).
       Two more new `CliError` variants (`Truncated`, `SecretboxVerifyFailed`) plus a
       `From<SecretboxError>` impl mirroring the existing `From<CcmError>` one — deliberately not
@@ -220,7 +220,7 @@ item they point to is later removed.
       (`cargo package -p dstu-core`, no `--no-verify` needed - `dstu-core` has zero path
       dependencies, unlike `uacrypt`) without actually publishing to crates.io, and a final job
       downloads every artifact and creates the GitHub Release via `softprops/action-gh-release`
-      with auto-generated notes. `CHANGELOG.md`'s `[Unreleased]` section split into a real
+      with auto-generated notes. `docs/CHANGELOG.md`'s `[Unreleased]` section split into a real
       `[0.1.0] - 2026-07-26` entry (Keep a Changelog convention, T-111's own precedent) plus a
       fresh empty `[Unreleased]` above it, with `keygen`/`--version`/the T-116 cross-compile
       confirmation folded into the `0.1.0` `### Added` list.
@@ -239,7 +239,7 @@ item they point to is later removed.
       linker) - unlike this project's local Windows dev convention of `x86_64-pc-windows-gnu`, the
       Windows release asset is built with the runner's default `x86_64-pc-windows-msvc` toolchain
       specifically so end users need no separate MinGW runtime DLLs alongside the `.exe` - confirmed
-      by the standalone-run smoke test above, not assumed. No `DECISIONS.md` entry - release
+      by the standalone-run smoke test above, not assumed. No `docs/DECISIONS.md` entry - release
       mechanics/CI plumbing, not an architectural decision about the library itself.
 - [x] **T-107** Add a per-crate `README.md` to `crates/dstu-core/` and `crates/uacrypt/`, and set
       each crate's `readme` field in its own `Cargo.toml`. **Found during T-17's 2026-07-25
@@ -251,7 +251,7 @@ item they point to is later removed.
       of the root one: `dstu-core/README.md` covers the `hazmat`/`crypto_*` two-layer split, the
       feature-flag table (`std`/`alloc`/`small-tables`/`pwhash`), a `crypto_secretbox` usage
       example, and the same provisional-status/no-side-channel-claim safety framing the root
-      README and `SECURITY.md` already carry; `uacrypt/README.md` covers the actual command set
+      README and `docs/SECURITY.md` already carry; `uacrypt/README.md` covers the actual command set
       (`encrypt`/`decrypt`/`hash` plus the lower-level `kalyna-block`/`kalyna-ccm`/`kupyna-digest`/
       `strumok-crypt`) with real, verified flag names (cross-checked against `parse_*_args` in
       `crates/uacrypt/src/lib.rs` rather than copied from memory - `kupyna-digest`/`strumok-crypt`
@@ -265,7 +265,7 @@ item they point to is later removed.
       130 -> 133 (both new `README.md`s plus their surrounding directory listing), with the
       pre-existing "no documentation, homepage or repository" warning unchanged (that's T-109's
       metadata gap, not this one, correctly still open). `cargo xtask fmt --check`/`build`/`clippy`
-      all clean - doc-only change, no source touched. No `DECISIONS.md` entry - packaging hygiene,
+      all clean - doc-only change, no source touched. No `docs/DECISIONS.md` entry - packaging hygiene,
       nothing architectural to record (same call T-97 made for its own trivial doc fix).
 - [x] **T-108** User-friendly `--help`/usage text for the `uacrypt` binary, in plain language a
       non-cryptographer can follow - requested 2026-07-25. **Confirmed gap**: `uacrypt`'s `run()`
@@ -313,7 +313,7 @@ item they point to is later removed.
       text and exit codes (0 for help, 1 for `unknown command`) match what the tests check.
       Verified: full `cargo test --workspace --all-features` (55/55 `uacrypt` tests including the 8
       new ones, plus `dstu-core`'s own suite, all green, exit 0), `cargo clippy --workspace
-      --all-features -- -D warnings` clean, `cargo fmt --all -- --check` clean. No `DECISIONS.md`
+      --all-features -- -D warnings` clean, `cargo fmt --all -- --check` clean. No `docs/DECISIONS.md`
       entry - CLI ergonomics, nothing architectural.
 - [x] **T-109** Complete `Cargo.toml` publish metadata for both crates - requested 2026-07-25
       (libsodium/crates.io best-practice review, see `docs/release-readiness.md` "Libsodium API
@@ -373,10 +373,10 @@ item they point to is later removed.
       its own today, added for consistency and so it's already correct if one is ever introduced).
       Metadata-only change, same class as T-109: `cargo build --workspace --all-features`, `cargo
       fmt --all -- --check`, and `cargo clippy --workspace --all-features -- -D warnings` all clean;
-      `cargo test`/`no_std` build/Miri not re-run, nothing in their scope changed. No `DECISIONS.md`
+      `cargo test`/`no_std` build/Miri not re-run, nothing in their scope changed. No `docs/DECISIONS.md`
       entry - packaging hygiene, nothing architectural (same call T-107/T-109 made).
-- [x] **T-111** `CHANGELOG.md` (Keep a Changelog format) + a declared MSRV - requested 2026-07-25.
-      **Done 2026-07-26, see `DECISIONS.md` D-69.** MSRV measured, not guessed: `cargo metadata
+- [x] **T-111** `docs/CHANGELOG.md` (Keep a Changelog format) + a declared MSRV - requested 2026-07-25.
+      **Done 2026-07-26, see `docs/DECISIONS.md` D-69.** MSRV measured, not guessed: `cargo metadata
       --filter-platform` (both Linux and Windows-gnu targets) showed the dependency graph's own
       declared floors top out at 1.85 (`zeroize`, `base64ct` via `argon2`'s `pwhash` feature,
       `getrandom` via `proptest`/`rand`) and 1.86 (`criterion` and its `clap` bench-harness
@@ -389,7 +389,7 @@ item they point to is later removed.
       `.github/workflows/rust.yml` pins `dtolnay/rust-toolchain@1.87.0` and build-only-verifies
       (`--all-features` + `--no-default-features`) on `ubuntu-latest`, explicitly `cargo +1.87.0`
       to avoid `rust-toolchain.toml`'s `stable` pin silently swallowing it (the known T-85 trap this
-      task's own text warned about). `CHANGELOG.md` added at the repo root, Keep a Changelog
+      task's own text warned about). `docs/CHANGELOG.md` added at the repo root, Keep a Changelog
       format, one `[Unreleased]` section (0.1.0 is still unpublished) - Added/Changed only, not a
       reconstructed per-commit history; the `uacrypt encrypt`/`decrypt` wire-format's two breaking
       changes this session (`crypto_secretbox` -> Kalyna-GCM -> `crypto_secretstream`) are the one
@@ -407,12 +407,12 @@ item they point to is later removed.
       guaranteed to see. Scope: a short top-of-crate doc comment (`dstu_core::lib.rs` and
       `uacrypt::main.rs`/`lib.rs`) stating the same provisional facts (D-05 Kalyna-alone is an
       adopted assumption not a primary-text confirmation, Strumok is UAPKI-attributed not
-      DSTU-8845-confirmed per D-15, no independent third-party audit) - point back at `SECURITY.md`/
-      `DECISIONS.md` rather than re-arguing the citations inline.
+      DSTU-8845-confirmed per D-15, no independent third-party audit) - point back at `docs/SECURITY.md`/
+      `docs/DECISIONS.md` rather than re-arguing the citations inline.
       **Done 2026-07-25.** `crates/dstu-core/src/lib.rs` got a top `//!` block (before the existing
       `no_std`/lint attributes) naming D-05 (Kalyna-alone mode-of-operation is an adopted
       assumption, not primary-text confirmed), D-15 (Strumok is UAPKI-attributed only), and the
-      no-side-channel-claim - pointing at `SECURITY.md`/`DECISIONS.md` rather than re-arguing them.
+      no-side-channel-claim - pointing at `docs/SECURITY.md`/`docs/DECISIONS.md` rather than re-arguing them.
       `crates/uacrypt/src/lib.rs` got the same facts folded into its existing doc-comment block
       (which already covers `kalyna-block` naming), phrased for the CLI's own command names
       (`encrypt`/`decrypt`/`kalyna-ccm`, `strumok-crypt`). `crates/uacrypt/src/main.rs` had no doc
@@ -422,8 +422,8 @@ item they point to is later removed.
       --all-features -- -D warnings` (checked specifically for the `doc_lazy_continuation`/
       `doc_markdown` gotcha this file's Agent-discipline section already flags - clean), and `cargo
       fmt --all -- --check` all pass. Doc-only change - `cargo test`/Miri not re-run. No
-      `DECISIONS.md` entry - same packaging/doc-hygiene call as T-107/T-109/T-110.
-- [x] **T-113** **DONE 2026-07-26, see `DECISIONS.md` D-70.** Multi-part/streaming `crypto_sign` for
+      `docs/DECISIONS.md` entry - same packaging/doc-hygiene call as T-107/T-109/T-110.
+- [x] **T-113** **DONE 2026-07-26, see `docs/DECISIONS.md` D-70.** Multi-part/streaming `crypto_sign` for
       large messages - found during the 2026-07-25 libsodium API audit (see
       `docs/release-readiness.md`). Research done first, per this file's standing "no primitive
       written from memory" rule: `docs/pseudocode/dstu4145.md` §5.9/§9/§10 confirms DSTU 4145 signs
@@ -451,7 +451,7 @@ item they point to is later removed.
          from the CLI, cares about throughput and prebuilt binaries, not Rust API ergonomics.
       2. **Library user, performance-focused** - depends on `dstu-core` directly from `Cargo.toml`,
          cares about the `crypto_*`/`hazmat` API split, `ExpandedKey`-style cached-schedule paths,
-         and `PERFORMANCE.md`'s numbers.
+         and `docs/PERFORMANCE.md`'s numbers.
       3. **Constrained-target (microcontroller) user** - needs the `no_std`/`small-tables` minimal
          footprint variant (STM32/ESP32-class targets, `docs/resource-profiles.md`), cares about
          flash/RAM budget and build-time feature selection, not raw throughput.
@@ -463,7 +463,7 @@ item they point to is later removed.
       one, not yet confirmed: T-18's prebuilt-binaries gap directly blocks step 1 of persona 1's
       journey, which the release-readiness doc's construction-level view doesn't frame the same
       way). Cross-reference `docs/release-readiness.md`, `docs/resource-profiles.md`,
-      `docs/dstu-crypto-project.md`, `README.md`, and `PERFORMANCE.md` rather than re-deriving their
+      `docs/dstu-crypto-project.md`, `README.md`, and `docs/PERFORMANCE.md` rather than re-deriving their
       content - this task's value is the persona/journey framing itself, not a fourth copy of the
       same feature list. Output as a new doc (exact filename/location TBD when started - candidate:
       `docs/user-journey-gaps.md`) added to `CLAUDE.md`'s documentation map once created.
@@ -481,7 +481,7 @@ item they point to is later removed.
       through but not that the crate cross-compiles for a real MCU toolchain. None of the three are
       self-assigned new task numbers, per this task's own scope - recorded as candidates for the
       project owner to triage. Also fixed, found while cross-checking this task against the
-      roadmap's own Step 5 text (`TASKS.md` "Roadmap to a genuinely complete product," items 4-7):
+      roadmap's own Step 5 text (`docs/TASKS.md` "Roadmap to a genuinely complete product," items 4-7):
       four lines there still said "Not started" for T-110/T-112/T-108/T-111 despite those tasks'
       own entries above being `[x]` done - the exact "stale 'not started' line next to a done line"
       failure mode `CLAUDE.md`'s agent-discipline section calls out by name, from the D-68 session.
@@ -506,7 +506,7 @@ item they point to is later removed.
       `docs/user-journey-gaps.md` updated to match (the gap-analysis doc's persona-1 table row and
       diagram back-edge both updated to reflect the closed gap, not left stale). Verified: full
       `cargo test --workspace --all-features`/`clippy -D warnings`/`fmt --check` all clean. No
-      `DECISIONS.md` entry - CLI ergonomics exposing an already-decided construction
+      `docs/DECISIONS.md` entry - CLI ergonomics exposing an already-decided construction
       (`crypto_secretstream::Key::generate`, D-68), nothing architectural, same call T-108 made for
       `--help` text.
 - [x] **T-116** **DONE 2026-07-26.** Bare-metal cross-compile verification - triaged from a candidate
@@ -534,7 +534,7 @@ item they point to is later removed.
       flagged as a further candidate, not self-assigned. `README.md`'s "Embedded / `no_std` targets"
       section updated to cite this verification instead of only asserting compilability from the
       host build; `docs/user-journey-gaps.md`'s persona-3 row/bottom-line updated to match. No
-      `DECISIONS.md` entry - a verification pass, not an architectural decision.
+      `docs/DECISIONS.md` entry - a verification pass, not an architectural decision.
 - [x] **T-117** **DONE 2026-07-26.** Fixed a real doc bug in `crates/dstu-core/README.md`'s
       `## Example` block, found by actually walking persona 2's journey with real commands rather
       than re-reading the document (user-requested: "прогони віртуально... як реально поведеться
@@ -557,7 +557,7 @@ item they point to is later removed.
       round-trip, plus `hash`) and its two rejection paths (wrong key, single-byte-flip tamper) were
       also run against the actual release binary, not assumed from the unit tests - both correctly
       reject without writing `--out`, matching `crypto_secretstream`'s documented behavior. No
-      `DECISIONS.md` entry - a documentation correctness fix, not an architectural decision.
+      `docs/DECISIONS.md` entry - a documentation correctness fix, not an architectural decision.
 - [x] **T-120** Locally-verified, beginner-friendly usage examples across every doc surface, for
       every *safe* mode - requested 2026-07-26 by the project owner. Two distinct audiences, both
       in scope, not just one:
@@ -598,7 +598,7 @@ item they point to is later removed.
       and the failure path (a tampered message or wrong key fails verification) - a signature
       example that only shows the happy path doesn't demonstrate the primitive actually does what
       it claims, same reasoning as D-64's "attack pass" for AEAD tests.
-      **DONE 2026-07-26, see `DECISIONS.md` D-75.** The original scoping note above about a missing
+      **DONE 2026-07-26, see `docs/DECISIONS.md` D-75.** The original scoping note above about a missing
       `uacrypt sign`/`verify` CLI was already stale by the time this task was picked up - T-124
       closed that gap earlier the same session, so this task documents a CLI surface that now fully
       exists (`sign-keygen`/`sign-pubkey`/`sign`/`verify` added to `README.md`'s "Using `uacrypt`"
@@ -637,13 +637,13 @@ item they point to is later removed.
       cold. Scope: a `std`-gated `SigningKey::generate()` (or `from_seed`-style deterministic
       variant, project owner's call which shape) drawing from `dstu_core::randombytes`, with proper
       rejection sampling against `curve163::order()` (uniform, not modulo-biased - the `subtle`/
-      constant-time discipline `SECURITY.md` already requires elsewhere should apply to the
+      constant-time discipline `docs/SECURITY.md` already requires elsewhere should apply to the
       rejection loop too, not just the final scalar use). Needs its own test coverage per
       `CLAUDE.md`'s three-category rule: correctness (generated key signs/verifies successfully,
       property-tested over many generations), a distinctness property test (two generated keys
       differ), and misuse coverage for whatever's still reachable after `generate()`'s own type
       signature forecloses the rest.
-      **DONE 2026-07-26, see `DECISIONS.md` D-72.** Shape fork resolved by implementation (flagged
+      **DONE 2026-07-26, see `docs/DECISIONS.md` D-72.** Shape fork resolved by implementation (flagged
       for confirmation, not a prior user decision): plain OS-CSPRNG `SigningKey::generate()`,
       matching every other `crypto_*` module's own `Key::generate` convention with no exception so
       far. **Rejection sampling, not `reduce_wide_bytes`-style modulo reduction** - a candidate is
@@ -673,14 +673,14 @@ item they point to is later removed.
       `dstu_core::randombytes::randombytes_buf` is `std`-gated over `getrandom` with no equivalent
       hook - correctly absent from `no_std` builds (nothing currently promises otherwise), but there
       is no tracked path for a caller on real embedded hardware (STM32/ESP32, Phase 4 -
-      `TASKS.md` T-55/T-56) to get `randombytes`-shaped fresh key/nonce material at all once
+      `docs/TASKS.md` T-55/T-56) to get `randombytes`-shaped fresh key/nonce material at all once
       real-hardware validation starts needing it, since there's no host OS CSPRNG to call through
       `getrandom` on bare metal. **Phase-4-adjacent, not an MVP blocker** - MVP's own claim is only
       that the core `no_std`-compiles (`CLAUDE.md` MVP scope), never that `randombytes` works there.
       Revisit when T-55/T-56 (real hardware validation) is picked up, or sooner if a concrete
       embedded consumer needs it earlier.
       **DONE 2026-07-26 - user asked for it sooner than the Phase-4-adjacent deferral above
-      anticipated, see `DECISIONS.md` D-74.** `advisor()` consulted before touching `Cargo.toml`
+      anticipated, see `docs/DECISIONS.md` D-74.** `advisor()` consulted before touching `Cargo.toml`
       (own plan-mode pass, D-67/D-68's standing practice for a design fork): getrandom 0.3 already
       *is* the pluggable-RNG mechanism libsodium's `randombytes_set_implementation()` plays the same
       role for - decision is **capability parity, not mechanism parity** (getrandom's backend choice
@@ -727,7 +727,7 @@ item they point to is later removed.
       sign→verify), rejection (D-64 - tampered message, tampered signature, wrong key all fail
       verification, matching T-120's explicit "show the failure path too" requirement), misuse
       (D-65 - wrong-length key/signature file, missing `--in`).
-      **DONE 2026-07-26, see `DECISIONS.md` D-73.** Scope widened beyond the literal `sign`/
+      **DONE 2026-07-26, see `docs/DECISIONS.md` D-73.** Scope widened beyond the literal `sign`/
       `verify` text above - resolved by implementation, flagged for confirmation rather than a
       prior user decision (same posture D-72/D-66's own forks took): also added `sign-keygen`
       (generates a fresh signing key) and `sign-pubkey` (derives the matching verifying key), since
@@ -766,14 +766,14 @@ item they point to is later removed.
       `TOP_LEVEL_HELP`'s USAGE block. 2 new tests (dispatch succeeds for both spellings, a
       unit test pinning `is_version_flag`'s exact match set) - all green, plus manually run against
       the real release binary (`uacrypt --version`/`-V` both print `uacrypt 0.1.0`). No
-      `DECISIONS.md` entry - CLI ergonomics, same call T-108/T-115 made.
+      `docs/DECISIONS.md` entry - CLI ergonomics, same call T-108/T-115 made.
 - [x] **T-121** **DONE 2026-07-26.** Expanded, retested binary-level performance comparison against
-      UAPKI (`PERFORMANCE.md` D-34's canonical methodology) - user-requested: broaden the existing
+      UAPKI (`docs/PERFORMANCE.md` D-34's canonical methodology) - user-requested: broaden the existing
       four benchmark commands' file-size/variant coverage *and* add CLI exposure for the five DSTU
       7624 modes that had none at all (GCM, CMAC, KW, GMAC, XTS - all already implemented and
       dual-oracle-verified at `hazmat`, see `docs/dstu-crypto-project.md`'s API table), user's
       explicit choice over the narrower "just re-measure the existing four" option.
-      **Five new `uacrypt` CLI commands** (`DECISIONS.md` D-71, following D-31's precedent exactly -
+      **Five new `uacrypt` CLI commands** (`docs/DECISIONS.md` D-71, following D-31's precedent exactly -
       `hazmat`-scoped benchmarking/interop tools, not the safe top-level surface): `kalyna-gcm
       encrypt/decrypt`, `kalyna-cmac compute/verify`, `kalyna-gmac compute/verify`, `kalyna-kw
       wrap/unwrap`, `kalyna-xts encrypt/decrypt`. `kalyna-ccm` (pre-existing) also gained
@@ -787,21 +787,21 @@ item they point to is later removed.
       `test --all-features` (81 `uacrypt` tests, up from 64)/`--no-default-features` build all clean.
       **UAPKI comparison**: `library/uapkic`'s prebuilt signed Windows DLL (`uapkic-v2.0.12`,
       `specinfo-ua/UAPKI` GitHub release) linked via a `gendef`/`dlltool`-generated import lib -
-      faster and simpler than `PERFORMANCE.md`'s documented CMake/`resource.rc` build-from-source
+      faster and simpler than `docs/PERFORMANCE.md`'s documented CMake/`resource.rc` build-from-source
       path, skipped entirely this session. A one-off C wrapper (scratchpad-only, not committed, same
       convention as every other C comparison in this file) cross-checked byte-identical against the
       real `uacrypt` release binary before any timing run, for every mode except two, both found by
       reading UAPKI's own source, not assumed: **GMAC** disagrees with itself on multi-block input in
       one call (UAPKI's own `gmac_update`/`gmac_final` streaming path has a stale-index bug distinct
       from the coherent `encrypt_gmac` one-shot loop our `hazmat::kalyna_gmac` was ported from - this
-      is `DECISIONS.md` D-57's already-documented finding, re-confirmed empirically here, not a new
+      is `docs/DECISIONS.md` D-57's already-documented finding, re-confirmed empirically here, not a new
       bug) - worked around by benchmarking exactly one block, which sidesteps the buggy path cleanly;
       **CCM** turned out to use a different wire convention than ours (UAPKI's `cipher_data` output
       bundles an extra CTR-encrypted tag block onto the ciphertext rather than keeping tag separate,
       confirmed by reading `dstu7624_encrypt_ccm`/`decrypt_ccm` directly) - not a bug, just a
       different framing choice, so CCM's timing number is UAPKI-self-consistent (encrypt-then-decrypt
       round-trips through itself) rather than cross-tool-verified the way the other eight modes are.
-      **New results in `PERFORMANCE.md`'s "Binary-level (process) comparison" section**, dated
+      **New results in `docs/PERFORMANCE.md`'s "Binary-level (process) comparison" section**, dated
       2026-07-26: all 5 Kalyna variants (previously only 2) for block/CCM/GCM, new GCM/CMAC/GMAC/
       KW/XTS subsections, larger message sizes added to Kupyna/Strumok/CMAC/GCM (1 MiB, previously
       capped at 64 KB). Real finding, not assumed: **Kalyna-XTS on the 512-512 variant is this
@@ -811,12 +811,12 @@ item they point to is later removed.
       (Ryzen 5 PRO 4650U) - the Raspberry Pi rig was out of scope for this pass, not re-run.
 - [x] **T-125** **DONE 2026-07-26.** Investigate every mode/variant where this project runs more than 2x slower than
       UAPKI at the 1 MiB message size specifically - requested 2026-07-26, straight from T-121's own
-      binary-level numbers (`PERFORMANCE.md`, D-34 methodology, MB/s only). Scoped deliberately to
+      binary-level numbers (`docs/PERFORMANCE.md`, D-34 methodology, MB/s only). Scoped deliberately to
       the 1 MiB data points only (not the smaller 64 B/1 KB/64 KB/one-block/two-block points measured
       elsewhere in the same tables, several of which also show a >2x gap but at message sizes too
       small for per-call setup-cost noise to be ruled out as the cause - see T-121/D-71's own
       per-mode writeups for those). At 1 MiB, six cells across two modes cross the 2x line (computed
-      from `PERFORMANCE.md`'s actual published numbers, not re-measured here):
+      from `docs/PERFORMANCE.md`'s actual published numbers, not re-measured here):
       - **Kalyna-GCM**: 256-256 (8.33 vs 18.12 MB/s, ~2.18x) and 256-512 (8.17 vs 17.48 MB/s, ~2.14x).
         128-128/128-256 stay under 2x (~1.19x/1.24x); 512-512 is not behind at all (this project
         actually leads, 5.41 vs 4.70).
@@ -829,7 +829,7 @@ item they point to is later removed.
       **Pattern worth checking first, not yet confirmed as the actual cause**: every affected cell is
       a "256-*" key-size Kalyna variant for GCM and a "*-128"/"*-256" block-size variant for CMAC -
       512-512 is the one variant that stays under 2x in both modes. Whether this is the same
-      per-byte-throughput bottleneck each mode's own `PERFORMANCE.md` writeup already gestures at
+      per-byte-throughput bottleneck each mode's own `docs/PERFORMANCE.md` writeup already gestures at
       (GHASH-style field multiplication for GCM, `hazmat::kalyna_cmac`'s own per-round cost for CMAC)
       or something else entirely (table layout, codegen, cache behavior at the larger 1 MiB working
       set) is exactly what this task needs to determine - by profiling/reading the actual hot path,
@@ -841,8 +841,8 @@ item they point to is later removed.
       without confirming that first.
 
       **Partially resolved 2026-07-26, same day, user-requested follow-up with `advisor()` consulted
-      twice (`DECISIONS.md` D-76) - source reading plus arithmetic on already-published
-      `PERFORMANCE.md` numbers, no profiler used:**
+      twice (`docs/DECISIONS.md` D-76) - source reading plus arithmetic on already-published
+      `docs/PERFORMANCE.md` numbers, no profiler used:**
       - **Kalyna-block's "rough parity with UAPKI" claim (the baseline this whole task measures
         against) is itself a measurement artifact, not a true round-function comparison.** UAPKI's
         `encrypt_ecb`/`decrypt_ecb` (`dstu7624.c:2916,2922`) does two heap allocations
@@ -890,7 +890,7 @@ item they point to is later removed.
       triggered this task in the first place (>2x slower at 1 MiB) narrowed from ~2.14-2.18x to
       **~1.09-1.11x**, well under the 2x line; 128-128/128-256/512-512 flip from trailing/tied to
       clearly leading. GMAC (same field arithmetic) improved by the same mechanism, roughly doubling
-      an already-large lead. Full numbers in `PERFORMANCE.md`'s Kalyna-GCM/Kalyna-GMAC sections.
+      an already-large lead. Full numbers in `docs/PERFORMANCE.md`'s Kalyna-GCM/Kalyna-GMAC sections.
       **What remains genuinely open, stated as such**: why UAPKI specifically wins the mid-size
       (256-*) variants and loses at the extremes - a working hypothesis exists (UAPKI's own
       Karatsuba `gf2m_mul` pays 3 heap allocations per call, amortized differently across fewer,
@@ -932,7 +932,7 @@ item they point to is later removed.
       **Re-measured at the exact 512 B/4096 B scale T-121 originally flagged**: 512-512 XTS goes
       from ~4.4-4.6x *slower* than UAPKI to **~2.4-2.5x faster** (97.92/104.19 vs. 39.27/43.97 MB/s,
       UAPKI's own numbers essentially unchanged); every other variant improved substantially too
-      (this waste existed at every field width, not just m=512 - full numbers in `PERFORMANCE.md`'s
+      (this waste existed at every field width, not just m=512 - full numbers in `docs/PERFORMANCE.md`'s
       Kalyna-XTS section and its new "10 MiB re-measurement pass" subsection).
 - [x] **T-127** **DONE 2026-07-26.** `hazmat::kalyna_cmac`/`kalyna_gmac`/`kalyna_kw`'s one-shot `mac`/`wrap`/`unwrap`
       functions re-expand the full Kalyna key schedule on every call - found 2026-07-26, same
@@ -952,17 +952,17 @@ item they point to is later removed.
       only ~30-240 block-cipher calls total per call) and GMAC (T-121 measured it at exactly one
       block) this cost is *not* amortized and is a plausible, previously-unexplained cause of KW's
       long-standing "we have zero heap allocations yet UAPKI still wins by 1.8-2.7x" result
-      (`PERFORMANCE.md`, "not root-caused" as of T-121/D-71). **Caveat, stated plainly**: confirmed
+      (`docs/PERFORMANCE.md`, "not root-caused" as of T-121/D-71). **Caveat, stated plainly**: confirmed
       only on our side - the UAPKI C benchmark wrapper isn't committed to this repo (per
-      `PERFORMANCE.md`'s "Reproducing" sections), so whether *its* KW/CMAC/GMAC wrapper caches its
-      own schedule is inferred from `PERFORMANCE.md`'s documented benchmarking convention, not
+      `docs/PERFORMANCE.md`'s "Reproducing" sections), so whether *its* KW/CMAC/GMAC wrapper caches its
+      own schedule is inferred from `docs/PERFORMANCE.md`'s documented benchmarking convention, not
       independently verified.
       **Fix**: add `ExpandedKey`-accepting variants of `mac`/`wrap`/`unwrap` (mirroring the pattern
       `kalyna-block`/`gcm`/`xts` already use), with the existing raw-key-bytes functions becoming
       thin wrappers over them for source compatibility - a pure API addition/refactor, not a change
       to any construction's logic, so existing tests are the correctness gate. Update `uacrypt`'s
       three benchmark loops to use the cached-schedule entry point, matching the convention
-      `PERFORMANCE.md`'s "Methodology" section already documents for every other mode.
+      `docs/PERFORMANCE.md`'s "Methodology" section already documents for every other mode.
       **Implemented and re-measured, same day**: added `mac_with_cipher`/`verify_with_cipher` to
       `kalyna_cmac.rs`/`kalyna_gmac.rs` and `wrap_with_cipher`/`unwrap_with_cipher` to `kalyna_kw.rs`
       (existing `mac`/`verify`/`wrap`/`unwrap` now thin wrappers that build the `ExpandedKey` once
@@ -980,7 +980,7 @@ item they point to is later removed.
       lead from ~1.8-2.7x to ~1.4-2.2x without eliminating it - the residual matches D-76's
       core-round-function-gap finding, not a further KW-specific cause. CMAC's own numbers are
       unchanged at the 1-MiB scale already published, exactly as predicted (the schedule cost was
-      already amortized to nothing there) - full numbers in `PERFORMANCE.md`'s Kalyna-KW section.
+      already amortized to nothing there) - full numbers in `docs/PERFORMANCE.md`'s Kalyna-KW section.
 - [x] **T-128** **DONE 2026-07-26.** `hazmat::kalyna.rs`'s `encipher_round`/`fused_inv_round` take
       `nb: usize` as a runtime parameter even though every real call site (`kalyna_variant!`'s five
       variant invocations) supplies a compile-time-known literal (2, 4, or 8) - user-requested,
@@ -1029,7 +1029,7 @@ item they point to is later removed.
       failure-persistence file logic calls `std::env::current_dir()`; (2)
       `MIRIFLAGS=-Zmiri-disable-isolation` (the error message's own suggested fix) appeared to hang -
       ~35 minutes wall time with only ~0.8s of CPU actually accumulated on the `miri.exe` process
-      (checked via `Get-Process -Id <pid> | Select CPU`, the diagnostic `DECISIONS.md` already
+      (checked via `Get-Process -Id <pid> | Select CPU`, the diagnostic `docs/DECISIONS.md` already
       documents for telling "slow interpretation" from "genuinely stuck" - this was the latter, not
       the former, so it was killed rather than waited out further); (3)
       `PROPTEST_DISABLE_FAILURE_PERSISTENCE=1` with default isolation hit the *same* `current_dir()`
@@ -1047,20 +1047,20 @@ item they point to is later removed.
       criterion, D-34's "internal regression tracking only, never a cross-implementation claim"
       caveat applies): block-only (cached-schedule, isolates the round function from key-expansion
       cost) time dropped **~51-54% at `nb=2`, ~19-41% at `nb=4`, ~15-22% at `nb=8`** - see
-      `PERFORMANCE.md`'s "Regression baseline" section for the full per-variant table. Full-call
+      `docs/PERFORMANCE.md`'s "Regression baseline" section for the full per-variant table. Full-call
       (`encrypt_generic`/`decrypt_generic`, key-expansion-dominated per the `kalyna_variant!` doc
       comment's own "~60-79% of single-call time is key schedule" note) improved by a much smaller,
       sometimes-noisy 0-12%, exactly as expected since key expansion still uses the unchanged
       runtime-`nb` round functions. **Binary-level (`uacrypt` vs UAPKI process comparison, D-34's
       canonical cross-implementation method) was not re-measured this session** - the UAPKI
-      comparison wrapper isn't committed (rebuilt fresh each session per `PERFORMANCE.md`'s
+      comparison wrapper isn't committed (rebuilt fresh each session per `docs/PERFORMANCE.md`'s
       "Reproducing" section) and wasn't rebuilt here; the criterion numbers above are a same-machine,
       same-binary before/after comparison only, not a new claim against UAPKI's own speed.
       **What this does not fix, split out to T-129**: the round function still gathers state
       byte-at-a-time (`state[src_col][row]`, recomputing `src_col`/`shift` every iteration) where
       UAPKI's `p_boxrowcol`+`BT_xor*` macros operate on whole 64-bit words - a structurally different,
       more invasive change not attempted here.
-- [x] **T-129** **Investigated and closed 2026-07-27, no code change - see `DECISIONS.md` D-88.**
+- [x] **T-129** **Investigated and closed 2026-07-27, no code change - see `docs/DECISIONS.md` D-88.**
       Written rationale was: `encipher_round_n`/`fused_inv_round_n` gather state one byte at a time
       via `state[src_col][row]`, recomputing `src_col` fresh every iteration, versus UAPKI's
       `p_boxrowcol`/`BT_xor128`/`BT_xor256`/`BT_xor512` loading/XOR-ing whole 64-bit words. **That
@@ -1102,12 +1102,12 @@ item they point to is later removed.
       below) - T-128/T-134/T-135 shipped real wins, T-136's asymmetry and T-129's gather both ended
       as investigated-and-explained rather than rewritten, which is a legitimate way for a
       perf-investigation roadmap to end, not a shortfall against it.
-- [x] **T-130** **Resolved 2026-07-26, see `DECISIONS.md` D-81.** Local `cargo +nightly miri test`
+- [x] **T-130** **Resolved 2026-07-26, see `docs/DECISIONS.md` D-81.** Local `cargo +nightly miri test`
       on `hazmat::kalyna` failing/hanging on Windows, distinct from T-100's already-diagnosed cause
       (T-100 is CI's 30-minute timeout on the slow DSTU-4145 proptest suite; this was a
       Windows-specific Miri/proptest interaction blocking the run from completing at all). Found
       2026-07-26 investigating T-128: three attempts, all failed the same way (full detail in
-      `DECISIONS.md` D-77's Miri bullet) - (1) default isolation aborts because proptest's
+      `docs/DECISIONS.md` D-77's Miri bullet) - (1) default isolation aborts because proptest's
       failure-persistence file logic calls `std::env::current_dir()`, which Miri's isolation blocks
       (`GetCurrentDirectoryW not available when isolation is enabled`); (2) the error's own
       suggested fix, `MIRIFLAGS=-Zmiri-disable-isolation`, appeared to hang instead of completing -
@@ -1117,7 +1117,7 @@ item they point to is later removed.
       the file-persistence code path entirely rather than disabling isolation) hit the identical
       `current_dir()` error - implying Miri's default isolation hides environment variables from
       the interpreted program too, so proptest's own env-var-driven opt-out silently never took
-      effect. **Attempt four (2026-07-26, `DECISIONS.md` D-81)**: confirmed first, not assumed,
+      effect. **Attempt four (2026-07-26, `docs/DECISIONS.md` D-81)**: confirmed first, not assumed,
       that the hang is proptest-mechanism-wide, not Kalyna-specific - a single fast `hazmat::kupyna`
       proptest function under default isolation (no flags) hit the identical `current_dir()` abort.
       Then ran the one untried combination named above - `-Zmiri-disable-isolation` *and*
@@ -1130,13 +1130,13 @@ item they point to is later removed.
       this host**: set both env vars, keep `PROPTEST_CASES` low. **Full-`hazmat::kalyna`-module
       confirmation, same session**: all 13 existing proptest functions across
       `fused_round_tests`/`const_round_tests`/`decrypt_fusion_tests` passed under Miri with this
-      combination - 13/13, 0 UB, 511.16s (~8.5 min) - see `DECISIONS.md` D-81's follow-up. This is
+      combination - 13/13, 0 UB, 511.16s (~8.5 min) - see `docs/DECISIONS.md` D-81's follow-up. This is
       the Miri done-bar Tier C's own tasks (T-129/T-134/T-135) require, now actually achievable on
       this host. Does not block correctness work - the differential/property tests this would check
       layer is unavailable for this module until this is resolved.
 - [x] **T-131** **DONE 2026-07-26.** **Policy made 2026-07-26, user-requested**: 10 MiB is now a mandatory
-      message size for every binary-level (process) comparison table in `PERFORMANCE.md`, not an
-      ad hoc addition (`PERFORMANCE.md`'s "Methodology" section has the durable policy text) - every
+      message size for every binary-level (process) comparison table in `docs/PERFORMANCE.md`, not an
+      ad hoc addition (`docs/PERFORMANCE.md`'s "Methodology" section has the durable policy text) - every
       variable-length-message mode's table must carry a 10 MiB row/column going forward. Exempt,
       matching the pre-existing "10 MiB re-measurement pass" section's own list: `kalyna-block`
       (single block, no variable-length mode), `kalyna-kw` (`MAX_R = 20` blocks, D-55 - key
@@ -1153,14 +1153,14 @@ item they point to is later removed.
       per T-121/D-71, or from-source CMake) plus per-mode wrapper code matching each mode's own
       quirks already documented (GMAC's one-block workaround for its streaming-path bug, D-57;
       CCM's different wire convention from D-71) - not committed to this repo per
-      `PERFORMANCE.md`'s "Reproducing" section, rebuilt fresh each time it's needed. **The
+      `docs/PERFORMANCE.md`'s "Reproducing" section, rebuilt fresh each time it's needed. **The
       `uacrypt`-only half is now fully done, same day**: all 7 Kalyna modes (block/CCM/GCM/CMAC/
       GMAC/KW/XTS) re-measured post-T-128, both directions each, at their policy-mandated sizes -
-      see each mode's own `PERFORMANCE.md` section for the numbers. What's left for this task is
+      see each mode's own `docs/PERFORMANCE.md` section for the numbers. What's left for this task is
       exactly the UAPKI-side rebuild and re-comparison, nothing more - `advisor()`'s explicit
       direction was not to publish a half-rebuilt UAPKI comparison next to fresh `uacrypt`-only
       numbers, so this stays a separate task rather than being folded into the sweep already done.
-      **CMAC and XTS done, same day (`DECISIONS.md` D-78)**: downloaded the signed
+      **CMAC and XTS done, same day (`docs/DECISIONS.md` D-78)**: downloaded the signed
       `uapki-v2.0.12-win-amd64-signed.zip` release asset, `gendef`/`dlltool` to build an import lib
       against the prebuilt `uapkic.dll`, wrote a small C wrapper (`uapki_bench.exe`, scratch-only,
       not committed) calling `dstu7624_init_cmac`/`update_mac`/`final_mac` and
@@ -1168,10 +1168,10 @@ item they point to is later removed.
       `--variant`/`--key`/`--in`/`--out`/`--tag`/`--tweak`/`--iterations` CLI shape. Byte-for-byte
       cross-checked against the real `uacrypt` binary first (all 5 variants, both directions each -
       15 identity checks, all matched) before trusting any timing - this doubles as T-133's first
-      concrete instance, not a separate effort. **`PERFORMANCE.md`'s CMAC/XTS 10 MiB tables now
+      concrete instance, not a separate effort. **`docs/PERFORMANCE.md`'s CMAC/XTS 10 MiB tables now
       carry a real UAPKI column**: CMAC - UAPKI still wins by ~1.1-1.9x (originally attributed to
       T-129's byte-wise-gather-vs-`BT_xor*` difference; T-129 itself was later investigated and
-      closed 2026-07-27 without a code change, `DECISIONS.md` D-88 - a measured spike showed the
+      closed 2026-07-27 without a code change, `docs/DECISIONS.md` D-88 - a measured spike showed the
       gather is already near-optimal or a regression to "fix," so this residual is not the
       straightforward fixable gap it was originally framed as). XTS - this project now leads UAPKI by a much
       wider margin than any other mode in this file (3.2-15.1x), root-caused by reading
@@ -1179,7 +1179,7 @@ item they point to is later removed.
       (three heap-allocated `WordArray`s, full O(m²) modular multiply) to do the tweak's
       "multiply by 2" every block, where this project's `Gf2m*::double()` (T-126/D-76) is an O(m),
       allocation-free shift-and-reduce - not a bug on UAPKI's side, just an unspecialized shared
-      code path. **Remaining scope closed, same day (`DECISIONS.md` D-80)**: extended
+      code path. **Remaining scope closed, same day (`docs/DECISIONS.md` D-80)**: extended
       `uapki_bench.exe` to block (ECB), GCM, GMAC, KW, and CCM. Block/GCM/GMAC/KW byte-for-byte
       cross-checked against `uacrypt` (both directions, all 5 variants each - 40 identity checks,
       all matched); CCM confirmed still not byte-comparable (same D-71 wire-convention finding,
@@ -1196,7 +1196,7 @@ item they point to is later removed.
       asymmetry, not a real property of GMAC. Fixed (timer moved to after `init_gmac`); the real
       gap is **~1.1-2.9x**, not ~4-24x. CMAC was checked against the identical bug and found not
       materially affected (10 MiB bulk work dwarfs per-call setup cost the way one block cannot) -
-      see `PERFORMANCE.md`'s GMAC section for the full before/after. **Follow-up flagged, not
+      see `docs/PERFORMANCE.md`'s GMAC section for the full before/after. **Follow-up flagged, not
       chased here**: historical small-message CMAC (64 B) and CCM numbers, measured by an earlier
       uncommitted wrapper this session never inherited, could carry the same class of bug -
       tracked as T-138.
@@ -1233,18 +1233,18 @@ item they point to is later removed.
       `small-tables` - the profile split only swaps which table data is linked in, not any struct
       layout or working-set size, so a single RAM/stack table applies to both profiles (only the
       pre-existing flash/const-table row actually varies by profile).
-- [x] **T-133** **Done 2026-07-26, see `DECISIONS.md` D-83.** User-proposed additional verification layer, 2026-07-26: after a
+- [x] **T-133** **Done 2026-07-26, see `docs/DECISIONS.md` D-83.** User-proposed additional verification layer, 2026-07-26: after a
       performance run, byte-for-byte-compare the actual ciphertext/tag files this project's
       `uacrypt` produced against UAPKI's own output for the same key/nonce-or-tweak/input, in every
       mode where both sides are deterministic given identical inputs - a stronger check than "both
       independently decrypt correctly," since it confirms the two implementations compute the
       *exact same* intermediate bytes, not just externally-compatible ones. **Correct and already
-      practiced informally, just never as its own named/systematic step**: `TASKS.md` T-34 and
+      practiced informally, just never as its own named/systematic step**: `docs/TASKS.md` T-34 and
       T-121 both already record "cross-checked byte-identical against UAPKI before timing" as a
       one-off pre-benchmark sanity check, for Kalyna-block/CCM/GCM/CMAC/GMAC/KW/XTS/Kupyna/Strumok -
       this task is to make that an explicit, repeatable verification step (e.g. a small script or
       documented procedure diffing output files) rather than an incidental habit buried in benchmark
-      session notes, closer to `ORACLES.md`'s "dual-oracle verification is mandatory" standing for
+      session notes, closer to `docs/ORACLES.md`'s "dual-oracle verification is mandatory" standing for
       test vectors. **Scope, precisely** - only valid where both sides are deterministic for the
       same inputs: the caller-supplied-nonce/tweak `uacrypt` benchmarking commands
       (`kalyna-gcm`/`kalyna-ccm`/`kalyna-xts`/`kalyna-cmac`/`kalyna-kw`, which take an explicit
@@ -1260,17 +1260,17 @@ item they point to is later removed.
       are already flagged "UAPKI-self-consistent, not cross-tool-verified" for this exact reason).
       Depends on the same UAPKI comparison-CLI wrapper T-131 needs - natural to build alongside that
       task rather than as a fully separate rebuild. **First concrete instance done 2026-07-26, as
-      part of T-131's CMAC/XTS wrapper work (`DECISIONS.md` D-78)**: byte-for-byte diffed
+      part of T-131's CMAC/XTS wrapper work (`docs/DECISIONS.md` D-78)**: byte-for-byte diffed
       `uacrypt`'s and the new UAPKI wrapper's CMAC tags and XTS ciphertext (all 5 variants, both
       directions) before any timing was trusted - all 15 pairs matched exactly. **Extended
-      same day (`DECISIONS.md` D-80) to block/GCM/GMAC/KW** - 40 more identity checks (both
+      same day (`docs/DECISIONS.md` D-80) to block/GCM/GMAC/KW** - 40 more identity checks (both
       directions, all 5 variants each), all matched; CCM confirmed genuinely not comparable
       (D-71's wire-convention finding, root-caused directly this time) and kept self-consistent-only
       instead (5 own-round-trip checks). 100 total identity/consistency checks across all 9 Kalyna
       modes this project publishes, done in one session. Formalized as reusable shell sweeps
       (`uapki_compare.sh`/`uapki_compare2.sh`/`uapki_compare3.sh`, scratch-only), not committed.
-      **Done 2026-07-26, see `DECISIONS.md` D-83**: the "formalize into a committed, reusable
-      script" half of this task conflicted with `PERFORMANCE.md`'s own documented "C comparisons
+      **Done 2026-07-26, see `docs/DECISIONS.md` D-83**: the "formalize into a committed, reusable
+      script" half of this task conflicted with `docs/PERFORMANCE.md`'s own documented "C comparisons
       aren't committed" methodology policy - put to the project owner directly rather than decided
       unilaterally (`AskUserQuestion`). **Answer: commit it.** `tests/oracle-harness/
       uapki-cmac-bench/cmac_bench.c` is now committed (CMAC only, the mode this session's T-138
@@ -1279,9 +1279,9 @@ item they point to is later removed.
       finding inline so it isn't re-discovered later). Rebuilt from the committed copy and
       re-verified byte-identical against `uacrypt` before calling this done. **Scope deliberately
       narrow**: only CMAC, not all 9 modes - the other 8 stay scratch-only until one of them starts
-      recurring the same way. `PERFORMANCE.md`'s methodology text updated to describe this as a
+      recurring the same way. `docs/PERFORMANCE.md`'s methodology text updated to describe this as a
       named exception, not a blanket reversal.
-- [x] **T-134** **Done 2026-07-27, see `DECISIONS.md` D-85.** `hazmat::kupyna.rs`'s `sub_shift_mix` (line 65) has the exact same
+- [x] **T-134** **Done 2026-07-27, see `docs/DECISIONS.md` D-85.** `hazmat::kupyna.rs`'s `sub_shift_mix` (line 65) has the exact same
       shape T-128 just fixed in `hazmat::kalyna.rs`'s `encipher_round` - found 2026-07-26, checking
       whether Strumok/Kupyna share the same nuance T-128 fixed for Kalyna (they don't both: Strumok
       is unaffected, see below). `let columns = state.len()` reads a runtime `usize` even though
@@ -1315,7 +1315,7 @@ item they point to is later removed.
       differs (one-time setup, not per-step) - so `next_step`/`strm` never had a `MAX_NB`-style
       oversized buffer or a runtime block-size parameter to fix in the first place. **Strumok does
       have a different, separately-found performance nuance - see T-135 below.**
-      **Resolution (2026-07-27, `DECISIONS.md` D-85)**: matched the predicted analogy exactly -
+      **Resolution (2026-07-27, `docs/DECISIONS.md` D-85)**: matched the predicted analogy exactly -
       `advisor()`'s narrower design call was to keep `KupynaCore` itself runtime-parameterized
       (genericizing it would ripple into `kupyna_kmac.rs`/`kupyna_kdf.rs` for zero throughput gain,
       since its `buffer`/`total_len` fields are touched once per `update`, not once per round) and
@@ -1328,11 +1328,11 @@ item they point to is later removed.
       `kupyna`/`kupyna-kmac` vectors, clippy/fmt, full feature matrix incl. `small-tables`, scoped
       Miri 8/8 0 UB). `KupynaCore` const-genericizing itself is flagged as a separate follow-up
       (a memory win for `resource-profiles.md`'s MCU tiers), not pursued here.
-      **Binary-level UAPKI re-measurement added same day, on request** - `PERFORMANCE.md`'s Kupyna
+      **Binary-level UAPKI re-measurement added same day, on request** - `docs/PERFORMANCE.md`'s Kupyna
       section has the full table: `uacrypt`'s real throughput rose +41-47%/+21-29%, cross-validating
       the `criterion` numbers above; UAPKI's former ~1.1-1.5x lead is closed for Kupyna-256
       (~1.0-1.1x now) and narrowed but not closed for Kupyna-512 (~1.19-1.20x, was ~1.45x).
-- [x] **T-135** **Done 2026-07-27, see `DECISIONS.md` D-86.** Batched/fixed-index rewrite landed:
+- [x] **T-135** **Done 2026-07-27, see `docs/DECISIONS.md` D-86.** Batched/fixed-index rewrite landed:
       a one-time array rotation normalizes `head` to `0` (rejected the T-128/T-134 const-generic-
       dispatch pattern specifically for code size), a new `next_block` function batch-generates a
       full 128-byte block with literal indices derived from this project's own `strm`+`next_step`
@@ -1378,7 +1378,7 @@ item they point to is later removed.
       constant-factor gap - this is the leading candidate for D-26's still-open "remaining ~3.2x
       gap... a smaller, unchased residual" note, not confirmed by isolated measurement yet (same
       "read the source, then verify with a targeted measurement before treating it as settled"
-      standard `DECISIONS.md` D-76 already established for Kalyna-GCM's field-multiply finding).
+      standard `docs/DECISIONS.md` D-76 already established for Kalyna-GCM's field-multiply finding).
       **Fix, by analogy to T-128's own process (not yet consulted with `advisor()` - do that
       before writing any code)**: a batched, fixed-index `next_stream_full_crypt`-equivalent that
       generates a whole 128-byte (16-word) block per call using literal (not `head`-indexed)
@@ -1397,7 +1397,7 @@ item they point to is later removed.
       before/after baseline, and note `hazmat::strumok.rs`'s existing `#[cfg(feature =
       "small-tables")]` branch on `t_function` - whatever batching shape is chosen must keep working
       under both resource profiles, not silently assume the default `fused` one.
-- [x] **T-139** **Investigated and closed 2026-07-27, no code change - see `DECISIONS.md` D-87.**
+- [x] **T-139** **Investigated and closed 2026-07-27, no code change - see `docs/DECISIONS.md` D-87.**
       User-asked follow-up to T-135/D-86: why outspace is still ~1.2x ahead after T-135. The
       hypothesis (a double memory round-trip through local `input`/`out: [u64; 16]` stack arrays in
       `apply_keystream`'s bulk loop, plus `next_block` lacking an `#[inline]` hint unlike the
@@ -1421,7 +1421,7 @@ item they point to is later removed.
       verified). The remaining ~1.2x gap to outspace stays unexplained at the source-reading level -
       a future pass would need side-by-side GCC-vs-LLVM codegen comparison (register allocation/
       instruction scheduling differences), not another Rust-side hypothesis, if ever chased further.
-- [x] **T-136** **Closed 2026-07-27, see `DECISIONS.md` D-95.** User-requested 2026-07-26, after T-131/D-78's fresh 10 MiB tables kept
+- [x] **T-136** **Closed 2026-07-27, see `docs/DECISIONS.md` D-95.** User-requested 2026-07-26, after T-131/D-78's fresh 10 MiB tables kept
       surfacing the same unexplained shape: Kalyna-block/XTS/KW's decrypt (or unwrap) direction is
       *not* symmetric with encrypt (or wrap) the way GCM/CMAC/CCM's is - on some variants
       (256-256/256-512, consistently, across all three modes) the reverse direction runs *faster*
@@ -1448,7 +1448,7 @@ item they point to is later removed.
       Not a correctness concern - encrypt/decrypt round-trip correctly on every existing test vector
       and property test regardless of which direction happens to run faster; this is purely a
       performance-curiosity task, not gating any release-readiness item.
-      **First measurement done 2026-07-26, see `DECISIONS.md` D-84** (perf/hygiene roadmap Tier B
+      **First measurement done 2026-07-26, see `docs/DECISIONS.md` D-84** (perf/hygiene roadmap Tier B
       item 5): the isolated `criterion` differential benchmark this task asked for already existed
       - `benches/kalyna.rs`'s `_encrypt_block_only`/`_decrypt_block_only` pairs (T-128, cached
       schedule, no mode-of-operation overhead) are exactly that measurement, no new code needed.
@@ -1458,7 +1458,7 @@ item they point to is later removed.
       directly (confirms it's in `encipher_round_n`/`fused_inv_round_n` themselves or their `nb=4`
       codegen) - but the actual *why* (table cache-line behavior, compiler codegen, branch
       predictor) remained open at that point, per this task's own remaining candidates.
-      **Deeper root-cause pass, 2026-07-27, see `DECISIONS.md` D-89** (same session as T-129/D-88,
+      **Deeper root-cause pass, 2026-07-27, see `docs/DECISIONS.md` D-89** (same session as T-129/D-88,
       same `--emit=asm` method): read `encrypt_with_schedule::<4>`'s and `decrypt_with_schedule::
       <4>`'s inlined round-loop bodies directly (both fully inline at `NB=4` - no standalone
       symbols exist for either round function at this size) and isolated just the repeated loop
@@ -1486,7 +1486,7 @@ item they point to is later removed.
       task's own "performance-curiosity, not gating any release-readiness item" framing; a future
       session should still get an `advisor()` opinion before treating "narrow the arithmetic
       further" as an actionable next step, not just extrapolate from this asm reading alone.
-      **Closing pass, 2026-07-27, see `DECISIONS.md` D-95** (`advisor()` consulted first, per the
+      **Closing pass, 2026-07-27, see `docs/DECISIONS.md` D-95** (`advisor()` consulted first, per the
       note above): extended the same spill-count method to `nb=2`/`nb=8` (validated against D-89's
       own `nb=4` numbers first) - the winning direction has fewer stack references at all three
       points now, not one, plus a new `nb=8`-specific finding that LLVM simply doesn't inline
@@ -1507,10 +1507,10 @@ item they point to is later removed.
       unexplained but is explicitly out of scope for what this curiosity task asked. No code
       changed - `hazmat::kalyna.rs` untouched, `git diff` confirms.
 - [x] **T-137** **Done 2026-07-27 - PR `specinfo-ua/UAPKI#30`, CI fully green (SonarCloud Code
-      Analysis + SonarCloud checks both passing), see `DECISIONS.md` D-90/D-91/D-92.**
+      Analysis + SonarCloud checks both passing), see `docs/DECISIONS.md` D-90/D-91/D-92.**
       Hypothetical/goodwill task, proposed by the user 2026-07-26 directly off T-131/D-78's XTS
       finding ("XTS: цей проєкт випереджає UAPKI у 3.2-15.1x") - since UAPKI is a real dependency of
-      this project's own verification story (an oracle, `ORACLES.md`), fixing root causes found
+      this project's own verification story (an oracle, `docs/ORACLES.md`), fixing root causes found
       here and sending them back upstream as a small, welcome contribution ("as a thank-you to
       them," the user's framing) rather than just quietly benefiting from having found them.
       **Fix 1 - Kalyna XTS's tweak-doubling** (the original finding): `oracles/uapki/library/
@@ -1554,7 +1554,7 @@ item they point to is later removed.
       - `dstu7624_xts_self_test`'s own official vectors passing is itself the confirmation that
         GCM/GMAC's `gf2m_mul` call sites are unaffected (that self-test suite covers GCM/GMAC too,
         in the same `dstu7624_self_test()` call).
-      **PR opened 2026-07-27, on explicit user request ("зроби пул реквест"), see `DECISIONS.md`
+      **PR opened 2026-07-27, on explicit user request ("зроби пул реквест"), see `docs/DECISIONS.md`
       D-91 for the full mechanics**: no `CONTRIBUTING.md`/PR template exists in the upstream repo
       (checked via `gh api`, not assumed) - forked `specinfo-ua/UAPKI` to `user137/UAPKI`, cloned it
       fresh rather than reusing the stale local `oracles/uapki/` vendor (which turned out to be a
@@ -1565,11 +1565,11 @@ item they point to is later removed.
       pushed branch `fix/xts-strumok-fast-path`, opened
       **https://github.com/specinfo-ua/UAPKI/pull/30**. `oracles/uapki/` in this repo is unaffected
       (still gitignored, untouched) - the PR's source lives entirely in the separate fork clone.
-- [x] **T-138** **Done 2026-07-26, see `DECISIONS.md` D-82.** Follow-up flagged by D-80's GMAC finding, 2026-07-26: the wrapper bug
+- [x] **T-138** **Done 2026-07-26, see `docs/DECISIONS.md` D-82.** Follow-up flagged by D-80's GMAC finding, 2026-07-26: the wrapper bug
       found there (timing a per-call `alloc`/`init_*` setup cost inside the same window as the
       actual operation, while `uacrypt`'s own command excludes it) was specific to this session's
       freshly-written `run_gmac`/`run_cmac` functions, both now fixed and re-verified. But
-      **historical small-message CMAC (64 B) and CCM numbers already published in `PERFORMANCE.md`
+      **historical small-message CMAC (64 B) and CCM numbers already published in `docs/PERFORMANCE.md`
       were measured by an earlier, uncommitted UAPKI wrapper this session never inherited or
       inspected** - there is no way to confirm from here whether that wrapper placed its timer
       correctly (matching `uacrypt`'s cached-schedule convention) or made the same mistake D-80
@@ -1580,9 +1580,9 @@ item they point to is later removed.
       (`kalyna-cmac compute/verify` already supports arbitrary message sizes - just re-run at 64 B
       instead of only 10 MiB), byte-identity already established for this wrapper, so only the
       timing needs re-taking. Compare against the existing "~6-8x, small-message crossover" claim in
-      `PERFORMANCE.md`'s CMAC section and correct it if the real number differs materially, the same
+      `docs/PERFORMANCE.md`'s CMAC section and correct it if the real number differs materially, the same
       way D-80 corrected GMAC's.
-      **Done, `DECISIONS.md` D-82**: rebuilt the wrapper fresh (prior one was scratch-only, gone),
+      **Done, `docs/DECISIONS.md` D-82**: rebuilt the wrapper fresh (prior one was scratch-only, gone),
       timer placed after `alloc`/`init_cmac` per D-80's fix, byte-identity re-verified at
       `--iterations 1` (all 5 variants match `uacrypt` exactly). **Found and confirmed via a
       standalone probe a real UAPKI API footgun in the process**: reusing a `ctx` across
@@ -1592,25 +1592,25 @@ item they point to is later removed.
       block cipher does constant work regardless of input value, D-19) - only correctness needed the
       fresh-`ctx` `--iterations 1` check. **Real result: the small-message lead is ~1.0-1.45x, not
       the previously-published ~6-8x** - same corrective shape as D-80's GMAC finding, more
-      pronounced here. `PERFORMANCE.md`'s CMAC section updated with the corrected table.
+      pronounced here. `docs/PERFORMANCE.md`'s CMAC section updated with the corrected table.
 - [x] **T-19** **Naming subtask, all three decisions made 2026-07-23** (T-20/T-21/T-22 below) -
       unblocks T-17/T-18, which are still separately open (a decided name isn't a crates.io
       publish or a built release binary):
-  - [x] **T-20** Public name for the two resource profiles from `DECISIONS.md` D-35, decided
-        2026-07-23 (`DECISIONS.md` D-38): the working name **is** the public name - Cargo feature
+  - [x] **T-20** Public name for the two resource profiles from `docs/DECISIONS.md` D-35, decided
+        2026-07-23 (`docs/DECISIONS.md` D-38): the working name **is** the public name - Cargo feature
         `small-tables`, default/fused path stays nameless (no feature flag needed for it, it's
         just the absence of `small-tables`). Deliberately not given a branded name the way
         `uacrypt` (T-21/T-22) was - a `Cargo.toml` feature flag is a technical identifier, not a
         product name. Not checked further than the naming decision itself - the actual `cfg`-gated
-        implementation is `TASKS.md` Phase 4's "Two-resource-profile split" item, still open.
-  - [x] **T-21** `dstutool`'s real name is **`uacrypt`** (`DECISIONS.md` D-36, decided and
+        implementation is `docs/TASKS.md` Phase 4's "Two-resource-profile split" item, still open.
+  - [x] **T-21** `dstutool`'s real name is **`uacrypt`** (`docs/DECISIONS.md` D-36, decided and
         executed 2026-07-23): `crates/dstutool` renamed to `crates/uacrypt` (`git mv`), package
         and `[lib]` name in `Cargo.toml` updated, root `Cargo.toml` workspace member, `deny.toml`
-        comment, `main.rs`/`lib.rs` internal references, `README.md`, `SECURITY.md`,
-        `docs/dstu-crypto-project.md`, `CLAUDE.md`, and `PERFORMANCE.md`'s canonical binary-level
+        comment, `main.rs`/`lib.rs` internal references, `README.md`, `docs/SECURITY.md`,
+        `docs/dstu-crypto-project.md`, `CLAUDE.md`, and `docs/PERFORMANCE.md`'s canonical binary-level
         section all updated. `cargo build --workspace`/`test -p uacrypt` (15/15)/`clippy -D
-        warnings`/`fmt --check` all pass post-rename. Historical entries in `DECISIONS.md`/
-        `TASKS.md`/`PERFORMANCE.md`'s superseded "Results" section still say `dstutool` on
+        warnings`/`fmt --check` all pass post-rename. Historical entries in `docs/DECISIONS.md`/
+        `docs/TASKS.md`/`docs/PERFORMANCE.md`'s superseded "Results" section still say `dstutool` on
         purpose — that was the accurate name at the time, not left stale.
   - [x] **T-22** The project's own name for GitHub is **`uacrypt`** too (decided 2026-07-23, same
         session as T-21 - not a separate name). `README.md`'s title updated from
@@ -1618,7 +1618,7 @@ item they point to is later removed.
         rename a GitHub repo against - this records the chosen name for whenever one is created,
         it doesn't perform any GitHub-side action.
 - [x] **T-86** First real version number, `0.0.0` -> `0.1.0` for both `dstu-core` and `uacrypt`
-      (`DECISIONS.md` D-43, 2026-07-23) - `0.0.0` was the unmodified Cargo scaffold default, not a
+      (`docs/DECISIONS.md` D-43, 2026-07-23) - `0.0.0` was the unmodified Cargo scaffold default, not a
       real semver value, and not publishable to crates.io as-is. `0.1.0` chosen over a
       `-alpha.N` pre-release tag: the whole `0.x` range already signals "unstable, may break" under
       semver, which matches this project's actual state honestly; a pre-release suffix is deferred
@@ -1626,7 +1626,7 @@ item they point to is later removed.
       together, including `uacrypt`'s `dstu-core` path-dependency version (the same wildcard-dep
       spot T-75 fixed once already) - missing it would silently reintroduce that problem.
       `Cargo.lock` regenerated via a real build, not hand-edited. README.md got a pre-release/WIP
-      banner at the top stating the version and the same safety caveats `SECURITY.md` already
+      banner at the top stating the version and the same safety caveats `docs/SECURITY.md` already
       carries (not audited, no side-channel-resistance claim, Strumok/Kalyna-CCM still provisional,
       no file-level `encrypt`/`decrypt` yet) - a WIP notice on a crypto library is a safety
       statement, not cosmetics, so it states what's missing rather than reading as marketing.
@@ -1638,7 +1638,7 @@ item they point to is later removed.
       `docs/release-readiness.md` (new file, added to `CLAUDE.md`'s documentation map) rather than
       folded into `dstu-crypto-project.md`, so it's independently updatable as the gap closes.
       **Headline finding, not to be buried under an optimistic checklist**: this goal is currently
-      blocked, not just incomplete - `DECISIONS.md` D-05 (Kalyna's mode-of-operation question) is
+      blocked, not just incomplete - `docs/DECISIONS.md` D-05 (Kalyna's mode-of-operation question) is
       still formally open pending the priced primary DSTU 7624:2014 text, Kalyna-CCM is provisional
       (D-41), Strumok is UAPKI-attributed not primary-confirmed (D-15), and there is no
       `crypto_secretbox`-equivalent AEAD yet (T-36/T-37, both blocked on D-05). A release that
@@ -1649,7 +1649,7 @@ item they point to is later removed.
       D-47's rule, and fixed two claims that had gone stale since T-48 landed (the doc incorrectly
       still said "no `crypto_sign` wrapper exists yet" and that `docs/dstu-crypto-project.md`'s own
       mapping table was out of date on that point - it wasn't).
-      **Refreshed again, same day, after T-37 landed (`DECISIONS.md` D-51)**: a `crypto_secretbox`
+      **Refreshed again, same day, after T-37 landed (`docs/DECISIONS.md` D-51)**: a `crypto_secretbox`
       equivalent now exists, so "there is no `crypto_secretbox`-equivalent AEAD yet" above is stale
       - but the headline finding itself is otherwise unchanged, not weakened: what got built is
       still provisional (inherits `hazmat::kalyna_ccm`'s not-primary-text-confirmed status, D-41)
@@ -1699,14 +1699,14 @@ from Phase 1 above: none of this blocks calling the primitives implemented, but 
 be skipped before calling them *production-ready*. Two things are explicitly **not** goals here and
 never will be, so as not to imply otherwise: cryptanalytic strength of the algorithms themselves
 (that's the DSTU designers' responsibility, not this library's), and hardware side-channel
-resistance (SPA/DPA — explicitly out of scope per `SECURITY.md`/`CLAUDE.md` "MVP scope").
+resistance (SPA/DPA — explicitly out of scope per `docs/SECURITY.md`/`CLAUDE.md` "MVP scope").
 
 - [x] **T-24** **Chunk/split-invariance test for `Strumok::apply_keystream`.** Added
       `strumok_{256,512}_chunk_invariance` in `crates/dstu-core/tests/strumok.rs` — splits a fixed
       total length into arbitrary, non-8-aligned chunks (including a zero-length one) and asserts
       byte-for-byte identity against one call on the concatenated buffer. **Passed on the first
       attempt** — no buffering bug found, but the path was genuinely untested before this.
-- [x] **T-25** **Round-trip property tests.** `proptest` 1.11 added as a dev-dependency (`DECISIONS.md`
+- [x] **T-25** **Round-trip property tests.** `proptest` 1.11 added as a dev-dependency (`docs/DECISIONS.md`
       D-21) — doesn't touch the `no_std` build. Kalyna: one `decrypt(encrypt(key, block)) == block`
       test per variant in `tests/kalyna.rs`. Strumok: `apply_keystream` applied twice with the same
       key/IV returns the original data, in `tests/strumok.rs`. All 16 property tests (256 generated
@@ -1716,7 +1716,7 @@ resistance (SPA/DPA — explicitly out of scope per `SECURITY.md`/`CLAUDE.md` "M
       Strumok first (the highest-value target — zero official vectors exist anywhere for it,
       D-15): `cargo run --example strumok_diff_cases -p dstu-core` piped into
       `tests/oracle-harness/strumok-differential/diff_against_outspace.c` (against
-      `oracles/strumok-dstu8845/`) — **4000/4000 random cases matched**. `DECISIONS.md` D-22.
+      `oracles/strumok-dstu8845/`) — **4000/4000 random cases matched**. `docs/DECISIONS.md` D-22.
       Extended to Kalyna and Kupyna for parity (D-24), so the scrutiny is visibly even across all
       three rather than looking Strumok-only: `kalyna_diff_cases.rs` +
       `kalyna-differential/diff_against_reference.c` against `oracles/kalyna-reference/` —
@@ -1729,7 +1729,7 @@ resistance (SPA/DPA — explicitly out of scope per `SECURITY.md`/`CLAUDE.md` "M
 - [x] **T-27** **Actually run `cargo fuzz`** for all three primitives — attempted 2026-07-22, blocked by a
       confirmed GNU/MinGW-toolchain incompatibility (libFuzzer-on-Windows is MSVC-only upstream),
       not a skipped step; full detail in the Phase 1 line above. **Done later the same day, see
-      `DECISIONS.md` D-32**: this machine turned out to already have Visual Studio 2022 (MSVC C++
+      `docs/DECISIONS.md` D-32**: this machine turned out to already have Visual Studio 2022 (MSVC C++
       toolset) installed — not the upstream limitation being wrong, just no longer applicable here.
       Installed the `nightly-x86_64-pc-windows-msvc` rustup toolchain, ran each target through a
       `vcvars64.bat`-sourced shell with `--target x86_64-pc-windows-msvc` passed explicitly (both
@@ -1743,7 +1743,7 @@ resistance (SPA/DPA — explicitly out of scope per `SECURITY.md`/`CLAUDE.md` "M
       machine that happens to have Visual Studio, which isn't guaranteed for every contributor.
 - [x] **T-28** **`Zeroize`/`ZeroizeOnDrop` on live key-material.** `zeroize` 1.9 added
       (`default-features = false, features = ["derive"]`, `no_std`-compatible — first real
-      dependency in `dstu-core`, `DECISIONS.md` D-20). Strumok's `Core` (LFSR/FSM state) derives
+      dependency in `dstu-core`, `docs/DECISIONS.md` D-20). Strumok's `Core` (LFSR/FSM state) derives
       `ZeroizeOnDrop`; Kalyna's `encrypt_generic`/`decrypt_generic` call `round_keys.zeroize()`
       after last use. Kupyna intentionally untouched — its only API is unkeyed `digest()`, no key
       material exists yet (relevant again once KMAC lands). **Not exhaustive**: Kalyna's
@@ -1753,38 +1753,38 @@ resistance (SPA/DPA — explicitly out of scope per `SECURITY.md`/`CLAUDE.md` "M
 - [x] **T-29** **Constant-time audit + an explicit decision.** Confirmed the secret-dependent indexing
       exists in all three primitives (`SBOXES`/`SBOXES_DEC` in `kalyna.rs`/`kupyna.rs`/
       `strumok.rs`, plus `MUL_ALPHA`/`MUL_ALPHA_INV` in `strumok.rs`). Documented and scoped as an
-      accepted software-timing exception in `DECISIONS.md` D-19 (same family as the already-out-
+      accepted software-timing exception in `docs/DECISIONS.md` D-19 (same family as the already-out-
       of-scope SPA/DPA carve-out, since every reference C implementation makes the identical
-      trade-off) — `SECURITY.md`'s hard-constraint wording updated to say this precisely instead of
+      trade-off) — `docs/SECURITY.md`'s hard-constraint wording updated to say this precisely instead of
       standing as an absolute "never" next to code that already violated it. Branching and
       comparisons on secret data remain prohibited without exception, unchanged.
 - [x] **T-30** **`criterion` benchmarks.** Added as a dev-dependency, three bench targets
       (`crates/dstu-core/benches/{kalyna,kupyna,strumok}.rs`, `cargo bench -p dstu-core`) covering
       every variant of all three primitives. **Extended 2026-07-22**: numbers, machine, a named
       regression baseline (`--save-baseline initial-2026-07-22`), and a same-machine comparison
-      against Oliynykov's reference C, UAPKI, and outspace all now live in `PERFORMANCE.md` (new
+      against Oliynykov's reference C, UAPKI, and outspace all now live in `docs/PERFORMANCE.md` (new
       canonical file, see `CLAUDE.md`'s documentation map) — this project's Rust beats the
       reference C (correctness/clarity-optimized) but is meaningfully slower than UAPKI/outspace
       (production-optimized), a real and now-quantified gap, not just a theoretical one. **Did not**
       implement a second Strumok state-transition form just to quantify the literal-shift-vs-ring-
       buffer tradeoff mentioned in D-18 — that would still mean maintaining a second implementation
       purely to benchmark it; outspace's own ~12-15x-faster numbers (likely using a rotating
-      buffer, per `PERFORMANCE.md`) now give an *external* read on that tradeoff's rough scale
+      buffer, per `docs/PERFORMANCE.md`) now give an *external* read on that tradeoff's rough scale
       without needing to build one ourselves.
-- [x] **T-31** **Strumok: close the gap to UAPKI/outspace documented in `PERFORMANCE.md`**, root-caused by
+- [x] **T-31** **Strumok: close the gap to UAPKI/outspace documented in `docs/PERFORMANCE.md`**, root-caused by
       reading `oracles/strumok-dstu8845/strumok.c` directly (2026-07-22) rather than guessed at, then
-      fixed the same day (`DECISIONS.md` D-26). Two distinct, additive causes, both closed: (1)
+      fixed the same day (`docs/DECISIONS.md` D-26). Two distinct, additive causes, both closed: (1)
       outspace's `next_stream()` never physically shifts its 16-word state array — replaced this
       project's `s.copy_within(1..16, 0)`-per-step with a `head`-indexed ring buffer, no data
       movement. (2) outspace's `T(w)` is 8 precomputed combined tables
       (`T0[byte0]^...^T7[byte7]`) — transcribed those directly (same byte-for-byte cross-check
       already covering them), replacing the runtime 8-S-box-lookups-then-MDS-matrix-multiply.
       **Result: ~77-85% time reduction, now faster than UAPKI's Strumok, ~3.2x slower than outspace
-      (was ~4-5x/~13-15x before)** — full before/after table in `PERFORMANCE.md`. Verified: all 6
+      (was ~4-5x/~13-15x before)** — full before/after table in `docs/PERFORMANCE.md`. Verified: all 6
       existing tests unchanged, the 4000-case outspace differential harness re-run fresh
       (4000/4000), `clippy`/`fmt`/`no_std` all pass. New `criterion` baseline saved
       (`strumok-optimized-2026-07-22`).
-- [x] **T-32** **Kalyna/Kupyna: precomputed MDS tables** (`DECISIONS.md` D-27, same day). Narrower than the
+- [x] **T-32** **Kalyna/Kupyna: precomputed MDS tables** (`docs/DECISIONS.md` D-27, same day). Narrower than the
       full UAPKI `p_boxrowcol` fusion (S-box + row/column permutation + MDS all combined) —
       `hazmat::tables::apply_matrix` alone was switched to precomputed `MDS_TABLE`/`MDS_INV_TABLE`
       (8 lookups + 7 XORs instead of up to 64 `gf_mul` calls per column), shared by both algorithms
@@ -1792,14 +1792,14 @@ resistance (SPA/DPA — explicitly out of scope per `SECURITY.md`/`CLAUDE.md` "M
       offset depends on block size, so fully fusing S-box+shift+MDS the way UAPKI does would need
       per-variant tables, a bigger change deliberately not attempted this pass. **Result: ~48-55%
       time reduction for every Kalyna variant/direction, ~60-65% for Kupyna** — roughly halves the
-      gap to UAPKI without closing it (full before/after in `PERFORMANCE.md`). Verified: a new
+      gap to UAPKI without closing it (full before/after in `docs/PERFORMANCE.md`). Verified: a new
       *exhaustive* unit test (`hazmat::tables::tests`, all 8x256 entries per table) plus every
       existing Kalyna/Kupyna vector/proptest/differential-harness check, all unchanged.
       `clippy`/`fmt`/`no_std` pass. New baseline: `kalyna-kupyna-optimized-2026-07-22`.
       **Not done**: the full S-box+shift+MDS fusion (per-`nb` tables) — sketched, not scheduled,
       would close the remaining gap but is a materially bigger change.
 - [x] **T-33** **Kalyna/Kupyna: close the remaining gap to UAPKI** (planned 2026-07-22, stages 0-1 done the
-      same day, see `DECISIONS.md` D-28 — stages 2-3 below still open).
+      same day, see `docs/DECISIONS.md` D-28 — stages 2-3 below still open).
       0. **Fixed the benchmark's methodology gap** — confirmed (temporary internal diagnostic,
          not committed) that `key_expand` was ~59-63% of Kalyna-128-128/512-512's per-call time,
          i.e. `benches/kalyna.rs` was indeed timing schedule+round together, matching the
@@ -1827,14 +1827,14 @@ resistance (SPA/DPA — explicitly out of scope per `SECURITY.md`/`CLAUDE.md` "M
          -55% to -68% further (e.g. 128-128: 2354 ns -> 1041 ns, ~4.7x UAPKI, was ~10.6x); decrypt
          also -36% to -40% purely from the faster key schedule. **Kupyna -85% to -87%, now at or
          above UAPKI's own speed** (256: 1.03-1.45x faster; 512: roughly at parity) — full
-         before/after in `PERFORMANCE.md`. New baseline: `kalyna-kupyna-fused-2026-07-22`.
+         before/after in `docs/PERFORMANCE.md`. New baseline: `kalyna-kupyna-fused-2026-07-22`.
       2. **Not done yet, and now lower priority than stage 4 below** — see stage 3's result: with
          the schedule cached, Kalyna encrypt is already faster than UAPKI, and Kupyna is at/above
          parity, so the remaining `[u8; 8]` -> `u64` conversion-churn cleanup has much smaller
          expected payoff than originally estimated (most of it was already implicitly removed by
          D-28's single-pass gather, which accumulates as `u64` internally already). Revisit only if
          stage 4 (decrypt fusion) doesn't close enough of the remaining gap on its own.
-      3. [x] **`ExpandedKey`-equivalent for Kalyna, done, see `DECISIONS.md` D-29** — one
+      3. [x] **`ExpandedKey`-equivalent for Kalyna, done, see `docs/DECISIONS.md` D-29** — one
          `${Variant}ExpandedKey` struct per variant (`Kalyna128_128ExpandedKey`, etc., via the same
          macro), `::new(key)` runs `key_expand` once (`Zeroize`/`ZeroizeOnDrop`), `.encrypt_block`/
          `.decrypt_block` reuse the cached schedule. Raw `encrypt`/`decrypt` untouched (still the
@@ -1850,7 +1850,7 @@ resistance (SPA/DPA — explicitly out of scope per `SECURITY.md`/`CLAUDE.md` "M
          512-512: 568 ns encrypt vs 3934 ns decrypt) — decrypt fusion (stage 4) is now clearly the
          single largest remaining gap, not the key schedule. New baseline:
          `kalyna-expandedkey-2026-07-22`.
-      4. [x] **Decrypt-direction fusion, done, see `DECISIONS.md` D-30**. `decipher_round`'s
+      4. [x] **Decrypt-direction fusion, done, see `docs/DECISIONS.md` D-30**. `decipher_round`'s
          mix-then-permute-then-substitute order isn't directly fusable (opposite of encrypt's
          substitute-first order) - fixed by regrouping the *whole* decrypt sequence (not just one
          round): `IS`/`IP` commute (same row-invariance as D-28) and the GF(2^8)-linear `IM`
@@ -1878,14 +1878,14 @@ resistance (SPA/DPA — explicitly out of scope per `SECURITY.md`/`CLAUDE.md` "M
       **Stage 2 (`Column` -> `u64` representation) remains not done** - given the results above
       (Kalyna at/above UAPKI parity for the cached-schedule API, Kupyna at/above parity), expected
       further payoff is small; revisit only if a future profiling pass shows it's still worth it.
-- [x] **T-34** **Binary-level (process) comparison, done, see `DECISIONS.md` D-31**. The in-process numbers
+- [x] **T-34** **Binary-level (process) comparison, done, see `docs/DECISIONS.md` D-31**. The in-process numbers
       above don't reflect running the tool as an actual external process - added `dstutool`'s first
       real command, `kalyna-block encrypt`/`decrypt` (single block, file in/file out, deliberately
       not named `encrypt`/`decrypt` at the top level - that's reserved for the future file-plus-
       mode CLI, blocked below), plus scratchpad (uncommitted) comparison CLIs for Oliynykov's
       reference C and UAPKI with the same file interface, all three cross-checked byte-identical
       before timing. **Result**: `dstutool`'s per-op numbers (schedule cached) match the in-process
-      `criterion` numbers within a few percent - full tables in `PERFORMANCE.md` "Binary-level
+      `criterion` numbers within a few percent - full tables in `docs/PERFORMANCE.md` "Binary-level
       (process) comparison". Process-spawn overhead (~60-63 ms on this machine) is roughly the
       same across all three binaries, confirming it reflects the OS, not the crypto.
       **Extended same day to Kupyna/Strumok** - neither has a mode-of-operation blocker (both
@@ -1897,7 +1897,7 @@ resistance (SPA/DPA — explicitly out of scope per `SECURITY.md`/`CLAUDE.md` "M
       Strumok's are somewhat lower (516-546 MB/s here vs 639 MB/s in-process for Strumok-256) but
       same order of magnitude and same relative ranking - not investigated further, most likely
       machine load during the run rather than a wrapper-specific issue (`kalyna-block`'s wrapper,
-      same shape, matched closely). Full tables in `PERFORMANCE.md`.
+      same shape, matched closely). Full tables in `docs/PERFORMANCE.md`.
 - [ ] **T-35** **Build and test on a real ARM Linux machine (Raspberry Pi).** Distinct from Phase 4's
       STM32/ESP32 hardware validation below: a Raspberry Pi running Linux is a full `std` target
       (`aarch64-unknown-linux-gnu` here — 64-bit Raspberry Pi OS, Debian 12/bookworm, confirmed via
@@ -1911,7 +1911,7 @@ resistance (SPA/DPA — explicitly out of scope per `SECURITY.md`/`CLAUDE.md` "M
       architecture-specific assumption an x86-64-only dev machine wouldn't catch.
       **First run, 2026-07-22, all green**: repo synced over SSH, `rustup` installed fresh
       (`stable-aarch64-unknown-linux-gnu` 1.97.1, matching this project's pinned `stable` channel),
-      then the exact same commands as the x86-64 dev machine — no new script, per `DECISIONS.md`
+      then the exact same commands as the x86-64 dev machine — no new script, per `docs/DECISIONS.md`
       D-12. `cargo xtask build` (both `--all-features` and `--no-default-features`), `cargo xtask
       test` (11/11 test binaries passed, 0 failures — the DSTU 4145 signature roundtrip test took
       ~125s here vs a few seconds on the x86-64 dev machine, expected given the Pi's much lower
@@ -1919,7 +1919,7 @@ resistance (SPA/DPA — explicitly out of scope per `SECURITY.md`/`CLAUDE.md` "M
       clean), and all four `dstu-core` feature-flag combinations (bare no_std, no_std+alloc,
       std+alloc, all-features) built individually too. First real confirmation on non-x86 hardware
       for this project. **Same day, extended to performance**: `cargo bench -p dstu-core --bench
-      kalyna --bench kupyna --bench strumok` also run on the Pi and added to `PERFORMANCE.md`
+      kalyna --bench kupyna --bench strumok` also run on the Pi and added to `docs/PERFORMANCE.md`
       alongside the existing Ryzen dev-machine numbers — this project's own code, no UAPKI/
       Oliynykov/outspace comparison there (those aren't built on the Pi). Result: the Pi is a
       consistent, unremarkable ~1.6-2.2x slower than the Ryzen dev machine across all three
@@ -1930,11 +1930,11 @@ resistance (SPA/DPA — explicitly out of scope per `SECURITY.md`/`CLAUDE.md` "M
       "we beat UAPKI" claim needs UAPKI measured on *both* machines, not just this project). Built
       UAPKI's `library/uapkic` natively on the Pi (plain `cmake`/`gcc`, same pinned commit as the
       Ryzen build) and reused the exact same scratchpad C timing harnesses that produced the
-      original Ryzen UAPKI numbers. **Result, see `DECISIONS.md` D-33**: Kalyna and Kupyna's "we
+      original Ryzen UAPKI numbers. **Result, see `docs/DECISIONS.md` D-33**: Kalyna and Kupyna's "we
       beat UAPKI" result *reverses* on the Pi - UAPKI is faster there by up to ~1.9x - while
       Strumok's holds on both platforms (smaller margin on the Pi). Three untested hypotheses
       recorded in D-33 (LLVM/aarch64 codegen quality for this dense bit-manipulation pattern being
-      the most explanatory), not chased further this pass. `PERFORMANCE.md`'s Results tables and
+      the most explanatory), not chased further this pass. `docs/PERFORMANCE.md`'s Results tables and
       "What the gap is, honestly" section both got a scope correction noting the Ryzen-specific
       claim.
       **Re-run 2026-07-23, triggered by new `hazmat` changes since the last run** (`kalyna_ccm`,
@@ -1943,7 +1943,7 @@ resistance (SPA/DPA — explicitly out of scope per `SECURITY.md`/`CLAUDE.md` "M
       `kalyna_ccm` tests and 9 Kupyna-streaming tests, both passing on `aarch64` with no
       architecture-specific surprise. Optional tools (miri/fuzz/audit/deny/Maven/.NET) still not
       installed on the Pi, same as before - not a new gap, unchanged from the first run.
-      **Extended a third time, same day, see `DECISIONS.md` D-34**: user asked for one single
+      **Extended a third time, same day, see `docs/DECISIONS.md` D-34**: user asked for one single
       testing method and metric going forward - a real built binary (`dstutool`, and an equivalent
       thin CLI wrapper for every oracle), MB/s only, for every algorithm/implementation/platform,
       no more in-process `criterion` numbers used as the cross-implementation comparison. Rebuilt
@@ -1953,7 +1953,7 @@ resistance (SPA/DPA — explicitly out of scope per `SECURITY.md`/`CLAUDE.md` "M
       Confirmed D-33's Kalyna/Kupyna-flips-on-ARM finding survives the switch to the canonical
       method, and surfaced a further discrepancy: Kupyna's binary-level numbers show UAPKI ahead
       **on Ryzen too** (~10-17%), contradicting the in-process table's opposite claim - exactly the
-      kind of cross-method disagreement that motivated standardizing on one method. `PERFORMANCE.md`
+      kind of cross-method disagreement that motivated standardizing on one method. `docs/PERFORMANCE.md`
       restructured: "## Results" (in-process) marked superseded/historical with a dated banner, not
       deleted; "## Binary-level (process) comparison" is now the single canonical section with
       Ryzen+Pi columns for every implementation, MB/s only.
@@ -1990,7 +1990,7 @@ resistance (SPA/DPA — explicitly out of scope per `SECURITY.md`/`CLAUDE.md` "M
       warnings` clean. Optional layers (miri/fuzz/audit/deny/mvn/dotnet) still not installed there,
       unchanged from every prior run. No architecture-specific regression from T-128's const-generic
       round functions on `aarch64`.
-- [x] **T-103** **Adversarial-test coverage audit across every primitive, see `DECISIONS.md` D-64.**
+- [x] **T-103** **Adversarial-test coverage audit across every primitive, see `docs/DECISIONS.md` D-64.**
       User-requested 2026-07-25, directly prompted by D-63's finding that a real
       nonce-authentication gap existed purely because a "does tampering get rejected" test was
       simply absent. Surveyed every `tests/*.rs` file for tamper/wrong-key/reject coverage before
@@ -2008,7 +2008,7 @@ resistance (SPA/DPA — explicitly out of scope per `SECURITY.md`/`CLAUDE.md` "M
       semantics exist to test. All 12 new tests passed on first run - this closes coverage gaps, no
       bug found. Full workspace test/clippy/fmt all clean.
 - [x] **T-104** **"Fool" (misuse-resistance) test coverage audit, complementing T-103, see
-      `DECISIONS.md` D-65.** User-requested 2026-07-25, same day as T-103 - naive/incorrect *usage*
+      `docs/DECISIONS.md` D-65.** User-requested 2026-07-25, same day as T-103 - naive/incorrect *usage*
       rather than active tampering. `advisor()` consulted before scoping (user explicitly suggested
       this); its survey-first-and-check-type-signatures approach held up exactly. Library additions
       to `kalyna_gcm`: `tag_length_out_of_range_is_rejected` (parity with `kalyna_gmac`, which
@@ -2025,7 +2025,7 @@ resistance (SPA/DPA — explicitly out of scope per `SECURITY.md`/`CLAUDE.md` "M
       type-signature-foreclosure and first-run-pass clauses spelled out so this doesn't read as a
       contradiction of test-first later. Full workspace test/clippy/fmt all clean.
 - [x] **T-105** **`crypto_generichash`/`crypto_auth`/`crypto_kdf` high-level modules, roadmap
-      Step 3 item 2, see `DECISIONS.md` D-66.** The roadmap left this step's shape as an open fork
+      Step 3 item 2, see `docs/DECISIONS.md` D-66.** The roadmap left this step's shape as an open fork
       ("dedicated re-export module... or a table entry suffices") without the user resolving it in
       advance, unlike the roadmap's other three named forks - resolved this session by building the
       modules, on the reasoning that Step 3's own stated goal is discoverability under
@@ -2041,7 +2041,7 @@ resistance (SPA/DPA — explicitly out of scope per `SECURITY.md`/`CLAUDE.md` "M
       `tests/crypto_generichash.rs`) follow the D-64/D-65 three-category convention where it
       applies. Verified: full workspace test/clippy/fmt clean, plus `no_std`/`no_std+alloc`/
       `no_std+small-tables` builds of `dstu-core`. Committed and pushed (`1578ea0`).
-- [x] **T-106** **`crypto_stream` high-level module, roadmap Step 3 item 3, see `DECISIONS.md`
+- [x] **T-106** **`crypto_stream` high-level module, roadmap Step 3 item 3, see `docs/DECISIONS.md`
       D-67.** Unlike T-105's fork, this one *was* an explicit open fork in the roadmap's own text
       ("whether the IV is auto-generated ... or stays explicit is its own fork, decided when this
       is actually picked up") - put to the project owner directly via `AskUserQuestion` before
@@ -2071,10 +2071,10 @@ Originally flagged as blocked entirely on D-05 (2026-07-22 note, kept below for 
 asked 2026-07-23 for a real (not ad-hoc) interim mode instead of waiting indefinitely on the priced
 primary text - the "do not build an ad-hoc/arbitrary mode just to have *something*" warning below
 was heeded: what got built is dual-oracle-cited (UAPKI + Bouncy Castle), not invented. See
-`DECISIONS.md` D-05 (revised) and D-41 for the full reasoning and citation.
+`docs/DECISIONS.md` D-05 (revised) and D-41 for the full reasoning and citation.
 
 - [x] **T-81** **`hazmat::kalyna_ccm` implemented - DSTU 7624 CCM, all 5 Kalyna variants,
-      provisional pending the primary text** (`DECISIONS.md` D-41, 2026-07-23). Cited to
+      provisional pending the primary text** (`docs/DECISIONS.md` D-41, 2026-07-23). Cited to
       `oracles/uapki/library/uapkic/src/dstu7624.c` (`dstu7624_init_ccm`/`ccm_padd`/
       `dstu7624_encrypt_ccm`/`dstu7624_decrypt_ccm`/`gamma_gen`), cross-checked byte-for-byte
       against `oracles/bouncycastle-java`'s `DSTU7624Test.java` CCM vectors for 4 of 5 variants
@@ -2084,9 +2084,9 @@ was heeded: what got built is dual-oracle-cited (UAPKI + Bouncy Castle), not inv
       five independent tamper-rejection suites - ciphertext/tag/AAD/nonce/wrong-key - all green
       first attempt). New `uacrypt` subcommand `kalyna-ccm encrypt`/`decrypt` (deliberately not the
       reserved `encrypt`/`decrypt` names - see the CLI note below), round-tripped and tamper-tested
-      through the real built release binary (`DECISIONS.md` D-34's policy). All 8 `no_std`/`alloc`/
+      through the real built release binary (`docs/DECISIONS.md` D-34's policy). All 8 `no_std`/`alloc`/
       `std`/`small-tables` feature combinations re-confirmed clean; `cargo clippy -- -D warnings`/
-      `cargo fmt --check` clean; re-confirmed on the Raspberry Pi rig too (`TASKS.md` T-35's
+      `cargo fmt --check` clean; re-confirmed on the Raspberry Pi rig too (`docs/TASKS.md` T-35's
       standing "re-run after hazmat changes" rule).
       **`cargo fuzz` target added** (`crates/dstu-core/fuzz/fuzz_targets/kalyna_ccm.rs`, wired into
       `xtask fuzz`'s target list) - `open_in_place` is the first code in this crate that makes an
@@ -2109,7 +2109,7 @@ was heeded: what got built is dual-oracle-cited (UAPKI + Bouncy Castle), not inv
       encodes both lengths as a single byte each, so this is a property of the construction as
       extracted, enforced with an error rather than silently truncated.
 - [x] **T-82** **Kalyna-CCM nonce strategy resolved 2026-07-23: wide random nonce, no stateful
-      counter** (`DECISIONS.md` D-40's resolution). D-40's original "11-55 bytes" nonce-width
+      counter** (`docs/DECISIONS.md` D-40's resolution). D-40's original "11-55 bytes" nonce-width
       figure was a measurement error, not a real constraint - it was `tmp` (the CBC-MAC-header
       slice), not the caller-facing nonce parameter, which is the *full block* (16/16/32/32/64
       bytes = 128/128/256/256/512 bits). Even the narrowest case (128 bits) comfortably clears the
@@ -2132,7 +2132,7 @@ was heeded: what got built is dual-oracle-cited (UAPKI + Bouncy Castle), not inv
 
 **Original 2026-07-22 blocked note, kept for the record, superseded by T-81 above**: "User flagged
 this as the next priority (2026-07-22, same session as D-28/29/30/31) - but this is still gated on
-D-05, unchanged: `DECISIONS.md` D-05 needs the official DSTU 7624 text or another authoritative
+D-05, unchanged: `docs/DECISIONS.md` D-05 needs the official DSTU 7624 text or another authoritative
 source before *any* mode of operation (CTR/CBC/GCM/whatever DSTU 7624 actually specifies) can be
 chosen. Building `dstutool kalyna-block` (D-31) does not unblock this - it's still single-block-only
 by design. Do not build an ad-hoc/arbitrary mode (e.g. naive ECB) just to have *something* - that
@@ -2144,17 +2144,17 @@ command names (`CLAUDE.md` MVP scope) are still reserved for whenever that resol
 
 ## Phase 2 — libsodium-equivalent construction layer, DSTU 4145 + 9041
 
-- [x] **T-36** **Adopted as a working assumption 2026-07-24, see `DECISIONS.md` D-05's latest
+- [x] **T-36** **Adopted as a working assumption 2026-07-24, see `docs/DECISIONS.md` D-05's latest
       revision** — Kalyna-alone (CCM/GCM/KW, not Kalyna+Kupyna encrypt-then-MAC), on top of D-41's
       UAPKI+Bouncy-Castle evidence: this project's own already-vendored `oracles/uapki/`
       `dstu7624_self_test` ten-mode list and Ukrainian Wikipedia's independently-sourced ten-mode
       table for "Калина (шифр)" agree mode-for-mode. **Still not primary-text-confirmed** — the
-      official DSTU 7624:2014 text remains priced/unpurchased (`ORACLES.md`); this is a decision to
+      official DSTU 7624:2014 text remains priced/unpurchased (`docs/ORACLES.md`); this is a decision to
       build forward on assumption, not a claim the question is settled, and gets revised again if
       the primary text ever contradicts it. Unblocks T-37/T-16/T-40 to *start* (design against a
       working hypothesis instead of no hypothesis at all) — none of those are built yet, only the
       blocker on starting them is resolved.
-- [x] **T-37** **Done 2026-07-24, see `DECISIONS.md` D-51** — `dstu_core::crypto_secretbox::{seal,
+- [x] **T-37** **Done 2026-07-24, see `docs/DECISIONS.md` D-51** — `dstu_core::crypto_secretbox::{seal,
       open, SecretKey, SecretboxError, MAX_MESSAGE_LEN}`, plan reviewed with the advisor first. A
       single fixed construction (`hazmat::kalyna_ccm::Kalyna256_256Ccm` — 256-bit key, widest nonce
       at that key size), never all five variants (D-47's "delete the knob" criterion, not
@@ -2180,7 +2180,7 @@ command names (`CLAUDE.md` MVP scope) are still reserved for whenever that resol
       T-16 to start** (its stated gate was `crypto_secretbox` existing, not D-05's status) — T-16
       itself not built.
 - [x] **T-38** **`crypto_auth`/`crypto_onetimeauth` equivalent - Kupyna-based KMAC, implemented
-      2026-07-23** (`DECISIONS.md` D-44, first item from `docs/release-readiness.md`'s ordered
+      2026-07-23** (`docs/DECISIONS.md` D-44, first item from `docs/release-readiness.md`'s ordered
       plan). Provisional (primary DSTU 7564:2014 text not read - `docs/papers/Kupyna.pdf` names the
       MAC mode but doesn't describe it), but on **stronger evidence than Strumok/Kalyna-CCM's
       equivalent caveats**: both `oracles/uapki/library/uapkic/src/dstu7564.c` (`dstu7564_init_kmac`
@@ -2204,7 +2204,7 @@ command names (`CLAUDE.md` MVP scope) are still reserved for whenever that resol
       confirming the `KupynaCore` refactor didn't disturb the pre-existing paths. No CLI wiring yet
       (not required by this task's own scope - `uacrypt` command surface, if wanted, is a separate
       follow-up).
-- [x] **T-39** **`crypto_kdf` equivalent - Kupyna-based KDF, implemented 2026-07-24** (`DECISIONS.md`
+- [x] **T-39** **`crypto_kdf` equivalent - Kupyna-based KDF, implemented 2026-07-24** (`docs/DECISIONS.md`
       D-45, second item from `docs/release-readiness.md`'s ordered plan). **Different verification
       posture than T-38/T-81/Strumok**: no DSTU KDF standard exists, so no reference implementation
       to port and no oracle vector to check against, ever - not "provisional pending the primary
@@ -2227,7 +2227,7 @@ command names (`CLAUDE.md` MVP scope) are still reserved for whenever that resol
       +nightly miri test` hit the same pre-existing proptest+Miri isolation crash as every other
       `proptest`-using file in this workspace (T-81/T-85) - confirmed clean (no UB) with the same
       local workaround (`MIRIFLAGS=-Zmiri-disable-isolation PROPTEST_CASES=8`, ~174s).
-- [x] **T-40** **Done 2026-07-25, see `DECISIONS.md` D-68.** `dstu_core::crypto_secretstream`
+- [x] **T-40** **Done 2026-07-25, see `docs/DECISIONS.md` D-68.** `dstu_core::crypto_secretstream`
       (`PushState`/`PullState`/`Key`/`Tag`/`SecretstreamError`) landed - a from-scratch chunked AEAD
       (no DSTU citation exists, D-47's tie-breaker applied, libsodium's `crypto_secretstream_
       xchacha20poly1305` shape over `hazmat::kalyna_gcm`/`hazmat::kupyna_kmac` instead of
@@ -2246,10 +2246,10 @@ command names (`CLAUDE.md` MVP scope) are still reserved for whenever that resol
       documented workflow). Post-first-draft `advisor()` review caught and fixed two real gaps
       before this was considered done: `docs/release-readiness.md`/`docs/dstu-crypto-project.md`/
       `README.md` all had stale "not started" T-40 mentions across several sections each (the doc
-      map assigns exactly this update to those files, not just `TASKS.md`/`CLAUDE.md`), and D-68's
+      map assigns exactly this update to those files, not just `docs/TASKS.md`/`CLAUDE.md`), and D-68's
       own `no_std` claim overstated what's actually unconditional (`PushState::init` is
       `PushState`'s only constructor, so the module is decrypt-only without `std`) - both fixed, see
-      `DECISIONS.md` D-68 for the full corrected write-up. The T-40/T-70 duplicate-numbering entries
+      `docs/DECISIONS.md` D-68 for the full corrected write-up. The T-40/T-70 duplicate-numbering entries
       below/elsewhere are the same task - see T-70's own entry for its own closing note.
       **History below kept for the design-fork trail that led here, superseded by the "Done" note
       above, not deleted**: **D-05's blocker status changed 2026-07-24 (see T-36) - not unblocked
@@ -2283,16 +2283,16 @@ command names (`CLAUDE.md` MVP scope) are still reserved for whenever that resol
       different, more implementation-surface-heavy design lineage, and not something to back into
       by default via a secretstream implementation. Chunked Kalyna-CCM (255-byte chunks) remains a
       possible, if impractical, way to build *something* here without taking a new D-05 stance -
-      not chosen either, just not ruled out. See `TASKS.md` T-70 (the same task under the
+      not chosen either, just not ruled out. See `docs/TASKS.md` T-70 (the same task under the
       high-level-layer numbering) and `docs/release-readiness.md`.
-      **Correction, same day, after T-37 landed (`DECISIONS.md` D-51)**: the line above saying
+      **Correction, same day, after T-37 landed (`docs/DECISIONS.md` D-51)**: the line above saying
       "T-36/T-37 ... are explicitly blocked on D-05" is now stale - T-37 is done. T-40 remains
       blocked regardless, but on the reason already given earlier in this same entry
       (`hazmat::kalyna_ccm`'s 255-byte cap, not D-05's status) - unchanged by T-37 landing, since
       T-37 itself only wraps that same capped primitive rather than widening it.
       **Correction 2026-07-24 (this entry's own "needs GCM, not yet built" premise is now stale) -
       found during a full-project `advisor()` audit, not by returning to this task directly**: GCM
-      landed this session (T-95, `DECISIONS.md` D-56) - and, materially, **`hazmat::kalyna_gcm` has
+      landed this session (T-95, `docs/DECISIONS.md` D-56) - and, materially, **`hazmat::kalyna_gcm` has
       no `MAX_PLAINTEXT_LEN`/`MAX_AAD_LEN` cap at all** (D-56 states this explicitly: "no
       `MAX_AAD_LEN`/`MAX_PLAINTEXT_LEN` cap was needed at all, unlike `kalyna_ccm`'s sourced
       255-byte limit," since `q` is a pure truncation of a full-block tag, not a length encoded into
@@ -2317,7 +2317,7 @@ command names (`CLAUDE.md` MVP scope) are still reserved for whenever that resol
       its Annex B.1 (GF(2^163), polynomial basis) worked example extracted into
       `crates/dstu-core/tests/vectors/dstu4145/gf2m163.json` and independently cross-checked
       byte-for-byte against Bouncy Castle's own hardcoded KAT (`DSTU4145Test.java` `test163()`) —
-      see `DECISIONS.md` D-14 and `ORACLES.md`. A genuinely dual-sourced vector, not just a scan
+      see `docs/DECISIONS.md` D-14 and `docs/ORACLES.md`. A genuinely dual-sourced vector, not just a scan
       transcription.
 - [x] **T-42** DSTU 4145: re-derive `docs/pseudocode/dstu4145.md` against the official text's Sections 5-13,
       rather than leaving it as a pure Bouncy Castle code-transcription. **Done 2026-07-22**: read
@@ -2326,13 +2326,13 @@ command names (`CLAUDE.md` MVP scope) are still reserved for whenever that resol
       found via the property test, below): `hash_to_field` had the wrong algorithm entirely (copied
       BC's byte-reversal without also adopting BC's reversed-input convention) — reading §5.9
       directly showed the correct algorithm needs no reversal at all. Fixed; full detail in
-      `DECISIONS.md` D-25's follow-up entry and the pseudocode doc itself, not duplicated here.
+      `docs/DECISIONS.md` D-25's follow-up entry and the pseudocode doc itself, not duplicated here.
 - [x] **T-43** DSTU 4145: implement GF(2^m) binary-field + elliptic-curve arithmetic in Rust for the m=163
       curve (the actual prerequisite for a Rust port, bigger than just the signature logic
       itself). **Landed 2026-07-22**: `dstu_core::hazmat::dstu4145::gf2m163` (field add/multiply/
       square/invert) and `dstu_core::hazmat::dstu4145::curve163` (point double/add — public-data
       only — and a constant-time Montgomery-ladder `scalar_multiply`, safe for secret scalars).
-      Citation and the branchless-posture decision in `DECISIONS.md` D-25. Test-first against
+      Citation and the branchless-posture decision in `docs/DECISIONS.md` D-25. Test-first against
       generated unit-level vectors (`tests/vectors/dstu4145/gf2m163_arith.json`, Bouncy Castle as
       sole oracle at this granularity — see D-25), including a small-scalar (`k=1..=32`) check
       against repeated addition to exercise the ladder's leading-zero-bits path — all green first
@@ -2355,7 +2355,7 @@ command names (`CLAUDE.md` MVP scope) are still reserved for whenever that resol
       (see the item above). The round-trip property test is what caught the `Q` bug — the fixed
       vector alone never exercises key derivation. **Still not done**: the other 9 curve sizes.
 - [ ] **T-45** **Not scheduled, sketched only:** replace `gf2m163`'s bit-serial field multiplication
-      (163-iteration shift-and-mask, `DECISIONS.md` D-25 — deliberately correctness-first, not
+      (163-iteration shift-and-mask, `docs/DECISIONS.md` D-25 — deliberately correctness-first, not
       speed) with a comb method (`Guide to Elliptic Curve Cryptography` Algorithm 2.34/2.36, the
       same source already cited for the current reduction/ladder code) once correctness work here
       is otherwise done. Motivation: this is the main reason `cargo miri test` on
@@ -2366,10 +2366,10 @@ command names (`CLAUDE.md` MVP scope) are still reserved for whenever that resol
       since the existing `gf2m163_arith.json`/`gf2m163.json` checks already pin the arithmetic's
       expected output.
 - [ ] **T-46** **Blocked entirely:** DSTU 9041 — zero source material exists (no paper, no oracle, no
-      pseudocode; see `ORACLES.md`). Nothing here can start until the official text is obtained
+      pseudocode; see `docs/ORACLES.md`). Nothing here can start until the official text is obtained
       or another authoritative source turns up
 - [ ] **T-47** `crypto_kx` equivalent (Diffie–Hellman on the DSTU 4145/9041 curve — needs both to exist)
-- [x] **T-48** **Done 2026-07-24** (`DECISIONS.md` D-46) - `crypto_sign` equivalent wrapping the
+- [x] **T-48** **Done 2026-07-24** (`docs/DECISIONS.md` D-46) - `crypto_sign` equivalent wrapping the
       Rust DSTU 4145 port, third of the T-38/39/40/48 working order (T-40 re-scoped as blocked, so
       this ran third rather than fourth). The first module in the high-level "easy" layer D-09
       planned but never built. **A real security-posture fork was surfaced and put to the project
@@ -2413,7 +2413,7 @@ command names (`CLAUDE.md` MVP scope) are still reserved for whenever that resol
 
 ## Phase 4 — Hardware validation (post-MVP)
 
-- [x] **T-54** **Two-resource-profile split, done 2026-07-23 (`DECISIONS.md` D-35/D-38/D-39)** -
+- [x] **T-54** **Two-resource-profile split, done 2026-07-23 (`docs/DECISIONS.md` D-35/D-38/D-39)** -
       `dstu-core`'s `small-tables` Cargo feature (independent of `std`/`alloc`, combines with
       either): `tables.rs`'s `MDS_TABLE`/`MDS_INV_TABLE`/`SBOX_MDS`/`SBOX_MDS_DEC` and Strumok's
       `T0..T7` (~86 KB total) are now `#[cfg(not(feature = "small-tables"))]` - not compiled at all
@@ -2429,7 +2429,7 @@ command names (`CLAUDE.md` MVP scope) are still reserved for whenever that resol
       the fused-vs-naive/decrypt-fusion property tests (default profile only - `small-tables` has
       nothing to compare against since it computes the naive form directly) all pass; `cargo
       clippy -- -D warnings` and `cargo fmt --check` clean on both; the existing 4-combination
-      `no_std`/`alloc`/`std` matrix (`TASKS.md` T-23) re-checked with `small-tables` added to each,
+      `no_std`/`alloc`/`std` matrix (`docs/TASKS.md` T-23) re-checked with `small-tables` added to each,
       8 combinations total, all build clean; `cargo xtask build` passes. **Three
       `#[allow(clippy::needless_range_loop)]` added** (`encipher_round`/`fused_inv_round`/
       `sub_shift_mix`'s gather loops, plus `mds_column_via_gf_mul`'s) - calling a function with the
@@ -2447,7 +2447,7 @@ command names (`CLAUDE.md` MVP scope) are still reserved for whenever that resol
       verification bar, but not re-run either) - CI's `miri`/`fuzz-smoke` jobs still only run
       default-profile `cargo miri test --workspace`/`cargo fuzz run kupyna`, unchanged. **Same
       day, follow-up**: real measured memory/speed numbers for both profiles (per-algorithm,
-      `uacrypt` release binary, same method as `PERFORMANCE.md`'s binary-level comparison)
+      `uacrypt` release binary, same method as `docs/PERFORMANCE.md`'s binary-level comparison)
       written up in the new `docs/resource-profiles.md`, plus a plain-language sizing guide
       mapping typical MCU flash budgets to which profile fits - linked from `README.md` and
       `CLAUDE.md`'s documentation map. Kalyna/Kupyna are ~20-43x slower under `small-tables`
@@ -2481,7 +2481,7 @@ command names (`CLAUDE.md` MVP scope) are still reserved for whenever that resol
 - [ ] **T-58** Keep the SPA/DPA non-claim intact throughout (`no_std` compiling ≠ side-channel resistance
       — see `CLAUDE.md` MVP scope section)
 - [ ] **T-59** **Not scheduled, sketched only:** constant-time S-boxes (masked-select or bitsliced —
-      `DECISIONS.md` D-19's "Future path" note has both options and why it's a bigger project than
+      `docs/DECISIONS.md` D-19's "Future path" note has both options and why it's a bigger project than
       it looks), narrowing the software-timing exception D-19 documents. Natural place to revisit
       this alongside the hardware side-channel audit above, not before.
 
@@ -2494,30 +2494,30 @@ command names (`CLAUDE.md` MVP scope) are still reserved for whenever that resol
 
 Mirrors the table in `docs/dstu-crypto-project.md` "Concrete API shape" — that table is the
 prose/rationale version, this is the checklist version. Keep both in sync when a status changes.
-Two-layer split (`hazmat` now, high-level "easy" layer later) decided in `DECISIONS.md` D-09.
+Two-layer split (`hazmat` now, high-level "easy" layer later) decided in `docs/DECISIONS.md` D-09.
 
 - [x] **T-60** `hazmat::kupyna` (`Kupyna256`, `Kupyna512`) — confirmed green, citation in D-10 (see Phase 1)
 - [x] **T-61** `hazmat::kalyna` (5 variants) — confirmed green, citation in D-13 (see Phase 1)
 - [x] **T-62** `hazmat::strumok` (`Strumok256`, `Strumok512`) — confirmed green, citation in D-18 (see
       Phase 1)
-- [x] **T-63** `hazmat::dstu4145` — **done, see T-42/T-44/`DECISIONS.md` D-25** (`sign`/`verify` on the
+- [x] **T-63** `hazmat::dstu4145` — **done, see T-42/T-44/`docs/DECISIONS.md` D-25** (`sign`/`verify` on the
       163-bit curve, dual-oracle verified). This entry predates T-42/T-44's numbering (same
       duplicate-numbering situation as T-67/T-68); not renumbered per the "IDs are never
       reused/renumbered" rule.
-- [ ] **T-64** `hazmat::dstu9041` — hard-blocked, zero source material (see `ORACLES.md`)
+- [ ] **T-64** `hazmat::dstu9041` — hard-blocked, zero source material (see `docs/ORACLES.md`)
 - [ ] **T-65** high-level "easy" layer (name TBD) — not started; nothing needs it yet (no keyed/nonce-based
       primitive is implemented before Strumok or `crypto_secretbox`, both currently blocked)
-- [x] **T-66** **Done, see T-37/`DECISIONS.md` D-51** (`hazmat::kalyna_ccm`-based, not
+- [x] **T-66** **Done, see T-37/`docs/DECISIONS.md` D-51** (`hazmat::kalyna_ccm`-based, not
       `hazmat::kupyna` — D-05 was resolved toward Kalyna-alone, not the encrypt-then-MAC framing
       this entry's own text originally described). Same duplicate-numbering note as T-67/T-68.
 - [x] **T-67** `crypto_auth`/`crypto_onetimeauth` construction (over `hazmat::kupyna`) — **done, see
-      T-38/`DECISIONS.md` D-44** (`hazmat::kupyna_kmac`). This entry predates T-38's numbering
+      T-38/`docs/DECISIONS.md` D-44** (`hazmat::kupyna_kmac`). This entry predates T-38's numbering
       (both track the same work); not renumbered per the "IDs are never reused/renumbered" rule.
-- [x] **T-68** `crypto_kdf` construction (over `hazmat::kupyna`) — **done, see T-39/`DECISIONS.md`
+- [x] **T-68** `crypto_kdf` construction (over `hazmat::kupyna`) — **done, see T-39/`docs/DECISIONS.md`
       D-45** (`hazmat::kupyna_kdf`). Same duplicate-numbering note as T-67 above.
 - [ ] **T-69** `crypto_kx` construction (over `hazmat::dstu4145`/`dstu9041`) — needs both curves; DSTU 9041
       side is hard-blocked
-- [x] **T-70** **Done 2026-07-25 - same task as T-40, see that entry and `DECISIONS.md` D-68 for the
+- [x] **T-70** **Done 2026-07-25 - same task as T-40, see that entry and `docs/DECISIONS.md` D-68 for the
       full write-up.** Built over `hazmat::kalyna_gcm`/`hazmat::kupyna_kmac`, not
       `hazmat::strumok`/`hazmat::kalyna` as this stub originally guessed - Strumok has no place in
       an AEAD construction (it's a bare keystream generator, no tag), and Kalyna enters only via its
@@ -2525,7 +2525,7 @@ Two-layer split (`hazmat` now, high-level "easy" layer later) decided in `DECISI
       blocker was about *which* combined-AEAD mode to build (D-05 was later resolved to
       Kalyna-alone), and `crypto_secretstream` ended up using the already-decided GCM mode rather
       than re-opening that question.
-- [x] **T-71** **Done 2026-07-24, see `DECISIONS.md` D-49 (crate vetting) and D-50
+- [x] **T-71** **Done 2026-07-24, see `docs/DECISIONS.md` D-49 (crate vetting) and D-50
       (implementation)**: `dstu_core::crypto_pwhash::{hash_password, verify_password, Strength}`
       over `argon2` 0.5.3 (`RustCrypto/password-hashes`, dual MIT/Apache-2.0, MSRV 1.65 - D-49's
       initial "1.85" was the `master`/`0.6.0-rc` branch's figure, corrected). New dedicated
@@ -2538,7 +2538,7 @@ Two-layer split (`hazmat` now, high-level "easy" layer later) decided in `DECISI
       `SaltString::generate`) - though `rand_core 0.6.4` still enters the dependency tree
       transitively regardless (argon2's own manifest enables `password-hash`'s default features,
       which include `rand_core`; genuinely unused by this project's own code, confirmed absent
-      from every `no_std` build, see D-50 and the new `SECURITY.md` row). 7 new tests (5 in
+      from every `no_std` build, see D-50 and the new `docs/SECURITY.md` row). 7 new tests (5 in
       `tests/crypto_pwhash.rs`, 2 inline in `src/crypto_pwhash.rs`): round-trip,
       wrong-password-rejected, malformed-string-rejected, fresh-salt-per-call, each cheap
       `Strength`'s params actually appear in its own PHC string (not just a round-trip that would
@@ -2554,7 +2554,7 @@ Two-layer split (`hazmat` now, high-level "easy" layer later) decided in `DECISI
       **Not built**: libsodium's raw `crypto_pwhash()` KDF form (no consumer yet, same deferral
       reasoning as D-48's `CryptoRng` trait) and no `uacrypt` CLI subcommand (core crate only, like
       `crypto_sign`'s own initial landing).
-- [x] **T-72** **Done 2026-07-24, see `DECISIONS.md` D-48**: `dstu_core::randombytes::
+- [x] **T-72** **Done 2026-07-24, see `docs/DECISIONS.md` D-48**: `dstu_core::randombytes::
       randombytes_buf(buf) -> Result<(), RandomError>` - `std`-gated over an optional `getrandom =
       "0.3.4"` dependency (`std = ["dep:getrandom"]`), confirmed absent from the `no_std`/`alloc`/
       `small-tables` build graphs. Deliberately minimal per D-47's libsodium-minimal-surface
@@ -2584,10 +2584,10 @@ convention invented per language.
       not just written — see D-10 update. `cargo miri test` run separately (see below); CI itself
       still activates properly only once pushed to a GitHub remote.
 - [x] **T-74** `cargo fuzz` scaffold added (`crates/dstu-core/fuzz/`, target `kupyna`) — required by
-      `SECURITY.md`. Wired into the CI smoke job; a local nightly+miri toolchain now exists here
+      `docs/SECURITY.md`. Wired into the CI smoke job; a local nightly+miri toolchain now exists here
       too if a quick local run is ever wanted, though CI is still the primary path.
 - [x] **T-75** `cargo audit` + `cargo deny` (2026-07-22, D-11) — elevated to the same required-CI standing
-      as miri/fuzz in `SECURITY.md`; policy in `deny.toml`. Wired into `.github/workflows/rust.yml`
+      as miri/fuzz in `docs/SECURITY.md`; policy in `deny.toml`. Wired into `.github/workflows/rust.yml`
       via `rustsec/audit-check` / `EmbarkStudios/cargo-deny-action`. **Actually run locally, not
       just installed**: `cargo audit` — 0 vulnerabilities. `cargo deny check` — all four categories
       (`advisories`, `bans`, `licenses`, `sources`) pass, but only after a real fix: it caught
@@ -2603,7 +2603,7 @@ convention invented per language.
       contained: exactly one detection, `ActionSuccess: True`, no other findings). Combined with
       already-modest evidentiary value (Kalyna/Kupyna are independently confirmed by the two
       harnesses below already), not worth patching a vetted oracle's source to keep this alive.
-      `cryptonite` remains a **read-only** reference (see `ORACLES.md` / `oracles/README.md`, the
+      `cryptonite` remains a **read-only** reference (see `docs/ORACLES.md` / `oracles/README.md`, the
       D-05 CCM/GCM finding) — just not a runnable CI harness. `tests/oracle-harness/c/` removed.
 - [x] **T-77** .NET oracle harness (`tests/oracle-harness/dotnet/`) — uses the **published
       `BouncyCastle.Cryptography` 2.6.2** NuGet package, not the vendored partial clone in
@@ -2789,13 +2789,13 @@ no trustworthy runnable oracle exists for it at all (`outspace/dstu8845` is unof
 Only CCM (#8, T-81) was implemented before this. User asked 2026-07-24 for all 10 official modes at
 `hazmat`, independent of the public `crypto_secretbox` question (still restricted to GCM/CCM/KW
 candidates only, per D-05/D-47 — unchanged, not reopened per mode). Full 5-stage roadmap (by
-cost/oracle-strength) recorded in `DECISIONS.md` D-53. Stage A = ECB/OFB/CBC/CFB/CTR (no new field
+cost/oracle-strength) recorded in `docs/DECISIONS.md` D-53. Stage A = ECB/OFB/CBC/CFB/CTR (no new field
 arithmetic); Stage B = CMAC; Stage C = KW; Stage D = GCM/GMAC (needs new GF(2^m) at three field
 sizes); Stage E = XTS (reuses Stage D's field module). Every raw/non-AEAD module's doc must carry an
 explicit misuse warning (no integrity, prefer `crypto_secretbox` unless the raw mode is genuinely
 needed) — non-negotiable per D-53, not optional per mode.
 
-- [x] **T-88** **ECB (#1) done, see `DECISIONS.md` D-53** — `hazmat::kalyna_ecb`
+- [x] **T-88** **ECB (#1) done, see `docs/DECISIONS.md` D-53** — `hazmat::kalyna_ecb`
       (`Kalyna128_128Ecb`...`Kalyna512_512Ecb`, `encrypt_in_place`/`decrypt_in_place`), cited to
       `dstu7624.c`'s `encrypt_ecb`/`decrypt_ecb` (L2899-2961)/`dstu7624_init_ecb` (L3920-3934) — a
       per-block loop over the already-verified `hazmat::kalyna` block cipher (D-13), no chaining
@@ -2809,7 +2809,7 @@ needed) — non-negotiable per D-53, not optional per mode.
       green first attempt. `cargo test --workspace --all-features`/`clippy -D warnings`/`fmt --check`
       clean; bare `no_std` and `--all-features` builds re-confirmed (pure `hazmat` addition, no `cfg`
       needed). Carries the loudest misuse warning of the batch (ECB's pattern-leakage failure mode).
-- [x] **T-89** **OFB (#6) done, see `DECISIONS.md` D-53** — `hazmat::kalyna_ofb`
+- [x] **T-89** **OFB (#6) done, see `docs/DECISIONS.md` D-53** — `hazmat::kalyna_ofb`
       (`Kalyna128_128Ofb`...`Kalyna512_512Ofb`, `apply_in_place`, `&mut self` - genuinely stateful,
       not per-call stateless like `kalyna_ecb`). Cited to `encrypt_ofb` (L3624-3670)/
       `dstu7624_init_ofb` (L3996-4013); `dstu7624_decrypt` confirmed routing OFB to the same
@@ -2828,7 +2828,7 @@ needed) — non-negotiable per D-53, not optional per mode.
       `clippy -D warnings`/`fmt --check` clean (one doc-markdown fix); bare `no_std` build
       re-confirmed. Carries the mode's misuse warning per D-53's requirement (IV reuse under the
       same key is catastrophic, same class of failure as CTR's).
-- [x] **T-90** **CBC (#5) done, see `DECISIONS.md` D-53** — `hazmat::kalyna_cbc`
+- [x] **T-90** **CBC (#5) done, see `docs/DECISIONS.md` D-53** — `hazmat::kalyna_cbc`
       (`Kalyna128_128Cbc`...`Kalyna512_512Cbc`, `encrypt_in_place`/`decrypt_in_place`, `&mut self` -
       stateful across calls, like `kalyna_ofb`). Cited to `encrypt_cbc`/`decrypt_cbc`
       (L3145-3184/L3886-3918)/`dstu7624_init_cbc` (L3936-3953) - textbook `C_i = E_K(P_i XOR
@@ -2847,7 +2847,7 @@ needed) — non-negotiable per D-53, not optional per mode.
       padding-transformed vector, confirming the byte-count math was right without a debugging
       pass. `cargo test --workspace --all-features`/`clippy -D warnings`/`fmt --check` clean; bare
       `no_std` build re-confirmed.
-- [x] **T-91** **CFB (#3) done, see `DECISIONS.md` D-53** — `hazmat::kalyna_cfb`
+- [x] **T-91** **CFB (#3) done, see `docs/DECISIONS.md` D-53** — `hazmat::kalyna_cfb`
       (`Kalyna128_128Cfb`...`Kalyna512_512Cfb`, separate `encrypt_in_place`/`decrypt_in_place`, not
       self-inverse - the C source has two distinct functions, `dstu7624_decrypt` does not route CFB
       to `encrypt_cfb` the way it does for CTR/OFB). Cited to `encrypt_cfb`/`decrypt_cfb`
@@ -2874,7 +2874,7 @@ needed) — non-negotiable per D-53, not optional per mode.
       immediately. **This constraint is now stated loudly in the module doc**, including the panic
       risk, not left as a silent footnote. `cargo test --workspace --all-features`/`clippy -D
       warnings`/`fmt --check` clean; bare `no_std` build re-confirmed.
-- [x] **T-92** **CTR (#2) done, see `DECISIONS.md` D-53 - Stage A complete, all five modes shipped**
+- [x] **T-92** **CTR (#2) done, see `docs/DECISIONS.md` D-53 - Stage A complete, all five modes shipped**
       — `hazmat::kalyna_ctr` (`Kalyna128_128Ctr`...`Kalyna512_512Ctr`, `apply_in_place`, self-inverse
       like `kalyna_ofb`). Cited to `encrypt_ctr` (L2739-2790)/`dstu7624_init_ctr` (L4397-4421) -
       confirmed byte-for-byte the same keystream-priming/increment/re-encrypt logic
@@ -2895,7 +2895,7 @@ needed) — non-negotiable per D-53, not optional per mode.
       after the pre-emptive fix. `cargo test --workspace --all-features`/`clippy -D warnings`/
       `fmt --check` clean (one `doc_markdown` fix, same lint `kalyna_ofb` hit); bare `no_std` build
       re-confirmed.
-- [x] **T-93** CMAC (#4) — Stage B, done. `hazmat::kalyna_cmac` (`DECISIONS.md` D-54): CBC-MAC over
+- [x] **T-93** CMAC (#4) — Stage B, done. `hazmat::kalyna_cmac` (`docs/DECISIONS.md` D-54): CBC-MAC over
       all blocks but the last, then the held-back last block XORed against a subkey (`E_K` of a
       near-zero padding-flag block, not a GF-doubling subkey the way AES-CMAC does it) and encrypted
       once more. One-shot API (`mac`/`verify`, `q` fixed at 16 bytes — the only value any oracle
@@ -2907,7 +2907,7 @@ needed) — non-negotiable per D-53, not optional per mode.
       tests, all green first attempt including the padding-branch vector. `cargo test
       --workspace --all-features`/`clippy -D warnings`/`fmt --check` clean (one `doc_markdown` fix);
       bare `no_std` build re-confirmed.
-- [x] **T-94** KW (#10) — Stage C, done. `hazmat::kalyna_kw` (`DECISIONS.md` D-55): half-block
+- [x] **T-94** KW (#10) — Stage C, done. `hazmat::kalyna_kw` (`docs/DECISIONS.md` D-55): half-block
       Feistel-like network, read from uapki's C and both BC ports (correcting this task's original
       "strongest oracle of all 10" framing — BC's .NET port is a structural port of its Java one,
       one lineage not two, caught via `advisor()`). Found and resolved a real round-counter-width
@@ -2921,7 +2921,7 @@ needed) — non-negotiable per D-53, not optional per mode.
       warnings`/`fmt --check` clean (two doc-comment fixes); bare `no_std` build re-confirmed.
       Non-aligned KW input remains explicitly out of scope — a distinct future task if ever needed.
 - [x] **T-95** GCM/GMAC (#7) — Stage D, both commits done. `hazmat::gf2m_wide`
-      (`Gf2m128`/`Gf2m256`/`Gf2m512`, `DECISIONS.md` D-56) is a from-scratch, correctness-first
+      (`Gf2m128`/`Gf2m256`/`Gf2m512`, `docs/DECISIONS.md` D-56) is a from-scratch, correctness-first
       GF(2^m) module (branchless multiply, bit-at-a-time reduction) — not a port of
       `oracles/uapki/library/uapkic/src/math-gf2m-internal.c`'s 1199-line Karatsuba engine (read
       structurally, confirmed no reusable code, same posture as `gf2m163`/D-25). `hazmat::kalyna_gcm`
@@ -2937,7 +2937,7 @@ needed) — non-negotiable per D-53, not optional per mode.
       bare `no_std` build re-confirmed. Oracle-strength corrected from this task's original note
       (below) to: uapki construction + BC-Java vector-only (construction source not vendored, D-41
       pattern); BC-.NET has nothing for GCM.
-      **GMAC (commit 2, `hazmat::kalyna_gmac`, `DECISIONS.md` D-57)**: `advisor()` caught two wrong
+      **GMAC (commit 2, `hazmat::kalyna_gmac`, `docs/DECISIONS.md` D-57)**: `advisor()` caught two wrong
       premises before any code was written — all 5 official vectors are exactly one block (no
       multi-block vector exists at all), and `dstu7624.c` has *two* GMAC code paths that disagree:
       the streaming `gmac_update`/`gmac_final` pair has a real, confirmed bug (a stale loop index
@@ -2961,7 +2961,7 @@ needed) — non-negotiable per D-53, not optional per mode.
       associative, distributive via `proptest`, plus deterministic all-ones/all-zero max-degree
       cases for all 3 field sizes), 21 tests, all green first attempt, `clippy`/`fmt`/`no_std` clean.
       `cargo +nightly miri test -p dstu-core --lib field_axiom_tests`: clean, no UB, 21/21, ~475s.
-- [x] **T-96** XTS (#9) — Stage E done, see `DECISIONS.md` D-58. **10/10 DSTU 7624 modes now
+- [x] **T-96** XTS (#9) — Stage E done, see `docs/DECISIONS.md` D-58. **10/10 DSTU 7624 modes now
       implemented at `hazmat`.** Reuses `hazmat::gf2m_wide` unchanged (same `f[]` as GCM/GMAC).
       Ciphertext-stealing derivation hand-traced and generalized for any `k >= 1` full blocks
       before the partial tail — a real transcription bug (wrong half of the saved block stolen
@@ -2982,22 +2982,22 @@ needed) — non-negotiable per D-53, not optional per mode.
 ## Findings from a full-project `advisor()` audit (2026-07-24, requested separately from the T-95
 GMAC work above) — process/documentation gaps, not code-correctness bugs
 
-- [x] **T-97** `SECURITY.md`'s supply-chain vetting table is missing a row for `subtle` — the only
+- [x] **T-97** `docs/SECURITY.md`'s supply-chain vetting table is missing a row for `subtle` — the only
       dependency in either crate's `Cargo.toml` with no row at all, despite being direct,
       unconditional (not feature-gated, unlike `getrandom`/`argon2`), and used for every
       constant-time tag/checksum comparison in the codebase (`kalyna_cmac`/`kalyna_kw`/
-      `kalyna_ccm`/`kalyna_gcm`/`kalyna_gmac`/`dstu4145`). `SECURITY.md` states the table applies
+      `kalyna_ccm`/`kalyna_gcm`/`kalyna_gmac`/`dstu4145`). `docs/SECURITY.md` states the table applies
       "before adding any crypto-adjacent dependency" — this one predates the table's own upkeep,
       not a new gap, but still an open one. Add maintainer/reproducible-build/audit/CVE-history
       columns matching the existing `zeroize` row's level of detail.
       **Resolved 2026-07-25.** Row added: maintainer verified via crates.io's own API (not assumed
       from memory) — `dalek-cryptography` org (isis lovecruft/Henry de Valence, the
       `curve25519-dalek`/`ed25519-dalek` team); no `build.rs` in the published source (checked the
-      downloaded crate directly); `cargo audit` clean as of 2026-07-25. Doc-only, no `DECISIONS.md`
+      downloaded crate directly); `cargo audit` clean as of 2026-07-25. Doc-only, no `docs/DECISIONS.md`
       entry — trivial per the roadmap's own framing, nothing architectural to record.
 - [x] **T-98** CI's `fuzz-smoke` job (`.github/workflows/rust.yml`) runs only the `kupyna` target.
       `crates/dstu-core/fuzz/fuzz_targets/` also has `kalyna`, `kalyna_ccm`, and `strumok` — none of
-      the three run in CI, only ever locally per D-32's note. `SECURITY.md` calls `cargo fuzz`
+      the three run in CI, only ever locally per D-32's note. `docs/SECURITY.md` calls `cargo fuzz`
       required, not optional, for every parser of untrusted input bytes, which most of these are.
       Separately: **no fuzz target exists at all**, locally or in CI, for any of the four modes
       landed this session — `kalyna_cmac`, `kalyna_kw`, `kalyna_gcm`, `kalyna_gmac` — despite real
@@ -3007,7 +3007,7 @@ GMAC work above) — process/documentation gaps, not code-correctness bugs
       **`hazmat::kalyna_cfb` (T-91) is the sharpest instance of this gap** — see T-100 below, it's
       the one module where a known reachable panic, zero fuzz coverage, and (per T-100) no completed
       Miri run all intersect.
-      **Resolved 2026-07-25, see `DECISIONS.md` D-61.** Five new targets added
+      **Resolved 2026-07-25, see `docs/DECISIONS.md` D-61.** Five new targets added
       (`kalyna_cmac`/`kalyna_kw`/`kalyna_gcm`/`kalyna_gmac`/`kalyna_cfb`, the last one done after
       T-101 as planned since its shape changed), following the two established local patterns
       (`kalyna.rs`'s plain round-trip, `kalyna_ccm.rs`'s round-trip-plus-direct-attack-surface).
@@ -3025,7 +3025,7 @@ GMAC work above) — process/documentation gaps, not code-correctness bugs
       map, this file's owner is "gap analysis... update when... a new construction lands" — CBC,
       OFB, CFB, CTR, CMAC, KW, GCM, and GMAC all landed since its last real update. Needs a pass
       reconciling its tables and the "Concrete path to a genuinely safe, complete release" section
-      against current `TASKS.md`/`DECISIONS.md` state before it's trusted again as the up-to-date
+      against current `docs/TASKS.md`/`docs/DECISIONS.md` state before it's trusted again as the up-to-date
       gap analysis.
       **Resolved 2026-07-25, full pass against current state (Step 0 through Step 1 of the
       roadmap).** Corrected throughout: the Kalyna mode-of-operation table row (was "only the
@@ -3038,14 +3038,14 @@ GMAC work above) — process/documentation gaps, not code-correctness bugs
       had "no high-level wrapper" while the table right below it already correctly said "Done");
       the use-case coverage table (large-file/TLS-record-layer/XTS/KW rows all updated from "Not
       built" to their real current status); the "Concrete path" section's steps 3-4 (same
-      GCM/KW-now-built correction). Added an explicit banner noting `TASKS.md`'s own roadmap now
+      GCM/KW-now-built correction). Added an explicit banner noting `docs/TASKS.md`'s own roadmap now
       supersedes this document's "Concrete path" section as the authoritative sequencing (per that
       roadmap's own stated intent), without deleting or renumbering the historical reasoning behind
       steps 1-2, which remain load-bearing. Also folded in this session's own T-100/T-101/T-98/T-97
-      results, including the CI Miri pass confirmed the same day (see `TASKS.md` T-100's own
+      results, including the CI Miri pass confirmed the same day (see `docs/TASKS.md` T-100's own
       update) — the engineering-infrastructure paragraph previously understated the Miri/fuzz CI
       history as "wired in" when the job had in fact never completed on any push before today.
-      Doc-only change, no `DECISIONS.md` entry (nothing architectural, a reconciliation pass against
+      Doc-only change, no `docs/DECISIONS.md` entry (nothing architectural, a reconciliation pass against
       already-recorded decisions).
 - [x] **T-100** **`cargo miri test` has never once passed in CI, in this repository's whole
       history** — found during the same `advisor()` audit, verified via `gh run list`/`gh run view`,
@@ -3058,8 +3058,8 @@ GMAC work above) — process/documentation gaps, not code-correctness bugs
       execution time of 30m0s"). Net effect: the miri job went from failing fast on a config bug to
       failing slow on a suite-runtime problem, but has **never actually completed**, on any push,
       including every commit from this entire session's Stage A-D mode-of-operation work.
-      This matters beyond "a CI badge is red": `SECURITY.md` names `cargo miri test` a *required*
-      layer, same standing as fuzz/audit/deny, and several `DECISIONS.md` entries explicitly defer
+      This matters beyond "a CI badge is red": `docs/SECURITY.md` names `cargo miri test` a *required*
+      layer, same standing as fuzz/audit/deny, and several `docs/DECISIONS.md` entries explicitly defer
       an incomplete *local* Miri run to CI as the authoritative backstop — D-46 names
       `dstu4145_crypto_sign_roundtrip` specifically ("CI's already-tuned miri job... is the
       authoritative check for this file," after the local run was killed at ~21 minutes, still
@@ -3078,7 +3078,7 @@ GMAC work above) — process/documentation gaps, not code-correctness bugs
       Miri entirely (property-tested outside Miri is still real coverage) or give it its own
       long-running, non-blocking job. Not: raising `timeout-minutes` further — already ruled out by
       the comment above and by T-85's own text.
-      **Resolved 2026-07-25, see `DECISIONS.md` D-59 for the full measurement trail.** The
+      **Resolved 2026-07-25, see `docs/DECISIONS.md` D-59 for the full measurement trail.** The
       remediation direction above assumed the two `proptest` suites were the whole problem —
       measured first, and they weren't: any `#[test]` calling `Point::scalar_multiply` (the
       163-iteration ladder) or `FieldElement::invert` (its own 162-step exponentiation, called by
@@ -3104,7 +3104,7 @@ GMAC work above) — process/documentation gaps, not code-correctness bugs
       GitHub Linux runner outperformed the local dev machine, not the other way the raised-timeout
       margin was sized for, though sizing that margin without this data in hand was still correct.
       The "verified locally... CI conclusion unconfirmed" caveat that stood here no longer applies -
-      full detail in `DECISIONS.md` D-59's own update.
+      full detail in `docs/DECISIONS.md` D-59's own update.
 - [x] **T-102** **`uacrypt`'s own lib tests fail under `cargo miri test` on this Windows dev
       machine — `CreateDirectoryW` unsupported by Miri's Windows-host foreign-function shim, even
       with `MIRIFLAGS=-Zmiri-disable-isolation`.** Surfaced 2026-07-25 as a side effect of T-100/D-59
@@ -3116,7 +3116,7 @@ GMAC work above) — process/documentation gaps, not code-correctness bugs
       as T-81's `GetCurrentDirectoryW`-under-Miri-isolation finding — Miri's Windows filesystem
       shims are less complete than its Unix ones (a known upstream characteristic), so this is
       plausibly clean on CI's actual Linux runner. Needs either a real Linux confirmation (the
-      Raspberry Pi rig, `TASKS.md` "Testing & hardening", doesn't have Miri installed yet per its
+      Raspberry Pi rig, `docs/TASKS.md` "Testing & hardening", doesn't have Miri installed yet per its
       last re-run note — would need `rustup component add miri` there first) or watching the actual
       CI run once one happens, not a guess written down as settled.
       **Confirmed 2026-07-25**: the hypothesis was right. CI's `cargo miri test` run (`gh run view
@@ -3131,8 +3131,8 @@ GMAC work above) — process/documentation gaps, not code-correctness bugs
       `decrypt_in_place` when a caller's call boundaries don't respect the `q`-byte-multiple
       constraint (found by `proptest`, not the fixed vectors — see T-91's own entry above for the
       full trace). That was resolved by narrowing the proptest's contract and stating the
-      constraint loudly in the module doc — and T-91 was then marked done. **Nothing in `TASKS.md`
-      currently tracks whether that's the right resolution.** `SECURITY.md`'s threat model states
+      constraint loudly in the module doc — and T-91 was then marked done. **Nothing in `docs/TASKS.md`
+      currently tracks whether that's the right resolution.** `docs/SECURITY.md`'s threat model states
       explicitly: "Attacker who can supply malformed/adversarial input... must not panic, must not
       read out of bounds." A `hazmat` API that panics on a caller-permitted call pattern (the type
       system does not prevent a non-`q`-aligned intermediate call) is arguably still in tension with
@@ -3146,14 +3146,14 @@ GMAC work above) — process/documentation gaps, not code-correctness bugs
       `kalyna_ecb`/`kalyna_cbc`/`kalyna_kw`/`kalyna_gcm`/`kalyna_gmac` all already have for their own
       length-validation cases (`InvalidLength`, etc.) — or is a documented panic acceptable here
       specifically because `hazmat`'s contract is "read the docs before calling," a real distinction
-      from a public-facing `crypto_*`/`uacrypt` surface where SECURITY.md's "must not panic" line
+      from a public-facing `crypto_*`/`uacrypt` surface where docs/SECURITY.md's "must not panic" line
       unambiguously applies? **Sharpened by T-98/T-100**: this is also the one module with zero fuzz
       coverage and (per T-100) no completed CI Miri run — so today, nothing would actually catch a
       regression in either direction if this specific input shape's behavior changed. Needs a
       decision (put to the project owner, matching this project's own "real security-posture forks
       get decided explicitly, not silently" precedent — D-46/T-40's re-scoping questions are the
       model to follow), not just a fix picked unilaterally.
-      **Resolved 2026-07-25, own plan-mode pass per the roadmap's requirement, see `DECISIONS.md`
+      **Resolved 2026-07-25, own plan-mode pass per the roadmap's requirement, see `docs/DECISIONS.md`
       D-60 for the full root-cause trace and design.** Answer: `Result`, not a documented panic —
       `encrypt_in_place`/`decrypt_in_place` now return `Result<(), CfbError>`
       (`InvalidFeedbackWidth`/`NonAlignedIntermediateCall`, replacing the bare
@@ -3211,7 +3211,7 @@ regression test, not left incidental. All verification clean, including a scoped
 (585.27s, 0 UB). Then T-98 (fuzz targets - after T-101, since `kalyna_cfb`'s shape has now
 changed) - **DONE, see D-61**: 5 new targets, CI's `fuzz-smoke` now a 9-target matrix (was hardcoded
 to `kupyna` alone), zero crashes across all new targets' smoke runs. Then T-97 (trivial
-`SECURITY.md` table row, any time) - **DONE**: `subtle` row added, maintainer verified via
+`docs/SECURITY.md` table row, any time) - **DONE**: `subtle` row added, maintainer verified via
 crates.io's API rather than assumed. T-99 last - **DONE**: full reconciliation pass against
 Step 0 + Step 1's own results, corrected mode-of-operation tables, the crypto_secretbox/
 crypto_secretstream GCM/KW-now-built claims, a real prose/table self-contradiction on
@@ -3226,7 +3226,7 @@ CMAC/KW/GCM/GMAC (D-54-D-57) and the new XTS were only confirmed against a bare 
 not the full 8-combination matrix (`no_std`/`alloc`/`std`/`small-tables`) the way earlier stages
 (D-39, D-41) were. Run and document explicitly, same detail level as D-39/D-41 - directly serves
 the user's stated "small tables" priority.
-**DONE, see `DECISIONS.md` D-62.** Low-risk by construction (all five modes call only the existing
+**DONE, see `docs/DECISIONS.md` D-62.** Low-risk by construction (all five modes call only the existing
 per-variant `ExpandedKey` API, never `hazmat::tables` directly - same reasoning D-41 already gave
 for CCM), confirmed rather than assumed: all 8 `dstu-core` crate-level build combinations clean;
 all 5 modules' test suites (69 tests total) pass identically under `small-tables`; `clippy -D
@@ -3237,7 +3237,7 @@ pass, matching D-39's own precedent.
 **Step 2 complete.** Next: Step 3 (the libsodium-shaped `crypto_*` frontend).
 
 **Step 3 - The libsodium-shaped `crypto_*` frontend over everything in `hazmat`**:
-1. **DONE 2026-07-25, see `DECISIONS.md` D-63.** `crypto_secretbox` migrated to Kalyna-GCM
+1. **DONE 2026-07-25, see `docs/DECISIONS.md` D-63.** `crypto_secretbox` migrated to Kalyna-GCM
    internally (`Kalyna256_256Gcm`, keeps the 32-byte nonce), dropping the 255-byte cap and
    `MessageTooLong` (`CliError::MessageTooLong` deleted from `uacrypt` too) entirely, not just
    raising it. Inherits GCM's own provisional status (D-56). `uacrypt encrypt`/`decrypt` still read
@@ -3252,7 +3252,7 @@ pass, matching D-39's own precedent.
    (T-100's own precedent; a first attempt at the default 256 cases was killed after ~40 CPU-minutes
    with zero output - not stuck, genuinely just that slow under interpretation). **Step 3 item 1 is
    now fully verified end to end, nothing outstanding.**
-2. **DONE 2026-07-25, see `DECISIONS.md` D-66 (T-105).** Unlike this roadmap's three other named
+2. **DONE 2026-07-25, see `docs/DECISIONS.md` D-66 (T-105).** Unlike this roadmap's three other named
    forks (T-101/T-40/embedded-HW scope, all resolved by the user in advance when the roadmap was
    approved), this fork was resolved by implementation this session, not a prior user decision -
    flag for confirmation if the reasoning below doesn't hold up. Chosen: dedicated re-export/wrapper
@@ -3277,7 +3277,7 @@ pass, matching D-39's own precedent.
    Verified: full workspace `cargo test`/`clippy -D warnings`/`fmt --check` clean, plus `no_std`,
    `no_std+alloc`, and `no_std+small-tables` builds of `dstu-core` all clean (confirming the
    unconditional-module choice actually holds, not just assumed from the `#[cfg]` placement).
-3. **DONE 2026-07-25, see `DECISIONS.md` D-67 (T-106).** `crypto_stream` (Strumok) high-level
+3. **DONE 2026-07-25, see `docs/DECISIONS.md` D-67 (T-106).** `crypto_stream` (Strumok) high-level
    wrapper. Unlike Step 3 item 2's fork, this one *was* an explicit open fork in the roadmap text
    itself, so it was put to the project owner directly before implementing (`AskUserQuestion`):
    **hidden/internally-generated IV**, matching `crypto_secretbox`'s nonce precedent (D-51) rather
@@ -3296,12 +3296,12 @@ pass, matching D-39's own precedent.
    `tests/kalyna_xts.rs` already established. Verified: full workspace test/clippy/fmt clean, plus
    `no_std`/`no_std+alloc`/`no_std+small-tables` builds of `dstu-core` (confirms `crypto_stream` is
    correctly absent from all three, matching its `std`-only gate).
-4. **DONE 2026-07-25, see `DECISIONS.md` D-66's addendum.** KW stays `hazmat`-only - added an
+4. **DONE 2026-07-25, see `docs/DECISIONS.md` D-66's addendum.** KW stays `hazmat`-only - added an
    explicit row for `hazmat::kalyna_kw` to `docs/dstu-crypto-project.md`'s canonical mapping table
    (it had none before), stating why: libsodium itself has no key-wrap primitive to map onto, so
    this is a documented gap in libsodium parity, not an oversight.
-5. **DONE 2026-07-25, see `DECISIONS.md` D-66's addendum.** `crypto_kx`/`crypto_box` (DSTU 9041)
-   confirmed still hard-blocked - re-checked against `ORACLES.md`/`TASKS.md` T-46/T-47 rather than
+5. **DONE 2026-07-25, see `docs/DECISIONS.md` D-66's addendum.** `crypto_kx`/`crypto_box` (DSTU 9041)
+   confirmed still hard-blocked - re-checked against `docs/ORACLES.md`/`docs/TASKS.md` T-46/T-47 rather than
    assumed unchanged, still zero source material found anywhere. No doc changes needed (existing
    rows were already accurate); confirmation recorded rather than left a silent no-op.
 
@@ -3309,7 +3309,7 @@ pass, matching D-39's own precedent.
 Step 5 - gated on an explicit request, not simply "last in line."** 2026-07-25: user confirmed
 publication stays out of the plan entirely until they ask for it by name; do not start T-17/T-18
 work as a side effect of finishing Step 5.
-**2026-07-26: T-18 explicitly requested and done, see `TASKS.md` T-18/T-119** - GitHub Release
+**2026-07-26: T-18 explicitly requested and done, see `docs/TASKS.md` T-18/T-119** - GitHub Release
 `v0.1.0` with binaries for all three platforms plus the `dstu-core` source distribution. **T-17
 explicitly re-confirmed as still separately gated in the same request** (`AskUserQuestion` offered
 both "GitHub only" and "GitHub + crates.io"; the owner chose GitHub only) - do not start T-17 work
@@ -3326,7 +3326,7 @@ ends partway through the step, the substantive item should already be done, not 
 around it.
 
 1. **T-40 - `crypto_secretstream`, genuinely chunked/streaming AEAD - Done 2026-07-25, see
-   `DECISIONS.md` D-68 and `TASKS.md` T-40's own entry.** Own plan-mode pass taken first, per this
+   `docs/DECISIONS.md` D-68 and `docs/TASKS.md` T-40's own entry.** Own plan-mode pass taken first, per this
    roadmap's standing convention. Landed as `dstu_core::crypto_secretstream` (tag-per-chunk framing
    over `hazmat::kalyna_gcm`, full MESSAGE/PUSH/REKEY/FINAL tag set, caller-buffer `no_std`-capable
    API) plus a same-session `uacrypt encrypt`/`decrypt` rewire onto it (breaking wire-format change
@@ -3334,32 +3334,32 @@ around it.
    48/48 tests, full workspace suite, clippy/fmt/no_std matrix clean, scoped Miri 22/22 passed 0 UB
    in 1276.00s.
 2. **T-107 - per-crate `README.md`** for `dstu-core`/`uacrypt`, `readme` field in each `Cargo.toml`.
-   **Done 2026-07-25, see `TASKS.md` T-107's own entry above** - both READMEs written crate-scoped
+   **Done 2026-07-25, see `docs/TASKS.md` T-107's own entry above** - both READMEs written crate-scoped
    (not copies of the root one), `cargo package --list` confirms both now ship, dry-run publish
    file count rose 130 -> 133, `xtask fmt`/`build`/`clippy` clean.
 3. **T-109 - `Cargo.toml` publish metadata** (`repository`/`homepage`/`documentation`/`keywords`/
    `categories`) + physical per-crate `LICENSE-MIT`/`LICENSE-APACHE` copies. **Done 2026-07-25, see
-   `TASKS.md` T-109's own entry above** - `rust-version` deliberately deferred to T-111 (needs
+   `docs/TASKS.md` T-109's own entry above** - `rust-version` deliberately deferred to T-111 (needs
    empirical MSRV measurement, not a guess). `cargo publish --dry-run -p dstu-core --allow-dirty`
    now shows zero metadata warnings; category slugs verified live against crates.io's real API.
 4. **T-110 - `[package.metadata.docs.rs]` with `all-features = true`** on both crates - already
-   verified safe (`small-tables` gates no `pub` item). **Done 2026-07-25, see `TASKS.md` T-110's own
+   verified safe (`small-tables` gates no `pub` item). **Done 2026-07-25, see `docs/TASKS.md` T-110's own
    entry above.**
 5. **T-112 - crate-level `#![doc]` provisional-status warning** for both crates, pointing back at
-   `SECURITY.md`/`DECISIONS.md` rather than re-arguing the citations inline. **Done 2026-07-25, see
-   `TASKS.md` T-112's own entry above.**
-6. **T-108 - user-friendly `--help`/usage text for `uacrypt`.** **Done 2026-07-25, see `TASKS.md`
+   `docs/SECURITY.md`/`docs/DECISIONS.md` rather than re-arguing the citations inline. **Done 2026-07-25, see
+   `docs/TASKS.md` T-112's own entry above.**
+6. **T-108 - user-friendly `--help`/usage text for `uacrypt`.** **Done 2026-07-25, see `docs/TASKS.md`
    T-108's own entry above.**
-7. **T-111 - `CHANGELOG.md` + a real, empirically-determined MSRV.** Advisor flag, keep this split
-   in mind when scoping the work: the `CHANGELOG.md` half is a writing task, but MSRV is **not** -
+7. **T-111 - `docs/CHANGELOG.md` + a real, empirically-determined MSRV.** Advisor flag, keep this split
+   in mind when scoping the work: the `docs/CHANGELOG.md` half is a writing task, but MSRV is **not** -
    it means actually installing two or three candidate older toolchains and running the full
    8-combination feature matrix on each (this project's own dependency tree, `argon2`/`getrandom`/
    `zeroize`/`subtle` and their transitives, has already produced one surprising transitive-feature
    result, D-50 - don't assume a floor without measuring it). Budget accordingly; this is not a
    same-size item as T-107/T-109/T-110/T-112 above despite living in the same step. **Done
-   2026-07-26, see `DECISIONS.md` D-69 and `TASKS.md` T-111's own entry above** - MSRV
+   2026-07-26, see `docs/DECISIONS.md` D-69 and `docs/TASKS.md` T-111's own entry above** - MSRV
    empirically measured at 1.87.0.
-- [x] **T-113 - multi-part/streaming `crypto_sign`. DONE 2026-07-26, see `DECISIONS.md` D-70.** The
+- [x] **T-113 - multi-part/streaming `crypto_sign`. DONE 2026-07-26, see `docs/DECISIONS.md` D-70.** The
       advisor's flag was confirmed against the primary text first, per this file's own "no
       primitive/estimate from memory" rule: `docs/pseudocode/dstu4145.md` §5.9/§9/§10 signs a hash
       of the message (`h ← hash_to_field(H(T))`), not a domain-separated multi-part construction -
@@ -3385,14 +3385,14 @@ Verification at every step, no exceptions, unchanged from this session's establi
 `cargo test --workspace --all-features`, `cargo clippy --workspace --all-features -- -D warnings`,
 `cargo fmt --all -- --check`, `cargo build -p dstu-core --no-default-features`, and - once Step 1's
 T-100 lands - a Miri run that actually completes rather than times out. Each step gets a
-`DECISIONS.md` entry with citations and a `TASKS.md` status update. Commit after green; push only
+`docs/DECISIONS.md` entry with citations and a `docs/TASKS.md` status update. Commit after green; push only
 on explicit request.
 
 ### RESUME HERE (state as of 2026-07-25, saved for a memory-clear/new-session handoff)
 
 **Step 3 item 1 (`crypto_secretbox` → Kalyna-GCM, D-63) is fully done, fully verified, and
 committed** - including the scoped Miri run (11/11, 0 UB, 1135.80s). `T-103`/`T-104` (adversarial
-and misuse test-coverage audits over the same migration, `DECISIONS.md` D-64/D-65) are also done,
+and misuse test-coverage audits over the same migration, `docs/DECISIONS.md` D-64/D-65) are also done,
 verified, and committed - see `git log` (`db10345`, `11eecf7`) rather than trusting this note's own
 prior "no commit has been made yet" claim, which went stale the moment those commits landed.
 
@@ -3413,22 +3413,22 @@ pushed** (`82045cf`, user confirmed pushing this batch too before it landed).
 
 **Not yet done - the actual next steps (2026-07-25, Step 5 approved, see the Step 5 entry above for
 full detail)**:
-1. **T-40 - `crypto_secretstream` - DONE, see the Step 5 entry above and `DECISIONS.md` D-68.**
+1. **T-40 - `crypto_secretstream` - DONE, see the Step 5 entry above and `docs/DECISIONS.md` D-68.**
    `uacrypt encrypt`/`decrypt` rewired to it in the same session, per the user's chosen scope.
-2. **T-107 - per-crate `README.md` - DONE, see `TASKS.md` T-107's own entry above.** Both crates
+2. **T-107 - per-crate `README.md` - DONE, see `docs/TASKS.md` T-107's own entry above.** Both crates
    now package their own README; `cargo package --list`/dry-run publish both confirm it.
-3. **T-109 (`Cargo.toml` metadata + LICENSE files) - DONE, see `TASKS.md` T-109's own entry
+3. **T-109 (`Cargo.toml` metadata + LICENSE files) - DONE, see `docs/TASKS.md` T-109's own entry
    above.** `repository`/`homepage`/`documentation`/`keywords`/`categories` all set on both crates,
    `rust-version` deliberately deferred to T-111; physical `LICENSE-MIT`/`LICENSE-APACHE` now ship
    in both crates' tarballs; `cargo publish --dry-run -p dstu-core --allow-dirty` shows no more
    metadata warnings.
-4. **T-110 (docs.rs metadata) - DONE, see `TASKS.md` T-110's own entry above.** `[package.metadata.
+4. **T-110 (docs.rs metadata) - DONE, see `docs/TASKS.md` T-110's own entry above.** `[package.metadata.
    docs.rs]` with `all-features = true` added to both crates' `Cargo.toml`; build/clippy/fmt clean.
-5. **T-112 (crate-level provisional-status doc warning) - DONE, see `TASKS.md` T-112's own entry
+5. **T-112 (crate-level provisional-status doc warning) - DONE, see `docs/TASKS.md` T-112's own entry
    above.** `dstu_core::lib.rs`, `uacrypt::lib.rs`, and `uacrypt::main.rs` all now carry a top
    doc-comment stating D-05/D-15's provisional status and the no-side-channel-claim, pointing at
-   `SECURITY.md`/`DECISIONS.md`; build/clippy (incl. the `doc_lazy_continuation` gotcha)/fmt clean.
-6. **T-108 (`uacrypt --help`) - DONE, see `TASKS.md` T-108's own entry above.** Top-level and
+   `docs/SECURITY.md`/`docs/DECISIONS.md`; build/clippy (incl. the `doc_lazy_continuation` gotcha)/fmt clean.
+6. **T-108 (`uacrypt --help`) - DONE, see `docs/TASKS.md` T-108's own entry above.** Top-level and
    per-command `--help`/`-h` implemented in `crates/uacrypt/src/lib.rs`; full `cargo test
    --workspace --all-features` (55/55 `uacrypt` tests incl. 8 new)/`clippy -D warnings`/`fmt --check`
    all confirmed green (not left "still in flight" - the backgrounded run finished before this note
@@ -3443,12 +3443,12 @@ full detail)**:
    **T-114** (persona-based user-journey gap analysis - a hybrid state/interaction diagram from
    three personas' side, see T-114's own entry above - requested 2026-07-25, after T-113 in this
    list since it's newer) - all not started, in this order.
-7. **T-111 - DONE 2026-07-26, see `TASKS.md` T-111's own entry above and `DECISIONS.md` D-69.**
+7. **T-111 - DONE 2026-07-26, see `docs/TASKS.md` T-111's own entry above and `docs/DECISIONS.md` D-69.**
    MSRV measured (not guessed) at `1.87.0` - the real floor turned out to be this crate's own
    unconditional use of `u64`/`usize::is_multiple_of`, not any dependency's declared floor (those
    topped out lower, at 1.85/1.86). `rust-version` set on both `Cargo.toml`s, a build-only `msrv`
-   CI job added, `CHANGELOG.md` written.
-8. **T-113 - DONE 2026-07-26, see `TASKS.md` T-113's own entry above and `DECISIONS.md` D-70.** The
+   CI job added, `docs/CHANGELOG.md` written.
+8. **T-113 - DONE 2026-07-26, see `docs/TASKS.md` T-113's own entry above and `docs/DECISIONS.md` D-70.** The
    advisor's flag held: DSTU 4145 signs a hash of the message (`docs/pseudocode/dstu4145.md`
    §5.9/§9/§10), not a multi-part construction, so the task collapsed to
    `SigningKey::sign_digest`/`VerifyingKey::verify_digest` over an already-computed 32-byte
@@ -3460,7 +3460,7 @@ full detail)**:
   name, not simply queued behind Step 5. Do not start it as a side effect of finishing Step 5.
 - The 2026-07-25 libsodium/crates.io research pass also produced a set of **deliberate non-tasks**
   (detached-API question, `randombytes_uniform`, no-DSTU-angle items) - these live in
-  `docs/release-readiness.md`'s new audit section, not `TASKS.md` - don't re-derive them as tasks
+  `docs/release-readiness.md`'s new audit section, not `docs/TASKS.md` - don't re-derive them as tasks
   without new information surfacing.
 
 ## Roadmap: perf/hygiene/investigation cluster (2026-07-26, user-approved sequencing)
@@ -3471,7 +3471,7 @@ every task open as of 2026-07-26 **except** T-17 (crates.io - separately gated o
 request, see above, not part of this sequence at all). Four tiers, not a flat list - later tiers
 depend on earlier ones, items within a tier don't depend on each other.
 
-**Open question, resolved 2026-07-26 (see `DECISIONS.md` D-81)**: T-130's Miri/Windows proptest
+**Open question, resolved 2026-07-26 (see `docs/DECISIONS.md` D-81)**: T-130's Miri/Windows proptest
 hang was diagnosed against `hazmat::kalyna`'s suite specifically; confirmed **mechanism-wide, not
 Kalyna-specific** (reproduced identically on a `hazmat::kupyna` proptest under default isolation),
 and then resolved outright - attempt four's combination (`-Zmiri-disable-isolation` +
@@ -3492,7 +3492,7 @@ achievable, not merely gated on a still-open investigation.
    together avoids rebuilding it twice. Re-measure CMAC at 64 B for D-80's timer-placement bug
    (T-138), and formalize the byte-for-byte UAPKI comparison into a committed, reusable
    script/procedure rather than an ad hoc habit (T-133).
-   **T-138 done 2026-07-26, `DECISIONS.md` D-82. T-133 done 2026-07-26, `DECISIONS.md` D-83** -
+   **T-138 done 2026-07-26, `docs/DECISIONS.md` D-82. T-133 done 2026-07-26, `docs/DECISIONS.md` D-83** -
    the project owner chose "commit it" when asked; `tests/oracle-harness/uapki-cmac-bench/
    cmac_bench.c` is now committed (CMAC only, deliberately narrow scope).
 3. **T-23 + T-35, re-run now** - both say "ongoing by design" but both were last checked
@@ -3502,11 +3502,11 @@ achievable, not merely gated on a still-open investigation.
    before trusting either as current.
 
 **Tier B - investigation that gates Tier C:**
-4. **T-130** - **Done 2026-07-26, see `DECISIONS.md` D-81.** Resolved via attempt four
+4. **T-130** - **Done 2026-07-26, see `docs/DECISIONS.md` D-81.** Resolved via attempt four
    (`-Zmiri-disable-isolation` + `PROPTEST_DISABLE_FAILURE_PERSISTENCE=1` + `PROPTEST_CASES=8`),
    confirmed mechanism-wide (not Kalyna-specific) and confirmed at full-module scale (13/13
    `hazmat::kalyna` proptests, 0 UB). Tier C's Miri done-bar is now achievable.
-5. **T-136** - **First measurement done 2026-07-26, see `DECISIONS.md` D-84.** An isolated
+5. **T-136** - **First measurement done 2026-07-26, see `docs/DECISIONS.md` D-84.** An isolated
    `criterion` differential benchmark of `encipher_round_n::<4>` against `fused_inv_round_n::<4>`
    alone (the existing `benches/kalyna.rs` block-only pair already was this measurement) confirmed
    the decrypt/encrypt asymmetry shows up at the round-function level itself, before T-129 touches
@@ -3516,14 +3516,14 @@ achievable, not merely gated on a still-open investigation.
 **Tier C - perf rewrites, each gets its own `advisor()` consultation and its own plan-mode pass
 before any code is written (this roadmap's own sequencing call does not substitute for either -
 write that into each step's own session, don't read "advisor was consulted" as already satisfied):**
-6. **T-134** - **Done 2026-07-27, see `DECISIONS.md` D-85.** Kupyna `sub_shift_mix`
+6. **T-134** - **Done 2026-07-27, see `docs/DECISIONS.md` D-85.** Kupyna `sub_shift_mix`
    const-generic-over-`COLUMNS`, `advisor()`-consulted and plan-mode-approved before implementation.
    Measured -29 to -31% (Kupyna-256) / -17 to -19% (Kupyna-512), matching the predicted ranges.
-7. **T-135** - **Done 2026-07-27, see `DECISIONS.md` D-86.** Strumok `apply_keystream` batched/
+7. **T-135** - **Done 2026-07-27, see `docs/DECISIONS.md` D-86.** Strumok `apply_keystream` batched/
    fixed-index rewrite, `advisor()`-consulted and plan-mode-approved before implementation.
    `criterion` -53.5 to -64.7% at 1024/65536 B; binary-level gap to outspace closed from ~3.2-3.9x
    to ~1.19-1.25x.
-8. **T-129** - **Investigated and closed 2026-07-27, `DECISIONS.md` D-88.** A measured spike (not
+8. **T-129** - **Investigated and closed 2026-07-27, `docs/DECISIONS.md` D-88.** A measured spike (not
    just reasoning) showed the word-wide gather is a no-op at `NB=2` (LLVM already does it) and a
    regression at `NB=4`/`NB=8` (lost inlining / new register spills). No code change shipped.
 
@@ -3544,7 +3544,7 @@ Verification bar per tier, unchanged from the Step 0-5 roadmap's own established
 `cargo test --workspace --all-features`, `cargo clippy --workspace --all-features -- -D
 warnings`, `cargo fmt --all -- --check`, the `no_std` feature matrix, and - for Tier C only - a
 Miri run that actually completes (gated on Tier B's T-130 finding, not assumed). Each completed
-item gets its own `DECISIONS.md` entry with citations and a status update at its own `T-NN` line
+item gets its own `docs/DECISIONS.md` entry with citations and a status update at its own `T-NN` line
 above; this section only tracks sequencing, not outcomes - don't duplicate result detail here that
 belongs at the task's own entry.
 
@@ -3554,10 +3554,10 @@ belongs at the task's own entry.
 fix, T-87/T-23/T-35 doc/hygiene re-checks, T-138/T-133 CMAC re-measurement, T-136's first asymmetry
 measurement - T-136's own deeper root-cause investigation stays open as its own standalone task,
 the roadmap's own narrower ask was already met). Tier C: **T-134** (Kupyna `sub_shift_mix`
-const-generic-over-`COLUMNS`, `DECISIONS.md` D-85, -29 to -31%/-17 to -19%) and **T-135** (Strumok
-`apply_keystream` batched/fixed-index rewrite, `DECISIONS.md` D-86, `criterion` -53.5 to -64.7%,
+const-generic-over-`COLUMNS`, `docs/DECISIONS.md` D-85, -29 to -31%/-17 to -19%) and **T-135** (Strumok
+`apply_keystream` batched/fixed-index rewrite, `docs/DECISIONS.md` D-86, `criterion` -53.5 to -64.7%,
 binary-level gap to outspace ~3.2-3.9x -> ~1.19-1.25x) both shipped real, measured wins. **T-129**
-(this session) was investigated and closed *without* a code change, `DECISIONS.md` D-88: a
+(this session) was investigated and closed *without* a code change, `docs/DECISIONS.md` D-88: a
 measured spike (hoisting whole-`u64` column loads, not just reasoning about it) showed the proposed
 "word-wide gather" is a no-op at `NB=2` (LLVM's own optimizer already does the equivalent) and a
 real regression at `NB=4` (lost inlining) and `NB=8` (34 new register spills, ~2x more memory
@@ -3587,3 +3587,23 @@ Tier D upstream work - same gate). The next session should ask the project owner
 rather than assume a next task - see the open, unstarted, unblocked items list further up this file
 (T-23/T-35 re-checks, or genuinely new-scope items like language bindings/hardware validation, all
 Phase 2+ and none currently in flight).
+
+## Repo hygiene: root markdown declutter (2026-07-28, owner-requested)
+
+- [x] **T-141** **Done 2026-07-28, see `docs/DECISIONS.md` D-96.** Root directory had 8 markdown
+  files (`CHANGELOG.md`, `CLAUDE.md`, `DECISIONS.md`, `ORACLES.md`, `PERFORMANCE.md`, `README.md`,
+  `SECURITY.md`, `TASKS.md`) cluttering the GitHub landing page. Owner wanted only `README.md`
+  (GitHub's own landing-page file) and `CLAUDE.md` (Claude Code's project-instructions file) left
+  at root; moved `CHANGELOG.md`/`DECISIONS.md`/`ORACLES.md`/`PERFORMANCE.md`/`SECURITY.md`/
+  `TASKS.md` into `docs/`, and rewrote every repo-wide citation of those six filenames
+  (prose/backtick mentions in `.md`/`.rs`/`.toml`/`.properties`/`.gitignore` files - confirmed by
+  survey there are zero actual markdown-link-syntax references anywhere in this repo to these
+  files, and exactly one file, `oracles/README.md`, uses a real `../` relative path) to carry a
+  uniform `docs/` prefix, including the six files' own cross-citations of each other post-move
+  (matches this repo's pre-existing convention of always citing `docs/*.md` files repo-root-
+  relative, even from siblings in the same directory - see D-96). Executed via a one-off Python
+  script (not by hand) given the reference count (132 files cite `DECISIONS.md` alone) - a
+  CRLF-line-ending bug the script's first pass introduced (Windows text-mode write) was caught by
+  `cargo fmt --check` and fixed in the same session, see D-96 for the full story and
+  before/after verification (`cargo build`/`clippy --all-features`/`fmt --check` clean, `cargo
+  test --workspace` re-run to confirm no functional regression).

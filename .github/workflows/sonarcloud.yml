@@ -1,6 +1,6 @@
 name: sonarcloud
 
-# TASKS.md T-140, DECISIONS.md D-92 - Rust analysis on SonarQube Cloud isn't covered by its
+# docs/TASKS.md T-140, docs/DECISIONS.md D-92 - Rust analysis on SonarQube Cloud isn't covered by its
 # zero-config "Automatic Analysis" mode (confirmed by checking specinfo-ua/UAPKI's own workflows,
 # which have no Sonar step at all for their C code - that project relies on Automatic Analysis,
 # which Rust can't use), so this is an explicit CI-based (Scanner-CLI) job, separate from

@@ -5,7 +5,7 @@ use dstu_core::hazmat::kalyna_kw::{
 };
 use libfuzzer_sys::fuzz_target;
 
-// Required by SECURITY.md ("cargo fuzz is required ... not optional"). `wrap`/`unwrap` must never
+// Required by docs/SECURITY.md ("cargo fuzz is required ... not optional"). `wrap`/`unwrap` must never
 // panic/crash regardless of key/plaintext/ciphertext/out-buffer length, including deliberately
 // malformed shapes (non-block-aligned, too many blocks, mismatched out-buffer length) that must
 // hit `KwError::InvalidLength` rather than panic - the module's own doc comment names exactly

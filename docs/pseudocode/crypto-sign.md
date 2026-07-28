@@ -2,7 +2,7 @@
 
 **The sign/verify math itself is not re-derived here** - `dstu_core::crypto_sign` calls
 `hazmat::dstu4145::signature::sign`/`verify` directly, unchanged; those are transcribed from Bouncy
-Castle's `DSTU4145Signer` and re-derived against the official text (`DECISIONS.md` D-02/D-14/D-25,
+Castle's `DSTU4145Signer` and re-derived against the official text (`docs/DECISIONS.md` D-02/D-14/D-25,
 `docs/pseudocode/dstu4145.md`). What's new here, and needs its own citation posture, is the one
 thing the wrapper adds: how the ephemeral nonce `e` is produced, since `hazmat`'s `sign` takes it as
 a caller-supplied parameter and does not generate it.
@@ -10,12 +10,12 @@ a caller-supplied parameter and does not generate it.
 **Not a DSTU-specified construction, and not oracle-verified for the derivation itself** - same
 honest-scoping posture as `docs/pseudocode/kupyna-kdf.md`, stated precisely rather than reused
 wording. No reference implementation derives DSTU 4145 nonces deterministically; Bouncy Castle's
-`DSTU4145Signer` uses `SecureRandom`. What follows is a design decision (`DECISIONS.md` D-46), not a
+`DSTU4145Signer` uses `SecureRandom`. What follows is a design decision (`docs/DECISIONS.md` D-46), not a
 transcription.
 
 ## Design choice: deterministic, RFC-6979-*style*, not caller-random
 
-Two paths were weighed (full security-posture reasoning in `DECISIONS.md` D-46, not duplicated
+Two paths were weighed (full security-posture reasoning in `docs/DECISIONS.md` D-46, not duplicated
 here): caller/RNG-supplied random `e` (faithful to Bouncy Castle's reference) vs. a nonce derived
 deterministically from `(d, message)`, so signing needs no randomness at all. **Chosen:
 deterministic** - matches Ed25519/libsodium's own signing design, and structurally removes nonce

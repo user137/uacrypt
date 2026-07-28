@@ -1,4 +1,4 @@
-# ORACLES.md
+# docs/ORACLES.md
 
 Which sources this project trusts for verifying correctness, how much, and why — and where
 test vectors will come from once primitives exist. Canonical owner of the oracle trust matrix
@@ -15,7 +15,7 @@ correlated — that inversion is the main thing this document has to make explic
 3. A mature, independently audited library (Bouncy Castle).
 4. A production library whose audit has lapsed (cryptonite — certified 2016–2021, nothing since) —
    **UAPKI (added 2026-07-22) is a fork of this same lineage**, with an additional cited Ukrainian
-   state crypto-expertise conclusion for the UAPKI project specifically (2021; see `DECISIONS.md`
+   state crypto-expertise conclusion for the UAPKI project specifically (2021; see `docs/DECISIONS.md`
    D-16 for exactly what that does and doesn't certify — the conclusion predates and doesn't cover
    this project's pinned commit). Treat it as sitting at this tier for Kalyna/Kupyna/DSTU 4145
    (same underlying lineage as cryptonite), except for **Strumok, where it's the only source found
@@ -23,7 +23,7 @@ correlated — that inversion is the main thing this document has to make explic
    `// ДСТУ 8845:2019` attribution is taken on the library's word, not cross-tiered against
    anything above it.
 5. An unofficial, single-maintainer, unaudited implementation (outspace/dstu8845).
-6. Excluded — untrusted provenance (`li0ard`, see D-07 in `DECISIONS.md`).
+6. Excluded — untrusted provenance (`li0ard`, see D-07 in `docs/DECISIONS.md`).
 
 **Legal portability** (can code be copied/ported, or only used to check numbers):
 - MIT / BSD-2-Clause (Bouncy Castle, cryptonite, UAPKI) — portable with attribution.
@@ -38,7 +38,7 @@ be implemented there).
 
 ## Committed development model
 
-This project's own `SECURITY.md` and `DECISIONS.md` (D-06) already settled how oracles get used:
+This project's own `docs/SECURITY.md` and `docs/DECISIONS.md` (D-06) already settled how oracles get used:
 **implement each primitive from the official DSTU spec text, citing the clause, then verify
 against oracles.** Never port or copy oracle source into `crates/`, regardless of the oracle's
 license. Everything below assumes that model — oracles here answer "who do we check our numbers
@@ -87,7 +87,7 @@ project funding changes rather than re-researched from scratch.
   vectors re-derivable from `main.c`, verify-only, no license.
 - **Tertiary:** `oracles/cryptonite/` (BSD-2-Clause). Also the original source of the D-05
   question (its native CCM/GCM `encrypt_mac` API on Kalyna alone) — D-05 was later resolved on
-  assumption in this same direction, see below and `DECISIONS.md` D-05.
+  assumption in this same direction, see below and `docs/DECISIONS.md` D-05.
 - **Quaternary:** `oracles/bouncycastle-{java,dotnet}/` (MIT, actively maintained, audited) — good
   cross-check on modes and wrap behavior.
 - **Added 2026-07-22: `oracles/uapki/`** (fork of Cryptonite, state-expertise pedigree — see
@@ -100,12 +100,12 @@ project funding changes rather than re-researched from scratch.
   reproduces it correctly. **CBC/OFB/CFB/CTR/XTS remain unchecked** — genuine new data, since no
   Rust mode-of-operation exists yet to check them against; GCM/GMAC specifically were directly
   relevant to D-05 (resolved on assumption 2026-07-24, still not primary-confirmed) and have since
-  been checked (below) as those modes were built (see `DECISIONS.md` D-16 update, `TASKS.md`).
-- **GCM checked, 2026-07-24** (`DECISIONS.md` D-56, `hazmat::kalyna_gcm`, `TASKS.md` T-95) — uapki's
+  been checked (below) as those modes were built (see `docs/DECISIONS.md` D-16 update, `docs/TASKS.md`).
+- **GCM checked, 2026-07-24** (`docs/DECISIONS.md` D-56, `hazmat::kalyna_gcm`, `docs/TASKS.md` T-95) — uapki's
   6 `dstu7624_gcm_self_test` vectors plus a vector-only cross-check against
   `bouncycastle-java`'s `DSTU7624Test.java` GCM tests (construction source not vendored — same
   weaker-claim caveat as CCM above). BC-.NET has no GCM class at all.
-- **GMAC checked, 2026-07-24** (`DECISIONS.md` D-57, `hazmat::kalyna_gmac`, `TASKS.md` T-95) —
+- **GMAC checked, 2026-07-24** (`docs/DECISIONS.md` D-57, `hazmat::kalyna_gmac`, `docs/TASKS.md` T-95) —
   uapki-only, 5 `dstu7624_gmac_self_test` vectors covering 4 of 5 Kalyna variants
   (`Kalyna128_128` has none). No Bouncy Castle standalone GMAC class exists in either port
   (confirmed by search — BC-Java's "GCM/GMAC test N" cases configure `KGCMBlockCipher` for AEAD,
@@ -114,7 +114,7 @@ project funding changes rather than re-researched from scratch.
   proximity. Also: `dstu7624.c` itself has two disagreeing GMAC code paths (D-57) — the streaming
   `gmac_update`/`gmac_final` pair has a confirmed bug on multi-block single-call input, not ported;
   `hazmat::kalyna_gmac` ports the coherent one-shot `encrypt_gmac` instead.
-- **CCM checked, 2026-07-23** (`DECISIONS.md` D-41, `hazmat::kalyna_ccm`, `TASKS.md` T-81) — a
+- **CCM checked, 2026-07-23** (`docs/DECISIONS.md` D-41, `hazmat::kalyna_ccm`, `docs/TASKS.md` T-81) — a
   genuine dual-oracle case, not a same-vendor recheck: `dstu7624_ccm_self_test`'s 5 vectors and
   `bouncycastle-java`'s `DSTU7624Test.java` `CCMModeTests`'s 4 vectors were compared directly (not
   just each independently against this project's Rust port) and 4 of the 5 UAPKI cases matched a BC
@@ -128,7 +128,7 @@ project funding changes rather than re-researched from scratch.
   vendored sparse checkout of `oracles/bouncycastle-java` (only the test file importing them is) —
   the cross-check above is against BC's vector *outputs* only, not a second reading of BC's
   construction code, weaker than "read both implementations."
-- **KW checked 2026-07-24** (`DECISIONS.md` D-55, `hazmat::kalyna_kw`, `TASKS.md` T-94) — read
+- **KW checked 2026-07-24** (`docs/DECISIONS.md` D-55, `hazmat::kalyna_kw`, `docs/TASKS.md` T-94) — read
   `DSTU7624WrapEngine.java` and `Dstu7624WrapEngine.cs` in full, not just their test vectors.
   **Correction to this file's own earlier "quaternary ... good cross-check" framing above**: the
   .NET port is a structural port of the Java one (identical method shapes, matching commented-out
@@ -160,7 +160,7 @@ project funding changes rather than re-researched from scratch.
   (шифр)" article publishes a ten-mode table (ECB/CTR/CFB/CMAC/CBC/OFB/GCM+GMAC/CCM/XTS/KW, each
   with its security service) that matches — mode-for-mode — this project's own
   `oracles/uapki/`-derived note above (`dstu7624_self_test`'s ten-mode coverage), independently
-  arrived at from a different source. See `DECISIONS.md` D-05's 2026-07-24 revision for the full
+  arrived at from a different source. See `docs/DECISIONS.md` D-05's 2026-07-24 revision for the full
   table, the sourcing caveats, and why this was adopted as a working assumption rather than treated
   as a primary-text reading.
 
@@ -188,7 +188,7 @@ project funding changes rather than re-researched from scratch.
   UAPKI reproduces the same official `Kupyna.pdf` vector set already used by `cargo test`, not a
   second independent reading (see `oracles/README.md` for the state-expertise pedigree caveat).
   The same file's `dstu7564_self_test_kmac` (3 cases, KMAC-256/384/512) is separate data, **now
-  implemented** (`hazmat::kupyna_kmac`, `TASKS.md` T-38, `DECISIONS.md` D-44): its construction
+  implemented** (`hazmat::kupyna_kmac`, `docs/TASKS.md` T-38, `docs/DECISIONS.md` D-44): its construction
   (`dstu7564_init_kmac`/`_update_kmac`/`_final_kmac`) was read directly, not just its vectors, and
   cross-checked against `oracles/bouncycastle-java/.../macs/DSTU7564Mac.java` - a fully independent
   Java implementation whose own construction was also read - byte-for-byte matching on all three
@@ -228,7 +228,7 @@ project funding changes rather than re-researched from scratch.
 - **Status, stated plainly:** better than "no vectors, self-invented gray inputs" (this project's
   own 2026-07-22 earlier attempt, since superseded), still short of "official." Locating the
   standard text itself, or a source that independently transcribes its own annexed vectors the
-  way `DSTU_4145-2002.pdf` Annex Б does, remains open — see `TASKS.md`.
+  way `DSTU_4145-2002.pdf` Annex Б does, remains open — see `docs/TASKS.md`.
 
 ### DSTU 4145 (signature)
 - **Official text now in hand** (`docs/papers/DSTU_4145-2002.pdf`, added 2026-07-22) — corrects the
@@ -259,7 +259,7 @@ project funding changes rather than re-researched from scratch.
   unverified-transcription if it's ever extracted.
 - **Pseudocode:** `docs/pseudocode/dstu4145.md` — still transcribed from the Bouncy Castle Java
   signer as of this writing; re-deriving it against the official spec sections above (now that they
-  exist) is a follow-up, not yet done — see `TASKS.md`.
+  exist) is a follow-up, not yet done — see `docs/TASKS.md`.
 - **Primary:** `oracles/bouncycastle-{java,dotnet}/` (MIT, audited, decades in production) — the
   best-supported algorithm in this project by oracle quality, and per the vector cross-check above,
   the one primitive here with genuine double confirmation (official worked example + independent
@@ -309,7 +309,7 @@ per D-10) — the earlier "waits for the first primitive" caveat no longer appli
 - Vectors live at `crates/dstu-core/tests/vectors/<algorithm>/<case>.json` — one file per
   block/key-size or hash-size variant, plain hex fields, human-diffable, not a binary blob.
 - Every vector file records its **source** (which paper/oracle, down to the appendix section) —
-  an unattributed vector is not admissible, by the same logic as `SECURITY.md`'s "no primitive
+  an unattributed vector is not admissible, by the same logic as `docs/SECURITY.md`'s "no primitive
   without a cited spec section." Every hex field has been length/validity-checked programmatically
   against its declared bit size before being committed here — see the PDF extraction notes below.
 - Integration tests in `crates/dstu-core/tests/<algorithm>.rs` load these files and assert against
@@ -321,7 +321,7 @@ per D-10) — the earlier "waits for the first primitive" caveat no longer appli
   local GCC and dropped: cryptonite's own source doesn't compile clean on a modern compiler
   (unrelated to Kalyna/Kupyna — an error in `dstu4145_prng_internal.c`), and the added value was
   already modest given the two harnesses above already independently confirm these vectors. See
-  `TASKS.md` "Infrastructure" for the full note; `cryptonite` is still used as a read-only
+  `docs/TASKS.md` "Infrastructure" for the full note; `cryptonite` is still used as a read-only
   reference (e.g. the D-05 CCM/GCM finding below), just not a runnable harness.
 - Real shape, from `crates/dstu-core/tests/vectors/kalyna/128-128.json`:
   ```json

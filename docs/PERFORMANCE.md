@@ -1,11 +1,11 @@
 # Performance
 
 Canonical home for this project's benchmark numbers, methodology, and comparisons against other
-implementations. `DECISIONS.md` D-23 records *why* benchmarking exists at all and links here
+implementations. `docs/DECISIONS.md` D-23 records *why* benchmarking exists at all and links here
 rather than duplicating the numbers; update this file, not D-23, when new numbers are measured.
 
 **Fused-vs-`small-tables` numbers live separately**, in `docs/resource-profiles.md` - that's an
-internal resource-profile trade-off (`DECISIONS.md` D-35/D-38/D-39), not a cross-implementation
+internal resource-profile trade-off (`docs/DECISIONS.md` D-35/D-38/D-39), not a cross-implementation
 comparison, so it doesn't belong in this file's scope.
 
 ## Why this is tracked at all
@@ -22,7 +22,7 @@ faster alternative — so this project tracks its own numbers deliberately, not 
 ## Methodology
 
 - **Rust**: `cargo bench -p dstu-core --bench kalyna --bench kupyna --bench strumok` (`criterion`
-  0.8, `DECISIONS.md` D-23). Release-profile, `std::hint::black_box` around every benchmarked call
+  0.8, `docs/DECISIONS.md` D-23). Release-profile, `std::hint::black_box` around every benchmarked call
   so the optimizer can't elide it.
 - **C comparisons**: one-off timing harnesses, built with `gcc -O2` for a fair optimization-level
   comparison, run on the same machine on the same day. Each measures many iterations of a single
@@ -31,7 +31,7 @@ faster alternative — so this project tracks its own numbers deliberately, not 
   nanoseconds per call. **Not committed to this repo by default** (see "Reproducing" below) — the
   rationale (a lot of scaffolding for something that isn't run again regularly) held until this
   mode/oracle pairing was actually rebuilt and rerun multiple times in one week (T-131/T-133/T-138).
-  **First exception, 2026-07-26 (`DECISIONS.md` D-83)**: the Kalyna-CMAC vs. UAPKI wrapper is now
+  **First exception, 2026-07-26 (`docs/DECISIONS.md` D-83)**: the Kalyna-CMAC vs. UAPKI wrapper is now
   committed at `tests/oracle-harness/uapki-cmac-bench/cmac_bench.c` (source only — the DLL/import
   lib it links against are downloaded/built fresh per its own doc-comment recipe, same "vendor
   nothing prebuilt" posture `oracles/` already has). The other 8 modes' UAPKI comparisons remain
@@ -51,7 +51,7 @@ faster alternative — so this project tracks its own numbers deliberately, not 
   MB/s from initialization noise better than the smaller 64 B/1 KB/64 KB points the "Results"
   section's older tables still carry. **Exempt, and why** (matching the existing "10 MiB
   re-measurement pass" section's own list, not a new carve-out): `kalyna-block` (single block only,
-  no variable-length mode exists for it), `kalyna-kw` (`MAX_R = 20` blocks, `DECISIONS.md` D-55 - key
+  no variable-length mode exists for it), `kalyna-kw` (`MAX_R = 20` blocks, `docs/DECISIONS.md` D-55 - key
   material, not a general message), `kalyna-gmac` (measured at exactly one block by design, D-57's
   UAPKI multi-block streaming-bug workaround — an oracle limitation, not an architectural one on
   this project's own side), `kalyna-ccm` (`MAX_PLAINTEXT_LEN = 255` bytes, a real cap in this
@@ -89,7 +89,7 @@ aren't built on the Raspberry Pi (see below), so it contributes no comparison co
 project's own numbers.
 
 **Raspberry Pi**: Raspberry Pi 5 Model B, Broadcom BCM2712 / ARM Cortex-A76 (4 cores, 2.4 GHz),
-Debian 12 (bookworm), `aarch64-unknown-linux-gnu` - the ARM/Linux hardware rig `TASKS.md` "Testing
+Debian 12 (bookworm), `aarch64-unknown-linux-gnu` - the ARM/Linux hardware rig `docs/TASKS.md` "Testing
 & hardening" tracks (`.claude.local.md` has access details). Added 2026-07-22 to check this
 project's own numbers across a genuinely different CPU architecture, not just a different OS.
 
@@ -112,7 +112,7 @@ speed instead.
 
 ## Results (historical - superseded by "Binary-level comparison" below, see D-34)
 
-**Superseded 2026-07-22, see `DECISIONS.md` D-34**: this whole section is in-process `criterion`
+**Superseded 2026-07-22, see `docs/DECISIONS.md` D-34**: this whole section is in-process `criterion`
 numbers - useful at the time for tracking each optimization's progress commit-by-commit, but no
 longer this project's cross-implementation comparison method. Kept for the historical record of
 what was tried and in what order (D-27 through D-30's incremental fixes), not deleted, but **"##
@@ -245,11 +245,11 @@ optimization was checked against:
 
 **After D-26: now *faster* than UAPKI's Strumok, ~3.2x slower than outspace** (was ~4-5x slower
 than UAPKI, ~13-15x slower than outspace, before). **The "~3.2x slower than outspace" figure is
-superseded 2026-07-27 by T-135's batched/fixed-index rewrite (`DECISIONS.md` D-86) — the binary-
+superseded 2026-07-27 by T-135's batched/fixed-index rewrite (`docs/DECISIONS.md` D-86) — the binary-
 level gap is now ~1.19-1.25x, see the `strumok-crypt` section's "Updated 2026-07-27" block below.
 This table's own in-process 64 B/1024 B/65536 B numbers above were not re-measured this pass, kept
 here as the D-26-era historical record.** No naive/reference-grade Strumok implementation
-exists to compare against for the "correctness-first" side of this story — see `ORACLES.md`, no
+exists to compare against for the "correctness-first" side of this story — see `docs/ORACLES.md`, no
 official DSTU 8845 reference implementation is publicly known to exist. **Raspberry Pi rows added
 2026-07-22** — this project's own code is ~1.6-1.7x slower than the same code on the Ryzen dev
 machine (smaller gap than Kalyna/Kupyna's ~1.8-2.2x above). **Unlike Kalyna/Kupyna, this result
@@ -261,7 +261,7 @@ Kupyna here.
 ## Binary-level (process) comparison — canonical, see D-34
 
 **This is the only methodology this project uses for cross-implementation performance
-comparisons, per `DECISIONS.md` D-34** (added 2026-07-22, after a same-machine discrepancy between
+comparisons, per `docs/DECISIONS.md` D-34** (added 2026-07-22, after a same-machine discrepancy between
 the in-process and binary-level Kupyna numbers surfaced exactly why mixing methods is a problem —
 see D-34): a built CLI — `uacrypt` for this project (renamed 2026-07-23 from `dstutool`, D-36 —
 same binary, same numbers below, name only), an equivalent thin CLI wrapper with the same
@@ -311,9 +311,9 @@ this project wins raw on both platforms regardless of the cached-case reversal.
 encrypt --variant <variant> --key <path> --in <path> --out <path> --iterations <N>
 [--raw-schedule]`. The UAPKI comparison CLI is a one-off C wrapper (same file interface and flags)
 built the same way as this file's other C comparisons — not committed; built fresh on each machine
-against `library/uapkic`'s pinned commit (`ORACLES.md`).
+against `library/uapkic`'s pinned commit (`docs/ORACLES.md`).
 
-**Updated 2026-07-26 (`TASKS.md` T-121, `DECISIONS.md` D-71)**: expanded to all 5 variants (was 2),
+**Updated 2026-07-26 (`docs/TASKS.md` T-121, `docs/DECISIONS.md` D-71)**: expanded to all 5 variants (was 2),
 Ryzen dev machine only this pass — the Pi rig was out of scope. `N = 20000`. **UAPKI wrapper built
 against the official prebuilt `uapkic-v2.0.12` Windows DLL** (`gendef`/`dlltool` import lib, no
 CMake — see D-71) instead of a from-source build; cross-checked byte-identical against the real
@@ -348,7 +348,7 @@ Same `nb=2`-vs-`nb=4`/`nb=8` split T-128's own isolated criterion measurement pr
 gain at `nb=2`, ~17-24% at `nb=4`/`nb=8`) — this CLI-level number (includes process/loop overhead
 `criterion` doesn't) still tracks the mechanism cleanly.
 
-**UAPKI column rebuilt same day (T-131/D-78 extension, `DECISIONS.md` D-80)** — byte-for-byte
+**UAPKI column rebuilt same day (T-131/D-78 extension, `docs/DECISIONS.md` D-80)** — byte-for-byte
 confirmed against the real `uacrypt` binary (both directions, all 5 variants) before timing;
 `dstu7624_init_ecb`'s cost is excluded from the timed window here (same convention as GCM/KW/XTS
 below, not the GMAC bug described above — this mode was written correctly from the start):
@@ -412,7 +412,7 @@ over the same block cipher, so it inherits T-128's round-function speedup direct
 symmetric within normal noise (unlike XTS/block above), consistent with CCM's decrypt path being
 essentially the same CTR+MAC work run in the same order.
 
-**UAPKI column added same day (T-131/D-78 extension, `DECISIONS.md` D-80) — still not byte-for-byte
+**UAPKI column added same day (T-131/D-78 extension, `docs/DECISIONS.md` D-80) — still not byte-for-byte
 comparable, same documented reason as before, now confirmed by reading the C source directly rather
 than inferred**: `dstu7624_encrypt_ccm` (`dstu7624.c:2792`) returns `cipher_data` as
 ciphertext-with-a-trailing-CTR-encrypted-checksum-suffix, but `dstu7624_decrypt_ccm` never actually
@@ -459,7 +459,7 @@ consistent with GCM/GHASH-style field-multiplication throughput being a differen
 CCM's per-call allocation cost. Byte-for-byte cross-checked against the real `uacrypt` binary before
 timing (unlike CCM, GCM's wire format matches: same-length ciphertext, tag returned separately).
 
-**Root-caused and fixed 2026-07-26, `TASKS.md` T-125, `DECISIONS.md` D-76**: an isolated timing
+**Root-caused and fixed 2026-07-26, `docs/TASKS.md` T-125, `docs/DECISIONS.md` D-76**: an isolated timing
 diagnostic (`hazmat::gf2m_wide`'s `field_axiom_tests::isolated_timing_*`, comparing
 `Gf2m*::multiply` in isolation against a single `ExpandedKey::encrypt_block`) measured the field
 multiply at **89.6% (m=128), 91.8% (m=256), and 94.3% (m=512) of GCM's total per-block cost** —
@@ -506,7 +506,7 @@ directly against the 1 MiB table above's UAPKI column (different message size).
 | 256-512 | 16.59 | 16.60 |
 | 512-512 | 12.84 | 12.84 |
 
-**UAPKI column rebuilt same day (T-131/D-78 extension, `DECISIONS.md` D-80)** — byte-for-byte
+**UAPKI column rebuilt same day (T-131/D-78 extension, `docs/DECISIONS.md` D-80)** — byte-for-byte
 confirmed against `uacrypt` (both directions, all variants), same 10 MiB scale, before timing:
 
 | Variant | uacrypt encrypt (MB/s) | UAPKI encrypt (MB/s) | uacrypt decrypt (MB/s) | UAPKI decrypt (MB/s) |
@@ -565,7 +565,7 @@ Same direction as the existing 64 B/1 KB/64 KB rows (UAPKI ahead throughout), ma
 at 1 MiB (~1.37x/1.45x vs. ~1.05-1.12x at 65536 B) rather than converging — UAPKI's lead grows
 somewhat with message size here, not shrinks.
 
-**Updated 2026-07-27 (T-134, `DECISIONS.md` D-85)**: `sub_shift_mix`/`compress` became const-generic
+**Updated 2026-07-27 (T-134, `docs/DECISIONS.md` D-85)**: `sub_shift_mix`/`compress` became const-generic
 over `COLUMNS`, so all three rows above are superseded. Fresh Ryzen-only wrapper (`kupyna_bench.c`,
 scratch-only per this section's methodology, same `dstu7564_init`/`update`/`final` calls repeated
 *inside* the timed loop every iteration - matching `uacrypt`'s own `bench_in_memory!` macro, which
@@ -631,7 +631,7 @@ size in the existing 64 B/1 KB/64 KB table above where this project wins. A real
 noise — worth re-checking at intermediate sizes (e.g. 256 KB) in a future pass to see where exactly
 it flips, not done here.
 
-**Updated 2026-07-27 (`TASKS.md` T-135, `DECISIONS.md` D-86)**: `apply_keystream`'s batched/
+**Updated 2026-07-27 (`docs/TASKS.md` T-135, `docs/DECISIONS.md` D-86)**: `apply_keystream`'s batched/
 fixed-index bulk path re-measured against outspace directly at 10 MiB, `--iterations 50` (this
 project's established 10 MiB convention, matching the 10 MiB re-measurement pass below). Timer
 placement mirrors `uacrypt strumok-crypt`'s own cached-schedule convention exactly (one-time
@@ -698,7 +698,7 @@ though the exact per-byte cause (table layout, compiler codegen, etc.) isn't iso
 CMAC is pure block-cipher chaining with no other bottleneck diluting it, unlike GCM's field
 multiply, so this is the mode where T-128's gain should show most directly).
 
-**UAPKI column added same day (`TASKS.md` T-131, `DECISIONS.md` D-78)**: a small C wrapper
+**UAPKI column added same day (`docs/TASKS.md` T-131, `docs/DECISIONS.md` D-78)**: a small C wrapper
 (scratch-only, not committed) calling UAPKI's prebuilt `uapkic.dll` v2.0.12 directly, matching this
 project's own `uacrypt` file-based CLI shape. Byte-for-byte cross-checked against the real
 `uacrypt` binary before trusting any timing (same key/message, all 5 variants, both compute and
@@ -717,7 +717,7 @@ construction, not two different behaviors.
 most of CMAC's gap (compare against the 1 MiB table above, where UAPKI led by ~1.4-2.2x) but not
 all of it. Originally attributed to T-129's byte-wise-gather-vs-word-wide-`BT_xor*` difference as
 the residual class of cost T-128 didn't touch — **T-129 was investigated 2026-07-27 and closed
-without a code change** (`DECISIONS.md` D-88): a measured spike showed the gather is already
+without a code change** (`docs/DECISIONS.md` D-88): a measured spike showed the gather is already
 near-optimal at small block sizes and a real regression to "fix" at larger ones, so this residual
 gap's actual cause is still open, not a known-fixable byte-vs-word difference as originally framed.
 Compute/verify symmetric within noise on both implementations, as expected.
@@ -731,7 +731,7 @@ some could be CMAC-specific effects T-128's isolated round-function benchmark do
 per-block overhead outside the round function itself scaling differently at 10 MiB than at 1 MiB).
 Not root-caused further here — noted for whoever next touches this table, not assumed settled.
 
-**Re-measured 2026-07-26 at 64 B, N = 500000 (T-138, `DECISIONS.md` D-82)** — a direct follow-up to
+**Re-measured 2026-07-26 at 64 B, N = 500000 (T-138, `docs/DECISIONS.md` D-82)** — a direct follow-up to
 D-80's GMAC timer-placement finding: the original 64 B/1 MiB table above was measured by an earlier,
 uncommitted wrapper this session never inherited, so there was no way to confirm it placed its timer
 correctly. Rebuilt a fresh wrapper with the timer explicitly placed after `dstu7624_alloc`/
@@ -776,7 +776,7 @@ here. Consistent with the already-flagged pattern two paragraphs above (128-128'
 exceeded prediction) - not an isolated one-off.
 
 **Reproducing**: same `uacrypt` command as above at `--iterations 500000`; the UAPKI-side wrapper is
-now committed at `tests/oracle-harness/uapki-cmac-bench/cmac_bench.c` (`DECISIONS.md` D-83 - build
+now committed at `tests/oracle-harness/uapki-cmac-bench/cmac_bench.c` (`docs/DECISIONS.md` D-83 - build
 recipe in the file's own doc comment), taking `<variant> <key_path> <in_path> <out_path>
 <iterations>` and printing `iterations=.. total_ns=.. per_op_ns=..` to stderr, matching `uacrypt`'s
 own convention.
@@ -800,7 +800,7 @@ per-call `ByteArray`/ctx setup cost, not a per-byte throughput difference — th
 one block, so setup cost is nearly the whole cost).
 
 **Re-measured 2026-07-26 after the `gf2m_wide` comb-multiply fix (see Kalyna-GCM's section above,
-`TASKS.md` T-125, `DECISIONS.md` D-76)** — same shape (one field multiply per block), same win
+`docs/TASKS.md` T-125, `docs/DECISIONS.md` D-76)** — same shape (one field multiply per block), same win
 mechanism as GCM, at the existing 1-block scale:
 
 | Variant | uacrypt (MB/s) | UAPKI (MB/s) |
@@ -836,7 +836,7 @@ function T-128 sped up, so only a small fraction of GMAC's cost is even reachabl
 single-block, N=5000 operation (less averaging than CMAC/CCM's larger workloads), not a real
 regression — flagged honestly rather than smoothed into a false trend.
 
-**UAPKI column rebuilt same day (T-131/D-78 extension, `DECISIONS.md` D-80) — and every UAPKI
+**UAPKI column rebuilt same day (T-131/D-78 extension, `docs/DECISIONS.md` D-80) — and every UAPKI
 number above this line is now understood to be an overstated gap, not a fresh finding to build on.**
 Building the UAPKI-side wrapper for GMAC surfaced a real timing-methodology bug in the wrapper
 itself: `dstu7624_alloc`/`dstu7624_init_gmac` were timed *inside* the same window as
@@ -887,9 +887,9 @@ longer than the input. **All 5 variants, 2 blocks of key material, N = 5000, Ryz
 pattern above, despite KW's input here being similarly small (32-128 bytes). Not root-caused this
 session; `hazmat::kalyna_kw`'s Feistel-like network runs many more block-cipher calls per byte of
 key material than a CMAC/GCM pass over the same length would (proportional to `v = (n-1)*6` rounds,
-`DECISIONS.md` D-55), which may explain the reversal, but this wasn't confirmed by profiling.
+`docs/DECISIONS.md` D-55), which may explain the reversal, but this wasn't confirmed by profiling.
 
-**Root-caused and partially fixed 2026-07-26, `TASKS.md` T-127, `DECISIONS.md` D-76**: reading the
+**Root-caused and partially fixed 2026-07-26, `docs/TASKS.md` T-127, `docs/DECISIONS.md` D-76**: reading the
 UAPKI benchmark harness directly (`bench.c`'s `cmd_kw`) confirmed `dstu7624_init_kw` is called once,
 *outside* its `--iterations` loop - while `uacrypt`'s own `kalyna-kw wrap`/`unwrap` called
 `hazmat::kalyna_kw::wrap`/`unwrap`, which re-expand the full Kalyna key schedule *every* call
@@ -935,7 +935,7 @@ Wrap/unwrap show the same encrypt/decrypt-direction asymmetry XTS and Kalyna-blo
 `encipher_round_n`/`fused_inv_round_n` being genuinely different code paths (T-128/D-77), not
 measurement error.
 
-**UAPKI column rebuilt same day (T-131/D-78 extension, `DECISIONS.md` D-80)** — byte-for-byte
+**UAPKI column rebuilt same day (T-131/D-78 extension, `docs/DECISIONS.md` D-80)** — byte-for-byte
 confirmed (wrap output, and unwrap round-tripping back to the original key material, both
 implementations), same 2-block scale:
 
@@ -975,9 +975,9 @@ vs. 8.28/8.32 MB/s), a much wider gap than any other variant/mode measured in th
 opposite pattern (this project ~2x ahead), and 256-256/256-512 are roughly at parity — so this isn't
 a uniform "UAPKI's XTS is just faster" result, it's specific to the largest key/block variant. Not
 investigated further this session (`hazmat::kalyna_xts` itself was not touched — only a new CLI
-wrapper around the existing implementation was added) — see `TASKS.md` T-121 for the standing note.
+wrapper around the existing implementation was added) — see `docs/TASKS.md` T-121 for the standing note.
 
-**Root-caused and fixed 2026-07-26, `TASKS.md` T-126, `DECISIONS.md` D-76**: `hazmat::gf2m_wide.rs`
+**Root-caused and fixed 2026-07-26, `docs/TASKS.md` T-126, `docs/DECISIONS.md` D-76**: `hazmat::gf2m_wide.rs`
 had no fast path for "multiply by the fixed generator `x`" (the `two` constant XTS's tweak-doubling
 uses every block) - every call paid the fully general O(m²) schoolbook `multiply` for what is
 mathematically an O(m/64) shift-plus-conditional-XOR. Added `double()` (verified byte-identical to
@@ -1018,7 +1018,7 @@ Every mode whose input length isn't inherently capped was re-measured at 10 MiB 
 specifically to push past any remaining per-call setup-cost noise and confirm the numbers above are
 steady-state throughput, not an artifact of the message sizes measured so far. **Modes with an
 inherent length cap are excluded, and why**: `kalyna-block` (single block only, no arbitrary-length
-mode exists for it), `kalyna-kw` (`MAX_R = 20` blocks, `DECISIONS.md` D-55), `kalyna-gmac` (measured
+mode exists for it), `kalyna-kw` (`MAX_R = 20` blocks, `docs/DECISIONS.md` D-55), `kalyna-gmac` (measured
 at exactly one block by design, D-57's UAPKI multi-block streaming bug workaround), `kalyna-ccm`
 (`MAX_PLAINTEXT_LEN = 255` bytes, a property of the DSTU CCM construction as implemented here, not a
 benchmark choice).
@@ -1052,8 +1052,8 @@ block-cipher calls). Kupyna/Strumok are also within noise of their existing 1 Mi
 expected (neither fix touches either primitive). XTS is the one mode whose numbers moved at the
 time this pass was run, by exactly the margin T-126's root cause predicts.
 
-**GCM's row above is superseded, same day, by the comb-multiply fix (`TASKS.md` T-125,
-`DECISIONS.md` D-76)** - it was measured *before* that fix landed, kept here only as the historical
+**GCM's row above is superseded, same day, by the comb-multiply fix (`docs/TASKS.md` T-125,
+`docs/DECISIONS.md` D-76)** - it was measured *before* that fix landed, kept here only as the historical
 "was this a message-size artifact" check it was run for (answer: no, the 1 MiB and 10 MiB numbers
 agreed, so the >2x gap this pass investigated was real steady-state throughput, not overhead noise
 - exactly what justified treating it as a genuine bottleneck worth root-causing rather than a
@@ -1079,7 +1079,7 @@ flagged for whoever next touches this table, not silently assumed unchanged.
 | Strumok-256 | - | 653.08 | +0.7% (was 648.67, within noise — T-128 doesn't touch Strumok) |
 | Strumok-512 | - | 654.80 | +2.9% (was 636.16, same reason) |
 
-**Updated 2026-07-27, re-run after T-134** (const-generic Kupyna round functions, `DECISIONS.md`
+**Updated 2026-07-27, re-run after T-134** (const-generic Kupyna round functions, `docs/DECISIONS.md`
 D-85) — supersedes this table's own Kupyna rows above, with a UAPKI column added the same pass
 (fresh `kupyna_bench.c` wrapper, byte-identity verified, same as the Kupyna section's own
 "Updated 2026-07-27" block has the full detail):
@@ -1089,7 +1089,7 @@ D-85) — supersedes this table's own Kupyna rows above, with a UAPKI column add
 | Kupyna-256 | - | **139.52** | 149.66 | +41.7% (was 98.44) |
 | Kupyna-512 | - | 98.65 | **117.77** | +21.4% (was 81.29) |
 
-**UAPKI column for Kalyna-XTS added same day (`TASKS.md` T-131, `DECISIONS.md` D-78)**, same
+**UAPKI column for Kalyna-XTS added same day (`docs/TASKS.md` T-131, `docs/DECISIONS.md` D-78)**, same
 wrapper/verification as CMAC's table above (byte-for-byte identical to `uacrypt` on all 5 variants,
 both directions, confirmed before timing):
 
@@ -1172,7 +1172,7 @@ within noise, same as this project's).
 
 This project's MVP deliberately chose correctness and `no_std`/embedded-portability first
 (`CLAUDE.md` MVP scope) over speed. The gap to UAPKI/outspace is real and has concrete, confirmed
-causes — read directly from the other implementations' source, not guessed at (`TASKS.md` has the
+causes — read directly from the other implementations' source, not guessed at (`docs/TASKS.md` has the
 sketched-not-scheduled task for closing this):
 
 - **Kalyna/Kupyna, D-27 then D-28, both 2026-07-22**: `hazmat::tables`' shared `apply_matrix` used
@@ -1218,7 +1218,7 @@ sketched-not-scheduled task for closing this):
   `t_function` used to do 8 S-box lookups *then* a full MDS matrix-multiply via
   `apply_matrix`/`gf_mul` (up to 64 `GF(2^8)` multiplications) as a separate step — now the same 8
   precomputed tables, transcribed from outspace directly. The remaining ~3.2x gap to outspace after
-  both fixes was root-caused 2026-07-26 and fixed 2026-07-27 (T-135, `DECISIONS.md` D-86): batched,
+  both fixes was root-caused 2026-07-26 and fixed 2026-07-27 (T-135, `docs/DECISIONS.md` D-86): batched,
   fixed-index 128-byte block generation with the input XOR fused in at `u64` granularity, matching
   `next_stream_full_crypt`'s own shape — closed the gap to ~1.19-1.25x, not further chased since
   the remainder is the LFSR/FSM's inherently serial dependency chain.
@@ -1232,7 +1232,7 @@ sketched-not-scheduled task for closing this):
   the full before/after numbers.
 - **The block-level "rough parity with UAPKI" claim (the very first table in this file, "Kalyna
   (single-block encrypt, nanoseconds")) is itself a measurement artifact, found 2026-07-26
-  (`DECISIONS.md` D-76)**: UAPKI's `encrypt_ecb`/`decrypt_ecb` allocate twice and free once per call
+  (`docs/DECISIONS.md` D-76)**: UAPKI's `encrypt_ecb`/`decrypt_ecb` allocate twice and free once per call
   (`dstu7624.c:2916,2922`), which dominates the timing of a single 16-64 byte block. Proven from
   numbers already in this file, no new measurement needed: UAPKI's own CMAC-at-1-MiB throughput
   (allocation-free `cmac_update`/`cmac_final`) is 1.33-2.71x *faster* than UAPKI's own block-cached
@@ -1275,7 +1275,7 @@ sketched-not-scheduled task for closing this):
   without touching the already-verified algorithm logic (confirmed for Strumok's fix: all existing
   tests, including the 4000-case outspace differential harness, still pass unchanged).
 
-None of this changes any implementation's standing as a correctness oracle (`ORACLES.md`) — a
+None of this changes any implementation's standing as a correctness oracle (`docs/ORACLES.md`) — a
 reference implementation's whole reason for existing is auditable clarity, not speed, and UAPKI's
 speed doesn't make it "more correct," just faster.
 
@@ -1340,7 +1340,7 @@ now all superseded for Kalyna (by `kalyna-decryptfusion-2026-07-22`, or `kalyna-
 `strumok-optimized-2026-07-22` — kept only as historical records, not what new changes should be
 checked against.
 
-**Updated 2026-07-26 (`TASKS.md` T-128, `DECISIONS.md` D-77)**: `encipher_round`/`fused_inv_round`
+**Updated 2026-07-26 (`docs/TASKS.md` T-128, `docs/DECISIONS.md` D-77)**: `encipher_round`/`fused_inv_round`
 became const-generic over block size (see D-77 for the full mechanism), superseding
 `kalyna-decryptfusion-2026-07-22` as the Kalyna baseline:
 
@@ -1380,7 +1380,7 @@ with wasted buffer space). Per D-34, this is criterion-based internal regression
 a cross-implementation claim against UAPKI — the binary-level Kalyna-block table above was not
 re-measured this session (see D-77/T-128).
 
-**Updated 2026-07-27 (`TASKS.md` T-134, `DECISIONS.md` D-85)**: `sub_shift_mix`/`compress` became
+**Updated 2026-07-27 (`docs/TASKS.md` T-134, `docs/DECISIONS.md` D-85)**: `sub_shift_mix`/`compress` became
 const-generic over `COLUMNS` (Kupyna's own analogue of T-128's Kalyna rewrite), superseding
 `kalyna-kupyna-fused-2026-07-22` as the Kupyna baseline:
 
@@ -1410,7 +1410,7 @@ change). Its value is catching a *relative* regression on the same machine acros
 establishing a portable performance contract. Re-run the save command to refresh the baseline after
 an intentional performance change.
 
-**Updated 2026-07-27 (`TASKS.md` T-135, `DECISIONS.md` D-86)**: `apply_keystream` became a
+**Updated 2026-07-27 (`docs/TASKS.md` T-135, `docs/DECISIONS.md` D-86)**: `apply_keystream` became a
 batched/fixed-index bulk path over 128-byte blocks (Strumok's own analogue of T-128/T-134's
 unrolling, though via a one-time array rotation rather than const-generic dispatch — see D-86 for
 why), superseding `strumok-optimized-2026-07-22` as the Strumok baseline:
@@ -1437,7 +1437,7 @@ comparison table below has the independent, cross-implementation re-measurement.
 Not committed to this repo by default (one-off, and pulling in a full UAPKI build is a lot of
 scaffolding for something that isn't run again regularly) — but fully reproducible. **Exception:
 the Kalyna-CMAC vs. UAPKI wrapper is committed** (`tests/oracle-harness/uapki-cmac-bench/
-cmac_bench.c`, `DECISIONS.md` D-83) since it had been rebuilt from scratch repeatedly in one week
+cmac_bench.c`, `docs/DECISIONS.md` D-83) since it had been rebuilt from scratch repeatedly in one week
 (T-131/T-133/T-138) — promote another mode's wrapper the same way if it starts recurring, rather
 than committing all of them preemptively.
 

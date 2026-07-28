@@ -4,10 +4,10 @@ This directory holds unmodified copies of third-party reference implementations,
 as **oracles**: run/inspect their code locally, cross-check outputs and test vectors against
 our own implementation. Never copy their source into `crates/`, regardless of license — this
 project's Rust core is written from the DSTU spec text, with these as a verification aid (see
-`../SECURITY.md` "Dual-oracle verification", `../DECISIONS.md` D-02/D-06).
+`../docs/SECURITY.md` "Dual-oracle verification", `../docs/DECISIONS.md` D-02/D-06).
 
 For the trust ranking of each oracle below, which one is primary/secondary per algorithm, the
-known gaps (Strumok, DSTU 9041), and the test-vector convention — see `../ORACLES.md`, the
+known gaps (Strumok, DSTU 9041), and the test-vector convention — see `../docs/ORACLES.md`, the
 canonical owner of that content. Not repeated here.
 
 ## No-license C references (unofficial reference implementations)
@@ -44,7 +44,7 @@ Unlike the no-license C repos above, MIT *would* permit vendoring this into our 
 attribution. It's still kept oracle-only and gitignored here, for consistency: these are Java/C#
 files with no direct role in a Rust crate — their value is as an independently-audited
 implementation to diff behavior against, not as code to build on. If Java/.NET bindings are
-built later (per `../DECISIONS.md` D-02 — wrap Bouncy Castle rather than reimplement DSTU 4145),
+built later (per `../docs/DECISIONS.md` D-02 — wrap Bouncy Castle rather than reimplement DSTU 4145),
 that's a real dependency added to those bindings' own build files, not a copy from this folder.
 
 **Correction, checked 2026-07-21 while auditing `docs/pseudocode/*.md` against these sources:**
@@ -81,7 +81,7 @@ project's scope), the `pkix`/`storage` ASN.1 and PKCS12-container code (X.509/PK
 crypto primitive), and anything under `libs/` (vendored third-party dependencies, not
 cryptonite's own code).
 
-**Notable finding, open question for `../DECISIONS.md` D-05:** `dstu7624.h` exposes
+**Notable finding, open question for `../docs/DECISIONS.md` D-05:** `dstu7624.h` exposes
 `dstu7624_init_ccm` / `dstu7624_init_gcm` and a paired `dstu7624_encrypt_mac` /
 `dstu7624_decrypt_mac` API — i.e. Kalyna alone, in CCM/GCM-style modes, produces authenticated
 ciphertext + MAC without involving Kupyna at all. This sits in tension with D-05's premise (that
@@ -98,7 +98,7 @@ section), but a second data point for whichever direction D-05 is eventually set
 2026-07-24: D-05 was resolved on assumption in exactly this direction** (Kalyna-alone, not
 Kalyna+Kupyna EtM) — corroborated further by Ukrainian Wikipedia's independently-sourced ten-mode
 table matching UAPKI's own self-test list mode-for-mode. Still not a primary-text reading; see
-`../DECISIONS.md` D-05's latest revision for the full picture.
+`../docs/DECISIONS.md` D-05's latest revision for the full picture.
 
 ## UAPKI (fork of Cryptonite, BSD-2-Clause, state-expertise pedigree)
 
@@ -125,16 +125,16 @@ known-answer data** in `library/uapkic/src/`: `dstu4145_self_test` (signature),
 `dstu7564_self_test` (Kupyna hash + KMAC), `dstu7624_self_test` (Kalyna — ECB/CBC/OFB/CFB/CTR/
 CMAC/XTS/KW/CCM/GMAC/GCM, i.e. covers the D-05 tension directly), `dstu8845_self_test` (Strumok,
 comment-attributed `// ДСТУ 8845:2019` in the source — the first Strumok KAT this project has
-found anywhere, see `../DECISIONS.md` D-15 and
+found anywhere, see `../docs/DECISIONS.md` D-15 and
 `crates/dstu-core/tests/vectors/strumok/keystream-{256,512}.json`).
 
 **Cross-checked so far:**
 - DSTU 4145: `dstu4145_self_test`'s `d`/`Q`/`r`/`s` (byte-reversed from UAPKI's little-endian
   storage) are byte-identical to `docs/papers/DSTU_4145-2002.pdf` Annex Б.1 and to Bouncy Castle's
   `DSTU4145Test.java` `test163()` — three independent sources now agree on this one example (see
-  `../DECISIONS.md` D-14).
+  `../docs/DECISIONS.md` D-14).
 - Strumok: `dstu8845_self_test`'s 8 key/IV/keystream cases were reproduced byte-for-byte by
-  running `../strumok-dstu8845/` (outspace) on the same inputs — see `../DECISIONS.md` D-15 for
+  running `../strumok-dstu8845/` (outspace) on the same inputs — see `../docs/DECISIONS.md` D-15 for
   why this is a consistency bonus and *not* independent-oracle confirmation (outspace and UAPKI's
   `dstu8845.c` share identical internal function/table names — likely shared lineage, not two
   independent implementations of the standard).
@@ -144,7 +144,7 @@ found anywhere, see `../DECISIONS.md` D-15 and
   same-source confirmation, not a second independent reading. `dstu7564_self_test_kmac` (3 cases,
   KMAC-256/384/512) is genuinely new data not in this project's vectors at all — KMAC isn't
   implemented here yet, so it's unchecked, left for whenever `crypto_auth` gets built (see
-  `../DECISIONS.md` D-16 update, `../TASKS.md`).
+  `../docs/DECISIONS.md` D-16 update, `../docs/TASKS.md`).
 - Kalyna: `dstu7624_ecb_self_test`'s 10 cases (ECB with `data_len == block_size`, i.e. plain
   single-block encryption) are byte-for-byte identical (verified 2026-07-22) to all five
   `crates/dstu-core/tests/vectors/kalyna/*.json` files' encryption/decryption cases — same
@@ -152,4 +152,4 @@ found anywhere, see `../DECISIONS.md` D-15 and
   hash above, not a second independent reading. The other self-tests — CBC/OFB/CFB/CTR/CMAC/XTS/
   KW/CCM/GMAC/GCM — remain unchecked: genuine new data, with no Rust mode-of-operation
   implemented yet to check them against. CCM/GMAC/GCM specifically bear directly on the open D-05
-  tension; left for whenever a mode of operation gets built (see `../DECISIONS.md` D-16 update).
+  tension; left for whenever a mode of operation gets built (see `../docs/DECISIONS.md` D-16 update).

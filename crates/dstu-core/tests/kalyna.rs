@@ -1,6 +1,6 @@
 //! Black-box integration test for `dstu_core::hazmat::kalyna` against the official test vectors
 //! in `tests/vectors/kalyna/` (extracted from `docs/papers/Kalyna.pdf` Appendix B - see
-//! `ORACLES.md`). Same hand-rolled extractor as `tests/kupyna.rs` - no JSON dependency for a
+//! `docs/ORACLES.md`). Same hand-rolled extractor as `tests/kupyna.rs` - no JSON dependency for a
 //! fixed, project-controlled vector shape.
 
 use dstu_core::hazmat::kalyna::{
@@ -162,7 +162,7 @@ variant_test!(
 /// Two fixed key/block pairs per variant (the official vectors above) is thin coverage for
 /// `decrypt(encrypt(key, block), key) == block`. Property-testing this over random keys/blocks
 /// costs almost nothing extra and exercises far more of the state space than the fixed vectors
-/// alone - see `TASKS.md` "Testing & hardening".
+/// alone - see `docs/TASKS.md` "Testing & hardening".
 macro_rules! roundtrip_proptest {
     ($test_name:ident, $variant:ty, $key_len:literal, $block_len:literal) => {
         proptest! {
