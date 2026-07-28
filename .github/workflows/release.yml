@@ -33,7 +33,7 @@ jobs:
             asset_name: uacrypt-windows-x86_64.zip
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo build -p uacrypt --release
       - name: Package (Unix)
@@ -61,7 +61,7 @@ jobs:
     name: package dstu-core source distribution
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       # Same packaging `cargo publish` would produce (respects Cargo.toml's include/exclude), but
       # without actually publishing to crates.io - T-17 stays separately gated. dstu-core has no
@@ -80,7 +80,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/download-artifact@v4
         with:
           path: artifacts

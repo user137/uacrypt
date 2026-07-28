@@ -31,7 +31,7 @@ jobs:
     name: SonarQube Cloud (Rust)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # SonarQube Cloud's "New Code" period and blame-based ownership need real git history,
           # not the default shallow clone.

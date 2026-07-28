@@ -28,7 +28,7 @@ jobs:
     name: build, test, fmt, clippy
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
@@ -84,7 +84,7 @@ jobs:
     # the (separately tracked, T-102) uacrypt portion this fix doesn't touch.
     timeout-minutes: 150
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@nightly
         with:
           components: miri
@@ -117,7 +117,7 @@ jobs:
         target:
           [kupyna, kalyna, kalyna_ccm, strumok, kalyna_cmac, kalyna_kw, kalyna_gcm, kalyna_gmac, kalyna_cfb, crypto_secretstream]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@nightly
       - run: cargo install cargo-fuzz --locked
       # Same rust-toolchain.toml override as the miri job above - `+nightly` is not optional here.
@@ -134,7 +134,7 @@ jobs:
       contents: read
       checks: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: rustsec/audit-check@v2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -143,14 +143,14 @@ jobs:
     name: cargo deny (licenses, bans, sources)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: EmbarkStudios/cargo-deny-action@v2
 
   msrv:
     name: MSRV build (1.87.0)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # `dtolnay/rust-toolchain@1.87.0` installs 1.87.0 but does NOT make it active - this repo's
       # own `rust-toolchain.toml` pins `channel = "stable"` and silently overrides a bare `cargo`
       # invocation regardless (the same T-85 gotcha the miri/fuzz jobs above already work around),
