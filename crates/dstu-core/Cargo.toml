@@ -39,7 +39,7 @@ zeroize = { version = "1.9.0", default-features = false, features = ["derive"] }
 subtle = { version = "2.6.1", default-features = false }
 # Optional, `std`-gated (docs/DECISIONS.md D-48): never compiled for a `no_std` build, so it can never
 # trip getrandom's own compile_error! on an unrecognized embedded target (D-04 addendum).
-getrandom = { version = "0.3.4", default-features = false, optional = true }
+getrandom = { version = "0.4.3", default-features = false, optional = true }
 # Optional, `pwhash`-gated (docs/DECISIONS.md D-49/D-50): vetted 2026-07-24, pinned to the stable
 # `0.5.3` release (not the `0.6.0-rc` prerelease on `master`). `rand` feature deliberately
 # excluded - salt bytes come from this crate's own `randombytes_buf`, not `password_hash`'s
