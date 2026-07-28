@@ -84,3 +84,13 @@ updates:
         update-types: ["minor", "patch"]
     commit-message:
       prefix: "ci(deps)"
+    # `dtolnay/rust-toolchain@1.87.0` in the `msrv` job (docs/DECISIONS.md D-100) is deliberately
+    # pinned to this project's MSRV floor, not "whatever's current" - Dependabot can't tell that
+    # apart from a normal version-bump target and proposed bumping it to 1.100.0 on the very first
+    # run (PR #3), which would silently defeat the job's entire purpose *and* breaks it outright,
+    # since the job's own `cargo +1.87.0` invocations further down are hardcoded and don't move
+    # with the toolchain action's ref. Ignored entirely rather than left to keep recurring weekly -
+    # bumping the MSRV floor itself is a deliberate project decision made by hand, not something to
+    # accept via an automated PR.
+    ignore:
+      - dependency-name: "dtolnay/rust-toolchain"

@@ -6717,3 +6717,17 @@ worth recording so a future session doesn't re-diagnose them from scratch:
    on **every** Dependabot PR going forward for this one specific check, unrelated to whatever
    dependency is being bumped - expected, known noise, not a per-PR problem to chase. Everything
    else on PR #1 was still `pending`/passing when checked.
+4. **PR #3 (`dtolnay/rust-toolchain` 1.87.0 -> 1.100.0) was a real problem, not noise - closed, and
+   the underlying dependency ignored.** `rust.yml`'s `msrv` job pins `dtolnay/rust-toolchain@1.87.0`
+   deliberately as this project's MSRV floor (see the job's own doc comment), not as "whatever's
+   current" - Dependabot has no way to distinguish that from an ordinary version to bump, and
+   proposed 1.100.0 on the very first run. Confirmed via `gh pr diff` that merging it would have
+   silently defeated the job's entire purpose *and* broken it outright at the same time: the job's
+   own `cargo +1.87.0` invocations further down (`rust.yml:169-170`, required by the
+   `rust-toolchain.toml`-overrides-bare-`cargo` gotcha already documented in `CLAUDE.md`) are
+   hardcoded and don't move with the action ref, so the PR's own MSRV build check failed -
+   confirmed the failure, not just predicted it. Closed the PR with an explanatory comment and
+   added `ignore: - dependency-name: "dtolnay/rust-toolchain"` to the `github-actions` entry, since
+   this would otherwise recur roughly every six weeks (Rust's release cadence) forever - bumping
+   the MSRV floor itself is a deliberate, by-hand project decision (see `docs/DECISIONS.md`'s
+   pattern for other MSRV-floor changes), not something to accept via an automated PR.
