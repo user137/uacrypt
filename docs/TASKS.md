@@ -3607,3 +3607,20 @@ Phase 2+ and none currently in flight).
   `cargo fmt --check` and fixed in the same session, see D-96 for the full story and
   before/after verification (`cargo build`/`clippy --all-features`/`fmt --check` clean, `cargo
   test --workspace` re-run to confirm no functional regression).
+
+- [x] **T-142** **Done 2026-07-28, see `docs/DECISIONS.md` D-97.** Owner asked to close the
+  remaining gaps on GitHub's "Community Standards" checklist (screenshot showed Description/
+  README/License/Security policy already green; Code of conduct, Contributing, Issue templates,
+  Pull request template still missing). Added all four, tailored to this project rather than
+  generic boilerplate: `docs/CODE_OF_CONDUCT.md` (Contributor Covenant v2.1, enforcement via
+  opening a GitHub issue - owner's explicit choice over a private email contact, see D-97),
+  `docs/CONTRIBUTING.md` (open-project/PRs-welcome stance - owner's explicit choice over a
+  solo-project framing; cites the real test-first/dual-oracle/three-test-category bar from
+  `docs/SECURITY.md`/`docs/TASKS.md` rather than generic advice), `.github/ISSUE_TEMPLATE/`
+  (bug report + feature request + a `config.yml` redirecting security reports to GitHub Security
+  Advisories instead of a public issue, consistent with `docs/SECURITY.md`'s existing policy), and
+  `.github/PULL_REQUEST_TEMPLATE.md` (checklist mirroring `docs/CONTRIBUTING.md`'s verification
+  bar). `README.md`'s repository-structure tree and a new short "Contributing" section were updated
+  to point at all four. `CODE_OF_CONDUCT.md`/`CONTRIBUTING.md` placed in `docs/` (not root),
+  consistent with T-141/D-96's just-established convention and GitHub's own recognition of
+  community-health files in `docs/` as well as root/`.github/`.

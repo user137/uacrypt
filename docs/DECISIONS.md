@@ -6426,3 +6426,57 @@ run to confirm no functional regression (this was a citation-text/file-location 
 source logic touched). `readme = "README.md"` fields in both crates' `Cargo.toml` were confirmed
 untouched (they point at each crate's own `crates/*/README.md`, unrelated to the root `README.md`
 this change is about). No code changed - only file locations and citation text.
+
+## D-97: GitHub Community Standards gaps closed - Code of Conduct, Contributing guide, issue/PR templates (T-142)
+
+Owner request 2026-07-28, immediately after T-141/D-96: a GitHub "Community Standards" screenshot
+showed Description/README/License/Security policy already green, with Code of conduct,
+Contributing, Issue templates, and Pull request template still missing. Two explicit choices were
+asked of the owner rather than assumed, since both are public-facing and hard to walk back quietly:
+
+1. **Code of Conduct enforcement contact: GitHub Issues, not a private email.** The owner chose
+   this over publishing a personal email address in a public file. Documented explicitly in
+   `docs/CODE_OF_CONDUCT.md`'s "Enforcement" section as non-confidential (visible to other
+   repository watchers), with a clear pointer that **security vulnerabilities are a separate
+   process** (GitHub Security Advisories, `docs/SECURITY.md`) - conflating the two would have been
+   a real mistake, since CoC violations and security reports have very different confidentiality
+   needs.
+2. **Contribution stance: open project, PRs welcome** - the owner chose this over a "solo project,
+   contributions limited" framing. This shaped `docs/CONTRIBUTING.md`'s tone throughout (welcoming,
+   not gatekeeping) while still stating the real bar plainly: dual-oracle verification, the
+   three-test-category rule (correctness/rejection/misuse), no secret-dependent branching, and
+   citing `docs/SECURITY.md`/`docs/DECISIONS.md` before proposing an API shape - the same
+   substantive requirements this project already holds itself to, not watered down for external
+   contributors.
+
+**Placement: `docs/`, not root**, for `CODE_OF_CONDUCT.md`/`CONTRIBUTING.md` - consistent with
+D-96's just-established convention (only `README.md`/`CLAUDE.md` stay at root) and with GitHub's
+own documented recognition of community-health files in the repository root, `.github/`, *or*
+`docs/` (already confirmed empirically for `SECURITY.md` in D-96 - the Community Standards
+checklist still showed it green after that move). Issue templates and the PR template **must** live
+in `.github/` - that is not optional/stylistic, GitHub only discovers
+`.github/ISSUE_TEMPLATE/*.md` and `.github/PULL_REQUEST_TEMPLATE.md` from that exact location.
+
+**Content is project-specific, not generic boilerplate copy-pasted in:**
+- `docs/CODE_OF_CONDUCT.md` - Contributor Covenant v2.1 (the de facto standard text), enforcement
+  section rewritten for the GitHub-Issues choice above and cross-linked to `docs/SECURITY.md` for
+  the actually-separate vulnerability-disclosure process.
+- `docs/CONTRIBUTING.md` - written from this project's real practices already documented in
+  `CLAUDE.md`/`docs/SECURITY.md`/`docs/TASKS.md` (test-first, dual-oracle verification, the
+  three-test-category rule, `cargo xtask` as the single build/QA entry point, the Conventional
+  Commits style already visible in `git log`), not a generic Rust-project template - a contributor
+  who only reads this file gets the same substantive bar an AI agent following `CLAUDE.md` does.
+- `.github/ISSUE_TEMPLATE/bug_report.md`/`feature_request.md` - both point away from filing a
+  security report as a public issue; `feature_request.md`'s checklist asks the reporter to check
+  `docs/TASKS.md`/`docs/DECISIONS.md` first (a new-feature request that's already planned or
+  already explicitly rejected is common noise this heads off cheaply). `config.yml` adds a direct
+  "Security vulnerability" contact link to `.../security/advisories/new` rather than relying on
+  the templates' own in-body text alone.
+- `.github/PULL_REQUEST_TEMPLATE.md` - checklist mirrors `docs/CONTRIBUTING.md`'s verification bar
+  item-for-item (three test categories, dual-oracle, constant-time discipline, `docs/DECISIONS.md`/
+  `docs/TASKS.md` doc-sync) rather than a generic "tests pass? docs updated?" checklist.
+
+`README.md` updated: repository-structure tree gained the four new paths, and a new short
+"Contributing" section (before "License") links all of `docs/CONTRIBUTING.md`,
+`docs/CODE_OF_CONDUCT.md`, and `docs/SECURITY.md`'s vulnerability-reporting process. No source code
+touched - documentation/governance files only.

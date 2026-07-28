@@ -59,9 +59,12 @@ target.
 ├── docs/CHANGELOG.md           # Keep a Changelog-format release history
 ├── docs/ORACLES.md             # oracle trust ranking, per-algorithm oracle map, test-vector provenance
 ├── docs/PERFORMANCE.md         # benchmark methodology and recorded numbers
+├── docs/CONTRIBUTING.md        # how to propose a change, test/verification bar, commit style
+├── docs/CODE_OF_CONDUCT.md     # community standards (Contributor Covenant)
 ├── LICENSE-MIT
 ├── LICENSE-APACHE
 ├── .github/workflows/     # CI (rust.yml, oracle-harness.yml) and the release workflow (release.yml)
+├── .github/ISSUE_TEMPLATE/, PULL_REQUEST_TEMPLATE.md  # issue/PR templates
 ├── .cargo/config.toml     # `cargo xtask` alias
 ├── xtask/                 # cross-platform build/QA runner, see "Development commands" below
 ├── docs/
@@ -274,6 +277,14 @@ RISC-V) via plain `rustup target add` — no custom toolchain needed for either.
 real hardware, and specifically **not** a claim of resistance to hardware side-channel attacks
 (SPA/DPA), which would
 need a separate, dedicated hardware audit. Real-hardware validation is a distinct post-MVP phase.
+
+## Contributing
+
+Pull requests are welcome. See [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md) for the test/
+verification bar (dual-oracle verification, the three test categories per primitive, commit style)
+and [`docs/CODE_OF_CONDUCT.md`](docs/CODE_OF_CONDUCT.md) for community standards. Security
+vulnerabilities go through GitHub Security Advisories, not a public issue — see
+`docs/SECURITY.md` "Reporting vulnerabilities".
 
 ## License
 
