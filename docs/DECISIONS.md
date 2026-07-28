@@ -6759,3 +6759,37 @@ simply to let Dependabot recreate them cleanly under the now-fixed `commit-messa
 "deps(deps):"-style redundant titles from the first amendment) rather than leave stale-titled PRs
 open. None of this discards real work - every closed PR is Dependabot-authored and will reopen
 with a corrected title on the next scheduled check if the update is still current.
+
+## D-101: Removed `.github/dependabot.yml` entirely - Dependabot Security Updates already covers "vulnerability only" with zero config (T-144 reversal)
+
+Owner's question after D-100's two rounds of friction (`versioning-strategy` schema rejection, the
+MSRV-pin false-positive on PR #3, the `getrandom` major-bump risk): "configure Dependabot to only
+act on an explicit vulnerability, ignore the rest?" Checked before building anything, rather than
+hand-rolling that behavior on top of the existing `updates:` config - and it turned out to already
+exist, on, and unrelated to the file this project had been fighting with:
+
+- `gh api repos/.../automated-security-fixes` -> `{"enabled": true, "paused": false}` - **Dependabot
+  Security Updates** (a distinct GitHub feature from "Version Updates", enabled/managed via repo
+  Settings > Security, not `dependabot.yml`) opens a PR **only** when a dependency has a known
+  vulnerability in GitHub's Advisory Database, bumping to the minimum version that fixes it -
+  exactly "explicit vulnerability, auto-PR, ignore everything else."
+- `gh api repos/.../vulnerability-alerts` -> `204 No Content` (GitHub's convention for "enabled") -
+  **Dependabot Alerts** (surfaces known vulnerabilities in the Security tab, no PR) was also
+  already on.
+
+Both work with **no config file at all** - sensible built-in defaults, zero maintenance surface.
+Everything D-100 built (`versioning-strategy`, per-directory `groups`, `commit-message` prefixes,
+the `dtolnay/rust-toolchain`/major-version `ignore` rules) was solving a *different* problem -
+**Version Updates**, GitHub's "a newer release exists, security-relevant or not" feature - which is
+opinionated, has a much larger configuration surface, and is what generated every round of friction
+this session (D-100's two amendments, three separate PR-closing passes). For a small, individually-
+vetted dependency set (`docs/SECURITY.md`'s supply-chain table) where `cargo audit` already runs on
+every push as an independent vulnerability check, the "stay current on non-security releases"
+feature was solving a problem this project doesn't strongly need automated, at a cost (config
+complexity, PR volume, the getrandom-major/MSRV-pin false-positive risk) that outweighed the
+benefit.
+
+**Disposition: `.github/dependabot.yml` deleted entirely.** Dependabot Security Updates + Alerts
+(both already enabled, confirmed via API rather than assumed) are now the sole automated dependency
+mechanism, unchanged and requiring no maintenance. `docs/TASKS.md` T-144 is revised in place to
+record the reversal rather than left pointing at a file that no longer exists.

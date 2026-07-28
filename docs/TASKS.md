@@ -3659,16 +3659,20 @@ Phase 2+ and none currently in flight).
     full 5-language coverage preserved, the false-positive rule structurally silenced going forward
     instead of requiring repeated manual dismissal. See D-99 for the full verification chain.
 
-- [x] **T-144** **Done 2026-07-29, see `docs/DECISIONS.md` D-100.** Owner asked about enabling
-  Dependabot version updates after seeing the "Enable" prompt on the repo's Security settings -
-  chose a real checked-in `.github/dependabot.yml` with deliberate settings over the bare toggle.
-  Four `updates:` entries: `cargo` for `/` (main workspace), `/xtask`, and
-  `/crates/dstu-core/fuzz` (three separate directories since this project keeps those two
-  deliberately out of the main `[workspace]`, each with its own `Cargo.lock`), plus one
-  `github-actions` entry covering all five workflow files. Weekly schedule, capped
-  `open-pull-requests-limit`, `versioning-strategy: auto` on the main workspace (Cargo only accepts
-  `auto`/`lockfile-only` - `increase-if-necessary` was tried first and rejected by GitHub's own
-  schema validation on push, see D-100 for the fix), minor/patch grouped but majors left individual
-  (a breaking bump to a vetted crypto-adjacent dependency gets its own explicit look), and
-  commit-message prefixes matching this project's existing Conventional-Commits scopes. No
-  auto-merge anywhere - every PR still needs manual review + green CI, same as any other PR.
+- [x] **T-144** **Done, then reversed, 2026-07-29 - see `docs/DECISIONS.md` D-100 (built) and D-101
+  (removed).** Owner asked about enabling Dependabot version updates after seeing the "Enable"
+  prompt on the repo's Security settings - built a real checked-in `.github/dependabot.yml` with
+  deliberate settings (four `updates:` entries covering `cargo` for `/`/`xtask`/`fuzz` plus
+  `github-actions`, weekly schedule, capped PR limits, grouping, commit-message prefixes) rather
+  than the bare toggle. Took two rounds of real friction to get right (D-100's amendments: a
+  schema-rejected `versioning-strategy` value, a `dtolnay/rust-toolchain` MSRV-pin false bump that
+  broke its own CI check, a `getrandom` major-version bump worth blocking automatically). Owner then
+  asked whether Dependabot could be scoped to "only an explicit vulnerability, ignore the rest" -
+  checked first rather than hand-building that behavior: **Dependabot Security Updates + Alerts
+  were already enabled independently of this file** (`gh api .../automated-security-fixes` ->
+  `enabled: true`; confirmed via API, not assumed) and already do exactly that, with no config file
+  needed at all. `.github/dependabot.yml` (the *Version Updates* feature - "a newer release exists,
+  security-relevant or not" - a different, more opinionated feature than what the owner actually
+  wanted) was **deleted entirely**. Net state: Dependabot Security Updates/Alerts (zero-maintenance,
+  vulnerability-only) are the sole automated dependency mechanism now, alongside `cargo audit`
+  (`rust.yml`) as the independent CI-side check.
