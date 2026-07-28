@@ -1,0 +1,20 @@
+# CodeQL advanced-setup config (docs/TASKS.md T-143, docs/DECISIONS.md D-98/D-99).
+#
+# Migrated off default setup specifically to use this file - default setup does not honor a
+# custom codeql-config.yml at all, so this file has no effect until the workflow that references
+# it (.github/workflows/codeql.yml) actually runs under advanced setup.
+#
+# Everything else stays at the default query suite - this only removes one specific query that
+# D-98 confirmed to be a 100%-false-positive fit for this codebase's own patterns (crypto
+# test-vector fixtures, byte-length literals in variant-dispatch macros, and one deterministic-
+# by-design counter IV), not a general "reduce noise" policy. Every other query, including every
+# other Rust query, keeps running.
+#
+# Known, named trade-off (see D-98/D-99): disabling this query means a genuinely committed secret
+# would no longer be caught by *this* rule specifically. The compensating control is code review
+# plus docs/SECURITY.md's existing hard constraints and dual-oracle test-vector discipline, not
+# another automated scanner - recorded here so a future session doesn't assume static analysis
+# alone still covers this class of mistake.
+query-filters:
+  - exclude:
+      id: rust/hard-coded-cryptographic-value

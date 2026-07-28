@@ -1,0 +1,65 @@
+# CodeQL advanced setup (docs/TASKS.md T-143, docs/DECISIONS.md D-98/D-99) - replaces GitHub's
+# zero-config "default setup" (which was enabled outside this project's own session/workflows).
+# Migrated specifically so `.github/codeql/codeql-config.yml` takes effect: default setup does not
+# honor a custom config file at all, and D-98 found `rust/hard-coded-cryptographic-value` to be a
+# 100%-false-positive fit for this codebase (crypto test-vector fixtures, byte-length literals in
+# variant-dispatch macros, a deterministic-by-design counter IV) that a query-filter is the correct
+# way to silence, not repeated manual dismissal.
+#
+# Languages and `build-mode: none` below match what default setup already confirmed (via
+# `gh api repos/.../code-scanning/analyses`, D-99): every language here genuinely ran its full
+# query set with `build-mode: none` (source-only extraction, no compilation) - `rules_count` was
+# 17-76 per language, not zero - so no build step (Maven/dotnet/gcc/cargo) is needed for any of
+# them, unlike this repo's other CI jobs.
+name: "CodeQL Advanced"
+
+on:
+  push:
+    branches: ["master"]
+  pull_request:
+    branches: ["master"]
+  schedule:
+    - cron: "36 5 * * 5"
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      packages: read
+      actions: read
+      contents: read
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: actions
+            build-mode: none
+          - language: c-cpp
+            build-mode: none
+          - language: csharp
+            build-mode: none
+          # Java-only (no Kotlin in this repo, tests/oracle-harness/java/) - `build-mode: none`
+          # is sufficient for that; would need `autobuild`/`manual` only if Kotlin were added.
+          - language: java-kotlin
+            build-mode: none
+          - language: rust
+            build-mode: none
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+          config-file: ./.github/codeql/codeql-config.yml
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: "/language:${{ matrix.language }}"
