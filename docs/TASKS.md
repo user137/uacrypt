@@ -3625,8 +3625,8 @@ Phase 2+ and none currently in flight).
   consistent with T-141/D-96's just-established convention and GitHub's own recognition of
   community-health files in `docs/` as well as root/`.github/`.
 
-- [x] **T-143** **Done (permissions half) 2026-07-28, see `docs/DECISIONS.md` D-98; the
-  hard-coded-cryptographic-value half is a decision pending the owner, not a code task.** Owner
+- [x] **T-143** **Fully done 2026-07-29, see `docs/DECISIONS.md` D-98 (triage) and D-99 (migration,
+  disposition of the open question below).** Owner
   surfaced a GitHub Code Scanning screenshot: 80 open alerts from CodeQL **default setup** (enabled
   outside this session, distinct from T-140's SonarCloud), 69 `rust/hard-coded-cryptographic-value`
   (critical) + 11 `actions/missing-workflow-permissions` (medium). Triaged both rule types
@@ -3644,9 +3644,17 @@ Phase 2+ and none currently in flight).
     constant-zero high bytes are provably harmless by the module's own counter-never-resets +
     per-stream-subkey design, not just "overwritten later" like the others). See D-98 for the full
     per-bucket evidence. No code changed - there is no real secret to remove.
-  - **Left open for the owner**: whether to bulk-dismiss the 69 via the Code Scanning API (with
-    `dismissed_reason: "used in tests"` for the test-file ones, `"false positive"` for the rest) or
-    migrate the repo to CodeQL advanced setup (a checked-in workflow) so a `codeql-config.yml` can
-    filter `tests/`/the rule structurally - default setup does not honor a custom config file, only
-    advanced setup does. Not resolved unilaterally: dismissing 69 alerts on a public repo's Security
-    tab is a visible-to-others action.
+  - **Owner chose migration over bulk-dismissal** (dismissal doesn't scale - this project keeps
+    adding DSTU test vectors, so bucket-1 false positives would keep recurring forever, one alert
+    at a time). Added `.github/workflows/codeql.yml` (advanced setup, adapted from GitHub's own
+    generated template) + `.github/codeql/codeql-config.yml` (one `query-filters: exclude` entry
+    for `rust/hard-coded-cryptographic-value`, nothing else changed). Verified before disabling
+    anything: confirmed via `gh api .../code-scanning/analyses` that default setup's `c-cpp`/
+    `csharp`/`java-kotlin` runs were genuine (`build-mode: none`, real non-zero `rules_count`), not
+    silent build failures, so all 5 languages were kept in the migration with no build steps needed
+    anywhere; pushed the new workflow with default setup still enabled, watched it run green, then
+    confirmed the config was actually honored (Rust's `rules_count` 25->24, `results_count` 69->0,
+    every other language's `rules_count` unchanged) before disabling default setup
+    (`state: not-configured`, confirmed via a follow-up `GET`). Result: 0 open code-scanning alerts,
+    full 5-language coverage preserved, the false-positive rule structurally silenced going forward
+    instead of requiring repeated manual dismissal. See D-99 for the full verification chain.

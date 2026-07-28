@@ -6569,3 +6569,67 @@ than bucket 3's.
   default setup, only under advanced setup. Left as an explicit choice for the project owner (a
   bulk dismissal of 69 alerts on a public repo's Security tab is a visible-to-others action, not
   something to take unilaterally) rather than resolved unilaterally in this pass.
+
+## D-99: Migrated CodeQL from default setup to advanced setup, query-filtering the false-positive rule instead of dismissing 69 alerts (T-143 follow-up)
+
+Owner chose migration over bulk-dismissal (D-98's open question) specifically because dismissal
+doesn't scale: bucket 1 of D-98's false-positive taxonomy (crypto test-vector fixtures) is the
+largest share and this project keeps adding DSTU modes/vectors, so every new test file with a fixed
+key would keep re-triggering the same rule, requiring dismissal again indefinitely. A config-level
+exclusion closes the whole class once.
+
+**Verified before touching anything irreversible, in the order advisor set out - each step gated
+on the previous one's real evidence, not assumption:**
+
+1. **Did default setup actually analyze `c-cpp`/`csharp`/`java-kotlin`, or fail silently?** This
+   mattered because `tests/oracle-harness/*-differential/*.c` has no Makefile/CMake (per
+   `docs/ORACLES.md`, built ad hoc per-file), so a naive "autobuild" would plausibly fail quietly
+   and produce a false "0 results = clean" signal. Checked
+   `gh api repos/.../code-scanning/analyses`: every language's analysis `environment` showed
+   `"build-mode":"none"` - source-only extraction, no compilation attempted at all - with a real
+   `rules_count` (52-76 per language, not zero). This resolved the uncertainty: all three genuinely
+   ran their full query sets and found nothing, not a silent build failure. Consequence: dropping
+   these languages from the advanced-setup migration would have been a real (if currently
+   zero-finding) coverage loss, so all five languages (`actions`, `c-cpp`, `csharp`, `java-kotlin`,
+   `rust`) were kept, and since none of them need an actual build (`build-mode: none` throughout),
+   the advanced-setup workflow needed no Maven/dotnet/gcc/cargo build steps at all - checkout +
+   `init` + `analyze`, same shape for every language.
+2. **`.github/workflows/codeql.yml` written from GitHub's own auto-generated advanced-setup
+   template** (the owner pasted it directly from the Security tab's "Set up advanced" flow) rather
+   than from memory - kept its detected language/build-mode matrix and `github/codeql-action/
+   {init,analyze}@v4` versions verbatim, trimmed the generic boilerplate comments, added this
+   project's own citation-style comments, and added `config-file:
+   ./.github/codeql/codeql-config.yml` to the `init` step (absent from the generic template, since
+   it doesn't know about our query exclusion).
+3. **`.github/codeql/codeql-config.yml`**: one `query-filters: - exclude: { id:
+   rust/hard-coded-cryptographic-value }` entry - nothing else changed, default query suite
+   otherwise untouched. Named trade-off, recorded in the file itself: a genuinely committed secret
+   would no longer be caught by *this specific rule*; the compensating control is code review plus
+   `docs/SECURITY.md`'s existing hard constraints and mandatory dual-oracle test-vector process,
+   not another scanner - stated explicitly so a future session doesn't assume static analysis alone
+   still covers this class of mistake.
+4. **Pushed the workflow with default setup still enabled** (deliberately did not disable it first -
+   advisor's explicit ordering: prove the replacement works before removing the original safety
+   net). Watched the run to completion (`gh run view`, all 5 `Analyze (<language>)` jobs
+   `success`), then verified via `gh api .../code-scanning/analyses` for the exact commit SHA that
+   the config was *actually honored*, not silently ignored by a path typo: Rust's `rules_count`
+   dropped from 25 to 24 (exactly the one excluded query) and its `results_count` dropped from 69
+   to 0 in the same analysis - two independent numbers moving together is what confirms the filter
+   applied, not just "the run was green." Every other language's `rules_count` matched its
+   pre-migration default-setup number exactly (csharp 52, java-kotlin 76, c-cpp 58, actions 17) -
+   confirming no coverage was accidentally lost elsewhere.
+5. **Only then** - `gh api --method PATCH repos/.../code-scanning/default-setup -f
+   state=not-configured`, confirmed via a follow-up `GET` returning `"state":"not-configured"`.
+   The 69 previously-open `hard-coded-cryptographic-value` alerts transitioned to `fixed`
+   automatically once the rule stopped running (GitHub's own behavior for a query removed from the
+   active analysis, not a manual dismissal) - confirmed via
+   `gh api .../code-scanning/alerts?state=open` returning zero open alerts, rather than assumed.
+   No `dismissed_reason` API calls were made - D-98's "used in tests"/"false positive" dismissal
+   path was superseded by this migration, exactly as planned (not run in parallel, which
+   would have made it impossible to tell which mechanism actually closed each alert).
+
+**Net result**: 0 open code-scanning alerts, full 5-language coverage preserved, the one
+confirmed-false-positive rule structurally silenced going forward (not just for today's 69
+instances), and the workflow file itself is now this project's own to maintain (version-pin
+`codeql-action`, same maintenance shape as its other four hand-tuned workflows) rather than
+GitHub's auto-managed default.
