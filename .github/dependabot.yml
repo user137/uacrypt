@@ -1,0 +1,81 @@
+# Dependabot version updates (docs/TASKS.md T-144, docs/DECISIONS.md D-100) - opens PRs when a
+# newer dependency/action version exists. Nothing here auto-merges; every PR still needs a manual
+# review + green CI before merging, same as any other PR (docs/CONTRIBUTING.md).
+#
+# Three separate `cargo` directories, not one - this workspace deliberately keeps `xtask/` and
+# `crates/dstu-core/fuzz/` out of the main `[workspace]` table (see xtask/src/main.rs's own doc
+# comment and .gitignore's per-directory Cargo.lock entries), so each has its own independent
+# dependency graph/lockfile that Dependabot needs told about explicitly - it does not walk nested
+# lockfiles from one root entry.
+version: 2
+
+updates:
+  # Main workspace: dstu-core + uacrypt - the actual shipped product.
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    # Library crate (dstu-core is meant for downstream consumption, docs/TASKS.md T-17) - only
+    # widen a version requirement when the current one genuinely can't satisfy the new release,
+    # rather than Dependabot's more aggressive default of always bumping to the latest. Keeps
+    # dstu-core's own Cargo.toml ranges as permissive as possible for whatever eventually depends
+    # on it.
+    versioning-strategy: increase-if-necessary
+    groups:
+      minor-and-patch:
+        update-types: ["minor", "patch"]
+      # Major bumps stay ungrouped/individual - this project's dependency set is small and
+      # deliberately vetted (docs/SECURITY.md's supply-chain table), so a breaking change to
+      # zeroize/subtle/getrandom/argon2 gets its own PR and its own explicit look, not bundled
+      # in with routine patches.
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+
+  # xtask - the cross-platform build/QA runner (docs/DECISIONS.md D-12), deliberately zero
+  # production dependencies of its own; kept isolated so a QA-tool dependency bump can never touch
+  # dstu-core/uacrypt's own dependency graph.
+  - package-ecosystem: "cargo"
+    directory: "/xtask"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 3
+    groups:
+      minor-and-patch:
+        update-types: ["minor", "patch"]
+    commit-message:
+      prefix: "deps(xtask)"
+      include: "scope"
+
+  # cargo-fuzz targets (docs/SECURITY.md - fuzzing is a required layer, not optional tooling).
+  - package-ecosystem: "cargo"
+    directory: "/crates/dstu-core/fuzz"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 3
+    groups:
+      minor-and-patch:
+        update-types: ["minor", "patch"]
+    commit-message:
+      prefix: "deps(fuzz)"
+      include: "scope"
+
+  # All five `.github/workflows/*.yml` files' pinned action versions (actions/checkout,
+  # dtolnay/rust-toolchain, github/codeql-action, etc.) - one entry covers every workflow file,
+  # Dependabot discovers them all from this single "/" directory.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    groups:
+      actions-minor-and-patch:
+        update-types: ["minor", "patch"]
+    commit-message:
+      prefix: "ci"
+      include: "scope"

@@ -6633,3 +6633,54 @@ confirmed-false-positive rule structurally silenced going forward (not just for 
 instances), and the workflow file itself is now this project's own to maintain (version-pin
 `codeql-action`, same maintenance shape as its other four hand-tuned workflows) rather than
 GitHub's auto-managed default.
+
+## D-100: Dependabot version updates enabled via a checked-in config, not the bare "Enable" toggle (T-144)
+
+Owner request 2026-07-29, prompted directly by D-99: migrating CodeQL to advanced setup made this
+project responsible for its own pinned action versions (`github/codeql-action@v4` etc.) for the
+first time, rather than GitHub silently keeping default setup current - Dependabot version updates
+is the automated way to keep that (and the small `cargo` dependency set) current without relying on
+someone remembering to check manually. Owner explicitly chose a real `.github/dependabot.yml` with
+"careful" settings over the bare Security-tab "Enable" button (which uses undocumented, unreviewable
+defaults).
+
+**Four `updates:` entries, not one** - three separate `cargo` directories plus one
+`github-actions` entry:
+- `/` - the main workspace (`dstu-core` + `uacrypt`), the actual shipped product.
+- `/xtask` - deliberately excluded from the main `[workspace]` table (own doc comment,
+  `xtask/src/main.rs`) specifically so a QA-tool dependency bump can never touch the product's own
+  dependency graph; has its own `Cargo.lock` (`.gitignore`'s `/xtask/Cargo.lock` entry), so
+  Dependabot needs its own directory entry too - it does not walk nested lockfiles from one root
+  config block.
+- `/crates/dstu-core/fuzz` - `cargo-fuzz`'s own crate, same reasoning (own `Cargo.lock`,
+  `docs/SECURITY.md`'s "fuzzing is required, not optional" makes keeping its own toolchain current
+  worth tracking too).
+- `/` (`github-actions`) - one entry covers every `.github/workflows/*.yml` file's pinned action
+  versions; Dependabot discovers all of them from a single directory, no per-workflow entry needed.
+
+**"Careful" specifics, each a deliberate choice, not a copied default:**
+- `schedule: weekly` (Monday), not daily - matches this project's existing CI cadence
+  (`rust.yml`'s own comment about avoiding pile-ups) and avoids a PR every day for a dependency set
+  this small.
+- `open-pull-requests-limit`: 5 for the two "/" entries, 3 for `xtask`/`fuzz` - caps how many open
+  PRs can accumulate if updates go unreviewed for a while; low because the dependency count itself
+  is already small (`deny.toml`'s own comment: "dstu-core/uacrypt have zero external dependencies"
+  beyond the few explicitly vetted ones in `docs/SECURITY.md`'s supply-chain table).
+- `versioning-strategy: increase-if-necessary` on the main workspace only - `dstu-core` is a library
+  crate meant for downstream consumption (`docs/TASKS.md` T-17, not yet published), so Dependabot
+  should only widen a `Cargo.toml` version requirement when the current one can't already satisfy
+  the new release, not always bump to latest (which would needlessly narrow the range for whatever
+  eventually depends on this crate). Not applied to `xtask`/`fuzz` (binaries/dev-tools, not
+  published, no downstream range to protect).
+- `groups: minor-and-patch` (by `update-types`) on every entry, **major versions deliberately left
+  ungrouped** - routine patch/minor bumps across a small dependency set can safely land as one PR,
+  but a breaking major bump to a vetted crypto-adjacent dependency (`zeroize`, `subtle`, `argon2`,
+  `getrandom`) should get its own individual PR and its own explicit look, not be bundled in with
+  routine noise.
+- `commit-message.prefix` matches this project's already-established Conventional-Commits scope
+  convention (`docs/CONTRIBUTING.md`): `deps` / `deps(xtask)` / `deps(fuzz)` for the three `cargo`
+  entries, `ci` for `github-actions` (matching the scope already used for workflow-file changes,
+  e.g. this session's own `ci(workflows): ...`/`ci(codeql): ...` commits).
+- No auto-merge configured anywhere, deliberately - every Dependabot PR still needs a manual review
+  and green CI before merging, same bar as any other PR (`docs/CONTRIBUTING.md`); Dependabot only
+  *opens* PRs here, nothing merges itself.

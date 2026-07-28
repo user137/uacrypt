@@ -3658,3 +3658,16 @@ Phase 2+ and none currently in flight).
     (`state: not-configured`, confirmed via a follow-up `GET`). Result: 0 open code-scanning alerts,
     full 5-language coverage preserved, the false-positive rule structurally silenced going forward
     instead of requiring repeated manual dismissal. See D-99 for the full verification chain.
+
+- [x] **T-144** **Done 2026-07-29, see `docs/DECISIONS.md` D-100.** Owner asked about enabling
+  Dependabot version updates after seeing the "Enable" prompt on the repo's Security settings -
+  chose a real checked-in `.github/dependabot.yml` with deliberate settings over the bare toggle.
+  Four `updates:` entries: `cargo` for `/` (main workspace), `/xtask`, and
+  `/crates/dstu-core/fuzz` (three separate directories since this project keeps those two
+  deliberately out of the main `[workspace]`, each with its own `Cargo.lock`), plus one
+  `github-actions` entry covering all five workflow files. Weekly schedule, capped
+  `open-pull-requests-limit`, `versioning-strategy: increase-if-necessary` on the main workspace
+  only (library-crate range hygiene), minor/patch grouped but majors left individual (a breaking
+  bump to a vetted crypto-adjacent dependency gets its own explicit look), and commit-message
+  prefixes matching this project's existing Conventional-Commits scopes. No auto-merge anywhere -
+  every PR still needs manual review + green CI, same as any other PR.
