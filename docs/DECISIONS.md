@@ -6689,3 +6689,31 @@ defaults).
 - No auto-merge configured anywhere, deliberately - every Dependabot PR still needs a manual review
   and green CI before merging, same bar as any other PR (`docs/CONTRIBUTING.md`); Dependabot only
   *opens* PRs here, nothing merges itself.
+
+**Amendment, first real run (2026-07-29):** the config validated and opened 7 PRs on the first
+pass (#1-#7 across all four `updates:` entries) - three findings from watching that actual run,
+none requiring the schema-error class of fix D-100's `versioning-strategy` correction needed, but
+worth recording so a future session doesn't re-diagnose them from scratch:
+1. **`commit-message.include: "scope"` was redundant, not broken** - Dependabot's scope value for
+   this repo is always the literal word `deps` regardless of ecosystem/directory, so combining it
+   with prefixes that already spell out the scope (`deps`, `deps(xtask)`, `deps(fuzz)`) produced
+   ugly, redundant titles like "deps(deps): bump getrandom..." and "deps(fuzz)(deps): update
+   getrandom requirement...". Removed `include: "scope"` from all four entries; the `github-actions`
+   entry's bare `ci` prefix became `ci(deps)` directly so it doesn't lose the "these are dependency
+   bumps" signal that `include: "scope"` used to add. Already-open PRs keep their old titles until
+   Dependabot next touches them - not worth manually renaming.
+2. **The `github-actions` entry's job "errored" after opening exactly 5 PRs, with the message
+   "Dependabot cannot open any more pull requests"** - this is `open-pull-requests-limit: 5`
+   working exactly as configured, not a bug: more than 5 action-version updates were available,
+   Dependabot opened the first 5 and correctly stopped rather than exceeding the cap. Surfaces as a
+   red "Errored" status in the Dependency graph > Dependabot tab, which reads alarming but isn't -
+   worth remembering the next time this tab shows red, before assuming the config itself is broken.
+3. **PR #1's `SonarQube Cloud (Rust)` check failed with "Not authorized... check the SONAR_TOKEN
+   environment variable"** - traced via `gh run view --log-failed` to confirm before assuming it
+   was a real break from the `getrandom` 0.3->0.4 bump. It wasn't: GitHub does not pass repository
+   secrets to workflows triggered by a Dependabot-authored PR by default (a security boundary, not
+   a misconfiguration here) - `sonarcloud.yml`'s own existing comment already anticipated this
+   general shape ("it's safe to merge in that state" for the secret-missing case). This will recur
+   on **every** Dependabot PR going forward for this one specific check, unrelated to whatever
+   dependency is being bumped - expected, known noise, not a per-PR problem to chase. Everything
+   else on PR #1 was still `pending`/passing when checked.

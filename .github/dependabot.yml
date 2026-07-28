@@ -7,6 +7,12 @@
 # comment and .gitignore's per-directory Cargo.lock entries), so each has its own independent
 # dependency graph/lockfile that Dependabot needs told about explicitly - it does not walk nested
 # lockfiles from one root entry.
+#
+# No `commit-message.include: "scope"` below - confirmed on the first real PRs it opened
+# (docs/DECISIONS.md D-100's amendment) that Dependabot's own scope value is always the literal
+# word "deps", so combined with prefixes that already spell out the scope (`deps`, `deps(xtask)`,
+# `deps(fuzz)`, `ci(deps)`) it only produced redundant-looking titles like "deps(deps): bump ..."
+# and "deps(fuzz)(deps): update ...". Dropped it - the prefix alone already carries the scope.
 version: 2
 
 updates:
@@ -35,7 +41,6 @@ updates:
       # in with routine patches.
     commit-message:
       prefix: "deps"
-      include: "scope"
 
   # xtask - the cross-platform build/QA runner (docs/DECISIONS.md D-12), deliberately zero
   # production dependencies of its own; kept isolated so a QA-tool dependency bump can never touch
@@ -51,7 +56,6 @@ updates:
         update-types: ["minor", "patch"]
     commit-message:
       prefix: "deps(xtask)"
-      include: "scope"
 
   # cargo-fuzz targets (docs/SECURITY.md - fuzzing is a required layer, not optional tooling).
   - package-ecosystem: "cargo"
@@ -65,7 +69,6 @@ updates:
         update-types: ["minor", "patch"]
     commit-message:
       prefix: "deps(fuzz)"
-      include: "scope"
 
   # All five `.github/workflows/*.yml` files' pinned action versions (actions/checkout,
   # dtolnay/rust-toolchain, github/codeql-action, etc.) - one entry covers every workflow file,
@@ -80,5 +83,4 @@ updates:
       actions-minor-and-patch:
         update-types: ["minor", "patch"]
     commit-message:
-      prefix: "ci"
-      include: "scope"
+      prefix: "ci(deps)"
