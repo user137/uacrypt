@@ -35,10 +35,18 @@ updates:
     groups:
       minor-and-patch:
         update-types: ["minor", "patch"]
-      # Major bumps stay ungrouped/individual - this project's dependency set is small and
-      # deliberately vetted (docs/SECURITY.md's supply-chain table), so a breaking change to
-      # zeroize/subtle/getrandom/argon2 gets its own PR and its own explicit look, not bundled
-      # in with routine patches.
+    # Major bumps blocked from auto-opening entirely, not just left ungrouped - confirmed the need
+    # for this the hard way (docs/DECISIONS.md D-100 amendment): a getrandom 0.3->0.4 major PR
+    # opened on the very first run, and this project's own docs (D-74) already flag real,
+    # documented sensitivity to getrandom's exact version behavior (the custom no_std backend
+    # hook). This project's dependency set is small and individually vetted
+    # (docs/SECURITY.md's supply-chain table), so a breaking change to
+    # zeroize/subtle/getrandom/argon2 deserves a deliberate manual look, not an automatic PR -
+    # `cargo audit` (rust.yml's own job) still independently catches known vulnerabilities
+    # regardless of this, so blocking auto-proposed majors here doesn't reduce that coverage.
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     commit-message:
       prefix: "deps"
 
@@ -54,6 +62,9 @@ updates:
     groups:
       minor-and-patch:
         update-types: ["minor", "patch"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     commit-message:
       prefix: "deps(xtask)"
 
@@ -67,6 +78,9 @@ updates:
     groups:
       minor-and-patch:
         update-types: ["minor", "patch"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     commit-message:
       prefix: "deps(fuzz)"
 

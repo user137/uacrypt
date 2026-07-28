@@ -6731,3 +6731,31 @@ worth recording so a future session doesn't re-diagnose them from scratch:
    this would otherwise recur roughly every six weeks (Rust's release cadence) forever - bumping
    the MSRV floor itself is a deliberate, by-hand project decision (see `docs/DECISIONS.md`'s
    pattern for other MSRV-floor changes), not something to accept via an automated PR.
+
+**Second amendment, same day: all 6 remaining first-run PRs closed, major cargo bumps blocked
+automatically.** After #3, the two `getrandom` 0.3->0.4 PRs (#1 fuzz, #2 main workspace) were the
+next-most-concerning: a major-version bump to a dependency this project's own docs (D-74) already
+flag as needing careful version-specific attention (the `getrandom` 0.3 custom no_std backend hook
+mechanism), opened automatically with no gate beyond "CI will catch it eventually." Rather than
+leave majors ungrouped-but-still-automatic (the original D-100 design) and rely on catching each
+one manually as it lands, tightened further: **`ignore: - dependency-name: "*", update-types:
+["version-update:semver-major"]` added to all three `cargo` entries** (main, `xtask`, `fuzz`) -
+major-version bumps no longer open a PR at all for any Cargo dependency, only minor/patch do.
+`cargo audit` (`rust.yml`'s own job, runs on every push regardless of Dependabot) still
+independently catches known vulnerabilities in whatever version is currently pinned, so this
+doesn't reduce vulnerability-detection coverage - it only removes the *proactive* "here's a newer
+major version" nudge, which for a 4-5-dependency, individually-vetted crypto-adjacent project is a
+reasonable trade: a major bump to `zeroize`/`subtle`/`getrandom`/`argon2` should be a deliberate,
+by-hand decision (checked against changelogs, re-verified against `docs/SECURITY.md`'s supply-chain
+table) the same way an MSRV-floor bump already is, not something that arrives as an unprompted PR.
+Not applied to the `github-actions` entry - official Action major bumps are lower-risk (clear
+compatibility notes, breakage caught immediately by this project's own required CI checks) and
+this project has no equivalent documented sensitivity to any specific Action version the way it
+does to `getrandom`, so those still get individual (not blocked) major-bump PRs.
+
+All 6 remaining first-run PRs (#1, #2, #4-#7) were closed with an explanatory comment rather than
+merged or left open - #1/#2 for the reason above, #4-#7 (routine GitHub Action minor/patch bumps)
+simply to let Dependabot recreate them cleanly under the now-fixed `commit-message` config (the
+"deps(deps):"-style redundant titles from the first amendment) rather than leave stale-titled PRs
+open. None of this discards real work - every closed PR is Dependabot-authored and will reopen
+with a corrected title on the next scheduled check if the update is still current.
