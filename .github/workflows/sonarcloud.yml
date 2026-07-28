@@ -43,6 +43,6 @@ jobs:
       # docs.sonarsource.com/sonarqube-cloud/analyzing-source-code/languages/rust) - no separate
       # report-generation step needed, unlike the external-report-import alternative.
       - name: SonarQube Cloud Scan
-        uses: SonarSource/sonarqube-scan-action@v7
+        uses: SonarSource/sonarqube-scan-action@v8
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
