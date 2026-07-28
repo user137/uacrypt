@@ -155,7 +155,7 @@ jobs:
       # own `rust-toolchain.toml` pins `channel = "stable"` and silently overrides a bare `cargo`
       # invocation regardless (the same T-85 gotcha the miri/fuzz jobs above already work around),
       # so every step below says `cargo +1.87.0` explicitly.
-      - uses: dtolnay/rust-toolchain@1.87.0
+      - uses: dtolnay/rust-toolchain@1.100.0
       # Build-only, both profiles (docs/DECISIONS.md D-69): the MSRV floor (`u64`/`usize::is_multiple_of`,
       # unconditional in `hazmat::kalyna_kw`/`kalyna_cbc`/`kalyna_ecb`/`kalyna_ccm`) isn't behind
       # any feature gate, so a single `--all-features` build already exercises it; the
