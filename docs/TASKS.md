@@ -3666,8 +3666,9 @@ Phase 2+ and none currently in flight).
   `/crates/dstu-core/fuzz` (three separate directories since this project keeps those two
   deliberately out of the main `[workspace]`, each with its own `Cargo.lock`), plus one
   `github-actions` entry covering all five workflow files. Weekly schedule, capped
-  `open-pull-requests-limit`, `versioning-strategy: increase-if-necessary` on the main workspace
-  only (library-crate range hygiene), minor/patch grouped but majors left individual (a breaking
-  bump to a vetted crypto-adjacent dependency gets its own explicit look), and commit-message
-  prefixes matching this project's existing Conventional-Commits scopes. No auto-merge anywhere -
-  every PR still needs manual review + green CI, same as any other PR.
+  `open-pull-requests-limit`, `versioning-strategy: auto` on the main workspace (Cargo only accepts
+  `auto`/`lockfile-only` - `increase-if-necessary` was tried first and rejected by GitHub's own
+  schema validation on push, see D-100 for the fix), minor/patch grouped but majors left individual
+  (a breaking bump to a vetted crypto-adjacent dependency gets its own explicit look), and
+  commit-message prefixes matching this project's existing Conventional-Commits scopes. No
+  auto-merge anywhere - every PR still needs manual review + green CI, same as any other PR.

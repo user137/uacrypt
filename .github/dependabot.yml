@@ -17,12 +17,15 @@ updates:
       interval: "weekly"
       day: "monday"
     open-pull-requests-limit: 5
-    # Library crate (dstu-core is meant for downstream consumption, docs/TASKS.md T-17) - only
-    # widen a version requirement when the current one genuinely can't satisfy the new release,
-    # rather than Dependabot's more aggressive default of always bumping to the latest. Keeps
-    # dstu-core's own Cargo.toml ranges as permissive as possible for whatever eventually depends
-    # on it.
-    versioning-strategy: increase-if-necessary
+    # Cargo's `versioning-strategy` only accepts `auto`/`lockfile-only` (unlike npm's wider
+    # increase/widen/increase-if-necessary set - confirmed the hard way, GitHub's schema rejected
+    # `increase-if-necessary` here). `lockfile-only` was considered (never touch Cargo.toml at
+    # all) but rejected: it can't propose a version outside the current caret range, so a real new
+    # major/minor would never surface as a PR at all - defeats the point of tracking updates on a
+    # library crate meant for downstream consumption (docs/TASKS.md T-17). `auto` is Dependabot's
+    # default for Cargo and already the closest match to "don't widen more than the ecosystem
+    # itself requires."
+    versioning-strategy: auto
     groups:
       minor-and-patch:
         update-types: ["minor", "patch"]

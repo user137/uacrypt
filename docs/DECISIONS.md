@@ -6666,12 +6666,17 @@ defaults).
   PRs can accumulate if updates go unreviewed for a while; low because the dependency count itself
   is already small (`deny.toml`'s own comment: "dstu-core/uacrypt have zero external dependencies"
   beyond the few explicitly vetted ones in `docs/SECURITY.md`'s supply-chain table).
-- `versioning-strategy: increase-if-necessary` on the main workspace only - `dstu-core` is a library
-  crate meant for downstream consumption (`docs/TASKS.md` T-17, not yet published), so Dependabot
-  should only widen a `Cargo.toml` version requirement when the current one can't already satisfy
-  the new release, not always bump to latest (which would needlessly narrow the range for whatever
-  eventually depends on this crate). Not applied to `xtask`/`fuzz` (binaries/dev-tools, not
-  published, no downstream range to protect).
+- `versioning-strategy: auto` on the main workspace, added deliberately even though it's
+  Dependabot's own default (self-documenting intent, not a no-op). **First attempt used
+  `increase-if-necessary` and GitHub's schema rejected it outright** - Cargo's `versioning-strategy`
+  only accepts `auto`/`lockfile-only`, not npm's wider `increase`/`widen`/`increase-if-necessary`
+  set; caught by GitHub's own config validation on push, not discovered by reading docs first.
+  `lockfile-only` was considered next and rejected too: it never edits `Cargo.toml` at all, so a
+  new version outside the current caret range could never surface as a PR - defeats tracking a
+  library crate meant for downstream consumption (`docs/TASKS.md` T-17, not yet published) for
+  exactly the major/minor bumps that matter most. `auto` is the closest available match to the
+  original intent. Not applied to `xtask`/`fuzz` (binaries/dev-tools, not published, no downstream
+  range to protect) - left at Dependabot's ecosystem default there too, no override needed.
 - `groups: minor-and-patch` (by `update-types`) on every entry, **major versions deliberately left
   ungrouped** - routine patch/minor bumps across a small dependency set can safely land as one PR,
   but a breaking major bump to a vetted crypto-adjacent dependency (`zeroize`, `subtle`, `argon2`,
