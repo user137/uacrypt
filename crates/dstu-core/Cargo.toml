@@ -15,6 +15,12 @@ categories = ["cryptography", "no-std", "algorithms"]
 [lib]
 name = "dstu_core"
 
+# `kani` is set by `cargo kani`'s own compiler shim (not a Cargo feature) to gate proof harnesses -
+# registered here so `#[cfg(kani)]` doesn't trip `unexpected_cfgs` under `clippy -D warnings` on
+# every other build that isn't running Kani.
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(kani)"] }
+
 [package.metadata.docs.rs]
 all-features = true
 

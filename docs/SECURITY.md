@@ -47,6 +47,12 @@ Explicitly out of scope (until stated otherwise):
   Bouncy Castle for DSTU 4145). Self-consistent unit tests passing is not sufficient evidence of
   correctness for security-critical code.
 - `cargo miri test` is a required CI layer (UB detection), not optional tooling.
+- `cargo kani` (bounded model checking, `docs/DECISIONS.md` D-102) is a required CI layer for
+  `hazmat::dstu4145::gf2m163::reduce` — proves, for all 2^384 possible 6-limb inputs rather than
+  fixed vectors or sampled proptest cases, that the closed-form reduction always produces a fully
+  reduced result and matches an independent bit-at-a-time reference. Scoped to that one module for
+  now (D-102 has the full rationale for why this module and not others); not a general replacement
+  for miri/fuzz/proptest, which stay required everywhere they already run.
 - `cargo fuzz` is required for every parser of untrusted input bytes, not optional.
 - `cargo audit` (RustSec advisory database — known vulnerabilities, yanked crates) and
   `cargo deny` (license policy, duplicate/banned crates, dependency-source allowlist — policy in

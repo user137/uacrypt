@@ -3676,3 +3676,22 @@ Phase 2+ and none currently in flight).
   wanted) was **deleted entirely**. Net state: Dependabot Security Updates/Alerts (zero-maintenance,
   vulnerability-only) are the sole automated dependency mechanism now, alongside `cargo audit`
   (`rust.yml`) as the independent CI-side check.
+
+- [x] **T-145** **Done 2026-07-29, see `docs/DECISIONS.md` D-102.** Owner asked where Kani (bounded
+  model checking) would add real value beyond the existing miri/fuzz/proptest stack, "точково" -
+  precisely, not broadly. Surveyed `hazmat` against two fit criteria (compile-time-fixed loop
+  bounds, a property currently only hand-argued) and picked `dstu4145::gf2m163::reduce` as the one
+  strong match - its own doc comment claims "provably enough"/"provably sufficient" for its cleanup
+  passes, never checked by anything wider than a few hand-picked property tests, and it's on every
+  DSTU 4145 sign/verify path. Piloted on a throwaway branch/workflow before committing to anything:
+  local Windows can't compile `kani-verifier` at all (Unix-only APIs in its own source), the
+  project's aarch64 Raspberry Pi's glibc 2.36 is older than the prebuilt bundle's `GLIBC_2.39`
+  requirement, but `ubuntu-latest` (Kani's actual supported platform) ran both pilot harnesses to
+  `VERIFICATION:- SUCCESSFUL` in ~1m22s total. Landed for real: `#[cfg(kani)] mod kani_proofs` in
+  `gf2m163.rs` (kept from the pilot, unchanged), a `[lints.rust] unexpected_cfgs` registration in
+  `dstu-core`'s `Cargo.toml` (`kani` is a compiler-shim cfg, not a Cargo feature), a new mandatory
+  `kani` job in `rust.yml` (same standing as `miri`/`fuzz-smoke`, not best-effort), and a
+  best-effort `cargo xtask kani` subcommand (prints the specific Windows-incompatibility reason,
+  not `require`'s generic message, since no install step would fix it there). `README.md`/
+  `docs/SECURITY.md` updated to match. Not extended to `gf2m_wide.rs` or any other module this pass
+  - a possible future follow-up, not a commitment made here.

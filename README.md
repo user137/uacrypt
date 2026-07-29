@@ -94,6 +94,7 @@ the specific `cargo xtask` command listed. No admin rights required on any platf
 | C/C++ compiler | `cargo xtask fuzz` (`libfuzzer-sys` builds C++); building the manual C oracle-differential harnesses under `tests/oracle-harness/*-differential/` | usually preinstalled; else your distro's `gcc`/`build-essential` package | MinGW-w64 GCC (e.g. `winget install BrechtSanders.WinLibs.POSIX.UCRT`) builds the crate and those harnesses; **`cargo xtask fuzz` additionally needs real MSVC**, see below |
 | `cargo-fuzz` | `cargo xtask fuzz` | `cargo install cargo-fuzz --locked` — runs directly against the native nightly toolchain | see "`cargo fuzz` on Windows" below |
 | `miri` (nightly component) | `cargo xtask miri` | `rustup component add miri --toolchain nightly` | same |
+| `kani-verifier` | `cargo xtask kani` (bounded model checking, `gf2m163::reduce` proofs) | `cargo install kani-verifier && cargo kani setup` | **not supported** — see below |
 | `cargo-audit` / `cargo-deny` | `cargo xtask audit` / `cargo xtask deny` | `cargo install cargo-audit --locked` / `cargo install cargo-deny --locked` | same install commands, but each needs `dlltool.exe` on `PATH` first — comes with a MinGW-w64 install (e.g. the WinLibs package above), not with `rustup` alone |
 | JDK 8+ and Maven 3.6+ | `cargo xtask oracle-java` (cross-check against real Bouncy Castle) | your distro's packages, or Maven's binary zip if unpackaged | same |
 | .NET SDK 8 or 9 | `cargo xtask oracle-dotnet` (cross-check against real Bouncy Castle) | [dotnet.microsoft.com](https://dotnet.microsoft.com/download) | same |
@@ -132,6 +133,17 @@ Without a Visual Studio C++ toolset installed, `cargo xtask fuzz` prints an inst
 cleanly on Windows, same as any other missing optional tool — CI (Linux) remains the actual,
 unconditional venue where fuzz targets run on every push.
 
+### `cargo xtask kani` does not run on Windows at all
+
+Unlike every other optional tool above, this isn't a missing-install-step case: `kani-verifier`'s
+own source calls Unix-only std APIs (`std::os::unix::fs::symlink`, `Command::arg0`) that don't
+exist on Windows, confirmed by trying `cargo install kani-verifier` directly (`docs/DECISIONS.md`
+D-102). It was also tried on this project's aarch64 Raspberry Pi (Debian 12) — `cargo kani setup`
+completed, but the prebuilt bundle's `cargo-kani` binary requires `GLIBC_2.39`, newer than bookworm's
+`2.36`. `cargo xtask kani` prints this explanation and skips cleanly rather than a raw error — CI
+(`ubuntu-latest`, D-102's `kani` job) is the actual, unconditional venue where these proofs run on
+every push.
+
 ## Building from source
 
 ```
@@ -152,11 +164,11 @@ cargo xtask build     # cargo build --workspace, both --all-features and no_std 
 cargo xtask test      # cargo test --workspace --all-features
 cargo xtask fmt       # cargo fmt --all (add --check to verify without writing)
 cargo xtask clippy    # cargo clippy --workspace --all-features -- -D warnings
-cargo xtask ci        # the four above, then best-effort for miri/fuzz/audit/deny/oracle harnesses
+cargo xtask ci        # the four above, then best-effort for miri/kani/fuzz/audit/deny/oracle harnesses
 ```
 
 The optional layers each check their own tool is installed first and print an install hint instead
-of a raw error if it's missing (`cargo xtask miri`, `fuzz`, `audit`, `deny`, `oracle-java`,
+of a raw error if it's missing (`cargo xtask miri`, `kani`, `fuzz`, `audit`, `deny`, `oracle-java`,
 `oracle-dotnet`) — see `docs/SECURITY.md` for why these are required in CI even though they're optional
 locally.
 

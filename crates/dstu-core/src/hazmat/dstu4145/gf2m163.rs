@@ -164,3 +164,56 @@ fn reduce(mut c: [u64; 6]) -> FieldElement {
 
     FieldElement([c[0], c[1], c[2]])
 }
+
+/// Kani pilot (see `docs/TASKS.md`/`docs/DECISIONS.md` for the tracked outcome): `reduce`'s doc
+/// comment above makes two claims that were previously only hand-argued, never machine-checked -
+/// "one pass is provably enough" and the implicit claim that the closed-form word-shift reduction
+/// actually computes the same result as the polynomial identity it's derived from. This proves
+/// both, for every one of the 2^384 possible 6-limb inputs, not just the fixed vectors and hand-
+/// picked property tests `dstu4145_gf2m.rs` already covers.
+#[cfg(kani)]
+mod kani_proofs {
+    use super::*;
+
+    /// Bit-at-a-time reference reduction, written directly from the polynomial identity
+    /// `x^163 = x^7 + x^6 + x^3 + 1` (mod the field polynomial) with no word-level shortcuts -
+    /// the same technique `gf2m_wide::reduce` uses in production, here kept only as an
+    /// independent oracle for this proof, not as a second implementation to maintain.
+    fn naive_reduce(mut c: [u64; 6]) -> FieldElement {
+        for degree in (163u32..384).rev() {
+            let limb = (degree / 64) as usize;
+            let bit = degree % 64;
+            if (c[limb] >> bit) & 1 == 1 {
+                c[limb] ^= 1u64 << bit;
+                let shift = degree - 163;
+                for term in [7u32, 6, 3, 0] {
+                    let d = shift + term;
+                    let l = (d / 64) as usize;
+                    let b = d % 64;
+                    c[l] ^= 1u64 << b;
+                }
+            }
+        }
+        let mut out = [0u64; 3];
+        out.copy_from_slice(&c[..3]);
+        FieldElement(out)
+    }
+
+    /// Cheaper of the two proofs: `reduce`'s output must always have its top 29 bits (of the
+    /// 35-bit-wide word 2) clear - i.e. genuinely `< 2^163`, not just "probably" per the doc
+    /// comment's hand-argued overflow bound.
+    #[kani::proof]
+    fn reduce_output_is_fully_reduced() {
+        let c: [u64; 6] = kani::any();
+        let r = reduce(c);
+        assert_eq!(r.0[2] >> 35, 0);
+    }
+
+    /// The expensive proof: `reduce` and `naive_reduce` must agree on every possible input, not
+    /// just the ones `dstu4145_gf2m.rs`'s fixed vectors happen to exercise.
+    #[kani::proof]
+    fn reduce_matches_naive_bit_loop() {
+        let c: [u64; 6] = kani::any();
+        assert_eq!(reduce(c), naive_reduce(c));
+    }
+}

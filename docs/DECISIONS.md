@@ -6793,3 +6793,74 @@ benefit.
 (both already enabled, confirmed via API rather than assumed) are now the sole automated dependency
 mechanism, unchanged and requiring no maintenance. `docs/TASKS.md` T-144 is revised in place to
 record the reversal rather than left pointing at a file that no longer exists.
+
+## D-102: Kani (bounded model checking) adopted, scoped to `gf2m163::reduce` only (T-145)
+
+Owner asked where Kani specifically (not "more tools generically") would add real value on top of
+the existing miri/fuzz/proptest stack, and to pilot it before deciding whether to keep it. miri
+catches UB on the runs it happens to make; fuzz/proptest sample random inputs; Kani instead proves
+a property for *every* input in a bounded space via CBMC. That's only worth the added CI surface
+where a function has (a) compile-time-fixed loop bounds (no unwinding over caller-controlled
+length) and (b) a property currently trusted by hand-argument rather than machine-checked.
+
+**Survey of `hazmat` against those two criteria** (see the pilot session's analysis in full):
+- `dstu4145::gf2m163::reduce` (`crates/dstu-core/src/hazmat/dstu4145/gf2m163.rs`) is the strongest
+  fit found: fixed 3+2-iteration loops (word count is a compile-time constant for `m=163`), a
+  closed-form word-shift reduction whose own doc comment says "one pass is provably enough" and
+  "provably sufficient" — hand-derived claims, never previously checked by anything wider than the
+  small hand-picked property tests in `dstu4145_gf2m.rs` (no proptest exists for this module at
+  all). Used in every DSTU 4145 sign/verify call.
+- `gf2m_wide.rs` (the `m`=128/256/512 GCM/GMAC field, same closed-form-reduction shape) is the same
+  category, one tier down: it already has proptest coverage, and is GCM/GMAC-only rather than
+  signature-critical. Not picked up in this pass — a natural next candidate if this proves out
+  further.
+- Kalyna/Kupyna S-box/MDS table indexing: **not a fit** — indices are already `u8 as usize` or
+  `% nb`, which Rust's own type system proves in-bounds; Kani would add nothing over what the
+  compiler already guarantees.
+- DSTU 4145's EC scalar-multiplication ladder (`scalar.rs`): **not a fit** — the same 163+
+  iteration cost that already forced `#[cfg_attr(miri, ignore)]` (T-100/D-59) would equally blow up
+  CBMC's unwinding; only a single ladder step, not the full loop, could ever be a Kani target.
+- `crypto_secretstream`/AEAD/`kalyna_gcm`: **not a fit** — loops over caller-controlled message
+  length are unbounded from Kani's perspective; the nonce-authentication class of bug this project
+  already hit once (D-63) is a design-level invariant, better caught by the tamper tests already
+  required (D-64), not a numeric proof.
+- `argon2`/`getrandom`: **not a fit** — external crates, nothing of this project's own to verify.
+- Kani proves **no side-channel/constant-time property** — not to be confused with, or used to
+  relax, the separate SPA/DPA disclaimer already in `CLAUDE.md`/`docs/SECURITY.md`.
+
+**Platform reality, confirmed by trying, not assumed:**
+- Windows (this project's own dev machine): `cargo install kani-verifier` fails to compile.
+  `kani-verifier 0.67.0`'s own source calls `std::os::unix::fs::symlink` and
+  `Command::arg0` — genuinely absent on this platform, not a missing-dependency case.
+- This project's aarch64 Raspberry Pi (Debian 12 bookworm, `docs/TASKS.md`'s ARM hardware rig):
+  `cargo install kani-verifier` and `cargo kani setup` both succeeded (an aarch64-linux prebuilt
+  bundle does exist, wider platform support than expected going in) — but the resulting
+  `cargo-kani` binary requires `GLIBC_2.39`; bookworm ships `2.36`. Upgrading the Pi's system glibc
+  to chase this was judged not worth the risk to a live machine for a pilot.
+- `x86_64-unknown-linux-gnu` (GitHub Actions `ubuntu-latest`) is Kani's actual officially-supported
+  target and where it was proven out: pushed a throwaway `workflow_dispatch`/branch-scoped-`push`
+  pilot workflow (never merged to `master`), two `#[kani::proof]` harnesses in a `#[cfg(kani)] mod
+  kani_proofs` block in `gf2m163.rs` — one checking `reduce`'s output is always `< 2^163` (top 29
+  bits of word 2 clear), one checking `reduce` matches an independent bit-at-a-time reference
+  written straight from the polynomial identity `x^163 = x^7+x^6+x^3+1`, with no word-level
+  shortcuts. Both came back `VERIFICATION:- SUCCESSFUL` (0.22s and 45.37s respectively), ~1m22s
+  total job time including the one-time `cargo install kani-verifier`/`cargo kani setup` cost.
+
+**Disposition: adopted, scoped to `gf2m163::reduce` only.**
+- `#[cfg(kani)] mod kani_proofs` block stays in `gf2m163.rs` (the pilot code, unchanged).
+- `crates/dstu-core/Cargo.toml` registers `[lints.rust] unexpected_cfgs = { check-cfg =
+  ["cfg(kani)"] }` — `kani` is a cfg set by `cargo kani`'s own compiler shim, not a Cargo feature,
+  and without this registration `clippy -D warnings` (every other CI job) would hard-error on the
+  `#[cfg(kani)]` attribute itself.
+- `.github/workflows/rust.yml` gets a new mandatory `kani` job (`ubuntu-latest`, mirroring the
+  `miri`/`fuzz-smoke` jobs' standing: required on every push, not best-effort) - no `--harness`
+  filter, since `#[kani::proof]` fns are auto-discovered (unlike `cargo-fuzz`'s targets, which need
+  the separate `FUZZ_TARGETS` list).
+- `xtask` gets a `kani` subcommand, best-effort locally like `miri`/`fuzz`/`audit`/`deny` - except
+  on Windows, where it prints the specific unix-API-only reason above (not `require`'s generic
+  "not found on PATH" message, since installing it here would never work regardless of PATH).
+- The temporary pilot branch/workflow (`pilot/kani-gf2m163`, `.github/workflows/kani-pilot.yml`)
+  is deleted now that the real integration lands in `rust.yml`/`xtask` directly - it was scaffolding
+  to answer "does this work," not itself part of the permanent setup.
+- Not extended to `gf2m_wide.rs` or anything else in this pass - `docs/TASKS.md` T-145 tracks that
+  as a possible future follow-up, not a commitment made here.

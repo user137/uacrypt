@@ -101,6 +101,21 @@ jobs:
           MIRIFLAGS: -Zmiri-disable-isolation
           PROPTEST_CASES: 1
 
+  kani:
+    name: cargo kani (gf2m163::reduce proofs, D-102)
+    runs-on: ubuntu-latest
+    # Pilot measured ~1.5 min total for both harnesses (docs/DECISIONS.md D-102) - generous margin
+    # over that, not a sign this is expected to run long.
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - run: cargo install kani-verifier
+      - run: cargo kani setup
+      # No --harness filter: `#[kani::proof]` fns are auto-discovered, unlike cargo-fuzz's targets
+      # (which need the separate FUZZ_TARGETS/matrix list below) - a future harness added anywhere
+      # in dstu-core is picked up here without an extra sync point.
+      - run: cargo kani -p dstu-core
+
   fuzz-smoke:
     name: cargo fuzz (short smoke run, not a full campaign)
     runs-on: ubuntu-latest

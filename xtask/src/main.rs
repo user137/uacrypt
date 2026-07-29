@@ -2,8 +2,9 @@
 //! `.cargo/config.toml`). Exists so a developer on Linux/Windows/macOS runs the *same* command
 //! instead of three different shell dialects. Deliberately zero dependencies and deliberately
 //! thin: every subcommand just shells out to a tool that's already documented in README.md /
-//! docs/SECURITY.md, and checks the tool is present first so a missing optional tool (miri, cargo-fuzz,
-//! cargo-audit, cargo-deny, Maven, the .NET SDK) prints an install hint instead of a raw OS error.
+//! docs/SECURITY.md, and checks the tool is present first so a missing optional tool (miri, kani,
+//! cargo-fuzz, cargo-audit, cargo-deny, Maven, the .NET SDK) prints an install hint instead of a
+//! raw OS error.
 //! Kept out of the main Cargo workspace (own `[workspace]` table above) so this dev-only tool never
 //! shows up in `dstu-core`'s dependency graph that `deny.toml`/`docs/SECURITY.md` are policing.
 
@@ -24,6 +25,7 @@ fn main() -> ExitCode {
         "fmt" => fmt(args.any(|a| a == "--check")),
         "clippy" => clippy(),
         "miri" => miri(),
+        "kani" => kani(),
         "fuzz" => fuzz(),
         "audit" => audit(),
         "deny" => deny(),
@@ -59,6 +61,7 @@ fn print_usage() {
          \x20 ci             fmt --check + build + test + clippy, then best-effort for the optional tools below\n\n\
          Optional (each checks its tool is installed first and prints an install hint if not):\n\
          \x20 miri           cargo +nightly miri test --workspace\n\
+         \x20 kani           cargo kani -p dstu-core (bounded model checking, see gf2m163.rs's kani_proofs, D-102) - Linux/macOS only, not Windows\n\
          \x20 fuzz           short cargo-fuzz smoke run against every target (see FUZZ_TARGETS)\n\
          \x20 audit          cargo audit (RustSec advisories)\n\
          \x20 deny           cargo deny check (licenses, bans, sources)\n\
@@ -164,6 +167,31 @@ fn miri() -> bool {
         return false;
     }
     run("cargo", &["+nightly", "miri", "test", "--workspace"], None)
+}
+
+/// Bounded model checking (`kani_proofs` mod in `gf2m163.rs`, `docs/DECISIONS.md` D-102) - unlike
+/// every other optional tool in this file, Kani genuinely cannot run on Windows at all: confirmed
+/// by trying `cargo install kani-verifier` here, whose own source calls Unix-only std APIs
+/// (`std::os::unix::fs::symlink`, `Command::arg0`) that don't exist on this platform - not a
+/// missing-install-step case `require`'s generic message would describe accurately.
+fn kani() -> bool {
+    #[cfg(windows)]
+    {
+        eprintln!(
+            "xtask: 'cargo kani' does not support Windows - kani-verifier's own source requires \
+             Unix-only std APIs, confirmed by trying to install it here (docs/DECISIONS.md D-102). \
+             CI (Linux) is the actual, unconditional venue for this - see the `kani` job in \
+             rust.yml."
+        );
+        false
+    }
+    #[cfg(not(windows))]
+    {
+        if !require("cargo-kani", "cargo install kani-verifier && cargo kani setup") {
+            return false;
+        }
+        run("cargo", &["kani", "-p", "dstu-core"], None)
+    }
 }
 
 fn fuzz() -> bool {
@@ -345,7 +373,7 @@ fn oracle_dotnet() -> bool {
 }
 
 /// Mirrors `.github/workflows/rust.yml`'s mandatory `test` job exactly, then best-effort runs the
-/// optional layers (miri/fuzz/audit/deny/oracle harnesses) - missing tools are reported, not fatal,
+/// optional layers (miri/kani/fuzz/audit/deny/oracle harnesses) - missing tools are reported, not fatal,
 /// so this is useful on a fresh machine that only has `cargo` so far, not just full CI runners.
 fn ci() -> bool {
     let mandatory = fmt(true) && build() && test() && clippy();
@@ -354,7 +382,7 @@ fn ci() -> bool {
     }
 
     println!("\nMandatory checks passed. Running optional layers best-effort:\n");
-    for optional in [miri, fuzz, audit, deny, oracle_java, oracle_dotnet] {
+    for optional in [miri, kani, fuzz, audit, deny, oracle_java, oracle_dotnet] {
         optional();
     }
     true
