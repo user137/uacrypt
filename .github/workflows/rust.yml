@@ -80,9 +80,15 @@ jobs:
     # tests, not EC math) - measured locally at ~84 minutes for all of `dstu-core` alone (D-59's
     # full table), a materially different situation from the open-ended runaway case the old 30-min
     # cap was set against, so raising it here is the correct response, not a repeat of that mistake.
-    # 150 min = ~2.5x the measured dstu-core total, leaving margin for a slower/shared CI runner and
-    # the (separately tracked, T-102) uacrypt portion this fix doesn't touch.
-    timeout-minutes: 150
+    # 150 min was ~2.5x the measured dstu-core-only total at the time, but the last actually-
+    # completed run (commit 8e5a2a8, 2026-07-27, `gh run view 30286706271`) already used 2h23m of
+    # that 150-min budget - only ~5% margin left, with zero source/test changes since (confirmed via
+    # `git log 8e5a2a8..HEAD -- crates/`: one doc-citation-path rewrite, T-141, nothing else). The
+    # very next unpreempted run then genuinely exceeded 150 min and was cancelled (T-146/D-103) -
+    # ordinary CI runner variance tipping an already-razor-thin margin, not a code regression. Raised
+    # to 240 (well under GitHub-hosted runners' 360-min hard cap) for real headroom instead of
+    # nudging the number up by the smallest amount that would have covered just this one overrun.
+    timeout-minutes: 240
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@nightly

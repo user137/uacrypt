@@ -6864,3 +6864,43 @@ length) and (b) a property currently trusted by hand-argument rather than machin
   to answer "does this work," not itself part of the permanent setup.
 - Not extended to `gf2m_wide.rs` or anything else in this pass - `docs/TASKS.md` T-145 tracks that
   as a possible future follow-up, not a commitment made here.
+
+## D-103: `cargo miri test`'s CI job exceeded its 150-min cap - CI runner variance on an
+already-thin margin, not a code regression (T-146)
+
+Owner noticed `rust` was showing `cancelled` on `master`'s current HEAD and asked why. **Checked
+before guessing**, per this project's own standing discipline (D-59's "measure, don't assume"):
+`gh run view` on that run (`30401713356`, commit `5a89efa`) showed every job green except `cargo
+miri test`, which the annotations state explicitly exceeded its own `timeout-minutes: 150` cap -
+a real timeout, not a concurrency-group cancellation (no later push on `master` could have
+preempted it; it's the current HEAD).
+
+**Root-caused as margin erosion, not a regression, by checking history rather than the diff
+alone:**
+- The last run that actually completed (not cancelled) was commit `8e5a2a8` (2026-07-27, `gh run
+  view 30286706271`) - `cargo miri test` passed, but at **2h23m0s of the 2h30m0s (150-min) cap** -
+  already ~95% utilized, ~7 minutes of real margin.
+- `git log 8e5a2a8..5a89efa -- crates/` shows exactly **one** commit touching anything under
+  `crates/` in between: `ebbb11b` (T-141), a pure documentation-citation-path rewrite (`DECISIONS.md`
+  → `docs/DECISIONS.md` etc. in doc comments) - no source, test, or dependency change of any kind.
+- Every `rust` run on `master` between those two (the T-140-T-144 commit burst, pushed minutes
+  apart) shows `cancelled` too, but that's this workflow's own `concurrency: cancel-in-progress`
+  policy preempting each run as the next commit landed before miri could finish - not evidence of
+  a timeout in each case, just noise from a rapid commit burst.
+
+**Conclusion: the 150-min budget (set in D-59, 2.5x a `dstu-core`-only local measurement, before
+`uacrypt`'s own tests were confirmed to run under CI's Miri too, T-102) had already eroded to a
+razor-thin margin purely from organic growth across everything landed since D-59** (`crypto_secretbox`/
+`crypto_secretstream`/`crypto_auth`/`crypto_kdf`/`crypto_stream`/`crypto_pwhash`/`crypto_sign` and
+their own `proptest` suites, plus `uacrypt`'s CLI test suite now actually reached). `ebbb11b`'s
+doc-only diff simply happened to be the commit sitting at HEAD when ordinary shared-runner
+variance (a few minutes slower than 2026-07-27's run) tipped an already-thin margin over the edge -
+it did not cause the overrun.
+
+**Disposition: `timeout-minutes` raised from 150 to 240** (`.github/workflows/rust.yml`) - real
+headroom over the last confirmed real duration (143 min) rather than the smallest bump that would
+have covered just this one overrun, and still well under GitHub-hosted runners' 360-min hard cap.
+Verify the next real `master` push lands `cargo miri test` green via `gh run view`, not just an
+assumption that a bigger number alone fixes it (same verification discipline D-59 and the
+Node-20-deprecation-era reconfirm already established) - see `docs/TASKS.md` T-146 for that
+follow-up check.
