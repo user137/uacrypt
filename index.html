@@ -206,6 +206,18 @@ header{position:sticky;top:0;z-index:20;background:color-mix(in srgb, var(--bg) 
 .callout h4{margin:0 0 .4em;font-size:.95rem;font-family:var(--font-body);font-weight:600;}
 .callout p{margin:0;max-width:none;font-size:.9rem;}
 
+/* ---------- analog table ---------- */
+.analog-intro h3{margin-top:1.8rem;}
+.analog-intro p{font-size:.92rem;color:var(--ink-muted);max-width:none;}
+.analog-wrap{overflow-x:auto;margin-top:1rem;}
+.analog-table{width:100%;border-collapse:collapse;font-size:.88rem;}
+.analog-table th,.analog-table td{text-align:left;padding:.65rem .9rem;border-bottom:1px solid var(--rule);
+  vertical-align:top;}
+.analog-table thead th{font-family:var(--font-mono);font-size:.7rem;text-transform:uppercase;
+  letter-spacing:.05em;color:var(--ink-muted);font-weight:500;white-space:nowrap;}
+.analog-table tbody td:first-child{font-family:var(--font-mono);font-size:.85rem;white-space:nowrap;}
+.analog-table tbody td.diff{color:var(--ink-muted);font-size:.85rem;}
+
 /* ---------- verification list ---------- */
 .check-grid{display:grid;grid-template-columns:1fr;gap:.9rem;margin-top:1.6rem;}
 @media(min-width:720px){.check-grid{grid-template-columns:1fr 1fr;}}
@@ -463,6 +475,80 @@ html[data-lang="uk"] [lang="en"]{display:none;}
     DSTU взагалі немає відповідника, тож офіційний тестовий вектор для неї в принципі не може
     існувати. Її перевіряють властивісними тестами, тестами на підробку та тестами на
     хибне використання — а не звірянням із вектором.</p>
+  </div>
+
+  <div class="analog-intro">
+    <h3 lang="en">Looking for something familiar?</h3>
+    <h3 lang="uk">Шукаєш щось знайоме?</h3>
+    <p lang="en">Rough orientation for readers who don't know these standards by name — not a claim
+    of cryptographic equivalence. Real differences exist under every row below.</p>
+    <p lang="uk">Приблизний орієнтир для тих, хто не знає ці стандарти на пам'ять — не твердження
+    про криптографічну еквівалентність. Під кожним рядком є реальні відмінності.</p>
+  </div>
+  <div class="analog-wrap">
+  <table class="analog-table">
+    <thead>
+      <tr>
+        <th><span lang="en">DSTU</span><span lang="uk">ДСТУ</span></th>
+        <th><span lang="en">Role</span><span lang="uk">Роль</span></th>
+        <th><span lang="en">Closest global analog</span><span lang="uk">Найближчий світовий аналог</span></th>
+        <th><span lang="en">What actually differs</span><span lang="uk">Що насправді відрізняється</span></th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Kalyna / Калина</td>
+        <td><span lang="en">block cipher</span><span lang="uk">блочний шифр</span></td>
+        <td>AES / Rijndael</td>
+        <td class="diff">
+          <span lang="en">Same SPN shape (S-box, shift, MDS mix, key add), but its own S-box/MDS
+          tables and five block/key sizes, not AES's fixed 128-bit block.</span>
+          <span lang="uk">Та сама структура SPN (S-box, зсув, MDS-змішування, додавання ключа),
+          але власні таблиці S-box/MDS і п'ять варіантів блоку/ключа, а не фіксований 128-бітний
+          блок AES.</span>
+        </td>
+      </tr>
+      <tr>
+        <td>Kupyna / Купина</td>
+        <td><span lang="en">hash function — the SHA-2/SHA-3 slot</span><span lang="uk">геш-функція
+        — та сама ніша, що й SHA-2/SHA-3</span></td>
+        <td>Whirlpool</td>
+        <td class="diff">
+          <span lang="en">Same idea — an AES-like permutation inside a Miyaguchi-Preneel
+          construction — structurally closer to Whirlpool than to SHA-3's sponge design.</span>
+          <span lang="uk">Та сама ідея — AES-подібна перестановка всередині конструкції
+          Miyaguchi-Preneel — структурно ближче до Whirlpool, ніж до губчастої конструкції
+          SHA-3.</span>
+        </td>
+      </tr>
+      <tr>
+        <td>Strumok / Струмок</td>
+        <td><span lang="en">stream cipher</span><span lang="uk">потоковий шифр</span></td>
+        <td><span lang="en">ChaCha20 (same job) · SNOW 2.0 / SNOW 3G (same design)</span>
+        <span lang="uk">ChaCha20 (та сама роль) · SNOW 2.0 / SNOW 3G (та сама конструкція)</span></td>
+        <td class="diff">
+          <span lang="en">ChaCha20 is a wholly different internal design (ARX, no LFSR) — it
+          matches Strumok's job, not its machinery. SNOW is the real architectural relative
+          (LFSR + FSM).</span>
+          <span lang="uk">ChaCha20 має цілком іншу внутрішню будову (ARX, без LFSR) — збігається
+          лише роллю, не механікою. SNOW — справжній архітектурний родич (LFSR + FSM).</span>
+        </td>
+      </tr>
+      <tr>
+        <td>DSTU 4145</td>
+        <td><span lang="en">digital signature</span><span lang="uk">цифровий підпис</span></td>
+        <td>ECDSA</td>
+        <td class="diff">
+          <span lang="en">Over a binary-field elliptic curve, not Edwards. The deterministic,
+          Kupyna-KMAC-derived nonce is this project's own design choice — the same idea as RFC
+          6979 for plain ECDSA, not something the standard itself mandates.</span>
+          <span lang="uk">На еліптичній кривій у двійковому полі, не Едвардса. Детермінований
+          nonce (похідний від Kupyna-KMAC) — власне рішення проєкту, та сама ідея, що й RFC 6979
+          для звичайного ECDSA, а не вимога самого стандарту.</span>
+        </td>
+      </tr>
+    </tbody>
+  </table>
   </div>
 </section>
 
