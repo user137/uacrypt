@@ -3714,8 +3714,8 @@ Phase 2+ and none currently in flight).
   full run green.
 
 - [x] **T-147** **Official supplementary Strumok-256/512 test vectors received from
-  Держспецзв'язку, 2026-07-31 - implemented and passing, see `docs/DECISIONS.md` D-104.** Owner's
-  public-information request (83-ЗПІ-26) drew a response (letter №01/02/02-8386/2026) attaching two
+  Держспецзв'язку - implemented and passing, see `docs/DECISIONS.md` D-104.** Owner's
+  public-information request drew a response attaching two
   ДНДІ ТКЗІ-sourced test examples (Strumok-256/512), supplementary to DSTU 8845:2019's own Annex Д,
   used in real conformance expert examinations - a genuinely independent, state-sourced oracle
   distinct from UAPKI/outspace. Transcribed exactly as printed and verified in

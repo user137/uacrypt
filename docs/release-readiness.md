@@ -33,7 +33,7 @@ against this working hypothesis" situation:
 - `hazmat::kalyna_ccm` (D-41) is unchanged — still dual-oracle-verified, still not
   primary-text-confirmed, but now also matches the standard's own official mode list per both
   sources above (mode #8, "Вироблення імітовставки і гамування").
-- Strumok's vector set is UAPKI-attributed, plus (as of 2026-07-31, D-104) independently confirmed
+- Strumok's vector set is UAPKI-attributed, plus (D-104) independently confirmed
   against two state-sourced supplementary vectors from Держспецзв'язку/ДНДІ ТКЗІ — still not
   confirmed against the paid DSTU 8845:2019 text itself (D-15/D-16) — a separate, unrelated gap on
   a different algorithm, unaffected by D-05.
@@ -85,7 +85,7 @@ independent second-oracle cross-check (Bouncy Castle, Java and .NET):
 |---|---|---|
 | Kalyna | DSTU 7624:2014 | All 5 block/key-size variants, single-block encrypt/decrypt, `ExpandedKey` API. Vector-confirmed + dual-oracle. **Mode of operation: all 10/10 DSTU 7624 modes now implemented at `hazmat`**, updated 2026-07-25 (T-99) — ECB/CBC/OFB/CTR/CFB (Stage A), CMAC/KW/GCM/GMAC (Stage B-D, D-54-D-57), XTS (Stage E, T-96/D-58) all landed since this table's last real update. CCM/GCM/KW are the three combined (confidentiality+integrity) modes and the only ones eligible for a public `crypto_secretbox`-style entry point (D-47); ECB/CBC/OFB/CTR/CFB/XTS are confidentiality-only, bare CMAC/GMAC are integrity-only — none of those six may become a public `encrypt`/`decrypt` entry point on their own. All ten still share CCM's original caveat: dual-oracle-verified (UAPKI + Bouncy Castle where available), not primary-DSTU-7624:2014-text-confirmed. |
 | Kupyna | DSTU 7564:2014 | Both 256/512 variants, one-shot `digest()` and streaming `Hasher`. Vector-confirmed + dual-oracle. KMAC (`crypto_auth` equivalent) now implemented too — `hazmat::kupyna_kmac`, dual-oracle with both constructions read (`docs/TASKS.md` T-38, `docs/DECISIONS.md` D-44), same provisional-pending-primary-text caveat. KDF (`crypto_kdf` equivalent) built on top of that KMAC — `hazmat::kupyna_kdf` (T-39, D-45); no DSTU standard or reference implementation exists for this construction at all, so unlike the KMAC row there is no oracle vector, ever — verified by determinism/distinctness property tests only. |
-| Strumok | DSTU 8845:2019 | Both 256/512-bit key variants, keystream `apply_keystream`. UAPKI-attributed vectors, plus (2026-07-31, D-104) two independently-sourced supplementary vectors from Держспецзв'язку/ДНДІ ТКЗІ — a real second, state-sourced oracle, though still **not** confirmed against the primary standard text itself (D-15/D-16); that specific gap remains a provenance ceiling, not a code-quality gap. |
+| Strumok | DSTU 8845:2019 | Both 256/512-bit key variants, keystream `apply_keystream`. UAPKI-attributed vectors, plus (D-104) two independently-sourced supplementary vectors from Держспецзв'язку/ДНДІ ТКЗІ — a real second, state-sourced oracle, though still **not** confirmed against the primary standard text itself (D-15/D-16); that specific gap remains a provenance ceiling, not a code-quality gap. |
 
 DSTU 4145-2002 (digital signatures): the m=163 curve's `GF(2^163)` field arithmetic, point
 add/double/constant-time scalar multiplication, and `sign`/`verify` are all implemented
@@ -430,7 +430,7 @@ In rough dependency order:
    `crypto_secretbox` (T-37, migrated to Kalyna-GCM 2026-07-25 by D-63) is built against it,
    inheriting the same provisional status, not a resolution of it.
 2. **Close Strumok's provenance gap (D-15/D-16)**, if the paid DSTU 8845:2019 text becomes
-   available — partially narrowed 2026-07-31 (D-104) by two independently state-sourced
+   available — partially narrowed (D-104) by two independently state-sourced
    supplementary vectors (Держспецзв'язку/ДНДІ ТКЗІ), confirmed matching, but that is still not the
    primary text itself. Otherwise, the release must state "Strumok vectors are UAPKI-attributed
    plus one independent state-sourced supplementary check, not primary-text-confirmed" as

@@ -232,10 +232,11 @@ project funding changes rather than re-researched from scratch.
   own 2026-07-22 earlier attempt, since superseded), still short of "official." Locating the
   standard text itself, or a source that independently transcribes its own annexed vectors the
   way `DSTU_4145-2002.pdf` Annex Б does, remains open — see `docs/TASKS.md`.
-- **Official supplementary vectors received 2026-07-31** (`docs/DECISIONS.md` D-104): a public-
-  information response from Держспецзв'язку (Адміністрація Держспецзв'язку, letter
-  №01/02/02-8386/2026, dated 2026-07-31, responding to request 83-ЗПІ-26 of 2026-07-27) states
-  that the standard's own Annex Д (Annex D) test-with-known-answer values are in the standard text
+- **Official supplementary vectors received** (`docs/DECISIONS.md` D-104): a public-information
+  response from Держспецзв'язку (Адміністрація Держспецзв'язку — the request/response's own
+  reference number, filing/response dates, and signatory are deliberately not recorded, in this
+  file or anywhere else in this public repository, for the de-anonymization reason D-104 states)
+  says that the standard's own Annex Д (Annex D) test-with-known-answer values are in the standard text
   itself (still not purchased — see above), but attaches **two additional Strumok-256/512 test
   examples** used by ДНДІ ТКЗІ (the State Research Institute of Cybersecurity Technologies and
   Information Protection) during real conformance expert examinations of implementations — a

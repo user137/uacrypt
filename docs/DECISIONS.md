@@ -6908,11 +6908,13 @@ follow-up check.
 ## D-104: Official supplementary Strumok-256/512 test vectors received from Держспецзв'язку -
 upgrades but does not close D-15/D-16 (T-147)
 
-The owner filed a public-information request (83-ЗПІ-26, 2026-07-25, registered 2026-07-27) asking
-Держспецзв'язку (State Service for Special Communications) whether recommended parameters/worked
-examples for DSTU 8845:2019 (Strumok) and DSTU 9041:2020 exist outside the paid standard texts. The
-response (Адміністрація Держспецзв'язку, letter №01/02/02-8386/2026, dated 2026-07-31, signed by
-Deputy Head Volodymyr Trofymenko) states plainly:
+The owner filed a public-information request asking Держспецзв'язку (State Service for Special
+Communications) whether recommended parameters/worked examples for DSTU 8845:2019 (Strumok) and
+DSTU 9041:2020 exist outside the paid standard texts. The response (Адміністрація Держспецзв'язку)
+states plainly - the request/response's own reference number, filing date, and signatory are
+deliberately not recorded here or anywhere else in this repository: this project is public, and
+those specifics would be enough to cross-reference a public request log and identify the owner,
+which is a real de-anonymization risk the technical content below doesn't need to carry:
 - Recommended parameters/worked examples for both standards are in the standard texts themselves,
   as their own annexes - not purchased here (D-15/D-16, D-08's post-quantum-adjacent cost note).
 - **ДНДІ ТКЗІ (the State Research Institute of Cybersecurity Technologies and Information
@@ -6962,7 +6964,8 @@ source and the upgraded (not closed) status. Of the two source PDFs, only the ap
 (`docs/papers/Strumok_official_test_vectors_2026-07-31.pdf` - Key/IV/RandBlock only, no personal
 data) is committed, per the owner's explicit choice; the cover letter itself carries the owner's
 own name and email in its addressee block and this repository is public, so it stays local, not
-committed - cited here by number/date only (letter №01/02/02-8386/2026, 2026-07-31).
+committed, and not cited here by its own reference number or exact date either - see this entry's
+opening paragraph for why.
 
 DSTU 9041:2020 remains untouched by this pass - the letter confirms no oracle exists for it beyond
 the (unpurchased) standard text, consistent with `docs/ORACLES.md`'s existing "no oracle exists

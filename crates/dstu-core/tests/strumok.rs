@@ -217,9 +217,10 @@ fn reusing_key_and_iv_leaks_plaintext_xor() {
 }
 
 /// Official supplementary Strumok-256/512 test examples from Держспецзв'язку (State Service for
-/// Special Communications), letter №01/02/02-8386/2026, 2026-07-31, responding to public-
-/// information request 83-ЗПІ-26 (2026-07-27) - see `docs/DECISIONS.md` D-104, `docs/ORACLES.md`.
-/// Sourced from ДНДІ ТКЗІ (the State Research Institute of Cybersecurity Technologies and
+/// Special Communications), received via a public-information request - see `docs/DECISIONS.md`
+/// D-104, `docs/ORACLES.md` (the request/response's own reference number, date, and signatory are
+/// deliberately not recorded, here or anywhere else in this public repository - D-104 explains
+/// why). Sourced from ДНДІ ТКЗІ (the State Research Institute of Cybersecurity Technologies and
 /// Information Protection), described as *supplementary* to Annex Д (Annex D) of DSTU 8845:2019
 /// itself, used during conformance expert examination - **not** a substitute for reading Annex D's
 /// own known-answer tests (still not done, D-15/D-16 stay open on that specific point).
