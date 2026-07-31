@@ -1466,3 +1466,95 @@ than committing all of them preemptively.
 
 All timing done with `clock_gettime(CLOCK_MONOTONIC, ...)`, mean over many iterations (thousands
 for small buffers, hundreds for the 64 KB case) to average out timer-resolution noise.
+
+## vs. international-standard analogs (OpenSSL) — T-149, D-106
+
+Every table above compares this project against other *DSTU* implementations (UAPKI, Oliynykov's
+own reference, outspace) — the right comparison for "is this a competent implementation of the
+standard," but not the question most first-time visitors actually have, which is closer to "how
+does this compare to the algorithm I already know." This section answers that second question,
+against the same three role-analogs the GitHub Pages landing page and `docs/dstu-crypto-project.md`
+already name: **AES** for Kalyna, **Whirlpool** for Kupyna, **ChaCha20** for Strumok. This is a
+speed baseline against familiar names, not a correctness oracle — `docs/ORACLES.md`'s trust matrix
+is unchanged, OpenSSL is not added to it.
+
+**Methodology deviation, stated plainly**: unlike every table above (a `gcc -O2` file-in/file-out
+wrapper timed the D-34 way), these OpenSSL numbers come from OpenSSL's own `openssl speed`
+subcommand — a different harness, not a wrapper this project wrote. `-elapsed` makes it use
+wall-clock time (matching `uacrypt`'s own timing) instead of its default CPU-user-time divisor, and
+`-bytes N` fixes its buffer size to match `uacrypt`'s. Both sides report **decimal** MB/s (10⁶
+bytes/s — OpenSSL's own "1000s of bytes/s" output, `uacrypt`'s `bytes / seconds / 1e6`), so the
+ratios below are apples-to-apples even though the two programs' internal timing loops differ. No
+byte-identity check is meaningful here (unlike the UAPKI tables) — AES, Whirlpool, and ChaCha20 are
+different algorithms from Kalyna/Kupyna/Strumok by design, there is nothing to byte-diff against.
+
+**Machine/build**: same Ryzen 5 PRO 4650U dev machine as every table above, measured 2026-07-31.
+OpenSSL 3.5.5 (27 Jan 2026), MinGW64 build (`gcc -m64 -O3`), the copy already on this machine's
+`PATH` — nothing downloaded for this section, since it already covers AES, Whirlpool (via
+`-provider legacy -provider default`), and ChaCha20 without needing libsodium as well.
+
+**AES-NI/AVX2 caveat — read before the tables, not after**: OpenSSL's AES and ChaCha20 use CPU
+instruction-set extensions (AES-NI, AVX2) that `dstu-core` has no equivalent to by design (no SIMD,
+`CLAUDE.md` MVP scope). For AES, `OPENSSL_ia32cap="~0x200000200000000"` is OpenSSL's own documented
+mechanism for disabling AES-NI/PCLMULQDQ, so both an AES-NI-on *and* an AES-NI-off column are
+reported below — the off column is the one that actually answers "how good is this project's
+Kalyna," the on column shows what hardware acceleration this project cannot claim. No equivalently
+narrow, well-documented single flag was found to disable just ChaCha20's AVX2 path without risking
+disabling unrelated optimizations too (an all-capabilities-zero test dropped AES itself to *below*
+its own AES-NI-off number, suggesting it disables more than one extension at a time) — so ChaCha20
+below is hardware-accelerated only, flagged the same way rather than presented as if it were a
+clean software-vs-software comparison. **Whirlpool has no such caveat** — OpenSSL's implementation
+is plain table-driven C with no ISA-specific fast path, so it's a genuinely clean comparison to
+Kupyna's own software-only design.
+
+### Kalyna vs. AES (single block, schedule cached, MB/s — higher is better)
+
+| Variant | uacrypt | AES (AES-NI) | AES (AES-NI off) | vs. AES-NI-off |
+|---|---|---|---|---|
+| 128-128 | **222.22** | 1127.55 | 380.07 | 0.58x (AES software ~1.71x faster) |
+| 128-256 | **158.42** | 900.35 | 272.69 | 0.58x (AES software ~1.72x faster) |
+
+**256-256, 256-512, 512-512 have no AES row, and won't ever** — AES has one fixed 128-bit block
+size; only Kalyna's two 128-bit-block variants share anything to compare against. Against
+AES-NI (hardware), the gap is ~5.1-5.7x — that number describes ISA support, not this project's
+Kalyna code, per the caveat above.
+
+### Kupyna vs. Whirlpool (digest, MB/s — higher is better)
+
+| Variant | Size | uacrypt | Whirlpool | Ratio |
+|---|---|---|---|---|
+| Kupyna-256 | 16 KiB | **134.36** | 201.51 | 0.67x (Whirlpool ~1.50x faster) |
+| Kupyna-256 | 10 MiB | **136.46** | 198.57 | 0.69x (Whirlpool ~1.46x faster) |
+| Kupyna-512 | 16 KiB | **95.86** | 201.51 | 0.48x (Whirlpool ~2.10x faster) |
+| Kupyna-512 | 10 MiB | **97.24** | 198.57 | 0.49x (Whirlpool ~2.04x faster) |
+
+Whirlpool's output is fixed at 512 bits regardless of input size, so Kupyna-256's comparison is
+throughput-only (no matching output-size counterpart) — still valid, since both are hashing the
+same input bytes at the same buffer size. This is the one clean, no-asterisk table in this section:
+same optimization tier (table-driven software, no ISA extensions) on both sides, so a genuine ~1.5-
+2.1x gap is the actual finding, not a hardware artifact.
+
+### Strumok vs. ChaCha20 (keystream, MB/s — higher is better)
+
+| Variant | Size | uacrypt | ChaCha20 (AVX2) | Ratio |
+|---|---|---|---|---|
+| Strumok-256 | 16 KiB | **1959.92** | 3266.65 | 0.60x (ChaCha20 ~1.67x faster) |
+| Strumok-256 | 10 MiB | **1891.73** | 3169.75 | 0.60x (ChaCha20 ~1.68x faster) |
+| Strumok-512 | 16 KiB | **1904.58** | 3266.65 | 0.58x (ChaCha20 ~1.72x faster) |
+| Strumok-512 | 10 MiB | **1879.27** | 3169.75 | 0.59x (ChaCha20 ~1.69x faster) |
+
+ChaCha20's key is fixed at 256 bits (XChaCha20 extends the *nonce*, not the key), so Strumok-512's
+row has no size-matched counterpart either — shown anyway since it's the same role comparison, just
+without a key-size match. **Given ChaCha20's AVX2 acceleration and Strumok's pure-software design,
+~1.6-1.7x is a genuinely competitive result**, not the ~5x-class gap AES-NI produces — closer in
+spirit to the Whirlpool comparison than the AES one, even though a clean AVX2-off number wasn't
+produced for it.
+
+**Reproducing**: `openssl speed -elapsed -evp <aes-128-ecb|aes-256-ecb> -bytes 16 -seconds 3` (add
+`OPENSSL_ia32cap="~0x200000200000000"` for the AES-NI-off column); `openssl speed -provider legacy
+-provider default -elapsed -evp whirlpool -bytes <16384|10485760> -seconds 3`; `openssl speed
+-elapsed -evp chacha20 -bytes <16384|10485760> -seconds 2`. `uacrypt` side: `kalyna-block encrypt
+--variant <v> --key <16-or-32-byte key> --in <16-byte block> --out ... --iterations 3000000`,
+`kupyna-digest --variant <256|512> --in <16 KiB|10 MiB file> --out ... --iterations <2000|20>`,
+`strumok-crypt --variant <256|512> --key <32-or-64-byte key> --iv <32-byte IV> --in <16 KiB|10 MiB
+file> --out ... --iterations <3000|30>`.

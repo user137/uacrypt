@@ -7021,3 +7021,147 @@ attacks reach 9-11 of Kalyna's 14-18 rounds (depending on variant) and 5-6 of Ku
 rounds - none reach the full cipher, so this changes no code or claim, but a threat model that
 omits known third-party attacks on its own primitives is incomplete, and these papers existing
 unread in the repo for this long was itself worth correcting.
+
+## D-106: Benchmarked Kalyna/Kupyna/Strumok against their international role-analogs
+(AES/Whirlpool/ChaCha20 via OpenSSL) — a new comparison axis, not a replacement for the
+UAPKI/Oliynykov/outspace tables (T-149)
+
+The owner asked for a performance comparison against the specific analogs the GitHub Pages landing
+page's orientation table (added the same session) already names for each DSTU primitive: AES for
+Kalyna, Whirlpool for Kupyna, ChaCha20 for Strumok, and left the choice of reference binary
+(libsodium or OpenSSL) to the assistant.
+
+**OpenSSL only, no libsodium.** The dev machine already has OpenSSL 3.5.5 (MinGW64 build) on
+`PATH`, and its `openssl speed` subcommand covers all three needed primitives — AES, Whirlpool (via
+`-provider legacy -provider default`), and ChaCha20 — in one binary. No dev headers/import library
+for either OpenSSL or libsodium are installed on this machine (`pacman` itself isn't present in this
+Git-Bash environment, so the project's usual "vendor nothing, download prebuilt" pattern for a new
+oracle DLL would need a fresh package-manager or manual-download step); since OpenSSL's own CLI
+already answers every measurement needed without that step, adding libsodium as a second dependency
+would have been unjustified scope, not a genuine gap.
+
+**`openssl speed`, not a `docs/PERFORMANCE.md`-style D-34 file wrapper.** Every existing
+cross-implementation table in this project is produced by a small `gcc -O2` C harness with the same
+file-in/file-out shape as `uacrypt`'s own CLI, timed the same way (D-34). Writing an equivalent
+wrapper against OpenSSL's `libcrypto` would need its dev headers/import lib, which (per above)
+aren't installed here. `openssl speed -elapsed -bytes N` is a different, but not less legitimate,
+harness — it's the actual OpenSSL project's own benchmark tool, in wide use for exactly this kind of
+comparison. `-elapsed` switches its default CPU-user-time divisor to wall-clock (matching
+`uacrypt`'s own timing), and `-bytes N` pins its buffer size to match what's fed to `uacrypt`. Both
+sides report decimal (10⁶-byte) MB/s, so the ratios are valid even though the two timing loops
+differ — this deviation is stated plainly in `docs/PERFORMANCE.md`'s new section rather than left
+implicit, since blending two silently-different timing philosophies in one table is exactly the
+failure the file's existing byte-identity-verification policy (for the UAPKI tables) exists to
+prevent, and there's no byte-identity check available here to substitute (different algorithms by
+design — AES/Whirlpool/ChaCha20 aren't supposed to produce the same bytes as Kalyna/Kupyna/Strumok).
+
+**AES-NI is a real confound, so both an on and an off column are reported for AES.**
+`OPENSSL_ia32cap="~0x200000200000000"` is OpenSSL's own documented mechanism for disabling
+AES-NI/PCLMULQDQ; confirmed empirically to actually change the number on this build (AES-128-ECB:
+1127.55 → 380.07 MB/s at a 16-byte buffer) before trusting it for the table. `dstu-core` has no SIMD
+by design (`CLAUDE.md` MVP scope: correctness/portability first), so the AES-NI-off column is the
+one that actually answers "how good is this project's Kalyna" — the on column is disclosed too, but
+explicitly framed as measuring ISA support, not this project's code.
+
+**ChaCha20 has the same AVX2 confound, with no equally clean toggle found.** Tried
+`OPENSSL_ia32cap="0:0:0:0:0"` (all capability words zeroed) as a blunter version of the same idea;
+it also dropped AES-128-ECB further, to *below* its own AES-NI-specific-mask number (169.0 vs 380.1
+MB/s) — evidence it disables more than just AES-NI/AVX2 (likely basic 64-bit-optimized code paths
+too), which would make a ChaCha20 number produced this way an apples-to-oranges "how slow is naive C
+chacha" figure, not "how fast is chacha without AVX2." Rather than publish a number produced by an
+unverified, possibly-overbroad mask, ChaCha20 is reported hardware-accelerated only, with the same
+"this measures ISA support, not just the algorithm" caveat AES-NI-on carries — not a claim that
+Strumok and ChaCha20 are on equal optimization footing.
+
+**Whirlpool needed the legacy provider loaded** (`-provider legacy -provider default`) — without it,
+`openssl speed -evp whirlpool` silently reports all-zero throughput rather than erroring, since
+OpenSSL 3.x moved Whirlpool out of the default provider. Confirmed once with the flag before
+trusting any number from it. No ISA-specific fast path exists for it in this OpenSSL build (plain
+table-driven C, same optimization tier as Kupyna's own design) — the one comparison in this pass
+with no hardware-acceleration caveat attached.
+
+**Where a variant has no size-matched counterpart, the table says so explicitly rather than forcing
+a row or silently omitting the algorithm.** AES has one fixed 128-bit block, so Kalyna-256-256/
+256-512/512-512 get no AES row at all (there's no AES variant to put in it). ChaCha20's key is fixed
+at 256 bits (XChaCha20 extends the nonce, not the key), so Strumok-512 is compared for role/
+throughput only, flagged as such, not presented as a key-size match. Whirlpool's output is fixed at
+512 bits regardless of input length, so Kupyna-256's row is a throughput-only comparison too — still
+valid, since both are hashing the same input bytes.
+
+**Not added to `docs/ORACLES.md`.** OpenSSL is a speed baseline against a recognizable name, not a
+correctness reference for any DSTU standard — adding it to the oracle trust matrix would misstate
+what it's being used for here.
+
+Numbers, reproduction commands, and the full caveat text live in `docs/PERFORMANCE.md`'s new "vs.
+international-standard analogs (OpenSSL)" section — not duplicated here.
+
+## D-107: Spiked `-C target-feature=+avx2` on `uacrypt` release builds — no measurable gain, and a
+real SIMD implementation (not just the compiler flag) is deliberately not being pursued for now
+
+Following D-106's OpenSSL comparison (whose AES-NI/AVX2 numbers prompted the question), the owner
+asked whether this project could reuse AVX for its own algorithms in a performance build, similar in
+spirit to the existing `fused`/`small-tables` split (D-35/D-38/D-39). Spiked directly rather than
+reasoned about in the abstract, per this project's own T-129/T-139 precedent (spike and read the
+actual result before planning a rewrite).
+
+**What was tried**: two separate release builds of `uacrypt` from the same source (`cargo build
+--release -p uacrypt` into distinct `--target-dir`s), one plain, one with
+`RUSTFLAGS="-C target-feature=+avx2"` — no source changes, since the question was whether the
+existing scalar code already has anything in it for LLVM's auto-vectorizer to widen. Byte-identity
+confirmed first (Kalyna encrypt/decrypt round-trip, Kupyna digest, Strumok keystream all produced
+identical output between the two builds) before trusting any timing, same discipline as every other
+table in `docs/PERFORMANCE.md`.
+
+**Result, same Ryzen 5 PRO 4650U dev machine, repeated to rule out noise**:
+
+| Primitive | Baseline | `+avx2` | Verdict |
+|---|---|---|---|
+| Kalyna-128/128 (block, cached) | 75 ns/op | 76 ns/op | flat |
+| Kalyna-128/256 (block, cached) | 100 ns/op | 102 ns/op | flat |
+| Kupyna-256, 10 MiB | ~137 MB/s | ~131-133 MB/s | **~3-4% slower, reproduced twice** |
+| Kupyna-512, 10 MiB | 90.58 MB/s | 90.55 MB/s | flat |
+| Strumok-256, 10 MiB | ~1876-1893 MB/s | ~1841-1861 MB/s | noise-level, no consistent direction |
+| Strumok-512, 10 MiB | 1886.47 MB/s | 1858.99 MB/s | noise-level |
+
+**No gain anywhere; Kupyna measurably regresses.** Consistent with T-129/T-139's own `--emit=asm`
+finding that this codebase's hot loops are already bounds-check-free scalar code with no independent
+parallel work across loop iterations for an auto-vectorizer to exploit — enabling a wider ISA target
+without restructuring the algorithm to actually process multiple blocks/words per call just adds
+register-allocation pressure, which is the likely cause of Kupyna's small regression. **No code
+change made** — same "complete, valuable outcome, not a shortfall" framing T-129/T-139 already
+established for a spike that closes with nothing to land.
+
+**Separately, the owner asked about a genuine hand-written SIMD implementation** (a real third
+build profile alongside `fused`/`small-tables`, not just a compiler flag on the existing code) — that
+is a materially different, larger proposal than the flag spike above, and carries risks distinct
+from `small-tables`' own (D-38/D-39 was cheap precisely because it's the *same* code, same timing
+profile, just smaller tables):
+
+1. **Timing side-channel risk** — this project's only accepted secret-dependent-array-indexing
+   exception (D-19) holds specifically because the current S-box/MDS lookups are fixed-latency
+   scalar reads mirroring the DSTU reference implementations. Hand-written SIMD gather instructions
+   (`vpgatherdd` etc.) have data-dependent latency on several microarchitectures (cache-line-conflict
+   sensitive) — a naive vectorized table lookup could reintroduce exactly the timing channel D-19's
+   scalar approach avoids. A genuinely constant-time SIMD path (bitslicing) is not "vectorize the
+   existing loop" — it's a from-scratch alternative implementation of the primitive, need its own
+   full research-before-implementation and dual-oracle pass, same bar as any new primitive.
+2. **Contradicts D-01's portability pillar unless carefully scoped** — AVX2/AVX-512 are x86-64-only;
+   ARM64 would need a separate NEON implementation, and no SIMD path exists at all for the embedded
+   Cortex-M/RISC-V targets D-01 also commits to. A real SIMD variant needs per-ISA code plus runtime
+   feature detection (`is_x86_feature_detected!` + scalar fallback) so a binary built for one CPU
+   doesn't `SIGILL` on an older one — a kind of runtime branching this project has never needed
+   before (`fused`/`small-tables` are both compile-time-only, byte-identical, no dispatch).
+3. **Multiplies the verification matrix** — a SIMD code path is a distinct implementation, not an
+   optimization of the existing one, so it needs its own dual-oracle vector pass, tamper/misuse
+   tests, and its own CI matrix row (`small-tables`' own D-39 lesson: a new production-behavior
+   feature not covered by `--all-features` alone silently drops out of coverage). Miri's SIMD-
+   intrinsic support is also inconsistent enough that "cargo miri test as a required layer" may not
+   cleanly cover the new code at all.
+4. **No measured payoff to justify the above yet** — the flag-only spike above shows the current
+   scalar code has nothing for a vectorizer to widen; a real gain would require changing the
+   primitive's own call boundary (processing multiple blocks per call, the same idea AES-NI's
+   multi-block pipelining uses), which is an API change, not a build-profile addition.
+
+**Decision: not pursued for now.** Recorded as a deliberate non-implementation, the same posture
+D-08 uses for post-quantum algorithms — revisit only if a concrete, measured use case justifies
+carrying points 1-3's cost, not preemptively.

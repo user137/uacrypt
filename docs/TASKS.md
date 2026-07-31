@@ -3747,3 +3747,19 @@ Phase 2+ and none currently in flight).
   unreferenced anywhere in this project's docs; surfaced their round-reduced attack results (best
   known: 9-11 of Kalyna's 14-18 rounds, 5-6 of Kupyna's 10-14 rounds, none reaching the full
   cipher) in a new `docs/SECURITY.md` "Known cryptanalysis" section.
+
+- [x] **T-149** **Benchmarked Kalyna/Kupyna/Strumok against AES/Whirlpool/ChaCha20 (OpenSSL) - see
+  `docs/DECISIONS.md` D-106, `docs/PERFORMANCE.md`'s new "vs. international-standard analogs"
+  section.** Owner asked for a speed comparison against the same role-analogs the gh-pages landing
+  page's orientation table already names, at matching key/block sizes where one exists; left the
+  choice of reference binary to the assistant - OpenSSL alone (already on this machine) covers AES,
+  Whirlpool (legacy provider), and ChaCha20, so libsodium wasn't needed. Measured via `openssl
+  speed -elapsed -bytes N` (a different harness from this file's usual D-34 wrapper, disclosed as
+  such) against `uacrypt`'s own `--iterations` numbers, same dev machine, same day. AES-NI reported
+  both on and off (`OPENSSL_ia32cap` mask, confirmed to actually change the number) since
+  `dstu-core` has no SIMD; Kalyna-vs-AES-software is ~1.7x, Kupyna-vs-Whirlpool (no ISA-acceleration
+  confound on either side) is ~1.5-2.1x, Strumok-vs-ChaCha20 (AVX2, no clean off-toggle found) is
+  ~1.6-1.7x. Variants with no size-matched counterpart (Kalyna 256-256/256-512/512-512 vs AES's
+  fixed 128-bit block; Strumok-512 vs ChaCha20's fixed 256-bit key) are flagged, not forced or
+  silently dropped. `docs/ORACLES.md` untouched - OpenSSL is a speed baseline here, not a
+  correctness oracle for any DSTU standard.
