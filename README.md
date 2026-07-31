@@ -25,7 +25,9 @@ libsodium-shaped `crypto_*` layer (`crypto_secretbox`, `crypto_secretstream`, `c
 `crypto_auth`, `crypto_kdf`, `crypto_generichash`, `crypto_stream`, `crypto_pwhash`, `randombytes`)
 and the `uacrypt` CLI (`keygen`/`encrypt`/`decrypt`/`hash`, `sign-keygen`/`sign-pubkey`/`sign`/
 `verify`, plus `--help`/`--version`) are built and tested — see "Using `uacrypt`" below. DSTU 9041
-is hard-blocked (no source material). See
+has no implementation yet — a secondary-source pseudocode draft exists
+(`docs/pseudocode/dstu9041.md`, `docs/DECISIONS.md` D-105) but no oracle or reference implementation
+exists for it anywhere, so it's still blocked on that, not on a total absence of source material. See
 `docs/TASKS.md` for the phase-by-phase backlog, `docs/dstu-crypto-project.md`'s "Concrete API shape" for
 the authoritative module-by-module status table, and `docs/release-readiness.md` for the gap
 analysis against a complete 1.0.
