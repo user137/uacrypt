@@ -6904,3 +6904,66 @@ Verify the next real `master` push lands `cargo miri test` green via `gh run vie
 assumption that a bigger number alone fixes it (same verification discipline D-59 and the
 Node-20-deprecation-era reconfirm already established) - see `docs/TASKS.md` T-146 for that
 follow-up check.
+
+## D-104: Official supplementary Strumok-256/512 test vectors received from Держспецзв'язку -
+upgrades but does not close D-15/D-16 (T-147)
+
+The owner filed a public-information request (83-ЗПІ-26, 2026-07-25, registered 2026-07-27) asking
+Держспецзв'язку (State Service for Special Communications) whether recommended parameters/worked
+examples for DSTU 8845:2019 (Strumok) and DSTU 9041:2020 exist outside the paid standard texts. The
+response (Адміністрація Держспецзв'язку, letter №01/02/02-8386/2026, dated 2026-07-31, signed by
+Deputy Head Volodymyr Trofymenko) states plainly:
+- Recommended parameters/worked examples for both standards are in the standard texts themselves,
+  as their own annexes - not purchased here (D-15/D-16, D-08's post-quantum-adjacent cost note).
+- **ДНДІ ТКЗІ (the State Research Institute of Cybersecurity Technologies and Information
+  Protection) uses, in addition to Annex Д (Annex D)'s own known-answer tests, two supplementary
+  test examples for Strumok-256/512** during real conformance expert examinations of concrete
+  crypto-protection tools - attached to the letter.
+- No other test-value sets, reference implementations, methodological guidance, or technical
+  reports exist at Держспецзв'язку for either standard, beyond the standard texts themselves.
+
+**This is a genuinely independent oracle** - sourced directly from the state institution that
+performs conformance expertise for implementations of this standard, not from a third-party
+library's own self-test (UAPKI/outspace, D-15's existing "shared lineage, not independent
+authorship" caveat). It does not, by itself, confirm this project's implementation against Annex Д
+of the standard text (still unpurchased) - D-15/D-16 stay open on that specific, narrower claim.
+Worded as an **upgrade, not a closure**, per this project's own standing rule against letting a
+provisional citation quietly age into a settled one.
+
+**Two distinct byte-order conventions had to be derived from the letter's own notation, not
+assumed** - the same D-25 `hash_to_field` failure mode (a source's own calling/labeling convention
+differing from this crate's array convention, requiring a citation-backed transform rather than a
+silent flip-until-green):
+- **Key/IV:** the appendix labels bytes `Key31, Key30, ..., Key0` / `IV31, ..., IV0`, printed in
+  that descending-index order left-to-right. `hazmat::strumok::init_state`'s `kw`/`ivw` helpers
+  read array index 0 first (ascending) - the reverse of the letter's printed order. Reversing the
+  transcribed byte sequence was the first thing tried (predicted from the labeling before running
+  anything, not discovered by trial), and it was confirmed correct empirically: encrypting with the
+  reversed key/IV against the still-untransformed `RandBlock` produced output that was an exact
+  per-8-byte-word permutation of the expected value, not unrelated bytes - proof the key/IV
+  orientation was right, since a wrong key/IV would have produced a keystream bearing no
+  relationship to the expected one at all.
+- **`RandBlock`** (the raw keystream over an all-zero input; carries no index annotation, unlike
+  Key/IV): matches this crate's output only after each 8-byte word is *also* independently
+  byte-reversed - a distinct convention from Key/IV's own, derived from the word-permutation
+  pattern actually observed above (not assumed to be the same transform as Key/IV, and not derived
+  by guessing further reversals). Confirmed for every one of the 32 words across both the
+  Strumok-256 and Strumok-512 cases.
+- Both variants share the identical printed IV value in the letter - a free cross-check that the
+  transcription is faithful, since a transcription slip in one variant's copy would have broken
+  that equality independently of the cipher logic.
+
+**Disposition:** `crates/dstu-core/tests/strumok.rs` gained a new `official_letter_vectors` module
+with `strumok_256`/`strumok_512` tests, transcribing the hex **exactly as printed** in the letter
+(byte-for-byte eyeball-diffable against it) and applying the two derived transforms explicitly
+in-code with the derivation cited in the module doc comment, rather than pre-reordering the
+literals silently. Both tests pass. `docs/ORACLES.md`'s Strumok section updated to record the new
+source and the upgraded (not closed) status. Of the two source PDFs, only the appendix
+(`docs/papers/Strumok_official_test_vectors_2026-07-31.pdf` - Key/IV/RandBlock only, no personal
+data) is committed, per the owner's explicit choice; the cover letter itself carries the owner's
+own name and email in its addressee block and this repository is public, so it stays local, not
+committed - cited here by number/date only (letter №01/02/02-8386/2026, 2026-07-31).
+
+DSTU 9041:2020 remains untouched by this pass - the letter confirms no oracle exists for it beyond
+the (unpurchased) standard text, consistent with `docs/ORACLES.md`'s existing "no oracle exists
+anywhere" entry for that algorithm. Not started, not planned by this decision.

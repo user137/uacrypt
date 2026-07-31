@@ -3712,3 +3712,20 @@ Phase 2+ and none currently in flight).
   `812d2d8`, run `30453610223`): `cargo miri test` completed in 2h50m10s, well inside the new
   240-min cap, and every other job (including the new `kani` job from T-145, 1m31s) passed too -
   full run green.
+
+- [x] **T-147** **Official supplementary Strumok-256/512 test vectors received from
+  Держспецзв'язку, 2026-07-31 - implemented and passing, see `docs/DECISIONS.md` D-104.** Owner's
+  public-information request (83-ЗПІ-26) drew a response (letter №01/02/02-8386/2026) attaching two
+  ДНДІ ТКЗІ-sourced test examples (Strumok-256/512), supplementary to DSTU 8845:2019's own Annex Д,
+  used in real conformance expert examinations - a genuinely independent, state-sourced oracle
+  distinct from UAPKI/outspace. Transcribed exactly as printed and verified in
+  `crates/dstu-core/tests/strumok.rs`'s new `official_letter_vectors` module - both variants pass,
+  after deriving (not assuming) two distinct byte-order transforms from the letter's own notation
+  (D-104 has the full derivation and the empirical confirmation that ruled out flip-until-green).
+  `docs/ORACLES.md`'s Strumok section updated: status upgraded from "UAPKI-attributed only" but
+  **not** closed to "confirmed against the official text" - Annex Д itself is still unpurchased.
+  **PDF storage resolved with the owner**: only the appendix (Key/IV/RandBlock, no personal data)
+  is committed, as `docs/papers/Strumok_official_test_vectors_2026-07-31.pdf`; the cover letter
+  itself carries the owner's own name/email and stays local, cited by number/date only. DSTU
+  9041:2020 untouched - the same letter confirms no oracle exists for it either, consistent with
+  the existing `docs/ORACLES.md` entry.

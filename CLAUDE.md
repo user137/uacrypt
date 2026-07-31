@@ -34,7 +34,10 @@ environment. The workspace has two crates:
   reference implementation exists at all; verified by property test only, no oracle vector exists
   to write) — and `strumok::{Strumok256, Strumok512}` (keystream generation via
   `apply_keystream`, citation `docs/DECISIONS.md` D-18 — vectors are UAPKI-attributed, not confirmed
-  against the official DSTU 8845:2019 text itself, see D-15). All three written test-first;
+  against the official DSTU 8845:2019 text itself, see D-15; as of 2026-07-31, also independently
+  confirmed against two state-sourced supplementary vectors from Держспецзв'язку/ДНДІ ТКЗІ, an
+  upgrade over UAPKI alone but still not equivalent to the paid standard text itself, see D-104).
+  All three written test-first;
   Kalyna/Kupyna share S-box/MDS tables via the internal `hazmat::tables` module rather than
   duplicating them, and Strumok's `T` substitution reuses those same shared tables too (only its
   `mul_alpha`/`mul_alpha_inv` tables are new, since that field construction isn't shared). All
@@ -574,8 +577,11 @@ check) is in `docs/dstu-crypto-project.md` "Resources found".
 - Official documentation PDFs live in `docs/papers/`, including `DSTU_4145-2002.pdf` (added
   2026-07-22 — a scan, see `.claude.local.md` for the render-then-read workflow). Test vectors are
   extracted and verified for Kalyna, Kupyna, and DSTU 4145
-  (`crates/dstu-core/tests/vectors/{kalyna,kupyna,dstu4145}/`); Strumok's are UAPKI-attributed, not
-  yet confirmed against the paid official text — see `docs/ORACLES.md`/`docs/DECISIONS.md` D-15/D-16.
+  (`crates/dstu-core/tests/vectors/{kalyna,kupyna,dstu4145}/`); Strumok's are UAPKI-attributed, plus
+  (as of 2026-07-31) independently confirmed against two state-sourced supplementary vectors from
+  Держспецзв'язку/ДНДІ ТКЗІ (`crates/dstu-core/tests/strumok.rs`'s `official_letter_vectors`), still
+  not yet confirmed against the paid official text itself — see `docs/ORACLES.md`/`docs/DECISIONS.md`
+  D-15/D-16/D-104.
 - Verify own implementation against Kalyna-reference and the other oracles in `docs/ORACLES.md`.
 - Hardware validation on STM32/ESP32 is a distinct post-MVP phase, and is not a claim of
   side-channel resistance (see MVP scope above).
