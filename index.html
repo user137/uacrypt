@@ -568,12 +568,18 @@ html[data-lang="uk"] [lang="en"]{display:none;}
     <div class="check">
       <h3 lang="en">Dual-oracle verification</h3>
       <h3 lang="uk">Подвійний оракул</h3>
-      <p lang="en">Official DSTU test vectors <em>and</em> cross-checked against a real,
-      independent reference implementation (Bouncy Castle, via actual Java and .NET oracle
-      harnesses — not a vendored clone).</p>
-      <p lang="uk">Офіційні тестові вектори ДСТУ <em>і</em> звірка з реальною, незалежною
-      референсною реалізацією (Bouncy Castle, через справжні Java- та .NET-гарнеси — а не
-      вендорений клон).</p>
+      <p lang="en">Official DSTU test vectors <em>and</em> cross-checked against two real,
+      independent reference implementations: <a href="https://www.bouncycastle.org/">Bouncy
+      Castle</a> (via actual Java and .NET oracle harnesses — not a vendored clone) and
+      <a href="https://github.com/specinfo-ua/UAPKI">UAPKI</a> (the C reference). Need Kalyna/
+      Kupyna/Strumok in Java or .NET instead of Rust? Bouncy Castle already has them. Need C?
+      UAPKI does.</p>
+      <p lang="uk">Офіційні тестові вектори ДСТУ <em>і</em> звірка з двома реальними, незалежними
+      референсними реалізаціями: <a href="https://www.bouncycastle.org/">Bouncy Castle</a>
+      (через справжні Java- та .NET-гарнеси, а не вендорений клон) і
+      <a href="https://github.com/specinfo-ua/UAPKI">UAPKI</a> (референс на C). Потрібні Калина/
+      Купина/Струмок на Java чи .NET замість Rust? Вони вже є в Bouncy Castle. Потрібен C? Це
+      UAPKI.</p>
     </div>
     <div class="check">
       <h3>cargo miri</h3>
