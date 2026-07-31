@@ -6967,3 +6967,54 @@ committed - cited here by number/date only (letter №01/02/02-8386/2026, 2026-0
 DSTU 9041:2020 remains untouched by this pass - the letter confirms no oracle exists for it beyond
 the (unpurchased) standard text, consistent with `docs/ORACLES.md`'s existing "no oracle exists
 anywhere" entry for that algorithm. Not started, not planned by this decision.
+
+## D-105: A previously-recorded "font-encoding failure" was false for five PDFs; re-examination
+found a usable DSTU 9041:2020 pseudocode source plus three unread cryptanalysis papers (T-148)
+
+While investigating the Skorobahatko DSTU 9041 thesis (D-104's follow-up, prompted by the owner
+directly asking why it "wasn't readable"), the standing claim in `docs/ORACLES.md` - that
+Cyrillic-heavy PDFs in this project lose their prose to a missing `ToUnicode` CMap - was checked
+directly with `pdftotext -layout` rather than trusted from the existing note. **The claim was
+false for every file it had been applied to**: `Dolgov_5-22.pdf`, `Strumok_verilog.pdf`,
+`Kalyna_construction_principles_ZI_2015.pdf`, `Kalyna_vs_international_standards_2018.pdf`, and
+the Skorobahatko thesis itself all extract clean, complete Ukrainian prose via plain
+`pdftotext -layout` - no rendering-to-PNG needed. The only real defect is cosmetic (Cyrillic `і`
+sometimes extracts as Latin `i`, a LaTeX/T2A glyph-sharing quirk, not a missing-CMap failure).
+`docs/ORACLES.md` corrected in five places (the general PDF-extraction note, the Dolgov/Kalyna
+bullets, and the DSTU 9041 bullet) rather than left to quietly keep misleading a future session -
+`docs/DECISIONS.md`'s own standing rule against provisional claims aging into settled ones applies
+to false-negative claims exactly as much as to unverified-positive ones.
+
+**Consequence for DSTU 9041:2020**: the Skorobahatko thesis (KPI, 2023) turned out to contain a
+complete, numbered encryption algorithm (15 steps) and decryption algorithm (19 steps) in its
+§1.2, plus a second, independently-phrased restatement in §2.1.1 - real, previously-missed source
+material for an algorithm this project had marked hard-blocked with zero sources of any kind.
+**`docs/pseudocode/dstu9041.md` written from it**, both forms transcribed, with every internal
+inconsistency flagged inline rather than silently resolved (this project's own D-15/D-25
+discipline for exactly this situation): most notably, both algorithm forms independently make the
+same "scalar times the wrong operand" slip in their decryption step (`T' = e*r`/`T = hP` where the
+point `R`/`εP` reconstructed from the ciphertext must be meant instead) - two separately-worded
+sections making the identical mistake reads as a genuine authorial error rather than a
+transcription artifact of this project's own extraction, though that inference is not itself a
+citable confirmation and is recorded as such, not asserted as fact. Four further gaps (no
+`l_max(p)` formula, no concrete curve parameters, no KIVREP definition beyond its acronym
+expansion, no hash-identifier/user-group registry) are recorded in the pseudocode doc's own "Open
+gaps" section.
+
+**This does not unblock `hazmat::dstu9041`.** The thesis is a single secondary source citing the
+standard as its own `[15]`, with no oracle or reference implementation anywhere to cross-check
+against - the thinnest evidentiary position any algorithm in this project has had. It clears the
+bar for a `docs/pseudocode/*.md` draft (that doc's entire charter is to state what a source says,
+ambiguities included) but not the dual-oracle bar this project's hard constraints require before
+writing a primitive. `docs/dstu-crypto-project.md`'s "hard-blocked, zero source material" framing
+for DSTU 9041 is deliberately left as-is, not reworded to "unblocked" - doing so would be exactly
+the provisional-citation-aging-into-settled failure this project's own conventions warn against.
+
+**Separately, three cryptanalysis papers already sitting in `docs/papers/` had never been
+referenced anywhere in this project's docs** (`Kalyna_attacks.pdf`, `Kalyna_improved_MITM_attacks.pdf`,
+`Kupyna_analysis.pdf`) - not a font-encoding casualty, just genuinely unread until this pass.
+Surfaced in a new `docs/SECURITY.md` "Known cryptanalysis" section: best-known round-reduced
+attacks reach 9-11 of Kalyna's 14-18 rounds (depending on variant) and 5-6 of Kupyna's 10-14
+rounds - none reach the full cipher, so this changes no code or claim, but a threat model that
+omits known third-party attacks on its own primitives is incomplete, and these papers existing
+unread in the repo for this long was itself worth correcting.

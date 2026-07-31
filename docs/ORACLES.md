@@ -142,20 +142,23 @@ project funding changes rather than re-researched from scratch.
   branch) that led to a deliberate scope-cut, not just an oracle-strength correction.
 - Supplementary, not authoritative: `docs/papers/Dolgov_5-22.pdf` contains a C-like pseudocode
   description of Kalyna (`Kalyna_Cipher`, `Kalyna_InvCipher`, `Kalyna_S_boxes`,
-  `Kalyna_KeyExpansion_Ksigma`), but its surrounding Ukrainian prose doesn't extract cleanly via
-  `pdftotext` (font-encoding issue with no ToUnicode CMap) and it carries no test vectors of its
-  own — `Kalyna.pdf` remains the reference; this one is a secondary read if the pseudocode angle
-  is ever needed, not transcribed here to avoid injecting OCR/extraction errors into a crypto spec.
+  `Kalyna_KeyExpansion_Ksigma`). **Correction, 2026-07-31**: this bullet previously claimed its
+  surrounding Ukrainian prose doesn't extract cleanly via `pdftotext` (font-encoding issue, no
+  ToUnicode CMap) — checked again directly and that was false; `pdftotext -layout` extracts it
+  cleanly (see the general PDF extraction note below). `Kalyna.pdf` remains the reference and this
+  one still isn't transcribed here — Kalyna already has a confirmed dual-oracle implementation, so
+  there's no gap for this secondary source to fill, not because it's unreadable.
 - **Checked 2026-07-24, ruled out for the D-05 mode-of-operation question**:
   `docs/papers/Kalyna_construction_principles_ZI_2015.pdf` (Горбенко/Олійников/Казимиров et al.,
   "Принципи побудови і основні властивості нового національного стандарту блокового шифрування
   України", Захист інформації 17(2), 2015 — same author group as `Kalyna.pdf`) and
   `docs/papers/Kalyna_vs_international_standards_2018.pdf` (Єфіменко/Байлюк/Покотило, 2018,
-  comparison against AES/RC4/3DES). Both read in full (rendered to PNG, same font-encoding gap as
-  `Dolgov_5-22.pdf` blocks `pdftotext`) — both are exclusively about the block cipher's internal
-  SPN structure (S-box/MDS-matrix design choices, speed comparisons), neither mentions modes of
-  operation or Kupyna combination anywhere. Kept in `docs/papers/` as legitimate secondary sources
-  for the cipher's design rationale, not for D-05.
+  comparison against AES/RC4/3DES). Both read in full — both are exclusively about the block
+  cipher's internal SPN structure (S-box/MDS-matrix design choices, speed comparisons), neither
+  mentions modes of operation or Kupyna combination anywhere. Kept in `docs/papers/` as legitimate
+  secondary sources for the cipher's design rationale, not for D-05. (The original note that
+  reading these required rendering to PNG due to a font-encoding gap was also corrected 2026-07-31
+  — both extract cleanly via plain `pdftotext -layout`.)
 - **The actual D-05 mode-of-operation evidence found 2026-07-24**: Ukrainian Wikipedia's "Калина
   (шифр)" article publishes a ten-mode table (ECB/CTR/CFB/CMAC/CBC/OFB/GCM+GMAC/CCM/XTS/KW, each
   with its security service) that matches — mode-for-mode — this project's own
@@ -291,31 +294,57 @@ project funding changes rather than re-researched from scratch.
   cross-check available, unless one is found or built first.
 - **Web search performed (2026-07-21), no GitHub implementation found** for DSTU 9041:2020 in any
   language — confirms the above is not just an unsearched gap.
-- **Two candidate papers checked for pseudocode, both dead ends:**
+- **Two candidate papers checked for pseudocode:**
   - Skorobahatko, bachelor's thesis, KPI, 2023 ("Аналіз стійкості алгоритму гібридного шифрування
     за ДСТУ 9041:2020 та його модифікацій до розрізнювальних атак") — the one paper found that
     actually analyzes *this* algorithm's steps (its abstract explicitly frames it as chosen-
     plaintext/chosen-ciphertext resistance analysis of the DSTU 9041:2020 hybrid encryption
     scheme, referencing DSTU 7624:2014 too). Downloaded from
-    `https://ela.kpi.ua/server/api/core/bitstreams/12932ea1-d36a-468a-b4a0-504309a90fbd/content`
-    and run through `pdftotext -layout` — same font-encoding failure as `Dolgov_5-22.pdf` and
-    `Strumok_verilog.pdf` (no ToUnicode CMap): every word of Ukrainian prose extracts as blank
-    space, only section numbers and the odd English loanword survive. Unusable for transcription
-    as-is; would need a different extraction path (OCR on rendered pages, or a
-    manually-copy-pasted version) before it could feed a pseudocode doc.
+    `https://ela.kpi.ua/server/api/core/bitstreams/12932ea1-d36a-468a-b4a0-504309a90fbd/content`.
+    **Correction, 2026-07-31**: an earlier pass here claimed `pdftotext -layout` failed on this
+    file with the same "no ToUnicode CMap" gap as `Dolgov_5-22.pdf`/`Strumok_verilog.pdf` -
+    **checked again directly and that claim was false**, for all three files (see the general PDF
+    extraction note below). `pdftotext -layout -f 12 -l 18` on this thesis extracts clean, complete
+    Ukrainian prose, including **§1.2's full encryption algorithm (15 numbered steps) and
+    decryption algorithm (19 numbered steps)**, with notation (`M`, `l(M)`, base point `P`, order
+    `n`, private key `e`, ephemeral key `ε`, public key `Q`), confirming it uses Kalyna-l/k-KW or
+    Kalyna-l/k-KW-p (DSTU 7624:2014) as the symmetric stage in "KIVREP" mode and Kupyna as the
+    recommended hash. This is real, previously-missed source material - not a dead end.
+    **What it is not**: a primary source. It's a single secondary transcription citing the
+    standard as its own `[15]`, with no oracle or reference implementation anywhere to cross-check
+    against (unlike every other algorithm in this project). At least four transcription-level
+    defects are visible in the extracted text itself (e.g. decrypt step 7 computes `T' = er` -
+    scalar times a field element, not a point, almost certainly meant `eR'`; step 8's exponent
+    notation disagrees with encrypt step 13's; a typo'd subscript in step 13; "винується" for
+    "виконується") - each is a plausible bachelor's-thesis typo, but **without the primary text
+    there is no way to tell a typo from a real spec ambiguity**. This source can responsibly
+    support a `docs/pseudocode/dstu9041.md` draft with every such point flagged inline as
+    unresolved (D-15's own pattern for exactly this situation) - it cannot support writing
+    `hazmat::dstu9041` itself, which still needs the dual-oracle bar every other primitive here
+    meets. **Written up 2026-07-31** - `docs/pseudocode/dstu9041.md` now exists, both algorithm
+    forms transcribed (§1.2's full 15/19-step form and §2.1.1's simplified restatement), every
+    defect above flagged inline, plus a fifth found while writing it (§2.1.1's own decrypt step
+    independently repeats the same "scalar times the wrong operand" slip as §1.2's step 7 - two
+    independently-phrased sections making the same mistake reads as a genuine authorial error, not
+    a transcription artifact, though that inference isn't itself a citable confirmation). Four
+    further gaps this source cannot answer (no `l_max(p)` formula, no concrete curve parameters, no
+    KIVREP definition beyond its acronym, no hash-identifier/user-group registry) are recorded in
+    the pseudocode doc's own "Open gaps" section.
   - Ivanov/Kuznetsov et al., ITCE 2020 №1 (`itce.vntu.edu.ua`, downloaded and extracted cleanly —
     English abstract intact) — topically adjacent but not this algorithm: it's about base-point
     selection algorithms for Edwards curves in the context of the **DSTU 4145-2002 signature**
     standard, not the DSTU 9041:2020 hybrid short-message-encryption algorithm. Useful background
     on Edwards-curve arithmetic in the Ukrainian standards ecosystem, not a source to transcribe
     pseudocode from for this algorithm.
-- No `docs/pseudocode/dstu9041.md` exists as a result — there is currently nothing credibly
-  sourceable to write one from. Revisit if the actual DSTU 9041:2020 standard text is ever
-  obtained, or if a legibly-OCR'd copy of the Skorobahatko thesis surfaces.
+- No `docs/pseudocode/dstu9041.md` exists yet. A real, usable secondary source now exists (above);
+  writing the doc from it (with defects flagged, no oracle to verify against) is a possible
+  next step, not yet done. Obtaining the actual DSTU 9041:2020 standard text remains the way to
+  upgrade past "single uncross-checked secondary source."
 - **The official text was priced (2026-07-21): 5,304.00 UAH for 40 pages** — see "Official DSTU
-  text — purchase cost" above. This is the only algorithm in this project with zero sources of
-  any kind, so it's the strongest case for revisiting the purchase if budget ever allows — but
-  deemed cost-prohibitive for now, same as the other two.
+  text — purchase cost" above. This is still the only algorithm in this project with no oracle of
+  any kind (dual-oracle verification, this project's own hard constraint, has nothing to check
+  against here even with the thesis in hand) — the strongest case for revisiting the purchase if
+  budget ever allows, but deemed cost-prohibitive for now, same as the other two.
 
 ## Test-vector convention
 
@@ -353,9 +382,18 @@ per D-10) — the earlier "waits for the first primitive" caveat no longer appli
   ```
 
 **PDF extraction notes (for re-deriving or extending these):** `docs/papers/*.pdf` were converted
-with `pdftotext -layout` (Cyrillic-only PDFs like `Dolgov_5-22.pdf` and `Strumok_verilog.pdf` lose
-their prose to a font-encoding issue — no ToUnicode CMap — but English papers and embedded hex
-survive intact). Page-footer numbers routinely get injected mid-hex-block by `pdftotext`
+with `pdftotext -layout`. **Correction, 2026-07-31**: this file previously claimed Cyrillic-only
+PDFs (`Dolgov_5-22.pdf`, `Strumok_verilog.pdf`, and by extension
+`Kalyna_construction_principles_ZI_2015.pdf`/`Kalyna_vs_international_standards_2018.pdf`) lose
+their prose to a font-encoding issue with no `ToUnicode` CMap. **That claim was checked directly
+and is false for all four** — re-run 2026-07-31 while investigating a fifth PDF (the Skorobahatko
+DSTU 9041 thesis, see below): `pdftotext -layout` on each extracts clean, complete Ukrainian prose.
+The only actual defect found is cosmetic: Cyrillic `і` (U+0456) sometimes extracts as Latin `i`
+(U+0069) — a common LaTeX/T2A-encoding glyph-sharing quirk, not a missing-CMap failure, and not a
+blocker for reading or transcribing prose (just don't grep/match on `і` expecting the Unicode
+Cyrillic codepoint). Scans with a genuinely empty text layer (`DSTU_4145-2002.pdf`) are a
+different, real failure mode — that one still needs the render-to-PNG workflow; don't conflate the
+two. Page-footer numbers routinely get injected mid-hex-block by `pdftotext`
 (observed and corrected during extraction: stray `"64"`, `"96"`, `"36"`, `"18"`, `"34"` splitting
 what should have been one contiguous hex run) — always re-verify against a wide context window
 around each value, and length-check every field against its declared bit size before trusting it;

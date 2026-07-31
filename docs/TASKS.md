@@ -3729,3 +3729,21 @@ Phase 2+ and none currently in flight).
   itself carries the owner's own name/email and stays local, cited by number/date only. DSTU
   9041:2020 untouched - the same letter confirms no oracle exists for it either, consistent with
   the existing `docs/ORACLES.md` entry.
+
+- [x] **T-148** **Corrected a false "font-encoding failure" claim across 5 PDFs; wrote
+  `docs/pseudocode/dstu9041.md`; surfaced 3 unread cryptanalysis papers - see `docs/DECISIONS.md`
+  D-105.** Owner asked why the Skorobahatko DSTU 9041 thesis PDF "doesn't get recognized" -
+  re-checked directly with `pdftotext -layout` instead of trusting the standing `docs/ORACLES.md`
+  note, and the note was wrong: this thesis, `Dolgov_5-22.pdf`, `Strumok_verilog.pdf`, and both
+  Kalyna comparison papers all extract clean Ukrainian prose (only cosmetic defect: Cyrillic `і` as
+  Latin `i`). `docs/ORACLES.md` corrected in five places. The thesis itself turned out to contain a
+  complete encrypt/decrypt algorithm for DSTU 9041:2020 (two independently-phrased forms) -
+  transcribed into `docs/pseudocode/dstu9041.md` with every internal inconsistency flagged inline,
+  not silently resolved (single secondary source, no oracle anywhere - does **not** unblock
+  `hazmat::dstu9041`, `docs/dstu-crypto-project.md`'s hard-blocked framing deliberately left
+  as-is). Owner also asked whether other previously-unprocessed files (Kupyna and others) had more
+  to extract - found three cryptanalysis papers (`Kalyna_attacks.pdf`,
+  `Kalyna_improved_MITM_attacks.pdf`, `Kupyna_analysis.pdf`) sitting in `docs/papers/` completely
+  unreferenced anywhere in this project's docs; surfaced their round-reduced attack results (best
+  known: 9-11 of Kalyna's 14-18 rounds, 5-6 of Kupyna's 10-14 rounds, none reaching the full
+  cipher) in a new `docs/SECURITY.md` "Known cryptanalysis" section.

@@ -22,7 +22,38 @@ Explicitly out of scope (until stated otherwise):
 - Formal state certification by Держспецзв'язку — voluntary category for an open GitHub library;
   see `docs/dstu-crypto-project.md` "State certification".
 
-## Hard constraints (non-negotiable, apply to every primitive)
+## Known cryptanalysis (third-party literature)
+
+Three papers sit in `docs/papers/` and were never actually surfaced anywhere in this project's
+docs until this note (2026-07-31) — not a font-encoding failure like the ones corrected in
+`docs/ORACLES.md` the same day, just genuinely unread. None of these change the constant-time/
+dual-oracle posture above; they're recorded here because a threat model that omits published
+third-party attacks on its own primitives isn't a complete one, even when none of the attacks
+reach the full cipher.
+
+- **`docs/papers/Kalyna_attacks.pdf`** (Akshima, Chang, Ghosh, Goel, Sanadhya, "Single Key Recovery
+  Attacks on 9-round Kalyna-128/256 and Kalyna-256/512") — a multiset (meet-in-the-middle-variant)
+  key-recovery attack reaching **9 of Kalyna-128/256's 14 rounds** (data/time/memory:
+  `2^105 / 2^245.83 / 2^226.86`) and **9 of Kalyna-256/512's 18 rounds**
+  (`2^217 / 2^477.83 / 2^443.45`).
+- **`docs/papers/Kalyna_improved_MITM_attacks.pdf`** (Lin, Wu, "Improved Meet-in-the-Middle Attacks
+  on Reduced-Round Kalyna-128/256 and Kalyna-256/512") — improves the above via a key-dependent
+  sieve technique: **9 of 14 rounds on Kalyna-128/256**, and **11 of 18 rounds on Kalyna-256/512**
+  (the paper's own claimed best-known results at time of writing).
+- **`docs/papers/Kupyna_analysis.pdf`** (Zou, Dong, "Cryptanalysis of the Round-Reduced Kupyna Hash
+  Function") — a rebound-attack collision on **5 of Kupyna-256's 10 rounds**
+  (`hazmat::kupyna::Kupyna256`'s round count, confirmed against `crates/dstu-core/src/hazmat/kupyna.rs`)
+  at `(2^120, 2^64)` time/memory, plus guess-and-determine meet-in-the-middle pseudo-preimage
+  attacks on **6 rounds of both Kupyna-256 and Kupyna-512** (`Kupyna512` is 14 rounds) at
+  `(2^250.33, 2^250.33)` and `(2^498.33, 2^498.33)` respectively.
+
+**Reading these correctly**: every attack above is round-reduced — none reaches the full cipher
+(Kalyna's full round counts are 10/14/14/18/18 across its five variants; Kupyna-256/512 are
+10/14). This is not evidence of a break in `hazmat::kalyna`/`hazmat::kupyna` as shipped, and this
+project makes no claim that these margins are unassailable either — it's the normal state of a
+young-ish national-standard cipher accumulating third-party cryptanalysis, tracked here so a
+future session doesn't have to rediscover these papers exist. Revisit this section if a future
+attack closes the gap to the full round count for either cipher.
 
 - No primitive is implemented without citing the specific spec section (DSTU text, page/clause,
   or the author's reference-implementation source) it was verified against. Record the citation
