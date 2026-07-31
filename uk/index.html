@@ -493,6 +493,7 @@ html[data-lang="uk"] [lang="en"]{display:none;}
         <th><span lang="en">Role</span><span lang="uk">Роль</span></th>
         <th><span lang="en">Closest global analog</span><span lang="uk">Найближчий світовий аналог</span></th>
         <th><span lang="en">What actually differs</span><span lang="uk">Що насправді відрізняється</span></th>
+        <th><span lang="en">Speed, this machine</span><span lang="uk">Швидкість, ця машина</span></th>
       </tr>
     </thead>
     <tbody>
@@ -507,6 +508,13 @@ html[data-lang="uk"] [lang="en"]{display:none;}
           але власні таблиці S-box/MDS і п'ять варіантів блоку/ключа, а не фіксований 128-бітний
           блок AES.</span>
         </td>
+        <td class="diff">
+          <span lang="en">~1.7x slower than AES in pure software. AES-NI (hardware) is ~5x
+          faster — that gap is CPU instruction support, not this project's code.</span>
+          <span lang="uk">~1.7x повільніше за AES у чистому софті. Апаратний AES-NI —
+          приблизно у 5 разів швидший, але це різниця в підтримці процесора, а не в коді
+          проєкту.</span>
+        </td>
       </tr>
       <tr>
         <td>Kupyna / Купина</td>
@@ -519,6 +527,12 @@ html[data-lang="uk"] [lang="en"]{display:none;}
           <span lang="uk">Та сама ідея — AES-подібна перестановка всередині конструкції
           Miyaguchi-Preneel — структурно ближче до Whirlpool, ніж до губчастої конструкції
           SHA-3.</span>
+        </td>
+        <td class="diff">
+          <span lang="en">~1.5-2.1x slower — same optimization tier on both sides, no
+          hardware-acceleration asterisk needed.</span>
+          <span lang="uk">~1.5-2.1x повільніше — обидві сторони одного рівня оптимізації,
+          без застереги про апаратне прискорення.</span>
         </td>
       </tr>
       <tr>
@@ -533,6 +547,10 @@ html[data-lang="uk"] [lang="en"]{display:none;}
           <span lang="uk">ChaCha20 має цілком іншу внутрішню будову (ARX, без LFSR) — збігається
           лише роллю, не механікою. SNOW — справжній архітектурний родич (LFSR + FSM).</span>
         </td>
+        <td class="diff">
+          <span lang="en">~1.6-1.7x slower than AVX2-accelerated ChaCha20.</span>
+          <span lang="uk">~1.6-1.7x повільніше за ChaCha20 з AVX2-прискоренням.</span>
+        </td>
       </tr>
       <tr>
         <td>DSTU 4145</td>
@@ -546,10 +564,22 @@ html[data-lang="uk"] [lang="en"]{display:none;}
           nonce (похідний від Kupyna-KMAC) — власне рішення проєкту, та сама ідея, що й RFC 6979
           для звичайного ECDSA, а не вимога самого стандарту.</span>
         </td>
+        <td class="diff">
+          <span lang="en">not yet benchmarked</span>
+          <span lang="uk">ще не бенчмаркалось</span>
+        </td>
       </tr>
     </tbody>
   </table>
   </div>
+  <p class="small">
+    <span lang="en">Full numbers and methodology (same dev machine, both directions where they
+    exist, every caveat above stated in detail):
+    <a href="https://github.com/user137/uacrypt/blob/master/docs/PERFORMANCE.md">docs/PERFORMANCE.md</a>.</span>
+    <span lang="uk">Повні цифри й методологія (та сама dev-машина, обидва напрями де вони є, кожна
+    застерога вище — розгорнуто):
+    <a href="https://github.com/user137/uacrypt/blob/master/docs/PERFORMANCE.md">docs/PERFORMANCE.md</a>.</span>
+  </p>
 </section>
 
 <canvas class="band" data-seed="2" aria-hidden="true"></canvas>
