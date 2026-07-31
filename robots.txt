@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://user137.github.io/uacrypt/sitemap.xml
