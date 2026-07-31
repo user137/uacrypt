@@ -3696,16 +3696,19 @@ Phase 2+ and none currently in flight).
   `docs/SECURITY.md` updated to match. Not extended to `gf2m_wide.rs` or any other module this pass
   - a possible future follow-up, not a commitment made here.
 
-- [ ] **T-146** **Fix landed 2026-07-29, see `docs/DECISIONS.md` D-103 - open until the next real
-  `master` push confirms `cargo miri test` green.** Owner noticed `rust` showing `cancelled` on
-  `master`'s HEAD and asked to investigate. Checked via `gh run view` before guessing: the `cargo
-  miri test` job genuinely exceeded its own `timeout-minutes: 150` cap (not a concurrency-cancel -
-  it's the current HEAD, nothing could have preempted it). Root-caused via history, not the diff
-  alone: the last run that actually completed (commit `8e5a2a8`, 2026-07-27) already used 2h23m of
-  the 150-min budget (~95% utilized), and `git log 8e5a2a8..HEAD -- crates/` shows exactly one
+- [x] **T-146** **Fix landed 2026-07-29, see `docs/DECISIONS.md` D-103 - confirmed 2026-07-30 on
+  the next real `master` push.** Owner noticed `rust` showing `cancelled` on `master`'s HEAD and
+  asked to investigate. Checked via `gh run view` before guessing: the `cargo miri test` job
+  genuinely exceeded its own `timeout-minutes: 150` cap (not a concurrency-cancel - it's the
+  current HEAD, nothing could have preempted it). Root-caused via history, not the diff alone: the
+  last run that actually completed (commit `8e5a2a8`, 2026-07-27) already used 2h23m of the
+  150-min budget (~95% utilized), and `git log 8e5a2a8..HEAD -- crates/` shows exactly one
   intervening commit touching `crates/` at all (`ebbb11b`/T-141, a pure doc-citation-path rewrite,
   no source/test change). Conclusion: organic margin erosion from everything landed since D-59's
   original 150-min budget (`crypto_secretbox`/`crypto_secretstream`/`crypto_auth`/`crypto_kdf`/
   `crypto_stream`/`crypto_pwhash`/`crypto_sign` and `uacrypt`'s own CLI suite, T-102), tipped over by
   ordinary CI runner variance - not a regression from any specific commit. `timeout-minutes` raised
-  150 → 240 in `rust.yml`. Left unchecked until watched on a real subsequent push.
+  150 → 240 in `rust.yml`. **Confirmed via `gh run view` on the very next `master` push** (commit
+  `812d2d8`, run `30453610223`): `cargo miri test` completed in 2h50m10s, well inside the new
+  240-min cap, and every other job (including the new `kani` job from T-145, 1m31s) passed too -
+  full run green.
