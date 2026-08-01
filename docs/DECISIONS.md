@@ -7717,3 +7717,112 @@ this project's convention that a one-off investigation aid doesn't become a ship
 would otherwise sit in the crate's real `examples/` directory alongside the permanent
 `*_diff_cases.rs` examples) - the permanent regression coverage is the two tests above, not the
 probe.
+
+## D-111: survey for T-152-shaped bugs across the other DSTU primitives (`docs/TASKS.md` T-154)
+
+After D-110 shipped, the owner asked directly: do the other DSTU standards in this codebase
+(Kalyna, Kupyna, Strumok) need the same kind of boundary-value tests? Rather than guess, surveyed
+the codebase for the specific bug *shape* T-152 was, consulted advisor before concluding, and
+closed the one genuine analogue found (in DSTU 4145 itself, not the other three algorithms).
+
+### The bug shape, precisely, so the survey has a real filter
+
+T-152 wasn't "an edge case was untested" in general - it was specifically: **a routine's
+correctness rests on an algebraic precondition expressed as a formula, not a branch** (the
+projective-to-affine recovery silently assumed `kP`/`(k+1)P` are finite, with no check), **and the
+precondition fails only on a vanishingly small set of inputs** (`~2^-163` of the space) that no
+amount of random sampling - fixed KAT vectors *or* proptest - will ever land on by chance. That
+combination is the actual filter: a formula (not a branch) whose validity silently depends on
+avoiding a low-probability set. A branch that already handles a degenerate case explicitly, or a
+degenerate case with probability high enough that testing would organically hit it, is a different
+and lesser concern.
+
+### Where it does not exist
+
+- **Kalyna, Kupyna, Strumok**: no field inversion and no "point at infinity"/degenerate-element
+  concept anywhere in these three algorithms' code (`grep -rln "invert" crates/dstu-core/src/
+  hazmat/` returns only `curve163.rs`/`gf2m163.rs` plus one false positive - `kupyna_kmac.rs`'s
+  `inverted_key` local variable, an unrelated XOR-padding name, not a field inversion). These are
+  SPNs/an LFSR+FSM stream cipher, not curve/field arithmetic with a "formula assumes non-degenerate
+  input" structure - the bug class genuinely does not exist outside DSTU 4145.
+- **Kalyna-GCM/CCM/CTR counter increment**: `wrapping_add`-based, full block width (not a
+  NIST-style truncated 32-bit counter), wraps only after `2^128` blocks. Not a T-152-shaped
+  boundary at all - it's unreachable *by construction* (no realistic message size gets remotely
+  close), not unreachable *by improbability* the way `k = n-1` was reachable-in-principle. Different
+  category, correctly not pursued.
+- **`curve163::ProjectivePoint`'s own infinity guards** (`mixed_add`/`to_affine`, `verify_combine`'s
+  fast path, D-108): already has a **deliberately hand-constructed** test for exactly this shape -
+  `verify_combine_handles_mid_loop_infinity`, which builds a specific `s`/`r` pair so the Shamir
+  accumulator hits `Point::Infinity` mid-loop, not just checks it never does. This is the pattern
+  working as intended, cited here as the precedent D-110's own new boundary tests followed - not
+  itself a gap.
+
+### Where a real (though much smaller) analogue existed: `signature::sign`'s three `None` branches
+
+`sign` returns `None` on three conditions (its own doc comment already calls these out as
+`~2^-163`-probability "degenerate-value rejections": `Point::Infinity` from `g.scalar_multiply(e)`,
+`fe_x == ZERO`, `is_zero(r)`/`s.is_zero()`). All three are explicit `if`-then-`return None`
+branches - visibly correct on inspection, unlike T-152's silently-wrong formula - so an advisor
+review was explicit that this is **not** the T-152 shape; the only real open question was narrower:
+does each branch actually fire cleanly, or does something upstream break first, and (per the
+`Scalar`-foreclosure precedent this project already uses, `CLAUDE.md`'s "misuse category foreclosed
+by the type signature" rule) is it even reachable at all. Splits three ways once actually checked:
+
+1. **`Point::Infinity` (`g.scalar_multiply(e) == O`)**: provably unreachable for `g = generator()`
+   and any `Scalar` `e` - `Scalar::from_be_bytes`'s own callers already reject `e == 0`
+   (`from_bytes_rejects_zero_scalar`, `crypto_sign.rs`), and `G` has prime order `n`, so `e*G == O`
+   only when `e ≡ 0 mod n`, impossible for `e ∈ [1, n)`. Foreclosed by the type/contract, per
+   `CLAUDE.md`'s existing rule - documented here, no test written that would only prove the
+   compiler (or `Scalar`'s own already-tested rejection) works.
+2. **`fe_x == ZERO`**: *also* provably unreachable for `g = generator()`, for a different,
+   curve-theoretic reason worth stating explicitly since it's non-obvious: the curve's unique point
+   with `x = 0` is `(0, sqrt(b))` (every `GF(2^163)` element has exactly one square root - the
+   Frobenius map `x -> x^2` is a field automorphism in char 2, so it always exists), and that point
+   has order exactly 2 (`Point::double`'s own `x1 == ZERO -> Infinity` branch confirms this
+   algebraically and in code). Since `n` (the order of `G`) is odd, `gcd(2, n) = 1`, so a point of
+   order 2 cannot lie in the cyclic subgroup `<G>` (Lagrange's theorem: every element's order in
+   `<G>` divides `n`, which has no factor of 2). Therefore no integer `e` ever makes `e*G`'s x-
+   coordinate zero. Confirmed computationally, not just algebraically, via a scratch probe (deleted
+   after use): built `(0, sqrt(b))` directly from `b`'s square root (`y = b^(2^162)`, the Frobenius
+   inverse) and confirmed `y^2 == b` and `Point::double` sends it to `Infinity`. Foreclosed given
+   honest `g = generator()` (the only way `sign`/`crypto_sign` ever call this in practice) -
+   documented, not tested for reachability that doesn't exist.
+3. **`is_zero(r)` / `s.is_zero()`**: genuinely reachable at `~2^-163` for honest inputs, **not**
+   foreclosed by any type - `hash`/`e` are freely caller-chosen at the `hazmat` layer (any byte
+   string decodes to *some* `FieldElement` via `hash_to_field`), and unlike the two branches above,
+   this makes them **deliberately constructible by solving backward**, not brute force: a scratch
+   probe (`crates/dstu-core/examples/sign_degenerate_probe.rs`, deleted after use) computed
+   `h = (2^162) * fe_x^{-1}` for `e = 1` (forcing `r`'s low-162-bit truncation to zero, since
+   `fe_x^{-1}` is directly computable via the already-public `FieldElement::invert`), and
+   `d = -e * r^{-1} \bmod n` for a second `e`/`hash` pair (forcing `s = r*d + e \equiv 0`, via a
+   scratch extended-binary-GCD written only for this probe - `Scalar` itself has no `invert()`,
+   deliberately not added just for this). Both confirmed to make `sign` return `None` exactly as
+   predicted - now permanent tests, `sign_rejects_when_r_would_be_zero`/
+   `sign_rejects_when_s_would_be_zero` in `dstu4145_signature.rs`, hardcoding the computed `h`/`d`
+   values (no Miri exclusion needed - each is a single `sign` call, same cost class as the file's
+   existing single-call worked-example tests, not the many-iteration proptest that does carry one).
+
+### The generalizable rule (the durable output of this survey)
+
+Not "add boundary tests everywhere" - narrower: **where a routine's correctness rests on an
+algebraic precondition expressed as a formula rather than a branch, random sampling (fixed vectors
+or proptest) is structurally blind to it; the boundary must be enumerated by reading the code**
+(what makes a denominator zero, an inverse undefined, a projective coordinate vanish) **and tested
+explicitly, or proven exhaustively where that's tractable.** The corollary this project already has
+evidence for: `gf2m163::reduce`/`square_wide` are immune to this specific failure mode because Kani
+proves them over *every* possible input (not a sample) - `scalar_multiply` was exposed precisely
+because it's the one function in this family exhaustive verification can't reach (D-109's own
+"not attempted, expected intractable" call). That intractability is the actual signal for where
+this class of bug can hide, not a rule to sprinkle boundary tests on every function generically.
+Added as a new bullet in this project's `CLAUDE.md` "Agent discipline" list, cross-referencing
+rather than duplicating the existing D-64/D-65 three-test-category rule - that rule is about a new
+primitive's initial coverage checklist (correctness/rejection/misuse), this one is a narrower
+methodology note about what a "correctness against a vector/oracle" test can and cannot see.
+
+### Verification
+
+`cargo test -p dstu-core --test dstu4145_signature` (7 tests, including the two new ones) and the
+full workspace suite all pass; `cargo clippy --workspace --all-features -- -D warnings` and
+`cargo fmt --all --check` clean. Both scratch probes used for this survey (the `sqrt(b)`/order-2
+check and the `sign_degenerate_probe.rs` backward-solve) were deleted before committing, same
+convention as D-110's own probe.

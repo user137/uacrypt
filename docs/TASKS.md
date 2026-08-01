@@ -3895,3 +3895,32 @@ Phase 2+ and none currently in flight).
   (including every `sign`/`verify`/`crypto_sign` round-trip test) are unaffected and correctly stay,
   re-confirmed by re-running `gf2m163_scalar_multiply_matches_bouncy_castle` itself, which still
   doesn't finish in 300s - that cost is `scalar_multiply`'s own 163-iteration ladder, untouched here.
+
+- [x] **T-154** **Done - see `docs/DECISIONS.md` D-111.** Owner asked directly, after D-110: do
+  Kalyna/Kupyna/Strumok need the same kind of boundary tests as the `scalar_multiply` fix? Surveyed
+  by the actual bug *shape* (a formula, not a branch, whose correctness silently depends on avoiding
+  a `~2^-163`-probability input set that no random sampling can hit), advisor-reviewed before
+  concluding. **Result: the bug class doesn't exist outside DSTU 4145** - Kalyna/Kupyna/Strumok have
+  no field inversion and no "point at infinity" concept anywhere (confirmed by grep, one false
+  positive ruled out by reading it). Counter wraparound in Kalyna-GCM/CCM/CTR is a different,
+  lesser category (unreachable by construction at `2^128` blocks, not unreachable by improbability).
+  `curve163::ProjectivePoint`'s own infinity guards already have a deliberately hand-constructed
+  test (`verify_combine_handles_mid_loop_infinity`, D-108) - cited as the precedent, not a gap.
+  **One smaller, real analogue found and closed**: `signature::sign`'s three `None`-returning
+  degenerate branches split three ways once actually checked (not the T-152 shape itself - these
+  are explicit branches, not silent formulas, so the real question was reachability, not
+  correctness). `Point::Infinity` and `fe_x == ZERO` are both provably unreachable given
+  `g = generator()` (the latter via a non-obvious order-theoretic argument - the curve's one
+  order-2 point can't be a multiple of a point of odd prime order `n` - confirmed computationally
+  via a scratch probe, not just algebraically) - documented, not tested, per this project's own
+  "foreclosed by contract" rule. `is_zero(r)`/`s.is_zero()` genuinely are reachable and, unlike the
+  T-152 case, deliberately constructible by solving backward (`h = 2^162 * fe_x^{-1}`, `d = -e *
+  r^{-1} mod n`) using arithmetic this crate already exposes - two new permanent tests,
+  `sign_rejects_when_r_would_be_zero`/`sign_rejects_when_s_would_be_zero` (`dstu4145_signature.rs`).
+  **Generalizable rule** added to `CLAUDE.md`'s agent-discipline list (cross-referencing, not
+  duplicating, the existing D-64/D-65 three-test-category rule): random sampling is structurally
+  blind to algebraic-precondition boundaries; they need explicit enumeration or exhaustive (Kani)
+  proof, and Kani's own tractability is the actual signal for where this can hide (`reduce`/
+  `square_wide` are immune, `scalar_multiply` wasn't - D-109's own "expected intractable" call).
+  Full test suite (7/7 in `dstu4145_signature.rs`, full workspace), `clippy --all-features`,
+  `fmt --check` all clean. Both scratch probes deleted before commit.

@@ -339,6 +339,26 @@ Full detail and rationale in `docs/SECURITY.md` — this is the compressed versi
     They are coverage for a code path that already exists and is already correct, not red-green
     development of new behavior — don't read "passed immediately" as a reason to doubt or skip
     them.
+  - **Where a routine's correctness rests on an algebraic precondition expressed as a formula
+    rather than a branch, random sampling — fixed vectors *or* proptest — is structurally blind to
+    it.** This is narrower than, and a refinement of, the three-test-category rule above: it's about
+    what a "correctness against a vector/oracle" test (category 1) can and cannot see, not a fourth
+    category to add. If a formula's validity silently depends on avoiding some low-probability input
+    set (a denominator that's zero, an inverse that's undefined, a projective coordinate that
+    vanishes), no amount of random sampling will ever land on that set by chance — the boundary has
+    to be found by reading the code (what makes the precondition fail) and tested explicitly, or
+    proven exhaustively where that's tractable (Kani over the full input space, not a sample).
+    Found the hard way: `curve163::scalar_multiply`'s affine-recovery step silently assumed neither
+    `kP` nor `(k+1)P` was the point at infinity, wrong at exactly `k ∈ {0, n-1, n}` for `n` the curve
+    order — invisible to every KAT vector and every property test ever run against it, since hitting
+    that set by chance is `~2^-163` (`docs/DECISIONS.md` D-110/T-152). The corollary this project has
+    evidence for both ways: `gf2m163::reduce`/`square_wide` are immune to this failure mode because
+    Kani proves them over *every* possible input, not a sample; `scalar_multiply` was exposed
+    precisely because it's the one function in that family exhaustive verification can't reach
+    (D-109's "expected intractable" call) — that intractability is the actual signal for *where*
+    this class of bug can hide, not a license to sprinkle boundary tests on every function
+    generically (surveyed the other three DSTU primitives for this exact shape after finding it —
+    none have field inversion or a comparable degenerate-element concept, see D-111/T-154).
 - **A `hazmat` streaming/incremental API existing does not make the `uacrypt` command wrapping it
   memory-bounded** (`docs/DECISIONS.md` D-42) — a CLI command has to be deliberately wired to read its
   input in fixed chunks instead of `std::fs::read`-ing the whole file, every time a new algorithm

@@ -201,3 +201,39 @@ proptest! {
         // to assert, just don't fail the property (see `signature::sign`'s doc comment).
     }
 }
+
+/// `sign`'s three `None`-returning degenerate rejections (`docs/DECISIONS.md` D-111, prompted by a
+/// T-152-style "is this branch even reachable, and can we deliberately construct it" review of
+/// every other DSTU 4145 boundary condition after D-110's fix) split three ways, not one:
+///
+/// - `Point::Infinity` (from `g.scalar_multiply(e) == O`): provably unreachable for `g =
+///   generator()` and any `Scalar` `e` (`Scalar` already rejects `e == 0`, and `G` has prime order
+///   `n`, so `e*G == O` only for `e ≡ 0 mod n`) - not tested here, see D-111 for why.
+/// - `fe_x == ZERO`: also provably unreachable for `g = generator()` - `docs/DECISIONS.md` D-111's
+///   order-theoretic argument (the curve's one order-2 point, at x=0, can't be a multiple of a
+///   point of odd prime order `n`) - not tested here either.
+/// - `is_zero(r)` and `s.is_zero()`: genuinely reachable at ~2^-163 for honest inputs, **not**
+///   foreclosed by any type - and, unlike the two above, deliberately constructible by solving
+///   backward (not brute force): `hash`/`e` freely chosen (any hash byte string decodes to a
+///   `FieldElement` via `hash_to_field`, and any `Scalar` in `[1, n)` is a valid `e`), so a target
+///   `h` or `d` can be computed directly from the field/scalar arithmetic this crate already
+///   exposes. Values below found via a scratch probe (deleted after use, not shipped) computing
+///   `h = (2^162) * fe_x^-1` (forces `r`'s low-162-bit truncation to zero) and `d = -e * r^-1 mod
+///   n` (forces `s = r*d + e ≡ 0`) respectively.
+#[test]
+fn sign_rejects_when_r_would_be_zero() {
+    let g = Point::generator();
+    let e = Scalar::from_be_bytes(&scalar("1"));
+    let d = Scalar::from_be_bytes(&scalar("DEADBEEF"));
+    let hash = decode_hex("07F38B897CC5283B48378FB8FC315EF562838F5F18");
+    assert_eq!(sign(&hash, d, e, g), None, "expected the r == 0 rejection");
+}
+
+#[test]
+fn sign_rejects_when_s_would_be_zero() {
+    let g = Point::generator();
+    let e = Scalar::from_be_bytes(&scalar("7"));
+    let d = Scalar::from_be_bytes(&scalar("01006EBD7358BA3A2923A236B345FAD0945781A1A9"));
+    let hash = [0x42u8; 21];
+    assert_eq!(sign(&hash, d, e, g), None, "expected the s == 0 rejection");
+}
