@@ -3924,3 +3924,25 @@ Phase 2+ and none currently in flight).
   `square_wide` are immune, `scalar_multiply` wasn't - D-109's own "expected intractable" call).
   Full test suite (7/7 in `dstu4145_signature.rs`, full workspace), `clippy --all-features`,
   `fmt --check` all clean. Both scratch probes deleted before commit.
+
+- [x] **T-155** **Done - see `docs/DECISIONS.md` D-112.** Found running the release checklist
+  before tagging v0.2.0: `cargo kani` on `master` had actually been **red** since T-153/D-109's own
+  commit, three commits in a row (T-153, T-152, T-154), never caught because the job's real
+  pass/fail wasn't re-checked via `gh run view` after each push - the same lesson `CLAUDE.md`
+  already states for the Miri job (T-100/D-59), missed once here. Root cause: D-109's own
+  `square_wide_matches_poly_mul_wide_self` proof asked Kani to prove two different multiplier
+  constructions (`poly_mul_wide(a,a)` vs. `square_wide(a)`) agree over the *same* symbolic operand -
+  a well-known hard SAT class (multiplier equivalence checking), not "same shape as `reduce`'s
+  proofs" as originally (wrongly) claimed. CI's job log confirmed CBMC was still working, not stuck
+  or crashed, when the 20-minute timeout killed it. **Fix: a different proof, not a longer
+  timeout** - raising the budget was rejected since the underlying SAT instance is the genuinely
+  expensive kind, unlike T-146/D-103's Miri timeout raise (against a job already known to
+  complete). Replaced with `spread32to64_is_exact_bit_doubling`, which proves the one genuinely
+  novel arithmetic (bit `i` of a symbolic `u32` lands at bit `2*i`, every other bit zero) directly
+  against its own spec - no multiplication of symbolic operands anywhere, same tractable shape as
+  `reduce`'s two proofs. `square_wide`'s limb-placement composition is left to the existing
+  differential unit tests/proptest, not re-proven exhaustively - the same Kani-for-tractable-parts/
+  differential-testing-for-chained-parts split this project already applies to `invert()`'s own
+  addition chain. Cannot be verified locally (Kani is Linux/macOS-only, D-102) - `cargo build`/
+  `test`/`clippy` all pass (the most checkable without the real tool); the new proof's actual
+  pass/fail must be confirmed on the next CI run via `gh run view`, not assumed.

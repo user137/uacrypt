@@ -376,23 +376,44 @@ mod kani_proofs {
         assert_eq!(reduce(c), naive_reduce(c));
     }
 
-    /// `square_wide` (D-109/T-153) against `poly_mul_wide(a, a)`, for every `a` a real
-    /// `FieldElement` could ever hold (top 29 bits of limb 2 clear, the invariant every
-    /// constructor upholds - not the full unconstrained `[u64; 3]` space, which includes values no
-    /// caller can actually produce). Same structural shape as `reduce`'s two proofs above (fixed
-    /// shift/AND/OR/XOR over a symbolic input, no data-dependent bounds), so expected tractable -
-    /// this is the only Kani proof attempted for the D-109 work; `invert`'s own addition-chain
-    /// proof is deliberately not attempted (see `docs/DECISIONS.md` D-109) since it would need to
-    /// symbolically execute the full ~162-squaring, 9-multiply chain end to end, an unrolled
-    /// field-arithmetic computation rather than a fixed bit-shuffle - not attempted, expected
-    /// intractable, per the same "too expensive to verify under interpretation" precedent T-100
-    /// already established for Miri. `cargo kani` itself is Linux/macOS-only (`xtask::kani`'s own
-    /// check, D-102), so this proof's actual pass/fail is confirmed by CI, not locally on this
-    /// Windows dev machine.
+    /// `spread32to64`'s exact bit-doubling specification (D-109/T-153, corrected by D-112):
+    /// every bit `i` of a symbolic 32-bit input lands at bit `2*i` of the output, and every other
+    /// output bit is zero - checked for all `2^32` possible inputs, not just the enumerated
+    /// single-bit/all-ones cases the external unit tests cover
+    /// (`spread32to64_places_each_bit_at_double_position`/`_of_zero_and_all_ones`).
+    ///
+    /// **This replaces an earlier, different proof that CI found intractable** (`docs/DECISIONS.md`
+    /// D-112): the original plan compared `square_wide(&a)` against `poly_mul_wide(&a, &a)` for a
+    /// symbolic `a` - i.e. proving two different multiplication constructions agree on the *same*
+    /// symbolic operand squared against itself. That is a multiplier-equivalence-checking problem
+    /// (SAT reasoning over products of two copies of the same symbolic bits), a fundamentally
+    /// harder class than `reduce`'s two proofs above or this one - both of which are pure fixed
+    /// shift/AND/OR/XOR over a symbolic input, with no product of two symbolic operands anywhere.
+    /// CBMC never finished checking that harness within the CI job's 20-minute budget (confirmed
+    /// from the job log, not assumed from the timeout alone: `Checking harness ...
+    /// square_wide_matches_poly_mul_wide_self...` was the last line before the runner killed it).
+    ///
+    /// This proof instead exhaustively covers the one genuinely novel piece of arithmetic
+    /// (`spread32to64`'s bit-interleave trick) directly against its own specification, with no
+    /// multiplication involved at all. `square_wide`'s limb-placement composition (which half of
+    /// which input limb lands at which output limb) is *not* re-proven exhaustively here - it's a
+    /// simple, inspectable placement of three `spread32to64` calls (see `square_wide`'s own doc
+    /// comment for the exact bit-range argument), verified by the existing limb-boundary unit tests
+    /// and the random-element proptest in `dstu4145_gf2m.rs` instead, the same "differential test is
+    /// the real proof, Kani only for the tractable subset" split this project already uses for
+    /// `invert()`'s own addition chain (never Kani-attempted, for the analogous reason: chaining
+    /// several multiplies is exactly the kind of computation this class of proof doesn't handle
+    /// cheaply).
     #[kani::proof]
-    fn square_wide_matches_poly_mul_wide_self() {
-        let a: [u64; 3] = kani::any();
-        kani::assume(a[2] >> 35 == 0);
-        assert_eq!(square_wide(&a), poly_mul_wide(&a, &a));
+    fn spread32to64_is_exact_bit_doubling() {
+        let x: u32 = kani::any();
+        let r = spread32to64(x);
+        for i in 0..32u32 {
+            let bit = u64::from((x >> i) & 1);
+            let placed = (r >> (2 * i)) & 1;
+            assert_eq!(placed, bit);
+            let odd = (r >> (2 * i + 1)) & 1;
+            assert_eq!(odd, 0);
+        }
     }
 }

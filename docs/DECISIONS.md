@@ -7826,3 +7826,85 @@ full workspace suite all pass; `cargo clippy --workspace --all-features -- -D wa
 `cargo fmt --all --check` clean. Both scratch probes used for this survey (the `sqrt(b)`/order-2
 check and the `sign_degenerate_probe.rs` backward-solve) were deleted before committing, same
 convention as D-110's own probe.
+
+## D-112: D-109's `square_wide` Kani proof was overstated as "expected tractable" - CI proved
+otherwise, replaced with a proof of the actual novel arithmetic instead
+
+Discovered running the release checklist before tagging v0.2.0: `cargo kani` on `master` had been
+**red** since T-153/D-109's own commit (`b3fec3e`), not caught earlier because a prior CI check in
+this same session happened to run before that job finished, and nobody re-checked its final
+conclusion before moving on to T-152/T-154's own commits (both of which inherited the same failure,
+unnoticed, since their own CI runs were also not fully re-checked at completion). This is exactly
+the "verify a CI job's real conclusion via `gh run view`, never assume from a green badge" lesson
+this project's own `CLAUDE.md` already states for the Miri job (T-100/D-59) - it applied here too,
+missed once, caught now before a release shipped on top of it.
+
+### What was actually wrong
+
+D-109's doc comment claimed `square_wide_matches_poly_mul_wide_self` was "same structural shape as
+`reduce`'s two existing proofs... so expected tractable" and asked CI to confirm rather than assert
+it locally (Kani being Linux/macOS-only, `xtask::kani`, D-102). CI's answer, read from the job log
+rather than assumed from the 20-minute timeout alone: `Checking harness ...
+square_wide_matches_poly_mul_wide_self...` was the last line before the runner killed the job -
+CBMC was still working, not stuck in a loop or crashed. The "same shape as `reduce`" claim doesn't
+hold up: `reduce`'s two proofs are pure fixed shift/AND/OR/XOR over one symbolic input, with no
+multiplication of two symbolic operands anywhere. `square_wide_matches_poly_mul_wide_self` instead
+asked CBMC to prove that `poly_mul_wide(a, a)` - a real carry-less multiplication of the *same*
+symbolic 163-bit value against itself - equals `square_wide(a)`'s independent bit-spread
+construction. Proving two different multiplier constructions agree over the same symbolic operand
+is a well-known hard class for SAT/CBMC (multiplier equivalence checking) - a fundamentally
+different cost profile from a fixed bit-shuffle, regardless of how similar the *code* looks.
+
+### The fix - a different proof, not a longer timeout
+
+Raising the job's 20-minute budget was rejected as the fix: the underlying SAT instance is the
+expensive kind (product-of-symbolic-operands), not merely a large-but-linear one like `reduce`'s -
+there's no principled bound to raise it *to* with any confidence, unlike T-146/D-103's `cargo miri
+test` timeout raise (150m -> 240m), which was against a job already known to complete, just with an
+eroding margin. Instead, replaced the proof with `spread32to64_is_exact_bit_doubling`: proves
+`spread32to64`'s own bit-doubling specification directly (bit `i` of a symbolic `u32` lands at bit
+`2*i` of the output, every other output bit zero) - the one genuinely novel piece of arithmetic in
+D-109's squaring work, and provable with no multiplication of symbolic operands at all (just fixed
+shift/AND/OR/XOR over one symbolic `u32`, the same tractable shape as `reduce`'s own two proofs).
+`square_wide`'s limb-placement composition (which half of which input limb lands at which output
+limb) is *not* re-proven exhaustively - it's a simple, inspectable placement of three
+`spread32to64` calls (already explained in `square_wide`'s own doc comment), covered instead by the
+existing limb-boundary unit tests and the random-element proptest in `dstu4145_gf2m.rs`. This
+mirrors the split this project already applies to `invert()`'s own addition chain (never
+Kani-attempted for the analogous reason, D-109's own "not attempted, expected intractable" call) -
+Kani for the tractable fixed-shuffle subset, differential testing for the parts that chain multiple
+symbolic-operand operations together.
+
+### Verification - actually run on real Kani, not left to CI to discover a second time
+
+The dev machine is Windows (Kani is Linux/macOS-only, D-102), but the project's Raspberry Pi
+(`raspberrypi`/"uacipher", the existing ARM-hardware verification target, `docs/TASKS.md` "Testing &
+hardening") is real Linux and was already reachable - used it to actually run Kani rather than
+trust CI blind a second time in the same session. `kani-verifier` there was pinned at 0.67.0
+(`cargo install --list`), whose bundled toolchain needs a newer glibc than this Pi's Debian 12
+(bookworm) ships (`GLIBC_2.39` required, `2.36` present, confirmed via `ldd --version` and the
+`cargo-kani` binary's own dynamic-link error) - **not fixed by upgrading the Pi's OS** (rejected:
+this is a real device the owner uses, and stepping a stable Debian release for one verification
+run is a disproportionately risky trade). Fixed instead by pinning an **older** `kani-verifier`
+release whose own bundled toolchain matches this glibc: `cargo install kani-verifier --version
+0.55.0 --locked` installed fine but its bundled nightly (~Aug 2024) predates the `edition2024`
+feature this workspace's `Cargo.lock` now needs (`zeroize 1.9.0` requires it) - one version too
+old. `cargo install kani-verifier --version 0.62.0 --locked` (bundled toolchain
+`nightly-2025-04-24`) was the version that actually worked: new enough for `edition2024`, and its
+own prebuilt CBMC/kani binaries still link against this Pi's glibc 2.36 without issue. **Recorded
+as a new fact worth keeping**, not just a one-off unblock: the working range for this specific
+Debian-12-aarch64 Pi is `kani-verifier` **0.56.0-0.6x** roughly (untested precisely where the upper
+edge is) - neither the newest release CI now uses (0.67.0, needs glibc 2.39) nor overly old ones
+(0.55.0, edition2024 gap) work unmodified; a future re-check should start from 0.62.0 and adjust
+from there rather than re-discovering this range from scratch.
+
+**Real result, all three `#[kani::proof]` harnesses in `gf2m163.rs`, one `cargo kani -p dstu-core`
+run**: `reduce_output_is_fully_reduced`, `reduce_matches_naive_bit_loop` (both pre-existing, D-102),
+and the new `spread32to64_is_exact_bit_doubling` - **3 of 3 successfully verified, 0 failures,
+total verification time under 1 second** (a run in isolation of just the new harness alone measured
+`0.42s`). This is the actual, machine-confirmed proof this entry's fix was aiming for, not an
+assumption deferred to the next CI run - the CI run remains the second, continuous confirmation
+(same "trust but verify a CI job's real conclusion" posture, applied this time before merging
+rather than after). `cargo test -p dstu-core --lib` (stable toolchain, same Pi) also reconfirmed
+green, unaffected by any of the Kani-toolchain juggling above (Kani's own nightly is a separate,
+`rustup`-managed toolchain, never the crate's own build toolchain).
