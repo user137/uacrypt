@@ -11,7 +11,9 @@
 //!
 //! `verify` is public-data-only throughout (`r`, `s`, `Q`, `G` are all public in DSTU 4145
 //! verification) - ordinary branches and `==` are fine here, same posture as `curve163`'s
-//! `double`/`add`.
+//! `double`/`add`. The `s*G + r*Q` combine step itself goes through `curve163::verify_combine`
+//! (`docs/DECISIONS.md` D-108), whose default-profile body branches freely on point-at-infinity
+//! and x-coordinate coincidence - safe specifically because none of its inputs are ever secret.
 
 use super::curve163::{self, Point};
 use super::gf2m163::FieldElement;
@@ -71,7 +73,7 @@ pub fn verify(hash: &[u8], r: &[u8; 21], s: &[u8; 21], q: Point, g: Point) -> bo
         h = FieldElement::ONE;
     }
 
-    let big_r = g.scalar_multiply(s) + q.scalar_multiply(r);
+    let big_r = curve163::verify_combine(g, s, q, r);
     let (rx, _) = match big_r {
         Point::Affine(x, y) => (x, y),
         Point::Infinity => return false,

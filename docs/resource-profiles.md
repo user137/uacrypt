@@ -142,6 +142,30 @@ slowdown from the part that does.
 same `kalyna-block`/`kupyna-digest`/`strumok-crypt` commands `docs/PERFORMANCE.md`'s "Reproducing" notes
 document.
 
+## DSTU 4145 `verify`: the same flag, a different kind of trade (T-151/D-108)
+
+Everything above this point is a flash/ROM-`const`-table trade. `hazmat::dstu4145::curve163`'s
+`verify_combine` (the `s*G + r*Q` step DSTU 4145 signature verification needs) reuses this **same**
+`small-tables` feature and the same polarity (default = faster, `small-tables` = smaller/simpler),
+but for a genuinely different reason: **no new `const` table is added here at all.** The default
+profile's faster path (projective/López-Dahab coordinates + Shamir's trick) computes its one small
+lookup table (`{Infinity, G, Q, G+Q}`, 4 points) fresh on every `verify` call - nothing new is
+linked into the binary. What `small-tables` actually buys for this one primitive is a **smaller,
+already-longer-audited code path** (the classic constant-time ladder, called twice, no new
+projective-coordinate arithmetic compiled in at all) rather than fewer flash bytes - a code-size/
+audit-surface trade, not the memory-table trade every other row in this document describes. See
+`docs/DECISIONS.md` D-108 for the full design and why.
+
+| Profile | `verify` ops/s |
+|---|---:|
+| Default (fast path) | **239.31** |
+| `small-tables` (classic ladder, unchanged) | 120.06 |
+| Default is... | **~1.99x faster** |
+
+`sign`/`verifying_key()` (which multiply by a *secret* scalar - the ephemeral nonce or private key)
+are unaffected by either profile: `scalar_multiply` itself was deliberately left unchanged, in
+every build configuration.
+
 ## Which one do I need?
 
 A quick sizing guide by target, from `docs/DECISIONS.md` D-35's survey of typical hardware — flash

@@ -1558,3 +1558,83 @@ produced for it.
 `kupyna-digest --variant <256|512> --in <16 KiB|10 MiB file> --out ... --iterations <2000|20>`,
 `strumok-crypt --variant <256|512> --key <32-or-64-byte key> --iv <32-byte IV> --in <16 KiB|10 MiB
 file> --out ... --iterations <3000|30>`.
+
+### DSTU 4145 vs. ECDSA (sign/verify, ops/s — higher is better) — T-150
+
+`sign`/`verify` had no `--iterations` flag before this pass (unlike every other benchmarkable
+command) - added for exactly this comparison (D-34's own policy: use the actual built binary, not
+an internal `criterion` number, for any cross-implementation claim). The message is hashed once
+before the timed loop starts (confirmed negligible: 255.98 ops/s on a 5-byte message vs. 254.51
+ops/s on a 64 KiB message, within 0.6% - hashing cost genuinely doesn't move the number), and only
+`sign_digest`/`verify_digest` itself is timed, key/signature parsed once outside the loop (same
+D-80 discipline as every other table here). OpenSSL's own `openssl speed ecdsab163`/`ecdsap256`
+already report `sign/s`/`verify/s` directly - no unit conversion needed, unlike the MB/s tables
+above.
+
+| | uacrypt (DSTU 4145) | OpenSSL nistb163 | OpenSSL nistp256 |
+|---|---|---|---|
+| sign/s | **255.98** | 5292.6 | 48059.1 |
+| verify/s | **120.80** | 2732.6 | 16404.3 |
+| vs. uacrypt | — | ~20.7x faster (sign), ~22.6x faster (verify) | ~187.7x faster (sign), ~135.8x faster (verify) |
+
+**Two different comparisons in one table, and they answer different questions:**
+
+- **`nistb163`** (a NIST/SECG binary curve, also over `GF(2^163)`) is the field-size-matched row -
+  same underlying arithmetic cost class as this project's `gf2m163`, though **not the same curve**
+  (different `b`, base point, order - this project's curve has `a = 1` per `curve163.rs`). This is
+  the row that isolates "how good is this project's EC implementation," and the answer is: not very,
+  by a wide margin, for a documented reason below.
+- **`nistp256`** (P-256, a prime-field curve) is the "ECDSA" most readers actually mean when they
+  read that name, included because the landing page's own analog table just says "ECDSA" with no
+  curve specified. **Security levels are not matched between any two rows here**: a 163-bit binary
+  curve is roughly an 80-bit security level (legacy/deprecated in modern practice - OpenSSL still
+  ships it, NIST no longer recommends new use), while P-256 is the current ~128-bit-security
+  baseline. Do not read the P-256 ratio as "DSTU 4145 is 188x worse than modern ECDSA" - part of
+  that number is OpenSSL doing genuinely more expensive math for a stronger security guarantee, not
+  purely an implementation-quality gap. The `nistb163` row is the fairer one, and it's still ~21-23x.
+
+**Root cause, read from the code, not guessed**: `curve163.rs`'s own doc comment states its scalar
+multiplication "always runs the full 163 iterations" - a plain constant-time double-and-add ladder,
+deliberately not windowed/wNAF and with no precomputed multiples of the base point. OpenSSL's binary-
+curve implementation uses windowed scalar multiplication with precomputation. **This is not the same
+kind of gap as AES-NI/AVX2 above** - there's no CPU instruction-set asterisk to disclose here; it's
+an algorithmic difference (iteration count and precomputation strategy), consistent with this
+project's own MVP priority (`CLAUDE.md`: correctness first) and its documented constant-time
+posture - a naive-but-constant-time ladder is the safe default this project chose over a
+potentially-faster-but-harder-to-verify windowed implementation, not an oversight.
+
+**Reproducing**: `openssl speed -elapsed -seconds 3 ecdsab163` / `ecdsap256` (no legacy provider or
+`ia32cap` tricks needed - both curves are in the default provider on this build). `uacrypt` side:
+`sign-keygen --out signing.key`, `sign-pubkey --key signing.key --out verifying.key`, a tiny
+(few-byte) `--in` file, then `sign --key signing.key --in msg.bin --out msg.sig --iterations 5000`
+and `verify --key verifying.key --in msg.bin --sig msg.sig --iterations 2000`.
+
+### `verify`: classic vs. fast path (ops/s — higher is better) — T-151/D-108
+
+Following the root cause above, `verify`'s own `s*G + r*Q` combine step (both scalars public,
+unlike `sign`'s secret-nonce multiplication) got a second, faster implementation - projective
+(López-Dahab) coordinates + Shamir's trick, deferring every field inversion in the computation to
+one at the end, instead of the classic path's two full constant-time ladders plus their own final
+inversions. Gated behind the **existing** `small-tables` Cargo feature (same one Kalyna/Kupyna/
+Strumok already use for their own big-table/small-table split, same polarity: default = fast,
+`small-tables` = classic, unchanged) - see `docs/DECISIONS.md` D-108 for the full design and why
+this reuses that flag for a code-size/audit-surface tradeoff rather than a flash-table one.
+`sign`/`verifying_key()` (secret-scalar operations) are completely unaffected - `scalar_multiply`
+itself was not touched.
+
+| Profile | verify ops/s |
+|---|---|
+| Default (fast path) | **239.31** |
+| `small-tables` (classic, unchanged) | 120.06 |
+| Speedup | **~1.99x** |
+
+Fresh release builds this session, same key/signature/message across both binaries, both confirmed
+to actually verify successfully before timing. This narrows T-150's `nistb163` gap (still ~21-23x
+slower there) from the `verify` side alone by roughly half - `sign` is unaffected by this change,
+so the `sign/s` numbers in the table above still reflect the classic (only) implementation.
+
+**Reproducing**: build once with `cargo build --release -p uacrypt` (default profile) and once
+with `cargo build --release -p uacrypt --features dstu-core/small-tables`, running each binary's
+`verify --key ... --in ... --sig ... --iterations 5000` in turn (same `sign-keygen`/`sign-pubkey`/
+`sign` setup as the table above - `sign`'s own output is unaffected by either feature, so one
+signature/key pair works for both `verify` runs).

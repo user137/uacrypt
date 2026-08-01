@@ -7095,6 +7095,45 @@ what it's being used for here.
 Numbers, reproduction commands, and the full caveat text live in `docs/PERFORMANCE.md`'s new "vs.
 international-standard analogs (OpenSSL)" section — not duplicated here.
 
+**Extension, T-150: DSTU 4145 vs. ECDSA added to this same comparison axis.** The owner asked
+whether the signature primitive could be benchmarked the same way and compared against ECDSA - the
+one algorithm this decision's original table left as "not yet benchmarked." Same OpenSSL-only
+approach as the rest of D-106, but two new mechanics this pass surfaced:
+
+1. **`sign`/`verify` had no `--iterations` flag** - unlike every other benchmarkable command in this
+   CLI. Added, following the exact existing precedent (same flag name/shape as `kupyna-digest`, no
+   `--raw-schedule` since signing has no key-schedule step to cache/redo, same reasoning `kalyna-kw`
+   already documents for the same omission). Test-first: parse happy-path/rejection tests mirroring
+   `parse_digest_args`'s own, plus a behavioral test (`sign_verify_with_iterations_still_round_trips`)
+   confirming the signature `--iterations > 1` actually writes is still the real, `verify`-accepted
+   one, not a benchmark-only placeholder.
+2. **The hash step had to be excluded from the timed loop, and this needed checking, not assuming.**
+   `sign`/`verify` hash the input with Kupyna-256 before signing/verifying the digest;
+   `openssl speed ecdsab163`/`ecdsap256` never touch a file at all, signing a fixed digest
+   repeatedly. Confirmed the hash is genuinely negligible by comparing a 5-byte and a 64 KiB
+   message (255.98 vs. 254.51 ops/s, within 0.6%) rather than assuming "small file, must be fine."
+
+**Field size matched (`GF(2^163)`), curve not matched, security level not matched — three separate
+facts, each stated once, not conflated.** OpenSSL's `nistb163` shares this project's field size
+(163-bit binary), so it's the fairer comparison for "how good is this implementation" - but it is a
+different curve (different `b`/base point/order) and, more importantly, a similar-but-not-identical
+legacy security tier. `nistp256` is also reported (it's what "ECDSA" means to most readers, matching
+the landing page's own unqualified analog label) but explicitly flagged as **not** a same-security-
+level comparison - P-256 is a ~128-bit-security curve doing more expensive math for a stronger
+guarantee, so its ~136-188x gap must not be read as a pure implementation-quality verdict the way
+`nistb163`'s ~21-23x gap can be.
+
+**Root-caused, not left as a bare ratio.** `curve163.rs`'s own doc comment already states its scalar
+multiplication always runs the full 163-iteration ladder - a constant-time double-and-add with no
+windowing/precomputation, unlike OpenSSL's binary-curve path. This is a different category of gap
+from D-106's AES-NI/AVX2 findings above: not a CPU instruction-set asterisk, an algorithmic one -
+consistent with `CLAUDE.md`'s MVP priority (correctness/auditability first) and this project's
+constant-time discipline (D-19). Not a bug, and not fixed as part of this pass - recorded as the
+honest reason for the gap, the same posture D-106's AES-NI disclosure already established.
+
+Numbers and reproduction commands are in `docs/PERFORMANCE.md`'s new "DSTU 4145 vs. ECDSA" subsection
+(same file, same top-level OpenSSL section as the rest of D-106) - not duplicated here.
+
 ## D-107: Spiked `-C target-feature=+avx2` on `uacrypt` release builds — no measurable gain, and a
 real SIMD implementation (not just the compiler flag) is deliberately not being pursued for now
 
@@ -7165,3 +7204,169 @@ profile, just smaller tables):
 **Decision: not pursued for now.** Recorded as a deliberate non-implementation, the same posture
 D-08 uses for post-quantum algorithms — revisit only if a concrete, measured use case justifies
 carrying points 1-3's cost, not preemptively.
+
+## D-108: `verify_combine` — a faster, default-profile-only `s*G + r*Q` for DSTU 4145 `verify`,
+via López-Dahab projective coordinates and Shamir's trick; `scalar_multiply` itself untouched
+(`docs/TASKS.md` T-151)
+
+Following T-150's DSTU-4145-vs-ECDSA benchmark (`sign`/`verify` 20-190x slower than OpenSSL,
+root-caused to `curve163::scalar_multiply`'s constant-time ladder having no windowing/
+precomputation), the owner asked what could be optimized and whether it would be safe. Two
+operations were distinguished: `sign`/`verifying_key()` multiply by a **secret** scalar (the
+ephemeral nonce `e`, the private key `d`) and must stay constant-time; `verify`'s `s*G + r*Q`
+multiplies only by **public** data (`r`, `s`, `Q`, `G` — `signature.rs`'s own module doc already
+says so). The owner's explicit decision: **leave `scalar_multiply` completely unchanged** (used
+identically for `sign`/`verifying_key()` in every build), and add a faster implementation **only**
+for `verify`'s combine step, with an advisor-reviewed plan first.
+
+**A naive approach was spiked and rejected before this one.** Composing a windowed multiply from
+the file's existing affine `double`/`add` was measured (not assumed) to be a ~20x *regression*:
+each `double`/`add` call carries its own field inversion, and `FieldElement::invert()` — measured
+this session — costs **338.7x** a single `multiply()`/`square()` (1263ns vs 427781ns, release
+build; direct Fermat exponentiation, not Itoh-Tsujii-accelerated). The only way to win is to defer
+every inversion in a multi-step computation to a single one at the very end — projective
+coordinates.
+
+### Approach
+
+**López-Dahab (X:Y:Z) projective coordinates, representing affine `(x,y) = (X/Z, Y/Z²)`**, combined
+with **Shamir's trick** (simultaneous double-and-add over both scalars, one shared doubling per bit
+position, using a 4-entry runtime table `{Infinity, G, Q, G+Q}` — `G+Q` computed once per `verify`
+call via the existing trusted affine `Point::add`). Implemented in
+`hazmat::dstu4145::curve163.rs`:
+
+- `ProjectivePoint { x, y, z }`, `Z == ZERO` representing infinity.
+- `double()`: the "dbl-2005-dl" formula (Bernstein/Lange Explicit-Formulas Database,
+  `hyperelliptic.org/EFD/g12o/auto-shortw-lopezdahab.html`), specialized to this curve's `a2 = 1`.
+  **Citation status**: no copy of Hankerson/Menezes/Vanstone "Guide to Elliptic Curve Cryptography"
+  exists in `docs/papers/` (unlike `scalar_multiply`'s cited Algorithm 3.40), so the EFD page —
+  fetched via raw `curl` and cross-checked character-for-character against the raw HTML, not
+  trusted from `WebFetch`'s AI-summarized read alone, per this project's own standing distrust of
+  `WebFetch` summarization on load-bearing content — is the citation of record. Its own stated cost
+  (4M+5S) was independently re-derived by counting every `multiply`/`square` call in the
+  transcribed Rust and matched exactly.
+- `mixed_add()`: the "madd-2005-dl" formula (same source, 8M+5S), guarded ahead of the formula
+  itself for **totality** (not attack resistance — see below) in this order: accumulator infinity →
+  return the table point converted to projective form directly; table point infinity → return the
+  accumulator unchanged; matching affine x (`B == 0` in the formula's own intermediate, reused
+  rather than a separate comparison) → dispatch to `double()` if y also matches, else return
+  infinity (char-2 negation is `(x, x+y)`, so matching-x-differing-y must be the negative).
+- `to_affine()`: the single deferred inversion for the whole computation.
+- `shamir_double_scalar_multiply(g, s, q, r)`: builds the table, finds the highest bit where `s` or
+  `r` is set (safe to skip leading zeros — this is a public, variable-time path, unlike the
+  ladder's fixed 163 iterations), then double-and-adds down to bit 0.
+
+**On the infinity/x-coincidence guards**: an early draft of this entry described them as closing an
+attacker-exploitable gap. That framing doesn't survive a read of `verify` itself
+(`signature.rs:81`): the recomputed `r' = truncate_162(h·rx)` is checked against the caller-supplied
+`r` regardless of what `verify_combine` does internally, so steering the accumulator to infinity
+mid-computation gains an attacker nothing they couldn't get by guessing `r`/`s` outright. The real
+reason the guards exist is that the López-Dahab formulas above are only defined for the generic
+case (neither operand infinity, x-coordinates differ) — without them, a genuine signature whose
+partial sum happens to coincide with the table point (structurally possible for any `Q`/`r`/`s`,
+not just a ~2⁻¹⁶³ curiosity) would hit undefined formula behavior and could wrongly reject a valid
+signature — a build-profile correctness divergence from `small-tables`, not a forgery vector. The
+guards make the fast path total, which is required regardless of exploitability.
+
+### Feature gating
+
+Reuses the **existing** `small-tables` Cargo feature (`Cargo.toml` line ~35) that Kalyna/Kupyna/
+Strumok already use for their fused-table/small-table split, same polarity: default (feature off)
+= `verify_combine`'s new fast path; `small-tables` = today's unchanged
+`g.scalar_multiply(s) + q.scalar_multiply(r)`. One function, two `#[cfg]`-gated bodies, matching
+`hazmat::tables::apply_forward_matrix`'s exact idiom — no `#[cfg]` in `signature.rs`, which calls
+`curve163::verify_combine(g, s, q, r)` unconditionally.
+
+**Important disanalogy, stated explicitly rather than left implicit**: Kalyna/Kupyna/Strumok's use
+of `small-tables` is a flash/ROM-vs-throughput trade (swap ~86 KB of `const` lookup tables for a
+~6 KB `gf_mul`-based path). This is different: `verify_combine`'s fast path adds **no new `const`
+table** — `{Infinity, G, Q, G+Q}` is computed fresh every `verify` call, not baked into the binary.
+Reusing `small-tables` here is a **code-size/audit-surface** trade (one simpler, already-audited
+code path for constrained/high-assurance targets vs. a second, newer implementation of the same
+math for everyone else), not a flash-table trade. `docs/resource-profiles.md` is updated to say so.
+
+### Engaging D-107's declined-SIMD reasoning point by point
+
+D-107 declined a "third build profile" for hand-written SIMD, citing (a) D-19's narrow exception
+scope, (b) portability, (c) verification cost, (d) no measured payoff. This work differs:
+
+- **(a) sidestepped cleanly** — `verify_combine`'s fast path never touches secret-scalar code;
+  `scalar_multiply` is untouched and remains the only function ever called with `e`/`d`.
+- **(b) sidestepped cleanly** — pure portable Rust field arithmetic, no intrinsics, no per-ISA code,
+  no runtime feature detection.
+- **(c) only partially sidestepped, not eliminated** — this genuinely is a second implementation of
+  `s*G + r*Q`. A bug in it produces a *behavioral divergence between build profiles* (default
+  wrongly rejects/accepts relative to `small-tables`), the same class of risk D-39 already flagged
+  for `small-tables` itself. The differential proptest below narrows this risk; it doesn't remove
+  it the way (a)/(b) are removed outright.
+- **(d) answered with a measured number, not the earlier session's arithmetic estimate** — see
+  Results below.
+
+### Tests
+
+`crates/dstu-core/tests/dstu4145_curve.rs`, all calling the public `curve163::verify_combine`
+wrapper (never the fast path's internals directly), each compared against
+`g.scalar_multiply(s) + q.scalar_multiply(r)` computed inline from the existing trusted primitives
+— trivially true under `small-tables` (literally the same code on both sides), genuinely
+discriminating by default:
+
+- `verify_combine_matches_classic_for_small_scalars` (1..=8 × 1..=8)
+- `verify_combine_matches_classic_for_asymmetric_magnitudes` (one tiny scalar, one ~160-bit large
+  scalar — deliberately **not** `order()-1`; see the T-152 note below for why that specific value
+  is excluded here)
+- `verify_combine_matches_classic_when_r_eq_s_eq_one` (loop body never executes)
+- `verify_combine_handles_mid_loop_infinity` — hand-constructed: with `Q = -2G`, `s = 8` (`0b1000`),
+  `r = 7` (`0b0111`), the Shamir accumulator hits exactly `Point::Infinity` after 2 bits
+  (`(2 - 2·1)·G`) while the final result is nonzero (`(8 - 2·7)·G`) — exercises the totality guards
+  directly rather than hoping a proptest stumbles onto a ~2⁻¹⁶³ event.
+- `verify_combine_matches_classic_for_random_scalars` (proptest, random nonzero `s`/`r < n` via the
+  160-bit pattern `dstu4145_signature.rs`'s existing round-trip proptest already uses, `q` derived
+  from a random `d` the same way).
+
+Every existing `verify`/`verify_digest` call in `dstu4145_signature.rs`/`crypto_sign.rs` (KAT,
+tamper, misuse, round-trip) transitively re-verifies the new path with zero changes to those files,
+since `verify` calls the wrapper unconditionally.
+
+### Results
+
+Fresh release builds, same dev machine, same methodology as T-150 (`uacrypt verify --iterations`,
+same signature/key/message across both binaries, both confirmed to actually verify first):
+
+| Profile | ops/s |
+|---|---|
+| Default (new fast path) | **239.31** |
+| `small-tables` (classic, unchanged) | 120.06 |
+
+**~1.99x measured speedup** — close to the ~1.9x arithmetic estimate worked out beforehand
+(163 shared doublings + ~122 mixed-adds + 1 final inversion + the `G+Q` precompute, vs. the
+classic path's 2 full ladders + 7 total inversions), which is itself a useful cross-check that
+nothing unaccounted-for is happening.
+
+**Miri**: measured, not assumed — even under the default profile's faster path,
+`gf2m163_tampered_signature_is_rejected` (a `verify`-only test, no `sign` call) did not finish
+within a 180-second `cargo +nightly-x86_64-pc-windows-msvc miri test --include-ignored` run.
+~2x faster than "minutes" (T-100) is still minutes. All three `verify`-only tests in
+`dstu4145_signature.rs` keep their `#[cfg_attr(miri, ignore)]` unconditionally, unchanged.
+
+**CI, stated precisely**: `.github/workflows/rust.yml` already runs `cargo test --workspace`
+(default) and `cargo test --workspace --features dstu-core/small-tables` as separate steps — no new
+feature, no new CI matrix row needed. But `--all-features` turns `small-tables` **on**, so that
+job's final "all features" pass exercises the *slow/classic* path, not the new one — only the bare
+`cargo test --workspace` step exercises `verify_combine`'s fast path. Both passes run the
+differential tests above; only one of them is actually discriminating.
+
+### A separate finding, filed but not chased here
+
+Building the differential proptest surfaced a `scalar_multiply` question unrelated to this work:
+for `q = G.double()`, `q.scalar_multiply(&curve163::order())` is not `Point::Infinity`, and
+`q.scalar_multiply(&(order()-1))` equals `q` rather than `q.negate()` — both surprising given `q`
+has order exactly `n` (`n` is odd, so `gcd(2,n)=1`). 200 random ~163-bit scalars unrelated to
+`order()`'s specific value all showed the doubling homomorphism holding correctly, so this isn't a
+general "large scalar" issue — it's specific to values at/adjacent to `n` itself, and `order()`
+itself is arguably outside `scalar_multiply`'s own documented `k < n` contract regardless. Filed as
+`docs/TASKS.md` T-152 (not fixed here, needs its own dual-oracle cross-check) — this is why
+`verify_combine_matches_classic_for_asymmetric_magnitudes` above uses a large-but-not-`order()-1`
+scalar instead of the boundary value.
+
+`cargo test --workspace` / `--features dstu-core/small-tables` / `--all-features`,
+`cargo clippy --workspace --all-features -- -D warnings`, and `cargo fmt --all --check` all pass.

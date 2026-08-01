@@ -5,9 +5,15 @@
 //! `double`/`add` below are plain affine formulas with ordinary branches (`==`) on the point
 //! coordinates. That's only safe on **public** data - both are meant for the verification path
 //! (`s*G + r*Q`, entirely public inputs), never for a secret scalar's intermediate state.
-//! `scalar_multiply` is the one function used with secret scalars (DSTU 4145 signing's ephemeral
-//! `e`) as well as public ones (`s`, `r` in verification) - same code path either way, so there is
-//! no branch that could leak which case it is (`docs/DECISIONS.md` D-25).
+//!
+//! `scalar_multiply` is the sole implementation for **secret**-scalar use (signing's ephemeral
+//! `e`, and `Q = -d*G`'s private-key-derived `d`) - identical in every build configuration, never
+//! replaced. Under the `small-tables` feature, it is *also* still used for `verify`'s public-scalar
+//! computation, exactly as before. By default (feature off), `verify` instead uses
+//! `verify_combine`'s projective (López-Dahab)/Shamir's-trick fast path below, which is **not**
+//! constant-time and must never be called with a secret scalar (`docs/DECISIONS.md` D-108) - the
+//! module's public/secret split is now carried by *which function is called*, not by one shared
+//! code path the way D-25 originally described it.
 
 use super::gf2m163::FieldElement;
 
@@ -188,4 +194,172 @@ fn cswap(swap: u64, a: &mut FieldElement, b: &mut FieldElement) {
         a.0[i] ^= t;
         b.0[i] ^= t;
     }
+}
+
+/// López-Dahab projective point: `(X:Y:Z)` represents affine `(x, y) = (X/Z, Y/Z^2)` - **note the
+/// asymmetric scaling** (`Y` by `Z^2`, not `Z`, unlike Jacobian coordinates). `Z == FieldElement::
+/// ZERO` represents the point at infinity (any `X`/`Y` at that point are unconstrained - `to_affine`
+/// checks `Z` first and never reads them). Used only by `verify_combine`'s default-profile fast
+/// path below (`docs/DECISIONS.md` D-108) - public-data-only, never constant-time, never for a
+/// secret scalar. `double`/`mixed_add` below are the explicit formulas "dbl-2005-dl"/"madd-2005-dl"
+/// from the Bernstein/Lange Explicit-Formulas Database (`hyperelliptic.org/EFD/g12o/auto-shortw-
+/// lopezdahab.html`), specialized to this curve's `a2 = 1` (the module's `a = 1` convention) -
+/// their stated costs (4M+5S doubling, 8M+5S mixed addition) were independently re-derived by
+/// listing every `multiply`/`square` call below and matched the database's own count exactly,
+/// which is the actual correctness check for the transcription (this codebase has no local copy of
+/// a citable textbook derivation to check against page numbers, only the differential proptest in
+/// `tests/dstu4145_curve.rs` and this cost cross-check).
+#[cfg(not(feature = "small-tables"))]
+#[derive(Clone, Copy)]
+struct ProjectivePoint {
+    x: FieldElement,
+    y: FieldElement,
+    z: FieldElement,
+}
+
+#[cfg(not(feature = "small-tables"))]
+impl ProjectivePoint {
+    fn from_affine(p: Point) -> Self {
+        match p {
+            Point::Infinity => ProjectivePoint {
+                x: FieldElement::ONE,
+                y: FieldElement::ONE,
+                z: FieldElement::ZERO,
+            },
+            Point::Affine(x, y) => ProjectivePoint {
+                x,
+                y,
+                z: FieldElement::ONE,
+            },
+        }
+    }
+
+    /// "dbl-2005-dl", `a2 = 1`: `A = Z1^2; B = b*A^2; C = X1^2; Z3 = A*C; X3 = C^2+B;
+    /// Y3 = (Y1^2+Z3+B)*X3 + Z3*B` (the database's `a2*Z3` term is just `Z3` here, since `a2=1`).
+    /// A point with affine `x = 0` (order-2 point) doubles to infinity automatically through this
+    /// formula (`C = X1^2 = 0` forces `Z3 = A*C = 0`), matching the affine `double`'s explicit
+    /// `x1 == ZERO` check above without needing a separate branch here.
+    fn double(self) -> Self {
+        if self.z == FieldElement::ZERO {
+            return self; // doubling infinity is infinity
+        }
+        let a = self.z.square();
+        let big_b = b().multiply(a.square());
+        let c = self.x.square();
+        let z3 = a.multiply(c);
+        let x3 = c.square() + big_b;
+        let y3 = (self.y.square() + z3 + big_b).multiply(x3) + z3.multiply(big_b);
+        ProjectivePoint {
+            x: x3,
+            y: y3,
+            z: z3,
+        }
+    }
+
+    /// "madd-2005-dl", `a2 = 1`, `other` affine (`Z2 = 1`): `A = Y1+Y2*Z1^2; B = X1+X2*Z1;
+    /// C = B*Z1; Z3 = C^2; D = X2*Z3; X3 = A^2+C*(A+B^2+C); Y3 = (D+X3)*(A*C+Z3)+(Y2+X2)*Z3^2`.
+    /// Guarded ahead of the database's generic-case formula (which assumes neither operand is
+    /// infinity and the two affine `x`-coordinates differ) for totality, not for attack
+    /// resistance - `verify`'s final `r' == r` check (`signature.rs`) already closes off any
+    /// benefit an attacker could get from steering the accumulator here; the guards exist because
+    /// the formula is otherwise partial, on public data where an honest partial sum can
+    /// structurally (if very rarely, ~2^-163) coincide with infinity or with the table point.
+    fn mixed_add(self, other: Point) -> Self {
+        let (x2, y2) = match other {
+            Point::Infinity => return self,
+            Point::Affine(x, y) => (x, y),
+        };
+        if self.z == FieldElement::ZERO {
+            return ProjectivePoint::from_affine(other);
+        }
+        let z1_sq = self.z.square();
+        let a = self.y + y2.multiply(z1_sq);
+        let b_val = self.x + x2.multiply(self.z);
+        if b_val == FieldElement::ZERO {
+            return if a == FieldElement::ZERO {
+                self.double() // same point (B=0 means matching affine x; A=0 means matching y too)
+            } else {
+                // matching x, differing y: char-2 negation is (x, x+y) (see `Point::negate`), so
+                // this is `-self` - the sum is infinity.
+                ProjectivePoint {
+                    x: FieldElement::ONE,
+                    y: FieldElement::ONE,
+                    z: FieldElement::ZERO,
+                }
+            };
+        }
+        let c = b_val.multiply(self.z);
+        let z3 = c.square();
+        let d = x2.multiply(z3);
+        let b_sq = b_val.square();
+        let x3 = a.square() + c.multiply(a + b_sq + c);
+        let y3 = (d + x3).multiply(a.multiply(c) + z3) + (y2 + x2).multiply(z3.square());
+        ProjectivePoint {
+            x: x3,
+            y: y3,
+            z: z3,
+        }
+    }
+
+    /// The one deferred inversion for the whole `verify_combine` computation: `x = X*Z^-1`,
+    /// `y = Y*(Z^-1)^2` (matching the `(X/Z, Y/Z^2)` convention stated on the type itself).
+    fn to_affine(self) -> Point {
+        if self.z == FieldElement::ZERO {
+            return Point::Infinity;
+        }
+        let z_inv = self.z.invert();
+        let x = self.x.multiply(z_inv);
+        let y = self.y.multiply(z_inv.square());
+        Point::Affine(x, y)
+    }
+}
+
+/// `s*g + r*q` via Shamir's trick (simultaneous double-and-add over both scalars, one shared
+/// doubling per bit position) in projective coordinates, deferring every inversion to the single
+/// one inside `to_affine` at the end - `docs/DECISIONS.md` D-108. Public data only (`g`, `s`, `q`,
+/// `r` are all public in DSTU 4145 verification, per this module's own doc comment); safe to
+/// branch on the scalars' actual bit lengths (skip leading zero bit-pairs) precisely because this
+/// is not a secret-scalar code path, unlike `scalar_multiply`'s fixed 163 iterations.
+#[cfg(not(feature = "small-tables"))]
+fn shamir_double_scalar_multiply(g: Point, s: &[u8; 21], q: Point, r: &[u8; 21]) -> Point {
+    let g_plus_q = g + q; // existing trusted affine `Point::add` - one inversion, paid once here
+    let table = [Point::Infinity, q, g, g_plus_q]; // index (bit_s << 1) | bit_r
+
+    let top = (0..163u32)
+        .rev()
+        .find(|&i| bit_at(s, i) != 0 || bit_at(r, i) != 0);
+    let Some(top) = top else {
+        return Point::Infinity; // s == r == 0 - not reachable via `verify`'s own guards
+    };
+
+    let entry_at = |i: u32| -> Point { table[((bit_at(s, i) << 1) | bit_at(r, i)) as usize] };
+
+    let mut acc = ProjectivePoint::from_affine(entry_at(top));
+    for i in (0..top).rev() {
+        acc = acc.double();
+        let entry = entry_at(i);
+        if entry != Point::Infinity {
+            acc = acc.mixed_add(entry);
+        }
+    }
+    acc.to_affine()
+}
+
+/// `verify`'s `s*g + r*q` combine step - one function, two bodies, matching
+/// `hazmat::tables::apply_forward_matrix`'s `small-tables` idiom exactly (no `#[cfg]` at the call
+/// site in `signature.rs`). Default: the projective/Shamir fast path above. `small-tables`: today's
+/// unchanged double `scalar_multiply` call - see `docs/DECISIONS.md` D-108 for why this reuses the
+/// same feature Kalyna/Kupyna/Strumok use for their own big-table/small-table split, even though
+/// this particular case is a code-size/audit-surface tradeoff, not a flash-`const`-table one (no
+/// new `const` table is added; `{Infinity, g, q, g+q}` above is computed fresh per call).
+#[cfg(not(feature = "small-tables"))]
+#[must_use]
+pub fn verify_combine(g: Point, s: &[u8; 21], q: Point, r: &[u8; 21]) -> Point {
+    shamir_double_scalar_multiply(g, s, q, r)
+}
+
+#[cfg(feature = "small-tables")]
+#[must_use]
+pub fn verify_combine(g: Point, s: &[u8; 21], q: Point, r: &[u8; 21]) -> Point {
+    g.scalar_multiply(s) + q.scalar_multiply(r)
 }

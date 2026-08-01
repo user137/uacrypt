@@ -3763,3 +3763,66 @@ Phase 2+ and none currently in flight).
   fixed 128-bit block; Strumok-512 vs ChaCha20's fixed 256-bit key) are flagged, not forced or
   silently dropped. `docs/ORACLES.md` untouched - OpenSSL is a speed baseline here, not a
   correctness oracle for any DSTU standard.
+
+- [x] **T-150** **Benchmarked DSTU 4145 against ECDSA (OpenSSL nistb163/nistp256) - see
+  `docs/DECISIONS.md` D-106's extension note, `docs/PERFORMANCE.md`'s new "DSTU 4145 vs. ECDSA"
+  subsection.** Owner asked to extend T-149's comparison to the signature primitive, the one card
+  the gh-pages table left as "not yet benchmarked." `sign`/`verify` had no `--iterations` flag
+  (unlike every other benchmarkable command) - added first, test-first (parse happy-path/rejection
+  tests plus a round-trip behavioral test), following the existing `kupyna-digest`/`kalyna-kw`
+  no-`--raw-schedule` precedent exactly. Message hashed once outside the timed loop (confirmed
+  negligible: 5-byte vs 64 KiB input gave 255.98 vs 254.51 ops/s, within 0.6%). Result: `nistb163`
+  (field-size-matched, `GF(2^163)`, but a different curve and no CI/CD `--iterations` numbers
+  compared before) is ~21-23x faster; `nistp256` is ~136-188x faster but explicitly flagged as not
+  the same security level (P-256 ~128-bit vs. this curve's ~80-bit), so that ratio is not read as a
+  pure implementation-quality gap. Root-caused: `curve163.rs`'s scalar multiplication is a plain
+  163-iteration constant-time double-and-add ladder with no windowing/precomputation, unlike
+  OpenSSL's - an algorithmic gap, not a CPU-instruction-set one like D-106's AES-NI/AVX2 findings.
+  `cargo clippy --workspace --all-features -- -D warnings` and `cargo fmt --all` clean; all 115
+  `uacrypt` tests pass.
+
+- [x] **T-151** **Done - see `docs/DECISIONS.md` D-108, `docs/PERFORMANCE.md`'s extended "DSTU 4145
+  vs. ECDSA" subsection, `docs/resource-profiles.md`.** Owner asked what could be optimized in
+  DSTU 4145's `verify` (following T-150's finding that it's 20-190x slower than OpenSSL) and
+  whether it would be safe, then explicitly decided: keep `scalar_multiply` (used by `sign`/
+  `verifying_key()` for secret-scalar multiplication) completely unchanged, add a faster
+  implementation only for `verify`'s `s*G + r*Q` (public-data-only), reusing the existing
+  `small-tables` Cargo feature for the split (same polarity as Kalyna/Kupyna/Strumok's own use of
+  it), with an advisor-reviewed plan first. A naive "compose windowed multiply from the existing
+  affine `double`/`add`" approach was spiked and rejected (measured ~20x *regression*, since each
+  `double`/`add` call pays its own field inversion - measured `FieldElement::invert()` at 338.7x a
+  single `multiply()`). Landed instead: López-Dahab projective coordinates (formulas cited from the
+  Bernstein/Lange Explicit-Formulas Database, cross-checked via raw `curl` against the source HTML
+  rather than trusted from an AI-summarized `WebFetch` read) + Shamir's trick, deferring every
+  inversion in the combine step to one at the end. New differential proptest + hand-constructed
+  mid-loop-infinity test in `dstu4145_curve.rs`, all existing `verify`/`sign` tests unchanged and
+  still passing (transitively re-verify the new path). Full test matrix green on all three profiles
+  (default / `small-tables` / `--all-features`), `clippy`/`fmt` clean. Measured (not estimated)
+  result: **~1.99x** (239.31 ops/s default vs. 120.06 ops/s `small-tables`, fresh release builds,
+  `uacrypt verify --iterations`) - close to the ~1.9x arithmetic estimate worked out beforehand.
+  Miri: measured, not assumed, that the three `verify`-only tests still don't finish in a bounded
+  run even with the faster path - their `#[cfg_attr(miri, ignore)]` stays unconditional, unchanged.
+  Surfaced T-152 (below) as a side effect - filed separately, not fixed in this pass.
+
+- [ ] **T-152** **Found, not fixed: `curve163::scalar_multiply` looks wrong for scalars at/near the
+  curve order `n`, found as a side effect of building `verify_combine`'s differential tests
+  (T-151/D-108) - a separate question from that work, filed here rather than chased or fixed in the
+  same pass.** Concretely, for `q = G.double()` (order exactly `n`, since `n` is odd so
+  `gcd(2, n) = 1`): `q.scalar_multiply(&curve163::order())` is **not** `Point::Infinity` (expected
+  by Lagrange's theorem for any point of order dividing `n`), and `q.scalar_multiply(&(order()-1))`
+  equals `q` itself rather than `q.negate()` (expected: `q*(n-1) = q*n - q = O - q = -q`). 200
+  random ~163-bit scalars (unrelated to `order()`'s specific value) all showed the doubling
+  homomorphism `q.scalar_multiply(k).double() == q.scalar_multiply(2k)` holding correctly - this
+  isn't a general "breaks for large k" issue, it's specific to values at or adjacent to `n` itself.
+  `scalar_multiply`'s own doc comment (`curve163.rs:92-93`) promises correctness only for
+  `k < n` - `order()` itself (`k = n`) is out of that documented domain, so the first observation
+  isn't necessarily a bug by the function's own contract; but `order() - 1` **is** inside `[1, n-1]`
+  and still looks wrong, which is the part worth a real investigation. `bit_at`'s read of bit 162
+  (`order()`'s top bit) checks out by hand (`20 - 162/8 = 0`, `162 % 8 = 2`, reads `0x04 >> 2 & 1 =
+  1` correctly) and the ladder's loop bound (`(0..163u32).rev()`) does start at 162 - so if there's
+  a real bug, the next place to look is the y-recovery step at the end of `scalar_multiply`
+  (`curve163.rs`'s final `x1_affine`/`x2_affine`/`y1_affine` block), not the loop or `bit_at`. This
+  is `sign`/`verifying_key()`'s only scalar-multiplication path (unchanged by T-151/D-108) - a real
+  bug here would be a correctness question for existing, shipped signing/key-derivation code, not
+  just `verify`'s new fast path, and needs its own dual-oracle cross-check (a scalar exactly at/near
+  `n-1` fed through Bouncy Castle's own binary-curve multiply) before concluding anything further.

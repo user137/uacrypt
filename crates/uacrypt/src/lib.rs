@@ -2283,17 +2283,21 @@ pub struct SignArgs {
     pub key_path: PathBuf,
     pub in_path: PathBuf,
     pub out_path: PathBuf,
+    pub iterations: u32,
 }
 
-/// Parses `sign`'s flags (`--key`/`--in`/`--out`, all required).
+/// Parses `sign`'s flags (`--key`/`--in`/`--out` required, `--iterations` optional - benchmarking
+/// only, same shape as [`parse_digest_args`]: no `--raw-schedule`, since signing has no key-
+/// schedule step to cache/redo, the same reason `kupyna-digest`/`kalyna-kw` don't have one either).
 ///
 /// # Errors
 ///
-/// Returns [`CliError::MissingFlag`] or [`CliError::UnknownFlag`].
+/// Returns [`CliError::MissingFlag`], [`CliError::InvalidIterations`], or [`CliError::UnknownFlag`].
 pub fn parse_sign_args(args: &[String]) -> Result<SignArgs, CliError> {
     let mut key_path = None;
     let mut in_path = None;
     let mut out_path = None;
+    let mut iterations = 1u32;
 
     let mut i = 0;
     while i < args.len() {
@@ -2316,6 +2320,13 @@ pub fn parse_sign_args(args: &[String]) -> Result<SignArgs, CliError> {
                 ));
                 i += 2;
             }
+            "--iterations" => {
+                let v = args.get(i + 1).ok_or(CliError::MissingFlag("iterations"))?;
+                iterations = v
+                    .parse()
+                    .map_err(|_| CliError::InvalidIterations(v.clone()))?;
+                i += 2;
+            }
             other => return Err(CliError::UnknownFlag(other.to_string())),
         }
     }
@@ -2324,26 +2335,56 @@ pub fn parse_sign_args(args: &[String]) -> Result<SignArgs, CliError> {
         key_path: key_path.ok_or(CliError::MissingFlag("key"))?,
         in_path: in_path.ok_or(CliError::MissingFlag("in"))?,
         out_path: out_path.ok_or(CliError::MissingFlag("out"))?,
+        iterations,
     })
 }
 
 /// Runs `sign`: hashes `--in` with Kupyna-256 in bounded-memory chunks
 /// ([`hash_file_streamed`], D-42), signs the digest with `--key`
 /// ([`dstu_core::crypto_sign::SigningKey::sign_digest`], deterministic nonce - D-46), and writes
-/// the 42-byte `r || s` signature to `--out`.
+/// the 42-byte `r || s` signature to `--out`. `iterations > 1` is the D-34 benchmark path: the
+/// message is hashed once (matching `openssl speed`'s own methodology of signing one fixed digest
+/// repeatedly, not re-hashing per call, `docs/DECISIONS.md` D-106's extension note), then only the
+/// `sign_digest` call itself is timed in a loop, key parsed once outside it (D-80's cached-schedule
+/// lesson).
 ///
 /// # Errors
 ///
 /// Returns [`CliError::Io`]/[`CliError::WrongLength`] for file problems, or
 /// [`CliError::SignKeyInvalid`] if `--key` isn't a valid signing key.
+#[allow(clippy::cast_precision_loss)] // human-readable ops/s diagnostic, not exact at any realistic count
 pub fn run_sign_command(args: &SignArgs) -> Result<(), CliError> {
     let signing_key = read_signing_key(&args.key_path)?;
     let digest = hash_file_streamed(&args.in_path)?;
-    let sig = signing_key.sign_digest(&digest);
+    let iterations = args.iterations.max(1);
+
+    let start = Instant::now();
+    let mut sig = signing_key.sign_digest(&digest);
+    for _ in 1..iterations {
+        sig = signing_key.sign_digest(&digest);
+    }
+    let elapsed = start.elapsed();
+
     std::fs::write(&args.out_path, sig.to_bytes()).map_err(|e| CliError::Io {
         path: args.out_path.clone(),
         message: e.to_string(),
-    })
+    })?;
+
+    if args.iterations > 1 {
+        let per_op_ns = elapsed.as_nanos() / u128::from(args.iterations);
+        let ops_per_s = if per_op_ns == 0 {
+            0.0
+        } else {
+            1e9 / (per_op_ns as f64)
+        };
+        eprintln!(
+            "iterations={} total_ns={} per_op_ns={per_op_ns} ops_per_s={ops_per_s:.2}",
+            args.iterations,
+            elapsed.as_nanos(),
+        );
+    }
+
+    Ok(())
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -2351,17 +2392,20 @@ pub struct VerifyArgs {
     pub key_path: PathBuf,
     pub in_path: PathBuf,
     pub sig_path: PathBuf,
+    pub iterations: u32,
 }
 
-/// Parses `verify`'s flags (`--key`/`--in`/`--sig`, all required).
+/// Parses `verify`'s flags (`--key`/`--in`/`--sig` required, `--iterations` optional -
+/// benchmarking only, same no-`--raw-schedule` shape as [`parse_sign_args`]).
 ///
 /// # Errors
 ///
-/// Returns [`CliError::MissingFlag`] or [`CliError::UnknownFlag`].
+/// Returns [`CliError::MissingFlag`], [`CliError::InvalidIterations`], or [`CliError::UnknownFlag`].
 pub fn parse_verify_args(args: &[String]) -> Result<VerifyArgs, CliError> {
     let mut key_path = None;
     let mut in_path = None;
     let mut sig_path = None;
+    let mut iterations = 1u32;
 
     let mut i = 0;
     while i < args.len() {
@@ -2384,6 +2428,13 @@ pub fn parse_verify_args(args: &[String]) -> Result<VerifyArgs, CliError> {
                 ));
                 i += 2;
             }
+            "--iterations" => {
+                let v = args.get(i + 1).ok_or(CliError::MissingFlag("iterations"))?;
+                iterations = v
+                    .parse()
+                    .map_err(|_| CliError::InvalidIterations(v.clone()))?;
+                i += 2;
+            }
             other => return Err(CliError::UnknownFlag(other.to_string())),
         }
     }
@@ -2392,6 +2443,7 @@ pub fn parse_verify_args(args: &[String]) -> Result<VerifyArgs, CliError> {
         key_path: key_path.ok_or(CliError::MissingFlag("key"))?,
         in_path: in_path.ok_or(CliError::MissingFlag("in"))?,
         sig_path: sig_path.ok_or(CliError::MissingFlag("sig"))?,
+        iterations,
     })
 }
 
@@ -2400,12 +2452,15 @@ pub fn parse_verify_args(args: &[String]) -> Result<VerifyArgs, CliError> {
 /// verifying key - [`dstu_core::crypto_sign::VerifyingKey::from_uncompressed_bytes`]) via
 /// [`dstu_core::crypto_sign::VerifyingKey::verify_digest`]. Succeeds silently (`Ok(())`, exit 0)
 /// on a valid signature, matching `kalyna-cmac verify`/`kalyna-gmac verify`'s own convention -
-/// there is nothing to write to disk on success, unlike `decrypt`.
+/// there is nothing to write to disk on success, unlike `decrypt`. `iterations > 1` is the D-34
+/// benchmark path, same shape as [`run_sign_command`]: hash/key/signature parsed once, only
+/// `verify_digest` itself timed in a loop.
 ///
 /// # Errors
 ///
 /// Returns [`CliError::Io`]/[`CliError::WrongLength`] for file problems, or
 /// [`CliError::SignVerifyFailed`] if the signature does not verify.
+#[allow(clippy::cast_precision_loss)] // human-readable ops/s diagnostic, not exact at any realistic count
 pub fn run_verify_command(args: &VerifyArgs) -> Result<(), CliError> {
     let key_bytes = read_exact_file(&args.key_path, "verifying key", 42)?;
     let mut q = [0u8; 42];
@@ -2418,7 +2473,30 @@ pub fn run_verify_command(args: &VerifyArgs) -> Result<(), CliError> {
     let sig = dstu_core::crypto_sign::Signature::from_bytes(&sig_arr);
 
     let digest = hash_file_streamed(&args.in_path)?;
-    if verifying_key.verify_digest(&digest, &sig) {
+    let iterations = args.iterations.max(1);
+
+    let start = Instant::now();
+    let mut ok = verifying_key.verify_digest(&digest, &sig);
+    for _ in 1..iterations {
+        ok = verifying_key.verify_digest(&digest, &sig);
+    }
+    let elapsed = start.elapsed();
+
+    if args.iterations > 1 {
+        let per_op_ns = elapsed.as_nanos() / u128::from(args.iterations);
+        let ops_per_s = if per_op_ns == 0 {
+            0.0
+        } else {
+            1e9 / (per_op_ns as f64)
+        };
+        eprintln!(
+            "iterations={} total_ns={} per_op_ns={per_op_ns} ops_per_s={ops_per_s:.2}",
+            args.iterations,
+            elapsed.as_nanos(),
+        );
+    }
+
+    if ok {
         Ok(())
     } else {
         Err(CliError::SignVerifyFailed)
@@ -2836,9 +2914,10 @@ USAGE:
     uacrypt sign --key <path> --in <path> --out <path>
 
 FLAGS:
-    --key <path>    a signing key (from `uacrypt sign-keygen`)
-    --in <path>     file to sign
-    --out <path>    where to write the 42-byte signature
+    --key <path>        a signing key (from `uacrypt sign-keygen`)
+    --in <path>         file to sign
+    --out <path>        where to write the 42-byte signature
+    --iterations <n>    (benchmarking only) repeat the sign call n times, print timing to stderr
 
 EXAMPLE:
     uacrypt sign --key signing.key --in report.pdf --out report.pdf.sig
@@ -2856,9 +2935,10 @@ USAGE:
     uacrypt verify --key <path> --in <path> --sig <path>
 
 FLAGS:
-    --key <path>    a verifying key (from `uacrypt sign-pubkey`)
-    --in <path>     the file that was signed
-    --sig <path>    the signature (from `uacrypt sign`)
+    --key <path>        a verifying key (from `uacrypt sign-pubkey`)
+    --in <path>         the file that was signed
+    --sig <path>        the signature (from `uacrypt sign`)
+    --iterations <n>    (benchmarking only) repeat the verify call n times, print timing to stderr
 
 EXAMPLE:
     uacrypt verify --key verifying.key --in report.pdf --sig report.pdf.sig
@@ -5241,7 +5321,41 @@ mod tests {
                 key_path: PathBuf::from("signing.key"),
                 in_path: PathBuf::from("msg.bin"),
                 out_path: PathBuf::from("msg.sig"),
+                iterations: 1,
             })
+        );
+    }
+
+    #[test]
+    fn parse_sign_args_happy_path_with_iterations() {
+        let args = vec![
+            "--key".to_string(),
+            "signing.key".to_string(),
+            "--in".to_string(),
+            "msg.bin".to_string(),
+            "--out".to_string(),
+            "msg.sig".to_string(),
+            "--iterations".to_string(),
+            "42".to_string(),
+        ];
+        let parsed = parse_sign_args(&args).expect("valid args should parse");
+        assert_eq!(parsed.iterations, 42);
+    }
+
+    #[test]
+    fn parse_sign_args_rejects_invalid_iterations() {
+        assert_eq!(
+            parse_sign_args(&[
+                "--key".to_string(),
+                "k".to_string(),
+                "--in".to_string(),
+                "i".to_string(),
+                "--out".to_string(),
+                "o".to_string(),
+                "--iterations".to_string(),
+                "not-a-number".to_string(),
+            ]),
+            Err(CliError::InvalidIterations("not-a-number".to_string()))
         );
     }
 
@@ -5287,7 +5401,41 @@ mod tests {
                 key_path: PathBuf::from("verifying.key"),
                 in_path: PathBuf::from("msg.bin"),
                 sig_path: PathBuf::from("msg.sig"),
+                iterations: 1,
             })
+        );
+    }
+
+    #[test]
+    fn parse_verify_args_happy_path_with_iterations() {
+        let args = vec![
+            "--key".to_string(),
+            "verifying.key".to_string(),
+            "--in".to_string(),
+            "msg.bin".to_string(),
+            "--sig".to_string(),
+            "msg.sig".to_string(),
+            "--iterations".to_string(),
+            "17".to_string(),
+        ];
+        let parsed = parse_verify_args(&args).expect("valid args should parse");
+        assert_eq!(parsed.iterations, 17);
+    }
+
+    #[test]
+    fn parse_verify_args_rejects_invalid_iterations() {
+        assert_eq!(
+            parse_verify_args(&[
+                "--key".to_string(),
+                "k".to_string(),
+                "--in".to_string(),
+                "i".to_string(),
+                "--sig".to_string(),
+                "s".to_string(),
+                "--iterations".to_string(),
+                "nope".to_string(),
+            ]),
+            Err(CliError::InvalidIterations("nope".to_string()))
         );
     }
 
@@ -5340,6 +5488,7 @@ mod tests {
             key_path: dir.file("signing.key"),
             in_path: dir.file("msg.bin"),
             out_path: dir.file("msg.sig"),
+            iterations: 1,
         })
         .expect("sign should succeed");
 
@@ -5352,8 +5501,48 @@ mod tests {
             key_path: dir.file("verifying.key"),
             in_path: dir.file("msg.bin"),
             sig_path: dir.file("msg.sig"),
+            iterations: 1,
         })
         .expect("verify should succeed on the real signature");
+    }
+
+    /// `--iterations > 1` is the D-34 benchmark path (T-150) - the signature it actually writes
+    /// must still be the real, verifiable one, not a placeholder from the timed loop. Deterministic
+    /// signing (D-46) means every iteration produces the identical signature anyway, but this
+    /// checks the written output end-to-end through `verify`, not just that signing didn't panic.
+    #[cfg_attr(
+        miri,
+        ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see docs/TASKS.md T-100"
+    )]
+    #[test]
+    fn sign_verify_with_iterations_still_round_trips() {
+        let dir = TempDir::new("sign_verify_iterations");
+        run_sign_keygen_command(&SignKeygenArgs {
+            out_path: dir.file("signing.key"),
+        })
+        .expect("sign-keygen should succeed");
+        run_sign_pubkey_command(&SignPubkeyArgs {
+            key_path: dir.file("signing.key"),
+            out_path: dir.file("verifying.key"),
+        })
+        .expect("sign-pubkey should succeed");
+        std::fs::write(dir.file("msg.bin"), b"benchmarked message").expect("write message");
+
+        run_sign_command(&SignArgs {
+            key_path: dir.file("signing.key"),
+            in_path: dir.file("msg.bin"),
+            out_path: dir.file("msg.sig"),
+            iterations: 25,
+        })
+        .expect("sign with iterations should succeed");
+
+        run_verify_command(&VerifyArgs {
+            key_path: dir.file("verifying.key"),
+            in_path: dir.file("msg.bin"),
+            sig_path: dir.file("msg.sig"),
+            iterations: 25,
+        })
+        .expect("verify with iterations should succeed on the real signature");
     }
 
     #[cfg_attr(
@@ -5372,6 +5561,7 @@ mod tests {
             key_path: dir.file("signing.key"),
             in_path: dir.file("msg.bin"),
             out_path: dir.file("msg.sig"),
+            iterations: 1,
         })
         .expect("sign should succeed");
 
@@ -5457,6 +5647,7 @@ mod tests {
                 key_path: dir.file("signing.key"),
                 in_path: dir.file("msg.bin"),
                 out_path: dir.file("msg.sig"),
+                iterations: 1,
             }),
             Err(CliError::WrongLength {
                 what: "signing key",
@@ -5479,6 +5670,7 @@ mod tests {
                 key_path: dir.file("signing.key"),
                 in_path: dir.file("msg.bin"),
                 out_path: dir.file("msg.sig"),
+                iterations: 1,
             }),
             Err(CliError::SignKeyInvalid)
         );
@@ -5493,6 +5685,7 @@ mod tests {
                 key_path: dir.file("signing.key"),
                 in_path: dir.file("does_not_exist.bin"),
                 out_path: dir.file("msg.sig"),
+                iterations: 1,
             }),
             Err(CliError::Io { .. })
         ));
@@ -5519,6 +5712,7 @@ mod tests {
             key_path: dir.file("signing.key"),
             in_path: dir.file("msg.bin"),
             out_path: dir.file("msg.sig"),
+            iterations: 1,
         })
         .expect("sign should succeed");
 
@@ -5528,6 +5722,7 @@ mod tests {
                 key_path: dir.file("verifying.key"),
                 in_path: dir.file("msg.bin"),
                 sig_path: dir.file("msg.sig"),
+                iterations: 1,
             }),
             Err(CliError::SignVerifyFailed)
         );
@@ -5554,6 +5749,7 @@ mod tests {
             key_path: dir.file("signing.key"),
             in_path: dir.file("msg.bin"),
             out_path: dir.file("msg.sig"),
+            iterations: 1,
         })
         .expect("sign should succeed");
 
@@ -5566,6 +5762,7 @@ mod tests {
                 key_path: dir.file("verifying.key"),
                 in_path: dir.file("msg.bin"),
                 sig_path: dir.file("msg.sig"),
+                iterations: 1,
             }),
             Err(CliError::SignVerifyFailed)
         );
@@ -5596,6 +5793,7 @@ mod tests {
             key_path: dir.file("signing_a.key"),
             in_path: dir.file("msg.bin"),
             out_path: dir.file("msg.sig"),
+            iterations: 1,
         })
         .expect("sign with key a should succeed");
 
@@ -5604,6 +5802,7 @@ mod tests {
                 key_path: dir.file("verifying_b.key"),
                 in_path: dir.file("msg.bin"),
                 sig_path: dir.file("msg.sig"),
+                iterations: 1,
             }),
             Err(CliError::SignVerifyFailed)
         );
@@ -5620,6 +5819,7 @@ mod tests {
                 key_path: dir.file("verifying.key"),
                 in_path: dir.file("msg.bin"),
                 sig_path: dir.file("msg.sig"),
+                iterations: 1,
             }),
             Err(CliError::WrongLength {
                 what: "verifying key",
@@ -5640,6 +5840,7 @@ mod tests {
                 key_path: dir.file("verifying.key"),
                 in_path: dir.file("msg.bin"),
                 sig_path: dir.file("msg.sig"),
+                iterations: 1,
             }),
             Err(CliError::WrongLength {
                 what: "signature",
@@ -5659,6 +5860,7 @@ mod tests {
                 key_path: dir.file("verifying.key"),
                 in_path: dir.file("does_not_exist.bin"),
                 sig_path: dir.file("msg.sig"),
+                iterations: 1,
             }),
             Err(CliError::Io { .. })
         ));

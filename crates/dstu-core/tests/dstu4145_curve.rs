@@ -3,8 +3,10 @@
 //! cases generated via Bouncy Castle's `ECPoint.F2m` (single-oracle at this granularity, see
 //! `docs/DECISIONS.md` D-25). Same hand-rolled JSON extractor as `tests/dstu4145_gf2m.rs`.
 
+use dstu_core::hazmat::dstu4145::curve163;
 use dstu_core::hazmat::dstu4145::curve163::Point;
 use dstu_core::hazmat::dstu4145::gf2m163::FieldElement;
+use proptest::prelude::*;
 
 fn decode_hex(s: &str) -> Vec<u8> {
     let padded;
@@ -182,5 +184,141 @@ fn gf2m163_scalar_multiply_matches_repeated_addition_for_small_scalars() {
         let mut bytes = [0u8; 21];
         bytes[17..].copy_from_slice(&k.to_be_bytes());
         assert_eq!(g.scalar_multiply(&bytes), expected, "mismatch at k={k}");
+    }
+}
+
+// `curve163::verify_combine` (docs/DECISIONS.md D-108) computes `s*g + r*q` - the same quantity
+// `signature::verify` needs - via a different implementation per build profile (default: a
+// projective/Shamir's-trick fast path; `small-tables`: the classic `scalar_multiply`-based
+// computation below, unchanged). Every test below checks the wrapper (whichever body the active
+// feature set compiles in) against this same classic computation done inline, never a second copy
+// of the new code - trivially true under `small-tables`, genuinely discriminating by default.
+fn classic_combine(g: Point, s: &[u8; 21], q: Point, r: &[u8; 21]) -> Point {
+    g.scalar_multiply(s) + q.scalar_multiply(r)
+}
+
+fn u32_scalar(k: u32) -> [u8; 21] {
+    let mut bytes = [0u8; 21];
+    bytes[17..].copy_from_slice(&k.to_be_bytes());
+    bytes
+}
+
+#[test]
+fn verify_combine_matches_classic_for_small_scalars() {
+    let g = Point::generator();
+    let q = g.double(); // a second, distinct public point - not g itself
+
+    for s_val in 1u32..=8 {
+        for r_val in 1u32..=8 {
+            let s = u32_scalar(s_val);
+            let r = u32_scalar(r_val);
+            assert_eq!(
+                curve163::verify_combine(g, &s, q, &r),
+                classic_combine(g, &s, q, &r),
+                "mismatch at s={s_val} r={r_val}"
+            );
+        }
+    }
+}
+
+#[test]
+fn verify_combine_matches_classic_for_asymmetric_magnitudes() {
+    let g = Point::generator();
+    let q = g.double();
+
+    let one = u32_scalar(1);
+    // A large (~160-bit) scalar, well clear of `order()`'s own boundary: `scalar_multiply`'s own
+    // doc comment only promises correctness for `k < n`, and `order()`/`order()-1` sit exactly on
+    // that boundary in a way this test deliberately avoids (see the `docs/TASKS.md` follow-up this
+    // session filed after finding `q.scalar_multiply(order())` isn't `Infinity` there - a
+    // pre-existing `scalar_multiply` question, unrelated to `verify_combine`, not chased further
+    // here). Zeroing `order()`'s top byte drops it to roughly half of `n`'s magnitude - still large
+    // enough to exercise the skip-leading-zeros logic asymmetrically against `one`.
+    let mut large = curve163::order();
+    large[0] = 0;
+
+    assert_eq!(
+        curve163::verify_combine(g, &one, q, &large),
+        classic_combine(g, &one, q, &large),
+        "s=1, r=large mismatch"
+    );
+    assert_eq!(
+        curve163::verify_combine(g, &large, q, &one),
+        classic_combine(g, &large, q, &one),
+        "s=large, r=1 mismatch"
+    );
+}
+
+#[test]
+fn verify_combine_matches_classic_when_r_eq_s_eq_one() {
+    let g = Point::generator();
+    let q = g.double();
+    let one = u32_scalar(1);
+
+    assert_eq!(
+        curve163::verify_combine(g, &one, q, &one),
+        classic_combine(g, &one, q, &one)
+    );
+}
+
+/// Hand-constructed case where the Shamir accumulator hits `Point::Infinity` mid-loop (not just
+/// at the final result) while the final result is nonzero - the totality guards `verify_combine`'s
+/// fast path needs (docs/DECISIONS.md D-108) exist precisely for this shape, and a random proptest
+/// is very unlikely to stumble onto it (probability ~2^-163 for uniform random scalars).
+///
+/// Construction: with `q = -2*g` (`d=2`), processing `s`/`r` from the top bit down, the partial
+/// sum after `k` bits is `s_partial*g + r_partial*q = (s_partial - 2*r_partial)*g`. Choosing
+/// `s = 0b1000` (8), `r = 0b0111` (7): after the top 2 bits, `s_partial = 0b10 = 2`,
+/// `r_partial = 0b01 = 1`, so the partial sum is `(2 - 2*1)*g = Infinity`. Continuing the
+/// remaining 2 bits gives the full, nonzero result `(8 - 2*7)*g = -6*g`.
+#[test]
+fn verify_combine_handles_mid_loop_infinity() {
+    let g = Point::generator();
+    let d = u32_scalar(2);
+    let q = match g.scalar_multiply(&d) {
+        Point::Affine(x, y) => Point::Affine(x, y).negate(),
+        Point::Infinity => panic!("d=2 must not be degenerate"),
+    };
+
+    let s = u32_scalar(8);
+    let r = u32_scalar(7);
+
+    assert_eq!(
+        curve163::verify_combine(g, &s, q, &r),
+        classic_combine(g, &s, q, &r),
+        "mid-loop-infinity case mismatch"
+    );
+}
+
+proptest! {
+    #[test]
+    fn verify_combine_matches_classic_for_random_scalars(
+        d_bytes in prop::collection::vec(any::<u8>(), 20),
+        s_bytes in prop::collection::vec(any::<u8>(), 20),
+        r_bytes in prop::collection::vec(any::<u8>(), 20),
+    ) {
+        let g = Point::generator();
+        let mut d_arr = [0u8; 21];
+        d_arr[1..].copy_from_slice(&d_bytes);
+        let mut s_arr = [0u8; 21];
+        s_arr[1..].copy_from_slice(&s_bytes);
+        let mut r_arr = [0u8; 21];
+        r_arr[1..].copy_from_slice(&r_bytes);
+        prop_assume!(d_arr != [0u8; 21]);
+        prop_assume!(s_arr != [0u8; 21]);
+        prop_assume!(r_arr != [0u8; 21]);
+
+        // 160-bit values are comfortably below the curve order n (~163 bits) - same pattern
+        // `dstu4145_signature.rs`'s existing round-trip proptest uses for d/e, avoiding an
+        // explicit mod-n reduction step in the test itself.
+        let q = match g.scalar_multiply(&d_arr) {
+            Point::Affine(x, y) => Point::Affine(x, y).negate(),
+            Point::Infinity => return Ok(()), // d = 0 mod n - not reachable with a nonzero 160-bit d
+        };
+
+        prop_assert_eq!(
+            curve163::verify_combine(g, &s_arr, q, &r_arr),
+            classic_combine(g, &s_arr, q, &r_arr)
+        );
     }
 }
