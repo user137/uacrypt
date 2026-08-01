@@ -114,6 +114,13 @@ impl Point {
     ///   role. Implemented here as: conditionally swap the pair (branchless, via a XOR/mask swap)
     ///   based on the bit, always run the "`k_i == 1`" formula, then swap back - the same
     ///   operations execute on every iteration regardless of the bit's value.
+    ///
+    /// The final X-only-to-affine recovery needs `kP` and `(k+1)P` to both be finite points -
+    /// undefined at the two boundary values where that fails (`k == 0`/`k == ord(self)`, and
+    /// `k == ord(self) - 1` respectively). `docs/DECISIONS.md` D-110 (T-152) found and fixed a real
+    /// bug here: the recovery silently used `invert(ZERO) == ZERO` instead of detecting either
+    /// case, producing a wrong-but-plausible-looking result rather than failing loudly or
+    /// computing the right answer. See the `z1 == ZERO`/`z2 == ZERO` handling in the body below.
     #[must_use]
     pub fn scalar_multiply(self, k: &[u8; 21]) -> Self {
         match self {
@@ -141,12 +148,43 @@ impl Point {
                     cswap(swap, &mut z1, &mut z2);
                 }
 
+                // `z1 == ZERO` means `kP == Infinity` (`k == 0`, or `k == ord(self)` - only
+                // reachable at or past the edge of this function's documented `k < n` domain for a
+                // full-order point). `Point::Infinity` is a different enum variant from
+                // `Point::Affine`, not a same-shape value a branchless mask can select between
+                // (unlike the `z2 == ZERO` case below) - this needs an explicit branch.
+                // `docs/DECISIONS.md` D-110 (T-152): this only fires for `k == 0` or `k >=
+                // ord(self)`, never for an in-range secret scalar DSTU 4145 sign/verify actually
+                // constructs, so it is not a fresh timing side channel for real callers - a
+                // deliberate, named exception to this function's otherwise branchless posture,
+                // not left as silently-wrong output the way it was before this fix. The zero
+                // *test* itself still uses `is_zero_mask` (fixed-shape, no secret-dependent `==`)
+                // rather than `FieldElement`'s derived `PartialEq` - only the resulting branch on
+                // that mask is data-dependent, which is unavoidable given `Point::Infinity` is a
+                // different enum variant (`docs/SECURITY.md`'s "never `==` on secret data" rule).
+                if is_zero_mask(z1) != 0 {
+                    return Point::Infinity;
+                }
+
                 let x1_affine = x1.multiply(z1.invert());
                 let x2_affine = x2.multiply(z2.invert());
                 let t1 = x1_affine + x;
                 let t2 = x2_affine + x;
                 let inner = t1.multiply(t2) + x.square() + y;
-                let y1_affine = x.invert().multiply(t1).multiply(inner) + y;
+                let y1_affine_formula = x.invert().multiply(t1).multiply(inner) + y;
+
+                // `z2 == ZERO` means `(k+1)P == Infinity`, i.e. `k == ord(self) - 1` - genuinely
+                // inside the documented `k < n` contract (`docs/DECISIONS.md` D-110, T-152). The
+                // y-recovery formula above needs `(k+1)P`'s affine x-coordinate, which doesn't
+                // exist for infinity; `x2.multiply(z2.invert())` silently reads `invert(ZERO) ==
+                // ZERO` instead, corrupting `y1_affine_formula`. The correct `kP` in that case is
+                // exactly `-self = (x, x + y)` (`Point::negate`) - `x1_affine` already comes out
+                // right either way (`self`/`-self` share an x-coordinate on this curve family), so
+                // only `y` needs correcting. Selected branchlessly (same mask-and-XOR shape as
+                // `cswap` above, not `==`/`if`) since `z2` is secret-scalar-derived and both
+                // candidate values are same-shape field elements.
+                let y1_affine = select(is_zero_mask(z2), x + y, y1_affine_formula);
+
                 Point::Affine(x1_affine, y1_affine)
             }
         }
@@ -194,6 +232,28 @@ fn cswap(swap: u64, a: &mut FieldElement, b: &mut FieldElement) {
         a.0[i] ^= t;
         b.0[i] ^= t;
     }
+}
+
+/// Constant-time "is this field element zero" test: an all-ones mask if so, all-zeros otherwise.
+/// The standard `x | wrapping_neg(x)` top-bit branchless zero test (for any nonzero `x`, either
+/// `x` or `-x` has its sign bit set in two's-complement; for `x == 0` neither does), applied to
+/// the OR of all 3 limbs (any single nonzero limb makes the whole element nonzero) - `docs/
+/// DECISIONS.md` D-110 (T-152).
+fn is_zero_mask(a: FieldElement) -> u64 {
+    let combined = a.0[0] | a.0[1] | a.0[2];
+    let is_nonzero = (combined | combined.wrapping_neg()) >> 63;
+    0u64.wrapping_sub(1 ^ is_nonzero)
+}
+
+/// Constant-time select: returns `if_mask` when `mask` is all-ones, `otherwise` when all-zeros -
+/// same XOR-and-mask shape as `cswap`'s swap above, specialized to a one-sided select
+/// (`docs/DECISIONS.md` D-110, T-152).
+fn select(mask: u64, if_mask: FieldElement, otherwise: FieldElement) -> FieldElement {
+    let mut out = [0u64; 3];
+    for ((out_limb, a), b) in out.iter_mut().zip(if_mask.0.iter()).zip(otherwise.0.iter()) {
+        *out_limb = b ^ (mask & (a ^ b));
+    }
+    FieldElement(out)
 }
 
 /// López-Dahab projective point: `(X:Y:Z)` represents affine `(x, y) = (X/Z, Y/Z^2)` - **note the

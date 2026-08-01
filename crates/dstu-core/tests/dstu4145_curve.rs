@@ -220,13 +220,11 @@ fn verify_combine_matches_classic_for_asymmetric_magnitudes() {
     let q = g.double();
 
     let one = u32_scalar(1);
-    // A large (~160-bit) scalar, well clear of `order()`'s own boundary: `scalar_multiply`'s own
-    // doc comment only promises correctness for `k < n`, and `order()`/`order()-1` sit exactly on
-    // that boundary in a way this test deliberately avoids (see the `docs/TASKS.md` follow-up this
-    // session filed after finding `q.scalar_multiply(order())` isn't `Infinity` there - a
-    // pre-existing `scalar_multiply` question, unrelated to `verify_combine`, not chased further
-    // here). Zeroing `order()`'s top byte drops it to roughly half of `n`'s magnitude - still large
-    // enough to exercise the skip-leading-zeros logic asymmetrically against `one`.
+    // A large (~160-bit) scalar, well clear of `order()`'s own boundary - see the dedicated
+    // `verify_combine_matches_classic_at_order_boundary` test below for that boundary itself, now
+    // that `docs/DECISIONS.md` D-110 (T-152) fixed the `scalar_multiply` bug this test used to
+    // deliberately avoid. Zeroing `order()`'s top byte drops it to roughly half of `n`'s magnitude -
+    // still large enough to exercise the skip-leading-zeros logic asymmetrically against `one`.
     let mut large = curve163::order();
     large[0] = 0;
 
@@ -240,6 +238,85 @@ fn verify_combine_matches_classic_for_asymmetric_magnitudes() {
         classic_combine(g, &large, q, &one),
         "s=large, r=1 mismatch"
     );
+}
+
+fn decrement_scalar(k: &mut [u8; 21]) {
+    for byte in k.iter_mut().rev() {
+        if *byte == 0 {
+            *byte = 0xFF;
+        } else {
+            *byte -= 1;
+            break;
+        }
+    }
+}
+
+fn increment_scalar(k: &mut [u8; 21]) {
+    for byte in k.iter_mut().rev() {
+        if *byte == 0xFF {
+            *byte = 0;
+        } else {
+            *byte += 1;
+            break;
+        }
+    }
+}
+
+/// `scalar_multiply` at the exact boundary values where `kP`/`(k+1)P` hit the point at infinity -
+/// `docs/DECISIONS.md` D-110 (T-152): this used to silently return a wrong-but-plausible-looking
+/// result at `k == 0`, `k == order()`, and `k == order() - 1` instead of the correct answer
+/// (confirmed against Bouncy Castle before the fix, see D-110's oracle numbers), rather than
+/// `Point::Infinity` or `q.negate()`/`q` as appropriate. `q = G.double()` has order exactly `n`
+/// (`n` is odd, so `gcd(2, n) = 1`).
+#[cfg_attr(
+    miri,
+    ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see docs/TASKS.md T-100, unaffected by D-109/D-110"
+)]
+#[test]
+fn scalar_multiply_at_order_boundary_matches_bouncy_castle() {
+    let g = Point::generator();
+    let q = g.double();
+
+    let zero = [0u8; 21];
+    let n = curve163::order();
+    let mut n_minus_1 = n;
+    decrement_scalar(&mut n_minus_1);
+    let mut n_plus_1 = n;
+    increment_scalar(&mut n_plus_1);
+
+    assert_eq!(q.scalar_multiply(&zero), Point::Infinity, "0*Q");
+    assert_eq!(q.scalar_multiply(&n), Point::Infinity, "n*Q");
+    assert_eq!(q.scalar_multiply(&n_minus_1), q.negate(), "(n-1)*Q");
+    assert_eq!(q.scalar_multiply(&n_plus_1), q, "(n+1)*Q");
+}
+
+/// The same boundary, through `verify_combine`'s two build-profile bodies. Under `small-tables`
+/// this is trivially true (same as the file's other tests - `verify_combine`'s own body *is*
+/// `classic_combine`'s definition there), but genuinely discriminating under the **default**
+/// profile: before D-110's fix, default's projective/Shamir path (already infinity-safe throughout
+/// via `ProjectivePoint::to_affine`/`mixed_add`) would have disagreed with `classic_combine`'s
+/// then-buggy `scalar_multiply` calls at this exact boundary.
+#[cfg_attr(
+    miri,
+    ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see docs/TASKS.md T-100, unaffected by D-109/D-110"
+)]
+#[test]
+fn verify_combine_matches_classic_at_order_boundary() {
+    let g = Point::generator();
+    let q = g.double();
+
+    let one = u32_scalar(1);
+    let n = curve163::order();
+    let mut n_minus_1 = n;
+    decrement_scalar(&mut n_minus_1);
+
+    for (s, r) in [(one, n), (n, one), (one, n_minus_1), (n_minus_1, one)] {
+        assert_eq!(
+            curve163::verify_combine(g, &s, q, &r),
+            classic_combine(g, &s, q, &r),
+            "s={s:?} r={r:?} mismatch"
+        );
+    }
 }
 
 #[test]

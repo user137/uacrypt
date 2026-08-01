@@ -3804,28 +3804,40 @@ Phase 2+ and none currently in flight).
   run even with the faster path - their `#[cfg_attr(miri, ignore)]` stays unconditional, unchanged.
   Surfaced T-152 (below) as a side effect - filed separately, not fixed in this pass.
 
-- [ ] **T-152** **Found, not fixed: `curve163::scalar_multiply` looks wrong for scalars at/near the
-  curve order `n`, found as a side effect of building `verify_combine`'s differential tests
-  (T-151/D-108) - a separate question from that work, filed here rather than chased or fixed in the
-  same pass.** Concretely, for `q = G.double()` (order exactly `n`, since `n` is odd so
-  `gcd(2, n) = 1`): `q.scalar_multiply(&curve163::order())` is **not** `Point::Infinity` (expected
-  by Lagrange's theorem for any point of order dividing `n`), and `q.scalar_multiply(&(order()-1))`
-  equals `q` itself rather than `q.negate()` (expected: `q*(n-1) = q*n - q = O - q = -q`). 200
-  random ~163-bit scalars (unrelated to `order()`'s specific value) all showed the doubling
-  homomorphism `q.scalar_multiply(k).double() == q.scalar_multiply(2k)` holding correctly - this
-  isn't a general "breaks for large k" issue, it's specific to values at or adjacent to `n` itself.
-  `scalar_multiply`'s own doc comment (`curve163.rs:92-93`) promises correctness only for
-  `k < n` - `order()` itself (`k = n`) is out of that documented domain, so the first observation
-  isn't necessarily a bug by the function's own contract; but `order() - 1` **is** inside `[1, n-1]`
-  and still looks wrong, which is the part worth a real investigation. `bit_at`'s read of bit 162
-  (`order()`'s top bit) checks out by hand (`20 - 162/8 = 0`, `162 % 8 = 2`, reads `0x04 >> 2 & 1 =
-  1` correctly) and the ladder's loop bound (`(0..163u32).rev()`) does start at 162 - so if there's
-  a real bug, the next place to look is the y-recovery step at the end of `scalar_multiply`
-  (`curve163.rs`'s final `x1_affine`/`x2_affine`/`y1_affine` block), not the loop or `bit_at`. This
-  is `sign`/`verifying_key()`'s only scalar-multiplication path (unchanged by T-151/D-108) - a real
-  bug here would be a correctness question for existing, shipped signing/key-derivation code, not
-  just `verify`'s new fast path, and needs its own dual-oracle cross-check (a scalar exactly at/near
-  `n-1` fed through Bouncy Castle's own binary-curve multiply) before concluding anything further.
+- [x] **T-152** **Done - see `docs/DECISIONS.md` D-110.** Found (as a side effect of T-151/D-108's
+  differential tests, filed separately rather than chased then) and, this session, root-caused,
+  oracle-confirmed, and fixed. Root cause: `scalar_multiply`'s final projective-to-affine recovery
+  needs both `kP` and `(k+1)P` to be finite points, but never checked - `FieldElement::invert(ZERO)`
+  returning `ZERO` (a deliberate convention, not a panic) silently corrupted the result instead of
+  signaling infinity. Two distinct sub-bugs, confirmed algebraically and by a scratch probe (deleted
+  before commit) before any fix: `z1 == ZERO` (`k == 0`/`k == ord(self)`) gave `(0, x^2)` instead of
+  `Infinity`; `z2 == ZERO` (`k == ord(self) - 1`, genuinely inside the documented `k < n` contract)
+  gave `q` verbatim instead of `q.negate()`. Independently confirmed against Bouncy Castle
+  (`tests/oracle-harness/java/.../Dstu4145T152Oracle.java`, new one-off oracle program, same
+  precedent as `Dstu4145Debug.java`) before trusting the expected values. Impact check (advisor
+  flagged, then verified by reading `signature.rs`): under `small-tables`, `r`/`s` are only bounded
+  to `(0, n)`, so `s = n-1` does reach this path - but only affects whether a signature whose *own*
+  `s`/`r` equals `n-1` verifies (probability `~2^-163`, same as hitting the scalar at all), not
+  something an attacker can use against someone else's valid signature; no forgery vector either
+  (final `r' == r` check unaffected). **Net: real in-contract correctness bug at one boundary
+  scalar, no realistic security consequence either direction.** Default profile was never affected
+  (`ProjectivePoint::to_affine` already guards `Z == ZERO`). **Fix** (two different shapes, per
+  advisor review - not the same bug): `z1 == ZERO` gets an explicit early-return branch (a
+  different enum variant, `Point::Infinity` vs. `Point::Affine`, can't be branchlessly selected
+  between; only fires for `k == 0`/`k >= ord(self)`, outside real callers' range) - the zero test
+  itself uses the new `is_zero_mask` helper, not `==`, per a second advisor pass that caught a
+  first draft comparing secret-derived `z1` via `FieldElement`'s derived (non-constant-time)
+  `PartialEq`; `z2 == ZERO` gets a branchless masked select (`is_zero_mask`/`select`, new private
+  helpers matching `curve163.rs`'s existing `cswap` idiom) between the formula's `y` and the correct
+  `x + y`, since `z2` is secret-scalar-derived and must stay constant-time. New regression tests:
+  `scalar_multiply_at_order_boundary_matches_bouncy_castle`,
+  `verify_combine_matches_classic_at_order_boundary` (`dstu4145_curve.rs`, both carrying the same
+  Miri exclusion as the file's existing `scalar_multiply`-based tests, T-100) - confirmed via
+  `git stash` to genuinely fail pre-fix, not pass vacuously; the second test only discriminates
+  under the default profile (trivially self-consistent under `small-tables`, same caveat the file's
+  other tests already carry). Full workspace `cargo test` (all green), `clippy --all-features`/
+  default/`small-tables` all `-D warnings` clean, `cargo fmt --all --check` clean, `no_std` build
+  passes.
 
 - [x] **T-153** **Done - see `docs/DECISIONS.md` D-109, `docs/PERFORMANCE.md`'s extended "DSTU 4145
   vs. ECDSA" subsection.** Owner felt T-151/D-108's ~1.99x `verify` gain was too small ("надто малий,

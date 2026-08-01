@@ -7370,7 +7370,8 @@ general "large scalar" issue — it's specific to values at/adjacent to `n` itse
 itself is arguably outside `scalar_multiply`'s own documented `k < n` contract regardless. Filed as
 `docs/TASKS.md` T-152 (not fixed here, needs its own dual-oracle cross-check) — this is why
 `verify_combine_matches_classic_for_asymmetric_magnitudes` above uses a large-but-not-`order()-1`
-scalar instead of the boundary value.
+scalar instead of the boundary value. **Update, later session: root-caused, oracle-confirmed, and
+fixed — see D-110 below.**
 
 `cargo test --workspace` / `--features dstu-core/small-tables` / `--all-features`,
 `cargo clippy --workspace --all-features -- -D warnings`, and `cargo fmt --all --check` all pass.
@@ -7579,3 +7580,140 @@ bouncy_castle` re-confirmed still not finishing within 300s) and every `sign`/`v
 round-trip test - their exclusion rests on `scalar_multiply`'s own 163-iteration ladder cost, which
 this entry doesn't touch (only `invert()`'s multiply count and `square()`'s cost within each
 iteration changed, not the iteration count itself).
+
+## D-110: `scalar_multiply` correctness bug at the curve-order boundary, root-caused and fixed
+(`docs/TASKS.md` T-152)
+
+T-151/D-108's own differential tests surfaced a finding filed as T-152 rather than chased in that
+session: for `q = G.double()` (order exactly `n`, `n` odd so `gcd(2, n) = 1`),
+`q.scalar_multiply(&curve163::order())` was not `Point::Infinity` (Lagrange's theorem), and
+`q.scalar_multiply(&(order()-1))` equaled `q` itself instead of `q.negate()`. The owner asked for a
+deep investigation this session, with oracle confirmation and an advisor consult, not just internal
+reasoning - this entry is that investigation, plus the fix.
+
+### Root cause
+
+`scalar_multiply`'s final projective-to-affine step (`curve163.rs`) recovers `kP`'s affine
+coordinates from the ladder's `(X1:Z1)`/`(X2:Z2)` pairs, which respectively hold `kP`/`(k+1)P`.
+That recovery formula is only valid when **both** `kP` and `(k+1)P` are finite points - it needs
+each one's affine x-coordinate, and infinity has none. The code never checked this: it called
+`z1.invert()`/`z2.invert()` unconditionally, and `FieldElement::invert(ZERO)` returns `ZERO` (a
+deliberate "undefined but zero by Fermat's formula" convention, not a panic - see `gf2m163.rs`'s
+own doc comment) rather than signaling infinity. Two distinct corruptions follow, confirmed by a
+scratch probe (`q.scalar_multiply` at `k = 0, n-1, n, n+1`, deleted before commit - not part of the
+permanent test suite) before any fix was written:
+
+- **`z1 == ZERO`** (`kP == O`, i.e. `k == 0` or `k == ord(self)`): `x1_affine` comes out `0`
+  (garbage, not "no valid x"), and - worked out algebraically and confirmed by the probe - the
+  y-recovery formula reduces to `y1 = x^2` in this case (not a random value, a specific wrong one).
+  Reproduced at both `k = 0` and `k = n` (probe output identical for both: `(0, x^2)`).
+- **`z2 == ZERO`** (`(k+1)P == O`, i.e. `k == ord(self) - 1`): `x1_affine` is actually correct here
+  (this curve family's negation is `(x,y) -> (x, x+y)` - `P`/`-P` share an x-coordinate, so a
+  correct x can't distinguish them), but the y-formula's dependence on `x2_affine` (silently `0`
+  instead of undefined) reduces algebraically to `y1 = y` - i.e. the function returns `q` verbatim
+  instead of `q.negate()`, exactly matching T-152's original report.
+
+### Oracle confirmation (not just self-consistency)
+
+A new one-off Java program (`tests/oracle-harness/java/src/main/java/Dstu4145T152Oracle.java`,
+same "one-off debug tool" precedent as `Dstu4145Debug.java`, D-25) computed `Q.multiply(n)`,
+`Q.multiply(n-1)`, `Q.multiply(n+1)` via Bouncy Castle's own `ECPoint` arithmetic, independent of
+anything in this codebase: confirmed `Q.multiply(n)` is `INFINITY` and `Q.multiply(n-1)` equals
+`Q.negate()` exactly (both `true` per the program's own boolean checks) - i.e. the *expected*
+correct values, not just a re-derivation of what "should" happen. This is the dual-oracle
+confirmation T-152 asked for before concluding anything further.
+
+### Severity
+
+Reachable in the documented `k < n` contract only at the single point `k == n - 1` (probability
+`~2^-163` for a uniformly random secret scalar - `sign`/`verifying_key()`'s own scalars are never
+realistically going to land there). An advisor review initially raised whether this was
+attacker-reachable via `small-tables`' `verify_combine(g, s, q, r) = g.scalar_multiply(s) +
+q.scalar_multiply(r)`, since `r`/`s` are parsed from the signature - checked `signature.rs::verify`
+and confirmed `r`/`s` are only bounded to `(0, n)`, so `s == n - 1` (or `r == n - 1`) does reach the
+buggy path there. On reflection this is not a live concern either direction: reaching it requires
+*constructing* a signature whose own `s` (or `r`) equals `n - 1`, which no honest signer ever
+produces (same `~2^-163` improbability as the scalar itself) and which only affects whether that
+one self-selected signature verifies - there's no attacker action that turns this into rejecting
+*someone else's* valid signature, and the final `r' == r` check means it was never a forgery vector
+either. **Net**: an in-contract correctness bug at one specific boundary scalar, no realistic
+security consequence in either direction. The default profile's projective/Shamir path (D-108) was
+never affected - `ProjectivePoint::to_affine`/`mixed_add` already guard `Z == ZERO` throughout.
+
+One further boundary noted but not chased: `z2 == 0` also arises for every odd `k` when `self` has
+order 2 (`x == 0`), a case this fix doesn't special-case - but that input is already broken upstream
+of this fix (`x.invert()` on `ZERO` in the same recovery step), and DSTU 4145 only ever calls
+`scalar_multiply` on `G` or an already-validated `Q`, neither of which is an order-2 point. The fix
+assumes a full-order input point; recorded here, not worth a dedicated check.
+
+### The fix - two different cases, two different shapes, per advisor review
+
+The two corruptions are not the same bug and don't take the same fix:
+
+- **`z1 == ZERO`** (`k == 0`/`k == ord(self)`): `Point::Infinity` is a different **enum variant**
+  from `Point::Affine` - not a same-shape value a branchless mask can select between, unlike the
+  other case. Fixed with an explicit early-return branch right after the ladder loop: `if
+  is_zero_mask(z1) != 0 { return Point::Infinity; }`. This only fires for `k == 0` or `k >=
+  ord(self)`, both outside (or at the exact edge of) `k < n`'s documented contract for a full-order
+  point - a deliberate, named exception to this function's branchless posture, not a fresh timing
+  side channel for any in-range secret scalar DSTU 4145 actually constructs. **The zero *test*
+  itself still uses `is_zero_mask`, not `z1 == FieldElement::ZERO`** - a first draft used the
+  derived `PartialEq`, which an advisor review caught as a `==` on secret-derived data, exactly what
+  `docs/SECURITY.md`'s hard constraint forbids (the branch on the resulting mask is the only
+  data-dependent step left, which is unavoidable given the enum-variant mismatch).
+- **`z2 == ZERO`** (`k == ord(self) - 1`): genuinely inside the documented contract, and `z2` is
+  secret-scalar-derived, so this needed to stay branchless. The correct answer is exactly
+  `-self = (x, x + y)` (`Point::negate`) - `x1_affine` is already right either way, so only `y`
+  needs correcting. Two new private helpers in `curve163.rs`, matching the file's existing
+  `cswap`-style manual-mask idiom rather than pulling in `subtle` (this file's own established
+  branchless-mask convention, not a project-wide rule against `subtle` - `subtle::ConstantTimeEq`
+  remains the right tool for byte-slice/tag comparisons elsewhere in this codebase):
+  - `is_zero_mask(a: FieldElement) -> u64`: the standard `x | wrapping_neg(x)` top-bit branchless
+    zero test (for nonzero `x`, either `x` or `-x` has its sign bit set in two's complement; for
+    `x == 0` neither does), applied to the OR of all 3 limbs.
+  - `select(mask, if_mask, otherwise) -> FieldElement`: one-sided branchless select, same
+    XOR-and-mask shape as `cswap`'s swap.
+
+  `y1_affine = select(is_zero_mask(z2), x + y, y1_affine_formula)` - the formula still computes
+  (and `z2.invert()` is still called on a possibly-zero value, staying branchless), but the
+  corrupted result is masked out afterward rather than trusted. `gf2m163.rs`'s `invert()` doc
+  comment updated to name this as the one documented exception to "callers must never invert
+  zero," rather than leaving that claim silently false.
+
+### Tests
+
+`crates/dstu-core/tests/dstu4145_curve.rs`: `scalar_multiply_at_order_boundary_matches_bouncy_castle`
+(direct boundary check at `k = 0, n-1, n, n+1` against `Point::Infinity`/`q.negate()`/`q`/`q`) and
+`verify_combine_matches_classic_at_order_boundary` (the same boundary through both `verify_combine`
+build-profile bodies). Both carry the same `#[cfg_attr(miri, ignore = ...)]` as the file's existing
+`scalar_multiply`-based tests (T-100) - each calls `scalar_multiply` several times, and that
+ladder's per-call cost, not this fix, is what's too slow to interpret under Miri.
+
+**Confirmed both tests actually catch the bug, not just pass vacuously**: `git stash`ed the two
+`src/` fixes and re-ran both tests pre-fix. `scalar_multiply_at_order_boundary_matches_bouncy_castle`
+fails in both build profiles (a direct correctness check, not a differential one). Verifying
+`verify_combine_matches_classic_at_order_boundary` this way is what caught a wrong first-draft
+claim: it only discriminates under the **default** profile (fails pre-fix there, as expected, since
+default's already-infinity-safe Shamir path disagreed with `classic_combine`'s then-buggy
+`scalar_multiply` calls); under `small-tables` it passes **even pre-fix**, because
+`verify_combine`'s own `small-tables` body *is* `classic_combine`'s definition (same "trivially true
+under `small-tables`" caveat the file's other tests already carry) - both sides call the same
+(then-equally-buggy) `scalar_multiply`, so they agree regardless of whether it's correct. The test's
+doc comment states this explicitly rather than the stronger (and, before this check, wrong)
+"both profiles now agree" claim. The pre-existing
+`verify_combine_matches_classic_for_asymmetric_magnitudes` test's comment (which had explicitly
+steered its large-scalar case away from `order()`/`order()-1` because of this exact finding) is
+updated to point at the new dedicated boundary test rather than continuing to avoid it. Zero changes
+needed to any other existing test - all transitively re-verify through the public API.
+
+### Verification
+
+Full workspace `cargo test` (all passing, no failures), `cargo test --features small-tables` for
+`dstu4145_curve`/`dstu4145_gf2m`, `cargo clippy --workspace --all-features -- -D warnings` and both
+the default and `small-tables`-only profiles individually, `cargo fmt --all --check`, `cargo build
+--no-default-features` (`no_std` check) - all clean. The scratch probe used to confirm the root
+cause and the fix (`crates/dstu-core/examples/t152_probe.rs`) was deleted before committing, per
+this project's convention that a one-off investigation aid doesn't become a shipped artifact (it
+would otherwise sit in the crate's real `examples/` directory alongside the permanent
+`*_diff_cases.rs` examples) - the permanent regression coverage is the two tests above, not the
+probe.

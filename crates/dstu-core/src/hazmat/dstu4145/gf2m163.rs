@@ -80,9 +80,14 @@ impl FieldElement {
     }
 
     /// `self^-1 = self^(2^163 - 2)`, by Fermat's little theorem for `GF(2^163)*`. Undefined for
-    /// `self == ZERO`, same as every reference implementation this was checked against - callers
-    /// must never invert zero (the DSTU 4145 sign/verify pseudocode's own retry loops exist
-    /// precisely to avoid producing a zero value that would need inverting).
+    /// `self == ZERO` - this returns `ZERO` in that case (Fermat's formula itself gives `0^k = 0`
+    /// for any positive `k`), not a panic, but that value is not a meaningful inverse and callers
+    /// must not treat it as one. Ordinarily callers should never invert zero at all (the DSTU 4145
+    /// sign/verify pseudocode's own retry loops exist precisely to avoid producing a zero value
+    /// that would need inverting) - the one documented exception is
+    /// `curve163::scalar_multiply`'s constant-time y-recovery step (`docs/DECISIONS.md` D-110,
+    /// T-152), which still calls this on a possibly-zero value (to stay branchless) but explicitly
+    /// masks the resulting corrupted output afterward rather than trusting it.
     ///
     /// `2^163 - 2 = 2*(2^162 - 1)`, so this computes `(self^(2^162 - 1))^2`. `self^(2^162 - 1)` is
     /// built via an Itoh-Tsujii-style addition chain, using repeated application of
