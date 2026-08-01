@@ -3826,3 +3826,60 @@ Phase 2+ and none currently in flight).
   bug here would be a correctness question for existing, shipped signing/key-derivation code, not
   just `verify`'s new fast path, and needs its own dual-oracle cross-check (a scalar exactly at/near
   `n-1` fed through Bouncy Castle's own binary-curve multiply) before concluding anything further.
+
+- [x] **T-153** **Done - see `docs/DECISIONS.md` D-109, `docs/PERFORMANCE.md`'s extended "DSTU 4145
+  vs. ECDSA" subsection.** Owner felt T-151/D-108's ~1.99x `verify` gain was too small ("надто малий,
+  ми відстаємо на порядок") and asked for a bigger win, floating table-based squaring/caching. An
+  advisor-reviewed cost analysis found table-based squaring reintroduces exactly the secret-indexing
+  question D-19/D-25 carefully scoped (a byte-keyed lookup on a *secret* field element inside
+  `scalar_multiply`'s ladder, not covered by D-19's S-box/MDS-only exception) and would likely cost
+  *more* than today's `multiply(self,self)`-based `square()` once masked for constant time - and
+  that windowing `verify_combine` alone has a low ceiling (~1.1-1.2x, since it only cuts
+  point-*additions*, not the ~163 point-*doublings* that dominate cost). The analysis surfaced a
+  better, unconditional lever instead, needing no new constant-time exception at all: `square()` was
+  `self.multiply(self)` (zero shortcut) and `invert()` was a direct 162-multiply exponentiation
+  despite its own doc comment citing Itoh-Tsujii as the intended approach. **Landed**: (1)
+  bit-interleave squaring (`spread32to64`/`square_wide` in `gf2m163.rs`) - GF(2) squaring is a pure
+  bit-spread (`a(x)^2 = a(x^2)`, char-2 cross terms vanish), fixed shift/AND/OR only, no array
+  indexing at all; (2) an Itoh-Tsujii-style addition-chain `invert()`, derived directly
+  (`162 = 2*81 = 2*(80+1)`, chain `1->2->3->6->12->24->27->54->81->162`, `T_(i+j) = T_i^(2^j)*T_j`) -
+  9 multiplies instead of 162, same ~162 total squarings either way. Both differential-tested against
+  their prior forms (kept as test-only oracles, `invert_direct`) rather than derived-and-trusted;
+  `square_wide` additionally checked against `poly_mul_wide(a,a)` at the pre-`reduce` wide-output
+  level specifically (bit 63/64/162 boundaries), not just the final reduced result. Zero changes
+  needed to any existing vector/KAT test in `dstu4145_gf2m.rs`/`dstu4145_signature.rs`/
+  `dstu4145_curve.rs` - all transitively re-verify. Full three-profile test matrix
+  (default/`small-tables`/`--all-features`) green, `clippy`/`fmt` clean on all four CI feature
+  combinations - one pre-existing `clippy::cast_possible_truncation` finding in `curve163.rs`
+  (D-108's own `shamir_double_scalar_multiply`, only visible under the default no-features profile,
+  not `--all-features`) was fixed in the same pass per this project's "CI analyzer findings get
+  fixed now" rule, unrelated to this task's own scope. **Measured** (fresh release builds, same
+  methodology as T-150/T-151): `sign` **667.39 ops/s** (was 255.98, **~2.61x**, close to the ~2.3x
+  estimate); `verify` (default/fast path) **524.01 ops/s** (was 239.31 post-D-108, **~2.19x** more on
+  top of D-108 alone, **~4.37x** cumulative over the original pre-D-108 classic baseline of 120.06).
+  Applied the plan's pre-committed Phase D threshold (pursue windowing only if **total default-path
+  throughput vs. the 120.06 pre-D-108 baseline** lands *below* ~3.5x - not this entry's own isolated
+  increment, which would misleadingly read as satisfying the gate): **4.37x already exceeds it, so
+  Phase D (windowed Shamir table) is explicitly not pursued** - documented as a deliberate stop, not
+  an oversight (the threshold's second AND'd condition, a batch-inversion cost spike, was never run
+  either, since the first condition alone already settled it). `sign`/`verify` are now ~7.9x/~5.2x
+  slower than OpenSSL's `nistb163` (down from T-150's ~20.7x/~22.6x). One Kani proof **written**,
+  `square_wide_matches_poly_mul_wide_self` (constrained to the real `FieldElement` invariant rather
+  than the unconstrained `[u64;3]` space) - **not compiled or run locally**: `#[cfg(kani)]` is gated
+  out of every local build/test/clippy/fmt invocation, and the `kani` crate isn't a dev-dependency
+  here for `--cfg kani` to even resolve outside the real tool. `cargo kani` is Linux/macOS-only
+  (`xtask::kani`, D-102), so CI is this proof's first actual execution, not a second confirmation of
+  a local one - its real pass/fail must be read from the CI run, not assumed from a clean local
+  build. `invert()`'s own addition-chain proof was deliberately not even written (would need to
+  symbolically execute the full unrolled ~162-squaring, 9-multiply chain, not a fixed bit-shuffle
+  like `reduce`/`square_wide` - recorded as "not attempted, expected intractable," the same T-100
+  precedent for Miri applied to Kani). Re-measuring the pre-existing T-100 Miri exclusions this
+  change touched (rather than leaving their now-false "as expensive as `scalar_multiply`'s ladder"
+  rationale stale) found four of them no longer apply -
+  `gf2m163_field_arithmetic_matches_bouncy_castle`/`gf2m163_invert_is_involution_via_reciprocal`
+  (`dstu4145_gf2m.rs`) and `gf2m163_point_double_matches_bouncy_castle`/`gf2m163_point_add_matches_
+  bouncy_castle` (`dstu4145_curve.rs`) now complete in ~76-230s each and had their exclusions
+  removed - real Miri coverage gained, not just preserved. `scalar_multiply`-based exclusions
+  (including every `sign`/`verify`/`crypto_sign` round-trip test) are unaffected and correctly stay,
+  re-confirmed by re-running `gf2m163_scalar_multiply_matches_bouncy_castle` itself, which still
+  doesn't finish in 300s - that cost is `scalar_multiply`'s own 163-iteration ladder, untouched here.

@@ -332,7 +332,13 @@ fn shamir_double_scalar_multiply(g: Point, s: &[u8; 21], q: Point, r: &[u8; 21])
         return Point::Infinity; // s == r == 0 - not reachable via `verify`'s own guards
     };
 
-    let entry_at = |i: u32| -> Point { table[((bit_at(s, i) << 1) | bit_at(r, i)) as usize] };
+    let entry_at = |i: u32| -> Point {
+        // `bit_at` only ever returns 0 or 1, so this index is provably 0..=3 - no truncation
+        // possible regardless of pointer width.
+        #[allow(clippy::cast_possible_truncation)]
+        let index = ((bit_at(s, i) << 1) | bit_at(r, i)) as usize;
+        table[index]
+    };
 
     let mut acc = ProjectivePoint::from_affine(entry_at(top));
     for i in (0..top).rev() {

@@ -12,6 +12,13 @@
 //! OpenSSL's `BN_GF2m_mod_arr`, and both would branch on secret-dependent data here). `invert`'s
 //! only "branch" is on the fixed, public inversion exponent `2^163 - 2` - identical on every call
 //! regardless of the secret operand, so it carries no timing signal about that operand.
+//!
+//! `square` is a pure bit-spread (`spread32to64`/`square_wide`), not a full multiplication - GF(2)
+//! squaring satisfies `a(x)^2 = a(x^2)` since char-2 cross terms vanish, needing only fixed
+//! shift/AND/OR ops and no array indexing at all (`docs/DECISIONS.md` D-109, `docs/TASKS.md` T-153).
+//! `invert` still runs the same fixed 162-squaring chain either way; only the number of
+//! multiplies between squarings differs (D-109's Itoh-Tsujii-style addition chain vs. this file's
+//! prior direct form) - both are fixed, public, data-independent sequences.
 
 /// An element of GF(2^163): 3 little-endian 64-bit limbs. Bits 163..192 (the unused top 29 bits
 /// of the last limb) are always zero - every constructor and operation below maintains this.
@@ -69,7 +76,7 @@ impl FieldElement {
 
     #[must_use]
     pub fn square(self) -> Self {
-        self.multiply(self)
+        reduce(square_wide(&self.0))
     }
 
     /// `self^-1 = self^(2^163 - 2)`, by Fermat's little theorem for `GF(2^163)*`. Undefined for
@@ -77,20 +84,41 @@ impl FieldElement {
     /// must never invert zero (the DSTU 4145 sign/verify pseudocode's own retry loops exist
     /// precisely to avoid producing a zero value that would need inverting).
     ///
-    /// The exponent `2^163 - 2` is `162` one-bits followed by a single zero bit (`2^163 - 1` is
-    /// all ones; subtracting 1 clears the lowest bit). Left-to-right square-and-multiply over
-    /// that fixed bit pattern is exactly `162` (square, multiply-by-`self`) steps followed by one
-    /// final square - the addition chain Itoh-Tsujii accelerates asymptotically, done here in its
-    /// direct form since correctness, not speed, is the goal for this pass (see `docs/DECISIONS.md`
-    /// D-25). Every step always executes regardless of `self`'s value.
+    /// `2^163 - 2 = 2*(2^162 - 1)`, so this computes `(self^(2^162 - 1))^2`. `self^(2^162 - 1)` is
+    /// built via an Itoh-Tsujii-style addition chain, using repeated application of
+    /// `T_(i+j) = T_i^(2^j) * T_j` (where `T_k` denotes `self^(2^k - 1)`) over the derived chain
+    /// `1 -> 2 -> 3 -> 6 -> 12 -> 24 -> 27 -> 54 -> 81 -> 162` (`162 = 2*81 = 2*(80+1)`) - **9**
+    /// combine steps (each one multiply, plus the fixed number of squarings the `2^j` part costs)
+    /// instead of the previous direct form's 162 multiplies, needing the same ~162 total squarings
+    /// either way (squaring does not become free in this polynomial-basis representation, only the
+    /// multiply count drops - `docs/DECISIONS.md` D-109, `docs/TASKS.md` T-153). The chain is a
+    /// fixed, public sequence over a fixed, public exponent, identical for every call regardless of
+    /// `self`'s value - the same constant-time argument that already justified the prior
+    /// fixed-iteration direct form. Verified against that direct form (kept as a test-only oracle,
+    /// `invert_direct` below) by differential test, not by the chain's derivation alone.
     #[must_use]
+    #[allow(clippy::similar_names)] // deliberate: t12/t162 etc. are the standard T_k = self^(2^k-1) notation
     pub fn invert(self) -> Self {
-        let mut result = Self::ONE;
-        for _ in 0..162 {
-            result = result.square();
-            result = result.multiply(self);
-        }
-        result.square()
+        // `sq_n(x, n) = x^(2^n)`, i.e. `n` repeated squarings.
+        let sq_n = |mut x: Self, n: u32| -> Self {
+            for _ in 0..n {
+                x = x.square();
+            }
+            x
+        };
+
+        let t1 = self; // self^(2^1 - 1)
+        let t2 = t1.square().multiply(t1); // self^(2^2 - 1)
+        let t3 = sq_n(t2, 1).multiply(t1); // self^(2^3 - 1)
+        let t6 = sq_n(t3, 3).multiply(t3); // self^(2^6 - 1)
+        let t12 = sq_n(t6, 6).multiply(t6); // self^(2^12 - 1)
+        let t24 = sq_n(t12, 12).multiply(t12); // self^(2^24 - 1)
+        let t27 = sq_n(t24, 3).multiply(t3); // self^(2^27 - 1)
+        let t54 = sq_n(t27, 27).multiply(t27); // self^(2^54 - 1)
+        let t81 = sq_n(t54, 27).multiply(t27); // self^(2^81 - 1)
+        let t162 = sq_n(t81, 81).multiply(t81); // self^(2^162 - 1)
+
+        t162.square() // self^(2^163 - 2)
     }
 }
 
@@ -114,6 +142,50 @@ fn poly_mul_wide(a: &[u64; 3], b: &[u64; 3]) -> [u64; 6] {
     }
 
     acc
+}
+
+/// Spreads the low 32 bits of `x` across the low 64 bits of the result, each bit `i` of `x`
+/// landing at bit `2*i` of the result with a zero bit inserted between every pair - the
+/// "interleave bits by binary magic numbers" technique (Sean Eron Anderson's Bit Twiddling Hacks,
+/// `graphics.stanford.edu/~seander/bithacks.html#InterleaveBMN`), widened from its usual
+/// 16-bit-to-32-bit form to 32-bit-to-64-bit by doubling every mask/shift constant the same way.
+/// This computes exactly the GF(2) squaring identity `a(x)^2 = a(x^2)` (char-2 cross terms vanish:
+/// `(a_i*x^i)^2 = a_i*x^(2i)` since `a_i` is 0 or 1), applied 32 bits at a time - a pure fixed
+/// shift/AND/OR bit-spread, no array indexing anywhere, so no D-19-adjacent secret-indexing
+/// question exists at all (`docs/DECISIONS.md` D-25's "branchless by construction" posture,
+/// extended to a fresh operation). Verified against the `poly_mul_wide` self-multiply oracle by
+/// the `square_wide_matches_multiply_wide_*` tests below, at both every single-bit position and
+/// the all-bits-set case, not derived from the citation alone.
+fn spread32to64(x: u32) -> u64 {
+    let mut x = u64::from(x);
+    x = (x | (x << 16)) & 0x0000_FFFF_0000_FFFF;
+    x = (x | (x << 8)) & 0x00FF_00FF_00FF_00FF;
+    x = (x | (x << 4)) & 0x0F0F_0F0F_0F0F_0F0F;
+    x = (x | (x << 2)) & 0x3333_3333_3333_3333;
+    x = (x | (x << 1)) & 0x5555_5555_5555_5555;
+    x
+}
+
+/// Squares a 163-bit operand into its 6-limb (up to 325-bit) wide product, via `spread32to64`
+/// instead of a full carry-less `poly_mul_wide` self-multiplication. Each input limb's low/high
+/// 32-bit halves spread independently into exactly one 64-bit output limb apiece, with no
+/// cross-limb interaction needed: limb `i`'s low 32 bits (global bit range `[64i, 64i+31]`) spread
+/// to global bit range `[128i, 128i+62]`, landing entirely within output limb `2i`; its high 32
+/// bits (global bit range `[64i+32, 64i+63]`) spread to `[128i+64, 128i+126]`, landing entirely
+/// within output limb `2i+1` - both fit with no shift needed at placement time.
+fn square_wide(a: &[u64; 3]) -> [u64; 6] {
+    let mut out = [0u64; 6];
+    for i in 0..3 {
+        #[allow(clippy::cast_possible_truncation)]
+        // deliberate: splitting a limb into its two halves
+        let lo = a[i] as u32;
+        #[allow(clippy::cast_possible_truncation)]
+        // deliberate: splitting a limb into its two halves
+        let hi = (a[i] >> 32) as u32;
+        out[2 * i] = spread32to64(lo);
+        out[2 * i + 1] = spread32to64(hi);
+    }
+    out
 }
 
 /// Left-shifts a 6-limb little-endian array by exactly 1 bit, in place.
@@ -163,6 +235,88 @@ fn reduce(mut c: [u64; 6]) -> FieldElement {
     }
 
     FieldElement([c[0], c[1], c[2]])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use proptest::prelude::*;
+
+    #[test]
+    fn spread32to64_places_each_bit_at_double_position() {
+        for bit in 0..32u32 {
+            let x = 1u32 << bit;
+            assert_eq!(spread32to64(x), 1u64 << (2 * bit), "bit {bit}");
+        }
+    }
+
+    #[test]
+    fn spread32to64_of_zero_and_all_ones() {
+        assert_eq!(spread32to64(0), 0);
+        assert_eq!(spread32to64(u32::MAX), 0x5555_5555_5555_5555);
+    }
+
+    /// `square_wide` must match the already-trusted `poly_mul_wide(a, a)` oracle at the *wide*
+    /// (pre-`reduce`) level, not just after reduction - a placement bug in the bit-spread could
+    /// otherwise be silently absorbed by `reduce`'s own normalization and slip through undetected.
+    /// Bits 63/64 straddle the limb-0/limb-1 boundary; bit 162 is the top meaningful bit, sitting
+    /// inside limb 2 (which is only 35/64 full).
+    #[test]
+    fn square_wide_matches_multiply_wide_at_limb_boundaries() {
+        for bit in [0u32, 1, 63, 64, 65, 127, 128, 129, 162] {
+            let limb = (bit / 64) as usize;
+            let shift = bit % 64;
+            let mut a = [0u64; 3];
+            a[limb] = 1u64 << shift;
+            assert_eq!(square_wide(&a), poly_mul_wide(&a, &a), "bit {bit}");
+        }
+    }
+
+    /// Every meaningful bit set at once (163 bits, top 29 bits of limb 2 zero - the invariant every
+    /// `FieldElement` upholds).
+    #[test]
+    fn square_wide_matches_multiply_wide_for_all_bits_set() {
+        let a = [u64::MAX, u64::MAX, (1u64 << 35) - 1];
+        assert_eq!(square_wide(&a), poly_mul_wide(&a, &a));
+    }
+
+    /// The pre-D-109 direct 162-step square-and-multiply form of `invert`, kept only as a
+    /// test-only oracle for `invert`'s new addition-chain implementation - not a second production
+    /// path (same spirit as this module's own `naive_reduce` Kani oracle below).
+    fn invert_direct(a: FieldElement) -> FieldElement {
+        let mut result = FieldElement::ONE;
+        for _ in 0..162 {
+            result = result.square();
+            result = result.multiply(a);
+        }
+        result.square()
+    }
+
+    // `invert`'s addition-chain form (D-109/T-153) against the direct-loop oracle above, for
+    // random nonzero field elements - the actual proof of correctness for this phase, not the
+    // derived chain's citation.
+    proptest! {
+        #[test]
+        fn invert_matches_invert_direct(bytes in prop::collection::vec(any::<u8>(), 21)) {
+            let mut arr = [0u8; 21];
+            arr.copy_from_slice(&bytes);
+            arr[0] &= 0x07; // stay below 2^163, same invariant every constructor upholds
+            let a = FieldElement::from_be_bytes(&arr);
+            prop_assume!(a != FieldElement::ZERO);
+            prop_assert_eq!(a.invert(), invert_direct(a));
+        }
+    }
+
+    /// Fixed nonzero edge cases the property test's random sampling might not hit by chance:
+    /// `ONE`, and a value with only the top meaningful bit set.
+    #[test]
+    fn invert_matches_invert_direct_at_edge_values() {
+        assert_eq!(FieldElement::ONE.invert(), invert_direct(FieldElement::ONE));
+        let mut top_bit = [0u64; 3];
+        top_bit[2] = 1u64 << 34; // bit 162, the top meaningful bit
+        let a = FieldElement(top_bit);
+        assert_eq!(a.invert(), invert_direct(a));
+    }
 }
 
 /// Kani pilot (see `docs/TASKS.md`/`docs/DECISIONS.md` for the tracked outcome): `reduce`'s doc
@@ -215,5 +369,25 @@ mod kani_proofs {
     fn reduce_matches_naive_bit_loop() {
         let c: [u64; 6] = kani::any();
         assert_eq!(reduce(c), naive_reduce(c));
+    }
+
+    /// `square_wide` (D-109/T-153) against `poly_mul_wide(a, a)`, for every `a` a real
+    /// `FieldElement` could ever hold (top 29 bits of limb 2 clear, the invariant every
+    /// constructor upholds - not the full unconstrained `[u64; 3]` space, which includes values no
+    /// caller can actually produce). Same structural shape as `reduce`'s two proofs above (fixed
+    /// shift/AND/OR/XOR over a symbolic input, no data-dependent bounds), so expected tractable -
+    /// this is the only Kani proof attempted for the D-109 work; `invert`'s own addition-chain
+    /// proof is deliberately not attempted (see `docs/DECISIONS.md` D-109) since it would need to
+    /// symbolically execute the full ~162-squaring, 9-multiply chain end to end, an unrolled
+    /// field-arithmetic computation rather than a fixed bit-shuffle - not attempted, expected
+    /// intractable, per the same "too expensive to verify under interpretation" precedent T-100
+    /// already established for Miri. `cargo kani` itself is Linux/macOS-only (`xtask::kani`'s own
+    /// check, D-102), so this proof's actual pass/fail is confirmed by CI, not locally on this
+    /// Windows dev machine.
+    #[kani::proof]
+    fn square_wide_matches_poly_mul_wide_self() {
+        let a: [u64; 3] = kani::any();
+        kani::assume(a[2] >> 35 == 0);
+        assert_eq!(square_wide(&a), poly_mul_wide(&a, &a));
     }
 }

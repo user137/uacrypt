@@ -96,16 +96,11 @@ fn gf2m163_generator_matches_vector() {
     assert_eq!(Point::generator(), Point::Affine(gx, gy));
 }
 
-// `Point::double`/`add` each call `FieldElement::invert`, itself a 162-step square-and-multiply
-// exponentiation (gf2m163.rs, D-25) - as expensive per call as `scalar_multiply`'s ladder, not
-// cheaper for being a single point operation. Looping this over 20-40 vector cases is what makes
-// these two tests too slow to interpret under Miri (confirmed empirically: >40 min and still not
-// finished for these two tests alone, docs/TASKS.md T-100) - excluded from CI's required Miri gate for
-// cost reasons; `cargo test` (required, fast) still covers this every push.
-#[cfg_attr(
-    miri,
-    ignore = "FieldElement::invert's 162-step exponentiation, looped over many vector cases, is too slow to interpret under Miri - see docs/TASKS.md T-100"
-)]
+// `Point::double`/`add` each call `FieldElement::invert` once. Under the old 162-multiply direct
+// form (D-25) this was as expensive per call as `scalar_multiply`'s own ladder, making these two
+// tests too slow to interpret under Miri (>40 min unfinished, T-100). D-109/T-153's 9-multiply
+// addition-chain `invert` re-measured (not assumed) at ~91-95s for these two tests, well within CI's
+// budget - exclusion removed, real Miri coverage restored.
 #[test]
 fn gf2m163_point_double_matches_bouncy_castle() {
     let json = include_str!("vectors/dstu4145/gf2m163_arith.json");
@@ -121,10 +116,8 @@ fn gf2m163_point_double_matches_bouncy_castle() {
     }
 }
 
-#[cfg_attr(
-    miri,
-    ignore = "FieldElement::invert's 162-step exponentiation, looped over many vector cases, is too slow to interpret under Miri - see docs/TASKS.md T-100"
-)]
+// See `gf2m163_point_double_matches_bouncy_castle`'s comment above - same fix, re-measured
+// separately at ~95s.
 #[test]
 fn gf2m163_point_add_matches_bouncy_castle() {
     let json = include_str!("vectors/dstu4145/gf2m163_arith.json");

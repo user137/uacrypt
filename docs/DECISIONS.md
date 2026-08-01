@@ -1023,7 +1023,11 @@ owner) rather than discovered as a bug later:
   zero changes nothing), so this only costs a few redundant word ops, not correctness.
 - **Inversion**: Itoh–Tsujii (`a^(2^m-2)` via a fixed square/multiply addition chain) rather than
   extended-Euclidean/binary-GCD — built entirely from the multiply/square/reduce above, fixed
-  control flow regardless of `a`'s value, no new primitive needed.
+  control flow regardless of `a`'s value, no new primitive needed. **This was the intended design
+  from this entry onward, but the code that actually shipped for a long stretch was a simpler direct
+  162-round Fermat exponentiation instead** (a self-acknowledged gap, noted only in `invert()`'s own
+  doc comment, never recorded here) — closed by `docs/DECISIONS.md` D-109/`docs/TASKS.md` T-153, which
+  replaced it with the addition-chain form this bullet always described.
 - **Scalar multiplication**: Montgomery ladder with constant-time conditional swap, rather than
   double-and-add — needed for both `e·G` (secret ephemeral during signing) and, per the same
   posture, applied uniformly rather than carved out only where a value happens to be secret.
@@ -7370,3 +7374,208 @@ scalar instead of the boundary value.
 
 `cargo test --workspace` / `--features dstu-core/small-tables` / `--all-features`,
 `cargo clippy --workspace --all-features -- -D warnings`, and `cargo fmt --all --check` all pass.
+
+## D-109: bit-interleave `square` + Itoh-Tsujii-style addition-chain `invert` for GF(2^163) -
+unconditional, no feature gate, benefits `sign` for the first time (`docs/TASKS.md` T-153)
+
+D-108's ~1.99x `verify` speedup felt too small to the owner ("Щось приріст надто малий, ми
+відстаємо на порядок... повинно бути щось суттєвіше") given `verify` is still ~21-23x slower than
+OpenSSL's `nistb163` and `sign` (untouched by D-108) is ~20.7x slower. The owner asked whether
+caching/tables could do better, in the order windowing-then-squaring; an advisor-reviewed
+cost-analysis agent was asked to check that ordering rather than assume it, with instructions to
+report honestly if the suspicion (windowing has a low ceiling) held up.
+
+### The analysis, and why the order got reversed
+
+- **Table-based squaring** (literally what the owner asked about) reintroduces the exact
+  secret-indexing question D-19/D-25 carefully scoped: a plain array lookup keyed on a byte of a
+  **secret** field element, inside `scalar_multiply`'s ladder, is a fresh case D-19's exception
+  doesn't cover (that exception is scoped specifically to S-box/MDS lookups mirroring the DSTU
+  reference implementations). A masked/branchless version (reading the whole table every time,
+  `cswap`-style) would likely cost *more* than today's `multiply(self,self)`-based `square()`,
+  making `sign`'s constant-time path slower, not faster - the one thing this option was supposed to
+  help.
+- **Windowing `verify_combine` alone has a low ceiling**, confirmed rather than assumed: it only
+  reduces point-*additions*, not the ~163 point-*doublings* needed to shift the Shamir accumulator
+  across the full bit-length, and doublings already dominate cost. A joint `(a,b)`-table blows up
+  combinatorially past window-width 2; a decoupled "comb-for-`G` + separate-ladder-for-`Q`" design
+  loses Shamir's shared-doubling benefit entirely (163 shared doublings -> 184 total: 163 for `Q`'s
+  own chain + 21 for `G`'s comb). A first draft of this analysis also missed that converting a
+  runtime-built table of `Q`'s projective multiples back to affine form (needed for `mixed_add`'s
+  affine-only second argument) would cost one inversion *per table entry* unless a new Montgomery
+  batch-inversion primitive is built - advisor review caught this gap, which raises windowing's real
+  cost above the first estimate. Net ceiling: **~1.1-1.2x** beyond D-108's already-shipped 1.99x -
+  not the order-of-magnitude the owner was looking for, and it only helps `verify` - `sign` stays
+  untouched either way.
+- **The actual lever, found during review, not in the owner's original two-item list**:
+  `gf2m163::square()` was just `self.multiply(self)` (zero shortcut), and `FieldElement::invert()`
+  (measured this session at **338.7x** a single `multiply()`/`square()` call, 1263ns vs 427781ns
+  release build) was a direct 162-round Fermat exponentiation - despite its own doc comment already
+  naming Itoh-Tsujii as the intended, asymptotically-faster approach, a documented-vs-shipped gap
+  nobody had gone back to close. Both fixes are **unconditional** (every caller, every build
+  profile, including `sign`/`verifying_key()` for the first time) and need **no new constant-time
+  exception**, unlike table-squaring.
+
+Owner approved the corrected order: squaring + Itoh-Tsujii first, re-measure, then only pursue
+windowing if the numbers still justify it.
+
+### Approach
+
+**Bit-interleave squaring** (`gf2m163.rs`): GF(2) squaring satisfies `a(x)^2 = a(x^2)` (char-2
+cross terms vanish: `(a_i*x^i)^2 = a_i*x^(2i)` since each coefficient is 0 or 1) - a pure bit-spread,
+not a multiplication. `spread32to64(x: u32) -> u64` places bit `i` of `x` at bit `2*i` of the
+result (zero inserted between every pair), via the "interleave bits by binary magic numbers"
+technique (Sean Eron Anderson's Bit Twiddling Hacks,
+`graphics.stanford.edu/~seander/bithacks.html#InterleaveBMN`), widened from its usual
+16-to-32-bit form to 32-to-64-bit by doubling every mask/shift constant. `square_wide(a: &[u64;3])
+-> [u64;6]` applies this to each limb's low/high 32-bit halves independently - limb `i`'s low 32
+bits (global bits `[64i, 64i+31]`) spread to output limb `2i`, its high 32 bits (`[64i+32,
+64i+63]`) to output limb `2i+1`, both landing exactly on a limb boundary with no shift needed at
+placement time. `FieldElement::square()`'s body changes from `self.multiply(self)` to
+`reduce(square_wide(&self.0))` - the existing, unchanged `reduce()` consumes the wide result
+exactly as it already does for `multiply()`'s `poly_mul_wide` output. No array indexing anywhere in
+either new function, so no D-19-adjacent question exists at all - fits directly inside D-25's
+"branchless by construction" posture, extended to a fresh operation.
+
+**Itoh-Tsujii-style addition-chain inversion** (`gf2m163.rs`): `2^163 - 2 = 2*(2^162 - 1)`, so
+`invert()` computes `(self^(2^162-1))^2`. `self^(2^162-1)` is built via repeated application of
+`T_(i+j) = T_i^(2^j) * T_j` (`T_k` denoting `self^(2^k-1)`) over the chain derived directly from
+`162 = 2*81 = 2*(80+1)`: `1 -> 2 -> 3 -> 6 -> 12 -> 24 -> 27 -> 54 -> 81 -> 162` - **9** combine
+steps (9 multiplies total), each preceded by the fixed number of squarings its `2^j` factor costs
+(squaring does **not** become free in this polynomial-basis representation - the ~162 total
+squarings are unchanged from the direct form; only the multiply count drops, from 162 to 9). The
+chain was derived and verified by test, not transcribed from a citation hunt (a deliberate choice,
+given this same session's earlier `verify_combine`/`order()` debugging cost real time chasing a
+paper trail instead of the test) - the differential test against `invert_direct` (the prior direct
+form, kept as a test-only oracle, not a second production path) is the actual proof of correctness.
+The chain is a fixed, public sequence over a fixed, public exponent, identical for every call
+regardless of `self`'s value - the same constant-time argument that already justified the prior
+fixed-iteration direct form.
+
+### Tests
+
+- `square_wide_matches_multiply_wide_at_limb_boundaries`/`_for_all_bits_set` (`gf2m163.rs` internal
+  `#[cfg(test)]`, since `square_wide` is private): differential against the already-trusted
+  `poly_mul_wide(a, a)` oracle at the **wide** (pre-`reduce`) level specifically, not just the final
+  reduced result - catches a placement bug `reduce()`'s own normalization could otherwise silently
+  absorb. Covers bit 0/1, bits 63/64/65 (limb-0/limb-1 boundary), bits 127/128/129 (limb-1/limb-2
+  boundary), bit 162 (top meaningful bit, limb 2 is only 35/64 full), and every meaningful bit set
+  at once.
+- `gf2m163_square_matches_multiply_at_byte_boundaries` + a proptest
+  (`gf2m163_square_matches_multiply_for_random_elements`) in the external `dstu4145_gf2m.rs`,
+  against the public API (`a.square()` vs. `a.multiply(a)`).
+- `invert_matches_invert_direct` (proptest) + `invert_matches_invert_direct_at_edge_values`
+  (`ONE`, and a value with only the top meaningful bit set) in `gf2m163.rs` internal tests, against
+  `invert_direct` (the preserved prior direct-loop form).
+- **Zero changes needed** to any existing vector/KAT test (`gf2m163_arith.json`'s `"square"`/
+  `"invert"` cases, `gf2m163_invert_is_involution_via_reciprocal`, every `dstu4145_signature.rs`/
+  `dstu4145_curve.rs`/`crypto_sign.rs` sign/verify test) - all transitively re-verify both new
+  implementations with no test edits, since every one of them calls through the public
+  `square()`/`invert()` API this change replaces underneath.
+- **One Kani proof written**, `square_wide_matches_poly_mul_wide_self` - same structural shape as
+  `reduce`'s two existing proofs (fixed shift/AND/OR/XOR over a symbolic input, no data-dependent
+  bounds), constrained via `kani::assume(a[2] >> 35 == 0)` to the actual `FieldElement` invariant
+  (top 29 bits of limb 2 clear) rather than the full unconstrained `[u64;3]` space, since that's the
+  real precondition every caller upholds. **Not compiled or run locally**: `#[cfg(kani)]` is gated
+  out of every build/test/clippy/fmt command this session ran, and `kani` isn't a dev-dependency
+  here for `--cfg kani` to resolve outside the real tool anyway. `cargo kani` is Linux/macOS-only
+  (`xtask::kani`, D-102), so CI is this proof's first actual execution, not a second confirmation of
+  one already run - read its real pass/fail from the CI run itself, don't assume from a clean local
+  build the way this project's own standing rule already warns against for CI badges in general.
+  **`invert()`'s own addition-chain proof was deliberately not attempted** - unlike `square_wide`, it
+  would need to symbolically execute the full ~162-squaring, 9-multiply chain end to end (an
+  unrolled field-arithmetic computation, not a fixed bit-shuffle), an enormous SAT instance by
+  comparison. Recorded as "not attempted, expected intractable," the same T-100 precedent already
+  established for Miri applied here to Kani, rather than left as an open best-effort item.
+
+### A pre-existing clippy finding fixed in passing
+
+`cargo clippy --workspace -- -D warnings` (the **default**, no-features profile - a real, separate
+required CI step, distinct from `--all-features`) failed on `curve163.rs`'s
+`shamir_double_scalar_multiply` (D-108's own code, confirmed via `git stash` to already fail at
+`ef2eb49` before this session's changes): `clippy::cast_possible_truncation` on
+`((bit_at(s, i) << 1) | bit_at(r, i)) as usize`. `bit_at` only ever returns 0 or 1, so the index is
+provably `0..=3` - fixed with a scoped `#[allow(clippy::cast_possible_truncation)]` and a one-line
+comment stating why, per this project's own rule that a CI-static-analyzer finding on your own
+branch's history gets fixed in the same pass, not left open because tests already passed.
+Unrelated to this task's own scope, fixed because it was discovered while verifying clippy across
+all four feature combinations for the square/invert change.
+
+### Results
+
+Fresh release builds, same dev machine, same methodology as T-150/T-151 (`uacrypt sign`/
+`verify --iterations 5000`, same key/signature/message across all binaries, each confirmed to
+actually sign/verify successfully first):
+
+| | `sign` ops/s | `verify` ops/s (default/fast path) | `verify` ops/s (`small-tables`/classic) |
+|---|---|---|---|
+| Pre-D-108 baseline (T-150) | 255.98 | 120.06 | 120.06 |
+| Post-D-108 (T-151) | 255.98 (unaffected) | 239.31 | 120.06 (unaffected) |
+| Post-D-109 (this entry) | **667.39** | **524.01** | **328.20** |
+| Speedup vs. immediately-prior row | **~2.61x** | **~2.19x** | **~2.73x** |
+| Cumulative speedup vs. pre-D-108 baseline | **~2.61x** | **~4.37x** | **~2.73x** |
+
+`sign`'s ~2.61x is close to the ~2.3x estimate worked out beforehand, and is `sign`/
+`verifying_key()`'s first-ever speedup, since D-108 explicitly left `scalar_multiply` untouched.
+`verify`'s default-path number cumulatively beats OpenSSL's `nistb163` gap down to **~5.2x slower**
+(was ~22.6x pre-D-108); `sign` similarly improves to **~7.9x slower** (was ~20.7x). Note
+`small-tables`'s own internal speedup (~2.73x) isolates Phase A+B's pure field-arithmetic
+contribution in isolation, holding the combine algorithm fixed (classic, unchanged) - useful as a
+cross-check that the field-arithmetic work alone, independent of D-108's projective-coordinates
+work, is responsible for a large, genuine share of the gain, not just the two effects being
+conflated.
+
+**`sign`'s own profile split isn't a code-path difference, and the ~5% gap between them isn't
+noise**: `sign` measured 667.39 ops/s under default, 633.93 ops/s under `small-tables` (table above
+reports the default number only, as the table is organized by `verify`'s profile split, which is
+the actual code-path fork - `sign`'s own path never branches on this feature). `sign_digest`
+derives its deterministic nonce via Kupyna-KMAC (D-46), and `small-tables` swaps Kupyna's own
+internal table-vs-computed path - a real, separate effect from this entry's `square`/`invert` work,
+not measurement jitter and not something either D-108 or this entry claims to control for.
+
+### The Phase D (windowed `verify_combine`) decision
+
+The plan set this threshold **before** the numbers existed (same discipline as D-108's own upfront
+estimate check): pursue a windowed Shamir table for `verify_combine` only if **total default-path
+`verify` throughput landed below ~3.5x of the original pre-D-108 classic baseline (120.06 ops/s)** -
+the gate is read against that cumulative total, **not** against this entry's own isolated increment
+over D-108 (~2.19x, which alone would misleadingly look like it satisfies "below 3.5x") - **and** a
+quick spike showed Montgomery batch inversion (needed for the windowing table) would cost under
+~10% of the combine step. **The measured cumulative total is ~4.37x (524.01 ops/s vs. 120.06),
+already past the 3.5x threshold** - Phase D is explicitly not pursued. This is a deliberate stop
+decided against a pre-committed number, not an oversight or a task left incomplete; windowing's own
+ceiling (~1.1-1.2x more, per the cost analysis above) would not have justified the new `G_TABLE`
+const data, a new Montgomery batch-inversion primitive, and their audit/test surface even if the
+threshold hadn't
+already been crossed.
+
+`cargo test --workspace` / `--features dstu-core/small-tables` / `--all-features`, `cargo clippy`
+on all four of `.github/workflows/rust.yml`'s feature combinations (default, `small-tables`,
+`--no-default-features --features getrandom`, `--all-features`) with `-D warnings`, and
+`cargo fmt --all --check` all pass (the pre-existing CRLF/newline-style warning on Windows checkouts
+under `autocrlf=true` is a known, already-diagnosed local artifact, reproduced even at a clean `git
+stash` of this session's changes - not a real content difference, see D-108's own prior session
+notes). `cargo build --workspace --no-default-features` (`no_std` check) passes. Miri (via
+`cargo +nightly-x86_64-pc-windows-msvc miri test`, `MIRIFLAGS=-Zmiri-disable-isolation
+PROPTEST_CASES=1` matching CI's actual invocation, not the crate's proptest default of 256 cases):
+`square_wide`'s tests pass in ~4.6s; the new external `square` tests (proptest + edge cases) pass in
+~25s; `invert_matches_invert_direct` (proptest, 1 case under CI's real `PROPTEST_CASES=1`) and
+`invert_matches_invert_direct_at_edge_values` (2 fixed cases) both independently confirmed to
+complete (respectively within a shared budget, and in ~106s standalone) - all tractable, none
+needed a new `#[cfg_attr(miri, ignore)]`.
+
+**A real Miri coverage gain, not just "no regression"**: this entry's 9-multiply `invert()`
+invalidated the stated rationale behind several *pre-existing* `#[cfg_attr(miri, ignore)]`
+exclusions from T-100 - each one said `invert`'s old 162-multiply direct form was "as expensive per
+call as `scalar_multiply`'s ladder," which is no longer true. Re-measured (not left as a stale
+comment next to now-faster code) at `MIRIFLAGS=-Zmiri-disable-isolation PROPTEST_CASES=1`:
+`gf2m163_field_arithmetic_matches_bouncy_castle` (20 invert vector cases of 80 total) now completes
+in **~76s** (was unbounded/excluded); `gf2m163_invert_is_involution_via_reciprocal` in **~230s**;
+`gf2m163_point_double_matches_bouncy_castle`/`gf2m163_point_add_matches_bouncy_castle` (each one
+`invert` call per vector case, via `Point::double`/`add`) in **~91s**/**~95s**. All four exclusions
+removed - `dstu4145_gf2m.rs`/`dstu4145_curve.rs` comments updated to explain why. **Left
+unconditionally excluded**: `scalar_multiply`-based tests (`gf2m163_scalar_multiply_matches_
+bouncy_castle` re-confirmed still not finishing within 300s) and every `sign`/`verify`/`crypto_sign`
+round-trip test - their exclusion rests on `scalar_multiply`'s own 163-iteration ladder cost, which
+this entry doesn't touch (only `invert()`'s multiply count and `square()`'s cost within each
+iteration changed, not the iteration count itself).

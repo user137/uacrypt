@@ -1638,3 +1638,36 @@ with `cargo build --release -p uacrypt --features dstu-core/small-tables`, runni
 `verify --key ... --in ... --sig ... --iterations 5000` in turn (same `sign-keygen`/`sign-pubkey`/
 `sign` setup as the table above - `sign`'s own output is unaffected by either feature, so one
 signature/key pair works for both `verify` runs).
+
+### GF(2^163) field arithmetic: bit-interleave `square` + Itoh-Tsujii `invert` — T-153/D-109
+
+Following an owner request for a bigger win than D-108's ~1.99x (the two options originally floated
+- table-based squaring and windowing `verify_combine` - were found, via an advisor-reviewed cost
+analysis, to either reintroduce D-19's secret-indexing question or have a low ~1.1-1.2x ceiling; see
+`docs/DECISIONS.md` D-109 for the full analysis), `gf2m163::square()` (previously
+`self.multiply(self)`, zero shortcut) and `invert()` (previously a direct 162-multiply Fermat
+exponentiation, despite its own doc comment naming Itoh-Tsujii as the intended approach) were
+replaced with a bit-interleave squaring identity and a 9-multiply addition-chain inversion,
+respectively - both **unconditional**, every build profile, including `sign`/`verifying_key()` for
+the first time (D-108 explicitly left `scalar_multiply`, `sign`'s only scalar-multiplication path,
+untouched).
+
+| | `sign` ops/s | `verify` ops/s (default/fast path) | `verify` ops/s (`small-tables`/classic) |
+|---|---|---|---|
+| Pre-D-108 baseline (T-150) | 255.98 | 120.06 | 120.06 |
+| Post-D-108 (T-151) | 255.98 (unaffected) | 239.31 | 120.06 (unaffected) |
+| Post-D-109 (this entry) | **667.39** | **524.01** | **328.20** |
+| Speedup vs. immediately-prior row | **~2.61x** | **~2.19x** | **~2.73x** |
+| Cumulative speedup vs. pre-D-108 baseline | **~2.61x** | **~4.37x** | **~2.73x** |
+
+Cumulatively, this narrows the `nistb163` gap from the table above to **~7.9x slower** (`sign`, was
+~20.7x) and **~5.2x slower** (`verify`, was ~22.6x). The plan's own pre-committed threshold for
+pursuing a further windowed `verify_combine` (Phase D) was "only if cumulative `verify` gain lands
+below ~3.5x" - at ~4.37x, that threshold is already exceeded, so windowing was explicitly not
+pursued this pass (see D-109's own "Phase D decision" section for the full reasoning, not repeated
+here).
+
+**Reproducing**: same binaries/setup as the table above (`cargo build --release -p uacrypt` and
+`--features dstu-core/small-tables`), `sign --key signing.key --in msg.bin --out msg.sig
+--iterations 5000` and `verify --key verifying.key --in msg.bin --sig msg.sig --iterations 5000` on
+each binary in turn.
