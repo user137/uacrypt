@@ -196,6 +196,16 @@ fn u32_scalar(k: u32) -> [u8; 21] {
     bytes
 }
 
+// Missed when this test was added (D-108/T-150-151) - its 8x8 loop makes 128 `scalar_multiply`
+// calls (two per `classic_combine` call), exactly the drift `.github/workflows/rust.yml`'s own
+// comment warned about ("a new EC-heavy test added later without the attribute silently
+// reintroduces the timeout"). Confirmed by two consecutive `cargo miri test` CI runs hanging
+// ~171min/~188min past this test's neighbors before hitting the 240min job timeout - not a
+// deadlock, just uncounted-for compute (docs/DECISIONS.md D-11x).
+#[cfg_attr(
+    miri,
+    ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see docs/TASKS.md T-100"
+)]
 #[test]
 fn verify_combine_matches_classic_for_small_scalars() {
     let g = Point::generator();
@@ -319,6 +329,13 @@ fn verify_combine_matches_classic_at_order_boundary() {
     }
 }
 
+// Same D-108/T-150-151 drift as `verify_combine_matches_classic_for_small_scalars` above - missed
+// this attribute when added, only 2 `scalar_multiply` calls but that alone is already too slow
+// under Miri (same reasoning as every other single-call test in this file).
+#[cfg_attr(
+    miri,
+    ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see docs/TASKS.md T-100"
+)]
 #[test]
 fn verify_combine_matches_classic_when_r_eq_s_eq_one() {
     let g = Point::generator();

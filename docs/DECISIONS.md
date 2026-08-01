@@ -7908,3 +7908,57 @@ assumption deferred to the next CI run - the CI run remains the second, continuo
 rather than after). `cargo test -p dstu-core --lib` (stable toolchain, same Pi) also reconfirmed
 green, unaffected by any of the Kani-toolchain juggling above (Kani's own nightly is a separate,
 `rustup`-managed toolchain, never the crate's own build toolchain).
+
+## D-113: `cargo miri test` hung twice in a row preparing v0.2.0 - two `verify_combine_*` tests
+missing the Miri-exclusion attribute their own sibling tests already carry
+
+Same release checklist as D-112, one commit later (`42ef197`): `cargo miri test` (240min timeout,
+T-146/D-103) was cancelled twice in a row, ~171min then ~188min of total silence each time before
+the runner killed it, instead of the ~2h23m the last known-good run (`8e5a2a8`) took. A re-run of
+the exact same job was tried first (in case of ordinary CI-runner variance, the T-146 precedent) -
+identical outcome both times, ruling out flakiness.
+
+### Wrong initial read, corrected before acting on it
+
+Both hangs stopped printing test results at the same point: the last visible line was
+`dstu4145_curve.rs`'s `verify_combine_matches_classic_for_random_scalars ... ok` (a `proptest!`
+block, the last test declared in the file), followed by total silence until the timeout. First
+hypothesis was a harness-transition deadlock - something in proptest's post-success cleanup (its
+failure-persistence file handling, already known to need `-Zmiri-disable-isolation` for `getcwd`,
+per `rust.yml`'s own comment) hanging under Miri's interpreted filesystem I/O. This was wrong, and
+would have sent investigation toward `gf2m163.rs`'s D-109 arithmetic or proptest internals for no
+reason. The actual tell: `dstu4145_curve.rs` declares **12** `#[test]` fns; the log shows only
+**10** results (6 `ok`, 4 already-`#[cfg_attr(miri, ignore)]`-marked). Rust's test harness prints a
+result line when a test *finishes*, not when it starts, and runs tests in parallel threads - "last
+line printed" is not "where execution stopped." Two tests never finished at all in either run:
+`verify_combine_matches_classic_for_small_scalars` and `verify_combine_matches_classic_when_r_eq_
+s_eq_one`. `..._for_random_scalars` merely happened to be the last one that *did* finish before the
+other two's threads ran out the clock.
+
+### Root cause: compute, not deadlock - the exact drift `rust.yml`'s own comment predicted
+
+Neither missing test carries the `#[cfg_attr(miri, ignore = "...")]` attribute every sibling
+`scalar_multiply`-calling test in the same file already has (T-100's original exclusion,
+citing `Point::scalar_multiply`'s 163-iteration constant-time ladder as too slow to interpret
+under Miri - each call already costs minutes per the file's other exclusions and D-109/T-153's
+own measured `invert()` timings). `verify_combine_matches_classic_for_small_scalars` loops an 8x8
+grid of scalar pairs, calling `classic_combine` (two `scalar_multiply` calls each) every
+iteration - 128 ladder invocations in one test. `verify_combine_matches_classic_when_r_eq_
+s_eq_one` calls it once - only 2 ladder invocations, but that alone already matches the cost of
+every other single-call test in the file that already needs the exclusion. Both tests were added
+by T-150/T-151 (D-108) without the attribute. `.github/workflows/rust.yml`'s own comment on the
+`miri` job states this exact risk verbatim: *"a new EC-heavy test added later without the
+attribute silently reintroduces the timeout."* It did, for two full releases' worth of commits
+(T-150/151, T-152, T-153, T-154, T-155), never caught because the job's real conclusion wasn't
+re-checked via `gh run view` until this release's own checklist forced it - the same lesson
+D-112 records for the `kani` job, independently true here for `miri` too. The last known-good
+Miri run (`8e5a2a8`) never executed either test, since D-108 hadn't landed yet.
+
+### Fix
+
+Added the same `#[cfg_attr(miri, ignore = "...")]` attribute to both tests, citing T-100 like
+their neighbors (`docs/TASKS.md` T-156). Confirmed locally that this doesn't affect normal test
+runs: `cargo test -p dstu-core --test dstu4145_curve` - all 12 tests still pass outside Miri,
+where the attribute is inert. The actual Miri pass/fail must still be confirmed on the next CI
+run via `gh run view`, not assumed - the same "verify, don't assume" posture applied throughout
+this release's checklist.

@@ -3946,3 +3946,24 @@ Phase 2+ and none currently in flight).
   addition chain. Cannot be verified locally (Kani is Linux/macOS-only, D-102) - `cargo build`/
   `test`/`clippy` all pass (the most checkable without the real tool); the new proof's actual
   pass/fail must be confirmed on the next CI run via `gh run view`, not assumed.
+
+- [x] **T-156** **Done - see `docs/DECISIONS.md` D-113.** Found preparing the same v0.2.0 release
+  checklist as T-155, one commit later: `cargo miri test` hung twice in a row (~171min then
+  ~188min of total silence, both cut short only by the job's 240min timeout, `conclusion:
+  cancelled` not a real pass) instead of completing in the ~2h23m the last known-good run
+  (`8e5a2a8`) took. Both hangs stopped printing test results at the exact same point in
+  `dstu4145_curve.rs` - looked at first like a harness-transition deadlock, but counting the
+  file's 12 declared `#[test]` fns against the 10 that actually printed a result in the log showed
+  two tests silently never finishing: `verify_combine_matches_classic_for_small_scalars` (an 8x8
+  loop, 128 `scalar_multiply` calls via `classic_combine`) and
+  `verify_combine_matches_classic_when_r_eq_s_eq_one` (2 calls). Both were added by T-150/T-151
+  (D-108) without the `#[cfg_attr(miri, ignore = "...")]` attribute every sibling
+  `scalar_multiply`-calling test in the same file already carries - exactly the drift
+  `.github/workflows/rust.yml`'s own comment on the `miri` job predicted ("a new EC-heavy test
+  added later without the attribute silently reintroduces the timeout"). Not a deadlock, not a
+  regression in `gf2m163.rs`'s D-109 arithmetic - just uncounted-for compute (each ladder call
+  already costs minutes under Miri per the file's own other exclusions; 128 of them is hours).
+  Fixed by adding the same attribute to both tests, citing T-100 like their neighbors. Confirmed
+  locally (`cargo test -p dstu-core --test dstu4145_curve`, all 12 tests pass outside Miri where
+  the attribute has no effect) - actual Miri pass/fail must be confirmed on the next CI run via
+  `gh run view`, not assumed, before tagging v0.2.0.
