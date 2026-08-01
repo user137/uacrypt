@@ -565,8 +565,17 @@ html[data-lang="uk"] [lang="en"]{display:none;}
           для звичайного ECDSA, а не вимога самого стандарту.</span>
         </td>
         <td class="diff">
-          <span lang="en">not yet benchmarked</span>
-          <span lang="uk">ще не бенчмаркалось</span>
+          <span lang="en">~7.9x slower signing, ~5.2x slower verifying than OpenSSL's `nistb163`
+          (same binary-field curve family, fairer than the P-256 comparison). Was ~20.7x/~22.6x
+          before a constant-time field-arithmetic rewrite (bit-interleave squaring, Itoh-Tsujii
+          inversion) — algorithmic gap (no precomputed-table windowing yet), not a hardware
+          asterisk.</span>
+          <span lang="uk">~7.9x повільніше підписування, ~5.2x повільніше перевірка за OpenSSL's
+          `nistb163` (та сама родина кривих у двійковому полі, чесніше порівняння, ніж P-256). Було
+          ~20.7x/~22.6x до переписування арифметики поля з незмінним часом виконання
+          (бітове перемежування для піднесення до квадрата, обернення за Ітох-Цуджі) —
+          алгоритмічний розрив (ще без вікна з попередньо обчисленою таблицею), а не апаратна
+          застережка.</span>
         </td>
       </tr>
     </tbody>
