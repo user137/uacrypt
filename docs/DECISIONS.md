@@ -8394,3 +8394,36 @@ ordering preference, not backfilled with a rationale that wasn't given.
 **Unaffected**: Go still depends on T-158 (the C ABI crate) exactly as D-122 established - this
 decision only reorders Go relative to C++ within that already-later group, not relative to T-158
 itself or to .NET/Java.
+
+## D-124: safe/simple/KISS code + cross-language test-first, made an explicit standing rule for every binding language
+
+Same 2026-08-02 conversation, after D-121-D-123's ordering work: the project owner stated the rule
+directly - for every binding language, write safe, simple, quality code (KISS), and tests come
+first and must be cross-language. Flagged as probably already true somewhere, asked to make it
+apply across all languages explicitly.
+
+**This was already substantially in force, just split across files rather than stated as one
+rule**: `docs/cross-language-style-guide.md` principle 10 already mandates KISS for every non-Rust
+language in this project except the reference-crypto-implementation carve-out; `docs/TASKS.md`'s
+D-64/D-65 three-category test standard and `docs/bindings-strategy.md`'s "Category 1 specifically
+must run the actual official vectors... one source of truth" (shared JSON vector files under
+`crates/dstu-core/tests/vectors/`) already make every binding's correctness tests cross-language by
+construction - two languages testing against the same vector file is what "cross-language" means
+here, not a separate parallel test suite that compares languages to each other directly. What was
+missing: **test-first was only written down for T-161 (`selftest`) specifically**, not as a rule
+for the standard nine-step template every other binding (T-49/T-50/T-51/T-52/T-53/T-158/T-159/
+T-160/T-163) follows.
+
+**Change**: `docs/bindings-strategy.md`'s standard-steps section now states explicitly that step 6
+(the local test suite) is written test-first per sub-surface as steps 1-5 are implemented -
+mirroring T-161's already-completed pattern and this project's own root "test-first, always" rule
+(`CLAUDE.md`) - rather than read as "build everything, then backfill step 6's checkbox at the end."
+The step numbering itself is unchanged (step 6 stays the checkbox marking the suite complete for
+that binding), since splitting it into a written-first sub-test per step-1-5 item would fragment the
+one-checkbox-per-task tracking this document already relies on for resumability across sessions.
+
+**No scope change** - this generalizes and cross-references existing rules (KISS in
+`cross-language-style-guide.md`, three test categories in `CLAUDE.md`/`docs/TASKS.md`, shared-vector
+reuse already in `bindings-strategy.md`), it does not introduce a new one. Recorded as its own
+decision because the owner asked for it to be explicit and to cover every future language, not just
+Python (T-49, already built) where it happened to be followed by construction.

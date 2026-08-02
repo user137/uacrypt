@@ -196,6 +196,14 @@ this is the template every phase below instantiates:
   dual-oracle verification.
 - **A local test suite in that language's native framework** (pytest, xUnit, JUnit, `node:test`, a
   small C/C++ harness, PHPUnit, RSpec/Minitest) — runnable without any other binding installed.
+- **Test-first and cross-language, for every binding language, not just Python (T-49) where it
+  happened to land that way — see D-124.** Test-first: the failing test for a given wrapper/
+  surface is written before that wrapper's code, same as this project's root "test-first, always"
+  rule already requires for the Rust core — T-161's own step 1 is the pattern every later binding's
+  step 6 follows, not a one-off. Cross-language: every binding's category-1 correctness tests load
+  the *same* shared vector files under `crates/dstu-core/tests/vectors/` (already stated above) —
+  two languages passing against one shared vector file is what makes them comparable, not a
+  separate suite that runs one language's output against another's.
 - **Accessible examples for a working programmer**, not API reference restated: real recipes
   ("encrypt a file," "hash a string," "sign/verify a message"), comment-light, in an `examples/`
   directory.
