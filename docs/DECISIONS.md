@@ -9130,3 +9130,128 @@ report `success` - three real CI round-trips total for this workflow (D-140's tw
 entry's toolchain-file fix), each one a genuine finding this dev machine's own local `cargo xtask
 ruby` runs could never have caught by construction (one OS, one pre-existing toolchain
 configuration, no toolchain-file-vs-`rustup default` conflict to trigger).
+
+## D-142: T-159 (PHP) steps 1-2 - `ext-php-rs` scaffold + full `crypto_*` surface, flat
+`dstu_core_*` naming convention
+
+PHP was not installed on this machine at all (unlike Python/Node/Ruby's own precedents).
+`winget install --id PHP.PHP.NTS.8.3`/`8.4` both failed with a real 404 - their manifests pin a
+specific patch version (`8.3.31`/`8.4.22`) php.net has already rotated out of its releases
+directory (only the latest patch per minor version is kept there), confirmed by fetching
+`windows.php.net/downloads/releases/` directly and finding `8.3.33`/`8.4.24` instead. Installed by
+hand: `php-8.3.33-nts-Win32-vs16-x64.zip` extracted to `C:\Users\Pa\tools\php83` (`.claude.local.md`
+has the exact commands/paths, same "installed outside winget, documented locally" shape as Python's
+own precedent).
+
+### Windows toolchain requirements (`ext-php-rs`'s own README, "Windows Requirements" section - read
+directly, not assumed)
+
+- **Nightly Rust required on Windows only** - some PHP internal functions use the `vectorcall`
+  calling convention, a nightly-only unstable Rust feature (`#![cfg_attr(windows,
+  feature(abi_vectorcall))]` at the crate root). Linux/macOS build on stable.
+- **PHP's own Windows builds are MSVC** (`vs16`/`vs17` in the release filename identifies the
+  Visual Studio toolset PHP itself was built with) - needs the MSVC host, not this machine's own
+  GNU-host default (same class of mismatch as Node's D-130, opposite direction from Ruby's D-133:
+  Node needed forcing to MSVC on a GNU-default machine to match a Windows-native dependency, PHP
+  needs the same; Ruby instead needed to *match* the GNU default). Fixed identically - a
+  machine-local `rustup override set nightly-x86_64-pc-windows-msvc --path bindings/php`, not a
+  committed toolchain file (would break CI's Linux/macOS runners). The `nightly-x86_64-pc-windows-
+  msvc` toolchain and its `rustfmt`/`clippy` components were already present on this machine
+  (installed earlier for the ASan fuzz work) - no new toolchain install needed, just the mapping.
+- **`rust-lld` linker recommended over the default MSVC `link.exe`** (`ext-php-rs`'s own README
+  again: `link.exe`'s version may not be ABI-compatible with whatever linker built the target PHP
+  install) - `bindings/php/.cargo/config.toml`, `[target.x86_64-pc-windows-msvc] linker =
+  "rust-lld"`. Confirmed working, not just configured: `cargo build` links cleanly.
+- **No manual devel-pack management needed**, confirmed by reading `ext-php-rs`'s own
+  `windows_build.rs` directly rather than assuming: on Windows its build script downloads a
+  matching `php-devel-pack-<version>-Win32-<vs>-<arch>.zip` from `windows.php.net` itself at build
+  time (into `OUT_DIR`), keyed off the exact version/thread-safety/arch it detects from the
+  `php.exe` on `PATH` (or the `PHP` env var). A separate manual devel-pack download+extract was
+  tried first before finding this in the source - unnecessary, real projects don't need it.
+
+First build (`cargo build`, self-test-only scaffold) succeeded on the first real attempt once the
+above three were in place - confirmed end-to-end: `dstu_core_php.dll` loaded into a real `php.exe`
+via `-d extension=...`, `self_test()` returned `true`.
+
+### Naming convention: flat `dstu_core_*` global functions + a single `DstuCoreException` class,
+not a namespace or a static-method class
+
+PHP has no per-extension function scoping by default (every `#[php_function]` registers a global
+function) and no strong ecosystem convention pushing toward a namespace for a native extension's
+own functions (unlike a Composer-distributed pure-PHP library, where namespacing is the norm).
+Rather than inventing a shape, this matched the closest real precedent instead: PHP's own bundled
+`ext-sodium` extension (a crypto library, PECL-style native extension, exactly this binding's
+domain) uses flat, snake_case, `sodium_`-prefixed global functions (`sodium_crypto_secretbox`,
+`sodium_crypto_sign_keypair`, etc.) and a single flat `SodiumException` class, no namespace, no
+per-construction exception subclass. Adopted directly: every function is `dstu_core_<module>_
+<verb>` (`dstu_core_secretbox_seal`, `dstu_core_sign_verify`, ...), matching Ruby's/Node's own
+snake_case-throughout convention rather than PHP's more common camelCase method style (chosen for
+internal consistency with the flat-function shape, not because PHP prefers it) - `#[php(change_
+method_case = "snake_case")]` set explicitly on every `#[php_impl]` block since ext-php-rs's own
+default is camelCase. One shared exception class, `DstuCoreException extends \Exception`
+(`#[php(name = "DstuCoreException")] #[php(extends(ce = ce::exception, stub = "\\Exception"))]`),
+covers every crypto-operation failure, matching `SodiumException`'s own scope exactly. A
+caller-input mistake a fixed-size Rust array forecloses (wrong-length key/context, negative
+`subkey_id`) throws PHP's own built-in `\ValueError` instead (`ext_php_rs::zend::ce::value_error()`)
+- not this class - the same two-different-failure-classes split this project's other bindings
+already use (Ruby's `ArgumentError`, Python's `ValueError`).
+
+Stateful classes (`Kupyna256Hasher`/`512Hasher`, `SecretStreamPushState`/`PullState`) have no
+`ext-sodium` precedent to follow (`ext-sodium`'s own API is one-shot functions only, no incremental
+hasher/stream classes) - prefixed `DstuCore*` (`DstuCoreKupyna256Hasher`,
+`DstuCoreSecretStreamPushState`, etc.) rather than left bare, to avoid colliding with an unrelated
+extension's own global class-table entry (PHP classes share one global namespace by default, same
+risk a bare `Hasher` or `PushState` class name would create) while staying consistent with the flat
+naming convention rather than switching to a real PHP namespace (`ext-php-rs` does support
+namespaced class names via `#[php(name = "Foo\\Bar\\Baz")]`, confirmed in its own guide's
+`Redis\Exception\RedisException` example - not used here, to keep one naming shape across
+functions and classes rather than mixing flat functions with namespaced classes).
+
+### `Binary<u8>`, not `String`/`Vec<u8>`, for every crypto byte parameter/return
+
+Confirmed by reading `ext-php-rs`'s own `types/zval.rs`/`binary.rs` directly: `Zval::string() ->
+Option<String>` requires the bytes to be valid UTF-8 (would silently mangle or reject arbitrary
+key/ciphertext/hash bytes), while `Zval::binary::<T: Pack>() -> Option<Vec<T>>` (surfaced as the
+`ext_php_rs::binary::Binary<T>` wrapper type) round-trips a PHP string's raw bytes exactly,
+regardless of content - a PHP string is natively just a byte buffer, not UTF-8-validated, the same
+property Ruby's own binary (`ASCII-8BIT`) `String`/Python's `bytes` already give this project's
+other bindings. A bare `Vec<u8>` has its own, different `IntoZval`/`FromZval` impl (a PHP list array
+of integers, not a binary string) - confirmed by reading `types/array/conversions/vec.rs`, not
+assumed; using it by mistake for a key/ciphertext would silently produce the wrong PHP-side shape
+rather than fail to compile.
+
+### Three real build-error findings while wiring step 2's full surface, each confirmed by an actual
+compiler/runtime failure, not predicted in advance
+
+- **`wrap_function!(module::function_name)` does not resolve** - "Pass a PHP function name into
+  `wrap_function!()`." `#[php_function]`'s own expansion generates a private companion item
+  (`_internal_<fn_name>`) in the *same module* as the function; the macro looks this up by a bare
+  identifier, so a module-qualified path from `lib.rs` never resolves, and `pub use module::*;`
+  re-exports do not help either (the companion item itself is not `pub`). Fixed by giving every
+  `crypto_*` module its own `pub fn register(module: ModuleBuilder) -> ModuleBuilder` that calls
+  `wrap_function!` on its own bare function names from inside that same module, with `lib.rs`
+  chaining `secretbox::register(module)` etc. rather than calling `wrap_function!` itself for
+  every function from one place - the reverse of Ruby's/Node's own single-`lib.rs`-does-everything
+  shape, forced by this macro's own resolution rule, not a style preference.
+- **`u8` does not implement `IntoConst`** - only the signed integer/float types do (`i8`/`i16`/
+  `i32`/`i64`/`f32`/`f64`), confirmed by the real compiler error listing them. PHP has no unsigned
+  integer type at all (its own `int` is a 64-bit signed type), so this is not a limitation worth
+  routing around - the `PWHASH_*`/`SECRETSTREAM_TAG_*` module constants (Ruby's `u8`, Node's `u8`)
+  became `i32` here, small values (0-3) that fit either way.
+- **`#[php_function]`'s default snake_case rename splits a letter-to-digit boundary** -
+  `dstu_core_generichash_kupyna256` registered in PHP as `dstu_core_generichash_kupyna_256` (an
+  extra underscore before `256`), caught by a real smoke-test call getting "Call to undefined
+  function", not predicted from reading the derive macro's source. Fixed by pinning the exact name
+  explicitly on both digit-suffixed functions: `#[php(name = "dstu_core_generichash_kupyna256")]`
+  (the `Kupyna256Hasher`/`Kupyna512Hasher` *class* names were unaffected, since their own
+  `#[php(name = ...)]` was already set explicitly from the start).
+
+### Verification
+
+`cargo build`/`cargo fmt --check`/`cargo clippy --all-targets -- -D warnings` all clean. Full
+manual smoke test against the real compiled `dstu_core_php.dll` loaded into a real `php.exe`
+(`-d extension=...`, no `php.ini` edit needed) covering every wrapped function and class:
+`self_test`, `secretbox` round-trip plus tamper rejection plus wrong-length-key `\ValueError`,
+`sign` keygen/verify (true and false cases), `Kupyna256Hasher` incremental vs. one-shot digest
+match, and a full `secretstream` push/pull round-trip through the raw `PushState`/`PullState`
+classes (the idiomatic file-like wrapper is step 3, not yet built).
