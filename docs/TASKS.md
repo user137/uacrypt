@@ -3966,4 +3966,17 @@ Phase 2+ and none currently in flight).
   Fixed by adding the same attribute to both tests, citing T-100 like their neighbors. Confirmed
   locally (`cargo test -p dstu-core --test dstu4145_curve`, all 12 tests pass outside Miri where
   the attribute has no effect) - actual Miri pass/fail must be confirmed on the next CI run via
-  `gh run view`, not assumed, before tagging v0.2.0.
+  `gh run view`, not assumed, before tagging v0.2.0. **Confirmed on CI 2026-08-02**: run
+  30720207523's `cargo miri test` job completed in 2h44m18s, `conclusion: success` - the fix held.
+
+- [x] **T-157** **Done 2026-08-02, see `docs/DECISIONS.md` D-114.** v0.2.0 released: full CI green
+  (T-156's fix confirmed), tagged and pushed, `.github/workflows/release.yml` built all three
+  `uacrypt` binaries plus the `dstu-core` source distribution and published the GitHub Release with
+  prepared notes. Same session, added a `publish-crates` job to `release.yml` (publishes
+  `dstu-core` then `uacrypt` to crates.io via the already-stored `CARGO_REGISTRY_TOKEN` secret,
+  gated `needs: publish-release`, a 30s sleep between the two publishes for crates.io's index to
+  pick up `dstu-core` before `uacrypt`'s packaged manifest resolves it as a registry dependency) -
+  in a commit made *after* the v0.2.0 tag, so the existing tag (pointing at the pre-this-commit
+  history) never picks it up; only `v*` tags from here on will. Matches the owner's explicit,
+  twice-confirmed scope split: v0.2.0 stays GitHub-only, automatic crates.io publication begins
+  with the next tag. T-17 itself stays open - this is the automation, not the first actual publish.

@@ -2,8 +2,10 @@ name: release
 
 # Triggered by a `vX.Y.Z` tag push (docs/TASKS.md T-18) - builds the uacrypt binary for
 # Linux/macOS/Windows, packages the dstu-core source distribution the same way `cargo publish`
-# would, and attaches all of it to a GitHub Release. Deliberately GitHub-only, not crates.io
-# (docs/TASKS.md T-17 stays separately gated) - this workflow never runs `cargo publish`.
+# would, and attaches all of it to a GitHub Release. As of the tag after v0.2.0 (docs/TASKS.md
+# T-17, docs/DECISIONS.md D-114), it also publishes both crates to crates.io via `publish-crates`
+# below - v0.2.0 itself predates that job and stayed GitHub-only, per an explicit project-owner
+# scope decision.
 on:
   push:
     tags:
@@ -94,3 +96,25 @@ jobs:
         with:
           files: release-assets/*
           generate_release_notes: true
+
+  publish-crates:
+    # v0.2.0 itself predates this job (added in a later commit than the v0.2.0 tag, T-17/D-114) -
+    # crates.io publication starts from the next tag onward, per the project owner's explicit
+    # scope decision. dstu-core must land first since uacrypt's packaged manifest resolves it as a
+    # registry dependency (version = "0.2.0"), not the local path - path deps are stripped from the
+    # published Cargo.toml, so uacrypt's own `cargo publish` verification build would fail against
+    # crates.io until dstu-core is actually there.
+    name: publish to crates.io
+    needs: publish-release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo publish -p dstu-core
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      - name: Wait for crates.io index to pick up dstu-core
+        run: sleep 30
+      - run: cargo publish -p uacrypt
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}

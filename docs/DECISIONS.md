@@ -7962,3 +7962,36 @@ runs: `cargo test -p dstu-core --test dstu4145_curve` - all 12 tests still pass 
 where the attribute is inert. The actual Miri pass/fail must still be confirmed on the next CI
 run via `gh run view`, not assumed - the same "verify, don't assume" posture applied throughout
 this release's checklist.
+
+**Confirmed 2026-08-02**: CI run `30720207523` (commit `a5b602e`)'s `cargo miri test` job
+completed in 2h44m18s, `conclusion: success` - back in the normal range, fix held on real CI.
+
+## D-114: v0.2.0 released; `publish-crates` CI job added for future tags, v0.2.0 itself excluded
+
+With D-113's fix confirmed on CI, the full `rust.yml` run (`30720207523`) went green across all 16
+jobs. Tagged and pushed `v0.2.0` (pointing at `a5b602e`); `.github/workflows/release.yml` built
+`uacrypt` for Linux/macOS/Windows plus the `dstu-core` source distribution and published the
+GitHub Release (`create GitHub release` job, 14s) with all four assets attached. Added the
+previously-prepared release notes via `gh release edit v0.2.0 --notes-file ...`.
+
+Same session, wired crates.io publication into CI for future releases (`docs/TASKS.md` T-157,
+T-17's automation half): a new `publish-crates` job in `release.yml`, `needs: publish-release` so
+it only runs once the GitHub Release itself has actually succeeded, running `cargo publish -p
+dstu-core` then (after a 30s sleep) `cargo publish -p uacrypt`, both against
+`secrets.CARGO_REGISTRY_TOKEN` (added by the project owner this session). The sleep and ordering
+aren't arbitrary: `uacrypt`'s packaged `Cargo.toml` has its `dstu-core` path dependency stripped
+down to `version = "0.2.0"` (a plain path dependency doesn't survive `cargo package`), so its own
+publish-time verification build resolves `dstu-core` against the crates.io registry, not the local
+workspace - it has to actually be there first.
+
+**Deliberately not on the v0.2.0 tag itself.** The owner made this scope call twice, explicitly,
+after I flagged a real conflict (choosing "auto-publish on every `v*` tag" would have silently
+pulled v0.2.0 into crates.io too, contradicting an earlier session's explicit "v0.2.0 stays
+GitHub-only" decision): v0.2.0 ships GitHub-only, matching v0.1.0; automatic crates.io publication
+starts with the tag after it. No version-check conditional was needed to enforce this - the
+`publish-crates` job was added in a commit made *after* the `v0.2.0` tag already existed, so the
+existing tag's own workflow run (already completed) can never see it; only a future `v*` tag,
+cut from a commit that includes this change, will trigger it.
+
+`docs/TASKS.md` T-17 (the actual first crates.io publish) stays open - this decision is the CI
+plumbing, not the publish event itself.
