@@ -274,8 +274,9 @@ worse than no resume line, since it actively misdirects the next session.
 
 **Resume point: T-161 done (2026-08-02). T-49 (Python) done in full 2026-08-02 - see D-120. T-50
 (Node.js) done in full 2026-08-02 - see D-125 through D-132 (step 6 done before step 5, a
-tooling-forced reorder, D-129 explains why; D-130 corrects D-125's toolchain-pin approach). Next:
-T-160 (Ruby), not started.**
+tooling-forced reorder, D-129 explains why; D-130 corrects D-125's toolchain-pin approach). T-160
+(Ruby) step 1 done 2026-08-02 - see D-133 (own Ruby+MSYS2-clang toolchain install, several real
+rb_sys/bindgen gotchas). Next: T-160 step 2 (wrap full crypto_* surface).**
 
 ### The standard binding steps
 
@@ -596,8 +597,27 @@ Standard steps:
 ### T-160 — Ruby (reordered 2026-08-02, D-121: builds right after T-50, no longer last)
 
 Standard steps:
-- Step 1: `magnus`/`rb-sys`, a direct Rust binding like Python/Node's, own `[workspace]` table per
-  D-119.
+- Step 1: **Done 2026-08-02, see D-133.** `bindings/ruby/`, `magnus`/`rb_sys`, own `[workspace]`
+  split across two files (`bindings/ruby/Cargo.toml` as the workspace root with
+  `members = ["ext/dstu_core_rb"]`, the actual crate inside `ext/dstu_core_rb/` with no
+  `[workspace]` of its own) — `rb_sys`'s `Cargo::Metadata` shells out to a plain `cargo metadata`
+  from the gem root, so a Cargo.toml has to exist there or Cargo walks up and finds the repo-root
+  workspace instead (D-133's concrete failure mode). Hand-authored, not generated via
+  `bundle gem --ext=rust` — that generator hung indefinitely in this non-interactive shell even
+  with every documented flag, root cause not fully isolated (likely a Windows-Ruby console-handle
+  quirk), not worth debugging further given Python/Node were both hand-authored too. Ruby itself
+  had to be installed on this machine first (DevKit variant, bundles a matching MSYS2/mingw-w64-ucrt
+  toolchain) — see `.claude.local.md`. Three more real toolchain gotchas found and fixed (D-133 has
+  full detail): `rb-sys-env` pinned to `"0.1"` to match the installed `rb_sys` gem's Makefile
+  convention; `rb-sys` added as an explicit direct dependency (not just transitive via `magnus`) so
+  Cargo's `DEP_RUBY_*` build-script propagation reaches this crate's own `build.rs`; the MSYS2
+  ucrt64 `clang` package installed and `LIBCLANG_PATH` pointed at it, since this machine's
+  pre-existing standalone Windows LLVM parses Ruby's mingw-targeted headers incorrectly. Wraps only
+  `self_test` so far (Ruby's native `snake_case` needs no per-function casing override, unlike
+  Node's `js_name` requirement — D-126). Verified via a full clean rebuild (not incremental) plus a
+  real `ruby -Ilib -e "require 'dstu_core'; DstuCore.self_test"` smoke call against the live
+  compiled build; `cargo fmt --all -- --check`/`cargo clippy --all-targets -- -D warnings` both
+  clean.
 - Step 3: an `IO`-like or `Enumerable`/`Enumerator` wrapper — research Ruby's own idiom when the
   task starts.
 - Step 4: a prebuilt extension binary where the ecosystem supports it.

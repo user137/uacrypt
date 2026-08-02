@@ -2593,6 +2593,12 @@ configuration surface added in the process (D-47 still holds).
       T-50, ahead of T-159/T-158/T-52/T-51/T-53, same no-incumbent reasoning as Node/PHP. Direct
       Rust binding (`magnus`/`rb-sys`), like T-49/T-50, not through the C ABI. RSpec/Minitest suite,
       same per-binding checklist. See `docs/bindings-strategy.md` "Phase 9."
+      **Step 1 done 2026-08-02, see D-133**: Ruby+MSYS2-devkit installed on this machine (wasn't
+      present at all), gem skeleton hand-authored (not via `bundle gem --ext=rust`, which hung),
+      three real `rb_sys`/`bindgen` toolchain issues found and fixed (workspace-root `Cargo.toml`
+      placement, `rb-sys-env` version pin, `rb-sys` as an explicit direct dependency, `LIBCLANG_PATH`
+      pointed at a matching mingw `clang`). Wraps only `self_test`, verified via a full clean
+      rebuild + a real self-test call against the live compiled build.
 - [ ] **T-163** Go binding (`bindings/go`) — added to scope 2026-08-02 at the owner's request, on
       the same no-incumbent-competitor footing as Node/Ruby/PHP (no DSTU-specific Go library exists,
       real DevSecOps/cloud-infra audience). **Unlike Node/Ruby/PHP, this one goes through the C ABI

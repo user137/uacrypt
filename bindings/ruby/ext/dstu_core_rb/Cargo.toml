@@ -1,0 +1,24 @@
+[package]
+name = "dstu_core_rb"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.87.0"
+license = "MIT OR Apache-2.0"
+description = "Ruby bindings for dstu-core (Ukrainian DSTU cryptographic standards) - provisional, not yet published to RubyGems"
+publish = false
+
+[lib]
+name = "dstu_core_rb"
+crate-type = ["cdylib"]
+
+[dependencies]
+dstu-core = { path = "../../../../crates/dstu-core", version = "0.2.0", features = ["std", "selftest", "pwhash"] }
+magnus = "0.7"
+# Explicit direct dependency (not just transitively via magnus) so Cargo's `DEP_RUBY_*` build-
+# script variable propagation reaches *this* crate's own `build.rs` (`rb_sys_env::activate()`
+# reads `DEP_RB_*`, populated only for a crate's direct dependants of `rb-sys`, per Cargo's `links`
+# mechanism) - without this, the Makefile's `RBCONFIG_*` exports never reach our build script.
+rb-sys = "0.9"
+
+[build-dependencies]
+rb-sys-env = "0.1"

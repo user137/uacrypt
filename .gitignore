@@ -63,3 +63,11 @@
 /bindings/nodejs/node_modules/
 /bindings/nodejs/native/
 /bindings/nodejs/npm/
+
+# Ruby (T-160): rake-compiler's own staging/build dirs, plus the compiled extension copied into
+# lib/dstu_core/ (rake's own `copy` task target - platform-specific binary, same class as Python's
+# `.so`/Node's `.node` above), regenerated every `rake compile`.
+/bindings/ruby/tmp/
+/bindings/ruby/pkg/
+/bindings/ruby/lib/dstu_core/*.so
+/bindings/ruby/.bundle/

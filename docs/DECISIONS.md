@@ -8746,3 +8746,65 @@ Verified: all five examples run correctly against the real built addon
 (`secretbox`/`sign`/`password-hashing`/`misc`/`secretstream-file`, output inspected, not just "exit
 0"); `node --test` still reports 52/52 (examples aren't named `*.test.js`, so they don't interfere
 with test discovery).
+
+## D-133: Ruby binding (T-160) step 1 - `magnus`/`rb_sys` scaffold, several real toolchain gotchas found and fixed
+
+2026-08-02. Ruby was not installed on this machine at all (unlike Python/Node, already present) -
+installed via winget as the DevKit variant (`RubyInstallerTeam.RubyWithDevKit.3.3`, bundles a
+matching MSYS2 + mingw-w64-ucrt toolchain) rather than the bare interpreter, since a plain Ruby
+install has no C compiler wired up for native gem extensions at all. Full detail and exact commands:
+`.claude.local.md`'s "Ruby toolchain for `bindings/ruby`" section.
+
+`bundle gem dstu_core --ext=rust` (Bundler's own magnus-based Rust-extension generator, the obvious
+first move) **hung indefinitely** even with every documented non-interactive flag
+(`--no-ci --no-linter --no-coc --no-mit --test=rspec`) and stdin redirected from `/dev/null` -
+confirmed via `Get-Process` CPU-time sampling showing zero progress across a 25-real-minute window,
+not assumed from a timeout. Root cause not fully isolated (likely a Windows-Ruby console-handle
+quirk bypassing redirected stdin for some remaining prompt), but rather than debugging Bundler's own
+generator further, the gem skeleton was **hand-authored** instead - `Cargo.toml`/`build.rs`/
+`extconf.rb`/`dstu_core.gemspec`/`Gemfile`/`Rakefile`/`lib/dstu_core.rb` - matching exactly how
+`bindings/python`/`bindings/nodejs` were built (this project has never actually relied on a
+framework generator for a binding scaffold; no reason to start here).
+
+Getting `rake compile` to actually produce a working `.so` surfaced four distinct, real toolchain
+issues, each confirmed by reading the actual failing source/generated file rather than guessed at:
+
+1. **A `Cargo.toml` must exist at the gem root (`bindings/ruby/Cargo.toml`), not only inside
+   `ext/dstu_core_rb/`.** `rb_sys`'s `Cargo::Metadata` shells out to a plain `cargo metadata` (no
+   `--manifest-path`) from wherever `rake compile` runs (the gem root) - with none there, Cargo
+   walks up and finds the *repo-root* workspace instead, and fails with `PackageNotFoundError`
+   since `dstu_core_rb` isn't a member of that workspace. Fixed with a small workspace-root
+   `Cargo.toml` (`members = ["ext/dstu_core_rb"]`) at the gem root - same D-119 "own separate
+   workspace" posture as Python/Node, just split across two files instead of one; the actual crate's
+   own `Cargo.toml` has no `[workspace]` of its own (a package can't be both a workspace member and
+   a separate workspace root).
+2. **`rb-sys-env` must be pinned to match the installed `rb_sys` gem's Makefile convention.** This
+   machine's `rb_sys` gem (0.9.128) generates a Makefile exporting `RBCONFIG_*`-prefixed env vars
+   (older convention); `rb-sys-env` crate 0.2.x expects a bare `RUBY_VERSION` var (newer convention)
+   and panics - `Option::unwrap()` on `None`/an explicit `expect` failure, read directly from the
+   crate's own source, not guessed from the error text alone. Pinned to `rb-sys-env = "0.1"`,
+   matching the version `rb-sys` itself already resolves internally per `Cargo.lock`.
+3. **`rb-sys` needs to be an explicit *direct* dependency**, not only pulled in transitively via
+   `magnus`. Cargo's `DEP_<links>_<VAR>` build-script-output propagation (what
+   `rb_sys_env::activate()` relies on to read the Makefile's `RBCONFIG_*` exports) only reaches a
+   crate's own direct dependents of the crate declaring `links` - `magnus`'s internal use of
+   `rb-sys` doesn't extend that propagation one level further out to our own build script. Added
+   `rb-sys = "0.9"` alongside `magnus` to fix.
+4. **`bindgen`/`libclang` mismatch**: this machine's pre-existing standalone Windows LLVM
+   (`C:\Program Files\LLVM\bin\libclang.dll`, MSVC-oriented) is what `clang-sys` finds by default,
+   and it parses Ruby's C headers with MSVC assumptions, failing on mingw-only headers. Fixed by
+   installing the matching MSYS2 ucrt64 `clang` package (`pacman -S mingw-w64-ucrt-x86_64-clang`)
+   and setting `LIBCLANG_PATH` at that package's `bin/` for any cargo invocation touching this
+   crate - confirmed a naive `-I` include-path patch on top of the *wrong* libclang instead
+   cascades into worse, unrelated parse errors (mingw's own headers assume `__GNUC__`-defined
+   semantics an MSVC-mode clang doesn't provide), so redirecting to the right libclang entirely,
+   not patching around the wrong one, is the correct fix.
+
+Verified end-to-end, not just "compiles": `rake compile` succeeds from a fully clean tree (`rm -rf
+target tmp lib/dstu_core/dstu_core_rb.so ext/dstu_core_rb/{target,Cargo.lock}`, rebuilt from
+scratch, confirming reproducibility rather than a one-off fluke); `ruby -Ilib -e "require
+'dstu_core'; DstuCore.self_test"` runs the real compiled Rust `dstu_core::selftest::run()` against
+the live KAT vectors and returns cleanly (`nil`, i.e. `Ok(())` via magnus); `cargo fmt --all --
+--check` and `cargo clippy --all-targets -- -D warnings` (with `LIBCLANG_PATH` set) both clean. Only
+`selfTest`/`self_test` wrapped so far, matching Python/Node's own step-1 split - the full `crypto_*`
+surface is step 2.

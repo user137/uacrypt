@@ -1,0 +1,16 @@
+# frozen_string_literal: true
+
+require "bundler/gem_tasks"
+require "rb_sys/extensiontask"
+require "rspec/core/rake_task"
+
+GEMSPEC = Gem::Specification.load("dstu_core.gemspec")
+
+RbSys::ExtensionTask.new("dstu_core_rb", GEMSPEC) do |ext|
+  ext.lib_dir = "lib/dstu_core"
+end
+
+RSpec::Core::RakeTask.new(:spec)
+
+task build: :compile
+task default: %i[compile spec]

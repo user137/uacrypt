@@ -1,0 +1,10 @@
+# Own workspace root at the gem's top level (D-119: not a member of the repo-root `[workspace]`).
+# `rb_sys`'s `Cargo::Metadata` runs plain `cargo metadata` from the gem root (no `--manifest-path`),
+# so a Cargo.toml has to exist right here or cargo walks up and finds the repo-root workspace
+# instead - this file is that anchor, with the real crate as its sole member.
+[workspace]
+members = ["ext/dstu_core_rb"]
+resolver = "2"
+
+[profile.release]
+lto = true
