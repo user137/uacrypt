@@ -2472,10 +2472,14 @@ configuration surface added in the process (D-47 still holds).
       T-160) wraps it thin rather than reimplementing it — see D-117 for the precedent this follows
       (D-13's shared S-box/MDS tables).
 - [ ] **T-49** Python binding (`bindings/python`, PyO3 + maturin) — the template every later binding
-      instantiates. Exposes the full `crypto_*` surface (not a subset). Three test categories
-      (correctness/rejection/misuse, D-64/D-65) via `pytest`, `bindings/python/examples/`, a
-      `cargo xtask` subcommand wired into CI, provisional-status banner in its README. See
-      `docs/bindings-strategy.md` "Phase 1."
+      instantiates. **Own `[workspace]` table, not a root-workspace member (D-119, corrected
+      2026-08-02 from the original plan text)** — two CI jobs use `--workspace` explicitly (Miri,
+      the MSRV-pinned build) and neither is equipped for a PyO3 `cdylib`; a path dependency on
+      `dstu-core` still resolves across separate workspaces. Exposes the full `crypto_*` surface
+      (not a subset). Three test categories (correctness/rejection/misuse, D-64/D-65) via `pytest`,
+      `bindings/python/examples/`, its own CI job (not folded into the existing Rust matrix) with a
+      best-effort `cargo xtask` subcommand (D-12's miri/fuzz/audit posture, not mandatory),
+      provisional-status banner in its README. See `docs/bindings-strategy.md` "Phase 1."
 - [ ] **T-50** Node.js binding (`bindings/nodejs`, napi-rs) — same `crypto_*` surface and template as
       T-49, `node:test` suite, deliberately built after T-52/T-51 despite matching Python's
       direct-Rust-binding shape (see `docs/bindings-strategy.md`'s ordering rationale). **Node-only,

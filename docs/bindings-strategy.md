@@ -286,9 +286,16 @@ Rust-core work, confirmed as a genuine gap (see `docs/TASKS.md` T-161's own note
 ### T-49 — Python (the template every later task assumes)
 
 Standard steps above, with:
-- Step 1: `bindings/python/` as a new Cargo workspace member, PyO3 + maturin.
+- Step 1: `bindings/python/`, PyO3 + maturin. **Corrected 2026-08-02, see D-119**: its own
+  `[workspace]` table, a path dependency on `dstu-core`, *not* added to the root `Cargo.toml`'s
+  `members` - two existing CI jobs (`cargo +nightly miri test --workspace`, the MSRV-pinned
+  `--workspace` build) would otherwise silently start covering a PyO3 `cdylib` neither job is
+  equipped for. Same shape applies to T-50/T-160 (Node/Ruby, also direct Rust bindings) - T-158 (C
+  ABI) is unaffected and stays a real workspace member, see D-119 for why the two cases differ.
 - Step 3: a Python file-like object over `PushState`/`PullState`.
 - Step 4: manylinux/macOS/Windows wheels via `maturin`.
+- Step 5: its own CI job, not a step in the existing Rust matrix (D-119); `xtask` wiring is
+  best-effort with an install hint (D-12's existing posture for miri/fuzz/audit), not mandatory.
 - Step 6: `pytest`.
 
 ### T-158 — C ABI crate (foundation for C++/.NET, maybe Java)
@@ -328,7 +335,8 @@ Standard steps, plus an upfront spike before step 1 (see `docs/bindings-strategy
 ### T-50 — Node.js
 
 Standard steps:
-- Step 1: `bindings/nodejs/`, napi-rs.
+- Step 1: `bindings/nodejs/`, napi-rs, own `[workspace]` table per D-119 (not a root workspace
+  member).
 - Step 3: a `stream.Transform`.
 - Step 4: prebuilt `.node` binaries per platform via napi-rs's cross-compile.
 - Step 6: `node:test`.
@@ -358,7 +366,8 @@ Standard steps, consuming T-158's header:
 ### T-160 — Ruby (deferred, last)
 
 Standard steps:
-- Step 1: `magnus`/`rb-sys`, a direct Rust binding like Python/Node's.
+- Step 1: `magnus`/`rb-sys`, a direct Rust binding like Python/Node's, own `[workspace]` table per
+  D-119.
 - Step 3: an `IO`-like or `Enumerable`/`Enumerator` wrapper — research Ruby's own idiom when the
   task starts.
 - Step 4: a prebuilt extension binary where the ecosystem supports it.

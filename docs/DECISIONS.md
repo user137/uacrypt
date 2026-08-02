@@ -8166,3 +8166,71 @@ programmer never assembles the loop themselves? Answered after discussion, two p
    artifact story than D-116 describes for every other binding). Confirmed with the project owner:
    **not scheduled now** — T-50 stays Node-only. If browser usage becomes a real need later, it's a
    new scoping decision, not an assumed extension of T-50.
+
+## D-119: Bindings that link an external language runtime get their own Cargo workspace, not root membership
+
+Discovered 2026-08-02 starting T-49 (Python binding) implementation, via `advisor()` review before
+scaffolding: both `docs/bindings-strategy.md`'s T-49 step 1 and the original approved plan file say
+"scaffold `bindings/python/` as a new Cargo workspace member." Checking that literally against
+`.github/workflows/rust.yml` before writing any code surfaced a real conflict, not a style
+preference.
+
+**The conflict:** two existing CI jobs use `--workspace` explicitly and would silently start
+covering the new crate the moment it's added to the root `[workspace] members` list:
+`cargo +nightly miri test --workspace` (line 105) and `cargo +1.87.0 build --workspace
+--all-features` / `--no-default-features` (the MSRV-pinned job, lines 190-191). A PyO3 `cdylib`
+extension module is not something Miri can meaningfully interpret (it isn't a `#[test]`-driven
+crate in the sense Miri assumes, and it needs an actual Python interpreter to even link on
+Windows), and the MSRV job would newly depend on `pyo3` supporting Rust 1.87 - neither dependency
+this project's core crates carry today. `default-members` does not help here: every job above
+passes `--workspace` explicitly, which overrides `default-members` by design.
+
+**Decision: `bindings/python/Cargo.toml` (and every other binding that itself compiles as a Rust
+crate linking an external language runtime at build time - Node via `napi-rs`, Ruby via `magnus`)
+gets its own `[workspace]` table, declaring itself a standalone Cargo project, not a member of the
+repo-root workspace.** A path dependency on `dstu-core` (`{ path = "../../crates/dstu-core" }`)
+still works across separate workspaces - Cargo doesn't require a shared workspace for a path
+dependency to resolve, only that the referenced `Cargo.toml` exists at that path. Each such
+binding therefore carries its own `Cargo.lock`, is built/tested with its own `cargo build`/`test`
+invocation (`--manifest-path bindings/python/Cargo.toml`, or `cd`'d into that directory), and gets
+its own CI job rather than a step folded into the existing Rust matrix - keeping the separation the
+whole point of this decision, not re-entangling it one workflow file later.
+
+**T-158 (the C ABI crate) is unaffected and stays a real root-workspace member** - confirmed
+distinct from Python/Node/Ruby: it is plain Rust with `cbindgen` as its only extra tool, no
+external interpreter/runtime linked at build time, so it carries none of the Miri/MSRV risk above.
+`docs/bindings-strategy.md`'s T-158 entry already says "verify the existing 8-combination feature
+matrix still passes with this new workspace member present" - that check only makes sense, and
+stays correct, because T-158 *is* a member. C++/.NET/Java(-via-JNI-over-capi)/PHP consume T-158's
+header rather than compiling their own Rust workspace member at all, so this decision doesn't reach
+them either.
+
+**Consequences tracked, not deferred to be rediscovered:**
+- `cargo xtask deny`/`cargo xtask audit`'s dependency-vetting coverage does not see a
+  separate-workspace binding's own `Cargo.lock` unless a future `xtask` change explicitly points at
+  it with `--manifest-path` - a real coverage gap, not a decision to leave it unvetted forever.
+- Each such binding's `xtask` subcommand (T-49/T-50/T-160's own step 5) must be **best-effort with
+  an install-hint fallback**, matching `cargo xtask ci`'s existing posture for miri/fuzz/audit
+  (D-12) - requiring every contributor to have a Python/Node/Ruby toolchain just to run `cargo
+  xtask ci` would be a regression from today's "one Rust toolchain, everything else optional" bar.
+- `docs/bindings-strategy.md` T-49's step 1 text and the original plan file's Phase 1 step 1
+  ("Scaffold `bindings/python/` as a new Cargo workspace member") are corrected in the same commit
+  as the T-49 scaffold itself, not left contradicting this entry.
+
+**Rejected: adding it to root `members` and accepting the Miri/MSRV job scope creep.** Rejected
+because both of those jobs exist for reasons unrelated to any binding (verifying `dstu-core`/
+`uacrypt`'s own UB-freedom and minimum-supported-Rust-version), and silently widening what they
+cover the moment a binding crate is scaffolded is exactly the kind of "discovered as a surprise
+later" outcome this project's own agent-discipline notes already warn against for other doc-map
+gaps.
+
+**Verification before this entry was written, not assumed:** re-ran the *exact* CI commands
+locally against T-161's `selftest` feature landing in the same session -
+`cargo build --workspace --all-features`, `cargo test --workspace --all-features`, `cargo clippy
+--workspace --all-features -- -D warnings` - all clean (the `--all-features` combination, which
+turns on `selftest` together with `small-tables`/`pwhash`/`getrandom` at once, had not been
+explicitly built before landing T-161; confirmed no interaction bug between `selftest`'s Kalyna/
+Kupyna checks and the `small-tables` alternate code path). Also confirmed `cargo package --list -p
+dstu-core` includes `tests/vectors/*.json` in the packaged crate by Cargo's own default inclusion
+rules, so `selftest`'s `include_str!` paths resolve correctly even from a future crates.io-
+published `dstu-core` (T-17, still gated) - not a gap, verified rather than assumed.
