@@ -1,7 +1,10 @@
-# cargo-deny policy. Currently checks an empty dependency tree (dstu-core/uacrypt have zero
-# external dependencies) - this file exists so the policy is enforced automatically the moment a
-# dependency is added, rather than relying on someone remembering to check docs/SECURITY.md's
-# supply-chain table by hand. See docs/SECURITY.md "Supply-chain vetting".
+# cargo-deny policy. The root workspace (dstu-core/uacrypt) has zero external dependencies - this
+# file exists so the policy is enforced automatically the moment a dependency is added, rather than
+# relying on someone remembering to check docs/SECURITY.md's supply-chain table by hand. Also reused
+# for bindings/python's separate Cargo workspace (D-119): cargo-deny walks up from any cwd looking
+# for a deny.toml, so `cargo deny check` run from bindings/python finds this same file and checks
+# its real dependency tree (pyo3 and friends) against the same policy - confirmed by testing, not
+# assumed; no second deny.toml needed. See docs/SECURITY.md "Supply-chain vetting".
 
 [graph]
 all-features = true

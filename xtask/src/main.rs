@@ -3,8 +3,8 @@
 //! instead of three different shell dialects. Deliberately zero dependencies and deliberately
 //! thin: every subcommand just shells out to a tool that's already documented in README.md /
 //! docs/SECURITY.md, and checks the tool is present first so a missing optional tool (miri, kani,
-//! cargo-fuzz, cargo-audit, cargo-deny, Maven, the .NET SDK) prints an install hint instead of a
-//! raw OS error.
+//! cargo-fuzz, cargo-audit, cargo-deny, Maven, the .NET SDK, maturin/pytest) prints an install hint
+//! instead of a raw OS error.
 //! Kept out of the main Cargo workspace (own `[workspace]` table above) so this dev-only tool never
 //! shows up in `dstu-core`'s dependency graph that `deny.toml`/`docs/SECURITY.md` are policing.
 
@@ -31,6 +31,7 @@ fn main() -> ExitCode {
         "deny" => deny(),
         "oracle-java" => oracle_java(),
         "oracle-dotnet" => oracle_dotnet(),
+        "python" => python(),
         "ci" => ci(),
         "help" | "-h" | "--help" => {
             print_usage();
@@ -66,7 +67,8 @@ fn print_usage() {
          \x20 audit          cargo audit (RustSec advisories)\n\
          \x20 deny           cargo deny check (licenses, bans, sources)\n\
          \x20 oracle-java    run the Java/Bouncy Castle oracle harness via Maven\n\
-         \x20 oracle-dotnet  run the .NET/Bouncy Castle oracle harness via dotnet run"
+         \x20 oracle-dotnet  run the .NET/Bouncy Castle oracle harness via dotnet run\n\
+         \x20 python         build+lint bindings/python, maturin develop, pytest (T-49)"
     );
 }
 
@@ -328,14 +330,55 @@ fn audit() -> bool {
     if !require("cargo-audit", "cargo install cargo-audit --locked") {
         return false;
     }
-    run("cargo", &["audit"], None)
+    run("cargo", &["audit"], None) && run("cargo", &["audit"], Some(Path::new("bindings/python")))
 }
 
+/// `bindings/python` is a separate Cargo workspace (D-119), but deliberately shares the root
+/// `deny.toml` rather than duplicating one - cargo-deny walks up from its cwd looking for the
+/// config file, so running with `bindings/python` as cwd finds the same root policy and checks
+/// that workspace's own dependency tree (pyo3 and friends) against it. Confirmed by running it,
+/// not assumed - it also caught a real wildcard-dependency bug (missing `version =` on the
+/// `dstu-core` path dependency, the exact T-75/D-11 failure mode) the first time this was tried.
 fn deny() -> bool {
     if !require("cargo-deny", "cargo install cargo-deny --locked") {
         return false;
     }
     run("cargo", &["deny", "check"], None)
+        && run(
+            "cargo",
+            &["deny", "check"],
+            Some(Path::new("bindings/python")),
+        )
+}
+
+/// Best-effort like miri/fuzz/audit (D-12) - `bindings/python`'s own separate Cargo workspace
+/// (D-119) isn't reached by `build`/`test`/`clippy`/`fmt` above. Builds `uacrypt` first (release,
+/// from the repo root) since `tests/test_secretstream.py`'s interop test silently *skips* rather
+/// than fails when the binary isn't found - skipping that check here would be a green-but-vacuous
+/// run of exactly the wire-format coverage that justifies the binding existing.
+fn python() -> bool {
+    if !require(
+        "maturin",
+        "pip install maturin (see bindings/python/pyproject.toml's dev group)",
+    ) {
+        return false;
+    }
+    if !require(
+        "pytest",
+        "pip install pytest (see bindings/python/pyproject.toml's dev group)",
+    ) {
+        return false;
+    }
+    let dir = Path::new("bindings/python");
+    run("cargo", &["build", "-p", "uacrypt", "--release"], None)
+        && run("cargo", &["fmt", "--all", "--", "--check"], Some(dir))
+        && run(
+            "cargo",
+            &["clippy", "--all-targets", "--", "-D", "warnings"],
+            Some(dir),
+        )
+        && run("maturin", &["develop", "--release"], Some(dir))
+        && run("pytest", &["-ra"], Some(dir))
 }
 
 fn oracle_java() -> bool {
@@ -382,7 +425,16 @@ fn ci() -> bool {
     }
 
     println!("\nMandatory checks passed. Running optional layers best-effort:\n");
-    for optional in [miri, kani, fuzz, audit, deny, oracle_java, oracle_dotnet] {
+    for optional in [
+        miri,
+        kani,
+        fuzz,
+        audit,
+        deny,
+        oracle_java,
+        oracle_dotnet,
+        python,
+    ] {
         optional();
     }
     true
