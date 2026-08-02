@@ -10,8 +10,9 @@
 //! standing two-different-failure-classes convention.
 
 use ext_php_rs::{
+    builders::ModuleBuilder,
     exception::PhpException,
-    php_class,
+    php_class, php_function, wrap_function,
     zend::{ce, ClassEntry},
 };
 
@@ -40,4 +41,24 @@ impl<T, E: core::fmt::Display> IntoDstuException<T> for Result<T, E> {
 /// operation failure.
 pub fn value_error() -> &'static ClassEntry {
     ce::value_error()
+}
+
+/// Throws a `DstuCoreException` carrying `message`. `DstuCoreException` has no `#[php_impl]`
+/// constructor (deliberately - it only ever needs to be constructed on the Rust side via
+/// `PhpException::from_class`), so `new DstuCoreException(...)` fails from pure PHP with "You
+/// cannot instantiate this class from PHP." (confirmed by a real error, not assumed). This
+/// function is the escape hatch the pure-PHP `DstuCoreSecretStreamWriter`/`Reader` wrapper
+/// (`lib/DstuCoreSecretStream.php`, step 3) calls instead of `throw new DstuCoreException(...)`
+/// for its own protocol-level failures (truncation, oversized chunk length, trailing data) -
+/// always throws, so a plain call like `dstu_core_throw_error("...")` behaves exactly like a
+/// `throw` statement at the call site.
+#[php_function]
+pub fn dstu_core_throw_error(message: String) -> Result<(), PhpException> {
+    Err(PhpException::from_class::<DstuCoreException>(message))
+}
+
+/// Registers this module's function - see `secretbox::register`'s doc comment (`secretbox.rs`)
+/// for why each module registers its own.
+pub fn register(module: ModuleBuilder) -> ModuleBuilder {
+    module.function(wrap_function!(dstu_core_throw_error))
 }

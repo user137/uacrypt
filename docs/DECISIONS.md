@@ -9255,3 +9255,81 @@ manual smoke test against the real compiled `dstu_core_php.dll` loaded into a re
 `sign` keygen/verify (true and false cases), `Kupyna256Hasher` incremental vs. one-shot digest
 match, and a full `secretstream` push/pull round-trip through the raw `PushState`/`PullState`
 classes (the idiomatic file-like wrapper is step 3, not yet built).
+
+## D-143: T-159 (PHP) step 3 - `crypto_secretstream` as plain PHP wrapper classes, not a stream
+filter; a real ext-php-rs gap found along the way (a Rust-registered exception class cannot be
+`new`-ed from pure PHP without its own `#[php_impl]` constructor)
+
+### Stream-filter mechanism investigated and rejected
+
+PHP does have a genuine idiomatic transparent-stream mechanism, `stream_filter_register`/
+`php_user_filter` (confirmed real and pure-PHP-implementable: `stream_get_filters()` lists the
+built-in `zlib.deflate`/`zlib.inflate` filters as the same-shape precedent, and `php_user_filter`
+is a normal userland base class, not something needing native bucket-brigade FFI). Rejected anyway,
+for two concrete reasons rather than a vague "too complex": (1) the filter framework's own
+`filter($in, $out, &$consumed, $closing)` hook has no clean place to write a one-time 32-byte
+header *before* any filtered bytes - it would have to be done lazily on the first call, entangling
+header-writing with the per-call transform logic; (2) PHP's own internal stream buffer size (which
+governs how much data reaches one `filter()` call) does not align with this wire format's fixed
+8 KiB chunk boundary, so the filter would still need its own independent buffering layer on top -
+at which point it is strictly more code than a plain wrapper class for no behavioral gain. Chosen
+instead: `DstuCoreSecretStreamWriter`/`DstuCoreSecretStreamReader` (`bindings/php/lib/
+DstuCoreSecretStream.php`), plain PHP classes over a `resource`, built on step 2's raw
+`DstuCoreSecretStreamPushState`/`PullState` rather than new Rust glue - directly mirrors Python's
+`SecretStreamEncryptor`/`Decryptor` and Ruby's `SecretStreamWriter`/`Reader`, this project's own
+KISS-for-bindings instinct ([[feedback_binding_kiss_test_first]]).
+
+### Design, matching Ruby's own shape closely
+
+**Wire format matches `uacrypt encrypt`/`decrypt` exactly** (verified both directions against the
+real built `uacrypt.exe`, not just self-consistently - see Verification below): 32-byte header,
+then `tag(1) || chunk_len_u32_le(4) || ciphertext(chunk_len) || auth_tag(16)` records, chunks capped
+at 8 KiB. `DstuCoreSecretStreamWriter::withStream($key, $out, fn($w) => ...)` runs the callback
+then calls `close()` **only on the success path** - deliberately no `try`/`finally` wrapping, so an
+exception thrown inside the callback skips `close()` entirely and the D-118 pitfall (a resource
+cleanup hook finalizing a truncated write into a complete-looking stream) cannot occur; confirmed
+by a real test (a callback that writes then throws, followed by attempting to read the resulting
+truncated bytes back, which correctly fails with a truncation error rather than succeeding).
+`DstuCoreSecretStreamReader` implements PHP's own `Iterator` interface (`foreach ($reader as
+$chunk)` works directly) rather than a callback/block-only shape - forward-only, `rewind()`
+raises if called a second time (mirrors `\Generator`'s own restriction, the closest stdlib
+precedent for a single-pass iterator). The untrusted wire `chunk_len` field is bounds-checked
+before being used to size a read, and trailing bytes after the `Final` chunk are rejected (D-118's
+second pitfall) - both confirmed by real rejection tests, not assumed from matching the wire format
+alone.
+
+### A real ext-php-rs gap: `DstuCoreException` cannot be `new`-ed from pure PHP
+
+Writing this wrapper in pure PHP surfaced a genuine limitation, not predicted from step 2's own
+Rust-side-only exception usage: `new DstuCoreException($msg)` from PHP userland fails with "You
+cannot instantiate this class from PHP." Root-caused by reading `ext-php-rs`'s own
+`builders/class.rs` directly: a `#[php_class]`-registered class's PHP-visible constructor comes
+*only* from a `#[php_impl] fn __construct(...)` block; without one, `T::constructor()` returns
+`None` and the generated constructor trampoline throws that fixed string unconditionally.
+`DstuCoreException` was deliberately built with no `#[php_impl]` at all (only `#[derive(Default)]`,
+enough for `PhpException::from_class`'s own internal construction path, which bypasses PHP's
+`__construct` entirely the same way `zend_throw_exception_ex` does) - correct for every Rust-side
+throw site, but leaves pure PHP code with no way to raise the same class directly.
+
+Fix: a small escape-hatch function, `dstu_core_throw_error(string $message)`
+(`bindings/php/src/error.rs`) - its whole body is `Err(PhpException::from_class::<
+DstuCoreException>(message))`, so calling it as a plain statement (`dstu_core_throw_error("...")`)
+throws exactly like a `throw` statement would, reusing the identical working Rust-side construction
+path rather than attempting to wire up a real `#[php_impl]` constructor that forwards to
+`\Exception`'s own base constructor (no documented ext-php-rs helper for that found; the escape
+hatch is simpler and sufficient). Every `dstu_core_throw_error`/would-be-`throw new
+DstuCoreException` site are indistinguishable to a `catch (DstuCoreException $e)` block, confirmed
+by every rejection test still passing unchanged after the swap.
+
+### Verification
+
+Real bidirectional wire-format interop against the actual built `uacrypt.exe` (`cargo build -p
+uacrypt --release` from the repo root, not simulated): a file written by
+`DstuCoreSecretStreamWriter` (multi-chunk, crossing the 8 KiB boundary mid-write) decrypted
+correctly via `uacrypt decrypt`, byte-for-byte; a file produced by `uacrypt encrypt` decrypted
+correctly via `DstuCoreSecretStreamReader::readAll()`, byte-for-byte. Six rejection/misuse cases,
+all raising `DstuCoreException` with the expected message: tampered ciphertext byte, truncated
+stream (mid-chunk cutoff), trailing data after `Final`, wrong key, write-after-close, and a
+callback that throws partway through a write (confirming the D-118 no-finalize-on-error property
+directly, not just by code inspection). `cargo fmt --check`/`cargo clippy --all-targets -D
+warnings` clean; `php -l` confirms the PHP file itself has no syntax errors.

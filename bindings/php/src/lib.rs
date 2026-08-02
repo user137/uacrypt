@@ -76,6 +76,7 @@ pub fn module(module: ModuleBuilder) -> ModuleBuilder {
         .constant(wrap_constant!(DSTU_CORE_SECRETSTREAM_TAG_FINAL))
         .class::<error::DstuCoreException>();
 
+    let module = error::register(module);
     let module = secretbox::register(module);
     let module = sign::register(module);
     let module = auth::register(module);
