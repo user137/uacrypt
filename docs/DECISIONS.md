@@ -8907,3 +8907,59 @@ test specifically, oversized-`chunk_len` rejection, trailing-data rejection, and
 real `uacrypt.exe` interop). `rubocop` deliberately deferred to step 5, alongside `cargo xtask ruby`
 wiring - matching where `bindings/python`'s own `ruff` gate landed (T-49 step 5), not introduced as
 scope creep inside this step.
+
+## D-136: Ruby binding (T-160) - advisor-review corrections to steps 2/3, then step 4 (prebuilt native gem)
+
+2026-08-02. Before step 4, an `advisor()` review of steps 1-3 surfaced six real findings, none of
+which the local smoke scripts had caught - fixed in their own commit, distinct from step 4's actual
+new work, same discipline D-130 used correcting D-125:
+
+1. **The gemspec `files` glob was single-level** (`Dir.glob("ext/dstu_core_rb/*.{rs,toml,rb}")`) -
+   matched `Cargo.toml`/`build.rs`/`extconf.rb` but not `ext/dstu_core_rb/src/*.rs`, and omitted the
+   gem-root `Cargo.toml`/`Cargo.lock` (the workspace anchor, D-133) entirely. The Node `files`
+   gotcha (D-128) in Ruby form - fixed to a recursive `Dir.glob("ext/**/*.{rs,toml,rb}")` plus the
+   two root files added explicitly.
+2. **Text-mode `IO` silently corrupts binary data on Windows** (LF→CRLF translation applied to
+   header/ciphertext/tag bytes) - `SecretStreamWriter`/`Reader` now call
+   `@out.binmode if @out.respond_to?(:binmode)` (and the same for `@inp`) in their constructors,
+   verified by an explicit test opening a file with plain `"w"`/`"r"` (not `"wb"`/`"rb"`) and
+   confirming a correct round-trip despite the caller's own mode choice.
+3. **Encoding of returned plaintext**: `RString`/`str_from_slice` produce/consume `ASCII-8BIT`
+   (binary) `String`s throughout - documented explicitly in `secretstream.rb`'s module doc, since
+   `"привіт".b == "привіт"` is `false` in Ruby (differing encodings) and every smoke test so far
+   used ASCII-only fixtures, silently avoiding the question. Added an explicit non-ASCII UTF-8
+   round-trip test asserting the binary contract.
+4. **`is_finalized` is not a Ruby name** - inconsistent with the Ruby-layer's own `closed?`
+   (`SecretStreamWriter`) written in the same session. Renamed the Rust-registered method to
+   `finalized?` on both `SecretStreamPushState`/`PullState` (D-126's "casing is per-language" note
+   applies to predicate-naming conventions too, not just casing).
+5. **Write-after-close raised `ArgumentError`; Ruby's own `IO` contract for that is `IOError`**
+   (`"closed stream"`) - aligned before step 6 could pin the wrong exception class in a misuse spec.
+6. Two gaps flagged for step 6 to pre-plan rather than fix now: the future `uacrypt` interop spec
+   must fail loudly on a silent `skip`/`pending` (RSpec's equivalent of Node's `grep -q "not ok"`
+   gate), and locate the `uacrypt` binary relative to the repo root with an explicit `.exe` suffix
+   rather than an absolute path. Verified now instead: the empty-input degenerate case (D-65) in
+   both directions - `SecretStreamWriter.open(key, io) {}` alone produces a single empty `Final`
+   chunk that round-trips, and a genuinely empty file through real `uacrypt encrypt` decrypts
+   correctly through `SecretStreamReader`.
+
+**Step 4 itself**: a *source* gem (`gem build dstu_core.gemspec`) cannot actually install standalone
+- confirmed empirically, not assumed, by installing into a fresh, unrelated `GEM_HOME` and watching
+`cargo` fail to resolve `ext/dstu_core_rb/Cargo.toml`'s `dstu-core = { path =
+"../../../../crates/dstu-core" }` dependency, since that relative path only exists inside this
+repo's own tree, not inside an arbitrary installed gem's directory. This is the reason
+`docs/bindings-strategy.md`'s own per-binding checklist already says "a prebuilt extension binary
+where the ecosystem supports it, source build only as a fallback" for Ruby specifically - a
+precompiled, platform-tagged gem sidesteps the path dependency entirely by shipping the compiled
+`.so` directly, no `ext/` source or `Cargo.toml` needed at install time. `rake-compiler`/`rb_sys`
+already provide this mechanism (`RbSys::ExtensionTask` auto-defines a `native` task chain since the
+gemspec's platform defaults to `"ruby"`) - `rake native gem` (both together, since `native` only
+stages files and `gem` is the actual `Gem::Package.build` step, two separate `Gem::PackageTask`
+targets) produces `pkg/dstu_core-0.1.0-x64-mingw-ucrt.gem`, its `cross_compiling_blocks` callback
+automatically stripping `.rs`/`Cargo.{toml,lock}` files and the `rb_sys` dev-dependency from the
+packaged spec. Verified with the same fresh-`GEM_HOME` install bar: `require "dstu_core"`,
+`self_test`, and a `SecretStreamWriter`/`Reader` round-trip all pass against the installed gem, not
+the source tree - matching Python/Node's own step-4 verification bar exactly. Linux/macOS
+cross-compiled native gems (needing `rake-compiler-dock`/Docker, not set up on this Windows-only
+machine) are deferred to CI, same "this machine is Windows-only" precedent Python/Node's own step 4
+entries already recorded.

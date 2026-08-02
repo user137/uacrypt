@@ -275,9 +275,11 @@ worse than no resume line, since it actively misdirects the next session.
 **Resume point: T-161 done (2026-08-02). T-49 (Python) done in full 2026-08-02 - see D-120. T-50
 (Node.js) done in full 2026-08-02 - see D-125 through D-132 (step 6 done before step 5, a
 tooling-forced reorder, D-129 explains why; D-130 corrects D-125's toolchain-pin approach). T-160
-(Ruby) steps 1-3 done 2026-08-02 - see D-133 (own Ruby+MSYS2-clang toolchain install, several real
+(Ruby) steps 1-4 done 2026-08-02 - see D-133 (own Ruby+MSYS2-clang toolchain install, several real
 rb_sys/bindgen gotchas), D-134 (full crypto_* surface), D-135 (SecretStreamWriter/Reader,
-Zlib::GzipWriter/Reader-modeled). Next: T-160 step 4 (prebuilt-artifact packaging).**
+Zlib::GzipWriter/Reader-modeled), D-136 (advisor-review fixes to steps 2-3, then step 4's
+precompiled native gem - a source gem cannot install standalone at all, the path-dependency finding).
+Next: T-160 step 5 (cargo xtask + CI wiring).**
 
 ### The standard binding steps
 
@@ -644,7 +646,19 @@ Standard steps:
   `Final`. Verified against the real `uacrypt.exe` bidirectionally, plus exact chunk-boundary
   sizing and the `ensure`-avoidance pitfall itself, all against the live compiled `.so`. `rubocop`
   deferred to step 5 (matching where Python's own `ruff` landed), not introduced here.
-- Step 4: a prebuilt extension binary where the ecosystem supports it.
+- Step 4: **Done 2026-08-02, see D-136.** `rake native gem` (this machine's Windows/`x64-mingw-ucrt`
+  platform only - Linux/macOS cross-compiled native gems need `rake-compiler-dock`/Docker, deferred
+  to CI, same precedent Python/Node's own step 4 set). **Real finding**: a *source* gem cannot
+  install standalone at all - confirmed by installing into a fresh `GEM_HOME` and watching `cargo`
+  fail to resolve the `ext/dstu_core_rb/Cargo.toml` path dependency on `crates/dstu-core`, which
+  only exists inside this repo's own tree. A precompiled, platform-tagged native gem (which
+  `rake-compiler`/`rb_sys` already build via an auto-defined `native` task chain) ships the
+  compiled `.so` directly instead, sidestepping the path dependency entirely. Verified via the same
+  fresh-`GEM_HOME` install bar Python/Node's own step 4 used: `require "dstu_core"`, `self_test`,
+  and a full `SecretStreamWriter`/`Reader` round-trip all pass against the *installed* gem. Same
+  advisor pass also caught and fixed five real correctness gaps in steps 2/3 before they could ship
+  (gemspec `files` glob, missing `binmode`, the binary-string encoding contract, `is_finalized` →
+  `finalized?`, `ArgumentError` → `IOError` for write-after-close) - see D-136 for the full list.
 - Step 6: RSpec/Minitest.
 
 ### T-163 — Go (added 2026-08-02, D-122; builds alongside T-52/T-51, needs the C ABI)

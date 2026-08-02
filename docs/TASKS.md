@@ -2609,6 +2609,12 @@ configuration surface added in the process (D-47 still holds).
       re-checked - `.open`'s block form deliberately avoids Ruby's own `ensure` idiom to not
       finalize on the error path; the reader bounds `chunk_len`/rejects trailing data. Verified
       bidirectionally against the real `uacrypt.exe`.
+      **Step 4 done 2026-08-02, see D-136**: an advisor review first caught and fixed five real
+      gaps in steps 2/3 (gemspec `files` glob, missing `binmode`, binary-string encoding contract,
+      `is_finalized` → `finalized?`, `ArgumentError` → `IOError`). Step 4 itself found a genuine
+      packaging gap - a source gem can't install standalone (the `ext/` Cargo.toml's path
+      dependency on `crates/dstu-core` only resolves inside this repo) - fixed via `rake native gem`
+      producing a precompiled, platform-tagged gem instead, verified against a fresh `GEM_HOME`.
 - [ ] **T-163** Go binding (`bindings/go`) — added to scope 2026-08-02 at the owner's request, on
       the same no-incumbent-competitor footing as Node/Ruby/PHP (no DSTU-specific Go library exists,
       real DevSecOps/cloud-infra audience). **Unlike Node/Ruby/PHP, this one goes through the C ABI

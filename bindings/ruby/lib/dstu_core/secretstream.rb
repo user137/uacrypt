@@ -14,6 +14,13 @@
 # ciphertext (chunk_len) || auth_tag (16)`, chunks capped at 8 KiB (matching
 # `SECRETSTREAM_CHUNK_BYTES`, not an independent choice) - a file `SecretStreamWriter` writes is
 # decryptable by `uacrypt decrypt` and vice versa.
+#
+# **Every `String` this wrapper touches is binary (`ASCII-8BIT`/`BINARY`)**, both what it writes
+# to `out`/`inp` and what `#read_all`/`#each` yield - matching every underlying `crypto_*` wrapper
+# function (`RString::to_bytes`, D-134). A caller passing UTF-8 text must `.b`/
+# `force_encoding("BINARY")` before comparing against the decrypted result, or the comparison sees
+# differing encodings and fails even when the bytes match (`"привіт".b == "привіт"` is `false` in
+# Ruby) - this is a caller-side encoding-compare gotcha, not a bug in this wrapper.
 module DstuCore
   # Matches crates/uacrypt/src/lib.rs's SECRETSTREAM_CHUNK_BYTES exactly - required for
   # wire-format interop with `uacrypt encrypt`/`decrypt`, not an independent choice.
@@ -29,6 +36,7 @@ module DstuCore
   class SecretStreamWriter
     def initialize(key, out)
       @out = out
+      @out.binmode if @out.respond_to?(:binmode)
       @push = SecretStreamPushState.new(key)
       @out.write(@push.header)
       @buf = +""
@@ -58,7 +66,7 @@ module DstuCore
     # data is coming - the same one-chunk-ahead reasoning `uacrypt encrypt` itself uses to tag the
     # true last chunk `Final`, not an extra empty one after it.
     def write(data)
-      raise ArgumentError, "write to closed SecretStreamWriter" if @closed
+      raise IOError, "closed stream" if @closed
 
       @buf << data.b
       while @buf.bytesize > SECRETSTREAM_CHUNK_BYTES
@@ -106,6 +114,7 @@ module DstuCore
 
     def initialize(key, inp)
       @inp = inp
+      @inp.binmode if @inp.respond_to?(:binmode)
       header = read_exact(32, "header")
       @pull = SecretStreamPullState.new(key, header)
       @done = false

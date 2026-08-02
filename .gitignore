@@ -66,8 +66,10 @@
 
 # Ruby (T-160): rake-compiler's own staging/build dirs, plus the compiled extension copied into
 # lib/dstu_core/ (rake's own `copy` task target - platform-specific binary, same class as Python's
-# `.so`/Node's `.node` above), regenerated every `rake compile`.
+# `.so`/Node's `.node` above), regenerated every `rake compile`. `pkg/` is `rake native gem`'s own
+# output directory (the precompiled, platform-tagged .gem, D-136) - rebuilt per release, not vendored.
 /bindings/ruby/tmp/
 /bindings/ruby/pkg/
 /bindings/ruby/lib/dstu_core/*.so
 /bindings/ruby/.bundle/
+/bindings/ruby/*.gem

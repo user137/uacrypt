@@ -115,7 +115,7 @@ pub fn init(ruby: &Ruby, module: magnus::RModule) -> Result<(), Error> {
     push_state.define_singleton_method("new", function!(SecretStreamPushState::new, 1))?;
     push_state.define_method("header", method!(SecretStreamPushState::header, 0))?;
     push_state.define_method(
-        "is_finalized",
+        "finalized?",
         method!(SecretStreamPushState::is_finalized, 0),
     )?;
     push_state.define_method("push", method!(SecretStreamPushState::push, 2))?;
@@ -123,7 +123,7 @@ pub fn init(ruby: &Ruby, module: magnus::RModule) -> Result<(), Error> {
     let pull_state = module.define_class("SecretStreamPullState", ruby.class_object())?;
     pull_state.define_singleton_method("new", function!(SecretStreamPullState::new, 2))?;
     pull_state.define_method(
-        "is_finalized",
+        "finalized?",
         method!(SecretStreamPullState::is_finalized, 0),
     )?;
     pull_state.define_method("pull", method!(SecretStreamPullState::pull, 3))?;
