@@ -8687,3 +8687,39 @@ toolchain needs no special handling at all in `bindings-nodejs.yml` - the workfl
 plain `dtolnay/rust-toolchain@stable` (no explicit host) every other binding's workflow already
 uses, exactly like `bindings-python.yml`. This machine's override is a pure local build
 convenience, not something CI needs to reproduce or even know about.
+
+## D-131: Node.js binding (T-50) step 5 - `cargo xtask nodejs` + `bindings-nodejs.yml`
+
+Same 2026-08-02 session. `xtask/src/main.rs` gains `nodejs()` (builds `uacrypt` from the repo root
+first, `npm install`, `cargo fmt --check`/`clippy -D warnings`, `npm run build`, `npm test` -
+mirrors `python()` exactly), wired into the command match arm, `print_usage()`'s help text, and
+`ci()`'s best-effort optional-layers array. `audit()`/`deny()` extended to also check
+`bindings/nodejs` (shares the root `deny.toml`, same D-119 mechanism already established for
+`bindings/python` - `deny.toml`'s header comment updated to say so).
+
+**Real, immediately-hit tool-resolution gotcha, same shape as the pre-existing `mvn`/`mvn.cmd`
+case this file already handles**: a bare `Command::new("npm")` reports "not found on PATH" even
+though `npm --version` works fine in a real shell - Windows ships `npm` as `npm.cmd`, and
+`std::process::Command` does not resolve batch-script extensions the way a shell's own PATH lookup
+does. `command_for()` extended to map `npm` -> `npm.cmd` on Windows alongside the existing `mvn`
+case, confirmed by running `cargo xtask nodejs` before and after the fix (failed with the tool-not-
+found message first, passed clean after).
+
+New `.github/workflows/bindings-nodejs.yml`, mirroring `bindings-python.yml`'s shape: `test` job
+(matrix ubuntu/macos/windows - fmt-check ubuntu-only per the same autocrlf false positive, clippy,
+build `uacrypt` first so the secretstream interop test can't silently skip, `npm install`/`npm run
+build`/`npm test` with an explicit `grep -q "not ok"` failure gate on top of the exit-code check,
+`npm pack --dry-run` on every push to catch a broken `files` field - D-128's real gotcha -
+immediately rather than only at release time) and `supply-chain` (`cargo deny check`/`cargo audit`
+against `bindings/nodejs`, same mechanism as Python's). **No MSVC-specific step needed anywhere in
+this workflow** - confirmed by D-130's own reasoning: `windows-latest` is MSVC-host by default, so
+napi-build's Windows-gnu branch this local machine hit never executes there at all.
+
+Verified locally before considering this done: `cargo xtask nodejs` runs clean end to end
+(fmt/clippy/build/52 tests, confirmed idempotent on a second run, exit 0 both times);
+`cargo deny check`/`cargo audit` both pass against `bindings/nodejs` directly and via `cargo xtask
+deny`/`audit` from the repo root (checking root + both bindings in one invocation); `cargo fmt --all
+-- --check`/`cargo clippy --all-targets -- -D warnings` clean for `xtask` itself (a pre-existing,
+unrelated formatting diff in `xtask/src/main.rs`'s Kani block predates this session's changes -
+confirmed via `git stash` - and is out of scope for this step, left alone per minimal-diff
+discipline).

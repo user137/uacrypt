@@ -32,6 +32,7 @@ fn main() -> ExitCode {
         "oracle-java" => oracle_java(),
         "oracle-dotnet" => oracle_dotnet(),
         "python" => python(),
+        "nodejs" => nodejs(),
         "ci" => ci(),
         "help" | "-h" | "--help" => {
             print_usage();
@@ -68,14 +69,17 @@ fn print_usage() {
          \x20 deny           cargo deny check (licenses, bans, sources)\n\
          \x20 oracle-java    run the Java/Bouncy Castle oracle harness via Maven\n\
          \x20 oracle-dotnet  run the .NET/Bouncy Castle oracle harness via dotnet run\n\
-         \x20 python         build+lint bindings/python, maturin develop, pytest (T-49)"
+         \x20 python         build+lint bindings/python, maturin develop, pytest (T-49)\n\
+         \x20 nodejs         build+lint bindings/nodejs, napi build, node --test (T-50)"
     );
 }
 
-/// Windows Maven ships `mvn.cmd`, not `mvn` - `Command::new` doesn't resolve batch-script
-/// extensions the way a shell does, so this is the one real per-OS branch in this whole file.
+/// Windows Maven/npm ship `mvn.cmd`/`npm.cmd`, not `mvn`/`npm` - `Command::new` doesn't resolve
+/// batch-script extensions the way a shell does, so this is the one real per-OS branch in this
+/// whole file (confirmed for `npm` the same way `mvn` was: a bare `Command::new("npm")` reports
+/// "not found on PATH" despite `npm --version` working fine directly in a real shell).
 fn command_for(base: &str) -> String {
-    if cfg!(windows) && base == "mvn" {
+    if cfg!(windows) && (base == "mvn" || base == "npm") {
         format!("{base}.cmd")
     } else {
         base.to_string()
@@ -330,15 +334,17 @@ fn audit() -> bool {
     if !require("cargo-audit", "cargo install cargo-audit --locked") {
         return false;
     }
-    run("cargo", &["audit"], None) && run("cargo", &["audit"], Some(Path::new("bindings/python")))
+    run("cargo", &["audit"], None)
+        && run("cargo", &["audit"], Some(Path::new("bindings/python")))
+        && run("cargo", &["audit"], Some(Path::new("bindings/nodejs")))
 }
 
-/// `bindings/python` is a separate Cargo workspace (D-119), but deliberately shares the root
-/// `deny.toml` rather than duplicating one - cargo-deny walks up from its cwd looking for the
-/// config file, so running with `bindings/python` as cwd finds the same root policy and checks
-/// that workspace's own dependency tree (pyo3 and friends) against it. Confirmed by running it,
-/// not assumed - it also caught a real wildcard-dependency bug (missing `version =` on the
-/// `dstu-core` path dependency, the exact T-75/D-11 failure mode) the first time this was tried.
+/// `bindings/python`/`bindings/nodejs` are separate Cargo workspaces (D-119), but deliberately
+/// share the root `deny.toml` rather than duplicating one - cargo-deny walks up from its cwd
+/// looking for the config file, so running with either as cwd finds the same root policy and
+/// checks that workspace's own dependency tree against it. Confirmed by running it, not assumed -
+/// it also caught a real wildcard-dependency bug (missing `version =` on the `dstu-core` path
+/// dependency, the exact T-75/D-11 failure mode) the first time this was tried for Python.
 fn deny() -> bool {
     if !require("cargo-deny", "cargo install cargo-deny --locked") {
         return false;
@@ -348,6 +354,11 @@ fn deny() -> bool {
             "cargo",
             &["deny", "check"],
             Some(Path::new("bindings/python")),
+        )
+        && run(
+            "cargo",
+            &["deny", "check"],
+            Some(Path::new("bindings/nodejs")),
         )
 }
 
@@ -379,6 +390,28 @@ fn python() -> bool {
         )
         && run("maturin", &["develop", "--release"], Some(dir))
         && run("pytest", &["-ra"], Some(dir))
+}
+
+/// Best-effort like python() above - bindings/nodejs's own separate Cargo workspace (D-119) isn't
+/// reached by build/test/clippy/fmt. Builds uacrypt first (release, from the repo root) for
+/// test/secretstream.test.js's real interop check, same D-124 reasoning as python()'s own step.
+/// The MSVC-toolchain quirk this crate needs on some Windows dev machines (D-125/D-130) is a
+/// machine-local `rustup override`, not anything this function or CI needs to special-case.
+fn nodejs() -> bool {
+    if !require("npm", "https://nodejs.org (npm ships with Node.js)") {
+        return false;
+    }
+    let dir = Path::new("bindings/nodejs");
+    run("cargo", &["build", "-p", "uacrypt", "--release"], None)
+        && run("npm", &["install"], Some(dir))
+        && run("cargo", &["fmt", "--all", "--", "--check"], Some(dir))
+        && run(
+            "cargo",
+            &["clippy", "--all-targets", "--", "-D", "warnings"],
+            Some(dir),
+        )
+        && run("npm", &["run", "build"], Some(dir))
+        && run("npm", &["test"], Some(dir))
 }
 
 fn oracle_java() -> bool {
@@ -434,6 +467,7 @@ fn ci() -> bool {
         oracle_java,
         oracle_dotnet,
         python,
+        nodejs,
     ] {
         optional();
     }

@@ -273,10 +273,10 @@ resuming. **Update the resume line below every time a step is checked off**; a s
 worse than no resume line, since it actively misdirects the next session.
 
 **Resume point: T-161 done (2026-08-02). T-49 (Python) done in full 2026-08-02 - see D-120. T-50
-(Node.js) steps 1-4 and 6 done 2026-08-02 - see D-125/D-126/D-127/D-128/D-129 (step 6 done before
-step 5, a tooling-forced reorder, D-129 explains why). Next: T-50 step 5 (`cargo xtask` subcommand +
-CI wiring - `test/` now has real content for it to run), also tracked as real tasks in this
-session's Task tool (T-50 broken into its nine standard steps).**
+(Node.js) steps 1-6 done 2026-08-02 - see D-125 through D-131 (step 6 done before step 5, a
+tooling-forced reorder, D-129 explains why; D-130 corrects D-125's toolchain-pin approach). Next:
+T-50 step 7 (`examples/` + `README.md`), also tracked as real tasks in this session's Task tool
+(T-50 broken into its nine standard steps).**
 
 ### The standard binding steps
 
@@ -545,6 +545,12 @@ Standard steps:
   (`selfTest`, `secretbox`, the `secretstream` `stream.Transform` pair) against the installed
   package - proves the packaged artifact actually contains everything needed, not just the dev
   source tree.
+- Step 5: **Done 2026-08-02, see D-131.** `cargo xtask nodejs` (mirrors `python()` exactly) +
+  `.github/workflows/bindings-nodejs.yml` (mirrors `bindings-python.yml`'s shape: `test` matrix
+  ubuntu/macos/windows, `supply-chain` deny/audit). No MSVC-specific CI step needed anywhere -
+  `windows-latest` is MSVC-host by default (D-130). Real gotcha hit and fixed: a bare
+  `Command::new("npm")` fails to resolve on Windows the same way `mvn` already needed a `.cmd`
+  special-case - `command_for()` extended accordingly.
 - Step 6: **Done 2026-08-02, see D-129** — done *before* step 5 for this binding specifically, a
   tooling-forced reorder (`node --test test/` errors on a nonexistent directory, unlike pytest's
   vacuous-pass-on-empty-collection behavior Python's own step 5-before-6 order relied on), not a

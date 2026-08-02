@@ -1,0 +1,83 @@
+name: bindings-nodejs
+
+# Own job, not folded into rust.yml's matrix (D-119) - bindings/nodejs is a separate Cargo
+# workspace neither of rust.yml's `--workspace` jobs (Miri, the MSRV build) is equipped for, and
+# release.yml only fires on `v*` tags, which would leave this binding with zero regression coverage
+# between releases (docs/bindings-strategy.md T-50 step 5, mirrors bindings-python.yml exactly).
+#
+# No MSVC-toolchain special-casing needed here (unlike this project's own local dev machine, see
+# D-125/D-130): GitHub's windows-latest runner already defaults to an MSVC-host Rust toolchain, so
+# napi-build's Windows-gnu libnode.dll requirement never applies on CI.
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: build + test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      # ubuntu-only, matching rust.yml's own fmt job and bindings-python.yml: actions/checkout on a
+      # Windows/macOS runner applies git's autocrlf translation, which makes every LF-checked-in
+      # file look like "Incorrect newline style" to `cargo fmt --check` - a known false positive
+      # (docs/DECISIONS.md D-108's notes), not specific to this workflow.
+      - run: cargo fmt --all -- --check
+        if: matrix.os == 'ubuntu-latest'
+        working-directory: bindings/nodejs
+      - run: cargo clippy --all-targets -- -D warnings
+        working-directory: bindings/nodejs
+      # From the repo root: test/secretstream.test.js's interop test silently *skips* rather than
+      # fails when the binary isn't found - build it first so this job actually exercises the
+      # wire-format check that justifies this binding existing, same reasoning as
+      # bindings-python.yml's own uacrypt build step.
+      - run: cargo build -p uacrypt --release
+      - run: npm install
+        working-directory: bindings/nodejs
+      - run: npm run build
+        working-directory: bindings/nodejs
+      - name: node --test (fail if anything was silently skipped)
+        working-directory: bindings/nodejs
+        shell: bash
+        run: |
+          npm test 2>&1 | tee node-test-output.txt
+          test "${PIPESTATUS[0]}" -eq 0
+          if grep -q "not ok" node-test-output.txt; then
+            echo "::error::node --test reported a failure in its TAP output that the exit code check above should already have caught - failing explicitly rather than trusting exit code alone."
+            exit 1
+          fi
+      # Sanity-check packaging on every OS, every push (not just release.yml's v* tag builds) - a
+      # broken `files` field (D-128's real gotcha) would otherwise only be caught at release time.
+      - run: npm pack --dry-run
+        working-directory: bindings/nodejs
+
+  supply-chain:
+    name: cargo deny / audit (bindings/nodejs)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: bindings/nodejs
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo install cargo-deny --locked
+      # Root deny.toml, found by cargo-deny walking up from this cwd (see deny.toml's own header
+      # comment) - checks this workspace's real dependency tree (napi and friends), not a copy.
+      - run: cargo deny check
+      - run: cargo install cargo-audit --locked
+      - run: cargo audit
