@@ -2423,10 +2423,23 @@ completion bar same as the three test categories. **And D-118's requirement**: e
 configuration surface added in the process (D-47 still holds).
 
 - [ ] **T-161** `dstu_core::selftest` — shared runtime KAT self-check module (D-117), a prerequisite
-      for every binding below. Re-runs the official test vectors (Kalyna/Kupyna/Strumok/DSTU 4145,
-      the same `crates/dstu-core/tests/vectors/*.json` data, embedded rather than hand-copied) against
-      the live compiled implementation, returns pass/fail naming which primitive failed if any. New
-      Cargo feature (binary-size cost, off by default in the bare crate, on by default in every
+      for every binding below. **Confirmed as a genuine gap 2026-08-02, not assumed**: the project
+      owner asked whether everything the bindings plan leans on actually exists in stock Rust yet,
+      not just described in docs — checked directly (`find crates/dstu-core/src/hazmat -maxdepth 1
+      -name "*.rs"`, a `grep -i selftest` across `crates/dstu-core/src`) rather than trusted from
+      memory. Result: every `crypto_*` module the bindings checklist references
+      (`crypto_auth`/`crypto_generichash`/`crypto_kdf`/`crypto_pwhash`/`crypto_secretbox`/
+      `crypto_secretstream`/`crypto_sign`/`crypto_stream`/`randombytes`) is real, and
+      `crypto_secretstream`'s `PushState`/`PullState` chunked construction and all 10 `hazmat`
+      Kalyna modes (including the combined CCM/GCM/KW ones) are real and documented — but no
+      `selftest`/`self_test` module or function exists anywhere in `dstu-core` today. This task is
+      the only piece of this phase that is genuinely new Rust-core work, not something bindings can
+      wrap around existing functionality — which is exactly why it's sequenced first, not
+      discovered as a surprise mid-binding. Re-runs the official test vectors (Kalyna/Kupyna/
+      Strumok/DSTU 4145, the same `crates/dstu-core/tests/vectors/*.json` data, embedded rather
+      than hand-copied) against the live compiled implementation, returns pass/fail naming which
+      primitive failed if any. New Cargo feature (binary-size cost, off by default in the bare
+      crate, on by default in every
       binding's `Cargo.toml`). Built once here, every binding (T-49/T-50/T-51/T-52/T-53/T-158/T-159/
       T-160) wraps it thin rather than reimplementing it — see D-117 for the precedent this follows
       (D-13's shared S-box/MDS tables).

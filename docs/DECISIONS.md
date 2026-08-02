@@ -8106,10 +8106,23 @@ language-specific about it, and risks exactly the kind of silent drift between p
 this project's "one source of truth" discipline exists to prevent elsewhere (test vectors,
 architectural decisions, doc-map cross-references).
 
-**Sequencing note, not yet scheduled as its own `T-NN`:** this module is a prerequisite for every
-binding phase in `docs/bindings-strategy.md`/`docs/TASKS.md` Phase 3, including T-49 (Python, the
-template) — it should land as one of Phase 3's first concrete implementation steps, before or
-alongside T-49's scaffold, not bolted on after bindings already exist.
+**Sequencing note:** scheduled as `docs/TASKS.md` T-161, a prerequisite for every binding phase —
+it should land as one of Phase 3's first concrete implementation steps, before or alongside T-49's
+scaffold, not bolted on after bindings already exist.
+
+**Confirmed as a genuine gap 2026-08-02, not assumed from this entry's own text.** The project
+owner asked directly whether everything the bindings plan leans on already exists in stock Rust, or
+whether features had been invented for the bindings layer without the underlying Rust support.
+Checked by reading the actual source, not by re-reading this document: `find
+crates/dstu-core/src/hazmat -maxdepth 1 -name "*.rs"` and a `grep -i selftest` across
+`crates/dstu-core/src`. Result — every `crypto_*` module the bindings checklist references is real
+(`crypto_auth`/`crypto_generichash`/`crypto_kdf`/`crypto_pwhash`/`crypto_secretbox`/
+`crypto_secretstream`/`crypto_sign`/`crypto_stream`/`randombytes`, all present as files), and
+`crypto_secretstream`'s chunked `PushState`/`PullState` construction plus all 10 `hazmat` Kalyna
+modes are real and documented — but `selftest`/`self_test` genuinely does not exist anywhere in
+`dstu-core` yet. This module is the one piece of Phase 3 that is real new Rust-core work, not a
+binding-layer wrapper around something already built — which is exactly why T-161 is sequenced
+first rather than assumed available when a later binding phase reaches for it.
 
 ## D-118: Idiomatic streaming wrapper over `crypto_secretstream`; browser/WASM explicitly deferred
 
