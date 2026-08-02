@@ -273,10 +273,9 @@ resuming. **Update the resume line below every time a step is checked off**; a s
 worse than no resume line, since it actively misdirects the next session.
 
 **Resume point: T-161 done (2026-08-02). T-49 (Python) done in full 2026-08-02 - see D-120. T-50
-(Node.js) steps 1-7 done 2026-08-02 - see D-125 through D-132 (step 6 done before step 5, a
+(Node.js) done in full 2026-08-02 - see D-125 through D-132 (step 6 done before step 5, a
 tooling-forced reorder, D-129 explains why; D-130 corrects D-125's toolchain-pin approach). Next:
-T-50 step 8 (doc-map sweep + mark T-50 done in `docs/TASKS.md`), also tracked as real tasks in this
-session's Task tool (T-50 broken into its nine standard steps).**
+T-160 (Ruby), not started.**
 
 ### The standard binding steps
 
@@ -563,6 +562,10 @@ Standard steps:
 - Step 7: **Done 2026-08-02, see D-132.** `examples/{secretbox,secretstream-file,sign,
   password-hashing,misc}.js` (one-for-one with Python's own five example files) and a fully
   rewritten `README.md` (T-50 step 1 never created one - a gap Python's step 1 didn't have).
+- Step 8: **Done 2026-08-02.** Swept `README.md`/`dstu-crypto-project.md`/`release-readiness.md`
+  (stale "T-50 onward haven't started" framing); `user-journey-gaps.md`/`cross-language-style-
+  guide.md` checked, no T-50 references existed to update (same finding T-49's own step 8 had).
+  **T-50 is now done in full - all nine standard steps - see `docs/TASKS.md`.**
 - **Node-only** (D-118) — browser/WASM is explicitly deferred; don't reinterpret this task as
   covering it.
 

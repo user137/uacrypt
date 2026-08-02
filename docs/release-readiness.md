@@ -212,13 +212,16 @@ any kind to choose from, safe or otherwise.
 - No user-facing documentation beyond this repo's own `.md` files exists yet (no rustdoc pass
   dedicated to public API ergonomics, no separate docs site/book) — a real release needs
   API-level docs a consumer reads without first reading `docs/DECISIONS.md`.
-- Phase 3 (language bindings: Python/JS/Java/.NET/C++, plus PHP/Ruby added 2026-08-02) — not
+- Phase 3 (language bindings: Python/JS/Java/.NET/C++, plus PHP/Ruby/Go added 2026-08-02) — not
   required for a Rust-crate-only 1.0, but relevant if "libsodium-equivalent" is read to include
-  libsodium's multi-language reach. **First binding done**: T-49 (Python) landed 2026-08-02 -
+  libsodium's multi-language reach. **First two bindings done**: T-49 (Python) landed 2026-08-02 -
   full `crypto_*` surface, own CI, manylinux/macOS/Windows wheels attached to GitHub Releases, not
-  yet published to PyPI (separately gated, same posture as crates.io's T-17). See
-  `docs/bindings-strategy.md`, `docs/DECISIONS.md` D-115/D-120, `docs/TASKS.md`
-  T-49/T-50/T-51/T-52/T-53/T-158/T-159/T-160 - T-50 onward haven't started.
+  yet published to PyPI (separately gated, same posture as crates.io's T-17). T-50 (Node.js)
+  landed the same day - full `crypto_*` surface + idiomatic `stream.Transform` secretstream
+  wrapper, own CI, prebuilt artifact verified via a real fresh-install round trip, not yet
+  published to npm (same gating posture). See `docs/bindings-strategy.md`, `docs/DECISIONS.md`
+  D-115/D-120/D-125 through D-132, `docs/TASKS.md`
+  T-49/T-50/T-51/T-52/T-53/T-158/T-159/T-160/T-163 - T-160 onward haven't started.
 
 ## Libsodium API surface and crates.io publishing audit (2026-07-25)
 

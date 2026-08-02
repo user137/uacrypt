@@ -83,7 +83,8 @@ target.
 │   ├── dstu-core/          # core: Kalyna + Kupyna + Strumok
 │   └── uacrypt/            # CLI binary on top of the core
 ├── bindings/               # Phase 3 language bindings, see docs/bindings-strategy.md
-│   └── python/             # PyO3, full crypto_* surface - provisional, not on PyPI (T-49)
+│   ├── python/             # PyO3, full crypto_* surface - provisional, not on PyPI (T-49)
+│   └── nodejs/             # napi-rs, full crypto_* surface - provisional, not on npm (T-50)
 ├── tests/oracle-harness/   # Java/.NET/C harnesses that verify test vectors against real Bouncy Castle
 └── oracles/                # reference implementations used as oracles - not vendored, see oracles/README.md
 ```

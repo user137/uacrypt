@@ -2500,7 +2500,8 @@ configuration surface added in the process (D-47 still holds).
       commit. `cargo xtask python` is the best-effort local entry point (D-12's miri/fuzz/audit
       posture, not mandatory). See `docs/bindings-strategy.md`'s T-49 section for the full
       step-by-step record, "Phase 1."
-- [ ] **T-50** Node.js binding (`bindings/nodejs`, napi-rs) — same `crypto_*` surface and template as
+- [x] **T-50** **Done in full 2026-08-02, see D-125 through D-132.** Node.js binding
+      (`bindings/nodejs`, napi-rs) — same `crypto_*` surface and template as
       T-49, `node:test` suite. **Reordered 2026-08-02, see D-121: now built right after T-49, not
       after T-52/T-51** — Node has no incumbent DSTU library the way Java/.NET have Bouncy Castle,
       so its direct-Rust-binding shape (matching Python's) is no longer held back for an
@@ -2537,8 +2538,12 @@ configuration surface added in the process (D-47 still holds).
       MSVC-specific CI step needed (`windows-latest` is MSVC-host by default, D-130); fixed a real
       `Command::new("npm")` resolution gotcha on Windows (needed `.cmd`, same as the pre-existing
       `mvn` case). **Step 7 done 2026-08-02, see D-132** — five example scripts one-for-one with
-      Python's own, and a `README.md` written from scratch (step 1 never created one). Steps 8-9
-      not started; also tracked as real tasks in this session's Task tool.
+      Python's own, and a `README.md` written from scratch (step 1 never created one). **Step 8
+      done 2026-08-02** — swept `README.md` (repo-tree line), `docs/dstu-crypto-project.md`,
+      `docs/release-readiness.md` (all had stale "T-50 onward haven't started" framing);
+      `docs/user-journey-gaps.md`/`docs/cross-language-style-guide.md` checked, no T-50 references
+      existed to update (same as T-49's own step 8 finding) - this entry itself is that step's mark-
+      done. **Step 9**: each step above landed as its own commit throughout, matching the template.
 - [ ] **T-51** Java binding — **reordered 2026-08-02 (D-121): now built after T-50/T-160/T-159, not
       before them** — Bouncy Castle and UAPKI already ship real Java/Kotlin DSTU support, so this
       binding's own gap here is real but smaller than in a language with no incumbent at all.
