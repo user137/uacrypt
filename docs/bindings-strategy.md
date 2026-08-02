@@ -234,8 +234,9 @@ new session — this section is the one to update as work lands, and the one to 
 resuming. **Update the resume line below every time a step is checked off**; a stale resume line is
 worse than no resume line, since it actively misdirects the next session.
 
-**Resume point: T-161 done (2026-08-02). T-49 step 1 (scaffold) done (2026-08-02). Next: T-49 step
-2 — wrap the full `crypto_*` surface in the Python binding, zero-config, not started.**
+**Resume point: T-161 done (2026-08-02). T-49 step 1 (scaffold) done (2026-08-02). T-49 step 2
+(full `crypto_*` surface) done (2026-08-02). Next: T-49 step 3 — wrap `crypto_secretstream` in a
+Python file-like object, not started.**
 
 ### The standard binding steps
 
@@ -304,7 +305,30 @@ Standard steps above, with:
   cleanly. Confirmed the root workspace is unaffected: `cargo build --workspace` from the repo root
   still only sees `crates/dstu-core`/`crates/uacrypt` (this is the concrete case D-119 was written
   to prevent - `cargo init` inside `bindings/python` had in fact auto-added itself to the root
-  `Cargo.toml`'s `members` before this was caught and reverted).
+  `Cargo.toml`'s `members` before this was caught and reverted). Follow-up fix same day: `pyo3`
+  bumped `"0.26"` → `"0.29"` (the version actually resolved, caught in self-review) plus a
+  `PYO3_PYTHON` build-prerequisite note added to `bindings/python/README.md`.
+- Step 2: **Done 2026-08-02.** One Rust module per `dstu_core::crypto_*` module -
+  `secretbox`/`secretstream`/`auth`/`kdf`/`generichash`/`stream`/`sign`/`pwhash`/`randombytes` -
+  plus `pwhash` turned on in `bindings/python/Cargo.toml` (it's `std`-gated only, no reason to
+  withhold it from a binding whose whole point is a full-surface wheel). Keys/ciphertexts/tags
+  cross the FFI boundary as plain Python `bytes`, not an opaque handle type - `SecretKey`'s
+  `Zeroize`-on-drop guarantee can't reach a `bytes` object regardless of wrapper shape, so an
+  opaque type would buy nothing here (PyNaCl's own libsodium bindings make the same call). A
+  single `DstuError` exception class covers every crypto-operation failure (tag mismatch,
+  truncation, CSPRNG failure); the stdlib `ValueError` covers caller-input mistakes a fixed-size
+  Rust array forecloses (wrong-length key/context/etc.) - two different failure classes, not one
+  exception type doing both jobs. `crypto_secretstream`'s `PushState`/`PullState` are wrapped as
+  thin `#[pyclass]`es mirroring the Rust API 1:1 (tag as a plain `int`, `SECRETSTREAM_TAG_*` module
+  constants) - the idiomatic file-like wrapper is deliberately step 3, not built here.
+  `crypto_generichash`'s streaming `Kupyna{256,512}Hasher` are `#[pyclass]`es holding
+  `Option<Hasher>`, `.take()`n on `finalize()` since the wrapped Rust `finalize(self)` consumes
+  ownership - a second `finalize()` call raises `ValueError` rather than panicking. Verified
+  end-to-end via `maturin develop` + a real Python smoke script exercising every wrapped function,
+  including tamper rejection (`secretbox`/`auth`/`secretstream`), wrong-message/wrong-key signature
+  rejection, and a wrong-length-key `ValueError` - not just "it compiles." `cargo build`/
+  `clippy --all-targets -- -D warnings`/`fmt --check` all clean; root `cargo build --workspace`
+  reconfirmed unaffected.
 - Step 3: a Python file-like object over `PushState`/`PullState`.
 - Step 4: manylinux/macOS/Windows wheels via `maturin`.
 - Step 5: its own CI job, not a step in the existing Rust matrix (D-119); `xtask` wiring is
