@@ -226,6 +226,142 @@ document tracks live status so it doesn't drift from this analysis. Summary:
 | 8 | PHP binding | Phase 2 |
 | 9 | Ruby binding | Phase 1's pipeline lessons |
 
+## Cross-session execution plan
+
+Requested 2026-08-02: a granular, checkable, per-task step list that survives a memory clear or a
+new session — this section is the one to update as work lands, and the one to read first when
+resuming. **Update the resume line below every time a step is checked off**; a stale resume line is
+worse than no resume line, since it actively misdirects the next session.
+
+**Resume point: T-161, step 1 — not started.**
+
+### The standard binding steps
+
+Every binding task (T-49/T-50/T-51/T-52/T-53/T-158/T-159/T-160) follows this same nine-step
+template unless its own entry below says otherwise — written once here rather than repeated nine
+times, per this project's own "three similar lines beat a premature abstraction, but don't
+duplicate a real invariant" instinct:
+
+1. [ ] Scaffold the binding crate/project, wired into the Cargo workspace where applicable.
+2. [ ] Wrap the full `crypto_*` surface, zero-config (D-116), including a `selftest()` wrapper
+       around T-161.
+3. [ ] Wrap `crypto_secretstream` in the language's idiomatic stream/pipe primitive (D-118).
+4. [ ] Prebuilt-artifact packaging for the target platform(s) (D-116) — build/local-install only,
+       no registry publish.
+5. [ ] `cargo xtask` subcommand + CI wiring (D-12).
+6. [ ] Local test suite: official vectors through the binding's own API (category 1), rejection
+       (category 2), misuse (category 3) — D-64/D-65 plus this session's official-vectors
+       requirement.
+7. [ ] `examples/` + `README.md` with the provisional-status banner (T-112).
+8. [ ] Doc-map sweep (`README.md`/`dstu-crypto-project.md`/`release-readiness.md`/
+       `user-journey-gaps.md`/`cross-language-style-guide.md`) + mark the task done in
+       `docs/TASKS.md`.
+9. [ ] Commit — each numbered step above is its own commit, not one large drop.
+
+### T-161 — `dstu_core::selftest` (first; nothing below can start without it)
+
+No binding exists yet at this point, so the standard template above doesn't apply — this is real
+Rust-core work, confirmed as a genuine gap (see `docs/TASKS.md` T-161's own note).
+
+1. [ ] Test-first: write the test asserting `selftest::run()` reports success, before the module
+       exists.
+2. [ ] New Cargo feature (`selftest`), off by default in the bare crate.
+3. [ ] Embed the official vectors (build-time include from `crates/dstu-core/tests/vectors/*.json`,
+       not hand-copied).
+4. [ ] Implement `run()` over every already-built `hazmat`/`crypto_*` primitive; the report names
+       which one fails, if any.
+5. [ ] Verify: `cargo test`, `cargo clippy -- -D warnings`, `cargo fmt --check`, the full
+       `no_std`/`alloc`/`std`/`small-tables` matrix combined with the new `selftest` feature.
+6. [ ] Mark T-161 done in `docs/TASKS.md`, note in D-117 that it landed.
+7. [ ] Commit.
+
+### T-49 — Python (the template every later task assumes)
+
+Standard steps above, with:
+- Step 1: `bindings/python/` as a new Cargo workspace member, PyO3 + maturin.
+- Step 3: a Python file-like object over `PushState`/`PullState`.
+- Step 4: manylinux/macOS/Windows wheels via `maturin`.
+- Step 6: `pytest`.
+
+### T-158 — C ABI crate (foundation for C++/.NET, maybe Java)
+
+Not a language binding itself — no idiomatic-language step 2/3 the way the others have; steps
+1/4/5/6/7/8/9 of the standard template, renumbered for what this crate actually needs:
+
+1. [ ] Scaffold `crates/dstu-core-capi` (cdylib+staticlib) — opaque handles, explicit error codes,
+       `catch_unwind` at every boundary call, zeroize-on-free. Verify the existing 8-combination
+       feature matrix still passes with this new workspace member present.
+2. [ ] `cbindgen`-generated header, including a `dstu_selftest()` export (T-161).
+3. [ ] `xtask`/CI wiring.
+4. [ ] Prebuilt dynamic/static libs per platform (D-116).
+5. [ ] A small C test harness: official vectors, rejection, misuse.
+6. [ ] `examples/` (plain C) + `README.md` banner.
+7. [ ] Doc-map sweep + mark T-158 done.
+8. [ ] Commit per step.
+
+### T-52 — .NET
+
+Standard steps, consuming T-158's header via P/Invoke:
+- Step 1: P/Invoke wrapper project.
+- Step 3: a `Stream`/`CryptoStream`-shaped class.
+- Step 4: a NuGet package with `runtimes/{rid}/native/`.
+- Step 6: xUnit.
+
+### T-51 — Java
+
+Standard steps, plus an upfront spike before step 1 (see `docs/bindings-strategy.md` Fork 1):
+- Step 0: spike the `jni` crate (Rust-side JNI) against JNI-over-T-158; record the choice in
+  `docs/DECISIONS.md` before writing the real implementation.
+- Step 1: per whichever approach the spike picks.
+- Step 3: an `InputStream`/`OutputStream` pair.
+- Step 4: a native library bundled per OS/arch classifier (or one fat JAR).
+- Step 6: JUnit.
+
+### T-50 — Node.js
+
+Standard steps:
+- Step 1: `bindings/nodejs/`, napi-rs.
+- Step 3: a `stream.Transform`.
+- Step 4: prebuilt `.node` binaries per platform via napi-rs's cross-compile.
+- Step 6: `node:test`.
+- **Node-only** (D-118) — browser/WASM is explicitly deferred; don't reinterpret this task as
+  covering it.
+
+### T-53 — C++
+
+Standard steps, consuming T-158's header:
+- Step 1: a thin RAII header-only wrapper.
+- Step 3: `istream`/`ostream`, or an iterator-of-buffers if that fits the header-only shape
+  better — decide at implementation time, don't assume upfront.
+- Step 4: prebuilt static/dynamic libs alongside the header, or a one-line CMake `FetchContent`.
+- Step 5: at least one of MSVC/GCC/Clang, matching this project's existing toolchain posture.
+- Step 6: a small C++ test.
+
+### T-159 — PHP (deferred until T-49/T-158/T-52/T-51/T-50/T-53 all land)
+
+Standard steps, consuming T-158's header:
+- Step 1: `ext-php-rs` extension, or a plainer `FFI`-extension path if `ext-php-rs` proves heavier
+  than needed — decide at implementation time.
+- Step 3: PHP's own stream-wrapper/filter mechanism if one genuinely fits; otherwise a documented
+  exception — research this when the task starts, don't assume the idiom exists going in.
+- Step 4: a prebuilt extension binary where the ecosystem supports it, source build as fallback.
+- Step 6: PHPUnit.
+
+### T-160 — Ruby (deferred, last)
+
+Standard steps:
+- Step 1: `magnus`/`rb-sys`, a direct Rust binding like Python/Node's.
+- Step 3: an `IO`-like or `Enumerable`/`Enumerator` wrapper — research Ruby's own idiom when the
+  task starts.
+- Step 4: a prebuilt extension binary where the ecosystem supports it.
+- Step 6: RSpec/Minitest.
+
+### Publishing (all registries) — separate, owner-gated, not scheduled
+
+One explicit ask per registry (PyPI/npm/Maven Central/NuGet/RubyGems/Packagist), the same class of
+decision T-17 already applies to crates.io. Not started, not broken into steps above — tracked only
+once actually requested.
+
 ## Doc-map sweep discipline
 
 Landing any phase above touches more than `docs/TASKS.md` — grep that phase's task ID across

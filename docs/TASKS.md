@@ -2407,6 +2407,9 @@ command names (`CLAUDE.md` MVP scope) are still reserved for whenever that resol
 **Full rationale/order/per-binding checklist now lives in `docs/bindings-strategy.md`** (written
 2026-08-02, `docs/DECISIONS.md` D-115) — this section tracks status only, per this file's own header
 convention; read that document before starting any item below, don't re-derive the reasoning here.
+**The granular, checkable, cross-session step list — the "resume point" for exactly where work left
+off — lives in `docs/bindings-strategy.md`'s "Cross-session execution plan" section; read the resume
+line there first when picking this phase back up in a new session.**
 Build order (dependency-driven, not ID order): T-161 (shared `selftest` module, prerequisite) →
 T-49 (Python, the template) → T-158 (C ABI crate) → T-52 (.NET) → T-51 (Java) → T-50 (Node) → T-53
 (C++) → T-159 (PHP) → T-160 (Ruby); publishing to any registry is a separate, explicitly
