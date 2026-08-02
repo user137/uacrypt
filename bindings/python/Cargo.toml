@@ -1,0 +1,22 @@
+# Deliberately its own workspace, not a member of the repo-root `[workspace]` - see
+# `docs/DECISIONS.md` D-119. Two root-workspace CI jobs use `--workspace` explicitly (Miri, the
+# MSRV-pinned build); neither is equipped for a PyO3 `cdylib`, and a path dependency on `dstu-core`
+# below still resolves correctly across separate workspaces without one.
+[workspace]
+
+[package]
+name = "dstu_core_py"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.87.0"
+license = "MIT OR Apache-2.0"
+description = "Python bindings for dstu-core (Ukrainian DSTU cryptographic standards) - provisional, not yet published to PyPI"
+publish = false
+
+[lib]
+name = "_dstu_core"
+crate-type = ["cdylib"]
+
+[dependencies]
+dstu-core = { path = "../../crates/dstu-core", features = ["std", "selftest"] }
+pyo3 = { version = "0.26", features = ["extension-module"] }

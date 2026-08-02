@@ -35,3 +35,19 @@
 # oracles/README.md itself stays tracked so the reasoning survives a fresh clone.
 /oracles/*
 !/oracles/README.md
+
+# Language bindings (docs/bindings-strategy.md, D-119): each is its own separate Cargo workspace,
+# so the root-scoped /target rule above doesn't reach its build output - and each has its own
+# language-ecosystem build/cache artifacts on top of that. Cargo.lock IS committed per binding
+# (same reproducible-build reasoning as the root Cargo.lock, which is tracked for `uacrypt`).
+/bindings/*/target/
+/bindings/python/__pycache__/
+/bindings/python/**/__pycache__/
+/bindings/python/.venv/
+/bindings/python/dist/
+/bindings/python/*.egg-info/
+/bindings/python/.pytest_cache/
+# `maturin develop`'s editable-install artifact: the compiled extension copied straight into the
+# python-source tree (platform-specific binary, `*.pyd` on Windows/`*.so` on Linux/macOS).
+/bindings/python/python/dstu_core/*.pyd
+/bindings/python/python/dstu_core/*.so

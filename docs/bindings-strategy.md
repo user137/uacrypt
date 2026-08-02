@@ -234,7 +234,8 @@ new session — this section is the one to update as work lands, and the one to 
 resuming. **Update the resume line below every time a step is checked off**; a stale resume line is
 worse than no resume line, since it actively misdirects the next session.
 
-**Resume point: T-161 done (2026-08-02). Next: T-49 (Python binding), step 1 — not started.**
+**Resume point: T-161 done (2026-08-02). T-49 step 1 (scaffold) done (2026-08-02). Next: T-49 step
+2 — wrap the full `crypto_*` surface in the Python binding, zero-config, not started.**
 
 ### The standard binding steps
 
@@ -292,6 +293,18 @@ Standard steps above, with:
   `--workspace` build) would otherwise silently start covering a PyO3 `cdylib` neither job is
   equipped for. Same shape applies to T-50/T-160 (Node/Ruby, also direct Rust bindings) - T-158 (C
   ABI) is unaffected and stays a real workspace member, see D-119 for why the two cases differ.
+  **Done 2026-08-02**: `dstu_core_py` crate (`cdylib`, `pyo3 = "0.26"`, `extension-module`
+  feature), mixed maturin layout (`python/dstu_core/__init__.py` pure-Python package wrapping the
+  compiled `_dstu_core` extension). Wraps only `selftest()` so far, as this scaffold's own pipeline
+  proof - the full `crypto_*` surface is step 2, not yet done. Verified end-to-end, not just
+  "compiles": `cargo build`/`clippy --all-targets -- -D warnings`/`fmt --check` all clean; `maturin
+  develop` (in a `.venv`, real Python 3.12.10 resolved via `PYO3_PYTHON` - see `.claude.local.md`,
+  `python`/`python3` on PATH are broken Store stubs on this machine) builds and installs the wheel;
+  `python -c "import dstu_core; dstu_core.selftest()"` runs the real Rust self-check and returns
+  cleanly. Confirmed the root workspace is unaffected: `cargo build --workspace` from the repo root
+  still only sees `crates/dstu-core`/`crates/uacrypt` (this is the concrete case D-119 was written
+  to prevent - `cargo init` inside `bindings/python` had in fact auto-added itself to the root
+  `Cargo.toml`'s `members` before this was caught and reverted).
 - Step 3: a Python file-like object over `PushState`/`PullState`.
 - Step 4: manylinux/macOS/Windows wheels via `maturin`.
 - Step 5: its own CI job, not a step in the existing Rust matrix (D-119); `xtask` wiring is
