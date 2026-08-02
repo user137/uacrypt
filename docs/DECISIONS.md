@@ -9479,3 +9479,56 @@ produces a plain absolute path with no `\\?\` prefix.
 --all-targets -D warnings` clean, `cargo build` succeeds (nightly-MSVC toolchain correctly
 resolved after the D-146 fix), and the full PHPUnit suite (58 tests, 62 assertions, step 6 below)
 passes with zero failures/errors/deprecations against the freshly built extension.
+
+## D-147: `bindings-php.yml` confirmed green on real CI - three round-trips, none of them
+predictable from this (Windows-only) dev machine alone
+
+T-159's nine local steps (D-142-D-146) were all verified against a Windows-only dev machine; the
+CI matrix (`ubuntu-latest`/`macos-latest`/`windows-latest`) was this workflow's first real
+execution on any of the other two OSes, or on a genuine CI runner at all - per this project's own
+standing rule, read the actual `gh run view`/job logs for each round rather than assume from the
+fix alone. Two round-trips were needed after the initial push (run `30764356843`):
+
+**Round 1** (run `30764775320`, 3 of 4 jobs fixed):
+- `cargo-deny`: `ext-php-rs`'s own build-dependencies (`zip`/`ureq`, used only by its Windows
+  build script to download the matching PHP devel pack - D-142) pull in four permissive licenses
+  `deny.toml` didn't allow yet: `bzip2-1.0.6`, `CC0-1.0`, `MIT-0`, `CDLA-Permissive-2.0`, `Zlib`.
+  Added to the allow list, re-confirmed locally with `cargo deny check` before pushing.
+- `macos-latest` `cargo build`: failed linking on undefined Zend API symbols
+  (`zend_ce_value_error`, `zend_throw_error`, ...) - symbols that only exist inside the `php`
+  executable this `cdylib` gets `dlopen`'d into, never resolvable at link time. Linux's ELF `.so`
+  tolerates undefined symbols by default (why `ubuntu-latest` was unaffected building the identical
+  crate); macOS's Mach-O linker resolves everything at link time unless told otherwise - a standard
+  gotcha for any Rust cdylib meant to be loaded as a plugin into a host process on macOS, not
+  specific to `ext-php-rs`. Fixed with `-Wl,-undefined,dynamic_lookup` via
+  `bindings/php/.cargo/config.toml`'s `rustflags`, for both `apple-darwin` targets - genuinely
+  unreachable from this Windows-only dev machine, first real confirmation on real Apple hardware
+  (well, a GitHub-hosted one).
+- `windows-latest` `cargo clippy`: `error[E0554]: #![feature] may not be used on the stable
+  release channel`, despite the toolchain step requesting `nightly-x86_64-pc-windows-msvc` - the
+  identical gotcha `bindings-ruby.yml`'s own round-3 fix already found and documented (D-141): this
+  repo's root `rust-toolchain.toml` (bare `channel = "stable"`, no host triple) silently overrides
+  `dtolnay/rust-toolchain`'s own `rustup default` on the Windows runner specifically. Fixed with an
+  explicit `RUSTUP_TOOLCHAIN` env var on the `clippy`/`build` steps, Windows-only - the *workflow*
+  version of the same fix D-146 just made inside `xtask` itself, needed independently since CI
+  doesn't go through `xtask` for these two steps.
+
+**Round 2** (run `30765006443`, the remaining job): `windows-latest`'s PHPUnit step still failed
+after round 1's fixes, a *different* problem from the same job - `cargo build` succeeded, but `php
+-d extension=<path> phpunit.phar` couldn't load the extension: "The specified module could not be
+found" for a path that genuinely existed on disk. Root cause: `windows-latest`'s default shell is
+`pwsh`, but the *previous* step (which computes `EXT_PATH`) explicitly runs under `shell: bash`
+and builds the path with `$(pwd)` - producing a POSIX-style value (`/d/a/uacrypt/...`). Git Bash's
+own MSYS layer auto-translates a POSIX-style path argument into a real Windows path before handing
+it to a native, non-MSYS executable (why the *build* steps, all `shell: bash`, never hit this);
+`pwsh` performs no such translation and passed the literal POSIX string straight to `php.exe`,
+which is a native Windows binary and can't resolve it. Fixed by adding `shell: bash` to the final
+`php -d extension=...` step too, so the same MSYS translation applies there as well.
+
+**Confirmed green on real CI**, `gh run view 30765006443 --json conclusion,status,jobs`: all four
+jobs (`build + test` on `ubuntu-latest`/`macos-latest`/`windows-latest`, `cargo deny / audit`)
+report `success`. Three real CI round-trips total for this workflow (one push, two fix rounds) -
+same order of magnitude as Ruby's own three-round history (D-140/D-141) - each one a genuine
+finding a Windows-only local machine could never have caught by construction (a macOS linker
+default, a cross-OS license graph, and a shell/path-translation mismatch specific to the hosted
+Windows runner's default shell).

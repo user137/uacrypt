@@ -285,10 +285,12 @@ D-141 (three real CI round-trips to get bindings-ruby.yml actually green - `ridk
 runner's PATH, `Gemfile.lock` missing non-Windows platforms, and the root `rust-toolchain.toml`
 silently overriding `rustup default` on Windows - **confirmed green on real CI**, run id
 `30759971107`, all four jobs `success`). T-159 (PHP) done in full 2026-08-02 too - see D-142
-through D-146 (flat `dstu_core_*` naming modeled on `ext-sodium`, a plain PHP `Writer`/`Reader`
-over `stream_filter_register` rejected for step 3, and a real `xtask`-level `RUSTUP_TOOLCHAIN`
-inheritance bug found and fixed, D-146 - not yet confirmed on real CI, `bindings-php.yml` needs a
-push first, same posture T-160's own push needed). Next: T-158 (C ABI crate), not started.**
+through D-147 (flat `dstu_core_*` naming modeled on `ext-sodium`, a plain PHP `Writer`/`Reader`
+over `stream_filter_register` rejected for step 3, a real `xtask`-level `RUSTUP_TOOLCHAIN`
+inheritance bug found and fixed (D-146), and D-147's own two CI round-trips - a macOS
+`-undefined dynamic_lookup` linker gotcha, a cross-OS `cargo-deny` license-allow-list gap, and a
+Windows `pwsh`-vs-`bash` POSIX-path mismatch - **confirmed green on real CI**, run id
+`30765006443`, all four jobs `success`). Next: T-158 (C ABI crate), not started.**
 
 ### The standard binding steps
 
