@@ -18,7 +18,15 @@ classifiers = [
 [project.urls]
 Repository = "https://github.com/user137/uacrypt"
 
+[project.optional-dependencies]
+# Pinned so CI and any local `.venv` build the same toolchain instead of drifting - `docs/
+# bindings-strategy.md` T-49 step 5's own note (advisor review, 2026-08-02).
+dev = ["maturin==1.14.1", "pytest==9.1.1", "ruff==0.16.1"]
+
 [tool.maturin]
 module-name = "dstu_core._dstu_core"
 python-source = "python"
 features = ["pyo3/extension-module"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
