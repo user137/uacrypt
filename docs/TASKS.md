@@ -1990,6 +1990,40 @@ resistance (SPA/DPA — explicitly out of scope per `docs/SECURITY.md`/`CLAUDE.m
       warnings` clean. Optional layers (miri/fuzz/audit/deny/mvn/dotnet) still not installed there,
       unchanged from every prior run. No architecture-specific regression from T-128's const-generic
       round functions on `aarch64`.
+      **Re-run 2026-08-03, user-requested extension to cover every language binding + T-158's C ABI
+      crate, first time any of that surface has been checked on non-x86 hardware.** Re-synced,
+      `cargo xtask` core baseline (`fmt --check`/`build`/`test`/`clippy`) green first, then each
+      binding's own `cargo xtask <name>` in turn (run sequentially, not concurrently - two
+      simultaneous `cargo`/`rustup`-touching SSH sessions raced on `~/.rustup`'s shared component
+      cache and broke both, `rust-src` component download failing a file rename; not a project bug,
+      just a lesson for running this check faster in the future). New toolchain installs needed on
+      this Pi, none previously required for the core-only check: `nodejs`/`npm` (apt, 18.20.4),
+      `ruby-full` (apt, 3.1.2) + `bundler` (`sudo gem install` - the system gem dir isn't
+      user-writable, matching the `pip`/PEP 668 restriction Python already needed working around)
+      + `bundle config set --local path vendor/bundle` in `bindings/ruby` (installing gems as a
+      non-root user needs a local vendor path, not the system one bundler defaults to), `php-dev`
+      (apt - Debian splits `php-config`/`phpize` out of the base `php` package, `ext-php-rs`'s build
+      script needs `php-config` specifically), `php-mbstring`/`php-xml`/`php-dom` (apt - PHPUnit's
+      own floor), `cbindgen` (`cargo install --locked`, ~2m41s), and a Python `.venv` with
+      `maturin`/`pytest` installed inside it (`maturin develop` requires an active virtualenv, not
+      just the interpreter on `PATH` - a bare `pip install --break-system-packages` alone, as tried
+      first, isn't sufficient). **Result: all five bindings plus the C ABI crate pass in full on
+      real aarch64 Linux** - Python 57/57 (`pytest`, genuine `linux_aarch64` wheel), Node.js 52/52
+      (`node --test`), Ruby 58/58 examples (`rspec` + `rubocop` clean), PHP 58 tests/62 assertions
+      (`phpunit`), C ABI crate's own header-drift check + C test harness + all 4 examples (matching
+      x86-64's own `misc.c` Kupyna-256 "hello world" digest exactly, cross-architecture bit-for-bit
+      as every prior Kupyna cross-check already established for the core crate).
+      **One real, genuine finding, not an environment gap**: `crates/dstu-core-capi/tests/
+      ffi_tests.rs`'s `pwhash` test hardcoded a `[0i8; DSTU_PWHASH_STRBYTES]` stack buffer for what
+      the production API correctly types as `*mut c_char` - harmless on every platform this project
+      had built on so far (x86-64 Linux/Windows/macOS all define `c_char` as `i8`), but ARM Linux's
+      own ABI makes plain `char` **unsigned** by default (`c_char` resolves to `u8` there), so the
+      test failed to compile the moment it hit real aarch64 hardware. Fixed by using
+      `std::os::raw::c_char` explicitly instead of a hardcoded signed type - exactly the kind of
+      "no CPU-family lock-in" assumption this Pi rig exists to catch, this time on the C ABI
+      surface rather than `hazmat` internals. **New standing rule recorded, `docs/bindings-strategy.md`'s
+      "standard binding steps"**: every future binding (T-52/.NET, T-51/Java, T-163/Go, T-53/C++)
+      gets this same Pi re-check as one of its own steps, not deferred to a separate ad hoc pass.
 - [x] **T-103** **Adversarial-test coverage audit across every primitive, see `docs/DECISIONS.md` D-64.**
       User-requested 2026-07-25, directly prompted by D-63's finding that a real
       nonce-authentication gap existed purely because a "does tampering get rejected" test was

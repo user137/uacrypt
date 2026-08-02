@@ -9764,3 +9764,41 @@ and whether `-Wl,-rpath` actually resolves `libdstu_core_capi.dylib` on macOS gi
 bare-filename (not `@rpath`-prefixed) `install_name` for a cdylib there - the copy-next-to-exe step
 in `capi_run_c_program` is the more likely reason it works, not the rpath flag, but this is
 unverified without a real macOS runner.
+
+## D-151: every binding + the C ABI crate re-checked on real aarch64 hardware (Raspberry Pi) - one genuine bug found
+
+2026-08-03, user-requested extension of `docs/TASKS.md` T-35's existing "no CPU-family lock-in"
+Pi re-check to cover the language bindings and T-158's C ABI crate for the first time - none of
+that surface had ever been built on non-x86 hardware before. Full detail (toolchain-install steps,
+per-binding pass/fail, exact commands) lives in T-35's own `docs/TASKS.md` entry and
+`.claude.local.md`'s Pi section, not duplicated here; this entry records the one finding worth a
+permanent citation and the process lesson.
+
+**The finding**: `crates/dstu-core-capi/tests/ffi_tests.rs`'s `pwhash` test declared
+`let mut out = [0i8; DSTU_PWHASH_STRBYTES]` for a buffer the production API (`pwhash.rs`) already
+correctly types as `*mut c_char`. `c_char`'s signedness is platform-ABI-defined, not fixed by the
+C standard - x86-64 Linux/Windows/macOS (every platform this project had built on before this
+session) all define it as `i8`, so the hardcoded `i8` literal happened to match by coincidence on
+every one of them. ARM Linux's own ABI makes plain `char` **unsigned by default**, so `c_char`
+resolves to `u8` there - the test failed to *compile* the instant it hit real aarch64 hardware
+(not a runtime bug, a type-checked compile error, `cargo build --workspace` on the Pi). Fixed by
+using `std::os::raw::c_char` explicitly instead of a hardcoded signed integer type - the production
+code never had this bug, only the test did, but an uncompilable test is exactly as blocking as a
+wrong one. This is the T-158-era instance of the same class of thing `docs/TASKS.md` T-35 already
+exists to catch (an x86-64-only dev machine cannot see a char-signedness, endianness, or word-size
+assumption by construction) - previously caught for `hazmat` internals (Kalyna/Kupyna/Strumok),
+this is the first time it caught something in a binding's own FFI-boundary code instead.
+
+**Process lesson, not a project bug**: running two binding checks concurrently over separate SSH
+sessions (`cargo xtask python` and `cargo xtask ruby` at the same time) raced on the Pi's shared
+`~/.rustup` component-download cache and broke both (a `rust-src` partial-download file-rename
+collision) - re-running them sequentially instead was the fix, not a code or CI change. Recorded so
+a future Pi session doesn't re-lose time rediscovering this.
+
+**Standing rule, added to `docs/bindings-strategy.md`'s "standard binding steps"**: every future
+binding (T-52/.NET, T-51/Java, T-163/Go, T-53/C++) includes this same Pi ARM64 re-check as one of
+its own numbered steps, not a separate ad hoc pass done only when someone happens to ask. **Result
+this pass**: Python 57/57, Node.js 52/52, Ruby 58/58 (+ rubocop clean), PHP 58 tests/62 assertions,
+and the C ABI crate's own header-drift check/C harness/all 4 examples - all green on real aarch64
+Linux (Debian 12/bookworm) once the fix above and the toolchain installs in `.claude.local.md`
+landed.

@@ -300,10 +300,12 @@ prior binding's own first-pass session carried). **Next: T-52 (.NET), not starte
 
 ### The standard binding steps
 
-Every binding task (T-49/T-50/T-51/T-52/T-53/T-158/T-159/T-160) follows this same nine-step
-template unless its own entry below says otherwise — written once here rather than repeated nine
+Every binding task (T-49/T-50/T-51/T-52/T-53/T-158/T-159/T-160) follows this same ten-step
+template unless its own entry below says otherwise — written once here rather than repeated ten
 times, per this project's own "three similar lines beat a premature abstraction, but don't
-duplicate a real invariant" instinct:
+duplicate a real invariant" instinct. (Step 10 was added 2026-08-03 — T-49/T-50/T-158/T-159/T-160 predate
+it and weren't retroactively re-run for it at the time; D-151's own pass covered all of them
+retroactively the same day it was added, see that entry.)
 
 1. [ ] Scaffold the binding crate/project, wired into the Cargo workspace where applicable.
 2. [ ] Wrap the full `crypto_*` surface, zero-config (D-116), including a `selftest()` wrapper
@@ -345,6 +347,16 @@ duplicate a real invariant" instinct:
        `user-journey-gaps.md`/`cross-language-style-guide.md`) + mark the task done in
        `docs/TASKS.md`.
 9. [ ] Commit — each numbered step above is its own commit, not one large drop.
+10. [ ] **Added 2026-08-03, D-151 — cross-arch smoke check on the Raspberry Pi rig** (real aarch64
+       Linux, access/re-sync details in `.claude.local.md`, not here): `cargo xtask <binding>` run
+       there after installing whatever this binding's own toolchain needs (see D-151/`docs/TASKS.md`
+       T-35's entry for the concrete per-language install commands already worked out — Node/Ruby/
+       PHP/Python/cbindgen). Same "no CPU-family lock-in" reasoning `docs/TASKS.md` T-35 already
+       applies to the core crate, extended to cover a binding's own FFI-boundary code too — D-151
+       found a real bug this way (a hardcoded `i8` test buffer that should have been `c_char`,
+       compiling fine on every x86-64 platform but not on ARM Linux's unsigned-by-default `char`).
+       Run bindings sequentially on the Pi, not concurrently — two at once race on `~/.rustup`'s
+       shared component-download cache (D-151's own process-lesson note).
 
 ### T-161 — `dstu_core::selftest` (first; nothing below can start without it)
 
