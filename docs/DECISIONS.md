@@ -9532,3 +9532,111 @@ same order of magnitude as Ruby's own three-round history (D-140/D-141) - each o
 finding a Windows-only local machine could never have caught by construction (a macOS linker
 default, a cross-OS license graph, and a shell/path-translation mismatch specific to the hosted
 Windows runner's default shell).
+
+## D-148: T-158 (C ABI crate) - design forks resolved before implementation
+
+Settled 2026-08-03 via `advisor()` review before writing any code, following this project's own
+"settle the fork, cite it, then implement" discipline (same posture as D-142's `Binary<u8>` finding
+for PHP). Four forks, none with a DSTU citation to resolve them (this crate is pure ergonomics over
+already-implemented primitives, D-47's tie-breaker doesn't even apply - there's no algorithm choice
+here, only a C-API shape choice):
+
+1. **Symbol prefix is `dstu_`, not `dstu_core_`** - already fixed by `selftest.rs`'s own module doc
+   ("`dstu_selftest()` in the C ABI") and `docs/bindings-strategy.md`, not re-derived here. Every
+   exported function/type/constant in `crates/dstu-core-capi` uses this prefix
+   (`DstuStatus`/`DstuAuthKey`/`dstu_secretbox_seal`/...), deliberately different from PHP's
+   `dstu_core_*` (PHP's own naming follows `ext-sodium`'s convention instead, D-142 - the two
+   bindings had independent reasons to land on different prefixes, not an inconsistency).
+
+2. **`cbindgen` is invoked via `cargo xtask capi`, never added as a `[build-dependencies]` entry.**
+   The MSRV job (`cargo +1.87.0 build --workspace --all-features`, `rust.yml` line 190) now covers
+   `dstu-core-capi` for free once it's a workspace member (D-119 already confirmed capi *is* a real
+   member, unlike Python/Node/Ruby/PHP) - a build-dependency on `cbindgen` would drag cbindgen's own
+   MSRV floor into that job for no reason `dstu-core-capi` itself needs. The generated header
+   (`crates/dstu-core-capi/include/dstu_core.h`) is committed, with a `cargo xtask capi` step that
+   regenerates it into a temp path and diffs against the committed copy (same drift-detection shape
+   T-120/D-75 already uses for the Python README-vs-doctest check) - `dstu-core-capi` itself carries
+   zero non-dev dependencies beyond `dstu-core`, matching `uacrypt`'s own zero-dependency posture.
+
+3. **Output-buffer convention: caller-allocates, library never allocates or frees a Rust-owned
+   buffer C could free with `free()`.** A Rust `Vec<u8>` handed to C and freed with libc `free()` is
+   immediate UB (different allocators) - the one convention that avoids this entirely (ruled out:
+   library-allocates + a `dstu_free`, and a two-call length-query pattern, both add a cross-language
+   allocator-lifetime hazard or an extra round trip for no real benefit here). Matches libsodium's
+   own `crypto_secretbox_easy` shape exactly: the caller supplies an output buffer sized
+   `input_len + DSTU_*_OVERHEAD` (a named constant per variable-length construction -
+   `DSTU_SECRETBOX_OVERHEAD` = 48 = 32-byte nonce + 16-byte tag, `DSTU_STREAM_OVERHEAD` = 32 = IV
+   only, unauthenticated), plus an explicit `_cap` parameter checked against the actual required
+   length before writing (`DSTU_ERR_BUFFER_TOO_SMALL` if too small) - a stricter check than
+   libsodium itself does (which only documents the required size and trusts the caller), chosen
+   because "provable from the line itself, not by hand-traced caller discipline" is this project's
+   own standing bar (`CLAUDE.md`'s bounds-safety rule), not just a libsodium-parity choice.
+   `crypto_pwhash`'s PHC string gets a fixed `DSTU_PWHASH_STRBYTES = 128` buffer instead (matches
+   libsodium's own `crypto_pwhash_STRBYTES` numeric value exactly, confirmed by hand-counting the
+   longest string this crate's own `Strength::Sensitive` preset can produce: `$argon2id$v=19$
+   m=1048576,t=4,p=1$` (34 bytes) + 22-byte unpadded-base64 16-byte salt + `$` + 43-byte
+   unpadded-base64 32-byte hash + NUL ≈ 102 bytes, comfortably inside 128). Fixed-size outputs
+   (auth tags, KDF subkeys, signatures, hashes) need no convention at all - a caller-supplied
+   fixed-size array is already exact.
+
+4. **`dstu-core-capi`'s own `Cargo.toml` depends on `dstu-core` with `std`/`selftest`/`pwhash` all
+   unconditionally on** (no `default-features = false`), matching `crates/uacrypt/Cargo.toml`'s own
+   existing dependency line exactly - `catch_unwind` (needed at every `extern "C"` boundary per
+   item 5 below) only exists in `std`, not `core`, so there is no genuine no_std path for this crate
+   to preserve regardless. **Found while checking this against `docs/bindings-strategy.md`'s own
+   T-158 instruction to "verify the existing 8-combination feature matrix still passes with this
+   new workspace member present" (D-119's own cited reason capi must stay a real workspace
+   member):** `cargo tree --workspace --no-default-features -f "{p} {f}"`, run *before* touching
+   anything, already shows `dstu-core default,getrandom,std` - `crates/uacrypt/Cargo.toml`'s own
+   `dstu-core = { path = "../dstu-core", version = "0.2.0" }` line (no `default-features = false`)
+   already unifies `std` back on for every `--workspace` build via Cargo's additive feature
+   unification, the exact mechanism this project's own agent-discipline notes already document for
+   other crates (see the `argon2`/`rand_core` entry above). This means `rust.yml`'s `cargo build
+   --workspace --no-default-features` (line 41) and `xtask`'s `build()` (`--workspace
+   --no-default-features` step) have **not been proving a genuine no_std `dstu-core` build since
+   `uacrypt` was added to the workspace** - confirmed pre-existing, not introduced by
+   `dstu-core-capi`'s own addition (which needs `std` for the identical reason `uacrypt` does, and
+   changes nothing about what was already true). Recorded here as an honest finding, not silently
+   fixed as a drive-by: the actual no_std proof for `dstu-core` alone lives in `xtask`'s already-
+   existing `-p dstu-core --no-default-features --features getrandom` step (scoped to the crate,
+   not the workspace) - genuinely correct today, unaffected by this. Fixing the workspace-level
+   lines to also scope to `-p dstu-core` is a separate, small, pre-existing-debt cleanup, out of
+   scope for T-158 itself; left as a follow-up rather than expanding this task's diff.
+
+5. **`unsafe` boundary hygiene, applied uniformly across every exported function** (not per-module
+   judgment calls): `catch_unwind(AssertUnwindSafe(|| ...))` wraps every function body (an unwind
+   crossing an `extern "C"` boundary aborts the process outright since Rust 1.81, so this is what
+   converts an internal panic into `DSTU_ERR_PANIC` instead of taking the caller's whole process
+   down with it); every raw pointer with an accompanying `len` branches to `&[]` for `len == 0`
+   before ever calling `slice::from_raw_parts` (a null pointer with a nonzero declared length is
+   rejected as `DSTU_ERR_NULL_POINTER`, `from_raw_parts(null, 0)` is itself UB regardless of the
+   pointer's non-null-ness the C side happens to pass); in/out buffer pairs are documented
+   non-overlapping (constructing a `&[u8]` and a `&mut [u8]` over the same bytes is UB even if
+   nothing ever reads through the shared region); every opaque handle is `Box::into_raw`/
+   `Box::from_raw`, so `dstu_*_free` is exactly `drop(Box::from_raw(ptr))` and the existing
+   `Zeroize`-on-`Drop` impls (`SecretKey`/`Key`/`MasterKey`/`SigningKey`/`PushState`/`PullState`,
+   all already `Drop`-wired in the wrapped `crypto_*` modules) fire for free, no separate zeroize
+   call needed in the C-ABI layer itself. One real gap those `Drop` impls can't reach:
+   `SigningKey::to_bytes()`/`Kupyna*Hasher`-style calls that copy secret bytes *out* into a
+   caller-owned buffer leave that copy for the caller to wipe - `dstu_memzero(void *buf, size_t
+   len)` (libsodium's `sodium_memzero` equivalent) is exported for exactly this, documented in the
+   header comment next to every function that copies secret material outward.
+
+6. **`crates/dstu-core-capi/Cargo.toml`'s `crate-type` includes `rlib` alongside `cdylib`/
+   `staticlib`** (a small addition beyond what a "just ship a C library" crate strictly needs) so
+   this crate's own `tests/` integration suite can call its `extern "C"` functions directly as a
+   normal Rust dependency, rather than needing a separate C toolchain invocation just to exercise
+   the FFI boundary. This is deliberate: `dstu-core-capi` has no external interpreter/runtime linked
+   at build time (D-119's own distinguishing test for capi vs. Python/Node/Ruby/PHP), so it lands
+   inside `cargo +nightly miri test --workspace` for free the moment it's a workspace member -
+   writing the boundary tests (null pointers, zero-length slices, undersized output buffers,
+   tamper/misuse cases) as ordinary `#[test]` functions against the `rlib` gets every one of them
+   Miri-checked for aliasing/UB on every push, the highest-value correctness layer available for an
+   `unsafe`-heavy crate like this one, at near-zero extra cost. The separate plain-C test harness
+   (step 5 of the renumbered template) still exists on top of this - it proves the *generated
+   header* and a real C compiler round-trip actually work, which a same-process Rust test cannot.
+
+Full API surface (every exported function/type/constant) is specified in the implementation
+itself, not duplicated here - `crates/dstu-core-capi/include/dstu_core.h` is the source of truth
+once generated, cross-checked module-by-module against `crates/dstu-core/src/crypto_*.rs` and
+`randombytes.rs`/`selftest.rs`.
