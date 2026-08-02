@@ -85,7 +85,9 @@ class SecretStreamEncryptor:
         self._buf.clear()
         self._closed = True
 
-    def __enter__(self) -> SecretStreamEncryptor:
+    # `Self` (ruff's PYI034 suggestion) needs Python 3.11+; requires-python is ">=3.9" and this
+    # project takes no typing_extensions dependency for a pre-1.0 zero-dependency binding.
+    def __enter__(self) -> SecretStreamEncryptor:  # noqa: PYI034
         return self
 
     def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
@@ -171,7 +173,8 @@ class SecretStreamDecryptor:
     def close(self) -> None:
         """No-op - present for file-like/context-manager symmetry with `SecretStreamEncryptor`."""
 
-    def __enter__(self) -> SecretStreamDecryptor:
+    # See SecretStreamEncryptor.__enter__'s own comment above - same 3.9-floor reasoning applies.
+    def __enter__(self) -> SecretStreamDecryptor:  # noqa: PYI034
         return self
 
     def __exit__(self, exc_type: object, exc: object, tb: object) -> None:

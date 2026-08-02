@@ -1,0 +1,108 @@
+name: bindings-python
+
+# Own job, not folded into rust.yml's matrix (D-119) - bindings/python is a separate Cargo
+# workspace neither of rust.yml's `--workspace` jobs (Miri, the MSRV build) is equipped for, and
+# release.yml only fires on `v*` tags, which would leave this binding with zero regression coverage
+# between releases (docs/bindings-strategy.md T-49 step 5). This is that regression gate.
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  # Keep in sync with bindings/python/pyproject.toml's `[project.optional-dependencies] dev` group.
+  MATURIN_VERSION: "1.14.1"
+  PYTEST_VERSION: "9.1.1"
+  RUFF_VERSION: "0.16.1"
+
+jobs:
+  test:
+    name: build + test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: cargo fmt --all -- --check
+        working-directory: bindings/python
+      - run: cargo clippy --all-targets -- -D warnings
+        working-directory: bindings/python
+      # From the repo root (no working-directory override - this file sets none at the job level,
+      # unlike the per-step overrides below, precisely so this one step lands in the right place):
+      # tests/test_secretstream.py's interop test silently *skips* rather than fails when the
+      # binary isn't found - see the "assert no skips" step below for why that distinction matters.
+      - run: cargo build -p uacrypt --release
+      - run: python -m pip install --upgrade pip
+        working-directory: bindings/python
+      - run: pip install "maturin==${{ env.MATURIN_VERSION }}" "pytest==${{ env.PYTEST_VERSION }}" "ruff==${{ env.RUFF_VERSION }}"
+        working-directory: bindings/python
+      # `maturin build` + `pip install` from the built wheel (not `maturin develop`) - `develop`
+      # requires running inside a virtualenv, which a bare `actions/setup-python` interpreter isn't;
+      # this form works identically on all three runners with no venv/activation dance.
+      - run: maturin build --release --out dist
+        working-directory: bindings/python
+      - run: pip install --no-index --find-links dist dstu-core
+        working-directory: bindings/python
+      - name: pytest (fail if anything was silently skipped)
+        working-directory: bindings/python
+        shell: bash
+        run: |
+          pytest -ra | tee pytest-output.txt
+          test "${PIPESTATUS[0]}" -eq 0
+          if grep -q "^SKIPPED" pytest-output.txt; then
+            echo "::error::pytest reported a skipped test - most likely the uacrypt interop test, which would make this job pass green while not actually exercising the wire-format check that justifies this binding existing."
+            exit 1
+          fi
+      - run: ruff check .
+        working-directory: bindings/python
+      - run: ruff format --check .
+        working-directory: bindings/python
+
+  # Confirms the manylinux-tagged wheel builds cleanly on every push, not just on a `v*` tag - so a
+  # broken recipe is caught immediately instead of discovered during a release. release.yml's
+  # `build-python-wheels` job must use this exact `PyO3/maturin-action@v1` invocation; keep the two
+  # in sync by hand (no cross-workflow includes in GitHub Actions).
+  wheel-preview:
+    name: manylinux wheel preview
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build manylinux wheel
+        uses: PyO3/maturin-action@v1
+        with:
+          working-directory: bindings/python
+          args: --release --out dist
+          manylinux: auto
+      - name: Show the emitted wheel filename (verify the manylinux tag, don't assume it)
+        run: ls -la bindings/python/dist
+
+  supply-chain:
+    name: cargo deny / audit (bindings/python)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: bindings/python
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo install cargo-deny --locked
+      # Root deny.toml, found by cargo-deny walking up from this cwd (see deny.toml's own header
+      # comment) - checks this workspace's real dependency tree (pyo3 and friends), not a copy.
+      - run: cargo deny check
+      - run: cargo install cargo-audit --locked
+      - run: cargo audit
