@@ -35,7 +35,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      # ubuntu-only, matching rust.yml's own fmt job: actions/checkout on a Windows/macOS runner
+      # applies git's autocrlf translation, which makes every LF-checked-in file look like
+      # "Incorrect newline style" to `cargo fmt --check` - a known false positive (docs/DECISIONS.md
+      # D-108's notes), not a real formatting difference, and not specific to this new workflow.
       - run: cargo fmt --all -- --check
+        if: matrix.os == 'ubuntu-latest'
         working-directory: bindings/python
       - run: cargo clippy --all-targets -- -D warnings
         working-directory: bindings/python
