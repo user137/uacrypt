@@ -1,0 +1,25 @@
+# Deliberately its own workspace, not a member of the repo-root `[workspace]` - see
+# `docs/DECISIONS.md` D-119. Two root-workspace CI jobs use `--workspace` explicitly (Miri, the
+# MSRV-pinned build); neither is equipped for an ext-php-rs `cdylib`, and a path dependency on
+# `dstu-core` below still resolves correctly across separate workspaces without one. Same shape as
+# `bindings/python`/`bindings/nodejs` (direct Rust bindings, crate at the workspace root, no nested
+# `ext/` split - unlike `bindings/ruby`, `ext-php-rs` has no `rb_sys`-style `cargo metadata`
+# quirk needing one).
+[workspace]
+
+[package]
+name = "dstu_core_php"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.87.0"
+license = "MIT OR Apache-2.0"
+description = "PHP bindings for dstu-core (Ukrainian DSTU cryptographic standards) - provisional, not yet published"
+publish = false
+
+[lib]
+name = "dstu_core_php"
+crate-type = ["cdylib"]
+
+[dependencies]
+dstu-core = { path = "../../crates/dstu-core", version = "0.2.0", features = ["std", "selftest", "pwhash"] }
+ext-php-rs = "0.15"

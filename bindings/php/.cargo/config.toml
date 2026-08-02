@@ -1,0 +1,6 @@
+# `rust-lld` instead of the default MSVC `link.exe` - ext-php-rs's own README ("Windows
+# Requirements") recommends this specifically: `link.exe`'s version may not be compatible with
+# whatever linker built the target PHP installation, and using `rust-lld` avoids that mismatch
+# entirely rather than needing to pin a matching MSVC toolset version.
+[target.x86_64-pc-windows-msvc]
+linker = "rust-lld"
