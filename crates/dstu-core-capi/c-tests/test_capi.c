@@ -120,6 +120,24 @@ static void test_kdf(void) {
   dstu_kdf_master_key_free(key);
 }
 
+/* Official DSTU 7564:2014 Kupyna-256 test vector (docs/papers/Kupyna.pdf, Appendix B.2 - Oliynykov
+ * et al., "A New Standard of Ukraine: The Kupyna Hash Function"; also
+ * crates/dstu-core/tests/vectors/kupyna/kupyna-256.json). Single-byte message 0xFF, since this is
+ * the simplest case to hand-transcribe as a C byte array - proves the C ABI's byte plumbing
+ * (pointer/length handling in, buffer copy out) produces the right bytes, not just that
+ * one-shot/streaming agree with each other (dstu_selftest() already proves the underlying Rust
+ * primitive is correct; this proves the C surface over it). */
+static void test_generichash_official_vector(void) {
+  const uint8_t message[] = {0xFF};
+  const uint8_t expected[DSTU_GENERICHASH_256_BYTES] = {
+      0xEA, 0x76, 0x77, 0xCA, 0x45, 0x26, 0x55, 0x56, 0x80, 0x44, 0x1C, 0x11, 0x79, 0x82, 0xEA, 0x14,
+      0x05, 0x9E, 0xA6, 0xD0, 0xD7, 0x12, 0x4D, 0x6E, 0xCD, 0xB3, 0xDE, 0xEC, 0x49, 0xE8, 0x90, 0xF4};
+  uint8_t actual[DSTU_GENERICHASH_256_BYTES];
+  dstu_generichash_256(message, sizeof(message), actual);
+  CHECK(memcmp(expected, actual, sizeof(expected)) == 0,
+        "dstu_generichash_256(0xFF) should match the official DSTU 7564:2014 Kupyna-256 vector");
+}
+
 static void test_generichash(void) {
   const char *message = "hello world";
   uint8_t whole[DSTU_GENERICHASH_256_BYTES];
@@ -227,6 +245,15 @@ static void test_secretstream(void) {
   size_t len = strlen(plaintext);
   uint8_t *ciphertext = malloc(len);
   uint8_t tag[DSTU_SECRETSTREAM_TAG_BYTES];
+
+  /* misuse: length mismatch, on the still-fresh (not finalized) push state so this actually
+   * exercises DSTU_ERR_INVALID_LENGTH rather than being pre-empted by a finalized check. */
+  uint8_t dummy_tag[DSTU_SECRETSTREAM_TAG_BYTES];
+  uint8_t wrong_len_out[2];
+  CHECK(dstu_secretstream_push(push, DSTU_TAG_MESSAGE, (const uint8_t *)plaintext, len, wrong_len_out,
+                                sizeof(wrong_len_out), dummy_tag) == DSTU_ERR_INVALID_LENGTH,
+        "push should reject ciphertext_out_len != plaintext_len");
+
   CHECK(dstu_secretstream_push(push, DSTU_TAG_FINAL, (const uint8_t *)plaintext, len, ciphertext, len, tag) ==
             DSTU_OK,
         "push should succeed");
@@ -234,7 +261,6 @@ static void test_secretstream(void) {
 
   /* misuse: push after finalize */
   uint8_t dummy_ct[1];
-  uint8_t dummy_tag[DSTU_SECRETSTREAM_TAG_BYTES];
   CHECK(dstu_secretstream_push(push, DSTU_TAG_MESSAGE, (const uint8_t *)"x", 1, dummy_ct, 1, dummy_tag) ==
             DSTU_ERR_FINALIZED,
         "push after Final should report DSTU_ERR_FINALIZED");
@@ -401,6 +427,7 @@ int main(void) {
   test_randombytes_and_memzero();
   test_auth();
   test_kdf();
+  test_generichash_official_vector();
   test_generichash();
   test_secretbox();
   test_secretstream();

@@ -261,10 +261,11 @@ void dstu_auth(const DstuAuthKey *key,
                uint8_t *tag_out);
 
 /**
- * Verifies `tag` against `message` under `key`. Returns `DSTU_OK` or `DSTU_ERR_TAG_MISMATCH`
- * (also returned, rather than a distinct code, for a NULL `key`/`tag` - there is no third outcome
- * to report and "did not verify" is the accurate answer either way), or `DSTU_ERR_NULL_POINTER`
- * for a NULL `message` with `message_len > 0`.
+ * Verifies `tag` against `message` under `key`. Returns `DSTU_OK` or `DSTU_ERR_TAG_MISMATCH` on
+ * an actual verification failure. `DSTU_ERR_NULL_POINTER` for a NULL `key`/`tag`, or a NULL
+ * `message` with `message_len > 0` - consistent with this crate's own null-hygiene convention
+ * (`lib.rs`'s doc comment): a `DstuStatus` channel exists here, so a NULL pointer is reported
+ * through it rather than folded into `DSTU_ERR_TAG_MISMATCH`.
  *
  * # Safety
  *

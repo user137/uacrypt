@@ -347,6 +347,26 @@ fn secretstream_round_trip_tamper_and_finalize_rejection() {
     let plaintext = b"a whole file, conceptually split into chunks";
     let mut ciphertext = vec![0u8; plaintext.len()];
     let mut tag = [0u8; DSTU_SECRETSTREAM_TAG_BYTES];
+
+    // misuse: length mismatch, tested against the still-fresh (not finalized) push state so this
+    // actually exercises DSTU_ERR_INVALID_LENGTH rather than being pre-empted by a finalized check.
+    let mut dummy_tag = [0u8; DSTU_SECRETSTREAM_TAG_BYTES];
+    let mut wrong_len_out = [0u8; 2];
+    assert_eq!(
+        unsafe {
+            dstu_secretstream_push(
+                push_ptr,
+                DstuTag::DSTU_TAG_MESSAGE,
+                plaintext.as_ptr(),
+                plaintext.len(),
+                wrong_len_out.as_mut_ptr(),
+                wrong_len_out.len(),
+                dummy_tag.as_mut_ptr(),
+            )
+        },
+        DstuStatus::DSTU_ERR_INVALID_LENGTH
+    );
+
     assert_eq!(
         unsafe {
             dstu_secretstream_push(
@@ -365,7 +385,6 @@ fn secretstream_round_trip_tamper_and_finalize_rejection() {
 
     // misuse: push after finalize
     let mut dummy_ct = [0u8; 1];
-    let mut dummy_tag = [0u8; DSTU_SECRETSTREAM_TAG_BYTES];
     assert_eq!(
         unsafe {
             dstu_secretstream_push(
@@ -379,23 +398,6 @@ fn secretstream_round_trip_tamper_and_finalize_rejection() {
             )
         },
         DstuStatus::DSTU_ERR_FINALIZED
-    );
-
-    // misuse: length mismatch
-    let mut wrong_len_out = [0u8; 2];
-    assert_eq!(
-        unsafe {
-            dstu_secretstream_push(
-                push_ptr,
-                DstuTag::DSTU_TAG_MESSAGE,
-                plaintext.as_ptr(),
-                plaintext.len(),
-                wrong_len_out.as_mut_ptr(),
-                wrong_len_out.len(),
-                dummy_tag.as_mut_ptr(),
-            )
-        },
-        DstuStatus::DSTU_ERR_FINALIZED // already finalized takes priority - matches Rust's own check order
     );
 
     let pull_ptr = unsafe { dstu_secretstream_pull_init(key_ptr, header.as_ptr()) };

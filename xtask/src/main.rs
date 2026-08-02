@@ -636,7 +636,14 @@ fn capi_header_up_to_date() -> bool {
             return false;
         }
     };
-    if generated != committed_contents {
+    // Normalize CRLF -> LF before comparing: a Windows/macOS CI checkout applies git's own
+    // core.autocrlf translation to the *committed* file's line endings (the same false-positive
+    // rust.yml's own fmt job already documents), while cbindgen always writes LF (its own default,
+    // confirmed in its source) regardless of host OS - an unnormalized comparison would report
+    // drift on every CI Windows/macOS run even with a byte-identical header.
+    let generated_normalized = generated.replace("\r\n", "\n");
+    let committed_normalized = committed_contents.replace("\r\n", "\n");
+    if generated_normalized != committed_normalized {
         eprintln!(
             "xtask: {} is out of date relative to the crate's own extern \"C\" surface - \
              regenerate with `cbindgen --config cbindgen.toml --output include/dstu_core.h` (run \

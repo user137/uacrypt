@@ -115,10 +115,11 @@ pub unsafe extern "C" fn dstu_auth(
     })
 }
 
-/// Verifies `tag` against `message` under `key`. Returns `DSTU_OK` or `DSTU_ERR_TAG_MISMATCH`
-/// (also returned, rather than a distinct code, for a NULL `key`/`tag` - there is no third outcome
-/// to report and "did not verify" is the accurate answer either way), or `DSTU_ERR_NULL_POINTER`
-/// for a NULL `message` with `message_len > 0`.
+/// Verifies `tag` against `message` under `key`. Returns `DSTU_OK` or `DSTU_ERR_TAG_MISMATCH` on
+/// an actual verification failure. `DSTU_ERR_NULL_POINTER` for a NULL `key`/`tag`, or a NULL
+/// `message` with `message_len > 0` - consistent with this crate's own null-hygiene convention
+/// (`lib.rs`'s doc comment): a `DstuStatus` channel exists here, so a NULL pointer is reported
+/// through it rather than folded into `DSTU_ERR_TAG_MISMATCH`.
 ///
 /// # Safety
 ///
@@ -133,7 +134,7 @@ pub unsafe extern "C" fn dstu_auth_verify(
 ) -> DstuStatus {
     guard_status(|| {
         if key.is_null() || tag.is_null() {
-            return DstuStatus::DSTU_ERR_TAG_MISMATCH;
+            return DstuStatus::DSTU_ERR_NULL_POINTER;
         }
         let Some(message) = (unsafe { slice_from_raw(message, message_len) }) else {
             return DstuStatus::DSTU_ERR_NULL_POINTER;

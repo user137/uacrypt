@@ -9711,3 +9711,56 @@ proves the Rust side; the new `capi` job's Linux/macOS legs and the MSVC branch 
 are unverified until a real push, the same caveat every prior binding's first CI round-trip
 carried, T-140/D-140-141/D-146-147's own precedent for "verify on real CI before calling a workflow
 file done").
+
+## D-150: T-158 - four fixes from advisor review before declaring the crate done
+
+Found via `advisor()` review after D-149's implementation was already committed, before declaring
+T-158 done - all four addressed in the same session, not deferred:
+
+1. **Header-drift check (`xtask`'s `capi_header_up_to_date`) would have false-failed on a real
+   Windows/macOS CI checkout.** The comparison was byte-for-byte against the *committed* file as
+   read from this dev machine's own working tree - correct here, but a Windows/macOS CI runner's
+   `actions/checkout` applies git's `core.autocrlf` translation to that same committed file
+   (LF-stored, checked out as CRLF), while `cbindgen` always writes LF (confirmed in its own
+   source, `LineEndingStyle::default() == LF`, not OS-dependent) - the same false-positive
+   `rust.yml`'s own `fmt` job already documents for a different check. Fixed by normalizing both
+   sides (`.replace("\r\n", "\n")`) before comparing, verified by actually reproducing the failure
+   locally: converting the committed header to CRLF and re-running `cargo xtask capi` no longer
+   reports drift. `cbindgen.toml` also now sets `line_endings = "LF"` explicitly (redundant with
+   cbindgen's own default today, but pins the assumption the normalization fix's comment states -
+   only the committed side needs normalizing - against a future cbindgen version changing that
+   default).
+2. **`dstu_auth_verify`'s NULL-handling was an undocumented, inconsistent divergence from this
+   crate's own stated convention.** It returned `DSTU_ERR_TAG_MISMATCH` for a NULL `key`/`tag`
+   rather than `DSTU_ERR_NULL_POINTER`, even though a `DstuStatus` channel exists here (unlike the
+   bare-`bool` `dstu_verify`/`dstu_verify_digest`, where folding NULL into `false` is the only
+   option) - `lib.rs`'s own doc comment states the opposite rule ("a NULL pointer for any required
+   argument is rejected with `DSTU_ERR_NULL_POINTER` ... wherever a `DstuStatus` channel exists").
+   Fixed to return `DSTU_ERR_NULL_POINTER`, header regenerated; no existing test asserted the old
+   behavior, so nothing else needed to change.
+3. **The C test harness had no known-answer vector**, despite `docs/bindings-strategy.md` step 5's
+   own text ("official vectors, rejection, misuse") and this task's own instructions naming exactly
+   this ("a real Kupyna-256 vector via `dstu_generichash_256`"). `dstu_selftest()` proves the
+   underlying Rust primitive is correct but not that the C ABI's own byte plumbing (pointer/length
+   handling in, buffer copy out) preserves it. Added `test_generichash_official_vector` to
+   `c-tests/test_capi.c`, transcribing the single-byte (`0xFF`) case from
+   `crates/dstu-core/tests/vectors/kupyna/kupyna-256.json` (itself cited to
+   `docs/papers/Kupyna.pdf` Appendix B.2) directly as a C byte array - not copied from this
+   session's own tool output (which would be circular).
+4. **A `ffi_tests.rs` misuse assertion proved nothing about what its own name/comment claimed.**
+   `secretstream_round_trip_tamper_and_finalize_rejection`'s "misuse: length mismatch" block ran
+   against an already-finalized `PushState`, so it only ever exercised `DSTU_ERR_FINALIZED` (the
+   finalized-check's priority over the length check) - a real instance of the D-21/D-25 pattern
+   this project's own agent-discipline notes already warn about ("check what a fixed vector
+   actually exercises, not just whether it passes"). Fixed by moving the wrong-length `push` call
+   before the stream is finalized, so it now genuinely asserts `DSTU_ERR_INVALID_LENGTH`; the same
+   gap existed in `c-tests/test_capi.c` (no `DSTU_ERR_INVALID_LENGTH` coverage at all), fixed the
+   same way there.
+
+Not fixed, flagged as CI risk instead (verifiable only on real CI, this machine being
+Windows-GNU-only): the MSVC branch's `dstu_core_capi.dll.lib` import-library name (`D-149`'s own
+finding 2 documents the GNU-vs-MSVC naming split but the MSVC path itself is unverified locally),
+and whether `-Wl,-rpath` actually resolves `libdstu_core_capi.dylib` on macOS given rustc's default
+bare-filename (not `@rpath`-prefixed) `install_name` for a cdylib there - the copy-next-to-exe step
+in `capi_run_c_program` is the more likely reason it works, not the rpath flag, but this is
+unverified without a real macOS runner.
