@@ -273,9 +273,9 @@ resuming. **Update the resume line below every time a step is checked off**; a s
 worse than no resume line, since it actively misdirects the next session.
 
 **Resume point: T-161 done (2026-08-02). T-49 (Python) done in full 2026-08-02 - see D-120. T-50
-(Node.js) steps 1-3 done 2026-08-02 - see D-125/D-126/D-127. Next: T-50 step 4 (prebuilt-artifact
-packaging), also tracked as real tasks in this session's Task tool (T-50 broken into its nine
-standard steps).**
+(Node.js) steps 1-4 done 2026-08-02 - see D-125/D-126/D-127/D-128. Next: T-50 step 5 (`cargo xtask`
+subcommand + CI wiring), also tracked as real tasks in this session's Task tool (T-50 broken into
+its nine standard steps).**
 
 ### The standard binding steps
 
@@ -531,7 +531,18 @@ Standard steps:
   Final chunk, so an upstream error never produces a complete-looking truncated file; `chunkLen` is
   bounds-checked the moment it is parsed, and trailing bytes after `Final` are rejected both
   mid-stream and at `_flush`.
-- Step 4: prebuilt `.node` binaries per platform via napi-rs's cross-compile.
+- Step 4: **Windows prebuilt artifact done locally 2026-08-02, see D-128** (this machine is
+  Windows-only, same constraint Python's own step 4 hit - Linux/macOS cross-builds genuinely need
+  CI, deferred to step 5, not a local shortfall). `package.json`'s `files` field
+  (`js/`, `native/index.js`, `native/index.d.ts`, `native/*.node`) makes `npm pack` bundle the
+  `native/` build output despite it being gitignored from source control - `files` overrides the
+  `.gitignore`-based default for packing specifically, a real gotcha found and fixed here, not
+  assumed to just work. Verified with a genuine fresh-install round trip (Python's own step-4 bar):
+  `npm pack` into a tarball, `npm install <tarball>` in an unrelated temp directory as a real
+  dependency, then `require('dstu-core')` (not the source tree) and re-run the full smoke suite
+  (`selfTest`, `secretbox`, the `secretstream` `stream.Transform` pair) against the installed
+  package - proves the packaged artifact actually contains everything needed, not just the dev
+  source tree.
 - Step 6: `node:test`.
 - **Node-only** (D-118) — browser/WASM is explicitly deferred; don't reinterpret this task as
   covering it.

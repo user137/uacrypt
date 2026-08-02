@@ -4,6 +4,12 @@
   "private": true,
   "description": "Node.js bindings for dstu-core (Ukrainian DSTU cryptographic standards) - provisional, not yet published to npm",
   "main": "js/index.js",
+  "files": [
+    "js/",
+    "native/index.js",
+    "native/index.d.ts",
+    "native/*.node"
+  ],
   "napi": {
     "name": "dstu-core",
     "triples": {

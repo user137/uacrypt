@@ -8567,3 +8567,29 @@ above, and ciphertext-tamper rejection, all against the actual built addon; the 
 `uacrypt` interop check above; `cargo fmt --all -- --check`/`cargo clippy --all-targets -- -D
 warnings` clean (no Rust changed this step, re-run only to confirm); root `cargo build --workspace`
 unaffected.
+
+## D-128: Node.js binding (T-50) step 4 - Windows prebuilt artifact, verified via a real fresh install
+
+Same 2026-08-02 session as D-125/D-126/D-127. This dev machine is Windows-only, the same
+constraint `bindings/python`'s own step 4 hit - Linux/macOS builds genuinely need CI (deferred to
+step 5), not something a local pass can shortcut.
+
+**Real packaging gotcha found, not assumed to work**: `bindings/nodejs/native/` (napi's generated
+`index.js`/`index.d.ts`/the compiled `*.node`) is gitignored from source control (D-127) - but `npm
+pack`/`npm publish` fall back to `.gitignore` for their own file-inclusion decision *only when
+`package.json` has no `files` field*. Without one, packing this crate as-is would have silently
+produced a tarball missing the very runtime artifact the package needs to function - caught by
+actually running `npm pack --dry-run` and reading its file list, not assumed correct from the
+config. Fixed by adding an explicit `files` array (`js/`, `native/index.js`, `native/index.d.ts`,
+`native/*.node`) - `files` overrides both `.gitignore` and any `.npmignore` once present, exactly
+the mechanism needed to ship a build artifact that is rightfully excluded from version control but
+must ship in the package.
+
+**Verified with a genuine fresh-install round trip**, matching Python's own step-4 bar (a fresh
+venv + `pip install` from the built wheel, not the editable/dev install): `npm pack` into a real
+`.tgz`, `npm install <tarball path>` inside an unrelated temp directory (its own throwaway
+`package.json`, no relation to the source repo), then `require('dstu-core')` there - resolving
+through real `node_modules`, not a relative path into the source tree - and re-ran `selfTest`,
+`secretbox`, and the `secretstream` `stream.Transform` pair against that installed copy. All
+passed, confirming the packaged artifact is actually complete and self-contained, not just "the
+source tree already works."

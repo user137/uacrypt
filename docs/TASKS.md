@@ -2518,8 +2518,13 @@ configuration surface added in the process (D-47 still holds).
       glue), mirroring Python's own wire format and both D-118 pitfalls re-checked (`_flush` not
       `_destroy` emits `Final`; `chunkLen` bounds-checked before use; trailing-after-`Final`
       rejected) - verified against the real `uacrypt` binary bidirectionally, not just
-      self-consistently. Steps 4-9 not started; also tracked as real tasks in this session's Task
-      tool.
+      self-consistently. **Step 4 done 2026-08-02, see D-128** — Windows prebuilt artifact only
+      (Linux/macOS need CI, deferred to step 5, same constraint Python's step 4 hit); found and
+      fixed a real gotcha where `package.json` needed an explicit `files` field to make `npm pack`
+      include the gitignored `native/` build output at all; verified with a genuine fresh-install
+      round trip (`npm pack` → `npm install <tarball>` in an unrelated temp dir → require as a real
+      dependency → re-run the full smoke suite), matching Python's own fresh-venv-install bar.
+      Steps 5-9 not started; also tracked as real tasks in this session's Task tool.
 - [ ] **T-51** Java binding — **reordered 2026-08-02 (D-121): now built after T-50/T-160/T-159, not
       before them** — Bouncy Castle and UAPKI already ship real Java/Kotlin DSTU support, so this
       binding's own gap here is real but smaller than in a language with no incumbent at all.
