@@ -9333,3 +9333,28 @@ stream (mid-chunk cutoff), trailing data after `Final`, wrong key, write-after-c
 callback that throws partway through a write (confirming the D-118 no-finalize-on-error property
 directly, not just by code inspection). `cargo fmt --check`/`cargo clippy --all-targets -D
 warnings` clean; `php -l` confirms the PHP file itself has no syntax errors.
+
+## D-144: T-159 (PHP) step 4 - packaging story, honestly: a prebuilt binary + a documented
+`extension=` line, no PECL/Composer publish attempted
+
+PHP's native-extension distribution story has no wheel/npm-pack/gem equivalent at all, for a
+structural reason rather than a gap in this session's effort: **Composer never manages native
+extensions** (a `.dll`/`.so` loaded by the Zend engine itself, before userland code runs) - it only
+ever manages pure-PHP packages, so there is no "Composer package that contains a compiled binary"
+shape to build toward, unlike Python's wheel/Node's npm-pack/Ruby's gem, each of which genuinely can
+bundle a compiled artifact inside their own package format. The actual native-extension registry,
+PECL, requires a `package.xml` manifest, a PECL account, and a public C-source review/build
+process - a real publish pipeline, not a local packaging step, and out of scope for a provisional,
+not-yet-published binding (matches this project's own MVP scope note that publishing anywhere is
+explicitly gated on an owner request, same posture as `dstu-core`'s own crates.io non-publish).
+
+The honest, real deliverable at this stage: a release-profile compiled binary (`cargo build
+--release`, mirrors every other binding's own step-4 artifact) plus the documented `php.ini
+extension = /path/to/dstu_core_php.dll` line (or `-d extension=...` for an ad hoc load) any real
+PHP install already supports for a third-party compiled extension - no packaging format needed for
+this to work at all. Verified with a genuine fresh-install-style check (the same bar Python's/
+Node's own step 4 set): copied *only* the compiled `dstu_core_php.dll` (release build) into an
+unrelated scratch directory with none of the source tree present, loaded it via `-d
+extension=<full path>`, and re-ran a smoke check (`self_test`, `secretbox` round-trip) against that
+standalone copy - proving the artifact itself is complete and self-contained, not proving anything
+about a packaging format PHP's own ecosystem doesn't have.
