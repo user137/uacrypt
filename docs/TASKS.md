@@ -2726,6 +2726,47 @@ configuration surface added in the process (D-47 still holds).
       content to carry (a bindings section, per-language install snippets) — not a mechanical sync
       for its own sake, per the owner's own "якщо потреба"/"if needed" framing. See
       `docs/bindings-strategy.md`'s "T-162" step list for the full breakdown.
+- [ ] **T-164** **Per-binding registry publishing (PyPI/npm/RubyGems/Packagist) — owner-gated
+      decision, added 2026-08-03.** Found via a build-path analysis (simplest → most complex build,
+      requested by the owner) run across every binding: today, a Python/Node/Ruby/PHP consumer sits
+      at the *same* complexity rung as a contributor — clone the repo, install Rust, install that
+      language's own toolchain, run `cargo xtask <lang>`. There is no "just `pip install`/`npm
+      install`/`gem install`/`composer require`" rung below that for any of the four, unlike
+      `uacrypt`'s own prebuilt-binary path (T-18/T-119, closed) or a hypothetical crates.io
+      `dstu-core` (T-17). This is the exact same class of gate T-17 already sits behind — an
+      explicit publish decision per registry, not something new documentation can close (see
+      `docs/user-journey-gaps.md`'s persona-2 "Add dependency" row for why T-17 alone already reads
+      this way). **Not started** — needs an explicit "yes, publish X" from the owner per registry,
+      same bar as T-17; do not self-authorize any of the four.
+- [ ] **T-165** **`docs/CONTRIBUTING.md` has zero mentions of `bindings/`/`dstu-core-capi` anywhere
+      (confirmed by grep, not assumed), added 2026-08-03.** It was written entirely for core-crate
+      contributors (a new primitive/mode) and predates all of Phase 3 — a contributor who wants to
+      fix or extend an existing binding, or add a sixth one, has no single doc to read start-to-
+      finish; today they'd have to reconstruct the process from `docs/bindings-strategy.md`'s
+      per-task sections, which are written as a dated decision log (why each choice was made), not
+      an onboarding checklist. Add a "Working on a language binding" section to
+      `docs/CONTRIBUTING.md` itself (extending its existing owner, per this project's own doc-map
+      convention, rather than a new file) covering: the per-binding toolchain setup, `cargo xtask
+      <lang>`, D-64/D-65's three test categories applied through that binding's own API, D-118's two
+      standing `crypto_secretstream` pitfalls, and (as of `docs/bindings-strategy.md`'s step 10,
+      D-151) the Raspberry Pi ARM64 re-check every binding now gets. Point to
+      `docs/bindings-strategy.md`'s "standard binding steps" template for the authoritative step
+      list rather than duplicating it.
+- [ ] **T-166** **`docs/user-journey-gaps.md`'s three personas predate every language binding,
+      added 2026-08-03.** Same build-path analysis as T-164 above. The existing personas (binary
+      user, library user, constrained-target user) were written 2026-07-25/26, before Node/Ruby/
+      PHP/the C ABI crate existed — there is no persona for "a Python/Node/Ruby/PHP/C developer who
+      wants to use `uacrypt` from their own language" (persona 4) or "a contributor who wants to add
+      or fix a language binding" (persona 5), even though this document's own stated value is
+      "framing surfaces gaps a construction-level view wouldn't" — exactly the gap this session's
+      build-path analysis found by walking the journey directly (same methodology T-117's follow-up
+      pass already validated for personas 1-3). Add both personas following the existing
+      state-diagram + table format; persona 4's "Add dependency" row will read as blocked pending
+      T-164 above, same as persona 2's already does pending T-17 — expected, not a new finding to
+      resolve here.
+      *(Note: the root `README.md`'s stale repo tree — missing `bindings/ruby`/`bindings/php`/
+      `crates/dstu-core-capi` — is already tracked as part of T-162 above, deliberately deferred
+      until every binding lands; no new task needed for that specific fix.)*
 
 ## Phase 4 — Hardware validation (post-MVP)
 
