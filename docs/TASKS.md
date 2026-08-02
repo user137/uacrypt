@@ -2412,9 +2412,9 @@ off — lives in `docs/bindings-strategy.md`'s "Cross-session execution plan" se
 line there first when picking this phase back up in a new session.**
 Build order (dependency-driven, not ID order): T-161 (shared `selftest` module, prerequisite) →
 T-49 (Python, the template) → T-158 (C ABI crate) → T-52 (.NET) → T-51 (Java) → T-50 (Node) → T-53
-(C++) → T-159 (PHP) → T-160 (Ruby); publishing to any registry is a separate, explicitly
-owner-gated step per registry (same class of decision as T-17 for crates.io), tracked once actually
-requested, not scheduled here. **Every task below also carries D-116's "install and forget"
+(C++) → T-159 (PHP) → T-160 (Ruby) → T-162 (GitHub-facing docs/`gh-pages` site refresh, last);
+publishing to any registry is a separate, explicitly owner-gated step per registry (same class of
+decision as T-17 for crates.io), tracked once actually requested, not scheduled here. **Every task below also carries D-116's "install and forget"
 requirement** — zero-config API (no nonce/mode/IV parameter exposed) and prebuilt binaries (no
 local Rust toolchain needed by the binding's own consumer) — **and D-117's requirement to expose
 `dstu_core::selftest` (T-161) with an idiomatic wrapper, plus a local test suite that runs the same
@@ -2491,6 +2491,15 @@ configuration surface added in the process (D-47 still holds).
       scheduled last. Direct Rust binding (`magnus`/`rb-sys`), like T-49/T-50, not through the C
       ABI. RSpec/Minitest suite, same per-binding checklist. See `docs/bindings-strategy.md`
       "Phase 9."
+- [ ] **T-162** GitHub-facing docs + `gh-pages` site refresh — added to scope 2026-08-02 at the
+      owner's request, explicitly last, after every binding above (T-49/T-158/T-52/T-51/T-50/T-53/
+      T-159/T-160) lands. Documentation-only, no primitive/binding code: update `README.md`'s repo
+      tree/quickstart, `docs/dstu-crypto-project.md`'s "Second priority" section, and
+      `docs/release-readiness.md`'s "Phase 3" line to reflect actually-shipped bindings instead of
+      planning-stage language; update the separate `gh-pages` branch site only where it has real new
+      content to carry (a bindings section, per-language install snippets) — not a mechanical sync
+      for its own sake, per the owner's own "якщо потреба"/"if needed" framing. See
+      `docs/bindings-strategy.md`'s "T-162" step list for the full breakdown.
 
 ## Phase 4 — Hardware validation (post-MVP)
 

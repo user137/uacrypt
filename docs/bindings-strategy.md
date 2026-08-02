@@ -225,6 +225,7 @@ document tracks live status so it doesn't drift from this analysis. Summary:
 | 7 | Publishing to each registry — owner-gated, one explicit ask per registry | Phases 1-6 |
 | 8 | PHP binding | Phase 2 |
 | 9 | Ruby binding | Phase 1's pipeline lessons |
+| 10 | GitHub-facing docs + `gh-pages` site refresh | Phases 1-9 |
 
 ## Cross-session execution plan
 
@@ -361,6 +362,27 @@ Standard steps:
 One explicit ask per registry (PyPI/npm/Maven Central/NuGet/RubyGems/Packagist), the same class of
 decision T-17 already applies to crates.io. Not started, not broken into steps above — tracked only
 once actually requested.
+
+### T-162 — GitHub-facing docs + `gh-pages` site refresh (last, after every binding lands)
+
+Requested 2026-08-02: once all bindings above exist, the project's public-facing surfaces —
+`README.md`, the doc set under `docs/`, and the separate `gh-pages` branch site (the landing page
+`docs/PERFORMANCE.md`/`docs/TASKS.md` already reference, e.g. its orientation table naming
+AES/Whirlpool/ChaCha20 as role-analogs) — need a pass to actually mention the bindings, not just the
+Rust crate/CLI. This is a documentation-only task, no primitive/binding code changes.
+
+1. [ ] Re-read the `gh-pages` branch's current content (checkout or `git show gh-pages:<path>`) to
+       see what it says today before editing — don't assume its current shape from memory.
+2. [ ] Update `README.md`'s repo tree and quickstart to mention the bindings that now exist
+       (`bindings/` is no longer "planned, not yet built").
+3. [ ] Update `docs/dstu-crypto-project.md` ("Second priority") and `docs/release-readiness.md`
+       ("Phase 3") to reflect actually-shipped bindings, not planning-stage language.
+4. [ ] Update the `gh-pages` site itself **only if there's real new content it should carry** — a
+       bindings section/links, install snippets per language — not a mechanical sync for its own
+       sake; skip anything the site doesn't need (this step is the "запотреби"/"if needed" the owner
+       asked for, not an unconditional rewrite).
+5. [ ] Doc-map sweep (same file list as every other task) + mark T-162 done in `docs/TASKS.md`.
+6. [ ] Commit — same one-step-per-commit discipline as every other task above.
 
 ## Doc-map sweep discipline
 
