@@ -1,0 +1,24 @@
+[package]
+name = "dstu-core-capi"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.87.0"
+license = "MIT OR Apache-2.0"
+description = "C ABI for dstu-core (Ukrainian DSTU cryptographic standards) - provisional, not yet published"
+repository = "https://github.com/user137/uacrypt"
+homepage = "https://github.com/user137/uacrypt"
+publish = false
+
+[lib]
+name = "dstu_core_capi"
+# cdylib/staticlib for real C consumers; rlib so this crate's own `tests/` can call the
+# `extern "C"` functions directly as a normal Rust dependency and get Miri coverage for free via
+# `cargo +nightly miri test --workspace` (docs/DECISIONS.md D-148 point 6).
+crate-type = ["cdylib", "staticlib", "rlib"]
+
+[dependencies]
+# `std`/`selftest`/`pwhash` unconditionally on, no `default-features = false` - matches
+# `crates/uacrypt/Cargo.toml`'s own dependency line exactly (docs/DECISIONS.md D-148 point 4):
+# `catch_unwind` only exists in `std`, so there is no genuine no_std path for this crate to
+# preserve regardless.
+dstu-core = { path = "../dstu-core", version = "0.2.0", features = ["std", "selftest", "pwhash"] }
