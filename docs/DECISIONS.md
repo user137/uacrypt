@@ -8808,3 +8808,56 @@ the live KAT vectors and returns cleanly (`nil`, i.e. `Ok(())` via magnus); `car
 --check` and `cargo clippy --all-targets -- -D warnings` (with `LIBCLANG_PATH` set) both clean. Only
 `selfTest`/`self_test` wrapped so far, matching Python/Node's own step-1 split - the full `crypto_*`
 surface is step 2.
+
+## D-134: Ruby binding (T-160) step 2 - full `crypto_*` surface wrapped
+
+2026-08-02. One Rust module per `dstu_core::crypto_*` module (`secretbox`/`sign`/`auth`/`kdf`/
+`generichash`/`stream`/`pwhash`/`randombytes`/`secretstream`), flat `DstuCore.secretbox_seal`-style
+naming matching Python/Node's own step-2 posture (idiomatic restructuring is deliberately deferred
+to a later step, `crypto_secretstream` specifically). Keys/ciphertexts/tags cross the boundary as
+plain Ruby `String` (binary) via `RString`; a single `DstuCore::Error < StandardError` covers every
+crypto-operation failure (tag mismatch, truncation, CSPRNG failure), Ruby's own `ArgumentError`
+covers a caller-input mistake a fixed-size Rust array forecloses (wrong-length key/context/etc.) -
+same two-exception-class split as Python's `DstuError`/`ValueError`, Ruby's own idiom for it.
+
+Three real `magnus` API findings, each confirmed by reading the crate's own source rather than
+guessed from the compiler error alone:
+
+1. **`RString::to_bytes()` (the safe, owned-copy path to get plain bytes out of a Ruby `String`) is
+   gated behind `magnus`'s own `"bytes"` Cargo feature**, off by default - the alternative,
+   `RString::as_slice()`, is `unsafe` (a Ruby `String` is mutable/GC-movable, so a raw borrowed
+   slice into it needs the caller to uphold invariants the wrapper wants no part of). Enabled
+   `magnus = { version = "0.7", features = ["bytes"] }` instead of reaching for `unsafe`, keeping
+   this binding's own wrapper code free of `unsafe` blocks entirely - a deliberate KISS/safety
+   choice (D-124), not merely the path of least resistance.
+2. **No `IntoValue` impl for Rust tuples** (the same gap Node's `napi-rs` had, D-126) - Ruby's own
+   idiom for a multi-value return is an `Array` destructured positionally
+   (`ciphertext, tag = state.push(...)`), a natural fit unlike JS's own preference for a named
+   object there, so `secretstream`'s `push`/`pull` build a two-element `RArray` via
+   `ruby.ary_new_capa(2)` + `.push(...)` rather than reaching for a `#[napi(object)]`-style named
+   struct - the idiomatic choice differs by target language even though the underlying gap
+   (no tuple support) is the same.
+3. **`method!`'s trait bounds require a specific parameter order when a wrapped instance method also
+   takes `&Ruby`**: `Fn(&Ruby, RbSelf, Args...)` - Ruby *before* the receiver - which cannot be
+   expressed with idiomatic `&self`-sugar syntax (`self` must be the literal first parameter when
+   using method-call sugar in Rust). Rather than dropping to `fn(ruby: &Ruby, this: &Self, ...)`
+   (breaks `self.foo()` call-site ergonomics inside the impl block), every instance method
+   (`Kupyna256Hasher::update`/`finalize`, `SecretStreamPushState::push`/`header`,
+   `SecretStreamPullState::pull`, etc.) keeps plain `&self` and calls `Ruby::get().expect(...)`
+   internally instead - matching the plain (non-`&Ruby`) `MethodN`/`Method0` trait shape, and the
+   same pattern `self_test()` already used in step 1. Only `function!`-registered constructors/
+   module-level functions (`SecretStreamPushState::new`, `secretbox_seal`, etc.) take `ruby: &Ruby`
+   as their literal first parameter, since those really are free functions with no `self`-sugar
+   constraint.
+
+`crypto_pwhash`'s `strength` parameter has no default value (Python's own `#[pyo3(signature =
+(password, strength=1))]` doesn't have a straightforward `magnus` equivalent for a plain
+`function!`-wrapped function) - callers pass `DstuCore::PWHASH_MODERATE` explicitly. A minor,
+documented UX simplification, not a functional gap; not worth the extra `RHash`/kwargs complexity
+for a pre-1.0 binding's own step-2 pass.
+
+Verified end-to-end: a full smoke script covering all nine `crypto_*` modules (round-trip,
+tamper-rejection via `DstuCore::Error`, wrong-length-key via `ArgumentError`, incremental hasher
+`finalize`-twice rejection, `secretstream` push/pull round-trip and tamper rejection) - 15/15 pass
+against the live compiled `.so`, re-verified again after `cargo fmt --all` reformatted the four
+touched files. `cargo clippy --all-targets -- -D warnings` clean.

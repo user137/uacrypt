@@ -275,8 +275,9 @@ worse than no resume line, since it actively misdirects the next session.
 **Resume point: T-161 done (2026-08-02). T-49 (Python) done in full 2026-08-02 - see D-120. T-50
 (Node.js) done in full 2026-08-02 - see D-125 through D-132 (step 6 done before step 5, a
 tooling-forced reorder, D-129 explains why; D-130 corrects D-125's toolchain-pin approach). T-160
-(Ruby) step 1 done 2026-08-02 - see D-133 (own Ruby+MSYS2-clang toolchain install, several real
-rb_sys/bindgen gotchas). Next: T-160 step 2 (wrap full crypto_* surface).**
+(Ruby) steps 1-2 done 2026-08-02 - see D-133 (own Ruby+MSYS2-clang toolchain install, several real
+rb_sys/bindgen gotchas), D-134 (full crypto_* surface). Next: T-160 step 3 (idiomatic
+crypto_secretstream wrapper).**
 
 ### The standard binding steps
 
@@ -618,6 +619,20 @@ Standard steps:
   real `ruby -Ilib -e "require 'dstu_core'; DstuCore.self_test"` smoke call against the live
   compiled build; `cargo fmt --all -- --check`/`cargo clippy --all-targets -- -D warnings` both
   clean.
+- Step 2: **Done 2026-08-02, see D-134.** Full `crypto_*` surface wrapped, flat
+  `DstuCore.secretbox_seal`-style naming (idiomatic restructuring deferred to step 3, same posture
+  as Python/Node). `RString::to_bytes()` needs `magnus`'s `"bytes"` feature enabled - the
+  alternative, `as_slice()`, is `unsafe`; enabling the feature keeps this binding's wrapper code
+  free of `unsafe` entirely. No tuple `IntoValue` (same gap as Node's napi-rs, D-126) - Ruby's own
+  idiom is a positionally-destructured `Array`, so `secretstream`'s `push`/`pull` build a
+  two-element `RArray` rather than reaching for a named-struct workaround. `method!`'s trait bounds
+  need `Fn(&Ruby, RbSelf, Args...)` order for a Ruby-taking instance method, incompatible with
+  `&self` sugar - every instance method keeps plain `&self` and calls `Ruby::get()` internally
+  instead, matching step 1's `self_test()` pattern; only `function!`-registered constructors/
+  module functions take `ruby: &Ruby` as a literal first parameter. Verified via a 15-check smoke
+  script against the live compiled `.so` (round-trip, tamper-rejection, wrong-length-key rejection,
+  hasher double-finalize rejection, secretstream push/pull); `cargo clippy --all-targets --
+  -D warnings` clean.
 - Step 3: an `IO`-like or `Enumerable`/`Enumerator` wrapper — research Ruby's own idiom when the
   task starts.
 - Step 4: a prebuilt extension binary where the ecosystem supports it.

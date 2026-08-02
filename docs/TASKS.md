@@ -2599,6 +2599,11 @@ configuration surface added in the process (D-47 still holds).
       placement, `rb-sys-env` version pin, `rb-sys` as an explicit direct dependency, `LIBCLANG_PATH`
       pointed at a matching mingw `clang`). Wraps only `self_test`, verified via a full clean
       rebuild + a real self-test call against the live compiled build.
+      **Step 2 done 2026-08-02, see D-134**: full `crypto_*` surface wrapped, flat naming matching
+      Python/Node. Three real `magnus` findings (`RString::to_bytes()` needs the `"bytes"` feature;
+      no tuple `IntoValue`, so `secretstream` returns a 2-element `RArray`; `method!`'s Ruby-first
+      parameter order is incompatible with `&self` sugar, worked around via `Ruby::get()` inside
+      instance methods). 15-check smoke script passing against the live compiled `.so`.
 - [ ] **T-163** Go binding (`bindings/go`) — added to scope 2026-08-02 at the owner's request, on
       the same no-incumbent-competitor footing as Node/Ruby/PHP (no DSTU-specific Go library exists,
       real DevSecOps/cloud-infra audience). **Unlike Node/Ruby/PHP, this one goes through the C ABI
