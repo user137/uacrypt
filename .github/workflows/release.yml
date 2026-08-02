@@ -2,10 +2,12 @@ name: release
 
 # Triggered by a `vX.Y.Z` tag push (docs/TASKS.md T-18) - builds the uacrypt binary for
 # Linux/macOS/Windows, packages the dstu-core source distribution the same way `cargo publish`
-# would, and attaches all of it to a GitHub Release. As of the tag after v0.2.0 (docs/TASKS.md
+# would, builds the bindings/python wheel for Linux (manylinux)/macOS/Windows (docs/TASKS.md T-49
+# step 5), and attaches all of it to a GitHub Release. As of the tag after v0.2.0 (docs/TASKS.md
 # T-17, docs/DECISIONS.md D-114), it also publishes both crates to crates.io via `publish-crates`
 # below - v0.2.0 itself predates that job and stayed GitHub-only, per an explicit project-owner
-# scope decision.
+# scope decision. The Python wheel is not published to PyPI here - that stays a separate,
+# explicitly-gated decision, same as T-17 for crates.io.
 on:
   push:
     tags:
@@ -75,9 +77,44 @@ jobs:
           name: dstu-core-source
           path: target/package/dstu-core-*.crate
 
+  build-python-wheels:
+    name: build python wheel (${{ matrix.os }})
+    # Same PyO3/maturin-action@v1 invocation as .github/workflows/bindings-python.yml's own
+    # `wheel-preview` job, proven on every push (T-49 step 5) - keep the two in sync by hand, no
+    # cross-workflow includes in GitHub Actions. `bindings/python`'s own pyproject.toml is
+    # versioned independently of the Rust crates (0.1.0 vs. dstu-core's 0.2.0, deliberate - this
+    # binding is still provisional/pre-1.0, not lockstepped with the core crates' own release
+    # cadence), so the wheel filename attached to this (or any future) GitHub Release will show
+    # its own version, not the tag's.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build wheel
+        uses: PyO3/maturin-action@v1
+        with:
+          working-directory: bindings/python
+          args: --release --out dist
+          manylinux: auto
+      - uses: actions/upload-artifact@v4
+        with:
+          name: python-wheel-${{ matrix.os }}
+          path: bindings/python/dist/*.whl
+
   publish-release:
     name: create GitHub release
-    needs: [build-binary, package-library]
+    # Wheel-build failure blocks the release (same posture as package-library) - a deliberate
+    # choice, not a side effect: this binding's own CI (bindings-python.yml) already gates
+    # correctness/interop on every push, so a release-time wheel-build failure here means the
+    # packaging step itself broke, which should stop the release rather than ship silently without
+    # wheels attached.
+    needs: [build-binary, package-library, build-python-wheels]
     runs-on: ubuntu-latest
     permissions:
       contents: write
