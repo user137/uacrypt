@@ -3,8 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "Node.js bindings for dstu-core (Ukrainian DSTU cryptographic standards) - provisional, not yet published to npm",
-  "main": "index.js",
-  "types": "index.d.ts",
+  "main": "js/index.js",
   "napi": {
     "name": "dstu-core",
     "triples": {
@@ -19,8 +18,8 @@
     "@napi-rs/cli": "^2"
   },
   "scripts": {
-    "build": "napi build --platform --release",
-    "build:debug": "napi build --platform",
+    "build": "napi build native --platform --release",
+    "build:debug": "napi build native --platform",
     "test": "node --test test/"
   }
 }

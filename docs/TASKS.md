@@ -2513,7 +2513,13 @@ configuration surface added in the process (D-47 still holds).
       2026-08-02, see D-126** — full `crypto_*` surface wrapped (every byte param/return uses
       `napi::bindgen_prelude::Buffer`, not `Vec<u8>`; explicit `js_name` camelCase on every export;
       `secretstream` push/pull return a `#[napi(object)]` result struct, not a tuple - napi-rs has
-      none). Steps 3-9 not started; also tracked as real tasks in this session's Task tool.
+      none). **Step 3 done 2026-08-02, see D-127** — `SecretStreamEncryptor`/`SecretStreamDecryptor`
+      as a `stream.Transform` pair (`bindings/nodejs/js/secretstream.js`, pure JS, no new Rust
+      glue), mirroring Python's own wire format and both D-118 pitfalls re-checked (`_flush` not
+      `_destroy` emits `Final`; `chunkLen` bounds-checked before use; trailing-after-`Final`
+      rejected) - verified against the real `uacrypt` binary bidirectionally, not just
+      self-consistently. Steps 4-9 not started; also tracked as real tasks in this session's Task
+      tool.
 - [ ] **T-51** Java binding — **reordered 2026-08-02 (D-121): now built after T-50/T-160/T-159, not
       before them** — Bouncy Castle and UAPKI already ship real Java/Kotlin DSTU support, so this
       binding's own gap here is real but smaller than in a language with no incumbent at all.

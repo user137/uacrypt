@@ -8516,3 +8516,54 @@ Verified end-to-end with a real Node smoke script exercising every wrapped funct
 (round-trip, tamper-rejection, and the `subkey_id < 0` misuse case) against the actual built
 addon, plus `cargo fmt --all -- --check`/`cargo clippy --all-targets -- -D warnings` clean and root
 `cargo build --workspace` unaffected - same verification bar as T-49 step 2's own Python pass.
+
+## D-127: Node.js binding (T-50) step 3 - `crypto_secretstream` as an idiomatic `stream.Transform` pair
+
+Same 2026-08-02 session as D-125/D-126. `SecretStreamEncryptor`/`SecretStreamDecryptor`
+(`bindings/nodejs/js/secretstream.js`) - pure hand-written JS on top of step 2's raw
+`SecretStreamPushState`/`PullState`, no new Rust glue, mirroring
+`bindings/python/python/dstu_core/secretstream.py`'s design and wire format exactly: `header (32
+bytes)` then one record per chunk, `tagByte (1) || chunkLenU32LE (4) || ciphertext || authTag
+(16)`, chunks capped at 8 KiB (`SECRETSTREAM_CHUNK_BYTES`) - interoperable with `uacrypt encrypt`/
+`decrypt` in both directions, verified against the real `uacrypt.exe` binary (encrypt with
+`uacrypt`, decrypt with this binding and vice versa, byte-for-byte `cmp` match both ways), not just
+self-consistently.
+
+**Structural change to accommodate a hand-written entry point**: `napi build`'s generated
+`index.js`/`index.d.ts`/`*.node` moved from the package root into `bindings/nodejs/native/` (`napi
+build native --platform --release`, `package.json`'s `build`/`build:debug` scripts updated) so
+`bindings/nodejs/js/index.js` (hand-written, committed) can own the package's public `main` entry
+point without a regenerated file overwriting it on every build. `js/index.js` re-exports every
+native function/class as-is plus the two `stream.Transform` classes - same split as Python's
+`_dstu_core` (compiled, private) vs. `dstu_core/__init__.py` (public, hand-written).
+
+**D-118's two standing pitfalls, re-checked for this port specifically, not assumed to carry over
+automatically from Python:**
+- **The language's own "always runs, even on error" cleanup hook must not finalize on the error
+  path.** Node's Transform-stream equivalent of Python's `__exit__` is `_flush` - called by the
+  stream machinery only when the writable side ends gracefully (`.end()`/pipeline success), never
+  on `destroy()`/an upstream error (which instead calls `_destroy`, deliberately left alone here).
+  `SecretStreamEncryptor` therefore only ever emits the `Final` chunk from `_flush`, so a pipeline
+  that errors partway leaves the output without one - a `SecretStreamDecryptor` reading that
+  truncated output fails closed in its own `_flush` ("stream ended before a Final chunk") rather
+  than accepting a complete-looking but truncated file. Verified with a real test: `destroy()` an
+  encryptor mid-write, decrypt the truncated output, confirm it throws naming the missing `Final`
+  chunk specifically (not just "throws something").
+- **The wire-format reader must itself bound the untrusted length-prefixed field and reject
+  trailing data after `Final`.** `chunkLen` (the 4-byte little-endian field) is checked against
+  `CHUNK_BYTES` the instant it's parsed in `_drain`, before any buffering up to its declared length
+  - a genuinely necessary check here (unlike a synchronous Python `_read_exact`, this reader
+  accumulates arbitrarily-chunked input across multiple `_transform` calls, so an unbounded
+  `chunkLen` really could mean holding gigabytes in `this._buf` waiting for a socket/pipe to supply
+  them). Trailing bytes after `Final` are rejected in two places: the top of `_drain`'s loop (bytes
+  arriving in a later `_transform` call after `_done` was already set) and in `_flush` (bytes
+  appended in the very same write as the `Final` record, which never reach `_drain`'s next-iteration
+  check otherwise since there is no next iteration if the stream then ends). Verified with two
+  separate tests, not one - an oversized `chunkLen` alone, and valid ciphertext with one trailing
+  byte appended.
+
+Verified end-to-end: a real smoke test covering round-trip (multi-chunk, >8 KiB), both pitfalls
+above, and ciphertext-tamper rejection, all against the actual built addon; the bidirectional
+`uacrypt` interop check above; `cargo fmt --all -- --check`/`cargo clippy --all-targets -- -D
+warnings` clean (no Rust changed this step, re-run only to confirm); root `cargo build --workspace`
+unaffected.

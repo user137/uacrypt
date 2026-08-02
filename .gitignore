@@ -53,13 +53,13 @@
 /bindings/python/python/dstu_core/*.so
 
 # Node.js (T-50): node_modules (fetched fresh via `npm install`, never vendored, same rule as
-# `/oracles` above), plus napi-rs's own build output - the compiled addon (`*.node`, platform-
-# specific binary, same class as Python's `.pyd`/`.so` above) and `index.js`/`index.d.ts`, both
-# fully generated from this crate's `#[napi]` annotations by `napi build` - regenerated every
-# build rather than committed, so there is no separate copy of the binding surface that can drift
-# out of sync with the Rust source of truth.
+# `/oracles` above), plus napi-rs's own build output under native/ - the compiled addon (`*.node`,
+# platform-specific binary, same class as Python's `.pyd`/`.so` above) and `index.js`/`index.d.ts`,
+# both fully generated from this crate's `#[napi]` annotations by `napi build native` (T-50 step 3
+# - relocated out of the package root so the hand-written idiomatic `js/index.js` wrapper,
+# `secretstream.js`'s stream.Transform pair, D-118, could live at the package root instead) -
+# regenerated every build rather than committed, so there is no separate copy of the low-level
+# binding surface that can drift out of sync with the Rust source of truth.
 /bindings/nodejs/node_modules/
-/bindings/nodejs/*.node
-/bindings/nodejs/index.js
-/bindings/nodejs/index.d.ts
+/bindings/nodejs/native/
 /bindings/nodejs/npm/
