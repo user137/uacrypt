@@ -219,9 +219,13 @@ any kind to choose from, safe or otherwise.
   yet published to PyPI (separately gated, same posture as crates.io's T-17). T-50 (Node.js)
   landed the same day - full `crypto_*` surface + idiomatic `stream.Transform` secretstream
   wrapper, own CI, prebuilt artifact verified via a real fresh-install round trip, not yet
-  published to npm (same gating posture). See `docs/bindings-strategy.md`, `docs/DECISIONS.md`
-  D-115/D-120/D-125 through D-132, `docs/TASKS.md`
-  T-49/T-50/T-51/T-52/T-53/T-158/T-159/T-160/T-163 - T-160 onward haven't started.
+  published to npm (same gating posture). T-160 (Ruby) landed the same day too - full `crypto_*`
+  surface + idiomatic `SecretStreamWriter`/`Reader` (modeled on stdlib's own `Zlib::GzipWriter`/
+  `GzipReader`), own CI, a genuine packaging finding (a source gem can't install standalone at all
+  - fixed via `rake native gem`'s precompiled, platform-tagged gem instead, D-136), not yet
+  published to RubyGems (same gating posture). See `docs/bindings-strategy.md`, `docs/DECISIONS.md`
+  D-115/D-120/D-125 through D-139, `docs/TASKS.md`
+  T-49/T-50/T-51/T-52/T-53/T-158/T-159/T-160/T-163 - T-159 onward haven't started.
 
 ## Libsodium API surface and crates.io publishing audit (2026-07-25)
 

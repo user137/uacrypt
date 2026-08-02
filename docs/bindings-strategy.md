@@ -275,13 +275,13 @@ worse than no resume line, since it actively misdirects the next session.
 **Resume point: T-161 done (2026-08-02). T-49 (Python) done in full 2026-08-02 - see D-120. T-50
 (Node.js) done in full 2026-08-02 - see D-125 through D-132 (step 6 done before step 5, a
 tooling-forced reorder, D-129 explains why; D-130 corrects D-125's toolchain-pin approach). T-160
-(Ruby) steps 1-5 done 2026-08-02 - see D-133 (own Ruby+MSYS2-clang toolchain install, several real
+(Ruby) done in full 2026-08-02 - see D-133 (own Ruby+MSYS2-clang toolchain install, several real
 rb_sys/bindgen gotchas), D-134 (full crypto_* surface), D-135 (SecretStreamWriter/Reader,
 Zlib::GzipWriter/Reader-modeled), D-136 (advisor-review fixes to steps 2-3, then step 4's
 precompiled native gem - a source gem cannot install standalone at all, the path-dependency
 finding), D-137 (cargo xtask ruby + bindings-ruby.yml, rubocop wired in, not yet confirmed on real
 CI - needs a push), D-138 (58-example RSpec suite, cross-language vector loading, real uacrypt
-interop), D-139 (examples/ + README.md). Next: T-160 step 8 (doc-map sweep + mark done).**
+interop), D-139 (examples/ + README.md). Next: T-159 (PHP), not started.**
 
 ### The standard binding steps
 

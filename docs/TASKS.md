@@ -2588,7 +2588,8 @@ configuration surface added in the process (D-47 still holds).
       evidence exists for PHP the way UAPKI/Bouncy-Castle-.NET give Java/.NET). `ext-php-rs`
       extension or a plainer `FFI`-extension path over `bindings/capi` (T-158)." PHPUnit suite, same
       per-binding checklist as every other language. See `docs/bindings-strategy.md` "Phase 8."
-- [ ] **T-160** Ruby binding (`bindings/ruby`) — added to scope 2026-08-02 at the owner's request.
+- [x] **T-160** Ruby binding (`bindings/ruby`) — added to scope 2026-08-02 at the owner's request.
+      **Done in full 2026-08-02 — see D-133 through D-139.**
       **Reordered 2026-08-02, see D-121: no longer scheduled last** — moved up to build right after
       T-50, ahead of T-159/T-158/T-52/T-51/T-53, same no-incumbent reasoning as Node/PHP. Direct
       Rust binding (`magnus`/`rb-sys`), like T-49/T-50, not through the C ABI. RSpec/Minitest suite,

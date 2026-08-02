@@ -53,8 +53,8 @@ implementation within a minute, without hassle — in the spirit of
   checklist, phased order) now lives in `docs/bindings-strategy.md`; task tracking in
   `docs/TASKS.md` T-49/T-50/T-51/T-52/T-53/T-158/T-159/T-160/T-163.** T-49 (Python, the template
   every later binding follows) is done as of 2026-08-02 - see `docs/TASKS.md`/`docs/DECISIONS.md`
-  D-120. T-50 (Node.js) is done as of 2026-08-02 too - see D-125 through D-132. The rest (T-160
-  onward) haven't started.
+  D-120. T-50 (Node.js) is done as of 2026-08-02 too - see D-125 through D-132. T-160 (Ruby) is
+  done as of 2026-08-02 too - see D-133 through D-139. The rest (T-159 onward) haven't started.
 - Do not separately reimplement DSTU 4145 in the native core — for
   Java/.NET, integrate/wrap Bouncy Castle (a mature implementation already
   exists there); for Rust, port it while relying on Bouncy Castle as a
