@@ -143,10 +143,25 @@ class SecretStreamDecryptor:
             raise StopIteration
         tag_byte = _read_exact(self._inp, 1, "chunk tag")[0]
         chunk_len = int.from_bytes(_read_exact(self._inp, 4, "chunk length"), "little")
+        # `chunk_len` is untrusted wire input, read before any tag verification - reject an
+        # oversized declared length before acting on it (`_read_exact` would otherwise try to
+        # accumulate up to `chunk_len` bytes from `inp`, which for a socket/pipe `_Readable` could
+        # mean gigabytes before ever failing). Matches `uacrypt decrypt`'s own
+        # `CliError::SecretstreamChunkTooLarge` bound (`crates/uacrypt/src/lib.rs`).
+        if chunk_len > _CHUNK_BYTES:
+            raise DstuError(
+                f"secretstream chunk too large: declared {chunk_len} bytes, max {_CHUNK_BYTES}"
+            )
         ciphertext = _read_exact(self._inp, chunk_len, "chunk ciphertext")
         auth_tag = _read_exact(self._inp, _AUTH_TAG_BYTES, "chunk auth tag")
         tag, plaintext = self._pull.pull(tag_byte, ciphertext, auth_tag)
         if tag == SECRETSTREAM_TAG_FINAL:
+            # Matches `uacrypt decrypt`'s own `CliError::SecretstreamTrailingData` check - reject
+            # bytes remaining after `Final` rather than silently ignoring them. Checked before
+            # `plaintext` is returned, so a trailing-data stream never yields this last chunk
+            # either via iteration or `read_all()`.
+            if self._inp.read(1):
+                raise DstuError("trailing data after the secretstream's Final chunk")
             self._done = True
         return plaintext
 
