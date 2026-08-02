@@ -24,6 +24,15 @@ allow = [
     "BSD-3-Clause",
     "ISC",
     "Unicode-3.0",
+    # Below: pulled in transitively by ext-php-rs's own build-dependencies (bindings/php, T-159) -
+    # `zip`/`ureq`, used by its Windows build script to download and extract the matching PHP devel
+    # pack at build time (docs/DECISIONS.md D-142). All permissive, all first encountered on real
+    # CI (cargo-deny's own `licenses FAILED` run, not predicted locally).
+    "bzip2-1.0.6", # libbz2-rs-sys, via the `bzip2`/`zip` crates
+    "CC0-1.0",     # ppmd-rust, via `zip`
+    "MIT-0",       # ppmd-rust, via `zip`
+    "CDLA-Permissive-2.0", # webpki-root-certs, via `ureq`
+    "Zlib",        # zlib-rs, via `flate2`/`ureq`/`zip`
 ]
 confidence-threshold = 0.8
 

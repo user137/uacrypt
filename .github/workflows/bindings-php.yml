@@ -17,6 +17,15 @@ name: bindings-php
 # GNU/mingw-ucrt default; this binding needs MSVC specifically, the same direction as Node's own
 # D-125/D-130, just nightly instead of stable). `rust-lld` linker config is already committed in
 # bindings/php/.cargo/config.toml, needs no CI-specific handling.
+#
+# Windows also needs `RUSTUP_TOOLCHAIN` set explicitly on every cargo step (not just the toolchain
+# action's own `toolchain:` input) - the exact same gotcha bindings-ruby.yml's round-3 fix
+# (D-141) already found: this repo's root `rust-toolchain.toml` (bare `channel = "stable"`, no host
+# triple) silently overrides `dtolnay/rust-toolchain`'s own `rustup default` on the Windows runner
+# specifically (confirmed by a real CI failure - `cargo clippy` hit `error[E0554]: #![feature] may
+# not be used on the stable release channel` despite the toolchain step requesting nightly-msvc;
+# ubuntu-latest/macos-latest were unaffected). `RUSTUP_TOOLCHAIN` overrides a toolchain file
+# outright, unlike `rustup default`.
 
 on:
   push:
@@ -53,12 +62,16 @@ jobs:
         working-directory: bindings/php
       - run: cargo clippy --all-targets -- -D warnings
         working-directory: bindings/php
+        env:
+          RUSTUP_TOOLCHAIN: ${{ matrix.os == 'windows-latest' && 'nightly-x86_64-pc-windows-msvc' || '' }}
       # From the repo root: SecretstreamTest's interop test skips (not fails) when the binary isn't
       # found - build it first so this job actually exercises the wire-format check that justifies
       # this binding existing, same reasoning as every other binding's own workflow.
       - run: cargo build -p uacrypt --release
       - run: cargo build
         working-directory: bindings/php
+        env:
+          RUSTUP_TOOLCHAIN: ${{ matrix.os == 'windows-latest' && 'nightly-x86_64-pc-windows-msvc' || '' }}
       - name: Download phpunit.phar
         working-directory: bindings/php
         shell: bash
