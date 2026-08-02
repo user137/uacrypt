@@ -73,3 +73,8 @@
 /bindings/ruby/lib/dstu_core/*.so
 /bindings/ruby/.bundle/
 /bindings/ruby/*.gem
+
+# PHP (T-159): PHPUnit ships as a standalone PHAR (D-145 - no Composer dependency added just for a
+# test runner), downloaded per-machine/CI rather than vendored.
+/bindings/php/phpunit.phar
+/bindings/php/.phpunit.result.cache

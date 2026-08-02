@@ -1,11 +1,11 @@
 # cargo-deny policy. The root workspace (dstu-core/uacrypt) has zero external dependencies - this
 # file exists so the policy is enforced automatically the moment a dependency is added, rather than
 # relying on someone remembering to check docs/SECURITY.md's supply-chain table by hand. Also reused
-# for bindings/python's, bindings/nodejs's, and bindings/ruby's separate Cargo workspaces (D-119):
-# cargo-deny walks up from any cwd looking for a deny.toml, so `cargo deny check` run from any of
-# them finds this same file and checks that workspace's own real dependency tree (pyo3/napi/
-# magnus-rb_sys and friends) against the same policy - confirmed by testing, not assumed; no second
-# deny.toml needed per binding. See
+# for bindings/python's, bindings/nodejs's, bindings/ruby's, and bindings/php's separate Cargo
+# workspaces (D-119): cargo-deny walks up from any cwd looking for a deny.toml, so `cargo deny
+# check` run from any of them finds this same file and checks that workspace's own real dependency
+# tree (pyo3/napi/magnus-rb_sys/ext-php-rs and friends) against the same policy - confirmed by
+# testing, not assumed; no second deny.toml needed per binding. See
 # docs/SECURITY.md "Supply-chain vetting".
 
 [graph]

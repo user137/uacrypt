@@ -34,6 +34,7 @@ fn main() -> ExitCode {
         "python" => python(),
         "nodejs" => nodejs(),
         "ruby" => ruby(),
+        "php" => php(),
         "ci" => ci(),
         "help" | "-h" | "--help" => {
             print_usage();
@@ -72,7 +73,8 @@ fn print_usage() {
          \x20 oracle-dotnet  run the .NET/Bouncy Castle oracle harness via dotnet run\n\
          \x20 python         build+lint bindings/python, maturin develop, pytest (T-49)\n\
          \x20 nodejs         build+lint bindings/nodejs, napi build, node --test (T-50)\n\
-         \x20 ruby           build+lint bindings/ruby, rake compile, rspec (T-160)"
+         \x20 ruby           build+lint bindings/ruby, rake compile, rspec (T-160)\n\
+         \x20 php            build+lint bindings/php, cargo build, phpunit (T-159)"
     );
 }
 
@@ -100,11 +102,26 @@ fn tool_available(base: &str) -> bool {
         .is_ok_and(|s| s.success())
 }
 
+/// `dir` is only ever a binding subdirectory that may carry its own `rustup override` (Node's
+/// MSVC pin, PHP's nightly-MSVC pin, D-130/D-146) distinct from the repo root's own toolchain.
+/// `RUSTUP_TOOLCHAIN` is removed from the child's environment in that case - confirmed the hard
+/// way (D-146): `cargo xtask php` itself runs under a rustup-resolved `cargo`, which sets
+/// `RUSTUP_TOOLCHAIN` for its own process before this xtask binary ever starts; that env var is
+/// inherited by every child process spawned here and - per the same precedence rule CLAUDE.md
+/// already documents for a `rust-toolchain.toml` (D-141) - overrides a directory-based `rustup
+/// override set` outright. Without this, a nested `cargo build`/`clippy` inside `bindings/php`
+/// silently used the repo root's own default GNU-host toolchain instead of the directory's pinned
+/// `nightly-x86_64-pc-windows-msvc`, producing a real build failure (ext-php-rs's `wrapper.c`
+/// compiled with `gcc` against PHP's MSVC-only devel-pack headers - `__forceinline`/
+/// `_InterlockedExchange8`/`pid_t` conflicts) that a direct manual `cd bindings/php && cargo
+/// build` never reproduced, since a plain shell invocation has no inherited `RUSTUP_TOOLCHAIN` to
+/// begin with.
 fn run(base: &str, args: &[&str], dir: Option<&Path>) -> bool {
     let mut command = Command::new(command_for(base));
     command.args(args);
     if let Some(dir) = dir {
         command.current_dir(dir);
+        command.env_remove("RUSTUP_TOOLCHAIN");
     }
     println!("+ {base} {}", args.join(" "));
     command.status().is_ok_and(|s| s.success())
@@ -343,6 +360,7 @@ fn audit() -> bool {
         && run("cargo", &["audit"], Some(Path::new("bindings/python")))
         && run("cargo", &["audit"], Some(Path::new("bindings/nodejs")))
         && run("cargo", &["audit"], Some(Path::new("bindings/ruby")))
+        && run("cargo", &["audit"], Some(Path::new("bindings/php")))
 }
 
 /// `bindings/python`/`bindings/nodejs` are separate Cargo workspaces (D-119), but deliberately
@@ -371,6 +389,7 @@ fn deny() -> bool {
             &["deny", "check"],
             Some(Path::new("bindings/ruby")),
         )
+        && run("cargo", &["deny", "check"], Some(Path::new("bindings/php")))
 }
 
 /// Best-effort like miri/fuzz/audit (D-12) - `bindings/python`'s own separate Cargo workspace
@@ -452,6 +471,91 @@ fn ruby() -> bool {
         && run("bundle", &["exec", "rspec"], Some(dir))
 }
 
+/// Best-effort like python()/nodejs()/ruby() above - bindings/php's own separate Cargo workspace
+/// (D-119) isn't reached by build/test/clippy/fmt. Builds uacrypt first (release, from the repo
+/// root) for the real `uacrypt.exe` interop check inside the PHPUnit suite. PHPUnit itself ships
+/// as a standalone PHAR (`bindings/php/phpunit.phar`, gitignored) rather than a Composer
+/// dependency - this binding has no other Composer-managed dependency to justify adding Composer
+/// as a second PHP toolchain requirement just for a test runner (docs/DECISIONS.md D-145).
+fn php() -> bool {
+    if !require(
+        "php",
+        "https://windows.php.net or your OS package manager (PHP 8.1+, ext-php-rs's own floor)",
+    ) {
+        return false;
+    }
+    let dir = Path::new("bindings/php");
+    let phpunit = dir.join("phpunit.phar");
+    if !phpunit.is_file() {
+        eprintln!(
+            "xtask: '{}' not found - install with: curl -sL https://phar.phpunit.de/phpunit-11.phar -o {}",
+            phpunit.display(),
+            phpunit.display()
+        );
+        return false;
+    }
+
+    let build_ok = run("cargo", &["build", "-p", "uacrypt", "--release"], None)
+        && run("cargo", &["fmt", "--all", "--", "--check"], Some(dir))
+        && run(
+            "cargo",
+            &["clippy", "--all-targets", "--", "-D", "warnings"],
+            Some(dir),
+        )
+        && run("cargo", &["build"], Some(dir));
+    if !build_ok {
+        return false;
+    }
+
+    let Some(ext_path) = php_extension_path(dir) else {
+        eprintln!(
+            "xtask: could not find the built dstu_core_php extension under {}/target/debug",
+            dir.display()
+        );
+        return false;
+    };
+    // Absolute-ify manually rather than via `Path::canonicalize()` - `run`'s own `php` invocation
+    // sets its cwd to `dir` itself, so a path already prefixed with `dir` (as `php_extension_path`
+    // returns) would otherwise be resolved a second time relative to that same `dir`, doubling the
+    // prefix and failing to load (confirmed by a real "Unable to load dynamic library" failure,
+    // not assumed). `canonicalize()` was tried first and rejected: on Windows it prepends the
+    // `\\?\` extended-length-path prefix, which this exact PHP build's own library loader doesn't
+    // accept (a second real failure, not assumed) - prepending the current directory manually
+    // avoids that prefix entirely.
+    let Ok(cwd) = env::current_dir() else {
+        eprintln!("xtask: could not determine the current directory");
+        return false;
+    };
+    let ext_path = cwd.join(ext_path);
+    run(
+        "php",
+        &[&format!("-dextension={}", ext_path.display()), "phpunit.phar"],
+        Some(dir),
+    )
+}
+
+/// Locates the compiled extension's platform-specific filename under `target/debug` -
+/// `dstu_core_php.dll` (Windows), `libdstu_core_php.so` (Linux). macOS's own Cargo `cdylib`
+/// default produces `libdstu_core_php.dylib`, but PHP's `extension=` loader conventionally expects
+/// a `.so` suffix even on macOS - a real, documented quirk in the Rust-PHP-extension ecosystem
+/// (`cargo-php`/`ext-php-rs`'s own install tooling renames it). Checks both suffixes on macOS since
+/// this dev machine is Windows-only and the rename step is not yet confirmed here - see
+/// `docs/DECISIONS.md` D-145, `bindings-php.yml`'s own macOS step handles the rename explicitly.
+fn php_extension_path(dir: &Path) -> Option<std::path::PathBuf> {
+    let debug = dir.join("target").join("debug");
+    let candidates: &[&str] = if cfg!(windows) {
+        &["dstu_core_php.dll"]
+    } else if cfg!(target_os = "macos") {
+        &["libdstu_core_php.so", "libdstu_core_php.dylib"]
+    } else {
+        &["libdstu_core_php.so"]
+    };
+    candidates
+        .iter()
+        .map(|name| debug.join(name))
+        .find(|p| p.is_file())
+}
+
 fn oracle_java() -> bool {
     if !require("mvn", "see README.md \"Building from source\" (Maven)") {
         return false;
@@ -507,6 +611,7 @@ fn ci() -> bool {
         python,
         nodejs,
         ruby,
+        php,
     ] {
         optional();
     }

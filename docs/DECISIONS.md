@@ -9358,3 +9358,124 @@ unrelated scratch directory with none of the source tree present, loaded it via 
 extension=<full path>`, and re-ran a smoke check (`self_test`, `secretbox` round-trip) against that
 standalone copy - proving the artifact itself is complete and self-contained, not proving anything
 about a packaging format PHP's own ecosystem doesn't have.
+
+## D-145: T-159 (PHP) step 5 - `cargo xtask php`, PHPUnit as a standalone PHAR (no Composer)
+
+`cargo xtask php` mirrors `python()`/`nodejs()`/`ruby()` exactly: build `uacrypt --release` first
+(real interop check inside `SecretstreamTest`), `cargo fmt --check`/`clippy --all-targets -D
+warnings`/`cargo build` inside `bindings/php`, then run the PHPUnit suite against the freshly
+built extension via `-d extension=<path>`.
+
+**No Composer dependency added.** This binding has exactly one dev-time tool need (a test runner);
+Composer would only exist here to install `phpunit/phpunit`, and PHPUnit itself already publishes
+a standalone, dependency-free PHAR release (`phar.phpunit.de`) that runs via a bare `php
+phpunit.phar` - adding a whole second PHP package manager just to fetch one tool would be the
+premature-abstraction shape this project's own instincts warn against. `bindings/php/phpunit.phar`
+is gitignored (fetched per-machine/CI: `curl -sL https://phar.phpunit.de/phpunit-11.phar -o
+bindings/php/phpunit.phar`), matching how `rb_sys`'s own gem binary or `node_modules` are never
+vendored either.
+
+**`bootstrap.php`** requires the extension to already be loaded (checked via `extension_loaded()`,
+a clear error otherwise) rather than trying to `dl()` it at runtime - PHP extensions load only at
+SAPI startup (`-d extension=...`/`php.ini`), not on demand mid-script the way `require` works for
+plain PHP files; `dl()` exists but is commonly disabled (`enable_dl=0`) and deprecated in practice.
+The bootstrap's only real job is pulling in the pure-PHP wrapper layer (`lib/
+DstuCoreSecretStream.php`, step 3) that isn't part of the compiled extension itself.
+
+**PHPUnit itself needs `mbstring` (plus `ctype`/`dom`/`filter`/`json`/`libxml`/`tokenizer`/
+`xmlwriter`), not bundled with this machine's raw PHP zip by default** - a real gap found running
+PHPUnit for the first time, not predicted. Fixed locally via a `php.ini` (copied from the zip's own
+`php.ini-development` template) enabling `mbstring` and pointing `extension_dir` at this machine's
+actual install path (this exact PHP zip's own compiled-in default `extension_dir` is the
+winget-conventional `C:\php\ext`, unrelated to wherever it's actually unzipped - `.claude.local.md`
+has the full detail). CI's `shivammathur/setup-php` (below) configures a real install's `php.ini`
+correctly out of the box, so this is a local-machine-only setup step, not something `cargo xtask
+php` itself needs to special-case.
+
+**macOS's own extension suffix is not yet confirmed on real CI.** `php_extension_path()` (in
+`xtask/src/main.rs`) checks for `libdstu_core_php.so` first, falling back to `libdstu_core_php.dylib`
+(Cargo's own `cdylib` default on macOS) - the Rust-PHP-extension ecosystem's own tooling (`cargo-php
+install`) is documented to rename the build artifact to `.so` on macOS since PHP's own loader
+conventionally expects that suffix there too, unlike a generic macOS shared library. This dev
+machine is Windows-only, so this specific rename step is asserted from ecosystem convention, not
+verified locally - `bindings-php.yml`'s own macOS leg (below) is the first real confirmation,
+same "CI is the first real execution, not a second confirmation" posture this project's other
+Windows-only-dev-machine findings already carry (D-109's Kani proof, D-133's Ruby toolchain notes).
+
+### CI workflow (`bindings-php.yml`)
+
+Uses `shivammathur/setup-php` (a well-established, widely-used community action) for the
+Linux/macOS/Windows PHP install itself, rather than hand-rolling `windows.php.net`/apt/brew
+downloads the way this machine's own local setup needed - it already configures `mbstring` and a
+sane `php.ini` out of the box, sidestepping the exact gap found above. Toolchain axis is
+**nightly-vs-stable and MSVC-vs-host-default, Windows-only** (re-derived from what this binding
+actually needs, not copied from `bindings-ruby.yml`'s own GNU-vs-MSVC conditional, which solves a
+different problem for a different binding): `dtolnay/rust-toolchain@nightly` with `toolchain:
+nightly-x86_64-pc-windows-msvc` on Windows (matching this binding's own local `rustup override`,
+D-142's "Windows toolchain requirements" section), plain `nightly` (host default, already MSVC on
+GitHub's Windows runner and already GNU-compatible on Linux/macOS) elsewhere - `rust-lld` linker
+config already committed in `bindings/php/.cargo/config.toml` needs no CI-specific handling.
+`RUSTUP_TOOLCHAIN` is **not** set as a workaround here the way Ruby's CI needed (D-141) - that
+gotcha was about a *committed* `rust-toolchain.toml` silently overriding `rustup default`; this
+binding's own gotcha (D-146, immediately below) is about an *inherited environment variable* from
+the outer `cargo xtask` invocation, which does not exist inside a CI job that never goes through
+`cargo xtask` to reach `cargo build`/`clippy` directly.
+
+## D-146: `xtask`'s own `run()` helper silently broke every binding-subdirectory `rustup override`
+via inherited `RUSTUP_TOOLCHAIN` - found running `cargo xtask php` for the first time
+
+The very first real `cargo xtask php` run failed with a genuinely confusing error: `ext-php-rs`'s
+`wrapper.c` (a small C shim compiled via the `cc` crate) failed with dozens of header conflicts
+(`__forceinline static` clashing with mingw's own declarations, an undefined `_InterlockedExchange8`
+intrinsic, a `pid_t` redefinition) - the signature of PHP's MSVC-only devel-pack headers being
+compiled by **`gcc.exe`**, not `cl.exe`. This was surprising because a direct, manual `cd
+bindings/php && cargo build` (done repeatedly throughout steps 1-4 of this task) never reproduced
+it - only `cargo xtask php`'s own invocation did.
+
+Root-caused by reading how `cargo xtask` itself is invoked (`.cargo/config.toml`'s `xtask = "run
+--manifest-path xtask/Cargo.toml --package xtask --"` alias): `cargo run` is itself resolved
+through rustup's own `cargo` proxy shim, which sets `RUSTUP_TOOLCHAIN` as a real environment
+variable in the process it execs (a well-documented rustup internal mechanism, not the bug itself)
+- that variable then propagates, entirely ordinarily, into the compiled `xtask.exe` process's own
+environment, and from there into *every child process `xtask` itself spawns* via
+`Command::new(...).status()`, including the nested `cargo build`/`clippy` calls `python()`/
+`nodejs()`/`ruby()`/`php()` all make with `current_dir` set to their own binding directory.
+`RUSTUP_TOOLCHAIN`, per the same precedence rule this project's own `CLAUDE.md` already documents
+for a committed `rust-toolchain.toml` (D-141: "`RUSTUP_TOOLCHAIN` overrides a toolchain file
+outright, where `rustup default` does not"), overrides a directory-based `rustup override set`
+mapping too, with the identical mechanism - so every nested `cargo build` inside `bindings/php`
+silently ran under the *repo root's own* default toolchain (stable, GNU-host) instead of the
+directory's pinned `nightly-x86_64-pc-windows-msvc` (D-142), with no error or warning that the
+override was being ignored.
+
+**This almost certainly affected `bindings/nodejs`'s own `cargo xtask nodejs` identically** (Node's
+binding needs the exact same class of directory-scoped MSVC override, D-130) - not confirmed
+broken here (Node's own build apparently tolerates a GNU-host compile better than `ext-php-rs`'s
+raw-C-header wrapper does, or `cargo xtask nodejs` was simply never run end-to-end on this exact
+machine before, only ever verified via a direct manual `cd bindings/nodejs && cargo build`), but
+the root cause is identical and pre-existing, not something this task introduced. Not re-verified
+against Node in this session (out of this task's own scope), flagged here so a future session
+checks `cargo xtask nodejs` for real rather than assuming it was already covered.
+
+**Fix**: `run()` (`xtask/src/main.rs`) now calls `.env_remove("RUSTUP_TOOLCHAIN")` on the child
+`Command` whenever a `dir` is given - i.e., only for the binding-subcommand invocations that might
+carry their own directory override, never for the top-level `build`/`test`/`clippy`/`fmt` calls
+(which should keep using whatever the outer, already-correct toolchain resolved to). Confirmed
+fixed empirically: `cargo xtask php` failed with the header-conflict error before this one-line
+change and built + ran cleanly (58/58 PHPUnit tests) immediately after, no other change involved.
+
+A second, smaller path bug found in the same debugging pass: `php_extension_path()`'s returned path
+is prefixed with the binding directory (`bindings/php/target/debug/...`), but `run()`'s own `php`
+invocation sets its *cwd* to that same directory - passing the prefixed path directly to `-d
+extension=...` therefore resolved it a second time relative to `bindings/php`, doubling the prefix.
+`Path::canonicalize()` was tried first and also rejected: it prepends Windows's `\\?\`
+extended-length-path prefix, which this exact PHP build's library loader does not accept either (a
+second real, confirmed failure). Fixed by prepending `env::current_dir()` manually instead, which
+produces a plain absolute path with no `\\?\` prefix.
+
+### Verification
+
+`cargo xtask php` passes end-to-end on this dev machine: `cargo fmt --check`/`cargo clippy
+--all-targets -D warnings` clean, `cargo build` succeeds (nightly-MSVC toolchain correctly
+resolved after the D-146 fix), and the full PHPUnit suite (58 tests, 62 assertions, step 6 below)
+passes with zero failures/errors/deprecations against the freshly built extension.

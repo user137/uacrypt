@@ -1,0 +1,99 @@
+name: bindings-php
+
+# Own job, not folded into rust.yml's matrix (D-119) - bindings/php is a separate Cargo workspace
+# neither of rust.yml's `--workspace` jobs (Miri, the MSRV build) is equipped for, and release.yml
+# only fires on `v*` tags, which would leave this binding with zero regression coverage between
+# releases (docs/bindings-strategy.md T-159 step 5, mirrors bindings-python.yml/bindings-nodejs.yml/
+# bindings-ruby.yml).
+#
+# Uses `shivammathur/setup-php` (a well-established community action) for the PHP install itself
+# on all three OSes, rather than hand-rolling windows.php.net/apt/brew downloads the way this
+# project's own local dev machine needed (docs/DECISIONS.md D-145) - it configures `mbstring` and a
+# sane `php.ini` out of the box.
+#
+# Windows needs nightly Rust + the MSVC host specifically (D-142's "Windows toolchain
+# requirements" - `abi_vectorcall` is nightly-only, and PHP's own Windows builds are MSVC) - the
+# opposite axis from bindings-ruby.yml's own GNU-vs-MSVC conditional (Ruby needed to *match* its
+# GNU/mingw-ucrt default; this binding needs MSVC specifically, the same direction as Node's own
+# D-125/D-130, just nightly instead of stable). `rust-lld` linker config is already committed in
+# bindings/php/.cargo/config.toml, needs no CI-specific handling.
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: build + test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          extensions: mbstring, ctype, dom, filter, json, libxml, tokenizer, xmlwriter
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          toolchain: ${{ matrix.os == 'windows-latest' && 'nightly-x86_64-pc-windows-msvc' || 'nightly' }}
+          components: clippy, rustfmt
+      # ubuntu-only, matching rust.yml's own fmt job and every other binding's own workflow:
+      # actions/checkout on a Windows/macOS runner applies git's autocrlf translation, which makes
+      # every LF-checked-in file look like "Incorrect newline style" to `cargo fmt --check` - a
+      # known false positive (docs/DECISIONS.md D-108's notes), not specific to this workflow.
+      - run: cargo fmt --all -- --check
+        if: matrix.os == 'ubuntu-latest'
+        working-directory: bindings/php
+      - run: cargo clippy --all-targets -- -D warnings
+        working-directory: bindings/php
+      # From the repo root: SecretstreamTest's interop test skips (not fails) when the binary isn't
+      # found - build it first so this job actually exercises the wire-format check that justifies
+      # this binding existing, same reasoning as every other binding's own workflow.
+      - run: cargo build -p uacrypt --release
+      - run: cargo build
+        working-directory: bindings/php
+      - name: Download phpunit.phar
+        working-directory: bindings/php
+        shell: bash
+        run: curl -sL https://phar.phpunit.de/phpunit-11.phar -o phpunit.phar
+      - name: Locate the built extension for this OS
+        working-directory: bindings/php
+        shell: bash
+        run: |
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            echo "EXT_PATH=$(pwd)/target/debug/dstu_core_php.dll" >> "$GITHUB_ENV"
+          elif [ "${{ matrix.os }}" = "macos-latest" ]; then
+            # See docs/DECISIONS.md D-145 - PHP's own extension= loader conventionally expects a
+            # `.so` suffix even on macOS, unlike Cargo's own cdylib default (`.dylib`). This is the
+            # first real confirmation of that rename requirement, not assumed from a Windows-only
+            # dev machine.
+            cp target/debug/libdstu_core_php.dylib target/debug/libdstu_core_php.so
+            echo "EXT_PATH=$(pwd)/target/debug/libdstu_core_php.so" >> "$GITHUB_ENV"
+          else
+            echo "EXT_PATH=$(pwd)/target/debug/libdstu_core_php.so" >> "$GITHUB_ENV"
+          fi
+      - run: php -d extension=${{ env.EXT_PATH }} phpunit.phar
+        working-directory: bindings/php
+
+  supply-chain:
+    name: cargo deny / audit (bindings/php)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: bindings/php
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo install cargo-deny --locked
+      # Root deny.toml, found by cargo-deny walking up from this cwd (see deny.toml's own header
+      # comment) - checks this workspace's real dependency tree (ext-php-rs and friends), not a copy.
+      - run: cargo deny check
+      - run: cargo install cargo-audit --locked
+      - run: cargo audit
