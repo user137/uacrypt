@@ -9042,3 +9042,24 @@ for, via a different, RSpec-native mechanism.
 Full `cargo xtask ruby` (fmt, clippy, `rake compile`, `rubocop`, `rspec`) verified clean end-to-end
 with the real suite now in place, not just the vacuous empty-spec-dir pass step 5 originally
 verified against.
+
+## D-139: Ruby binding (T-160) step 7 - examples/ + README.md
+
+2026-08-02. `examples/{secretbox,secretstream_file,sign,password_hashing,misc}.rb`, one-for-one
+with Python's/Node's own five example files - each run against the real compiled `.so` before
+committing, not just written from the API surface. `README.md` written from scratch (no README
+existed after step 1, same gap Node's own step 1 had), documenting the full surface with a
+module-by-example table, the DevKit/MSYS2-clang install steps (D-133), and the source-gem-can't-
+install-standalone caveat (D-136) up front rather than leaving it to be discovered.
+
+**One real fix found writing the examples**: `require_relative "../lib/dstu_core"` alone doesn't
+work from an example script outside `lib/` - `lib/dstu_core.rb`'s own internal `require
+"dstu_core/dstu_core_rb"` (a plain, non-relative require) needs `lib/` on `$LOAD_PATH`, which
+`require_relative` never adds. Fixed by having every example do
+`$LOAD_PATH.unshift(File.expand_path("../lib", __dir__))` before `require "dstu_core"`, matching
+how a real installed gem's own `require "dstu_core"` would resolve (this only matters for
+`examples/`, which run against the source tree directly rather than an installed gem).
+
+`rubocop` flagged two auto-correctable findings (`Style/StringLiteralsInInterpolation` in
+`misc.rb`'s `#{...unpack1("H*")}` interpolations) - corrected via `rubocop -A`. Full `cargo xtask
+ruby` re-verified clean with the new files in place.

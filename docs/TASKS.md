@@ -2623,6 +2623,9 @@ configuration surface added in the process (D-47 still holds).
       own suites file-for-file, D-64/D-65 categories, the shared Kupyna-256 vector JSON, real
       `uacrypt` interop gated on `if:` metadata (confirmed filtering correctly, not assumed) with a
       visible `skip` (not a silent omission) for the uacrypt-missing case.
+      **Step 7 done 2026-08-02, see D-139**: five example scripts one-for-one with Python/Node,
+      README.md written from scratch. One real fix: examples need `lib/` on `$LOAD_PATH` explicitly
+      since `require_relative` alone doesn't satisfy `lib/dstu_core.rb`'s own internal require.
 - [ ] **T-163** Go binding (`bindings/go`) — added to scope 2026-08-02 at the owner's request, on
       the same no-incumbent-competitor footing as Node/Ruby/PHP (no DSTU-specific Go library exists,
       real DevSecOps/cloud-infra audience). **Unlike Node/Ruby/PHP, this one goes through the C ABI

@@ -281,7 +281,7 @@ Zlib::GzipWriter/Reader-modeled), D-136 (advisor-review fixes to steps 2-3, then
 precompiled native gem - a source gem cannot install standalone at all, the path-dependency
 finding), D-137 (cargo xtask ruby + bindings-ruby.yml, rubocop wired in, not yet confirmed on real
 CI - needs a push), D-138 (58-example RSpec suite, cross-language vector loading, real uacrypt
-interop). Next: T-160 step 7 (examples/ + README.md).**
+interop), D-139 (examples/ + README.md). Next: T-160 step 8 (doc-map sweep + mark done).**
 
 ### The standard binding steps
 
@@ -682,6 +682,13 @@ Standard steps:
   RSpec's summary) rather than silently vanishing - `cargo xtask ruby`/CI always build `uacrypt`
   first, so this never actually triggers there. `rubocop` needed one spec-specific config addition
   (`Metrics/BlockLength` excluded for `spec/**/*.rb`, the standard shape for RSpec test files).
+- Step 7: **Done 2026-08-02, see D-139.** `examples/{secretbox,secretstream_file,sign,
+  password_hashing,misc}.rb`, one-for-one with Python/Node, each run against the real compiled
+  `.so`. `README.md` written from scratch (no README existed after step 1, same gap Node's own
+  step 1 had). One real fix found: `require_relative "../lib/dstu_core"` alone doesn't reach
+  `lib/dstu_core.rb`'s own internal non-relative `require "dstu_core/dstu_core_rb"` - every example
+  adds `lib/` to `$LOAD_PATH` explicitly first, matching how an installed gem's own `require
+  "dstu_core"` would resolve.
 
 ### T-163 — Go (added 2026-08-02, D-122; builds alongside T-52/T-51, needs the C ABI)
 
