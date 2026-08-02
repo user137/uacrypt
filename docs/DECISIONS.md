@@ -8047,3 +8047,31 @@ Scope note, not a fourth fork: PHP and Ruby bindings (`docs/TASKS.md` T-159/T-16
 Phase 3's scope this same session at the project owner's explicit request, positioned after the
 original five languages, not interleaved with them — `docs/bindings-strategy.md`'s popularity
 analysis section has the ordering rationale.
+
+## D-116: Every binding is "install and forget" — zero-config API, prebuilt binaries
+
+Requested 2026-08-02 by the project owner, as an explicit addition to `docs/bindings-strategy.md`'s
+per-binding checklist (not covered by D-115's three forks): a binding must be trivial to adopt, not
+just correct. Two concrete, checkable requirements, not aspirational language:
+
+1. **Zero-config API** — a binding's public surface takes a key and a message and returns a result,
+   with no mode/nonce/IV/padding parameter exposed to the consumer and no setup step beyond
+   constructing a key. This is the same "delete the knob" philosophy D-47 already established for
+   the Rust core itself (`crypto_secretbox`/`crypto_secretstream`'s internally-generated nonce) —
+   applying it to bindings is a direct extension, not a new principle.
+2. **Prebuilt binaries per platform, for every binding** — the same bar already set for `uacrypt`
+   itself (T-18/T-119, GitHub Release binaries for Windows/Linux/macOS; D-12's own scope note: "end-
+   users get prebuilt GitHub Releases binaries... no Rust toolchain required on their side"). A
+   binding's consumer installs a package (wheel, npm tarball, JAR, NuGet package, prebuilt extension)
+   and never runs `cargo build` themselves. This is a packaging-mechanism requirement, checked at
+   local/CI-artifact build time — it does not wait on or depend on the separate, still-owner-gated
+   registry-publish decision (T-17's crates.io precedent, extended to PyPI/npm/Maven Central/NuGet/
+   RubyGems/Packagist by `docs/bindings-strategy.md`).
+
+**Rejected:** treating ergonomics as a documentation/README concern to polish after a binding
+otherwise works. Rejected because a binding that compiles and passes tests but requires the
+consumer to run a local Rust toolchain, or to pass a nonce/mode parameter it shouldn't expose, fails
+this project's own stated goal for language bindings — "hassle-free... install and forget" — even
+though nothing about it would show up as a failing test. Recorded as a functional requirement on
+each binding phase (`docs/TASKS.md` T-49/T-50/T-51/T-52/T-53/T-158/T-159/T-160), not left as an
+unwritten expectation.

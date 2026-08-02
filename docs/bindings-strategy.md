@@ -116,6 +116,25 @@ this is the template every phase below instantiates:
 - **Idiomatic to the target language**, per `docs/cross-language-style-guide.md` (casing, error
   shape, resource cleanup, doc-comment format) — that document is the style authority; this document
   doesn't re-derive its conventions.
+- **"Install and forget" — zero-config API, no knobs to misconfigure.** Same libsodium-style hard-
+  defaults philosophy the core already applies (`crypto_secretbox`/`crypto_secretstream`'s
+  internally-generated nonce, D-47's "delete the knob"). A binding's public surface takes a key and
+  a message and returns a result — no mode/nonce/IV/padding parameter for the consumer to get wrong,
+  no setup step beyond `import`/`require`/`using` + one key-generation call. This is a functional
+  requirement, not just documentation quality — if a binding needs a config object or an init call
+  beyond constructing a key, that's a design defect to fix before the binding ships, not something
+  to explain away in a README.
+- **Prebuilt binaries — never "clone and build it yourself" for the binding's own consumer.** Same
+  bar `uacrypt` itself already clears (T-18/T-119: GitHub Release binaries for Windows/Linux/macOS,
+  "no Rust toolchain required on their side" per D-12's own scope note) — a consumer of the binding
+  installs a package and never invokes `cargo build` themselves. Per language: Python — manylinux/
+  macOS/Windows wheels via `maturin`; Node — prebuilt `.node` binaries per platform via napi-rs's
+  cross-compile; Java — a native library bundled per OS/arch classifier (or one fat JAR); .NET — a
+  package with `runtimes/{rid}/native/` per platform; C++ — prebuilt static/dynamic libs alongside
+  the header, or a one-line CMake `FetchContent`; PHP/Ruby — a prebuilt extension binary where the
+  ecosystem supports it, source build only as a fallback. This is about the *packaging mechanism*
+  and applies to local/CI-artifact installs immediately — it is independent of, and does not wait
+  on, the separate registry-publish authorization gate below.
 - **Three test categories** (already this project's standing rule, D-64/D-65): (1) correctness
   against the same vectors/oracles the Rust core already uses, (2) rejection — tampered
   ciphertext/tag/nonce, wrong key, (3) misuse — bad lengths/paths, empty input, no partial output on

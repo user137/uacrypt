@@ -2410,7 +2410,10 @@ convention; read that document before starting any item below, don't re-derive t
 Build order (dependency-driven, not ID order): T-49 (Python, the template) → T-158 (C ABI crate) →
 T-52 (.NET) → T-51 (Java) → T-50 (Node) → T-53 (C++) → T-159 (PHP) → T-160 (Ruby); publishing to any
 registry is a separate, explicitly owner-gated step per registry (same class of decision as T-17
-for crates.io), tracked once actually requested, not scheduled here.
+for crates.io), tracked once actually requested, not scheduled here. **Every task below also
+carries D-116's "install and forget" requirement — zero-config API (no nonce/mode/IV parameter
+exposed) and prebuilt binaries (no local Rust toolchain needed by the binding's own consumer) — not
+optional polish, a completion bar same as the three test categories.**
 
 - [ ] **T-49** Python binding (`bindings/python`, PyO3 + maturin) — the template every later binding
       instantiates. Exposes the full `crypto_*` surface (not a subset). Three test categories
