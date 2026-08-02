@@ -2509,8 +2509,11 @@ configuration surface added in the process (D-47 still holds).
       silently assumed either way; would need `wasm-bindgen`, a distinct toolchain from `napi-rs`.
       See "Phase 5." **Step 1 (scaffold) done 2026-08-02, see D-125** — wraps only `selfTest()` so
       far; pinned to the `1.87.0-x86_64-pc-windows-msvc` toolchain and `napi-build = 2.0.0` locally
-      (two real toolchain constraints found building this, D-125 has the detail). Steps 2-9 not
-      started; also tracked as real tasks in this session's Task tool.
+      (two real toolchain constraints found building this, D-125 has the detail). **Step 2 done
+      2026-08-02, see D-126** — full `crypto_*` surface wrapped (every byte param/return uses
+      `napi::bindgen_prelude::Buffer`, not `Vec<u8>`; explicit `js_name` camelCase on every export;
+      `secretstream` push/pull return a `#[napi(object)]` result struct, not a tuple - napi-rs has
+      none). Steps 3-9 not started; also tracked as real tasks in this session's Task tool.
 - [ ] **T-51** Java binding — **reordered 2026-08-02 (D-121): now built after T-50/T-160/T-159, not
       before them** — Bouncy Castle and UAPKI already ship real Java/Kotlin DSTU support, so this
       binding's own gap here is real but smaller than in a language with no incumbent at all.

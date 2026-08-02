@@ -273,9 +273,9 @@ resuming. **Update the resume line below every time a step is checked off**; a s
 worse than no resume line, since it actively misdirects the next session.
 
 **Resume point: T-161 done (2026-08-02). T-49 (Python) done in full 2026-08-02 - see D-120. T-50
-(Node.js) step 1 (scaffold) done 2026-08-02 - see D-125. Next: T-50 step 2 (wrap the full
-`crypto_*` surface), also tracked as real tasks in this session's Task tool (T-50 broken into its
-nine standard steps).**
+(Node.js) steps 1-2 done 2026-08-02 - see D-125/D-126. Next: T-50 step 3 (idiomatic
+`crypto_secretstream` `stream.Transform` wrapper), also tracked as real tasks in this session's Task
+tool (T-50 broken into its nine standard steps).**
 
 ### The standard binding steps
 
@@ -504,6 +504,20 @@ Standard steps:
   split. Pinned to the `1.87.0-x86_64-pc-windows-msvc` toolchain locally
   (`bindings/nodejs/rust-toolchain.toml`) and `napi-build = 2.0.0` in `Cargo.lock` - both real
   toolchain constraints found building this, not stylistic choices, see D-125 for why.
+- Step 2: **Done 2026-08-02, see D-126.** Full `crypto_*` surface wrapped - `secretbox`, `sign`,
+  `pwhash`, `generichash` (one-shot + incremental `Kupyna{256,512}Hasher` classes), `auth`, `kdf`,
+  `stream`, `randombytes`, plus `crypto_secretstream`'s raw `push`/`pull` (idiomatic
+  `stream.Transform` still deferred to step 3, matching Python's own step 2/3 split). Every byte
+  parameter/return uses `napi::bindgen_prelude::Buffer` (maps to a real JS `Buffer`), not
+  `Vec<u8>` (which napi-rs maps to a plain JS number array, wrong for binary data - confirmed by
+  reading napi's own `Vec<T>`/`Buffer` `ToNapiValue`/`FromNapiValue` impls, not assumed). Every
+  function has an explicit `js_name` for camelCase (napi-derive does not auto-convert casing from
+  the Rust identifier, unlike PyO3's implicit `snake_case` passthrough that Python's own
+  `snake_case`-native convention didn't need to override). Multi-value returns
+  (`secretstream`'s `push`/`pull`) use a `#[napi(object)]` struct with named, camelCase fields
+  (`SecretStreamPushResult`/`SecretStreamPullResult`) rather than a tuple - napi-rs has no tuple
+  `ToNapiValue` impl at all, and a named-field result object is the more idiomatic JS shape anyway
+  (matches this project's cross-language style guide principle 2, name communicates intent).
 - Step 3: a `stream.Transform`.
 - Step 4: prebuilt `.node` binaries per platform via napi-rs's cross-compile.
 - Step 6: `node:test`.

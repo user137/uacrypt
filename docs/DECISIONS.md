@@ -8467,3 +8467,52 @@ the pinned msvc toolchain (both components installed fresh via `rustup component
 --toolchain 1.87.0-x86_64-pc-windows-msvc rustfmt clippy`); root `cargo build --workspace` from the
 repo root confirmed unaffected (only sees `crates/dstu-core`/`crates/uacrypt`, same check T-49 step
 1 already ran for Python).
+
+## D-126: Node.js binding (T-50) step 2 - full `crypto_*` surface wrapped
+
+Same 2026-08-02 session as D-125. Wraps every `crypto_*` module - `secretbox`, `sign`, `pwhash`,
+`generichash` (one-shot + incremental `Kupyna256Hasher`/`Kupyna512Hasher`), `auth`, `kdf`, `stream`,
+`randombytes` - plus `crypto_secretstream`'s raw `PushState`/`PullState` `push`/`pull` (the
+idiomatic `stream.Transform` wrapper stays deferred to step 3, exactly mirroring `bindings/python`'s
+own step 2/step 3 split, not a new decision). `PWHASH_*`/`SECRETSTREAM_TAG_*` module constants
+exported via `#[napi] pub const`.
+
+**Real API-shape findings from reading napi-rs's own source before guessing, not assumed:**
+- **`Vec<u8>` is the wrong type for binary data in napi-rs.** Its generic `Vec<T>` impl
+  (`bindgen_runtime/js_values/array.rs`) maps to a plain JS `Array` of boxed numbers, one call per
+  element - not a `Buffer`/`Uint8Array`. Every byte parameter and return value here uses
+  `napi::bindgen_prelude::Buffer` instead (a real Node `Buffer`, `Deref<Target = [u8]>` on the Rust
+  side, `impl From<Vec<u8>> for Buffer`/reverse for easy conversion) - confirmed by reading
+  `buffer.rs`'s `FromNapiValue`/`ToNapiValue` impls directly, not inferred from the type name alone.
+- **napi-derive does not auto-convert Rust `snake_case` identifiers to JS `camelCase`** (no case-
+  conversion utility exists anywhere in `napi-derive-backend`'s source, confirmed by grep) - unlike
+  what a PyO3 comparison might suggest, since Python's own `snake_case` convention happens to need
+  no conversion at all, masking that PyO3 doesn't auto-convert either. Every exported function here
+  has an explicit `#[napi(js_name = "camelCase")]`; class/struct names were already `PascalCase` in
+  Rust so needed none. Verified in the generated `index.d.ts` directly, not assumed correct.
+- **napi-rs has no tuple `ToNapiValue` impl at all** (no `impl ToNapiValue for (A, B)` anywhere in
+  the crate) - `crypto_secretstream`'s `push`/`pull`, which return two values each in the Rust API
+  and as a Python tuple in T-49, instead return a `#[napi(object)]` struct with explicit
+  `js_name`-cased fields (`SecretStreamPushResult { ciphertext, authTag }`,
+  `SecretStreamPullResult { tag, plaintext }`). This is a genuine idiomatic improvement over a
+  tuple, not just a technical workaround - a named-property result object is the conventional JS
+  shape for a multi-value return, matching `docs/cross-language-style-guide.md` principle 2 (a name
+  communicates intent) better than a positional tuple would have.
+- **napi-rs has no `FromNapiValue` for `u64`/`i64`-as-`BigInt` on the input side** (only the output
+  direction, `ToNapiValue`, via `napi_create_bigint_uint64` - confirmed in `bigint.rs`, which
+  explicitly comments it does not implement the reverse for `u64`/`i64`/`u128`/`i128`). `kdf`'s
+  `subkey_id` (a `u64` on the Rust side) is accepted as a plain `i64`/JS `number` instead, since
+  every realistic subkey index fits well within `Number.MAX_SAFE_INTEGER` - with an explicit
+  rejection of negative values (misuse-category, D-64/D-65) rather than a silent wraparound when
+  cast to the underlying `u64`, matching this project's index/bounds-safety discipline.
+- **`clippy::new_without_default` fires on `#[napi(constructor)] pub fn new() -> Self` the same way
+  it would on a plain inherent `new()`** - napi-derive's macro expansion does not hide the original
+  method signature from clippy the way PyO3's `#[new]` expansion apparently does (Python's own
+  hasher classes needed no `Default` impl to pass clippy clean). Fixed with a real `impl Default`
+  for both `Kupyna256Hasher`/`Kupyna512Hasher` (delegating to `Self::new()`), not a blanket
+  `#[allow]`, since a genuine zero-argument constructor really does have an obvious `Default`.
+
+Verified end-to-end with a real Node smoke script exercising every wrapped function once
+(round-trip, tamper-rejection, and the `subkey_id < 0` misuse case) against the actual built
+addon, plus `cargo fmt --all -- --check`/`cargo clippy --all-targets -- -D warnings` clean and root
+`cargo build --workspace` unaffected - same verification bar as T-49 step 2's own Python pass.

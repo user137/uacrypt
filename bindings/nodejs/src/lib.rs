@@ -1,17 +1,59 @@
-//! Node.js bindings for `dstu-core`, via napi-rs (T-50, following the Python binding's template -
-//! see `docs/bindings-strategy.md`). One Rust module per `dstu_core::crypto_*` module will be added
-//! in step 2; this scaffold wraps only [`self_test`], matching T-49 step 1's own split (prove the
-//! workspace -> build -> load -> call pipeline before wrapping the real surface).
+//! Node.js bindings for `dstu-core` (`docs/bindings-strategy.md` T-50, `docs/TASKS.md`'s Phase 3
+//! "Language bindings" section). Provisional, not yet published to npm - see the root project's
+//! `docs/SECURITY.md`/`docs/DECISIONS.md` for the full threat model and per-construction status.
 //!
-//! Provisional status: Kalyna modes are not primary-text-confirmed, Strumok vectors are
-//! UAPKI-attributed - see the root README/crate docs for the full banner (T-112).
+//! Step 2 of `docs/bindings-strategy.md`'s standard binding template: wraps the full `crypto_*`
+//! surface, zero-config (`docs/DECISIONS.md` D-116 - no nonce/IV/mode parameter exposed to the
+//! JS caller), one Rust module per `dstu_core::crypto_*` module plus [`self_test`] (step 1).
+//! Keys/ciphertexts/tags cross the boundary as `Buffer`; failures throw a plain `Error` carrying
+//! the underlying `dstu_core` error's message, or a caller-input `Error` for a mistake like a
+//! wrong-length key (not a crypto failure). A more idiomatic `crypto_secretstream`
+//! `stream.Transform` wrapper is deferred to step 3, matching `bindings/python`'s own split.
 
-#[macro_use]
-extern crate napi_derive;
+mod auth;
+mod generichash;
+mod kdf;
+mod pwhash;
+mod randombytes;
+mod secretbox;
+mod secretstream;
+mod sign;
+mod stream;
+mod util;
 
-/// Re-runs the official KAT vectors against the live compiled binary and reports pass/fail - see
-/// `dstu_core::selftest` on the Rust side for what this does and does not cover.
+pub use auth::*;
+pub use generichash::*;
+pub use kdf::*;
+pub use pwhash::*;
+pub use randombytes::*;
+pub use secretbox::*;
+pub use secretstream::*;
+pub use sign::*;
+pub use stream::*;
+
+use napi_derive::napi;
+
+/// Re-runs `dstu_core`'s official-vector self-check against this exact compiled build.
+///
+/// Throws naming which primitive(s) failed, if any - see `dstu_core::selftest` on the Rust side
+/// for what this does and does not cover.
 #[napi(js_name = "selfTest")]
 pub fn self_test() -> napi::Result<()> {
     dstu_core::selftest::run().map_err(|report| napi::Error::from_reason(report.to_string()))
 }
+
+#[napi]
+pub const PWHASH_INTERACTIVE: u8 = 0;
+#[napi]
+pub const PWHASH_MODERATE: u8 = 1;
+#[napi]
+pub const PWHASH_SENSITIVE: u8 = 2;
+
+#[napi]
+pub const SECRETSTREAM_TAG_MESSAGE: u8 = 0x00;
+#[napi]
+pub const SECRETSTREAM_TAG_PUSH: u8 = 0x01;
+#[napi]
+pub const SECRETSTREAM_TAG_REKEY: u8 = 0x02;
+#[napi]
+pub const SECRETSTREAM_TAG_FINAL: u8 = 0x03;
