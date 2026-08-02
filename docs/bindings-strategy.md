@@ -280,7 +280,8 @@ rb_sys/bindgen gotchas), D-134 (full crypto_* surface), D-135 (SecretStreamWrite
 Zlib::GzipWriter/Reader-modeled), D-136 (advisor-review fixes to steps 2-3, then step 4's
 precompiled native gem - a source gem cannot install standalone at all, the path-dependency
 finding), D-137 (cargo xtask ruby + bindings-ruby.yml, rubocop wired in, not yet confirmed on real
-CI - needs a push). Next: T-160 step 6 (RSpec suite).**
+CI - needs a push), D-138 (58-example RSpec suite, cross-language vector loading, real uacrypt
+interop). Next: T-160 step 7 (examples/ + README.md).**
 
 ### The standard binding steps
 
@@ -671,7 +672,16 @@ Standard steps:
   a matching MSYS2 `clang` via `ridk exec pacman` and point `LIBCLANG_PATH` at it (D-133's fix,
   codified for CI). `cargo deny`/`cargo audit` verified locally against this workspace's real
   dependency tree.
-- Step 6: RSpec/Minitest.
+- Step 6: **Done 2026-08-02, see D-138.** 10 spec files, file-for-file mirroring Python/Node's own
+  test suites - 58 examples, D-64/D-65's three categories. Confirmed empty `bundle exec rspec`
+  passes vacuously (unlike Node's `node --test`, D-129) - no tooling-forced reorder needed, unlike
+  Node's own step 6. `generichash_spec.rb` loads the same shared Kupyna-256 vector JSON the Rust
+  tests use (the actual cross-language mechanism, D-124). `secretstream_spec.rb`'s real `uacrypt`
+  interop uses `if:` metadata to run only when the binary exists, confirmed by counting examples
+  in `--format documentation` output, not assumed; the uacrypt-missing case uses `skip` (visible in
+  RSpec's summary) rather than silently vanishing - `cargo xtask ruby`/CI always build `uacrypt`
+  first, so this never actually triggers there. `rubocop` needed one spec-specific config addition
+  (`Metrics/BlockLength` excluded for `spec/**/*.rb`, the standard shape for RSpec test files).
 
 ### T-163 — Go (added 2026-08-02, D-122; builds alongside T-52/T-51, needs the C ABI)
 

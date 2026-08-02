@@ -9006,3 +9006,39 @@ with no local equivalent test, since this dev machine's own MSYS2 clang install 
 `pacman -S` directly rather than through `ridk exec` (both should be equivalent - `ridk exec` just
 activates the same MSYS2 shell environment first - but this specific invocation form is unverified
 until CI actually runs it).
+
+## D-138: Ruby binding (T-160) step 6 - RSpec suite, D-64/D-65 categories, cross-language vectors
+
+2026-08-02. 10 spec files, file-for-file mirroring `bindings/python/tests/*.py`/
+`bindings/nodejs/test/*.test.js` (selftest, secretbox, auth, kdf, generichash, stream, pwhash,
+randombytes, sign, secretstream) - 58 examples total, all passing against the live compiled `.so`.
+Category-1 correctness loads the same shared vector JSON the Rust tests/`self_test` already use
+(`crates/dstu-core/tests/vectors/kupyna/kupyna-256.json`, `generichash_spec.rb`) - the actual
+mechanism that makes this cross-language per D-124, not a separately hand-transcribed number.
+
+Confirmed empty (`bundle exec rspec` with zero spec files first, before writing any) - **RSpec
+vacuously passes on an empty suite (`0 examples, 0 failures`, exit 0)**, matching pytest's own
+behavior, unlike Node's `node --test test/` which errors on a nonexistent directory (D-129) - so
+Ruby follows the standard step-5-before-step-6 template order, no tooling-forced reorder needed
+here the way Node's own step 6 needed one.
+
+`rubocop` flagged a second, smaller batch on the new spec files themselves once written:
+`Metrics/BlockLength` on every `RSpec.describe`/`it` block (the standard shape this cop always
+flags in real-world Ruby test suites) - excluded `spec/**/*.rb` in `.rubocop.yml` rather than
+raising the limit project-wide, plus one auto-corrected `Style/StringConcatenation`.
+
+`secretstream_spec.rb`'s real `uacrypt` interop test uses `if: uacrypt` metadata (a truthy/falsy
+Ruby object, not a block) to conditionally run only when the binary is found - confirmed this
+actually filters correctly by running `--format documentation` and counting: 15 of 16 written
+examples ran when `uacrypt` was found (the complementary "documents the uacrypt-missing case"
+example correctly excluded), not assumed from RSpec's docs alone. Chose `skip` (visible as "N
+pending" in RSpec's own summary) over a silently smaller example count for the uacrypt-missing
+case - `cargo xtask ruby`/CI always build `uacrypt --release` first (step 5), so this never
+actually skips in the pipeline that matters; a bare local `bundle exec rspec` without that build
+step is the only path where it does, and RSpec's own summary line makes that visible rather than
+silent, addressing the same class of concern Node's own `grep -q "not ok"` gate (D-129) was built
+for, via a different, RSpec-native mechanism.
+
+Full `cargo xtask ruby` (fmt, clippy, `rake compile`, `rubocop`, `rspec`) verified clean end-to-end
+with the real suite now in place, not just the vacuous empty-spec-dir pass step 5 originally
+verified against.

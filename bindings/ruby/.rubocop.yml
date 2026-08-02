@@ -21,5 +21,11 @@ Layout/EndOfLine:
 Metrics/MethodLength:
   Max: 20
 
+# RSpec's own `describe`/`it` blocks are the standard shape this cop flags by default in every
+# real-world Ruby project - excluded for spec files specifically, not raised project-wide.
+Metrics/BlockLength:
+  Exclude:
+    - "spec/**/*.rb"
+
 Layout/LineLength:
   Max: 130

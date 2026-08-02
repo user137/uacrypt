@@ -2619,6 +2619,10 @@ configuration surface added in the process (D-47 still holds).
       (deferred from step 3) wired in, 63 offenses settled via `.rubocop.yml`. Windows CI needs one
       binding-specific step (matching MSYS2 `clang` + `LIBCLANG_PATH`, D-133's fix codified) - not
       yet confirmed on real GitHub Actions, needs an explicit push.
+      **Step 6 done 2026-08-02, see D-138**: 10 spec files (58 examples) mirroring Python/Node's
+      own suites file-for-file, D-64/D-65 categories, the shared Kupyna-256 vector JSON, real
+      `uacrypt` interop gated on `if:` metadata (confirmed filtering correctly, not assumed) with a
+      visible `skip` (not a silent omission) for the uacrypt-missing case.
 - [ ] **T-163** Go binding (`bindings/go`) — added to scope 2026-08-02 at the owner's request, on
       the same no-incumbent-competitor footing as Node/Ruby/PHP (no DSTU-specific Go library exists,
       real DevSecOps/cloud-infra audience). **Unlike Node/Ruby/PHP, this one goes through the C ABI
