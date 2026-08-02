@@ -26,6 +26,6 @@
   "scripts": {
     "build": "napi build native --platform --release",
     "build:debug": "napi build native --platform",
-    "test": "node --test test/"
+    "test": "node --test"
   }
 }

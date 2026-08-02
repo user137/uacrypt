@@ -54,28 +54,33 @@ class SecretStreamEncryptor extends Transform {
 
   _transform(chunk, _encoding, callback) {
     this._buf = Buffer.concat([this._buf, chunk]);
+    let err;
     try {
       while (this._buf.length > CHUNK_BYTES) {
         const piece = this._buf.subarray(0, CHUNK_BYTES);
         this._buf = this._buf.subarray(CHUNK_BYTES);
         this._pushChunk(native.SECRETSTREAM_TAG_MESSAGE, piece);
       }
-    } catch (err) {
-      callback(err);
-      return;
+    } catch (e) {
+      err = e;
     }
-    callback();
+    // Deferred via process.nextTick, not called synchronously: Node's own stream docs warn that
+    // invoking _transform's callback synchronously (this method never actually awaits any I/O)
+    // makes an error passed to it throw synchronously out of the triggering write() call instead
+    // of emitting 'error' asynchronously the documented way - confirmed the hard way, a real
+    // deadlock/uncaught-throw found running this suite under node:test, not a defensive guess.
+    process.nextTick(callback, err);
   }
 
   _flush(callback) {
+    let err;
     try {
       this._pushChunk(native.SECRETSTREAM_TAG_FINAL, this._buf);
       this._buf = Buffer.alloc(0);
-    } catch (err) {
-      callback(err);
-      return;
+    } catch (e) {
+      err = e;
     }
-    callback();
+    process.nextTick(callback, err);
   }
 }
 
@@ -105,13 +110,14 @@ class SecretStreamDecryptor extends Transform {
 
   _transform(chunk, _encoding, callback) {
     this._buf = Buffer.concat([this._buf, chunk]);
+    let err;
     try {
       this._drain();
-    } catch (err) {
-      callback(err);
-      return;
+    } catch (e) {
+      err = e;
     }
-    callback();
+    // See SecretStreamEncryptor._transform's comment - same synchronous-callback pitfall applies.
+    process.nextTick(callback, err);
   }
 
   _drain() {
@@ -148,6 +154,7 @@ class SecretStreamDecryptor extends Transform {
   }
 
   _flush(callback) {
+    let err;
     try {
       if (!this._pullState) {
         throw new Error('truncated secretstream: missing header');
@@ -158,11 +165,10 @@ class SecretStreamDecryptor extends Transform {
       if (this._buf.length > 0) {
         throw new Error('trailing data after the secretstream Final chunk');
       }
-    } catch (err) {
-      callback(err);
-      return;
+    } catch (e) {
+      err = e;
     }
-    callback();
+    process.nextTick(callback, err);
   }
 }
 

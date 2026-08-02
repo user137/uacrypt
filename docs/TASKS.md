@@ -2524,7 +2524,15 @@ configuration surface added in the process (D-47 still holds).
       include the gitignored `native/` build output at all; verified with a genuine fresh-install
       round trip (`npm pack` → `npm install <tarball>` in an unrelated temp dir → require as a real
       dependency → re-run the full smoke suite), matching Python's own fresh-venv-install bar.
-      Steps 5-9 not started; also tracked as real tasks in this session's Task tool.
+      **Step 6 done 2026-08-02, see D-129 — done before step 5** (`node --test test/` errors on a
+      nonexistent directory, unlike pytest's vacuous pass on an empty collection Python's own
+      step-5-before-6 order relied on; not a preference change). `node:test` suite, one file per
+      `crypto_*` module mirroring Python's own file-for-file, `generichash` loading the same shared
+      Kupyna vector JSON. Found and fixed a real `node:test` hang: `_transform`/`_flush` callbacks
+      invoked synchronously could throw an error out of `.write()` instead of emitting it, per
+      Node's own documented warning - fixed via `process.nextTick`, confirmed stable across three
+      repeated runs. Steps 5, 7-9 not started; also tracked as real tasks in this session's Task
+      tool.
 - [ ] **T-51** Java binding — **reordered 2026-08-02 (D-121): now built after T-50/T-160/T-159, not
       before them** — Bouncy Castle and UAPKI already ship real Java/Kotlin DSTU support, so this
       binding's own gap here is real but smaller than in a language with no incumbent at all.

@@ -273,9 +273,10 @@ resuming. **Update the resume line below every time a step is checked off**; a s
 worse than no resume line, since it actively misdirects the next session.
 
 **Resume point: T-161 done (2026-08-02). T-49 (Python) done in full 2026-08-02 - see D-120. T-50
-(Node.js) steps 1-4 done 2026-08-02 - see D-125/D-126/D-127/D-128. Next: T-50 step 5 (`cargo xtask`
-subcommand + CI wiring), also tracked as real tasks in this session's Task tool (T-50 broken into
-its nine standard steps).**
+(Node.js) steps 1-4 and 6 done 2026-08-02 - see D-125/D-126/D-127/D-128/D-129 (step 6 done before
+step 5, a tooling-forced reorder, D-129 explains why). Next: T-50 step 5 (`cargo xtask` subcommand +
+CI wiring - `test/` now has real content for it to run), also tracked as real tasks in this
+session's Task tool (T-50 broken into its nine standard steps).**
 
 ### The standard binding steps
 
@@ -543,7 +544,15 @@ Standard steps:
   (`selfTest`, `secretbox`, the `secretstream` `stream.Transform` pair) against the installed
   package - proves the packaged artifact actually contains everything needed, not just the dev
   source tree.
-- Step 6: `node:test`.
+- Step 6: **Done 2026-08-02, see D-129** — done *before* step 5 for this binding specifically, a
+  tooling-forced reorder (`node --test test/` errors on a nonexistent directory, unlike pytest's
+  vacuous-pass-on-empty-collection behavior Python's own step 5-before-6 order relied on), not a
+  preference change to the standard template. `node:test`, one file per `crypto_*` module,
+  mirroring `bindings/python/tests/*.py` file-for-file. Found and fixed a real `node:test`-runner
+  hang: `SecretStreamEncryptor`/`Decryptor`'s `_transform`/`_flush` callbacks were invoked
+  synchronously, which Node's own docs warn can make an error throw synchronously out of the
+  triggering `.write()` instead of emitting `'error'` the documented async way - fixed by deferring
+  through `process.nextTick`, confirmed stable across three repeated full-suite runs.
 - **Node-only** (D-118) — browser/WASM is explicitly deferred; don't reinterpret this task as
   covering it.
 

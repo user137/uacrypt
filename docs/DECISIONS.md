@@ -8593,3 +8593,56 @@ through real `node_modules`, not a relative path into the source tree - and re-r
 `secretbox`, and the `secretstream` `stream.Transform` pair against that installed copy. All
 passed, confirming the packaged artifact is actually complete and self-contained, not just "the
 source tree already works."
+
+## D-129: Node.js binding (T-50) step 6 - local test suite, done before step 5 (tooling-forced reorder)
+
+Same 2026-08-02 session as D-125/D-126/D-127/D-128. `bindings/nodejs/test/*.test.js` - one file
+per `crypto_*` module (`selftest`, `secretbox`, `sign`, `auth`, `kdf`, `pwhash`, `randombytes`,
+`generichash`, `stream`, `secretstream`), `node:test`/`node:assert/strict`, D-64/D-65's three
+categories throughout, mirroring `bindings/python/tests/*.py` file-for-file and case-for-case.
+`generichash.test.js` loads the same shared `crates/dstu-core/tests/vectors/kupyna/kupyna-256.json`
+the Rust tests and Python binding both already use (D-124's cross-language-vectors requirement -
+this is what makes it cross-language, not a separate suite comparing languages to each other
+directly). `secretstream.test.js` re-verifies both D-118 pitfalls end to end through the public
+Transform API and re-runs the bidirectional `uacrypt` interop check from D-127.
+
+**Order swapped relative to the standard template, for a real tooling reason, not a preference**:
+the standing nine-step template lists step 5 (xtask/CI wiring) before step 6 (test suite), and
+Python's own T-49 followed that literal order (its CI workflow was wired before its pytest suite
+existed - an empty/nonexistent pytest collection doesn't error). `node --test test/` does error
+immediately if `test/` doesn't exist yet ("Could not find 'test/'") - confirmed by trying it, not
+assumed - so wiring `npm test` into CI/xtask before any test file existed would have made the very
+first CI run fail on a missing directory, not a meaningful red test. Step 6 was done first for this
+binding specifically as a result; step 5 (next) wires up a `test/` directory that already has real
+content. D-124's test-first principle is unaffected by this - it governs writing a test before its
+own wrapper's code, not the standing-template's step numbering.
+
+**A second tooling finding, more valuable than the reorder itself**: `node --test test/` (with an
+explicit directory argument) does NOT behave the same as `node --test` (no argument) - the former
+errors trying to `require()` the directory as a single module, the latter uses the documented
+default discovery of `**/*.test.js` under a `test/` directory. `package.json`'s `test` script was
+written as `"node --test test/"` initially (by analogy with typical test-runner CLIs) and had to be
+corrected to `"node --test"` once this was actually run and failed - confirmed against the real
+Node CLI's behavior, not the first guess.
+
+**A real, `node:test`-runner-specific bug found and fixed while writing this suite, not a
+pre-existing issue in the wrapper's design**: an early version of the "tampered chunk"/"oversized
+chunk"/"trailing data" rejection tests intermittently made `node --test` hang indefinitely instead
+of failing cleanly. Root cause, confirmed by isolating each helper in a standalone script with a
+hard timeout rather than guessing: `SecretStreamEncryptor`/`Decryptor`'s `_transform`/`_flush`
+methods called their `callback(err)` **synchronously** (no real async work happens inside them) -
+Node's own stream documentation warns against this specifically, because when a `_write`/
+`_transform` callback fires synchronously (`state.sync` still `true` at that point), a **error**
+passed to it can throw synchronously out of the triggering `.write()` call instead of emitting
+`'error'` asynchronously the documented way. Fixed by deferring every `_transform`/`_flush`
+callback invocation through `process.nextTick(callback, err)` in both classes
+(`bindings/nodejs/js/secretstream.js`) - confirmed stable across three repeated full `node --test`
+runs afterward, not just the one run that happened to pass. A second, related finding from the
+same debugging pass: `.write()` after `.end()`/`'finish'` on this stream does not reliably emit a
+catchable `'error'` event at all (an earlier test version that `await`ed one hung forever) - the
+actually-documented, synchronous contract is `.writableEnded` and `.write()`'s own boolean return
+value, which is what the final test asserts against instead.
+
+Verified: all 52 tests pass, confirmed stable across three consecutive full `node --test` runs
+(not a single lucky pass); `cargo fmt --all -- --check` clean (no Rust changed this step); root
+`cargo build --workspace` unaffected.
