@@ -89,7 +89,14 @@ class SecretStreamEncryptor:
         return self
 
     def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
-        self.close()
+        """Finalizes (pushes the `Final` chunk) only on the success path. If the `with` block
+        raised, the stream is deliberately left unfinalized - a `SecretStreamDecryptor` reading
+        the partial output never sees a `Final` chunk and fails closed with `DstuError`, matching
+        this project's standing "no partial output treated as valid on failure" rule (D-65) the
+        same way `uacrypt encrypt`'s own temp-file-then-rename does. Call `close()` explicitly
+        inside an `except` block if a truncated-but-decryptable prefix is genuinely wanted."""
+        if exc_type is None:
+            self.close()
 
 
 def _read_exact(inp: _Readable, size: int, what: str) -> bytes:
