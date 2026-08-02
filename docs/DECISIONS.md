@@ -9063,3 +9063,31 @@ how a real installed gem's own `require "dstu_core"` would resolve (this only ma
 `rubocop` flagged two auto-correctable findings (`Style/StringLiteralsInInterpolation` in
 `misc.rb`'s `#{...unpack1("H*")}` interpolations) - corrected via `rubocop -A`. Full `cargo xtask
 ruby` re-verified clean with the new files in place.
+
+## D-140: `bindings-ruby.yml` CI fixes - real first-run failures on all three OS legs
+
+2026-08-02. T-160's own CI workflow (D-137) failed its first real run on all three OS legs -
+confirmed via `gh run view`, two distinct root causes, both fixed rather than assumed correct from
+local testing alone (this dev machine could never have caught either, since it only ever builds
+for one OS/one Ruby install method):
+
+1. **Windows: `ridk: command not found`.** D-137's workflow assumed `ridk exec pacman`/`ridk exec
+   cygpath` the same way this dev machine's own manually-installed RubyInstaller-with-DevKit
+   exposes `ridk`. `ruby/setup-ruby@v1`'s hosted Windows Ruby install does **not** put `ridk` on
+   PATH at all (confirmed by the actual failure: `ridk: command not found`, exit 127) - it only
+   sets an `RI_DEVKIT` env var pointing at the bundled MSYS2 tree. Fixed by dropping the `ridk
+   exec` wrapper entirely: `ruby/setup-ruby`'s own `shell: bash` steps already run inside that
+   bundled MSYS2's `bash.exe` (confirmed from the log's own `shell:` line), whose PATH already
+   includes MSYS2's `usr/bin` - so `pacman`/`cygpath` work directly with no wrapper needed.
+2. **Linux/macOS: `bundle install` refused to run** ("Your bundle only supports platforms
+   ["x64-mingw-ucrt"]"). `Gemfile.lock` was generated exclusively on this Windows dev machine, so
+   its `PLATFORMS` section only listed `x64-mingw-ucrt` - a lockfile with no platform for the
+   `ubuntu-latest`/`macos-latest` runners' own gem resolution to use at all, not a build-tool
+   problem. Fixed with `bundle lock --add-platform x86_64-linux arm64-darwin x86_64-darwin`
+   (`arm64-darwin` specifically since GitHub's `macos-latest` runners are Apple Silicon, confirmed
+   from the failure log's own `arm64-darwin23` Ruby build string, not assumed to still be Intel).
+
+Neither gap could have been caught by this machine's own local `cargo xtask ruby` runs, which is
+exactly why this project's own discipline (`docs/CLAUDE.md` "verify a CI job's real conclusion via
+`gh run view`, never assume from a green badge") treats an unpushed CI workflow as unverified until
+it actually runs - re-pushed to confirm the fix, not left at "should work."

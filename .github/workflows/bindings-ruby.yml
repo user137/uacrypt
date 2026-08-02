@@ -37,15 +37,19 @@ jobs:
           bundler-cache: true
           working-directory: bindings/ruby
       # See this file's own header comment and D-133 - matches the exact fix this repo's own
-      # Windows dev machine needed for `rb-sys`'s bindgen step.
+      # Windows dev machine needed for `rb-sys`'s bindgen step. `ridk` itself isn't on PATH on
+      # this hosted runner (confirmed by a real CI failure, not assumed) - but `ruby/setup-ruby`'s
+      # `shell: bash` steps already run inside the bundled MSYS2's own bash (its `usr/bin` is
+      # already on that shell's PATH), so `pacman`/`cygpath` work directly with no `ridk exec`
+      # wrapper needed.
       - name: Install a matching MSYS2 clang for bindgen (Windows only, D-133)
         if: matrix.os == 'windows-latest'
         shell: bash
-        run: ridk exec pacman -S --needed --noconfirm mingw-w64-ucrt-x86_64-clang
+        run: pacman -S --needed --noconfirm mingw-w64-ucrt-x86_64-clang
       - name: Point LIBCLANG_PATH at it (Windows only, D-133)
         if: matrix.os == 'windows-latest'
         shell: bash
-        run: echo "LIBCLANG_PATH=$(ridk exec cygpath -w /ucrt64/bin)" >> "$GITHUB_ENV"
+        run: echo "LIBCLANG_PATH=$(cygpath -w /ucrt64/bin)" >> "$GITHUB_ENV"
       # ubuntu-only, matching rust.yml's own fmt job and bindings-python.yml/bindings-nodejs.yml:
       # actions/checkout on a Windows/macOS runner applies git's autocrlf translation, which makes
       # every LF-checked-in file look like "Incorrect newline style" to `cargo fmt --check` - a
