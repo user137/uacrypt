@@ -1,0 +1,27 @@
+# Deliberately its own workspace, not a member of the repo-root `[workspace]` - same reasoning as
+# `bindings/python` (D-119). A path dependency on `dstu-core` below still resolves correctly across
+# separate workspaces without one.
+[workspace]
+
+[package]
+name = "dstu_core_node"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.87.0"
+license = "MIT OR Apache-2.0"
+description = "Node.js bindings for dstu-core (Ukrainian DSTU cryptographic standards) - provisional, not yet published to npm"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+napi = { version = "2", default-features = false, features = ["napi4"] }
+napi-derive = "2"
+dstu-core = { path = "../../crates/dstu-core", version = "0.2.0", features = ["std", "selftest"] }
+
+[build-dependencies]
+napi-build = "2"
+
+[profile.release]
+lto = true

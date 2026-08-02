@@ -1,0 +1,26 @@
+{
+  "name": "dstu-core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Node.js bindings for dstu-core (Ukrainian DSTU cryptographic standards) - provisional, not yet published to npm",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "napi": {
+    "name": "dstu-core",
+    "triples": {
+      "defaults": true
+    }
+  },
+  "license": "MIT OR Apache-2.0",
+  "engines": {
+    "node": ">= 18"
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "^2"
+  },
+  "scripts": {
+    "build": "napi build --platform --release",
+    "build:debug": "napi build --platform",
+    "test": "node --test test/"
+  }
+}

@@ -1,0 +1,10 @@
+# Pinned to the MSVC host specifically, overriding the repo-root rust-toolchain.toml's "stable"
+# (which resolves to windows-gnu on this dev machine, per `rustc -vV`). napi-build's Windows path
+# requires a real libnode.dll to be present on PATH/LIBPATH for the "gnu" target_env - no prebuilt
+# Node.js Windows distribution ships one (node.exe statically links libnode) - while windows-msvc
+# links via a generated import stub with no such requirement, confirmed by reading
+# napi-build-2.4.0's src/windows.rs and src/lib.rs. Also pinned to napi-build 2.0.0 in Cargo.lock
+# (2.1.0+ needs rustc >= 1.88, one minor ahead of this crate's own rust-version floor) - see
+# docs/DECISIONS.md.
+[toolchain]
+channel = "1.87.0-x86_64-pc-windows-msvc"

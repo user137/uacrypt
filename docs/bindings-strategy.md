@@ -272,8 +272,10 @@ new session — this section is the one to update as work lands, and the one to 
 resuming. **Update the resume line below every time a step is checked off**; a stale resume line is
 worse than no resume line, since it actively misdirects the next session.
 
-**Resume point: T-161 done (2026-08-02). T-49 (Python) done in full 2026-08-02 - see D-120. Next:
-T-50 (Node.js), not started.**
+**Resume point: T-161 done (2026-08-02). T-49 (Python) done in full 2026-08-02 - see D-120. T-50
+(Node.js) step 1 (scaffold) done 2026-08-02 - see D-125. Next: T-50 step 2 (wrap the full
+`crypto_*` surface), also tracked as real tasks in this session's Task tool (T-50 broken into its
+nine standard steps).**
 
 ### The standard binding steps
 
@@ -497,8 +499,11 @@ Standard steps, plus an upfront spike before step 1 (see `docs/bindings-strategy
 ### T-50 — Node.js
 
 Standard steps:
-- Step 1: `bindings/nodejs/`, napi-rs, own `[workspace]` table per D-119 (not a root workspace
-  member).
+- Step 1: **Done 2026-08-02, see D-125.** `bindings/nodejs/`, napi-rs, own `[workspace]` table per
+  D-119 (not a root workspace member). Wraps only `selfTest()` so far, matching T-49 step 1's own
+  split. Pinned to the `1.87.0-x86_64-pc-windows-msvc` toolchain locally
+  (`bindings/nodejs/rust-toolchain.toml`) and `napi-build = 2.0.0` in `Cargo.lock` - both real
+  toolchain constraints found building this, not stylistic choices, see D-125 for why.
 - Step 3: a `stream.Transform`.
 - Step 4: prebuilt `.node` binaries per platform via napi-rs's cross-compile.
 - Step 6: `node:test`.
