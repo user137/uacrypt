@@ -55,6 +55,7 @@ target.
 ```
 .
 ├── CLAUDE.md              # operating guide for AI agents in this repo
+├── AGENTS.md              # thin pointer to CLAUDE.md's own reading order, for non-Claude-Code AI agents
 ├── docs/SECURITY.md            # threat model, hard constraints, supply-chain vetting
 ├── docs/DECISIONS.md           # architectural decisions with rejected alternatives
 ├── docs/TASKS.md               # phase-by-phase task backlog and progress state

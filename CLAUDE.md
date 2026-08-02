@@ -186,6 +186,7 @@ Algorithms in scope:
 | `README.md` | need the human-facing project overview or repo tree | repo structure changes | GitHub-facing description, top-level directory map, build/install instructions |
 | `docs/PERFORMANCE.md` | need benchmark numbers, or comparing against another implementation's speed | new numbers are measured, or a new comparison implementation is benchmarked | benchmark methodology (cross-implementation comparisons are binary-level/MB/s only, D-34), recorded numbers, `criterion --baseline` |
 | `xtask/src/main.rs` | adding or changing a build/QA subcommand | a new tool enters the QA stack or an existing command's invocation changes | the actual build/QA implementations (README documents usage, this owns behavior) |
+| `AGENTS.md` | never by Claude Code itself (this file already auto-loads) — read by a non-Claude-Code AI agent (Cursor, Copilot, another agentic CLI) that looks for this filename by convention | this table's own row list, read-order, or any file it points to gets renamed/moved | routing a non-Claude AI agent to the right reading order; owns no content of its own — a stale pointer here is a broken link, not wrong information, but still fix it the same session it's noticed |
 
 `docs/rust_ai_ruleset.md` §7 (async/tokio) does not apply to the `no_std`-first core — only relevant
 if a future CLI or binding layer adds async I/O.
