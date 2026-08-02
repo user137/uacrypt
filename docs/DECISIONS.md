@@ -8963,3 +8963,46 @@ the source tree - matching Python/Node's own step-4 verification bar exactly. Li
 cross-compiled native gems (needing `rake-compiler-dock`/Docker, not set up on this Windows-only
 machine) are deferred to CI, same "this machine is Windows-only" precedent Python/Node's own step 4
 entries already recorded.
+
+## D-137: Ruby binding (T-160) step 5 - `cargo xtask ruby` + `bindings-ruby.yml`, rubocop wired in
+
+2026-08-02. `rubocop` (deferred from step 3, D-135's own note) added as a dev dependency and run
+for the first time - 63 offenses on the first pass (mostly `Style/StringLiterals` defaulting to
+single quotes and a Windows `core.autocrlf`-driven `Layout/EndOfLine` false positive, the same class
+of finding ruff produced for Python at this exact step, T-49 step 5's own precedent). Settled in
+`.rubocop.yml` rather than reflowing to rubocop's defaults: `Style/StringLiterals` set to
+`double_quotes` (matching every other language's convention in this project), `Layout/EndOfLine`
+disabled outright (the autocrlf false positive has no per-OS CI job to defer to the way `cargo fmt
+--check` does), `Metrics/MethodLength` raised to 20 (the wire-format chunk-parsing methods are a few
+lines over the default, genuinely sequential validation steps). Auto-correctable offenses fixed via
+`rubocop -A`; the one substantive suggestion (`Gemspec/DevelopmentDependencies` - move dev
+dependencies out of the gemspec) was taken by moving `rake-compiler`/`rb_sys`/`rspec`/`rubocop` into
+the `Gemfile`'s own `:development` group instead of `add_development_dependency`, functionally
+identical, matching rubocop's own modern convention rather than suppressing the cop.
+
+**`command_for()`'s Windows batch-script mapping (D-12) extended a third time**: `bundle` ships as
+`bundle.bat` on Windows RubyInstaller, same "`Command::new` doesn't try `.bat`/`.cmd` extensions
+the way a shell does" gotcha `mvn`/`npm` already needed - `command_for()` now covers all three.
+
+`cargo xtask ruby` mirrors `python()`/`nodejs()` exactly: builds `uacrypt --release` from the repo
+root first (for the RSpec interop test, step 6), `bundle install`, `cargo fmt --all -- --check`/
+`cargo clippy --all-targets -- -D warnings` against `bindings/ruby`'s own Cargo workspace,
+`bundle exec rake compile`, `bundle exec rubocop`, `bundle exec rspec` - verified running clean
+end-to-end on this machine (`LIBCLANG_PATH` still needed locally, D-133 - not anything `xtask`/CI
+needs to special-case, matching how the MSVC `rustup override` for Node never entered `xtask`
+either). `.github/workflows/bindings-ruby.yml` mirrors `bindings-python.yml`/`bindings-nodejs.yml`'s
+shape (`test` matrix ubuntu/macos/windows, `supply-chain` deny/audit) with one addition no other
+binding needs: a Windows-only step installing the matching MSYS2 `mingw-w64-ucrt-x86_64-clang`
+package via `ridk exec pacman` and pointing `LIBCLANG_PATH` at it (`ridk exec cygpath -w
+/ucrt64/bin`) - the exact fix D-133 found for this dev machine, now codified for CI's own
+`windows-latest` runner rather than assumed to be unnecessary there. `cargo deny check`/`cargo
+audit` both verified locally against `bindings/ruby`'s real dependency tree (magnus/rb-sys), clean
+(one benign `license-not-encountered` advisory-info warning, not an error). `deny.toml`'s header
+comment updated to mention all three bindings sharing the one policy file.
+
+Not yet verified on real GitHub Actions (needs an explicit push, same gate every prior binding's CI
+workflow went through) - the Windows-specific `ridk exec` steps are the one part of this workflow
+with no local equivalent test, since this dev machine's own MSYS2 clang install used a plain
+`pacman -S` directly rather than through `ridk exec` (both should be equivalent - `ridk exec` just
+activates the same MSYS2 shell environment first - but this specific invocation form is unverified
+until CI actually runs it).

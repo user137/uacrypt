@@ -33,6 +33,7 @@ fn main() -> ExitCode {
         "oracle-dotnet" => oracle_dotnet(),
         "python" => python(),
         "nodejs" => nodejs(),
+        "ruby" => ruby(),
         "ci" => ci(),
         "help" | "-h" | "--help" => {
             print_usage();
@@ -70,17 +71,21 @@ fn print_usage() {
          \x20 oracle-java    run the Java/Bouncy Castle oracle harness via Maven\n\
          \x20 oracle-dotnet  run the .NET/Bouncy Castle oracle harness via dotnet run\n\
          \x20 python         build+lint bindings/python, maturin develop, pytest (T-49)\n\
-         \x20 nodejs         build+lint bindings/nodejs, napi build, node --test (T-50)"
+         \x20 nodejs         build+lint bindings/nodejs, napi build, node --test (T-50)\n\
+         \x20 ruby           build+lint bindings/ruby, rake compile, rspec (T-160)"
     );
 }
 
-/// Windows Maven/npm ship `mvn.cmd`/`npm.cmd`, not `mvn`/`npm` - `Command::new` doesn't resolve
-/// batch-script extensions the way a shell does, so this is the one real per-OS branch in this
-/// whole file (confirmed for `npm` the same way `mvn` was: a bare `Command::new("npm")` reports
-/// "not found on PATH" despite `npm --version` working fine directly in a real shell).
+/// Windows Maven/npm ship `mvn.cmd`/`npm.cmd`, RubyGems' `bundle` ships `bundle.bat` - none of them
+/// `mvn`/`npm`/`bundle` bare, and `Command::new` doesn't resolve batch-script extensions the way a
+/// shell does, so this is the one real per-OS branch in this whole file (confirmed for `npm`/
+/// `bundle` the same way `mvn` was: a bare `Command::new(...)` reports "not found on PATH" despite
+/// the plain command working fine directly in a real shell).
 fn command_for(base: &str) -> String {
     if cfg!(windows) && (base == "mvn" || base == "npm") {
         format!("{base}.cmd")
+    } else if cfg!(windows) && base == "bundle" {
+        format!("{base}.bat")
     } else {
         base.to_string()
     }
@@ -337,6 +342,7 @@ fn audit() -> bool {
     run("cargo", &["audit"], None)
         && run("cargo", &["audit"], Some(Path::new("bindings/python")))
         && run("cargo", &["audit"], Some(Path::new("bindings/nodejs")))
+        && run("cargo", &["audit"], Some(Path::new("bindings/ruby")))
 }
 
 /// `bindings/python`/`bindings/nodejs` are separate Cargo workspaces (D-119), but deliberately
@@ -359,6 +365,11 @@ fn deny() -> bool {
             "cargo",
             &["deny", "check"],
             Some(Path::new("bindings/nodejs")),
+        )
+        && run(
+            "cargo",
+            &["deny", "check"],
+            Some(Path::new("bindings/ruby")),
         )
 }
 
@@ -412,6 +423,33 @@ fn nodejs() -> bool {
         )
         && run("npm", &["run", "build"], Some(dir))
         && run("npm", &["test"], Some(dir))
+}
+
+/// Best-effort like python()/nodejs() above - bindings/ruby's own separate Cargo workspace
+/// (D-119, split across two Cargo.toml files rather than one, D-133) isn't reached by
+/// build/test/clippy/fmt. Builds uacrypt first (release, from the repo root) for the real
+/// `uacrypt.exe` interop check inside the RSpec suite. This machine's own `LIBCLANG_PATH`
+/// mingw/bindgen requirement (D-133) is a machine-local environment variable - see
+/// `.claude.local.md` - not anything this function or CI needs to special-case.
+fn ruby() -> bool {
+    if !require("ruby", "https://www.ruby-lang.org (or RubyInstaller with DevKit on Windows)") {
+        return false;
+    }
+    if !require("bundle", "gem install bundler") {
+        return false;
+    }
+    let dir = Path::new("bindings/ruby");
+    run("cargo", &["build", "-p", "uacrypt", "--release"], None)
+        && run("bundle", &["install"], Some(dir))
+        && run("cargo", &["fmt", "--all", "--", "--check"], Some(dir))
+        && run(
+            "cargo",
+            &["clippy", "--all-targets", "--", "-D", "warnings"],
+            Some(dir),
+        )
+        && run("bundle", &["exec", "rake", "compile"], Some(dir))
+        && run("bundle", &["exec", "rubocop"], Some(dir))
+        && run("bundle", &["exec", "rspec"], Some(dir))
 }
 
 fn oracle_java() -> bool {
@@ -468,6 +506,7 @@ fn ci() -> bool {
         oracle_dotnet,
         python,
         nodejs,
+        ruby,
     ] {
         optional();
     }

@@ -275,11 +275,12 @@ worse than no resume line, since it actively misdirects the next session.
 **Resume point: T-161 done (2026-08-02). T-49 (Python) done in full 2026-08-02 - see D-120. T-50
 (Node.js) done in full 2026-08-02 - see D-125 through D-132 (step 6 done before step 5, a
 tooling-forced reorder, D-129 explains why; D-130 corrects D-125's toolchain-pin approach). T-160
-(Ruby) steps 1-4 done 2026-08-02 - see D-133 (own Ruby+MSYS2-clang toolchain install, several real
+(Ruby) steps 1-5 done 2026-08-02 - see D-133 (own Ruby+MSYS2-clang toolchain install, several real
 rb_sys/bindgen gotchas), D-134 (full crypto_* surface), D-135 (SecretStreamWriter/Reader,
 Zlib::GzipWriter/Reader-modeled), D-136 (advisor-review fixes to steps 2-3, then step 4's
-precompiled native gem - a source gem cannot install standalone at all, the path-dependency finding).
-Next: T-160 step 5 (cargo xtask + CI wiring).**
+precompiled native gem - a source gem cannot install standalone at all, the path-dependency
+finding), D-137 (cargo xtask ruby + bindings-ruby.yml, rubocop wired in, not yet confirmed on real
+CI - needs a push). Next: T-160 step 6 (RSpec suite).**
 
 ### The standard binding steps
 
@@ -659,6 +660,17 @@ Standard steps:
   advisor pass also caught and fixed five real correctness gaps in steps 2/3 before they could ship
   (gemspec `files` glob, missing `binmode`, the binary-string encoding contract, `is_finalized` →
   `finalized?`, `ArgumentError` → `IOError` for write-after-close) - see D-136 for the full list.
+- Step 5: **Done 2026-08-02, see D-137.** `cargo xtask ruby` (mirrors `python()`/`nodejs()`) +
+  `.github/workflows/bindings-ruby.yml` (mirrors the same shape: `test` matrix + `supply-chain`).
+  `rubocop` (deferred from step 3) wired in here, matching where Python's own `ruff` landed - 63
+  offenses on the first pass, settled in `.rubocop.yml` (double-quoted strings matching this
+  project's other languages, `Layout/EndOfLine` disabled for the Windows autocrlf false positive,
+  `Metrics/MethodLength` raised slightly for the wire-format parsing methods) rather than reflowing
+  to defaults. `command_for()` extended a third time (`bundle` → `bundle.bat` on Windows, same gotcha
+  as `mvn`/`npm`). CI's Windows leg needs one binding-specific step no other language does: install
+  a matching MSYS2 `clang` via `ridk exec pacman` and point `LIBCLANG_PATH` at it (D-133's fix,
+  codified for CI). `cargo deny`/`cargo audit` verified locally against this workspace's real
+  dependency tree.
 - Step 6: RSpec/Minitest.
 
 ### T-163 — Go (added 2026-08-02, D-122; builds alongside T-52/T-51, needs the C ABI)

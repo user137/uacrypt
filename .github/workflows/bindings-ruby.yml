@@ -1,0 +1,89 @@
+name: bindings-ruby
+
+# Own job, not folded into rust.yml's matrix (D-119) - bindings/ruby is a separate Cargo workspace
+# neither of rust.yml's `--workspace` jobs (Miri, the MSRV build) is equipped for, and release.yml
+# only fires on `v*` tags, which would leave this binding with zero regression coverage between
+# releases (docs/bindings-strategy.md T-160 step 5, mirrors bindings-python.yml/bindings-nodejs.yml).
+#
+# Windows needs one extra step no other binding does: `magnus`/`rb_sys` use `bindgen`, and this
+# repo's own dev machine found (D-133) that a generic, already-installed Windows LLVM parses
+# Ruby's mingw-targeted headers incorrectly - the fix is a matching MSYS2 ucrt64 `clang` package
+# plus `LIBCLANG_PATH` pointed at it, not anything Linux/macOS runners need.
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: build + test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+          bundler-cache: true
+          working-directory: bindings/ruby
+      # See this file's own header comment and D-133 - matches the exact fix this repo's own
+      # Windows dev machine needed for `rb-sys`'s bindgen step.
+      - name: Install a matching MSYS2 clang for bindgen (Windows only, D-133)
+        if: matrix.os == 'windows-latest'
+        shell: bash
+        run: ridk exec pacman -S --needed --noconfirm mingw-w64-ucrt-x86_64-clang
+      - name: Point LIBCLANG_PATH at it (Windows only, D-133)
+        if: matrix.os == 'windows-latest'
+        shell: bash
+        run: echo "LIBCLANG_PATH=$(ridk exec cygpath -w /ucrt64/bin)" >> "$GITHUB_ENV"
+      # ubuntu-only, matching rust.yml's own fmt job and bindings-python.yml/bindings-nodejs.yml:
+      # actions/checkout on a Windows/macOS runner applies git's autocrlf translation, which makes
+      # every LF-checked-in file look like "Incorrect newline style" to `cargo fmt --check` - a
+      # known false positive (docs/DECISIONS.md D-108's notes), not specific to this workflow.
+      - run: cargo fmt --all -- --check
+        if: matrix.os == 'ubuntu-latest'
+        working-directory: bindings/ruby
+      - run: cargo clippy --all-targets -- -D warnings
+        working-directory: bindings/ruby
+      # From the repo root: the RSpec interop test needs the real uacrypt binary to exercise the
+      # wire-format check that justifies this binding existing, same reasoning as
+      # bindings-python.yml/bindings-nodejs.yml's own uacrypt build step.
+      - run: cargo build -p uacrypt --release
+      - run: bundle exec rake compile
+        working-directory: bindings/ruby
+      - run: bundle exec rubocop
+        working-directory: bindings/ruby
+      - run: bundle exec rspec
+        working-directory: bindings/ruby
+      # Sanity-check packaging on every OS, every push (not just a release build) - a broken
+      # `files` glob (D-136's real gotcha, found on this exact binding) would otherwise only be
+      # caught at release time.
+      - run: gem build dstu_core.gemspec
+        working-directory: bindings/ruby
+
+  supply-chain:
+    name: cargo deny / audit (bindings/ruby)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: bindings/ruby
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo install cargo-deny --locked
+      # Root deny.toml, found by cargo-deny walking up from this cwd (see deny.toml's own header
+      # comment) - checks this workspace's real dependency tree (magnus/rb-sys and friends), not a
+      # copy.
+      - run: cargo deny check
+      - run: cargo install cargo-audit --locked
+      - run: cargo audit

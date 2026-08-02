@@ -2615,6 +2615,10 @@ configuration surface added in the process (D-47 still holds).
       packaging gap - a source gem can't install standalone (the `ext/` Cargo.toml's path
       dependency on `crates/dstu-core` only resolves inside this repo) - fixed via `rake native gem`
       producing a precompiled, platform-tagged gem instead, verified against a fresh `GEM_HOME`.
+      **Step 5 done 2026-08-02, see D-137**: `cargo xtask ruby` + `bindings-ruby.yml`. `rubocop`
+      (deferred from step 3) wired in, 63 offenses settled via `.rubocop.yml`. Windows CI needs one
+      binding-specific step (matching MSYS2 `clang` + `LIBCLANG_PATH`, D-133's fix codified) - not
+      yet confirmed on real GitHub Actions, needs an explicit push.
 - [ ] **T-163** Go binding (`bindings/go`) — added to scope 2026-08-02 at the owner's request, on
       the same no-incumbent-competitor footing as Node/Ruby/PHP (no DSTU-specific Go library exists,
       real DevSecOps/cloud-infra audience). **Unlike Node/Ruby/PHP, this one goes through the C ABI

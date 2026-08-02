@@ -1,0 +1,25 @@
+AllCops:
+  NewCops: enable
+  SuggestExtensions: false
+  TargetRubyVersion: 3.1
+
+# This project's own convention across every language (see bindings/python's ruff config, the
+# root Rust code) is double-quoted strings - matching what every `.rb` file here already uses,
+# not rubocop's own single-quote default.
+Style/StringLiterals:
+  EnforcedStyle: double_quotes
+
+# Windows checkouts with `core.autocrlf=true` legitimately have CRLF line endings in the working
+# tree while git stores LF - the same false positive `.github/workflows/rust.yml`'s own fmt job
+# already works around by running fmt-check ubuntu-only. Disabled outright here instead, since
+# rubocop (unlike `cargo fmt --check`) has no per-OS CI job to defer to for this repo's binding.
+Layout/EndOfLine:
+  Enabled: false
+
+# Wire-format chunk parsing (`SecretStreamReader#next_chunk`/`#read_exact`) is a few lines over
+# the default - genuinely sequential validation steps, not a sign the method should split further.
+Metrics/MethodLength:
+  Max: 20
+
+Layout/LineLength:
+  Max: 130
