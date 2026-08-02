@@ -41,6 +41,7 @@ from ._dstu_core import (
     stream_encrypt,
     stream_keygen,
 )
+from .secretstream import SecretStreamDecryptor, SecretStreamEncryptor
 
 __all__ = [
     "PWHASH_INTERACTIVE",
@@ -53,6 +54,8 @@ __all__ = [
     "DstuError",
     "Kupyna256Hasher",
     "Kupyna512Hasher",
+    "SecretStreamDecryptor",
+    "SecretStreamEncryptor",
     "SecretStreamPullState",
     "SecretStreamPushState",
     "auth",
