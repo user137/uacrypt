@@ -500,11 +500,12 @@ Standard steps, plus an upfront spike before step 1 (see `docs/bindings-strategy
 ### T-50 — Node.js
 
 Standard steps:
-- Step 1: **Done 2026-08-02, see D-125.** `bindings/nodejs/`, napi-rs, own `[workspace]` table per
-  D-119 (not a root workspace member). Wraps only `selfTest()` so far, matching T-49 step 1's own
-  split. Pinned to the `1.87.0-x86_64-pc-windows-msvc` toolchain locally
-  (`bindings/nodejs/rust-toolchain.toml`) and `napi-build = 2.0.0` in `Cargo.lock` - both real
-  toolchain constraints found building this, not stylistic choices, see D-125 for why.
+- Step 1: **Done 2026-08-02, see D-125/D-130.** `bindings/nodejs/`, napi-rs, own `[workspace]` table
+  per D-119 (not a root workspace member). Wraps only `selfTest()` so far, matching T-49 step 1's
+  own split. `napi-build = 2.0.0` pinned in `Cargo.lock` (a real MSRV constraint, D-125). The MSVC
+  toolchain this machine's build needs is a **machine-local `rustup override`, not a committed
+  file** (D-130 corrects D-125's original committed-`rust-toolchain.toml` approach, which would have
+  broken Linux/macOS CI runners) - see `.claude.local.md` for the exact command.
 - Step 2: **Done 2026-08-02, see D-126.** Full `crypto_*` surface wrapped - `secretbox`, `sign`,
   `pwhash`, `generichash` (one-shot + incremental `Kupyna{256,512}Hasher` classes), `auth`, `kdf`,
   `stream`, `randombytes`, plus `crypto_secretstream`'s raw `push`/`pull` (idiomatic

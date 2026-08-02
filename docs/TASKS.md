@@ -2507,9 +2507,10 @@ configuration surface added in the process (D-47 still holds).
       incumbent-demand ordering that no longer applies to it. **Node-only,
       confirmed 2026-08-02 (D-118)** — a browser/WASM target was raised and explicitly deferred, not
       silently assumed either way; would need `wasm-bindgen`, a distinct toolchain from `napi-rs`.
-      See "Phase 5." **Step 1 (scaffold) done 2026-08-02, see D-125** — wraps only `selfTest()` so
-      far; pinned to the `1.87.0-x86_64-pc-windows-msvc` toolchain and `napi-build = 2.0.0` locally
-      (two real toolchain constraints found building this, D-125 has the detail). **Step 2 done
+      See "Phase 5." **Step 1 (scaffold) done 2026-08-02, see D-125/D-130** — wraps only
+      `selfTest()` so far; `napi-build = 2.0.0` pinned in `Cargo.lock` (real MSRV constraint,
+      D-125); the MSVC toolchain fix is a machine-local `rustup override`, not a committed file
+      (D-130 corrects D-125's original approach, which would have broken Linux/macOS CI). **Step 2 done
       2026-08-02, see D-126** — full `crypto_*` surface wrapped (every byte param/return uses
       `napi::bindgen_prelude::Buffer`, not `Vec<u8>`; explicit `js_name` camelCase on every export;
       `secretstream` push/pull return a `#[napi(object)]` result struct, not a tuple - napi-rs has
