@@ -279,9 +279,12 @@ tooling-forced reorder, D-129 explains why; D-130 corrects D-125's toolchain-pin
 rb_sys/bindgen gotchas), D-134 (full crypto_* surface), D-135 (SecretStreamWriter/Reader,
 Zlib::GzipWriter/Reader-modeled), D-136 (advisor-review fixes to steps 2-3, then step 4's
 precompiled native gem - a source gem cannot install standalone at all, the path-dependency
-finding), D-137 (cargo xtask ruby + bindings-ruby.yml, rubocop wired in, not yet confirmed on real
-CI - needs a push), D-138 (58-example RSpec suite, cross-language vector loading, real uacrypt
-interop), D-139 (examples/ + README.md). Next: T-159 (PHP), not started.**
+finding), D-137 (cargo xtask ruby + bindings-ruby.yml, rubocop wired in), D-138 (58-example RSpec
+suite, cross-language vector loading, real uacrypt interop), D-139 (examples/ + README.md), D-140/
+D-141 (three real CI round-trips to get bindings-ruby.yml actually green - `ridk` not on the hosted
+runner's PATH, `Gemfile.lock` missing non-Windows platforms, and the root `rust-toolchain.toml`
+silently overriding `rustup default` on Windows - **confirmed green on real CI**, run id
+`30759971107`, all four jobs `success`). Next: T-159 (PHP), not started.**
 
 ### The standard binding steps
 

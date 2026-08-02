@@ -9124,5 +9124,9 @@ documents for nightly (`cargo +nightly` needed explicitly for miri/fuzz) - confi
 to host-triple selection too, not just channel selection, via this second real failure. Fixed with
 `RUSTUP_TOOLCHAIN: stable-x86_64-pc-windows-gnu` set as a per-step `env:` (Windows-only, on the
 `clippy` and `bundle exec rake compile` steps specifically) - `RUSTUP_TOOLCHAIN` overrides a
-toolchain file outright, where `rustup default` does not. Needs its own push + `gh run view`
-confirmation before treating this workflow as green - not yet re-verified as of this entry.
+toolchain file outright, where `rustup default` does not. **Confirmed green on real CI** (run id
+`30759971107`): all four jobs (`cargo deny / audit`, `build + test` on ubuntu/macos/windows-latest)
+report `success` - three real CI round-trips total for this workflow (D-140's two fixes, this
+entry's toolchain-file fix), each one a genuine finding this dev machine's own local `cargo xtask
+ruby` runs could never have caught by construction (one OS, one pre-existing toolchain
+configuration, no toolchain-file-vs-`rustup default` conflict to trigger).

@@ -2616,10 +2616,12 @@ configuration surface added in the process (D-47 still holds).
       packaging gap - a source gem can't install standalone (the `ext/` Cargo.toml's path
       dependency on `crates/dstu-core` only resolves inside this repo) - fixed via `rake native gem`
       producing a precompiled, platform-tagged gem instead, verified against a fresh `GEM_HOME`.
-      **Step 5 done 2026-08-02, see D-137**: `cargo xtask ruby` + `bindings-ruby.yml`. `rubocop`
-      (deferred from step 3) wired in, 63 offenses settled via `.rubocop.yml`. Windows CI needs one
-      binding-specific step (matching MSYS2 `clang` + `LIBCLANG_PATH`, D-133's fix codified) - not
-      yet confirmed on real GitHub Actions, needs an explicit push.
+      **Step 5 done 2026-08-02, see D-137/D-140/D-141**: `cargo xtask ruby` + `bindings-ruby.yml`.
+      `rubocop` (deferred from step 3) wired in, 63 offenses settled via `.rubocop.yml`. Three real
+      CI round-trips needed before actually green (`ridk` not on the hosted runner's PATH,
+      `Gemfile.lock` missing non-Windows platforms, the root `rust-toolchain.toml` silently
+      overriding `rustup default` on Windows) - **confirmed green on real GitHub Actions**, run id
+      `30759971107`, all four jobs `success`.
       **Step 6 done 2026-08-02, see D-138**: 10 spec files (58 examples) mirroring Python/Node's
       own suites file-for-file, D-64/D-65 categories, the shared Kupyna-256 vector JSON, real
       `uacrypt` interop gated on `if:` metadata (confirmed filtering correctly, not assumed) with a
