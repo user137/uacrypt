@@ -234,9 +234,10 @@ new session — this section is the one to update as work lands, and the one to 
 resuming. **Update the resume line below every time a step is checked off**; a stale resume line is
 worse than no resume line, since it actively misdirects the next session.
 
-**Resume point: T-161 done (2026-08-02). T-49 steps 1-3 done (2026-08-02): scaffold, full
-`crypto_*` surface, file-like `crypto_secretstream` pipeline. Next: T-49 step 4 — manylinux/macOS/
-Windows wheels via `maturin`, not started.**
+**Resume point: T-161 done (2026-08-02). T-49 steps 1-4 done (2026-08-02): scaffold, full
+`crypto_*` surface, file-like `crypto_secretstream` pipeline, local Windows wheel build+install
+verified (manylinux/macOS deferred into step 5's CI job). Next: T-49 step 5 — its own CI job +
+best-effort `xtask` wiring, not started.**
 
 ### The standard binding steps
 
@@ -345,9 +346,23 @@ Standard steps above, with:
   `Final` record (a real bug caught and fixed during this step, not assumed correct); tamper and
   truncation both raise `DstuError`. `ruff check --fix`/`ruff format --check` clean (installed into
   the `.venv` for this check - not yet wired into `xtask`/CI, that's step 5).
-- Step 4: manylinux/macOS/Windows wheels via `maturin`.
-- Step 5: its own CI job, not a step in the existing Rust matrix (D-119); `xtask` wiring is
-  best-effort with an install hint (D-12's existing posture for miri/fuzz/audit), not mandatory.
+- Step 4: **Windows wheel done locally 2026-08-02** (this machine is Windows-only - manylinux/
+  macOS builds genuinely need CI, not a local shortfall; deferred to step 5, reusing
+  `.github/workflows/release.yml`'s existing `matrix.os: [ubuntu-latest, macos-latest,
+  windows-latest]`/tag-trigger/artifact-upload conventions rather than inventing a parallel
+  scheme). `maturin build --release --out dist` produces `dstu_core-0.1.0-cp39-abi3-win_amd64.whl`
+  (one wheel for all supported CPython versions - see step 1's `abi3-py39` note); installed into a
+  **fresh** venv via `pip install` (not the editable `.venv` every other check in this file used)
+  and re-run against the full smoke suite (`selftest`, `secretbox`, the `secretstream` file-like
+  pipeline, `sign`) - a materially different check than `maturin develop`, since it proves
+  `secretstream.py` (added in step 3, after the previous packaging check) actually ships inside the
+  wheel rather than only ever having been exercised through the source tree. manylinux/macOS wheels
+  are folded into step 5 below, not a separate step - they need CI, not a local shortfall.
+- Step 5: its own CI job, not a step in the existing Rust matrix (D-119) - reuse
+  `.github/workflows/release.yml`'s existing `matrix.os: [ubuntu-latest, macos-latest,
+  windows-latest]`/artifact-upload conventions to also produce the manylinux/macOS wheels step 4
+  only built for Windows locally. `xtask` wiring is best-effort with an install hint (D-12's
+  existing posture for miri/fuzz/audit), not mandatory.
 - Step 6: `pytest`.
 
 ### T-158 — C ABI crate (foundation for C++/.NET, maybe Java)
