@@ -285,8 +285,11 @@ project funding changes rather than re-researched from scratch.
   the one primitive here with genuine double confirmation (official worked example + independent
   hardcoded KAT) rather than a single source.
 - **Secondary:** `oracles/cryptonite/dstu4145*` (BSD-2-Clause, stale since 2016).
-- Per D-02, Bouncy Castle is also the actual dependency wrapped for the Java/.NET bindings there
-  — not just an oracle in that context.
+- **Superseded 2026-08-02, see D-115**: D-02 originally said Bouncy Castle would also be the actual
+  dependency wrapped for the Java/.NET bindings, not just an oracle — that's no longer the plan now
+  that `hazmat::dstu4145`/`crypto_sign` exist and are dual-oracle-verified. Bouncy Castle's role
+  here stays oracle-only, same as every other language's bindings. Original line kept for the
+  historical record, not deleted.
 
 ### DSTU 9041 (asymmetric encryption, twisted Edwards curves)
 - **No oracle exists anywhere.** The standard is from 2020, newer than every reference

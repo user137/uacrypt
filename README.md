@@ -77,10 +77,12 @@ target.
 │   ├── pseudocode/                   # per-algorithm pseudocode, cross-checked against oracles
 │   ├── rust_ai_ruleset.md            # generic Rust ruleset for AI assistants
 │   ├── cross-language-style-guide.md # naming/style conventions for non-Rust code
+│   ├── bindings-strategy.md          # Phase 3 language-binding plan: order, C-ABI split, per-binding checklist
 │   └── papers/                       # reference PDFs (specs, cryptanalysis, hardware papers)
 ├── crates/                # Cargo workspace
 │   ├── dstu-core/          # core: Kalyna + Kupyna + Strumok
 │   └── uacrypt/            # CLI binary on top of the core
+├── bindings/               # Phase 3 language bindings - planned, not yet built, see docs/bindings-strategy.md
 ├── tests/oracle-harness/   # Java/.NET/C harnesses that verify test vectors against real Bouncy Castle
 └── oracles/                # reference implementations used as oracles - not vendored, see oracles/README.md
 ```

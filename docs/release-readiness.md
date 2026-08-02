@@ -212,9 +212,12 @@ any kind to choose from, safe or otherwise.
 - No user-facing documentation beyond this repo's own `.md` files exists yet (no rustdoc pass
   dedicated to public API ergonomics, no separate docs site/book) — a real release needs
   API-level docs a consumer reads without first reading `docs/DECISIONS.md`.
-- Phase 3 (language bindings: Python/JS/Java/.NET/C++) is entirely unstarted — not required for a
-  Rust-crate-only 1.0, but relevant if "libsodium-equivalent" is read to include libsodium's
-  multi-language reach.
+- Phase 3 (language bindings: Python/JS/Java/.NET/C++, plus PHP/Ruby added 2026-08-02) — not
+  required for a Rust-crate-only 1.0, but relevant if "libsodium-equivalent" is read to include
+  libsodium's multi-language reach. **No longer "entirely unstarted"**: the planning stage is done
+  (`docs/bindings-strategy.md`, `docs/DECISIONS.md` D-115, `docs/TASKS.md`
+  T-49/T-50/T-51/T-52/T-53/T-158/T-159/T-160) — no binding code has landed yet, that's the next
+  step.
 
 ## Libsodium API surface and crates.io publishing audit (2026-07-25)
 

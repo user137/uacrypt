@@ -13,6 +13,13 @@ retrofitting `no_std` after the API has hardened would mean a core rewrite, not 
 
 ## D-02: DSTU 4145 signatures — wrap, don't reimplement, for Java/.NET
 
+**Superseded 2026-08-02 by D-115 — kept for the historical record, not deleted.** This entry
+predates `hazmat::dstu4145`/`dstu_core::crypto_sign` actually existing; once they did (verified
+against the standard's own Annex B.1 worked example, dual-oracle-cross-checked against real Bouncy
+Castle, D-25/D-46), the premise below no longer holds — see D-115 for the current decision (every
+binding, Java/.NET included, exposes this project's own `crypto_sign`; Bouncy Castle stays the
+verification oracle only).
+
 Java/.NET bindings wrap Bouncy Castle's `DSTU4145Signer`. The Rust implementation, when built, uses
 Bouncy Castle as a second verification oracle alongside official test vectors.
 
@@ -7995,3 +8002,48 @@ cut from a commit that includes this change, will trigger it.
 
 `docs/TASKS.md` T-17 (the actual first crates.io publish) stays open - this decision is the CI
 plumbing, not the publish event itself.
+
+## D-115: Language-bindings strategy — C-ABI split, uniform `crypto_sign`, naming
+
+Full analysis in `docs/bindings-strategy.md` (2026-08-02, `docs/TASKS.md` T-158 onward) — this entry
+is the citation trail for its three resolved forks, not a duplicate of the reasoning.
+
+1. **C ABI vs. native FFI, split by tooling maturity.** Python (PyO3) and Node (napi-rs) bind the
+   `dstu-core` Rust crate directly. C++ and .NET consume a new `bindings/capi` C ABI crate instead
+   (C++: header + link, .NET: P/Invoke). Java is deliberately left open pending a spike (`jni` crate
+   vs. JNI-over-`capi`) before committing. Ruby follows Python/Node's direct-binding shape; PHP
+   follows C++/.NET's C-ABI-consuming shape.
+
+   **Rejected:** routing every binding through one C ABI uniformly. Rejected because Python/Node
+   already have mature, idiomatic direct-Rust-binding toolchains (PyO3+maturin, napi-rs) — forcing
+   them through a C ABI would double-marshal data and lose native types (`bytes`/`Uint8Array`) for
+   no benefit.
+
+2. **`crypto_sign` (DSTU 4145) exposure is uniform across every binding, including Java/.NET.**
+   Supersedes D-02's Java/.NET-wraps-Bouncy-Castle instruction, which predates
+   `hazmat::dstu4145`/`dstu_core::crypto_sign` actually existing and being dual-oracle-verified
+   (D-25/D-46). Every binding now calls this project's own Rust `crypto_sign`; Bouncy Castle remains
+   the verification oracle only, the same role it already has in `tests/oracle-harness/`.
+
+   **Rejected:** keeping D-02's original split (Java/.NET wrap Bouncy Castle, other bindings call
+   Rust). Rejected because a Java binding that silently omits `crypto_sign`, or answers it from a
+   different library than every other binding uses, is a worse, less consistent API surface than
+   one that calls the same audited implementation everywhere — and the original reason for the
+   split (no trustworthy Rust implementation existed yet) no longer applies.
+
+3. **Package naming: `uacrypt`/`dstu-core` (registry-idiomatic spelling) on every registry.**
+   Confirmed with the project owner 2026-08-02, matching the existing CLI binary (D-36) and crate
+   names rather than inventing a new brand or a `dstu-ua-` prefix. Verified free on PyPI, npm,
+   NuGet, and Maven Central (direct registry API/search checks, not a search engine — see
+   `docs/bindings-strategy.md`'s table for the exact results) — no collision with `li0ard` (D-07),
+   whose npm packages live under the separate `@li0ard/*` scope.
+
+   **Rejected:** a `dstu-ua-` prefix for defensive disambiguation from `li0ard`. Rejected as
+   unnecessary once the actual namespaces were checked directly — `@li0ard/kalyna` and an unscoped
+   `dstu-core` cannot collide, so the extra prefix would only add friction with no real safety
+   benefit.
+
+Scope note, not a fourth fork: PHP and Ruby bindings (`docs/TASKS.md` T-159/T-160) were added to
+Phase 3's scope this same session at the project owner's explicit request, positioned after the
+original five languages, not interleaved with them — `docs/bindings-strategy.md`'s popularity
+analysis section has the ordering rationale.

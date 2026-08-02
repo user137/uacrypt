@@ -2404,12 +2404,57 @@ command names (`CLAUDE.md` MVP scope) are still reserved for whenever that resol
 
 ## Phase 3 — Language bindings (not MVP)
 
-- [ ] **T-49** Python bindings
-- [ ] **T-50** JavaScript bindings
-- [ ] **T-51** Java binding (wraps Bouncy Castle `DSTU4145Signer` directly, per D-02 — does not use the
-      Rust DSTU 4145 port)
-- [ ] **T-52** .NET binding (wraps Bouncy Castle `Dstu4145Signer` directly, per D-02)
-- [ ] **T-53** C++ bindings
+**Full rationale/order/per-binding checklist now lives in `docs/bindings-strategy.md`** (written
+2026-08-02, `docs/DECISIONS.md` D-115) — this section tracks status only, per this file's own header
+convention; read that document before starting any item below, don't re-derive the reasoning here.
+Build order (dependency-driven, not ID order): T-49 (Python, the template) → T-158 (C ABI crate) →
+T-52 (.NET) → T-51 (Java) → T-50 (Node) → T-53 (C++) → T-159 (PHP) → T-160 (Ruby); publishing to any
+registry is a separate, explicitly owner-gated step per registry (same class of decision as T-17
+for crates.io), tracked once actually requested, not scheduled here.
+
+- [ ] **T-49** Python binding (`bindings/python`, PyO3 + maturin) — the template every later binding
+      instantiates. Exposes the full `crypto_*` surface (not a subset). Three test categories
+      (correctness/rejection/misuse, D-64/D-65) via `pytest`, `bindings/python/examples/`, a
+      `cargo xtask` subcommand wired into CI, provisional-status banner in its README. See
+      `docs/bindings-strategy.md` "Phase 1."
+- [ ] **T-50** Node.js binding (`bindings/nodejs`, napi-rs) — same `crypto_*` surface and template as
+      T-49, `node:test` suite, deliberately built after T-52/T-51 despite matching Python's
+      direct-Rust-binding shape (see `docs/bindings-strategy.md`'s ordering rationale). See
+      "Phase 5."
+- [ ] **T-51** Java binding — **correction 2026-08-02, see D-115**: the D-02-based instruction below
+      ("wraps Bouncy Castle `DSTU4145Signer` directly, does not use the Rust DSTU 4145 port") is
+      stale — it predates `hazmat::dstu4145`/`dstu_core::crypto_sign` actually existing and being
+      dual-oracle-verified against real Bouncy Castle (D-25/D-46). This binding now exposes the same
+      full `crypto_*` surface as every other binding, `crypto_sign` included, calling this project's
+      own Rust implementation like everything else — Bouncy Castle stays the verification oracle
+      only, same role it already has in `tests/oracle-harness/`. **Original text, kept for the
+      historical record, not deleted**: "Java binding (wraps Bouncy Castle `DSTU4145Signer`
+      directly, per D-02 — does not use the Rust DSTU 4145 port)." First implementation step is a
+      spike comparing the `jni` crate (Rust-side JNI, no hand-written C shim) against
+      JNI-over-`bindings/capi` (T-158) — record the choice in `DECISIONS.md` before the real
+      implementation. See `docs/bindings-strategy.md` "Phase 4."
+- [ ] **T-52** .NET binding — **same correction as T-51, see D-115**: exposes the full `crypto_*`
+      surface including `crypto_sign` via this project's own Rust implementation, not a Bouncy
+      Castle wrap. **Original text, kept for the historical record**: ".NET binding (wraps Bouncy
+      Castle `Dstu4145Signer` directly, per D-02)." P/Invoke over `bindings/capi` (T-158) — no new
+      Rust-side glue beyond the C ABI crate itself. See `docs/bindings-strategy.md` "Phase 3."
+- [ ] **T-53** C++ binding (`bindings/cpp`) — thin RAII header-only wrapper over `bindings/capi`
+      (T-158), no separate Rust glue. See `docs/bindings-strategy.md` "Phase 6."
+- [ ] **T-158** C ABI crate (`bindings/capi`, new `crates/dstu-core-capi` workspace member) — opaque
+      handles, explicit error codes, `catch_unwind` at every boundary call, zeroize-on-free,
+      `cbindgen`-generated header. The shared foundation T-52/T-53/T-159 consume; verify the existing
+      8-combination `no_std`/`alloc`/`std`/`small-tables` feature matrix still passes with this new
+      workspace member present (D-12). See `docs/bindings-strategy.md` "Phase 2."
+- [ ] **T-159** PHP binding (`bindings/php`) — added to scope 2026-08-02 at the owner's request,
+      deliberately after T-49/T-158/T-52/T-51/T-50/T-53, not interleaved with them (no equivalent
+      Ukrainian-PKI demand evidence exists for PHP the way UAPKI/Bouncy-Castle-.NET give Java/.NET).
+      `ext-php-rs` extension or a plainer `FFI`-extension path over `bindings/capi` (T-158), PHPUnit
+      suite, same per-binding checklist as every other language. See `docs/bindings-strategy.md`
+      "Phase 8."
+- [ ] **T-160** Ruby binding (`bindings/ruby`) — added to scope 2026-08-02 at the owner's request,
+      scheduled last. Direct Rust binding (`magnus`/`rb-sys`), like T-49/T-50, not through the C
+      ABI. RSpec/Minitest suite, same per-binding checklist. See `docs/bindings-strategy.md`
+      "Phase 9."
 
 ## Phase 4 — Hardware validation (post-MVP)
 

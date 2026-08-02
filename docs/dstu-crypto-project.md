@@ -48,11 +48,19 @@ implementation within a minute, without hassle — in the spirit of
 
 ## Second priority (not MVP)
 
-- Language bindings: Python, JavaScript, Java, .NET, C++.
+- Language bindings: Python, JavaScript, Java, .NET, C++ — plus PHP and Ruby, added to scope
+  2026-08-02. **Full analysis (popularity rationale, C-ABI-vs-native-FFI split, per-binding
+  checklist, phased order) now lives in `docs/bindings-strategy.md`; task tracking in
+  `docs/TASKS.md` T-49/T-50/T-51/T-52/T-53/T-158/T-159/T-160.** Not started as actual binding code
+  yet — Phase 0 (the planning artifacts) is done.
 - Do not separately reimplement DSTU 4145 in the native core — for
   Java/.NET, integrate/wrap Bouncy Castle (a mature implementation already
   exists there); for Rust, port it while relying on Bouncy Castle as a
-  second verification oracle.
+  second verification oracle. **Superseded for the bindings themselves, see `docs/DECISIONS.md`
+  D-115**: `hazmat::dstu4145`/`crypto_sign` now exist and are dual-oracle-verified, so every
+  binding (Java/.NET included) calls this project's own Rust implementation — Bouncy Castle
+  remains the verification oracle only. This paragraph's original text is kept for the historical
+  record of why the Rust core itself was built the way it was, not deleted.
 
 ## Post-quantum track (explicitly out of scope)
 
