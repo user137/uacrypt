@@ -9114,6 +9114,15 @@ Fixed with `dtolnay/rust-toolchain@stable`'s `toolchain` input set conditionally
 `ubuntu-latest`/`macos-latest` - no separate toolchain-selection step needed, `dtolnay/rust-
 toolchain` accepts a full toolchain name including the target triple directly in that one input.
 
-Not yet re-verified on real CI as of this entry - the fix needs its own push and `gh run view`
-confirmation before treating this workflow as actually green, per the same discipline D-140 itself
-invoked.
+**Corrected the same day, round 3**: re-pushed and re-checked per this entry's own closing note -
+`windows-latest` failed again, with the *identical* MSVC linker error, `rustup default` having no
+effect at all. Root cause: this repo's root `rust-toolchain.toml` pins a bare `channel = "stable"`
+with no host triple - that resolves against the machine's *default host* (MSVC, unrelated to
+whatever `rustup default` was just set to) for any cargo invocation anywhere under this repo's
+tree, silently overriding the toolchain step above. The exact class of gotcha `CLAUDE.md` already
+documents for nightly (`cargo +nightly` needed explicitly for miri/fuzz) - confirmed here to apply
+to host-triple selection too, not just channel selection, via this second real failure. Fixed with
+`RUSTUP_TOOLCHAIN: stable-x86_64-pc-windows-gnu` set as a per-step `env:` (Windows-only, on the
+`clippy` and `bundle exec rake compile` steps specifically) - `RUSTUP_TOOLCHAIN` overrides a
+toolchain file outright, where `rustup default` does not. Needs its own push + `gh run view`
+confirmation before treating this workflow as green - not yet re-verified as of this entry.

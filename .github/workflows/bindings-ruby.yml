@@ -65,14 +65,26 @@ jobs:
       - run: cargo fmt --all -- --check
         if: matrix.os == 'ubuntu-latest'
         working-directory: bindings/ruby
+      # `RUSTUP_TOOLCHAIN` (Windows only) - this repo's own root `rust-toolchain.toml` pins a bare
+      # `channel = "stable"` with no host triple, which resolves against the machine's *default
+      # host* (MSVC on this runner) and silently overrides the `rustup default` the toolchain step
+      # above just set, for any cargo invocation anywhere under this repo's tree - the exact
+      # toolchain-file-override gotcha `CLAUDE.md` already documents for nightly (miri/fuzz),
+      # confirmed here to apply to host-triple selection too, not just channel, via a real second
+      # CI failure showing the *same* MSVC linker error even after the round-2 fix. `RUSTUP_TOOLCHAIN`
+      # overrides a toolchain file outright, unlike `rustup default`.
       - run: cargo clippy --all-targets -- -D warnings
         working-directory: bindings/ruby
+        env:
+          RUSTUP_TOOLCHAIN: ${{ matrix.os == 'windows-latest' && 'stable-x86_64-pc-windows-gnu' || '' }}
       # From the repo root: the RSpec interop test needs the real uacrypt binary to exercise the
       # wire-format check that justifies this binding existing, same reasoning as
       # bindings-python.yml/bindings-nodejs.yml's own uacrypt build step.
       - run: cargo build -p uacrypt --release
       - run: bundle exec rake compile
         working-directory: bindings/ruby
+        env:
+          RUSTUP_TOOLCHAIN: ${{ matrix.os == 'windows-latest' && 'stable-x86_64-pc-windows-gnu' || '' }}
       - run: bundle exec rubocop
         working-directory: bindings/ruby
       - run: bundle exec rspec
