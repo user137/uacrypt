@@ -9091,3 +9091,29 @@ Neither gap could have been caught by this machine's own local `cargo xtask ruby
 exactly why this project's own discipline (`docs/CLAUDE.md` "verify a CI job's real conclusion via
 `gh run view`, never assume from a green badge") treats an unpushed CI workflow as unverified until
 it actually runs - re-pushed to confirm the fix, not left at "should work."
+
+## D-141: `bindings-ruby.yml` CI fix, round 2 - Windows needs the GNU-host Rust toolchain, not MSVC
+
+2026-08-02. D-140's fixes got `ubuntu-latest`/`macos-latest` green; `windows-latest` still failed,
+with a genuinely different root cause from either of D-140's two - confirmed via `gh run view`
+again rather than assumed fixed by the earlier push.
+
+**The mirror image of Node's own D-125/D-130 finding**: `windows-latest`'s default
+`dtolnay/rust-toolchain@stable` installs the MSVC-host toolchain, but `rb_sys`'s generated Makefile
+passes GNU/mingw-style linker flags (`-C linker=gcc`) matching Ruby's own `x64-mingw-ucrt` build -
+an MSVC-host `rustc` invoking `gcc`/`ld.exe` as the linker still emits MSVC-style `/FLAG` arguments
+(`/DEF:...`, `/NOLOGO`, `.lib` suffixes) that `ld.exe` can't parse (`cannot find /NOLOGO: No such
+file or directory`, etc. - the exact failure signature, not a guess from reading the linker
+invocation alone). Where Node's own local dev machine defaulted to GNU and needed forcing to MSVC
+(D-125/D-130), here CI's `windows-latest` defaults to MSVC and needs forcing to GNU instead - same
+underlying class of host-triple mismatch, opposite direction, confirming this is a real recurring
+category for any Windows target needing to match Ruby's own mingw-ucrt build, not a one-off.
+
+Fixed with `dtolnay/rust-toolchain@stable`'s `toolchain` input set conditionally on `matrix.os`:
+`stable-x86_64-pc-windows-gnu` for `windows-latest` only, plain `stable` (host default) for
+`ubuntu-latest`/`macos-latest` - no separate toolchain-selection step needed, `dtolnay/rust-
+toolchain` accepts a full toolchain name including the target triple directly in that one input.
+
+Not yet re-verified on real CI as of this entry - the fix needs its own push and `gh run view`
+confirmation before treating this workflow as actually green, per the same discipline D-140 itself
+invoked.

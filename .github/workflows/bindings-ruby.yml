@@ -28,8 +28,16 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      # Windows needs the GNU-host toolchain specifically, not `windows-latest`'s own MSVC
+      # default (the reverse of Node's own D-125/D-130 finding: Node needed to force MSVC on a
+      # GNU-default *local* machine, here CI's MSVC-default host needs forcing to GNU instead) -
+      # rb_sys's generated Makefile passes GNU/mingw-style linker flags (`-C linker=gcc`) to
+      # whichever Rust toolchain is active, and an MSVC-host toolchain emits MSVC-style `/FLAG`
+      # linker arguments that `gcc`/`ld.exe` can't parse at all - confirmed by a real CI failure
+      # (`ld.exe: cannot find /NOLOGO: No such file or directory`), not assumed.
       - uses: dtolnay/rust-toolchain@stable
         with:
+          toolchain: ${{ matrix.os == 'windows-latest' && 'stable-x86_64-pc-windows-gnu' || 'stable' }}
           components: clippy, rustfmt
       - uses: ruby/setup-ruby@v1
         with:
