@@ -8315,3 +8315,66 @@ next. `docs/TASKS.md` T-49 marked `[x]`.
 **Step 9**: each piece above landed as its own commit, not one large drop (see `git log` for the
 sequence: the wildcard-dependency fix + xtask wiring, the CI workflow, the autocrlf fix, the
 release.yml wheel job, examples/README, this doc pass).
+
+## D-121: Binding build order reordered — no-incumbent languages before Bouncy Castle/UAPKI-served ones
+
+Requested 2026-08-02, right after T-49 (Python) shipped: the project owner asked whether it's worth
+building bindings for languages Bouncy Castle/UAPKI already serve (Java, .NET), given those two
+projects already ship real DSTU-adjacent support there, or whether effort is better spent on
+languages with no existing binding at all.
+
+**Reasoning**: `docs/bindings-strategy.md`'s original popularity analysis wasn't wrong, it was
+answering a different question. It established Java/.NET first *because* UAPKI (Java/Kotlin) and
+Bouncy Castle (.NET, already this project's own verification oracle) are direct evidence of real
+Ukrainian-PKI demand in those two languages specifically. That evidence still stands - Bouncy
+Castle covers low-level primitives/signatures the way OpenSSL does, not a unified, zero-config,
+misuse-resistant `crypto_*` surface across Kalyna/Kupyna/Strumok plus non-DSTU pwhash/kdf in one
+package, so this project's contribution there is still real. But it's a *smaller* gap than in a
+language with no DSTU library at all - Node, Ruby, PHP have no incumbent competitor, so the same
+"install and forget" reach (D-116) is currently unclaimed ground in those three, and shipping there
+first reaches an audience with literally zero alternative rather than one already served, however
+imperfectly.
+
+**Order changed**: T-49 (Python, done) → T-50 (Node) → T-160 (Ruby) → T-159 (PHP) → T-158 (C ABI
+crate) → T-52 (.NET) → T-51 (Java) → T-53 (C++) → T-163 (Go, see D-122) → T-162 (docs, last).
+Node/Ruby moved up from their original "deliberately after Java/.NET" and "scheduled last"
+positions respectively. PHP moved up too, with a firmer commitment: the original plan left
+`ext-php-rs` vs. `FFI`-over-`bindings/capi` (T-158) open; this decision commits to `ext-php-rs`
+specifically, making PHP a direct Rust binding like Python/Node/Ruby rather than one gated on the
+C ABI crate - it genuinely doesn't need to wait for T-158 now, not just reordered on paper. C++
+(T-53) is not reordered relative to .NET/Java specifically - no incumbent-competition argument
+applies to it either way, and it still needs T-158 regardless of ordering philosophy, so it stays
+grouped with that later tier by construction, not by a fresh decision.
+
+**Not changed**: the underlying per-binding checklists, D-116/D-117/D-118's cross-cutting
+requirements, and the Java/.NET `crypto_sign`-uses-own-Rust-implementation correction (D-115) all
+still apply exactly as before - this decision is purely about sequencing, not scope or design.
+
+**Original popularity analysis kept verbatim in `docs/bindings-strategy.md`**, not rewritten - it
+was correct evidence for the question it was answering, just not the deciding factor for build
+order anymore. A "Build order revised" note there and in `docs/TASKS.md` points at this entry
+rather than silently re-deriving the same numbers with different conclusions.
+
+## D-122: Go binding added to scope, Dart explicitly deferred
+
+Same 2026-08-02 conversation as D-121: the project owner asked to add Go, flagging their own
+uncertainty about Dart specifically ("тут я не впевнений" - "not sure about this one").
+
+**Go added as T-163.** Same no-incumbent-competitor reasoning D-121 established for Node/Ruby/PHP -
+no DSTU-specific Go library exists, and Go has a real DevSecOps/cloud-infrastructure/security-
+tooling audience (the same class of evidence already used for Ruby's own ordering). **Placed
+differently than Node/Ruby/PHP, though**: no Go binding toolchain exists with PyO3/napi-rs/magnus's
+maturity (no mature direct-Rust-to-Go FFI generator comparable to those three), so Go binds through
+the C ABI crate (`cgo` over `bindings/capi`'s `cbindgen`-generated header) the same way .NET/Java/
+C++ do. It therefore builds alongside that group, after T-158, not ahead of it - the
+no-incumbent argument justifies *including* Go, but doesn't override the separate technical
+constraint that decides *where* it slots into the sequence.
+
+**Dart explicitly deferred, not silently assumed either way** - the same treatment D-118 already
+gave Node's own browser/WASM variant when that came up mid-conversation. Reasoning: Dart's primary
+real-world audience (Flutter mobile/web apps) overlaps least with this project's demonstrated
+PKI/enterprise/security-tooling demand, the same argument that already kept Node itself from being
+built second despite matching Python's binding shape (see the popularity analysis in
+`docs/bindings-strategy.md`). Not rejected outright - revisit if real demand evidence for Dart
+specifically ever appears, the same standard any other currently-out-of-scope language would need
+to meet.

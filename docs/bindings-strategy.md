@@ -57,6 +57,27 @@ five and not interleaved with them (no equivalent Ukrainian-PKI demand evidence 
    crate directly, like Python/Node, via `magnus`/`rb-sys` — the current standard for
    production Rust-backed gems, not through the C ABI.
 
+### Build order revised 2026-08-02 (D-121/D-122) — the analysis above stays, the ordering it drove doesn't
+
+The popularity analysis above is kept verbatim, not rewritten — it was correct evidence, just aimed
+at the wrong question. It asked "where does real DSTU demand already exist," and answered
+Java/.NET via UAPKI/Bouncy Castle. The better question for *this project's own* ordering is "where
+does a gap exist that only this project's zero-config `crypto_*` surface fills" — and Bouncy
+Castle/UAPKI already serving Java/.NET means this project's marginal contribution there is real but
+smaller than in a language with no DSTU library at all (Node, Ruby, PHP, and now Go — none of which
+have an incumbent the way Java/.NET do).
+
+**Revised order**: T-49 (Python, done) → T-50 (Node) → T-160 (Ruby) → T-159 (PHP, committed to
+`ext-php-rs` specifically so it's a direct binding like Node/Ruby, not gated on the C ABI crate
+below) → T-158 (C ABI crate, built once actually needed by the group below) → T-52 (.NET) → T-51
+(Java) → T-53 (C++) → T-163 (Go, new - see its own section below; needs the C ABI too, since no
+Go binding toolchain matches PyO3/napi-rs/magnus's maturity) → T-162 (docs, last).
+
+**Dart, raised in the same conversation, is explicitly deferred, not silently assumed either way**
+(D-122) — same reasoning as Node's own browser/WASM scoping (D-118): Dart's primary audience
+(Flutter mobile/web) overlaps least with this project's demonstrated PKI/enterprise/security-
+tooling demand, so it doesn't earn a place ahead of the languages that do.
+
 ## What to bind and how — the three forks, resolved
 
 ### Fork 1 — C ABI vs. native FFI, resolved by tooling maturity, not preference
@@ -226,6 +247,13 @@ document tracks live status so it doesn't drift from this analysis. Summary:
 | 8 | PHP binding | Phase 2 |
 | 9 | Ruby binding | Phase 1's pipeline lessons |
 | 10 | GitHub-facing docs + `gh-pages` site refresh | Phases 1-9 |
+| 11 | Go binding (T-163, added 2026-08-02) | Phase 2 (C ABI - no direct-Rust-binding toolchain for Go has PyO3/napi-rs/magnus's maturity) |
+
+**Phase numbers above are dependency labels, not the current build sequence** — D-121/D-122
+reordered the actual sequence (Node/Ruby/PHP before the C ABI group; Go added, needing the C ABI;
+Dart deferred). `docs/TASKS.md`'s "Build order revised 2026-08-02" line is the current
+authoritative sequence; this table stays as originally written since the *dependency* relationships
+it states (what needs what) are still accurate, only the *order* changed.
 
 ## Cross-session execution plan
 
@@ -477,17 +505,21 @@ Standard steps, consuming T-158's header:
 - Step 5: at least one of MSVC/GCC/Clang, matching this project's existing toolchain posture.
 - Step 6: a small C++ test.
 
-### T-159 — PHP (deferred until T-49/T-158/T-52/T-51/T-50/T-53 all land)
+### T-159 — PHP (reordered 2026-08-02, D-121: builds right after T-49/T-50/T-160, not deferred)
 
-Standard steps, consuming T-158's header:
-- Step 1: `ext-php-rs` extension, or a plainer `FFI`-extension path if `ext-php-rs` proves heavier
-  than needed — decide at implementation time.
+**No longer consumes T-158.** Original plan left `ext-php-rs` vs. `FFI`-over-the-C-ABI open;
+D-121 commits to `ext-php-rs` specifically so this binding is a direct Rust binding like
+Python/Node/Ruby and doesn't wait on the C ABI crate at all.
+
+Standard steps:
+- Step 1: `ext-php-rs` extension, own `[workspace]` table per D-119's reasoning (a direct Rust
+  binding, same shape as Python/Node/Ruby).
 - Step 3: PHP's own stream-wrapper/filter mechanism if one genuinely fits; otherwise a documented
   exception — research this when the task starts, don't assume the idiom exists going in.
 - Step 4: a prebuilt extension binary where the ecosystem supports it, source build as fallback.
 - Step 6: PHPUnit.
 
-### T-160 — Ruby (deferred, last)
+### T-160 — Ruby (reordered 2026-08-02, D-121: builds right after T-50, no longer last)
 
 Standard steps:
 - Step 1: `magnus`/`rb-sys`, a direct Rust binding like Python/Node's, own `[workspace]` table per
@@ -496,6 +528,31 @@ Standard steps:
   task starts.
 - Step 4: a prebuilt extension binary where the ecosystem supports it.
 - Step 6: RSpec/Minitest.
+
+### T-163 — Go (added 2026-08-02, D-122; builds alongside T-52/T-51/T-53, needs the C ABI)
+
+No incumbent DSTU library exists for Go, and it has a real DevSecOps/cloud-infra audience (same
+class of reasoning as Ruby's own security/ops-tooling footprint) — but unlike Node/Ruby/PHP, no
+Go binding toolchain matches PyO3/napi-rs/magnus's maturity, so this one goes through the C ABI
+crate (`cgo` over `bindings/capi`'s `cbindgen`-generated header) same as .NET/Java/C++. Builds
+after T-158 lands, alongside that group, not ahead of it.
+
+Standard steps, consuming T-158's header:
+- Step 1: a `cgo`-based package (`bindings/go`), wrapping the C ABI's opaque handles - decide at
+  implementation time whether a hand-written `cgo` layer or a generator (e.g. `c-for-go`) fits
+  better, research rather than assume.
+- Step 3: Go's `io.Writer`/`io.Reader` interfaces for the `crypto_secretstream` wrapper - the
+  idiomatic fit here, same reasoning as C++'s `istream`/`ostream`.
+- Step 4: prebuilt static/dynamic libs alongside the generated Go package, matching T-158's own
+  per-platform artifacts.
+- Step 5: `go test`-driven CI, own job (not folded into the Rust matrix, same D-119 reasoning as
+  every other binding).
+- Step 6: Go's own `testing` package, three categories (D-64/D-65).
+
+**Dart — raised in the same conversation, explicitly deferred (D-122), not scheduled.** Same
+reasoning as Node's own browser/WASM scoping (D-118): Dart's primary audience (Flutter mobile/web)
+overlaps least with this project's demonstrated PKI/enterprise/security-tooling demand. Revisit if
+real demand evidence appears, same as any other out-of-scope language would need.
 
 ### Publishing (all registries) — separate, owner-gated, not scheduled
 
