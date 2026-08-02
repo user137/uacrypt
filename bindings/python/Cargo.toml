@@ -18,7 +18,7 @@ name = "_dstu_core"
 crate-type = ["cdylib"]
 
 [dependencies]
-dstu-core = { path = "../../crates/dstu-core", features = ["std", "selftest"] }
+dstu-core = { path = "../../crates/dstu-core", features = ["std", "selftest", "pwhash"] }
 # `extension-module` is unconditional here, not gated behind a `maturin`-only feature the way the
 # standard pyo3 template does it (`optional = true`, maturin turns it on) - fine for `cargo build`/
 # `maturin develop`, both verified working, but this is known to break a plain `cargo test` in this
