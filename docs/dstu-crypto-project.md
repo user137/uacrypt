@@ -51,8 +51,9 @@ implementation within a minute, without hassle — in the spirit of
 - Language bindings: Python, JavaScript, Java, .NET, C++ — plus PHP and Ruby, added to scope
   2026-08-02. **Full analysis (popularity rationale, C-ABI-vs-native-FFI split, per-binding
   checklist, phased order) now lives in `docs/bindings-strategy.md`; task tracking in
-  `docs/TASKS.md` T-49/T-50/T-51/T-52/T-53/T-158/T-159/T-160.** Not started as actual binding code
-  yet — Phase 0 (the planning artifacts) is done.
+  `docs/TASKS.md` T-49/T-50/T-51/T-52/T-53/T-158/T-159/T-160.** T-49 (Python, the template every
+  later binding follows) is done as of 2026-08-02 - see `docs/TASKS.md`/`docs/DECISIONS.md` D-120.
+  The rest (T-50 onward) haven't started.
 - Do not separately reimplement DSTU 4145 in the native core — for
   Java/.NET, integrate/wrap Bouncy Castle (a mature implementation already
   exists there); for Rust, port it while relying on Bouncy Castle as a

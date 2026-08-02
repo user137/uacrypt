@@ -214,10 +214,11 @@ any kind to choose from, safe or otherwise.
   API-level docs a consumer reads without first reading `docs/DECISIONS.md`.
 - Phase 3 (language bindings: Python/JS/Java/.NET/C++, plus PHP/Ruby added 2026-08-02) — not
   required for a Rust-crate-only 1.0, but relevant if "libsodium-equivalent" is read to include
-  libsodium's multi-language reach. **No longer "entirely unstarted"**: the planning stage is done
-  (`docs/bindings-strategy.md`, `docs/DECISIONS.md` D-115, `docs/TASKS.md`
-  T-49/T-50/T-51/T-52/T-53/T-158/T-159/T-160) — no binding code has landed yet, that's the next
-  step.
+  libsodium's multi-language reach. **First binding done**: T-49 (Python) landed 2026-08-02 -
+  full `crypto_*` surface, own CI, manylinux/macOS/Windows wheels attached to GitHub Releases, not
+  yet published to PyPI (separately gated, same posture as crates.io's T-17). See
+  `docs/bindings-strategy.md`, `docs/DECISIONS.md` D-115/D-120, `docs/TASKS.md`
+  T-49/T-50/T-51/T-52/T-53/T-158/T-159/T-160 - T-50 onward haven't started.
 
 ## Libsodium API surface and crates.io publishing audit (2026-07-25)
 

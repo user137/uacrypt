@@ -8243,3 +8243,75 @@ Kupyna checks and the `small-tables` alternate code path). Also confirmed `cargo
 dstu-core` includes `tests/vectors/*.json` in the packaged crate by Cargo's own default inclusion
 rules, so `selftest`'s `include_str!` paths resolve correctly even from a future crates.io-
 published `dstu-core` (T-17, still gated) - not a gap, verified rather than assumed.
+
+## D-120: T-49 (Python binding) done in full - CI, wheels, examples, doc-map sweep
+
+Completed 2026-08-02, steps 5 and 7-9 of `docs/bindings-strategy.md`'s standard binding template
+(steps 1-4 and 6 already landed earlier the same day, D-119/D-117 cover those).
+
+**Step 5 (CI wiring), two distinct pieces per advisor review** - `release.yml` only fires on `v*`
+tags, so reusing only it would leave this binding with zero regression coverage between releases:
+
+1. `.github/workflows/bindings-python.yml`, its own job, not folded into `rust.yml`'s matrix
+   (D-119's separate-workspace reasoning applies here too). `test` (matrix ubuntu/macos/windows):
+   `cargo fmt --check` runs ubuntu-only - the other two legs hit the same autocrlf false positive
+   `rust.yml`'s own fmt job already avoids by never running there (confirmed empirically: the
+   first push failed on `windows-latest` flagging *every* checked-in file, not just new ones, as
+   "Incorrect newline style" - the pre-existing, already-diagnosed artifact `docs/DECISIONS.md`'s
+   own D-108 notes elsewhere, now confirmed to also reproduce on a real GitHub-hosted Windows
+   runner, not just this local dev machine). `cargo build -p uacrypt --release` runs first, from
+   the repo root - `tests/test_secretstream.py`'s interop test silently *skips* rather than fails
+   without the binary, which would make the job pass green while not exercising the wire-format
+   check that justifies the binding existing; the pytest step greps for `SKIPPED` and fails the job
+   if found, confirmed on real CI to actually run (not skip) on all three platforms, 57/57 passing
+   everywhere. `maturin build --release --out dist` + `pip install --no-index --find-links dist
+   dstu-core` is used instead of `maturin develop`, since `develop` requires a virtualenv a bare
+   `actions/setup-python` interpreter on a fresh runner isn't. A `wheel-preview` job runs the real
+   `PyO3/maturin-action@v1`/`manylinux: auto` recipe on every push specifically so a broken recipe
+   is caught immediately rather than discovered during a release - confirmed on real CI producing
+   `dstu_core-0.1.0-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl`, the tag itself
+   checked, not assumed. A `supply-chain` job runs `cargo deny check`/`cargo audit` against this
+   workspace.
+2. `release.yml` gained a `build-python-wheels` job (same matrix/maturin-action recipe as
+   `wheel-preview`, kept in sync by hand - no cross-workflow includes in GitHub Actions), added to
+   `publish-release`'s `needs` so a wheel-build failure blocks the release, a deliberate choice
+   recorded in-comment (same posture as `package-library`). No PyPI publish added - stays
+   separately gated, same class of decision as T-17 for crates.io. `bindings/python/pyproject.toml`
+   stays at its own `0.1.0`, deliberately decoupled from the Rust crates' `0.2.0` - this binding is
+   still provisional/pre-1.0 and not lockstepped with the core crates' release cadence, noted
+   in-comment so a future reader doesn't read the mismatch as a bug.
+
+**Real bug found and fixed in the same pass, not a separate task**: running `cargo deny check`
+with `bindings/python` as cwd for the first time (to close D-119's own recorded gap - root
+`cargo deny`/`audit` not reaching this workspace) immediately flagged a wildcard-dependency error:
+`bindings/python/Cargo.toml`'s `dstu-core = { path = "../../crates/dstu-core", ... }` had no
+`version =` pin - the exact T-75/D-11 failure mode, just never checked here until now. Fixed by
+adding `version = "0.2.0"`, matching `crates/uacrypt/Cargo.toml`'s existing pattern. Also
+discovered: no second `deny.toml` was needed at all - cargo-deny walks up from its cwd looking for
+the config file, so it already finds the root `deny.toml` and checks whichever workspace's
+dependency tree is live in that cwd against the same policy. Confirmed by running it, not assumed;
+`deny.toml`'s own header comment updated to say so. `cargo xtask`'s `audit()`/`deny()` now check
+both workspaces; a new `cargo xtask python` best-effort subcommand (D-12 posture) runs
+build+fmt+clippy+`maturin develop`+pytest for local iteration - verified locally, 57/57 passing
+with the interop test genuinely running.
+
+**Step 7 (examples/README)**: five runnable scripts under `bindings/python/examples/`
+(`secretbox.py`, `secretstream_file.py`, `sign.py`, `password_hashing.py`, `misc.py` for
+auth/kdf/generichash/stream/randombytes) - each run against the real built extension before
+committing, not written from the API surface alone. `README.md` rewritten from its step-1
+"scaffold only, selftest() only" state to a full module-by-example reference table; the
+provisional-status banner stayed, reworded to match. Wiring `ruff` into a real CI gate for the
+first time (step 5) surfaced two genuine `PYI034` findings in `secretstream.py`'s `__enter__`
+methods (ruff wants `Self` as the return type) - fixed with an inline `noqa` rather than a
+`typing_extensions` dependency, since this binding's `requires-python` floor is 3.9 and
+`typing.Self` needs 3.11+.
+
+**Step 8 (doc-map sweep)**: root `README.md`'s repo-tree line ("planned, not yet built") was stale,
+fixed; `docs/dstu-crypto-project.md` and `docs/release-readiness.md` updated to say T-49 is done;
+`docs/user-journey-gaps.md`/`docs/cross-language-style-guide.md` checked and had no T-49 references
+to begin with, left untouched. `docs/bindings-strategy.md`'s resume point updated to point at T-50
+next. `docs/TASKS.md` T-49 marked `[x]`.
+
+**Step 9**: each piece above landed as its own commit, not one large drop (see `git log` for the
+sequence: the wildcard-dependency fix + xtask wiring, the CI workflow, the autocrlf fix, the
+release.yml wheel job, examples/README, this doc pass).

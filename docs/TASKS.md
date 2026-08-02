@@ -2471,21 +2471,19 @@ configuration surface added in the process (D-47 still holds).
       binding's `Cargo.toml`). Built once here, every binding (T-49/T-50/T-51/T-52/T-53/T-158/T-159/
       T-160) wraps it thin rather than reimplementing it — see D-117 for the precedent this follows
       (D-13's shared S-box/MDS tables).
-- [ ] **T-49** Python binding (`bindings/python`, PyO3 + maturin) — the template every later binding
-      instantiates. **Own `[workspace]` table, not a root-workspace member (D-119, corrected
-      2026-08-02 from the original plan text)** — two CI jobs use `--workspace` explicitly (Miri,
-      the MSRV-pinned build) and neither is equipped for a PyO3 `cdylib`; a path dependency on
+- [x] **T-49** **Done 2026-08-02, see `docs/DECISIONS.md` D-120.** Python binding (`bindings/python`,
+      PyO3 + maturin) — the template every later binding instantiates. **Own `[workspace]` table,
+      not a root-workspace member (D-119)** — two CI jobs use `--workspace` explicitly (Miri, the
+      MSRV-pinned build) and neither is equipped for a PyO3 `cdylib`; a path dependency on
       `dstu-core` still resolves across separate workspaces. Exposes the full `crypto_*` surface
-      (not a subset) — **steps 1-4 and 6 done 2026-08-02** (scaffold, full surface, file-like
-      `crypto_secretstream` pipeline verified byte-compatible with `uacrypt encrypt`/`decrypt`,
-      local Windows `abi3` wheel built and installed into a fresh venv, a 57-test `pytest` suite
-      done out of order/before step 5 per an advisor review), see `docs/bindings-strategy.md`'s
-      T-49 section for the concrete shape; steps 5, 7-9 (CI wiring incl. manylinux/macOS wheels,
-      examples/README, doc-map sweep) still open. Three test categories (correctness/rejection/
-      misuse, D-64/D-65) via `pytest`,
-      `bindings/python/examples/`, its own CI job (not folded into the existing Rust matrix) with a
-      best-effort `cargo xtask` subcommand (D-12's miri/fuzz/audit posture, not mandatory),
-      provisional-status banner in its README. See `docs/bindings-strategy.md` "Phase 1."
+      (not a subset). All nine standard steps done: scaffold; full surface; file-like
+      `crypto_secretstream` pipeline byte-compatible with `uacrypt encrypt`/`decrypt`; prebuilt
+      wheels (local Windows verified, manylinux/macOS/Windows via CI); own CI (per-push regression
+      gate plus release-time wheel building, D-120); a 57-test `pytest` suite (correctness/
+      rejection/misuse, D-64/D-65); `bindings/python/examples/`; doc-map sweep; each step its own
+      commit. `cargo xtask python` is the best-effort local entry point (D-12's miri/fuzz/audit
+      posture, not mandatory). See `docs/bindings-strategy.md`'s T-49 section for the full
+      step-by-step record, "Phase 1."
 - [ ] **T-50** Node.js binding (`bindings/nodejs`, napi-rs) — same `crypto_*` surface and template as
       T-49, `node:test` suite, deliberately built after T-52/T-51 despite matching Python's
       direct-Rust-binding shape (see `docs/bindings-strategy.md`'s ordering rationale). **Node-only,
