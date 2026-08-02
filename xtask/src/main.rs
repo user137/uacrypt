@@ -9,7 +9,7 @@
 //! shows up in `dstu-core`'s dependency graph that `deny.toml`/`docs/SECURITY.md` are policing.
 
 use std::env;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
 fn main() -> ExitCode {
@@ -35,6 +35,7 @@ fn main() -> ExitCode {
         "nodejs" => nodejs(),
         "ruby" => ruby(),
         "php" => php(),
+        "capi" => capi(),
         "ci" => ci(),
         "help" | "-h" | "--help" => {
             print_usage();
@@ -74,7 +75,8 @@ fn print_usage() {
          \x20 python         build+lint bindings/python, maturin develop, pytest (T-49)\n\
          \x20 nodejs         build+lint bindings/nodejs, napi build, node --test (T-50)\n\
          \x20 ruby           build+lint bindings/ruby, rake compile, rspec (T-160)\n\
-         \x20 php            build+lint bindings/php, cargo build, phpunit (T-159)"
+         \x20 php            build+lint bindings/php, cargo build, phpunit (T-159)\n\
+         \x20 capi           regenerate+diff include/dstu_core.h, compile+run the C test harness and examples (T-158)"
     );
 }
 
@@ -556,6 +558,246 @@ fn php_extension_path(dir: &Path) -> Option<std::path::PathBuf> {
         .find(|p| p.is_file())
 }
 
+/// `crates/dstu-core-capi` IS a real root-workspace member (D-119/D-148 point 6, unlike Python/
+/// Node/Ruby/PHP) - `build`/`test`/`clippy`/`fmt` above already cover its Rust-side correctness
+/// for free via their existing `--workspace` flags. This function only needs the C-toolchain-
+/// dependent part `--workspace` can't reach: (1) regenerate the header via `cbindgen` into a temp
+/// path and diff it against the committed copy (same drift-detection shape as the T-120/D-75
+/// README-vs-doctest check), failing loudly on drift; (2) compile and run the plain-C test
+/// harness against the just-built cdylib; (3) compile and run the C examples (deterministic,
+/// side-effect-free, safe to run here rather than just compile).
+fn capi() -> bool {
+    if !require("cbindgen", "cargo install cbindgen --locked") {
+        return false;
+    }
+    if !capi_header_up_to_date() {
+        return false;
+    }
+    if !run(
+        "cargo",
+        &["build", "-p", "dstu-core-capi", "--release"],
+        None,
+    ) {
+        return false;
+    }
+
+    let harness = Path::new("crates/dstu-core-capi/c-tests/test_capi.c");
+    if !capi_run_c_program(harness, "capi_test_capi") {
+        return false;
+    }
+    for name in CAPI_EXAMPLES {
+        let src = PathBuf::from(format!("crates/dstu-core-capi/examples/{name}.c"));
+        if !capi_run_c_program(&src, &format!("capi_example_{name}")) {
+            return false;
+        }
+    }
+    true
+}
+
+/// Kept in sync by hand with `crates/dstu-core-capi/examples/*.c` - no single source of truth for
+/// "every example name" short of listing the directory, same manual-sync tradeoff `FUZZ_TARGETS`
+/// already accepts.
+const CAPI_EXAMPLES: [&str; 4] = ["secretbox", "secretstream_file", "sign", "misc"];
+
+/// Regenerates `include/dstu_core.h` into a temp path and diffs it byte-for-byte against the
+/// committed copy - fails loudly (not silently) on drift, the same shape T-120/D-75 already uses
+/// for the Python README-vs-doctest check.
+fn capi_header_up_to_date() -> bool {
+    let dir = Path::new("crates/dstu-core-capi");
+    let committed = dir.join("include/dstu_core.h");
+    let tmp = env::temp_dir().join("dstu_core_capi_header_check.h");
+    let tmp_str = tmp.display().to_string();
+    if !run(
+        "cbindgen",
+        &["--config", "cbindgen.toml", "--output", &tmp_str],
+        Some(dir),
+    ) {
+        return false;
+    }
+
+    let generated = match std::fs::read_to_string(&tmp) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!(
+                "xtask: could not read cbindgen's generated header at {}: {e}",
+                tmp.display()
+            );
+            return false;
+        }
+    };
+    let _ = std::fs::remove_file(&tmp);
+    let committed_contents = match std::fs::read_to_string(&committed) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!(
+                "xtask: could not read committed header {}: {e}",
+                committed.display()
+            );
+            return false;
+        }
+    };
+    if generated != committed_contents {
+        eprintln!(
+            "xtask: {} is out of date relative to the crate's own extern \"C\" surface - \
+             regenerate with `cbindgen --config cbindgen.toml --output include/dstu_core.h` (run \
+             from crates/dstu-core-capi) and commit the diff",
+            committed.display()
+        );
+        return false;
+    }
+    true
+}
+
+/// The just-built shared library's platform-specific filename under `target/release` - matches
+/// `php_extension_path`'s own per-OS convention above (macOS `cdylib` default is `.dylib`, no
+/// PHP-style `.so` rename needed here since this is a plain C consumer, not PHP's `extension=`
+/// loader).
+fn capi_shared_lib_name() -> &'static str {
+    if cfg!(windows) {
+        "dstu_core_capi.dll"
+    } else if cfg!(target_os = "macos") {
+        "libdstu_core_capi.dylib"
+    } else {
+        "libdstu_core_capi.so"
+    }
+}
+
+/// Compiles `src` against the just-built `dstu-core-capi` cdylib and runs the result, returning
+/// whether both steps succeeded. Copies the shared library next to the compiled binary so the OS
+/// loader finds it without a PATH/`LD_LIBRARY_PATH` change - simpler than relying on `-rpath`
+/// alone (kept anyway on non-Windows as a second, redundant safety net).
+fn capi_run_c_program(src: &Path, exe_stem: &str) -> bool {
+    let target_dir = Path::new("target/release");
+    let include_dir = Path::new("crates/dstu-core-capi/include");
+    let out_dir = Path::new("target/capi-c");
+    if std::fs::create_dir_all(out_dir).is_err() {
+        eprintln!("xtask: could not create {}", out_dir.display());
+        return false;
+    }
+
+    let compiled = if cfg!(windows) && cfg!(target_env = "msvc") {
+        capi_compile_msvc(src, exe_stem, include_dir, target_dir, out_dir)
+    } else {
+        let compiler = if cfg!(windows) { "gcc" } else { "cc" };
+        capi_compile_unixlike(compiler, src, exe_stem, include_dir, target_dir, out_dir)
+    };
+    if !compiled {
+        return false;
+    }
+
+    let exe_name = if cfg!(windows) {
+        format!("{exe_stem}.exe")
+    } else {
+        exe_stem.to_string()
+    };
+    let exe_path = out_dir.join(&exe_name);
+
+    let lib_name = capi_shared_lib_name();
+    if std::fs::copy(target_dir.join(lib_name), out_dir.join(lib_name)).is_err() {
+        eprintln!(
+            "xtask: could not copy {lib_name} from {} into {}",
+            target_dir.display(),
+            out_dir.display()
+        );
+        return false;
+    }
+
+    println!("+ {}", exe_path.display());
+    Command::new(&exe_path).status().is_ok_and(|s| s.success())
+}
+
+/// GCC (mingw, Windows GNU host - this dev machine's own default, confirmed via `rustc -vV`) or
+/// `cc` (Linux/macOS, always present alongside a real Rust toolchain there) - both accept the same
+/// flag shape, unlike MSVC's `cl.exe` below. Links against the cdylib's import library
+/// (`libdstu_core_capi.dll.a` on Windows-GNU, `.so`/`.dylib` directly via `-l` elsewhere), not the
+/// staticlib - avoids re-declaring Rust std's own transitive system-library dependencies at the C
+/// link step.
+fn capi_compile_unixlike(
+    compiler: &str,
+    src: &Path,
+    exe_stem: &str,
+    include_dir: &Path,
+    target_dir: &Path,
+    out_dir: &Path,
+) -> bool {
+    let exe_name = if cfg!(windows) {
+        format!("{exe_stem}.exe")
+    } else {
+        exe_stem.to_string()
+    };
+    let out_path = out_dir.join(&exe_name);
+    let mut args: Vec<String> = vec![
+        "-std=c11".into(),
+        "-Wall".into(),
+        "-I".into(),
+        include_dir.display().to_string(),
+        src.display().to_string(),
+        "-o".into(),
+        out_path.display().to_string(),
+        "-L".into(),
+        target_dir.display().to_string(),
+        "-ldstu_core_capi".into(),
+    ];
+    if !cfg!(windows) {
+        // rpath so the produced binary finds the .so/.dylib without LD_LIBRARY_PATH/DYLD_LIBRARY_PATH
+        // - redundant with the copy-next-to-exe step in capi_run_c_program, kept as a second net.
+        args.push(format!("-Wl,-rpath,{}", target_dir.display()));
+    }
+    let args_ref: Vec<&str> = args.iter().map(String::as_str).collect();
+    run(compiler, &args_ref, None)
+}
+
+/// MSVC (`cl.exe`), for a real CI Windows runner whose default Rust host is
+/// `x86_64-pc-windows-msvc` (unlike this dev machine's own GNU-hosted default, confirmed via
+/// `rustc -vV` - `target_env = "msvc"` reflects xtask's own compiled-in host, since xtask itself
+/// is always built with the same toolchain as the rest of the workspace). Mirrors
+/// `fuzz_windows_msvc`'s own `vcvars64.bat`-sourcing pattern above - `cl.exe`/`link.exe` are not
+/// on PATH without it.
+#[cfg(windows)]
+fn capi_compile_msvc(
+    src: &Path,
+    exe_stem: &str,
+    include_dir: &Path,
+    target_dir: &Path,
+    out_dir: &Path,
+) -> bool {
+    use std::os::windows::process::CommandExt;
+
+    let Some(vcvars) = find_vcvars64() else {
+        eprintln!(
+            "xtask: no Visual Studio C++ toolset found (vswhere.exe absent or reported nothing) \
+             - skipping capi C harness/examples.\n  install: Visual Studio Build Tools, \"Desktop \
+             development with C++\" workload"
+        );
+        return false;
+    };
+    let exe_path = out_dir.join(format!("{exe_stem}.exe"));
+    let inner = format!(
+        "cl.exe /nologo /W3 /std:c11 /I\"{}\" \"{}\" /Fe\"{}\" /link /LIBPATH:\"{}\" dstu_core_capi.dll.lib",
+        include_dir.display(),
+        src.display(),
+        exe_path.display(),
+        target_dir.display()
+    );
+    let full = format!("call \"{vcvars}\" >nul && {inner}");
+    println!("+ cmd /C {full}");
+    let mut command = Command::new("cmd");
+    command.arg("/C");
+    command.raw_arg(&full);
+    command.status().is_ok_and(|s| s.success())
+}
+
+#[cfg(not(windows))]
+fn capi_compile_msvc(
+    _src: &Path,
+    _exe_stem: &str,
+    _include_dir: &Path,
+    _target_dir: &Path,
+    _out_dir: &Path,
+) -> bool {
+    unreachable!("only called when cfg!(windows) && cfg!(target_env = \"msvc\")")
+}
+
 fn oracle_java() -> bool {
     if !require("mvn", "see README.md \"Building from source\" (Maven)") {
         return false;
@@ -612,6 +854,7 @@ fn ci() -> bool {
         nodejs,
         ruby,
         php,
+        capi,
     ] {
         optional();
     }

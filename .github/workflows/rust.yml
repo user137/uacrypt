@@ -167,6 +167,34 @@ jobs:
       - uses: actions/checkout@v4
       - uses: EmbarkStudios/cargo-deny-action@v2
 
+  capi:
+    name: capi (cbindgen header, C test harness, examples)
+    # `dstu-core-capi` IS a real root-workspace member (D-119/D-148) - the `test` job above
+    # already covers its Rust-side build/test/clippy/fmt for free via `--workspace`. This job only
+    # covers what needs a real C compiler: the cbindgen header-drift check, plus compiling and
+    # running the plain-C test harness (`c-tests/`) and every example (`examples/`) against the
+    # just-built cdylib - `cargo xtask capi` does all of this in one command (xtask/src/main.rs).
+    #
+    # Windows note: `dtolnay/rust-toolchain@stable` on `windows-latest` installs the MSVC-hosted
+    # toolchain by default, so `cl.exe`/`link.exe` are needed, not on PATH by default. Deliberately
+    # NOT using `ilammy/msvc-dev-cmd` here - `xtask`'s own `capi_compile_msvc` already finds
+    # `vcvars64.bat` via `vswhere.exe` (present on GitHub-hosted Windows runners) and sources it
+    # internally per invocation (the same pattern `fuzz_windows_msvc` already uses for cargo-fuzz),
+    # so a separate environment-setup action would just duplicate what `cargo xtask capi` already
+    # does itself - confirmed by this same logic passing locally on this dev machine's own
+    # GNU-hosted toolchain (`target_env = "gnu"` branch, `gcc`), which `xtask` distinguishes from
+    # MSVC via its own compiled-in `cfg!(target_env = ...)`, not by asking the OS.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo install cbindgen --locked
+      - run: cargo xtask capi
+
   msrv:
     name: MSRV build (1.87.0)
     runs-on: ubuntu-latest
