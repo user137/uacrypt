@@ -8124,6 +8124,18 @@ modes are real and documented — but `selftest`/`self_test` genuinely does not 
 binding-layer wrapper around something already built — which is exactly why T-161 is sequenced
 first rather than assumed available when a later binding phase reaches for it.
 
+**Landed 2026-08-02, see `docs/TASKS.md` T-161.** `dstu_core::selftest::run()` re-checks one
+official vector per primitive (Kalyna-128/128, Kupyna-256, Strumok-256, DSTU 4145's Annex B.1
+worked example) against the live compiled build, embedded from the same
+`crates/dstu-core/tests/vectors/*.json` files via `include_str!` and a small hand-rolled
+string/hex scanner (no `serde` dependency - matches this crate's existing convention rather than
+adding one). New `selftest` Cargo feature, requires `std`, off by default. Caught one real parsing
+bug during implementation, not by inspection: DSTU 4145's `qy`/`r`/`s` hex values are sometimes one
+nibble short of a full byte, which a first strict-even-length hex decoder rejected outright - fixed
+by adopting the same leading-zero-pad convention `tests/dstu4145_signature.rs`'s own `decode_hex`
+helper already uses, once the mismatch was traced rather than assumed. See T-161 for the full
+verification record (clippy/fmt/`no_std` matrix, the two documented `#[allow]`s).
+
 ## D-118: Idiomatic streaming wrapper over `crypto_secretstream`; browser/WASM explicitly deferred
 
 Raised 2026-08-02 by the project owner as an open question, not a directive: should bindings ship a

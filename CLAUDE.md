@@ -125,7 +125,14 @@ environment. The workspace has two crates:
   (same posture as `crypto_kdf`, D-45) — verified by property test, tamper (D-64), and misuse (D-65)
   coverage instead: 22/22 library tests and 48/48 `uacrypt` tests passed on first write, full
   workspace suite/clippy/fmt/`no_std` feature matrix all clean, scoped Miri 22/22 passed with 0 UB
-  in 1276.00s (~21.3 min).
+  in 1276.00s (~21.3 min). As of 2026-08-02, `dstu_core::selftest` (`docs/TASKS.md` T-161,
+  `docs/DECISIONS.md` D-117) is a new, `std`-gated (`selftest` Cargo feature, off by default) runtime
+  KAT self-check: `run()` re-verifies one official vector per primitive (Kalyna-128/128, Kupyna-256,
+  Strumok-256, DSTU 4145's Annex B.1 worked example) against the live compiled build, embedded from
+  the same `crates/dstu-core/tests/vectors/*.json` files via `include_str!` rather than hand-copied.
+  Built to let every future language binding (`docs/bindings-strategy.md`) expose one thin wrapper
+  around a single shared implementation instead of reimplementing its own KAT check per language,
+  the same "build once, share" precedent as Kalyna/Kupyna's shared S-box/MDS tables (D-13).
 - `crates/uacrypt` — the CLI binary, renamed 2026-07-23 from its `dstutool` working name
   (`docs/DECISIONS.md` D-36; older `docs/DECISIONS.md`/`docs/TASKS.md`/`docs/PERFORMANCE.md` entries predating the
   rename still say `dstutool`, left as-is since they're a historical record, not stale docs).

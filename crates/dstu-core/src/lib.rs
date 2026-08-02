@@ -27,3 +27,5 @@ pub mod crypto_stream;
 pub mod hazmat;
 #[cfg(any(feature = "std", feature = "getrandom"))]
 pub mod randombytes;
+#[cfg(feature = "selftest")]
+pub mod selftest;

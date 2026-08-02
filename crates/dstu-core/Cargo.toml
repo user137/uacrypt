@@ -39,6 +39,12 @@ small-tables = []
 # a password-hashing KDF. Requires `std` (needs `randombytes` for the salt, and `String`/PHC-string
 # allocation).
 pwhash = ["std", "dep:argon2"]
+# `selftest` (T-161, docs/DECISIONS.md D-117): a shared runtime KAT self-check every binding wraps
+# rather than reimplementing per language. Requires `std` (D-48's precedent) - vector text is
+# embedded via `include_str!` and parsed at runtime with a small hand-rolled scanner (no `serde`
+# dependency, matching every other test-vector reader in this crate), which needs `String`/`Vec`.
+# Off by default in the bare crate (binary-size cost); every binding's own `Cargo.toml` turns it on.
+selftest = ["std"]
 
 [dependencies]
 zeroize = { version = "1.9.0", default-features = false, features = ["derive"] }

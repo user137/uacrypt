@@ -234,7 +234,7 @@ new session — this section is the one to update as work lands, and the one to 
 resuming. **Update the resume line below every time a step is checked off**; a stale resume line is
 worse than no resume line, since it actively misdirects the next session.
 
-**Resume point: T-161, step 1 — not started.**
+**Resume point: T-161 done (2026-08-02). Next: T-49 (Python binding), step 1 — not started.**
 
 ### The standard binding steps
 
@@ -264,17 +264,24 @@ duplicate a real invariant" instinct:
 No binding exists yet at this point, so the standard template above doesn't apply — this is real
 Rust-core work, confirmed as a genuine gap (see `docs/TASKS.md` T-161's own note).
 
-1. [ ] Test-first: write the test asserting `selftest::run()` reports success, before the module
+**Done 2026-08-02.**
+
+1. [x] Test-first: write the test asserting `selftest::run()` reports success, before the module
        exists.
-2. [ ] New Cargo feature (`selftest`), off by default in the bare crate.
-3. [ ] Embed the official vectors (build-time include from `crates/dstu-core/tests/vectors/*.json`,
+2. [x] New Cargo feature (`selftest`), off by default in the bare crate.
+3. [x] Embed the official vectors (build-time include from `crates/dstu-core/tests/vectors/*.json`,
        not hand-copied).
-4. [ ] Implement `run()` over every already-built `hazmat`/`crypto_*` primitive; the report names
-       which one fails, if any.
-5. [ ] Verify: `cargo test`, `cargo clippy -- -D warnings`, `cargo fmt --check`, the full
-       `no_std`/`alloc`/`std`/`small-tables` matrix combined with the new `selftest` feature.
-6. [ ] Mark T-161 done in `docs/TASKS.md`, note in D-117 that it landed.
-7. [ ] Commit.
+4. [x] Implement `run()` — **scope note**: one vector per *primitive* (Kalyna, Kupyna, Strumok,
+       DSTU 4145), not one per every `hazmat` mode/`crypto_*` wrapper — a fast spot check of the
+       underlying algorithm each of those builds on, not a re-run of the full `tests/vectors/`
+       corpus (the module's own doc comment says this explicitly, so a future reader doesn't assume
+       broader coverage than exists). The report names which primitive(s) failed, if any.
+5. [x] Verify: `cargo test --features selftest` (workspace-default run unaffected), `cargo clippy
+       --features selftest --all-targets -- -D warnings` clean for the new files, `cargo fmt
+       --check` clean, `no_std`/`no_std+alloc`/default builds all still succeed with the feature
+       absent.
+6. [x] Mark T-161 done in `docs/TASKS.md`, note in D-117 that it landed.
+7. [x] Commit.
 
 ### T-49 — Python (the template every later task assumes)
 

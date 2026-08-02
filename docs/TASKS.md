@@ -2425,8 +2425,33 @@ completion bar same as the three test categories. **And D-118's requirement**: e
 `istream`/`ostream`) — not a raw push/pull loop left for the consumer to assemble — with no new
 configuration surface added in the process (D-47 still holds).
 
-- [ ] **T-161** `dstu_core::selftest` — shared runtime KAT self-check module (D-117), a prerequisite
-      for every binding below. **Confirmed as a genuine gap 2026-08-02, not assumed**: the project
+- [x] **T-161** **Done 2026-08-02, see `docs/DECISIONS.md` D-117.** `dstu_core::selftest` — shared
+      runtime KAT self-check module, a prerequisite for every binding below. New `selftest` Cargo
+      feature (requires `std`, off by default). `run()` re-checks one official vector per primitive
+      (Kalyna-128/128 encrypt+decrypt, Kupyna-256 digest, Strumok-256 keystream, DSTU 4145's Annex
+      B.1 worked-example `verify`) against the live compiled build, embedded via `include_str!` from
+      the same `crates/dstu-core/tests/vectors/*.json` files `cargo test` already uses (a small
+      hand-rolled string/hex scanner, no `serde` dependency, matching every other vector reader in
+      this crate) — returns `Ok(())` or a `Report` naming which primitive(s) failed. Test-first:
+      `tests/selftest.rs` was written before `src/selftest.rs` existed. Unit tests cover the parsing
+      helpers' own failure-detection path (a mismatch is actually caught, not just the golden path)
+      since `run()` itself takes no caller input for a rejection/misuse category to apply to -
+      recorded here rather than skipped silently, per this file's own test-category discipline.
+      Verified: `cargo test --features selftest` (workspace default run unaffected), `cargo clippy
+      --features selftest --all-targets -- -D warnings` clean for the new files (two documented
+      `#[allow]`s: `type_complexity` resolved via a type alias, `similar_names` allowed for `qx`/`qy`
+      matching `tests/dstu4145_signature.rs`'s own naming), `cargo fmt --check` clean, and the
+      existing `no_std`/`no_std+alloc`/default build combinations all still build with the new
+      feature absent. One real bug caught during this work, not by inspection: the DSTU 4145 vector's
+      `qy`/`r`/`s` hex strings are sometimes one nibble short of a full byte (the standard's worked
+      example trims a leading zero nibble) - the first parser draft rejected odd-length hex outright
+      and failed with `MalformedEmbeddedVector`; fixed by auto-padding a leading zero, the same
+      convention `tests/dstu4145_signature.rs`'s own `decode_hex` helper already uses. Every
+      pre-existing clippy warning seen while testing this (`gf2m_wide.rs`/`tables.rs`
+      `needless_range_loop`/`cast_precision_loss`, `crypto_sign.rs` `doc_lazy_continuation`) was
+      confirmed via `git stash` to already exist on `master` without this change (a clippy-version
+      drift, not something this task introduced) and is out of this task's scope. **Original
+      "Confirmed as a genuine gap" note, kept for the historical record**: the project
       owner asked whether everything the bindings plan leans on actually exists in stock Rust yet,
       not just described in docs — checked directly (`find crates/dstu-core/src/hazmat -maxdepth 1
       -name "*.rs"`, a `grep -i selftest` across `crates/dstu-core/src`) rather than trusted from
