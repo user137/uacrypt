@@ -647,7 +647,12 @@ fn stream_encrypt_decrypt_round_trip_and_silent_tamper() {
 #[test]
 fn pwhash_hash_and_verify_round_trip_and_rejects_wrong_password() {
     let password = b"correct horse battery staple";
-    let mut out = [0i8; DSTU_PWHASH_STRBYTES];
+    // `c_char`, not a hardcoded `i8` - ARM Linux's ABI makes plain `char` unsigned by default
+    // (`c_char` resolves to `u8` there), unlike x86-64/macOS/Windows where it's `i8`. A hardcoded
+    // `i8` buffer compiled fine on every platform this project developed on until a real aarch64
+    // Linux build (the Raspberry Pi check) caught the mismatch against
+    // `dstu_pwhash_hash_password`'s own `*mut c_char` parameter.
+    let mut out = [0 as std::os::raw::c_char; DSTU_PWHASH_STRBYTES];
     assert_eq!(
         unsafe {
             dstu_pwhash_hash_password(
