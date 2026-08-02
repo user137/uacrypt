@@ -2578,7 +2578,8 @@ configuration surface added in the process (D-47 still holds).
       does, see its own entry below - D-121 committed it to `ext-php-rs` instead); verify the existing
       8-combination `no_std`/`alloc`/`std`/`small-tables` feature matrix still passes with this new
       workspace member present (D-12). See `docs/bindings-strategy.md` "Phase 2."
-- [ ] **T-159** PHP binding (`bindings/php`) — added to scope 2026-08-02 at the owner's request.
+- [x] **T-159** PHP binding (`bindings/php`) — added to scope 2026-08-02 at the owner's request.
+      **Done in full 2026-08-02 — see D-142 through D-146.**
       **Reordered 2026-08-02, see D-121**: moved up to build right after T-50/T-160, ahead of
       T-158/T-52/T-51/T-53 — same no-incumbent reasoning as Node/Ruby. **Committed to `ext-php-rs`
       specifically (not the `FFI`-over-`bindings/capi` alternative originally left open)** so this
@@ -2588,6 +2589,40 @@ configuration surface added in the process (D-47 still holds).
       evidence exists for PHP the way UAPKI/Bouncy-Castle-.NET give Java/.NET). `ext-php-rs`
       extension or a plainer `FFI`-extension path over `bindings/capi` (T-158)." PHPUnit suite, same
       per-binding checklist as every other language. See `docs/bindings-strategy.md` "Phase 8."
+      **Step 1 done 2026-08-02, see D-142**: PHP 8.3.33 installed by hand (winget's own packages
+      404'd on a stale manifest patch version). `bindings/php/` scaffolded, own `[workspace]`, no
+      `ext/` split needed (unlike Ruby's `rb_sys` quirk). Windows needs nightly Rust
+      (`abi_vectorcall`) + the MSVC host (PHP's own Windows builds are MSVC) + `rust-lld` - a
+      machine-local `rustup override`. `ext-php-rs`'s own Windows build script downloads a matching
+      devel pack from `windows.php.net` automatically. Wraps only `self_test`, verified end-to-end.
+      **Step 2 done 2026-08-02, see D-142**: full `crypto_*` surface, flat `dstu_core_*`-prefixed
+      global functions + a single `DstuCoreException` class modeled on PHP's own bundled
+      `ext-sodium` extension (the closest same-domain precedent), not a namespace or static-method
+      class. `Binary<u8>` for every crypto byte parameter/return (PHP strings are raw byte buffers,
+      not UTF-8-validated). Three real build-error findings fixed (`wrap_function!()`'s
+      same-module requirement, `u8` not implementing `IntoConst`, a letter-to-digit rename split).
+      **Step 3 done 2026-08-02, see D-143**: `stream_filter_register`/`php_user_filter` investigated
+      and rejected (no clean header-write hook, buffer-size mismatch) - a plain
+      `DstuCoreSecretStreamWriter`/`Reader` over a `resource`, implementing `Iterator`, matching
+      Python's/Ruby's own choice. Found and fixed a real `ext-php-rs` gap: a Rust-registered
+      exception class with no `#[php_impl]` constructor can't be `new`-ed from pure PHP - a
+      `dstu_core_throw_error()` escape hatch. Verified bidirectionally against the real
+      `uacrypt.exe`, six rejection/misuse cases including D-118's no-finalize-on-error property.
+      **Step 4 done 2026-08-02, see D-144**: no PECL/Composer publish attempted (Composer never
+      manages native extensions; PECL needs its own account/manifest pipeline) - a release-profile
+      binary + documented `php.ini extension=` line, verified via a fresh-install-style check.
+      **Step 5 done 2026-08-02, see D-145/D-146**: `cargo xtask php` + `bindings-php.yml`
+      (`shivammathur/setup-php`). PHPUnit as a standalone PHAR, no Composer added. Found and fixed
+      a real `xtask`-level bug (D-146, not PHP-specific): `run()`'s child cargo invocations
+      inherited `RUSTUP_TOOLCHAIN` from the outer `cargo xtask` process, silently overriding any
+      binding's own directory-scoped `rustup override` - almost certainly affects `cargo xtask
+      nodejs` identically, not yet re-verified there. **Not yet confirmed on real CI** - needs a
+      push first.
+      **Step 6 done 2026-08-02, see D-145**: 58 PHPUnit tests across all 10 `crypto_*` modules,
+      mirroring Ruby's/Node's own suites file-for-file, the real official Kupyna-256 vector
+      (D-124), real bidirectional `uacrypt` interop, D-64/D-65's three categories throughout.
+      **Step 7 done 2026-08-02**: five example scripts one-for-one with Python/Node/Ruby, README.md
+      with a module-by-example table and the honest packaging story.
 - [x] **T-160** Ruby binding (`bindings/ruby`) — added to scope 2026-08-02 at the owner's request.
       **Done in full 2026-08-02 — see D-133 through D-139.**
       **Reordered 2026-08-02, see D-121: no longer scheduled last** — moved up to build right after

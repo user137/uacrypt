@@ -284,7 +284,11 @@ suite, cross-language vector loading, real uacrypt interop), D-139 (examples/ + 
 D-141 (three real CI round-trips to get bindings-ruby.yml actually green - `ridk` not on the hosted
 runner's PATH, `Gemfile.lock` missing non-Windows platforms, and the root `rust-toolchain.toml`
 silently overriding `rustup default` on Windows - **confirmed green on real CI**, run id
-`30759971107`, all four jobs `success`). Next: T-159 (PHP), not started.**
+`30759971107`, all four jobs `success`). T-159 (PHP) done in full 2026-08-02 too - see D-142
+through D-146 (flat `dstu_core_*` naming modeled on `ext-sodium`, a plain PHP `Writer`/`Reader`
+over `stream_filter_register` rejected for step 3, and a real `xtask`-level `RUSTUP_TOOLCHAIN`
+inheritance bug found and fixed, D-146 - not yet confirmed on real CI, `bindings-php.yml` needs a
+push first, same posture T-160's own push needed). Next: T-158 (C ABI crate), not started.**
 
 ### The standard binding steps
 
@@ -594,13 +598,63 @@ Standard steps, consuming T-158's header:
 D-121 commits to `ext-php-rs` specifically so this binding is a direct Rust binding like
 Python/Node/Ruby and doesn't wait on the C ABI crate at all.
 
-Standard steps:
-- Step 1: `ext-php-rs` extension, own `[workspace]` table per D-119's reasoning (a direct Rust
-  binding, same shape as Python/Node/Ruby).
-- Step 3: PHP's own stream-wrapper/filter mechanism if one genuinely fits; otherwise a documented
-  exception — research this when the task starts, don't assume the idiom exists going in.
-- Step 4: a prebuilt extension binary where the ecosystem supports it, source build as fallback.
-- Step 6: PHPUnit.
+**Done in full 2026-08-02.** Standard steps:
+- Step 1: **Done, see D-142.** `bindings/php/`, `ext-php-rs`, own `[workspace]` table (a direct
+  Rust binding, same shape as Python/Node/Ruby - no `ext/` split needed, `ext-php-rs` has no
+  `rb_sys`-style `cargo metadata` quirk). PHP 8.3.33 installed by hand (winget's own packages 404'd
+  on a stale manifest patch version). Windows needs nightly Rust (`abi_vectorcall`) + the MSVC host
+  (PHP's own Windows builds are MSVC) + `rust-lld` (avoids an MSVC-linker-version mismatch) - a
+  machine-local `rustup override`, matching Node's D-130 pattern. `ext-php-rs`'s own Windows build
+  script downloads a matching devel pack from `windows.php.net` automatically - no manual devel-pack
+  management needed.
+- Step 2: **Done, see D-142.** Full `crypto_*` surface wrapped - flat `dstu_core_*`-prefixed global
+  functions + a single `DstuCoreException` class, modeled directly on PHP's own bundled
+  `ext-sodium` extension (`sodium_crypto_secretbox`, `SodiumException`) rather than a namespace or
+  static-method class. `Binary<u8>` (not `String`/`Vec<u8>`) for every crypto byte
+  parameter/return - confirmed by reading `ext-php-rs`'s own source that PHP strings are raw byte
+  buffers, not UTF-8-validated. Three real build-error findings: `wrap_function!()` needs its
+  argument in the same module as the `#[php_function]` it names (fixed via a per-module
+  `register(ModuleBuilder)` function); `u8` doesn't implement `IntoConst` (PHP has no unsigned int
+  type); `#[php_function]`'s default rename splits a letter-to-digit boundary
+  (`kupyna256` -> `kupyna_256`), fixed with an explicit `#[php(name = ...)]`.
+- Step 3: **Done, see D-143.** PHP's own `stream_filter_register`/`php_user_filter` mechanism was
+  investigated and rejected (no clean hook for a one-time header write before filtered bytes, and
+  PHP's own internal stream buffer doesn't align with the fixed 8 KiB chunk boundary) - a plain PHP
+  `DstuCoreSecretStreamWriter`/`Reader` (`lib/DstuCoreSecretStream.php`, implementing `Iterator`)
+  over a `resource` instead, matching Python's/Ruby's own choice. Found a real `ext-php-rs` gap:
+  a Rust-registered exception class with no `#[php_impl]` constructor cannot be `new`-ed from pure
+  PHP - fixed with a `dstu_core_throw_error()` escape hatch reusing the same Rust-side
+  `PhpException::from_class` construction path. Verified both directions against the real built
+  `uacrypt.exe`, plus six rejection/misuse cases including the D-118 no-finalize-on-error property.
+- Step 4: **Done, see D-144.** No PECL/Composer publish attempted (Composer never manages native
+  extensions at all; PECL needs its own account/manifest/review pipeline) - the honest deliverable
+  is a release-profile compiled binary plus a documented `php.ini extension=` line, verified with a
+  fresh-install-style check (only the compiled `.dll` copied to an unrelated directory, loaded via
+  a full path).
+- Step 5: **Done, see D-145/D-146.** `cargo xtask php` + `bindings-php.yml` (`shivammathur/
+  setup-php`, re-deriving the Windows nightly+MSVC axis rather than copying `bindings-ruby.yml`'s
+  GNU-vs-MSVC conditional). PHPUnit ships as a standalone PHAR, no Composer dependency added.
+  Found and fixed a real `xtask`-level bug (D-146, not PHP-specific): `run()`'s child cargo
+  invocations inherited `RUSTUP_TOOLCHAIN` from the outer `cargo xtask` process, silently
+  overriding any binding's own directory-scoped `rustup override` - almost certainly affects
+  `cargo xtask nodejs` identically, not yet re-verified there.
+- Step 6: **Done, see D-145.** 58 PHPUnit tests across all 10 `crypto_*` modules, mirroring
+  `bindings/ruby/spec/*.rb`/`bindings/nodejs/test/*.test.js` file-for-file - the real official
+  Kupyna-256 vector (D-124), real bidirectional `uacrypt.exe` interop, D-64/D-65's three
+  categories throughout.
+- Step 7: **Done.** `examples/{secretbox,secretstream-file,sign,password-hashing,misc}.php`
+  (one-for-one with the other bindings' own five example files) + `README.md` with a
+  module-by-example table and the honest packaging story.
+- Step 8: **Done, this entry.** Doc-map sweep: `docs/dstu-crypto-project.md`/
+  `docs/release-readiness.md` updated (stale "T-159 onward haven't started" framing);
+  `docs/user-journey-gaps.md`/`docs/cross-language-style-guide.md` checked, no T-159 references
+  existed to update (same finding every earlier binding's own step 8 had). T-159 marked done in
+  `docs/TASKS.md`.
+- Step 9: each step above landed as its own commit - no large single drop.
+
+**Not yet confirmed on real CI** - `bindings-php.yml` has not been pushed to `origin/master` yet
+(push needs separate explicit approval, same posture T-160's own push had). `cargo xtask php`
+passes end-to-end on this dev machine (58/58 tests, fmt/clippy clean).
 
 ### T-160 — Ruby (reordered 2026-08-02, D-121: builds right after T-50, no longer last)
 
