@@ -2604,6 +2604,11 @@ configuration surface added in the process (D-47 still holds).
       no tuple `IntoValue`, so `secretstream` returns a 2-element `RArray`; `method!`'s Ruby-first
       parameter order is incompatible with `&self` sugar, worked around via `Ruby::get()` inside
       instance methods). 15-check smoke script passing against the live compiled `.so`.
+      **Step 3 done 2026-08-02, see D-135**: `SecretStreamWriter`/`SecretStreamReader`, modeled on
+      stdlib `Zlib::GzipWriter`/`GzipReader` (researched, not assumed). Both D-118 pitfalls
+      re-checked - `.open`'s block form deliberately avoids Ruby's own `ensure` idiom to not
+      finalize on the error path; the reader bounds `chunk_len`/rejects trailing data. Verified
+      bidirectionally against the real `uacrypt.exe`.
 - [ ] **T-163** Go binding (`bindings/go`) — added to scope 2026-08-02 at the owner's request, on
       the same no-incumbent-competitor footing as Node/Ruby/PHP (no DSTU-specific Go library exists,
       real DevSecOps/cloud-infra audience). **Unlike Node/Ruby/PHP, this one goes through the C ABI

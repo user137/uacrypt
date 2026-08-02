@@ -8861,3 +8861,49 @@ tamper-rejection via `DstuCore::Error`, wrong-length-key via `ArgumentError`, in
 `finalize`-twice rejection, `secretstream` push/pull round-trip and tamper rejection) - 15/15 pass
 against the live compiled `.so`, re-verified again after `cargo fmt --all` reformatted the four
 touched files. `cargo clippy --all-targets -- -D warnings` clean.
+
+## D-135: Ruby binding (T-160) step 3 - `crypto_secretstream` as `SecretStreamWriter`/`SecretStreamReader`
+
+2026-08-02. Pure Ruby (`bindings/ruby/lib/dstu_core/secretstream.rb`) on top of step 2's raw
+`SecretStreamPushState`/`PullState` - no new Rust glue, same choice Python/Node both made (file I/O
+against an arbitrary caller-supplied object is more natural to write directly in the host language
+than via FFI callbacks). **Idiom chosen after research, not assumed**: Ruby's own
+`Zlib::GzipWriter`/`Zlib::GzipReader` (stdlib, bundled) is the closest native precedent - both wrap
+an arbitrary `IO`-like object and transform chunks transparently, the same shape problem as this
+wrapper, so `SecretStreamWriter`/`SecretStreamReader` mirror that pair's `write`/`<<`/`close` and
+`each`/`Enumerable`/`close` surface respectively, rather than inventing a new shape. Wire format
+matches `uacrypt encrypt`/`decrypt` exactly (8 KiB `SECRETSTREAM_CHUNK_BYTES`, same
+`tag(1) || len_u32_le(4) || ciphertext || auth_tag(16)` framing as Python/Node) - verified
+bidirectionally against the real built `uacrypt.exe` (encrypt one side, decrypt with the other,
+byte-for-byte match both ways), not just self-consistently.
+
+Both D-118 pitfalls re-checked for this port specifically, same as every prior binding:
+- **The cleanup path must not finalize on the error path.** Ruby's own idiomatic block-form
+  cleanup (`ensure`, the exact shape `File.open`/`Zlib::GzipWriter.wrap` both use) always runs even
+  when the block raises - using that idiom naively for `SecretStreamWriter.open` would emit the
+  `Final` chunk even after a partial write, producing a stream that looks complete but silently
+  drops data (violates D-65). Fixed by **deliberately not using `ensure`** in
+  `SecretStreamWriter.open` - it calls `writer.close` as the last statement of the block's own
+  normal-return path, so an exception propagates before `close` ever runs, matching Python's
+  `__exit__(exc_type, ...)` conditional-close and Node's `_flush`-not-`_destroy` fix exactly. This
+  is the one place this binding deliberately diverges from "the idiomatic Ruby pattern" because the
+  idiomatic pattern is wrong for this specific case - worth flagging explicitly since it is easy to
+  reach for `ensure` here from muscle memory.
+- **The wire-format reader bounds the untrusted `chunk_len` field and rejects trailing data after
+  `Final`.** Ported explicitly (not inherited from the wire format matching) - `chunk_len > 
+  SECRETSTREAM_CHUNK_BYTES` raises before reading, and `@inp.read(1)` after a `Final` tag raises if
+  it returns anything, both matching `uacrypt decrypt`'s own
+  `CliError::SecretstreamChunkTooLarge`/`CliError::SecretstreamTrailingData` checks.
+
+`SecretStreamReader` includes `Enumerable` (`each` returns an `Enumerator` when no block is given,
+the standard Ruby external-iterator idiom) - `read_all` is `each.to_a.join`, giving both a
+chunk-at-a-time consumer and a whole-message convenience for free from one `each` implementation.
+
+Verified: 8 real checks against the live compiled `.so` (round-trip at an arbitrary size, exact
+8192-byte chunk-boundary sizing matching the Rust CLI's own one-chunk-ahead buffering exactly - the
+last full chunk tagged `Final` directly, no spurious empty `Final` record, mirroring T-49 step 3's
+own boundary-bug catch - multi-chunk `each`/`Enumerable` iteration, the `ensure`-avoidance pitfall
+test specifically, oversized-`chunk_len` rejection, trailing-data rejection, and the two-directional
+real `uacrypt.exe` interop). `rubocop` deliberately deferred to step 5, alongside `cargo xtask ruby`
+wiring - matching where `bindings/python`'s own `ruff` gate landed (T-49 step 5), not introduced as
+scope creep inside this step.

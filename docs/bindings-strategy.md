@@ -275,9 +275,9 @@ worse than no resume line, since it actively misdirects the next session.
 **Resume point: T-161 done (2026-08-02). T-49 (Python) done in full 2026-08-02 - see D-120. T-50
 (Node.js) done in full 2026-08-02 - see D-125 through D-132 (step 6 done before step 5, a
 tooling-forced reorder, D-129 explains why; D-130 corrects D-125's toolchain-pin approach). T-160
-(Ruby) steps 1-2 done 2026-08-02 - see D-133 (own Ruby+MSYS2-clang toolchain install, several real
-rb_sys/bindgen gotchas), D-134 (full crypto_* surface). Next: T-160 step 3 (idiomatic
-crypto_secretstream wrapper).**
+(Ruby) steps 1-3 done 2026-08-02 - see D-133 (own Ruby+MSYS2-clang toolchain install, several real
+rb_sys/bindgen gotchas), D-134 (full crypto_* surface), D-135 (SecretStreamWriter/Reader,
+Zlib::GzipWriter/Reader-modeled). Next: T-160 step 4 (prebuilt-artifact packaging).**
 
 ### The standard binding steps
 
@@ -633,8 +633,17 @@ Standard steps:
   script against the live compiled `.so` (round-trip, tamper-rejection, wrong-length-key rejection,
   hasher double-finalize rejection, secretstream push/pull); `cargo clippy --all-targets --
   -D warnings` clean.
-- Step 3: an `IO`-like or `Enumerable`/`Enumerator` wrapper — research Ruby's own idiom when the
-  task starts.
+- Step 3: **Done 2026-08-02, see D-135.** `SecretStreamWriter`/`SecretStreamReader`
+  (`bindings/ruby/lib/dstu_core/secretstream.rb`), pure Ruby on top of step 2's raw
+  `SecretStreamPushState`/`PullState`. Idiom researched, not assumed: modeled on stdlib's own
+  `Zlib::GzipWriter`/`Zlib::GzipReader` (same "wraps an arbitrary IO, transforms chunks
+  transparently" shape). `SecretStreamReader` includes `Enumerable`. Both D-118 pitfalls
+  re-checked: `SecretStreamWriter.open` deliberately avoids Ruby's own `ensure`-based cleanup idiom
+  (would finalize even on the error path) in favor of a plain last-statement `close` on the
+  block's normal-return path only; the reader bounds `chunk_len` and rejects trailing data after
+  `Final`. Verified against the real `uacrypt.exe` bidirectionally, plus exact chunk-boundary
+  sizing and the `ensure`-avoidance pitfall itself, all against the live compiled `.so`. `rubocop`
+  deferred to step 5 (matching where Python's own `ruff` landed), not introduced here.
 - Step 4: a prebuilt extension binary where the ecosystem supports it.
 - Step 6: RSpec/Minitest.
 
