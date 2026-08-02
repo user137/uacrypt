@@ -2407,14 +2407,25 @@ command names (`CLAUDE.md` MVP scope) are still reserved for whenever that resol
 **Full rationale/order/per-binding checklist now lives in `docs/bindings-strategy.md`** (written
 2026-08-02, `docs/DECISIONS.md` D-115) — this section tracks status only, per this file's own header
 convention; read that document before starting any item below, don't re-derive the reasoning here.
-Build order (dependency-driven, not ID order): T-49 (Python, the template) → T-158 (C ABI crate) →
-T-52 (.NET) → T-51 (Java) → T-50 (Node) → T-53 (C++) → T-159 (PHP) → T-160 (Ruby); publishing to any
-registry is a separate, explicitly owner-gated step per registry (same class of decision as T-17
-for crates.io), tracked once actually requested, not scheduled here. **Every task below also
-carries D-116's "install and forget" requirement — zero-config API (no nonce/mode/IV parameter
-exposed) and prebuilt binaries (no local Rust toolchain needed by the binding's own consumer) — not
-optional polish, a completion bar same as the three test categories.**
+Build order (dependency-driven, not ID order): T-161 (shared `selftest` module, prerequisite) →
+T-49 (Python, the template) → T-158 (C ABI crate) → T-52 (.NET) → T-51 (Java) → T-50 (Node) → T-53
+(C++) → T-159 (PHP) → T-160 (Ruby); publishing to any registry is a separate, explicitly
+owner-gated step per registry (same class of decision as T-17 for crates.io), tracked once actually
+requested, not scheduled here. **Every task below also carries D-116's "install and forget"
+requirement** — zero-config API (no nonce/mode/IV parameter exposed) and prebuilt binaries (no
+local Rust toolchain needed by the binding's own consumer) — **and D-117's requirement to expose
+`dstu_core::selftest` (T-161) with an idiomatic wrapper, plus a local test suite that runs the same
+official vectors through the binding's own API** — none of this is optional polish, all of it is a
+completion bar same as the three test categories.
 
+- [ ] **T-161** `dstu_core::selftest` — shared runtime KAT self-check module (D-117), a prerequisite
+      for every binding below. Re-runs the official test vectors (Kalyna/Kupyna/Strumok/DSTU 4145,
+      the same `crates/dstu-core/tests/vectors/*.json` data, embedded rather than hand-copied) against
+      the live compiled implementation, returns pass/fail naming which primitive failed if any. New
+      Cargo feature (binary-size cost, off by default in the bare crate, on by default in every
+      binding's `Cargo.toml`). Built once here, every binding (T-49/T-50/T-51/T-52/T-53/T-158/T-159/
+      T-160) wraps it thin rather than reimplementing it — see D-117 for the precedent this follows
+      (D-13's shared S-box/MDS tables).
 - [ ] **T-49** Python binding (`bindings/python`, PyO3 + maturin) — the template every later binding
       instantiates. Exposes the full `crypto_*` surface (not a subset). Three test categories
       (correctness/rejection/misuse, D-64/D-65) via `pytest`, `bindings/python/examples/`, a

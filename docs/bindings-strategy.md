@@ -139,6 +139,23 @@ this is the template every phase below instantiates:
   against the same vectors/oracles the Rust core already uses, (2) rejection — tampered
   ciphertext/tag/nonce, wrong key, (3) misuse — bad lengths/paths, empty input, no partial output on
   failure. "Round-trip works" alone is category 1 only, not sufficient coverage.
+- **Category 1 specifically must run the actual official vectors, not just round-trip against
+  itself.** Each binding's local test suite loads and runs the same
+  `crates/dstu-core/tests/vectors/{kalyna,kupyna,strumok,dstu4145}/*.json` files the Rust tests
+  already use, through the binding's own public API — one source of truth, no hand-copied duplicate
+  vector data per language to drift out of sync (the same "test-vector fix needs a citation, not
+  just matching numbers" discipline `CLAUDE.md` already applies to the Rust tests themselves).
+  Where a language's ecosystem makes reading JSON test fixtures awkward, generate that language's
+  fixture format from the JSON at test-build time — never hand-transcribe the numbers.
+- **A runtime self-test function the binding's own consumer can call, not just a dev-time test
+  suite.** See D-117: `dstu_core` gains one shared `selftest` module that re-runs the official KAT
+  vectors against the live compiled code and reports pass/fail (which primitive failed, if any).
+  Every binding exposes a thin, idiomatically-named wrapper around that single implementation
+  (`dstu_core.selftest()` in Python, `selfTest()` in Node/Java/.NET, `dstu_selftest()` in the C ABI)
+  — built once at the core, not reimplemented per language. This lets a consumer verify their exact
+  installed binary is producing correct outputs on their exact platform before trusting it with real
+  data, the same "don't just trust it compiled" instinct this project already applies to itself via
+  dual-oracle verification.
 - **A local test suite in that language's native framework** (pytest, xUnit, JUnit, `node:test`, a
   small C/C++ harness, PHPUnit, RSpec/Minitest) — runnable without any other binding installed.
 - **Accessible examples for a working programmer**, not API reference restated: real recipes

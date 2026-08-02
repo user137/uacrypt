@@ -8075,3 +8075,38 @@ this project's own stated goal for language bindings — "hassle-free... install
 though nothing about it would show up as a failing test. Recorded as a functional requirement on
 each binding phase (`docs/TASKS.md` T-49/T-50/T-51/T-52/T-53/T-158/T-159/T-160), not left as an
 unwritten expectation.
+
+## D-117: Shared `dstu_core::selftest` module — one runtime KAT self-check, every binding wraps it
+
+Requested 2026-08-02 by the project owner, alongside D-116: every binding needs (1) its local test
+suite to run the actual official test vectors through the binding's own API, not just round-trip
+against itself, and (2) a runtime self-test function the binding's *consumer* can call — proof the
+exact installed binary produces correct outputs on their exact platform, callable from their own
+code, not just from this project's CI.
+
+**Decision: build the self-test once, at the `dstu_core` level, not once per binding.** A new
+`dstu_core::selftest` module re-runs the official KAT vectors (Kalyna/Kupyna/Strumok/DSTU 4145 —
+the same `crates/dstu-core/tests/vectors/*.json` data, embedded via a build step rather than
+hand-copied, so there is exactly one source of truth) against the live compiled implementation and
+returns a pass/fail report naming which primitive failed, if any. Gated behind a new Cargo feature
+(embedding vector data costs binary size, real weight for `no_std`/`small-tables` embedded targets,
+irrelevant weight for any binding's build) — off by default in the bare `dstu-core` crate, on by
+default in every binding's own `Cargo.toml`. Every binding (Python/Node/Java/.NET/C++/PHP/Ruby)
+exposes a thin, idiomatically-named wrapper around this one implementation — same "don't duplicate
+shared logic per language" precedent as Kalyna/Kupyna's shared S-box/MDS tables (D-13) — plus,
+incidentally, gives `uacrypt` itself a natural future `selftest` CLI command and gives Phase 4
+hardware validation (STM32/ESP32) a way to confirm a cross-compiled build works on real silicon,
+neither of which is scoped as a task here, both noted so they aren't "discovered" as a surprise
+later.
+
+**Rejected:** reimplementing the self-test independently in each binding language (e.g. a Python
+function that separately loads the JSON vectors and calls the Python binding's own API). Rejected
+because it multiplies the maintenance surface by the number of bindings for logic that has nothing
+language-specific about it, and risks exactly the kind of silent drift between per-language copies
+this project's "one source of truth" discipline exists to prevent elsewhere (test vectors,
+architectural decisions, doc-map cross-references).
+
+**Sequencing note, not yet scheduled as its own `T-NN`:** this module is a prerequisite for every
+binding phase in `docs/bindings-strategy.md`/`docs/TASKS.md` Phase 3, including T-49 (Python, the
+template) — it should land as one of Phase 3's first concrete implementation steps, before or
+alongside T-49's scaffold, not bolted on after bindings already exist.
