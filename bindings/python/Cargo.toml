@@ -19,4 +19,10 @@ crate-type = ["cdylib"]
 
 [dependencies]
 dstu-core = { path = "../../crates/dstu-core", features = ["std", "selftest"] }
-pyo3 = { version = "0.26", features = ["extension-module"] }
+# `extension-module` is unconditional here, not gated behind a `maturin`-only feature the way the
+# standard pyo3 template does it (`optional = true`, maturin turns it on) - fine for `cargo build`/
+# `maturin develop`, both verified working, but this is known to break a plain `cargo test` in this
+# crate on Linux (an extension-module cdylib can't link a test harness the normal way). Revisit if
+# step 6 (this binding's own Rust-side tests, if any beyond `pytest`) hits this - not restructured
+# now since nothing here needs `cargo test` yet.
+pyo3 = { version = "0.29", features = ["extension-module"] }
