@@ -2536,7 +2536,9 @@ configuration surface added in the process (D-47 still holds).
       `.github/workflows/bindings-nodejs.yml`, mirroring Python's own step 5 shape; no
       MSVC-specific CI step needed (`windows-latest` is MSVC-host by default, D-130); fixed a real
       `Command::new("npm")` resolution gotcha on Windows (needed `.cmd`, same as the pre-existing
-      `mvn` case). Steps 7-9 not started; also tracked as real tasks in this session's Task tool.
+      `mvn` case). **Step 7 done 2026-08-02, see D-132** — five example scripts one-for-one with
+      Python's own, and a `README.md` written from scratch (step 1 never created one). Steps 8-9
+      not started; also tracked as real tasks in this session's Task tool.
 - [ ] **T-51** Java binding — **reordered 2026-08-02 (D-121): now built after T-50/T-160/T-159, not
       before them** — Bouncy Castle and UAPKI already ship real Java/Kotlin DSTU support, so this
       binding's own gap here is real but smaller than in a language with no incumbent at all.

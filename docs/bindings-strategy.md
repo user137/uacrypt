@@ -273,10 +273,10 @@ resuming. **Update the resume line below every time a step is checked off**; a s
 worse than no resume line, since it actively misdirects the next session.
 
 **Resume point: T-161 done (2026-08-02). T-49 (Python) done in full 2026-08-02 - see D-120. T-50
-(Node.js) steps 1-6 done 2026-08-02 - see D-125 through D-131 (step 6 done before step 5, a
+(Node.js) steps 1-7 done 2026-08-02 - see D-125 through D-132 (step 6 done before step 5, a
 tooling-forced reorder, D-129 explains why; D-130 corrects D-125's toolchain-pin approach). Next:
-T-50 step 7 (`examples/` + `README.md`), also tracked as real tasks in this session's Task tool
-(T-50 broken into its nine standard steps).**
+T-50 step 8 (doc-map sweep + mark T-50 done in `docs/TASKS.md`), also tracked as real tasks in this
+session's Task tool (T-50 broken into its nine standard steps).**
 
 ### The standard binding steps
 
@@ -560,6 +560,9 @@ Standard steps:
   synchronously, which Node's own docs warn can make an error throw synchronously out of the
   triggering `.write()` instead of emitting `'error'` the documented async way - fixed by deferring
   through `process.nextTick`, confirmed stable across three repeated full-suite runs.
+- Step 7: **Done 2026-08-02, see D-132.** `examples/{secretbox,secretstream-file,sign,
+  password-hashing,misc}.js` (one-for-one with Python's own five example files) and a fully
+  rewritten `README.md` (T-50 step 1 never created one - a gap Python's step 1 didn't have).
 - **Node-only** (D-118) — browser/WASM is explicitly deferred; don't reinterpret this task as
   covering it.
 

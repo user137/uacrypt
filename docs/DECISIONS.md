@@ -8723,3 +8723,26 @@ deny`/`audit` from the repo root (checking root + both bindings in one invocatio
 unrelated formatting diff in `xtask/src/main.rs`'s Kani block predates this session's changes -
 confirmed via `git stash` - and is out of scope for this step, left alone per minimal-diff
 discipline).
+
+## D-132: Node.js binding (T-50) step 7 - examples + README
+
+Same 2026-08-02 session. `bindings/nodejs/examples/{secretbox,secretstream-file,sign,
+password-hashing,misc}.js`, mirroring `bindings/python/examples/*.py` one-for-one (same five
+files, same split - `misc.js` covers `auth`/`kdf`/`generichash`/`stream`/`randombytes` together,
+same as Python's `misc.py`). `README.md` rewritten from nothing (T-50 step 1 never created one, a
+gap `bindings/python`'s own step 1 didn't have) to a full module-by-example reference table,
+matching `bindings/python/README.md`'s structure and level of detail.
+
+**One real design choice worth recording**: `secretstream-file.js`'s first draft used a multi-stage
+`stream.promises.pipeline(readable, transform, writable)` call, which doesn't behave the same way
+for a `Transform` as its final stage as it does for a plain `Writable` - genuinely more subtle than
+the classic `.pipe()` chain shape. Simplified to the same idiom this project's own doc comments in
+`secretstream.js` already recommend (`readStream.pipe(new SecretStreamEncryptor(key)).pipe(...)`)
+plus `stream.promises.finished()` to await completion - more recognizable to a working Node
+programmer reading an example than a multi-arg `pipeline()` call, and avoids a pipeline edge case
+this step didn't need to fight.
+
+Verified: all five examples run correctly against the real built addon
+(`secretbox`/`sign`/`password-hashing`/`misc`/`secretstream-file`, output inspected, not just "exit
+0"); `node --test` still reports 52/52 (examples aren't named `*.test.js`, so they don't interfere
+with test discovery).
