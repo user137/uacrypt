@@ -2476,12 +2476,13 @@ configuration surface added in the process (D-47 still holds).
       2026-08-02 from the original plan text)** — two CI jobs use `--workspace` explicitly (Miri,
       the MSRV-pinned build) and neither is equipped for a PyO3 `cdylib`; a path dependency on
       `dstu-core` still resolves across separate workspaces. Exposes the full `crypto_*` surface
-      (not a subset) — **steps 1-4 done 2026-08-02** (scaffold, full surface, file-like
+      (not a subset) — **steps 1-4 and 6 done 2026-08-02** (scaffold, full surface, file-like
       `crypto_secretstream` pipeline verified byte-compatible with `uacrypt encrypt`/`decrypt`,
-      local Windows `abi3` wheel built and installed into a fresh venv), see
-      `docs/bindings-strategy.md`'s T-49 section for the concrete shape; steps 5-9 (CI wiring incl.
-      manylinux/macOS wheels, pytest suite, examples/README, doc-map sweep) still open. Three test
-      categories (correctness/rejection/misuse, D-64/D-65) via `pytest`,
+      local Windows `abi3` wheel built and installed into a fresh venv, a 57-test `pytest` suite
+      done out of order/before step 5 per an advisor review), see `docs/bindings-strategy.md`'s
+      T-49 section for the concrete shape; steps 5, 7-9 (CI wiring incl. manylinux/macOS wheels,
+      examples/README, doc-map sweep) still open. Three test categories (correctness/rejection/
+      misuse, D-64/D-65) via `pytest`,
       `bindings/python/examples/`, its own CI job (not folded into the existing Rust matrix) with a
       best-effort `cargo xtask` subcommand (D-12's miri/fuzz/audit posture, not mandatory),
       provisional-status banner in its README. See `docs/bindings-strategy.md` "Phase 1."

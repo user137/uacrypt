@@ -234,10 +234,11 @@ new session — this section is the one to update as work lands, and the one to 
 resuming. **Update the resume line below every time a step is checked off**; a stale resume line is
 worse than no resume line, since it actively misdirects the next session.
 
-**Resume point: T-161 done (2026-08-02). T-49 steps 1-4 done (2026-08-02): scaffold, full
+**Resume point: T-161 done (2026-08-02). T-49 steps 1-4 and 6 done (2026-08-02): scaffold, full
 `crypto_*` surface, file-like `crypto_secretstream` pipeline, local Windows wheel build+install
-verified (manylinux/macOS deferred into step 5's CI job). Next: T-49 step 5 — its own CI job +
-best-effort `xtask` wiring, not started.**
+verified, 57-test pytest suite (done out of order, before step 5 - see step 6's own note for why).
+Next: T-49 step 5 — its own CI job + best-effort `xtask` wiring (with manylinux/macOS wheels
+folded in, per step 4's note), not started.**
 
 ### The standard binding steps
 
@@ -358,12 +359,25 @@ Standard steps above, with:
   `secretstream.py` (added in step 3, after the previous packaging check) actually ships inside the
   wheel rather than only ever having been exercised through the source tree. manylinux/macOS wheels
   are folded into step 5 below, not a separate step - they need CI, not a local shortfall.
-- Step 5: its own CI job, not a step in the existing Rust matrix (D-119) - reuse
-  `.github/workflows/release.yml`'s existing `matrix.os: [ubuntu-latest, macos-latest,
-  windows-latest]`/artifact-upload conventions to also produce the manylinux/macOS wheels step 4
-  only built for Windows locally. `xtask` wiring is best-effort with an install hint (D-12's
-  existing posture for miri/fuzz/audit), not mandatory.
-- Step 6: `pytest`.
+- Step 5: **two distinct CI pieces, not one** (advisor review, 2026-08-02) - `.github/workflows/
+  release.yml` only fires on `v*` tags, so reusing *only* it would leave this binding with zero CI
+  coverage between releases. (1) A per-push/PR job (own job, not a step in the existing Rust
+  matrix, D-119) that builds `bindings/python` and runs step 6's pytest suite on every push - this
+  is the actual regression gate. (2) `release.yml`'s `matrix.os: [ubuntu-latest, macos-latest,
+  windows-latest]`/artifact-upload conventions, reused to also produce the manylinux/macOS wheels
+  step 4 only built for Windows locally - `PyO3/maturin-action@v1` with `manylinux: auto` for the
+  Linux leg (a plain `maturin build` on `ubuntu-latest` tags against the runner's own glibc, too
+  new to be broadly installable - verify the emitted wheel tag before calling this "manylinux
+  wheels done," don't assume). `xtask` wiring is best-effort with an install hint (D-12's existing
+  posture for miri/fuzz/audit), not mandatory. Also worth closing in this pass: D-119's own
+  recorded consequence that root `cargo deny`/`audit` don't reach `bindings/python`'s dependency
+  tree (pyo3 and friends).
+- Step 6: **Done 2026-08-02, out of order (before step 5, advisor review)** - a CI job wired to an
+  empty test directory passes vacuously, so writing the suite first gives step 5 something real to
+  fail on. 57 tests across every module, D-64/D-65's three categories - see the T-49 section above
+  for the concrete shape (a real Kupyna-256 vector, live `uacrypt` CLI interop, the two rejection
+  gaps an earlier advisor pass caught). `[project.optional-dependencies]` `dev` group pins
+  `maturin`/`pytest`/`ruff` to the versions verified this session.
 
 ### T-158 — C ABI crate (foundation for C++/.NET, maybe Java)
 
