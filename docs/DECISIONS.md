@@ -8378,3 +8378,19 @@ built second despite matching Python's binding shape (see the popularity analysi
 `docs/bindings-strategy.md`). Not rejected outright - revisit if real demand evidence for Dart
 specifically ever appears, the same standard any other currently-out-of-scope language would need
 to meet.
+
+## D-123: Go built ahead of C++ specifically (owner preference, no further rationale recorded)
+
+Same 2026-08-02 conversation as D-121/D-122, immediately after Go (T-163) was added: the project
+owner asked for Go to build before C++ specifically, within the C-ABI-dependent group (T-52/T-51/
+T-163/T-53) D-121/D-122 already placed it in.
+
+**Change**: T-163 (Go) now builds right after T-51 (Java), ahead of T-53 (C++) - order within that
+group is now .NET → Java → Go → C++, not .NET → Java → C++ → Go. No incumbent-competition or
+technical-dependency argument drives this specifically (unlike D-121's Node/Ruby/PHP-before-Java/
+.NET reasoning, or D-122's Go-needs-the-C-ABI reasoning) - recorded here as the owner's explicit
+ordering preference, not backfilled with a rationale that wasn't given.
+
+**Unaffected**: Go still depends on T-158 (the C ABI crate) exactly as D-122 established - this
+decision only reorders Go relative to C++ within that already-later group, not relative to T-158
+itself or to .NET/Java.

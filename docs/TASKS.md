@@ -2410,20 +2410,21 @@ convention; read that document before starting any item below, don't re-derive t
 **The granular, checkable, cross-session step list — the "resume point" for exactly where work left
 off — lives in `docs/bindings-strategy.md`'s "Cross-session execution plan" section; read the resume
 line there first when picking this phase back up in a new session.**
-**Build order revised 2026-08-02, see `docs/DECISIONS.md` D-121/D-122** (original order below kept
-for the historical record, not deleted): T-161 (shared `selftest` module, prerequisite, done) →
-T-49 (Python, the template, done) → T-50 (Node) → T-160 (Ruby) → T-159 (PHP, via `ext-php-rs` - a
+**Build order revised 2026-08-02, see `docs/DECISIONS.md` D-121/D-122/D-123** (original order below
+kept for the historical record, not deleted): T-161 (shared `selftest` module, prerequisite, done)
+→ T-49 (Python, the template, done) → T-50 (Node) → T-160 (Ruby) → T-159 (PHP, via `ext-php-rs` - a
 direct Rust binding, not the C-ABI path, so it doesn't wait on T-158 either) → T-158 (C ABI crate,
-built once actually needed) → T-52 (.NET) → T-51 (Java) → T-53 (C++) → T-163 (Go, via the C ABI -
-no direct-Rust-binding toolchain for Go has PyO3/napi-rs/magnus's maturity, so it waits on T-158
-same as .NET/Java/C++) → T-162 (docs, last). Rationale: Bouncy Castle (Java/.NET) and UAPKI
-(Java/Kotlin) already serve real DSTU-consuming demand in those two languages specifically - this
-project's own zero-config `crypto_*` surface is still a genuine gap there, but a smaller one than
-in a language with no DSTU library at all. Node/Ruby/PHP/Go have no equivalent incumbent, so the
-same "install and forget" reach is currently unclaimed ground in those four - build the three
-direct-binding ones (Node/Ruby/PHP) first since they don't need T-158 at all; Go still needs it, so
-it naturally lands alongside .NET/Java/C++ rather than ahead of them. Dart was raised in the same
-conversation and explicitly deferred (D-122), not added here.
+built once actually needed) → T-52 (.NET) → T-51 (Java) → T-163 (Go, via the C ABI - no
+direct-Rust-binding toolchain for Go has PyO3/napi-rs/magnus's maturity, so it waits on T-158 same
+as .NET/Java/C++, but built ahead of C++ specifically per the owner's explicit preference, D-123)
+→ T-53 (C++) → T-162 (docs, last). Rationale: Bouncy Castle (Java/.NET) and UAPKI (Java/Kotlin)
+already serve real DSTU-consuming demand in those two languages specifically - this project's own
+zero-config `crypto_*` surface is still a genuine gap there, but a smaller one than in a language
+with no DSTU library at all. Node/Ruby/PHP/Go have no equivalent incumbent, so the same "install
+and forget" reach is currently unclaimed ground in those four - build the three direct-binding ones
+(Node/Ruby/PHP) first since they don't need T-158 at all; Go still needs it, so it naturally lands
+alongside .NET/Java/C++ rather than ahead of them, but before C++ specifically (D-123). Dart was
+raised in the same conversation and explicitly deferred (D-122), not added here.
 
 **Original order (superseded by D-121, kept for the record):** T-161 → T-49 (Python, the template)
 → T-158 (C ABI crate) → T-52 (.NET) → T-51 (Java) → T-50 (Node) → T-53
@@ -2530,12 +2531,14 @@ configuration surface added in the process (D-47 still holds).
       Castle `Dstu4145Signer` directly, per D-02)." P/Invoke over `bindings/capi` (T-158) — no new
       Rust-side glue beyond the C ABI crate itself. See `docs/bindings-strategy.md` "Phase 3."
 - [ ] **T-53** C++ binding (`bindings/cpp`) — thin RAII header-only wrapper over `bindings/capi`
-      (T-158), no separate Rust glue. No incumbent-competition reason to reorder this one (D-121
-      didn't touch it specifically), but it still needs T-158 first same as T-51/T-52, so it lands
-      in that same later group by construction. See `docs/bindings-strategy.md` "Phase 6."
+      (T-158), no separate Rust glue. No incumbent-competition reason to reorder this one relative
+      to .NET/Java (D-121 didn't touch it specifically), but it still needs T-158 first same as
+      T-51/T-52, so it lands in that same later group by construction. **Reordered again 2026-08-02,
+      see D-123: now built after T-163 (Go), not before it** — the owner's explicit preference, no
+      further rationale recorded beyond that. See `docs/bindings-strategy.md` "Phase 6."
 - [ ] **T-158** C ABI crate (`bindings/capi`, new `crates/dstu-core-capi` workspace member) — opaque
       handles, explicit error codes, `catch_unwind` at every boundary call, zeroize-on-free,
-      `cbindgen`-generated header. The shared foundation T-52/T-53/T-163 consume (T-159 no longer
+      `cbindgen`-generated header. The shared foundation T-52/T-163/T-53 consume (T-159 no longer
       does, see its own entry below - D-121 committed it to `ext-php-rs` instead); verify the existing
       8-combination `no_std`/`alloc`/`std`/`small-tables` feature matrix still passes with this new
       workspace member present (D-12). See `docs/bindings-strategy.md` "Phase 2."
@@ -2559,7 +2562,9 @@ configuration surface added in the process (D-47 still holds).
       real DevSecOps/cloud-infra audience). **Unlike Node/Ruby/PHP, this one goes through the C ABI
       (`cgo` over `bindings/capi`'s generated header, T-158)** — no direct-Rust-binding toolchain for
       Go exists with PyO3/napi-rs/magnus's maturity, so this binding waits on T-158 same as
-      T-51/T-52/T-53. Builds after T-158 alongside that group, not before it. Same per-binding
+      T-51/T-52/T-53. Builds after T-158 alongside that group, not before it - but **ahead of T-53
+      (C++) specifically, reordered 2026-08-02 per the owner's explicit preference (D-123)**. Same
+      per-binding
       checklist (correctness/rejection/misuse, D-64/D-65; zero-config, D-116; `selftest` wrapper,
       D-117; idiomatic `crypto_secretstream` wrapper, D-118), Go's own `testing` package suite. See
       `docs/bindings-strategy.md`'s T-163 section (added same session) for the concrete shape.
@@ -2569,7 +2574,7 @@ configuration surface added in the process (D-47 still holds).
       Node-only (D-118).
 - [ ] **T-162** GitHub-facing docs + `gh-pages` site refresh — added to scope 2026-08-02 at the
       owner's request, explicitly last, after every binding above (T-49/T-50/T-160/T-159/T-158/
-      T-52/T-51/T-53/T-163, per D-121's reordering) lands. Documentation-only, no primitive/binding
+      T-52/T-51/T-163/T-53, per D-121/D-123's reordering) lands. Documentation-only, no primitive/binding
       code: update `README.md`'s repo
       tree/quickstart, `docs/dstu-crypto-project.md`'s "Second priority" section, and
       `docs/release-readiness.md`'s "Phase 3" line to reflect actually-shipped bindings instead of

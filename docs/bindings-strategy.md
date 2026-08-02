@@ -70,8 +70,9 @@ have an incumbent the way Java/.NET do).
 **Revised order**: T-49 (Python, done) → T-50 (Node) → T-160 (Ruby) → T-159 (PHP, committed to
 `ext-php-rs` specifically so it's a direct binding like Node/Ruby, not gated on the C ABI crate
 below) → T-158 (C ABI crate, built once actually needed by the group below) → T-52 (.NET) → T-51
-(Java) → T-53 (C++) → T-163 (Go, new - see its own section below; needs the C ABI too, since no
-Go binding toolchain matches PyO3/napi-rs/magnus's maturity) → T-162 (docs, last).
+(Java) → T-163 (Go, new - see its own section below; needs the C ABI too, since no Go binding
+toolchain matches PyO3/napi-rs/magnus's maturity) → T-53 (C++, reordered again same day - D-123 -
+to build after Go specifically, the owner's explicit preference) → T-162 (docs, last).
 
 **Dart, raised in the same conversation, is explicitly deferred, not silently assumed either way**
 (D-122) — same reasoning as Node's own browser/WASM scoping (D-118): Dart's primary audience
@@ -249,9 +250,10 @@ document tracks live status so it doesn't drift from this analysis. Summary:
 | 10 | GitHub-facing docs + `gh-pages` site refresh | Phases 1-9 |
 | 11 | Go binding (T-163, added 2026-08-02) | Phase 2 (C ABI - no direct-Rust-binding toolchain for Go has PyO3/napi-rs/magnus's maturity) |
 
-**Phase numbers above are dependency labels, not the current build sequence** — D-121/D-122
-reordered the actual sequence (Node/Ruby/PHP before the C ABI group; Go added, needing the C ABI;
-Dart deferred). `docs/TASKS.md`'s "Build order revised 2026-08-02" line is the current
+**Phase numbers above are dependency labels, not the current build sequence** — D-121/D-122/D-123
+reordered the actual sequence (Node/Ruby/PHP before the C ABI group; Go added, needing the C ABI,
+built ahead of C++ specifically; Dart deferred). `docs/TASKS.md`'s "Build order revised 2026-08-02"
+line is the current
 authoritative sequence; this table stays as originally written since the *dependency* relationships
 it states (what needs what) are still accurate, only the *order* changed.
 
@@ -495,7 +497,7 @@ Standard steps:
 - **Node-only** (D-118) — browser/WASM is explicitly deferred; don't reinterpret this task as
   covering it.
 
-### T-53 — C++
+### T-53 — C++ (reordered 2026-08-02, D-123: now builds after T-163/Go)
 
 Standard steps, consuming T-158's header:
 - Step 1: a thin RAII header-only wrapper.
@@ -529,13 +531,15 @@ Standard steps:
 - Step 4: a prebuilt extension binary where the ecosystem supports it.
 - Step 6: RSpec/Minitest.
 
-### T-163 — Go (added 2026-08-02, D-122; builds alongside T-52/T-51/T-53, needs the C ABI)
+### T-163 — Go (added 2026-08-02, D-122; builds alongside T-52/T-51, needs the C ABI)
 
 No incumbent DSTU library exists for Go, and it has a real DevSecOps/cloud-infra audience (same
 class of reasoning as Ruby's own security/ops-tooling footprint) — but unlike Node/Ruby/PHP, no
 Go binding toolchain matches PyO3/napi-rs/magnus's maturity, so this one goes through the C ABI
 crate (`cgo` over `bindings/capi`'s `cbindgen`-generated header) same as .NET/Java/C++. Builds
-after T-158 lands, alongside that group, not ahead of it.
+after T-158 lands, alongside that group, not ahead of it. **Reordered again 2026-08-02 (D-123):
+built ahead of T-53 (C++) specifically** — the owner's explicit preference, no further rationale
+recorded beyond that.
 
 Standard steps, consuming T-158's header:
 - Step 1: a `cgo`-based package (`bindings/go`), wrapping the C ABI's opaque handles - decide at
