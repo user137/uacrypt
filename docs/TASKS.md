@@ -2572,12 +2572,15 @@ configuration surface added in the process (D-47 still holds).
       T-51/T-52, so it lands in that same later group by construction. **Reordered again 2026-08-02,
       see D-123: now built after T-163 (Go), not before it** — the owner's explicit preference, no
       further rationale recorded beyond that. See `docs/bindings-strategy.md` "Phase 6."
-- [ ] **T-158** C ABI crate (`bindings/capi`, new `crates/dstu-core-capi` workspace member) — opaque
+- [x] **T-158** C ABI crate (`crates/dstu-core-capi` workspace member) — opaque
       handles, explicit error codes, `catch_unwind` at every boundary call, zeroize-on-free,
       `cbindgen`-generated header. The shared foundation T-52/T-163/T-53 consume (T-159 no longer
       does, see its own entry below - D-121 committed it to `ext-php-rs` instead); verify the existing
       8-combination `no_std`/`alloc`/`std`/`small-tables` feature matrix still passes with this new
       workspace member present (D-12). See `docs/bindings-strategy.md` "Phase 2."
+      **Done in full 2026-08-03 — see D-148 (pre-implementation design forks) and D-149 (the
+      implementation itself: cbindgen config, GNU-vs-MSVC C-compiler dispatch in `xtask`, C test
+      harness, examples, README, CI job).**
 - [x] **T-159** PHP binding (`bindings/php`) — added to scope 2026-08-02 at the owner's request.
       **Done in full 2026-08-02 — see D-142 through D-146.**
       **Reordered 2026-08-02, see D-121**: moved up to build right after T-50/T-160, ahead of

@@ -227,9 +227,14 @@ any kind to choose from, safe or otherwise.
   `crypto_*` surface + idiomatic `DstuCoreSecretStreamWriter`/`Reader` (a native PHP stream filter
   was investigated and rejected, D-143), own CI (`shivammathur/setup-php`), a similarly honest
   packaging finding (no PECL/Composer publish path exists for a provisional binding, D-144), not
-  yet published to PECL/Packagist (same gating posture). See `docs/bindings-strategy.md`,
-  `docs/DECISIONS.md` D-115/D-120/D-125 through D-146, `docs/TASKS.md`
-  T-49/T-50/T-51/T-52/T-53/T-158/T-159/T-160/T-163 - T-158 onward haven't started.
+  yet published to PECL/Packagist (same gating posture). T-158 (C ABI crate,
+  `crates/dstu-core-capi`) landed 2026-08-03 too - unlike the four bindings above, it IS a real
+  root-workspace member (D-119/D-148, no external language runtime linked at build time); wraps
+  the full `crypto_*` surface behind a `cbindgen`-generated header (`include/dstu_core.h`,
+  regenerated+diffed via `cargo xtask capi`), a plain-C test harness, and per-primitive examples -
+  no prebuilt binaries published anywhere yet (same gating posture as the other bindings). See
+  `docs/bindings-strategy.md`, `docs/DECISIONS.md` D-115/D-120/D-125 through D-149, `docs/TASKS.md`
+  T-49/T-50/T-51/T-52/T-53/T-158/T-159/T-160/T-163 - T-52 (.NET) onward haven't started.
 
 ## Libsodium API surface and crates.io publishing audit (2026-07-25)
 

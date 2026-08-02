@@ -81,7 +81,8 @@ target.
 │   └── papers/                       # reference PDFs (specs, cryptanalysis, hardware papers)
 ├── crates/                # Cargo workspace
 │   ├── dstu-core/          # core: Kalyna + Kupyna + Strumok
-│   └── uacrypt/            # CLI binary on top of the core
+│   ├── uacrypt/            # CLI binary on top of the core
+│   └── dstu-core-capi/     # C ABI - foundation for C++/.NET/Java/Go bindings (T-158)
 ├── bindings/               # Phase 3 language bindings, see docs/bindings-strategy.md
 │   ├── python/             # PyO3, full crypto_* surface - provisional, not on PyPI (T-49)
 │   └── nodejs/             # napi-rs, full crypto_* surface - provisional, not on npm (T-50)

@@ -290,7 +290,13 @@ over `stream_filter_register` rejected for step 3, a real `xtask`-level `RUSTUP_
 inheritance bug found and fixed (D-146), and D-147's own two CI round-trips - a macOS
 `-undefined dynamic_lookup` linker gotcha, a cross-OS `cargo-deny` license-allow-list gap, and a
 Windows `pwsh`-vs-`bash` POSIX-path mismatch - **confirmed green on real CI**, run id
-`30765006443`, all four jobs `success`). Next: T-158 (C ABI crate), not started.**
+`30765006443`, all four jobs `success`). T-158 (C ABI crate) done in full 2026-08-03 - see D-148
+(pre-implementation design forks: symbol prefix, cbindgen-via-xtask, output-buffer convention,
+unconditional `std` dependency, unsafe-boundary hygiene, `rlib` crate-type) and D-149 (the
+implementation: `cbindgen.toml`, `crates/dstu-core-capi`'s full `crypto_*` wrap, the C test
+harness, examples, README, `cargo xtask capi` plus a new `capi` job in `rust.yml` - not yet
+confirmed on real CI, only verified locally on this Windows-GNU dev machine, same caveat every
+prior binding's own first-pass session carried). **Next: T-52 (.NET), not started.**
 
 ### The standard binding steps
 
@@ -482,16 +488,26 @@ Standard steps above, with:
 Not a language binding itself — no idiomatic-language step 2/3 the way the others have; steps
 1/4/5/6/7/8/9 of the standard template, renumbered for what this crate actually needs:
 
-1. [ ] Scaffold `crates/dstu-core-capi` (cdylib+staticlib) — opaque handles, explicit error codes,
-       `catch_unwind` at every boundary call, zeroize-on-free. Verify the existing 8-combination
-       feature matrix still passes with this new workspace member present.
-2. [ ] `cbindgen`-generated header, including a `dstu_selftest()` export (T-161).
-3. [ ] `xtask`/CI wiring.
-4. [ ] Prebuilt dynamic/static libs per platform (D-116).
-5. [ ] A small C test harness: official vectors, rejection, misuse.
-6. [ ] `examples/` (plain C) + `README.md` banner.
-7. [ ] Doc-map sweep + mark T-158 done.
-8. [ ] Commit per step.
+1. [x] Scaffold `crates/dstu-core-capi` (cdylib+staticlib+rlib) — opaque handles, explicit error
+       codes, `catch_unwind` at every boundary call, zeroize-on-free. Verified the existing
+       8-combination feature matrix still passes with this new workspace member present (D-148/
+       D-149).
+2. [x] `cbindgen`-generated header (`include/dstu_core.h`), including a `dstu_selftest()` export
+       (T-161). `usize_is_size_t = true` in `cbindgen.toml` so generated signatures read `size_t`,
+       matching the spec's own C convention, rather than cbindgen's default `uintptr_t`.
+3. [x] `xtask`/CI wiring — `cargo xtask capi` (header regen+diff, C harness, examples) and a new
+       `capi` job in `rust.yml` (matrix ubuntu/macos/windows; not yet confirmed on real CI, only
+       verified locally on this Windows-GNU dev machine, D-149).
+4. [ ] Prebuilt dynamic/static libs per platform (D-116) — local build only so far (this Windows-GNU
+       machine's own `target/release/{dstu_core_capi.dll,libdstu_core_capi.dll.a,
+       libdstu_core_capi.a}`); cross-OS `release.yml` packaging deferred, see D-149.
+5. [x] A small C test harness (`c-tests/test_capi.c`): correctness, rejection, misuse per D-64/D-65,
+       run against the just-built cdylib via `cargo xtask capi`.
+6. [x] `examples/` (`secretbox.c`, `secretstream_file.c`, `sign.c`, `misc.c`) + `README.md`
+       provisional-status banner — each example actually run against the real built library, not
+       just written from the API surface.
+7. [x] Doc-map sweep + mark T-158 done — this entry, D-149.
+8. [x] Commit per step (see `git log` for the exact sequence).
 
 ### T-52 — .NET
 

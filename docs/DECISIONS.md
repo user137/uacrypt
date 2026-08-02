@@ -9640,3 +9640,74 @@ Full API surface (every exported function/type/constant) is specified in the imp
 itself, not duplicated here - `crates/dstu-core-capi/include/dstu_core.h` is the source of truth
 once generated, cross-checked module-by-module against `crates/dstu-core/src/crypto_*.rs` and
 `randombytes.rs`/`selftest.rs`.
+
+## D-149: T-158 (C ABI crate) done in full - implementation, xtask/CI wiring, three findings beyond D-148
+
+Implemented 2026-08-03, following D-148's six settled forks exactly (not re-derived). Full surface
+(every function/type/constant D-148's own spec listed) built in `crates/dstu-core-capi`: `error.rs`
+(`DstuStatus`), `util.rs` (`catch_unwind` guards, null/zero-length slice helpers, `dstu_memzero`),
+`randombytes.rs`, `selftest.rs`, `auth.rs`, `kdf.rs`, `generichash.rs`, `secretbox.rs`,
+`secretstream.rs`, `sign.rs`, `stream.rs`, `pwhash.rs`. All 17 Rust-side FFI tests
+(`tests/ffi_tests.rs`, D-148 point 6's `rlib` rationale) and the plain-C harness
+(`c-tests/test_capi.c`) pass; `cargo build/test/clippy/fmt --workspace --all-features` (and
+`--no-default-features`) all clean; `cargo xtask capi` (new subcommand, see below) passes
+end-to-end on this dev machine.
+
+Three implementation-time findings not anticipated by D-148, each resolved rather than left
+ambiguous:
+
+1. **cbindgen config (`cbindgen.toml`)**: `usize_is_size_t = true` - without it, cbindgen's default
+   maps Rust `usize`/`isize` to `uintptr_t`/`intptr_t` (technically precise, pointer-width-
+   guaranteed) rather than `size_t`/`ptrdiff_t`, the idiomatic C type for a byte count/buffer
+   length D-148's own spec pseudocode used throughout (`size_t len`). `cpp_compat = true` so the
+   header also works included from C++ (`extern "C" { ... }` guarded by `#ifdef __cplusplus`) -
+   free forward-compatibility for T-53 (C++), not exercised by this task itself. Fixed-size
+   "array" parameters in D-148's own spec pseudocode (`uint8_t key[32]`) render as plain
+   `const uint8_t *key` in the generated header, not literal C array syntax - functionally
+   identical (a C array parameter decays to a pointer regardless), and cbindgen has no built-in
+   mechanism to preserve array-parameter syntax for a Rust `*const u8` signature; every such
+   parameter's doc comment states its exact required length instead. Opaque handles needed no
+   extra `cbindgen.toml` configuration at all: a plain (non-`repr(C)`) Rust struct only ever
+   referenced by pointer is cbindgen's own default "declare but don't define" behavior, confirmed
+   by inspecting the generated header rather than assumed.
+2. **Windows C-compiler dispatch: GNU (this dev machine's own actual default) vs. MSVC (D-148's
+   own assumed CI environment), not anticipated as a fork at all until hit.** `cargo build -p
+   dstu-core-capi --release` on this machine produced `libdstu_core_capi.a`/`libdstu_core_capi.dll.a`
+   (GNU/MinGW static-lib and import-lib naming) rather than the `dstu_core_capi.lib`/
+   `dstu_core_capi.dll.lib` (MSVC) D-148's own file-layout note assumed without stating the
+   distinction explicitly - confirmed via `rustc -vV` (`host: x86_64-pc-windows-gnu`) and
+   `README.md`'s own pre-existing "this project builds against the GNU host toolchain on Windows by
+   default" line (a fact this task's own instructions didn't cross-reference). `xtask`'s new
+   `capi()` therefore dispatches on `cfg!(target_env = "msvc")` (xtask's own compiled-in host
+   triple, reliable since xtask is always built with the same toolchain as the rest of the
+   workspace - not a runtime OS query) - `gcc`/`cc` (Windows-GNU/Linux/macOS, one shared code path,
+   `capi_compile_unixlike`) linking against the cdylib's import library (`-ldstu_core_capi`,
+   avoiding re-declaring Rust std's own transitive Windows-syscall dependencies at the C link step
+   the way linking the true staticlib would require), versus `cl.exe` via `vcvars64.bat`
+   (`capi_compile_msvc`, mirroring `fuzz_windows_msvc`'s own sourcing pattern) for a real MSVC host.
+   Both branches must compile unconditionally regardless of the host platform xtask itself runs
+   on (the `if`/`else` choosing between them is a runtime check, not a `#[cfg]` one) - `
+   capi_compile_msvc` therefore has a `#[cfg(not(windows))] -> unreachable!()` twin so the
+   Windows-only body (`std::os::windows::process::CommandExt::raw_arg`) never needs to compile on
+   Linux/macOS. **The `rust.yml` `capi` job deliberately does not add `ilammy/msvc-dev-cmd`** -
+   `capi_compile_msvc` already finds and sources `vcvars64.bat` itself per invocation (`vswhere.exe`
+   is present on GitHub-hosted Windows runners), so a separate environment-setup action would only
+   duplicate what `cargo xtask capi` already does on its own; confirmed by this exact code path
+   already working locally against this machine's own GNU toolchain, the two branches sharing
+   nothing but the `if` that selects between them.
+3. **Prebuilt-libs packaging (step 4) deferred, not attempted this session** - `release.yml`
+   cross-OS packaging (mirroring `build-binary`'s per-OS matrix) is real, separate work, and this
+   session's own time budget went to steps 1-3/5-7 (the ones that block every later consumer -
+   T-52/.NET, T-163/Go, T-53/C++ - from starting at all) rather than a packaging step none of them
+   need yet. Local build only for now, confirmed working (see finding 2's exact filenames).
+
+**CI status**: `capi` job added to `rust.yml` (matrix ubuntu-latest/macos-latest/windows-latest),
+mirroring `bindings-php.yml`'s own MSVC-Windows-toolchain reasoning but folded into `rust.yml`
+itself (D-119's own distinction: this crate is a real workspace member, not a separate Cargo
+workspace the way Python/Node/Ruby/PHP are, so it doesn't need its own top-level workflow file).
+**Not yet confirmed green on real CI** - only verified locally against this dev machine's own
+GNU-hosted Windows toolchain (the `test`/`msrv`/`miri` jobs' existing `--workspace` coverage already
+proves the Rust side; the new `capi` job's Linux/macOS legs and the MSVC branch of its Windows leg
+are unverified until a real push, the same caveat every prior binding's first CI round-trip
+carried, T-140/D-140-141/D-146-147's own precedent for "verify on real CI before calling a workflow
+file done").
