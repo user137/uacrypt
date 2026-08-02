@@ -2416,7 +2416,11 @@ requirement** — zero-config API (no nonce/mode/IV parameter exposed) and prebu
 local Rust toolchain needed by the binding's own consumer) — **and D-117's requirement to expose
 `dstu_core::selftest` (T-161) with an idiomatic wrapper, plus a local test suite that runs the same
 official vectors through the binding's own API** — none of this is optional polish, all of it is a
-completion bar same as the three test categories.
+completion bar same as the three test categories. **And D-118's requirement**: every binding's
+`crypto_secretstream` exposure is an idiomatic stream/pipe wrapper (`.NET Stream`-shaped, Node
+`stream.Transform`, Python file-like object, Java `InputStream`/`OutputStream`, C++
+`istream`/`ostream`) — not a raw push/pull loop left for the consumer to assemble — with no new
+configuration surface added in the process (D-47 still holds).
 
 - [ ] **T-161** `dstu_core::selftest` — shared runtime KAT self-check module (D-117), a prerequisite
       for every binding below. Re-runs the official test vectors (Kalyna/Kupyna/Strumok/DSTU 4145,
@@ -2433,8 +2437,10 @@ completion bar same as the three test categories.
       `docs/bindings-strategy.md` "Phase 1."
 - [ ] **T-50** Node.js binding (`bindings/nodejs`, napi-rs) — same `crypto_*` surface and template as
       T-49, `node:test` suite, deliberately built after T-52/T-51 despite matching Python's
-      direct-Rust-binding shape (see `docs/bindings-strategy.md`'s ordering rationale). See
-      "Phase 5."
+      direct-Rust-binding shape (see `docs/bindings-strategy.md`'s ordering rationale). **Node-only,
+      confirmed 2026-08-02 (D-118)** — a browser/WASM target was raised and explicitly deferred, not
+      silently assumed either way; would need `wasm-bindgen`, a distinct toolchain from `napi-rs`.
+      See "Phase 5."
 - [ ] **T-51** Java binding — **correction 2026-08-02, see D-115**: the D-02-based instruction below
       ("wraps Bouncy Castle `DSTU4145Signer` directly, does not use the Rust DSTU 4145 port") is
       stale — it predates `hazmat::dstu4145`/`dstu_core::crypto_sign` actually existing and being

@@ -38,7 +38,11 @@ Net ordering, and why each sits where it does:
    first (below) before locking an approach.
 5. **JavaScript (Node)** — napi-rs, a direct-Rust binding shaped like Python's, deliberately not
    built second despite the shape match, because Node's actual audience (web/app dev) overlaps
-   least with this project's demonstrated demand (PKI/enterprise).
+   least with this project's demonstrated demand (PKI/enterprise). **Scope explicitly Node-only,
+   confirmed with the project owner 2026-08-02, see D-118**: a browser-usable target (Web Crypto
+   API-style in-browser TLS/signing was the concrete comparison raised) needs a genuinely different
+   toolchain (WASM via `wasm-bindgen`, not napi-rs — napi-rs binaries don't run in a browser at
+   all) and is deliberately not scheduled now, not silently assumed either way.
 6. **C++** — consumes the same C ABI crate/header directly; no separate Rust glue needed.
 
 Two additional languages the project owner asked to include, deliberately placed after the original
@@ -135,6 +139,18 @@ this is the template every phase below instantiates:
   ecosystem supports it, source build only as a fallback. This is about the *packaging mechanism*
   and applies to local/CI-artifact installs immediately — it is independent of, and does not wait
   on, the separate registry-publish authorization gate below.
+- **`crypto_secretstream` gets an idiomatic stream/pipe wrapper per language, not a raw push/pull
+  loop the consumer manages themselves.** See D-118: the same ".NET `CryptoStream`/`GZipStream`,
+  Node `stream.Transform`, Python file-like object, Java `InputStream`/`OutputStream`, C++
+  `istream`/`ostream`" shape every one of those ecosystems already has for exactly this kind of
+  transform-a-stream operation. A consumer wires a source stream to a destination stream (or
+  `File.Encrypt(inPath, outPath, key)`-style helper for the common case) and chunking, tag framing,
+  and rekeying stay entirely invisible — this extends the "install and forget" requirement above to
+  the *mechanics* of streaming, not just to the absence of crypto knobs. **This adds no new
+  configuration surface** — D-47's "delete the knob" still holds; the "wider" instinct that
+  prompted this is satisfied by which primitive to call (`secretbox` for one message,
+  `secretstream` for a file/stream, `sign` for a signature — already all in scope), not by new
+  tunables inside any one of them.
 - **Three test categories** (already this project's standing rule, D-64/D-65): (1) correctness
   against the same vectors/oracles the Rust core already uses, (2) rejection — tampered
   ciphertext/tag/nonce, wrong key, (3) misuse — bad lengths/paths, empty input, no partial output on

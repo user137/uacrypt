@@ -8110,3 +8110,34 @@ architectural decisions, doc-map cross-references).
 binding phase in `docs/bindings-strategy.md`/`docs/TASKS.md` Phase 3, including T-49 (Python, the
 template) — it should land as one of Phase 3's first concrete implementation steps, before or
 alongside T-49's scaffold, not bolted on after bindings already exist.
+
+## D-118: Idiomatic streaming wrapper over `crypto_secretstream`; browser/WASM explicitly deferred
+
+Raised 2026-08-02 by the project owner as an open question, not a directive: should bindings ship a
+".NET `System.IO.Compression`-style ready pipeline" — a stream-in, stream-out API that handles
+chunking internally — the way .NET's archiving APIs or a browser's Web Crypto API do, so a
+programmer never assembles the loop themselves? Answered after discussion, two parts:
+
+1. **Yes, but as an extension of D-116, not a new concept.** `crypto_secretstream` (`PushState`/
+   `PullState`, D-68) already *is* the chunked pipeline — what was missing from the per-binding
+   checklist was the requirement that every binding wrap it in that language's own native
+   stream/pipe idiom (.NET `Stream`/`CryptoStream`-shaped, Node `stream.Transform`, Python
+   file-like object, Java `InputStream`/`OutputStream`, C++ `istream`/`ostream`), not a raw
+   push/pull loop the consumer manages by hand. Added to `docs/bindings-strategy.md`'s checklist.
+
+   **Rejected: adding new configuration surface** ("a bit wider" was the project owner's own
+   phrasing, floated then set aside in the same discussion). D-47's "delete the knob" still holds —
+   the "wider" need is already met by *which* `crypto_*` primitive a caller reaches for
+   (`secretbox`/`secretstream`/`sign`/etc.), not by new tunables inside any single one of them.
+   Widening any individual primitive's parameters would re-open exactly the misuse surface D-47 was
+   written to close.
+
+2. **Browser/WASM target: explicitly out of scope for now, not silently assumed either way.** The
+   project owner's own comparison (browsers shipping ready TLS/signing via the Web Crypto API) is a
+   genuinely different target from what `docs/bindings-strategy.md`'s "JavaScript" phase (T-50)
+   already scopes — Node.js via `napi-rs`, a real native binary that cannot run in a browser at all.
+   A browser-usable build would need `wasm-bindgen`/a WASM target, a distinct toolchain and its own
+   binding-shape decisions (no filesystem, no native threads the same way, a different prebuilt-
+   artifact story than D-116 describes for every other binding). Confirmed with the project owner:
+   **not scheduled now** — T-50 stays Node-only. If browser usage becomes a real need later, it's a
+   new scoping decision, not an assumed extension of T-50.
