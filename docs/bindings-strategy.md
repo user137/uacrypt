@@ -251,6 +251,31 @@ duplicate a real invariant" instinct:
 2. [ ] Wrap the full `crypto_*` surface, zero-config (D-116), including a `selftest()` wrapper
        around T-161.
 3. [ ] Wrap `crypto_secretstream` in the language's idiomatic stream/pipe primitive (D-118).
+       **Two pitfalls found by advisor review while building T-49's own wrapper — check both
+       again for every later binding, not just Python (see T-49 step 3's own entry below for the
+       concrete Python bugs and fixes):**
+       - **The language's own "always runs, even on error" resource-cleanup hook must NOT
+         finalize (emit the `Final` chunk) on the error/exception path.** Python's
+         `__exit__(exc_type, ...)` was the concrete case (T-49) — it originally called `close()`
+         unconditionally, so a write loop that raised partway still produced a stream with a
+         `Final` chunk, and a reader saw a complete-looking file instead of failing closed
+         (violates D-65's "no partial output treated as valid on failure", the same property
+         `uacrypt encrypt`'s own temp-file-then-rename gets for free). Every language's equivalent
+         hook has the same shape and needs the same check: C#'s `using`/`IDisposable.Dispose()`,
+         Node's `stream.Transform` `_flush`/`'error'` vs. `'end'` event, Java's
+         try-with-resources `close()`, C++ RAII destructors (which can't even see whether
+         unwinding is due to an exception without extra machinery — decide the mechanism
+         deliberately, don't assume the default is correct).
+       - **The wire-format reader must validate untrusted length-prefixed fields itself, not just
+         copy the encoder's happy path.** Python's decoder read the wire `chunk_len` field
+         (attacker-controlled, read before any tag verification) and used it directly to size a
+         read, with no upper bound — for a file this just hits EOF, but the language's own
+         file-like abstraction may also have to accept a socket/pipe, where an oversized declared
+         length means accumulating gigabytes before ever failing. Also missed: rejecting trailing
+         bytes after the `Final` chunk (silently ignored instead of erroring). Both are checks
+         `uacrypt decrypt` already has (`CliError::SecretstreamChunkTooLarge`/
+         `CliError::SecretstreamTrailingData`, `crates/uacrypt/src/lib.rs`) — port them explicitly
+         into every language's own reader, they don't come for free from the wire format matching.
 4. [ ] Prebuilt-artifact packaging for the target platform(s) (D-116) — build/local-install only,
        no registry publish.
 5. [ ] `cargo xtask` subcommand + CI wiring (D-12).

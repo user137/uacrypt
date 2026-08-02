@@ -8149,6 +8149,15 @@ programmer never assembles the loop themselves? Answered after discussion, two p
    stream/pipe idiom (.NET `Stream`/`CryptoStream`-shaped, Node `stream.Transform`, Python
    file-like object, Java `InputStream`/`OutputStream`, C++ `istream`/`ostream`), not a raw
    push/pull loop the consumer manages by hand. Added to `docs/bindings-strategy.md`'s checklist.
+   **Building T-49's own wrapper (2026-08-02) surfaced two pitfalls generalizable to every later
+   language's wrapper, not Python-specific** — see `docs/bindings-strategy.md`'s "standard binding
+   steps" step 3 for the full detail, re-check both there before writing Node/.NET/Java/C++'s own:
+   (1) the language's "always runs, even on error" cleanup hook (`__exit__`/`Dispose`/
+   try-with-resources/RAII destructor) must not finalize the stream on the error path, or a
+   partial write silently produces a stream that reads back as complete; (2) the wire-format
+   reader must itself bound an untrusted length-prefixed field and reject trailing bytes after
+   `Final`, mirroring `uacrypt decrypt`'s own checks — matching the wire format is not enough,
+   its validation has to be ported too.
 
    **Rejected: adding new configuration surface** ("a bit wider" was the project owner's own
    phrasing, floated then set aside in the same discussion). D-47's "delete the knob" still holds —
