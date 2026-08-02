@@ -92,8 +92,16 @@ jobs:
           else
             echo "EXT_PATH=$(pwd)/target/debug/libdstu_core_php.so" >> "$GITHUB_ENV"
           fi
+      # `shell: bash` explicitly - the default shell on windows-latest is `pwsh`, which (unlike Git
+      # Bash's MSYS layer) does not translate a POSIX-style path (`/d/a/...`, what `$(pwd)` in the
+      # step above produces) into a real Windows path before handing it to a native, non-MSYS
+      # binary like `php.exe`. Confirmed by a real CI failure - PHP's own dynamic-library loader
+      # reported "The specified module could not be found" for the literal POSIX-style path,
+      # despite the file genuinely existing at that location on disk (same class of Windows-native-
+      # binary-vs-Git-Bash-path gotcha `.claude.local.md` already documents for Python).
       - run: php -d extension=${{ env.EXT_PATH }} phpunit.phar
         working-directory: bindings/php
+        shell: bash
 
   supply-chain:
     name: cargo deny / audit (bindings/php)
