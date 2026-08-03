@@ -2870,6 +2870,21 @@ configuration surface added in the process (D-47 still holds).
       *(Note: the root `README.md`'s stale repo tree — missing `bindings/ruby`/`bindings/php`/
       `crates/dstu-core-capi` — is already tracked as part of T-162 above, deliberately deferred
       until every binding lands; no new task needed for that specific fix.)*
+- [ ] **T-169** **`rust.yml`'s own `test` job (`cargo build`/`test`/`clippy`/`fmt` for `dstu-core`/
+      `uacrypt`) runs on `ubuntu-latest` only — added 2026-08-03, found answering the owner's own
+      question about macOS CI coverage.** Every language binding's CI (`bindings-*.yml`) and the
+      `capi`/`release` jobs in `rust.yml` already run a real `[ubuntu-latest, macos-latest,
+      windows-latest]` matrix; the core crates' own correctness (unit tests, proptest, `miri`,
+      `kani`, `fuzz-smoke`, MSRV) never has, on either macOS or Windows — this dev machine's own
+      manual local testing is Windows-only, and the Raspberry Pi rig is aarch64 *Linux*, not macOS,
+      so no CI or manual run has ever exercised `dstu-core`'s real test suite on Apple hardware.
+      Given this project's own "no hardware/OS lock-in" MVP goal, this is a real gap, not cosmetic.
+      **Fix, not a full 3x duplication of the heavy `test` job** (fmt/clippy are lint-only and
+      OS-independent for this no-OS-specific-code-path core, so tripling them would just add CI time
+      for zero new coverage) — add a lean `cross-platform-test` job, matrix `[macos-latest,
+      windows-latest]` (`ubuntu-latest` already fully covered), running `cargo xtask build` +
+      `cargo xtask test` (the existing cross-platform entry points, D-12) rather than hand-repeating
+      individual `cargo` invocations in YAML.
 
 ## Phase 4 — Hardware validation (post-MVP)
 

@@ -59,6 +59,27 @@ jobs:
       - run: cargo test --workspace --all-features
       - run: cargo clippy --workspace --all-features -- -D warnings
 
+  cross-platform-test:
+    name: cross-platform core test (${{ matrix.os }})
+    # The `test` job above is ubuntu-only. Its fmt/clippy steps are lint-only and OS-independent
+    # for this no-OS-specific-code-path core, so repeating them here would add CI time for zero new
+    # coverage - but `cargo test` runs real code (unsafe transmutes, byte-order/memory-layout
+    # assumptions), which genuinely could differ by platform and had never actually been run on
+    # macOS or Windows via CI before this (docs/TASKS.md T-169, added 2026-08-03) - `capi`/
+    # `release`/every `bindings-*.yml` already matrix across all three OSes, this job closes the
+    # same gap for `dstu-core`/`uacrypt` themselves. `ubuntu-latest` is excluded since the `test`
+    # job above already covers it in full.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo xtask build
+      - run: cargo xtask test
+
   miri:
     name: cargo miri test
     runs-on: ubuntu-latest
