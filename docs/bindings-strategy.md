@@ -300,8 +300,10 @@ prior binding's own first-pass session carried). T-52 (.NET) done in full 2026-0
 (P/Invoke `[LibraryImport]` bool-marshalling finding, `SafeHandle` handles,
 `SecretStreamEncryptStream`/`DecryptStream`'s `Complete()`-not-`Dispose()` finalization split,
 NuGet packaging + fresh-install check, then the Pi ARM64 re-check - step 10, all green first try,
-no bug found) - T-52 is now done in full, all ten standard steps. **Next: T-51 (Java, needs the
-step-0 `jni`-vs-JNI-over-capi spike first), not started.**
+no bug found) - T-52 is now done in full, all ten standard steps. T-51 (Java) step 0 done
+2026-08-03 - see D-153 (spike chose the `jni` crate direct-Rust binding over JNI-over-capi; JDK
+build/test baseline 17, published bytecode target 8). **Next: T-51 steps 1 onward (scaffold
+`bindings/java` as its own workspace, wrap the full `crypto_*` surface).**
 
 ### The standard binding steps
 
@@ -588,12 +590,30 @@ bindings so far) - `bindings/dotnet/DstuCore` is pure C#, P/Invoking T-158's alr
 ### T-51 — Java
 
 Standard steps, plus an upfront spike before step 1 (see `docs/bindings-strategy.md` Fork 1):
-- Step 0: spike the `jni` crate (Rust-side JNI) against JNI-over-T-158; record the choice in
-  `docs/DECISIONS.md` before writing the real implementation.
-- Step 1: per whichever approach the spike picks.
-- Step 3: an `InputStream`/`OutputStream` pair.
+- **Step 0: done 2026-08-03, see `docs/DECISIONS.md` D-153.** Built two real, runnable prototypes
+  (not reasoned from memory) - Spike A (`jni = "0.21"` crate, direct Rust binding against
+  `dstu_core`, no C ABI involved) vs. Spike B (hand-written C JNI shim over T-158's already-built
+  `dstu-core-capi`). Both worked on the first run; **chosen: Spike A** - Java joins Python/Node/
+  Ruby/PHP's direct-binding group, not .NET/C++/Go's C-ABI group. Spike B would have added a third
+  language (C) to the binding and doubled the packaged native surface per platform; Spike A avoids
+  the C ABI's caller-allocated-out-buffer protocol the same way Python/Node/Ruby already do.
+  Panama (JEP 454) named and rejected (JDK 22+ baseline too new for this audience), not left
+  unmentioned. `jni` pinned to `0.21`, not `0.22` (a real breaking `JNIEnv`/`EnvUnowned` API change,
+  confirmed by actually trying the bump, not assumed). **JDK baseline: build/test on 17 (matches
+  the Pi's Debian 12 default), but the published artifact's bytecode target is
+  `<maven.compiler.release>8</maven.compiler.release>`** - Java 8 still has real enterprise/PKI-
+  adjacent footprint (owner-requested correction), verified empirically by cross-compiling Spike A
+  with `--release 8` from the JDK 17 install and running the resulting class on a real local JDK 8
+  JVM, all three test paths (selftest, seal/open round trip, wrong-key exception) unchanged. CI must
+  matrix JDK 8 and 17 for the test suite (step 5), not just build once on 17.
+- Step 1: direct-Rust binding via the `jni` crate (own `[workspace]`, D-119), per the spike above -
+  not JNI-over-capi.
+- Step 3: an `InputStream`/`OutputStream` pair; D-118's Java pitfall carries over from T-52's own
+  resolution unchanged (try-with-resources `close()` can't see whether the block threw, same
+  structural limitation as C#'s `Dispose()` - explicit `complete()`, not auto-finalize-on-close).
 - Step 4: a native library bundled per OS/arch classifier (or one fat JAR).
-- Step 6: JUnit.
+- Step 5: `cargo xtask java` + CI, matrix at least JDK 8 and 17 (per step 0's finding above).
+- Step 6: JUnit, run under both JDK 8 and 17 in CI.
 
 ### T-50 — Node.js
 

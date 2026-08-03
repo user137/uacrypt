@@ -2589,10 +2589,22 @@ configuration surface added in the process (D-47 still holds).
       own Rust implementation like everything else — Bouncy Castle stays the verification oracle
       only, same role it already has in `tests/oracle-harness/`. **Original text, kept for the
       historical record, not deleted**: "Java binding (wraps Bouncy Castle `DSTU4145Signer`
-      directly, per D-02 — does not use the Rust DSTU 4145 port)." First implementation step is a
-      spike comparing the `jni` crate (Rust-side JNI, no hand-written C shim) against
-      JNI-over-`bindings/capi` (T-158) — record the choice in `DECISIONS.md` before the real
-      implementation. See `docs/bindings-strategy.md` "Phase 4."
+      directly, per D-02 — does not use the Rust DSTU 4145 port)." **Step 0 done 2026-08-03, see
+      `docs/DECISIONS.md` D-153**: spiked the `jni` crate (Rust-side JNI, no hand-written C shim)
+      against JNI-over-`bindings/capi` (T-158) with two real runnable prototypes, not reasoned from
+      memory — both worked, **chose the `jni` crate** (direct-Rust binding, own `[workspace]` per
+      D-119, joining Python/Node/Ruby/PHP's group rather than .NET/C++/Go's C-ABI group). JNI-over-
+      capi would have added a third language (C) to the binding and doubled the packaged native
+      surface per platform for no benefit the direct binding doesn't already give. Panama (JEP 454)
+      named and rejected (JDK 22+ baseline too new for this audience). `jni` pinned to `0.21`, not
+      `0.22` (a real breaking `JNIEnv`/`EnvUnowned` API change, confirmed by trying the bump).
+      **JDK baseline**: build/test on Temurin 17 (installed this session, matches the Pi's Debian 12
+      default), published artifact targets `<maven.compiler.release>8</maven.compiler.release>` —
+      Java 8 still has real enterprise/PKI-adjacent footprint (owner-requested correction),
+      verified empirically by cross-compiling the spike with `--release 8` and running it on a real
+      local JDK 8 JVM, all paths unchanged. CI must matrix JDK 8 and 17. See `docs/bindings-strategy.md`
+      "Phase 4" and its own T-51 section for the full per-step plan. **Not yet started: steps 1
+      onward (scaffold `bindings/java`, wrap the full `crypto_*` surface).**
 - [x] **T-52** .NET binding — **reordered 2026-08-02, same rationale as T-51 (D-121)**: Bouncy
       Castle .NET already serves this language, so it now builds after T-50/T-160/T-159.
       **same correction as T-51, see D-115**: exposes the full `crypto_*`

@@ -235,8 +235,9 @@ any kind to choose from, safe or otherwise.
   no prebuilt binaries published anywhere yet (same gating posture as the other bindings). T-52
   (.NET, `bindings/dotnet`) landed 2026-08-03 too - the first binding with no Cargo workspace of its
   own at all, pure C# P/Invoke over T-158's C ABI, D-152. See `docs/bindings-strategy.md`,
-  `docs/DECISIONS.md` D-115/D-120/D-125 through D-152, `docs/TASKS.md`
-  T-49/T-50/T-51/T-52/T-53/T-158/T-159/T-160/T-163 - T-51 (Java) onward haven't started.
+  `docs/DECISIONS.md` D-115/D-120/D-125 through D-153, `docs/TASKS.md`
+  T-49/T-50/T-51/T-52/T-53/T-158/T-159/T-160/T-163 - T-51 (Java)'s step 0 spike is done (D-153,
+  `jni` crate chosen over JNI-over-capi), steps 1 onward plus T-53/T-163 haven't started.
 
 ## Libsodium API surface and crates.io publishing audit (2026-07-25)
 

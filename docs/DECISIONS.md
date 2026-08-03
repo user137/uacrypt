@@ -9880,3 +9880,88 @@ first real aarch64 run, no bug found this time - unlike D-151's `c_char`/`i8` fi
 crate's own test, this is genuine evidence that `[LibraryImport]`'s blittable marshalling for
 `nuint`/`SafeHandle`/`byte[]` and the explicit `[MarshalAs(UnmanagedType.U1)]` `bool` attributes are
 actually architecture-portable, not just correct by x86-64 coincidence.
+
+## D-153: T-51 (Java) step 0 spike - `jni` crate wins over JNI-over-T-158, real prototypes built both ways
+
+2026-08-03. `docs/bindings-strategy.md`'s Fork 1 left Java's shape genuinely open (unlike .NET/C++/
+Go, which route through the C ABI crate purely because no direct-Rust-binding tool for those
+languages has PyO3/napi-rs/magnus's maturity) - Java has such a tool (`jni` crate), so the fork had
+to actually be spiked, not decided by analogy. Two real, runnable prototypes were built rather than
+reasoned from memory, per this project's own "spike and read the actual output" discipline (the
+same one that reversed two planned `hazmat` rewrites, T-139/T-129):
+
+- **Spike A**: `jni = "0.21"` crate, Rust exposing `Java_SpikeA_*` symbols directly against
+  `dstu_core`'s own Rust API (no C ABI crate involved at all) - a `cdylib` calling
+  `dstu_core::selftest::run()` and `crypto_secretbox::{seal,open}`, loaded via
+  `System.loadLibrary` from a plain `javac`-compiled class.
+- **Spike B**: a hand-written `spike_b.c` JNI shim (`#include <jni.h>` + `dstu_core.h`) calling
+  `dstu_selftest()` through the already-built T-158 C ABI crate (`libdstu_core_capi.dll.a`,
+  mingw-compatible import lib), compiled with `gcc -shared`, loaded the same way.
+
+Both worked end to end on the first real run (`selfTest()` returned `true` in both). The deciding
+evidence wasn't "does it work" but what each path costs beyond that:
+
+- **Spike B adds a third language to the binding** (C, on top of Rust-in-capi and Java) that no
+  other direct-Rust binding (Python/Node/Ruby) needs, and it needs a real C compiler on every
+  developer machine and CI runner *for the Java binding specifically*, not just for building capi
+  itself. It also means **two native artifacts to package per platform** instead of one (the capi
+  `.dll`/`.so`/`.dylib` *and* the compiled JNI shim) - working directly against the opposite of
+  T-158's own point, which was to centralize the native surface for the C-ABI-consuming bindings,
+  not multiply it.
+- **Spike A avoids the C ABI's caller-allocated-out-buffer protocol entirely**
+  (`dstu_secretbox_seal(key, msg, len, out, out_cap, out_len*)`) - binding against `dstu_core`'s
+  native Rust API means a function just returns `Vec<u8>`, marshalled to a `jbyteArray` by the `jni`
+  crate's own `byte_array_from_slice`. This is the exact same reason Python/Node/Ruby went direct
+  instead of through capi, not a new argument invented for Java.
+- Spike A was extended one step further (per advisor review) beyond the trivial nullary `selfTest`
+  call: a real `byte[]`-in/`byte[]`-out round trip (`crypto_secretbox` seal/open) plus a genuine
+  failure path (open with the wrong key), confirming `env.convert_byte_array`/
+  `env.byte_array_from_slice`/`env.throw_new` all work as expected before committing to the shape -
+  not just the easiest possible signature.
+
+**Decision: Java joins Python/Node/Ruby/PHP's direct-binding group (via the `jni` crate), not the
+.NET/C++/Go C-ABI group.** `bindings/java` will be its own `[workspace]` (D-119), same as Python/
+Node/Ruby, wrapping `dstu_core` directly - not a consumer of `crates/dstu-core-capi`.
+
+**Panama (JDK 22's Foreign Function & Memory API, JEP 454) was considered and rejected, not just
+unspiked**: FFM-over-T-158 would need zero native glue at all, structurally identical to T-52's
+P/Invoke shape. Rejected because a JDK 22+ baseline is too new for this binding's target audience
+(enterprise/Bouncy-Castle-adjacent Java shops skew toward LTS releases, not the latest feature
+release) - not evaluated further, but named here so a future reader doesn't wonder why it's absent.
+
+**`jni` is pinned to `0.21`, not the newer `0.22.4`, as a deliberate choice, not a stale default**:
+tried bumping the spike to `0.22` and it does not compile unchanged - `0.22` redesigned `JNIEnv`
+ownership (an `extern "system" fn(JNIEnv, ...)` parameter now resolves to `EnvUnowned`, which lacks
+`convert_byte_array`/`byte_array_from_slice`/`throw_new` entirely; a different attach/borrow pattern
+is required). Staying on `0.21`'s stable, already-proven-out API avoids taking on that migration
+before the real binding exists. Re-evaluate the `0.22` API once the binding is built and stable, not
+mid-spike.
+
+**JDK baseline: build/test on 17, but target bytecode 8 for the published artifact** - this dev
+machine's only prior JDK was Oracle 1.8.0_211 (2019); installed Eclipse Temurin 17 LTS locally
+(`winget install --id EclipseAdoptium.Temurin.17.JDK`) to match the Pi's Debian 12 apt-default
+version, for step 10 parity. Spike A was re-verified compiling/running under 17 (`javac --release
+17`) with no behavior difference from the original Java 8 run. **Owner-requested correction, same
+day**: Java 8 still has genuine real-world footprint (legacy enterprise/PKI-adjacent shops, the
+exact audience this binding's Bouncy-Castle-incumbent framing already targets - Fork 1) and
+shouldn't be dropped just because the dev/CI machine defaults moved on - matches this project's own
+"no CPU-family lock-in" instinct applied to JVM-version lock-in instead. **Verified empirically, not
+assumed**: cross-compiled Spike A with `javac --release 8` (run from the JDK 17 install - `--release
+8` is supported cross-targeting, not a same-JDK requirement) and ran the resulting class file
+directly on the real local JDK 8 JVM - `selfTest`/`sealOpenRoundTrip`/the wrong-key exception path
+all passed unchanged. **Resolution for the real binding**: the POM sets
+`<maven.compiler.release>8</maven.compiler.release>` for the published API's bytecode target (JNI's
+own C ABI is unaffected by JVM version either way - only the pure-Java wrapper class's bytecode
+level matters for a consumer's JVM compatibility), while the build/test toolchain itself stays on a
+modern JDK (17, matching the Pi) via Maven's cross-release compilation - not two separate JDKs
+juggled by hand. CI should matrix at least JDK 8 and 17 for the test suite specifically (not just
+building on 17 and assuming the 8-target bytecode behaves identically) - record this in step 5's
+CI wiring, don't discover the gap after the fact.
+
+**D-118's Java pitfall carries over unchanged from T-52's own resolution**: try-with-resources'
+`close()` cannot see whether the block exited via exception or normally, the same structural
+limitation as C#'s parameterless `Dispose()` (T-52/D-152) - the real `SecretStream` wrapper needs
+the same explicit `complete()`-not-`close()` finalization split, not a fresh re-derivation.
+
+Spike code lived in the session scratchpad only, not committed - the real `bindings/java` scaffold
+starts fresh in step 1, following this decision.
