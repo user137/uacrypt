@@ -1,0 +1,6 @@
+# Force LF on checkout regardless of a client's core.autocrlf, so tools that treat CRLF as a
+# formatting diff (gofmt on Windows CI flagged every bindings/go .go file this way, D-155/T-163)
+# see the same bytes on every OS. Git-stored blobs are already LF-only (verified).
+* text=auto eol=lf
+
+*.pdf binary
