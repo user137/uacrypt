@@ -1,0 +1,11 @@
+[build]
+target = "thumbv7em-none-eabihf"
+
+[target.thumbv7em-none-eabihf]
+# `netduinoplus2` (QEMU stock machine, Cortex-M4F/STM32F405) - no custom QEMU fork needed, unlike
+# ESP32 (Xtensa/RISC-V), which has no real board model in mainline QEMU at all (checked 2026-08-03).
+# `cargo run`'s exit code is this runner's exit code (semihosting SYS_EXIT: EXIT_SUCCESS -> 0,
+# EXIT_FAILURE/a panic via panic-semihosting's "exit" feature -> nonzero) - the pass/fail signal
+# `xtask`'s `qemu-stm32` command checks.
+runner = "qemu-system-arm -cpu cortex-m4 -machine netduinoplus2 -nographic -semihosting-config enable=on,target=native -kernel"
+rustflags = ["-C", "link-arg=-Tlink.x"]

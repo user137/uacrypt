@@ -39,6 +39,7 @@ fn main() -> ExitCode {
         "dotnet" => dotnet(),
         "java" => java(),
         "go" => go(),
+        "qemu-stm32" => qemu_stm32(),
         "ci" => ci(),
         "help" | "-h" | "--help" => {
             print_usage();
@@ -82,7 +83,8 @@ fn print_usage() {
          \x20 capi           regenerate+diff include/dstu_core.h, compile+run the C test harness and examples (T-158)\n\
          \x20 dotnet         dotnet format --verify-no-changes, dotnet test bindings/dotnet (T-52)\n\
          \x20 java           build+lint bindings/java/native, mvn test bindings/java (T-51) - needs a JDK 11+ (17 recommended, D-153)\n\
-         \x20 go             build dstu-core-capi, gofmt -l + go vet + go test bindings/go (T-163)"
+         \x20 go             build dstu-core-capi, gofmt -l + go vet + go test bindings/go (T-163)\n\
+         \x20 qemu-stm32     run firmware/qemu-stm32-smoketest under QEMU's netduinoplus2 (Cortex-M4F), no real hardware needed (T-170)"
     );
 }
 
@@ -934,6 +936,25 @@ fn go_fmt_check(dir: &Path) -> bool {
     }
 }
 
+/// `firmware/qemu-stm32-smoketest` is its own Cargo workspace (own `.cargo/config.toml` pinning
+/// `target = thumbv7em-none-eabihf` and a QEMU runner) - T-170, docs/TASKS.md. `cargo run
+/// --release`'s exit code IS the check: the firmware calls ARM semihosting's `SYS_EXIT` with
+/// `EXIT_SUCCESS`/`EXIT_FAILURE`, which QEMU translates into its own process exit code, which
+/// `cargo run` propagates as the runner's exit status - no output-parsing needed.
+fn qemu_stm32() -> bool {
+    if !require(
+        "qemu-system-arm",
+        "apt install qemu-system-arm qemu-system-misc (Debian/Ubuntu) - see firmware/qemu-stm32-smoketest/README.md",
+    ) {
+        return false;
+    }
+    run(
+        "cargo",
+        &["run", "--release"],
+        Some(Path::new("firmware/qemu-stm32-smoketest")),
+    )
+}
+
 fn oracle_java() -> bool {
     if !require("mvn", "see README.md \"Building from source\" (Maven)") {
         return false;
@@ -991,6 +1012,7 @@ fn ci() -> bool {
         ruby,
         php,
         capi,
+        qemu_stm32,
     ] {
         optional();
     }

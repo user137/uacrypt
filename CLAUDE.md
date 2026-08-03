@@ -146,7 +146,13 @@ Algorithms in scope:
   - **Core must be `no_std`-compatible from day one** (`std`/`alloc`/`no_std` feature flags) so
     embedded targets can be added later without a core rewrite. Real-hardware validation is a
     separate post-MVP phase. Non-embedded ARM64/Linux is checked on a real Raspberry Pi (access in
-    `.claude.local.md`); bare-metal STM32/ESP32 is still Phase 4.
+    `.claude.local.md`); bare-metal STM32/ESP32 real silicon is still Phase 4/T-55/T-56 (not
+    started). A cheaper intermediate layer exists since 2026-08-03 (D-156, T-170):
+    `firmware/qemu-stm32-smoketest` runs official Kalyna/Kupyna vectors under QEMU's
+    `netduinoplus2` (stock, no-fork STM32/Cortex-M4F emulation) via `cargo xtask qemu-stm32` -
+    correctness-only, does not touch or claim anything about real-silicon timing/side-channels.
+    ESP32 has no equivalent (no real board in mainline QEMU, would need Espressif's own fork -
+    out of scope, see D-156).
   - No dependency/API/build assumption may quietly assume a specific OS or CPU family unless
     isolated behind a feature flag with a working alternative for excluded platforms.
   - `no_std`/embedded support ≠ resistance to hardware side-channel attacks (SPA/DPA) — that needs

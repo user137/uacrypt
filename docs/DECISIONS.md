@@ -10333,3 +10333,61 @@ formatting regression in any file. Fixed with a repo-root `.gitattributes`: `* t
 changes what future checkouts produce on disk. **Confirmed green on real CI**: run 30806655799,
 all three matrix legs (`ubuntu-latest`/`macos-latest`/`windows-latest`) passed, including the
 `rustup set default-host` fix above (same run) - both open items from this entry are now closed.
+
+## D-156: T-170 - `firmware/qemu-stm32-smoketest`, netduinoplus2 over an ESP32 fork
+
+2026-08-03. Follow-up to a conversation about whether GitHub-hosted CI has any real-hardware
+equivalent for microcontrollers - it doesn't (no hosted runner offers STM32/ESP32 silicon; the only
+path to real hardware in CI is a self-hosted runner wired to a physical board, which this project
+doesn't have, T-55/T-56 still open). Software emulation was raised as an additional, cheaper layer
+that doesn't replace real-hardware validation but can catch a genuine cross-target correctness bug
+before real hardware ever exists - explicitly scoped to **stock, no-fork-required** boards only per
+the owner's own framing.
+
+**Checked on the Raspberry Pi "uacipher" rig** (already the project's real ARM64 Linux test
+machine) what Debian's own `qemu-system-arm`/`qemu-system-misc` packages (`apt`, no custom build)
+actually support:
+- **STM32-class Cortex-M: real board models exist** - `qemu-system-arm -machine help` lists
+  `stm32vldiscovery` (Cortex-M3, STM32F100) and `netduinoplus2` (Cortex-M4F, STM32F405 - Netduino
+  boards are STM32-based despite the third-party name). `netduinoplus2` matches this project's
+  already-added `thumbv7em-none-eabihf` target (T-116, Cortex-M4/M7 hard-float) exactly, unlike
+  `stm32vldiscovery` (Cortex-M3, no FPU, would need the not-yet-added `thumbv7m-none-eabi`).
+- **ESP32: no real board in mainline/Debian QEMU at all**, either family - `qemu-system-xtensa`
+  only has generic dc232b/de212 eval boards (`sim`, `virt`, `kc705`, `lx60`...), no `esp32`
+  machine; `qemu-system-riscv32` only has `sifive_e`/`sifive_u`/`spike`/`virt`/`opentitan`, no
+  `esp32c3`. Real ESP32 emulation needs Espressif's own QEMU fork, built from source - explicitly
+  the "fork and dance" the owner asked to skip for this pass. Not attempted here; a candidate for a
+  later, separately-scoped task if ever wanted.
+
+**Decision: `netduinoplus2` only, ESP32 emulation out of scope for T-170.**
+
+**Built `firmware/qemu-stm32-smoketest`**, its own Cargo workspace (not a root workspace member -
+same D-119 reasoning as `bindings/*`: a `thumbv7em-none-eabihf` binary with its own linker script
+and QEMU runner has no business in `dstu-core`'s host-targeted workspace). Depends on `dstu-core`
+via a path dependency with `default-features = false` (genuine `no_std`, no `alloc`) plus
+`cortex-m`/`cortex-m-rt`/`cortex-m-semihosting`/`panic-semihosting` (the last with its `exit`
+feature). `memory.x` uses real STM32F405 sizes (1024K flash/128K RAM) - conservative for a binary
+this small regardless of QEMU's exact modeled sizes. The firmware runs the exact same official DSTU
+vectors the host test suite already uses (Kalyna-128/128 encryption, `docs/papers/Kalyna.pdf`
+Appendix B.2.6; Kupyna-256 digest, `docs/papers/Kupyna.pdf` Appendix B.2, both already in
+`crates/dstu-core/tests/vectors/`) rather than inventing a new unverified oracle, and reports
+pass/fail via ARM semihosting's `SYS_EXIT` (`cortex-m-semihosting::debug::exit`) - QEMU translates
+`EXIT_SUCCESS`/`EXIT_FAILURE` into its own process exit code, which `cargo run`'s own exit code
+already propagates (the same mechanism the embedded Rust ecosystem's own QEMU-based CI examples
+rely on), so no output-text parsing is needed. `.cargo/config.toml`'s `runner` string is
+`qemu-system-arm -cpu cortex-m4 -machine netduinoplus2 -nographic -semihosting-config
+enable=on,target=native -kernel` (cargo appends the built ELF path as the final argument).
+
+**`cargo xtask qemu-stm32`** added (checks `qemu-system-arm` is on `PATH` first, same
+`require()`/best-effort pattern as every other optional `xtask` command, then `cargo run --release`
+inside the firmware directory) and wired into `cargo xtask ci`'s optional-layers list.
+
+**Verified on the real Pi, both directions, not just the happy path** (D-25's own "don't trust
+green tests alone" principle, applied to a smoke test rather than a primitive this time): a clean
+run printed `PASS: Kalyna-128/128` / `PASS: Kupyna-256` and exited 0; a deliberately corrupted
+expected ciphertext byte (`0x81` -> `0x00`) printed `FAIL: Kalyna-128/128 ciphertext mismatch` and
+exited 1 - confirming the pass/fail signal is real, not a constant. Reverted after confirming.
+
+**Explicitly not real-hardware validation** (T-55/T-56 unchanged, still open) - QEMU emulates
+instruction semantics on the host CPU, not real silicon timing or side-channel behavior; this is an
+additional correctness-only layer, cheaper to run than owning a board, not a substitute for one.

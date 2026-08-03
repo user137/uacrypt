@@ -92,6 +92,8 @@ target.
 │   ├── dotnet/             # C# P/Invoke over dstu-core-capi - provisional, not on NuGet (T-52)
 │   ├── java/               # jni crate, full crypto_* surface - provisional, not on Maven Central (T-51)
 │   └── go/                 # cgo over dstu-core-capi, full crypto_* surface - provisional, repo-relative only (T-163)
+├── firmware/               # Phase 4 hardware/emulation checks, own Cargo workspace(s) - see docs/DECISIONS.md D-156
+│   └── qemu-stm32-smoketest/  # runs official Kalyna/Kupyna vectors under QEMU's netduinoplus2 (Cortex-M4F), no real board needed (T-170)
 ├── tests/oracle-harness/   # Java/.NET/C harnesses that verify test vectors against real Bouncy Castle
 └── oracles/                # reference implementations used as oracles - not vendored, see oracles/README.md
 ```

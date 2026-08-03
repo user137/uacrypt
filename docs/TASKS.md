@@ -2888,6 +2888,26 @@ configuration surface added in the process (D-47 still holds).
 
 ## Phase 4 — Hardware validation (post-MVP)
 
+- [x] **T-170** **DONE 2026-08-03 (`docs/DECISIONS.md` D-156).** QEMU-emulated STM32 smoke test -
+      an additional, cheaper correctness layer raised while discussing whether GitHub CI has any
+      real-microcontroller equivalent (it doesn't - only a self-hosted runner wired to physical
+      hardware would, which this project doesn't have). Scoped to stock, no-fork-required boards
+      only per the owner's explicit framing ("без форків та танцями з бубном"). Checked on the
+      Raspberry Pi what Debian's own `qemu-system-arm`/`qemu-system-misc` support: real STM32-class
+      boards exist (`netduinoplus2` - Cortex-M4F/STM32F405, matches the already-added
+      `thumbv7em-none-eabihf` target from T-116 exactly; `stm32vldiscovery` - Cortex-M3), but ESP32
+      has **no real board in mainline QEMU at all**, either Xtensa or RISC-V-C3 (needs Espressif's
+      own fork - explicitly out of scope here). New `firmware/qemu-stm32-smoketest` crate (own
+      Cargo workspace, D-119-style), runs the exact official Kalyna-128/128 and Kupyna-256 DSTU
+      vectors already used by the host test suite, reports pass/fail via ARM semihosting's
+      `SYS_EXIT` (becomes the process's real exit code - no text-parsing needed). New
+      `cargo xtask qemu-stm32` command (best-effort, checks `qemu-system-arm` first), added to
+      `cargo xtask ci`'s optional layers. **Verified on the real Pi in both directions**: a clean
+      run exits 0 with both `PASS:` lines; a deliberately corrupted expected-ciphertext byte exits 1
+      with a `FAIL:` line - confirms the signal is real, not a constant (reverted after confirming).
+      **Explicitly not real-hardware validation** - T-55/T-56 (STM32/ESP32 real silicon) are
+      unchanged, still not started; this only proves the emulated instruction semantics produce the
+      right bytes, not real timing/side-channel behavior.
 - [x] **T-54** **Two-resource-profile split, done 2026-07-23 (`docs/DECISIONS.md` D-35/D-38/D-39)** -
       `dstu-core`'s `small-tables` Cargo feature (independent of `std`/`alloc`, combines with
       either): `tables.rs`'s `MDS_TABLE`/`MDS_INV_TABLE`/`SBOX_MDS`/`SBOX_MDS_DEC` and Strumok's

@@ -1,0 +1,21 @@
+[package]
+name = "qemu-stm32-smoketest"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# Own workspace, not a root Cargo.toml member (D-119's "separate Cargo workspace per non-host
+# target" pattern, same reason bindings/* each have their own) - a thumbv7em-none-eabihf binary
+# with its own linker script/runner has no business inside dstu-core's host-targeted workspace.
+[workspace]
+
+[dependencies]
+dstu-core = { path = "../../crates/dstu-core", default-features = false }
+cortex-m = "0.7"
+cortex-m-rt = "0.7"
+cortex-m-semihosting = "0.5"
+panic-semihosting = { version = "0.6", features = ["exit"] }
+
+[profile.release]
+opt-level = "z"
+lto = true

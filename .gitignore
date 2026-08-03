@@ -36,6 +36,10 @@
 /oracles/*
 !/oracles/README.md
 
+# firmware/qemu-stm32-smoketest (T-170, D-156): its own separate Cargo workspace, same reason as
+# the bindings below - the root-scoped /target rule doesn't reach it.
+/firmware/*/target/
+
 # Language bindings (docs/bindings-strategy.md, D-119): each is its own separate Cargo workspace,
 # so the root-scoped /target rule above doesn't reach its build output - and each has its own
 # language-ecosystem build/cache artifacts on top of that. Cargo.lock IS committed per binding
