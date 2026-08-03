@@ -10166,3 +10166,61 @@ before claiming a platform is covered" discipline (`docs/TASKS.md` T-35). D-33 i
 reminder that a single-platform Kalyna/Kupyna performance number is not a general claim - if this
 oracle is revisited for the Pi, expect the possibility of a reversed result there, the same way
 UAPKI's comparison flips.
+
+## D-155: T-163 (Go) step 0 - hand-written `cgo`, not `c-for-go`
+
+2026-08-03. `docs/bindings-strategy.md`'s T-163 step 1 left the generator-vs-hand-written fork open
+("research rather than assume"), same as Java's Fork 1 required a real spike (D-153). Go's case
+doesn't need two runnable prototypes to resolve, though - the shape of `bindings/capi`'s own surface
+(T-158: opaque handles + `DstuStatus` codes, ~50 functions, already stable and unchanging) makes the
+tradeoff decisive on inspection rather than only measurable by building both:
+
+- A generator (`c-for-go`, the only actively-maintained option surveyed) would still need a
+  hand-written idiomatic Go layer on top of its raw output for exactly the parts that matter most:
+  the `io.Reader`/`io.Writer` `crypto_secretstream` wrapper (D-118, no generator produces this from a
+  C header), the `Close()`/`Complete()` split, and the caller-allocated-out-buffer calling convention
+  (`sealed_out`/`sealed_out_cap`/`sealed_len_out` triples) that reads far more naturally as idiomatic
+  Go with `make([]byte, n)` and a slice return than as a mechanically-translated three-argument call.
+- It adds a codegen tool (and its own Go/YAML config surface) to the CI matrix for a one-time,
+  already-small, already-stable header - not the multi-hundred-function churn-prone surface
+  `c-for-go` is meant to amortize.
+
+**Decision: hand-written `cgo` over `bindings/capi`'s `dstu_core.h`**, same C-ABI-consumer group as
+.NET/Java-spike-B-rejected/C++ (T-52/T-158's own group), package `dstu` under `bindings/go/dstu`
+(directory `bindings/go`, since `go` alone is a reserved word and cannot be a package identifier).
+
+**Link spike done before wrapping the full surface** (advisor-recommended vertical slice, same
+"spike and read the actual output" discipline as T-139/T-129/D-153): a minimal `cgo` file exporting
+only `Selftest()` over `C.dstu_selftest()`, one `go test` asserting it returns success.
+`${SRCDIR}` (cgo's own path-substitution token) resolved correctly with no absolute-path hardcoding
+needed for both `#cgo CFLAGS: -I${SRCDIR}/../../../crates/dstu-core-capi/include` and the `LDFLAGS`
+below.
+
+Two real findings from actually running this, not assumed:
+- **Plain `-ldstu_core_capi` links dynamically** even with only `libdstu_core_capi.a` (static) and
+  `libdstu_core_capi.dll.a` (import lib) both present - GNU `ld` prefers the import lib, so the test
+  binary silently required `dstu_core_capi.dll` on `PATH` at run time (confirmed: it failed with
+  `STATUS_DLL_NOT_FOUND`/`0xc0000135` until `target/release` was added to `PATH`, then passed).
+  **Forcing genuine static linking needs `-Wl,-Bstatic -ldstu_core_capi -Wl,-Bdynamic`** explicitly -
+  confirmed by re-running the test with `target/release` removed entirely from `PATH` afterward,
+  still green.
+- **Static linking then fails in two waves of `undefined reference` errors, resolved one library at
+  a time rather than guessed all at once** - the Rust standard library's own `std::net`/
+  `std::os::windows::net`/`std::sys::fs::windows`/`std::sys::process::windows` code is pulled into
+  the staticlib transitively (`dstu-core-capi` itself never touches networking/process spawning),
+  and MinGW's linker doesn't resolve these from the default library set the way MSVC's would:
+  1. Winsock symbols first (`WSAGetLastError`, `closesocket`, `bind`, `connect`,
+     `send`/`recv`/`WSASend`/`WSARecv`, `getsockname`/`getpeername`, `freeaddrinfo`, `accept`) -
+     fixed with `-lws2_32`.
+  2. Then `GetUserProfileDirectoryW` (`-luserenv`) and NT-native symbols
+     (`NtOpenFile`/`NtCreateNamedPipeFile`/`RtlNtStatusToDosError`, from `std::fs::remove_dir_all`/
+     temp-dir and child-process-pipe code paths) - fixed with `-lntdll`.
+  All three of the advisor's suggested libraries were genuinely needed here (`-lws2_32 -luserenv
+  -lntdll`); `-lbcrypt`/`-ladvapi32` were not required for this minimal surface and were not added
+  speculatively - re-check if a future undefined reference appears once the full ~50-function surface
+  is wrapped (`crypto_pwhash`/`randombytes` may pull in `bcrypt.dll` specifically).
+
+Final working directive: `#cgo LDFLAGS: -L${SRCDIR}/../../../target/release -Wl,-Bstatic
+-ldstu_core_capi -Wl,-Bdynamic -lws2_32 -luserenv -lntdll`. Static was tried first per the advisor's
+recommendation and succeeded once all three libraries were added - no fallback to the dynamic path
+was needed for the real binding.
