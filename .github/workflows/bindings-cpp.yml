@@ -1,0 +1,37 @@
+name: bindings-cpp
+
+# Own job, not folded into rust.yml's matrix - bindings/cpp has no Cargo workspace of its own at
+# all (like bindings/dotnet/bindings/go): it consumes crates/dstu-core-capi (T-158, a real
+# root-workspace member already covered by rust.yml's own --workspace build/test/clippy/fmt jobs)
+# purely as a header-only CMake target over the C ABI, so there is no separate Rust dependency
+# tree here for a supply-chain job to audit (docs/bindings-strategy.md T-53 step 5).
+#
+# No Windows GNU-forcing needed (unlike bindings-go.yml's cgo requirement, D-155) - `cargo xtask
+# cpp` branches on `target_env` the same way `xtask`'s own `capi()`/`capi_compile_msvc` already do
+# for the plain-C harness (rust.yml's `capi` job, same three-OS matrix): MSVC-hosted
+# `windows-latest` links against the MSVC-built `dstu_core_capi.dll.lib` via CMake's own default
+# Visual Studio generator, GNU-hosted dev machines get an explicit `-G "MinGW Makefiles"`.
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: build + test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      # cmake ships preinstalled on all three GitHub-hosted runner images; a C++ compiler does too
+      # (MSVC on windows-latest, gcc on ubuntu-latest, Xcode Clang on macos-latest) - same
+      # "already there, no extra install step" posture rust.yml's own `capi` job relies on.
+      - run: cargo xtask cpp

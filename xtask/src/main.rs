@@ -39,6 +39,7 @@ fn main() -> ExitCode {
         "dotnet" => dotnet(),
         "java" => java(),
         "go" => go(),
+        "cpp" => cpp(),
         "qemu-stm32" => qemu_stm32(),
         "ci" => ci(),
         "help" | "-h" | "--help" => {
@@ -84,6 +85,7 @@ fn print_usage() {
          \x20 dotnet         dotnet format --verify-no-changes, dotnet test bindings/dotnet (T-52)\n\
          \x20 java           build+lint bindings/java/native, mvn test bindings/java (T-51) - needs a JDK 11+ (17 recommended, D-153)\n\
          \x20 go             build dstu-core-capi, gofmt -l + go vet + go test bindings/go (T-163)\n\
+         \x20 cpp            build dstu-core-capi+uacrypt, cmake configure+build+ctest bindings/cpp (T-53)\n\
          \x20 qemu-stm32     run firmware/qemu-stm32-smoketest under QEMU's netduinoplus2 (Cortex-M4F), no real hardware needed (T-170)"
     );
 }
@@ -934,6 +936,51 @@ fn go_fmt_check(dir: &Path) -> bool {
             false
         }
     }
+}
+
+/// `bindings/cpp` (T-53) is header-only, no Rust glue of its own - build `dstu-core-capi` (the
+/// cdylib this binding links, D-158's own choice, not the staticlib `bindings/go` uses) and
+/// `uacrypt` (the real interop binary the test suite's `TestUacryptInterop` shells out to) first,
+/// then drive an out-of-tree CMake build the same way a real downstream consumer would: configure,
+/// build, `ctest`. `-DCMAKE_BUILD_TYPE=Release` + `--config Release` covers both single-config
+/// generators (Makefiles/Ninja, which use the former and ignore the latter) and multi-config ones
+/// (Visual Studio, which is the reverse) in one call, so this doesn't need its own per-generator
+/// branch the way `capi_compile_msvc` does.
+fn cpp() -> bool {
+    if !require("cmake", "https://cmake.org/download/ (or your OS package manager)") {
+        return false;
+    }
+    if !run(
+        "cargo",
+        &["build", "-p", "dstu-core-capi", "--release"],
+        None,
+    ) {
+        return false;
+    }
+    if !run("cargo", &["build", "-p", "uacrypt", "--release"], None) {
+        return false;
+    }
+
+    let dir = Path::new("bindings/cpp");
+    let mut configure_args = vec!["-S", ".", "-B", "build", "-DCMAKE_BUILD_TYPE=Release"];
+    // MinGW Makefiles on this project's Windows-GNU dev machines specifically - CMake's own
+    // default generator probe picks a Visual Studio generator on a real MSVC-hosted CI runner,
+    // which is what's wanted there, so this branch only fires where it's actually needed.
+    if cfg!(windows) && cfg!(target_env = "gnu") {
+        configure_args.push("-G");
+        configure_args.push("MinGW Makefiles");
+    }
+    if !run("cmake", &configure_args, Some(dir)) {
+        return false;
+    }
+    if !run("cmake", &["--build", "build", "--config", "Release"], Some(dir)) {
+        return false;
+    }
+    run(
+        "ctest",
+        &["--test-dir", "build", "--output-on-failure", "-C", "Release"],
+        Some(dir),
+    )
 }
 
 /// `firmware/qemu-stm32-smoketest` is its own Cargo workspace (own `.cargo/config.toml` pinning
