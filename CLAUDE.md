@@ -376,6 +376,13 @@ Full detail and rationale in `docs/SECURITY.md` — this is the compressed versi
   doc-map sweep complete for a change that adds a workspace member or a headline-scope item,
   separately re-read `CLAUDE.md`'s own "Project status"/"Second priority" sections and
   `docs/CHANGELOG.md`'s `[Unreleased]` section — don't rely on the task-ID grep to reach them.
+  A missing `CHANGELOG.md` entry for an already-tagged release is the sharpest version of this: it
+  reads as nothing at all, not as stale prose, so a grep-for-stale-language pass walks right past
+  it. `docs/CHANGELOG.md` only covers what actually ships in a tagged GitHub Release/crates.io
+  publish, not every landed change (owner's own scoping, D-159) — check `gh release list` against
+  `docs/CHANGELOG.md`'s own version headers whenever auditing it, not just its prose for staleness
+  (confirmed the hard way: `v0.2.0` shipped 2026-08-02 with real content — DSTU 4145 signing, a
+  correctness fix, perf work — and had no `CHANGELOG.md` entry at all until this cross-check).
 - **Adding a new `cargo fuzz` target means syncing three places**: `fuzz/Cargo.toml`'s `[[bin]]`,
   `.github/workflows/rust.yml`'s `fuzz-smoke` matrix, `xtask/src/main.rs`'s `FUZZ_TARGETS` array —
   missing the third means the project's single QA entry point silently skips the new target.

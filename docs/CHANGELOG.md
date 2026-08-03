@@ -5,6 +5,57 @@ All notable changes to this project are documented in this file. Format follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-02
+
+Second tagged release - GitHub Releases only, no crates.io publish (`docs/TASKS.md` T-17 stays
+separately gated, same posture as v0.1.0).
+
+### Added
+
+- `crypto_sign`/`uacrypt`: DSTU 4145 digital-signature CLI commands - `sign-keygen`, `sign-pubkey`,
+  `sign`, `verify` (`docs/TASKS.md` T-124).
+- `dstu-core`: `getrandom` Cargo feature - a `no_std`-compatible RNG path via `getrandom` 0.3's
+  link-time custom backend, for targets without `std` (T-123, `docs/DECISIONS.md` D-74).
+- Official Strumok-256/512 supplementary test vectors from two additional state-sourced supplements
+  (beyond the existing UAPKI-attributed set), D-104.
+- Kani bounded-model-check proofs for `gf2m163::reduce`'s two previously hand-argued claims,
+  checked exhaustively over all 2^384 possible inputs (T-145).
+- CodeQL advanced-setup CI migration, explicit least-privilege CI permissions (T-143); SonarCloud
+  static analysis wired into CI (T-140).
+
+### Fixed
+
+- DSTU 4145 `scalar_multiply` returned a wrong result for scalars at/near the curve's own group
+  order - reachable in-contract at exactly one boundary value (`k == n-1`). No forgery risk
+  (confirmed via an independent Bouncy Castle cross-check), but a genuine correctness bug every
+  `sign`/`verify` call went through. See `docs/DECISIONS.md` D-110.
+
+### Changed
+
+- Performance: DSTU 4145 `sign` ~2.6x faster, `verify` ~4.4x faster (cumulative) - bit-interleave
+  GF(2^163) squaring and an Itoh-Tsujii addition-chain field inversion, plus a projective/Shamir's-
+  trick fast path for `verify`'s public-scalar combine step. Narrows the gap to OpenSSL's
+  `nistb163` from ~21-23x to ~5-8x slower. See `docs/DECISIONS.md` D-108/D-109, `docs/PERFORMANCE.md`.
+- Kalyna: const-generic round functions close most of the block-cipher gap with the UAPKI reference
+  (T-128); the GCM/GMAC field-multiply bottleneck closed via a 4-bit comb multiply (T-125);
+  CMAC/GMAC/KW gain a cached-schedule API surface, XTS gains a faster `GF(2^m)` doubling
+  (T-126/T-127).
+- Kupyna gains a const-generic compression function (T-134); Strumok's keystream generation is
+  batched/fixed-index (T-135).
+
+### Notes
+
+- No breaking changes in the public `crypto_*`/`hazmat` API surface. `uacrypt`'s on-disk
+  `encrypt`/`decrypt` wire format was already changed pre-1.0 in a prior, unreleased state (the
+  chunked `crypto_secretstream` format) - not part of this release specifically.
+- **Language bindings (`bindings/`) and the C ABI crate (`crates/dstu-core-capi`) are not part of
+  this release** - none of the eight bindings (Python/Node/Ruby/PHP/.NET/Java/Go/C++, all done as
+  of 2026-08-03, `docs/bindings-strategy.md`) or the C ABI crate itself have ever shipped in a
+  tagged GitHub Release; this file only records what actually releases (crates.io/GitHub Releases),
+  not every landed change - per-binding status lives in `docs/TASKS.md`/`docs/bindings-strategy.md`
+  instead.
+- Still pre-1.0, not audited, and **not a claim of side-channel resistance**.
+
 ## [0.1.0] - 2026-07-26
 
 First tagged release - GitHub Releases only (`docs/TASKS.md` T-18); not published to crates.io

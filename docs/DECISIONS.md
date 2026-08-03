@@ -10593,3 +10593,24 @@ respectively, added 2026-08-03, before this cross-check) - not silently missed, 
 `docs/SECURITY.md`/`docs/PERFORMANCE.md`/`docs/resource-profiles.md`/`docs/ORACLES.md`/`AGENTS.md`
 checked, nothing stale found (`ORACLES.md`'s two "binding" hits are D-115's already-accurate
 historical record, not a status claim).
+
+**Addendum, same conversation: the `CHANGELOG.md` scope question resolved, and a real gap found by
+resolving it.** Owner's answer: "Тільки те що релізиться" (only what actually releases) - `docs/
+CHANGELOG.md` tracks what ships in a tagged GitHub Release/crates.io publish, not every landed
+change. Checking that rule against reality (`gh release list`, not assumed) found `v0.2.0` was
+tagged and published 2026-08-02T01:04:25Z (`dstu-core`/`uacrypt` both at `0.2.0` in their own
+`Cargo.toml`) with real, substantial content - DSTU 4145 signing commands (T-124), the
+`scalar_multiply` correctness fix (D-110), the sign/verify perf work (D-108/D-109), a `getrandom`
+no_std feature (T-123), Kani proofs (T-145), CodeQL/SonarCloud CI (T-140/T-143) - and
+`docs/CHANGELOG.md` had **zero entry for it**: `[Unreleased]` sat empty, the file jumped straight
+from nothing to `[0.1.0]`. A second, concrete instance of this entry's own "free-standing state
+doesn't get caught by a task-ID grep" finding - nothing about "add a CHANGELOG entry" is gated on
+any single task's own ID, so it silently fell through every prior session's own doc-map sweep.
+Fixed: a real `[0.2.0] - 2026-08-02` entry added, sourced from the actual GitHub release notes and
+cross-checked against the cited `D-108`/`D-109`/`D-110`/`D-74` entries for accuracy (not copied
+verbatim). Per the owner's own scope answer, this entry's own "Notes" section states explicitly
+that the language bindings and `dstu-core-capi` are deliberately excluded, not forgotten - they
+have never shipped in a tagged release. **New standing rule**: check `gh release list` against
+`docs/CHANGELOG.md`'s own entries as part of any full documentation cross-check, not just grep for
+staleness in prose - a missing entire release entry doesn't "read" as stale prose, it reads as
+nothing at all, which is easy to walk past.
