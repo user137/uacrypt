@@ -10455,3 +10455,50 @@ exited 1 - confirming the pass/fail signal is real, not a constant. Reverted aft
 **Explicitly not real-hardware validation** (T-55/T-56 unchanged, still open) - QEMU emulates
 instruction semantics on the host CPU, not real silicon timing or side-channel behavior; this is an
 additional correctness-only layer, cheaper to run than owning a board, not a substitute for one.
+
+## D-158: T-53 (C++) step 0 - four forks resolved before writing code
+
+2026-08-03. `docs/bindings-strategy.md`'s T-53 entry left four things open ("decide at
+implementation time"). Resolved together per this file's own standing rule about surfacing
+multiple implementation forks in one place, not one at a time:
+
+1. **Stream finalization**: the `Complete()`-not-`Dispose()`/`Complete()`-not-`Close()` split
+   D-152 (.NET)/D-155 (Go) already chose ports directly - a C++ RAII destructor genuinely cannot
+   tell exception-unwind from normal scope exit without `std::uncaught_exceptions()` bookkeeping
+   (and that API is fragile under nested exceptions besides), so avoiding the question entirely is
+   the plainer fix, same reasoning Go's own doc comment already gives. `SecretStreamEncryptor`'s
+   destructor only frees the native push state (RAII, D-118's non-negotiable half); emitting the
+   `Tag::Final` chunk is a separate explicit `Finish()` call the caller makes on the success path.
+   A write loop that throws mid-stream leaves no `Final` chunk behind - a reader fails closed on it
+   (D-65), matching every other binding's own D-118 property test.
+2. **Step 3 shape**: `std::ostream&`/`std::istream&`, not an iterator-of-buffers - matches Go's
+   `io.Writer`/`io.Reader` and .NET's `Stream` precedent the advisor pointed at, and is the
+   idiomatic C++ shape for "an open file or any other byte sink/source" (works unmodified with
+   `std::ofstream`/`std::ifstream`, `std::stringstream`, or a caller's own `std::streambuf`).
+3. **Step 4 packaging**: prebuilt lib + header, no CMake `FetchContent`. `crates/dstu-core-capi`
+   already produces both a cdylib and a staticlib plus a committed `include/dstu_core.h` via
+   `cargo xtask capi` - `FetchContent`ing a Rust crate from CMake has no real tooling support (no
+   Rust equivalent of `corrosion` is already a project dependency), so the honest deliverable
+   mirrors T-158's own header pattern: an `INTERFACE` CMake target that expects the caller to have
+   already run `cargo xtask capi` and point `DSTU_CORE_CAPI_DIR` at the crate, same shape .NET's
+   `Directory.Build.props`/Go's `#cgo LDFLAGS` already assume a prebuilt native artifact rather than
+   building Rust from inside the other language's own build system.
+4. **Step 6 test framework + vector loading**: hand-rolled `CHECK` macro mirroring
+   `c-tests/test_capi.c` exactly, no Catch2/doctest/GoogleTest dependency - C++ has no stdlib JSON
+   either, so `test_capi.c`'s own answer (hand-transcribe the single official Kupyna-256 vector as a
+   byte array, `dstu_selftest()` covers the rest) carries over unchanged; matches
+   cross-language-style-guide.md's "standard library over a third-party one" KISS principle
+   (D-124), and a real JSON dependency buys nothing a C test harness didn't already need to solve
+   without one.
+
+**Linking, not left open, decided by reading the existing precedent rather than re-deriving it**:
+`c-tests/test_capi.c` itself links `dstu-core-capi`'s **cdylib** (`-ldstu_core_capi` against the
+import lib on Windows-GNU, `.so`/`.dylib` directly elsewhere), not the staticlib - simpler than
+Go's D-155 static-link route (no `-Wl,-Bstatic`/`-Bdynamic` bracketing, no transitive
+`-lws2_32 -luserenv -lntdll` needed, since the cdylib itself resolves those at its own link time).
+`bindings/cpp`'s CMake follows the C test harness's own choice, not Go's - both are valid, but
+matching the crate's own existing C consumer is less surface to get wrong than re-deriving Go's
+static-link fixes for a case that does not need them.
+
+No code written this entry - the four-fork record itself, per the project's "record multiple
+resolved forks together" rule. Implementation follows in the same session's later commits.
