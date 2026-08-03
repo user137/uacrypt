@@ -299,9 +299,9 @@ confirmed on real CI, only verified locally on this Windows-GNU dev machine, sam
 prior binding's own first-pass session carried). T-52 (.NET) done in full 2026-08-03 - see D-152
 (P/Invoke `[LibraryImport]` bool-marshalling finding, `SafeHandle` handles,
 `SecretStreamEncryptStream`/`DecryptStream`'s `Complete()`-not-`Dispose()` finalization split,
-NuGet packaging + fresh-install check) - all steps done except step 10 (Pi ARM64 re-check), still
-pending. **Next: finish T-52 step 10, then T-51 (Java, needs the step-0 `jni`-vs-JNI-over-capi
-spike first), not started.**
+NuGet packaging + fresh-install check, then the Pi ARM64 re-check - step 10, all green first try,
+no bug found) - T-52 is now done in full, all ten standard steps. **Next: T-51 (Java, needs the
+step-0 `jni`-vs-JNI-over-capi spike first), not started.**
 
 ### The standard binding steps
 
@@ -577,9 +577,13 @@ bindings so far) - `bindings/dotnet/DstuCore` is pure C#, P/Invoking T-158's alr
 - Step 7: **Done.** `examples/` (one console project, `dotnet run -- <name>` dispatch —
   `secretbox`/`secretstream-file`/`sign`/`password-hashing`/`misc`, mirroring
   `bindings/python/examples` file-for-file) + `README.md` with the provisional-status banner.
-- Step 10: **[ ] Not yet done** — Pi ARM64 re-check pending (D-151's own template step 10, added
-  after T-49/T-50/T-158/T-159/T-160 but applying to every binding from T-52 onward as a real,
-  not-retroactive, numbered step).
+- Step 10: **Done 2026-08-03.** Real aarch64 Linux (the Raspberry Pi rig) had no .NET SDK installed
+  at all before this - `dotnet-install.sh --channel 8.0` (Microsoft's official install script; Debian
+  isn't one of the OSes `packages.microsoft.com`'s apt feed officially supports, unlike Ubuntu) got
+  a real linux-arm64 SDK working there for the first time. All 56 tests passed on the first run, no
+  ARM-portability bug found this time (unlike D-151's `c_char`/`i8` finding in the C ABI crate's own
+  test) - genuine evidence the `[LibraryImport]`/`SafeHandle`/`nuint` marshalling choices in D-152
+  are actually architecture-portable, not just working by x86-64 coincidence.
 
 ### T-51 — Java
 

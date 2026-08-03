@@ -2613,7 +2613,9 @@ configuration surface added in the process (D-47 still holds).
       exit signal, unlike Python's `__exit__` — `Complete()` is an explicit required call instead).
       56 xUnit tests (D-64/D-65, real `uacrypt` interop), `dotnet pack` + a real fresh-install check
       from a local NuGet feed, `cargo xtask dotnet` + `bindings-dotnet.yml` CI (ubuntu/macos/
-      windows), five examples + README.
+      windows), five examples + README. Step 10 (Raspberry Pi ARM64 re-check) also done the same
+      day - all 56 tests passed on the first real aarch64 run, no ARM-portability bug found this
+      time (unlike D-151's `c_char`/`i8` finding in the C ABI crate).
 - [ ] **T-53** C++ binding (`bindings/cpp`) — thin RAII header-only wrapper over `bindings/capi`
       (T-158), no separate Rust glue. No incumbent-competition reason to reorder this one relative
       to .NET/Java (D-121 didn't touch it specifically), but it still needs T-158 first same as

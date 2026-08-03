@@ -9871,3 +9871,12 @@ not re-run by `cargo xtask dotnet` on every invocation (same posture `capi()`'s 
 established) - `bindings-dotnet.yml`'s CI job sanity-checks the `dotnet pack` step itself on every
 push instead, catching a broken packaging *recipe* without re-doing the full fresh-install
 round trip each time.
+
+**Step 10 (Raspberry Pi ARM64 re-check, D-151's template) done the same day**: the Pi had no .NET
+SDK at all before this - installed via Microsoft's official `dotnet-install.sh --channel 8.0`
+(Debian isn't on `packages.microsoft.com`'s officially-supported apt-feed OS list the way Ubuntu is,
+so the script-based install is the documented path, not a workaround). All 56 tests passed on the
+first real aarch64 run, no bug found this time - unlike D-151's `c_char`/`i8` finding in the C ABI
+crate's own test, this is genuine evidence that `[LibraryImport]`'s blittable marshalling for
+`nuint`/`SafeHandle`/`byte[]` and the explicit `[MarshalAs(UnmanagedType.U1)]` `bool` attributes are
+actually architecture-portable, not just correct by x86-64 coincidence.
