@@ -56,10 +56,10 @@ implementation within a minute, without hassle — in the spirit of
   D-120. T-50 (Node.js) is done as of 2026-08-02 too - see D-125 through D-132. T-160 (Ruby) is
   done as of 2026-08-02 too - see D-133 through D-141. T-159 (PHP) is done as of 2026-08-02 too -
   see D-142 through D-146. T-158 (C ABI crate) is done as of 2026-08-03 too - see D-148/D-149. T-52
-  (.NET) is done as of 2026-08-03 too - see D-152. T-51 (Java) and T-163 (Go) are both done in full
-  as of 2026-08-03, including their own Raspberry Pi re-checks (step 10) - see D-153/D-155. T-53
-  (C++, header-only RAII wrapper over `crates/dstu-core-capi`) is done as of 2026-08-03 for steps
-  1-9 - see D-158; step 10 (Raspberry Pi re-check) still pending.
+  (.NET) is done as of 2026-08-03 too - see D-152. T-51 (Java), T-163 (Go), and T-53 (C++,
+  header-only RAII wrapper over `crates/dstu-core-capi`) are all done in full as of 2026-08-03,
+  including their own Raspberry Pi re-checks (step 10) - see D-153/D-155/D-158. Every planned
+  binding is now built.
 - Do not separately reimplement DSTU 4145 in the native core — for
   Java/.NET, integrate/wrap Bouncy Castle (a mature implementation already
   exists there); for Rust, port it while relying on Bouncy Castle as a

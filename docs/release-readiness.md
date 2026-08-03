@@ -242,11 +242,11 @@ any kind to choose from, safe or otherwise.
   for Go has PyO3/napi-rs/magnus's maturity), full `crypto_*` surface, `io.Writer`/`io.Reader`-shaped
   secretstream, D-155 (the Pi re-check found the Windows-only cgo `LDFLAGS` needed a per-`GOOS`
   split to link on Linux at all - a cross-OS gap, not a cross-architecture one). T-53 (C++,
-  `bindings/cpp`) landed 2026-08-03 too - header-only RAII wrapper over T-158's C ABI (no CMake
-  `FetchContent` for the Rust side, D-158), `std::ostream&`/`std::istream&`-shaped secretstream
-  with an explicit `Finish()` (a destructor can't reliably distinguish exception-unwind from
-  normal scope exit), full `crypto_*` surface, real bidirectional `uacrypt` interop in its test
-  suite - step 10 (Raspberry Pi re-check) still pending as of this writing. See
+  `bindings/cpp`) landed 2026-08-03 too, all ten standard steps - header-only RAII wrapper over
+  T-158's C ABI (no CMake `FetchContent` for the Rust side, D-158), `std::ostream&`/
+  `std::istream&`-shaped secretstream with an explicit `Finish()` (a destructor can't reliably
+  distinguish exception-unwind from normal scope exit), full `crypto_*` surface, real bidirectional
+  `uacrypt` interop in its test suite, its own Pi re-check (step 10) finding no bug this time. See
   `docs/bindings-strategy.md`, `docs/DECISIONS.md` D-115/D-120/D-125 through D-158, `docs/TASKS.md`
   T-49/T-50/T-51/T-52/T-53/T-158/T-159/T-160/T-163 - every planned binding has now landed.
 

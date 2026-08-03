@@ -318,16 +318,18 @@ networking; full `crypto_*` surface, `CryptoError`/`ArgumentError`/`InternalErro
 forces the GNU-hosted Rust toolchain since cgo can't link MSVC output - unconfirmed on real CI as
 of this writing), examples/README; step 10's Pi re-check found the Windows-only LDFLAGS didn't
 work unmodified on Linux - fixed with cgo's own per-`GOOS` `#cgo` pragma syntax, all tests then
-green on real aarch64). T-53 (C++) done in full 2026-08-03 for steps 1-9 - see D-158 (four step-0
-forks: `Finish()`-not-destructor Final emission, `std::ostream&`/`std::istream&`, prebuilt-lib
-CMake packaging with no `FetchContent` for the Rust side, hand-rolled `CHECK`-macro test harness
-mirroring `c-tests/test_capi.c`); header-only C++17 RAII wrapper (`unique_ptr`-backed move-only
-handles) over `crates/dstu-core-capi`'s cdylib (not the staticlib Go links - matches the C test
-harness's own existing choice), full `crypto_*` surface, exception-based errors, real bidirectional
-`uacrypt.exe` interop in the test suite, `cargo xtask cpp` + `bindings-cpp.yml` CI (no Windows
-GNU-forcing needed, branches on `target_env` the same way `capi()` already does), five examples +
-README - **step 10 (Pi re-check) still pending, do that before considering T-53 fully closed.**
-**Next: T-53's own step 10, then T-162 (docs, last).**
+green on real aarch64). T-53 (C++) done in full 2026-08-03, all ten standard steps - see D-158
+(four step-0 forks: `Finish()`-not-destructor Final emission, `std::ostream&`/`std::istream&`,
+prebuilt-lib CMake packaging with no `FetchContent` for the Rust side, hand-rolled `CHECK`-macro
+test harness mirroring `c-tests/test_capi.c`); header-only C++17 RAII wrapper (`unique_ptr`-backed
+move-only handles) over `crates/dstu-core-capi`'s cdylib (not the staticlib Go links - matches the
+C test harness's own existing choice), full `crypto_*` surface, exception-based errors, real
+bidirectional `uacrypt.exe` interop in the test suite, `cargo xtask cpp` + `bindings-cpp.yml` CI (no
+Windows GNU-forcing needed, branches on `target_env` the same way `capi()` already does), five
+examples + README; step 10's Pi re-check found no bug this time (unlike D-151's `c_char`/`i8`
+finding in the C ABI crate) - `libdstu_core_capi.so` linked correctly, Kupyna-256 digest
+byte-identical to the x86-64 dev machine. **Every planned binding (T-49/T-50/T-160/T-159/T-158/
+T-52/T-51/T-163/T-53) is now done in full. Next: T-162 (docs, last).**
 
 ### The standard binding steps
 
@@ -714,8 +716,8 @@ Standard steps:
 
 ### T-53 — C++ (reordered 2026-08-02, D-123: now builds after T-163/Go)
 
-**Done in full 2026-08-03 for steps 1-9 — see D-158; step 10 (Raspberry Pi re-check) still
-pending.** Standard steps, consuming T-158's header:
+**Done in full 2026-08-03, all ten standard steps — see D-158.** Standard steps, consuming
+T-158's header:
 - Step 1: **Done, see D-158.** `bindings/cpp/include/dstu/*.hpp`, C++17, header-only. Move-only
   RAII wrapper classes over every opaque `crates/dstu-core-capi` handle via
   `std::unique_ptr<T, void(*)(T*)>` (a custom-deleter `unique_ptr` gives move semantics almost for
@@ -765,10 +767,19 @@ pending.** Standard steps, consuming T-158's header:
   gaps.md` checked, no T-53 references existed to update (same finding every earlier binding's own
   step 8 had). T-53 marked done in `docs/TASKS.md`.
 - Step 9: each step above landed as its own commit, not one large drop.
+- Step 10: **Done.** Raspberry Pi ARM64 re-check - `cargo xtask cpp` green end-to-end on real
+  aarch64 (cmake 3.25.1/g++ 12.2.0, both already present, no new install needed unlike Node/Ruby/
+  PHP/.NET's own first Pi runs), including the real `uacrypt`↔C++ interop test over a plain POSIX
+  `sh` (not Windows `cmd.exe` - `RunCommand`'s outer-quote wrapping is a no-op there, D-158's own
+  test file comment). Links `libdstu_core_capi.so` (confirmed via `file`, not assumed) - the
+  non-Windows CMakeLists branch exercised for the first time on real hardware.
+  Kupyna-256("hello world") verified byte-identical to the x86-64 dev machine's own digest. No
+  ARM-portability bug found this time (unlike D-151's `c_char`/`i8` finding in the C ABI crate
+  itself), matching T-52/.NET's own clean first pass rather than T-51/Java's or T-163/Go's own
+  Pi-specific findings.
 
-**Step 10 (Raspberry Pi ARM64 re-check) not yet done as of this writing** — `cargo xtask cpp`
-passes end-to-end on this dev machine (GCC/MinGW, all tests + all five examples green, real
-`uacrypt.exe` interop confirmed both directions).
+`cargo xtask cpp` passes end-to-end on both the x86-64 Windows dev machine (GCC/MinGW, all tests +
+all five examples green, real `uacrypt.exe` interop confirmed both directions) and the aarch64 Pi.
 
 ### T-159 — PHP (reordered 2026-08-02, D-121: builds right after T-49/T-50/T-160, not deferred)
 

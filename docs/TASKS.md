@@ -2703,8 +2703,8 @@ configuration surface added in the process (D-47 still holds).
       windows), five examples + README. Step 10 (Raspberry Pi ARM64 re-check) also done the same
       day - all 56 tests passed on the first real aarch64 run, no ARM-portability bug found this
       time (unlike D-151's `c_char`/`i8` finding in the C ABI crate).
-- [x] **T-53** **Done 2026-08-03 for steps 1-9, see `docs/DECISIONS.md` D-158 - step 10 (Raspberry
-      Pi re-check) still pending.** C++ binding (`bindings/cpp`) — thin RAII header-only wrapper
+- [x] **T-53** **Done in full 2026-08-03, all ten standard steps, see `docs/DECISIONS.md` D-158.**
+      C++ binding (`bindings/cpp`) — thin RAII header-only wrapper
       over `crates/dstu-core-capi` (T-158), no separate Rust glue. No incumbent-competition reason
       to reorder this one relative to .NET/Java (D-121 didn't touch it specifically), but it still
       needed T-158 first same as T-51/T-52, so it landed in that same later group by construction.
@@ -2725,7 +2725,12 @@ configuration surface added in the process (D-47 still holds).
       test suite (`std::system`, with the documented Windows `cmd.exe` outer-quote workaround),
       `cargo xtask cpp` + `bindings-cpp.yml` CI (ubuntu/macos/windows, no Windows GNU-forcing needed
       unlike Go - `xtask` branches on `target_env` the same way `capi_compile_msvc` already does),
-      five examples + README. See `docs/bindings-strategy.md` "Phase 6" / its own T-53 entry.
+      five examples + README. Step 10 (Raspberry Pi ARM64 re-check) also done the same day - all
+      builds/tests green on the first real aarch64 run (`libdstu_core_capi.so`, not the Windows
+      `.dll` branch; Kupyna-256("hello world") byte-identical to the x86-64 dev machine's own
+      digest), no ARM-portability bug found this time (unlike D-151's `c_char`/`i8` finding in the
+      C ABI crate itself, or matching T-52/.NET's own clean first pass). See
+      `docs/bindings-strategy.md` "Phase 6" / its own T-53 entry.
 - [x] **T-158** C ABI crate (`crates/dstu-core-capi` workspace member) — opaque
       handles, explicit error codes, `catch_unwind` at every boundary call, zeroize-on-free,
       `cbindgen`-generated header. The shared foundation T-52/T-163/T-53 consume (T-159 no longer

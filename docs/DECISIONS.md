@@ -10502,3 +10502,18 @@ static-link fixes for a case that does not need them.
 
 No code written this entry - the four-fork record itself, per the project's "record multiple
 resolved forks together" rule. Implementation follows in the same session's later commits.
+
+**Addendum, same day, step 10 (Raspberry Pi ARM64 re-check)**: re-synced the repo, confirmed
+`cmake` 3.25.1 and `g++` 12.2.0 were already present (no new toolchain install needed, unlike
+Node/Ruby/PHP/.NET's own first Pi runs), ran `cargo xtask cpp` end-to-end. All green on the first
+real aarch64 attempt - the CMakeLists' non-Windows branch (`libdstu_core_capi.so`, confirmed via
+`file`, not assumed) exercised for the first time on real hardware, `TestUacryptInterop`'s
+`std::system` call working over a plain POSIX `sh` (the Windows `cmd.exe` outer-quote-wrapping
+workaround in `RunCommand` is a no-op there, guarded by `#ifdef _WIN32`), and
+`GenericHash256("hello world")` verified byte-identical to the x86-64 Windows dev machine's own
+digest. No ARM-portability bug found this time - unlike D-151's `c_char`/`i8` finding in the C ABI
+crate itself, this is genuine confirming evidence (not just an absence of counter-evidence) that
+the `unique_ptr`-based RAII/exception design has no hidden x86-64 assumption, matching T-52/.NET's
+own clean first Pi pass rather than T-51/Java's (Maven plugin pin) or T-163/Go's (per-`GOOS`
+LDFLAGS) own findings. T-53 is now done in full, all ten standard steps - every planned binding in
+`docs/bindings-strategy.md`'s phased order has landed.
