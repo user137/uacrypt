@@ -1,0 +1,86 @@
+name: bindings-java
+
+# Own job, not folded into rust.yml's matrix (D-119) - bindings/java/native is a separate Cargo
+# workspace neither of rust.yml's `--workspace` jobs (Miri, the MSRV build) is equipped for, and
+# release.yml only fires on `v*` tags, which would leave this binding with zero regression coverage
+# between releases (docs/bindings-strategy.md T-51 step 5, mirrors bindings-nodejs.yml).
+#
+# Build/test JDK is 17 (matches this project's own dev setup and the Raspberry Pi rig's Debian 12
+# default - docs/DECISIONS.md D-153); the published artifact still targets Java 8 bytecode via
+# `maven.compiler.release` in bindings/java/pom.xml, independent of this CI job's own JDK.
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: build + test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      # ubuntu-only, matching rust.yml's own fmt job and bindings-nodejs.yml: actions/checkout on a
+      # Windows/macOS runner applies git's autocrlf translation, which makes every LF-checked-in
+      # file look like "Incorrect newline style" to `cargo fmt --check` - a known false positive
+      # (docs/DECISIONS.md D-108's notes), not specific to this workflow.
+      - run: cargo fmt --all -- --check
+        if: matrix.os == 'ubuntu-latest'
+        working-directory: bindings/java/native
+      - run: cargo clippy --all-targets -- -D warnings
+        working-directory: bindings/java/native
+      - run: cargo build --release
+        working-directory: bindings/java/native
+      # SecretStreamTest's own interopWithUacryptCli test silently *skips* (via Assumptions) rather
+      # than fails when the binary isn't found - build it first so this job actually exercises the
+      # wire-format check that justifies this binding existing, same reasoning as
+      # bindings-nodejs.yml's own uacrypt build step.
+      - run: cargo build -p uacrypt --release
+      # Surefire's default console/report output only ever lists a class-level pass/fail/skip
+      # summary, never individual test method names (confirmed empirically - not the dotnet
+      # test/node --test case, where per-test names really do appear in the log) - so the check
+      # here is on SecretStreamTest's own aggregate "Skipped: 0" rather than grepping for
+      # `interopWithUacryptCli` by name the way bindings-dotnet.yml/bindings-nodejs.yml do.
+      - name: mvn test (fail if the interop test was silently skipped)
+        working-directory: bindings/java
+        shell: bash
+        run: |
+          mvn test
+          grep -q "Skipped: 0" target/surefire-reports/ua.dstucrypto.dstucore.SecretStreamTest.txt
+      # Sanity-check packaging on every OS, every push (not just a release) - a broken
+      # native-library resource path would otherwise only be caught at release time. The real
+      # fresh-install-from-a-local-repo check (docs/DECISIONS.md D-153) was done once by hand, not
+      # repeated here.
+      - run: mvn -q package -DskipTests
+        working-directory: bindings/java
+
+  supply-chain:
+    name: cargo deny / audit (bindings/java/native)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: bindings/java/native
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      # Root deny.toml, found by cargo-deny walking up from this cwd (see deny.toml's own header
+      # comment) - checks this workspace's real dependency tree (the jni crate and friends), not a
+      # copy.
+      - run: cargo install cargo-deny --locked
+      - run: cargo deny check
+      - run: cargo install cargo-audit --locked
+      - run: cargo audit

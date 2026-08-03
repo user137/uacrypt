@@ -37,6 +37,7 @@ fn main() -> ExitCode {
         "php" => php(),
         "capi" => capi(),
         "dotnet" => dotnet(),
+        "java" => java(),
         "ci" => ci(),
         "help" | "-h" | "--help" => {
             print_usage();
@@ -78,7 +79,8 @@ fn print_usage() {
          \x20 ruby           build+lint bindings/ruby, rake compile, rspec (T-160)\n\
          \x20 php            build+lint bindings/php, cargo build, phpunit (T-159)\n\
          \x20 capi           regenerate+diff include/dstu_core.h, compile+run the C test harness and examples (T-158)\n\
-         \x20 dotnet         dotnet format --verify-no-changes, dotnet test bindings/dotnet (T-52)"
+         \x20 dotnet         dotnet format --verify-no-changes, dotnet test bindings/dotnet (T-52)\n\
+         \x20 java           build+lint bindings/java/native, mvn test bindings/java (T-51) - needs a JDK 11+ (17 recommended, D-153)"
     );
 }
 
@@ -846,6 +848,38 @@ fn dotnet() -> bool {
         ],
         Some(dir),
     ) && run("dotnet", &["test"], Some(&dir.join("DstuCore.Tests")))
+}
+
+/// Best-effort like python()/nodejs()/ruby()/php() above - bindings/java/native's own separate
+/// Cargo workspace (D-119, split into its own `native/` subdirectory rather than living at
+/// `bindings/java` directly, since a root-level `Cargo.toml` there would collide with Maven's own
+/// `src/main/java` layout) isn't reached by build/test/clippy/fmt. Builds uacrypt first (release,
+/// from the repo root) for the real `uacrypt.exe` interop check inside the JUnit suite. Needs a
+/// JDK new enough for Maven's own `os-maven-plugin` extension and the `--release 8` cross-compile
+/// target (11+; this project's own dev/CI machines and the Raspberry Pi rig standardize on 17,
+/// D-153) - the *published* artifact still targets Java 8 bytecode via `maven.compiler.release` in
+/// `bindings/java/pom.xml`, independent of whichever JDK actually runs this build.
+fn java() -> bool {
+    if !require("mvn", "https://maven.apache.org (or your OS package manager)") {
+        return false;
+    }
+    if !run("cargo", &["build", "-p", "uacrypt", "--release"], None) {
+        return false;
+    }
+
+    let native_dir = Path::new("bindings/java/native");
+    if !run("cargo", &["build", "--release"], Some(native_dir))
+        || !run("cargo", &["fmt", "--all", "--", "--check"], Some(native_dir))
+        || !run(
+            "cargo",
+            &["clippy", "--all-targets", "--", "-D", "warnings"],
+            Some(native_dir),
+        )
+    {
+        return false;
+    }
+
+    run("mvn", &["-q", "test"], Some(Path::new("bindings/java")))
 }
 
 fn oracle_java() -> bool {
