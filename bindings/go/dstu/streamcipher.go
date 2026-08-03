@@ -3,11 +3,12 @@ package dstu
 // #include "dstu_core.h"
 import "C"
 
-import "runtime"
-
 // StreamCipherKey is an unauthenticated keystream cipher key (crypto_stream, Strumok-256,
 // internal random IV). Decrypt never fails on tampered input - there is no tag to verify, and a
 // modified sealed message silently decrypts to different, wrong plaintext instead of erroring.
+//
+// No runtime.SetFinalizer backstop - see AuthKey's own doc comment for why: Close() is the only
+// way to free.
 type StreamCipherKey struct {
 	ptr *C.DstuStreamKey
 }
@@ -18,7 +19,7 @@ func GenerateStreamCipherKey() (*StreamCipherKey, error) {
 	if err := statusError(C.dstu_stream_key_generate(&out)); err != nil {
 		return nil, err
 	}
-	return newStreamCipherKey(out), nil
+	return &StreamCipherKey{ptr: out}, nil
 }
 
 // StreamCipherKeyFromBytes builds a key from exactly StreamKeyBytes bytes.
@@ -27,13 +28,7 @@ func StreamCipherKeyFromBytes(key []byte) (*StreamCipherKey, error) {
 		return nil, &ArgumentError{"key must be exactly StreamKeyBytes bytes"}
 	}
 	ptr, _ := cBytes(key)
-	return newStreamCipherKey(C.dstu_stream_key_from_bytes(ptr)), nil
-}
-
-func newStreamCipherKey(ptr *C.DstuStreamKey) *StreamCipherKey {
-	k := &StreamCipherKey{ptr: ptr}
-	runtime.SetFinalizer(k, (*StreamCipherKey).Close)
-	return k
+	return &StreamCipherKey{ptr: C.dstu_stream_key_from_bytes(ptr)}, nil
 }
 
 // Bytes copies out this key's raw StreamKeyBytes-byte encoding.
@@ -80,7 +75,6 @@ func (k *StreamCipherKey) Close() error {
 	if k.ptr != nil {
 		C.dstu_stream_key_free(k.ptr)
 		k.ptr = nil
-		runtime.SetFinalizer(k, nil)
 	}
 	return nil
 }

@@ -14,6 +14,15 @@ name: bindings-go
 # output lands in the usual `target/release/` path unchanged - the alternative, building with an
 # explicit `--target x86_64-pc-windows-gnu`, would also require every cgo LDFLAGS/CFLAGS path in
 # bindings/go/dstu to branch on OS, which this avoids entirely.
+#
+# `rustup default <toolchain>` alone is NOT sufficient here - it only picks the toolchain used
+# when no override file applies, but this repo's own rust-toolchain.toml pins `channel = "stable"`
+# with no host component, which resolves against rustup's separate "default host triple" setting
+# (the exact `rust-toolchain.toml`-silently-overrides-an-installed-toolchain gotcha CLAUDE.md
+# already documents for the miri/fuzz jobs). `rustup set default-host` is the actual setting that
+# changes what a bare "stable" resolves to - both are set below, and `rustc -vV`'s `host:` line is
+# printed right before `cargo xtask go` so a real CI log confirms which one took, rather than
+# leaving this to be discovered as a cryptic "library not found" failure two steps later.
 
 on:
   push:
@@ -39,6 +48,7 @@ jobs:
         run: |
           rustup toolchain install stable-x86_64-pc-windows-gnu
           rustup default stable-x86_64-pc-windows-gnu
+          rustup set default-host x86_64-pc-windows-gnu
       - name: Install MinGW-w64 (gcc for both the GNU Rust host and Go's own cgo)
         if: runner.os == 'Windows'
         shell: pwsh
@@ -48,6 +58,9 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: bindings/go/go.mod
+      - name: Verify the active Rust host triple
+        shell: bash
+        run: rustc -vV
       # bindings/go/dstu's own tests silently can't build at all (not "skip") without the just-built
       # capi artifact - cargo xtask go does this build step itself, but building it here too first
       # gives a clearer failure point if the capi crate itself is broken vs. the Go side.

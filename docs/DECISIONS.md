@@ -10264,3 +10264,56 @@ matched exactly). Unlike D-151's Windows-`c_char`/`i8` finding or D-153's Java M
 no ARM-portability bug was found in the Go wrapper code itself this time - the one real gap was the
 LDFLAGS' platform-specificity, which is a cross-OS problem, not a cross-architecture one (it would
 have hit any non-Windows CI runner just as much as the Pi, x86-64 or ARM alike).
+
+**Advisor review after step 10 found a real blocker in every handle type, caught before it shipped
+as "done" - `runtime.SetFinalizer` as a "SafeHandle-style backstop" is not safe here, it's a
+premature-free race.** Every wrapper method has the shape `C.dstu_auth(k.ptr, ...)` - once `k.ptr`
+is loaded as the call argument, `k` itself is no longer referenced by anything the Go compiler must
+keep alive, so the GC can (and will, under memory pressure) treat `k` as unreachable and run its
+finalizer - freeing the native key - *while the C call using that same pointer is still in
+flight*. `runtime.SetFinalizer`'s own documentation requires the caller to keep the object
+reachable until finalization is safe (`runtime.KeepAlive`'s doc example is this exact shape:
+a syscall using a value's field, then `runtime.KeepAlive(value)` afterward) - a plain
+`defer key.Close()` around the *caller's* function does not establish this; it only proves `k` is
+reachable at the defer's own scope, not through every intermediate call. This is genuinely
+different from `bindings/dotnet`'s `SafeHandle`, despite reading as the same "backstop" pattern:
+`SafeHandle` implements exactly this reachability guarantee internally (P/Invoke marshalling roots
+the handle for the call's duration) - a bare Go finalizer does not, and the project's own git log
+carries no record of that distinction being checked before this pass. Invisible to every test in
+this binding's suite, since each one holds its key reachable via `defer key.Close()` across the
+whole test function - exactly the "don't trust green tests alone for security-critical code"
+scenario CLAUDE.md already warns about for DSTU 4145 (D-25).
+
+**Fix: removed `runtime.SetFinalizer` from every handle type** (`AuthKey`, `KdfMasterKey`,
+`Kupyna256Hasher`/`512Hasher`, `SecretboxKey`, `SigningKey`/`VerifyingKey`, `StreamCipherKey`,
+`SecretstreamKey`, `SecretStreamEncryptWriter`/`DecryptReader`) rather than adding
+`runtime.KeepAlive` after all ~30 call sites - `Close()` is now the only thing that frees, matching
+what the binding's own README already documented and the explicit-`Close()`/`defer` idiom every
+other part of this binding already follows. A second, independent reason this was the right call
+for `SecretStreamEncryptWriter`/`DecryptReader` specifically: their `Close()` also closes the
+caller's own `inner` file/stream when `leaveOpen` is false - a finalizer firing on an unreachable
+writer would have closed the *caller's* file handle at an arbitrary GC-chosen time, a side effect
+no caller would expect from "eventually get garbage collected." Verified the fix rather than
+assumed it: `go vet`/`cargo xtask go` clean, full suite green under `GOGC=1 go test -count=3`
+(aggressive GC, closest a test can get to exercising the race without the fix) and `go test -race`
+on Windows (also green); re-ran on the Pi too (`-race` itself doesn't run there - ThreadSanitizer's
+"unsupported VMA range" error, 47 bits vs. its compiled-in 48, a known ARM64-kernel/TSan mismatch
+unrelated to this fix - but `GOGC=1 go test -count=3` passed there).
+
+**Two smaller findings from the same review, both fixed**: `go.mod`'s `go 1.26.5` directive (auto-
+written by `go mod init`) forces every consumer to resolve the exact patch toolchain for no benefit
+- changed to the conventional `go 1.26`. `SecretStreamDecryptReader.Read` could return `(0, nil)`
+for a zero-length `Final` chunk (the size-0 case this binding's own tests exercise) - `io.Reader`'s
+contract discourages a no-data/no-error return even though `io.ReadAll` tolerates it; fixed by
+looping past an empty fetched chunk instead of returning immediately.
+
+**One CI-workflow finding, not yet re-verified on real CI**: `rustup default
+stable-x86_64-pc-windows-gnu` alone does not change what a bare `channel = "stable"` in
+`rust-toolchain.toml` resolves to - that resolves against rustup's separate "default host triple"
+setting, changed only via `rustup set default-host`, not `rustup default`. This is the same class of
+gotcha CLAUDE.md already records for `rust-toolchain.toml` silently overriding an installed
+toolchain (there, a CI step's nightly; here, a CI step's GNU host). `bindings-go.yml`'s Windows leg
+now calls both, plus a `rustc -vV` step immediately before `cargo xtask go` so a real CI log shows
+the actual `host:` line rather than leaving this to surface as a cryptic link failure two steps
+later. **Still needs a real `gh run view` confirmation round, same as D-147/D-149's own precedent -
+not claimed fixed until that happens.**

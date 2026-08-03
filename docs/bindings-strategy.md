@@ -890,11 +890,17 @@ Standard steps, consuming T-158's header:
   transitively (`std::net`, temp-dir/child-process-pipe code) despite `dstu-core-capi` itself never
   touching networking or process spawning.
 - Step 1: **Done.** `bindings/go/dstu` (package `dstu` — `go` alone is a reserved word and can't be
-  a package identifier), wrapping every opaque handle with an explicit `Close()` plus a
-  `runtime.SetFinalizer` backstop (same belt-and-suspenders shape as .NET's `SafeHandle`). Every
-  `[]byte`-taking wrapper guards the empty-slice case (`unsafe.Pointer(&b[0])` panics on
-  `len(b)==0`, and the header documents zero-length input as legal throughout) via a shared
-  `cBytes()` helper. `CryptoError`/`ArgumentError`/`InternalError` mirror .NET's
+  a package identifier), wrapping every opaque handle with an explicit `Close()` — **no
+  `runtime.SetFinalizer` backstop, a deliberate correction after advisor review found one would be
+  a premature-free race, not a `SafeHandle`-equivalent**: a bare Go finalizer can fire (and free the
+  native key) while a `C.dstu_*` call using that same pointer is still in flight, since the last
+  Go-side reference becomes the call argument itself, not the wrapper struct - `SafeHandle` avoids
+  this because P/Invoke marshalling itself roots the handle for the call's duration, which a plain
+  finalizer does not replicate. See D-155 for the full mechanism and why it was invisible to every
+  test in this binding's own suite (each one holds its key reachable via `defer` across the whole
+  test function). Every `[]byte`-taking wrapper guards the empty-slice case (`unsafe.Pointer(&b[0])`
+  panics on `len(b)==0`, and the header documents zero-length input as legal throughout) via a
+  shared `cBytes()` helper. `CryptoError`/`ArgumentError`/`InternalError` mirror .NET's
   `DstuException`/`ArgumentException` split (cross-language style guide principle 4).
 - Step 3: **Done.** `SecretStreamEncryptWriter`/`SecretStreamDecryptReader`
   (`io.Writer`/`io.Reader`-shaped) for `crypto_secretstream` — the idiomatic fit here, same

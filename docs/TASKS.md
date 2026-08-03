@@ -2808,7 +2808,17 @@ configuration surface added in the process (D-47 still holds).
       -lntdll`) didn't link at all on Linux, fixed with cgo's own per-`GOOS` `#cgo` pragma syntax
       (one line per platform, not a shared base plus negation); all tests green afterward on real
       aarch64, including `uacrypt` interop and all 5 examples, no ARM-portability bug found this
-      time (the gap was cross-OS, would have hit any non-Windows CI runner too).
+      time (the gap was cross-OS, would have hit any non-Windows CI runner too). **Post-completion
+      advisor review found and fixed a real blocker before this task was truly done**: every handle
+      type's `runtime.SetFinalizer` "backstop" was a premature-free race, not a `SafeHandle`
+      equivalent (a bare Go finalizer can fire mid-call, since the last live reference to the
+      wrapper becomes the call argument itself, not the struct) - removed from all nine handle
+      types, `Close()` is now the only thing that frees, verified with `GOGC=1 go test -count=3` and
+      `go test -race` (both platforms; `-race` itself doesn't run on the Pi, a known
+      ThreadSanitizer/ARM64-kernel VMA-bits mismatch, unrelated). Also fixed: `go.mod`'s
+      `go 1.26.5` → `go 1.26`, `SecretStreamDecryptReader.Read`'s `(0, nil)` return on an empty
+      `Final` chunk, and `bindings-go.yml`'s Windows leg needing `rustup set default-host` (not just
+      `rustup default`) to actually change what a bare `channel = "stable"` resolves to - see D-155.
 - [ ] **T-162** GitHub-facing docs + `gh-pages` site refresh — added to scope 2026-08-02 at the
       owner's request, explicitly last, after every binding above (T-49/T-50/T-160/T-159/T-158/
       T-52/T-51/T-163/T-53, per D-121/D-123's reordering) lands. Documentation-only, no primitive/binding

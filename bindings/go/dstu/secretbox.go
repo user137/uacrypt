@@ -3,10 +3,11 @@ package dstu
 // #include "dstu_core.h"
 import "C"
 
-import "runtime"
-
 // SecretboxKey is an authenticated single-message encryption key (crypto_secretbox,
 // Kalyna-256-256-GCM, internal random nonce).
+//
+// No runtime.SetFinalizer backstop - see AuthKey's own doc comment for why: Close() is the only
+// way to free.
 type SecretboxKey struct {
 	ptr *C.DstuSecretboxKey
 }
@@ -17,7 +18,7 @@ func GenerateSecretboxKey() (*SecretboxKey, error) {
 	if err := statusError(C.dstu_secretbox_key_generate(&out)); err != nil {
 		return nil, err
 	}
-	return newSecretboxKey(out), nil
+	return &SecretboxKey{ptr: out}, nil
 }
 
 // SecretboxKeyFromBytes builds a key from exactly SecretboxKeyBytes bytes.
@@ -26,13 +27,7 @@ func SecretboxKeyFromBytes(key []byte) (*SecretboxKey, error) {
 		return nil, &ArgumentError{"key must be exactly SecretboxKeyBytes bytes"}
 	}
 	ptr, _ := cBytes(key)
-	return newSecretboxKey(C.dstu_secretbox_key_from_bytes(ptr)), nil
-}
-
-func newSecretboxKey(ptr *C.DstuSecretboxKey) *SecretboxKey {
-	k := &SecretboxKey{ptr: ptr}
-	runtime.SetFinalizer(k, (*SecretboxKey).Close)
-	return k
+	return &SecretboxKey{ptr: C.dstu_secretbox_key_from_bytes(ptr)}, nil
 }
 
 // Bytes copies out this key's raw SecretboxKeyBytes-byte encoding.
@@ -79,7 +74,6 @@ func (k *SecretboxKey) Close() error {
 	if k.ptr != nil {
 		C.dstu_secretbox_key_free(k.ptr)
 		k.ptr = nil
-		runtime.SetFinalizer(k, nil)
 	}
 	return nil
 }

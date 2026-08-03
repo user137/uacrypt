@@ -6,13 +6,15 @@ import "C"
 import (
 	"encoding/binary"
 	"io"
-	"runtime"
 )
 
 // SecretstreamChunkBytes is the plaintext chunk size uacrypt encrypt's own wire format frames at.
 const SecretstreamChunkBytes = 8192
 
 // SecretstreamKey is a genuinely chunked/streaming AEAD master key (crypto_secretstream).
+//
+// No runtime.SetFinalizer backstop - see AuthKey's own doc comment for why: Close() is the only
+// way to free.
 type SecretstreamKey struct {
 	ptr *C.DstuSecretstreamKey
 }
@@ -23,7 +25,7 @@ func GenerateSecretstreamKey() (*SecretstreamKey, error) {
 	if err := statusError(C.dstu_secretstream_key_generate(&out)); err != nil {
 		return nil, err
 	}
-	return newSecretstreamKey(out), nil
+	return &SecretstreamKey{ptr: out}, nil
 }
 
 // SecretstreamKeyFromBytes builds a key from exactly SecretstreamKeyBytes bytes.
@@ -32,13 +34,7 @@ func SecretstreamKeyFromBytes(key []byte) (*SecretstreamKey, error) {
 		return nil, &ArgumentError{"key must be exactly SecretstreamKeyBytes bytes"}
 	}
 	ptr, _ := cBytes(key)
-	return newSecretstreamKey(C.dstu_secretstream_key_from_bytes(ptr)), nil
-}
-
-func newSecretstreamKey(ptr *C.DstuSecretstreamKey) *SecretstreamKey {
-	k := &SecretstreamKey{ptr: ptr}
-	runtime.SetFinalizer(k, (*SecretstreamKey).Close)
-	return k
+	return &SecretstreamKey{ptr: C.dstu_secretstream_key_from_bytes(ptr)}, nil
 }
 
 // Bytes copies out this key's raw SecretstreamKeyBytes-byte encoding.
@@ -54,7 +50,6 @@ func (k *SecretstreamKey) Close() error {
 	if k.ptr != nil {
 		C.dstu_secretstream_key_free(k.ptr)
 		k.ptr = nil
-		runtime.SetFinalizer(k, nil)
 	}
 	return nil
 }
@@ -69,6 +64,9 @@ func (k *SecretstreamKey) Close() error {
 // on it instead of accepting a truncated stream as complete (D-65, and the concrete D-118 pitfall
 // found building bindings/python's own wrapper - Go's defer has no exception-type parameter
 // either, so Close can't tell success from an error path the way Python's __exit__ can).
+//
+// No runtime.SetFinalizer backstop - see AuthKey's own doc comment for why: Close() is the only
+// way to free (and here, the only thing that closes inner too).
 type SecretStreamEncryptWriter struct {
 	inner       io.Writer
 	innerCloser io.Closer
@@ -96,7 +94,6 @@ func NewSecretStreamEncryptWriter(inner io.Writer, key *SecretstreamKey, leaveOp
 	if closer, ok := inner.(io.Closer); ok && !leaveOpen {
 		w.innerCloser = closer
 	}
-	runtime.SetFinalizer(w, (*SecretStreamEncryptWriter).Close)
 	return w, nil
 }
 
@@ -191,7 +188,6 @@ func (w *SecretStreamEncryptWriter) Close() error {
 	if w.state != nil {
 		C.dstu_secretstream_push_free(w.state)
 		w.state = nil
-		runtime.SetFinalizer(w, nil)
 	}
 	if w.innerCloser != nil {
 		closer := w.innerCloser
@@ -207,6 +203,9 @@ func (w *SecretStreamEncryptWriter) Close() error {
 // Final chunk - both checks the wire format's own framing does not provide for free (D-118's
 // second pitfall; mirrors uacrypt's own CliError::SecretstreamChunkTooLarge/
 // SecretstreamTrailingData).
+//
+// No runtime.SetFinalizer backstop - see AuthKey's own doc comment for why: Close() is the only
+// way to free (and here, the only thing that closes inner too).
 type SecretStreamDecryptReader struct {
 	inner       io.Reader
 	innerCloser io.Closer
@@ -230,13 +229,14 @@ func NewSecretStreamDecryptReader(inner io.Reader, key *SecretstreamKey, leaveOp
 	if closer, ok := inner.(io.Closer); ok && !leaveOpen {
 		r.innerCloser = closer
 	}
-	runtime.SetFinalizer(r, (*SecretStreamDecryptReader).Close)
 	return r, nil
 }
 
 // Read decrypts and copies plaintext into p, pulling and verifying chunks from inner as needed.
+// Loops past an empty chunk (a Final chunk with no trailing plaintext) rather than returning
+// (0, nil) for it - io.Reader's contract discourages a no-data, no-error return.
 func (r *SecretStreamDecryptReader) Read(p []byte) (int, error) {
-	if r.pendingPos == len(r.pending) {
+	for r.pendingPos == len(r.pending) {
 		ok, err := r.readNextChunk()
 		if err != nil {
 			return 0, err
@@ -316,7 +316,6 @@ func (r *SecretStreamDecryptReader) Close() error {
 	if r.state != nil {
 		C.dstu_secretstream_pull_free(r.state)
 		r.state = nil
-		runtime.SetFinalizer(r, nil)
 	}
 	if r.innerCloser != nil {
 		closer := r.innerCloser

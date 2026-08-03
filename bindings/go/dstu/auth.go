@@ -3,9 +3,13 @@ package dstu
 // #include "dstu_core.h"
 import "C"
 
-import "runtime"
-
 // AuthKey is a Kupyna-KMAC message-authentication key (crypto_auth).
+//
+// No runtime.SetFinalizer backstop: attaching one would let the GC treat k as unreachable (and
+// free it) while a C.dstu_* call using k.ptr is still in flight, since the last Go-side reference
+// to k is the pointer argument itself, not k - a use-after-free/double-free race on secret key
+// material invisible to any test that keeps k reachable via defer. Close() is the only way to
+// free; call it explicitly (or via defer) once done.
 type AuthKey struct {
 	ptr *C.DstuAuthKey
 }
@@ -16,7 +20,7 @@ func GenerateAuthKey() (*AuthKey, error) {
 	if err := statusError(C.dstu_auth_key_generate(&out)); err != nil {
 		return nil, err
 	}
-	return newAuthKey(out), nil
+	return &AuthKey{ptr: out}, nil
 }
 
 // AuthKeyFromBytes builds a key from exactly AuthKeyBytes bytes.
@@ -25,13 +29,7 @@ func AuthKeyFromBytes(key []byte) (*AuthKey, error) {
 		return nil, &ArgumentError{"key must be exactly AuthKeyBytes bytes"}
 	}
 	ptr, _ := cBytes(key)
-	return newAuthKey(C.dstu_auth_key_from_bytes(ptr)), nil
-}
-
-func newAuthKey(ptr *C.DstuAuthKey) *AuthKey {
-	k := &AuthKey{ptr: ptr}
-	runtime.SetFinalizer(k, (*AuthKey).Close)
-	return k
+	return &AuthKey{ptr: C.dstu_auth_key_from_bytes(ptr)}, nil
 }
 
 // Bytes copies out this key's raw AuthKeyBytes-byte encoding.
@@ -66,7 +64,6 @@ func (k *AuthKey) Close() error {
 	if k.ptr != nil {
 		C.dstu_auth_key_free(k.ptr)
 		k.ptr = nil
-		runtime.SetFinalizer(k, nil)
 	}
 	return nil
 }

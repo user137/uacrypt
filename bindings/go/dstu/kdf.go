@@ -3,9 +3,10 @@ package dstu
 // #include "dstu_core.h"
 import "C"
 
-import "runtime"
-
 // KdfMasterKey is a Kupyna-KDF master key (crypto_kdf).
+//
+// No runtime.SetFinalizer backstop - see AuthKey's own doc comment for why: Close() is the only
+// way to free.
 type KdfMasterKey struct {
 	ptr *C.DstuKdfMasterKey
 }
@@ -16,7 +17,7 @@ func GenerateKdfMasterKey() (*KdfMasterKey, error) {
 	if err := statusError(C.dstu_kdf_master_key_generate(&out)); err != nil {
 		return nil, err
 	}
-	return newKdfMasterKey(out), nil
+	return &KdfMasterKey{ptr: out}, nil
 }
 
 // KdfMasterKeyFromBytes builds a master key from exactly KdfKeyBytes bytes.
@@ -25,13 +26,7 @@ func KdfMasterKeyFromBytes(key []byte) (*KdfMasterKey, error) {
 		return nil, &ArgumentError{"key must be exactly KdfKeyBytes bytes"}
 	}
 	ptr, _ := cBytes(key)
-	return newKdfMasterKey(C.dstu_kdf_master_key_from_bytes(ptr)), nil
-}
-
-func newKdfMasterKey(ptr *C.DstuKdfMasterKey) *KdfMasterKey {
-	k := &KdfMasterKey{ptr: ptr}
-	runtime.SetFinalizer(k, (*KdfMasterKey).Close)
-	return k
+	return &KdfMasterKey{ptr: C.dstu_kdf_master_key_from_bytes(ptr)}, nil
 }
 
 // Bytes copies out this key's raw KdfKeyBytes-byte encoding.
@@ -60,7 +55,6 @@ func (k *KdfMasterKey) Close() error {
 	if k.ptr != nil {
 		C.dstu_kdf_master_key_free(k.ptr)
 		k.ptr = nil
-		runtime.SetFinalizer(k, nil)
 	}
 	return nil
 }

@@ -3,10 +3,11 @@ package dstu
 // #include "dstu_core.h"
 import "C"
 
-import "runtime"
-
 // SigningKey is a DSTU 4145 signing key (crypto_sign). Signing is deterministic
 // (Kupyna-KMAC-derived nonce) - no RNG dependency beyond key generation.
+//
+// No runtime.SetFinalizer backstop - see AuthKey's own doc comment for why: Close() is the only
+// way to free.
 type SigningKey struct {
 	ptr *C.DstuSigningKey
 }
@@ -17,7 +18,7 @@ func GenerateSigningKey() (*SigningKey, error) {
 	if err := statusError(C.dstu_sign_key_generate(&out)); err != nil {
 		return nil, err
 	}
-	return newSigningKey(out), nil
+	return &SigningKey{ptr: out}, nil
 }
 
 // SigningKeyFromBytes builds a signing key from a big-endian SignPrivateKeyBytes-byte scalar d.
@@ -31,13 +32,7 @@ func SigningKeyFromBytes(d []byte) (*SigningKey, error) {
 	if err := statusError(C.dstu_sign_key_from_bytes(dPtr, &out)); err != nil {
 		return nil, err
 	}
-	return newSigningKey(out), nil
-}
-
-func newSigningKey(ptr *C.DstuSigningKey) *SigningKey {
-	k := &SigningKey{ptr: ptr}
-	runtime.SetFinalizer(k, (*SigningKey).Close)
-	return k
+	return &SigningKey{ptr: out}, nil
 }
 
 // Bytes copies out this key's big-endian SignPrivateKeyBytes-byte scalar encoding. The caller is
@@ -52,7 +47,7 @@ func (k *SigningKey) Bytes() []byte {
 
 // VerifyingKey derives the public verifying key for this signing key.
 func (k *SigningKey) VerifyingKey() *VerifyingKey {
-	return newVerifyingKey(C.dstu_sign_verifying_key(k.ptr))
+	return &VerifyingKey{ptr: C.dstu_sign_verifying_key(k.ptr)}
 }
 
 // Sign signs message, hashing it with Kupyna-256 internally.
@@ -82,20 +77,16 @@ func (k *SigningKey) Close() error {
 	if k.ptr != nil {
 		C.dstu_sign_key_free(k.ptr)
 		k.ptr = nil
-		runtime.SetFinalizer(k, nil)
 	}
 	return nil
 }
 
 // VerifyingKey is a DSTU 4145 public verifying key.
+//
+// No runtime.SetFinalizer backstop - see AuthKey's own doc comment for why: Close() is the only
+// way to free.
 type VerifyingKey struct {
 	ptr *C.DstuVerifyingKey
-}
-
-func newVerifyingKey(ptr *C.DstuVerifyingKey) *VerifyingKey {
-	k := &VerifyingKey{ptr: ptr}
-	runtime.SetFinalizer(k, (*VerifyingKey).Close)
-	return k
 }
 
 // VerifyingKeyFromBytes builds a verifying key from SignPublicKeyBytes bytes of plain x || y
@@ -106,7 +97,7 @@ func VerifyingKeyFromBytes(b []byte) (*VerifyingKey, error) {
 		return nil, &ArgumentError{"b must be exactly SignPublicKeyBytes bytes"}
 	}
 	ptr, _ := cBytes(b)
-	return newVerifyingKey(C.dstu_verifying_key_from_bytes(ptr)), nil
+	return &VerifyingKey{ptr: C.dstu_verifying_key_from_bytes(ptr)}, nil
 }
 
 // Bytes copies out this key's plain x || y SignPublicKeyBytes-byte encoding (not the DSTU 4145
@@ -146,7 +137,6 @@ func (k *VerifyingKey) Close() error {
 	if k.ptr != nil {
 		C.dstu_verifying_key_free(k.ptr)
 		k.ptr = nil
-		runtime.SetFinalizer(k, nil)
 	}
 	return nil
 }

@@ -3,8 +3,6 @@ package dstu
 // #include "dstu_core.h"
 import "C"
 
-import "runtime"
-
 // GenericHash256 computes the one-shot Kupyna-256 digest of message.
 func GenericHash256(message []byte) []byte {
 	out := make([]byte, GenericHash256Bytes)
@@ -25,6 +23,9 @@ func GenericHash512(message []byte) []byte {
 
 // Kupyna256Hasher is an incremental Kupyna-256 hasher for data too large to hold in memory at
 // once. For a one-shot digest, use GenericHash256.
+//
+// No runtime.SetFinalizer backstop - see AuthKey's own doc comment for why: Close() is the only
+// way to free.
 type Kupyna256Hasher struct {
 	ptr       *C.DstuKupyna256Hasher
 	finalized bool
@@ -32,9 +33,7 @@ type Kupyna256Hasher struct {
 
 // NewKupyna256Hasher creates a new streaming hasher.
 func NewKupyna256Hasher() *Kupyna256Hasher {
-	h := &Kupyna256Hasher{ptr: C.dstu_kupyna256_hasher_new()}
-	runtime.SetFinalizer(h, (*Kupyna256Hasher).Close)
-	return h
+	return &Kupyna256Hasher{ptr: C.dstu_kupyna256_hasher_new()}
 }
 
 // Update feeds data into the hasher.
@@ -67,7 +66,6 @@ func (h *Kupyna256Hasher) Close() error {
 	if h.ptr != nil {
 		C.dstu_kupyna256_hasher_free(h.ptr)
 		h.ptr = nil
-		runtime.SetFinalizer(h, nil)
 	}
 	return nil
 }
@@ -80,9 +78,7 @@ type Kupyna512Hasher struct {
 
 // NewKupyna512Hasher creates a new streaming hasher.
 func NewKupyna512Hasher() *Kupyna512Hasher {
-	h := &Kupyna512Hasher{ptr: C.dstu_kupyna512_hasher_new()}
-	runtime.SetFinalizer(h, (*Kupyna512Hasher).Close)
-	return h
+	return &Kupyna512Hasher{ptr: C.dstu_kupyna512_hasher_new()}
 }
 
 // Update feeds data into the hasher.
@@ -115,7 +111,6 @@ func (h *Kupyna512Hasher) Close() error {
 	if h.ptr != nil {
 		C.dstu_kupyna512_hasher_free(h.ptr)
 		h.ptr = nil
-		runtime.SetFinalizer(h, nil)
 	}
 	return nil
 }
