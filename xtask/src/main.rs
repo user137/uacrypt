@@ -38,6 +38,7 @@ fn main() -> ExitCode {
         "capi" => capi(),
         "dotnet" => dotnet(),
         "java" => java(),
+        "go" => go(),
         "ci" => ci(),
         "help" | "-h" | "--help" => {
             print_usage();
@@ -80,7 +81,8 @@ fn print_usage() {
          \x20 php            build+lint bindings/php, cargo build, phpunit (T-159)\n\
          \x20 capi           regenerate+diff include/dstu_core.h, compile+run the C test harness and examples (T-158)\n\
          \x20 dotnet         dotnet format --verify-no-changes, dotnet test bindings/dotnet (T-52)\n\
-         \x20 java           build+lint bindings/java/native, mvn test bindings/java (T-51) - needs a JDK 11+ (17 recommended, D-153)"
+         \x20 java           build+lint bindings/java/native, mvn test bindings/java (T-51) - needs a JDK 11+ (17 recommended, D-153)\n\
+         \x20 go             build dstu-core-capi, gofmt -l + go vet + go test bindings/go (T-163)"
     );
 }
 
@@ -100,8 +102,13 @@ fn command_for(base: &str) -> String {
 }
 
 fn tool_available(base: &str) -> bool {
+    // `go` has no `--version` flag (only the `version` subcommand) and exits nonzero on an
+    // unrecognized flag, unlike every other tool this checks - confirmed the hard way running
+    // `cargo xtask go` for the first time (T-163): `go --version` printed the top-level help text
+    // and returned exit code 2.
+    let version_arg = if base == "go" { "version" } else { "--version" };
     Command::new(command_for(base))
-        .arg("--version")
+        .arg(version_arg)
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .status()
@@ -880,6 +887,51 @@ fn java() -> bool {
     }
 
     run("mvn", &["-q", "test"], Some(Path::new("bindings/java")))
+}
+
+/// `bindings/go` (T-163) goes through the C ABI crate (`cgo` over `dstu_core.h`, D-155), same
+/// group as .NET/Java. No `go` subcommand exists to check a directory is already `gofmt`-clean the
+/// way `cargo fmt --check` does - `gofmt -l` instead *lists* unformatted files on stdout and still
+/// exits 0, so this needs its own output-capturing check (`go_fmt_check` below) rather than `run`'s
+/// plain exit-status check.
+fn go() -> bool {
+    if !require("go", "https://go.dev/dl/ (Go 1.21+)") {
+        return false;
+    }
+    if !run(
+        "cargo",
+        &["build", "-p", "dstu-core-capi", "--release"],
+        None,
+    ) {
+        return false;
+    }
+
+    let dir = Path::new("bindings/go");
+    go_fmt_check(dir)
+        && run("go", &["vet", "./..."], Some(dir))
+        && run("go", &["test", "./..."], Some(dir))
+}
+
+fn go_fmt_check(dir: &Path) -> bool {
+    let output = Command::new(command_for("gofmt"))
+        .args(["-l", "."])
+        .current_dir(dir)
+        .output();
+    match output {
+        Ok(o) if o.status.success() => {
+            let stdout = String::from_utf8_lossy(&o.stdout);
+            if stdout.trim().is_empty() {
+                true
+            } else {
+                eprintln!("xtask: gofmt found unformatted file(s), run `gofmt -w .` in {}:\n{stdout}", dir.display());
+                false
+            }
+        }
+        _ => {
+            eprintln!("xtask: 'gofmt' failed to run in {}", dir.display());
+            false
+        }
+    }
 }
 
 fn oracle_java() -> bool {

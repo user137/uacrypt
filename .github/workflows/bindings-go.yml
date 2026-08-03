@@ -1,0 +1,55 @@
+name: bindings-go
+
+# Own job, not folded into rust.yml's matrix - bindings/go has no Cargo workspace of its own at
+# all (like bindings/dotnet): it consumes crates/dstu-core-capi (T-158, a real root-workspace
+# member already covered by rust.yml's own --workspace build/test/clippy/fmt jobs) purely via cgo,
+# so there is no separate Rust dependency tree here for a supply-chain job to audit
+# (docs/bindings-strategy.md T-163 step 5).
+#
+# Windows note (unconfirmed on real CI as of this writing, docs/DECISIONS.md D-155): cgo requires a
+# MinGW-w64 gcc toolchain on Windows (it cannot link against an MSVC-built import library), but
+# `dtolnay/rust-toolchain@stable` installs the MSVC-hosted toolchain by default on windows-latest
+# (see rust.yml's own `capi` job comment). The Windows leg below forces the GNU-hosted Rust
+# toolchain to be the *default* (not just an additional cross target) so `cargo build`'s own
+# output lands in the usual `target/release/` path unchanged - the alternative, building with an
+# explicit `--target x86_64-pc-windows-gnu`, would also require every cgo LDFLAGS/CFLAGS path in
+# bindings/go/dstu to branch on OS, which this avoids entirely.
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: build + test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Force GNU-hosted Rust toolchain (cgo needs MinGW-compatible libs, not MSVC)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          rustup toolchain install stable-x86_64-pc-windows-gnu
+          rustup default stable-x86_64-pc-windows-gnu
+      - name: Install MinGW-w64 (gcc for both the GNU Rust host and Go's own cgo)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: choco install mingw --no-progress -y
+      - uses: dtolnay/rust-toolchain@stable
+        if: runner.os != 'Windows'
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: bindings/go/go.mod
+      # bindings/go/dstu's own tests silently can't build at all (not "skip") without the just-built
+      # capi artifact - cargo xtask go does this build step itself, but building it here too first
+      # gives a clearer failure point if the capi crate itself is broken vs. the Go side.
+      - run: cargo build -p dstu-core-capi --release
+      - run: cargo xtask go
