@@ -99,3 +99,7 @@
 # section) plus this binding's own compiled examples/ output.
 /bindings/java/native/target/
 /bindings/java/target/
+
+# C++ (T-53): header-only, no Rust glue of its own - just CMake's own out-of-tree build directory
+# (compiled test/example binaries, copied-in dstu_core_capi shared library, CMakeCache.txt).
+/bindings/cpp/build/
