@@ -87,10 +87,15 @@ class SecretStreamEncryptor {
     WriteToStream(header.data(), header.size());
   }
 
+  // Not movable, unlike this file's other RAII types: a defaulted move would move state_/pending_
+  // but copy bufferLen_ by value, leaving the moved-from object's buffer_.size() - bufferLen_
+  // invariant broken (buffer_ now empty, bufferLen_ unchanged) - a real underflow in Write() if
+  // that moved-from object is ever used again. Deleting is a smaller, safer surface than writing a
+  // correct custom move that also resets bufferLen_.
   SecretStreamEncryptor(const SecretStreamEncryptor &) = delete;
   SecretStreamEncryptor &operator=(const SecretStreamEncryptor &) = delete;
-  SecretStreamEncryptor(SecretStreamEncryptor &&) noexcept = default;
-  SecretStreamEncryptor &operator=(SecretStreamEncryptor &&) noexcept = default;
+  SecretStreamEncryptor(SecretStreamEncryptor &&) = delete;
+  SecretStreamEncryptor &operator=(SecretStreamEncryptor &&) = delete;
   ~SecretStreamEncryptor() = default;
 
   /// Buffers data, encrypting and emitting a Message chunk each time kSecretstreamChunkBytes of
@@ -197,10 +202,13 @@ class SecretStreamDecryptor {
     state_.reset(dstu_secretstream_pull_init(key.native_handle(), header.data()));
   }
 
+  // Not movable - same reasoning as SecretStreamEncryptor: a defaulted move would move pending_
+  // but copy pendingPos_ by value, leaving a moved-from object's pending_.size() - pendingPos_
+  // invariant broken if it were ever used again after the move.
   SecretStreamDecryptor(const SecretStreamDecryptor &) = delete;
   SecretStreamDecryptor &operator=(const SecretStreamDecryptor &) = delete;
-  SecretStreamDecryptor(SecretStreamDecryptor &&) noexcept = default;
-  SecretStreamDecryptor &operator=(SecretStreamDecryptor &&) noexcept = default;
+  SecretStreamDecryptor(SecretStreamDecryptor &&) = delete;
+  SecretStreamDecryptor &operator=(SecretStreamDecryptor &&) = delete;
   ~SecretStreamDecryptor() = default;
 
   /// Decrypts and copies up to n bytes of plaintext into out, pulling and verifying chunks from

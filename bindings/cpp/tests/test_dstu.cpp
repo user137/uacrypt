@@ -140,6 +140,8 @@ void TestGenerichash() {
   hasher512.Update(ToBytes(message));
   auto streamed512 = hasher512.Finalize();
   CHECK(whole512 == streamed512, "512 one-shot and streaming should agree");
+  CHECK(Throws<dstu::ArgumentError>([&] { hasher512.Finalize(); }),
+        "a second Finalize() on the 512 hasher should throw too, not just the 256 one");
 }
 
 void TestSecretbox() {
@@ -309,6 +311,27 @@ void TestSign() {
   auto pubBytes = verifying.Bytes();
   auto roundTripped = dstu::VerifyingKey::FromBytes(pubBytes);
   CHECK(roundTripped.Bytes() == pubBytes, "VerifyingKey::Bytes should round-trip FromBytes");
+
+  // SignDigest/VerifyDigest: signing is deterministic, so signing the message directly and
+  // signing its pre-computed Kupyna-256 digest must produce the identical signature - this pins
+  // the digest path against the whole-message path in one assertion, not just "it runs."
+  auto digest = dstu::GenericHash256(ToBytes(message));
+  auto digestSig = key.SignDigest(digest);
+  CHECK(digestSig == sig, "SignDigest(GenericHash256(msg)) should equal Sign(msg) exactly - both are deterministic");
+  CHECK(verifying.VerifyDigest(digest, digestSig), "VerifyDigest should accept its own digest signature");
+
+  // Tamper the *last* byte, not the first: dstu4145::hash_to_field only consumes a digest's low
+  // 21 bytes (see its own doc comment) - flipping a byte outside that window would be a no-op
+  // test that always "passes" without exercising rejection at all (found by actually running
+  // this, not assumed - CLAUDE.md's own "check what a vector actually exercises" rule).
+  auto tamperedDigest = digest;
+  tamperedDigest.back() ^= 1;
+  CHECK(!verifying.VerifyDigest(tamperedDigest, digestSig), "VerifyDigest should reject a tampered digest");
+
+  CHECK(Throws<dstu::ArgumentError>([&] { key.SignDigest(std::vector<std::uint8_t>{1, 2, 3}); }),
+        "SignDigest should reject a wrong-length digest");
+  CHECK(Throws<dstu::ArgumentError>([&] { verifying.VerifyDigest(std::vector<std::uint8_t>{1, 2, 3}, sig); }),
+        "VerifyDigest should reject a wrong-length digest");
 }
 
 void TestStream() {

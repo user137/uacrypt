@@ -3,17 +3,12 @@
 
 #include "dstu/dstu.hpp"
 
-#include <cstdlib>
 #include <iomanip>
 #include <iostream>
 #include <string>
 #include <vector>
 
 namespace {
-void Die(const std::string &what) {
-  std::cerr << "error: " << what << "\n";
-  std::exit(1);
-}
 std::vector<std::uint8_t> ToBytes(const std::string &s) { return std::vector<std::uint8_t>(s.begin(), s.end()); }
 
 void DemoRandombytes() {

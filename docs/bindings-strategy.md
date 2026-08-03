@@ -328,8 +328,10 @@ bidirectional `uacrypt.exe` interop in the test suite, `cargo xtask cpp` + `bind
 Windows GNU-forcing needed, branches on `target_env` the same way `capi()` already does), five
 examples + README; step 10's Pi re-check found no bug this time (unlike D-151's `c_char`/`i8`
 finding in the C ABI crate) - `libdstu_core_capi.so` linked correctly, Kupyna-256 digest
-byte-identical to the x86-64 dev machine. **Every planned binding (T-49/T-50/T-160/T-159/T-158/
-T-52/T-51/T-163/T-53) is now done in full. Next: T-162 (docs, last).**
+byte-identical to the x86-64 dev machine. GCC-only confirmed as of this writing (dev machine +
+Pi) — MSVC/Clang legs of `bindings-cpp.yml` unconfirmed until pushed and checked via `gh run view`,
+same caveat T-159/T-160 carried before their own push. **Every planned binding (T-49/T-50/T-160/
+T-159/T-158/T-52/T-51/T-163/T-53) is now done in full locally. Next: T-162 (docs, last).**
 
 ### The standard binding steps
 
@@ -744,12 +746,18 @@ T-158's header:
   own existing choice of linking the cdylib, not the staticlib `bindings/go` links (D-155's
   `-Wl,-Bstatic`/`-Bdynamic` bracketing and transitive `-lws2_32 -luserenv -lntdll` needs don't
   apply here, since the cdylib itself resolves those at its own link time).
-- Step 5: **Done, see D-158.** MSVC (Windows, via CMake's own default Visual Studio generator) and
-  GCC (this project's own Windows-GNU dev-machine posture, MinGW Makefiles) both verified locally;
-  Clang covered by `bindings-cpp.yml`'s macOS leg (Xcode Clang) on real CI. `cargo xtask cpp` builds
-  `dstu-core-capi`+`uacrypt`, then `cmake` configure+build+`ctest` — branches on `target_env` the
-  same way `xtask`'s own `capi()`/`capi_compile_msvc` already do for the plain-C harness, so no
-  Windows GNU-forcing is needed the way `bindings-go.yml`'s cgo requirement needed one (D-155).
+- Step 5: **Done, see D-158.** GCC verified locally on both this project's own Windows-GNU
+  dev-machine posture (MinGW Makefiles) and the aarch64 Pi (step 10). **MSVC and Clang not yet
+  exercised** — `cl.exe` isn't on this dev machine's PATH (confirmed by trying, not assumed), and
+  no macOS/Clang machine is available locally; `bindings-cpp.yml`'s windows-latest/macos-latest
+  legs cover both, but per CLAUDE.md's own "verify a CI job's real conclusion via `gh run view`,
+  never assume from a green badge" rule, this is unconfirmed until that workflow actually runs on
+  real CI (pushing is a separate, explicitly owner-gated step, same posture T-159/T-160's own
+  entries already carry). `cargo xtask cpp` builds `dstu-core-capi`+`uacrypt`, then `cmake`
+  configure+build+`ctest` — branches on `target_env` the same way `xtask`'s own `capi()`/
+  `capi_compile_msvc` already do for the plain-C harness, so no Windows GNU-forcing is needed the
+  way `bindings-go.yml`'s cgo requirement needed one (D-155) — but that branch itself is therefore
+  also unconfirmed on a real MSVC host yet.
 - Step 6: **Done, see D-158.** `tests/test_dstu.cpp`, a hand-rolled `CHECK` macro mirroring
   `c-tests/test_capi.c`'s own structure exactly (no Catch2/doctest/GoogleTest — C++ has no stdlib
   JSON either, so the single official Kupyna-256 vector is hand-transcribed the same way the C
