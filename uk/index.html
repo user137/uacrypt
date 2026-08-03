@@ -726,6 +726,75 @@ uacrypt verify       --key verifying.key --in message.bin --sig message.bin.sig<
 </section>
 
 <section class="container">
+  <span class="eyebrow" lang="en">Bindings</span>
+  <span class="eyebrow" lang="uk">Байндінги</span>
+  <div lang="en" class="prose"><h2>Eight languages, one C ABI</h2>
+  <p>The full <code>crypto_*</code> surface, idiomatic errors and secretstream I/O, and the same
+  correctness/rejection/misuse test suite per language — not a thin, partial wrapper. Not yet
+  published to any package registry (PyPI/npm/RubyGems/Packagist/NuGet/Maven Central) — build from
+  source, same as the Rust crate itself before crates.io.</p></div>
+  <div lang="uk" class="prose"><h2>Вісім мов, один C ABI</h2>
+  <p>Повна поверхня <code>crypto_*</code>, ідіоматичні помилки та I/O для secretstream, той самий
+  набір тестів на коректність/відхилення/некоректне використання для кожної мови — не тонка,
+  часткова обгортка. Ще не опубліковано в жодному реєстрі пакетів (PyPI/npm/RubyGems/Packagist/
+  NuGet/Maven Central) — збірка з джерела, так само як і сам Rust-крейт до crates.io.</p></div>
+
+  <div class="check-grid">
+    <div class="check">
+      <h3>Python</h3>
+      <p lang="en">PyO3, direct Rust binding — <a href="https://github.com/user137/uacrypt/blob/master/bindings/python/README.md">bindings/python</a>.</p>
+      <p lang="uk">PyO3, прямий Rust-байндінг — <a href="https://github.com/user137/uacrypt/blob/master/bindings/python/README.md">bindings/python</a>.</p>
+    </div>
+    <div class="check">
+      <h3>Node.js</h3>
+      <p lang="en">napi-rs, direct Rust binding — <a href="https://github.com/user137/uacrypt/blob/master/bindings/nodejs/README.md">bindings/nodejs</a>.</p>
+      <p lang="uk">napi-rs, прямий Rust-байндінг — <a href="https://github.com/user137/uacrypt/blob/master/bindings/nodejs/README.md">bindings/nodejs</a>.</p>
+    </div>
+    <div class="check">
+      <h3>Ruby</h3>
+      <p lang="en">magnus/rb-sys, direct Rust binding — <a href="https://github.com/user137/uacrypt/blob/master/bindings/ruby/README.md">bindings/ruby</a>.</p>
+      <p lang="uk">magnus/rb-sys, прямий Rust-байндінг — <a href="https://github.com/user137/uacrypt/blob/master/bindings/ruby/README.md">bindings/ruby</a>.</p>
+    </div>
+    <div class="check">
+      <h3>PHP</h3>
+      <p lang="en">ext-php-rs, direct Rust binding — <a href="https://github.com/user137/uacrypt/blob/master/bindings/php/README.md">bindings/php</a>.</p>
+      <p lang="uk">ext-php-rs, прямий Rust-байндінг — <a href="https://github.com/user137/uacrypt/blob/master/bindings/php/README.md">bindings/php</a>.</p>
+    </div>
+    <div class="check">
+      <h3 lang="en">.NET (C#)</h3>
+      <h3 lang="uk">.NET (C#)</h3>
+      <p lang="en">P/Invoke over the C ABI — <a href="https://github.com/user137/uacrypt/blob/master/bindings/dotnet/README.md">bindings/dotnet</a>.</p>
+      <p lang="uk">P/Invoke поверх C ABI — <a href="https://github.com/user137/uacrypt/blob/master/bindings/dotnet/README.md">bindings/dotnet</a>.</p>
+    </div>
+    <div class="check">
+      <h3>Java</h3>
+      <p lang="en"><code>jni</code> crate, direct Rust binding — <a href="https://github.com/user137/uacrypt/blob/master/bindings/java/README.md">bindings/java</a>.</p>
+      <p lang="uk">крейт <code>jni</code>, прямий Rust-байндінг — <a href="https://github.com/user137/uacrypt/blob/master/bindings/java/README.md">bindings/java</a>.</p>
+    </div>
+    <div class="check">
+      <h3>Go</h3>
+      <p lang="en"><code>cgo</code> over the C ABI — <a href="https://github.com/user137/uacrypt/blob/master/bindings/go/README.md">bindings/go</a>.</p>
+      <p lang="uk"><code>cgo</code> поверх C ABI — <a href="https://github.com/user137/uacrypt/blob/master/bindings/go/README.md">bindings/go</a>.</p>
+    </div>
+    <div class="check">
+      <h3>C++</h3>
+      <p lang="en">Header-only RAII wrapper over the C ABI — <a href="https://github.com/user137/uacrypt/blob/master/bindings/cpp/README.md">bindings/cpp</a>.</p>
+      <p lang="uk">Header-only RAII-обгортка поверх C ABI — <a href="https://github.com/user137/uacrypt/blob/master/bindings/cpp/README.md">bindings/cpp</a>.</p>
+    </div>
+  </div>
+
+  <div class="callout neutral">
+    <p lang="en"><strong>The C ABI itself</strong> (<code>crates/dstu-core-capi</code>, opaque
+    handles, <code>cbindgen</code>-generated header) is what the .NET, Go, and C++ bindings above
+    link against directly — usable from any language with a C FFI, not just those three.</p>
+    <p lang="uk"><strong>Сам C ABI</strong> (<code>crates/dstu-core-capi</code>, непрозорі
+    хендли, заголовок згенерований <code>cbindgen</code>) — це те, з чим напряму лінкуються
+    байндінги для .NET, Go і C++ вище — придатний для будь-якої мови з C FFI, а не лише для цих
+    трьох.</p>
+  </div>
+</section>
+
+<section class="container">
   <span class="eyebrow" lang="en">Status</span>
   <span class="eyebrow" lang="uk">Статус</span>
   <div lang="en" class="prose"><h2>Where this stands, and what's next</h2>
