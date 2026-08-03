@@ -10220,7 +10220,47 @@ Two real findings from actually running this, not assumed:
   speculatively - re-check if a future undefined reference appears once the full ~50-function surface
   is wrapped (`crypto_pwhash`/`randombytes` may pull in `bcrypt.dll` specifically).
 
-Final working directive: `#cgo LDFLAGS: -L${SRCDIR}/../../../target/release -Wl,-Bstatic
+Final working directive at the time: `#cgo LDFLAGS: -L${SRCDIR}/../../../target/release -Wl,-Bstatic
 -ldstu_core_capi -Wl,-Bdynamic -lws2_32 -luserenv -lntdll`. Static was tried first per the advisor's
 recommendation and succeeded once all three libraries were added - no fallback to the dynamic path
 was needed for the real binding.
+
+**T-163 done in full 2026-08-03, steps 1-9 same session** (full `crypto_*` surface,
+`CryptoError`/`ArgumentError`/`InternalError` split mirroring `bindings/dotnet`'s
+`DstuException`/`ArgumentException`, `SecretStreamEncryptWriter`/`DecryptReader` with the
+`Complete()`-not-`Close()` D-118 finalization split, `cargo xtask go` + `bindings-go.yml` CI,
+full test suite, examples/README - see `docs/bindings-strategy.md`'s T-163 section for the
+per-step detail, not repeated here).
+
+**Step 10 (Raspberry Pi ARM64 re-check), same session**: the Windows-only LDFLAGS above are
+platform-specific and were never going to work unmodified on Linux - confirmed exactly that on the
+first real Pi run (`cargo xtask go` failed: `cannot find -lws2_32`/`-luserenv`/`-lntdll`, all three
+Windows-only libraries). Fixed with cgo's own per-`GOOS` `#cgo` pragma syntax (a space-separated
+platform-tag list before the `LDFLAGS:` keyword, not a Go build-constraint file suffix):
+```
+#cgo LDFLAGS: -L${SRCDIR}/../../../target/release
+#cgo windows LDFLAGS: -Wl,-Bstatic -ldstu_core_capi -Wl,-Bdynamic -lws2_32 -luserenv -lntdll
+#cgo linux LDFLAGS: -Wl,-Bstatic -ldstu_core_capi -Wl,-Bdynamic -lpthread -ldl -lm
+#cgo darwin LDFLAGS: -ldstu_core_capi
+```
+Linux needed the same `-Wl,-Bstatic`/`-Bdynamic` bracketing as Windows (plain `-ldstu_core_capi`
+linked dynamically against the just-built `.so` there too, same GNU `ld` import-preference
+behavior) plus `-lpthread -ldl -lm` for the Rust staticlib's own transitive libc dependencies -
+found by linking, not guessed: the first attempt (`-ldstu_core_capi -lpthread -ldl -lm` without the
+static bracketing) linked and ran, but only because it silently picked up the dynamic `.so`: a
+second attempt confirmed genuine static linking by re-running `go test` with a minimal `env -i`
+(no `LD_LIBRARY_PATH`, no `target/release` on `PATH`), which required adding the `-Wl,-Bstatic`
+bracketing before it would pass. `darwin` is unverified (no macOS hardware in this project's fleet)
+but written by the same reasoning as every other binding's own "structurally consistent, not yet
+run" macOS entries - flag if a real failure surfaces there.
+
+Go 1.26.5 (`linux-arm64` tarball from go.dev, matching the Windows dev machine's own version -
+Debian 12's own `golang-go` apt package is a stale 1.19, below this module's `go 1.26.5` directive)
+installed to `/usr/local/go` on the Pi, not previously present. **All tests green on the first real
+aarch64 run after the LDFLAGS fix** - the secretstream/`uacrypt` interop test passed too (`uacrypt`
+built fresh there first), and all 5 examples ran with output byte-identical to the Windows dev
+machine's own run where comparable (the `misc` example's Kupyna-256 digest of `"hello world"`
+matched exactly). Unlike D-151's Windows-`c_char`/`i8` finding or D-153's Java Maven-version gap,
+no ARM-portability bug was found in the Go wrapper code itself this time - the one real gap was the
+LDFLAGS' platform-specificity, which is a cross-OS problem, not a cross-architecture one (it would
+have hit any non-Windows CI runner just as much as the Pi, x86-64 or ARM alike).

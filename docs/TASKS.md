@@ -2804,7 +2804,11 @@ configuration surface added in the process (D-47 still holds).
       README with the provisional-status banner **and a real limitation no other binding has**: the
       `#cgo LDFLAGS`' `${SRCDIR}`-relative path means this binding only builds from inside a checkout
       of this repo, not as a standalone `go get`-able module (T-164 territory). **Step 10 (Raspberry
-      Pi re-check) still pending.**
+      Pi re-check) done same session** - found the Windows-only LDFLAGS (`-lws2_32 -luserenv
+      -lntdll`) didn't link at all on Linux, fixed with cgo's own per-`GOOS` `#cgo` pragma syntax
+      (one line per platform, not a shared base plus negation); all tests green afterward on real
+      aarch64, including `uacrypt` interop and all 5 examples, no ARM-portability bug found this
+      time (the gap was cross-OS, would have hit any non-Windows CI runner too).
 - [ ] **T-162** GitHub-facing docs + `gh-pages` site refresh — added to scope 2026-08-02 at the
       owner's request, explicitly last, after every binding above (T-49/T-50/T-160/T-159/T-158/
       T-52/T-51/T-163/T-53, per D-121/D-123's reordering) lands. Documentation-only, no primitive/binding

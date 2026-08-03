@@ -307,8 +307,8 @@ tests including real `uacrypt` interop, `cargo xtask java` + CI, examples/README
 baseline 17, published bytecode target 8; step 10's Pi re-check found one real bug - Debian's
 apt-packaged Maven defaults to an old `maven-compiler-plugin` that silently ignores
 `maven.compiler.release`, fixed by pinning the plugin version explicitly). T-163 (Go) done in full
-2026-08-03, steps 0-9 - see D-155 (step-0: hand-written `cgo` over `c-for-go`, decided on
-inspection rather than a full spike, since T-158's own C ABI surface is already stable; a real
+2026-08-03, all ten standard steps - see D-155 (step-0: hand-written `cgo` over `c-for-go`, decided
+on inspection rather than a full spike, since T-158's own C ABI surface is already stable; a real
 selftest-only link spike found two genuine static-linking gaps on Windows-GNU - `-ldstu_core_capi`
 alone links dynamically unless `-Wl,-Bstatic`/`-Bdynamic` bracket it, and the Rust staticlib
 transitively needs `-lws2_32 -luserenv -lntdll` even though `dstu-core-capi` itself never touches
@@ -316,8 +316,9 @@ networking; full `crypto_*` surface, `CryptoError`/`ArgumentError`/`InternalErro
 `SecretStreamEncryptWriter`/`DecryptReader` (`io.Writer`/`io.Reader`-shaped, `Complete()`-not-
 `Close()` finalization split same as .NET's), `cargo xtask go` + `bindings-go.yml` CI (Windows leg
 forces the GNU-hosted Rust toolchain since cgo can't link MSVC output - unconfirmed on real CI as
-of this writing), examples/README). Step 10 (Pi re-check) still pending. **Next: T-163's own step
-10, or T-53 (C++).**
+of this writing), examples/README; step 10's Pi re-check found the Windows-only LDFLAGS didn't
+work unmodified on Linux - fixed with cgo's own per-`GOOS` `#cgo` pragma syntax, all tests then
+green on real aarch64). **Next: T-53 (C++).**
 
 ### The standard binding steps
 
@@ -922,8 +923,15 @@ Standard steps, consuming T-158's header:
   `README.md` with the provisional-status banner, including the step-4 repo-relative caveat.
 - Step 8/9: **Done** — this entry, plus `docs/DECISIONS.md` D-155, `docs/TASKS.md`, `README.md`,
   `docs/dstu-crypto-project.md`, `docs/release-readiness.md`.
-
-**Step 10 (Raspberry Pi ARM64 cross-arch smoke check) still pending** — not yet run this session.
+- Step 10: **Done.** Real aarch64 Linux (the Raspberry Pi rig) had no Go toolchain at all before
+  this — installed the official `linux-arm64` 1.26.5 tarball (Debian's own apt package is a stale
+  1.19). Found one real gap, not an ARM-portability bug: the cgo `LDFLAGS` written on the Windows
+  dev machine (`-lws2_32 -luserenv -lntdll`) are Windows-only and failed to link at all on Linux —
+  fixed with cgo's own per-`GOOS` `#cgo` pragma syntax (`#cgo windows LDFLAGS: ...`/`#cgo linux
+  LDFLAGS: ...`/`#cgo darwin LDFLAGS: ...`), each platform getting its own full flag set rather than
+  a shared base plus a negated exclusion. All tests passed after the fix, including the real
+  `uacrypt` interop test and all 5 examples (output byte-identical to the Windows run where
+  comparable) — see D-155 for the full account.
 
 **Dart — raised in the same conversation, explicitly deferred (D-122), not scheduled.** Same
 reasoning as Node's own browser/WASM scoping (D-118): Dart's primary audience (Flutter mobile/web)

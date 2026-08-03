@@ -6,7 +6,10 @@
 package dstu
 
 // #cgo CFLAGS: -I${SRCDIR}/../../../crates/dstu-core-capi/include
-// #cgo LDFLAGS: -L${SRCDIR}/../../../target/release -Wl,-Bstatic -ldstu_core_capi -Wl,-Bdynamic -lws2_32 -luserenv -lntdll
+// #cgo LDFLAGS: -L${SRCDIR}/../../../target/release
+// #cgo windows LDFLAGS: -Wl,-Bstatic -ldstu_core_capi -Wl,-Bdynamic -lws2_32 -luserenv -lntdll
+// #cgo linux LDFLAGS: -Wl,-Bstatic -ldstu_core_capi -Wl,-Bdynamic -lpthread -ldl -lm
+// #cgo darwin LDFLAGS: -ldstu_core_capi
 // #include "dstu_core.h"
 import "C"
 

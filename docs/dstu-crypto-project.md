@@ -56,10 +56,9 @@ implementation within a minute, without hassle — in the spirit of
   D-120. T-50 (Node.js) is done as of 2026-08-02 too - see D-125 through D-132. T-160 (Ruby) is
   done as of 2026-08-02 too - see D-133 through D-141. T-159 (PHP) is done as of 2026-08-02 too -
   see D-142 through D-146. T-158 (C ABI crate) is done as of 2026-08-03 too - see D-148/D-149. T-52
-  (.NET) is done as of 2026-08-03 too - see D-152. T-51 (Java) is done in full as of 2026-08-03,
-  including step 10 (Raspberry Pi re-check) - see D-153. T-163 (Go) is done as of 2026-08-03 too
-  (steps 1-9; step 10, the Raspberry Pi re-check, still pending) - see D-155. T-53 (C++) hasn't
-  started.
+  (.NET) is done as of 2026-08-03 too - see D-152. T-51 (Java) and T-163 (Go) are both done in full
+  as of 2026-08-03, including their own Raspberry Pi re-checks (step 10) - see D-153/D-155. T-53
+  (C++) hasn't started.
 - Do not separately reimplement DSTU 4145 in the native core — for
   Java/.NET, integrate/wrap Bouncy Castle (a mature implementation already
   exists there); for Rust, port it while relying on Bouncy Castle as a
