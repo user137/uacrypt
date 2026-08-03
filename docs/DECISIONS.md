@@ -10538,3 +10538,58 @@ locally" - it wasn't, `cl.exe` isn't on this dev machine's PATH) before pushing 
 three `bindings-cpp.yml` legs (`ubuntu-latest`/GCC, `macos-latest`/Clang, `windows-latest`/MSVC) via
 `gh run view`, run `30839873166`, all `success` - MSVC/Clang's only real confirmation, since neither
 was ever exercised on this dev machine.
+
+## D-159: full documentation cross-check after T-162 - a doc-map sweep failure mode the existing rule doesn't cover
+
+2026-08-03, user-requested directly after T-162 landed ("документація уся закрита?... Проведи
+крос перевірку усієї документації" - is all documentation actually closed/synced, cross-check
+everything). Grepped "binding" across every doc file this project has
+(`docs/*.md`/`README.md`/`CLAUDE.md`/`AGENTS.md`), not just the files each individual binding
+task's own step 8 already touched.
+
+**Real, previously-unflagged gaps found, all in `CLAUDE.md` itself** - the project's own
+AI-agent-instructions file, auto-loaded every session, arguably the single highest-leverage doc to
+keep accurate, and it had drifted silently through the *entire* T-49→T-53 binding-landing phase
+(2026-08-02 through 2026-08-03):
+1. **"root Cargo workspace with two crates"** - stale since T-158 (2026-08-03): `crates/dstu-core-capi`
+   is a real third root-workspace member, not mentioned anywhere in `CLAUDE.md` at all (confirmed
+   by grepping `dstu-core-capi`/`capi` across the whole file - zero hits).
+2. **"`bindings/python` is the first, well underway (T-49)"** - stale since 2026-08-02: all eight
+   bindings are done, not just Python "underway."
+3. **The "Second priority" language-bindings line** - listed only five languages (Python,
+   JavaScript, Java, .NET, C++), missing PHP/Ruby/Go entirely (added to scope the same day as each
+   other, D-121/D-122, but only PHP/Ruby ever got added to this sentence - Go was missed even
+   there). `docs/dstu-crypto-project.md`'s own parallel sentence had the identical gap, one
+   language narrower (missing only Go).
+
+All fixed this pass (see `CLAUDE.md`'s "Repo layout"/"Second priority" sections,
+`docs/dstu-crypto-project.md`'s "Second priority").
+
+**Why the existing rule didn't catch this**: CLAUDE.md's own "Agent discipline" section already
+has a rule for this general class of problem - "grep its own task ID across every file the doc
+map's 'Update when' column implicates" - and that rule genuinely worked for T-53 itself (this
+session's own doc-map sweep, D-158/T-53 step 8, correctly found and fixed
+`docs/dstu-crypto-project.md`/`docs/release-readiness.md`/`README.md`/`docs/bindings-strategy.md`
+by grepping "T-53"). **The gap is a different shape**: none of the three sentences above ever
+mention "T-49" or "T-53" by ID - they are free-standing state summaries ("two crates," "the first,
+well underway") that go stale as an *indirect* consequence of a task landing, with no task-ID
+string in the sentence itself for a grep to catch. A task-ID grep is necessary but not sufficient.
+`docs/CHANGELOG.md`'s `[Unreleased]` section has the same shape (empty despite `dstu-core-capi`
+landing as a real workspace member and eight bindings landing since the `v0.1.0` tag) - flagged to
+the owner as an open scope question rather than silently edited, since it's genuinely ambiguous
+whether un-registry-published bindings belong in a Keep-a-Changelog file scoped to what actually
+gets released (crates.io/GitHub Releases), not decided here.
+
+**New standing rule, added to `CLAUDE.md`'s "Agent discipline" section**: a task-ID grep sweep is
+not sufficient by itself - before declaring any doc-map sweep complete, separately re-read
+`CLAUDE.md`'s own "Project status"/"Second priority" sections (workspace crate count, binding-list
+completeness) and `docs/CHANGELOG.md`'s `[Unreleased]` section for any change that adds a workspace
+member or a headline-scope item, whether or not the sentence in question ever cites the task's own
+ID.
+
+**Also confirmed, not gaps**: `docs/user-journey-gaps.md` and `docs/CONTRIBUTING.md` genuinely have
+zero binding-related content, but both are *already* tracked as their own open tasks (T-166/T-165
+respectively, added 2026-08-03, before this cross-check) - not silently missed, just not yet done.
+`docs/SECURITY.md`/`docs/PERFORMANCE.md`/`docs/resource-profiles.md`/`docs/ORACLES.md`/`AGENTS.md`
+checked, nothing stale found (`ORACLES.md`'s two "binding" hits are D-115's already-accurate
+historical record, not a status claim).

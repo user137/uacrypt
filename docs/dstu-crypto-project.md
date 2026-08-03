@@ -48,8 +48,8 @@ implementation within a minute, without hassle — in the spirit of
 
 ## Second priority (not MVP)
 
-- Language bindings: Python, JavaScript, Java, .NET, C++ — plus PHP and Ruby, added to scope
-  2026-08-02. **Full analysis (popularity rationale, C-ABI-vs-native-FFI split, per-binding
+- Language bindings: Python, JavaScript, Java, .NET, C++ — plus PHP, Ruby, and Go, all added to
+  scope 2026-08-02 (D-121/D-122). **Full analysis (popularity rationale, C-ABI-vs-native-FFI split, per-binding
   checklist, phased order) now lives in `docs/bindings-strategy.md`; task tracking in
   `docs/TASKS.md` T-49/T-50/T-51/T-52/T-53/T-158/T-159/T-160/T-163.** T-49 (Python, the template
   every later binding follows) is done as of 2026-08-02 - see `docs/TASKS.md`/`docs/DECISIONS.md`

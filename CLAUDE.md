@@ -35,10 +35,12 @@ inside its own directory; see `docs/bindings-strategy.md`.
 Local toolchain (Rust, C compiler, Maven, Python) is fully installed — see `.claude.local.md` for
 machine-specific paths/gotchas. This is a working dev environment, not a "no toolchain" one.
 
-**Repo layout**: root Cargo workspace with two crates (`crates/dstu-core`, `crates/uacrypt`), plus
-`bindings/` for language bindings — each its own separate Cargo workspace (D-119), never a root
-workspace member. `bindings/python` is the first, well underway (T-49) — see
-`docs/bindings-strategy.md` for status and the shared per-binding checklist.
+**Repo layout**: root Cargo workspace with three crates (`crates/dstu-core`, `crates/uacrypt`,
+`crates/dstu-core-capi`), plus `bindings/` for language bindings — each its own separate Cargo
+workspace (D-119), never a root workspace member. **All eight bindings (Python, Node.js, Ruby,
+PHP, .NET, Java, Go, C++) are done** as of 2026-08-03, all ten standard steps each — see
+`docs/bindings-strategy.md` for the per-binding checklist and `docs/TASKS.md` T-49/T-50/T-160/
+T-159/T-158/T-52/T-51/T-163/T-53 for the full landing history.
 
 **`crates/dstu-core`** — the library (`std`/`alloc`/`no_std` feature flags, D-01). All primitives
 below are test-first and pass `cargo test`/`clippy -D warnings`/`fmt --check`/the `no_std` build/
@@ -102,6 +104,13 @@ breaking pre-1.0 wire-format change — T-40/T-70/D-68), no message-length cap, 
 genuinely streamed in fixed-size chunks, temp-file-then-rename atomicity; `hash` is fixed to
 Kupyna-256 with no length cap, delegating to the streaming `Hasher`.
 
+**`crates/dstu-core-capi`** — the C ABI (T-158, D-148/D-149), a real root-workspace member (unlike
+the language bindings under `bindings/`, which are each their own separate Cargo workspace, D-119).
+Opaque handles, explicit `DstuStatus` error codes, `catch_unwind` at every boundary call,
+zeroize-on-free, `cbindgen`-generated header (`include/dstu_core.h`, regenerated+diffed via `cargo
+xtask capi`). Wraps the full `crypto_*` surface. The foundation the .NET/Go/C++ bindings link
+against directly — usable from any language with a C FFI, not just those three.
+
 Official test vectors are extracted and verified for Kalyna, Kupyna, and DSTU 4145
 (`crates/dstu-core/tests/vectors/{kalyna,kupyna,dstu4145}/*.json` — see `docs/ORACLES.md` for
 provenance/format) and additionally run against real Bouncy Castle (Java/.NET, published packages,
@@ -160,7 +169,10 @@ Algorithms in scope:
 
 ## Second priority (not MVP)
 
-- Language bindings: Python, JavaScript, Java, .NET, C++ — see `docs/bindings-strategy.md`.
+- Language bindings: Python, JavaScript (Node.js), Ruby, PHP, Java, .NET, Go, C++ — **all eight
+  done as of 2026-08-03**, see `docs/bindings-strategy.md`. Not yet published to any package
+  registry (PyPI/npm/RubyGems/Packagist/NuGet/Maven Central) — separately owner-gated, `docs/TASKS.md`
+  T-164, same posture as `dstu-core` itself not being on crates.io yet.
 - Do not reimplement DSTU 4145 signatures in the native core — for Java/.NET, wrap/integrate
   Bouncy Castle (mature, `DSTU4145Signer`, decades in production, continuous external audit); for
   Rust, port with Bouncy Castle as a second verification oracle.
@@ -354,6 +366,16 @@ Full detail and rationale in `docs/SECURITY.md` — this is the compressed versi
 - **Before declaring a multi-file feature "done," grep its own task ID across every file the doc
   map's "Update when" column implicates** — not just the docs you remember touching. A stale "not
   started" line next to your own new "Done" line is worse than never mentioning the doc at all.
+- **A task-ID grep sweep is necessary but not sufficient — it misses free-standing state summaries
+  that go stale as an indirect consequence of a task landing, with no task-ID string in the
+  sentence for a grep to catch.** `CLAUDE.md`'s own "Project status" ("root Cargo workspace with
+  two crates" — silently wrong the moment T-158 added `dstu-core-capi` as a third) and "Second
+  priority" (a hardcoded five-language list, missing PHP/Ruby/Go entirely) sat stale through the
+  whole T-49→T-53 binding-landing phase because neither sentence ever cited a task ID — found only
+  by a full owner-requested cross-check, not by any per-task sweep (D-159). Before declaring a
+  doc-map sweep complete for a change that adds a workspace member or a headline-scope item,
+  separately re-read `CLAUDE.md`'s own "Project status"/"Second priority" sections and
+  `docs/CHANGELOG.md`'s `[Unreleased]` section — don't rely on the task-ID grep to reach them.
 - **Adding a new `cargo fuzz` target means syncing three places**: `fuzz/Cargo.toml`'s `[[bin]]`,
   `.github/workflows/rust.yml`'s `fuzz-smoke` matrix, `xtask/src/main.rs`'s `FUZZ_TARGETS` array —
   missing the third means the project's single QA entry point silently skips the new target.
