@@ -56,9 +56,9 @@ implementation within a minute, without hassle — in the spirit of
   D-120. T-50 (Node.js) is done as of 2026-08-02 too - see D-125 through D-132. T-160 (Ruby) is
   done as of 2026-08-02 too - see D-133 through D-141. T-159 (PHP) is done as of 2026-08-02 too -
   see D-142 through D-146. T-158 (C ABI crate) is done as of 2026-08-03 too - see D-148/D-149. T-52
-  (.NET) is done as of 2026-08-03 too - see D-152. T-51 (Java) step 0's spike (jni crate vs.
-  JNI-over-capi) is done as of 2026-08-03 too - see D-153. The rest of T-51 (steps 1 onward), plus
-  T-53/T-163, haven't started.
+  (.NET) is done as of 2026-08-03 too - see D-152. T-51 (Java) is done in full as of 2026-08-03
+  too (steps 1-9; step 10, the Raspberry Pi re-check, still pending) - see D-153. T-53/T-163
+  haven't started.
 - Do not separately reimplement DSTU 4145 in the native core — for
   Java/.NET, integrate/wrap Bouncy Castle (a mature implementation already
   exists there); for Rust, port it while relying on Bouncy Castle as a

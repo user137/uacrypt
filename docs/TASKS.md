@@ -2578,7 +2578,9 @@ configuration surface added in the process (D-47 still holds).
       `docs/user-journey-gaps.md`/`docs/cross-language-style-guide.md` checked, no T-50 references
       existed to update (same as T-49's own step 8 finding) - this entry itself is that step's mark-
       done. **Step 9**: each step above landed as its own commit throughout, matching the template.
-- [ ] **T-51** Java binding — **reordered 2026-08-02 (D-121): now built after T-50/T-160/T-159, not
+- [x] **T-51** Java binding — **Done in full 2026-08-03, steps 1-9 (step 10, the Raspberry Pi
+      re-check, tracked separately per D-151's template) - see `docs/DECISIONS.md` D-153.**
+      **reordered 2026-08-02 (D-121): now built after T-50/T-160/T-159, not
       before them** — Bouncy Castle and UAPKI already ship real Java/Kotlin DSTU support, so this
       binding's own gap here is real but smaller than in a language with no incumbent at all.
       **correction 2026-08-02, see D-115**: the D-02-based instruction below
@@ -2602,9 +2604,17 @@ configuration surface added in the process (D-47 still holds).
       default), published artifact targets `<maven.compiler.release>8</maven.compiler.release>` —
       Java 8 still has real enterprise/PKI-adjacent footprint (owner-requested correction),
       verified empirically by cross-compiling the spike with `--release 8` and running it on a real
-      local JDK 8 JVM, all paths unchanged. CI must matrix JDK 8 and 17. See `docs/bindings-strategy.md`
-      "Phase 4" and its own T-51 section for the full per-step plan. **Not yet started: steps 1
-      onward (scaffold `bindings/java`, wrap the full `crypto_*` surface).**
+      local JDK 8 JVM, all paths unchanged. CI matrixes JDK 8 and 17 (build/test on 17, published
+      bytecode targets 8). See `docs/bindings-strategy.md` "Phase 4" and its own T-51 section for
+      the full per-step plan and status. **Steps 1-9 done 2026-08-03**: `bindings/java/native`
+      (own `[workspace]`) wraps the full `crypto_*` surface via the `jni` crate; `SecretStream`'s
+      `OutputStream`/`InputStream` pair (D-118); native library bundled on the classpath under
+      `native/<os-arch classifier>/` (`os-maven-plugin` + an explicit `maven-resources-plugin`
+      execution, a real gotcha found empirically, D-153); `cargo xtask java` + `bindings-java.yml`
+      CI; 56 JUnit 5 tests (D-64/D-65, real `uacrypt` interop, chunk-boundary parametrized round
+      trips); 5 examples + README. A real design bug (a two-way, not three-way, exception split)
+      was found and fixed via a hand-run smoke test before the JUnit suite was even written - see
+      D-153's "Failure::State" paragraph. **Remaining: step 10, the Raspberry Pi ARM64 re-check.**
 - [x] **T-52** .NET binding — **reordered 2026-08-02, same rationale as T-51 (D-121)**: Bouncy
       Castle .NET already serves this language, so it now builds after T-50/T-160/T-159.
       **same correction as T-51, see D-115**: exposes the full `crypto_*`

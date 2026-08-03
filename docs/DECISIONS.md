@@ -9965,3 +9965,90 @@ the same explicit `complete()`-not-`close()` finalization split, not a fresh re-
 
 Spike code lived in the session scratchpad only, not committed - the real `bindings/java` scaffold
 starts fresh in step 1, following this decision.
+
+**T-51 built in full the same day, steps 1-9 (step 10, the Raspberry Pi re-check, follows
+separately per D-151's template)** - `bindings/java/native` (own `[workspace]`, D-119, split into
+its own subdirectory rather than living at `bindings/java` directly since a root-level `Cargo.toml`
+there would collide with Maven's own `src/main/java` layout) plus `bindings/java`'s Maven project
+wrapping it. Full `crypto_*` surface (`Auth`/`Kdf`/`GenericHash`+`Kupyna{256,512}Hasher`/`Pwhash`/
+`RandomBytes`/`SecretBox`/`StreamCipher`/`Sign`/`SecretStream`+`SecretStreamPushState`/
+`PullState`/`SecretStreamEncryptor`/`Decryptor`/`Selftest`), 56 JUnit 5 tests (correctness/
+rejection/misuse per D-64/D-65, including a real bidirectional `uacrypt` CLI interop test and a
+chunk-boundary-size `@ParameterizedTest`), 5 runnable examples, `cargo xtask java`, a new
+`bindings-java.yml` CI workflow, and this README - matching every other completed binding's own
+final state, one commit per step.
+
+**Package/class/method names deliberately avoid underscores anywhere** (`ua.dstucrypto.dstucore`,
+`SecretBox`, `hashPassword`, etc.) - JNI encodes a literal `_` in a package/class/method name as
+`_1` in the generated `Java_...` symbol, and mixing that escaping into already-underscore-heavy
+generated names is a real source of hard-to-read mismatches; simpler to just not have any. Verified
+mechanically, not just by eye: compiled every `.java` file with `javac -h` to generate the real JNI
+header stubs, then diffed the resulting 39 expected `Java_ua_dstucrypto_dstucore_*` symbol names
+against the Rust side's own function names - zero mismatches on the first attempt, confirming the
+naming convention actually holds rather than assuming it from the spec alone.
+
+**A three-way, not two-way, misuse/state/crypto exception split** - found by an actual smoke-test
+failure, not designed in up front. The first cut only had `Failure::Misuse` (→
+`IllegalArgumentException`) and `Failure::Crypto` (→ `DstuException`), mirroring Python's plain
+`ValueError`/`DstuError` split; a hand-written smoke test's "double-finalize a `Kupyna256Hasher`"
+case then threw `IllegalArgumentException` where the test expected `DstuException`, exposing that
+neither was actually correct - "already finalized" is a call-*sequence* problem, not a bad-argument
+or crypto-integrity one. T-52/D-152's C# binding had already made exactly this distinction
+(`ArgumentException` vs. `InvalidOperationException`) for the identical case; Java has the same
+built-in vocabulary (`IllegalArgumentException` vs. `IllegalStateException`), so `util.rs` gained a
+third `Failure::State` variant afterward. Recorded here because it's a real instance of this
+project's own "don't trust green tests alone" principle working as intended - the bug was caught by
+writing and running a probe before committing to the design, not discovered later in review.
+
+**JNI's stateful objects (the incremental hashers, `SecretStreamPushState`/`PullState`) are boxed
+Rust structs referenced by an opaque `long` handle** (`Box::into_raw`/`Box::from_raw`), freed via an
+explicit native `*_nativeFree` called from each Java wrapper's `close()` (`AutoCloseable`) - this
+binding's hand-rolled equivalent of what `#[pyclass]`/`#[napi]`/`magnus::wrap` generate for
+Python/Node/Ruby automatically, since plain `jni` has no such macro. `push`/`pull`'s two logical
+return values are each concatenated into one `byte[]` before crossing the boundary
+(`ciphertext || authTag`, `tagByte(1) || plaintext`) rather than using an out-parameter array,
+since JNI has no native multi-value return - the Java side splits them back out immediately.
+
+**`os-maven-plugin`'s OS/arch-classifier property does not resolve inside a raw `<build><resources>`
+block, only inside an actual plugin execution's `<configuration>`** - found empirically, not assumed:
+a first attempt at "bundle the just-built native library under `native/<os-arch classifier>/` on the
+classpath" via a plain `<resources><resource><targetPath>${os.detected.classifier}</targetPath>`
+copied the file into a directory literally named `${os.detected.classifier}` (the placeholder
+string itself), even though `mvn help:evaluate -Dexpression=os.detected.classifier` resolved the
+property correctly at the same point in the build. Root cause: raw-model `<resources>` values are
+interpolated when the POM is first read, before the `os-maven-plugin` extension's session property
+is set; a plugin execution's `<configuration>` is evaluated later, at mojo-execution time, by which
+point the property genuinely is visible. Fixed by switching to an explicit
+`maven-resources-plugin` `copy-resources` execution bound to `generate-resources` instead of a
+passive `<resources>` block - this is the same underlying reason grpc-java-style projects only ever
+use `os-maven-plugin` inside plugin executions, not raw resource blocks, confirmed the hard way
+here rather than copied from precedent.
+
+**CI cannot grep Surefire's console/report output for a specific JUnit 5 test method's name to
+confirm the `uacrypt` interop test actually ran (not silently skipped)** - unlike `dotnet test`'s
+verbose logger or `node --test`'s TAP output (both list every test by name, the pattern
+`bindings-dotnet.yml`/`bindings-nodejs.yml` already grep for), Maven Surefire's default output only
+ever gives a class-level `Tests run: N, Failures: 0, Errors: 0, Skipped: 0` summary line, confirmed
+by inspecting both the live console output and `target/surefire-reports/*.txt` directly. Since
+`interopWithUacryptCli` is the only test in `SecretStreamTest` that can skip
+(`Assumptions.assumeTrue`), `bindings-java.yml` instead greps that one class's own surefire report
+for `Skipped: 0` - equally rigorous, adapted to what Maven actually prints rather than forcing a
+per-test-name log line to appear.
+
+**Every `Java_...` entry point, including the two trivial `isFinalized` getters, goes through the
+shared `guard` panic-catching wrapper** - initially written directly (no panic-catching) since a
+raw-pointer dereference can't itself panic; corrected to match the crate's own stated invariant
+("every entry point goes through `guard`", `lib.rs`'s doc comment) rather than leaving a documented
+rule with two silent exceptions to it.
+
+Verified end-to-end, not just unit-by-unit: all 56 JUnit tests pass against the real compiled
+native library; a hand-run bidirectional interop check against the real `uacrypt.exe` (encrypt with
+one side, decrypt with the other, plus tamper rejection confirmed by both `uacrypt` itself as an
+independent oracle and this binding's own decryptor); a full `mvn package` produces a working
+`dstu-core-0.1.0.jar` with `native/windows-x86_64/dstu_core_java.dll` on its classpath; a real
+fresh-install check (installed into a scratch local Maven repo, consumed from an unrelated temp
+project by Maven coordinates alone, `Selftest.run()` + a `SecretBox` round trip both passed with
+zero extra consumer-side configuration) matching the bar T-52/T-158 already set, then cleaned up
+afterward (`~/.m2/repository/ua/dstucrypto` removed, not left behind); `cargo deny check`/
+`cargo audit` both clean against `bindings/java/native`'s dependency tree; all 5 example programs
+run and produce correct output.
