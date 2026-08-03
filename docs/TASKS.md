@@ -1506,7 +1506,22 @@ item they point to is later removed.
       "why does LLVM's allocator treat the two index expressions differently" question stays
       unexplained but is explicitly out of scope for what this curiosity task asked. No code
       changed - `hazmat::kalyna.rs` untouched, `git diff` confirms.
-- [ ] **T-168** Read `cppcrypto` 0.20's actual Kalyna/Kupyna source (not just its output) to find out
+- [x] **T-168** **Done 2026-08-03, see `docs/DECISIONS.md` D-157.** Root cause found and confirmed
+      against real `--emit=asm` output, not just source-level reading: Kalyna's outer per-round loop
+      (`encrypt_with_schedule`/`decrypt_with_schedule`) takes round count `nr` as a plain runtime
+      `usize`, not a const generic, because the same `NB`-monomorphized function body is genuinely
+      shared by two variants with different round counts (`NB=2`: Kalyna128_128's nr=10 *and*
+      Kalyna128_256's nr=14) - so it compiles to a real loop with a real branch, unlike `cppcrypto`'s
+      fully-unrolled per-round call sequence. The inner column/row gather (T-128's const-generic
+      `NB`) was already confirmed optimal and branch-free in the asm - not the cause. Kupyna's much
+      smaller D-154 gap (~5-9% vs Kalyna's ~1.3-1.9x) lines up with `hazmat::kupyna` already having
+      round count as a *second* const generic (`ROUNDS`, safely 1:1 with `COLUMNS` there, unlike
+      Kalyna's `NB`) - though full unroll-vs-loop doesn't turn out to fully explain the gap-size
+      difference either (checked in asm: Kupyna's own compiled loop isn't fully unrolled by LLVM
+      even with `ROUNDS` const), so some of D-154's gap stays genuinely open, not overclaimed as
+      solved. Follow-up implementation (make Kalyna's round count const-generic, mirroring Kupyna's
+      pattern) is tracked separately as **T-171** below, not done in this read-only pass. Read
+      `cppcrypto` 0.20's actual Kalyna/Kupyna source (not just its output) to find out
       *why* it beats `uacrypt` — added 2026-08-03, user-requested, directly off D-154's finding.
       D-154 (`docs/DECISIONS.md`, `docs/ORACLES.md`, `docs/PERFORMANCE.md`) confirmed cppcrypto wins
       all 10 Kalyna binary-level cells (~1.3-1.9x) and both Kupyna variants (~5-9%, near parity) on
@@ -1537,6 +1552,19 @@ item they point to is later removed.
       is trusted (this task's own D-154 already confirms cppcrypto's *output* is correct — a
       `hazmat` change inspired by reading its code still needs this project's own correctness bar,
       not cppcrypto's).
+- [ ] **T-171** Make Kalyna's round count (`nr`) a const generic on `encrypt_with_schedule`/
+      `decrypt_with_schedule` (and their round-transform helpers), mirroring `hazmat::kupyna`'s own
+      already-proven `ROUNDS` const-generic pattern — added 2026-08-03, direct implementation
+      follow-up to T-168/D-157's finding. Not just "port cppcrypto's shape" — the concrete blocker is
+      that today's single `NB`-monomorphized instantiation is shared by two variants with different
+      round counts (`NB=2`: nr=10 and nr=14; `NB=4`: nr=14 and nr=18), so the fix needs per-variant
+      monomorphization keyed on `(NB, NR)` together, not `NB` alone. **Needs its own `advisor()`
+      consultation and plan-mode pass before implementation**, per this file's own Tier C precedent
+      and D-157's own closing note — this is a real hot-path rewrite of every Kalyna variant's
+      encrypt/decrypt, not a mechanical one-liner. Must re-verify against all 10 official Kalyna
+      vectors (`crates/dstu-core/tests/vectors/kalyna/*.json`) before any new timing is trusted, and
+      re-measure against D-154's own cppcrypto numbers afterward to confirm the gap actually closes,
+      not just assume it will from the asm reasoning alone.
 - [x] **T-137** **Done 2026-07-27 - PR `specinfo-ua/UAPKI#30`, CI fully green (SonarCloud Code
       Analysis + SonarCloud checks both passing), see `docs/DECISIONS.md` D-90/D-91/D-92.**
       Hypothetical/goodwill task, proposed by the user 2026-07-26 directly off T-131/D-78's XTS

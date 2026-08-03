@@ -10167,6 +10167,70 @@ reminder that a single-platform Kalyna/Kupyna performance number is not a genera
 oracle is revisited for the Pi, expect the possibility of a reversed result there, the same way
 UAPKI's comparison flips.
 
+## D-157: T-168 finding - Kalyna's round-count loop is the concrete mechanism behind D-154's gap
+
+2026-08-03, user-requested follow-up to D-154/T-168 ("read the actual code, don't stop at
+'different implementation'"). Read `cppcrypto`'s `kalyna.cpp`/`kupyna.cpp` directly (source still on
+disk from D-154's session, `scratchpad/cppcrypto/extracted/...`), read this project's own
+`hazmat::kalyna`/`kupyna`, and cross-checked both against real `--emit=asm` output
+(`RUSTFLAGS="--emit=asm -C debuginfo=0" cargo build --release -p dstu-core --lib`, this project's
+own established method, D-89/T-139/T-129) - not assumed from source-level reading alone. No code
+changed this pass (`git diff` empty) - this is the verify-only read T-168 asked for, not the
+implementation.
+
+**Table layout confirmed identical, not the cause**: `cppcrypto`'s `KUPYNA_T[8][256]` and this
+project's `hazmat::tables::SBOX_MDS`/`SBOX_MDS_DEC` (`[[u64; 256]; ROWS]`) are the same fused
+S-box+MDS idea, same shape - matches D-13's already-recorded shared-table observation.
+
+**Kalyna's inner column/row gather loop is already optimal - confirmed in real asm, not assumed**:
+T-128 made `NB` (block width in columns) a const generic on `encipher_round_n`/`fused_inv_round_n`.
+The compiled `encrypt_with_scheduleKj2_` (Kalyna128_128/128_256's shared NB=2 instantiation) shows
+the `row*NB/ROWS`/`src_col` arithmetic fully constant-folded away - no `mul`/`div` anywhere - each
+output column is a straight chain of 8 XORs against hardcoded table byte-offsets
+(`2048(%r10,%r9,8)`, `4096(...)`, ...), the identical shape to `cppcrypto`'s hand-unrolled
+`G128`/`G256`/`G512` functions in `kalyna.cpp`. This part of the pipeline is not the gap.
+
+**The real mechanism: Kalyna's outer per-round loop is a genuine runtime loop with a real
+conditional branch, and structurally cannot be unrolled - unlike `cppcrypto`'s fully-unrolled
+per-round call sequence** (`kalyna.cpp:594-620`: `G(t1,t2,&rk[8]); G(t2,t1,&rk[16]); ...`, one
+literal call per round, no loop at all, since `G`/`GL` are `static inline` and each call site is a
+distinct instantiation). The asm for `encrypt_with_scheduleKj2_` shows a real `.LBB8_1` loop with a
+`jne` back-edge executed `nr-2` times. Root cause, confirmed by reading the macro invocations
+(`kalyna_variant!(Kalyna128_128, ..., 2, 2, 10)` / `kalyna_variant!(Kalyna128_256, ..., 2, 4, 14)`,
+`kalyna.rs:617-621`): `encrypt_with_schedule<const NB: usize>` takes round count `nr: usize` as a
+plain runtime parameter, not a const generic - and it can't easily be one, because the *same*
+monomorphized `NB=2` instantiation is genuinely shared by two variants with two different round
+counts (Kalyna128_128's nr=10 and Kalyna128_256's nr=14; likewise `NB=4` is shared by Kalyna256_256's
+nr=14 and Kalyna256_512's nr=18). One compiled function body serving two different trip counts
+cannot be unrolled by the compiler, full stop - this is a structural fact about the code, not a
+missed compiler flag.
+
+**Why Kupyna's D-154 gap (~5-9%) is so much smaller than Kalyna's (~1.3-1.9x) - a real, verified
+partial answer, not just noted as unexplained anymore**: `hazmat::kupyna`'s `t_transform_n`/
+`t_plus_transform_n`/`compress_n` already take round count as a *second* const generic
+(`t_transform_n<const COLUMNS: usize, const ROUNDS: usize>`), and the file's own comment
+(`kupyna.rs:189`) already documents `ROUNDS` as "always 10 or 14, paired one-to-one with `COLUMNS`" -
+unlike Kalyna's `NB`, Kupyna's `COLUMNS` never aliases two different round counts, so making
+`ROUNDS` const-generic was always safe there. This asymmetry - Kupyna already structured the way
+Kalyna isn't - lines up with Kupyna sitting much closer to `cppcrypto` in D-154's own numbers.
+
+**One finding that complicates a too-simple "just unroll it" takeaway, checked rather than assumed**:
+even with `ROUNDS` const-generic and known at compile time, Kupyna's own compiled
+`t_transform_nKj10_Kje_` still keeps a real loop (`.LBB11_1`, real back-edge) - LLVM did not choose
+to fully unroll a 10-iteration loop this large even when it structurally could. So "const-generic
+round count" is a necessary condition for the compiler to even consider unrolling, but D-154's exact
+gap-size difference between Kalyna and Kupyna is not fully explained by unroll-vs-loop alone; some
+of it remains genuinely open, consistent with D-154's own "not root-caused further" framing - not
+overclaiming a complete answer here.
+
+**Concrete, legitimate lead for a future implementation pass (not done here - verify-only per
+T-168, and any rewrite still needs its own `advisor()` + plan-mode pass per that task's own
+precedent)**: make Kalyna's round count a const generic on `encrypt_with_schedule`/
+`decrypt_with_schedule` (and their round-transform helpers), mirroring `hazmat::kupyna`'s own
+already-proven `ROUNDS` pattern - the two variants sharing one `NB` would need per-variant
+monomorphized entry points (e.g. keying off `(NB, NR)` instead of `NB` alone) rather than a single
+shared function, since that sharing is exactly what blocks the compiler today.
+
 ## D-155: T-163 (Go) step 0 - hand-written `cgo`, not `c-for-go`
 
 2026-08-03. `docs/bindings-strategy.md`'s T-163 step 1 left the generator-vs-hand-written fork open
