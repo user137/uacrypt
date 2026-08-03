@@ -393,6 +393,16 @@ Full detail and rationale in `docs/SECURITY.md` — this is the compressed versi
   https://sonarcloud.io/api/issues/search?componentKeys=<project>&pullRequest=<N>` returns each
   issue's `flows` array — the exact assumed path (`specinfo-ua/UAPKI#30`/T-137: a first fix
   addressed a plausible mechanism the trace didn't actually show).
+- **A repo with no root `.gitattributes` lets `windows-latest`'s hosted runner's own system
+  gitconfig (`core.autocrlf=true`, not the repo's or a user's setting) silently convert every LF
+  blob to CRLF on `actions/checkout`** — invisible unless a Windows-only step then diffs file
+  content byte-for-byte. `gofmt -l` does exactly this (it always emits LF), so it flagged *every*
+  `.go` file in `bindings/go` at once, not just files touched that session, on the Windows leg of
+  `bindings-go.yml` (D-155). Fix: repo-root `.gitattributes` with `* text=auto eol=lf` (plus
+  `*.pdf binary` for this repo's tracked PDFs) — `eol=lf` overrides `core.autocrlf` regardless of
+  the checkout machine's own config. Any future binding/tool with a Windows CI leg that does
+  format-checking or byte-level comparison (not just compiling) is exposed to the same failure
+  mode without this file.
 
 ## Reference implementations and oracles
 

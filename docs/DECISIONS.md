@@ -10317,3 +10317,19 @@ now calls both, plus a `rustc -vV` step immediately before `cargo xtask go` so a
 the actual `host:` line rather than leaving this to surface as a cryptic link failure two steps
 later. **Still needs a real `gh run view` confirmation round, same as D-147/D-149's own precedent -
 not claimed fixed until that happens.**
+
+**Second CI failure, next push, root cause unrelated to the above: `gofmt -l` flagged every single
+`.go` file in the binding, not just files touched this session** (`bindings\dstu\auth.go` through
+`bindings\examples\sign.go`, ~30 files at once). Root cause: `windows-latest`'s hosted image ships
+`core.autocrlf=true` in its **system** gitconfig (`C:/Program Files/Git/etc/gitconfig`, confirmed by
+`git config --system --get core.autocrlf`, not `--global`, which was unset) - `actions/checkout`
+therefore converted every LF blob to CRLF on disk during checkout, even though the git blobs
+themselves are LF-only (verified with `git show HEAD:<file> | xxd`). `gofmt` always emits LF, so
+`gofmt -l` diffed CRLF-on-disk against its own LF output and flagged the entire tree, not a real
+formatting regression in any file. Fixed with a repo-root `.gitattributes`: `* text=auto eol=lf` plus
+`*.pdf binary` (the repo's only tracked binaries, `docs/papers/*.pdf`) - `eol=lf` overrides
+`core.autocrlf` for matching paths regardless of the checkout machine's own git config. No
+`git add --renormalize` was needed since the committed blobs were already LF-only; the fix only
+changes what future checkouts produce on disk. **Confirmed green on real CI**: run 30806655799,
+all three matrix legs (`ubuntu-latest`/`macos-latest`/`windows-latest`) passed, including the
+`rustup set default-host` fix above (same run) - both open items from this entry are now closed.
