@@ -1,0 +1,20 @@
+<Project>
+  <!-- Copies the just-built crates/dstu-core-capi shared library (T-158) next to every project's
+       own build output in this directory tree, whichever of the three platform names exists in
+       the workspace's target/release - so `dotnet test`/`dotnet run` finds it via .NET's own
+       assembly-directory native-library probing without a PATH/LD_LIBRARY_PATH change. Applies to
+       DstuCore, DstuCore.Tests, and examples alike via MSBuild's automatic Directory.Build.props
+       discovery, rather than repeating the same Target in three .csproj files. -->
+  <PropertyGroup>
+    <CapiReleaseDir>$(MSBuildThisFileDirectory)..\..\target\release\</CapiReleaseDir>
+  </PropertyGroup>
+  <Target Name="CopyDstuCoreCapiNativeLibrary" AfterTargets="Build">
+    <ItemGroup>
+      <DstuCoreCapiNativeLib Include="$(CapiReleaseDir)dstu_core_capi.dll" Condition="Exists('$(CapiReleaseDir)dstu_core_capi.dll')" />
+      <DstuCoreCapiNativeLib Include="$(CapiReleaseDir)libdstu_core_capi.so" Condition="Exists('$(CapiReleaseDir)libdstu_core_capi.so')" />
+      <DstuCoreCapiNativeLib Include="$(CapiReleaseDir)libdstu_core_capi.dylib" Condition="Exists('$(CapiReleaseDir)libdstu_core_capi.dylib')" />
+    </ItemGroup>
+    <Error Condition="'@(DstuCoreCapiNativeLib)' == ''" Text="dstu_core_capi shared library not found under $(CapiReleaseDir) - run `cargo build -p dstu-core-capi --release` first." />
+    <Copy SourceFiles="@(DstuCoreCapiNativeLib)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+  </Target>
+</Project>

@@ -78,3 +78,9 @@
 # test runner), downloaded per-machine/CI rather than vendored.
 /bindings/php/phpunit.phar
 /bindings/php/.phpunit.result.cache
+
+# .NET (T-52): standard MSBuild output dirs per project, plus the local NuGet feed step 4's
+# fresh-install check publishes into (D-116 - build/local-install only, no registry publish).
+/bindings/dotnet/*/bin/
+/bindings/dotnet/*/obj/
+/bindings/dotnet/local-nuget-feed/

@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RootNamespace>DstuCore</RootNamespace>
+    <AssemblyName>DstuCore</AssemblyName>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- Pre-1.0, provisional (T-112) - not published, see docs/DECISIONS.md for the binding's own
+         status. Package metadata kept minimal on purpose: no registry publish until T-164 is
+         explicitly authorized (docs/bindings-strategy.md's per-binding checklist). -->
+    <Version>0.1.0</Version>
+    <Authors>cipher_ua</Authors>
+    <Description>P/Invoke .NET binding for dstu-core (Ukrainian DSTU cryptographic standards) - pre-release, provisional.</Description>
+    <PackageLicenseExpression>MIT OR Apache-2.0</PackageLicenseExpression>
+    <IsPackable>true</IsPackable>
+    <WarningsAsErrors>Nullable</WarningsAsErrors>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <!-- CS1591 (missing XML doc comment) would otherwise fire on every trivial Stream override
+         (CanRead, Seek, etc.) and IDisposable.Dispose() - real public API surface (DstuConstants,
+         the crypto_* wrapper methods) already carries doc comments; this only silences the
+         boilerplate, not a blanket opt-out. -->
+    <NoWarn>CS1591</NoWarn>
+  </PropertyGroup>
+
+</Project>
