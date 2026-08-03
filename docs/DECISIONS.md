@@ -10517,3 +10517,24 @@ the `unique_ptr`-based RAII/exception design has no hidden x86-64 assumption, ma
 own clean first Pi pass rather than T-51/Java's (Maven plugin pin) or T-163/Go's (per-`GOOS`
 LDFLAGS) own findings. T-53 is now done in full, all ten standard steps - every planned binding in
 `docs/bindings-strategy.md`'s phased order has landed.
+
+**Second addendum, same day, advisor review + real CI**: an advisor pass caught a real latent bug
+before it shipped - `SecretStreamEncryptor`/`Decryptor`'s originally-defaulted move constructor/
+assignment moved `state_`/`pending_` but copied `bufferLen_`/`pendingPos_` by value, leaving a
+moved-from object's `buffer_.size() - bufferLen_` (or `pending_.size() - pendingPos_`) invariant
+broken - `Write()`/`Read()` on that moved-from object would underflow a `size_t` subtraction.
+Nothing in this codebase ever moves either type; fixed by deleting the move ops instead of writing
+a correct custom move, per the advisor's own "smaller, safer surface" framing. Same pass added
+`-Wall -Wextra`/`/W3` (PRIVATE, test/example targets only) - surfaced one real unused-function
+warning, fixed - and closed two real test-coverage gaps: `SignDigest`/`VerifyDigest` had zero
+coverage, and only `Kupyna256Hasher`'s double-`Finalize()` was tested, not `Kupyna512Hasher`'s. The
+first draft of the new `VerifyDigest` tamper test flipped `digest[0]` and always "passed" without
+testing anything - `dstu4145::hash_to_field` (`crates/dstu-core/src/hazmat/dstu4145/signature.rs`)
+only consumes a digest's **low 21 bytes**, so tampering the first byte of a 32-byte digest is a
+guaranteed no-op on the derived field element. Found by actually running the test, not by
+inspection - fixed to tamper the last byte instead, which the function actually reads. Also
+corrected an overclaim in `docs/bindings-strategy.md`'s step 5 write-up ("MSVC ... verified
+locally" - it wasn't, `cl.exe` isn't on this dev machine's PATH) before pushing and confirming all
+three `bindings-cpp.yml` legs (`ubuntu-latest`/GCC, `macos-latest`/Clang, `windows-latest`/MSVC) via
+`gh run view`, run `30839873166`, all `success` - MSVC/Clang's only real confirmation, since neither
+was ever exercised on this dev machine.
