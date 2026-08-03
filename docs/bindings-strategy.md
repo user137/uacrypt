@@ -306,8 +306,18 @@ binding over JNI-over-capi; full `crypto_*` surface, `SecretStreamEncryptor`/`De
 tests including real `uacrypt` interop, `cargo xtask java` + CI, examples/README; JDK build/test
 baseline 17, published bytecode target 8; step 10's Pi re-check found one real bug - Debian's
 apt-packaged Maven defaults to an old `maven-compiler-plugin` that silently ignores
-`maven.compiler.release`, fixed by pinning the plugin version explicitly). **Next: T-163 (Go) or
-T-53 (C++).**
+`maven.compiler.release`, fixed by pinning the plugin version explicitly). T-163 (Go) done in full
+2026-08-03, steps 0-9 - see D-155 (step-0: hand-written `cgo` over `c-for-go`, decided on
+inspection rather than a full spike, since T-158's own C ABI surface is already stable; a real
+selftest-only link spike found two genuine static-linking gaps on Windows-GNU - `-ldstu_core_capi`
+alone links dynamically unless `-Wl,-Bstatic`/`-Bdynamic` bracket it, and the Rust staticlib
+transitively needs `-lws2_32 -luserenv -lntdll` even though `dstu-core-capi` itself never touches
+networking; full `crypto_*` surface, `CryptoError`/`ArgumentError`/`InternalError` split,
+`SecretStreamEncryptWriter`/`DecryptReader` (`io.Writer`/`io.Reader`-shaped, `Complete()`-not-
+`Close()` finalization split same as .NET's), `cargo xtask go` + `bindings-go.yml` CI (Windows leg
+forces the GNU-hosted Rust toolchain since cgo can't link MSVC output - unconfirmed on real CI as
+of this writing), examples/README). Step 10 (Pi re-check) still pending. **Next: T-163's own step
+10, or T-53 (C++).**
 
 ### The standard binding steps
 
@@ -859,25 +869,61 @@ Standard steps:
 
 ### T-163 — Go (added 2026-08-02, D-122; builds alongside T-52/T-51, needs the C ABI)
 
-No incumbent DSTU library exists for Go, and it has a real DevSecOps/cloud-infra audience (same
-class of reasoning as Ruby's own security/ops-tooling footprint) — but unlike Node/Ruby/PHP, no
-Go binding toolchain matches PyO3/napi-rs/magnus's maturity, so this one goes through the C ABI
-crate (`cgo` over `bindings/capi`'s `cbindgen`-generated header) same as .NET/Java/C++. Builds
-after T-158 lands, alongside that group, not ahead of it. **Reordered again 2026-08-02 (D-123):
-built ahead of T-53 (C++) specifically** — the owner's explicit preference, no further rationale
-recorded beyond that.
+**Done in full 2026-08-03, steps 0-9 — see D-155.** No incumbent DSTU library exists for Go, and
+it has a real DevSecOps/cloud-infra audience (same class of reasoning as Ruby's own security/ops-
+tooling footprint) — but unlike Node/Ruby/PHP, no Go binding toolchain matches PyO3/napi-rs/magnus's
+maturity, so this one goes through the C ABI crate (`cgo` over `bindings/capi`'s `cbindgen`-
+generated header) same as .NET/Java/C++. Builds after T-158 lands, alongside that group, not ahead
+of it. **Reordered again 2026-08-02 (D-123): built ahead of T-53 (C++) specifically** — the owner's
+explicit preference, no further rationale recorded beyond that.
 
 Standard steps, consuming T-158's header:
-- Step 1: a `cgo`-based package (`bindings/go`), wrapping the C ABI's opaque handles - decide at
-  implementation time whether a hand-written `cgo` layer or a generator (e.g. `c-for-go`) fits
-  better, research rather than assume.
-- Step 3: Go's `io.Writer`/`io.Reader` interfaces for the `crypto_secretstream` wrapper - the
-  idiomatic fit here, same reasoning as C++'s `istream`/`ostream`.
-- Step 4: prebuilt static/dynamic libs alongside the generated Go package, matching T-158's own
-  per-platform artifacts.
-- Step 5: `go test`-driven CI, own job (not folded into the Rust matrix, same D-119 reasoning as
-  every other binding).
-- Step 6: Go's own `testing` package, three categories (D-64/D-65).
+- Step 0: **Done.** Hand-written `cgo`, not `c-for-go` — decided on inspection, not a full spike
+  (T-158's ~50-function opaque-handle surface is already stable, and a generator would still need a
+  hand-written idiomatic layer on top for the secretstream `io.Writer`/`io.Reader` wrapper anyway).
+  A real selftest-only link spike (advisor-recommended vertical slice) found genuine static-linking
+  gaps on Windows-GNU before the full surface was wrapped: `-ldstu_core_capi` alone links
+  dynamically (GNU `ld` prefers the import lib over the static one when both exist) unless
+  `-Wl,-Bstatic`/`-Bdynamic` bracket it, and even then three more system libraries
+  (`-lws2_32 -luserenv -lntdll`) are needed for symbols the Rust standard library pulls in
+  transitively (`std::net`, temp-dir/child-process-pipe code) despite `dstu-core-capi` itself never
+  touching networking or process spawning.
+- Step 1: **Done.** `bindings/go/dstu` (package `dstu` — `go` alone is a reserved word and can't be
+  a package identifier), wrapping every opaque handle with an explicit `Close()` plus a
+  `runtime.SetFinalizer` backstop (same belt-and-suspenders shape as .NET's `SafeHandle`). Every
+  `[]byte`-taking wrapper guards the empty-slice case (`unsafe.Pointer(&b[0])` panics on
+  `len(b)==0`, and the header documents zero-length input as legal throughout) via a shared
+  `cBytes()` helper. `CryptoError`/`ArgumentError`/`InternalError` mirror .NET's
+  `DstuException`/`ArgumentException` split (cross-language style guide principle 4).
+- Step 3: **Done.** `SecretStreamEncryptWriter`/`SecretStreamDecryptReader`
+  (`io.Writer`/`io.Reader`-shaped) for `crypto_secretstream` — the idiomatic fit here, same
+  reasoning as C++'s `istream`/`ostream`. D-118's shape: `Close()` never emits a `Final` chunk (Go's
+  `defer` has no exception-type parameter, same reasoning as .NET's `Dispose()`/`Complete()`
+  split); the reader bounds the untrusted chunk-length prefix against `SecretstreamChunkBytes` and
+  rejects trailing bytes after `Final`.
+- Step 4: **Done, local/repo-relative only.** No true prebuilt-artifact/registry story exists for
+  this binding yet — unlike every other binding, `dstu/dstu.go`'s own `#cgo LDFLAGS` uses
+  `${SRCDIR}`-relative paths into `target/release`, so `bindings/go` only builds from inside a
+  checkout of this repo with `dstu-core-capi` already built there, not as a standalone `go get`-able
+  module. Flagged explicitly in the binding's own README rather than silently glossed over.
+- Step 5: **Done.** `cargo xtask go` (build `dstu-core-capi`, `gofmt -l` via a dedicated output-
+  capturing check since `gofmt` itself always exits 0, `go vet`, `go test`) + `bindings-go.yml` CI
+  (own job, D-119 reasoning). The Windows CI leg forces the GNU-hosted Rust toolchain as the
+  *default* (not just an additional cross target) and installs MinGW-w64 via `choco`, since `cgo`
+  cannot link against `dtolnay/rust-toolchain@stable`'s default MSVC-hosted output on
+  `windows-latest` — **unconfirmed on real CI as of this writing**, flagged in the workflow's own
+  header comment (same "confirm on real CI, not just locally" posture as D-147/D-149).
+- Step 6: **Done.** Go's own `testing` package, three categories (D-64/D-65) — official Kupyna-256
+  vector via the shared JSON, real byte-for-byte `uacrypt` interop for secretstream, tamper/wrong-
+  key rejection across secretbox/auth/sign/secretstream, misuse (wrong-length keys/tags/context,
+  truncated/oversized/trailing-data secretstream input, double-finalize, write-after-`Complete`).
+- Step 7: **Done.** `examples/` (five runnable programs mirroring `bindings/python/examples`/
+  `bindings/dotnet/examples` file-for-file, each actually run against the real built library) +
+  `README.md` with the provisional-status banner, including the step-4 repo-relative caveat.
+- Step 8/9: **Done** — this entry, plus `docs/DECISIONS.md` D-155, `docs/TASKS.md`, `README.md`,
+  `docs/dstu-crypto-project.md`, `docs/release-readiness.md`.
+
+**Step 10 (Raspberry Pi ARM64 cross-arch smoke check) still pending** — not yet run this session.
 
 **Dart — raised in the same conversation, explicitly deferred (D-122), not scheduled.** Same
 reasoning as Node's own browser/WASM scoping (D-118): Dart's primary audience (Flutter mobile/web)

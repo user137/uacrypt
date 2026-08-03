@@ -2776,7 +2776,7 @@ configuration surface added in the process (D-47 still holds).
       **Step 7 done 2026-08-02, see D-139**: five example scripts one-for-one with Python/Node,
       README.md written from scratch. One real fix: examples need `lib/` on `$LOAD_PATH` explicitly
       since `require_relative` alone doesn't satisfy `lib/dstu_core.rb`'s own internal require.
-- [ ] **T-163** Go binding (`bindings/go`) — added to scope 2026-08-02 at the owner's request, on
+- [x] **T-163** Go binding (`bindings/go`) — added to scope 2026-08-02 at the owner's request, on
       the same no-incumbent-competitor footing as Node/Ruby/PHP (no DSTU-specific Go library exists,
       real DevSecOps/cloud-infra audience). **Unlike Node/Ruby/PHP, this one goes through the C ABI
       (`cgo` over `bindings/capi`'s generated header, T-158)** — no direct-Rust-binding toolchain for
@@ -2791,6 +2791,20 @@ configuration surface added in the process (D-47 still holds).
       either way** (D-122) — its primary audience (Flutter mobile/web) overlaps least with this
       project's demonstrated PKI/enterprise demand, the same reasoning that scoped Node down to
       Node-only (D-118).
+      **Done in full 2026-08-03, steps 0-9 - see D-155.** Step 0: hand-written `cgo` decided on
+      inspection (not a full spike, unlike Java's Fork 1) plus a real selftest-only link spike that
+      found genuine Windows-GNU static-linking gaps (`-Wl,-Bstatic`/`-Bdynamic` bracketing needed, plus
+      `-lws2_32 -luserenv -lntdll` for Rust-stdlib symbols pulled in transitively). Full `crypto_*`
+      surface wrapped, `CryptoError`/`ArgumentError`/`InternalError` split (cross-language style guide
+      principle 4), `SecretStreamEncryptWriter`/`DecryptReader` (`io.Writer`/`io.Reader`-shaped,
+      `Complete()`-not-`Close()` finalization split same as .NET's D-152). `cargo xtask go` +
+      `bindings-go.yml` CI (Windows leg forces the GNU-hosted Rust toolchain + installs MinGW via
+      `choco` since `cgo` can't link MSVC output - **unconfirmed on real CI as of this writing**).
+      Full test suite (official vector, real `uacrypt` interop, rejection, misuse), 5 examples,
+      README with the provisional-status banner **and a real limitation no other binding has**: the
+      `#cgo LDFLAGS`' `${SRCDIR}`-relative path means this binding only builds from inside a checkout
+      of this repo, not as a standalone `go get`-able module (T-164 territory). **Step 10 (Raspberry
+      Pi re-check) still pending.**
 - [ ] **T-162** GitHub-facing docs + `gh-pages` site refresh — added to scope 2026-08-02 at the
       owner's request, explicitly last, after every binding above (T-49/T-50/T-160/T-159/T-158/
       T-52/T-51/T-163/T-53, per D-121/D-123's reordering) lands. Documentation-only, no primitive/binding

@@ -86,7 +86,12 @@ target.
 │   └── dstu-core-capi/     # C ABI - foundation for C++/.NET/Java/Go bindings (T-158)
 ├── bindings/               # Phase 3 language bindings, see docs/bindings-strategy.md
 │   ├── python/             # PyO3, full crypto_* surface - provisional, not on PyPI (T-49)
-│   └── nodejs/             # napi-rs, full crypto_* surface - provisional, not on npm (T-50)
+│   ├── nodejs/             # napi-rs, full crypto_* surface - provisional, not on npm (T-50)
+│   ├── ruby/               # magnus/rb-sys, full crypto_* surface - provisional, not on RubyGems (T-160)
+│   ├── php/                # ext-php-rs, full crypto_* surface - provisional, not on Packagist (T-159)
+│   ├── dotnet/             # C# P/Invoke over dstu-core-capi - provisional, not on NuGet (T-52)
+│   ├── java/               # jni crate, full crypto_* surface - provisional, not on Maven Central (T-51)
+│   └── go/                 # cgo over dstu-core-capi, full crypto_* surface - provisional, repo-relative only (T-163)
 ├── tests/oracle-harness/   # Java/.NET/C harnesses that verify test vectors against real Bouncy Castle
 └── oracles/                # reference implementations used as oracles - not vendored, see oracles/README.md
 ```

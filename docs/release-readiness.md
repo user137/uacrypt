@@ -236,10 +236,13 @@ any kind to choose from, safe or otherwise.
   (.NET, `bindings/dotnet`) landed 2026-08-03 too - the first binding with no Cargo workspace of its
   own at all, pure C# P/Invoke over T-158's C ABI, D-152. T-51 (Java, `bindings/java`) landed
   2026-08-03 too - a direct-Rust `jni`-crate binding (own Cargo workspace under `bindings/java/native`),
-  full `crypto_*` surface, 56 JUnit tests including real `uacrypt` interop, D-153. See
-  `docs/bindings-strategy.md`, `docs/DECISIONS.md` D-115/D-120/D-125 through D-153, `docs/TASKS.md`
-  T-49/T-50/T-51/T-52/T-53/T-158/T-159/T-160/T-163 - T-51's step 10 (Raspberry Pi re-check) plus
-  T-53/T-163 haven't started.
+  full `crypto_*` surface, 56 JUnit tests including real `uacrypt` interop, D-153 - including step
+  10 (Raspberry Pi re-check). T-163 (Go, `bindings/go`) landed 2026-08-03 too - `cgo` over T-158's
+  C ABI (no direct-Rust-binding toolchain for Go has PyO3/napi-rs/magnus's maturity), full
+  `crypto_*` surface, `io.Writer`/`io.Reader`-shaped secretstream, D-155. See
+  `docs/bindings-strategy.md`, `docs/DECISIONS.md` D-115/D-120/D-125 through D-155, `docs/TASKS.md`
+  T-49/T-50/T-51/T-52/T-53/T-158/T-159/T-160/T-163 - T-163's own step 10 (Raspberry Pi re-check)
+  plus T-53 (C++) haven't started.
 
 ## Libsodium API surface and crates.io publishing audit (2026-07-25)
 
