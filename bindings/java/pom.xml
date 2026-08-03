@@ -1,0 +1,93 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>ua.dstucrypto</groupId>
+  <artifactId>dstu-core</artifactId>
+  <version>0.1.0</version>
+  <packaging>jar</packaging>
+
+  <name>dstu-core</name>
+  <description>Java bindings for dstu-core (Ukrainian DSTU cryptographic standards) - provisional, not yet published to Maven Central</description>
+
+  <properties>
+    <!-- Build/test toolchain is a modern JDK (matches the project's Raspberry Pi rig, which ships
+         OpenJDK 17 by default on Debian 12 - docs/DECISIONS.md D-153), but the published artifact
+         targets Java 8 bytecode: Java 8 still has real enterprise/PKI-adjacent footprint, the same
+         audience this binding's Bouncy-Castle-incumbent framing already targets. JNI's own C ABI
+         is unaffected by JVM version either way - only this compiled bytecode's level matters for
+         a consumer's JVM compatibility. -->
+    <maven.compiler.release>8</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <junit.version>5.10.2</junit.version>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <version>${junit.version}</version>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <!-- Detects the current build machine's OS/arch classifier (e.g. windows-x86_64,
+         linux-aarch_64) - the standard, well-known plugin for this (grpc-java/netty use it too),
+         not a hand-rolled <profiles> OS-sniffing block. -->
+    <extensions>
+      <extension>
+        <groupId>kr.motd.maven</groupId>
+        <artifactId>os-maven-plugin</artifactId>
+        <version>1.7.1</version>
+      </extension>
+    </extensions>
+    <plugins>
+      <!-- Bundles the just-built native library from the sibling Rust crate
+           (bindings/java/native, step 1) under native/<os-arch classifier>/<libname> on the
+           classpath - this build machine's own classifier only; cross-OS packaging is a future
+           release.yml job, same posture T-52/T-158's own step 4 already took. NativeLoader.java
+           reads this exact path back out at runtime.
+
+           A plain <build><resources> block (rather than this explicit plugin execution) does NOT
+           work here: `${os.detected.classifier}` (set by the os-maven-plugin extension above)
+           only resolves through the mojo-parameter expression evaluator at plugin-execution time,
+           not the raw-model interpolation `<resources>` values go through when the POM is first
+           read (confirmed empirically - a `<resources>` version left the property un-interpolated,
+           a literal `${os.detected.classifier}` directory name on disk). -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-resources-plugin</artifactId>
+        <version>3.3.1</version>
+        <executions>
+          <execution>
+            <id>copy-native-library</id>
+            <phase>generate-resources</phase>
+            <goals>
+              <goal>copy-resources</goal>
+            </goals>
+            <configuration>
+              <outputDirectory>${project.build.outputDirectory}/native/${os.detected.classifier}</outputDirectory>
+              <resources>
+                <resource>
+                  <directory>${project.basedir}/native/target/release</directory>
+                  <includes>
+                    <include>*.dll</include>
+                    <include>libdstu_core_java.so</include>
+                    <include>libdstu_core_java.dylib</include>
+                  </includes>
+                </resource>
+              </resources>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>3.2.5</version>
+      </plugin>
+    </plugins>
+  </build>
+</project>

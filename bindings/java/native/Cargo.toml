@@ -1,0 +1,26 @@
+# Deliberately its own workspace, not a member of the repo-root `[workspace]` - same reasoning as
+# `bindings/python`/`bindings/nodejs` (D-119). A path dependency on `dstu-core` below still resolves
+# correctly across separate workspaces without one.
+[workspace]
+
+[package]
+name = "dstu_core_java"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.87.0"
+license = "MIT OR Apache-2.0"
+description = "Java (JNI) bindings for dstu-core (Ukrainian DSTU cryptographic standards) - provisional, not yet published to Maven Central"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+# Pinned to 0.21, not the newer 0.22 - 0.22 redesigned `JNIEnv` ownership (`EnvUnowned` replaces
+# the safe wrapper's direct methods), a real breaking API change confirmed by trying the bump
+# during T-51's step-0 spike, not assumed. See docs/DECISIONS.md D-153.
+[dependencies]
+jni = "0.21"
+dstu-core = { path = "../../../crates/dstu-core", version = "0.2.0", features = ["std", "selftest", "pwhash"] }
+
+[profile.release]
+lto = true

@@ -86,3 +86,12 @@
 /bindings/dotnet/*/obj/
 /bindings/dotnet/*/nupkg/
 /bindings/dotnet/local-nuget-feed/
+
+# Java (T-51): the Rust JNI crate lives nested under bindings/java/native/ (not bindings/java
+# itself, to avoid colliding with Maven's own src/main/java layout) - the root-scoped
+# /bindings/*/target/ rule below only reaches one path segment deep, so this crate's own build
+# output needs its own explicit entry. /bindings/java/target/ is Maven's own output (already
+# covered by /bindings/*/target/, listed again here just for locality with the rest of this
+# section) plus this binding's own compiled examples/ output.
+/bindings/java/native/target/
+/bindings/java/target/
