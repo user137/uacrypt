@@ -293,6 +293,32 @@ control over variant/nonce/AAD/tag as separate files) for anyone who explicitly 
 for Windows/Linux/macOS (Apple Silicon), plus a `dstu-core` source distribution - not published to
 crates.io yet (`docs/TASKS.md` T-17).
 
+## Language bindings
+
+Every binding in `docs/bindings-strategy.md`'s phased order is now built — the full `crypto_*`
+surface (`crypto_secretbox`/`secretstream`/`sign`/`auth`/`kdf`/`generichash`/`stream`/`pwhash`,
+`randombytes`, `selftest`), idiomatic errors and secretstream I/O per language, real
+correctness/rejection/misuse test suites against the same official vectors. **None are published
+to a package registry yet** (PyPI/npm/RubyGems/Packagist/NuGet/Maven Central — separately
+owner-gated, `docs/TASKS.md` T-164, same posture as `dstu-core` itself not being on crates.io yet)
+— build from source per the linked README:
+
+| Language | Approach | README |
+|---|---|---|
+| Python | PyO3, direct Rust binding | [`bindings/python`](bindings/python/README.md) |
+| Node.js | napi-rs, direct Rust binding | [`bindings/nodejs`](bindings/nodejs/README.md) |
+| Ruby | magnus/rb-sys, direct Rust binding | [`bindings/ruby`](bindings/ruby/README.md) |
+| PHP | ext-php-rs, direct Rust binding | [`bindings/php`](bindings/php/README.md) |
+| .NET (C#) | P/Invoke over the C ABI | [`bindings/dotnet`](bindings/dotnet/README.md) |
+| Java | `jni` crate, direct Rust binding | [`bindings/java`](bindings/java/README.md) |
+| Go | `cgo` over the C ABI | [`bindings/go`](bindings/go/README.md) |
+| C++ | header-only RAII wrapper over the C ABI | [`bindings/cpp`](bindings/cpp/README.md) |
+
+The C ABI itself (`crates/dstu-core-capi`, opaque handles, `cbindgen`-generated header) is the
+foundation the .NET/Go/C++ bindings above link against directly — usable from any language with a
+C FFI, not just those three. See `docs/bindings-strategy.md` for the per-binding design rationale
+and `docs/DECISIONS.md` D-115 onward for the full decision history.
+
 ## Embedded / `no_std` targets
 
 `dstu-core` is `no_std`-compatible from day one (`cargo build --no-default-features`, checked by
