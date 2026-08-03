@@ -166,6 +166,23 @@ project funding changes rather than re-researched from scratch.
   arrived at from a different source. See `docs/DECISIONS.md` D-05's 2026-07-24 revision for the full
   table, the sourcing caveats, and why this was adopted as a working assumption rather than treated
   as a primary-text reading.
+- **Candidate added 2026-08-03, see `docs/DECISIONS.md` D-154**: `cppcrypto` 0.20 (kerukuro,
+  SourceForge, BSD per project page / public-domain per file header — discrepancy observed, not
+  resolved). Implements all 5 Kalyna variants; **all 10 official `Kalyna.pdf` vectors matched
+  byte-for-byte** against a standalone harness calling its `kalyna*::init`/`encrypt_block`/
+  `decrypt_block` directly. **Independence check, done deliberately (this file's own "three prior
+  false starts" pattern above)**: `kalyna.cpp`'s monolithic fused-table `encrypt_block` shares no
+  function/table name or step-decomposition with `oracles/kalyna-reference/kalyna.c`'s granular
+  `SubBytes`/`ShiftRows`/`MixColumns`/... style, or with either Bouncy Castle port — a materially
+  stronger independence signal than BC/cryptonite/outspace's provable shared lineage, but not a
+  provable clean-room claim (a fused-table SPN is the natural shape for *any* fast Kalyna, related
+  or not). **Recorded as "independence not established, not refuted"** — sits between tier 3
+  (audited) and tier 5 (unofficial single-maintainer) on the verification-authority scale above,
+  not slotted formally until/unless independence gets stronger evidence. Binary-level performance
+  (Ryzen dev machine): **beats `uacrypt` on all 10 measured cells** (5 variants × encrypt/decrypt),
+  ~1.3–1.9x — see `docs/PERFORMANCE.md`'s Kalyna section for the full table. Not built on the
+  Raspberry Pi yet (D-154's own caveat: don't assume the Ryzen-favors-cppcrypto result holds
+  cross-architecture, per D-33's standing pattern).
 
 ### Kupyna (DSTU 7564)
 - **Pseudocode:** `docs/pseudocode/kupyna.md` — transcribed from the paper below, cross-checked
@@ -196,6 +213,14 @@ project funding changes rather than re-researched from scratch.
   cross-checked against `oracles/bouncycastle-java/.../macs/DSTU7564Mac.java` - a fully independent
   Java implementation whose own construction was also read - byte-for-byte matching on all three
   self-test vectors. See `docs/pseudocode/kupyna-kmac.md` for the full citation.
+- **Candidate added 2026-08-03, see `docs/DECISIONS.md` D-154**: `cppcrypto` 0.20 (kerukuro,
+  same source as the Kalyna candidate above). Implements Kupyna-256/512 only (matches this
+  project's own scope). **All 10 byte-aligned official `Kupyna.pdf` vectors matched byte-for-byte**
+  against its `kupyna(256|512)::init`/`update`/`final` API, called directly by a standalone
+  harness. Same "independence not established, not refuted" framing as the Kalyna entry above —
+  not re-derived separately here, see that entry's reasoning. Binary-level performance (Ryzen dev
+  machine): beats `uacrypt` at every message size measured, but by only **~5–9%** (near parity,
+  unlike Kalyna's ~1.3–1.9x gap) — see `docs/PERFORMANCE.md`'s Kupyna section.
 
 ### Strumok (DSTU 8845)
 - **Pseudocode:** `docs/pseudocode/strumok.md` — transcribed from `Strumok.pdf`, cross-checked

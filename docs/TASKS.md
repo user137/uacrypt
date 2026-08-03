@@ -1506,6 +1506,37 @@ item they point to is later removed.
       "why does LLVM's allocator treat the two index expressions differently" question stays
       unexplained but is explicitly out of scope for what this curiosity task asked. No code
       changed - `hazmat::kalyna.rs` untouched, `git diff` confirms.
+- [ ] **T-168** Read `cppcrypto` 0.20's actual Kalyna/Kupyna source (not just its output) to find out
+      *why* it beats `uacrypt` — added 2026-08-03, user-requested, directly off D-154's finding.
+      D-154 (`docs/DECISIONS.md`, `docs/ORACLES.md`, `docs/PERFORMANCE.md`) confirmed cppcrypto wins
+      all 10 Kalyna binary-level cells (~1.3-1.9x) and both Kupyna variants (~5-9%, near parity) on
+      the Ryzen dev machine, but only measured the *gap*, not its cause — this task is the read-the-
+      actual-code follow-up, same shape as T-125's GCM field-multiply investigation and T-136 above
+      (don't stop at "different implementation," find the concrete mechanism). Source is already on
+      disk from D-154's session: `kalyna.cpp`/`kupyna.cpp` under the scratchpad's
+      `cppcrypto-0.20-src/cppcrypto/` (re-download from the SourceForge link in D-154 if the
+      scratchpad was cleared — sha256
+      `cb4d5b54540554b55261a53e5be4e21bfc99642bab154631edf26f29fde65fd5`). Concrete angles worth
+      checking, not just "it's faster, ship it": (1) table layout — cppcrypto's `IT[8][256]`-style
+      fused tables vs. `hazmat::tables`' own `SBOX_MDS_ENC`/`SBOX_MDS_DEC` layout, same idea
+      (D-13/D-28) but possibly different memory layout/alignment/cache-line packing; (2) whether
+      cppcrypto's key schedule (`init`) does less redundant work per call than `ExpandedKey`'s own
+      ~does, independent of the already-excluded-from-timing schedule cost; (3) `-msse2`/`-mssse3`
+      flags the Makefile sets globally (`CXXFLAGS=... -msse2`) — check with `--emit=asm` (this
+      project's own established method, D-89) whether the compiler auto-vectorizes the fused-table
+      gather in a way `hazmat::kalyna`'s equivalent loop doesn't, before assuming hand-written SIMD;
+      (4) why the Kupyna gap (~5-9%) is so much smaller than the Kalyna gap (~1.3-1.9x) specifically
+      — if the cause is table-layout-related, Kupyna's own already-fused `KUPYNA_T` tables (shared
+      with Kalyna, D-154) should show a similar effect size, and the fact that it doesn't is itself
+      a clue worth chasing, not just an aside. **Verify-only, same as every oracle comparison in this
+      project (D-06)** — the goal is finding a legitimate optimization to apply to `hazmat::kalyna`/
+      `kupyna` on its own merits (cited and tested the normal way), never porting or copying
+      cppcrypto's code directly. Any resulting rewrite still needs its own `advisor()` consultation
+      and plan-mode pass before implementation, per this file's own Tier C precedent above, and must
+      re-verify against all 10 official Kalyna vectors / all 12 Kupyna vectors before any new timing
+      is trusted (this task's own D-154 already confirms cppcrypto's *output* is correct — a
+      `hazmat` change inspired by reading its code still needs this project's own correctness bar,
+      not cppcrypto's).
 - [x] **T-137** **Done 2026-07-27 - PR `specinfo-ua/UAPKI#30`, CI fully green (SonarCloud Code
       Analysis + SonarCloud checks both passing), see `docs/DECISIONS.md` D-90/D-91/D-92.**
       Hypothetical/goodwill task, proposed by the user 2026-07-26 directly off T-131/D-78's XTS

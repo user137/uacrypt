@@ -369,6 +369,30 @@ XTS shows above**: 256-256/256-512 decrypt now runs *faster* than encrypt, while
 512-512 keep encrypt ahead — `encipher_round_n`/`fused_inv_round_n` are different code paths
 (T-128/D-77), so the two directions were never guaranteed to move by the same amount.
 
+**`cppcrypto` 0.20 column added 2026-08-03** (`docs/DECISIONS.md` D-154, `docs/ORACLES.md` — an
+oracle candidate, independence not established/not refuted). No CLI of its own matching this
+convention (its `cryptor` tool is hardcoded to Serpent-256), so measured via a small harness calling
+its library API directly, matching this table's own conventions exactly: key schedule (`init`)
+excluded from the timed window, cached-schedule, N=20000. `uacrypt`'s own numbers re-measured fresh
+in the same session (`cargo build -p uacrypt --release` reported no recompilation needed — already
+current) rather than reused from the table above:
+
+| Variant | uacrypt encrypt (MB/s) | cppcrypto encrypt (MB/s) | uacrypt decrypt (MB/s) | cppcrypto decrypt (MB/s) |
+|---|---|---|---|---|
+| 128-128 | 206.20 | **340.33** | 179.52 | **264.89** |
+| 128-256 | 146.72 | **247.81** | 132.69 | **201.44** |
+| 256-256 | 137.47 | **242.06** | 158.95 | **210.40** |
+| 256-512 | 107.84 | **190.25** | 124.56 | **169.07** |
+| 512-512 | 133.26 | **175.58** | 99.24 | **164.59** |
+
+**cppcrypto wins all 10 cells**, by roughly 1.3-1.9x — unlike the UAPKI columns above, where the
+Ryzen result usually favors `uacrypt`. Correctness confirmed first (`docs/DECISIONS.md` D-154): all
+10 official `Kalyna.pdf` vectors matched byte-for-byte before any timing was trusted, per this
+project's own standing practice. Not re-measured on the Raspberry Pi — `cppcrypto`'s upstream build
+needs `yasm` (x86/x64-only, no ARM target) for the rest of the library even though Kalyna/Kupyna
+themselves don't need it, and D-33 already shows a single-platform Kalyna number is not a general
+claim, so this gap is stated rather than assumed either way.
+
 ### Kalyna-CCM (`kalyna-ccm encrypt`)
 
 No binary-level table existed for CCM before this session — `kalyna-ccm` had no `--iterations` flag
@@ -593,6 +617,27 @@ size) - also as predicted, since Kupyna-512 was already full-width and only gain
 elimination/loop unrolling, not buffer-reuse. UAPKI's own absolute numbers moved somewhat between
 sessions too (e.g. 88.48→116.73 MB/s for Kupyna-512/64 KB) - ordinary run-to-run machine variance,
 not a UAPKI code change (UAPKI was not rebuilt or modified between measurements).
+
+**`cppcrypto` 0.20 column added 2026-08-03** (`docs/DECISIONS.md` D-154, `docs/ORACLES.md`), same
+harness/convention as its Kalyna column above — fresh `init()`/`update()`/`final()` called *inside*
+the timed loop every iteration (D-80, matching `uacrypt`'s own `bench_in_memory!`), 64 KB/1 MiB/
+10 MiB, `uacrypt`'s own numbers re-measured fresh the same session:
+
+| Variant | Size | uacrypt (MB/s) | cppcrypto (MB/s) |
+|---|---|---|---|
+| Kupyna-256 | 64 KB | 138.94 | **147.10** |
+| Kupyna-512 | 64 KB | 98.97 | **107.09** |
+| Kupyna-256 | 1 MiB | 139.44 | **147.82** |
+| Kupyna-512 | 1 MiB | 98.88 | **105.00** |
+| Kupyna-256 | 10 MiB | 138.20 | **144.27** |
+| Kupyna-512 | 10 MiB | 97.58 | **105.33** |
+
+**cppcrypto leads at every size, but only by ~5-9%** — near parity, a much smaller gap than its
+Kalyna column's ~1.3-1.9x lead above. Not root-caused further (no profiling done to isolate why
+cppcrypto's Kalyna specifically pulls further ahead than its Kupyna does) - a possible future task.
+Correctness confirmed first: all 10 byte-aligned official `Kupyna.pdf` vectors matched byte-for-byte
+before any timing was trusted. Not re-measured on the Raspberry Pi, same `yasm`/D-33 caveat as the
+Kalyna column above.
 
 ### Strumok (`strumok-crypt`)
 

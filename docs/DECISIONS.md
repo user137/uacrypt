@@ -10070,3 +10070,99 @@ machine and the Pi afterward. All 56 tests passed on the Pi on the very next run
 - genuine confirming evidence the `jni`/JNI layer itself (as opposed to the build tooling) is
 architecture-portable by construction, the same conclusion T-52's own Pi run reached for
 `[LibraryImport]`/`SafeHandle`/`nuint`.
+
+## D-154: cppcrypto (kerukuro) evaluated as a Kalyna/Kupyna oracle candidate, plus binary-level perf
+
+2026-08-03, user-requested (pasted `https://sourceforge.net/projects/cppcrypto/`, asked for an oracle
+evaluation and a binary-level performance comparison "у відповідних режимах"). Full working files
+(harness source, generated key/message data) live only in the session scratchpad, not committed -
+this entry plus the `docs/ORACLES.md`/`docs/PERFORMANCE.md` updates are the durable record.
+
+**What it is**: a C++ crypto library by a single maintainer ("kerukuro"), SourceForge-hosted, last
+released 0.20 (2023-03-12). SourceForge's own project page states BSD License; the individual
+`kalyna.cpp`/`kupyna.cpp` file headers instead say "released into public domain" - an observed
+discrepancy, not resolved either way (both are portable-with-attribution-or-better, so D-06's
+"never port source into `crates/`, only verify against it" model is unaffected regardless of which
+governs).
+
+**Coverage**: Kalyna - all 5 variants this project implements (`kalyna128_128`/`kalyna128_256`/
+`kalyna256_256`/`kalyna256_512`/`kalyna512_512`, exact block/key-size match). Kupyna - 256/512 only
+(matches this project's own scope; 224/384 excluded by cppcrypto's own docs for the same reason
+this project excludes them - identical to a truncated 256/512 output). **No Strumok anywhere** -
+confirmed by reading the full algorithm list on both the SourceForge project page and the GitHub
+mirror's README, and by grepping the extracted source tree for `strumok`/`8845` (no hits). This
+oracle candidate covers 2 of this project's 3 symmetric primitives, not all three.
+
+**Build**: downloaded `cppcrypto-0.20-src.zip` (SourceForge's own signed mirror-redirect link,
+18,132,877 bytes, sha256 `cb4d5b54540554b55261a53e5be4e21bfc99642bab154631edf26f29fde65fd5`).
+The project's own `Makefile` refuses a native Windows build outright (`$(error Windows build is
+supported only via Visual C++ project files, or run 'make UNAME=Cygwin')`) and most of its other
+~50 algorithms need `yasm`-assembled `.asm` files. **Neither blocker applies to Kalyna/Kupyna
+specifically**: `kalyna.cpp`/`kupyna.cpp` are pure C++ (`OBJS = ... kupyna.o ... kalyna.o ...` in
+the Makefile, no matching `.asm` rule for either), so a standalone harness compiling just those two
+files plus their small dependency set (`block_cipher.cpp`, `crypto_hash.cpp`, `cpuinfo.cpp`,
+headers) against this project's already-installed WinLibs MinGW-w64 `g++` needed no new toolchain
+install and no yasm at all - confirmed by a clean `g++ -O2 -std=gnu++11` build with zero errors.
+`kalyna.cpp` internally shares Kupyna's fused S-box/MDS tables via `extern const uint64_t
+KUPYNA_T[8][256]` (defined in `kupyna.cpp`) - the same shared-table pattern this project's own
+`hazmat::tables` uses (D-13), so both files must be compiled together regardless of which one is
+being exercised.
+
+**Correctness - all 20 official vectors matched, byte-for-byte**: a throwaway harness
+(`oracle_check.cpp`, scratchpad-only) hardcoded every case from this project's own
+`crates/dstu-core/tests/vectors/{kalyna,kupyna}/*.json` (all 10 Kalyna encrypt/decrypt cases across
+5 variants; all 10 byte-aligned Kupyna-256/512 cases) and called cppcrypto's `kalyna128_128::init`+
+`encrypt_block`/`decrypt_block` and `kupyna(256|512)::init`+`update`+`final` directly. **20/20
+passed.** This is the same official `Kalyna.pdf`/`Kupyna.pdf` Appendix B vector set already used
+throughout `docs/ORACLES.md`, not new data - but a new *independent implementation* reproducing it
+is real corroborating value per this project's own dual-oracle bar (`docs/SECURITY.md`).
+
+**Independence assessment - deliberately hedged, not overclaimed**: this file's own history has
+been burned three times on premature "independent" claims (BC-Java credits Oliynykov's C as its
+source; BC-.NET is a structural port of BC-Java; outspace's Strumok shares `dstu8845_*`/`T0..T7`
+naming with UAPKI) - see `docs/ORACLES.md`'s Kalyna/Kupyna/Strumok sections. Checked the same way
+here rather than trusting a `WebFetch` summary's judgment (per this file's own standing "WebFetch
+summarization is unreliable" note, `CLAUDE.md` Agent discipline): compared `kalyna.cpp`'s function
+decomposition directly against `oracles/kalyna-reference/kalyna.c`'s. The reference is granular and
+step-by-step (`SubBytes`/`InvSubBytes`/`ShiftRows`/`MixColumns`/`EncipherRound`/`KeyExpandKt`/
+`KeyExpandEven`/... - separate named passes over a state array, matching D-104's own
+"auditability-first, not speed-optimized" characterization of Oliynykov's style). `kalyna.cpp` is
+the opposite shape - monolithic per-variant `encrypt_block`/`decrypt_block`/`init` methods with no
+named sub-passes at all, instead indexing directly into fused S-box+shift+MDS tables (`IT[8][256]`
+etc.) the same general technique class as UAPKI's own "combined S-box+permutation tables"
+(`docs/PERFORMANCE.md` "Implementations compared"). **No shared function name, table name, or
+step-decomposition found between cppcrypto and the reference C, or between cppcrypto and either
+Bouncy Castle port.** This is a materially stronger independence signal than any of the three prior
+false starts above (which all showed literal shared naming/structure on inspection) - but a
+fused-table SPN implementation is also the single obvious way to write a fast Kalyna regardless of
+whether it was independently derived from the paper or influenced by prior art in that same style,
+so this does not rise to a provable clean-room claim. Recorded in `docs/ORACLES.md` as
+"independence not established, not refuted" - deliberately short of "independent third oracle."
+
+**Performance - binary-level, Ryzen 5 PRO 4650U dev machine (D-34 methodology)**: cppcrypto has no
+CLI matching `uacrypt`'s file-based shape (its own `cryptor` tool is hardcoded to Serpent-256
+CBC+HMAC, no Kalyna path at all), so a second throwaway harness (`bench.cpp`) called the library API
+directly, matching this project's own timing conventions exactly (D-80): Kalyna's key schedule
+(`init`) excluded from the timed window, encrypt/decrypt cached-schedule, N=20000; Kupyna's
+`init`/`update`/`final` called fresh *inside* the timed loop every iteration, matching `uacrypt`'s
+own `bench_in_memory!` macro, at 64 KB/1 MiB/10 MiB. `uacrypt`'s own numbers were re-measured fresh
+in the same session (`target/release/uacrypt kalyna-block`/`kupyna-digest`, rebuilt immediately
+before timing - `cargo build -p uacrypt --release` reported no recompilation needed, confirming the
+existing binary was already current) rather than reused from `docs/PERFORMANCE.md`'s older entries,
+so both sides of the comparison are from the same session on the same machine. Full tables in
+`docs/PERFORMANCE.md`'s Kalyna and Kupyna sections. **Result: cppcrypto wins every one of the 10
+Kalyna cells measured** (5 variants x encrypt/decrypt), by roughly 1.3-1.9x - unlike this project's
+UAPKI comparison, where the Ryzen result usually favors this project. **Kupyna is much closer**:
+cppcrypto leads by only ~5-9% at every message size, near parity rather than a wide gap. Not
+root-caused further (no profiling done to isolate why cppcrypto's Kalyna specifically pulls ahead
+by a wider margin than its Kupyna) - not undertaken this session, now tracked as `docs/TASKS.md`
+T-168 (added 2026-08-03, user-requested).
+
+**Not re-run on the Raspberry Pi this pass** - `yasm` is an x86/x64 NASM-syntax assembler with no
+ARM target, so even though Kalyna/Kupyna themselves don't need it, cppcrypto's own Makefile has no
+Windows-native path to mirror on a from-scratch aarch64 toolchain check without first confirming a
+Linux build works at all; deferred rather than assumed to work, matching this project's own "verify
+before claiming a platform is covered" discipline (`docs/TASKS.md` T-35). D-33 is the standing
+reminder that a single-platform Kalyna/Kupyna performance number is not a general claim - if this
+oracle is revisited for the Pi, expect the possibility of a reversed result there, the same way
+UAPKI's comparison flips.
