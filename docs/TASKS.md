@@ -2703,12 +2703,29 @@ configuration surface added in the process (D-47 still holds).
       windows), five examples + README. Step 10 (Raspberry Pi ARM64 re-check) also done the same
       day - all 56 tests passed on the first real aarch64 run, no ARM-portability bug found this
       time (unlike D-151's `c_char`/`i8` finding in the C ABI crate).
-- [ ] **T-53** C++ binding (`bindings/cpp`) — thin RAII header-only wrapper over `bindings/capi`
-      (T-158), no separate Rust glue. No incumbent-competition reason to reorder this one relative
-      to .NET/Java (D-121 didn't touch it specifically), but it still needs T-158 first same as
-      T-51/T-52, so it lands in that same later group by construction. **Reordered again 2026-08-02,
-      see D-123: now built after T-163 (Go), not before it** — the owner's explicit preference, no
-      further rationale recorded beyond that. See `docs/bindings-strategy.md` "Phase 6."
+- [x] **T-53** **Done 2026-08-03 for steps 1-9, see `docs/DECISIONS.md` D-158 - step 10 (Raspberry
+      Pi re-check) still pending.** C++ binding (`bindings/cpp`) — thin RAII header-only wrapper
+      over `crates/dstu-core-capi` (T-158), no separate Rust glue. No incumbent-competition reason
+      to reorder this one relative to .NET/Java (D-121 didn't touch it specifically), but it still
+      needed T-158 first same as T-51/T-52, so it landed in that same later group by construction.
+      **Reordered again 2026-08-02, see D-123: built after T-163 (Go), not before it** — the
+      owner's explicit preference, no further rationale recorded beyond that. Four step-0 forks
+      resolved together (D-158): `Finish()`-not-destructor Final emission (a C++ destructor can't
+      reliably tell exception-unwind from normal scope exit without `std::uncaught_exceptions()`
+      bookkeeping, so the `Complete()`-not-`Dispose()`/`Close()` split D-152/D-155 already used
+      ports directly), `std::ostream&`/`std::istream&` for step 3 (matches Go's `io.Writer`/
+      `io.Reader` and .NET's `Stream`), prebuilt-lib-plus-header CMake packaging (no `FetchContent`
+      for the Rust side), and a hand-rolled `CHECK`-macro test harness mirroring
+      `c-tests/test_capi.c` (no Catch2/doctest dependency, C++ has no stdlib JSON either so the
+      single official Kupyna-256 vector is hand-transcribed the same way the C harness already does
+      it). Links `dstu-core-capi`'s cdylib (matching the C test harness's own existing choice, not
+      Go's static-link route, D-158). Full `crypto_*` surface via `unique_ptr`-backed move-only
+      RAII handles, `dstu::CryptoError`/`ArgumentError`/`InternalError` exception hierarchy
+      (cross-language-style-guide.md principle 4), real bidirectional `uacrypt` CLI interop in the
+      test suite (`std::system`, with the documented Windows `cmd.exe` outer-quote workaround),
+      `cargo xtask cpp` + `bindings-cpp.yml` CI (ubuntu/macos/windows, no Windows GNU-forcing needed
+      unlike Go - `xtask` branches on `target_env` the same way `capi_compile_msvc` already does),
+      five examples + README. See `docs/bindings-strategy.md` "Phase 6" / its own T-53 entry.
 - [x] **T-158** C ABI crate (`crates/dstu-core-capi` workspace member) — opaque
       handles, explicit error codes, `catch_unwind` at every boundary call, zeroize-on-free,
       `cbindgen`-generated header. The shared foundation T-52/T-163/T-53 consume (T-159 no longer

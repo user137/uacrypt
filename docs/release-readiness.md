@@ -241,9 +241,14 @@ any kind to choose from, safe or otherwise.
   steps including its own Pi re-check - `cgo` over T-158's C ABI (no direct-Rust-binding toolchain
   for Go has PyO3/napi-rs/magnus's maturity), full `crypto_*` surface, `io.Writer`/`io.Reader`-shaped
   secretstream, D-155 (the Pi re-check found the Windows-only cgo `LDFLAGS` needed a per-`GOOS`
-  split to link on Linux at all - a cross-OS gap, not a cross-architecture one). See
-  `docs/bindings-strategy.md`, `docs/DECISIONS.md` D-115/D-120/D-125 through D-155, `docs/TASKS.md`
-  T-49/T-50/T-51/T-52/T-53/T-158/T-159/T-160/T-163 - only T-53 (C++) hasn't started.
+  split to link on Linux at all - a cross-OS gap, not a cross-architecture one). T-53 (C++,
+  `bindings/cpp`) landed 2026-08-03 too - header-only RAII wrapper over T-158's C ABI (no CMake
+  `FetchContent` for the Rust side, D-158), `std::ostream&`/`std::istream&`-shaped secretstream
+  with an explicit `Finish()` (a destructor can't reliably distinguish exception-unwind from
+  normal scope exit), full `crypto_*` surface, real bidirectional `uacrypt` interop in its test
+  suite - step 10 (Raspberry Pi re-check) still pending as of this writing. See
+  `docs/bindings-strategy.md`, `docs/DECISIONS.md` D-115/D-120/D-125 through D-158, `docs/TASKS.md`
+  T-49/T-50/T-51/T-52/T-53/T-158/T-159/T-160/T-163 - every planned binding has now landed.
 
 ## Libsodium API surface and crates.io publishing audit (2026-07-25)
 

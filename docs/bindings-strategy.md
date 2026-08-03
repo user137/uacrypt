@@ -318,7 +318,16 @@ networking; full `crypto_*` surface, `CryptoError`/`ArgumentError`/`InternalErro
 forces the GNU-hosted Rust toolchain since cgo can't link MSVC output - unconfirmed on real CI as
 of this writing), examples/README; step 10's Pi re-check found the Windows-only LDFLAGS didn't
 work unmodified on Linux - fixed with cgo's own per-`GOOS` `#cgo` pragma syntax, all tests then
-green on real aarch64). **Next: T-53 (C++).**
+green on real aarch64). T-53 (C++) done in full 2026-08-03 for steps 1-9 - see D-158 (four step-0
+forks: `Finish()`-not-destructor Final emission, `std::ostream&`/`std::istream&`, prebuilt-lib
+CMake packaging with no `FetchContent` for the Rust side, hand-rolled `CHECK`-macro test harness
+mirroring `c-tests/test_capi.c`); header-only C++17 RAII wrapper (`unique_ptr`-backed move-only
+handles) over `crates/dstu-core-capi`'s cdylib (not the staticlib Go links - matches the C test
+harness's own existing choice), full `crypto_*` surface, exception-based errors, real bidirectional
+`uacrypt.exe` interop in the test suite, `cargo xtask cpp` + `bindings-cpp.yml` CI (no Windows
+GNU-forcing needed, branches on `target_env` the same way `capi()` already does), five examples +
+README - **step 10 (Pi re-check) still pending, do that before considering T-53 fully closed.**
+**Next: T-53's own step 10, then T-162 (docs, last).**
 
 ### The standard binding steps
 
@@ -705,13 +714,61 @@ Standard steps:
 
 ### T-53 — C++ (reordered 2026-08-02, D-123: now builds after T-163/Go)
 
-Standard steps, consuming T-158's header:
-- Step 1: a thin RAII header-only wrapper.
-- Step 3: `istream`/`ostream`, or an iterator-of-buffers if that fits the header-only shape
-  better — decide at implementation time, don't assume upfront.
-- Step 4: prebuilt static/dynamic libs alongside the header, or a one-line CMake `FetchContent`.
-- Step 5: at least one of MSVC/GCC/Clang, matching this project's existing toolchain posture.
-- Step 6: a small C++ test.
+**Done in full 2026-08-03 for steps 1-9 — see D-158; step 10 (Raspberry Pi re-check) still
+pending.** Standard steps, consuming T-158's header:
+- Step 1: **Done, see D-158.** `bindings/cpp/include/dstu/*.hpp`, C++17, header-only. Move-only
+  RAII wrapper classes over every opaque `crates/dstu-core-capi` handle via
+  `std::unique_ptr<T, void(*)(T*)>` (a custom-deleter `unique_ptr` gives move semantics almost for
+  free, avoided writing ~8 near-identical move-ctor/move-assign/destructor bodies by hand). Full
+  `crypto_*` surface. Errors are exceptions (`dstu::CryptoError`/`ArgumentError`/`InternalError`,
+  cross-language-style-guide.md principle 4), matching Python's own choice from that table's
+  "exception or return code" row.
+- Step 3: **Done, see D-158.** `std::ostream&`/`std::istream&` (D-158 point 2) — never opened or
+  closed by this wrapper (unlike Go/.NET's own `leaveOpen`-flag closer-forwarding, unnecessary
+  here since a C++ reference is never owning). `SecretStreamEncryptor`/`Decryptor`. The
+  finalization pitfall (D-118) resolved by porting the `Complete()`-not-`Dispose()`/`Close()` split
+  D-152 (.NET)/D-155 (Go) already chose: a destructor cannot reliably tell exception-unwind from
+  normal scope exit without `std::uncaught_exceptions()` bookkeeping (fragile under nested
+  exceptions besides), so the destructor only frees the native push state; emitting the `Final`
+  chunk is a separate explicit `Finish()` call on the success path only. Reader hardening (chunk
+  length bound, trailing-data rejection) ported from `crates/uacrypt/src/lib.rs`'s
+  `CliError::SecretstreamChunkTooLarge`/`SecretstreamTrailingData`, cross-checked byte-for-byte
+  against `bindings/go/dstu/secretstream.go`'s wire framing.
+- Step 4: **Done, see D-158.** Prebuilt lib alongside the header, no CMake `FetchContent` for the
+  Rust side (no tooling equivalent of `corrosion` is already a project dependency). `bindings/cpp/
+  CMakeLists.txt`: an `INTERFACE` header-only target plus a `SHARED IMPORTED` target pointing at
+  `crates/dstu-core-capi`'s already-built cdylib (`DSTU_CORE_CAPI_DIR`/`DSTU_CORE_TARGET_DIR`
+  variables, defaulting to the sibling crate/`target/release`) — matches `c-tests/test_capi.c`'s
+  own existing choice of linking the cdylib, not the staticlib `bindings/go` links (D-155's
+  `-Wl,-Bstatic`/`-Bdynamic` bracketing and transitive `-lws2_32 -luserenv -lntdll` needs don't
+  apply here, since the cdylib itself resolves those at its own link time).
+- Step 5: **Done, see D-158.** MSVC (Windows, via CMake's own default Visual Studio generator) and
+  GCC (this project's own Windows-GNU dev-machine posture, MinGW Makefiles) both verified locally;
+  Clang covered by `bindings-cpp.yml`'s macOS leg (Xcode Clang) on real CI. `cargo xtask cpp` builds
+  `dstu-core-capi`+`uacrypt`, then `cmake` configure+build+`ctest` — branches on `target_env` the
+  same way `xtask`'s own `capi()`/`capi_compile_msvc` already do for the plain-C harness, so no
+  Windows GNU-forcing is needed the way `bindings-go.yml`'s cgo requirement needed one (D-155).
+- Step 6: **Done, see D-158.** `tests/test_dstu.cpp`, a hand-rolled `CHECK` macro mirroring
+  `c-tests/test_capi.c`'s own structure exactly (no Catch2/doctest/GoogleTest — C++ has no stdlib
+  JSON either, so the single official Kupyna-256 vector is hand-transcribed the same way the C
+  harness already does it, matching cross-language-style-guide.md's "standard library over a
+  third-party one" KISS principle). D-64/D-65's three categories throughout, plus a real
+  bidirectional `uacrypt.exe` interop test (`std::system`, with the documented Windows `cmd.exe`
+  outer-quote-wrapping workaround for its "first token is quoted" parsing quirk) and an explicit
+  property test for the D-118 no-finalize-on-error property (destroying an encryptor without
+  calling `Finish()` leaves a stream a decryptor must fail closed on).
+- Step 7: **Done.** `examples/{secretbox,secretstream_file,sign,password_hashing,misc}.cpp`
+  (one-for-one with the other bindings' own five example files) + `README.md` with the
+  provisional-status banner and a module-by-example table.
+- Step 8: **Done, this entry.** Doc-map sweep: `docs/dstu-crypto-project.md`/
+  `docs/release-readiness.md`/`README.md`'s own repo-tree listing updated; `docs/user-journey-
+  gaps.md` checked, no T-53 references existed to update (same finding every earlier binding's own
+  step 8 had). T-53 marked done in `docs/TASKS.md`.
+- Step 9: each step above landed as its own commit, not one large drop.
+
+**Step 10 (Raspberry Pi ARM64 re-check) not yet done as of this writing** — `cargo xtask cpp`
+passes end-to-end on this dev machine (GCC/MinGW, all tests + all five examples green, real
+`uacrypt.exe` interop confirmed both directions).
 
 ### T-159 — PHP (reordered 2026-08-02, D-121: builds right after T-49/T-50/T-160, not deferred)
 
