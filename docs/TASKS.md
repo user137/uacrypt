@@ -2870,7 +2870,8 @@ configuration surface added in the process (D-47 still holds).
       *(Note: the root `README.md`'s stale repo tree — missing `bindings/ruby`/`bindings/php`/
       `crates/dstu-core-capi` — is already tracked as part of T-162 above, deliberately deferred
       until every binding lands; no new task needed for that specific fix.)*
-- [ ] **T-169** **`rust.yml`'s own `test` job (`cargo build`/`test`/`clippy`/`fmt` for `dstu-core`/
+- [x] **T-169** **DONE 2026-08-03 - confirmed green on real CI (run 30809387350, both
+      `cross-platform core test (macos-latest)`/`(windows-latest)` succeeded).** `rust.yml`'s own `test` job (`cargo build`/`test`/`clippy`/`fmt` for `dstu-core`/
       `uacrypt`) runs on `ubuntu-latest` only — added 2026-08-03, found answering the owner's own
       question about macOS CI coverage.** Every language binding's CI (`bindings-*.yml`) and the
       `capi`/`release` jobs in `rust.yml` already run a real `[ubuntu-latest, macos-latest,
@@ -2905,6 +2906,7 @@ configuration surface added in the process (D-47 still holds).
       `cargo xtask ci`'s optional layers. **Verified on the real Pi in both directions**: a clean
       run exits 0 with both `PASS:` lines; a deliberately corrupted expected-ciphertext byte exits 1
       with a `FAIL:` line - confirms the signal is real, not a constant (reverted after confirming).
+      **Also confirmed green on real CI** (the new `qemu-stm32` job in `rust.yml`, run 30809387350).
       **Explicitly not real-hardware validation** - T-55/T-56 (STM32/ESP32 real silicon) are
       unchanged, still not started; this only proves the emulated instruction semantics produce the
       right bytes, not real timing/side-channel behavior.
