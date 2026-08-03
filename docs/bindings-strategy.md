@@ -1030,24 +1030,43 @@ once actually requested.
 
 ### T-162 — GitHub-facing docs + `gh-pages` site refresh (last, after every binding lands)
 
-Requested 2026-08-02: once all bindings above exist, the project's public-facing surfaces —
-`README.md`, the doc set under `docs/`, and the separate `gh-pages` branch site (the landing page
-`docs/PERFORMANCE.md`/`docs/TASKS.md` already reference, e.g. its orientation table naming
-AES/Whirlpool/ChaCha20 as role-analogs) — need a pass to actually mention the bindings, not just the
-Rust crate/CLI. This is a documentation-only task, no primitive/binding code changes.
+**Done in full 2026-08-03.** Requested 2026-08-02: once all bindings above exist, the project's
+public-facing surfaces — `README.md`, the doc set under `docs/`, and the separate `gh-pages` branch
+site (the landing page `docs/PERFORMANCE.md`/`docs/TASKS.md` already reference, e.g. its
+orientation table naming AES/Whirlpool/ChaCha20 as role-analogs) — need a pass to actually mention
+the bindings, not just the Rust crate/CLI. This is a documentation-only task, no primitive/binding
+code changes.
 
-1. [ ] Re-read the `gh-pages` branch's current content (checkout or `git show gh-pages:<path>`) to
-       see what it says today before editing — don't assume its current shape from memory.
-2. [ ] Update `README.md`'s repo tree and quickstart to mention the bindings that now exist
-       (`bindings/` is no longer "planned, not yet built").
-3. [ ] Update `docs/dstu-crypto-project.md` ("Second priority") and `docs/release-readiness.md`
-       ("Phase 3") to reflect actually-shipped bindings, not planning-stage language.
-4. [ ] Update the `gh-pages` site itself **only if there's real new content it should carry** — a
-       bindings section/links, install snippets per language — not a mechanical sync for its own
-       sake; skip anything the site doesn't need (this step is the "запотреби"/"if needed" the owner
-       asked for, not an unconditional rewrite).
-5. [ ] Doc-map sweep (same file list as every other task) + mark T-162 done in `docs/TASKS.md`.
-6. [ ] Commit — same one-step-per-commit discipline as every other task above.
+1. [x] **Done.** Re-read the `gh-pages` branch's current content via the existing local worktree
+       (`git fetch origin gh-pages` + diff against `origin/gh-pages` to confirm it was in sync) -
+       not assumed from memory. Found the site is a single bilingual page (`index.html`/
+       `uk/index.html`, identical body content, differing only in `<head>` metadata and the
+       language-switch link - confirmed by diffing the two files before editing) with zero mention
+       of any language binding anywhere, Rust/CLI-only throughout.
+2. [x] **Done.** `README.md`: new "Language bindings" section (table, all eight, approach + README
+       link each, honest "not published to any registry yet" status, C ABI cross-reference) added
+       right after "Using `uacrypt`". The repo tree already listed all eight bindings (landed
+       incidentally as part of T-53's own step 8 doc-map sweep, before this task started).
+3. [x] **Done.** `docs/dstu-crypto-project.md`'s "Second priority" section was already current
+       (same T-53 step 8 sweep - "every planned binding is now built"). `docs/release-
+       readiness.md`'s "Phase 3" line had one stale leftover phrase from Python/Node's own landing
+       day ("First two bindings done") - fixed to the accurate all-nine count.
+4. [x] **Done.** `gh-pages` updated - real new content existed (see step 1's finding). Added a
+       bilingual "Eight languages, one C ABI" section between the existing "Try it" and "Status"
+       sections in both `index.html` and `uk/index.html`: a `check-grid` of eight cards (one per
+       language, approach + a link to that binding's own `README.md` on GitHub, reusing the site's
+       own existing CSS component rather than inventing a new one) plus a `callout.neutral` noting
+       the C ABI itself is usable from any C-FFI-capable language, not just the three (.NET/Go/
+       C++) that consume it directly. Since browser automation wasn't available this session, the
+       edited file was sent directly to the owner for a real visual check before pushing (not
+       assumed correct from reading the markup alone) - confirmed, pushed, commit `43e8022`.
+5. [x] **Done.** Doc-map sweep: `docs/user-journey-gaps.md`/`docs/cross-language-style-guide.md`
+       checked, nothing stale found (same result every earlier binding's own step 8 had). T-162
+       marked done in `docs/TASKS.md`.
+6. [x] **Done.** Each step above landed as its own commit on `master`; the `gh-pages` change is its
+       own commit on that separate branch (a different branch's commit history, not `master`'s
+       one-step-per-commit sequence, but the same discipline - one change, one commit, not a
+       mixed drop).
 
 ## Doc-map sweep discipline
 

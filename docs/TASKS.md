@@ -2869,16 +2869,25 @@ configuration surface added in the process (D-47 still holds).
       `go 1.26.5` → `go 1.26`, `SecretStreamDecryptReader.Read`'s `(0, nil)` return on an empty
       `Final` chunk, and `bindings-go.yml`'s Windows leg needing `rustup set default-host` (not just
       `rustup default`) to actually change what a bare `channel = "stable"` resolves to - see D-155.
-- [ ] **T-162** GitHub-facing docs + `gh-pages` site refresh — added to scope 2026-08-02 at the
-      owner's request, explicitly last, after every binding above (T-49/T-50/T-160/T-159/T-158/
-      T-52/T-51/T-163/T-53, per D-121/D-123's reordering) lands. Documentation-only, no primitive/binding
-      code: update `README.md`'s repo
-      tree/quickstart, `docs/dstu-crypto-project.md`'s "Second priority" section, and
-      `docs/release-readiness.md`'s "Phase 3" line to reflect actually-shipped bindings instead of
-      planning-stage language; update the separate `gh-pages` branch site only where it has real new
-      content to carry (a bindings section, per-language install snippets) — not a mechanical sync
-      for its own sake, per the owner's own "якщо потреба"/"if needed" framing. See
-      `docs/bindings-strategy.md`'s "T-162" step list for the full breakdown.
+- [x] **T-162** **Done 2026-08-03.** GitHub-facing docs + `gh-pages` site refresh — added to scope
+      2026-08-02 at the owner's request, explicitly last, after every binding above (T-49/T-50/
+      T-160/T-159/T-158/T-52/T-51/T-163/T-53, per D-121/D-123's reordering) landed. Documentation-
+      only, no primitive/binding code. `README.md`: new "Language bindings" section (all eight,
+      one line + README link each, honest "not published to any registry yet" status) right after
+      "Using `uacrypt`" — the repo tree already listed all eight (done incidentally in T-53's own
+      step 8). `docs/dstu-crypto-project.md`'s "Second priority" section was already current (same
+      T-53 step 8 sweep); `docs/release-readiness.md`'s "Phase 3" line had one stale phrase
+      ("First two bindings done") left over from Python/Node's own landing, fixed to the accurate
+      count. `docs/user-journey-gaps.md`/`docs/cross-language-style-guide.md` checked, nothing
+      stale found. **`gh-pages` branch updated** (real new content existed - the live site never
+      mentioned any binding, Rust/CLI only) - a new bilingual "Eight languages, one C ABI" section
+      (`check-grid` cards, one per language, linking each binding's own README on GitHub;
+      `callout.neutral` explaining the C ABI itself is usable from any C-FFI-capable language, not
+      just the three that consume it directly) inserted into both `index.html` and `uk/index.html`
+      identically (the two files share body content, differ only in `<head>` metadata + the
+      language-switch link - confirmed by diffing before editing, not assumed) between the
+      existing "Try it" and "Status" sections. Previewed locally (sent the edited file to the
+      owner) before pushing - confirmed live on `gh-pages` (commit `43e8022`).
 - [ ] **T-164** **Per-binding registry publishing (PyPI/npm/RubyGems/Packagist) — owner-gated
       decision, added 2026-08-03.** Found via a build-path analysis (simplest → most complex build,
       requested by the owner) run across every binding: today, a Python/Node/Ruby/PHP consumer sits
