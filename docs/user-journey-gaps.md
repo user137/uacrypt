@@ -9,7 +9,10 @@ feature can still leave a persona stuck if the doc or tooling connecting the ste
 missing. This document's value is that framing itself, not a fourth copy of the same feature list —
 every "have" cell below cites the file that already says so rather than restating its content.
 
-Three personas, in the order `docs/TASKS.md` T-114 named them.
+Five personas: the original three from `docs/TASKS.md` T-114, plus two added 2026-08-03
+(`docs/TASKS.md` T-166) once every planned language binding (Python, Node.js, Ruby, PHP, .NET,
+Java, Go, C++) and the C ABI crate existed — the original three predate all of Phase 3 and have no
+persona for "uses `uacrypt` from another language" or "contributes to a binding."
 
 ## Persona 1 — binary user, performance-focused
 
@@ -120,6 +123,70 @@ remains open is narrower than before: Xtensa specifically (needs `espup`, not at
 linked flash-size measurement (needs a firmware binary crate this repo doesn't have) - both smaller
 asks than the original "has anyone ever tried this" gap.
 
+## Persona 4 — binding user, non-Rust developer
+
+Uses `uacrypt`/`dstu-core` from their own language (Python, Node.js, Ruby, PHP, .NET, Java, Go, or
+C++) without touching Rust directly. Cares about that language's own idiomatic API and normal
+package-registry install path, not `hazmat`/`crypto_*` internals.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Discover
+    Discover --> PickLanguage
+    PickLanguage --> Install
+    Install --> RunAPI
+    RunAPI --> Verify
+    Verify --> Ship
+    Ship --> [*]
+
+    Install --> Discover: not on any package registry
+```
+
+| State | Want | Have | Gap |
+|---|---|---|---|
+| Discover | Find out a binding exists for their language | `README.md`'s language-bindings section (T-162); `docs/bindings-strategy.md` | none |
+| Pick language | Confirm the binding covers what they need (`crypto_secretstream`, signing, etc.) | Each `bindings/<lang>/README.md` carries the same provisional-status banner (T-112) and documents its wrapped surface | none |
+| Install | `pip install`/`npm install`/`gem install`/`composer require`/`nuget install`/a Maven dependency/`go get`/vcpkg — the normal registry path for their language | **Not published to any package registry** (T-164, explicitly gated on a separate owner request, same posture as T-17 for `dstu-core` itself). Only path today is building from source inside `bindings/<lang>` using that language's native tooling plus `cargo xtask <lang>` | **Real gap, same shape as persona 2's**: a developer following their language's normal discovery path (PyPI/npm/RubyGems/Packagist/NuGet/Maven Central/pkg.go.dev) finds nothing there at all; they'd have to already know to look at GitHub and build from source |
+| Run the API | Call `crypto_*` functions idiomatically from their own language | `bindings/<lang>/examples/` plus each binding's `README.md` show real usage (standard binding steps, step 7) | none, once installed |
+| Verify | Confirm the binding does what it claims, on their own machine | Each binding's local test suite covers all three categories (correctness/rejection/misuse, D-64/D-65) against the shared official vectors (standard binding steps, step 6) | none |
+| Ship | Depend on a stable, versioned release for their own downstream users | No stable registry version exists for any binding | Same root cause as "Install" above — not a separate gap, a downstream consequence of T-164 |
+
+**Bottom line**: persona 4's gap is concentrated entirely at "Install"/"Ship," structurally
+identical to persona 2's crates.io gap — both are the same class of problem (real, working code
+with no registry presence yet), both explicitly gated on a separate owner request (T-164 mirrors
+T-17), not a new finding requiring its own task.
+
+## Persona 5 — binding contributor
+
+Wants to fix, extend, or add a language binding under `bindings/` (or the C ABI crate it's built
+on) — distinct from persona 4, who only *consumes* a binding.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Discover
+    Discover --> ReadProcess
+    ReadProcess --> Scaffold
+    Scaffold --> Implement
+    Implement --> TestAndCrossArch
+    TestAndCrossArch --> DocumentAndShip
+    DocumentAndShip --> [*]
+```
+
+| State | Want | Have | Gap |
+|---|---|---|---|
+| Discover | Find out there's a defined process for contributing to a binding, not just to the core crate | Before this session, **nothing** — `docs/CONTRIBUTING.md` had zero mentions of `bindings/`/`dstu-core-capi` (confirmed by grep, not assumed), written entirely for core-crate contributors and predating all of Phase 3. **Closed the same session, `docs/TASKS.md` T-165** — a "Working on a language binding" section now points to `docs/bindings-strategy.md`'s standard-steps template | none, as of T-165 |
+| Read the process | Understand the ten-step template once found | `docs/bindings-strategy.md` "The standard binding steps" (steps 1-10) | none |
+| Scaffold | Set up the binding's own crate/project, wired in appropriately | Step 1 of the standard steps; D-119 (each binding is its own separate workspace, never a root workspace member) | none |
+| Implement | Wrap the full `crypto_*` surface, including `crypto_secretstream`'s two known pitfalls | Steps 2-3 of the standard steps; D-116/D-118 name both pitfalls explicitly (cleanup-hook finalizing on the error path, unbounded/untrusted wire-format length field) so a contributor doesn't have to rediscover them per language | none, if both are actually re-checked rather than assumed inherited from the wire format |
+| Test + cross-arch | Confirm correctness/rejection/misuse locally, and that FFI-boundary code doesn't hide an ARM-specific assumption | Steps 6 and 10 of the standard steps; D-64/D-65 for the three categories, D-151 for the Raspberry Pi ARM64 re-check (which already found one real bug — a hardcoded `i8` test buffer that should have been `c_char`) | none |
+| Document + ship | Examples, README, doc-map sweep, one commit per step, opened as a PR | Steps 7-9 of the standard steps; `docs/CONTRIBUTING.md`'s "Opening the PR" section applies unchanged | none |
+
+**Bottom line**: persona 5's only real gap — no onboarding entry point in `docs/CONTRIBUTING.md` —
+closed in the same session this persona was added, via T-165. A live instance of this document's
+own stated methodology: framing the journey surfaced a gap that a construction-level view (the
+standard steps already existed) wouldn't have flagged as "blocking a specific persona from ever
+finding the process."
+
 ## Cross-persona findings
 
 - **The single highest-value finding when this document was first written**: persona 3's
@@ -146,6 +213,14 @@ asks than the original "has anyone ever tried this" gap.
   recorded as candidates for the project owner to triage. Three (`uacrypt keygen`, T-115; the
   cross-compile check, T-116; prebuilt binaries, T-18/T-119) have since been triaged and closed;
   crates.io publication (T-17) remains open, still explicitly gated on an owner request.
+- **Personas 4 and 5, added 2026-08-03 (`docs/TASKS.md` T-166)**: the original three personas
+  predated every language binding; walking the binding-user and binding-contributor journeys
+  directly surfaced two gaps, both closed the same session — persona 4's registry-install gap
+  turned out to be structurally identical to persona 2's (T-164 mirrors T-17, both owner-gated),
+  and persona 5's onboarding gap was closed immediately via T-165 (a `docs/CONTRIBUTING.md`
+  section had never existed for bindings at all). Note: the root `README.md`'s stale repo tree
+  (missing `bindings/ruby`/`bindings/php`/`crates/dstu-core-capi`) is tracked separately under
+  T-162, deliberately deferred until every binding lands — not a new finding here.
 - **Methodology note, 2026-07-26 (`docs/TASKS.md` T-117)**: this document's original findings were
   produced by reading the cross-referenced docs and reasoning about the journey, not by actually
   executing each persona's steps. A follow-up pass that did — real `gh release list` (empty at the

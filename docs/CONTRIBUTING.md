@@ -69,6 +69,42 @@ via GitHub Security Advisories).
    started/finished/newly discovered) if your change touches either — this project treats stale
    docs as a real defect, not a nice-to-have.
 
+## Working on a language binding
+
+The sections above are written for `dstu-core`/`uacrypt` contributors (a new primitive, mode, or
+CLI command). Fixing or extending an existing binding under `bindings/` (Python, Node.js, Ruby,
+PHP, .NET, Java, Go, C++), or adding a new one, follows a different, already-templated process —
+see `docs/bindings-strategy.md`'s "The standard binding steps" for the authoritative ten-step list.
+The parts most likely to trip up a first-time binding contributor:
+
+- **Each binding is its own separate Cargo/language workspace** (D-119), not a member of the root
+  workspace and not reachable via the root `cargo xtask`. Build and test it from inside its own
+  `bindings/<lang>` directory, using that language's native tooling plus the project's own
+  `cargo xtask <lang>` subcommand (e.g. `cargo xtask python`, `cargo xtask nodejs`, `cargo xtask
+  ruby`, `cargo xtask php`, `cargo xtask dotnet`, `cargo xtask java`, `cargo xtask go`, `cargo
+  xtask cpp`) — same cross-platform-QA-entry-point posture as the core crate (D-12), not a new
+  one-off script per language.
+- **The same three test categories apply, through the binding's own API surface**, not just the
+  Rust core's: correctness against the shared official vectors, rejection (tampered
+  ciphertext/tag/AAD/nonce, wrong key), and misuse (invalid lengths/args/paths, degenerate-but-
+  legal input) — D-64/D-65.
+- **If your change touches `crypto_secretstream`'s binding, re-check both known pitfalls** found
+  by advisor review while building the Python wrapper (T-49), not just assume the Python fix
+  generalizes: the language's own "always runs, even on error" cleanup hook (`__exit__`/
+  `Dispose`/try-with-resources/RAII destructor) must not finalize the stream on the exception
+  path, and the wire-format reader must itself bound the untrusted length-prefixed chunk field and
+  reject trailing data after the `Final` chunk — matching the wire format on the happy path isn't
+  enough, its validation has to be ported too. Full detail in `docs/bindings-strategy.md`'s
+  standard binding steps, step 3.
+- **Cross-arch check on real ARM64 Linux (step 10 of the standard steps, D-151)** is expected for
+  any change to a binding's FFI-boundary code, not just brand-new bindings — it already found one
+  real bug (a hardcoded `i8` test buffer that should have been `c_char`, silent on x86-64, broken
+  on ARM Linux's unsigned-by-default `char`). If you don't have access to ARM hardware yourself,
+  say so in the PR rather than skipping the step silently — a maintainer can run it.
+- Doc-map sweep and `docs/TASKS.md` updates apply the same way they do for core changes (see
+  "Making a change" step 6 above) — a binding change touching scope or API shape should update
+  `docs/bindings-strategy.md` too, since it's the canonical owner of the per-binding checklist.
+
 ## Commit messages
 
 This project uses [Conventional Commits](https://www.conventionalcommits.org/) style:

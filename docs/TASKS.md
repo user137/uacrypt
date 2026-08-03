@@ -2900,7 +2900,7 @@ configuration surface added in the process (D-47 still holds).
       `docs/user-journey-gaps.md`'s persona-2 "Add dependency" row for why T-17 alone already reads
       this way). **Not started** — needs an explicit "yes, publish X" from the owner per registry,
       same bar as T-17; do not self-authorize any of the four.
-- [ ] **T-165** **`docs/CONTRIBUTING.md` has zero mentions of `bindings/`/`dstu-core-capi` anywhere
+- [x] **T-165** **Done 2026-08-03.** **`docs/CONTRIBUTING.md` has zero mentions of `bindings/`/`dstu-core-capi` anywhere
       (confirmed by grep, not assumed), added 2026-08-03.** It was written entirely for core-crate
       contributors (a new primitive/mode) and predates all of Phase 3 — a contributor who wants to
       fix or extend an existing binding, or add a sixth one, has no single doc to read start-to-
@@ -2913,8 +2913,12 @@ configuration surface added in the process (D-47 still holds).
       standing `crypto_secretstream` pitfalls, and (as of `docs/bindings-strategy.md`'s step 10,
       D-151) the Raspberry Pi ARM64 re-check every binding now gets. Point to
       `docs/bindings-strategy.md`'s "standard binding steps" template for the authoritative step
-      list rather than duplicating it.
-- [ ] **T-166** **`docs/user-journey-gaps.md`'s three personas predate every language binding,
+      list rather than duplicating it. **Done**: added the section, covering `cargo xtask <lang>`
+      per binding, the D-64/D-65 three test categories through the binding's own API, D-118's two
+      `crypto_secretstream` pitfalls, D-151's Pi ARM64 cross-arch check, and a doc-map-sweep
+      reminder — pointing to `docs/bindings-strategy.md`'s standard steps rather than duplicating
+      them.
+- [x] **T-166** **Done 2026-08-03.** **`docs/user-journey-gaps.md`'s three personas predate every language binding,
       added 2026-08-03.** Same build-path analysis as T-164 above. The existing personas (binary
       user, library user, constrained-target user) were written 2026-07-25/26, before Node/Ruby/
       PHP/the C ABI crate existed — there is no persona for "a Python/Node/Ruby/PHP/C developer who
@@ -2929,6 +2933,11 @@ configuration surface added in the process (D-47 still holds).
       *(Note: the root `README.md`'s stale repo tree — missing `bindings/ruby`/`bindings/php`/
       `crates/dstu-core-capi` — is already tracked as part of T-162 above, deliberately deferred
       until every binding lands; no new task needed for that specific fix.)*
+      **Done**: added persona 4 (binding user, non-Rust developer) and persona 5 (binding
+      contributor), same state-diagram + table format as personas 1-3. Persona 4's "Install" gap
+      is the same shape as persona 2's crates.io gap, tracked at T-164 (owner-gated, mirrors T-17).
+      Persona 5's only real gap — no onboarding entry point — closed in the same session via T-165
+      above. Cross-persona findings section updated with a new bullet for this pass.
 - [x] **T-169** **DONE 2026-08-03 - confirmed green on real CI (run 30809387350, both
       `cross-platform core test (macos-latest)`/`(windows-latest)` succeeded).** `rust.yml`'s own `test` job (`cargo build`/`test`/`clippy`/`fmt` for `dstu-core`/
       `uacrypt`) runs on `ubuntu-latest` only — added 2026-08-03, found answering the owner's own
