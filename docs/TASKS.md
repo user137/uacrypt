@@ -2841,6 +2841,27 @@ configuration surface added in the process (D-47 still holds).
       `docs/DECISIONS.md` D-19's "Future path" note has both options and why it's a bigger project than
       it looks), narrowing the software-timing exception D-19 documents. Natural place to revisit
       this alongside the hardware side-channel audit above, not before.
+- [ ] **T-167** **`cargo-call-stack` worst-case stack-usage proof for the eventual real firmware
+      binary — added 2026-08-03, owner-requested follow-up to a question about `no_std`'s stack-
+      overflow-protection gap** (the Rust Embedded Book's own `no_std` overview table states this
+      plainly). Checked before filing, not assumed: the OS-level guard-page protection that table
+      row refers to is a property of the *hosted execution environment*, not of `dstu-core`'s own
+      `no_std` Cargo feature — `uacrypt`/every language binding/the C ABI crate all run as ordinary
+      OS processes today (Windows/Linux/macOS), so they already have it regardless of `dstu-core`
+      internally being `no_std`-compatible. The gap is only real once a genuine bare-metal firmware
+      *binary* exists (T-55/T-56 above) — which doesn't yet, per `docs/user-journey-gaps.md`
+      persona 3's own "VerifyFlashSize... needs an actual firmware binary crate that doesn't exist
+      in this repo" finding. Confirmed no recursion anywhere in `dstu-core` (`curve163::
+      scalar_multiply`, the crate's most complex control flow, is a fixed 163-iteration `for` loop,
+      not recursive; Kalyna/Kupyna/Strumok are all fixed-round-count loops) and
+      `clippy::large_stack_arrays`/`clippy::large_stack_frames` both pass clean on `dstu-core
+      --all-features` — a design-level argument plus a spot-check, not a formal bound. `cargo
+      miri test` does **not** cover this class of bug (its interpreter doesn't model the real
+      machine stack for overflow purposes) — don't rely on the existing Miri job as if it did.
+      **Not started, blocked on T-55/T-56** (needs a real linked firmware binary, `memory.x`, an
+      entry point/panic handler to actually measure against) — `cargo-call-stack` (LLVM-based
+      static worst-case stack-depth analysis, the standard tool for this in bare-metal Rust) is the
+      concrete next step once that exists, not before.
 
 ## Explicitly out of scope — not scheduled in any phase
 
