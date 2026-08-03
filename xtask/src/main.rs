@@ -36,6 +36,7 @@ fn main() -> ExitCode {
         "ruby" => ruby(),
         "php" => php(),
         "capi" => capi(),
+        "dotnet" => dotnet(),
         "ci" => ci(),
         "help" | "-h" | "--help" => {
             print_usage();
@@ -76,7 +77,8 @@ fn print_usage() {
          \x20 nodejs         build+lint bindings/nodejs, napi build, node --test (T-50)\n\
          \x20 ruby           build+lint bindings/ruby, rake compile, rspec (T-160)\n\
          \x20 php            build+lint bindings/php, cargo build, phpunit (T-159)\n\
-         \x20 capi           regenerate+diff include/dstu_core.h, compile+run the C test harness and examples (T-158)"
+         \x20 capi           regenerate+diff include/dstu_core.h, compile+run the C test harness and examples (T-158)\n\
+         \x20 dotnet         dotnet format --verify-no-changes, dotnet test bindings/dotnet (T-52)"
     );
 }
 
@@ -803,6 +805,47 @@ fn capi_compile_msvc(
     _out_dir: &Path,
 ) -> bool {
     unreachable!("only called when cfg!(windows) && cfg!(target_env = \"msvc\")")
+}
+
+/// Unlike Python/Node/Ruby/PHP, `bindings/dotnet` has no Cargo workspace of its own at all - it
+/// consumes `crates/dstu-core-capi` (T-158, a real root-workspace member) purely via P/Invoke, so
+/// `build()`/`test()`/`clippy()`/`fmt()` above already cover 100% of this binding's Rust-side
+/// surface for free (unlike PHP/Node/Ruby, there is no `cargo fmt`/`clippy` to run *inside*
+/// `bindings/dotnet` - it has no `Cargo.toml`). This function only needs the .NET-toolchain-
+/// dependent part those can't reach: build the two native pieces first (`dstu_core_capi` for
+/// `Directory.Build.props` to copy next to the test output, `uacrypt` for the real secretstream
+/// interop test), `dotnet format --verify-no-changes` (this project's own "formatting is done by
+/// the language's own tool" convention, cross-language-style-guide.md principle 9), then
+/// `dotnet test`.
+fn dotnet() -> bool {
+    if !require("dotnet", "https://dotnet.microsoft.com/download (.NET 8 SDK)") {
+        return false;
+    }
+    if !run(
+        "cargo",
+        &["build", "-p", "dstu-core-capi", "--release"],
+        None,
+    ) {
+        return false;
+    }
+    if !run("cargo", &["build", "-p", "uacrypt", "--release"], None) {
+        return false;
+    }
+
+    let dir = Path::new("bindings/dotnet");
+    run(
+        "dotnet",
+        &["format", "DstuCore/DstuCore.csproj", "--verify-no-changes"],
+        Some(dir),
+    ) && run(
+        "dotnet",
+        &[
+            "format",
+            "DstuCore.Tests/DstuCore.Tests.csproj",
+            "--verify-no-changes",
+        ],
+        Some(dir),
+    ) && run("dotnet", &["test"], Some(&dir.join("DstuCore.Tests")))
 }
 
 fn oracle_java() -> bool {

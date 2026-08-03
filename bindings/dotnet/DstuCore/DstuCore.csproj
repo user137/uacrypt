@@ -27,4 +27,25 @@
     <NoWarn>CS1591</NoWarn>
   </PropertyGroup>
 
+  <!-- Step 4 (docs/bindings-strategy.md's per-binding checklist, D-116): packages this build
+       machine's own native library under runtimes/{rid}/native/ - same split T-158's own step 4
+       took (D-149) - local RID only; cross-OS runtimes are a release.yml/CI job, not built here.
+       RID detection is deliberately simple (three mutually exclusive OS checks), not a full
+       runtime-graph match, since this package only ever carries the one native asset the machine
+       running `dotnet pack` actually built. -->
+  <PropertyGroup>
+    <DstuCoreCapiReleaseDir>$(MSBuildThisFileDirectory)..\..\..\target\release\</DstuCoreCapiReleaseDir>
+    <DstuCoreCapiRid Condition="'$(OS)' == 'Windows_NT'">win-x64</DstuCoreCapiRid>
+    <DstuCoreCapiRid Condition="'$(OS)' != 'Windows_NT' AND Exists('$(DstuCoreCapiReleaseDir)libdstu_core_capi.dylib')">osx-x64</DstuCoreCapiRid>
+    <DstuCoreCapiRid Condition="'$(OS)' != 'Windows_NT' AND Exists('$(DstuCoreCapiReleaseDir)libdstu_core_capi.so')">linux-x64</DstuCoreCapiRid>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="$(DstuCoreCapiReleaseDir)dstu_core_capi.dll" Condition="Exists('$(DstuCoreCapiReleaseDir)dstu_core_capi.dll')"
+          Pack="true" PackagePath="runtimes/$(DstuCoreCapiRid)/native/" />
+    <None Include="$(DstuCoreCapiReleaseDir)libdstu_core_capi.so" Condition="Exists('$(DstuCoreCapiReleaseDir)libdstu_core_capi.so')"
+          Pack="true" PackagePath="runtimes/$(DstuCoreCapiRid)/native/" />
+    <None Include="$(DstuCoreCapiReleaseDir)libdstu_core_capi.dylib" Condition="Exists('$(DstuCoreCapiReleaseDir)libdstu_core_capi.dylib')"
+          Pack="true" PackagePath="runtimes/$(DstuCoreCapiRid)/native/" />
+  </ItemGroup>
+
 </Project>

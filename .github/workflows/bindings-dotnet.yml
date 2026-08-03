@@ -1,0 +1,51 @@
+name: bindings-dotnet
+
+# Own job, not folded into rust.yml's matrix - bindings/dotnet has no Cargo workspace of its own at
+# all (unlike Python/Node/Ruby/PHP): it consumes crates/dstu-core-capi (T-158, a real root-workspace
+# member already covered by rust.yml's own --workspace build/test/clippy/fmt jobs) purely via
+# P/Invoke, so there is no separate Rust dependency tree here for a supply-chain job to audit
+# (docs/bindings-strategy.md T-52 step 5).
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: build + test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      # bindings/dotnet/DstuCore.Tests's own secretstream interop test silently *skips* (not fails)
+      # when uacrypt isn't found - build both native pieces first, same reasoning as
+      # bindings-python.yml/bindings-nodejs.yml's own build-uacrypt-first step.
+      - run: cargo build -p dstu-core-capi --release
+      - run: cargo build -p uacrypt --release
+      - run: dotnet format DstuCore/DstuCore.csproj --verify-no-changes
+        working-directory: bindings/dotnet
+      - run: dotnet format DstuCore.Tests/DstuCore.Tests.csproj --verify-no-changes
+        working-directory: bindings/dotnet
+      - name: dotnet test (fail if the interop test was silently skipped)
+        working-directory: bindings/dotnet/DstuCore.Tests
+        shell: bash
+        run: |
+          dotnet test --logger "console;verbosity=detailed" 2>&1 | tee dotnet-test-output.txt
+          test "${PIPESTATUS[0]}" -eq 0
+          grep -q "InteropWithUacryptCli" dotnet-test-output.txt
+      # Sanity-check the pack step itself on every push (not just a release), same posture as
+      # bindings-nodejs.yml's own `npm pack --dry-run` - the real fresh-install-from-a-local-feed
+      # check (docs/DECISIONS.md) was done once by hand, not repeated here.
+      - run: dotnet pack -c Release -o ./nupkg
+        working-directory: bindings/dotnet/DstuCore

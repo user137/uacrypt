@@ -9802,3 +9802,72 @@ this pass**: Python 57/57, Node.js 52/52, Ruby 58/58 (+ rubocop clean), PHP 58 t
 and the C ABI crate's own header-drift check/C harness/all 4 examples - all green on real aarch64
 Linux (Debian 12/bookworm) once the fix above and the toolchain installs in `.claude.local.md`
 landed.
+
+## D-152: T-52 (.NET binding) - P/Invoke marshalling findings, SafeHandle, packaging split
+
+2026-08-03. `bindings/dotnet/DstuCore` wraps `crates/dstu-core-capi` (T-158) via P/Invoke -
+the first binding in this project with no Cargo workspace of its own at all (Python/Node/Ruby/PHP
+each wrap the Rust crate directly and are therefore their own `[workspace]`, D-119; .NET has
+nothing to build on the Rust side beyond the already-built C ABI crate).
+
+**Two P/Invoke marshalling defaults that would have been silently wrong, found by advisor review
+before implementation, not after a failing test**: (1) C#'s default marshalling for a `bool`
+P/Invoke return is the 4-byte Win32 `BOOL`; Rust's `extern "C" fn() -> bool` is one byte. Affects
+`dstu_verify`/`dstu_verify_digest`/`dstu_pwhash_verify_password`/
+`dstu_secretstream_{push,pull}_is_finalized` - a wrong `true` out of `dstu_verify` specifically
+would have been a silent signature-verification bypass, not a test failure (the .NET analogue of
+D-151's ARM `c_char`/`i8` finding). Fixed by using `[LibraryImport]` (source-generated interop, not
+classic `DllImport`) throughout, which makes omitting `[return: MarshalAs(UnmanagedType.U1)]` a
+**compile error** rather than a silently-wrong default - a stronger guarantee than a runtime test
+could give, since it can't regress on a future edit that forgets the attribute. (2) every `size_t`
+parameter/out-param is `nuint`, never `int`/`uint` - the header is built with
+`usize_is_size_t = true`, and a 32-bit type would leave the upper half of a 64-bit slot undefined
+on any 64-bit target.
+
+**Every opaque `dstu_*` handle is a `SafeHandle` subclass** (`bindings/dotnet/DstuCore/Native/
+NativeHandles.cs`), not a bare `IntPtr` - the CLR's own P/Invoke marshaller then keeps the handle
+alive for the duration of each native call and guarantees the matching `dstu_*_free` runs exactly
+once, even on an exception/finalizer path. This is the .NET-idiomatic form of
+`cross-language-style-guide.md` principle 5 ("resources are released deterministically") - the
+same role `IDisposable`/`using` already plays for every other resource in this binding, and gives a
+free `ObjectDisposedException` if a caller tries to use an already-disposed key instead of
+undefined behavior.
+
+**`SecretStreamEncryptStream`/`DecryptStream` (`SecretStream.cs`) apply D-118's two pitfalls in
+their C# form, with one deliberate deviation from `CryptoStream`/`GZipStream`'s own convention**:
+`Dispose()` never emits a `Final` chunk. Python's `__exit__(exc_type, exc_value, traceback)` can
+check whether it's unwinding from an exception and only skip finalization on that path (auto-
+finalizing on a clean `with` exit); C#'s `Dispose()` takes no such parameter and has no way to
+distinguish the two cases (same structural limitation C++ RAII destructors have, per
+`bindings-strategy.md`'s own template text) - so finalization here is an explicit `Complete()` call
+required on every success path, `Dispose()` alone only ever frees the native handle. A stream
+disposed without `Complete()` is therefore always left without a `Final` chunk, by construction,
+not just on the exception path - stronger than the Python guarantee, not weaker, and documented
+inline so this doesn't read as a bug to a future C# reader expecting `CryptoStream`'s close-flushes
+habit. The second pitfall (bounding the untrusted wire `chunkLen` field against
+`DstuConstants.SecretstreamChunkBytes`, rejecting trailing bytes after `Final`) ports directly,
+same as every other binding.
+
+**Test-first landed together with the wrapper for this binding** (like Node/PHP, not split across
+sessions like Python's original T-49) - `DstuCore.Tests` (xUnit) mirrors `bindings/python/tests`
+file-for-file, 56 tests, all green against the real built `dstu_core_capi.dll` and a real
+bidirectional `uacrypt.exe` interop round trip on the first full run. DSTU 4145 category-1
+correctness is exercised via `Selftest.Run()` rather than re-deriving the Annex B.1 vector's own
+hash-to-field convention per binding - matching `bindings/python/tests/test_sign.py`'s own stated
+precedent, not a new shortcut invented here.
+
+**Packaging (step 4) split the same way T-158's own step 4 did (D-149)**: `dotnet pack` produces a
+real `DstuCore.0.1.0.nupkg` with `runtimes/win-x64/native/dstu_core_capi.dll` (this dev machine's
+own RID; cross-OS RIDs are a `release.yml` job, not built here) via a `None`/`PackagePath` item in
+`DstuCore.csproj`, gated behind `Exists()` checks per platform so the same project file works
+un-modified on Linux/macOS CI once cross-compiled there. **Verified with a real fresh-install
+check** (Python's/Node's own step-4 bar): packed into `bindings/dotnet/local-nuget-feed/` (a
+gitignored local feed, not committed), installed via `dotnet add package --source
+<local-feed>` into an unrelated temp console project, and `Selftest.Run()` + a `SecretboxKey`
+round trip both ran successfully against the installed package - not the source tree - confirming
+.NET's own native-library assembly-directory probing finds the packaged asset with zero extra
+config on the consumer's side (no explicit `<RuntimeIdentifier>` needed). This one-time check is
+not re-run by `cargo xtask dotnet` on every invocation (same posture `capi()`'s own step 4 already
+established) - `bindings-dotnet.yml`'s CI job sanity-checks the `dotnet pack` step itself on every
+push instead, catching a broken packaging *recipe* without re-doing the full fresh-install
+round trip each time.
