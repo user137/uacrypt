@@ -13,9 +13,5 @@ import "C"
 // Selftest re-verifies one official test vector per primitive (Kalyna, Kupyna, Strumok,
 // DSTU 4145) against the live compiled build. Returns an error if any check fails.
 func Selftest() error {
-	status := C.dstu_selftest()
-	if status != C.DSTU_OK {
-		return statusError(status)
-	}
-	return nil
+	return statusError(C.dstu_selftest())
 }
