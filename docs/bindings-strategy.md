@@ -296,7 +296,12 @@ unconditional `std` dependency, unsafe-boundary hygiene, `rlib` crate-type) and 
 implementation: `cbindgen.toml`, `crates/dstu-core-capi`'s full `crypto_*` wrap, the C test
 harness, examples, README, `cargo xtask capi` plus a new `capi` job in `rust.yml` - not yet
 confirmed on real CI, only verified locally on this Windows-GNU dev machine, same caveat every
-prior binding's own first-pass session carried). **Next: T-52 (.NET), not started.**
+prior binding's own first-pass session carried). T-52 (.NET) done in full 2026-08-03 - see D-152
+(P/Invoke `[LibraryImport]` bool-marshalling finding, `SafeHandle` handles,
+`SecretStreamEncryptStream`/`DecryptStream`'s `Complete()`-not-`Dispose()` finalization split,
+NuGet packaging + fresh-install check) - all steps done except step 10 (Pi ARM64 re-check), still
+pending. **Next: finish T-52 step 10, then T-51 (Java, needs the step-0 `jni`-vs-JNI-over-capi
+spike first), not started.**
 
 ### The standard binding steps
 
@@ -523,11 +528,58 @@ Not a language binding itself — no idiomatic-language step 2/3 the way the oth
 
 ### T-52 — .NET
 
-Standard steps, consuming T-158's header via P/Invoke:
-- Step 1: P/Invoke wrapper project.
-- Step 3: a `Stream`/`CryptoStream`-shaped class.
-- Step 4: a NuGet package with `runtimes/{rid}/native/`.
-- Step 6: xUnit.
+**Done in full 2026-08-03 — see D-152.** No Cargo workspace of its own at all (unique among the
+bindings so far) - `bindings/dotnet/DstuCore` is pure C#, P/Invoking T-158's already-built C ABI.
+- Step 1: **Done.** `bindings/dotnet/DstuCore` (net8.0 class library) + `Directory.Build.props`
+  (copies whichever platform's `dstu_core_capi.{dll,so,dylib}` exists under the repo's
+  `target/release/` into every project's own build output, so `dotnet build`/`test`/`run` need no
+  manual copy step). `Native/NativeMethods.cs` uses `[LibraryImport]` (source-generated interop),
+  not classic `DllImport` — its marshaller requires an explicit
+  `[MarshalAs(UnmanagedType.U1)]` on every `bool`-returning export or the build fails to compile,
+  catching at compile time what would otherwise be C#'s silently-wrong default 4-byte `BOOL`
+  marshalling against Rust's 1-byte `bool` (`dstu_verify`/`dstu_verify_digest`/
+  `dstu_pwhash_verify_password`/`dstu_secretstream_{push,pull}_is_finalized` — a wrong `true` out of
+  `dstu_verify` specifically would be a silent signature-verification bypass, the .NET analogue of
+  D-151's ARM `c_char`/`i8` finding, found by advisor review before implementation rather than after
+  a failing test). Every opaque `dstu_*` handle is a `SafeHandle` subclass
+  (`Native/NativeHandles.cs`), not a bare `IntPtr` — deterministic release + protection against
+  premature finalization during a call, this project's `IDisposable`/`using` idiom applied to a
+  native handle.
+- Step 2: **Done.** Full `crypto_*` surface wrapped — `AuthKey`, `KdfMasterKey`, `GenericHash`/
+  `Kupyna256Hasher`/`Kupyna512Hasher`, `SecretboxKey`, `SigningKey`/`VerifyingKey`,
+  `StreamCipherKey` (named to avoid colliding with `System.IO.Stream`), `Pwhash`, `RandomBytes`,
+  `Selftest`. `DstuException` (crypto-operation/data-integrity failure) vs. `ArgumentException`
+  (caller-input mistake) mirrors `bindings/python`'s own `DstuError`/`ValueError` split
+  (`Native/NativeStatus.cs` centralizes the mapping).
+- Step 3: **Done.** `SecretStreamEncryptStream`/`SecretStreamDecryptStream` (`Stream`-derived,
+  matching `CryptoStream`/`GZipStream`'s own shape per this document's own template text). Both
+  D-118 pitfalls apply, with one deliberate deviation from `CryptoStream`'s own close-flushes
+  convention: `Dispose()` never emits a `Final` chunk at all — C#'s `Dispose()` has no parameter
+  telling it whether it's unwinding from an exception (unlike Python's
+  `__exit__(exc_type, ...)`), so finalization is an explicit, always-required `Complete()` call on
+  the success path instead of a conditional one. The reader bounds the untrusted wire `chunkLen`
+  field against `DstuConstants.SecretstreamChunkBytes` and rejects trailing bytes after `Final`,
+  same as every other binding.
+- Step 4: **Done.** `dotnet pack` produces `runtimes/{rid}/native/` for the build machine's own RID
+  (win-x64 here; cross-OS RIDs deferred to a `release.yml` job, same split T-158's own step 4 took).
+  Verified with a real fresh-install check: packed, installed from a local NuGet feed into an
+  unrelated temp console project, `Selftest.Run()` + a `SecretboxKey` round trip both ran against
+  the installed package.
+- Step 5: **Done.** `cargo xtask dotnet` (`dotnet format --verify-no-changes` + `dotnet test` —
+  `build()`/`test()`/`clippy()`/`fmt()` already cover this binding's one Rust-side dependency,
+  `dstu-core-capi`, for free since it's a real workspace member) + `bindings-dotnet.yml`
+  (ubuntu/macos/windows matrix).
+- Step 6: **Done.** 56 xUnit tests (`DstuCore.Tests/`) mirroring `bindings/python/tests` file-for-
+  file — Kupyna-256 correctness against the real shared JSON vector, DSTU 4145 correctness via
+  `Selftest.Run()` (matching `bindings/python/tests/test_sign.py`'s own precedent — the Annex B.1
+  vector is exercised there, not re-derived per binding), real bidirectional `uacrypt` interop for
+  secretstream, D-64/D-65's three categories throughout.
+- Step 7: **Done.** `examples/` (one console project, `dotnet run -- <name>` dispatch —
+  `secretbox`/`secretstream-file`/`sign`/`password-hashing`/`misc`, mirroring
+  `bindings/python/examples` file-for-file) + `README.md` with the provisional-status banner.
+- Step 10: **[ ] Not yet done** — Pi ARM64 re-check pending (D-151's own template step 10, added
+  after T-49/T-50/T-158/T-159/T-160 but applying to every binding from T-52 onward as a real,
+  not-retroactive, numbered step).
 
 ### T-51 — Java
 

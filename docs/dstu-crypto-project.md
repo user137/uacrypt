@@ -55,8 +55,8 @@ implementation within a minute, without hassle — in the spirit of
   every later binding follows) is done as of 2026-08-02 - see `docs/TASKS.md`/`docs/DECISIONS.md`
   D-120. T-50 (Node.js) is done as of 2026-08-02 too - see D-125 through D-132. T-160 (Ruby) is
   done as of 2026-08-02 too - see D-133 through D-141. T-159 (PHP) is done as of 2026-08-02 too -
-  see D-142 through D-146. T-158 (C ABI crate) is done as of 2026-08-03 too - see D-148/D-149. The
-  rest (T-52 onward) haven't started.
+  see D-142 through D-146. T-158 (C ABI crate) is done as of 2026-08-03 too - see D-148/D-149. T-52
+  (.NET) is done as of 2026-08-03 too - see D-152. The rest (T-51 onward) haven't started.
 - Do not separately reimplement DSTU 4145 in the native core — for
   Java/.NET, integrate/wrap Bouncy Castle (a mature implementation already
   exists there); for Rust, port it while relying on Bouncy Castle as a

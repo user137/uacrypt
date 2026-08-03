@@ -2593,13 +2593,27 @@ configuration surface added in the process (D-47 still holds).
       spike comparing the `jni` crate (Rust-side JNI, no hand-written C shim) against
       JNI-over-`bindings/capi` (T-158) — record the choice in `DECISIONS.md` before the real
       implementation. See `docs/bindings-strategy.md` "Phase 4."
-- [ ] **T-52** .NET binding — **reordered 2026-08-02, same rationale as T-51 (D-121)**: Bouncy
+- [x] **T-52** .NET binding — **reordered 2026-08-02, same rationale as T-51 (D-121)**: Bouncy
       Castle .NET already serves this language, so it now builds after T-50/T-160/T-159.
       **same correction as T-51, see D-115**: exposes the full `crypto_*`
       surface including `crypto_sign` via this project's own Rust implementation, not a Bouncy
       Castle wrap. **Original text, kept for the historical record**: ".NET binding (wraps Bouncy
       Castle `Dstu4145Signer` directly, per D-02)." P/Invoke over `bindings/capi` (T-158) — no new
       Rust-side glue beyond the C ABI crate itself. See `docs/bindings-strategy.md` "Phase 3."
+      **Done in full 2026-08-03 — see D-152.** `bindings/dotnet/DstuCore` — the first binding with
+      no Cargo workspace of its own (pure C# P/Invoke over T-158's already-built C ABI). Uses
+      `[LibraryImport]` (source-generated interop), not classic `DllImport`, specifically because it
+      forces `[MarshalAs(UnmanagedType.U1)]` on every `bool`-returning export at compile time — C#'s
+      default `bool` marshalling is the 4-byte Win32 `BOOL` against Rust's 1-byte `bool`, and getting
+      this wrong on `dstu_verify`/`dstu_verify_digest` would have been a silent signature-
+      verification bypass (the .NET analogue of D-151's ARM `c_char`/`i8` finding, caught by advisor
+      review before implementation). Every opaque handle is a `SafeHandle` subclass. Full `crypto_*`
+      surface wrapped; `SecretStreamEncryptStream`/`DecryptStream` (`Stream`-derived) apply both
+      D-118 pitfalls, with `Dispose()` deliberately never finalizing (C# has no exception-vs-clean-
+      exit signal, unlike Python's `__exit__` — `Complete()` is an explicit required call instead).
+      56 xUnit tests (D-64/D-65, real `uacrypt` interop), `dotnet pack` + a real fresh-install check
+      from a local NuGet feed, `cargo xtask dotnet` + `bindings-dotnet.yml` CI (ubuntu/macos/
+      windows), five examples + README.
 - [ ] **T-53** C++ binding (`bindings/cpp`) — thin RAII header-only wrapper over `bindings/capi`
       (T-158), no separate Rust glue. No incumbent-competition reason to reorder this one relative
       to .NET/Java (D-121 didn't touch it specifically), but it still needs T-158 first same as

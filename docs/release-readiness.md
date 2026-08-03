@@ -232,9 +232,11 @@ any kind to choose from, safe or otherwise.
   root-workspace member (D-119/D-148, no external language runtime linked at build time); wraps
   the full `crypto_*` surface behind a `cbindgen`-generated header (`include/dstu_core.h`,
   regenerated+diffed via `cargo xtask capi`), a plain-C test harness, and per-primitive examples -
-  no prebuilt binaries published anywhere yet (same gating posture as the other bindings). See
-  `docs/bindings-strategy.md`, `docs/DECISIONS.md` D-115/D-120/D-125 through D-149, `docs/TASKS.md`
-  T-49/T-50/T-51/T-52/T-53/T-158/T-159/T-160/T-163 - T-52 (.NET) onward haven't started.
+  no prebuilt binaries published anywhere yet (same gating posture as the other bindings). T-52
+  (.NET, `bindings/dotnet`) landed 2026-08-03 too - the first binding with no Cargo workspace of its
+  own at all, pure C# P/Invoke over T-158's C ABI, D-152. See `docs/bindings-strategy.md`,
+  `docs/DECISIONS.md` D-115/D-120/D-125 through D-152, `docs/TASKS.md`
+  T-49/T-50/T-51/T-52/T-53/T-158/T-159/T-160/T-163 - T-51 (Java) onward haven't started.
 
 ## Libsodium API surface and crates.io publishing audit (2026-07-25)
 
