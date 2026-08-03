@@ -2614,7 +2614,13 @@ configuration surface added in the process (D-47 still holds).
       CI; 56 JUnit 5 tests (D-64/D-65, real `uacrypt` interop, chunk-boundary parametrized round
       trips); 5 examples + README. A real design bug (a two-way, not three-way, exception split)
       was found and fixed via a hand-run smoke test before the JUnit suite was even written - see
-      D-153's "Failure::State" paragraph. **Remaining: step 10, the Raspberry Pi ARM64 re-check.**
+      D-153's "Failure::State" paragraph. **Step 10 done 2026-08-03 too - T-51 is now done in
+      full, all ten standard steps.** Raspberry Pi re-check found one real bug (not ARM-specific):
+      Debian 12's apt-packaged Maven (3.8.7) defaults to an old `maven-compiler-plugin` (3.1) that
+      doesn't understand `maven.compiler.release` and silently falls back to an ancient
+      source/target level modern `javac` refuses - fixed by pinning the plugin to `3.13.0`
+      explicitly in `pom.xml`. All 56 tests passed on the Pi afterward. See `docs/DECISIONS.md`
+      D-153's own step-10 paragraph.
 - [x] **T-52** .NET binding — **reordered 2026-08-02, same rationale as T-51 (D-121)**: Bouncy
       Castle .NET already serves this language, so it now builds after T-50/T-160/T-159.
       **same correction as T-51, see D-115**: exposes the full `crypto_*`

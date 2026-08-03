@@ -10052,3 +10052,21 @@ zero extra consumer-side configuration) matching the bar T-52/T-158 already set,
 afterward (`~/.m2/repository/ua/dstucrypto` removed, not left behind); `cargo deny check`/
 `cargo audit` both clean against `bindings/java/native`'s dependency tree; all 5 example programs
 run and produce correct output.
+
+**Step 10 (Raspberry Pi ARM64 re-check, D-151's template) done the same day - one real bug found**:
+installed OpenJDK 17 + Maven via `apt` (`openjdk-17-jdk`, `maven` - Debian 12's own packages, no
+script-based install needed this time, unlike .NET/T-52). `cargo xtask java` initially **failed**
+on `mvn test` with `Source option 5 is no longer supported. Use 7 or later.` - Debian's apt-packaged
+Maven (3.8.7) defaults to a bundled `maven-compiler-plugin` version (3.1) old enough that it does
+not understand `maven.compiler.release` at all, silently falling back to its own ancient default
+`source`/`target` of 1.5, which JDK 17's `javac` outright refuses to compile. Not an ARM-specific
+bug (the same failure would hit any machine whose installed Maven happens to default to an old
+compiler-plugin binding) - a real reproducibility gap in the POM, caught only because this was the
+first time the binding was built with a *different* locally installed Maven than this session's own
+dev-machine Maven (3.9.16, whose newer defaults happened to paper over the same gap). **Fixed by
+explicitly pinning `maven-compiler-plugin` to `3.13.0`** in `pom.xml` rather than relying on
+whichever version the local Maven's own super-POM defaults to - re-verified clean on both the dev
+machine and the Pi afterward. All 56 tests passed on the Pi on the very next run, no further issues
+- genuine confirming evidence the `jni`/JNI layer itself (as opposed to the build tooling) is
+architecture-portable by construction, the same conclusion T-52's own Pi run reached for
+`[LibraryImport]`/`SafeHandle`/`nuint`.

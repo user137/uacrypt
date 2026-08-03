@@ -83,6 +83,19 @@
           </execution>
         </executions>
       </plugin>
+      <!-- Pinned explicitly, not left to whatever the locally installed Maven's own super-POM
+           defaults to - found the hard way on the Raspberry Pi rig (Debian 12's apt-packaged
+           Maven 3.8.7 defaults to compiler-plugin 3.1, which does not understand
+           `maven.compiler.release` at all and silently falls back to its own ancient
+           source/target of 1.5, a level modern javac (17 there) outright refuses to compile:
+           "Source option 5 is no longer supported"). `maven.compiler.release` above only works
+           with this plugin at 3.6.0+; pinning here makes the build reproducible across Maven
+           installations instead of depending on whichever default ships with the local Maven. -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.13.0</version>
+      </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>

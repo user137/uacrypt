@@ -301,11 +301,13 @@ prior binding's own first-pass session carried). T-52 (.NET) done in full 2026-0
 `SecretStreamEncryptStream`/`DecryptStream`'s `Complete()`-not-`Dispose()` finalization split,
 NuGet packaging + fresh-install check, then the Pi ARM64 re-check - step 10, all green first try,
 no bug found) - T-52 is now done in full, all ten standard steps. T-51 (Java) done in full
-2026-08-03, steps 1-9 - see D-153 (step-0 spike chose the `jni` crate direct-Rust binding over
-JNI-over-capi; full `crypto_*` surface, `SecretStreamEncryptor`/`Decryptor`, 56 JUnit tests
-including real `uacrypt` interop, `cargo xtask java` + CI, examples/README; JDK build/test baseline
-17, published bytecode target 8). **Next: T-51 step 10 (Raspberry Pi ARM64 re-check), then T-163
-(Go) or T-53 (C++).**
+2026-08-03, all ten standard steps - see D-153 (step-0 spike chose the `jni` crate direct-Rust
+binding over JNI-over-capi; full `crypto_*` surface, `SecretStreamEncryptor`/`Decryptor`, 56 JUnit
+tests including real `uacrypt` interop, `cargo xtask java` + CI, examples/README; JDK build/test
+baseline 17, published bytecode target 8; step 10's Pi re-check found one real bug - Debian's
+apt-packaged Maven defaults to an old `maven-compiler-plugin` that silently ignores
+`maven.compiler.release`, fixed by pinning the plugin version explicitly). **Next: T-163 (Go) or
+T-53 (C++).**
 
 ### The standard binding steps
 
