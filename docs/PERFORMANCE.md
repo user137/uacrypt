@@ -393,6 +393,30 @@ needs `yasm` (x86/x64-only, no ARM target) for the rest of the library even thou
 themselves don't need it, and D-33 already shows a single-platform Kalyna number is not a general
 claim, so this gap is stated rather than assumed either way.
 
+**Re-measured 2026-08-04 after T-172's genuine-unroll landed (`docs/DECISIONS.md` D-161)** —
+re-downloaded and rebuilt `cppcrypto` fresh (scratchpad doesn't persist across sessions; confirmed
+byte-identical zip via sha256 against D-154's own pinned hash), N=300000, same machine, same-session
+`uacrypt` on both sides of the before/after:
+
+| Variant | Direction | Gap before T-172 | Gap after T-172 |
+|---|---|---:|---:|
+| 128-128 | encrypt | 1.61x | **1.34x** |
+| 128-128 | decrypt | 1.49x | **1.07x** |
+| 128-256 | encrypt | 1.64x | **1.33x** |
+| 128-256 | decrypt | 1.52x | **1.13x** |
+| 256-256 | encrypt | 1.72x | **1.42x** |
+| 256-256 | decrypt | 1.42x | **1.06x** |
+| 256-512 | encrypt | 1.69x | 1.61x |
+| 256-512 | decrypt | 1.35x | 1.31x |
+| 512-512 | encrypt | 1.32x | 1.34x |
+| 512-512 | decrypt | 1.69x | **1.31x** |
+
+Gap closed materially on 7 of 10 cells (128-128/256-256 decrypt now near parity, 1.06-1.07x); the 3
+that didn't move (256-512 both directions, 512-512 encrypt) are exactly the cells D-161's own
+`NB=8`-non-inlining/Stage-A-flat findings predicted wouldn't — the remaining gap tracks the
+mechanism, not a random residual. Full numbers, methodology, and the before/after `uacrypt`
+comparison: D-161.
+
 ### Kalyna-CCM (`kalyna-ccm encrypt`)
 
 No binary-level table existed for CCM before this session — `kalyna-ccm` had no `--iterations` flag
@@ -1476,6 +1500,36 @@ cargo bench -p dstu-core --bench strumok -- --baseline strumok-pre-t135-2026-07-
 
 Per D-34, this is `criterion`-based internal regression tracking only — the Strumok binary-level
 comparison table below has the independent, cross-implementation re-measurement.
+
+**Updated 2026-08-03 (`docs/TASKS.md` T-172, `docs/DECISIONS.md` D-161)**: Kalyna's interior round
+sequence became a genuine macro-generated unroll (`unroll_rounds!`, no `for` loop at all, `fused`
+profile only — `small-tables` keeps the old runtime loop, see D-161 for the size trade-off this
+split resolves), superseding `pre-unroll-2026-07-26` as the Kalyna baseline for the `fused` default
+profile:
+
+```
+cargo bench -p dstu-core --bench kalyna -- --save-baseline t172-stage-b  # already saved, this pass
+cargo bench -p dstu-core --bench kalyna -- --baseline t172-stage-b  # to check
+```
+
+| Variant | Direction | Block-only cached-schedule (Δ) |
+|---|---|---|
+| 128-128 | encrypt | **−26.4%** |
+| 128-128 | decrypt | **−26.2%** |
+| 128-256 | encrypt | **−25.0%** |
+| 128-256 | decrypt | **−26.7%** |
+| 256-256 | encrypt | **−31.4%** |
+| 256-256 | decrypt | **−23.6%** |
+| 256-512 | encrypt | **−23.0%** |
+| 256-512 | decrypt | −2.2% |
+| 512-512 | encrypt | +2.8% (near/at CI overlap — see D-161 for why `NB=8` encrypt specifically doesn't benefit) |
+| 512-512 | decrypt | **−23.0%** |
+
+Cross-checked binary-level (`uacrypt kalyna-block`, D-34's mandatory methodology, not just
+in-process `criterion`): 128-128 encrypt −16.7%, 512-512 encrypt +2.0%, 512-512 decrypt −24.0% —
+same direction and rough magnitude as the criterion numbers above. `small-tables`'s own numbers are
+unaffected (it never reaches the unrolled code path) — its `.text` size grew independently by
++3.4%, an `NR`-const-generic side effect unrelated to unrolling, see D-161.
 
 ## Reproducing the C comparisons
 

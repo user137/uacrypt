@@ -10,6 +10,17 @@
 .claude.local.md
 /.claude/
 
+# DSTU 9041:2020 primary standard text - purchased/library-scanned copy (5,304 UAH,
+# fnd-store.uas.gov.ua, per docs/ORACLES.md), unlike the freely available DSTU_4145-2002.pdf scan
+# already tracked above it in docs/papers/. Kept locally as the primary source for hazmat::dstu9041
+# (T-46), never committed - state-standard text redistribution rights are not ours to grant.
+/docs/papers/DSTU_9041-2020.pdf
+# OCR transcript derived from the file above (Surya OCR, spot-checked against PaddleOCR,
+# 2026-08-04) - same redistribution restriction applies to a transcript of the text as to the
+# scan itself, so this stays local too. See the file's own header for the OCR methodology and
+# its `[OCR-СУМНІВНО]` uncertainty markers - a best-effort transcript, not a verified oracle.
+/docs/papers/DSTU_9041-2020_ocr.md
+
 # Oracle-harness build artifacts and fetched dependencies (Java/.NET) — fetched fresh via
 # Maven/NuGet at build time (see tests/oracle-harness/*/README or docs/TASKS.md "Infrastructure"),
 # never vendored or committed, same rule as /oracles below.

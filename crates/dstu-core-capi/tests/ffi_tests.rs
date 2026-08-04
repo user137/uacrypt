@@ -480,6 +480,10 @@ fn secretstream_round_trip_tamper_and_finalize_rejection() {
 // ---------------------------------------------------------------------------------------------
 
 #[test]
+#[cfg_attr(
+    miri,
+    ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see docs/TASKS.md T-100"
+)]
 fn sign_verify_round_trip_and_forgery_rejection() {
     let mut key_ptr: *mut DstuSigningKey = ptr::null_mut();
     assert_eq!(
@@ -535,6 +539,10 @@ fn sign_key_from_bytes_rejects_zero_scalar() {
 }
 
 #[test]
+#[cfg_attr(
+    miri,
+    ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see docs/TASKS.md T-100"
+)]
 fn sign_digest_matches_sign_of_the_same_hash() {
     let mut key_ptr: *mut DstuSigningKey = ptr::null_mut();
     unsafe { dstu_sign_key_generate(&mut key_ptr) };
@@ -645,6 +653,12 @@ fn stream_encrypt_decrypt_round_trip_and_silent_tamper() {
 // ---------------------------------------------------------------------------------------------
 
 #[test]
+#[cfg_attr(
+    miri,
+    ignore = "Argon2id (even Strength::Interactive) is a memory-hard KDF over a 64 MiB buffer - \
+              Miri's provenance tracking over that allocation makes this intractably slow to \
+              interpret, unrelated to the Point::scalar_multiply ladder issue - see docs/TASKS.md T-175"
+)]
 fn pwhash_hash_and_verify_round_trip_and_rejects_wrong_password() {
     let password = b"correct horse battery staple";
     // `c_char`, not a hardcoded `i8` - ARM Linux's ABI makes plain `char` unsigned by default

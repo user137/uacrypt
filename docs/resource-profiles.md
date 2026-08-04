@@ -33,6 +33,24 @@ All numbers are `const` table data linked into the binary — measured directly 
 That's a real, measured difference, not just a theoretical one: a release build of `uacrypt`
 (all three algorithms linked in) is **~75 KB smaller** under `small-tables`.
 
+**A second, separate `fused`-only cost as of T-172/D-161 (`docs/DECISIONS.md`)**: Kalyna's interior
+round sequence is now a genuine compile-time unroll (no loop at all, `unroll_rounds!`) under
+`fused`, in exchange for a real 21-35% speed win on four of its five variants. This is *not* a
+`const`-table cost like the numbers above — it's compiled code (`.text`), and it's real, measured
+the same way as this doc's own linked-`uacrypt`-binary method above (not a raw rlib object-code
+sum, which overestimates — an earlier pass got this wrong first, corrected same session, see
+D-161): a release `uacrypt.exe` grew **+71.1 KB (+4.17%)** under `fused`. Deliberately **not**
+applied to `small-tables`, which keeps Kalyna's old runtime loop specifically so this profile's
+whole reason to exist (smallest possible code) isn't undercut — `small-tables`'s own binary only
+grew **+9.2 KB (+0.56%)** (an unrelated, minor side effect of `NR` becoming a const generic
+everywhere, kept for both profiles to avoid two parallel function signatures). Net effect: the
+`fused`-vs-`small-tables` gap on a release `uacrypt.exe` widened from ~60.5 KB to ~122.4 KB. If
+you're on `small-tables` for a real measured flash budget, this unroll never applies to you either
+way — but note the profile split is no longer *only* about which table data links in (see D-161's
+"scope of what `small-tables` now means" note): it now also picks which Kalyna round-sequence code
+compiles, correctness-identical either way but a real, additive-Cargo-feature-wide performance
+choice, not just a flash one.
+
 **What this means depending on your target**: on a 32-bit MCU with memory-mapped flash (ARM
 Cortex-M, Xtensa/RISC-V — the `fused` tables live in flash and cost *zero* RAM, only flash space).
 On AVR (Harvard architecture), a `const` table copies into SRAM at startup unless placed in

@@ -1,0 +1,43 @@
+{
+  "algorithm": "DSTU 9041:2020 full encrypt/decrypt worked example, Annex G.1 (l(p)=256)",
+  "source": "docs/papers/DSTU_9041-2020.pdf, Annex G.1 (Додаток Г.1) - see docs/pseudocode/dstu9041.md for verification detail",
+  "curve": "crates/dstu-core/tests/vectors/dstu9041/curve-E256-1.json",
+  "hash_function_id_hex": "01",
+  "hash_function": "Kupyna-256 (DSTU 7564:2014), truncated to l_H=32 bits taken from the LOW-order end of the digest (confirmed empirically against hazmat::kupyna::Kupyna256 - the standard's own clause 5.7 states the truncation direction abstractly, not which end of a concrete byte string that means)",
+  "kalyna_kw_l_k_bits": 256,
+  "private_key_e_hex": "25",
+  "private_key_e_decimal": 37,
+  "private_key_e_note": "Annex G's own convention: every parameter in these worked examples is hex, 4 bits per hex digit, even bare small integers with no local label - 0x25 = 37 decimal. Confirmed: scalar_mult(37, P) == Q exactly. An earlier verification pass misread this as decimal 25 and flagged a false 'erratum' before catching the same hex convention it had already found for d=0x18 - see docs/DECISIONS.md D-163's addendum.",
+  "public_key_Q": {
+    "x_hex": "19EB06BEA98AC21EFC739590179433B9B68DEDF3CE2F1571755616A4B3E4932F",
+    "y_hex": "AB2DFB4ECB2A536BE738FD47BCDBC181B4D792C0BB7B12E7664FA669B6097851"
+  },
+  "message_M_bits": 128,
+  "message_M_hex": "00000000000000000000000000000007",
+  "ephemeral_key_epsilon_hex": "7",
+  "R_point": {
+    "x_hex": "94B65E516E115E1491D7504065287770916401727EA6E82E128F9A9951E136BE",
+    "y_hex": "7041278B6F4C1B9624DFB7AC9489A19B6F68D982204B1FA35B181A4F98E9C41"
+  },
+  "T_point": {
+    "x_hex": "0C2E58C96E3E9135181BCEA59972C376545B499B1B80E8F78B6FFE6ADFD69265",
+    "y_hex": "BE799708EBEA3F60959F1A957F21532C524FBB51220CC9AC75201CA2B028C809"
+  },
+  "kappa_kw_key_hex": "0C2E58C96E3E9135181BCEA59972C376545B499B1B80E8F78B6FFE6ADFD69265",
+  "M_prime_hex": "01BF8B8620008000000000000000000000000000000000000000000000000007",
+  "kalyna_kw_input_note": "The Kalyna-256/256-KW input that reproduces the printed t below is M' padded with one additional all-zero 256-bit block (M' || 0x00*32), NOT M' alone - M' alone is exactly one 256-bit Kalyna block, but the printed ciphertext only reconciles against a 2-block (64-byte) KW input. Why DSTU 9041 requires this second block is not yet resolved - see docs/pseudocode/dstu9041.md's open-gap note. Recorded as an empirical fact needed to reproduce the vector, not yet explained from a cited clause.",
+  "kalyna_kw_plaintext_hex": "01BF8B86200080000000000000000000000000000000000000000000000000070000000000000000000000000000000000000000000000000000000000000000",
+  "r_ciphertext_prefix_hex": "94B65E516E115E1491D7504065287770916401727EA6E82E128F9A9951E136BE",
+  "t_ciphertext_hex": "7BD596C15B09B3CE0F710EC128135E328C029B88FC2E16749D769FFFE0CD70F683ED1479CDC3D8F45B95DFACBABFDF785F56624E0A67DF162C74D50B9A7F62DCEFC59B262EEB8CD063907471D3DE7953614E2DFF753A731FC761FF93A5F9698F",
+  "t_ciphertext_note": "The standard's own printed t is missing a single hex digit ('0' dropped between ...B3CE and F710...) - a real single-character erratum in the published Annex Г.1, confirmed by inserting it back and getting an exact 192-hex-digit (96-byte) match against Kalyna256_256Kw::wrap's own computed output for the plaintext/key above. t_ciphertext_hex here is the CORRECTED value (with the missing digit restored), not the literal printed text.",
+  "ciphertext_C_hex": "94B65E516E115E1491D7504065287770916401727EA6E82E128F9A9951E136BE7BD596C15B09B3CE0F710EC128135E328C029B88FC2E16749D769FFFE0CD70F683ED1479CDC3D8F45B95DFACBABFDF785F56624E0A67DF162C74D50B9A7F62DCEFC59B262EEB8CD063907471D3DE7953614E2DFF753A731FC761FF93A5F9698F",
+  "verified_checks": [
+    "P, Q, R, T all satisfy the curve equation",
+    "R == 7 * P (ephemeral key applied to base point)",
+    "T == 7 * Q (ephemeral key applied to public key)",
+    "37 * P == Q (private key e=0x25=37, hex convention)",
+    "Kupyna256(l_M~(16 bits) || M~(200 bits)) truncated to its last 4 bytes == the stated H = BF8B8620, via hazmat::kupyna::Kupyna256",
+    "Kalyna256_256Kw::wrap(kappa, M'||0x00*32) == t_ciphertext_hex above (after restoring the standard's own dropped hex digit), via hazmat::kalyna_kw::Kalyna256_256Kw - this project's own implementation"
+  ],
+  "open_question": "Why the Kalyna-KW input needs a second all-zero 256-bit block appended to M' (bringing it to 2 blocks / 64 bytes) is not yet resolved from the scanned clauses - clauses 6.5-6.12 and the exact wording of clause 11 that would explain this are not in the current scan. Treat kalyna_kw_input_note above as an empirical fact, not yet a cited requirement."
+}

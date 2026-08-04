@@ -10614,3 +10614,542 @@ have never shipped in a tagged release. **New standing rule**: check `gh release
 `docs/CHANGELOG.md`'s own entries as part of any full documentation cross-check, not just grep for
 staleness in prose - a missing entire release entry doesn't "read" as stale prose, it reads as
 nothing at all, which is easy to walk past.
+
+## D-160: T-171 - const-generic `NR` spiked and reversed, no code change, negative asm result
+
+2026-08-03, T-171's own gate (`docs/TASKS.md`/`CLAUDE.md`'s Tier C precedent): "Needs its own
+`advisor()` consultation and plan-mode pass before implementation" - both done first. `advisor()`
+flagged the load-bearing counter-evidence sitting in D-157's own text ("checked in asm: Kupyna's own
+compiled loop isn't fully unrolled by LLVM even with `ROUNDS` const") and recommended a spike-first
+plan rather than rewrite-first, per CLAUDE.md's standing rule to spike and read `--emit=asm` before
+any `hazmat::{kalyna,kupyna,strumok}` perf rewrite, and the T-139/T-129 precedent of both being
+reversed after spiking with "no code change" as a complete outcome.
+
+**Spike**: patched only `Kalyna128_128` (`NB=2`, `NR=10` - the instantiation D-157 identified as
+today's shared-`NB=2` culprit) - `encrypt_with_schedule`/`encrypt_generic` gained
+`const NR: usize`, dropped the runtime `nr` parameter, all five `kalyna_variant!` call sites updated
+to compile. Built with `RUSTFLAGS="--emit=asm -C debuginfo=0" cargo build --release -p dstu-core
+--lib` and compared `encrypt_with_scheduleKj2_Kja_`'s (NB=2, NR=10, hex `a`) compiled body against
+the pre-spike `encrypt_with_scheduleKj2_`'s (today's shared NB=2-only instantiation, runtime `nr`).
+
+**Result: negative, matching D-157's own warning, not the hoped-for full unroll.** Both versions
+compile to the identical shape - one `.LBB_1` loop, real conditional back-edge (`jne .LBB_1`), same
+214-line function body, same per-round gather/XOR sequence. The *only* difference the const generic
+bought: the loop-trip compare changed from a runtime value loaded off the stack (`cmpq 24(%rsp),
+%rdx`) to a compile-time-immediate compare (`cmpq $655, %rbx`) - a real but minor codegen change,
+nowhere near `cppcrypto`'s fully-unrolled, branch-free per-round call sequence T-168/D-157 found.
+LLVM had every fact it needed to unroll (both `NB` and `NR` known at compile time) and chose not to,
+the same outcome D-157 already saw on Kupyna's own already-const-generic `ROUNDS`.
+
+**Decision, per this task's own plan-mode-approved decision gate**: no branch-loss / no unroll →
+close T-171 without further implementation. Spike reverted via `git stash` + `git stash drop`
+(`git diff` empty, confirmed) - the "reversed after spiking, no code change is the complete outcome"
+precedent (T-139/T-129) applies here too, not a shortfall.
+
+**What this leaves genuinely open**: D-157's gap-size asymmetry question (why Kupyna's own
+const-generic `ROUNDS` sits much closer to full-unroll behavior in its smaller D-154 gap than this
+result would suggest) is not resolved by this spike - this task only tested the mechanism T-168
+proposed as a *lead*, and the lead didn't pan out empirically. The remaining ~1.3-1.9x Kalyna gap's
+real cause is still open; a future task would need to test a different mechanism (e.g. actual
+per-round unrolling via a macro/codegen approach that doesn't rely on LLVM choosing to unroll a
+const-bounded loop on its own), not const-genericizing the trip count alone.
+
+## D-161: T-172 - genuine per-round unrolling of Kalyna, macro-driven, `fused`-only
+
+2026-08-03, user-requested direct follow-up to T-171/D-160's own closing note ("генерувати
+straight-line-послідовність самостійно, а не сподіватись на LLVM"; "давай справжнє розгортання").
+`advisor()` + plan-mode both done first, per this project's Tier C precedent. `advisor()`'s key
+correction: test whether unrolling helps *at all* with a cheap `RUSTFLAGS`-only spike before
+committing to a five-variant macro rewrite, rather than assuming T-168's cppcrypto-shaped lead was
+right just because T-171's specific mechanism (const-generic `NR` alone) had failed.
+
+**Stage A - flag spike, positive with a clear split by `NB`.** Restored T-171's const-`NR` patch
+(one variant, `Kalyna128_128`), built twice - `RUSTFLAGS="--emit=asm -C debuginfo=0"` vs. the same
+plus `-C llvm-args=-unroll-threshold=4000` - and confirmed in the asm that the forced build's
+`encrypt_with_scheduleKj2_Kja_` genuinely loses its `.LBB`/`jne` back-edge (776-line straight-line
+body vs. 214 lines before) while the untouched `decrypt_with_schedule` (still runtime-`nr`, a
+control) stayed flat. Criterion (`kalyna` bench, `t172-unforced` vs `t172-forced` baselines)
+confirmed a real split by block width: `NB=2`/`NB=4` (128-128, 128-256, 256-256, 256-512) gained
+21-35%; `NB=8` (512-512) was flat (+0.4%, noise). Matches `advisor()`'s own predicted counter-
+evidence (register spill already visible in `NB=2`'s asm, worse for `NB=8`'s larger state) -
+positive enough to proceed, but with a heads-up that `NB=8` might not follow the others.
+
+**Stage B - macro-driven real unroll, all five variants x encrypt+decrypt, deterministic (no
+`RUSTFLAGS` dependency).** `crates/dstu-core/src/hazmat/kalyna.rs`:
+- `unroll_rounds!` (new `macro_rules!`) emits one `$round_fn(state); xor_round_key(...)` pair per
+  literal index in an explicit list, in exactly the order given - a genuine compile-time-generated
+  straight-line sequence, never a `for` loop for LLVM to decide whether to unroll (the T-171
+  failure mode). `encrypt_with_schedule`/`decrypt_with_schedule` both gained `const NR: usize`
+  (encrypt already had it from the T-171 patch; decrypt gained it fresh, dropping its runtime `nr`
+  parameter and propagating through `decrypt_generic` and all five `kalyna_variant!` call sites,
+  mirroring T-171's own signature-change shape). Each function dispatches via `match NR { 10 =>
+  ..., 14 => ..., 18 => ..., _ => unreachable!() }` to the right literal index list - ascending
+  (`1..=NR-1`) for encrypt, descending (`NR-1..=1`) for decrypt, matching `dec_keys[1..nr]
+  .iter().rev()`'s original walk order. Only three distinct `NR` values exist across all five
+  variants (10/14/18), so three arms cover every `kalyna_variant!` call site - no arithmetic-on-
+  const-generics needed (which stable Rust can't do without the unstable `generic_const_exprs`
+  feature anyway), matching CLAUDE.md's own "three similar lines over a premature abstraction"
+  preference.
+- **Bounds provability**: `const { assert!(NR == 10 || NR == 14 || NR == 18) }` at the top of both
+  functions, catching a bad future `kalyna_variant!` instantiation at compile time rather than
+  leaving the match's `_ => unreachable!()` arm as the only guard (CLAUDE.md's "provable from the
+  line itself, not a hand-traced invariant" rule, same SonarCloud-BLOCKER-motivated standard cited
+  elsewhere in this file).
+- **Correctness**: `decrypt_fusion_tests` updated for the new signature and extended with the
+  previously-missing `nb2_nr14` (Kalyna128_256) case, found stale during T-171's own planning. A new
+  sibling `encrypt_fusion_tests` module (same shape, differential against a runtime-`nr` reference
+  built from the retained `#[allow(dead_code)]` `encipher_round`) covers all five `(NB, NR)` pairs
+  for the encrypt side, which had no equivalent differential coverage before. All 10 official Kalyna
+  vectors, the full `cargo xtask test` matrix (`--all-features`/`--no-default-features`/
+  `--no-default-features --features getrandom`), `cargo xtask clippy`, `cargo xtask fmt --check` all
+  green.
+- **`encipher_round_n`'s `NB=8` instantiation does not get inlined by LLVM at any of its 17 call
+  sites in `encrypt_with_scheduleKj8_Kj12_`** - confirmed in the release asm (18 real `callq`
+  instructions to `encipher_round_nKj8_`, function body only 306 lines vs. 2842 for the equivalent
+  `NB=4`/`NR=18` case) - LLVM's own inlining-cost heuristic backing off because the per-round body
+  is too large to duplicate 17 times, not a bug in the unroll. This directly explains Stage A's
+  `NB=8` flat result: the call/ret overhead survives even in the "unrolled" (branch-free) shape.
+  `fused_inv_round_n`'s `NB=8` instantiation (decrypt) inlined more (913 lines), which is why
+  `NB=8` decrypt shows a real win below despite `NB=8` encrypt not.
+
+**Code size - real and material, resolved by asking rather than deciding unilaterally.** First
+measured wrong, corrected same pass (flagged by `advisor()` on the completion-review call, not
+found independently): the first pass summed `size`'s per-codegen-unit `.text` column across the
+`dstu-core` release **rlib** (+21.7%, `fused`) - an overestimate, since an rlib retains
+monomorphizations/dead code the linker later strips, and `docs/resource-profiles.md`'s own
+established method for this exact comparison (three paragraphs above the original insertion point)
+is the **linked `uacrypt` release binary**, not the rlib. Re-measured the doc's own way:
+
+| Profile | Baseline (`uacrypt.exe`) | Stage B | Δ |
+|---|---:|---:|---:|
+| `fused` (default) | 1,706,093 B | 1,777,216 B | **+71,123 B (+4.17%)** |
+| `small-tables` | 1,645,588 B | 1,654,815 B | **+9,227 B (+0.56%)** |
+
+The **absolute** byte delta (+71 KB) barely moved from the flawed first estimate (+70.5 KB) - the
+rlib method's error was almost entirely in the percentage (wrong denominator: Kalyna's own object
+code vs. the whole linked binary including the standard library, every other algorithm, and the
+full CLI), not in the raw size of what actually changed. Still real, still put to the owner
+directly (`AskUserQuestion`, not decided unilaterally) before this correction was made, since the
+qualitative call - "does a +4-20%-ish class of `.text` growth matter enough to gate" - was never
+actually resting on the wrong percentage; the owner's answer stands unaffected. Decision:
+**unconditional for `fused`, `small-tables` stays on the old runtime loop.** Implemented via
+`#[cfg(not(feature = "small-tables"))]`/`#[cfg(feature = "small-tables")]` splits in both
+`encrypt_with_schedule` and `decrypt_with_schedule`'s bodies (the `unroll_rounds!` macro definition
+itself is `#[cfg(not(feature = "small-tables"))]` too, to avoid an `unused_macros` warning under
+`small-tables` - D-74's "hidden in exactly one feature combination" pattern, checked explicitly
+this time rather than found the hard way again). `small-tables`'s own binary grew only +0.56% - an
+expected, minor side effect of `NR` becoming a const generic everywhere (T-171's signature change
+alone, kept for both profiles to avoid maintaining two entirely separate function signatures)
+rather than of unrolling itself, since `small-tables` never reaches the unrolled branch. Net effect
+on the `fused`-vs-`small-tables` gap this project already exposes as a resource-profile choice: it
+widened from ~60.5 KB (baseline `uacrypt.exe`, this session's own fresh measurement - doesn't need
+to reconcile with `docs/resource-profiles.md`'s older, differently-sourced "~75 KB" figure, a
+different build/toolchain snapshot) to ~122.4 KB (Stage B) - see `docs/resource-profiles.md` for
+the full framing.
+
+**Scope of what `small-tables` now means, recorded rather than left implicit**: before this task,
+`fused`/`small-tables` only ever chose *which table data* links in (D-35/D-38/D-39) - correctness-
+identical either way, purely a flash trade. As of this task, `small-tables` also selects *which
+Kalyna round-sequence code compiles* (the old loop, not the new unroll). Output stays byte-identical
+(the differential proptests above cover both paths against the same reference) so this is not a
+correctness change, but because Cargo features are additive and workspace-wide, any crate anywhere
+in a build graph that turns `small-tables` on de-optimizes Kalyna for every consumer in that build,
+including one that only wanted the flash saving on an unrelated algorithm - worth knowing before
+composing this feature into a larger dependency graph, not something to discover from a downstream
+performance regression report.
+
+**One more thing D-74's own "cfg gate = compiled-out code path" pattern implies, caught on the same
+completion-review call**: `--all-features` (which also turns on `small-tables`) had silently become
+the *only* thing this project's own `xtask test`/`xtask clippy` ran, so neither ever compiled or
+linted the unrolled `fused` path this task shipped - the exact D-39 gap CI's `rust.yml` `test` job
+already has an explicit default-only leg to avoid, but `xtask/src/main.rs`'s own `test()`/`clippy()`
+functions had drifted out of sync with that CI pattern before this task ever touched them. Fixed in
+this same pass: both gained a default-features-first leg (mirroring CI's own order), and the usage
+text in `print_usage()` updated to describe it - re-ran `cargo xtask clippy`/`cargo xtask test`
+after the fix and confirmed the default (`fused`, unrolled) path is now genuinely compiled, linted,
+and tested by this project's single QA entry point, not just by ad hoc local commands during this
+session.
+
+**Measured results, both in-process (criterion, new `t172-stage-b` baseline) and binary-level
+(`uacrypt kalyna-block`, this project's mandatory D-34 methodology, N=300000, single clean run with
+no other CPU-heavy process active - the first attempt was contaminated by a concurrent `cargo xtask
+test` run and discarded, same pitfall `docs/PERFORMANCE.md` already documents from D-30's own
+measurement pass) - cross-checked, not just one or the other:**
+
+| Variant | Direction | criterion Δ (`fused`) | `uacrypt` binary Δ (`fused`) |
+|---|---|---|---|
+| 128-128 | encrypt | -26.4% | -16.9% |
+| 128-128 | decrypt | -26.2% | -28.2% |
+| 128-256 | encrypt | -25.0% | -19.0% |
+| 128-256 | decrypt | -26.7% | -25.4% |
+| 256-256 | encrypt | -31.4% | -17.4% |
+| 256-256 | decrypt | -23.6% | -25.2% |
+| 256-512 | encrypt | -23.0% | -4.6% |
+| 256-512 | decrypt | -2.2% | -3.2% |
+| 512-512 | encrypt | +2.8%* | +1.5% |
+| 512-512 | decrypt | -23.0% | -22.3% |
+
+Binary-level deltas track criterion's direction on all ten cells and are the same order of
+magnitude, though individually noisier (single-run OS-level timing vs. criterion's statistical
+sampling) - 256-512 shows a smaller win binary-level than in criterion for both directions, and
+256-256 the reverse, but neither flips sign or crosses into "contradicts the finding" territory.
+
+**A `kalyna_256_256_encrypt_block_only` anomaly (~486-530 ns, vs. ~163 ns expected) surfaced on two
+criterion reruns later in the same session and was chased down, not filed as an open question** -
+`advisor()` correctly refused to accept an "icache pressure, not a code defect" hypothesis without
+the isolating check: `cargo bench -p dstu-core --bench kalyna -- kalyna_256_256_encrypt_block_only`
+run *alone* (nothing else in the binary's hot path) still reproduced ~480 ns, ruling out
+cross-benchmark interference outright - the hypothesis this entry originally reached for was wrong.
+**Root cause, found by disassembling the actual binary being measured**: `objdump -d` on the bench
+executable showed `encrypt_with_scheduleKj2_`/`Kj4_`/`Kj8_` symbols *without* the `NR`-encoding
+mangled suffix (`Kja_`/`Kje_`/`Kj12_`) - the pre-T171 signature shape. The binary being measured was
+stale, left over from the `git stash`/`git stash pop` A/B dance used earlier in this same entry to
+capture the "before" column of the cppcrypto/baseline comparison tables above - `cargo bench`'s own
+change-detection didn't trigger a recompile across that stash/pop cycle in this instance. Forcing one
+(`touch crates/dstu-core/src/hazmat/kalyna.rs`, then re-running) immediately produced ~156 ns, in
+line with this entry's own originally-published ~163 ns finding - confirmed by a full baseline
+re-save afterward, every cell landing within normal run-to-run noise of the numbers already
+published above (58-486 ns range, all within a few percent). No code defect, no icache effect, no
+open question - a build-hygiene gap in the investigation process itself, now closed. Lesson for any
+future A/B comparison built on `git stash`/`git stash pop`: force a rebuild (`touch` the changed
+file, or check the compiled binary's own symbol names) before trusting a benchmark number that
+follows a stash cycle, don't assume `cargo`'s fingerprinting caught the change.
+
+\* Within/near criterion's own 95% CI overlap for that one cell (unforced upper bound 481.2ns vs.
+stage-b lower bound 482.4ns - a small but plausibly real regression, not pure noise), directly
+explained by the `NB=8` non-inlining finding above, not a red flag on the rest of the result. Not
+pursued further (e.g. forcing `#[inline(always)]` on `NB=8`'s `encipher_round_n`) since Stage A
+already showed `NB=8` encrypt gets no benefit from unrolling and forcing the inline would only add
+more code size for a variant that doesn't want it - consistent with, not contradicting, the
+`small-tables` size decision above.
+
+**Net**: T-172 answers its own question conclusively - genuine (never-a-loop) unrolling is a real,
+substantial win (21-35%) for four of Kalyna's five variants and roughly neutral (one flat/slightly-
+negative cell, one strong win) for the fifth, entirely explained by LLVM's per-instantiation
+inlining-cost decision, not a mechanism failure.
+
+**Re-measurement against D-154's own cppcrypto numbers, same session (user-requested follow-up,
+"порівняння бінарників за нашим стандартом з cppcrypto")**: D-154's scratchpad harness didn't
+survive across sessions, so re-built from scratch - re-downloaded `cppcrypto-0.20-src.zip`,
+confirmed byte-identical to D-154's own pinned copy (sha256 `cb4d5b54...fde65fd5` matches exactly),
+re-wrote a throwaway `bench.cpp` against the unmodified `kalyna.cpp`/`kupyna.cpp`/`block_cipher.cpp`
+files, same D-34/D-80 methodology as D-154 (`init` excluded from the timed window, cached-schedule
+encrypt/decrypt, N=300000 this time vs. D-154's N=20000). Correctness not independently re-verified
+this pass (D-154's own 20/20-vector confirmation already covers this exact unmodified source), and
+this bench run was deliberately sequenced *after* the concurrent Miri run above finished (D-30's own
+documented CPU-contention pitfall) - both baseline and Stage B `uacrypt` numbers were re-measured
+fresh in the same clean window, not reused from the table above, so this is a real same-session,
+same-machine, all-three-way comparison:
+
+| Variant | Direction | `uacrypt` before | `uacrypt` after (T-172) | cppcrypto | Gap before | Gap after |
+|---|---|---:|---:|---:|---:|---:|
+| 128-128 | encrypt | 71 ns | 59 ns | 44 ns | 1.61x | **1.34x** |
+| 128-128 | decrypt | 85 ns | 61 ns | 57 ns | 1.49x | **1.07x** |
+| 128-256 | encrypt | 100 ns | 81 ns | 61 ns | 1.64x | **1.33x** |
+| 128-256 | decrypt | 114 ns | 85 ns | 75 ns | 1.52x | **1.13x** |
+| 256-256 | encrypt | 218 ns | 180 ns | 127 ns | 1.72x | **1.42x** |
+| 256-256 | decrypt | 210 ns | 157 ns | 148 ns | 1.42x | **1.06x** |
+| 256-512 | encrypt | 281 ns | 268 ns | 166 ns | 1.69x | 1.61x |
+| 256-512 | decrypt | 251 ns | 243 ns | 186 ns | 1.35x | 1.31x |
+| 512-512 | encrypt | 459 ns | 466 ns | 348 ns | 1.32x | 1.34x |
+| 512-512 | decrypt | 627 ns | 487 ns | 372 ns | 1.69x | **1.31x** |
+
+**The gap genuinely closed on 7 of 10 cells**, most dramatically on `NB=2`/`NB=4` decrypt (128-128
+and 256-256 decrypt both land near parity, 1.06-1.07x) - Kalyna is no longer "cppcrypto wins every
+cell by 1.3-1.9x" (D-154's original framing); it's now a mixed picture matching the mechanism found
+above almost exactly. The 3 cells that didn't move (256-512 both directions, 512-512 encrypt) are
+precisely the ones this entry's own `NB=8`-non-inlining finding and Stage A's own flat result
+predicted wouldn't - 256-512 pairs `NB=4` with `NR=18` (the largest per-round-count instantiation at
+that width) and showed the smallest criterion win of the four `NB=2`/`NB=4` cells too (-23.0%/-2.2%,
+smallest in that group), consistent rather than contradicting. Remaining gap is concentrated exactly
+where the mechanism says it should be, not scattered randomly - real, if incomplete, confirmation
+that the diagnosis is right, not just that the numbers moved.
+
+## D-162: T-173 - local OCR transcript of DSTU 9041:2020, tooling gotchas
+
+Owner asked to OCR-transcribe `docs/papers/DSTU_9041-2020.pdf` (the purchased/library-scanned
+primary standard text, T-46's cited blocking source) locally, using Surya OCR, spot-checked
+against PaddleOCR, saved as a page-numbered Markdown file and kept out of git (same redistribution
+restriction as the source PDF itself). Full task record: `docs/TASKS.md` T-173. This entry is the
+tooling/methodology detail T-173 points back to.
+
+**Status of the standard itself is unchanged**: this is a reading aid, not a new oracle. It does
+not unblock `hazmat::dstu9041` (D-08/T-46's "zero source material" framing stands), for the same
+reason a transcript of a secondary source didn't unblock it in T-148/D-105 - a transcript of the
+*primary* text still has no independent oracle to verify it against, and the OCR process itself
+introduces its own error class on top.
+
+**Tool choice and why it needed research first** (see also
+`feedback_use_local_recognition_tools` in project memory): local tools were used instead of any
+web-based OCR converter specifically to avoid uploading a redistribution-restricted state-standard
+scan to a third party - the same reasoning already applied to the PDF itself never being committed.
+
+**Gotchas hit, in the order they were found**:
+
+1. **`surya-ocr`'s current PyPI release (0.2x) is architected around a VLM served through
+   `llama.cpp`/`vLLM`**, not a local model call - it raised `SpawnError: llama-server binary not
+   found` on first run. Neither backend is viable on this machine (no `llama-server` binary
+   available for Windows without a separate manual build/download, and `vLLM` needs a GPU this
+   machine doesn't have in a supported class - see gotcha 6 below). Fix: pin
+   `surya-ocr==0.13.1`, the last release whose CLI (`surya_ocr --langs uk`) calls a local
+   transformers recognition model directly, no server subprocess.
+
+2. **A full 27-page run (`surya_ocr` given the whole PDF at once) segfaulted (exit 139) partway
+   through the detection pass**, once resident memory passed roughly 11GB with only ~10GB free at
+   the time - no Python traceback, a native-level crash invisible to any `except` block. Root cause
+   not fully isolated (plausibly an internal allocation failure inside a native op, given each page
+   image is 3893x5633px at the 150 DPI render used) - not filed upstream, out of scope for a
+   one-off local task. Fix: split the run via the CLI's own `--page_range` flag into five
+   sequential invocations (6 pages each except the last, 3), one `--output_dir` per chunk, merged
+   back into page order by the chunk's known page range afterward. Peak RSS dropped to ~4.3GB per
+   chunk; all five completed cleanly with `results.json` written each time.
+
+3. **`paddleocr` 3.x's default pipeline** (`PaddleOCR(lang=...).predict(...)`, which runs on
+   paddlepaddle's newer PIR-based CPU executor with oneDNN) **threw `NotImplementedError:
+   ConvertPirAttribute2RuntimeAttribute not support [pir::ArrayAttribute<pir::DoubleAttribute>]`**
+   on the very first real detection call - a genuine CPU-backend bug in that specific
+   paddlepaddle/paddleocr version pairing on this machine, not a usage mistake (the same call
+   pattern works in PaddleOCR's own documented examples). Fix: downgrade to the older, stable
+   `paddlepaddle==2.6.2` + `paddleocr==2.9.1` pair, which uses the classic `.ocr(path, cls=False)`
+   API and does not go through the PIR executor at all.
+
+4. **PaddleOCR's bundled `cyrillic` recognition model's character dictionary**
+   (`ppocr/utils/dict/cyrillic_dict.txt`, 164 entries) **includes `Є/є`, `І/і`, `Ґ/ґ` but has no
+   entry for `Ї/ї` at all** - confirmed by reading the dict file directly, not inferred from
+   output. Any Ukrainian word containing "ї" is therefore structurally miswritten by this model, a
+   dictionary gap rather than a per-word confidence issue. Recorded so a future cross-check never
+   trusts PaddleOCR's `cyrillic` model over Surya specifically on words containing "ї" - and so
+   nobody re-diagnoses this same gap as a bug in the calling code.
+
+5. **A first attempt at automatically flagging Surya's unreliable lines used raw per-line OCR
+   confidence (`< 0.85`) as the threshold - far too broad**, flagging roughly 180 of ~2100 lines,
+   the great majority of which were genuinely correct Ukrainian technical prose that merely scored
+   lower because of interspersed formulas/numbers/single-letter math variables, not because they
+   were wrong. Replaced with a detector targeting the two hallucination signatures actually
+   observed by inspection: (a) any character outside an allowlist covering Cyrillic, Latin, Greek
+   (used as math variable names throughout this standard), digits, and a fixed set of punctuation/
+   math-operator characters (catches genuine script hallucination - Bengali, CJK, Japanese
+   long-vowel marks used as filler/border lines - directly, since those scripts fall well outside
+   the allowlist), and (b) a single token repeated across more than half of a line's tokens
+   (catches degenerate `= = = = ...` / `1 1 1 1 ...` hallucinated tails). The allowlist needed two
+   widening passes after the first result flagged legitimate content (Greek letters, curly
+   quotes/apostrophes, √±·×÷ and similar math operators are genuine parts of this standard's own
+   notation, not hallucination) before landing at 45 flagged lines across 15 of 27 pages - low
+   enough to be a real signal rather than noise. Page 1 was spot-checked directly against its
+   rendered scan image before trusting the detector across the rest of the document: all three
+   flagged lines on that page were genuine problems (subscript digits `i₆`/`i₀` misread as `16`/
+   `lo`, `∈` misread as `€`, and two hallucinated `= = = =` tails), and no unflagged line on that
+   page was actually wrong in the sample checked - both the detector's positives and negatives held
+   up under direct visual comparison.
+
+6. **A whole-page `difflib.SequenceMatcher` character-ratio between Surya's and PaddleOCR's
+   concatenated per-page text was tried first as an automatic per-page quality signal, and
+   abandoned** - it returned a uniformly low ratio (0.01-0.20) across all 27 pages, including pages
+   later confirmed clean by direct visual inspection. The metric appears to be dominated by
+   line-ordering and formatting differences between the two engines' output rather than by real
+   content divergence, making it useless as a quality signal at the whole-page-string level.
+   Recorded so a future session doesn't reach for this same comparison shape without re-deriving
+   whether it's actually informative first.
+
+7. **AMD ROCm was investigated and ruled out** for this task before any OCR ran, in response to the
+   owner surfacing a (correct-for-Linux, not-for-this-machine) suggestion to install ROCm-enabled
+   PyTorch for GPU acceleration. This machine's GPU is an AMD Ryzen 5 PRO 4650U's integrated Radeon
+   Graphics (Renoir, `gfx90c`). AMD's own Windows ROCm/PyTorch support matrix (checked directly,
+   not from memory) covers only Radeon RX 9000/7000 discrete GPUs and Ryzen AI APUs with
+   `gfx1150`/`gfx1151` (the 2025+ Ryzen AI 300/Max generation) - `gfx90c` is several generations
+   older and absent from that list entirely, on Windows or otherwise; a documented Linux-only
+   community workaround for `gfx90c` (forcing `HSA_OVERRIDE_GFX_VERSION=9.0.0`) does not apply here
+   since this session runs on Windows. `torch-directml` (DirectX 12, cross-vendor) was named as the
+   realistic alternative but not attempted - the owner declined once the CPU chunked pipeline
+   (gotcha 2) was already working reliably, and DirectML's narrower op coverage plus this iGPU's
+   modest compute budget made the expected win small relative to the setup/failure risk. A RunPod
+   (rented cloud GPU) alternative was also proposed and declined for this task: real per-minute
+   cost requiring a payment method and account setup neither available nor something to set up
+   unilaterally, and - independently of cost - uploading a redistribution-restricted scan to a
+   third-party cloud runtime reintroduces exactly the exposure gotcha-0's local-tooling choice was
+   meant to avoid.
+
+## D-163: T-174 - DSTU 9041 extraction/verification: copyright framing, curve math, erratum found
+
+**Copyright framing, decided before any extraction work started**: the owner's own framing -
+copyright covers the standard's specific prose/expression, not the algorithm, its parameters, or
+its test vectors (facts) - is the same idea-expression distinction this project already relies on
+throughout `docs/papers/*.pdf` handling (the PDFs themselves never committed; extracted vectors and
+pseudocode committed freely, e.g. Kalyna/Kupyna/DSTU-4145's own `tests/vectors/*.json` and
+`docs/pseudocode/*.md`). Applied here identically: `docs/papers/DSTU_9041-2020.pdf` and its OCR
+transcript stay gitignored (T-173/D-162); `docs/pseudocode/dstu9041.md` (algorithm structure,
+resolved ambiguities, cited clause numbers) and `crates/dstu-core/tests/vectors/dstu9041/*.json`
+(curve parameters, worked-example data) are committed freely, following the exact precedent already
+established for every other DSTU algorithm in this repo.
+
+**Why direct page-image transcription was necessary, not OCR text order.** `advisor()` flagged this
+before any numeric work started: cryptographic curve parameters need per-digit verification, and
+the gitignored OCR transcript's own table cells come out of Surya in a scrambled column order for
+multi-column tables (confirmed in D-162's own findings) - unusable for this without re-deriving
+structure. Direct image transcription turned out to have the **same** failure mode OCR has for long
+runs of an identical character: a first manual read of `p` (Table B.1/Annex Г.1's `l(p)=256` prime)
+counted roughly 87 hex digits instead of the correct 64 (a leading run of 61 `F`s misjudged by
+eye), and `n` similarly over-counted its zero-run by more than 50 digits. Both were only caught
+because the resulting integers failed a primality check outright - **the empirical check is what
+caught the transcription error, not increased care in reading**. Fixed by writing a small Python/
+PIL script that binarizes a cropped page-image row and counts vertical whitespace gaps between
+character strokes - an objective column-darkness stroke count, not a human/AI eyeball count -
+which nailed both runs exactly (61 and 31 respectively) and let every subsequent check
+(primality, curve-membership, scalar multiplication) pass cleanly. **Generalize this: any future
+transcription of a long same-character run (repeated digit/zero/F runs, common in cryptographic
+moduli) should be stroke-counted programmatically, never eyeballed, regardless of whether OCR or a
+human/AI vision read produced the candidate value.**
+
+**Curve equation form - a real, non-obvious pitfall, not a typo.** DSTU 9041's own equation is
+`x²+a·y²=d·x²·y²+1` (clause 5.5, confirmed against the page image) - the *textbook* twisted-Edwards
+form (Bernstein-Lange and most implementations, including what a search for "twisted Edwards
+addition formula" returns) is `a·X²+Y²=1+d·X²·Y²`, with `a` attached to `X` (the *first* named
+coordinate), not `Y` (the *second*, as DSTU 9041 has it). These are the same curve family with `x`
+and `y` swapped - **applying the textbook addition formula directly, without noticing the swap,
+produces a formula that looks plausible, runs without error, and returns wrong points for every
+scalar multiplication.** This is exactly what happened on the first implementation attempt this
+session: individual points (`P`, `Q`, `R`, `T` from Annex Г.1) all correctly satisfied the curve
+equation (so the *equation* transcription was right), yet `7·P != R` and `7·Q != T` under the
+naive formula. Re-derived properly by substitution (`X=y, Y=x` maps DSTU 9041's curve exactly onto
+the textbook form) and re-verified: correct addition law is
+`x3=(x1x2-a·y1y2)/(1-d·x1x2y1y2), y3=(x1y2+y1x2)/(1+d·x1x2y1y2)`, and the neutral element is
+`(1,0)`, not `(0,1)` (also swapped). **The lesson generalizes beyond this one curve**: whenever a
+non-normative-source curve equation doesn't match a well-known reference form character-for-
+character, check for a coordinate swap or sign convention difference before assuming the textbook
+addition law applies - a curve-membership check alone does not catch this, only testing actual
+scalar multiplication against an independent worked example does. `docs/pseudocode/dstu9041.md`
+now states the derivation and the citation (Додаток Б.4's own projective addition formula, present
+in the primary text, independently confirms the same swapped form once derived) rather than only
+the equation.
+
+**`d`'s hex-vs-decimal convention almost caused a second false negative.** Annex Г's own intro
+states every parameter in its worked examples is given in hex, "each four bits as one hex digit" -
+but the *curve equation itself* (`x²+2y²=18x²y²+1`, printed inline in prose, not in the
+hex-labeled numeric tables) doesn't repeat that label locally. Read `d=18` as decimal on the first
+attempt (curve-membership check failed for every point); solving `d` directly from the base point's
+own coordinates and the equation (`d = (x²+a·y²-1)·(x²y²)⁻¹ mod p`) gave `24` - i.e., `0x18` -
+confirming the hex convention applies here too, silently, with no local label. **Any bare small
+integer appearing inline in this standard's prose should be assumed hex, not decimal, unless
+proven otherwise** - the reverse of most technical documents' convention, and easy to get backwards
+without the equation-solving cross-check that caught it here.
+
+**Addendum, same day: the "erratum" above was this project's own misread, not the standard's -
+caught by following through on the owner's direct request to resolve `t` rather than leaving it
+open.** Annex Г states plainly that every parameter in its worked examples is hex, four bits per
+digit - already correctly applied to `d=0x18=24` earlier in the same verification pass - but a
+first read of `e=25` didn't re-apply that same rule and flagged a false inconsistency instead.
+`e=0x25=37` decimal, and `37·P == Q` holds exactly: **there is no `e`/`Q` erratum at all.** Left in
+this log rather than deleted, because the failure mode is the actual lesson: finding a convention
+once does not mean it gets applied every time it recurs in the same document - each occurrence
+needs the same check applied fresh, not assumed carried-over from memory.
+
+**The real erratum, found while resolving `t`: a single dropped hex digit in Annex Г.1's own
+printed ciphertext, confirmed against this project's own `hazmat::kalyna_kw` - not left
+unverified.** The prior version of this entry reported `t` as unverified (odd hex-digit count,
+~190 digits, cause unisolated). Root cause found: the actual Kalyna-256/256-KW plaintext is **not**
+`M'` alone (one 256-bit block) but `M' ‖ 0x00×32` - `M'` padded with a full second all-zero
+256-bit block, making the real KW input 64 bytes (2 blocks), which correctly wraps to 96 bytes (3
+blocks) per DSTU 7624's own `n=2(1+r)` block-count rule. Computing `Kalyna256_256Kw::wrap` (this
+crate's own code, unmodified) on that 64-byte input reproduces the standard's own printed `t`
+**exactly**, once one specific single hex digit the source is missing (`0`, silently dropped
+between `...B3CE` and `F710...` in the printed text) is restored - confirmed by inserting the
+digit back and diffing all 192 hex digits against this project's freshly-computed value: exact
+match, not merely "looks close." **This is now a real, independently-confirmed second erratum in
+the standard's own published informative annex** (a genuine single-character print/scan-level
+drop, reproduced identically across repeated independent re-reads of the same page image before
+concluding the source has the error, not this project's transcription) - and simultaneously the
+strongest evidence yet that `hazmat::kalyna_kw`'s Kalyna-256/256-KW implementation is bit-exact
+with the standard's own construction, not merely self-consistent. `t`/`C` are committed in
+`crates/dstu-core/tests/vectors/dstu9041/g1-worked-example.json` with the digit restored and both
+the erratum and the correction documented inline - not omitted, per the owner's explicit request to
+resolve this rather than leave it as a standing gap.
+
+**One genuine open question remains, clearly separated from the resolved erratum above**: *why*
+the real Kalyna-KW input needs that second all-zero block at all - clause 5.7/5.8/Table 1 alone
+only account for a 32-byte (1-block) `M'`, with nothing in the scanned text explaining the extra
+block. Two live hypotheses, neither confirmed: DSTU 7624's own KW mode may have an unstated 2-block
+minimum specific to how DSTU 9041 invokes it (Bouncy Castle's own `DSTU7624WrapEngine` imposes no
+such minimum on generic KW, so this would be a DSTU 9041-specific rule, not inherited); or clause
+11's own wording (not fully captured by this document's transcription) specifies an additional
+padding field this pass missed. Needs either the still-missing clauses 6.5-6.12 or a fresh, careful
+full re-read of clause 11 before this is settled - recorded as open, not guessed at, matching this
+entry's own standard for every other gap.
+
+**Scope deliberately not started this session, per the project's own Tier C precedent**: writing
+`hazmat::dstu9041` (or its two real new prerequisites, `F_p` bignum arithmetic and
+`hazmat::kalyna_kw_p`) needs its own `advisor()` + plan-mode pass first, same bar T-172 and earlier
+primitive work already cleared before any code was written - this session's own scope was
+extraction and verification only, per the owner's explicit sequencing request.
+
+## D-164: T-175 - a genuinely stuck local `cargo miri test -p dstu-core-capi` process, two distinct
+uncovered root causes, both fixed and confirmed by a clean re-run
+
+**Found, not caused, by this session**: a `cargo +nightly miri test -p dstu-core-capi` process left
+running from a previous session, flagged by the owner ("it's been going a long time, we were
+measuring how long it takes so we could fix it"). Measured before touching anything: `miri.exe` had
+accumulated 38468 CPU-seconds (~641 CPU-minutes, ~10.68 hours) over 649.3 minutes wall-clock and was
+still climbing - roughly 7.6x D-59's own "~84 min measured locally" figure for the equivalent
+`dstu-core` suite, on a C ABI crate whose own test file is a thin FFI wrapper layer, not new crypto
+math.
+
+**Root cause 1 (found first): the C ABI crate's own FFI tests never inherited D-59's `Point::
+scalar_multiply` exemption.** `crates/dstu-core-capi/tests/ffi_tests.rs` has two tests routing
+through `crypto_sign`'s FFI wrappers - `sign_verify_round_trip_and_forgery_rejection`
+(`dstu_sign_key_generate` x2, `dstu_sign`, `dstu_verify` x2) and
+`sign_digest_matches_sign_of_the_same_hash` (`dstu_sign_key_generate`, `dstu_sign_digest`,
+`dstu_verify_digest`) - both reach DSTU 4145's 163-iteration EC ladder the same way `dstu-core`'s own
+`crypto_sign.rs`/`dstu4145_signature.rs` tests do, but this file never got the identical
+`#[cfg_attr(miri, ignore = "..."]` attribute those two files already carry. A real coverage gap
+introduced when T-158 added the C ABI crate's FFI suite without carrying that exemption over - not a
+new bug in the ladder itself. Fixed by adding the same attribute (same message, same T-100 citation)
+to both tests.
+
+**That fix alone was insufficient - a second, distinct root cause was still present.** Killed the
+stale processes (`taskkill`) and re-ran with just that one fix; the new run reached ~103 CPU-minutes
+before being killed again and re-diagnosed, because its output had been piped through `| tail -40`
+(the same class of mistake previously fixed on an unrelated Surya-OCR run this session) - `tail`
+buffers until EOF, so the run was invisible for its entire duration even though `target/miri`'s file
+timestamps and `miri.exe`'s steadily climbing memory/CPU proved it was genuinely computing, not
+hung. Re-run a second time with output redirected directly to a file (`> log 2>&1`, no pipe) and
+`--test-threads=1`: the log showed execution stopped, unfinished, on test #8 of 17 -
+`pwhash_hash_and_verify_round_trip_and_rejects_wrong_password`.
+
+**Root cause 2: Argon2id under Miri, not the EC ladder.** `dstu-core-capi/Cargo.toml`
+unconditionally enables dstu-core's `pwhash` feature (`features = ["std", "selftest", "pwhash"]`),
+so this crate's FFI test suite runs an Argon2id hash (`Strength::Interactive`, m=65536 KiB) that
+`dstu-core`'s own default-feature miri run never exercises (`pwhash` is opt-in there, off by
+default - this asymmetry is why `dstu-core`'s ~84-minute figure never surfaced this problem: the
+combination that triggers it only exists in `dstu-core-capi`, D-74's "an untested feature
+combination can hide a real problem" pattern recurring). Argon2id's memory-hardness (64 MiB working
+buffer by design) combined with Miri's own per-byte provenance tracking over that whole allocation
+made this single test intractably slow to interpret - unrelated to `Point::scalar_multiply` and
+needing its own citation, not a copy-pasted "163-iteration ladder" reason (D-25's discipline on
+not reusing a wrong justification because it happens to produce a passing-looking fix). Fixed with
+its own `#[cfg_attr(miri, ignore = "...")]`, citing the actual mechanism (memory-hard KDF + Miri
+provenance tracking over a 64 MiB buffer), not the unrelated ladder.
+
+**A third candidate was checked and cleared, not assumed safe.** `selftest_passes` calls
+`dstu_selftest()`, which per this crate's own contract re-verifies DSTU 4145's Annex B.1 vector -
+also a path through the EC ladder, and also missing any pre-existing exemption. Left deliberately
+unflagged and verified empirically rather than pre-emptively ignored: the clean re-run's log shows
+`test selftest_passes ... ok`, completing as part of the suite's overall 505.81s - a single
+Annex-B.1-vector verify call is cheap enough under Miri that it does not need the same treatment as
+the round-trip tests that call keygen/sign/verify multiple times each. Recorded here so a future
+session doesn't have to re-derive this the same way, and doesn't mistakenly add an unneeded
+exemption "to be safe."
+
+**Confirmed by a real clean re-run, not assumed from the diagnosis**: `cargo +nightly miri test -p
+dstu-core-capi`, redirected properly this time, finished in **505.81s (~8.4 minutes)** -
+`ffi_tests.rs`: 14 passed, 0 failed, 3 ignored (the two `crypto_sign` tests plus the new `pwhash`
+test), 0 measured, 0 filtered out. Down from a process that had already run 649.3 minutes / 10.68
+CPU-hours without ever finishing. Same "verify, don't assume" standard as this file's own
+CI-conclusion rule (T-100/D-59's own precedent) - the fix was not declared done until an actual green
+run existed, not once the diagnosis merely looked right.
+
+**Follow-on hardening, done the same session so this class of problem localizes faster next time**:
+`cargo xtask miri` now takes an optional package argument (`cargo xtask miri dstu-core-capi` runs
+`-p <pkg>` instead of `--workspace`), and `.github/workflows/rust.yml`'s `miri` job is now a
+per-crate matrix (`dstu-core`, `uacrypt`, `dstu-core-capi`, `fail-fast: false`) instead of one
+combined job/log - so a future stuck test in any one crate shows up as its own failing job instead
+of being indistinguishable from the other two crates' results inside a single `--workspace` log, the
+exact diagnostic friction this incident actually had.

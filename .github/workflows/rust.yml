@@ -81,8 +81,13 @@ jobs:
       - run: cargo xtask test
 
   miri:
-    name: cargo miri test
+    name: cargo miri test (${{ matrix.package }})
     runs-on: ubuntu-latest
+    # Split into a per-crate matrix (T-175/D-164) - previously one `--workspace` job/log covering
+    # all three crates, which is exactly why a stuck `dstu-core-capi` test (missing
+    # `#[cfg_attr(miri, ignore)]`, T-175) wasn't distinguishable from the rest of the run without
+    # manually picking the log apart. `fail-fast: false` so one crate's timeout/failure doesn't hide
+    # the other two crates' results in the same push.
     # This job never completed on any push before docs/TASKS.md T-100 (D-59) - PROPTEST_CASES=1 alone
     # didn't bound its wall-clock time, because the bottleneck is per-case interpretation cost, not
     # case *count*: every #[test] that calls `Point::scalar_multiply` (DSTU 4145's 163-iteration
@@ -90,7 +95,8 @@ jobs:
     # `Point::add`/`double` too) - not just the two proptest suites originally suspected - takes
     # minutes per call under Miri's interpreter. Fixed at the source, not here: those tests now
     # carry `#[cfg_attr(miri, ignore = "...")]` (dstu4145_curve.rs, dstu4145_gf2m.rs,
-    # dstu4145_signature.rs, crypto_sign.rs), so this stays the one-liner below rather than a
+    # dstu4145_signature.rs, crypto_sign.rs, and dstu-core-capi's ffi_tests.rs as of T-175), so this
+    # stays the one-liner below rather than a
     # skip-list duplicating test names in two places (a CI-side skip list was considered and
     # rejected once already, T-85 - same drift risk: a new EC-heavy test added later without the
     # attribute silently reintroduces the timeout, but at least it's discoverable in the same file
@@ -109,7 +115,14 @@ jobs:
     # ordinary CI runner variance tipping an already-razor-thin margin, not a code regression. Raised
     # to 240 (well under GitHub-hosted runners' 360-min hard cap) for real headroom instead of
     # nudging the number up by the smallest amount that would have covered just this one overrun.
+    # `uacrypt`/`dstu-core-capi` have no equivalent measured-locally number yet (only ever run as
+    # part of the combined workspace job before T-175) - kept at the same 240 cap as `dstu-core`
+    # rather than guessing a tighter one; tighten per-crate once each has its own real history.
     timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [dstu-core, uacrypt, dstu-core-capi]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@nightly
@@ -123,7 +136,7 @@ jobs:
       # keeps every proptest suite in the workspace (spread across ~8 files with no shared naming
       # convention to filter on) from making this job impractically slow under interpretation,
       # while still exercising each one at least once under Miri rather than skipping them outright.
-      - run: cargo +nightly miri test --workspace
+      - run: cargo +nightly miri test -p ${{ matrix.package }}
         env:
           MIRIFLAGS: -Zmiri-disable-isolation
           PROPTEST_CASES: 1

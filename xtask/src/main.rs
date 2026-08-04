@@ -24,7 +24,7 @@ fn main() -> ExitCode {
         "test" => test(),
         "fmt" => fmt(args.any(|a| a == "--check")),
         "clippy" => clippy(),
-        "miri" => miri(),
+        "miri" => miri(args.next().as_deref()),
         "kani" => kani(),
         "fuzz" => fuzz(),
         "audit" => audit(),
@@ -65,12 +65,12 @@ fn print_usage() {
         "cargo xtask <command>\n\n\
          Always available (only need cargo/rustup, see README.md \"Building from source\"):\n\
          \x20 build          cargo build --workspace, --all-features + --no-default-features (no_std check) + dstu-core's no_std/getrandom combo (D-74)\n\
-         \x20 test           cargo test --workspace --all-features\n\
+         \x20 test           cargo test --workspace (default profile) + --all-features\n\
          \x20 fmt [--check]  cargo fmt --all, or --check to verify without writing\n\
-         \x20 clippy         cargo clippy --workspace --all-features -- -D warnings\n\
+         \x20 clippy         cargo clippy --workspace -- -D warnings (default profile) + --all-features\n\
          \x20 ci             fmt --check + build + test + clippy, then best-effort for the optional tools below\n\n\
          Optional (each checks its tool is installed first and prints an install hint if not):\n\
-         \x20 miri           cargo +nightly miri test --workspace\n\
+         \x20 miri [pkg]     cargo +nightly miri test --workspace, or -p <pkg> to scope to one crate (dstu-core, uacrypt, dstu-core-capi) - T-175\n\
          \x20 kani           cargo kani -p dstu-core (bounded model checking, see gf2m163.rs's kani_proofs, D-102) - Linux/macOS only, not Windows\n\
          \x20 fuzz           short cargo-fuzz smoke run against every target (see FUZZ_TARGETS)\n\
          \x20 audit          cargo audit (RustSec advisories)\n\
@@ -178,7 +178,13 @@ fn build() -> bool {
 }
 
 fn test() -> bool {
-    run("cargo", &["test", "--workspace", "--all-features"], None)
+    // Default (fused-table, unrolled-Kalyna) profile first - `--all-features` below also turns on
+    // `small-tables`, which changes production behavior (not just adds an unrelated flag), so it
+    // no longer stands in for "test the default profile" (D-39, reconfirmed T-172/D-161: the same
+    // gap would have hidden T-172's own new unrolled code path from this command). Mirrors
+    // `.github/workflows/rust.yml`'s `test` job, which already has this split.
+    run("cargo", &["test", "--workspace"], None)
+        && run("cargo", &["test", "--workspace", "--all-features"], None)
 }
 
 fn fmt(check: bool) -> bool {
@@ -190,7 +196,12 @@ fn fmt(check: bool) -> bool {
 }
 
 fn clippy() -> bool {
+    // Same default-profile-first reasoning as `test()` above (D-39/T-172/D-161).
     run(
+        "cargo",
+        &["clippy", "--workspace", "--", "-D", "warnings"],
+        None,
+    ) && run(
         "cargo",
         &[
             "clippy",
@@ -204,14 +215,22 @@ fn clippy() -> bool {
     )
 }
 
-fn miri() -> bool {
+/// `cargo xtask miri` alone still runs the whole workspace (unchanged default); an optional
+/// package name (`cargo xtask miri dstu-core-capi`) scopes it to `-p <pkg>` instead, so a slow
+/// or stuck crate can be isolated and re-run on its own rather than re-running everything else
+/// alongside it (docs/TASKS.md T-175 - a stuck `dstu-core-capi` test was indistinguishable from
+/// the rest of a `--workspace` run until picked apart by hand).
+fn miri(package: Option<&str>) -> bool {
     if !require(
         "cargo-miri",
         "rustup component add miri --toolchain nightly",
     ) {
         return false;
     }
-    run("cargo", &["+nightly", "miri", "test", "--workspace"], None)
+    match package {
+        Some(pkg) => run("cargo", &["+nightly", "miri", "test", "-p", pkg], None),
+        None => run("cargo", &["+nightly", "miri", "test", "--workspace"], None),
+    }
 }
 
 /// Bounded model checking (`kani_proofs` mod in `gf2m163.rs`, `docs/DECISIONS.md` D-102) - unlike
@@ -1046,8 +1065,9 @@ fn ci() -> bool {
     }
 
     println!("\nMandatory checks passed. Running optional layers best-effort:\n");
+    let optional_miri: fn() -> bool = || miri(None);
     for optional in [
-        miri,
+        optional_miri,
         kani,
         fuzz,
         audit,

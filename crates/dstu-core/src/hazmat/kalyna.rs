@@ -429,31 +429,76 @@ fn state_array_mut<const NB: usize>(full: &mut [Column; MAX_NB]) -> &mut [Column
     }
 }
 
+/// Emits one interior round per index in `$idx`, in exactly the order listed - a genuine
+/// straight-line unroll, not a `for` loop for the optimizer to decide whether to unroll (T-172/
+/// D-160: making the round count a const generic alone, T-171, left the compiler with a real
+/// `for`-loop-with-branch even though it could see the trip count at compile time). `$round_fn` is
+/// `encipher_round_n` for encrypt, `fused_inv_round_n` for decrypt; `$keys` is `round_keys` for
+/// encrypt, `dec_keys` for decrypt; the caller supplies `$idx` in the exact order the original loop
+/// visited - ascending for encrypt, descending for decrypt (`decrypt_with_schedule` walks
+/// `dec_keys[1..nr].iter().rev()`). Not compiled under `small-tables`, which stays on the plain
+/// runtime loop deliberately (T-172/D-161) - unused otherwise (D-74's "one specific feature
+/// combination" pattern).
+#[cfg(not(feature = "small-tables"))]
+macro_rules! unroll_rounds {
+    ($round_fn:ident, $state:expr, $keys:expr, $nb:expr; $($idx:literal),+ $(,)?) => {
+        {
+            $(
+                $round_fn($state);
+                xor_round_key($state, &$keys[$idx][..$nb]);
+            )+
+        }
+    };
+}
+
 /// Runs the encryption rounds against an already-expanded key schedule - shared by
 /// `encrypt_generic` (expands, uses once, zeroizes) and `ExpandedKey::encrypt_block` (reuses a
 /// cached schedule across many calls, D-28 stage 3). Returns a `MAX_NB*ROWS`-byte buffer; callers
 /// truncate to `NB*ROWS` (the actual block size).
 ///
-/// `NB` is a const generic, not the runtime `nb: usize` the pre-T-128 version took, so the
-/// interior loop over `encipher_round_n` gets a compile-time-known trip count per monomorphized
-/// instantiation (one per macro-invocation call site, i.e. per block size 2/4/8) instead of a
-/// runtime branch - see `docs/dstu-crypto-project.md`/`docs/DECISIONS.md` T-128 for the UAPKI
-/// `BT_xor128/256/512`-motivated comparison this responds to.
-fn encrypt_with_schedule<const NB: usize>(
+/// `NB`/`NR` are both const generics, so every monomorphized instantiation - one per
+/// `kalyna_variant!` call site, keyed on `(NB, NR)` together since `NB=2`/`NB=4` are each shared by
+/// two different round counts - gets its interior rounds emitted as a genuine straight-line
+/// sequence via `unroll_rounds!`, not a runtime loop (T-172/D-160, following up on T-128's `NB`
+/// const-genericization and T-171's negative const-`NR`-alone result - see
+/// `docs/dstu-crypto-project.md`/`docs/DECISIONS.md` T-128 for the UAPKI `BT_xor128/256/512`-
+/// motivated comparison this responds to).
+fn encrypt_with_schedule<const NB: usize, const NR: usize>(
     round_keys: &RoundKeys,
     plaintext: &[u8],
-    nr: usize,
 ) -> [u8; MAX_NB * ROWS] {
+    const {
+        assert!(
+            NR == 10 || NR == 14 || NR == 18,
+            "NR must be one of the three round counts every kalyna_variant! call site uses"
+        );
+    };
+
     let mut full_state = columns_from_bytes(plaintext, NB);
     let state = state_array_mut::<NB>(&mut full_state);
 
     add_round_key(state, &round_keys[0][..NB]);
-    for round_key in &round_keys[1..nr] {
+    #[cfg(not(feature = "small-tables"))]
+    match NR {
+        10 => unroll_rounds!(encipher_round_n, state, round_keys, NB; 1, 2, 3, 4, 5, 6, 7, 8, 9),
+        14 => {
+            unroll_rounds!(encipher_round_n, state, round_keys, NB; 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13);
+        }
+        18 => {
+            unroll_rounds!(encipher_round_n, state, round_keys, NB; 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17);
+        }
+        _ => unreachable!("ruled out by the const assert above"),
+    }
+    // `small-tables` stays on the plain runtime loop deliberately (T-172/D-161, user decision) -
+    // fully unrolling costs ~22% extra `.text` crate-wide, directly opposed to what a
+    // flash-constrained target picks this profile for; `fused` users get the full unroll above.
+    #[cfg(feature = "small-tables")]
+    for round_key in &round_keys[1..NR] {
         encipher_round_n(state);
         xor_round_key(state, &round_key[..NB]);
     }
     encipher_round_n(state);
-    add_round_key(state, &round_keys[nr][..NB]);
+    add_round_key(state, &round_keys[NR][..NB]);
 
     let mut out = [0u8; MAX_NB * ROWS];
     for c in 0..NB {
@@ -464,20 +509,41 @@ fn encrypt_with_schedule<const NB: usize>(
 
 /// Runs the decryption rounds against an already-expanded key schedule and its `dec_keys`
 /// transform (`transform_keys_for_decrypt`) - the equivalent-inverse-cipher restructuring, D-30.
-/// `round_keys[0]`/`round_keys[nr]` (untransformed) are used for the two whitening steps at the
-/// ends; `dec_keys[1..nr]` (transformed) are used by the fused interior rounds.
-fn decrypt_with_schedule<const NB: usize>(
+/// `round_keys[0]`/`round_keys[NR]` (untransformed) are used for the two whitening steps at the
+/// ends; `dec_keys[1..NR]` (transformed) are used by the fused interior rounds, walked high-to-low
+/// via `unroll_rounds!` - see `encrypt_with_schedule`'s doc comment for why this is a genuine
+/// unroll rather than a `for` loop (T-172/D-160).
+fn decrypt_with_schedule<const NB: usize, const NR: usize>(
     round_keys: &RoundKeys,
     dec_keys: &RoundKeys,
     ciphertext: &[u8],
-    nr: usize,
 ) -> [u8; MAX_NB * ROWS] {
+    const {
+        assert!(
+            NR == 10 || NR == 14 || NR == 18,
+            "NR must be one of the three round counts every kalyna_variant! call site uses"
+        );
+    };
+
     let mut full_state = columns_from_bytes(ciphertext, NB);
     let state = state_array_mut::<NB>(&mut full_state);
 
-    sub_round_key(state, &round_keys[nr][..NB]);
+    sub_round_key(state, &round_keys[NR][..NB]);
     apply_inverse_matrix(state);
-    for dec_key in dec_keys[1..nr].iter().rev() {
+    #[cfg(not(feature = "small-tables"))]
+    match NR {
+        10 => unroll_rounds!(fused_inv_round_n, state, dec_keys, NB; 9, 8, 7, 6, 5, 4, 3, 2, 1),
+        14 => {
+            unroll_rounds!(fused_inv_round_n, state, dec_keys, NB; 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1);
+        }
+        18 => {
+            unroll_rounds!(fused_inv_round_n, state, dec_keys, NB; 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1);
+        }
+        _ => unreachable!("ruled out by the const assert above"),
+    }
+    // See `encrypt_with_schedule`'s matching comment - `small-tables` keeps the plain loop.
+    #[cfg(feature = "small-tables")]
+    for dec_key in dec_keys[1..NR].iter().rev() {
         fused_inv_round_n(state);
         xor_round_key(state, &dec_key[..NB]);
     }
@@ -496,14 +562,14 @@ fn decrypt_with_schedule<const NB: usize>(
 /// zeroizes the one-shot schedule. Returns a `MAX_NB*ROWS`-byte buffer; callers truncate to
 /// `nb*ROWS` (the actual block size). See `ExpandedKey` (D-28 stage 3) for callers that need to
 /// encrypt/decrypt many blocks under the same key without redoing `key_expand` every time.
-fn encrypt_generic<const NB: usize>(
+fn encrypt_generic<const NB: usize, const NR: usize>(
     key: &[u8],
     plaintext: &[u8],
     nk: usize,
     nr: usize,
 ) -> [u8; MAX_NB * ROWS] {
     let mut round_keys = key_expand(key, NB, nk, nr);
-    let out = encrypt_with_schedule::<NB>(&round_keys, plaintext, nr);
+    let out = encrypt_with_schedule::<NB, NR>(&round_keys, plaintext);
     // Last use of the derived key schedule - clear it rather than leave it for whatever the
     // stack slot holds next (see docs/SECURITY.md's Zeroize/ZeroizeOnDrop hard constraint, docs/DECISIONS.md
     // D-20). A plain overwrite could be optimized away as a dead store since the array is about to
@@ -513,7 +579,7 @@ fn encrypt_generic<const NB: usize>(
 }
 
 /// Shared implementation for all five variants' decryption. See `encrypt_generic`.
-fn decrypt_generic<const NB: usize>(
+fn decrypt_generic<const NB: usize, const NR: usize>(
     key: &[u8],
     ciphertext: &[u8],
     nk: usize,
@@ -521,7 +587,7 @@ fn decrypt_generic<const NB: usize>(
 ) -> [u8; MAX_NB * ROWS] {
     let mut round_keys = key_expand(key, NB, nk, nr);
     let mut dec_keys = transform_keys_for_decrypt(&round_keys, NB, nr);
-    let out = decrypt_with_schedule::<NB>(&round_keys, &dec_keys, ciphertext, nr);
+    let out = decrypt_with_schedule::<NB, NR>(&round_keys, &dec_keys, ciphertext);
     round_keys.zeroize();
     dec_keys.zeroize();
     out
@@ -542,7 +608,7 @@ macro_rules! kalyna_variant {
                 key: &[u8; $key_bytes],
                 block: &[u8; $block_bytes],
             ) -> [u8; $block_bytes] {
-                let out = encrypt_generic::<$nb>(key, block, $nk, $nr);
+                let out = encrypt_generic::<$nb, $nr>(key, block, $nk, $nr);
                 let mut result = [0u8; $block_bytes];
                 result.copy_from_slice(&out[..$block_bytes]);
                 result
@@ -554,7 +620,7 @@ macro_rules! kalyna_variant {
                 key: &[u8; $key_bytes],
                 block: &[u8; $block_bytes],
             ) -> [u8; $block_bytes] {
-                let out = decrypt_generic::<$nb>(key, block, $nk, $nr);
+                let out = decrypt_generic::<$nb, $nr>(key, block, $nk, $nr);
                 let mut result = [0u8; $block_bytes];
                 result.copy_from_slice(&out[..$block_bytes]);
                 result
@@ -596,7 +662,7 @@ macro_rules! kalyna_variant {
             /// Encrypts one block using the cached schedule - no `key_expand` call.
             #[must_use]
             pub fn encrypt_block(&self, block: &[u8; $block_bytes]) -> [u8; $block_bytes] {
-                let out = encrypt_with_schedule::<$nb>(&self.round_keys, block, $nr);
+                let out = encrypt_with_schedule::<$nb, $nr>(&self.round_keys, block);
                 let mut result = [0u8; $block_bytes];
                 result.copy_from_slice(&out[..$block_bytes]);
                 result
@@ -605,7 +671,7 @@ macro_rules! kalyna_variant {
             /// Decrypts one block using the cached schedule - no `key_expand` call.
             #[must_use]
             pub fn decrypt_block(&self, block: &[u8; $block_bytes]) -> [u8; $block_bytes] {
-                let out = decrypt_with_schedule::<$nb>(&self.round_keys, &self.dec_keys, block, $nr);
+                let out = decrypt_with_schedule::<$nb, $nr>(&self.round_keys, &self.dec_keys, block);
                 let mut result = [0u8; $block_bytes];
                 result.copy_from_slice(&out[..$block_bytes]);
                 result
@@ -792,7 +858,7 @@ mod decrypt_fusion_tests {
 
                     let dec_keys = transform_keys_for_decrypt(&round_keys, $nb, $nr);
                     let naive = naive_decrypt_with_schedule(&round_keys, &ciphertext, $nb, $nr);
-                    let fused = decrypt_with_schedule::<$nb>(&round_keys, &dec_keys, &ciphertext, $nr);
+                    let fused = decrypt_with_schedule::<$nb, $nr>(&round_keys, &dec_keys, &ciphertext);
                     prop_assert_eq!(naive, fused);
                 }
             }
@@ -800,7 +866,84 @@ mod decrypt_fusion_tests {
     }
 
     fusion_matches_naive_test!(decrypt_fusion_matches_naive_nb2_nr10, 2, 10);
+    fusion_matches_naive_test!(decrypt_fusion_matches_naive_nb2_nr14, 2, 14);
     fusion_matches_naive_test!(decrypt_fusion_matches_naive_nb4_nr14, 4, 14);
     fusion_matches_naive_test!(decrypt_fusion_matches_naive_nb4_nr18, 4, 18);
     fusion_matches_naive_test!(decrypt_fusion_matches_naive_nb8_nr18, 8, 18);
+}
+
+/// Encrypt twin of `decrypt_fusion_tests` above, covering the other half of T-172's genuine
+/// unroll (`encrypt_with_schedule`'s `unroll_rounds!` dispatch) - checks the unrolled sequence
+/// against a runtime-`nr` reference built from the still-retained `#[allow(dead_code)]`
+/// `encipher_round`, for all five `(nb, nr)` pairs used by the real `kalyna_variant!` invocations.
+#[cfg(test)]
+mod encrypt_fusion_tests {
+    use super::{
+        add_round_key, columns_from_bytes, encipher_round, encrypt_with_schedule, xor_round_key,
+        Column, MAX_NB, ROUND_KEYS_LEN, ROWS, ZERO_COLUMN,
+    };
+    use proptest::prelude::*;
+
+    type RoundKeys = [[Column; MAX_NB]; ROUND_KEYS_LEN];
+
+    /// Runtime-`nr` reference, mirroring `encrypt_with_schedule`'s own pre-T-172 loop shape -
+    /// independent of `unroll_rounds!`, so a transposed index/off-by-one in the unrolled dispatch
+    /// would show up as a mismatch here rather than being invisible to both sides.
+    fn naive_encrypt_with_schedule(
+        round_keys: &RoundKeys,
+        plaintext: &[u8],
+        nb: usize,
+        nr: usize,
+    ) -> [u8; MAX_NB * ROWS] {
+        let mut state = columns_from_bytes(plaintext, nb);
+        add_round_key(&mut state[..nb], &round_keys[0][..nb]);
+        for round_key in &round_keys[1..nr] {
+            encipher_round(&mut state[..nb]);
+            xor_round_key(&mut state[..nb], &round_key[..nb]);
+        }
+        encipher_round(&mut state[..nb]);
+        add_round_key(&mut state[..nb], &round_keys[nr][..nb]);
+
+        let mut out = [0u8; MAX_NB * ROWS];
+        for c in 0..nb {
+            out[c * ROWS..(c + 1) * ROWS].copy_from_slice(&state[c]);
+        }
+        out
+    }
+
+    fn arb_round_key_bytes(nb: usize, nr: usize) -> impl Strategy<Value = Vec<u8>> {
+        proptest::collection::vec(any::<u8>(), (nr + 1) * nb * ROWS)
+    }
+
+    fn arb_block(nb: usize) -> impl Strategy<Value = Vec<u8>> {
+        proptest::collection::vec(any::<u8>(), nb * ROWS)
+    }
+
+    macro_rules! fusion_matches_naive_test {
+        ($test_name:ident, $nb:literal, $nr:literal) => {
+            proptest! {
+                #[test]
+                fn $test_name(
+                    key_bytes in arb_round_key_bytes($nb, $nr),
+                    plaintext in arb_block($nb),
+                ) {
+                    let mut round_keys: RoundKeys = [[ZERO_COLUMN; MAX_NB]; ROUND_KEYS_LEN];
+                    for i in 0..=$nr {
+                        let start = i * $nb * ROWS;
+                        round_keys[i] = columns_from_bytes(&key_bytes[start..start + $nb * ROWS], $nb);
+                    }
+
+                    let naive = naive_encrypt_with_schedule(&round_keys, &plaintext, $nb, $nr);
+                    let unrolled = encrypt_with_schedule::<$nb, $nr>(&round_keys, &plaintext);
+                    prop_assert_eq!(naive, unrolled);
+                }
+            }
+        };
+    }
+
+    fusion_matches_naive_test!(encrypt_fusion_matches_naive_nb2_nr10, 2, 10);
+    fusion_matches_naive_test!(encrypt_fusion_matches_naive_nb2_nr14, 2, 14);
+    fusion_matches_naive_test!(encrypt_fusion_matches_naive_nb4_nr14, 4, 14);
+    fusion_matches_naive_test!(encrypt_fusion_matches_naive_nb4_nr18, 4, 18);
+    fusion_matches_naive_test!(encrypt_fusion_matches_naive_nb8_nr18, 8, 18);
 }
