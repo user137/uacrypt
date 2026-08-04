@@ -300,6 +300,20 @@ Full detail and rationale in `docs/SECURITY.md` — this is the compressed versi
   Bouncy Castle's `hash2FieldElement` (expects its `hash` parameter pre-reversed relative to the
   standard's own convention) without flagging the requirement — D-25's follow-up entries,
   `docs/pseudocode/dstu4145.md`.
+- **Transcribing long same-character runs (repeated `F`/`0` digits in a hex modulus, etc.) from a
+  page image is exactly as failure-prone as OCR is for the same pattern — a human/AI eyeball count
+  can silently miscount by dozens of digits.** Confirmed doing DSTU 9041 extraction (T-174): a
+  manual re-read of a 256-bit prime's hex string overcounted a 61-`F` run as ~87 characters, caught
+  only because the resulting integer failed a primality check. Stroke-count such runs
+  programmatically (binarize the cropped row, count column-darkness gaps between glyphs) instead
+  of reading them by eye, and verify the result against an independent property (primality,
+  curve-membership, a known scalar multiple) before trusting it.
+- **Finding a numeric convention once (e.g. "this document's bare integers are hex, not decimal")
+  does not mean it was applied every time it recurs in the same source** — re-check each
+  occurrence fresh. Confirmed doing DSTU 9041 extraction (T-174/D-163): correctly identified a
+  hex-not-decimal convention for one parameter, then independently misread a *different* parameter
+  in the same worked example as decimal minutes later, flagging a false "erratum" before catching
+  that the same rule should have applied there too.
 - **Don't trust green tests alone for security-critical code.** Two corollaries from DSTU 4145 (D-25):
   - **A test-vector fix not traceable to a specific citation is suspect.** If passing requires
     changing the test's own input transformation (reversing bytes, reordering fields), that change
@@ -327,6 +341,14 @@ Full detail and rationale in `docs/SECURITY.md` — this is the compressed versi
   note.** CI's `cargo miri test` job genuinely passes now (T-100/D-59: root cause was every DSTU 4145
   EC-ladder/field-inversion test, not just the two suspected proptest suites — fixed via
   `#[cfg_attr(miri, ignore)]` plus a 150-min job timeout, ~84 min measured locally).
+- **A `git stash`/`git stash pop` A/B benchmark cycle can leave `cargo bench`'s compiled binary
+  stale** — `cargo`'s own change detection does not reliably fire across a stash/pop, and the result
+  reads as a huge, *reproducible* performance anomaly rather than as an error (confirmed T-172/D-161:
+  two clean reruns of the same benchmark both showed a ~3x "regression" on one Kalyna variant;
+  `objdump -d` on the actual bench binary showed pre-change mangled symbol names, proving it hadn't
+  recompiled). Before trusting any benchmark number that follows a stash cycle, force a rebuild
+  (`touch` the changed file) or verify the binary's own symbols — don't assume `cargo` caught the
+  change, the same "verify, don't assume" standard as the CI-conclusion rule below.
 - **A scoped local `cargo +nightly miri test` on a file with `proptest!` needs `PROPTEST_CASES` cut
   down explicitly** — the default 256 cases can mean tens of CPU-minutes with zero output under
   Miri's interpretation overhead (confirmed on `crypto_secretbox`'s suite: `$env:PROPTEST_CASES = "8"`
@@ -462,6 +484,12 @@ check) is in `docs/dstu-crypto-project.md` "Resources found".
   Kalyna, Kupyna, and DSTU 4145; Strumok's are UAPKI-attributed plus independently confirmed against
   two state-sourced supplementary vectors, still not confirmed against the paid official text — see
   `docs/ORACLES.md`/`docs/DECISIONS.md` D-15/D-16/D-104.
+- **DSTU 9041 is no longer hard-blocked (D-08/T-46's original framing)** — a partial primary-text
+  scan was obtained and OCR-transcribed (T-173), then arithmetically verified against this crate's
+  own `hazmat::kupyna`/`hazmat::kalyna_kw` for one full worked example, curve arithmetic included
+  (T-174/D-163). Still missing: clauses 6.5–6.12 (the actual point-arithmetic/primality/MOV
+  procedures) and two new primitives (`F_p` bignum arithmetic, `hazmat::kalyna_kw_p`) before
+  `hazmat::dstu9041` can be written — see `docs/pseudocode/dstu9041.md` for the full state.
 - Verify own implementation against Kalyna-reference and the other oracles in `docs/ORACLES.md`.
 - Hardware validation on STM32/ESP32 is a distinct post-MVP phase, not a claim of side-channel
   resistance (see MVP scope above).
