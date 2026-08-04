@@ -354,6 +354,16 @@ Full detail and rationale in `docs/SECURITY.md` — this is the compressed versi
   Miri's interpretation overhead (confirmed on `crypto_secretbox`'s suite: `$env:PROPTEST_CASES = "8"`
   brought a ~40-CPU-minute stall down to 1135.80s/~19 min, 0 UB). A stuck-looking empty output file
   with real accumulating CPU time (`Get-Process -Id <pid> | Select CPU`) means it's working, not hung.
+- **Never pipe a long-running `cargo`/`miri` command through `| tail -N` on Windows** — `tail`
+  buffers everything until EOF, so the log stays completely empty for the run's entire duration
+  (confirmed twice in one session: an OCR script, then a `cargo miri test` re-verification that
+  looked hung for ~103 CPU-minutes with zero output, D-164). Redirecting straight to a file
+  (`> log 2>&1`, no pipe) is **not** a full fix either — Windows fully-buffers non-tty stdout, so
+  the file can still read 0 bytes until the process exits. Use `Get-Process`'s growing CPU time as
+  the actual liveness signal (per the bullet above), and add `-- --test-threads=1` so that once the
+  log does flush (on exit, or after a deliberate kill), its last completed test name is exactly the
+  one that was still running — this is how a stuck-on-one-specific-test root cause (D-164) gets
+  found instead of guessed at.
 - **uapki's C test-vector struct literals use adjacent string-literal concatenation across
   `\`-continued lines** — a naive "grab every quoted string in file order" extractor desyncs the
   field count (bit OFB, D-53). Parse brace-delimited case blocks and concatenate adjacent string
@@ -408,6 +418,12 @@ Full detail and rationale in `docs/SECURITY.md` — this is the compressed versi
 - **Adding a new `cargo fuzz` target means syncing three places**: `fuzz/Cargo.toml`'s `[[bin]]`,
   `.github/workflows/rust.yml`'s `fuzz-smoke` matrix, `xtask/src/main.rs`'s `FUZZ_TARGETS` array —
   missing the third means the project's single QA entry point silently skips the new target.
+- **`xtask/src/main.rs`'s `ci()` runs every optional layer (`miri`, `kani`, `fuzz`, ...) from one
+  `[fn() -> bool; N]` array, which requires every element to share that exact signature.** Giving
+  one of those functions a parameter (`miri(package: Option<&str>)`, so `cargo xtask miri <pkg>`
+  can scope to one crate, D-164/T-175) doesn't fit in the array directly — bind a same-shaped
+  closure first (`let optional_miri: fn() -> bool = || miri(None);`) and put that in the array
+  instead of changing the array's element type.
 - **A `#[cfg(feature = "std")]`-gated variant on an otherwise-unconditional public error enum (not
   `#[non_exhaustive]`) changes that enum's variant count under Cargo's additive feature
   unification** — any dependency enabling this crate's `std` feature changes the enum for every
@@ -421,6 +437,12 @@ Full detail and rationale in `docs/SECURITY.md` — this is the compressed versi
 - **A Cargo feature/build combination outside the usual `--all-features`/default-profile runs can
   hide a real `dead_code` warning** until that exact combination is built — build-check every entry
   in the feature matrix individually (confirmed adding `getrandom`, D-74).
+- **The same "untested feature combination" pattern also hides a Miri-speed problem, not just a
+  `dead_code` warning** — `dstu-core-capi` unconditionally enables `dstu-core`'s `pwhash` feature,
+  so its FFI test suite runs Argon2id under Miri; `dstu-core`'s own miri run never does, since
+  `pwhash` is opt-in and off by default there. That specific combination (`pwhash` + Miri) only
+  exists in the downstream crate, so a downstream crate that force-enables a feature on its
+  dependency needs its own feature-matrix check, not just the upstream crate's (D-164).
 - **When a README example must mirror a doctest's code verbatim, diff the two programmatically**
   rather than eyeballing — caught real silent drift this way (T-120/D-75).
 - **When a session accumulates more than one design fork resolved by implementation rather than
