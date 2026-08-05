@@ -18,15 +18,19 @@
 //! rejection case, right next to `r=1`.
 //!
 //! `decrypt` additionally verifies `R'` is actually in `<P>` (`n*R' == NEUTRAL`) before computing
-//! `T'`. E256/1 has cofactor 4 (`#E = 4n`); a numerical search (5000 random points via cofactor
-//! clearing, cross-checked against the real `7*P==R` fact) found no rational order-4 point on
-//! this specific curve - consistent with the order-4 candidates' standard location (`x=0` in this
-//! curve's own swapped convention) requiring `a` to be a quadratic residue, which `a=2` is not
-//! here (already noted in this plan's own `r=p-1` analysis). So for E256/1 the only non-trivial
-//! torsion outside `<P>` is the order-2 point the `r=p-1` check already excludes - but the
-//! subgroup check is kept anyway as the general, curve-parameter-independent fix, rather than
-//! relying on an invariant ("no order-4 points on this specific curve") a future parameter change
-//! could silently invalidate.
+//! `T'` - **not optional hardening**. `#E(F_p) = 4n` (the unique multiple of `2n` inside the Hasse
+//! interval - confirmed by checking every `k` up to 20, only `k=2` lands `2n*k` in
+//! `[p+1-2*sqrt(p), p+1+2*sqrt(p)]`). The curve equation's only `y=0` solutions are `x^2=1`, i.e.
+//! `x in {1, p-1}` - exactly `NEUTRAL` and the order-2 point, no third one. A finite abelian group
+//! of order `4n` (`n` odd prime) has its 2-Sylow subgroup either cyclic (`Z/4`, one non-trivial
+//! order-2 element) or Klein four (`Z/2 x Z/2`, three) - since there is provably only one, the
+//! 2-Sylow subgroup is `Z/4`, making `E(F_p)` cyclic of order `4n` overall. **A cyclic group of
+//! order `4n` has genuine order-4 elements** - so an `r` reconstructing to an order-4 point is a
+//! real, reachable ciphertext, not a hypothetical: it would leak `e mod 4` (not just `e`'s parity)
+//! through which of the 3 distinguishable `kappa` values (`x` of `NEUTRAL`/the order-2
+//! point/the order-4 point pair, the latter two sharing an `x` by `x_T=x_{-T}`) `T'=e*R'` lands
+//! on. The subgroup check closes this generally, independent of locating a concrete order-4 point
+//! by coordinates.
 //!
 //! Step 4 (`if !v.euler_criterion()`) is stricter than clause 12's literal `if δ==p-1`: it also
 //! rejects `δ==0` (i.e. `v==0`), which is exactly the `r=p-1` case. The explicit `r=p-1` check in
