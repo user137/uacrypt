@@ -266,6 +266,7 @@ proptest! {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "pow_mod's 256-iteration ladder is too slow to interpret under Miri - see docs/TASKS.md T-100/T-177")]
     fn invert_matches_multiplicative_inverse_definition(a_bytes: [u8; 32]) {
         use dstu_core::hazmat::dstu9041::fp256::from_candidate_bytes;
         let mut ab = a_bytes; ab[0] &= 0x7F;
@@ -277,6 +278,7 @@ proptest! {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "sqrt's two 256-iteration pow_mod ladders are too slow to interpret under Miri - see docs/TASKS.md T-100/T-177")]
     fn sqrt_of_a_square_squares_back(a_bytes: [u8; 32]) {
         use dstu_core::hazmat::dstu9041::fp256::from_candidate_bytes;
         let mut ab = a_bytes; ab[0] &= 0x7F;
@@ -287,6 +289,7 @@ proptest! {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "pow_mod's 256-iteration ladder is too slow to interpret under Miri - see docs/TASKS.md T-100/T-177")]
     fn pow_mod_matches_repeated_squaring_reference(a_bytes: [u8; 32], exp_byte: u8) {
         use dstu_core::hazmat::dstu9041::fp256::from_candidate_bytes;
         let mut ab = a_bytes; ab[0] &= 0x7F;

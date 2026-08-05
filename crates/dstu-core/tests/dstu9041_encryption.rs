@@ -108,6 +108,7 @@ fn decrypt_matches_worked_example_message() {
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(32))]
     #[test]
+    #[cfg_attr(miri, ignore = "each case runs 4 full 256-iteration scalar-multiply ladders (Q derivation, R, T, T') - too slow to interpret under Miri, see docs/TASKS.md T-100/T-177")]
     fn round_trip_encrypt_decrypt(
         message in proptest::collection::vec(any::<u8>(), 1..=25),
         epsilon_byte in 2u8..=250,
