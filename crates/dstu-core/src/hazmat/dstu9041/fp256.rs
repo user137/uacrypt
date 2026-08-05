@@ -56,7 +56,7 @@ fn adc(a: u64, b: u64, carry_in: u64) -> (u64, u64) {
 }
 
 #[inline]
-fn sbb(a: u64, b: u64, borrow_in: u64) -> (u64, u64) {
+pub(crate) fn sbb(a: u64, b: u64, borrow_in: u64) -> (u64, u64) {
     let (d1, b1) = a.overflowing_sub(b);
     let (d2, b2) = d1.overflowing_sub(borrow_in);
     (d2, u64::from(b1) | u64::from(b2))
@@ -260,7 +260,7 @@ impl FieldElement {
     /// "provable from the line, not by hand-traced invariant" bounds-safety rule).
     #[inline]
     #[allow(clippy::needless_range_loop)]
-    fn select(bit: u64, a: Self, b: Self) -> Self {
+    pub(crate) fn select(bit: u64, a: Self, b: Self) -> Self {
         debug_assert!(bit <= 1, "select's bit argument must be 0 or 1");
         let mask = 0u64.wrapping_sub(bit);
         let mut out = [0u64; 4];
