@@ -1666,22 +1666,71 @@ item they point to is later removed.
       two full sessions - this entry's own text already had the correct stroke-counted lengths
       (61/31), the fix just never reached the file. Caught starting T-177, fixed, re-verified with
       a real Miller-Rabin this time. See D-166 for the full account.
-- [ ] **T-177** **In progress, started 2026-08-05.** `hazmat::dstu9041` implementation - the
+- [ ] **T-177** **In progress, started 2026-08-05 - all four implementation phases done and
+      committed, only QA-gate/docs closure remains.** `hazmat::dstu9041` implementation - the
       primitive itself, not just the source-material extraction T-174/T-176 already did. Scope:
-      `l(p)=256`/E256/1 only (D-47 precedent - ship the recommended curve first). Plan-mode design
-      pass done with an `advisor()` consultation (design-level, not yet re-run against literal code
-      diffs - due before Phase 2 lands per its own instruction); plan saved at
-      `C:\Users\Pa\.claude\plans\rosy-baking-teacup.md`. Phased: `message.rs` (M' formatting + the
-      Kalyna-KW zero-block quirk) -> `fp256.rs` (F_p arithmetic) -> `curve256.rs` (twisted Edwards
-      point arithmetic) -> `encryption.rs` (encrypt/decrypt composition), tests written before each
-      phase's implementation. Two real findings already surfaced before any code was written:
-      (1) a security gap in clause 12's own literal text - `r=p-1` reconstructs an order-2 point
-      outside `⟨P⟩`, leaking one bit of the private key's parity per malicious ciphertext if
-      unfixed, verified numerically against the real curve; (2) D-166 - E256/1's own `p`/`n` were
-      wrong in the committed vector JSON since T-174, caught and fixed before any implementation
-      code could be written against the wrong modulus. Known accepted risk to document at closure:
-      no independent DSTU 9041 reference implementation exists anywhere (`docs/ORACLES.md`,
-      2026-07-21 search) - Додаток Г's own worked example is the sole oracle for this primitive.
+      `l(p)=256`/E256/1 only (D-47 precedent - ship the recommended curve first). Plan saved at
+      `C:\Users\Pa\.claude\plans\rosy-baking-teacup.md` (design-level `advisor()` consultation
+      before Phase 2, a second `advisor()` review after Phase 2 landed, a third after Phase 4).
+      Phased, tests written before each phase's implementation, one commit per phase:
+      - **Phase 1** (`e198efb`) - `message.rs`: `M'` formatting, the Kalyna-KW `M'||0x00*32`
+        zero-block quirk. 9 tests.
+      - **Phase 2** (`4e6a3ea`) - `fp256.rs`: `F_p` arithmetic (`p=2^256-435`, a pseudo-Mersenne
+        prime - `multiply`/`square` via schoolbook wide-multiply + a Solinas-style reduction
+        exploiting `2^256≡435 mod p`; `invert` via Fermat; `sqrt`/`euler_criterion` via the
+        `p≡5 mod 8` formula; `pow_mod` fixed-256-iteration constant-time). Advisor review caught
+        every initial proptest masking the field's top bit off (never exercising `add`'s carry=1
+        path or `reduce_wide`'s overflow near its ceiling) - fixed with six hand-derived vectors at
+        `p-1` itself, sourced from `curve-E256-1.json` rather than hardcoded (D-166 was exactly "the
+        committed `p_hex` was wrong for two sessions"). 31 tests.
+      - **Phase 3** (`8cf744a`) - `curve256.rs`: twisted Edwards point arithmetic, complete
+        Додаток Б.4 addition law (handles doubling/neutral uniformly, no exceptional cases since
+        `d` is a non-square), fixed-256-iteration `scalar_multiply`. 16 tests, including the
+        `ε=7` tripwire (253 leading zero bits) and the D-110/T-152-precedented boundary sweep
+        (`k∈{0,1,n-1,n,n+1}`).
+      - **Phase 4** (`77f53ca`, doc fix `762b149`) - `encryption.rs`: composes the above into
+        clause 11/12. `decrypt` takes no public key (clippy caught it as genuinely unused - `T'=e*R'`
+        needs only `e` and the ciphertext's own `r`). `DecryptError` collapsed to one
+        `InvalidCiphertext` variant (padding-oracle-shaped threat model). 20 tests, full round-trip
+        against the standard's own worked example (`encrypt` produces the exact 128-byte `C`,
+        `decrypt` recovers the exact `M`).
+
+      **Two security findings beyond clause 12's literal text, both fixed and documented in
+      `encryption.rs`'s own module doc comment:**
+      1. `r=p-1` reconstructs `R'=(p-1,0)`, a genuine order-2 point outside `⟨P⟩` - rejected
+         explicitly in step 2 (also incidentally caught by step 4's stricter-than-literal
+         `!euler_criterion()` form, kept as an explicit self-documenting check regardless).
+      2. **Bigger finding, found by a second advisor review after Phase 3/4 landed**: E256/1 has
+         cofactor 4 (`#E=4n`, the unique multiple of `2n` inside the Hasse interval), and - proven
+         via clean 2-Sylow-subgroup theory (the curve's `y=0` equation has exactly one non-trivial
+         solution, forcing the 2-Sylow subgroup to be cyclic `Z/4`, hence the whole group cyclic
+         `Z/4n`) - **genuine order-4 points exist** on this curve, reachable via a crafted `r`, and
+         would leak `e mod 4` (not just parity) if unrejected. A first numerical search (random
+         points + cofactor-clearing) found none in 5000 tries and briefly looked like it closed the
+         question the other way - that search had an uncaught bug (never isolated; superseded by
+         the group-theory proof, which doesn't depend on locating a concrete example by
+         coordinates). Fixed with a general subgroup-membership check in `decrypt`
+         (`R'.scalar_multiply(&order()) == NEUTRAL`), independent of curve-specific torsion
+         analysis - the correct, standard fix for any cofactor-`>1` curve.
+      Also fixed along the way: `message.rs`'s hash/padding checks used plain `!=`/`.any()`
+      (short-circuiting) over kappa-derived data - now constant-time
+      (`subtle::ConstantTimeEq`/fixed-iteration OR-fold), caught before `decrypt` could safely call
+      `parse_m_prime`.
+
+      **Remaining before this task can close** (all QA-gate/docs work, no more implementation):
+      full-workspace `clippy`/`fmt` clean (done), full `cargo test --workspace --all-features`
+      clean (done, 115+ tests, all doc-tests pass), `cargo +nightly miri test` scoped to
+      `dstu-core`/`dstu9041` not yet run (heaviest proptests already marked
+      `#[cfg_attr(miri, ignore)]` matching T-100's precedent - `37f7826`), a Kani spike on
+      `fp256`'s `reduce`/`select`-shaped pure functions not yet attempted, and a `docs/DECISIONS.md`
+      entry bundling all of the above (the two security fixes, the collapsed `DecryptError`, the
+      single-oracle accepted risk, the constant-time message.rs fix) not yet written - **hold this
+      entry until the miri run and Kani spike are done**, don't write it from the implementation
+      alone. `docs/pseudocode/dstu9041.md`'s "What remains before implementation" section also
+      needs updating to reflect that `hazmat::dstu9041` (l(p)=256) now exists.
+      Known accepted risk to document at closure: no independent DSTU 9041 reference implementation
+      exists anywhere (`docs/ORACLES.md`, 2026-07-21 search) - Додаток Г's own worked example is the
+      sole oracle for this primitive.
 - [x] **T-176** **Done 2026-08-05.** Closed the single biggest gap T-174 left open: bought a
       targeted 8-page supplement from the same source (National Library of Ukraine EDD service,
       `docs/papers/DSTU_9041-2020_supplement.pdf`, gitignored, same reasoning as the main scan) and
