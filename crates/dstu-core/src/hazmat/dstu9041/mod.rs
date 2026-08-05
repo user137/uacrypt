@@ -7,4 +7,5 @@
 //! for this pass (T-177), matching this project's own "ship the recommended curve first" (D-47)
 //! precedent already applied to `hazmat::dstu4145`.
 
+pub mod fp256;
 pub mod message;
