@@ -11209,3 +11209,58 @@ extra all-zero block (that's clause 11, not 6.5-6.12), the missing `l(p)=768` wo
 arithmetic re-verification, `hazmat::kalyna_kw_p`, and the `F_p`/twisted-Edwards primitives
 themselves. None of those are clauses 6.5-6.12, so closing this gap doesn't move them - per this
 project's own Tier C precedent, no Rust implementation was started this session either.
+
+## D-166: T-177 - E256/1's `p`/`n` were wrong in the committed vector JSON for two sessions; a
+described fix that never reached the file
+
+**What was found, and when.** While starting T-177's actual Rust implementation (plan-mode design
+pass, before any code was written), re-deriving `p`/`n` as an independent sanity check turned up a
+discrepancy: the committed `crates/dstu-core/tests/vectors/dstu9041/curve-E256-1.json` had
+`p_hex` with **87 hex characters** (348 bits) and `n_hex` with **113 hex characters** (451 bits) -
+neither anywhere close to the 256-bit field this curve is supposed to be (`l(p)=256`, E256/1,
+λ=127). `docs/pseudocode/dstu9041.md`'s "Recommended curve" section had the identical wrong
+strings (same source, copied at the same time).
+
+**Why this passed every prior check.** All five of D-163's original `verified_checks` are
+individually insensitive to exactly this class of error: `p mod 8 == 5` only depends on the last
+hex digit, unaffected by how many extra `F`s precede it; a 3-base Fermat primality check has a
+real (if small) false-positive rate and evidently hit one here; the on-curve/order checks
+(`base_point` on curve, `n·base_point == neutral`) were run with `p`/`n` as read from memory
+during that scratch session, not necessarily re-read from the file being written - so an internal
+verification could have genuinely passed against correct in-memory values while a *different*,
+wrong string got typed into the committed JSON afterward. Every check that could have caught a
+wrong modulus either didn't exercise it or wasn't re-run against the file as committed.
+
+**The actual bug: D-163 already found the correct lengths and never used them.** D-163's own prose
+states the stroke-count exercise "nailed both runs exactly (61 and 31 respectively)" for `p`'s
+`F`-run and `n`'s `0`-run. The committed file has 84 `F`s and 80 `0`s. **61 and 31 are the correct
+values** - re-derived independently this session by a different method (Table В.1's own *decimal*
+column, converted to hex, cross-checked against a real 40-round Miller-Rabin and the Hasse-interval
+relationship `4n ≈ p+1`, not stroke-counted pixels) and landing on exactly the same answer D-163
+already had. The lesson isn't "stroke-counting doesn't work" - it worked, twice, by two different
+methods. **The lesson is that a documented fix needs to be verified as actually present in the
+file it was fixing, not just correct in the reasoning that produced it** - D-163's own text
+describes the right numbers; the JSON and the doc's code block simply never got updated to match,
+and this went uncaught through T-175 and T-176 because neither of those tasks had a reason to
+recompute `p`/`n` from scratch.
+
+**How this was caught.** Not by re-reading the page image again first - by an arithmetic sanity
+check (`p.bit_length()` computed as part of ordinary plan-mode research, expected 256, got 348)
+that would have failed regardless of which session introduced the error. Confirms this project's
+own standing lesson generalizes: *any* claimed cryptographic parameter should be sanity-checked
+against an independent property (bit length, a known relationship like the Hasse bound, a real
+primality test) before code is written against it - not just trusted because a prior session's
+prose says it was already fixed.
+
+**Verification performed on the correction** (not just on finding the bug): real Miller-Rabin
+(40 rounds, not 3-base Fermat) confirms both corrected `p` and `n` are prime; `p mod 8 == 5` still
+holds; `4n` sits within the Hasse-bound distance of `p+1` (previously off by roughly 10^76, now
+off by roughly 2×10^38 ≈ 2^128, consistent with `p`'s own size); the base point and every point in
+`g1-worked-example.json` (`Q`, `R`, `T`) satisfy the curve equation under the corrected `p`;
+`n·P == neutral`; `37·P == Q`; `7·P == R`; `7·Q == T` - the entire worked example re-verified
+end-to-end against the corrected values, not just the curve parameters in isolation.
+
+**Fixed**: `curve-E256-1.json`'s `p_hex`/`n_hex`, `docs/pseudocode/dstu9041.md`'s "Recommended
+curve" code block, both with an inline erratum note pointing here.
+`g1-worked-example.json` needed no change - it stores points/messages/ciphertext, never `p`/`n`
+directly.

@@ -4,22 +4,22 @@
   "l_p_bits": 256,
   "source": "docs/papers/DSTU_9041-2020.pdf, Table B.1 (first entry) and Annex G.1 - see docs/pseudocode/dstu9041.md for the verification methodology (page-image transcription, not OCR text; arithmetic checks below all pass)",
   "curve_equation": "x^2 + a*y^2 = d*x^2*y^2 + 1 (mod p) - twisted Edwards with x/y swapped relative to the textbook a*X^2+Y^2=1+d*X^2*Y^2 form, see docs/pseudocode/dstu9041.md",
-  "p_hex": "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFE4D",
+  "p_hex": "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFE4D",
   "a": 2,
   "d_hex": "18",
-  "n_hex": "40000000000000000000000000000000000000000000000000000000000000000000000000000000029E26087789BC2815BDFF97093543CCF",
+  "n_hex": "4000000000000000000000000000000029E26087789BC2815BDFF97093543CCF",
   "base_point": {
     "x_hex": "91F5D0E7E2D417E3108B13B075CDC7756045F8424479FCFE8F23D27250A0883F",
     "y_hex": "742F27A268641C9D7DDF69892BE3DF3D8F9CC52260B89A4953C8379C7C0A212B"
   },
   "verified_checks": [
-    "p is prime (Fermat, bases 2/3/5)",
-    "n is prime (Fermat, bases 2/3/5)",
+    "p is prime (real Miller-Rabin, 40 rounds, 2026-08-05 T-177 re-check)",
+    "n is prime (real Miller-Rabin, 40 rounds, 2026-08-05 T-177 re-check)",
     "p mod 8 == 5 (clause 7.1's own requirement)",
     "base point satisfies the curve equation mod p",
-    "n * base_point == neutral element (1, 0) - confirms n is the base point's true order"
+    "n * base_point == neutral element (1, 0) - confirms n is the base point's true order",
+    "Q/R/T (from g1-worked-example.json) all satisfy the curve equation mod p, and 37*P==Q, 7*P==R, 7*Q==T - re-checked against the corrected p/n below, 2026-08-05"
   ],
-  "not_verified": [
-    "primality by a real Miller-Rabin (only Fermat base 2/3/5 checked so far - fine for a sanity check, not a substitute for a real primality test before this is trusted as production data)"
-  ]
+  "erratum_note": "p_hex/n_hex below were WRONG from 2026-08-04 (T-174) through 2026-08-05 (T-176) - an over-counted F-run (84 instead of 61) in p and zero-run (80 instead of 31) in n. D-163 already recorded the correct stroke-counted lengths (61/31) in prose, but that fix was never applied to this file - caught 2026-08-05 while starting T-177's implementation, before any code was written against it. See docs/DECISIONS.md D-166.",
+  "not_verified": []
 }

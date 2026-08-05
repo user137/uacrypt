@@ -1661,7 +1661,27 @@ item they point to is later removed.
       row - clean multiple exactly when plain KW applies, not otherwise). Committed:
       `docs/pseudocode/dstu9041.md` (rewritten), `crates/dstu-core/tests/vectors/dstu9041/
       curve-E256-1.json` + `g1-worked-example.json` (curve params + example, `t`/`C` deliberately
-      omitted pending re-verification).
+      omitted pending re-verification). **Addendum 2026-08-05 (T-177/D-166)**: this task's own
+      `p`/`n` values were wrong in the committed JSON/doc (an over-counted `F`-run and `0`-run) for
+      two full sessions - this entry's own text already had the correct stroke-counted lengths
+      (61/31), the fix just never reached the file. Caught starting T-177, fixed, re-verified with
+      a real Miller-Rabin this time. See D-166 for the full account.
+- [ ] **T-177** **In progress, started 2026-08-05.** `hazmat::dstu9041` implementation - the
+      primitive itself, not just the source-material extraction T-174/T-176 already did. Scope:
+      `l(p)=256`/E256/1 only (D-47 precedent - ship the recommended curve first). Plan-mode design
+      pass done with an `advisor()` consultation (design-level, not yet re-run against literal code
+      diffs - due before Phase 2 lands per its own instruction); plan saved at
+      `C:\Users\Pa\.claude\plans\rosy-baking-teacup.md`. Phased: `message.rs` (M' formatting + the
+      Kalyna-KW zero-block quirk) -> `fp256.rs` (F_p arithmetic) -> `curve256.rs` (twisted Edwards
+      point arithmetic) -> `encryption.rs` (encrypt/decrypt composition), tests written before each
+      phase's implementation. Two real findings already surfaced before any code was written:
+      (1) a security gap in clause 12's own literal text - `r=p-1` reconstructs an order-2 point
+      outside `⟨P⟩`, leaking one bit of the private key's parity per malicious ciphertext if
+      unfixed, verified numerically against the real curve; (2) D-166 - E256/1's own `p`/`n` were
+      wrong in the committed vector JSON since T-174, caught and fixed before any implementation
+      code could be written against the wrong modulus. Known accepted risk to document at closure:
+      no independent DSTU 9041 reference implementation exists anywhere (`docs/ORACLES.md`,
+      2026-07-21 search) - Додаток Г's own worked example is the sole oracle for this primitive.
 - [x] **T-176** **Done 2026-08-05.** Closed the single biggest gap T-174 left open: bought a
       targeted 8-page supplement from the same source (National Library of Ukraine EDD service,
       `docs/papers/DSTU_9041-2020_supplement.pdf`, gitignored, same reasoning as the main scan) and
