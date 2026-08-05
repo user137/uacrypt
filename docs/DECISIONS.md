@@ -11153,3 +11153,59 @@ per-crate matrix (`dstu-core`, `uacrypt`, `dstu-core-capi`, `fail-fast: false`) 
 combined job/log - so a future stuck test in any one crate shows up as its own failing job instead
 of being indistinguishable from the other two crates' results inside a single `--workspace` log, the
 exact diagnostic friction this incident actually had.
+
+## D-165: T-176 - targeted DSTU 9041 supplement purchase closes clauses 6.5-6.12, the biggest gap
+D-163 left open
+
+**What was bought and why.** D-163/T-174's extraction explicitly listed clauses 6.5-6.12 (the actual
+random-element/modpow/sqrt/inverse/random-point/primality/MOV/scalar-mult algorithms) as the single
+biggest hole in the scan - present only as call sites ("відповідно до 6.9/6.10/..."), never as
+bodies. The owner bought a second, smaller, targeted set of pages from the same source (National
+Library of Ukraine's electronic-document-delivery service) aimed specifically at that gap plus a
+short prioritized list (section 3's remaining terms, Додаток Б.1/Б.2, Додаток А/Д for reference) -
+not a re-purchase of the whole standard. Received as `docs/papers/DSTU_9041-2020_supplement.pdf`
+(8 pages), gitignored under the same reasoning as the main scan (`.gitignore`'s existing DSTU 9041
+block, extended). OCR-transcribed the same way as T-173 (same reused Surya venv,
+`docs/papers/DSTU_9041-2020_supplement_ocr.md`, also gitignored) for searchability, but - per D-163's
+own already-established rule - **the actual clause text going into `docs/pseudocode/dstu9041.md`
+was read directly from the rendered page images, not the OCR transcript**, same discipline as
+before.
+
+**Confirming a supplier can genuinely target a gap, not just re-sell the same pages.** Before
+trusting this was new material, checked page footers against the existing PDF's own page range
+(4-30, missing exactly pages 8-10 where 6.5-6.12 live) - the supplement's images print footer page
+numbers 1-3, 8-10, 15, 36, confirming deliberate curation around the documented gap list rather than
+a random or duplicate page set. Worth recording as a general lesson: when a same-source
+supplementary purchase arrives, verify its actual page numbers against what's already in hand before
+assuming it's redundant or assuming it's exactly what was asked for - check, don't infer either way.
+
+**Result: clauses 6.5-6.12 are now clause-cited in full**, not reconstructed from first principles.
+Two genuinely new findings while cross-checking against the text (neither obvious from the equation
+alone): (1) clause 6.9's random-curve-point algorithm retries when `d*u^2 mod p = a`, which is
+exactly clause 3.18's singular-point exclusion (`D_{1,2}=(±sqrt(a/d),infinity)`) enforced by
+construction - previously this project only inferred those points needed excluding, never saw the
+standard actually do it; (2) clauses 6.6 and 6.12 both carry the standard's own explicit
+side-channel warning, citing Joye & Yen's "The Montgomery Powering Ladder" (Додаток Д's bibliography
+entry `[1]`, now also in hand) - the standard's own primary text making the same point this
+project's `docs/SECURITY.md` constant-time rule already makes generally, which is a stronger
+citation than this project had before (previously argued from general no-secret-branching principle
+alone, now backed by the standard naming the exact same countermeasure).
+
+**Also resolved, lower stakes**: Додаток А's RNG body (full Kalyna-l/k-CTR construction per DSTU
+7624 §7, Table А.1's `l`/`k` choices per `λ`) - was previously title-only. Not adopted (this
+project's existing `randombytes::randombytes_buf` remains simpler and clause 6.1 permits the
+substitution explicitly), but now a documented option rather than an unknown. Section 3's remaining
+terms (3.1-3.26) joined 3.27/3.28 already in hand - section 3 is now complete, though this was
+always administrative/definitional, not implementation-blocking.
+
+**Only partially resolved, and recorded honestly rather than overclaimed**: the one supplement page
+touching Додаток Б only reached its introductory historical prose (a literature survey - Edwards,
+Bernstein-Lange, Bessalov), cutting off mid-sentence before whatever Б.1/Б.2 themselves formally
+define. The operative content of Додаток Б (Б.3's correctness proof, Б.4's projective addition law)
+was already in hand from T-174 - this gap is now believed low-value even if eventually closed.
+
+**What this task deliberately did not touch**: the open question of why Kalyna-KW's input needs an
+extra all-zero block (that's clause 11, not 6.5-6.12), the missing `l(p)=768` worked example, `t`/`C`
+arithmetic re-verification, `hazmat::kalyna_kw_p`, and the `F_p`/twisted-Edwards primitives
+themselves. None of those are clauses 6.5-6.12, so closing this gap doesn't move them - per this
+project's own Tier C precedent, no Rust implementation was started this session either.

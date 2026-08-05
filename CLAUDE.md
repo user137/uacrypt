@@ -509,9 +509,13 @@ check) is in `docs/dstu-crypto-project.md` "Resources found".
 - **DSTU 9041 is no longer hard-blocked (D-08/T-46's original framing)** — a partial primary-text
   scan was obtained and OCR-transcribed (T-173), then arithmetically verified against this crate's
   own `hazmat::kupyna`/`hazmat::kalyna_kw` for one full worked example, curve arithmetic included
-  (T-174/D-163). Still missing: clauses 6.5–6.12 (the actual point-arithmetic/primality/MOV
-  procedures) and two new primitives (`F_p` bignum arithmetic, `hazmat::kalyna_kw_p`) before
-  `hazmat::dstu9041` can be written — see `docs/pseudocode/dstu9041.md` for the full state.
+  (T-174/D-163). **Clauses 6.5–6.12 (the actual random-element/modpow/sqrt/inverse/random-point/
+  primality/MOV/scalar-mult algorithms) are now fully in hand too**, via a targeted follow-up
+  supplement purchase (T-176/D-165) — every algorithm the two still-missing new primitives need is
+  now clause-cited, not assumed generic. Still missing before `hazmat::dstu9041` can be written:
+  the two new primitives themselves (`F_p` bignum arithmetic, twisted-Edwards point arithmetic,
+  `hazmat::kalyna_kw_p`) — a pure implementation gap now, not a source-material one — see
+  `docs/pseudocode/dstu9041.md` for the full state.
 - Verify own implementation against Kalyna-reference and the other oracles in `docs/ORACLES.md`.
 - Hardware validation on STM32/ESP32 is a distinct post-MVP phase, not a claim of side-channel
   resistance (see MVP scope above).

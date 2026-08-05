@@ -1662,6 +1662,34 @@ item they point to is later removed.
       `docs/pseudocode/dstu9041.md` (rewritten), `crates/dstu-core/tests/vectors/dstu9041/
       curve-E256-1.json` + `g1-worked-example.json` (curve params + example, `t`/`C` deliberately
       omitted pending re-verification).
+- [x] **T-176** **Done 2026-08-05.** Closed the single biggest gap T-174 left open: bought a
+      targeted 8-page supplement from the same source (National Library of Ukraine EDD service,
+      `docs/papers/DSTU_9041-2020_supplement.pdf`, gitignored, same reasoning as the main scan) and
+      OCR-transcribed it the same way as T-173 (Surya OCR, reused the same local venv;
+      `docs/papers/DSTU_9041-2020_supplement_ocr.md`, gitignored). **Clauses 6.5-6.12 - the priority
+      item, previously only reachable via call sites referencing them - are now fully present and
+      read directly from the page images** (random field element, modular exponentiation, `F_p`
+      square root for `p≡5 mod 8`, modular inverse via extended Euclid, random curve point,
+      Miller-Rabin primality, MOV condition check, scalar multiplication): see
+      `docs/pseudocode/dstu9041.md`'s new "Computational algorithms, clauses 6.4-6.12" section.
+      Also resolved: Додаток А's RNG body (Kalyna-l/k-CTR per DSTU 7624 §7, previously title-only),
+      and section 3's remaining terms 3.1-3.26 (joining 3.27/3.28 already in hand - section 3 is now
+      complete). **Notable finds while cross-checking against the new text**: clause 6.9's random
+      curve-point algorithm explicitly retries when `d*u^2 mod p = a`, confirming this is exactly
+      the exclusion of clause 3.18's singular points `D_{1,2}=(±sqrt(a/d),infinity)` by construction
+      rather than by luck (previously only inferred); `w=2^((p-1)/4) mod p` is a formally named
+      general system parameter (3.23), not just a table column; clauses 6.6/6.12 both carry the
+      standard's own side-channel warning citing Joye & Yen's Montgomery Powering Ladder (Додаток
+      Д's ref `[1]`) - the standard's own text making the same constant-time point this project's
+      `docs/SECURITY.md` already makes generally, now with a citation. **Only partially resolved**:
+      Додаток Б.1/Б.2 came back as the appendix's introductory historical prose only (Edwards/
+      Bernstein-Lange/Bessalov literature survey), not whatever Б.1/Б.2 themselves actually define -
+      likely low-value regardless, since Б.3/Б.4 (the operative proof and addition law) were already
+      in hand from T-174. **Still open, unchanged by this task**: why Kalyna-KW's input needs the
+      extra all-zero block (that's clause 11, not 6.5-6.12); `l(p)=768` worked example; `t`/`C`
+      arithmetic verification; `hazmat::kalyna_kw_p`; the new `F_p`/twisted-Edwards primitives
+      themselves - none of those needed clauses 6.5-6.12 specifically, so this task doesn't move
+      them. No Rust implementation started (same Tier C posture as T-174).
 - [x] **T-173** **Done 2026-08-04.** OCR-transcribed `docs/papers/DSTU_9041-2020.pdf` locally
       (Surya OCR 0.13.1, CPU-only, transformers-backend recognition model; PaddleOCR 2.9.1 classic
       API, `cyrillic` model, as a second-engine cross-check) - owner-requested, so the standard's
