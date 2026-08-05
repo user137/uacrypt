@@ -35,13 +35,13 @@ const ORDER_N: [u8; 32] = [
     0x29, 0xE2, 0x60, 0x87, 0x78, 0x9B, 0xC2, 0x81, 0x5B, 0xDF, 0xF9, 0x70, 0x93, 0x54, 0x3C, 0xCF,
 ];
 
-fn curve_a() -> FieldElement {
+pub(crate) fn curve_a() -> FieldElement {
     let mut bytes = [0u8; 32];
     bytes[31] = 2;
     FieldElement::from_be_bytes(&bytes)
 }
 
-fn curve_d() -> FieldElement {
+pub(crate) fn curve_d() -> FieldElement {
     let mut bytes = [0u8; 32];
     bytes[31] = 0x18;
     FieldElement::from_be_bytes(&bytes)

@@ -11,6 +11,7 @@
 //! clause (`docs/pseudocode/dstu9041.md`'s "Open question", D-165).
 
 use crate::hazmat::kupyna::Kupyna256;
+use subtle::ConstantTimeEq;
 
 /// Maximum encryptable message length in bits for `l(p)=256` (Table 1).
 pub const L_MAX_P: usize = 200;
@@ -127,13 +128,28 @@ pub fn parse_m_prime(m_prime: &[u8; 32]) -> Result<Message, MessageError> {
     hashed_input[..2].copy_from_slice(&l_m_tilde);
     hashed_input[2..].copy_from_slice(&m_tilde);
     let digest = Kupyna256::digest(&hashed_input);
-    if digest[digest.len() - L_H_BYTES..] != *embedded_hash {
+    // Constant-time: this compares secret-key-adjacent (KW-unwrapped, hence caller-secret-derived
+    // in the `decrypt` call path) data - `!=` on slices is not a documented constant-time
+    // primitive (`docs/SECURITY.md`'s standing rule).
+    let hash_ok: bool = digest[digest.len() - L_H_BYTES..]
+        .ct_eq(embedded_hash)
+        .into();
+    if !hash_ok {
         return Err(MessageError::HashMismatch);
     }
 
+    // Constant-time and fixed-iteration: `message_bytes` (hence which bytes count as "padding")
+    // is itself derived from `bit_length`, decrypted data an attacker can influence - iterating
+    // the full M_TILDE_BYTES buffer every time (rather than a `bit_length`-sized slice) keeps the
+    // number of comparisons independent of that value, not just each individual comparison.
     let message_bytes = bit_length.div_ceil(8);
-    let padding = &m_tilde[..M_TILDE_BYTES - message_bytes];
-    if padding.iter().any(|&b| b != 0) {
+    let padding_len = M_TILDE_BYTES - message_bytes;
+    let mut bad_padding = 0u8;
+    for (i, &byte) in m_tilde.iter().enumerate() {
+        let is_padding_position = u8::from(i < padding_len);
+        bad_padding |= is_padding_position & u8::from(byte != 0);
+    }
+    if bad_padding != 0 {
         return Err(MessageError::PaddingNotZero);
     }
 
