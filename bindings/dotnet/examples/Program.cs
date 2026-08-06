@@ -1,11 +1,11 @@
 // Run: dotnet run -- <example>
-// where <example> is one of: secretbox, secretstream-file, sign, password-hashing, misc
+// where <example> is one of: secretbox, box, secretstream-file, sign, password-hashing, misc
 
 using DstuCore.Examples;
 
 if (args.Length != 1)
 {
-    Console.Error.WriteLine("usage: dotnet run -- <secretbox|secretstream-file|sign|password-hashing|misc>");
+    Console.Error.WriteLine("usage: dotnet run -- <secretbox|box|secretstream-file|sign|password-hashing|misc>");
     return 1;
 }
 
@@ -13,6 +13,9 @@ switch (args[0])
 {
     case "secretbox":
         SecretBoxExample.Run();
+        break;
+    case "box":
+        BoxExample.Run();
         break;
     case "secretstream-file":
         SecretStreamFileExample.Run();

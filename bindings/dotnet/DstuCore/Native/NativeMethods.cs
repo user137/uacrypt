@@ -45,6 +45,50 @@ internal static partial class NativeMethods
     [LibraryImport(LibName)]
     internal static partial DstuStatus dstu_auth_verify(AuthKeyHandle key, byte[]? message, nuint messageLen, byte[] tag);
 
+    // ---- crypto_box ----
+
+    [LibraryImport(LibName)]
+    internal static partial DstuStatus dstu_box_secretkey_generate(out BoxSecretKeyHandle handle);
+
+    [LibraryImport(LibName)]
+    internal static partial DstuStatus dstu_box_secretkey_from_bytes(byte[] bytes, out BoxSecretKeyHandle handle);
+
+    [LibraryImport(LibName)]
+    internal static partial void dstu_box_secretkey_bytes(BoxSecretKeyHandle key, byte[] outBytes);
+
+    [LibraryImport(LibName)]
+    internal static partial BoxPublicKeyHandle dstu_box_secretkey_public_key(BoxSecretKeyHandle key);
+
+    [LibraryImport(LibName)]
+    internal static partial void dstu_box_secretkey_free(IntPtr key);
+
+    [LibraryImport(LibName)]
+    internal static partial DstuStatus dstu_box_publickey_from_bytes(byte[] bytes, out BoxPublicKeyHandle handle);
+
+    [LibraryImport(LibName)]
+    internal static partial void dstu_box_publickey_bytes(BoxPublicKeyHandle key, byte[] outBytes);
+
+    [LibraryImport(LibName)]
+    internal static partial void dstu_box_publickey_free(IntPtr key);
+
+    [LibraryImport(LibName)]
+    internal static partial DstuStatus dstu_box_seal(
+        BoxPublicKeyHandle recipient,
+        byte[]? message,
+        nuint messageLen,
+        byte[] sealedOut,
+        nuint sealedOutCap,
+        out nuint sealedLenOut);
+
+    [LibraryImport(LibName)]
+    internal static partial DstuStatus dstu_box_open(
+        BoxSecretKeyHandle secret,
+        byte[]? sealedIn,
+        nuint sealedLen,
+        byte[] plaintextOut,
+        nuint plaintextOutCap,
+        out nuint plaintextLenOut);
+
     // ---- crypto_generichash ----
 
     [LibraryImport(LibName)]

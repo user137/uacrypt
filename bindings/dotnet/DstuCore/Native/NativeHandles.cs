@@ -29,6 +29,24 @@ internal sealed class AuthKeyHandle : DstuNativeHandle
     }
 }
 
+internal sealed class BoxSecretKeyHandle : DstuNativeHandle
+{
+    protected override bool ReleaseHandle()
+    {
+        NativeMethods.dstu_box_secretkey_free(handle);
+        return true;
+    }
+}
+
+internal sealed class BoxPublicKeyHandle : DstuNativeHandle
+{
+    protected override bool ReleaseHandle()
+    {
+        NativeMethods.dstu_box_publickey_free(handle);
+        return true;
+    }
+}
+
 internal sealed class KdfMasterKeyHandle : DstuNativeHandle
 {
     protected override bool ReleaseHandle()

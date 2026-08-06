@@ -40,6 +40,7 @@ correctness/rejection/misuse suite each surface is verified against (D-64/D-65).
 | Type | Members | Notes |
 |---|---|---|
 | `SecretboxKey` | `Generate`, `FromBytes`, `ToBytes`, `Seal`, `Open` | Single-message authenticated encryption. `examples secretbox`. |
+| `BoxSecretKey`, `BoxPublicKey` | `Generate`, `FromBytes`, `ToBytes`, `PublicKey`, `Seal`, `Open` | Public-key encryption (hybrid via KDF over `hazmat::dstu9041`, D-169). `Seal`/`Open` are not memory-bounded — the whole message is held in memory. `examples box`. |
 | `SecretstreamKey`, `SecretStreamEncryptStream`, `SecretStreamDecryptStream` | `Generate`, `FromBytes`, `ToBytes` | Chunked streaming AEAD, `Stream`-derived (matches `CryptoStream`/`GZipStream`'s own shape). Wire format matches `uacrypt encrypt`/`decrypt` exactly (D-118). `Dispose()` deliberately never emits the final chunk — call `Complete()` explicitly on the success path; see the class doc comment. `examples secretstream-file`. |
 | `SigningKey`, `VerifyingKey` | `Generate`, `FromBytes`, `ToBytes`, `Sign`, `SignDigest`, `Verify`, `VerifyDigest` | DSTU 4145 digital signatures, deterministic nonce (no RNG dependency). `examples sign`. |
 | `Pwhash` | `HashPassword`, `VerifyPassword`, `PwhashStrength.{Interactive,Moderate,Sensitive}` | Argon2id (the one deliberately non-DSTU component, D-49/D-50). `examples password-hashing`. |
@@ -65,6 +66,7 @@ Or via the project's own cross-platform QA entry point: `cargo xtask dotnet` (fr
 ```sh
 cd bindings/dotnet/examples
 dotnet run -- secretbox
+dotnet run -- box
 dotnet run -- secretstream-file
 dotnet run -- sign
 dotnet run -- password-hashing

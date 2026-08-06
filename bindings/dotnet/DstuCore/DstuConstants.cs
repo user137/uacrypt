@@ -8,6 +8,12 @@ public static class DstuConstants
     public const int AuthKeyBytes = 32;
     public const int AuthTagBytes = 32;
 
+    public const int BoxSecretKeyBytes = 32;
+    public const int BoxPublicKeyBytes = 32;
+
+    /// <summary>128-byte KEM ciphertext + 32-byte secretstream header + 16-byte tag.</summary>
+    public const int BoxSealOverhead = 176;
+
     public const int GenericHash256Bytes = 32;
     public const int GenericHash512Bytes = 64;
 
