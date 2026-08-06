@@ -85,6 +85,9 @@ pub enum CliError {
     SecretstreamChunkTooLarge,
     SignKeyInvalid,
     SignVerifyFailed,
+    BoxKeyInvalid,
+    BoxOpenTruncated,
+    BoxOpenFailed,
 }
 
 impl fmt::Display for CliError {
@@ -163,6 +166,18 @@ impl fmt::Display for CliError {
             CliError::SignVerifyFailed => write!(
                 f,
                 "verify: signature does not verify - message, signature, or key do not match"
+            ),
+            CliError::BoxKeyInvalid => write!(
+                f,
+                "--key is not a valid crypto_box key (see uacrypt box-keygen/box-pubkey)"
+            ),
+            CliError::BoxOpenTruncated => write!(
+                f,
+                "box-open: --in is too short to be real box-seal output"
+            ),
+            CliError::BoxOpenFailed => write!(
+                f,
+                "box-open: authentication failed - --in, --key, or the file itself do not match"
             ),
         }
     }
@@ -2503,6 +2518,283 @@ pub fn run_verify_command(args: &VerifyArgs) -> Result<(), CliError> {
     }
 }
 
+/// Reads a 32-byte `crypto_box` secret-key file and validates it via
+/// [`dstu_core::crypto_box::SecretKey::from_bytes`].
+fn read_box_secret_key(path: &PathBuf) -> Result<dstu_core::crypto_box::SecretKey, CliError> {
+    let bytes = read_exact_file(path, "box secret key", 32)?;
+    let mut e = [0u8; 32];
+    e.copy_from_slice(&bytes);
+    dstu_core::crypto_box::SecretKey::from_bytes(&e).ok_or(CliError::BoxKeyInvalid)
+}
+
+/// Reads a 32-byte `crypto_box` public-key file and validates it via
+/// [`dstu_core::crypto_box::PublicKey::from_bytes`].
+fn read_box_public_key(path: &PathBuf) -> Result<dstu_core::crypto_box::PublicKey, CliError> {
+    let bytes = read_exact_file(path, "box public key", 32)?;
+    let mut x = [0u8; 32];
+    x.copy_from_slice(&bytes);
+    dstu_core::crypto_box::PublicKey::from_bytes(&x).ok_or(CliError::BoxKeyInvalid)
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct BoxKeygenArgs {
+    pub out_path: PathBuf,
+}
+
+/// Parses `box-keygen`'s flags (`--out`, required).
+///
+/// # Errors
+///
+/// Returns [`CliError::MissingFlag`] or [`CliError::UnknownFlag`].
+pub fn parse_box_keygen_args(args: &[String]) -> Result<BoxKeygenArgs, CliError> {
+    let mut out_path = None;
+
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--out" => {
+                out_path = Some(PathBuf::from(
+                    args.get(i + 1).ok_or(CliError::MissingFlag("out"))?,
+                ));
+                i += 2;
+            }
+            other => return Err(CliError::UnknownFlag(other.to_string())),
+        }
+    }
+
+    Ok(BoxKeygenArgs {
+        out_path: out_path.ok_or(CliError::MissingFlag("out"))?,
+    })
+}
+
+/// Runs `box-keygen`: draws a fresh `crypto_box` secret key via rejection sampling
+/// ([`dstu_core::crypto_box::SecretKey::generate`], `docs/TASKS.md` T-178) and writes its raw
+/// 32-byte encoding to `--out`. A separate command from `keygen`/`sign-keygen` - a `crypto_box`
+/// secret key is a third, incompatible key shape (D-47's "delete the knob": no `--type` flag
+/// choosing between them).
+///
+/// # Errors
+///
+/// Returns [`CliError::Random`] if the OS CSPRNG fails, or [`CliError::Io`] if `--out` can't be
+/// written.
+pub fn run_box_keygen_command(args: &BoxKeygenArgs) -> Result<(), CliError> {
+    let key = dstu_core::crypto_box::SecretKey::generate()
+        .map_err(|e| CliError::Random(e.to_string()))?;
+    std::fs::write(&args.out_path, key.to_bytes()).map_err(|e| CliError::Io {
+        path: args.out_path.clone(),
+        message: e.to_string(),
+    })
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct BoxPubkeyArgs {
+    pub key_path: PathBuf,
+    pub out_path: PathBuf,
+}
+
+/// Parses `box-pubkey`'s flags (`--key`/`--out`, both required).
+///
+/// # Errors
+///
+/// Returns [`CliError::MissingFlag`] or [`CliError::UnknownFlag`].
+pub fn parse_box_pubkey_args(args: &[String]) -> Result<BoxPubkeyArgs, CliError> {
+    let mut key_path = None;
+    let mut out_path = None;
+
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--key" => {
+                key_path = Some(PathBuf::from(
+                    args.get(i + 1).ok_or(CliError::MissingFlag("key"))?,
+                ));
+                i += 2;
+            }
+            "--out" => {
+                out_path = Some(PathBuf::from(
+                    args.get(i + 1).ok_or(CliError::MissingFlag("out"))?,
+                ));
+                i += 2;
+            }
+            other => return Err(CliError::UnknownFlag(other.to_string())),
+        }
+    }
+
+    Ok(BoxPubkeyArgs {
+        key_path: key_path.ok_or(CliError::MissingFlag("key"))?,
+        out_path: out_path.ok_or(CliError::MissingFlag("out"))?,
+    })
+}
+
+/// Runs `box-pubkey`: reads a 32-byte `crypto_box` secret key from `--key`, derives its public key
+/// ([`dstu_core::crypto_box::SecretKey::public_key`]), and writes the 32-byte compressed
+/// (`x`-coordinate only, see `crypto_box`'s own module doc) encoding to `--out` - the format
+/// `box-seal --key` expects.
+///
+/// # Errors
+///
+/// Returns [`CliError::Io`]/[`CliError::WrongLength`] for file problems, or
+/// [`CliError::BoxKeyInvalid`] if `--key` isn't a valid `crypto_box` secret key.
+pub fn run_box_pubkey_command(args: &BoxPubkeyArgs) -> Result<(), CliError> {
+    let secret = read_box_secret_key(&args.key_path)?;
+    let public = secret.public_key();
+    std::fs::write(&args.out_path, public.to_bytes()).map_err(|e| CliError::Io {
+        path: args.out_path.clone(),
+        message: e.to_string(),
+    })
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct BoxSealArgs {
+    pub key_path: PathBuf,
+    pub in_path: PathBuf,
+    pub out_path: PathBuf,
+}
+
+/// Parses `box-seal`'s flags (`--key`/`--in`/`--out`, all required).
+///
+/// # Errors
+///
+/// Returns [`CliError::MissingFlag`] or [`CliError::UnknownFlag`].
+pub fn parse_box_seal_args(args: &[String]) -> Result<BoxSealArgs, CliError> {
+    let mut key_path = None;
+    let mut in_path = None;
+    let mut out_path = None;
+
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--key" => {
+                key_path = Some(PathBuf::from(
+                    args.get(i + 1).ok_or(CliError::MissingFlag("key"))?,
+                ));
+                i += 2;
+            }
+            "--in" => {
+                in_path = Some(PathBuf::from(
+                    args.get(i + 1).ok_or(CliError::MissingFlag("in"))?,
+                ));
+                i += 2;
+            }
+            "--out" => {
+                out_path = Some(PathBuf::from(
+                    args.get(i + 1).ok_or(CliError::MissingFlag("out"))?,
+                ));
+                i += 2;
+            }
+            other => return Err(CliError::UnknownFlag(other.to_string())),
+        }
+    }
+
+    Ok(BoxSealArgs {
+        key_path: key_path.ok_or(CliError::MissingFlag("key"))?,
+        in_path: in_path.ok_or(CliError::MissingFlag("in"))?,
+        out_path: out_path.ok_or(CliError::MissingFlag("out"))?,
+    })
+}
+
+/// Runs `box-seal`: reads a 32-byte recipient public key from `--key` and encrypts `--in` to it
+/// ([`dstu_core::crypto_box::seal`]).
+///
+/// **Not memory-bounded** (D-42 note, deliberate rather than overlooked): `crypto_box::seal`
+/// itself takes `message: &[u8]` - a genuinely chunked `seal_stream` would need its own library
+/// addition first (see `crypto_box`'s own module doc, "Hybrid via KDF" section), so `--in` is read
+/// whole into memory here, unlike `encrypt`/`decrypt`'s bounded-chunk streaming.
+///
+/// # Errors
+///
+/// Returns [`CliError::Io`] if `--key`/`--in` can't be read or `--out` can't be written,
+/// [`CliError::WrongLength`] if `--key` isn't 32 bytes, [`CliError::BoxKeyInvalid`] if `--key`
+/// isn't a valid public key, or [`CliError::Random`] if the OS CSPRNG fails.
+pub fn run_box_seal_command(args: &BoxSealArgs) -> Result<(), CliError> {
+    let public = read_box_public_key(&args.key_path)?;
+    let message = std::fs::read(&args.in_path).map_err(|e| CliError::Io {
+        path: args.in_path.clone(),
+        message: e.to_string(),
+    })?;
+    let sealed = dstu_core::crypto_box::seal(&message, &public)
+        .map_err(|e| CliError::Random(e.to_string()))?;
+    std::fs::write(&args.out_path, sealed).map_err(|e| CliError::Io {
+        path: args.out_path.clone(),
+        message: e.to_string(),
+    })
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct BoxOpenArgs {
+    pub key_path: PathBuf,
+    pub in_path: PathBuf,
+    pub out_path: PathBuf,
+}
+
+/// Parses `box-open`'s flags (`--key`/`--in`/`--out`, all required).
+///
+/// # Errors
+///
+/// Returns [`CliError::MissingFlag`] or [`CliError::UnknownFlag`].
+pub fn parse_box_open_args(args: &[String]) -> Result<BoxOpenArgs, CliError> {
+    let mut key_path = None;
+    let mut in_path = None;
+    let mut out_path = None;
+
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--key" => {
+                key_path = Some(PathBuf::from(
+                    args.get(i + 1).ok_or(CliError::MissingFlag("key"))?,
+                ));
+                i += 2;
+            }
+            "--in" => {
+                in_path = Some(PathBuf::from(
+                    args.get(i + 1).ok_or(CliError::MissingFlag("in"))?,
+                ));
+                i += 2;
+            }
+            "--out" => {
+                out_path = Some(PathBuf::from(
+                    args.get(i + 1).ok_or(CliError::MissingFlag("out"))?,
+                ));
+                i += 2;
+            }
+            other => return Err(CliError::UnknownFlag(other.to_string())),
+        }
+    }
+
+    Ok(BoxOpenArgs {
+        key_path: key_path.ok_or(CliError::MissingFlag("key"))?,
+        in_path: in_path.ok_or(CliError::MissingFlag("in"))?,
+        out_path: out_path.ok_or(CliError::MissingFlag("out"))?,
+    })
+}
+
+/// Runs `box-open`: reads a 32-byte secret key from `--key` and decrypts `--in`
+/// ([`dstu_core::crypto_box::open`]) - see [`run_box_seal_command`]'s doc comment for the same
+/// not-memory-bounded caveat.
+///
+/// # Errors
+///
+/// Returns [`CliError::Io`] if `--key`/`--in` can't be read or `--out` can't be written,
+/// [`CliError::WrongLength`] if `--key` isn't 32 bytes, [`CliError::BoxKeyInvalid`] if `--key`
+/// isn't a valid secret key, [`CliError::BoxOpenTruncated`] if `--in` is too short to be real
+/// `box-seal` output, or [`CliError::BoxOpenFailed`] for any other authentication failure.
+pub fn run_box_open_command(args: &BoxOpenArgs) -> Result<(), CliError> {
+    let secret = read_box_secret_key(&args.key_path)?;
+    let sealed = std::fs::read(&args.in_path).map_err(|e| CliError::Io {
+        path: args.in_path.clone(),
+        message: e.to_string(),
+    })?;
+    let opened = dstu_core::crypto_box::open(&sealed, &secret).map_err(|e| match e {
+        dstu_core::crypto_box::OpenError::Truncated => CliError::BoxOpenTruncated,
+        dstu_core::crypto_box::OpenError::InvalidCiphertext => CliError::BoxOpenFailed,
+    })?;
+    std::fs::write(&args.out_path, opened).map_err(|e| CliError::Io {
+        path: args.out_path.clone(),
+        message: e.to_string(),
+    })
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct StrumokArgs {
     pub variant: HashBits,
@@ -2768,6 +3060,10 @@ EVERYDAY COMMANDS:
     sign-pubkey     Derive the matching verifying key from a signing key, for `verify`.
     sign            Sign a file of any size with a signing key (DSTU 4145).
     verify          Check a `sign` signature against a verifying key.
+    box-keygen      Generate a fresh crypto_box secret key for `box-open`.
+    box-pubkey      Derive the matching public key from a secret key, for `box-seal`.
+    box-seal        Encrypt a file to a recipient's public key (DSTU 9041, hybrid via KDF).
+    box-open        Decrypt a file produced by `box-seal`.
 
 LOWER-LEVEL COMMANDS (benchmarking/interop - most users want the three above instead):
     kalyna-block    Single Kalyna block encrypt/decrypt - exactly one block, no file support.
@@ -2942,6 +3238,85 @@ FLAGS:
 
 EXAMPLE:
     uacrypt verify --key verifying.key --in report.pdf --sig report.pdf.sig
+";
+
+const BOX_KEYGEN_HELP: &str = "\
+uacrypt box-keygen - generate a fresh crypto_box secret key for `box-open`.
+
+Draws from the OS CSPRNG via rejection sampling against the DSTU 9041 curve order (docs/TASKS.md
+T-178) and writes the raw 32-byte private scalar to --out. A separate command from `keygen`/
+`sign-keygen` - a crypto_box key is a third, incompatible key shape.
+
+USAGE:
+    uacrypt box-keygen --out <path>
+
+FLAGS:
+    --out <path>    where to write the 32-byte secret key
+
+EXAMPLE:
+    uacrypt box-keygen --out box.key
+
+Notes:
+    - Keep this file secret - anyone who has it can decrypt messages sealed to it.
+    - Derive the matching public key with `uacrypt box-pubkey`.
+";
+
+const BOX_PUBKEY_HELP: &str = "\
+uacrypt box-pubkey - derive the matching public key from a crypto_box secret key.
+
+Reads --key (a `box-keygen` output) and writes the 32-byte compressed public key that `box-seal`
+needs - safe to share, unlike the secret key itself.
+
+USAGE:
+    uacrypt box-pubkey --key <path> --out <path>
+
+FLAGS:
+    --key <path>    a crypto_box secret key (from `uacrypt box-keygen`)
+    --out <path>    where to write the 32-byte public key
+
+EXAMPLE:
+    uacrypt box-pubkey --key box.key --out box.pub
+";
+
+const BOX_SEAL_HELP: &str = "\
+uacrypt box-seal - encrypt a file to a recipient's public key (DSTU 9041, hybrid via KDF).
+
+Unlike `encrypt` (which needs a shared symmetric key both sides already have), box-seal only needs
+the recipient's public key - anyone can seal a message only the matching secret key can open. Wraps
+a fresh random seed asymmetrically (dstu_core::crypto_box, docs/TASKS.md T-178), derives a
+symmetric key from it, and encrypts --in with that key.
+
+Not memory-bounded: --in is read whole into memory (unlike `encrypt`'s bounded-chunk streaming) -
+fine for typical messages/keys, not recommended for very large files yet.
+
+USAGE:
+    uacrypt box-seal --key <path> --in <path> --out <path>
+
+FLAGS:
+    --key <path>    the recipient's public key (from `uacrypt box-pubkey`)
+    --in <path>     file to encrypt
+    --out <path>    where to write the sealed output
+
+EXAMPLE:
+    uacrypt box-seal --key recipient.pub --in message.txt --out message.txt.box
+";
+
+const BOX_OPEN_HELP: &str = "\
+uacrypt box-open - decrypt a file produced by `box-seal`, using the matching secret key.
+
+A wrong key or a tampered/truncated file is rejected with an error before anything is written to
+--out, rather than producing wrong plaintext.
+
+USAGE:
+    uacrypt box-open --key <path> --in <path> --out <path>
+
+FLAGS:
+    --key <path>    the recipient's secret key (from `uacrypt box-keygen`)
+    --in <path>     the sealed file (must be real `box-seal` output)
+    --out <path>    where to write the decrypted output
+
+EXAMPLE:
+    uacrypt box-open --key box.key --in message.txt.box --out message.txt
 ";
 
 const KALYNA_BLOCK_HELP: &str = "\
@@ -3164,6 +3539,10 @@ fn print_command_help(command: &str) {
         "sign-pubkey" => SIGN_PUBKEY_HELP,
         "sign" => SIGN_HELP,
         "verify" => VERIFY_HELP,
+        "box-keygen" => BOX_KEYGEN_HELP,
+        "box-pubkey" => BOX_PUBKEY_HELP,
+        "box-seal" => BOX_SEAL_HELP,
+        "box-open" => BOX_OPEN_HELP,
         "kalyna-block" => KALYNA_BLOCK_HELP,
         "kalyna-ccm" => KALYNA_CCM_HELP,
         "kalyna-gcm" => KALYNA_GCM_HELP,
@@ -3214,6 +3593,22 @@ fn dispatch_sign_command(cmd: &str, rest: &[String]) -> Result<(), CliError> {
         "sign-pubkey" => run_sign_pubkey_command(&parse_sign_pubkey_args(rest)?),
         "sign" => run_sign_command(&parse_sign_args(rest)?),
         _ => run_verify_command(&parse_verify_args(rest)?),
+    }
+}
+
+/// Dispatches `box-keygen`/`box-pubkey`/`box-seal`/`box-open` - same D-71 line-count-lint reason as
+/// [`dispatch_sign_command`]; `cmd` is always one of the four literals [`run`]'s own match arm
+/// already narrowed it to. `rest` excludes both the program name and `cmd` itself.
+fn dispatch_box_command(cmd: &str, rest: &[String]) -> Result<(), CliError> {
+    if rest.iter().any(|a| is_help_flag(a)) {
+        print_command_help(cmd);
+        return Ok(());
+    }
+    match cmd {
+        "box-keygen" => run_box_keygen_command(&parse_box_keygen_args(rest)?),
+        "box-pubkey" => run_box_pubkey_command(&parse_box_pubkey_args(rest)?),
+        "box-seal" => run_box_seal_command(&parse_box_seal_args(rest)?),
+        _ => run_box_open_command(&parse_box_open_args(rest)?),
     }
 }
 
@@ -3339,6 +3734,9 @@ pub fn run(args: &[String]) -> Result<(), CliError> {
         }),
         Some(cmd @ ("sign-keygen" | "sign-pubkey" | "sign" | "verify")) => {
             dispatch_sign_command(cmd, &args[1..])
+        }
+        Some(cmd @ ("box-keygen" | "box-pubkey" | "box-seal" | "box-open")) => {
+            dispatch_box_command(cmd, &args[1..])
         }
         Some(other) => Err(CliError::UnknownCommand(other.to_string())),
     }
@@ -5864,6 +6262,375 @@ mod tests {
             }),
             Err(CliError::Io { .. })
         ));
+    }
+
+    #[test]
+    fn parse_box_keygen_args_happy_path() {
+        let args = vec!["--out".to_string(), "box.key".to_string()];
+        assert_eq!(
+            parse_box_keygen_args(&args),
+            Ok(BoxKeygenArgs {
+                out_path: PathBuf::from("box.key"),
+            })
+        );
+    }
+
+    #[test]
+    fn parse_box_keygen_args_requires_out() {
+        assert_eq!(
+            parse_box_keygen_args(&[]),
+            Err(CliError::MissingFlag("out"))
+        );
+    }
+
+    #[test]
+    fn parse_box_pubkey_args_happy_path() {
+        let args = vec![
+            "--key".to_string(),
+            "box.key".to_string(),
+            "--out".to_string(),
+            "box.pub".to_string(),
+        ];
+        assert_eq!(
+            parse_box_pubkey_args(&args),
+            Ok(BoxPubkeyArgs {
+                key_path: PathBuf::from("box.key"),
+                out_path: PathBuf::from("box.pub"),
+            })
+        );
+    }
+
+    #[test]
+    fn parse_box_pubkey_args_requires_all_of_key_out() {
+        assert_eq!(
+            parse_box_pubkey_args(&[]),
+            Err(CliError::MissingFlag("key"))
+        );
+        assert_eq!(
+            parse_box_pubkey_args(&["--key".to_string(), "k".to_string()]),
+            Err(CliError::MissingFlag("out"))
+        );
+    }
+
+    #[test]
+    fn parse_box_seal_args_happy_path() {
+        let args = vec![
+            "--key".to_string(),
+            "recipient.pub".to_string(),
+            "--in".to_string(),
+            "msg.txt".to_string(),
+            "--out".to_string(),
+            "msg.box".to_string(),
+        ];
+        assert_eq!(
+            parse_box_seal_args(&args),
+            Ok(BoxSealArgs {
+                key_path: PathBuf::from("recipient.pub"),
+                in_path: PathBuf::from("msg.txt"),
+                out_path: PathBuf::from("msg.box"),
+            })
+        );
+    }
+
+    #[test]
+    fn parse_box_seal_args_requires_all_of_key_in_out() {
+        assert_eq!(parse_box_seal_args(&[]), Err(CliError::MissingFlag("key")));
+        assert_eq!(
+            parse_box_seal_args(&["--key".to_string(), "k".to_string()]),
+            Err(CliError::MissingFlag("in"))
+        );
+        assert_eq!(
+            parse_box_seal_args(&[
+                "--key".to_string(),
+                "k".to_string(),
+                "--in".to_string(),
+                "i".to_string(),
+            ]),
+            Err(CliError::MissingFlag("out"))
+        );
+    }
+
+    #[test]
+    fn parse_box_seal_args_rejects_unknown_flag() {
+        assert_eq!(
+            parse_box_seal_args(&["--variant".to_string(), "256".to_string()]),
+            Err(CliError::UnknownFlag("--variant".to_string()))
+        );
+    }
+
+    #[test]
+    fn parse_box_open_args_happy_path() {
+        let args = vec![
+            "--key".to_string(),
+            "box.key".to_string(),
+            "--in".to_string(),
+            "msg.box".to_string(),
+            "--out".to_string(),
+            "msg.txt".to_string(),
+        ];
+        assert_eq!(
+            parse_box_open_args(&args),
+            Ok(BoxOpenArgs {
+                key_path: PathBuf::from("box.key"),
+                in_path: PathBuf::from("msg.box"),
+                out_path: PathBuf::from("msg.txt"),
+            })
+        );
+    }
+
+    #[test]
+    fn parse_box_open_args_requires_all_of_key_in_out() {
+        assert_eq!(parse_box_open_args(&[]), Err(CliError::MissingFlag("key")));
+    }
+
+    /// Full golden path: `box-keygen` -> `box-pubkey` -> `box-seal` -> `box-open`, entirely
+    /// through the CLI layer, matching how a real user would actually use this feature.
+    #[cfg_attr(
+        miri,
+        ignore = "dstu9041's 256-iteration scalar-multiply ladders are too slow to interpret under Miri - see docs/TASKS.md T-100/T-177"
+    )]
+    #[test]
+    fn box_seal_open_golden_path_round_trips() {
+        let dir = TempDir::new("box_golden_path");
+        run_box_keygen_command(&BoxKeygenArgs {
+            out_path: dir.file("box.key"),
+        })
+        .expect("box-keygen should succeed");
+        run_box_pubkey_command(&BoxPubkeyArgs {
+            key_path: dir.file("box.key"),
+            out_path: dir.file("box.pub"),
+        })
+        .expect("box-pubkey should succeed");
+        std::fs::write(dir.file("msg.txt"), b"a message for the recipient only")
+            .expect("write message");
+
+        run_box_seal_command(&BoxSealArgs {
+            key_path: dir.file("box.pub"),
+            in_path: dir.file("msg.txt"),
+            out_path: dir.file("msg.box"),
+        })
+        .expect("box-seal should succeed");
+
+        let sealed_bytes = std::fs::read(dir.file("msg.box")).expect("read sealed output");
+        assert_eq!(sealed_bytes.len(), 128 + 32 + 32 + 16); // KEM + header + message + tag
+        let pub_bytes = std::fs::read(dir.file("box.pub")).expect("read public key");
+        assert_eq!(pub_bytes.len(), 32);
+
+        run_box_open_command(&BoxOpenArgs {
+            key_path: dir.file("box.key"),
+            in_path: dir.file("msg.box"),
+            out_path: dir.file("msg.out"),
+        })
+        .expect("box-open should succeed on the real sealed output");
+
+        let opened = std::fs::read(dir.file("msg.out")).expect("read opened output");
+        assert_eq!(opened, b"a message for the recipient only");
+    }
+
+    #[cfg_attr(
+        miri,
+        ignore = "dstu9041's 256-iteration scalar-multiply ladders are too slow to interpret under Miri - see docs/TASKS.md T-100/T-177"
+    )]
+    #[test]
+    fn run_box_open_command_rejects_wrong_secret_key() {
+        let dir = TempDir::new("box_wrong_key");
+        run_box_keygen_command(&BoxKeygenArgs {
+            out_path: dir.file("box.key"),
+        })
+        .expect("box-keygen should succeed");
+        run_box_keygen_command(&BoxKeygenArgs {
+            out_path: dir.file("other.key"),
+        })
+        .expect("box-keygen should succeed");
+        run_box_pubkey_command(&BoxPubkeyArgs {
+            key_path: dir.file("box.key"),
+            out_path: dir.file("box.pub"),
+        })
+        .expect("box-pubkey should succeed");
+        std::fs::write(dir.file("msg.txt"), b"secret").expect("write message");
+        run_box_seal_command(&BoxSealArgs {
+            key_path: dir.file("box.pub"),
+            in_path: dir.file("msg.txt"),
+            out_path: dir.file("msg.box"),
+        })
+        .expect("box-seal should succeed");
+
+        assert_eq!(
+            run_box_open_command(&BoxOpenArgs {
+                key_path: dir.file("other.key"),
+                in_path: dir.file("msg.box"),
+                out_path: dir.file("msg.out"),
+            }),
+            Err(CliError::BoxOpenFailed)
+        );
+    }
+
+    #[cfg_attr(
+        miri,
+        ignore = "dstu9041's 256-iteration scalar-multiply ladders are too slow to interpret under Miri - see docs/TASKS.md T-100/T-177"
+    )]
+    #[test]
+    fn run_box_open_command_rejects_tampered_sealed_file() {
+        let dir = TempDir::new("box_tampered");
+        run_box_keygen_command(&BoxKeygenArgs {
+            out_path: dir.file("box.key"),
+        })
+        .expect("box-keygen should succeed");
+        run_box_pubkey_command(&BoxPubkeyArgs {
+            key_path: dir.file("box.key"),
+            out_path: dir.file("box.pub"),
+        })
+        .expect("box-pubkey should succeed");
+        std::fs::write(dir.file("msg.txt"), b"secret").expect("write message");
+        run_box_seal_command(&BoxSealArgs {
+            key_path: dir.file("box.pub"),
+            in_path: dir.file("msg.txt"),
+            out_path: dir.file("msg.box"),
+        })
+        .expect("box-seal should succeed");
+
+        let mut sealed = std::fs::read(dir.file("msg.box")).expect("read sealed output");
+        let last = sealed.len() - 1;
+        sealed[last] ^= 0xFF;
+        std::fs::write(dir.file("msg.box"), &sealed).expect("write tampered output");
+
+        assert_eq!(
+            run_box_open_command(&BoxOpenArgs {
+                key_path: dir.file("box.key"),
+                in_path: dir.file("msg.box"),
+                out_path: dir.file("msg.out"),
+            }),
+            Err(CliError::BoxOpenFailed)
+        );
+    }
+
+    #[test]
+    fn run_box_open_command_truncated_input_is_rejected() {
+        let dir = TempDir::new("box_truncated");
+        run_box_keygen_command(&BoxKeygenArgs {
+            out_path: dir.file("box.key"),
+        })
+        .expect("box-keygen should succeed");
+        std::fs::write(dir.file("msg.box"), [0u8; 10]).expect("write short input");
+
+        assert_eq!(
+            run_box_open_command(&BoxOpenArgs {
+                key_path: dir.file("box.key"),
+                in_path: dir.file("msg.box"),
+                out_path: dir.file("msg.out"),
+            }),
+            Err(CliError::BoxOpenTruncated)
+        );
+    }
+
+    #[test]
+    fn run_box_pubkey_command_wrong_key_length_is_rejected() {
+        let dir = TempDir::new("box_pubkey_wrong_len");
+        std::fs::write(dir.file("box.key"), [0x11u8; 31]).expect("write short key");
+        assert_eq!(
+            run_box_pubkey_command(&BoxPubkeyArgs {
+                key_path: dir.file("box.key"),
+                out_path: dir.file("box.pub"),
+            }),
+            Err(CliError::WrongLength {
+                what: "box secret key",
+                expected: 32,
+                actual: 31,
+            })
+        );
+    }
+
+    #[test]
+    fn run_box_pubkey_command_zero_key_is_rejected() {
+        let dir = TempDir::new("box_pubkey_zero_key");
+        std::fs::write(dir.file("box.key"), [0u8; 32]).expect("write zero key");
+        assert_eq!(
+            run_box_pubkey_command(&BoxPubkeyArgs {
+                key_path: dir.file("box.key"),
+                out_path: dir.file("box.pub"),
+            }),
+            Err(CliError::BoxKeyInvalid)
+        );
+    }
+
+    #[test]
+    fn run_box_keygen_command_produces_distinct_keys_each_call() {
+        let dir = TempDir::new("box_keygen_distinct");
+        run_box_keygen_command(&BoxKeygenArgs {
+            out_path: dir.file("key1.bin"),
+        })
+        .expect("first box-keygen should succeed");
+        run_box_keygen_command(&BoxKeygenArgs {
+            out_path: dir.file("key2.bin"),
+        })
+        .expect("second box-keygen should succeed");
+
+        let key1 = std::fs::read(dir.file("key1.bin")).expect("read key1");
+        let key2 = std::fs::read(dir.file("key2.bin")).expect("read key2");
+        assert_ne!(
+            key1, key2,
+            "two box-keygen calls must not produce the same key"
+        );
+    }
+
+    #[cfg_attr(
+        miri,
+        ignore = "dstu9041's 256-iteration scalar-multiply ladders are too slow to interpret under Miri - see docs/TASKS.md T-100/T-177"
+    )]
+    #[test]
+    fn box_dispatch_through_top_level_run() {
+        let dir = TempDir::new("box_dispatch");
+        let path = |p: &std::path::Path| p.to_str().expect("valid utf-8 path").to_string();
+
+        let keygen: Vec<String> = ["box-keygen", "--out", &path(&dir.file("box.key"))]
+            .into_iter()
+            .map(String::from)
+            .collect();
+        run(&keygen).expect("box-keygen dispatch should succeed");
+
+        let pubkey: Vec<String> = [
+            "box-pubkey",
+            "--key",
+            &path(&dir.file("box.key")),
+            "--out",
+            &path(&dir.file("box.pub")),
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect();
+        run(&pubkey).expect("box-pubkey dispatch should succeed");
+
+        std::fs::write(dir.file("msg.txt"), b"dispatch me").expect("write message");
+        let seal: Vec<String> = [
+            "box-seal",
+            "--key",
+            &path(&dir.file("box.pub")),
+            "--in",
+            &path(&dir.file("msg.txt")),
+            "--out",
+            &path(&dir.file("msg.box")),
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect();
+        run(&seal).expect("box-seal dispatch should succeed");
+
+        let open: Vec<String> = [
+            "box-open",
+            "--key",
+            &path(&dir.file("box.key")),
+            "--in",
+            &path(&dir.file("msg.box")),
+            "--out",
+            &path(&dir.file("msg.out")),
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect();
+        run(&open).expect("box-open dispatch should succeed");
+
+        let opened = std::fs::read(dir.file("msg.out")).expect("read opened output");
+        assert_eq!(opened, b"dispatch me");
     }
 
     #[cfg_attr(
