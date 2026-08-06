@@ -253,23 +253,23 @@ html[data-lang="uk"] [lang="en"]{display:none;}
 <main id="top">
 
 <section class="hero container">
-  <span class="eyebrow" lang="en">Rust · DSTU 7624 / 7564 / 8845 / 4145</span>
-  <span class="eyebrow" lang="uk">Rust · ДСТУ 7624 / 7564 / 8845 / 4145</span>
+  <span class="eyebrow" lang="en">Rust · DSTU 7624 / 7564 / 8845 / 4145 / 9041</span>
+  <span class="eyebrow" lang="uk">Rust · ДСТУ 7624 / 7564 / 8845 / 4145 / 9041</span>
 
   <div lang="en">
     <h1>Ukrainian cryptography, engineered like libsodium.</h1>
     <p class="lede">uacrypt implements Ukraine's national cryptographic standards — the Kalyna
-    block cipher, the Kupyna hash, the Strumok stream cipher, and DSTU 4145 signatures — as a
-    Rust library with hard, safe-by-default APIs. No mode to misconfigure, no nonce to reuse by
-    accident, no algorithm choice to get wrong.</p>
+    block cipher, the Kupyna hash, the Strumok stream cipher, DSTU 4145 signatures, and DSTU 9041
+    public-key encryption — as a Rust library with hard, safe-by-default APIs. No mode to
+    misconfigure, no nonce to reuse by accident, no algorithm choice to get wrong.</p>
   </div>
   <div lang="uk">
     <h1>Українська криптографія, зроблена в дусі libsodium.</h1>
     <p class="lede">uacrypt реалізує національні криптографічні стандарти України — блочний шифр
-    Калина, геш-функцію Купина, потоковий шифр Струмок і підписи ДСТУ 4145 — як Rust-бібліотеку
-    з жорсткими, безпечними за замовчуванням API. Немає режиму, який можна неправильно
-    налаштувати, немає nonce, який можна випадково повторно використати, немає вибору
-    алгоритму, який можна переплутати.</p>
+    Калина, геш-функцію Купина, потоковий шифр Струмок, підписи ДСТУ 4145 і асиметричне
+    шифрування ДСТУ 9041 — як Rust-бібліотеку з жорсткими, безпечними за замовчуванням API.
+    Немає режиму, який можна неправильно налаштувати, немає nonce, який можна випадково
+    повторно використати, немає вибору алгоритму, який можна переплутати.</p>
   </div>
 
   <div class="hero-cta">
@@ -315,11 +315,11 @@ html[data-lang="uk"] [lang="en"]{display:none;}
   <div class="layers">
     <div class="layer">
       <h3>hazmat::*</h3>
-      <p lang="en">The raw DSTU primitives — Kalyna, Kupyna, Strumok, DSTU 4145 — exposed with
-      full control over mode, key size, and parameters, for people who genuinely need it and
-      know what they're doing. Named after libsodium's own convention for exactly this kind of
-      module.</p>
-      <p lang="uk">Сирі примітиви ДСТУ — Калина, Купина, Струмок, ДСТУ 4145 — з повним
+      <p lang="en">The raw DSTU primitives — Kalyna, Kupyna, Strumok, DSTU 4145, DSTU 9041 —
+      exposed with full control over mode, key size, and parameters, for people who genuinely
+      need it and know what they're doing. Named after libsodium's own convention for exactly
+      this kind of module.</p>
+      <p lang="uk">Сирі примітиви ДСТУ — Калина, Купина, Струмок, ДСТУ 4145, ДСТУ 9041 — з повним
       контролем над режимом, розміром ключа й параметрами, для тих, кому це справді потрібно і
       хто розуміє, що робить. Назва — за тією ж конвенцією, що й у libsodium, саме для такого
       роду модулів.</p>
@@ -327,15 +327,17 @@ html[data-lang="uk"] [lang="en"]{display:none;}
     <div class="layer">
       <h3>crypto_*</h3>
       <p lang="en">A libsodium-shaped high-level layer — <code>crypto_secretbox</code>,
-      <code>crypto_secretstream</code>, <code>crypto_sign</code>, <code>crypto_auth</code>,
-      <code>crypto_kdf</code>, <code>crypto_generichash</code>, <code>crypto_stream</code>,
-      <code>crypto_pwhash</code> — that deletes the knobs: one mode, one key size, nonces
-      generated for you. The <code>uacrypt</code> CLI is built entirely on this layer.</p>
+      <code>crypto_secretstream</code>, <code>crypto_box</code>, <code>crypto_sign</code>,
+      <code>crypto_auth</code>, <code>crypto_kdf</code>, <code>crypto_generichash</code>,
+      <code>crypto_stream</code>, <code>crypto_pwhash</code> — that deletes the knobs: one mode,
+      one key size, nonces generated for you. The <code>uacrypt</code> CLI is built entirely on
+      this layer.</p>
       <p lang="uk">Високорівневий шар у стилі libsodium — <code>crypto_secretbox</code>,
-      <code>crypto_secretstream</code>, <code>crypto_sign</code>, <code>crypto_auth</code>,
-      <code>crypto_kdf</code>, <code>crypto_generichash</code>, <code>crypto_stream</code>,
-      <code>crypto_pwhash</code> — який прибирає всі параметри: один режим, один розмір ключа,
-      nonce генерується сам. CLI <code>uacrypt</code> побудований повністю на цьому шарі.</p>
+      <code>crypto_secretstream</code>, <code>crypto_box</code>, <code>crypto_sign</code>,
+      <code>crypto_auth</code>, <code>crypto_kdf</code>, <code>crypto_generichash</code>,
+      <code>crypto_stream</code>, <code>crypto_pwhash</code> — який прибирає всі параметри: один
+      режим, один розмір ключа, nonce генерується сам. CLI <code>uacrypt</code> побудований
+      повністю на цьому шарі.</p>
     </div>
   </div>
 </section>
@@ -436,22 +438,29 @@ html[data-lang="uk"] [lang="en"]{display:none;}
       <div class="algo-head">
         <div><div class="algo-name">DSTU 9041</div>
         <div class="algo-meta">DSTU 9041:2020 · <span lang="en">asymmetric encryption</span><span lang="uk">асиметричне шифрування</span></div></div>
-        <span class="pill pill-neutral" lang="en">not implemented</span>
-        <span class="pill pill-neutral" lang="uk">не реалізовано</span>
+        <span class="pill pill-ok" lang="en">verified</span>
+        <span class="pill pill-ok" lang="uk">верифіковано</span>
       </div>
       <p class="algo-gloss" lang="en">Hybrid encryption over twisted Edwards curves</p>
       <p class="algo-gloss" lang="uk">Гібридне шифрування на скручених кривих Едвардса</p>
-      <p class="desc" lang="en">The libsodium <code>crypto_box</code> equivalent — not yet
-      built.</p>
-      <p class="desc" lang="uk">Аналог <code>crypto_box</code> з libsodium — ще не реалізовано.</p>
-      <p class="status-detail" lang="en">A secondary-source pseudocode draft exists (a 2023
-      bachelor's thesis analyzing the standard), but there is no oracle, no reference
-      implementation, and the primary standard text hasn't been obtained. Blocked on evidence,
-      not effort.</p>
-      <p class="status-detail" lang="uk">Існує чернетка псевдокоду з вторинного джерела
-      (дипломна робота 2023 року з аналізом стандарту), але немає жодного оракула, жодної
-      референсної реалізації, і сам первинний текст стандарту ще не отримано. Заблоковано
-      браком доказової бази, а не браком зусиль.</p>
+      <p class="desc" lang="en"><code>crypto_box</code>: the libsodium <code>crypto_box_seal</code>
+      equivalent — a KEM wraps a random seed, which derives the key for the actual message via
+      <code>crypto_secretstream</code>.</p>
+      <p class="desc" lang="uk"><code>crypto_box</code>: аналог <code>crypto_box_seal</code> з
+      libsodium — KEM обгортає випадкове зерно, яке породжує ключ для самого повідомлення через
+      <code>crypto_secretstream</code>.</p>
+      <p class="status-detail" lang="en">Vector-confirmed against the standard's own worked
+      example (Додаток Г), but only the recommended <code>l(p)=256</code>/E256/1 curve — the
+      standard also defines 384/512/768-bit variants, not yet implemented. The
+      <code>crypto_box</code> composition itself (KEM + KDF + <code>crypto_secretstream</code>)
+      isn't DSTU-specified, so it has no vector oracle of its own — verified by property and
+      tamper testing instead, the same posture as <code>crypto_secretstream</code>.</p>
+      <p class="status-detail" lang="uk">Звірено з власним прикладом стандарту (Додаток Г), але
+      лише для рекомендованої кривої <code>l(p)=256</code>/E256/1 — стандарт також визначає
+      варіанти на 384/512/768 біт, ще не реалізовані. Сама композиція <code>crypto_box</code>
+      (KEM + KDF + <code>crypto_secretstream</code>) не визначена стандартом, тож не має власного
+      тестового оракула — верифікована властивісними тестами й тестами на підробку, як і
+      <code>crypto_secretstream</code>.</p>
     </article>
 
   </div>
@@ -572,6 +581,29 @@ html[data-lang="uk"] [lang="en"]{display:none;}
           `nistb163` (та сама родина кривих у двійковому полі, чесніше порівняння, ніж P-256) —
           алгоритмічний розрив (ще без вікна з попередньо обчисленою таблицею), а не апаратна
           застережка.</span>
+        </td>
+      </tr>
+      <tr>
+        <td>DSTU 9041</td>
+        <td><span lang="en">asymmetric encryption</span><span lang="uk">асиметричне шифрування</span></td>
+        <td><code>crypto_box_seal</code> (libsodium)</td>
+        <td class="diff">
+          <span lang="en">A twisted Edwards curve with its own field, not Curve25519 — and a
+          KEM-then-symmetric composition this project designed itself (D-169), since the standard
+          only defines the asymmetric wrap.</span>
+          <span lang="uk">Скручена крива Едвардса з власним полем, не Curve25519 — і композиція
+          «KEM, потім симетричне шифрування», спроєктована власне цим проєктом (D-169), бо
+          стандарт визначає лише асиметричну обгортку.</span>
+        </td>
+        <td class="diff">
+          <span lang="en">~3.3-4.2x slower sealing/opening than OpenSSL's own hybrid envelope
+          (CMS + EC) — the raw elliptic-curve math alone is close to parity with a
+          field-size-matched OpenSSL curve; the gap is mostly the symmetric layer, not chased
+          further yet.</span>
+          <span lang="uk">~3.3-4.2x повільніше запечатування/розпечатування за власний гібридний
+          конверт OpenSSL (CMS + EC) — сама еліптична математика близька до паритету з кривою
+          OpenSSL того ж розміру поля; розрив переважно в симетричному шарі, поки не досліджено
+          глибше.</span>
         </td>
       </tr>
     </tbody>
