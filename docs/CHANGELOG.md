@@ -5,6 +5,13 @@ All notable changes to this project are documented in this file. Format follows
 
 ## [Unreleased]
 
+### Added
+
+- `hazmat::dstu9041`: DSTU 9041:2020 hybrid (ECIES-style) asymmetric encryption over a twisted
+  Edwards curve, `l(p)=256`/E256/1 only (D-47's "ship the recommended curve first" precedent) -
+  `F_p` bignum arithmetic, twisted-Edwards point arithmetic, and encrypt/decrypt composition,
+  verified against the standard's own worked example (`docs/TASKS.md` T-177).
+
 ## [0.2.0] - 2026-08-02
 
 Second tagged release - GitHub Releases only, no crates.io publish (`docs/TASKS.md` T-17 stays

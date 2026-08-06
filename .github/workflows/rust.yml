@@ -142,7 +142,7 @@ jobs:
           PROPTEST_CASES: 1
 
   kani:
-    name: cargo kani (gf2m163::reduce proofs, D-102)
+    name: cargo kani (gf2m163::reduce + dstu9041::fp256 proofs, D-102/T-177)
     runs-on: ubuntu-latest
     # Pilot measured ~1.5 min total for both harnesses (docs/DECISIONS.md D-102) - generous margin
     # over that, not a sign this is expected to run long.

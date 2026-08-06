@@ -64,6 +64,29 @@ volunteer open-source project's budget. Not pursued for now; each per-algorithm 
 notes what specifically the official text would have resolved, so this can be revisited if
 project funding changes rather than re-researched from scratch.
 
+**Checked 2026-08-06, for context only — these two are explicitly out of scope (D-08), not part of
+the five in-scope algorithms above:**
+
+| Standard | Pages | Price (UAH) | Listing |
+|---|---|---|---|
+| ДСТУ 8961:2019 "Скеля" (post-quantum KEM/asymmetric encryption) | 245 | 32,487.00 | `fnd-store.uas.gov.ua` catalog |
+| ДСТУ 9212:2023 "Вершина" (post-quantum signature) | 254 | 33,680.40 | `fnd-store.uas.gov.ua` catalog |
+
+Same ≈132.6 UAH/page rate holds. Both are far larger documents than any in-scope standard (Kalyna's
+227 pages was previously the biggest); combined cost (~66,167 UAH, ~$1,600 USD) exceeds all three
+in-scope standards above combined. Purchasability alone doesn't lift D-08's out-of-scope decision —
+see D-08/`docs/dstu-crypto-project.md`'s "Post-quantum track" for the other three reasons (math
+class, implementation complexity, cryptanalysis maturity) that stand independent of source-text
+cost.
+
+**For scale, checked the same day against their closest NIST equivalents** (page count via
+`pdfinfo` on the official PDF, not a `WebFetch` summary — see this file's own PDF-extraction
+reliability note): FIPS 203 (ML-KEM, ex-Kyber, `nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.203.pdf`)
+is 56 pages; FIPS 204 (ML-DSA, ex-Dilithium,
+`nvlpubs.nist.gov/nistpubs/fips/nist.fips.204.pdf`) is 65 pages. Skelya/Vershyna are each roughly
+4x the length of their NIST counterpart — consistent with D-08's own "implementation complexity
+comparable to all five other in-scope algorithms combined" framing, not just a pricing quirk.
+
 ## Per-algorithm oracle map
 
 ### Kalyna (DSTU 7624)
@@ -374,6 +397,17 @@ project funding changes rather than re-researched from scratch.
   any kind (dual-oracle verification, this project's own hard constraint, has nothing to check
   against here even with the thesis in hand) — the strongest case for revisiting the purchase if
   budget ever allows, but deemed cost-prohibitive for now, same as the other two.
+- **Update, 2026-08-05/06 (T-173/T-174/T-176/T-177): the primary text was obtained after all** — a
+  partial scan (T-173) plus a targeted supplement (T-176) together cover the recommended `l(p)=256`
+  curve (E256/1) end-to-end, including Додаток Г's own worked example (`d`, `Q`, ephemeral `ε`/`R`,
+  `T`, the full ciphertext `C`). `hazmat::dstu9041` (T-177) is verified against that worked example
+  directly — the sole oracle for this primitive, same single-source caveat as the rest of this
+  section (no independent reference implementation exists anywhere, confirmed again as part of
+  T-177's own closure, not just the 2026-07-21 search above), but now a primary-source vector
+  rather than a secondary thesis transcription. The `l(p)=384/512/768` cases remain unimplemented
+  and, for `l(p)=768` specifically, remain genuinely oracle-less even in the primary text (Додаток
+  Г's scan doesn't reach that security level) — see `docs/pseudocode/dstu9041.md`'s "Implementation
+  status" section.
 
 ## Test-vector convention
 

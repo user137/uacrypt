@@ -11264,3 +11264,102 @@ end-to-end against the corrected values, not just the curve parameters in isolat
 curve" code block, both with an inline erratum note pointing here.
 `g1-worked-example.json` needed no change - it stores points/messages/ciphertext, never `p`/`n`
 directly.
+
+## D-167: T-177 - `hazmat::dstu9041` (`l(p)=256`) implemented, plus two security findings beyond clause 12's literal text
+
+**What was built.** `hazmat::dstu9041` (E256/1 only, D-47's "ship the recommended curve first"
+precedent, same posture as `hazmat::dstu4145`'s m=163-only scope) is now implemented and
+test-first, phased, one commit per phase: `message.rs` (`M'` formatting, the Kalyna-KW
+`M'||0x00×32` zero-block quirk - an empirical fact confirmed against `hazmat::kalyna_kw`, not yet
+explained from a cited clause, D-165's own open question), `fp256.rs` (`F_p` arithmetic for
+`p=2^256-435`, a pseudo-Mersenne-adjacent prime - `multiply`/`square` via schoolbook wide-multiply
+plus a Solinas-style reduction exploiting `2^256≡435 (mod p)`; `invert` via Fermat; `sqrt`/
+`euler_criterion` via the `p≡5 (mod 8)` formula; `pow_mod` a fixed-256-iteration constant-time
+ladder), `curve256.rs` (twisted Edwards point arithmetic, Додаток Б.4's complete addition law -
+handles doubling/neutral uniformly since `d` is a non-square, fixed-256-iteration
+`scalar_multiply`), `encryption.rs` (clauses 11/12's encrypt/decrypt composition). Verified
+end-to-end against the standard's own Додаток Г worked example - the sole oracle for this
+primitive (`docs/ORACLES.md`, no independent DSTU 9041 reference implementation exists anywhere,
+confirmed again as part of this task's own closure). Plan-mode design pass with `advisor()`
+consultations before Phase 2, after Phase 3/4, and at closure - not a single up-front review.
+
+**Finding 1 - `r=p-1` reconstructs an order-2 point outside `⟨P⟩`.** Clause 12 step 2 rejects
+`r=0`, `r=1`, and `r²=a·d⁻¹ (mod p)` - but not `r=p-1`, which reconstructs to `R'=(p-1,0)`, a
+genuine order-2 point outside the base point's own subgroup (proved arithmetically in
+`tests/dstu9041_curve.rs`'s `r_equals_p_minus_1_reconstructs_the_order_2_point`, and independently
+by clause 12 step 4's own `euler_criterion` check, which happens to reject `δ=0` as a side effect).
+Left unrejected, a chosen-ciphertext query with `r=p-1` would leak the private key's parity bit via
+whether `T'=e·R'` lands on `R'` (e odd) or `NEUTRAL` (e even). Fixed as an explicit fourth rejection
+case in step 2, kept even though step 4's stricter-than-literal form incidentally also catches it -
+an explicit, self-documenting check rather than relying on an incidental side effect to carry the
+argument.
+
+**Finding 2 - the bigger one, found by a second `advisor()` review after Phase 3/4 landed: E256/1
+has cofactor 4, so genuine order-4 points exist and are reachable via a crafted `r`.** `#E(F_p)=4n`
+is the unique multiple of `2n` inside the Hasse interval (checked exhaustively for every `k` up to
+20; only `k=2` lands `2n·k` in `[p+1-2√p, p+1+2√p]`). The curve's only `y=0` solutions are `x²=1`,
+i.e. `x∈{1,p-1}` - exactly `NEUTRAL` and the order-2 point from Finding 1, no third one. A finite
+abelian group of order `4n` (`n` an odd prime) has a 2-Sylow subgroup that is either cyclic (`Z/4`,
+one non-trivial order-2 element) or Klein four (`Z/2×Z/2`, three) - since there is provably only
+one order-2 element, the 2-Sylow subgroup is `Z/4`, making `E(F_p)` cyclic of order `4n` overall,
+and a cyclic group of order `4n` genuinely has order-4 elements. An unrejected order-4 `R'` would
+leak `e mod 4` (not just parity) through which of 3 distinguishable `κ` values (`x` of `NEUTRAL`/
+the order-2 point/the order-4 point pair, the latter two sharing an `x` since `x_T=x_{-T}`) `T'=e·R'`
+lands on. **A first numerical search (random points + cofactor-clearing) found none in 5000 tries
+and briefly looked like it closed the question the other way - that search had an uncaught bug,
+never isolated, superseded by the group-theory proof above, which doesn't depend on locating a
+concrete example by coordinates.** Fixed with a general subgroup-membership check in `decrypt`
+(`R'.scalar_multiply(&order()) == NEUTRAL`) rather than a curve-specific torsion patch - the
+standard fix for any cofactor->1 curve, and the one that generalizes if this module is ever ported
+to a different `l(p)`.
+
+**Also fixed along the way**: `message.rs`'s `parse_m_prime` (reached from `decrypt` on
+caller-secret-derived, KW-unwrapped data) used plain `!=`/short-circuiting comparisons for its hash
+and zero-padding checks - not a documented constant-time primitive
+(`docs/SECURITY.md`'s standing rule). Replaced with `subtle::ConstantTimeEq` for the hash comparison
+and a fixed-iteration OR-fold (iterating the full `M_TILDE_BYTES` buffer regardless of the
+attacker-influenced `bit_length`, not a `bit_length`-sized slice) for the padding check. Caught
+before `decrypt` could safely call `parse_m_prime`, not after.
+
+**`DecryptError` deliberately collapsed to one variant** (`InvalidCiphertext`): clause 12's
+late-stage checks (hash mismatch, padding-not-zero, KW checksum mismatch) all depend on `κ=x_{T'}`,
+itself derived from the caller's secret `e` - returning distinguishable errors or timing here is a
+padding-oracle shape (Manger/Vaudenay-style), squarely in `docs/SECURITY.md`'s threat model. A
+deliberate safe deviation from clause 12's literal per-step error naming, same category as
+D-56/D-63's AEAD-binding fixes. `decrypt` also takes no public key parameter - genuinely unused
+(clippy-caught): `T'=e·R'` needs only the secret `e` and the ciphertext's own `r`.
+
+**QA-gate closure.** Full-workspace `clippy --all-features -- -D warnings`/`fmt --check` clean.
+`cargo test --workspace --all-features` clean (115 lib/integration tests + 8 doc-tests across
+`message.rs`/`fp256.rs`/`curve256.rs`/`encryption.rs`, including the standard's own worked-example
+round-trip - independently re-verified via an unpiped log redirect after noticing the first run had
+been piped through `tail`, which would have masked a real failure behind `tail`'s own exit code).
+Scoped `cargo +nightly miri test -p dstu-core --test dstu9041_field --test dstu9041_curve --test
+dstu9041_encryption --test dstu9041_message --lib` (CI's own invocation,
+`MIRIFLAGS=-Zmiri-disable-isolation PROPTEST_CASES=1` - proptest's failure-persistence lookup calls
+`getcwd`, which Miri's isolation blocks by default, same pre-existing cross-platform gotcha T-81
+already hit) ran fully clean end to end: `--lib` 74 passed/3 ignored, `dstu9041_curve` 16 passed,
+`dstu9041_encryption` 19 passed/1 ignored, `dstu9041_field` 28 passed/3 ignored, `dstu9041_message`
+9 passed - 0 failed across all five, ~2.2 CPU-hours total (encryption alone: 7273.62s). The
+heaviest `fp256`/`encryption` proptests and the `pow_mod`/`sqrt` 256-iteration ladders are marked
+`#[cfg_attr(miri, ignore)]` matching T-100's precedent (`37f7826`), so this exercises every
+dstu9041 code path at least once under Miri without the interpretation cost of a full multi-case
+proptest run or a fixed-256-iteration ladder. A Kani proof harness (`fp256.rs`'s `kani_proofs`
+module, mirroring
+`gf2m163.rs`'s D-102 precedent) was added for `select`/`conditional_sub_p`/`add`/`sub`/
+`reduce_wide`'s boundedness and mask-select specs - the genuinely tractable "fixed shift/add/
+multiply-by-constant" class; full `multiply`/`wide_mul` symbolic-times-symbolic equivalence was not
+attempted, the same multiplier-equivalence class D-112 already found intractable for CBMC on a
+much smaller field. **Kani itself cannot run on this Windows dev machine at all** (D-102's own
+finding - `kani-verifier`'s source calls Unix-only std APIs - and no WSL is installed on this
+machine either); CI (Linux, `.github/workflows/rust.yml`'s `kani` job, no `--harness` filter so new
+proofs are auto-discovered) is the actual, unconditional venue for this, per this project's own
+"verify a CI job's real conclusion via `gh run view`, never assume" standing rule - these proofs
+are written and believed correct by construction (mirroring an already-accepted pattern) but not
+yet independently confirmed by a real run at the time of this entry.
+
+**Known accepted risk, same posture as the rest of this section**: no independent DSTU 9041
+reference implementation exists anywhere (`docs/ORACLES.md`, 2026-07-21 search, re-confirmed at
+this task's closure) - Додаток Г's own worked example is the sole oracle for this primitive.
+`l(p)=384/512/768` (their own `F_p` modules, plus `hazmat::kalyna_kw_p` for the non-block-aligned
+`M'` padding case) remain unimplemented, deliberately out of scope for this pass.

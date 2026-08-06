@@ -1666,8 +1666,7 @@ item they point to is later removed.
       two full sessions - this entry's own text already had the correct stroke-counted lengths
       (61/31), the fix just never reached the file. Caught starting T-177, fixed, re-verified with
       a real Miller-Rabin this time. See D-166 for the full account.
-- [ ] **T-177** **In progress, started 2026-08-05 - all four implementation phases done and
-      committed, only QA-gate/docs closure remains.** `hazmat::dstu9041` implementation - the
+- [x] **T-177** **Done 2026-08-06.** `hazmat::dstu9041` implementation - the
       primitive itself, not just the source-material extraction T-174/T-176 already did. Scope:
       `l(p)=256`/E256/1 only (D-47 precedent - ship the recommended curve first). Plan saved at
       `C:\Users\Pa\.claude\plans\rosy-baking-teacup.md` (design-level `advisor()` consultation
@@ -1717,20 +1716,56 @@ item they point to is later removed.
       (`subtle::ConstantTimeEq`/fixed-iteration OR-fold), caught before `decrypt` could safely call
       `parse_m_prime`.
 
-      **Remaining before this task can close** (all QA-gate/docs work, no more implementation):
-      full-workspace `clippy`/`fmt` clean (done), full `cargo test --workspace --all-features`
-      clean (done, 115+ tests, all doc-tests pass), `cargo +nightly miri test` scoped to
-      `dstu-core`/`dstu9041` not yet run (heaviest proptests already marked
-      `#[cfg_attr(miri, ignore)]` matching T-100's precedent - `37f7826`), a Kani spike on
-      `fp256`'s `reduce`/`select`-shaped pure functions not yet attempted, and a `docs/DECISIONS.md`
-      entry bundling all of the above (the two security fixes, the collapsed `DecryptError`, the
-      single-oracle accepted risk, the constant-time message.rs fix) not yet written - **hold this
-      entry until the miri run and Kani spike are done**, don't write it from the implementation
-      alone. `docs/pseudocode/dstu9041.md`'s "What remains before implementation" section also
-      needs updating to reflect that `hazmat::dstu9041` (l(p)=256) now exists.
-      Known accepted risk to document at closure: no independent DSTU 9041 reference implementation
+      **QA-gate closure (2026-08-06)**: full-workspace `clippy`/`fmt` clean; full
+      `cargo test --workspace --all-features` clean (115 lib/integration tests + 8 doc-tests, 0
+      failed, independently re-verified via unpiped log redirect to avoid a `tail`-truncation false
+      pass); scoped `cargo +nightly miri test` (`-p dstu-core --test dstu9041_field --test
+      dstu9041_curve --test dstu9041_encryption --test dstu9041_message --lib`, with
+      `MIRIFLAGS=-Zmiri-disable-isolation`/`PROPTEST_CASES=1` matching CI's own T-81-precedented
+      invocation) ran fully clean across every dstu9041 test file: `--lib` 74 passed/3 ignored,
+      `dstu9041_curve` 16 passed, `dstu9041_encryption` 19 passed/1 ignored, `dstu9041_field` 28
+      passed/3 ignored, `dstu9041_message` 9 passed, 0 failed overall (ignored cases are the
+      256-iteration `pow_mod`/`sqrt` ladders, too slow to interpret under Miri, matching T-100's
+      precedent). A Kani proof harness (`fp256.rs`'s `kani_proofs` module: `conditional_sub_p`/
+      `select`/`add`/`sub`/`reduce_wide` boundedness and select-spec proofs, deliberately scoped
+      away from full `multiply`/`wide_mul` equivalence per D-112's CBMC-intractability precedent)
+      is written and wired into `.github/workflows/rust.yml`'s `kani` job name, but **not
+      independently confirmed** - `cargo kani` cannot run on this Windows dev machine at all
+      (Unix-only std dependency in kani-verifier itself); CI (Linux) is the real verification venue
+      for this harness. `docs/DECISIONS.md` D-167 bundles the two security fixes, the collapsed
+      `DecryptError`, the single-oracle accepted risk, the constant-time `message.rs` fix, and this
+      QA-gate summary. `docs/pseudocode/dstu9041.md`'s section was updated to reflect that
+      `hazmat::dstu9041` (l(p)=256) now exists.
+      Known accepted risk, documented at closure: no independent DSTU 9041 reference implementation
       exists anywhere (`docs/ORACLES.md`, 2026-07-21 search) - Додаток Г's own worked example is the
       sole oracle for this primitive.
+- [ ] **T-178** **Not started.** `uacrypt` CLI surface for `hazmat::dstu9041` - none exists yet.
+      T-177 only landed the `hazmat` primitive itself (`l(p)=256`/E256/1); there is no
+      `crypto_box`-shaped high-level wrapper in `dstu_core` yet either, so this task covers both
+      "does a high-level construction exist" and "is it reachable from the CLI," same two-layer
+      question every other primitive in `docs/dstu-crypto-project.md`'s API table already answers.
+      Follow the same D-47 "delete the knob"/hard-defaults precedent as `uacrypt encrypt`/`decrypt`/
+      `sign` (T-16/T-124) - no caller-facing curve/mode choice, `l(p)=256` only until a sibling
+      curve size exists.
+- [ ] **T-179** **Not started.** Performance benchmarking for `hazmat::dstu9041`. No entry exists in
+      `docs/PERFORMANCE.md` for this primitive at all. Follow the project's own mandatory
+      methodology (`docs/DECISIONS.md` D-34, binary-level/MB\/s-only comparisons, no in-process
+      microbenchmark substituted for it) - same `bench_in_memory!`-style harness as the other
+      `hazmat` primitives, scoped to `fp256`/`curve256`'s scalar-multiply cost since that's what
+      dominates `encrypt`/`decrypt`.
+- [ ] **T-180** **Not started.** Documentation/site update for `hazmat::dstu9041`: `README.md`'s
+      repo-tree/algorithm table, the gh-pages site (last refreshed T-162), and usage examples once
+      a CLI surface exists (blocked on T-178 for the CLI-example part specifically; the library-level
+      doc/API-table entries don't need to wait on it). Matches the same doc-map sweep every other
+      landed primitive got (T-162's own pass for the language bindings is the precedent to mirror).
+- [ ] **T-181** **Not started.** Language bindings for `hazmat::dstu9041` across all eight binding
+      languages (Python/Node.js/Ruby/PHP/.NET/Java/Go/C++, `docs/bindings-strategy.md`). That doc
+      doesn't mention DSTU 9041 at all yet - it predates T-177 landing the primitive. Needs its own
+      phase/checklist entry in `docs/bindings-strategy.md` before per-language work starts, same
+      "spike + advisor() + plan" process every prior binding phase used (D-115 onward), and should
+      wait for T-178's high-level `crypto_box`-shaped wrapper (bindings wrap the high-level surface,
+      not raw `hazmat`, per the existing seven-language precedent) unless a strong reason emerges to
+      expose `hazmat::dstu9041` directly first.
 - [x] **T-176** **Done 2026-08-05.** Closed the single biggest gap T-174 left open: bought a
       targeted 8-page supplement from the same source (National Library of Ukraine EDD service,
       `docs/papers/DSTU_9041-2020_supplement.pdf`, gitignored, same reasoning as the main scan) and

@@ -365,3 +365,94 @@ mod private_constant_tests {
         assert_eq!(FieldElement(W).square(), p_minus_1);
     }
 }
+
+/// Kani proof harness (`docs/TASKS.md` T-177, `gf2m163.rs`'s `kani_proofs` precedent, D-102/
+/// D-112). Full `multiply`/`wide_mul` equivalence is deliberately not attempted here - that's the
+/// multiplier-equivalence class D-112 already found intractable for CBMC on gf2m163's much
+/// smaller 163-bit binary field (a genuine symbolic-times-symbolic product); a 256-bit integer
+/// schoolbook multiply is a harder instance of the same class, not a new question. `mul_small`'s
+/// multiplication (inside `reduce_wide`) is by the fixed constant `C`, not a second symbolic
+/// operand, so it stays in the cheap "fixed shift/add/multiply-by-constant" class instead. These
+/// proofs cover the genuinely tractable pure bit/carry manipulation this module's own doc
+/// comments hand-argue about.
+#[cfg(kani)]
+mod kani_proofs {
+    use super::*;
+
+    /// `p` as a plain big-integer comparison, independent of `conditional_sub_p`'s own carry-chain
+    /// implementation - the oracle these proofs check against, not a second copy of the code under
+    /// test. Mirrors `from_candidate_bytes`'s own borrow convention (`borrow == 1` iff `x < p`).
+    fn less_than_p(x: [u64; 4]) -> bool {
+        let mut borrow = 0u64;
+        for i in 0..4 {
+            let (_, bw) = sbb(x[i], P_LIMBS[i], borrow);
+            borrow = bw;
+        }
+        borrow == 1
+    }
+
+    /// `conditional_sub_p`'s own doc comment claims it "subtracts `p` from `x` if `x >= p`,
+    /// otherwise returns `x` unchanged" - checked here for every one of the 2^256 possible `x`,
+    /// not just the values `reduce_wide`/tests happen to construct. No precondition needed: every
+    /// `[u64; 4]` value is `< 2^256`, and `2*p = 2^257 - 870 > 2^256 - 1`, so `x < 2p` always
+    /// holds for this type - one subtraction is always sufficient here.
+    #[kani::proof]
+    fn conditional_sub_p_is_always_fully_reduced() {
+        let x: [u64; 4] = kani::any();
+        let r = conditional_sub_p(x);
+        assert!(less_than_p(r));
+    }
+
+    /// `select`'s own doc comment requires `bit` to be exactly `0` or `1` (checked at runtime via
+    /// `debug_assert!`, live under Kani too) - this proves the mask-select actually implements
+    /// "pick `a` when `bit==1`, `b` when `bit==0`" for every symbolic `a`/`b`, not just the two
+    /// concrete branches `pow_mod`'s tests exercise.
+    #[kani::proof]
+    fn select_matches_spec() {
+        let bit: u64 = kani::any();
+        kani::assume(bit <= 1);
+        let a: [u64; 4] = kani::any();
+        let b: [u64; 4] = kani::any();
+        let r = FieldElement::select(bit, FieldElement(a), FieldElement(b));
+        if bit == 1 {
+            assert_eq!(r, FieldElement(a));
+        } else {
+            assert_eq!(r, FieldElement(b));
+        }
+    }
+
+    /// `add`'s boundedness only holds for already-reduced operands (the invariant every
+    /// production `FieldElement` maintains) - unlike `conditional_sub_p`, an unreduced `self`/
+    /// `other` pair can sum past `2p`, so this proof takes that precondition explicitly instead of
+    /// attempting something false about the raw function's full domain.
+    #[kani::proof]
+    fn add_of_reduced_operands_is_fully_reduced() {
+        let a: [u64; 4] = kani::any();
+        let b: [u64; 4] = kani::any();
+        kani::assume(less_than_p(a));
+        kani::assume(less_than_p(b));
+        let r = FieldElement(a).add(FieldElement(b));
+        assert!(less_than_p(r.0));
+    }
+
+    /// Same precondition, same reasoning, for `sub`.
+    #[kani::proof]
+    fn sub_of_reduced_operands_is_fully_reduced() {
+        let a: [u64; 4] = kani::any();
+        let b: [u64; 4] = kani::any();
+        kani::assume(less_than_p(a));
+        kani::assume(less_than_p(b));
+        let r = FieldElement(a).sub(FieldElement(b));
+        assert!(less_than_p(r.0));
+    }
+
+    /// `reduce_wide`'s own doc comment claims it folds a full 512-bit product down to a "fully
+    /// reduced `< p`" value - checked here for every one of the 2^512 possible wide inputs, not
+    /// just the products `multiply`'s own tests happen to construct.
+    #[kani::proof]
+    fn reduce_wide_is_always_fully_reduced() {
+        let wide: [u64; 8] = kani::any();
+        let r = reduce_wide(wide);
+        assert!(less_than_p(r.0));
+    }
+}
