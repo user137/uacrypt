@@ -1890,6 +1890,60 @@ item they point to is later removed.
       Per this project's own Tier C precedent (T-172 and earlier), whichever of these is picked up
       first gets its own `advisor()` consultation and plan-mode pass before code, not a "small
       parameter tweak" treatment - same phased/tested-first pattern T-177 used.
+- [ ] **T-183** **Not started, no committed timeline - owner-requested backlog item, 2026-08-06.**
+      A meta-task: audit and extend `hazmat::dstu9041`/`crypto_box`'s adversarial test coverage
+      beyond D-64/D-65's standard three categories, then spin off whichever of the four groups below
+      turn out to have a real gap as their own task(s) - not one task scaled up, per an `advisor()`
+      consultation on what the taxonomy for an ECIES-over-twisted-Edwards construction should even
+      cover. **First step for whichever sub-item gets picked up: audit `tests/crypto_box.rs` and
+      `tests/dstu9041_*.rs` for what's already covered - several items below likely already have a
+      test, add only the real gaps, don't duplicate.**
+      - **Group 1 - invalid/malformed input (misuse, D-65 category 3).** `PublicKey::from_bytes`
+        with `x >= p` (not a valid field element), `x in {0,1,p-1}`, `x^2=a*d^-1`, a valid field
+        element that's off-curve, and an on-curve point outside the base point's own prime-order
+        subgroup (E256/1's cofactor-4 points). `SecretKey::from_bytes` at `0`, `1`, `n-1`, `n`,
+        `n+1`, and all-`0xFF`. `open` at every length boundary around the 176-byte minimum
+        (`dstu_core_capi::crypto_box::DSTU_BOX_SEAL_OVERHEAD` at the C ABI layer, unexported at the
+        Rust `dstu_core::crypto_box` layer): `0`, `175`, `176`, `177`.
+      - **Group 2 - poisoned/tampered wire data (rejection, D-65 category 2).** Independent
+        per-segment tamper of each of the four wire regions (KEM prefix, secretstream header,
+        ciphertext, tag) plus a bit-flip sweep at each region boundary (already partially covered by
+        `tampered_kem_prefix_is_rejected` etc. - audit for the boundary-bit-flip case specifically).
+        Substitution/splice attacks: graft the KEM prefix from one `seal` call onto a different
+        call's header+body; reuse one KEM prefix with two different message bodies under the same
+        recipient. Any length-field this wire format has must reject a lied-about value.
+      - **Group 3 - active key/message-recovery attempts (the genuinely new category this task
+        exists for, not already covered by categories 1-2 above).** Named attack classes specific to
+        ECIES-over-twisted-Edwards:
+        - **Invalid-curve/small-subgroup**: a `PublicKey` reconstructing to an order-2 or order-4
+          point (E256/1's own cofactor 4) - T-177 already found and fixed two such cases; turn them
+          into permanent regression tests, not one-time fixes that could silently regress.
+        - **Twist attack**: an `x` whose corresponding RHS is a quadratic non-residue - assert
+          `euler_criterion` rejects it *before* `sqrt` is ever called, not just that the end result
+          is rejected (the order of operations is the actual security property here).
+        - **Chosen-ciphertext oracle probing**: a test that actively *asserts the D-169/D-171
+          collapse holds* - that `OpenError`/`DstuStatus` is indistinguishable across a KEM failure,
+          a wrong-bit-length recovered seed, and a secretstream tag failure - since that collapse is
+          currently a code property with no test pinning it in place against a future refactor.
+        - **Ephemeral-scalar reuse**: extend the existing
+          `two_calls_use_different_ephemeral_material` test to also assert the *derived stream key*
+          differs between two `seal` calls to the same recipient, not just the KEM prefix.
+        - **Seed-embedding boundary**: all-zero and all-`0xFF` seeds through `embed_seed` -> KDF,
+          confirming no derived-key collision at either extreme.
+      - **Group 4 - explicitly out of scope, state it in whichever sub-task actually gets written,
+        don't let it drift in silently.** No wall-clock timing-measurement harness - this project's
+        own standing rule is that constant-time discipline is never itself a side-channel-resistance
+        claim without a real hardware audit (see "MVP scope" above), and a noisy timing harness would
+        produce a false claim, not evidence. Scope any side-channel-adjacent check to *structural*
+        review instead (no new secret-dependent branch, `subtle::ConstantTimeEq` used everywhere it's
+        required) - already covered by this project's existing constant-time discipline, not a new
+        test category to build.
+      **Constraints for whichever sub-item becomes a real task**: mark any test driving a scalar
+      multiplication `#[cfg_attr(miri, ignore)]` up front (T-100/T-177/T-178/T-178c precedent, hit
+      three times already - don't discover it after a multi-hour miri run a fourth time). Category-1
+      *correctness* (not the misuse cases above) needs no new work - Додаток Г is the sole oracle and
+      is already fully verified (T-177). This task is backlog only - does not reorder T-181 (next
+      execution task) or T-180's still-open `gh-pages` step (still last, after T-181).
 - [x] **T-176** **Done 2026-08-05.** Closed the single biggest gap T-174 left open: bought a
       targeted 8-page supplement from the same source (National Library of Ukraine EDD service,
       `docs/papers/DSTU_9041-2020_supplement.pdf`, gitignored, same reasoning as the main scan) and
