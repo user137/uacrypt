@@ -1814,14 +1814,18 @@ item they point to is later removed.
         `include/dstu_core.h` via `cargo xtask capi` once added.
       Order: T-178a first (unblocks T-180's CLI examples and T-181), T-178b next, T-178c whenever
       T-181 actually needs it (can trail behind a/b).
-- [ ] **T-179** **Not started.** Performance benchmarking for `hazmat::dstu9041`. No entry exists in
-      `docs/PERFORMANCE.md` for this primitive at all. **Methodology correction (2026-08-06,
-      `advisor()` review): this is NOT a `docs/DECISIONS.md` D-34 MB/s-comparison case** - D-34's
-      MB/s rule is for *cross-implementation* comparisons, and no second DSTU 9041 implementation
-      exists anywhere to compare against (`docs/ORACLES.md`); MB/s is also meaningless for a
-      fixed-size 128-byte asymmetric operation. Use a `criterion` bench in **µs/op or ops/sec** on
-      `scalar_multiply`/`encrypt`/`decrypt` instead, same `bench_in_memory!`-style harness shape as
-      the other `hazmat` primitives otherwise.
+- [x] **T-179** **Done 2026-08-06.** Performance benchmarking for `hazmat::dstu9041`/`crypto_box` -
+      `docs/PERFORMANCE.md`'s new "DSTU 9041 / `crypto_box`" section (T-150's own ops/s-vs-OpenSSL
+      precedent, not a D-34 MB/s cross-implementation case - no second DSTU 9041 implementation
+      exists to compare against, and MB/s is meaningless for a fixed-size 128-byte asymmetric op).
+      Added `--iterations` to `box-seal`/`box-open` (mirroring `sign`/`verify`) and measured the
+      real release binary: `box-seal` 1305.66 ops/s, `box-open` 1072.53 ops/s, against `openssl
+      speed ecdh`'s `brainpoolP256r1` (256-bit prime, field-size-matched - 1249.3 ops/s) and
+      `X25519` (12537.4 ops/s). **Explicit caveat, not glossed over**: `seal`/`open` each perform
+      *two* scalar multiplications per call (not one, like a single `ecdh` op) - the raw ops/s
+      numbers are reported as measured, not further normalized per-scalar-mult, since OpenSSL's own
+      `ecdh` benchmark internals weren't independently re-derived to confirm exactly what it counts
+      as one op.
 - [ ] **T-180** **Not started.** Documentation/site update for `hazmat::dstu9041`/`crypto_box`:
       `README.md`'s repo-tree/algorithm table, the gh-pages site (last refreshed T-162), and usage
       examples once a CLI surface exists (blocked on T-178b for the CLI-example part specifically;
