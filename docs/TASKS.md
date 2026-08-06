@@ -1766,6 +1766,35 @@ item they point to is later removed.
       wait for T-178's high-level `crypto_box`-shaped wrapper (bindings wrap the high-level surface,
       not raw `hazmat`, per the existing seven-language precedent) unless a strong reason emerges to
       expose `hazmat::dstu9041` directly first.
+- [ ] **T-182** **Not started, no committed timeline - owner-requested backlog item, 2026-08-06.**
+      Additional `l(p)` security levels for `hazmat::dstu9041`, beyond T-177's `l(p)=256`-only scope.
+      Three genuinely different sub-items, not one task scaled up:
+      - **`l(p)=512`** - the most tractable next step. Додаток Г's own worked example is already in
+        hand (curve params, `Q`/`R`/`T`) from T-173/T-176's scan; only needs a new `fp512`/`curve512`
+        module pair (mirroring `fp256.rs`/`curve256.rs`'s structure) plus checking `t`/`C` against
+        plain Kalyna-512/512-KW (block-aligned, no new KW primitive needed) - see
+        `docs/pseudocode/dstu9041.md`'s "Open gaps".
+      - **`l(p)=384`** - same worked-example situation as 512, but blocked on a genuinely new
+        primitive first: `hazmat::kalyna_kw_p`, the padding variant of Kalyna-KW for a
+        non-block-aligned `M'` (`hazmat::kalyna_kw`'s own module doc is explicit it has no padding
+        scheme of its own, D-55 - this isn't a parameter tweak, it's a new sibling primitive with its
+        own test-first pass).
+      - **`l(p)=768`** - genuinely blocked on source material, not just unstarted. Table В.4 (this
+        level's curve parameters) is already in hand, but no worked numeric example exists anywhere
+        in the scan + supplement obtained so far. **Open question, not yet resolved**: whether this
+        is because the standard's own Додаток Г simply never included a fourth (`l(p)=768`) worked
+        example at all (all three examples currently in hand - 256/384/512 - were already complete
+        within the original T-173 scan's page range, before the T-176 supplement existed), or because
+        it exists later in the physical document past what's been purchased so far. See D-165
+        (`docs/DECISIONS.md`) for the confirmed page footers already in hand (main scan: pages 4-30;
+        supplement: pages 1-3, 8-10, 15, 36) - pages beyond 36 (the store listing gives 40 pages
+        total, `docs/ORACLES.md`) are the only genuinely unpurchased territory, but there's no
+        existing evidence either confirming or ruling out a worked example living there. Buying more
+        pages before implementation would need to target that uncertainty directly, not assume the
+        answer.
+      Per this project's own Tier C precedent (T-172 and earlier), whichever of these is picked up
+      first gets its own `advisor()` consultation and plan-mode pass before code, not a "small
+      parameter tweak" treatment - same phased/tested-first pattern T-177 used.
 - [x] **T-176** **Done 2026-08-05.** Closed the single biggest gap T-174 left open: bought a
       targeted 8-page supplement from the same source (National Library of Ukraine EDD service,
       `docs/papers/DSTU_9041-2020_supplement.pdf`, gitignored, same reasoning as the main scan) and
