@@ -498,6 +498,17 @@ Full detail and rationale in `docs/SECURITY.md` — this is the compressed versi
   payload, and verify a byte-for-byte round trip before trusting a timing number from this command.
   Separately, Git Bash's MSYS path conversion rewrites a leading `/CN=...` in `-subj` into a Windows
   filesystem path — prefix with `MSYS_NO_PATHCONV=1`.
+- **A MinGW-built `.exe` (this project's C/C++ test/example binaries, `cargo xtask cpp`) can fail
+  or hang when launched directly from Git Bash** (seen as `ctest`/a direct invocation reporting a
+  bogus `STATUS_ENTRYPOINT_NOT_FOUND`/exit 127) **while the identical binary runs and passes clean
+  from PowerShell** — confirmed on `bindings/cpp`'s `dstu_core_cpp_tests.exe` (T-181, adding
+  `crypto_box`): the DLL's exports were verified present with `objdump -p` first, ruling out a real
+  stale-build/missing-symbol cause, before concluding this was Git Bash's own process-launch
+  environment, not the code. When a Windows-native build/test tool (`cmake`/`ctest`, not a
+  Bash/POSIX script) reports a failure that doesn't match the actual program logic, re-run it via
+  the `PowerShell` tool before concluding there's a real bug — this is a different failure mode
+  than the already-documented Windows stdout-buffering/`tail` gotchas above, specific to process
+  launch, not I/O.
 
 ## Reference implementations and oracles
 

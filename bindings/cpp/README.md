@@ -44,6 +44,7 @@ bidirectional `uacrypt` CLI interop.
 | Type | Members | Notes |
 |---|---|---|
 | `SecretboxKey` | `Generate`, `FromBytes`, `Bytes`, `Seal`, `Open` | Single-message authenticated encryption. `examples/secretbox.cpp`. |
+| `BoxSecretKey`, `BoxPublicKey` | `Generate`, `FromBytes`, `Bytes`, `Public`, `Seal`, `Open` | Public-key encryption (hybrid via KDF over `hazmat::dstu9041`, D-169). `Seal`/`Open` are not memory-bounded — the whole message is held in memory. `examples/box.cpp`. |
 | `SecretstreamKey`, `SecretStreamEncryptor`, `SecretStreamDecryptor` | `Generate`, `FromBytes`, `Bytes` | Chunked streaming AEAD, over a caller-owned `std::ostream&`/`std::istream&` (never opened or closed by this wrapper). Wire format matches `uacrypt encrypt`/`decrypt` exactly (D-118). The destructor deliberately never emits the Final chunk — call `Finish()` explicitly on the success path; see the class doc comment and D-158 point 1. `examples/secretstream_file.cpp`. |
 | `SigningKey`, `VerifyingKey` | `Generate`, `FromBytes`, `Bytes`, `Sign`, `SignDigest`, `Verifying`, `Verify`, `VerifyDigest` | DSTU 4145 digital signatures, deterministic nonce (no RNG dependency). `examples/sign.cpp`. |
 | `HashPassword`, `VerifyPassword` | `PwhashStrength::{kInteractive,kModerate,kSensitive}` | Argon2id (the one deliberately non-DSTU component, D-49/D-50). `examples/password_hashing.cpp`. |
@@ -72,6 +73,7 @@ builds `dstu-core-capi`+`uacrypt`, configures, builds, and runs `ctest`.
 ```sh
 cmake --build build --config Release   # builds tests/ and examples/ together
 ./build/dstu_core_cpp_example_secretbox
+./build/dstu_core_cpp_example_box
 ./build/dstu_core_cpp_example_secretstream_file
 ./build/dstu_core_cpp_example_sign
 ./build/dstu_core_cpp_example_password_hashing

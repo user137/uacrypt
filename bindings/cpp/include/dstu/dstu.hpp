@@ -9,6 +9,7 @@
 /// per-construction status.
 
 #include "auth.hpp"
+#include "box.hpp"
 #include "bytes.hpp"
 #include "constants.hpp"
 #include "generichash.hpp"

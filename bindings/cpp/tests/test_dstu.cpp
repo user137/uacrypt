@@ -162,6 +162,34 @@ void TestSecretbox() {
         "Open should reject input shorter than the nonce+tag overhead");
 }
 
+void TestBox() {
+  auto secretKey = dstu::BoxSecretKey::Generate();
+  auto publicKey = secretKey.Public();
+  const std::string message = "a message for the public key's holder only";
+  auto sealed = publicKey.Seal(ToBytes(message));
+  CHECK(sealed.size() == message.size() + dstu::kBoxSealOverhead,
+        "sealed size should equal message size + DSTU_BOX_SEAL_OVERHEAD exactly");
+
+  auto opened = secretKey.Open(sealed);
+  CHECK(opened == ToBytes(message), "opened plaintext should match the original message");
+
+  auto tampered = sealed;
+  tampered.back() ^= 1;
+  CHECK(Throws<dstu::CryptoError>([&] { secretKey.Open(tampered); }), "Open should reject a tampered ciphertext");
+
+  auto otherSecretKey = dstu::BoxSecretKey::Generate();
+  CHECK(Throws<dstu::CryptoError>([&] { otherSecretKey.Open(sealed); }),
+        "Open should reject the correct sealed message under the wrong secret key");
+
+  CHECK(Throws<dstu::CryptoError>([&] { secretKey.Open(std::vector<std::uint8_t>{1, 2, 3}); }),
+        "Open should reject input shorter than DSTU_BOX_SEAL_OVERHEAD");
+
+  CHECK(Throws<dstu::ArgumentError>([&] { dstu::BoxSecretKey::FromBytes(std::vector<std::uint8_t>(32, 0)); }),
+        "BoxSecretKey::FromBytes should reject a zero scalar");
+  CHECK(Throws<dstu::ArgumentError>([&] { dstu::BoxPublicKey::FromBytes(std::vector<std::uint8_t>(32, 0)); }),
+        "BoxPublicKey::FromBytes should reject x = 0");
+}
+
 void TestSecretstream() {
   auto key = dstu::SecretstreamKey::Generate();
   const std::string plaintext = "a whole file, conceptually split into chunks, larger than one buffer";
@@ -373,6 +401,7 @@ int main() {
   TestGenerichashOfficialVector();
   TestGenerichash();
   TestSecretbox();
+  TestBox();
   TestSecretstream();
 #ifdef DSTU_UACRYPT_EXE
   TestUacryptInterop();

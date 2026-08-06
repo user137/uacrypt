@@ -8,6 +8,11 @@
 /// Fixed byte lengths mirroring the DSTU_* macros in dstu_core.h.
 namespace dstu {
 
+inline constexpr std::size_t kBoxSecretKeyBytes = DSTU_BOX_SECRETKEY_BYTES;
+inline constexpr std::size_t kBoxPublicKeyBytes = DSTU_BOX_PUBLICKEY_BYTES;
+/// 128-byte KEM ciphertext + 32-byte secretstream header + 16-byte tag added by
+/// BoxPublicKey::Seal.
+inline constexpr std::size_t kBoxSealOverhead = DSTU_BOX_SEAL_OVERHEAD;
 inline constexpr std::size_t kAuthKeyBytes = DSTU_AUTH_KEY_BYTES;
 inline constexpr std::size_t kAuthTagBytes = DSTU_AUTH_TAG_BYTES;
 inline constexpr std::size_t kGenericHash256Bytes = DSTU_GENERICHASH_256_BYTES;
