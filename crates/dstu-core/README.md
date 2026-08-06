@@ -18,12 +18,13 @@ tamper, and misuse tests instead.
   auto-generated nonces; the caller passes keys/nonces/IVs explicitly. `no_std`-compatible.
   Covers Kalyna (all 5 block/key-size variants) and its 10 DSTU 7624 modes of operation
   (ECB/CBC/OFB/CFB/CTR/CMAC/KW/GCM/GMAC/XTS), Kupyna (256/512, one-shot and streaming), Kupyna-KMAC
-  and Kupyna-KDF, Strumok (256/512-bit key), and DSTU 4145 (m=163 curve only).
+  and Kupyna-KDF, Strumok (256/512-bit key), DSTU 4145 (m=163 curve only), and DSTU 9041 hybrid
+  asymmetric encryption over a twisted Edwards curve (`l(p)=256`/E256/1 only).
 - **`dstu_core::crypto_*`** — libsodium-style ergonomic wrappers over `hazmat`: auto-generated
   nonces where the construction needs one, misuse-resistant defaults, a single safe variant per
   primitive instead of every knob `hazmat` exposes. Covers `crypto_secretbox`, `crypto_secretstream`,
-  `crypto_sign`, `crypto_stream`, `crypto_auth`, `crypto_kdf`, `crypto_generichash`, and
-  `crypto_pwhash` (Argon2id, not DSTU).
+  `crypto_box`, `crypto_sign`, `crypto_stream`, `crypto_auth`, `crypto_kdf`, `crypto_generichash`,
+  and `crypto_pwhash` (Argon2id, not DSTU).
 
 ## Feature flags
 
@@ -126,6 +127,30 @@ assert!(verifying_key.verify(message, &signature));
 assert!(!verifying_key.verify(b"a different message", &signature));
 let other_key = SigningKey::generate().expect("OS CSPRNG should not fail");
 assert!(!other_key.verifying_key().verify(message, &signature));
+```
+
+### `crypto_box` — public-key encryption, no shared secret needed
+
+Unlike `crypto_secretbox`, the sender only needs the recipient's *public* key — no symmetric key
+ever has to be exchanged first. Hybrid via KDF over `hazmat::dstu9041` (a KEM wraps a random seed,
+which then derives a `crypto_secretstream` key for the actual message, of any length).
+
+```rust
+use dstu_core::crypto_box::{seal, open, SecretKey};
+
+let secret = SecretKey::generate().expect("OS CSPRNG should not fail");
+let public = secret.public_key(); // safe to share/publish
+
+let sealed = seal(b"a message for the public key's holder only", &public)
+    .expect("OS CSPRNG should not fail");
+let opened = open(&sealed, &secret).expect("authentic ciphertext under the matching key");
+assert_eq!(opened, b"a message for the public key's holder only");
+
+// Tampering with the sealed blob (KEM prefix, header, ciphertext, or tag) is detected.
+let mut tampered = sealed.clone();
+let last = tampered.len() - 1;
+tampered[last] ^= 1;
+assert!(open(&tampered, &secret).is_err());
 ```
 
 ### `crypto_auth` — a shared-secret message authentication code
