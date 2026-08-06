@@ -1843,16 +1843,26 @@ item they point to is later removed.
       New standing rule recorded in `docs/PERFORMANCE.md`'s Methodology section: a full-construction
       benchmark must include a same-regime comparison binary going forward, not just one sharing the
       dominant primitive cost.
-- [ ] **T-180** **`README.md` done 2026-08-06; gh-pages site still open.** Documentation/site update
-      for `hazmat::dstu9041`/`crypto_box`. **Done**: `README.md`'s status paragraph (DSTU 9041/
+- [x] **T-180** **Done 2026-08-06 - `README.md` and `gh-pages` both updated.** Documentation/site
+      update for `hazmat::dstu9041`/`crypto_box`. `README.md`'s status paragraph (DSTU 9041/
       `crypto_box` no longer "no implementation yet"), `crypto_*` module list, and a `box-keygen`/
       `box-pubkey`/`box-seal`/`box-open` usage example block (commands actually run against the
       release binary first, matching this file's own "every command below was run for real" standing
-      practice). **Still open**: the `gh-pages` site (`index.html`/`uk/index.html`, both languages,
-      last refreshed T-162 for the bindings section) doesn't mention DSTU 9041/`crypto_box` at all -
-      a two-language marketing/landing page edit is more delicate than a docs sweep and pushes to a
-      publicly-live branch, flagged for an explicit owner check-in rather than done unprompted in the
-      same pass as the rest of T-178/179/180's mechanical doc updates.
+      practice). `gh-pages` (`index.html`/`uk/index.html`, both languages) deliberately held for an
+      explicit owner check-in first (a marketing-page edit pushed to a publicly-live branch, more
+      delicate than a docs sweep) - confirmed after T-181 finished, then: the DSTU 9041 `algo-card`
+      had gone stale to the point of being actively wrong ("not implemented, blocked on evidence" -
+      predates T-177/T-178 entirely), fixed to "verified" with an honest caveat (`l(p)=256` only,
+      `crypto_box`'s own composition has no vector oracle); hero eyebrow/lede, the `hazmat::*`/
+      `crypto_*` layer descriptions, and a new row in the "closest global analog" table (`crypto_box_seal`,
+      T-179's real ~3.3-4.2x-slower CMS-envelope numbers) all updated too. Sent both files to the
+      owner for a real visual check before pushing (browser automation unavailable this session,
+      same T-162 precedent) - confirmed, pushed to `gh-pages` (`60f09c2`). **Two example-coverage
+      gaps found and closed in the same pass, owner-prompted ("чи є приклади усюди")**: `dstu-core-
+      capi`'s own `examples/` had `secretbox.c` but no `box.c` (added, registered in
+      `xtask::CAPI_EXAMPLES`); `crates/dstu-core/README.md`'s own doctest-walkthrough "Examples"
+      section never got a `crypto_box` entry at all (added, byte-diffed against the real module
+      doctest per D-75, not eyeballed).
 - [x] **T-181** **Done 2026-08-06 - all eight bindings.** Language bindings for `crypto_box` across all eight binding
       languages. Phase/checklist entry in `docs/bindings-strategy.md` ("T-181 - `crypto_box` across
       all eight bindings") - **incremental**, not a from-scratch binding phase: each of the eight
@@ -1933,8 +1943,7 @@ item they point to is later removed.
       **T-181 all eight bindings done 2026-08-06** - every binding now exposes the same `crypto_*`
       surface uniformly (Fork 2's own standing rule extended to `crypto_box`). Remaining: the
       Raspberry Pi cross-arch smoke check (step 10) for all eight - not run yet for any of them this
-      pass; T-180's still-open `gh-pages` step (last, now that "after all the tasks" is actually
-      true).
+      pass. T-180's `gh-pages` step landed right after, same day - see T-180's own entry above.
 - [ ] **T-182** **Not started, no committed timeline - owner-requested backlog item, 2026-08-06.**
       Additional `l(p)` security levels for `hazmat::dstu9041`, beyond T-177's `l(p)=256`-only scope.
       Three genuinely different sub-items, not one task scaled up:
@@ -2014,8 +2023,8 @@ item they point to is later removed.
       multiplication `#[cfg_attr(miri, ignore)]` up front (T-100/T-177/T-178/T-178c precedent, hit
       three times already - don't discover it after a multi-hour miri run a fourth time). Category-1
       *correctness* (not the misuse cases above) needs no new work - Додаток Г is the sole oracle and
-      is already fully verified (T-177). This task is backlog only - does not reorder T-180's
-      still-open `gh-pages` step (next execution task now that T-181 is fully done).
+      is already fully verified (T-177). This task is backlog only - T-178/T-179/T-180/T-181's own
+      plan is fully done as of 2026-08-06, this stays a backlog item with no committed timeline.
 - [x] **T-176** **Done 2026-08-05.** Closed the single biggest gap T-174 left open: bought a
       targeted 8-page supplement from the same source (National Library of Ukraine EDD service,
       `docs/papers/DSTU_9041-2020_supplement.pdf`, gitignored, same reasoning as the main scan) and
