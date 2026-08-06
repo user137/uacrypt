@@ -58,7 +58,11 @@ paying). Checked listings for the three standards this project would most benefi
 
 All three land at roughly the same ≈132.6 UAH/page rate (the state-set per-page tariff for
 official reproduction) — Kalyna's total is simply large because the document is large (227
-pages, folding in its 2016 amendment), not a different rate. **Verdict: cost-prohibitive for this
+pages, folding in its 2016 amendment), not a different rate. **The store's "40 pages" figure for
+DSTU 9041 doesn't match the physically obtained document, confirmed 36 pages total (2026-08-06,
+owner-supplied photos of the final page) — likely a cover/title-page count difference on the
+store's side, not a sign of unpurchased content; see the DSTU 9041 subsection below.**
+**Verdict: cost-prohibitive for this
 project at this time** — combined total is ~42,300 UAH (~$1,000 USD) for all three, against a
 volunteer open-source project's budget. Not pursued for now; each per-algorithm section below
 notes what specifically the official text would have resolved, so this can be revisited if
@@ -404,10 +408,14 @@ comparable to all five other in-scope algorithms combined" framing, not just a p
   directly — the sole oracle for this primitive, same single-source caveat as the rest of this
   section (no independent reference implementation exists anywhere, confirmed again as part of
   T-177's own closure, not just the 2026-07-21 search above), but now a primary-source vector
-  rather than a secondary thesis transcription. The `l(p)=384/512/768` cases remain unimplemented
-  and, for `l(p)=768` specifically, remain genuinely oracle-less even in the primary text (Додаток
-  Г's scan doesn't reach that security level) — see `docs/pseudocode/dstu9041.md`'s "Implementation
-  status" section.
+  rather than a secondary thesis transcription. The `l(p)=384/512/768` cases remain unimplemented.
+  **Confirmed 2026-08-06 (owner-supplied photos of the document's final pages): the standard is
+  genuinely 36 pages total, not the 40 the store listing states — page 36 is the last page,
+  finishing Додаток Г.3's `l(p)=512` decryption steps and then Додаток Д's bibliography.** Table
+  В.4's curve parameters for `l(p)=768` exist, but no fourth worked example was ever published for
+  it — this is not a purchasing gap (there are no more pages to buy), it's a permanent absence of a
+  vector oracle for that security level. See `docs/pseudocode/dstu9041.md`'s "Open gaps"/
+  "Implementation status" sections and `docs/TASKS.md` T-182.
 
 ## Test-vector convention
 

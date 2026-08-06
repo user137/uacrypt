@@ -1779,19 +1779,17 @@ item they point to is later removed.
         non-block-aligned `M'` (`hazmat::kalyna_kw`'s own module doc is explicit it has no padding
         scheme of its own, D-55 - this isn't a parameter tweak, it's a new sibling primitive with its
         own test-first pass).
-      - **`l(p)=768`** - genuinely blocked on source material, not just unstarted. Table В.4 (this
-        level's curve parameters) is already in hand, but no worked numeric example exists anywhere
-        in the scan + supplement obtained so far. **Open question, not yet resolved**: whether this
-        is because the standard's own Додаток Г simply never included a fourth (`l(p)=768`) worked
-        example at all (all three examples currently in hand - 256/384/512 - were already complete
-        within the original T-173 scan's page range, before the T-176 supplement existed), or because
-        it exists later in the physical document past what's been purchased so far. See D-165
-        (`docs/DECISIONS.md`) for the confirmed page footers already in hand (main scan: pages 4-30;
-        supplement: pages 1-3, 8-10, 15, 36) - pages beyond 36 (the store listing gives 40 pages
-        total, `docs/ORACLES.md`) are the only genuinely unpurchased territory, but there's no
-        existing evidence either confirming or ruling out a worked example living there. Buying more
-        pages before implementation would need to target that uncertainty directly, not assume the
-        answer.
+      - **`l(p)=768`** - **confirmed permanently oracle-less, not just unpurchased (resolved
+        2026-08-06, owner-supplied page photos).** The document is genuinely 36 pages total, not the
+        40 the store listing implies (`docs/ORACLES.md`) - page 36 is the last page, and it's the
+        tail end of Додаток Г.3 (the `l(p)=512` decryption worked example's final steps) followed by
+        Додаток Д's bibliography. **There is no fourth worked example for `l(p)=768` anywhere in this
+        standard's text** - Table В.4's curve parameters exist, but Додаток Г only ever documented
+        three worked examples (256/384/512). Buying more pages cannot resolve this; there are no more
+        pages. If `l(p)=768` is ever implemented, it needs a from-scratch verification strategy with
+        no vector oracle at all - the same posture as `crypto_secretstream` (D-68) or Strumok's
+        provisional vectors (D-15), property/tamper tests standing in for a worked example that
+        genuinely does not exist, not a temporary gap to fill later.
       Per this project's own Tier C precedent (T-172 and earlier), whichever of these is picked up
       first gets its own `advisor()` consultation and plan-mode pass before code, not a "small
       parameter tweak" treatment - same phased/tested-first pattern T-177 used.

@@ -11363,3 +11363,33 @@ reference implementation exists anywhere (`docs/ORACLES.md`, 2026-07-21 search, 
 this task's closure) - Додаток Г's own worked example is the sole oracle for this primitive.
 `l(p)=384/512/768` (their own `F_p` modules, plus `hazmat::kalyna_kw_p` for the non-block-aligned
 `M'` padding case) remain unimplemented, deliberately out of scope for this pass.
+
+## D-168: T-182 - DSTU 9041's document is confirmed 36 pages total; `l(p)=768` has no worked example
+anywhere in the standard, not just unpurchased
+
+**What was found, and how.** D-165/T-176 left an open question: whether `l(p)=768`'s missing worked
+example (Table В.4's parameters exist, but no Додаток Г.4 numeric walkthrough had been seen) was a
+gap in what this project had purchased so far, or a genuine absence in the standard itself. The
+owner directly answered this 2026-08-06 by supplying photos of the document's own final two pages
+(35 and 36) from their own copy - primary-source evidence, not inference from footer-number
+bookkeeping. Page 35 shows the middle of Додаток Г.3's `l(p)=512` decryption steps (computing `R'`,
+`T'`, the recovered bit string, splitting `i_H`/`H'`/`M̃`); page 36 opens with `H'=H(...)` verification
+and "Виводять результат роботи алгоритму розшифрування" - the example's own conclusion - and **page
+36 is the document's last page**.
+
+**Conclusion.** The standard's Додаток Г contains exactly three worked examples (`l(p)` = 256, 384,
+512) and no fourth. This is not a gap this project can close by purchasing more pages - there is no
+more document. The store's own listing (`docs/ORACLES.md`, `fnd-store.uas.gov.ua/documents/42241`)
+states 40 pages; the physically obtained/confirmed document is 36 - most likely a cover/title-page
+counting difference on the store's side (a discrepancy noted, not further chased, since the content
+question it might have mattered for is now independently settled by direct observation of the last
+page).
+
+**Consequence for `docs/TASKS.md` T-182.** `l(p)=768`'s sub-item is downgraded from "blocked on
+source material, open question" to "permanently oracle-less by design of the standard itself." If
+this security level is ever implemented, it cannot follow T-177's verification pattern (worked
+example as sole oracle) at all - it would need the same posture as `crypto_secretstream` (D-68) or
+Strumok's provisional vectors (D-15): from-scratch derivation plus property/tamper/misuse tests
+standing in for a vector that will never exist, not a temporary placeholder for one that might
+still turn up. Any future decision to implement `l(p)=768` should account for this from the start of
+its own plan-mode/`advisor()` pass, not discover it mid-implementation.
