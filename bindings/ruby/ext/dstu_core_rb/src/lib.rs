@@ -8,6 +8,7 @@
 //! is deferred to a later step.
 
 mod auth;
+mod crypto_box;
 mod error;
 mod generichash;
 mod kdf;
@@ -41,6 +42,11 @@ fn init(ruby: &Ruby) -> Result<(), Error> {
     )?;
     module.define_singleton_method("secretbox_seal", function!(secretbox::secretbox_seal, 2))?;
     module.define_singleton_method("secretbox_open", function!(secretbox::secretbox_open, 2))?;
+
+    module.define_singleton_method("box_keygen", function!(crypto_box::box_keygen, 0))?;
+    module.define_singleton_method("box_public_key", function!(crypto_box::box_public_key, 1))?;
+    module.define_singleton_method("box_seal", function!(crypto_box::box_seal, 2))?;
+    module.define_singleton_method("box_open", function!(crypto_box::box_open, 2))?;
 
     module.define_singleton_method("sign_keygen", function!(sign::sign_keygen, 0))?;
     module.define_singleton_method("sign_verifying_key", function!(sign::sign_verifying_key, 1))?;
