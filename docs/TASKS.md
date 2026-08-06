@@ -1739,27 +1739,82 @@ item they point to is later removed.
       Known accepted risk, documented at closure: no independent DSTU 9041 reference implementation
       exists anywhere (`docs/ORACLES.md`, 2026-07-21 search) - Додаток Г's own worked example is the
       sole oracle for this primitive.
-- [ ] **T-178** **Not started.** `uacrypt` CLI surface for `hazmat::dstu9041` - none exists yet.
-      T-177 only landed the `hazmat` primitive itself (`l(p)=256`/E256/1); there is no
-      `crypto_box`-shaped high-level wrapper in `dstu_core` yet either, so this task covers both
-      "does a high-level construction exist" and "is it reachable from the CLI," same two-layer
-      question every other primitive in `docs/dstu-crypto-project.md`'s API table already answers.
-      Follow the same D-47 "delete the knob"/hard-defaults precedent as `uacrypt encrypt`/`decrypt`/
-      `sign` (T-16/T-124) - no caller-facing curve/mode choice, `l(p)=256` only until a sibling
-      curve size exists.
+- [ ] **T-178** **In progress, started 2026-08-06.** `dstu_core::crypto_box` (new high-level module)
+      plus its `uacrypt` CLI surface - neither exists yet. Design settled with the owner 2026-08-06
+      after an `advisor()` review found `l(p)=256`'s `L_MAX_P=200` bits (25 bytes) can't hold this
+      project's existing 32-byte symmetric keys directly - **hybrid via KDF**, chosen over a
+      25-byte-capped "short secret wrap" or waiting on `l(p)>=384` (T-182).
+      - **T-178a - `dstu_core::crypto_box` library module.**
+        - **Wire format**: `dstu9041_ciphertext(128) || secretstream_header(32) || ciphertext ||
+          tag(16)` - v1 emits exactly one `Tag::Final` chunk (whole message in memory, matching
+          `crypto_secretbox`'s own one-shot `Vec<u8>` convention), forward-compatible with a later
+          genuinely multi-chunk `seal_stream`/`open_stream` pair without changing the KEM prefix.
+        - **KEM step**: `seal` draws a random 25-byte (200-bit, `L_MAX_P` exactly - not an invented
+          size) seed, `hazmat::dstu9041::encryption::encrypt`s it to the recipient's public point
+          with a freshly rejection-sampled ephemeral `epsilon` (`is_valid_scalar`-gated loop,
+          `crypto_sign::SigningKey::generate`'s own pattern). `open` recovers the seed via
+          `encryption::decrypt`, checks the recovered bit length is exactly `L_MAX_P` (defense in
+          depth - should be unreachable for an honestly-sealed ciphertext given the hash check
+          already covers it, but not trusted blindly).
+        - **KDF step**: embed the 25-byte seed into the low-order bytes of a zero-padded 32-byte
+          buffer (`crypto_sign::derive_nonce`'s own `d`-embedding precedent - "an embedding, not a
+          truncation, no information lost") and call `hazmat::kupyna_kdf::Kupyna256Kdf::derive_subkey`
+          directly (not `crypto_kdf::MasterKey`, which requires an already-32-byte key) to get the
+          `crypto_secretstream::Key`.
+        - **Public key compression**: `PublicKey` is 32 bytes, the curve point's **x-coordinate
+          only** - not `x||y` (64 bytes). Verified safe by an explicit group-theory argument (not
+          assumed): this curve's negation is `-(x,y)=(x,-y)` (the swapped-Edwards form,
+          `docs/pseudocode/dstu9041.md`), so `x` never distinguishes `Q` from `-Q`; since
+          `k*(-Q)=-(k*Q)` for any scalar `k`, and `x_T=x_{-T}` always holds on this curve, the two
+          possible reconstructions of `Q` from `x_Q` alone yield the *same* `kappa=x_{epsilon*Q}` on
+          the encrypt side regardless of which square-root branch is chosen - cite this reasoning in
+          the module doc, don't leave it implicit. `PublicKey::from_bytes` must run the **same
+          reconstruction gauntlet `decrypt` already runs** (reject `x in {0,1,p-1}`, reject
+          `x^2=a*d^-1`, `euler_criterion` before `sqrt`, subgroup check
+          `scalar_multiply(&order())==NEUTRAL`) - extract this into a shared
+          `curve256::point_from_x` helper used by both `encryption::decrypt` and
+          `crypto_box::PublicKey::from_bytes`, not two independently-maintained copies of a
+          security-critical check.
+        - **Error collapsing**: `OpenError` stays a small, deliberately under-distinguished enum
+          (KEM failure, secretstream tag failure, and a bad recovered bit-length all map to one
+          "invalid ciphertext" case) - same padding-oracle-avoidance posture as `DecryptError`
+          (D-56/D-63 precedent); a `Truncated` variant for the public wire-length check is fine to
+          keep separate (no secret-dependent data involved in that check).
+        - **Test-first, all three CLAUDE.md categories**: correctness (round-trip - no DSTU vector
+          exists for this composite, property-tested only, `crypto_secretstream`'s own D-68
+          posture); rejection (tampered KEM prefix, tampered header, tampered ciphertext/tag, wrong
+          secret key - `tampered_kem_prefix_is_rejected` explicitly, per the D-63-style nonce/prefix-
+          binding check); misuse (empty message, oversized/malformed `PublicKey` bytes, off-curve or
+          wrong-subgroup `x` values). Mark the heaviest round-trip/keygen proptests
+          `#[cfg_attr(miri, ignore)]` up front (T-100/T-177 precedent), not after a multi-hour miri
+          run discovers it.
+      - **T-178b - `uacrypt` CLI.** New verbs, not an overload of the existing secretstream-backed
+        `encrypt`/`decrypt` (breaking-change risk) - e.g. `box-keygen`/`box-seal`/`box-open`. Mirror
+        `uacrypt sign`/`verify`'s existing key-file format (T-124) rather than inventing a new one.
+      - **T-178c - `dstu-core-capi` addition, prerequisite for T-181's .NET/Go/C++ bindings.** Those
+        three link `dstu-core-capi` directly, which wraps "the full `crypto_*` surface" - it needs
+        an opaque-handle/`DstuStatus`/`catch_unwind`/zeroize-on-free `crypto_box` wrapper *before*
+        those three bindings are possible, not a footnote inside T-181's own checklist. Regenerate
+        `include/dstu_core.h` via `cargo xtask capi` once added.
+      Order: T-178a first (unblocks T-180's CLI examples and T-181), T-178b next, T-178c whenever
+      T-181 actually needs it (can trail behind a/b).
 - [ ] **T-179** **Not started.** Performance benchmarking for `hazmat::dstu9041`. No entry exists in
-      `docs/PERFORMANCE.md` for this primitive at all. Follow the project's own mandatory
-      methodology (`docs/DECISIONS.md` D-34, binary-level/MB\/s-only comparisons, no in-process
-      microbenchmark substituted for it) - same `bench_in_memory!`-style harness as the other
-      `hazmat` primitives, scoped to `fp256`/`curve256`'s scalar-multiply cost since that's what
-      dominates `encrypt`/`decrypt`.
-- [ ] **T-180** **Not started.** Documentation/site update for `hazmat::dstu9041`: `README.md`'s
-      repo-tree/algorithm table, the gh-pages site (last refreshed T-162), and usage examples once
-      a CLI surface exists (blocked on T-178 for the CLI-example part specifically; the library-level
-      doc/API-table entries don't need to wait on it). Matches the same doc-map sweep every other
-      landed primitive got (T-162's own pass for the language bindings is the precedent to mirror).
-- [ ] **T-181** **Not started.** Language bindings for `hazmat::dstu9041` across all eight binding
-      languages (Python/Node.js/Ruby/PHP/.NET/Java/Go/C++, `docs/bindings-strategy.md`). That doc
+      `docs/PERFORMANCE.md` for this primitive at all. **Methodology correction (2026-08-06,
+      `advisor()` review): this is NOT a `docs/DECISIONS.md` D-34 MB/s-comparison case** - D-34's
+      MB/s rule is for *cross-implementation* comparisons, and no second DSTU 9041 implementation
+      exists anywhere to compare against (`docs/ORACLES.md`); MB/s is also meaningless for a
+      fixed-size 128-byte asymmetric operation. Use a `criterion` bench in **µs/op or ops/sec** on
+      `scalar_multiply`/`encrypt`/`decrypt` instead, same `bench_in_memory!`-style harness shape as
+      the other `hazmat` primitives otherwise.
+- [ ] **T-180** **Not started.** Documentation/site update for `hazmat::dstu9041`/`crypto_box`:
+      `README.md`'s repo-tree/algorithm table, the gh-pages site (last refreshed T-162), and usage
+      examples once a CLI surface exists (blocked on T-178b for the CLI-example part specifically;
+      the library-level doc/API-table entries don't need to wait on it). Matches the same doc-map
+      sweep every other landed primitive got (T-162's own pass for the language bindings is the
+      precedent to mirror).
+- [ ] **T-181** **Not started.** Language bindings for `hazmat::dstu9041`/`crypto_box` across all
+      eight binding languages (Python/Node.js/Ruby/PHP/.NET/Java/Go/C++, `docs/bindings-strategy.md`).
+      That doc
       doesn't mention DSTU 9041 at all yet - it predates T-177 landing the primitive. Needs its own
       phase/checklist entry in `docs/bindings-strategy.md` before per-language work starts, same
       "spike + advisor() + plan" process every prior binding phase used (D-115 onward), and should
