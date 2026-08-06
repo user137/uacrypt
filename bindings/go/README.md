@@ -51,6 +51,7 @@ correctness/rejection/misuse suite each surface is verified against (D-64/D-65).
 | Type | Members | Notes |
 |---|---|---|
 | `SecretboxKey` | `GenerateSecretboxKey`, `SecretboxKeyFromBytes`, `Bytes`, `Seal`, `Open` | Single-message authenticated encryption. `examples secretbox`. |
+| `BoxSecretKey`, `BoxPublicKey` | `GenerateBoxSecretKey`, `BoxSecretKeyFromBytes`, `BoxPublicKeyFromBytes`, `Bytes`, `PublicKey`, `Seal`, `Open` | Public-key encryption (hybrid via KDF over `hazmat::dstu9041`, D-169). `Seal`/`Open` are not memory-bounded — the whole message is held in memory. `examples box`. |
 | `SecretstreamKey`, `SecretStreamEncryptWriter`, `SecretStreamDecryptReader` | `GenerateSecretstreamKey`, `SecretstreamKeyFromBytes`, `Bytes` | Chunked streaming AEAD, `io.Writer`/`io.Reader`-shaped. Wire format matches `uacrypt encrypt`/`decrypt` exactly (D-118). `Close()` deliberately never emits the Final chunk — call `Complete()` explicitly on the success path; see the type doc comment. `examples secretstream-file`. |
 | `SigningKey`, `VerifyingKey` | `GenerateSigningKey`, `SigningKeyFromBytes`, `Bytes`, `Sign`, `SignDigest`, `Verify`, `VerifyDigest` | DSTU 4145 digital signatures, deterministic nonce (no RNG dependency). `examples sign`. |
 | `HashPassword`, `VerifyPassword` | `PwhashInteractive`/`PwhashModerate`/`PwhashSensitive` | Argon2id (the one deliberately non-DSTU component, D-49/D-50). `examples password-hashing`. |
@@ -77,6 +78,7 @@ builds `dstu-core-capi`, runs `gofmt -l` (fails on any unformatted file), `go ve
 ```sh
 cd bindings/go/examples
 go run . secretbox
+go run . box
 go run . secretstream-file
 go run . sign
 go run . password-hashing

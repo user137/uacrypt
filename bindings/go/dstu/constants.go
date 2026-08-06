@@ -5,6 +5,11 @@ import "C"
 
 // Fixed byte lengths mirroring the DSTU_* macros in dstu_core.h.
 const (
+	BoxSecretKeyBytes = int(C.DSTU_BOX_SECRETKEY_BYTES)
+	BoxPublicKeyBytes = int(C.DSTU_BOX_PUBLICKEY_BYTES)
+	// BoxSealOverhead is the 128-byte KEM ciphertext + 32-byte secretstream header + 16-byte tag
+	// added by BoxPublicKey.Seal.
+	BoxSealOverhead     = int(C.DSTU_BOX_SEAL_OVERHEAD)
 	AuthKeyBytes        = int(C.DSTU_AUTH_KEY_BYTES)
 	AuthTagBytes        = int(C.DSTU_AUTH_TAG_BYTES)
 	GenericHash256Bytes = int(C.DSTU_GENERICHASH_256_BYTES)
