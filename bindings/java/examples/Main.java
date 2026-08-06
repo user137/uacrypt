@@ -2,7 +2,7 @@
 //   javac -cp target/classes -d target/examples-classes examples/*.java
 //   java -cp "target/classes;target/examples-classes" Main <example>   (Windows)
 //   java -cp "target/classes:target/examples-classes" Main <example>   (Linux/macOS)
-// where <example> is one of: secretbox, secretstream-file, sign, password-hashing, misc
+// where <example> is one of: secretbox, box, secretstream-file, sign, password-hashing, misc
 
 public final class Main {
     private Main() {
@@ -10,7 +10,7 @@ public final class Main {
 
     public static void main(String[] args) throws Exception {
         if (args.length != 1) {
-            System.err.println("usage: java Main <secretbox|secretstream-file|sign|password-hashing|misc>");
+            System.err.println("usage: java Main <secretbox|box|secretstream-file|sign|password-hashing|misc>");
             System.exit(1);
             return;
         }
@@ -18,6 +18,9 @@ public final class Main {
         switch (args[0]) {
             case "secretbox":
                 SecretBoxExample.run();
+                break;
+            case "box":
+                BoxExample.run();
                 break;
             case "secretstream-file":
                 SecretStreamFileExample.run();

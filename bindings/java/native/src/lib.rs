@@ -21,6 +21,7 @@
 #![allow(non_snake_case)]
 
 mod auth;
+mod crypto_box;
 mod generichash;
 mod kdf;
 mod pwhash;

@@ -41,6 +41,7 @@ correctness/rejection/misuse suite each surface is verified against (D-64/D-65).
 | Type | Members | Notes |
 |---|---|---|
 | `SecretBox` | `keygen`, `seal`, `open` | Single-message authenticated encryption. `examples secretbox`. |
+| `Box` | `keygen`, `publicKey`, `seal`, `open` | Public-key encryption (hybrid via KDF over `hazmat::dstu9041`, D-169). `seal`/`open` are not memory-bounded — the whole message is held in memory. `examples box`. |
 | `SecretStream`, `SecretStreamEncryptor`, `SecretStreamDecryptor` | `keygen`; `OutputStream`/`InputStream` subclasses | Chunked streaming AEAD. Wire format matches `uacrypt encrypt`/`decrypt` exactly (D-118). `close()` deliberately never emits the `Final` chunk — call `complete()` explicitly on the success path; see the class doc comment. `examples secretstream-file`. |
 | `Sign` | `keygen`, `verifyingKey`, `sign`, `verify` | DSTU 4145 digital signatures, deterministic nonce (no RNG dependency). `examples sign`. |
 | `Pwhash`, `PwhashStrength` | `hashPassword`, `verifyPassword`, `{INTERACTIVE,MODERATE,SENSITIVE}` | Argon2id (the one deliberately non-DSTU component, D-49/D-50). `examples password-hashing`. |
@@ -69,7 +70,7 @@ mvn compile
 javac -cp target/classes -d target/examples-classes examples/*.java
 java -cp "target/classes;target/examples-classes" Main secretbox          # Windows (`;` separator)
 java -cp "target/classes:target/examples-classes" Main secretbox          # Linux/macOS (`:` separator)
-# ... secretstream-file, sign, password-hashing, misc
+# ... box, secretstream-file, sign, password-hashing, misc
 ```
 
 ## Packaging
