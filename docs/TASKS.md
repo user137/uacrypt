@@ -2025,6 +2025,31 @@ item they point to is later removed.
       *correctness* (not the misuse cases above) needs no new work - Додаток Г is the sole oracle and
       is already fully verified (T-177). This task is backlog only - T-178/T-179/T-180/T-181's own
       plan is fully done as of 2026-08-06, this stays a backlog item with no committed timeline.
+- [ ] **T-184** **Not started, no committed timeline - owner-requested backlog item, 2026-08-06.**
+      Investigate why `crypto_box::seal`/`open`'s own bulk throughput (~8.84/10.72 MB/s at 10 MiB,
+      `docs/PERFORMANCE.md`'s T-179 same-regime table) sits at roughly **half** the raw
+      `hazmat::kalyna_gcm::Kalyna256_256Gcm` cipher's own throughput (17.09 MB/s at the same 10 MiB
+      scale, same file's Kalyna-GCM 256-256 row) - noted at the time as "not chased further this
+      session," never actually profiled.
+      - **What's already ruled out, don't re-derive**: the two KEM scalar multiplications
+        (sub-millisecond, negligible next to a 10 MiB bulk operation) and the underlying block
+        cipher itself (already measured separately at 17.09 MB/s). The remaining suspect, stated
+        but not verified, is `crypto_secretstream`/`crypto_box`'s own per-call framing and
+        allocation overhead - `seal`/`open` are one-shot (`Tag::Final`, no real chunking, D-169's
+        own module doc), so this isn't chunking overhead in the usual streaming sense; more likely
+        candidates are the `Vec<u8>` allocations `crypto_box::seal`/`open` and
+        `crypto_secretstream::push`/`pull` each do internally, and/or AAD/tag-construction
+        overhead per call that a raw `Kalyna256_256Gcm::encrypt`/`decrypt` benchmark wouldn't hit.
+      - **How to actually find out, not guess**: per `CLAUDE.md`'s own standing rule, spike first
+        and read real `--emit=asm`/profiler output before proposing a fix - a `criterion` benchmark
+        isolating `crypto_secretstream::PushState::push`/`PullState::pull` alone (same message
+        size, same subkey derivation already done) would separate "the streaming/AEAD-framing
+        layer costs this much" from "the KDF/seed-embedding step costs this much," the same
+        isolated-timing technique T-125/D-76 used to find Kalyna-GCM's own field-multiply
+        bottleneck instead of guessing.
+      - **Scope note**: this is a performance investigation, not a correctness or security task -
+        no test-first requirement in the usual D-64/D-65 sense, but any resulting code change still
+        needs its own tests per this project's standing discipline once a fix is actually proposed.
 - [x] **T-176** **Done 2026-08-05.** Closed the single biggest gap T-174 left open: bought a
       targeted 8-page supplement from the same source (National Library of Ukraine EDD service,
       `docs/papers/DSTU_9041-2020_supplement.pdf`, gitignored, same reasoning as the main scan) and
