@@ -1852,9 +1852,9 @@ item they point to is later removed.
       a two-language marketing/landing page edit is more delicate than a docs sweep and pushes to a
       publicly-live branch, flagged for an explicit owner check-in rather than done unprompted in the
       same pass as the rest of T-178/179/180's mechanical doc updates.
-- [ ] **T-181** **Not started - unblocked 2026-08-06 (T-178/T-178c both done).** Language bindings
-      for `crypto_box` across all eight binding languages (Python/Node.js/Ruby/PHP/.NET/Java/Go/
-      C++). Phase/checklist entry added to `docs/bindings-strategy.md` ("T-181 - `crypto_box` across
+- [ ] **T-181** **In progress - Python done 2026-08-06 (`6d4e14b`); Node.js/Ruby next, then .NET/
+      Go/C++/PHP, then Java last.** Language bindings for `crypto_box` across all eight binding
+      languages. Phase/checklist entry in `docs/bindings-strategy.md` ("T-181 - `crypto_box` across
       all eight bindings") - **incremental**, not a from-scratch binding phase: each of the eight
       already exists (T-49 through T-163), this only adds one new module's surface to each. Order
       (per the phase entry, Fork 1's C-ABI-vs-native-FFI split): Python/Node/Ruby first (direct
@@ -1863,6 +1863,18 @@ item they point to is later removed.
       JNI-over-C-ABI same as the original Java phase did). Bindings wrap the high-level
       `crypto_box` surface, not raw `hazmat::dstu9041` directly, per the existing seven-language
       precedent (Fork 2).
+      - **Python - done.** `bindings/python/src/crypto_box.rs`: `box_keygen`/`box_public_key`/
+        `box_seal`/`box_open`, plain `bytes` in/out (no opaque handle - `Zeroize`-on-drop can't
+        carry into a Python `bytes` object regardless of wrapper shape, `secretbox.rs`'s own
+        precedent). Kept the full `crypto_box` module name, not `box` (`box` is a reserved Rust
+        keyword) - same naming fork as `dstu-core-capi`'s own T-178c (D-171). 12 new pytest cases
+        (round trip past the 25-byte KEM payload, ephemeral-material distinctness, tamper/wrong-key
+        rejection, invalid-key-encoding misuse). Full `cargo xtask python` pipeline clean (69/69
+        tests). Found and cleaned up a stale `cp312`-tagged `.pyd` build artifact in
+        `python/dstu_core/` that was shadowing the freshly built `abi3` extension and hiding the new
+        symbols on import - a local build-cache leftover (gitignored, never tracked), not a real bug.
+        Not yet run on the Raspberry Pi cross-arch smoke check (step 10) - still open, doesn't block
+        the next language.
 - [ ] **T-182** **Not started, no committed timeline - owner-requested backlog item, 2026-08-06.**
       Additional `l(p)` security levels for `hazmat::dstu9041`, beyond T-177's `l(p)=256`-only scope.
       Three genuinely different sub-items, not one task scaled up:
