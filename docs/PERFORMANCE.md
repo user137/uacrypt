@@ -1875,8 +1875,8 @@ its true crypto-only speed) estimate, so the comparison's actual direction is no
 
 | | `uacrypt` (`crypto_box`) | OpenSSL CMS (`prime256v1` + AES-256-CBC) |
 |---|---|---|
-| seal/encrypt (MiB/s) | **8.84** | **37.34** |
-| open/decrypt (MiB/s) | **10.72** | **35.36** |
+| seal/encrypt (MB/s) | **8.84** | **37.34** |
+| open/decrypt (MB/s) | **10.72** | **35.36** |
 
 OpenSSL is ~4.2x faster sealing, ~3.3x faster opening, at 10 MiB — a real gap, not an artifact of the
 mismatched primitive-level table above (that table's ~similar order-of-magnitude ops/s numbers only

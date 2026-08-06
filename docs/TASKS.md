@@ -1829,8 +1829,8 @@ item they point to is later removed.
       wrong *regime* for a full seal/open call (never touches a message) - added a same-regime 10 MiB
       MB/s table against `openssl cms -encrypt`/`-decrypt` with an EC recipient (real hybrid
       envelope: ECDH + AES-256-CBC bulk encrypt), the actual OpenSSL analog to `crypto_box`. Result:
-      OpenSSL CMS is ~4.2x faster sealing (37.34 vs. 8.84 MiB/s), ~3.3x faster opening (35.36 vs.
-      10.72 MiB/s). Found and fixed two real gotchas first (not assumed): `openssl cms` needs
+      OpenSSL CMS is ~4.2x faster sealing (37.34 vs. 8.84 MB/s), ~3.3x faster opening (35.36 vs.
+      10.72 MB/s). Found and fixed two real gotchas first (not assumed): `openssl cms` needs
       `-binary` or it silently truncates binary input at the first `0x1A` byte (also recorded in
       `CLAUDE.md`'s Agent discipline), and Git Bash needs `MSYS_NO_PATHCONV=1` for `-subj "/CN=..."`.
       New standing rule recorded in `docs/PERFORMANCE.md`'s Methodology section: a full-construction

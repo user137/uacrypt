@@ -11510,8 +11510,8 @@ has the same startup cost as a real `cms` invocation (X.509 parsing, cipher init
 framing is that this makes the published OpenSSL numbers a conservative (slower than its true
 crypto-only speed) estimate, so it does not change the comparison's direction.
 
-**Result**: OpenSSL CMS is ~4.2x faster sealing (37.34 vs. 8.84 MiB/s) and ~3.3x faster opening
-(35.36 vs. 10.72 MiB/s) at 10 MiB - a real, honestly-measured gap, unlike the primitive-level
+**Result**: OpenSSL CMS is ~4.2x faster sealing (37.34 vs. 8.84 MB/s) and ~3.3x faster opening
+(35.36 vs. 10.72 MB/s) at 10 MiB - a real, honestly-measured gap, unlike the primitive-level
 table's "same order of magnitude" framing, which only holds for the sub-millisecond EC-only cost and
 says nothing about bulk throughput. For context, not chased further this session: this project's own
 `hazmat::kalyna_gcm::Kalyna256_256Gcm` alone reaches 17.09 MB/s at 10 MiB (this file's own
