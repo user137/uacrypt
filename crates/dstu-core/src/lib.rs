@@ -14,6 +14,8 @@
 #![deny(clippy::unwrap_used, clippy::expect_used)]
 
 pub mod crypto_auth;
+#[cfg(feature = "std")]
+pub mod crypto_box;
 pub mod crypto_generichash;
 pub mod crypto_kdf;
 #[cfg(feature = "pwhash")]
