@@ -88,6 +88,7 @@ dstu_secretbox_key_free(key);
 | Module | Functions/types | Notes |
 |---|---|---|
 | `crypto_secretbox` | `dstu_secretbox_key_generate`, `_from_bytes`, `_bytes`, `_free`, `dstu_secretbox_seal`, `_open` | Single-message authenticated encryption. `examples/secretbox.c`. |
+| `crypto_box` | `dstu_box_secretkey_*`, `DstuBoxPublicKey`/`dstu_box_publickey_*`, `dstu_box_seal`, `_open` | Public-key encryption (hybrid via KDF over `hazmat::dstu9041`, D-169). `dstu_box_seal`/`_open` are not memory-bounded — the whole message is held in memory. `examples/box.c`. |
 | `crypto_secretstream` | `dstu_secretstream_key_*`, `DstuPushState`/`dstu_secretstream_push_*`, `DstuPullState`/`dstu_secretstream_pull_*`, `DstuTag` | Raw chunked/streaming AEAD push/pull — no idiomatic-C stream wrapper here (a later consumer's own job). `examples/secretstream_file.c`. |
 | `crypto_sign` | `dstu_sign_key_*`, `DstuVerifyingKey`/`dstu_verifying_key_*`, `dstu_sign`, `_digest`, `dstu_verify`, `_digest` | DSTU 4145 digital signatures, deterministic nonce (no RNG dependency for signing). `examples/sign.c`. |
 | `crypto_pwhash` | `dstu_pwhash_hash_password`, `_verify_password`, `DstuPwhashStrength` | Argon2id (the one deliberately non-DSTU component, D-49/D-50). `examples/misc.c`. |

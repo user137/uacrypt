@@ -631,7 +631,7 @@ fn capi() -> bool {
 /// Kept in sync by hand with `crates/dstu-core-capi/examples/*.c` - no single source of truth for
 /// "every example name" short of listing the directory, same manual-sync tradeoff `FUZZ_TARGETS`
 /// already accepts.
-const CAPI_EXAMPLES: [&str; 4] = ["secretbox", "secretstream_file", "sign", "misc"];
+const CAPI_EXAMPLES: [&str; 5] = ["secretbox", "box", "secretstream_file", "sign", "misc"];
 
 /// Regenerates `include/dstu_core.h` into a temp path and diffs it byte-for-byte against the
 /// committed copy - fails loudly (not silently) on drift, the same shape T-120/D-75 already uses
