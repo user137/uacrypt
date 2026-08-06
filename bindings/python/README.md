@@ -50,6 +50,7 @@ assert d.secretbox_open(key, sealed) == b"a message worth protecting"
 | Module | Functions/classes | Notes |
 |---|---|---|
 | `crypto_secretbox` | `secretbox_keygen`, `secretbox_seal`, `secretbox_open` | Single-message authenticated encryption. `examples/secretbox.py`. |
+| `crypto_box` | `box_keygen`, `box_public_key`, `box_seal`, `box_open` | Public-key encryption (hybrid via KDF over `hazmat::dstu9041`, D-169). `box_seal`/`box_open` are not memory-bounded — the whole message is held in memory. `examples/box.py`. |
 | `crypto_secretstream` | `secretstream_keygen`, `SecretStreamPushState`, `SecretStreamPullState`, `SecretStreamEncryptor`, `SecretStreamDecryptor` | Chunked streaming AEAD. The file-like `SecretStreamEncryptor`/`SecretStreamDecryptor` wire format matches `uacrypt encrypt`/`decrypt` exactly (D-118). `examples/secretstream_file.py`. |
 | `crypto_sign` | `sign_keygen`, `sign_verifying_key`, `sign_message`, `sign_verify` | DSTU 4145 digital signatures, deterministic nonce (no RNG dependency). `examples/sign.py`. |
 | `crypto_pwhash` | `pwhash_hash_password`, `pwhash_verify_password`, `PWHASH_INTERACTIVE`/`PWHASH_MODERATE`/`PWHASH_SENSITIVE` | Argon2id (the one deliberately non-DSTU component, D-49/D-50). `examples/password_hashing.py`. |

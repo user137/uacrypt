@@ -15,6 +15,7 @@
 //! `crypto_secretstream` wrapper) is deferred to later steps.
 
 mod auth;
+mod crypto_box;
 mod error;
 mod generichash;
 mod kdf;
@@ -45,6 +46,11 @@ fn _dstu_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(secretbox::secretbox_keygen, m)?)?;
     m.add_function(wrap_pyfunction!(secretbox::secretbox_seal, m)?)?;
     m.add_function(wrap_pyfunction!(secretbox::secretbox_open, m)?)?;
+
+    m.add_function(wrap_pyfunction!(crypto_box::box_keygen, m)?)?;
+    m.add_function(wrap_pyfunction!(crypto_box::box_public_key, m)?)?;
+    m.add_function(wrap_pyfunction!(crypto_box::box_seal, m)?)?;
+    m.add_function(wrap_pyfunction!(crypto_box::box_open, m)?)?;
 
     m.add_function(wrap_pyfunction!(secretstream::secretstream_keygen, m)?)?;
     m.add_class::<secretstream::SecretStreamPushState>()?;
