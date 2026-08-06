@@ -2,7 +2,9 @@
 //! E256/1 - see `docs/pseudocode/dstu9041.md` Додаток Б.4, `docs/DECISIONS.md` D-163/D-165/D-166).
 //! Test-first per T-177: written before `curve256` exists.
 
-use dstu_core::hazmat::dstu9041::curve256::{base_point, is_valid_scalar, order, Point};
+use dstu_core::hazmat::dstu9041::curve256::{
+    base_point, is_valid_scalar, order, point_from_x, Point,
+};
 use dstu_core::hazmat::dstu9041::fp256::FieldElement;
 
 fn decode_hex_padded(s: &str) -> [u8; 32] {
@@ -213,4 +215,42 @@ fn r_equals_p_minus_1_reconstructs_the_order_2_point() {
         n_r_prime, r_prime,
         "R' must be OUTSIDE <P> (n*R' == R' since n is odd and R' has order 2, not neutral)"
     );
+}
+
+// --- `point_from_x` (T-178's extraction of the shared reconstruction gauntlet out of
+// `encryption::decrypt`, reused by `crypto_box::PublicKey::from_bytes`) ---
+
+#[test]
+fn point_from_x_reconstructs_a_point_matching_q_or_its_negation() {
+    let q = q_point();
+    let reconstructed = point_from_x(q.x).expect("Q's own x is a valid, in-subgroup point");
+    // -Q = (x, -y): this curve's own negation is (x, -y) (the x/y-swapped Edwards form).
+    let negated_q = Point {
+        x: q.x,
+        y: FieldElement::ZERO.sub(q.y),
+    };
+    assert!(reconstructed == q || reconstructed == negated_q);
+}
+
+#[test]
+fn point_from_x_gives_same_kappa_regardless_of_sqrt_branch() {
+    // The load-bearing property `crypto_box`'s x-only `PublicKey` compression relies on: whichever
+    // of {Q, -Q} `point_from_x` returns, `epsilon * that_point` has the same x-coordinate as
+    // `epsilon * Q` - because x_T = x_{-T} on this curve and k*(-Q) = -(k*Q) for any scalar k.
+    let q = q_point();
+    let reconstructed = point_from_x(q.x).expect("Q's own x is a valid, in-subgroup point");
+    let epsilon = scalar(extract(EXAMPLE_VECTOR, "ephemeral_key_epsilon_hex"));
+    assert_eq!(
+        q.scalar_multiply(&epsilon).x,
+        reconstructed.scalar_multiply(&epsilon).x
+    );
+}
+
+#[test]
+fn point_from_x_rejects_zero_one_and_p_minus_1() {
+    let p_hex = extract(CURVE_VECTOR, "p_hex");
+    let p_minus_1 = FieldElement::from_be_bytes(&decode_hex_padded(p_hex)).sub(FieldElement::ONE);
+    assert!(point_from_x(FieldElement::ZERO).is_none());
+    assert!(point_from_x(FieldElement::ONE).is_none());
+    assert!(point_from_x(p_minus_1).is_none());
 }

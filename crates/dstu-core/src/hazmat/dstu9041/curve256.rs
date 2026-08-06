@@ -172,6 +172,55 @@ impl ProjectivePoint {
     }
 }
 
+/// Reconstructs a point on the curve from just its `x`-coordinate, choosing whichever `sqrt`
+/// branch [`FieldElement::sqrt`] returns for `y` and rejecting anything outside the base point's
+/// own prime-order subgroup `<P>`. Shared by `encryption::decrypt` (reconstructing `R'` from a
+/// ciphertext's `r`) and `crate::crypto_box::PublicKey::from_bytes` (reconstructing a compressed
+/// public key) - one security-critical gauntlet, not two independently-maintained copies of it.
+///
+/// Rejects (clause 12 step 2, plus this crate's own `r=p-1`/subgroup findings - see
+/// `encryption.rs`'s module doc): `x in {0, 1, p-1}`, `x^2 = a*d^-1 mod p` (`D_{1,2}`'s exclusion),
+/// `v = (1-x^2)*(a-d*x^2)^-1` not a quadratic residue, or the reconstructed candidate outside
+/// `<P>`.
+///
+/// Which `sqrt` branch is chosen does not matter for `crypto_box`'s own use of this: this curve's
+/// negation is `-(x,y) = (x,-y)` (the swapped-Edwards form, `docs/pseudocode/dstu9041.md`), so `x`
+/// never distinguishes a point from its negation, and `x_T = x_{-T}` for any point `T` - meaning
+/// `x_{k*Q} = x_{k*(-Q)}` for any scalar `k`, since `k*(-Q) = -(k*Q)`. Reconstructing a public key
+/// from only its `x`-coordinate therefore yields the same `kappa` on the encrypt side regardless
+/// of which of `{Q, -Q}` this function happens to return.
+#[must_use]
+pub fn point_from_x(x: FieldElement) -> Option<Point> {
+    let a = curve_a();
+    let d = curve_d();
+    let p_minus_1 = FieldElement::ZERO.sub(FieldElement::ONE);
+    let x_squared = x.square();
+
+    if x == FieldElement::ZERO
+        || x == FieldElement::ONE
+        || x == p_minus_1
+        || x_squared == a.multiply(d.invert())
+    {
+        return None;
+    }
+
+    let numerator = FieldElement::ONE.sub(x_squared);
+    let denominator = a.sub(d.multiply(x_squared));
+    let v = numerator.multiply(denominator.invert());
+
+    if !v.euler_criterion() {
+        return None;
+    }
+
+    let candidate = Point { x, y: v.sqrt() };
+
+    if candidate.scalar_multiply(&order()) != Point::NEUTRAL {
+        return None;
+    }
+
+    Some(candidate)
+}
+
 #[must_use]
 pub fn base_point() -> Point {
     Point {

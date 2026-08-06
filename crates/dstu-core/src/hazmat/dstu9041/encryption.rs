@@ -38,8 +38,8 @@
 //! self-documenting rejection rather than relying on step 4's incidental stricter form to carry
 //! the argument.
 
-use super::curve256::{base_point, curve_a, curve_d, is_valid_scalar, order, Point};
-use super::fp256::{from_candidate_bytes, FieldElement};
+use super::curve256::{base_point, is_valid_scalar, point_from_x, Point};
+use super::fp256::from_candidate_bytes;
 use super::message::{
     build_m_prime, encode_l_m_tilde, format_m_tilde, kw_plaintext_from_m_prime, parse_m_prime,
 };
@@ -115,7 +115,6 @@ pub fn encrypt(
 ///
 /// Returns [`DecryptError::InvalidCiphertext`] for any tampered ciphertext, invalid `e`, or
 /// malformed `r` - deliberately not distinguished, see this module's own doc comment.
-#[allow(clippy::many_single_char_names)] // a/d/e/v/y mirror clause 12's own step notation
 pub fn decrypt(ciphertext: &[u8; 128], e: &[u8; 32]) -> Result<([u8; 25], usize), DecryptError> {
     if !is_valid_scalar(e) {
         return Err(DecryptError::InvalidCiphertext);
@@ -125,43 +124,11 @@ pub fn decrypt(ciphertext: &[u8; 128], e: &[u8; 32]) -> Result<([u8; 25], usize)
     r_bytes.copy_from_slice(&ciphertext[..32]);
     let r_field = from_candidate_bytes(&r_bytes).ok_or(DecryptError::InvalidCiphertext)?;
 
-    let a = curve_a();
-    let d = curve_d();
-    let p_minus_1 = FieldElement::ZERO.sub(FieldElement::ONE);
-    let r_squared = r_field.square();
-
-    // Step 2: reject r=0, r=1, r=p-1 (this session's own fix - see module doc comment), and
-    // r^2 = a*d^-1 mod p (the D_{1,2} singular-point exclusion). Every branch here is on `r`,
-    // part of the ciphertext the caller already possesses - no secret-dependent timing concern,
-    // unlike the checks further below that depend on `kappa`.
-    if r_field == FieldElement::ZERO
-        || r_field == FieldElement::ONE
-        || r_field == p_minus_1
-        || r_squared == a.multiply(d.invert())
-    {
-        return Err(DecryptError::InvalidCiphertext);
-    }
-
-    // Step 3: v = (1-r^2) * (a-d*r^2)^-1 mod p.
-    let numerator = FieldElement::ONE.sub(r_squared);
-    let denominator = a.sub(d.multiply(r_squared));
-    let v = numerator.multiply(denominator.invert());
-
-    // Step 4: if v is not a residue, "Invalid ciphertext", abort.
-    if !v.euler_criterion() {
-        return Err(DecryptError::InvalidCiphertext);
-    }
-
-    // Steps 5-6: y = sqrt(v); R' = (r, y).
-    let y = v.sqrt();
-    let r_prime = Point { x: r_field, y };
-
-    // Subgroup check (beyond clause 12's literal text - see module doc comment): reject any R'
-    // outside <P>, the general fix for a cofactor > 1 curve, not relying on the specific finding
-    // that this curve's only outside-<P> torsion happens to be the order-2 point already excluded.
-    if r_prime.scalar_multiply(&order()) != Point::NEUTRAL {
-        return Err(DecryptError::InvalidCiphertext);
-    }
+    // Steps 2-6 (reject r in {0,1,p-1}, reject r^2=a*d^-1, compute v and reject non-residues,
+    // y=sqrt(v)) plus the subgroup check beyond clause 12's literal text are all
+    // `curve256::point_from_x` now - see that function's own doc comment, shared with
+    // `crate::crypto_box::PublicKey::from_bytes` rather than duplicated here.
+    let r_prime = point_from_x(r_field).ok_or(DecryptError::InvalidCiphertext)?;
 
     // Steps 7-8: T' = e*R'; kappa = x_T'.
     let t_prime = r_prime.scalar_multiply(e);
