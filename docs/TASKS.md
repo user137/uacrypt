@@ -1807,7 +1807,8 @@ item they point to is later removed.
         verified end-to-end via the actual built binary (keygen -> pubkey -> seal -> open round
         trip, plus wrong-key and tampered-ciphertext rejection), not just the test suite.
       - **T-178c - `dstu-core-capi` addition. Done 2026-08-06** (`docs/DECISIONS.md` D-171),
-        prerequisite for T-181's .NET/Go/C++/PHP bindings (they link `dstu-core-capi` directly).
+        prerequisite for T-181's .NET/Go/C++ bindings (they link `dstu-core-capi` directly - PHP
+        turned out not to, see T-181's own entry below).
         `crates/dstu-core-capi/src/crypto_box.rs`: `DstuBoxSecretKey`/`DstuBoxPublicKey` opaque
         handles, `dstu_box_secretkey_generate`/`_from_bytes`/`_bytes`/`_public_key`/`_free`,
         `dstu_box_publickey_from_bytes`/`_bytes`/`_free`, `dstu_box_seal`/`_open` (caller-allocates
@@ -1852,14 +1853,15 @@ item they point to is later removed.
       a two-language marketing/landing page edit is more delicate than a docs sweep and pushes to a
       publicly-live branch, flagged for an explicit owner check-in rather than done unprompted in the
       same pass as the rest of T-178/179/180's mechanical doc updates.
-- [ ] **T-181** **In progress - Python/Node.js/Ruby done 2026-08-06 (all three direct-FFI
-      languages); .NET/Go/C++/PHP next, then Java last.** Language bindings for `crypto_box` across
-      all eight binding
+- [ ] **T-181** **In progress - seven of eight bindings done 2026-08-06 (Python/Node.js/Ruby/PHP/
+      .NET/Go/C++); Java last.** Language bindings for `crypto_box` across all eight binding
       languages. Phase/checklist entry in `docs/bindings-strategy.md` ("T-181 - `crypto_box` across
       all eight bindings") - **incremental**, not a from-scratch binding phase: each of the eight
       already exists (T-49 through T-163), this only adds one new module's surface to each. Order
-      (per the phase entry, Fork 1's C-ABI-vs-native-FFI split): Python/Node/Ruby first (direct
-      PyO3/napi-rs/magnus binding, no C ABI involved), then .NET/Go/C++/PHP (consume
+      (per the phase entry, grouped by what each binding actually links, confirmed per binding, not
+      assumed from `docs/bindings-strategy.md`'s original Fork 1 planning text - see PHP's own entry
+      below for why that text was wrong): Python/Node/Ruby/PHP first (all four direct-bind via
+      PyO3/napi-rs/magnus/ext-php-rs, no C ABI involved), then .NET/Go/C++ (consume
       `dstu-core-capi`'s now-done `crypto_box` wrapper), Java last (spike `jni`-direct vs.
       JNI-over-C-ABI same as the original Java phase did). Bindings wrap the high-level
       `crypto_box` surface, not raw `hazmat::dstu9041` directly, per the existing seven-language
@@ -1886,6 +1888,43 @@ item they point to is later removed.
         project's own documented `LIBCLANG_PATH`/`PATH` fix for `rb-sys`'s `bindgen` step against
         Ruby's headers (`.claude.local.md`, D-133's own gotcha - confirmed still needed, not
         already resolved upstream). Not yet run on the Pi.
+      - **PHP - done.** `bindings/php/src/crypto_box.rs`: `dstu_core_box_keygen`/`_public_key`/
+        `_seal`/`_open` via `ext-php-rs`, `Binary<u8>` in/out, flat `dstu_core_*`-prefixed globals
+        (D-142's `ext-sodium`-naming precedent). **Corrected a stale planning assumption while
+        writing this**: `docs/bindings-strategy.md`'s original Fork 1 text said PHP would follow
+        C++/.NET's C-ABI-consuming shape - the real T-159 implementation binds `dstu-core` directly
+        (confirmed via `Cargo.toml`, not the plan), the same direct-`ext-php-rs` shape as Python/
+        Node/Ruby, so PHP needed no `dstu-core-capi` work at all despite T-178c's own doc comment
+        once claiming otherwise (fixed there and in `docs/bindings-strategy.md`'s Fork 1/T-181
+        sections). 12 new PHPUnit tests. Full `cargo xtask php` pipeline clean (fmt/clippy/build/
+        phpunit, 70/70) - needed `PHP` on `PATH` (`export PATH="/c/Users/Pa/tools/php83:$PATH"`,
+        `.claude.local.md`'s own documented install). Not yet run on the Pi.
+      - **.NET - done.** `bindings/dotnet/DstuCore/Box.cs`: `BoxSecretKey`/`BoxPublicKey` P/Invoke
+        over `dstu-core-capi`'s now-complete `crypto_box` C ABI (T-178c), `SafeHandle`-based
+        `BoxSecretKeyHandle`/`BoxPublicKeyHandle` mirroring every other opaque handle in
+        `NativeHandles.cs`. No new `DstuStatus`/exception mapping needed - `ErrInvalidKey`/
+        `ErrTagMismatch`/`ErrTruncated` already covered this construction's exact error surface. 12
+        new xUnit facts. Full `cargo xtask dotnet` pipeline clean (`dotnet format` on both csproj,
+        68/68 tests) - one real fix along the way, a doc-comment `cref="Seal"` that only resolved
+        from `BoxPublicKey`'s own scope, not `BoxSecretKey`'s (CS1574 warning, now qualified).
+      - **Go - done.** `bindings/go/dstu/box.go`: `BoxSecretKey`/`BoxPublicKey` via cgo directly
+        over `dstu-core-capi`, constants pulled straight from the regenerated `dstu_core.h`.
+        `ArgumentError`/`CryptoError` in `status.go` already covered this construction's exact
+        `DstuStatus` surface, no new mapping needed. 12 new tests. Full `cargo xtask go` pipeline
+        clean (`gofmt`, `go vet`, `go test`, 64/64).
+      - **C++ - done.** `bindings/cpp/include/dstu/box.hpp`: `BoxSecretKey`/`BoxPublicKey`,
+        header-only RAII (move-only `unique_ptr`) over `dstu-core-capi`, mirroring `secretbox.hpp`'s
+        shape and `sign.hpp`'s own two-key friend-class split. New `TestBox()` in the shared
+        plain-C++ harness (`tests/test_dstu.cpp`, D-158's no-third-party-framework convention), a
+        `box.cpp` example registered in `CMakeLists.txt`'s example loop. Full `cargo xtask cpp`
+        pipeline clean (zero compiler warnings, `ctest` 100%). **Real gotcha found and recorded in
+        `CLAUDE.md`**: `ctest`/the test exe spuriously reported `STATUS_ENTRYPOINT_NOT_FOUND` when
+        launched from Git Bash despite the DLL's exports being verified present with `objdump -p`
+        first - re-running via the `PowerShell` tool showed a clean 100% pass, confirming this was
+        a Git-Bash process-launch artifact, not a real bug.
+      Remaining: Java (last, per Fork 1's own spike-first note above); the Raspberry Pi cross-arch
+      smoke check (step 10) for all seven languages done so far - not run yet for any of them this
+      pass, doesn't block Java starting.
 - [ ] **T-182** **Not started, no committed timeline - owner-requested backlog item, 2026-08-06.**
       Additional `l(p)` security levels for `hazmat::dstu9041`, beyond T-177's `l(p)=256`-only scope.
       Three genuinely different sub-items, not one task scaled up:

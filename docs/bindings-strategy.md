@@ -89,8 +89,14 @@ C ABI would double-marshal data for no benefit and lose idiomatic types (Python 
 generated header + link, .NET via P/Invoke. Java gets an explicit spike step (Phase 4, step 1)
 comparing the `jni` crate (write the JNI layer directly in Rust, no hand-written C shim) against
 JNI-over-the-C-ABI, before committing to either — record the outcome in `docs/DECISIONS.md` when
-that spike runs. Ruby follows Python/Node's direct-binding shape (`magnus`); PHP follows C++/.NET's
-C-ABI-consuming shape (`ext-php-rs` or the `FFI` extension).
+that spike runs. Ruby follows Python/Node's direct-binding shape (`magnus`); PHP was planned to
+follow C++/.NET's C-ABI-consuming shape (`ext-php-rs` or the `FFI` extension) here, but **the
+actual T-159 implementation binds `dstu-core` directly via `ext-php-rs`** (confirmed by its own
+`Cargo.toml` dependency, not this plan) - flat `dstu_core_*`-prefixed globals matching `ext-sodium`'s
+own naming (D-142), same direct-binding group as Python/Node/Ruby in practice. This paragraph is
+left uncorrected below as the historical record of what was planned; treat the per-binding
+`Cargo.toml` as the source of truth for what a binding actually links against, not this section
+(found stale doing T-181's own PHP work, 2026-08-06 - the T-181 phase entry below reflects reality).
 
 ### Fork 2 — `crypto_sign` (DSTU 4145) exposure: uniform across every binding
 
@@ -1034,21 +1040,27 @@ standard binding steps" above collapse: no new step 1 (scaffold), step 4 (packag
 worth running since it caught a real bug before (D-151). Step 3 (secretstream wrapping) does not
 apply — `crypto_box::seal`/`open` are one-shot, not a stream.
 
-**Prerequisite closed first, not trailing behind**: `advisor()` flagged that four of the eight
-languages below (.NET, Go, C++, PHP — Fork 1's C-ABI-consuming group) cannot wrap `crypto_box` at
-all until `dstu-core-capi` has it. T-178c (`crates/dstu-core-capi/src/crypto_box.rs`, D-171) landed
-first this session specifically to unblock this phase, not as a trailing footnote the way T-178's
-own original plan had it.
+**Prerequisite closed first, not trailing behind**: `advisor()` flagged that three of the eight
+languages below (.NET, Go, C++ — the real C-ABI-consuming group, per each binding's own `Cargo.toml`/
+build config, not Fork 1's original planning text above which incorrectly also names PHP) cannot
+wrap `crypto_box` at all until `dstu-core-capi` has it. T-178c (`crates/dstu-core-capi/src/
+crypto_box.rs`, D-171) landed first this session specifically to unblock this phase, not as a
+trailing footnote the way T-178's own original plan had it. **PHP turned out not to need it at
+all** - confirmed only once its own `crypto_box.rs` was actually being written (2026-08-06): its
+`Cargo.toml` depends on `dstu-core` directly, the same direct-`ext-php-rs`-binding shape as Python/
+Node/Ruby, contradicting Fork 1's original "PHP follows C++/.NET" text above (now corrected there
+too). Re-check a binding's actual dependency before assuming Fork 1's planning-time text still
+describes it — it was written before any binding existed.
 
-**Order** (Fork 1's own split, not popularity ranking — this phase groups by *what a language needs
-to link*, not by user base):
+**Order** (grouped by *what a language actually links*, confirmed per binding, not assumed from
+Fork 1's original planning text):
 
-1. [ ] **Python/Node.js/Ruby** — direct FFI (PyO3/napi-rs/magnus), no C ABI involved, can start
-       immediately. Python first as the template every other language's `crypto_box` wrapper checks
+1. [x] **Python/Node.js/Ruby/PHP** — direct FFI (PyO3/napi-rs/magnus/ext-php-rs), no C ABI
+       involved. **Done 2026-08-06** (all four, PHP included once its real dependency shape was
+       confirmed). Python first as the template every other language's `crypto_box` wrapper checked
        itself against, matching T-49's own original role.
-2. [ ] **.NET/Go/C++/PHP** — consume `dstu-core-capi`'s now-complete `crypto_box` C ABI (T-178c)
-       directly: P/Invoke (.NET), cgo (Go), the generated header + link (C++), `ext-php-rs`/`FFI`
-       (PHP). No further capi work needed — T-178c already covers all four.
+2. [x] **.NET/Go/C++** — consume `dstu-core-capi`'s now-complete `crypto_box` C ABI (T-178c)
+       directly: P/Invoke (.NET), cgo (Go), the generated header + link (C++). **Done 2026-08-06.**
 3. [ ] **Java** — last, per Fork 1's own note that Java gets an explicit spike (`jni` crate direct
        vs. JNI-over-the-C-ABI) before committing to a shape; do that spike once, for `crypto_box`
        specifically if the original Fork 1 spike (recorded when it runs, `docs/DECISIONS.md`) didn't

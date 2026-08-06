@@ -11525,15 +11525,19 @@ benchmark for a full construction (not a bare primitive) must include a same-reg
 binary doing the same *kind* of operation, not just share its dominant cost - recorded there as the
 canonical home per the doc map, not duplicated here beyond this rationale.
 
-## D-171: T-178c - `crypto_box` added to `dstu-core-capi`, unblocking T-181's C-ABI-consuming bindings
+## D-171: T-178c - `crypto_box` added to `dstu-core-capi`, unblocking T-181's .NET/Go/C++ bindings
 
 **Why this, not a binding, was next.** T-181 (language bindings for `crypto_box`) was the next item
 in the owner's "build a plan, then execute it" directive, but `advisor()` flagged a sequencing bug
-before any binding work started: four of the eight binding languages (.NET, Go, C++, PHP - Fork 1 in
-`docs/bindings-strategy.md`) consume `dstu-core-capi` directly, and `crypto_box` was not yet in the C
-ABI. Writing T-181's phase plan "eight languages, Python first" would have planned four languages
-that cannot compile until a task marked as trailing (T-178c) actually lands. T-178c was promoted to
-the head of T-181's own work, done this session rather than deferred further.
+before any binding work started: four of the eight binding languages (.NET, Go, C++, PHP - per
+Fork 1's *planning-time* text in `docs/bindings-strategy.md`) were believed to consume
+`dstu-core-capi` directly, and `crypto_box` was not yet in the C ABI. Writing T-181's phase plan
+"eight languages, Python first" would have planned four languages that cannot compile until a task
+marked as trailing (T-178c) actually lands. T-178c was promoted to the head of T-181's own work,
+done this session rather than deferred further. **Correction, found a few hours later doing PHP's
+own T-181 work**: PHP was never actually in that group - see this entry's "Unblocks" section below
+for the real shape (`dstu-core` direct via `ext-php-rs`, only three languages genuinely needed
+T-178c). The sequencing call itself was still right; only the language count was off by one.
 
 **What was built**: `crates/dstu-core-capi/src/crypto_box.rs` - `DstuBoxSecretKey`/
 `DstuBoxPublicKey` opaque handles (`Zeroize`-on-`Drop` via the wrapped `dstu_core::crypto_box` types,
@@ -11577,7 +11581,13 @@ exactly the eight new functions/three new constants/two new opaque types, nothin
 runs every existing C example unmodified as a regression check. `cargo xtask clippy`/`fmt --check`
 clean; full `cargo test --workspace --all-features` re-run after landing.
 
-**Unblocks**: T-181's .NET/Go/C++/PHP bindings can now link a `crypto_box`-complete C ABI; Python/
-Node/Ruby (direct FFI, don't touch `dstu-core-capi` at all per Fork 1) and Java (pending its own
-`jni`-vs-C-ABI spike) were never blocked by this. `docs/bindings-strategy.md` now carries T-181's own
-phase entry with this ordering spelled out.
+**Unblocks**: T-181's .NET/Go/C++ bindings can now link a `crypto_box`-complete C ABI. **Correction,
+found writing PHP's own `crypto_box.rs` later the same day**: PHP does not link `dstu-core-capi` at
+all - its `Cargo.toml` depends on `dstu-core` directly (`ext-php-rs`, same direct-binding shape as
+Python/Node/Ruby), contradicting this entry's own first-draft wording above and
+`docs/bindings-strategy.md`'s original Fork 1 planning text (now fixed there too, and in this
+entry's own title). D-121 had already recorded PHP's real direct-binding shape when T-159 actually
+landed it - this entry's first draft simply didn't check that before repeating Fork 1's stale
+planning-time claim. Python/Node/Ruby/PHP (direct FFI) and Java (pending its own `jni`-vs-C-ABI
+spike) were never blocked by T-178c. `docs/bindings-strategy.md` now carries T-181's own phase entry
+with the corrected ordering spelled out.
