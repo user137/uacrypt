@@ -57,6 +57,16 @@ faster alternative — so this project tracks its own numbers deliberately, not 
   this project's own side), `kalyna-ccm` (`MAX_PLAINTEXT_LEN = 255` bytes, a real cap in this
   implementation). **CMAC is not exempt** — it authenticates an arbitrary-length message the same
   way GCM/XTS do, and already has a published 10 MiB row.
+- **A benchmark comparison must match the *regime* of what it's timing, not just the dominant
+  primitive underneath it** (policy made explicit 2026-08-06, user-requested, T-179's `crypto_box`
+  addendum). If the construction under test is a full sealed-box/envelope operation over an
+  arbitrary-length message (KEM + KDF + bulk symmetric encryption, not a bare scalar multiplication
+  or block-cipher call), the comparison binary must be doing the same kind of full operation — e.g.
+  `openssl cms -encrypt`/`-decrypt` with an EC recipient for a hybrid public-key seal/open, not
+  `openssl speed ecdh`'s bare scalar-multiplication loop. A primitive-level table (matching just the
+  dominant cost) is still useful and can stay published alongside, but it does not substitute for a
+  same-regime one once a full-construction comparison is possible — see DSTU 9041/`crypto_box`'s two
+  tables below for the pattern to repeat for any future asymmetric construction.
 - **Byte-identity-verified UAPKI comparison is now the standard for every future binary-level
   table** (policy made explicit 2026-07-26, established by T-131/D-78's CMAC/XTS wrapper rebuild —
   a "`uacrypt`-only, no UAPKI column, wrapper not rebuilt" table is a stopgap, not an acceptable
@@ -1771,17 +1781,25 @@ here).
 --iterations 5000` and `verify --key verifying.key --in msg.bin --sig msg.sig --iterations 5000` on
 each binary in turn.
 
-### DSTU 9041 / `crypto_box` (`box-seal`/`box-open`, ops/s — higher is better) — T-179
+### DSTU 9041 / `crypto_box` (`box-seal`/`box-open`) — T-179
 
-**Not a D-34 MB/s cross-implementation comparison** — that methodology is for symmetric primitives
-being compared against a second implementation of the *same* construction; no second DSTU 9041
-implementation exists anywhere (`docs/ORACLES.md`), and MB/s is meaningless for a fixed-size
-128-byte asymmetric operation regardless. Instead, following `sign`/`verify`'s own T-150 precedent
-(compare ops/s against OpenSSL doing the closest equivalent job, on the actual built binary — D-34's
-"use the real binary, not an internal `criterion` number" policy still applies), this measures
-`uacrypt box-seal`/`box-open` against `openssl speed ecdh`, since `hazmat::dstu9041::curve256::
-Point::scalar_multiply` is what dominates both operations' cost, and `openssl speed ecdh` measures
-exactly one scalar multiplication per reported op.
+Two tables, at two different levels, per owner feedback 2026-08-06 that a "similar-regime" binary
+comparison is required, not just a primitive-level one: the ops/s table below measures the *raw
+scalar multiplication* only (mirroring `openssl speed ecdh`'s own scope), the MB/s table further
+down measures the *full sealed-box operation* against OpenSSL's own closest full-envelope
+equivalent (`openssl cms`). Neither replaces the other — they answer different questions ("how fast
+is our EC math" vs. "how fast is a real seal/open call") and this project's new methodology rule
+(below) is to always include the second kind whenever a full-message construction exists to compare.
+
+**Not a D-34 MB/s cross-implementation comparison at the primitive level** — that methodology is for
+symmetric primitives being compared against a second implementation of the *same* construction; no
+second DSTU 9041 implementation exists anywhere (`docs/ORACLES.md`), and MB/s is meaningless for a
+fixed-size 128-byte asymmetric operation regardless. Instead, following `sign`/`verify`'s own T-150
+precedent (compare ops/s against OpenSSL doing the closest equivalent job, on the actual built
+binary — D-34's "use the real binary, not an internal `criterion` number" policy still applies),
+this measures `uacrypt box-seal`/`box-open` against `openssl speed ecdh`, since
+`hazmat::dstu9041::curve256::Point::scalar_multiply` is what dominates both operations' cost, and
+`openssl speed ecdh` measures exactly one scalar multiplication per reported op.
 
 **`box-seal`/`box-open` are not directly comparable 1:1 to one `ecdh` op — read the ratio with this
 in mind, not as a raw "X times faster/slower" claim**: `seal` performs *two* scalar multiplications
@@ -1813,9 +1831,73 @@ precise-looking ratio that isn't actually verified.
   own p256 caveat applies: part of this gap is OpenSSL using a curve/field genuinely optimized for
   this exact operation, not purely an implementation-quality gap.
 
-**Reproducing**: `cargo build -p uacrypt --release`, then `target/release/uacrypt box-keygen --out
-box.key`, `box-pubkey --key box.key --out box.pub`, `box-seal --key box.pub --in msg.txt --out
-msg.box --iterations 5000`, `box-open --key box.key --in msg.box --out msg.out --iterations 5000`
-(a short `msg.txt`, well under the 25-byte KEM seed's own size — `seal`'s cost is dominated by the
-EC operations regardless of message length, see `crypto_box`'s own module doc). OpenSSL side:
-`openssl speed -seconds 2 ecdh`, reading the `brainpoolP256r1`/`X25519` rows.
+**Reproducing (primitive-level)**: `cargo build -p uacrypt --release`, then `target/release/uacrypt
+box-keygen --out box.key`, `box-pubkey --key box.key --out box.pub`, `box-seal --key box.pub --in
+msg.txt --out msg.box --iterations 5000`, `box-open --key box.key --in msg.box --out msg.out
+--iterations 5000` (a short `msg.txt`, well under the 25-byte KEM seed's own size — `seal`'s cost is
+dominated by the EC operations regardless of message length, see `crypto_box`'s own module doc).
+OpenSSL side: `openssl speed -seconds 2 ecdh`, reading the `brainpoolP256r1`/`X25519` rows.
+
+#### Same-regime comparison: full sealed-box vs. OpenSSL CMS (`crypto_box`, 10 MiB, MB/s) — T-179 addendum
+
+The table above only measures the EC scalar multiplication, not a full seal/open call over a real
+message. `box-seal`/`box-open` do a full hybrid operation — KEM wrap, KDF, then a
+`crypto_secretstream`-chunked symmetric encrypt/decrypt of the actual message (D-169) — so the
+closest matching OpenSSL *regime* is its own hybrid-envelope construction, `openssl cms
+-encrypt`/`-decrypt` with an EC recipient (ephemeral ECDH via `dhSinglePass-stdDH-sha1kdf-scheme` +
+AES-256-CBC bulk encryption) — not `openssl speed ecdh`, which never touches a message at all. D-34's
+10 MiB-mandatory rule for variable-length messages applies here for the same reason it applies to
+every symmetric mode's table: at 10 MiB, one-time setup (key schedule, X.509 cert parse, the KEM's
+two scalar multiplications) is negligible next to the bulk-encryption work that actually dominates a
+real call.
+
+**Setup**: an OpenSSL EC (`prime256v1`) self-signed certificate as the CMS recipient (`openssl
+ecparam -name prime256v1 -genkey -noout -out ec.key && openssl req -new -x509 -key ec.key -out
+ec.crt -days 1 -subj "/CN=test"` — needs `MSYS_NO_PATHCONV=1` in Git Bash on Windows or the leading
+`/` in `-subj` gets rewritten into a filesystem path); a `uacrypt` keypair via `box-keygen`/
+`box-pubkey`; a shared 10 MiB random payload (`openssl rand -out payload.bin 10485760`) round-tripped
+through both.
+
+**`openssl cms -encrypt`/`-decrypt` silently truncate binary input at the first `0x1A` byte unless
+called with `-binary`** — without it, OpenSSL's default S/MIME-oriented text-mode content handling
+stops at what it reads as a text EOF marker; confirmed directly (a 10 MiB random payload came back as
+a 455-byte CMS structure, and decrypting it produced exactly 173 bytes, not 10 MiB) before it was
+caught by checking the output size rather than trusting a clean exit code. `-binary` on both
+`-encrypt` and `-decrypt` fixed it; verified with a byte-for-byte `cmp` round trip before timing
+anything.
+
+**Process-spawn overhead is a genuine, measured confound here, unlike `uacrypt`'s own
+`--iterations`-in-one-process numbers** — `openssl cms` has no internal iteration flag, so each
+measured call is a fresh `openssl.exe` process. Measured separately (`openssl version`, N=20): ~60 ms
+per spawn on this machine, which is ~21-22% of each CMS call's ~270-280 ms total at 10 MiB — present
+but not dominant, and its effect only makes the OpenSSL numbers below a *conservative* (slower than
+its true crypto-only speed) estimate, so the comparison's actual direction is not in question.
+
+| | `uacrypt` (`crypto_box`) | OpenSSL CMS (`prime256v1` + AES-256-CBC) |
+|---|---|---|
+| seal/encrypt (MiB/s) | **8.84** | **37.34** |
+| open/decrypt (MiB/s) | **10.72** | **35.36** |
+
+OpenSSL is ~4.2x faster sealing, ~3.3x faster opening, at 10 MiB — a real gap, not an artifact of the
+mismatched primitive-level table above (that table's ~similar order-of-magnitude ops/s numbers only
+hold for the sub-millisecond, EC-only cost; they say nothing about bulk throughput). For context, not
+further chased this session: this project's own `hazmat::kalyna_gcm::Kalyna256_256Gcm` alone reaches
+17.09 MB/s at 10 MiB (Kalyna-GCM's own 256-256 row, above) — `crypto_box`'s ~8.84/10.72 sit at roughly
+half that, meaning most of the gap is `crypto_secretstream`/`crypto_box`'s own per-call framing and
+allocation overhead layered on top of the underlying cipher, not the two KEM scalar multiplications
+(sub-millisecond, negligible at 10 MiB) or the block cipher itself.
+
+**Reproducing (same-regime)**:
+```
+openssl ecparam -name prime256v1 -genkey -noout -out ec.key
+MSYS_NO_PATHCONV=1 openssl req -new -x509 -key ec.key -out ec.crt -days 1 -subj "/CN=test"
+openssl rand -out payload.bin 10485760
+# time N iterations of each, e.g. N=10:
+openssl cms -encrypt -binary -recip ec.crt -aes-256-cbc -in payload.bin -out payload.p7 -outform DER
+openssl cms -decrypt -binary -inkey ec.key -recip ec.crt -in payload.p7 -inform DER -out payload.dec
+# uacrypt side, same payload, one process, N iterations built in:
+target/release/uacrypt box-keygen --out box.key
+target/release/uacrypt box-pubkey --key box.key --out box.pub
+target/release/uacrypt box-seal --key box.pub --in payload.bin --out payload.box --iterations 10
+target/release/uacrypt box-open --key box.key --in payload.box --out payload.unbox --iterations 10
+```

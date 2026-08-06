@@ -11465,3 +11465,62 @@ tampered-ciphertext rejection), not just the automated test suite.
 T-181's .NET/Go/C++ bindings specifically - the other five binding languages don't need it);
 `docs/PERFORMANCE.md` benchmarking (T-179); `README.md`/site/usage-example documentation (T-180);
 language bindings (T-181).
+
+## D-170: T-179 - `crypto_box` benchmarked against OpenSSL CMS, a same-regime comparison, not just `ecdh`
+
+**Owner feedback (2026-08-06)**: T-179's original benchmark (`box-seal`/`box-open` ops/s vs.
+`openssl speed ecdh`) compared the right dominant cost (EC scalar multiplication) but the wrong
+*regime* - `ecdh` never touches a message, while `box-seal`/`box-open` are full hybrid
+seal/open calls over an arbitrary-length message (KEM wrap, KDF, `crypto_secretstream`-chunked bulk
+encryption, D-169). Directive: compare against a similar-mode binary operation, OpenSSL or LibreSSL.
+`advisor()` identified the correct analog: `openssl cms -encrypt`/`-decrypt` with an EC recipient
+does exactly the same kind of thing (ephemeral ECDH + KDF-derived content-encryption key + AES-256
+bulk encryption of the actual payload) - not `pkeyutl` (OpenSSL has no ECIES there) and not `speed
+rsa2048` (different algorithm family, still not an envelope). LibreSSL was the "or" alternative
+offered by the owner, not an additional requirement - OpenSSL 3.5.5 (already on this machine)
+satisfies the ask; nothing new was installed.
+
+**Kept, not replaced, the original `ecdh` table** - demoted to an explicitly-labeled
+"primitive-level" table, still useful for "how fast is our EC math" in isolation, with a new
+same-regime "full sealed-box" table added alongside per the new `docs/PERFORMANCE.md` methodology
+rule (below). Neither table substitutes for the other, per `advisor()`'s framing.
+
+**D-34's 10 MiB-mandatory rule applies to the new table** - `crypto_box::seal`/`open` take an
+arbitrary-length message, so the same policy that governs every symmetric mode's binary-level table
+applies here too; MB/s (not ops/s) is the right unit once a real bulk payload is involved, matching
+D-34's own scoping ("MB/s only meaningless for a *fixed-size* asymmetric op" - a full seal/open call
+over 10 MiB is not fixed-size).
+
+**Two real gotchas found empirically, not assumed, before trusting any number**:
+1. **`openssl cms -encrypt`/`-decrypt` silently truncate binary input at the first `0x1A` byte
+   without `-binary`** - caught by checking output size (a 10 MiB payload produced a 455-byte CMS
+   structure) rather than trusting a clean exit code; a text-mode/S-MIME-oriented default, not a
+   bug, but a sharp edge for any future binary-payload OpenSSL CLI comparison in this project.
+   Recorded as a standing gotcha in `CLAUDE.md`'s Agent discipline section, not just here, since it
+   will recur for any future `smime`/`cms` comparison.
+2. **Git Bash's MSYS path conversion rewrites a leading `/CN=...` in `-subj` into a Windows
+   filesystem path** - fixed with `MSYS_NO_PATHCONV=1`, same class of Windows/Git-Bash gotcha this
+   project has hit before with other tools, not specific to OpenSSL.
+
+**Process-spawn overhead was measured, not ignored**: `openssl cms` has no internal iteration flag
+(unlike `uacrypt`'s own `--iterations`), so each timed call is a fresh process. Measured separately
+at ~60 ms/spawn (N=20, `openssl version`) - ~21-22% of each ~270-280 ms CMS call at 10 MiB. Reported
+as a caveat rather than subtracted out, since doing so would assume a trivial `openssl version` call
+has the same startup cost as a real `cms` invocation (X.509 parsing, cipher init) - the honest
+framing is that this makes the published OpenSSL numbers a conservative (slower than its true
+crypto-only speed) estimate, so it does not change the comparison's direction.
+
+**Result**: OpenSSL CMS is ~4.2x faster sealing (37.34 vs. 8.84 MiB/s) and ~3.3x faster opening
+(35.36 vs. 10.72 MiB/s) at 10 MiB - a real, honestly-measured gap, unlike the primitive-level
+table's "same order of magnitude" framing, which only holds for the sub-millisecond EC-only cost and
+says nothing about bulk throughput. For context, not chased further this session: this project's own
+`hazmat::kalyna_gcm::Kalyna256_256Gcm` alone reaches 17.09 MB/s at 10 MiB (this file's own
+Kalyna-GCM 256-256 row) - `crypto_box`'s ~8.84/10.72 sit at roughly half that, meaning most of the
+gap is `crypto_secretstream`/`crypto_box`'s own per-call framing/allocation overhead layered on top
+of the underlying cipher, not the KEM's two scalar multiplications (negligible at 10 MiB) or the
+block cipher itself - a lead worth investigating in a future performance pass, not this one.
+
+**New standing methodology rule** (`docs/PERFORMANCE.md` "Methodology" section): any future
+benchmark for a full construction (not a bare primitive) must include a same-regime comparison
+binary doing the same *kind* of operation, not just share its dominant cost - recorded there as the
+canonical home per the doc map, not duplicated here beyond this rationale.

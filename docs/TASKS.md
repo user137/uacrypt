@@ -1825,7 +1825,17 @@ item they point to is later removed.
       *two* scalar multiplications per call (not one, like a single `ecdh` op) - the raw ops/s
       numbers are reported as measured, not further normalized per-scalar-mult, since OpenSSL's own
       `ecdh` benchmark internals weren't independently re-derived to confirm exactly what it counts
-      as one op.
+      as one op. **Addendum, 2026-08-06, owner feedback (`docs/DECISIONS.md` D-170)**: `ecdh` is the
+      wrong *regime* for a full seal/open call (never touches a message) - added a same-regime 10 MiB
+      MB/s table against `openssl cms -encrypt`/`-decrypt` with an EC recipient (real hybrid
+      envelope: ECDH + AES-256-CBC bulk encrypt), the actual OpenSSL analog to `crypto_box`. Result:
+      OpenSSL CMS is ~4.2x faster sealing (37.34 vs. 8.84 MiB/s), ~3.3x faster opening (35.36 vs.
+      10.72 MiB/s). Found and fixed two real gotchas first (not assumed): `openssl cms` needs
+      `-binary` or it silently truncates binary input at the first `0x1A` byte (also recorded in
+      `CLAUDE.md`'s Agent discipline), and Git Bash needs `MSYS_NO_PATHCONV=1` for `-subj "/CN=..."`.
+      New standing rule recorded in `docs/PERFORMANCE.md`'s Methodology section: a full-construction
+      benchmark must include a same-regime comparison binary going forward, not just one sharing the
+      dominant primitive cost.
 - [ ] **T-180** **`README.md` done 2026-08-06; gh-pages site still open.** Documentation/site update
       for `hazmat::dstu9041`/`crypto_box`. **Done**: `README.md`'s status paragraph (DSTU 9041/
       `crypto_box` no longer "no implementation yet"), `crypto_*` module list, and a `box-keygen`/

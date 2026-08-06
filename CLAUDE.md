@@ -490,6 +490,14 @@ Full detail and rationale in `docs/SECURITY.md` — this is the compressed versi
   the checkout machine's own config. Any future binding/tool with a Windows CI leg that does
   format-checking or byte-level comparison (not just compiling) is exposed to the same failure
   mode without this file.
+- **`openssl cms`/`smime -encrypt`/`-decrypt` silently truncate binary input at the first `0x1A`
+  byte unless called with `-binary`** — the default S/MIME-oriented text-mode content handling reads
+  it as a text EOF marker. Confirmed doing T-179's `crypto_box`-vs-OpenSSL-CMS benchmark (D-170): a
+  10 MiB random payload came back as a 455-byte CMS structure with no error, caught only by checking
+  the output size before timing anything. Always pass `-binary` on both sides for any non-text
+  payload, and verify a byte-for-byte round trip before trusting a timing number from this command.
+  Separately, Git Bash's MSYS path conversion rewrites a leading `/CN=...` in `-subj` into a Windows
+  filesystem path — prefix with `MSYS_NO_PATHCONV=1`.
 
 ## Reference implementations and oracles
 
