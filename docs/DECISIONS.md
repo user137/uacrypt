@@ -11393,3 +11393,75 @@ Strumok's provisional vectors (D-15): from-scratch derivation plus property/tamp
 standing in for a vector that will never exist, not a temporary placeholder for one that might
 still turn up. Any future decision to implement `l(p)=768` should account for this from the start of
 its own plan-mode/`advisor()` pass, not discover it mid-implementation.
+
+## D-169: T-178 - `crypto_box` (hybrid-via-KDF over `hazmat::dstu9041`) and its `uacrypt` CLI surface
+
+**The fork, and why it needed an owner decision rather than an implementation call.** `l(p)=256`
+caps a single ciphertext's payload at `L_MAX_P`=200 bits (25 bytes) - below this project's own
+32-byte symmetric keys (`crypto_secretbox::SecretKey`, `crypto_secretstream::Key`), so no
+high-level `crypto_box` wrapper could be built by direct analogy to those. An `advisor()` review
+(2026-08-06) framed three honest options: cap `seal`/`open` at 25 bytes and name it a short-secret
+wrap; build a hybrid (KEM wraps a random seed, KDF expands it, `crypto_secretstream` encrypts the
+actual message); or block on `l(p)>=384` (T-182) giving enough room to embed a 32-byte key
+directly. This is a genuine scope fork with no settling DSTU citation for the *composition* itself
+(D-47's tie-breaker rule doesn't resolve which of three architectures to build, only how to resolve
+ties within one) - put to the owner via `AskUserQuestion` rather than resolved by implementation,
+per this project's own "ask, don't guess" standing rule. The owner picked hybrid-via-KDF, the same
+shape OpenSSL's `EVP_Seal*`/`EVP_Open*` ("digital envelope") and libsodium's `crypto_box_seal` both
+already use - the asymmetric step only ever establishes key material, never encrypts bulk data
+itself, which is exactly what every KEM-shaped standard (RSA-OAEP, ECIES, RSA-KEM, and this one) is
+actually for.
+
+**What was built** (`docs/TASKS.md` T-178a/b, `68986b8`/`bebe4e3`): `dstu_core::crypto_box::{seal,
+open, SecretKey, PublicKey}`. `seal` draws a random 25-byte seed, wraps it via
+`hazmat::dstu9041::encryption::encrypt` under a freshly rejection-sampled ephemeral scalar, embeds
+the seed into a zero-padded 32-byte buffer (`crypto_sign::derive_nonce`'s own embedding precedent),
+derives a `crypto_secretstream::Key` from it via `hazmat::kupyna_kdf::Kupyna256Kdf::derive_subkey`
+directly (not `crypto_kdf::MasterKey`, which requires an already-32-byte input), then encrypts the
+actual message - any length - in one `Tag::Final` chunk. Wire format:
+`dstu9041_ciphertext(128) || secretstream_header(32) || ciphertext || tag(16)`.
+
+**`PublicKey` is 32 bytes - the curve point's `x`-coordinate only, not `x||y`.** Proven safe, not
+assumed: this curve's negation is `-(x,y)=(x,-y)` (the swapped-Edwards form), so `x` alone never
+distinguishes a point from its negation, and `x_T=x_{-T}` holds for any point `T` on this curve.
+Since `k*(-Q)=-(k*Q)` for any scalar `k`, reconstructing `Q` from just `x_Q` - via either of the two
+possible `sqrt` branches - yields the *same* `kappa=x_{epsilon*Q}` on `seal`'s own encrypt step.
+Verified two ways: an explicit proof in `crypto_box.rs`'s own module doc, and a new curve-level test
+(`point_from_x_gives_same_kappa_regardless_of_sqrt_branch`, `tests/dstu9041_curve.rs`) that computes
+both `Q.scalar_multiply(epsilon).x` and `point_from_x(Q.x).scalar_multiply(epsilon).x` from the
+worked example's own values and confirms they're identical. `PublicKey::from_bytes` runs the exact
+same reconstruction gauntlet `hazmat::dstu9041::encryption::decrypt` already ran inline (reject `x
+in {0,1,p-1}`, reject `x^2=a*d^-1`, `euler_criterion` before `sqrt`, subgroup check) - extracted into
+a shared `curve256::point_from_x` helper (`626680a`) rather than a second, independently-maintained
+copy of a security-critical check. No behavior change to `encrypt`/`decrypt` from this refactor -
+confirmed by re-running every existing `dstu9041_*` test file unmodified before adding anything new.
+
+**`OpenError` collapses KEM failure, secretstream tag failure, and a recovered-but-wrong-length
+seed into one `InvalidCiphertext` variant** - same padding-oracle-avoidance posture as
+`hazmat::dstu9041::encryption::DecryptError` (D-56/D-63 precedent). Only `Truncated` (a public
+wire-length check, no secret-dependent data) stays distinguishable.
+
+**`uacrypt` CLI** (T-178b): `box-keygen`/`box-pubkey`/`box-seal`/`box-open`, new verbs rather than
+overloading `encrypt`/`decrypt` (would have been a breaking wire-format change), mirroring `sign`/
+`sign-keygen`/`sign-pubkey`/`verify`'s own key-file convention (T-124). `box-seal`/`box-open` are
+explicitly **not memory-bounded** - `crypto_box::seal`/`open` take `&[u8]`/`Vec<u8>`, not a chunked
+interface, so `--in` is read whole into memory. Documented in both commands' own doc comments
+(D-42's own "don't let this go unnoticed" standard) rather than silently inherited from the library
+layer; fine for typical messages/keys, a real limitation for very large files until a genuinely
+chunked `seal_stream`/`open_stream` pair exists in the library (noted as future work in
+`crypto_box`'s own module doc, without changing the wire format's KEM prefix if it's ever added).
+
+**QA.** 14 new library tests (round-trip including a message far larger than the 25-byte KEM
+payload, every wire-segment tamper case, wrong key, misuse on out-of-range keys) plus 17 new CLI
+tests (parse-arg coverage, a golden-path round trip both directly and through the top-level `run()`
+dispatcher, wrong-key/tampered/truncated-file rejection). Heaviest proptests/tests marked
+`#[cfg_attr(miri, ignore)]` up front, not discovered after a multi-hour miri run (T-100/T-177
+precedent). Full `cargo test --workspace --all-features` re-run clean (42 test groups, 0 failed)
+after landing; `cargo xtask clippy`/`fmt --check` clean; manually verified end-to-end via the actual
+built `uacrypt` binary (a real keygen -> pubkey -> seal -> open round trip, plus wrong-key and
+tampered-ciphertext rejection), not just the automated test suite.
+
+**Known follow-up, not this task's scope**: T-178c (`dstu-core-capi` addition, a prerequisite for
+T-181's .NET/Go/C++ bindings specifically - the other five binding languages don't need it);
+`docs/PERFORMANCE.md` benchmarking (T-179); `README.md`/site/usage-example documentation (T-180);
+language bindings (T-181).

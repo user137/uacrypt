@@ -1739,12 +1739,21 @@ item they point to is later removed.
       Known accepted risk, documented at closure: no independent DSTU 9041 reference implementation
       exists anywhere (`docs/ORACLES.md`, 2026-07-21 search) - Додаток Г's own worked example is the
       sole oracle for this primitive.
-- [ ] **T-178** **In progress, started 2026-08-06.** `dstu_core::crypto_box` (new high-level module)
-      plus its `uacrypt` CLI surface - neither exists yet. Design settled with the owner 2026-08-06
-      after an `advisor()` review found `l(p)=256`'s `L_MAX_P=200` bits (25 bytes) can't hold this
-      project's existing 32-byte symmetric keys directly - **hybrid via KDF**, chosen over a
-      25-byte-capped "short secret wrap" or waiting on `l(p)>=384` (T-182).
-      - **T-178a - `dstu_core::crypto_box` library module.**
+- [ ] **T-178** **T-178a/T-178b done 2026-08-06; T-178c (`dstu-core-capi`) still open, not blocking
+      T-180/T-181's Python/Node/Ruby/PHP/Java bindings** (only .NET/Go/C++ link the C ABI).
+      `dstu_core::crypto_box` (new high-level module) plus its `uacrypt` CLI surface. Design settled
+      with the owner 2026-08-06 after an `advisor()` review found `l(p)=256`'s `L_MAX_P=200` bits
+      (25 bytes) can't hold this project's existing 32-byte symmetric keys directly - **hybrid via
+      KDF**, chosen over a 25-byte-capped "short secret wrap" or waiting on `l(p)>=384` (T-182).
+      - **T-178a - `dstu_core::crypto_box` library module. Done** (`68986b8`): `seal`/`open`,
+        `SecretKey`/`PublicKey` (32-byte x-only compressed, verified by an explicit group-theory
+        argument plus a dedicated `curve256` test - `point_from_x_gives_same_kappa_regardless_of_sqrt_branch`).
+        `curve256::point_from_x` extracted from `encryption::decrypt`'s own inline reconstruction as
+        a shared helper (`626680a`) - one security-critical gauntlet, not two copies. 14 new tests
+        (round-trip incl. a message far larger than the 25-byte KEM payload, every wire-segment
+        tamper case, wrong key, misuse), heaviest proptest `#[cfg_attr(miri, ignore)]` up front. Full
+        `cargo test --workspace --all-features` re-run clean (42 test groups, 0 failed) after
+        landing, `cargo xtask clippy`/`fmt --check` clean.
         - **Wire format**: `dstu9041_ciphertext(128) || secretstream_header(32) || ciphertext ||
           tag(16)` - v1 emits exactly one `Tag::Final` chunk (whole message in memory, matching
           `crypto_secretbox`'s own one-shot `Vec<u8>` convention), forward-compatible with a later
@@ -1788,9 +1797,16 @@ item they point to is later removed.
           wrong-subgroup `x` values). Mark the heaviest round-trip/keygen proptests
           `#[cfg_attr(miri, ignore)]` up front (T-100/T-177 precedent), not after a multi-hour miri
           run discovers it.
-      - **T-178b - `uacrypt` CLI.** New verbs, not an overload of the existing secretstream-backed
-        `encrypt`/`decrypt` (breaking-change risk) - e.g. `box-keygen`/`box-seal`/`box-open`. Mirror
-        `uacrypt sign`/`verify`'s existing key-file format (T-124) rather than inventing a new one.
+      - **T-178b - `uacrypt` CLI. Done** (`bebe4e3`): `box-keygen`/`box-pubkey`/`box-seal`/
+        `box-open`, new verbs (not an overload of `encrypt`/`decrypt`), mirroring `sign`/`verify`'s
+        key-file convention (T-124). `box-seal`/`box-open` are deliberately not memory-bounded (D-42
+        note, documented in both commands' own doc comments) - `crypto_box::seal`/`open` take
+        `&[u8]`/`Vec<u8>`, not a chunked interface, so `--in` is read whole into memory pending a
+        future `seal_stream` library addition. 17 new tests (parse-arg coverage, a golden-path round
+        trip both directly and through the top-level `run()` dispatcher, wrong-key/tampered/
+        truncated-file rejection, misuse), heaviest tests `#[cfg_attr(miri, ignore)]`. Manually
+        verified end-to-end via the actual built binary (keygen -> pubkey -> seal -> open round
+        trip, plus wrong-key and tampered-ciphertext rejection), not just the test suite.
       - **T-178c - `dstu-core-capi` addition, prerequisite for T-181's .NET/Go/C++ bindings.** Those
         three link `dstu-core-capi` directly, which wraps "the full `crypto_*` surface" - it needs
         an opaque-handle/`DstuStatus`/`catch_unwind`/zeroize-on-free `crypto_box` wrapper *before*

@@ -139,7 +139,7 @@ three). Every high-level module in Step 3 is now done:
 | `crypto_generichash` | Kupyna | **Done** (T-105, D-66) — `dstu_core::crypto_generichash`, a bare re-export of `hazmat::kupyna` under the top-level namespace; no new logic (no knob to hide, no DSTU keyed/variable-length-output equivalent to wrap) |
 | `crypto_stream` | Strumok | **Done** (roadmap Step 3 item 3, D-67) — `dstu_core::crypto_stream`, single 256-bit variant, hidden/internally-generated IV (confirmed with the project owner), `iv \|\| ciphertext` output, **no authentication** (`decrypt` never fails on tampered input) — hazmat vectors still provisional (D-18) |
 | `crypto_sign` | DSTU 4145 | **Done** (T-48, D-46) — hazmat (m=163 only) plus a high-level `dstu_core::crypto_sign` wrapper; deterministic (Kupyna-KMAC-derived, RFC-6979-style) nonce, not caller-random, eliminating nonce-reuse key recovery from the wrapper's surface. Public-key encoding is a plain uncompressed 42-byte form, explicitly not the DSTU §6.9/§6.10 compressed format |
-| `crypto_box` | DSTU 9041 | **`hazmat::dstu9041` primitive implemented, `l(p)=256`/E256/1 only** (T-177) — no high-level `crypto_box` wrapper yet |
+| `crypto_box` | DSTU 9041 | **Done** (T-178, D-169) — `dstu_core::crypto_box::{seal,open,SecretKey,PublicKey}`, hybrid via KDF over the `hazmat::dstu9041` `l(p)=256`/E256/1 primitive (T-177); `uacrypt box-*` CLI surface |
 | `crypto_secretbox` | Kalyna-GCM, provisionally | **Done** (T-37, D-51), **migrated 2026-07-25 from Kalyna-CCM to Kalyna-GCM** (roadmap Step 3 item 1, D-63) — single fixed `Kalyna256_256Gcm` construction, internal nonce, combined output, no caller-facing AAD (nonce passed as AAD internally to bind it into the tag, D-63); no message-length cap, still not primary-text-confirmed |
 | `crypto_auth`/`crypto_onetimeauth` | Kupyna-based KMAC | **Done** (T-38, D-44) — provisional pending the primary text, but dual-oracle with both constructions read. High-level wrapper (T-105, D-66) added 2026-07-25: `dstu_core::crypto_auth`, single 256-bit variant, opaque `Zeroize`-on-drop `Key` type |
 | `crypto_kdf` | Kupyna-based KDF (libsodium `crypto_kdf`-shaped, not HKDF) | **Done** (T-39, D-45) — no DSTU standard or reference implementation exists for this at all, so unlike every other "provisional" row above, there is no oracle vector, ever; verification is determinism + distinctness property tests only. High-level wrapper (T-105, D-66) added 2026-07-25: `dstu_core::crypto_kdf`, same single-variant/opaque-key shape as `crypto_auth` |
@@ -148,13 +148,14 @@ three). Every high-level module in Step 3 is now done:
 | `crypto_pwhash` | Not a DSTU question — plain Argon2id | **Done** (T-71, D-49/D-50) — over the `argon2` crate, dedicated `pwhash` feature (off by default, not folded into `std`); `Strength` presets mirror libsodium's own `OPSLIMIT`/`MEMLIMIT_*` constants exactly |
 | `randombytes` | Not a DSTU question — OS CSPRNG via `getrandom` | **Done** (T-72, D-48) — `dstu_core::randombytes::randombytes_buf`, `std`-gated over an optional `getrandom` dependency; a plain function, deliberately not a generic `CryptoRng` trait since nothing in this crate consumes one yet |
 
-`crypto_box`/`crypto_kx` remain empty at the high level — the underlying `hazmat::dstu9041`
-primitive now exists (`l(p)=256` only, T-177), but neither wrapper is designed yet —
+`crypto_box` is now done (T-178, D-169 — hybrid via KDF, since `l(p)=256`'s 25-byte KEM payload
+can't hold a 32-byte key directly); `crypto_kx` remains empty — the underlying `hazmat::dstu9041`
+primitive exists (`l(p)=256` only, T-177), but that wrapper isn't designed yet.
 `crypto_secretbox` (T-37, D-51/D-63) and `crypto_secretstream` (T-40/T-70, D-68) are both done, no
 message-length cap and genuinely chunked I/O respectively, but still provisional. The "functional
 copy of libsodium" goal has real algorithm coverage (`crypto_sign`/`crypto_auth`/`crypto_kdf`/
-`crypto_secretbox`/`crypto_secretstream` done) but is not yet an API surface a libsodium user would
-recognize as complete.
+`crypto_secretbox`/`crypto_secretstream`/`crypto_box` done) but is not yet an API surface a
+libsodium user would recognize as complete.
 
 ## Use-case coverage: is "safe modes only" enough for a real range of applications?
 
@@ -308,9 +309,9 @@ FINAL property, hitting this bar exactly.
   curve primitive (`hazmat::dstu9041`, T-177) but no design/construction yet (T-47); a raw
   scalar-mult entry point would wait on the same design work with no independent use case pulling
   it out ahead of `crypto_kx` itself.
-- `crypto_box_seal`/`_seal_open` (anonymous/sealed-box encryption) - a sub-feature of `crypto_box`,
-  which now has an underlying primitive (`hazmat::dstu9041`, T-177) but no high-level wrapper yet.
-  Not a new blocker, just not started.
+- `crypto_box_seal`/`_seal_open` (anonymous/sealed-box encryption) - `crypto_box` itself is now done
+  (T-178, D-169); its `seal`/`open` are already sealed-box-shaped (anonymous, no sender identity
+  needed), so this is not a separate remaining gap.
 - `crypto_pwhash`'s Argon2i13/legacy scryptsalsa208sha256 variants - already deliberately narrowed
   to Argon2id only (T-71/D-49/D-50), matching libsodium's own current recommended default; the other
   variants exist in libsodium for legacy interop, not because they're preferred.
@@ -339,7 +340,7 @@ doesn't need re-deriving from the table alone next time.
 | `crypto_auth`/`crypto_onetimeauth` | `crypto_auth` (Kupyna-KMAC) | Done (Poly1305-shaped one-time-key MAC specifically has no DSTU analogue) |
 | AEAD family (ChaCha20-Poly1305/AEGIS-256/AEGIS-128L/AES256-GCM) | Kalyna-CCM/GCM | Not a gap - alternative cipher *choices*, already decided (D-47) |
 | IP address encryption (`crypto_ipcrypt_*`) | none | No DSTU angle, no use case - not scheduled |
-| `crypto_box` (+ sealed boxes) | `hazmat::dstu9041` | Primitive implemented (`l(p)=256` only, T-177); no high-level wrapper yet |
+| `crypto_box` (+ sealed boxes) | `hazmat::dstu9041` + `crypto_box` | Done (T-178, D-169) - hybrid via KDF, `l(p)=256` only |
 | `crypto_sign` sign/verify | `hazmat::dstu4145` + `crypto_sign` | Done |
 | `crypto_sign` keypair generation | `SigningKey::generate()` | Done (T-122, D-72) |
 | `crypto_kem`/ML-KEM768 (post-quantum) | none | Explicitly out of scope, D-08's spirit - recorded so it isn't rediscovered |
@@ -493,11 +494,11 @@ In rough dependency order:
    caller-random; decide whether the other 9 curve sizes matter for 1.0 or can stay m=163-only, and
    whether the DSTU §6.9/§6.10 compressed point encoding is needed for 1.0 (the wrapper currently
    ships only an uncompressed 42-byte form).
-6. **DSTU 9041's `hazmat` primitive now exists** (`l(p)=256` only, T-177) — no longer the
-   hard-blocked, no-known-path-forward item this note originally described. Still an open scope
-   decision for 1.0 whether a `crypto_box`/`crypto_kx` high-level wrapper (and the `l(p)=384/512/768`
-   curve sizes) are required, or whether shipping the `hazmat` primitive alone is acceptable for a
-   first release — don't treat either answer as decided by this entry.
+6. **DSTU 9041's `hazmat` primitive and its `crypto_box` high-level wrapper are both done**
+   (`l(p)=256` only, T-177/T-178, D-169) — no longer the hard-blocked, no-known-path-forward item
+   this note originally described. Still an open scope decision for 1.0 whether `crypto_kx` (and the
+   `l(p)=384/512/768` curve sizes, T-182) are required, or whether the current surface is acceptable
+   for a first release — don't treat either answer as decided by this entry.
 7. **Mechanical release work**: `uacrypt`'s real `encrypt`/`decrypt`/`hash` commands are now done
    (T-16, D-52), and GitHub Releases binaries are too (T-18/T-119, 2026-07-26) — remaining:
    crates.io publish (T-17, still explicitly gated on an owner request) and a documentation pass

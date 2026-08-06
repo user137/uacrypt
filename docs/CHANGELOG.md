@@ -11,6 +11,11 @@ All notable changes to this project are documented in this file. Format follows
   Edwards curve, `l(p)=256`/E256/1 only (D-47's "ship the recommended curve first" precedent) -
   `F_p` bignum arithmetic, twisted-Edwards point arithmetic, and encrypt/decrypt composition,
   verified against the standard's own worked example (`docs/TASKS.md` T-177).
+- `crypto_box`: public-key encryption over `hazmat::dstu9041`, hybrid via KDF (a random seed sealed
+  asymmetrically, expanded via `hazmat::kupyna_kdf`, then `crypto_secretstream` encrypts the actual
+  message) - `seal`/`open`/`SecretKey`/`PublicKey` (32-byte compressed, `x`-coordinate only,
+  `docs/TASKS.md` T-178, `docs/DECISIONS.md` D-169). `uacrypt box-keygen`/`box-pubkey`/`box-seal`/
+  `box-open` CLI surface.
 
 ## [0.2.0] - 2026-08-02
 

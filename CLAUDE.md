@@ -94,6 +94,10 @@ canonical source (`docs/TASKS.md`/`docs/DECISIONS.md`) — this section states c
     tag-per-chunk framing (`Message`/`Push`/`Rekey`/`Final`), header-derived subkeys + one-way
     `Rekey` forward secrecy; no oracle vector can ever exist for this from-scratch construction,
     verified by property/tamper/misuse tests instead (T-40/T-70/D-68).
+  - `crypto_box` (`seal`/`open`/`SecretKey`/`PublicKey`) — public-key encryption over
+    `hazmat::dstu9041` (`l(p)=256` only), hybrid via KDF (a random seed sealed asymmetrically,
+    expanded via `hazmat::kupyna_kdf`, then `crypto_secretstream` encrypts the actual message);
+    `PublicKey` is 32 bytes, the curve point's `x`-coordinate only (T-178/D-169).
   - `randombytes::randombytes_buf` — `std`-gated `getrandom` wrapper (T-72/D-48).
 - `selftest` — `std`-gated (`selftest` feature, off by default) runtime KAT self-check: `run()`
   re-verifies one official vector per primitive (Kalyna-128/128, Kupyna-256, Strumok-256, DSTU
