@@ -49,6 +49,7 @@ console.log(dstu.secretboxOpen(key, sealed).toString()); // "a message worth pro
 | Module | Functions/classes | Notes |
 |---|---|---|
 | `crypto_secretbox` | `secretboxKeygen`, `secretboxSeal`, `secretboxOpen` | Single-message authenticated encryption. `examples/secretbox.js`. |
+| `crypto_box` | `boxKeygen`, `boxPublicKey`, `boxSeal`, `boxOpen` | Public-key encryption (hybrid via KDF over `hazmat::dstu9041`, D-169). `boxSeal`/`boxOpen` are not memory-bounded — the whole message is held in memory. `examples/box.js`. |
 | `crypto_secretstream` | `secretstreamKeygen`, `SecretStreamPushState`, `SecretStreamPullState`, `SecretStreamEncryptor`, `SecretStreamDecryptor` | Chunked streaming AEAD. The `stream.Transform` `SecretStreamEncryptor`/`SecretStreamDecryptor` wire format matches `uacrypt encrypt`/`decrypt` exactly (D-118). `examples/secretstream-file.js`. |
 | `crypto_sign` | `signKeygen`, `signVerifyingKey`, `signMessage`, `signVerify` | DSTU 4145 digital signatures, deterministic nonce (no RNG dependency). `examples/sign.js`. |
 | `crypto_pwhash` | `pwhashHashPassword`, `pwhashVerifyPassword`, `PWHASH_INTERACTIVE`/`PWHASH_MODERATE`/`PWHASH_SENSITIVE` | Argon2id (the one deliberately non-DSTU component, D-49/D-50). `examples/password-hashing.js`. |

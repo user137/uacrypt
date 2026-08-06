@@ -11,6 +11,7 @@
 //! `stream.Transform` wrapper is deferred to step 3, matching `bindings/python`'s own split.
 
 mod auth;
+mod crypto_box;
 mod generichash;
 mod kdf;
 mod pwhash;
@@ -22,6 +23,7 @@ mod stream;
 mod util;
 
 pub use auth::*;
+pub use crypto_box::*;
 pub use generichash::*;
 pub use kdf::*;
 pub use pwhash::*;
