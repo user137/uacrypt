@@ -1739,8 +1739,7 @@ item they point to is later removed.
       Known accepted risk, documented at closure: no independent DSTU 9041 reference implementation
       exists anywhere (`docs/ORACLES.md`, 2026-07-21 search) - Додаток Г's own worked example is the
       sole oracle for this primitive.
-- [ ] **T-178** **T-178a/T-178b done 2026-08-06; T-178c (`dstu-core-capi`) still open, not blocking
-      T-180/T-181's Python/Node/Ruby/PHP/Java bindings** (only .NET/Go/C++ link the C ABI).
+- [x] **T-178** **Done 2026-08-06 - T-178a/b/c all landed.**
       `dstu_core::crypto_box` (new high-level module) plus its `uacrypt` CLI surface. Design settled
       with the owner 2026-08-06 after an `advisor()` review found `l(p)=256`'s `L_MAX_P=200` bits
       (25 bytes) can't hold this project's existing 32-byte symmetric keys directly - **hybrid via
@@ -1807,13 +1806,20 @@ item they point to is later removed.
         truncated-file rejection, misuse), heaviest tests `#[cfg_attr(miri, ignore)]`. Manually
         verified end-to-end via the actual built binary (keygen -> pubkey -> seal -> open round
         trip, plus wrong-key and tampered-ciphertext rejection), not just the test suite.
-      - **T-178c - `dstu-core-capi` addition, prerequisite for T-181's .NET/Go/C++ bindings.** Those
-        three link `dstu-core-capi` directly, which wraps "the full `crypto_*` surface" - it needs
-        an opaque-handle/`DstuStatus`/`catch_unwind`/zeroize-on-free `crypto_box` wrapper *before*
-        those three bindings are possible, not a footnote inside T-181's own checklist. Regenerate
-        `include/dstu_core.h` via `cargo xtask capi` once added.
-      Order: T-178a first (unblocks T-180's CLI examples and T-181), T-178b next, T-178c whenever
-      T-181 actually needs it (can trail behind a/b).
+      - **T-178c - `dstu-core-capi` addition. Done 2026-08-06** (`docs/DECISIONS.md` D-171),
+        prerequisite for T-181's .NET/Go/C++/PHP bindings (they link `dstu-core-capi` directly).
+        `crates/dstu-core-capi/src/crypto_box.rs`: `DstuBoxSecretKey`/`DstuBoxPublicKey` opaque
+        handles, `dstu_box_secretkey_generate`/`_from_bytes`/`_bytes`/`_public_key`/`_free`,
+        `dstu_box_publickey_from_bytes`/`_bytes`/`_free`, `dstu_box_seal`/`_open` (caller-allocates
+        output buffers, D-148 point 3 - capacity checked before any crypto work runs). Module kept
+        the full `crypto_box` name (not `box`, every sibling module's own dropped-prefix
+        convention) since `box` alone is a reserved Rust keyword; exported symbols still follow the
+        `dstu_box_*` sibling pattern. `OpenError::InvalidCiphertext` reuses the existing
+        `DSTU_ERR_TAG_MISMATCH` status rather than a new one - D-169's error-collapsing posture
+        must not be reopened by inventing a differently-named status a caller could branch on. 3
+        new Rust FFI tests (`tests/ffi_tests.rs`) plus a `test_box()` C-level test
+        (`c-tests/test_capi.c`, real gcc compile against the regenerated header - `cargo xtask
+        capi` clean). `include/dstu_core.h` regenerated and diffed (only the new surface changed).
 - [x] **T-179** **Done 2026-08-06.** Performance benchmarking for `hazmat::dstu9041`/`crypto_box` -
       `docs/PERFORMANCE.md`'s new "DSTU 9041 / `crypto_box`" section (T-150's own ops/s-vs-OpenSSL
       precedent, not a D-34 MB/s cross-implementation case - no second DSTU 9041 implementation
@@ -1846,15 +1852,17 @@ item they point to is later removed.
       a two-language marketing/landing page edit is more delicate than a docs sweep and pushes to a
       publicly-live branch, flagged for an explicit owner check-in rather than done unprompted in the
       same pass as the rest of T-178/179/180's mechanical doc updates.
-- [ ] **T-181** **Not started.** Language bindings for `hazmat::dstu9041`/`crypto_box` across all
-      eight binding languages (Python/Node.js/Ruby/PHP/.NET/Java/Go/C++, `docs/bindings-strategy.md`).
-      That doc
-      doesn't mention DSTU 9041 at all yet - it predates T-177 landing the primitive. Needs its own
-      phase/checklist entry in `docs/bindings-strategy.md` before per-language work starts, same
-      "spike + advisor() + plan" process every prior binding phase used (D-115 onward), and should
-      wait for T-178's high-level `crypto_box`-shaped wrapper (bindings wrap the high-level surface,
-      not raw `hazmat`, per the existing seven-language precedent) unless a strong reason emerges to
-      expose `hazmat::dstu9041` directly first.
+- [ ] **T-181** **Not started - unblocked 2026-08-06 (T-178/T-178c both done).** Language bindings
+      for `crypto_box` across all eight binding languages (Python/Node.js/Ruby/PHP/.NET/Java/Go/
+      C++). Phase/checklist entry added to `docs/bindings-strategy.md` ("T-181 - `crypto_box` across
+      all eight bindings") - **incremental**, not a from-scratch binding phase: each of the eight
+      already exists (T-49 through T-163), this only adds one new module's surface to each. Order
+      (per the phase entry, Fork 1's C-ABI-vs-native-FFI split): Python/Node/Ruby first (direct
+      PyO3/napi-rs/magnus binding, no C ABI involved), then .NET/Go/C++/PHP (consume
+      `dstu-core-capi`'s now-done `crypto_box` wrapper), Java last (spike `jni`-direct vs.
+      JNI-over-C-ABI same as the original Java phase did). Bindings wrap the high-level
+      `crypto_box` surface, not raw `hazmat::dstu9041` directly, per the existing seven-language
+      precedent (Fork 2).
 - [ ] **T-182** **Not started, no committed timeline - owner-requested backlog item, 2026-08-06.**
       Additional `l(p)` security levels for `hazmat::dstu9041`, beyond T-177's `l(p)=256`-only scope.
       Three genuinely different sub-items, not one task scaled up:

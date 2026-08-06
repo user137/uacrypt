@@ -11524,3 +11524,60 @@ block cipher itself - a lead worth investigating in a future performance pass, n
 benchmark for a full construction (not a bare primitive) must include a same-regime comparison
 binary doing the same *kind* of operation, not just share its dominant cost - recorded there as the
 canonical home per the doc map, not duplicated here beyond this rationale.
+
+## D-171: T-178c - `crypto_box` added to `dstu-core-capi`, unblocking T-181's C-ABI-consuming bindings
+
+**Why this, not a binding, was next.** T-181 (language bindings for `crypto_box`) was the next item
+in the owner's "build a plan, then execute it" directive, but `advisor()` flagged a sequencing bug
+before any binding work started: four of the eight binding languages (.NET, Go, C++, PHP - Fork 1 in
+`docs/bindings-strategy.md`) consume `dstu-core-capi` directly, and `crypto_box` was not yet in the C
+ABI. Writing T-181's phase plan "eight languages, Python first" would have planned four languages
+that cannot compile until a task marked as trailing (T-178c) actually lands. T-178c was promoted to
+the head of T-181's own work, done this session rather than deferred further.
+
+**What was built**: `crates/dstu-core-capi/src/crypto_box.rs` - `DstuBoxSecretKey`/
+`DstuBoxPublicKey` opaque handles (`Zeroize`-on-`Drop` via the wrapped `dstu_core::crypto_box` types,
+same as every other opaque handle in this crate), `dstu_box_secretkey_generate`/`_from_bytes`/
+`_bytes`/`_public_key`/`_free`, `dstu_box_publickey_from_bytes`/`_bytes`/`_free`, `dstu_box_seal`/
+`_open`. Follows `secretbox.rs`'s own caller-allocates-output-buffer shape (D-148 point 3): a
+`DSTU_BOX_SEAL_OVERHEAD = 176` constant (`128 (KEM) + 32 (secretstream header) + 16 (tag)`,
+hand-maintained since `dstu_core::crypto_box`'s own equivalent constants are private - a Rust FFI
+test asserts a real `seal` call's output length matches it, so the two can't silently drift apart
+unnoticed) gates every output-capacity check *before* any crypto work runs, matching `secretbox`'s
+own established pattern exactly.
+
+**Naming fork: the module keeps the full `crypto_box` name, not `box`.** Every sibling module in
+this crate drops the `crypto_` prefix from its own module/file name (`secretbox.rs`, `sign.rs`,
+`stream.rs`, `auth.rs`, ...) - `box` alone is a reserved Rust keyword (usable only via the
+`r#box` raw-identifier escape), so following that convention literally would require an ugly
+workaround for no benefit. Resolution: keep `crypto_box.rs`/`pub mod crypto_box` (mirrors the
+wrapped `dstu_core` module's own name, self-documenting the reason), while exported C symbols still
+follow the sibling convention exactly (`dstu_box_*`, not `dstu_crypto_box_*` or `dstu_r#box_*`) -
+`box` as a substring inside a longer identifier is never a problem, only the bare module-path
+segment is.
+
+**`OpenError::InvalidCiphertext` reuses `DSTU_ERR_TAG_MISMATCH`, not a new status code.**
+`dstu_core::crypto_box::OpenError` already collapsed the distinction that matters at the Rust level
+(KEM failure, secretstream tag failure, and a recovered-but-wrong-length seed all read as one
+`InvalidCiphertext` case, D-169's "Error collapsing" section) - inventing a differently-named FFI
+status for it would reopen exactly the padding-oracle-avoidance posture that collapse exists to
+close, even though the *bucket* stays the same size either way. `TAG_MISMATCH`'s existing doc
+comment ("wrong key, or tampered ciphertext/tag/nonce/header") already describes this class of
+failure accurately enough to reuse rather than grow the enum for a distinction with no operational
+difference - `Truncated` (a public wire-length check, no secret-dependent data) is the only variant
+that stays separately visible, exactly mirroring `secretbox`'s own `TRUNCATED`/`TAG_MISMATCH` split.
+
+**QA, mirroring `secretbox`'s own three-category coverage**: 3 new Rust FFI tests
+(`tests/ffi_tests.rs` - round trip with an overhead self-check, tampered-ciphertext/wrong-key
+rejection, undersized-buffer/truncated-input/invalid-key-encoding misuse) plus a `test_box()`
+function in the plain-C harness (`c-tests/test_capi.c`) exercising the same three categories through
+a real `gcc`-compiled program linked against the actual generated header, not just the Rust-side
+`rlib` tests - `cargo xtask capi` regenerates `include/dstu_core.h` and diffs it (the diff was
+exactly the eight new functions/three new constants/two new opaque types, nothing else touched) and
+runs every existing C example unmodified as a regression check. `cargo xtask clippy`/`fmt --check`
+clean; full `cargo test --workspace --all-features` re-run after landing.
+
+**Unblocks**: T-181's .NET/Go/C++/PHP bindings can now link a `crypto_box`-complete C ABI; Python/
+Node/Ruby (direct FFI, don't touch `dstu-core-capi` at all per Fork 1) and Java (pending its own
+`jni`-vs-C-ABI spike) were never blocked by this. `docs/bindings-strategy.md` now carries T-181's own
+phase entry with this ordering spelled out.

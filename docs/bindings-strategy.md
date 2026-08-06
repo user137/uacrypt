@@ -1022,6 +1022,60 @@ reasoning as Node's own browser/WASM scoping (D-118): Dart's primary audience (F
 overlaps least with this project's demonstrated PKI/enterprise/security-tooling demand. Revisit if
 real demand evidence appears, same as any other out-of-scope language would need.
 
+### T-181 — `crypto_box` across all eight bindings (added 2026-08-06)
+
+**Incremental, not a from-scratch binding phase** — every one of the eight bindings below already
+exists (T-49 through T-163 above), each with its own scaffold, packaging, `xtask`/CI wiring, and
+doc-map entries already in place. This phase adds exactly one new module's surface
+(`dstu_core::crypto_box` — `SecretKey`/`PublicKey`/`seal`/`open`, D-169) to each, so most of "The
+standard binding steps" above collapse: no new step 1 (scaffold), step 4 (packaging), or step 5
+(`xtask`/CI wiring) per language — only steps 2 (wrap the surface), 6 (tests), 7 (examples/README),
+8 (doc-map sweep), 9 (commit per step) apply, plus step 10 (Pi smoke check) once per language still
+worth running since it caught a real bug before (D-151). Step 3 (secretstream wrapping) does not
+apply — `crypto_box::seal`/`open` are one-shot, not a stream.
+
+**Prerequisite closed first, not trailing behind**: `advisor()` flagged that four of the eight
+languages below (.NET, Go, C++, PHP — Fork 1's C-ABI-consuming group) cannot wrap `crypto_box` at
+all until `dstu-core-capi` has it. T-178c (`crates/dstu-core-capi/src/crypto_box.rs`, D-171) landed
+first this session specifically to unblock this phase, not as a trailing footnote the way T-178's
+own original plan had it.
+
+**Order** (Fork 1's own split, not popularity ranking — this phase groups by *what a language needs
+to link*, not by user base):
+
+1. [ ] **Python/Node.js/Ruby** — direct FFI (PyO3/napi-rs/magnus), no C ABI involved, can start
+       immediately. Python first as the template every other language's `crypto_box` wrapper checks
+       itself against, matching T-49's own original role.
+2. [ ] **.NET/Go/C++/PHP** — consume `dstu-core-capi`'s now-complete `crypto_box` C ABI (T-178c)
+       directly: P/Invoke (.NET), cgo (Go), the generated header + link (C++), `ext-php-rs`/`FFI`
+       (PHP). No further capi work needed — T-178c already covers all four.
+3. [ ] **Java** — last, per Fork 1's own note that Java gets an explicit spike (`jni` crate direct
+       vs. JNI-over-the-C-ABI) before committing to a shape; do that spike once, for `crypto_box`
+       specifically if the original Fork 1 spike (recorded when it runs, `docs/DECISIONS.md`) didn't
+       already settle it for every future module this binding adds.
+
+**What "wrap the surface" means per language, concretely**: a keypair type (generate + from/to
+bytes, mirroring `crypto_sign`'s own `SigningKey`/`VerifyingKey` idiom each binding already has), a
+`seal(message, public_key) -> bytes` and `open(sealed, secret_key) -> bytes` pair (or the language's
+own idiomatic error-return shape — exception, `Result`, `(value, err)` — matching how that binding
+already surfaces `crypto_secretbox`'s `open` failure). No new streaming primitive — `seal`/`open`
+already documented as not memory-bounded at the Rust/C-ABI layer (D-169/D-171), the binding inherits
+that limitation, document it in the same place `crypto_secretbox`'s own binding wrapper already
+notes its own non-streaming nature.
+
+**Test-vector note**: no DSTU vector oracle exists for this composite construction (D-169's own
+"Provenance" section — same as `crypto_secretstream`, D-68) — every binding's local test suite
+verifies round-trip/rejection/misuse only, not a shared fixed-vector JSON the way Kalyna/Kupyna/DSTU
+4145 bindings' tests do. A cross-language round-trip check (seal in one binding's test process,
+open via the Rust core directly, or vice versa) is worth adding once at least two bindings exist, to
+catch a wire-format assumption divergence early — not required before the first binding lands.
+
+**After all eight land**: T-180's remaining `gh-pages` scope (mentioning DSTU 9041/`crypto_box` on
+the public site) happens here, not before — per the owner's own 2026-08-06 instruction ("update
+gh-pages after all the tasks"). This mirrors T-162's own precedent exactly (site refresh only after
+every binding it covers actually exists) — expect a smaller version of T-162's own checklist above,
+not a full re-run, since the rest of the site's binding-facing content doesn't change.
+
 ### Publishing (all registries) — separate, owner-gated, not scheduled
 
 One explicit ask per registry (PyPI/npm/Maven Central/NuGet/RubyGems/Packagist), the same class of

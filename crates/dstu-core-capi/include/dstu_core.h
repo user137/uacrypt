@@ -17,6 +17,17 @@
 
 #define DSTU_AUTH_TAG_BYTES 32
 
+#define DSTU_BOX_SECRETKEY_BYTES 32
+
+#define DSTU_BOX_PUBLICKEY_BYTES 32
+
+/**
+ * `dstu9041_ciphertext (128) || secretstream_header (32) || tag (16)` - the fixed part of
+ * `seal`'s wire format (`crypto_box`'s own module doc), added to `message_len` for `seal`'s
+ * required output capacity, and the exact minimum length `open` accepts.
+ */
+#define DSTU_BOX_SEAL_OVERHEAD 176
+
 #define DSTU_GENERICHASH_256_BYTES 32
 
 #define DSTU_GENERICHASH_512_BYTES 64
@@ -149,6 +160,17 @@ typedef enum {
 typedef struct DstuAuthKey DstuAuthKey;
 
 /**
+ * Opaque `crypto_box` public-key handle.
+ */
+typedef struct DstuBoxPublicKey DstuBoxPublicKey;
+
+/**
+ * Opaque `crypto_box` secret-key handle. `dstu_box_secretkey_free`'s `Box::from_raw` fires the
+ * wrapped `SecretKey`'s own `Zeroize`-on-`Drop` impl.
+ */
+typedef struct DstuBoxSecretKey DstuBoxSecretKey;
+
+/**
  * Opaque `crypto_kdf` master-key handle. `dstu_kdf_master_key_free`'s `Box::from_raw` fires the
  * wrapped `MasterKey`'s own `Zeroize`-on-`Drop` impl.
  */
@@ -277,6 +299,140 @@ DstuStatus dstu_auth_verify(const DstuAuthKey *key,
                             const uint8_t *message,
                             size_t message_len,
                             const uint8_t *tag);
+
+/**
+ * Generates a fresh secret key from the OS CSPRNG. Returns `DSTU_OK` (writing `*out`) or
+ * `DSTU_ERR_RANDOM`/`DSTU_ERR_NULL_POINTER`.
+ *
+ * # Safety
+ *
+ * `out` must be a valid, non-null pointer to a `*mut DstuBoxSecretKey`.
+ */
+ DstuStatus dstu_box_secretkey_generate(DstuBoxSecretKey **out);
+
+/**
+ * Builds a secret key from a big-endian `DSTU_BOX_SECRETKEY_BYTES`-byte scalar. Returns
+ * `DSTU_ERR_INVALID_KEY` if it's outside the valid range `{2, ..., n-2}`,
+ * `DSTU_ERR_NULL_POINTER` if `bytes`/`out` is NULL.
+ *
+ * # Safety
+ *
+ * `bytes` must be valid for reads of `DSTU_BOX_SECRETKEY_BYTES` bytes when non-null; `out` must
+ * be a valid, non-null pointer to a `*mut DstuBoxSecretKey`.
+ */
+ DstuStatus dstu_box_secretkey_from_bytes(const uint8_t *bytes, DstuBoxSecretKey **out);
+
+/**
+ * Copies the key's big-endian `DSTU_BOX_SECRETKEY_BYTES`-byte encoding into `out`. **The caller
+ * must `dstu_memzero()` this once done** - same gap `dstu_sign_key_bytes` has, this copies secret
+ * material into a caller-owned buffer the wrapped `SecretKey`'s own `Zeroize`-on-`Drop` impl
+ * cannot reach. A NULL `key`/`out` is a no-op.
+ *
+ * # Safety
+ *
+ * `out` must be valid for writes of `DSTU_BOX_SECRETKEY_BYTES` bytes when non-null.
+ */
+ void dstu_box_secretkey_bytes(const DstuBoxSecretKey *key, uint8_t *out);
+
+/**
+ * Derives the public key for `key` - infallible. Returns NULL if `key` is NULL.
+ *
+ * # Safety
+ *
+ * `key` must be either NULL or a valid pointer from `dstu_box_secretkey_generate`/
+ * `dstu_box_secretkey_from_bytes`.
+ */
+ DstuBoxPublicKey *dstu_box_secretkey_public_key(const DstuBoxSecretKey *key);
+
+/**
+ * Frees a secret key. NULL is a no-op.
+ *
+ * # Safety
+ *
+ * `key` must be either NULL or a pointer previously returned by `dstu_box_secretkey_generate`/
+ * `dstu_box_secretkey_from_bytes`, not already freed.
+ */
+ void dstu_box_secretkey_free(DstuBoxSecretKey *key);
+
+/**
+ * Builds a public key from its compressed `DSTU_BOX_PUBLICKEY_BYTES`-byte `x`-coordinate
+ * encoding (`crypto_box`'s own module doc explains why `x` alone is a safe compression). Returns
+ * `DSTU_ERR_INVALID_KEY` if `bytes` isn't a valid field element, or doesn't reconstruct to a
+ * point inside the base point's own prime-order subgroup; `DSTU_ERR_NULL_POINTER` if
+ * `bytes`/`out` is NULL.
+ *
+ * # Safety
+ *
+ * `bytes` must be valid for reads of `DSTU_BOX_PUBLICKEY_BYTES` bytes when non-null; `out` must
+ * be a valid, non-null pointer to a `*mut DstuBoxPublicKey`.
+ */
+ DstuStatus dstu_box_publickey_from_bytes(const uint8_t *bytes, DstuBoxPublicKey **out);
+
+/**
+ * Copies the key's `DSTU_BOX_PUBLICKEY_BYTES`-byte encoding into `out` - not secret, no
+ * `dstu_memzero` needed afterward. A NULL `key`/`out` is a no-op.
+ *
+ * # Safety
+ *
+ * `out` must be valid for writes of `DSTU_BOX_PUBLICKEY_BYTES` bytes when non-null.
+ */
+ void dstu_box_publickey_bytes(const DstuBoxPublicKey *key, uint8_t *out);
+
+/**
+ * Frees a public key. NULL is a no-op.
+ *
+ * # Safety
+ *
+ * `key` must be either NULL or a pointer previously returned by `dstu_box_secretkey_public_key`/
+ * `dstu_box_publickey_from_bytes`, not already freed.
+ */
+ void dstu_box_publickey_free(DstuBoxPublicKey *key);
+
+/**
+ * Encrypts `message` (any length) to `recipient`, drawing a fresh random seed and ephemeral key
+ * internally - **not memory-bounded**, matching `uacrypt box-seal`'s own documented limitation
+ * (D-42/D-169): the whole message is read from `message`/held in `sealed_out`, never chunked.
+ * `sealed_out` must have capacity >= `message_len + DSTU_BOX_SEAL_OVERHEAD` - checked before any
+ * crypto work runs; `DSTU_ERR_BUFFER_TOO_SMALL` if not. On `DSTU_OK`,
+ * `*sealed_len_out == message_len + DSTU_BOX_SEAL_OVERHEAD` exactly.
+ *
+ * # Safety
+ *
+ * `recipient`/`sealed_len_out` must be non-null; `message` must be valid for reads of
+ * `message_len` bytes when non-null and `message_len > 0`; `sealed_out` must be valid for writes
+ * of `sealed_out_cap` bytes when non-null.
+ */
+
+DstuStatus dstu_box_seal(const DstuBoxPublicKey *recipient,
+                         const uint8_t *message,
+                         size_t message_len,
+                         uint8_t *sealed_out,
+                         size_t sealed_out_cap,
+                         size_t *sealed_len_out);
+
+/**
+ * Decrypts `sealed` (as produced by [`dstu_box_seal`]) under `secret` - **not memory-bounded**,
+ * same caveat as [`dstu_box_seal`]. `sealed_len < DSTU_BOX_SEAL_OVERHEAD` ->
+ * `DSTU_ERR_TRUNCATED`. `plaintext_out` must have capacity >= `sealed_len -
+ * DSTU_BOX_SEAL_OVERHEAD` - checked before any crypto work runs; `DSTU_ERR_BUFFER_TOO_SMALL` if
+ * not. On `DSTU_OK`, `*plaintext_len_out == sealed_len - DSTU_BOX_SEAL_OVERHEAD` exactly. On
+ * `DSTU_ERR_TAG_MISMATCH` (wrong key, or any tampered wire segment - deliberately not
+ * distinguished further, see this module's own top doc comment), `plaintext_out` is left zeroed,
+ * never partially-trusted plaintext.
+ *
+ * # Safety
+ *
+ * `secret`/`plaintext_len_out` must be non-null; `sealed` must be valid for reads of
+ * `sealed_len` bytes when non-null and `sealed_len > 0`; `plaintext_out` must be valid for
+ * writes of `plaintext_out_cap` bytes when non-null.
+ */
+
+DstuStatus dstu_box_open(const DstuBoxSecretKey *secret,
+                         const uint8_t *sealed,
+                         size_t sealed_len,
+                         uint8_t *plaintext_out,
+                         size_t plaintext_out_cap,
+                         size_t *plaintext_len_out);
 
 /**
  * One-shot Kupyna-256 digest of `message`. A NULL `message` with `message_len > 0`, or a NULL
