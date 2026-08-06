@@ -1826,12 +1826,16 @@ item they point to is later removed.
       numbers are reported as measured, not further normalized per-scalar-mult, since OpenSSL's own
       `ecdh` benchmark internals weren't independently re-derived to confirm exactly what it counts
       as one op.
-- [ ] **T-180** **Not started.** Documentation/site update for `hazmat::dstu9041`/`crypto_box`:
-      `README.md`'s repo-tree/algorithm table, the gh-pages site (last refreshed T-162), and usage
-      examples once a CLI surface exists (blocked on T-178b for the CLI-example part specifically;
-      the library-level doc/API-table entries don't need to wait on it). Matches the same doc-map
-      sweep every other landed primitive got (T-162's own pass for the language bindings is the
-      precedent to mirror).
+- [ ] **T-180** **`README.md` done 2026-08-06; gh-pages site still open.** Documentation/site update
+      for `hazmat::dstu9041`/`crypto_box`. **Done**: `README.md`'s status paragraph (DSTU 9041/
+      `crypto_box` no longer "no implementation yet"), `crypto_*` module list, and a `box-keygen`/
+      `box-pubkey`/`box-seal`/`box-open` usage example block (commands actually run against the
+      release binary first, matching this file's own "every command below was run for real" standing
+      practice). **Still open**: the `gh-pages` site (`index.html`/`uk/index.html`, both languages,
+      last refreshed T-162 for the bindings section) doesn't mention DSTU 9041/`crypto_box` at all -
+      a two-language marketing/landing page edit is more delicate than a docs sweep and pushes to a
+      publicly-live branch, flagged for an explicit owner check-in rather than done unprompted in the
+      same pass as the rest of T-178/179/180's mechanical doc updates.
 - [ ] **T-181** **Not started.** Language bindings for `hazmat::dstu9041`/`crypto_box` across all
       eight binding languages (Python/Node.js/Ruby/PHP/.NET/Java/Go/C++, `docs/bindings-strategy.md`).
       That doc

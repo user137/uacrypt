@@ -20,17 +20,17 @@ mode-of-operation coverage: ECB/CBC/CFB/OFB/CTR/CMAC/KW/CCM/GCM/GMAC/XTS), and S
 generation, `docs/DECISIONS.md` D-15 — UAPKI-attributed vectors, not yet primary-text-confirmed).
 `hazmat::kalyna_ccm`/`kalyna_gcm` and Strumok remain **provisional** in that same sense (dual-oracle
 but not primary-DSTU-text-confirmed, `docs/DECISIONS.md` D-15/D-41/D-56). DSTU 4145 signatures
-(`hazmat::dstu4145`) are also implemented and vector-confirmed. On top of `hazmat`, the
-libsodium-shaped `crypto_*` layer (`crypto_secretbox`, `crypto_secretstream`, `crypto_sign`,
-`crypto_auth`, `crypto_kdf`, `crypto_generichash`, `crypto_stream`, `crypto_pwhash`, `randombytes`)
-and the `uacrypt` CLI (`keygen`/`encrypt`/`decrypt`/`hash`, `sign-keygen`/`sign-pubkey`/`sign`/
-`verify`, plus `--help`/`--version`) are built and tested — see "Using `uacrypt`" below. DSTU 9041
-has no implementation yet — a secondary-source pseudocode draft exists
-(`docs/pseudocode/dstu9041.md`, `docs/DECISIONS.md` D-105) but no oracle or reference implementation
-exists for it anywhere, so it's still blocked on that, not on a total absence of source material. See
-`docs/TASKS.md` for the phase-by-phase backlog, `docs/dstu-crypto-project.md`'s "Concrete API shape" for
-the authoritative module-by-module status table, and `docs/release-readiness.md` for the gap
-analysis against a complete 1.0.
+(`hazmat::dstu4145`) are also implemented and vector-confirmed. DSTU 9041:2020 asymmetric encryption
+(`hazmat::dstu9041`, `l(p)=256`/E256/1 only) is implemented and verified against the standard's own
+worked example (`docs/TASKS.md` T-177); `l(p)=384/512/768` remain unimplemented (T-182). On top of
+`hazmat`, the libsodium-shaped `crypto_*` layer (`crypto_secretbox`, `crypto_secretstream`,
+`crypto_sign`, `crypto_box`, `crypto_auth`, `crypto_kdf`, `crypto_generichash`, `crypto_stream`,
+`crypto_pwhash`, `randombytes`) and the `uacrypt` CLI (`keygen`/`encrypt`/`decrypt`/`hash`,
+`sign-keygen`/`sign-pubkey`/`sign`/`verify`, `box-keygen`/`box-pubkey`/`box-seal`/`box-open`, plus
+`--help`/`--version`) are built and tested — see "Using `uacrypt`" below. See `docs/TASKS.md` for
+the phase-by-phase backlog, `docs/dstu-crypto-project.md`'s "Concrete API shape" for the
+authoritative module-by-module status table, and `docs/release-readiness.md` for the gap analysis
+against a complete 1.0.
 
 ## Algorithms in scope
 
@@ -256,6 +256,23 @@ uacrypt: verify: signature does not verify - message, signature, or key do not m
 $ echo $?
 1
 ```
+
+`uacrypt box-keygen`/`box-pubkey`/`box-seal`/`box-open` (`docs/TASKS.md` T-178, `docs/DECISIONS.md`
+D-169) are public-key encryption, built over `dstu_core::crypto_box` (DSTU 9041, hybrid via KDF):
+unlike `encrypt` (which needs a shared symmetric key both sides already have), `box-seal` only needs
+the recipient's public key — anyone can seal a message only the matching secret key can open:
+
+```
+uacrypt box-keygen --out box.key
+uacrypt box-pubkey --key box.key --out box.pub
+uacrypt box-seal --key box.pub --in message.bin --out message.bin.box
+uacrypt box-open --key box.key --in message.bin.box --out message.bin
+```
+
+`box-keygen`'s output (`box.key`, 32 raw bytes) is secret. `box-pubkey` derives the matching
+`box.pub` (32 raw bytes, the curve point's `x`-coordinate only) from it, safe to share or publish.
+`box-seal`/`box-open` are **not memory-bounded** yet — `--in` is read whole into memory, unlike
+`encrypt`/`decrypt`'s bounded-chunk streaming (see `crypto_box`'s own module doc for why).
 
 What exists below this level: `kalyna-block`, a single-block (no mode, no padding), `hazmat`-scoped
 command added for a binary-level performance comparison (`docs/PERFORMANCE.md`, `docs/DECISIONS.md` D-31):
