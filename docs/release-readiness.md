@@ -252,6 +252,9 @@ construction built over it yet), not the hard source-material blocker it was bef
   `uacrypt` interop in its test suite, its own Pi re-check (step 10) finding no bug this time. See
   `docs/bindings-strategy.md`, `docs/DECISIONS.md` D-115/D-120/D-125 through D-158, `docs/TASKS.md`
   T-49/T-50/T-51/T-52/T-53/T-158/T-159/T-160/T-163 - every planned binding has now landed.
+  **`crypto_box` (T-178/D-169) added to all eight bindings 2026-08-06 (T-181, `docs/DECISIONS.md`
+  D-171)** - every binding now wraps the full `crypto_*` surface including the newest module, not
+  just the set that existed when each binding first landed.
 
 ## Libsodium API surface and crates.io publishing audit (2026-07-25)
 

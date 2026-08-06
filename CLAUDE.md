@@ -40,7 +40,9 @@ machine-specific paths/gotchas. This is a working dev environment, not a "no too
 workspace (D-119), never a root workspace member. **All eight bindings (Python, Node.js, Ruby,
 PHP, .NET, Java, Go, C++) are done** as of 2026-08-03, all ten standard steps each — see
 `docs/bindings-strategy.md` for the per-binding checklist and `docs/TASKS.md` T-49/T-50/T-160/
-T-159/T-158/T-52/T-51/T-163/T-53 for the full landing history.
+T-159/T-158/T-52/T-51/T-163/T-53 for the full landing history. **`crypto_box` (below) was added to
+all eight 2026-08-06, T-181** — every binding wraps the full `crypto_*` surface as of that date, not
+just the modules that existed when each binding first landed.
 
 **`crates/dstu-core`** — the library (`std`/`alloc`/`no_std` feature flags, D-01). All primitives
 below are test-first and pass `cargo test`/`clippy -D warnings`/`fmt --check`/the `no_std` build/
@@ -178,7 +180,8 @@ Algorithms in scope:
 ## Second priority (not MVP)
 
 - Language bindings: Python, JavaScript (Node.js), Ruby, PHP, Java, .NET, Go, C++ — **all eight
-  done as of 2026-08-03**, see `docs/bindings-strategy.md`. Not yet published to any package
+  done as of 2026-08-03**, see `docs/bindings-strategy.md`; `crypto_box` added to all eight
+  2026-08-06 (T-181). Not yet published to any package
   registry (PyPI/npm/RubyGems/Packagist/NuGet/Maven Central) — separately owner-gated, `docs/TASKS.md`
   T-164, same posture as `dstu-core` itself not being on crates.io yet.
 - Do not reimplement DSTU 4145 signatures in the native core — for Java/.NET, wrap/integrate

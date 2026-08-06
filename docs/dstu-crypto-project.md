@@ -59,7 +59,8 @@ implementation within a minute, without hassle — in the spirit of
   (.NET) is done as of 2026-08-03 too - see D-152. T-51 (Java), T-163 (Go), and T-53 (C++,
   header-only RAII wrapper over `crates/dstu-core-capi`) are all done in full as of 2026-08-03,
   including their own Raspberry Pi re-checks (step 10) - see D-153/D-155/D-158. Every planned
-  binding is now built.
+  binding is now built. **`crypto_box` (T-178/D-169) added to all eight bindings 2026-08-06, T-181**
+  - every binding now exposes the same `crypto_*` surface uniformly, including the newest module.
 - Do not separately reimplement DSTU 4145 in the native core — for
   Java/.NET, integrate/wrap Bouncy Castle (a mature implementation already
   exists there); for Rust, port it while relying on Bouncy Castle as a

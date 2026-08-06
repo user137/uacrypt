@@ -1853,8 +1853,7 @@ item they point to is later removed.
       a two-language marketing/landing page edit is more delicate than a docs sweep and pushes to a
       publicly-live branch, flagged for an explicit owner check-in rather than done unprompted in the
       same pass as the rest of T-178/179/180's mechanical doc updates.
-- [ ] **T-181** **In progress - seven of eight bindings done 2026-08-06 (Python/Node.js/Ruby/PHP/
-      .NET/Go/C++); Java last.** Language bindings for `crypto_box` across all eight binding
+- [x] **T-181** **Done 2026-08-06 - all eight bindings.** Language bindings for `crypto_box` across all eight binding
       languages. Phase/checklist entry in `docs/bindings-strategy.md` ("T-181 - `crypto_box` across
       all eight bindings") - **incremental**, not a from-scratch binding phase: each of the eight
       already exists (T-49 through T-163), this only adds one new module's surface to each. Order
@@ -1922,9 +1921,20 @@ item they point to is later removed.
         launched from Git Bash despite the DLL's exports being verified present with `objdump -p`
         first - re-running via the `PowerShell` tool showed a clean 100% pass, confirming this was
         a Git-Bash process-launch artifact, not a real bug.
-      Remaining: Java (last, per Fork 1's own spike-first note above); the Raspberry Pi cross-arch
-      smoke check (step 10) for all seven languages done so far - not run yet for any of them this
-      pass, doesn't block Java starting.
+      - **Java - done.** `bindings/java/native/src/crypto_box.rs`: `Java_ua_dstucrypto_dstucore_
+        Box_{keygen,publicKey,seal,open}` via the `jni` crate directly, mirroring `secretbox.rs`'s
+        own plain-`byte[]`-in/out shape and `sign.rs`'s own key-validation pattern. D-153's original
+        `jni`-vs-JNI-over-C-ABI spike already settled the whole binding's shape when T-51 landed, so
+        no new per-module spike was needed here - the Java-side class is plain `Box` (no `crypto_`
+        prefix, no underscore, per `lib.rs`'s own JNI-symbol-naming convention). 12 new JUnit tests
+        (misuse cases assert `IllegalArgumentException` via `Failure::Misuse`, matching
+        `SecretBoxTest`'s own convention). Full `cargo xtask java` pipeline clean (native
+        fmt/clippy, `mvn test`, 68/68).
+      **T-181 all eight bindings done 2026-08-06** - every binding now exposes the same `crypto_*`
+      surface uniformly (Fork 2's own standing rule extended to `crypto_box`). Remaining: the
+      Raspberry Pi cross-arch smoke check (step 10) for all eight - not run yet for any of them this
+      pass; T-180's still-open `gh-pages` step (last, now that "after all the tasks" is actually
+      true).
 - [ ] **T-182** **Not started, no committed timeline - owner-requested backlog item, 2026-08-06.**
       Additional `l(p)` security levels for `hazmat::dstu9041`, beyond T-177's `l(p)=256`-only scope.
       Three genuinely different sub-items, not one task scaled up:
@@ -2004,8 +2014,8 @@ item they point to is later removed.
       multiplication `#[cfg_attr(miri, ignore)]` up front (T-100/T-177/T-178/T-178c precedent, hit
       three times already - don't discover it after a multi-hour miri run a fourth time). Category-1
       *correctness* (not the misuse cases above) needs no new work - Додаток Г is the sole oracle and
-      is already fully verified (T-177). This task is backlog only - does not reorder T-181 (next
-      execution task) or T-180's still-open `gh-pages` step (still last, after T-181).
+      is already fully verified (T-177). This task is backlog only - does not reorder T-180's
+      still-open `gh-pages` step (next execution task now that T-181 is fully done).
 - [x] **T-176** **Done 2026-08-05.** Closed the single biggest gap T-174 left open: bought a
       targeted 8-page supplement from the same source (National Library of Ukraine EDD service,
       `docs/papers/DSTU_9041-2020_supplement.pdf`, gitignored, same reasoning as the main scan) and
