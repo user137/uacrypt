@@ -2649,17 +2649,20 @@ pub struct BoxSealArgs {
     pub key_path: PathBuf,
     pub in_path: PathBuf,
     pub out_path: PathBuf,
+    pub iterations: u32,
 }
 
-/// Parses `box-seal`'s flags (`--key`/`--in`/`--out`, all required).
+/// Parses `box-seal`'s flags (`--key`/`--in`/`--out` required, `--iterations` optional -
+/// benchmarking only, same shape as [`parse_sign_args`]).
 ///
 /// # Errors
 ///
-/// Returns [`CliError::MissingFlag`] or [`CliError::UnknownFlag`].
+/// Returns [`CliError::MissingFlag`], [`CliError::InvalidIterations`], or [`CliError::UnknownFlag`].
 pub fn parse_box_seal_args(args: &[String]) -> Result<BoxSealArgs, CliError> {
     let mut key_path = None;
     let mut in_path = None;
     let mut out_path = None;
+    let mut iterations = 1u32;
 
     let mut i = 0;
     while i < args.len() {
@@ -2682,6 +2685,13 @@ pub fn parse_box_seal_args(args: &[String]) -> Result<BoxSealArgs, CliError> {
                 ));
                 i += 2;
             }
+            "--iterations" => {
+                let v = args.get(i + 1).ok_or(CliError::MissingFlag("iterations"))?;
+                iterations = v
+                    .parse()
+                    .map_err(|_| CliError::InvalidIterations(v.clone()))?;
+                i += 2;
+            }
             other => return Err(CliError::UnknownFlag(other.to_string())),
         }
     }
@@ -2690,6 +2700,7 @@ pub fn parse_box_seal_args(args: &[String]) -> Result<BoxSealArgs, CliError> {
         key_path: key_path.ok_or(CliError::MissingFlag("key"))?,
         in_path: in_path.ok_or(CliError::MissingFlag("in"))?,
         out_path: out_path.ok_or(CliError::MissingFlag("out"))?,
+        iterations,
     })
 }
 
@@ -2701,23 +2712,55 @@ pub fn parse_box_seal_args(args: &[String]) -> Result<BoxSealArgs, CliError> {
 /// addition first (see `crypto_box`'s own module doc, "Hybrid via KDF" section), so `--in` is read
 /// whole into memory here, unlike `encrypt`/`decrypt`'s bounded-chunk streaming.
 ///
+/// `iterations > 1` is the D-34/T-179 benchmark path (`docs/PERFORMANCE.md`): unlike `sign`
+/// (deterministic nonce, bit-identical every call), each `seal` call draws fresh randomness
+/// internally (a new seed and ephemeral scalar), so this measures real per-call throughput
+/// including that cost - not a cached-schedule shortcut to avoid (D-80's concern doesn't apply
+/// here, there is no schedule to cache). Only the last iteration's output is written to `--out`.
+///
 /// # Errors
 ///
 /// Returns [`CliError::Io`] if `--key`/`--in` can't be read or `--out` can't be written,
 /// [`CliError::WrongLength`] if `--key` isn't 32 bytes, [`CliError::BoxKeyInvalid`] if `--key`
 /// isn't a valid public key, or [`CliError::Random`] if the OS CSPRNG fails.
+#[allow(clippy::cast_precision_loss)] // human-readable ops/s diagnostic, not exact at any realistic count
 pub fn run_box_seal_command(args: &BoxSealArgs) -> Result<(), CliError> {
     let public = read_box_public_key(&args.key_path)?;
     let message = std::fs::read(&args.in_path).map_err(|e| CliError::Io {
         path: args.in_path.clone(),
         message: e.to_string(),
     })?;
-    let sealed = dstu_core::crypto_box::seal(&message, &public)
+    let iterations = args.iterations.max(1);
+
+    let start = Instant::now();
+    let mut sealed = dstu_core::crypto_box::seal(&message, &public)
         .map_err(|e| CliError::Random(e.to_string()))?;
+    for _ in 1..iterations {
+        sealed = dstu_core::crypto_box::seal(&message, &public)
+            .map_err(|e| CliError::Random(e.to_string()))?;
+    }
+    let elapsed = start.elapsed();
+
     std::fs::write(&args.out_path, sealed).map_err(|e| CliError::Io {
         path: args.out_path.clone(),
         message: e.to_string(),
-    })
+    })?;
+
+    if args.iterations > 1 {
+        let per_op_ns = elapsed.as_nanos() / u128::from(args.iterations);
+        let ops_per_s = if per_op_ns == 0 {
+            0.0
+        } else {
+            1e9 / (per_op_ns as f64)
+        };
+        eprintln!(
+            "iterations={} total_ns={} per_op_ns={per_op_ns} ops_per_s={ops_per_s:.2}",
+            args.iterations,
+            elapsed.as_nanos(),
+        );
+    }
+
+    Ok(())
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -2725,17 +2768,20 @@ pub struct BoxOpenArgs {
     pub key_path: PathBuf,
     pub in_path: PathBuf,
     pub out_path: PathBuf,
+    pub iterations: u32,
 }
 
-/// Parses `box-open`'s flags (`--key`/`--in`/`--out`, all required).
+/// Parses `box-open`'s flags (`--key`/`--in`/`--out` required, `--iterations` optional -
+/// benchmarking only, same shape as [`parse_verify_args`]).
 ///
 /// # Errors
 ///
-/// Returns [`CliError::MissingFlag`] or [`CliError::UnknownFlag`].
+/// Returns [`CliError::MissingFlag`], [`CliError::InvalidIterations`], or [`CliError::UnknownFlag`].
 pub fn parse_box_open_args(args: &[String]) -> Result<BoxOpenArgs, CliError> {
     let mut key_path = None;
     let mut in_path = None;
     let mut out_path = None;
+    let mut iterations = 1u32;
 
     let mut i = 0;
     while i < args.len() {
@@ -2758,6 +2804,13 @@ pub fn parse_box_open_args(args: &[String]) -> Result<BoxOpenArgs, CliError> {
                 ));
                 i += 2;
             }
+            "--iterations" => {
+                let v = args.get(i + 1).ok_or(CliError::MissingFlag("iterations"))?;
+                iterations = v
+                    .parse()
+                    .map_err(|_| CliError::InvalidIterations(v.clone()))?;
+                i += 2;
+            }
             other => return Err(CliError::UnknownFlag(other.to_string())),
         }
     }
@@ -2766,6 +2819,7 @@ pub fn parse_box_open_args(args: &[String]) -> Result<BoxOpenArgs, CliError> {
         key_path: key_path.ok_or(CliError::MissingFlag("key"))?,
         in_path: in_path.ok_or(CliError::MissingFlag("in"))?,
         out_path: out_path.ok_or(CliError::MissingFlag("out"))?,
+        iterations,
     })
 }
 
@@ -2773,26 +2827,56 @@ pub fn parse_box_open_args(args: &[String]) -> Result<BoxOpenArgs, CliError> {
 /// ([`dstu_core::crypto_box::open`]) - see [`run_box_seal_command`]'s doc comment for the same
 /// not-memory-bounded caveat.
 ///
+/// `iterations > 1` is the D-34/T-179 benchmark path: `open` is deterministic given the same
+/// input, so every iteration reproduces the identical output - only the decrypt call itself is
+/// timed in a loop, key/ciphertext parsed once outside it (D-80's cached-schedule discipline).
+///
 /// # Errors
 ///
 /// Returns [`CliError::Io`] if `--key`/`--in` can't be read or `--out` can't be written,
 /// [`CliError::WrongLength`] if `--key` isn't 32 bytes, [`CliError::BoxKeyInvalid`] if `--key`
 /// isn't a valid secret key, [`CliError::BoxOpenTruncated`] if `--in` is too short to be real
 /// `box-seal` output, or [`CliError::BoxOpenFailed`] for any other authentication failure.
+#[allow(clippy::cast_precision_loss)] // human-readable ops/s diagnostic, not exact at any realistic count
 pub fn run_box_open_command(args: &BoxOpenArgs) -> Result<(), CliError> {
     let secret = read_box_secret_key(&args.key_path)?;
     let sealed = std::fs::read(&args.in_path).map_err(|e| CliError::Io {
         path: args.in_path.clone(),
         message: e.to_string(),
     })?;
-    let opened = dstu_core::crypto_box::open(&sealed, &secret).map_err(|e| match e {
+    let iterations = args.iterations.max(1);
+    let map_open_err = |e| match e {
         dstu_core::crypto_box::OpenError::Truncated => CliError::BoxOpenTruncated,
         dstu_core::crypto_box::OpenError::InvalidCiphertext => CliError::BoxOpenFailed,
-    })?;
+    };
+
+    let start = Instant::now();
+    let mut opened = dstu_core::crypto_box::open(&sealed, &secret).map_err(map_open_err)?;
+    for _ in 1..iterations {
+        opened = dstu_core::crypto_box::open(&sealed, &secret).map_err(map_open_err)?;
+    }
+    let elapsed = start.elapsed();
+
     std::fs::write(&args.out_path, opened).map_err(|e| CliError::Io {
         path: args.out_path.clone(),
         message: e.to_string(),
-    })
+    })?;
+
+    if args.iterations > 1 {
+        let per_op_ns = elapsed.as_nanos() / u128::from(args.iterations);
+        let ops_per_s = if per_op_ns == 0 {
+            0.0
+        } else {
+            1e9 / (per_op_ns as f64)
+        };
+        eprintln!(
+            "iterations={} total_ns={} per_op_ns={per_op_ns} ops_per_s={ops_per_s:.2}",
+            args.iterations,
+            elapsed.as_nanos(),
+        );
+    }
+
+    Ok(())
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -3290,12 +3374,13 @@ Not memory-bounded: --in is read whole into memory (unlike `encrypt`'s bounded-c
 fine for typical messages/keys, not recommended for very large files yet.
 
 USAGE:
-    uacrypt box-seal --key <path> --in <path> --out <path>
+    uacrypt box-seal --key <path> --in <path> --out <path> [--iterations <n>]
 
 FLAGS:
-    --key <path>    the recipient's public key (from `uacrypt box-pubkey`)
-    --in <path>     file to encrypt
-    --out <path>    where to write the sealed output
+    --key <path>        the recipient's public key (from `uacrypt box-pubkey`)
+    --in <path>         file to encrypt
+    --out <path>        where to write the sealed output
+    --iterations <n>    (benchmarking only) repeat the seal call n times, print timing to stderr
 
 EXAMPLE:
     uacrypt box-seal --key recipient.pub --in message.txt --out message.txt.box
@@ -3308,12 +3393,13 @@ A wrong key or a tampered/truncated file is rejected with an error before anythi
 --out, rather than producing wrong plaintext.
 
 USAGE:
-    uacrypt box-open --key <path> --in <path> --out <path>
+    uacrypt box-open --key <path> --in <path> --out <path> [--iterations <n>]
 
 FLAGS:
-    --key <path>    the recipient's secret key (from `uacrypt box-keygen`)
-    --in <path>     the sealed file (must be real `box-seal` output)
-    --out <path>    where to write the decrypted output
+    --key <path>        the recipient's secret key (from `uacrypt box-keygen`)
+    --in <path>         the sealed file (must be real `box-seal` output)
+    --out <path>        where to write the decrypted output
+    --iterations <n>    (benchmarking only) repeat the open call n times, print timing to stderr
 
 EXAMPLE:
     uacrypt box-open --key box.key --in message.txt.box --out message.txt
@@ -6328,7 +6414,41 @@ mod tests {
                 key_path: PathBuf::from("recipient.pub"),
                 in_path: PathBuf::from("msg.txt"),
                 out_path: PathBuf::from("msg.box"),
+                iterations: 1,
             })
+        );
+    }
+
+    #[test]
+    fn parse_box_seal_args_happy_path_with_iterations() {
+        let args = vec![
+            "--key".to_string(),
+            "recipient.pub".to_string(),
+            "--in".to_string(),
+            "msg.txt".to_string(),
+            "--out".to_string(),
+            "msg.box".to_string(),
+            "--iterations".to_string(),
+            "17".to_string(),
+        ];
+        let parsed = parse_box_seal_args(&args).expect("valid args should parse");
+        assert_eq!(parsed.iterations, 17);
+    }
+
+    #[test]
+    fn parse_box_seal_args_rejects_invalid_iterations() {
+        assert_eq!(
+            parse_box_seal_args(&[
+                "--key".to_string(),
+                "k".to_string(),
+                "--in".to_string(),
+                "i".to_string(),
+                "--out".to_string(),
+                "o".to_string(),
+                "--iterations".to_string(),
+                "nope".to_string(),
+            ]),
+            Err(CliError::InvalidIterations("nope".to_string()))
         );
     }
 
@@ -6374,6 +6494,7 @@ mod tests {
                 key_path: PathBuf::from("box.key"),
                 in_path: PathBuf::from("msg.box"),
                 out_path: PathBuf::from("msg.txt"),
+                iterations: 1,
             })
         );
     }
@@ -6408,6 +6529,7 @@ mod tests {
             key_path: dir.file("box.pub"),
             in_path: dir.file("msg.txt"),
             out_path: dir.file("msg.box"),
+            iterations: 1,
         })
         .expect("box-seal should succeed");
 
@@ -6420,11 +6542,52 @@ mod tests {
             key_path: dir.file("box.key"),
             in_path: dir.file("msg.box"),
             out_path: dir.file("msg.out"),
+            iterations: 1,
         })
         .expect("box-open should succeed on the real sealed output");
 
         let opened = std::fs::read(dir.file("msg.out")).expect("read opened output");
         assert_eq!(opened, b"a message for the recipient only");
+    }
+
+    /// `--iterations > 1` is the D-34/T-179 benchmark path - the sealed/opened output it actually
+    /// writes must still be the real, round-trippable one, not a placeholder from the timed loop.
+    #[cfg_attr(
+        miri,
+        ignore = "dstu9041's 256-iteration scalar-multiply ladders are too slow to interpret under Miri - see docs/TASKS.md T-100/T-177"
+    )]
+    #[test]
+    fn box_seal_open_with_iterations_still_round_trips() {
+        let dir = TempDir::new("box_iterations");
+        run_box_keygen_command(&BoxKeygenArgs {
+            out_path: dir.file("box.key"),
+        })
+        .expect("box-keygen should succeed");
+        run_box_pubkey_command(&BoxPubkeyArgs {
+            key_path: dir.file("box.key"),
+            out_path: dir.file("box.pub"),
+        })
+        .expect("box-pubkey should succeed");
+        std::fs::write(dir.file("msg.txt"), b"benchmarked message").expect("write message");
+
+        run_box_seal_command(&BoxSealArgs {
+            key_path: dir.file("box.pub"),
+            in_path: dir.file("msg.txt"),
+            out_path: dir.file("msg.box"),
+            iterations: 5,
+        })
+        .expect("box-seal with iterations should succeed");
+
+        run_box_open_command(&BoxOpenArgs {
+            key_path: dir.file("box.key"),
+            in_path: dir.file("msg.box"),
+            out_path: dir.file("msg.out"),
+            iterations: 5,
+        })
+        .expect("box-open with iterations should succeed on the real sealed output");
+
+        let opened = std::fs::read(dir.file("msg.out")).expect("read opened output");
+        assert_eq!(opened, b"benchmarked message");
     }
 
     #[cfg_attr(
@@ -6452,6 +6615,7 @@ mod tests {
             key_path: dir.file("box.pub"),
             in_path: dir.file("msg.txt"),
             out_path: dir.file("msg.box"),
+            iterations: 1,
         })
         .expect("box-seal should succeed");
 
@@ -6460,6 +6624,7 @@ mod tests {
                 key_path: dir.file("other.key"),
                 in_path: dir.file("msg.box"),
                 out_path: dir.file("msg.out"),
+                iterations: 1,
             }),
             Err(CliError::BoxOpenFailed)
         );
@@ -6486,6 +6651,7 @@ mod tests {
             key_path: dir.file("box.pub"),
             in_path: dir.file("msg.txt"),
             out_path: dir.file("msg.box"),
+            iterations: 1,
         })
         .expect("box-seal should succeed");
 
@@ -6499,6 +6665,7 @@ mod tests {
                 key_path: dir.file("box.key"),
                 in_path: dir.file("msg.box"),
                 out_path: dir.file("msg.out"),
+                iterations: 1,
             }),
             Err(CliError::BoxOpenFailed)
         );
@@ -6518,6 +6685,7 @@ mod tests {
                 key_path: dir.file("box.key"),
                 in_path: dir.file("msg.box"),
                 out_path: dir.file("msg.out"),
+                iterations: 1,
             }),
             Err(CliError::BoxOpenTruncated)
         );
