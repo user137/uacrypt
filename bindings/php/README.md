@@ -64,6 +64,7 @@ assert(dstu_core_secretbox_open($key, $sealed) === 'a message worth protecting')
 | Module | Functions/classes | Notes |
 |---|---|---|
 | `crypto_secretbox` | `dstu_core_secretbox_keygen`, `_seal`, `_open` | Single-message authenticated encryption. `examples/secretbox.php`. |
+| `crypto_box` | `dstu_core_box_keygen`, `_public_key`, `_seal`, `_open` | Public-key encryption (hybrid via KDF over `hazmat::dstu9041`, D-169). `_seal`/`_open` are not memory-bounded — the whole message is held in memory. `examples/box.php`. |
 | `crypto_secretstream` | `dstu_core_secretstream_keygen`, `DstuCoreSecretStreamPushState`, `DstuCoreSecretStreamPullState`, `DstuCoreSecretStreamWriter`, `DstuCoreSecretStreamReader` | Chunked streaming AEAD. `Writer`/`Reader` (`lib/DstuCoreSecretStream.php`, plain PHP over a `resource`, implementing `Iterator`) wire format matches `uacrypt encrypt`/`decrypt` exactly (D-118/D-143). `examples/secretstream-file.php`. |
 | `crypto_sign` | `dstu_core_sign_keygen`, `_verifying_key`, `_message`, `_verify` | DSTU 4145 digital signatures, deterministic nonce (no RNG dependency). `examples/sign.php`. |
 | `crypto_pwhash` | `dstu_core_pwhash_hash_password`, `_verify_password`, `DSTU_CORE_PWHASH_INTERACTIVE`/`_MODERATE`/`_SENSITIVE` | Argon2id (the one deliberately non-DSTU component, D-49/D-50). `examples/password-hashing.php`. |

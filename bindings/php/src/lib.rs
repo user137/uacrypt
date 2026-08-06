@@ -19,6 +19,7 @@
 #![cfg_attr(windows, feature(abi_vectorcall))]
 
 mod auth;
+mod crypto_box;
 mod error;
 mod generichash;
 mod kdf;
@@ -77,6 +78,7 @@ pub fn module(module: ModuleBuilder) -> ModuleBuilder {
         .class::<error::DstuCoreException>();
 
     let module = error::register(module);
+    let module = crypto_box::register(module);
     let module = secretbox::register(module);
     let module = sign::register(module);
     let module = auth::register(module);
