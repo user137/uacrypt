@@ -1852,8 +1852,9 @@ item they point to is later removed.
       a two-language marketing/landing page edit is more delicate than a docs sweep and pushes to a
       publicly-live branch, flagged for an explicit owner check-in rather than done unprompted in the
       same pass as the rest of T-178/179/180's mechanical doc updates.
-- [ ] **T-181** **In progress - Python done 2026-08-06 (`6d4e14b`); Node.js/Ruby next, then .NET/
-      Go/C++/PHP, then Java last.** Language bindings for `crypto_box` across all eight binding
+- [ ] **T-181** **In progress - Python/Node.js/Ruby done 2026-08-06 (all three direct-FFI
+      languages); .NET/Go/C++/PHP next, then Java last.** Language bindings for `crypto_box` across
+      all eight binding
       languages. Phase/checklist entry in `docs/bindings-strategy.md` ("T-181 - `crypto_box` across
       all eight bindings") - **incremental**, not a from-scratch binding phase: each of the eight
       already exists (T-49 through T-163), this only adds one new module's surface to each. Order
@@ -1875,6 +1876,16 @@ item they point to is later removed.
         symbols on import - a local build-cache leftover (gitignored, never tracked), not a real bug.
         Not yet run on the Raspberry Pi cross-arch smoke check (step 10) - still open, doesn't block
         the next language.
+      - **Node.js - done.** `bindings/nodejs/src/crypto_box.rs`: `boxKeygen`/`boxPublicKey`/
+        `boxSeal`/`boxOpen` via napi-rs, mirroring Python's `crypto_box.rs` shape (plain `Buffer`
+        in/out, same `crypto_box`-not-`box` naming fork). 12 new `node:test` cases mirroring
+        Python's test suite exactly. Full suite 64/64 after `npm run build`. Not yet run on the Pi.
+      - **Ruby - done.** `bindings/ruby/ext/dstu_core_rb/src/crypto_box.rs`: `box_keygen`/
+        `box_public_key`/`box_seal`/`box_open` via magnus, same shape/naming fork again (plain
+        `String` in/out). 12 new rspec examples. Full pipeline clean (70/70 rspec) using the
+        project's own documented `LIBCLANG_PATH`/`PATH` fix for `rb-sys`'s `bindgen` step against
+        Ruby's headers (`.claude.local.md`, D-133's own gotcha - confirmed still needed, not
+        already resolved upstream). Not yet run on the Pi.
 - [ ] **T-182** **Not started, no committed timeline - owner-requested backlog item, 2026-08-06.**
       Additional `l(p)` security levels for `hazmat::dstu9041`, beyond T-177's `l(p)=256`-only scope.
       Three genuinely different sub-items, not one task scaled up:
