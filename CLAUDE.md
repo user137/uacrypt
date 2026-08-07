@@ -21,6 +21,7 @@ cargo xtask clippy         # -D warnings
 cargo xtask fmt --check
 cargo xtask docs-check     # README/gh-pages version-marker freshness lint (T-186, mandatory)
 cargo xtask book           # mdbook build - docs/ knowledge base (T-186), published to gh-pages/book/ by CI
+cargo xtask bench-compare  # uacrypt vs OpenSSL, one unified table per DSTU standard (T-187, docs/PERFORMANCE.md D-106)
 ```
 
 `xtask` (see `xtask/`, aliased via `.cargo/config.toml`) is the one cross-platform build/QA entry
@@ -486,6 +487,15 @@ Full detail and rationale in `docs/SECURITY.md` — this is the compressed versi
   https://sonarcloud.io/api/issues/search?componentKeys=<project>&pullRequest=<N>` returns each
   issue's `flows` array — the exact assumed path (`specinfo-ua/UAPKI#30`/T-137: a first fix
   addressed a plausible mechanism the trace didn't actually show).
+- **`api/issues/search` does not surface duplication findings — that's a separate Quality Gate/
+  measures endpoint.** Duplication has no active rule in this project's ruleset, so it never
+  appears as an "issue"; check `api/qualitygates/project_status?projectKey=<key>&branch=<branch>`
+  (and `api/measures/component_tree`/`api/duplications/show` to find the actual duplicated lines)
+  whenever asked to verify SonarCloud is clean, not issues alone. Confirmed the hard way (T-187/
+  T-188): reported "0 issues" while the gate was actually `ERROR` on `new_duplicated_lines_density`.
+  `sonarcloud.yml`'s scan step now passes `-Dsonar.qualitygate.wait=true` for the same reason —
+  without it the job exits 0 before the gate is evaluated server-side, so a green CI run doesn't
+  mean the gate passed either.
 - **A repo with no root `.gitattributes` lets `windows-latest`'s hosted runner's own system
   gitconfig (`core.autocrlf=true`, not the repo's or a user's setting) silently convert every LF
   blob to CRLF on `actions/checkout`** — invisible unless a Windows-only step then diffs file
@@ -504,6 +514,12 @@ Full detail and rationale in `docs/SECURITY.md` — this is the compressed versi
   payload, and verify a byte-for-byte round trip before trusting a timing number from this command.
   Separately, Git Bash's MSYS path conversion rewrites a leading `/CN=...` in `-subj` into a Windows
   filesystem path — prefix with `MSYS_NO_PATHCONV=1`.
+- **`openssl speed`'s own `Doing ... ops in Ts` progress line is written to stderr, not stdout** —
+  only the final, coarser summary table (`type / AES-128-ECB  1012371.39k`) is on stdout. Invisible
+  in a manual `2>&1`-merged shell spike (how every `Reproducing` recipe in `docs/PERFORMANCE.md` is
+  written) — confirmed the hard way building `cargo xtask bench-compare` (T-187): the tool silently
+  produced zero data rows until this was found via temporary debug output and fixed by parsing
+  stderr instead.
 - **A MinGW-built `.exe` (this project's C/C++ test/example binaries, `cargo xtask cpp`) can fail
   or hang when launched directly from Git Bash** (seen as `ctest`/a direct invocation reporting a
   bogus `STATUS_ENTRYPOINT_NOT_FOUND`/exit 127) **while the identical binary runs and passes clean
@@ -515,6 +531,12 @@ Full detail and rationale in `docs/SECURITY.md` — this is the compressed versi
   the `PowerShell` tool before concluding there's a real bug — this is a different failure mode
   than the already-documented Windows stdout-buffering/`tail` gotchas above, specific to process
   launch, not I/O.
+- **mdBook's `{{#include file.md}}` resolves relative markdown links in the included content
+  against the *including* file's directory, not the original file's.** `docs/introduction.md`
+  transcludes `README.md` (repo root) via `{{#include ../README.md}}` (T-186) — README's own
+  relative links (`bindings/python/README.md`, `docs/CONTRIBUTING.md`) broke inside the rendered
+  book until switched to absolute `github.com/.../blob/master/...` URLs, which read identically on
+  GitHub. Re-check this whenever README gains a new relative link, or another `{{#include}}` is added.
 
 ## Reference implementations and oracles
 
