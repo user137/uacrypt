@@ -2025,6 +2025,52 @@ item they point to is later removed.
       *correctness* (not the misuse cases above) needs no new work - Додаток Г is the sole oracle and
       is already fully verified (T-177). This task is backlog only - T-178/T-179/T-180/T-181's own
       plan is fully done as of 2026-08-06, this stays a backlog item with no committed timeline.
+- [x] **T-187** **Done 2026-08-07, owner-requested follow-up to T-186.** `docs/PERFORMANCE.md`
+      "vs. international-standard analogs" (D-106) has five hand-measured, hand-typed comparisons -
+      one per in-scope DSTU standard (Kalyna vs AES, Kupyna vs Whirlpool, Strumok vs ChaCha20,
+      DSTU 4145 vs ECDSA, DSTU 9041/`crypto_box` vs ECDH+CMS) - each its own manual `openssl speed`/
+      `openssl cms` recipe, different units, different setup steps. Owner wants one `cargo xtask`
+      command, one code path, one consistent table style covering all five DSTU standards actually
+      implemented, instead of re-typing five different recipes from doc-embedded instructions every
+      refresh. Scope confirmed explicitly: the five DSTU-standard-level rows only (Kalyna's
+      individual modes - CCM/GMAC/KW/etc. - stay compared against UAPKI, a separate, already-covered
+      axis, not part of this task); OpenSSL only, no real libsodium build (X25519/brainpoolP256r1 via
+      OpenSSL stay the existing "closest analog" stand-in, matching D-106 exactly, no new toolchain
+      dependency this project would then have to vet per `docs/SECURITY.md`/`docs/ORACLES.md`).
+      New `xtask/src/bench.rs` module (`cargo xtask bench-compare`, optional/best-effort like every
+      other tool-dependent command, **not** in `ci()`'s loop - this project's own stated methodology
+      says perf numbers need a real, uncontested dev machine, never a noisy shared CI runner, and no
+      perf comparison has ever run in CI here). Methodology, one code path for all five: `uacrypt`
+      side always wall-clocks the real `target/release/uacrypt <cmd> --iterations N` process (the
+      same canonical D-34 "binary-level" approach this file already uses everywhere, just automated);
+      OpenSSL side parses `openssl speed`'s own self-reported `N ops in T s` line directly (not
+      reimplementing its internal timing loop - it's the already-validated tool this project's
+      published numbers are measured against) for the four `openssl speed`-supported cases, and
+      wall-clocks external `openssl cms` invocations itself for the fifth (CMS has no `speed`
+      support, matching the existing hand-documented recipe). One shared table-printing function
+      emits every case in the same `| Metric | uacrypt | OpenSSL analog | Ratio |` shape regardless
+      of whether the unit is MB/s (bulk ciphers/hashes) or ops/s (fixed-size signature/KEM ops) -
+      "unified style" means one path and one visual shape, not literally one unit, since MB/s for a
+      signature op or ops/s for bulk throughput would both be meaningless, per the existing DSTU
+      9041 table's own "two tables, two different questions" framing. Output prints to stdout in
+      the exact markdown shape `docs/PERFORMANCE.md` already uses - copy/pasted in by hand on a
+      refresh, same as today; deliberately not auto-editing the doc itself, since the prose caveats
+      around each table are load-bearing, not decoration, and a script clobbering them silently
+      would be worse than the manual-recipe problem this task exists to fix.
+      **Built and run for real** (`cargo xtask bench-compare`), not just compiled - per
+      `CLAUDE.md`'s own "spike, read the actual output" discipline. First run silently produced
+      zero data rows for every case except the CMS one - found by adding temporary debug output
+      rather than guessing: `openssl speed`'s own `Doing ... ops in Ts` progress line is written to
+      **stderr**, not stdout (only the final rounded summary table is on stdout) - invisible in
+      every manual spike this task's own design phase did, since those all used a `2>&1`-merged
+      shell redirect. Fixed by parsing `stderr` instead; a real run afterward produced sane numbers
+      matching the existing published magnitudes closely (DSTU 4145 `sign` 685.27 ops/s here vs.
+      667.39 in the last committed T-153/D-109 measurement, well within normal machine-load
+      variance) across all six tables (Kalyna/AES, Kupyna/Whirlpool, Strumok/ChaCha20, DSTU 4145/
+      ECDSA, DSTU 9041 ops/s vs ECDH, DSTU 9041 MB/s vs CMS). `cargo clippy -- -D warnings`/
+      `cargo fmt --check` clean on the new module. `docs/PERFORMANCE.md` itself was not touched by
+      this task - refreshing its committed numbers with this tool's output is a separate, future
+      action, not implied by building the tool.
 - [x] **T-185** **Done 2026-08-07, owner-requested.** Owner flagged the `gh-pages` landing page
       (both `index.html`/`uk/index.html`) as carrying stale facts and asked for a full pass over
       GitHub-facing docs, not just a spot fix. Full enumeration of every quantitative/version claim

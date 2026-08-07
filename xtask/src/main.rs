@@ -12,6 +12,8 @@ use std::env;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
+mod bench;
+
 fn main() -> ExitCode {
     let mut args = env::args().skip(1);
     let Some(cmd) = args.next() else {
@@ -28,6 +30,7 @@ fn main() -> ExitCode {
         "miri" => miri(args.next().as_deref()),
         "kani" => kani(),
         "book" => book(),
+        "bench-compare" => bench::run(),
         "fuzz" => fuzz(),
         "audit" => audit(),
         "deny" => deny(),
@@ -76,6 +79,7 @@ fn print_usage() {
          \x20 miri [pkg]     cargo +nightly miri test --workspace, or -p <pkg> to scope to one crate (dstu-core, uacrypt, dstu-core-capi) - T-175\n\
          \x20 kani           cargo kani -p dstu-core (bounded model checking, see gf2m163.rs's kani_proofs, D-102) - Linux/macOS only, not Windows\n\
          \x20 book           mdbook build - the docs/ knowledge base (T-186), published to gh-pages/book/ by CI\n\
+         \x20 bench-compare  uacrypt vs OpenSSL, one unified table per DSTU standard (T-187, docs/PERFORMANCE.md D-106)\n\
          \x20 fuzz           short cargo-fuzz smoke run against every target (see FUZZ_TARGETS)\n\
          \x20 audit          cargo audit (RustSec advisories)\n\
          \x20 deny           cargo deny check (licenses, bans, sources)\n\
@@ -148,7 +152,7 @@ fn run(base: &str, args: &[&str], dir: Option<&Path>) -> bool {
     command.status().is_ok_and(|s| s.success())
 }
 
-fn require(tool: &str, install_hint: &str) -> bool {
+pub(crate) fn require(tool: &str, install_hint: &str) -> bool {
     if tool_available(tool) {
         return true;
     }
@@ -255,7 +259,10 @@ fn kani() -> bool {
     }
     #[cfg(not(windows))]
     {
-        if !require("cargo-kani", "cargo install kani-verifier && cargo kani setup") {
+        if !require(
+            "cargo-kani",
+            "cargo install kani-verifier && cargo kani setup",
+        ) {
             return false;
         }
         run("cargo", &["kani", "-p", "dstu-core"], None)
@@ -532,7 +539,10 @@ fn git_show(reference: &str, path: &str) -> Option<String> {
         .args(["show", &format!("{reference}:{path}")])
         .output()
         .ok()?;
-    output.status.success().then(|| String::from_utf8_lossy(&output.stdout).into_owned())
+    output
+        .status
+        .success()
+        .then(|| String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
 /// Freshness lint (T-186, mandatory - owner's explicit choice): catches the exact class of bug
@@ -649,7 +659,10 @@ fn nodejs() -> bool {
 /// mingw/bindgen requirement (D-133) is a machine-local environment variable - see
 /// `.claude.local.md` - not anything this function or CI needs to special-case.
 fn ruby() -> bool {
-    if !require("ruby", "https://www.ruby-lang.org (or RubyInstaller with DevKit on Windows)") {
+    if !require(
+        "ruby",
+        "https://www.ruby-lang.org (or RubyInstaller with DevKit on Windows)",
+    ) {
         return false;
     }
     if !require("bundle", "gem install bundler") {
@@ -727,7 +740,10 @@ fn php() -> bool {
     let ext_path = cwd.join(ext_path);
     run(
         "php",
-        &[&format!("-dextension={}", ext_path.display()), "phpunit.phar"],
+        &[
+            &format!("-dextension={}", ext_path.display()),
+            "phpunit.phar",
+        ],
         Some(dir),
     )
 }
@@ -1012,7 +1028,10 @@ fn capi_compile_msvc(
 /// the language's own tool" convention, cross-language-style-guide.md principle 9), then
 /// `dotnet test`.
 fn dotnet() -> bool {
-    if !require("dotnet", "https://dotnet.microsoft.com/download (.NET 8 SDK)") {
+    if !require(
+        "dotnet",
+        "https://dotnet.microsoft.com/download (.NET 8 SDK)",
+    ) {
         return false;
     }
     if !run(
@@ -1052,7 +1071,10 @@ fn dotnet() -> bool {
 /// D-153) - the *published* artifact still targets Java 8 bytecode via `maven.compiler.release` in
 /// `bindings/java/pom.xml`, independent of whichever JDK actually runs this build.
 fn java() -> bool {
-    if !require("mvn", "https://maven.apache.org (or your OS package manager)") {
+    if !require(
+        "mvn",
+        "https://maven.apache.org (or your OS package manager)",
+    ) {
         return false;
     }
     if !run("cargo", &["build", "-p", "uacrypt", "--release"], None) {
@@ -1061,7 +1083,11 @@ fn java() -> bool {
 
     let native_dir = Path::new("bindings/java/native");
     if !run("cargo", &["build", "--release"], Some(native_dir))
-        || !run("cargo", &["fmt", "--all", "--", "--check"], Some(native_dir))
+        || !run(
+            "cargo",
+            &["fmt", "--all", "--", "--check"],
+            Some(native_dir),
+        )
         || !run(
             "cargo",
             &["clippy", "--all-targets", "--", "-D", "warnings"],
@@ -1108,7 +1134,10 @@ fn go_fmt_check(dir: &Path) -> bool {
             if stdout.trim().is_empty() {
                 true
             } else {
-                eprintln!("xtask: gofmt found unformatted file(s), run `gofmt -w .` in {}:\n{stdout}", dir.display());
+                eprintln!(
+                    "xtask: gofmt found unformatted file(s), run `gofmt -w .` in {}:\n{stdout}",
+                    dir.display()
+                );
                 false
             }
         }
@@ -1128,7 +1157,10 @@ fn go_fmt_check(dir: &Path) -> bool {
 /// (Visual Studio, which is the reverse) in one call, so this doesn't need its own per-generator
 /// branch the way `capi_compile_msvc` does.
 fn cpp() -> bool {
-    if !require("cmake", "https://cmake.org/download/ (or your OS package manager)") {
+    if !require(
+        "cmake",
+        "https://cmake.org/download/ (or your OS package manager)",
+    ) {
         return false;
     }
     if !run(
@@ -1154,12 +1186,22 @@ fn cpp() -> bool {
     if !run("cmake", &configure_args, Some(dir)) {
         return false;
     }
-    if !run("cmake", &["--build", "build", "--config", "Release"], Some(dir)) {
+    if !run(
+        "cmake",
+        &["--build", "build", "--config", "Release"],
+        Some(dir),
+    ) {
         return false;
     }
     run(
         "ctest",
-        &["--test-dir", "build", "--output-on-failure", "-C", "Release"],
+        &[
+            "--test-dir",
+            "build",
+            "--output-on-failure",
+            "-C",
+            "Release",
+        ],
         Some(dir),
     )
 }

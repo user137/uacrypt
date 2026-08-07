@@ -187,11 +187,12 @@ cargo xtask clippy    # cargo clippy --workspace --all-features -- -D warnings
 cargo xtask docs-check # README/gh-pages version-marker freshness lint vs crates/dstu-core's Cargo.toml (T-186)
 cargo xtask ci        # the five above, then best-effort for miri/kani/book/fuzz/audit/deny/oracle harnesses
 cargo xtask book      # mdbook build - the docs/ knowledge base (T-186), published to gh-pages/book/ by CI
+cargo xtask bench-compare # uacrypt vs OpenSSL, one unified table per DSTU standard (T-187, docs/PERFORMANCE.md D-106)
 ```
 
 The optional layers each check their own tool is installed first and print an install hint instead
-of a raw error if it's missing (`cargo xtask miri`, `kani`, `book`, `fuzz`, `audit`, `deny`,
-`oracle-java`, `oracle-dotnet`) — see `docs/SECURITY.md` for why these are required in CI even though
+of a raw error if it's missing (`cargo xtask miri`, `kani`, `book`, `bench-compare`, `fuzz`, `audit`,
+`deny`, `oracle-java`, `oracle-dotnet`) — see `docs/SECURITY.md` for why these are required in CI even though
 they're optional locally. `docs-check` needs no external tool, so it's mandatory in `ci` rather than
 best-effort — it fails the build outright on a version-marker mismatch, same standing as `fmt`/
 `build`/`test`/`clippy`.
