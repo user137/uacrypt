@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-9db528ab.js";
+            window.path_to_searchindex_js = "searchindex-181afc99.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-ce7e91c5.js"></script>
@@ -2620,10 +2620,14 @@ for this refactor, not new tests written for it. <strong>Verified</strong>: <cod
 “it compiles”. <code>cargo clippy -p uacrypt --all-features -- -D warnings</code>/<code>cargo fmt --check</code>
 clean, <code>cargo xtask build</code>/<code>docs-check</code> clean. Net effect: <code>crates/uacrypt/src/lib.rs</code> 6871 -&gt;
 6280 lines (848 deletions/257 insertions) - real reduction, not just moved code, since 19
-near-identical scanning loops collapsed into one shared implementation. <strong>Separately noted,
-not fixed here</strong> (a different gap, doesn’t block this task): <code>sonarcloud.yml</code> should gain
-<code>-Dsonar.qualitygate.wait=true</code> so CI actually goes red when the gate does - flagging for a
-future task rather than silently expanding this one’s scope.</p>
+near-identical scanning loops collapsed into one shared implementation. Confirmed on
+SonarCloud’s own API after pushing: <code>api/qualitygates/project_status</code> went from <code>ERROR</code>
+(<code>new_duplicated_lines_density</code> 3.0) to <code>OK</code> (1.1); project-wide <code>duplicated_lines_density</code>
+24.4% -&gt; 22.0%. <strong>Follow-up done the same session, owner-requested</strong>: <code>sonarcloud.yml</code>’s scan
+step now passes <code>-Dsonar.qualitygate.wait=true</code> - without it the action uploads the analysis
+and exits 0 immediately, before the Quality Gate is evaluated server-side, so the job never
+actually saw the result (confirmed the hard way: the real <code>ERROR</code> gate above sat undetected
+through a fully green CI run). This step now polls and fails the job itself on a non-OK gate.</p>
 </li>
 <li>
 <p><input disabled="" type="checkbox" checked=""> <strong>T-187</strong> <strong>Done 2026-08-07, owner-requested follow-up to T-186.</strong> <code>docs/PERFORMANCE.md</code>
