@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-2c1e3303.js";
+            window.path_to_searchindex_js = "searchindex-22b22bda.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-ce7e91c5.js"></script>
@@ -10777,6 +10777,82 @@ pass, fixed by hardcoding an externally-computed, independently re-verified cons
 (<code>two_n_is_really_2n</code>, an from-scratch big-endian doubling check, not a re-assertion of the same
 mistake). Both are concrete instances of this project’s own standing rule about verifying claims
 rather than trusting a computation that “looks” independent.</p>
+<h2 id="d-174-t-190-sub-pass-1-dstu-4145---bouncy-castle-parity-confirmed-no-g-side-gap-and-a-real-finding-in-uapkis-live-code-not-ours"><a class="header" href="#d-174-t-190-sub-pass-1-dstu-4145---bouncy-castle-parity-confirmed-no-g-side-gap-and-a-real-finding-in-uapkis-live-code-not-ours">D-174: T-190 sub-pass 1 (DSTU 4145) - Bouncy Castle parity confirmed, no <code>g</code>-side gap, and a real finding in UAPKI’s live code (not ours)</a></h2>
+<p><strong>Context</strong>: T-190’s first per-algorithm sub-pass, comparing DSTU 4145’s defensive/stability code
+in Bouncy Castle and UAPKI against <code>hazmat::dstu4145::signature</code>. Three results, one per source.</p>
+<p><strong>1. Bouncy Castle - our T-189 fix has exact parity, no new gap.</strong> The vendored
+<code>oracles/bouncycastle-java</code> sparse checkout doesn’t include <code>ECPublicKeyParameters</code>/<code>ECPoint</code>/
+<code>ECCurve</code> (only the DSTU-specific files, <code>docs/ORACLES.md</code>’s own note on this), so these were
+fetched read-only from <code>raw.githubusercontent.com/bcgit/bc-java/master/...</code> for reading, not
+vendored into the repo. Trace: <code>ECPublicKeyParameters</code>’s constructor calls
+<code>ECDomainParameters.validatePublicPoint</code>, which rejects <code>null</code>, infinity, and
+<code>!ECPoint.isValid()</code>. <code>isValid()</code> (<code>implIsValid</code>, checkOrder=true) checks
+<code>satisfiesCurveEquation()</code> <strong>and</strong> <code>satisfiesOrder()</code>; the F2m <code>satisfiesOrder()</code> override has an
+explicit cofactor-2 branch (a trace-based halving test, <code>ECPoint.java:1444-1462</code>) that is the
+general form of what <code>is_on_curve</code> + the explicit <code>x != 0</code> rejection do for this specific curve in
+<code>signature::verify</code> (T-189/D-172). Confirmed via Bouncy Castle’s own <code>DSTU4145NamedCurves</code>-derived
+cofactor 2 (already cited in D-172) - no new action.</p>
+<p><strong>2. The <code>g</code> (base point) side has no mirror exploit - checked, not fixed.</strong> <code>verify</code>/<code>sign</code> take
+<code>g: Point</code> as a caller-supplied parameter (hazmat’s “no defaults chosen for you” design), and only
+<code>q</code> was validated by T-189, not <code>g</code>. Bouncy Castle validates <code>G</code> too, but <em>once</em>, at
+<code>ECDomainParameters</code> construction (<code>ECDomainParameters.java:64</code>) - a long-lived domain object, not
+a per-call untrusted input - so this isn’t evidence of a per-call <code>g</code> check being needed in our
+shape. Analytic argument for why the T-189 exploit doesn’t mirror: <code>find_forgery</code>’s trick works
+because <code>r</code> - the exact value re-derived and checked against the candidate output - multiplies the
+degenerate point (<code>q</code>), collapsing <code>r*q</code> to &lt;=2 values as a function of <code>r</code>’s parity alone, so the
+<em>other</em>, unconstrained variable (<code>s</code>) can be searched cheaply. With <code>g</code> degenerate instead, it’s
+<code>s*g</code> that collapses, but <code>s</code> is never checked against anything; the checked output (<code>r</code>) still
+multiplies the honest, full-order <code>q</code>, so <code>r*q</code> still ranges over the full group and there’s no
+known cheap inversion. <strong>Empirically probed</strong> (temporary test, not committed - <code>git diff --stat</code>
+confirmed the file was byte-identical to HEAD after removal): order-2 and <code>Infinity</code> <code>g</code>, honest
+full-order <code>q</code> from the vector, brute-forced over 2 bad-<code>g</code> variants x 2000 <code>s</code> x 50 <code>r</code> = 200,000
+<code>curve163::verify_combine</code> trials - <strong>0 hits</strong>. Conclusion: no exploit, no code change - adding a
+<code>g</code> check now would be a behavior change to a <code>hazmat</code> function with no security justification,
+against <code>CLAUDE.md</code>’s own “no speculative features” rule. <code>crypto_sign.rs</code> (the only wired public
+entry point) always hardcodes <code>g = Point::generator()</code> regardless, so this is unreachable through
+any shipped surface either way - <code>hazmat::dstu4145::signature::{sign,verify}</code> are the only place a
+non-constant <code>g</code> could ever reach, for a downstream Rust consumer calling them directly.</p>
+<p><strong>3. UAPKI’s live <code>main</code> branch has the missing-order-check gap T-189 fixed in our own code -
+found in their code, not ours; no action taken on their repository.</strong> Trace, three files:
+<code>library/common/pkix/uapki-ns-verify.cpp:136-142</code> (<code>SIGN_DSTU4145</code> case) calls
+<code>dstu4145_decompress_pubkey</code> then <code>ec_init_verify(ec_ctx, Qx, Qy)</code> then <code>dstu4145_verify</code> - this is
+confirmed (via <code>gh api search/code</code>) to be the <em>only</em> caller of <code>ec_init_verify</code>/<code>dstu4145_verify</code>
+for this algorithm anywhere in the repository, i.e. the real, live, application-level DSTU 4145
+signature-verification path (CMS/document/certificate signature checking), not a narrower internal
+helper. <code>ec_init_verify</code> → <code>public_key_to_ec_point</code> (<code>ec.c:813-867</code>, vendored locally) → for the
+<code>EC_FIELD_BINARY</code> branch (DSTU 4145’s field), calls <strong>only</strong> <code>ec2m_is_on_curve</code>
+(<code>math-ec2m-internal.c:117-145</code>, vendored locally) - a direct transcription of the curve equation
+<code>y^2 + xy = x^3 + ax^2 + b</code>, nothing else. No order/<code>n*Q == O</code>/cofactor check exists anywhere on
+this path. A repo-wide search (<code>gh api search/code?q=cofactor+repo:specinfo-ua/UAPKI</code> plus a local
+grep of the vendored subset) found the string <code>cofactor</code> used exactly once in the whole codebase,
+inside <code>ec_dh</code> (Diffie-Hellman key agreement’s optional cofactor-multiplication mode) - an
+unrelated function, never called from the DSTU 4145 sign/verify path.</p>
+<p><strong>Confirmed this isn’t inert for a cofactor-1 curve</strong> (the one thing that would make the gap
+harmless): decoded UAPKI’s own <code>EC_PARAMS_DSTU4145_M163_PB.n</code> (<code>ec-default-params.c</code>, little-endian
+byte array) to <code>0x400000000000000000002bec12be2262d39bcf14d</code> - byte-for-byte identical (just
+endianness) to <code>curve163::order()</code>’s own big-endian constant
+(<code>crates/dstu-core/src/hazmat/dstu4145/curve163.rs:46-49</code>). Same field reduction polynomial
+exponents too (<code>{163,7,6,3,0}</code>, DSTU 4145’s one fixed m=163 polynomial). This is the exact same
+standard curve (Мін’юст-registered, per the source comment at <code>ec-default-params.c</code>’s header) as
+ours, with the same already-confirmed cofactor 2 (D-172’s Hasse’s-bound + Bouncy Castle
+cross-check) - so T-189’s exact exploit mechanism (an order-2 public key collapsing <code>r*Q</code> to &lt;=2
+values, letting <code>s</code> be searched cheaply) applies to UAPKI’s own curve parameters unchanged.</p>
+<p><strong>What was and wasn’t verified</strong>: this is a source-reading trace across three files plus one
+independent curve-parameter cross-check (the same standard for rigor T-189/D-172 itself used
+before calling that bug real) - not a compiled, running proof-of-concept against UAPKI’s actual
+binary. The vendored <code>oracles/uapki/</code> subset only contains <code>library/uapkic</code> (<code>docs/ORACLES.md</code>’s
+own sparse-checkout note); <code>uapki-ns-verify.cpp</code>, <code>ec-default-params.c</code>’s cofactor cross-check
+inputs, and the <code>gh api search/code</code> calls confirming <code>ec_init_verify</code>’s only caller all required
+fetching from the real <code>specinfo-ua/UAPKI</code> GitHub repository (<code>main</code> branch, read-only, no clone
+added to this repo) - not from the local vendored copy alone.</p>
+<p><strong>No action taken on <code>specinfo-ua/UAPKI</code> itself</strong> - per this project’s own established precedent
+(D-91’s “check back with the user before opening anything on <code>specinfo-ua/UAPKI</code>”, from T-137’s PR
+#30). This finding was raised to the project owner as a question (disclose or not, and how) rather
+than acted on unilaterally; see <code>docs/TASKS.md</code> T-190 for the outcome once decided.</p>
+<p><strong>No change to our own code</strong> - <code>signature::verify</code> already rejects both the on-curve failure and
+the <code>x = 0</code> small-subgroup case (T-189/D-172). This finding is corroborating evidence that T-189
+was a real, exploitable bug class shared with a second independent DSTU 4145 implementation, not
+paranoia over a theoretical concern.</p>
 
                     </main>
 

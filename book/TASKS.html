@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-2c1e3303.js";
+            window.path_to_searchindex_js = "searchindex-22b22bda.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-ce7e91c5.js"></script>
@@ -2472,6 +2472,22 @@ exactly a missing on-curve check found by this style of reasoning), then Kalyna
 (`DSTU7624WrapEngine` is the densest validation file in BC), then Kupyna, then Strumok
 (UAPKI-only, smaller surface). DSTU 9041 is not a sub-pass (table above) - do not spend time
 on it here.
+
+**Sub-pass 1 (DSTU 4145) closed 2026-08-08, findings in `docs/DECISIONS.md` D-174.**
+Bouncy Castle: T-189's fix has exact parity with `ECPublicKeyParameters` →
+`validatePublicPoint` → `isValid()`'s cofactor-2 `satisfiesOrder()` branch - no new gap.
+The `g` (base point) side: checked whether the missing per-call validation there mirrors
+T-189's `q` exploit - analytic argument plus an empirical 200,000-trial probe (0 hits, not
+committed) both say no; `crypto_sign.rs` hardcodes `g = Point::generator()` regardless, so
+this is unreachable through any shipped surface either way - no code change, documented as
+checked-not-needed per this task's own step 4. UAPKI: **a real finding, in their code, not
+ours** - `library/common/pkix/uapki-ns-verify.cpp`'s live `SIGN_DSTU4145` verification path
+validates on-curve (`ec2m_is_on_curve`) but never checks point order/cofactor, for the exact
+same cofactor-2 standard curve (order `n` cross-checked byte-for-byte against
+`curve163::order()`) T-189 fixed in our own code - see D-174 for the full three-file trace.
+**Not actioned on `specinfo-ua/UAPKI` itself** - per D-91's established precedent, raised to
+the project owner as a question (disclose or not, and how), not acted on unilaterally.
+Awaiting the owner's decision; record the outcome here once decided.
 </code></pre>
 </li>
 <li>
