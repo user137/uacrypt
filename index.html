@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>uacrypt — Ukrainian DSTU cryptography in Rust</title>
-<meta name="description" content="uacrypt: a Rust library implementing Ukraine's national cryptographic standards (Kalyna, Kupyna, Strumok, DSTU 4145) in the spirit of libsodium — safe defaults, dual-oracle verified.">
+<meta name="description" content="uacrypt: a Rust library implementing Ukraine's national cryptographic standards (Kalyna, Kupyna, Strumok, DSTU 4145, DSTU 9041) in the spirit of libsodium — safe defaults, dual-oracle verified.">
 <meta property="og:title" content="uacrypt — Ukrainian DSTU cryptography in Rust">
-<meta property="og:description" content="Kalyna, Kupyna, Strumok and DSTU 4145 as a Rust library with hard, safe-by-default APIs. Dual-oracle verified where the project claims so — and honest about where it isn't yet.">
+<meta property="og:description" content="Kalyna, Kupyna, Strumok, DSTU 4145, and DSTU 9041 as a Rust library with hard, safe-by-default APIs. Dual-oracle verified where the project claims so — and honest about where it isn't yet.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://user137.github.io/uacrypt/">
 <meta property="og:locale" content="en_US">
@@ -14,10 +14,10 @@
 <meta property="og:image" content="https://user137.github.io/uacrypt/og-image.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="uacrypt — Ukrainian national cryptography, Kalyna, Kupyna, Strumok, DSTU 4145">
+<meta property="og:image:alt" content="uacrypt — Ukrainian national cryptography, Kalyna, Kupyna, Strumok, DSTU 4145, DSTU 9041">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="uacrypt — Ukrainian DSTU cryptography in Rust">
-<meta name="twitter:description" content="Kalyna, Kupyna, Strumok and DSTU 4145 as a Rust library with hard, safe-by-default APIs. Dual-oracle verified where the project claims so — and honest about where it isn't yet.">
+<meta name="twitter:description" content="Kalyna, Kupyna, Strumok, DSTU 4145, and DSTU 9041 as a Rust library with hard, safe-by-default APIs. Dual-oracle verified where the project claims so — and honest about where it isn't yet.">
 <meta name="twitter:image" content="https://user137.github.io/uacrypt/og-image.png">
 <meta name="robots" content="index, follow">
 <link rel="canonical" href="https://user137.github.io/uacrypt/">
@@ -31,7 +31,7 @@
   "@type": "SoftwareSourceCode",
   "name": "uacrypt",
   "url": "https://user137.github.io/uacrypt/",
-  "description": "uacrypt: a Rust library implementing Ukraine's national cryptographic standards (Kalyna, Kupyna, Strumok, DSTU 4145) in the spirit of libsodium — safe defaults, dual-oracle verified.",
+  "description": "uacrypt: a Rust library implementing Ukraine's national cryptographic standards (Kalyna, Kupyna, Strumok, DSTU 4145, DSTU 9041) in the spirit of libsodium — safe defaults, dual-oracle verified.",
   "codeRepository": "https://github.com/user137/uacrypt",
   "programmingLanguage": "Rust",
   "license": ["https://opensource.org/license/mit/", "https://www.apache.org/licenses/LICENSE-2.0"],
@@ -280,18 +280,24 @@ html[data-lang="uk"] [lang="en"]{display:none;}
   </div>
 
   <div class="status-note">
-    <p lang="en"><strong>v0.1.0 — pre-release.</strong> Kalyna and Kupyna are dual-oracle
-    verified: official DSTU test vectors, cross-checked against real Bouncy Castle. Strumok, the
-    Kalyna-CCM/GCM modes, and the CLI's AEAD framing each carry their own, more specific status
-    below — read those before trusting a claim at face value. Not independently audited. Not a
-    claim of resistance to hardware side-channel attacks (SPA/DPA) — that needs a separate,
-    dedicated hardware audit this project hasn't had.</p>
-    <p lang="uk"><strong>v0.1.0 — попередній реліз.</strong> Калина і Купина верифіковані за
-    принципом подвійного оракула: офіційні тестові вектори ДСТУ, звірені з реальною Bouncy
-    Castle. Струмок, режими Kalyna-CCM/GCM та AEAD-обгортка CLI мають власні, детальніші статуси
-    нижче — варто прочитати їх, а не довіряти узагальненню на слово. Незалежного аудиту немає.
-    Це не заява про стійкість до апаратних атак побічними каналами (SPA/DPA) — для цього
-    потрібен окремий апаратний аудит, якого в проєкту не було.</p>
+    <p lang="en"><strong>v0.2.0 — released 2026-08-02.</strong> DSTU 9041 / <code>crypto_box</code>
+    below is implemented on <code>master</code> but not yet in a tagged release — check
+    <a href="https://github.com/user137/uacrypt/releases">GitHub Releases</a> before assuming a
+    downloaded binary has it. Kalyna and Kupyna are dual-oracle verified: official DSTU test
+    vectors, cross-checked against real Bouncy Castle. Strumok, the Kalyna-CCM/GCM modes, and the
+    CLI's AEAD framing each carry their own, more specific status below — read those before
+    trusting a claim at face value. Not independently audited. Not a claim of resistance to
+    hardware side-channel attacks (SPA/DPA) — that needs a separate, dedicated hardware audit this
+    project hasn't had.</p>
+    <p lang="uk"><strong>v0.2.0 — реліз від 2026-08-02.</strong> ДСТУ 9041 / <code>crypto_box</code>
+    нижче реалізовано на <code>master</code>, але ще не увійшло до жодного тегованого релізу —
+    перевірте <a href="https://github.com/user137/uacrypt/releases">GitHub Releases</a>, перш ніж
+    припускати, що завантажений бінарник це має. Калина і Купина верифіковані за принципом
+    подвійного оракула: офіційні тестові вектори ДСТУ, звірені з реальною Bouncy Castle. Струмок,
+    режими Kalyna-CCM/GCM та AEAD-обгортка CLI мають власні, детальніші статуси нижче — варто
+    прочитати їх, а не довіряти узагальненню на слово. Незалежного аудиту немає. Це не заява про
+    стійкість до апаратних атак побічними каналами (SPA/DPA) — для цього потрібен окремий
+    апаратний аудит, якого в проєкту не було.</p>
   </div>
 </section>
 
@@ -730,9 +736,9 @@ html[data-lang="uk"] [lang="en"]{display:none;}
 <section class="container">
   <span class="eyebrow" lang="en">Try it</span>
   <span class="eyebrow" lang="uk">Спробувати</span>
-  <div lang="en" class="prose"><h2>The CLI has three verbs to remember</h2>
+  <div lang="en" class="prose"><h2>Every verb the CLI has — still nothing to misconfigure</h2>
   <p>Mode, nonce, and algorithm are hardcoded — there's nothing left to misconfigure.</p></div>
-  <div lang="uk" class="prose"><h2>У CLI три дієслова, які варто пам'ятати</h2>
+  <div lang="uk" class="prose"><h2>Усі дієслова CLI — і досі нічого не можна неправильно налаштувати</h2>
   <p>Режим, nonce і алгоритм зашиті наглухо — налаштовувати нічого.</p></div>
 
 <pre><code>cargo build -p uacrypt --release
@@ -745,7 +751,18 @@ uacrypt hash    --in file.bin --out digest.bin
 uacrypt sign-keygen --out signing.key
 uacrypt sign-pubkey --key signing.key --out verifying.key
 uacrypt sign         --key signing.key   --in message.bin --out message.bin.sig
-uacrypt verify       --key verifying.key --in message.bin --sig message.bin.sig</code></pre>
+uacrypt verify       --key verifying.key --in message.bin --sig message.bin.sig
+
+uacrypt box-keygen --out box.key
+uacrypt box-pubkey --key box.key --out box.pub
+uacrypt box-seal   --key box.pub  --in message.bin --out sealed.box
+uacrypt box-open   --key box.key  --in sealed.box   --out message.bin</code></pre>
+
+  <p class="small" lang="en"><code>box-*</code> (DSTU 9041 / <code>crypto_box</code>) is on
+  <code>master</code>, not yet in a tagged release — see the version note above.</p>
+  <p class="small" lang="uk"><code>box-*</code> (ДСТУ 9041 / <code>crypto_box</code>) є на
+  <code>master</code>, ще не увійшло до жодного тегованого релізу — див. примітку про версію
+  вище.</p>
 
   <p lang="en"><code>encrypt</code>/<code>decrypt</code> stream the file in fixed-size chunks —
   no message-length cap, no whole-file memory buffer. Prebuilt binaries for Windows, Linux, and
@@ -830,7 +847,8 @@ uacrypt verify       --key verifying.key --in message.bin --sig message.bin.sig<
   <span class="eyebrow" lang="en">Status</span>
   <span class="eyebrow" lang="uk">Статус</span>
   <div lang="en" class="prose"><h2>Where this stands, and what's next</h2>
-  <p>v0.1.0, pre-release. The phase-by-phase backlog lives in
+  <p>v0.2.0 released; DSTU 9041/<code>crypto_box</code> landed on <code>master</code> since, not
+  yet in a tagged release. The phase-by-phase backlog lives in
   <a href="https://github.com/user137/uacrypt/blob/master/docs/TASKS.md">docs/TASKS.md</a>, the
   full gap analysis against a libsodium-equivalent 1.0 in
   <a href="https://github.com/user137/uacrypt/blob/master/docs/release-readiness.md">docs/release-readiness.md</a>,
@@ -838,7 +856,8 @@ uacrypt verify       --key verifying.key --in message.bin --sig message.bin.sig<
   <a href="https://github.com/user137/uacrypt/blob/master/docs/DECISIONS.md">docs/DECISIONS.md</a>.
   Dual-licensed MIT / Apache-2.0, the Rust ecosystem default.</p></div>
   <div lang="uk" class="prose"><h2>Де зараз проєкт і що далі</h2>
-  <p>v0.1.0, попередній реліз. Беклог по фазах — у
+  <p>v0.2.0 випущено; ДСТУ 9041/<code>crypto_box</code> з'явилися пізніше на <code>master</code>,
+  ще не увійшли до жодного тегованого релізу. Беклог по фазах — у
   <a href="https://github.com/user137/uacrypt/blob/master/docs/TASKS.md">docs/TASKS.md</a>,
   повний аналіз розриву до рівня, еквівалентного libsodium 1.0, — у
   <a href="https://github.com/user137/uacrypt/blob/master/docs/release-readiness.md">docs/release-readiness.md</a>,
