@@ -75,6 +75,23 @@ impl Point {
         }
     }
 
+    /// Checks `y^2 + xy == x^3 + x^2 + b` (`a = 1` fixed for this curve, matching `double`'s own
+    /// assumption above). `Infinity` is not a solution of this affine equation and returns
+    /// `false` - callers that must also accept the group identity check for it separately (see
+    /// `signature::verify`, `docs/TASKS.md` T-189). Public-data check (never called on a
+    /// secret-dependent point, same posture as `double`/`add`).
+    #[must_use]
+    pub fn is_on_curve(self) -> bool {
+        match self {
+            Point::Infinity => false,
+            Point::Affine(x, y) => {
+                let lhs = y.square() + x.multiply(y);
+                let rhs = x.multiply(x.square()) + x.square() + b();
+                lhs == rhs
+            }
+        }
+    }
+
     /// Affine point doubling for `y^2 + xy = x^3 + x^2 + b` (`a = 1` fixed for this curve).
     /// Standard formulas (`Guide to Elliptic Curve Cryptography`, Hankerson/Menezes/Vanstone,
     /// `§3.1.2`) - branches on `x1 == 0` are fine here, see the module doc: this is never called

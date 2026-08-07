@@ -237,3 +237,156 @@ fn sign_rejects_when_s_would_be_zero() {
     let hash = [0x42u8; 21];
     assert_eq!(sign(&hash, d, e, g), None, "expected the s == 0 rejection");
 }
+
+/// `docs/TASKS.md` T-189: `verify` took its `q` parameter on faith with no validation at all -
+/// found auditing T-183. A naive "swap in a bogus `q`, reuse the real `(r, s)`, assert `verify`
+/// now returns false" test would pass **today, before any fix** - not because anything rejects
+/// `q`, but because reusing a signature computed against a *different* `q` fails the final
+/// equality check by sheer numeric coincidence (confirmed empirically: all three such tests
+/// passed against the unfixed code). That's exactly the D-21/D-25 trap `CLAUDE.md` already
+/// documents (a test that passes without exercising what it claims to) - applied here to the key
+/// input rather than the derivation step where it was first found. So these three tests instead
+/// *actively forge* a `(r, s)` pair `verify` currently accepts for each bad `q`, via
+/// `find_forgery` below - a real, working universal-forgery exploit, not a coincidental pass.
+///
+/// The exploit: `q`'s order divides 2 for every `q` used below (the real order-2 point, and any
+/// `x = 0` point regardless of `y` - `curve163::Point::double`'s `if x1 == 0 { return Infinity }`
+/// branches on `x` alone, never checks the curve equation, so a fake `(0, y)` behaves identically
+/// to the genuine order-2 point for this purpose; `Infinity` itself has order 1, an even easier
+/// case of the same idea). `r*q` then only depends on `r`'s parity (or not at all, for
+/// `Infinity`), collapsing `s*G + r*q` to at most two possible values per trial `s` - cheap to
+/// search, and once a hit's `x`-coordinate is found, `truncate_162(h * x)` **is** a valid forged
+/// `r` by construction, with no private key involved anywhere.
+///
+/// The existing `gf2m163_worked_example_verifies` above is this trio's regression guard in the
+/// other direction (a genuine on-curve, full-order key must still verify) - not duplicated here.
+mod t189_public_key_validation {
+    use super::{decode_hex, extract, field};
+    use dstu_core::hazmat::dstu4145::curve163::{self, Point};
+    use dstu_core::hazmat::dstu4145::gf2m163::FieldElement;
+    use dstu_core::hazmat::dstu4145::signature::{hash_to_field, verify};
+
+    /// Mirrors `signature::truncate_162` (private to that module) exactly - see its doc comment:
+    /// keeps the low 162 bits of a field element's big-endian integer value.
+    fn truncate_162(y: FieldElement) -> [u8; 21] {
+        let mut bytes = y.to_be_bytes();
+        bytes[0] &= 0x03;
+        bytes
+    }
+
+    fn encode_u32(v: u32) -> [u8; 21] {
+        let mut out = [0u8; 21];
+        out[17..].copy_from_slice(&v.to_be_bytes());
+        out
+    }
+
+    /// Searches trial `s` values for a forged `(r, s)` that `curve163::verify_combine` (the same
+    /// public-data combine `signature::verify` itself calls) makes self-consistent for the given
+    /// `q` - see the module doc above for why this works whenever `q`'s order divides 2. At most
+    /// ~200 trials, each one `verify_combine` call (cheap, non-constant-time public-data
+    /// arithmetic even under `small-tables` - see `curve163.rs`'s own module doc); a match is
+    /// found on the very first trial in practice (~75% per trial, see the module doc's odds).
+    fn find_forgery(q: Point, hash: &[u8]) -> Option<([u8; 21], [u8; 21])> {
+        let g = Point::generator();
+        let mut h = hash_to_field(hash);
+        if h == FieldElement::ZERO {
+            h = FieldElement::ONE;
+        }
+        let r_even = encode_u32(2); // any nonzero even r: r*q == Infinity when ord(q) | 2
+        let r_odd = encode_u32(1); // any odd r: r*q == q when ord(q) | 2
+
+        for s_val in 1..=200u32 {
+            let s = encode_u32(s_val);
+            for (r_probe, want_even) in [(r_even, true), (r_odd, false)] {
+                if let Point::Affine(rx, _) = curve163::verify_combine(g, &s, q, &r_probe) {
+                    let candidate_r = truncate_162(h.multiply(rx));
+                    let is_even = candidate_r[20] & 1 == 0;
+                    if candidate_r != [0u8; 21] && is_even == want_even {
+                        return Some((candidate_r, s));
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    const ARBITRARY_HASH: &str = "00112233445566778899AABBCCDDEEFF0011223344";
+
+    #[cfg_attr(
+        miri,
+        ignore = "verify_combine's search loop is too slow to interpret under Miri - see docs/TASKS.md T-100"
+    )]
+    #[test]
+    fn order_two_public_key_forgery_is_rejected() {
+        // x = 0 is the curve's one non-identity order-2 point (cofactor 2, confirmed T-189):
+        // `y^2 + 0*y = 0 + 0 + b`, i.e. `y = sqrt(b)`. Squaring is a bijection over GF(2^163) (the
+        // Frobenius automorphism has order 163), so `sqrt(b) = b^(2^162)` - 162 repeated
+        // squarings, independent of whatever `is_on_curve` the fix itself adds.
+        let json = include_str!("vectors/dstu4145/gf2m163.json");
+        let b = field(extract(json, "b"));
+        let mut y = b;
+        for _ in 0..162 {
+            y = y.square();
+        }
+        assert_eq!(
+            y.square(),
+            b,
+            "constructed y must independently satisfy y^2 = b (order-2 point sanity check)"
+        );
+        let q = Point::Affine(FieldElement::ZERO, y);
+
+        let hash = decode_hex(ARBITRARY_HASH);
+        let (r, s) = find_forgery(q, &hash).expect("forgery search found no hit in 200 trials");
+        assert!(
+            !verify(&hash, &r, &s, q, Point::generator()),
+            "a forged signature under the order-2 (small-subgroup) public key must not verify"
+        );
+    }
+
+    #[cfg_attr(
+        miri,
+        ignore = "verify_combine's search loop is too slow to interpret under Miri - see docs/TASKS.md T-100"
+    )]
+    #[test]
+    fn off_curve_x_zero_public_key_forgery_is_rejected() {
+        // y = ONE deliberately does NOT satisfy y^2 = b (checked below) - this point is off the
+        // real curve entirely, but `double`'s group law only branches on `x == 0` (see the module
+        // doc above), so it exhibits the same order-dividing-2 exploit as the genuine order-2
+        // point - proving the missing on-curve check is independently exploitable from the
+        // missing small-subgroup check, not the same gap twice.
+        let json = include_str!("vectors/dstu4145/gf2m163.json");
+        let b = field(extract(json, "b"));
+        let y = FieldElement::ONE;
+        assert_ne!(
+            y.square(),
+            b,
+            "test setup: y must NOT satisfy the curve equation"
+        );
+        let q = Point::Affine(FieldElement::ZERO, y);
+
+        let hash = decode_hex(ARBITRARY_HASH);
+        let (r, s) = find_forgery(q, &hash).expect("forgery search found no hit in 200 trials");
+        assert!(
+            !verify(&hash, &r, &s, q, Point::generator()),
+            "a forged signature under an off-curve public key must not verify"
+        );
+    }
+
+    #[cfg_attr(
+        miri,
+        ignore = "verify_combine's search loop is too slow to interpret under Miri - see docs/TASKS.md T-100"
+    )]
+    #[test]
+    fn infinity_public_key_forgery_is_rejected() {
+        // Infinity has order 1: r*Infinity == Infinity for *every* r (not just even r), so this
+        // is an easier case of the same exploit - find_forgery's parity split still applies
+        // (harmlessly; both branches converge to the same q*r == Infinity result).
+        let hash = decode_hex(ARBITRARY_HASH);
+        let (r, s) = find_forgery(Point::Infinity, &hash)
+            .expect("forgery search found no hit in 200 trials");
+        assert!(
+            !verify(&hash, &r, &s, Point::Infinity, Point::generator()),
+            "a forged signature under the point-at-infinity public key must not verify"
+        );
+    }
+}

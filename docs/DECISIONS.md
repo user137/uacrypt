@@ -11591,3 +11591,161 @@ landed it - this entry's first draft simply didn't check that before repeating F
 planning-time claim. Python/Node/Ruby/PHP (direct FFI) and Java (pending its own `jni`-vs-C-ABI
 spike) were never blocked by T-178c. `docs/bindings-strategy.md` now carries T-181's own phase entry
 with the corrected ordering spelled out.
+
+## D-172: T-189 - `hazmat::dstu4145::signature::verify` accepted an unvalidated public key, a real universal-forgery bug
+
+**Found auditing T-183** (owner-directed adversarial-test-coverage audit of `crypto_box`/
+`dstu9041`) - out of that task's own dstu9041-only scope, but the same shape of gap: `verify`'s `q`
+parameter (`VerifyingKey::from_uncompressed_bytes` at the `crypto_sign` layer, and every direct
+`hazmat` caller) was never checked to be a genuine, full-order point on the curve before being fed
+into `curve163::verify_combine`'s `s*G + r*Q` combine step.
+
+**Confirmed exploitable, not just bad hygiene.** `curve163::Point::double`'s group law branches on
+`x == 0` alone (`if x1 == FieldElement::ZERO { return Infinity }`) and never checks the curve
+equation `y^2 + xy = x^3 + x^2 + b` at all - it's a public-data addition-formula implementation,
+correct for *any* point on *any* curve of this shape, not specifically the DSTU 4145 one. Any `q`
+whose order divides 2 (the curve's own order-2 point at `x=0`, an off-curve `(0, y)` with `y^2 !=
+b`, or `Point::Infinity` itself, order 1) collapses `r*q` to at most two possible values depending
+only on `r`'s parity (or one value, for `Infinity`) - turning the verification equation into a
+tractable search: pick trial `s`, compute `R = s*G (+ q)` for each parity branch via the existing
+public `verify_combine`, and `r = truncate_162(h * R.x)` **is** a valid forged signature by
+construction, no private key involved. `tests/dstu4145_signature.rs`'s `t189_public_key_validation`
+module implements this search (`find_forgery`) and used it to forge a working `(r, s)` against all
+three `q` shapes above - each forgery test failed (i.e. `verify` wrongly accepted the forgery)
+against the pre-fix code, confirmed by running them before writing any fix, not assumed.
+
+**Why a naive test wouldn't have caught this.** The first draft of these tests just substituted a
+bad `q` into the vector's own *legitimate* `(r, s)` and asserted `verify` now returned `false` -
+which it already did, before any fix, purely because a signature computed for a different `q`
+fails the final equality check by numeric coincidence (~`2^-162` chance of accidentally matching).
+That's the D-21/D-25 trap (`CLAUDE.md`) recurring at the key-input position rather than the
+derivation step where it was first found: a test can pass while exercising nothing. Rewritten to
+actively forge a signature (above) before landing.
+
+**Cofactor confirmed h=2, dual-sourced**, settling how expensive the fix needs to be: Hasse's bound
+for `n = 0x0400000000000000000002BEC12BE2262D39BCF14D` (`gf2m163.json`) over `GF(2^163)` admits
+only `h=2` in its window (`h=1` falls far short of the window, `h>=3` overshoots it) - independently
+confirmed against `oracles/bouncycastle-java/.../DSTU4145NamedCurves.java:47` (`h_s[0] = TWO`). So
+`{Infinity, (0, sqrt(b))}` is the curve's *only* non-prime-order subgroup - an on-curve check plus
+an explicit `x != 0` rejection is complete; no expensive full subgroup-order scalar multiplication
+(`n*Q == Infinity`) is needed.
+
+**Fix**: `curve163::Point::is_on_curve` (new, mirrors `dstu9041::curve256::Point::is_on_curve`'s
+existing shape) checks the affine curve equation directly, returning `false` for `Infinity` (not a
+solution of the affine equation - callers needing to also reject the group identity do so
+separately, as `verify` does here). `signature::verify` gained one guard clause right after its
+existing `r`/`s` range checks: reject if `q`'s `x`-coordinate is `ZERO` or `!q.is_on_curve()`,
+before any of `h`/`verify_combine` is computed.
+
+**Where the check lives, and why not `from_uncompressed_bytes`.** `from_uncompressed_bytes` returns
+`Self` (not `Result`) and this crate has shipped v0.2.0 to crates.io - adding validation there would
+be a breaking API change on a published type. `hazmat::dstu4145::signature::verify` already returns
+`bool` and is the single choke point every path funnels through (`crypto_sign::verify_digest`, the
+C ABI, and all eight language bindings) - validating there is non-breaking and closes the hole for
+every caller uniformly, not just the one high-level wrapper. `advisor()`-reviewed before writing any
+code, per this project's standing rule for security-critical forks.
+
+**Perf, measured not assumed** (T-153's methodology: fresh release build, `uacrypt verify
+--iterations`, same machine, idle - not run concurrently with anything else, per D-161's stash-cycle
+caution): a real `git stash`/rebuild A/B on this session's own machine measured **563.20 ops/s
+before the fix, ~539 ops/s after** (two consistent post-fix runs, 538.84/540.29) - roughly a 4-5%
+cost, higher than the "a few field multiplications should be sub-1%" naive estimate, but nowhere
+near what a full extra `scalar_multiply` ladder would cost (that would roughly halve throughput, the
+signal that would mean the wrong - expensive subgroup-check - fix had been built instead). The gap
+is plausibly partly measurement/binary-layout noise (an earlier same-fix measurement taken while a
+`cargo test` run was still active in the background read 450.15 ops/s, a ~14% apparent regression
+that fully disappeared once the machine was actually idle) rather than a pure algorithmic cost of
+`is_on_curve`'s 2 squarings + 2 multiplies. Not chased further - both numbers comfortably clear
+T-153/D-109's own prior baseline (524.01 ops/s) within normal run-to-run variance, and the fix is
+mandatory regardless of the exact overhead.
+
+**Tests**: `t189_public_key_validation` (3 forgery tests above) plus the existing
+`gf2m163_worked_example_verifies` as the other-direction regression guard (a genuine on-curve,
+full-order key must still verify - unaffected by the fix). Full three-profile posture: default and
+`--features small-tables` both green (`small-tables`'s own `verify_combine` still goes through
+`scalar_multiply`, D-108 - a genuinely different code path from the default projective combine, not
+a redundant re-run). `cargo test -p dstu-core` (full suite, all binaries), `-p dstu-core-capi`,
+`-p uacrypt` all green; `clippy --all-features -D warnings` and `fmt --check` clean.
+
+**Not yet done**: the four remaining real gaps T-183's own audit found in `dstu9041`/`crypto_box`
+(order-4 subgroup regression test, `SecretKey`/length boundary tests, `euler_criterion`-ordering
+property test, D-169/D-171 CCA-oracle-collapse invariant test) stay backlog items under T-183 -
+this entry covers only the DSTU 4145 finding that was spun off as its own task, not the rest of
+that audit.
+
+## D-173: T-183 follow-up - three of the four remaining audit gaps closed; the fourth (order-4) hit a real dead end, not chased past it
+
+**Three straightforward test additions**, all in `crates/dstu-core/tests/`, no production code
+changed:
+
+- `crypto_box.rs`: `secret_key_rejects_out_of_range_bytes_upper_boundary` (`e=n-1,n,n+1`, all-
+  `0xFF`, mirroring `hazmat::dstu9041::curve256`'s own `is_valid_scalar_boundaries` but confirming
+  `SecretKey::from_bytes` actually wires up to it, not re-testing the same math twice) and
+  `trailing_garbage_after_valid_ciphertext_is_rejected` (append one byte past a valid `seal`
+  output - `open`'s own `tag = &sealed[ciphertext_start + ciphertext_len..]` construction ties the
+  tag window to `sealed.len()` directly, so trailing garbage shifts both the ciphertext and tag
+  windows by one byte and fails the AEAD tag check for the ordinary reason, not an explicit
+  length-prefix check - confirmed by reading `open`, not assumed).
+- `dstu9041_curve.rs`: `point_from_x_rejects_a_non_residue_x` - finds a real non-residue `x` by
+  sequential search from `x=2` (a negligible chance of coinciding with one of the four specifically
+  -excluded values) and confirms `point_from_x` rejects it end to end. Complements, does not
+  duplicate, `dstu9041_field.rs`'s pre-existing `sqrt_of_non_residue_does_not_square_back` (proves
+  `sqrt` never self-validates a non-residue input, which is *why* checking `euler_criterion` first
+  matters) - that test pins the field-level property, this one pins the real call site.
+- `crypto_box.rs`: `kem_failure_and_secretstream_failure_are_indistinguishable` - a wrong-key
+  failure (KEM-level, `dstu9041_decrypt` itself errors) and a tampered-tag failure (secretstream-
+  level, KEM decrypt succeeds, `PullState::pull` fails) asserted to produce not just the same
+  `OpenError` variant but identical `Debug` output. The third failure mode T-183 named (KEM success
+  with a wrong-length recovered seed) was not constructed - `hazmat::dstu9041::decrypt`'s own
+  `DecryptError` is already collapsed to one variant for the identical padding-oracle reason
+  (D-167), so black-box-forging a ciphertext that passes KEM decryption yet yields a wrong `bit_len`
+  may not be reachable at all without first breaking the KEM's own hash check - documented as
+  foreclosed-by-contract (D-111's `dstu4145` precedent) rather than forced.
+
+**The order-4 regression test was attempted and did not land - a real investigative dead end, not
+an oversight.** Constructing a concrete order-4 point needs `curve256.rs`'s `pub(crate)`
+`curve_a`/`curve_d`, invisible to the black-box `tests/` crate, so it needs an internal
+`#[cfg(test)]` module (`fp256.rs`'s `private_constant_tests` precedent). Two things survive the
+attempt even though the test itself doesn't exist:
+
+1. **A genuine identity-representation hazard in `ProjectivePoint::to_affine`**, worth recording
+   independent of order-4: `to_affine` has no `z == 0` special case, so a `scalar_multiply` result
+   that reaches the group identity through a `z == 0` intermediate renders as `(0, 0)`, not
+   `Point::NEUTRAL = (1, 0)` - confirmed directly against the real build (not assumed, not just a
+   Node reimplementation artifact - initially mistaken for exactly that, see below).
+   `n_times_base_point_is_neutral` only ever exercises the *base point's own* ladder for scalar
+   `n`, which happens not to hit this path, so it never caught this. `point_from_x`'s own subgroup
+   guard (`candidate.scalar_multiply(&order()) != Point::NEUTRAL`) **fails closed** on this - `(0,
+   0) != (1, 0)` still correctly rejects - so it is not the security hole it looked like at first
+   read. Worth a general caution for any future code comparing a `scalar_multiply` result against
+   `NEUTRAL`: that comparison is not a reliable general-purpose "is this the identity" check on
+   this curve.
+2. **Whether a concrete order-4 point is reachable through `point_from_x`'s own reconstruction
+   formula at all is an open question**, not confirmed either way. A corrected search (screening
+   via a single fresh `2n*Y` ladder call, not by doubling an already-affine, possibly-degenerate
+   `n*Y` - the bug that produced finding 1 above) found 0 order-4 candidates across 62 valid
+   reconstructed points, against a 50/50 split D-167 Finding 2's own group theory predicts (a
+   `~2^-62` coincidence if that theory's reachability assumption holds). This does not contradict
+   D-167 Finding 2's *existence* proof (order-4 points genuinely exist - independently re-confirmed
+   this session via Hasse's bound: `h=4` is the unique cofactor fitting the Hasse window for this
+   curve's `p`/`n`, both re-derived from the actual `P_LIMBS`/`ORDER_N` bytes, not assumed from the
+   prior entry). It does mean the *specific* attack D-167 describes (a crafted `r` reaching an
+   order-4 point through this exact reconstruction path) may not be reachable the way that entry
+   assumed - most likely because an order-4 point's own `x`-coordinate never happens to satisfy
+   `euler_criterion` under this formula, making it unreachable by construction rather than merely
+   untested. Unconfirmed either way; would need an analytic answer (does an order-4 point's `x`
+   ever satisfy `euler_criterion`?), not more empirical search, to settle.
+
+**Process note, since this investigation genuinely went sideways twice before landing on the above:**
+first mistook the `(0, 0)` finding for a live completeness bug in `ProjectivePoint::add` (a
+from-scratch Node.js reimplementation of the same formula reproduced the same anomaly, which felt
+like independent confirmation but wasn't - both implementations shared the same flawed
+`to_affine`-after-every-`.add()` test structure, not independently verified group arithmetic).
+`advisor()` correctly identified this from the `to_affine` source alone. Second mistake, in the
+corrected search: derived the `2n` scalar via `FieldElement::add` (which reduces mod the curve's
+field prime `p`), not the group-order/scalar domain - numerically harmless here only because `2n <
+p` (no wraparound), which is not a reason to use the wrong type; caught by a second `advisor()`
+pass, fixed by hardcoding an externally-computed, independently re-verified constant instead
+(`two_n_is_really_2n`, an from-scratch big-endian doubling check, not a re-assertion of the same
+mistake). Both are concrete instances of this project's own standing rule about verifying claims
+rather than trusting a computation that "looks" independent.

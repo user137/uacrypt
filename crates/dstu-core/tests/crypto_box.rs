@@ -7,6 +7,7 @@
 #![cfg(feature = "std")]
 
 use dstu_core::crypto_box::{open, seal, OpenError, PublicKey, SecretKey};
+use dstu_core::hazmat::dstu9041::curve256::order;
 use proptest::prelude::*;
 
 const KEM_CIPHERTEXT_LEN: usize = 128;
@@ -144,6 +145,55 @@ fn tampered_tag_is_rejected() {
     assert!(matches!(err, OpenError::InvalidCiphertext));
 }
 
+/// `docs/TASKS.md` T-183 Group 3 / `docs/DECISIONS.md` D-169/D-171: the individual tamper tests
+/// above each confirm *a* failure returns `OpenError::InvalidCiphertext`, but none of them pin the
+/// actual security property - that failures with genuinely different root causes are
+/// *indistinguishable* to the caller. A KEM-level failure (wrong secret key: `dstu9041_decrypt`
+/// itself errors) and a secretstream-level failure (right key, tampered tag: `decrypt` succeeds,
+/// `PullState::pull`'s own tag check fails) reach `OpenError::InvalidCiphertext` through
+/// completely different code paths inside `open` - this test asserts they produce not just the
+/// same *variant* (`matches!`, already implied by the enum only having one non-`Truncated`
+/// variant today) but the identical `Debug` representation, i.e. nothing an external caller could
+/// observe distinguishes them. A future refactor splitting `OpenError` into more variants (a
+/// padding-oracle-shaped regression, the exact risk D-169/D-171 flag) would break this
+/// immediately.
+///
+/// The third failure mode T-183 names - a KEM-internal success with a wrong-*length* recovered
+/// seed (`crypto_box.rs`'s own `if bit_len != L_MAX_P` defense-in-depth check) - is not
+/// constructed here: `hazmat::dstu9041::decrypt`'s own `DecryptError` is already collapsed to one
+/// variant for the same padding-oracle reason (D-167), so black-box-forging a ciphertext that
+/// passes KEM decryption yet yields a wrong `bit_len` may not be reachable at all without breaking
+/// the KEM's own hash check first - the same "foreclosed by contract, document rather than force a
+/// test" posture as D-111's `dstu4145` findings, not a gap being silently skipped.
+#[test]
+fn kem_failure_and_secretstream_failure_are_indistinguishable() {
+    let secret = SecretKey::generate().expect("OS CSPRNG available in test environment");
+    let public = secret.public_key();
+    let other = SecretKey::generate().expect("OS CSPRNG available in test environment");
+
+    // KEM-level: right ciphertext, wrong key - `dstu9041_decrypt` itself fails.
+    let sealed_a = seal(b"same message", &public).expect("OS CSPRNG available in test environment");
+    let kem_level_err = open(&sealed_a, &other).expect_err("wrong key must fail");
+
+    // Secretstream-level: right key, tampered tag - KEM decrypt succeeds, `PullState::pull` fails.
+    let mut sealed_b =
+        seal(b"same message", &public).expect("OS CSPRNG available in test environment");
+    let last = sealed_b.len() - 1;
+    sealed_b[last] ^= 0xFF;
+    let secretstream_level_err = open(&sealed_b, &secret).expect_err("tampered tag must fail");
+
+    assert!(matches!(kem_level_err, OpenError::InvalidCiphertext));
+    assert!(matches!(
+        secretstream_level_err,
+        OpenError::InvalidCiphertext
+    ));
+    assert_eq!(
+        format!("{kem_level_err:?}"),
+        format!("{secretstream_level_err:?}"),
+        "a KEM-level failure and a secretstream-level failure must be identically observable"
+    );
+}
+
 #[test]
 fn secret_key_rejects_out_of_range_bytes() {
     assert!(
@@ -153,6 +203,52 @@ fn secret_key_rejects_out_of_range_bytes() {
     let mut one = [0u8; 32];
     one[31] = 1;
     assert!(SecretKey::from_bytes(&one).is_none(), "e=1 must be invalid");
+}
+
+/// `docs/TASKS.md` T-183 Group 1: `secret_key_rejects_out_of_range_bytes` above only ever checked
+/// the *lower* boundary (`e=0,1`) - `is_valid_scalar`'s strict upper bound (`e < n-1`) and the
+/// all-`0xFF` degenerate case were never exercised at this (`crypto_box`) layer, only at
+/// `hazmat::dstu9041::curve256`'s own `is_valid_scalar_boundaries` (`tests/dstu9041_curve.rs`).
+/// This isn't a duplicate of that test - it confirms `SecretKey::from_bytes` actually *wires up*
+/// to the same validation, not a hazmat-level guarantee that happens not to reach this wrapper.
+#[test]
+fn secret_key_rejects_out_of_range_bytes_upper_boundary() {
+    let n = order();
+    let mut n_minus_1 = n;
+    n_minus_1[31] -= 1;
+    let mut n_plus_1 = n;
+    n_plus_1[31] += 1;
+
+    assert!(
+        SecretKey::from_bytes(&n_minus_1).is_none(),
+        "e=n-1 must be invalid (strict upper bound)"
+    );
+    assert!(SecretKey::from_bytes(&n).is_none(), "e=n must be invalid");
+    assert!(
+        SecretKey::from_bytes(&n_plus_1).is_none(),
+        "e=n+1 must be invalid"
+    );
+    assert!(
+        SecretKey::from_bytes(&[0xFFu8; 32]).is_none(),
+        "e=all-0xFF (far above n) must be invalid"
+    );
+}
+
+/// `docs/TASKS.md` T-183 Group 1: `truncated_input_is_rejected_not_a_panic` above only ever
+/// checked lengths at or below `MIN_SEALED_LEN` - nothing checked that `open` rejects *trailing
+/// garbage* appended after an otherwise-valid sealed message (a "reject a lied-about length" gap,
+/// distinct from truncation).
+#[test]
+fn trailing_garbage_after_valid_ciphertext_is_rejected() {
+    let secret = SecretKey::generate().expect("OS CSPRNG available in test environment");
+    let public = secret.public_key();
+    let mut sealed = seal(b"secret", &public).expect("OS CSPRNG available in test environment");
+    sealed.push(0x00);
+    let err = open(&sealed, &secret).expect_err("trailing garbage must be rejected, not ignored");
+    assert!(matches!(
+        err,
+        OpenError::InvalidCiphertext | OpenError::Truncated
+    ));
 }
 
 #[test]

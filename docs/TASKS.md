@@ -2025,6 +2025,130 @@ item they point to is later removed.
       *correctness* (not the misuse cases above) needs no new work - Додаток Г is the sole oracle and
       is already fully verified (T-177). This task is backlog only - T-178/T-179/T-180/T-181's own
       plan is fully done as of 2026-08-06, this stays a backlog item with no committed timeline.
+      **Audit done 2026-08-07** (a fork with full project context, not a subset read): went through
+      `tests/crypto_box.rs`/`tests/dstu9041_*.rs` against Groups 1-3 above.
+      - **Group 3 gaps, real:** order-4 (cofactor) subgroup points have no permanent regression test
+        (only order-2/`r=p-1` does, `dstu9041_curve.rs:200,250` - T-177 found and fixed *two*
+        invalid-curve bugs, only one has a guard); `euler_criterion`-before-`sqrt` ordering is
+        correct in `curve256.rs:211` but untested as a property, only the end result is checked
+        (`dstu9041_field.rs`); the D-169/D-171 CCA-oracle error-indistinguishability collapse holds
+        today but isn't pinned by a single test asserting it across all three failure modes
+        (KEM-failure / bad-seed-length / tag-failure) - a future refactor could silently split them.
+      - **Group 1 gaps, real:** `SecretKey` boundary test only covers `e=0,1`, not `n-1`/`n`/`n+1`/
+        all-`0xFF` (Group 1 explicitly lists these); no test at `MIN_SEALED_LEN+1` (trailing garbage
+        after an otherwise-valid ciphertext - a "reject lied-about length" gap, Group 2).
+      - **Group 1/2 confirmed already covered, not re-flagged:** KEM/header/ciphertext/tag
+        independent tamper, ephemeral-material distinctness, wrong-key rejection, `x in {0,1,p-1}`.
+      - **Out of T-183's own dstu9041-only scope, found during the same pass, spun off as T-189
+        (below) rather than shoehorned in here:** DSTU 4145's `VerifyingKey::from_uncompressed_bytes`/
+        `hazmat::dstu4145::signature::verify` accept an off-curve public key with no validation at
+        all - a real vulnerability, not a missing-test gap. See T-189.
+      - Kalyna-GCM/CCM/KW/`crypto_secretstream`'s own adjacent adversarial coverage was
+        cross-checked in the same pass and found solid (D-63's nonce/tag divergence correctly
+        documented not re-flagged; Kalyna-KW's `tampered_ciphertext_is_rejected` covers the IV/
+        checksum block; `crypto_secretstream` has tag-forgery/reorder/truncation/rekey tests).
+      **Not yet spun off as their own numbered tasks** - the four real Group 1/3 gaps above stay
+      documented here pending owner prioritization, same backlog posture as the rest of T-183.
+
+      **Three of the four closed 2026-08-07, done inline rather than spun off (small, self-
+      contained test additions, no curve theory involved - full detail `docs/DECISIONS.md`
+      D-173):**
+      - `SecretKey`/`open` boundary gaps - closed: `secret_key_rejects_out_of_range_bytes_upper_
+        boundary` (`e=n-1,n,n+1,` all-`0xFF`) and `trailing_garbage_after_valid_ciphertext_is_
+        rejected` (`tests/crypto_box.rs`).
+      - `euler_criterion`-before-`sqrt` ordering - closed: `point_from_x_rejects_a_non_residue_x`
+        (`tests/dstu9041_curve.rs`), complementing the already-existing `dstu9041_field.rs`
+        `sqrt_of_non_residue_does_not_square_back` (proves *why* the order matters) with a test
+        that the real `point_from_x` call site gets it right end to end, not just the isolated
+        field-level property.
+      - D-169/D-171 CCA-oracle collapse - closed: `kem_failure_and_secretstream_failure_are_
+        indistinguishable` (`tests/crypto_box.rs`) - asserts identical `Debug` output (not just the
+        same enum variant) across a KEM-level and a secretstream-level failure. The third named
+        failure mode (KEM success, wrong-length recovered seed) was not constructed - likely
+        foreclosed by `hazmat::dstu9041::decrypt`'s own already-collapsed `DecryptError` (D-167),
+        documented rather than forced, same posture as D-111's `dstu4145` findings.
+      **The fourth (order-4 regression test) remains open** - see the note directly above this one
+      for what was established and why it stopped short of a working test.
+
+      **Order-4 regression test attempted 2026-08-07, not completed - genuinely the hardest of the
+      four, budget-capped per `advisor()` guidance rather than pushed to a conclusion.** Tried to
+      construct a concrete order-4 point test-side (`curve256.rs`'s own `curve_a`/`curve_d` are
+      `pub(crate)`, invisible to the black-box `tests/` crate, so this needs an internal
+      `#[cfg(test)]` module, `fp256.rs`'s `private_constant_tests` precedent). Two real findings
+      survive even though the test itself doesn't exist yet:
+      - **A genuine identity-representation hazard, worth its own note independent of whether
+        order-4 ever gets a test**: `ProjectivePoint::to_affine` has no `z == 0` special case: a
+        `scalar_multiply` result that reaches the group identity via a `z == 0` intermediate
+        renders as `(0, 0)`, not `Point::NEUTRAL = (1, 0)` - confirmed directly in the real `dstu-
+        core` build, not assumed. `n_times_base_point_is_neutral` only ever exercises the *base
+        point's own* ladder for scalar `n`, which happens not to hit this path - it was never
+        stress-tested against an arbitrary other point. `point_from_x`'s own subgroup guard
+        (`candidate.scalar_multiply(&order()) != Point::NEUTRAL`) **fails closed** here: `(0,0) !=
+        (1,0)` still correctly rejects, so this is not the security hole it looked like at first -
+        but any *future* caller comparing a `scalar_multiply` result against `NEUTRAL` should not
+        assume that comparison is reliable for detecting the identity in general.
+      - **Whether a concrete order-4 point is even reachable through `point_from_x`'s own x-only
+        reconstruction formula is an open question, not confirmed either way.** Screened 62 valid
+        reconstructed candidates (via an independently-verified `2n*Y` single-ladder computation,
+        checking for `2n*Y == ` the known order-2 point, which only holds when `Y`'s order is
+        divisible by 4) - all 62 landed in the order-divides-`2n` class (30 as clean `NEUTRAL`, 32
+        via the `(0,0)` hazard above), zero as order-4. Under the group-theoretic 50/50 split
+        D-167 Finding 2 itself argues for, 0/62 is a ~`2^-62` coincidence - strongly suggesting a
+        *structural* reason (e.g. order-4 points' own `x`-coordinates may simply never satisfy
+        `euler_criterion` under this specific reconstruction formula, making them unreachable via
+        `point_from_x`/`crypto_box::PublicKey::from_bytes` by construction, not merely untested).
+        **This would not contradict D-167 Finding 2's existence proof** (order-4 points genuinely
+        exist on the curve, confirmed independently via Hasse's bound: `h=4` is the unique cofactor
+        fitting the Hasse window for this `p`/`n`) **but would mean the specific attack D-167
+        itself describes (a crafted `r` reaching one through this reconstruction path) may not
+        actually be reachable the way that entry assumes** - unconfirmed either way, needs its own
+        focused investigation (ideally: determine analytically whether an order-4 point's `x`-
+        coordinate can ever satisfy `euler_criterion`, rather than more empirical search) before
+        being treated as settled in either direction. Filed here rather than chased further per
+        `advisor()`'s explicit stop condition once the two-step diagnostic it prescribed (verify
+        the `2n` scalar construction, then recount valid-candidate statistics) didn't resolve it -
+        T-183 is backlog with no committed timeline, and diminishing effort on the hardest of four
+        items isn't worth it uninstructed.
+- [x] **T-189** **Done 2026-08-07, found auditing T-183, owner-directed to fix immediately
+      (not backlog) - real vulnerability, not a missing-test gap. Full detail: `docs/DECISIONS.md`
+      D-172.** `VerifyingKey::
+      from_uncompressed_bytes` (`crypto_sign.rs:227-231`) builds `Point::Affine(x, y)` directly from
+      caller-supplied bytes with **no on-curve check** - `curve163::Point`, unlike `dstu9041`'s
+      `curve256::Point` (which has `is_on_curve`, `curve256.rs:67`), has no such method at all.
+      `hazmat::dstu4145::signature::verify` (`signature.rs:65-84`) never validates its own `q`
+      parameter either before feeding it straight into `curve163::verify_combine`'s (D-108)
+      projective combine step. Any caller loading a `VerifyingKey` from an external source (cert,
+      key file, wire protocol) can hand it an off-curve point, or - since this curve's `double()`
+      shows `x=0` is a fixed order-2 point (`curve163.rs:87-89`) - the one small-subgroup point,
+      with no rejection anywhere. **Cofactor confirmed h=2, dual-sourced**: Hasse's bound with
+      `n=0x0400...BCF14D` (`gf2m163.json`) over `GF(2^163)` admits only `h=2` in its window (`h=1`
+      falls far short, `h>=3` overshoots), independently confirmed against
+      `oracles/bouncycastle-java/.../DSTU4145NamedCurves.java:47` (`h_s[0] = TWO`) - so `{Infinity,
+      (0, sqrt(b))}` is the *only* non-prime-order subgroup; no expensive full subgroup-order
+      scalar multiplication is needed, an on-curve check plus an explicit `x != 0` rejection is
+      complete. **Plan**: `advisor()`-reviewed before any code (per this project's standing rule for
+      security-critical forks) - approved the plan below without changes given the confirmed
+      cofactor. Test-first: three tests (`t189_public_key_validation` in
+      `tests/dstu4145_signature.rs`) that *actively forge* a working `(r, s)` pair against
+      `Point::Infinity`, the real order-2 point, and an off-curve `x=0` fake point - not a naive
+      "swap in a bad `q`, reuse the real signature" test, which was tried first and found to pass
+      *without any fix* (a coincidental numeric mismatch, not a real rejection - the same D-21/D-25
+      vacuous-test trap `CLAUDE.md` already documents, recurring at the key-input position). All
+      three forgery tests confirmed failing (i.e. the forgery succeeding) against the pre-fix code
+      before any production change was made. **Fix landed**: `curve163::Point::is_on_curve` (new,
+      mirrors `curve256`'s shape) plus an explicit `x != 0` guard in `signature::verify`, right
+      after the existing `r`/`s` checks - not in `VerifyingKey::from_uncompressed_bytes`, which
+      returns `Self` not `Result` and would be a breaking API change on an already-published crate;
+      `verify` is the single non-breaking choke point every caller (`crypto_sign`, the C ABI, all
+      eight bindings) funnels through anyway. All three forgery tests pass post-fix, both default
+      and `--features small-tables` profiles; `gf2m163_worked_example_verifies` (genuine key) still
+      passes as the other-direction regression guard. Full `cargo test -p dstu-core`/
+      `dstu-core-capi`/`uacrypt`, `clippy --all-features -D warnings`, `fmt --check` all clean.
+      **Perf, measured via a real same-machine `git stash` A/B** (T-153's `uacrypt verify
+      --iterations` methodology, D-161's stash-rebuild caution applied): 563.20 ops/s before, ~539
+      ops/s after (~4-5%, higher than the naive sub-1% estimate but nowhere near a full extra
+      `scalar_multiply` ladder's cost, which would roughly halve throughput) - both numbers clear
+      T-153/D-109's own 524.01 baseline within normal variance; not chased further, see D-172.
 - [x] **T-188** **Done 2026-08-07, owner-requested.** SonarCloud Quality Gate was
       `ERROR` on `new_duplicated_lines_density` (3.0% actual vs. `<=3%` required) - missed in T-187's
       own SonarCloud check because that check only queried `api/issues/search` (rule-violation

@@ -254,3 +254,27 @@ fn point_from_x_rejects_zero_one_and_p_minus_1() {
     assert!(point_from_x(FieldElement::ONE).is_none());
     assert!(point_from_x(p_minus_1).is_none());
 }
+
+/// `docs/TASKS.md` T-183 ("twist attack" item): `point_from_x` rejects a non-residue `v` via
+/// `euler_criterion` *before* `sqrt` is ever used to build a candidate point (source order in
+/// `curve256.rs`) - `dstu9041_field.rs`'s `sqrt_of_non_residue_does_not_square_back` proves *why*
+/// this order is load-bearing (`sqrt` never self-validates its input, so a reordered/skipped check
+/// would silently accept a wrong point rather than fail loudly). This test closes the other half:
+/// confirming the real call site, `point_from_x`, actually rejects a genuine non-residue `x` end
+/// to end - not just the four specifically-excluded values (`x in {0, 1, p-1}`, `x^2=a*d^-1`)
+/// `point_from_x_rejects_zero_one_and_p_minus_1` already covers. A sequential search starting at
+/// `x=2` has a negligible chance of ever landing on one of those four specific excluded values by
+/// coincidence (four fixed field elements out of `~p`), so any `None` result found this way is the
+/// `euler_criterion` rejection, not a different one - about half of all `x` are expected to hit it
+/// (`~2n` valid `x` out of `p`, `p ≈ 4n`), so this finds one within a handful of tries.
+#[test]
+fn point_from_x_rejects_a_non_residue_x() {
+    let mut candidate_x = FieldElement::from_be_bytes(&decode_hex_padded("02"));
+    for _ in 0..16u32 {
+        if point_from_x(candidate_x).is_none() {
+            return; // found a non-residue rejection (see doc comment for why this must be one)
+        }
+        candidate_x = candidate_x.add(FieldElement::from_be_bytes(&decode_hex_padded("01")));
+    }
+    panic!("no non-residue x found in 16 sequential tries starting at x=2 - unexpectedly unlucky");
+}
