@@ -1,0 +1,622 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>DSTU 9041 - uacrypt</title>
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="Ukrainian DSTU cryptography in Rust - the full docs/ knowledge base as one navigable, searchable book.">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="../favicon-de23e50b.svg">
+        <link rel="shortcut icon" href="../favicon-8114d1fc.png">
+        <link rel="stylesheet" href="../css/variables-8adf115d.css">
+        <link rel="stylesheet" href="../css/general-e96d0476.css">
+        <link rel="stylesheet" href="../css/chrome-d279d366.css">
+        <link rel="stylesheet" href="../css/print-9e4910d8.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="../fonts/fonts-9644e21d.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="mdbook-highlight-css" href="../highlight-493f70e1.css">
+        <link rel="stylesheet" id="mdbook-tomorrow-night-css" href="../tomorrow-night-4c0ae647.css">
+        <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
+
+        <!-- Custom theme stylesheets -->
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "../";
+            const default_light_theme = "light";
+            const default_dark_theme = "navy";
+            window.path_to_searchindex_js = "../searchindex-87f949c2.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="../toc-ce7e91c5.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="mdbook-body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('light')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="mdbook-sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("mdbook-sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="mdbook-sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="../toc.html"></iframe>
+            </noscript>
+            <div id="mdbook-sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="mdbook-page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="mdbook-menu-bar-hover-placeholder"></div>
+                <div id="mdbook-menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="mdbook-sidebar-toggle" class="icon-button" for="mdbook-sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="mdbook-sidebar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M0 96C0 78.3 14.3 64 32 64H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32C14.3 128 0 113.7 0 96zM0 256c0-17.7 14.3-32 32-32H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32c-17.7 0-32-14.3-32-32zM448 416c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H416c17.7 0 32 14.3 32 32z"/></svg></span>
+                        </label>
+                        <button id="mdbook-theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="mdbook-theme-list">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M371.3 367.1c27.3-3.9 51.9-19.4 67.2-42.9L600.2 74.1c12.6-19.5 9.4-45.3-7.6-61.2S549.7-4.4 531.1 9.6L294.4 187.2c-24 18-38.2 46.1-38.4 76.1L371.3 367.1zm-19.6 25.4l-116-104.4C175.9 290.3 128 339.6 128 400c0 3.9 .2 7.8 .6 11.6c1.8 17.5-10.2 36.4-27.8 36.4H96c-17.7 0-32 14.3-32 32s14.3 32 32 32H240c61.9 0 112-50.1 112-112c0-2.5-.1-5-.2-7.5z"/></svg></span>
+                        </button>
+                        <ul id="mdbook-theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-ayu">Ayu</button></li>
+                        </ul>
+                        <button id="mdbook-search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="mdbook-searchbar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352c79.5 0 144-64.5 144-144s-64.5-144-144-144S64 128.5 64 208s64.5 144 144 144z"/></svg></span>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">uacrypt</h1>
+
+                    <div class="right-buttons">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
+                            <span class=fa-svg id="print-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M128 0C92.7 0 64 28.7 64 64v96h64V64H354.7L384 93.3V160h64V93.3c0-17-6.7-33.3-18.7-45.3L400 18.7C388 6.7 371.7 0 354.7 0H128zM384 352v32 64H128V384 368 352H384zm64 32h32c17.7 0 32-14.3 32-32V256c0-35.3-28.7-64-64-64H64c-35.3 0-64 28.7-64 64v96c0 17.7 14.3 32 32 32H64v64c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V384zm-16-88c-13.3 0-24-10.7-24-24s10.7-24 24-24s24 10.7 24 24s-10.7 24-24 24z"/></svg></span>
+                        </a>
+                        <a href="https://github.com/user137/uacrypt" title="Git repository" aria-label="Git repository">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6zm-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3zm44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9zM244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8zM97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1zm-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7zm32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1zm-11.4-14.7c-1.6 1-1.6 3.6 0 5.9 1.6 2.3 4.3 3.3 5.6 2.3 1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2z"/></svg></span>
+                        </a>
+                        <a href="https://github.com/user137/uacrypt/edit/master/docs/pseudocode/dstu9041.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
+                            <span class=fa-svg id="git-edit-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M421.7 220.3l-11.3 11.3-22.6 22.6-205 205c-6.6 6.6-14.8 11.5-23.8 14.1L30.8 511c-8.4 2.5-17.5 .2-23.7-6.1S-1.5 489.7 1 481.2L38.7 353.1c2.6-9 7.5-17.2 14.1-23.8l205-205 22.6-22.6 11.3-11.3 33.9 33.9 62.1 62.1 33.9 33.9zM96 353.9l-9.3 9.3c-.9 .9-1.6 2.1-2 3.4l-25.3 86 86-25.3c1.3-.4 2.5-1.1 3.4-2l9.3-9.3H112c-8.8 0-16-7.2-16-16V353.9zM453.3 19.3l39.4 39.4c25 25 25 65.5 0 90.5l-14.5 14.5-22.6 22.6-11.3 11.3-33.9-33.9-62.1-62.1L314.3 67.7l11.3-11.3 22.6-22.6 14.5-14.5c25-25 65.5-25 90.5 0z"/></svg></span>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="mdbook-search-wrapper" class="hidden">
+                    <form id="mdbook-searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="mdbook-searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="mdbook-searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <span class=fa-svg id="fa-spin"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M304 48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zm0 416c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM48 304c26.5 0 48-21.5 48-48s-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48zm464-48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM142.9 437c18.7-18.7 18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zm0-294.2c18.7-18.7 18.7-49.1 0-67.9S93.7 56.2 75 75s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zM369.1 437c18.7 18.7 49.1 18.7 67.9 0s18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9z"/></svg></span>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="mdbook-searchresults-outer" class="searchresults-outer hidden">
+                        <div id="mdbook-searchresults-header" class="searchresults-header"></div>
+                        <ul id="mdbook-searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('mdbook-sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('mdbook-sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#mdbook-sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="mdbook-content" class="content">
+                    <main>
+                        <h1 id="dstu-90412020--verified-extraction-from-the-primary-text"><a class="header" href="#dstu-90412020--verified-extraction-from-the-primary-text">DSTU 9041:2020 — verified extraction from the primary text</a></h1>
+<p><strong>Supersedes the previous version of this file (2026-08-03, T-148), which was built from a single
+secondary source (a bachelor’s thesis) with no primary text and no oracle at all.</strong> As of
+2026-08-04 (T-173/T-174), the project obtained a partial scan of the primary standard itself
+(purchased/library-sourced, <code>docs/papers/DSTU_9041-2020.pdf</code>, never committed — redistribution
+rights aren’t ours to grant) and OCR-transcribed it (<code>docs/papers/DSTU_9041-2020_ocr.md</code>, also
+gitignored, same reason). <strong>This file is the committable distillation of that primary text</strong>: the
+algorithm’s structure, the recommended curve parameters, and the worked test vectors are facts and
+data about the algorithm, not the standard’s own copyrighted prose — see <code>docs/DECISIONS.md</code> D-163
+for the citation/copyright reasoning this rests on.</p>
+<p><strong>The scan is explicitly partial, not the full 36-page document</strong> (confirmed 2026-08-06 as exactly
+36 pages, page 36 being the last — see “Open gaps” below) — sections 1–2 and Додаток Б.1/Б.2’s
+actual content are still absent. See “Open gaps” below for exactly what that means for
+implementation readiness.</p>
+<p><strong>2026-08-05 update (T-176): a targeted supplement closes the single biggest gap.</strong> A second,
+smaller purchase from the same source (National Library of Ukraine EDD service,
+<code>docs/papers/DSTU_9041-2020_supplement.pdf</code>, 8 pages, gitignored — same redistribution reasoning as
+the main scan) specifically targeted the clauses this file had flagged as missing. Result: <strong>clauses
+6.5–6.12 (the actual random-element/modpow/sqrt/inverse/random-point/primality/MOV/scalar-mult
+algorithms) are now fully present and verified against the page images</strong> — this was the priority
+item and it’s resolved. Додаток А’s RNG algorithm body is also now fully present (resolved, was
+previously “reference only, not blocking”). Section 3’s remaining terms (3.1–3.26) are now present
+too, joining the 3.27/3.28 this file already had — section 3 is complete. Додаток Б.1/Б.2 came back
+only as the appendix’s introductory historical prose (Edwards/Bernstein–Lange/Bessalov literature
+survey) — the actual math content of Б.1/Б.2 (if any beyond that prose) is still not in hand; Б.3/
+Б.4’s operative content was already covered from the first scan. Додаток Д (bibliography, 9
+references) is now present too — reference-only, not implementation-relevant, but resolves
+citation <code>[1]</code> (Joye &amp; Yen, “The Montgomery Powering Ladder”) referenced from 6.6/6.12’s own
+side-channel notes below.</p>
+<p><strong>Status: no longer “zero source material, hard-blocked” (D-08/T-46’s original framing).</strong> The scan
+includes Додаток Г — three fully worked numeric examples (encryption <em>and</em> decryption) for
+<code>l(p) ∈ {256, 384, 512}</code>. One of them (<code>l(p)=256</code>) has been arithmetically verified end-to-end
+against this project’s own <code>hazmat::kupyna</code>/<code>hazmat::kalyna_kw</code> and a from-scratch reference
+implementation of the curve’s point arithmetic (below) — this is now comparable in strength to how
+DSTU 4145’s Annex B example serves as this project’s own oracle for that algorithm, not weaker.
+<strong>Still not sufficient to call <code>hazmat::dstu9041</code> “verified” once written</strong> — see “What remains
+before implementation” — but the primitive is no longer blocked on missing source material.</p>
+<h2 id="what-kind-of-construction-this-is"><a class="header" href="#what-kind-of-construction-this-is">What kind of construction this is</a></h2>
+<p>A hybrid (ECIES-style) scheme: ephemeral-key Diffie-Hellman-like agreement over a twisted Edwards
+curve over <code>F_p</code> (prime field, <strong>not</strong> the binary field <code>F_{2^m}</code> that <code>hazmat::dstu4145</code> uses —
+this is new field-arithmetic territory for this project), feeding the resulting shared point’s
+x-coordinate into a Kalyna key-wrap stage. The <code>KIVREP</code> mode named by the secondary source (now
+superseded) is confirmed to be exactly <code>hazmat::kalyna_kw</code>’s underlying construction: DSTU 9041
+clause 6.3 names it directly as “Калина-l/k-KW” / “Калина-l/k-KW-p”, <strong>the DSTU 7624:2014 clause
+15 key-protection mode already implemented in this crate</strong> — no new cipher-mode research needed,
+only a possible new <code>-p</code> (padding) variant (see below).</p>
+<h2 id="notation-clause-4-познаки--confirmed-against-the-primary-text"><a class="header" href="#notation-clause-4-познаки--confirmed-against-the-primary-text">Notation (clause 4, Познаки — confirmed against the primary text)</a></h2>
+<ul>
+<li><code>M</code> — message to encrypt; <code>l(M)</code> — its length in bits; <code>l_max(p)</code> — max encryptable length for a
+given field size (Table 1 below).</li>
+<li><code>P = (x_P, y_P)</code> — curve base point; <code>n</code> — its prime order.</li>
+<li><code>e</code> — recipient’s private key, <code>1 &lt; e &lt; n-1</code>; <code>Q = eP</code> — recipient’s public key.</li>
+<li><code>ε</code> — one-time (ephemeral) encryption key, secret, <code>1 &lt; ε &lt; n-1</code>.</li>
+<li><code>H</code> — hash function; <code>l_H</code> — its (possibly truncated) output length; <code>i_H</code> — its 8-bit identifier
+(clause 3.28); <code>i_H = 00000001</code> is DSTU 7564 (Kupyna), the default.</li>
+<li><code>E^(κ)_{l,k}(·)</code> / <code>D^(κ)_{l,k}(·)</code> — Kalyna-l/k-KW(-p) forward/inverse transform (clause 6.3).</li>
+</ul>
+<h2 id="curve-equation-clauses-55-72-додаток-в"><a class="header" href="#curve-equation-clauses-55-72-додаток-в">Curve equation (clauses 5.5, 7.2, Додаток В)</a></h2>
+<p><code>x² + a·y² = d·x²·y² + 1</code> over <code>F_p</code>, with <strong><code>a = 2</code> fixed for every recommended curve</strong> (7.2’s own
+note). This is the standard twisted-Edwards curve <code>a·X²+Y² = 1+d·X²·Y²</code> with <strong><code>x</code> and <code>y</code> roles
+swapped</strong> relative to the usual Bernstein–Lange convention — a real, load-bearing detail: the point
+addition law and the neutral element both need this swap applied, not just the equation (see
+below). Missed once during verification (produced valid-looking but wrong scalar multiples until
+caught by testing against Table В’s <code>n·P = O</code> and Additional Г’s <code>ε·P</code>/<code>ε·Q</code> checks) — a concrete
+illustration of why every future point-arithmetic implementation here needs the same differential
+test, not just “the equation looks right.”</p>
+<p><strong>Point addition</strong> (derived, not copied from the standard — clauses 6.5–6.12 (below) cover random
+elements/points, primality, MOV, and scalar multiplication, but not the addition/doubling law
+itself; that still comes only from Додаток Б.4’s projective form, already in hand from the first
+scan. Independently re-derived from the equation above and verified against Додаток Г, see
+“Verification performed” below):</p>
+<pre><code>(x1,y1) + (x2,y2) = ( (x1*x2 - a*y1*y2) / (1 - d*x1*x2*y1*y2),
+                       (x1*y2 + y1*x2) / (1 + d*x1*x2*y1*y2) )
+</code></pre>
+<p>Neutral element: <code>(1, 0)</code> (not <code>(0,1)</code> — that’s the <em>standard</em> form’s neutral; ours is swapped).</p>
+<p>Додаток Б.4 (present in the scan) separately gives a projective (inversion-free) form of this same
+addition law — <code>X_R=AG(C-aD); Y_R=AF((X1+Y1)(X2+Y2)-C-D); Z_R=FG</code> where <code>A=Z1Z2, B=A², C=X1X2, D=Y1Y2, E=dCD, F=B-E, G=B+E</code> — implementation-grade, and the one to actually use for constant-time
+scalar multiplication (the affine form above is for verification/derivation only, since field
+inversion is exactly the non-constant-time operation to avoid in real point arithmetic per this
+project’s own <code>docs/SECURITY.md</code> constant-time rule).</p>
+<h2 id="computational-algorithms-clauses-64612-t-176-supplement--full-primary-text-read-directly"><a class="header" href="#computational-algorithms-clauses-64612-t-176-supplement--full-primary-text-read-directly">Computational algorithms, clauses 6.4–6.12 (T-176 supplement — full primary text, read directly</a></h2>
+<p>off the page images, not the OCR transcript)</p>
+<p><strong>6.4 Random/pseudorandom integer</strong> <code>1 &lt; u &lt; n-1</code>, given <code>n</code>. Uses the RNG from 6.1 (Додаток А,
+below). Rejection sampling: draw <code>l(n)</code> random bits as <code>u</code>, retry if <code>u &lt;= 1</code> or <code>u &gt;= n-1</code>.</p>
+<p><strong>6.5 Random element of <code>F_p</code>.</strong> Same rejection-sampling shape as 6.4: draw <code>l(p)</code> random bits as
+<code>u</code>, retry if <code>u &gt;= p</code>.</p>
+<p><strong>6.6 Modular exponentiation</strong> <code>v = u^s mod p</code> — textbook square-and-multiply, MSB-first: <code>v = u</code>,
+then for each remaining bit of <code>s</code> (high to low), <code>v := v² mod p</code>, and <code>v := (v·u) mod p</code> when that
+bit is 1. <strong>The standard’s own text flags this as not side-channel-safe as written</strong> (“реалізації
+такого алгоритму … мають враховувати необхідність захисту від атак за побічними каналами витоку
+даних, див., наприклад, [1]”) — Додаток Д’s <code>[1]</code> is Joye &amp; Yen, “The Montgomery Powering Ladder”
+(CHES 2002). This is the standard’s own text making exactly the point this project’s own
+<code>docs/SECURITY.md</code> constant-time rule already makes generally: <strong>this clause is a correctness
+reference for the modpow result, not a template to transcribe branch-for-branch</strong> — any
+<code>hazmat::dstu9041</code> implementation needs a constant-time ladder here, not this literal algorithm.
+Same caveat, same citation, repeats verbatim under 6.12 below.</p>
+<p><strong>6.7 Square root in <code>F_p</code></strong> (<code>p ≡ 5 (mod 8)</code> case only — matches this standard’s own field
+requirement from 7.1, so this is the only case that ever applies here): given <code>v ∈ Q_p</code>,</p>
+<ol>
+<li><code>f = v^((p-1)/4) mod p</code> (via 6.6).</li>
+<li><code>z = v^((p+3)/8) mod p</code> (via 6.6); <code>u = z</code>.</li>
+<li>If <code>f = p-1</code>: <code>u = (w·z) mod p</code>, where <code>w = 2^((p-1)/4) mod p</code> is the general system parameter
+already listed per-curve in Tables В.1–В.4 (3.23 names <code>w</code> as a formal general parameter
+alongside <code>p</code>/curve/<code>P</code>/<code>n</code>/hash-id — confirmed by this supplement, not previously cited as a
+named parameter in this file).</li>
+<li>Output <code>u</code>.</li>
+</ol>
+<p>This is a real, useful confirmation: <code>docs/pseudocode/dstu9041.md</code>’s decryption algorithm below
+already called this “clause 6.7” from context; the actual <code>f</code>/<code>w</code>-branch shape was previously
+guessed from the standard √ literature for <code>p≡5 mod 8</code> fields, not read from this text. Now cited
+directly.</p>
+<p><strong>6.8 Modular inverse</strong> — extended Euclidean algorithm on <code>(p, u)</code>, standard shape (<code>r</code>/<code>q</code>/<code>x</code>
+sequences per the textbook algorithm, final sign correction <code>if u⁻¹ &lt; 0: u⁻¹ = p - u⁻¹</code>). Nothing
+DSTU-specific; matches what a from-scratch <code>F_p</code> inverse implementation would do anyway.</p>
+<p><strong>6.9 Random point on the curve</strong> — resolves exactly the derivation this file’s “Verification
+performed” section above had to reconstruct independently:</p>
+<ol>
+<li><code>u</code> = random field element (6.5).</li>
+<li>If <code>d·u² mod p = a</code>: retry from step 1 — this is the singular-point exclusion from clause 3.18’s
+<code>D_{1,2} = (±√(a/d), ∞)</code>, confirming those two points are excluded by construction, not by luck.</li>
+<li><code>f = (1-u²)·(a-d·u²)⁻¹ mod p</code>.</li>
+<li>If <code>f = 0</code>: retry from step 1.</li>
+<li><code>j = f^((p-1)/2) mod p</code> (via 6.6) — Euler’s criterion, checking <code>f ∈ Q_p</code>.</li>
+<li>If <code>j = p-1</code> (i.e. <code>f</code> is a non-residue): retry from step 1.</li>
+<li><code>v</code> = square root of <code>f</code> (6.7).</li>
+<li>Output <code>(x_T, y_T) = (u, v)</code>.</li>
+</ol>
+<p><strong>6.10 Primality check for the base-point order <code>n</code></strong> — Miller–Rabin, 50 rounds (matches this
+project’s own generic expectation for a probabilistic primality test; not DSTU-specific math).
+Standard’s own text explicitly permits substituting any algorithm with a rigorous mathematical
+proof of primality instead.</p>
+<p><strong>6.11 Menezes–Okamoto–Vanstone condition check</strong> — given <code>n</code>, <code>p</code>: iterate <code>j := j·p mod n</code> for up
+to 50 rounds starting from <code>j=1</code>; if <code>j</code> ever returns to <code>1</code>, the MOV condition <strong>fails</strong> (embedding
+degree too small, curve vulnerable to the MOV attack reducing DLP to a finite-field problem); if no
+round returns to <code>1</code> within 50 iterations, the condition <strong>holds</strong>.</p>
+<p><strong>6.12 Scalar multiplication</strong> <code>S = kT</code> — textbook double-and-add, MSB-first (<code>S = T</code>, then for each
+remaining bit of <code>k</code> high to low: <code>S := 2S</code>, and <code>S := S+T</code> when that bit is 1). Same
+side-channel-safety caveat and <code>[1]</code> citation as 6.6 (verbatim repeated in the source). <strong>This
+confirms, rather than changes, this project’s own existing understanding</strong> — the encryption/
+decryption algorithms below already called this “clause 6.12”; what’s new is that the algorithm
+shape (plain double-and-add, not already a ladder) and the side-channel caveat are now directly
+cited instead of assumed. The actual point-doubling/addition operations <code>2S</code>/<code>S+T</code> still come from
+Додаток Б.4’s projective law above — 6.12 only specifies the scalar’s bit-scanning order, not a
+different addition law.</p>
+<h2 id="recommended-curve--e2561-λ127-lp256-table-в1s-first-entry"><a class="header" href="#recommended-curve--e2561-λ127-lp256-table-в1s-first-entry">Recommended curve — E256/1 (<code>λ=127</code>, <code>l(p)=256</code>, Table В.1’s first entry)</a></h2>
+<p>Per <code>docs/DECISIONS.md</code> D-163: Додаток В lists <strong>many</strong> alternative curves per security level
+(E256/1 through at least E256/15 for λ=127 alone) — the standard mandates none of them (7.2: “not
+obligatory”), so only the first curve per level was transcribed and verified; the rest buy nothing
+implementation-wise. Table В.2/В.3/В.4 (λ=191/255/383) exist in the scan but their first entries
+were not independently arithmetically verified this pass — only E256/1 got the full treatment
+below (Додаток Г only gave a worked example to cross-check against for this one anyway).</p>
+<pre><code>p = FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFE4D
+a = 2
+d = 0x18   (= 24 decimal - Додаток Г's own convention: every numeric parameter in the worked
+            examples is given in hex, including small ones; this project's own equation is
+            written "18x²y²+1" using that same hex convention, not decimal 18)
+n = 4000000000000000000000000000000029E26087789BC2815BDFF97093543CCF
+P = (91F5D0E7E2D417E3108B13B075CDC7756045F8424479FCFE8F23D27250A0883F,
+     742F27A268641C9D7DDF69892BE3DF3D8F9CC52260B89A4953C8379C7C0A212B)
+</code></pre>
+<p><strong>Erratum, caught 2026-08-05 (T-177), fixed here and in the vector JSON</strong>: <code>p</code> and <code>n</code> above were
+wrong from 2026-08-04 through 2026-08-05 — an over-counted <code>F</code>-run in <code>p</code> (84 characters instead of
+61) and zero-run in <code>n</code> (80 instead of 31). D-163 (below) already recorded the <em>correct</em>
+stroke-counted lengths in prose at the time, but that fix was never actually applied to this file
+or the committed vector JSON — both kept the original over-counted strings for two more sessions.
+Caught only because starting the actual Rust implementation (T-177) required re-deriving <code>p</code>/<code>n</code>
+independently (cross-checked against Table В.1’s own <em>decimal</em> column, converted to hex, and
+verified with a real 40-round Miller-Rabin, not the original’s 3-base Fermat check) before writing
+any field-arithmetic code against them — see <code>docs/DECISIONS.md</code> D-166 for the full account and the
+process lesson (verify a described fix actually lands in the file, don’t trust the prose alone).</p>
+<h2 id="verification-performed-2026-08-04-against-page-images-not-ocr-text--see-d-163"><a class="header" href="#verification-performed-2026-08-04-against-page-images-not-ocr-text--see-d-163">Verification performed (2026-08-04, against page images, not OCR text — see D-163)</a></h2>
+<p>Every numeric value above was re-read directly from the rendered page image (<code>pdftoppm</code> PNG,
+150 DPI) at heavy zoom, character-run-counted programmatically where a value was a long run of a
+single repeated digit (both <code>p</code> and <code>n</code> had this problem on first read — OCR <em>and</em> a first manual
+transcription both silently over-counted a run of <code>F</code>s/<code>0</code>s; a column-darkness stroke-count caught
+it) — not trusted from the gitignored OCR transcript’s text order, consistent with the standing
+project rule that cryptographic parameters need per-digit verification, not a document-scale OCR
+pass.</p>
+<p>Independently re-implemented the point addition law above in Python and confirmed, using Додаток
+Г’s <code>l(p)=256</code> worked example (<code>ε=7</code>, all values below read from the same page images):</p>
+<ul>
+<li><code>p</code> prime, <code>p ≡ 5 (mod 8)</code> (clause 7.1’s own stated requirement) ✓</li>
+<li><code>n</code> prime ✓</li>
+<li><code>P</code>, <code>Q</code>, <code>R=εP</code>, <code>T=εQ</code> (Г.1’s own given values) all satisfy the curve equation ✓</li>
+<li><code>n·P = O</code> (the neutral element) ✓ — confirms <code>n</code> really is <code>P</code>’s order</li>
+<li><code>7·P == R</code> ✓, <code>7·Q == T</code> ✓ — confirms the addition law, and that <code>ε=7</code> was applied correctly by
+the standard’s own example</li>
+<li><code>Kupyna256(l̃_M || M̃)</code> truncated to its <strong>last</strong> 4 bytes (not first) equals the example’s stated
+<code>H = BF8B8620</code> ✓ (<code>hazmat::kupyna::Kupyna256</code>, this project’s own implementation) — resolves
+clause 5.7’s truncation direction, which the primary text states only as “як <code>(h_{l_H-1},...,h_0)</code>”
+without saying which end of the digest array that corresponds to in a concrete byte-string
+encoding; confirmed empirically instead of guessed.</li>
+</ul>
+<p><strong>No erratum in <code>e</code> — an earlier version of this document misread it.</strong> <code>e = 25</code> as printed is
+<strong>hex</strong>, per Додаток Г’s own stated convention (“значення параметрів наведено у вигляді двійкових
+рядків, де кожні чотири біти представлено в шістнадцятковій системі”) — <code>0x25 = 37</code> decimal, and
+<code>scalar_mult(37, P) == Q</code> holds exactly. The convention was already found and correctly applied to
+<code>d = 0x18 = 24</code> above; a first pass at <code>e</code> forgot to apply the same rule consistently and flagged a
+false “erratum” instead. Left as a documented lesson (see <code>docs/DECISIONS.md</code> D-163’s follow-up
+addendum): <strong>treat every bare small integer in this standard’s worked examples as hex first</strong>, and
+double-check it was actually applied every time it recurs in the same example, not just the first
+time it was discovered.</p>
+<p><strong><code>t</code> (and <code>C</code>) are now verified — against this project’s own <code>hazmat::kalyna_kw</code>, not just
+internal consistency.</strong> Building <code>Kalyna256_256Kw::wrap</code>’s input as <code>M' ‖ 0×32</code> (i.e., <code>M'</code> padded
+with one additional all-zero 256-bit block, <strong>not</strong> <code>M'</code> alone) and using <code>κ</code> exactly as printed
+reproduces the standard’s own printed <code>t</code> <strong>bit-for-bit, except for a single missing hex digit</strong>
+in the source text (a <code>0</code> dropped between <code>...B3CE</code> and <code>F710...</code> — confirmed by inserting it back
+and getting an exact 192-hex-digit match against this crate’s own computed ciphertext). This is a
+real, independently-confirmed erratum in the published standard’s own informative annex (a printer/
+scan-level single-character drop, not a transcription artifact on this project’s side — reproduced
+identically across two independent manual re-reads of the page image before concluding it’s the
+source, not us) — and simultaneously the strongest evidence yet that <code>hazmat::kalyna_kw</code>’s
+Kalyna-256/256-KW is bit-exact with the standard’s own construction.</p>
+<p><strong>Open question, re-confirmed but still not resolved (2026-08-05, T-176):</strong> <em>why</em> the actual
+Kalyna-KW input is 64 bytes (2 blocks) rather than the 32 bytes (<code>i_H‖H‖l_M~‖M~</code> =
+8+32+16+200 = 256 bits) clause 5.7/5.8/Table 1 imply on their own. <strong>This is not a transcription
+error</strong> — re-checked twice more this session, independently of T-174’s original finding: (1)
+re-ran <code>Kalyna256_256Kw::wrap</code> directly against <code>κ</code>/<code>M'</code>/<code>t</code> re-read fresh from the page image
+(not copied from this file or the vector JSON) — <code>wrap(κ, M')</code> alone does <strong>not</strong> reproduce the
+printed <code>t</code>; <code>wrap(κ, M' ‖ 0×32)</code> does, byte-for-byte; (2) cross-checked the same worked example
+against an independent Gemini transcription the owner supplied — <code>t</code>/<code>C</code> matched exactly (same
+single dropped hex digit, confirming that erratum is in the source, not a transcription artifact
+by either engine), and Gemini’s own reading of <code>M'</code> differed from this file’s by one extra
+zero-byte, resolved in favor of this file’s 256-bit value because the standard’s <em>own prose</em>
+states the recovered string’s length as <code>l(p)=256</code> in the same sentence — a stated fact, not a
+count either side could get wrong.
+<strong>The two still-open hypotheses, neither confirmed</strong>: (a) DSTU 7624’s own KW mode has an
+unstated minimum input length of 2 blocks regardless of payload size (Bouncy Castle’s
+<code>DSTU7624WrapEngine</code> imposes no such minimum, <code>n=2(1+r)</code> accepts <code>r=1</code> freely — <strong>and this crate’s
+own <code>hazmat::kalyna_kw::Kalyna256_256Kw::wrap</code> doesn’t either</strong>, checked directly while planning
+T-177: <code>wrap</code>’s own length validation only bounds the <em>upper</em> end at <code>MAX_R</code> blocks, nothing
+rejects a 1-block input — so this hypothesis would be a DSTU 9041-specific rule layered on top of
+generic KW, not inherited from DSTU 7624 itself, and not something either reference implementation
+already in this repo enforces on its own); (b)
+<code>M'</code> itself has an additional all-zero padding field this document’s clause-11 reading missed,
+bringing it to a full 2-block minimum before the KW step. <strong>Clauses 6.5–6.12 (now in hand, above)
+do not settle this</strong> — they’re pure field/point arithmetic, nothing about message formatting or
+KW invocation. What would settle it is either clause 6.3 itself (already in hand — cites
+“Калина-l/k-KW” but not this apparent minimum) or a closer re-read of clause 11’s existing 15
+steps (also already in hand) for a step this file’s transcription may have compressed or missed -
+not a new scan, a re-read of what’s already here.</p>
+<h2 id="message-formatting-clause-11-encryption-clause-5758table-1"><a class="header" href="#message-formatting-clause-11-encryption-clause-5758table-1">Message formatting (clause 11, encryption; clause 5.7/5.8/Table 1)</a></h2>
+<pre><code>M~ = M, left-padded with zeros to l_max(p) bits (clause 5.2's padding convention: new zeros are the
+     *high-order* bits; the original message's own bits stay as the low-order tail — confirmed
+     against Додаток Г.1's message value, which is the integer 7, not literally all-zero, and
+     stays recognizable as "...0007" after padding)
+l_M~ = l(M), as a fixed-16-bit big-endian-ish field (clause 5.2)
+M'  = i_H (8 bits) || H(l_M~ ‖ M~) truncated to l_H bits, taken from the hash's *low-order* end
+      (verified above) || l_M~ (16 bits) || M~ (l_max(p) bits)
+</code></pre>
+<p><code>l_max(p)</code> (Table 1 — the older pseudocode’s “never given a formula” gap is now resolved, from the
+worked examples directly rather than the table’s own jumbled-by-OCR cell order):</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th><code>l(p)</code></th><th><code>l_max(p)</code></th><th><code>l_H</code></th><th>Kalyna-KW <code>l/k</code> (Table 2)</th><th>mode used (Додаток Г)</th></tr>
+</thead>
+<tbody>
+<tr><td>256</td><td>200</td><td>32</td><td>256/256</td><td>KW (no padding — <code>M'</code> lands exactly 256 bits)</td></tr>
+<tr><td>384</td><td>296</td><td>64</td><td>256/256</td><td>KW-<strong>p</strong> (padding — <code>M'</code> is 384 bits, not a multiple of 256)</td></tr>
+<tr><td>512</td><td>424</td><td>64</td><td>512/512</td><td>KW (no padding — <code>M'</code> lands exactly 512 bits)</td></tr>
+<tr><td>768</td><td><em>(616, unconfirmed — no worked example for this level in the scan)</em></td><td>128</td><td><em>(not in scan)</em></td><td>—</td></tr>
+</tbody>
+</table>
+</div>
+<p>The KW-vs-KW-p split is <strong>not arbitrary</strong> — confirmed by checking <code>8 + l_H + 16 + l_max(p)</code> against
+the Kalyna block length <code>l</code> from Table 2 for each row: it’s a clean multiple of <code>l</code> exactly when
+plain KW (no padding) is used, and isn’t when KW-p is used. This resolves the older pseudocode’s
+“KIVREP never defined” gap along with it: there’s no separate “KIVREP” mode at all — it’s exactly
+<code>hazmat::kalyna_kw</code>, plus (for the 384-bit row, and presumably any case that isn’t block-aligned)
+a <strong>padding variant this project has not implemented yet</strong> — see below.</p>
+<h2 id="encryption-algorithm-clause-11--full-primary-text-15-steps-matches-the-older-secondary-source"><a class="header" href="#encryption-algorithm-clause-11--full-primary-text-15-steps-matches-the-older-secondary-source">Encryption algorithm (clause 11 — full primary text, 15 steps; matches the older secondary-source</a></h2>
+<p>pseudocode’s shape, now clause-cited instead of thesis-cited)</p>
+<pre><code>1)  Validate general parameters (clause 8.1-8.3); validate i_H against the user group if used.
+2)  Compute l(M); require 0 &lt; l(M) &lt;= l_max(p).
+3)  M~ = M.
+4)  If l(M) &lt; l_max(p): left-pad M~ to l_max(p) bits (clause 5.2).
+5)  l_M = bit-string encoding of the integer l(M) (clause 5.1).
+6)  l_M~ = l_M fixed to 16 bits (clause 5.2).
+7)  H(l_M~ || M~) = (h_{lH-1},...,h_0), using the hash named by i_H, length lH per clause 5.7.
+8)  M' = i_H || H(l_M~ || M~) || l_M~ || M~.
+9)  Compute one-time key ε (clause 9.3).
+10) R = εP = (x_R, y_R) (clause 6.12 - point scalar multiplication, not in the scan; see above).
+11) r = x_R, as an l(p)-bit string.
+12) T = εQ = (x_T, y_T).
+13) κ = x_T, as the Kalyna-KW key (clause 5.2).
+14) t = E^(κ)_{l,k}(M') (Kalyna-l/k-KW or -KW-p per Table 2).
+15) Output C = (r || t).
+</code></pre>
+<h2 id="decryption-algorithm-clause-12--full-primary-text-19-steps"><a class="header" href="#decryption-algorithm-clause-12--full-primary-text-19-steps">Decryption algorithm (clause 12 — full primary text, 19 steps)</a></h2>
+<pre><code>1)  Determine l_H from p (clause 6.2).
+2)  If r=0, r=1, or r² = a·d⁻¹ mod p: "Invalid ciphertext", abort.
+3)  v = (1-r²)·(a-d·r²)⁻¹ mod p.
+4)  δ = v^((p-1)/2) mod p (clause 6.6). If δ = p-1: "Invalid ciphertext", abort.
+5)  y = √v mod p (clause 6.7).
+6)  R' = (r, y).                    // y's sign is ambiguous by construction - see Додаток Б.3
+7)  T' = e·R' (clause 6.12).        // resolved ambiguity, see below
+8)  κ = x_T'.
+9)  (u_{l(p)-1},...,u_0) = D^(κ)_{l,k}(t).
+10) i_H = (u_{l(p)-1},...,u_{l(p)-8}); validate against the user group.
+11) Look up H named by i_H.
+12) Compute l_max(p).
+13) l_M~ = (u_{l_max(p)+15},...,u_{l_max(p)}).
+14) l(M) = sum_i u_{l_max(p)+i}·2^i, read from l_M~.
+15) M' = (u_{l_max(p)+15},...,u_0).
+16) Verify H(M') matches the extracted hash field; on mismatch: "Invalid hash value", abort.
+17) b = l_max(p) - l(M); if b != 0, verify the padding is all-zero; on mismatch: abort.
+18) M = (u_{l(M)-1},...,u_0).
+19) Output M.
+</code></pre>
+<p><strong>Resolved ambiguity</strong> (the older secondary-source pseudocode flagged this twice as unresolved,
+“source literally writes <code>T'=e·r</code>, a scalar, not <code>e·R'</code>, a point”): the primary text’s own step 7
+has the <em>same</em> slip (<code>T = er</code>, using the scalar <code>r</code> not the point <code>R'</code>), but Додаток Б.3’s
+correctness proof states it unambiguously as a point operation — <em>“Далі з використанням таємного
+ключа е обчислюють точку T = eR = ±eQ = ±T”</em> — confirming <code>T' = e·R'</code> (point scalar multiplication)
+is correct, and that the <em><code>x</code></em>-coordinate of the result is sign-independent (<code>x_T = x_{-T}</code>), which
+is exactly why <code>κ=x_T'</code> recovers the right key regardless of which of <code>R</code>/<code>-R</code> the square-root step
+happened to reconstruct. Not just “reads as the same slip” (the older file’s own hedge) — this is
+now a clause citation (Додаток Б.3), not an inference.</p>
+<h2 id="open-gaps-still-not-answerable-from-this-scan--supplement"><a class="header" href="#open-gaps-still-not-answerable-from-this-scan--supplement">Open gaps (still not answerable from this scan + supplement)</a></h2>
+<ul>
+<li><del>Clauses 6.5–6.12</del> <strong>resolved 2026-08-05 (T-176)</strong> — see “Computational algorithms, clauses
+6.4–6.12” above, cited directly from the page images.</li>
+<li><del>Додаток А’s RNG algorithm body</del> <strong>resolved 2026-08-05 (T-176)</strong> — full body now in hand
+(Kalyna-l/k-CTR per DSTU 7624 §7, Table А.1’s <code>l</code>/<code>k</code> choices per <code>λ</code>). Not adopted as-is: this
+project’s existing <code>randombytes::randombytes_buf</code> (<code>getrandom</code>-backed, D-48) remains the simpler
+choice, and clause 6.1 explicitly permits any equivalent generator as an alternative — Додаток А
+is now a documented option, not a hard requirement.</li>
+<li><strong>Додаток Б.1/Б.2’s actual math content is still not in hand</strong> — the supplement’s one relevant
+page only reached the appendix’s introductory historical prose (Edwards/Bernstein–Lange/Bessalov
+literature survey), cutting off before whatever Б.1/Б.2 themselves define. Likely low-value even
+if obtained — Б.3 (correctness proof) and Б.4 (the actual projective addition law) are the
+operative parts of Додаток Б and both were already in hand from the first scan.</li>
+<li><strong>Sections 1–2</strong> (scope, normative references) remain absent — administrative content, zero
+implementation impact.</li>
+<li><strong>Corrected stale bullet (this file previously contradicted itself here):</strong> <code>t</code>/<code>C</code> in Додаток
+Г.1 (<code>l(p)=256</code>) <strong>are</strong> arithmetically verified — see “Verification performed” above, done the
+same day as T-174’s first pass, just not reflected in this list until now. What’s still
+unverified is the <strong>other two worked examples</strong>: Додаток Г’s <code>l(p)=384</code> and <code>l(p)=512</code> cases are
+present in the scan (curve params, <code>Q</code>/<code>R</code>/<code>T</code> etc.) but their own <code>t</code>/<code>C</code> were never checked
+against this crate’s <code>hazmat::kalyna_kw</code> — <code>l(p)=384</code> can’t be checked yet regardless
+(<code>hazmat::kalyna_kw_p</code> doesn’t exist, see below); <code>l(p)=512</code> could be checked against plain
+Kalyna-512/512-KW today but hasn’t been.</li>
+<li><strong>No worked example exists for <code>l(p)=768</code> (<code>λ=383</code>) anywhere in this standard — confirmed
+2026-08-06, owner-supplied photos of the document’s final pages.</strong> The document is genuinely 36
+pages total (not the 40 the store listing implies, <code>docs/ORACLES.md</code>); page 36 is the last page,
+containing the tail of Додаток Г.3’s <code>l(p)=512</code> decryption steps followed directly by Додаток Д’s
+bibliography. Table В.4’s curve parameters are present, but Додаток Г never included a fourth
+worked example. This is not a purchasing gap — there is nothing more to buy. <code>l(p)=768</code>’s
+parameters are permanently unverifiable against any worked arithmetic from this standard; an
+eventual implementation would need a from-scratch verification strategy (property/tamper tests,
+no vector oracle), the same posture as <code>crypto_secretstream</code> (D-68) or Strumok (D-15).</li>
+<li><strong>Kalyna-l/k-KW-<strong>p</strong> (the padding variant, needed for the <code>l(p)=384</code> row of the mode table
+above) does not exist in this crate.</strong> <code>hazmat::kalyna_kw</code>’s own module doc is explicit that it
+deliberately has “no padding scheme of this module’s own” (a cited Bouncy-Castle-matching design
+choice, D-55) — meaning DSTU 9041 needs a genuinely new sibling primitive, not a parameter tweak,
+before the <code>l(p)=384</code> case (or any non-block-aligned <code>M'</code>) can be implemented.</li>
+<li><strong>Prime-field (<code>F_p</code>, up to at least 512 bits) bignum arithmetic and twisted-Edwards point
+arithmetic were new to this crate as of T-176 — <code>hazmat::dstu9041::fp256</code>/<code>curve256</code> now cover the
+<code>l(p)=256</code> case (T-177).</strong> <code>hazmat::dstu4145</code>’s existing <code>gf2m163</code>/<code>curve163</code> modules are
+binary-field (<code>GF(2^m)</code>) arithmetic for a completely different curve family and were not reused
+beyond the general engineering pattern (fixed-iteration loops, no secret-dependent branching,
+<code>subtle::ConstantTimeEq</code>). The <code>l(p)=384/512/768</code> cases still need their own sibling
+<code>fp384</code>/<code>fp512</code>/<code>fp768</code>-shaped modules (different modulus, different reduction constant) plus
+<code>hazmat::kalyna_kw_p</code> (below) — out of scope for T-177’s “ship the recommended curve first” pass.</li>
+</ul>
+<h2 id="implementation-status-t-177"><a class="header" href="#implementation-status-t-177">Implementation status (T-177)</a></h2>
+<p><code>hazmat::dstu9041</code> (<code>l(p)=256</code>/E256/1 only, D-47’s “ship the recommended curve first” precedent) is
+now implemented: <code>message.rs</code> (<code>M'</code> formatting + the Kalyna-KW zero-block quirk), <code>fp256.rs</code> (<code>F_p</code>
+arithmetic), <code>curve256.rs</code> (twisted Edwards point arithmetic), <code>encryption.rs</code> (encrypt/decrypt
+composition, clauses 11/12). Full detail — the two security findings beyond clause 12’s literal
+text (an order-2 point via <code>r=p-1</code>, and a genuine order-4 subgroup from E256/1’s cofactor 4), the
+collapsed <code>DecryptError</code>, and the QA-gate closure (miri/Kani) — is in <code>docs/TASKS.md</code> T-177 and
+<code>docs/DECISIONS.md</code> (D-163/D-165/D-166 for the source material, the T-177 entry for the
+implementation itself).</p>
+<p><strong>Still not done, deliberately out of scope for this pass</strong>: <code>l(p)=384/512/768</code> (their own <code>F_p</code>
+modules, <code>hazmat::kalyna_kw_p</code> for the non-block-aligned <code>M'</code> padding case, and — for <code>l(p)=768</code> —
+no worked-example oracle exists at all in the standard, confirmed 2026-08-06, not just missing from
+this scan — see “Open gaps” above). Per this
+project’s own Tier C precedent (T-172 and earlier: any new primitive gets its own <code>advisor()</code>
+consultation and plan-mode pass before code is written, not after), picking any of these up should
+follow the same phased/tested-first pattern T-177 used, not be treated as a small parameter tweak.</p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../pseudocode/dstu4145.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                            </a>
+
+                            <a rel="next prefetch" href="../DECISIONS.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../pseudocode/dstu4145.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                    </a>
+
+                    <a rel="next prefetch" href="../DECISIONS.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                    </a>
+            </nav>
+
+        </div>
+
+        <template id=fa-eye><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M288 32c-80.8 0-145.5 36.8-192.6 80.6C48.6 156 17.3 208 2.5 243.7c-3.3 7.9-3.3 16.7 0 24.6C17.3 304 48.6 356 95.4 399.4C142.5 443.2 207.2 480 288 480s145.5-36.8 192.6-80.6c46.8-43.5 78.1-95.4 93-131.1c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C433.5 68.8 368.8 32 288 32zM432 256c0 79.5-64.5 144-144 144s-144-64.5-144-144s64.5-144 144-144s144 64.5 144 144zM288 192c0 35.3-28.7 64-64 64c-11.5 0-22.3-3-31.6-8.4c-.2 2.8-.4 5.5-.4 8.4c0 53 43 96 96 96s96-43 96-96s-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6z"/></svg></span></template>
+        <template id=fa-eye-slash><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M38.8 5.1C28.4-3.1 13.3-1.2 5.1 9.2S-1.2 34.7 9.2 42.9l592 464c10.4 8.2 25.5 6.3 33.7-4.1s6.3-25.5-4.1-33.7L525.6 386.7c39.6-40.6 66.4-86.1 79.9-118.4c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C465.5 68.8 400.8 32 320 32c-68.2 0-125 26.3-169.3 60.8L38.8 5.1zM223.1 149.5C248.6 126.2 282.7 112 320 112c79.5 0 144 64.5 144 144c0 24.9-6.3 48.3-17.4 68.7L408 294.5c5.2-11.8 8-24.8 8-38.5c0-53-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6c0 10.2-2.4 19.8-6.6 28.3l-90.3-70.8zm223.1 298L373 389.9c-16.4 6.5-34.3 10.1-53 10.1c-79.5 0-144-64.5-144-144c0-6.9 .5-13.6 1.4-20.2L83.1 161.5C60.3 191.2 44 220.8 34.5 243.7c-3.3 7.9-3.3 16.7 0 24.6c14.9 35.7 46.2 87.7 93 131.1C174.5 443.2 239.2 480 320 480c47.8 0 89.9-12.9 126.2-32.5z"/></svg></span></template>
+        <template id=fa-copy><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M502.6 70.63l-61.25-61.25C435.4 3.371 427.2 0 418.7 0H255.1c-35.35 0-64 28.66-64 64l.0195 256C192 355.4 220.7 384 256 384h192c35.2 0 64-28.8 64-64V93.25C512 84.77 508.6 76.63 502.6 70.63zM464 320c0 8.836-7.164 16-16 16H255.1c-8.838 0-16-7.164-16-16L239.1 64.13c0-8.836 7.164-16 16-16h128L384 96c0 17.67 14.33 32 32 32h47.1V320zM272 448c0 8.836-7.164 16-16 16H63.1c-8.838 0-16-7.164-16-16L47.98 192.1c0-8.836 7.164-16 16-16H160V128H63.99c-35.35 0-64 28.65-64 64l.0098 256C.002 483.3 28.66 512 64 512h192c35.2 0 64-28.8 64-64v-32h-47.1L272 448z"/></svg></span></template>
+        <template id=fa-play><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M73 39c-14.8-9.1-33.4-9.4-48.5-.9S0 62.6 0 80V432c0 17.4 9.4 33.4 24.5 41.9s33.7 8.1 48.5-.9L361 297c14.3-8.7 23-24.2 23-41s-8.7-32.2-23-41L73 39z"/></svg></span></template>
+        <template id=fa-clock-rotate-left><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M75 75L41 41C25.9 25.9 0 36.6 0 57.9V168c0 13.3 10.7 24 24 24H134.1c21.4 0 32.1-25.9 17-41l-30.8-30.8C155 85.5 203 64 256 64c106 0 192 86 192 192s-86 192-192 192c-40.8 0-78.6-12.7-109.7-34.4c-14.5-10.1-34.4-6.6-44.6 7.9s-6.6 34.4 7.9 44.6C151.2 495 201.7 512 256 512c141.4 0 256-114.6 256-256S397.4 0 256 0C185.3 0 121.3 28.7 75 75zm181 53c-13.3 0-24 10.7-24 24V256c0 6.4 2.5 12.5 7 17l72 72c9.4 9.4 24.6 9.4 33.9 0s9.4-24.6 0-33.9l-65-65V152c0-13.3-10.7-24-24-24z"/></svg></span></template>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="../elasticlunr-ef4e11c1.min.js"></script>
+        <script src="../mark-09e88c2c.min.js"></script>
+        <script src="../searcher-09f2665d.js"></script>
+
+        <script src="../clipboard-1626706a.min.js"></script>
+        <script src="../highlight-abc7f01d.js"></script>
+        <script src="../book-609e4cb8.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+
+    </div>
+    </body>
+</html>

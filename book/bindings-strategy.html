@@ -1,0 +1,1330 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Language bindings strategy - uacrypt</title>
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="Ukrainian DSTU cryptography in Rust - the full docs/ knowledge base as one navigable, searchable book.">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon-de23e50b.svg">
+        <link rel="shortcut icon" href="favicon-8114d1fc.png">
+        <link rel="stylesheet" href="css/variables-8adf115d.css">
+        <link rel="stylesheet" href="css/general-e96d0476.css">
+        <link rel="stylesheet" href="css/chrome-d279d366.css">
+        <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="fonts/fonts-9644e21d.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="mdbook-highlight-css" href="highlight-493f70e1.css">
+        <link rel="stylesheet" id="mdbook-tomorrow-night-css" href="tomorrow-night-4c0ae647.css">
+        <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="ayu-highlight-3fdfc3ac.css">
+
+        <!-- Custom theme stylesheets -->
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "";
+            const default_light_theme = "light";
+            const default_dark_theme = "navy";
+            window.path_to_searchindex_js = "searchindex-87f949c2.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="toc-ce7e91c5.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="mdbook-body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('light')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="mdbook-sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("mdbook-sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="mdbook-sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+            </noscript>
+            <div id="mdbook-sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="mdbook-page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="mdbook-menu-bar-hover-placeholder"></div>
+                <div id="mdbook-menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="mdbook-sidebar-toggle" class="icon-button" for="mdbook-sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="mdbook-sidebar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M0 96C0 78.3 14.3 64 32 64H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32C14.3 128 0 113.7 0 96zM0 256c0-17.7 14.3-32 32-32H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32c-17.7 0-32-14.3-32-32zM448 416c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H416c17.7 0 32 14.3 32 32z"/></svg></span>
+                        </label>
+                        <button id="mdbook-theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="mdbook-theme-list">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M371.3 367.1c27.3-3.9 51.9-19.4 67.2-42.9L600.2 74.1c12.6-19.5 9.4-45.3-7.6-61.2S549.7-4.4 531.1 9.6L294.4 187.2c-24 18-38.2 46.1-38.4 76.1L371.3 367.1zm-19.6 25.4l-116-104.4C175.9 290.3 128 339.6 128 400c0 3.9 .2 7.8 .6 11.6c1.8 17.5-10.2 36.4-27.8 36.4H96c-17.7 0-32 14.3-32 32s14.3 32 32 32H240c61.9 0 112-50.1 112-112c0-2.5-.1-5-.2-7.5z"/></svg></span>
+                        </button>
+                        <ul id="mdbook-theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-ayu">Ayu</button></li>
+                        </ul>
+                        <button id="mdbook-search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="mdbook-searchbar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352c79.5 0 144-64.5 144-144s-64.5-144-144-144S64 128.5 64 208s64.5 144 144 144z"/></svg></span>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">uacrypt</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <span class=fa-svg id="print-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M128 0C92.7 0 64 28.7 64 64v96h64V64H354.7L384 93.3V160h64V93.3c0-17-6.7-33.3-18.7-45.3L400 18.7C388 6.7 371.7 0 354.7 0H128zM384 352v32 64H128V384 368 352H384zm64 32h32c17.7 0 32-14.3 32-32V256c0-35.3-28.7-64-64-64H64c-35.3 0-64 28.7-64 64v96c0 17.7 14.3 32 32 32H64v64c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V384zm-16-88c-13.3 0-24-10.7-24-24s10.7-24 24-24s24 10.7 24 24s-10.7 24-24 24z"/></svg></span>
+                        </a>
+                        <a href="https://github.com/user137/uacrypt" title="Git repository" aria-label="Git repository">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6zm-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3zm44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9zM244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8zM97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1zm-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7zm32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1zm-11.4-14.7c-1.6 1-1.6 3.6 0 5.9 1.6 2.3 4.3 3.3 5.6 2.3 1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2z"/></svg></span>
+                        </a>
+                        <a href="https://github.com/user137/uacrypt/edit/master/docs/bindings-strategy.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
+                            <span class=fa-svg id="git-edit-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M421.7 220.3l-11.3 11.3-22.6 22.6-205 205c-6.6 6.6-14.8 11.5-23.8 14.1L30.8 511c-8.4 2.5-17.5 .2-23.7-6.1S-1.5 489.7 1 481.2L38.7 353.1c2.6-9 7.5-17.2 14.1-23.8l205-205 22.6-22.6 11.3-11.3 33.9 33.9 62.1 62.1 33.9 33.9zM96 353.9l-9.3 9.3c-.9 .9-1.6 2.1-2 3.4l-25.3 86 86-25.3c1.3-.4 2.5-1.1 3.4-2l9.3-9.3H112c-8.8 0-16-7.2-16-16V353.9zM453.3 19.3l39.4 39.4c25 25 25 65.5 0 90.5l-14.5 14.5-22.6 22.6-11.3 11.3-33.9-33.9-62.1-62.1L314.3 67.7l11.3-11.3 22.6-22.6 14.5-14.5c25-25 65.5-25 90.5 0z"/></svg></span>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="mdbook-search-wrapper" class="hidden">
+                    <form id="mdbook-searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="mdbook-searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="mdbook-searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <span class=fa-svg id="fa-spin"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M304 48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zm0 416c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM48 304c26.5 0 48-21.5 48-48s-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48zm464-48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM142.9 437c18.7-18.7 18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zm0-294.2c18.7-18.7 18.7-49.1 0-67.9S93.7 56.2 75 75s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zM369.1 437c18.7 18.7 49.1 18.7 67.9 0s18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9z"/></svg></span>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="mdbook-searchresults-outer" class="searchresults-outer hidden">
+                        <div id="mdbook-searchresults-header" class="searchresults-header"></div>
+                        <ul id="mdbook-searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('mdbook-sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('mdbook-sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#mdbook-sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="mdbook-content" class="content">
+                    <main>
+                        <h1 id="language-bindings-strategy-phase-3"><a class="header" href="#language-bindings-strategy-phase-3">Language bindings strategy (Phase 3)</a></h1>
+<p>Requested 2026-08-02 by the project owner: an analysis of which languages actually benefit from a
+<code>dstu-core</code> binding, what to bind and how, what engineers need to consume it, a project-structure
+placement, and a phased roadmap built with <code>advisor()</code> input, executed in small committed steps.
+This document is the durable record of that analysis — <code>docs/TASKS.md</code> tracks the same work at the
+task-checklist level (Phase 3 section, <code>T-158</code> onward); this file is the reasoning behind it, not a
+duplicate of the checklist.</p>
+<p><code>docs/dstu-crypto-project.md</code>’s “Second priority” section already named the five core languages
+(Python, JavaScript, Java, .NET, C++) before this document existed — this is the plan for <em>how</em>,
+not a re-litigation of <em>whether</em>.</p>
+<h2 id="popularity-analysis--why-this-order-not-tiobe-rank-alone"><a class="header" href="#popularity-analysis--why-this-order-not-tiobe-rank-alone">Popularity analysis — why this order, not TIOBE rank alone</a></h2>
+<p>TIOBE (July 2026): Python #1 (18.9%), C #2, C++ #3, Java #4, C# #5, JavaScript #6, Rust newly #10.
+Raw rank is a weak signal for <em>this specific</em> library’s audience, though — a DSTU crypto library’s
+real consumers skew toward PKI/enterprise/security tooling, not general web/app development. Two
+pieces of direct evidence from this project’s own oracle map (<code>docs/ORACLES.md</code>) outweigh TIOBE rank
+for ordering Java/.NET: UAPKI (a real Ukrainian PKI stack, state-expertise-certified once) already
+ships Java/Kotlin bindings, and Bouncy Castle .NET is already a verification oracle used in this
+repo’s own test harnesses. That is direct evidence of where real DSTU-consuming demand already
+sits, not a rank-based guess.</p>
+<p>Net ordering, and why each sits where it does:</p>
+<ol>
+<li><strong>Python</strong> — not chosen for TIOBE rank #1 alone, but because PyO3 + maturin is the most mature
+direct-Rust-binding toolchain that exists today, so it validates the whole pipeline (workspace
+member → build → package → local test → examples → CI) with the least incidental FFI complexity.
+Every later binding reuses this template rather than re-deriving it.</li>
+<li><strong>A C ABI crate</strong> — not a language binding itself, but the shared foundation C++, .NET, and
+(pending a spike, see below) Java need. This is <code>dstu-crypto-project.md</code>’s “On the horizon” C-ABI
+idea finally becoming real, but scoped strictly as “serves our own bindings” — the speculative
+“UAPKI itself could adopt this instead of its own C implementation” idea stays exactly as
+speculative and unscheduled as that section already states; this document does not schedule it.</li>
+<li><strong>.NET</strong> — P/Invoke over the C ABI crate. No new Rust-side glue beyond the C ABI itself.</li>
+<li><strong>Java</strong> — real Ukrainian-PKI demand evidence (UAPKI), but needs one implementation-choice spike
+first (below) before locking an approach.</li>
+<li><strong>JavaScript (Node)</strong> — napi-rs, a direct-Rust binding shaped like Python’s, deliberately not
+built second despite the shape match, because Node’s actual audience (web/app dev) overlaps
+least with this project’s demonstrated demand (PKI/enterprise). <strong>Scope explicitly Node-only,
+confirmed with the project owner 2026-08-02, see D-118</strong>: a browser-usable target (Web Crypto
+API-style in-browser TLS/signing was the concrete comparison raised) needs a genuinely different
+toolchain (WASM via <code>wasm-bindgen</code>, not napi-rs — napi-rs binaries don’t run in a browser at
+all) and is deliberately not scheduled now, not silently assumed either way.</li>
+<li><strong>C++</strong> — consumes the same C ABI crate/header directly; no separate Rust glue needed.</li>
+</ol>
+<p>Two additional languages the project owner asked to include, deliberately placed after the original
+five and not interleaved with them (no equivalent Ukrainian-PKI demand evidence exists for either):</p>
+<ol start="7">
+<li><strong>PHP</strong> (Phase 8) — TIOBE ~#8, large web-backend footprint (Laravel/WordPress), essentially no
+presence in crypto/PKI tooling. Rides the already-built C ABI (<code>ext-php-rs</code> as a real extension,
+or a plainer <code>FFI</code>-extension path over the same header) rather than justifying its own Rust-side
+binding.</li>
+<li><strong>Ruby</strong> (Phase 9) — smaller than PHP by TIOBE rank (~#12-15), but a somewhat stronger
+security/ops-tooling footprint (Metasploit, DevSecOps scripting) than PHP has. Binds the Rust
+crate directly, like Python/Node, via <code>magnus</code>/<code>rb-sys</code> — the current standard for
+production Rust-backed gems, not through the C ABI.</li>
+</ol>
+<h3 id="build-order-revised-2026-08-02-d-121d-122--the-analysis-above-stays-the-ordering-it-drove-doesnt"><a class="header" href="#build-order-revised-2026-08-02-d-121d-122--the-analysis-above-stays-the-ordering-it-drove-doesnt">Build order revised 2026-08-02 (D-121/D-122) — the analysis above stays, the ordering it drove doesn’t</a></h3>
+<p>The popularity analysis above is kept verbatim, not rewritten — it was correct evidence, just aimed
+at the wrong question. It asked “where does real DSTU demand already exist,” and answered
+Java/.NET via UAPKI/Bouncy Castle. The better question for <em>this project’s own</em> ordering is “where
+does a gap exist that only this project’s zero-config <code>crypto_*</code> surface fills” — and Bouncy
+Castle/UAPKI already serving Java/.NET means this project’s marginal contribution there is real but
+smaller than in a language with no DSTU library at all (Node, Ruby, PHP, and now Go — none of which
+have an incumbent the way Java/.NET do).</p>
+<p><strong>Revised order</strong>: T-49 (Python, done) → T-50 (Node) → T-160 (Ruby) → T-159 (PHP, committed to
+<code>ext-php-rs</code> specifically so it’s a direct binding like Node/Ruby, not gated on the C ABI crate
+below) → T-158 (C ABI crate, built once actually needed by the group below) → T-52 (.NET) → T-51
+(Java) → T-163 (Go, new - see its own section below; needs the C ABI too, since no Go binding
+toolchain matches PyO3/napi-rs/magnus’s maturity) → T-53 (C++, reordered again same day - D-123 -
+to build after Go specifically, the owner’s explicit preference) → T-162 (docs, last).</p>
+<p><strong>Dart, raised in the same conversation, is explicitly deferred, not silently assumed either way</strong>
+(D-122) — same reasoning as Node’s own browser/WASM scoping (D-118): Dart’s primary audience
+(Flutter mobile/web) overlaps least with this project’s demonstrated PKI/enterprise/security-
+tooling demand, so it doesn’t earn a place ahead of the languages that do.</p>
+<h2 id="what-to-bind-and-how--the-three-forks-resolved"><a class="header" href="#what-to-bind-and-how--the-three-forks-resolved">What to bind and how — the three forks, resolved</a></h2>
+<h3 id="fork-1--c-abi-vs-native-ffi-resolved-by-tooling-maturity-not-preference"><a class="header" href="#fork-1--c-abi-vs-native-ffi-resolved-by-tooling-maturity-not-preference">Fork 1 — C ABI vs. native FFI, resolved by tooling maturity, not preference</a></h3>
+<p>Python (PyO3) and Node (napi-rs) bind the <code>dstu-core</code> Rust crate directly — routing either through a
+C ABI would double-marshal data for no benefit and lose idiomatic types (Python <code>bytes</code>, JS
+<code>Uint8Array</code>) for nothing. C++ and .NET consume the C ABI crate directly instead: C++ via the
+generated header + link, .NET via P/Invoke. Java gets an explicit spike step (Phase 4, step 1)
+comparing the <code>jni</code> crate (write the JNI layer directly in Rust, no hand-written C shim) against
+JNI-over-the-C-ABI, before committing to either — record the outcome in <code>docs/DECISIONS.md</code> when
+that spike runs. Ruby follows Python/Node’s direct-binding shape (<code>magnus</code>); PHP was planned to
+follow C++/.NET’s C-ABI-consuming shape (<code>ext-php-rs</code> or the <code>FFI</code> extension) here, but <strong>the
+actual T-159 implementation binds <code>dstu-core</code> directly via <code>ext-php-rs</code></strong> (confirmed by its own
+<code>Cargo.toml</code> dependency, not this plan) - flat <code>dstu_core_*</code>-prefixed globals matching <code>ext-sodium</code>’s
+own naming (D-142), same direct-binding group as Python/Node/Ruby in practice. This paragraph is
+left uncorrected below as the historical record of what was planned; treat the per-binding
+<code>Cargo.toml</code> as the source of truth for what a binding actually links against, not this section
+(found stale doing T-181’s own PHP work, 2026-08-06 - the T-181 phase entry below reflects reality).</p>
+<h3 id="fork-2--crypto_sign-dstu-4145-exposure-uniform-across-every-binding"><a class="header" href="#fork-2--crypto_sign-dstu-4145-exposure-uniform-across-every-binding">Fork 2 — <code>crypto_sign</code> (DSTU 4145) exposure: uniform across every binding</a></h3>
+<p><code>dstu-crypto-project.md</code>’s original “Second priority” text says: “Do not separately reimplement DSTU
+4145 in the native core — for Java/.NET, integrate/wrap Bouncy Castle… for Rust, port it while
+relying on Bouncy Castle as a second verification oracle.” That guidance predates
+<code>hazmat::dstu4145</code>/<code>dstu_core::crypto_sign</code> actually existing — they’re now fully implemented and
+verified in Rust (per-Annex-B.1 worked example, dual-oracle cross-checked against real Bouncy
+Castle Java/.NET, <code>docs/DECISIONS.md</code> D-25/D-46). Bouncy Castle’s role today is <em>verification oracle</em>
+only, already used that way in <code>tests/oracle-harness/</code>. There is no remaining reason for a Java or
+.NET binding to route signing through Bouncy Castle instead of this project’s own audited
+<code>crypto_sign</code> — a binding that silently omits <code>crypto_sign</code>, or reimplements it against a different
+library per language, is strictly worse than one that calls the same Rust implementation every other
+binding calls. <strong>Resolution: every binding exposes the same <code>crypto_*</code> surface, <code>crypto_sign</code>
+included, uniformly.</strong> See <code>docs/DECISIONS.md</code> D-115 for the citation.</p>
+<h3 id="fork-3--package-naming-uacrypt--dstu-core-everywhere"><a class="header" href="#fork-3--package-naming-uacrypt--dstu-core-everywhere">Fork 3 — package naming: <code>uacrypt</code> / <code>dstu-core</code> everywhere</a></h3>
+<p>Confirmed with the project owner this session: match the existing CLI binary (<code>uacrypt</code>, D-36) and
+crate (<code>dstu-core</code>) names on every registry, using each registry’s own idiomatic spelling
+(underscore vs. hyphen) rather than inventing a new brand or an artificial <code>dstu-ua-</code> prefix.
+Checked exact-name availability directly against each registry’s own API (not a search engine, which
+under-indexes empty results) on 2026-08-02:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Registry</th><th>Name checked</th><th>Result</th></tr>
+</thead>
+<tbody>
+<tr><td>PyPI</td><td><code>uacrypt</code></td><td><code>404</code> — free</td></tr>
+<tr><td>PyPI</td><td><code>dstu-core</code></td><td><code>404</code> — free</td></tr>
+<tr><td>PyPI</td><td><code>dstu_core</code></td><td><code>404</code> — free</td></tr>
+<tr><td>npm</td><td><code>uacrypt</code></td><td><code>404</code> — free</td></tr>
+<tr><td>npm</td><td><code>dstu-core</code></td><td><code>404</code> — free</td></tr>
+<tr><td>NuGet</td><td><code>uacrypt</code></td><td><code>404</code> — free</td></tr>
+<tr><td>NuGet</td><td><code>dstu-core</code></td><td><code>404</code> — free</td></tr>
+<tr><td>Maven Central</td><td>artifactId <code>uacrypt</code></td><td><code>numFound: 0</code> — free</td></tr>
+<tr><td>Maven Central</td><td>artifactId <code>dstu-core</code></td><td><code>numFound: 0</code> — free</td></tr>
+</tbody>
+</table>
+</div>
+<p>No collision with <code>li0ard</code> (D-07, excluded as an untrusted supply-chain source): their TypeScript
+packages live under the npm scope <code>@li0ard/kalyna</code>, <code>@li0ard/kupyna</code>, <code>@li0ard/strumok</code> — a
+different namespace entirely from the unscoped <code>dstu-core</code>/<code>uacrypt</code> names this project would use.
+A future consumer typing the unscoped name has no path to land on <code>@li0ard/*</code> by mistake.</p>
+<h2 id="what-engineers-need--the-per-binding-checklist"><a class="header" href="#what-engineers-need--the-per-binding-checklist">What engineers need — the per-binding checklist</a></h2>
+<p>Every binding, regardless of language, ships all of the following before it’s considered done —
+this is the template every phase below instantiates:</p>
+<ul>
+<li><strong>The same <code>crypto_*</code> API surface</strong> (<code>secretbox</code>, <code>secretstream</code>, <code>auth</code>, <code>kdf</code>, <code>generichash</code>,
+<code>stream</code>, <code>sign</code>, <code>pwhash</code> where the feature is enabled, <code>randombytes</code>) — not a subset, per Fork 2.</li>
+<li><strong>Idiomatic to the target language</strong>, per <code>docs/cross-language-style-guide.md</code> (casing, error
+shape, resource cleanup, doc-comment format) — that document is the style authority; this document
+doesn’t re-derive its conventions.</li>
+<li><strong>“Install and forget” — zero-config API, no knobs to misconfigure.</strong> Same libsodium-style hard-
+defaults philosophy the core already applies (<code>crypto_secretbox</code>/<code>crypto_secretstream</code>’s
+internally-generated nonce, D-47’s “delete the knob”). A binding’s public surface takes a key and
+a message and returns a result — no mode/nonce/IV/padding parameter for the consumer to get wrong,
+no setup step beyond <code>import</code>/<code>require</code>/<code>using</code> + one key-generation call. This is a functional
+requirement, not just documentation quality — if a binding needs a config object or an init call
+beyond constructing a key, that’s a design defect to fix before the binding ships, not something
+to explain away in a README.</li>
+<li><strong>Prebuilt binaries — never “clone and build it yourself” for the binding’s own consumer.</strong> Same
+bar <code>uacrypt</code> itself already clears (T-18/T-119: GitHub Release binaries for Windows/Linux/macOS,
+“no Rust toolchain required on their side” per D-12’s own scope note) — a consumer of the binding
+installs a package and never invokes <code>cargo build</code> themselves. Per language: Python — manylinux/
+macOS/Windows wheels via <code>maturin</code>; Node — prebuilt <code>.node</code> binaries per platform via napi-rs’s
+cross-compile; Java — a native library bundled per OS/arch classifier (or one fat JAR); .NET — a
+package with <code>runtimes/{rid}/native/</code> per platform; C++ — prebuilt static/dynamic libs alongside
+the header, or a one-line CMake <code>FetchContent</code>; PHP/Ruby — a prebuilt extension binary where the
+ecosystem supports it, source build only as a fallback. This is about the <em>packaging mechanism</em>
+and applies to local/CI-artifact installs immediately — it is independent of, and does not wait
+on, the separate registry-publish authorization gate below.</li>
+<li><strong><code>crypto_secretstream</code> gets an idiomatic stream/pipe wrapper per language, not a raw push/pull
+loop the consumer manages themselves.</strong> See D-118: the same “.NET <code>CryptoStream</code>/<code>GZipStream</code>,
+Node <code>stream.Transform</code>, Python file-like object, Java <code>InputStream</code>/<code>OutputStream</code>, C++
+<code>istream</code>/<code>ostream</code>” shape every one of those ecosystems already has for exactly this kind of
+transform-a-stream operation. A consumer wires a source stream to a destination stream (or
+<code>File.Encrypt(inPath, outPath, key)</code>-style helper for the common case) and chunking, tag framing,
+and rekeying stay entirely invisible — this extends the “install and forget” requirement above to
+the <em>mechanics</em> of streaming, not just to the absence of crypto knobs. <strong>This adds no new
+configuration surface</strong> — D-47’s “delete the knob” still holds; the “wider” instinct that
+prompted this is satisfied by which primitive to call (<code>secretbox</code> for one message,
+<code>secretstream</code> for a file/stream, <code>sign</code> for a signature — already all in scope), not by new
+tunables inside any one of them.</li>
+<li><strong>Three test categories</strong> (already this project’s standing rule, D-64/D-65): (1) correctness
+against the same vectors/oracles the Rust core already uses, (2) rejection — tampered
+ciphertext/tag/nonce, wrong key, (3) misuse — bad lengths/paths, empty input, no partial output on
+failure. “Round-trip works” alone is category 1 only, not sufficient coverage.</li>
+<li><strong>Category 1 specifically must run the actual official vectors, not just round-trip against
+itself.</strong> Each binding’s local test suite loads and runs the same
+<code>crates/dstu-core/tests/vectors/{kalyna,kupyna,strumok,dstu4145}/*.json</code> files the Rust tests
+already use, through the binding’s own public API — one source of truth, no hand-copied duplicate
+vector data per language to drift out of sync (the same “test-vector fix needs a citation, not
+just matching numbers” discipline <code>CLAUDE.md</code> already applies to the Rust tests themselves).
+Where a language’s ecosystem makes reading JSON test fixtures awkward, generate that language’s
+fixture format from the JSON at test-build time — never hand-transcribe the numbers.</li>
+<li><strong>A runtime self-test function the binding’s own consumer can call, not just a dev-time test
+suite.</strong> See D-117: <code>dstu_core</code> gains one shared <code>selftest</code> module that re-runs the official KAT
+vectors against the live compiled code and reports pass/fail (which primitive failed, if any).
+Every binding exposes a thin, idiomatically-named wrapper around that single implementation
+(<code>dstu_core.selftest()</code> in Python, <code>selfTest()</code> in Node/Java/.NET, <code>dstu_selftest()</code> in the C ABI)
+— built once at the core, not reimplemented per language. This lets a consumer verify their exact
+installed binary is producing correct outputs on their exact platform before trusting it with real
+data, the same “don’t just trust it compiled” instinct this project already applies to itself via
+dual-oracle verification.</li>
+<li><strong>A local test suite in that language’s native framework</strong> (pytest, xUnit, JUnit, <code>node:test</code>, a
+small C/C++ harness, PHPUnit, RSpec/Minitest) — runnable without any other binding installed.</li>
+<li><strong>Test-first and cross-language, for every binding language, not just Python (T-49) where it
+happened to land that way — see D-124.</strong> Test-first: the failing test for a given wrapper/
+surface is written before that wrapper’s code, same as this project’s root “test-first, always”
+rule already requires for the Rust core — T-161’s own step 1 is the pattern every later binding’s
+step 6 follows, not a one-off. Cross-language: every binding’s category-1 correctness tests load
+the <em>same</em> shared vector files under <code>crates/dstu-core/tests/vectors/</code> (already stated above) —
+two languages passing against one shared vector file is what makes them comparable, not a
+separate suite that runs one language’s output against another’s.</li>
+<li><strong>Accessible examples for a working programmer</strong>, not API reference restated: real recipes
+(“encrypt a file,” “hash a string,” “sign/verify a message”), comment-light, in an <code>examples/</code>
+directory.</li>
+<li><strong>The same provisional-status banner</strong> the root README/crate docs already carry (T-112) — a
+binding that omits “Kalyna modes not primary-text-confirmed / Strumok vectors UAPKI-attributed”
+would be less honest than the Rust crate it wraps.</li>
+<li><strong>A <code>cargo xtask</code> subcommand</strong>, not a one-off shell/PowerShell script (D-12 — <code>xtask</code> is the single
+cross-platform QA entry point) — wired into CI the same way every other target already is.</li>
+<li><strong>Build/test only, never publish</strong>, until publishing that specific registry is separately,
+explicitly requested — the same gating T-17 already applies to crates.io (still not requested as
+of this document). PyPI/npm/Maven Central/NuGet/RubyGems/Packagist are five more instances of the
+same class of decision, not a bundle to authorize once.</li>
+</ul>
+<h2 id="project-structure"><a class="header" href="#project-structure">Project structure</a></h2>
+<p>New top-level <code>bindings/</code> directory, sibling to <code>crates/</code>:</p>
+<pre><code>bindings/
+  python/       # PyO3 crate + maturin config, pytest suite, examples/
+  capi/         # C ABI crate (cdylib+staticlib), generated header, C smoke test, examples/
+  dotnet/       # P/Invoke wrapper over capi, xUnit suite, examples/
+  java/         # JNI (jni crate or over capi, per Phase 4 spike), JUnit suite, examples/
+  nodejs/       # napi-rs crate, node:test suite, examples/
+  cpp/          # thin C++ header-only RAII wrapper over capi, a small test, examples/
+  php/          # ext-php-rs extension (or FFI-extension over capi), PHPUnit suite, examples/
+  ruby/         # magnus/rb-sys crate, RSpec/Minitest suite, examples/
+</code></pre>
+<p>Each binding directory carries its own <code>README.md</code> (provisional-status banner + quickstart), its
+own test suite in the language’s native layout, and its own <code>examples/</code> directory — see the
+checklist above for what each of those must contain.</p>
+<h2 id="phased-roadmap"><a class="header" href="#phased-roadmap">Phased roadmap</a></h2>
+<p>Full phase-by-phase task breakdown, with commit points, lives in <code>docs/TASKS.md</code>’s “Phase 3 —
+Language bindings” section (<code>T-158</code> onward) — this document states the reasoning and order; that
+document tracks live status so it doesn’t drift from this analysis. Summary:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Phase</th><th>Deliverable</th><th>Depends on</th></tr>
+</thead>
+<tbody>
+<tr><td>0</td><td>This document + tracking + naming check (done this session)</td><td>—</td></tr>
+<tr><td>1</td><td>Python binding (the template)</td><td>Phase 0</td></tr>
+<tr><td>2</td><td>C ABI crate</td><td>Phase 1’s pipeline lessons</td></tr>
+<tr><td>3</td><td>.NET binding</td><td>Phase 2</td></tr>
+<tr><td>4</td><td>Java binding (spike first)</td><td>Phase 2</td></tr>
+<tr><td>5</td><td>Node.js binding</td><td>Phase 1’s pipeline lessons</td></tr>
+<tr><td>6</td><td>C++ binding</td><td>Phase 2</td></tr>
+<tr><td>7</td><td>Publishing to each registry — owner-gated, one explicit ask per registry</td><td>Phases 1-6</td></tr>
+<tr><td>8</td><td>PHP binding</td><td>Phase 2</td></tr>
+<tr><td>9</td><td>Ruby binding</td><td>Phase 1’s pipeline lessons</td></tr>
+<tr><td>10</td><td>GitHub-facing docs + <code>gh-pages</code> site refresh</td><td>Phases 1-9</td></tr>
+<tr><td>11</td><td>Go binding (T-163, added 2026-08-02)</td><td>Phase 2 (C ABI - no direct-Rust-binding toolchain for Go has PyO3/napi-rs/magnus’s maturity)</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>Phase numbers above are dependency labels, not the current build sequence</strong> — D-121/D-122/D-123
+reordered the actual sequence (Node/Ruby/PHP before the C ABI group; Go added, needing the C ABI,
+built ahead of C++ specifically; Dart deferred). <code>docs/TASKS.md</code>’s “Build order revised 2026-08-02”
+line is the current
+authoritative sequence; this table stays as originally written since the <em>dependency</em> relationships
+it states (what needs what) are still accurate, only the <em>order</em> changed.</p>
+<h2 id="cross-session-execution-plan"><a class="header" href="#cross-session-execution-plan">Cross-session execution plan</a></h2>
+<p>Requested 2026-08-02: a granular, checkable, per-task step list that survives a memory clear or a
+new session — this section is the one to update as work lands, and the one to read first when
+resuming. <strong>Update the resume line below every time a step is checked off</strong>; a stale resume line is
+worse than no resume line, since it actively misdirects the next session.</p>
+<p>*<em>Resume point: T-161 done (2026-08-02). T-49 (Python) done in full 2026-08-02 - see D-120. T-50
+(Node.js) done in full 2026-08-02 - see D-125 through D-132 (step 6 done before step 5, a
+tooling-forced reorder, D-129 explains why; D-130 corrects D-125’s toolchain-pin approach). T-160
+(Ruby) done in full 2026-08-02 - see D-133 (own Ruby+MSYS2-clang toolchain install, several real
+rb_sys/bindgen gotchas), D-134 (full crypto_</em> surface), D-135 (SecretStreamWriter/Reader,
+Zlib::GzipWriter/Reader-modeled), D-136 (advisor-review fixes to steps 2-3, then step 4’s
+precompiled native gem - a source gem cannot install standalone at all, the path-dependency
+finding), D-137 (cargo xtask ruby + bindings-ruby.yml, rubocop wired in), D-138 (58-example RSpec
+suite, cross-language vector loading, real uacrypt interop), D-139 (examples/ + README.md), D-140/
+D-141 (three real CI round-trips to get bindings-ruby.yml actually green - <code>ridk</code> not on the hosted
+runner’s PATH, <code>Gemfile.lock</code> missing non-Windows platforms, and the root <code>rust-toolchain.toml</code>
+silently overriding <code>rustup default</code> on Windows - <strong>confirmed green on real CI</strong>, run id
+<code>30759971107</code>, all four jobs <code>success</code>). T-159 (PHP) done in full 2026-08-02 too - see D-142
+through D-147 (flat <code>dstu_core_*</code> naming modeled on <code>ext-sodium</code>, a plain PHP <code>Writer</code>/<code>Reader</code>
+over <code>stream_filter_register</code> rejected for step 3, a real <code>xtask</code>-level <code>RUSTUP_TOOLCHAIN</code>
+inheritance bug found and fixed (D-146), and D-147’s own two CI round-trips - a macOS
+<code>-undefined dynamic_lookup</code> linker gotcha, a cross-OS <code>cargo-deny</code> license-allow-list gap, and a
+Windows <code>pwsh</code>-vs-<code>bash</code> POSIX-path mismatch - <strong>confirmed green on real CI</strong>, run id
+<code>30765006443</code>, all four jobs <code>success</code>). T-158 (C ABI crate) done in full 2026-08-03 - see D-148
+(pre-implementation design forks: symbol prefix, cbindgen-via-xtask, output-buffer convention,
+unconditional <code>std</code> dependency, unsafe-boundary hygiene, <code>rlib</code> crate-type) and D-149 (the
+implementation: <code>cbindgen.toml</code>, <code>crates/dstu-core-capi</code>’s full <code>crypto_*</code> wrap, the C test
+harness, examples, README, <code>cargo xtask capi</code> plus a new <code>capi</code> job in <code>rust.yml</code> - not yet
+confirmed on real CI, only verified locally on this Windows-GNU dev machine, same caveat every
+prior binding’s own first-pass session carried). T-52 (.NET) done in full 2026-08-03 - see D-152
+(P/Invoke <code>[LibraryImport]</code> bool-marshalling finding, <code>SafeHandle</code> handles,
+<code>SecretStreamEncryptStream</code>/<code>DecryptStream</code>’s <code>Complete()</code>-not-<code>Dispose()</code> finalization split,
+NuGet packaging + fresh-install check, then the Pi ARM64 re-check - step 10, all green first try,
+no bug found) - T-52 is now done in full, all ten standard steps. T-51 (Java) done in full
+2026-08-03, all ten standard steps - see D-153 (step-0 spike chose the <code>jni</code> crate direct-Rust
+binding over JNI-over-capi; full <code>crypto_*</code> surface, <code>SecretStreamEncryptor</code>/<code>Decryptor</code>, 56 JUnit
+tests including real <code>uacrypt</code> interop, <code>cargo xtask java</code> + CI, examples/README; JDK build/test
+baseline 17, published bytecode target 8; step 10’s Pi re-check found one real bug - Debian’s
+apt-packaged Maven defaults to an old <code>maven-compiler-plugin</code> that silently ignores
+<code>maven.compiler.release</code>, fixed by pinning the plugin version explicitly). T-163 (Go) done in full
+2026-08-03, all ten standard steps - see D-155 (step-0: hand-written <code>cgo</code> over <code>c-for-go</code>, decided
+on inspection rather than a full spike, since T-158’s own C ABI surface is already stable; a real
+selftest-only link spike found two genuine static-linking gaps on Windows-GNU - <code>-ldstu_core_capi</code>
+alone links dynamically unless <code>-Wl,-Bstatic</code>/<code>-Bdynamic</code> bracket it, and the Rust staticlib
+transitively needs <code>-lws2_32 -luserenv -lntdll</code> even though <code>dstu-core-capi</code> itself never touches
+networking; full <code>crypto_*</code> surface, <code>CryptoError</code>/<code>ArgumentError</code>/<code>InternalError</code> split,
+<code>SecretStreamEncryptWriter</code>/<code>DecryptReader</code> (<code>io.Writer</code>/<code>io.Reader</code>-shaped, <code>Complete()</code>-not-
+<code>Close()</code> finalization split same as .NET’s), <code>cargo xtask go</code> + <code>bindings-go.yml</code> CI (Windows leg
+forces the GNU-hosted Rust toolchain since cgo can’t link MSVC output - unconfirmed on real CI as
+of this writing), examples/README; step 10’s Pi re-check found the Windows-only LDFLAGS didn’t
+work unmodified on Linux - fixed with cgo’s own per-<code>GOOS</code> <code>#cgo</code> pragma syntax, all tests then
+green on real aarch64). T-53 (C++) done in full 2026-08-03, all ten standard steps - see D-158
+(four step-0 forks: <code>Finish()</code>-not-destructor Final emission, <code>std::ostream&amp;</code>/<code>std::istream&amp;</code>,
+prebuilt-lib CMake packaging with no <code>FetchContent</code> for the Rust side, hand-rolled <code>CHECK</code>-macro
+test harness mirroring <code>c-tests/test_capi.c</code>); header-only C++17 RAII wrapper (<code>unique_ptr</code>-backed
+move-only handles) over <code>crates/dstu-core-capi</code>’s cdylib (not the staticlib Go links - matches the
+C test harness’s own existing choice), full <code>crypto_*</code> surface, exception-based errors, real
+bidirectional <code>uacrypt.exe</code> interop in the test suite, <code>cargo xtask cpp</code> + <code>bindings-cpp.yml</code> CI (no
+Windows GNU-forcing needed, branches on <code>target_env</code> the same way <code>capi()</code> already does), five
+examples + README; step 10’s Pi re-check found no bug this time (unlike D-151’s <code>c_char</code>/<code>i8</code>
+finding in the C ABI crate) - <code>libdstu_core_capi.so</code> linked correctly, Kupyna-256 digest
+byte-identical to the x86-64 dev machine. Pushed and <strong>confirmed green on real CI</strong>, run id
+<code>30839873166</code>, all three <code>bindings-cpp.yml</code> jobs (<code>ubuntu-latest</code>/GCC, <code>macos-latest</code>/Clang,
+<code>windows-latest</code>/MSVC) <code>success</code> — MSVC/Clang were never exercised locally on this dev machine
+(no <code>cl.exe</code> on PATH, no local macOS box), so this CI run is their only confirmation, checked via
+<code>gh run view</code> per CLAUDE.md’s own rule, not assumed from the push alone. <strong>Every planned binding
+(T-49/T-50/T-160/T-159/T-158/T-52/T-51/T-163/T-53) is now done in full. Next: T-162 (docs, last).</strong></p>
+<h3 id="the-standard-binding-steps"><a class="header" href="#the-standard-binding-steps">The standard binding steps</a></h3>
+<p>Every binding task (T-49/T-50/T-51/T-52/T-53/T-158/T-159/T-160) follows this same ten-step
+template unless its own entry below says otherwise — written once here rather than repeated ten
+times, per this project’s own “three similar lines beat a premature abstraction, but don’t
+duplicate a real invariant” instinct. (Step 10 was added 2026-08-03 — T-49/T-50/T-158/T-159/T-160 predate
+it and weren’t retroactively re-run for it at the time; D-151’s own pass covered all of them
+retroactively the same day it was added, see that entry.)</p>
+<ol>
+<li><input disabled="" type="checkbox"> Scaffold the binding crate/project, wired into the Cargo workspace where applicable.</li>
+<li><input disabled="" type="checkbox"> Wrap the full <code>crypto_*</code> surface, zero-config (D-116), including a <code>selftest()</code> wrapper
+around T-161.</li>
+<li><input disabled="" type="checkbox"> Wrap <code>crypto_secretstream</code> in the language’s idiomatic stream/pipe primitive (D-118).
+<strong>Two pitfalls found by advisor review while building T-49’s own wrapper — check both
+again for every later binding, not just Python (see T-49 step 3’s own entry below for the
+concrete Python bugs and fixes):</strong>
+- <strong>The language’s own “always runs, even on error” resource-cleanup hook must NOT
+finalize (emit the <code>Final</code> chunk) on the error/exception path.</strong> Python’s
+<code>__exit__(exc_type, ...)</code> was the concrete case (T-49) — it originally called <code>close()</code>
+unconditionally, so a write loop that raised partway still produced a stream with a
+<code>Final</code> chunk, and a reader saw a complete-looking file instead of failing closed
+(violates D-65’s “no partial output treated as valid on failure”, the same property
+<code>uacrypt encrypt</code>’s own temp-file-then-rename gets for free). Every language’s equivalent
+hook has the same shape and needs the same check: C#’s <code>using</code>/<code>IDisposable.Dispose()</code>,
+Node’s <code>stream.Transform</code> <code>_flush</code>/<code>'error'</code> vs. <code>'end'</code> event, Java’s
+try-with-resources <code>close()</code>, C++ RAII destructors (which can’t even see whether
+unwinding is due to an exception without extra machinery — decide the mechanism
+deliberately, don’t assume the default is correct).
+- <strong>The wire-format reader must validate untrusted length-prefixed fields itself, not just
+copy the encoder’s happy path.</strong> Python’s decoder read the wire <code>chunk_len</code> field
+(attacker-controlled, read before any tag verification) and used it directly to size a
+read, with no upper bound — for a file this just hits EOF, but the language’s own
+file-like abstraction may also have to accept a socket/pipe, where an oversized declared
+length means accumulating gigabytes before ever failing. Also missed: rejecting trailing
+bytes after the <code>Final</code> chunk (silently ignored instead of erroring). Both are checks
+<code>uacrypt decrypt</code> already has (<code>CliError::SecretstreamChunkTooLarge</code>/
+<code>CliError::SecretstreamTrailingData</code>, <code>crates/uacrypt/src/lib.rs</code>) — port them explicitly
+into every language’s own reader, they don’t come for free from the wire format matching.</li>
+<li><input disabled="" type="checkbox"> Prebuilt-artifact packaging for the target platform(s) (D-116) — build/local-install only,
+no registry publish.</li>
+<li><input disabled="" type="checkbox"> <code>cargo xtask</code> subcommand + CI wiring (D-12).</li>
+<li><input disabled="" type="checkbox"> Local test suite: official vectors through the binding’s own API (category 1), rejection
+(category 2), misuse (category 3) — D-64/D-65 plus this session’s official-vectors
+requirement.</li>
+<li><input disabled="" type="checkbox"> <code>examples/</code> + <code>README.md</code> with the provisional-status banner (T-112).</li>
+<li><input disabled="" type="checkbox"> Doc-map sweep (<code>README.md</code>/<code>dstu-crypto-project.md</code>/<code>release-readiness.md</code>/
+<code>user-journey-gaps.md</code>/<code>cross-language-style-guide.md</code>) + mark the task done in
+<code>docs/TASKS.md</code>.</li>
+<li><input disabled="" type="checkbox"> Commit — each numbered step above is its own commit, not one large drop.</li>
+<li><input disabled="" type="checkbox"> <strong>Added 2026-08-03, D-151 — cross-arch smoke check on the Raspberry Pi rig</strong> (real aarch64
+Linux, access/re-sync details in <code>.claude.local.md</code>, not here): <code>cargo xtask &lt;binding&gt;</code> run
+there after installing whatever this binding’s own toolchain needs (see D-151/<code>docs/TASKS.md</code>
+T-35’s entry for the concrete per-language install commands already worked out — Node/Ruby/
+PHP/Python/cbindgen). Same “no CPU-family lock-in” reasoning <code>docs/TASKS.md</code> T-35 already
+applies to the core crate, extended to cover a binding’s own FFI-boundary code too — D-151
+found a real bug this way (a hardcoded <code>i8</code> test buffer that should have been <code>c_char</code>,
+compiling fine on every x86-64 platform but not on ARM Linux’s unsigned-by-default <code>char</code>).
+Run bindings sequentially on the Pi, not concurrently — two at once race on <code>~/.rustup</code>’s
+shared component-download cache (D-151’s own process-lesson note).</li>
+</ol>
+<h3 id="t-161--dstu_coreselftest-first-nothing-below-can-start-without-it"><a class="header" href="#t-161--dstu_coreselftest-first-nothing-below-can-start-without-it">T-161 — <code>dstu_core::selftest</code> (first; nothing below can start without it)</a></h3>
+<p>No binding exists yet at this point, so the standard template above doesn’t apply — this is real
+Rust-core work, confirmed as a genuine gap (see <code>docs/TASKS.md</code> T-161’s own note).</p>
+<p><strong>Done 2026-08-02.</strong></p>
+<ol>
+<li><input disabled="" type="checkbox" checked=""> Test-first: write the test asserting <code>selftest::run()</code> reports success, before the module
+exists.</li>
+<li><input disabled="" type="checkbox" checked=""> New Cargo feature (<code>selftest</code>), off by default in the bare crate.</li>
+<li><input disabled="" type="checkbox" checked=""> Embed the official vectors (build-time include from <code>crates/dstu-core/tests/vectors/*.json</code>,
+not hand-copied).</li>
+<li><input disabled="" type="checkbox" checked=""> Implement <code>run()</code> — <strong>scope note</strong>: one vector per <em>primitive</em> (Kalyna, Kupyna, Strumok,
+DSTU 4145), not one per every <code>hazmat</code> mode/<code>crypto_*</code> wrapper — a fast spot check of the
+underlying algorithm each of those builds on, not a re-run of the full <code>tests/vectors/</code>
+corpus (the module’s own doc comment says this explicitly, so a future reader doesn’t assume
+broader coverage than exists). The report names which primitive(s) failed, if any.</li>
+<li><input disabled="" type="checkbox" checked=""> Verify: <code>cargo test --features selftest</code> (workspace-default run unaffected), <code>cargo clippy     --features selftest --all-targets -- -D warnings</code> clean for the new files, <code>cargo fmt     --check</code> clean, <code>no_std</code>/<code>no_std+alloc</code>/default builds all still succeed with the feature
+absent.</li>
+<li><input disabled="" type="checkbox" checked=""> Mark T-161 done in <code>docs/TASKS.md</code>, note in D-117 that it landed.</li>
+<li><input disabled="" type="checkbox" checked=""> Commit.</li>
+</ol>
+<h3 id="t-49--python-the-template-every-later-task-assumes"><a class="header" href="#t-49--python-the-template-every-later-task-assumes">T-49 — Python (the template every later task assumes)</a></h3>
+<p>Standard steps above, with:</p>
+<ul>
+<li>Step 1: <code>bindings/python/</code>, PyO3 + maturin. <strong>Corrected 2026-08-02, see D-119</strong>: its own
+<code>[workspace]</code> table, a path dependency on <code>dstu-core</code>, <em>not</em> added to the root <code>Cargo.toml</code>’s
+<code>members</code> - two existing CI jobs (<code>cargo +nightly miri test --workspace</code>, the MSRV-pinned
+<code>--workspace</code> build) would otherwise silently start covering a PyO3 <code>cdylib</code> neither job is
+equipped for. Same shape applies to T-50/T-160 (Node/Ruby, also direct Rust bindings) - T-158 (C
+ABI) is unaffected and stays a real workspace member, see D-119 for why the two cases differ.
+<strong>Done 2026-08-02</strong>: <code>dstu_core_py</code> crate (<code>cdylib</code>, <code>pyo3 = "0.26"</code>, <code>extension-module</code>
+feature), mixed maturin layout (<code>python/dstu_core/__init__.py</code> pure-Python package wrapping the
+compiled <code>_dstu_core</code> extension). Wraps only <code>selftest()</code> so far, as this scaffold’s own pipeline
+proof - the full <code>crypto_*</code> surface is step 2, not yet done. Verified end-to-end, not just
+“compiles”: <code>cargo build</code>/<code>clippy --all-targets -- -D warnings</code>/<code>fmt --check</code> all clean; <code>maturin develop</code> (in a <code>.venv</code>, real Python 3.12.10 resolved via <code>PYO3_PYTHON</code> - see <code>.claude.local.md</code>,
+<code>python</code>/<code>python3</code> on PATH are broken Store stubs on this machine) builds and installs the wheel;
+<code>python -c "import dstu_core; dstu_core.selftest()"</code> runs the real Rust self-check and returns
+cleanly. Confirmed the root workspace is unaffected: <code>cargo build --workspace</code> from the repo root
+still only sees <code>crates/dstu-core</code>/<code>crates/uacrypt</code> (this is the concrete case D-119 was written
+to prevent - <code>cargo init</code> inside <code>bindings/python</code> had in fact auto-added itself to the root
+<code>Cargo.toml</code>’s <code>members</code> before this was caught and reverted). Follow-up fix same day: <code>pyo3</code>
+bumped <code>"0.26"</code> → <code>"0.29"</code> (the version actually resolved, caught in self-review) plus a
+<code>PYO3_PYTHON</code> build-prerequisite note added to <code>bindings/python/README.md</code>.</li>
+<li>Step 2: <strong>Done 2026-08-02.</strong> One Rust module per <code>dstu_core::crypto_*</code> module -
+<code>secretbox</code>/<code>secretstream</code>/<code>auth</code>/<code>kdf</code>/<code>generichash</code>/<code>stream</code>/<code>sign</code>/<code>pwhash</code>/<code>randombytes</code> -
+plus <code>pwhash</code> turned on in <code>bindings/python/Cargo.toml</code> (it’s <code>std</code>-gated only, no reason to
+withhold it from a binding whose whole point is a full-surface wheel). Keys/ciphertexts/tags
+cross the FFI boundary as plain Python <code>bytes</code>, not an opaque handle type - <code>SecretKey</code>’s
+<code>Zeroize</code>-on-drop guarantee can’t reach a <code>bytes</code> object regardless of wrapper shape, so an
+opaque type would buy nothing here (PyNaCl’s own libsodium bindings make the same call). A
+single <code>DstuError</code> exception class covers every crypto-operation failure (tag mismatch,
+truncation, CSPRNG failure); the stdlib <code>ValueError</code> covers caller-input mistakes a fixed-size
+Rust array forecloses (wrong-length key/context/etc.) - two different failure classes, not one
+exception type doing both jobs. <code>crypto_secretstream</code>’s <code>PushState</code>/<code>PullState</code> are wrapped as
+thin <code>#[pyclass]</code>es mirroring the Rust API 1:1 (tag as a plain <code>int</code>, <code>SECRETSTREAM_TAG_*</code> module
+constants) - the idiomatic file-like wrapper is deliberately step 3, not built here.
+<code>crypto_generichash</code>’s streaming <code>Kupyna{256,512}Hasher</code> are <code>#[pyclass]</code>es holding
+<code>Option&lt;Hasher&gt;</code>, <code>.take()</code>n on <code>finalize()</code> since the wrapped Rust <code>finalize(self)</code> consumes
+ownership - a second <code>finalize()</code> call raises <code>ValueError</code> rather than panicking. Verified
+end-to-end via <code>maturin develop</code> + a real Python smoke script exercising every wrapped function,
+including tamper rejection (<code>secretbox</code>/<code>auth</code>/<code>secretstream</code>), wrong-message/wrong-key signature
+rejection, and a wrong-length-key <code>ValueError</code> - not just “it compiles.” <code>cargo build</code>/
+<code>clippy --all-targets -- -D warnings</code>/<code>fmt --check</code> all clean; root <code>cargo build --workspace</code>
+reconfirmed unaffected.</li>
+<li>Step 3: <strong>Done 2026-08-02.</strong> <code>SecretStreamEncryptor</code>/<code>SecretStreamDecryptor</code>
+(<code>bindings/python/python/dstu_core/secretstream.py</code>) - pure Python, built on step 2’s
+<code>SecretStreamPushState</code>/<code>PullState</code> rather than new Rust glue (native-language idiom is exactly
+what D-118 asks for, and file I/O against arbitrary Python file-like objects is more natural to
+write directly in Python than via PyO3 callbacks). <code>write()</code>/iterate hide chunk/tag/header
+bookkeeping entirely. <strong>Wire format matches <code>uacrypt encrypt</code>/<code>decrypt</code> exactly</strong> (8 KiB chunks,
+<code>tag || len_u32_le || ciphertext || auth_tag</code> records after a 32-byte header) - a deliberate
+choice, not required by D-118 itself, verified with a real interop test in both directions
+against the built <code>uacrypt</code> binary (not just self-consistency): a file <code>SecretStreamEncryptor</code>
+wrote round-tripped through <code>uacrypt decrypt</code>, and a file <code>uacrypt encrypt</code> wrote round-tripped
+through <code>SecretStreamDecryptor</code>. Also verified: exact-chunk-boundary plaintext sizes (e.g.
+exactly 2×8192 bytes) produce the identical byte layout to the Rust CLI’s own one-chunk-ahead
+buffering - the last full chunk is tagged <code>Final</code> directly, not followed by a spurious empty
+<code>Final</code> record (a real bug caught and fixed during this step, not assumed correct); tamper and
+truncation both raise <code>DstuError</code>. <code>ruff check --fix</code>/<code>ruff format --check</code> clean (installed into
+the <code>.venv</code> for this check - not yet wired into <code>xtask</code>/CI, that’s step 5).</li>
+<li>Step 4: <strong>Windows wheel done locally 2026-08-02</strong> (this machine is Windows-only - manylinux/
+macOS builds genuinely need CI, not a local shortfall; deferred to step 5, reusing
+<code>.github/workflows/release.yml</code>’s existing <code>matrix.os: [ubuntu-latest, macos-latest, windows-latest]</code>/tag-trigger/artifact-upload conventions rather than inventing a parallel
+scheme). <code>maturin build --release --out dist</code> produces <code>dstu_core-0.1.0-cp39-abi3-win_amd64.whl</code>
+(one wheel for all supported CPython versions - see step 1’s <code>abi3-py39</code> note); installed into a
+<strong>fresh</strong> venv via <code>pip install</code> (not the editable <code>.venv</code> every other check in this file used)
+and re-run against the full smoke suite (<code>selftest</code>, <code>secretbox</code>, the <code>secretstream</code> file-like
+pipeline, <code>sign</code>) - a materially different check than <code>maturin develop</code>, since it proves
+<code>secretstream.py</code> (added in step 3, after the previous packaging check) actually ships inside the
+wheel rather than only ever having been exercised through the source tree. manylinux/macOS wheels
+are folded into step 5 below, not a separate step - they need CI, not a local shortfall.</li>
+<li>Step 5: <strong>Done 2026-08-02, see D-120.</strong> Two distinct CI pieces, not one (advisor review): (1)
+<code>.github/workflows/bindings-python.yml</code>, own job (D-119) - <code>test</code> (matrix ubuntu/macos/windows:
+fmt-check ubuntu-only per the autocrlf false-positive rust.yml’s own fmt job already avoids the
+same way, clippy, build <code>uacrypt</code> first from the repo root so the pytest interop test can’t
+silently skip, <code>maturin build</code>+<code>pip install --find-links</code> rather than <code>maturin develop</code> since
+<code>develop</code> needs a virtualenv a bare <code>actions/setup-python</code> interpreter isn’t, then pytest with an
+explicit grep-for-<code>SKIPPED</code> failure gate, then ruff), <code>wheel-preview</code> (the real
+<code>PyO3/maturin-action@v1</code>/<code>manylinux: auto</code> recipe, run on every push so a broken recipe is caught
+immediately - confirmed on real CI producing <code>dstu_core-0.1.0-cp39-abi3-manylinux_2_17_x86_64. manylinux2014_x86_64.whl</code>, the tag actually verified, not assumed), and <code>supply-chain</code> (<code>cargo deny check</code>/<code>cargo audit</code> against this workspace). (2) <code>release.yml</code>’s <code>build-python-wheels</code> job,
+same matrix/maturin-action recipe, added to <code>publish-release</code>’s <code>needs</code> (wheel-build failure
+blocks the release, a deliberate choice). <code>cargo xtask python</code> added (best-effort, D-12 posture:
+build <code>uacrypt</code>, fmt/clippy, <code>maturin develop</code>, pytest - verified locally, all 57 tests passing
+with the interop test actually running). Also closed in this pass: D-119’s own recorded
+consequence that root <code>cargo deny</code>/<code>audit</code> didn’t reach <code>bindings/python</code>’s dependency tree -
+turned out cargo-deny already walks up and finds the root <code>deny.toml</code> with no second file needed,
+and running it for the first time caught a real wildcard-dependency bug (missing <code>version =</code> on
+the <code>dstu-core</code> path dependency, T-75/D-11’s exact failure mode), fixed in the same pass.</li>
+<li>Step 6: <strong>Done 2026-08-02, out of order (before step 5, advisor review)</strong> - a CI job wired to an
+empty test directory passes vacuously, so writing the suite first gives step 5 something real to
+fail on. 57 tests across every module, D-64/D-65’s three categories - see the T-49 section above
+for the concrete shape (a real Kupyna-256 vector, live <code>uacrypt</code> CLI interop, the two rejection
+gaps an earlier advisor pass caught). <code>[project.optional-dependencies]</code> <code>dev</code> group pins
+<code>maturin</code>/<code>pytest</code>/<code>ruff</code> to the versions verified this session.</li>
+<li>Step 7: <strong>Done 2026-08-02.</strong> <code>examples/</code> (<code>secretbox.py</code>, <code>secretstream_file.py</code>, <code>sign.py</code>,
+<code>password_hashing.py</code>, <code>misc.py</code> for auth/kdf/generichash/stream/randombytes) - each run against
+the real built extension before committing, not just written from the API surface. <code>README.md</code>
+rewritten from its step-1 “scaffold only” state to document the full surface with a
+module-by-example table; provisional-status banner kept, reworded to match. Wiring ruff into a
+real gate for the first time (step 5) surfaced two real <code>PYI034</code> findings in <code>secretstream.py</code>’s
+<code>__enter__</code> methods, fixed with an inline <code>noqa</code> (this binding’s <code>requires-python</code> floor is 3.9,
+<code>typing.Self</code> needs 3.11+, no <code>typing_extensions</code> dependency wanted for a pre-1.0 zero-dependency
+binding).</li>
+<li>Step 8: <strong>Done 2026-08-02, this entry.</strong> Doc-map sweep: <code>README.md</code> (root repo-tree line was
+still “planned, not yet built”), <code>docs/dstu-crypto-project.md</code>, <code>docs/release-readiness.md</code>
+updated; <code>docs/user-journey-gaps.md</code>/<code>docs/cross-language-style-guide.md</code> checked, no T-49
+references existed to update. T-49 marked done in <code>docs/TASKS.md</code>, D-120 added.</li>
+<li>Step 9: each step above landed as its own commit (see <code>git log</code> for the exact sequence) - no
+large single drop.</li>
+</ul>
+<h3 id="t-158--c-abi-crate-foundation-for-cnet-maybe-java"><a class="header" href="#t-158--c-abi-crate-foundation-for-cnet-maybe-java">T-158 — C ABI crate (foundation for C++/.NET, maybe Java)</a></h3>
+<p>Not a language binding itself — no idiomatic-language step 2/3 the way the others have; steps
+1/4/5/6/7/8/9 of the standard template, renumbered for what this crate actually needs:</p>
+<ol>
+<li><input disabled="" type="checkbox" checked=""> Scaffold <code>crates/dstu-core-capi</code> (cdylib+staticlib+rlib) — opaque handles, explicit error
+codes, <code>catch_unwind</code> at every boundary call, zeroize-on-free. Verified the existing
+8-combination feature matrix still passes with this new workspace member present (D-148/
+D-149).</li>
+<li><input disabled="" type="checkbox" checked=""> <code>cbindgen</code>-generated header (<code>include/dstu_core.h</code>), including a <code>dstu_selftest()</code> export
+(T-161). <code>usize_is_size_t = true</code> in <code>cbindgen.toml</code> so generated signatures read <code>size_t</code>,
+matching the spec’s own C convention, rather than cbindgen’s default <code>uintptr_t</code>.</li>
+<li><input disabled="" type="checkbox" checked=""> <code>xtask</code>/CI wiring — <code>cargo xtask capi</code> (header regen+diff, C harness, examples) and a new
+<code>capi</code> job in <code>rust.yml</code> (matrix ubuntu/macos/windows; not yet confirmed on real CI, only
+verified locally on this Windows-GNU dev machine, D-149).</li>
+<li><input disabled="" type="checkbox"> Prebuilt dynamic/static libs per platform (D-116) — local build only so far (this Windows-GNU
+machine’s own <code>target/release/{dstu_core_capi.dll,libdstu_core_capi.dll.a,     libdstu_core_capi.a}</code>); cross-OS <code>release.yml</code> packaging deferred, see D-149.</li>
+<li><input disabled="" type="checkbox" checked=""> A small C test harness (<code>c-tests/test_capi.c</code>): correctness, rejection, misuse per D-64/D-65,
+run against the just-built cdylib via <code>cargo xtask capi</code>.</li>
+<li><input disabled="" type="checkbox" checked=""> <code>examples/</code> (<code>secretbox.c</code>, <code>secretstream_file.c</code>, <code>sign.c</code>, <code>misc.c</code>) + <code>README.md</code>
+provisional-status banner — each example actually run against the real built library, not
+just written from the API surface.</li>
+<li><input disabled="" type="checkbox" checked=""> Doc-map sweep + mark T-158 done — this entry, D-149.</li>
+<li><input disabled="" type="checkbox" checked=""> Commit per step (see <code>git log</code> for the exact sequence).</li>
+</ol>
+<h3 id="t-52--net"><a class="header" href="#t-52--net">T-52 — .NET</a></h3>
+<p><strong>Done in full 2026-08-03 — see D-152.</strong> No Cargo workspace of its own at all (unique among the
+bindings so far) - <code>bindings/dotnet/DstuCore</code> is pure C#, P/Invoking T-158’s already-built C ABI.</p>
+<ul>
+<li>Step 1: <strong>Done.</strong> <code>bindings/dotnet/DstuCore</code> (net8.0 class library) + <code>Directory.Build.props</code>
+(copies whichever platform’s <code>dstu_core_capi.{dll,so,dylib}</code> exists under the repo’s
+<code>target/release/</code> into every project’s own build output, so <code>dotnet build</code>/<code>test</code>/<code>run</code> need no
+manual copy step). <code>Native/NativeMethods.cs</code> uses <code>[LibraryImport]</code> (source-generated interop),
+not classic <code>DllImport</code> — its marshaller requires an explicit
+<code>[MarshalAs(UnmanagedType.U1)]</code> on every <code>bool</code>-returning export or the build fails to compile,
+catching at compile time what would otherwise be C#’s silently-wrong default 4-byte <code>BOOL</code>
+marshalling against Rust’s 1-byte <code>bool</code> (<code>dstu_verify</code>/<code>dstu_verify_digest</code>/
+<code>dstu_pwhash_verify_password</code>/<code>dstu_secretstream_{push,pull}_is_finalized</code> — a wrong <code>true</code> out of
+<code>dstu_verify</code> specifically would be a silent signature-verification bypass, the .NET analogue of
+D-151’s ARM <code>c_char</code>/<code>i8</code> finding, found by advisor review before implementation rather than after
+a failing test). Every opaque <code>dstu_*</code> handle is a <code>SafeHandle</code> subclass
+(<code>Native/NativeHandles.cs</code>), not a bare <code>IntPtr</code> — deterministic release + protection against
+premature finalization during a call, this project’s <code>IDisposable</code>/<code>using</code> idiom applied to a
+native handle.</li>
+<li>Step 2: <strong>Done.</strong> Full <code>crypto_*</code> surface wrapped — <code>AuthKey</code>, <code>KdfMasterKey</code>, <code>GenericHash</code>/
+<code>Kupyna256Hasher</code>/<code>Kupyna512Hasher</code>, <code>SecretboxKey</code>, <code>SigningKey</code>/<code>VerifyingKey</code>,
+<code>StreamCipherKey</code> (named to avoid colliding with <code>System.IO.Stream</code>), <code>Pwhash</code>, <code>RandomBytes</code>,
+<code>Selftest</code>. <code>DstuException</code> (crypto-operation/data-integrity failure) vs. <code>ArgumentException</code>
+(caller-input mistake) mirrors <code>bindings/python</code>’s own <code>DstuError</code>/<code>ValueError</code> split
+(<code>Native/NativeStatus.cs</code> centralizes the mapping).</li>
+<li>Step 3: <strong>Done.</strong> <code>SecretStreamEncryptStream</code>/<code>SecretStreamDecryptStream</code> (<code>Stream</code>-derived,
+matching <code>CryptoStream</code>/<code>GZipStream</code>’s own shape per this document’s own template text). Both
+D-118 pitfalls apply, with one deliberate deviation from <code>CryptoStream</code>’s own close-flushes
+convention: <code>Dispose()</code> never emits a <code>Final</code> chunk at all — C#’s <code>Dispose()</code> has no parameter
+telling it whether it’s unwinding from an exception (unlike Python’s
+<code>__exit__(exc_type, ...)</code>), so finalization is an explicit, always-required <code>Complete()</code> call on
+the success path instead of a conditional one. The reader bounds the untrusted wire <code>chunkLen</code>
+field against <code>DstuConstants.SecretstreamChunkBytes</code> and rejects trailing bytes after <code>Final</code>,
+same as every other binding.</li>
+<li>Step 4: <strong>Done.</strong> <code>dotnet pack</code> produces <code>runtimes/{rid}/native/</code> for the build machine’s own RID
+(win-x64 here; cross-OS RIDs deferred to a <code>release.yml</code> job, same split T-158’s own step 4 took).
+Verified with a real fresh-install check: packed, installed from a local NuGet feed into an
+unrelated temp console project, <code>Selftest.Run()</code> + a <code>SecretboxKey</code> round trip both ran against
+the installed package.</li>
+<li>Step 5: <strong>Done.</strong> <code>cargo xtask dotnet</code> (<code>dotnet format --verify-no-changes</code> + <code>dotnet test</code> —
+<code>build()</code>/<code>test()</code>/<code>clippy()</code>/<code>fmt()</code> already cover this binding’s one Rust-side dependency,
+<code>dstu-core-capi</code>, for free since it’s a real workspace member) + <code>bindings-dotnet.yml</code>
+(ubuntu/macos/windows matrix).</li>
+<li>Step 6: <strong>Done.</strong> 56 xUnit tests (<code>DstuCore.Tests/</code>) mirroring <code>bindings/python/tests</code> file-for-
+file — Kupyna-256 correctness against the real shared JSON vector, DSTU 4145 correctness via
+<code>Selftest.Run()</code> (matching <code>bindings/python/tests/test_sign.py</code>’s own precedent — the Annex B.1
+vector is exercised there, not re-derived per binding), real bidirectional <code>uacrypt</code> interop for
+secretstream, D-64/D-65’s three categories throughout.</li>
+<li>Step 7: <strong>Done.</strong> <code>examples/</code> (one console project, <code>dotnet run -- &lt;name&gt;</code> dispatch —
+<code>secretbox</code>/<code>secretstream-file</code>/<code>sign</code>/<code>password-hashing</code>/<code>misc</code>, mirroring
+<code>bindings/python/examples</code> file-for-file) + <code>README.md</code> with the provisional-status banner.</li>
+<li>Step 10: <strong>Done 2026-08-03.</strong> Real aarch64 Linux (the Raspberry Pi rig) had no .NET SDK installed
+at all before this - <code>dotnet-install.sh --channel 8.0</code> (Microsoft’s official install script; Debian
+isn’t one of the OSes <code>packages.microsoft.com</code>’s apt feed officially supports, unlike Ubuntu) got
+a real linux-arm64 SDK working there for the first time. All 56 tests passed on the first run, no
+ARM-portability bug found this time (unlike D-151’s <code>c_char</code>/<code>i8</code> finding in the C ABI crate’s own
+test) - genuine evidence the <code>[LibraryImport]</code>/<code>SafeHandle</code>/<code>nuint</code> marshalling choices in D-152
+are actually architecture-portable, not just working by x86-64 coincidence.</li>
+</ul>
+<h3 id="t-51--java"><a class="header" href="#t-51--java">T-51 — Java</a></h3>
+<p>Standard steps, plus an upfront spike before step 1 (see <code>docs/bindings-strategy.md</code> Fork 1):</p>
+<ul>
+<li><strong>Step 0: done 2026-08-03, see <code>docs/DECISIONS.md</code> D-153.</strong> Built two real, runnable prototypes
+(not reasoned from memory) - Spike A (<code>jni = "0.21"</code> crate, direct Rust binding against
+<code>dstu_core</code>, no C ABI involved) vs. Spike B (hand-written C JNI shim over T-158’s already-built
+<code>dstu-core-capi</code>). Both worked on the first run; <strong>chosen: Spike A</strong> - Java joins Python/Node/
+Ruby/PHP’s direct-binding group, not .NET/C++/Go’s C-ABI group. Spike B would have added a third
+language (C) to the binding and doubled the packaged native surface per platform; Spike A avoids
+the C ABI’s caller-allocated-out-buffer protocol the same way Python/Node/Ruby already do.
+Panama (JEP 454) named and rejected (JDK 22+ baseline too new for this audience), not left
+unmentioned. <code>jni</code> pinned to <code>0.21</code>, not <code>0.22</code> (a real breaking <code>JNIEnv</code>/<code>EnvUnowned</code> API change,
+confirmed by actually trying the bump, not assumed). <strong>JDK baseline: build/test on 17 (matches
+the Pi’s Debian 12 default), but the published artifact’s bytecode target is
+<code>&lt;maven.compiler.release&gt;8&lt;/maven.compiler.release&gt;</code></strong> - Java 8 still has real enterprise/PKI-
+adjacent footprint (owner-requested correction), verified empirically by cross-compiling Spike A
+with <code>--release 8</code> from the JDK 17 install and running the resulting class on a real local JDK 8
+JVM, all three test paths (selftest, seal/open round trip, wrong-key exception) unchanged. CI must
+matrix JDK 8 and 17 for the test suite (step 5), not just build once on 17.</li>
+<li>Step 1: direct-Rust binding via the <code>jni</code> crate (own <code>[workspace]</code>, D-119), per the spike above -
+not JNI-over-capi.</li>
+<li>Step 3: an <code>InputStream</code>/<code>OutputStream</code> pair; D-118’s Java pitfall carries over from T-52’s own
+resolution unchanged (try-with-resources <code>close()</code> can’t see whether the block threw, same
+structural limitation as C#’s <code>Dispose()</code> - explicit <code>complete()</code>, not auto-finalize-on-close).</li>
+<li>Step 4: a native library bundled per OS/arch classifier (or one fat JAR).</li>
+<li>Step 5: <code>cargo xtask java</code> + CI, matrix at least JDK 8 and 17 (per step 0’s finding above).</li>
+<li>Step 6: JUnit, run under both JDK 8 and 17 in CI.</li>
+</ul>
+<h3 id="t-50--nodejs"><a class="header" href="#t-50--nodejs">T-50 — Node.js</a></h3>
+<p>Standard steps:</p>
+<ul>
+<li>Step 1: <strong>Done 2026-08-02, see D-125/D-130.</strong> <code>bindings/nodejs/</code>, napi-rs, own <code>[workspace]</code> table
+per D-119 (not a root workspace member). Wraps only <code>selfTest()</code> so far, matching T-49 step 1’s
+own split. <code>napi-build = 2.0.0</code> pinned in <code>Cargo.lock</code> (a real MSRV constraint, D-125). The MSVC
+toolchain this machine’s build needs is a <strong>machine-local <code>rustup override</code>, not a committed
+file</strong> (D-130 corrects D-125’s original committed-<code>rust-toolchain.toml</code> approach, which would have
+broken Linux/macOS CI runners) - see <code>.claude.local.md</code> for the exact command.</li>
+<li>Step 2: <strong>Done 2026-08-02, see D-126.</strong> Full <code>crypto_*</code> surface wrapped - <code>secretbox</code>, <code>sign</code>,
+<code>pwhash</code>, <code>generichash</code> (one-shot + incremental <code>Kupyna{256,512}Hasher</code> classes), <code>auth</code>, <code>kdf</code>,
+<code>stream</code>, <code>randombytes</code>, plus <code>crypto_secretstream</code>’s raw <code>push</code>/<code>pull</code> (idiomatic
+<code>stream.Transform</code> still deferred to step 3, matching Python’s own step 2/3 split). Every byte
+parameter/return uses <code>napi::bindgen_prelude::Buffer</code> (maps to a real JS <code>Buffer</code>), not
+<code>Vec&lt;u8&gt;</code> (which napi-rs maps to a plain JS number array, wrong for binary data - confirmed by
+reading napi’s own <code>Vec&lt;T&gt;</code>/<code>Buffer</code> <code>ToNapiValue</code>/<code>FromNapiValue</code> impls, not assumed). Every
+function has an explicit <code>js_name</code> for camelCase (napi-derive does not auto-convert casing from
+the Rust identifier, unlike PyO3’s implicit <code>snake_case</code> passthrough that Python’s own
+<code>snake_case</code>-native convention didn’t need to override). Multi-value returns
+(<code>secretstream</code>’s <code>push</code>/<code>pull</code>) use a <code>#[napi(object)]</code> struct with named, camelCase fields
+(<code>SecretStreamPushResult</code>/<code>SecretStreamPullResult</code>) rather than a tuple - napi-rs has no tuple
+<code>ToNapiValue</code> impl at all, and a named-field result object is the more idiomatic JS shape anyway
+(matches this project’s cross-language style guide principle 2, name communicates intent).</li>
+<li>Step 3: <strong>Done 2026-08-02, see D-127.</strong> <code>SecretStreamEncryptor</code>/<code>SecretStreamDecryptor</code>, a
+<code>stream.Transform</code> pair in pure hand-written JS (<code>bindings/nodejs/js/secretstream.js</code>) on top of
+step 2’s raw <code>SecretStreamPushState</code>/<code>PullState</code>, mirroring
+<code>bindings/python/python/dstu_core/secretstream.py</code>’s design and wire format exactly (same 8 KiB
+<code>SECRETSTREAM_CHUNK_BYTES</code>, same <code>tag(1) || len_u32_le(4) || ciphertext || authTag(16)</code> framing,
+interoperable with <code>uacrypt encrypt</code>/<code>decrypt</code> in both directions - verified against the real
+<code>uacrypt</code> binary, not just self-consistently). Generated napi output relocated to
+<code>bindings/nodejs/native/</code> (via <code>napi build native</code>) so the hand-written <code>js/index.js</code> entry point
+can live at the package root without colliding with the regenerated files. Both D-118 pitfalls
+re-checked for this port specifically (D-127 has the detail): <code>_flush</code> (not <code>_destroy</code>) emits the
+Final chunk, so an upstream error never produces a complete-looking truncated file; <code>chunkLen</code> is
+bounds-checked the moment it is parsed, and trailing bytes after <code>Final</code> are rejected both
+mid-stream and at <code>_flush</code>.</li>
+<li>Step 4: <strong>Windows prebuilt artifact done locally 2026-08-02, see D-128</strong> (this machine is
+Windows-only, same constraint Python’s own step 4 hit - Linux/macOS cross-builds genuinely need
+CI, deferred to step 5, not a local shortfall). <code>package.json</code>’s <code>files</code> field
+(<code>js/</code>, <code>native/index.js</code>, <code>native/index.d.ts</code>, <code>native/*.node</code>) makes <code>npm pack</code> bundle the
+<code>native/</code> build output despite it being gitignored from source control - <code>files</code> overrides the
+<code>.gitignore</code>-based default for packing specifically, a real gotcha found and fixed here, not
+assumed to just work. Verified with a genuine fresh-install round trip (Python’s own step-4 bar):
+<code>npm pack</code> into a tarball, <code>npm install &lt;tarball&gt;</code> in an unrelated temp directory as a real
+dependency, then <code>require('dstu-core')</code> (not the source tree) and re-run the full smoke suite
+(<code>selfTest</code>, <code>secretbox</code>, the <code>secretstream</code> <code>stream.Transform</code> pair) against the installed
+package - proves the packaged artifact actually contains everything needed, not just the dev
+source tree.</li>
+<li>Step 5: <strong>Done 2026-08-02, see D-131.</strong> <code>cargo xtask nodejs</code> (mirrors <code>python()</code> exactly) +
+<code>.github/workflows/bindings-nodejs.yml</code> (mirrors <code>bindings-python.yml</code>’s shape: <code>test</code> matrix
+ubuntu/macos/windows, <code>supply-chain</code> deny/audit). No MSVC-specific CI step needed anywhere -
+<code>windows-latest</code> is MSVC-host by default (D-130). Real gotcha hit and fixed: a bare
+<code>Command::new("npm")</code> fails to resolve on Windows the same way <code>mvn</code> already needed a <code>.cmd</code>
+special-case - <code>command_for()</code> extended accordingly.</li>
+<li>Step 6: <strong>Done 2026-08-02, see D-129</strong> — done <em>before</em> step 5 for this binding specifically, a
+tooling-forced reorder (<code>node --test test/</code> errors on a nonexistent directory, unlike pytest’s
+vacuous-pass-on-empty-collection behavior Python’s own step 5-before-6 order relied on), not a
+preference change to the standard template. <code>node:test</code>, one file per <code>crypto_*</code> module,
+mirroring <code>bindings/python/tests/*.py</code> file-for-file. Found and fixed a real <code>node:test</code>-runner
+hang: <code>SecretStreamEncryptor</code>/<code>Decryptor</code>’s <code>_transform</code>/<code>_flush</code> callbacks were invoked
+synchronously, which Node’s own docs warn can make an error throw synchronously out of the
+triggering <code>.write()</code> instead of emitting <code>'error'</code> the documented async way - fixed by deferring
+through <code>process.nextTick</code>, confirmed stable across three repeated full-suite runs.</li>
+<li>Step 7: <strong>Done 2026-08-02, see D-132.</strong> <code>examples/{secretbox,secretstream-file,sign, password-hashing,misc}.js</code> (one-for-one with Python’s own five example files) and a fully
+rewritten <code>README.md</code> (T-50 step 1 never created one - a gap Python’s step 1 didn’t have).</li>
+<li>Step 8: <strong>Done 2026-08-02.</strong> Swept <code>README.md</code>/<code>dstu-crypto-project.md</code>/<code>release-readiness.md</code>
+(stale “T-50 onward haven’t started” framing); <code>user-journey-gaps.md</code>/<code>cross-language-style- guide.md</code> checked, no T-50 references existed to update (same finding T-49’s own step 8 had).
+<strong>T-50 is now done in full - all nine standard steps - see <code>docs/TASKS.md</code>.</strong></li>
+<li><strong>Node-only</strong> (D-118) — browser/WASM is explicitly deferred; don’t reinterpret this task as
+covering it.</li>
+</ul>
+<h3 id="t-53--c-reordered-2026-08-02-d-123-now-builds-after-t-163go"><a class="header" href="#t-53--c-reordered-2026-08-02-d-123-now-builds-after-t-163go">T-53 — C++ (reordered 2026-08-02, D-123: now builds after T-163/Go)</a></h3>
+<p><strong>Done in full 2026-08-03, all ten standard steps — see D-158.</strong> Standard steps, consuming
+T-158’s header:</p>
+<ul>
+<li>Step 1: <strong>Done, see D-158.</strong> <code>bindings/cpp/include/dstu/*.hpp</code>, C++17, header-only. Move-only
+RAII wrapper classes over every opaque <code>crates/dstu-core-capi</code> handle via
+<code>std::unique_ptr&lt;T, void(*)(T*)&gt;</code> (a custom-deleter <code>unique_ptr</code> gives move semantics almost for
+free, avoided writing ~8 near-identical move-ctor/move-assign/destructor bodies by hand). Full
+<code>crypto_*</code> surface. Errors are exceptions (<code>dstu::CryptoError</code>/<code>ArgumentError</code>/<code>InternalError</code>,
+cross-language-style-guide.md principle 4), matching Python’s own choice from that table’s
+“exception or return code” row.</li>
+<li>Step 3: <strong>Done, see D-158.</strong> <code>std::ostream&amp;</code>/<code>std::istream&amp;</code> (D-158 point 2) — never opened or
+closed by this wrapper (unlike Go/.NET’s own <code>leaveOpen</code>-flag closer-forwarding, unnecessary
+here since a C++ reference is never owning). <code>SecretStreamEncryptor</code>/<code>Decryptor</code>. The
+finalization pitfall (D-118) resolved by porting the <code>Complete()</code>-not-<code>Dispose()</code>/<code>Close()</code> split
+D-152 (.NET)/D-155 (Go) already chose: a destructor cannot reliably tell exception-unwind from
+normal scope exit without <code>std::uncaught_exceptions()</code> bookkeeping (fragile under nested
+exceptions besides), so the destructor only frees the native push state; emitting the <code>Final</code>
+chunk is a separate explicit <code>Finish()</code> call on the success path only. Reader hardening (chunk
+length bound, trailing-data rejection) ported from <code>crates/uacrypt/src/lib.rs</code>’s
+<code>CliError::SecretstreamChunkTooLarge</code>/<code>SecretstreamTrailingData</code>, cross-checked byte-for-byte
+against <code>bindings/go/dstu/secretstream.go</code>’s wire framing.</li>
+<li>Step 4: <strong>Done, see D-158.</strong> Prebuilt lib alongside the header, no CMake <code>FetchContent</code> for the
+Rust side (no tooling equivalent of <code>corrosion</code> is already a project dependency). <code>bindings/cpp/ CMakeLists.txt</code>: an <code>INTERFACE</code> header-only target plus a <code>SHARED IMPORTED</code> target pointing at
+<code>crates/dstu-core-capi</code>’s already-built cdylib (<code>DSTU_CORE_CAPI_DIR</code>/<code>DSTU_CORE_TARGET_DIR</code>
+variables, defaulting to the sibling crate/<code>target/release</code>) — matches <code>c-tests/test_capi.c</code>’s
+own existing choice of linking the cdylib, not the staticlib <code>bindings/go</code> links (D-155’s
+<code>-Wl,-Bstatic</code>/<code>-Bdynamic</code> bracketing and transitive <code>-lws2_32 -luserenv -lntdll</code> needs don’t
+apply here, since the cdylib itself resolves those at its own link time).</li>
+<li>Step 5: <strong>Done, see D-158.</strong> GCC verified locally on both this project’s own Windows-GNU
+dev-machine posture (MinGW Makefiles) and the aarch64 Pi (step 10); <code>cl.exe</code> isn’t on this dev
+machine’s PATH (confirmed by trying, not assumed) and no local macOS/Clang machine exists, so
+MSVC and Clang were confirmed the other way — pushed and checked via <code>gh run view</code> (CLAUDE.md’s
+own “never assume from a green badge” rule), run <code>30839873166</code>, all three <code>bindings-cpp.yml</code> legs
+(<code>ubuntu-latest</code>/GCC, <code>macos-latest</code>/Clang, <code>windows-latest</code>/MSVC) green, MSVC’s leg 2m48s vs.
+~40s for the other two (<code>cl.exe</code>’s own known slower cold-start, not a problem). <code>cargo xtask cpp</code>
+builds <code>dstu-core-capi</code>+<code>uacrypt</code>, then <code>cmake</code> configure+build+<code>ctest</code> — branches on
+<code>target_env</code> the same way <code>xtask</code>’s own <code>capi()</code>/<code>capi_compile_msvc</code> already do for the plain-C
+harness, so no Windows GNU-forcing is needed the way <code>bindings-go.yml</code>’s cgo requirement needed
+one (D-155); the MSVC branch (<code>dstu_core_capi.dll.lib</code> import lib) is confirmed by this same CI
+run, not just reasoned from <code>capi</code>’s own precedent.</li>
+<li>Step 6: <strong>Done, see D-158.</strong> <code>tests/test_dstu.cpp</code>, a hand-rolled <code>CHECK</code> macro mirroring
+<code>c-tests/test_capi.c</code>’s own structure exactly (no Catch2/doctest/GoogleTest — C++ has no stdlib
+JSON either, so the single official Kupyna-256 vector is hand-transcribed the same way the C
+harness already does it, matching cross-language-style-guide.md’s “standard library over a
+third-party one” KISS principle). D-64/D-65’s three categories throughout, plus a real
+bidirectional <code>uacrypt.exe</code> interop test (<code>std::system</code>, with the documented Windows <code>cmd.exe</code>
+outer-quote-wrapping workaround for its “first token is quoted” parsing quirk) and an explicit
+property test for the D-118 no-finalize-on-error property (destroying an encryptor without
+calling <code>Finish()</code> leaves a stream a decryptor must fail closed on).</li>
+<li>Step 7: <strong>Done.</strong> <code>examples/{secretbox,secretstream_file,sign,password_hashing,misc}.cpp</code>
+(one-for-one with the other bindings’ own five example files) + <code>README.md</code> with the
+provisional-status banner and a module-by-example table.</li>
+<li>Step 8: <strong>Done, this entry.</strong> Doc-map sweep: <code>docs/dstu-crypto-project.md</code>/
+<code>docs/release-readiness.md</code>/<code>README.md</code>’s own repo-tree listing updated; <code>docs/user-journey- gaps.md</code> checked, no T-53 references existed to update (same finding every earlier binding’s own
+step 8 had). T-53 marked done in <code>docs/TASKS.md</code>.</li>
+<li>Step 9: each step above landed as its own commit, not one large drop.</li>
+<li>Step 10: <strong>Done.</strong> Raspberry Pi ARM64 re-check - <code>cargo xtask cpp</code> green end-to-end on real
+aarch64 (cmake 3.25.1/g++ 12.2.0, both already present, no new install needed unlike Node/Ruby/
+PHP/.NET’s own first Pi runs), including the real <code>uacrypt</code>↔C++ interop test over a plain POSIX
+<code>sh</code> (not Windows <code>cmd.exe</code> - <code>RunCommand</code>’s outer-quote wrapping is a no-op there, D-158’s own
+test file comment). Links <code>libdstu_core_capi.so</code> (confirmed via <code>file</code>, not assumed) - the
+non-Windows CMakeLists branch exercised for the first time on real hardware.
+Kupyna-256(“hello world”) verified byte-identical to the x86-64 dev machine’s own digest. No
+ARM-portability bug found this time (unlike D-151’s <code>c_char</code>/<code>i8</code> finding in the C ABI crate
+itself), matching T-52/.NET’s own clean first pass rather than T-51/Java’s or T-163/Go’s own
+Pi-specific findings.</li>
+</ul>
+<p><code>cargo xtask cpp</code> passes end-to-end on both the x86-64 Windows dev machine (GCC/MinGW, all tests +
+all five examples green, real <code>uacrypt.exe</code> interop confirmed both directions) and the aarch64 Pi.</p>
+<h3 id="t-159--php-reordered-2026-08-02-d-121-builds-right-after-t-49t-50t-160-not-deferred"><a class="header" href="#t-159--php-reordered-2026-08-02-d-121-builds-right-after-t-49t-50t-160-not-deferred">T-159 — PHP (reordered 2026-08-02, D-121: builds right after T-49/T-50/T-160, not deferred)</a></h3>
+<p><strong>No longer consumes T-158.</strong> Original plan left <code>ext-php-rs</code> vs. <code>FFI</code>-over-the-C-ABI open;
+D-121 commits to <code>ext-php-rs</code> specifically so this binding is a direct Rust binding like
+Python/Node/Ruby and doesn’t wait on the C ABI crate at all.</p>
+<p><strong>Done in full 2026-08-02.</strong> Standard steps:</p>
+<ul>
+<li>Step 1: <strong>Done, see D-142.</strong> <code>bindings/php/</code>, <code>ext-php-rs</code>, own <code>[workspace]</code> table (a direct
+Rust binding, same shape as Python/Node/Ruby - no <code>ext/</code> split needed, <code>ext-php-rs</code> has no
+<code>rb_sys</code>-style <code>cargo metadata</code> quirk). PHP 8.3.33 installed by hand (winget’s own packages 404’d
+on a stale manifest patch version). Windows needs nightly Rust (<code>abi_vectorcall</code>) + the MSVC host
+(PHP’s own Windows builds are MSVC) + <code>rust-lld</code> (avoids an MSVC-linker-version mismatch) - a
+machine-local <code>rustup override</code>, matching Node’s D-130 pattern. <code>ext-php-rs</code>’s own Windows build
+script downloads a matching devel pack from <code>windows.php.net</code> automatically - no manual devel-pack
+management needed.</li>
+<li>Step 2: <strong>Done, see D-142.</strong> Full <code>crypto_*</code> surface wrapped - flat <code>dstu_core_*</code>-prefixed global
+functions + a single <code>DstuCoreException</code> class, modeled directly on PHP’s own bundled
+<code>ext-sodium</code> extension (<code>sodium_crypto_secretbox</code>, <code>SodiumException</code>) rather than a namespace or
+static-method class. <code>Binary&lt;u8&gt;</code> (not <code>String</code>/<code>Vec&lt;u8&gt;</code>) for every crypto byte
+parameter/return - confirmed by reading <code>ext-php-rs</code>’s own source that PHP strings are raw byte
+buffers, not UTF-8-validated. Three real build-error findings: <code>wrap_function!()</code> needs its
+argument in the same module as the <code>#[php_function]</code> it names (fixed via a per-module
+<code>register(ModuleBuilder)</code> function); <code>u8</code> doesn’t implement <code>IntoConst</code> (PHP has no unsigned int
+type); <code>#[php_function]</code>’s default rename splits a letter-to-digit boundary
+(<code>kupyna256</code> -&gt; <code>kupyna_256</code>), fixed with an explicit <code>#[php(name = ...)]</code>.</li>
+<li>Step 3: <strong>Done, see D-143.</strong> PHP’s own <code>stream_filter_register</code>/<code>php_user_filter</code> mechanism was
+investigated and rejected (no clean hook for a one-time header write before filtered bytes, and
+PHP’s own internal stream buffer doesn’t align with the fixed 8 KiB chunk boundary) - a plain PHP
+<code>DstuCoreSecretStreamWriter</code>/<code>Reader</code> (<code>lib/DstuCoreSecretStream.php</code>, implementing <code>Iterator</code>)
+over a <code>resource</code> instead, matching Python’s/Ruby’s own choice. Found a real <code>ext-php-rs</code> gap:
+a Rust-registered exception class with no <code>#[php_impl]</code> constructor cannot be <code>new</code>-ed from pure
+PHP - fixed with a <code>dstu_core_throw_error()</code> escape hatch reusing the same Rust-side
+<code>PhpException::from_class</code> construction path. Verified both directions against the real built
+<code>uacrypt.exe</code>, plus six rejection/misuse cases including the D-118 no-finalize-on-error property.</li>
+<li>Step 4: <strong>Done, see D-144.</strong> No PECL/Composer publish attempted (Composer never manages native
+extensions at all; PECL needs its own account/manifest/review pipeline) - the honest deliverable
+is a release-profile compiled binary plus a documented <code>php.ini extension=</code> line, verified with a
+fresh-install-style check (only the compiled <code>.dll</code> copied to an unrelated directory, loaded via
+a full path).</li>
+<li>Step 5: <strong>Done, see D-145/D-146.</strong> <code>cargo xtask php</code> + <code>bindings-php.yml</code> (<code>shivammathur/ setup-php</code>, re-deriving the Windows nightly+MSVC axis rather than copying <code>bindings-ruby.yml</code>’s
+GNU-vs-MSVC conditional). PHPUnit ships as a standalone PHAR, no Composer dependency added.
+Found and fixed a real <code>xtask</code>-level bug (D-146, not PHP-specific): <code>run()</code>’s child cargo
+invocations inherited <code>RUSTUP_TOOLCHAIN</code> from the outer <code>cargo xtask</code> process, silently
+overriding any binding’s own directory-scoped <code>rustup override</code> - almost certainly affects
+<code>cargo xtask nodejs</code> identically, not yet re-verified there.</li>
+<li>Step 6: <strong>Done, see D-145.</strong> 58 PHPUnit tests across all 10 <code>crypto_*</code> modules, mirroring
+<code>bindings/ruby/spec/*.rb</code>/<code>bindings/nodejs/test/*.test.js</code> file-for-file - the real official
+Kupyna-256 vector (D-124), real bidirectional <code>uacrypt.exe</code> interop, D-64/D-65’s three
+categories throughout.</li>
+<li>Step 7: <strong>Done.</strong> <code>examples/{secretbox,secretstream-file,sign,password-hashing,misc}.php</code>
+(one-for-one with the other bindings’ own five example files) + <code>README.md</code> with a
+module-by-example table and the honest packaging story.</li>
+<li>Step 8: <strong>Done, this entry.</strong> Doc-map sweep: <code>docs/dstu-crypto-project.md</code>/
+<code>docs/release-readiness.md</code> updated (stale “T-159 onward haven’t started” framing);
+<code>docs/user-journey-gaps.md</code>/<code>docs/cross-language-style-guide.md</code> checked, no T-159 references
+existed to update (same finding every earlier binding’s own step 8 had). T-159 marked done in
+<code>docs/TASKS.md</code>.</li>
+<li>Step 9: each step above landed as its own commit - no large single drop.</li>
+</ul>
+<p><strong>Not yet confirmed on real CI</strong> - <code>bindings-php.yml</code> has not been pushed to <code>origin/master</code> yet
+(push needs separate explicit approval, same posture T-160’s own push had). <code>cargo xtask php</code>
+passes end-to-end on this dev machine (58/58 tests, fmt/clippy clean).</p>
+<h3 id="t-160--ruby-reordered-2026-08-02-d-121-builds-right-after-t-50-no-longer-last"><a class="header" href="#t-160--ruby-reordered-2026-08-02-d-121-builds-right-after-t-50-no-longer-last">T-160 — Ruby (reordered 2026-08-02, D-121: builds right after T-50, no longer last)</a></h3>
+<p>Standard steps:</p>
+<ul>
+<li>Step 1: <strong>Done 2026-08-02, see D-133.</strong> <code>bindings/ruby/</code>, <code>magnus</code>/<code>rb_sys</code>, own <code>[workspace]</code>
+split across two files (<code>bindings/ruby/Cargo.toml</code> as the workspace root with
+<code>members = ["ext/dstu_core_rb"]</code>, the actual crate inside <code>ext/dstu_core_rb/</code> with no
+<code>[workspace]</code> of its own) — <code>rb_sys</code>’s <code>Cargo::Metadata</code> shells out to a plain <code>cargo metadata</code>
+from the gem root, so a Cargo.toml has to exist there or Cargo walks up and finds the repo-root
+workspace instead (D-133’s concrete failure mode). Hand-authored, not generated via
+<code>bundle gem --ext=rust</code> — that generator hung indefinitely in this non-interactive shell even
+with every documented flag, root cause not fully isolated (likely a Windows-Ruby console-handle
+quirk), not worth debugging further given Python/Node were both hand-authored too. Ruby itself
+had to be installed on this machine first (DevKit variant, bundles a matching MSYS2/mingw-w64-ucrt
+toolchain) — see <code>.claude.local.md</code>. Three more real toolchain gotchas found and fixed (D-133 has
+full detail): <code>rb-sys-env</code> pinned to <code>"0.1"</code> to match the installed <code>rb_sys</code> gem’s Makefile
+convention; <code>rb-sys</code> added as an explicit direct dependency (not just transitive via <code>magnus</code>) so
+Cargo’s <code>DEP_RUBY_*</code> build-script propagation reaches this crate’s own <code>build.rs</code>; the MSYS2
+ucrt64 <code>clang</code> package installed and <code>LIBCLANG_PATH</code> pointed at it, since this machine’s
+pre-existing standalone Windows LLVM parses Ruby’s mingw-targeted headers incorrectly. Wraps only
+<code>self_test</code> so far (Ruby’s native <code>snake_case</code> needs no per-function casing override, unlike
+Node’s <code>js_name</code> requirement — D-126). Verified via a full clean rebuild (not incremental) plus a
+real <code>ruby -Ilib -e "require 'dstu_core'; DstuCore.self_test"</code> smoke call against the live
+compiled build; <code>cargo fmt --all -- --check</code>/<code>cargo clippy --all-targets -- -D warnings</code> both
+clean.</li>
+<li>Step 2: <strong>Done 2026-08-02, see D-134.</strong> Full <code>crypto_*</code> surface wrapped, flat
+<code>DstuCore.secretbox_seal</code>-style naming (idiomatic restructuring deferred to step 3, same posture
+as Python/Node). <code>RString::to_bytes()</code> needs <code>magnus</code>’s <code>"bytes"</code> feature enabled - the
+alternative, <code>as_slice()</code>, is <code>unsafe</code>; enabling the feature keeps this binding’s wrapper code
+free of <code>unsafe</code> entirely. No tuple <code>IntoValue</code> (same gap as Node’s napi-rs, D-126) - Ruby’s own
+idiom is a positionally-destructured <code>Array</code>, so <code>secretstream</code>’s <code>push</code>/<code>pull</code> build a
+two-element <code>RArray</code> rather than reaching for a named-struct workaround. <code>method!</code>’s trait bounds
+need <code>Fn(&amp;Ruby, RbSelf, Args...)</code> order for a Ruby-taking instance method, incompatible with
+<code>&amp;self</code> sugar - every instance method keeps plain <code>&amp;self</code> and calls <code>Ruby::get()</code> internally
+instead, matching step 1’s <code>self_test()</code> pattern; only <code>function!</code>-registered constructors/
+module functions take <code>ruby: &amp;Ruby</code> as a literal first parameter. Verified via a 15-check smoke
+script against the live compiled <code>.so</code> (round-trip, tamper-rejection, wrong-length-key rejection,
+hasher double-finalize rejection, secretstream push/pull); <code>cargo clippy --all-targets -- -D warnings</code> clean.</li>
+<li>Step 3: <strong>Done 2026-08-02, see D-135.</strong> <code>SecretStreamWriter</code>/<code>SecretStreamReader</code>
+(<code>bindings/ruby/lib/dstu_core/secretstream.rb</code>), pure Ruby on top of step 2’s raw
+<code>SecretStreamPushState</code>/<code>PullState</code>. Idiom researched, not assumed: modeled on stdlib’s own
+<code>Zlib::GzipWriter</code>/<code>Zlib::GzipReader</code> (same “wraps an arbitrary IO, transforms chunks
+transparently” shape). <code>SecretStreamReader</code> includes <code>Enumerable</code>. Both D-118 pitfalls
+re-checked: <code>SecretStreamWriter.open</code> deliberately avoids Ruby’s own <code>ensure</code>-based cleanup idiom
+(would finalize even on the error path) in favor of a plain last-statement <code>close</code> on the
+block’s normal-return path only; the reader bounds <code>chunk_len</code> and rejects trailing data after
+<code>Final</code>. Verified against the real <code>uacrypt.exe</code> bidirectionally, plus exact chunk-boundary
+sizing and the <code>ensure</code>-avoidance pitfall itself, all against the live compiled <code>.so</code>. <code>rubocop</code>
+deferred to step 5 (matching where Python’s own <code>ruff</code> landed), not introduced here.</li>
+<li>Step 4: <strong>Done 2026-08-02, see D-136.</strong> <code>rake native gem</code> (this machine’s Windows/<code>x64-mingw-ucrt</code>
+platform only - Linux/macOS cross-compiled native gems need <code>rake-compiler-dock</code>/Docker, deferred
+to CI, same precedent Python/Node’s own step 4 set). <strong>Real finding</strong>: a <em>source</em> gem cannot
+install standalone at all - confirmed by installing into a fresh <code>GEM_HOME</code> and watching <code>cargo</code>
+fail to resolve the <code>ext/dstu_core_rb/Cargo.toml</code> path dependency on <code>crates/dstu-core</code>, which
+only exists inside this repo’s own tree. A precompiled, platform-tagged native gem (which
+<code>rake-compiler</code>/<code>rb_sys</code> already build via an auto-defined <code>native</code> task chain) ships the
+compiled <code>.so</code> directly instead, sidestepping the path dependency entirely. Verified via the same
+fresh-<code>GEM_HOME</code> install bar Python/Node’s own step 4 used: <code>require "dstu_core"</code>, <code>self_test</code>,
+and a full <code>SecretStreamWriter</code>/<code>Reader</code> round-trip all pass against the <em>installed</em> gem. Same
+advisor pass also caught and fixed five real correctness gaps in steps 2/3 before they could ship
+(gemspec <code>files</code> glob, missing <code>binmode</code>, the binary-string encoding contract, <code>is_finalized</code> →
+<code>finalized?</code>, <code>ArgumentError</code> → <code>IOError</code> for write-after-close) - see D-136 for the full list.</li>
+<li>Step 5: <strong>Done 2026-08-02, see D-137.</strong> <code>cargo xtask ruby</code> (mirrors <code>python()</code>/<code>nodejs()</code>) +
+<code>.github/workflows/bindings-ruby.yml</code> (mirrors the same shape: <code>test</code> matrix + <code>supply-chain</code>).
+<code>rubocop</code> (deferred from step 3) wired in here, matching where Python’s own <code>ruff</code> landed - 63
+offenses on the first pass, settled in <code>.rubocop.yml</code> (double-quoted strings matching this
+project’s other languages, <code>Layout/EndOfLine</code> disabled for the Windows autocrlf false positive,
+<code>Metrics/MethodLength</code> raised slightly for the wire-format parsing methods) rather than reflowing
+to defaults. <code>command_for()</code> extended a third time (<code>bundle</code> → <code>bundle.bat</code> on Windows, same gotcha
+as <code>mvn</code>/<code>npm</code>). CI’s Windows leg needs one binding-specific step no other language does: install
+a matching MSYS2 <code>clang</code> via <code>ridk exec pacman</code> and point <code>LIBCLANG_PATH</code> at it (D-133’s fix,
+codified for CI). <code>cargo deny</code>/<code>cargo audit</code> verified locally against this workspace’s real
+dependency tree.</li>
+<li>Step 6: <strong>Done 2026-08-02, see D-138.</strong> 10 spec files, file-for-file mirroring Python/Node’s own
+test suites - 58 examples, D-64/D-65’s three categories. Confirmed empty <code>bundle exec rspec</code>
+passes vacuously (unlike Node’s <code>node --test</code>, D-129) - no tooling-forced reorder needed, unlike
+Node’s own step 6. <code>generichash_spec.rb</code> loads the same shared Kupyna-256 vector JSON the Rust
+tests use (the actual cross-language mechanism, D-124). <code>secretstream_spec.rb</code>’s real <code>uacrypt</code>
+interop uses <code>if:</code> metadata to run only when the binary exists, confirmed by counting examples
+in <code>--format documentation</code> output, not assumed; the uacrypt-missing case uses <code>skip</code> (visible in
+RSpec’s summary) rather than silently vanishing - <code>cargo xtask ruby</code>/CI always build <code>uacrypt</code>
+first, so this never actually triggers there. <code>rubocop</code> needed one spec-specific config addition
+(<code>Metrics/BlockLength</code> excluded for <code>spec/**/*.rb</code>, the standard shape for RSpec test files).</li>
+<li>Step 7: <strong>Done 2026-08-02, see D-139.</strong> <code>examples/{secretbox,secretstream_file,sign, password_hashing,misc}.rb</code>, one-for-one with Python/Node, each run against the real compiled
+<code>.so</code>. <code>README.md</code> written from scratch (no README existed after step 1, same gap Node’s own
+step 1 had). One real fix found: <code>require_relative "../lib/dstu_core"</code> alone doesn’t reach
+<code>lib/dstu_core.rb</code>’s own internal non-relative <code>require "dstu_core/dstu_core_rb"</code> - every example
+adds <code>lib/</code> to <code>$LOAD_PATH</code> explicitly first, matching how an installed gem’s own <code>require "dstu_core"</code> would resolve.</li>
+</ul>
+<h3 id="t-163--go-added-2026-08-02-d-122-builds-alongside-t-52t-51-needs-the-c-abi"><a class="header" href="#t-163--go-added-2026-08-02-d-122-builds-alongside-t-52t-51-needs-the-c-abi">T-163 — Go (added 2026-08-02, D-122; builds alongside T-52/T-51, needs the C ABI)</a></h3>
+<p><strong>Done in full 2026-08-03, steps 0-9 — see D-155.</strong> No incumbent DSTU library exists for Go, and
+it has a real DevSecOps/cloud-infra audience (same class of reasoning as Ruby’s own security/ops-
+tooling footprint) — but unlike Node/Ruby/PHP, no Go binding toolchain matches PyO3/napi-rs/magnus’s
+maturity, so this one goes through the C ABI crate (<code>cgo</code> over <code>bindings/capi</code>’s <code>cbindgen</code>-
+generated header) same as .NET/Java/C++. Builds after T-158 lands, alongside that group, not ahead
+of it. <strong>Reordered again 2026-08-02 (D-123): built ahead of T-53 (C++) specifically</strong> — the owner’s
+explicit preference, no further rationale recorded beyond that.</p>
+<p>Standard steps, consuming T-158’s header:</p>
+<ul>
+<li>Step 0: <strong>Done.</strong> Hand-written <code>cgo</code>, not <code>c-for-go</code> — decided on inspection, not a full spike
+(T-158’s ~50-function opaque-handle surface is already stable, and a generator would still need a
+hand-written idiomatic layer on top for the secretstream <code>io.Writer</code>/<code>io.Reader</code> wrapper anyway).
+A real selftest-only link spike (advisor-recommended vertical slice) found genuine static-linking
+gaps on Windows-GNU before the full surface was wrapped: <code>-ldstu_core_capi</code> alone links
+dynamically (GNU <code>ld</code> prefers the import lib over the static one when both exist) unless
+<code>-Wl,-Bstatic</code>/<code>-Bdynamic</code> bracket it, and even then three more system libraries
+(<code>-lws2_32 -luserenv -lntdll</code>) are needed for symbols the Rust standard library pulls in
+transitively (<code>std::net</code>, temp-dir/child-process-pipe code) despite <code>dstu-core-capi</code> itself never
+touching networking or process spawning.</li>
+<li>Step 1: <strong>Done.</strong> <code>bindings/go/dstu</code> (package <code>dstu</code> — <code>go</code> alone is a reserved word and can’t be
+a package identifier), wrapping every opaque handle with an explicit <code>Close()</code> — <strong>no
+<code>runtime.SetFinalizer</code> backstop, a deliberate correction after advisor review found one would be
+a premature-free race, not a <code>SafeHandle</code>-equivalent</strong>: a bare Go finalizer can fire (and free the
+native key) while a <code>C.dstu_*</code> call using that same pointer is still in flight, since the last
+Go-side reference becomes the call argument itself, not the wrapper struct - <code>SafeHandle</code> avoids
+this because P/Invoke marshalling itself roots the handle for the call’s duration, which a plain
+finalizer does not replicate. See D-155 for the full mechanism and why it was invisible to every
+test in this binding’s own suite (each one holds its key reachable via <code>defer</code> across the whole
+test function). Every <code>[]byte</code>-taking wrapper guards the empty-slice case (<code>unsafe.Pointer(&amp;b[0])</code>
+panics on <code>len(b)==0</code>, and the header documents zero-length input as legal throughout) via a
+shared <code>cBytes()</code> helper. <code>CryptoError</code>/<code>ArgumentError</code>/<code>InternalError</code> mirror .NET’s
+<code>DstuException</code>/<code>ArgumentException</code> split (cross-language style guide principle 4).</li>
+<li>Step 3: <strong>Done.</strong> <code>SecretStreamEncryptWriter</code>/<code>SecretStreamDecryptReader</code>
+(<code>io.Writer</code>/<code>io.Reader</code>-shaped) for <code>crypto_secretstream</code> — the idiomatic fit here, same
+reasoning as C++’s <code>istream</code>/<code>ostream</code>. D-118’s shape: <code>Close()</code> never emits a <code>Final</code> chunk (Go’s
+<code>defer</code> has no exception-type parameter, same reasoning as .NET’s <code>Dispose()</code>/<code>Complete()</code>
+split); the reader bounds the untrusted chunk-length prefix against <code>SecretstreamChunkBytes</code> and
+rejects trailing bytes after <code>Final</code>.</li>
+<li>Step 4: <strong>Done, local/repo-relative only.</strong> No true prebuilt-artifact/registry story exists for
+this binding yet — unlike every other binding, <code>dstu/dstu.go</code>’s own <code>#cgo LDFLAGS</code> uses
+<code>${SRCDIR}</code>-relative paths into <code>target/release</code>, so <code>bindings/go</code> only builds from inside a
+checkout of this repo with <code>dstu-core-capi</code> already built there, not as a standalone <code>go get</code>-able
+module. Flagged explicitly in the binding’s own README rather than silently glossed over.</li>
+<li>Step 5: <strong>Done.</strong> <code>cargo xtask go</code> (build <code>dstu-core-capi</code>, <code>gofmt -l</code> via a dedicated output-
+capturing check since <code>gofmt</code> itself always exits 0, <code>go vet</code>, <code>go test</code>) + <code>bindings-go.yml</code> CI
+(own job, D-119 reasoning). The Windows CI leg forces the GNU-hosted Rust toolchain as the
+<em>default</em> (not just an additional cross target) and installs MinGW-w64 via <code>choco</code>, since <code>cgo</code>
+cannot link against <code>dtolnay/rust-toolchain@stable</code>’s default MSVC-hosted output on
+<code>windows-latest</code> — <strong>unconfirmed on real CI as of this writing</strong>, flagged in the workflow’s own
+header comment (same “confirm on real CI, not just locally” posture as D-147/D-149).</li>
+<li>Step 6: <strong>Done.</strong> Go’s own <code>testing</code> package, three categories (D-64/D-65) — official Kupyna-256
+vector via the shared JSON, real byte-for-byte <code>uacrypt</code> interop for secretstream, tamper/wrong-
+key rejection across secretbox/auth/sign/secretstream, misuse (wrong-length keys/tags/context,
+truncated/oversized/trailing-data secretstream input, double-finalize, write-after-<code>Complete</code>).</li>
+<li>Step 7: <strong>Done.</strong> <code>examples/</code> (five runnable programs mirroring <code>bindings/python/examples</code>/
+<code>bindings/dotnet/examples</code> file-for-file, each actually run against the real built library) +
+<code>README.md</code> with the provisional-status banner, including the step-4 repo-relative caveat.</li>
+<li>Step 8/9: <strong>Done</strong> — this entry, plus <code>docs/DECISIONS.md</code> D-155, <code>docs/TASKS.md</code>, <code>README.md</code>,
+<code>docs/dstu-crypto-project.md</code>, <code>docs/release-readiness.md</code>.</li>
+<li>Step 10: <strong>Done.</strong> Real aarch64 Linux (the Raspberry Pi rig) had no Go toolchain at all before
+this — installed the official <code>linux-arm64</code> 1.26.5 tarball (Debian’s own apt package is a stale
+1.19). Found one real gap, not an ARM-portability bug: the cgo <code>LDFLAGS</code> written on the Windows
+dev machine (<code>-lws2_32 -luserenv -lntdll</code>) are Windows-only and failed to link at all on Linux —
+fixed with cgo’s own per-<code>GOOS</code> <code>#cgo</code> pragma syntax (<code>#cgo windows LDFLAGS: ...</code>/<code>#cgo linux LDFLAGS: ...</code>/<code>#cgo darwin LDFLAGS: ...</code>), each platform getting its own full flag set rather than
+a shared base plus a negated exclusion. All tests passed after the fix, including the real
+<code>uacrypt</code> interop test and all 5 examples (output byte-identical to the Windows run where
+comparable) — see D-155 for the full account.</li>
+</ul>
+<p><strong>Dart — raised in the same conversation, explicitly deferred (D-122), not scheduled.</strong> Same
+reasoning as Node’s own browser/WASM scoping (D-118): Dart’s primary audience (Flutter mobile/web)
+overlaps least with this project’s demonstrated PKI/enterprise/security-tooling demand. Revisit if
+real demand evidence appears, same as any other out-of-scope language would need.</p>
+<h3 id="t-181--crypto_box-across-all-eight-bindings-added-2026-08-06"><a class="header" href="#t-181--crypto_box-across-all-eight-bindings-added-2026-08-06">T-181 — <code>crypto_box</code> across all eight bindings (added 2026-08-06)</a></h3>
+<p><strong>Incremental, not a from-scratch binding phase</strong> — every one of the eight bindings below already
+exists (T-49 through T-163 above), each with its own scaffold, packaging, <code>xtask</code>/CI wiring, and
+doc-map entries already in place. This phase adds exactly one new module’s surface
+(<code>dstu_core::crypto_box</code> — <code>SecretKey</code>/<code>PublicKey</code>/<code>seal</code>/<code>open</code>, D-169) to each, so most of “The
+standard binding steps” above collapse: no new step 1 (scaffold), step 4 (packaging), or step 5
+(<code>xtask</code>/CI wiring) per language — only steps 2 (wrap the surface), 6 (tests), 7 (examples/README),
+8 (doc-map sweep), 9 (commit per step) apply, plus step 10 (Pi smoke check) once per language still
+worth running since it caught a real bug before (D-151). Step 3 (secretstream wrapping) does not
+apply — <code>crypto_box::seal</code>/<code>open</code> are one-shot, not a stream.</p>
+<p><strong>Prerequisite closed first, not trailing behind</strong>: <code>advisor()</code> flagged that three of the eight
+languages below (.NET, Go, C++ — the real C-ABI-consuming group, per each binding’s own <code>Cargo.toml</code>/
+build config, not Fork 1’s original planning text above which incorrectly also names PHP) cannot
+wrap <code>crypto_box</code> at all until <code>dstu-core-capi</code> has it. T-178c (<code>crates/dstu-core-capi/src/ crypto_box.rs</code>, D-171) landed first this session specifically to unblock this phase, not as a
+trailing footnote the way T-178’s own original plan had it. <strong>PHP turned out not to need it at
+all</strong> - confirmed only once its own <code>crypto_box.rs</code> was actually being written (2026-08-06): its
+<code>Cargo.toml</code> depends on <code>dstu-core</code> directly, the same direct-<code>ext-php-rs</code>-binding shape as Python/
+Node/Ruby, contradicting Fork 1’s original “PHP follows C++/.NET” text above (now corrected there
+too). Re-check a binding’s actual dependency before assuming Fork 1’s planning-time text still
+describes it — it was written before any binding existed.</p>
+<p><strong>Order</strong> (grouped by <em>what a language actually links</em>, confirmed per binding, not assumed from
+Fork 1’s original planning text):</p>
+<ol>
+<li><input disabled="" type="checkbox" checked=""> <strong>Python/Node.js/Ruby/PHP</strong> — direct FFI (PyO3/napi-rs/magnus/ext-php-rs), no C ABI
+involved. <strong>Done 2026-08-06</strong> (all four, PHP included once its real dependency shape was
+confirmed). Python first as the template every other language’s <code>crypto_box</code> wrapper checked
+itself against, matching T-49’s own original role.</li>
+<li><input disabled="" type="checkbox" checked=""> <strong>.NET/Go/C++</strong> — consume <code>dstu-core-capi</code>’s now-complete <code>crypto_box</code> C ABI (T-178c)
+directly: P/Invoke (.NET), cgo (Go), the generated header + link (C++). <strong>Done 2026-08-06.</strong></li>
+<li><input disabled="" type="checkbox"> <strong>Java</strong> — last, per Fork 1’s own note that Java gets an explicit spike (<code>jni</code> crate direct
+vs. JNI-over-the-C-ABI) before committing to a shape; do that spike once, for <code>crypto_box</code>
+specifically if the original Fork 1 spike (recorded when it runs, <code>docs/DECISIONS.md</code>) didn’t
+already settle it for every future module this binding adds.</li>
+</ol>
+<p><strong>What “wrap the surface” means per language, concretely</strong>: a keypair type (generate + from/to
+bytes, mirroring <code>crypto_sign</code>’s own <code>SigningKey</code>/<code>VerifyingKey</code> idiom each binding already has), a
+<code>seal(message, public_key) -&gt; bytes</code> and <code>open(sealed, secret_key) -&gt; bytes</code> pair (or the language’s
+own idiomatic error-return shape — exception, <code>Result</code>, <code>(value, err)</code> — matching how that binding
+already surfaces <code>crypto_secretbox</code>’s <code>open</code> failure). No new streaming primitive — <code>seal</code>/<code>open</code>
+already documented as not memory-bounded at the Rust/C-ABI layer (D-169/D-171), the binding inherits
+that limitation, document it in the same place <code>crypto_secretbox</code>’s own binding wrapper already
+notes its own non-streaming nature.</p>
+<p><strong>Test-vector note</strong>: no DSTU vector oracle exists for this composite construction (D-169’s own
+“Provenance” section — same as <code>crypto_secretstream</code>, D-68) — every binding’s local test suite
+verifies round-trip/rejection/misuse only, not a shared fixed-vector JSON the way Kalyna/Kupyna/DSTU
+4145 bindings’ tests do. A cross-language round-trip check (seal in one binding’s test process,
+open via the Rust core directly, or vice versa) is worth adding once at least two bindings exist, to
+catch a wire-format assumption divergence early — not required before the first binding lands.</p>
+<p><strong>After all eight land</strong>: T-180’s remaining <code>gh-pages</code> scope (mentioning DSTU 9041/<code>crypto_box</code> on
+the public site) happens here, not before — per the owner’s own 2026-08-06 instruction (“update
+gh-pages after all the tasks”). This mirrors T-162’s own precedent exactly (site refresh only after
+every binding it covers actually exists) — expect a smaller version of T-162’s own checklist above,
+not a full re-run, since the rest of the site’s binding-facing content doesn’t change.</p>
+<h3 id="publishing-all-registries--separate-owner-gated-not-scheduled"><a class="header" href="#publishing-all-registries--separate-owner-gated-not-scheduled">Publishing (all registries) — separate, owner-gated, not scheduled</a></h3>
+<p>One explicit ask per registry (PyPI/npm/Maven Central/NuGet/RubyGems/Packagist), the same class of
+decision T-17 already applies to crates.io. Not started, not broken into steps above — tracked only
+once actually requested.</p>
+<h3 id="t-162--github-facing-docs--gh-pages-site-refresh-last-after-every-binding-lands"><a class="header" href="#t-162--github-facing-docs--gh-pages-site-refresh-last-after-every-binding-lands">T-162 — GitHub-facing docs + <code>gh-pages</code> site refresh (last, after every binding lands)</a></h3>
+<p><strong>Done in full 2026-08-03.</strong> Requested 2026-08-02: once all bindings above exist, the project’s
+public-facing surfaces — <code>README.md</code>, the doc set under <code>docs/</code>, and the separate <code>gh-pages</code> branch
+site (the landing page <code>docs/PERFORMANCE.md</code>/<code>docs/TASKS.md</code> already reference, e.g. its
+orientation table naming AES/Whirlpool/ChaCha20 as role-analogs) — need a pass to actually mention
+the bindings, not just the Rust crate/CLI. This is a documentation-only task, no primitive/binding
+code changes.</p>
+<ol>
+<li><input disabled="" type="checkbox" checked=""> <strong>Done.</strong> Re-read the <code>gh-pages</code> branch’s current content via the existing local worktree
+(<code>git fetch origin gh-pages</code> + diff against <code>origin/gh-pages</code> to confirm it was in sync) -
+not assumed from memory. Found the site is a single bilingual page (<code>index.html</code>/
+<code>uk/index.html</code>, identical body content, differing only in <code>&lt;head&gt;</code> metadata and the
+language-switch link - confirmed by diffing the two files before editing) with zero mention
+of any language binding anywhere, Rust/CLI-only throughout.</li>
+<li><input disabled="" type="checkbox" checked=""> <strong>Done.</strong> <code>README.md</code>: new “Language bindings” section (table, all eight, approach + README
+link each, honest “not published to any registry yet” status, C ABI cross-reference) added
+right after “Using <code>uacrypt</code>”. The repo tree already listed all eight bindings (landed
+incidentally as part of T-53’s own step 8 doc-map sweep, before this task started).</li>
+<li><input disabled="" type="checkbox" checked=""> <strong>Done.</strong> <code>docs/dstu-crypto-project.md</code>’s “Second priority” section was already current
+(same T-53 step 8 sweep - “every planned binding is now built”). <code>docs/release-     readiness.md</code>’s “Phase 3” line had one stale leftover phrase from Python/Node’s own landing
+day (“First two bindings done”) - fixed to the accurate all-nine count.</li>
+<li><input disabled="" type="checkbox" checked=""> <strong>Done.</strong> <code>gh-pages</code> updated - real new content existed (see step 1’s finding). Added a
+bilingual “Eight languages, one C ABI” section between the existing “Try it” and “Status”
+sections in both <code>index.html</code> and <code>uk/index.html</code>: a <code>check-grid</code> of eight cards (one per
+language, approach + a link to that binding’s own <code>README.md</code> on GitHub, reusing the site’s
+own existing CSS component rather than inventing a new one) plus a <code>callout.neutral</code> noting
+the C ABI itself is usable from any C-FFI-capable language, not just the three (.NET/Go/
+C++) that consume it directly. Since browser automation wasn’t available this session, the
+edited file was sent directly to the owner for a real visual check before pushing (not
+assumed correct from reading the markup alone) - confirmed, pushed, commit <code>43e8022</code>.</li>
+<li><input disabled="" type="checkbox" checked=""> <strong>Done.</strong> Doc-map sweep: <code>docs/user-journey-gaps.md</code>/<code>docs/cross-language-style-guide.md</code>
+checked, nothing stale found (same result every earlier binding’s own step 8 had). T-162
+marked done in <code>docs/TASKS.md</code>.</li>
+<li><input disabled="" type="checkbox" checked=""> <strong>Done.</strong> Each step above landed as its own commit on <code>master</code>; the <code>gh-pages</code> change is its
+own commit on that separate branch (a different branch’s commit history, not <code>master</code>’s
+one-step-per-commit sequence, but the same discipline - one change, one commit, not a
+mixed drop).</li>
+</ol>
+<h2 id="doc-map-sweep-discipline"><a class="header" href="#doc-map-sweep-discipline">Doc-map sweep discipline</a></h2>
+<p>Landing any phase above touches more than <code>docs/TASKS.md</code> — grep that phase’s task ID across
+<code>README.md</code> (repo tree), <code>docs/dstu-crypto-project.md</code> (“Second priority” line),
+<code>docs/release-readiness.md</code> (“Phase 3” line), <code>docs/user-journey-gaps.md</code> (new persona per binding),
+and <code>docs/cross-language-style-guide.md</code>’s “applies today to” line, before calling that phase done —
+<code>CLAUDE.md</code>’s own agent-discipline notes record this exact failure mode happening once already for
+<code>crypto_secretstream</code> (D-68) and warn against repeating it here at five-times the scale.</p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="user-journey-gaps.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                            </a>
+
+                            <a rel="next prefetch" href="SECURITY.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="user-journey-gaps.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                    </a>
+
+                    <a rel="next prefetch" href="SECURITY.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                    </a>
+            </nav>
+
+        </div>
+
+        <template id=fa-eye><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M288 32c-80.8 0-145.5 36.8-192.6 80.6C48.6 156 17.3 208 2.5 243.7c-3.3 7.9-3.3 16.7 0 24.6C17.3 304 48.6 356 95.4 399.4C142.5 443.2 207.2 480 288 480s145.5-36.8 192.6-80.6c46.8-43.5 78.1-95.4 93-131.1c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C433.5 68.8 368.8 32 288 32zM432 256c0 79.5-64.5 144-144 144s-144-64.5-144-144s64.5-144 144-144s144 64.5 144 144zM288 192c0 35.3-28.7 64-64 64c-11.5 0-22.3-3-31.6-8.4c-.2 2.8-.4 5.5-.4 8.4c0 53 43 96 96 96s96-43 96-96s-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6z"/></svg></span></template>
+        <template id=fa-eye-slash><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M38.8 5.1C28.4-3.1 13.3-1.2 5.1 9.2S-1.2 34.7 9.2 42.9l592 464c10.4 8.2 25.5 6.3 33.7-4.1s6.3-25.5-4.1-33.7L525.6 386.7c39.6-40.6 66.4-86.1 79.9-118.4c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C465.5 68.8 400.8 32 320 32c-68.2 0-125 26.3-169.3 60.8L38.8 5.1zM223.1 149.5C248.6 126.2 282.7 112 320 112c79.5 0 144 64.5 144 144c0 24.9-6.3 48.3-17.4 68.7L408 294.5c5.2-11.8 8-24.8 8-38.5c0-53-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6c0 10.2-2.4 19.8-6.6 28.3l-90.3-70.8zm223.1 298L373 389.9c-16.4 6.5-34.3 10.1-53 10.1c-79.5 0-144-64.5-144-144c0-6.9 .5-13.6 1.4-20.2L83.1 161.5C60.3 191.2 44 220.8 34.5 243.7c-3.3 7.9-3.3 16.7 0 24.6c14.9 35.7 46.2 87.7 93 131.1C174.5 443.2 239.2 480 320 480c47.8 0 89.9-12.9 126.2-32.5z"/></svg></span></template>
+        <template id=fa-copy><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M502.6 70.63l-61.25-61.25C435.4 3.371 427.2 0 418.7 0H255.1c-35.35 0-64 28.66-64 64l.0195 256C192 355.4 220.7 384 256 384h192c35.2 0 64-28.8 64-64V93.25C512 84.77 508.6 76.63 502.6 70.63zM464 320c0 8.836-7.164 16-16 16H255.1c-8.838 0-16-7.164-16-16L239.1 64.13c0-8.836 7.164-16 16-16h128L384 96c0 17.67 14.33 32 32 32h47.1V320zM272 448c0 8.836-7.164 16-16 16H63.1c-8.838 0-16-7.164-16-16L47.98 192.1c0-8.836 7.164-16 16-16H160V128H63.99c-35.35 0-64 28.65-64 64l.0098 256C.002 483.3 28.66 512 64 512h192c35.2 0 64-28.8 64-64v-32h-47.1L272 448z"/></svg></span></template>
+        <template id=fa-play><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M73 39c-14.8-9.1-33.4-9.4-48.5-.9S0 62.6 0 80V432c0 17.4 9.4 33.4 24.5 41.9s33.7 8.1 48.5-.9L361 297c14.3-8.7 23-24.2 23-41s-8.7-32.2-23-41L73 39z"/></svg></span></template>
+        <template id=fa-clock-rotate-left><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M75 75L41 41C25.9 25.9 0 36.6 0 57.9V168c0 13.3 10.7 24 24 24H134.1c21.4 0 32.1-25.9 17-41l-30.8-30.8C155 85.5 203 64 256 64c106 0 192 86 192 192s-86 192-192 192c-40.8 0-78.6-12.7-109.7-34.4c-14.5-10.1-34.4-6.6-44.6 7.9s-6.6 34.4 7.9 44.6C151.2 495 201.7 512 256 512c141.4 0 256-114.6 256-256S397.4 0 256 0C185.3 0 121.3 28.7 75 75zm181 53c-13.3 0-24 10.7-24 24V256c0 6.4 2.5 12.5 7 17l72 72c9.4 9.4 24.6 9.4 33.9 0s9.4-24.6 0-33.9l-65-65V152c0-13.3-10.7-24-24-24z"/></svg></span></template>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr-ef4e11c1.min.js"></script>
+        <script src="mark-09e88c2c.min.js"></script>
+        <script src="searcher-09f2665d.js"></script>
+
+        <script src="clipboard-1626706a.min.js"></script>
+        <script src="highlight-abc7f01d.js"></script>
+        <script src="book-609e4cb8.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+
+    </div>
+    </body>
+</html>

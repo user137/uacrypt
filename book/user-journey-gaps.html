@@ -1,0 +1,477 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>User-journey gap analysis - uacrypt</title>
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="Ukrainian DSTU cryptography in Rust - the full docs/ knowledge base as one navigable, searchable book.">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon-de23e50b.svg">
+        <link rel="shortcut icon" href="favicon-8114d1fc.png">
+        <link rel="stylesheet" href="css/variables-8adf115d.css">
+        <link rel="stylesheet" href="css/general-e96d0476.css">
+        <link rel="stylesheet" href="css/chrome-d279d366.css">
+        <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="fonts/fonts-9644e21d.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="mdbook-highlight-css" href="highlight-493f70e1.css">
+        <link rel="stylesheet" id="mdbook-tomorrow-night-css" href="tomorrow-night-4c0ae647.css">
+        <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="ayu-highlight-3fdfc3ac.css">
+
+        <!-- Custom theme stylesheets -->
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "";
+            const default_light_theme = "light";
+            const default_dark_theme = "navy";
+            window.path_to_searchindex_js = "searchindex-87f949c2.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="toc-ce7e91c5.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="mdbook-body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('light')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="mdbook-sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("mdbook-sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="mdbook-sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+            </noscript>
+            <div id="mdbook-sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="mdbook-page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="mdbook-menu-bar-hover-placeholder"></div>
+                <div id="mdbook-menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="mdbook-sidebar-toggle" class="icon-button" for="mdbook-sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="mdbook-sidebar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M0 96C0 78.3 14.3 64 32 64H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32C14.3 128 0 113.7 0 96zM0 256c0-17.7 14.3-32 32-32H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32c-17.7 0-32-14.3-32-32zM448 416c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H416c17.7 0 32 14.3 32 32z"/></svg></span>
+                        </label>
+                        <button id="mdbook-theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="mdbook-theme-list">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M371.3 367.1c27.3-3.9 51.9-19.4 67.2-42.9L600.2 74.1c12.6-19.5 9.4-45.3-7.6-61.2S549.7-4.4 531.1 9.6L294.4 187.2c-24 18-38.2 46.1-38.4 76.1L371.3 367.1zm-19.6 25.4l-116-104.4C175.9 290.3 128 339.6 128 400c0 3.9 .2 7.8 .6 11.6c1.8 17.5-10.2 36.4-27.8 36.4H96c-17.7 0-32 14.3-32 32s14.3 32 32 32H240c61.9 0 112-50.1 112-112c0-2.5-.1-5-.2-7.5z"/></svg></span>
+                        </button>
+                        <ul id="mdbook-theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-ayu">Ayu</button></li>
+                        </ul>
+                        <button id="mdbook-search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="mdbook-searchbar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352c79.5 0 144-64.5 144-144s-64.5-144-144-144S64 128.5 64 208s64.5 144 144 144z"/></svg></span>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">uacrypt</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <span class=fa-svg id="print-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M128 0C92.7 0 64 28.7 64 64v96h64V64H354.7L384 93.3V160h64V93.3c0-17-6.7-33.3-18.7-45.3L400 18.7C388 6.7 371.7 0 354.7 0H128zM384 352v32 64H128V384 368 352H384zm64 32h32c17.7 0 32-14.3 32-32V256c0-35.3-28.7-64-64-64H64c-35.3 0-64 28.7-64 64v96c0 17.7 14.3 32 32 32H64v64c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V384zm-16-88c-13.3 0-24-10.7-24-24s10.7-24 24-24s24 10.7 24 24s-10.7 24-24 24z"/></svg></span>
+                        </a>
+                        <a href="https://github.com/user137/uacrypt" title="Git repository" aria-label="Git repository">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6zm-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3zm44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9zM244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8zM97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1zm-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7zm32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1zm-11.4-14.7c-1.6 1-1.6 3.6 0 5.9 1.6 2.3 4.3 3.3 5.6 2.3 1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2z"/></svg></span>
+                        </a>
+                        <a href="https://github.com/user137/uacrypt/edit/master/docs/user-journey-gaps.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
+                            <span class=fa-svg id="git-edit-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M421.7 220.3l-11.3 11.3-22.6 22.6-205 205c-6.6 6.6-14.8 11.5-23.8 14.1L30.8 511c-8.4 2.5-17.5 .2-23.7-6.1S-1.5 489.7 1 481.2L38.7 353.1c2.6-9 7.5-17.2 14.1-23.8l205-205 22.6-22.6 11.3-11.3 33.9 33.9 62.1 62.1 33.9 33.9zM96 353.9l-9.3 9.3c-.9 .9-1.6 2.1-2 3.4l-25.3 86 86-25.3c1.3-.4 2.5-1.1 3.4-2l9.3-9.3H112c-8.8 0-16-7.2-16-16V353.9zM453.3 19.3l39.4 39.4c25 25 25 65.5 0 90.5l-14.5 14.5-22.6 22.6-11.3 11.3-33.9-33.9-62.1-62.1L314.3 67.7l11.3-11.3 22.6-22.6 14.5-14.5c25-25 65.5-25 90.5 0z"/></svg></span>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="mdbook-search-wrapper" class="hidden">
+                    <form id="mdbook-searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="mdbook-searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="mdbook-searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <span class=fa-svg id="fa-spin"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M304 48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zm0 416c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM48 304c26.5 0 48-21.5 48-48s-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48zm464-48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM142.9 437c18.7-18.7 18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zm0-294.2c18.7-18.7 18.7-49.1 0-67.9S93.7 56.2 75 75s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zM369.1 437c18.7 18.7 49.1 18.7 67.9 0s18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9z"/></svg></span>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="mdbook-searchresults-outer" class="searchresults-outer hidden">
+                        <div id="mdbook-searchresults-header" class="searchresults-header"></div>
+                        <ul id="mdbook-searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('mdbook-sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('mdbook-sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#mdbook-sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="mdbook-content" class="content">
+                    <main>
+                        <h1 id="persona-based-user-journey-gap-analysis"><a class="header" href="#persona-based-user-journey-gap-analysis">Persona-based user-journey gap analysis</a></h1>
+<p>Requested 2026-07-25, written 2026-07-26 (<code>docs/TASKS.md</code> T-114). Distinct from the two gap analyses
+that already exist: <code>docs/release-readiness.md</code> is organized by <em>construction</em> (is this mode of
+operation current/safe), and <code>docs/dstu-crypto-project.md</code>’s “Concrete API shape” table is organized
+by <em>libsodium function name</em>. This document is organized by <em>persona and the sequence of states they
+walk through</em> — discover, integrate, configure, verify, ship — because an existing, correctly-built
+feature can still leave a persona stuck if the doc or tooling connecting the steps around it is
+missing. This document’s value is that framing itself, not a fourth copy of the same feature list —
+every “have” cell below cites the file that already says so rather than restating its content.</p>
+<p>Five personas: the original three from <code>docs/TASKS.md</code> T-114, plus two added 2026-08-03
+(<code>docs/TASKS.md</code> T-166) once every planned language binding (Python, Node.js, Ruby, PHP, .NET,
+Java, Go, C++) and the C ABI crate existed — the original three predate all of Phase 3 and have no
+persona for “uses <code>uacrypt</code> from another language” or “contributes to a binding.”</p>
+<h2 id="persona-1--binary-user-performance-focused"><a class="header" href="#persona-1--binary-user-performance-focused">Persona 1 — binary user, performance-focused</a></h2>
+<p>Picks up <code>uacrypt</code> to encrypt/hash/benchmark files from the CLI. Cares about throughput and getting
+a runnable binary quickly; does not care about the Rust API or <code>hazmat</code>/<code>crypto_*</code> split.</p>
+<pre><code class="language-mermaid">stateDiagram-v2
+    [*] --&gt; Discover
+    Discover --&gt; Acquire
+    Acquire --&gt; GenerateKey
+    GenerateKey --&gt; RunCommand
+    RunCommand --&gt; Verify
+    Verify --&gt; Ship
+    Ship --&gt; [*]
+</code></pre>
+<p><code>Acquire</code>’s and <code>GenerateKey</code>’s back-edges to <code>Discover</code> (both present in the original 2026-07-25
+version of this diagram, labeled “no prebuilt binary found” and “no keygen tool found”
+respectively) are both removed now - <code>docs/TASKS.md</code> T-18/T-119 and T-115 close each path, see the
+table below.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>State</th><th>Want</th><th>Have</th><th>Gap</th></tr>
+</thead>
+<tbody>
+<tr><td>Discover</td><td>Find the project, understand what it does and its current maturity</td><td><code>README.md</code> top banner states its current released version plainly (<code>v0.2.0</code> as of 2026-08-07, with an explicit note when a feature shown below it - e.g. DSTU 9041/<code>crypto_box</code> - is <code>master</code>-only and not yet in that tag)</td><td>none</td></tr>
+<tr><td>Acquire</td><td>A prebuilt binary for their OS, no Rust toolchain required</td><td><strong>Closed 2026-07-26, see <code>docs/TASKS.md</code> T-18/T-119.</strong> Every GitHub Release (first <code>v0.1.0</code>, latest <code>v0.2.0</code> as of 2026-08-02) ships <code>uacrypt-{linux-x86_64,macos-aarch64,windows-x86_64}</code> archives, built by <code>.github/workflows/release.yml</code> on a tag push. Verified against the actual downloaded Windows asset, not just a green CI run: extracted and ran standalone (no local <code>cargo</code>), <code>--version</code>/<code>keygen</code>/<code>encrypt</code>/<code>decrypt</code> round-trip all worked</td><td>macOS asset is <code>aarch64</code>-only (GitHub’s <code>macos-latest</code> runner) - an Intel Mac build isn’t covered, not previously scoped; <code>box-*</code> (DSTU 9041/<code>crypto_box</code>) is not in any tagged release yet, <code>master</code>-only</td></tr>
+<tr><td>Generate a key</td><td>A <code>uacrypt keygen</code> command, or at least a documented one-liner</td><td><strong>Closed 2026-07-26, see <code>docs/TASKS.md</code> T-115.</strong> <code>uacrypt keygen --out key.bin</code> now exists — draws a fresh 32-byte key from the OS CSPRNG via <code>crypto_secretstream::Key::generate</code>, writes it in the exact format <code>encrypt</code>/<code>decrypt --key</code> expect</td><td>none, as of T-115</td></tr>
+<tr><td>Run <code>encrypt</code>/<code>decrypt</code>/<code>hash</code></td><td>A misuse-resistant command with no mode/nonce to configure</td><td><code>README.md</code> “Using <code>uacrypt</code>” documents <code>encrypt</code>/<code>decrypt</code>/<code>hash</code> fully, including that they’re genuinely chunked (T-40/D-68) with no message-length cap</td><td>none, once a key exists</td></tr>
+<tr><td>Verify it does what’s claimed</td><td>Confirm round-trip correctness and see real throughput numbers</td><td><code>cargo test --workspace</code> for correctness; <code>docs/PERFORMANCE.md</code> “Binary-level (process) comparison” section for real <code>uacrypt</code>-binary MB/s numbers, <code>docs/resource-profiles.md</code> for the <code>fused</code>/<code>small-tables</code> speed table</td><td>For a <em>downloaded</em> binary specifically: correctness is now verifiable without a toolchain (the round-trip smoke test above), but the MB/s numbers still require building from source to reproduce - not re-measured per-platform for the release assets themselves</td></tr>
+<tr><td>Ship</td><td>Deploy the binary into their own workflow/pipeline</td><td>No install-script, package-manager entry (Homebrew/Scoop/apt), or Docker image exists; not tracked as a task anywhere</td><td>Smaller gap now that Acquire itself is closed - still not worth its own task, no evidence yet that a real user needs more than a direct download</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>Bottom line</strong>: this persona’s journey is now unblocked end to end. Both the original blockers
+(Acquire without a Rust toolchain, GenerateKey even with one) closed the same session they were
+found in, T-18/T-119 and T-115 respectively - a real example of this document’s stated purpose:
+gaps neither <code>release-readiness.md</code>’s construction-level view nor <code>dstu-crypto-project.md</code>’s
+API-mapping table would have framed as “blocking a specific persona,” found and closed by walking
+the journey directly.</p>
+<h2 id="persona-2--library-user-performance-focused"><a class="header" href="#persona-2--library-user-performance-focused">Persona 2 — library user, performance-focused</a></h2>
+<p>Depends on <code>dstu-core</code> directly from <code>Cargo.toml</code>. Cares about the <code>crypto_*</code>/<code>hazmat</code> split,
+<code>ExpandedKey</code>-style cached-schedule paths, and <code>docs/PERFORMANCE.md</code>’s numbers.</p>
+<pre><code class="language-mermaid">stateDiagram-v2
+    [*] --&gt; Discover
+    Discover --&gt; AddDependency
+    AddDependency --&gt; PickLayer
+    PickLayer --&gt; ChooseConstruction
+    ChooseConstruction --&gt; Configure
+    Configure --&gt; Verify
+    Verify --&gt; Ship
+    Ship --&gt; [*]
+
+    AddDependency --&gt; Discover: not on crates.io, no docs.rs page
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>State</th><th>Want</th><th>Have</th><th>Gap</th></tr>
+</thead>
+<tbody>
+<tr><td>Discover</td><td>Find the crate and its API surface</td><td><code>README.md</code>, <code>crates/dstu-core/README.md</code></td><td>none</td></tr>
+<tr><td>Add dependency</td><td><code>cargo add dstu-core</code></td><td><strong>Not published to crates.io</strong> (T-17, explicitly gated on an owner request per the roadmap’s Step 4 note, <code>docs/TASKS.md</code> line ~2031). Only path today is a git/path dependency. <strong>Empirically re-confirmed 2026-07-26 (<code>docs/TASKS.md</code> T-117), not just cited</strong>: <code>cargo add dstu-core</code> in a real scratch crate fails with <code>error: the crate dstu-core could not be found in registry index</code></td><td><strong>Real gap, and it compounds another one</strong>: because the crate isn’t published, <code>docs.rs</code> has never built a page for it either — meaning T-110’s <code>[package.metadata.docs.rs]</code> <code>all-features = true</code> metadata (done, <code>docs/TASKS.md</code> T-110) is currently inert. A library user reading only crates.io/docs.rs (the normal Rust discovery path) finds nothing there at all; they’d have to already know to look at GitHub</td></tr>
+<tr><td>Pick layer</td><td>Understand <code>hazmat::*</code> vs <code>crypto_*</code> and which to reach for</td><td><code>crates/dstu-core/README.md</code> “Two layers” section states the split plainly and by name; <code>docs/dstu-crypto-project.md</code> “Concrete API shape” has the full module-by-module table</td><td>none</td></tr>
+<tr><td>Choose construction</td><td>Know which <code>crypto_*</code>/<code>hazmat</code> module fits their use case (AEAD, KDF, signing, streaming…)</td><td><code>docs/release-readiness.md</code> “Use-case coverage” table maps scenario → construction directly. <strong>Fixed 2026-07-26 (<code>docs/TASKS.md</code> T-117)</strong>: <code>crates/dstu-core/README.md</code>’s own <code>## Example</code> (the first code a library user actually copy-pastes, for <code>crypto_secretbox</code>) did not compile as written — <code>SecretKey::generate()</code>/<code>seal()</code> both return <code>Result</code>, the example used them as bare values. Found by actually building the example in a real path-dependency scratch crate, not by re-reading the doc; never caught by <code>cargo test</code> since the README isn’t wired in as a doctest</td><td>none, as of the T-117 fix — but this class of bug (an uncompiled README example) is structurally invisible to the existing test suite, so a regression here needs a human/agent to actually run the example again, not just <code>cargo test</code> passing</td></tr>
+<tr><td>Configure (features, cached schedule)</td><td>Know which Cargo features to enable, and how to use <code>ExpandedKey</code> for repeated-key throughput</td><td><code>crates/dstu-core/README.md</code> “Feature flags” table; <code>hazmat::kalyna</code>’s <code>ExpandedKey</code> type itself — but <strong>no doc page walks through <em>why</em>/<em>when</em> to use <code>ExpandedKey</code> over the bare <code>encrypt</code>/<code>decrypt</code> functions</strong>, only <code>docs/PERFORMANCE.md</code>’s benchmark methodology mentions “cached schedule” in passing (e.g. the <code>resource-profiles.md</code> speed table’s row labels)</td><td><strong>Minor gap</strong>: a library user optimizing for throughput has to infer the cached-schedule pattern from benchmark row labels rather than being told directly in <code>dstu-core</code>’s own README or rustdoc</td></tr>
+<tr><td>Verify</td><td>Confirm the crate does what it claims, on their own machine</td><td><code>cargo test --workspace --all-features</code>; <code>docs/PERFORMANCE.md</code>’s full benchmarking + <code>criterion</code> baseline instructions (<code>cargo bench -p dstu-core --bench kalyna --bench kupyna --bench strumok</code>)</td><td>none, once the dependency itself is resolved</td></tr>
+<tr><td>Ship</td><td>Depend on a stable, versioned release for their own downstream users</td><td>No stable crates.io version exists; a git-dependency consumer has no SemVer guarantee across commits, and <code>docs/CHANGELOG.md</code> (T-111, done) currently has no public release to anchor to</td><td>Same root cause as “Add dependency” above — not a separate gap, a downstream consequence of T-17</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>Bottom line</strong>: every step from “Pick layer” onward is well documented and cited; the entire
+persona-2 gap is concentrated at “Add dependency” (no crates.io/docs.rs presence) and its
+downstream consequence for “Ship.” This is the same T-17 gate the roadmap already tracks — this
+persona view just shows it’s not only a publishing-hygiene item, it’s a hard stop partway through a
+concrete adoption path.</p>
+<h2 id="persona-3--constrained-target-microcontroller-user"><a class="header" href="#persona-3--constrained-target-microcontroller-user">Persona 3 — constrained-target (microcontroller) user</a></h2>
+<p>Needs the <code>no_std</code>/<code>small-tables</code> minimal-footprint variant for an STM32/ESP32-class target. Cares
+about flash/RAM budget and build-time feature selection, not raw throughput.</p>
+<pre><code class="language-mermaid">stateDiagram-v2
+    [*] --&gt; Discover
+    Discover --&gt; PickProfile
+    PickProfile --&gt; ConfigureFeatures
+    ConfigureFeatures --&gt; CrossCompile
+    CrossCompile --&gt; VerifyFlashSize
+    VerifyFlashSize --&gt; Ship
+    Ship --&gt; [*]
+
+</code></pre>
+<p><code>CrossCompile</code>’s back-edge to <code>Discover</code> (present in the original 2026-07-25 version of this
+diagram, labeled “no target ever actually built here”) is removed as of <code>docs/TASKS.md</code> T-116 - real
+cross-compiles now exist for two target families, see the table below. <code>VerifyFlashSize</code> still has
+no real linked-artifact measurement behind it (see that row) - not yet a fully closed state.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>State</th><th>Want</th><th>Have</th><th>Gap</th></tr>
+</thead>
+<tbody>
+<tr><td>Discover</td><td>Understand <code>no_std</code> support exists and what it means concretely</td><td><code>README.md</code> “Embedded / <code>no_std</code> targets” section; <code>CLAUDE.md</code> MVP scope states the no-hardware-lock-in goal explicitly</td><td>none</td></tr>
+<tr><td>Pick profile</td><td>Decide <code>fused</code> vs <code>small-tables</code> for their flash budget</td><td><code>docs/resource-profiles.md</code> “Which one do I need?” sizing table, by target family and typical flash size</td><td>none</td></tr>
+<tr><td>Configure features</td><td>Know the exact Cargo invocation</td><td><code>docs/resource-profiles.md</code> “How to build each” section gives the literal <code>cargo build --no-default-features --features small-tables</code> commands</td><td>none</td></tr>
+<tr><td>Cross-compile to a real target</td><td>Build (even just build, not flash) for <code>thumbv7em-none-eabihf</code> (STM32) or an Xtensa/RISC-V ESP32 target</td><td><strong>Closed 2026-07-26, see <code>docs/TASKS.md</code> T-116.</strong> All 4 <code>no_std</code>/<code>alloc</code>/<code>small-tables</code> combinations, both dev and release profiles, now build clean for <code>thumbv7em-none-eabihf</code> (STM32 Cortex-M) and <code>riscv32imc-unknown-none-elf</code> (ESP32-C3-class RISC-V), both installed via plain <code>rustup target add</code></td><td>Xtensa (the <em>other</em> ESP32 family) needs a custom toolchain (<code>espup</code>, not plain <code>rustup</code>) and was not attempted - a smaller, separately-flaggable remaining gap, not the sharp one this row used to describe</td></tr>
+<tr><td>Verify flash size</td><td>Confirm the ~86 KB / ~6.1 KB table numbers translate to a real linked binary on their target</td><td>T-116 also produced a real <code>thumbv7em-none-eabihf</code> release-profile <code>.rlib</code> size (1.4 MB <code>fused</code> / 1.2 MB <code>small-tables</code>) alongside <code>docs/resource-profiles.md</code>’s existing source-constant-derived table</td><td><strong>Still open, explicitly</strong> - an <code>.rlib</code> isn’t a linked, dead-code-eliminated firmware image, so this isn’t the same number a real flashed binary would show. Closing this fully needs an actual firmware binary crate (entry point, panic handler, <code>memory.x</code>) that doesn’t exist in this repo - flagged as a further candidate, not self-assigned</td></tr>
+<tr><td>Ship</td><td>Flash and run on real hardware</td><td>Phase 4 (T-55/T-56), explicitly post-MVP</td><td>Correctly out of scope, not a gap against this roadmap</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>Bottom line</strong>: persona 3’s journey now has real cross-compiled evidence behind the “compiles for
+microcontroller targets” claim (T-116), closing this document’s sharpest original finding. What
+remains open is narrower than before: Xtensa specifically (needs <code>espup</code>, not attempted), and a true
+linked flash-size measurement (needs a firmware binary crate this repo doesn’t have) - both smaller
+asks than the original “has anyone ever tried this” gap.</p>
+<h2 id="persona-4--binding-user-non-rust-developer"><a class="header" href="#persona-4--binding-user-non-rust-developer">Persona 4 — binding user, non-Rust developer</a></h2>
+<p>Uses <code>uacrypt</code>/<code>dstu-core</code> from their own language (Python, Node.js, Ruby, PHP, .NET, Java, Go, or
+C++) without touching Rust directly. Cares about that language’s own idiomatic API and normal
+package-registry install path, not <code>hazmat</code>/<code>crypto_*</code> internals.</p>
+<pre><code class="language-mermaid">stateDiagram-v2
+    [*] --&gt; Discover
+    Discover --&gt; PickLanguage
+    PickLanguage --&gt; Install
+    Install --&gt; RunAPI
+    RunAPI --&gt; Verify
+    Verify --&gt; Ship
+    Ship --&gt; [*]
+
+    Install --&gt; Discover: not on any package registry
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>State</th><th>Want</th><th>Have</th><th>Gap</th></tr>
+</thead>
+<tbody>
+<tr><td>Discover</td><td>Find out a binding exists for their language</td><td><code>README.md</code>’s language-bindings section (T-162); <code>docs/bindings-strategy.md</code></td><td>none</td></tr>
+<tr><td>Pick language</td><td>Confirm the binding covers what they need (<code>crypto_secretstream</code>, signing, etc.)</td><td>Each <code>bindings/&lt;lang&gt;/README.md</code> carries the same provisional-status banner (T-112) and documents its wrapped surface</td><td>none</td></tr>
+<tr><td>Install</td><td><code>pip install</code>/<code>npm install</code>/<code>gem install</code>/<code>composer require</code>/<code>nuget install</code>/a Maven dependency/<code>go get</code>/vcpkg — the normal registry path for their language</td><td><strong>Not published to any package registry</strong> (T-164, explicitly gated on a separate owner request, same posture as T-17 for <code>dstu-core</code> itself). Only path today is building from source inside <code>bindings/&lt;lang&gt;</code> using that language’s native tooling plus <code>cargo xtask &lt;lang&gt;</code></td><td><strong>Real gap, same shape as persona 2’s</strong>: a developer following their language’s normal discovery path (PyPI/npm/RubyGems/Packagist/NuGet/Maven Central/pkg.go.dev) finds nothing there at all; they’d have to already know to look at GitHub and build from source</td></tr>
+<tr><td>Run the API</td><td>Call <code>crypto_*</code> functions idiomatically from their own language</td><td><code>bindings/&lt;lang&gt;/examples/</code> plus each binding’s <code>README.md</code> show real usage (standard binding steps, step 7)</td><td>none, once installed</td></tr>
+<tr><td>Verify</td><td>Confirm the binding does what it claims, on their own machine</td><td>Each binding’s local test suite covers all three categories (correctness/rejection/misuse, D-64/D-65) against the shared official vectors (standard binding steps, step 6)</td><td>none</td></tr>
+<tr><td>Ship</td><td>Depend on a stable, versioned release for their own downstream users</td><td>No stable registry version exists for any binding</td><td>Same root cause as “Install” above — not a separate gap, a downstream consequence of T-164</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>Bottom line</strong>: persona 4’s gap is concentrated entirely at “Install”/“Ship,” structurally
+identical to persona 2’s crates.io gap — both are the same class of problem (real, working code
+with no registry presence yet), both explicitly gated on a separate owner request (T-164 mirrors
+T-17), not a new finding requiring its own task.</p>
+<h2 id="persona-5--binding-contributor"><a class="header" href="#persona-5--binding-contributor">Persona 5 — binding contributor</a></h2>
+<p>Wants to fix, extend, or add a language binding under <code>bindings/</code> (or the C ABI crate it’s built
+on) — distinct from persona 4, who only <em>consumes</em> a binding.</p>
+<pre><code class="language-mermaid">stateDiagram-v2
+    [*] --&gt; Discover
+    Discover --&gt; ReadProcess
+    ReadProcess --&gt; Scaffold
+    Scaffold --&gt; Implement
+    Implement --&gt; TestAndCrossArch
+    TestAndCrossArch --&gt; DocumentAndShip
+    DocumentAndShip --&gt; [*]
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>State</th><th>Want</th><th>Have</th><th>Gap</th></tr>
+</thead>
+<tbody>
+<tr><td>Discover</td><td>Find out there’s a defined process for contributing to a binding, not just to the core crate</td><td>Before this session, <strong>nothing</strong> — <code>docs/CONTRIBUTING.md</code> had zero mentions of <code>bindings/</code>/<code>dstu-core-capi</code> (confirmed by grep, not assumed), written entirely for core-crate contributors and predating all of Phase 3. <strong>Closed the same session, <code>docs/TASKS.md</code> T-165</strong> — a “Working on a language binding” section now points to <code>docs/bindings-strategy.md</code>’s standard-steps template</td><td>none, as of T-165</td></tr>
+<tr><td>Read the process</td><td>Understand the ten-step template once found</td><td><code>docs/bindings-strategy.md</code> “The standard binding steps” (steps 1-10)</td><td>none</td></tr>
+<tr><td>Scaffold</td><td>Set up the binding’s own crate/project, wired in appropriately</td><td>Step 1 of the standard steps; D-119 (each binding is its own separate workspace, never a root workspace member)</td><td>none</td></tr>
+<tr><td>Implement</td><td>Wrap the full <code>crypto_*</code> surface, including <code>crypto_secretstream</code>’s two known pitfalls</td><td>Steps 2-3 of the standard steps; D-116/D-118 name both pitfalls explicitly (cleanup-hook finalizing on the error path, unbounded/untrusted wire-format length field) so a contributor doesn’t have to rediscover them per language</td><td>none, if both are actually re-checked rather than assumed inherited from the wire format</td></tr>
+<tr><td>Test + cross-arch</td><td>Confirm correctness/rejection/misuse locally, and that FFI-boundary code doesn’t hide an ARM-specific assumption</td><td>Steps 6 and 10 of the standard steps; D-64/D-65 for the three categories, D-151 for the Raspberry Pi ARM64 re-check (which already found one real bug — a hardcoded <code>i8</code> test buffer that should have been <code>c_char</code>)</td><td>none</td></tr>
+<tr><td>Document + ship</td><td>Examples, README, doc-map sweep, one commit per step, opened as a PR</td><td>Steps 7-9 of the standard steps; <code>docs/CONTRIBUTING.md</code>’s “Opening the PR” section applies unchanged</td><td>none</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>Bottom line</strong>: persona 5’s only real gap — no onboarding entry point in <code>docs/CONTRIBUTING.md</code> —
+closed in the same session this persona was added, via T-165. A live instance of this document’s
+own stated methodology: framing the journey surfaced a gap that a construction-level view (the
+standard steps already existed) wouldn’t have flagged as “blocking a specific persona from ever
+finding the process.”</p>
+<h2 id="cross-persona-findings"><a class="header" href="#cross-persona-findings">Cross-persona findings</a></h2>
+<ul>
+<li><strong>The single highest-value finding when this document was first written</strong>: persona 3’s
+cross-compile gap. It sat directly behind a claim <code>README.md</code> already made in careful, hedged
+language — the hedge was correct, but the thing it was hedging <em>against verifying</em> had never been
+attempted. <strong>Closed 2026-07-26, see <code>docs/TASKS.md</code> T-116</strong> — real cross-compiles now exist for two
+target families (thumbv7em/STM32, riscv32imc/ESP32-C3-class), no hardware required to get there.</li>
+<li><strong><code>uacrypt keygen</code>’s absence</strong> (persona 1) was already-tracked at the construction level
+(<code>randombytes</code> “Done”) but read very differently once framed as “can this specific persona finish
+their journey” — the answer was no, at the very first concrete step. <strong>Closed 2026-07-26, see
+<code>docs/TASKS.md</code> T-115</strong> — the project owner triaged this candidate into a real task the same day it
+was found.</li>
+<li><strong>Persona 1’s Acquire gap (no prebuilt binary, T-18)</strong> was explicitly gated on an owner request,
+same as T-17 - and the owner made that request directly (“зроби реліз на гітгабі бінарника і
+бібліотек”), 2026-07-26. <strong>Closed the same day, see <code>docs/TASKS.md</code> T-18/T-119</strong> - real GitHub Release
+<code>v0.1.0</code>, three platform binaries plus the <code>dstu-core</code> source distribution, verified against the
+actual downloaded assets.</li>
+<li><strong>Crates.io/docs.rs absence</strong> (persona 2) is the one gap in this whole document still open -
+tracked at the construction level as T-17, explicitly re-confirmed as still gated on a separate
+owner request when T-18/T-119 was scoped (GitHub Release ≠ crates.io publish, confirmed via
+<code>AskUserQuestion</code> rather than assumed to mean both).</li>
+<li>The findings above were not proposed as new task numbers when this document was first written,
+per T-114’s own scope (“this task’s value is the persona/journey framing itself”) — they were
+recorded as candidates for the project owner to triage. Three (<code>uacrypt keygen</code>, T-115; the
+cross-compile check, T-116; prebuilt binaries, T-18/T-119) have since been triaged and closed;
+crates.io publication (T-17) remains open, still explicitly gated on an owner request.</li>
+<li><strong>Personas 4 and 5, added 2026-08-03 (<code>docs/TASKS.md</code> T-166)</strong>: the original three personas
+predated every language binding; walking the binding-user and binding-contributor journeys
+directly surfaced two gaps, both closed the same session — persona 4’s registry-install gap
+turned out to be structurally identical to persona 2’s (T-164 mirrors T-17, both owner-gated),
+and persona 5’s onboarding gap was closed immediately via T-165 (a <code>docs/CONTRIBUTING.md</code>
+section had never existed for bindings at all). Note: the root <code>README.md</code>’s stale repo tree
+(missing <code>bindings/ruby</code>/<code>bindings/php</code>/<code>crates/dstu-core-capi</code>) is tracked separately under
+T-162, deliberately deferred until every binding lands — not a new finding here.</li>
+<li><strong>Methodology note, 2026-07-26 (<code>docs/TASKS.md</code> T-117)</strong>: this document’s original findings were
+produced by reading the cross-referenced docs and reasoning about the journey, not by actually
+executing each persona’s steps. A follow-up pass that did — real <code>gh release list</code> (empty at the
+time; not anymore, see T-18/T-119 above), a real <code>cargo add dstu-core</code>, a real scratch crate
+consuming <code>dstu-core</code> via a path dependency, the actual release binary run end to end for persona
+1 — re-confirmed every finding above as genuinely true (not assumed), and surfaced one the
+reading-only pass missed entirely: <code>crates/dstu-core/README.md</code>’s own top-level <code>## Example</code> did
+not compile (<code>SecretKey::generate</code>/<code>seal</code> both return <code>Result</code>, the example didn’t handle it) -
+invisible to <code>cargo test</code> since the README isn’t wired in as a doctest, and invisible to a
+documentation <em>review</em> since the example reads correctly, it just doesn’t compile. Fixed the same
+session. The general lesson: for this kind of gap analysis, actually running a persona’s steps
+finds a different class of bug than reading the docs that describe them, even when the docs are
+accurate about everything else.</li>
+</ul>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="release-readiness.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                            </a>
+
+                            <a rel="next prefetch" href="bindings-strategy.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="release-readiness.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                    </a>
+
+                    <a rel="next prefetch" href="bindings-strategy.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                    </a>
+            </nav>
+
+        </div>
+
+        <template id=fa-eye><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M288 32c-80.8 0-145.5 36.8-192.6 80.6C48.6 156 17.3 208 2.5 243.7c-3.3 7.9-3.3 16.7 0 24.6C17.3 304 48.6 356 95.4 399.4C142.5 443.2 207.2 480 288 480s145.5-36.8 192.6-80.6c46.8-43.5 78.1-95.4 93-131.1c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C433.5 68.8 368.8 32 288 32zM432 256c0 79.5-64.5 144-144 144s-144-64.5-144-144s64.5-144 144-144s144 64.5 144 144zM288 192c0 35.3-28.7 64-64 64c-11.5 0-22.3-3-31.6-8.4c-.2 2.8-.4 5.5-.4 8.4c0 53 43 96 96 96s96-43 96-96s-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6z"/></svg></span></template>
+        <template id=fa-eye-slash><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M38.8 5.1C28.4-3.1 13.3-1.2 5.1 9.2S-1.2 34.7 9.2 42.9l592 464c10.4 8.2 25.5 6.3 33.7-4.1s6.3-25.5-4.1-33.7L525.6 386.7c39.6-40.6 66.4-86.1 79.9-118.4c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C465.5 68.8 400.8 32 320 32c-68.2 0-125 26.3-169.3 60.8L38.8 5.1zM223.1 149.5C248.6 126.2 282.7 112 320 112c79.5 0 144 64.5 144 144c0 24.9-6.3 48.3-17.4 68.7L408 294.5c5.2-11.8 8-24.8 8-38.5c0-53-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6c0 10.2-2.4 19.8-6.6 28.3l-90.3-70.8zm223.1 298L373 389.9c-16.4 6.5-34.3 10.1-53 10.1c-79.5 0-144-64.5-144-144c0-6.9 .5-13.6 1.4-20.2L83.1 161.5C60.3 191.2 44 220.8 34.5 243.7c-3.3 7.9-3.3 16.7 0 24.6c14.9 35.7 46.2 87.7 93 131.1C174.5 443.2 239.2 480 320 480c47.8 0 89.9-12.9 126.2-32.5z"/></svg></span></template>
+        <template id=fa-copy><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M502.6 70.63l-61.25-61.25C435.4 3.371 427.2 0 418.7 0H255.1c-35.35 0-64 28.66-64 64l.0195 256C192 355.4 220.7 384 256 384h192c35.2 0 64-28.8 64-64V93.25C512 84.77 508.6 76.63 502.6 70.63zM464 320c0 8.836-7.164 16-16 16H255.1c-8.838 0-16-7.164-16-16L239.1 64.13c0-8.836 7.164-16 16-16h128L384 96c0 17.67 14.33 32 32 32h47.1V320zM272 448c0 8.836-7.164 16-16 16H63.1c-8.838 0-16-7.164-16-16L47.98 192.1c0-8.836 7.164-16 16-16H160V128H63.99c-35.35 0-64 28.65-64 64l.0098 256C.002 483.3 28.66 512 64 512h192c35.2 0 64-28.8 64-64v-32h-47.1L272 448z"/></svg></span></template>
+        <template id=fa-play><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M73 39c-14.8-9.1-33.4-9.4-48.5-.9S0 62.6 0 80V432c0 17.4 9.4 33.4 24.5 41.9s33.7 8.1 48.5-.9L361 297c14.3-8.7 23-24.2 23-41s-8.7-32.2-23-41L73 39z"/></svg></span></template>
+        <template id=fa-clock-rotate-left><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M75 75L41 41C25.9 25.9 0 36.6 0 57.9V168c0 13.3 10.7 24 24 24H134.1c21.4 0 32.1-25.9 17-41l-30.8-30.8C155 85.5 203 64 256 64c106 0 192 86 192 192s-86 192-192 192c-40.8 0-78.6-12.7-109.7-34.4c-14.5-10.1-34.4-6.6-44.6 7.9s-6.6 34.4 7.9 44.6C151.2 495 201.7 512 256 512c141.4 0 256-114.6 256-256S397.4 0 256 0C185.3 0 121.3 28.7 75 75zm181 53c-13.3 0-24 10.7-24 24V256c0 6.4 2.5 12.5 7 17l72 72c9.4 9.4 24.6 9.4 33.9 0s9.4-24.6 0-33.9l-65-65V152c0-13.3-10.7-24-24-24z"/></svg></span></template>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr-ef4e11c1.min.js"></script>
+        <script src="mark-09e88c2c.min.js"></script>
+        <script src="searcher-09f2665d.js"></script>
+
+        <script src="clipboard-1626706a.min.js"></script>
+        <script src="highlight-abc7f01d.js"></script>
+        <script src="book-609e4cb8.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+
+    </div>
+    </body>
+</html>

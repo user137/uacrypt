@@ -1,0 +1,459 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Resource profiles (fused vs small-tables) - uacrypt</title>
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="Ukrainian DSTU cryptography in Rust - the full docs/ knowledge base as one navigable, searchable book.">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon-de23e50b.svg">
+        <link rel="shortcut icon" href="favicon-8114d1fc.png">
+        <link rel="stylesheet" href="css/variables-8adf115d.css">
+        <link rel="stylesheet" href="css/general-e96d0476.css">
+        <link rel="stylesheet" href="css/chrome-d279d366.css">
+        <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="fonts/fonts-9644e21d.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="mdbook-highlight-css" href="highlight-493f70e1.css">
+        <link rel="stylesheet" id="mdbook-tomorrow-night-css" href="tomorrow-night-4c0ae647.css">
+        <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="ayu-highlight-3fdfc3ac.css">
+
+        <!-- Custom theme stylesheets -->
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "";
+            const default_light_theme = "light";
+            const default_dark_theme = "navy";
+            window.path_to_searchindex_js = "searchindex-87f949c2.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="toc-ce7e91c5.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="mdbook-body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('light')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="mdbook-sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("mdbook-sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="mdbook-sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+            </noscript>
+            <div id="mdbook-sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="mdbook-page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="mdbook-menu-bar-hover-placeholder"></div>
+                <div id="mdbook-menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="mdbook-sidebar-toggle" class="icon-button" for="mdbook-sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="mdbook-sidebar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M0 96C0 78.3 14.3 64 32 64H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32C14.3 128 0 113.7 0 96zM0 256c0-17.7 14.3-32 32-32H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32c-17.7 0-32-14.3-32-32zM448 416c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H416c17.7 0 32 14.3 32 32z"/></svg></span>
+                        </label>
+                        <button id="mdbook-theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="mdbook-theme-list">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M371.3 367.1c27.3-3.9 51.9-19.4 67.2-42.9L600.2 74.1c12.6-19.5 9.4-45.3-7.6-61.2S549.7-4.4 531.1 9.6L294.4 187.2c-24 18-38.2 46.1-38.4 76.1L371.3 367.1zm-19.6 25.4l-116-104.4C175.9 290.3 128 339.6 128 400c0 3.9 .2 7.8 .6 11.6c1.8 17.5-10.2 36.4-27.8 36.4H96c-17.7 0-32 14.3-32 32s14.3 32 32 32H240c61.9 0 112-50.1 112-112c0-2.5-.1-5-.2-7.5z"/></svg></span>
+                        </button>
+                        <ul id="mdbook-theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-ayu">Ayu</button></li>
+                        </ul>
+                        <button id="mdbook-search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="mdbook-searchbar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352c79.5 0 144-64.5 144-144s-64.5-144-144-144S64 128.5 64 208s64.5 144 144 144z"/></svg></span>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">uacrypt</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <span class=fa-svg id="print-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M128 0C92.7 0 64 28.7 64 64v96h64V64H354.7L384 93.3V160h64V93.3c0-17-6.7-33.3-18.7-45.3L400 18.7C388 6.7 371.7 0 354.7 0H128zM384 352v32 64H128V384 368 352H384zm64 32h32c17.7 0 32-14.3 32-32V256c0-35.3-28.7-64-64-64H64c-35.3 0-64 28.7-64 64v96c0 17.7 14.3 32 32 32H64v64c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V384zm-16-88c-13.3 0-24-10.7-24-24s10.7-24 24-24s24 10.7 24 24s-10.7 24-24 24z"/></svg></span>
+                        </a>
+                        <a href="https://github.com/user137/uacrypt" title="Git repository" aria-label="Git repository">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6zm-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3zm44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9zM244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8zM97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1zm-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7zm32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1zm-11.4-14.7c-1.6 1-1.6 3.6 0 5.9 1.6 2.3 4.3 3.3 5.6 2.3 1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2z"/></svg></span>
+                        </a>
+                        <a href="https://github.com/user137/uacrypt/edit/master/docs/resource-profiles.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
+                            <span class=fa-svg id="git-edit-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M421.7 220.3l-11.3 11.3-22.6 22.6-205 205c-6.6 6.6-14.8 11.5-23.8 14.1L30.8 511c-8.4 2.5-17.5 .2-23.7-6.1S-1.5 489.7 1 481.2L38.7 353.1c2.6-9 7.5-17.2 14.1-23.8l205-205 22.6-22.6 11.3-11.3 33.9 33.9 62.1 62.1 33.9 33.9zM96 353.9l-9.3 9.3c-.9 .9-1.6 2.1-2 3.4l-25.3 86 86-25.3c1.3-.4 2.5-1.1 3.4-2l9.3-9.3H112c-8.8 0-16-7.2-16-16V353.9zM453.3 19.3l39.4 39.4c25 25 25 65.5 0 90.5l-14.5 14.5-22.6 22.6-11.3 11.3-33.9-33.9-62.1-62.1L314.3 67.7l11.3-11.3 22.6-22.6 14.5-14.5c25-25 65.5-25 90.5 0z"/></svg></span>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="mdbook-search-wrapper" class="hidden">
+                    <form id="mdbook-searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="mdbook-searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="mdbook-searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <span class=fa-svg id="fa-spin"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M304 48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zm0 416c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM48 304c26.5 0 48-21.5 48-48s-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48zm464-48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM142.9 437c18.7-18.7 18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zm0-294.2c18.7-18.7 18.7-49.1 0-67.9S93.7 56.2 75 75s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zM369.1 437c18.7 18.7 49.1 18.7 67.9 0s18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9z"/></svg></span>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="mdbook-searchresults-outer" class="searchresults-outer hidden">
+                        <div id="mdbook-searchresults-header" class="searchresults-header"></div>
+                        <ul id="mdbook-searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('mdbook-sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('mdbook-sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#mdbook-sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="mdbook-content" class="content">
+                    <main>
+                        <h1 id="resource-profiles-fused-default-vs-small-tables"><a class="header" href="#resource-profiles-fused-default-vs-small-tables">Resource profiles: <code>fused</code> (default) vs <code>small-tables</code></a></h1>
+<p><code>dstu-core</code> builds in one of two resource profiles, chosen by a Cargo feature. Both produce
+byte-identical output — same DSTU 7624/7564/8845 math, same test vectors pass either way (see
+<code>docs/DECISIONS.md</code> D-35/D-38/D-39). The only difference is a straight trade: flash/ROM footprint
+against throughput.</p>
+<ul>
+<li><strong><code>fused</code> (default, no feature flag needed)</strong> — precomputed S-box+MDS lookup tables. Fast,
+costs real flash.</li>
+<li><strong><code>small-tables</code> (<code>--features dstu-core/small-tables</code>)</strong> — the same math computed on the fly via
+<code>GF(2^8)</code> multiplication, no big tables. Small, costs real speed.</li>
+</ul>
+<p>Pick <code>fused</code> unless you have a specific, measured flash budget that doesn’t fit it — see “Which one
+do I need?” below.</p>
+<h2 id="memory-what-each-profile-actually-compiles-in"><a class="header" href="#memory-what-each-profile-actually-compiles-in">Memory: what each profile actually compiles in</a></h2>
+<p>All numbers are <code>const</code> table data linked into the binary — measured directly off
+<code>hazmat::tables.rs</code>/<code>hazmat::strumok.rs</code>, not estimated.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Table set</th><th style="text-align: right"><code>fused</code></th><th style="text-align: right"><code>small-tables</code></th></tr>
+</thead>
+<tbody>
+<tr><td>Kalyna/Kupyna S-boxes (<code>SBOXES</code>, <code>SBOXES_DEC</code>)</td><td style="text-align: right">2.0 KB</td><td style="text-align: right">2.0 KB</td></tr>
+<tr><td>Kalyna/Kupyna MDS matrices (<code>MDS_MATRIX</code>, <code>MDS_INV_MATRIX</code>)</td><td style="text-align: right">— (unused)</td><td style="text-align: right">0.13 KB</td></tr>
+<tr><td>Kalyna/Kupyna precomputed MDS tables (<code>MDS_TABLE</code>, <code>MDS_INV_TABLE</code>)</td><td style="text-align: right">32.0 KB</td><td style="text-align: right">not compiled</td></tr>
+<tr><td>Kalyna/Kupyna fused S-box+MDS tables (<code>SBOX_MDS</code>, <code>SBOX_MDS_DEC</code>)</td><td style="text-align: right">32.0 KB</td><td style="text-align: right">not compiled</td></tr>
+<tr><td><strong>Kalyna + Kupyna subtotal</strong></td><td style="text-align: right"><strong>66.0 KB</strong></td><td style="text-align: right"><strong>~2.1 KB</strong></td></tr>
+<tr><td>Strumok <code>T0..T7</code></td><td style="text-align: right">16.0 KB</td><td style="text-align: right">not compiled</td></tr>
+<tr><td>Strumok <code>MUL_ALPHA</code>/<code>MUL_ALPHA_INV</code> (not swappable — different math, needed either way)</td><td style="text-align: right">4.0 KB</td><td style="text-align: right">4.0 KB</td></tr>
+<tr><td><strong>Strumok subtotal</strong> (reuses the Kalyna/Kupyna S-box/matrix above, adds nothing extra)</td><td style="text-align: right"><strong>20.0 KB</strong></td><td style="text-align: right"><strong>~4.0 KB</strong></td></tr>
+<tr><td><strong>All three algorithms, one binary</strong></td><td style="text-align: right"><strong>~86 KB</strong></td><td style="text-align: right"><strong>~6.1 KB</strong></td></tr>
+</tbody>
+</table>
+</div>
+<p>That’s a real, measured difference, not just a theoretical one: a release build of <code>uacrypt</code>
+(all three algorithms linked in) is <strong>~75 KB smaller</strong> under <code>small-tables</code>.</p>
+<p><strong>A second, separate <code>fused</code>-only cost as of T-172/D-161 (<code>docs/DECISIONS.md</code>)</strong>: Kalyna’s interior
+round sequence is now a genuine compile-time unroll (no loop at all, <code>unroll_rounds!</code>) under
+<code>fused</code>, in exchange for a real 21-35% speed win on four of its five variants. This is <em>not</em> a
+<code>const</code>-table cost like the numbers above — it’s compiled code (<code>.text</code>), and it’s real, measured
+the same way as this doc’s own linked-<code>uacrypt</code>-binary method above (not a raw rlib object-code
+sum, which overestimates — an earlier pass got this wrong first, corrected same session, see
+D-161): a release <code>uacrypt.exe</code> grew <strong>+71.1 KB (+4.17%)</strong> under <code>fused</code>. Deliberately <strong>not</strong>
+applied to <code>small-tables</code>, which keeps Kalyna’s old runtime loop specifically so this profile’s
+whole reason to exist (smallest possible code) isn’t undercut — <code>small-tables</code>’s own binary only
+grew <strong>+9.2 KB (+0.56%)</strong> (an unrelated, minor side effect of <code>NR</code> becoming a const generic
+everywhere, kept for both profiles to avoid two parallel function signatures). Net effect: the
+<code>fused</code>-vs-<code>small-tables</code> gap on a release <code>uacrypt.exe</code> widened from ~60.5 KB to ~122.4 KB. If
+you’re on <code>small-tables</code> for a real measured flash budget, this unroll never applies to you either
+way — but note the profile split is no longer <em>only</em> about which table data links in (see D-161’s
+“scope of what <code>small-tables</code> now means” note): it now also picks which Kalyna round-sequence code
+compiles, correctness-identical either way but a real, additive-Cargo-feature-wide performance
+choice, not just a flash one.</p>
+<p><strong>What this means depending on your target</strong>: on a 32-bit MCU with memory-mapped flash (ARM
+Cortex-M, Xtensa/RISC-V — the <code>fused</code> tables live in flash and cost <em>zero</em> RAM, only flash space).
+On AVR (Harvard architecture), a <code>const</code> table copies into SRAM at startup unless placed in
+<code>PROGMEM</code> with AVR-specific code — <code>small-tables</code> avoids that problem entirely by not having a
+table to place.</p>
+<h2 id="ramstack-what-each-mode-costs-beyond-the-table-data-above"><a class="header" href="#ramstack-what-each-mode-costs-beyond-the-table-data-above">RAM/stack: what each mode costs beyond the table data above</a></h2>
+<p><strong>A different axis from the flash/const-table split above, and the same for both profiles</strong> —
+<code>fused</code>/<code>small-tables</code> only swap <em>which table data</em> is linked in; they don’t change any struct
+layout or working-set size. Numbers below are computed from the actual struct definitions and
+array literal dimensions in the current tree (<code>size_of</code>-equivalent arithmetic, cross-checked
+against the source lines cited), not measured with a memory profiler — a weaker claim than the
+table above’s “measured directly off <code>hazmat::tables.rs</code>”, stated as such rather than inherited.</p>
+<p><strong>Key-schedule storage is <code>MAX_NB</code>-sized regardless of variant</strong> — the same oversizing pattern
+<code>docs/TASKS.md</code> T-128 fixed on the <em>compute</em> side (round functions), still present on the <em>storage</em>
+side: <code>RoundKeys</code> (<code>hazmat::kalyna.rs</code>) is <code>[[Column; MAX_NB]; ROUND_KEYS_LEN]</code> = <code>19 * 8 * 8</code> =
+<strong>1216 bytes</strong>, the same for every variant — a Kalyna128_128 caller pays the identical footprint a
+Kalyna512_512 caller does, even though 128-128’s real round-key material is a quarter the size.
+<code>ExpandedKey</code> (the cached-schedule type every <code>kalyna_variant!</code> invocation produces) holds two
+(<code>round_keys</code> + <code>dec_keys</code>) = <strong>2432 bytes</strong> per live instance, again independent of variant. Not
+flagged as a problem to fix here — just a real number the resource-constrained cases from the
+sizing table below should account for.</p>
+<p><strong>Same pattern on <code>KupynaCore</code> after T-134</strong> (<code>docs/DECISIONS.md</code> D-85): T-134 made Kupyna’s <em>compute</em>
+path (<code>sub_shift_mix</code>/<code>compress</code> and friends) const-generic over <code>COLUMNS</code>, the direct analogue of
+T-128’s Kalyna fix above — but, same as T-128 for Kalyna, deliberately left <code>KupynaCore</code>’s own
+<em>storage</em> untouched (<code>advisor()</code>’s explicit scope call during T-134: genericizing the struct itself
+buys no throughput, since its fields are touched once per <code>update</code>, not once per round). <code>h</code>/
+<code>buffer</code> are still <code>MAX_COLUMNS</code>(16)-sized regardless of variant: <code>[[u8; ROWS]; MAX_COLUMNS]</code> +
+<code>[u8; MAX_BLOCK_BYTES]</code> = <code>128 + 128</code> = <strong>256 bytes</strong> per live <code>Kupyna256Hasher</code>/<code>Kupyna512Hasher</code>
+(or <code>KupynaCore</code> inside <code>kupyna_kmac</code>/<code>kupyna_kdf</code>), even though Kupyna-256’s real working state is
+half that width. Const-genericizing <code>KupynaCore</code> itself would halve this to 128 bytes for
+Kupyna-256 specifically - flagged in D-85 as a real memory win worth a separate follow-up task, not
+pursued as part of T-134’s throughput-only scope.</p>
+<p><strong>GCM/GMAC’s field multiply builds a transient 16-entry comb table on the stack, once per call
+to <code>poly_mul_wide</code></strong> (<code>hazmat::gf2m_wide.rs</code>, T-125’s 4-bit-window comb method, <code>docs/DECISIONS.md</code>
+D-76) — new since this doc was first written, and genuinely a <em>stack</em> cost, not a <em>flash</em> one
+(freed when the call returns, never linked into the binary as <code>const</code> data):</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Field width (<code>m</code>)</th><th>Used by</th><th style="text-align: right"><code>t: [[u64; $limbs2]; 16]</code></th><th style="text-align: right">Total incl. <code>a_wide</code>/<code>acc</code> scratch</th></tr>
+</thead>
+<tbody>
+<tr><td>128 (<code>Gf2m128</code>, <code>$limbs2=4</code>)</td><td>Kalyna128-* GCM/GMAC</td><td style="text-align: right">16 × 4 × 8 = 512 B</td><td style="text-align: right">~576 B</td></tr>
+<tr><td>256 (<code>Gf2m256</code>, <code>$limbs2=8</code>)</td><td>Kalyna256-* GCM/GMAC</td><td style="text-align: right">16 × 8 × 8 = 1024 B</td><td style="text-align: right">~1152 B</td></tr>
+<tr><td>512 (<code>Gf2m512</code>, <code>$limbs2=16</code>)</td><td>Kalyna512-512 GCM/GMAC</td><td style="text-align: right">16 × 16 × 8 = 2048 B</td><td style="text-align: right">~2304 B</td></tr>
+</tbody>
+</table>
+</div>
+<p>This is on the call stack of whatever calls <code>Gf2m*::multiply</code> — one block’s worth of GCM’s Horner
+accumulation, or GMAC’s equivalent — not held for the construction’s lifetime, and it applies
+identically to <code>crypto_secretbox</code>/<code>crypto_secretstream</code> too (both built on <code>Kalyna256_256Gcm</code>, so
+they pay the <code>m=256</code>/~1152 B figure during every chunk’s tag computation). <strong>Kalyna-XTS is the
+contrasting case</strong>: T-126 replaced its once-per-block tweak-doubling with <code>double()</code> — a handful of
+<code>u64</code> shift/XOR locals, no comb table at all — so XTS’s own stack cost is negligible regardless of
+variant, unlike GCM/GMAC’s.</p>
+<p><strong><code>crypto_secretstream</code>’s <code>PushState</code>/<code>PullState</code> hold only a 32-byte subkey</strong>, not a cached
+<code>ExpandedKey</code> — the smallest persistent state of any construction in this crate, at the cost of
+re-running <code>Kalyna256_256Gcm::new(&amp;self.subkey)</code> (a full 2432-byte-schedule expansion, transient
+during the call) on every <code>push</code>/<code>pull</code> chunk rather than once per stream. A deliberate space/time
+trade in the current implementation, not a bug — noted here since it’s directly relevant to “how
+much RAM does this mode cost,” not proposed as a change.</p>
+<p><strong><code>uacrypt</code>’s own I/O buffering</strong> (CLI-layer, not <code>dstu-core</code>): <code>SECRETSTREAM_CHUNK_BYTES</code>/
+<code>DIGEST_STREAM_CHUNK_BYTES</code>/<code>SIGN_STREAM_CHUNK_BYTES</code>/<code>STRUMOK_STREAM_CHUNK_BYTES</code> are all 8 KiB
+(<code>crates/uacrypt/src/lib.rs</code>) — <code>encrypt</code>/<code>decrypt</code> double-buffers two chunks (<code>cur</code>+<code>next</code>) for
+its rekey-lookahead logic, ~16 KiB peak; the others single-buffer, ~8 KiB peak. Separate from
+these: <code>DIGEST_BENCH_CHUNK_BYTES</code> (1 MiB) is the <code>--iterations</code>-benchmark path only, sized for
+throughput measurement, not real single-pass use (D-42’s own “each streaming command picks a chunk
+size matched to its own constraint” convention).</p>
+<h2 id="speed-what-that-costs-you"><a class="header" href="#speed-what-that-costs-you">Speed: what that costs you</a></h2>
+<p>Measured with a real built binary (<code>uacrypt</code>, release build), one process per number, same
+methodology as <code>docs/PERFORMANCE.md</code>’s canonical binary-level comparison (<code>docs/DECISIONS.md</code> D-34) — not a
+theoretical estimate. Ryzen 5 PRO 4650U dev machine, Windows. One run each (not the full
+multi-baseline <code>criterion</code> protocol <code>docs/PERFORMANCE.md</code> uses for cross-implementation claims) — good
+enough to size the trade-off, not a certified regression baseline.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Algorithm</th><th style="text-align: right"><code>fused</code></th><th style="text-align: right"><code>small-tables</code></th><th style="text-align: right"><code>fused</code> is…</th></tr>
+</thead>
+<tbody>
+<tr><td>Kalyna-128-128 encrypt (cached schedule)</td><td style="text-align: right">124.0 MB/s</td><td style="text-align: right">5.9 MB/s</td><td style="text-align: right"><strong>~21x faster</strong></td></tr>
+<tr><td>Kalyna-512-512 encrypt (cached schedule)</td><td style="text-align: right">86.4 MB/s</td><td style="text-align: right">3.6 MB/s</td><td style="text-align: right"><strong>~24x faster</strong></td></tr>
+<tr><td>Kalyna-512-512 decrypt (cached schedule)</td><td style="text-align: right">75.6 MB/s</td><td style="text-align: right">3.8 MB/s</td><td style="text-align: right"><strong>~20x faster</strong></td></tr>
+<tr><td>Kupyna-256 (64 KB message)</td><td style="text-align: right">92.3 MB/s</td><td style="text-align: right">2.4 MB/s</td><td style="text-align: right"><strong>~39x faster</strong></td></tr>
+<tr><td>Kupyna-512 (64 KB message)</td><td style="text-align: right">74.4 MB/s</td><td style="text-align: right">1.8 MB/s</td><td style="text-align: right"><strong>~43x faster</strong></td></tr>
+<tr><td>Strumok-256 (64 KB, cached)</td><td style="text-align: right">610.6 MB/s</td><td style="text-align: right">135.9 MB/s</td><td style="text-align: right"><strong>~4.5x faster</strong></td></tr>
+<tr><td>Strumok-512 (64 KB, cached)</td><td style="text-align: right">562.4 MB/s</td><td style="text-align: right">139.1 MB/s</td><td style="text-align: right"><strong>~4.0x faster</strong></td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>Strumok’s absolute numbers above predate 2026-07-27’s batched/fixed-index <code>apply_keystream</code>
+rewrite (<code>docs/TASKS.md</code> T-135, <code>docs/DECISIONS.md</code> D-86)</strong> — both columns’ real throughput is now
+substantially higher (the <code>fused</code> column’s own <code>criterion</code> numbers moved by roughly -53 to -65% in
+time, i.e. ~2.2-2.8x higher MB/s, at message sizes at or above the new 128-byte bulk threshold;
+<code>small-tables</code> gets the same batching/indexing win independently of table size, so its own absolute
+number moved too, direction unmeasured here). Not re-measured in this table this pass — the
+<strong>ratio</strong> conclusion below (Strumok’s <code>fused</code>-vs-<code>small-tables</code> gap being much smaller than Kalyna/
+Kupyna’s, because only <code>T</code>-substitution is swapped) should still roughly hold since both columns
+share the same rewrite, but treat the two absolute MB/s figures above as stale until re-measured.</p>
+<p><strong>Why Strumok’s gap is so much smaller than Kalyna/Kupyna’s</strong>: Kalyna and Kupyna’s <em>entire</em> round
+is the S-box+MDS step that the profile swaps out, so the whole cipher slows down by roughly the
+same factor. Strumok’s <code>T</code>-substitution is only one part of its per-word cost (LFSR feedback,
+<code>mul_alpha</code>, state update all stay identical either way) — the parts that don’t change dilute the
+slowdown from the part that does.</p>
+<p><strong>Reproducing</strong>: <code>cargo build -p uacrypt --release [--features dstu-core/small-tables]</code>, then the
+same <code>kalyna-block</code>/<code>kupyna-digest</code>/<code>strumok-crypt</code> commands <code>docs/PERFORMANCE.md</code>’s “Reproducing” notes
+document.</p>
+<h2 id="dstu-4145-verify-the-same-flag-a-different-kind-of-trade-t-151d-108"><a class="header" href="#dstu-4145-verify-the-same-flag-a-different-kind-of-trade-t-151d-108">DSTU 4145 <code>verify</code>: the same flag, a different kind of trade (T-151/D-108)</a></h2>
+<p>Everything above this point is a flash/ROM-<code>const</code>-table trade. <code>hazmat::dstu4145::curve163</code>’s
+<code>verify_combine</code> (the <code>s*G + r*Q</code> step DSTU 4145 signature verification needs) reuses this <strong>same</strong>
+<code>small-tables</code> feature and the same polarity (default = faster, <code>small-tables</code> = smaller/simpler),
+but for a genuinely different reason: <strong>no new <code>const</code> table is added here at all.</strong> The default
+profile’s faster path (projective/López-Dahab coordinates + Shamir’s trick) computes its one small
+lookup table (<code>{Infinity, G, Q, G+Q}</code>, 4 points) fresh on every <code>verify</code> call - nothing new is
+linked into the binary. What <code>small-tables</code> actually buys for this one primitive is a <strong>smaller,
+already-longer-audited code path</strong> (the classic constant-time ladder, called twice, no new
+projective-coordinate arithmetic compiled in at all) rather than fewer flash bytes - a code-size/
+audit-surface trade, not the memory-table trade every other row in this document describes. See
+<code>docs/DECISIONS.md</code> D-108 for the full design and why.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Profile</th><th style="text-align: right"><code>verify</code> ops/s</th></tr>
+</thead>
+<tbody>
+<tr><td>Default (fast path)</td><td style="text-align: right"><strong>239.31</strong></td></tr>
+<tr><td><code>small-tables</code> (classic ladder, unchanged)</td><td style="text-align: right">120.06</td></tr>
+<tr><td>Default is…</td><td style="text-align: right"><strong>~1.99x faster</strong></td></tr>
+</tbody>
+</table>
+</div>
+<p><code>sign</code>/<code>verifying_key()</code> (which multiply by a <em>secret</em> scalar - the ephemeral nonce or private key)
+are unaffected by either profile: <code>scalar_multiply</code> itself was deliberately left unchanged, in
+every build configuration.</p>
+<h2 id="which-one-do-i-need"><a class="header" href="#which-one-do-i-need">Which one do I need?</a></h2>
+<p>A quick sizing guide by target, from <code>docs/DECISIONS.md</code> D-35’s survey of typical hardware — flash
+budget is what actually decides this, not a chip-family label:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Target</th><th>Typical flash</th><th>Fits <code>fused</code> (~86 KB tables)?</th><th>Use</th></tr>
+</thead>
+<tbody>
+<tr><td>Desktop / server / Raspberry Pi</td><td>MBs+</td><td>yes, trivially</td><td><strong><code>fused</code></strong> (default)</td></tr>
+<tr><td>ESP32 / ESP32-S3 / ESP32-C3</td><td>4 MB+</td><td>yes, trivially</td><td><strong><code>fused</code></strong> (default)</td></tr>
+<tr><td>STM32 F1/F3/G4/F4/F7/H7 (mid-range and up)</td><td>64 KB – 2 MB</td><td>yes</td><td><strong><code>fused</code></strong> (default)</td></tr>
+<tr><td>STM32 L0/F0/G0 entry-level (e.g. L011F4, F030F4)</td><td>16–64 KB</td><td>no</td><td><strong><code>small-tables</code></strong></td></tr>
+<tr><td>Arduino Mega (ATmega2560, AVR)</td><td>256 KB flash, 8 KB SRAM</td><td>tables fit flash, but AVR copies <code>const</code> to SRAM unless placed in <code>PROGMEM</code> — not done here yet</td><td><strong><code>small-tables</code></strong>, and even then only once <code>PROGMEM</code> placement exists (<code>docs/TASKS.md</code> Phase 4)</td></tr>
+<tr><td>Arduino Uno (ATmega328P, AVR)</td><td>32 KB flash, 2 KB SRAM</td><td>no — smaller than even <code>small-tables</code>’s footprint would need with room left for code</td><td>not viable yet either way (stretch goal, <code>docs/TASKS.md</code> Phase 4)</td></tr>
+</tbody>
+</table>
+</div>
+<p>If you’re not memory-constrained, don’t reach for <code>small-tables</code> — you’d be trading a large,
+measured speed loss for a save you don’t need.</p>
+<h2 id="how-to-build-each"><a class="header" href="#how-to-build-each">How to build each</a></h2>
+<pre><code class="language-sh"># fused (default) - what you get with no extra flags
+cargo build -p dstu-core --release
+cargo build -p uacrypt --release
+
+# small-tables
+cargo build -p dstu-core --release --no-default-features --features small-tables
+cargo build -p uacrypt --release --features dstu-core/small-tables
+</code></pre>
+<p>Both profiles pass the exact same test suite (official DSTU vectors, <code>proptest</code> round-trips) —
+<code>cargo test --features dstu-core/small-tables</code> — see <code>docs/DECISIONS.md</code> D-39 for why one test suite
+covering both is sufficient rather than needing separate verification per profile.</p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="ORACLES.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                            </a>
+
+                            <a rel="next prefetch" href="PERFORMANCE.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="ORACLES.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                    </a>
+
+                    <a rel="next prefetch" href="PERFORMANCE.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                    </a>
+            </nav>
+
+        </div>
+
+        <template id=fa-eye><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M288 32c-80.8 0-145.5 36.8-192.6 80.6C48.6 156 17.3 208 2.5 243.7c-3.3 7.9-3.3 16.7 0 24.6C17.3 304 48.6 356 95.4 399.4C142.5 443.2 207.2 480 288 480s145.5-36.8 192.6-80.6c46.8-43.5 78.1-95.4 93-131.1c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C433.5 68.8 368.8 32 288 32zM432 256c0 79.5-64.5 144-144 144s-144-64.5-144-144s64.5-144 144-144s144 64.5 144 144zM288 192c0 35.3-28.7 64-64 64c-11.5 0-22.3-3-31.6-8.4c-.2 2.8-.4 5.5-.4 8.4c0 53 43 96 96 96s96-43 96-96s-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6z"/></svg></span></template>
+        <template id=fa-eye-slash><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M38.8 5.1C28.4-3.1 13.3-1.2 5.1 9.2S-1.2 34.7 9.2 42.9l592 464c10.4 8.2 25.5 6.3 33.7-4.1s6.3-25.5-4.1-33.7L525.6 386.7c39.6-40.6 66.4-86.1 79.9-118.4c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C465.5 68.8 400.8 32 320 32c-68.2 0-125 26.3-169.3 60.8L38.8 5.1zM223.1 149.5C248.6 126.2 282.7 112 320 112c79.5 0 144 64.5 144 144c0 24.9-6.3 48.3-17.4 68.7L408 294.5c5.2-11.8 8-24.8 8-38.5c0-53-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6c0 10.2-2.4 19.8-6.6 28.3l-90.3-70.8zm223.1 298L373 389.9c-16.4 6.5-34.3 10.1-53 10.1c-79.5 0-144-64.5-144-144c0-6.9 .5-13.6 1.4-20.2L83.1 161.5C60.3 191.2 44 220.8 34.5 243.7c-3.3 7.9-3.3 16.7 0 24.6c14.9 35.7 46.2 87.7 93 131.1C174.5 443.2 239.2 480 320 480c47.8 0 89.9-12.9 126.2-32.5z"/></svg></span></template>
+        <template id=fa-copy><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M502.6 70.63l-61.25-61.25C435.4 3.371 427.2 0 418.7 0H255.1c-35.35 0-64 28.66-64 64l.0195 256C192 355.4 220.7 384 256 384h192c35.2 0 64-28.8 64-64V93.25C512 84.77 508.6 76.63 502.6 70.63zM464 320c0 8.836-7.164 16-16 16H255.1c-8.838 0-16-7.164-16-16L239.1 64.13c0-8.836 7.164-16 16-16h128L384 96c0 17.67 14.33 32 32 32h47.1V320zM272 448c0 8.836-7.164 16-16 16H63.1c-8.838 0-16-7.164-16-16L47.98 192.1c0-8.836 7.164-16 16-16H160V128H63.99c-35.35 0-64 28.65-64 64l.0098 256C.002 483.3 28.66 512 64 512h192c35.2 0 64-28.8 64-64v-32h-47.1L272 448z"/></svg></span></template>
+        <template id=fa-play><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M73 39c-14.8-9.1-33.4-9.4-48.5-.9S0 62.6 0 80V432c0 17.4 9.4 33.4 24.5 41.9s33.7 8.1 48.5-.9L361 297c14.3-8.7 23-24.2 23-41s-8.7-32.2-23-41L73 39z"/></svg></span></template>
+        <template id=fa-clock-rotate-left><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M75 75L41 41C25.9 25.9 0 36.6 0 57.9V168c0 13.3 10.7 24 24 24H134.1c21.4 0 32.1-25.9 17-41l-30.8-30.8C155 85.5 203 64 256 64c106 0 192 86 192 192s-86 192-192 192c-40.8 0-78.6-12.7-109.7-34.4c-14.5-10.1-34.4-6.6-44.6 7.9s-6.6 34.4 7.9 44.6C151.2 495 201.7 512 256 512c141.4 0 256-114.6 256-256S397.4 0 256 0C185.3 0 121.3 28.7 75 75zm181 53c-13.3 0-24 10.7-24 24V256c0 6.4 2.5 12.5 7 17l72 72c9.4 9.4 24.6 9.4 33.9 0s9.4-24.6 0-33.9l-65-65V152c0-13.3-10.7-24-24-24z"/></svg></span></template>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr-ef4e11c1.min.js"></script>
+        <script src="mark-09e88c2c.min.js"></script>
+        <script src="searcher-09f2665d.js"></script>
+
+        <script src="clipboard-1626706a.min.js"></script>
+        <script src="highlight-abc7f01d.js"></script>
+        <script src="book-609e4cb8.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+
+    </div>
+    </body>
+</html>

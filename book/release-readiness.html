@@ -1,0 +1,752 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Release readiness gap analysis - uacrypt</title>
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="Ukrainian DSTU cryptography in Rust - the full docs/ knowledge base as one navigable, searchable book.">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon-de23e50b.svg">
+        <link rel="shortcut icon" href="favicon-8114d1fc.png">
+        <link rel="stylesheet" href="css/variables-8adf115d.css">
+        <link rel="stylesheet" href="css/general-e96d0476.css">
+        <link rel="stylesheet" href="css/chrome-d279d366.css">
+        <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="fonts/fonts-9644e21d.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="mdbook-highlight-css" href="highlight-493f70e1.css">
+        <link rel="stylesheet" id="mdbook-tomorrow-night-css" href="tomorrow-night-4c0ae647.css">
+        <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="ayu-highlight-3fdfc3ac.css">
+
+        <!-- Custom theme stylesheets -->
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "";
+            const default_light_theme = "light";
+            const default_dark_theme = "navy";
+            window.path_to_searchindex_js = "searchindex-87f949c2.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="toc-ce7e91c5.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="mdbook-body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('light')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="mdbook-sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("mdbook-sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="mdbook-sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+            </noscript>
+            <div id="mdbook-sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="mdbook-page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="mdbook-menu-bar-hover-placeholder"></div>
+                <div id="mdbook-menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="mdbook-sidebar-toggle" class="icon-button" for="mdbook-sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="mdbook-sidebar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M0 96C0 78.3 14.3 64 32 64H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32C14.3 128 0 113.7 0 96zM0 256c0-17.7 14.3-32 32-32H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32c-17.7 0-32-14.3-32-32zM448 416c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H416c17.7 0 32 14.3 32 32z"/></svg></span>
+                        </label>
+                        <button id="mdbook-theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="mdbook-theme-list">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M371.3 367.1c27.3-3.9 51.9-19.4 67.2-42.9L600.2 74.1c12.6-19.5 9.4-45.3-7.6-61.2S549.7-4.4 531.1 9.6L294.4 187.2c-24 18-38.2 46.1-38.4 76.1L371.3 367.1zm-19.6 25.4l-116-104.4C175.9 290.3 128 339.6 128 400c0 3.9 .2 7.8 .6 11.6c1.8 17.5-10.2 36.4-27.8 36.4H96c-17.7 0-32 14.3-32 32s14.3 32 32 32H240c61.9 0 112-50.1 112-112c0-2.5-.1-5-.2-7.5z"/></svg></span>
+                        </button>
+                        <ul id="mdbook-theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-ayu">Ayu</button></li>
+                        </ul>
+                        <button id="mdbook-search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="mdbook-searchbar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352c79.5 0 144-64.5 144-144s-64.5-144-144-144S64 128.5 64 208s64.5 144 144 144z"/></svg></span>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">uacrypt</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <span class=fa-svg id="print-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M128 0C92.7 0 64 28.7 64 64v96h64V64H354.7L384 93.3V160h64V93.3c0-17-6.7-33.3-18.7-45.3L400 18.7C388 6.7 371.7 0 354.7 0H128zM384 352v32 64H128V384 368 352H384zm64 32h32c17.7 0 32-14.3 32-32V256c0-35.3-28.7-64-64-64H64c-35.3 0-64 28.7-64 64v96c0 17.7 14.3 32 32 32H64v64c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V384zm-16-88c-13.3 0-24-10.7-24-24s10.7-24 24-24s24 10.7 24 24s-10.7 24-24 24z"/></svg></span>
+                        </a>
+                        <a href="https://github.com/user137/uacrypt" title="Git repository" aria-label="Git repository">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6zm-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3zm44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9zM244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8zM97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1zm-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7zm32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1zm-11.4-14.7c-1.6 1-1.6 3.6 0 5.9 1.6 2.3 4.3 3.3 5.6 2.3 1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2z"/></svg></span>
+                        </a>
+                        <a href="https://github.com/user137/uacrypt/edit/master/docs/release-readiness.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
+                            <span class=fa-svg id="git-edit-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M421.7 220.3l-11.3 11.3-22.6 22.6-205 205c-6.6 6.6-14.8 11.5-23.8 14.1L30.8 511c-8.4 2.5-17.5 .2-23.7-6.1S-1.5 489.7 1 481.2L38.7 353.1c2.6-9 7.5-17.2 14.1-23.8l205-205 22.6-22.6 11.3-11.3 33.9 33.9 62.1 62.1 33.9 33.9zM96 353.9l-9.3 9.3c-.9 .9-1.6 2.1-2 3.4l-25.3 86 86-25.3c1.3-.4 2.5-1.1 3.4-2l9.3-9.3H112c-8.8 0-16-7.2-16-16V353.9zM453.3 19.3l39.4 39.4c25 25 25 65.5 0 90.5l-14.5 14.5-22.6 22.6-11.3 11.3-33.9-33.9-62.1-62.1L314.3 67.7l11.3-11.3 22.6-22.6 14.5-14.5c25-25 65.5-25 90.5 0z"/></svg></span>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="mdbook-search-wrapper" class="hidden">
+                    <form id="mdbook-searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="mdbook-searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="mdbook-searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <span class=fa-svg id="fa-spin"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M304 48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zm0 416c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM48 304c26.5 0 48-21.5 48-48s-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48zm464-48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM142.9 437c18.7-18.7 18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zm0-294.2c18.7-18.7 18.7-49.1 0-67.9S93.7 56.2 75 75s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zM369.1 437c18.7 18.7 49.1 18.7 67.9 0s18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9z"/></svg></span>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="mdbook-searchresults-outer" class="searchresults-outer hidden">
+                        <div id="mdbook-searchresults-header" class="searchresults-header"></div>
+                        <ul id="mdbook-searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('mdbook-sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('mdbook-sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#mdbook-sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="mdbook-content" class="content">
+                    <main>
+                        <h1 id="release-readiness-what-a-genuine-libsodium-equivalent-10-needs"><a class="header" href="#release-readiness-what-a-genuine-libsodium-equivalent-10-needs">Release readiness: what a genuine libsodium-equivalent 1.0 needs</a></h1>
+<p>Requested 2026-07-23 (same session as <code>docs/DECISIONS.md</code> D-43’s <code>0.0.0</code> -&gt; <code>0.1.0</code> version bump): a gap
+analysis between where this project actually is and the user’s stated release goal — a full
+libsodium-style API with matching command surface and documentation, published to crates.io as a
+complete, built-and-tested algorithm set, where <strong>every mode of operation included is current and
+safe</strong>, not provisional. This document is that analysis. It synthesizes existing tracking
+(<code>docs/TASKS.md</code>, <code>docs/DECISIONS.md</code>, <code>docs/dstu-crypto-project.md</code>’s API mapping, <code>docs/SECURITY.md</code>) rather than
+duplicating it — update the source-of-truth file first when something here changes, then this
+document’s summary.</p>
+<p><strong>See also <code>docs/user-journey-gaps.md</code> (<code>docs/TASKS.md</code> T-114)</strong> for a persona/journey-organized
+companion view — it surfaces gaps this document’s construction-organized framing doesn’t (e.g. no
+<code>uacrypt keygen</code> command, no bare-metal cross-compile ever run) rather than duplicating this
+document’s findings.</p>
+<h2 id="headline-finding"><a class="header" href="#headline-finding">Headline finding</a></h2>
+<p><strong>Updated 2026-07-24: D-05 is no longer formally open — adopted as a working assumption, still not
+primary-text-confirmed.</strong> <code>docs/DECISIONS.md</code> D-05 — whether Kalyna alone is DSTU 7624’s intended AEAD
+construction, or whether confidentiality + integrity requires a separate Kalyna+Kupyna
+encrypt-then-MAC design — was resolved on assumption at the project owner’s explicit direction:
+<strong>Kalyna-alone</strong> (CCM/GCM/KW), not encrypt-then-MAC. This is corroborated by two independent
+non-primary sources agreeing mode-for-mode (this project’s own already-vendored <code>oracles/uapki/</code>
+ten-mode self-test list, and Ukrainian Wikipedia’s independently-sourced ten-mode table for the
+“Калина (шифр)” article — see <code>docs/DECISIONS.md</code> D-05’s 2026-07-24 revision for the full table and
+sourcing caveats), on top of D-41’s existing UAPKI+Bouncy-Castle reference-implementation evidence.
+<strong>This is still not a reading of the priced primary DSTU 7624:2014 text</strong> — it remains unpurchased,
+and this decision is explicitly provisional, to be revised again (not silently) if that text is
+ever acquired and contradicts it. The practical effect: what was a hard blocker is now a “build
+against this working hypothesis” situation:</p>
+<ul>
+<li><code>hazmat::kalyna_ccm</code> (D-41) is unchanged — still dual-oracle-verified, still not
+primary-text-confirmed, but now also matches the standard’s own official mode list per both
+sources above (mode #8, “Вироблення імітовставки і гамування”).</li>
+<li>Strumok’s vector set is UAPKI-attributed, plus (D-104) independently confirmed
+against two state-sourced supplementary vectors from Держспецзв’язку/ДНДІ ТКЗІ — still not
+confirmed against the paid DSTU 8845:2019 text itself (D-15/D-16) — a separate, unrelated gap on
+a different algorithm, unaffected by D-05.</li>
+<li><strong><code>crypto_secretbox</code> (T-37) is done, see <code>docs/DECISIONS.md</code> D-51</strong> — a single fixed construction,
+internally-generated nonce, combined <code>nonce || ciphertext || tag</code> output, no caller-facing AAD
+parameter. <strong>Migrated 2026-07-25 from Kalyna-CCM to Kalyna-GCM</strong> (roadmap Step 3 item 1,
+<code>docs/DECISIONS.md</code> D-63) — <code>hazmat::kalyna_gcm::Kalyna256_256Gcm</code>, not all five variants, per D-47’s
+“delete the knob” criterion. <strong>The 255-byte cap is gone entirely, not just raised</strong>
+(<code>SecretboxError::MessageTooLong</code> was removed, not left dormant) — GCM encodes no length into its
+construction the way CCM’s header did. This does not make <code>uacrypt encrypt</code>/<code>decrypt</code> streaming:
+<code>--in</code> is still read whole into memory, so a large file now means a correspondingly large buffer
+rather than a rejection. Still provisional (inherits <code>hazmat::kalyna_gcm</code>’s D-56
+not-primary-confirmed status). One security-relevant detail the migration surfaced: unlike CCM,
+DSTU Kalyna-GCM’s tag does not cover the IV/nonce at all (D-56 divergence 3) — for a
+self-contained <code>nonce || ciphertext || tag</code> blob that would have silently regressed
+tamper-evidence on the nonce prefix, so <code>seal</code>/<code>open</code> now pass the nonce itself as <code>kalyna_gcm</code>’s
+AAD internally to bind it into the tag (still no caller-facing AAD parameter). Caught by a test
+during the migration, not assumed — see D-63.</li>
+<li><code>crypto_secretstream</code> (T-40/T-70) — <strong>Done 2026-07-25, see <code>docs/DECISIONS.md</code> D-68.</strong> The D-05-blocking
+concern (an ad hoc Strumok+KMAC EtM gap-fill would silently resolve D-05) no longer applied once
+D-05 got an adopted answer, and the construction that landed doesn’t touch that question anyway —
+it’s built over the already-decided <code>hazmat::kalyna_gcm</code> (D-56), a from-scratch tag-per-chunk
+framing (no DSTU streaming-AEAD standard exists, D-47’s tie-breaker, libsodium’s
+<code>crypto_secretstream_xchacha20poly1305</code> shape) rather than a new EtM composition. <code>dstu_core:: crypto_secretstream</code> (<code>PushState</code>/<code>PullState</code>) is genuinely chunked - reads and writes fixed-size
+blocks rather than the whole file at once, closing the gap this bullet used to describe as open.
+<code>uacrypt encrypt</code>/<code>decrypt</code> were rewired onto it the same session (breaking wire-format change
+from the old <code>crypto_secretbox</code>-backed blob format, called out explicitly, acceptable pre-1.0).
+<code>crypto_secretbox</code> itself is unchanged and not removed - still the whole-buffer primitive for
+small/one-shot messages, still inherits <code>hazmat::kalyna_gcm</code>’s D-56 not-primary-confirmed status,
+same as <code>crypto_secretstream</code> does. <code>hazmat::kalyna_ccm</code>’s own 255-byte plaintext/AAD cap (D-41)
+remains real and unrelated - neither <code>crypto_secretbox</code> nor <code>crypto_secretstream</code> uses it.</li>
+</ul>
+<p>A release billed as “current, safe modes” still cannot honestly ship on top of an
+assumption-adopted, non-primary-confirmed construction without saying so exactly as loudly as
+<code>docs/DECISIONS.md</code>/<code>docs/TASKS.md</code> already do internally — closing that gap fully still needs either (a)
+acquiring the primary DSTU 7624:2014/8845:2019 texts and re-verifying against them, or (b) shipping
+1.0 with the provisional status stated prominently in the public API/docs. (a) got meaningfully
+cheaper to consider today (two new corroborating sources, no purchase) but hasn’t happened; (b) is
+what D-47 names as a reusable fallback rather than an ad hoc one. The choice between “keep looking
+for the primary text” and “ship on the current assumption” remains the owner’s to make explicitly.</p>
+<h2 id="whats-actually-done-the-solid-part"><a class="header" href="#whats-actually-done-the-solid-part">What’s actually done (the solid part)</a></h2>
+<p>Three primitives are implemented and confirmed against official test vectors, each with an
+independent second-oracle cross-check (Bouncy Castle, Java and .NET):</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Algorithm</th><th>Standard</th><th>Status</th></tr>
+</thead>
+<tbody>
+<tr><td>Kalyna</td><td>DSTU 7624:2014</td><td>All 5 block/key-size variants, single-block encrypt/decrypt, <code>ExpandedKey</code> API. Vector-confirmed + dual-oracle. <strong>Mode of operation: all 10/10 DSTU 7624 modes now implemented at <code>hazmat</code></strong>, updated 2026-07-25 (T-99) — ECB/CBC/OFB/CTR/CFB (Stage A), CMAC/KW/GCM/GMAC (Stage B-D, D-54-D-57), XTS (Stage E, T-96/D-58) all landed since this table’s last real update. CCM/GCM/KW are the three combined (confidentiality+integrity) modes and the only ones eligible for a public <code>crypto_secretbox</code>-style entry point (D-47); ECB/CBC/OFB/CTR/CFB/XTS are confidentiality-only, bare CMAC/GMAC are integrity-only — none of those six may become a public <code>encrypt</code>/<code>decrypt</code> entry point on their own. All ten still share CCM’s original caveat: dual-oracle-verified (UAPKI + Bouncy Castle where available), not primary-DSTU-7624:2014-text-confirmed.</td></tr>
+<tr><td>Kupyna</td><td>DSTU 7564:2014</td><td>Both 256/512 variants, one-shot <code>digest()</code> and streaming <code>Hasher</code>. Vector-confirmed + dual-oracle. KMAC (<code>crypto_auth</code> equivalent) now implemented too — <code>hazmat::kupyna_kmac</code>, dual-oracle with both constructions read (<code>docs/TASKS.md</code> T-38, <code>docs/DECISIONS.md</code> D-44), same provisional-pending-primary-text caveat. KDF (<code>crypto_kdf</code> equivalent) built on top of that KMAC — <code>hazmat::kupyna_kdf</code> (T-39, D-45); no DSTU standard or reference implementation exists for this construction at all, so unlike the KMAC row there is no oracle vector, ever — verified by determinism/distinctness property tests only.</td></tr>
+<tr><td>Strumok</td><td>DSTU 8845:2019</td><td>Both 256/512-bit key variants, keystream <code>apply_keystream</code>. UAPKI-attributed vectors, plus (D-104) two independently-sourced supplementary vectors from Держспецзв’язку/ДНДІ ТКЗІ — a real second, state-sourced oracle, though still <strong>not</strong> confirmed against the primary standard text itself (D-15/D-16); that specific gap remains a provenance ceiling, not a code-quality gap.</td></tr>
+</tbody>
+</table>
+</div>
+<p>DSTU 4145-2002 (digital signatures): the m=163 curve’s <code>GF(2^163)</code> field arithmetic, point
+add/double/constant-time scalar multiplication, and <code>sign</code>/<code>verify</code> are all implemented
+(<code>hazmat::dstu4145</code>), verified against the official standard’s own Annex B.1 worked example plus a
+<code>proptest</code> round-trip, with two real bugs (a <code>Q = d·G</code> vs <code>Q = -d·G</code> sign error, a <code>hash_to_field</code>
+calling-convention bug) found and fixed by re-deriving from the primary text directly rather than
+trusting a single reference-implementation transcription (<code>docs/DECISIONS.md</code> D-25). <strong>The high-level
+<code>crypto_sign</code> wrapper is also done</strong> (T-48, D-46 — a stale “no wrapper exists yet” claim
+here, and a stale “table is out of date” claim about <code>docs/dstu-crypto-project.md</code>’s own mapping
+table, are both corrected 2026-07-24; that table has been current on this point since T-48 landed) —
+<code>dstu_core::crypto_sign::{SigningKey, VerifyingKey, Signature}</code>, deterministic (Kupyna-KMAC-derived)
+nonce, no RNG dependency. Only the m=163 curve is wired up (9 other named curve sizes in Bouncy
+Castle’s own enumeration are not).</p>
+<p>Engineering infrastructure that a real release needs is genuinely in place: <code>no_std</code>/<code>alloc</code>/<code>std</code>
+feature-flag split confirmed across 8 build combinations including a <code>small-tables</code> constrained-MCU
+resource profile (D-35/D-38/D-39); <code>cargo audit</code>/<code>cargo deny</code> in CI; a cross-platform <code>cargo xtask</code>
+build/QA runner (D-12); binary-level (not just in-process) performance comparisons against
+UAPKI/reference-C on both x86-64 and a real Raspberry Pi ARM64 rig (<code>docs/PERFORMANCE.md</code>, D-34);
+zeroization of key material (D-20); a documented, scoped constant-time exception for
+S-box/GF-multiplication table lookups, matching every reference implementation (D-19).</p>
+<p><strong>Updated 2026-07-25 (T-99)</strong>: <code>cargo miri test</code> <strong>passed in CI for the first time in this
+project’s history</strong> 2026-07-25 (37m55s, <code>gh run view 30157361074</code>) — a stale “wired into CI (with
+the proptest+Miri-isolation interaction just fixed, T-85)” claim here understated the actual
+history, since the job had <em>never</em> completed on any push before T-100 (D-59): it went from a
+config-bug fast-fail, to a 30-minute timeout on every push for over a day, to a real pass only after
+tagging every EC-ladder/field-inversion-heavy test <code>#[cfg_attr(miri, ignore)]</code> and raising
+<code>timeout-minutes</code> to 150 with real measurement behind the number. <code>cargo fuzz</code>’s CI coverage was
+also incomplete until this same day: <code>fuzz-smoke</code> ran only the <code>kupyna</code> target (T-98/D-61) — now a
+9-target matrix covering every mode with a fuzz harness, including five (<code>kalyna_cmac</code>/<code>kw</code>/<code>gcm</code>/
+<code>gmac</code>/<code>cfb</code>) that had none at all before, <code>kalyna_cfb</code> (T-91/T-101) being the sharpest of those
+gaps.</p>
+<h2 id="whats-missing-for-the-libsodium-equivalent-surface"><a class="header" href="#whats-missing-for-the-libsodium-equivalent-surface">What’s missing for the libsodium-equivalent surface</a></h2>
+<p>From <code>docs/dstu-crypto-project.md</code>’s own mapping table, the two-layer design (D-09: <code>hazmat::*</code> now,
+a future high-level <code>crypto_*</code>-ergonomics layer on top) is decided; <code>crypto_sign</code> (below) is now the
+first primitive with that high-level layer actually built, via <code>dstu_core::crypto_sign</code> — notably
+<em>without</em> the <code>getrandom</code>-based auto-nonce shape D-09 originally anticipated (D-46’s deterministic
+nonce needs no RNG at all). <code>crypto_auth</code>/<code>crypto_kdf</code> are done too (T-38/T-39, D-44/D-45), now with
+high-level wrappers as well (T-105, D-66, roadmap Step 3 item 2, 2026-07-25). <code>crypto_generichash</code>
+also got its high-level module the same day (T-105, D-66) — a bare re-export, not a new wrapper
+(see the table below for why). <code>crypto_stream</code> got its high-level wrapper too, same roadmap Step,
+one day later (item 3, <code>docs/DECISIONS.md</code> D-67) — internally-generated IV, confirmed with the project
+owner rather than assumed (this was the one fork the roadmap itself left open, unlike the other
+three). Every high-level module in Step 3 is now done:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>libsodium equivalent</th><th>Native DSTU path</th><th>Status</th></tr>
+</thead>
+<tbody>
+<tr><td><code>crypto_generichash</code></td><td>Kupyna</td><td><strong>Done</strong> (T-105, D-66) — <code>dstu_core::crypto_generichash</code>, a bare re-export of <code>hazmat::kupyna</code> under the top-level namespace; no new logic (no knob to hide, no DSTU keyed/variable-length-output equivalent to wrap)</td></tr>
+<tr><td><code>crypto_stream</code></td><td>Strumok</td><td><strong>Done</strong> (roadmap Step 3 item 3, D-67) — <code>dstu_core::crypto_stream</code>, single 256-bit variant, hidden/internally-generated IV (confirmed with the project owner), <code>iv || ciphertext</code> output, <strong>no authentication</strong> (<code>decrypt</code> never fails on tampered input) — hazmat vectors still provisional (D-18)</td></tr>
+<tr><td><code>crypto_sign</code></td><td>DSTU 4145</td><td><strong>Done</strong> (T-48, D-46) — hazmat (m=163 only) plus a high-level <code>dstu_core::crypto_sign</code> wrapper; deterministic (Kupyna-KMAC-derived, RFC-6979-style) nonce, not caller-random, eliminating nonce-reuse key recovery from the wrapper’s surface. Public-key encoding is a plain uncompressed 42-byte form, explicitly not the DSTU §6.9/§6.10 compressed format</td></tr>
+<tr><td><code>crypto_box</code></td><td>DSTU 9041</td><td><strong>Done</strong> (T-178, D-169) — <code>dstu_core::crypto_box::{seal,open,SecretKey,PublicKey}</code>, hybrid via KDF over the <code>hazmat::dstu9041</code> <code>l(p)=256</code>/E256/1 primitive (T-177); <code>uacrypt box-*</code> CLI surface</td></tr>
+<tr><td><code>crypto_secretbox</code></td><td>Kalyna-GCM, provisionally</td><td><strong>Done</strong> (T-37, D-51), <strong>migrated 2026-07-25 from Kalyna-CCM to Kalyna-GCM</strong> (roadmap Step 3 item 1, D-63) — single fixed <code>Kalyna256_256Gcm</code> construction, internal nonce, combined output, no caller-facing AAD (nonce passed as AAD internally to bind it into the tag, D-63); no message-length cap, still not primary-text-confirmed</td></tr>
+<tr><td><code>crypto_auth</code>/<code>crypto_onetimeauth</code></td><td>Kupyna-based KMAC</td><td><strong>Done</strong> (T-38, D-44) — provisional pending the primary text, but dual-oracle with both constructions read. High-level wrapper (T-105, D-66) added 2026-07-25: <code>dstu_core::crypto_auth</code>, single 256-bit variant, opaque <code>Zeroize</code>-on-drop <code>Key</code> type</td></tr>
+<tr><td><code>crypto_kdf</code></td><td>Kupyna-based KDF (libsodium <code>crypto_kdf</code>-shaped, not HKDF)</td><td><strong>Done</strong> (T-39, D-45) — no DSTU standard or reference implementation exists for this at all, so unlike every other “provisional” row above, there is no oracle vector, ever; verification is determinism + distinctness property tests only. High-level wrapper (T-105, D-66) added 2026-07-25: <code>dstu_core::crypto_kdf</code>, same single-variant/opaque-key shape as <code>crypto_auth</code></td></tr>
+<tr><td><code>crypto_kx</code></td><td>DH on the DSTU 4145/9041 curve</td><td>Not started (T-47); both underlying curves now exist (<code>hazmat::dstu4145</code>, <code>hazmat::dstu9041</code> T-177), the <code>crypto_kx</code> construction itself isn’t designed yet</td></tr>
+<tr><td><code>crypto_secretstream</code></td><td>Chunked authenticated encryption over Kalyna-GCM</td><td><strong>Done</strong> (T-40/T-70, D-68) — <code>dstu_core::crypto_secretstream</code> (<code>PushState</code>/<code>PullState</code>), a from-scratch tag-per-chunk framing (full MESSAGE/PUSH/REKEY/FINAL tag set, libsodium’s shape per D-47’s tie-breaker — no DSTU streaming-AEAD standard exists) over <code>hazmat::kalyna_gcm</code>/<code>hazmat::kupyna_kmac</code>, caller-buffer <code>no_std</code>-capable API; <code>uacrypt encrypt</code>/<code>decrypt</code> rewired onto it the same session (breaking wire-format change from the old <code>crypto_secretbox</code>-backed blob format)</td></tr>
+<tr><td><code>crypto_pwhash</code></td><td>Not a DSTU question — plain Argon2id</td><td><strong>Done</strong> (T-71, D-49/D-50) — over the <code>argon2</code> crate, dedicated <code>pwhash</code> feature (off by default, not folded into <code>std</code>); <code>Strength</code> presets mirror libsodium’s own <code>OPSLIMIT</code>/<code>MEMLIMIT_*</code> constants exactly</td></tr>
+<tr><td><code>randombytes</code></td><td>Not a DSTU question — OS CSPRNG via <code>getrandom</code></td><td><strong>Done</strong> (T-72, D-48) — <code>dstu_core::randombytes::randombytes_buf</code>, <code>std</code>-gated over an optional <code>getrandom</code> dependency; a plain function, deliberately not a generic <code>CryptoRng</code> trait since nothing in this crate consumes one yet</td></tr>
+</tbody>
+</table>
+</div>
+<p><code>crypto_box</code> is now done (T-178, D-169 — hybrid via KDF, since <code>l(p)=256</code>’s 25-byte KEM payload
+can’t hold a 32-byte key directly); <code>crypto_kx</code> remains empty — the underlying <code>hazmat::dstu9041</code>
+primitive exists (<code>l(p)=256</code> only, T-177), but that wrapper isn’t designed yet.
+<code>crypto_secretbox</code> (T-37, D-51/D-63) and <code>crypto_secretstream</code> (T-40/T-70, D-68) are both done, no
+message-length cap and genuinely chunked I/O respectively, but still provisional. The “functional
+copy of libsodium” goal has real algorithm coverage (<code>crypto_sign</code>/<code>crypto_auth</code>/<code>crypto_kdf</code>/
+<code>crypto_secretbox</code>/<code>crypto_secretstream</code>/<code>crypto_box</code> done) but is not yet an API surface a
+libsodium user would recognize as complete.</p>
+<h2 id="use-case-coverage-is-safe-modes-only-enough-for-a-real-range-of-applications"><a class="header" href="#use-case-coverage-is-safe-modes-only-enough-for-a-real-range-of-applications">Use-case coverage: is “safe modes only” enough for a real range of applications?</a></h2>
+<p>Requested 2026-07-24: the algorithm table above answers “which libsodium function exists,” not
+“can this actually build the things people build with libsodium.” This section answers that,
+scenario by scenario, and whether a safe (combined confidentiality+integrity) mode covers it or a
+safe replacement is even possible when it doesn’t (D-47’s “only safe modes of operation, never an
+unsafe/legacy one as a public entry point” rule applies throughout — a mode being <em>listed</em> in
+DSTU 7624:2014 doesn’t make it eligible for a public <code>encrypt</code>/<code>decrypt</code>-style entry point unless
+it’s one of the combined ones).</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Scenario</th><th>Needs</th><th>DSTU mode/primitive</th><th>Combined AEAD (safe)?</th><th>Status</th><th>Safe alternative if missing</th></tr>
+</thead>
+<tbody>
+<tr><td>Radio/telemetry, small packets (walkie-talkie, sensor commands)</td><td>AEAD on a short message (&lt; 255 bytes)</td><td>Kalyna-<strong>CCM</strong> (mode #8)</td><td>Yes</td><td><strong>Done</strong> (<code>hazmat::kalyna_ccm</code>)</td><td>not needed</td></tr>
+<tr><td>Streaming audio, confidentiality only, no per-frame auth</td><td>Low-latency keystream</td><td>Strumok</td><td>No — confidentiality-only by itself</td><td>Done, but no integrity — <code>hazmat::strumok</code> and now <code>dstu_core::crypto_stream</code> (D-67) at the high level</td><td>Wrap each frame in Kalyna-CCM/<code>crypto_secretbox</code> instead of bare Strumok/<code>crypto_stream</code> if integrity is required</td></tr>
+<tr><td>Encrypt one message, any size</td><td><code>crypto_secretbox</code> equivalent</td><td>Kalyna-GCM</td><td>Yes</td><td><strong>Done</strong> (<code>dstu_core::crypto_secretbox</code>, T-37, D-51, migrated to GCM 2026-07-25, D-63 — no length cap)</td><td>not needed</td></tr>
+<tr><td>Encrypt a large file / continuous stream, without buffering it all in memory</td><td>Chunked AEAD</td><td>GCM (#7)</td><td>Yes</td><td><strong>Done</strong> (<code>dstu_core::crypto_secretstream</code>, T-40/T-70, D-68) — genuinely chunked, <code>uacrypt encrypt</code>/<code>decrypt</code> rewired onto it</td><td>not needed</td></tr>
+<tr><td>Full-disk encryption (random-access sectors)</td><td>Disk-mode cipher</td><td>XTS (#9)</td><td>No, by design — integrity is deliberately left to the filesystem layer, a recognized special case, not a gap</td><td><strong>Done</strong> (<code>hazmat::kalyna_xts</code>, T-96/D-58)</td><td>None needed — this is the one standard case where a non-AEAD mode is the <em>correct</em> choice, not a compromise</td></tr>
+<tr><td>TLS-style record layer (browser, high throughput)</td><td>Per-record chunked AEAD</td><td>Same gap as the large-file row</td><td>Yes</td><td><strong>Done</strong> — <code>dstu_core::crypto_secretstream</code> (T-40/T-70, D-68) is a tag-per-chunk high-level wrapper, the same shape a record layer needs</td><td>not needed</td></tr>
+<tr><td>Key exchange / handshake (ECDHE-equivalent)</td><td>Key agreement</td><td>DSTU 9041 (<code>crypto_kx</code>)</td><td>No mode exists at all</td><td><strong>Not started</strong> — the underlying <code>hazmat::dstu9041</code> curve primitive now exists (<code>l(p)=256</code>, T-177), but no <code>crypto_kx</code>-shaped construction has been designed over it yet (<code>docs/TASKS.md</code> T-47)</td><td>Design a DH-style construction over <code>hazmat::dstu9041</code>’s curve arithmetic, or fall back to a non-DSTU primitive (e.g. X25519) under the same “no homegrown primitive where DSTU has a real gap” precedent as Argon2id (D-03) if that construction turns out not to fit — an explicit scope decision for the project owner either way</td></tr>
+<tr><td>Digital signatures</td><td>Sign/verify</td><td>DSTU 4145 (<code>crypto_sign</code>)</td><td>Yes</td><td><strong>Done</strong></td><td>not needed</td></tr>
+<tr><td>Message/API authentication</td><td>MAC</td><td>Kupyna-KMAC (<code>crypto_auth</code>)</td><td>Yes (integrity-only is the actual goal here)</td><td><strong>Done</strong></td><td>not needed</td></tr>
+<tr><td>Deriving subkeys from a master key</td><td>KDF</td><td>Kupyna-KDF (<code>crypto_kdf</code>)</td><td>Yes</td><td><strong>Done</strong></td><td>not needed</td></tr>
+<tr><td>Password storage</td><td>Password hashing</td><td>Argon2id (<code>crypto_pwhash</code>, not DSTU)</td><td>Yes</td><td><strong>Done</strong></td><td>not needed</td></tr>
+<tr><td>Key wrapping (envelope encryption)</td><td>Key wrap</td><td>Kalyna-<strong>KW</strong> (mode #10)</td><td>Yes</td><td><strong>Done</strong> (<code>hazmat::kalyna_kw</code>, D-55) — <code>hazmat</code>-only, libsodium has no direct equivalent to wrap at the high level (roadmap Step 3 item 4)</td><td>not needed</td></tr>
+<tr><td>Nonces, salts, ephemeral values</td><td>CSPRNG</td><td><code>randombytes</code></td><td>Yes</td><td><strong>Done</strong></td><td>not needed</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>Bottom line, updated 2026-07-25 (T-40/D-68)</strong>: for message-level and small-packet use cases
+(radio, API auth, signatures, KDF, password storage, unbounded-size secretbox messages, T-37/D-51/
+D-63) the safe-modes-only constraint is already fully sufficient — wrapper code exists. Bulk/
+streaming use cases (large files, TLS-style record layers) are now covered too:
+<code>dstu_core::crypto_secretstream</code> (T-40/T-70, D-68) is a genuinely chunked, tag-per-chunk wrapper
+over <code>hazmat::kalyna_gcm</code>, and <code>uacrypt encrypt</code>/<code>decrypt</code> are rewired onto it. <strong>The one use case
+still without a high-level answer is key exchange</strong> (<code>crypto_kx</code>/DSTU 9041) — the underlying curve
+primitive now exists (<code>hazmat::dstu9041</code>, <code>l(p)=256</code>, T-177), so this is a design gap (no <code>crypto_kx</code>
+construction built over it yet), not the hard source-material blocker it was before.</p>
+<h2 id="whats-missing-for-the-cli--release-mechanics-surface"><a class="header" href="#whats-missing-for-the-cli--release-mechanics-surface">What’s missing for the CLI / release-mechanics surface</a></h2>
+<ul>
+<li><strong>T-16 is done, see <code>docs/DECISIONS.md</code> D-52</strong>: <code>uacrypt encrypt</code>/<code>decrypt</code>/<code>hash</code> are real top-level
+commands. <strong>As of 2026-07-25 (T-40, D-68), <code>encrypt</code>/<code>decrypt</code> are rewired onto
+<code>dstu_core::crypto_secretstream</code></strong> (not <code>crypto_secretbox</code> anymore) — genuinely chunked, <code>--in</code>/
+<code>--out</code> streamed in fixed-size blocks rather than read whole into memory, closing the gap this
+bullet used to describe. A breaking wire-format change from the prior <code>crypto_secretbox</code>-backed
+blob format, called out explicitly, acceptable pre-1.0. <code>hash</code> has no length limit either, and
+streams from disk already, unchanged. <code>kalyna-block</code>/<code>kalyna-ccm</code>/<code>kupyna-digest</code>/<code>strumok-crypt</code>
+remain as the hazmat-scoped, multi-variant tools underneath, unchanged.</li>
+<li><strong>T-17</strong>: <code>dstu-core</code> not published to crates.io. Now unblocked mechanically (D-43’s version bump),
+but publishing a <code>0.1.0</code> that is honest about D-05 (adopted on assumption, not primary-confirmed)/
+D-15/D-41’s provisional status is a judgment call for the project owner, not an engineering
+blocker.</li>
+<li><strong>T-18</strong>: <strong>Done 2026-07-26</strong>, see <code>docs/TASKS.md</code> T-18/T-119. Prebuilt <code>uacrypt</code> binaries for
+Windows/Linux/macOS (Apple Silicon only), plus a <code>dstu-core</code> source distribution, are published
+as GitHub Release assets on the <code>v0.1.0</code> tag via <code>.github/workflows/release.yml</code>, verified
+against the actual downloaded assets (not just a green CI run).</li>
+<li>No user-facing documentation beyond this repo’s own <code>.md</code> files exists yet (no rustdoc pass
+dedicated to public API ergonomics, no separate docs site/book) — a real release needs
+API-level docs a consumer reads without first reading <code>docs/DECISIONS.md</code>.</li>
+<li>Phase 3 (language bindings: Python/JS/Java/.NET/C++, plus PHP/Ruby/Go added 2026-08-02) — not
+required for a Rust-crate-only 1.0, but relevant if “libsodium-equivalent” is read to include
+libsodium’s multi-language reach. <strong>All nine bindings done</strong> (T-49/T-50/T-160/T-159/T-158/T-52/
+T-51/T-163/T-53): T-49 (Python) landed 2026-08-02 -
+full <code>crypto_*</code> surface, own CI, manylinux/macOS/Windows wheels attached to GitHub Releases, not
+yet published to PyPI (separately gated, same posture as crates.io’s T-17). T-50 (Node.js)
+landed the same day - full <code>crypto_*</code> surface + idiomatic <code>stream.Transform</code> secretstream
+wrapper, own CI, prebuilt artifact verified via a real fresh-install round trip, not yet
+published to npm (same gating posture). T-160 (Ruby) landed the same day too - full <code>crypto_*</code>
+surface + idiomatic <code>SecretStreamWriter</code>/<code>Reader</code> (modeled on stdlib’s own <code>Zlib::GzipWriter</code>/
+<code>GzipReader</code>), own CI, a genuine packaging finding (a source gem can’t install standalone at all
+<ul>
+<li>fixed via <code>rake native gem</code>’s precompiled, platform-tagged gem instead, D-136), not yet
+published to RubyGems (same gating posture). T-159 (PHP) landed the same day too - full
+<code>crypto_*</code> surface + idiomatic <code>DstuCoreSecretStreamWriter</code>/<code>Reader</code> (a native PHP stream filter
+was investigated and rejected, D-143), own CI (<code>shivammathur/setup-php</code>), a similarly honest
+packaging finding (no PECL/Composer publish path exists for a provisional binding, D-144), not
+yet published to PECL/Packagist (same gating posture). T-158 (C ABI crate,
+<code>crates/dstu-core-capi</code>) landed 2026-08-03 too - unlike the four bindings above, it IS a real
+root-workspace member (D-119/D-148, no external language runtime linked at build time); wraps
+the full <code>crypto_*</code> surface behind a <code>cbindgen</code>-generated header (<code>include/dstu_core.h</code>,
+regenerated+diffed via <code>cargo xtask capi</code>), a plain-C test harness, and per-primitive examples -
+no prebuilt binaries published anywhere yet (same gating posture as the other bindings). T-52
+(.NET, <code>bindings/dotnet</code>) landed 2026-08-03 too - the first binding with no Cargo workspace of its
+own at all, pure C# P/Invoke over T-158’s C ABI, D-152. T-51 (Java, <code>bindings/java</code>) landed
+2026-08-03 too - a direct-Rust <code>jni</code>-crate binding (own Cargo workspace under <code>bindings/java/native</code>),
+full <code>crypto_*</code> surface, 56 JUnit tests including real <code>uacrypt</code> interop, D-153 - including step
+10 (Raspberry Pi re-check). T-163 (Go, <code>bindings/go</code>) landed 2026-08-03 too, all ten standard
+steps including its own Pi re-check - <code>cgo</code> over T-158’s C ABI (no direct-Rust-binding toolchain
+for Go has PyO3/napi-rs/magnus’s maturity), full <code>crypto_*</code> surface, <code>io.Writer</code>/<code>io.Reader</code>-shaped
+secretstream, D-155 (the Pi re-check found the Windows-only cgo <code>LDFLAGS</code> needed a per-<code>GOOS</code>
+split to link on Linux at all - a cross-OS gap, not a cross-architecture one). T-53 (C++,
+<code>bindings/cpp</code>) landed 2026-08-03 too, all ten standard steps - header-only RAII wrapper over
+T-158’s C ABI (no CMake <code>FetchContent</code> for the Rust side, D-158), <code>std::ostream&amp;</code>/
+<code>std::istream&amp;</code>-shaped secretstream with an explicit <code>Finish()</code> (a destructor can’t reliably
+distinguish exception-unwind from normal scope exit), full <code>crypto_*</code> surface, real bidirectional
+<code>uacrypt</code> interop in its test suite, its own Pi re-check (step 10) finding no bug this time. See
+<code>docs/bindings-strategy.md</code>, <code>docs/DECISIONS.md</code> D-115/D-120/D-125 through D-158, <code>docs/TASKS.md</code>
+T-49/T-50/T-51/T-52/T-53/T-158/T-159/T-160/T-163 - every planned binding has now landed.
+<strong><code>crypto_box</code> (T-178/D-169) added to all eight bindings 2026-08-06 (T-181, <code>docs/DECISIONS.md</code>
+D-171)</strong> - every binding now wraps the full <code>crypto_*</code> surface including the newest module, not
+just the set that existed when each binding first landed.</li>
+</ul>
+</li>
+</ul>
+<h2 id="libsodium-api-surface-and-cratesio-publishing-audit-2026-07-25"><a class="header" href="#libsodium-api-surface-and-cratesio-publishing-audit-2026-07-25">Libsodium API surface and crates.io publishing audit (2026-07-25)</a></h2>
+<p>Requested 2026-07-25: an audit of libsodium’s actual official API (doc.libsodium.org) beyond the
+core constructions already tracked above, plus a review of crates.io/RustCrypto-ecosystem
+publishing norms, to find anything neither implemented nor tracked as a task. Findings that turned
+into real actionable work are <code>docs/TASKS.md</code> T-109 through T-113 (Cargo.toml metadata, per-crate
+LICENSE files, <code>docs.rs</code> metadata, <code>docs/CHANGELOG.md</code>/MSRV, crate-level provisional-status doc warning,
+multi-part <code>crypto_sign</code>) - this section records the rest: corrections, and gaps deliberately <strong>not</strong>
+scheduled, so a future session doesn’t re-derive the same conclusions from scratch.</p>
+<p><strong>Correction to prior assumptions</strong>: libsodium’s <code>crypto_kdf</code> is BLAKE2b-based subkey derivation
+only - there is no separate <code>crypto_kdf_hkdf_*</code> family to map against. Nothing to reconcile against
+<code>dstu_core::crypto_kdf</code>; the two are already the same shape.</p>
+<p><strong>Confirmed an existing gap, then closed it</strong>: libsodium’s <code>crypto_secretstream_xchacha20poly1305</code>
+uses four tags (MESSAGE/PUSH/REKEY/FINAL), where the absence of a FINAL tag before EOF is what
+detects stream truncation - this was the actual design bar <code>crypto_secretstream</code> needed to hit, not
+just per-chunk authentication. <strong>Done 2026-07-25 (T-40/T-70, <code>docs/DECISIONS.md</code> D-68)</strong> -
+<code>dstu_core::crypto_secretstream</code> implements the full four-tag set and the truncation-via-missing-
+FINAL property, hitting this bar exactly.</p>
+<p><strong>Open questions for the project owner - not resolved here, not scheduled as tasks</strong>:</p>
+<ul>
+<li><strong>Detached API variants</strong> (<code>crypto_secretbox_detached</code>, <code>crypto_sign_detached</code> - tag/signature
+returned separately from ciphertext/message rather than concatenated into one blob). libsodium
+ships both combined and detached forms for these; this project’s own <code>crypto_secretbox</code>/
+<code>crypto_sign</code> deliberately ship one shape only, per <code>docs/DECISIONS.md</code> D-47’s “delete the knob”
+tie-breaker. Adding a detached entry point is a second knob, which is exactly what D-47 says to
+avoid absent a concrete reason - a real use case exists in the wild (storing a MAC/signature in a
+database column separate from a large blob) but none exists in this project yet. Flagged as a
+question, not resolved unilaterally the way T-105’s fork was (a mistake this project already
+caught itself making once, see <code>docs/DECISIONS.md</code> D-66/D-67’s process-lesson note) - needs the
+owner’s call before it becomes a task.</li>
+<li><strong><code>randombytes_uniform</code></strong> (unbiased bounded random integer). No consumer exists anywhere in this
+codebase today - the same “no <code>CryptoRng</code> trait, nothing consumes one yet” reasoning
+<code>docs/DECISIONS.md</code> D-48 already gave for keeping <code>randombytes_buf</code> a plain function applies here too,
+and CLAUDE.md’s own “no speculative features” rule forbids adding it ahead of a real use.
+Revisit if/when a concrete caller needs a bounded random index/range without modulo bias.</li>
+</ul>
+<p><strong>No DSTU angle - deliberately not scheduled, not an oversight</strong>:</p>
+<ul>
+<li><code>crypto_shorthash</code> (SipHash-2-4, explicitly non-collision-resistant, for hash-table/DoS
+resistance use) - no DSTU standard defines or implies anything like it.</li>
+<li><code>sodium_bin2hex</code>/<code>_hex2bin</code>, <code>sodium_bin2base64</code>/<code>_base642bin</code>, <code>sodium_pad</code>/<code>_unpad</code> - generic
+encoding/padding utilities, not cryptographic primitives; not DSTU-scoped, and standard Rust
+crates (<code>hex</code>, <code>base64</code>) already cover this need if/when the CLI wants it.</li>
+<li><code>sodium_increment</code>/<code>_add</code>/<code>_compare</code> (constant-time nonce-counter arithmetic) - this project’s
+nonces are randomly generated everywhere (<code>crypto_secretbox</code>, <code>crypto_stream</code>, <code>kalyna_ccm</code>/<code>gcm</code>),
+never counter-based, so there is no counter to increment.</li>
+<li>Raw <code>crypto_scalarmult</code>/<code>_base</code> (bare X25519-shaped ECDH as its own public primitive, distinct
+from <code>crypto_kx</code>) - <code>hazmat::dstu4145</code> has the underlying point arithmetic internally but exposes
+no public raw scalar-multiplication entry point, and libsodium’s own docs steer callers toward
+<code>crypto_kx</code> instead of this lower-level primitive anyway. <code>crypto_kx</code>’s DSTU 9041 path now has a
+curve primitive (<code>hazmat::dstu9041</code>, T-177) but no design/construction yet (T-47); a raw
+scalar-mult entry point would wait on the same design work with no independent use case pulling
+it out ahead of <code>crypto_kx</code> itself.</li>
+<li><code>crypto_box_seal</code>/<code>_seal_open</code> (anonymous/sealed-box encryption) - <code>crypto_box</code> itself is now done
+(T-178, D-169); its <code>seal</code>/<code>open</code> are already sealed-box-shaped (anonymous, no sender identity
+needed), so this is not a separate remaining gap.</li>
+<li><code>crypto_pwhash</code>’s Argon2i13/legacy scryptsalsa208sha256 variants - already deliberately narrowed
+to Argon2id only (T-71/D-49/D-50), matching libsodium’s own current recommended default; the other
+variants exist in libsodium for legacy interop, not because they’re preferred.</li>
+</ul>
+<h2 id="libsodium-api-surface-audit-round-2-2026-07-26"><a class="header" href="#libsodium-api-surface-audit-round-2-2026-07-26">Libsodium API surface audit, round 2 (2026-07-26)</a></h2>
+<p>Requested 2026-07-26 by the project owner, explicitly framed as “this keeps happening” - new
+libsodium-shaped gaps (most recently: no <code>uacrypt</code> CLI for <code>crypto_sign</code>) kept surfacing one at a
+time in unrelated sessions instead of being caught by a systematic pass, despite round 1 above
+existing. This pass re-fetched libsodium’s <em>current</em> official API table of contents directly
+(<code>raw.githubusercontent.com/jedisct1/libsodium-doc/master/SUMMARY.md</code> plus the individual per-family
+doc pages, not memory) rather than relying on round 1’s list, specifically because libsodium’s own
+API surface has grown since round 1 - it now documents AEGIS-256/AEGIS-128L, AES256-GCM,
+IP address encryption (<code>crypto_ipcrypt_*</code>), and post-quantum <code>crypto_kem</code>/ML-KEM768, none of which
+existed in what round 1 checked against. Full section-by-section table below; the rest of this
+section records what actually changed as a result (new tasks, corrections, scope notes) so this
+doesn’t need re-deriving from the table alone next time.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>libsodium family</th><th>Our equivalent</th><th>Status</th></tr>
+</thead>
+<tbody>
+<tr><td><code>crypto_generichash</code> (BLAKE2b)</td><td><code>crypto_generichash</code> (Kupyna)</td><td>Done</td></tr>
+<tr><td><code>crypto_shorthash</code> (SipHash)</td><td>none</td><td>No DSTU angle, no consumer - not scheduled</td></tr>
+<tr><td>XOF (extendable-output hash)</td><td>none</td><td>Kupyna has no XOF mode, no DSTU angle</td></tr>
+<tr><td><code>crypto_secretbox</code></td><td><code>crypto_secretbox</code> (Kalyna-GCM)</td><td>Done, provisional (D-56)</td></tr>
+<tr><td><code>crypto_secretstream</code></td><td><code>crypto_secretstream</code></td><td>Done</td></tr>
+<tr><td><code>crypto_auth</code>/<code>crypto_onetimeauth</code></td><td><code>crypto_auth</code> (Kupyna-KMAC)</td><td>Done (Poly1305-shaped one-time-key MAC specifically has no DSTU analogue)</td></tr>
+<tr><td>AEAD family (ChaCha20-Poly1305/AEGIS-256/AEGIS-128L/AES256-GCM)</td><td>Kalyna-CCM/GCM</td><td>Not a gap - alternative cipher <em>choices</em>, already decided (D-47)</td></tr>
+<tr><td>IP address encryption (<code>crypto_ipcrypt_*</code>)</td><td>none</td><td>No DSTU angle, no use case - not scheduled</td></tr>
+<tr><td><code>crypto_box</code> (+ sealed boxes)</td><td><code>hazmat::dstu9041</code> + <code>crypto_box</code></td><td>Done (T-178, D-169) - hybrid via KDF, <code>l(p)=256</code> only</td></tr>
+<tr><td><code>crypto_sign</code> sign/verify</td><td><code>hazmat::dstu4145</code> + <code>crypto_sign</code></td><td>Done</td></tr>
+<tr><td><code>crypto_sign</code> keypair generation</td><td><code>SigningKey::generate()</code></td><td>Done (T-122, D-72)</td></tr>
+<tr><td><code>crypto_kem</code>/ML-KEM768 (post-quantum)</td><td>none</td><td>Explicitly out of scope, D-08’s spirit - recorded so it isn’t rediscovered</td></tr>
+<tr><td><code>crypto_pwhash</code> (+ <code>_str</code>/<code>_str_verify</code>)</td><td><code>crypto_pwhash</code> (Argon2id)</td><td>Done - <code>hash_password</code> already returns the same opaque-string shape as <code>_str</code></td></tr>
+<tr><td><code>crypto_kdf</code></td><td><code>crypto_kdf</code> (Kupyna-KDF)</td><td>Done</td></tr>
+<tr><td><code>crypto_kdf_hkdf_*</code> (RFC 5869 HKDF)</td><td>none</td><td>No DSTU angle - not scheduled (see stale-claim correction below)</td></tr>
+<tr><td><code>crypto_kx</code></td><td>none</td><td>Not started (T-47); the DSTU 9041 curve primitive now exists (T-177), design work not started</td></tr>
+<tr><td><code>crypto_stream</code></td><td><code>crypto_stream</code> (Strumok)</td><td>Done</td></tr>
+<tr><td>SHA-2/SHA-3/HMAC-SHA-2/Keccak-f[1600]/Poly1305/Ristretto</td><td>none</td><td>Foreign-algorithm interop exposures, not a “do we have a hash/MAC” gap - Kupyna/Kupyna-KMAC already fill that role above</td></tr>
+<tr><td><code>randombytes_buf</code></td><td><code>randombytes_buf</code></td><td>Done</td></tr>
+<tr><td><code>randombytes_uniform</code></td><td>none</td><td>No consumer - not scheduled</td></tr>
+<tr><td>Custom RNG backend (<code>randombytes_set_implementation</code>)</td><td>new <code>getrandom</code> Cargo feature</td><td>Done (T-123, D-74) - capability parity, not mechanism parity (see the entry below)</td></tr>
+<tr><td><code>sodium_mlock</code>/guarded memory</td><td>none</td><td><strong>Open question for the owner</strong>, not a task - see below</td></tr>
+<tr><td><code>uacrypt</code> CLI: <code>keygen</code>/<code>encrypt</code>/<code>decrypt</code>/<code>hash</code></td><td>all present</td><td>Done</td></tr>
+<tr><td><code>uacrypt</code> CLI: <code>sign</code>/<code>verify</code></td><td><code>sign-keygen</code>/<code>sign-pubkey</code>/<code>sign</code>/<code>verify</code></td><td>Done (T-124, D-73)</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>Stale claim corrected</strong>: round 1’s “Correction to prior assumptions” above (no separate
+<code>crypto_kdf_hkdf_*</code> family exists) is <strong>itself now wrong</strong> - current libsodium documents
+<code>crypto_kdf_hkdf_sha256_*</code>/<code>crypto_kdf_hkdf_sha512_*</code> (<code>key_derivation/hkdf.md</code>), a second,
+distinct KDF family alongside the BLAKE2b-based <code>crypto_kdf</code> this project already maps against.
+This is RFC 5869 HKDF specifically - HMAC-SHA256/512-based, not DSTU-native, offered by libsodium
+as a standards-interop option alongside its own simpler <code>crypto_kdf</code>. <strong>Still not scheduled as a
+task</strong> - same reasoning as the “No DSTU angle” list below (no DSTU standard defines an HKDF
+analogue, and <code>dstu_core::crypto_kdf</code> already covers the “derive a subkey from a master key” need
+this project has an actual consumer for) - but the prior claim that libsodium simply doesn’t have
+this family was factually wrong, not a scoping judgment, and needed fixing on its own.</p>
+<p><strong>Real, previously-undocumented gaps found - added to <code>docs/TASKS.md</code></strong>:</p>
+<ul>
+<li><strong><code>dstu_core::crypto_sign::SigningKey</code> has no keypair-generation constructor at all</strong> - only
+<code>from_bytes(d: &amp;[u8; 21])</code>, which requires the caller to already possess a valid private scalar
+(<code>1 &lt;= d &lt; n</code>, checked and rejected via <code>Option::None</code> otherwise). There is no
+<code>crypto_sign_keypair()</code>/<code>crypto_sign_seed_keypair()</code> equivalent - no way to generate a fresh
+identity through the public API without external help, and no public way for a caller to even
+perform the correct rejection-sampling-against-curve-order themselves without reaching into
+<code>hazmat</code> internals. This is the same class of journey-blocking gap T-115 closed for
+<code>crypto_secretstream::Key</code> (<code>uacrypt keygen</code>) - confirmed by reading the actual source
+(<code>crates/dstu-core/src/crypto_sign.rs</code>), not assumed from the API-mapping table, which had marked
+<code>crypto_sign</code> “Implemented” without this distinction. <strong>Done 2026-07-26, see <code>docs/TASKS.md</code> T-122 and
+<code>docs/DECISIONS.md</code> D-72</strong> - <code>SigningKey::generate()</code> now exists (plain OS-CSPRNG, rejection sampling
+against the curve order, not a modulo reduction).</li>
+<li><strong>No pluggable/custom RNG backend for <code>no_std</code>/embedded targets</strong> - libsodium documents
+<code>randombytes_set_implementation()</code>/<code>advanced/custom_rng.md</code> specifically so a caller can swap in a
+hardware TRNG or other custom entropy source. <code>dstu_core::randombytes::randombytes_buf</code> was
+<code>std</code>-gated over <code>getrandom</code> with no equivalent hook - correctly absent from <code>no_std</code> builds
+(nothing promised otherwise), but there was no tracked path for a STM32/ESP32 caller to get
+<code>randombytes</code>-shaped functionality at all without a host OS’s CSPRNG. <strong>Done 2026-07-26, see
+<code>docs/TASKS.md</code> T-123 and <code>docs/DECISIONS.md</code> D-74</strong> - a new <code>getrandom</code> Cargo feature (narrower than <code>std</code>,
+independent of it) makes <code>randombytes</code>/every <code>Key::generate</code> reachable on a bare <code>no_std</code> build,
+for a caller who has configured one of <code>getrandom</code> 0.3’s own non-OS backends themselves (most
+commonly <code>custom</code>). <strong>Capability parity with libsodium’s <code>randombytes_set_implementation()</code>, not
+mechanism parity, deliberately</strong>: <code>getrandom</code> 0.3’s backend selection is a compile-time/link-time
+choice the final binary makes (an <code>extern "Rust"</code> symbol resolved at link time), not a
+runtime-swappable function pointer the way libsodium’s setter is - <code>dstu-core</code> does not implement
+its own pluggable-backend registry on top, since <code>getrandom</code> already fills that role and a second
+one would duplicate an established mechanism (the same D-03/D-04 reasoning that already rejected
+a homegrown RNG). Verified end-to-end (not just “compiles”): a scratch crate defining a real
+<code>__getrandom_v03_custom</code> extern fn, built and <em>run</em>, proved the hook resolves at link time and
+actually produces the bytes <code>randombytes_buf</code>/<code>Key::generate</code> return.</li>
+<li><strong><code>uacrypt</code> has no <code>sign</code>/<code>verify</code> CLI commands</strong> - <code>dstu_core::crypto_sign</code> (T-48/D-46) exists
+only as a library API, confirmed via <code>grep</code> across <code>crates/uacrypt/src/lib.rs</code>’s command
+dispatch. First surfaced as a scoping note on <code>docs/TASKS.md</code> T-120 (doc-examples task, which
+documents the gap rather than closing it); this round makes it a real implementation task in its
+own right. <strong>Done 2026-07-26, see <code>docs/TASKS.md</code> T-124 and <code>docs/DECISIONS.md</code> D-73</strong> - <code>sign</code>/<code>verify</code>
+now exist, plus <code>sign-keygen</code>/<code>sign-pubkey</code> (a scope widening beyond the literal task text,
+needed so there’s a CLI path to key material at all - the same class of gap T-115 closed for
+<code>encrypt</code>/<code>decrypt</code>).</li>
+</ul>
+<p><strong>No DSTU/PQ angle - additions to round 1’s list, deliberately not scheduled</strong>:</p>
+<ul>
+<li><strong><code>crypto_kem</code>/ML-KEM768</strong> (post-quantum key encapsulation, new in current libsodium) - this is
+NIST’s ML-KEM (Kyber), not a DSTU standard. Post-quantum primitives are explicitly out of this
+project’s scope without a separate owner decision (<code>docs/DECISIONS.md</code> D-08, currently scoped to the
+<em>DSTU</em> post-quantum standards Skelya/Vershyna specifically) - the same reasoning extends to a
+non-DSTU PQ KEM a fortiori. Recorded here so it isn’t independently “discovered” and proposed
+again without the context that this was already considered.</li>
+<li><strong>IP address encryption</strong> (<code>crypto_ipcrypt_*</code>, deterministic/ND/NDX/PFX modes) - a genuinely new,
+niche libsodium feature (format-preserving encryption of IP addresses for log anonymization). No
+DSTU standard addresses this, and no evident use case in a general-purpose DSTU crypto library.</li>
+<li><strong>AEGIS-256/AEGIS-128L, AES256-GCM as <code>crypto_aead_*</code> choices</strong> - these are alternative AEAD
+<em>cipher</em> choices libsodium offers alongside ChaCha20-Poly1305, not missing functionality - this
+project already made its combined-AEAD choice (Kalyna-CCM/GCM, <code>docs/DECISIONS.md</code> D-47’s “delete the
+knob”) and isn’t in the business of offering a cipher menu.</li>
+<li><strong>SHA-2, SHA-3, HMAC-SHA-2, Keccak-f[1600] (raw), Poly1305 one-time auth, the
+ChaCha20/XChaCha20/Salsa20/XSalsa20 stream-cipher family</strong> - all non-DSTU primitives libsodium
+exposes for interop with external systems/standards. This project made the “Kupyna is the hash,
+Kupyna-KMAC is the MAC, Strumok is the stream cipher” calls already (D-10/D-44/D-18); none of
+these has a consumer requiring interop with a non-DSTU external system today.</li>
+<li><strong>Ed25519↔Curve25519 conversion, Ristretto/finite-field-arithmetic helpers</strong> - Curve25519-specific
+internals with no DSTU 4145/9041 analogue (different curve family entirely).</li>
+</ul>
+<p><strong>Flagged as an open question for the project owner, not resolved here (security-relevant, a real
+scope commitment either way)</strong>:</p>
+<ul>
+<li><strong>Guarded/locked secret memory</strong> (<code>sodium_mlock</code>/<code>munlock</code>, <code>sodium_malloc</code>/<code>free</code>,
+<code>sodium_mprotect_noaccess</code>/<code>readonly</code>/<code>readwrite</code> - <code>helpers/memory_management.md</code>). This project’s
+<code>Zeroize</code>/<code>ZeroizeOnDrop</code> discipline (D-20) covers <em>erasing</em> key material after use; it does not
+cover <em>preventing</em> key material from being paged to swap/hibernation while still in use, or
+guard-page-based use-after-free/overflow detection around it - a materially different, <code>std</code>/OS-only
+guarantee (no bare-metal equivalent exists, so this could never be a <code>no_std</code>-uniform primitive the
+way <code>Zeroize</code> is). Not unilaterally scoped in either direction here, same posture as the existing
+“detached API variants” question above - needs the owner’s call on whether this project’s threat
+model (<code>docs/SECURITY.md</code>) wants it before it becomes a task.</li>
+</ul>
+<p><code>docs/dstu-crypto-project.md</code>’s “Concrete API shape” table (the authoritative implementation-status
+table) is unaffected by this round - none of the findings above change any <em>existing</em> module’s
+status, they’re additions (new tasks) or corrections to this file’s own prior audit text.</p>
+<h2 id="concrete-path-to-a-genuinely-safe-complete-release"><a class="header" href="#concrete-path-to-a-genuinely-safe-complete-release">Concrete path to a genuinely safe, complete release</a></h2>
+<p><strong>Superseded 2026-07-25 (T-99) by <code>docs/TASKS.md</code>’s “Roadmap to a genuinely complete product”</strong> (recorded
+2026-07-24, user-approved sequencing) — that document is now the current authoritative “what’s next”
+plan, kept there specifically so it survives a memory clear or new session. The numbered list below
+is left as a historical snapshot of this document’s own earlier reasoning, corrected for factual
+staleness (T-99’s job) but not renumbered or resequenced to match the roadmap — read <code>docs/TASKS.md</code> for
+current sequencing, this section for the reasoning behind steps 1-2 specifically (still load-bearing,
+per the closing paragraph below).</p>
+<p>In rough dependency order:</p>
+<ol>
+<li><strong>D-05 resolved on assumption 2026-07-24 (T-36)</strong> — Kalyna-alone, corroborated by two
+independent non-primary sources (this project’s own vendored UAPKI ten-mode list, Ukrainian
+Wikipedia’s independently-sourced ten-mode table), still not a reading of the priced primary
+DSTU 7624:2014 text. Acquiring that text (or another authoritative source) and confirming or
+revising against it remains open and would upgrade this from “assumption” to “confirmed” —
+<code>crypto_secretbox</code> (T-37, migrated to Kalyna-GCM 2026-07-25 by D-63) is built against it,
+inheriting the same provisional status, not a resolution of it.</li>
+<li><strong>Close Strumok’s provenance gap (D-15/D-16)</strong>, if the paid DSTU 8845:2019 text becomes
+available — partially narrowed (D-104) by two independently state-sourced
+supplementary vectors (Держспецзв’язку/ДНДІ ТКЗІ), confirmed matching, but that is still not the
+primary text itself. Otherwise, the release must state “Strumok vectors are UAPKI-attributed
+plus one independent state-sourced supplementary check, not primary-text-confirmed” as
+prominently as the README banner now states the pre-release status generally.</li>
+<li><strong>Build the missing constructions</strong>: <code>crypto_auth</code> (T-38, D-44), <code>crypto_kdf</code> (T-39, D-45), and
+<code>crypto_secretbox</code> (T-37, D-51) all done, none blocked on external material — the Kalyna-alone
+working hypothesis (only CCM/GCM/KW eligible, per D-47, see the headline finding) is what
+<code>crypto_secretbox</code> is built against, inheriting its provisional status.
+<strong>Updated 2026-07-25 (T-99/D-63)</strong>: <code>hazmat::kalyna_gcm</code> (D-56) and <code>hazmat::kalyna_kw</code> (D-55) -
+the two constructions this step originally meant by “missing” for <code>crypto_secretstream</code> - are
+both built at the <code>hazmat</code> level, and <code>crypto_secretbox</code> itself has now migrated onto
+<code>kalyna_gcm</code> (roadmap Step 3 item 1, D-63), removing its 255-byte cap entirely.
+<strong><code>crypto_secretstream</code> (T-40/T-70) is now done too, same day, see <code>docs/DECISIONS.md</code> D-68</strong> - the
+genuinely chunked wrapper this step was waiting on is built, <code>uacrypt encrypt</code>/<code>decrypt</code> rewired
+onto it.</li>
+<li><strong>Build the high-level layer</strong> (D-09’s second layer) over every <code>hazmat</code> primitive that’s ready —
+<code>crypto_sign</code> (step 5) is the first module built there. <code>crypto_auth</code>/<code>crypto_kdf</code> (step 3) are
+done too - a stale “don’t have high-level wrappers yet either” claim here is corrected 2026-07-25
+(T-99), matching the same correction already made in the “libsodium equivalent surface” table
+above.</li>
+<li><strong>DSTU 4145 polish</strong>: <code>crypto_sign</code> wrapper <strong>done</strong> (T-48, D-46) — deterministic nonce, not
+caller-random; decide whether the other 9 curve sizes matter for 1.0 or can stay m=163-only, and
+whether the DSTU §6.9/§6.10 compressed point encoding is needed for 1.0 (the wrapper currently
+ships only an uncompressed 42-byte form).</li>
+<li><strong>DSTU 9041’s <code>hazmat</code> primitive and its <code>crypto_box</code> high-level wrapper are both done</strong>
+(<code>l(p)=256</code> only, T-177/T-178, D-169) — no longer the hard-blocked, no-known-path-forward item
+this note originally described. Still an open scope decision for 1.0 whether <code>crypto_kx</code> (and the
+<code>l(p)=384/512/768</code> curve sizes, T-182) are required, or whether the current surface is acceptable
+for a first release — don’t treat either answer as decided by this entry.</li>
+<li><strong>Mechanical release work</strong>: <code>uacrypt</code>’s real <code>encrypt</code>/<code>decrypt</code>/<code>hash</code> commands are now done
+(T-16, D-52), and GitHub Releases binaries are too (T-18/T-119, 2026-07-26) — remaining:
+crates.io publish (T-17, still explicitly gated on an owner request) and a documentation pass
+aimed at an external consumer rather than an AI-agent-facing repo.</li>
+</ol>
+<p>Steps 1-2 are the load-bearing ones: everything else can be built in parallel, but a release that
+skips them is a release of provisional cryptography labeled as final, which is exactly the outcome
+this document exists to flag before it happens by default.</p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="dstu-crypto-project.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                            </a>
+
+                            <a rel="next prefetch" href="user-journey-gaps.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="dstu-crypto-project.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                    </a>
+
+                    <a rel="next prefetch" href="user-journey-gaps.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                    </a>
+            </nav>
+
+        </div>
+
+        <template id=fa-eye><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M288 32c-80.8 0-145.5 36.8-192.6 80.6C48.6 156 17.3 208 2.5 243.7c-3.3 7.9-3.3 16.7 0 24.6C17.3 304 48.6 356 95.4 399.4C142.5 443.2 207.2 480 288 480s145.5-36.8 192.6-80.6c46.8-43.5 78.1-95.4 93-131.1c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C433.5 68.8 368.8 32 288 32zM432 256c0 79.5-64.5 144-144 144s-144-64.5-144-144s64.5-144 144-144s144 64.5 144 144zM288 192c0 35.3-28.7 64-64 64c-11.5 0-22.3-3-31.6-8.4c-.2 2.8-.4 5.5-.4 8.4c0 53 43 96 96 96s96-43 96-96s-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6z"/></svg></span></template>
+        <template id=fa-eye-slash><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M38.8 5.1C28.4-3.1 13.3-1.2 5.1 9.2S-1.2 34.7 9.2 42.9l592 464c10.4 8.2 25.5 6.3 33.7-4.1s6.3-25.5-4.1-33.7L525.6 386.7c39.6-40.6 66.4-86.1 79.9-118.4c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C465.5 68.8 400.8 32 320 32c-68.2 0-125 26.3-169.3 60.8L38.8 5.1zM223.1 149.5C248.6 126.2 282.7 112 320 112c79.5 0 144 64.5 144 144c0 24.9-6.3 48.3-17.4 68.7L408 294.5c5.2-11.8 8-24.8 8-38.5c0-53-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6c0 10.2-2.4 19.8-6.6 28.3l-90.3-70.8zm223.1 298L373 389.9c-16.4 6.5-34.3 10.1-53 10.1c-79.5 0-144-64.5-144-144c0-6.9 .5-13.6 1.4-20.2L83.1 161.5C60.3 191.2 44 220.8 34.5 243.7c-3.3 7.9-3.3 16.7 0 24.6c14.9 35.7 46.2 87.7 93 131.1C174.5 443.2 239.2 480 320 480c47.8 0 89.9-12.9 126.2-32.5z"/></svg></span></template>
+        <template id=fa-copy><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M502.6 70.63l-61.25-61.25C435.4 3.371 427.2 0 418.7 0H255.1c-35.35 0-64 28.66-64 64l.0195 256C192 355.4 220.7 384 256 384h192c35.2 0 64-28.8 64-64V93.25C512 84.77 508.6 76.63 502.6 70.63zM464 320c0 8.836-7.164 16-16 16H255.1c-8.838 0-16-7.164-16-16L239.1 64.13c0-8.836 7.164-16 16-16h128L384 96c0 17.67 14.33 32 32 32h47.1V320zM272 448c0 8.836-7.164 16-16 16H63.1c-8.838 0-16-7.164-16-16L47.98 192.1c0-8.836 7.164-16 16-16H160V128H63.99c-35.35 0-64 28.65-64 64l.0098 256C.002 483.3 28.66 512 64 512h192c35.2 0 64-28.8 64-64v-32h-47.1L272 448z"/></svg></span></template>
+        <template id=fa-play><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M73 39c-14.8-9.1-33.4-9.4-48.5-.9S0 62.6 0 80V432c0 17.4 9.4 33.4 24.5 41.9s33.7 8.1 48.5-.9L361 297c14.3-8.7 23-24.2 23-41s-8.7-32.2-23-41L73 39z"/></svg></span></template>
+        <template id=fa-clock-rotate-left><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M75 75L41 41C25.9 25.9 0 36.6 0 57.9V168c0 13.3 10.7 24 24 24H134.1c21.4 0 32.1-25.9 17-41l-30.8-30.8C155 85.5 203 64 256 64c106 0 192 86 192 192s-86 192-192 192c-40.8 0-78.6-12.7-109.7-34.4c-14.5-10.1-34.4-6.6-44.6 7.9s-6.6 34.4 7.9 44.6C151.2 495 201.7 512 256 512c141.4 0 256-114.6 256-256S397.4 0 256 0C185.3 0 121.3 28.7 75 75zm181 53c-13.3 0-24 10.7-24 24V256c0 6.4 2.5 12.5 7 17l72 72c9.4 9.4 24.6 9.4 33.9 0s9.4-24.6 0-33.9l-65-65V152c0-13.3-10.7-24-24-24z"/></svg></span></template>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr-ef4e11c1.min.js"></script>
+        <script src="mark-09e88c2c.min.js"></script>
+        <script src="searcher-09f2665d.js"></script>
+
+        <script src="clipboard-1626706a.min.js"></script>
+        <script src="highlight-abc7f01d.js"></script>
+        <script src="book-609e4cb8.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+
+    </div>
+    </body>
+</html>

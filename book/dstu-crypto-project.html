@@ -1,0 +1,556 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Project scope &amp; API mapping - uacrypt</title>
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="Ukrainian DSTU cryptography in Rust - the full docs/ knowledge base as one navigable, searchable book.">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon-de23e50b.svg">
+        <link rel="shortcut icon" href="favicon-8114d1fc.png">
+        <link rel="stylesheet" href="css/variables-8adf115d.css">
+        <link rel="stylesheet" href="css/general-e96d0476.css">
+        <link rel="stylesheet" href="css/chrome-d279d366.css">
+        <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="fonts/fonts-9644e21d.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="mdbook-highlight-css" href="highlight-493f70e1.css">
+        <link rel="stylesheet" id="mdbook-tomorrow-night-css" href="tomorrow-night-4c0ae647.css">
+        <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="ayu-highlight-3fdfc3ac.css">
+
+        <!-- Custom theme stylesheets -->
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "";
+            const default_light_theme = "light";
+            const default_dark_theme = "navy";
+            window.path_to_searchindex_js = "searchindex-87f949c2.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="toc-ce7e91c5.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="mdbook-body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('light')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="mdbook-sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("mdbook-sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="mdbook-sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+            </noscript>
+            <div id="mdbook-sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="mdbook-page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="mdbook-menu-bar-hover-placeholder"></div>
+                <div id="mdbook-menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="mdbook-sidebar-toggle" class="icon-button" for="mdbook-sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="mdbook-sidebar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M0 96C0 78.3 14.3 64 32 64H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32C14.3 128 0 113.7 0 96zM0 256c0-17.7 14.3-32 32-32H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32c-17.7 0-32-14.3-32-32zM448 416c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H416c17.7 0 32 14.3 32 32z"/></svg></span>
+                        </label>
+                        <button id="mdbook-theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="mdbook-theme-list">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M371.3 367.1c27.3-3.9 51.9-19.4 67.2-42.9L600.2 74.1c12.6-19.5 9.4-45.3-7.6-61.2S549.7-4.4 531.1 9.6L294.4 187.2c-24 18-38.2 46.1-38.4 76.1L371.3 367.1zm-19.6 25.4l-116-104.4C175.9 290.3 128 339.6 128 400c0 3.9 .2 7.8 .6 11.6c1.8 17.5-10.2 36.4-27.8 36.4H96c-17.7 0-32 14.3-32 32s14.3 32 32 32H240c61.9 0 112-50.1 112-112c0-2.5-.1-5-.2-7.5z"/></svg></span>
+                        </button>
+                        <ul id="mdbook-theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-ayu">Ayu</button></li>
+                        </ul>
+                        <button id="mdbook-search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="mdbook-searchbar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352c79.5 0 144-64.5 144-144s-64.5-144-144-144S64 128.5 64 208s64.5 144 144 144z"/></svg></span>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">uacrypt</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <span class=fa-svg id="print-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M128 0C92.7 0 64 28.7 64 64v96h64V64H354.7L384 93.3V160h64V93.3c0-17-6.7-33.3-18.7-45.3L400 18.7C388 6.7 371.7 0 354.7 0H128zM384 352v32 64H128V384 368 352H384zm64 32h32c17.7 0 32-14.3 32-32V256c0-35.3-28.7-64-64-64H64c-35.3 0-64 28.7-64 64v96c0 17.7 14.3 32 32 32H64v64c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V384zm-16-88c-13.3 0-24-10.7-24-24s10.7-24 24-24s24 10.7 24 24s-10.7 24-24 24z"/></svg></span>
+                        </a>
+                        <a href="https://github.com/user137/uacrypt" title="Git repository" aria-label="Git repository">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6zm-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3zm44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9zM244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8zM97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1zm-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7zm32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1zm-11.4-14.7c-1.6 1-1.6 3.6 0 5.9 1.6 2.3 4.3 3.3 5.6 2.3 1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2z"/></svg></span>
+                        </a>
+                        <a href="https://github.com/user137/uacrypt/edit/master/docs/dstu-crypto-project.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
+                            <span class=fa-svg id="git-edit-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M421.7 220.3l-11.3 11.3-22.6 22.6-205 205c-6.6 6.6-14.8 11.5-23.8 14.1L30.8 511c-8.4 2.5-17.5 .2-23.7-6.1S-1.5 489.7 1 481.2L38.7 353.1c2.6-9 7.5-17.2 14.1-23.8l205-205 22.6-22.6 11.3-11.3 33.9 33.9 62.1 62.1 33.9 33.9zM96 353.9l-9.3 9.3c-.9 .9-1.6 2.1-2 3.4l-25.3 86 86-25.3c1.3-.4 2.5-1.1 3.4-2l9.3-9.3H112c-8.8 0-16-7.2-16-16V353.9zM453.3 19.3l39.4 39.4c25 25 25 65.5 0 90.5l-14.5 14.5-22.6 22.6-11.3 11.3-33.9-33.9-62.1-62.1L314.3 67.7l11.3-11.3 22.6-22.6 14.5-14.5c25-25 65.5-25 90.5 0z"/></svg></span>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="mdbook-search-wrapper" class="hidden">
+                    <form id="mdbook-searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="mdbook-searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="mdbook-searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <span class=fa-svg id="fa-spin"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M304 48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zm0 416c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM48 304c26.5 0 48-21.5 48-48s-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48zm464-48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM142.9 437c18.7-18.7 18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zm0-294.2c18.7-18.7 18.7-49.1 0-67.9S93.7 56.2 75 75s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zM369.1 437c18.7 18.7 49.1 18.7 67.9 0s18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9z"/></svg></span>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="mdbook-searchresults-outer" class="searchresults-outer hidden">
+                        <div id="mdbook-searchresults-header" class="searchresults-header"></div>
+                        <ul id="mdbook-searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('mdbook-sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('mdbook-sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#mdbook-sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="mdbook-content" class="content">
+                    <main>
+                        <h1 id="open-crypto-library-for-ukrainian-dstu-standards"><a class="header" href="#open-crypto-library-for-ukrainian-dstu-standards">Open crypto library for Ukrainian DSTU standards</a></h1>
+<h2 id="idea"><a class="header" href="#idea">Idea</a></h2>
+<p>An open project (library + CLI application) for modern Ukrainian cryptographic
+standards. Goal: any developer or user can show up and get a reference
+implementation within a minute, without hassle — in the spirit of
+<strong>libsodium</strong> (hard, safe defaults), and <strong>not</strong> in the spirit of OpenSSL
+(flexible, easy to misuse the API).</p>
+<h2 id="algorithms-in-scope"><a class="header" href="#algorithms-in-scope">Algorithms in scope</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Algorithm</th><th>Standard</th><th>Type</th></tr>
+</thead>
+<tbody>
+<tr><td>Kalyna</td><td>DSTU 7624:2014</td><td>symmetric block cipher</td></tr>
+<tr><td>Kupyna</td><td>DSTU 7564:2014</td><td>hash function</td></tr>
+<tr><td>Strumok</td><td>DSTU 8845:2019</td><td>stream cipher</td></tr>
+<tr><td>—</td><td>DSTU 4145-2002</td><td>digital signature on elliptic curves</td></tr>
+<tr><td>—</td><td>DSTU 9041:2020</td><td>asymmetric encryption (twisted Edwards curves)</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="mvp-first-priority"><a class="header" href="#mvp-first-priority">MVP (first priority)</a></h2>
+<ul>
+<li>Rust core: Kalyna + Kupyna + Strumok, cross-checked against official DSTU
+test vectors.</li>
+<li>A single CLI binary on top of the core (<code>uacrypt</code>, <code>docs/DECISIONS.md</code> D-36), with
+subcommands like <code>uacrypt encrypt --key ... --in file --out file</code> — mode,
+nonce/IV, etc. are hardcoded so there’s nothing for the user to
+misconfigure. <strong>Built</strong> (<code>docs/TASKS.md</code> T-16, <code>docs/DECISIONS.md</code> D-52) — no message-
+length cap since <code>crypto_secretbox</code> migrated to Kalyna-GCM (D-63). As of
+2026-07-25, <code>encrypt</code>/<code>decrypt</code> are rewired onto <code>dstu_core::crypto_secretstream</code>
+(<code>docs/TASKS.md</code> T-40/T-70, <code>docs/DECISIONS.md</code> D-68) instead — genuinely block-at-a-time
+disk streaming on both <code>--in</code> and <code>--out</code>, not whole-buffer I/O anymore, a
+breaking wire-format change from the prior <code>crypto_secretbox</code>-backed format.</li>
+<li>Publish the core to crates.io. Not started - <code>docs/TASKS.md</code> T-17, explicitly gated on an owner
+request, re-confirmed separately from T-18 below when that one was requested (2026-07-26).</li>
+<li>Prebuilt binaries for Windows/Linux via GitHub Releases (not “clone and
+build it yourself”). <strong>Done 2026-07-26</strong> (<code>docs/TASKS.md</code> T-18/T-119) — also macOS (Apple Silicon),
+plus a <code>dstu-core</code> source distribution on the same release. See <code>README.md</code>’s release link.</li>
+<li>Write the core to be <strong><code>no_std</code>-compatible from day one</strong> (Cargo feature
+flags <code>std</code> / <code>alloc</code> / <code>no_std</code>), so support for embedded platforms (STM32
+on ARM Cortex-M, ESP32 on Xtensa/RISC-V — these are different
+architectures, not variations of one) can be added later without rewriting
+the core. Validation on real hardware is a separate post-MVP phase.
+Important caveat: support for compiling to a microcontroller ≠ resistance
+to hardware side-channel attacks (SPA/DPA) — the latter requires a
+separate, more expensive hardware audit, and until such an audit exists,
+this is explicitly not claimed.</li>
+</ul>
+<h2 id="second-priority-not-mvp"><a class="header" href="#second-priority-not-mvp">Second priority (not MVP)</a></h2>
+<ul>
+<li>Language bindings: Python, JavaScript, Java, .NET, C++ — plus PHP, Ruby, and Go, all added to
+scope 2026-08-02 (D-121/D-122). <strong>Full analysis (popularity rationale, C-ABI-vs-native-FFI split, per-binding
+checklist, phased order) now lives in <code>docs/bindings-strategy.md</code>; task tracking in
+<code>docs/TASKS.md</code> T-49/T-50/T-51/T-52/T-53/T-158/T-159/T-160/T-163.</strong> T-49 (Python, the template
+every later binding follows) is done as of 2026-08-02 - see <code>docs/TASKS.md</code>/<code>docs/DECISIONS.md</code>
+D-120. T-50 (Node.js) is done as of 2026-08-02 too - see D-125 through D-132. T-160 (Ruby) is
+done as of 2026-08-02 too - see D-133 through D-141. T-159 (PHP) is done as of 2026-08-02 too -
+see D-142 through D-146. T-158 (C ABI crate) is done as of 2026-08-03 too - see D-148/D-149. T-52
+(.NET) is done as of 2026-08-03 too - see D-152. T-51 (Java), T-163 (Go), and T-53 (C++,
+header-only RAII wrapper over <code>crates/dstu-core-capi</code>) are all done in full as of 2026-08-03,
+including their own Raspberry Pi re-checks (step 10) - see D-153/D-155/D-158. Every planned
+binding is now built. <strong><code>crypto_box</code> (T-178/D-169) added to all eight bindings 2026-08-06, T-181</strong>
+<ul>
+<li>every binding now exposes the same <code>crypto_*</code> surface uniformly, including the newest module.</li>
+</ul>
+</li>
+<li>Do not separately reimplement DSTU 4145 in the native core — for
+Java/.NET, integrate/wrap Bouncy Castle (a mature implementation already
+exists there); for Rust, port it while relying on Bouncy Castle as a
+second verification oracle. <strong>Superseded for the bindings themselves, see <code>docs/DECISIONS.md</code>
+D-115</strong>: <code>hazmat::dstu4145</code>/<code>crypto_sign</code> now exist and are dual-oracle-verified, so every
+binding (Java/.NET included) calls this project’s own Rust implementation — Bouncy Castle
+remains the verification oracle only. This paragraph’s original text is kept for the historical
+record of why the Rust core itself was built the way it was, not deleted.</li>
+</ul>
+<h2 id="post-quantum-track-explicitly-out-of-scope"><a class="header" href="#post-quantum-track-explicitly-out-of-scope">Post-quantum track (explicitly out of scope)</a></h2>
+<p><strong>DSTU 8961:2019 “Skelya” and DSTU 9212:2023 “Vershyna” are deliberately not part of this
+project’s scope.</strong> Do not implement either, and do not propose implementing either, without a
+separate explicit decision from the project owner — see D-08 in <code>docs/DECISIONS.md</code>.</p>
+<p>What they are, for context if this is ever revisited:</p>
+<ul>
+<li><strong>DSTU 8961:2019 “Skelya”</strong> — a post-quantum key encapsulation mechanism (KEM) and asymmetric
+encryption scheme on algebraic lattices. Same problem class as CRYSTALS-Kyber or FrodoKEM; a
+Ukrainian variant.</li>
+<li><strong>DSTU 9212:2023 “Vershyna”</strong> — a post-quantum digital signature scheme on algebraic lattices
+with rejection sampling. The post-quantum counterpart to DSTU 4145.</li>
+</ul>
+<p>Why not now:</p>
+<ul>
+<li>Qualitatively different mathematics (polynomial rings, noise sampling, CPA-to-CCA transforms)
+compared to the rest of this project (Kalyna/Kupyna/Strumok/DSTU 4145/DSTU 9041 are all
+classical cryptography).</li>
+<li>Implementation complexity comparable to all five other algorithms combined, with a higher risk
+of silent correctness bugs: constant-time rejection sampling, decryption failure rate,
+sensitivity to the choice of ring parameters.</li>
+<li>Younger and thinner cryptanalysis than internationally vetted PQ schemes — published work
+questions Skelya’s “unusual field/ring choice” and probes potential attacks via sub-ring
+structure.</li>
+<li>No vetted Rust implementation of either algorithm exists — would have to be written from zero,
+without the dual-oracle safety net (<code>docs/ORACLES.md</code>) the rest of this project relies on.</li>
+</ul>
+<p>If this is ever taken up, treat it as a pair (Skelya + Vershyna together, mirroring the classical
+4145+9041 pair) as a distinct Phase 3 / post-quantum track, with an explicit documented warning
+that its cryptanalysis maturity is lower than this project’s classical DSTU primitives.</p>
+<h2 id="mapping-onto-the-libsodium-api-a-functional-copy-built-on-dstu"><a class="header" href="#mapping-onto-the-libsodium-api-a-functional-copy-built-on-dstu">Mapping onto the libsodium API (a functional copy built on DSTU)</a></h2>
+<p>Goal: cover libsodium’s functionality with equivalents built on Ukrainian
+algorithms, with a similar API. <strong>Revised 2026-07-23</strong> (<code>docs/DECISIONS.md</code> D-05/D-41): the paragraph
+below describing Kalyna+Kupyna encrypt-then-MAC as the AEAD approach was this project’s original
+reading, since superseded by a provisional working hypothesis — Kalyna-alone CCM does come
+“out of the box” after all, per two independent implementations (cryptonite, Bouncy Castle) and
+<code>hazmat::kalyna_ccm</code>’s dual-oracle-verified construction. Both readings are unconfirmed against the
+primary DSTU 7624:2014 text; kept below for the historical record, not deleted, per <code>CLAUDE.md</code>’s
+“never silently deprecate” rule — see D-05 for the full reasoning.</p>
+<p>DSTU 7624 (Kalyna) was originally read as requiring combining the cipher with DSTU 7564 (Kupyna) on
+different keys to get confidentiality + integrity — that is, AEAD doesn’t come “out of the box”
+like AES-GCM; it’s a custom encrypt-then-MAC construction that has to be
+designed, not a ready-made primitive from the standard.</p>
+<p><strong>Direct replacement (a native DSTU counterpart exists):</strong></p>
+<ul>
+<li><code>crypto_generichash</code> (BLAKE2b) → Kupyna (DSTU 7564).</li>
+<li><code>crypto_stream</code> (XSalsa20) → Strumok (DSTU 8845).</li>
+<li><code>crypto_sign</code> (Ed25519) → DSTU 4145.</li>
+<li><code>crypto_box</code> (X25519 + AEAD) → DSTU 9041:2020 (asymmetric encryption on
+twisted Edwards curves), conceptually the same role — verify the details
+in practice during implementation.</li>
+</ul>
+<p><strong>Needs to be constructed from existing primitives (not a missing algorithm,
+a missing API wrapper):</strong></p>
+<ul>
+<li><code>crypto_secretbox</code> (symmetric AEAD) → <strong>Done</strong> (T-37, <code>docs/DECISIONS.md</code> D-51),
+<strong>provisionally</strong>, over Kalyna-alone GCM (<code>hazmat::kalyna_gcm::Kalyna256_256Gcm</code>
+specifically — a single fixed variant, not all five — <code>docs/DECISIONS.md</code>
+D-51/D-47), not the encrypt-then-MAC construction originally described here.
+Migrated from an earlier Kalyna-CCM construction (255-byte cap, D-41) to
+Kalyna-GCM 2026-07-25 (roadmap Step 3 item 1, <code>docs/DECISIONS.md</code> D-63), which
+removes that cap entirely — <code>dstu_core::crypto_secretbox::seal</code> no longer has
+a <code>MessageTooLong</code> error at all. Inherits <code>hazmat::kalyna_gcm</code>’s own
+not-primary-text-confirmed status (D-56, dual-oracle-cited via UAPKI + Bouncy
+Castle vectors in the meantime). The original encrypt-then-MAC framing
+(Kalyna in an encryption mode + a separate Kupyna-based MAC, different keys)
+remains a live alternative if the primary text ends up requiring it; not
+chosen over GCM for any reason beyond “no primary text yet to decide between
+them.”</li>
+<li><code>crypto_auth</code> / <code>crypto_onetimeauth</code> (MAC) → HMAC based on Kupyna, or a
+CMAC-like mode of Kalyna itself (the standard has message-authentication
+modes — the exact mode name should be checked against the full DSTU text).</li>
+<li><code>crypto_kx</code> (key exchange) → Diffie-Hellman on the curves from DSTU
+4145/9041. Not a separate standard, but a construction built on an
+already-existing curve.</li>
+<li><code>crypto_kdf</code> (key derivation) → an HKDF-like construction based on Kupyna.
+There’s no separate national KDF standard.</li>
+<li><code>crypto_secretstream</code> (streaming authenticated encryption of large files in
+chunks) → originally sketched here as a construction on top of Strumok or
+Kalyna-CTR + separate per-chunk authentication. <strong>Built 2026-07-25 as
+something narrower and simpler instead</strong>, see <code>docs/TASKS.md</code> T-40/T-70 and
+<code>docs/DECISIONS.md</code> D-68: tag-per-chunk framing over <code>hazmat::kalyna_gcm</code> (already
+a combined AEAD, no separate MAC step needed) plus <code>hazmat::kupyna_kmac</code> for
+header-derived subkeys/rekeying — not Strumok or Kalyna-CTR at all. This
+entry is kept as the historical planning note, not corrected in place.</li>
+</ul>
+<p><strong>Real gaps (DSTU offers nothing):</strong></p>
+<ul>
+<li><code>crypto_pwhash</code> (Argon2id) — there’s no Ukrainian standard for this at
+all. Argon2 is the winner of an open international competition (Password
+Hashing Competition), well audited; there’s no security reason to avoid
+it. Decision: keep Argon2 as is, and honestly flag it in the documentation
+as the one non-DSTU component, and why.</li>
+<li><code>crypto_shorthash</code> (SipHash) — a non-critical component, no direct DSTU
+equivalent; can be skipped in the MVP or a truncated Kupyna can be used.</li>
+<li><code>randombytes</code> (CSPRNG) — not a DSTU question at all. Do not invent a
+“national” random number generator — that’s the single most dangerous area
+for a homegrown design. Use the OS’s system CSPRNG (<code>getrandom</code> in Rust),
+same as libsodium itself does.</li>
+</ul>
+<p><strong>Priority summary:</strong> Kalyna + Kupyna + Strumok + DSTU 4145 give the
+foundation for secretbox/stream/generichash/sign. DSTU 9041 covers box. The
+engineering work that isn’t ready-made in any DSTU text — three
+constructions (AEAD from Kalyna+Kupyna, KDF from Kupyna, ECDH from the
+signature curve) plus the deliberate decision to leave Argon2 and the system
+CSPRNG without “Ukrainization”.</p>
+<h2 id="concrete-api-shape"><a class="header" href="#concrete-api-shape">Concrete API shape</a></h2>
+<p>Turning the mapping above into an actual Rust module layout, and fixing the one structural
+question that has to be settled before any code lands: whether the crate exposes one unified API
+or splits into layers. <strong>Decided (D-09 in <code>docs/DECISIONS.md</code>): two layers</strong>, same shape as orion:</p>
+<ul>
+<li><strong><code>dstu_core::hazmat::*</code></strong> — direct algorithm implementations. No forced RNG dependency, no
+auto-generated nonces, caller passes keys/nonces/IVs explicitly where the algorithm needs them.
+Available in <code>no_std</code> builds (D-01) — this is the layer that can exist before any randomness
+question is settled, and the layer every primitive lands in first.</li>
+<li><strong>The high-level “easy” layer</strong> — libsodium-style <code>crypto_*</code> ergonomics on top of <code>hazmat</code>:
+auto-generated nonces via <code>getrandom</code> where the construction needs one, misuse-resistant
+defaults, the actual point of building this library “in the spirit of libsodium” instead of
+OpenSSL. <code>crypto_sign</code>/<code>crypto_secretbox</code>/<code>crypto_pwhash</code>/<code>crypto_auth</code>/<code>crypto_kdf</code>/
+<code>crypto_generichash</code>/<code>crypto_stream</code> all now exist here (D-46/D-51/D-49-D-50/D-66/D-67) — not
+every module in this layer needs <code>std</code>/an RNG (<code>crypto_sign</code>’s nonce is deterministic,
+<code>crypto_generichash</code>/<code>crypto_auth</code>/<code>crypto_kdf</code>’s <code>from_bytes</code>/<code>mac</code>/<code>derive_subkey</code> paths take a
+caller-supplied key and need none either), only the specific <code>generate()</code>-style convenience
+constructors that draw fresh key material from the OS CSPRNG are <code>std</code>-gated (<code>crypto_stream</code> is
+the one exception gated at the whole-module level — its <code>Vec&lt;u8&gt;</code>-returning <code>encrypt</code>/<code>decrypt</code>
+need <code>std</code> unconditionally, same reason <code>crypto_secretbox</code> is whole-module-gated too).</li>
+</ul>
+<p>Module-by-module status (libsodium name → <code>dstu_core</code> module → status):</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>libsodium equivalent</th><th><code>dstu_core</code> module</th><th>Status</th></tr>
+</thead>
+<tbody>
+<tr><td><code>crypto_generichash</code></td><td><code>dstu_core::crypto_generichash</code> (a bare re-export of <code>hazmat::kupyna</code>’s <code>Kupyna256</code>/<code>Kupyna512</code>/<code>Kupyna256Hasher</code>/<code>Kupyna512Hasher</code>)</td><td><strong>Implemented</strong> — one-shot <code>digest()</code> and streaming <code>update</code>/<code>finalize</code> (<code>docs/TASKS.md</code> T-83), byte-aligned messages only. Now reachable under the top-level <code>crypto_*</code> namespace too, not just <code>hazmat</code> (<code>docs/TASKS.md</code> T-105, <code>docs/DECISIONS.md</code> D-66) — a bare re-export, not a new wrapper, since there’s no knob to hide and no libsodium value-add (variable output length, optional key) with a DSTU equivalent to re-derive. See D-10/D-66 in <code>docs/DECISIONS.md</code>.</td></tr>
+<tr><td><code>crypto_stream</code></td><td><code>dstu_core::crypto_stream</code> (<code>encrypt</code>/<code>decrypt</code>/<code>Key</code>, over <code>hazmat::strumok::Strumok256</code> only) + <code>hazmat::strumok</code> (<code>Strumok256</code>, <code>Strumok512</code>, both sizes)</td><td><strong>Implemented</strong> — keystream generation/<code>apply_keystream</code> at <code>hazmat</code>, both key sizes. High-level wrapper added (roadmap Step 3 item 3, <code>docs/DECISIONS.md</code> D-67): single 256-bit variant, internally-generated IV (hidden from the caller, confirmed with the project owner — the same choice <code>crypto_secretbox</code> made for its nonce, D-51), combined <code>iv || ciphertext</code> output. <strong>No authentication</strong> — <code>decrypt</code> never fails on tampered input, unlike <code>crypto_secretbox</code>; named <code>encrypt</code>/<code>decrypt</code> rather than <code>seal</code>/<code>open</code> specifically to avoid implying tamper-evidence. Vectors are UAPKI-attributed, not confirmed against the <em>official text</em> yet. See D-18/D-67 in <code>docs/DECISIONS.md</code>.</td></tr>
+<tr><td><code>hazmat::kalyna</code> (block primitive, not directly libsodium-mapped)</td><td><code>hazmat::kalyna</code> (<code>Kalyna128_128</code>/<code>Kalyna128_256</code>/<code>Kalyna256_256</code>/<code>Kalyna256_512</code>/<code>Kalyna512_512</code>)</td><td><strong>Implemented</strong> — single-block <code>encrypt</code>/<code>decrypt</code>, all 5 variants. See D-13 in <code>docs/DECISIONS.md</code>.</td></tr>
+<tr><td><code>hazmat::kalyna_ccm</code> (mode of operation, not directly libsodium-mapped)</td><td><code>hazmat::kalyna_ccm</code> (all 5 variants)</td><td><strong>Implemented, provisional</strong> — Kalyna-alone CCM, dual-oracle-verified (UAPKI + Bouncy Castle vectors), not confirmed against the primary DSTU 7624:2014 text. See D-41 in <code>docs/DECISIONS.md</code>. Sourced 255-byte plaintext/AAD limit; nonce-generation strategy still undecided (D-40, <code>docs/TASKS.md</code> T-82).</td></tr>
+<tr><td><em>(no libsodium equivalent — key wrapping/envelope encryption)</em></td><td><code>hazmat::kalyna_kw</code> (all 5 variants)</td><td><strong>Implemented, <code>hazmat</code>-only, deliberately no high-level <code>crypto_*</code> wrapper</strong> — libsodium itself has no dedicated key-wrap primitive to map to (roadmap Step 3 item 4, <code>docs/DECISIONS.md</code> D-66’s addendum), so this stays a documented gap in the libsodium-parity surface rather than an invented, non-libsodium-shaped <code>crypto_kw</code>. Dual-oracle-verified, not confirmed against the primary DSTU 7624:2014 text. See D-55 in <code>docs/DECISIONS.md</code>.</td></tr>
+<tr><td><code>crypto_sign</code></td><td><code>hazmat::dstu4145</code> + <code>dstu_core::crypto_sign</code></td><td><strong>Implemented (m=163 curve only)</strong> — <code>hazmat</code> has <code>GF(2^163)</code> field arithmetic, point add/double, constant-time scalar multiplication, and <code>sign</code>/<code>verify</code>, all verified against the official standard’s own Annex B.1 worked example plus a <code>proptest</code> round-trip (<code>docs/TASKS.md</code> T-41/T-43/T-44, <code>docs/DECISIONS.md</code> D-25). The high-level <code>crypto_sign</code> wrapper (T-48, done 2026-07-24, <code>docs/DECISIONS.md</code> D-46) now exists too — <code>SigningKey</code>/<code>VerifyingKey</code>/<code>Signature</code>, deterministic (not caller-random) nonce derivation via Kupyna-KMAC. The other 9 named curve sizes aren’t wired up.</td></tr>
+<tr><td><code>crypto_box</code></td><td><code>hazmat::dstu9041</code></td><td><strong>Done</strong> (<code>docs/TASKS.md</code> T-178, D-169) — <code>dstu_core::crypto_box::{seal,open,SecretKey,PublicKey}</code>, hybrid via KDF over the <code>hazmat::dstu9041</code> <code>l(p)=256</code>/E256/1 primitive (T-177, D-47’s “ship the recommended curve first” precedent), plus a <code>uacrypt box-keygen</code>/<code>box-pubkey</code>/<code>box-seal</code>/<code>box-open</code> CLI surface. <code>l(p)=384/512/768</code> still not done (T-182).</td></tr>
+<tr><td><code>crypto_secretbox</code></td><td><code>dstu_core::crypto_secretbox</code> (<code>seal</code>/<code>open</code>/<code>SecretKey</code>), over <code>hazmat::kalyna_gcm::Kalyna256_256Gcm</code></td><td><strong>Implemented, provisional</strong> — single fixed Kalyna-GCM variant (not all five), internal nonce, combined <code>nonce||ciphertext||tag</code> output, no caller-facing AAD (the nonce is passed as <code>kalyna_gcm</code>’s AAD internally, to bind it into the tag — D-63). Migrated 2026-07-25 from an earlier Kalyna-CCM construction, removing its 255-byte message cap entirely. Still not primary-text-confirmed (inherits D-56). See D-51/D-63 in <code>docs/DECISIONS.md</code>.</td></tr>
+<tr><td><code>crypto_auth</code>/<code>crypto_onetimeauth</code></td><td><code>dstu_core::crypto_auth</code> (<code>auth</code>/<code>verify</code>/<code>Key</code>, over <code>hazmat::kupyna_kmac::Kupyna256Kmac</code> only) + <code>hazmat::kupyna_kmac</code> (<code>Kupyna256Kmac</code>/<code>Kupyna384Kmac</code>/<code>Kupyna512Kmac</code>, all three sizes)</td><td><strong>Implemented, provisional</strong> — Kupyna-based KMAC, both UAPKI’s and Bouncy Castle’s constructions read and cross-checked byte-for-byte on all three sizes, not confirmed against the primary DSTU 7564:2014 text. High-level wrapper added <code>docs/TASKS.md</code> T-105/<code>docs/DECISIONS.md</code> D-66: only the 256-bit size is exposed (D-47’s “delete the knob”), key is an opaque <code>Zeroize</code>-on-drop <code>Key</code> type, which also forecloses <code>WrongKeyLength</code> at this layer. See D-44/D-66 in <code>docs/DECISIONS.md</code>.</td></tr>
+<tr><td><code>crypto_kdf</code></td><td><code>dstu_core::crypto_kdf</code> (<code>MasterKey::derive_subkey</code>, over <code>hazmat::kupyna_kdf::Kupyna256Kdf</code> only) + <code>hazmat::kupyna_kdf</code> (<code>Kupyna256Kdf</code>/<code>Kupyna384Kdf</code>/<code>Kupyna512Kdf</code>, all three sizes)</td><td><strong>Implemented</strong> — modeled after libsodium’s <code>crypto_kdf_derive_from_key</code> shape over <code>hazmat::kupyna_kmac</code>, not full RFC 5869 HKDF. No DSTU standard or reference implementation exists for this construction, so unlike the rest of this table’s “provisional” rows, there is no oracle vector at all, ever. High-level wrapper added <code>docs/TASKS.md</code> T-105/<code>docs/DECISIONS.md</code> D-66, same “delete the knob” / opaque <code>Zeroize</code>-on-drop key shape as <code>crypto_auth</code> above. See D-45/D-66 in <code>docs/DECISIONS.md</code>.</td></tr>
+<tr><td><code>crypto_kx</code></td><td><em>(future construction over <code>hazmat::dstu4145</code>/<code>dstu9041</code>)</em></td><td>Both curve implementations now exist (<code>l(p)=256</code>/163-bit only) — this construction itself still not designed or started.</td></tr>
+<tr><td><code>crypto_secretstream</code></td><td><code>dstu_core::crypto_secretstream</code> (<code>PushState</code>/<code>PullState</code>/<code>Key</code>/<code>Tag</code>), over <code>hazmat::kalyna_gcm::Kalyna256_256Gcm</code> + <code>hazmat::kupyna_kmac::Kupyna256Kmac</code></td><td><strong>Implemented, provisional</strong> (<code>docs/TASKS.md</code> T-40/T-70, <code>docs/DECISIONS.md</code> D-68) — a from-scratch tag-per-chunk framing (full <code>MESSAGE</code>/<code>PUSH</code>/<code>REKEY</code>/<code>FINAL</code> set, libsodium’s <code>crypto_secretstream_xchacha20poly1305</code> shape per D-47’s tie-breaker since no DSTU streaming-AEAD standard exists), not the Strumok/Kalyna-CTR sketch this table originally guessed. Caller-buffer, <code>no_std</code>-capable API (per-item <code>std</code> gating). No oracle vector exists for this construction, ever (same posture as <code>crypto_kdf</code>, D-45) — verified by property/tamper/misuse tests only. Inherits <code>hazmat::kalyna_gcm</code>’s D-56 not-primary-confirmed status. <code>uacrypt encrypt</code>/<code>decrypt</code> rewired onto it the same session, a breaking wire-format change from the prior <code>crypto_secretbox</code>-backed blob format.</td></tr>
+<tr><td><code>crypto_pwhash</code></td><td><code>dstu_core::crypto_pwhash</code> (<code>hash_password</code>/<code>verify_password</code>/<code>Strength</code>)</td><td><strong>Done</strong> (T-71, D-49/D-50) — not DSTU, plain Argon2id over the <code>argon2</code> crate, dedicated <code>pwhash</code> feature (off by default). <code>Strength::{Interactive,Moderate,Sensitive}</code> mirror libsodium’s own <code>OPSLIMIT</code>/<code>MEMLIMIT_*</code> presets exactly, cited to its C source. No <code>uacrypt</code> CLI subcommand yet.</td></tr>
+<tr><td><code>randombytes</code></td><td><code>dstu_core::randombytes::randombytes_buf</code></td><td><strong>Done</strong> (T-72, D-48) — <code>std</code>-gated over an optional <code>getrandom</code> dependency, absent from <code>no_std</code>/<code>alloc</code>/<code>small-tables</code> builds.</td></tr>
+</tbody>
+</table>
+</div>
+<p>This table is the authoritative “what’s actually implemented right now” for the API surface —
+<code>docs/TASKS.md</code> tracks the same work at the task-checklist level; update both when a module’s status
+changes.</p>
+<h2 id="resources-found"><a class="header" href="#resources-found">Resources found</a></h2>
+<ul>
+<li><strong><a href="https://github.com/specinfo-ua/UAPKI">specinfo-ua/UAPKI</a></strong> (found 2026-07-22, user-supplied)
+— a fork of Cryptonite with a cited 2021 Ukrainian state crypto-expertise conclusion. A full
+PKI/e-signature application SDK (ASN.1, certificate/CSR handling, PKCS#11/12 key storage, a
+browser native-messaging host, Android/Java/Kotlin bindings) built on a C crypto-primitives
+library (<code>uapkic</code>) covering Kalyna, Kupyna, Strumok, and DSTU 4145 — <strong>not DSTU 9041</strong>, which is
+absent from its own supported-algorithms list. Used as an oracle: pruned clone at
+<code>oracles/uapki/</code>, self-test KAT data cross-referenced for DSTU 4145/Strumok (see <code>docs/ORACLES.md</code>,
+<code>docs/DECISIONS.md</code> D-14/D-15/D-16). <strong>Reviewed for scope overlap with this project — none found; see
+D-17.</strong> UAPKI operates one layer up (PKI application, not crypto primitive), in a different
+language ecosystem (C/C++ → Java/Kotlin, not Rust), and doesn’t reach embedded targets at all —
+this project’s niche (a safe, <code>no_std</code>-capable Rust implementation of the algorithms themselves)
+remains open and unchanged.</li>
+<li><strong><a href="https://github.com/privat-it/cryptonite">privat-it/cryptonite</a></strong> —
+PrivatBank’s library. License <strong>BSD-2-Clause</strong> (verified) — a legally
+clean base to fork/port from. Written in C, covers Kalyna, Kupyna, DSTU
+4145 + legacy (GOST 28147, GOST 34.310/311) + Western algorithms for
+compatibility. Has Java/Android JNI bindings. Downside: 2016-era code, the
+state “expert opinion” certification was valid until 2021-11-25 and hasn’t
+been publicly renewed, no recent independent audit.</li>
+<li><strong><a href="https://github.com/Roman-Oliynykov/Kalyna-reference">Roman-Oliynykov/Kalyna-reference</a></strong>
+— a C implementation by the author of the Kalyna standard itself. <strong>In the
+repository — https://github.com/Roman-Oliynykov — this is the repo of the
+algorithms’ author: Kalyna, Kupyna, Strumok. It also contains his Kupyna
+implementation and some documentation. There is no LICENSE file</strong> — use
+only as an oracle for cross-checking test vectors, <strong>do not copy the code
+directly</strong>.</li>
+<li><strong>dstu8845 https://github.com/outspace/dstu8845</strong> — a Strumok
+implementation in C (apparently not the official implementation).</li>
+<li><strong>Bouncy Castle</strong> (Java and .NET) — already has a mature production
+implementation of the DSTU 4145 signature (<code>DSTU4145Signer</code>), in use for
+decades, with continuous external audit. Don’t rewrite the signature for
+Java/.NET — integrate/wrap it.</li>
+<li><strong>Ecognize/libukrypto</strong> (GitHub) — a WIP OpenSSL engine specifically for
+DSTU. Marked as WIP, appears stalled — useful as an example of CLI
+architecture, not as a code donor.</li>
+<li><strong>Excluded: the <code>li0ard</code> GitHub account</strong> (TypeScript/Go packages for
+Kalyna/Kupyna/Strumok/DSTU 4145). Not used as a dependency, not used as an
+oracle, not linked from anywhere in this project — flagged as an untrusted
+supply-chain source with unverified maintainer provenance. See D-07 in
+<code>docs/DECISIONS.md</code>.</li>
+<li><strong>crates.io</strong>: the <code>kupyna</code> crate exists, but is dead — one version from
+December 2016, no updates since. The <code>kalyna</code>, <code>strumok</code>, <code>dstu4145</code>
+crates don’t exist at all — a genuinely open niche in the Rust ecosystem.
+Reinforced by the UAPKI finding (D-17): a mature C/C++ PKI stack needing these exact
+algorithms chose to hand-roll them in C rather than bind to an existing safe Rust
+implementation — circumstantial evidence the gap is real, not that the space is occupied.</li>
+</ul>
+<h2 id="state-certification-for-reference-not-an-mvp-blocker"><a class="header" href="#state-certification-for-reference-not-an-mvp-blocker">State certification (for reference, not an MVP blocker)</a></h2>
+<ul>
+<li>Regulator: <strong>Administration of the State Service for Special
+Communications</strong> (Держспецзв’язку). Mandatory expert review only applies
+if the tool is used to protect state information resources or information
+whose protection is required by law. An open library on GitHub/GitLab by
+itself is a voluntary category.</li>
+<li>Procedure: the customer independently chooses a licensed private “expert
+organization”, enters into a contract with it for the study; based on the
+results, the Administration of the State Service for Special
+Communications issues an expert opinion.</li>
+<li>Cost: commercial, there’s no fixed state tariff — depends on the specific
+expert organization and the scope of work.</li>
+<li>The validity period of the opinion is individual to each case (an example,
+not a norm: the opinion on cryptonite was valid 2016→2021, ~5 years). For
+a software tool, the opinion is tied to the hash of a specific build —
+changing the code potentially requires re-certification.</li>
+<li>The regulation on state expert review of cryptographic information
+protection tools was last updated by order of the Administration of the
+State Service for Special Communications dated 2026-04-24 No. 302.</li>
+</ul>
+<h2 id="on-the-horizon"><a class="header" href="#on-the-horizon">On the horizon</a></h2>
+<ul>
+<li>Obtain official documentation PDFs from the authors of each DSTU
+implementation (Kalyna, Kupyna, Strumok, DSTU 4145) with test vectors as
+reference documentation.</li>
+<li>Cross-check our own implementation against Kalyna-reference and other
+oracles.</li>
+<li>Hardware validation on STM32/ESP32 — a separate phase after the MVP.</li>
+<li><strong>Speculative, long-term, not MVP, not scheduled in any <code>docs/TASKS.md</code> phase:</strong> <code>dstu-core</code> could
+someday expose a C ABI (<code>cdylib</code>/<code>staticlib</code> + a plain-C header) so that C/C++ PKI stacks —
+UAPKI (see D-17) is the concrete example that prompted this — could adopt this project’s
+audited Rust primitives instead of maintaining their own C implementations of the same
+algorithms. Purely a “don’t forget this occurred to us” note: no design work done, no task
+created, no commitment implied. Revisit only if a concrete need or request for it shows up —
+don’t let it quietly expand MVP scope in the meantime.</li>
+</ul>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="TASKS.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                            </a>
+
+                            <a rel="next prefetch" href="release-readiness.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="TASKS.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                    </a>
+
+                    <a rel="next prefetch" href="release-readiness.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                    </a>
+            </nav>
+
+        </div>
+
+        <template id=fa-eye><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M288 32c-80.8 0-145.5 36.8-192.6 80.6C48.6 156 17.3 208 2.5 243.7c-3.3 7.9-3.3 16.7 0 24.6C17.3 304 48.6 356 95.4 399.4C142.5 443.2 207.2 480 288 480s145.5-36.8 192.6-80.6c46.8-43.5 78.1-95.4 93-131.1c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C433.5 68.8 368.8 32 288 32zM432 256c0 79.5-64.5 144-144 144s-144-64.5-144-144s64.5-144 144-144s144 64.5 144 144zM288 192c0 35.3-28.7 64-64 64c-11.5 0-22.3-3-31.6-8.4c-.2 2.8-.4 5.5-.4 8.4c0 53 43 96 96 96s96-43 96-96s-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6z"/></svg></span></template>
+        <template id=fa-eye-slash><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M38.8 5.1C28.4-3.1 13.3-1.2 5.1 9.2S-1.2 34.7 9.2 42.9l592 464c10.4 8.2 25.5 6.3 33.7-4.1s6.3-25.5-4.1-33.7L525.6 386.7c39.6-40.6 66.4-86.1 79.9-118.4c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C465.5 68.8 400.8 32 320 32c-68.2 0-125 26.3-169.3 60.8L38.8 5.1zM223.1 149.5C248.6 126.2 282.7 112 320 112c79.5 0 144 64.5 144 144c0 24.9-6.3 48.3-17.4 68.7L408 294.5c5.2-11.8 8-24.8 8-38.5c0-53-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6c0 10.2-2.4 19.8-6.6 28.3l-90.3-70.8zm223.1 298L373 389.9c-16.4 6.5-34.3 10.1-53 10.1c-79.5 0-144-64.5-144-144c0-6.9 .5-13.6 1.4-20.2L83.1 161.5C60.3 191.2 44 220.8 34.5 243.7c-3.3 7.9-3.3 16.7 0 24.6c14.9 35.7 46.2 87.7 93 131.1C174.5 443.2 239.2 480 320 480c47.8 0 89.9-12.9 126.2-32.5z"/></svg></span></template>
+        <template id=fa-copy><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M502.6 70.63l-61.25-61.25C435.4 3.371 427.2 0 418.7 0H255.1c-35.35 0-64 28.66-64 64l.0195 256C192 355.4 220.7 384 256 384h192c35.2 0 64-28.8 64-64V93.25C512 84.77 508.6 76.63 502.6 70.63zM464 320c0 8.836-7.164 16-16 16H255.1c-8.838 0-16-7.164-16-16L239.1 64.13c0-8.836 7.164-16 16-16h128L384 96c0 17.67 14.33 32 32 32h47.1V320zM272 448c0 8.836-7.164 16-16 16H63.1c-8.838 0-16-7.164-16-16L47.98 192.1c0-8.836 7.164-16 16-16H160V128H63.99c-35.35 0-64 28.65-64 64l.0098 256C.002 483.3 28.66 512 64 512h192c35.2 0 64-28.8 64-64v-32h-47.1L272 448z"/></svg></span></template>
+        <template id=fa-play><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M73 39c-14.8-9.1-33.4-9.4-48.5-.9S0 62.6 0 80V432c0 17.4 9.4 33.4 24.5 41.9s33.7 8.1 48.5-.9L361 297c14.3-8.7 23-24.2 23-41s-8.7-32.2-23-41L73 39z"/></svg></span></template>
+        <template id=fa-clock-rotate-left><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M75 75L41 41C25.9 25.9 0 36.6 0 57.9V168c0 13.3 10.7 24 24 24H134.1c21.4 0 32.1-25.9 17-41l-30.8-30.8C155 85.5 203 64 256 64c106 0 192 86 192 192s-86 192-192 192c-40.8 0-78.6-12.7-109.7-34.4c-14.5-10.1-34.4-6.6-44.6 7.9s-6.6 34.4 7.9 44.6C151.2 495 201.7 512 256 512c141.4 0 256-114.6 256-256S397.4 0 256 0C185.3 0 121.3 28.7 75 75zm181 53c-13.3 0-24 10.7-24 24V256c0 6.4 2.5 12.5 7 17l72 72c9.4 9.4 24.6 9.4 33.9 0s9.4-24.6 0-33.9l-65-65V152c0-13.3-10.7-24-24-24z"/></svg></span></template>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr-ef4e11c1.min.js"></script>
+        <script src="mark-09e88c2c.min.js"></script>
+        <script src="searcher-09f2665d.js"></script>
+
+        <script src="clipboard-1626706a.min.js"></script>
+        <script src="highlight-abc7f01d.js"></script>
+        <script src="book-609e4cb8.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+
+    </div>
+    </body>
+</html>

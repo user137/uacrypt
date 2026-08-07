@@ -1,0 +1,2256 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Performance - uacrypt</title>
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="Ukrainian DSTU cryptography in Rust - the full docs/ knowledge base as one navigable, searchable book.">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon-de23e50b.svg">
+        <link rel="shortcut icon" href="favicon-8114d1fc.png">
+        <link rel="stylesheet" href="css/variables-8adf115d.css">
+        <link rel="stylesheet" href="css/general-e96d0476.css">
+        <link rel="stylesheet" href="css/chrome-d279d366.css">
+        <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="fonts/fonts-9644e21d.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="mdbook-highlight-css" href="highlight-493f70e1.css">
+        <link rel="stylesheet" id="mdbook-tomorrow-night-css" href="tomorrow-night-4c0ae647.css">
+        <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="ayu-highlight-3fdfc3ac.css">
+
+        <!-- Custom theme stylesheets -->
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "";
+            const default_light_theme = "light";
+            const default_dark_theme = "navy";
+            window.path_to_searchindex_js = "searchindex-87f949c2.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="toc-ce7e91c5.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="mdbook-body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('light')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="mdbook-sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("mdbook-sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="mdbook-sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+            </noscript>
+            <div id="mdbook-sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="mdbook-page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="mdbook-menu-bar-hover-placeholder"></div>
+                <div id="mdbook-menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="mdbook-sidebar-toggle" class="icon-button" for="mdbook-sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="mdbook-sidebar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M0 96C0 78.3 14.3 64 32 64H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32C14.3 128 0 113.7 0 96zM0 256c0-17.7 14.3-32 32-32H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32c-17.7 0-32-14.3-32-32zM448 416c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H416c17.7 0 32 14.3 32 32z"/></svg></span>
+                        </label>
+                        <button id="mdbook-theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="mdbook-theme-list">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M371.3 367.1c27.3-3.9 51.9-19.4 67.2-42.9L600.2 74.1c12.6-19.5 9.4-45.3-7.6-61.2S549.7-4.4 531.1 9.6L294.4 187.2c-24 18-38.2 46.1-38.4 76.1L371.3 367.1zm-19.6 25.4l-116-104.4C175.9 290.3 128 339.6 128 400c0 3.9 .2 7.8 .6 11.6c1.8 17.5-10.2 36.4-27.8 36.4H96c-17.7 0-32 14.3-32 32s14.3 32 32 32H240c61.9 0 112-50.1 112-112c0-2.5-.1-5-.2-7.5z"/></svg></span>
+                        </button>
+                        <ul id="mdbook-theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-ayu">Ayu</button></li>
+                        </ul>
+                        <button id="mdbook-search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="mdbook-searchbar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352c79.5 0 144-64.5 144-144s-64.5-144-144-144S64 128.5 64 208s64.5 144 144 144z"/></svg></span>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">uacrypt</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <span class=fa-svg id="print-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M128 0C92.7 0 64 28.7 64 64v96h64V64H354.7L384 93.3V160h64V93.3c0-17-6.7-33.3-18.7-45.3L400 18.7C388 6.7 371.7 0 354.7 0H128zM384 352v32 64H128V384 368 352H384zm64 32h32c17.7 0 32-14.3 32-32V256c0-35.3-28.7-64-64-64H64c-35.3 0-64 28.7-64 64v96c0 17.7 14.3 32 32 32H64v64c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V384zm-16-88c-13.3 0-24-10.7-24-24s10.7-24 24-24s24 10.7 24 24s-10.7 24-24 24z"/></svg></span>
+                        </a>
+                        <a href="https://github.com/user137/uacrypt" title="Git repository" aria-label="Git repository">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6zm-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3zm44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9zM244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8zM97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1zm-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7zm32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1zm-11.4-14.7c-1.6 1-1.6 3.6 0 5.9 1.6 2.3 4.3 3.3 5.6 2.3 1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2z"/></svg></span>
+                        </a>
+                        <a href="https://github.com/user137/uacrypt/edit/master/docs/PERFORMANCE.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
+                            <span class=fa-svg id="git-edit-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M421.7 220.3l-11.3 11.3-22.6 22.6-205 205c-6.6 6.6-14.8 11.5-23.8 14.1L30.8 511c-8.4 2.5-17.5 .2-23.7-6.1S-1.5 489.7 1 481.2L38.7 353.1c2.6-9 7.5-17.2 14.1-23.8l205-205 22.6-22.6 11.3-11.3 33.9 33.9 62.1 62.1 33.9 33.9zM96 353.9l-9.3 9.3c-.9 .9-1.6 2.1-2 3.4l-25.3 86 86-25.3c1.3-.4 2.5-1.1 3.4-2l9.3-9.3H112c-8.8 0-16-7.2-16-16V353.9zM453.3 19.3l39.4 39.4c25 25 25 65.5 0 90.5l-14.5 14.5-22.6 22.6-11.3 11.3-33.9-33.9-62.1-62.1L314.3 67.7l11.3-11.3 22.6-22.6 14.5-14.5c25-25 65.5-25 90.5 0z"/></svg></span>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="mdbook-search-wrapper" class="hidden">
+                    <form id="mdbook-searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="mdbook-searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="mdbook-searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <span class=fa-svg id="fa-spin"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M304 48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zm0 416c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM48 304c26.5 0 48-21.5 48-48s-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48zm464-48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM142.9 437c18.7-18.7 18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zm0-294.2c18.7-18.7 18.7-49.1 0-67.9S93.7 56.2 75 75s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zM369.1 437c18.7 18.7 49.1 18.7 67.9 0s18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9z"/></svg></span>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="mdbook-searchresults-outer" class="searchresults-outer hidden">
+                        <div id="mdbook-searchresults-header" class="searchresults-header"></div>
+                        <ul id="mdbook-searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('mdbook-sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('mdbook-sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#mdbook-sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="mdbook-content" class="content">
+                    <main>
+                        <h1 id="performance"><a class="header" href="#performance">Performance</a></h1>
+<p>Canonical home for this project’s benchmark numbers, methodology, and comparisons against other
+implementations. <code>docs/DECISIONS.md</code> D-23 records <em>why</em> benchmarking exists at all and links here
+rather than duplicating the numbers; update this file, not D-23, when new numbers are measured.</p>
+<p><strong>Fused-vs-<code>small-tables</code> numbers live separately</strong>, in <code>docs/resource-profiles.md</code> - that’s an
+internal resource-profile trade-off (<code>docs/DECISIONS.md</code> D-35/D-38/D-39), not a cross-implementation
+comparison, so it doesn’t belong in this file’s scope.</p>
+<h2 id="why-this-is-tracked-at-all"><a class="header" href="#why-this-is-tracked-at-all">Why this is tracked at all</a></h2>
+<p>Performance is not a footnote for these algorithms. Kalyna’s own design paper states high software
+performance was a co-equal requirement alongside security in Ukraine’s National Public
+Cryptographic Competition (<code>docs/papers/Kalyna.pdf</code>), and cipher/hash design literature generally
+treats throughput as a first-class, load-bearing property, not an afterthought — see e.g. the
+comparative benchmarking tradition behind eSTREAM, SHA-3, and the AES competition itself, and
+<code>docs/papers/Speed_of_modern_stream_ciphers.pdf</code> in this project’s own paper collection. A
+misuse-resistant library that’s also unusably slow just pushes people back toward an unaudited,
+faster alternative — so this project tracks its own numbers deliberately, not as an afterthought.</p>
+<h2 id="methodology"><a class="header" href="#methodology">Methodology</a></h2>
+<ul>
+<li><strong>Rust</strong>: <code>cargo bench -p dstu-core --bench kalyna --bench kupyna --bench strumok</code> (<code>criterion</code>
+0.8, <code>docs/DECISIONS.md</code> D-23). Release-profile, <code>std::hint::black_box</code> around every benchmarked call
+so the optimizer can’t elide it.</li>
+<li><strong>C comparisons</strong>: one-off timing harnesses, built with <code>gcc -O2</code> for a fair optimization-level
+comparison, run on the same machine on the same day. Each measures many iterations of a single
+encrypt/hash/keystream call (key schedule/init done once outside the timed loop, matching how the
+Rust benches and each C implementation’s own natural API boundary work) and reports mean
+nanoseconds per call. <strong>Not committed to this repo by default</strong> (see “Reproducing” below) — the
+rationale (a lot of scaffolding for something that isn’t run again regularly) held until this
+mode/oracle pairing was actually rebuilt and rerun multiple times in one week (T-131/T-133/T-138).
+<strong>First exception, 2026-07-26 (<code>docs/DECISIONS.md</code> D-83)</strong>: the Kalyna-CMAC vs. UAPKI wrapper is now
+committed at <code>tests/oracle-harness/uapki-cmac-bench/cmac_bench.c</code> (source only — the DLL/import
+lib it links against are downloaded/built fresh per its own doc-comment recipe, same “vendor
+nothing prebuilt” posture <code>oracles/</code> already has). The other 8 modes’ UAPKI comparisons remain
+scratch-only/rebuilt-fresh for now — promote a mode to committed the same way if it starts getting
+rebuilt repeatedly, don’t do it preemptively for a mode measured once.</li>
+<li><strong>Not a rigorous academic benchmark suite</strong>: no CPU pinning, no isolated core, no disabled
+frequency scaling — real numbers from a real development machine, useful for relative comparison
+and regression tracking, not for citing as an authoritative cycles-per-byte figure. Ratios between
+implementations (the “Nx faster/slower” figures below) are far more robust than any single
+absolute number, since machine load affects all of them together.</li>
+<li><strong>10 MiB is now a mandatory message size for every binary-level (process) comparison table</strong>,
+not an ad hoc addition (policy made explicit 2026-07-26, user-requested) — every mode that takes a
+variable-length message must include a 10 MiB row/column going forward, in addition to whatever
+smaller sizes that mode’s own table already tracks. Rationale unchanged from when this was first
+added: at 10 MiB, per-call setup cost (key schedule, process spawn already amortized via
+<code>--iterations</code>) is negligible next to the actual bulk-throughput work, so it isolates steady-state
+MB/s from initialization noise better than the smaller 64 B/1 KB/64 KB points the “Results”
+section’s older tables still carry. <strong>Exempt, and why</strong> (matching the existing “10 MiB
+re-measurement pass” section’s own list, not a new carve-out): <code>kalyna-block</code> (single block only,
+no variable-length mode exists for it), <code>kalyna-kw</code> (<code>MAX_R = 20</code> blocks, <code>docs/DECISIONS.md</code> D-55 - key
+material, not a general message), <code>kalyna-gmac</code> (measured at exactly one block by design, D-57’s
+UAPKI multi-block streaming-bug workaround — an oracle limitation, not an architectural one on
+this project’s own side), <code>kalyna-ccm</code> (<code>MAX_PLAINTEXT_LEN = 255</code> bytes, a real cap in this
+implementation). <strong>CMAC is not exempt</strong> — it authenticates an arbitrary-length message the same
+way GCM/XTS do, and already has a published 10 MiB row.</li>
+<li><strong>A benchmark comparison must match the <em>regime</em> of what it’s timing, not just the dominant
+primitive underneath it</strong> (policy made explicit 2026-08-06, user-requested, T-179’s <code>crypto_box</code>
+addendum). If the construction under test is a full sealed-box/envelope operation over an
+arbitrary-length message (KEM + KDF + bulk symmetric encryption, not a bare scalar multiplication
+or block-cipher call), the comparison binary must be doing the same kind of full operation — e.g.
+<code>openssl cms -encrypt</code>/<code>-decrypt</code> with an EC recipient for a hybrid public-key seal/open, not
+<code>openssl speed ecdh</code>’s bare scalar-multiplication loop. A primitive-level table (matching just the
+dominant cost) is still useful and can stay published alongside, but it does not substitute for a
+same-regime one once a full-construction comparison is possible — see DSTU 9041/<code>crypto_box</code>’s two
+tables below for the pattern to repeat for any future asymmetric construction.</li>
+<li><strong>Byte-identity-verified UAPKI comparison is now the standard for every future binary-level
+table</strong> (policy made explicit 2026-07-26, established by T-131/D-78’s CMAC/XTS wrapper rebuild —
+a “<code>uacrypt</code>-only, no UAPKI column, wrapper not rebuilt” table is a stopgap, not an acceptable
+final state, going forward). Concretely, before publishing a new or refreshed comparison table for
+any mode: (1) build or extend a small C wrapper against the pinned official prebuilt <code>uapkic.dll</code>
+(<code>gendef</code>/<code>dlltool</code> import lib, no CMake needed — D-71/D-78’s method) mirroring <code>uacrypt</code>’s own
+file-based CLI shape for that mode; (2) byte-diff the wrapper’s output against the real <code>uacrypt</code>
+binary for the same key/nonce-or-tweak/input, every variant, every direction, <strong>before trusting
+any timing</strong> — a number from an unverified wrapper is two programs possibly doing different work
+at different speeds, not a comparison (T-133’s standing check, first applied this way in D-78);
+(3) time both binaries back-to-back in the same session with nothing else CPU-heavy running (a
+contemporaneous Miri run once produced a spurious +4.9% “regression” this way — discarded, not
+published, see D-77’s narrative). Tables measured before this policy (block/CCM/GCM/GMAC/KW as of
+2026-07-26) are not retroactively invalidated, but their <code>uacrypt</code>-only re-runs should be paired
+with a real UAPKI column the next time that mode’s table is touched, not left permanently
+<code>uacrypt</code>-only.</li>
+<li><strong>Both directions are now standard, not just the forward one</strong> (policy made explicit 2026-07-26,
+user-requested — a one-sided table was found to be the norm up to this point and is being
+corrected going forward): every mode’s binary-level table must measure <code>decrypt</code> alongside
+<code>encrypt</code> (<code>kalyna-block</code>/<code>kalyna-ccm</code>/<code>kalyna-gcm</code>/<code>kalyna-xts</code>), <code>verify</code> alongside <code>compute</code>
+(<code>kalyna-cmac</code>/<code>kalyna-gmac</code>), and <code>unwrap</code> alongside <code>wrap</code> (<code>kalyna-kw</code>) — not just whichever
+single direction happened to be measured first. <strong>Exempt, and why</strong>: Strumok’s <code>apply_keystream</code>
+is its own inverse (XOR-based, encrypt and decrypt are the literal same operation) — measuring a
+second “direction” would just be re-measuring the same function, not new information. Kupyna has
+no inverse direction to measure (a hash has no decrypt).</li>
+</ul>
+<p><strong>Dev machine</strong>: AMD Ryzen 5 PRO 4650U (6 cores / 12 threads, ~2.1 GHz base), Windows 11 Pro. All
+UAPKI/Oliynykov/outspace comparison numbers below are from this machine only - those oracles
+aren’t built on the Raspberry Pi (see below), so it contributes no comparison columns, only this
+project’s own numbers.</p>
+<p><strong>Raspberry Pi</strong>: Raspberry Pi 5 Model B, Broadcom BCM2712 / ARM Cortex-A76 (4 cores, 2.4 GHz),
+Debian 12 (bookworm), <code>aarch64-unknown-linux-gnu</code> - the ARM/Linux hardware rig <code>docs/TASKS.md</code> “Testing
+&amp; hardening” tracks (<code>.claude.local.md</code> has access details). Added 2026-07-22 to check this
+project’s own numbers across a genuinely different CPU architecture, not just a different OS.</p>
+<p><strong>Recorded</strong>: 2026-07-22 (dev machine); 2026-07-22, later the same day (Raspberry Pi, once the rig
+existed).</p>
+<h2 id="implementations-compared"><a class="header" href="#implementations-compared">Implementations compared</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th></th><th>What it is</th><th>Optimization posture</th></tr>
+</thead>
+<tbody>
+<tr><td><strong>This project</strong> (<code>dstu_core</code>)</td><td>Rust, <code>hazmat</code> layer</td><td>Correctness-first MVP: shared S-box/MDS tables (D-13), but no combined/merged tables, no SIMD; Strumok’s original literal 16-word shift register (D-18) was replaced by a ring buffer 2026-07-22 (D-26), and <code>apply_keystream</code> gained a batched/fixed-index 128-byte bulk path 2026-07-27 (T-135, D-86) — this table’s “Strumok uses a literal shift register” framing is stale and superseded, kept only as the historical record of D-18’s original tradeoff</td></tr>
+<tr><td><strong>Oliynykov reference C</strong> (<code>oracles/kalyna-reference</code>, <code>oracles/kupyna-reference</code>)</td><td>The designers’ own reference implementation</td><td>Optimizes for auditability/clarity, not speed — confirmed by reading the source: <code>MixColumns</code> in <code>kupyna-reference/kupyna.c</code> computes <code>GF(2^8)</code> multiplication via an 8-iteration bit-serial loop (<code>MultiplyGF</code>), no precomputed table anywhere</td></tr>
+<tr><td><strong>UAPKI</strong> (<code>oracles/uapki</code>, <code>library/uapkic</code>)</td><td>A real, state-expertise-pedigree PKI library (D-16)</td><td>Production-optimized: combined S-box+permutation tables, no correctness/speed tradeoff made in this project’s favor</td></tr>
+<tr><td><strong>outspace/dstu8845</strong></td><td>Unofficial Strumok-only implementation (D-15)</td><td>Optimized — a rotating buffer plus a batched, fixed-index 128-byte bulk path (<code>next_stream_full_crypt</code>); this project matched both (D-26, then T-135/D-86), closing most of the former gap</td></tr>
+</tbody>
+</table>
+</div>
+<p>Kalyna/Kupyna official test vectors matched Oliynykov’s reference and Bouncy Castle already
+(D-13/D-10); UAPKI’s own self-test data matched this project’s vectors too (D-16). These are
+already-trusted oracles for correctness — this is the same set of implementations, measured for
+speed instead.</p>
+<h2 id="results-historical---superseded-by-binary-level-comparison-below-see-d-34"><a class="header" href="#results-historical---superseded-by-binary-level-comparison-below-see-d-34">Results (historical - superseded by “Binary-level comparison” below, see D-34)</a></h2>
+<p><strong>Superseded 2026-07-22, see <code>docs/DECISIONS.md</code> D-34</strong>: this whole section is in-process <code>criterion</code>
+numbers - useful at the time for tracking each optimization’s progress commit-by-commit, but no
+longer this project’s cross-implementation comparison method. Kept for the historical record of
+what was tried and in what order (D-27 through D-30’s incremental fixes), not deleted, but <strong>“##
+Binary-level (process) comparison” further below is now the single canonical comparison</strong> - a
+built CLI run as a real process, MB/s only, every implementation, every platform measured. Do not
+cite the tables in this section as a current performance claim.</p>
+<h3 id="kalyna-single-block-encrypt-nanoseconds--lower-is-better"><a class="header" href="#kalyna-single-block-encrypt-nanoseconds--lower-is-better">Kalyna (single-block encrypt, nanoseconds — lower is better)</a></h3>
+<p><strong>Updated 2026-07-22 after D-28</strong> (full S-box+shift+MDS fusion for encrypt, see below) — D-27
+figures kept for the record. <strong>All figures in this table: AMD Ryzen 5 PRO 4650U (dev machine) only</strong>
+— this is a historical optimization-progress snapshot predating the Raspberry Pi rig, see the
+block-only table further below for the cross-CPU comparison:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variant</th><th>Before D-27</th><th>After D-27</th><th><strong>After D-28</strong></th><th>UAPKI</th></tr>
+</thead>
+<tbody>
+<tr><td>128-128</td><td>4606</td><td>2354</td><td><strong>1041</strong></td><td>222</td></tr>
+<tr><td>128-256</td><td>6284</td><td>2999</td><td><strong>1283</strong></td><td>261</td></tr>
+<tr><td>256-256</td><td>11412</td><td>5443</td><td><strong>1956</strong></td><td>578</td></tr>
+<tr><td>256-512</td><td>14031</td><td>6645</td><td><strong>2296</strong></td><td>663</td></tr>
+<tr><td>512-512</td><td>27223</td><td>12735</td><td><strong>4006</strong></td><td>879</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>After D-28: ~3.4-4.9x slower than UAPKI (was ~10.6-14.5x)</strong> — decrypt (not fused this pass, see
+below) improved too, ~36-40%, purely from the key schedule sharing the now-fused <code>encipher_round</code>.
+Oliynykov’s reference C is excluded from this and the other performance tables below — it’s a
+correctness oracle (auditability-first, not speed-optimized, see “Implementations compared” above),
+not a relevant performance baseline.</p>
+<p><strong>Updated again 2026-07-22 after D-29</strong> (<code>ExpandedKey</code> — key schedule cached across calls instead
+of redone every time). <strong>All figures in this table: AMD Ryzen 5 PRO 4650U only</strong> (also predates the
+Pi rig):</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variant, block-only (schedule cached)</th><th>This project</th><th>UAPKI</th></tr>
+</thead>
+<tbody>
+<tr><td>128-128 encrypt</td><td><strong>133 ns</strong></td><td>222 ns</td></tr>
+<tr><td>128-128 decrypt</td><td>433 ns</td><td>222 ns</td></tr>
+<tr><td>256-256 encrypt</td><td><strong>268 ns</strong></td><td>578 ns</td></tr>
+<tr><td>256-256 decrypt</td><td>1435 ns</td><td>578 ns</td></tr>
+<tr><td>512-512 encrypt</td><td><strong>568 ns</strong></td><td>879 ns</td></tr>
+<tr><td>512-512 decrypt</td><td>3934 ns</td><td>879 ns</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>Encrypt, with the schedule cached, is now <em>faster</em> than UAPKI across every variant measured</strong> —
+the raw <code>encrypt</code> function (schedule redone every call) is still the ~3.4-4.9x-slower number above;
+<code>ExpandedKey</code> is the API a caller doing more than one block under the same key should use, and is
+also the API any future mode of operation (D-05) will need regardless of speed, to avoid redoing
+the schedule per block. Decrypt (not fused yet at this point) was 3.2-6.9x slower than
+encrypt-block-only — see D-30, resolved below.</p>
+<p><strong>Updated a third time 2026-07-22 after D-30</strong> (decrypt round fused too — equivalent-inverse-cipher
+restructuring, transformed interior round keys):</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variant, block-only (schedule cached)</th><th>This project (Ryzen 5 4650U)</th><th>This project (Pi 5 / Cortex-A76)</th><th>UAPKI (Ryzen 5 4650U)</th><th>UAPKI (Pi 5 / Cortex-A76)</th></tr>
+</thead>
+<tbody>
+<tr><td>128-128 encrypt</td><td>132 ns</td><td>241 ns</td><td>222 ns</td><td>233 ns</td></tr>
+<tr><td>128-128 decrypt</td><td><strong>144 ns</strong> (was 433 ns)</td><td>266 ns</td><td>222 ns</td><td>233 ns</td></tr>
+<tr><td>256-256 encrypt</td><td>268 ns</td><td>521 ns</td><td>578 ns</td><td>348 ns</td></tr>
+<tr><td>256-256 decrypt</td><td><strong>323 ns</strong> (was 1435 ns)</td><td>572 ns</td><td>578 ns</td><td>348 ns</td></tr>
+<tr><td>512-512 encrypt</td><td>573 ns</td><td>1185 ns</td><td>879 ns</td><td>632 ns</td></tr>
+<tr><td>512-512 decrypt</td><td><strong>691 ns</strong> (was 3934 ns)</td><td>1268 ns</td><td>879 ns</td><td>632 ns</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>Kalyna decrypt-block-only is now faster than UAPKI across every variant measured too (on the
+Ryzen dev machine - see the Pi correction just below the table)</strong> — combined
+with D-29’s encrypt result, this closes essentially the entire gap to UAPKI for <code>ExpandedKey</code>, the
+API any real multi-block caller (or future mode of operation) would actually use. The raw one-shot
+<code>decrypt</code> function (schedule <em>and</em> the new key-transform both recomputed every call) is a more
+mixed picture: slightly slower for the two smallest variants (the extra <code>nr-1</code> key-transform calls
+aren’t offset by round fusion at low round counts) but substantially faster for the three largest —
+an honest tradeoff of the one-shot convenience path, not a regression in the path that matters.
+New baseline: <code>kalyna-decryptfusion-2026-07-22</code>.</p>
+<p><strong>UAPKI (Pi 5) column added 2026-07-22, after building <code>library/uapkic</code> natively on the Pi</strong>
+(same pinned commit as the Ryzen build, plain <code>cmake</code>/<code>gcc</code>, no Windows-specific workaround
+needed - see D-33) <strong>specifically so the “beats UAPKI” claim above could be checked cross-
+architecture, not just asserted from one machine.</strong> It does not hold on the Pi: <strong>UAPKI is faster
+than this project’s Kalyna there, by ~1.5-1.9x</strong> (e.g. 512-512: 632 ns vs 1185 ns) - the reverse
+of the Ryzen result, where this project wins by ~1.4-1.9x. Same code, same D-28 fusion, opposite
+outcome depending on CPU architecture - see D-33 for the fuller writeup and the (untested)
+hypotheses for why, since chasing the actual cause is future work, not done here.</p>
+<h3 id="kupyna-digest-mbs--higher-is-better"><a class="header" href="#kupyna-digest-mbs--higher-is-better">Kupyna (digest, MB/s — higher is better)</a></h3>
+<p><strong>Updated 2026-07-22 after D-28</strong>:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th></th><th>64 B</th><th>1024 B</th><th>65536 B</th></tr>
+</thead>
+<tbody>
+<tr><td>Before D-27 (256, Ryzen)</td><td>2.17</td><td>5.26</td><td>5.85</td></tr>
+<tr><td>After D-27 (256, Ryzen)</td><td>5.80</td><td>13.30</td><td>14.57</td></tr>
+<tr><td><strong>After D-28</strong> (256, Ryzen)</td><td><strong>39.53</strong></td><td><strong>91.72</strong></td><td><strong>98.60</strong></td></tr>
+<tr><td>After D-28 (256, Raspberry Pi 5)</td><td>19.04</td><td>44.00</td><td>48.13</td></tr>
+<tr><td>UAPKI (256, Ryzen)</td><td>29.93</td><td>88.88</td><td>95.48</td></tr>
+<tr><td>UAPKI (256, Raspberry Pi 5)</td><td>22.94</td><td>63.94</td><td>72.61</td></tr>
+<tr><td>Before D-27 (512, Ryzen)</td><td>1.26</td><td>3.44</td><td>4.10</td></tr>
+<tr><td>After D-27 (512, Ryzen)</td><td>3.54</td><td>8.91</td><td>10.57</td></tr>
+<tr><td><strong>After D-28</strong> (512, Ryzen)</td><td><strong>26.89</strong></td><td><strong>69.26</strong></td><td><strong>80.99</strong></td></tr>
+<tr><td>After D-28 (512, Raspberry Pi 5)</td><td>12.29</td><td>31.18</td><td>36.92</td></tr>
+<tr><td>UAPKI (512, Ryzen)</td><td>18.50</td><td>74.46</td><td>85.92</td></tr>
+<tr><td>UAPKI (512, Raspberry Pi 5)</td><td>16.82</td><td>49.53</td><td>60.53</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>After D-28: Kupyna-256 is now 1.03-1.45x <em>faster</em> than UAPKI (crossed over from ~6.7x slower);
+Kupyna-512 is at rough parity (0.93-1.45x, i.e. within ~7% either side)</strong> — the full fusion plus a
+correctness/performance fix (see D-28: a runtime <code>%</code> by <code>nb</code>/<code>columns</code> was replaced with a bitmask,
+since both are always powers of two but not compile-time constants) closed essentially the entire
+gap, far beyond this task’s original “2-3x of UAPKI” expectation. <strong>Raspberry Pi rows added
+2026-07-22</strong> — this project’s own code is ~2.0-2.2x slower than the same code on the Ryzen dev
+machine (consistent with Kalyna’s ratio above), but <strong>UAPKI’s own Pi numbers don’t slow down by
+nearly as much (~1.2-1.4x vs its Ryzen numbers)</strong> — so on the Pi, UAPKI is actually <em>faster</em> than
+this project’s Kupyna (~1.2-1.6x, e.g. 65536 B/256: 72.61 vs 48.13 MB/s), reversing the “we beat
+UAPKI” result that holds on Ryzen. Same flip as Kalyna’s, see D-33.</p>
+<h3 id="strumok-apply_keystream-mbs--higher-is-better"><a class="header" href="#strumok-apply_keystream-mbs--higher-is-better">Strumok (<code>apply_keystream</code>, MB/s — higher is better)</a></h3>
+<p><strong>Updated 2026-07-22 after D-26</strong> (ring buffer + precomputed <code>T0..T7</code> tables, see below) — figures
+before that change are kept for the record, not deleted, since they’re the actual measurement the
+optimization was checked against:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th></th><th>64 B</th><th>1024 B</th><th>65536 B</th></tr>
+</thead>
+<tbody>
+<tr><td>This project, before D-26 (256, Ryzen)</td><td>29.36</td><td>118.67</td><td>144.27</td></tr>
+<tr><td>This project, <strong>after D-26</strong> (256, Ryzen)</td><td>195.86</td><td>553.58</td><td><strong>639.47</strong></td></tr>
+<tr><td>This project, after D-26 (256, Raspberry Pi 5)</td><td>123.02</td><td>332.15</td><td>371.88</td></tr>
+<tr><td>outspace (256, Ryzen)</td><td>198.89</td><td>1461.07</td><td>2055.05</td></tr>
+<tr><td>UAPKI (256, Ryzen)</td><td>132.60</td><td>442.73</td><td>588.71</td></tr>
+<tr><td>UAPKI (256, Raspberry Pi 5)</td><td>75.07</td><td>271.63</td><td>333.80</td></tr>
+<tr><td>This project, before D-26 (512, Ryzen)</td><td>30.31</td><td>115.92</td><td>145.61</td></tr>
+<tr><td>This project, <strong>after D-26</strong> (512, Ryzen)</td><td>198.70</td><td>545.19</td><td><strong>639.83</strong></td></tr>
+<tr><td>This project, after D-26 (512, Raspberry Pi 5)</td><td>123.17</td><td>332.12</td><td>371.25</td></tr>
+<tr><td>outspace (512, Ryzen)</td><td>230.29</td><td>1443.74</td><td>2131.68</td></tr>
+<tr><td>UAPKI (512, Ryzen)</td><td>103.28</td><td>511.11</td><td>556.20</td></tr>
+<tr><td>UAPKI (512, Raspberry Pi 5)</td><td>94.98</td><td>278.59</td><td>326.71</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>After D-26: now <em>faster</em> than UAPKI’s Strumok, ~3.2x slower than outspace</strong> (was ~4-5x slower
+than UAPKI, ~13-15x slower than outspace, before). <strong>The “~3.2x slower than outspace” figure is
+superseded 2026-07-27 by T-135’s batched/fixed-index rewrite (<code>docs/DECISIONS.md</code> D-86) — the binary-
+level gap is now ~1.19-1.25x, see the <code>strumok-crypt</code> section’s “Updated 2026-07-27” block below.
+This table’s own in-process 64 B/1024 B/65536 B numbers above were not re-measured this pass, kept
+here as the D-26-era historical record.</strong> No naive/reference-grade Strumok implementation
+exists to compare against for the “correctness-first” side of this story — see <code>docs/ORACLES.md</code>, no
+official DSTU 8845 reference implementation is publicly known to exist. <strong>Raspberry Pi rows added
+2026-07-22</strong> — this project’s own code is ~1.6-1.7x slower than the same code on the Ryzen dev
+machine (smaller gap than Kalyna/Kupyna’s ~1.8-2.2x above). <strong>Unlike Kalyna/Kupyna, this result
+does <em>not</em> flip on the Pi</strong>: this project still beats UAPKI there too, by ~1.1-1.6x (e.g. 64 B/256:
+123.02 vs 75.07 MB/s) — a smaller margin than Ryzen’s ~1.1-1.9x but the same direction. See D-33
+for the full cross-architecture writeup, including why Strumok behaves differently from Kalyna/
+Kupyna here.</p>
+<h2 id="binary-level-process-comparison--canonical-see-d-34"><a class="header" href="#binary-level-process-comparison--canonical-see-d-34">Binary-level (process) comparison — canonical, see D-34</a></h2>
+<p><strong>This is the only methodology this project uses for cross-implementation performance
+comparisons, per <code>docs/DECISIONS.md</code> D-34</strong> (added 2026-07-22, after a same-machine discrepancy between
+the in-process and binary-level Kupyna numbers surfaced exactly why mixing methods is a problem —
+see D-34): a built CLI — <code>uacrypt</code> for this project (renamed 2026-07-23 from <code>dstutool</code>, D-36 —
+same binary, same numbers below, name only), an equivalent thin CLI wrapper with the same
+file-based interface for each oracle — run as a real external process, on each machine measured.
+<strong>One metric only: MB/s.</strong> No <code>ns</code>/op tables, no <code>wall_ns</code> tables — process-spawn overhead was
+already confirmed negligible once amortized over <code>N</code> iterations (tens of milliseconds of one-time
+startup vs. the seconds-long timed loop; not re-measured every time since it doesn’t change).</p>
+<p>Each tool takes <code>--iterations N</code> and repeats the same in-memory block/digest/keystream op <code>N</code> times
+in one process invocation (<code>--raw-schedule</code>, where applicable, re-expands the key every iteration;
+without it, the key schedule is expanded once before the loop, matching <code>ExpandedKey</code>/each C
+library’s own key-setup-once convention) — this amortizes the one-time process startup over many
+operations rather than spawning a process per operation, which would measure OS process creation,
+not crypto.</p>
+<p><strong>Machines</strong>: both the Ryzen 5 PRO 4650U dev machine and the Raspberry Pi 5 (see “Methodology”
+above) now have <code>uacrypt</code> plus a CLI wrapper for UAPKI built; outspace’s Strumok wrapper is built
+on both too. Oliynykov’s reference C stays excluded from these tables — a deliberate, unchanged
+decision (not revisited by moving to a single method): it’s a correctness oracle, not a performance
+baseline (see “Implementations compared” above).</p>
+<h3 id="kalyna-kalyna-block-encryptdecrypt"><a class="header" href="#kalyna-kalyna-block-encryptdecrypt">Kalyna (<code>kalyna-block encrypt</code>/<code>decrypt</code>)</a></h3>
+<p>MB/s = block size / per-op time (16 bytes for 128-128, 64 bytes for 512-512) — not a
+message-length-dependent rate the way Kupyna/Strumok’s is, but the same unit for a consistent
+table shape. <strong>N = 20000 iterations on both machines:</strong></p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variant</th><th>Direction</th><th>Schedule</th><th>uacrypt (Ryzen)</th><th>UAPKI (Ryzen)</th><th>uacrypt (Pi 5)</th><th>UAPKI (Pi 5)</th></tr>
+</thead>
+<tbody>
+<tr><td>128-128</td><td>encrypt</td><td>cached</td><td><strong>125.98</strong></td><td>79.60</td><td>44.69</td><td><strong>87.43</strong></td></tr>
+<tr><td>128-128</td><td>encrypt</td><td>raw</td><td><strong>15.09</strong></td><td>0.92</td><td><strong>6.71</strong></td><td>0.32</td></tr>
+<tr><td>128-128</td><td>decrypt</td><td>cached</td><td><strong>114.29</strong></td><td>81.63</td><td>40.61</td><td><strong>84.21</strong></td></tr>
+<tr><td>128-128</td><td>decrypt</td><td>raw</td><td><strong>10.24</strong></td><td>0.91</td><td><strong>5.12</strong></td><td>0.32</td></tr>
+<tr><td>512-512</td><td>encrypt</td><td>cached</td><td>115.94</td><td><strong>134.45</strong></td><td>54.05</td><td><strong>100.00</strong></td></tr>
+<tr><td>512-512</td><td>encrypt</td><td>raw</td><td><strong>16.24</strong></td><td>2.79</td><td><strong>12.36</strong></td><td>1.14</td></tr>
+<tr><td>512-512</td><td>decrypt</td><td>cached</td><td>95.10</td><td><strong>125.49</strong></td><td>49.84</td><td><strong>100.63</strong></td></tr>
+<tr><td>512-512</td><td>decrypt</td><td>raw</td><td><strong>13.00</strong></td><td>2.84</td><td><strong>10.31</strong></td><td>1.14</td></tr>
+</tbody>
+</table>
+</div>
+<p>Confirms D-33’s in-process finding via the canonical method too: <strong>on the Pi, UAPKI wins the
+cached (schedule-cached, real-usage) case</strong> — this project trails by roughly 1.9-2.0x there
+(e.g. 512-512 encrypt: 100.00 vs 54.05) — the reverse of the Ryzen result, where this project
+leads by ~1.4-1.9x. The <em>raw</em> (schedule-redone-every-call) case doesn’t flip on either machine:
+UAPKI’s raw numbers are dramatically worse everywhere (its per-call key setup is expensive), so
+this project wins raw on both platforms regardless of the cached-case reversal.</p>
+<p><strong>Reproducing</strong>: <code>cargo build -p uacrypt --release</code>, then <code>target/release/uacrypt kalyna-block encrypt --variant &lt;variant&gt; --key &lt;path&gt; --in &lt;path&gt; --out &lt;path&gt; --iterations &lt;N&gt; [--raw-schedule]</code>. The UAPKI comparison CLI is a one-off C wrapper (same file interface and flags)
+built the same way as this file’s other C comparisons — not committed; built fresh on each machine
+against <code>library/uapkic</code>’s pinned commit (<code>docs/ORACLES.md</code>).</p>
+<p><strong>Updated 2026-07-26 (<code>docs/TASKS.md</code> T-121, <code>docs/DECISIONS.md</code> D-71)</strong>: expanded to all 5 variants (was 2),
+Ryzen dev machine only this pass — the Pi rig was out of scope. <code>N = 20000</code>. <strong>UAPKI wrapper built
+against the official prebuilt <code>uapkic-v2.0.12</code> Windows DLL</strong> (<code>gendef</code>/<code>dlltool</code> import lib, no
+CMake — see D-71) instead of a from-source build; cross-checked byte-identical against the real
+<code>uacrypt</code> release binary before timing. UAPKI’s <em>raw</em> (schedule-redone-per-call) numbers were not
+re-measured for the 3 newly-added variants this pass — only cached-schedule, all 5:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variant</th><th>Direction</th><th>uacrypt cached (MB/s)</th><th>UAPKI cached (MB/s)</th><th>uacrypt raw (MB/s)</th></tr>
+</thead>
+<tbody>
+<tr><td>128-128</td><td>encrypt</td><td><strong>108.11</strong></td><td>86.86</td><td>14.65</td></tr>
+<tr><td>128-256</td><td>encrypt</td><td>78.05</td><td><strong>78.20</strong></td><td>12.05</td></tr>
+<tr><td>256-256</td><td>encrypt</td><td><strong>124.51</strong></td><td>121.12</td><td>16.53</td></tr>
+<tr><td>256-512</td><td>encrypt</td><td>97.26</td><td><strong>107.20</strong></td><td>14.05</td></tr>
+<tr><td>512-512</td><td>encrypt</td><td>112.48</td><td><strong>117.26</strong></td><td>15.94</td></tr>
+</tbody>
+</table>
+</div>
+<p>Roughly at parity across all 5 variants at the cached-schedule level (within ~1-10% either way,
+narrower than the 2026-07-22 table’s ~1.4-1.9x Kalyna lead) — a real, measured difference from the
+original 2-variant table, not just more data points: 128-256/256-512/512-512 now show UAPKI
+slightly ahead rather than this project leading everywhere. Not root-caused further this session.</p>
+<p><strong>Updated 2026-07-26, <code>uacrypt</code>-only re-run after T-128</strong> (const-generic round functions — no UAPKI
+column, wrapper not rebuilt this session, T-131), cached schedule, both directions, N = 20000:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variant</th><th>uacrypt encrypt (MB/s)</th><th>uacrypt decrypt (MB/s)</th><th>vs. pre-T-128 encrypt row</th></tr>
+</thead>
+<tbody>
+<tr><td>128-128</td><td><strong>219.18</strong></td><td>192.77</td><td>+102.7% (was 108.11)</td></tr>
+<tr><td>128-256</td><td><strong>160.00</strong></td><td>142.86</td><td>+105.0% (was 78.05)</td></tr>
+<tr><td>256-256</td><td><strong>146.12</strong></td><td>164.10</td><td>+17.4% (was 124.51)</td></tr>
+<tr><td>256-512</td><td><strong>113.88</strong></td><td>125.49</td><td>+17.1% (was 97.26)</td></tr>
+<tr><td>512-512</td><td><strong>139.13</strong></td><td>102.73</td><td>+23.7% (was 112.48)</td></tr>
+</tbody>
+</table>
+</div>
+<p>Same <code>nb=2</code>-vs-<code>nb=4</code>/<code>nb=8</code> split T-128’s own isolated criterion measurement predicted (~100%+
+gain at <code>nb=2</code>, ~17-24% at <code>nb=4</code>/<code>nb=8</code>) — this CLI-level number (includes process/loop overhead
+<code>criterion</code> doesn’t) still tracks the mechanism cleanly.</p>
+<p><strong>UAPKI column rebuilt same day (T-131/D-78 extension, <code>docs/DECISIONS.md</code> D-80)</strong> — byte-for-byte
+confirmed against the real <code>uacrypt</code> binary (both directions, all 5 variants) before timing;
+<code>dstu7624_init_ecb</code>’s cost is excluded from the timed window here (same convention as GCM/KW/XTS
+below, not the GMAC bug described above — this mode was written correctly from the start):</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variant</th><th>uacrypt encrypt (MB/s)</th><th>UAPKI encrypt (MB/s)</th><th>uacrypt decrypt (MB/s)</th><th>UAPKI decrypt (MB/s)</th></tr>
+</thead>
+<tbody>
+<tr><td>128-128</td><td><strong>219.18</strong></td><td>74.07</td><td><strong>177.78</strong></td><td>68.67</td></tr>
+<tr><td>128-256</td><td><strong>158.42</strong></td><td>55.75</td><td><strong>137.93</strong></td><td>60.38</td></tr>
+<tr><td>256-256</td><td><strong>146.79</strong></td><td>113.07</td><td><strong>165.80</strong></td><td>102.89</td></tr>
+<tr><td>256-512</td><td><strong>111.50</strong></td><td>91.69</td><td><strong>131.15</strong></td><td>89.64</td></tr>
+<tr><td>512-512</td><td><strong>137.63</strong></td><td>107.02</td><td>97.41</td><td><strong>121.44</strong></td></tr>
+</tbody>
+</table>
+</div>
+<p>uacrypt leads on 9 of 10 cells (encrypt: every variant; decrypt: 4 of 5) — 512-512 decrypt is the
+one cell where UAPKI now leads, consistent with the encrypt/decrypt asymmetry described below (this
+run’s own decrypt numbers differ from the encrypt-only table just above by ~5-8% run-to-run, normal
+noise for this benchmark, not a regression). <strong>Encrypt/decrypt asymmetry, same pattern
+XTS shows above</strong>: 256-256/256-512 decrypt now runs <em>faster</em> than encrypt, while 128-128/128-256/
+512-512 keep encrypt ahead — <code>encipher_round_n</code>/<code>fused_inv_round_n</code> are different code paths
+(T-128/D-77), so the two directions were never guaranteed to move by the same amount.</p>
+<p><strong><code>cppcrypto</code> 0.20 column added 2026-08-03</strong> (<code>docs/DECISIONS.md</code> D-154, <code>docs/ORACLES.md</code> — an
+oracle candidate, independence not established/not refuted). No CLI of its own matching this
+convention (its <code>cryptor</code> tool is hardcoded to Serpent-256), so measured via a small harness calling
+its library API directly, matching this table’s own conventions exactly: key schedule (<code>init</code>)
+excluded from the timed window, cached-schedule, N=20000. <code>uacrypt</code>’s own numbers re-measured fresh
+in the same session (<code>cargo build -p uacrypt --release</code> reported no recompilation needed — already
+current) rather than reused from the table above:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variant</th><th>uacrypt encrypt (MB/s)</th><th>cppcrypto encrypt (MB/s)</th><th>uacrypt decrypt (MB/s)</th><th>cppcrypto decrypt (MB/s)</th></tr>
+</thead>
+<tbody>
+<tr><td>128-128</td><td>206.20</td><td><strong>340.33</strong></td><td>179.52</td><td><strong>264.89</strong></td></tr>
+<tr><td>128-256</td><td>146.72</td><td><strong>247.81</strong></td><td>132.69</td><td><strong>201.44</strong></td></tr>
+<tr><td>256-256</td><td>137.47</td><td><strong>242.06</strong></td><td>158.95</td><td><strong>210.40</strong></td></tr>
+<tr><td>256-512</td><td>107.84</td><td><strong>190.25</strong></td><td>124.56</td><td><strong>169.07</strong></td></tr>
+<tr><td>512-512</td><td>133.26</td><td><strong>175.58</strong></td><td>99.24</td><td><strong>164.59</strong></td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>cppcrypto wins all 10 cells</strong>, by roughly 1.3-1.9x — unlike the UAPKI columns above, where the
+Ryzen result usually favors <code>uacrypt</code>. Correctness confirmed first (<code>docs/DECISIONS.md</code> D-154): all
+10 official <code>Kalyna.pdf</code> vectors matched byte-for-byte before any timing was trusted, per this
+project’s own standing practice. Not re-measured on the Raspberry Pi — <code>cppcrypto</code>’s upstream build
+needs <code>yasm</code> (x86/x64-only, no ARM target) for the rest of the library even though Kalyna/Kupyna
+themselves don’t need it, and D-33 already shows a single-platform Kalyna number is not a general
+claim, so this gap is stated rather than assumed either way.</p>
+<p><strong>Re-measured 2026-08-04 after T-172’s genuine-unroll landed (<code>docs/DECISIONS.md</code> D-161)</strong> —
+re-downloaded and rebuilt <code>cppcrypto</code> fresh (scratchpad doesn’t persist across sessions; confirmed
+byte-identical zip via sha256 against D-154’s own pinned hash), N=300000, same machine, same-session
+<code>uacrypt</code> on both sides of the before/after:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variant</th><th>Direction</th><th style="text-align: right">Gap before T-172</th><th style="text-align: right">Gap after T-172</th></tr>
+</thead>
+<tbody>
+<tr><td>128-128</td><td>encrypt</td><td style="text-align: right">1.61x</td><td style="text-align: right"><strong>1.34x</strong></td></tr>
+<tr><td>128-128</td><td>decrypt</td><td style="text-align: right">1.49x</td><td style="text-align: right"><strong>1.07x</strong></td></tr>
+<tr><td>128-256</td><td>encrypt</td><td style="text-align: right">1.64x</td><td style="text-align: right"><strong>1.33x</strong></td></tr>
+<tr><td>128-256</td><td>decrypt</td><td style="text-align: right">1.52x</td><td style="text-align: right"><strong>1.13x</strong></td></tr>
+<tr><td>256-256</td><td>encrypt</td><td style="text-align: right">1.72x</td><td style="text-align: right"><strong>1.42x</strong></td></tr>
+<tr><td>256-256</td><td>decrypt</td><td style="text-align: right">1.42x</td><td style="text-align: right"><strong>1.06x</strong></td></tr>
+<tr><td>256-512</td><td>encrypt</td><td style="text-align: right">1.69x</td><td style="text-align: right">1.61x</td></tr>
+<tr><td>256-512</td><td>decrypt</td><td style="text-align: right">1.35x</td><td style="text-align: right">1.31x</td></tr>
+<tr><td>512-512</td><td>encrypt</td><td style="text-align: right">1.32x</td><td style="text-align: right">1.34x</td></tr>
+<tr><td>512-512</td><td>decrypt</td><td style="text-align: right">1.69x</td><td style="text-align: right"><strong>1.31x</strong></td></tr>
+</tbody>
+</table>
+</div>
+<p>Gap closed materially on 7 of 10 cells (128-128/256-256 decrypt now near parity, 1.06-1.07x); the 3
+that didn’t move (256-512 both directions, 512-512 encrypt) are exactly the cells D-161’s own
+<code>NB=8</code>-non-inlining/Stage-A-flat findings predicted wouldn’t — the remaining gap tracks the
+mechanism, not a random residual. Full numbers, methodology, and the before/after <code>uacrypt</code>
+comparison: D-161.</p>
+<h3 id="kalyna-ccm-kalyna-ccm-encrypt"><a class="header" href="#kalyna-ccm-kalyna-ccm-encrypt">Kalyna-CCM (<code>kalyna-ccm encrypt</code>)</a></h3>
+<p>No binary-level table existed for CCM before this session — <code>kalyna-ccm</code> had no <code>--iterations</code> flag
+at all until T-121 added one (D-71). <strong>64 B message, N = 5000, all 5 variants, Ryzen only:</strong></p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variant</th><th>uacrypt (MB/s)</th><th>UAPKI (MB/s)</th></tr>
+</thead>
+<tbody>
+<tr><td>128-128</td><td><strong>29.77</strong></td><td>2.48</td></tr>
+<tr><td>128-256</td><td><strong>21.18</strong></td><td>3.27</td></tr>
+<tr><td>256-256</td><td><strong>27.73</strong></td><td>3.16</td></tr>
+<tr><td>256-512</td><td><strong>19.49</strong></td><td>2.39</td></tr>
+<tr><td>512-512</td><td><strong>15.04</strong></td><td>1.94</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>This project wins by a wide margin (~7-12x) on every variant</strong> — the opposite pattern from
+Kalyna-block/GCM above. Cause found by reading UAPKI’s own source, not guessed: <code>hazmat::kalyna_ccm</code>
+works entirely on fixed-size stack arrays (no heap allocation, by design — see its module doc
+comment’s no-alloc precedent), while UAPKI’s <code>dstu7624_encrypt_ccm</code>/<code>ccm_padd</code> allocate multiple
+<code>ByteArray</code>s per call (<code>CALLOC_CHECKED</code>/<code>ba_alloc_from_uint8</code> for the auth-data buffer, the
+plaintext-length buffer, the CTR output, the join) — for a 64-byte message the allocation overhead
+dominates the actual block-cipher work. <strong>Not a byte-for-byte cross-tool-verified number</strong> (D-71):
+UAPKI’s CCM <code>cipher_data</code> output bundles an extra CTR-encrypted tag block into the ciphertext rather
+than returning tag separately (a different wire convention, not a bug), so this timing is
+UAPKI-self-consistent (its own encrypt round-trips through its own decrypt) rather than compared
+against our exact output shape the way the other modes below are.</p>
+<p><strong>Reproducing</strong>: <code>target/release/uacrypt kalyna-ccm encrypt --variant &lt;v&gt; --key &lt;path&gt; --nonce &lt;path&gt; --in &lt;path&gt; --out &lt;path&gt; --tag &lt;path&gt; --iterations &lt;N&gt;</code>.</p>
+<p><strong>Updated 2026-07-26, re-run after T-128</strong>, 64 B, N = 5000, both directions:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variant</th><th>uacrypt encrypt (MB/s)</th><th>uacrypt decrypt (MB/s)</th><th>vs. pre-T-128 encrypt row</th></tr>
+</thead>
+<tbody>
+<tr><td>128-128</td><td><strong>50.24</strong></td><td>49.57</td><td>+68.8% (was 29.77)</td></tr>
+<tr><td>128-256</td><td><strong>40.18</strong></td><td>39.29</td><td>+89.7% (was 21.18)</td></tr>
+<tr><td>256-256</td><td><strong>32.87</strong></td><td>32.24</td><td>+18.6% (was 27.73)</td></tr>
+<tr><td>256-512</td><td><strong>23.33</strong></td><td>22.21</td><td>+19.7% (was 19.49)</td></tr>
+<tr><td>512-512</td><td><strong>18.70</strong></td><td>16.98</td><td>+24.3% (was 15.04)</td></tr>
+</tbody>
+</table>
+</div>
+<p>Same <code>nb=2</code>/<code>nb=4</code>/<code>nb=8</code> gain split as Kalyna-block above — CCM is a CTR-mode pass plus a CBC-MAC
+over the same block cipher, so it inherits T-128’s round-function speedup directly. Encrypt/decrypt
+symmetric within normal noise (unlike XTS/block above), consistent with CCM’s decrypt path being
+essentially the same CTR+MAC work run in the same order.</p>
+<p><strong>UAPKI column added same day (T-131/D-78 extension, <code>docs/DECISIONS.md</code> D-80) — still not byte-for-byte
+comparable, same documented reason as before, now confirmed by reading the C source directly rather
+than inferred</strong>: <code>dstu7624_encrypt_ccm</code> (<code>dstu7624.c:2792</code>) returns <code>cipher_data</code> as
+ciphertext-with-a-trailing-CTR-encrypted-checksum-suffix, but <code>dstu7624_decrypt_ccm</code> never actually
+verifies against that suffix — it recomputes the checksum from the decrypted plaintext (<code>ccm_padd</code>)
+and compares against a separately-supplied <code>h_ba</code> value instead, silently discarding the suffix it
+just decrypted. There is no single “tag” file in UAPKI’s own convention equivalent to <code>uacrypt</code>’s
+separate ciphertext+tag files, so this wrapper preserves UAPKI’s own two-value convention
+(<code>--out</code> = full <code>cipher_data</code> blob, <code>--tag</code> = the real <code>h_ba</code> verification value) rather than forcing
+a comparison that isn’t meaningful. Timed self-consistently (UAPKI encrypts, UAPKI decrypts its own
+output, round-trips confirmed), both directions, same 64 B scale:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variant</th><th>UAPKI encrypt (MB/s)</th><th>UAPKI decrypt (MB/s)</th></tr>
+</thead>
+<tbody>
+<tr><td>128-128</td><td>2.71</td><td>3.50</td></tr>
+<tr><td>128-256</td><td>3.28</td><td>3.31</td></tr>
+<tr><td>256-256</td><td>3.17</td><td>2.30</td></tr>
+<tr><td>256-512</td><td>2.48</td><td>2.46</td></tr>
+<tr><td>512-512</td><td>2.24</td><td>2.40</td></tr>
+</tbody>
+</table>
+</div>
+<p>Still the same ~7-20x uacrypt lead the earlier no-UAPKI-column table implied by comparison to the
+historical pre-T-128 UAPKI row (2.48-3.27 MB/s) — this project’s own per-call allocation-free design
+(no heap allocation in <code>hazmat::kalyna_ccm</code>, by construction) remains the dominant reason, not
+affected by the GMAC-class setup-timing bug found and fixed elsewhere this session (CCM’s wrapper
+was written fresh this turn with the timer already placed after <code>init_ccm</code>, matching block/GCM/KW).</p>
+<h3 id="kalyna-gcm-kalyna-gcm-encrypt"><a class="header" href="#kalyna-gcm-kalyna-gcm-encrypt">Kalyna-GCM (<code>kalyna-gcm encrypt</code>)</a></h3>
+<p>New command this session (T-121, D-71) — no message-length cap, unlike CCM. <strong>All 5 variants, 64 B
+and 1 MiB, Ryzen only:</strong></p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variant</th><th>uacrypt 64 B (MB/s)</th><th>UAPKI 64 B (MB/s)</th><th>uacrypt 1 MiB (MB/s)</th><th>UAPKI 1 MiB (MB/s)</th></tr>
+</thead>
+<tbody>
+<tr><td>128-128</td><td>15.86</td><td><strong>11.59</strong>*</td><td>10.49</td><td><strong>12.48</strong></td></tr>
+<tr><td>128-256</td><td>14.63</td><td><strong>11.39</strong>*</td><td>10.08</td><td><strong>12.46</strong></td></tr>
+<tr><td>256-256</td><td>10.99</td><td><strong>14.67</strong></td><td>8.33</td><td><strong>18.12</strong></td></tr>
+<tr><td>256-512</td><td>10.28</td><td><strong>14.17</strong></td><td>8.17</td><td><strong>17.48</strong></td></tr>
+<tr><td>512-512</td><td><strong>6.07</strong></td><td>4.19</td><td><strong>5.41</strong></td><td>4.70</td></tr>
+</tbody>
+</table>
+</div>
+<p>* uacrypt wins the 64 B case for 128-128/128-256 specifically (15.86/14.63 vs. 11.59/11.39) despite
+losing every other cell in this table — small-message overhead shape differs between the two
+implementations, not investigated further. <strong>UAPKI wins the 1 MiB case on 3 of 5 variants</strong>,
+sometimes by a wide margin (256-256: 18.12 vs. 8.33, ~2.2x) — the reverse of CCM’s result above,
+consistent with GCM/GHASH-style field-multiplication throughput being a different bottleneck than
+CCM’s per-call allocation cost. Byte-for-byte cross-checked against the real <code>uacrypt</code> binary before
+timing (unlike CCM, GCM’s wire format matches: same-length ciphertext, tag returned separately).</p>
+<p><strong>Root-caused and fixed 2026-07-26, <code>docs/TASKS.md</code> T-125, <code>docs/DECISIONS.md</code> D-76</strong>: an isolated timing
+diagnostic (<code>hazmat::gf2m_wide</code>’s <code>field_axiom_tests::isolated_timing_*</code>, comparing
+<code>Gf2m*::multiply</code> in isolation against a single <code>ExpandedKey::encrypt_block</code>) measured the field
+multiply at <strong>89.6% (m=128), 91.8% (m=256), and 94.3% (m=512) of GCM’s total per-block cost</strong> —
+confirming, with a number instead of an inference, that <code>poly_mul_wide</code>’s O(m²) bit-serial multiply
+was the actual bottleneck, not the block cipher (this <em>is</em> the profiling T-125 originally called
+for, not a guess). Fixed by replacing <code>poly_mul_wide</code> with a 4-bit-window comb method (precompute
+<code>T[i] = a*i</code> for all 16 nibble values, walk the other operand’s nibbles most-significant-first) —
+<code>m/4</code> accumulator iterations instead of <code>m</code>, verified against every existing GCM/GMAC/XTS official
+vector and the field-axiom property tests (no new correctness test needed — a multiply
+implementation swap is exactly what those already check). Measured ~1.8-2.3x faster on the multiply
+itself (narrower than a pure iteration-count argument predicts; not chased further). <strong>Re-measured,
+same 64 B/1 MiB scale:</strong></p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variant</th><th>uacrypt 64 B (MB/s)</th><th>UAPKI 64 B (MB/s)</th><th>uacrypt 1 MiB (MB/s)</th><th>UAPKI 1 MiB (MB/s)</th></tr>
+</thead>
+<tbody>
+<tr><td>128-128</td><td><strong>18.48</strong></td><td>11.60</td><td><strong>18.20</strong></td><td>12.67</td></tr>
+<tr><td>128-256</td><td><strong>15.79</strong></td><td>11.39</td><td><strong>16.99</strong></td><td>12.63</td></tr>
+<tr><td>256-256</td><td><strong>16.19</strong></td><td>14.61</td><td>16.60</td><td><strong>18.10</strong></td></tr>
+<tr><td>256-512</td><td><strong>14.84</strong></td><td>13.53</td><td>15.99</td><td><strong>17.71</strong></td></tr>
+<tr><td>512-512</td><td><strong>10.21</strong></td><td>4.27</td><td><strong>12.60</strong></td><td>4.75</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>This project’s own GCM throughput improved ~1.7-2.3x across every variant</strong> (e.g. 512-512 at
+1 MiB: 5.41 → 12.60 MB/s), UAPKI’s numbers unchanged as expected. <strong>T-125’s original finding — the
+256-256/256-512 variants losing by &gt;2x at 1 MiB — is resolved</strong>: the gap narrowed from ~2.14-2.18x
+to <strong>~1.09-1.11x</strong>, safely under the 2x line that flagged it in the first place; 128-128/128-256
+flip from trailing to <em>leading</em> (~1.35-1.44x), and 512-512’s lead widens further (~2.65x, up from
+~1.15x). Kalyna-GMAC (same field arithmetic, one multiply per block) improved by the same
+mechanism — re-measured at the existing 1-block scale, this project’s own throughput roughly
+doubled on every variant (e.g. 512-512: 4.76 → 12.91 MB/s), widening an already-large lead further.</p>
+<p><strong>Reproducing</strong>: <code>target/release/uacrypt kalyna-gcm encrypt --variant &lt;v&gt; --key &lt;path&gt; --nonce &lt;path&gt; --in &lt;path&gt; --out &lt;path&gt; --tag &lt;path&gt; --iterations &lt;N&gt;</code>.</p>
+<p><strong>Updated 2026-07-26, 10 MiB, N = 50</strong> (T-128’s const-generic round-function fix,
+not a new GCM-specific change — GCM’s own field multiply still dominates per-block cost, so the
+improvement here is smaller than T-128’s own block-only numbers); do not compare these numbers
+directly against the 1 MiB table above’s UAPKI column (different message size).</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variant</th><th>uacrypt encrypt (MB/s)</th><th>uacrypt decrypt (MB/s)</th></tr>
+</thead>
+<tbody>
+<tr><td>128-128</td><td>19.85</td><td>19.85</td></tr>
+<tr><td>128-256</td><td>19.47</td><td>19.45</td></tr>
+<tr><td>256-256</td><td>17.09</td><td>17.09</td></tr>
+<tr><td>256-512</td><td>16.59</td><td>16.60</td></tr>
+<tr><td>512-512</td><td>12.84</td><td>12.84</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>UAPKI column rebuilt same day (T-131/D-78 extension, <code>docs/DECISIONS.md</code> D-80)</strong> — byte-for-byte
+confirmed against <code>uacrypt</code> (both directions, all variants), same 10 MiB scale, before timing:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variant</th><th>uacrypt encrypt (MB/s)</th><th>UAPKI encrypt (MB/s)</th><th>uacrypt decrypt (MB/s)</th><th>UAPKI decrypt (MB/s)</th></tr>
+</thead>
+<tbody>
+<tr><td>128-128</td><td><strong>19.93</strong></td><td>12.90</td><td><strong>19.95</strong></td><td>12.90</td></tr>
+<tr><td>128-256</td><td><strong>19.27</strong></td><td>12.74</td><td><strong>19.58</strong></td><td>12.75</td></tr>
+<tr><td>256-256</td><td>17.17</td><td><strong>18.21</strong></td><td>17.17</td><td><strong>18.32</strong></td></tr>
+<tr><td>256-512</td><td>16.66</td><td><strong>17.63</strong></td><td>16.67</td><td>15.84</td></tr>
+<tr><td>512-512</td><td><strong>12.90</strong></td><td>4.74</td><td><strong>12.90</strong></td><td>4.76</td></tr>
+</tbody>
+</table>
+</div>
+<p>Mixed, same pattern the 1 MiB table already showed: uacrypt leads 128-128/128-256/512-512, UAPKI
+leads 256-256/256-512 (barely, and only on encrypt for 256-512 — its own decrypt number dips below
+uacrypt there, within the kind of run-to-run variance already seen elsewhere in this file). Encrypt
+and decrypt are symmetric on both implementations here (unlike XTS/block/KW), consistent with GCM’s
+cost being field-multiply-dominated rather than round-function-direction-dependent.</p>
+<p>Encrypt/decrypt symmetric within measurement noise (&lt;0.1% apart on every variant), exactly as
+expected — Kalyna-GCM’s decrypt path is CTR-mode decryption plus the same GHASH-style tag
+computation as encrypt, doing the same amount of work either direction.</p>
+<p>Consistent with (slightly above) the post-T-125 1 MiB row above on every variant, as expected — GCM
+was already steady-state at 1 MiB, and T-128 only speeds up the ~6-10% of per-block cost that isn’t
+the field multiply.</p>
+<h3 id="kupyna-kupyna-digest"><a class="header" href="#kupyna-kupyna-digest">Kupyna (<code>kupyna-digest</code>)</a></h3>
+<p><code>Kupyna256</code>/<code>Kupyna512::digest</code> already take an arbitrary-length message, so <code>kupyna-digest --variant &lt;256|512&gt; --in &lt;path&gt; --out &lt;path&gt; [--iterations N]</code> is a complete, real feature, not a
+scoped-down benchmarking scaffold. No key, so no cached-vs-raw distinction. <strong>64 KB message, N =
+2000 iterations on both machines:</strong></p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variant</th><th>uacrypt (Ryzen)</th><th>UAPKI (Ryzen)</th><th>uacrypt (Pi 5)</th><th>UAPKI (Pi 5)</th></tr>
+</thead>
+<tbody>
+<tr><td>Kupyna-256</td><td>94.14</td><td><strong>104.95</strong></td><td>48.18</td><td><strong>71.87</strong></td></tr>
+<tr><td>Kupyna-512</td><td>75.35</td><td><strong>88.48</strong></td><td>36.64</td><td><strong>60.56</strong></td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>UAPKI wins on both machines here, at the binary level</strong> — this is the discrepancy D-34
+documents: the (now-superseded) in-process table above claimed this project was 1.03-1.45x
+<em>faster</em> than UAPKI on Ryzen, but the binary-level numbers here (measured the same day, same
+machine) put UAPKI ahead by a similar small margin instead (~10-17%). Kept as-is, not “corrected”
+to agree with the in-process figure — this is exactly the kind of cross-method disagreement D-34
+exists to stop producing, and the binary-level number is the one this project now treats as
+authoritative. The Pi gap is larger and in the same direction (UAPKI ahead by ~1.5-1.7x there).</p>
+<p><strong>Reproducing</strong>: same pattern as Kalyna’s.</p>
+<p><strong>Updated 2026-07-26 (T-121/D-71)</strong>: added a 1 MiB data point alongside the existing 64 KB one,
+Ryzen only, same <code>N = 2000</code>/<code>N = 100</code> split as the Kupyna/Strumok convention below:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variant</th><th>Size</th><th>uacrypt (MB/s)</th><th>UAPKI (MB/s)</th></tr>
+</thead>
+<tbody>
+<tr><td>Kupyna-256</td><td>1 MiB</td><td>99.35</td><td><strong>136.39</strong></td></tr>
+<tr><td>Kupyna-512</td><td>1 MiB</td><td>81.68</td><td><strong>118.19</strong></td></tr>
+</tbody>
+</table>
+</div>
+<p>Same direction as the existing 64 B/1 KB/64 KB rows (UAPKI ahead throughout), margin widens slightly
+at 1 MiB (~1.37x/1.45x vs. ~1.05-1.12x at 65536 B) rather than converging — UAPKI’s lead grows
+somewhat with message size here, not shrinks.</p>
+<p><strong>Updated 2026-07-27 (T-134, <code>docs/DECISIONS.md</code> D-85)</strong>: <code>sub_shift_mix</code>/<code>compress</code> became const-generic
+over <code>COLUMNS</code>, so all three rows above are superseded. Fresh Ryzen-only wrapper (<code>kupyna_bench.c</code>,
+scratch-only per this section’s methodology, same <code>dstu7564_init</code>/<code>update</code>/<code>final</code> calls repeated
+<em>inside</em> the timed loop every iteration - matching <code>uacrypt</code>’s own <code>bench_in_memory!</code> macro, which
+constructs a fresh <code>Kupyna*Hasher</code> every iteration too, so there is no schedule/setup cost to
+exclude here the way Kalyna’s key expansion needs excluding). Byte-identity verified against
+<code>uacrypt kupyna-digest</code> at <code>--iterations 1</code> before trusting any timing, both variants:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variant</th><th>Size</th><th>uacrypt (MB/s)</th><th>UAPKI (MB/s)</th><th>vs. this table’s own pre-T-134 row</th></tr>
+</thead>
+<tbody>
+<tr><td>Kupyna-256</td><td>64 KB</td><td><strong>137.92</strong></td><td>126.87</td><td>uacrypt +46.5% (was 94.14); UAPKI ahead by 1.17x pre-T-134, uacrypt now ahead by 1.09x</td></tr>
+<tr><td>Kupyna-512</td><td>64 KB</td><td>97.18</td><td><strong>116.73</strong></td><td>uacrypt +29.0% (was 75.35); UAPKI still ahead, margin narrows to 1.20x (was 1.17x)</td></tr>
+<tr><td>Kupyna-256</td><td>1 MiB</td><td><strong>139.35</strong></td><td>137.61</td><td>uacrypt +40.3% (was 99.35); UAPKI’s 1.37x lead is gone, roughly at parity (1.01x)</td></tr>
+<tr><td>Kupyna-512</td><td>1 MiB</td><td>98.73</td><td><strong>117.39</strong></td><td>uacrypt +20.9% (was 81.68); UAPKI still ahead, margin narrows to 1.19x (was 1.45x)</td></tr>
+<tr><td>Kupyna-256</td><td>10 MiB</td><td>139.52</td><td><strong>149.66</strong></td><td>uacrypt +41.7% (was 98.44); UAPKI still ahead, margin narrows to 1.07x (was ~1.45x)</td></tr>
+<tr><td>Kupyna-512</td><td>10 MiB</td><td>98.65</td><td><strong>117.77</strong></td><td>uacrypt +21.4% (was 81.29); UAPKI still ahead, margin holds at ~1.19x (was ~1.45x)</td></tr>
+</tbody>
+</table>
+</div>
+<p><code>uacrypt</code>’s own throughput gain (+41-47% for Kupyna-256, +21-29% for Kupyna-512, consistent across
+all three sizes) cross-validates the <code>criterion</code> numbers in the “Regression baseline” section below
+(-29 to -31% time / -17 to -19% time respectively) via an independent measurement method, per D-34’s
+own reasoning for keeping the two separate. <strong>Kupyna-256 has closed essentially all of UAPKI’s
+former lead</strong> (from ~1.1-1.5x down to ~1.0-1.1x, briefly ahead at 64 KB) - consistent with T-134’s
+own prediction that Kupyna-256 (half-width, 8 of 16 columns) had the larger fix to gain from.
+<strong>Kupyna-512’s gap to UAPKI narrows but doesn’t close</strong> (still ~1.19-1.20x UAPKI-ahead at every
+size) - also as predicted, since Kupyna-512 was already full-width and only gained from bounds-check
+elimination/loop unrolling, not buffer-reuse. UAPKI’s own absolute numbers moved somewhat between
+sessions too (e.g. 88.48→116.73 MB/s for Kupyna-512/64 KB) - ordinary run-to-run machine variance,
+not a UAPKI code change (UAPKI was not rebuilt or modified between measurements).</p>
+<p><strong><code>cppcrypto</code> 0.20 column added 2026-08-03</strong> (<code>docs/DECISIONS.md</code> D-154, <code>docs/ORACLES.md</code>), same
+harness/convention as its Kalyna column above — fresh <code>init()</code>/<code>update()</code>/<code>final()</code> called <em>inside</em>
+the timed loop every iteration (D-80, matching <code>uacrypt</code>’s own <code>bench_in_memory!</code>), 64 KB/1 MiB/
+10 MiB, <code>uacrypt</code>’s own numbers re-measured fresh the same session:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variant</th><th>Size</th><th>uacrypt (MB/s)</th><th>cppcrypto (MB/s)</th></tr>
+</thead>
+<tbody>
+<tr><td>Kupyna-256</td><td>64 KB</td><td>138.94</td><td><strong>147.10</strong></td></tr>
+<tr><td>Kupyna-512</td><td>64 KB</td><td>98.97</td><td><strong>107.09</strong></td></tr>
+<tr><td>Kupyna-256</td><td>1 MiB</td><td>139.44</td><td><strong>147.82</strong></td></tr>
+<tr><td>Kupyna-512</td><td>1 MiB</td><td>98.88</td><td><strong>105.00</strong></td></tr>
+<tr><td>Kupyna-256</td><td>10 MiB</td><td>138.20</td><td><strong>144.27</strong></td></tr>
+<tr><td>Kupyna-512</td><td>10 MiB</td><td>97.58</td><td><strong>105.33</strong></td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>cppcrypto leads at every size, but only by ~5-9%</strong> — near parity, a much smaller gap than its
+Kalyna column’s ~1.3-1.9x lead above. Not root-caused further (no profiling done to isolate why
+cppcrypto’s Kalyna specifically pulls further ahead than its Kupyna does) - a possible future task.
+Correctness confirmed first: all 10 byte-aligned official <code>Kupyna.pdf</code> vectors matched byte-for-byte
+before any timing was trusted. Not re-measured on the Raspberry Pi, same <code>yasm</code>/D-33 caveat as the
+Kalyna column above.</p>
+<h3 id="strumok-strumok-crypt"><a class="header" href="#strumok-strumok-crypt">Strumok (<code>strumok-crypt</code>)</a></h3>
+<p><code>Strumok256</code>/<code>Strumok512::apply_keystream</code> already XOR an arbitrary-length buffer, so
+<code>strumok-crypt --variant &lt;256|512&gt; --key &lt;path&gt; --iv &lt;path&gt; --in &lt;path&gt; --out &lt;path&gt; [--iterations N] [--raw-schedule]</code> is a complete feature. <code>--raw-schedule</code> re-initializes the
+cipher fresh before every iteration; the default continues one cipher’s state across all
+<code>iterations</code> calls instead (a real continuous stream, cheaper — no repeated init). <strong>64 KB
+message, N = 2000 iterations on both machines:</strong></p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variant</th><th>Schedule</th><th>uacrypt (Ryzen)</th><th>outspace (Ryzen)</th><th>UAPKI (Ryzen)</th><th>uacrypt (Pi 5)</th><th>outspace (Pi 5)</th><th>UAPKI (Pi 5)</th></tr>
+</thead>
+<tbody>
+<tr><td>Strumok-256</td><td>cached</td><td>516.32</td><td><strong>1957.65</strong></td><td>624.44</td><td>372.95</td><td><strong>1164.99</strong></td><td>326.66</td></tr>
+<tr><td>Strumok-256</td><td>raw</td><td>545.73</td><td><strong>1975.15</strong></td><td>627.41</td><td>367.15</td><td><strong>1117.29</strong></td><td>321.21</td></tr>
+<tr><td>Strumok-512</td><td>cached</td><td>534.30</td><td><strong>2001.26</strong></td><td>584.87</td><td>372.11</td><td><strong>1165.81</strong></td><td>327.93</td></tr>
+<tr><td>Strumok-512</td><td>raw</td><td>529.50</td><td><strong>1892.23</strong></td><td>608.52</td><td>367.04</td><td><strong>1117.74</strong></td><td>321.15</td></tr>
+</tbody>
+</table>
+</div>
+<p>Unlike Kalyna/Kupyna, this project beats UAPKI on <strong>both</strong> machines here (Ryzen: ~1.1-1.9x; Pi:
+~1.1-1.6x, a smaller margin but the same direction) — outspace remains fastest everywhere by a
+wide margin on both platforms. Consistent with D-33’s in-process finding that Strumok’s advantage,
+unlike Kalyna/Kupyna’s, doesn’t depend on which CPU architecture is running it.</p>
+<p><strong>Reproducing</strong>: same pattern as Kalyna’s; the outspace/UAPKI comparison CLIs are one-off C
+wrappers with the same file interface, not committed — built fresh on each machine.</p>
+<p><strong>Updated 2026-07-26 (T-121/D-71)</strong>: added a 1 MiB data point, Ryzen only, uacrypt-vs-UAPKI only
+(outspace not re-measured this pass):</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variant</th><th>Size</th><th>uacrypt (MB/s)</th><th>UAPKI (MB/s)</th></tr>
+</thead>
+<tbody>
+<tr><td>Strumok-256</td><td>1 MiB</td><td><strong>656.82</strong></td><td>722.66</td></tr>
+<tr><td>Strumok-512</td><td>1 MiB</td><td><strong>655.35</strong></td><td>723.75</td></tr>
+</tbody>
+</table>
+</div>
+<p>Reverses at 1 MiB specifically: UAPKI edges ahead here (~1.10x both variants), unlike every smaller
+size in the existing 64 B/1 KB/64 KB table above where this project wins. A real crossover, not
+noise — worth re-checking at intermediate sizes (e.g. 256 KB) in a future pass to see where exactly
+it flips, not done here.</p>
+<p><strong>Updated 2026-07-27 (<code>docs/TASKS.md</code> T-135, <code>docs/DECISIONS.md</code> D-86)</strong>: <code>apply_keystream</code>’s batched/
+fixed-index bulk path re-measured against outspace directly at 10 MiB, <code>--iterations 50</code> (this
+project’s established 10 MiB convention, matching the 10 MiB re-measurement pass below). Timer
+placement mirrors <code>uacrypt strumok-crypt</code>’s own cached-schedule convention exactly (one-time
+<code>dstu8845_init</code> inside the timed window, amortized over iterations), so the two numbers are
+directly comparable. Two runs each, Ryzen only (outspace wrapper is scratch-only per the
+“Reproducing” note above, not re-run on the Pi this pass):</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variant</th><th>uacrypt (MB/s)</th><th>outspace (MB/s)</th><th>Gap</th></tr>
+</thead>
+<tbody>
+<tr><td>Strumok-256</td><td>~1823-1919</td><td>~2270-2329</td><td><strong>~1.19-1.25x</strong> (was ~3.2-3.9x pre-T-135)</td></tr>
+<tr><td>Strumok-512</td><td>~1869-1877</td><td>~2270-2278</td><td><strong>~1.21-1.22x</strong></td></tr>
+</tbody>
+</table>
+</div>
+<p><code>uacrypt</code>’s own throughput at this message size roughly tripled (was 648.67/636.16 MB/s at the last
+10 MiB measurement, T-128’s pass below) — the gap to outspace closes from ~3.2-3.9x down to
+roughly 1.2x, though it does not fully close (D-86 has the reasoning: the FSM’s serial dependency
+chain is unchanged and inherently sequential, so some scheduling-level edge for outspace’s
+hand-unrolled C likely remains). Correctness cross-checked independently the same session: the
+existing 4000-case <code>tests/oracle-harness/strumok-differential/diff_against_outspace.c</code> harness,
+re-run against the rewritten implementation, reported 0 mismatches.</p>
+<p><strong>Full three-way re-measurement, 2026-07-27, same day, on request</strong> (uacrypt/outspace/UAPKI
+together, both message sizes this table already tracks — UAPKI added to the 10 MiB point for the
+first time, closing the gap the earlier T-128-era pass left with only a <code>uacrypt</code>-vs-UAPKI column).
+Same three binaries as above and as the original 64 B/1 KB/64 KB table at the top of this section;
+<code>--iterations 2000</code> at 64 KB (this table’s own established convention), <code>--iterations 50</code> at
+10 MiB (the project-wide 10 MiB convention). All cached-schedule, Ryzen only:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variant</th><th>Size</th><th>uacrypt (MB/s)</th><th>outspace (MB/s)</th><th>UAPKI (MB/s)</th></tr>
+</thead>
+<tbody>
+<tr><td>Strumok-256</td><td>64 KB</td><td><strong>1958.35</strong></td><td>2372.64</td><td>708.67</td></tr>
+<tr><td>Strumok-512</td><td>64 KB</td><td><strong>1870.64</strong></td><td>2310.24</td><td>699.94</td></tr>
+<tr><td>Strumok-256</td><td>10 MiB</td><td><strong>~1870</strong> (avg of the two runs above)</td><td>~2300 (avg)</td><td>628.95</td></tr>
+<tr><td>Strumok-512</td><td>10 MiB</td><td><strong>~1873</strong> (avg)</td><td>~2274 (avg)</td><td>554.97</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong><code>uacrypt</code> now clearly beats UAPKI at both sizes</strong> (~2.6-2.8x at 64 KB, ~2.9-3.4x at 10 MiB) — a
+reversal from every earlier UAPKI comparison in this section (64 B/1 KB/64 KB: ~1.1-1.9x; the
+1 MiB point: UAPKI briefly ahead ~1.10x). The gap to outspace narrows from ~1.2-1.3x at 64 KB to
+much the same at 10 MiB — consistent, not size-dependent, unlike the old byte-at-a-time
+implementation’s behavior. Not re-run on the Pi 5 this pass (all three wrappers here are
+scratch-only, not committed, per this section’s own “Reproducing” note).</p>
+<p>New command this session (T-121, D-71) — MAC-only, no encryption, fixed 16-byte tag regardless of
+variant. <strong>All 5 variants, 64 B and 1 MiB, Ryzen only:</strong></p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variant</th><th>uacrypt 64 B (MB/s)</th><th>UAPKI 64 B (MB/s)</th><th>uacrypt 1 MiB (MB/s)</th><th>UAPKI 1 MiB (MB/s)</th></tr>
+</thead>
+<tbody>
+<tr><td>128-128</td><td><strong>29.92</strong></td><td>3.69</td><td>106.85</td><td><strong>235.47</strong></td></tr>
+<tr><td>128-256</td><td><strong>23.65</strong></td><td>3.51</td><td>77.19</td><td><strong>182.48</strong></td></tr>
+<tr><td>256-256</td><td><strong>21.66</strong></td><td>3.37</td><td>123.36</td><td><strong>265.00</strong></td></tr>
+<tr><td>256-512</td><td><strong>18.14</strong></td><td>3.02</td><td>97.26</td><td><strong>215.42</strong></td></tr>
+<tr><td>512-512</td><td><strong>11.84</strong></td><td>2.75</td><td>111.03</td><td><strong>156.35</strong></td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>Sharp crossover by message size, on every variant</strong>: this project wins small messages by a wide
+margin (~6-8x at 64 B — same per-call-overhead cause as CCM above, <code>hazmat::kalyna_cmac</code> has no
+allocation, UAPKI’s <code>dstu7624_init_cmac</code>/<code>update_mac</code>/<code>final_mac</code> path does), but UAPKI wins large
+messages by ~1.4-2.2x at 1 MiB — the inverse of the small-message picture. Consistent with a fixed
+per-call setup cost dominating small inputs and raw per-byte throughput dominating large ones,
+though the exact per-byte cause (table layout, compiler codegen, etc.) isn’t isolated further here.</p>
+<p><strong>Reproducing</strong>: <code>target/release/uacrypt kalyna-cmac compute --variant &lt;v&gt; --key &lt;path&gt; --in &lt;path&gt; --out &lt;path&gt; --iterations &lt;N&gt;</code>.</p>
+<p><strong>Updated 2026-07-26, 10 MiB, N = 50</strong> (T-128’s const-generic round-function fix —
+CMAC is pure block-cipher chaining with no other bottleneck diluting it, unlike GCM’s field
+multiply, so this is the mode where T-128’s gain should show most directly).</p>
+<p><strong>UAPKI column added same day (<code>docs/TASKS.md</code> T-131, <code>docs/DECISIONS.md</code> D-78)</strong>: a small C wrapper
+(scratch-only, not committed) calling UAPKI’s prebuilt <code>uapkic.dll</code> v2.0.12 directly, matching this
+project’s own <code>uacrypt</code> file-based CLI shape. Byte-for-byte cross-checked against the real
+<code>uacrypt</code> binary before trusting any timing (same key/message, all 5 variants, both compute and
+verify) — every pair matched exactly, so both columns below measure the identical CMAC
+construction, not two different behaviors.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variant</th><th>uacrypt compute (MB/s)</th><th>UAPKI compute (MB/s)</th><th>uacrypt verify (MB/s)</th><th>UAPKI verify (MB/s)</th></tr>
+</thead>
+<tbody>
+<tr><td>128-128</td><td>199.82</td><td><strong>235.86</strong></td><td>198.86</td><td><strong>236.21</strong></td></tr>
+<tr><td>128-256</td><td>147.41</td><td><strong>182.88</strong></td><td>147.51</td><td><strong>182.66</strong></td></tr>
+<tr><td>256-256</td><td>142.44</td><td><strong>263.40</strong></td><td>142.30</td><td><strong>265.15</strong></td></tr>
+<tr><td>256-512</td><td>111.54</td><td><strong>214.74</strong></td><td>111.66</td><td><strong>214.17</strong></td></tr>
+<tr><td>512-512</td><td>137.14</td><td><strong>150.83</strong></td><td>137.12</td><td><strong>151.06</strong></td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>UAPKI still wins CMAC at this message size, by ~1.1-1.9x depending on variant</strong> — T-128 closed
+most of CMAC’s gap (compare against the 1 MiB table above, where UAPKI led by ~1.4-2.2x) but not
+all of it. Originally attributed to T-129’s byte-wise-gather-vs-word-wide-<code>BT_xor*</code> difference as
+the residual class of cost T-128 didn’t touch — <strong>T-129 was investigated 2026-07-27 and closed
+without a code change</strong> (<code>docs/DECISIONS.md</code> D-88): a measured spike showed the gather is already
+near-optimal at small block sizes and a real regression to “fix” at larger ones, so this residual
+gap’s actual cause is still open, not a known-fixable byte-vs-word difference as originally framed.
+Compute/verify symmetric within noise on both implementations, as expected.</p>
+<p>Real, substantial improvement over the 1 MiB row above on every variant (e.g. 512-512: 111.03 →
+137.16, ~+23.5%, roughly matching T-128’s own <code>nb=8</code> block-only gain). <strong>128-128’s own jump (106.85
+→ 199.08, ~+86%) is larger than T-128’s isolated <code>nb=2</code> block-only measurement (~53-54%) predicts</strong>
+— flagged honestly, not smoothed over: some of the gap could be inter-session machine-load variance
+(this table and T-128’s own <code>criterion</code> numbers were measured in different sessions the same day),
+some could be CMAC-specific effects T-128’s isolated round-function benchmark doesn’t capture (e.g.
+per-block overhead outside the round function itself scaling differently at 10 MiB than at 1 MiB).
+Not root-caused further here — noted for whoever next touches this table, not assumed settled.</p>
+<p><strong>Re-measured 2026-07-26 at 64 B, N = 500000 (T-138, <code>docs/DECISIONS.md</code> D-82)</strong> — a direct follow-up to
+D-80’s GMAC timer-placement finding: the original 64 B/1 MiB table above was measured by an earlier,
+uncommitted wrapper this session never inherited, so there was no way to confirm it placed its timer
+correctly. Rebuilt a fresh wrapper with the timer explicitly placed after <code>dstu7624_alloc</code>/
+<code>dstu7624_init_cmac</code> (matching every other mode’s convention, D-80’s fix). <strong>Byte-identity verified
+first, at <code>--iterations 1</code></strong> (a fresh, correctly-initialized <code>ctx</code> for each of the 5 variants) — all
+5 tags matched <code>uacrypt</code>’s own byte-for-byte. <strong>A real correctness quirk found and confirmed by a
+standalone probe before trusting any multi-iteration timing</strong>: <code>dstu7624_final_mac</code> never resets
+its CMAC chaining state (<code>ctx-&gt;state</code>) or buffered-tail length, so calling <code>update_mac</code>/<code>final_mac</code>
+repeatedly on the same <code>ctx</code> without re-<code>init_cmac</code> produces a <em>different</em> tag on every iteration
+past the first (confirmed directly: 4 repeated calls on the same message each returned a distinct
+tag). <strong>This does not invalidate the timing</strong> — <code>crypt_basic_transform</code>’s block cipher is
+constant-time/constant-work regardless of the garbage state flowing in (no secret- or
+length-dependent branching), so every iteration still performs the identical amount of arithmetic;
+only the <em>value</em> computed past iteration 1 is not independently meaningful, which is fine for a
+pure throughput measurement (correctness is what <code>--iterations 1</code>’s byte-identity check above
+already confirms). Documented in the wrapper’s own source rather than assumed silently.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variant</th><th>uacrypt compute (MB/s)</th><th>UAPKI compute (MB/s)</th><th>uacrypt verify (MB/s)</th><th>Ratio (compute)</th></tr>
+</thead>
+<tbody>
+<tr><td>128-128</td><td><strong>161.21</strong></td><td>120.98</td><td>131.96</td><td>1.33x</td></tr>
+<tr><td>128-256</td><td><strong>119.40</strong></td><td>99.53</td><td>101.75</td><td>1.20x</td></tr>
+<tr><td>256-256</td><td><strong>95.10</strong></td><td>87.19</td><td>83.44</td><td>1.09x</td></tr>
+<tr><td>256-512</td><td><strong>74.33</strong>*</td><td>72.98</td><td>67.16</td><td>1.02x</td></tr>
+<tr><td>512-512</td><td><strong>67.80</strong></td><td>46.65</td><td>62.02</td><td>1.45x</td></tr>
+</tbody>
+</table>
+</div>
+<p>*Effectively tied — within normal run-to-run noise at this message size, not a decisive lead
+either way.
+UAPKI has no separate <code>verify</code> entry point (a MAC verify is a compute + <code>memcmp</code>, negligibly
+different cost, matching the already-established “compute/verify symmetric within noise on both
+implementations” finding above) — only <code>uacrypt</code>’s own verify column is shown.</p>
+<p><strong>The real small-message lead is ~1.0-1.45x, not the previously-published ~6-8x.</strong> Same corrective
+shape as D-80’s GMAC finding, and larger in relative terms: this project no longer has a wide
+small-message advantage over UAPKI for CMAC, just a modest one, on the same T-128-improved code the
+10 MiB table above already reflects. <strong><code>uacrypt</code>’s own 64 B number also jumped far more than T-128’s
+isolated round-function measurement alone would predict</strong> (29.92 → 161.21 MB/s at 128-128, ~5.4x,
+versus T-128’s own <code>nb=2</code> block-only ~51-54% i.e. ~2x) — flagged, not root-caused: the original 64 B
+row’s exact <code>--iterations</code> count and wrapper vintage are unknown (predates this session’s fixed
+wrapper and this file’s own “N=” annotation convention), so whether it carried a comparable
+timer-placement or low-iteration-count noise issue on <code>uacrypt</code>’s own side cannot be ruled out from
+here. Consistent with the already-flagged pattern two paragraphs above (128-128’s 10 MiB jump also
+exceeded prediction) - not an isolated one-off.</p>
+<p><strong>Reproducing</strong>: same <code>uacrypt</code> command as above at <code>--iterations 500000</code>; the UAPKI-side wrapper is
+now committed at <code>tests/oracle-harness/uapki-cmac-bench/cmac_bench.c</code> (<code>docs/DECISIONS.md</code> D-83 - build
+recipe in the file’s own doc comment), taking <code>&lt;variant&gt; &lt;key_path&gt; &lt;in_path&gt; &lt;out_path&gt; &lt;iterations&gt;</code> and printing <code>iterations=.. total_ns=.. per_op_ns=..</code> to stderr, matching <code>uacrypt</code>’s
+own convention.</p>
+<h3 id="kalyna-gmac-kalyna-gmac-compute"><a class="header" href="#kalyna-gmac-kalyna-gmac-compute">Kalyna-GMAC (<code>kalyna-gmac compute</code>)</a></h3>
+<p>New command this session (T-121, D-71) — same shape as CMAC but no nonce, tag is the variant’s full
+block length. <strong>All 5 variants, exactly one block of message (see D-71 for why: sidesteps a known
+UAPKI-side multi-block streaming bug, D-57), N = 5000, Ryzen only:</strong></p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variant</th><th>uacrypt (MB/s)</th><th>UAPKI (MB/s)</th></tr>
+</thead>
+<tbody>
+<tr><td>128-128</td><td><strong>6.50</strong></td><td>0.84</td></tr>
+<tr><td>128-256</td><td><strong>5.94</strong></td><td>0.83</td></tr>
+<tr><td>256-256</td><td><strong>6.35</strong></td><td>1.55</td></tr>
+<tr><td>256-512</td><td><strong>6.01</strong></td><td>1.40</td></tr>
+<tr><td>512-512</td><td><strong>4.76</strong></td><td>1.72</td></tr>
+</tbody>
+</table>
+</div>
+<p>This project wins by ~4-8x on every variant, same cause as CMAC’s small-message case (UAPKI’s
+per-call <code>ByteArray</code>/ctx setup cost, not a per-byte throughput difference — the message here is only
+one block, so setup cost is nearly the whole cost).</p>
+<p><strong>Re-measured 2026-07-26 after the <code>gf2m_wide</code> comb-multiply fix (see Kalyna-GCM’s section above,
+<code>docs/TASKS.md</code> T-125, <code>docs/DECISIONS.md</code> D-76)</strong> — same shape (one field multiply per block), same win
+mechanism as GCM, at the existing 1-block scale:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variant</th><th>uacrypt (MB/s)</th><th>UAPKI (MB/s)</th></tr>
+</thead>
+<tbody>
+<tr><td>128-128</td><td><strong>16.84</strong></td><td>0.87</td></tr>
+<tr><td>128-256</td><td><strong>16.90</strong></td><td>0.82</td></tr>
+<tr><td>256-256</td><td><strong>16.71</strong></td><td>1.55</td></tr>
+<tr><td>256-512</td><td><strong>16.14</strong></td><td>1.34</td></tr>
+<tr><td>512-512</td><td><strong>12.91</strong></td><td>1.70</td></tr>
+</tbody>
+</table>
+</div>
+<p>This project’s own throughput roughly doubled or better on every variant (e.g. 512-512: 4.76 →
+12.91 MB/s), widening an already-large lead (~10-19x now, up from ~4-8x) — UAPKI’s own numbers held
+steady, as expected (nothing changed on its side).</p>
+<p><strong>Reproducing</strong>: <code>target/release/uacrypt kalyna-gmac compute --variant &lt;v&gt; --key &lt;path&gt; --in &lt;path&gt; --out &lt;path&gt; --iterations &lt;N&gt;</code>.</p>
+<p><strong>Updated 2026-07-26, re-run after T-128</strong>, 1 block, N = 5000, both directions:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variant</th><th>uacrypt compute (MB/s)</th><th>uacrypt verify (MB/s)</th><th>vs. pre-T-128 compute row</th></tr>
+</thead>
+<tbody>
+<tr><td>128-128</td><td>21.16</td><td>18.87</td><td>+25.7% (was 16.84)</td></tr>
+<tr><td>128-256</td><td>22.38</td><td>18.63</td><td>+32.4% (was 16.90)</td></tr>
+<tr><td>256-256</td><td>18.51</td><td>16.53</td><td>+10.8% (was 16.71)</td></tr>
+<tr><td>256-512</td><td>15.38</td><td>15.47</td><td>-4.7% (was 16.14)</td></tr>
+<tr><td>512-512</td><td>12.93</td><td>12.37</td><td>+0.2% (was 12.91)</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>Small and non-monotonic, unlike CMAC/CCM/block above — this tracks GCM’s own modest gain, not
+CMAC’s large one, and that’s expected</strong>: GMAC’s per-block cost is dominated by the field multiply
+(same mechanism as GCM, ~90%+ per T-125/D-76’s isolated timing), not the block-cipher round
+function T-128 sped up, so only a small fraction of GMAC’s cost is even reachable by this fix.
+256-512/512-512’s flat-to-slightly-down cells are within normal single-run noise for a
+single-block, N=5000 operation (less averaging than CMAC/CCM’s larger workloads), not a real
+regression — flagged honestly rather than smoothed into a false trend.</p>
+<p><strong>UAPKI column rebuilt same day (T-131/D-78 extension, <code>docs/DECISIONS.md</code> D-80) — and every UAPKI
+number above this line is now understood to be an overstated gap, not a fresh finding to build on.</strong>
+Building the UAPKI-side wrapper for GMAC surfaced a real timing-methodology bug in the wrapper
+itself: <code>dstu7624_alloc</code>/<code>dstu7624_init_gmac</code> were timed <em>inside</em> the same window as
+<code>update_mac</code>/<code>final_mac</code>, while <code>uacrypt</code>’s own GMAC command (like every mode above) expands its
+schedule once outside the timed loop. For a one-block message, <code>init_gmac</code>’s cost swamps the actual
+one-block MAC computation - exactly the “setup cost is nearly the whole cost” explanation already
+given above for the <em>old</em> ~4-24x numbers, except that explanation was describing an artifact of
+<em>how the comparison was built</em>, not a genuine property of UAPKI’s GMAC. Fixed by moving the timer
+start to after <code>init_gmac</code> (matching every other mode’s convention) and re-measured, same 1-block
+scale, byte-identity re-confirmed unaffected by the fix (the bug was timing-only, not a correctness
+bug):</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variant</th><th>uacrypt compute (MB/s)</th><th>UAPKI compute (MB/s)</th><th>Ratio (uacrypt/UAPKI)</th></tr>
+</thead>
+<tbody>
+<tr><td>128-128</td><td><strong>21.30</strong></td><td>11.15</td><td>1.91x</td></tr>
+<tr><td>128-256</td><td><strong>22.38</strong></td><td>11.17</td><td>2.00x</td></tr>
+<tr><td>256-256</td><td><strong>18.65</strong></td><td>16.49</td><td>1.13x</td></tr>
+<tr><td>256-512</td><td><strong>17.09</strong></td><td>15.86</td><td>1.08x</td></tr>
+<tr><td>512-512</td><td><strong>13.22</strong></td><td>4.64</td><td>2.85x</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>The real gap is ~1.1-2.9x, not ~4-24x</strong> - uacrypt still leads on every variant (GMAC’s field
+multiply, T-125/D-76’s fix, plus T-128’s block-cipher gain both help it), but the margin the
+project believed existed for over a year of this table’s history was substantially inflated by a
+benchmark bug, not by GMAC’s actual design. <strong>CMAC was checked against the same bug and is not
+materially affected</strong> - re-measuring CMAC’s 10 MiB table with the identical fix produced numbers
+within &lt;1% of the already-published ones (bulk 10 MiB work dwarfs a few microseconds of per-call
+setup, unlike GMAC’s single block) - so CMAC’s existing ~1.1-1.9x UAPKI-leads-here conclusion
+stands unchanged. <strong>Flagged, not re-measured here</strong>: this class of bug could equally affect
+historical small-message CMAC (64 B) and CCM numbers measured by an earlier, uncommitted wrapper
+this session didn’t inherit or inspect - those rows should be treated as unverified against this
+specific failure mode until someone re-measures them with a wrapper that is confirmed to exclude
+setup cost, not assumed correct by precedent.</p>
+<h3 id="kalyna-kw-kalyna-kw-wrap"><a class="header" href="#kalyna-kw-kalyna-kw-wrap">Kalyna-KW (<code>kalyna-kw wrap</code>)</a></h3>
+<p>New command this session (T-121, D-71) — wraps block-aligned key material, output is one block
+longer than the input. <strong>All 5 variants, 2 blocks of key material, N = 5000, Ryzen only:</strong></p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variant</th><th>uacrypt (MB/s)</th><th>UAPKI (MB/s)</th></tr>
+</thead>
+<tbody>
+<tr><td>128-128</td><td>5.38</td><td><strong>12.80</strong></td></tr>
+<tr><td>128-256</td><td>4.07</td><td><strong>10.93</strong></td></tr>
+<tr><td>256-256</td><td>6.33</td><td><strong>16.39</strong></td></tr>
+<tr><td>256-512</td><td>5.12</td><td><strong>10.54</strong></td></tr>
+<tr><td>512-512</td><td>5.83</td><td><strong>10.49</strong></td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>UAPKI wins by ~1.8-2.7x on every variant</strong> — the opposite of CMAC/GMAC/CCM’s small-message
+pattern above, despite KW’s input here being similarly small (32-128 bytes). Not root-caused this
+session; <code>hazmat::kalyna_kw</code>’s Feistel-like network runs many more block-cipher calls per byte of
+key material than a CMAC/GCM pass over the same length would (proportional to <code>v = (n-1)*6</code> rounds,
+<code>docs/DECISIONS.md</code> D-55), which may explain the reversal, but this wasn’t confirmed by profiling.</p>
+<p><strong>Root-caused and partially fixed 2026-07-26, <code>docs/TASKS.md</code> T-127, <code>docs/DECISIONS.md</code> D-76</strong>: reading the
+UAPKI benchmark harness directly (<code>bench.c</code>’s <code>cmd_kw</code>) confirmed <code>dstu7624_init_kw</code> is called once,
+<em>outside</em> its <code>--iterations</code> loop - while <code>uacrypt</code>’s own <code>kalyna-kw wrap</code>/<code>unwrap</code> called
+<code>hazmat::kalyna_kw::wrap</code>/<code>unwrap</code>, which re-expand the full Kalyna key schedule <em>every</em> call
+(<code>kalyna_kw.rs</code>’s <code>wrap</code> used to build a fresh <code>ExpandedKey</code> internally, with no way for a caller to
+avoid it). Fixed by adding <code>wrap_with_cipher</code>/<code>unwrap_with_cipher</code> (take an already-expanded cipher)
+and wiring <code>run_kw_command</code>’s benchmark loop to build the schedule once, same as
+<code>kalyna-block</code>/<code>kalyna-gcm</code>/<code>kalyna-xts</code> already did. <strong>Re-measured, same 2-block-key-material
+scale, N = 5000, Ryzen only:</strong></p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variant</th><th>uacrypt (MB/s)</th><th>UAPKI (MB/s)</th><th>uacrypt before (MB/s)</th><th>Gap before</th><th>Gap after</th></tr>
+</thead>
+<tbody>
+<tr><td>128-128</td><td>7.06</td><td><strong>12.91</strong></td><td>5.38</td><td>2.38x</td><td>1.83x</td></tr>
+<tr><td>128-256</td><td>4.99</td><td><strong>10.50</strong></td><td>4.07</td><td>2.69x</td><td>2.10x</td></tr>
+<tr><td>256-256</td><td>7.23</td><td><strong>16.22</strong></td><td>6.33</td><td>2.59x</td><td>2.24x</td></tr>
+<tr><td>256-512</td><td>6.14</td><td><strong>10.85</strong></td><td>5.12</td><td>2.06x</td><td>1.77x</td></tr>
+<tr><td>512-512</td><td>7.34</td><td><strong>10.34</strong></td><td>5.83</td><td>1.80x</td><td>1.41x</td></tr>
+</tbody>
+</table>
+</div>
+<p>UAPKI’s own numbers didn’t move (noise-level differences only, as expected - nothing changed on
+its side). This project’s own throughput improved 14-31% on every variant purely from removing the
+redundant per-call schedule expansion, narrowing UAPKI’s lead on every variant but not eliminating
+it - confirming the schedule-redo cost was a real, measurable, partial contributor to this gap, not
+the sole cause. The residual gap (~1.4-2.2x) is consistent with D-76’s finding #1 (a genuine
+core-round-function speed difference, ~1.3-2.7x depending on variant) - not investigated further
+as a KW-specific cause beyond that.</p>
+<p><strong>Reproducing</strong>: <code>target/release/uacrypt kalyna-kw wrap --variant &lt;v&gt; --key &lt;path&gt; --in &lt;path&gt; --out &lt;path&gt; --iterations &lt;N&gt;</code>.</p>
+<p><strong>Updated 2026-07-26, re-run after T-128</strong>, 2 blocks of key material, N = 5000, both directions:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variant</th><th>uacrypt wrap (MB/s)</th><th>uacrypt unwrap (MB/s)</th><th>vs. pre-T-128 wrap row</th></tr>
+</thead>
+<tbody>
+<tr><td>128-128</td><td><strong>13.84</strong></td><td>11.51</td><td>+96.0% (was 7.06)</td></tr>
+<tr><td>128-256</td><td><strong>10.32</strong></td><td>8.59</td><td>+106.8% (was 4.99)</td></tr>
+<tr><td>256-256</td><td><strong>9.27</strong></td><td>10.34</td><td>+28.2% (was 7.23)</td></tr>
+<tr><td>256-512</td><td>7.34</td><td><strong>8.28</strong></td><td>+19.5% (was 6.14)</td></tr>
+<tr><td>512-512</td><td><strong>9.02</strong></td><td>6.62</td><td>+22.9% (was 7.34)</td></tr>
+</tbody>
+</table>
+</div>
+<p>Same <code>nb=2</code>/<code>nb=4</code>/<code>nb=8</code> split as Kalyna-block/CCM above — KW’s Feistel-like network is pure
+block-cipher chaining (<code>v = (n-1)*6</code> rounds, D-55), so it inherits T-128’s gain the same way.
+Wrap/unwrap show the same encrypt/decrypt-direction asymmetry XTS and Kalyna-block do (256-256/
+256-512 favor the reverse direction, the others favor the forward one) — consistent with
+<code>encipher_round_n</code>/<code>fused_inv_round_n</code> being genuinely different code paths (T-128/D-77), not
+measurement error.</p>
+<p><strong>UAPKI column rebuilt same day (T-131/D-78 extension, <code>docs/DECISIONS.md</code> D-80)</strong> — byte-for-byte
+confirmed (wrap output, and unwrap round-tripping back to the original key material, both
+implementations), same 2-block scale:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variant</th><th>uacrypt wrap (MB/s)</th><th>UAPKI wrap (MB/s)</th><th>uacrypt unwrap (MB/s)</th><th>UAPKI unwrap (MB/s)</th></tr>
+</thead>
+<tbody>
+<tr><td>128-128</td><td><strong>14.18</strong></td><td>13.14</td><td><strong>11.56</strong></td><td>9.64</td></tr>
+<tr><td>128-256</td><td>10.16</td><td><strong>10.58</strong></td><td><strong>8.89</strong></td><td>7.68</td></tr>
+<tr><td>256-256</td><td>9.23</td><td><strong>16.52</strong></td><td>10.39</td><td><strong>12.73</strong></td></tr>
+<tr><td>256-512</td><td>7.32</td><td><strong>10.91</strong></td><td>8.28</td><td><strong>10.57</strong></td></tr>
+<tr><td>512-512</td><td>9.03</td><td><strong>10.54</strong></td><td>6.64</td><td><strong>12.43</strong></td></tr>
+</tbody>
+</table>
+</div>
+<p>This resolves the “fresh UAPKI-side re-measurement needed” note this section previously carried:
+KW’s residual gap did <strong>not</strong> close as far as CMAC/XTS’s did — UAPKI still leads on 8 of 10 cells
+(uacrypt wins only 128-128 wrap and 128-256/256-256 unwrap), roughly the same ~1.1-1.9x range D-76’s
+finding #1 (a genuine round-function speed difference, separate from T-128’s own gain) already
+predicted as the expected residual. Consistent with T-128’s own docs elsewhere in this file: KW
+inherits the round-function speedup but was never expected to fully close UAPKI’s remaining lead by
+itself.</p>
+<h3 id="kalyna-xts-kalyna-xts-encrypt"><a class="header" href="#kalyna-xts-kalyna-xts-encrypt">Kalyna-XTS (<code>kalyna-xts encrypt</code>)</a></h3>
+<p>New command this session (T-121, D-71) — confidentiality-only disk-sector mode. <strong>All 5 variants,
+512 B and 4096 B sectors, Ryzen only:</strong></p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variant</th><th>uacrypt 512 B (MB/s)</th><th>UAPKI 512 B (MB/s)</th><th>uacrypt 4096 B (MB/s)</th><th>UAPKI 4096 B (MB/s)</th></tr>
+</thead>
+<tbody>
+<tr><td>128-128</td><td><strong>27.78</strong></td><td>12.84</td><td><strong>27.41</strong></td><td>13.12</td></tr>
+<tr><td>128-256</td><td><strong>25.15</strong></td><td>12.56</td><td><strong>25.01</strong></td><td>12.79</td></tr>
+<tr><td>256-256</td><td>16.89</td><td><strong>18.30</strong></td><td>16.90</td><td><strong>18.67</strong></td></tr>
+<tr><td>256-512</td><td>16.43</td><td><strong>17.97</strong></td><td>16.54</td><td><strong>18.16</strong></td></tr>
+<tr><td>512-512</td><td><strong>8.28</strong></td><td>36.35</td><td><strong>8.32</strong></td><td>38.24</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>Real finding, flagged for follow-up, not root-caused here</strong>: the 512-512 variant is a dramatic
+outlier — UAPKI runs <strong>4.4-4.6x faster</strong> than this project’s own implementation there (36.35/38.24
+vs. 8.28/8.32 MB/s), a much wider gap than any other variant/mode measured in this entire session
+(every other cell in every table above is within ~2.7x, most within 2x). 128-128/128-256 show the
+opposite pattern (this project ~2x ahead), and 256-256/256-512 are roughly at parity — so this isn’t
+a uniform “UAPKI’s XTS is just faster” result, it’s specific to the largest key/block variant. Not
+investigated further this session (<code>hazmat::kalyna_xts</code> itself was not touched — only a new CLI
+wrapper around the existing implementation was added) — see <code>docs/TASKS.md</code> T-121 for the standing note.</p>
+<p><strong>Root-caused and fixed 2026-07-26, <code>docs/TASKS.md</code> T-126, <code>docs/DECISIONS.md</code> D-76</strong>: <code>hazmat::gf2m_wide.rs</code>
+had no fast path for “multiply by the fixed generator <code>x</code>” (the <code>two</code> constant XTS’s tweak-doubling
+uses every block) - every call paid the fully general O(m²) schoolbook <code>multiply</code> for what is
+mathematically an O(m/64) shift-plus-conditional-XOR. Added <code>double()</code> (verified byte-identical to
+<code>multiply(two)</code> by a property test over all three field widths before being wired in) and switched
+<code>kalyna_xts.rs</code>’s tweak update to call it. <strong>Re-measured at the exact same 512 B/4096 B scale as the
+original finding above, Ryzen only:</strong></p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variant</th><th>uacrypt 512 B (MB/s)</th><th>UAPKI 512 B (MB/s)</th><th>uacrypt 4096 B (MB/s)</th><th>UAPKI 4096 B (MB/s)</th></tr>
+</thead>
+<tbody>
+<tr><td>128-128</td><td><strong>100.12</strong></td><td>12.75</td><td><strong>106.18</strong></td><td>12.77</td></tr>
+<tr><td>128-256</td><td><strong>73.54</strong></td><td>12.55</td><td><strong>76.30</strong></td><td>12.34</td></tr>
+<tr><td>256-256</td><td><strong>110.82</strong></td><td>17.93</td><td><strong>112.15</strong></td><td>16.10</td></tr>
+<tr><td>256-512</td><td><strong>88.63</strong></td><td>17.80</td><td><strong>87.76</strong></td><td>18.17</td></tr>
+<tr><td>512-512</td><td><strong>97.92</strong></td><td>39.27</td><td><strong>104.19</strong></td><td>43.97</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>Every variant improved substantially, not just 512-512</strong> - the wasted general-multiply work exists
+at every field width, just less visibly before this fix pushed it past the “dramatic outlier”
+threshold at m=512 (D-76’s O(m) total waste per message reasoning: <code>poly_mul_wide</code>‘s cost is O(m²)
+per multiply, so even at m=128 it was real, avoidable work). <strong>The 512-512 anomaly itself is fully
+reversed</strong>: previously ~4.4-4.6x <em>slower</em> than UAPKI, now <strong>~2.4-2.5x faster</strong> (97.92/104.19 vs.
+39.27/43.97 MB/s) - UAPKI’s own numbers barely moved (39.27/43.97 vs. the original 36.35/38.24,
+noise-level, as expected since nothing changed on its side). Confirmed again independently at 10 MiB
+(<code>--iterations 50</code>, well past any per-call setup-cost noise): 512-512 lands at 104.60 MB/s, squarely
+in the middle of the other four variants’ 74-115 MB/s band, not an outlier at all anymore -
+UAPKI’s own 10 MiB numbers (12.70-43.11 MB/s) drop sharply with block size shrinking (128-128’s
+655,360 16-byte blocks vs. 512-512’s 163,840 64-byte blocks for the same 10 MiB) - consistent with
+the per-field-multiply heap allocation cost found in <code>gf2m_mul</code> (<code>dstu7624.c:2963-3001</code>, 3 allocations
+per call) dominating UAPKI’s own XTS throughput at scale, worse for smaller blocks (more of them per
+message), the opposite direction from this project’s now-fixed per-multiply cost (which no longer
+depends on block count at all, only on <code>m</code>).</p>
+<p><strong>Reproducing</strong>: <code>target/release/uacrypt kalyna-xts encrypt --variant &lt;v&gt; --key &lt;path&gt; --tweak &lt;path&gt; --in &lt;path&gt; --out &lt;path&gt; --iterations &lt;N&gt;</code>.</p>
+<h3 id="10-mib-re-measurement-pass-t-125-follow-up-requested-2026-07-26"><a class="header" href="#10-mib-re-measurement-pass-t-125-follow-up-requested-2026-07-26">10 MiB re-measurement pass (T-125 follow-up, requested 2026-07-26)</a></h3>
+<p>Every mode whose input length isn’t inherently capped was re-measured at 10 MiB (<code>--iterations 50</code>)
+specifically to push past any remaining per-call setup-cost noise and confirm the numbers above are
+steady-state throughput, not an artifact of the message sizes measured so far. <strong>Modes with an
+inherent length cap are excluded, and why</strong>: <code>kalyna-block</code> (single block only, no arbitrary-length
+mode exists for it), <code>kalyna-kw</code> (<code>MAX_R = 20</code> blocks, <code>docs/DECISIONS.md</code> D-55), <code>kalyna-gmac</code> (measured
+at exactly one block by design, D-57’s UAPKI multi-block streaming bug workaround), <code>kalyna-ccm</code>
+(<code>MAX_PLAINTEXT_LEN = 255</code> bytes, a property of the DSTU CCM construction as implemented here, not a
+benchmark choice).</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Mode</th><th>Variant</th><th>uacrypt (MB/s)</th><th>UAPKI (MB/s)</th><th>Matches 1 MiB number?</th></tr>
+</thead>
+<tbody>
+<tr><td>Kalyna-XTS</td><td>128-128</td><td><strong>102.59</strong></td><td>12.70</td><td>No - improved ~3.7x by T-126’s fix (no prior 1 MiB point existed)</td></tr>
+<tr><td>Kalyna-XTS</td><td>128-256</td><td><strong>74.05</strong></td><td>12.50</td><td>No - improved ~2.9x (T-126)</td></tr>
+<tr><td>Kalyna-XTS</td><td>256-256</td><td><strong>115.16</strong></td><td>18.46</td><td>No - improved ~6.6x (T-126)</td></tr>
+<tr><td>Kalyna-XTS</td><td>256-512</td><td><strong>90.50</strong></td><td>18.01</td><td>No - improved ~5.4x (T-126)</td></tr>
+<tr><td>Kalyna-XTS</td><td>512-512</td><td><strong>104.60</strong></td><td>43.11</td><td>No - improved ~12.6x (T-126), no longer an outlier</td></tr>
+<tr><td>Kalyna-CMAC</td><td>128-128</td><td>102.46</td><td><strong>232.46</strong></td><td>Yes - within 4% of the 1 MiB row above</td></tr>
+<tr><td>Kalyna-CMAC</td><td>128-256</td><td>75.23</td><td><strong>178.01</strong></td><td>Yes - within 2%</td></tr>
+<tr><td>Kalyna-CMAC</td><td>256-256</td><td>119.26</td><td><strong>254.70</strong></td><td>Yes - within 4%</td></tr>
+<tr><td>Kalyna-CMAC</td><td>256-512</td><td>92.84</td><td><strong>205.47</strong></td><td>Yes - within 5%</td></tr>
+<tr><td>Kalyna-CMAC</td><td>512-512</td><td>108.68</td><td><strong>152.77</strong></td><td>Yes - within 2%</td></tr>
+<tr><td>Kalyna-GCM (pre-comb-multiply-fix)</td><td>128-128</td><td>10.51</td><td><strong>12.60</strong></td><td>Yes - within 1%</td></tr>
+<tr><td>Kalyna-GCM (pre-comb-multiply-fix)</td><td>128-256</td><td>10.16</td><td><strong>12.25</strong></td><td>Yes - within 2%</td></tr>
+<tr><td>Kalyna-GCM (pre-comb-multiply-fix)</td><td>256-256</td><td>8.31</td><td><strong>15.87</strong></td><td>Roughly - ~12% lower than the 1 MiB row’s 18.12, within this methodology’s noise band</td></tr>
+<tr><td>Kalyna-GCM (pre-comb-multiply-fix)</td><td>256-512</td><td>8.10</td><td><strong>17.45</strong></td><td>Yes - within 1%</td></tr>
+<tr><td>Kalyna-GCM (pre-comb-multiply-fix)</td><td>512-512</td><td><strong>5.50</strong></td><td>4.77</td><td>Yes - within 2%, still leads</td></tr>
+<tr><td>Kupyna-256</td><td>-</td><td>95.52</td><td><strong>143.03</strong></td><td>Roughly - UAPKI’s lead widens slightly (was ~1.37x at 1 MiB, ~1.50x at 10 MiB)</td></tr>
+<tr><td>Kupyna-512</td><td>-</td><td>77.94</td><td><strong>114.49</strong></td><td>Roughly - same widening pattern (~1.45x to ~1.47x)</td></tr>
+<tr><td>Strumok-256</td><td>-</td><td><strong>648.67</strong></td><td>581.13</td><td>No - this project now leads at 10 MiB (was UAPKI ahead ~1.10x at 1 MiB)</td></tr>
+<tr><td>Strumok-512</td><td>-</td><td><strong>636.16</strong></td><td>631.02</td><td>Roughly at parity (was UAPKI ahead ~1.10x at 1 MiB)</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>CMAC confirms D-76’s finding #1 directly</strong>: its 10 MiB ratios track the already-published 1 MiB
+ratios closely (within ~5%), meaning nothing about T-127’s schedule-caching fix changed CMAC’s
+numbers at this scale (expected - the schedule cost was already amortized over tens of thousands of
+block-cipher calls). Kupyna/Strumok are also within noise of their existing 1 MiB numbers, as
+expected (neither fix touches either primitive). XTS is the one mode whose numbers moved at the
+time this pass was run, by exactly the margin T-126’s root cause predicts.</p>
+<p><strong>GCM’s row above is superseded, same day, by the comb-multiply fix (<code>docs/TASKS.md</code> T-125,
+<code>docs/DECISIONS.md</code> D-76)</strong> - it was measured <em>before</em> that fix landed, kept here only as the historical
+“was this a message-size artifact” check it was run for (answer: no, the 1 MiB and 10 MiB numbers
+agreed, so the &gt;2x gap this pass investigated was real steady-state throughput, not overhead noise</p>
+<ul>
+<li>exactly what justified treating it as a genuine bottleneck worth root-causing rather than a
+measurement quirk). The Kalyna-GCM section above has the post-fix numbers; a fresh 10 MiB GCM point
+wasn’t re-run this session (the 1 MiB numbers already reproduce cleanly against 64 B and against the
+isolated field-multiply timing, so a third confirmation at 10 MiB wasn’t judged necessary here) -
+flagged for whoever next touches this table, not silently assumed unchanged.</li>
+</ul>
+<p><strong>Reproducing</strong>: same commands as each mode’s own section above, with <code>--iterations 50</code> and a
+10 MiB (<code>10485760</code>-byte) <code>--in</code> file.</p>
+<p><strong>Updated 2026-07-26, same day, re-run after T-128</strong> (const-generic Kalyna round functions):</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Mode</th><th>Variant</th><th>uacrypt 10 MiB (MB/s)</th><th>vs. this table’s own pre-T-128 row</th></tr>
+</thead>
+<tbody>
+<tr><td>Kalyna-XTS</td><td>128-128</td><td><strong>193.73</strong></td><td>+88.9% (was 102.59)</td></tr>
+<tr><td>Kalyna-XTS</td><td>128-256</td><td><strong>144.50</strong></td><td>+95.2% (was 74.05)</td></tr>
+<tr><td>Kalyna-XTS</td><td>256-256</td><td><strong>135.91</strong></td><td>+18.0% (was 115.16)</td></tr>
+<tr><td>Kalyna-XTS</td><td>256-512</td><td><strong>107.53</strong></td><td>+18.8% (was 90.50)</td></tr>
+<tr><td>Kalyna-XTS</td><td>512-512</td><td><strong>132.41</strong></td><td>+26.6% (was 104.60)</td></tr>
+<tr><td>Kupyna-256</td><td>-</td><td>98.44</td><td>+3.1% (was 95.52, within noise — T-128 doesn’t touch Kupyna)</td></tr>
+<tr><td>Kupyna-512</td><td>-</td><td>81.29</td><td>+4.3% (was 77.94, same reason)</td></tr>
+<tr><td>Strumok-256</td><td>-</td><td>653.08</td><td>+0.7% (was 648.67, within noise — T-128 doesn’t touch Strumok)</td></tr>
+<tr><td>Strumok-512</td><td>-</td><td>654.80</td><td>+2.9% (was 636.16, same reason)</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>Updated 2026-07-27, re-run after T-134</strong> (const-generic Kupyna round functions, <code>docs/DECISIONS.md</code>
+D-85) — supersedes this table’s own Kupyna rows above, with a UAPKI column added the same pass
+(fresh <code>kupyna_bench.c</code> wrapper, byte-identity verified, same as the Kupyna section’s own
+“Updated 2026-07-27” block has the full detail):</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Mode</th><th>Variant</th><th>uacrypt 10 MiB (MB/s)</th><th>UAPKI 10 MiB (MB/s)</th><th>vs. this table’s own pre-T-134 row</th></tr>
+</thead>
+<tbody>
+<tr><td>Kupyna-256</td><td>-</td><td><strong>139.52</strong></td><td>149.66</td><td>+41.7% (was 98.44)</td></tr>
+<tr><td>Kupyna-512</td><td>-</td><td>98.65</td><td><strong>117.77</strong></td><td>+21.4% (was 81.29)</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>UAPKI column for Kalyna-XTS added same day (<code>docs/TASKS.md</code> T-131, <code>docs/DECISIONS.md</code> D-78)</strong>, same
+wrapper/verification as CMAC’s table above (byte-for-byte identical to <code>uacrypt</code> on all 5 variants,
+both directions, confirmed before timing):</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variant</th><th>uacrypt encrypt (MB/s)</th><th>UAPKI encrypt (MB/s)</th><th>Ratio</th></tr>
+</thead>
+<tbody>
+<tr><td>128-128</td><td><strong>194.50</strong></td><td>12.91</td><td>15.1x</td></tr>
+<tr><td>128-256</td><td><strong>144.71</strong></td><td>12.67</td><td>11.4x</td></tr>
+<tr><td>256-256</td><td><strong>136.31</strong></td><td>18.57</td><td>7.3x</td></tr>
+<tr><td>256-512</td><td><strong>107.72</strong></td><td>18.16</td><td>5.9x</td></tr>
+<tr><td>512-512</td><td><strong>132.53</strong></td><td>40.99</td><td>3.2x</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>This project leads UAPKI’s XTS by 3.2-15.1x at 10 MiB — a far larger margin than any other mode
+in this file, and root-caused, not just observed.</strong> UAPKI’s <code>encrypt_xts</code> (<code>dstu7624.c:3003-3067</code>)
+calls the fully generic <code>gf2m_mul</code> (<code>dstu7624.c:2963-3001</code>) to compute the tweak’s “multiply by 2”
+every block — <code>gf2m_mul</code> heap-allocates three <code>WordArray</code>s (<code>wa_alloc_from_uint8</code> x2, <code>wa_alloc</code> x1)
+and runs the full O(m²) modular multiply, for a step that is mathematically just a one-bit shift
+plus a conditional reduction. This project’s <code>Gf2m*::double()</code> (T-126/D-76) does exactly that O(m)
+operation with no heap allocation at all — the same asymmetry the 1 MiB table above already flagged
+for 512-512 specifically (line ~739’s “3 allocations per call… dominating UAPKI’s own XTS
+throughput at scale”) is confirmed here to hold, and to widen, across every variant now that T-128
+also sped up this project’s own block-cipher path. <strong>This is not a bug on UAPKI’s side</strong> — it is
+correct, just written generically (the same <code>gf2m_mul</code> is shared with GCM/GMAC’s own field
+multiply, where a full multiply actually is needed) rather than specialized for the one fixed
+multiplicand XTS’s tweak update always uses.</p>
+<p>The wrapper re-runs <code>dstu7624_alloc</code>/<code>dstu7624_init_xts</code> every iteration but times only the
+<code>dstu7624_encrypt</code>/<code>_decrypt</code> call itself, matching <code>uacrypt</code>’s own XTS benchmark path (cached
+<code>ExpandedKey</code> built once outside the loop) - schedule/init cost is excluded on both sides, so the
+ratio above reflects bulk per-block work, not setup. Disclosed because CMAC’s table above uses the
+same exclusion but shows a much smaller ratio (~1.1-1.9x) - a reader shouldn’t assume the two tables
+amortize setup differently just because the ratios differ that much; they don’t, the difference is
+the genuine per-block cost gap described above.</p>
+<p><strong>XTS improves substantially on every variant, on top of T-126’s already-landed fix</strong> — XTS calls
+the Kalyna block cipher directly (via <code>ExpandedKey::encrypt_block</code>) for every data unit, so it
+benefits from T-128’s round-function speedup the same way Kalyna-block/CMAC do, independently of
+T-126’s separate tweak-doubling fix; the two are additive, not overlapping causes. Kupyna/Strumok
+move only within measurement noise, exactly as expected — T-128 is a <code>hazmat::kalyna.rs</code>-only
+change. <strong>T-134 (Kupyna’s own analogous const-generic rewrite) and T-135 (Strumok’s batched/fixed-
+index rewrite) both landed 2026-07-27</strong> - see the “Regression baseline” section below for their
+measured before/after numbers. CMAC/GCM’s own post-T-128 numbers are in their own sections above,
+not repeated here.</p>
+<p><strong>Decrypt direction added 2026-07-26, same session</strong> (previously this table, like most of this
+file, only measured the forward direction — corrected going forward, see “Methodology”):</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variant</th><th>uacrypt XTS encrypt (MB/s)</th><th>uacrypt XTS decrypt (MB/s)</th></tr>
+</thead>
+<tbody>
+<tr><td>128-128</td><td>193.73</td><td>173.58</td></tr>
+<tr><td>128-256</td><td>144.50</td><td>131.71</td></tr>
+<tr><td>256-256</td><td>135.91</td><td><strong>153.10</strong></td></tr>
+<tr><td>256-512</td><td>107.53</td><td>122.04</td></tr>
+<tr><td>512-512</td><td>132.41</td><td>98.89</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>Not symmetric, unlike GCM/CMAC above</strong> — encrypt and decrypt use different round-function paths
+internally (<code>encipher_round_n</code> vs <code>fused_inv_round_n</code>, T-128/D-77), which already showed a real
+encrypt/decrypt asymmetry in T-128’s own block-only criterion numbers (e.g. <code>nb=8</code> decrypt gained
+less than encrypt, ~15% vs ~22%). 256-256 decrypt actually running <em>faster</em> than its own encrypt is
+a real, measured result here, not a typo — consistent direction with (though larger in magnitude
+than) T-128’s own block-only finding that the two directions don’t scale identically across block
+sizes. Not root-caused further than “the two round functions are genuinely different code paths.”</p>
+<p><strong>UAPKI decrypt column added same day (T-131/D-78)</strong>, same wrapper, byte-for-byte confirmed to
+round-trip back to the original 10 MiB plaintext for both implementations before timing:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variant</th><th>uacrypt decrypt (MB/s)</th><th>UAPKI decrypt (MB/s)</th><th>Ratio</th></tr>
+</thead>
+<tbody>
+<tr><td>128-128</td><td><strong>172.81</strong></td><td>12.59</td><td>13.7x</td></tr>
+<tr><td>128-256</td><td><strong>128.22</strong></td><td>12.23</td><td>10.5x</td></tr>
+<tr><td>256-256</td><td><strong>153.43</strong></td><td>18.21</td><td>8.4x</td></tr>
+<tr><td>256-512</td><td><strong>122.91</strong></td><td>17.85</td><td>6.9x</td></tr>
+<tr><td>512-512</td><td><strong>99.96</strong></td><td>42.48</td><td>2.4x</td></tr>
+</tbody>
+</table>
+</div>
+<p>Same lead pattern and same root cause as the encrypt table above — <code>decrypt_xts</code> (<code>dstu7624.c:3069</code>
+onward) calls the identical generic <code>gf2m_mul</code> for the same tweak-doubling step, so the per-block
+allocation cost is symmetric between UAPKI’s own encrypt/decrypt too (its two columns move together
+within noise, same as this project’s).</p>
+<h2 id="what-the-gap-is-honestly"><a class="header" href="#what-the-gap-is-honestly">What the gap is, honestly</a></h2>
+<p>This project’s MVP deliberately chose correctness and <code>no_std</code>/embedded-portability first
+(<code>CLAUDE.md</code> MVP scope) over speed. The gap to UAPKI/outspace is real and has concrete, confirmed
+causes — read directly from the other implementations’ source, not guessed at (<code>docs/TASKS.md</code> has the
+sketched-not-scheduled task for closing this):</p>
+<ul>
+<li><strong>Kalyna/Kupyna, D-27 then D-28, both 2026-07-22</strong>: <code>hazmat::tables</code>’ shared <code>apply_matrix</code> used
+to compute every <code>GF(2^8)</code> multiplication via <code>gf_mul</code> at call time (up to 64 per column) — D-27
+switched it to a precomputed <code>MDS_TABLE</code>/<code>MDS_INV_TABLE</code> (8 lookups + 7 XORs instead), roughly
+halving the gap to UAPKI. D-27 assumed the remaining gap (UAPKI’s <code>p_boxrowcol</code> combining S-box
+<em>and</em> the row/column permutation into one lookup) couldn’t be closed without per-<code>nb</code> tables,
+since Kalyna’s row-shift offset depends on block size — <strong>this assumption was wrong</strong>, corrected
+in D-28: <code>sub_bytes</code> is row-indexed and <code>shift_rows</code>/Kupyna’s <code>shift_bytes</code> preserve row (only
+permute columns), so they commute, and the combined <code>SBOX_MDS</code> table doesn’t depend on <code>nb</code> at
+all — only the <em>gather index</em> does, which is cheap arithmetic, not a table. D-28 fused Kalyna’s
+encrypt round (and Kupyna’s, which shares the table) this way, closing Kupyna’s gap to UAPKI
+almost entirely and Kalyna’s encrypt gap substantially. D-29 then added <code>ExpandedKey</code> (schedule
+cached once, reused across calls) — with the schedule cached, Kalyna encrypt is now <em>faster</em> than
+UAPKI for every variant measured. D-30 fused the decrypt round too, via an equivalent-inverse-
+cipher restructuring (interior round keys transformed once — <code>DK[j] = apply_matrix(K[j], MDS_INV_TABLE)</code> — so <code>inv_sub_bytes</code> effectively moves to the front of each interior round,
+mirroring <code>encipher_round</code>’s shape). <strong>With that, <code>ExpandedKey</code>’s encrypt <em>and</em> decrypt are both
+faster than UAPKI across every variant measured</strong> — the gap this section used to describe is, as
+of D-30, closed for the schedule-cached API. What remains is honest, not hidden: the <em>raw</em>
+one-shot <code>encrypt</code>/<code>decrypt</code> functions (which redo the schedule, and now decrypt’s key transform
+too, on every call) are still slower than UAPKI’s own one-shot calls for the reasons above — that
+gap is inherent to the one-shot API shape, not something further table fusion closes, and
+<code>ExpandedKey</code> exists specifically for callers who want the schedule-cached numbers instead.
+<strong>Scope correction, 2026-07-22, after building UAPKI on the Raspberry Pi too (D-33) and moving to
+a single binary-level testing method (D-34)</strong>: the “faster than UAPKI” claim above was based on
+in-process <code>criterion</code> numbers on the Ryzen dev machine, and does not hold as broadly as it
+reads. On the Pi’s ARM core, UAPKI is faster than this project’s Kalyna and Kupyna (reversed).
+<strong>For Kupyna specifically, it doesn’t even hold at the binary level on Ryzen</strong> - D-34 found
+UAPKI slightly ahead there too (~10-17%) once measured as a real built-binary process instead of
+an in-process function call, a discrepancy that’s exactly why this project no longer treats
+in-process numbers as the comparison of record. Strumok’s “faster than UAPKI” result is the one
+that holds everywhere - both platforms, both methods. See D-33/D-34 for the numbers and D-33’s
+(untested) hypotheses for why Kalyna/Kupyna’s ratio is architecture-sensitive but Strumok’s isn’t.</li>
+<li><strong>Strumok, two distinct, additive causes — both fixed 2026-07-22, see D-26</strong>: (1)
+<code>oracles/strumok-dstu8845/strumok.c</code>’s <code>next_stream()</code> is one fully-unrolled function that
+updates each state word in place via modular indexing — it never physically moves the 16-word
+state array. This project’s <code>next_step</code> used to call <code>s.copy_within(1..16, 0)</code> once per step (a
+real 120-byte move), 16 times per 16-word output block — the literal-shift-vs-ring-buffer trade
+documented in D-18 — now replaced with a <code>head</code>-indexed ring buffer, no data movement. (2)
+Separately, outspace’s <code>T(w)</code> is 8 precomputed combined tables (<code>T0[byte0]^...^T7[byte7]</code>, S-box
+<ul>
+<li>MDS folded per byte position — 8 lookups total for the whole function); this project’s
+<code>t_function</code> used to do 8 S-box lookups <em>then</em> a full MDS matrix-multiply via
+<code>apply_matrix</code>/<code>gf_mul</code> (up to 64 <code>GF(2^8)</code> multiplications) as a separate step — now the same 8
+precomputed tables, transcribed from outspace directly. The remaining ~3.2x gap to outspace after
+both fixes was root-caused 2026-07-26 and fixed 2026-07-27 (T-135, <code>docs/DECISIONS.md</code> D-86): batched,
+fixed-index 128-byte block generation with the input XOR fused in at <code>u64</code> granularity, matching
+<code>next_stream_full_crypt</code>’s own shape — closed the gap to ~1.19-1.25x, not further chased since
+the remainder is the LFSR/FSM’s inherently serial dependency chain.</li>
+</ul>
+</li>
+<li><strong>Kalyna-XTS, T-126, 2026-07-26</strong>: <code>hazmat::gf2m_wide</code>’s field-element <code>multiply</code> had no fast path
+for the fixed-constant case XTS’s tweak-doubling always needs (multiply by the generator <code>x</code>) -
+every tweak update paid a full general O(m²) schoolbook multiply for what is mathematically an
+O(m/64) shift-plus-conditional-XOR. Fixed by adding <code>double()</code>. Closed the 512-512 variant’s
+4.4-4.6x-slower anomaly entirely (now ~2.4-2.5x <em>faster</em> than UAPKI at the same message sizes) and
+substantially improved the other four variants too (this waste existed at every field width, just
+less visibly before m=512 pushed it past “dramatic outlier”). See the Kalyna-XTS section above for
+the full before/after numbers.</li>
+<li><strong>The block-level “rough parity with UAPKI” claim (the very first table in this file, “Kalyna
+(single-block encrypt, nanoseconds”)) is itself a measurement artifact, found 2026-07-26
+(<code>docs/DECISIONS.md</code> D-76)</strong>: UAPKI’s <code>encrypt_ecb</code>/<code>decrypt_ecb</code> allocate twice and free once per call
+(<code>dstu7624.c:2916,2922</code>), which dominates the timing of a single 16-64 byte block. Proven from
+numbers already in this file, no new measurement needed: UAPKI’s own CMAC-at-1-MiB throughput
+(allocation-free <code>cmac_update</code>/<code>cmac_final</code>) is 1.33-2.71x <em>faster</em> than UAPKI’s own block-cached
+number for the same variant - impossible unless the block number under-measures UAPKI’s true
+per-block speed. This project’s own CMAC-at-1-MiB tracks its own block-cached number within ~1.5%
+on every variant, confirming <em>this project’s</em> block-level numbers needed no such correction. <strong>The
+true core-round-function gap, with allocation removed from both sides, is larger than the
+block-level table implies</strong> - UAPKI’s round function is genuinely faster, ~2.7x at 128-128
+narrowing to ~1.3x at 512-512 - a core Kalyna-cipher-level gap, not specific to any mode. This is
+why Kalyna-CMAC’s own gap (this file’s CMAC section) needs no CMAC-specific explanation: it’s
+simply exposing the real round-function gap directly, without the block-level table’s allocation
+contamination.</li>
+<li><strong>Kalyna-CMAC/KW’s <code>hazmat</code> API re-expanded the full key schedule on every call, T-127,
+2026-07-26</strong>: <code>kalyna_cmac.rs</code>’s <code>mac</code>/<code>kalyna_kw.rs</code>’s <code>wrap</code>/<code>unwrap</code> took raw key bytes and
+built a fresh <code>ExpandedKey</code> internally every call, unlike <code>kalyna-block</code>/<code>gcm</code>/<code>xts</code>. Confirmed
+UAPKI’s own benchmark harness (<code>bench.c</code>’s <code>cmd_kw</code>) caches its schedule once outside its own
+iteration loop - so this was a genuine asymmetry, not just an assumption. Fixed by adding
+<code>mac_with_cipher</code>/<code>wrap_with_cipher</code>/<code>unwrap_with_cipher</code> (take an already-expanded cipher) and
+wiring <code>uacrypt</code>’s benchmark loops to use them. For CMAC’s own large-message benchmarks this cost
+was already amortized to nothing (confirmed unchanged after the fix); for KW’s much smaller
+2-block-of-key-material benchmark it wasn’t, and removing it narrowed UAPKI’s lead by roughly
+14-31% across all five variants (see the Kalyna-KW section above) without eliminating it - the
+residual matches the core-round-function gap described in the point above.</li>
+<li><strong>Kalyna-GCM/GMAC, T-125, 2026-07-26</strong>: an isolated timing diagnostic measured
+<code>hazmat::gf2m_wide</code>’s field multiply at 89.6% (m=128) to 94.3% (m=512) of GCM’s per-block cost -
+the O(m²) bit-serial <code>poly_mul_wide</code>, not the block cipher, was the actual bottleneck (this is the
+profiling T-125’s own text asked for, not an inference from aggregate numbers). Fixed with a
+4-bit-window comb multiply (same technique class as real-world GF(2^m) implementations, verified
+against every existing GCM/GMAC/XTS vector and property test, no new correctness test needed).
+This project’s own GCM throughput improved ~1.7-2.3x across every variant; the 256-256/256-512
+cells that originally triggered T-125 (&gt;2x slower at 1 MiB) narrowed to ~1.09-1.11x, and
+128-128/128-256/512-512 flipped from trailing or roughly-tied to clearly leading. GMAC (same field
+arithmetic) improved by the same mechanism, roughly doubling an already-large lead. <strong>What this
+does not answer</strong>: why UAPKI specifically wins the mid-size (256-<em>) variants and loses at the
+extremes (128-</em>/512-512) - the working hypothesis (not measured, from reading <code>gf2m_mul</code>,
+<code>dstu7624.c:2963-3001</code>) is that UAPKI’s own Karatsuba multiply pays 3 heap allocations per call,
+amortized differently across the fewer-but-larger blocks a bigger <code>m</code> produces - flagged as the
+open remainder, not settled.</li>
+<li><strong>Neither gap is a correctness or <code>no_std</code> concern</strong> — all of it is pure throughput, addressable later
+without touching the already-verified algorithm logic (confirmed for Strumok’s fix: all existing
+tests, including the 4000-case outspace differential harness, still pass unchanged).</li>
+</ul>
+<p>None of this changes any implementation’s standing as a correctness oracle (<code>docs/ORACLES.md</code>) — a
+reference implementation’s whole reason for existing is auditable clarity, not speed, and UAPKI’s
+speed doesn’t make it “more correct,” just faster.</p>
+<h2 id="regression-baseline"><a class="header" href="#regression-baseline">Regression baseline</a></h2>
+<p>A named <code>criterion</code> baseline was saved the same day these numbers were recorded:</p>
+<pre><code>cargo bench -p dstu-core --bench kalyna --bench kupyna --bench strumok -- --save-baseline initial-2026-07-22
+</code></pre>
+<p>To check a future change against it:</p>
+<pre><code>cargo bench -p dstu-core --bench kalyna --bench kupyna --bench strumok -- --baseline initial-2026-07-22
+</code></pre>
+<p><strong>Updated 2026-07-22, same day</strong>: once Strumok’s ring-buffer/T-table change (D-26) landed, a second
+baseline was saved specifically for Strumok, so future Strumok changes are checked against the
+<em>optimized</em> form rather than the old, since-fixed one:</p>
+<pre><code>cargo bench -p dstu-core --bench strumok -- --save-baseline strumok-optimized-2026-07-22
+cargo bench -p dstu-core --bench strumok -- --baseline strumok-optimized-2026-07-22  # to check
+</code></pre>
+<p><strong>Updated again 2026-07-22, same day</strong>: Kalyna/Kupyna’s <code>MDS_TABLE</code> change (D-27) landed too, so a
+third baseline was saved for them:</p>
+<pre><code>cargo bench -p dstu-core --bench kalyna --bench kupyna -- --save-baseline kalyna-kupyna-optimized-2026-07-22
+cargo bench -p dstu-core --bench kalyna --bench kupyna -- --baseline kalyna-kupyna-optimized-2026-07-22  # to check
+</code></pre>
+<p><strong>Updated again 2026-07-22, same day</strong>: D-28’s full fusion landed, so a fourth baseline was saved:</p>
+<pre><code>cargo bench -p dstu-core --bench kalyna --bench kupyna -- --save-baseline kalyna-kupyna-fused-2026-07-22
+cargo bench -p dstu-core --bench kalyna --bench kupyna -- --baseline kalyna-kupyna-fused-2026-07-22  # to check
+</code></pre>
+<p><strong>Updated a third time 2026-07-22, same day</strong>: D-29’s <code>ExpandedKey</code> added new bench functions
+(<code>*_encrypt_block_only</code>/<code>*_decrypt_block_only</code> in <code>benches/kalyna.rs</code>), so a fifth baseline covers
+those too (Kupyna is unaffected by D-29, no new baseline needed there):</p>
+<pre><code>cargo bench -p dstu-core --bench kalyna -- --save-baseline kalyna-expandedkey-2026-07-22
+cargo bench -p dstu-core --bench kalyna -- --baseline kalyna-expandedkey-2026-07-22  # to check
+</code></pre>
+<p><strong>Updated a fourth time 2026-07-22, same day</strong>: D-30’s decrypt fusion landed, so a sixth baseline
+supersedes <code>kalyna-expandedkey-2026-07-22</code> for Kalyna:</p>
+<pre><code>cargo bench -p dstu-core --bench kalyna -- --save-baseline kalyna-decryptfusion-2026-07-22
+cargo bench -p dstu-core --bench kalyna -- --baseline kalyna-decryptfusion-2026-07-22  # to check
+</code></pre>
+<p><code>initial-2026-07-22</code>, <code>kalyna-kupyna-optimized-2026-07-22</code>, and <code>kalyna-expandedkey-2026-07-22</code> are
+now all superseded for Kalyna (by <code>kalyna-decryptfusion-2026-07-22</code>, or <code>kalyna-kupyna-fused-2026- 07-22</code> for the two benches shared with Kupyna) and Strumok is still tracked against
+<code>strumok-optimized-2026-07-22</code> — kept only as historical records, not what new changes should be
+checked against.</p>
+<p><strong>Updated 2026-07-26 (<code>docs/TASKS.md</code> T-128, <code>docs/DECISIONS.md</code> D-77)</strong>: <code>encipher_round</code>/<code>fused_inv_round</code>
+became const-generic over block size (see D-77 for the full mechanism), superseding
+<code>kalyna-decryptfusion-2026-07-22</code> as the Kalyna baseline:</p>
+<pre><code>cargo bench -p dstu-core --bench kalyna -- --save-baseline pre-unroll-2026-07-26  # captured before the change
+cargo bench -p dstu-core --bench kalyna -- --baseline pre-unroll-2026-07-26  # to check
+</code></pre>
+<p><strong>Before/after comparison, one clean run</strong> (no other CPU-heavy process running concurrently — an
+earlier attempt at this same comparison, taken while a background Miri run was active, produced a
+spurious +4.9% “regression” reading on one cell purely from CPU contention, discarded rather than
+published):</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variant</th><th>Direction</th><th>Mode-level (Δ, key-expansion-dominated)</th><th>Block-only cached-schedule (Δ, isolates the round function)</th></tr>
+</thead>
+<tbody>
+<tr><td>128-128</td><td>encrypt</td><td>−11.8%</td><td><strong>−53.6%</strong></td></tr>
+<tr><td>128-128</td><td>decrypt</td><td>−6.9%</td><td><strong>−51.9%</strong></td></tr>
+<tr><td>128-256</td><td>encrypt</td><td>−12.3%</td><td><strong>−54.3%</strong></td></tr>
+<tr><td>128-256</td><td>decrypt</td><td>−8.5%</td><td><strong>−51.3%</strong></td></tr>
+<tr><td>256-256</td><td>encrypt</td><td>−5.7%</td><td><strong>−20.2%</strong></td></tr>
+<tr><td>256-256</td><td>decrypt</td><td>−7.1%</td><td><strong>−40.9%</strong></td></tr>
+<tr><td>256-512</td><td>encrypt</td><td>−5.8%</td><td><strong>−19.0%</strong></td></tr>
+<tr><td>256-512</td><td>decrypt</td><td>−7.8%</td><td><strong>−36.5%</strong></td></tr>
+<tr><td>512-512</td><td>encrypt</td><td>−3.2%</td><td><strong>−21.5%</strong></td></tr>
+<tr><td>512-512</td><td>decrypt</td><td>−2.4%</td><td><strong>−15.3%</strong></td></tr>
+</tbody>
+</table>
+</div>
+<p>“Mode-level” is the full <code>encrypt_generic</code>/<code>decrypt_generic</code> call (key expansion + rounds +
+zeroize) — small, sometimes noisy improvement, exactly as expected since key expansion still runs
+through the unchanged runtime-<code>nb</code> round functions (the <code>kalyna_variant!</code> doc comment’s own
+“~60-79% of single-call time is key schedule” note). “Block-only” (<code>ExpandedKey::encrypt_block</code>/
+<code>decrypt_block</code>, cached schedule) isolates the round function itself — the fair before/after metric
+for this specific change — and shows the real win: largest at <code>nb=2</code> (the size that paid the worst
+of the old bounds-check/oversized-buffer waste), smaller but still substantial at <code>nb=8</code> (contrary
+to an initial prediction that the largest variant, already using the full buffer width, “might not
+move at all” — bounds-check elimination and full loop unrolling help every size, not only the one
+with wasted buffer space). Per D-34, this is criterion-based internal regression tracking only, not
+a cross-implementation claim against UAPKI — the binary-level Kalyna-block table above was not
+re-measured this session (see D-77/T-128).</p>
+<p><strong>Updated 2026-07-27 (<code>docs/TASKS.md</code> T-134, <code>docs/DECISIONS.md</code> D-85)</strong>: <code>sub_shift_mix</code>/<code>compress</code> became
+const-generic over <code>COLUMNS</code> (Kupyna’s own analogue of T-128’s Kalyna rewrite), superseding
+<code>kalyna-kupyna-fused-2026-07-22</code> as the Kupyna baseline:</p>
+<pre><code>cargo bench -p dstu-core --bench kupyna -- --save-baseline kupyna-pre-t134-2026-07-27  # captured before the change
+cargo bench -p dstu-core --bench kupyna -- --baseline kupyna-pre-t134-2026-07-27  # to check
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Benchmark</th><th>Before</th><th>After</th><th>Change</th></tr>
+</thead>
+<tbody>
+<tr><td>Kupyna-256 / 64 B</td><td>1.676 µs</td><td>1.207 µs</td><td>−28.9%</td></tr>
+<tr><td>Kupyna-512 / 64 B</td><td>2.443 µs</td><td>2.029 µs</td><td>−17.0%</td></tr>
+<tr><td>Kupyna-256 / 1024 B</td><td>11.396 µs</td><td>8.163 µs</td><td>−30.7%</td></tr>
+<tr><td>Kupyna-512 / 1024 B</td><td>15.086 µs</td><td>12.425 µs</td><td>−18.9%</td></tr>
+<tr><td>Kupyna-256 / 65536 B</td><td>660.20 µs</td><td>474.13 µs</td><td>−30.4%</td></tr>
+<tr><td>Kupyna-512 / 65536 B</td><td>815.52 µs</td><td>667.59 µs</td><td>−18.7%</td></tr>
+</tbody>
+</table>
+</div>
+<p>Per D-34, this is <code>criterion</code>-based internal regression tracking only, not a cross-implementation
+claim against UAPKI — Kupyna’s binary-level UAPKI comparison table (in its own section above,
+“Updated 2026-07-27”) has the independent binary-level re-measurement, which cross-validates these
+numbers via a separate method rather than duplicating them here.</p>
+<p><code>target/criterion/</code> is gitignored (as usual for <code>target/</code>), so this baseline lives only on whatever
+machine last ran the save command above — it is <strong>not</strong> a portable, cross-machine regression gate
+(a laptop today vs. a CI runner tomorrow will disagree on absolute numbers regardless of any code
+change). Its value is catching a <em>relative</em> regression on the same machine across commits, not
+establishing a portable performance contract. Re-run the save command to refresh the baseline after
+an intentional performance change.</p>
+<p><strong>Updated 2026-07-27 (<code>docs/TASKS.md</code> T-135, <code>docs/DECISIONS.md</code> D-86)</strong>: <code>apply_keystream</code> became a
+batched/fixed-index bulk path over 128-byte blocks (Strumok’s own analogue of T-128/T-134’s
+unrolling, though via a one-time array rotation rather than const-generic dispatch — see D-86 for
+why), superseding <code>strumok-optimized-2026-07-22</code> as the Strumok baseline:</p>
+<pre><code>cargo bench -p dstu-core --bench strumok -- --save-baseline strumok-pre-t135-2026-07-27  # captured before the change
+cargo bench -p dstu-core --bench strumok -- --baseline strumok-pre-t135-2026-07-27  # to check
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Benchmark</th><th>Change</th></tr>
+</thead>
+<tbody>
+<tr><td>Strumok-256 / 64 B</td><td>no change (−0.04%, within noise — 64 B never reaches the new 128 B bulk threshold)</td></tr>
+<tr><td>Strumok-512 / 64 B</td><td>+2.3% (small, real — phase-boundary check overhead with no bulk path to amortize it)</td></tr>
+<tr><td>Strumok-256 / 1024 B</td><td><strong>−53.5%</strong></td></tr>
+<tr><td>Strumok-512 / 1024 B</td><td><strong>−53.7%</strong></td></tr>
+<tr><td>Strumok-256 / 65536 B</td><td><strong>−64.7%</strong></td></tr>
+<tr><td>Strumok-512 / 65536 B</td><td><strong>−64.7%</strong></td></tr>
+</tbody>
+</table>
+</div>
+<p>Per D-34, this is <code>criterion</code>-based internal regression tracking only — the Strumok binary-level
+comparison table below has the independent, cross-implementation re-measurement.</p>
+<p><strong>Updated 2026-08-03 (<code>docs/TASKS.md</code> T-172, <code>docs/DECISIONS.md</code> D-161)</strong>: Kalyna’s interior round
+sequence became a genuine macro-generated unroll (<code>unroll_rounds!</code>, no <code>for</code> loop at all, <code>fused</code>
+profile only — <code>small-tables</code> keeps the old runtime loop, see D-161 for the size trade-off this
+split resolves), superseding <code>pre-unroll-2026-07-26</code> as the Kalyna baseline for the <code>fused</code> default
+profile:</p>
+<pre><code>cargo bench -p dstu-core --bench kalyna -- --save-baseline t172-stage-b  # already saved, this pass
+cargo bench -p dstu-core --bench kalyna -- --baseline t172-stage-b  # to check
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variant</th><th>Direction</th><th>Block-only cached-schedule (Δ)</th></tr>
+</thead>
+<tbody>
+<tr><td>128-128</td><td>encrypt</td><td><strong>−26.4%</strong></td></tr>
+<tr><td>128-128</td><td>decrypt</td><td><strong>−26.2%</strong></td></tr>
+<tr><td>128-256</td><td>encrypt</td><td><strong>−25.0%</strong></td></tr>
+<tr><td>128-256</td><td>decrypt</td><td><strong>−26.7%</strong></td></tr>
+<tr><td>256-256</td><td>encrypt</td><td><strong>−31.4%</strong></td></tr>
+<tr><td>256-256</td><td>decrypt</td><td><strong>−23.6%</strong></td></tr>
+<tr><td>256-512</td><td>encrypt</td><td><strong>−23.0%</strong></td></tr>
+<tr><td>256-512</td><td>decrypt</td><td>−2.2%</td></tr>
+<tr><td>512-512</td><td>encrypt</td><td>+2.8% (near/at CI overlap — see D-161 for why <code>NB=8</code> encrypt specifically doesn’t benefit)</td></tr>
+<tr><td>512-512</td><td>decrypt</td><td><strong>−23.0%</strong></td></tr>
+</tbody>
+</table>
+</div>
+<p>Cross-checked binary-level (<code>uacrypt kalyna-block</code>, D-34’s mandatory methodology, not just
+in-process <code>criterion</code>): 128-128 encrypt −16.7%, 512-512 encrypt +2.0%, 512-512 decrypt −24.0% —
+same direction and rough magnitude as the criterion numbers above. <code>small-tables</code>’s own numbers are
+unaffected (it never reaches the unrolled code path) — its <code>.text</code> size grew independently by
++3.4%, an <code>NR</code>-const-generic side effect unrelated to unrolling, see D-161.</p>
+<h2 id="reproducing-the-c-comparisons"><a class="header" href="#reproducing-the-c-comparisons">Reproducing the C comparisons</a></h2>
+<p>Not committed to this repo by default (one-off, and pulling in a full UAPKI build is a lot of
+scaffolding for something that isn’t run again regularly) — but fully reproducible. <strong>Exception:
+the Kalyna-CMAC vs. UAPKI wrapper is committed</strong> (<code>tests/oracle-harness/uapki-cmac-bench/ cmac_bench.c</code>, <code>docs/DECISIONS.md</code> D-83) since it had been rebuilt from scratch repeatedly in one week
+(T-131/T-133/T-138) — promote another mode’s wrapper the same way if it starts recurring, rather
+than committing all of them preemptively.</p>
+<ol>
+<li><strong>Oliynykov reference C</strong>: build <code>oracles/kalyna-reference</code>/<code>oracles/kupyna-reference</code> directly
+(<code>gcc -O2 -I oracles/kalyna-reference &lt;bench.c&gt; oracles/kalyna-reference/{kalyna,tables}.c</code>),
+time <code>KalynaEncipher</code>/<code>KupynaHash</code> in a loop (context/key schedule set up once, outside the
+timed loop).</li>
+<li><strong>UAPKI</strong>: build <code>oracles/uapki/library/uapkic</code> via its own <code>CMakeLists.txt</code>
+(<code>-DUAPKI_LIBS_TYPE=STATIC -DUAPKI_DISABLE_COPY=ON</code>; on Windows/MinGW, the vendored
+<code>resource.rc</code> is UTF-16 and <code>windres</code> chokes on it — set <code>RESOURCE_RC</code> to empty in a working
+copy of the CMakeLists, not needed for a benchmark), then time <code>dstu7624_encrypt</code> /
+<code>dstu7564_init</code>+<code>update</code>+<code>final</code> / <code>dstu8845_crypt</code> through the public <code>ByteArray</code>-based API.
+<strong>Faster alternative on Windows, found 2026-07-26 (T-121/D-71)</strong>: the official
+<code>specinfo-ua/UAPKI</code> GitHub repo publishes a signed prebuilt <code>uapkic.dll</code> as a release asset
+(confirmed via <code>gh api repos/specinfo-ua/UAPKI/releases</code>) — exports every symbol needed, no
+VC++ redistributable dependency. <code>gendef uapkic.dll &amp;&amp; dlltool -d uapkic.def -l libuapkic.a -D uapkic.dll</code> (both already on this machine via the WinLibs MinGW install, <code>.claude.local.md</code>)
+produces a plain import lib, so a C wrapper links with bare <code>gcc -luapkic</code> — skips CMake and the
+<code>resource.rc</code> workaround entirely. Use the vendored headers in <code>oracles/uapki/library/uapkic/ include/</code> for exact signatures regardless of which build path is used; if in doubt whether a
+prebuilt DLL’s ABI matches the vendored headers, <code>dstu7624_self_test()</code>/<code>dstu7564_self_test()</code>/
+<code>dstu8845_self_test()</code> (all exported) are a fast sanity check before trusting any numbers from
+it.</li>
+<li><strong>outspace</strong>: build <code>oracles/strumok-dstu8845</code> the same way as the existing
+<code>tests/oracle-harness/strumok-differential/</code> harness does, time <code>dstu8845_crypt</code> in a loop.</li>
+</ol>
+<p>All timing done with <code>clock_gettime(CLOCK_MONOTONIC, ...)</code>, mean over many iterations (thousands
+for small buffers, hundreds for the 64 KB case) to average out timer-resolution noise.</p>
+<h2 id="vs-international-standard-analogs-openssl--t-149-d-106"><a class="header" href="#vs-international-standard-analogs-openssl--t-149-d-106">vs. international-standard analogs (OpenSSL) — T-149, D-106</a></h2>
+<p>Every table above compares this project against other <em>DSTU</em> implementations (UAPKI, Oliynykov’s
+own reference, outspace) — the right comparison for “is this a competent implementation of the
+standard,” but not the question most first-time visitors actually have, which is closer to “how
+does this compare to the algorithm I already know.” This section answers that second question,
+against the same three role-analogs the GitHub Pages landing page and <code>docs/dstu-crypto-project.md</code>
+already name: <strong>AES</strong> for Kalyna, <strong>Whirlpool</strong> for Kupyna, <strong>ChaCha20</strong> for Strumok. This is a
+speed baseline against familiar names, not a correctness oracle — <code>docs/ORACLES.md</code>’s trust matrix
+is unchanged, OpenSSL is not added to it.</p>
+<p><strong>Methodology deviation, stated plainly</strong>: unlike every table above (a <code>gcc -O2</code> file-in/file-out
+wrapper timed the D-34 way), these OpenSSL numbers come from OpenSSL’s own <code>openssl speed</code>
+subcommand — a different harness, not a wrapper this project wrote. <code>-elapsed</code> makes it use
+wall-clock time (matching <code>uacrypt</code>’s own timing) instead of its default CPU-user-time divisor, and
+<code>-bytes N</code> fixes its buffer size to match <code>uacrypt</code>’s. Both sides report <strong>decimal</strong> MB/s (10⁶
+bytes/s — OpenSSL’s own “1000s of bytes/s” output, <code>uacrypt</code>‘s <code>bytes / seconds / 1e6</code>), so the
+ratios below are apples-to-apples even though the two programs’ internal timing loops differ. No
+byte-identity check is meaningful here (unlike the UAPKI tables) — AES, Whirlpool, and ChaCha20 are
+different algorithms from Kalyna/Kupyna/Strumok by design, there is nothing to byte-diff against.</p>
+<p><strong>Machine/build</strong>: same Ryzen 5 PRO 4650U dev machine as every table above, measured 2026-07-31.
+OpenSSL 3.5.5 (27 Jan 2026), MinGW64 build (<code>gcc -m64 -O3</code>), the copy already on this machine’s
+<code>PATH</code> — nothing downloaded for this section, since it already covers AES, Whirlpool (via
+<code>-provider legacy -provider default</code>), and ChaCha20 without needing libsodium as well.</p>
+<p><strong>AES-NI/AVX2 caveat — read before the tables, not after</strong>: OpenSSL’s AES and ChaCha20 use CPU
+instruction-set extensions (AES-NI, AVX2) that <code>dstu-core</code> has no equivalent to by design (no SIMD,
+<code>CLAUDE.md</code> MVP scope). For AES, <code>OPENSSL_ia32cap="~0x200000200000000"</code> is OpenSSL’s own documented
+mechanism for disabling AES-NI/PCLMULQDQ, so both an AES-NI-on <em>and</em> an AES-NI-off column are
+reported below — the off column is the one that actually answers “how good is this project’s
+Kalyna,” the on column shows what hardware acceleration this project cannot claim. No equivalently
+narrow, well-documented single flag was found to disable just ChaCha20’s AVX2 path without risking
+disabling unrelated optimizations too (an all-capabilities-zero test dropped AES itself to <em>below</em>
+its own AES-NI-off number, suggesting it disables more than one extension at a time) — so ChaCha20
+below is hardware-accelerated only, flagged the same way rather than presented as if it were a
+clean software-vs-software comparison. <strong>Whirlpool has no such caveat</strong> — OpenSSL’s implementation
+is plain table-driven C with no ISA-specific fast path, so it’s a genuinely clean comparison to
+Kupyna’s own software-only design.</p>
+<h3 id="kalyna-vs-aes-single-block-schedule-cached-mbs--higher-is-better"><a class="header" href="#kalyna-vs-aes-single-block-schedule-cached-mbs--higher-is-better">Kalyna vs. AES (single block, schedule cached, MB/s — higher is better)</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variant</th><th>uacrypt</th><th>AES (AES-NI)</th><th>AES (AES-NI off)</th><th>vs. AES-NI-off</th></tr>
+</thead>
+<tbody>
+<tr><td>128-128</td><td><strong>222.22</strong></td><td>1127.55</td><td>380.07</td><td>0.58x (AES software ~1.71x faster)</td></tr>
+<tr><td>128-256</td><td><strong>158.42</strong></td><td>900.35</td><td>272.69</td><td>0.58x (AES software ~1.72x faster)</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>256-256, 256-512, 512-512 have no AES row, and won’t ever</strong> — AES has one fixed 128-bit block
+size; only Kalyna’s two 128-bit-block variants share anything to compare against. Against
+AES-NI (hardware), the gap is ~5.1-5.7x — that number describes ISA support, not this project’s
+Kalyna code, per the caveat above.</p>
+<h3 id="kupyna-vs-whirlpool-digest-mbs--higher-is-better"><a class="header" href="#kupyna-vs-whirlpool-digest-mbs--higher-is-better">Kupyna vs. Whirlpool (digest, MB/s — higher is better)</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variant</th><th>Size</th><th>uacrypt</th><th>Whirlpool</th><th>Ratio</th></tr>
+</thead>
+<tbody>
+<tr><td>Kupyna-256</td><td>16 KiB</td><td><strong>134.36</strong></td><td>201.51</td><td>0.67x (Whirlpool ~1.50x faster)</td></tr>
+<tr><td>Kupyna-256</td><td>10 MiB</td><td><strong>136.46</strong></td><td>198.57</td><td>0.69x (Whirlpool ~1.46x faster)</td></tr>
+<tr><td>Kupyna-512</td><td>16 KiB</td><td><strong>95.86</strong></td><td>201.51</td><td>0.48x (Whirlpool ~2.10x faster)</td></tr>
+<tr><td>Kupyna-512</td><td>10 MiB</td><td><strong>97.24</strong></td><td>198.57</td><td>0.49x (Whirlpool ~2.04x faster)</td></tr>
+</tbody>
+</table>
+</div>
+<p>Whirlpool’s output is fixed at 512 bits regardless of input size, so Kupyna-256’s comparison is
+throughput-only (no matching output-size counterpart) — still valid, since both are hashing the
+same input bytes at the same buffer size. This is the one clean, no-asterisk table in this section:
+same optimization tier (table-driven software, no ISA extensions) on both sides, so a genuine ~1.5-
+2.1x gap is the actual finding, not a hardware artifact.</p>
+<h3 id="strumok-vs-chacha20-keystream-mbs--higher-is-better"><a class="header" href="#strumok-vs-chacha20-keystream-mbs--higher-is-better">Strumok vs. ChaCha20 (keystream, MB/s — higher is better)</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variant</th><th>Size</th><th>uacrypt</th><th>ChaCha20 (AVX2)</th><th>Ratio</th></tr>
+</thead>
+<tbody>
+<tr><td>Strumok-256</td><td>16 KiB</td><td><strong>1959.92</strong></td><td>3266.65</td><td>0.60x (ChaCha20 ~1.67x faster)</td></tr>
+<tr><td>Strumok-256</td><td>10 MiB</td><td><strong>1891.73</strong></td><td>3169.75</td><td>0.60x (ChaCha20 ~1.68x faster)</td></tr>
+<tr><td>Strumok-512</td><td>16 KiB</td><td><strong>1904.58</strong></td><td>3266.65</td><td>0.58x (ChaCha20 ~1.72x faster)</td></tr>
+<tr><td>Strumok-512</td><td>10 MiB</td><td><strong>1879.27</strong></td><td>3169.75</td><td>0.59x (ChaCha20 ~1.69x faster)</td></tr>
+</tbody>
+</table>
+</div>
+<p>ChaCha20’s key is fixed at 256 bits (XChaCha20 extends the <em>nonce</em>, not the key), so Strumok-512’s
+row has no size-matched counterpart either — shown anyway since it’s the same role comparison, just
+without a key-size match. <strong>Given ChaCha20’s AVX2 acceleration and Strumok’s pure-software design,
+~1.6-1.7x is a genuinely competitive result</strong>, not the ~5x-class gap AES-NI produces — closer in
+spirit to the Whirlpool comparison than the AES one, even though a clean AVX2-off number wasn’t
+produced for it.</p>
+<p><strong>Reproducing</strong>: <code>openssl speed -elapsed -evp &lt;aes-128-ecb|aes-256-ecb&gt; -bytes 16 -seconds 3</code> (add
+<code>OPENSSL_ia32cap="~0x200000200000000"</code> for the AES-NI-off column); <code>openssl speed -provider legacy -provider default -elapsed -evp whirlpool -bytes &lt;16384|10485760&gt; -seconds 3</code>; <code>openssl speed -elapsed -evp chacha20 -bytes &lt;16384|10485760&gt; -seconds 2</code>. <code>uacrypt</code> side: <code>kalyna-block encrypt --variant &lt;v&gt; --key &lt;16-or-32-byte key&gt; --in &lt;16-byte block&gt; --out ... --iterations 3000000</code>,
+<code>kupyna-digest --variant &lt;256|512&gt; --in &lt;16 KiB|10 MiB file&gt; --out ... --iterations &lt;2000|20&gt;</code>,
+<code>strumok-crypt --variant &lt;256|512&gt; --key &lt;32-or-64-byte key&gt; --iv &lt;32-byte IV&gt; --in &lt;16 KiB|10 MiB file&gt; --out ... --iterations &lt;3000|30&gt;</code>.</p>
+<h3 id="dstu-4145-vs-ecdsa-signverify-opss--higher-is-better--t-150"><a class="header" href="#dstu-4145-vs-ecdsa-signverify-opss--higher-is-better--t-150">DSTU 4145 vs. ECDSA (sign/verify, ops/s — higher is better) — T-150</a></h3>
+<p><code>sign</code>/<code>verify</code> had no <code>--iterations</code> flag before this pass (unlike every other benchmarkable
+command) - added for exactly this comparison (D-34’s own policy: use the actual built binary, not
+an internal <code>criterion</code> number, for any cross-implementation claim). The message is hashed once
+before the timed loop starts (confirmed negligible: 255.98 ops/s on a 5-byte message vs. 254.51
+ops/s on a 64 KiB message, within 0.6% - hashing cost genuinely doesn’t move the number), and only
+<code>sign_digest</code>/<code>verify_digest</code> itself is timed, key/signature parsed once outside the loop (same
+D-80 discipline as every other table here). OpenSSL’s own <code>openssl speed ecdsab163</code>/<code>ecdsap256</code>
+already report <code>sign/s</code>/<code>verify/s</code> directly - no unit conversion needed, unlike the MB/s tables
+above.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th></th><th>uacrypt (DSTU 4145)</th><th>OpenSSL nistb163</th><th>OpenSSL nistp256</th></tr>
+</thead>
+<tbody>
+<tr><td>sign/s</td><td><strong>255.98</strong></td><td>5292.6</td><td>48059.1</td></tr>
+<tr><td>verify/s</td><td><strong>120.80</strong></td><td>2732.6</td><td>16404.3</td></tr>
+<tr><td>vs. uacrypt</td><td>—</td><td>~20.7x faster (sign), ~22.6x faster (verify)</td><td>~187.7x faster (sign), ~135.8x faster (verify)</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>Two different comparisons in one table, and they answer different questions:</strong></p>
+<ul>
+<li><strong><code>nistb163</code></strong> (a NIST/SECG binary curve, also over <code>GF(2^163)</code>) is the field-size-matched row -
+same underlying arithmetic cost class as this project’s <code>gf2m163</code>, though <strong>not the same curve</strong>
+(different <code>b</code>, base point, order - this project’s curve has <code>a = 1</code> per <code>curve163.rs</code>). This is
+the row that isolates “how good is this project’s EC implementation,” and the answer is: not very,
+by a wide margin, for a documented reason below.</li>
+<li><strong><code>nistp256</code></strong> (P-256, a prime-field curve) is the “ECDSA” most readers actually mean when they
+read that name, included because the landing page’s own analog table just says “ECDSA” with no
+curve specified. <strong>Security levels are not matched between any two rows here</strong>: a 163-bit binary
+curve is roughly an 80-bit security level (legacy/deprecated in modern practice - OpenSSL still
+ships it, NIST no longer recommends new use), while P-256 is the current ~128-bit-security
+baseline. Do not read the P-256 ratio as “DSTU 4145 is 188x worse than modern ECDSA” - part of
+that number is OpenSSL doing genuinely more expensive math for a stronger security guarantee, not
+purely an implementation-quality gap. The <code>nistb163</code> row is the fairer one, and it’s still ~21-23x.</li>
+</ul>
+<p><strong>Root cause, read from the code, not guessed</strong>: <code>curve163.rs</code>’s own doc comment states its scalar
+multiplication “always runs the full 163 iterations” - a plain constant-time double-and-add ladder,
+deliberately not windowed/wNAF and with no precomputed multiples of the base point. OpenSSL’s binary-
+curve implementation uses windowed scalar multiplication with precomputation. <strong>This is not the same
+kind of gap as AES-NI/AVX2 above</strong> - there’s no CPU instruction-set asterisk to disclose here; it’s
+an algorithmic difference (iteration count and precomputation strategy), consistent with this
+project’s own MVP priority (<code>CLAUDE.md</code>: correctness first) and its documented constant-time
+posture - a naive-but-constant-time ladder is the safe default this project chose over a
+potentially-faster-but-harder-to-verify windowed implementation, not an oversight.</p>
+<p><strong>Reproducing</strong>: <code>openssl speed -elapsed -seconds 3 ecdsab163</code> / <code>ecdsap256</code> (no legacy provider or
+<code>ia32cap</code> tricks needed - both curves are in the default provider on this build). <code>uacrypt</code> side:
+<code>sign-keygen --out signing.key</code>, <code>sign-pubkey --key signing.key --out verifying.key</code>, a tiny
+(few-byte) <code>--in</code> file, then <code>sign --key signing.key --in msg.bin --out msg.sig --iterations 5000</code>
+and <code>verify --key verifying.key --in msg.bin --sig msg.sig --iterations 2000</code>.</p>
+<h3 id="verify-classic-vs-fast-path-opss--higher-is-better--t-151d-108"><a class="header" href="#verify-classic-vs-fast-path-opss--higher-is-better--t-151d-108"><code>verify</code>: classic vs. fast path (ops/s — higher is better) — T-151/D-108</a></h3>
+<p>Following the root cause above, <code>verify</code>’s own <code>s*G + r*Q</code> combine step (both scalars public,
+unlike <code>sign</code>’s secret-nonce multiplication) got a second, faster implementation - projective
+(López-Dahab) coordinates + Shamir’s trick, deferring every field inversion in the computation to
+one at the end, instead of the classic path’s two full constant-time ladders plus their own final
+inversions. Gated behind the <strong>existing</strong> <code>small-tables</code> Cargo feature (same one Kalyna/Kupyna/
+Strumok already use for their own big-table/small-table split, same polarity: default = fast,
+<code>small-tables</code> = classic, unchanged) - see <code>docs/DECISIONS.md</code> D-108 for the full design and why
+this reuses that flag for a code-size/audit-surface tradeoff rather than a flash-table one.
+<code>sign</code>/<code>verifying_key()</code> (secret-scalar operations) are completely unaffected - <code>scalar_multiply</code>
+itself was not touched.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Profile</th><th>verify ops/s</th></tr>
+</thead>
+<tbody>
+<tr><td>Default (fast path)</td><td><strong>239.31</strong></td></tr>
+<tr><td><code>small-tables</code> (classic, unchanged)</td><td>120.06</td></tr>
+<tr><td>Speedup</td><td><strong>~1.99x</strong></td></tr>
+</tbody>
+</table>
+</div>
+<p>Fresh release builds this session, same key/signature/message across both binaries, both confirmed
+to actually verify successfully before timing. This narrows T-150’s <code>nistb163</code> gap (still ~21-23x
+slower there) from the <code>verify</code> side alone by roughly half - <code>sign</code> is unaffected by this change,
+so the <code>sign/s</code> numbers in the table above still reflect the classic (only) implementation.</p>
+<p><strong>Reproducing</strong>: build once with <code>cargo build --release -p uacrypt</code> (default profile) and once
+with <code>cargo build --release -p uacrypt --features dstu-core/small-tables</code>, running each binary’s
+<code>verify --key ... --in ... --sig ... --iterations 5000</code> in turn (same <code>sign-keygen</code>/<code>sign-pubkey</code>/
+<code>sign</code> setup as the table above - <code>sign</code>’s own output is unaffected by either feature, so one
+signature/key pair works for both <code>verify</code> runs).</p>
+<h3 id="gf2163-field-arithmetic-bit-interleave-square--itoh-tsujii-invert--t-153d-109"><a class="header" href="#gf2163-field-arithmetic-bit-interleave-square--itoh-tsujii-invert--t-153d-109">GF(2^163) field arithmetic: bit-interleave <code>square</code> + Itoh-Tsujii <code>invert</code> — T-153/D-109</a></h3>
+<p>Following an owner request for a bigger win than D-108’s ~1.99x (the two options originally floated</p>
+<ul>
+<li>table-based squaring and windowing <code>verify_combine</code> - were found, via an advisor-reviewed cost
+analysis, to either reintroduce D-19’s secret-indexing question or have a low ~1.1-1.2x ceiling; see
+<code>docs/DECISIONS.md</code> D-109 for the full analysis), <code>gf2m163::square()</code> (previously
+<code>self.multiply(self)</code>, zero shortcut) and <code>invert()</code> (previously a direct 162-multiply Fermat
+exponentiation, despite its own doc comment naming Itoh-Tsujii as the intended approach) were
+replaced with a bit-interleave squaring identity and a 9-multiply addition-chain inversion,
+respectively - both <strong>unconditional</strong>, every build profile, including <code>sign</code>/<code>verifying_key()</code> for
+the first time (D-108 explicitly left <code>scalar_multiply</code>, <code>sign</code>’s only scalar-multiplication path,
+untouched).</li>
+</ul>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th></th><th><code>sign</code> ops/s</th><th><code>verify</code> ops/s (default/fast path)</th><th><code>verify</code> ops/s (<code>small-tables</code>/classic)</th></tr>
+</thead>
+<tbody>
+<tr><td>Pre-D-108 baseline (T-150)</td><td>255.98</td><td>120.06</td><td>120.06</td></tr>
+<tr><td>Post-D-108 (T-151)</td><td>255.98 (unaffected)</td><td>239.31</td><td>120.06 (unaffected)</td></tr>
+<tr><td>Post-D-109 (this entry)</td><td><strong>667.39</strong></td><td><strong>524.01</strong></td><td><strong>328.20</strong></td></tr>
+<tr><td>Speedup vs. immediately-prior row</td><td><strong>~2.61x</strong></td><td><strong>~2.19x</strong></td><td><strong>~2.73x</strong></td></tr>
+<tr><td>Cumulative speedup vs. pre-D-108 baseline</td><td><strong>~2.61x</strong></td><td><strong>~4.37x</strong></td><td><strong>~2.73x</strong></td></tr>
+</tbody>
+</table>
+</div>
+<p>Cumulatively, this narrows the <code>nistb163</code> gap from the table above to <strong>~7.9x slower</strong> (<code>sign</code>, was
+~20.7x) and <strong>~5.2x slower</strong> (<code>verify</code>, was ~22.6x). The plan’s own pre-committed threshold for
+pursuing a further windowed <code>verify_combine</code> (Phase D) was “only if cumulative <code>verify</code> gain lands
+below ~3.5x” - at ~4.37x, that threshold is already exceeded, so windowing was explicitly not
+pursued this pass (see D-109’s own “Phase D decision” section for the full reasoning, not repeated
+here).</p>
+<p><strong>Reproducing</strong>: same binaries/setup as the table above (<code>cargo build --release -p uacrypt</code> and
+<code>--features dstu-core/small-tables</code>), <code>sign --key signing.key --in msg.bin --out msg.sig --iterations 5000</code> and <code>verify --key verifying.key --in msg.bin --sig msg.sig --iterations 5000</code> on
+each binary in turn.</p>
+<h3 id="dstu-9041--crypto_box-box-sealbox-open--t-179"><a class="header" href="#dstu-9041--crypto_box-box-sealbox-open--t-179">DSTU 9041 / <code>crypto_box</code> (<code>box-seal</code>/<code>box-open</code>) — T-179</a></h3>
+<p>Two tables, at two different levels, per owner feedback 2026-08-06 that a “similar-regime” binary
+comparison is required, not just a primitive-level one: the ops/s table below measures the <em>raw
+scalar multiplication</em> only (mirroring <code>openssl speed ecdh</code>’s own scope), the MB/s table further
+down measures the <em>full sealed-box operation</em> against OpenSSL’s own closest full-envelope
+equivalent (<code>openssl cms</code>). Neither replaces the other — they answer different questions (“how fast
+is our EC math” vs. “how fast is a real seal/open call”) and this project’s new methodology rule
+(below) is to always include the second kind whenever a full-message construction exists to compare.</p>
+<p><strong>Not a D-34 MB/s cross-implementation comparison at the primitive level</strong> — that methodology is for
+symmetric primitives being compared against a second implementation of the <em>same</em> construction; no
+second DSTU 9041 implementation exists anywhere (<code>docs/ORACLES.md</code>), and MB/s is meaningless for a
+fixed-size 128-byte asymmetric operation regardless. Instead, following <code>sign</code>/<code>verify</code>‘s own T-150
+precedent (compare ops/s against OpenSSL doing the closest equivalent job, on the actual built
+binary — D-34’s “use the real binary, not an internal <code>criterion</code> number” policy still applies),
+this measures <code>uacrypt box-seal</code>/<code>box-open</code> against <code>openssl speed ecdh</code>, since
+<code>hazmat::dstu9041::curve256::Point::scalar_multiply</code> is what dominates both operations’ cost, and
+<code>openssl speed ecdh</code> measures exactly one scalar multiplication per reported op.</p>
+<p><strong><code>box-seal</code>/<code>box-open</code> are not directly comparable 1:1 to one <code>ecdh</code> op — read the ratio with this
+in mind, not as a raw “X times faster/slower” claim</strong>: <code>seal</code> performs <em>two</em> scalar multiplications
+per call (<code>encryption.rs::encrypt</code>’s <code>R = epsilon*P</code> and <code>T = epsilon*Q</code>), and <code>open</code> also performs
+two (<code>curve256::point_from_x</code>’s subgroup-membership check <code>scalar_multiply(&amp;order())</code>, plus
+<code>encryption.rs::decrypt</code>’s <code>T' = e*R'</code>) — both genuinely necessary, not incidental overhead (the
+subgroup check specifically is T-177’s own cofactor-4 security fix, not skippable). OpenSSL’s <code>ecdh</code>
+benchmark was not independently re-derived to confirm it measures only one scalar multiplication per
+op with no other included overhead, so no further per-scalar-mult normalization is attempted here -
+the raw ops/s numbers are reported as measured, with this caveat stated plainly rather than a
+precise-looking ratio that isn’t actually verified.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th></th><th><code>uacrypt</code> (<code>crypto_box</code>)</th><th>OpenSSL brainpoolP256r1</th><th>OpenSSL X25519</th></tr>
+</thead>
+<tbody>
+<tr><td>ops/s</td><td><code>box-seal</code> <strong>1305.66</strong> / <code>box-open</code> <strong>1072.53</strong></td><td>1249.3</td><td>12537.4</td></tr>
+</tbody>
+</table>
+</div>
+<ul>
+<li><strong><code>brainpoolP256r1</code></strong> (256-bit prime curve) is the field-size-matched row — same 256-bit prime
+modulus class as E256/1’s own <code>p</code>, though not the same curve (different <code>a</code>/<code>b</code>, base point,
+order). <code>box-seal</code>/<code>box-open</code>’s raw ops/s land in the same order of magnitude as this row despite
+each performing two scalar multiplications where <code>ecdh</code> performs one — a genuinely competitive
+result for a from-scratch, non-vectorized implementation with a generic (non-Montgomery-ladder)
+complete addition law, not a red flag to investigate further.</li>
+<li><strong><code>X25519</code></strong> is the “modern ECDH most readers actually mean” row, included for the same reason
+T-150 included <code>nistp256</code> alongside <code>nistb163</code>. The ~10-12x gap is expected, not a sign of a
+correctness or quality problem: Curve25519’s field (<code>2^255-19</code>) and Montgomery-ladder scalar
+multiplication were specifically designed for software speed, unlike E256/1’s general-purpose
+<code>p=2^256-435</code> field and complete (branch-free but not ladder-shaped) twisted-Edwards addition law.
+Do not read this ratio as “DSTU 9041 is 10-12x worse than modern ECC” for the same reason T-150’s
+own p256 caveat applies: part of this gap is OpenSSL using a curve/field genuinely optimized for
+this exact operation, not purely an implementation-quality gap.</li>
+</ul>
+<p><strong>Reproducing (primitive-level)</strong>: <code>cargo build -p uacrypt --release</code>, then <code>target/release/uacrypt box-keygen --out box.key</code>, <code>box-pubkey --key box.key --out box.pub</code>, <code>box-seal --key box.pub --in msg.txt --out msg.box --iterations 5000</code>, <code>box-open --key box.key --in msg.box --out msg.out --iterations 5000</code> (a short <code>msg.txt</code>, well under the 25-byte KEM seed’s own size — <code>seal</code>’s cost is
+dominated by the EC operations regardless of message length, see <code>crypto_box</code>’s own module doc).
+OpenSSL side: <code>openssl speed -seconds 2 ecdh</code>, reading the <code>brainpoolP256r1</code>/<code>X25519</code> rows.</p>
+<h4 id="same-regime-comparison-full-sealed-box-vs-openssl-cms-crypto_box-10-mib-mbs--t-179-addendum"><a class="header" href="#same-regime-comparison-full-sealed-box-vs-openssl-cms-crypto_box-10-mib-mbs--t-179-addendum">Same-regime comparison: full sealed-box vs. OpenSSL CMS (<code>crypto_box</code>, 10 MiB, MB/s) — T-179 addendum</a></h4>
+<p>The table above only measures the EC scalar multiplication, not a full seal/open call over a real
+message. <code>box-seal</code>/<code>box-open</code> do a full hybrid operation — KEM wrap, KDF, then a
+<code>crypto_secretstream</code>-chunked symmetric encrypt/decrypt of the actual message (D-169) — so the
+closest matching OpenSSL <em>regime</em> is its own hybrid-envelope construction, <code>openssl cms -encrypt</code>/<code>-decrypt</code> with an EC recipient (ephemeral ECDH via <code>dhSinglePass-stdDH-sha1kdf-scheme</code> +
+AES-256-CBC bulk encryption) — not <code>openssl speed ecdh</code>, which never touches a message at all. D-34’s
+10 MiB-mandatory rule for variable-length messages applies here for the same reason it applies to
+every symmetric mode’s table: at 10 MiB, one-time setup (key schedule, X.509 cert parse, the KEM’s
+two scalar multiplications) is negligible next to the bulk-encryption work that actually dominates a
+real call.</p>
+<p><strong>Setup</strong>: an OpenSSL EC (<code>prime256v1</code>) self-signed certificate as the CMS recipient (<code>openssl ecparam -name prime256v1 -genkey -noout -out ec.key &amp;&amp; openssl req -new -x509 -key ec.key -out ec.crt -days 1 -subj "/CN=test"</code> — needs <code>MSYS_NO_PATHCONV=1</code> in Git Bash on Windows or the leading
+<code>/</code> in <code>-subj</code> gets rewritten into a filesystem path); a <code>uacrypt</code> keypair via <code>box-keygen</code>/
+<code>box-pubkey</code>; a shared 10 MiB random payload (<code>openssl rand -out payload.bin 10485760</code>) round-tripped
+through both.</p>
+<p><strong><code>openssl cms -encrypt</code>/<code>-decrypt</code> silently truncate binary input at the first <code>0x1A</code> byte unless
+called with <code>-binary</code></strong> — without it, OpenSSL’s default S/MIME-oriented text-mode content handling
+stops at what it reads as a text EOF marker; confirmed directly (a 10 MiB random payload came back as
+a 455-byte CMS structure, and decrypting it produced exactly 173 bytes, not 10 MiB) before it was
+caught by checking the output size rather than trusting a clean exit code. <code>-binary</code> on both
+<code>-encrypt</code> and <code>-decrypt</code> fixed it; verified with a byte-for-byte <code>cmp</code> round trip before timing
+anything.</p>
+<p><strong>Process-spawn overhead is a genuine, measured confound here, unlike <code>uacrypt</code>’s own
+<code>--iterations</code>-in-one-process numbers</strong> — <code>openssl cms</code> has no internal iteration flag, so each
+measured call is a fresh <code>openssl.exe</code> process. Measured separately (<code>openssl version</code>, N=20): ~60 ms
+per spawn on this machine, which is ~21-22% of each CMS call’s ~270-280 ms total at 10 MiB — present
+but not dominant, and its effect only makes the OpenSSL numbers below a <em>conservative</em> (slower than
+its true crypto-only speed) estimate, so the comparison’s actual direction is not in question.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th></th><th><code>uacrypt</code> (<code>crypto_box</code>)</th><th>OpenSSL CMS (<code>prime256v1</code> + AES-256-CBC)</th></tr>
+</thead>
+<tbody>
+<tr><td>seal/encrypt (MB/s)</td><td><strong>8.84</strong></td><td><strong>37.34</strong></td></tr>
+<tr><td>open/decrypt (MB/s)</td><td><strong>10.72</strong></td><td><strong>35.36</strong></td></tr>
+</tbody>
+</table>
+</div>
+<p>OpenSSL is ~4.2x faster sealing, ~3.3x faster opening, at 10 MiB — a real gap, not an artifact of the
+mismatched primitive-level table above (that table’s ~similar order-of-magnitude ops/s numbers only
+hold for the sub-millisecond, EC-only cost; they say nothing about bulk throughput). For context, not
+further chased this session: this project’s own <code>hazmat::kalyna_gcm::Kalyna256_256Gcm</code> alone reaches
+17.09 MB/s at 10 MiB (Kalyna-GCM’s own 256-256 row, above) — <code>crypto_box</code>’s ~8.84/10.72 sit at roughly
+half that, meaning most of the gap is <code>crypto_secretstream</code>/<code>crypto_box</code>’s own per-call framing and
+allocation overhead layered on top of the underlying cipher, not the two KEM scalar multiplications
+(sub-millisecond, negligible at 10 MiB) or the block cipher itself.</p>
+<p><strong>Reproducing (same-regime)</strong>:</p>
+<pre><code>openssl ecparam -name prime256v1 -genkey -noout -out ec.key
+MSYS_NO_PATHCONV=1 openssl req -new -x509 -key ec.key -out ec.crt -days 1 -subj "/CN=test"
+openssl rand -out payload.bin 10485760
+# time N iterations of each, e.g. N=10:
+openssl cms -encrypt -binary -recip ec.crt -aes-256-cbc -in payload.bin -out payload.p7 -outform DER
+openssl cms -decrypt -binary -inkey ec.key -recip ec.crt -in payload.p7 -inform DER -out payload.dec
+# uacrypt side, same payload, one process, N iterations built in:
+target/release/uacrypt box-keygen --out box.key
+target/release/uacrypt box-pubkey --key box.key --out box.pub
+target/release/uacrypt box-seal --key box.pub --in payload.bin --out payload.box --iterations 10
+target/release/uacrypt box-open --key box.key --in payload.box --out payload.unbox --iterations 10
+</code></pre>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="resource-profiles.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                            </a>
+
+                            <a rel="next prefetch" href="rust_ai_ruleset.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="resource-profiles.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                    </a>
+
+                    <a rel="next prefetch" href="rust_ai_ruleset.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                    </a>
+            </nav>
+
+        </div>
+
+        <template id=fa-eye><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M288 32c-80.8 0-145.5 36.8-192.6 80.6C48.6 156 17.3 208 2.5 243.7c-3.3 7.9-3.3 16.7 0 24.6C17.3 304 48.6 356 95.4 399.4C142.5 443.2 207.2 480 288 480s145.5-36.8 192.6-80.6c46.8-43.5 78.1-95.4 93-131.1c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C433.5 68.8 368.8 32 288 32zM432 256c0 79.5-64.5 144-144 144s-144-64.5-144-144s64.5-144 144-144s144 64.5 144 144zM288 192c0 35.3-28.7 64-64 64c-11.5 0-22.3-3-31.6-8.4c-.2 2.8-.4 5.5-.4 8.4c0 53 43 96 96 96s96-43 96-96s-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6z"/></svg></span></template>
+        <template id=fa-eye-slash><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M38.8 5.1C28.4-3.1 13.3-1.2 5.1 9.2S-1.2 34.7 9.2 42.9l592 464c10.4 8.2 25.5 6.3 33.7-4.1s6.3-25.5-4.1-33.7L525.6 386.7c39.6-40.6 66.4-86.1 79.9-118.4c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C465.5 68.8 400.8 32 320 32c-68.2 0-125 26.3-169.3 60.8L38.8 5.1zM223.1 149.5C248.6 126.2 282.7 112 320 112c79.5 0 144 64.5 144 144c0 24.9-6.3 48.3-17.4 68.7L408 294.5c5.2-11.8 8-24.8 8-38.5c0-53-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6c0 10.2-2.4 19.8-6.6 28.3l-90.3-70.8zm223.1 298L373 389.9c-16.4 6.5-34.3 10.1-53 10.1c-79.5 0-144-64.5-144-144c0-6.9 .5-13.6 1.4-20.2L83.1 161.5C60.3 191.2 44 220.8 34.5 243.7c-3.3 7.9-3.3 16.7 0 24.6c14.9 35.7 46.2 87.7 93 131.1C174.5 443.2 239.2 480 320 480c47.8 0 89.9-12.9 126.2-32.5z"/></svg></span></template>
+        <template id=fa-copy><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M502.6 70.63l-61.25-61.25C435.4 3.371 427.2 0 418.7 0H255.1c-35.35 0-64 28.66-64 64l.0195 256C192 355.4 220.7 384 256 384h192c35.2 0 64-28.8 64-64V93.25C512 84.77 508.6 76.63 502.6 70.63zM464 320c0 8.836-7.164 16-16 16H255.1c-8.838 0-16-7.164-16-16L239.1 64.13c0-8.836 7.164-16 16-16h128L384 96c0 17.67 14.33 32 32 32h47.1V320zM272 448c0 8.836-7.164 16-16 16H63.1c-8.838 0-16-7.164-16-16L47.98 192.1c0-8.836 7.164-16 16-16H160V128H63.99c-35.35 0-64 28.65-64 64l.0098 256C.002 483.3 28.66 512 64 512h192c35.2 0 64-28.8 64-64v-32h-47.1L272 448z"/></svg></span></template>
+        <template id=fa-play><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M73 39c-14.8-9.1-33.4-9.4-48.5-.9S0 62.6 0 80V432c0 17.4 9.4 33.4 24.5 41.9s33.7 8.1 48.5-.9L361 297c14.3-8.7 23-24.2 23-41s-8.7-32.2-23-41L73 39z"/></svg></span></template>
+        <template id=fa-clock-rotate-left><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M75 75L41 41C25.9 25.9 0 36.6 0 57.9V168c0 13.3 10.7 24 24 24H134.1c21.4 0 32.1-25.9 17-41l-30.8-30.8C155 85.5 203 64 256 64c106 0 192 86 192 192s-86 192-192 192c-40.8 0-78.6-12.7-109.7-34.4c-14.5-10.1-34.4-6.6-44.6 7.9s-6.6 34.4 7.9 44.6C151.2 495 201.7 512 256 512c141.4 0 256-114.6 256-256S397.4 0 256 0C185.3 0 121.3 28.7 75 75zm181 53c-13.3 0-24 10.7-24 24V256c0 6.4 2.5 12.5 7 17l72 72c9.4 9.4 24.6 9.4 33.9 0s9.4-24.6 0-33.9l-65-65V152c0-13.3-10.7-24-24-24z"/></svg></span></template>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr-ef4e11c1.min.js"></script>
+        <script src="mark-09e88c2c.min.js"></script>
+        <script src="searcher-09f2665d.js"></script>
+
+        <script src="clipboard-1626706a.min.js"></script>
+        <script src="highlight-abc7f01d.js"></script>
+        <script src="book-609e4cb8.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+
+    </div>
+    </body>
+</html>
