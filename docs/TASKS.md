@@ -2168,33 +2168,73 @@ item they point to is later removed.
       dev machine, unlike Kani/D-102): `cargo +nightly miri test -p dstu-core --doc` dropped from
       "still running after 20+ minutes, uncompleted" to **14.29s for all 8 doctests** - not assumed
       from the fix's shape alone.
-- [ ] **T-190** **Not started, owner-requested 2026-08-08 - backlog, no committed timeline.** A
-      defense/stability-focused comparison audit against both vendored reference implementations
+- [ ] **T-190** **Not started, owner-requested 2026-08-08 - backlog, no committed timeline. Plan
+      below written 2026-08-08, advisor()-reviewed per the note this task itself left.** A
+      defense/stability-focused comparison audit against the vendored reference implementations
       (`oracles/bouncycastle-{java,dotnet}/`, `oracles/uapki/` - both already cloned locally, no new
-      fetch needed), one algorithm at a time (Kalyna/DSTU 7624, Kupyna/DSTU 7564, Strumok/DSTU 8845,
-      DSTU 4145, DSTU 9041). **Explicitly scoped to the defensive/stability layer, not correctness**
-      - `docs/ORACLES.md`'s existing oracle map already covers vector-level correctness
+      fetch needed). **Explicitly scoped to the defensive/stability layer, not correctness** -
+      `docs/ORACLES.md`'s existing oracle map already covers vector-level correctness
       cross-checking; this is a different axis: for each standard, read the reference
       implementation(s)' own frontend (input parsing/validation) and backend (internal arithmetic
       guards - invalid-point/degenerate-value rejection, error handling, resource/DoS limits) code,
       build a simplified diagram or pseudocode of *just the protective parts* (not the full
       algorithm - `docs/pseudocode/*.md` already has full transcriptions where they exist), and
-      compare against this crate's own equivalent surface: do we have the same protection, and -
-      given this project's own threat model (`docs/SECURITY.md`) and libsodium-style "hard
-      defaults, no misconfigurable knob" posture (D-47) rather than Bouncy Castle's
-      general-purpose-library posture or UAPKI's certified-state-tool posture - is it actually
-      needed here, or is it solving a problem this project's own API shape already forecloses a
-      different way. **Not starting from zero**: several real gaps of exactly this shape were
-      already found by this same "what does the reference implementation protect against that we
-      don't" reasoning, applied ad hoc rather than systematically - D-63 (Kalyna-GCM nonce-binding),
-      D-167 Finding 1/2 (DSTU 9041 invalid-curve/small-subgroup), T-183/D-173 (`crypto_box` adversarial
-      coverage, one gap - order-4 - still open), T-189/D-172 (DSTU 4145 `verify`'s missing on-curve
-      check, found auditing T-183, not this task). **First step, before comparing anything**: grep
-      `docs/DECISIONS.md`/`docs/TASKS.md` for what's already been found this way per algorithm, so
-      the audit adds new findings instead of re-discovering these five. Given the scope (5 algorithms
-      x up to 2 reference implementations each), likely wants its own `advisor()`-reviewed plan
-      splitting it into per-algorithm sub-passes rather than one pass, same posture as T-183's own
-      "audit first, spin off real gaps as their own tasks" structure - not committed to inline here.
+      compare against this crate's own equivalent surface.
+
+      **Real coverage matrix** (confirmed 2026-08-08 via `find` over both oracle trees - the
+      original draft assumed all five algorithms had both references; two don't):
+
+      | Algorithm | Bouncy Castle | UAPKI | Sub-pass |
+      |---|---|---|---|
+      | DSTU 4145 (sign) | `DSTU4145Signer`, `DSTU4145KeyPairGenerator`, `DSTU4145PointEncoder`, `DSTU4145NamedCurves` (+ generic `ECPoint`/`ECCurve.validatePoint`) | `dstu4145.c` (+ shared `ec.c`, `ec-internal.c`, `math-ec-point-internal.c`, `ec-default-params.c`) | dual-source |
+      | Kalyna / DSTU 7624 | `DSTU7624Engine`, `DSTU7624WrapEngine`, `DSTU7624Mac` | `dstu7624.c` | dual-source |
+      | Kupyna / DSTU 7564 | `DSTU7564Digest`, `DSTU7564Mac` | `dstu7564.c` | dual-source |
+      | Strumok / DSTU 8845 | *(absent - confirmed no BC coverage, matches D-15's own note)* | `dstu8845.c` | UAPKI-only |
+      | DSTU 9041 | *(absent)* | *(absent - confirmed, no `9041`/`edwards` file anywhere in `uapkic/src`)* | **N/A - close as not-applicable, no reference exists in either oracle; its own protective-clause audit already happened directly against the primary spec text, D-165/D-167** |
+
+      **Don't read only the top-level algorithm file** - for both BC and UAPKI, the actual
+      validation/guard code often lives one layer down in shared code the top-level file delegates
+      to (e.g. BC's `DSTU4145PointEncoder.decodePoint`/`ECCurve.validatePoint`, UAPKI's `ec.c`/
+      `math-ec-point-internal.c`) - reading just `dstu4145.c` or `DSTU4145Signer.java` alone risks
+      wrongly concluding "no checks exist." For Kalyna/Kupyna, BC's `DSTU7624WrapEngine` and the
+      `Mac` classes are the validation-dense files (length/block-alignment/uninitialized-state
+      checks), not the bare `Engine`/`Digest`.
+
+      **Per-sub-pass steps** (repeat for DSTU 4145, Kalyna, Kupyna, Strumok - in that order, see
+      below):
+      1. Grep `docs/DECISIONS.md`/`docs/TASKS.md` for this algorithm's own D-xx/T-xx history first,
+         so the pass adds new findings instead of re-discovering D-63 (Kalyna-GCM nonce-binding),
+         D-167 Findings 1/2 (DSTU 9041 invalid-curve/small-subgroup - reference only, not a sub-pass
+         target itself per the table above), T-183/D-173 (`crypto_box` adversarial coverage, order-4
+         still open), or T-189/D-172 (DSTU 4145 `verify`'s missing on-curve check).
+      2. Read the reference implementation(s)' protective code per the file list above (plus
+         whatever it delegates to) and write a short pseudocode/note of *just the protective parts*
+         - not a full algorithm transcription.
+      3. Compare against this crate's equivalent surface across **every entry point**, not just the
+         Rust API: `hazmat::*`, the matching `crypto_*` wrapper, the `uacrypt` CLI, and -
+         importantly, easy to skip - `crates/dstu-core-capi`'s raw-pointer/length C ABI, since a
+         precondition unreachable from Rust's typed API can still be reachable through the FFI
+         boundary the eight language bindings all sit behind.
+      4. For each protective mechanism the reference has and ours doesn't, apply one discriminating
+         question, not a vibe check: **can an attacker reach this state through our public surface
+         (`crypto_*`, `hazmat::*`, `uacrypt`, the C ABI, or any binding)?** If yes, it's a real gap.
+         If no - our API shape structurally forecloses it (e.g. no caller-facing nonce/mode knob to
+         misuse) - record *why* in one line and move on; that's a valid audit output, not a shortfall.
+      5. **For every gap judged real: write a failing test for it first (same D-64/D-65 rejection/
+         misuse discipline, plus the T-183 4th adversarial category where it applies), confirm it
+         fails, only then implement the fix** - same order the user set for T-189 this session, not
+         a one-off for that task. Consult `advisor()` before the fix, same as T-189/T-183's own
+         gaps. Verify under `small-tables` and re-check perf impact if the fix touches a hot path
+         (T-189's own precedent). Document in `docs/DECISIONS.md`; spin off as its own T-19x if it
+         doesn't fit as a sub-bullet here.
+      6. Update this task's own entry with the sub-pass's outcome before moving to the next
+         algorithm - same "close per sub-pass, don't wait for all five" posture as T-183.
+
+      **Order**: DSTU 4145 first (dual-source, EC, confirmed hit rate this session - T-189 was
+      exactly a missing on-curve check found by this style of reasoning), then Kalyna
+      (`DSTU7624WrapEngine` is the densest validation file in BC), then Kupyna, then Strumok
+      (UAPKI-only, smaller surface). DSTU 9041 is not a sub-pass (table above) - do not spend time
+      on it here.
 - [x] **T-188** **Done 2026-08-07, owner-requested.** SonarCloud Quality Gate was
       `ERROR` on `new_duplicated_lines_density` (3.0% actual vs. `<=3%` required) - missed in T-187's
       own SonarCloud check because that check only queried `api/issues/search` (rule-violation
