@@ -1,0 +1,67 @@
+name: docs-book
+
+# Builds the docs/ knowledge base (mdBook, T-186) and publishes it to the gh-pages branch under
+# /book/ - the hand-crafted landing page (index.html/uk/index.html) lives at gh-pages' own root
+# and is never touched by this workflow, only the book/ subdirectory is replaced each run.
+on:
+  push:
+    branches: [master]
+    paths:
+      - "docs/**"
+      - "book.toml"
+      - "README.md"
+  workflow_dispatch: {}
+
+concurrency:
+  group: docs-book-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-publish:
+    name: build mdBook, publish to gh-pages/book/
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout master (book source)
+        uses: actions/checkout@v4
+        with:
+          path: source
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      # cargo-install from crates.io (official rust-lang tool) rather than a third-party
+      # marketplace action, matching this project's existing supply-chain posture elsewhere in
+      # this repo's own workflows (no unvetted actions for a tool cargo can install directly).
+      - name: Install mdbook
+        run: cargo install mdbook --locked
+
+      - name: Build book
+        working-directory: source
+        run: mdbook build
+
+      - name: Checkout gh-pages (publish target)
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          path: gh-pages
+
+      # Only the book/ subdirectory is touched - index.html/uk/index.html/og-image.png etc. at
+      # gh-pages' own root are never read or written here.
+      - name: Publish built book into gh-pages/book/
+        run: |
+          rm -rf gh-pages/book
+          mkdir -p gh-pages/book
+          cp -r source/target/book/. gh-pages/book/
+          cd gh-pages
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add book
+          if git diff --cached --quiet; then
+            echo "Book output unchanged, nothing to publish."
+            exit 0
+          fi
+          git commit -m "chore: publish mdBook knowledge base (T-186)
+
+          Source commit: ${{ github.sha }}"
+          git push

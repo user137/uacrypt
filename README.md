@@ -1,6 +1,10 @@
 # uacrypt
 
-**v0.1.0 — pre-release / work in progress.** Not a complete library or CLI yet, not audited, not
+<!-- uacrypt-version: 0.2.0 -->
+**v0.2.0 — released 2026-08-02, work in progress.** DSTU 9041 / `crypto_box` (and its `box-*` CLI
+commands) landed on `master` since that tag and is not yet in a tagged release — check
+[GitHub Releases](https://github.com/user137/uacrypt/releases) before assuming a downloaded binary
+has it. Not a complete library or CLI yet, not audited, not
 production-ready, and **not a claim of side-channel resistance**. Core primitives (Kalyna, Kupyna)
 are dual-oracle-verified against official test vectors; Strumok and the Kalyna-CCM mode are
 provisional (not yet confirmed against their primary standard text — see `docs/DECISIONS.md` D-15/D-41).
@@ -180,13 +184,17 @@ cargo xtask build     # cargo build --workspace, both --all-features and no_std 
 cargo xtask test      # cargo test --workspace --all-features
 cargo xtask fmt       # cargo fmt --all (add --check to verify without writing)
 cargo xtask clippy    # cargo clippy --workspace --all-features -- -D warnings
-cargo xtask ci        # the four above, then best-effort for miri/kani/fuzz/audit/deny/oracle harnesses
+cargo xtask docs-check # README/gh-pages version-marker freshness lint vs crates/dstu-core's Cargo.toml (T-186)
+cargo xtask ci        # the five above, then best-effort for miri/kani/book/fuzz/audit/deny/oracle harnesses
+cargo xtask book      # mdbook build - the docs/ knowledge base (T-186), published to gh-pages/book/ by CI
 ```
 
 The optional layers each check their own tool is installed first and print an install hint instead
-of a raw error if it's missing (`cargo xtask miri`, `kani`, `fuzz`, `audit`, `deny`, `oracle-java`,
-`oracle-dotnet`) — see `docs/SECURITY.md` for why these are required in CI even though they're optional
-locally.
+of a raw error if it's missing (`cargo xtask miri`, `kani`, `book`, `fuzz`, `audit`, `deny`,
+`oracle-java`, `oracle-dotnet`) — see `docs/SECURITY.md` for why these are required in CI even though
+they're optional locally. `docs-check` needs no external tool, so it's mandatory in `ci` rather than
+best-effort — it fails the build outright on a version-marker mismatch, same standing as `fmt`/
+`build`/`test`/`clippy`.
 
 Before implementing any primitive, read `docs/SECURITY.md` (hard constraints, mandatory
 dual-oracle verification) and `docs/DECISIONS.md` (architectural decisions already made).
@@ -322,14 +330,14 @@ owner-gated, `docs/TASKS.md` T-164, same posture as `dstu-core` itself not being
 
 | Language | Approach | README |
 |---|---|---|
-| Python | PyO3, direct Rust binding | [`bindings/python`](bindings/python/README.md) |
-| Node.js | napi-rs, direct Rust binding | [`bindings/nodejs`](bindings/nodejs/README.md) |
-| Ruby | magnus/rb-sys, direct Rust binding | [`bindings/ruby`](bindings/ruby/README.md) |
-| PHP | ext-php-rs, direct Rust binding | [`bindings/php`](bindings/php/README.md) |
-| .NET (C#) | P/Invoke over the C ABI | [`bindings/dotnet`](bindings/dotnet/README.md) |
-| Java | `jni` crate, direct Rust binding | [`bindings/java`](bindings/java/README.md) |
-| Go | `cgo` over the C ABI | [`bindings/go`](bindings/go/README.md) |
-| C++ | header-only RAII wrapper over the C ABI | [`bindings/cpp`](bindings/cpp/README.md) |
+| Python | PyO3, direct Rust binding | [`bindings/python`](https://github.com/user137/uacrypt/blob/master/bindings/python/README.md) |
+| Node.js | napi-rs, direct Rust binding | [`bindings/nodejs`](https://github.com/user137/uacrypt/blob/master/bindings/nodejs/README.md) |
+| Ruby | magnus/rb-sys, direct Rust binding | [`bindings/ruby`](https://github.com/user137/uacrypt/blob/master/bindings/ruby/README.md) |
+| PHP | ext-php-rs, direct Rust binding | [`bindings/php`](https://github.com/user137/uacrypt/blob/master/bindings/php/README.md) |
+| .NET (C#) | P/Invoke over the C ABI | [`bindings/dotnet`](https://github.com/user137/uacrypt/blob/master/bindings/dotnet/README.md) |
+| Java | `jni` crate, direct Rust binding | [`bindings/java`](https://github.com/user137/uacrypt/blob/master/bindings/java/README.md) |
+| Go | `cgo` over the C ABI | [`bindings/go`](https://github.com/user137/uacrypt/blob/master/bindings/go/README.md) |
+| C++ | header-only RAII wrapper over the C ABI | [`bindings/cpp`](https://github.com/user137/uacrypt/blob/master/bindings/cpp/README.md) |
 
 The C ABI itself (`crates/dstu-core-capi`, opaque handles, `cbindgen`-generated header) is the
 foundation the .NET/Go/C++ bindings above link against directly — usable from any language with a
@@ -351,9 +359,9 @@ need a separate, dedicated hardware audit. Real-hardware validation is a distinc
 
 ## Contributing
 
-Pull requests are welcome. See [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md) for the test/
+Pull requests are welcome. See [`docs/CONTRIBUTING.md`](https://github.com/user137/uacrypt/blob/master/docs/CONTRIBUTING.md) for the test/
 verification bar (dual-oracle verification, the three test categories per primitive, commit style)
-and [`docs/CODE_OF_CONDUCT.md`](docs/CODE_OF_CONDUCT.md) for community standards. Security
+and [`docs/CODE_OF_CONDUCT.md`](https://github.com/user137/uacrypt/blob/master/docs/CODE_OF_CONDUCT.md) for community standards. Security
 vulnerabilities go through GitHub Security Advisories, not a public issue — see
 `docs/SECURITY.md` "Reporting vulnerabilities".
 

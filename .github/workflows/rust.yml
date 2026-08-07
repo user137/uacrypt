@@ -33,6 +33,10 @@ jobs:
         with:
           components: clippy, rustfmt
       - run: cargo fmt --all -- --check
+      # Freshness lint (T-186, mandatory): README/gh-pages version markers vs crates/dstu-core's
+      # Cargo.toml. Self-fetches the gh-pages branch if it isn't already resolvable (xtask's own
+      # `resolve_gh_pages_ref`) - no separate checkout/fetch step needed here.
+      - run: cargo xtask docs-check
       # Default (fused-table) resource profile - docs/DECISIONS.md D-35/D-38/D-39. `--all-features`
       # below also turns on `small-tables`, which changes production behavior (not just adds an
       # unrelated flag the way `alloc` does), so it no longer stands in for "test the default

@@ -2025,6 +2025,112 @@ item they point to is later removed.
       *correctness* (not the misuse cases above) needs no new work - Додаток Г is the sole oracle and
       is already fully verified (T-177). This task is backlog only - T-178/T-179/T-180/T-181's own
       plan is fully done as of 2026-08-06, this stays a backlog item with no committed timeline.
+- [x] **T-185** **Done 2026-08-07, owner-requested.** Owner flagged the `gh-pages` landing page
+      (both `index.html`/`uk/index.html`) as carrying stale facts and asked for a full pass over
+      GitHub-facing docs, not just a spot fix. Full enumeration of every quantitative/version claim
+      in the site (not a keyword grep) found: (1) version badge said `v0.1.0` in three places (hero
+      status-note EN/UK, Status-section EN/UK) though the real tagged release is `v0.2.0`
+      (2026-08-02) - fixed to state `v0.2.0` as the released version *plus* an explicit note that
+      DSTU 9041/`crypto_box`'s CLI surface (`box-keygen`/`box-pubkey`/`box-seal`/`box-open`) is
+      `master`-only, still in `CHANGELOG.md`'s `[Unreleased]` section, not in the v0.2.0 tag - the
+      page already described `crypto_box` as done, so silently stamping `v0.2.0` on the whole page
+      would have told a reader to download the v0.2.0 release binary and run a verb it doesn't have.
+      (2) `<meta name="description">`/`og:*`/`twitter:*`/JSON-LD blocks (both files' `<head>`) still
+      listed only "Kalyna, Kupyna, Strumok, DSTU 4145", omitting DSTU 9041 that the visible body
+      copy already covers - fixed all four EN copies + four UK copies (8 total). (3) The "Try it"
+      section's heading ("The CLI has three verbs to remember") and code sample were already stale
+      before DSTU 9041 (the sample showed 8 commands, not 3) and omitted the `box-*` verbs entirely
+      after T-178 - reworded the heading and extended the code sample.
+      README.md's own `v0.1.0` header line got the same released-vs-unreleased framing fix (not a
+      bare version bump) for consistency with the site.
+      **The DSTU 4145 perf numbers the owner also flagged turned out to be current** (~7.9x/~5.2x
+      vs. `nistb163`, matches `docs/PERFORMANCE.md`'s T-153/D-109 entry, the page's own most recent
+      perf update) - no change needed there, noted so a future session doesn't re-flag it blind.
+      **Also fixed while auditing**: `docs/user-journey-gaps.md`'s Persona 1 table quoted the same
+      stale `v0.1.0` README banner text and pinned the Acquire row to "GitHub Release `v0.1.0`"
+      specifically - reworded both to describe the current release generically (so a future v0.3.0
+      doesn't make this table stale again the same way) and flagged that `box-*` isn't in any
+      tagged release yet.
+      **Found, not changed - flagged for the owner instead of auto-edited**:
+      `docs/release-readiness.md`'s "What's missing for the CLI / release-mechanics surface" section
+      calls the C ABI crate (`crates/dstu-core-capi`) one of "all nine bindings done", while
+      `CLAUDE.md`'s own already-current "Second priority" section (and this file's own binding tasks)
+      count eight language bindings with the C ABI as a separate, distinct thing it's built on - not
+      itself a "binding". Not a factual error (all nine things it lists are genuinely done), just an
+      inconsistent label; left alone rather than auto-edited since it's a wording judgment call, not
+      a stale fact.
+      **The gh-pages edits above live in the existing local worktree
+      (`C:/Users/Pa/AppData/Local/Temp/uacrypt-ghpages`, branch `gh-pages`) only - not committed or
+      pushed.** Publishing a live site is shared-state/hard-to-reverse, so that step needs the
+      owner's explicit go-ahead, same standing rule as any other push.
+      **Audit scope note**: `docs/DECISIONS.md` (11.6k lines)/`docs/TASKS.md` (5.2k lines) are
+      append-only logs by design - per the global "never silently deprecate a document" rule,
+      compressing them wasn't attempted here; only *current-state* surfaces (README, the site,
+      `docs/dstu-crypto-project.md`, `docs/release-readiness.md`, `docs/user-journey-gaps.md`,
+      `docs/bindings-strategy.md`, `docs/ORACLES.md`, `docs/resource-profiles.md`,
+      `docs/CHANGELOG.md`, `CLAUDE.md`'s own "Project status"/"Second priority") were read end to
+      end for drift. See the follow-up findings this pass surfaced, if any, appended immediately
+      below or as a new backlog item - do not assume this task means "all docs are now current
+      forever," only that this specific pass is complete.
+- [x] **T-186** **Done 2026-08-07, owner-requested follow-up to T-185.** Asked what other projects
+      do about doc bloat/staleness and a knowledge base usable by both humans and AI; chose two of
+      the four options presented (ADR-per-file and `llms.txt` were the other two, not picked):
+      mdBook for the existing `docs/*.md` corpus, plus a mandatory `cargo xtask` freshness lint.
+      **mdBook** (`book.toml`, new, repo root; `docs/SUMMARY.md`, new; `docs/introduction.md`, new,
+      `{{#include ../README.md}}` so README stays the single source of truth) - `src` points
+      straight at the existing `docs/` directory, **no existing file moved or renamed**, so none of
+      the many `docs/DECISIONS.md`-style cross-references anywhere in the repo needed touching.
+      Grouped into Project & roadmap / Engineering / Algorithm pseudocode / History / Contributing,
+      mirroring `CLAUDE.md`'s own "Documentation map" table (that table already had the right
+      taxonomy, just not machine-readable). Spiked for real per `CLAUDE.md`'s own "read the actual
+      output, don't plan from config alone" rule: `cargo install mdbook --locked`, `mdbook build`
+      against the real tree - found and fixed a real issue, not a hypothetical one: README.md's
+      repo-relative links (`bindings/*/README.md`, `docs/CONTRIBUTING.md`/`CODE_OF_CONDUCT.md`)
+      resolve correctly on GitHub (README lives at repo root there) but wrong once transcluded into
+      `docs/introduction.md` (relative to `docs/` instead) - fixed by switching those 10 links to
+      absolute `github.com/user137/uacrypt/blob/master/...` URLs, which read identically on GitHub
+      and now also resolve correctly inside the book; no other `docs/*.md` file had this pattern
+      (checked directly, not assumed). New `cargo xtask book` subcommand (optional/best-effort,
+      same `require("mdbook", ...)` pattern as `miri`/`kani`, added to `ci()`'s best-effort loop
+      too). New `.github/workflows/docs-book.yml`: builds on every push to `master` touching
+      `docs/**`/`book.toml`/`README.md` (owner's explicit choice: automatic, not
+      `workflow_dispatch`-gated), publishes `target/book/` into the existing `gh-pages` branch
+      under a new `/book/` subdirectory via plain git commands (not a third-party gh-pages action -
+      `cargo install mdbook --locked` from crates.io plus `git push` using the job's own
+      `GITHUB_TOKEN`, matching this project's existing supply-chain posture and the fact that
+      T-185 already published `gh-pages` by hand the same way) - the hand-crafted landing page
+      (`index.html`/`uk/index.html`) is never read or written by this workflow, only `book/` is
+      replaced each run. **This specific workflow's actual GitHub Actions run could not be
+      end-to-end-verified from this session** (no way to trigger/observe a real Actions run here) -
+      flagged honestly rather than claimed as tested; needs a first real push to confirm. Added a
+      "Docs" link (`book/` EN, `../book/` UK) to the landing page's existing footer, both languages
+      - the one hand-authored-content touch in this task, everything else about the site was
+      additions (marker comments) or new files.
+      **Freshness lint** (`cargo xtask docs-check`, new `docs_check()` in `xtask/src/main.rs`,
+      zero-dependency per `xtask`'s own stated design) - catches exactly the class of bug T-185
+      fixed by hand: (1) `crates/dstu-core`'s and `crates/uacrypt`'s `Cargo.toml` `[package]
+      version` must match (CLAUDE.md's own "bump it in two places" rule, now checked not just
+      documented); (2) a new canonical `<!-- uacrypt-version: X.Y.Z -->` HTML-comment marker (one
+      in `README.md`, one each in gh-pages `index.html`/`uk/index.html`) must equal the Cargo.toml
+      version - a fixed marker deliberately, not a regex over the human-facing prose sentence
+      around it, since that prose got reworded twice in T-185's own session alone and would need
+      chasing forever otherwise. The gh-pages half resolves a `gh-pages` git ref (local, then
+      `origin/gh-pages`, then a one-time `git fetch origin gh-pages --depth=1` + `FETCH_HEAD`) and
+      reads both HTML files via `git show` against that ref - no HTML parser, no new dependency. **Owner's
+      explicit choice: mandatory, not a warning** - wired into `ci()`'s existing `mandatory` chain
+      alongside `fmt`/`build`/`test`/`clippy`, and into `.github/workflows/rust.yml`'s `test` job
+      right after the `fmt --check` step. Verified for real, not just "it compiles": ran clean
+      against the actual repo state (exit 0), then a deliberate marker mismatch was introduced and
+      confirmed to fail with an actionable message and exit 1, then restored and reconfirmed clean.
+      A separate CI-workflow step to pre-fetch `gh-pages` (originally planned) turned out
+      unnecessary once `docs_check()`'s own self-fetch fallback was written and tested - one code
+      path handles both the local-dev-machine case (ref already exists) and the fresh-CI-checkout
+      case (fetches it), so the workflow file doesn't need its own separate fetch step.
+      **Deliberately not done this pass, per the owner's own "audit, don't restructure" framing
+      from T-185**: `docs/DECISIONS.md`/`docs/TASKS.md` are unchanged in structure or content -
+      mdBook renders them exactly as they are, an ADR-per-file split (the road not taken from the
+      four options presented) would be a separate, larger, explicitly-owner-gated decision, not a
+      side effect of this task.
 - [ ] **T-184** **Not started, no committed timeline - owner-requested backlog item, 2026-08-06.**
       Investigate why `crypto_box::seal`/`open`'s own bulk throughput (~8.84/10.72 MB/s at 10 MiB,
       `docs/PERFORMANCE.md`'s T-179 same-regime table) sits at roughly **half** the raw

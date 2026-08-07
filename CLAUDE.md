@@ -14,11 +14,13 @@ stay in whatever language they already use.
 ## Commands
 
 ```bash
-cargo xtask ci            # mandatory checks + best-effort miri/fuzz/audit/deny/oracle harnesses
+cargo xtask ci            # mandatory checks (incl. docs-check) + best-effort miri/kani/book/fuzz/audit/deny/oracle harnesses
 cargo xtask build          # both feature-set builds
 cargo xtask test           # full test suite
 cargo xtask clippy         # -D warnings
 cargo xtask fmt --check
+cargo xtask docs-check     # README/gh-pages version-marker freshness lint (T-186, mandatory)
+cargo xtask book           # mdbook build - docs/ knowledge base (T-186), published to gh-pages/book/ by CI
 ```
 
 `xtask` (see `xtask/`, aliased via `.cargo/config.toml`) is the one cross-platform build/QA entry
@@ -215,6 +217,7 @@ Algorithms in scope:
 | `README.md` | need the human-facing project overview or repo tree | repo structure changes | GitHub-facing description, top-level directory map, build/install instructions |
 | `docs/PERFORMANCE.md` | need benchmark numbers, or comparing against another implementation's speed | new numbers are measured, or a new comparison implementation is benchmarked | benchmark methodology (cross-implementation comparisons are binary-level/MB/s only, D-34), recorded numbers, `criterion --baseline` |
 | `xtask/src/main.rs` | adding or changing a build/QA subcommand | a new tool enters the QA stack or an existing command's invocation changes | the actual build/QA implementations (README documents usage, this owns behavior) |
+| `docs/SUMMARY.md` / `book.toml` | adding a new doc file that should be reachable from the published knowledge base, or reordering how the book is grouped | a `docs/*.md` file is added/removed and should (or shouldn't) appear in the book | mdBook table of contents/config (T-186) — `src` points straight at `docs/`, no existing file is moved for this to work, so adding a doc file elsewhere in this table doesn't require touching this row unless it should also gain a book chapter |
 | `AGENTS.md` | never by Claude Code itself (this file already auto-loads) — read by a non-Claude-Code AI agent (Cursor, Copilot, another agentic CLI) that looks for this filename by convention | this table's own row list, read-order, or any file it points to gets renamed/moved | routing a non-Claude AI agent to the right reading order; owns no content of its own — a stale pointer here is a broken link, not wrong information, but still fix it the same session it's noticed |
 
 `docs/rust_ai_ruleset.md` §7 (async/tokio) does not apply to the `no_std`-first core — only relevant

@@ -24,8 +24,10 @@ fn main() -> ExitCode {
         "test" => test(),
         "fmt" => fmt(args.any(|a| a == "--check")),
         "clippy" => clippy(),
+        "docs-check" => docs_check(),
         "miri" => miri(args.next().as_deref()),
         "kani" => kani(),
+        "book" => book(),
         "fuzz" => fuzz(),
         "audit" => audit(),
         "deny" => deny(),
@@ -68,10 +70,12 @@ fn print_usage() {
          \x20 test           cargo test --workspace (default profile) + --all-features\n\
          \x20 fmt [--check]  cargo fmt --all, or --check to verify without writing\n\
          \x20 clippy         cargo clippy --workspace -- -D warnings (default profile) + --all-features\n\
-         \x20 ci             fmt --check + build + test + clippy, then best-effort for the optional tools below\n\n\
+         \x20 docs-check     README/gh-pages version-marker freshness lint against crates/dstu-core's Cargo.toml (T-186)\n\
+         \x20 ci             fmt --check + build + test + clippy + docs-check, then best-effort for the optional tools below\n\n\
          Optional (each checks its tool is installed first and prints an install hint if not):\n\
          \x20 miri [pkg]     cargo +nightly miri test --workspace, or -p <pkg> to scope to one crate (dstu-core, uacrypt, dstu-core-capi) - T-175\n\
          \x20 kani           cargo kani -p dstu-core (bounded model checking, see gf2m163.rs's kani_proofs, D-102) - Linux/macOS only, not Windows\n\
+         \x20 book           mdbook build - the docs/ knowledge base (T-186), published to gh-pages/book/ by CI\n\
          \x20 fuzz           short cargo-fuzz smoke run against every target (see FUZZ_TARGETS)\n\
          \x20 audit          cargo audit (RustSec advisories)\n\
          \x20 deny           cargo deny check (licenses, bans, sources)\n\
@@ -258,6 +262,18 @@ fn kani() -> bool {
     }
 }
 
+/// Builds the `docs/` knowledge base (T-186) - `book.toml` points mdBook's `src` straight at the
+/// existing `docs/` directory (no files moved), `docs/SUMMARY.md` is the table of contents.
+/// Published to gh-pages under `/book/` by `.github/workflows/docs-book.yml`, not by this
+/// command; this is only the local "does it still build" check, the same role `capi`/the binding
+/// commands play for their own artifacts.
+fn book() -> bool {
+    if !require("mdbook", "cargo install mdbook --locked") {
+        return false;
+    }
+    run("mdbook", &["build"], None)
+}
+
 fn fuzz() -> bool {
     if !require("cargo-fuzz", "cargo install cargo-fuzz --locked") {
         return false;
@@ -426,6 +442,152 @@ fn deny() -> bool {
             Some(Path::new("bindings/ruby")),
         )
         && run("cargo", &["deny", "check"], Some(Path::new("bindings/php")))
+}
+
+const VERSION_MARKER_PREFIX: &str = "<!-- uacrypt-version: ";
+
+/// Reads a crate's `[package] version` - deliberately not the workspace-wide `version =` inside a
+/// `[dependencies.*]` table (T-186), by tracking which `[section]` header we're currently under
+/// rather than matching the first `version =` line in the file.
+fn cargo_toml_version(path: &Path) -> Option<String> {
+    let text = std::fs::read_to_string(path).ok()?;
+    let mut in_package = false;
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if let Some(header) = trimmed.strip_prefix('[') {
+            in_package = header.trim_end_matches(']') == "package";
+            continue;
+        }
+        if !in_package {
+            continue;
+        }
+        if let Some(rest) = trimmed.strip_prefix("version") {
+            if let Some(rest) = rest.trim_start().strip_prefix('=') {
+                return Some(rest.trim().trim_matches('"').to_string());
+            }
+        }
+    }
+    None
+}
+
+/// Looks for `<!-- uacrypt-version: X.Y.Z -->` - a fixed marker rather than matching the
+/// human-facing prose sentence around it, which keeps changing wording (T-185 reworded it twice
+/// in one session) in a way regex-on-prose would need chasing forever (T-186).
+fn extract_version_marker(text: &str) -> Option<String> {
+    let after = text.split_once(VERSION_MARKER_PREFIX)?.1;
+    let (version, _) = after.split_once(" -->")?;
+    Some(version.trim().to_string())
+}
+
+fn check_version_marker(label: &str, text: &str, expected: &str) -> bool {
+    match extract_version_marker(text) {
+        Some(found) if found == expected => true,
+        Some(found) => {
+            eprintln!(
+                "xtask: docs-check: {label} says uacrypt-version {found}, but crates/dstu-core/Cargo.toml says {expected}"
+            );
+            false
+        }
+        None => {
+            eprintln!(
+                "xtask: docs-check: {label} is missing a '<!-- uacrypt-version: X.Y.Z -->' marker"
+            );
+            false
+        }
+    }
+}
+
+fn git_ref_exists(reference: &str) -> bool {
+    Command::new("git")
+        .args(["rev-parse", "--verify", "-q", reference])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_ok_and(|s| s.success())
+}
+
+/// `gh-pages` is a separate, orphan branch, never part of a normal `master` checkout (T-186).
+/// Prefers a ref that's already resolvable locally (dev machine, or a CI job that already fetched
+/// it) before reaching for the network, and only fetches once - not a hard failure if that fetch
+/// can't happen (offline dev run), see `docs_check`'s caller.
+fn resolve_gh_pages_ref() -> Option<&'static str> {
+    if git_ref_exists("gh-pages") {
+        return Some("gh-pages");
+    }
+    if git_ref_exists("origin/gh-pages") {
+        return Some("origin/gh-pages");
+    }
+    let fetched = Command::new("git")
+        .args(["fetch", "origin", "gh-pages", "--depth=1"])
+        .status()
+        .is_ok_and(|s| s.success());
+    if fetched && git_ref_exists("FETCH_HEAD") {
+        return Some("FETCH_HEAD");
+    }
+    None
+}
+
+fn git_show(reference: &str, path: &str) -> Option<String> {
+    let output = Command::new("git")
+        .args(["show", &format!("{reference}:{path}")])
+        .output()
+        .ok()?;
+    output.status.success().then(|| String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+/// Freshness lint (T-186, mandatory - owner's explicit choice): catches the exact class of bug
+/// T-185 fixed by hand, a README/site version that silently drifted from the real crate version.
+/// The gh-pages half degrades to a warning (not a failure) when the branch genuinely can't be
+/// reached (no local ref, fetch fails - e.g. fully offline) - everything else here needs no
+/// network and always hard-fails on mismatch.
+fn docs_check() -> bool {
+    let Some(core_version) = cargo_toml_version(Path::new("crates/dstu-core/Cargo.toml")) else {
+        eprintln!("xtask: docs-check: couldn't read crates/dstu-core/Cargo.toml's version");
+        return false;
+    };
+
+    let mut ok = match cargo_toml_version(Path::new("crates/uacrypt/Cargo.toml")) {
+        Some(v) if v == core_version => true,
+        Some(v) => {
+            eprintln!(
+                "xtask: docs-check: crates/dstu-core is {core_version}, crates/uacrypt is {v} - bump both (CLAUDE.md's own two-places rule)"
+            );
+            false
+        }
+        None => {
+            eprintln!("xtask: docs-check: couldn't read crates/uacrypt/Cargo.toml's version");
+            false
+        }
+    };
+
+    match std::fs::read_to_string("README.md") {
+        Ok(text) => ok &= check_version_marker("README.md", &text, &core_version),
+        Err(e) => {
+            eprintln!("xtask: docs-check: couldn't read README.md: {e}");
+            ok = false;
+        }
+    }
+
+    match resolve_gh_pages_ref() {
+        Some(reference) => {
+            for path in ["index.html", "uk/index.html"] {
+                match git_show(reference, path) {
+                    Some(text) => {
+                        ok &= check_version_marker(&format!("gh-pages:{path}"), &text, &core_version)
+                    }
+                    None => eprintln!(
+                        "xtask: docs-check: couldn't read {reference}:{path} - skipping, not failing the build over it"
+                    ),
+                }
+            }
+        }
+        None => eprintln!(
+            "xtask: docs-check: no local gh-pages ref and 'git fetch origin gh-pages' failed \
+             (offline?) - skipping the site check, not failing the build over it"
+        ),
+    }
+
+    ok
 }
 
 /// Best-effort like miri/fuzz/audit (D-12) - `bindings/python`'s own separate Cargo workspace
@@ -1059,7 +1221,7 @@ fn oracle_dotnet() -> bool {
 /// optional layers (miri/kani/fuzz/audit/deny/oracle harnesses) - missing tools are reported, not fatal,
 /// so this is useful on a fresh machine that only has `cargo` so far, not just full CI runners.
 fn ci() -> bool {
-    let mandatory = fmt(true) && build() && test() && clippy();
+    let mandatory = fmt(true) && build() && test() && clippy() && docs_check();
     if !mandatory {
         return false;
     }
@@ -1069,6 +1231,7 @@ fn ci() -> bool {
     for optional in [
         optional_miri,
         kani,
+        book,
         fuzz,
         audit,
         deny,

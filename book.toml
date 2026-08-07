@@ -1,0 +1,12 @@
+[book]
+title = "uacrypt"
+description = "Ukrainian DSTU cryptography in Rust - the full docs/ knowledge base as one navigable, searchable book."
+src = "docs"
+language = "en"
+
+[build]
+build-dir = "target/book"
+
+[output.html]
+git-repository-url = "https://github.com/user137/uacrypt"
+edit-url-template = "https://github.com/user137/uacrypt/edit/master/{path}"
