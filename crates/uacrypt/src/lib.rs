@@ -48,6 +48,7 @@ use dstu_core::hazmat::kalyna_xts::{
 };
 use dstu_core::hazmat::kupyna::{Kupyna256Hasher, Kupyna512Hasher};
 use dstu_core::hazmat::strumok::{Strumok256, Strumok512};
+use std::collections::HashMap;
 use std::fmt;
 use std::path::PathBuf;
 use std::time::Instant;
@@ -331,6 +332,80 @@ fn run_block_op(
     }
 }
 
+/// Generic `--flag value` scanner shared by every `parse_*_args` function below (T-188 -
+/// `SonarCloud`'s duplicated-lines Quality Gate flagged ~918 duplicated lines/34 groups from
+/// copy-pasted per-command scanning loops that were otherwise identical apart from which flags/
+/// types each command needs). Each `parse_*_args` function still owns its own flag list and which
+/// fields are required - this only replaces the "scan tokens left to right, split into flag/value
+/// pairs, reject anything unrecognized" mechanics every one of them used to hand-roll.
+struct ArgScanner {
+    values: HashMap<&'static str, String>,
+    flags: HashMap<&'static str, bool>,
+}
+
+impl ArgScanner {
+    /// `value_flags` each consume exactly one following argument; `bool_flags` consume none.
+    /// Anything else in `args` is [`CliError::UnknownFlag`] - same behavior as every hand-rolled
+    /// loop this replaces, including "last occurrence wins" if a flag repeats, and returning the
+    /// first problem encountered while scanning left to right rather than collecting every one.
+    fn scan(
+        args: &[String],
+        value_flags: &[&'static str],
+        bool_flags: &[&'static str],
+    ) -> Result<Self, CliError> {
+        let mut values = HashMap::new();
+        let mut flags: HashMap<&'static str, bool> =
+            bool_flags.iter().map(|f| (*f, false)).collect();
+        let mut i = 0;
+        while i < args.len() {
+            let token = args[i].as_str();
+            if let Some(&name) = bool_flags.iter().find(|f| **f == token) {
+                flags.insert(name, true);
+                i += 1;
+            } else if let Some(&name) = value_flags.iter().find(|f| **f == token) {
+                let v = args.get(i + 1).ok_or(CliError::MissingFlag(&name[2..]))?;
+                values.insert(name, v.clone());
+                i += 2;
+            } else {
+                return Err(CliError::UnknownFlag(token.to_string()));
+            }
+        }
+        Ok(Self { values, flags })
+    }
+
+    fn path(&self, flag: &'static str) -> Result<PathBuf, CliError> {
+        self.values
+            .get(flag)
+            .map(PathBuf::from)
+            .ok_or(CliError::MissingFlag(&flag[2..]))
+    }
+
+    fn path_opt(&self, flag: &'static str) -> Option<PathBuf> {
+        self.values.get(flag).map(PathBuf::from)
+    }
+
+    fn variant<T>(&self, parse: impl FnOnce(&str) -> Option<T>) -> Result<T, CliError> {
+        let v = self
+            .values
+            .get("--variant")
+            .ok_or(CliError::MissingFlag("variant"))?;
+        parse(v).ok_or_else(|| CliError::UnknownVariant(v.clone()))
+    }
+
+    fn iterations(&self) -> Result<u32, CliError> {
+        match self.values.get("--iterations") {
+            Some(v) => v
+                .parse()
+                .map_err(|_| CliError::InvalidIterations(v.clone())),
+            None => Ok(1),
+        }
+    }
+
+    fn bool_flag(&self, flag: &'static str) -> bool {
+        *self.flags.get(flag).unwrap_or(&false)
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct BlockArgs {
     pub variant: KalynaVariant,
@@ -350,63 +425,18 @@ pub struct BlockArgs {
 /// an unrecognized `--variant` value, [`CliError::InvalidIterations`] for a non-numeric
 /// `--iterations` value, or [`CliError::UnknownFlag`] for any other unrecognized token.
 pub fn parse_block_args(args: &[String]) -> Result<BlockArgs, CliError> {
-    let mut variant = None;
-    let mut key_path = None;
-    let mut in_path = None;
-    let mut out_path = None;
-    let mut iterations = 1u32;
-    let mut raw_schedule = false;
-
-    let mut i = 0;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--variant" => {
-                let v = args.get(i + 1).ok_or(CliError::MissingFlag("variant"))?;
-                variant = Some(
-                    KalynaVariant::parse(v).ok_or_else(|| CliError::UnknownVariant(v.clone()))?,
-                );
-                i += 2;
-            }
-            "--key" => {
-                key_path = Some(PathBuf::from(
-                    args.get(i + 1).ok_or(CliError::MissingFlag("key"))?,
-                ));
-                i += 2;
-            }
-            "--in" => {
-                in_path = Some(PathBuf::from(
-                    args.get(i + 1).ok_or(CliError::MissingFlag("in"))?,
-                ));
-                i += 2;
-            }
-            "--out" => {
-                out_path = Some(PathBuf::from(
-                    args.get(i + 1).ok_or(CliError::MissingFlag("out"))?,
-                ));
-                i += 2;
-            }
-            "--iterations" => {
-                let v = args.get(i + 1).ok_or(CliError::MissingFlag("iterations"))?;
-                iterations = v
-                    .parse()
-                    .map_err(|_| CliError::InvalidIterations(v.clone()))?;
-                i += 2;
-            }
-            "--raw-schedule" => {
-                raw_schedule = true;
-                i += 1;
-            }
-            other => return Err(CliError::UnknownFlag(other.to_string())),
-        }
-    }
-
+    let scanner = ArgScanner::scan(
+        args,
+        &["--variant", "--key", "--in", "--out", "--iterations"],
+        &["--raw-schedule"],
+    )?;
     Ok(BlockArgs {
-        variant: variant.ok_or(CliError::MissingFlag("variant"))?,
-        key_path: key_path.ok_or(CliError::MissingFlag("key"))?,
-        in_path: in_path.ok_or(CliError::MissingFlag("in"))?,
-        out_path: out_path.ok_or(CliError::MissingFlag("out"))?,
-        iterations,
-        raw_schedule,
+        variant: scanner.variant(KalynaVariant::parse)?,
+        key_path: scanner.path("--key")?,
+        in_path: scanner.path("--in")?,
+        out_path: scanner.path("--out")?,
+        iterations: scanner.iterations()?,
+        raw_schedule: scanner.bool_flag("--raw-schedule"),
     })
 }
 
@@ -497,81 +527,29 @@ pub struct CcmArgs {
 /// Same cases as [`parse_block_args`], plus `--nonce`/`--tag` sharing `--key`'s missing-flag
 /// handling.
 pub fn parse_ccm_args(args: &[String]) -> Result<CcmArgs, CliError> {
-    let mut variant = None;
-    let mut key_path = None;
-    let mut nonce_path = None;
-    let mut aad_path = None;
-    let mut in_path = None;
-    let mut out_path = None;
-    let mut tag_path = None;
-    let mut iterations = 1u32;
-
-    let mut i = 0;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--variant" => {
-                let v = args.get(i + 1).ok_or(CliError::MissingFlag("variant"))?;
-                variant = Some(
-                    KalynaVariant::parse(v).ok_or_else(|| CliError::UnknownVariant(v.clone()))?,
-                );
-                i += 2;
-            }
-            "--key" => {
-                key_path = Some(PathBuf::from(
-                    args.get(i + 1).ok_or(CliError::MissingFlag("key"))?,
-                ));
-                i += 2;
-            }
-            "--nonce" => {
-                nonce_path = Some(PathBuf::from(
-                    args.get(i + 1).ok_or(CliError::MissingFlag("nonce"))?,
-                ));
-                i += 2;
-            }
-            "--aad" => {
-                aad_path = Some(PathBuf::from(
-                    args.get(i + 1).ok_or(CliError::MissingFlag("aad"))?,
-                ));
-                i += 2;
-            }
-            "--in" => {
-                in_path = Some(PathBuf::from(
-                    args.get(i + 1).ok_or(CliError::MissingFlag("in"))?,
-                ));
-                i += 2;
-            }
-            "--out" => {
-                out_path = Some(PathBuf::from(
-                    args.get(i + 1).ok_or(CliError::MissingFlag("out"))?,
-                ));
-                i += 2;
-            }
-            "--tag" => {
-                tag_path = Some(PathBuf::from(
-                    args.get(i + 1).ok_or(CliError::MissingFlag("tag"))?,
-                ));
-                i += 2;
-            }
-            "--iterations" => {
-                let v = args.get(i + 1).ok_or(CliError::MissingFlag("iterations"))?;
-                iterations = v
-                    .parse()
-                    .map_err(|_| CliError::InvalidIterations(v.clone()))?;
-                i += 2;
-            }
-            other => return Err(CliError::UnknownFlag(other.to_string())),
-        }
-    }
-
+    let scanner = ArgScanner::scan(
+        args,
+        &[
+            "--variant",
+            "--key",
+            "--nonce",
+            "--aad",
+            "--in",
+            "--out",
+            "--tag",
+            "--iterations",
+        ],
+        &[],
+    )?;
     Ok(CcmArgs {
-        variant: variant.ok_or(CliError::MissingFlag("variant"))?,
-        key_path: key_path.ok_or(CliError::MissingFlag("key"))?,
-        nonce_path: nonce_path.ok_or(CliError::MissingFlag("nonce"))?,
-        aad_path,
-        in_path: in_path.ok_or(CliError::MissingFlag("in"))?,
-        out_path: out_path.ok_or(CliError::MissingFlag("out"))?,
-        tag_path: tag_path.ok_or(CliError::MissingFlag("tag"))?,
-        iterations,
+        variant: scanner.variant(KalynaVariant::parse)?,
+        key_path: scanner.path("--key")?,
+        nonce_path: scanner.path("--nonce")?,
+        aad_path: scanner.path_opt("--aad"),
+        in_path: scanner.path("--in")?,
+        out_path: scanner.path("--out")?,
+        tag_path: scanner.path("--tag")?,
+        iterations: scanner.iterations()?,
     })
 }
 
@@ -707,81 +685,29 @@ pub struct GcmArgs {
 ///
 /// Same cases as [`parse_ccm_args`].
 pub fn parse_gcm_args(args: &[String]) -> Result<GcmArgs, CliError> {
-    let mut variant = None;
-    let mut key_path = None;
-    let mut nonce_path = None;
-    let mut aad_path = None;
-    let mut in_path = None;
-    let mut out_path = None;
-    let mut tag_path = None;
-    let mut iterations = 1u32;
-
-    let mut i = 0;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--variant" => {
-                let v = args.get(i + 1).ok_or(CliError::MissingFlag("variant"))?;
-                variant = Some(
-                    KalynaVariant::parse(v).ok_or_else(|| CliError::UnknownVariant(v.clone()))?,
-                );
-                i += 2;
-            }
-            "--key" => {
-                key_path = Some(PathBuf::from(
-                    args.get(i + 1).ok_or(CliError::MissingFlag("key"))?,
-                ));
-                i += 2;
-            }
-            "--nonce" => {
-                nonce_path = Some(PathBuf::from(
-                    args.get(i + 1).ok_or(CliError::MissingFlag("nonce"))?,
-                ));
-                i += 2;
-            }
-            "--aad" => {
-                aad_path = Some(PathBuf::from(
-                    args.get(i + 1).ok_or(CliError::MissingFlag("aad"))?,
-                ));
-                i += 2;
-            }
-            "--in" => {
-                in_path = Some(PathBuf::from(
-                    args.get(i + 1).ok_or(CliError::MissingFlag("in"))?,
-                ));
-                i += 2;
-            }
-            "--out" => {
-                out_path = Some(PathBuf::from(
-                    args.get(i + 1).ok_or(CliError::MissingFlag("out"))?,
-                ));
-                i += 2;
-            }
-            "--tag" => {
-                tag_path = Some(PathBuf::from(
-                    args.get(i + 1).ok_or(CliError::MissingFlag("tag"))?,
-                ));
-                i += 2;
-            }
-            "--iterations" => {
-                let v = args.get(i + 1).ok_or(CliError::MissingFlag("iterations"))?;
-                iterations = v
-                    .parse()
-                    .map_err(|_| CliError::InvalidIterations(v.clone()))?;
-                i += 2;
-            }
-            other => return Err(CliError::UnknownFlag(other.to_string())),
-        }
-    }
-
+    let scanner = ArgScanner::scan(
+        args,
+        &[
+            "--variant",
+            "--key",
+            "--nonce",
+            "--aad",
+            "--in",
+            "--out",
+            "--tag",
+            "--iterations",
+        ],
+        &[],
+    )?;
     Ok(GcmArgs {
-        variant: variant.ok_or(CliError::MissingFlag("variant"))?,
-        key_path: key_path.ok_or(CliError::MissingFlag("key"))?,
-        nonce_path: nonce_path.ok_or(CliError::MissingFlag("nonce"))?,
-        aad_path,
-        in_path: in_path.ok_or(CliError::MissingFlag("in"))?,
-        out_path: out_path.ok_or(CliError::MissingFlag("out"))?,
-        tag_path: tag_path.ok_or(CliError::MissingFlag("tag"))?,
-        iterations,
+        variant: scanner.variant(KalynaVariant::parse)?,
+        key_path: scanner.path("--key")?,
+        nonce_path: scanner.path("--nonce")?,
+        aad_path: scanner.path_opt("--aad"),
+        in_path: scanner.path("--in")?,
+        out_path: scanner.path("--out")?,
+        tag_path: scanner.path("--tag")?,
+        iterations: scanner.iterations()?,
     })
 }
 
@@ -911,65 +837,25 @@ pub struct CmacArgs {
 /// [`CliError::MissingFlag`]/[`CliError::UnknownVariant`]/[`CliError::InvalidIterations`]/
 /// [`CliError::UnknownFlag`], same cases as [`parse_block_args`].
 pub fn parse_cmac_args(args: &[String]) -> Result<CmacArgs, CliError> {
-    let mut variant = None;
-    let mut key_path = None;
-    let mut in_path = None;
-    let mut out_path = None;
-    let mut tag_path = None;
-    let mut iterations = 1u32;
-
-    let mut i = 0;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--variant" => {
-                let v = args.get(i + 1).ok_or(CliError::MissingFlag("variant"))?;
-                variant = Some(
-                    KalynaVariant::parse(v).ok_or_else(|| CliError::UnknownVariant(v.clone()))?,
-                );
-                i += 2;
-            }
-            "--key" => {
-                key_path = Some(PathBuf::from(
-                    args.get(i + 1).ok_or(CliError::MissingFlag("key"))?,
-                ));
-                i += 2;
-            }
-            "--in" => {
-                in_path = Some(PathBuf::from(
-                    args.get(i + 1).ok_or(CliError::MissingFlag("in"))?,
-                ));
-                i += 2;
-            }
-            "--out" => {
-                out_path = Some(PathBuf::from(
-                    args.get(i + 1).ok_or(CliError::MissingFlag("out"))?,
-                ));
-                i += 2;
-            }
-            "--tag" => {
-                tag_path = Some(PathBuf::from(
-                    args.get(i + 1).ok_or(CliError::MissingFlag("tag"))?,
-                ));
-                i += 2;
-            }
-            "--iterations" => {
-                let v = args.get(i + 1).ok_or(CliError::MissingFlag("iterations"))?;
-                iterations = v
-                    .parse()
-                    .map_err(|_| CliError::InvalidIterations(v.clone()))?;
-                i += 2;
-            }
-            other => return Err(CliError::UnknownFlag(other.to_string())),
-        }
-    }
-
+    let scanner = ArgScanner::scan(
+        args,
+        &[
+            "--variant",
+            "--key",
+            "--in",
+            "--out",
+            "--tag",
+            "--iterations",
+        ],
+        &[],
+    )?;
     Ok(CmacArgs {
-        variant: variant.ok_or(CliError::MissingFlag("variant"))?,
-        key_path: key_path.ok_or(CliError::MissingFlag("key"))?,
-        in_path: in_path.ok_or(CliError::MissingFlag("in"))?,
-        out_path,
-        tag_path,
-        iterations,
+        variant: scanner.variant(KalynaVariant::parse)?,
+        key_path: scanner.path("--key")?,
+        in_path: scanner.path("--in")?,
+        out_path: scanner.path_opt("--out"),
+        tag_path: scanner.path_opt("--tag"),
+        iterations: scanner.iterations()?,
     })
 }
 
@@ -1083,65 +969,25 @@ pub struct GmacArgs {
 ///
 /// Same cases as [`parse_cmac_args`].
 pub fn parse_gmac_args(args: &[String]) -> Result<GmacArgs, CliError> {
-    let mut variant = None;
-    let mut key_path = None;
-    let mut in_path = None;
-    let mut out_path = None;
-    let mut tag_path = None;
-    let mut iterations = 1u32;
-
-    let mut i = 0;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--variant" => {
-                let v = args.get(i + 1).ok_or(CliError::MissingFlag("variant"))?;
-                variant = Some(
-                    KalynaVariant::parse(v).ok_or_else(|| CliError::UnknownVariant(v.clone()))?,
-                );
-                i += 2;
-            }
-            "--key" => {
-                key_path = Some(PathBuf::from(
-                    args.get(i + 1).ok_or(CliError::MissingFlag("key"))?,
-                ));
-                i += 2;
-            }
-            "--in" => {
-                in_path = Some(PathBuf::from(
-                    args.get(i + 1).ok_or(CliError::MissingFlag("in"))?,
-                ));
-                i += 2;
-            }
-            "--out" => {
-                out_path = Some(PathBuf::from(
-                    args.get(i + 1).ok_or(CliError::MissingFlag("out"))?,
-                ));
-                i += 2;
-            }
-            "--tag" => {
-                tag_path = Some(PathBuf::from(
-                    args.get(i + 1).ok_or(CliError::MissingFlag("tag"))?,
-                ));
-                i += 2;
-            }
-            "--iterations" => {
-                let v = args.get(i + 1).ok_or(CliError::MissingFlag("iterations"))?;
-                iterations = v
-                    .parse()
-                    .map_err(|_| CliError::InvalidIterations(v.clone()))?;
-                i += 2;
-            }
-            other => return Err(CliError::UnknownFlag(other.to_string())),
-        }
-    }
-
+    let scanner = ArgScanner::scan(
+        args,
+        &[
+            "--variant",
+            "--key",
+            "--in",
+            "--out",
+            "--tag",
+            "--iterations",
+        ],
+        &[],
+    )?;
     Ok(GmacArgs {
-        variant: variant.ok_or(CliError::MissingFlag("variant"))?,
-        key_path: key_path.ok_or(CliError::MissingFlag("key"))?,
-        in_path: in_path.ok_or(CliError::MissingFlag("in"))?,
-        out_path,
-        tag_path,
-        iterations,
+        variant: scanner.variant(KalynaVariant::parse)?,
+        key_path: scanner.path("--key")?,
+        in_path: scanner.path("--in")?,
+        out_path: scanner.path_opt("--out"),
+        tag_path: scanner.path_opt("--tag"),
+        iterations: scanner.iterations()?,
     })
 }
 
@@ -1250,57 +1096,17 @@ pub struct KwArgs {
 ///
 /// Same cases as [`parse_block_args`].
 pub fn parse_kw_args(args: &[String]) -> Result<KwArgs, CliError> {
-    let mut variant = None;
-    let mut key_path = None;
-    let mut in_path = None;
-    let mut out_path = None;
-    let mut iterations = 1u32;
-
-    let mut i = 0;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--variant" => {
-                let v = args.get(i + 1).ok_or(CliError::MissingFlag("variant"))?;
-                variant = Some(
-                    KalynaVariant::parse(v).ok_or_else(|| CliError::UnknownVariant(v.clone()))?,
-                );
-                i += 2;
-            }
-            "--key" => {
-                key_path = Some(PathBuf::from(
-                    args.get(i + 1).ok_or(CliError::MissingFlag("key"))?,
-                ));
-                i += 2;
-            }
-            "--in" => {
-                in_path = Some(PathBuf::from(
-                    args.get(i + 1).ok_or(CliError::MissingFlag("in"))?,
-                ));
-                i += 2;
-            }
-            "--out" => {
-                out_path = Some(PathBuf::from(
-                    args.get(i + 1).ok_or(CliError::MissingFlag("out"))?,
-                ));
-                i += 2;
-            }
-            "--iterations" => {
-                let v = args.get(i + 1).ok_or(CliError::MissingFlag("iterations"))?;
-                iterations = v
-                    .parse()
-                    .map_err(|_| CliError::InvalidIterations(v.clone()))?;
-                i += 2;
-            }
-            other => return Err(CliError::UnknownFlag(other.to_string())),
-        }
-    }
-
+    let scanner = ArgScanner::scan(
+        args,
+        &["--variant", "--key", "--in", "--out", "--iterations"],
+        &[],
+    )?;
     Ok(KwArgs {
-        variant: variant.ok_or(CliError::MissingFlag("variant"))?,
-        key_path: key_path.ok_or(CliError::MissingFlag("key"))?,
-        in_path: in_path.ok_or(CliError::MissingFlag("in"))?,
-        out_path: out_path.ok_or(CliError::MissingFlag("out"))?,
-        iterations,
+        variant: scanner.variant(KalynaVariant::parse)?,
+        key_path: scanner.path("--key")?,
+        in_path: scanner.path("--in")?,
+        out_path: scanner.path("--out")?,
+        iterations: scanner.iterations()?,
     })
 }
 
@@ -1417,65 +1223,25 @@ pub struct XtsArgs {
 ///
 /// Same cases as [`parse_block_args`], plus `--tweak` sharing `--key`'s missing-flag handling.
 pub fn parse_xts_args(args: &[String]) -> Result<XtsArgs, CliError> {
-    let mut variant = None;
-    let mut key_path = None;
-    let mut tweak_path = None;
-    let mut in_path = None;
-    let mut out_path = None;
-    let mut iterations = 1u32;
-
-    let mut i = 0;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--variant" => {
-                let v = args.get(i + 1).ok_or(CliError::MissingFlag("variant"))?;
-                variant = Some(
-                    KalynaVariant::parse(v).ok_or_else(|| CliError::UnknownVariant(v.clone()))?,
-                );
-                i += 2;
-            }
-            "--key" => {
-                key_path = Some(PathBuf::from(
-                    args.get(i + 1).ok_or(CliError::MissingFlag("key"))?,
-                ));
-                i += 2;
-            }
-            "--tweak" => {
-                tweak_path = Some(PathBuf::from(
-                    args.get(i + 1).ok_or(CliError::MissingFlag("tweak"))?,
-                ));
-                i += 2;
-            }
-            "--in" => {
-                in_path = Some(PathBuf::from(
-                    args.get(i + 1).ok_or(CliError::MissingFlag("in"))?,
-                ));
-                i += 2;
-            }
-            "--out" => {
-                out_path = Some(PathBuf::from(
-                    args.get(i + 1).ok_or(CliError::MissingFlag("out"))?,
-                ));
-                i += 2;
-            }
-            "--iterations" => {
-                let v = args.get(i + 1).ok_or(CliError::MissingFlag("iterations"))?;
-                iterations = v
-                    .parse()
-                    .map_err(|_| CliError::InvalidIterations(v.clone()))?;
-                i += 2;
-            }
-            other => return Err(CliError::UnknownFlag(other.to_string())),
-        }
-    }
-
+    let scanner = ArgScanner::scan(
+        args,
+        &[
+            "--variant",
+            "--key",
+            "--tweak",
+            "--in",
+            "--out",
+            "--iterations",
+        ],
+        &[],
+    )?;
     Ok(XtsArgs {
-        variant: variant.ok_or(CliError::MissingFlag("variant"))?,
-        key_path: key_path.ok_or(CliError::MissingFlag("key"))?,
-        tweak_path: tweak_path.ok_or(CliError::MissingFlag("tweak"))?,
-        in_path: in_path.ok_or(CliError::MissingFlag("in"))?,
-        out_path: out_path.ok_or(CliError::MissingFlag("out"))?,
-        iterations,
+        variant: scanner.variant(KalynaVariant::parse)?,
+        key_path: scanner.path("--key")?,
+        tweak_path: scanner.path("--tweak")?,
+        in_path: scanner.path("--in")?,
+        out_path: scanner.path("--out")?,
+        iterations: scanner.iterations()?,
     })
 }
 
@@ -1580,39 +1346,11 @@ pub struct SecretstreamArgs {
 ///
 /// Returns [`CliError::MissingFlag`] or [`CliError::UnknownFlag`].
 pub fn parse_secretstream_args(args: &[String]) -> Result<SecretstreamArgs, CliError> {
-    let mut key_path = None;
-    let mut in_path = None;
-    let mut out_path = None;
-
-    let mut i = 0;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--key" => {
-                key_path = Some(PathBuf::from(
-                    args.get(i + 1).ok_or(CliError::MissingFlag("key"))?,
-                ));
-                i += 2;
-            }
-            "--in" => {
-                in_path = Some(PathBuf::from(
-                    args.get(i + 1).ok_or(CliError::MissingFlag("in"))?,
-                ));
-                i += 2;
-            }
-            "--out" => {
-                out_path = Some(PathBuf::from(
-                    args.get(i + 1).ok_or(CliError::MissingFlag("out"))?,
-                ));
-                i += 2;
-            }
-            other => return Err(CliError::UnknownFlag(other.to_string())),
-        }
-    }
-
+    let scanner = ArgScanner::scan(args, &["--key", "--in", "--out"], &[])?;
     Ok(SecretstreamArgs {
-        key_path: key_path.ok_or(CliError::MissingFlag("key"))?,
-        in_path: in_path.ok_or(CliError::MissingFlag("in"))?,
-        out_path: out_path.ok_or(CliError::MissingFlag("out"))?,
+        key_path: scanner.path("--key")?,
+        in_path: scanner.path("--in")?,
+        out_path: scanner.path("--out")?,
     })
 }
 
@@ -1865,48 +1603,12 @@ pub struct DigestArgs {
 /// or [`CliError::UnknownFlag`] - same cases as [`parse_block_args`], minus the key/raw-schedule
 /// flags Kupyna (unkeyed) has no use for.
 pub fn parse_digest_args(args: &[String]) -> Result<DigestArgs, CliError> {
-    let mut variant = None;
-    let mut in_path = None;
-    let mut out_path = None;
-    let mut iterations = 1u32;
-
-    let mut i = 0;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--variant" => {
-                let v = args.get(i + 1).ok_or(CliError::MissingFlag("variant"))?;
-                variant =
-                    Some(HashBits::parse(v).ok_or_else(|| CliError::UnknownVariant(v.clone()))?);
-                i += 2;
-            }
-            "--in" => {
-                in_path = Some(PathBuf::from(
-                    args.get(i + 1).ok_or(CliError::MissingFlag("in"))?,
-                ));
-                i += 2;
-            }
-            "--out" => {
-                out_path = Some(PathBuf::from(
-                    args.get(i + 1).ok_or(CliError::MissingFlag("out"))?,
-                ));
-                i += 2;
-            }
-            "--iterations" => {
-                let v = args.get(i + 1).ok_or(CliError::MissingFlag("iterations"))?;
-                iterations = v
-                    .parse()
-                    .map_err(|_| CliError::InvalidIterations(v.clone()))?;
-                i += 2;
-            }
-            other => return Err(CliError::UnknownFlag(other.to_string())),
-        }
-    }
-
+    let scanner = ArgScanner::scan(args, &["--variant", "--in", "--out", "--iterations"], &[])?;
     Ok(DigestArgs {
-        variant: variant.ok_or(CliError::MissingFlag("variant"))?,
-        in_path: in_path.ok_or(CliError::MissingFlag("in"))?,
-        out_path: out_path.ok_or(CliError::MissingFlag("out"))?,
-        iterations,
+        variant: scanner.variant(HashBits::parse)?,
+        in_path: scanner.path("--in")?,
+        out_path: scanner.path("--out")?,
+        iterations: scanner.iterations()?,
     })
 }
 
@@ -2043,31 +1745,10 @@ pub struct HashArgs {
 ///
 /// Returns [`CliError::MissingFlag`] or [`CliError::UnknownFlag`].
 pub fn parse_hash_args(args: &[String]) -> Result<HashArgs, CliError> {
-    let mut in_path = None;
-    let mut out_path = None;
-
-    let mut i = 0;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--in" => {
-                in_path = Some(PathBuf::from(
-                    args.get(i + 1).ok_or(CliError::MissingFlag("in"))?,
-                ));
-                i += 2;
-            }
-            "--out" => {
-                out_path = Some(PathBuf::from(
-                    args.get(i + 1).ok_or(CliError::MissingFlag("out"))?,
-                ));
-                i += 2;
-            }
-            other => return Err(CliError::UnknownFlag(other.to_string())),
-        }
-    }
-
+    let scanner = ArgScanner::scan(args, &["--in", "--out"], &[])?;
     Ok(HashArgs {
-        in_path: in_path.ok_or(CliError::MissingFlag("in"))?,
-        out_path: out_path.ok_or(CliError::MissingFlag("out"))?,
+        in_path: scanner.path("--in")?,
+        out_path: scanner.path("--out")?,
     })
 }
 
@@ -2103,23 +1784,9 @@ pub struct KeygenArgs {
 ///
 /// Returns [`CliError::MissingFlag`] or [`CliError::UnknownFlag`].
 pub fn parse_keygen_args(args: &[String]) -> Result<KeygenArgs, CliError> {
-    let mut out_path = None;
-
-    let mut i = 0;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--out" => {
-                out_path = Some(PathBuf::from(
-                    args.get(i + 1).ok_or(CliError::MissingFlag("out"))?,
-                ));
-                i += 2;
-            }
-            other => return Err(CliError::UnknownFlag(other.to_string())),
-        }
-    }
-
+    let scanner = ArgScanner::scan(args, &["--out"], &[])?;
     Ok(KeygenArgs {
-        out_path: out_path.ok_or(CliError::MissingFlag("out"))?,
+        out_path: scanner.path("--out")?,
     })
 }
 
@@ -2194,23 +1861,9 @@ pub struct SignKeygenArgs {
 ///
 /// Returns [`CliError::MissingFlag`] or [`CliError::UnknownFlag`].
 pub fn parse_sign_keygen_args(args: &[String]) -> Result<SignKeygenArgs, CliError> {
-    let mut out_path = None;
-
-    let mut i = 0;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--out" => {
-                out_path = Some(PathBuf::from(
-                    args.get(i + 1).ok_or(CliError::MissingFlag("out"))?,
-                ));
-                i += 2;
-            }
-            other => return Err(CliError::UnknownFlag(other.to_string())),
-        }
-    }
-
+    let scanner = ArgScanner::scan(args, &["--out"], &[])?;
     Ok(SignKeygenArgs {
-        out_path: out_path.ok_or(CliError::MissingFlag("out"))?,
+        out_path: scanner.path("--out")?,
     })
 }
 
@@ -2246,31 +1899,10 @@ pub struct SignPubkeyArgs {
 ///
 /// Returns [`CliError::MissingFlag`] or [`CliError::UnknownFlag`].
 pub fn parse_sign_pubkey_args(args: &[String]) -> Result<SignPubkeyArgs, CliError> {
-    let mut key_path = None;
-    let mut out_path = None;
-
-    let mut i = 0;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--key" => {
-                key_path = Some(PathBuf::from(
-                    args.get(i + 1).ok_or(CliError::MissingFlag("key"))?,
-                ));
-                i += 2;
-            }
-            "--out" => {
-                out_path = Some(PathBuf::from(
-                    args.get(i + 1).ok_or(CliError::MissingFlag("out"))?,
-                ));
-                i += 2;
-            }
-            other => return Err(CliError::UnknownFlag(other.to_string())),
-        }
-    }
-
+    let scanner = ArgScanner::scan(args, &["--key", "--out"], &[])?;
     Ok(SignPubkeyArgs {
-        key_path: key_path.ok_or(CliError::MissingFlag("key"))?,
-        out_path: out_path.ok_or(CliError::MissingFlag("out"))?,
+        key_path: scanner.path("--key")?,
+        out_path: scanner.path("--out")?,
     })
 }
 
@@ -2309,48 +1941,12 @@ pub struct SignArgs {
 ///
 /// Returns [`CliError::MissingFlag`], [`CliError::InvalidIterations`], or [`CliError::UnknownFlag`].
 pub fn parse_sign_args(args: &[String]) -> Result<SignArgs, CliError> {
-    let mut key_path = None;
-    let mut in_path = None;
-    let mut out_path = None;
-    let mut iterations = 1u32;
-
-    let mut i = 0;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--key" => {
-                key_path = Some(PathBuf::from(
-                    args.get(i + 1).ok_or(CliError::MissingFlag("key"))?,
-                ));
-                i += 2;
-            }
-            "--in" => {
-                in_path = Some(PathBuf::from(
-                    args.get(i + 1).ok_or(CliError::MissingFlag("in"))?,
-                ));
-                i += 2;
-            }
-            "--out" => {
-                out_path = Some(PathBuf::from(
-                    args.get(i + 1).ok_or(CliError::MissingFlag("out"))?,
-                ));
-                i += 2;
-            }
-            "--iterations" => {
-                let v = args.get(i + 1).ok_or(CliError::MissingFlag("iterations"))?;
-                iterations = v
-                    .parse()
-                    .map_err(|_| CliError::InvalidIterations(v.clone()))?;
-                i += 2;
-            }
-            other => return Err(CliError::UnknownFlag(other.to_string())),
-        }
-    }
-
+    let scanner = ArgScanner::scan(args, &["--key", "--in", "--out", "--iterations"], &[])?;
     Ok(SignArgs {
-        key_path: key_path.ok_or(CliError::MissingFlag("key"))?,
-        in_path: in_path.ok_or(CliError::MissingFlag("in"))?,
-        out_path: out_path.ok_or(CliError::MissingFlag("out"))?,
-        iterations,
+        key_path: scanner.path("--key")?,
+        in_path: scanner.path("--in")?,
+        out_path: scanner.path("--out")?,
+        iterations: scanner.iterations()?,
     })
 }
 
@@ -2417,48 +2013,12 @@ pub struct VerifyArgs {
 ///
 /// Returns [`CliError::MissingFlag`], [`CliError::InvalidIterations`], or [`CliError::UnknownFlag`].
 pub fn parse_verify_args(args: &[String]) -> Result<VerifyArgs, CliError> {
-    let mut key_path = None;
-    let mut in_path = None;
-    let mut sig_path = None;
-    let mut iterations = 1u32;
-
-    let mut i = 0;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--key" => {
-                key_path = Some(PathBuf::from(
-                    args.get(i + 1).ok_or(CliError::MissingFlag("key"))?,
-                ));
-                i += 2;
-            }
-            "--in" => {
-                in_path = Some(PathBuf::from(
-                    args.get(i + 1).ok_or(CliError::MissingFlag("in"))?,
-                ));
-                i += 2;
-            }
-            "--sig" => {
-                sig_path = Some(PathBuf::from(
-                    args.get(i + 1).ok_or(CliError::MissingFlag("sig"))?,
-                ));
-                i += 2;
-            }
-            "--iterations" => {
-                let v = args.get(i + 1).ok_or(CliError::MissingFlag("iterations"))?;
-                iterations = v
-                    .parse()
-                    .map_err(|_| CliError::InvalidIterations(v.clone()))?;
-                i += 2;
-            }
-            other => return Err(CliError::UnknownFlag(other.to_string())),
-        }
-    }
-
+    let scanner = ArgScanner::scan(args, &["--key", "--in", "--sig", "--iterations"], &[])?;
     Ok(VerifyArgs {
-        key_path: key_path.ok_or(CliError::MissingFlag("key"))?,
-        in_path: in_path.ok_or(CliError::MissingFlag("in"))?,
-        sig_path: sig_path.ok_or(CliError::MissingFlag("sig"))?,
-        iterations,
+        key_path: scanner.path("--key")?,
+        in_path: scanner.path("--in")?,
+        sig_path: scanner.path("--sig")?,
+        iterations: scanner.iterations()?,
     })
 }
 
@@ -2547,23 +2107,9 @@ pub struct BoxKeygenArgs {
 ///
 /// Returns [`CliError::MissingFlag`] or [`CliError::UnknownFlag`].
 pub fn parse_box_keygen_args(args: &[String]) -> Result<BoxKeygenArgs, CliError> {
-    let mut out_path = None;
-
-    let mut i = 0;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--out" => {
-                out_path = Some(PathBuf::from(
-                    args.get(i + 1).ok_or(CliError::MissingFlag("out"))?,
-                ));
-                i += 2;
-            }
-            other => return Err(CliError::UnknownFlag(other.to_string())),
-        }
-    }
-
+    let scanner = ArgScanner::scan(args, &["--out"], &[])?;
     Ok(BoxKeygenArgs {
-        out_path: out_path.ok_or(CliError::MissingFlag("out"))?,
+        out_path: scanner.path("--out")?,
     })
 }
 
@@ -2598,31 +2144,10 @@ pub struct BoxPubkeyArgs {
 ///
 /// Returns [`CliError::MissingFlag`] or [`CliError::UnknownFlag`].
 pub fn parse_box_pubkey_args(args: &[String]) -> Result<BoxPubkeyArgs, CliError> {
-    let mut key_path = None;
-    let mut out_path = None;
-
-    let mut i = 0;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--key" => {
-                key_path = Some(PathBuf::from(
-                    args.get(i + 1).ok_or(CliError::MissingFlag("key"))?,
-                ));
-                i += 2;
-            }
-            "--out" => {
-                out_path = Some(PathBuf::from(
-                    args.get(i + 1).ok_or(CliError::MissingFlag("out"))?,
-                ));
-                i += 2;
-            }
-            other => return Err(CliError::UnknownFlag(other.to_string())),
-        }
-    }
-
+    let scanner = ArgScanner::scan(args, &["--key", "--out"], &[])?;
     Ok(BoxPubkeyArgs {
-        key_path: key_path.ok_or(CliError::MissingFlag("key"))?,
-        out_path: out_path.ok_or(CliError::MissingFlag("out"))?,
+        key_path: scanner.path("--key")?,
+        out_path: scanner.path("--out")?,
     })
 }
 
@@ -2659,48 +2184,12 @@ pub struct BoxSealArgs {
 ///
 /// Returns [`CliError::MissingFlag`], [`CliError::InvalidIterations`], or [`CliError::UnknownFlag`].
 pub fn parse_box_seal_args(args: &[String]) -> Result<BoxSealArgs, CliError> {
-    let mut key_path = None;
-    let mut in_path = None;
-    let mut out_path = None;
-    let mut iterations = 1u32;
-
-    let mut i = 0;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--key" => {
-                key_path = Some(PathBuf::from(
-                    args.get(i + 1).ok_or(CliError::MissingFlag("key"))?,
-                ));
-                i += 2;
-            }
-            "--in" => {
-                in_path = Some(PathBuf::from(
-                    args.get(i + 1).ok_or(CliError::MissingFlag("in"))?,
-                ));
-                i += 2;
-            }
-            "--out" => {
-                out_path = Some(PathBuf::from(
-                    args.get(i + 1).ok_or(CliError::MissingFlag("out"))?,
-                ));
-                i += 2;
-            }
-            "--iterations" => {
-                let v = args.get(i + 1).ok_or(CliError::MissingFlag("iterations"))?;
-                iterations = v
-                    .parse()
-                    .map_err(|_| CliError::InvalidIterations(v.clone()))?;
-                i += 2;
-            }
-            other => return Err(CliError::UnknownFlag(other.to_string())),
-        }
-    }
-
+    let scanner = ArgScanner::scan(args, &["--key", "--in", "--out", "--iterations"], &[])?;
     Ok(BoxSealArgs {
-        key_path: key_path.ok_or(CliError::MissingFlag("key"))?,
-        in_path: in_path.ok_or(CliError::MissingFlag("in"))?,
-        out_path: out_path.ok_or(CliError::MissingFlag("out"))?,
-        iterations,
+        key_path: scanner.path("--key")?,
+        in_path: scanner.path("--in")?,
+        out_path: scanner.path("--out")?,
+        iterations: scanner.iterations()?,
     })
 }
 
@@ -2778,48 +2267,12 @@ pub struct BoxOpenArgs {
 ///
 /// Returns [`CliError::MissingFlag`], [`CliError::InvalidIterations`], or [`CliError::UnknownFlag`].
 pub fn parse_box_open_args(args: &[String]) -> Result<BoxOpenArgs, CliError> {
-    let mut key_path = None;
-    let mut in_path = None;
-    let mut out_path = None;
-    let mut iterations = 1u32;
-
-    let mut i = 0;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--key" => {
-                key_path = Some(PathBuf::from(
-                    args.get(i + 1).ok_or(CliError::MissingFlag("key"))?,
-                ));
-                i += 2;
-            }
-            "--in" => {
-                in_path = Some(PathBuf::from(
-                    args.get(i + 1).ok_or(CliError::MissingFlag("in"))?,
-                ));
-                i += 2;
-            }
-            "--out" => {
-                out_path = Some(PathBuf::from(
-                    args.get(i + 1).ok_or(CliError::MissingFlag("out"))?,
-                ));
-                i += 2;
-            }
-            "--iterations" => {
-                let v = args.get(i + 1).ok_or(CliError::MissingFlag("iterations"))?;
-                iterations = v
-                    .parse()
-                    .map_err(|_| CliError::InvalidIterations(v.clone()))?;
-                i += 2;
-            }
-            other => return Err(CliError::UnknownFlag(other.to_string())),
-        }
-    }
-
+    let scanner = ArgScanner::scan(args, &["--key", "--in", "--out", "--iterations"], &[])?;
     Ok(BoxOpenArgs {
-        key_path: key_path.ok_or(CliError::MissingFlag("key"))?,
-        in_path: in_path.ok_or(CliError::MissingFlag("in"))?,
-        out_path: out_path.ok_or(CliError::MissingFlag("out"))?,
-        iterations,
+        key_path: scanner.path("--key")?,
+        in_path: scanner.path("--in")?,
+        out_path: scanner.path("--out")?,
+        iterations: scanner.iterations()?,
     })
 }
 
@@ -2897,70 +2350,26 @@ pub struct StrumokArgs {
 ///
 /// Same cases as [`parse_block_args`], plus `--iv` sharing `--key`'s missing-flag/IO handling.
 pub fn parse_strumok_args(args: &[String]) -> Result<StrumokArgs, CliError> {
-    let mut variant = None;
-    let mut key_path = None;
-    let mut iv_path = None;
-    let mut in_path = None;
-    let mut out_path = None;
-    let mut iterations = 1u32;
-    let mut raw_schedule = false;
-
-    let mut i = 0;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--variant" => {
-                let v = args.get(i + 1).ok_or(CliError::MissingFlag("variant"))?;
-                variant =
-                    Some(HashBits::parse(v).ok_or_else(|| CliError::UnknownVariant(v.clone()))?);
-                i += 2;
-            }
-            "--key" => {
-                key_path = Some(PathBuf::from(
-                    args.get(i + 1).ok_or(CliError::MissingFlag("key"))?,
-                ));
-                i += 2;
-            }
-            "--iv" => {
-                iv_path = Some(PathBuf::from(
-                    args.get(i + 1).ok_or(CliError::MissingFlag("iv"))?,
-                ));
-                i += 2;
-            }
-            "--in" => {
-                in_path = Some(PathBuf::from(
-                    args.get(i + 1).ok_or(CliError::MissingFlag("in"))?,
-                ));
-                i += 2;
-            }
-            "--out" => {
-                out_path = Some(PathBuf::from(
-                    args.get(i + 1).ok_or(CliError::MissingFlag("out"))?,
-                ));
-                i += 2;
-            }
-            "--iterations" => {
-                let v = args.get(i + 1).ok_or(CliError::MissingFlag("iterations"))?;
-                iterations = v
-                    .parse()
-                    .map_err(|_| CliError::InvalidIterations(v.clone()))?;
-                i += 2;
-            }
-            "--raw-schedule" => {
-                raw_schedule = true;
-                i += 1;
-            }
-            other => return Err(CliError::UnknownFlag(other.to_string())),
-        }
-    }
-
+    let scanner = ArgScanner::scan(
+        args,
+        &[
+            "--variant",
+            "--key",
+            "--iv",
+            "--in",
+            "--out",
+            "--iterations",
+        ],
+        &["--raw-schedule"],
+    )?;
     Ok(StrumokArgs {
-        variant: variant.ok_or(CliError::MissingFlag("variant"))?,
-        key_path: key_path.ok_or(CliError::MissingFlag("key"))?,
-        iv_path: iv_path.ok_or(CliError::MissingFlag("iv"))?,
-        in_path: in_path.ok_or(CliError::MissingFlag("in"))?,
-        out_path: out_path.ok_or(CliError::MissingFlag("out"))?,
-        iterations,
-        raw_schedule,
+        variant: scanner.variant(HashBits::parse)?,
+        key_path: scanner.path("--key")?,
+        iv_path: scanner.path("--iv")?,
+        in_path: scanner.path("--in")?,
+        out_path: scanner.path("--out")?,
+        iterations: scanner.iterations()?,
+        raw_schedule: scanner.bool_flag("--raw-schedule"),
     })
 }
 

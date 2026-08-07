@@ -2025,6 +2025,38 @@ item they point to is later removed.
       *correctness* (not the misuse cases above) needs no new work - Додаток Г is the sole oracle and
       is already fully verified (T-177). This task is backlog only - T-178/T-179/T-180/T-181's own
       plan is fully done as of 2026-08-06, this stays a backlog item with no committed timeline.
+- [x] **T-188** **Done 2026-08-07, owner-requested.** SonarCloud Quality Gate was
+      `ERROR` on `new_duplicated_lines_density` (3.0% actual vs. `<=3%` required) - missed in T-187's
+      own SonarCloud check because that check only queried `api/issues/search` (rule-violation
+      issues), and duplication isn't reported as an issue in this project's active ruleset, only as
+      a separate measure/Quality Gate condition; the CI job itself doesn't fail on this either,
+      since `.github/workflows/sonarcloud.yml` has no `-Dsonar.qualitygate.wait=true`, so a green
+      GitHub Actions run doesn't mean the gate passed. Two duplication sources found via
+      `api/measures/component_tree`: `crates/dstu-core/src/hazmat/tables.rs` (92.6%, 4292 lines,
+      S-box/MDS constant-array literals - inherent to a duplication *line* detector looking at data
+      tables, not a real code smell, not touched) and `crates/uacrypt/src/lib.rs` (13.4%, 918 lines,
+      34 real duplicate groups via `api/duplications/show` - every `parse_*_args` function
+      hand-rolled an identical `while i < args.len() { match args[i].as_str() { "--flag" => ... } }`
+      token-scanning loop, differing only in which flags/types each command needs). Fix: a shared
+      `ArgScanner` helper (new, `crates/uacrypt/src/lib.rs`) doing the scan/dispatch mechanics once;
+      each of the 19 `parse_*_args` functions now just declares its own flag list and builds its
+      struct from typed accessors (`.path()`/`.path_opt()`/`.variant()`/`.iterations()`/
+      `.bool_flag()`) - same `CliError` variants, same messages, same left-to-right error precedence
+      (including which `MissingFlag` fires first when several required flags are absent, since
+      accessor calls run in the same struct-field order the original `Ok(Struct { ... })` blocks
+      already had). Existing `#[cfg(test)]` suite already asserts exact `CliError` values per
+      command (missing/unknown flag, invalid variant/iterations) - that coverage is the safety net
+      for this refactor, not new tests written for it. **Verified**: `cargo test -p uacrypt` -
+      135/135 pass, unchanged, including the specific tests that pin exact `CliError` precedence
+      (`parse_ccm_args_requires_nonce_and_tag`, `run_help_flag_takes_priority_over_missing_required_
+      flags`, etc.) - the concrete evidence the refactor didn't silently change behavior, not just
+      "it compiles". `cargo clippy -p uacrypt --all-features -- -D warnings`/`cargo fmt --check`
+      clean, `cargo xtask build`/`docs-check` clean. Net effect: `crates/uacrypt/src/lib.rs` 6871 ->
+      6280 lines (848 deletions/257 insertions) - real reduction, not just moved code, since 19
+      near-identical scanning loops collapsed into one shared implementation. **Separately noted,
+      not fixed here** (a different gap, doesn't block this task): `sonarcloud.yml` should gain
+      `-Dsonar.qualitygate.wait=true` so CI actually goes red when the gate does - flagging for a
+      future task rather than silently expanding this one's scope.
 - [x] **T-187** **Done 2026-08-07, owner-requested follow-up to T-186.** `docs/PERFORMANCE.md`
       "vs. international-standard analogs" (D-106) has five hand-measured, hand-typed comparisons -
       one per in-scope DSTU standard (Kalyna vs AES, Kupyna vs Whirlpool, Strumok vs ChaCha20,
