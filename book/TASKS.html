@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-6521f22a.js";
+            window.path_to_searchindex_js = "searchindex-7137dd38.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-ce7e91c5.js"></script>
@@ -2518,6 +2518,15 @@ unilaterally, matching D-91’s standing rule for anything involving <code>speci
 5. If step 3 does <em>not</em> confirm it (e.g. a validation layer this project’s vendored/fetched
 reading missed) - document why in <code>docs/DECISIONS.md</code>, downgrade D-174’s finding
 accordingly, no disclosure.</p>
+<pre><code>**Steps 1-3 done 2026-08-08, confirmed - see `docs/DECISIONS.md` D-175.** Built the C harness
+against the real prebuilt `uapkic.dll` v2.0.12 and confirmed, against UAPKI's own real
+compiled binary (not source reading): a genuine honest signature verifies (`ec_init_verify=0
+dstu4145_verify=0`), and the order-2-`Q` forgery (re-targeted at `EC_PARAMS_DSTU4145_M163_PB`'s
+own generator, since `gf2m163.json`'s Annex B.1 generator turned out to differ from it - a
+dead end D-175 documents) is **also accepted** (`ec_init_verify=0 dstu4145_verify=0`). The
+vulnerability is real and reproduced at the running-code level.
+**Step 4 (draft the private disclosure) is next** - not sent anywhere yet, per D-91.
+</code></pre>
 </li>
 <li>
 <p><input disabled="" type="checkbox" checked=""> <strong>T-188</strong> <strong>Done 2026-08-07, owner-requested.</strong> SonarCloud Quality Gate was
