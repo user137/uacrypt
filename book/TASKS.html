@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-87f949c2.js";
+            window.path_to_searchindex_js = "searchindex-a26f98bf.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-ce7e91c5.js"></script>
@@ -2264,6 +2264,54 @@ is already fully verified (T-177). This task is backlog only - T-178/T-179/T-180
 plan is fully done as of 2026-08-06, this stays a backlog item with no committed timeline.</p>
 </li>
 <li>
+<p><input disabled="" type="checkbox" checked=""> <strong>T-187</strong> <strong>Done 2026-08-07, owner-requested follow-up to T-186.</strong> <code>docs/PERFORMANCE.md</code>
+“vs. international-standard analogs” (D-106) has five hand-measured, hand-typed comparisons -
+one per in-scope DSTU standard (Kalyna vs AES, Kupyna vs Whirlpool, Strumok vs ChaCha20,
+DSTU 4145 vs ECDSA, DSTU 9041/<code>crypto_box</code> vs ECDH+CMS) - each its own manual <code>openssl speed</code>/
+<code>openssl cms</code> recipe, different units, different setup steps. Owner wants one <code>cargo xtask</code>
+command, one code path, one consistent table style covering all five DSTU standards actually
+implemented, instead of re-typing five different recipes from doc-embedded instructions every
+refresh. Scope confirmed explicitly: the five DSTU-standard-level rows only (Kalyna’s
+individual modes - CCM/GMAC/KW/etc. - stay compared against UAPKI, a separate, already-covered
+axis, not part of this task); OpenSSL only, no real libsodium build (X25519/brainpoolP256r1 via
+OpenSSL stay the existing “closest analog” stand-in, matching D-106 exactly, no new toolchain
+dependency this project would then have to vet per <code>docs/SECURITY.md</code>/<code>docs/ORACLES.md</code>).
+New <code>xtask/src/bench.rs</code> module (<code>cargo xtask bench-compare</code>, optional/best-effort like every
+other tool-dependent command, <strong>not</strong> in <code>ci()</code>’s loop - this project’s own stated methodology
+says perf numbers need a real, uncontested dev machine, never a noisy shared CI runner, and no
+perf comparison has ever run in CI here). Methodology, one code path for all five: <code>uacrypt</code>
+side always wall-clocks the real <code>target/release/uacrypt &lt;cmd&gt; --iterations N</code> process (the
+same canonical D-34 “binary-level” approach this file already uses everywhere, just automated);
+OpenSSL side parses <code>openssl speed</code>’s own self-reported <code>N ops in T s</code> line directly (not
+reimplementing its internal timing loop - it’s the already-validated tool this project’s
+published numbers are measured against) for the four <code>openssl speed</code>-supported cases, and
+wall-clocks external <code>openssl cms</code> invocations itself for the fifth (CMS has no <code>speed</code>
+support, matching the existing hand-documented recipe). One shared table-printing function
+emits every case in the same <code>| Metric | uacrypt | OpenSSL analog | Ratio |</code> shape regardless
+of whether the unit is MB/s (bulk ciphers/hashes) or ops/s (fixed-size signature/KEM ops) -
+“unified style” means one path and one visual shape, not literally one unit, since MB/s for a
+signature op or ops/s for bulk throughput would both be meaningless, per the existing DSTU
+9041 table’s own “two tables, two different questions” framing. Output prints to stdout in
+the exact markdown shape <code>docs/PERFORMANCE.md</code> already uses - copy/pasted in by hand on a
+refresh, same as today; deliberately not auto-editing the doc itself, since the prose caveats
+around each table are load-bearing, not decoration, and a script clobbering them silently
+would be worse than the manual-recipe problem this task exists to fix.
+<strong>Built and run for real</strong> (<code>cargo xtask bench-compare</code>), not just compiled - per
+<code>CLAUDE.md</code>’s own “spike, read the actual output” discipline. First run silently produced
+zero data rows for every case except the CMS one - found by adding temporary debug output
+rather than guessing: <code>openssl speed</code>’s own <code>Doing ... ops in Ts</code> progress line is written to
+<strong>stderr</strong>, not stdout (only the final rounded summary table is on stdout) - invisible in
+every manual spike this task’s own design phase did, since those all used a <code>2&gt;&amp;1</code>-merged
+shell redirect. Fixed by parsing <code>stderr</code> instead; a real run afterward produced sane numbers
+matching the existing published magnitudes closely (DSTU 4145 <code>sign</code> 685.27 ops/s here vs.
+667.39 in the last committed T-153/D-109 measurement, well within normal machine-load
+variance) across all six tables (Kalyna/AES, Kupyna/Whirlpool, Strumok/ChaCha20, DSTU 4145/
+ECDSA, DSTU 9041 ops/s vs ECDH, DSTU 9041 MB/s vs CMS). <code>cargo clippy -- -D warnings</code>/
+<code>cargo fmt --check</code> clean on the new module. <code>docs/PERFORMANCE.md</code> itself was not touched by
+this task - refreshing its committed numbers with this tool’s output is a separate, future
+action, not implied by building the tool.</p>
+</li>
+<li>
 <p><input disabled="" type="checkbox" checked=""> <strong>T-185</strong> <strong>Done 2026-08-07, owner-requested.</strong> Owner flagged the <code>gh-pages</code> landing page
 (both <code>index.html</code>/<code>uk/index.html</code>) as carrying stale facts and asked for a full pass over
 GitHub-facing docs, not just a spot fix. Full enumeration of every quantitative/version claim
@@ -2495,10 +2543,11 @@ cargo xtask clippy    # cargo clippy --workspace --all-features -- -D warnings
 cargo xtask docs-check # README/gh-pages version-marker freshness lint vs crates/dstu-core's Cargo.toml (T-186)
 cargo xtask ci        # the five above, then best-effort for miri/kani/book/fuzz/audit/deny/oracle harnesses
 cargo xtask book      # mdbook build - the docs/ knowledge base (T-186), published to gh-pages/book/ by CI
+cargo xtask bench-compare # uacrypt vs OpenSSL, one unified table per DSTU standard (T-187, docs/PERFORMANCE.md D-106)
 </code></pre>
 <p>The optional layers each check their own tool is installed first and print an install hint instead
-of a raw error if it’s missing (<code>cargo xtask miri</code>, <code>kani</code>, <code>book</code>, <code>fuzz</code>, <code>audit</code>, <code>deny</code>,
-<code>oracle-java</code>, <code>oracle-dotnet</code>) — see <code>docs/SECURITY.md</code> for why these are required in CI even though
+of a raw error if it’s missing (<code>cargo xtask miri</code>, <code>kani</code>, <code>book</code>, <code>bench-compare</code>, <code>fuzz</code>, <code>audit</code>,
+<code>deny</code>, <code>oracle-java</code>, <code>oracle-dotnet</code>) — see <code>docs/SECURITY.md</code> for why these are required in CI even though
 they’re optional locally. <code>docs-check</code> needs no external tool, so it’s mandatory in <code>ci</code> rather than
 best-effort — it fails the build outright on a version-marker mismatch, same standing as <code>fmt</code>/
 <code>build</code>/<code>test</code>/<code>clippy</code>.</p>
