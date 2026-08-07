@@ -2053,10 +2053,14 @@ item they point to is later removed.
       "it compiles". `cargo clippy -p uacrypt --all-features -- -D warnings`/`cargo fmt --check`
       clean, `cargo xtask build`/`docs-check` clean. Net effect: `crates/uacrypt/src/lib.rs` 6871 ->
       6280 lines (848 deletions/257 insertions) - real reduction, not just moved code, since 19
-      near-identical scanning loops collapsed into one shared implementation. **Separately noted,
-      not fixed here** (a different gap, doesn't block this task): `sonarcloud.yml` should gain
-      `-Dsonar.qualitygate.wait=true` so CI actually goes red when the gate does - flagging for a
-      future task rather than silently expanding this one's scope.
+      near-identical scanning loops collapsed into one shared implementation. Confirmed on
+      SonarCloud's own API after pushing: `api/qualitygates/project_status` went from `ERROR`
+      (`new_duplicated_lines_density` 3.0) to `OK` (1.1); project-wide `duplicated_lines_density`
+      24.4% -> 22.0%. **Follow-up done the same session, owner-requested**: `sonarcloud.yml`'s scan
+      step now passes `-Dsonar.qualitygate.wait=true` - without it the action uploads the analysis
+      and exits 0 immediately, before the Quality Gate is evaluated server-side, so the job never
+      actually saw the result (confirmed the hard way: the real `ERROR` gate above sat undetected
+      through a fully green CI run). This step now polls and fails the job itself on a non-OK gate.
 - [x] **T-187** **Done 2026-08-07, owner-requested follow-up to T-186.** `docs/PERFORMANCE.md`
       "vs. international-standard analogs" (D-106) has five hand-measured, hand-typed comparisons -
       one per in-scope DSTU standard (Kalyna vs AES, Kupyna vs Whirlpool, Strumok vs ChaCha20,

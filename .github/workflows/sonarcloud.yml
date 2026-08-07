@@ -46,3 +46,11 @@ jobs:
         uses: SonarSource/sonarqube-scan-action@v7
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          # docs/TASKS.md T-188 - without this, the action uploads the analysis and exits 0
+          # immediately; the Quality Gate is evaluated server-side afterward and this job never
+          # sees the result, so a green run here doesn't mean the gate passed (confirmed the hard
+          # way: a real ERROR gate on new_duplicated_lines_density sat undetected through a fully
+          # green CI run). `qualitygate.wait=true` makes this step poll and fail the job on a
+          # non-OK gate instead.
+          args: -Dsonar.qualitygate.wait=true
