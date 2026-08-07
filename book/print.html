@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-22b22bda.js";
+            window.path_to_searchindex_js = "searchindex-6521f22a.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-ce7e91c5.js"></script>
@@ -2816,8 +2816,37 @@ same cofactor-2 standard curve (order `n` cross-checked byte-for-byte against
 `curve163::order()`) T-189 fixed in our own code - see D-174 for the full three-file trace.
 **Not actioned on `specinfo-ua/UAPKI` itself** - per D-91's established precedent, raised to
 the project owner as a question (disclose or not, and how), not acted on unilaterally.
-Awaiting the owner's decision; record the outcome here once decided.
+Awaiting the owner's decision; record the outcome here once decided. **Owner's decision
+2026-08-08: private disclosure to the maintainer, with an example fix - but only after a
+full, running-code reproduction against UAPKI's own compiled binary, so they can verify it
+themselves rather than take a source-reading trace on faith.** Split out as T-191.
 </code></pre>
+</li>
+<li>
+<p><input disabled="" type="checkbox"> <strong>T-191</strong> <strong>Not started, owner-requested 2026-08-08.</strong> Responsible-disclosure follow-up to
+the D-174/T-190 UAPKI finding (<code>library/common/pkix/uapki-ns-verify.cpp</code>’s DSTU 4145 verify
+path validates on-curve but not point order/cofactor - the same bug class T-189/D-172 fixed
+here). <strong>Owner’s explicit order of operations: reproduce the forgery against UAPKI’s own
+compiled binary FIRST, only then contact the maintainer, privately, with the reproduction and
+an example fix - not a source-reading trace alone.</strong>
+1. Build/obtain <code>uapkic.dll</code> (latest release, <code>gh release download --repo specinfo-ua/UAPKI</code>)
+and a matching import lib (<code>gendef</code>/<code>dlltool</code>, the exact recipe D-78/D-80 already used for
+the Kalyna comparison wrapper - reuse it, don’t re-derive).
+2. Write a small, uncommitted C harness (same “scratch-only, not shipped” posture D-78’s own
+<code>uapki_bench.c</code> used) against the vendored <code>oracles/uapki/library/uapkic/include/*.h</code>
+headers, calling the DLL’s real exported <code>dstu4145_init_verify</code>/<code>dstu4145_verify</code>.
+3. Feed it the <strong>exact same</strong> forged <code>(hash, r, s, Qx, Qy)</code> tuple <code>tests/dstu4145_signature.rs</code>’s
+<code>t189_public_key_validation::find_forgery</code> already constructs for the order-2 <code>q</code> case (same
+curve, same math - no need to re-derive the forgery, only to prove UAPKI’s real compiled
+code accepts it) and confirm whether <code>dstu4145_verify</code> returns success on it.
+4. <strong>Only if step 3 confirms it</strong>: draft the private disclosure (reproduction steps + the
+exact forged tuple + a proposed fix mirroring <code>signature::verify</code>’s <code>is_on_curve</code>/<code>x != 0</code>
+guard, adapted to <code>ec2m_is_on_curve</code>/UAPKI’s own C idiom) and bring it back to the owner for
+review before it’s sent anywhere - contacting a third party is not this task’s call to make
+unilaterally, matching D-91’s standing rule for anything involving <code>specinfo-ua/UAPKI</code>.
+5. If step 3 does <em>not</em> confirm it (e.g. a validation layer this project’s vendored/fetched
+reading missed) - document why in <code>docs/DECISIONS.md</code>, downgrade D-174’s finding
+accordingly, no disclosure.</p>
 </li>
 <li>
 <p><input disabled="" type="checkbox" checked=""> <strong>T-188</strong> <strong>Done 2026-08-07, owner-requested.</strong> SonarCloud Quality Gate was
