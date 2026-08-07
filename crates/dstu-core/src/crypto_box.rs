@@ -59,6 +59,9 @@
 //! ```rust
 //! use dstu_core::crypto_box::{seal, open, SecretKey};
 //!
+//! # if cfg!(miri) { return; } // several 256-iteration curve256::Point::scalar_multiply calls
+//! # // (keygen, KEM encrypt/decrypt) - minutes each under Miri's interpreter, same reasoning as
+//! # // crypto_sign's own doctest guard; type-checked normally, just not executed there.
 //! let secret = SecretKey::generate().expect("OS CSPRNG should not fail");
 //! let public = secret.public_key(); // safe to share/publish
 //!

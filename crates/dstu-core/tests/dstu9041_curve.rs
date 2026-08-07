@@ -267,6 +267,10 @@ fn point_from_x_rejects_zero_one_and_p_minus_1() {
 /// coincidence (four fixed field elements out of `~p`), so any `None` result found this way is the
 /// `euler_criterion` rejection, not a different one - about half of all `x` are expected to hit it
 /// (`~2n` valid `x` out of `p`, `p ≈ 4n`), so this finds one within a handful of tries.
+#[cfg_attr(
+    miri,
+    ignore = "point_from_x's rejection path still runs a 256-iteration invert() and euler_criterion() pow_mod every call - too slow to interpret under Miri, same T-100/T-156 class as the EC-ladder exclusions elsewhere in this file, up to 16x here"
+)]
 #[test]
 fn point_from_x_rejects_a_non_residue_x() {
     let mut candidate_x = FieldElement::from_be_bytes(&decode_hex_padded("02"));

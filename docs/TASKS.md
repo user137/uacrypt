@@ -2149,6 +2149,52 @@ item they point to is later removed.
       ops/s after (~4-5%, higher than the naive sub-1% estimate but nowhere near a full extra
       `scalar_multiply` ladder's cost, which would roughly halve throughput) - both numbers clear
       T-153/D-109's own 524.01 baseline within normal variance; not chased further, see D-172.
+      **CI follow-up 2026-08-08**: the pushed commit's `cargo miri test (dstu-core)` job exceeded
+      its 240-min cap and was cancelled - `gh run view --log` showed the regular `#[test]` suite
+      finished normally (~2h32m, in line with T-156's own historical baseline), then **doctests**
+      started and `crypto_sign.rs`'s own example (line 56, a full `SigningKey::generate`/`sign`/
+      three `verify` calls - pre-existing, untouched by T-189 itself) was still running when the
+      cap hit; `crypto_box.rs`'s own doctest had already taken ~5-6 min just before it. Root cause:
+      an already-thin CI time margin (T-146/D-103's own prior "ordinary CI runner variance tipping
+      an already-razor-thin margin" diagnosis) tipped over by this session's own small additions -
+      one of which, `dstu9041_curve.rs`'s new `point_from_x_rejects_a_non_residue_x` (T-183), was
+      missing its own `#[cfg_attr(miri, ignore)]` (an oversight - `point_from_x`'s rejection path
+      still runs a 256-iteration `invert`/`euler_criterion` `pow_mod` pair even when it exits early,
+      the same T-100/T-156 class as every other EC-heavy exclusion in that file). **Fixed**: added
+      the missing exclusion, plus a `# if cfg!(miri) { return; }` hidden line in both `crypto_sign.rs`'s
+      and `crypto_box.rs`'s own doc-comment examples (standard rustdoc hidden-line idiom - still
+      type-checked and still run for real under plain `cargo test`/`cargo test --doc`, just not
+      executed under Miri's interpreter). **Locally confirmed against real Miri** (installed on this
+      dev machine, unlike Kani/D-102): `cargo +nightly miri test -p dstu-core --doc` dropped from
+      "still running after 20+ minutes, uncompleted" to **14.29s for all 8 doctests** - not assumed
+      from the fix's shape alone.
+- [ ] **T-190** **Not started, owner-requested 2026-08-08 - backlog, no committed timeline.** A
+      defense/stability-focused comparison audit against both vendored reference implementations
+      (`oracles/bouncycastle-{java,dotnet}/`, `oracles/uapki/` - both already cloned locally, no new
+      fetch needed), one algorithm at a time (Kalyna/DSTU 7624, Kupyna/DSTU 7564, Strumok/DSTU 8845,
+      DSTU 4145, DSTU 9041). **Explicitly scoped to the defensive/stability layer, not correctness**
+      - `docs/ORACLES.md`'s existing oracle map already covers vector-level correctness
+      cross-checking; this is a different axis: for each standard, read the reference
+      implementation(s)' own frontend (input parsing/validation) and backend (internal arithmetic
+      guards - invalid-point/degenerate-value rejection, error handling, resource/DoS limits) code,
+      build a simplified diagram or pseudocode of *just the protective parts* (not the full
+      algorithm - `docs/pseudocode/*.md` already has full transcriptions where they exist), and
+      compare against this crate's own equivalent surface: do we have the same protection, and -
+      given this project's own threat model (`docs/SECURITY.md`) and libsodium-style "hard
+      defaults, no misconfigurable knob" posture (D-47) rather than Bouncy Castle's
+      general-purpose-library posture or UAPKI's certified-state-tool posture - is it actually
+      needed here, or is it solving a problem this project's own API shape already forecloses a
+      different way. **Not starting from zero**: several real gaps of exactly this shape were
+      already found by this same "what does the reference implementation protect against that we
+      don't" reasoning, applied ad hoc rather than systematically - D-63 (Kalyna-GCM nonce-binding),
+      D-167 Finding 1/2 (DSTU 9041 invalid-curve/small-subgroup), T-183/D-173 (`crypto_box` adversarial
+      coverage, one gap - order-4 - still open), T-189/D-172 (DSTU 4145 `verify`'s missing on-curve
+      check, found auditing T-183, not this task). **First step, before comparing anything**: grep
+      `docs/DECISIONS.md`/`docs/TASKS.md` for what's already been found this way per algorithm, so
+      the audit adds new findings instead of re-discovering these five. Given the scope (5 algorithms
+      x up to 2 reference implementations each), likely wants its own `advisor()`-reviewed plan
+      splitting it into per-algorithm sub-passes rather than one pass, same posture as T-183's own
+      "audit first, spin off real gaps as their own tasks" structure - not committed to inline here.
 - [x] **T-188** **Done 2026-08-07, owner-requested.** SonarCloud Quality Gate was
       `ERROR` on `new_duplicated_lines_density` (3.0% actual vs. `<=3%` required) - missed in T-187's
       own SonarCloud check because that check only queried `api/issues/search` (rule-violation

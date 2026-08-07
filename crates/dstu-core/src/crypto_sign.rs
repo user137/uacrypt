@@ -56,6 +56,9 @@
 //! ```rust
 //! use dstu_core::crypto_sign::SigningKey;
 //!
+//! # if cfg!(miri) { return; } // several Point::scalar_multiply calls - minutes each under Miri's
+//! # // interpreter (docs/TASKS.md T-100/T-156/D-113); type-checked normally, just not executed
+//! # // there. `cargo test` (not Miri) still runs this doctest for real every push.
 //! let signing_key = SigningKey::generate().expect("OS CSPRNG should not fail");
 //! let verifying_key = signing_key.verifying_key(); // safe to share/publish
 //!
