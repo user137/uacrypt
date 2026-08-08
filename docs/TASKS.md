@@ -2710,6 +2710,38 @@ item they point to is later removed.
       closed gap (same class as the already-published Strumok-vs-AVX2-ChaCha20 ~1.6-1.7x gap); tag
       multiply vs. hardware GHASH is the real, larger, and still-open ISA-level lever.
 
+      **Tier 1 spike, same session, `advisor()`-directed before touching `poly_mul_wide`**: before
+      picking a hardware-CLMUL rewrite, checked whether `Self::reduce` is still "a small fraction" of
+      `Gf2m256::multiply()` as `hazmat::gf2m_wide`'s own module doc claimed - that claim was measured
+      against the *pre-T-125* bit-serial multiply (~16,384 word-ops at m=512), a comparison that no
+      longer holds now that `poly_mul_wide` is the 4-bit comb method. Extended the existing
+      `#[ignore]`d diagnostic harness (`isolated_timing_gf2m256_poly_mul_wide_vs_reduce_split`,
+      `gf2m_wide.rs`) rather than building a new one - project-sanctioned shape, throwaway/manual-
+      timing, no production code touched. **First version of this diagnostic was itself wrong**:
+      timed `poly_mul_wide`/`reduce` on fixed, non-chained inputs, which let the CPU pipeline
+      independent iterations and undercounted both terms by ~2x relative to the sibling test's
+      chained `multiply()` number - fixed by chaining each sub-loop's output back into its own next
+      input, matching `kalyna_gcm`'s real `acc = acc.add(...).multiply(h_key)` accumulator pattern.
+      **Corrected, reproduced twice**: `reduce` is **~62-64% of `multiply()`'s total** at m=256 (two
+      runs: 61.7%/63.6%, `poly_mul_wide` ~476-520 ns/op, `reduce` ~832-838 ns/op) - now the *larger*
+      term, inverted from the stale doc-comment claim. Updated `hazmat::gf2m_wide`'s module doc
+      comment in place to record this (it had explicitly said "revisit only if a future measurement
+      shows otherwise" - this is that revisit).
+
+      **Consequence for the Tier 1 recommendation above**: a hardware carry-less-multiply rewrite of
+      `poly_mul_wide` alone, even at zero marginal cost, could only ever remove ~38% of `multiply()`'s
+      current time - `reduce`'s bit-at-a-time top-down loop (up to `2m-1` iterations, each a
+      conditional branch plus up to 4 word `XOR`s) is the bigger term. `advisor()`'s own suggested
+      cheaper first lever: m=256's pentanomial terms are `10/5/2/0` and m=512's are `8/5/2/0` - all
+      `< 64` - so a word-wise closed-form fold-down (the same shape `gf2m163::reduce` already uses,
+      re-derived per field size rather than reused directly) replaces the bit-serial loop with pure
+      Rust, no `target_feature`/`no_std` fork, no fallback-path design burden, and helps the
+      Raspberry Pi row too (CLMUL requires `PMULL` detection there; a word-wise `reduce` doesn't).
+      **Not picked up as code this session** - still plan only, per this task's own closing status
+      line below; the corrected order-of-operations for whoever picks this up next is **word-wise
+      `reduce` first, hardware CLMUL for `poly_mul_wide` second** (and re-measure the split after the
+      first lever lands, since it changes the ratio the second lever would be evaluated against).
+
       **Tier 2 (the owner's actual "smol tables" analogy, and the right frame for the primitive-level
       table specifically - real, but does not move the bulk MB/s number, per the redirect above) -
       EC scalar-multiplication cost breakdown, plan only, no code changed**:

@@ -27,7 +27,16 @@
 //! reusable code there, confirmed by reading it - only a style precedent already followed by
 //! `gf2m163`). `reduce` was measured to be a small fraction of the total (`poly_mul_wide` was
 //! ~16,384 word-ops at m=512 pre-fix vs. `reduce`'s ~512 bit-serial iterations there), so it
-//! wasn't touched; revisit only if a future measurement shows otherwise.
+//! wasn't touched at the time. **Revisited, `docs/TASKS.md` T-195**: that comparison was against
+//! the pre-T-125 bit-serial multiply and no longer holds now that `poly_mul_wide` is the 4-bit
+//! comb method - a chained (data-dependent, matching `kalyna_gcm`'s real accumulator pattern)
+//! timing split at m=256 measured `reduce` at ~62-64% of `multiply()`'s total, i.e. now the
+//! *larger* term (`isolated_timing_gf2m256_poly_mul_wide_vs_reduce_split` below). A word-wise
+//! closed-form `reduce` (m=256/512's pentanomial terms are all `< 64`, so the fold-down has a
+//! clean per-word shift-and-XOR form, no per-field re-derivation needed the way `gf2m163`'s did)
+//! is now the cheaper, `no_std`-safe, unconditional lever - ahead of a hardware
+//! carry-less-multiply (`PCLMULQDQ`/`PMULL`) rewrite of `poly_mul_wide` alone, which would only
+//! ever reach ~38% of `multiply()`'s current cost even at zero marginal time.
 
 macro_rules! gf2m_field {
     ($elem:ident, $limbs:literal, $limbs2:literal, $m:literal, $f1:literal, $f2:literal, $f3:literal) => {
@@ -375,6 +384,74 @@ mod field_axiom_tests {
         eprintln!(
             "encrypt_block: {block_ns:.1} ns/op | Gf2m256::multiply: {mult_ns:.1} ns/op | ratio (multiply/block) = {:.2}x",
             mult_ns / block_ns
+        );
+    }
+
+    // TEMPORARY investigation for T-195's Tier 1 (hardware carry-less-multiply spike) -
+    // `advisor()`-directed: before touching `poly_mul_wide`, confirm `reduce` is still a small
+    // share of `Gf2m256::multiply()` at *current* (post-T-125 comb-method) speed - the module doc's
+    // "small fraction" claim was measured against the old bit-serial multiply (~16,384 word-ops),
+    // not the current one. Not a permanent test, same `#[ignore]`d/manual-timing posture as the
+    // sibling diagnostics above; remove after the split is recorded in `docs/TASKS.md`.
+    #[test]
+    #[ignore]
+    fn isolated_timing_gf2m256_poly_mul_wide_vs_reduce_split() {
+        // Each sub-loop chains its output back into the next iteration's input (matching
+        // `kalyna_gcm`'s real `acc = acc.add(...).multiply(h_key)` accumulator pattern, and the
+        // sibling `isolated_timing_gf2m256_multiply_vs_kalyna256_256_encrypt_block` test above) -
+        // a first version without chaining measured independent, ILP-parallelizable calls on fixed
+        // inputs and undercounted both terms by ~2x relative to that sibling test's chained
+        // `multiply()` number, which is not the pattern GCM actually exercises.
+        use std::hint::black_box;
+        use std::time::Instant;
+
+        let b: [u64; 4] = [
+            0x5555_5555_5555_5555u64,
+            0x6666_6666_6666_6666,
+            0x7777_7777_7777_7777,
+            0x8888_8888_8888_8888,
+        ];
+
+        const N: u32 = 2_000_000;
+
+        let start = Instant::now();
+        let mut a: [u64; 4] = [
+            0x1111_1111_1111_1111u64,
+            0x2222_2222_2222_2222,
+            0x3333_3333_3333_3333,
+            0x4444_4444_4444_4444,
+        ];
+        for _ in 0..N {
+            let wide = black_box(Gf2m256::poly_mul_wide(black_box(&a), black_box(&b)));
+            a.copy_from_slice(&wide[..4]);
+        }
+        let mul_elapsed = start.elapsed();
+        black_box(a);
+
+        let start = Instant::now();
+        let mut wide: [u64; 8] = [
+            0x1111_1111_1111_1111u64,
+            0x2222_2222_2222_2222,
+            0x3333_3333_3333_3333,
+            0x4444_4444_4444_4444,
+            0x5555_5555_5555_5555,
+            0x6666_6666_6666_6666,
+            0x7777_7777_7777_7777,
+            0x8888_8888_8888_8888,
+        ];
+        for _ in 0..N {
+            let reduced = black_box(Gf2m256::reduce(black_box(wide)));
+            wide[..4].copy_from_slice(&reduced.0);
+        }
+        let reduce_elapsed = start.elapsed();
+        black_box(wide);
+
+        let mul_ns = mul_elapsed.as_nanos() as f64 / f64::from(N);
+        let reduce_ns = reduce_elapsed.as_nanos() as f64 / f64::from(N);
+        let total_ns = mul_ns + reduce_ns;
+        eprintln!(
+            "poly_mul_wide (chained): {mul_ns:.1} ns/op | reduce (chained): {reduce_ns:.1} ns/op | reduce share = {:.1}% | sum = {total_ns:.1} ns/op",
+            100.0 * reduce_ns / total_ns
         );
     }
 
