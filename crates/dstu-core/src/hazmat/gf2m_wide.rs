@@ -27,16 +27,18 @@
 //! reusable code there, confirmed by reading it - only a style precedent already followed by
 //! `gf2m163`). `reduce` was measured to be a small fraction of the total (`poly_mul_wide` was
 //! ~16,384 word-ops at m=512 pre-fix vs. `reduce`'s ~512 bit-serial iterations there), so it
-//! wasn't touched at the time. **Revisited, `docs/TASKS.md` T-195**: that comparison was against
-//! the pre-T-125 bit-serial multiply and no longer holds now that `poly_mul_wide` is the 4-bit
-//! comb method - a chained (data-dependent, matching `kalyna_gcm`'s real accumulator pattern)
-//! timing split at m=256 measured `reduce` at ~62-64% of `multiply()`'s total, i.e. now the
-//! *larger* term (`isolated_timing_gf2m256_poly_mul_wide_vs_reduce_split` below). A word-wise
-//! closed-form `reduce` (m=256/512's pentanomial terms are all `< 64`, so the fold-down has a
-//! clean per-word shift-and-XOR form, no per-field re-derivation needed the way `gf2m163`'s did)
-//! is now the cheaper, `no_std`-safe, unconditional lever - ahead of a hardware
-//! carry-less-multiply (`PCLMULQDQ`/`PMULL`) rewrite of `poly_mul_wide` alone, which would only
-//! ever reach ~38% of `multiply()`'s current cost even at zero marginal time.
+//! wasn't touched at the time. **Revisited and fixed, `docs/TASKS.md` T-195**: that comparison was
+//! against the pre-T-125 bit-serial multiply and no longer held once `poly_mul_wide` became the
+//! 4-bit comb method - a chained (data-dependent, matching `kalyna_gcm`'s real accumulator
+//! pattern) timing split at m=256 measured the old bit-serial `reduce` at ~62-64% of
+//! `multiply()`'s total, i.e. the *larger* term, not `poly_mul_wide`. `reduce` is now a word-wise
+//! closed form instead (see its own doc comment) - `f1`/`f2`/`f3` are all `< 64` for every field
+//! size here (unlike `gf2m163`'s single hand-derived instantiation, this one generalizes across
+//! all three sizes through the same macro, const-asserted at every instantiation), so a whole
+//! word folds down in one step instead of 64 bit-at-a-time steps. The old bit-serial
+//! implementation is kept as `reduce_bit_serial_reference` (`#[cfg(any(test, kani))]` only, dead
+//! code in a release build) - both this module's own differential proptest and its Kani proofs
+//! check the new implementation against it directly, not just against the field axioms.
 
 macro_rules! gf2m_field {
     ($elem:ident, $limbs:literal, $limbs2:literal, $m:literal, $f1:literal, $f2:literal, $f3:literal) => {
@@ -44,6 +46,13 @@ macro_rules! gf2m_field {
             "for the reduction polynomial citation and the little-endian byte-order derivation.")]
         #[derive(Clone, Copy, Debug, PartialEq, Eq)]
         pub struct $elem(pub [u64; $limbs]);
+
+        // [`$elem::reduce`]'s word-wise closed form folds a whole word `T` down by XORing
+        // `T << shift` / `T >> (64 - shift)` into two adjacent words - `64 - shift` is only
+        // defined (no shift-by-64 UB) if `shift` is strictly between 0 and 64. A free (not
+        // associated) const so it's checked unconditionally at compile time for every macro
+        // instantiation, not only when something happens to reference it.
+        const _: () = assert!($f1 > 0 && $f1 < 64 && $f2 > 0 && $f2 < 64 && $f3 > 0 && $f3 < 64);
 
         impl $elem {
             pub const ZERO: Self = Self([0u64; $limbs]);
@@ -194,10 +203,56 @@ macro_rules! gf2m_field {
             /// Reduces a double-width product modulo
             #[doc = concat!("`x^", stringify!($m), " + x^", stringify!($f1), " + x^",
                 stringify!($f2), " + x^", stringify!($f3), " + 1`,")]
-            /// processing one bit at a time from the top degree down: for each set bit at degree
-            /// `d >= m`, `x^d = x^(d-m) * x^m = x^(d-m) * (x^f1 + x^f2 + x^f3 + 1)` (mod the
-            /// polynomial) - clear that bit and XOR in the four shifted terms.
+            /// word-wise instead of bit-at-a-time (`docs/DECISIONS.md` D-56 follow-up,
+            /// `docs/TASKS.md` T-195): every word `c[i]` at index `i >= $limbs` is entirely above
+            /// degree `m - 1`, so it folds down *as a whole word* in one step. For word index `i`,
+            /// let `base = i - $limbs` and `T = c[i]`; every set bit `b` of `T` sits at degree
+            /// `64*i + b = 64*base + b + m`, so (mod the polynomial)
+            #[doc = concat!("`x^(64*base+b+m) = x^(64*base+b) * x^", stringify!($m),
+                " = x^(64*base+b) * (x^", stringify!($f1), " + x^", stringify!($f2), " + x^",
+                stringify!($f3), " + 1)`,")]
+            /// summed over every set bit of `T` - equivalent to `XOR`ing `T` itself, and `T` shifted
+            /// left by `f1`/`f2`/`f3` respectively, into the bit range starting at global position
+            /// `64*base`. A shift by `s` (`0 < s < 64`, guaranteed by the const assertion above)
+            /// splits across exactly two words: `T << s` supplies the low word's contribution,
+            /// `T >> (64 - s)` the carry into the next one up - the same split-shift technique
+            /// [`Self::double`]'s fixed single-bit shift already uses, generalized to an arbitrary
+            /// sub-word amount. Processing `i` top-down (`$limbs2 - 1` down to `$limbs`) is what
+            /// makes a single left-to-right pass sufficient: a contribution from word `i` only
+            /// ever lands in words `base` and `base + 1`, both strictly below `i` (since
+            /// `$limbs >= 2` in every instantiation here), so every word this loop still has left
+            /// to read has already received every contribution aimed at it before it's read.
+            /// Cross-checked byte-for-byte against [`Self::reduce_bit_serial_reference`] (the
+            /// previous production implementation, kept only as a test/Kani oracle now) by
+            /// `field_axiom_tests::reduce_matches_bit_serial_reference` below, and exhaustively for
+            /// every possible input by this module's own `#[cfg(kani)]` proofs - not just asserted
+            /// equivalent by the derivation above.
             fn reduce(mut c: [u64; $limbs2]) -> Self {
+                let terms: [u32; 3] = [$f1, $f2, $f3];
+                for i in ($limbs..$limbs2).rev() {
+                    let t = c[i];
+                    let base = i - $limbs;
+                    c[base] ^= t;
+                    for shift in terms {
+                        c[base] ^= t << shift;
+                        c[base + 1] ^= t >> (64 - shift);
+                    }
+                }
+
+                let mut out = [0u64; $limbs];
+                out.copy_from_slice(&c[..$limbs]);
+                Self(out)
+            }
+
+            /// The previous production `reduce` - processes one bit at a time from the top degree
+            /// down: for each set bit at degree `d >= m`, `x^d = x^(d-m) * x^m = x^(d-m) *
+            /// (x^f1 + x^f2 + x^f3 + 1)` (mod the polynomial) - clear that bit and XOR in the four
+            /// shifted terms. Kept only as an independent, already-years-verified oracle for
+            /// [`Self::reduce`]'s word-wise replacement (`docs/TASKS.md` T-195) - not a second
+            /// implementation to maintain, hence `#[cfg(any(test, kani))]` rather than a normal
+            /// production path.
+            #[cfg(any(test, kani))]
+            fn reduce_bit_serial_reference(mut c: [u64; $limbs2]) -> Self {
                 let top_degree: u32 = ($limbs2 * 64) - 1;
                 let mut degree = top_degree;
                 while degree >= $m {
@@ -246,7 +301,7 @@ mod field_axiom_tests {
     use proptest::prelude::*;
 
     macro_rules! field_axioms {
-        ($mod_name:ident, $elem:ident, $limbs:literal) => {
+        ($mod_name:ident, $elem:ident, $limbs:literal, $limbs2:literal) => {
             mod $mod_name {
                 use super::*;
 
@@ -267,6 +322,17 @@ mod field_axiom_tests {
                         let mut limbs = [0u64; $limbs];
                         limbs.copy_from_slice(&v);
                         $elem(limbs)
+                    })
+                }
+
+                /// Arbitrary double-width product, the actual input type `reduce`/
+                /// `reduce_bit_serial_reference` take - `arb_element()` above only covers
+                /// already-narrow field elements, never the full `poly_mul_wide` output range.
+                fn arb_wide() -> impl Strategy<Value = [u64; $limbs2]> {
+                    proptest::collection::vec(any::<u64>(), $limbs2).prop_map(|v| {
+                        let mut wide = [0u64; $limbs2];
+                        wide.copy_from_slice(&v);
+                        wide
                     })
                 }
 
@@ -297,6 +363,25 @@ mod field_axiom_tests {
                     assert_eq!(ALL_ONES.double(), ALL_ONES.multiply(TWO));
                 }
 
+                #[test]
+                fn reduce_of_all_zero_wide_matches_bit_serial_reference() {
+                    assert_eq!(
+                        $elem::reduce([0u64; $limbs2]),
+                        $elem::reduce_bit_serial_reference([0u64; $limbs2])
+                    );
+                }
+
+                #[test]
+                fn reduce_of_all_ones_wide_matches_bit_serial_reference() {
+                    // The one input that sets every carry path the word-wise fold-down has -
+                    // every word's top bit set, so every one of the three shifted terms carries
+                    // into its neighbor on every iteration.
+                    assert_eq!(
+                        $elem::reduce([u64::MAX; $limbs2]),
+                        $elem::reduce_bit_serial_reference([u64::MAX; $limbs2])
+                    );
+                }
+
                 proptest! {
                     #[test]
                     fn double_matches_general_multiply_by_two(a in arb_element()) {
@@ -325,14 +410,27 @@ mod field_axiom_tests {
                     fn multiply_distributes_over_add(a in arb_element(), b in arb_element(), c in arb_element()) {
                         prop_assert_eq!(a.multiply(b.add(c)), a.multiply(b).add(a.multiply(c)));
                     }
+
+                    #[test]
+                    fn reduce_matches_bit_serial_reference(wide in arb_wide()) {
+                        // The correctness gate for T-195's word-wise `reduce` rewrite - same
+                        // shape as `double_matches_general_multiply_by_two` above: the new,
+                        // faster implementation must be byte-identical to the old one on
+                        // arbitrary double-width input, not just asymptotically equivalent by
+                        // derivation.
+                        prop_assert_eq!(
+                            $elem::reduce(wide),
+                            $elem::reduce_bit_serial_reference(wide)
+                        );
+                    }
                 }
             }
         };
     }
 
-    field_axioms!(gf2m128, Gf2m128, 2);
-    field_axioms!(gf2m256, Gf2m256, 4);
-    field_axioms!(gf2m512, Gf2m512, 8);
+    field_axioms!(gf2m128, Gf2m128, 2, 4);
+    field_axioms!(gf2m256, Gf2m256, 4, 8);
+    field_axioms!(gf2m512, Gf2m512, 8, 16);
 
     // TEMPORARY investigation for T-125 (`docs/DECISIONS.md` D-76 follow-up) - not a permanent test,
     // remove after the field-multiply-vs-block-cipher ratio is recorded. `#[ignore]`d since it's a
@@ -550,4 +648,37 @@ mod field_axiom_tests {
             mult_ns / block_ns
         );
     }
+}
+
+/// Bounded model checking for [`Self::reduce`]'s word-wise rewrite (`docs/TASKS.md` T-195),
+/// mirroring [`super::dstu4145::gf2m163`]'s own `kani_proofs` module (same "differential test is
+/// the real proof, Kani only for the tractable subset" split that module's own doc comment already
+/// established) - the `field_axiom_tests` proptest above cross-checks `reduce` against
+/// `reduce_bit_serial_reference` on ~256 random double-width inputs per field size; this proves
+/// they agree on *every* possible input, not a sample, reusing the same already-years-verified
+/// `reduce_bit_serial_reference` oracle rather than writing a third from-scratch reference.
+/// **Cannot run on Windows at all** (`docs/DECISIONS.md` D-102, `xtask::kani`'s own doc comment) -
+/// CI (Linux) is the only venue that actually executes these; not run locally as part of this
+/// change, unlike every other test in this file.
+#[cfg(kani)]
+mod kani_proofs {
+    use super::{Gf2m128, Gf2m256, Gf2m512};
+
+    macro_rules! reduce_kani_proof {
+        ($mod_name:ident, $elem:ident, $limbs2:literal) => {
+            mod $mod_name {
+                use super::*;
+
+                #[kani::proof]
+                fn reduce_matches_bit_serial_reference() {
+                    let c: [u64; $limbs2] = kani::any();
+                    assert_eq!($elem::reduce(c), $elem::reduce_bit_serial_reference(c));
+                }
+            }
+        };
+    }
+
+    reduce_kani_proof!(gf2m128, Gf2m128, 4);
+    reduce_kani_proof!(gf2m256, Gf2m256, 8);
+    reduce_kani_proof!(gf2m512, Gf2m512, 16);
 }

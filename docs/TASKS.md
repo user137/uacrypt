@@ -2628,7 +2628,8 @@ item they point to is later removed.
       predate this task, not introduced by it, but surfaced by this session's grep sweep; left
       unedited since a published-site edit felt like it needed explicit sign-off rather than a
       silent same-pass fix, unlike `docs/PERFORMANCE.md`/this file.
-- [x] **T-195** **Done (plan only, no code changed) 2026-08-08, owner-requested follow-up to T-194.**
+- [x] **T-195** **Done 2026-08-08, owner-requested follow-up to T-194 - word-wise `reduce` landed as
+      real code this session (see below); Tier 2 (EC windowing) remains plan-only, owner to decide.**
       Owner asked two things: (1) re-run the `crypto_box`/`crypto_box512` MB/s comparison with a
       large enough payload to neutralize `openssl.exe`'s own process-spawn overhead (T-194's 10 MiB
       pass had this confound; see `docs/PERFORMANCE.md`'s corrected table), and (2) investigate *why*
@@ -2737,10 +2738,61 @@ item they point to is later removed.
       re-derived per field size rather than reused directly) replaces the bit-serial loop with pure
       Rust, no `target_feature`/`no_std` fork, no fallback-path design burden, and helps the
       Raspberry Pi row too (CLMUL requires `PMULL` detection there; a word-wise `reduce` doesn't).
-      **Not picked up as code this session** - still plan only, per this task's own closing status
-      line below; the corrected order-of-operations for whoever picks this up next is **word-wise
-      `reduce` first, hardware CLMUL for `poly_mul_wide` second** (and re-measure the split after the
-      first lever lands, since it changes the ratio the second lever would be evaluated against).
+      Order-of-operations: **word-wise `reduce` first, hardware CLMUL for `poly_mul_wide` second**
+      (re-measure the split after the first lever lands, since it changes the ratio the second lever
+      is evaluated against) - **picked up immediately, same session, owner asked "реалізуй word-wise
+      reduce, test-first."**
+
+      **Word-wise `reduce`, implemented test-first, `crates/dstu-core/src/hazmat/gf2m_wide.rs`**:
+      - Added a free `const _: () = assert!($f1 > 0 && $f1 < 64 && ...)` per field-size
+        instantiation - the word-wise fold-down's `t << shift` / `t >> (64 - shift)` split is only
+        UB-free if every pentanomial term is strictly between 0 and 64; checked at compile time
+        instead of trusted by inspection of the three macro invocations' literal arguments.
+      - Renamed the old bit-serial `reduce` to `reduce_bit_serial_reference`, gated
+        `#[cfg(any(test, kani))]` (dead code in a release build) - kept as the already-years-verified
+        oracle for the new implementation rather than deleted, same "keep the old path as a test
+        oracle" shape `gf2m163`'s own history uses.
+      - New `reduce`: for word index `i` from `$limbs2 - 1` down to `$limbs`, the whole word
+        `T = c[i]` folds down in one step (`base = i - $limbs`; XOR `T`, `T << f1`, `T << f2`,
+        `T << f3` into `c[base]`, with each shift's carry-out XORed into `c[base + 1]`) instead of
+        64 bit-at-a-time steps - top-down word order guarantees every word a later iteration reads
+        has already received every contribution aimed at it, since a contribution from word `i`
+        only ever lands in words strictly below `i` (`$limbs >= 2` in all three instantiations).
+      - **Test-first**: wrote the differential proptest and two fixed-input regression tests
+        (`reduce_matches_bit_serial_reference`, plus all-zero/all-ones wide-input edge cases) against
+        `reduce_bit_serial_reference` in the same pass as the implementation, extending
+        `field_axiom_tests`'s existing `arb_element()` pattern with a new `arb_wide()` strategy (the
+        actual double-width input type `reduce` takes, which the old `arb_element()` never covered).
+        All pass, all three field sizes, ~256 proptest cases each.
+      - **Exhaustive verification**: added `#[cfg(kani)] mod kani_proofs` (new to this file, mirrors
+        `gf2m163`'s own `kani_proofs` module) proving `reduce == reduce_bit_serial_reference` for
+        *every* possible double-width input, all three field sizes - reusing the real, already-
+        verified old implementation as the oracle rather than writing a fourth from-scratch
+        reference. **Cannot run on Windows at all** (D-102) - written following the established
+        macro/proof-shape precedent but not locally executed; CI (Linux) is the actual verification
+        venue, not yet confirmed green as of this session's close (re-check via `gh run view` once
+        pushed, per the standing "verify CI's real conclusion" rule).
+      - **Regression check**: full `cargo test` (41 test binaries + doctests, 0 failures), the
+        official Kalyna-GCM/GMAC/XTS vectors for all five variants (unaffected - GCM/GMAC's tag
+        computation routes through the same `multiply()` call, just faster now), `clippy -D
+        warnings`, `fmt --check`, and both feature-matrix builds (default, `small-tables`, `no_std`)
+        all clean.
+      - **Real, built-binary, measured result** (not projected): `uacrypt kalyna-gcm` at
+        `--variant 256-256`, 100 MiB payload, 5 iterations, same machine/methodology as the pre-fix
+        row in `docs/PERFORMANCE.md`'s layer-decomposition table - **14.25 -> 34.96 MB/s encrypt
+        (~2.45x), 15.90 -> 30.16 MB/s decrypt (~1.90x)**. `reduce`'s own isolated cost (chained
+        timing split, same diagnostic as the spike above) dropped from ~62-64% of `multiply()`'s
+        total to ~2.7% (17.6 ns/op vs. ~832-838 ns/op at m=256). See `docs/PERFORMANCE.md`'s "T-195's
+        word-wise `reduce` lever" subsection for the full table and the reopened-CLMUL-question note
+        (`poly_mul_wide` is back to being ~97%+ of `multiply()`'s remaining cost now that `reduce`
+        isn't competing for the larger share, closer to T-125's original ~89.6-94.3% estimate than
+        this session's own pre-fix "at most 38%" spike number, which was only ever valid against the
+        *unfixed* `reduce`).
+      - Scratch payload/output files (`payload100m.bin`, `gcmkey.bin`, etc., dev-machine scratchpad
+        `perf195` dir) deleted after use, matching this task's own established cleanup discipline
+        from the payload-size-history section above; not run on the Raspberry Pi this pass (not
+        asked, and the fix is machine-independent pure-Rust code with no platform-specific path to
+        separately confirm - CLMUL, if picked up later, is the one that would need its own Pi check).
 
       **Tier 2 (the owner's actual "smol tables" analogy, and the right frame for the primitive-level
       table specifically - real, but does not move the bulk MB/s number, per the redirect above) -
@@ -2834,9 +2886,11 @@ item they point to is later removed.
       "the hypothesis was wrong" is a complete, valuable outcome there, not a failure to route
       around.
 
-      **Status: plan only, no code changed this session.** Owner to decide whether/which levers to
-      greenlight, and whether Tier 1's ISA-gap investigation is ever worth opening as its own
-      separately-scoped task.
+      **Status: Tier 1's word-wise `reduce` lever landed as real, tested, benchmarked code this
+      session (see above) - a real ~1.9-2.45x Kalyna-GCM speedup, not a plan.** Tier 2 (EC
+      scalar-multiplication windowing) and the hardware-CLMUL rewrite of `poly_mul_wide` (reopened,
+      not diminished, by the `reduce` fix - see `docs/PERFORMANCE.md`) both remain plan-only; owner
+      to decide which, if any, to greenlight next.
 - [x] **T-188** **Done 2026-08-07, owner-requested.** SonarCloud Quality Gate was
       `ERROR` on `new_duplicated_lines_density` (3.0% actual vs. `<=3%` required) - missed in T-187's
       own SonarCloud check because that check only queried `api/issues/search` (rule-violation

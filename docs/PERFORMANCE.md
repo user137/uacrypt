@@ -2033,6 +2033,37 @@ and the doc comment in `gf2m_wide.rs` itself says so.
   independently at both 1 GiB and 100 MiB, so a real, repeatable asymmetry, not noise — a genuine
   small finding for a future `crypto_secretstream` decrypt-path investigation, but far too small to
   explain the overall gap to OpenSSL on its own.
+
+**T-195's word-wise `reduce` lever, implemented same session (not just planned)**: before touching
+`poly_mul_wide`, a chained timing split (`gf2m_wide.rs`'s own `isolated_timing_gf2m256_
+poly_mul_wide_vs_reduce_split` diagnostic) found `reduce` — the bit-at-a-time top-down fold-down,
+untouched since before T-125 — was actually **~62-64% of `Gf2m256::multiply()`'s total**, the
+*larger* term, not `poly_mul_wide`; a hardware carry-less-multiply rewrite of `poly_mul_wide` alone
+would have reached at most ~38% of the total. `reduce` was rewritten test-first as a word-wise
+closed form (every pentanomial term for m=128/256/512 is `< 64`, so a whole word folds down in one
+step instead of 64) — correctness gated by a proptest cross-check against the retained old bit-
+serial implementation (kept as `reduce_bit_serial_reference`, `#[cfg(any(test, kani))]`) plus
+exhaustive `#[cfg(kani)]` proofs for all three field sizes (Windows cannot run Kani at all, D-102 —
+CI is the actual verification venue for those). All 41 test binaries, doctests, and the official
+Kalyna-GCM/GMAC/XTS vectors for every variant still pass unchanged.
+
+| Layer | Encrypt/seal MB/s | Decrypt/open MB/s | Payload |
+|---|---|---|---|
+| Kalyna-GCM 256-256 alone, **post-T-195 word-wise `reduce`** | **34.96** | **30.16** | 100 MiB |
+| Kalyna-GCM 256-256 alone, pre-T-195 (bit-serial `reduce`, table above) | 14.25 | 15.90 | 100 MiB |
+
+A real, measured **~2.45x encrypt / ~1.90x decrypt** speedup on Kalyna-GCM alone, built binary,
+same machine/variant/payload/iteration count as the pre-fix row — not a projection.
+`reduce`'s own isolated cost dropped from ~62-64% of `multiply()`'s total to ~2.7% (17.6 ns/op vs.
+~832-838 ns/op, m=256, chained measurement), which also **reopens** the hardware
+carry-less-multiply question: with `reduce` no longer competing for the larger share,
+`poly_mul_wide` is back to being ~97%+ of `multiply()`'s remaining cost — closer to the ~89.6-94.3%
+T-125 originally measured against the *whole* per-block cost than the "at most 38%" this session's
+earlier spike estimated, since that estimate was made before `reduce` itself got fixed. A
+`PCLMULQDQ`/`PMULL` rewrite of `poly_mul_wide` is therefore back to being the single largest
+remaining lever on this layer, not a diminished one — still not picked up as code this session, see
+`docs/TASKS.md` T-195 for the scoping constraints (target-feature detection, `no_std` compatibility,
+fallback path, `--emit=asm` spike) that still apply.
 - **AES-256, not CMS's envelope, is the ceiling on OpenSSL's side, and by a wide margin.** Raw
   `openssl enc` (261.78/402.44 MB/s) is *faster* than full CMS (205.59/296.45 MB/s) — CMS's own
   ASN.1/certificate/ECDH-KDF envelope costs OpenSSL real throughput too (~21-27%), proportionally
