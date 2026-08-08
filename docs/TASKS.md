@@ -2168,8 +2168,17 @@ item they point to is later removed.
       dev machine, unlike Kani/D-102): `cargo +nightly miri test -p dstu-core --doc` dropped from
       "still running after 20+ minutes, uncompleted" to **14.29s for all 8 doctests** - not assumed
       from the fix's shape alone.
-- [ ] **T-190** **Not started, owner-requested 2026-08-08 - backlog, no committed timeline. Plan
-      below written 2026-08-08, advisor()-reviewed per the note this task itself left.** A
+- [x] **T-190** **Done 2026-08-08, owner-requested.** Plan below written 2026-08-08,
+      advisor()-reviewed per the note this task itself left; all four sub-passes closed the same
+      day (DSTU 9041 correctly excluded, no reference exists in either oracle - see the coverage
+      matrix). **Net result: zero new defensive/stability gaps in this project's own code** across
+      DSTU 4145/Kalyna/Kupyna/Strumok - every mechanism found in Bouncy Castle/UAPKI was already
+      present, several already exceed both references (constant-time comparisons, stricter length
+      checks). The one real finding from this audit is in a third-party reference implementation's
+      own code, not this project's - see T-191 for its still-open private-disclosure status,
+      unaffected by T-190's own closure here.
+
+      **Original plan** (kept below for reference, executed as written): a
       defense/stability-focused comparison audit against the vendored reference implementations
       (`oracles/bouncycastle-{java,dotnet}/`, `oracles/uapki/` - both already cloned locally, no new
       fetch needed). **Explicitly scoped to the defensive/stability layer, not correctness** -
@@ -2250,6 +2259,65 @@ item they point to is later removed.
       party's own repository (D-91) - not this project's own code, not detailed further in this
       public repository while disclosure is pending. See T-191 and D-174/D-175 for status (full
       technical detail kept in local, untracked notes, not committed here).
+
+      **Sub-pass 2 (Kalyna / DSTU 7624) closed 2026-08-08, zero new findings.** Read BC's
+      `DSTU7624Engine`/`DSTU7624WrapEngine`/`DSTU7624Mac` (Java) and UAPKI's `dstu7624.c` for
+      protective code (block-alignment checks, checksum/tag verification on unwrap, tag-comparison
+      constant-time-ness, state-machine guards), then compared against every entry point:
+      `hazmat::kalyna_{ccm,cmac,kw,gcm,gmac,xts,cfb}`, `crypto_secretbox`/`crypto_secretstream`,
+      `uacrypt`, and `dstu-core-capi::{secretbox,secretstream}` (the C ABI, checked directly this
+      pass - NULL/length/capacity checks present before any crypto work in both). Every protective
+      mechanism found in either reference was already discovered and closed in a prior stage
+      (D-54 KW/CMAC block-alignment and checksum check, D-55 KW round-counter fork bounded out,
+      D-56/D-57 GCM/GMAC three AES-GCM divergences plus constant-time tag compare, D-58 XTS, D-60
+      CFB panic->`Result`) - each of those stages was already individually cross-checked against
+      these same two references at write time, so this pass mostly re-confirmed prior work. One
+      item worth noting for the record, not a gap on our side: UAPKI's own KW unwrap
+      (`decrypt_kw`, `dstu7624.c` ~line 3917) has no checksum verification at all, and its CCM/GCM
+      tag comparisons (`dstu7624.c:2881`/`:3466`) are raw `memcmp`, not constant-time - both already
+      fixed on our side (D-55, D-41/D-56) before this pass, so not new. No code change, no new
+      D-xx entry needed (nothing to cite beyond the existing D-54..D-60 chain).
+
+      **Sub-pass 3 (Kupyna / DSTU 7564) closed 2026-08-08, zero new findings.** Read BC's
+      `DSTU7564Digest`/`DSTU7564Mac` and UAPKI's `dstu7564.c` for protective code (init/finalize
+      state guards, key-length restrictions, message-length-counter overflow handling), compared
+      against `hazmat::kupyna`/`kupyna_kmac`/`kupyna_kdf`, `crypto_generichash`/`crypto_auth`/
+      `crypto_kdf`, `uacrypt hash` (re-confirmed still chunked per D-42, not whole-file `fs::read`),
+      and `dstu-core-capi`'s hash FFI state machine (checked directly this pass - update-after-
+      finalize/double-finalize both correctly rejected, matching D-118's established binding
+      pattern). Every mechanism either reference has is present on our side, several exceed both
+      references: constant-time KMAC verify (`subtle::ConstantTimeEq`, neither BC nor UAPKI's own
+      `Mac`/hash API offers a `verify` at all - tag comparison is left to the caller in both), and
+      stricter KMAC key-length enforcement than BC (BC accepts any key length and silently
+      block-pads it, untested by either oracle's own vectors; ours requires exact-length match,
+      matching UAPKI's own stricter check). One parity note, not a gap: BC's own `DSTU7564Digest`
+      has an explicit, unaddressed `// TODO Guard against 'inputBlocks' overflow (2^64 blocks)`;
+      our `KupynaCore.total_len: u64` shares the same theoretical overflow class (UAPKI's own
+      128-bit counter is stricter than both) but is unreachable on any real target at
+      `u64::MAX` bytes (~18 exabytes) - same non-exploitable classification already applied to
+      BC's own TODO, not treated as a new finding. No code change, no new D-xx entry needed.
+
+      **Sub-pass 4 (Strumok / DSTU 8845) closed 2026-08-08, zero new findings - T-190's four
+      sub-passes now all closed.** UAPKI-only per the coverage matrix (no BC coverage exists,
+      matches D-15). Read `dstu8845.c`'s `dstu8845_init`/`dstu8845_set_iv`/`dstu8845_crypt` for
+      protective code: key length restricted to 32/64 bytes, IV length fixed at 32 bytes, both via
+      `CHECK_PARAM`/`SET_ERROR(RET_INVALID_{KEY,IV}_SIZE)`. Compared against `hazmat::strumok`
+      (`Strumok256::new(key: &[u8; 32], iv: &[u8; 32])` - fixed-size arrays make wrong key/IV
+      length a compile-time error, not a runtime check, same "N/A by design" pattern already
+      applied to Kalyna/Kupyna's own fixed-size-type arguments), `crypto_stream::decrypt` (already
+      has its own `sealed.len() < IV_LEN -> StreamError::Truncated` check before slicing), `uacrypt
+      strumok-crypt` (re-confirmed `STRUMOK_STREAM_CHUNK_BYTES` 8 KiB chunking is real, D-42), and
+      `dstu-core-capi::stream.rs` (checked directly this pass - NULL-pointer and
+      `sealed_len < DSTU_STREAM_OVERHEAD` truncation checks both present before any crypto work).
+      No nonce/IV-reuse counter exists in UAPKI either (inherent stream-cipher caller
+      responsibility, not a mechanism either reference implements, so not a comparison gap).
+      **D-90/T-137 status confirmed, not rediscovered as new**: the vendored `oracles/uapki`
+      copy of `dstu8845_crypt` (~line 1013) still carries the local, uncommitted, not-opened-
+      upstream batched-consumption patch from T-137 in its own comment - a performance/style
+      parity fix (matches `hazmat::strumok`'s own T-135 batched rewrite and
+      `outspace/dstu8845`'s fused loop), not a defensive/validation gap, so out of scope for this
+      audit's own criteria; disclosure status unchanged (still local-only, not proposed upstream).
+      No code change, no new D-xx entry needed.
 - [ ] **T-191** **Not started, owner-requested 2026-08-08.** Private, responsible-disclosure
       follow-up to the third-party finding from T-190/D-174 (same bug class as T-189/D-172, found in
       a different open-source project's own code, not this project's). **Owner's explicit order of
