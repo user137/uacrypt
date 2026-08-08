@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-0074acfd.js";
+            window.path_to_searchindex_js = "searchindex-1c2df27f.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-ce7e91c5.js"></script>
@@ -11065,6 +11065,28 @@ worked example exists anywhere in the standard, D-168). <strong>Not done in this
 scope per its own plan</strong>: wiring <code>l(p)=512</code> into <code>crypto_box</code>/<code>uacrypt</code> (T-178/D-169’s own precedent
 was a separate task after <code>l(p)=256</code>’s <code>hazmat</code> layer landed - same split applies here, a future
 task if wanted).</p>
+<h2 id="d-181-t-192-follow-up---sonarcloud-quality-gate-failed-post-push-on-genuine-new-code-duplication-between-the-lp256lp512-sibling-modules-excluded-from-cpd-not-refactored"><a class="header" href="#d-181-t-192-follow-up---sonarcloud-quality-gate-failed-post-push-on-genuine-new-code-duplication-between-the-lp256lp512-sibling-modules-excluded-from-cpd-not-refactored">D-181: T-192 follow-up - SonarCloud Quality Gate failed post-push on genuine new-code duplication between the <code>l(p)=256</code>/<code>l(p)=512</code> sibling modules; excluded from CPD, not refactored</a></h2>
+<p><code>gh run view</code> on the T-192 push (<code>6565272</code>) showed <code>sonarcloud</code> as the one failing job - not the
+missing-<code>sonar.qualitygate.wait=true</code> false-negative T-188 already fixed, a real
+<code>new_duplicated_lines_density</code> gate failure: 22.1% actual vs. 3% threshold, 1759 new duplicated
+lines (<code>api/qualitygates/project_status?projectKey=user137_uacrypt&amp;branch=master</code>, cross-checked
+per-file via <code>api/measures/component_tree</code>). Entirely the eight new/existing <code>hazmat::dstu9041</code>
+files: <code>fp256.rs</code>/<code>fp512.rs</code> (87%/83%), <code>curve256.rs</code>/<code>curve512.rs</code> (92%/93%),
+<code>message.rs</code>/<code>message512.rs</code> (67%/63%), <code>encryption.rs</code>/<code>encryption512.rs</code> (65%/75%) - the <code>l(p)=512</code>
+modules were deliberately written as byte-width “direct siblings” of their <code>l(p)=256</code> counterparts
+(D-177/D-178/D-179/D-180), so this is real, expected textual overlap, not a false positive.</p>
+<p><strong>Owner decision (asked via AskUserQuestion, not assumed)</strong>: exclude these eight files from Sonar’s
+duplication check (<code>sonar.cpd.exclusions</code> in <code>sonar-project.properties</code>) rather than merging them
+into a shared const-generic implementation. Rejected the generic-merge alternative for this pass -
+nontrivial refactor risk to already-vector-verified, dual-oracle-checked crypto primitives, for a
+metric that is a code-hygiene proxy, not a correctness or security concern here (each pair differs
+in real, load-bearing ways: limb count, constant values, array widths - copy-shaped, not
+copy-pasted-and-untested). Matches the project’s own established pattern of per-size sibling modules
+elsewhere (Kalyna’s per-block-size variants) that predate Sonar ever flagging this, since no prior
+pair of <code>dstu9041</code> modules existed simultaneously to trigger CPD before this task.</p>
+<p>Re-check this exclusion’s continued justification if <code>l(p)=384</code> is ever added (a third sibling set)
+or if a future generic-merge refactor is ever undertaken for unrelated reasons - don’t assume this
+decision is permanent, it was scoped to “not now,” not “never.”</p>
 
                     </main>
 
