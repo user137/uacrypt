@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-7137dd38.js";
+            window.path_to_searchindex_js = "searchindex-2c072542.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-ce7e91c5.js"></script>
@@ -2480,52 +2480,32 @@ The `g` (base point) side: checked whether the missing per-call validation there
 T-189's `q` exploit - analytic argument plus an empirical 200,000-trial probe (0 hits, not
 committed) both say no; `crypto_sign.rs` hardcodes `g = Point::generator()` regardless, so
 this is unreachable through any shipped surface either way - no code change, documented as
-checked-not-needed per this task's own step 4. UAPKI: **a real finding, in their code, not
-ours** - `library/common/pkix/uapki-ns-verify.cpp`'s live `SIGN_DSTU4145` verification path
-validates on-curve (`ec2m_is_on_curve`) but never checks point order/cofactor, for the exact
-same cofactor-2 standard curve (order `n` cross-checked byte-for-byte against
-`curve163::order()`) T-189 fixed in our own code - see D-174 for the full three-file trace.
-**Not actioned on `specinfo-ua/UAPKI` itself** - per D-91's established precedent, raised to
-the project owner as a question (disclose or not, and how), not acted on unilaterally.
-Awaiting the owner's decision; record the outcome here once decided. **Owner's decision
-2026-08-08: private disclosure to the maintainer, with an example fix - but only after a
-full, running-code reproduction against UAPKI's own compiled binary, so they can verify it
-themselves rather than take a source-reading trace on faith.** Split out as T-191.
+checked-not-needed per this task's own step 4. **A third finding, in a third-party
+open-source reference implementation, not in this project's own code** - the same bug class
+T-189 fixed here. Being handled through private, responsible disclosure to that project's own
+maintainers, per this project's standing policy for anything involving a specific third
+party's own repository (D-91) - not this project's own code, not detailed further in this
+public repository while disclosure is pending. See T-191 and D-174/D-175 for status (full
+technical detail kept in local, untracked notes, not committed here).
 </code></pre>
 </li>
 <li>
-<p><input disabled="" type="checkbox"> <strong>T-191</strong> <strong>Not started, owner-requested 2026-08-08.</strong> Responsible-disclosure follow-up to
-the D-174/T-190 UAPKI finding (<code>library/common/pkix/uapki-ns-verify.cpp</code>’s DSTU 4145 verify
-path validates on-curve but not point order/cofactor - the same bug class T-189/D-172 fixed
-here). <strong>Owner’s explicit order of operations: reproduce the forgery against UAPKI’s own
-compiled binary FIRST, only then contact the maintainer, privately, with the reproduction and
-an example fix - not a source-reading trace alone.</strong>
-1. Build/obtain <code>uapkic.dll</code> (latest release, <code>gh release download --repo specinfo-ua/UAPKI</code>)
-and a matching import lib (<code>gendef</code>/<code>dlltool</code>, the exact recipe D-78/D-80 already used for
-the Kalyna comparison wrapper - reuse it, don’t re-derive).
-2. Write a small, uncommitted C harness (same “scratch-only, not shipped” posture D-78’s own
-<code>uapki_bench.c</code> used) against the vendored <code>oracles/uapki/library/uapkic/include/*.h</code>
-headers, calling the DLL’s real exported <code>dstu4145_init_verify</code>/<code>dstu4145_verify</code>.
-3. Feed it the <strong>exact same</strong> forged <code>(hash, r, s, Qx, Qy)</code> tuple <code>tests/dstu4145_signature.rs</code>’s
-<code>t189_public_key_validation::find_forgery</code> already constructs for the order-2 <code>q</code> case (same
-curve, same math - no need to re-derive the forgery, only to prove UAPKI’s real compiled
-code accepts it) and confirm whether <code>dstu4145_verify</code> returns success on it.
-4. <strong>Only if step 3 confirms it</strong>: draft the private disclosure (reproduction steps + the
-exact forged tuple + a proposed fix mirroring <code>signature::verify</code>’s <code>is_on_curve</code>/<code>x != 0</code>
-guard, adapted to <code>ec2m_is_on_curve</code>/UAPKI’s own C idiom) and bring it back to the owner for
-review before it’s sent anywhere - contacting a third party is not this task’s call to make
-unilaterally, matching D-91’s standing rule for anything involving <code>specinfo-ua/UAPKI</code>.
-5. If step 3 does <em>not</em> confirm it (e.g. a validation layer this project’s vendored/fetched
-reading missed) - document why in <code>docs/DECISIONS.md</code>, downgrade D-174’s finding
-accordingly, no disclosure.</p>
-<pre><code>**Steps 1-3 done 2026-08-08, confirmed - see `docs/DECISIONS.md` D-175.** Built the C harness
-against the real prebuilt `uapkic.dll` v2.0.12 and confirmed, against UAPKI's own real
-compiled binary (not source reading): a genuine honest signature verifies (`ec_init_verify=0
-dstu4145_verify=0`), and the order-2-`Q` forgery (re-targeted at `EC_PARAMS_DSTU4145_M163_PB`'s
-own generator, since `gf2m163.json`'s Annex B.1 generator turned out to differ from it - a
-dead end D-175 documents) is **also accepted** (`ec_init_verify=0 dstu4145_verify=0`). The
-vulnerability is real and reproduced at the running-code level.
-**Step 4 (draft the private disclosure) is next** - not sent anywhere yet, per D-91.
+<p><input disabled="" type="checkbox"> <strong>T-191</strong> <strong>Not started, owner-requested 2026-08-08.</strong> Private, responsible-disclosure
+follow-up to the third-party finding from T-190/D-174 (same bug class as T-189/D-172, found in
+a different open-source project’s own code, not this project’s). <strong>Owner’s explicit order of
+operations: reproduce the forgery against that project’s own real compiled binary FIRST, only
+then contact its maintainers, privately, with the reproduction and an example fix - not a
+source-reading trace alone.</strong> Per D-91’s standing policy, no public detail (project name,
+file/line trace, reproduction bytes) is recorded in this task while disclosure is pending -
+see local, untracked notes for the full technical record.</p>
+<pre><code>**Reproduction step done 2026-08-08, confirmed - see `docs/DECISIONS.md` D-175.** Built a
+small, uncommitted test harness against that project's own official prebuilt binary release
+and confirmed, against its real compiled code (not source reading): a genuine honest signature
+verifies correctly (control case), and the same class of forged signature - a public key with
+no real private key behind it - is **also accepted**. The vulnerability is real and reproduced
+at the running-code level, not just inferred from reading source.
+**Next: draft the private disclosure itself for the owner's own review before anything is sent
+anywhere** - not this project's call to make unilaterally, per D-91.
 </code></pre>
 </li>
 <li>
