@@ -1781,68 +1781,93 @@ here).
 --iterations 5000` and `verify --key verifying.key --in msg.bin --sig msg.sig --iterations 5000` on
 each binary in turn.
 
-### DSTU 9041 / `crypto_box` (`box-seal`/`box-open`) — T-179
+### DSTU 9041 / `crypto_box` + `crypto_box512` (`box-seal`/`box-open`, `box-seal512`/`box-open512`) — T-179/T-194
 
 Two tables, at two different levels, per owner feedback 2026-08-06 that a "similar-regime" binary
 comparison is required, not just a primitive-level one: the ops/s table below measures the *raw
 scalar multiplication* only (mirroring `openssl speed ecdh`'s own scope), the MB/s table further
 down measures the *full sealed-box operation* against OpenSSL's own closest full-envelope
 equivalent (`openssl cms`). Neither replaces the other — they answer different questions ("how fast
-is our EC math" vs. "how fast is a real seal/open call") and this project's new methodology rule
-(below) is to always include the second kind whenever a full-message construction exists to compare.
+is our EC math" vs. "how fast is a real seal/open call").
+
+**T-194 (2026-08-08) extends both tables to `crypto_box512`/`l(p)=512` (E512/1, T-193) alongside the
+original `crypto_box`/`l(p)=256` numbers, and both curve sizes were re-measured fresh in the same
+sitting** — the `l(p)=256` numbers below are *not* T-179's original figures spliced in; several
+commits landed since (T-192/T-193 and others), so reusing stale numbers next to fresh 512 ones
+would not have been a valid same-session comparison. Platform scope: the Ryzen dev machine and the
+Raspberry Pi (`[[raspberry-pi-uacipher]]`), both fresh-built (`cargo build --release -p uacrypt`,
+verified via `--help | grep 512` that both `*512` subcommands are actually present before trusting
+any Pi number — the Pi's repo copy is `tar`+`ssh`-synced, not a git remote, so it is stale by
+construction until re-synced).
 
 **Not a D-34 MB/s cross-implementation comparison at the primitive level** — that methodology is for
 symmetric primitives being compared against a second implementation of the *same* construction; no
 second DSTU 9041 implementation exists anywhere (`docs/ORACLES.md`), and MB/s is meaningless for a
-fixed-size 128-byte asymmetric operation regardless. Instead, following `sign`/`verify`'s own T-150
-precedent (compare ops/s against OpenSSL doing the closest equivalent job, on the actual built
-binary — D-34's "use the real binary, not an internal `criterion` number" policy still applies),
-this measures `uacrypt box-seal`/`box-open` against `openssl speed ecdh`, since
-`hazmat::dstu9041::curve256::Point::scalar_multiply` is what dominates both operations' cost, and
-`openssl speed ecdh` measures exactly one scalar multiplication per reported op.
+fixed-size asymmetric operation regardless. Instead, following `sign`/`verify`'s own T-150 precedent
+(compare ops/s against OpenSSL doing the closest equivalent job, on the actual built binary — D-34's
+"use the real binary, not an internal `criterion` number" policy still applies), this measures
+`uacrypt box-seal`/`box-open`/`box-seal512`/`box-open512` against `openssl speed ecdh`, since
+`hazmat::dstu9041::curve{256,512}::Point::scalar_multiply` is what dominates both operations' cost,
+and `openssl speed ecdh` measures exactly one scalar multiplication per reported op.
 
-**`box-seal`/`box-open` are not directly comparable 1:1 to one `ecdh` op — read the ratio with this
-in mind, not as a raw "X times faster/slower" claim**: `seal` performs *two* scalar multiplications
-per call (`encryption.rs::encrypt`'s `R = epsilon*P` and `T = epsilon*Q`), and `open` also performs
-two (`curve256::point_from_x`'s subgroup-membership check `scalar_multiply(&order())`, plus
-`encryption.rs::decrypt`'s `T' = e*R'`) — both genuinely necessary, not incidental overhead (the
-subgroup check specifically is T-177's own cofactor-4 security fix, not skippable). OpenSSL's `ecdh`
-benchmark was not independently re-derived to confirm it measures only one scalar multiplication per
-op with no other included overhead, so no further per-scalar-mult normalization is attempted here -
-the raw ops/s numbers are reported as measured, with this caveat stated plainly rather than a
-precise-looking ratio that isn't actually verified.
+**`box-seal`/`box-open` are not directly comparable 1:1 to one `ecdh` op, at either curve size —
+read the ratio with this in mind, not as a raw "X times faster/slower" claim**: `seal` performs
+*two* scalar multiplications per call (`encryption{,512}.rs::encrypt`'s `R = epsilon*P` and
+`T = epsilon*Q`), and `open` also performs two (`curve{256,512}::point_from_x`'s
+subgroup-membership check `scalar_multiply(&order())`, plus `encryption{,512}.rs::decrypt`'s
+`T' = e*R'`) — both genuinely necessary, not incidental overhead (the subgroup check specifically is
+T-177's own cofactor-4 security fix for `l(p)=256`, independently re-derived and re-confirmed
+applicable for `l(p)=512` in D-176/D-178, not skippable at either size). Re-checked directly against
+`encryption512.rs`/`curve512.rs` for T-194, not assumed to carry over from the `l(p)=256` write-up —
+same two-scalar-mult shape confirmed at `l(p)=512` too. OpenSSL's `ecdh` benchmark was not
+independently re-derived to confirm it measures only one scalar multiplication per op with no other
+included overhead, so no further per-scalar-mult normalization is attempted here — the raw ops/s
+numbers are reported as measured, with this caveat stated plainly rather than a precise-looking
+ratio that isn't actually verified.
 
-| | `uacrypt` (`crypto_box`) | OpenSSL brainpoolP256r1 | OpenSSL X25519 |
-|---|---|---|---|
-| ops/s | `box-seal` **1305.66** / `box-open` **1072.53** | 1249.3 | 12537.4 |
+**Primitive-level ops/s**
 
-- **`brainpoolP256r1`** (256-bit prime curve) is the field-size-matched row — same 256-bit prime
-  modulus class as E256/1's own `p`, though not the same curve (different `a`/`b`, base point,
-  order). `box-seal`/`box-open`'s raw ops/s land in the same order of magnitude as this row despite
-  each performing two scalar multiplications where `ecdh` performs one — a genuinely competitive
-  result for a from-scratch, non-vectorized implementation with a generic (non-Montgomery-ladder)
-  complete addition law, not a red flag to investigate further.
-- **`X25519`** is the "modern ECDH most readers actually mean" row, included for the same reason
-  T-150 included `nistp256` alongside `nistb163`. The ~10-12x gap is expected, not a sign of a
-  correctness or quality problem: Curve25519's field (`2^255-19`) and Montgomery-ladder scalar
-  multiplication were specifically designed for software speed, unlike E256/1's general-purpose
-  `p=2^256-435` field and complete (branch-free but not ladder-shaped) twisted-Edwards addition law.
-  Do not read this ratio as "DSTU 9041 is 10-12x worse than modern ECC" for the same reason T-150's
-  own p256 caveat applies: part of this gap is OpenSSL using a curve/field genuinely optimized for
-  this exact operation, not purely an implementation-quality gap.
+| | `uacrypt` `crypto_box` (l(p)=256) | OpenSSL brainpoolP256r1 | OpenSSL X25519 | `uacrypt` `crypto_box512` (l(p)=512) | OpenSSL brainpoolP512r1 | OpenSSL X448 |
+|---|---|---|---|---|---|---|
+| ops/s — dev machine | seal **3355.93** / open **2833.72** | 2906.0 | 30941.2 | seal **417.78** / open **355.48** | 851.3 | 6665.3 |
+| ops/s — Raspberry Pi | seal **909.71** / open **776.20** | 1283.0 | 5995.0 | seal **140.07** / open **119.03** | 221.0 | 1611.0 |
 
-**Reproducing (primitive-level)**: `cargo build -p uacrypt --release`, then `target/release/uacrypt
-box-keygen --out box.key`, `box-pubkey --key box.key --out box.pub`, `box-seal --key box.pub --in
-msg.txt --out msg.box --iterations 5000`, `box-open --key box.key --in msg.box --out msg.out
---iterations 5000` (a short `msg.txt`, well under the 25-byte KEM seed's own size — `seal`'s cost is
-dominated by the EC operations regardless of message length, see `crypto_box`'s own module doc).
-OpenSSL side: `openssl speed -seconds 2 ecdh`, reading the `brainpoolP256r1`/`X25519` rows.
+- **`brainpoolP{256,512}r1`** are the field-size-matched rows — same prime-modulus bit-length class
+  as E256/1's/E512/1's own `p`, though not the same curve (different `a`/`b`, base point, order).
+  `box-seal`/`box-open` land in the same order of magnitude as their matched row at both sizes,
+  despite each performing two scalar multiplications where `ecdh` performs one — a genuinely
+  competitive result for a from-scratch, non-vectorized implementation with a generic
+  (non-Montgomery-ladder) complete addition law, not a red flag to investigate further.
+- **`X25519`/`X448`** are the "modern ECDH most readers actually mean" rows (448-bit `X448` is the
+  closest standard Montgomery curve to E512/1's 512-bit field — there is no 512-bit member of the
+  Curve25519/Curve448 family). The gap is expected at both sizes, not a sign of a correctness or
+  quality problem: both fields/scalar multiplications were specifically designed for software speed,
+  unlike E256/1's/E512/1's general-purpose fields and complete (branch-free but not ladder-shaped)
+  twisted-Edwards addition law. Do not read this ratio as "DSTU 9041 is worse than modern ECC" for
+  the same reason T-150's own p256 caveat applies: part of this gap is OpenSSL using a curve/field
+  genuinely optimized for this exact operation, not purely an implementation-quality gap.
+- **`l(p)=512` drops substantially from `l(p)=256`** (dev machine: seal ~8.0x, open ~8.0x; Pi:
+  seal ~6.5x, open ~6.5x) — expected from a 512-bit field multiply and a longer scalar ladder, and
+  the discriminating sanity check that these numbers are actually measuring what they claim to (a
+  512 row landing close to the 256 row would mean the KEM work was hoisted out of the timed loop,
+  D-80's exact failure shape — re-checked against `box_seal512`/`box_open512`'s own `--iterations`
+  runners in `crates/uacrypt/src/lib.rs`, written fresh for T-193, not copy-paste-stale).
 
-#### Same-regime comparison: full sealed-box vs. OpenSSL CMS (`crypto_box`, 10 MiB, MB/s) — T-179 addendum
+**Reproducing (primitive-level)**: `cargo build -p uacrypt --release`, then
+`target/release/uacrypt box-keygen[512] --out box.key`, `box-pubkey[512] --key box.key --out
+box.pub`, `box-seal[512] --key box.pub --in msg.txt --out msg.box --iterations 5000` (2000/500 on
+the Pi — the l(p)=512 loop is slow enough there that a smaller N is more practical), `box-open[512]
+--key box.key --in msg.box --out msg.out --iterations <same N>` (a short `msg.txt`, well under
+either curve's KEM seed size — `seal`'s cost is dominated by the EC operations regardless of message
+length). OpenSSL side: `openssl speed -seconds 2 ecdh`, reading the **stdout** summary table (the
+`Doing … ops in Ts` progress lines are on stderr, not stdout — D-170's own gotcha, easy to miss in a
+merged `2>&1` capture) for the `brainpoolP256r1`/`X25519`/`brainpoolP512r1`/`X448` rows.
+
+#### Same-regime comparison: full sealed-box vs. OpenSSL CMS (`crypto_box`/`crypto_box512`, 10 MiB, MB/s) — T-179/T-194 addendum
 
 The table above only measures the EC scalar multiplication, not a full seal/open call over a real
-message. `box-seal`/`box-open` do a full hybrid operation — KEM wrap, KDF, then a
-`crypto_secretstream`-chunked symmetric encrypt/decrypt of the actual message (D-169) — so the
+message. `box-seal`/`box-open` (both curve sizes) do a full hybrid operation — KEM wrap, KDF, then a
+`crypto_secretstream`-chunked symmetric encrypt/decrypt of the actual message (D-169/D-182) — so the
 closest matching OpenSSL *regime* is its own hybrid-envelope construction, `openssl cms
 -encrypt`/`-decrypt` with an EC recipient (ephemeral ECDH via `dhSinglePass-stdDH-sha1kdf-scheme` +
 AES-256-CBC bulk encryption) — not `openssl speed ecdh`, which never touches a message at all. D-34's
@@ -1851,53 +1876,201 @@ every symmetric mode's table: at 10 MiB, one-time setup (key schedule, X.509 cer
 two scalar multiplications) is negligible next to the bulk-encryption work that actually dominates a
 real call.
 
-**Setup**: an OpenSSL EC (`prime256v1`) self-signed certificate as the CMS recipient (`openssl
-ecparam -name prime256v1 -genkey -noout -out ec.key && openssl req -new -x509 -key ec.key -out
-ec.crt -days 1 -subj "/CN=test"` — needs `MSYS_NO_PATHCONV=1` in Git Bash on Windows or the leading
-`/` in `-subj` gets rewritten into a filesystem path); a `uacrypt` keypair via `box-keygen`/
-`box-pubkey`; a shared 10 MiB random payload (`openssl rand -out payload.bin 10485760`) round-tripped
-through both.
+**Setup**: two OpenSSL EC self-signed certificates as the CMS recipient — `prime256v1` for the
+`l(p)=256` row (unchanged from T-179), `brainpoolP512r1` for the new `l(p)=512` row (the
+field-size-matched curve confirmed present in `openssl speed ecdh`'s own table above; verified it
+actually round-trips through `openssl cms` before timing anything, per T-194's own explicit
+"don't assume" instruction — a small payload encrypt→decrypt→`cmp` cycle passed cleanly, no fallback
+to `secp521r1` needed):
+```
+openssl ecparam -name prime256v1 -genkey -noout -out ec256.key
+openssl ecparam -name brainpoolP512r1 -genkey -noout -out ec512.key
+MSYS_NO_PATHCONV=1 openssl req -new -x509 -key ec256.key -out ec256.crt -days 1 -subj "/CN=test"
+MSYS_NO_PATHCONV=1 openssl req -new -x509 -key ec512.key -out ec512.crt -days 1 -subj "/CN=test"
+```
+plus a `uacrypt` keypair via `box-keygen[512]`/`box-pubkey[512]` at each size, and a shared payload
+round-tripped through all four combinations.
 
 **`openssl cms -encrypt`/`-decrypt` silently truncate binary input at the first `0x1A` byte unless
 called with `-binary`** — without it, OpenSSL's default S/MIME-oriented text-mode content handling
-stops at what it reads as a text EOF marker; confirmed directly (a 10 MiB random payload came back as
-a 455-byte CMS structure, and decrypting it produced exactly 173 bytes, not 10 MiB) before it was
-caught by checking the output size rather than trusting a clean exit code. `-binary` on both
-`-encrypt` and `-decrypt` fixed it; verified with a byte-for-byte `cmp` round trip before timing
-anything.
+stops at what it reads as a text EOF marker (T-179's own finding, re-applied here rather than
+rediscovered). `-binary` on both `-encrypt` and `-decrypt`; every number below was preceded by a
+byte-for-byte `cmp` round trip at both curve sizes.
 
-**Process-spawn overhead is a genuine, measured confound here, unlike `uacrypt`'s own
-`--iterations`-in-one-process numbers** — `openssl cms` has no internal iteration flag, so each
-measured call is a fresh `openssl.exe` process. Measured separately (`openssl version`, N=20): ~60 ms
-per spawn on this machine, which is ~21-22% of each CMS call's ~270-280 ms total at 10 MiB — present
-but not dominant, and its effect only makes the OpenSSL numbers below a *conservative* (slower than
-its true crypto-only speed) estimate, so the comparison's actual direction is not in question.
+**Payload size: 1 GiB, not D-34's usual 10 MiB — a deliberate deviation for this one comparison,
+found necessary this session, not a general change to the 10 MiB rule.** `openssl cms` has no
+internal iteration flag, so each measured call is a fresh `openssl.exe`/`openssl` process; a first
+pass at 10 MiB found process-spawn overhead (~40 ms/spawn on the Windows dev machine, `openssl
+version` N=20) was roughly **half** of each CMS call's own ~83-91 ms total at that size — enough to
+materially understate OpenSSL's real throughput and understate the true gap to `uacrypt`. At 1 GiB
+(102.4x the payload, 3 iterations), the same ~40 ms spawn cost is under 1% of each multi-second call
+— confirmed by re-measuring: OpenSSL's reported MB/s roughly **doubled** between the 10 MiB and 1 GiB
+passes while `uacrypt`'s own numbers stayed flat (expected, since `--iterations` runs in one process
+and was never affected by this). The table below is the corrected, spawn-neutralized 1 GiB version;
+the intermediate 10 MiB figures are not kept as a second table since they're a strictly worse
+measurement of the same thing, not a different one worth publishing alongside. **On the Raspberry
+Pi, this confound was already negligible at 10 MiB** (~3.6 ms/spawn, N=20, against multi-second CMS
+calls) — the Pi row below is a separate 1 GiB re-run for size-parity with the dev-machine row, not
+because its 10 MiB number needed correcting.
 
-| | `uacrypt` (`crypto_box`) | OpenSSL CMS (`prime256v1` + AES-256-CBC) |
-|---|---|---|
-| seal/encrypt (MB/s) | **8.84** | **37.34** |
-| open/decrypt (MB/s) | **10.72** | **35.36** |
+| | `uacrypt` `crypto_box` (l(p)=256) | OpenSSL CMS `prime256v1` + AES-256-CBC | `uacrypt` `crypto_box512` (l(p)=512) | OpenSSL CMS `brainpoolP512r1` + AES-256-CBC |
+|---|---|---|---|---|
+| seal/encrypt MB/s — dev machine (1 GiB) | **16.32** | **205.59** | **15.01** | **205.27** |
+| open/decrypt MB/s — dev machine (1 GiB) | **16.98** | **296.45** | **15.95** | **317.12** |
+| seal/encrypt MB/s — Raspberry Pi (100 MiB) | **12.37** | **19.09** | **12.35** | **19.19** |
+| open/decrypt MB/s — Raspberry Pi (100 MiB) | **12.44** | **12.47** | **12.41** | **18.49** |
 
-OpenSSL is ~4.2x faster sealing, ~3.3x faster opening, at 10 MiB — a real gap, not an artifact of the
-mismatched primitive-level table above (that table's ~similar order-of-magnitude ops/s numbers only
-hold for the sub-millisecond, EC-only cost; they say nothing about bulk throughput). For context, not
-further chased this session: this project's own `hazmat::kalyna_gcm::Kalyna256_256Gcm` alone reaches
-17.09 MB/s at 10 MiB (Kalyna-GCM's own 256-256 row, above) — `crypto_box`'s ~8.84/10.72 sit at roughly
-half that, meaning most of the gap is `crypto_secretstream`/`crypto_box`'s own per-call framing and
-allocation overhead layered on top of the underlying cipher, not the two KEM scalar multiplications
-(sub-millisecond, negligible at 10 MiB) or the block cipher itself.
+- **MB/s is essentially flat between `l(p)=256` and `l(p)=512` on `uacrypt`'s side, and close on
+  OpenSSL's** — the expected and discriminating result: `crypto_box512` reuses the identical bulk
+  path (D-182 deliberately fixed the KEM seed at 32 bytes/256 bits, not `l(p)=512`'s full 424-bit
+  capacity, precisely so `Kupyna256Kdf` → `crypto_secretstream` carries over unchanged), and the two
+  KEM scalar multiplications are sub-millisecond and negligible against a gigabyte-scale bulk
+  operation. `uacrypt`'s own ~6-9% spread between the two sizes here (vs. ~1-2% at 10 MiB, N=10) is
+  attributable to the smaller N=3 sample at this payload size, not a size-dependent cost — not chased
+  further, out of scope for a measurement table.
+- **Dev machine: OpenSSL is substantially faster at both sizes** — ~12.6-13.7x sealing, ~17.5-19.9x
+  opening. This is the corrected, true gap: the 10 MiB pass previously published here (~7.5-8.7x) was
+  itself an underestimate caused by process-spawn overhead dominating OpenSSL's short per-call time,
+  not a separate finding to reconcile. For context: `hazmat::kalyna_gcm::Kalyna256_256Gcm` alone
+  reaches 17.09 MB/s at 10 MiB (this doc's own Kalyna-GCM 256-256 row) — `crypto_box`/`crypto_box512`
+  sit right at that ceiling, meaning `crypto_secretstream`/`crypto_box`'s own per-call framing and
+  allocation overhead adds little on top of the underlying cipher; essentially all of the gap to
+  OpenSSL traces to the symmetric bulk-encryption layer, not the KEM. See the algorithmic
+  investigation below for where that gap actually comes from.
+- **Raspberry Pi: OpenSSL is faster but by a much smaller margin than on the dev machine** —
+  roughly 1.0-1.55x across the four cells (as close as a near-tie on `prime256v1` decrypt: 12.47 vs.
+  `uacrypt`'s own 12.44), not the dev machine's ~12.6-19.9x. Measured at 100 MiB (not 1 GiB — the Pi's
+  `/dev/mmcblk0p2` is a 28G card that hit 100% full mid-run at 1 GiB, freed by deleting the scratch
+  payloads before re-running smaller; 100 MiB is still ~2500x the Pi's own ~3.6 ms spawn-overhead
+  floor found in T-194, so this confound stays neutralized at this size too) — the dev-machine and
+  Pi rows are at different payload sizes for this reason, both individually spawn-overhead-clean,
+  not a hidden regime mismatch. This is the same qualitative platform reversal already documented for
+  Kalyna/Kupyna vs. UAPKI on this Pi (`[[raspberry-pi-uacipher]]`, D-33) and already noted in T-194's
+  own 10 MiB pass — not root-caused further here either, see the symmetric-layer decomposition below
+  for where the dev-machine gap traces to (the same ISA-level argument likely applies on the Pi too,
+  though ARM has its own separate AES hardware instruction, AES-256 encryption/decryption, which
+  would make this comparison a smaller ISA gap there than on x86-64 — not independently confirmed
+  this session).
 
-**Reproducing (same-regime)**:
+**Reproducing (same-regime, 1 GiB)**:
 ```
-openssl ecparam -name prime256v1 -genkey -noout -out ec.key
-MSYS_NO_PATHCONV=1 openssl req -new -x509 -key ec.key -out ec.crt -days 1 -subj "/CN=test"
-openssl rand -out payload.bin 10485760
-# time N iterations of each, e.g. N=10:
-openssl cms -encrypt -binary -recip ec.crt -aes-256-cbc -in payload.bin -out payload.p7 -outform DER
-openssl cms -decrypt -binary -inkey ec.key -recip ec.crt -in payload.p7 -inform DER -out payload.dec
+openssl ecparam -name prime256v1 -genkey -noout -out ec256.key
+openssl ecparam -name brainpoolP512r1 -genkey -noout -out ec512.key
+MSYS_NO_PATHCONV=1 openssl req -new -x509 -key ec256.key -out ec256.crt -days 1 -subj "/CN=test"
+MSYS_NO_PATHCONV=1 openssl req -new -x509 -key ec512.key -out ec512.crt -days 1 -subj "/CN=test"
+openssl rand -out payload.bin 1073741824
+# time N iterations of each, e.g. N=3 (openssl cms has no internal iteration flag):
+openssl cms -encrypt -binary -recip ec256.crt -aes-256-cbc -in payload.bin -out payload256.p7 -outform DER
+openssl cms -decrypt -binary -inkey ec256.key -recip ec256.crt -in payload256.p7 -inform DER -out payload256.dec
+openssl cms -encrypt -binary -recip ec512.crt -aes-256-cbc -in payload.bin -out payload512.p7 -outform DER
+openssl cms -decrypt -binary -inkey ec512.key -recip ec512.crt -in payload512.p7 -inform DER -out payload512.dec
 # uacrypt side, same payload, one process, N iterations built in:
-target/release/uacrypt box-keygen --out box.key
-target/release/uacrypt box-pubkey --key box.key --out box.pub
-target/release/uacrypt box-seal --key box.pub --in payload.bin --out payload.box --iterations 10
-target/release/uacrypt box-open --key box.key --in payload.box --out payload.unbox --iterations 10
+target/release/uacrypt box-keygen --out box256.key && target/release/uacrypt box-pubkey --key box256.key --out box256.pub
+target/release/uacrypt box-keygen512 --out box512.key && target/release/uacrypt box-pubkey512 --key box512.key --out box512.pub
+target/release/uacrypt box-seal --key box256.pub --in payload.bin --out payload256.box --iterations 3
+target/release/uacrypt box-open --key box256.key --in payload256.box --out payload256.unbox --iterations 3
+target/release/uacrypt box-seal512 --key box512.pub --in payload.bin --out payload512.box --iterations 3
+target/release/uacrypt box-open512 --key box512.key --in payload512.box --out payload512.unbox --iterations 3
+```
+
+#### Where the gap actually comes from: symmetric-layer decomposition — T-194 follow-up (owner-requested)
+
+The two tables above answer "how much slower" but not "at which layer" — owner-requested follow-up,
+`advisor()` consulted first and gave the actual redirect that shaped this section: an EC-layer
+investigation was the wrong axis, because at bulk-message scale the two KEM scalar multiplications
+are ~0.3 ms each against a multi-second call (~0.001% of total time) — cheap enough that *any*
+EC-side optimization (windowing, a fixed-base precomputed table) is structurally incapable of moving
+the MB/s number in the table above, regardless of how much faster it made the EC math. The real
+question is which of `crypto_box`'s three composed layers (KEM, `crypto_secretstream` framing,
+Kalyna-GCM itself) actually accounts for the gap to OpenSSL, mirrored against CMS's own layers
+(ASN.1/cert envelope, AES-256-CBC itself) — settled by measuring each layer in isolation rather than
+reasoning about it.
+
+**Method**: dev machine, 100 MiB payload (not 1 GiB — light enough to avoid the Raspberry Pi's own
+disk-space ceiling hit while collecting these numbers, still ≥250x the ~40 ms spawn-overhead floor
+established above, so still fully spawn-neutralized), same `-binary`/`cmp`-round-trip discipline.
+`uacrypt encrypt`/`decrypt` is `crypto_secretstream` alone, no KEM at all (D-68); `uacrypt kalyna-gcm
+... --variant 256-256` is Kalyna-GCM alone, no streaming framing (D-56); `openssl enc -aes-256-cbc
+-K <hex> -iv <hex>` is raw AES-256-CBC alone, no CMS/ASN.1/certificate envelope.
+
+| Layer | Encrypt/seal MB/s | Decrypt/open MB/s | Payload |
+|---|---|---|---|
+| `crypto_box` (full: KEM + KDF + `crypto_secretstream`) | 16.32 | 16.98 | 1 GiB |
+| `crypto_secretstream` alone (no KEM) | 15.30 | 11.37 | 100 MiB |
+| Kalyna-GCM 256-256 alone (raw cipher **+ AEAD tag**, no streaming framing) | 14.25 | 15.90 | 100 MiB |
+| Kalyna-XTS 256-256 alone (raw cipher, **no tag/MAC at all**) | 163.82 | 155.55 | 100 MiB |
+| OpenSSL CMS (full: ASN.1 + cert + ECDH-KDF + AES-256-CBC) | 205.59 | 296.45 | 1 GiB |
+| OpenSSL raw AES-256-CBC alone (`openssl enc`, no envelope) | 261.78 | 402.44 | 100 MiB |
+
+**Correction, same session, owner pushback ("в нас калина була сотні мегабайт на секунду")**: the
+first version of this table stopped at Kalyna-GCM and concluded "Kalyna itself is the ceiling,"
+attributing the ~14-16 MB/s figure to the block cipher and framing it as an AES-NI-vs-no-hardware-
+instruction ISA gap. **That attribution was wrong, and the owner's memory was right** — this
+project's own Kalyna cipher reaches ~155-164 MB/s at bulk scale (confirmed via `kalyna-xts`, which
+has no authentication tag at all — pure block-cipher throughput, `--variant 256-256`, same 100 MiB
+payload, same machine). Adding `kalyna-xts` to this table the moment the owner's number didn't match
+the writeup's own claim is what caught the error — the ~14-16 MB/s figure was Kalyna-GCM specifically,
+and this project already has a fully root-caused, on-the-record explanation for why GCM is ~10x
+slower than the bare cipher, found independently in an earlier session and not reconnected to this
+investigation until now: **`hazmat::gf2m_wide`'s GF(2^m) field multiply — the DSTU 7624 GCM/GMAC
+tag's own accumulator, `docs/DECISIONS.md` D-56 divergence 3, one real multiply per block against
+the actual field element `H`, not a fixed sparse constant like XTS's tweak-doubling — was isolated-
+timing-measured at 89.6% (m=128) to 94.3% (m=512) of GCM's entire per-block cost** (T-125/D-76,
+2026-07-26; already improved once there, ~1.8-2.3x, by replacing a bit-serial schoolbook multiply
+with a 4-bit-window comb method — the published post-fix 256-256 GCM number, 17.09-17.17 MB/s at
+10 MiB, is what this session's own 14.25-15.90 MB/s number matches, within normal N=5-vs-N=50/
+payload-size noise, not a new regression). **This session's error was framing, not a new bug**: it
+correctly measured Kalyna-GCM, but mis-attributed GCM's own known, separately-documented tag-multiply
+bottleneck to "the cipher" and then to "an ISA gap with no lever available" — exactly backwards, since
+T-125/D-76 already found and partially fixed a real, non-ISA, algorithmic lever in this exact spot,
+and the doc comment in `gf2m_wide.rs` itself says so.
+- **Kalyna-GCM's own GF(2^256) tag multiply, not the block cipher and not the KEM/framing, is the
+  ceiling on our side.** `crypto_box`'s full stack (16.32/16.98 MB/s from the main table above) is
+  not measurably slower than bare Kalyna-GCM (14.25/15.90) — confirming the ~0.001%-of-call-time KEM
+  estimate empirically — but bare Kalyna-GCM is itself ~10x slower than the bare cipher with no tag
+  (163.82/155.55 via XTS). The one real framing cost found on top of GCM: `crypto_secretstream`'s own
+  decrypt path runs ~28% slower than raw Kalyna-GCM's own decrypt (11.37 vs 15.90 MB/s) — reproduced
+  independently at both 1 GiB and 100 MiB, so a real, repeatable asymmetry, not noise — a genuine
+  small finding for a future `crypto_secretstream` decrypt-path investigation, but far too small to
+  explain the overall gap to OpenSSL on its own.
+- **AES-256, not CMS's envelope, is the ceiling on OpenSSL's side, and by a wide margin.** Raw
+  `openssl enc` (261.78/402.44 MB/s) is *faster* than full CMS (205.59/296.45 MB/s) — CMS's own
+  ASN.1/certificate/ECDH-KDF envelope costs OpenSSL real throughput too (~21-27%), proportionally
+  similar to `crypto_secretstream`'s own framing tax on us. This also answers the I/O-vs-crypto-bound
+  question `advisor()` raised about the CMS numbers above: if 205-296 MB/s were an I/O ceiling rather
+  than a crypto one, raw `openssl enc` on the same disk/OS would have hit the same ceiling — instead
+  it goes materially faster, so CMS's own envelope overhead (not disk I/O) explains the difference.
+- **The dominant term is Kalyna-GCM's software GF(2^256) tag multiply (~10x slower than the bare
+  cipher) vs. AES-GCM's own GHASH — which, on any x86-64 CPU built since ~2010, runs on a dedicated
+  hardware instruction (`PCLMULQDQ`, carry-less multiply), not software.** This is a genuine ISA gap,
+  but at the *authentication-tag* layer specifically, not the block cipher: `hazmat::kalyna`'s own
+  cipher (`fused` profile, D-38/D-39) is already competitive — Kalyna-XTS's ~155-164 MB/s sits in the
+  same order of magnitude as AES-NI-off software AES (272-380 MB/s, this doc's own "Kalyna vs. AES"
+  table above) rather than the ~18-27x gap the first version of this section claimed. This project has
+  already spiked and closed two Kalyna round-function rewrite investigations with no code change
+  (T-129/D-88, T-139/D-87) — the cipher itself is not the open question. **The tag multiply is a
+  different, more promising target that T-125/D-76 already validated as real and already partially
+  fixed once**: `hazmat::gf2m_wide::poly_mul_wide`'s 4-bit-window comb method was never compared
+  against a hardware carry-less-multiply instruction (`PCLMULQDQ` on x86-64, `PMULL` on AArch64) —
+  unlike the Kalyna-cipher case, this is not a closed investigation, it is an unexplored lever with a
+  precedent (AES-GCM's own GHASH uses exactly this instruction for exactly this reason) — see
+  `docs/TASKS.md` T-195 "Tier 1" for the corrected recommendation.
+
+**Reproducing**:
+```
+openssl rand -out payload.bin 104857600
+KEY=$(openssl rand -hex 32); IV=$(openssl rand -hex 16)
+# raw AES-256-CBC, no envelope:
+openssl enc -aes-256-cbc -K $KEY -iv $IV -in payload.bin -out payload.aesenc
+openssl enc -d -aes-256-cbc -K $KEY -iv $IV -in payload.aesenc -out payload.aesdec
+# Kalyna-GCM alone, no streaming framing:
+target/release/uacrypt kalyna-gcm encrypt --variant 256-256 --key gcmkey.bin --nonce nonce.bin --in payload.bin --out payload.enc --tag tag.bin --iterations 5
+target/release/uacrypt kalyna-gcm decrypt --variant 256-256 --key gcmkey.bin --nonce nonce.bin --in payload.enc --out payload.dec --tag tag.bin --iterations 5
+# Kalyna-XTS alone, no tag/MAC at all - isolates the bare cipher from GCM's own tag-multiply cost:
+target/release/uacrypt kalyna-xts encrypt --variant 256-256 --key xtskey.bin --tweak tweak.bin --in payload.bin --out payload.xtsenc --iterations 5
+target/release/uacrypt kalyna-xts decrypt --variant 256-256 --key xtskey.bin --tweak tweak.bin --in payload.xtsenc --out payload.xtsdec --iterations 5
+# crypto_secretstream alone, no KEM:
+target/release/uacrypt keygen --out sym.key
+target/release/uacrypt encrypt --key sym.key --in payload.bin --out payload.enc
+target/release/uacrypt decrypt --key sym.key --in payload.enc --out payload.dec
 ```

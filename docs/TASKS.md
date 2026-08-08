@@ -2564,7 +2564,7 @@ item they point to is later removed.
       (one auto-reformat applied, not reverted, per the project's own linter-output convention);
       `no_std`/`alloc` build clean. `hazmat`/`no_std` Kani/miri harnesses untouched by this task
       (`crypto_box512` is `std`-gated, same as `crypto_box`).
-- [ ] **T-194** **Not started, owner-requested 2026-08-08. Was blocked on T-193, now unblocked -
+- [x] **T-194** **Done 2026-08-08, owner-requested. Was blocked on T-193, now unblocked -
       T-193 done.** Combined
       `l(p)=256`/`l(p)=512` performance table for `crypto_box`/`crypto_box512`, per owner's explicit
       choice (both sizes in one table, full `seal`/`open` regime, not a narrower hazmat-only
@@ -2596,6 +2596,215 @@ item they point to is later removed.
       **Platform scope**: dev machine (Ryzen) **and** the Raspberry Pi
       (`[[raspberry-pi-uacipher]]`/`.claude.local.md`) - owner explicitly asked for the Pi row too
       via `AskUserQuestion` this session, not dev-machine-only like T-179's original table.
+
+      **T-194 done 2026-08-08 - see `docs/PERFORMANCE.md`'s "DSTU 9041 / `crypto_box` +
+      `crypto_box512`" section (T-179/T-194) for the full tables/methodology, `advisor()`
+      consulted before starting per its own recommendation.** Both `l(p)=256` and `l(p)=512`
+      re-measured fresh this session (old T-179 numbers not reused); dev-machine + Pi both
+      confirmed via a fresh `cargo build --release -p uacrypt` and `--help | grep 512` before any
+      number was trusted (the Pi's `tar`+`ssh`-synced copy had no `crypto_box512` at all until
+      re-synced this session, since T-193 landed the same day). `openssl speed ecdh` confirmed
+      `brainpoolP512r1` present on both machines (no `secp521r1` fallback needed); `openssl cms`
+      confirmed to round-trip through `brainpoolP512r1` before timing anything. Two discriminating
+      sanity checks both passed: MB/s at 10 MiB is flat between `l(p)=256`/`l(p)=512` on both
+      `uacrypt` and OpenSSL's side (confirms `crypto_box512` genuinely reuses the D-182 bulk path,
+      not a measurement artifact), and primitive-level ops/s drops substantially (~6.5-8x) from
+      `l(p)=256` to `l(p)=512` (confirms the KEM work is actually inside the timed loop, not
+      hoisted out, D-80's failure shape). The two-scalar-mult-per-call caveat was independently
+      re-derived against `curve512.rs`/`encryption512.rs` directly, not assumed to carry over from
+      the `l(p)=256` write-up - same shape confirmed. New finding not in the original task text:
+      OpenSSL's own `openssl.exe` process-spawn overhead is roughly half of each Windows
+      dev-machine CMS call's own wall-clock time (~40 ms of an ~83-91 ms 10 MiB call), but
+      negligible on the Pi (~3.6 ms) - Linux process creation being far cheaper than Windows',
+      explaining part of why the dev machine and Pi disagree on which side wins (OpenSSL ~7.5-8.7x
+      faster on the dev machine, `uacrypt` roughly competitive - within ~10-20% - on the Pi, the
+      same kind of platform reversal already seen for Kalyna/Kupyna vs. UAPKI, D-33) - not
+      root-caused further, out of this measurement task's own scope. `cargo xtask docs-check`
+      clean. **Not done this pass, flagged for the owner instead**: the gh-pages landing page
+      (`index.html`, separate worktree/branch, `C:\Users\Pa\AppData\Local\Temp\uacrypt-ghpages`)
+      has its own stale `crypto_box` perf line ("~3.3-4.2x slower [...] the raw elliptic-curve math
+      alone is close to parity") and an outdated "the standard also defines 384/512/768-bit
+      variants, not yet implemented" note (now wrong for `l(p)=512` since T-192/T-193) - both
+      predate this task, not introduced by it, but surfaced by this session's grep sweep; left
+      unedited since a published-site edit felt like it needed explicit sign-off rather than a
+      silent same-pass fix, unlike `docs/PERFORMANCE.md`/this file.
+- [x] **T-195** **Done (plan only, no code changed) 2026-08-08, owner-requested follow-up to T-194.**
+      Owner asked two things: (1) re-run the `crypto_box`/`crypto_box512` MB/s comparison with a
+      large enough payload to neutralize `openssl.exe`'s own process-spawn overhead (T-194's 10 MiB
+      pass had this confound; see `docs/PERFORMANCE.md`'s corrected table), and (2) investigate *why*
+      this project is slower than OpenSSL with an actual algorithmic-complexity breakdown ("де ми
+      платимо, де не платить опенссл") and draft an improvement plan mirroring the `fused`/
+      `small-tables` space-vs-speed precedent ("так само як із смол тейблс, буде оця реалізація -
+      повільна і перфоманс").
+
+      **Payload-size history this session**: started at 1 GiB (fully neutralizes spawn overhead,
+      confirmed - OpenSSL's reported MB/s roughly doubled vs. the 10 MiB pass once neutralized), but
+      the Raspberry Pi ran out of disk space mid-run at that size (`[[raspberry-pi-uacipher]]`'s
+      `/dev/mmcblk0p2` is a 28G card, was already at 100% after the 1 GiB scratch files) - owner then
+      asked to drop to 100 MiB instead and clean up scratch files on both machines afterward.
+      100 MiB is still ~2500x the ~40 ms dev-machine spawn-overhead floor, so it stays fully
+      neutralized; freed the Pi's disk (`rm` on the 1 GiB scratch files, `df` confirmed 4.2G
+      recovered) before re-running there. **`docs/PERFORMANCE.md`'s main `crypto_box` table keeps its
+      already-good 1 GiB dev-machine numbers** (redoing already-correct, already-neutralized
+      measurements just to shrink the file would have been pure waste) **and gets its Pi row filled
+      in at 100 MiB instead** (both sizes independently confirmed spawn-neutralized, so mixing them
+      across the two machine columns is an honest, explicitly-labeled choice, not a hidden regime
+      mismatch). All scratch payload/output files deleted on both machines after use (dev machine:
+      `rm payload1g* payload100m* payload10m* ...` in the scratchpad `perf194` dir; Pi: same, plus the
+      benchmark shell script self-deletes its own scratch files at the end of its run) - `~/perf194`
+      on the Pi now holds only the small persistent keys/certs, not any of the multi-hundred-MB
+      payloads.
+
+      **`advisor()` consulted before the complexity investigation and gave the load-bearing
+      redirect**: the EC/KEM layer was the wrong axis entirely. At bulk-message scale the two KEM
+      scalar multiplications cost ~0.3 ms each against a multi-second call (~0.001% of total time,
+      confirmed against this task's own primitive-level ops/s table) - no EC-side optimization could
+      move the bulk MB/s number, no matter how much faster it made the EC math. Also: at the
+      primitive level this project is *already ahead* of OpenSSL's field-matched curve (`box-seal`
+      3355.93 ops/s vs. `brainpoolP256r1`'s 2906.0, while doing two scalar mults per call to their
+      one) - the EC layer is not where the gap is. Redirected to decompose the *symmetric* layer
+      instead, and separately flagged that the CMS 1 GiB numbers might be an I/O ceiling rather than
+      a crypto one, needing a raw-cipher check to rule out.
+
+      **Tier 1 (explains the owner's actual MB/s number) - symmetric-layer decomposition, done and
+      published, corrected mid-session after owner pushback**: see `docs/PERFORMANCE.md`'s "Where the
+      gap actually comes from" subsection (T-194 follow-up) for the full table/method and the
+      correction note. **First version of this analysis was wrong**: it stopped at Kalyna-GCM
+      (14.25/15.90 MB/s) and concluded "Kalyna itself is the ceiling, an AES-NI-vs-no-hardware-
+      instruction ISA gap" - the owner pushed back ("в нас калина була сотні мегабайт на секунду"),
+      correctly, from memory. Adding a `kalyna-xts` row (no authentication tag at all - pure block
+      cipher, same variant/payload) caught it: the bare cipher reaches **163.82/155.55 MB/s**, ~10x
+      faster than Kalyna-GCM. **The actual bottleneck is Kalyna-GCM's own GF(2^256) authenticated-tag
+      multiply** - `hazmat::gf2m_wide`'s field multiply, the GCM/GMAC accumulator against the real
+      field element `H` (D-56 divergence 3) - already isolated-timing-measured at 89.6% (m=128) to
+      94.3% (m=512) of GCM's entire per-block cost in an *earlier* session (T-125/D-76, 2026-07-26,
+      already improved once there, ~1.8-2.3x, via a 4-bit-window comb multiply) that this session
+      failed to reconnect to before writing the first version of this analysis - this session's own
+      14.25-15.90 MB/s number matches the already-published post-T-125-fix 256-256 GCM number
+      (17.09-17.17 MB/s at 10 MiB) within normal sampling noise, so it was a correct measurement with
+      a wrong causal story attached, not a new bug. **Corrected conclusion**: `crypto_box`'s full
+      stack (16.32/16.98 MB/s) is not measurably slower than bare Kalyna-GCM, confirming the KEM/
+      framing are not the ceiling as before - but Kalyna-GCM itself is ~10x slower than the bare
+      cipher specifically because of its tag multiply, not because Kalyna the cipher lacks hardware
+      support. Symmetrically, raw `openssl enc -aes-256-cbc` (261.78/402.44 MB/s) being faster than
+      full CMS (205.59/296.45 MB/s) still answers `advisor()`'s I/O-vs-crypto-bound question the same
+      way as before (a real crypto/envelope gap, not an I/O ceiling). One small, real, secondary
+      finding, unaffected by the correction: `crypto_secretstream`'s own decrypt path runs ~28%
+      slower than raw Kalyna-GCM's own decrypt, reproduced independently at both 1 GiB and 100 MiB -
+      a genuine small `crypto_secretstream` decrypt-path question worth a future look, but far too
+      small to explain the overall gap on its own.
+
+      **Tier 1 recommendation, corrected: the Kalyna-cipher-vs-AES-NI framing is retired - the cipher
+      itself (~155-164 MB/s via XTS) is not the open question, and this project's own T-129/D-88 and
+      T-139/D-87 already closed that specific investigation with no code change.** The real, corrected
+      lever is the GCM/GMAC tag's own field multiply, and unlike the cipher question, **this is not a
+      closed investigation** - `hazmat::gf2m_wide::poly_mul_wide`'s 4-bit-window comb method (T-125's
+      own fix) was never compared against a hardware carry-less-multiply instruction (`PCLMULQDQ` on
+      x86-64, `PMULL` on AArch64), which is exactly the mechanism AES-GCM's own GHASH uses on any
+      x86-64 CPU built since ~2010 - a real, unexplored, precedented lever, not a dead end. **Not
+      picked up as code this session** (a genuine new investigation - target-feature detection,
+      `no_std`-compatibility of any `core::arch` intrinsics used, a fallback path for targets without
+      the instruction, and its own `--emit=asm`/spike pass per T-129/T-139's standing precedent -
+      needs its own scoping and `advisor()` consultation, not folded into this task's close-out).
+      Document the corrected gap as: cipher vs. cipher is a modest, already-investigated, largely-
+      closed gap (same class as the already-published Strumok-vs-AVX2-ChaCha20 ~1.6-1.7x gap); tag
+      multiply vs. hardware GHASH is the real, larger, and still-open ISA-level lever.
+
+      **Tier 2 (the owner's actual "smol tables" analogy, and the right frame for the primitive-level
+      table specifically - real, but does not move the bulk MB/s number, per the redirect above) -
+      EC scalar-multiplication cost breakdown, plan only, no code changed**:
+      - Read directly (`crates/dstu-core/src/hazmat/dstu9041/curve256.rs`/`curve512.rs`), counted by
+        hand, not estimated: `scalar_multiply` is a fixed 256-iteration (512 at `l(p)=512`) double-
+        and-select loop with **no separate doubling formula** - every iteration does an
+        unconditional double (`acc.add(acc)`) *and* an unconditional candidate add (`acc.add(base)`),
+        both routed through the same general "complete" projective addition law (Додаток Б.4),
+        counted at **13 field multiplications per point operation** (`zz`, `b=square`, `c`, `dd`,
+        `e=d*c*dd` (2), `cross`, `x_r` (3), `y_r` (2), `z_r` - 13 total). 256 iterations x 2 ops x 13
+        mults = **6656 field multiplications per `l(p)=256` scalar-multiply call**, no windowing/NAF.
+        `fp512.rs`'s 8-limb `wide_mul` (64 inner products vs. `fp256.rs`'s 4-limb/16) combined with
+        512 iterations (2x) closely matches this task's own measured ~6.5-8x ops/s drop from
+        `l(p)=256` to `l(p)=512` - the measured primitive-level gap is explained by this, not a
+        separate mystery. `fp{256,512}.rs`'s modular reduction already exploits the friendly
+        `p = 2^{256,512} - C` pseudo-Mersenne shape (cheap, not a target). `square()` calls
+        `multiply(self, self)` with no dedicated squaring routine (a well-known ~30-40% multiply-
+        count reduction is available and unclaimed here - the smallest, lowest-risk lever if this is
+        ever picked up). `invert()` (Fermat via `pow_mod`, ~512 field ops) is called once per
+        `scalar_multiply` in `to_affine` - ~7-8% of one call's cost, a real but secondary lever.
+      - OpenSSL's own generic (non-assembly-optimized) EC path - confirmed via a direct source read
+        of `crypto/ec/ec_mult.c` this session, not assumed from memory: constant-time single-scalar
+        multiplication (the ECDH-shaped operation `openssl speed ecdh` measures) uses a Montgomery-
+        ladder-with-conditional-swaps (`ossl_ec_scalar_mul_ladder`), and - the confirmed structural
+        difference from this project's own code - `EC_POINT_dbl`/`EC_POINT_add` are **separate**,
+        curve-method-specific formulas "potentially using different formulas for efficiency," i.e. a
+        dedicated (cheaper) doubling exists there that this project's unified formula doesn't have.
+        **Exact OpenSSL Jacobian-formula multiplication counts were NOT independently re-derived this
+        session** (would need reading the actual brainpool-specific C path/asm, not just the
+        dispatcher) - flagged explicitly as unverified, per this project's own "read the actual asm
+        before proposing a fix" standing rule (T-129/T-139 precedent). The qualitative fact (a real,
+        dedicated doubling formula gap) is confirmed; the exact quantitative multiplier is not, and
+        any future implementation work must close that gap with a real spike before committing to a
+        rewrite, not before this plan.
+
+      **Both blockers this task was told to gate on (see T-193's own Phase-0-style caution) are now
+      resolved or explicitly scoped**:
+      1. *Is Додаток Б.4's addition-law formula normative (must-use-literally) or descriptive (one
+         correct way to compute the group law)?* **Resolved while researching this task, from the
+         project's own `docs/pseudocode/dstu9041.md`**: clause 6.12 (scalar multiplication)'s own
+         transcription states the standard's own text disclaims its literal textbook double-and-add
+         as side-channel-unsafe *as written* and directs implementers to a real citation (Joye & Yen,
+         "The Montgomery Powering Ladder," CHES 2002) instead - meaning any correct, constant-time
+         scalar-multiplication algorithm (windowed, ladder, or otherwise) already satisfies the
+         standard, not just a literal transcription of 6.12. Separately, Додаток Б.4's projective
+         formula is one concrete implementation of the *same* addition law already given in affine
+         form immediately above it in the same document - any provably-equivalent formula (extended
+         coordinates, a dedicated doubling formula, etc.) computes the identical mathematical point
+         addition, so swapping the specific field-operation sequence stays "per Додаток Б.4" in the
+         sense the citation requirement cares about (what operation is computed, not which exact
+         sequence of field ops implements it) - the same principle already applied to choosing
+         schoolbook vs. any other correct multiplication algorithm for the underlying `F_p` math.
+         Record as its own `docs/DECISIONS.md` entry if this plan is ever picked up - resolved here,
+         not yet written down as a citable decision.
+      2. *Does a windowed/precomputed scheme's secret-indexed table lookup need its own documented
+         exception?* **Still open, not resolved by this task.** D-19's Kalyna S-box/MDS carve-out is
+         scoped specifically to that case and does not automatically extend to a new EC-scalar-mult
+         table - a real `docs/DECISIONS.md` entry is required before any implementation, not just an
+         assumption that D-19 already covers it.
+
+      **Concrete levers, if this plan is ever picked up (ordered by effort/risk, smallest first)**:
+      1. Dedicated squaring routine in `fp256.rs`/`fp512.rs` - lowest risk, fully isolated, no
+         windowing/table-lookup question at all, ~30-40% fewer multiplications in every `square()`
+         call.
+      2. Fixed-width windowed scalar multiplication (e.g. a 4-bit window) with a constant-time
+         table-indexed lookup, replacing today's bit-by-bit ladder - **the natural home for the
+         owner's own "smol tables" analogy**: extend the *existing* `dstu-core/small-tables` Cargo
+         feature (already governing Kalyna/Kupyna/Strumok and DSTU 4145's `verify`,
+         `docs/resource-profiles.md`) rather than inventing a new flag, same default-fast/opt-in-
+         small polarity as every other primitive already on it - `fused` gets the windowed/
+         precomputed path, `small-tables` keeps today's zero-precompute ladder. Blocked on open
+         blocker 2 above.
+      3. A fixed-base precomputed table specifically for `base_point()` (used by every `seal`'s
+         `R = epsilon * G`, and by DSTU 4145 signing's own base-point multiplication) - the single
+         biggest per-call win available, since it only benefits fixed-base multiplication, not
+         `seal`'s second, variable-base `T = epsilon * Q`. Same blocker as above.
+      4. A dedicated (cheaper) doubling formula distinct from the general addition law - the largest
+         but most invasive change: touches the proven-complete/branch-free correctness argument for
+         both E256/1 and E512/1, needs its own completeness proof, not just a speed patch. Lowest
+         priority of the four.
+
+      **Verification requirements before any of this ships (existing project rules, not new ones,
+      restated here so a future implementer doesn't have to rediscover them)**: the existing Додаток
+      Г worked-example tests check the *result* of point addition/scalar multiplication, not the
+      algorithm, so they remain valid oracles regardless of which formula computes it - no new oracle
+      needed, but every existing test must still pass unchanged. A fresh Kani-tractable-subset check
+      for whatever new bounded operations are added (mirroring `fp256.rs`/`fp512.rs`'s existing
+      `conditional_sub_p`/`select`/`add`/`sub`/`reduce_wide` proofs). Per T-129/T-139's own precedent:
+      a genuine `--emit=asm`/`criterion` spike *before* committing to any rewrite, not after -
+      "the hypothesis was wrong" is a complete, valuable outcome there, not a failure to route
+      around.
+
+      **Status: plan only, no code changed this session.** Owner to decide whether/which levers to
+      greenlight, and whether Tier 1's ISA-gap investigation is ever worth opening as its own
+      separately-scoped task.
 - [x] **T-188** **Done 2026-08-07, owner-requested.** SonarCloud Quality Gate was
       `ERROR` on `new_duplicated_lines_density` (3.0% actual vs. `<=3%` required) - missed in T-187's
       own SonarCloud check because that check only queried `api/issues/search` (rule-violation
