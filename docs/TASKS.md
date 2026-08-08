@@ -2407,6 +2407,13 @@ item they point to is later removed.
       remain out of scope, per this task's own plan. Wiring `l(p)=512` into `crypto_box`/`uacrypt`
       is a separate future task (T-178/D-169's own precedent for `l(p)=256`).
 
+      **Post-push CI check (2026-08-08)**: `gh run list` on commit `6565272` showed `sonarcloud`
+      FAILED - a real `new_duplicated_lines_density` gate failure (22.1% vs. 3% threshold), not the
+      already-fixed T-188 missing-wait false negative. Root cause: the new `l(p)=512` sibling
+      modules genuinely duplicate their `l(p)=256` counterparts textually (87-93% on the field/curve
+      pair). Owner chose (via AskUserQuestion) to exclude these eight files from Sonar's CPD check
+      rather than refactor into a shared generic - see `docs/DECISIONS.md` D-181.
+
       **Phase 0 - curve parameter transcription/verification (prerequisite, blocks everything else).**
       `docs/pseudocode/dstu9041.md` line 172 flags that Table В.3 (`λ=255`, the `l(p)=512` row) "exist
       in the scan but their first entries were not independently arithmetically verified this pass" -

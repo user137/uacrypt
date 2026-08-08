@@ -12083,3 +12083,29 @@ worked example exists anywhere in the standard, D-168). **Not done in this task,
 scope per its own plan**: wiring `l(p)=512` into `crypto_box`/`uacrypt` (T-178/D-169's own precedent
 was a separate task after `l(p)=256`'s `hazmat` layer landed - same split applies here, a future
 task if wanted).
+
+## D-181: T-192 follow-up - SonarCloud Quality Gate failed post-push on genuine new-code duplication between the `l(p)=256`/`l(p)=512` sibling modules; excluded from CPD, not refactored
+
+`gh run view` on the T-192 push (`6565272`) showed `sonarcloud` as the one failing job - not the
+missing-`sonar.qualitygate.wait=true` false-negative T-188 already fixed, a real
+`new_duplicated_lines_density` gate failure: 22.1% actual vs. 3% threshold, 1759 new duplicated
+lines (`api/qualitygates/project_status?projectKey=user137_uacrypt&branch=master`, cross-checked
+per-file via `api/measures/component_tree`). Entirely the eight new/existing `hazmat::dstu9041`
+files: `fp256.rs`/`fp512.rs` (87%/83%), `curve256.rs`/`curve512.rs` (92%/93%),
+`message.rs`/`message512.rs` (67%/63%), `encryption.rs`/`encryption512.rs` (65%/75%) - the `l(p)=512`
+modules were deliberately written as byte-width "direct siblings" of their `l(p)=256` counterparts
+(D-177/D-178/D-179/D-180), so this is real, expected textual overlap, not a false positive.
+
+**Owner decision (asked via AskUserQuestion, not assumed)**: exclude these eight files from Sonar's
+duplication check (`sonar.cpd.exclusions` in `sonar-project.properties`) rather than merging them
+into a shared const-generic implementation. Rejected the generic-merge alternative for this pass -
+nontrivial refactor risk to already-vector-verified, dual-oracle-checked crypto primitives, for a
+metric that is a code-hygiene proxy, not a correctness or security concern here (each pair differs
+in real, load-bearing ways: limb count, constant values, array widths - copy-shaped, not
+copy-pasted-and-untested). Matches the project's own established pattern of per-size sibling modules
+elsewhere (Kalyna's per-block-size variants) that predate Sonar ever flagging this, since no prior
+pair of `dstu9041` modules existed simultaneously to trigger CPD before this task.
+
+Re-check this exclusion's continued justification if `l(p)=384` is ever added (a third sibling set)
+or if a future generic-merge refactor is ever undertaken for unrelated reasons - don't assume this
+decision is permanent, it was scoped to "not now," not "never."
