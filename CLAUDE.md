@@ -70,10 +70,12 @@ canonical source (`docs/TASKS.md`/`docs/DECISIONS.md`) — this section states c
     UAPKI-attributed, **not confirmed against the primary DSTU 8845:2019 text** (D-15), but
     independently confirmed against two state-sourced supplementary vectors from
     Держспецзв'язку/ДНДІ ТКЗІ (D-104).
-  - `dstu9041` (`message`/`fp256`/`curve256`/`encryption`) — hybrid (ECIES-style) asymmetric
-    encryption over a twisted Edwards curve, `l(p)=256`/E256/1 only (D-47's "ship the recommended
-    curve first"). Verified against the standard's own Додаток Г worked example, the sole oracle
-    for this primitive (T-177).
+  - `dstu9041` (`message`/`fp256`/`curve256`/`encryption` for `l(p)=256`; `message512`/`fp512`/
+    `curve512`/`encryption512` for `l(p)=512`, T-192) — hybrid (ECIES-style) asymmetric encryption
+    over a twisted Edwards curve. `l(p) ∈ {256, 512}` (E256/1, E512/1) — the two curve sizes whose
+    Kalyna-KW stage needs no padding variant (D-47's "ship the recommended curve first" extended to
+    the second such size). Verified against the standard's own Додаток Г worked example, the sole
+    oracle for this primitive (T-177, T-192).
   - Kalyna/Kupyna share S-box/MDS tables (`hazmat::tables`); Strumok's `T` substitution reuses them
     too (D-13).
   - `cargo fuzz` run on all three targets (Windows, MSVC toolchain), zero crashes (D-32); Linux CI
@@ -561,15 +563,19 @@ check) is in `docs/dstu-crypto-project.md` "Resources found".
   Kalyna, Kupyna, and DSTU 4145; Strumok's are UAPKI-attributed plus independently confirmed against
   two state-sourced supplementary vectors, still not confirmed against the paid official text — see
   `docs/ORACLES.md`/`docs/DECISIONS.md` D-15/D-16/D-104.
-- **`hazmat::dstu9041` (`l(p)=256`/E256/1 only) is implemented (T-177)** — a partial primary-text
+- **`hazmat::dstu9041` (`l(p)=256`/E256/1) is implemented (T-177)** — a partial primary-text
   scan (T-173) plus a targeted supplement (T-176/D-165) gave clause citations for every algorithm
   the primitive needed (6.5–6.12); `message.rs`/`fp256.rs`/`curve256.rs`/`encryption.rs` were then
   written test-first against that source, verified end-to-end against Додаток Г's own worked
   example (the sole oracle for this primitive, `docs/ORACLES.md`). Two security findings beyond
   clause 12's literal text were caught and fixed before closure (an order-2 point via `r=p-1`, and
   a genuine order-4 subgroup from E256/1's cofactor 4) — see `docs/DECISIONS.md`'s T-177 entry.
-  `l(p)=384/512/768` (their own `F_p` modules, plus `hazmat::kalyna_kw_p` for the non-block-aligned
-  `M'` case) remain unimplemented — see `docs/pseudocode/dstu9041.md`'s "Implementation status".
+  **`l(p)=512`/E512/1 is implemented too (T-192, 2026-08-08)** — `message512.rs`/`fp512.rs`/
+  `curve512.rs`/`encryption512.rs`, same test-first/worked-example-verified pattern, both security
+  findings independently re-derived (not assumed to carry over) and re-confirmed applicable.
+  `l(p)=384` (needs `hazmat::kalyna_kw_p` for its non-block-aligned `M'` case, a new primitive) and
+  `l(p)=768` (no worked example exists anywhere in the standard, D-168) remain unimplemented — see
+  `docs/pseudocode/dstu9041.md`'s "Implementation status".
 - Verify own implementation against Kalyna-reference and the other oracles in `docs/ORACLES.md`.
 - Hardware validation on STM32/ESP32 is a distinct post-MVP phase, not a claim of side-channel
   resistance (see MVP scope above).

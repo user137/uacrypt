@@ -1,0 +1,28 @@
+{
+  "algorithm": "DSTU 9041:2020 recommended curve E512/1",
+  "security_level_lambda": 255,
+  "l_p_bits": 512,
+  "source": "docs/papers/DSTU_9041-2020_Part of.pdf, Table B.3 (first entry), pages 20-21 of that scan - see docs/pseudocode/dstu9041.md and docs/DECISIONS.md D-176 for the verification methodology (page-image transcription at 400 DPI, decimal-to-hex cross-check via independent Python bignum conversion, not OCR text alone)",
+  "curve_equation": "x^2 + a*y^2 = d*x^2*y^2 + 1 (mod p) - twisted Edwards with x/y swapped relative to the textbook a*X^2+Y^2=1+d*X^2*Y^2 form, see docs/pseudocode/dstu9041.md",
+  "p_hex": "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC95",
+  "a": 2,
+  "d_hex": "10D",
+  "n_hex": "400000000000000000000000000000000000000000000000000000000000000028A3CE52209E2BD4952882D5574165192C46C0D0311FEA6BF9FECE70EE63B59F",
+  "base_point": {
+    "x_hex": "5230A1EE747050A072BD7319741586EA520388B6B53094571C821A2FC9A9E83D56665346B5DB04C43E75261DBDA512728FAAFAC48AE9260A5A184E2933E3A400",
+    "y_hex": "53A0D50CC63C9219762F451978AEF214DBCFCC3A5CB5EF27124991A86B42B3A1A832724A0E6B930FDD1DA2E27A540D6B675E4422C444F529C508F0BAE7D0A85"
+  },
+  "verified_checks": [
+    "p is prime (real Miller-Rabin, 40 rounds, 2026-08-08 T-192 Phase 0)",
+    "n is prime (real Miller-Rabin, 40 rounds, 2026-08-08 T-192 Phase 0)",
+    "p mod 8 == 5",
+    "p == 2^512 - 875 (a small subtrahend, same pseudo-Mersenne-adjacent shape as l(p)=256's p == 2^256 - 435 - confirmed, not assumed, before choosing fp512's reduction strategy)",
+    "base point satisfies the curve equation mod p",
+    "n * base_point == neutral element (1, 0) - confirms n is the base point's true order, computed via a from-scratch Python port of curve256.rs's own Dodatok B.4 addition law",
+    "cofactor independently re-derived (not copied from E256/1's Finding 2): #E(F_p) is the unique multiple of 2n inside the Hasse interval for k up to 20 - k=4 again, same result as E256/1 but re-checked, not assumed"
+  ],
+  "not_verified": [
+    "Dodatok G.3's own l(p)=512 worked-example round trip (encrypt/decrypt with a real message) - deferred to T-192 Phase 4, once encryption512.rs (or its generic equivalent) exists to run it against",
+    "Table B.3's other entries (E512/2 through E512/5+) - out of scope, same 'only the first curve per level' precedent as Table B.1 (clause 7.2 makes none of them mandatory)"
+  ]
+}

@@ -8,6 +8,10 @@
 //! precedent already applied to `hazmat::dstu4145`.
 
 pub mod curve256;
+pub mod curve512;
 pub mod encryption;
+pub mod encryption512;
 pub mod fp256;
+pub mod fp512;
 pub mod message;
+pub mod message512;

@@ -2335,6 +2335,151 @@ item they point to is later removed.
       at the running-code level, not just inferred from reading source.
       **Next: draft the private disclosure itself for the owner's own review before anything is sent
       anywhere** - not this project's call to make unilaterally, per D-91.
+- [x] **T-192** **Done 2026-08-08, owner-requested.** Add `l(p)=512` support to
+      `hazmat::dstu9041` (E512/1) - the second curve size after `l(p)=256` (T-177/D-167), following
+      the same phased, test-first, `advisor()`-reviewed pattern T-177 used (per this project's own
+      Tier C precedent: no new primitive gets written from a "small parameter tweak" assumption).
+      `advisor()` itself was unreachable when this plan was drafted (tool returned unavailable) -
+      re-consult before Phase 1 code is written, don't treat this plan as pre-reviewed.
+
+      **Why 512 next, not 384**: per `docs/pseudocode/dstu9041.md`'s Table 1, `l(p)=512` uses plain
+      Kalyna-512/512-**KW** (`M'` lands exactly 512 bits, no padding) - `Kalyna512_512Kw` already
+      exists (`hazmat::kalyna_kw.rs:261`), confirmed by grep this session, so no new cipher-mode
+      primitive is needed. `l(p)=384` needs Kalyna-256/256-**KW-p**, a padding variant
+      (`hazmat::kalyna_kw_p`) that does not exist yet - strictly more work, its own future task, not
+      this one. `l(p)=768` stays permanently blocked - no worked example exists anywhere in the
+      standard for it (D-168), so it lacks even the one oracle DSTU 9041 has ever had.
+
+      **Phase 0 done 2026-08-08 - see `docs/DECISIONS.md` D-176.** E512/1's curve parameters
+      transcribed from Table В.3's own page images and independently verified (decimal->hex
+      cross-check, real 40-round Miller-Rabin primality on both `p` and `n`, `P` confirmed on-curve,
+      `n*P == NEUTRAL` via a from-scratch port of `curve256.rs`'s own addition law). Confirmed
+      `p = 2^512 - 875` (`p mod 8 = 5`, same congruence `fp256.rs`'s `sqrt` formula needs - carries
+      over, checked not assumed) and cofactor 4 (independently re-derived via the Hasse-interval
+      method, not copied from E256/1's Finding 2). Phase 1 (`fp512.rs`) unblocked, starting now.
+
+      **Phase 1 done 2026-08-08 - see `docs/DECISIONS.md` D-177.** `fp512.rs` implemented as a
+      direct 8-limb sibling of `fp256.rs`, test-first (`tests/dstu9041_field_512.rs`, 31 tests,
+      confirmed failing to compile before `fp512.rs` existed, all pass unmodified after). New
+      `tests/vectors/dstu9041/curve-E512-1.json` holds D-176's verified curve parameters so the
+      field test's `p_hex()` reads from it rather than a hardcoded copy. `cargo clippy --all-
+      features -- -D warnings`/`fmt --check`/`no_std` (`--no-default-features --features alloc`)
+      build all clean; Kani proofs added mirroring `fp256.rs`'s own tractable subset, not yet
+      run locally (D-102), CI is the real venue. Phase 2 (`curve512.rs`) next.
+
+      **Phase 2 done 2026-08-08 - see `docs/DECISIONS.md` D-178.** `curve512.rs` implemented as a
+      direct sibling of `curve256.rs`, test-first (`tests/dstu9041_curve_512.rs`, 14 tests,
+      confirmed failing to compile before `curve512.rs` existed). Two real `BASE_Y`/`ORDER_N`
+      byte-transcription bugs from hand-deriving the `[u8; 64]` arrays were caught by the test
+      suite itself (`n_times_base_point_is_neutral` et al. failing), not by review - fixed by
+      regenerating both arrays programmatically from D-176's verified decimal integers instead of
+      re-deriving by hand a second time. `point_from_x` closes Finding 1/2 the same unified way
+      `curve256.rs`'s current shape does (subgroup-membership check catches both). `cargo clippy
+      --all-features -- -D warnings`/`fmt --check`/`no_std` build all clean. Phase 3 (message
+      formatting) next - `advisor()` still unavailable this session, proceeding with a
+      `message512.rs` sibling (consistent with `fp512.rs`/`curve512.rs`'s own precedent) rather
+      than genericizing `message.rs`, re-visit if a stronger reason to genericize appears.
+
+      **Phase 3 done 2026-08-08 - see `docs/DECISIONS.md` D-179.** `message512.rs` implemented,
+      test-first (`tests/dstu9041_message_512.rs`, 9 tests). `format_m_tilde`/`encode_l_m_tilde`/
+      `build_m_prime`/`parse_m_prime` follow directly from clauses 5.7/5.8/Table 1 with no
+      ambiguity. `kw_plaintext_from_m_prime` marked **provisional** - ports `l(p)=256`'s confirmed
+      "append one all-zero block" convention as a working hypothesis, not yet vector-confirmed
+      against a Додаток Г.3 worked example (none transcribed yet). `cargo clippy --all-features
+      -- -D warnings`/`fmt --check`/`no_std` build all clean. Phase 4 next: find/transcribe
+      Додаток Г.3, confirm or correct the provisional KW convention, write `encryption512.rs`.
+
+      **Phase 4 done 2026-08-08 - see `docs/DECISIONS.md` D-180. T-192 fully closed.** Found
+      Додаток Г.3 (physical pages 32-35 of the scan). Caught the same "e=25 is hex (=37 decimal),
+      not decimal" trap `g1-worked-example.json` had already documented for `l(p)=256` - hit it
+      independently before noticing that prior note. Verified `R`/`Q`/`T`/`kappa`/`H` all match the
+      document's own printed hex **exactly** (computed via this crate's own already-tested
+      `curve512`/`message512`, not hand-transcribed digit-by-digit - the D-163/D-166 risk class).
+      Confirmed the Phase 3 "M' || one zero block" hypothesis correct (matches the document's `t`
+      to within 2 of 384 hex digits, same already-documented printing-erratum pattern
+      `g1-worked-example.json` found for `l(p)=256` - not chased further given three other
+      zero-digit-difference matches on the same page). `encryption512.rs` implemented, test-first
+      (`tests/dstu9041_encryption_512.rs`, 20 tests mirroring `dstu9041_encryption.rs`'s four
+      categories), all pass including the full worked-example encrypt/decrypt round trip. Full
+      `cargo test -p dstu-core --lib --tests` (whole crate, not just the new files) clean;
+      clippy/fmt/`no_std` all clean. `hazmat::dstu9041` now supports `l(p) in {256, 512}`.
+      `l(p)=384` (needs `hazmat::kalyna_kw_p`) and `l(p)=768` (no worked example exists, D-168)
+      remain out of scope, per this task's own plan. Wiring `l(p)=512` into `crypto_box`/`uacrypt`
+      is a separate future task (T-178/D-169's own precedent for `l(p)=256`).
+
+      **Phase 0 - curve parameter transcription/verification (prerequisite, blocks everything else).**
+      `docs/pseudocode/dstu9041.md` line 172 flags that Table В.3 (`λ=255`, the `l(p)=512` row) "exist
+      in the scan but their first entries were not independently arithmetically verified this pass" -
+      unlike Table В.1 (`l(p)=256`), which got the full stroke-counted transcription D-163/D-166
+      describe. Before any Rust is written: re-read Table В.3's page image directly (`pdftoppm` PNG,
+      per D-163's method), transcribe `p`/`a=2`/`d`/`n`/`P`, and apply the exact same
+      character-run-counting discipline D-163/D-166 already learned the hard way (a `p`/`n` erratum
+      from a miscounted `F`/`0` run sat undetected for two sessions in the `l(p)=256` case) - do not
+      assume this size is exempt just because it's a second pass at the same document. Cross-check
+      the transcribed `p` for primality (real Miller-Rabin, not a 3-base Fermat check, same fix D-166
+      already applied once) and cross-check `P` against Додаток Г.3's own worked example (`ε·P`,
+      `ε·Q` computations) the same way `l(p)=256`'s Додаток Г.1 served as its check.
+
+      **Phase 1 - `fp512.rs`.** Inspect the transcribed `p`'s actual bit structure once Phase 0 lands
+      before choosing a reduction strategy - `fp256.rs`'s Solinas-style reduction exploited
+      `2^256≡435 (mod p)` specifically because `p=2^256-435` has that pseudo-Mersenne-adjacent shape;
+      do not assume the `l(p)=512` prime has an equally convenient form without checking - fall back
+      to generic Barrett/Montgomery reduction if it doesn't. Same API shape as `fp256.rs`
+      (`multiply`/`square`/`invert` via Fermat/`sqrt`+`euler_criterion` via `p≡5 (mod 8)` if that
+      congruence still holds for this `p` - verify, don't assume/`pow_mod` fixed-iteration
+      constant-time ladder, iteration count matching this `p`'s actual bit length).
+
+      **Phase 2 - `curve512.rs`.** Same twisted-Edwards curve shape as `curve256.rs` (`a=2` fixed,
+      the same x/y-role-swap relative to Bernstein-Lange - Додаток В's own convention, not size-
+      dependent), Додаток Б.4's complete addition law, fixed-iteration `scalar_multiply`.
+      **Independently re-derive the cofactor and small-subgroup structure for E512/1 - do not port
+      Finding 2's "cofactor 4" conclusion from E256/1 by assumption.** D-167's Finding 2 proof
+      (`#E(F_p)` is the unique multiple of `2n` inside the Hasse interval, checked exhaustively for
+      small `k`) is a general method, not a size-specific result - re-run it against this curve's own
+      `p`/`n`. Likewise re-derive whether `r=p-1` (or any other small closed-form `r`) reconstructs an
+      order-2/order-4 point outside `⟨P⟩` for this curve's own parameters (Finding 1) - the *shape* of
+      both findings likely recurs (same curve family, same construction), but the concrete guard
+      conditions must be re-proved against E512/1's own numbers, not copy-pasted from `curve256.rs`.
+
+      **Phase 3 - message formatting for `l(p)=512`.** `message.rs` is currently hardcoded to
+      `l(p)=256` (`L_MAX_P=200` bits, `L_H_BYTES=4`, fixed `[u8; 32]` `M'` - confirmed by reading the
+      file this session). For `l(p)=512`: `l_max(p)=424` bits, `l_H=64` bits (8 bytes), `M'` totals
+      exactly 512 bits = 64 bytes (`8 + 64 + 16 + 424`, matching the KW no-padding row). Decide in
+      this phase whether to genericize `message.rs` (const-generic over `M_TILDE_BYTES`/`L_H_BYTES`)
+      or add a sibling `message512.rs` - a real design choice, not a foregone one; consult
+      `advisor()` on it given both `fp256.rs`/`curve256.rs` and the message layer would otherwise
+      diverge in shape (siblings) vs. converge (generics) for the first time this project has had two
+      instances of a parametrized primitive to compare.
+
+      **Phase 4 - `encryption512.rs` (or its generic equivalent per Phase 3's decision).** Clauses
+      11/12 composition, wired to `Kalyna512_512Kw` (no new KW-p work, per the "why 512 next" note
+      above). Verify end-to-end against Додаток Г.3 - the sole oracle for this primitive, same
+      "no independent DSTU 9041 reference implementation exists anywhere" caveat D-167 already
+      recorded, re-confirmed at this task's own closure too, not assumed still true from memory.
+
+      **Every phase**: test-first per `docs/DECISIONS.md`'s standing D-64/D-65 rejection/misuse
+      discipline, plus the T-183/D-173 4th "active-attack" category (invalid-curve, twist,
+      boundary-seed inputs - `docs/TASKS.md`'s own memory note on this) since this is exactly the
+      asymmetric/EC primitive class that category was written for. `advisor()` consultation before
+      Phase 1 (blocked on Phase 0 landing) and after Phase 2/3 findings, same cadence T-177 used
+      (before Phase 2, after Phase 3/4, at closure) - re-attempt the tool each time rather than
+      treating today's outage as permanent.
+
+      **QA gate** (mirrors T-177's own closure exactly, D-167): full-workspace
+      `clippy --all-features -- -D warnings`/`fmt --check`; scoped `cargo +nightly miri test -p
+      dstu-core --test dstu9041_field_512 --test dstu9041_curve_512 --test dstu9041_encryption_512
+      --test dstu9041_message` (or the generic equivalent's test file names) with
+      `PROPTEST_CASES` cut down per this project's own Miri-speed gotcha (`CLAUDE.md`'s "Agent
+      discipline"); Kani proofs for `fp512.rs`'s bounded field ops (`select`/`conditional_sub_p`/
+      `add`/`sub`/`reduce_wide`), same tractable subset `fp256.rs`'s Kani harness already covers, not
+      full `multiply` symbolic equivalence (D-112's already-established intractability for this
+      multiplier-equivalence class). Kani cannot run on this Windows dev machine (D-102) - CI is the
+      real venue, verify its actual conclusion via `gh run view`, never assume from a green badge
+      (`CLAUDE.md`'s own standing rule).
+
+      **Explicitly out of scope for this task**: wiring `l(p)=512` into `crypto_box` or the `uacrypt`
+      CLI (T-178/D-169 did this separately for `l(p)=256`, after `hazmat::dstu9041` itself landed -
+      same split here, a later task if wanted); `l(p)=384`/`768` (see "why 512 next" above).
 - [x] **T-188** **Done 2026-08-07, owner-requested.** SonarCloud Quality Gate was
       `ERROR` on `new_duplicated_lines_density` (3.0% actual vs. `<=3%` required) - missed in T-187's
       own SonarCloud check because that check only queried `api/issues/search` (rule-violation

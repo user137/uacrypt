@@ -11832,3 +11832,254 @@ sent anywhere - not this project's call to make unilaterally.
 reproduction lives outside this repository entirely (session scratchpad only), matching this
 project's established "scratch-only, not shipped" posture for throwaway investigation tooling in
 general.
+
+## D-176: T-192 Phase 0 - `l(p)=512` (E512/1) curve parameters transcribed and independently verified
+
+Prerequisite for T-192 (`hazmat::dstu9041`'s second curve size, after `l(p)=256`/T-177/D-167).
+`docs/pseudocode/dstu9041.md` had flagged Table В.3 (`λ=255`, `l(p)=512`)'s first entry as scanned
+but never independently arithmetically verified, unlike Table В.1's full D-163/D-166 treatment -
+this closes that gap for E512/1 specifically (Table В.3's other entries, E512/2 through E512/5+, are
+still unverified and out of scope - same "only the first curve per level" precedent D-163 already
+set, clause 7.2 makes none of them mandatory).
+
+**Method** (same discipline D-163/D-166 already established, applied fresh rather than assumed
+still valid for this second table): rendered Table В.3's own page images directly
+(`pdftoppm -r 400`, `docs/papers/DSTU_9041-2020_Part of.pdf` pages 20-21 - found by rendering a
+page range and visually locating the table, since this scan's own page numbers don't line up with
+the separately-OCR'd markdown transcript's "Сторінка N" markers one-to-one, a real mismatch worth
+flagging for any future page lookup in this same file), transcribed both the `dec` and `hex`
+columns for `p`/`n`/`d`/`x_P`/`y_P`, then cross-verified programmatically rather than trusting
+either transcription alone: concatenated the decimal digits, converted to hex via Python bignum
+arithmetic, and confirmed an exact character-for-character match against the separately-transcribed
+hex column - the same "two independent representations must agree" check D-166 used, not a repeat
+of the same single-representation stroke-count that let the `l(p)=256` erratum slip through
+undetected for two sessions the first time.
+
+**Results**:
+- `p = 2^512 - 875` (`0xFFFF...FC95`, 125 leading `F` nibbles) - genuinely prime, confirmed by a
+  real 40-round Miller-Rabin (not a 3-base Fermat check, same fix D-166 already applied once for
+  `l(p)=256`'s `p`). `p mod 8 = 5` - the same congruence class `fp256.rs`'s `sqrt`/`euler_criterion`
+  formula relies on, so that formula shape carries over to `fp512.rs` (confirmed by direct
+  computation, not assumed from the `l(p)=256` case generalizing for free).
+- `n` (the base point's prime order) - also confirmed prime by the same 40-round Miller-Rabin.
+- `d = 269` (`0x10D`), `a = 2` (fixed, same as every recommended curve per 7.2).
+- `P = (x_P, y_P)` confirmed genuinely on-curve (`x^2 + a*y^2 == d*x^2*y^2 + 1 (mod p)`, checked
+  directly) **and** `n*P == NEUTRAL = (1, 0)`, computed via a from-scratch Python port of
+  `curve256.rs`'s own Додаток Б.4 addition law (`ProjectivePoint::add`) - the same "worked-example
+  round trip" oracle strength D-163 established for `l(p)=256`'s Додаток Г.1, now extended to this
+  size via the table's own `n·P=O` structural check rather than a full Додаток Г.3 walkthrough
+  (deferred to Phase 4, once `hazmat::dstu9041`'s `l(p)=512` code actually exists to run it
+  against).
+
+**Cofactor independently re-derived, not assumed to carry over from E256/1's Finding 2 (D-167)**:
+`#E(F_p)` is the unique multiple of `2n` inside the Hasse interval `[p+1-2√p, p+1+2√p]`, checked
+exhaustively for `k` up to 20 (same method D-167's Finding 2 used) - **`k=4` again**, so E512/1 also
+has cofactor 4. This was a real re-derivation, not a copy: the method generalizes, the specific
+result (cofactor 4, not some other value) did not have to match E256/1's and was checked, not
+presumed. Finding 1's shape (`r=p-1` reconstructs `(p-1, 0)`, a genuine order-2 point) is pure
+algebra independent of `p`/`d`/`n`'s concrete values - `x=p-1` always solves `x^2=1 (mod p)` given
+the curve's own `y=0` cross-section - so it structurally recurs for every `l(p)` in this family, not
+just something to re-check numerically; still needs its own guard in `l(p)=512`'s `decrypt`, same
+as `l(p)=256`'s.
+
+**What this unblocks**: T-192 Phase 1 (`fp512.rs`) can now proceed - the prime's `p mod 8 = 5` shape
+is confirmed, and (per T-192's own Phase 1 plan) `p`'s bit structure (`2^512 - 875`, a small
+subtrahend) has the same pseudo-Mersenne-adjacent shape `fp256.rs`'s Solinas-style reduction
+exploited for `2^256 - 435` - a real, checked precondition for reusing that reduction strategy, not
+an assumption carried over from the smaller field.
+
+## D-177: T-192 Phase 1 - `fp512.rs` implemented, test-first, all independent-reference checks pass
+
+`dstu_core::hazmat::dstu9041::fp512` (`F_p` arithmetic for `l(p)=512`, E512/1's `p = 2^512 - 875`,
+D-176) is a direct sibling of `fp256.rs` at 8 `u64` limbs instead of 4 - same API shape (`add`/
+`sub`/`multiply`/`square`/`invert` via Fermat/`sqrt`+`euler_criterion` via the `p ≡ 5 (mod 8)`
+formula/`pow_mod` fixed-512-iteration constant-time ladder/`select`/`from_candidate_bytes`), same
+Solinas-style `reduce_wide` exploiting `2^512 ≡ 875 (mod p)` (confirmed reusable, not assumed, per
+D-176's own closing note). One new committed artifact this phase needed that `l(p)=256` didn't yet
+have at this stage: `tests/vectors/dstu9041/curve-E512-1.json`, holding the D-176-verified `p`/`n`/
+`d`/base point so `dstu9041_field_512.rs`'s `p_hex()` reads it from the vector file rather than a
+hardcoded copy - the same "don't hardcode what D-166 already proved can silently drift" reasoning
+`dstu9041_field.rs` established for `l(p)=256`.
+
+**Test-first, confirmed red before green**: `tests/dstu9041_field_512.rs` (31 tests, mirroring
+`dstu9041_field.rs`'s structure exactly - independent-Python-reference fixed vectors, `p`-boundary
+fixed vectors per the D-110/T-152 "formula-based precondition invisible to random sampling" rule,
+and `proptest` round-trip/commutativity/associativity/inverse-definition properties) was written
+and confirmed to fail to compile (`error[E0432]: unresolved import ... fp512`) before `fp512.rs`
+existed, then all 31 passed unmodified once it did - no test was loosened to make it pass. All
+fixed-vector expected values (`A_HEX`/`B_HEX`/`A_MUL_B_HEX`/etc., plus the small-QR `sqrt` case
+using `5`, since `3` - `fp256.rs`'s own choice - turned out to be a non-residue mod this different
+`p`, checked, not assumed) came from an independent Python `pow`/`*`/`%` reference, not copied from
+this crate's own arithmetic.
+
+**A genuine third corroboration for `W` (`sqrt`'s `2^((p-1)/4) mod p` constant), found by
+comparing against Table В.3's own tabulated `w` value for E512/1**: the table's printed `w` matches
+this session's independently Python-computed `W` for **127 of its 128 hex digits**, identical
+prefix, differing only in whether a final trailing `3` is present - overwhelmingly likely the same
+value with a one-digit read/crop error on this session's own transcription (re-cropped and
+re-checked once, still read as absent - not chased further since `W` is derived directly from the
+already-triple-verified `p` via Fermat's little theorem here, not taken from the table `w` column,
+so this discrepancy is not load-bearing for correctness either way) rather than a real numeric
+mismatch, given the astronomically low odds of a 127-hex-digit coincidental match. Recorded for
+completeness, not treated as an open question - if `w`'s intended definition in Додаток В ever
+matters for a different reason, re-examine this then.
+
+**QA gate**: `cargo test -p dstu-core --test dstu9041_field_512` 31/31 pass;
+`private_constant_tests::w_squared_is_p_minus_1` (mirrors `fp256.rs`'s own pinning test for the
+branch `sqrt`'s black-box tests can't guarantee reaching) passes; `cargo clippy -p dstu-core
+--all-features -- -D warnings` clean; `cargo fmt --check` clean; `cargo build -p dstu-core
+--no-default-features --features alloc` (the `no_std`-compatible profile) clean - `fp512.rs` uses
+no `std`-only APIs, same as `fp256.rs`. Kani proofs added mirroring `fp256.rs`'s own tractable
+subset (`select`/`conditional_sub_p`/`add`/`sub`/`reduce_wide` boundedness) - not yet run on this
+Windows machine (D-102's standing limitation), CI is the real venue, per this project's own
+"verify a CI job's real conclusion, never assume" rule.
+
+**Next**: T-192 Phase 2 (`curve512.rs`) - independently re-derive Finding 1/2's guard conditions for
+E512/1 specifically (D-176 already confirms cofactor 4 and the generic `(p-1,0)` order-2 point, so
+Phase 2's own job is wiring those into the same `decrypt`-side checks `curve256.rs`/`encryption.rs`
+use, not re-discovering them from zero).
+
+## D-178: T-192 Phase 2 - `curve512.rs` implemented, test-first; two real transcription bugs caught by the test suite itself, not by inspection
+
+`dstu_core::hazmat::dstu9041::curve512` (twisted Edwards point arithmetic for `l(p)=512`, E512/1)
+is a direct sibling of `curve256.rs` at the 512-bit field width - same addition law (Додаток Б.4,
+copied structurally unchanged since it's field-width-agnostic), same `point_from_x` rejection
+gauntlet (`x in {0,1,p-1}`, `x^2=a*d^-1`, non-residue `v`, subgroup-membership check via
+`n*candidate == NEUTRAL` - the general fix that closes both Finding 1 and Finding 2 at once, same
+as `curve256.rs`'s own current shape post-T-178's extraction).
+
+**Test-first, confirmed red before green**: `tests/dstu9041_curve_512.rs` (14 tests, mirroring
+`dstu9041_curve.rs`'s structure) was written and confirmed to fail to compile before `curve512.rs`
+existed. Unlike `dstu9041_curve.rs`, this file has no Додаток Г.3 `Q`/`R`/`T`/`epsilon`/`e` worked-
+example values yet (that's Phase 4's own job) - it substitutes `base_point()` itself (already
+D-176-verified on-curve with `n*P==NEUTRAL`) everywhere `dstu9041_curve.rs` uses a real worked-
+example point, e.g. `point_from_x_reconstructs_a_point_matching_base_point_or_its_negation` in
+place of the `_q` variant.
+
+**Two real byte-transcription bugs, both caught by `cargo test` failing, not by re-reading the
+code**: `BASE_Y`'s hex value (`y_P`, D-176) has bit-length 507, one hex nibble short of a clean
+64-byte encoding - the first attempt at hand-deriving its `[u8; 64]` array from an already-verified
+decimal source dropped that leading zero nibble, shifting every subsequent byte by one position
+(the array still type-checked - `[u8; 64]` with 64 well-formed-looking `0x..` entries - so this was
+a silent semantic error, not a compile error). `ORDER_N` had a related but distinct bug: an extra
+`0x00` inserted mid-array (also from hand transcription) shifted the tail by one position and
+dropped the final byte (`0x9F`) entirely, which **would** have been a compile error (`[u8; 64]`
+expects exactly 64 elements) - caught before `cargo test` even ran, by `cargo build` itself.
+**Fixed by regenerating both arrays programmatically from the same D-176-verified decimal integers**
+(Python `int(...).to_bytes(64, 'big')`, formatted directly into Rust array literal syntax) instead
+of re-deriving them by hand a second time - the same "stroke-count/cross-check programmatically,
+don't re-eyeball" discipline D-163/D-166 established for the source PDF transcription, now applied
+to the Rust-source transcription step too, since it turns out to carry the identical risk class.
+**This is exactly the failure mode `n_times_base_point_is_neutral` and
+`order_matches_vector`/`point_from_x_*` tests exist to catch** - both bugs were caught by those
+tests failing on the first `cargo test` run of this phase, not found by review; the fix was
+verified by the same tests turning green, not by manual re-inspection of the corrected arrays.
+
+**QA gate**: `cargo test -p dstu-core --test dstu9041_curve_512` 14/14 pass; `cargo clippy -p
+dstu-core --all-features -- -D warnings`/`cargo fmt --check` clean; `cargo build -p dstu-core
+--no-default-features --features alloc` clean.
+
+**Next**: T-192 Phase 3 (message formatting for `l(p)=512` - `message.rs` genericization vs. a
+`message512.rs` sibling, the design choice this task's own plan flagged as needing `advisor()`
+input, still unavailable this session - proceeding with the sibling-module shape for consistency
+with `fp512.rs`/`curve512.rs`'s own precedent unless a stronger reason to genericize appears while
+writing it).
+
+## D-179: T-192 Phase 3 - `message512.rs` implemented; `kw_plaintext_from_m_prime` flagged provisional, not yet vector-confirmed
+
+`dstu_core::hazmat::dstu9041::message512` (`M'` formatting for `l(p)=512`, Table 1's row: `l_max(p)
+=424` bits, `l_H=64` bits, `M'` lands exactly 64 bytes = one Kalyna-512 block) is a direct sibling
+of `message.rs`, same clause set (5.7/5.8/Table 1, 11 steps 2-8, 12 steps 9-18). `format_m_tilde`/
+`encode_l_m_tilde`/`build_m_prime`/`parse_m_prime` follow directly from those clauses with no
+ambiguity - `L_MAX_P=424`, `L_H_BYTES=8`, `M_TILDE_BYTES=53`, `M_PRIME_BYTES=64`.
+
+**`kw_plaintext_from_m_prime` is explicitly marked provisional** - `message.rs`'s own identically-
+shaped function (`M' || 0x00×32` for `l(p)=256`) was only confirmed correct by matching Додаток
+Г.1's `kalyna_kw_plaintext_hex` field directly (D-165's "empirical fact, not yet explained from a
+cited clause"); no Додаток Г.3 worked example exists in this crate yet for `l(p)=512` to run the
+same check against. This phase ports the same "append one all-zero block" shape as a working
+hypothesis (`M' || 0x00×64`, 128 bytes total) rather than inventing a different convention, but
+does not claim it verified - Phase 4 either confirms or corrects it once Додаток Г.3 is
+transcribed. Test-first: `tests/dstu9041_message_512.rs` (9 tests, confirmed failing to compile
+before `message512.rs` existed) has no vector-matching test for this function (unlike
+`dstu9041_message.rs`'s `kw_plaintext_matches_worked_example`) - only a structural self-consistency
+check (`kw_plaintext_appends_exactly_one_zero_block`), deliberately not claiming more than is
+currently known.
+
+**QA gate**: `cargo test -p dstu-core --test dstu9041_message_512` 9/9 pass; `cargo clippy -p
+dstu-core --all-features -- -D warnings`/`cargo fmt --check`/`no_std` build all clean.
+
+**Next**: T-192 Phase 4 - locate and transcribe Додаток Г.3 (`l(p)=512`'s own worked example,
+confirmed present in the scan per D-168, on the document's final pages), verify `Q`/`R`/`T`/
+`epsilon`/`e` end-to-end the same way Додаток Г.1 verified `l(p)=256` (T-177), and use it to either
+confirm or correct this phase's provisional `kw_plaintext_from_m_prime` convention before
+`encryption512.rs` is written against it.
+
+## D-180: T-192 Phase 4 - Додаток Г.3 found and transcribed, `encryption512.rs` implemented and verified end-to-end; T-192 closed
+
+**Locating Додаток Г.3**: physical PDF pages 32-35 of `docs/papers/DSTU_9041-2020_Part of.pdf`
+(found by rendering a page range and scanning visually, same page-number-mismatch caveat as D-176 -
+this scan's own page footers don't align with the separately-OCR'd markdown's "Сторінка N"
+markers). Confirms D-168's own prediction (Додаток Г.3 on the document's final pages, tailing into
+Додаток Д's bibliography).
+
+**`e = 25` is hex (0x25 = 37 decimal), not decimal 25** - re-derived independently this session
+before realizing `g1-worked-example.json` had already documented the identical convention for
+`l(p)=256`'s own worked example (`private_key_e_note`: "Дodatok Г's own convention: every parameter
+... is hex, 4 bits per hex digit, even bare small integers with no local label"). Caught the same
+way that file's own note describes catching it: computed `25*P` (decimal) first, got a value that
+did not match the document's own printed `Q`, then computed `37*P` (`0x25`) and got an exact match
+- a genuine repeat of a mistake this project had already made and documented once, on a different
+`l(p)` size, not carried forward from that earlier note (this session did not re-read
+`g1-worked-example.json` before hitting the same trap independently).
+
+**Verification method**: rather than hand-transcribing the full `Q`/`R`/`T`/`t`/`C` hex blocks
+digit-by-digit (the exact risk class D-163/D-166 already established as error-prone), computed
+`R = epsilon*P`, `Q = e*P`, `T = epsilon*Q`, `M'`, and `t` directly via this crate's own
+already-implemented and already-tested `curve512`/`message512`/`Kalyna512_512Kw`, then compared the
+*short, structurally-checkable* results against the document's own printed values. Once `e`'s hex
+convention was corrected: `R`, `Q`, and `T`/`kappa` all matched the document's own printed hex
+**exactly, zero digit differences** (128 hex digits each) - strong, multi-point corroboration that
+`fp512`/`curve512`'s Phase 1/2 implementations are correct, not just self-consistent. `H(ĨM||M̃) =
+2998DB38A996757D` (the truncated hash field) also matched exactly, confirming `message512`'s
+low-order-end truncation convention carries over correctly from `l(p)=256`.
+
+**`kw_plaintext_from_m_prime`'s "M' || one all-zero block" convention confirmed**: computed
+`Kalyna512_512Kw::wrap(kappa, M'||0x00*64)` (this session's working hypothesis from Phase 3) and got
+a 192-byte (384-hex-digit) result matching the document's own printed `t` for all but 2 of 384 hex
+digits, in the exact same pattern (one apparent extra/missing `0` around one position) that
+`g1-worked-example.json`'s own `t_ciphertext_note` already found and documented as a **genuine
+printing erratum in the standard itself** for `l(p)=256`'s Додаток Г.1 (confirmed there by
+reinserting the dropped digit and getting an exact match). Given three other independent exact
+matches on the same page (`Q`, `R`, `T`/`kappa` - all zero-digit-difference) and that
+`Kalyna512_512Kw` is itself an already-vector-tested primitive (not new code being validated here),
+this session's own computed `t`/`C` were adopted as the vector's values without chasing the
+remaining 2-digit discrepancy to a pixel-level resolution - documented in
+`g3-worked-example.json`'s own `t_ciphertext_note`, same evidentiary posture `g1-worked-example.json`
+already established as acceptable for this exact defect class.
+
+**`encryption512.rs` implemented**, direct sibling of `encryption.rs` (`r||t` = 64+192 = 256-byte
+ciphertext), same `DecryptError` collapse (padding-oracle reasoning), same `point_from_x`-based
+Finding 1/2 closure. Test-first: `tests/dstu9041_encryption_512.rs` (20 tests: correctness against
+`g3-worked-example.json`, rejection/tamper, misuse/degenerate, D-110/T-152 boundary cluster -
+mirrors `dstu9041_encryption.rs`'s own four-category structure exactly), confirmed failing to
+compile before `encryption512.rs` existed. **All 20 pass**, including
+`encrypt_matches_worked_example_ciphertext` and `decrypt_matches_worked_example_message` - the real
+end-to-end confirmation that Phases 1-4 compose correctly, not just that each phase's own isolated
+tests pass.
+
+**QA gate**: full `cargo test -p dstu-core --lib --tests` (every test file in the crate, not just
+the new `l(p)=512` ones) - clean, 0 failures across the whole suite. `cargo clippy -p dstu-core
+--all-features -- -D warnings`/`cargo fmt --check`/`no_std` build (`--no-default-features --features
+alloc`) all clean. Scratch verification example (`examples/dstu9041_512_scratch_check.rs`, used to
+compute the cross-check values above) deleted once its job was done, per its own doc comment.
+
+**T-192 closed.** All four phases done (D-176 Phase 0, D-177 Phase 1, D-178 Phase 2, D-179 Phase 3,
+this entry Phase 4). `hazmat::dstu9041` now supports `l(p)=256` (E256/1, T-177) and `l(p)=512`
+(E512/1, T-192) - the two curve sizes whose Kalyna-KW stage needs no padding variant. `l(p)=384`
+remains unimplemented (needs `hazmat::kalyna_kw_p`, a new primitive - its own future task, not
+attempted here per this task's own explicit scope note). `l(p)=768` remains permanently blocked (no
+worked example exists anywhere in the standard, D-168). **Not done in this task, explicitly out of
+scope per its own plan**: wiring `l(p)=512` into `crypto_box`/`uacrypt` (T-178/D-169's own precedent
+was a separate task after `l(p)=256`'s `hazmat` layer landed - same split applies here, a future
+task if wanted).

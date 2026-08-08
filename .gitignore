@@ -25,6 +25,10 @@
 # redistribution restriction as the main scan/transcript above, same reason.
 /docs/papers/DSTU_9041-2020_supplement.pdf
 /docs/papers/DSTU_9041-2020_supplement_ocr.md
+# A redacted excerpt (signatures/official markings stripped) of the same purchased text above -
+# stripping the letterhead does not strip copyright over the substantive clause text it still
+# reproduces, so the same redistribution restriction applies. Never committed either.
+/docs/papers/DSTU_9041-2020_Part of.pdf
 
 # Oracle-harness build artifacts and fetched dependencies (Java/.NET) — fetched fresh via
 # Maven/NuGet at build time (see tests/oracle-harness/*/README or docs/TASKS.md "Infrastructure"),
