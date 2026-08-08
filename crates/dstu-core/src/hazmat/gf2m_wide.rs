@@ -691,7 +691,7 @@ mod kani_proofs {
 /// (no `-C target-feature=+...` override anywhere in `hazmat`) and would silently compile the
 /// hardware path out entirely, producing a false "no speedup" result instead of a missing one.
 #[cfg(all(test, target_arch = "x86_64"))]
-mod clmul_native {
+pub(crate) mod clmul_native {
     use std::arch::x86_64::{__m128i, _mm_clmulepi64_si128, _mm_set_epi64x, _mm_storeu_si128};
 
     /// `PCLMULQDQ`, imm8 `0x00` selects the low 64 bits of both 128-bit operands - exactly the two
@@ -708,19 +708,19 @@ mod clmul_native {
         (lo, hi)
     }
 
-    pub(super) fn feature_available() -> bool {
+    pub(crate) fn feature_available() -> bool {
         is_x86_feature_detected!("pclmulqdq")
     }
 
     /// # Safety
     /// Caller must have checked [`feature_available`] first.
-    pub(super) unsafe fn clmul64(a: u64, b: u64) -> (u64, u64) {
+    pub(crate) unsafe fn clmul64(a: u64, b: u64) -> (u64, u64) {
         clmul64_impl(a, b)
     }
 }
 
 #[cfg(all(test, target_arch = "aarch64"))]
-mod clmul_native {
+pub(crate) mod clmul_native {
     use std::arch::aarch64::vmull_p64;
 
     /// `PMULL` - gated by the `aes` target feature (ARM bundles `PMULL` into the same
@@ -734,13 +734,13 @@ mod clmul_native {
         (prod as u64, (prod >> 64) as u64)
     }
 
-    pub(super) fn feature_available() -> bool {
+    pub(crate) fn feature_available() -> bool {
         std::arch::is_aarch64_feature_detected!("aes")
     }
 
     /// # Safety
     /// Caller must have checked [`feature_available`] first.
-    pub(super) unsafe fn clmul64(a: u64, b: u64) -> (u64, u64) {
+    pub(crate) unsafe fn clmul64(a: u64, b: u64) -> (u64, u64) {
         clmul64_impl(a, b)
     }
 }

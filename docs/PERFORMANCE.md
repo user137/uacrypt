@@ -1705,18 +1705,79 @@ above.
 **Root cause, read from the code, not guessed**: `curve163.rs`'s own doc comment states its scalar
 multiplication "always runs the full 163 iterations" - a plain constant-time double-and-add ladder,
 deliberately not windowed/wNAF and with no precomputed multiples of the base point. OpenSSL's binary-
-curve implementation uses windowed scalar multiplication with precomputation. **This is not the same
-kind of gap as AES-NI/AVX2 above** - there's no CPU instruction-set asterisk to disclose here; it's
-an algorithmic difference (iteration count and precomputation strategy), consistent with this
-project's own MVP priority (`CLAUDE.md`: correctness first) and its documented constant-time
+curve implementation uses windowed scalar multiplication with precomputation. This is the *dominant*
+part of the gap - an algorithmic difference (iteration count and precomputation strategy), consistent
+with this project's own MVP priority (`CLAUDE.md`: correctness first) and its documented constant-time
 posture - a naive-but-constant-time ladder is the safe default this project chose over a
-potentially-faster-but-harder-to-verify windowed implementation, not an oversight.
+potentially-faster-but-harder-to-verify windowed implementation, not an oversight. **Corrected,
+T-196, same session as the CLMUL work above**: there *is* now a CPU instruction-set asterisk to
+disclose after all, just a secondary one, not the primary cause - see below.
+
+**T-196, owner-requested ("Ми можем ще десь застосувати апаратні команди... розшири покриття"):
+`hazmat::dstu4145::gf2m163` is `gf2m_wide`'s own T-195 question asked again, on the one other
+algorithm in this project that does GF(2^m) binary-field carry-less multiplication.** Two real
+findings, one abandoned mid-session for a security reason worth recording, not just a null result:
+
+- **A 4-bit-window comb-method software rewrite of `poly_mul_wide`** (`gf2m163`'s `poly_mul_wide`
+  was *still* the original right-to-left shift-and-add method - it never got `gf2m_wide`'s own
+  T-125 comb-method upgrade) **was implemented, fully tested (proptest + two fixed edge cases for
+  the m=163-is-not-a-multiple-of-4 top-nibble boundary), and then reverted before being kept as
+  production code.** Reason: the comb method needs a secret-indexed `T[nibble]` table lookup - an
+  acceptable trade for `gf2m_wide`'s GCM/GMAC tag (`H` is key-derived, not fresh secret data every
+  call, `docs/DECISIONS.md` D-76 already accepted this there) but not here: `gf2m163::multiply`
+  runs on `curve163::scalar_multiply`'s own secret-scalar intermediates (the signing nonce, the
+  private key) - exactly the case this module's own module-doc-comment design principle
+  ("**Branchless by construction**", no array indexing at all) exists to rule out, and exactly what
+  `docs/SECURITY.md`'s D-19 secret-indexing carve-out requires specific justification for, not a
+  default. Caught before landing, not after - the code and its tests were written, all green
+  (including the two `advisor()`-flagged edge cases), then discarded on review rather than shipped
+  with a side-channel regression on the highest-value secret in the whole project.
+- **The hardware-`clmul` spike (chosen instead, for exactly the reason above: no secret-indexed
+  memory access at all - `clmul64` is called for a fixed 9 `(i, j)` pairs unconditionally,
+  independent of operand bits, matching the module's own branchless design rather than trading
+  against it)**: measured, both architectures, same methodology as T-195's `gf2m_wide` spike
+  (schoolbook, correctness-proptested against the existing `poly_mul_wide` first, then timed
+  feeding the same production `reduce`):
+
+| Machine | `FieldElement::multiply()` software | hardware-`clmul` | Speedup |
+|---|---|---|---|
+| Dev machine (Ryzen 5 PRO 4650U, `PCLMULQDQ`) | 1264.6-1269.0 ns/op | 19.4-19.9 ns/op | **~64-65x** |
+| Raspberry Pi 5 (Cortex-A76, `PMULL`) | 1013.3 ns/op | 24.1-24.3 ns/op | **~42x** |
+
+  Both reproduced stably across repeated runs. The speedup is far larger than `gf2m_wide`'s own
+  6.35x/4.16x (T-195) because `gf2m163`'s *software* baseline never received the comb-method
+  upgrade in the first place (see above) - this number is hardware-vs-original-bit-serial, not
+  hardware-vs-already-optimized-software the way the GCM comparison was.
+
+  **What this does *not* tell you: the real sign/verify speedup, which is not measured this
+  session.** `curve163::scalar_multiply`'s own per-iteration ladder is genuinely multiply-heavy (8
+  `multiply()` calls vs. 7 `square()` calls per iteration, counted directly from `curve163.rs` -
+  the check `advisor()` asked for before writing any code, since a square-dominated function would
+  have made this lever small the way it is for `invert()`'s own 9-multiply/~162-square addition
+  chain) - so this is a real, usable lever, not a dead end. But `scalar_multiply` also calls
+  `invert()` two to three times for its own affine y-recovery step, and `invert()` is
+  square-dominated and does not go through `poly_mul_wide` at all (`square` uses the separate
+  `square_wide`/`spread32to64` bit-spread, unaffected by any of this). The real `sign`/`verify`
+  ops/s speedup this would produce is therefore meaningfully smaller than the raw ~64x/42x
+  `multiply()` number - genuinely between "negligible" and "large," not pinned down without either
+  wiring the hardware path into production (not done this session, same posture as T-195) or
+  building a dedicated `scalar_multiply`-level timing harness (also not done). **Not picked up as
+  production code** - lives in `gf2m163.rs`'s own `#[cfg(test)] mod clmul_spike`, reusing
+  `gf2m_wide`'s `clmul_native` module directly (widened from `pub(super)` to `pub(crate)` for this
+  reuse, the only production-visible change from this investigation) rather than a third
+  reimplementation of the same two architecture-specific intrinsics. A real landing needs the same
+  target-feature-detection/`no_std`/fallback design decision T-195 already scoped and left with the
+  owner - this doesn't resolve that, it just confirms the same lever exists here too, with an even
+  larger raw number and a real reason (not just caution) to have skipped the cheaper software
+  alternative.
 
 **Reproducing**: `openssl speed -elapsed -seconds 3 ecdsab163` / `ecdsap256` (no legacy provider or
 `ia32cap` tricks needed - both curves are in the default provider on this build). `uacrypt` side:
 `sign-keygen --out signing.key`, `sign-pubkey --key signing.key --out verifying.key`, a tiny
 (few-byte) `--in` file, then `sign --key signing.key --in msg.bin --out msg.sig --iterations 5000`
-and `verify --key verifying.key --in msg.bin --sig msg.sig --iterations 2000`.
+and `verify --key verifying.key --in msg.bin --sig msg.sig --iterations 2000`. T-196's own spike:
+`cargo test --release --lib dstu4145::gf2m163::clmul_spike::isolated_timing_clmul_vs_software_multiply -- --ignored --nocapture`
+(dev machine); same command over SSH on the Raspberry Pi, `~/cipher_ua` re-synced first.
 
 ### `verify`: classic vs. fast path (ops/s — higher is better) — T-151/D-108
 

@@ -417,3 +417,119 @@ mod kani_proofs {
         }
     }
 }
+
+/// T-196 Tier 1 hardware-`clmul` spike, `advisor()`-directed - measures whether `PCLMULQDQ`/
+/// `PMULL` would move `multiply()`'s real throughput, the same question already asked and
+/// measured for `hazmat::gf2m_wide` (`docs/TASKS.md` T-195). **Chosen over a 4-bit-window comb-
+/// method software rewrite of `poly_mul_wide`, which was implemented, tested, and then reverted
+/// this same session**: a comb method needs a secret-indexed `T[nibble]` table lookup - fine for
+/// `gf2m_wide`'s GCM/GMAC tag (`H` is key-derived, not a fresh secret every call, and `docs/
+/// DECISIONS.md` D-76 already accepted it there), but `gf2m163::multiply` runs on
+/// `curve163::scalar_multiply`'s own secret-scalar intermediates (the signing nonce, the private
+/// key) - exactly the case this module's own doc comment above (`**Branchless by construction**`)
+/// was written to rule out, and exactly what `docs/SECURITY.md`'s D-19 carve-out says a table
+/// lookup needs specific justification for, not a default. Schoolbook hardware `clmul` has no
+/// such cost: `clmul64` is called for every `(i, j)` pair unconditionally (9 calls, fixed loop
+/// bounds, no data-dependent indexing anywhere), and the instruction's own latency does not
+/// depend on its operand bits (that is the actual hardware property GHASH implementations rely
+/// on) - it is a strict improvement over the bit-serial baseline on both axes, not a speed-for-
+/// safety trade the way the comb method would have been.
+#[cfg(all(test, any(target_arch = "x86_64", target_arch = "aarch64")))]
+mod clmul_spike {
+    use super::poly_mul_wide;
+    use crate::hazmat::gf2m_wide::clmul_native::{clmul64, feature_available};
+    use proptest::prelude::*;
+
+    /// Schoolbook (not Karatsuba - checkable limb-by-limb) combination of 9 pairwise hardware
+    /// 64x64->128 carry-less multiplies - same limb-placement identity `poly_mul_wide`'s own
+    /// shift-and-add computes a different way, cross-checked against it directly below before any
+    /// timing is trusted.
+    fn schoolbook_clmul_poly_mul_wide(a: &[u64; 3], b: &[u64; 3]) -> [u64; 6] {
+        let mut out = [0u64; 6];
+        for i in 0..3 {
+            for j in 0..3 {
+                // Safety: every call site below checks `feature_available()` first.
+                let (lo, hi) = unsafe { clmul64(a[i], b[j]) };
+                out[i + j] ^= lo;
+                out[i + j + 1] ^= hi;
+            }
+        }
+        out
+    }
+
+    fn arb_narrow() -> impl Strategy<Value = [u64; 3]> {
+        prop::collection::vec(any::<u64>(), 3).prop_map(|v| {
+            let mut out = [0u64; 3];
+            out.copy_from_slice(&v);
+            // Stay below 2^163: constructors mask bit 163+, `poly_mul_wide` itself doesn't and
+            // relies on that invariant (see its own doc comment) - matches every real caller.
+            out[2] &= (1u64 << 35) - 1;
+            out
+        })
+    }
+
+    proptest! {
+        #[test]
+        fn clmul_poly_mul_wide_matches_software_reference(a in arb_narrow(), b in arb_narrow()) {
+            if !feature_available() {
+                return Ok(());
+            }
+            let hw = schoolbook_clmul_poly_mul_wide(&a, &b);
+            let sw = poly_mul_wide(&a, &b);
+            prop_assert_eq!(hw, sw);
+        }
+    }
+
+    #[test]
+    #[ignore]
+    fn isolated_timing_clmul_vs_software_multiply() {
+        if !feature_available() {
+            eprintln!("gf2m163: hardware clmul feature not available on this CPU, skipping");
+            return;
+        }
+        use std::hint::black_box;
+        use std::time::Instant;
+
+        const N: u32 = 2_000_000;
+        let a = [
+            0x1111_1111_1111_1111u64,
+            0x2222_2222_2222_2222,
+            0x3333_3333_3333,
+        ];
+        let b = [
+            0x5555_5555_5555_5555u64,
+            0x6666_6666_6666_6666,
+            0x7777_7777_7777,
+        ];
+
+        // Software baseline: existing production `multiply()` (bit-serial `poly_mul_wide` +
+        // word-wise `reduce`), chained the same way every `gf2m_wide` diagnostic chains, matching
+        // `curve163::scalar_multiply`'s real dependency pattern (each iteration's output feeds
+        // the next).
+        let start = Instant::now();
+        let mut acc = super::FieldElement(a);
+        let operand = super::FieldElement(b);
+        for _ in 0..N {
+            acc = black_box(acc.multiply(black_box(operand)));
+        }
+        let sw_elapsed = start.elapsed();
+        black_box(acc);
+
+        // Hardware-`clmul` `poly_mul_wide` feeding the *same* production `reduce`.
+        let start = Instant::now();
+        let mut chained = a;
+        for _ in 0..N {
+            let wide = schoolbook_clmul_poly_mul_wide(black_box(&chained), black_box(&b));
+            chained.copy_from_slice(&super::reduce(wide).0);
+        }
+        let hw_elapsed = start.elapsed();
+        black_box(chained);
+
+        let sw_ns = sw_elapsed.as_nanos() as f64 / f64::from(N);
+        let hw_ns = hw_elapsed.as_nanos() as f64 / f64::from(N);
+        eprintln!(
+            "gf2m163: software multiply() = {sw_ns:.1} ns/op | hardware-clmul multiply = {hw_ns:.1} ns/op | speedup = {:.2}x",
+            sw_ns / hw_ns
+        );
+    }
+}

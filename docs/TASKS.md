@@ -2951,6 +2951,102 @@ item they point to is later removed.
       ~1.9-2.0x projected on top, ~4-6x on `multiply()` alone) but not landed - the feature-
       detection/fallback design is a real decision still waiting on the owner. Tier 2 (EC
       scalar-multiplication windowing) remains plan-only, untouched this session.
+- [x] **T-196** **Done 2026-08-08, owner-requested ("Ми можем ще десь застосувати апаратні команди
+      на всіх наших алгоритмах? Розшири покриття") - hardware-`clmul` coverage extended from
+      `gf2m_wide` (T-195) to the one other GF(2^m) binary-field algorithm in this project,
+      `hazmat::dstu4145::gf2m163`; a software comb-method rewrite was also implemented, tested, and
+      then reverted for a real security reason, recorded below rather than silently discarded.**
+
+      **Survey first** (owner asked "де ще" - answered by algorithm, not assumed): only
+      `gf2m_wide` (Kalyna-GCM/GMAC's tag, T-195) and `gf2m163` (DSTU 4145's field) do GF(2^m)
+      carry-less-multiply arithmetic - the one class `PCLMULQDQ`/`PMULL` actually accelerates.
+      `hazmat::dstu9041`'s `fp256`/`fp512` are prime-field `F_p` (regular modular integer
+      multiply, not carry-less) - a different hardware lever would apply there if any
+      (`MULX`/`ADCX`/`ADOX`, big-integer widening multiply, the mechanism real curve25519/P-256
+      implementations use) - not the same instruction, not investigated this session, a separate,
+      larger-scoped question the owner did not ask for. Kalyna/Kupyna/Strumok have no applicable
+      hardware instruction at all - already closed (T-129/D-88, T-139/D-87): AES-NI is hardwired to
+      AES's own S-box/MixColumns, Kalyna's S-box differs, the instruction simply doesn't map to a
+      different cipher's math.
+
+      **`advisor()` consulted before writing any code, gave the gating check that mattered**: count
+      `multiply()` vs `square()` calls in `curve163::scalar_multiply`'s own per-iteration ladder
+      before assuming the lever is real - `invert()` is square-dominated (9 multiplies vs. ~162
+      squares, D-109's addition chain) and doesn't touch `poly_mul_wide` at all, so if
+      `scalar_multiply` were similarly square-heavy, this whole investigation would be a small
+      lever, not a real one. Counted directly from `curve163.rs`'s main ladder loop (lines
+      157-162): **8 `multiply()` calls vs. 7 `square()` calls per iteration** - multiply is not a
+      minority share, the lever is real. Proceeded.
+
+      **Comb-method software rewrite - implemented, tested, reverted, not landed.** `gf2m163::
+      poly_mul_wide` was still the *original* right-to-left shift-and-add method (`Guide to
+      Elliptic Curve Cryptography` Algorithm 2.33) - it never received `gf2m_wide`'s own T-125
+      comb-method upgrade at all. Wrote the same 4-bit-window comb method (`NIBBLES =
+      163.div_ceil(4) = 41` - **163 is not a multiple of 4**, unlike `gf2m_wide`'s m in
+      {128,256,512}, so the top nibble reads one bit past the field's own top meaningful bit,
+      `advisor()`-flagged as the real risk in this specific rewrite - added both a proptest
+      differential against the retained bit-serial reference and two fixed edge cases, top-bit-set
+      and all-163-bits-set, mirroring this module's own existing `square_wide_matches_multiply_
+      wide_*` edge-case pattern). **All tests passed, including both edge cases.** Then reverted
+      (`git checkout --`, nothing had been committed) after re-reading this module's own doc
+      comment: "**Branchless by construction**... no array indexing at all." The comb method's
+      `T[nibble]` lookup is exactly the secret-indexed access that principle exists to rule out -
+      acceptable for `gf2m_wide`'s GCM tag (`H` is key-derived, D-76 already accepted it there) but
+      not here, where `multiply()` runs on `curve163::scalar_multiply`'s own secret-scalar
+      intermediates (the signing nonce, the private key) - the highest-value secret in the project.
+      Flagged to the owner mid-task rather than resolved unilaterally either direction (land-with-
+      caveat vs. revert vs. skip `poly_mul_wide` entirely) - owner chose revert, proceed to CLMUL.
+      **Not a wasted step**: caught before shipping, not after, and the reverted code's own
+      existence is why the CLMUL path's "no secret-indexed lookup at all" property could be stated
+      as a real, checked comparison rather than an assumption.
+
+      **Hardware-`clmul` spike - reuses `gf2m_wide::clmul_native` directly** (widened from
+      `pub(super)` to `pub(crate)`, the only change to already-landed T-195 code; two architecture-
+      specific intrinsics, not reimplemented a third time). Schoolbook: 3 limbs -> 9 pairwise
+      64x64->128 hardware clmuls (vs. `gf2m_wide`'s 16 at m=256) - correctness-proptested against
+      the *original* `poly_mul_wide` (not the reverted comb method) first, all green both
+      architectures, then timed feeding the same production `reduce`. Genuinely branchless *and*
+      free of secret-indexed memory access - `clmul64` runs for a fixed 9 `(i, j)` pairs
+      unconditionally, and the hardware instruction's own latency does not depend on operand bits
+      (the actual property real GHASH implementations rely on) - a strict improvement over the
+      bit-serial baseline on both the speed and the side-channel axis, unlike the comb method.
+
+      **Real, measured, both architectures** (`docs/PERFORMANCE.md`'s T-196 subsection has the full
+      table): `FieldElement::multiply()` (software bit-serial vs. hardware-`clmul`, chained, same
+      methodology as every T-195 diagnostic) - dev machine (Ryzen 5 PRO 4650U) **~64-65x** (1264.6-
+      1269.0 -> 19.4-19.9 ns/op), Raspberry Pi 5 (Cortex-A76) **~42x** (1013.3 -> 24.1-24.3 ns/op),
+      both stable across repeated runs. Far larger than `gf2m_wide`'s own 6.35x/4.16x (T-195)
+      *because* `gf2m163`'s software baseline is the un-upgraded bit-serial method, not because the
+      hardware instruction behaves differently - this is hardware-vs-original, not hardware-vs-
+      already-optimized-software the way the GCM number was.
+
+      **Real sign/verify speedup: not measured this session, and not pinned down by the
+      `multiply()` number alone.** `scalar_multiply`'s own per-iteration ladder is multiply-heavy
+      (gating check above), but `scalar_multiply` also calls `invert()` two to three times for its
+      own affine y-recovery, and `invert()` is square-dominated and never touches `poly_mul_wide`
+      at all. The real `sign`/`verify` ops/s win from this lever sits somewhere between negligible
+      and large, genuinely not measured - would need either wiring the hardware path into
+      production (not done, same posture as T-195) or a dedicated `scalar_multiply`-level timing
+      harness (also not built this session). `docs/PERFORMANCE.md`'s DSTU 4145-vs-OpenSSL section
+      (T-150, `nistb163` row) is corrected in the same pass: its old "no CPU instruction-set
+      asterisk to disclose here" line was accurate when written but is now factually wrong given
+      this finding - fixed to say the algorithmic gap (no windowing/precomputation) is still the
+      *dominant* cause, with a secondary, now-real hardware asterisk alongside it, not instead of
+      it - avoiding the exact "wrong conclusion sitting two screens from the number that
+      contradicts it" mistake T-194/T-195 already made once this session over Kalyna-GCM.
+
+      **Not picked up as production code, same posture as T-195**: the spike lives in `gf2m163.rs`'s
+      own `#[cfg(test)] mod clmul_spike`, `poly_mul_wide` itself untouched (back to the original
+      bit-serial version after the comb-method revert). A real landing needs the same target-
+      feature-detection/`no_std`/fallback design decision T-195 already scoped, still waiting on
+      the owner - this task confirms the same lever exists on a second algorithm, with both a
+      larger raw number and a concrete reason (not just caution) to prefer it over the cheaper
+      software alternative here specifically.
+
+      **Full regression, both architectures**: `dstu4145_curve`/`dstu4145_gf2m`/`dstu4145_signature`
+      integration suites (official worked example, Bouncy Castle oracle harness, tampered-signature
+      rejection, all three still green), `clippy -D warnings`, `fmt --check` - all clean on both
+      the dev machine and the (re-synced) Raspberry Pi.
 - [x] **T-188** **Done 2026-08-07, owner-requested.** SonarCloud Quality Gate was
       `ERROR` on `new_duplicated_lines_density` (3.0% actual vs. `<=3%` required) - missed in T-187's
       own SonarCloud check because that check only queried `api/issues/search` (rule-violation
