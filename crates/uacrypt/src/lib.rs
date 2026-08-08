@@ -89,6 +89,9 @@ pub enum CliError {
     BoxKeyInvalid,
     BoxOpenTruncated,
     BoxOpenFailed,
+    Box512KeyInvalid,
+    Box512OpenTruncated,
+    Box512OpenFailed,
 }
 
 impl fmt::Display for CliError {
@@ -179,6 +182,18 @@ impl fmt::Display for CliError {
             CliError::BoxOpenFailed => write!(
                 f,
                 "box-open: authentication failed - --in, --key, or the file itself do not match"
+            ),
+            CliError::Box512KeyInvalid => write!(
+                f,
+                "--key is not a valid crypto_box512 key (see uacrypt box-keygen512/box-pubkey512)"
+            ),
+            CliError::Box512OpenTruncated => write!(
+                f,
+                "box-open512: --in is too short to be real box-seal512 output"
+            ),
+            CliError::Box512OpenFailed => write!(
+                f,
+                "box-open512: authentication failed - --in, --key, or the file itself do not match"
             ),
         }
     }
@@ -2087,6 +2102,24 @@ fn read_box_secret_key(path: &PathBuf) -> Result<dstu_core::crypto_box::SecretKe
     dstu_core::crypto_box::SecretKey::from_bytes(&e).ok_or(CliError::BoxKeyInvalid)
 }
 
+/// Reads a 64-byte `crypto_box512` secret-key file and validates it via
+/// [`dstu_core::crypto_box512::SecretKey::from_bytes`].
+fn read_box512_secret_key(path: &PathBuf) -> Result<dstu_core::crypto_box512::SecretKey, CliError> {
+    let bytes = read_exact_file(path, "box512 secret key", 64)?;
+    let mut e = [0u8; 64];
+    e.copy_from_slice(&bytes);
+    dstu_core::crypto_box512::SecretKey::from_bytes(&e).ok_or(CliError::Box512KeyInvalid)
+}
+
+/// Reads a 64-byte `crypto_box512` public-key file and validates it via
+/// [`dstu_core::crypto_box512::PublicKey::from_bytes`].
+fn read_box512_public_key(path: &PathBuf) -> Result<dstu_core::crypto_box512::PublicKey, CliError> {
+    let bytes = read_exact_file(path, "box512 public key", 64)?;
+    let mut x = [0u8; 64];
+    x.copy_from_slice(&bytes);
+    dstu_core::crypto_box512::PublicKey::from_bytes(&x).ok_or(CliError::Box512KeyInvalid)
+}
+
 /// Reads a 32-byte `crypto_box` public-key file and validates it via
 /// [`dstu_core::crypto_box::PublicKey::from_bytes`].
 fn read_box_public_key(path: &PathBuf) -> Result<dstu_core::crypto_box::PublicKey, CliError> {
@@ -2307,6 +2340,229 @@ pub fn run_box_open_command(args: &BoxOpenArgs) -> Result<(), CliError> {
     let mut opened = dstu_core::crypto_box::open(&sealed, &secret).map_err(map_open_err)?;
     for _ in 1..iterations {
         opened = dstu_core::crypto_box::open(&sealed, &secret).map_err(map_open_err)?;
+    }
+    let elapsed = start.elapsed();
+
+    std::fs::write(&args.out_path, opened).map_err(|e| CliError::Io {
+        path: args.out_path.clone(),
+        message: e.to_string(),
+    })?;
+
+    if args.iterations > 1 {
+        let per_op_ns = elapsed.as_nanos() / u128::from(args.iterations);
+        let ops_per_s = if per_op_ns == 0 {
+            0.0
+        } else {
+            1e9 / (per_op_ns as f64)
+        };
+        eprintln!(
+            "iterations={} total_ns={} per_op_ns={per_op_ns} ops_per_s={ops_per_s:.2}",
+            args.iterations,
+            elapsed.as_nanos(),
+        );
+    }
+
+    Ok(())
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct Box512KeygenArgs {
+    pub out_path: PathBuf,
+}
+
+/// Parses `box-keygen512`'s flags (`--out`, required).
+///
+/// # Errors
+///
+/// Returns [`CliError::MissingFlag`] or [`CliError::UnknownFlag`].
+pub fn parse_box512_keygen_args(args: &[String]) -> Result<Box512KeygenArgs, CliError> {
+    let scanner = ArgScanner::scan(args, &["--out"], &[])?;
+    Ok(Box512KeygenArgs {
+        out_path: scanner.path("--out")?,
+    })
+}
+
+/// Runs `box-keygen512`: draws a fresh `crypto_box512` secret key via rejection sampling
+/// ([`dstu_core::crypto_box512::SecretKey::generate`], `docs/TASKS.md` T-193) and writes its raw
+/// 64-byte encoding to `--out`. A separate command from `box-keygen` - `crypto_box512` keys are a
+/// distinct, wider shape (E512/1 vs. E256/1), not the same key type at a different size (D-47's
+/// "delete the knob": no `--curve` flag choosing between them).
+///
+/// # Errors
+///
+/// Returns [`CliError::Random`] if the OS CSPRNG fails, or [`CliError::Io`] if `--out` can't be
+/// written.
+pub fn run_box512_keygen_command(args: &Box512KeygenArgs) -> Result<(), CliError> {
+    let key = dstu_core::crypto_box512::SecretKey::generate()
+        .map_err(|e| CliError::Random(e.to_string()))?;
+    std::fs::write(&args.out_path, key.to_bytes()).map_err(|e| CliError::Io {
+        path: args.out_path.clone(),
+        message: e.to_string(),
+    })
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct Box512PubkeyArgs {
+    pub key_path: PathBuf,
+    pub out_path: PathBuf,
+}
+
+/// Parses `box-pubkey512`'s flags (`--key`/`--out`, both required).
+///
+/// # Errors
+///
+/// Returns [`CliError::MissingFlag`] or [`CliError::UnknownFlag`].
+pub fn parse_box512_pubkey_args(args: &[String]) -> Result<Box512PubkeyArgs, CliError> {
+    let scanner = ArgScanner::scan(args, &["--key", "--out"], &[])?;
+    Ok(Box512PubkeyArgs {
+        key_path: scanner.path("--key")?,
+        out_path: scanner.path("--out")?,
+    })
+}
+
+/// Runs `box-pubkey512`: reads a 64-byte `crypto_box512` secret key from `--key`, derives its
+/// public key ([`dstu_core::crypto_box512::SecretKey::public_key`]), and writes the 64-byte
+/// compressed (`x`-coordinate only, see `crypto_box512`'s own module doc) encoding to `--out` -
+/// the format `box-seal512 --key` expects.
+///
+/// # Errors
+///
+/// Returns [`CliError::Io`]/[`CliError::WrongLength`] for file problems, or
+/// [`CliError::Box512KeyInvalid`] if `--key` isn't a valid `crypto_box512` secret key.
+pub fn run_box512_pubkey_command(args: &Box512PubkeyArgs) -> Result<(), CliError> {
+    let secret = read_box512_secret_key(&args.key_path)?;
+    let public = secret.public_key();
+    std::fs::write(&args.out_path, public.to_bytes()).map_err(|e| CliError::Io {
+        path: args.out_path.clone(),
+        message: e.to_string(),
+    })
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct Box512SealArgs {
+    pub key_path: PathBuf,
+    pub in_path: PathBuf,
+    pub out_path: PathBuf,
+    pub iterations: u32,
+}
+
+/// Parses `box-seal512`'s flags (`--key`/`--in`/`--out` required, `--iterations` optional -
+/// benchmarking only, same shape as [`parse_box_seal_args`]).
+///
+/// # Errors
+///
+/// Returns [`CliError::MissingFlag`], [`CliError::InvalidIterations`], or [`CliError::UnknownFlag`].
+pub fn parse_box512_seal_args(args: &[String]) -> Result<Box512SealArgs, CliError> {
+    let scanner = ArgScanner::scan(args, &["--key", "--in", "--out", "--iterations"], &[])?;
+    Ok(Box512SealArgs {
+        key_path: scanner.path("--key")?,
+        in_path: scanner.path("--in")?,
+        out_path: scanner.path("--out")?,
+        iterations: scanner.iterations()?,
+    })
+}
+
+/// Runs `box-seal512`: reads a 64-byte recipient public key from `--key` and encrypts `--in` to
+/// it ([`dstu_core::crypto_box512::seal`]) - see [`run_box_seal_command`]'s doc comment for the
+/// same not-memory-bounded caveat and the same `iterations > 1` benchmark-path reasoning
+/// (D-34/T-179/T-194).
+///
+/// # Errors
+///
+/// Returns [`CliError::Io`] if `--key`/`--in` can't be read or `--out` can't be written,
+/// [`CliError::WrongLength`] if `--key` isn't 64 bytes, [`CliError::Box512KeyInvalid`] if `--key`
+/// isn't a valid public key, or [`CliError::Random`] if the OS CSPRNG fails.
+#[allow(clippy::cast_precision_loss)] // human-readable ops/s diagnostic, not exact at any realistic count
+pub fn run_box512_seal_command(args: &Box512SealArgs) -> Result<(), CliError> {
+    let public = read_box512_public_key(&args.key_path)?;
+    let message = std::fs::read(&args.in_path).map_err(|e| CliError::Io {
+        path: args.in_path.clone(),
+        message: e.to_string(),
+    })?;
+    let iterations = args.iterations.max(1);
+
+    let start = Instant::now();
+    let mut sealed = dstu_core::crypto_box512::seal(&message, &public)
+        .map_err(|e| CliError::Random(e.to_string()))?;
+    for _ in 1..iterations {
+        sealed = dstu_core::crypto_box512::seal(&message, &public)
+            .map_err(|e| CliError::Random(e.to_string()))?;
+    }
+    let elapsed = start.elapsed();
+
+    std::fs::write(&args.out_path, sealed).map_err(|e| CliError::Io {
+        path: args.out_path.clone(),
+        message: e.to_string(),
+    })?;
+
+    if args.iterations > 1 {
+        let per_op_ns = elapsed.as_nanos() / u128::from(args.iterations);
+        let ops_per_s = if per_op_ns == 0 {
+            0.0
+        } else {
+            1e9 / (per_op_ns as f64)
+        };
+        eprintln!(
+            "iterations={} total_ns={} per_op_ns={per_op_ns} ops_per_s={ops_per_s:.2}",
+            args.iterations,
+            elapsed.as_nanos(),
+        );
+    }
+
+    Ok(())
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct Box512OpenArgs {
+    pub key_path: PathBuf,
+    pub in_path: PathBuf,
+    pub out_path: PathBuf,
+    pub iterations: u32,
+}
+
+/// Parses `box-open512`'s flags (`--key`/`--in`/`--out` required, `--iterations` optional -
+/// benchmarking only, same shape as [`parse_box_open_args`]).
+///
+/// # Errors
+///
+/// Returns [`CliError::MissingFlag`], [`CliError::InvalidIterations`], or [`CliError::UnknownFlag`].
+pub fn parse_box512_open_args(args: &[String]) -> Result<Box512OpenArgs, CliError> {
+    let scanner = ArgScanner::scan(args, &["--key", "--in", "--out", "--iterations"], &[])?;
+    Ok(Box512OpenArgs {
+        key_path: scanner.path("--key")?,
+        in_path: scanner.path("--in")?,
+        out_path: scanner.path("--out")?,
+        iterations: scanner.iterations()?,
+    })
+}
+
+/// Runs `box-open512`: reads a 64-byte secret key from `--key` and decrypts `--in`
+/// ([`dstu_core::crypto_box512::open`]) - see [`run_box_open_command`]'s doc comment for the same
+/// not-memory-bounded caveat and the same `iterations > 1` benchmark-path reasoning.
+///
+/// # Errors
+///
+/// Returns [`CliError::Io`] if `--key`/`--in` can't be read or `--out` can't be written,
+/// [`CliError::WrongLength`] if `--key` isn't 64 bytes, [`CliError::Box512KeyInvalid`] if `--key`
+/// isn't a valid secret key, [`CliError::Box512OpenTruncated`] if `--in` is too short to be real
+/// `box-seal512` output, or [`CliError::Box512OpenFailed`] for any other authentication failure.
+#[allow(clippy::cast_precision_loss)] // human-readable ops/s diagnostic, not exact at any realistic count
+pub fn run_box512_open_command(args: &Box512OpenArgs) -> Result<(), CliError> {
+    let secret = read_box512_secret_key(&args.key_path)?;
+    let sealed = std::fs::read(&args.in_path).map_err(|e| CliError::Io {
+        path: args.in_path.clone(),
+        message: e.to_string(),
+    })?;
+    let iterations = args.iterations.max(1);
+    let map_open_err = |e| match e {
+        dstu_core::crypto_box512::OpenError::Truncated => CliError::Box512OpenTruncated,
+        dstu_core::crypto_box512::OpenError::InvalidCiphertext => CliError::Box512OpenFailed,
+    };
+
+    let start = Instant::now();
+    let mut opened = dstu_core::crypto_box512::open(&sealed, &secret).map_err(map_open_err)?;
+    for _ in 1..iterations {
+        opened = dstu_core::crypto_box512::open(&sealed, &secret).map_err(map_open_err)?;
     }
     let elapsed = start.elapsed();
 
@@ -2557,6 +2813,10 @@ EVERYDAY COMMANDS:
     box-pubkey      Derive the matching public key from a secret key, for `box-seal`.
     box-seal        Encrypt a file to a recipient's public key (DSTU 9041, hybrid via KDF).
     box-open        Decrypt a file produced by `box-seal`.
+    box-keygen512   Like `box-keygen`, over DSTU 9041's l(p)=512 curve (E512/1) instead of l(p)=256.
+    box-pubkey512   Like `box-pubkey`, for a `box-keygen512` key.
+    box-seal512     Like `box-seal`, for a `box-pubkey512` recipient key.
+    box-open512     Decrypt a file produced by `box-seal512`.
 
 LOWER-LEVEL COMMANDS (benchmarking/interop - most users want the three above instead):
     kalyna-block    Single Kalyna block encrypt/decrypt - exactly one block, no file support.
@@ -2814,6 +3074,88 @@ EXAMPLE:
     uacrypt box-open --key box.key --in message.txt.box --out message.txt
 ";
 
+const BOX_KEYGEN512_HELP: &str = "\
+uacrypt box-keygen512 - generate a fresh crypto_box512 secret key for `box-open512`.
+
+Same shape as `box-keygen`, over DSTU 9041's l(p)=512 curve (E512/1, docs/TASKS.md T-193) instead
+of l(p)=256 - a separate command, not a `--curve` flag, since the two are distinct, incompatible
+key shapes. Draws from the OS CSPRNG via rejection sampling and writes the raw 64-byte private
+scalar to --out.
+
+USAGE:
+    uacrypt box-keygen512 --out <path>
+
+FLAGS:
+    --out <path>    where to write the 64-byte secret key
+
+EXAMPLE:
+    uacrypt box-keygen512 --out box512.key
+
+Notes:
+    - Keep this file secret - anyone who has it can decrypt messages sealed to it.
+    - Derive the matching public key with `uacrypt box-pubkey512`.
+    - Not interchangeable with `box-keygen`/`box-pubkey`/`box-seal`/`box-open` - those are l(p)=256.
+";
+
+const BOX_PUBKEY512_HELP: &str = "\
+uacrypt box-pubkey512 - derive the matching public key from a crypto_box512 secret key.
+
+Reads --key (a `box-keygen512` output) and writes the 64-byte compressed public key that
+`box-seal512` needs - safe to share, unlike the secret key itself.
+
+USAGE:
+    uacrypt box-pubkey512 --key <path> --out <path>
+
+FLAGS:
+    --key <path>    a crypto_box512 secret key (from `uacrypt box-keygen512`)
+    --out <path>    where to write the 64-byte public key
+
+EXAMPLE:
+    uacrypt box-pubkey512 --key box512.key --out box512.pub
+";
+
+const BOX_SEAL512_HELP: &str = "\
+uacrypt box-seal512 - encrypt a file to a recipient's public key (DSTU 9041 l(p)=512, hybrid via KDF).
+
+Same construction as `box-seal`, over the l(p)=512 curve (dstu_core::crypto_box512,
+docs/TASKS.md T-193). Wraps a fresh random 32-byte seed asymmetrically, derives a symmetric key
+from it, and encrypts --in with that key.
+
+Not memory-bounded: --in is read whole into memory (unlike `encrypt`'s bounded-chunk streaming) -
+fine for typical messages/keys, not recommended for very large files yet.
+
+USAGE:
+    uacrypt box-seal512 --key <path> --in <path> --out <path> [--iterations <n>]
+
+FLAGS:
+    --key <path>        the recipient's public key (from `uacrypt box-pubkey512`)
+    --in <path>         file to encrypt
+    --out <path>        where to write the sealed output
+    --iterations <n>    (benchmarking only) repeat the seal call n times, print timing to stderr
+
+EXAMPLE:
+    uacrypt box-seal512 --key recipient.pub --in message.txt --out message.txt.box
+";
+
+const BOX_OPEN512_HELP: &str = "\
+uacrypt box-open512 - decrypt a file produced by `box-seal512`, using the matching secret key.
+
+A wrong key or a tampered/truncated file is rejected with an error before anything is written to
+--out, rather than producing wrong plaintext.
+
+USAGE:
+    uacrypt box-open512 --key <path> --in <path> --out <path> [--iterations <n>]
+
+FLAGS:
+    --key <path>        the recipient's secret key (from `uacrypt box-keygen512`)
+    --in <path>         the sealed file (must be real `box-seal512` output)
+    --out <path>        where to write the decrypted output
+    --iterations <n>    (benchmarking only) repeat the open call n times, print timing to stderr
+
+EXAMPLE:
+    uacrypt box-open512 --key box512.key --in message.txt.box --out message.txt
+";
+
 const KALYNA_BLOCK_HELP: &str = "\
 uacrypt kalyna-block - encrypt or decrypt exactly one Kalyna block, no mode of operation.
 
@@ -3038,6 +3380,10 @@ fn print_command_help(command: &str) {
         "box-pubkey" => BOX_PUBKEY_HELP,
         "box-seal" => BOX_SEAL_HELP,
         "box-open" => BOX_OPEN_HELP,
+        "box-keygen512" => BOX_KEYGEN512_HELP,
+        "box-pubkey512" => BOX_PUBKEY512_HELP,
+        "box-seal512" => BOX_SEAL512_HELP,
+        "box-open512" => BOX_OPEN512_HELP,
         "kalyna-block" => KALYNA_BLOCK_HELP,
         "kalyna-ccm" => KALYNA_CCM_HELP,
         "kalyna-gcm" => KALYNA_GCM_HELP,
@@ -3104,6 +3450,22 @@ fn dispatch_box_command(cmd: &str, rest: &[String]) -> Result<(), CliError> {
         "box-pubkey" => run_box_pubkey_command(&parse_box_pubkey_args(rest)?),
         "box-seal" => run_box_seal_command(&parse_box_seal_args(rest)?),
         _ => run_box_open_command(&parse_box_open_args(rest)?),
+    }
+}
+
+/// Dispatches `box-keygen512`/`box-pubkey512`/`box-seal512`/`box-open512` - same D-71 line-count-
+/// lint reason as [`dispatch_box_command`]; `cmd` is always one of the four literals [`run`]'s own
+/// match arm already narrowed it to. `rest` excludes both the program name and `cmd` itself.
+fn dispatch_box512_command(cmd: &str, rest: &[String]) -> Result<(), CliError> {
+    if rest.iter().any(|a| is_help_flag(a)) {
+        print_command_help(cmd);
+        return Ok(());
+    }
+    match cmd {
+        "box-keygen512" => run_box512_keygen_command(&parse_box512_keygen_args(rest)?),
+        "box-pubkey512" => run_box512_pubkey_command(&parse_box512_pubkey_args(rest)?),
+        "box-seal512" => run_box512_seal_command(&parse_box512_seal_args(rest)?),
+        _ => run_box512_open_command(&parse_box512_open_args(rest)?),
     }
 }
 
@@ -3232,6 +3594,9 @@ pub fn run(args: &[String]) -> Result<(), CliError> {
         }
         Some(cmd @ ("box-keygen" | "box-pubkey" | "box-seal" | "box-open")) => {
             dispatch_box_command(cmd, &args[1..])
+        }
+        Some(cmd @ ("box-keygen512" | "box-pubkey512" | "box-seal512" | "box-open512")) => {
+            dispatch_box512_command(cmd, &args[1..])
         }
         Some(other) => Err(CliError::UnknownCommand(other.to_string())),
     }
@@ -6208,6 +6573,66 @@ mod tests {
 
         let opened = std::fs::read(dir.file("msg.out")).expect("read opened output");
         assert_eq!(opened, b"dispatch me");
+    }
+
+    #[cfg_attr(
+        miri,
+        ignore = "dstu9041's 512-iteration scalar-multiply ladders are too slow to interpret under Miri - see docs/TASKS.md T-100/T-177/T-193"
+    )]
+    #[test]
+    fn box512_dispatch_through_top_level_run() {
+        let dir = TempDir::new("box512_dispatch");
+        let path = |p: &std::path::Path| p.to_str().expect("valid utf-8 path").to_string();
+
+        let keygen: Vec<String> = ["box-keygen512", "--out", &path(&dir.file("box.key"))]
+            .into_iter()
+            .map(String::from)
+            .collect();
+        run(&keygen).expect("box-keygen512 dispatch should succeed");
+
+        let pubkey: Vec<String> = [
+            "box-pubkey512",
+            "--key",
+            &path(&dir.file("box.key")),
+            "--out",
+            &path(&dir.file("box.pub")),
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect();
+        run(&pubkey).expect("box-pubkey512 dispatch should succeed");
+
+        std::fs::write(dir.file("msg.txt"), b"dispatch me 512").expect("write message");
+        let seal: Vec<String> = [
+            "box-seal512",
+            "--key",
+            &path(&dir.file("box.pub")),
+            "--in",
+            &path(&dir.file("msg.txt")),
+            "--out",
+            &path(&dir.file("msg.box")),
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect();
+        run(&seal).expect("box-seal512 dispatch should succeed");
+
+        let open: Vec<String> = [
+            "box-open512",
+            "--key",
+            &path(&dir.file("box.key")),
+            "--in",
+            &path(&dir.file("msg.box")),
+            "--out",
+            &path(&dir.file("msg.out")),
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect();
+        run(&open).expect("box-open512 dispatch should succeed");
+
+        let opened = std::fs::read(dir.file("msg.out")).expect("read opened output");
+        assert_eq!(opened, b"dispatch me 512");
     }
 
     #[cfg_attr(

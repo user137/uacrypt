@@ -45,7 +45,11 @@ PHP, .NET, Java, Go, C++) are done** as of 2026-08-03, all ten standard steps ea
 `docs/bindings-strategy.md` for the per-binding checklist and `docs/TASKS.md` T-49/T-50/T-160/
 T-159/T-158/T-52/T-51/T-163/T-53 for the full landing history. **`crypto_box` (below) was added to
 all eight 2026-08-06, T-181** — every binding wraps the full `crypto_*` surface as of that date, not
-just the modules that existed when each binding first landed.
+just the modules that existed when each binding first landed. **`crypto_box512` (below, T-193,
+2026-08-08) is not yet wrapped by any binding or `dstu-core-capi`** — binding/capi wiring for it is
+an explicit separate future task (T-193's own scope note), so as of T-193 the "full `crypto_*`
+surface" claim above no longer includes `crypto_box512` specifically; re-check this line whenever
+that wiring lands.
 
 **`crates/dstu-core`** — the library (`std`/`alloc`/`no_std` feature flags, D-01). All primitives
 below are test-first and pass `cargo test`/`clippy -D warnings`/`fmt --check`/the `no_std` build/
@@ -102,9 +106,13 @@ canonical source (`docs/TASKS.md`/`docs/DECISIONS.md`) — this section states c
     `Rekey` forward secrecy; no oracle vector can ever exist for this from-scratch construction,
     verified by property/tamper/misuse tests instead (T-40/T-70/D-68).
   - `crypto_box` (`seal`/`open`/`SecretKey`/`PublicKey`) — public-key encryption over
-    `hazmat::dstu9041` (`l(p)=256` only), hybrid via KDF (a random seed sealed asymmetrically,
+    `hazmat::dstu9041` (`l(p)=256`), hybrid via KDF (a random seed sealed asymmetrically,
     expanded via `hazmat::kupyna_kdf`, then `crypto_secretstream` encrypts the actual message);
-    `PublicKey` is 32 bytes, the curve point's `x`-coordinate only (T-178/D-169).
+    `PublicKey` is 32 bytes, the curve point's `x`-coordinate only (T-178/D-169). `crypto_box512`
+    is the direct `l(p)=512` (E512/1) sibling (T-193, 2026-08-08, D-182) — same shape, `PublicKey`/
+    `SecretKey` at 64 bytes, seed deliberately fixed at 32 bytes/256 bits (not `l(p)=512`'s full
+    424-bit KEM capacity, D-182). Not wired into any language binding or `dstu-core-capi` yet
+    (separate future task, T-193's own scope note).
   - `randombytes::randombytes_buf` — `std`-gated `getrandom` wrapper (T-72/D-48).
 - `selftest` — `std`-gated (`selftest` feature, off by default) runtime KAT self-check: `run()`
   re-verifies one official vector per primitive (Kalyna-128/128, Kupyna-256, Strumok-256, DSTU
@@ -123,8 +131,9 @@ Kupyna-256 with no length cap, delegating to the streaming `Hasher`.
 the language bindings under `bindings/`, which are each their own separate Cargo workspace, D-119).
 Opaque handles, explicit `DstuStatus` error codes, `catch_unwind` at every boundary call,
 zeroize-on-free, `cbindgen`-generated header (`include/dstu_core.h`, regenerated+diffed via `cargo
-xtask capi`). Wraps the full `crypto_*` surface. The foundation the .NET/Go/C++ bindings link
-against directly — usable from any language with a C FFI, not just those three.
+xtask capi`). Wraps the full `crypto_*` surface **except `crypto_box512`** (T-193, not yet wired -
+see the `crypto_box` bullet above). The foundation the .NET/Go/C++ bindings link against directly —
+usable from any language with a C FFI, not just those three.
 
 Official test vectors are extracted and verified for Kalyna, Kupyna, and DSTU 4145
 (`crates/dstu-core/tests/vectors/{kalyna,kupyna,dstu4145}/*.json` — see `docs/ORACLES.md` for

@@ -2487,6 +2487,115 @@ item they point to is later removed.
       **Explicitly out of scope for this task**: wiring `l(p)=512` into `crypto_box` or the `uacrypt`
       CLI (T-178/D-169 did this separately for `l(p)=256`, after `hazmat::dstu9041` itself landed -
       same split here, a later task if wanted); `l(p)=384`/`768` (see "why 512 next" above).
+- [ ] **T-193** **Not started, owner-requested 2026-08-08.** Wire `l(p)=512`
+      (`hazmat::dstu9041` E512/1, T-192) into `crypto_box`/`uacrypt`, mirroring what T-178/D-169 did
+      for `l(p)=256` - the deferred item T-192 explicitly left out of scope. Prerequisite for T-194
+      (the combined perf table the owner actually asked for); split into its own task ID rather than
+      bundled, per the project's own "plans persist in repo, owner controls step ordering"
+      precedent, and per `advisor()`'s explicit recommendation this session.
+
+      **Phase 0 - seed/KDF design decision (resolve before any code, don't let copy-paste settle
+      it, flagged by `advisor()` as the one blocking decision)**: `crypto_box.rs`'s `embed_seed`
+      (`32 - SEED_LEN..`, `SEED_LEN = L_MAX_P/8 = 25` at `l(p)=256`) does not generalize to
+      `l(p)=512` - `L_MAX_P512 = 424` bits / `SEED_LEN512 = 53` bytes is *larger* than the 32-byte
+      `Kupyna256Kdf` input, so `32 - 53` underflows; a naive copy-paste panics in debug and is UB-
+      adjacent in release. Resolution: don't use the full 424-bit KEM capacity at `l(p)=512` - draw
+      a 32-byte seed directly (matching `Kupyna256Kdf`'s native width exactly, no embedding step
+      needed at all), call `dstu9041_encrypt(&seed, 256, recipient, &epsilon)` (fixed
+      `message_bits = 256`, not `L_MAX_P512`), and on `open`, check the returned bit length is
+      `256` (not `L_MAX_P512`) before slicing the low-order 32 bytes of the recovered 53-byte
+      `M~` out as the seed. Verify empirically first that `encryption512::decrypt` really does
+      return the *encryptor-supplied* bit length (256), not the buffer width (424) - the module doc
+      states this but confirm against the actual code/tests before relying on it. Record this as a
+      `docs/DECISIONS.md` entry once resolved - a design choice, not an accident.
+
+      **Phase 0 done 2026-08-08 - see `docs/DECISIONS.md` D-182.** Confirmed by reading
+      `message512.rs` directly (not assumed from the doc comment): `format_m_tilde` requires an
+      exact `message.len() == message_bits.div_ceil(8)` match, and `parse_m_prime`'s returned
+      `bit_length` is read back from a hash-authenticated `l_m_tilde` field the encryptor itself
+      set - genuinely encryptor-supplied, not the buffer's fixed width. Adopted the 32-byte/256-bit
+      fixed-width seed design.
+
+      **Phase 1 - `crypto_box512.rs`**: direct sibling of `crypto_box.rs` at `l(p)=512`'s widths
+      (`SecretKey`/`PublicKey` as `[u8; 64]`, `KEM_CIPHERTEXT_LEN = 256`, everything else - `Vec<u8>`
+      wire format, `crypto_secretstream` chunking, error collapsing posture (D-56/D-63), `PublicKey`
+      compression argument - carries over unchanged, re-derive the `x`-only compression safety
+      argument for E512/1 specifically per this project's own "don't assume it carries over"
+      discipline (already done once for Finding 1/2 in D-176/D-178, same standard applies here).
+      Test-first, mirroring `tests/crypto_box.rs`'s 17 tests (correctness/round-trip, rejection/
+      tamper, misuse/degenerate) **plus the T-183 fourth "active-attack" category**
+      (`feedback_active_attack_test_category` - invalid-curve/twist/boundary-seed cases,
+      `PublicKey512::from_bytes` reusing `curve512::point_from_x`'s existing gauntlet rather than a
+      second copy). Note the wire-format collision: a `box-open`-length-valid `l(p)=512` sealed blob
+      also clears `box-open`'s own `MIN_LEN` check and falls through to `InvalidCiphertext` rather
+      than a distinct "wrong curve size" error - defensible under the existing error-collapsing
+      posture, but record it as a stated decision, not leave it to be found by surprise.
+
+      **Phase 2 - CLI wiring**: new `uacrypt` subcommands `box-keygen512`/`box-pubkey512`/
+      `box-seal512`/`box-open512` - distinct named subcommands, not a `--curve` flag on the existing
+      ones (D-47 "delete the knob" - `advisor()` confirmed no argument against this).
+
+      **Phase 3 - doc sync, done in the *same* commit as Phase 1/2, not a follow-up** (D-159's own
+      failure class, flagged explicitly by `advisor()` this session):
+      - `sonar-project.properties`'s `sonar.cpd.exclusions` (D-181) - add `crypto_box512.rs`, it
+        will be a near-duplicate of `crypto_box.rs` just like the eight `hazmat::dstu9041` files
+        already excluded.
+      - `CLAUDE.md`'s `crypto_box` bullet ("`l(p)=256` only") - update or explicitly scope.
+      - `CLAUDE.md`'s "every binding wraps the full `crypto_*` surface as of \[date\]" and the
+        `dstu-core-capi` paragraph's "wraps the full `crypto_*` surface" - both go stale the moment
+        a new `crypto_*` module exists that the eight bindings/capi don't wrap. State explicitly
+        that binding/capi wiring for `crypto_box512` is out of scope for this task (a later task if
+        wanted, same split T-181 already used for `crypto_box` itself), and correct both sentences
+        to say so rather than leaving them silently wrong.
+      - `docs/dstu-crypto-project.md`'s "Concrete API shape" checklist.
+
+      **Explicitly out of scope**: binding/capi wiring for `crypto_box512` (separate future task,
+      see Phase 3 above); `l(p)=384`/`768` (T-192's own scope note still applies).
+
+      **T-193 done 2026-08-08 - see `docs/DECISIONS.md` D-182 (Phase 0) and D-183 (Phases 1-3).**
+      `crypto_box512.rs` implemented (direct sibling of `crypto_box.rs` at 64-byte widths, fixed
+      32-byte/256-bit seed per D-182), test-first (`tests/crypto_box512.rs`, 17 tests mirroring
+      `tests/crypto_box.rs`'s own suite including the T-183 active-attack category - all passed on
+      first run). `uacrypt box-keygen512`/`box-pubkey512`/`box-seal512`/`box-open512` CLI wired
+      (distinct subcommands, not a `--curve` flag, per D-47) plus a dispatch-level integration
+      test. `sonar-project.properties`/`CLAUDE.md`/`docs/dstu-crypto-project.md` all updated in the
+      same pass, not deferred. Full `cargo test -p dstu-core`/`cargo test -p uacrypt` clean;
+      `cargo clippy --all-features -- -D warnings` clean on both crates; `cargo fmt` clean
+      (one auto-reformat applied, not reverted, per the project's own linter-output convention);
+      `no_std`/`alloc` build clean. `hazmat`/`no_std` Kani/miri harnesses untouched by this task
+      (`crypto_box512` is `std`-gated, same as `crypto_box`).
+- [ ] **T-194** **Not started, owner-requested 2026-08-08. Was blocked on T-193, now unblocked -
+      T-193 done.** Combined
+      `l(p)=256`/`l(p)=512` performance table for `crypto_box`/`crypto_box512`, per owner's explicit
+      choice (both sizes in one table, full `seal`/`open` regime, not a narrower hazmat-only
+      benchmark) over `AskUserQuestion` this session. Extends T-179's own two-table pattern
+      (primitive-level ops/s + full-construction MB/s, D-34/D-170) to cover both curve sizes at
+      once, not a fresh methodology.
+
+      **Do not reuse T-179's existing `l(p)=256` numbers as-is** - `advisor()` flagged this
+      explicitly: they predate T-192/T-193 and several other commits, so splicing stale 256 numbers
+      next to fresh 512 numbers is not a valid same-session comparison. Re-measure `l(p)=256`
+      alongside `l(p)=512` in the same sitting, on the same machine, after a forced rebuild (D-161's
+      stale-bench-binary trap - `touch` the changed file or verify binary symbols, don't trust
+      `cargo`'s own change detection across any preceding `git stash`/branch-switch).
+
+      **Primitive-level (ops/s)**: `uacrypt box-seal512`/`box-open512` (from T-193) vs. `openssl
+      speed ecdh`'s closest ~512-bit row. Verify which curve `openssl speed ecdh` actually lists
+      before designing the table - do not assume `brainpoolP512r1` is present; `secp521r1` (521-bit,
+      closest available) is the fallback per `advisor()`.
+
+      **Full-regime (MB/s, 10 MiB)**: `crypto_box512` `seal`/`open` vs. `openssl cms -encrypt`/
+      `-decrypt` with an EC recipient sized to ~512 bits - **verify empirically which curve actually
+      round-trips through `openssl cms`'s ECDH-KDF path** before committing to a table column
+      (`secp521r1` is the safer bet than `brainpoolP512r1` per `advisor()` - don't assume either
+      works without testing). Re-apply the already-learned gotchas without rediscovering them:
+      `-binary` on both `-encrypt`/`-decrypt` (silent truncation at `0x1A` otherwise),
+      `MSYS_NO_PATHCONV=1` on `-subj` in Git Bash, and a byte-for-byte `cmp` round-trip check before
+      trusting any timing number.
+
+      **Platform scope**: dev machine (Ryzen) **and** the Raspberry Pi
+      (`[[raspberry-pi-uacipher]]`/`.claude.local.md`) - owner explicitly asked for the Pi row too
+      via `AskUserQuestion` this session, not dev-machine-only like T-179's original table.
 - [x] **T-188** **Done 2026-08-07, owner-requested.** SonarCloud Quality Gate was
       `ERROR` on `new_duplicated_lines_density` (3.0% actual vs. `<=3%` required) - missed in T-187's
       own SonarCloud check because that check only queried `api/issues/search` (rule-violation

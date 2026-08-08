@@ -12109,3 +12109,75 @@ pair of `dstu9041` modules existed simultaneously to trigger CPD before this tas
 Re-check this exclusion's continued justification if `l(p)=384` is ever added (a third sibling set)
 or if a future generic-merge refactor is ever undertaken for unrelated reasons - don't assume this
 decision is permanent, it was scoped to "not now," not "never."
+
+## D-182: T-193 Phase 0 - `crypto_box512`'s seed uses a fixed 32-byte/256-bit width, not `l(p)=512`'s full 424-bit KEM capacity
+
+`crypto_box.rs`'s `embed_seed` (`embedded[32 - SEED_LEN..]`, `SEED_LEN = L_MAX_P/8 = 25` at
+`l(p)=256`) does not generalize to `l(p)=512`: `L_MAX_P512 = 424` bits / `SEED_LEN512 = 53` bytes
+exceeds the 32-byte `Kupyna256Kdf` input width, so a literal copy-paste (`32 - 53`) underflows -
+flagged by `advisor()` before any code was written, per this project's own "resolve the design fork
+before writing Rust" discipline.
+
+**Resolution**: `crypto_box512` does not use `l(p)=512`'s full 424-bit KEM message capacity. It
+draws a 32-byte seed directly (`Kupyna256Kdf`'s native width, no embedding/padding step needed at
+all - `embed_seed` has no `crypto_box512` equivalent), calls
+`dstu9041_encrypt(&seed, 256, recipient, &epsilon)` (`message_bits` fixed at 256, not
+`L_MAX_P512`), and `open` requires the recovered bit length to be exactly `256` (not `L_MAX_P512`)
+before slicing the low-order 32 bytes out of the recovered 53-byte `M~` as the seed.
+
+**Verified, not assumed, before adopting this**: read `message512.rs::format_m_tilde` and
+`parse_m_prime` directly - `format_m_tilde` requires `message.len() == message_bits.div_ceil(8)`
+exactly (so a 32-byte message at `message_bits=256` left-pads correctly into `m_tilde[21..53]`,
+the low-order end), and the recovered `bit_length` in `parse_m_prime`'s `Message` is read back from
+`l_m_tilde`, a field `build_m_prime` embeds from the caller's own `message_bits` and which
+`parse_m_prime`'s hash check (clause 12 step 16) authenticates - i.e. `decrypt` genuinely returns
+the *encryptor-supplied* bit length, not the buffer's fixed width, confirmed by reading the code
+before relying on it (`advisor()`'s explicit condition for accepting this design).
+
+Leaving 168 of `L_MAX_P512`'s 424 bits of KEM capacity unused is deliberate, not an oversight - the
+seed only ever needs to reach `Kupyna256Kdf`'s fixed 32-byte input, matching `crypto_box`'s own
+"asymmetric step only ever establishes key material" framing (module doc, `crypto_box.rs`); using
+more capacity would need either a wider KDF (D-04's homegrown-primitive rule, no established
+international one on hand for a 424-bit input) or a truncation step, both worse than simply not
+using the extra capacity at all.
+
+## D-183: T-193 Phases 1-3 - `crypto_box512` implemented, CLI-wired, and doc-synced in one pass
+
+Built on D-182's seed design. `crypto_box512.rs` is a direct sibling of `crypto_box.rs` at
+`l(p)=512`'s own widths (`SecretKey`/`PublicKey` as `[u8; 64]`, `KEM_CIPHERTEXT_LEN = 256`),
+re-deriving (not assuming) the `PublicKey` `x`-only compression safety argument for E512/1 - the
+argument is a curve-family property (twisted Edwards negation, this standard's own swapped-Edwards
+convention), not `p`/`d`/`n`-value-dependent, so it holds identically, but this project's own
+"don't assume a security argument carries over unchecked" discipline (D-176/D-178) still required
+stating that explicitly rather than silently copying the doc comment.
+
+**Test-first**: `tests/crypto_box512.rs` confirmed failing to compile (`crypto_box512` didn't
+exist) before `crypto_box512.rs` was written, then 17 tests - a direct mirror of
+`tests/crypto_box.rs`'s own suite (correctness/round-trip, rejection/tamper, misuse/degenerate,
+plus the T-183 fourth "active-attack" category via `public_key_rejects_degenerate_x_values`
+reusing `curve512::point_from_x`'s existing gauntlet) - all passed on the first run. Full
+`cargo test -p dstu-core`/`clippy --all-features -D warnings`/`fmt --check`/`no_std`+`alloc` build
+all clean.
+
+**CLI**: `uacrypt box-keygen512`/`box-pubkey512`/`box-seal512`/`box-open512`, distinct named
+subcommands (D-47 "delete the knob" - no `--curve` flag on the existing `box-*` commands), mirror
+of the existing `box-*` dispatch/help/error-message structure at the new widths. A `box-open`-
+length-valid `l(p)=512` sealed blob (>= 304 bytes) also clears `box-open`'s own 176-byte `MIN_LEN`
+check and vice versa - both fall through to their own `InvalidCiphertext`/authentication-failure
+path rather than a distinct "wrong curve size" error. Recorded as an accepted consequence of the
+shared error-collapsing posture (D-56/D-63), not a gap: a curve-size mismatch is just another way
+for the KEM decrypt step to fail, and `uacrypt`'s own key-file lengths (32 vs. 64 bytes) already
+make cross-using a `box-*` key with a `box-*512` command fail earlier, at key-parse time.
+
+**Doc sync, done in the same commit as the code** (D-159's own failure class, flagged explicitly
+by `advisor()` before Phase 1 started): `sonar-project.properties`'s `sonar.cpd.exclusions`
+extended to cover `crypto_box.rs`/`crypto_box512.rs` (same near-duplicate-sibling reasoning as
+D-181's eight `hazmat::dstu9041` files); `CLAUDE.md`'s `crypto_box` bullet, its bindings-coverage
+paragraph, and its `dstu-core-capi` paragraph all corrected to state `crypto_box512` exists and is
+*not* yet wrapped by any binding or `dstu-core-capi` (a stated future task, not silently wrong
+prose); `docs/dstu-crypto-project.md`'s `crypto_box` API-shape row updated to mention
+`crypto_box512` and narrow "`l(p)=384/512/768` still not done" down to just `l(p)=384/768`.
+
+**T-193 closed.** `crypto_box`/`crypto_box512` together now cover both curve sizes
+`hazmat::dstu9041` itself supports (`l(p) in {256, 512}`, T-177/T-192). T-194 (the combined
+performance table the owner actually asked for) is now unblocked.
