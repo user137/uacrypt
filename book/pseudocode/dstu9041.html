@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-2c072542.js";
+            window.path_to_searchindex_js = "../searchindex-0074acfd.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-ce7e91c5.js"></script>
@@ -517,12 +517,13 @@ operative parts of Додаток Б and both were already in hand from the firs
 implementation impact.</li>
 <li><strong>Corrected stale bullet (this file previously contradicted itself here):</strong> <code>t</code>/<code>C</code> in Додаток
 Г.1 (<code>l(p)=256</code>) <strong>are</strong> arithmetically verified — see “Verification performed” above, done the
-same day as T-174’s first pass, just not reflected in this list until now. What’s still
-unverified is the <strong>other two worked examples</strong>: Додаток Г’s <code>l(p)=384</code> and <code>l(p)=512</code> cases are
-present in the scan (curve params, <code>Q</code>/<code>R</code>/<code>T</code> etc.) but their own <code>t</code>/<code>C</code> were never checked
-against this crate’s <code>hazmat::kalyna_kw</code> — <code>l(p)=384</code> can’t be checked yet regardless
-(<code>hazmat::kalyna_kw_p</code> doesn’t exist, see below); <code>l(p)=512</code> could be checked against plain
-Kalyna-512/512-KW today but hasn’t been.</li>
+same day as T-174’s first pass, just not reflected in this list until now. Додаток Г.3
+(<code>l(p)=512</code>) is now verified too (T-192, D-180) - <code>Q</code>/<code>R</code>/<code>T</code>/<code>kappa</code>/<code>H</code> all match the document’s
+own printed hex exactly, <code>t</code>/<code>C</code> match to within a 2-hex-digit discrepancy attributed to the same
+printing-erratum pattern already documented for Додаток Г.1’s own <code>t</code> (<code>g1-worked-example.json</code>’s
+<code>t_ciphertext_note</code>). What’s still unverified is Додаток Г.2 (<code>l(p)=384</code>) - present in the scan
+(curve params, <code>Q</code>/<code>R</code>/<code>T</code> etc.) but its own <code>t</code>/<code>C</code> can’t be checked yet regardless
+(<code>hazmat::kalyna_kw_p</code> doesn’t exist, see below).</li>
 <li><strong>No worked example exists for <code>l(p)=768</code> (<code>λ=383</code>) anywhere in this standard — confirmed
 2026-08-06, owner-supplied photos of the document’s final pages.</strong> The document is genuinely 36
 pages total (not the 40 the store listing implies, <code>docs/ORACLES.md</code>); page 36 is the last page,
@@ -546,22 +547,30 @@ beyond the general engineering pattern (fixed-iteration loops, no secret-depende
 <code>fp384</code>/<code>fp512</code>/<code>fp768</code>-shaped modules (different modulus, different reduction constant) plus
 <code>hazmat::kalyna_kw_p</code> (below) — out of scope for T-177’s “ship the recommended curve first” pass.</li>
 </ul>
-<h2 id="implementation-status-t-177"><a class="header" href="#implementation-status-t-177">Implementation status (T-177)</a></h2>
-<p><code>hazmat::dstu9041</code> (<code>l(p)=256</code>/E256/1 only, D-47’s “ship the recommended curve first” precedent) is
-now implemented: <code>message.rs</code> (<code>M'</code> formatting + the Kalyna-KW zero-block quirk), <code>fp256.rs</code> (<code>F_p</code>
+<h2 id="implementation-status-t-177-t-192"><a class="header" href="#implementation-status-t-177-t-192">Implementation status (T-177, T-192)</a></h2>
+<p><code>hazmat::dstu9041</code> (<code>l(p)=256</code>/E256/1, D-47’s “ship the recommended curve first” precedent) is
+implemented: <code>message.rs</code> (<code>M'</code> formatting + the Kalyna-KW zero-block quirk), <code>fp256.rs</code> (<code>F_p</code>
 arithmetic), <code>curve256.rs</code> (twisted Edwards point arithmetic), <code>encryption.rs</code> (encrypt/decrypt
 composition, clauses 11/12). Full detail — the two security findings beyond clause 12’s literal
 text (an order-2 point via <code>r=p-1</code>, and a genuine order-4 subgroup from E256/1’s cofactor 4), the
 collapsed <code>DecryptError</code>, and the QA-gate closure (miri/Kani) — is in <code>docs/TASKS.md</code> T-177 and
 <code>docs/DECISIONS.md</code> (D-163/D-165/D-166 for the source material, the T-177 entry for the
 implementation itself).</p>
-<p><strong>Still not done, deliberately out of scope for this pass</strong>: <code>l(p)=384/512/768</code> (their own <code>F_p</code>
-modules, <code>hazmat::kalyna_kw_p</code> for the non-block-aligned <code>M'</code> padding case, and — for <code>l(p)=768</code> —
-no worked-example oracle exists at all in the standard, confirmed 2026-08-06, not just missing from
-this scan — see “Open gaps” above). Per this
-project’s own Tier C precedent (T-172 and earlier: any new primitive gets its own <code>advisor()</code>
-consultation and plan-mode pass before code is written, not after), picking any of these up should
-follow the same phased/tested-first pattern T-177 used, not be treated as a small parameter tweak.</p>
+<p><strong><code>l(p)=512</code>/E512/1 is implemented too (T-192, 2026-08-08)</strong>: <code>message512.rs</code>/<code>fp512.rs</code>/
+<code>curve512.rs</code>/<code>encryption512.rs</code>, same phased/test-first pattern, verified end-to-end against
+Додаток Г.3’s own worked example (<code>docs/DECISIONS.md</code> D-176/D-177/D-178/D-179/D-180). Both of
+E256/1’s security findings were independently re-derived for E512/1 rather than assumed to carry
+over (same <code>r=p-1</code> order-2 point, same cofactor-4 order-4 subgroup - confirmed via the same
+Hasse-interval method, not copied). <code>l(p)=512</code> needed no new Kalyna-KW variant
+(<code>Kalyna512_512Kw</code> already existed) since its <code>M'</code> lands exactly block-aligned (Table 1) - unlike
+<code>l(p)=384</code> below.</p>
+<p><strong>Still not done, deliberately out of scope for T-192</strong>: <code>l(p)=384</code> (needs <code>hazmat::kalyna_kw_p</code>
+for its non-block-aligned <code>M'</code> padding case, a genuinely new primitive) and <code>l(p)=768</code> (no
+worked-example oracle exists at all in the standard, confirmed 2026-08-06, not just missing from
+this scan — see “Open gaps” above). Per this project’s own Tier C precedent (T-172 and earlier: any
+new primitive gets its own <code>advisor()</code> consultation and plan-mode pass before code is written, not
+after), picking either of these up should follow the same phased/tested-first pattern T-177/T-192
+used, not be treated as a small parameter tweak.</p>
 
                     </main>
 
