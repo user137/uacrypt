@@ -2886,11 +2886,71 @@ item they point to is later removed.
       "the hypothesis was wrong" is a complete, valuable outcome there, not a failure to route
       around.
 
-      **Status: Tier 1's word-wise `reduce` lever landed as real, tested, benchmarked code this
-      session (see above) - a real ~1.9-2.45x Kalyna-GCM speedup, not a plan.** Tier 2 (EC
-      scalar-multiplication windowing) and the hardware-CLMUL rewrite of `poly_mul_wide` (reopened,
-      not diminished, by the `reduce` fix - see `docs/PERFORMANCE.md`) both remain plan-only; owner
-      to decide which, if any, to greenlight next.
+      **Hardware-`clmul` spike, same session, owner-requested ("досліди зараз як нам допоможе
+      апаратна інструкція... на разбері - дві різні архітектури"), `advisor()`-directed design**:
+      measured, not estimated, whether `PCLMULQDQ`/`PMULL` would actually move `multiply()`'s
+      throughput (not `poly_mul_wide` alone - the mistake shape this task's own earlier "at most
+      38%" estimate would have repeated). New `#[cfg(test)]` modules in `gf2m_wide.rs`:
+      `clmul_native` (one per `target_arch`, `#[target_feature(enable = "pclmulqdq")]`/
+      `enable = "aes"` on an `unsafe fn`, gated by a *runtime* `is_x86_feature_detected!`/
+      `is_aarch64_feature_detected!` check at every call site - not `#[cfg(target_feature = ...)]`,
+      which would be `false` on this project's actual baseline build and silently produce a false
+      "no speedup" result) and `clmul_spike` (schoolbook - not Karatsuba, checkable limb-by-limb -
+      combination of pairwise hardware clmuls, one macro instantiation per field size, mirroring
+      `field_axioms!`'s own shape). **Correctness gated first**: `clmul_poly_mul_wide_matches_
+      software_reference`, a proptest against the existing software `poly_mul_wide`, all three
+      field sizes, both architectures - all green before any timing was trusted. Then timed feeding
+      the *same production* word-wise `reduce` this task's own earlier fix landed (not a second
+      reduce implementation).
+
+      **Real, measured, both architectures - `docs/PERFORMANCE.md`'s "T-195 Tier 1 hardware-`clmul`
+      spike" subsection has the full tables**: `Gf2m256::multiply()` (software vs. hardware-`clmul`,
+      chained, same methodology as every other timing diagnostic in this file) - dev machine
+      (Ryzen 5 PRO 4650U) **6.35x** (505.8 -> 79.7 ns/op), Raspberry Pi 5 (Cortex-A76) **4.16x**
+      (487.2 -> 117.2 ns/op), both stable across repeated runs. m=128/512 measured too for
+      completeness (dev 1.84x/11.61x, Pi 1.90x/5.35x - m=512's schoolbook cost scales as `limbs^2`,
+      64 pairwise clmuls vs. m=256's 16, hence the larger win there) but m=256 is what
+      `crypto_secretstream`/`crypto_box` actually run through, so it's the number that matters for
+      the bulk-throughput tables.
+
+      **Real second-architecture confirmation of the word-wise `reduce` fix itself, found while
+      setting up this spike**: the Pi's `~/cipher_ua` copy predated T-195's `reduce` rewrite (last
+      synced before this session) - re-synced (tar+ssh per `.claude.local.md`), then ran the actual
+      `kalyna-gcm` 256-256 benchmark there for the first time post-fix, 100 MiB, same methodology as
+      the dev-machine row: **12.35 -> 37.33 MB/s encrypt, 12.41 -> 37.04 MB/s decrypt, ~3.0x** - a
+      real measured result on the second architecture, not projected, and a *bigger* relative win
+      than the dev machine's own ~2.45x/1.90x (consistent with the old bit-serial `reduce` costing
+      proportionally more per cycle on this CPU). Scratch files (`payload100m.bin`, `gcmkey.bin`,
+      `~/perf195` dir) deleted immediately after, `df` confirmed no net disk growth on the Pi's
+      already-tight card.
+
+      **Projected (not measured end-to-end) effect on real Kalyna-GCM throughput if the hardware
+      path were actually landed**: swapping each machine's measured software-vs-hardware
+      `multiply()` delta into its own real GCM per-block time and holding cipher-block/framing cost
+      fixed - dev machine ~34.96 -> ~68 MB/s encrypt, ~30.16 -> ~52 MB/s decrypt; Pi ~37.33 -> ~68
+      MB/s encrypt, ~37.04 -> ~67 MB/s decrypt. Both comfortably under their XTS (bare-cipher)
+      ceilings (163.82/155.55 MB/s dev; Pi's own XTS number not separately measured this session).
+      The projection is *smaller* than the raw `multiply()` speedup suggests on its own, because
+      Kalyna256-256's own `encrypt_block` (201.4 ns dev / 323.4 ns Pi) becomes the new floor once
+      the tag multiply shrinks enough - expected diminishing returns once a two-term sum stops
+      being dominated by one term, not a sign the projection method is wrong.
+
+      **Not picked up as production code this session, per `advisor()`'s explicit instruction**: the
+      spike lives entirely in `#[cfg(test)]` (`clmul_native`/`clmul_spike` in `gf2m_wide.rs`),
+      `poly_mul_wide` itself untouched. A real landing still needs, and this session deliberately
+      did not resolve: target-feature detection strategy for a `no_std` core (compile-time
+      `#[cfg(target_feature = ...)]` fork vs. runtime dispatch - the same `fused`/`small-tables`-
+      shaped decision the owner invoked by name), a software fallback path for CPUs without the
+      instruction, and a real `--emit=asm` pass on the *wired-in* version before committing, per
+      T-129/T-139's standing precedent. That's a decision for the owner to make, not something this
+      spike should pre-empt.
+
+      **Status: both Tier 1 levers are now real, measured findings, not plans** - word-wise `reduce`
+      landed as production code this session (~2.0-3.0x Kalyna-GCM speedup, confirmed on two
+      architectures); hardware `clmul` is spiked and measured on both architectures (a further
+      ~1.9-2.0x projected on top, ~4-6x on `multiply()` alone) but not landed - the feature-
+      detection/fallback design is a real decision still waiting on the owner. Tier 2 (EC
+      scalar-multiplication windowing) remains plan-only, untouched this session.
 - [x] **T-188** **Done 2026-08-07, owner-requested.** SonarCloud Quality Gate was
       `ERROR` on `new_duplicated_lines_density` (3.0% actual vs. `<=3%` required) - missed in T-187's
       own SonarCloud check because that check only queried `api/issues/search` (rule-violation

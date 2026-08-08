@@ -2064,6 +2064,59 @@ earlier spike estimated, since that estimate was made before `reduce` itself got
 remaining lever on this layer, not a diminished one — still not picked up as code this session, see
 `docs/TASKS.md` T-195 for the scoping constraints (target-feature detection, `no_std` compatibility,
 fallback path, `--emit=asm` spike) that still apply.
+
+**T-195 Tier 1 hardware-`clmul` spike, same session, `advisor()`-directed design, measured on both
+architectures this project targets** — a real question needing a real answer before committing to a
+rewrite, not estimated: does `PCLMULQDQ` (x86-64) / `PMULL` (AArch64, via Rust's `aes` target
+feature — confirmed by this project's own `rustc --print target-features` output on the Pi, "CPU
+fuses AES/PMULL and EOR operations") actually move `Gf2m256::multiply()`'s throughput, not just
+`poly_mul_wide` in isolation? A schoolbook (not Karatsuba — checkable limb-by-limb) combination of
+16 pairwise hardware 64x64->128-bit carry-less multiplies, correctness-proptested against the
+existing software `poly_mul_wide` first (`clmul_poly_mul_wide_matches_software_reference`, all
+three field sizes, both architectures, all green), then timed feeding the *same production*
+word-wise `reduce` this session's earlier fix landed — not a second reduce implementation, and not
+`poly_mul_wide` alone (this session's own earlier "at most 38%" estimate is exactly the mistake
+shape a `poly_mul_wide`-only number would repeat).
+
+| Machine | `Gf2m256::multiply()` software | `Gf2m256::multiply()` hardware-`clmul` | Speedup |
+|---|---|---|---|
+| Dev machine (Ryzen 5 PRO 4650U, `PCLMULQDQ`) | 505.8 ns/op | 79.7 ns/op | **6.35x** |
+| Raspberry Pi 5 (Cortex-A76, `PMULL`) | 487.2 ns/op | 117.2 ns/op | **4.16x** |
+
+Both reproduced stably across repeated runs (dev: 6.12-6.35x across two runs; Pi: 4.16x identical
+across two runs). m=128/512 measured too (dev: 1.84x/11.61x; Pi: 1.90x/5.35x) — m=512's much larger
+speedup (schoolbook scales as `limbs²`, so 64 pairwise clmuls vs. m=256's 16) is the strongest
+result of the three, but m=256 is what `crypto_secretstream`/`crypto_box` actually run through, so
+it's the one that matters for the bulk-throughput number in the tables above.
+
+**What this means for real Kalyna-GCM throughput — a back-of-envelope projection, not an end-to-end
+measurement** (the spike is diagnostic-only, feature-gating/`no_std`/fallback design not resolved,
+`poly_mul_wide` itself untouched in production): swapping `multiply()`'s measured software-vs-
+hardware delta into each machine's *real, measured* Kalyna-GCM 256-256 per-block time (100 MiB,
+same methodology as the table above) and holding the cipher-block/framing cost fixed:
+
+| Machine | Real GCM now (post-T-195 `reduce` fix) | Projected with hardware `clmul` | Kalyna-XTS ceiling |
+|---|---|---|---|
+| Dev machine, encrypt | 34.96 MB/s | ~68 MB/s | 163.82 MB/s |
+| Dev machine, decrypt | 30.16 MB/s | ~52 MB/s | 155.55 MB/s |
+| Raspberry Pi 5, encrypt | 37.33 MB/s | ~68 MB/s | *(not separately measured on Pi)* |
+| Raspberry Pi 5, decrypt | 37.04 MB/s | ~67 MB/s | *(not separately measured on Pi)* |
+
+(Pi's own real Kalyna-GCM 256-256 number is new this session too — 100 MiB, same `kalyna-gcm`
+CLI/methodology, re-synced repo since the Pi's copy predated the word-wise `reduce` fix: **12.35 ->
+37.33 MB/s encrypt, 12.41 -> 37.04 MB/s decrypt, ~3.0x**, a real measured T-195 result on the second
+architecture, not projected — bigger than the dev machine's own ~2.45x/1.90x, consistent with the
+old bit-serial `reduce` costing proportionally more on this CPU.) Both projected numbers land
+comfortably under their respective XTS (bare-cipher) ceilings, and the projection is *smaller* than
+the raw `multiply()` speedup (6.35x/4.16x) would suggest on its own, because Kalyna256-256's own
+`encrypt_block` (201.4 ns dev / 323.4 ns Pi) stops shrinking and becomes the new floor once the tag
+multiply gets small enough — the expected diminishing-returns shape once a two-term sum stops being
+dominated by one term. **Not picked up as code this session** — the spike lives in
+`hazmat::gf2m_wide.rs`'s own `#[cfg(test)] mod clmul_spike` (and `clmul_native`, one module per
+architecture), correctness-proptested, timed, and left there; a real landing still needs the
+feature-detection/`no_std`/fallback design `docs/TASKS.md` T-195 already scoped as a separate,
+un-started decision.
+
 - **AES-256, not CMS's envelope, is the ceiling on OpenSSL's side, and by a wide margin.** Raw
   `openssl enc` (261.78/402.44 MB/s) is *faster* than full CMS (205.59/296.45 MB/s) — CMS's own
   ASN.1/certificate/ECDH-KDF envelope costs OpenSSL real throughput too (~21-27%), proportionally

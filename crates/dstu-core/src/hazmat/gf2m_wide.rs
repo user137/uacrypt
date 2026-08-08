@@ -682,3 +682,189 @@ mod kani_proofs {
     reduce_kani_proof!(gf2m256, Gf2m256, 8);
     reduce_kani_proof!(gf2m512, Gf2m512, 16);
 }
+
+/// A single pairwise 64x64 -> 128-bit hardware carry-less multiply, one implementation per
+/// architecture this project targets (`docs/TASKS.md` T-195's Tier 1 spike, `advisor()`-directed:
+/// owner asked to measure the real lever, not estimate it). `#[target_feature(enable = ...)]` on
+/// an `unsafe fn`, gated by a *runtime* feature check at every call site - not
+/// `#[cfg(target_feature = ...)]`, which would be `false` on this project's actual baseline build
+/// (no `-C target-feature=+...` override anywhere in `hazmat`) and would silently compile the
+/// hardware path out entirely, producing a false "no speedup" result instead of a missing one.
+#[cfg(all(test, target_arch = "x86_64"))]
+mod clmul_native {
+    use std::arch::x86_64::{__m128i, _mm_clmulepi64_si128, _mm_set_epi64x, _mm_storeu_si128};
+
+    /// `PCLMULQDQ`, imm8 `0x00` selects the low 64 bits of both 128-bit operands - exactly the two
+    /// `u64`s placed there by `_mm_set_epi64x(0, x as i64)` below.
+    #[target_feature(enable = "pclmulqdq")]
+    unsafe fn clmul64_impl(a: u64, b: u64) -> (u64, u64) {
+        let ma = _mm_set_epi64x(0, a as i64);
+        let mb = _mm_set_epi64x(0, b as i64);
+        let prod = _mm_clmulepi64_si128(ma, mb, 0x00);
+        let mut bytes = [0u8; 16];
+        _mm_storeu_si128(bytes.as_mut_ptr().cast::<__m128i>(), prod);
+        let lo = u64::from_le_bytes(bytes[0..8].try_into().unwrap());
+        let hi = u64::from_le_bytes(bytes[8..16].try_into().unwrap());
+        (lo, hi)
+    }
+
+    pub(super) fn feature_available() -> bool {
+        is_x86_feature_detected!("pclmulqdq")
+    }
+
+    /// # Safety
+    /// Caller must have checked [`feature_available`] first.
+    pub(super) unsafe fn clmul64(a: u64, b: u64) -> (u64, u64) {
+        clmul64_impl(a, b)
+    }
+}
+
+#[cfg(all(test, target_arch = "aarch64"))]
+mod clmul_native {
+    use std::arch::aarch64::vmull_p64;
+
+    /// `PMULL` - gated by the `aes` target feature (ARM bundles `PMULL` into the same
+    /// cryptographic-extension hardware block as AES, confirmed via this project's own
+    /// `rustc --print target-features` output on the Raspberry Pi, "fuse-crypto-eor - CPU fuses
+    /// AES/PMULL and EOR operations"; `/proc/cpuinfo`'s `pmull` flag is the actual presence check,
+    /// there is no separate `pmull`-named Rust target feature to gate on).
+    #[target_feature(enable = "aes")]
+    unsafe fn clmul64_impl(a: u64, b: u64) -> (u64, u64) {
+        let prod: u128 = vmull_p64(a, b);
+        (prod as u64, (prod >> 64) as u64)
+    }
+
+    pub(super) fn feature_available() -> bool {
+        std::arch::is_aarch64_feature_detected!("aes")
+    }
+
+    /// # Safety
+    /// Caller must have checked [`feature_available`] first.
+    pub(super) unsafe fn clmul64(a: u64, b: u64) -> (u64, u64) {
+        clmul64_impl(a, b)
+    }
+}
+
+/// T-195 Tier 1 spike: does a hardware carry-less-multiply instruction move `multiply()`'s
+/// (not just `poly_mul_wide`'s) throughput? Schoolbook (not Karatsuba - checkable limb-by-limb
+/// against the existing reference, per `advisor()`) combination of pairwise hardware `clmul64`s:
+/// for narrow inputs `a`, `b` with `limbs` 64-bit words each, `out[i+j] ^= lo` / `out[i+j+1] ^= hi`
+/// for every `(i, j)` pair - the same limb-placement identity [`Gf2m256::poly_mul_wide`]'s comb
+/// method computes a different way, cross-checked against it directly below before any timing is
+/// trusted. Feeds the *production* [`Gf2m256::reduce`] afterward (not a second reduce
+/// implementation) so the measured number is `multiply()`'s real replacement cost, not
+/// `poly_mul_wide` in isolation - this session's own earlier mistake (T-195's "at most 38%"
+/// estimate, made before `reduce` itself got fixed) is exactly the shape a `poly_mul_wide`-only
+/// number would repeat. Diagnostic-only, `#[cfg(test)]`, no production code touched - see
+/// `docs/TASKS.md` T-195 for the still-open feature-detection/`no_std`/fallback design a real
+/// landing would need.
+#[cfg(all(test, any(target_arch = "x86_64", target_arch = "aarch64")))]
+mod clmul_spike {
+    use super::clmul_native::{clmul64, feature_available};
+    use super::{Gf2m128, Gf2m256, Gf2m512};
+    use proptest::prelude::*;
+
+    /// Kalyna-XTS 256-256's own measured throughput (`docs/PERFORMANCE.md`, no authentication tag
+    /// at all - pure cipher): no CLMUL result on `multiply()` can push Kalyna-GCM's *overall*
+    /// throughput above this, since GCM is cipher + tag no matter how cheap the tag gets. A
+    /// projected number above this line means the measurement is wrong, not the instruction.
+    const KALYNA_XTS_256_256_CEILING_MB_S: f64 = 163.82;
+
+    fn schoolbook_clmul_poly_mul_wide(a: &[u64], b: &[u64]) -> Vec<u64> {
+        let limbs = a.len();
+        let mut out = vec![0u64; limbs * 2];
+        for i in 0..limbs {
+            for j in 0..limbs {
+                // Safety: every call site below checks `feature_available()` first.
+                let (lo, hi) = unsafe { clmul64(a[i], b[j]) };
+                out[i + j] ^= lo;
+                out[i + j + 1] ^= hi;
+            }
+        }
+        out
+    }
+
+    macro_rules! clmul_spike_for {
+        ($mod_name:ident, $elem:ident, $limbs:literal, $limbs2:literal) => {
+            mod $mod_name {
+                use super::*;
+
+                fn arb_narrow() -> impl Strategy<Value = [u64; $limbs]> {
+                    proptest::collection::vec(any::<u64>(), $limbs).prop_map(|v| {
+                        let mut out = [0u64; $limbs];
+                        out.copy_from_slice(&v);
+                        out
+                    })
+                }
+
+                proptest! {
+                    #[test]
+                    fn clmul_poly_mul_wide_matches_software_reference(a in arb_narrow(), b in arb_narrow()) {
+                        if !feature_available() {
+                            return Ok(());
+                        }
+                        let hw = schoolbook_clmul_poly_mul_wide(&a, &b);
+                        let sw = $elem::poly_mul_wide(&a, &b);
+                        prop_assert_eq!(hw.as_slice(), sw.as_slice());
+                    }
+                }
+
+                #[test]
+                #[ignore]
+                fn isolated_timing_clmul_vs_software_multiply() {
+                    if !feature_available() {
+                        eprintln!(
+                            "{}: hardware clmul feature not available on this CPU, skipping",
+                            stringify!($elem)
+                        );
+                        return;
+                    }
+                    use std::hint::black_box;
+                    use std::time::Instant;
+
+                    const N: u32 = 2_000_000;
+                    let a = [0x1111_1111_1111_1111u64; $limbs];
+                    let b = [0x5555_5555_5555_5555u64; $limbs];
+
+                    // Software baseline: existing production `multiply()` (comb `poly_mul_wide` +
+                    // word-wise `reduce`), chained the same way every other diagnostic in this file
+                    // chains, matching `kalyna_gcm`'s real accumulator dependency pattern.
+                    let start = Instant::now();
+                    let mut acc = $elem(a);
+                    let operand = $elem(b);
+                    for _ in 0..N {
+                        acc = black_box(acc.multiply(black_box(operand)));
+                    }
+                    let sw_elapsed = start.elapsed();
+                    black_box(acc);
+
+                    // Hardware-`clmul` `poly_mul_wide` feeding the *same* production `reduce`.
+                    let start = Instant::now();
+                    let mut chained = a;
+                    for _ in 0..N {
+                        let wide = schoolbook_clmul_poly_mul_wide(black_box(&chained), black_box(&b));
+                        let mut wide_arr = [0u64; $limbs2];
+                        wide_arr.copy_from_slice(&wide);
+                        let reduced = $elem::reduce(wide_arr);
+                        chained.copy_from_slice(&reduced.0);
+                    }
+                    let hw_elapsed = start.elapsed();
+                    black_box(chained);
+
+                    let sw_ns = sw_elapsed.as_nanos() as f64 / f64::from(N);
+                    let hw_ns = hw_elapsed.as_nanos() as f64 / f64::from(N);
+                    eprintln!(
+                        "{}: software multiply() = {sw_ns:.1} ns/op | hardware-clmul multiply = {hw_ns:.1} ns/op | speedup = {:.2}x | (Kalyna-XTS 256-256 ceiling = {} MB/s - no GCM projection may exceed this)",
+                        stringify!($elem),
+                        sw_ns / hw_ns,
+                        KALYNA_XTS_256_256_CEILING_MB_S
+                    );
+                }
+            }
+        };
+    }
+
+    clmul_spike_for!(gf2m128_spike, Gf2m128, 2, 4);
+    clmul_spike_for!(gf2m256_spike, Gf2m256, 4, 8);
+    clmul_spike_for!(gf2m512_spike, Gf2m512, 8, 16);
+}
