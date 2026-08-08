@@ -11749,3 +11749,86 @@ pass, fixed by hardcoding an externally-computed, independently re-verified cons
 (`two_n_is_really_2n`, an from-scratch big-endian doubling check, not a re-assertion of the same
 mistake). Both are concrete instances of this project's own standing rule about verifying claims
 rather than trusting a computation that "looks" independent.
+
+## D-174: T-190 sub-pass 1 (DSTU 4145) - Bouncy Castle parity confirmed, no `g`-side gap; a third-party finding handled privately
+
+**Context**: T-190's first per-algorithm sub-pass, comparing DSTU 4145's defensive/stability code
+in Bouncy Castle against `hazmat::dstu4145::signature`.
+
+**1. Bouncy Castle - our T-189 fix has exact parity, no new gap.** The vendored
+`oracles/bouncycastle-java` sparse checkout doesn't include `ECPublicKeyParameters`/`ECPoint`/
+`ECCurve` (only the DSTU-specific files, `docs/ORACLES.md`'s own note on this), so these were
+fetched read-only from `raw.githubusercontent.com/bcgit/bc-java/master/...` for reading, not
+vendored into the repo. Trace: `ECPublicKeyParameters`'s constructor calls
+`ECDomainParameters.validatePublicPoint`, which rejects `null`, infinity, and
+`!ECPoint.isValid()`. `isValid()` (`implIsValid`, checkOrder=true) checks
+`satisfiesCurveEquation()` **and** `satisfiesOrder()`; the F2m `satisfiesOrder()` override has an
+explicit cofactor-2 branch (a trace-based halving test, `ECPoint.java:1444-1462`) that is the
+general form of what `is_on_curve` + the explicit `x != 0` rejection do for this specific curve in
+`signature::verify` (T-189/D-172). Confirmed via Bouncy Castle's own `DSTU4145NamedCurves`-derived
+cofactor 2 (already cited in D-172) - no new action.
+
+**2. The `g` (base point) side has no mirror exploit - checked, not fixed.** `verify`/`sign` take
+`g: Point` as a caller-supplied parameter (hazmat's "no defaults chosen for you" design), and only
+`q` was validated by T-189, not `g`. Bouncy Castle validates `G` too, but *once*, at
+`ECDomainParameters` construction (`ECDomainParameters.java:64`) - a long-lived domain object, not
+a per-call untrusted input - so this isn't evidence of a per-call `g` check being needed in our
+shape. Analytic argument for why the T-189 exploit doesn't mirror: `find_forgery`'s trick works
+because `r` - the exact value re-derived and checked against the candidate output - multiplies the
+degenerate point (`q`), collapsing `r*q` to <=2 values as a function of `r`'s parity alone, so the
+*other*, unconstrained variable (`s`) can be searched cheaply. With `g` degenerate instead, it's
+`s*g` that collapses, but `s` is never checked against anything; the checked output (`r`) still
+multiplies the honest, full-order `q`, so `r*q` still ranges over the full group and there's no
+known cheap inversion. **Empirically probed** (temporary test, not committed - `git diff --stat`
+confirmed the file was byte-identical to HEAD after removal): order-2 and `Infinity` `g`, honest
+full-order `q` from the vector, brute-forced over 2 bad-`g` variants x 2000 `s` x 50 `r` = 200,000
+`curve163::verify_combine` trials - **0 hits**. Conclusion: no exploit, no code change - adding a
+`g` check now would be a behavior change to a `hazmat` function with no security justification,
+against `CLAUDE.md`'s own "no speculative features" rule. `crypto_sign.rs` (the only wired public
+entry point) always hardcodes `g = Point::generator()` regardless, so this is unreachable through
+any shipped surface either way - `hazmat::dstu4145::signature::{sign,verify}` are the only place a
+non-constant `g` could ever reach, for a downstream Rust consumer calling them directly.
+
+**3. A third finding, in a third-party open-source reference implementation, not in this
+project's own code.** The same class of bug T-189/D-172 fixed here (a public-key point accepted
+without a point-order check, enabling universal signature forgery with no private key) was found
+during this sub-pass in a different, independently-maintained open-source project - not detailed
+here on purpose. Per this project's own established precedent for anything involving a third
+party's own repository (see D-91), this is not this project's call to disclose publicly or act on
+unilaterally: it was raised to the project owner as a private question, reproduced against that
+project's own real compiled binary before any outreach (owner's explicit requirement - don't
+report on a source-reading trace alone), and is being handled through private, responsible
+disclosure to that project's own maintainers. Full technical detail (repository, exact file/line
+trace, reproduction bytes) is intentionally not recorded in this public repository while disclosure
+is pending - kept in local, untracked notes instead. See `docs/TASKS.md` T-190/T-191 for status.
+
+**No change to our own code** - `signature::verify` already rejects both the on-curve failure and
+the `x = 0` small-subgroup case (T-189/D-172). The third-party finding above is corroborating
+evidence that T-189 was a real, exploitable bug class independently discoverable elsewhere, not
+paranoia over a theoretical concern.
+
+## D-175: T-191 - the third-party finding from D-174 independently reproduced against real running code, not just source reading
+
+Per the owner's explicit order of operations (reproduce against the real, running third-party
+binary before any disclosure contact - not a source-reading trace alone), built a standalone,
+uncommitted C test harness against that project's own official prebuilt binary release, calling
+its own exported public API functions directly, with no modification to that project's code.
+Confirmed: a genuine, honestly-derived signature verifies correctly (control case), and the same
+class of forged signature D-174 describes - a public key with no real private key behind it - is
+also accepted by the real compiled binary, not just predicted from reading source. Two mechanical
+false leads were hit and self-corrected along the way (an encoding/padding bug in the harness's own
+hex parser, and an initial attempt to cross-check against a reference vector that turned out to use
+a different base point than the target's own default curve parameters) - both resolved empirically,
+not guessed past.
+
+This closes T-191's reproduction step. Per D-91's standing rule for anything involving a specific
+third-party repository, no public detail (project name, file/line trace, exact reproduction bytes)
+is recorded here while private disclosure is pending - see local, untracked notes for the full
+technical record kept for this project's own reference. Next step (per the owner's 2026-08-08
+direction) is drafting the private disclosure itself for the owner's own review before anything is
+sent anywhere - not this project's call to make unilaterally.
+
+**No change to this project's own code or committed test suite** - the scratch harness used for
+reproduction lives outside this repository entirely (session scratchpad only), matching this
+project's established "scratch-only, not shipped" posture for throwaway investigation tooling in
+general.

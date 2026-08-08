@@ -2235,6 +2235,38 @@ item they point to is later removed.
       (`DSTU7624WrapEngine` is the densest validation file in BC), then Kupyna, then Strumok
       (UAPKI-only, smaller surface). DSTU 9041 is not a sub-pass (table above) - do not spend time
       on it here.
+
+      **Sub-pass 1 (DSTU 4145) closed 2026-08-08, findings in `docs/DECISIONS.md` D-174.**
+      Bouncy Castle: T-189's fix has exact parity with `ECPublicKeyParameters` →
+      `validatePublicPoint` → `isValid()`'s cofactor-2 `satisfiesOrder()` branch - no new gap.
+      The `g` (base point) side: checked whether the missing per-call validation there mirrors
+      T-189's `q` exploit - analytic argument plus an empirical 200,000-trial probe (0 hits, not
+      committed) both say no; `crypto_sign.rs` hardcodes `g = Point::generator()` regardless, so
+      this is unreachable through any shipped surface either way - no code change, documented as
+      checked-not-needed per this task's own step 4. **A third finding, in a third-party
+      open-source reference implementation, not in this project's own code** - the same bug class
+      T-189 fixed here. Being handled through private, responsible disclosure to that project's own
+      maintainers, per this project's standing policy for anything involving a specific third
+      party's own repository (D-91) - not this project's own code, not detailed further in this
+      public repository while disclosure is pending. See T-191 and D-174/D-175 for status (full
+      technical detail kept in local, untracked notes, not committed here).
+- [ ] **T-191** **Not started, owner-requested 2026-08-08.** Private, responsible-disclosure
+      follow-up to the third-party finding from T-190/D-174 (same bug class as T-189/D-172, found in
+      a different open-source project's own code, not this project's). **Owner's explicit order of
+      operations: reproduce the forgery against that project's own real compiled binary FIRST, only
+      then contact its maintainers, privately, with the reproduction and an example fix - not a
+      source-reading trace alone.** Per D-91's standing policy, no public detail (project name,
+      file/line trace, reproduction bytes) is recorded in this task while disclosure is pending -
+      see local, untracked notes for the full technical record.
+
+      **Reproduction step done 2026-08-08, confirmed - see `docs/DECISIONS.md` D-175.** Built a
+      small, uncommitted test harness against that project's own official prebuilt binary release
+      and confirmed, against its real compiled code (not source reading): a genuine honest signature
+      verifies correctly (control case), and the same class of forged signature - a public key with
+      no real private key behind it - is **also accepted**. The vulnerability is real and reproduced
+      at the running-code level, not just inferred from reading source.
+      **Next: draft the private disclosure itself for the owner's own review before anything is sent
+      anywhere** - not this project's call to make unilaterally, per D-91.
 - [x] **T-188** **Done 2026-08-07, owner-requested.** SonarCloud Quality Gate was
       `ERROR` on `new_duplicated_lines_density` (3.0% actual vs. `<=3%` required) - missed in T-187's
       own SonarCloud check because that check only queried `api/issues/search` (rule-violation
