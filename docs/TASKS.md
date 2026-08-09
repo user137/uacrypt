@@ -3595,6 +3595,73 @@ item they point to is later removed.
       Each phase should be a real, independently landable state, not a partial step waiting on the
       rest - same discipline T-199 itself just used successfully. No committed timeline; owner
       prioritizes which phase starts first.
+- [ ] **T-203** **Not started, owner-requested (2026-08-09) - per-registry package publishing for
+      all eight language bindings (PyPI/npm/RubyGems/Packagist/NuGet), staged, one explicit go-ahead
+      per stage, not a single blanket authorization.** Same class of gate as T-17/T-164 (crates.io
+      required an explicit owner ask; this is the six-registry version of that ask), prompted
+      directly by T-17/v0.3.0 landing this session and the owner asking to do the same for every
+      binding "по єдиному плану." `advisor()`-reviewed before staging (2026-08-09): the single
+      biggest risk is treating this as one six-registry action - each registry needs the owner to
+      create an account and configure a trust policy in that platform's own web UI, which this
+      session cannot do on the owner's behalf. The `cargo login` handoff for crates.io already
+      misfired twice this session (interactive paste didn't work, direct-argument form leaked the
+      token into the chat transcript twice, both revoked after) - six repeats of that exact pattern
+      is the concrete failure mode this task's staging exists to avoid.
+
+      **Research this session (not yet executed)**: four of six registries support Trusted
+      Publishing via OIDC - PyPI, npm (GA since 2025-07), RubyGems, and NuGet all let a GitHub
+      Actions workflow authenticate via a short-lived OIDC token instead of a long-lived API key,
+      once the owner configures a trust policy (repo + workflow filename + environment) on that
+      registry's own site. **This is the direct fix for the token-leak pattern above** - no secret
+      ever enters the chat for these four, unlike the crates.io round. Packagist and Maven Central
+      don't fit this shape: Packagist has no CI publish step at all (submit the repo URL once via
+      its web UI, add a GitHub webhook, and it reads `composer.json`/tags directly from GitHub
+      forever after - no token, no artifact, no version bump); Maven Central (via Sonatype's Central
+      Portal) needs namespace verification (fast if claimed via GitHub as `io.github.<username>`,
+      slow otherwise via DNS TXT record) plus PGP/Sigstore signing of every artifact (2025-2026
+      security requirement) - real infrastructure work, not a single-session step.
+
+      **Staged plan, tightest constraint first (advisor-recommended order)**:
+      1. **Packagist (PHP)** - lowest risk: no credential, no build artifact, no version bump.
+         `v0.3.0` already exists as a tag; Packagist reads it directly once the one-time webhook is
+         set up.
+      2. **PyPI (Python)** - the only one of the seven non-`uacrypt` bindings with prebuilt wheels
+         already produced (`release.yml`'s `build-python-wheels` job, attached to the `v0.3.0`
+         GitHub Release). Needs a pending trusted publisher configured on PyPI plus a new
+         `publish-pypi` job in `release.yml`. **`bindings/python`'s own version is `0.1.0`, not
+         lockstepped with `dstu-core`/`uacrypt`'s 0.3.0** (`bindings/python/Cargo.toml` and
+         `pyproject.toml` both say so, deliberate per `release.yml`'s own comment) - a first PyPI
+         publish burns `0.1.0` permanently, same irreversibility as crates.io.
+      3. **npm / RubyGems / NuGet** - confirmed this session (grepped every `bindings-*.yml`
+         workflow, none use `action-gh-release` or trigger on `v*` tags) that **none of the seven
+         non-Python bindings produce any downloadable release artifact today** - real CI work
+         (a prebuilt-artifact job per binding in `release.yml`, mirroring `build-python-wheels`'s
+         shape) has to land before any of these three registries has anything to publish.
+      4. **Maven Central** - separate, later, its own multi-session task once reached - not folded
+         into this one's numbered stages.
+
+      **Before any stage starts**: re-check package name availability live on that specific registry
+      (`docs/bindings-strategy.md`'s existing name-check table, lines 126-134, only covers
+      PyPI/npm/NuGet/Maven Central as of 2026-08-02 and is already stale - no RubyGems/Packagist row
+      exists at all), and read that registry's actual current publish workflow requirements before
+      writing any CI, the same "research before implementation" discipline `docs/CLAUDE.md` requires
+      for primitives, applied here to release infrastructure instead.
+- [ ] **T-204** **Not started, found this session (2026-08-09) auditing binding coverage after the
+      owner asked directly whether the new signature curve reached the bindings.** `crypto_sign257`
+      (DSTU 4145 `m=257`, T-199, landed 2026-08-08) is **not wired into any of the eight language
+      bindings or `dstu-core-capi`** - confirmed by grepping actual binding source (not build
+      artifacts) for `sign257`/`Sign257`/`m257` across `bindings/`: the only three hits were stale
+      `.d` dependency-file paths under `target/debug`/`target/release` build output, zero real
+      wrapper code in any binding or in `crates/dstu-core-capi/src`. This is the same shape of gap
+      already flagged for `crypto_box512` (DSTU 9041 `l(p)=512`, T-193's own scope note: "binding/
+      capi wiring for `crypto_box512` ... separate future task") - that note had no task number
+      assigned either, so both newer primitives are tracked together here rather than as two
+      separate half-tracked gaps. **Scope, once picked up**: extend every binding's existing
+      `crypto_sign`/`crypto_box` wrapper pattern (T-181's own precedent for how `crypto_box` reached
+      all eight in one pass) to also cover `crypto_sign257`/`crypto_box512` - `dstu-core-capi` first
+      (the foundation `.NET`/Go/C++ link against directly), then the five direct-Rust bindings
+      (Python/Node/Ruby/PHP/Java). Not started; no committed timeline, owner prioritizes against
+      T-203 above.
 - [ ] **T-202** **Not started, owner-requested (2026-08-09) - research spike: is a Strumok-keystream
       + MAC ("Encrypt-then-MAC") authenticated construction a faster-but-still-safe alternative to
       `crypto_secretstream`'s current Kalyna-GCM-based AEAD for `uacrypt encrypt`/`decrypt`?**
