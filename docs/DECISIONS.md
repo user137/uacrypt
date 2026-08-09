@@ -12295,3 +12295,310 @@ hardware-level claim about either path.
 `cargo xtask clippy`/`fmt --check`, and the full `cargo xtask build` feature matrix (`--all-features`,
 `--no-default-features`, `-p dstu-core --no-default-features --features getrandom`) - all clean on
 both the dev machine and the (re-synced) Raspberry Pi.
+
+## D-185: T-199 (planned) - `m=257` chosen as the second DSTU 4145 curve, on empirical evidence from real issued certificates, not a guess off the standard's own curve table
+
+Owner asked ("що б ти рекомендував?" -> "а пошукай які рекомендовані криві і що використовують
+держоргани" -> "а що використовує Дія?") whether `hazmat::dstu4145` should ever grow a second curve
+size beyond the currently-sole `m=163` (~80-bit security, `docs/pseudocode/dstu4145.md`'s "Not yet
+implemented" section already flags the other 9 `DSTU4145NamedCurves.java` sizes as unimplemented,
+T-43/T-44). Initial answer was a hedge - "m=257 is a reasonable middle tier, but that's an analogy
+to what Bouncy Castle enumerates as a valid ID, not a citation of what's actually deployed." The
+owner then supplied the citation directly, twice over.
+
+**Evidence, two independent real-world sources, byte-identical domain parameters:**
+
+1. **`czo.gov.ua`'s official test-example generator** (`/testexamples`, a public Vue SPA; its
+   `/download/test_sign/{signtype}/{algorithm}/{file}` URL pattern was read out of
+   `assets/js/testexamples.js` rather than guessed). The downloaded DSTU 4145 test signature
+   certificate is issued by `O=ДП "ДІЯ" (ТЕСТ)` - Diia's own test CA infrastructure, not a generic
+   placeholder.
+2. **A real, currently-valid qualified certificate** the owner signed a document with themselves
+   (`ca.diia.gov.ua`, screenshot + the actual `.asice`/XAdES container supplied in-chat), issued by
+   `O=ДП "ДІЯ", CN="Дія". Кваліфікований надавач електронних довірчих послуг` - genuine production
+   Diia CA output, not a test artifact.
+
+Both certificates' `SubjectPublicKeyInfo` DSTU-4145 domain parameters were extracted byte-exact via
+`openssl asn1parse` plus `dd`-at-offset (never hand-transcribed hex - the exact failure mode
+`CLAUDE.md`'s "Transcribing long same-character runs..." rule already burned this project on once
+for a DSTU 9041 prime, T-174) and are **identical** between the test and production certificate:
+
+```
+m (field size)        = 0x0101 = 257
+reduction polynomial  = x^257 + x^12 + 1          (trinomial; second exponent = 0x0C = 12)
+a                      = 0
+b   (raw cert OCTET STRING, little-endian - see correction below) =
+    10BEE3DB6AEA9E1F86578C45C12594FF942394A7D738F9187E6515017294F4CE01
+n   (order; 33-byte DER INTEGER, leading 0x00 is DER sign padding -> true value is 256 bits,
+     top significant byte 0x80) = 800000000000000000000000000000006759213AF182E987D3E17714907D470D
+G   (raw cert compressed-point OCTET STRING, little-endian) =
+    B60FD2D8DCE8A93423C6101BCA91C47A007E6C300B26CD556C9B0E7D20EF292A00
+```
+
+**Correction found implementing T-199 (byte order):** the certificate's own signature-algorithm
+OID literally reads `DSTU 4145-2002 little endian`. `n` is a DER `INTEGER` - standard X.690
+big-endian, needed no correction, and does match BC's `n_s[6]` verbatim as stated above. `b` and
+the compressed base point, however, are DSTU-packed `OCTET STRING` field elements - little-endian
+internally, per the OID's own name - and are **byte-reversed** relative to the canonical big-endian
+hex BC/`BigInteger` expects. Running `Dstu4145VectorGen257.java`
+(`tests/oracle-harness/java/src/main/java`) against the raw bytes above failed immediately
+(`IllegalArgumentException: x value invalid in F2m field element` - `ECCurve.F2m`'s own constructor
+rejects a `b` past the field's bit range) rather than silently producing wrong output - the
+byte-reversed value is 257 bits, the raw one is 261. Byte-reversed:
+
+```
+b (canonical, big-endian) = 1CEF494720115657E18F938D7A7942394FF9425C1458C57861F9EEA6ADBE3BE10
+```
+
+- confirmed numerically equal (not just visually) to Bouncy Castle's own `curves[6]` `b` constant
+via `System.Numerics.BigInteger` equality, not a hex-string comparison. The compressed base point,
+similarly byte-reversed before decoding through BC's own `DSTU4145PointEncoder.decodePoint`, yields
+`G = (x=2A29EF207D0E9B6C55CD260B306C7E007AC491CA1B10C62334A9E8DCD8D20FB7, y=...)` - see
+`crates/dstu-core/tests/vectors/dstu4145/gf2m257_arith.json` for the full decoded value and the
+generated arithmetic/point vectors. **This is the exact "porting a reference implementation means
+porting its calling convention too" failure mode `CLAUDE.md`'s D-25 entry already documents for
+`dstu4145::hash_to_field`** (transcribed from BC without flagging BC's own pre-reversed input
+convention) - now confirmed a second, independent time on a different part of the same primitive.
+The raw (uncorrected) bytes originally recorded above are kept, struck through in spirit if not in
+markdown, purely so this correction has something concrete to point at - **use the byte-reversed
+canonical values for any future work, never the raw certificate bytes directly.**
+
+**Third, independent confirmation (post-correction)**: the byte-reversed values match Bouncy
+Castle's `DSTU4145NamedCurves.java` `curves[6]` exactly - `new ECCurve.F2m(257, 12, ZERO, <b>,
+n_s[6], h_s[6])`, `h_s[6] = FOUR` (cofactor 4, not 2 - noted here because T-199 step 6 already
+flags that `m=257`'s cofactor/subgroup structure needs its own re-derivation, not an assumption
+carried over from `m=163`'s cofactor-2 structure) - already this project's trusted oracle for the
+`m=163` curve (`docs/ORACLES.md`). Three sources (a from-scratch reference implementation's
+hardcoded table, and two independently-issued real certificates six years apart in CA generations -
+the root CZO cert in the production chain is dated 2020) agreeing byte-for-byte, once the byte-order
+convention is correctly applied, is strong evidence these parameters are correct, without yet
+having cross-checked them against the DSTU 4145-2002 standard's own Annex Г text directly (no local
+copy of that Annex has been sourced - unlike `m=163`'s Annex B.1 worked example, which this project
+already holds). **Still provisional in the same sense Strumok's vectors are (D-15/D-104) until the
+primary text is read** - re-verify against Annex Г if/when a copy is obtained, don't treat the
+three-way agreement above as a substitute for the primary citation once it's reachable.
+
+**Why this outranks an arbitrary standard-compliant pick**: `m=257` is not merely "the standard
+allows this size" - it is what Ukraine's own state qualified-trust infrastructure (Diia, both test
+and production) actually issues today. An implementation supporting it is positioned to
+interoperate with real DSTU 4145 signatures in the wild, not just a self-consistent alternative
+curve nobody uses. Matches D-47's "ship the recommended curve first" posture already applied to
+`hazmat::dstu9041`'s `l(p)=256`-before-`l(p)=384/768` sequencing and to `crypto_sign`'s own
+single-curve `m=163` exposure (D-46) - this is the same criterion, now with a second data point
+once a second curve is actually justified.
+
+**A privacy note for whoever implements T-199**: the production certificate/signature above belongs
+to the project owner personally (real name, real `RNOKPP`/tax ID, a real signed PDF). None of that
+- the certificate, the `.asice` container, or the signature bytes - may be committed into
+`crates/dstu-core/tests/vectors/` or anywhere else in version control. Any committed test vector for
+`m=257` must come from the **test** CA path (`czo.gov.ua`'s `ДП "ДІЯ" (ТЕСТ)` output, or a
+freshly-generated Bouncy-Castle vector using this curve's parameters) - both already public/
+disposable by design. See T-199 for the fuller oracle plan.
+
+**Fourth and fifth confirmation, post-T-199 (2026-08-09)**: two more real `.p7s` (PKCS#7/CMS
+`SignedData`, DER) signatures, received as genuine official correspondence addressed to the project
+owner from Держспецзв'язку (the State Service for Special Communications - this project's own
+domain regulator, see "State certification" above), each issued by a **different** accredited CA
+than either of the two sources above (one via `КНЕДП ДПС`, one via `КНЕДП ДП "УСС"` - neither is
+Diia's own CA chain). Domain parameters extracted the same offset-based `openssl asn1parse` way as
+above (never hand-transcribed) from both signers' `SubjectPublicKeyInfo`: **byte-identical** to
+every value already recorded in this entry (`m=257`, `x^257+x^12+1`, `a=0`, and the same `b`/`n`/`G`
+hex strings verbatim, post the byte-order correction below already applied at extraction time). Both
+signatures' message digest is **ДСТУ ГОСТ 34311-95** (the legacy pre-Kupyna hash, not DSTU 7564:2014
+- expected, since Ukrainian qualified-signature tooling standardizes on
+`DSTU4145WithGost34311`-style combined identifiers, not a project-specific choice), signature
+algorithm `ДСТУ 4145-2002` (little-endian, same OID name as above).
+
+This raises the source count for these exact `m=257` domain parameters to five (BC's own hardcoded
+table, Diia's test CA, the owner's own production Diia certificate, and now two more real
+certificates from two more independent accredited CAs, none of them Diia) - the strongest evidence
+yet that `m=257` with this specific parameter set is the de facto standard curve across Ukraine's
+qualified-trust infrastructure broadly, not a Diia-specific choice. **Same privacy posture as
+above, extended to third-party data**: the two `.p7s` files themselves, and any of the signing
+certificates' personal fields (signer name, position, `RNOKPP`/tax ID, certificate serial number,
+organization identifier) belong to a named third party, not the project owner - none of that is
+recorded here or committed anywhere in this repository, matching (and extending) the privacy
+discipline the paragraph above already applies to the owner's own certificate.
+
+## D-186: T-199 - `crypto_sign` goes multi-curve (m=163 + m=257): tagged wire format, curve-reporting `verify`, decided via D-47's tie-breaker
+
+Owner's follow-up ("Йде в бінарник. Гіпотетично ми можем стандартно підписувати 257. А пр перевірці
+перевіряти яка там крива і чи ми її підримуємо, якщо так перевіряти якщо ні повідомлення. Врахуй
+наш досвід оптимізацій для 163 і також безпекові питання теж врахуй.") resolves the fork T-199 left
+open ("whether `crypto_sign` grows a curve-selection parameter..."): m=257 ships in the `uacrypt`
+binary (`crypto_sign`, not just `hazmat`), signing supports it as a first-class option alongside
+`m=163`, and `verify` must self-determine which curve a given key/signature uses, accept it if
+supported, and produce a clear error if not. No DSTU citation settles a wire-format question like
+this (the standard fixes field-element byte packing, not a multi-curve key-encoding convention) -
+resolved via D-47's ranked tie-breaker, same as every other knob-shaped fork in this project.
+
+**Decision 1 - explicit tag byte, not length-based dispatch.** `m=163` keys are 21/42 bytes
+(secret/public), `m=257`'s are 33/66 - no collision between just these two, so length alone could
+disambiguate today. Rejected anyway: `DSTU4145NamedCurves.java`'s own `m=163` and `m=167` curves
+both pack into 21-byte field elements (`⌈163/8⌉ = ⌈167/8⌉ = 21`) - the first time a third curve is
+ever added from that neighboring pair, length-based dispatch becomes silently ambiguous with no way
+to detect the collision after the fact. TLS 1.3 precedent (D-47 criterion 1, modern consensus over
+hand-composed): `NamedGroup`/`SignatureScheme` are explicit tags precisely to avoid this class of
+ambiguity, never inferred from length. `SigningKey`/`VerifyingKey`/`Signature` on-disk formats gain
+a one-byte curve-identifier prefix (`0x01` = m=163, `0x02` = m=257, `0x03`+ reserved for the other 8
+`DSTU4145NamedCurves.java` sizes if ever added) - self-describing, extensible, no future landmine.
+
+**Decision 2 - `verify` reports which curve validated the signature, not just `bool`/`Result<(),
+E>`.** A real security question, not an API nicety: `m=257` exists specifically because `m=163`'s
+~80-bit margin is dated (this session's own finding, D-185). If `verify` accepts an `m=163`
+signature exactly as readily as an `m=257` one whenever the tag matches something supported, a
+caller with a policy like "only accept `m=257`-level assurance for this document class" has no way
+to enforce it - the library would silently treat a weaker-curve signature as equivalent to a
+stronger one. Same shape as a TLS downgrade issue, not hypothetical. Resolved: `verify()` returns
+`Result<CurveId, VerifyError>` (exact type TBD at implementation time) on success, so a
+policy-sensitive caller can inspect which curve actually validated and enforce their own minimum;
+a caller that doesn't care just checks `is_ok()`, same one-line ergonomics as before. This leans on
+D-47 criterion 3 (expose only safe modes, but don't hide a security-relevant fact from a caller who
+needs it) over criterion 2 (libsodium's own `crypto_sign_verify_detached` returns a bare `bool`) -
+that precedent assumes a single fixed curve, which stops holding the moment two ship side by side.
+
+**Decision 3 - an unrecognized curve tag is a distinct, named error, not a generic parse
+failure.** Directly answers "якщо ні - повідомлення": a tag byte outside `{0x01, 0x02}` must produce
+a specific `VerifyError::UnsupportedCurve(u8)` (or equivalent) carrying the raw tag, not
+`InvalidFormat`, a panic, or a silent `false`. Lets a caller distinguish "this signature is
+corrupt" from "this signature is well-formed but uses a curve we don't implement yet" - directly
+useful if this library ever meets a real DSTU 4145 signature using one of the other 8 curve sizes.
+
+**Decision 4 - `gf2m257` gets T-198's hardware-dispatch pattern from its first commit, not as a
+follow-up task.** Owner's explicit instruction ("врахуй наш досвід оптимізацій для 163"). `gf2m163`
+shipped software-only, then gained `std`-gated `PCLMULQDQ`/`PMULL` dispatch later (T-198/D-184)
+once the design was proven out on `gf2m_wide`. For `gf2m257` there's no reason to defer - the
+pattern (`clmul_native::feature_available()` gate, a `poly_mul_wide_hw` per architecture,
+unconditional software fallback, explicit `multiply_sw`/`multiply_matches_explicit_software_path`
+proptests so the portable path stays under real test pressure once hardware dispatches on every
+capable CI runner) is a known-working, `advisor()`-reviewed design now, not a spike. T-199's step 1
+folds this in directly - software (`poly_mul_wide`/`reduce`, tested first) and hardware
+(`poly_mul_wide_hw`) land together, with the coverage-gap tests from day one, instead of shipping
+software-only and re-opening a "T-200: hardware-accelerate `gf2m257`" task later.
+
+**Decision 5 (flagged, not fully resolved here) - nonce derivation and reduction-mod-`n` bias must
+be re-derived for `m=257`'s own order size, not copied.** `crypto_sign`'s deterministic Kupyna-KMAC
+nonce derivation (T-48/D-46) and the masked-reduction-before-mod-`n` technique cited around
+`reduce_wide_bytes` (both tuned for `m=163`'s own ~163-bit `n`) depend on the curve order's specific
+bit-width. `m=257`'s order is a full 256 bits (D-185's extracted `n`, top byte `0x80` - no
+leading-zero slack the way `m=163`'s `n` had room for). Re-derive the KMAC-output-to-scalar
+reduction and its masking bit-count for this order before reusing either mechanism unchanged - full
+resolution deferred to T-199's own implementation phase, called out here so it isn't missed.
+
+**Not resolved by this entry**: the exact Rust type shape (`enum SigningKey { M163(...),
+M257(...) }` vs. two distinct public types vs. something else) and whether `uacrypt sign-keygen`
+grows a `--curve` flag or a new `sign257-keygen`-style subcommand pair. Both are implementation-time
+calls within the constraints Decisions 1-4 set, not additional open architecture questions.
+
+**Implementation addendum (T-199, `hazmat::dstu4145::{gf2m257, curve257, scalar257,
+signature257}` landed):** a real correctness bug found and fixed by the BC-generated
+`signature_cases` oracle (`tests/oracle-harness/java/.../Dstu4145VectorGen257.java`, same
+single-oracle posture as `gf2m163_arith.json` - bypasses Bouncy Castle's own `DSTU4145Signer`
+entirely to sidestep its unrelated `hash2FieldElement` pre-reversed-input quirk, computing `r`/`s`
+directly from BC's field/point primitives instead, mirroring `signature::sign`'s own algorithm
+step-for-step in Java). `signature.rs`'s own `truncate_162` comment already states the correct rule
+- `truncate(y, n.bit_length() - 1)` - but `m=257`'s first implementation used `truncate(y, m - 1)` =
+256 bits instead of the correct 255, because `n.bit_length() == m` happens to hold for `m=163`'s
+specific order (masking the two formulas' difference) but does **not** hold for `m=257`'s order
+(`n`'s top byte is `0x80`, bit-length exactly 256, one bit short of `m`). Symptom: `sign` still
+matched the BC oracle exactly (an over-wide `r` round-trips through `sign`'s own output unchanged,
+since `Scalar::from_be_bytes` never reduces), but `verify` rejected every valid signature, because
+`r` was silently produced `>= n` on almost every call, one bit too wide for `verify`'s own domain
+check (`r < n`) to ever pass except when `y`'s bit 255 (`n`'s highest bit) happened to be zero.
+Caught by having a real second, independent test-vector direction (`verify` against externally
+supplied `r`/`s`, not just `sign`'s own output checked against itself) - exactly the D-21/D-25
+"check what a vector actually exercises" lesson repeating, now for a fresh primitive. Fixed by
+computing the mask from `n`'s actual bit length rather than `m`, renamed `truncate_256` ->
+`truncate_255` so the function name states the real value, not an assumed one; the Java generator's
+own mask was fixed identically (`shiftLeft(255)`, not `256`) so both sides of the oracle now agree.
+`curve257`'s cofactor (`h = 4`, `docs/DECISIONS.md` above) still has no dedicated small-subgroup
+`verify` defense (`signature257`'s own module doc flags this as open, mirroring T-189/D-172's
+`m=163` fix but not yet re-derived for cofactor 4) - a distinct, still-open item from the bug above,
+not fixed by it.
+
+**Owner follow-up ("Оцей баг truncate покритий тестами?"):** the 20-case BC oracle caught this bug
+empirically (roughly half of 20 random `y` values land `r >= n` under the wrong 256-bit mask, so
+detection was near-certain but not proven) - closed the gap with a second, *provable* test
+(`truncate_255_output_is_always_below_n`, `hazmat::dstu4145::signature257::tests`): `n.bit_length()
+== 256` means `n >= 2^255` unconditionally, and `truncate_255`'s output is always `< 2^255` by
+construction (255 bits kept) - so `r < 2^255 <= n` holds for *every* `y`, not just ones a random
+sample happened to cover. The boundary input (`y` with every bit set, `truncate_255`'s own maximum
+possible output) is the one case that actually exercises this bound directly - matching `CLAUDE.md`'s
+own "a formula-based precondition is invisible to random sampling... find the boundary, test it
+explicitly" rule, now demonstrated on a case where random sampling *did* still catch the underlying
+bug (unlike that rule's usual ~2^-M-probability framing) - the two are complementary, not redundant.
+
+**Owner follow-up ("Для 9041 теж?" - does this bug class recur in `hazmat::dstu9041`):** checked,
+not by assumption - grepped `curve256.rs`/`curve512.rs`/`encryption.rs`/`encryption512.rs` for any
+order-bit-length-derived masking. None exists: DSTU 9041 has no DSTU-4145-style `r`/`s` signature
+truncation step at all (it's ECIES-style encryption, not a signature scheme), and its own
+`bit_length` fields (`message.rs`/`message512.rs`) encode `M~`'s own padding length, unrelated to
+curve order arithmetic. `order()` in both curve modules returns raw bytes with no bit-masking
+shortcut applied anywhere downstream. This specific bug class does not currently recur there - not
+because the code was re-audited line-by-line for it, but because the code shape that could carry it
+(an order-bit-length-assuming truncation) isn't present in that module today.
+
+**Final addendum: this entry's own Decisions 1-3 reversed by `advisor()` review, before any code
+was written against them.** Continuing T-199 ("Продовжуй"), a plain `grep -rl "crypto_sign::"`
+across the workspace - done to scope the tagged-enum rewrite these Decisions called for - surfaced
+`dstu-core-capi/src/sign.rs` (the C ABI crate, a separate root-workspace member,
+`CLAUDE.md`'s own "Project status") wrapping `crypto_sign::{SigningKey, VerifyingKey, Signature}`
+directly, plus `tests/crypto_sign.rs`. Converting those types into curve-tagged enums (Decisions
+1-3's original text) would have broken the capi crate's build for zero benefit an additive sibling
+module doesn't also deliver - and `CLAUDE.md`'s own "Project status" section already records the
+project's real precedent for exactly this situation: `crypto_box512` (T-193) shipped as an additive
+sibling of `crypto_box`, with capi/binding wiring explicitly deferred as a separate task, not a
+breaking rewrite of `crypto_box` itself. `advisor()` flagged this before any rewrite was attempted,
+not after - the correction cost zero wasted implementation.
+
+**What actually shipped, replacing Decisions 1-3's original enum-conversion plan:**
+- **`crypto_sign257`** (`crates/dstu-core/src/crypto_sign257.rs`): a full sibling module of
+  `crypto_sign`, same shape (`SigningKey`/`VerifyingKey`/`Signature`, `generate`/`sign`/
+  `sign_digest`/`verify`/`verify_digest`), built on `hazmat::dstu4145::{gf2m257, curve257,
+  scalar257, signature257}`. `crypto_sign` itself is untouched - `dstu-core-capi` confirmed still
+  compiles with no changes (`cargo build -p dstu-core-capi`, verified after landing, not assumed).
+  `verify`/`verify_digest` return a plain `bool` here, not `Result<CurveId, VerifyError>` (Decision
+  2's original text) - once a caller holds a `crypto_sign257::VerifyingKey` specifically (a
+  distinct Rust type from `crypto_sign::VerifyingKey`), the curve is already known statically, at
+  compile time, which is *stronger* than a runtime-inspectable `CurveId` a caller could forget to
+  check: the compiler itself forbids accidentally accepting an `m=163` signature where `m=257` was
+  required, rather than relying on a caller to inspect a returned enum and not ignore it.
+- **`CurveId`** (`crypto_sign.rs`, `pub enum { M163 = 0x01, M257 = 0x02 }` with `to_byte`/
+  `from_byte`): the one piece of Decision 1 that *does* still live in the shared library rather
+  than being duplicated per-caller - the D-118 lesson (`crypto_secretstream`'s wire-format
+  validation, every binding needing the same validation ported, not reinvented) applies to tag
+  numbering the same way. Everything else about the tagged wire format (concatenating the tag byte
+  with a curve's own fixed-width key encoding, parsing it back) lives in `uacrypt` itself, not
+  `dstu-core` - `crypto_sign`/`crypto_sign257`'s own `to_uncompressed_bytes`/`from_uncompressed_bytes`
+  stay untagged, unchanged from before this task.
+- **`uacrypt` CLI**: `sign-keygen257`/`sign-pubkey257`/`sign257` as three new, separate subcommands
+  (mirroring `box-keygen512`/`box-pubkey512`/`box-seal512`'s own already-established convention
+  exactly - a `--curve` flag was considered and rejected for the same reason those commands give:
+  "distinct, incompatible key shapes"). **`verify` alone stays unified, not `verify257`** - the
+  owner's original ask was specifically that *verification* self-determine the curve from
+  untrusted input, which key generation/signing don't need (the caller already knows which curve
+  they're using when they run `sign-keygen257` in the first place). `sign-pubkey`/`sign-pubkey257`
+  now write a tagged file (`[CurveId byte] || uncompressed key`, 43/67 bytes total, up from
+  `sign-pubkey`'s old untagged 42 - a breaking pre-1.0 format change, same posture as every other
+  wire-format change already in `docs/CHANGELOG.md`) that `verify` reads via a small
+  `AnyVerifyingKey` dispatch enum - defined inside `uacrypt` itself, not `dstu-core`, so this
+  curve-tagged union type never touches the capi-facing library API at all. An unrecognized tag
+  produces `CliError::SignVerifyUnsupportedCurve(u8)` with a message naming the actual byte and the
+  supported tags (Decision 3's "named error, not a silent failure" requirement, now user-facing).
+- **Cofactor-4 `verify` gap closed before any CLI path could reach it** (`advisor()` explicitly
+  blocked CLI wiring on this): `signature257::verify` now checks `q.scalar_multiply(&order()) ==
+  Point::Infinity` - the general, cofactor-independent full-public-key-validation check (same shape
+  as NIST SP 800-56A's own routine), not `m=163`'s cofactor-2-specific `x == 0` shortcut, which
+  would not have caught this curve's order-4 points. Proven, not just argued: a genuine order-2
+  point (`x = 0`, same construction `signature.rs`'s own T-189 test uses) is rejected by `verify`
+  regardless of `r`/`s` (`tests/dstu4145_signature257.rs::signature257_verify_rejects_order_two_
+  small_subgroup_key`).
+- **Nonce derivation (Decision 5) resolved**: `crypto_sign257::derive_nonce` uses
+  `hazmat::kupyna_kmac::Kupyna384Kmac` (48-byte key/output) rather than `crypto_sign`'s
+  `Kupyna256Kmac` - folding a 384-bit KMAC output mod `curve257::order()`'s ~256-bit `n` keeps 128
+  bits of margin, avoiding the real bias a same-width 256-bit-output-mod-256-bit-`n` reduction
+  would have reintroduced (this Decision's own original concern).
+
+Full regression after all of the above: `cargo test -p dstu-core -p uacrypt --all-features`,
+`cargo clippy --all-features -- -D warnings`/`cargo fmt --check` on both crates,
+`cargo build -p dstu-core --no-default-features`, `cargo build -p dstu-core-capi` - all clean.

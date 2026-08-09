@@ -87,8 +87,15 @@ canonical source (`docs/TASKS.md`/`docs/DECISIONS.md`) — this section states c
 - `crypto_*` (high-level, misuse-resistant, zero-config — D-09's second layer, D-47's "delete the
   knob" applied throughout: one fixed construction/variant per module, no caller-facing nonce/IV/
   mode/AAD parameter unless noted):
-  - `crypto_sign` (`SigningKey`/`VerifyingKey`/`Signature`) — wraps `hazmat::dstu4145`,
+  - `crypto_sign` (`SigningKey`/`VerifyingKey`/`Signature`) — wraps `hazmat::dstu4145` (`m=163`),
     deterministic Kupyna-KMAC-derived nonce, no RNG dependency for signing (T-48/D-46).
+    `crypto_sign257` (T-199, D-185/D-186) is its `m=257` sibling — what real Diia-issued
+    qualified signatures actually use in production, confirmed from real issued certificates —
+    a separate, additively-shipped module with the same shape, not a curve flag on `crypto_sign`
+    itself (that reversal, and why, is D-186's own addendum: converting `crypto_sign`'s types to
+    a curve-tagged enum would have broken `dstu-core-capi`'s C ABI for no benefit). `uacrypt`'s
+    `sign-keygen257`/`sign-pubkey257`/`sign257` mirror `sign-keygen`/`sign-pubkey`/`sign`; `verify`
+    alone is unified and reads a curve tag byte to handle both curves' signatures.
   - `crypto_pwhash` (`hash_password`/`verify_password`/`Strength`) — wraps `argon2` behind a
     dedicated `pwhash` feature (off by default); `Strength::{Interactive,Moderate,Sensitive}` cites
     libsodium's own constants exactly (T-71/D-49/D-50).

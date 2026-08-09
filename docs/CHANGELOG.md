@@ -16,6 +16,14 @@ All notable changes to this project are documented in this file. Format follows
   message) - `seal`/`open`/`SecretKey`/`PublicKey` (32-byte compressed, `x`-coordinate only,
   `docs/TASKS.md` T-178, `docs/DECISIONS.md` D-169). `uacrypt box-keygen`/`box-pubkey`/`box-seal`/
   `box-open` CLI surface.
+- `hazmat::dstu4145`: a second curve, `m=257` (`gf2m257`/`curve257`/`scalar257`/`signature257`) -
+  what real Diia-issued qualified signatures actually use in production (confirmed from real
+  issued certificates, not just the standard's own curve table), alongside the existing `m=163`.
+  `crypto_sign257` wraps it as a full sibling of `crypto_sign` (`SigningKey`/`VerifyingKey`/
+  `Signature`, deterministic Kupyna-KMAC nonce). `uacrypt sign-keygen257`/`sign-pubkey257`/
+  `sign257` CLI surface; `uacrypt verify` reads a curve tag byte from `--key` and handles both
+  `m=163` and `m=257` signatures through the one command (`docs/TASKS.md` T-199, `docs/DECISIONS.md`
+  D-185/D-186).
 
 ### Changed
 

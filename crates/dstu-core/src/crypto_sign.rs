@@ -80,6 +80,46 @@ use crate::hazmat::kupyna::Kupyna256;
 use crate::hazmat::kupyna_kmac::Kupyna256Kmac;
 use zeroize::Zeroize;
 
+/// One-byte curve identifier for tagged, self-describing serialization of a
+/// [`crate::crypto_sign::VerifyingKey`] or [`crate::crypto_sign257::VerifyingKey`] - lives here
+/// (not duplicated in `crypto_sign257`, and not in `uacrypt` or any language binding) so every
+/// caller shares the same tag numbering, the D-118 lesson (`crypto_secretstream`'s wire-format
+/// validation) already learned once about not letting each binding re-hand-roll a parser
+/// (`docs/DECISIONS.md` D-186 Decision 1). Values `3` and above are reserved for the other 8
+/// `DSTU4145NamedCurves.java` curve sizes, if any are ever implemented (`docs/TASKS.md` T-199).
+///
+/// This tags *keys/signatures a caller serializes themselves* (e.g. `uacrypt sign-pubkey`'s output
+/// file) - `crypto_sign::VerifyingKey`/`crypto_sign257::VerifyingKey`'s own `to_uncompressed_bytes`
+/// stay untagged fixed-width encodings (42/66 bytes), matching how they already worked before this
+/// enum existed; a caller that wants a self-describing blob prepends the matching [`CurveId`] byte
+/// itself, exactly as `uacrypt`'s own `sign-pubkey`/`sign-pubkey257`/`verify` commands do.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum CurveId {
+    M163 = 0x01,
+    M257 = 0x02,
+}
+
+impl CurveId {
+    #[must_use]
+    pub fn to_byte(self) -> u8 {
+        self as u8
+    }
+
+    /// Returns `None` for any tag this crate doesn't (yet) implement - the caller decides how to
+    /// report that (`docs/DECISIONS.md` D-186 Decision 3's "a named error, not a silent `false`"
+    /// applies at whatever layer actually surfaces this to a user, e.g. `uacrypt verify`'s own
+    /// message).
+    #[must_use]
+    pub fn from_byte(tag: u8) -> Option<Self> {
+        match tag {
+            0x01 => Some(CurveId::M163),
+            0x02 => Some(CurveId::M257),
+            _ => None,
+        }
+    }
+}
+
 /// A DSTU 4145 signature, `r || s` (21 bytes each, 42 total - `hazmat::dstu4145::signature`'s own
 /// byte convention).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

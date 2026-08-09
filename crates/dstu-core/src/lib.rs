@@ -26,6 +26,7 @@ pub mod crypto_pwhash;
 pub mod crypto_secretbox;
 pub mod crypto_secretstream;
 pub mod crypto_sign;
+pub mod crypto_sign257;
 #[cfg(feature = "std")]
 pub mod crypto_stream;
 pub mod hazmat;

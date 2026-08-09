@@ -86,6 +86,7 @@ pub enum CliError {
     SecretstreamChunkTooLarge,
     SignKeyInvalid,
     SignVerifyFailed,
+    SignVerifyUnsupportedCurve(u8),
     BoxKeyInvalid,
     BoxOpenTruncated,
     BoxOpenFailed,
@@ -95,6 +96,11 @@ pub enum CliError {
 }
 
 impl fmt::Display for CliError {
+    // A flat enum-variant-to-message match, one line of real logic per arm - splitting it across
+    // functions (the D-71 pattern used elsewhere in this file for line-count lints on genuine
+    // control flow) would add indirection without clarity here, so this is the documented
+    // exception instead, same posture as this project's other clippy quirk `#[allow]`s.
+    #[allow(clippy::too_many_lines)]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             CliError::UnknownCommand(c) => write!(f, "unknown command: {c}"),
@@ -170,6 +176,10 @@ impl fmt::Display for CliError {
             CliError::SignVerifyFailed => write!(
                 f,
                 "verify: signature does not verify - message, signature, or key do not match"
+            ),
+            CliError::SignVerifyUnsupportedCurve(tag) => write!(
+                f,
+                "verify: --key is tagged with curve id {tag} (0x{tag:02X}), which this build does not support - supported: 0x01 (m=163, sign-pubkey), 0x02 (m=257, sign-pubkey257)"
             ),
             CliError::BoxKeyInvalid => write!(
                 f,
@@ -1864,6 +1874,14 @@ fn read_signing_key(path: &PathBuf) -> Result<dstu_core::crypto_sign::SigningKey
     dstu_core::crypto_sign::SigningKey::from_bytes(&d).ok_or(CliError::SignKeyInvalid)
 }
 
+/// `m=257` sibling of [`read_signing_key`] - see `docs/TASKS.md` T-199.
+fn read_signing_key257(path: &PathBuf) -> Result<dstu_core::crypto_sign257::SigningKey, CliError> {
+    let bytes = read_exact_file(path, "signing key", 33)?;
+    let mut d = [0u8; 33];
+    d.copy_from_slice(&bytes);
+    dstu_core::crypto_sign257::SigningKey::from_bytes(&d).ok_or(CliError::SignKeyInvalid)
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct SignKeygenArgs {
     pub out_path: PathBuf,
@@ -1902,6 +1920,23 @@ pub fn run_sign_keygen_command(args: &SignKeygenArgs) -> Result<(), CliError> {
     })
 }
 
+/// `m=257` sibling of [`run_sign_keygen_command`] - writes the raw 33-byte private scalar.
+/// A separate command, not a `--curve` flag, same `box-keygen512` precedent
+/// `BOX_KEYGEN512_HELP` already documents (`docs/TASKS.md` T-199).
+///
+/// # Errors
+///
+/// Returns [`CliError::Random`] if the OS CSPRNG fails, or [`CliError::Io`] if `--out` can't be
+/// written.
+pub fn run_sign_keygen257_command(args: &SignKeygenArgs) -> Result<(), CliError> {
+    let key = dstu_core::crypto_sign257::SigningKey::generate()
+        .map_err(|e| CliError::Random(e.to_string()))?;
+    std::fs::write(&args.out_path, key.to_bytes()).map_err(|e| CliError::Io {
+        path: args.out_path.clone(),
+        message: e.to_string(),
+    })
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct SignPubkeyArgs {
     pub key_path: PathBuf,
@@ -1922,8 +1957,12 @@ pub fn parse_sign_pubkey_args(args: &[String]) -> Result<SignPubkeyArgs, CliErro
 }
 
 /// Runs `sign-pubkey`: reads a 21-byte signing key from `--key`, derives `Q = -d*G`
-/// ([`dstu_core::crypto_sign::SigningKey::verifying_key`]), and writes its 42-byte uncompressed
-/// `x || y` encoding to `--out` - the file format `verify --key` expects.
+/// ([`dstu_core::crypto_sign::SigningKey::verifying_key`]), and writes a 1-byte curve tag
+/// ([`dstu_core::crypto_sign::CurveId::M163`]) followed by its 42-byte uncompressed `x || y`
+/// encoding (43 bytes total) to `--out` - the tagged file format `verify --key` expects
+/// (`docs/DECISIONS.md` D-186 Decision 1, `docs/TASKS.md` T-199). Breaking change from this
+/// project's earlier untagged 42-byte format - acceptable pre-1.0, same posture as every other
+/// wire-format change already recorded in `docs/CHANGELOG.md`.
 ///
 /// # Errors
 ///
@@ -1932,11 +1971,32 @@ pub fn parse_sign_pubkey_args(args: &[String]) -> Result<SignPubkeyArgs, CliErro
 pub fn run_sign_pubkey_command(args: &SignPubkeyArgs) -> Result<(), CliError> {
     let signing_key = read_signing_key(&args.key_path)?;
     let verifying_key = signing_key.verifying_key();
-    std::fs::write(&args.out_path, verifying_key.to_uncompressed_bytes()).map_err(|e| {
-        CliError::Io {
-            path: args.out_path.clone(),
-            message: e.to_string(),
-        }
+    let mut out = Vec::with_capacity(43);
+    out.push(dstu_core::crypto_sign::CurveId::M163.to_byte());
+    out.extend_from_slice(&verifying_key.to_uncompressed_bytes());
+    std::fs::write(&args.out_path, out).map_err(|e| CliError::Io {
+        path: args.out_path.clone(),
+        message: e.to_string(),
+    })
+}
+
+/// `m=257` sibling of [`run_sign_pubkey_command`] - writes
+/// [`dstu_core::crypto_sign::CurveId::M257`]'s tag byte followed by the 66-byte uncompressed
+/// key (67 bytes total). See `docs/TASKS.md` T-199.
+///
+/// # Errors
+///
+/// Returns [`CliError::Io`]/[`CliError::WrongLength`] for file problems, or
+/// [`CliError::SignKeyInvalid`] if `--key` isn't a valid signing key.
+pub fn run_sign_pubkey257_command(args: &SignPubkeyArgs) -> Result<(), CliError> {
+    let signing_key = read_signing_key257(&args.key_path)?;
+    let verifying_key = signing_key.verifying_key();
+    let mut out = Vec::with_capacity(67);
+    out.push(dstu_core::crypto_sign::CurveId::M257.to_byte());
+    out.extend_from_slice(&verifying_key.to_uncompressed_bytes());
+    std::fs::write(&args.out_path, out).map_err(|e| CliError::Io {
+        path: args.out_path.clone(),
+        message: e.to_string(),
     })
 }
 
@@ -2013,6 +2073,48 @@ pub fn run_sign_command(args: &SignArgs) -> Result<(), CliError> {
     Ok(())
 }
 
+/// `m=257` sibling of [`run_sign_command`] - writes the 66-byte `r || s` signature. See
+/// `docs/TASKS.md` T-199.
+///
+/// # Errors
+///
+/// Returns [`CliError::Io`]/[`CliError::WrongLength`] for file problems, or
+/// [`CliError::SignKeyInvalid`] if `--key` isn't a valid signing key.
+#[allow(clippy::cast_precision_loss)] // human-readable ops/s diagnostic, not exact at any realistic count
+pub fn run_sign257_command(args: &SignArgs) -> Result<(), CliError> {
+    let signing_key = read_signing_key257(&args.key_path)?;
+    let digest = hash_file_streamed(&args.in_path)?;
+    let iterations = args.iterations.max(1);
+
+    let start = Instant::now();
+    let mut sig = signing_key.sign_digest(&digest);
+    for _ in 1..iterations {
+        sig = signing_key.sign_digest(&digest);
+    }
+    let elapsed = start.elapsed();
+
+    std::fs::write(&args.out_path, sig.to_bytes()).map_err(|e| CliError::Io {
+        path: args.out_path.clone(),
+        message: e.to_string(),
+    })?;
+
+    if args.iterations > 1 {
+        let per_op_ns = elapsed.as_nanos() / u128::from(args.iterations);
+        let ops_per_s = if per_op_ns == 0 {
+            0.0
+        } else {
+            1e9 / (per_op_ns as f64)
+        };
+        eprintln!(
+            "iterations={} total_ns={} per_op_ns={per_op_ns} ops_per_s={ops_per_s:.2}",
+            args.iterations,
+            elapsed.as_nanos(),
+        );
+    }
+
+    Ok(())
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct VerifyArgs {
     pub key_path: PathBuf,
@@ -2037,38 +2139,128 @@ pub fn parse_verify_args(args: &[String]) -> Result<VerifyArgs, CliError> {
     })
 }
 
+/// Which curve a `verify --key` file's own leading tag byte selected, holding the matching
+/// verifying key - `uacrypt`'s own dispatch enum, not part of `dstu-core`'s public API (the
+/// library's `crypto_sign`/`crypto_sign257` types stay distinct and untagged, D-186's own
+/// reasoning for why that split lives here, not in the library).
+enum AnyVerifyingKey {
+    M163(dstu_core::crypto_sign::VerifyingKey),
+    M257(dstu_core::crypto_sign257::VerifyingKey),
+}
+
+impl AnyVerifyingKey {
+    fn verify_digest(&self, digest: &[u8; 32], sig_bytes: &[u8]) -> Result<bool, CliError> {
+        match self {
+            AnyVerifyingKey::M163(k) => {
+                if sig_bytes.len() != 42 {
+                    return Err(CliError::WrongLength {
+                        what: "signature",
+                        expected: 42,
+                        actual: sig_bytes.len(),
+                    });
+                }
+                let mut arr = [0u8; 42];
+                arr.copy_from_slice(sig_bytes);
+                let sig = dstu_core::crypto_sign::Signature::from_bytes(&arr);
+                Ok(k.verify_digest(digest, &sig))
+            }
+            AnyVerifyingKey::M257(k) => {
+                if sig_bytes.len() != 66 {
+                    return Err(CliError::WrongLength {
+                        what: "signature",
+                        expected: 66,
+                        actual: sig_bytes.len(),
+                    });
+                }
+                let mut arr = [0u8; 66];
+                arr.copy_from_slice(sig_bytes);
+                let sig = dstu_core::crypto_sign257::Signature::from_bytes(&arr);
+                Ok(k.verify_digest(digest, &sig))
+            }
+        }
+    }
+}
+
+/// Reads a tagged `verify --key` file (`docs/DECISIONS.md` D-186 Decision 1): the first byte is a
+/// [`dstu_core::crypto_sign::CurveId`], the rest is that curve's own fixed-width uncompressed
+/// encoding (42 bytes for `M163`, 66 for `M257`). An unrecognized tag is
+/// [`CliError::SignVerifyUnsupportedCurve`] - a named, specific error
+/// (`docs/DECISIONS.md` D-186 Decision 3), not folded into the generic `WrongLength`/`SignKeyInvalid`
+/// cases a malformed-but-correctly-tagged file would hit instead.
+fn read_tagged_verifying_key(path: &PathBuf) -> Result<AnyVerifyingKey, CliError> {
+    let bytes = std::fs::read(path).map_err(|e| CliError::Io {
+        path: path.clone(),
+        message: e.to_string(),
+    })?;
+    let Some((&tag, rest)) = bytes.split_first() else {
+        return Err(CliError::WrongLength {
+            what: "verifying key",
+            expected: 43, // the common case's length; the error message states the byte's role either way
+            actual: 0,
+        });
+    };
+    match dstu_core::crypto_sign::CurveId::from_byte(tag) {
+        Some(dstu_core::crypto_sign::CurveId::M163) => {
+            if rest.len() != 42 {
+                return Err(CliError::WrongLength {
+                    what: "verifying key",
+                    expected: 43,
+                    actual: bytes.len(),
+                });
+            }
+            let mut q = [0u8; 42];
+            q.copy_from_slice(rest);
+            Ok(AnyVerifyingKey::M163(
+                dstu_core::crypto_sign::VerifyingKey::from_uncompressed_bytes(&q),
+            ))
+        }
+        Some(dstu_core::crypto_sign::CurveId::M257) => {
+            if rest.len() != 66 {
+                return Err(CliError::WrongLength {
+                    what: "verifying key",
+                    expected: 67,
+                    actual: bytes.len(),
+                });
+            }
+            let mut q = [0u8; 66];
+            q.copy_from_slice(rest);
+            Ok(AnyVerifyingKey::M257(
+                dstu_core::crypto_sign257::VerifyingKey::from_uncompressed_bytes(&q),
+            ))
+        }
+        None => Err(CliError::SignVerifyUnsupportedCurve(tag)),
+    }
+}
+
 /// Runs `verify`: hashes `--in` with Kupyna-256 in bounded-memory chunks
-/// ([`hash_file_streamed`], D-42), and checks `--sig` against `--key` (a 42-byte uncompressed
-/// verifying key - [`dstu_core::crypto_sign::VerifyingKey::from_uncompressed_bytes`]) via
-/// [`dstu_core::crypto_sign::VerifyingKey::verify_digest`]. Succeeds silently (`Ok(())`, exit 0)
-/// on a valid signature, matching `kalyna-cmac verify`/`kalyna-gmac verify`'s own convention -
-/// there is nothing to write to disk on success, unlike `decrypt`. `iterations > 1` is the D-34
+/// ([`hash_file_streamed`], D-42), reads `--key`'s own curve tag
+/// ([`read_tagged_verifying_key`], `docs/DECISIONS.md` D-186 Decision 1) to determine which curve
+/// applies and reports a specific error for any tag this build doesn't support (Decision 3), then
+/// checks `--sig` against it. Succeeds silently (`Ok(())`, exit 0) on a valid signature, matching
+/// `kalyna-cmac verify`/`kalyna-gmac verify`'s own convention. `iterations > 1` is the D-34
 /// benchmark path, same shape as [`run_sign_command`]: hash/key/signature parsed once, only
 /// `verify_digest` itself timed in a loop.
 ///
 /// # Errors
 ///
-/// Returns [`CliError::Io`]/[`CliError::WrongLength`] for file problems, or
+/// Returns [`CliError::Io`]/[`CliError::WrongLength`] for file problems,
+/// [`CliError::SignVerifyUnsupportedCurve`] if `--key`'s tag isn't `0x01`/`0x02`, or
 /// [`CliError::SignVerifyFailed`] if the signature does not verify.
 #[allow(clippy::cast_precision_loss)] // human-readable ops/s diagnostic, not exact at any realistic count
 pub fn run_verify_command(args: &VerifyArgs) -> Result<(), CliError> {
-    let key_bytes = read_exact_file(&args.key_path, "verifying key", 42)?;
-    let mut q = [0u8; 42];
-    q.copy_from_slice(&key_bytes);
-    let verifying_key = dstu_core::crypto_sign::VerifyingKey::from_uncompressed_bytes(&q);
-
-    let sig_bytes = read_exact_file(&args.sig_path, "signature", 42)?;
-    let mut sig_arr = [0u8; 42];
-    sig_arr.copy_from_slice(&sig_bytes);
-    let sig = dstu_core::crypto_sign::Signature::from_bytes(&sig_arr);
+    let verifying_key = read_tagged_verifying_key(&args.key_path)?;
+    let sig_bytes = std::fs::read(&args.sig_path).map_err(|e| CliError::Io {
+        path: args.sig_path.clone(),
+        message: e.to_string(),
+    })?;
 
     let digest = hash_file_streamed(&args.in_path)?;
     let iterations = args.iterations.max(1);
 
     let start = Instant::now();
-    let mut ok = verifying_key.verify_digest(&digest, &sig);
+    let mut ok = verifying_key.verify_digest(&digest, &sig_bytes)?;
     for _ in 1..iterations {
-        ok = verifying_key.verify_digest(&digest, &sig);
+        ok = verifying_key.verify_digest(&digest, &sig_bytes)?;
     }
     let elapsed = start.elapsed();
 
@@ -2805,10 +2997,13 @@ EVERYDAY COMMANDS:
     encrypt         Encrypt a file of any size with a 32-byte key (authenticated, streamed).
     decrypt         Decrypt a file produced by `encrypt`.
     hash            Compute a Kupyna-256 digest of a file of any size.
-    sign-keygen     Generate a fresh signing key for `sign`.
+    sign-keygen     Generate a fresh signing key for `sign` (DSTU 4145, m=163).
     sign-pubkey     Derive the matching verifying key from a signing key, for `verify`.
-    sign            Sign a file of any size with a signing key (DSTU 4145).
-    verify          Check a `sign` signature against a verifying key.
+    sign            Sign a file of any size with a signing key (DSTU 4145, m=163).
+    verify          Check a `sign`/`sign257` signature against a verifying key (auto-detects curve).
+    sign-keygen257  Like `sign-keygen`, over DSTU 4145's m=257 curve instead of m=163.
+    sign-pubkey257  Like `sign-pubkey`, for a `sign-keygen257` key.
+    sign257         Like `sign`, for a `sign-keygen257` key.
     box-keygen      Generate a fresh crypto_box secret key for `box-open`.
     box-pubkey      Derive the matching public key from a secret key, for `box-seal`.
     box-seal        Encrypt a file to a recipient's public key (DSTU 9041, hybrid via KDF).
@@ -2915,12 +3110,15 @@ EXAMPLE:
 ";
 
 const SIGN_KEYGEN_HELP: &str = "\
-uacrypt sign-keygen - generate a fresh signing key for `sign`.
+uacrypt sign-keygen - generate a fresh signing key for `sign` (DSTU 4145, m=163).
 
 Draws from the OS CSPRNG via rejection sampling against the DSTU 4145 curve order (never a modulo
 reduction, which would bias the result - docs/DECISIONS.md D-72) and writes the raw 21-byte private
 scalar to --out. A separate command from `keygen` - a signing key and an `encrypt`/`decrypt` key
-are different, incompatible things, not two settings of the same command.
+are different, incompatible things, not two settings of the same command. For DSTU 4145's other
+implemented curve (m=257, what real Diia-issued signatures use - docs/DECISIONS.md D-185), use
+`sign-keygen257` instead - a separate command, not a --curve flag on this one, same reasoning
+`box-keygen512`'s own help text gives.
 
 USAGE:
     uacrypt sign-keygen --out <path>
@@ -2934,27 +3132,30 @@ EXAMPLE:
 Notes:
     - Keep this file secret - anyone who has it can sign as you.
     - Derive the matching public verifying key with `uacrypt sign-pubkey`.
+    - Not interchangeable with `sign-keygen257`/`sign-pubkey257`/`sign257` - those are m=257.
 ";
 
 const SIGN_PUBKEY_HELP: &str = "\
 uacrypt sign-pubkey - derive the matching verifying key from a signing key.
 
-Reads --key (a `sign-keygen` output) and writes the 42-byte public verifying key that `verify`
-needs - safe to share, unlike the signing key itself.
+Reads --key (a `sign-keygen` output) and writes a tagged verifying-key file to --out (43 bytes: a
+1-byte curve tag, then the 42-byte public key) - the format `verify` expects. `verify` reads the
+tag itself to tell this apart from a `sign-pubkey257` key, so it always knows which curve to use
+and reports a clear error for any tag it doesn't recognize (docs/DECISIONS.md D-186).
 
 USAGE:
     uacrypt sign-pubkey --key <path> --out <path>
 
 FLAGS:
     --key <path>    a signing key (from `uacrypt sign-keygen`)
-    --out <path>    where to write the 42-byte verifying key
+    --out <path>    where to write the tagged 43-byte verifying key
 
 EXAMPLE:
     uacrypt sign-pubkey --key signing.key --out verifying.key
 ";
 
 const SIGN_HELP: &str = "\
-uacrypt sign - sign a file of any size with a signing key (DSTU 4145).
+uacrypt sign - sign a file of any size with a signing key (DSTU 4145, m=163).
 
 Hashes --in with Kupyna-256 in bounded memory chunks, then signs the digest (deterministic nonce -
 no RNG involved in signing itself, only in `sign-keygen`). Writes the 42-byte signature to --out.
@@ -2973,24 +3174,88 @@ EXAMPLE:
 ";
 
 const VERIFY_HELP: &str = "\
-uacrypt verify - check a `sign` signature against a verifying key.
+uacrypt verify - check a `sign`/`sign257` signature against a verifying key (DSTU 4145).
 
-Hashes --in the same way `sign` did, then checks --sig against --key (a `sign-pubkey` output).
-Prints nothing and exits 0 on a valid signature; exits with an error (nothing written) if the
-message, signature, or key do not match - a tampered file or a wrong key is detected, not silently
-accepted.
+Hashes --in the same way `sign`/`sign257` did, then checks --sig against --key (a `sign-pubkey` or
+`sign-pubkey257` output - the same `verify` command handles both). --key's own first byte is a
+curve tag: `verify` reads it to know whether the rest is an m=163 or m=257 key, so you never need
+to tell it which. An unrecognized tag is reported by name (which byte, which tags are supported),
+not a generic parse failure. Prints nothing and exits 0 on a valid signature; exits with an error
+(nothing written) if the message, signature, or key do not match - a tampered file or a wrong key
+is detected, not silently accepted.
 
 USAGE:
     uacrypt verify --key <path> --in <path> --sig <path>
 
 FLAGS:
-    --key <path>        a verifying key (from `uacrypt sign-pubkey`)
+    --key <path>        a verifying key (from `uacrypt sign-pubkey` or `sign-pubkey257`)
     --in <path>         the file that was signed
-    --sig <path>        the signature (from `uacrypt sign`)
+    --sig <path>        the signature (from `uacrypt sign` or `sign257`, matching --key's curve)
     --iterations <n>    (benchmarking only) repeat the verify call n times, print timing to stderr
 
 EXAMPLE:
     uacrypt verify --key verifying.key --in report.pdf --sig report.pdf.sig
+";
+
+const SIGN_KEYGEN257_HELP: &str = "\
+uacrypt sign-keygen257 - generate a fresh signing key for `sign257` (DSTU 4145, m=257).
+
+Same shape as `sign-keygen`, over DSTU 4145's m=257 curve (docs/DECISIONS.md D-185/D-186,
+docs/TASKS.md T-199) instead of m=163 - a separate command, not a --curve flag, since the two are
+distinct, incompatible key shapes (same convention `box-keygen512`'s own help text already uses).
+m=257 is what real Diia-issued qualified signatures use in production, confirmed by inspecting an
+actual issued certificate - m=163 is still the default here (`sign-keygen`) since it's what this
+project shipped first, not because it's recommended over m=257.
+
+USAGE:
+    uacrypt sign-keygen257 --out <path>
+
+FLAGS:
+    --out <path>    where to write the 33-byte signing key
+
+EXAMPLE:
+    uacrypt sign-keygen257 --out signing257.key
+
+Notes:
+    - Keep this file secret - anyone who has it can sign as you.
+    - Derive the matching public verifying key with `uacrypt sign-pubkey257`.
+    - Not interchangeable with `sign-keygen`/`sign-pubkey`/`sign` - those are m=163.
+";
+
+const SIGN_PUBKEY257_HELP: &str = "\
+uacrypt sign-pubkey257 - derive the matching verifying key from a `sign-keygen257` key.
+
+Reads --key (a `sign-keygen257` output) and writes a tagged verifying-key file to --out (67 bytes:
+a 1-byte curve tag, then the 66-byte public key). Same `verify` command as `sign-pubkey` uses reads
+this file - the tag byte is what tells them apart, so you don't need `verify257`.
+
+USAGE:
+    uacrypt sign-pubkey257 --key <path> --out <path>
+
+FLAGS:
+    --key <path>    a signing key (from `uacrypt sign-keygen257`)
+    --out <path>    where to write the tagged 67-byte verifying key
+
+EXAMPLE:
+    uacrypt sign-pubkey257 --key signing257.key --out verifying257.key
+";
+
+const SIGN257_HELP: &str = "\
+uacrypt sign257 - sign a file of any size with a `sign-keygen257` key (DSTU 4145, m=257).
+
+Same shape as `sign`, over m=257 instead of m=163. Writes the 66-byte signature to --out.
+
+USAGE:
+    uacrypt sign257 --key <path> --in <path> --out <path>
+
+FLAGS:
+    --key <path>        a signing key (from `uacrypt sign-keygen257`)
+    --in <path>         file to sign
+    --out <path>        where to write the 66-byte signature
+    --iterations <n>    (benchmarking only) repeat the sign call n times, print timing to stderr
+
+EXAMPLE:
+    uacrypt sign257 --key signing257.key --in report.pdf --out report.pdf.sig257
 ";
 
 const BOX_KEYGEN_HELP: &str = "\
@@ -3376,6 +3641,9 @@ fn print_command_help(command: &str) {
         "sign-pubkey" => SIGN_PUBKEY_HELP,
         "sign" => SIGN_HELP,
         "verify" => VERIFY_HELP,
+        "sign-keygen257" => SIGN_KEYGEN257_HELP,
+        "sign-pubkey257" => SIGN_PUBKEY257_HELP,
+        "sign257" => SIGN257_HELP,
         "box-keygen" => BOX_KEYGEN_HELP,
         "box-pubkey" => BOX_PUBKEY_HELP,
         "box-seal" => BOX_SEAL_HELP,
@@ -3434,6 +3702,25 @@ fn dispatch_sign_command(cmd: &str, rest: &[String]) -> Result<(), CliError> {
         "sign-pubkey" => run_sign_pubkey_command(&parse_sign_pubkey_args(rest)?),
         "sign" => run_sign_command(&parse_sign_args(rest)?),
         _ => run_verify_command(&parse_verify_args(rest)?),
+    }
+}
+
+/// `m=257` sibling of [`dispatch_sign_command`] - `sign-keygen257`/`sign-pubkey257`/`sign257`
+/// only, no `verify257`: `verify` itself is curve-tag-aware (`docs/DECISIONS.md` D-186 Decision 1,
+/// `read_tagged_verifying_key`) and already handles both curves, `docs/TASKS.md` T-199. Argument
+/// parsing is reused as-is from [`parse_sign_keygen_args`]/[`parse_sign_pubkey_args`]/
+/// [`parse_sign_args`] - same flag shapes (`--out`; `--key`/`--out`; `--key`/`--in`/`--out`/
+/// `--iterations`), only the byte widths written/read differ, which the `run_*257_command`
+/// functions themselves handle.
+fn dispatch_sign257_command(cmd: &str, rest: &[String]) -> Result<(), CliError> {
+    if rest.iter().any(|a| is_help_flag(a)) {
+        print_command_help(cmd);
+        return Ok(());
+    }
+    match cmd {
+        "sign-keygen257" => run_sign_keygen257_command(&parse_sign_keygen_args(rest)?),
+        "sign-pubkey257" => run_sign_pubkey257_command(&parse_sign_pubkey_args(rest)?),
+        _ => run_sign257_command(&parse_sign_args(rest)?),
     }
 }
 
@@ -3591,6 +3878,9 @@ pub fn run(args: &[String]) -> Result<(), CliError> {
         }),
         Some(cmd @ ("sign-keygen" | "sign-pubkey" | "sign" | "verify")) => {
             dispatch_sign_command(cmd, &args[1..])
+        }
+        Some(cmd @ ("sign-keygen257" | "sign-pubkey257" | "sign257")) => {
+            dispatch_sign257_command(cmd, &args[1..])
         }
         Some(cmd @ ("box-keygen" | "box-pubkey" | "box-seal" | "box-open")) => {
             dispatch_box_command(cmd, &args[1..])
@@ -5753,7 +6043,15 @@ mod tests {
         let sig_bytes = std::fs::read(dir.file("msg.sig")).expect("read signature");
         assert_eq!(sig_bytes.len(), 42);
         let key_bytes = std::fs::read(dir.file("verifying.key")).expect("read verifying key");
-        assert_eq!(key_bytes.len(), 42);
+        assert_eq!(
+            key_bytes.len(),
+            43,
+            "1-byte curve tag + 42-byte uncompressed key"
+        );
+        assert_eq!(
+            key_bytes[0],
+            dstu_core::crypto_sign::CurveId::M163.to_byte()
+        );
 
         run_verify_command(&VerifyArgs {
             key_path: dir.file("verifying.key"),
@@ -5762,6 +6060,109 @@ mod tests {
             iterations: 1,
         })
         .expect("verify should succeed on the real signature");
+    }
+
+    /// `m=257` sibling of `sign_verify_golden_path_round_trips`: `sign-keygen257` ->
+    /// `sign-pubkey257` -> `sign257` -> the *same* `verify` command (not `verify257` - it doesn't
+    /// exist, `docs/TASKS.md` T-199) - proves `verify`'s own curve-tag dispatch actually reaches
+    /// the `crypto_sign257` path, not just that it compiles.
+    #[cfg_attr(
+        miri,
+        ignore = "Point::scalar_multiply's 257-iteration ladder is too slow to interpret under Miri - see docs/TASKS.md T-100"
+    )]
+    #[test]
+    fn sign_verify_golden_path_round_trips_m257() {
+        let dir = TempDir::new("sign_golden_path_257");
+        run_sign_keygen257_command(&SignKeygenArgs {
+            out_path: dir.file("signing.key"),
+        })
+        .expect("sign-keygen257 should succeed");
+        run_sign_pubkey257_command(&SignPubkeyArgs {
+            key_path: dir.file("signing.key"),
+            out_path: dir.file("verifying.key"),
+        })
+        .expect("sign-pubkey257 should succeed");
+        std::fs::write(dir.file("msg.bin"), b"a real message to sign, m=257")
+            .expect("write message");
+        run_sign257_command(&SignArgs {
+            key_path: dir.file("signing.key"),
+            in_path: dir.file("msg.bin"),
+            out_path: dir.file("msg.sig"),
+            iterations: 1,
+        })
+        .expect("sign257 should succeed");
+
+        let sig_bytes = std::fs::read(dir.file("msg.sig")).expect("read signature");
+        assert_eq!(sig_bytes.len(), 66);
+        let key_bytes = std::fs::read(dir.file("verifying.key")).expect("read verifying key");
+        assert_eq!(
+            key_bytes.len(),
+            67,
+            "1-byte curve tag + 66-byte uncompressed key"
+        );
+        assert_eq!(
+            key_bytes[0],
+            dstu_core::crypto_sign::CurveId::M257.to_byte()
+        );
+
+        run_verify_command(&VerifyArgs {
+            key_path: dir.file("verifying.key"),
+            in_path: dir.file("msg.bin"),
+            sig_path: dir.file("msg.sig"),
+            iterations: 1,
+        })
+        .expect("verify should succeed on the real m=257 signature via the shared verify command");
+    }
+
+    /// An `m=257` signature checked against an `m=163` key (mismatched curve, both individually
+    /// well-formed) must fail cleanly - `verify` dispatches purely on `--key`'s own tag, so a
+    /// wrong-curve signature just fails length validation inside that branch, same as any other
+    /// malformed signature. Not a downgrade risk (`docs/DECISIONS.md` D-186 Decision 2's concern):
+    /// there is no code path where a weaker curve's signature is silently accepted as if it were
+    /// the stronger one, because the two curves' signatures are different byte lengths (42 vs 66)
+    /// and `verify` never tries to reinterpret one as the other.
+    #[cfg_attr(
+        miri,
+        ignore = "Point::scalar_multiply's ladder is too slow to interpret under Miri - see docs/TASKS.md T-100"
+    )]
+    #[test]
+    fn verify_rejects_m257_signature_against_m163_key() {
+        let dir = TempDir::new("verify_cross_curve");
+        run_sign_keygen_command(&SignKeygenArgs {
+            out_path: dir.file("signing163.key"),
+        })
+        .expect("sign-keygen should succeed");
+        run_sign_pubkey_command(&SignPubkeyArgs {
+            key_path: dir.file("signing163.key"),
+            out_path: dir.file("verifying163.key"),
+        })
+        .expect("sign-pubkey should succeed");
+        run_sign_keygen257_command(&SignKeygenArgs {
+            out_path: dir.file("signing257.key"),
+        })
+        .expect("sign-keygen257 should succeed");
+        std::fs::write(dir.file("msg.bin"), b"cross-curve test message").expect("write message");
+        run_sign257_command(&SignArgs {
+            key_path: dir.file("signing257.key"),
+            in_path: dir.file("msg.bin"),
+            out_path: dir.file("msg.sig257"),
+            iterations: 1,
+        })
+        .expect("sign257 should succeed");
+
+        assert!(matches!(
+            run_verify_command(&VerifyArgs {
+                key_path: dir.file("verifying163.key"), // m=163 key
+                in_path: dir.file("msg.bin"),
+                sig_path: dir.file("msg.sig257"), // m=257 signature, wrong length for m=163
+                iterations: 1,
+            }),
+            Err(CliError::WrongLength {
+                what: "signature",
+                expected: 42,
+                ..
+            })
+        ));
     }
 
     /// `--iterations > 1` is the D-34 benchmark path (T-150) - the signature it actually writes
@@ -6069,7 +6470,9 @@ mod tests {
     #[test]
     fn run_verify_command_wrong_key_length_is_rejected() {
         let dir = TempDir::new("verify_wrong_key_len");
-        std::fs::write(dir.file("verifying.key"), [0x11u8; 41]).expect("write short key");
+        let mut key = vec![dstu_core::crypto_sign::CurveId::M163.to_byte()];
+        key.extend_from_slice(&[0x11u8; 41]); // one short of the 42 bytes m=163 needs
+        std::fs::write(dir.file("verifying.key"), &key).expect("write short key");
         std::fs::write(dir.file("msg.bin"), b"hello").expect("write message");
         std::fs::write(dir.file("msg.sig"), [0x22u8; 42]).expect("write signature");
         assert_eq!(
@@ -6081,16 +6484,35 @@ mod tests {
             }),
             Err(CliError::WrongLength {
                 what: "verifying key",
-                expected: 42,
-                actual: 41,
+                expected: 43,
+                actual: key.len(),
             })
+        );
+    }
+
+    #[test]
+    fn run_verify_command_rejects_unrecognized_curve_tag() {
+        let dir = TempDir::new("verify_bad_tag");
+        std::fs::write(dir.file("verifying.key"), [0xFFu8; 43]).expect("write bad-tag key");
+        std::fs::write(dir.file("msg.bin"), b"hello").expect("write message");
+        std::fs::write(dir.file("msg.sig"), [0x22u8; 42]).expect("write signature");
+        assert_eq!(
+            run_verify_command(&VerifyArgs {
+                key_path: dir.file("verifying.key"),
+                in_path: dir.file("msg.bin"),
+                sig_path: dir.file("msg.sig"),
+                iterations: 1,
+            }),
+            Err(CliError::SignVerifyUnsupportedCurve(0xFF))
         );
     }
 
     #[test]
     fn run_verify_command_wrong_signature_length_is_rejected() {
         let dir = TempDir::new("verify_wrong_sig_len");
-        std::fs::write(dir.file("verifying.key"), [0x11u8; 42]).expect("write key");
+        let mut key = vec![dstu_core::crypto_sign::CurveId::M163.to_byte()];
+        key.extend_from_slice(&[0x11u8; 42]);
+        std::fs::write(dir.file("verifying.key"), key).expect("write key");
         std::fs::write(dir.file("msg.bin"), b"hello").expect("write message");
         std::fs::write(dir.file("msg.sig"), [0x22u8; 41]).expect("write short signature");
         assert_eq!(
@@ -6111,7 +6533,9 @@ mod tests {
     #[test]
     fn run_verify_command_nonexistent_input_is_io_error_not_panic() {
         let dir = TempDir::new("verify_missing_in");
-        std::fs::write(dir.file("verifying.key"), [0x11u8; 42]).expect("write key");
+        let mut key = vec![dstu_core::crypto_sign::CurveId::M163.to_byte()];
+        key.extend_from_slice(&[0x11u8; 42]);
+        std::fs::write(dir.file("verifying.key"), key).expect("write key");
         std::fs::write(dir.file("msg.sig"), [0x22u8; 42]).expect("write signature");
         assert!(matches!(
             run_verify_command(&VerifyArgs {
@@ -6690,6 +7114,67 @@ mod tests {
         .map(String::from)
         .collect();
         run(&verify).expect("verify dispatch should succeed on a real signature");
+    }
+
+    /// `m=257` sibling of `sign_verify_dispatch_through_top_level_run`, through `run()` itself
+    /// (real command-line tokens, not the internal `run_*_command` functions directly) - proves
+    /// `sign-keygen257`/`sign-pubkey257`/`sign257` are actually reachable as real subcommands, and
+    /// that the *same* `verify` token used for `m=163` above also handles an `m=257` signature.
+    #[cfg_attr(
+        miri,
+        ignore = "Point::scalar_multiply's 257-iteration ladder is too slow to interpret under Miri - see docs/TASKS.md T-100"
+    )]
+    #[test]
+    fn sign_verify_dispatch_through_top_level_run_m257() {
+        let dir = TempDir::new("sign_verify_dispatch_257");
+        let path = |p: &std::path::Path| p.to_str().expect("valid utf-8 path").to_string();
+
+        let keygen: Vec<String> = ["sign-keygen257", "--out", &path(&dir.file("signing.key"))]
+            .into_iter()
+            .map(String::from)
+            .collect();
+        run(&keygen).expect("sign-keygen257 dispatch should succeed");
+
+        let pubkey: Vec<String> = [
+            "sign-pubkey257",
+            "--key",
+            &path(&dir.file("signing.key")),
+            "--out",
+            &path(&dir.file("verifying.key")),
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect();
+        run(&pubkey).expect("sign-pubkey257 dispatch should succeed");
+
+        std::fs::write(dir.file("msg.bin"), b"dispatch me, m=257").expect("write message");
+        let sign: Vec<String> = [
+            "sign257",
+            "--key",
+            &path(&dir.file("signing.key")),
+            "--in",
+            &path(&dir.file("msg.bin")),
+            "--out",
+            &path(&dir.file("msg.sig")),
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect();
+        run(&sign).expect("sign257 dispatch should succeed");
+
+        let verify: Vec<String> = [
+            "verify",
+            "--key",
+            &path(&dir.file("verifying.key")),
+            "--in",
+            &path(&dir.file("msg.bin")),
+            "--sig",
+            &path(&dir.file("msg.sig")),
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect();
+        run(&verify).expect("verify dispatch should succeed on a real m=257 signature");
     }
 
     #[test]
