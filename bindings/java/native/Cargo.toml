@@ -20,7 +20,7 @@ crate-type = ["cdylib"]
 # during T-51's step-0 spike, not assumed. See docs/DECISIONS.md D-153.
 [dependencies]
 jni = "0.21"
-dstu-core = { path = "../../../crates/dstu-core", version = "0.2.0", features = ["std", "selftest", "pwhash"] }
+dstu-core = { path = "../../../crates/dstu-core", version = "0.3.0", features = ["std", "selftest", "pwhash"] }
 
 [profile.release]
 lto = true

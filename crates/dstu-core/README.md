@@ -4,7 +4,7 @@ Rust implementations of Ukrainian DSTU cryptographic standards — Kalyna (DSTU 
 cipher), Kupyna (DSTU 7564:2014, hash), and Strumok (DSTU 8845:2019, stream cipher) — in the
 spirit of **libsodium** (hard, safe defaults, hard to misuse) rather than OpenSSL.
 
-**v0.1.0 — pre-release / work in progress.** Not audited, not a claim of side-channel resistance.
+**Pre-1.0, work in progress.** Not audited, not a claim of side-channel resistance.
 Kalyna and Kupyna are dual-oracle-verified against official test vectors; Strumok and every Kalyna
 mode of operation are provisional — not yet confirmed against their primary standard text (see
 `docs/DECISIONS.md`/`docs/SECURITY.md` in the project repository, not shipped in this package, for the full
@@ -18,13 +18,13 @@ tamper, and misuse tests instead.
   auto-generated nonces; the caller passes keys/nonces/IVs explicitly. `no_std`-compatible.
   Covers Kalyna (all 5 block/key-size variants) and its 10 DSTU 7624 modes of operation
   (ECB/CBC/OFB/CFB/CTR/CMAC/KW/GCM/GMAC/XTS), Kupyna (256/512, one-shot and streaming), Kupyna-KMAC
-  and Kupyna-KDF, Strumok (256/512-bit key), DSTU 4145 (m=163 curve only), and DSTU 9041 hybrid
-  asymmetric encryption over a twisted Edwards curve (`l(p)=256`/E256/1 only).
+  and Kupyna-KDF, Strumok (256/512-bit key), DSTU 4145 (`m=163` and `m=257` curves), and DSTU 9041
+  hybrid asymmetric encryption over a twisted Edwards curve (`l(p)=256`/E256/1 and `l(p)=512`/E512/1).
 - **`dstu_core::crypto_*`** — libsodium-style ergonomic wrappers over `hazmat`: auto-generated
   nonces where the construction needs one, misuse-resistant defaults, a single safe variant per
   primitive instead of every knob `hazmat` exposes. Covers `crypto_secretbox`, `crypto_secretstream`,
-  `crypto_box`, `crypto_sign`, `crypto_stream`, `crypto_auth`, `crypto_kdf`, `crypto_generichash`,
-  and `crypto_pwhash` (Argon2id, not DSTU).
+  `crypto_box`/`crypto_box512`, `crypto_sign`/`crypto_sign257`, `crypto_stream`, `crypto_auth`,
+  `crypto_kdf`, `crypto_generichash`, and `crypto_pwhash` (Argon2id, not DSTU).
 
 ## Feature flags
 

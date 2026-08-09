@@ -1,10 +1,8 @@
 # uacrypt
 
-<!-- uacrypt-version: 0.2.0 -->
-**v0.2.0 — released 2026-08-02, work in progress.** DSTU 9041 / `crypto_box` (and its `box-*` CLI
-commands) landed on `master` since that tag and is not yet in a tagged release — check
-[GitHub Releases](https://github.com/user137/uacrypt/releases) before assuming a downloaded binary
-has it. Not a complete library or CLI yet, not audited, not
+<!-- uacrypt-version: 0.3.0 -->
+**v0.3.0 — released 2026-08-09, first crates.io publish (`dstu-core` only — see
+`docs/CHANGELOG.md`), still work in progress.** Not a complete library or CLI yet, not audited, not
 production-ready, and **not a claim of side-channel resistance**. Core primitives (Kalyna, Kupyna)
 are dual-oracle-verified against official test vectors; Strumok and the Kalyna-CCM mode are
 provisional (not yet confirmed against their primary standard text — see `docs/DECISIONS.md` D-15/D-41).

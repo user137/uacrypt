@@ -5,6 +5,17 @@ All notable changes to this project are documented in this file. Format follows
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-09
+
+**First crates.io publish** (`docs/TASKS.md` T-17) - `dstu-core` only; `uacrypt` stays GitHub
+Releases-only for now (prebuilt binaries are already the better distribution path for that
+persona, `cargo install` would only offer a from-source build). This does not change the project's
+own honesty posture: still pre-1.0, still not independently audited, and the headline provisional
+gaps tracked in `docs/release-readiness.md` (D-05's Kalyna-alone AEAD assumption and Strumok's
+vectors, both not yet confirmed against their primary DSTU texts) are unchanged by this release -
+see that document and `docs/DECISIONS.md` for the full standing caveats, repeated here exactly as
+prominently as 0.2.0's own notes did below.
+
 ### Added
 
 - `hazmat::dstu9041`: DSTU 9041:2020 hybrid (ECIES-style) asymmetric encryption over a twisted
@@ -16,6 +27,16 @@ All notable changes to this project are documented in this file. Format follows
   message) - `seal`/`open`/`SecretKey`/`PublicKey` (32-byte compressed, `x`-coordinate only,
   `docs/TASKS.md` T-178, `docs/DECISIONS.md` D-169). `uacrypt box-keygen`/`box-pubkey`/`box-seal`/
   `box-open` CLI surface.
+- `hazmat::dstu9041`: `l(p)=512`/E512/1, the second curve size after `l(p)=256` -
+  `message512`/`fp512`/`curve512`/`encryption512`, same phased/test-first pattern, verified against
+  the standard's own worked example; both `l(p)=256` security findings (an order-2 point, a
+  cofactor-4 subgroup) independently re-derived and re-confirmed applicable, not assumed to carry
+  over (`docs/TASKS.md` T-192).
+- `crypto_box512`: direct `l(p)=512` sibling of `crypto_box`, `PublicKey`/`SecretKey` at 64 bytes,
+  seed deliberately fixed at 32 bytes/256 bits (not `l(p)=512`'s full KEM capacity, D-182) -
+  `seal`/`open`/`SecretKey`/`PublicKey`, `uacrypt box-keygen512`/`box-pubkey512`/`box-seal512`/
+  `box-open512` CLI surface. Not yet wired into any language binding or `dstu-core-capi` (separate
+  future task, T-193's own scope note) (`docs/TASKS.md` T-193, `docs/DECISIONS.md` D-182/D-183).
 - `hazmat::dstu4145`: a second curve, `m=257` (`gf2m257`/`curve257`/`scalar257`/`signature257`) -
   what real Diia-issued qualified signatures actually use in production (confirmed from real
   issued certificates, not just the standard's own curve table), alongside the existing `m=163`.
@@ -46,6 +67,14 @@ All notable changes to this project are documented in this file. Format follows
 
 ### Fixed
 
+- `crypto_sign`/`hazmat::dstu4145` (`m=163`): `VerifyingKey::from_uncompressed_bytes` accepted a
+  caller-supplied public key with no on-curve check, and `verify` never validated its own `q`
+  parameter either - a signature could be forged against `Point::Infinity` or the curve's one
+  order-2 point (cofactor `h=2`, confirmed dual-source against Bouncy Castle) without ever needing
+  the real private key. Found auditing T-183, fixed immediately as a real vulnerability, not
+  deferred to backlog. Three tests actively forge working `(r, s)` pairs against all three attack
+  points to confirm rejection, rather than trusting a walkthrough (`docs/TASKS.md` T-189,
+  `docs/DECISIONS.md` D-172).
 - `uacrypt strumok-crypt`: `--in`==`--out` ("apply the keystream to this file in place") silently
   destroyed the input - exit code 0, 0-byte result, no error - instead of round-tripping. The
   streaming path opened `--out` via `File::create` (truncating it) before finishing reading `--in`.

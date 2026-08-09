@@ -12,7 +12,7 @@ name = "dstu_core_rb"
 crate-type = ["cdylib"]
 
 [dependencies]
-dstu-core = { path = "../../../../crates/dstu-core", version = "0.2.0", features = ["std", "selftest", "pwhash"] }
+dstu-core = { path = "../../../../crates/dstu-core", version = "0.3.0", features = ["std", "selftest", "pwhash"] }
 magnus = { version = "0.7", features = ["bytes"] }
 # Explicit direct dependency (not just transitively via magnus) so Cargo's `DEP_RUBY_*` build-
 # script variable propagation reaches *this* crate's own `build.rs` (`rb_sys_env::activate()`

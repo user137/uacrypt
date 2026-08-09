@@ -18,7 +18,7 @@ name = "_dstu_core"
 crate-type = ["cdylib"]
 
 [dependencies]
-dstu-core = { path = "../../crates/dstu-core", version = "0.2.0", features = ["std", "selftest", "pwhash"] }
+dstu-core = { path = "../../crates/dstu-core", version = "0.3.0", features = ["std", "selftest", "pwhash"] }
 # `extension-module` is deliberately NOT set here (unlike the standard pyo3 template's own
 # unconditional-feature shape, which this crate used until step 4) - `pyproject.toml`'s
 # `[tool.maturin] features = ["pyo3/extension-module"]` already turns it on for every real
