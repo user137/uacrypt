@@ -3166,7 +3166,101 @@ item they point to is later removed.
       feature matrix (`--all-features`, `--no-default-features`,
       `-p dstu-core --no-default-features --features getrandom`) - all clean on both the dev machine
       and the (re-synced) Raspberry Pi.
-- [ ] **T-200** **Not started, owner-requested backlog item, 2026-08-09** ("Додай таску на смоук
+- [ ] **T-200** **Phase 1 + select Phase 3/4 landed 2026-08-09, owner-requested ("Давай 200 таску із
+      смоук тестами для бінарника. Врахуй які в нас там реалізації і як їх атакувати найдоцільніше а
+      не сліпо" - do T-200 now, ground it in what's actually implemented, attack it the most
+      worthwhile way rather than blindly). Remaining phases (2/4) still backlog, no committed
+      timeline.**
+
+      **What landed**: `crates/uacrypt/tests/support/mod.rs` (hand-rolled `std::process::Command`
+      harness, `env!("CARGO_BIN_EXE_uacrypt")`, no new `[dev-dependencies]` - confirmed working via
+      a throwaway probe before writing anything else, per this task's own harness decision below)
+      plus five real-subprocess test files, 49 tests total, all passing on first full workspace run
+      (`cargo test --workspace --exclude dstu-core-capi`), `cargo clippy --all-features` (both the
+      default gate and `--test <name>`-scoped `--all-targets` on just the new files, not the whole
+      crate - see the Miri/clippy note below for why), and `cargo fmt --check` all clean:
+      - `smoke_dispatch.rs` (11 tests) - top-level dispatch: no-args/`--help`/`-h`/`--version`/`-V`,
+        unknown command, `kalyna-block` missing/unknown subcommand, per-subcommand `--help` priority
+        over a missing required flag. First-ever coverage of `main.rs`'s own `ExitCode::FAILURE`
+        mapping and `"uacrypt: {e}"` stderr prefix (17 lines, previously exercised by zero tests).
+      - `smoke_golden_path.rs` (16 tests) - one real-subprocess round trip per leaf command,
+        enumerated from `run()`'s own dispatch `match` in `lib.rs` (35 leaf commands total, not the
+        ~28 this entry's own original plan estimated - `kalyna-block/-ccm/-gcm/-cmac/-gmac/-kw/-xts`
+        each have two sub-modes, `sign`/`box`/`box512` each have their own multi-command families).
+        Confirmed real per-command flag sets/key-length constants by reading `lib.rs` directly
+        (`ArgScanner::scan` call sites, `read_exact_file` lengths) rather than assuming from doc
+        comments alone - every one of the 16 tests passed on its first real run, which is itself
+        confirmation the inventory was read correctly, not guessed.
+      - `smoke_verify_key_tag.rs` (5 tests) - T-199's new tagged-verifying-key format (D-186
+        Decision 1) attacked directly: tag `0x00`/`0x03`..`0xFF` -> the named
+        `SignVerifyUnsupportedCurve` (not a generic failure or panic - Decision 3's whole point),
+        cross-tag/cross-length bodies (`0x01`+66-byte body, `0x02`+42-byte body), empty file,
+        tag-byte-with-no-body - all fully spec'd directly from `read_tagged_verifying_key`
+        (lib.rs:2190-2233), no exploration needed.
+      - `smoke_secretstream_attack.rs` (10 tests) - `decrypt`'s wire format
+        (`[header:32][tag:1][len:4 LE][ciphertext][auth_tag:16]...`) attacked at the file layer:
+        truncation (header/mid-chunk), an oversized length field (confirmed the
+        `chunk_len > SECRETSTREAM_CHUNK_BYTES` rejection fires *before* allocating/reading that
+        much - the actual memory-safety property, not just an error-path check), an unknown tag
+        byte, trailing data after `Final`, and - the one genuine security-property test in this
+        file - flipping `Final`'s tag byte to `Message` while leaving everything else
+        byte-identical, confirming the module's own doc-comment claim that `tag_byte` is bound into
+        the chunk's AEAD associated data (caught as `SecretstreamVerifyFailed`, not silently
+        accepted) holds at the real CLI/file boundary, not just in the library's own unit tests.
+      - `smoke_key_confusion.rs` (7 tests) - the cross-key-type confusion family (D-47's "no
+        `--type` flag" tradeoff): `keygen`/`box-keygen`/`box-pubkey` all produce indistinguishable
+        32-byte files, `box-keygen512`/`box-pubkey512` produce indistinguishable 64-byte files.
+        **Every byte pattern used was picked by running the real binary first and observing what
+        happened, per an `advisor()` consultation's explicit correction to an earlier draft plan
+        that would have assumed a rejection instead of confirming one** - `SecretKey::from_bytes`'s
+        check is magnitude-only (`0 < e < n`) and passes almost any generic-looking value,
+        `PublicKey::from_bytes`'s check requires the bytes to actually decode a point on the curve
+        (empirically close to a coin flip for an arbitrary value, confirmed by sampling ~15 fixed
+        patterns). Found and pinned with fixed, reproducible byte patterns (never a real random
+        `keygen` output, which would make a test's pass/fail depend on that run's own random key
+        landing on the right side of the coin flip): `[0x11; 32]` parses as a valid secret key but
+        not a public key; `[0x55; 32]` is the mirror image (valid public key, `box-seal` genuinely
+        succeeds and produces real ciphertext sealed to a "recipient" nobody can prove they hold -
+        the interesting *silent* case); `[0x00; 32]`/`[0xFF; 32]` are rejected in both slots
+        (boundary values); `[0x02; 64]` for `crypto_box512` is the strongest finding - parses as
+        **both** a valid secret key and a valid public key simultaneously, since `l(p)=512`'s
+        subgroup order sits close enough to the field size (D-182) that this low-magnitude value
+        clears both checks at once, with zero error in either direction.
+
+      **Harness decision, resolved not left open**: hand-rolled `std::process::Command` over
+      `assert_cmd`, per this entry's own original plan - confirmed `env!("CARGO_BIN_EXE_uacrypt")`
+      is genuinely populated for this crate's integration tests via a real throwaway probe test
+      before writing the harness (deleted once the real harness existed), so the `assert_cmd`
+      fallback was never needed. **Miri**: also confirmed empirically, not assumed - a Miri run of
+      the same throwaway probe aborted on a plain `Path::exists()` call under isolation (Miri
+      cannot spawn processes at all), confirming every test that calls into the harness needs
+      `#[cfg_attr(miri, ignore = "...")]`, which all 49 do. **CI**: no new job needed - these are
+      ordinary `cargo test` integration targets, so `xtask`'s existing mandatory `test()` step picks
+      them up for free, exactly as this entry's own original plan predicted. One real gap found
+      applying `CLAUDE.md`'s own clippy discipline: `cargo clippy --all-targets` also re-lints
+      `lib.rs`'s **existing** 140 in-process tests for the first time (356 pre-existing
+      `clippy::expect_used`/`unwrap_used` violations, confirming T-188's own prediction that
+      `--all-targets` was never part of the project's clippy gate) - unrelated to this task's own
+      new files, so the new files were linted via `--test <name>` scoping instead of blanket
+      `--all-targets`; the 356 pre-existing findings are a separate, not-yet-filed cleanup item, not
+      part of T-200's own scope.
+
+      **Explicitly deferred to a later phase, not forgotten**: the off-curve/order-2/order-4
+      attacker-supplied public-key attacks through `verify --key`/`box-seal --key`/`box-open512
+      --key` (T-189/D-172's fix, and T-183's own dstu9041 findings, re-exercised at the CLI/
+      untrusted-bytes boundary) - these need constructed invalid curve points, real further work,
+      not a same-session extension of what's already spec'd from reading `lib.rs` alone. Also
+      deferred: the full misuse/malformed-usage matrix (missing/unknown flags, `--in`==`--out` for
+      every command, directory-as-`--out`, `--iterations 0`) beyond what `smoke_dispatch.rs`
+      already covers; `--help`-text-as-pinned-claim tests; `docs/SECURITY.md` gaining a "CLI/binary"
+      mention; large-file/streaming-boundedness proof for `encrypt`/`decrypt`/`kupyna-digest`/
+      `strumok-crypt` (D-42's claim, real subprocess + a real large file, not asserted). Same
+      phasing this entry's own original plan laid out - land independently, don't wait for all four.
+
+      Original plan follows, unchanged (historical record - see the summary above for what actually
+      shipped and where it diverged):
+
+      ("Додай таску на смоук
       тести саме бінарника, в усіх режимах з усіма можливими сценаріями правильного і неправильного
       використання в тому числі з намаганням зламу" - add a task for smoke tests of the binary
       itself, all modes, all scenarios of correct/incorrect use including hacking attempts).

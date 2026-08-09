@@ -24,6 +24,12 @@ All notable changes to this project are documented in this file. Format follows
   `sign257` CLI surface; `uacrypt verify` reads a curve tag byte from `--key` and handles both
   `m=163` and `m=257` signatures through the one command (`docs/TASKS.md` T-199, `docs/DECISIONS.md`
   D-185/D-186).
+- `uacrypt`: real binary-level (subprocess) smoke tests, `crates/uacrypt/tests/` - 49 tests
+  spawning the actual compiled `uacrypt` binary (exit codes, stdout/stderr, real files), covering
+  every leaf command's golden path plus targeted attack scenarios (T-199's tagged-verifying-key
+  format, `crypto_secretstream`'s wire-format tamper resistance, cross-key-type confusion between
+  same-length key files). Previously the entire 140-test suite only ever called the library's
+  `run()` in-process (`docs/TASKS.md` T-200).
 
 ### Changed
 
