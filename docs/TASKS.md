@@ -3172,8 +3172,41 @@ item they point to is later removed.
       the most worthwhile way rather than blindly). Owner explicitly chose "all three" when asked
       which remaining items counted toward "full implementation" for the push gate (2026-08-09):
       the rest of the misuse matrix, streaming-boundedness, and `dstu9041`/`crypto_box`'s own
-      differently-shaped small-subgroup attack at the sealed-file level. Streaming-boundedness
-      landed (below); the other two remain.**
+      differently-shaped small-subgroup attack at the sealed-file level. Misuse matrix and
+      streaming-boundedness landed (below); the `crypto_box` sealed-file attack remains.**
+
+      **Phase 2 addendum, `crates/uacrypt/tests/smoke_misuse_matrix.rs` (8 test functions)**: the
+      rest of the misuse matrix beyond `--in`==`--out` (`smoke_misuse.rs`) and `smoke_dispatch.rs`'s
+      representative dispatch-level coverage.
+      - `missing_required_flag_matrix` - **exhaustive, not representative**, across all ~34 leaf
+        command shapes: a data table (`CASES`) built directly from each `parse_*_args` function's
+        own `ArgScanner::scan`/`.path(...)`/`.variant(...)` calls (not assumed from `--help` text),
+        removing one required flag at a time and asserting the specific `MissingFlag` name reported.
+        Every case passed on first run, itself confirming the required-flag extraction from source
+        was accurate. Deliberately used dummy (never-opened) path values throughout - confirmed by
+        reading every `parse_*_args` function first that `MissingFlag` fires before any file I/O for
+        every flag in this table, so no real fixture files were needed for it.
+      - **`kalyna-cmac`/`kalyna-gmac`'s mode-specific `--out`(compute)/`--tag`(verify) requirement
+        is a genuinely different code path**, found reading `run_cmac_command`/`run_gmac_command`
+        directly: unlike every other required flag, this check happens *after* reading real `--key`/
+        `--in` files (`args.tag_path.as_ref().ok_or(CliError::MissingFlag("tag"))?`, inside
+        `run_*_command`, not `parse_*_args`) - so it needed real fixture files and its own four
+        tests (`kalyna_{cmac,gmac}_{verify_without_tag,compute_without_out}_is_missing_flag`),
+        outside the dummy-path table above.
+      - `unknown_flag_is_rejected_across_representative_commands` - deliberately **not** a full
+        34-command sweep: every command routes through the one shared `ArgScanner::scan`
+        unknown-flag branch (that sharing is the entire point of `ArgScanner`, T-188/SonarCloud's
+        ~918-duplicated-line finding it replaced) - there is no per-command variation left to catch,
+        so 4 representative cases across different command shapes are the real coverage, not 34
+        repeats of one 5-line `else` branch.
+      - `directory_as_out_is_rejected_across_representative_commands` - same reasoning: `std::fs::
+        write`/`File::create` on a directory path is uniform `std::io` behavior regardless of which
+        command calls it, 3 representative cases (`keygen`/`hash`/`encrypt`), each also confirming
+        the directory itself stays empty (nothing written inside it, not just a nonzero exit code).
+      - `iterations_zero_behaves_like_one_across_representative_commands` - `kalyna-block`, byte-
+        for-byte identical output for `--iterations 0` vs `--iterations 1` (every command's own
+        `.max(1)` clamp is the same one-line idiom, so one representative case verifies the pattern
+        rather than the specific command).
 
       **Phase 4 addendum, `crates/uacrypt/tests/smoke_streaming_boundedness.rs` (4 tests) +
       `cargo xtask streaming-bounded`**: proves D-42's claim ("a `hazmat` streaming API existing
@@ -3294,11 +3327,13 @@ item they point to is later removed.
       **What landed**: `crates/uacrypt/tests/support/mod.rs` (hand-rolled `std::process::Command`
       harness, `env!("CARGO_BIN_EXE_uacrypt")`, no new `[dev-dependencies]` - confirmed working via
       a throwaway probe before writing anything else, per this task's own harness decision below)
-      plus nine real-subprocess test files (`smoke_misuse.rs`/`smoke_help_claims.rs`/
-      `smoke_off_curve_attack.rs`/`smoke_streaming_boundedness.rs` added in the Phase 2/4 addenda
-      above), 66 tests total (4 of which are `#[ignore]`d by default, see the streaming-boundedness
-      addendum above - run via `cargo xtask streaming-bounded`, not a plain `cargo test`), all
-      passing on first full workspace run
+      plus ten real-subprocess test files (`smoke_misuse.rs`/`smoke_help_claims.rs`/
+      `smoke_off_curve_attack.rs`/`smoke_streaming_boundedness.rs`/`smoke_misuse_matrix.rs` added in
+      the Phase 2/4 addenda above), 74 `#[test]` functions total (one of which,
+      `missing_required_flag_matrix`, internally sweeps ~34 command shapes' worth of assertions; 4
+      of the 74 are `#[ignore]`d by default, see the streaming-boundedness addendum above - run via
+      `cargo xtask streaming-bounded`, not a plain `cargo test`), all passing on first full
+      workspace run
       (`cargo test --workspace --exclude dstu-core-capi`), `cargo clippy --all-features` (both the
       default gate and `--test <name>`-scoped `--all-targets` on just the new files, not the whole
       crate - see the Miri/clippy note below for why), and `cargo fmt --check` all clean:
@@ -3368,23 +3403,19 @@ item they point to is later removed.
       `--all-targets`; the 356 pre-existing findings are a separate, not-yet-filed cleanup item, not
       part of T-200's own scope.
 
-      **Explicitly deferred to a later phase, not forgotten**: `verify --key`'s own off-curve/
-      order-2 attack landed, see the Phase 4 addendum above (`smoke_off_curve_attack.rs`) -
-      `box-seal --key`/`box-open512 --key`'s differently-shaped `dstu9041`/`crypto_box` small-
-      subgroup finding (T-183/D-176) stays deferred, since it needs a crafted sealed-file wire
-      format, not a crafted key file (see that addendum's own note for why the two aren't the same
-      task). Also deferred: the rest of the full misuse/malformed-usage matrix (missing/unknown flags per
-      command beyond what `smoke_dispatch.rs` already covers, directory-as-`--out`,
-      `--iterations 0`) - `--in`==`--out` itself now landed, see the Phase 2 addendum above;
-      large-file/streaming-boundedness proof for `encrypt`/`decrypt`/`kupyna-digest`/`strumok-crypt`
-      (D-42's claim, real subprocess + a real large file, not asserted) - `--help`-text-as-pinned-
-      claim tests themselves landed, see the Phase 4 addendum above (a representative set of
-      behavioral claims, not every claim in every `*_HELP` constant - policy/advice claims nothing
-      enforces were deliberately excluded); `docs/SECURITY.md` gaining a "CLI/binary" mention also
-      landed (new "CLI/binary attack surface (`uacrypt`)" section, right after "Threat model" -
-      states the wire-format/no-partial-output/`--in`==`--out` scope this file's tests actually
-      cover, points at D-187's finding, and names the still-open off-curve-key gap explicitly). Same
-      phasing this entry's own original plan laid out - land independently, don't wait for all four.
+      **Explicitly deferred, not forgotten - the one item still open**: `box-seal --key`/
+      `box-open512 --key`'s differently-shaped `dstu9041`/`crypto_box` small-subgroup finding
+      (T-183/D-176). `verify --key`'s own off-curve/order-2 attack landed (Phase 4 addendum,
+      `smoke_off_curve_attack.rs`) but this one is a genuinely different shape - it needs a crafted
+      *sealed-file* wire format, not a crafted key file (see that addendum's own note for why the
+      two aren't the same task). Everything else this entry once listed as deferred has since
+      landed: the rest of the misuse matrix (`smoke_misuse_matrix.rs`, Phase 2 addendum above),
+      streaming-boundedness (`smoke_streaming_boundedness.rs` + `cargo xtask streaming-bounded`,
+      Phase 4 addendum above), `--help`-text-as-pinned-claim tests (`smoke_help_claims.rs`), and
+      `docs/SECURITY.md`'s "CLI/binary attack surface" section (states the wire-format/no-partial-
+      output/`--in`==`--out` scope this suite covers, points at D-187's finding, and until this
+      entry's next update once named the off-curve-key gap that section itself should be revisited
+      to narrow to just the remaining `crypto_box` item once that lands too).
 
       Original plan follows, unchanged (historical record - see the summary above for what actually
       shipped and where it diverged):
