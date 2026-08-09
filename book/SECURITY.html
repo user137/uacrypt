@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-f0354dc2.js";
+            window.path_to_searchindex_js = "searchindex-9075ae49.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-ce7e91c5.js"></script>
@@ -203,6 +203,35 @@ post-MVP phase.</li>
 <li>Formal state certification by Держспецзв’язку — voluntary category for an open GitHub library;
 see <code>docs/dstu-crypto-project.md</code> “State certification”.</li>
 </ul>
+<h2 id="clibinary-attack-surface-uacrypt"><a class="header" href="#clibinary-attack-surface-uacrypt">CLI/binary attack surface (<code>uacrypt</code>)</a></h2>
+<p>The threat model above is stated at the library (<code>dstu-core</code>) level; <code>uacrypt</code> (the CLI binary,
+<code>crates/uacrypt</code>) adds its own boundary - untrusted file contents, argv, and exit codes - which the
+same “attacker who can supply malformed/adversarial input” scope extends to. In scope specifically:</p>
+<ul>
+<li><strong>On-disk wire formats as adversarial input</strong>: a <code>--in</code> file is not guaranteed to be genuine
+output of the corresponding <code>encrypt</code>/<code>sign</code>/<code>box-seal</code>/etc. command - truncation, tampering (any
+byte, including framing/tag bytes, not just payload), and cross-format confusion (feeding one
+command’s output to a different command that expects a similarly-shaped file, e.g. a <code>keygen</code> key
+where a <code>box-keygen</code> key is expected - same length, different meaning) must all fail cleanly, not
+panic or silently produce wrong output.</li>
+<li><strong>No partial output on failure</strong>: a command that fails partway through must not leave a
+half-written <code>--out</code> behind for a later, unrelated read to pick up.</li>
+<li><strong><code>--in</code>==<code>--out</code> (in-place usage)</strong> must not corrupt data even when a command’s own
+implementation reads and writes the same path in more than one step.</li>
+</ul>
+<p>Real-subprocess coverage for this boundary lives in <code>crates/uacrypt/tests/</code> (<code>docs/TASKS.md</code>
+T-200) - <code>std::process::Command</code>-spawning the actual compiled binary, not the library’s <code>run()</code>
+in-process, since exit codes, stdout/stderr routing, and real-filesystem behavior are only
+observable at the real process boundary. Two real findings from this suite: <code>strumok-crypt --in</code>==<code>--out</code> used to silently truncate the input to zero bytes at exit code 0 before a fix
+(<code>docs/DECISIONS.md</code> D-187); and confirmation, at this same CLI/file boundary rather than only
+<code>hazmat</code>’s in-process API, that both a constructed order-2 DSTU 4145 public key (<code>verify --key</code>)
+and a constructed order-2 <code>crypto_box</code> ciphertext (<code>box-open</code>, the <code>r=p-1</code> case, D-167 Finding 1)
+are genuinely rejected. <strong>One gap remains, not closed and not silently dropped</strong>: an order-4 (not
+order-2) attack against <code>crypto_box</code>/<code>dstu9041</code> is still open - D-173 investigated this directly at
+the <code>dstu-core</code> level, with full internal-crate access, and could not confirm either way whether a
+concrete order-4 point is even reachable through the public reconstruction API (<code>point_from_x</code>) -
+existence is proven, reachability isn’t. This needs an analytic answer, not more test-writing;
+tracked in <code>docs/TASKS.md</code> T-200/D-173.</p>
 <h2 id="known-cryptanalysis-third-party-literature"><a class="header" href="#known-cryptanalysis-third-party-literature">Known cryptanalysis (third-party literature)</a></h2>
 <p>Three papers sit in <code>docs/papers/</code> and were never actually surfaced anywhere in this project’s
 docs until this note (2026-07-31) — not a font-encoding failure like the ones corrected in

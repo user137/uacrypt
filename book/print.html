@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-f0354dc2.js";
+            window.path_to_searchindex_js = "searchindex-9075ae49.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-ce7e91c5.js"></script>
@@ -3751,21 +3751,306 @@ and the (re-synced) Raspberry Pi.
 </code></pre>
 </li>
 <li>
-<p><input disabled="" type="checkbox"> <strong>T-200</strong> <strong>Not started, owner-requested backlog item, 2026-08-09</strong> (“Додай таску на смоук
+<p><input disabled="" type="checkbox" checked=""> <strong>T-200</strong> <strong>Done 2026-08-09, owner-requested (“Давай 200 таску із смоук тестами для
+бінарника. Врахуй які в нас там реалізації і як їх атакувати найдоцільніше а не сліпо” - do
+T-200 now, ground it in what’s actually implemented, attack it the most worthwhile way rather
+than blindly). All items landed, including the three the owner explicitly named as “all
+three” when asked which remaining ones counted toward “full implementation” for the push gate
+(2026-08-09): the rest of the misuse matrix, streaming-boundedness, and <code>dstu9041</code>/
+<code>crypto_box</code>’s own differently-shaped small-subgroup attack at the sealed-file level.</strong></p>
+<pre><code>**Phase 4 addendum, `crates/uacrypt/tests/smoke_crypto_box_attack.rs` (1 test)**: the last of
+the "all three" items - `box-seal`/`box-open`'s own small-subgroup attack, grounded directly
+in D-167 Finding 1 (a real, already-fixed security bug, not a hypothetical): clause 12 step 2
+rejects `r=0`/`r=1`/`r^2=a*d^-1 (mod p)` but originally missed `r=p-1`, which reconstructs to
+a genuine order-2 point `R'=(p-1,0)` outside the base point's own subgroup - left unrejected,
+a chosen-ciphertext query with `r=p-1` would leak the private key's parity bit.
+`point_from_x` was fixed to reject it explicitly; this test re-exercises that fix through the
+real binary and sealed-file wire format, not just `hazmat`'s in-process API. Mechanics: seals
+a real message via `box-seal`, overwrites the sealed file's first 32 bytes (`r`, confirmed by
+reading both `crypto_box.rs`'s wire-format assembly and `hazmat::dstu9041::encryption::
+encrypt`'s `ciphertext[..32] = r_bytes`) with `p - 1` computed via `fp256::FieldElement::sub`
+at runtime (not hand-subtracted - mirrors `dstu9041_curve.rs`'s own `r_equals_p_minus_1_
+reconstructs_the_order_two_point` construction, avoiding exactly the hand-hex-arithmetic risk
+`CLAUDE.md` already warns about for transcription), then confirms `box-open` rejects it and
+writes nothing to `--out`. Passed on first run.
+- **Deliberately did not attempt an order-4 attack (D-167 Finding 2)**: `docs/DECISIONS.md`
+  D-173 already investigated this directly inside `dstu-core` itself (full internal-crate
+  access, a `#[cfg(test)]` module) and hit a genuine, still-open research question -
+  "whether a concrete order-4 point is reachable through `point_from_x`'s own reconstruction
+  formula at all is an open question, not confirmed either way." Existence is proven (Hasse's
+  bound); reachability through the actual public API is not. Attacking it from the CLI
+  subprocess boundary, with *less* internal access than D-173's own attempt had, cannot
+  responsibly claim to succeed where that investigation left an open analytic question
+  ("does an order-4 point's `x` ever satisfy `euler_criterion`?") - this needs a mathematical
+  answer, not more engineering, and is out of scope for a smoke-test task. Surfaced explicitly
+  rather than silently narrowing "the crypto_box attack" to only the order-2 case without
+  saying so.
+
+**Phase 2 addendum, `crates/uacrypt/tests/smoke_misuse_matrix.rs` (8 test functions)**: the
+rest of the misuse matrix beyond `--in`==`--out` (`smoke_misuse.rs`) and `smoke_dispatch.rs`'s
+representative dispatch-level coverage.
+- `missing_required_flag_matrix` - **exhaustive, not representative**, across all ~34 leaf
+  command shapes: a data table (`CASES`) built directly from each `parse_*_args` function's
+  own `ArgScanner::scan`/`.path(...)`/`.variant(...)` calls (not assumed from `--help` text),
+  removing one required flag at a time and asserting the specific `MissingFlag` name reported.
+  Every case passed on first run, itself confirming the required-flag extraction from source
+  was accurate. Deliberately used dummy (never-opened) path values throughout - confirmed by
+  reading every `parse_*_args` function first that `MissingFlag` fires before any file I/O for
+  every flag in this table, so no real fixture files were needed for it.
+- **`kalyna-cmac`/`kalyna-gmac`'s mode-specific `--out`(compute)/`--tag`(verify) requirement
+  is a genuinely different code path**, found reading `run_cmac_command`/`run_gmac_command`
+  directly: unlike every other required flag, this check happens *after* reading real `--key`/
+  `--in` files (`args.tag_path.as_ref().ok_or(CliError::MissingFlag("tag"))?`, inside
+  `run_*_command`, not `parse_*_args`) - so it needed real fixture files and its own four
+  tests (`kalyna_{cmac,gmac}_{verify_without_tag,compute_without_out}_is_missing_flag`),
+  outside the dummy-path table above.
+- `unknown_flag_is_rejected_across_representative_commands` - deliberately **not** a full
+  34-command sweep: every command routes through the one shared `ArgScanner::scan`
+  unknown-flag branch (that sharing is the entire point of `ArgScanner`, T-188/SonarCloud's
+  ~918-duplicated-line finding it replaced) - there is no per-command variation left to catch,
+  so 4 representative cases across different command shapes are the real coverage, not 34
+  repeats of one 5-line `else` branch.
+- `directory_as_out_is_rejected_across_representative_commands` - same reasoning: `std::fs::
+  write`/`File::create` on a directory path is uniform `std::io` behavior regardless of which
+  command calls it, 3 representative cases (`keygen`/`hash`/`encrypt`), each also confirming
+  the directory itself stays empty (nothing written inside it, not just a nonzero exit code).
+- `iterations_zero_behaves_like_one_across_representative_commands` - `kalyna-block`, byte-
+  for-byte identical output for `--iterations 0` vs `--iterations 1` (every command's own
+  `.max(1)` clamp is the same one-line idiom, so one representative case verifies the pattern
+  rather than the specific command).
+
+**Phase 4 addendum, `crates/uacrypt/tests/smoke_streaming_boundedness.rs` (4 tests) +
+`cargo xtask streaming-bounded`**: proves D-42's claim ("a `hazmat` streaming API existing
+does not make the `uacrypt` command wrapping it memory-bounded") at the real process boundary
+instead of leaving it asserted only in doc comments - spawns the real binary against a
+genuinely large file (200 MiB) and samples its actual OS-reported resident memory while it
+runs (`support::uacrypt_with_peak_rss`), for `kupyna-digest`, `strumok-crypt`, and
+`encrypt`/`decrypt`. Includes a deliberate control case, `box_seal_is_not_memory_bounded_
+control_case`: `box-seal`'s own `--help` text already says it reads `--in` whole into memory,
+so this proves the measurement methodology can actually detect *unbounded* growth (peak RSS
+visibly scales with `--in`'s size, confirmed &gt;2x proportional in a real run) - without this,
+"the streaming commands measured low" would be unfalsifiable, since an insensitive measurement
+would also read low. Real measured numbers on this dev machine (release build): the three
+bounded commands peaked at ~4.5-4.8 MiB against a 200 MiB input (the 60 MiB threshold has
+roughly 12x margin either direction); the control case peaked at ~89 MiB (40 MiB input) and
+~526 MiB (180 MiB input) - unambiguous proportional growth, not noise.
+- **Real architecture decision, not left implicit**: this genuinely does not fit in the
+  default `cargo test`/`cargo xtask test` path. Confirmed empirically, not assumed: the exact
+  same property in a plain debug-profile `cargo test` run took over 5 minutes for a *single*
+  test and was killed before finishing - this project's constant-time crypto paths are
+  dramatically slower unoptimized, and this check specifically needs a large file (hundreds of
+  MiB) for "peak stayed far below input size" to mean anything. `--release` alone brought the
+  same four tests down to ~13s total. Fix: all four tests carry a plain `#[ignore = "..."]`
+  (not the usual `#[cfg_attr(miri, ignore = ...)]` this file's siblings use - Miri already
+  can't reach an `#[ignore]`d test either, so one attribute covers both reasons), and a new
+  `cargo xtask streaming-bounded` subcommand runs them explicitly via
+  `cargo test --release -p uacrypt --test smoke_streaming_boundedness -- --ignored
+  --test-threads=1` (`xtask/src/main.rs`) - wired into `ci()`'s existing best-effort optional-
+  layer array (same treatment as `miri`/`fuzz`/`qemu-stm32`), plus its own real CI job
+  (`.github/workflows/rust.yml`'s new `streaming-bounded` job, matrixed across
+  `ubuntu-latest`/`macos-latest`/`windows-latest` on purpose - the memory-sampling harness has
+  a genuinely different implementation per OS, see the next bullet, so this is the first real
+  confirmation the Linux/macOS paths work at all, not just compile).
+- **Cross-platform memory sampling, one implementation per OS, no new dependency**:
+  `crates/uacrypt/tests/support/mod.rs`'s `uacrypt_with_peak_rss` spawns the target subprocess
+  then samples its live OS-reported resident memory while it runs. Linux: a background thread
+  re-reads `/proc/&lt;pid&gt;/status`'s `VmRSS:` line directly (cheap, no subprocess per sample,
+  5ms interval). Windows: a helper `powershell` process polls `(Get-Process -Id
+  &lt;pid&gt;).WorkingSet64` in a loop, one sample per stdout line - the same `Get-Process`-based
+  liveness idiom `CLAUDE.md` already documents for watching a long-running process (there:
+  CPU time; here: memory), applied for the first time to something other than a human
+  watching it live. macOS: a helper shell loop polls `ps -o rss= -p &lt;pid&gt;` the same way (no
+  `/proc` on macOS, and no long-poll mode for `ps`, so a per-sample subprocess is the standard
+  idiom there). All three self-terminate once the target process is gone (`Get-Process`/
+  `kill -0` failing), no explicit stop signal needed. Deliberately not a raw WinAPI/`libc`
+  FFI approach (`GetProcessMemoryInfo`/`getrusage`) - considered and rejected: hand-rolling a
+  `rusage`/`PROCESS_MEMORY_COUNTERS` struct layout from memory to call unsafe FFI is exactly
+  the kind of homegrown-primitive risk this project's own hard constraints warn against
+  (wrong field layout is silent undefined behavior, not a compile error), where shelling out
+  to an OS-standard, already-present, well-documented text-output tool carries none of that
+  risk for a test-only harness.
+- **Only the Windows path was empirically run locally** (this project's dev machine) - real
+  measured numbers above are all from Windows. The Linux (`/proc/PID/status` field name) and
+  macOS (`ps -o rss=` output format) paths rely on well-established, stable OS conventions but
+  were written, not locally verified - the new CI job above is deliberately matrixed across
+  all three OSes specifically so it's the first real confirmation for those two, not a second
+  local run of the one already-proven platform.
+
+**Phase 4 addendum, `crates/uacrypt/tests/smoke_off_curve_attack.rs` (2 tests)**: attacker-
+supplied off-curve/small-subgroup public keys through `verify --key`, at the real CLI/file
+boundary - the one item this entry originally called "real further work, not a same-session
+extension" and turned out tractable once actually attempted. Both DSTU 4145 curves reject a
+small-subgroup public key via an explicit upfront `x == 0` check in
+`hazmat::dstu4145::signature{,257}::verify`, reached *before* `r`/`s` are ever examined - so
+any syntactically-valid signature bytes trigger the same rejection, no forgery search needed
+(T-189's original `x != 0` shortcut for m=163; D-186's general cofactor-independent check for
+m=257). Constructs the curve's own order-2 point (`x = 0`, `y = sqrt(b)`, `b^(2^(m-1))` via
+repeated squaring - the same construction `crates/dstu-core/tests/dstu4145_signature{,257}.rs`
+already use at the library level, `b`'s hex value copied from those tests' own vector files
+rather than read cross-crate), encodes it into the exact tagged-verifying-key file format,
+writes it as `--key`, and confirms the real binary rejects it for both curves. One real
+transcription near-miss caught mid-implementation, not left to chance: the m=163 `b` hex
+string is 41 digits (an odd length - the vector file drops the leading zero nibble rather than
+zero-padding to 42), miscounted by eye at first the exact failure mode `CLAUDE.md` already
+warns about for this project's own hex transcription; caught immediately by counting the
+string length programmatically instead, not by re-eyeballing it, and fixed by left-padding
+any odd-length hex string before decoding. **`dstu9041`/`crypto_box`'s own order-2/order-4
+finding (T-183, D-176) stays deferred, on purpose, not overlooked** - it is about a compressed
+x-only point reconstructing to a small-subgroup `R'` *inside `box-open`'s ciphertext decoding*
+(an encryption-protocol-internal value), not about `PublicKey` bytes fed to `box-seal --key`/
+`box-open --key` directly the way a DSTU 4145 verifying key is - attacking it at the CLI
+boundary means constructing a crafted *sealed file* in `crypto_box`'s own wire format, a
+genuinely separate, harder task from what this addendum did.
+
+**Phase 4 addendum, `crates/uacrypt/tests/smoke_help_claims.rs` (6 tests)**: `--help` text as
+a pinned claim, this entry's own "highest-value net-new angle, nothing today covers it" note
+acted on. Picked the claims that are genuinely behavioral (not policy/advice nothing enforces,
+e.g. `kalyna-cmac`'s "don't reuse this key for encryption" - untestable by construction) and
+checked the real binary against its own documented promise: `strumok-crypt`'s "NOT
+authenticated ... tampered output decrypts silently into wrong plaintext" (flip a ciphertext
+byte, confirm exit 0 with corrupted output, not a rejection - the mirror image of
+`smoke_secretstream_attack.rs`'s authenticated case); `verify`'s "prints nothing and exits 0
+on a valid signature" (asserts `stdout == ""`, not just success); `decrypt`'s "`--out` is only
+replaced after the whole file is written and verified" (tamper, confirm `--out` was never
+created); `kalyna-ccm`'s "capped at 255 bytes" (256-byte message, confirm the exact "255-byte
+limit" wording in stderr); `kalyna-xts`'s "`--in` must be at least one block long" (subprocess
+version of the existing in-process-only check); `box-open`'s "rejected ... before anything is
+written to `--out`" for a wrong secret key. All 6 passed on first run.
+
+**Phase 2 addendum, `crates/uacrypt/tests/smoke_misuse.rs` (5 tests)**: the `--in`==`--out`
+misuse case, scoped to the one sub-case with real teeth per an `advisor()` consultation - not
+the full missing/unknown-flag matrix (already representatively covered by `smoke_dispatch.rs`
+and the in-process suite). **Found a real data-destruction bug doing this, not just a coverage
+gap**: `strumok-crypt --in x --out x` exited 0 and silently produced a 0-byte file, destroying
+the input - confirmed by actually running the real binary (a 50000-byte probe file), not
+assumed. Root cause and fix: `run_strumok_command`'s streaming path opened `--out` via
+`File::create` (truncating it) before finishing reading `--in`; fixed with the same temp-file-
+then-rename discipline `run_secretstream_command` already used, extracted into a new
+`run_strumok_stream` function (also incidentally fixes a second gap - partial `--out` left
+behind on a mid-stream I/O error, D-65's own no-partial-output standard). Full writeup,
+including why this wasn't already caught by the one existing same-path test (that test covers
+`crypto_secretstream`, a different construction): `docs/DECISIONS.md` D-187. Regression
+coverage at both levels - in-process (`run_strumok_command_in_and_out_same_path_round_trips`)
+and subprocess (`smoke_misuse.rs`'s two `strumok_crypt_in_place_*` tests) - plus same-path
+sanity checks confirming (not assuming) the three command families that read the whole buffer
+before writing (`encrypt`/`decrypt`, `kupyna-digest`, `kalyna-block`) were never at risk.
+
+**What landed**: `crates/uacrypt/tests/support/mod.rs` (hand-rolled `std::process::Command`
+harness, `env!("CARGO_BIN_EXE_uacrypt")`, no new `[dev-dependencies]` - confirmed working via
+a throwaway probe before writing anything else, per this task's own harness decision below)
+plus eleven real-subprocess test files (`smoke_misuse.rs`/`smoke_help_claims.rs`/
+`smoke_off_curve_attack.rs`/`smoke_streaming_boundedness.rs`/`smoke_misuse_matrix.rs`/
+`smoke_crypto_box_attack.rs` added in the Phase 2/4 addenda above), 75 `#[test]` functions
+total (one of which, `missing_required_flag_matrix`, internally sweeps ~34 command shapes'
+worth of assertions; 4 of the 75 are `#[ignore]`d by default, see the streaming-boundedness
+addendum above - run via `cargo xtask streaming-bounded`, not a plain `cargo test`), all
+passing on first full
+workspace run
+(`cargo test --workspace --exclude dstu-core-capi`), `cargo clippy --all-features` (both the
+default gate and `--test &lt;name&gt;`-scoped `--all-targets` on just the new files, not the whole
+crate - see the Miri/clippy note below for why), and `cargo fmt --check` all clean:
+- `smoke_dispatch.rs` (11 tests) - top-level dispatch: no-args/`--help`/`-h`/`--version`/`-V`,
+  unknown command, `kalyna-block` missing/unknown subcommand, per-subcommand `--help` priority
+  over a missing required flag. First-ever coverage of `main.rs`'s own `ExitCode::FAILURE`
+  mapping and `"uacrypt: {e}"` stderr prefix (17 lines, previously exercised by zero tests).
+- `smoke_golden_path.rs` (16 tests) - one real-subprocess round trip per leaf command,
+  enumerated from `run()`'s own dispatch `match` in `lib.rs` (35 leaf commands total, not the
+  ~28 this entry's own original plan estimated - `kalyna-block/-ccm/-gcm/-cmac/-gmac/-kw/-xts`
+  each have two sub-modes, `sign`/`box`/`box512` each have their own multi-command families).
+  Confirmed real per-command flag sets/key-length constants by reading `lib.rs` directly
+  (`ArgScanner::scan` call sites, `read_exact_file` lengths) rather than assuming from doc
+  comments alone - every one of the 16 tests passed on its first real run, which is itself
+  confirmation the inventory was read correctly, not guessed.
+- `smoke_verify_key_tag.rs` (5 tests) - T-199's new tagged-verifying-key format (D-186
+  Decision 1) attacked directly: tag `0x00`/`0x03`..`0xFF` -&gt; the named
+  `SignVerifyUnsupportedCurve` (not a generic failure or panic - Decision 3's whole point),
+  cross-tag/cross-length bodies (`0x01`+66-byte body, `0x02`+42-byte body), empty file,
+  tag-byte-with-no-body - all fully spec'd directly from `read_tagged_verifying_key`
+  (lib.rs:2190-2233), no exploration needed.
+- `smoke_secretstream_attack.rs` (10 tests) - `decrypt`'s wire format
+  (`[header:32][tag:1][len:4 LE][ciphertext][auth_tag:16]...`) attacked at the file layer:
+  truncation (header/mid-chunk), an oversized length field (confirmed the
+  `chunk_len &gt; SECRETSTREAM_CHUNK_BYTES` rejection fires *before* allocating/reading that
+  much - the actual memory-safety property, not just an error-path check), an unknown tag
+  byte, trailing data after `Final`, and - the one genuine security-property test in this
+  file - flipping `Final`'s tag byte to `Message` while leaving everything else
+  byte-identical, confirming the module's own doc-comment claim that `tag_byte` is bound into
+  the chunk's AEAD associated data (caught as `SecretstreamVerifyFailed`, not silently
+  accepted) holds at the real CLI/file boundary, not just in the library's own unit tests.
+- `smoke_key_confusion.rs` (7 tests) - the cross-key-type confusion family (D-47's "no
+  `--type` flag" tradeoff): `keygen`/`box-keygen`/`box-pubkey` all produce indistinguishable
+  32-byte files, `box-keygen512`/`box-pubkey512` produce indistinguishable 64-byte files.
+  **Every byte pattern used was picked by running the real binary first and observing what
+  happened, per an `advisor()` consultation's explicit correction to an earlier draft plan
+  that would have assumed a rejection instead of confirming one** - `SecretKey::from_bytes`'s
+  check is magnitude-only (`0 &lt; e &lt; n`) and passes almost any generic-looking value,
+  `PublicKey::from_bytes`'s check requires the bytes to actually decode a point on the curve
+  (empirically close to a coin flip for an arbitrary value, confirmed by sampling ~15 fixed
+  patterns). Found and pinned with fixed, reproducible byte patterns (never a real random
+  `keygen` output, which would make a test's pass/fail depend on that run's own random key
+  landing on the right side of the coin flip): `[0x11; 32]` parses as a valid secret key but
+  not a public key; `[0x55; 32]` is the mirror image (valid public key, `box-seal` genuinely
+  succeeds and produces real ciphertext sealed to a "recipient" nobody can prove they hold -
+  the interesting *silent* case); `[0x00; 32]`/`[0xFF; 32]` are rejected in both slots
+  (boundary values); `[0x02; 64]` for `crypto_box512` is the strongest finding - parses as
+  **both** a valid secret key and a valid public key simultaneously, since `l(p)=512`'s
+  subgroup order sits close enough to the field size (D-182) that this low-magnitude value
+  clears both checks at once, with zero error in either direction.
+
+**Harness decision, resolved not left open**: hand-rolled `std::process::Command` over
+`assert_cmd`, per this entry's own original plan - confirmed `env!("CARGO_BIN_EXE_uacrypt")`
+is genuinely populated for this crate's integration tests via a real throwaway probe test
+before writing the harness (deleted once the real harness existed), so the `assert_cmd`
+fallback was never needed. **Miri**: also confirmed empirically, not assumed - a Miri run of
+the same throwaway probe aborted on a plain `Path::exists()` call under isolation (Miri
+cannot spawn processes at all), confirming every test that calls into the harness needs
+`#[cfg_attr(miri, ignore = "...")]`, which all 49 do. **CI**: no new job needed - these are
+ordinary `cargo test` integration targets, so `xtask`'s existing mandatory `test()` step picks
+them up for free, exactly as this entry's own original plan predicted. One real gap found
+applying `CLAUDE.md`'s own clippy discipline: `cargo clippy --all-targets` also re-lints
+`lib.rs`'s **existing** 140 in-process tests for the first time (356 pre-existing
+`clippy::expect_used`/`unwrap_used` violations, confirming T-188's own prediction that
+`--all-targets` was never part of the project's clippy gate) - unrelated to this task's own
+new files, so the new files were linted via `--test &lt;name&gt;` scoping instead of blanket
+`--all-targets`; the 356 pre-existing findings are a separate, not-yet-filed cleanup item, not
+part of T-200's own scope.
+
+**Closed 2026-08-09 - nothing left deferred that was in scope.** Every item this entry ever
+listed as deferred has since landed: the rest of the misuse matrix (`smoke_misuse_matrix.rs`),
+streaming-boundedness (`smoke_streaming_boundedness.rs` + `cargo xtask streaming-bounded`),
+`--help`-text-as-pinned-claim tests (`smoke_help_claims.rs`), `docs/SECURITY.md`'s "CLI/binary
+attack surface" section, `verify --key`'s off-curve/order-2 attack (`smoke_off_curve_attack.rs`),
+and `box-open`'s `crypto_box`/`dstu9041` order-2 sealed-file attack
+(`smoke_crypto_box_attack.rs`, above). `docs/SECURITY.md`'s CLI section should be revisited to
+drop its now-stale "off-curve-key gap" phrasing next time that file is touched - not urgent
+enough on its own to reopen this task purely to fix a doc-comment stale reference.
+**One item was named in the owner's "all three" scope and explicitly NOT attempted, on
+purpose, not by oversight**: an order-4 (not order-2) attack against `crypto_box`/`dstu9041`,
+D-167 Finding 2. `docs/DECISIONS.md` D-173 already tried this at the `dstu-core` level with
+full internal-crate access and left it a genuine open research question (order-4 point
+*existence* is proven, *reachability* through the public `point_from_x` API is not confirmed
+either way) - see the `smoke_crypto_box_attack.rs` addendum above for the full reasoning on
+why this is a real dead end today, not a shortfall in this task's own effort.
+
+Original plan follows, unchanged (historical record - see the summary above for what actually
+shipped and where it diverged):
+
+("Додай таску на смоук
 тести саме бінарника, в усіх режимах з усіма можливими сценаріями правильного і неправильного
-використання в тому числі з намаганням зламу” - add a task for smoke tests of the binary
+використання в тому числі з намаганням зламу" - add a task for smoke tests of the binary
 itself, all modes, all scenarios of correct/incorrect use including hacking attempts).
-Investigated first: confirmed via a full-project-context audit that <strong>no binary-level test
-exists anywhere in this repo.</strong> All 140 <code>#[test]</code> fns in <code>crates/uacrypt/src/lib.rs</code> call
-<code>run(&amp;args)</code> in-process, inside the test binary itself - never <code>std::process::Command</code>-spawning
-the real compiled <code>uacrypt.exe</code>/<code>uacrypt</code>. No <code>crates/uacrypt/tests/</code> directory, no
-<code>[dev-dependencies]</code> at all in <code>crates/uacrypt/Cargo.toml</code>, no <code>xtask</code> “smoke”/“e2e” subcommand,
+Investigated first: confirmed via a full-project-context audit that **no binary-level test
+exists anywhere in this repo.** All 140 `#[test]` fns in `crates/uacrypt/src/lib.rs` call
+`run(&amp;args)` in-process, inside the test binary itself - never `std::process::Command`-spawning
+the real compiled `uacrypt.exe`/`uacrypt`. No `crates/uacrypt/tests/` directory, no
+`[dev-dependencies]` at all in `crates/uacrypt/Cargo.toml`, no `xtask` "smoke"/"e2e" subcommand,
 no CI job scripting real binary invocations for misuse/attack testing (the language-binding
 workflows shell out to the real binary, but only for byte-identical interop cross-checks, not
-CLI-scenario coverage). The <code>dstu-core/fuzz/</code> targets (10, all still relevant) all hit library
-primitives directly, none hit the <code>uacrypt</code> CLI/file-format/argv layer. <code>docs/SECURITY.md</code>
-never mentions “CLI” or “binary” at all.</p>
-<pre><code>**Why in-process coverage doesn't substitute** (the concrete gap this task exists to close,
+CLI-scenario coverage). The `dstu-core/fuzz/` targets (10, all still relevant) all hit library
+primitives directly, none hit the `uacrypt` CLI/file-format/argv layer. `docs/SECURITY.md`
+never mentions "CLI" or "binary" at all.
+
+**Why in-process coverage doesn't substitute** (the concrete gap this task exists to close,
 per `advisor()` consultation) - things only a real subprocess boundary can catch:
 - **Exit codes.** `main.rs` (17 lines: `run()` -&gt; `ExitCode::SUCCESS`/`FAILURE`) is currently
   executed by *zero* tests - every existing test asserts on the library's `Result`, never on
@@ -9800,6 +10085,35 @@ post-MVP phase.</li>
 <li>Formal state certification by Держспецзв’язку — voluntary category for an open GitHub library;
 see <code>docs/dstu-crypto-project.md</code> “State certification”.</li>
 </ul>
+<h2 id="clibinary-attack-surface-uacrypt"><a class="header" href="#clibinary-attack-surface-uacrypt">CLI/binary attack surface (<code>uacrypt</code>)</a></h2>
+<p>The threat model above is stated at the library (<code>dstu-core</code>) level; <code>uacrypt</code> (the CLI binary,
+<code>crates/uacrypt</code>) adds its own boundary - untrusted file contents, argv, and exit codes - which the
+same “attacker who can supply malformed/adversarial input” scope extends to. In scope specifically:</p>
+<ul>
+<li><strong>On-disk wire formats as adversarial input</strong>: a <code>--in</code> file is not guaranteed to be genuine
+output of the corresponding <code>encrypt</code>/<code>sign</code>/<code>box-seal</code>/etc. command - truncation, tampering (any
+byte, including framing/tag bytes, not just payload), and cross-format confusion (feeding one
+command’s output to a different command that expects a similarly-shaped file, e.g. a <code>keygen</code> key
+where a <code>box-keygen</code> key is expected - same length, different meaning) must all fail cleanly, not
+panic or silently produce wrong output.</li>
+<li><strong>No partial output on failure</strong>: a command that fails partway through must not leave a
+half-written <code>--out</code> behind for a later, unrelated read to pick up.</li>
+<li><strong><code>--in</code>==<code>--out</code> (in-place usage)</strong> must not corrupt data even when a command’s own
+implementation reads and writes the same path in more than one step.</li>
+</ul>
+<p>Real-subprocess coverage for this boundary lives in <code>crates/uacrypt/tests/</code> (<code>docs/TASKS.md</code>
+T-200) - <code>std::process::Command</code>-spawning the actual compiled binary, not the library’s <code>run()</code>
+in-process, since exit codes, stdout/stderr routing, and real-filesystem behavior are only
+observable at the real process boundary. Two real findings from this suite: <code>strumok-crypt --in</code>==<code>--out</code> used to silently truncate the input to zero bytes at exit code 0 before a fix
+(<code>docs/DECISIONS.md</code> D-187); and confirmation, at this same CLI/file boundary rather than only
+<code>hazmat</code>’s in-process API, that both a constructed order-2 DSTU 4145 public key (<code>verify --key</code>)
+and a constructed order-2 <code>crypto_box</code> ciphertext (<code>box-open</code>, the <code>r=p-1</code> case, D-167 Finding 1)
+are genuinely rejected. <strong>One gap remains, not closed and not silently dropped</strong>: an order-4 (not
+order-2) attack against <code>crypto_box</code>/<code>dstu9041</code> is still open - D-173 investigated this directly at
+the <code>dstu-core</code> level, with full internal-crate access, and could not confirm either way whether a
+concrete order-4 point is even reachable through the public reconstruction API (<code>point_from_x</code>) -
+existence is proven, reachability isn’t. This needs an analytic answer, not more test-writing;
+tracked in <code>docs/TASKS.md</code> T-200/D-173.</p>
 <h2 id="known-cryptanalysis-third-party-literature"><a class="header" href="#known-cryptanalysis-third-party-literature">Known cryptanalysis (third-party literature)</a></h2>
 <p>Three papers sit in <code>docs/papers/</code> and were never actually surfaced anywhere in this project’s
 docs until this note (2026-07-31) — not a font-encoding failure like the ones corrected in
@@ -26051,6 +26365,47 @@ would have reintroduced (this Decision’s own original concern).</li>
 <p>Full regression after all of the above: <code>cargo test -p dstu-core -p uacrypt --all-features</code>,
 <code>cargo clippy --all-features -- -D warnings</code>/<code>cargo fmt --check</code> on both crates,
 <code>cargo build -p dstu-core --no-default-features</code>, <code>cargo build -p dstu-core-capi</code> - all clean.</p>
+<h2 id="d-187-t-200---strumok-crypt---in--out-silently-destroyed-data-fixed-with-the-same"><a class="header" href="#d-187-t-200---strumok-crypt---in--out-silently-destroyed-data-fixed-with-the-same">D-187: T-200 - <code>strumok-crypt --in</code>==<code>--out</code> silently destroyed data; fixed with the same</a></h2>
+<p>temp-file-then-rename discipline <code>run_secretstream_command</code> already used</p>
+<p><strong>Found by</strong>: an empirical <code>--in</code>==<code>--out</code> smoke-test probe of the real compiled binary while
+building T-200’s misuse-matrix phase, not by code inspection - the same “run it, don’t assume it”
+discipline this project has used throughout (<code>docs/TASKS.md</code> T-200’s own key-confusion section,
+D-25/D-110’s “don’t trust green tests alone”).</p>
+<p><strong>The bug</strong>: <code>run_strumok_command</code>’s <code>iterations &lt;= 1</code> path (real/default <code>strumok-crypt</code> usage,
+<code>crates/uacrypt/src/lib.rs</code>) opened <code>--in</code> via <code>File::open</code> and <code>--out</code> via <code>File::create</code> - which
+truncates an existing file - <em>before</em> looping to read <code>--in</code> and stream-apply the keystream. When
+<code>--in</code>==<code>--out</code> (“apply the keystream to this file in place”, a plausible real usage nobody’s
+<code>--help</code> text warns against), <code>File::create</code> truncated the file to zero bytes first; the still-open
+<code>in_file</code> handle then read 0 remaining bytes and the loop exited immediately. Result: <code>uacrypt strumok-crypt --in x --out x</code> exited <strong>0</strong> (success), wrote nothing, and left <code>x</code> at 0 bytes -
+silent, complete data loss, not merely a rejected/error case. Reproduced directly: a 50000-byte
+input became a 0-byte file with no error printed anywhere.</p>
+<p>A second, independent gap in the same code path: an I/O error partway through the read/write loop
+(e.g. <code>--in</code> deleted mid-stream) left whatever had already been written sitting in <code>--out</code> -
+violating this project’s own no-partial-output-on-failure standard every other command already
+meets (D-65’s “fool” test category).</p>
+<p><strong>Fix</strong>: extracted the streaming branch into <code>run_strumok_stream</code>, which now writes to a temp path
+next to <code>--out</code> (<code>strumok_temp_path</code>, <code>&lt;out&gt;.strumok-tmp</code> - literally copied from
+<code>secretstream_temp_path</code>’s existing shape, same OsString-append reasoning: correct on non-UTF-8
+paths, stays on the same filesystem as <code>--out</code> for the final <code>rename</code> to work) and only
+<code>std::fs::rename</code>s onto the real <code>--out</code> once the whole stream has read to EOF without error;
+any error instead removes the temp file and propagates. This is the exact pattern
+<code>run_secretstream_command</code> already used for the same reason (D-42’s streaming-CLI-wrapper
+discipline extended to genuine atomicity, not just bounded memory) - <code>strumok-crypt</code> just hadn’t
+been given it originally, since its streaming path was added incrementally (D-42) without an
+<code>--in</code>==<code>--out</code> check at the time.</p>
+<p><strong>Why not caught earlier</strong>: <code>run_strumok_command_streams_multi_chunk_input_correctly</code> and every
+other existing in-process test used distinct <code>--in</code>/<code>--out</code> paths. <code>run_secretstream_command_in_ and_out_same_path_round_trips</code> (this project’s one existing same-path test, for <code>crypto_secretstream</code>)
+never generalized to imply anything about <code>strumok-crypt</code>’s own, differently-implemented streaming
+loop - a construction-specific property (temp-file discipline) isn’t automatically true of a sibling
+construction just because it looks similar at the CLI surface, the same lesson as this project’s
+own combined-AEAD-tag-coverage rule (<code>CLAUDE.md</code>’s “porting a <code>crypto_secretbox</code>-style wrapper…”
+bullet) applied to a different code shape.</p>
+<p><strong>Regression coverage, both levels</strong> (not just one): <code>run_strumok_command_in_and_out_same_path_ round_trips</code> (in-process, <code>crates/uacrypt/src/lib.rs</code>, multi-chunk/unaligned length, confirms the
+temp file is gone after success) and <code>smoke_misuse.rs</code>’s <code>strumok_crypt_in_place_round_trips_ without_destroying_data</code>/<code>strumok_crypt_in_place_leaves_no_partial_output_on_read_failure</code>
+(subprocess-level, the actual boundary the original bug lived at) - plus same-path sanity checks
+for the three command families that were never at risk (<code>encrypt</code>/<code>decrypt</code>, <code>kupyna-digest</code>,
+<code>kalyna-block</code> - all read-whole-buffer-then-write, so nothing to fix, confirmed rather than assumed
+safe).</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="changelog"><a class="header" href="#changelog">Changelog</a></h1>
 <p>All notable changes to this project are documented in this file. Format follows
@@ -26075,6 +26430,33 @@ issued certificates, not just the standard’s own curve table), alongside the e
 <code>sign257</code> CLI surface; <code>uacrypt verify</code> reads a curve tag byte from <code>--key</code> and handles both
 <code>m=163</code> and <code>m=257</code> signatures through the one command (<code>docs/TASKS.md</code> T-199, <code>docs/DECISIONS.md</code>
 D-185/D-186).</li>
+<li><code>uacrypt</code>: real binary-level (subprocess) smoke tests, <code>crates/uacrypt/tests/</code> - 75 tests
+spawning the actual compiled <code>uacrypt</code> binary (exit codes, stdout/stderr, real files), covering
+every leaf command’s golden path plus targeted attack scenarios (T-199’s tagged-verifying-key
+format, <code>crypto_secretstream</code>’s wire-format tamper resistance, cross-key-type confusion between
+same-length key files, <code>--in</code>==<code>--out</code> in-place usage, <code>--help</code> text checked as a pinned
+behavioral claim rather than prose, a constructed order-2/small-subgroup public key rejected by
+<code>verify --key</code> for both DSTU 4145 curves and by <code>box-open</code> for <code>crypto_box</code>/<code>dstu9041</code>
+(D-167 Finding 1’s <code>r=p-1</code> case), an exhaustive missing-required-flag sweep across all ~34 leaf
+command shapes). Previously the entire 140-test suite only ever called the library’s <code>run()</code>
+in-process (<code>docs/TASKS.md</code> T-200).</li>
+<li><code>cargo xtask streaming-bounded</code>: release-build proof, against a real 200 MiB file, that
+<code>encrypt</code>/<code>decrypt</code>/<code>kupyna-digest</code>/<code>strumok-crypt</code> stay memory-bounded rather than buffering the
+whole input (D-42’s claim, previously asserted only in a doc comment) - samples the real
+subprocess’s OS-reported resident memory while it runs (<code>crates/uacrypt/tests/support/mod.rs</code>,
+one implementation per OS, no new dependency), with a <code>box-seal</code> control case proving the
+measurement can actually detect unbounded growth. <code>#[ignore]</code>d by default in a plain <code>cargo test</code>
+(needs a release build for realistic timing - a debug-profile run of the same property took over
+5 minutes and was killed before finishing); wired into <code>cargo xtask ci</code>’s optional layers and a
+new CI job matrixed across all three OSes (<code>docs/TASKS.md</code> T-200).</li>
+</ul>
+<h3 id="fixed"><a class="header" href="#fixed">Fixed</a></h3>
+<ul>
+<li><code>uacrypt strumok-crypt</code>: <code>--in</code>==<code>--out</code> (“apply the keystream to this file in place”) silently
+destroyed the input - exit code 0, 0-byte result, no error - instead of round-tripping. The
+streaming path opened <code>--out</code> via <code>File::create</code> (truncating it) before finishing reading <code>--in</code>.
+Found by T-200’s own <code>--in</code>==<code>--out</code> smoke-test probe of the real binary, fixed with the same
+temp-file-then-rename discipline <code>encrypt</code>/<code>decrypt</code> already use (<code>docs/DECISIONS.md</code> D-187).</li>
 </ul>
 <h3 id="changed"><a class="header" href="#changed">Changed</a></h3>
 <ul>
@@ -26102,7 +26484,7 @@ checked exhaustively over all 2^384 possible inputs (T-145).</li>
 <li>CodeQL advanced-setup CI migration, explicit least-privilege CI permissions (T-143); SonarCloud
 static analysis wired into CI (T-140).</li>
 </ul>
-<h3 id="fixed"><a class="header" href="#fixed">Fixed</a></h3>
+<h3 id="fixed-1"><a class="header" href="#fixed-1">Fixed</a></h3>
 <ul>
 <li>DSTU 4145 <code>scalar_multiply</code> returned a wrong result for scalars at/near the curve’s own group
 order - reachable in-contract at exactly one boundary value (<code>k == n-1</code>). No forgery risk

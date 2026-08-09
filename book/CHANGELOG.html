@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-f0354dc2.js";
+            window.path_to_searchindex_js = "searchindex-9075ae49.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-ce7e91c5.js"></script>
@@ -203,6 +203,33 @@ issued certificates, not just the standard’s own curve table), alongside the e
 <code>sign257</code> CLI surface; <code>uacrypt verify</code> reads a curve tag byte from <code>--key</code> and handles both
 <code>m=163</code> and <code>m=257</code> signatures through the one command (<code>docs/TASKS.md</code> T-199, <code>docs/DECISIONS.md</code>
 D-185/D-186).</li>
+<li><code>uacrypt</code>: real binary-level (subprocess) smoke tests, <code>crates/uacrypt/tests/</code> - 75 tests
+spawning the actual compiled <code>uacrypt</code> binary (exit codes, stdout/stderr, real files), covering
+every leaf command’s golden path plus targeted attack scenarios (T-199’s tagged-verifying-key
+format, <code>crypto_secretstream</code>’s wire-format tamper resistance, cross-key-type confusion between
+same-length key files, <code>--in</code>==<code>--out</code> in-place usage, <code>--help</code> text checked as a pinned
+behavioral claim rather than prose, a constructed order-2/small-subgroup public key rejected by
+<code>verify --key</code> for both DSTU 4145 curves and by <code>box-open</code> for <code>crypto_box</code>/<code>dstu9041</code>
+(D-167 Finding 1’s <code>r=p-1</code> case), an exhaustive missing-required-flag sweep across all ~34 leaf
+command shapes). Previously the entire 140-test suite only ever called the library’s <code>run()</code>
+in-process (<code>docs/TASKS.md</code> T-200).</li>
+<li><code>cargo xtask streaming-bounded</code>: release-build proof, against a real 200 MiB file, that
+<code>encrypt</code>/<code>decrypt</code>/<code>kupyna-digest</code>/<code>strumok-crypt</code> stay memory-bounded rather than buffering the
+whole input (D-42’s claim, previously asserted only in a doc comment) - samples the real
+subprocess’s OS-reported resident memory while it runs (<code>crates/uacrypt/tests/support/mod.rs</code>,
+one implementation per OS, no new dependency), with a <code>box-seal</code> control case proving the
+measurement can actually detect unbounded growth. <code>#[ignore]</code>d by default in a plain <code>cargo test</code>
+(needs a release build for realistic timing - a debug-profile run of the same property took over
+5 minutes and was killed before finishing); wired into <code>cargo xtask ci</code>’s optional layers and a
+new CI job matrixed across all three OSes (<code>docs/TASKS.md</code> T-200).</li>
+</ul>
+<h3 id="fixed"><a class="header" href="#fixed">Fixed</a></h3>
+<ul>
+<li><code>uacrypt strumok-crypt</code>: <code>--in</code>==<code>--out</code> (“apply the keystream to this file in place”) silently
+destroyed the input - exit code 0, 0-byte result, no error - instead of round-tripping. The
+streaming path opened <code>--out</code> via <code>File::create</code> (truncating it) before finishing reading <code>--in</code>.
+Found by T-200’s own <code>--in</code>==<code>--out</code> smoke-test probe of the real binary, fixed with the same
+temp-file-then-rename discipline <code>encrypt</code>/<code>decrypt</code> already use (<code>docs/DECISIONS.md</code> D-187).</li>
 </ul>
 <h3 id="changed"><a class="header" href="#changed">Changed</a></h3>
 <ul>
@@ -230,7 +257,7 @@ checked exhaustively over all 2^384 possible inputs (T-145).</li>
 <li>CodeQL advanced-setup CI migration, explicit least-privilege CI permissions (T-143); SonarCloud
 static analysis wired into CI (T-140).</li>
 </ul>
-<h3 id="fixed"><a class="header" href="#fixed">Fixed</a></h3>
+<h3 id="fixed-1"><a class="header" href="#fixed-1">Fixed</a></h3>
 <ul>
 <li>DSTU 4145 <code>scalar_multiply</code> returned a wrong result for scalars at/near the curve’s own group
 order - reachable in-contract at exactly one boundary value (<code>k == n-1</code>). No forgery risk

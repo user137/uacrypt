@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-f0354dc2.js";
+            window.path_to_searchindex_js = "searchindex-9075ae49.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-ce7e91c5.js"></script>
@@ -11536,6 +11536,47 @@ would have reintroduced (this Decision’s own original concern).</li>
 <p>Full regression after all of the above: <code>cargo test -p dstu-core -p uacrypt --all-features</code>,
 <code>cargo clippy --all-features -- -D warnings</code>/<code>cargo fmt --check</code> on both crates,
 <code>cargo build -p dstu-core --no-default-features</code>, <code>cargo build -p dstu-core-capi</code> - all clean.</p>
+<h2 id="d-187-t-200---strumok-crypt---in--out-silently-destroyed-data-fixed-with-the-same"><a class="header" href="#d-187-t-200---strumok-crypt---in--out-silently-destroyed-data-fixed-with-the-same">D-187: T-200 - <code>strumok-crypt --in</code>==<code>--out</code> silently destroyed data; fixed with the same</a></h2>
+<p>temp-file-then-rename discipline <code>run_secretstream_command</code> already used</p>
+<p><strong>Found by</strong>: an empirical <code>--in</code>==<code>--out</code> smoke-test probe of the real compiled binary while
+building T-200’s misuse-matrix phase, not by code inspection - the same “run it, don’t assume it”
+discipline this project has used throughout (<code>docs/TASKS.md</code> T-200’s own key-confusion section,
+D-25/D-110’s “don’t trust green tests alone”).</p>
+<p><strong>The bug</strong>: <code>run_strumok_command</code>’s <code>iterations &lt;= 1</code> path (real/default <code>strumok-crypt</code> usage,
+<code>crates/uacrypt/src/lib.rs</code>) opened <code>--in</code> via <code>File::open</code> and <code>--out</code> via <code>File::create</code> - which
+truncates an existing file - <em>before</em> looping to read <code>--in</code> and stream-apply the keystream. When
+<code>--in</code>==<code>--out</code> (“apply the keystream to this file in place”, a plausible real usage nobody’s
+<code>--help</code> text warns against), <code>File::create</code> truncated the file to zero bytes first; the still-open
+<code>in_file</code> handle then read 0 remaining bytes and the loop exited immediately. Result: <code>uacrypt strumok-crypt --in x --out x</code> exited <strong>0</strong> (success), wrote nothing, and left <code>x</code> at 0 bytes -
+silent, complete data loss, not merely a rejected/error case. Reproduced directly: a 50000-byte
+input became a 0-byte file with no error printed anywhere.</p>
+<p>A second, independent gap in the same code path: an I/O error partway through the read/write loop
+(e.g. <code>--in</code> deleted mid-stream) left whatever had already been written sitting in <code>--out</code> -
+violating this project’s own no-partial-output-on-failure standard every other command already
+meets (D-65’s “fool” test category).</p>
+<p><strong>Fix</strong>: extracted the streaming branch into <code>run_strumok_stream</code>, which now writes to a temp path
+next to <code>--out</code> (<code>strumok_temp_path</code>, <code>&lt;out&gt;.strumok-tmp</code> - literally copied from
+<code>secretstream_temp_path</code>’s existing shape, same OsString-append reasoning: correct on non-UTF-8
+paths, stays on the same filesystem as <code>--out</code> for the final <code>rename</code> to work) and only
+<code>std::fs::rename</code>s onto the real <code>--out</code> once the whole stream has read to EOF without error;
+any error instead removes the temp file and propagates. This is the exact pattern
+<code>run_secretstream_command</code> already used for the same reason (D-42’s streaming-CLI-wrapper
+discipline extended to genuine atomicity, not just bounded memory) - <code>strumok-crypt</code> just hadn’t
+been given it originally, since its streaming path was added incrementally (D-42) without an
+<code>--in</code>==<code>--out</code> check at the time.</p>
+<p><strong>Why not caught earlier</strong>: <code>run_strumok_command_streams_multi_chunk_input_correctly</code> and every
+other existing in-process test used distinct <code>--in</code>/<code>--out</code> paths. <code>run_secretstream_command_in_ and_out_same_path_round_trips</code> (this project’s one existing same-path test, for <code>crypto_secretstream</code>)
+never generalized to imply anything about <code>strumok-crypt</code>’s own, differently-implemented streaming
+loop - a construction-specific property (temp-file discipline) isn’t automatically true of a sibling
+construction just because it looks similar at the CLI surface, the same lesson as this project’s
+own combined-AEAD-tag-coverage rule (<code>CLAUDE.md</code>’s “porting a <code>crypto_secretbox</code>-style wrapper…”
+bullet) applied to a different code shape.</p>
+<p><strong>Regression coverage, both levels</strong> (not just one): <code>run_strumok_command_in_and_out_same_path_ round_trips</code> (in-process, <code>crates/uacrypt/src/lib.rs</code>, multi-chunk/unaligned length, confirms the
+temp file is gone after success) and <code>smoke_misuse.rs</code>’s <code>strumok_crypt_in_place_round_trips_ without_destroying_data</code>/<code>strumok_crypt_in_place_leaves_no_partial_output_on_read_failure</code>
+(subprocess-level, the actual boundary the original bug lived at) - plus same-path sanity checks
+for the three command families that were never at risk (<code>encrypt</code>/<code>decrypt</code>, <code>kupyna-digest</code>,
+<code>kalyna-block</code> - all read-whole-buffer-then-write, so nothing to fix, confirmed rather than assumed
+safe).</p>
 
                     </main>
 
