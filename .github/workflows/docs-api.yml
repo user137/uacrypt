@@ -1,0 +1,68 @@
+name: docs-api
+
+# Builds dstu-core's rustdoc API reference (cargo doc --all-features --no-deps) and publishes it to
+# the gh-pages branch under /api/ - the hand-crafted landing page (index.html/uk/index.html) and
+# the mdBook (book/, docs-book.yml) at gh-pages' own root are never touched by this workflow, only
+# the api/ subdirectory is replaced each run. Self-hosted stand-in for docs.rs (which only exists
+# once dstu-core is published to crates.io - T-17, deliberately owner-gated, not started).
+on:
+  push:
+    branches: [master]
+    paths:
+      - "crates/dstu-core/src/**"
+      - "crates/dstu-core/Cargo.toml"
+  workflow_dispatch: {}
+
+concurrency:
+  group: docs-api-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-publish:
+    name: build rustdoc, publish to gh-pages/api/
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout master (doc source)
+        uses: actions/checkout@v4
+        with:
+          path: source
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      # --no-deps: this reference covers dstu-core's own public API, not its (small) dependency
+      # tree's - zeroize/subtle/getrandom/argon2 already have their own docs.rs pages. --all-features
+      # mirrors [package.metadata.docs.rs]'s own all-features = true (Cargo.toml, T-110), so pwhash/
+      # small-tables/alloc-gated items are documented here too, same as a real docs.rs build would.
+      - name: Build API docs
+        working-directory: source
+        run: cargo doc -p dstu-core --all-features --no-deps
+
+      - name: Checkout gh-pages (publish target)
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          path: gh-pages
+
+      # Only the api/ subdirectory is touched - index.html/uk/index.html/book/ at gh-pages' own
+      # root are never read or written here. `cargo doc` doesn't emit a root index.html when only
+      # one crate is documented, so a small redirect to dstu_core/index.html is added by hand.
+      - name: Publish built docs into gh-pages/api/
+        run: |
+          rm -rf gh-pages/api
+          mkdir -p gh-pages/api
+          cp -r source/target/doc/. gh-pages/api/
+          echo '<!doctype html><meta http-equiv="refresh" content="0; url=dstu_core/index.html">' > gh-pages/api/index.html
+          cd gh-pages
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add api
+          if git diff --cached --quiet; then
+            echo "API docs unchanged, nothing to publish."
+            exit 0
+          fi
+          git commit -m "chore: publish rustdoc API reference
+
+          Source commit: ${{ github.sha }}"
+          git push
