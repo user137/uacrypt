@@ -91,7 +91,7 @@ if(DSTU_CORE_CPP_BUILD_TESTS)
 endif()
 
 if(DSTU_CORE_CPP_BUILD_EXAMPLES)
-  foreach(example_name secretbox box secretstream_file sign password_hashing misc)
+  foreach(example_name secretbox box box512 secretstream_file sign sign257 password_hashing misc)
     add_executable(dstu_core_cpp_example_${example_name} examples/${example_name}.cpp)
     target_link_libraries(dstu_core_cpp_example_${example_name} PRIVATE dstu_core_cpp dstu_core_capi_shared)
     dstu_core_cpp_warnings(dstu_core_cpp_example_${example_name})

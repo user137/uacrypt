@@ -10,6 +10,7 @@
 
 #include "auth.hpp"
 #include "box.hpp"
+#include "box512.hpp"
 #include "bytes.hpp"
 #include "constants.hpp"
 #include "generichash.hpp"
@@ -21,6 +22,7 @@
 #include "secretstream.hpp"
 #include "selftest.hpp"
 #include "sign.hpp"
+#include "sign257.hpp"
 #include "status.hpp"
 #include "stream.hpp"
 

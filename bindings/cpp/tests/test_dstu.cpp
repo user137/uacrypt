@@ -190,6 +190,34 @@ void TestBox() {
         "BoxPublicKey::FromBytes should reject x = 0");
 }
 
+void TestBox512() {
+  auto secretKey = dstu::Box512SecretKey::Generate();
+  auto publicKey = secretKey.Public();
+  const std::string message = "a message for the public key's holder only";
+  auto sealed = publicKey.Seal(ToBytes(message));
+  CHECK(sealed.size() == message.size() + dstu::kBox512SealOverhead,
+        "sealed size should equal message size + DSTU_BOX512_SEAL_OVERHEAD exactly");
+
+  auto opened = secretKey.Open(sealed);
+  CHECK(opened == ToBytes(message), "opened plaintext should match the original message");
+
+  auto tampered = sealed;
+  tampered.back() ^= 1;
+  CHECK(Throws<dstu::CryptoError>([&] { secretKey.Open(tampered); }), "Open should reject a tampered ciphertext");
+
+  auto otherSecretKey = dstu::Box512SecretKey::Generate();
+  CHECK(Throws<dstu::CryptoError>([&] { otherSecretKey.Open(sealed); }),
+        "Open should reject the correct sealed message under the wrong secret key");
+
+  CHECK(Throws<dstu::CryptoError>([&] { secretKey.Open(std::vector<std::uint8_t>{1, 2, 3}); }),
+        "Open should reject input shorter than DSTU_BOX512_SEAL_OVERHEAD");
+
+  CHECK(Throws<dstu::ArgumentError>([&] { dstu::Box512SecretKey::FromBytes(std::vector<std::uint8_t>(64, 0)); }),
+        "Box512SecretKey::FromBytes should reject a zero scalar");
+  CHECK(Throws<dstu::ArgumentError>([&] { dstu::Box512PublicKey::FromBytes(std::vector<std::uint8_t>(64, 0)); }),
+        "Box512PublicKey::FromBytes should reject x = 0");
+}
+
 void TestSecretstream() {
   auto key = dstu::SecretstreamKey::Generate();
   const std::string plaintext = "a whole file, conceptually split into chunks, larger than one buffer";
@@ -362,6 +390,44 @@ void TestSign() {
         "VerifyDigest should reject a wrong-length digest");
 }
 
+void TestSign257() {
+  auto key = dstu::SigningKey257::Generate();
+  auto verifying = key.Verifying();
+
+  const std::string message = "a message whose origin and integrity matter";
+  auto sig = key.Sign(ToBytes(message));
+  CHECK(verifying.Verify(ToBytes(message), sig), "Verify should accept its own signature");
+
+  const std::string other = "a different message";
+  CHECK(!verifying.Verify(ToBytes(other), sig), "Verify should reject a different message");
+
+  auto otherKey = dstu::SigningKey257::Generate();
+  auto otherVerifying = otherKey.Verifying();
+  CHECK(!otherVerifying.Verify(ToBytes(message), sig), "Verify should reject a signature from a different key");
+
+  std::vector<std::uint8_t> zero(dstu::kSign257PrivateKeyBytes, 0);
+  CHECK(Throws<dstu::ArgumentError>([&] { dstu::SigningKey257::FromBytes(zero); }),
+        "FromBytes should reject an all-zero scalar");
+
+  auto pubBytes = verifying.Bytes();
+  auto roundTripped = dstu::VerifyingKey257::FromBytes(pubBytes);
+  CHECK(roundTripped.Bytes() == pubBytes, "VerifyingKey257::Bytes should round-trip FromBytes");
+
+  auto digest = dstu::GenericHash256(ToBytes(message));
+  auto digestSig = key.SignDigest(digest);
+  CHECK(digestSig == sig, "SignDigest(GenericHash256(msg)) should equal Sign(msg) exactly - both are deterministic");
+  CHECK(verifying.VerifyDigest(digest, digestSig), "VerifyDigest should accept its own digest signature");
+
+  auto tamperedDigest = digest;
+  tamperedDigest.back() ^= 1;
+  CHECK(!verifying.VerifyDigest(tamperedDigest, digestSig), "VerifyDigest should reject a tampered digest");
+
+  CHECK(Throws<dstu::ArgumentError>([&] { key.SignDigest(std::vector<std::uint8_t>{1, 2, 3}); }),
+        "SignDigest should reject a wrong-length digest");
+  CHECK(Throws<dstu::ArgumentError>([&] { verifying.VerifyDigest(std::vector<std::uint8_t>{1, 2, 3}, sig); }),
+        "VerifyDigest should reject a wrong-length digest");
+}
+
 void TestStream() {
   auto key = dstu::StreamCipherKey::Generate();
   const std::string plaintext = "message";
@@ -402,11 +468,13 @@ int main() {
   TestGenerichash();
   TestSecretbox();
   TestBox();
+  TestBox512();
   TestSecretstream();
 #ifdef DSTU_UACRYPT_EXE
   TestUacryptInterop();
 #endif
   TestSign();
+  TestSign257();
   TestStream();
   TestPwhash();
 

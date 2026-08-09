@@ -13,6 +13,11 @@ inline constexpr std::size_t kBoxPublicKeyBytes = DSTU_BOX_PUBLICKEY_BYTES;
 /// 128-byte KEM ciphertext + 32-byte secretstream header + 16-byte tag added by
 /// BoxPublicKey::Seal.
 inline constexpr std::size_t kBoxSealOverhead = DSTU_BOX_SEAL_OVERHEAD;
+inline constexpr std::size_t kBox512SecretKeyBytes = DSTU_BOX512_SECRETKEY_BYTES;
+inline constexpr std::size_t kBox512PublicKeyBytes = DSTU_BOX512_PUBLICKEY_BYTES;
+/// 256-byte KEM ciphertext + 32-byte secretstream header + 16-byte tag added by
+/// Box512PublicKey::Seal.
+inline constexpr std::size_t kBox512SealOverhead = DSTU_BOX512_SEAL_OVERHEAD;
 inline constexpr std::size_t kAuthKeyBytes = DSTU_AUTH_KEY_BYTES;
 inline constexpr std::size_t kAuthTagBytes = DSTU_AUTH_TAG_BYTES;
 inline constexpr std::size_t kGenericHash256Bytes = DSTU_GENERICHASH_256_BYTES;
@@ -32,6 +37,10 @@ inline constexpr std::size_t kSignPrivateKeyBytes = DSTU_SIGN_PRIVATE_KEY_BYTES;
 inline constexpr std::size_t kSignPublicKeyBytes = DSTU_SIGN_PUBLIC_KEY_BYTES;
 inline constexpr std::size_t kSignSignatureBytes = DSTU_SIGN_SIGNATURE_BYTES;
 inline constexpr std::size_t kSignDigestBytes = DSTU_SIGN_DIGEST_BYTES;
+inline constexpr std::size_t kSign257PrivateKeyBytes = DSTU_SIGN257_PRIVATE_KEY_BYTES;
+inline constexpr std::size_t kSign257PublicKeyBytes = DSTU_SIGN257_PUBLIC_KEY_BYTES;
+inline constexpr std::size_t kSign257SignatureBytes = DSTU_SIGN257_SIGNATURE_BYTES;
+inline constexpr std::size_t kSign257DigestBytes = DSTU_SIGN257_DIGEST_BYTES;
 inline constexpr std::size_t kStreamKeyBytes = DSTU_STREAM_KEY_BYTES;
 /// 32-byte IV added by StreamCipherKey::Encrypt - no tag, unauthenticated.
 inline constexpr std::size_t kStreamOverhead = DSTU_STREAM_OVERHEAD;
