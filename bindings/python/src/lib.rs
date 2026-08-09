@@ -15,6 +15,7 @@
 //! `crypto_secretstream` wrapper) is deferred to later steps.
 
 mod auth;
+mod box512;
 mod crypto_box;
 mod error;
 mod generichash;
@@ -24,6 +25,7 @@ mod randombytes;
 mod secretbox;
 mod secretstream;
 mod sign;
+mod sign257;
 mod stream;
 mod util;
 
@@ -51,6 +53,11 @@ fn _dstu_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(crypto_box::box_public_key, m)?)?;
     m.add_function(wrap_pyfunction!(crypto_box::box_seal, m)?)?;
     m.add_function(wrap_pyfunction!(crypto_box::box_open, m)?)?;
+
+    m.add_function(wrap_pyfunction!(box512::box512_keygen, m)?)?;
+    m.add_function(wrap_pyfunction!(box512::box512_public_key, m)?)?;
+    m.add_function(wrap_pyfunction!(box512::box512_seal, m)?)?;
+    m.add_function(wrap_pyfunction!(box512::box512_open, m)?)?;
 
     m.add_function(wrap_pyfunction!(secretstream::secretstream_keygen, m)?)?;
     m.add_class::<secretstream::SecretStreamPushState>()?;
@@ -80,6 +87,11 @@ fn _dstu_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(sign::sign_verifying_key, m)?)?;
     m.add_function(wrap_pyfunction!(sign::sign_message, m)?)?;
     m.add_function(wrap_pyfunction!(sign::sign_verify, m)?)?;
+
+    m.add_function(wrap_pyfunction!(sign257::sign257_keygen, m)?)?;
+    m.add_function(wrap_pyfunction!(sign257::sign257_verifying_key, m)?)?;
+    m.add_function(wrap_pyfunction!(sign257::sign257_message, m)?)?;
+    m.add_function(wrap_pyfunction!(sign257::sign257_verify, m)?)?;
 
     m.add_function(wrap_pyfunction!(pwhash::pwhash_hash_password, m)?)?;
     m.add_function(wrap_pyfunction!(pwhash::pwhash_verify_password, m)?)?;

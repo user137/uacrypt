@@ -50,9 +50,11 @@ assert d.secretbox_open(key, sealed) == b"a message worth protecting"
 | Module | Functions/classes | Notes |
 |---|---|---|
 | `crypto_secretbox` | `secretbox_keygen`, `secretbox_seal`, `secretbox_open` | Single-message authenticated encryption. `examples/secretbox.py`. |
-| `crypto_box` | `box_keygen`, `box_public_key`, `box_seal`, `box_open` | Public-key encryption (hybrid via KDF over `hazmat::dstu9041`, D-169). `box_seal`/`box_open` are not memory-bounded — the whole message is held in memory. `examples/box.py`. |
+| `crypto_box` | `box_keygen`, `box_public_key`, `box_seal`, `box_open` | Public-key encryption (hybrid via KDF over `hazmat::dstu9041`, `l(p)=256`, D-169). `box_seal`/`box_open` are not memory-bounded — the whole message is held in memory. `examples/box.py`. |
+| `crypto_box512` | `box512_keygen`, `box512_public_key`, `box512_seal`, `box512_open` | `l(p)=512`/E512/1 sibling of `crypto_box` (T-193/T-204). `examples/box512.py`. |
 | `crypto_secretstream` | `secretstream_keygen`, `SecretStreamPushState`, `SecretStreamPullState`, `SecretStreamEncryptor`, `SecretStreamDecryptor` | Chunked streaming AEAD. The file-like `SecretStreamEncryptor`/`SecretStreamDecryptor` wire format matches `uacrypt encrypt`/`decrypt` exactly (D-118). `examples/secretstream_file.py`. |
-| `crypto_sign` | `sign_keygen`, `sign_verifying_key`, `sign_message`, `sign_verify` | DSTU 4145 digital signatures, deterministic nonce (no RNG dependency). `examples/sign.py`. |
+| `crypto_sign` | `sign_keygen`, `sign_verifying_key`, `sign_message`, `sign_verify` | DSTU 4145 `m=163` digital signatures, deterministic nonce (no RNG dependency). `examples/sign.py`. |
+| `crypto_sign257` | `sign257_keygen`, `sign257_verifying_key`, `sign257_message`, `sign257_verify` | `m=257` sibling of `crypto_sign` (T-199/T-204) — the curve real Diia-issued qualified signatures use. `examples/sign257.py`. |
 | `crypto_pwhash` | `pwhash_hash_password`, `pwhash_verify_password`, `PWHASH_INTERACTIVE`/`PWHASH_MODERATE`/`PWHASH_SENSITIVE` | Argon2id (the one deliberately non-DSTU component, D-49/D-50). `examples/password_hashing.py`. |
 | `crypto_auth` | `auth_keygen`, `auth`, `auth_verify` | Keyed message authentication (Kupyna-KMAC). `examples/misc.py`. |
 | `crypto_kdf` | `kdf_keygen`, `kdf_derive_subkey` | Deterministic subkey derivation. `examples/misc.py`. |
