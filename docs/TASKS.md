@@ -3169,9 +3169,25 @@ item they point to is later removed.
 - [ ] **T-200** **Phase 1 + select Phase 2/3/4 landed 2026-08-09, owner-requested ("Давай 200 таску
       із смоук тестами для бінарника. Врахуй які в нас там реалізації і як їх атакувати
       найдоцільніше а не сліпо" - do T-200 now, ground it in what's actually implemented, attack it
-      the most worthwhile way rather than blindly). Remaining phase-4 items (off-curve/order-2/
-      order-4 attacker keys, `--help`-text pinning, streaming-boundedness) still backlog, no
-      committed timeline.**
+      the most worthwhile way rather than blindly). Remaining items (off-curve/order-2/order-4
+      attacker keys through `verify`/`box-seal`/`box-open512`, the rest of the misuse matrix,
+      `docs/SECURITY.md`'s CLI mention, streaming-boundedness) still backlog, no committed
+      timeline.**
+
+      **Phase 4 addendum, `crates/uacrypt/tests/smoke_help_claims.rs` (6 tests)**: `--help` text as
+      a pinned claim, this entry's own "highest-value net-new angle, nothing today covers it" note
+      acted on. Picked the claims that are genuinely behavioral (not policy/advice nothing enforces,
+      e.g. `kalyna-cmac`'s "don't reuse this key for encryption" - untestable by construction) and
+      checked the real binary against its own documented promise: `strumok-crypt`'s "NOT
+      authenticated ... tampered output decrypts silently into wrong plaintext" (flip a ciphertext
+      byte, confirm exit 0 with corrupted output, not a rejection - the mirror image of
+      `smoke_secretstream_attack.rs`'s authenticated case); `verify`'s "prints nothing and exits 0
+      on a valid signature" (asserts `stdout == ""`, not just success); `decrypt`'s "`--out` is only
+      replaced after the whole file is written and verified" (tamper, confirm `--out` was never
+      created); `kalyna-ccm`'s "capped at 255 bytes" (256-byte message, confirm the exact "255-byte
+      limit" wording in stderr); `kalyna-xts`'s "`--in` must be at least one block long" (subprocess
+      version of the existing in-process-only check); `box-open`'s "rejected ... before anything is
+      written to `--out`" for a wrong secret key. All 6 passed on first run.
 
       **Phase 2 addendum, `crates/uacrypt/tests/smoke_misuse.rs` (5 tests)**: the `--in`==`--out`
       misuse case, scoped to the one sub-case with real teeth per an `advisor()` consultation - not
@@ -3194,8 +3210,8 @@ item they point to is later removed.
       **What landed**: `crates/uacrypt/tests/support/mod.rs` (hand-rolled `std::process::Command`
       harness, `env!("CARGO_BIN_EXE_uacrypt")`, no new `[dev-dependencies]` - confirmed working via
       a throwaway probe before writing anything else, per this task's own harness decision below)
-      plus six real-subprocess test files (the sixth, `smoke_misuse.rs`, added in the Phase 2
-      addendum above), 54 tests total, all passing on first full workspace run
+      plus seven real-subprocess test files (`smoke_misuse.rs`/`smoke_help_claims.rs` added in the
+      Phase 2/4 addenda above), 60 tests total, all passing on first full workspace run
       (`cargo test --workspace --exclude dstu-core-capi`), `cargo clippy --all-features` (both the
       default gate and `--test <name>`-scoped `--all-targets` on just the new files, not the whole
       crate - see the Miri/clippy note below for why), and `cargo fmt --check` all clean:
@@ -3273,10 +3289,12 @@ item they point to is later removed.
       deferred: the rest of the full misuse/malformed-usage matrix (missing/unknown flags per
       command beyond what `smoke_dispatch.rs` already covers, directory-as-`--out`,
       `--iterations 0`) - `--in`==`--out` itself now landed, see the Phase 2 addendum above;
-      `--help`-text-as-pinned-claim tests; `docs/SECURITY.md` gaining a "CLI/binary" mention;
-      large-file/streaming-boundedness proof for `encrypt`/`decrypt`/`kupyna-digest`/`strumok-crypt`
-      (D-42's claim, real subprocess + a real large file, not asserted). Same phasing this entry's
-      own original plan laid out - land independently, don't wait for all four.
+      `docs/SECURITY.md` gaining a "CLI/binary" mention; large-file/streaming-boundedness proof for
+      `encrypt`/`decrypt`/`kupyna-digest`/`strumok-crypt` (D-42's claim, real subprocess + a real
+      large file, not asserted) - `--help`-text-as-pinned-claim tests themselves landed, see the
+      Phase 4 addendum above (a representative set of behavioral claims, not every claim in every
+      `*_HELP` constant - policy/advice claims nothing enforces were deliberately excluded). Same
+      phasing this entry's own original plan laid out - land independently, don't wait for all four.
 
       Original plan follows, unchanged (historical record - see the summary above for what actually
       shipped and where it diverged):
