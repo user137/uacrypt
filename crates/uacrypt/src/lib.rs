@@ -2829,13 +2829,95 @@ pub fn parse_strumok_args(args: &[String]) -> Result<StrumokArgs, CliError> {
 /// makes feeding it one chunk at a time - instead of the whole file - safe to begin with.
 const STRUMOK_STREAM_CHUNK_BYTES: usize = 8 * 1024;
 
+/// Same rationale and shape as [`secretstream_temp_path`]: `--out` is written to a temp file next
+/// to it first and only `std::fs::rename`d onto the real path once the whole stream succeeds. Found
+/// necessary the hard way (not designed in up front): `strumok-crypt`'s old streaming path opened
+/// `--out` via `File::create` (truncating it) before finishing reading `--in`, so `--in`==`--out`
+/// ("encrypt this file in place") silently produced a 0-byte file - exit code 0, no error, real data
+/// loss, caught only by an empirical `--in`==`--out` smoke-test probe (`docs/TASKS.md` T-200). This
+/// also happens to fix a second, independent gap: an I/O error mid-stream used to leave a partially-
+/// written `--out` behind, violating this project's own no-partial-output-on-failure standard (D-65)
+/// that every other command already meets.
+fn strumok_temp_path(out_path: &std::path::Path) -> PathBuf {
+    let mut name = out_path.as_os_str().to_os_string();
+    name.push(".strumok-tmp");
+    PathBuf::from(name)
+}
+
+/// Streams `--in` to a temp file next to `--out` in fixed-size chunks (the `iterations <= 1`, real
+/// usage path), then renames onto `args.out_path` only once the whole stream has succeeded -
+/// removing the temp file instead on any error. Split out of [`run_strumok_command`] to keep that
+/// function under clippy's line-count lint and to give this temp-file-then-rename discipline (the
+/// same one [`run_secretstream_command`] already uses) one clear place to read.
+///
+/// # Errors
+///
+/// Returns [`CliError::Io`] if `--in` can't be read or the temp/final `--out` path can't be
+/// written/renamed.
+fn run_strumok_stream(args: &StrumokArgs, key: &[u8], iv: &[u8]) -> Result<(), CliError> {
+    use std::io::{Read, Write};
+
+    let tmp_path = strumok_temp_path(&args.out_path);
+
+    macro_rules! stream_variant {
+        ($cipher:ty, $key_len:literal) => {{
+            let mut key_arr = [0u8; $key_len];
+            key_arr.copy_from_slice(key);
+            let mut iv_arr = [0u8; 32];
+            iv_arr.copy_from_slice(iv);
+
+            let mut in_file = std::fs::File::open(&args.in_path).map_err(|e| CliError::Io {
+                path: args.in_path.clone(),
+                message: e.to_string(),
+            })?;
+            let mut out_file = std::fs::File::create(&tmp_path).map_err(|e| CliError::Io {
+                path: tmp_path.clone(),
+                message: e.to_string(),
+            })?;
+            let mut cipher = <$cipher>::new(&key_arr, &iv_arr);
+            let mut chunk = [0u8; STRUMOK_STREAM_CHUNK_BYTES];
+            loop {
+                let n = in_file.read(&mut chunk).map_err(|e| CliError::Io {
+                    path: args.in_path.clone(),
+                    message: e.to_string(),
+                })?;
+                if n == 0 {
+                    break;
+                }
+                cipher.apply_keystream(&mut chunk[..n]);
+                out_file.write_all(&chunk[..n]).map_err(|e| CliError::Io {
+                    path: tmp_path.clone(),
+                    message: e.to_string(),
+                })?;
+            }
+            Ok(())
+        }};
+    }
+
+    let result: Result<(), CliError> = match args.variant {
+        HashBits::B256 => stream_variant!(Strumok256, 32),
+        HashBits::B512 => stream_variant!(Strumok512, 64),
+    };
+
+    match result {
+        Ok(()) => std::fs::rename(&tmp_path, &args.out_path).map_err(|e| CliError::Io {
+            path: args.out_path.clone(),
+            message: e.to_string(),
+        }),
+        Err(e) => {
+            let _ = std::fs::remove_file(&tmp_path);
+            Err(e)
+        }
+    }
+}
+
 /// Runs `strumok-crypt`: applies the keystream to `--in` (arbitrary length).
 ///
 /// `iterations <= 1` (real usage) streams `--in` to `--out` through [`STRUMOK_STREAM_CHUNK_BYTES`]-
-/// sized chunks - read, `apply_keystream` in place, write, discard - so peak memory is bounded
-/// regardless of file size (D-42, same treatment as `kupyna-digest`/T-83). `--raw-schedule` has no
-/// effect here: with exactly one iteration, constructing the cipher fresh vs. once makes no
-/// observable difference, so this path always constructs it once.
+/// sized chunks via [`run_strumok_stream`] - read, `apply_keystream` in place, write, discard - so
+/// peak memory is bounded regardless of file size (D-42, same treatment as `kupyna-digest`/T-83).
+/// `--raw-schedule` has no effect here: with exactly one iteration, constructing the cipher fresh
+/// vs. once makes no observable difference, so this path always constructs it once.
 ///
 /// `iterations > 1` is the D-34 benchmark path, unchanged: `--raw-schedule` re-initializes the
 /// cipher (`Strumok*::new`) fresh before every iteration and re-applies it to a fresh copy of the
@@ -2854,8 +2936,6 @@ const STRUMOK_STREAM_CHUNK_BYTES: usize = 8 * 1024;
 /// [`CliError::WrongLength`] if `--key`/`--iv` aren't the variant's expected length.
 #[allow(clippy::cast_precision_loss)] // human-readable MB/s diagnostic, not exact at any realistic byte count
 pub fn run_strumok_command(args: &StrumokArgs) -> Result<(), CliError> {
-    use std::io::{Read, Write};
-
     let key_len = match args.variant {
         HashBits::B256 => 32,
         HashBits::B512 => 64,
@@ -2865,46 +2945,7 @@ pub fn run_strumok_command(args: &StrumokArgs) -> Result<(), CliError> {
     let iterations = args.iterations.max(1);
 
     if iterations <= 1 {
-        macro_rules! stream_variant {
-            ($cipher:ty, $key_len:literal) => {{
-                let mut key_arr = [0u8; $key_len];
-                key_arr.copy_from_slice(&key);
-                let mut iv_arr = [0u8; 32];
-                iv_arr.copy_from_slice(&iv);
-
-                let mut in_file = std::fs::File::open(&args.in_path).map_err(|e| CliError::Io {
-                    path: args.in_path.clone(),
-                    message: e.to_string(),
-                })?;
-                let mut out_file =
-                    std::fs::File::create(&args.out_path).map_err(|e| CliError::Io {
-                        path: args.out_path.clone(),
-                        message: e.to_string(),
-                    })?;
-                let mut cipher = <$cipher>::new(&key_arr, &iv_arr);
-                let mut chunk = [0u8; STRUMOK_STREAM_CHUNK_BYTES];
-                loop {
-                    let n = in_file.read(&mut chunk).map_err(|e| CliError::Io {
-                        path: args.in_path.clone(),
-                        message: e.to_string(),
-                    })?;
-                    if n == 0 {
-                        break;
-                    }
-                    cipher.apply_keystream(&mut chunk[..n]);
-                    out_file.write_all(&chunk[..n]).map_err(|e| CliError::Io {
-                        path: args.out_path.clone(),
-                        message: e.to_string(),
-                    })?;
-                }
-            }};
-        }
-
-        match args.variant {
-            HashBits::B256 => stream_variant!(Strumok256, 32),
-            HashBits::B512 => stream_variant!(Strumok512, 64),
-        }
-        return Ok(());
+        return run_strumok_stream(args, &key, &iv);
     }
 
     let input = std::fs::read(&args.in_path).map_err(|e| CliError::Io {
@@ -5152,6 +5193,54 @@ mod tests {
         let mut expected = plaintext.clone();
         Strumok512::new(&key, &iv).apply_keystream(&mut expected);
         assert_eq!(std::fs::read(dir.file("out.bin")).expect("read"), expected);
+    }
+
+    /// Regression test for a real data-destruction bug (T-200, found by an empirical `--in`==
+    /// `--out` smoke-test probe of the real binary, not by inspection): the streaming
+    /// (`iterations <= 1`) path used to open `--out` via `File::create` - truncating it - before
+    /// finishing reading `--in`, so "encrypt this file in place" silently produced a 0-byte file
+    /// (exit code 0, no error). Fixed via the same temp-file-then-rename discipline
+    /// `run_secretstream_command` already used (`strumok_temp_path`). Strumok is its own inverse
+    /// (XOR keystream), so applying the same command twice in place must recover the plaintext.
+    #[test]
+    fn run_strumok_command_in_and_out_same_path_round_trips() {
+        let dir = TempDir::new("strumok_same_path");
+        let key = [0x11u8; 32];
+        let iv = [0x22u8; 32];
+        let plaintext = vec![b'A'; STRUMOK_STREAM_CHUNK_BYTES * 3 + 17]; // multi-chunk, unaligned
+        std::fs::write(dir.file("key.bin"), key).expect("write key");
+        std::fs::write(dir.file("iv.bin"), iv).expect("write iv");
+        std::fs::write(dir.file("data.bin"), &plaintext).expect("write input");
+
+        let args = StrumokArgs {
+            variant: HashBits::B256,
+            key_path: dir.file("key.bin"),
+            iv_path: dir.file("iv.bin"),
+            in_path: dir.file("data.bin"),
+            out_path: dir.file("data.bin"),
+            iterations: 1,
+            raw_schedule: false,
+        };
+        run_strumok_command(&args).expect("in-place apply should succeed");
+        let after_first = std::fs::read(dir.file("data.bin")).expect("read");
+        assert_eq!(
+            after_first.len(),
+            plaintext.len(),
+            "output must not be truncated/destroyed"
+        );
+        assert_ne!(after_first, plaintext, "must actually be keystream-applied");
+
+        run_strumok_command(&args).expect("second in-place apply should succeed");
+        assert_eq!(
+            std::fs::read(dir.file("data.bin")).expect("read"),
+            plaintext,
+            "applying the keystream twice must recover the original plaintext"
+        );
+
+        assert!(
+            !dir.file("data.bin.strumok-tmp").exists(),
+            "no leftover temp file after a successful run"
+        );
     }
 
     // T-108: `--help`/`-h` handling. These call the public `run()` dispatcher directly (not just

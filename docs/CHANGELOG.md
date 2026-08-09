@@ -24,12 +24,20 @@ All notable changes to this project are documented in this file. Format follows
   `sign257` CLI surface; `uacrypt verify` reads a curve tag byte from `--key` and handles both
   `m=163` and `m=257` signatures through the one command (`docs/TASKS.md` T-199, `docs/DECISIONS.md`
   D-185/D-186).
-- `uacrypt`: real binary-level (subprocess) smoke tests, `crates/uacrypt/tests/` - 49 tests
+- `uacrypt`: real binary-level (subprocess) smoke tests, `crates/uacrypt/tests/` - 54 tests
   spawning the actual compiled `uacrypt` binary (exit codes, stdout/stderr, real files), covering
   every leaf command's golden path plus targeted attack scenarios (T-199's tagged-verifying-key
   format, `crypto_secretstream`'s wire-format tamper resistance, cross-key-type confusion between
-  same-length key files). Previously the entire 140-test suite only ever called the library's
-  `run()` in-process (`docs/TASKS.md` T-200).
+  same-length key files, `--in`==`--out` in-place usage). Previously the entire 140-test suite only
+  ever called the library's `run()` in-process (`docs/TASKS.md` T-200).
+
+### Fixed
+
+- `uacrypt strumok-crypt`: `--in`==`--out` ("apply the keystream to this file in place") silently
+  destroyed the input - exit code 0, 0-byte result, no error - instead of round-tripping. The
+  streaming path opened `--out` via `File::create` (truncating it) before finishing reading `--in`.
+  Found by T-200's own `--in`==`--out` smoke-test probe of the real binary, fixed with the same
+  temp-file-then-rename discipline `encrypt`/`decrypt` already use (`docs/DECISIONS.md` D-187).
 
 ### Changed
 

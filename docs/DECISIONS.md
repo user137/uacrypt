@@ -12602,3 +12602,55 @@ not after - the correction cost zero wasted implementation.
 Full regression after all of the above: `cargo test -p dstu-core -p uacrypt --all-features`,
 `cargo clippy --all-features -- -D warnings`/`cargo fmt --check` on both crates,
 `cargo build -p dstu-core --no-default-features`, `cargo build -p dstu-core-capi` - all clean.
+
+## D-187: T-200 - `strumok-crypt --in`==`--out` silently destroyed data; fixed with the same
+temp-file-then-rename discipline `run_secretstream_command` already used
+
+**Found by**: an empirical `--in`==`--out` smoke-test probe of the real compiled binary while
+building T-200's misuse-matrix phase, not by code inspection - the same "run it, don't assume it"
+discipline this project has used throughout (`docs/TASKS.md` T-200's own key-confusion section,
+D-25/D-110's "don't trust green tests alone").
+
+**The bug**: `run_strumok_command`'s `iterations <= 1` path (real/default `strumok-crypt` usage,
+`crates/uacrypt/src/lib.rs`) opened `--in` via `File::open` and `--out` via `File::create` - which
+truncates an existing file - *before* looping to read `--in` and stream-apply the keystream. When
+`--in`==`--out` ("apply the keystream to this file in place", a plausible real usage nobody's
+`--help` text warns against), `File::create` truncated the file to zero bytes first; the still-open
+`in_file` handle then read 0 remaining bytes and the loop exited immediately. Result: `uacrypt
+strumok-crypt --in x --out x` exited **0** (success), wrote nothing, and left `x` at 0 bytes -
+silent, complete data loss, not merely a rejected/error case. Reproduced directly: a 50000-byte
+input became a 0-byte file with no error printed anywhere.
+
+A second, independent gap in the same code path: an I/O error partway through the read/write loop
+(e.g. `--in` deleted mid-stream) left whatever had already been written sitting in `--out` -
+violating this project's own no-partial-output-on-failure standard every other command already
+meets (D-65's "fool" test category).
+
+**Fix**: extracted the streaming branch into `run_strumok_stream`, which now writes to a temp path
+next to `--out` (`strumok_temp_path`, `<out>.strumok-tmp` - literally copied from
+`secretstream_temp_path`'s existing shape, same OsString-append reasoning: correct on non-UTF-8
+paths, stays on the same filesystem as `--out` for the final `rename` to work) and only
+`std::fs::rename`s onto the real `--out` once the whole stream has read to EOF without error;
+any error instead removes the temp file and propagates. This is the exact pattern
+`run_secretstream_command` already used for the same reason (D-42's streaming-CLI-wrapper
+discipline extended to genuine atomicity, not just bounded memory) - `strumok-crypt` just hadn't
+been given it originally, since its streaming path was added incrementally (D-42) without an
+`--in`==`--out` check at the time.
+
+**Why not caught earlier**: `run_strumok_command_streams_multi_chunk_input_correctly` and every
+other existing in-process test used distinct `--in`/`--out` paths. `run_secretstream_command_in_
+and_out_same_path_round_trips` (this project's one existing same-path test, for `crypto_secretstream`)
+never generalized to imply anything about `strumok-crypt`'s own, differently-implemented streaming
+loop - a construction-specific property (temp-file discipline) isn't automatically true of a sibling
+construction just because it looks similar at the CLI surface, the same lesson as this project's
+own combined-AEAD-tag-coverage rule (`CLAUDE.md`'s "porting a `crypto_secretbox`-style wrapper..."
+bullet) applied to a different code shape.
+
+**Regression coverage, both levels** (not just one): `run_strumok_command_in_and_out_same_path_
+round_trips` (in-process, `crates/uacrypt/src/lib.rs`, multi-chunk/unaligned length, confirms the
+temp file is gone after success) and `smoke_misuse.rs`'s `strumok_crypt_in_place_round_trips_
+without_destroying_data`/`strumok_crypt_in_place_leaves_no_partial_output_on_read_failure`
+(subprocess-level, the actual boundary the original bug lived at) - plus same-path sanity checks
+for the three command families that were never at risk (`encrypt`/`decrypt`, `kupyna-digest`,
+`kalyna-block` - all read-whole-buffer-then-write, so nothing to fix, confirmed rather than assumed
+safe).

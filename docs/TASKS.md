@@ -3166,16 +3166,36 @@ item they point to is later removed.
       feature matrix (`--all-features`, `--no-default-features`,
       `-p dstu-core --no-default-features --features getrandom`) - all clean on both the dev machine
       and the (re-synced) Raspberry Pi.
-- [ ] **T-200** **Phase 1 + select Phase 3/4 landed 2026-08-09, owner-requested ("Давай 200 таску із
-      смоук тестами для бінарника. Врахуй які в нас там реалізації і як їх атакувати найдоцільніше а
-      не сліпо" - do T-200 now, ground it in what's actually implemented, attack it the most
-      worthwhile way rather than blindly). Remaining phases (2/4) still backlog, no committed
-      timeline.**
+- [ ] **T-200** **Phase 1 + select Phase 2/3/4 landed 2026-08-09, owner-requested ("Давай 200 таску
+      із смоук тестами для бінарника. Врахуй які в нас там реалізації і як їх атакувати
+      найдоцільніше а не сліпо" - do T-200 now, ground it in what's actually implemented, attack it
+      the most worthwhile way rather than blindly). Remaining phase-4 items (off-curve/order-2/
+      order-4 attacker keys, `--help`-text pinning, streaming-boundedness) still backlog, no
+      committed timeline.**
+
+      **Phase 2 addendum, `crates/uacrypt/tests/smoke_misuse.rs` (5 tests)**: the `--in`==`--out`
+      misuse case, scoped to the one sub-case with real teeth per an `advisor()` consultation - not
+      the full missing/unknown-flag matrix (already representatively covered by `smoke_dispatch.rs`
+      and the in-process suite). **Found a real data-destruction bug doing this, not just a coverage
+      gap**: `strumok-crypt --in x --out x` exited 0 and silently produced a 0-byte file, destroying
+      the input - confirmed by actually running the real binary (a 50000-byte probe file), not
+      assumed. Root cause and fix: `run_strumok_command`'s streaming path opened `--out` via
+      `File::create` (truncating it) before finishing reading `--in`; fixed with the same temp-file-
+      then-rename discipline `run_secretstream_command` already used, extracted into a new
+      `run_strumok_stream` function (also incidentally fixes a second gap - partial `--out` left
+      behind on a mid-stream I/O error, D-65's own no-partial-output standard). Full writeup,
+      including why this wasn't already caught by the one existing same-path test (that test covers
+      `crypto_secretstream`, a different construction): `docs/DECISIONS.md` D-187. Regression
+      coverage at both levels - in-process (`run_strumok_command_in_and_out_same_path_round_trips`)
+      and subprocess (`smoke_misuse.rs`'s two `strumok_crypt_in_place_*` tests) - plus same-path
+      sanity checks confirming (not assuming) the three command families that read the whole buffer
+      before writing (`encrypt`/`decrypt`, `kupyna-digest`, `kalyna-block`) were never at risk.
 
       **What landed**: `crates/uacrypt/tests/support/mod.rs` (hand-rolled `std::process::Command`
       harness, `env!("CARGO_BIN_EXE_uacrypt")`, no new `[dev-dependencies]` - confirmed working via
       a throwaway probe before writing anything else, per this task's own harness decision below)
-      plus five real-subprocess test files, 49 tests total, all passing on first full workspace run
+      plus six real-subprocess test files (the sixth, `smoke_misuse.rs`, added in the Phase 2
+      addendum above), 54 tests total, all passing on first full workspace run
       (`cargo test --workspace --exclude dstu-core-capi`), `cargo clippy --all-features` (both the
       default gate and `--test <name>`-scoped `--all-targets` on just the new files, not the whole
       crate - see the Miri/clippy note below for why), and `cargo fmt --check` all clean:
@@ -3250,12 +3270,13 @@ item they point to is later removed.
       --key` (T-189/D-172's fix, and T-183's own dstu9041 findings, re-exercised at the CLI/
       untrusted-bytes boundary) - these need constructed invalid curve points, real further work,
       not a same-session extension of what's already spec'd from reading `lib.rs` alone. Also
-      deferred: the full misuse/malformed-usage matrix (missing/unknown flags, `--in`==`--out` for
-      every command, directory-as-`--out`, `--iterations 0`) beyond what `smoke_dispatch.rs`
-      already covers; `--help`-text-as-pinned-claim tests; `docs/SECURITY.md` gaining a "CLI/binary"
-      mention; large-file/streaming-boundedness proof for `encrypt`/`decrypt`/`kupyna-digest`/
-      `strumok-crypt` (D-42's claim, real subprocess + a real large file, not asserted). Same
-      phasing this entry's own original plan laid out - land independently, don't wait for all four.
+      deferred: the rest of the full misuse/malformed-usage matrix (missing/unknown flags per
+      command beyond what `smoke_dispatch.rs` already covers, directory-as-`--out`,
+      `--iterations 0`) - `--in`==`--out` itself now landed, see the Phase 2 addendum above;
+      `--help`-text-as-pinned-claim tests; `docs/SECURITY.md` gaining a "CLI/binary" mention;
+      large-file/streaming-boundedness proof for `encrypt`/`decrypt`/`kupyna-digest`/`strumok-crypt`
+      (D-42's claim, real subprocess + a real large file, not asserted). Same phasing this entry's
+      own original plan laid out - land independently, don't wait for all four.
 
       Original plan follows, unchanged (historical record - see the summary above for what actually
       shipped and where it diverged):
