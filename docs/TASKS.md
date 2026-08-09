@@ -3169,10 +3169,35 @@ item they point to is later removed.
 - [ ] **T-200** **Phase 1 + select Phase 2/3/4 landed 2026-08-09, owner-requested ("Давай 200 таску
       із смоук тестами для бінарника. Врахуй які в нас там реалізації і як їх атакувати
       найдоцільніше а не сліпо" - do T-200 now, ground it in what's actually implemented, attack it
-      the most worthwhile way rather than blindly). Remaining items (off-curve/order-2/order-4
-      attacker keys through `verify`/`box-seal`/`box-open512`, the rest of the misuse matrix,
-      `docs/SECURITY.md`'s CLI mention, streaming-boundedness) still backlog, no committed
-      timeline.**
+      the most worthwhile way rather than blindly). Remaining items (the rest of the misuse matrix,
+      streaming-boundedness, `dstu9041`/`crypto_box`'s own differently-shaped small-subgroup attack
+      at the sealed-file level) still backlog, no committed timeline.**
+
+      **Phase 4 addendum, `crates/uacrypt/tests/smoke_off_curve_attack.rs` (2 tests)**: attacker-
+      supplied off-curve/small-subgroup public keys through `verify --key`, at the real CLI/file
+      boundary - the one item this entry originally called "real further work, not a same-session
+      extension" and turned out tractable once actually attempted. Both DSTU 4145 curves reject a
+      small-subgroup public key via an explicit upfront `x == 0` check in
+      `hazmat::dstu4145::signature{,257}::verify`, reached *before* `r`/`s` are ever examined - so
+      any syntactically-valid signature bytes trigger the same rejection, no forgery search needed
+      (T-189's original `x != 0` shortcut for m=163; D-186's general cofactor-independent check for
+      m=257). Constructs the curve's own order-2 point (`x = 0`, `y = sqrt(b)`, `b^(2^(m-1))` via
+      repeated squaring - the same construction `crates/dstu-core/tests/dstu4145_signature{,257}.rs`
+      already use at the library level, `b`'s hex value copied from those tests' own vector files
+      rather than read cross-crate), encodes it into the exact tagged-verifying-key file format,
+      writes it as `--key`, and confirms the real binary rejects it for both curves. One real
+      transcription near-miss caught mid-implementation, not left to chance: the m=163 `b` hex
+      string is 41 digits (an odd length - the vector file drops the leading zero nibble rather than
+      zero-padding to 42), miscounted by eye at first the exact failure mode `CLAUDE.md` already
+      warns about for this project's own hex transcription; caught immediately by counting the
+      string length programmatically instead, not by re-eyeballing it, and fixed by left-padding
+      any odd-length hex string before decoding. **`dstu9041`/`crypto_box`'s own order-2/order-4
+      finding (T-183, D-176) stays deferred, on purpose, not overlooked** - it is about a compressed
+      x-only point reconstructing to a small-subgroup `R'` *inside `box-open`'s ciphertext decoding*
+      (an encryption-protocol-internal value), not about `PublicKey` bytes fed to `box-seal --key`/
+      `box-open --key` directly the way a DSTU 4145 verifying key is - attacking it at the CLI
+      boundary means constructing a crafted *sealed file* in `crypto_box`'s own wire format, a
+      genuinely separate, harder task from what this addendum did.
 
       **Phase 4 addendum, `crates/uacrypt/tests/smoke_help_claims.rs` (6 tests)**: `--help` text as
       a pinned claim, this entry's own "highest-value net-new angle, nothing today covers it" note
@@ -3210,8 +3235,9 @@ item they point to is later removed.
       **What landed**: `crates/uacrypt/tests/support/mod.rs` (hand-rolled `std::process::Command`
       harness, `env!("CARGO_BIN_EXE_uacrypt")`, no new `[dev-dependencies]` - confirmed working via
       a throwaway probe before writing anything else, per this task's own harness decision below)
-      plus seven real-subprocess test files (`smoke_misuse.rs`/`smoke_help_claims.rs` added in the
-      Phase 2/4 addenda above), 60 tests total, all passing on first full workspace run
+      plus eight real-subprocess test files (`smoke_misuse.rs`/`smoke_help_claims.rs`/
+      `smoke_off_curve_attack.rs` added in the Phase 2/4 addenda above), 62 tests total, all
+      passing on first full workspace run
       (`cargo test --workspace --exclude dstu-core-capi`), `cargo clippy --all-features` (both the
       default gate and `--test <name>`-scoped `--all-targets` on just the new files, not the whole
       crate - see the Miri/clippy note below for why), and `cargo fmt --check` all clean:
@@ -3281,12 +3307,12 @@ item they point to is later removed.
       `--all-targets`; the 356 pre-existing findings are a separate, not-yet-filed cleanup item, not
       part of T-200's own scope.
 
-      **Explicitly deferred to a later phase, not forgotten**: the off-curve/order-2/order-4
-      attacker-supplied public-key attacks through `verify --key`/`box-seal --key`/`box-open512
-      --key` (T-189/D-172's fix, and T-183's own dstu9041 findings, re-exercised at the CLI/
-      untrusted-bytes boundary) - these need constructed invalid curve points, real further work,
-      not a same-session extension of what's already spec'd from reading `lib.rs` alone. Also
-      deferred: the rest of the full misuse/malformed-usage matrix (missing/unknown flags per
+      **Explicitly deferred to a later phase, not forgotten**: `verify --key`'s own off-curve/
+      order-2 attack landed, see the Phase 4 addendum above (`smoke_off_curve_attack.rs`) -
+      `box-seal --key`/`box-open512 --key`'s differently-shaped `dstu9041`/`crypto_box` small-
+      subgroup finding (T-183/D-176) stays deferred, since it needs a crafted sealed-file wire
+      format, not a crafted key file (see that addendum's own note for why the two aren't the same
+      task). Also deferred: the rest of the full misuse/malformed-usage matrix (missing/unknown flags per
       command beyond what `smoke_dispatch.rs` already covers, directory-as-`--out`,
       `--iterations 0`) - `--in`==`--out` itself now landed, see the Phase 2 addendum above;
       large-file/streaming-boundedness proof for `encrypt`/`decrypt`/`kupyna-digest`/`strumok-crypt`
