@@ -3646,8 +3646,7 @@ item they point to is later removed.
       exists at all), and read that registry's actual current publish workflow requirements before
       writing any CI, the same "research before implementation" discipline `docs/CLAUDE.md` requires
       for primitives, applied here to release infrastructure instead.
-- [~] **T-204** **Phase 1 (`dstu-core-capi`) done 2026-08-09; the eight language bindings remain
-      open.** Found this session auditing binding coverage after the owner asked directly whether
+- [x] **T-204** **Closed 2026-08-09/10, same session, three phases.** Found this session auditing binding coverage after the owner asked directly whether
       the new signature curve reached the bindings. `crypto_sign257` (DSTU 4145 `m=257`, T-199,
       landed 2026-08-08) was **not wired into any of the eight language bindings or
       `dstu-core-capi`** - confirmed by grepping actual binding source (not build artifacts) for
@@ -3718,20 +3717,67 @@ item they point to is later removed.
       Per-binding doc sweep done alongside each commit (not deferred): `dstu-core-capi/README.md`'s
       own gap (found only because it was actually opened and read, not assumed current, per
       advisor's earlier-round finding) plus each of `.NET`/Go/C++'s own `README.md` module table.
-      `CLAUDE.md`'s two `crypto_box512`/`crypto_sign257` bullets updated again to name the three
-      done bindings by name rather than repeat a blanket "still not wired into any of the eight"
-      claim that would now read as a false negative for these three specifically.
 
-      **Still open**: the five direct-Rust bindings (Python/Node/Ruby/PHP/Java) link `dstu-core`
-      itself, not `dstu-core-capi`, so neither phase's coverage extends to them automatically -
-      each needs its own macro-system wrapper (pyo3/napi-rs/magnus/ext-php-rs/jni) written test-first
-      against `crypto_sign257`/`crypto_box512`, with its own D-64/D-65(/D-92's active-attack category
-      per `feedback_active_attack_test_category` where applicable) test suite. Not started, no
-      committed timeline, owner prioritizes against T-203 above. Ruby's `rb-sys` build is currently
-      broken on this dev machine (`strings.h` not found under clang, confirmed in a background
-      `cargo xtask ci` run this same session) and PHP isn't on PATH at all - both will need that
-      local-toolchain gap closed (or built/tested on a different machine) before their own phase can
-      be verified the same way the first three were, not just written.
+      **Phase 3 (Python/Node.js/Ruby/Java/PHP) done 2026-08-10, same session.** The five direct-Rust
+      bindings each needed their own macro-system wrapper (pyo3/napi-rs/magnus/jni/ext-php-rs) - same
+      mirror-the-sibling-module discipline, same distinct-type/no-curve-tag rule (D-118), each with
+      its own new test file (D-64/D-65 correctness/rejection/misuse, not the primitive-level suite,
+      which already lives in `dstu-core` for both primitives):
+      - **Python**: `src/box512.rs`/`sign257.rs` (plain `bytes` across the boundary, matching every
+        other function in this crate), registered in `lib.rs` and re-exported through
+        `python/dstu_core/__init__.py`'s import/`__all__` lists (a sync point the capi-linked
+        bindings don't have). `tests/test_box512.py`/`test_sign257.py` - 87/87 pytest pass (18 new);
+        `cargo fmt`/`clippy` clean; both examples run.
+      - **Node.js**: `src/box512.rs`/`sign257.rs` (napi `Buffer`, explicit `js_name` camelCase per
+        D-126's own precedent), registered via `pub use` in `lib.rs` (napi-rs generates
+        `js/index.js`/`.d.ts` at build time, no hand-written index to sync).
+        `test/box512.test.js`/`sign257.test.js` - 82/82 `node --test` pass (18 new); `cargo fmt`/
+        `clippy` clean; both examples run.
+      - **Ruby**: `ext/dstu_core_rb/src/box512.rs`/`sign257.rs` (magnus `RString`), registered via
+        `define_singleton_method` in `lib.rs`. Hit the same previously-diagnosed `rb-sys`/`libclang`
+        build failure this session's own background `cargo xtask ci` run had already hit
+        (`strings.h` not found) - **already had a documented fix** (`.claude.local.md`,
+        `LIBCLANG_PATH` pointed at the MSYS2 ucrt64 clang, found during T-160/D-133) that just
+        wasn't exported in this shell; applying it unblocked a full real verification, not a
+        written-but-unverified phase. `spec/box512_spec.rb`/`sign257_spec.rb` - 88/88 rspec pass
+        (18 new), rubocop clean, `cargo fmt`/`clippy` clean, both examples run.
+      - **Java**: `native/src/box512.rs`/`sign257.rs` (JNI `byte[]`, `Java_ua_dstucrypto_dstucore_*`
+        symbol naming per this binding's own no-underscore-in-names convention), new
+        `Box512`/`Sign257` Java classes. `src/test/java/.../Box512Test.java`/`Sign257Test.java` -
+        86/86 `mvn test` pass (18 new); both examples run. `native/Cargo.lock` was still pinned to
+        `dstu-core` 0.2.0 - this session's earlier crates.io-publish version bump never touched this
+        separate workspace (D-119) - regenerated as a byproduct. `cargo clippy --all-targets` in
+        this workspace pre-existingly fails on unrelated `dstu-core` hazmat benchmark code
+        (`gf2m_wide.rs`/`tables.rs`) - reproduced via `git stash` against master *before* this
+        change too, so a pre-existing gap, not a T-204 regression; flagged for separate follow-up,
+        not fixed here (out of scope, and `cargo clippy` without `--all-targets` on this crate's own
+        code is clean).
+      - **PHP**: `src/box512.rs`/`sign257.rs` (`ext_php_rs::binary::Binary<u8>`,
+        `dstu_core_*`-prefixed flat naming). **Found and fixed a real `ext-php-rs` pitfall**:
+        `#[php_function]`'s default `RenameRule::Snake` splits a letter/digit boundary, so
+        `dstu_core_box512_keygen` silently registered as PHP-callable `dstu_core_box_512_keygen`
+        instead - caught by an actual `function_exists()`/`get_extension_funcs()` check after the
+        first build, not assumed from reading the derive macro's source, then fixed with an
+        explicit `#[php(name = "dstu_core_box512_keygen")]` override on all 8 new functions (same
+        override the derive macro itself supports for exactly this case, confirmed by reading
+        `ext-php-rs-derive`'s own source, not guessed). `tests/Box512Test.php`/`Sign257Test.php` -
+        88/88 phpunit pass (18 new), `cargo fmt`/`clippy` clean, both examples run. PHP itself
+        turned out to already be installed on this machine (`C:\Users\Pa\tools\php83`, T-159's own
+        setup) - just not on `PATH` in this shell, matching the Ruby pattern above: a documented
+        fix existing but not applied in the current session, not a fresh toolchain install.
+
+      **CLAUDE.md's two `crypto_box512`/`crypto_sign257` bullets updated to say all eight bindings
+      are wired**, replacing the interim "three of eight, named" phrasing Phase 2 left there.
+
+      Two reusable findings from this phase worth carrying forward: (1) a documented local-toolchain
+      fix (`.claude.local.md`) can go stale in *this specific shell* even when correct and already
+      applied elsewhere - always re-check `PATH`/env vars for a binding before concluding its build
+      is actually broken, not just "known broken from an earlier session." (2) A derive/proc-macro's
+      default case-conversion rule is a real, distinct risk surface from hand-written per-binding
+      naming (Go/`.NET`/C++/Python/Ruby all pass identifiers through untouched or via an explicit
+      per-function override already) - any *new* binding or macro system this project adopts later
+      needs the same "does the auto-rename handle a digit-adjacent-to-letter identifier correctly"
+      check `ext-php-rs` just failed, not an assumption it's fine because every other binding was.
 - [ ] **T-202** **Not started, owner-requested (2026-08-09) - research spike: is a Strumok-keystream
       + MAC ("Encrypt-then-MAC") authenticated construction a faster-but-still-safe alternative to
       `crypto_secretstream`'s current Kalyna-GCM-based AEAD for `uacrypt encrypt`/`decrypt`?**
