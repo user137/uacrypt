@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-6b8f71a9.js";
+            window.path_to_searchindex_js = "searchindex-f0354dc2.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-ce7e91c5.js"></script>
@@ -195,6 +195,14 @@ asymmetrically, expanded via <code>hazmat::kupyna_kdf</code>, then <code>crypto_
 message) - <code>seal</code>/<code>open</code>/<code>SecretKey</code>/<code>PublicKey</code> (32-byte compressed, <code>x</code>-coordinate only,
 <code>docs/TASKS.md</code> T-178, <code>docs/DECISIONS.md</code> D-169). <code>uacrypt box-keygen</code>/<code>box-pubkey</code>/<code>box-seal</code>/
 <code>box-open</code> CLI surface.</li>
+<li><code>hazmat::dstu4145</code>: a second curve, <code>m=257</code> (<code>gf2m257</code>/<code>curve257</code>/<code>scalar257</code>/<code>signature257</code>) -
+what real Diia-issued qualified signatures actually use in production (confirmed from real
+issued certificates, not just the standard’s own curve table), alongside the existing <code>m=163</code>.
+<code>crypto_sign257</code> wraps it as a full sibling of <code>crypto_sign</code> (<code>SigningKey</code>/<code>VerifyingKey</code>/
+<code>Signature</code>, deterministic Kupyna-KMAC nonce). <code>uacrypt sign-keygen257</code>/<code>sign-pubkey257</code>/
+<code>sign257</code> CLI surface; <code>uacrypt verify</code> reads a curve tag byte from <code>--key</code> and handles both
+<code>m=163</code> and <code>m=257</code> signatures through the one command (<code>docs/TASKS.md</code> T-199, <code>docs/DECISIONS.md</code>
+D-185/D-186).</li>
 </ul>
 <h3 id="changed"><a class="header" href="#changed">Changed</a></h3>
 <ul>

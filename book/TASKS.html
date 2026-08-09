@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-6b8f71a9.js";
+            window.path_to_searchindex_js = "searchindex-f0354dc2.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-ce7e91c5.js"></script>
@@ -3419,6 +3419,272 @@ integration suites, `cargo xtask clippy`/`fmt --check`, and the full `cargo xtas
 feature matrix (`--all-features`, `--no-default-features`,
 `-p dstu-core --no-default-features --features getrandom`) - all clean on both the dev machine
 and the (re-synced) Raspberry Pi.
+</code></pre>
+</li>
+<li>
+<p><input disabled="" type="checkbox"> <strong>T-200</strong> <strong>Not started, owner-requested backlog item, 2026-08-09</strong> (“Додай таску на смоук
+тести саме бінарника, в усіх режимах з усіма можливими сценаріями правильного і неправильного
+використання в тому числі з намаганням зламу” - add a task for smoke tests of the binary
+itself, all modes, all scenarios of correct/incorrect use including hacking attempts).
+Investigated first: confirmed via a full-project-context audit that <strong>no binary-level test
+exists anywhere in this repo.</strong> All 140 <code>#[test]</code> fns in <code>crates/uacrypt/src/lib.rs</code> call
+<code>run(&amp;args)</code> in-process, inside the test binary itself - never <code>std::process::Command</code>-spawning
+the real compiled <code>uacrypt.exe</code>/<code>uacrypt</code>. No <code>crates/uacrypt/tests/</code> directory, no
+<code>[dev-dependencies]</code> at all in <code>crates/uacrypt/Cargo.toml</code>, no <code>xtask</code> “smoke”/“e2e” subcommand,
+no CI job scripting real binary invocations for misuse/attack testing (the language-binding
+workflows shell out to the real binary, but only for byte-identical interop cross-checks, not
+CLI-scenario coverage). The <code>dstu-core/fuzz/</code> targets (10, all still relevant) all hit library
+primitives directly, none hit the <code>uacrypt</code> CLI/file-format/argv layer. <code>docs/SECURITY.md</code>
+never mentions “CLI” or “binary” at all.</p>
+<pre><code>**Why in-process coverage doesn't substitute** (the concrete gap this task exists to close,
+per `advisor()` consultation) - things only a real subprocess boundary can catch:
+- **Exit codes.** `main.rs` (17 lines: `run()` -&gt; `ExitCode::SUCCESS`/`FAILURE`) is currently
+  executed by *zero* tests - every existing test asserts on the library's `Result`, never on
+  what a shell/CI consumer actually sees.
+- **stdout/stderr routing** - the `uacrypt: ` error prefix, errors-to-stderr/help-to-stdout,
+  `--iterations` timing output - all unverified at the process boundary.
+- **Pre-`run()` argv handling** - `std::env::args().skip(1)`: non-UTF-8 args, empty-string
+  args, embedded spaces/quotes, Windows's own ~32k command-line-length ceiling.
+- **Real filesystem behavior** - Cyrillic filenames (a realistic input for this project
+  specifically, and exactly where Windows + UTF-8 argv tends to break), directory-as-`--out`,
+  read-only target, missing parent dir, `--in`==`--out` for every command (currently only
+  tested for `crypto_secretstream`), UNC/`\\?\` paths, symlinks.
+- **Actual absence-of-partial-output** - D-65 claims failed commands leave no partial file and
+  `encrypt`/`decrypt`'s temp-file-then-rename is atomic; only a real subprocess + real
+  filesystem check can confirm the file genuinely doesn't exist after a killed/failed process,
+  an in-process `Result` check cannot.
+- **`--help` text as a pinned claim, not prose** - the highest-value net-new angle, nothing
+  today covers it. Each command's help text makes testable assertions ("exits with an error,
+  nothing written", "NOT authenticated", "no message-length cap", "not memory-bounded, `--in`
+  read whole into memory") - these rot silently; a subprocess test can grep real `--help`
+  output and assert the claim still matches the real behavior it documents.
+
+**Enumeration source**: generate the scenario matrix from `run()`'s own match arms plus
+`print_command_help`'s match in `crates/uacrypt/src/lib.rs` (~28 top-level commands, several
+with their own sub-subcommands - `kalyna-block encrypt|decrypt`, `kalyna-ccm`, `kw wrap|unwrap`
+- and variant flags: five Kalyna variants, 256/512 for Kupyna/Strumok/`crypto_box`,
+`m=163`/`m=257` for `sign`/`verify`) - **not** README or the top-level `--help` text, both of
+which can drift from the real dispatch table; that drift is itself a finding worth a test, not
+a source to enumerate from. Don't hand-type the full per-command grid into this file - state
+the generation rule here, let implementation build the matrix off the live `match`.
+
+**Scenario categories, all four required per command where applicable** (mirrors D-64/D-65's
+three plus T-183/D-173's active-attack fourth, already this project's standing pattern for
+asymmetric primitives, extended here to the CLI/file-format boundary):
+1. **Typical/correct usage** - golden-path round trip for every command, real subprocess,
+   real temp files (exit code 0, expected stdout shape, output file exists and round-trips).
+2. **Incorrect/malformed usage (misuse)** - missing/unknown flags, wrong arg count, invalid
+   variant names, `--iterations 0`, nonexistent `--in`, `--out` pointing at a directory,
+   zero-byte input, `--in`==`--out` (every command, not just secretstream today).
+3. **Toxic/malicious data (rejection + file-input taxonomy)** - truncated files, wrong magic/
+   header bytes, huge files (streaming-boundedness claim, D-42's "hazmat streaming existing
+   doesn't make the CLI wrapper memory-bounded" - only a real subprocess + real large file can
+   prove this, not a mock), null bytes in filenames, path traversal (`../`) in `--in`/`--out`,
+   extremely long argv, symlinked input/output, TOCTOU (swap the file between open and read
+   where the command's own atomicity claim depends on it not mattering).
+4. **Active attack attempts** (T-183/D-173's fourth category, applied at the CLI boundary):
+   - **Cross-key-type confusion** - `keygen`'s and `box-keygen`'s outputs are both 32 bytes;
+     length validation alone can't tell them apart. Feed a `keygen` key to `box-seal --key`
+     and vice versa - must fail cleanly, not silently produce garbage. Same check for every
+     other same-length key-type pair in the surface (`sign-keygen` vs `sign-keygen257` output
+     lengths, etc.).
+   - **Tagged verifying-key format cross-length matrix** (T-199's new format) - tag `0x00`,
+     `0x03`..`0xFF`, tag `0x01` with a 66-byte body, tag `0x02` with a 42-byte body, a tag
+     byte alone with no body - only one `0xFF` case exists today, in-process.
+   - **Attacker-supplied public keys through `verify --key`** - off-curve points, the order-2
+     point, and (for `m=257`) an order-4 point - T-189/D-172's fix has never been exercised at
+     the boundary where the bytes are genuinely untrusted argv/file input, not a Rust-typed
+     test fixture.
+   - **`crypto_secretstream` wire-format attacks at the file layer** - oversized chunk-length
+     field, trailing data after `Final`, unknown tag byte, truncation mid-chunk, reordered/
+     replayed chunks, a header swapped between two different files, `Message` tag flipped to
+     `Final` - each should map to a specific named `CliError`; assert the exact error reaches
+     stderr, not just a nonzero exit code.
+   - **Documented-not-a-bug case**: `strumok-crypt`'s own `--help` already warns about
+     key/IV two-time-pad reuse but the binary permits it - record this scenario as
+     expected-by-design (with a test pinning that it's still permitted, and that the warning
+     text still says so), so a future reader doesn't file it as an unfixed vulnerability.
+
+**Prior art researched** (background agent, full citations kept in this task's own history,
+condensed here):
+- **OpenSSL's own CLI suite** (`test/recipes/{nn}-test_*.t`, Perl `Test::More` + the
+  `OpenSSL::Test` helper for spawning the real `openssl` binary and checking exit code/output) -
+  organizes by two-digit numeric prefix per feature area (20-24 is `openssl`-command-level
+  specifically), not by a happy-path-vs-attack axis; those live as separate assertions within
+  the same recipe file, keyed by feature. Relevant precedent for *this* task: group by command/
+  subsystem, not by scenario category, when laying out the actual test files.
+- **GnuPG** rewrote its own CLI test suite from shell to a custom Scheme interpreter
+  specifically for cross-platform binary-level testing, and documents `--with-colons`/
+  `--status-fd` as the machine-parseable surface scripts should target over human-readable
+  output - no direct analog needed here (`uacrypt` has no colon-output mode), but the
+  underlying lesson (script against a stable machine-checkable surface, not prose) applies to
+  the `--help`-text-as-pinned-claim category above.
+- No canonical published test-matrix methodology found specific to age/minisign/signify/rage -
+  a real gap in prior art, not a missed search.
+- **OWASP File Upload Cheat Sheet / WSTG "Test Upload of Malicious Files"** - the standard
+  citable source for the toxic-file-input taxonomy above (path traversal, null-byte tricks,
+  magic-bytes-not-extension validation); doesn't cover symlink/TOCTOU explicitly, those come
+  from general secure-coding literature, cited as such, not overclaimed as OWASP's own.
+
+**Harness/dependency-policy decision, resolved here rather than left open** (the one genuine
+architectural fork `advisor()` flagged - `crates/uacrypt/Cargo.toml` currently has *zero*
+`[dev-dependencies]`, and this project gates all deps through `cargo deny`/`docs/SECURITY.md`,
+with `xtask` itself documented as "deliberately zero dependencies"): use **hand-rolled
+`std::process::Command`**, not `assert_cmd`+`predicates` (the standard Rust-ecosystem choice,
+confirmed via research - `assert_cmd` spawns `Command::cargo_bin(...)`, chains with
+`predicates::str::contains(...)` for stdout/stderr assertions; `trycmd` is a cram-style
+declarative alternative; `rexpect` is PTY-based, relevant only for interactive/prompting
+programs, not `uacrypt`'s pure argv/file-in-file-out shape). Reasons: (1) matches this
+project's own established zero-dependency posture for exactly this kind of harness code, same
+reasoning `xtask`'s own doc comment already states; (2) `env!("CARGO_BIN_EXE_uacrypt")` is a
+real, no-extra-dependency Cargo mechanism available to any integration test under
+`crates/uacrypt/tests/` - gives the exact built-binary path with no `target/debug`-vs-`release`
+guessing and no `.exe`-suffix special-casing, which is the actual hard part `assert_cmd` would
+otherwise be pulled in to solve. **Verify `CARGO_BIN_EXE_uacrypt` is genuinely populated for
+this package's own integration tests before committing to this path** (it should be - Cargo
+sets it automatically for any `[[bin]]` target in the same package as the test - but confirm
+empirically, don't assume). If a real ergonomic gap shows up once writing the ~28-command
+matrix by hand, re-open `assert_cmd` as a fallback rather than fighting the zero-dep posture
+past the point it's paying for itself - name that trade explicitly if it happens, don't let it
+drift in silently.
+
+**CI integration**: if this lands as an ordinary `cargo test` integration test target under
+`crates/uacrypt/tests/`, `xtask`'s existing mandatory `test()` step already picks it up for
+free - **no new CI job needed**, don't over-engineer a separate `xtask smoke`/gate for this.
+**Miri constraint**: Miri cannot spawn real processes at all - every test in this suite needs
+`#[cfg_attr(miri, ignore = "spawns the real uacrypt binary, not interpretable")]` from the
+first commit, same shape as the existing `scalar_multiply`-calling exclusions (T-100/T-156) -
+confirm this is actually required (vs. Miri simply never selecting this target) before writing
+the boilerplate, don't assume without checking.
+
+**Phasing** (per `advisor()` - an unbounded "enumerate everything up front" version of this
+task risks the same fate as T-183's own multi-month backlog sit): (1) harness plumbing +
+golden-path round trip for every command, exit-code and stdout/stderr assertions from day one;
+(2) misuse/malformed-usage matrix; (3) toxic-data and active-attack categories above; (4) docs/
+CI reconciliation (`docs/SECURITY.md` gains a "CLI/binary" mention, `docs/TASKS.md` closure).
+Each phase should be a real, independently landable state, not a partial step waiting on the
+rest - same discipline T-199 itself just used successfully. No committed timeline; owner
+prioritizes which phase starts first.
+</code></pre>
+</li>
+<li>
+<p><input disabled="" type="checkbox" checked=""> <strong>T-199</strong> <strong>Done 2026-08-09, owner-requested (“Так починай”).</strong> Full landing: <code>hazmat::     dstu4145::{gf2m257, curve257, scalar257, signature257}</code> (field/point/scalar/sign-verify,
+test-first against BC-generated oracle vectors, <code>tests/vectors/dstu4145/gf2m257_arith.json</code>
+/ <code>tests/oracle-harness/java/.../Dstu4145VectorGen257.java</code>), the additive
+<code>crypto_sign257</code>/<code>CurveId</code> library layer, and full <code>uacrypt</code> CLI wiring
+(<code>sign-keygen257</code>/<code>sign-pubkey257</code>/<code>sign257</code>, plus a tag-aware <code>verify</code> shared with <code>m=163</code>).
+<code>cargo clippy --all-features -- -D warnings</code>/<code>cargo fmt --check</code>/<code>--no-default-features</code>
+clean throughout; <code>dstu-core-capi</code> confirmed still compiles unaffected (the point of the
+additive-sibling design, see below). Two real correctness/design findings from this pass,
+full detail in <code>docs/DECISIONS.md</code> D-186’s addenda:
+1. <strong><code>signature257</code>’s <code>truncate</code> bug</strong>: used <code>m-1=256</code> bits instead of the actually-correct
+<code>n.bit_length()-1=255</code> (<code>n.bit_length() == m</code> holds for <code>m=163</code> only by coincidence of
+that curve’s specific order) - <code>sign</code> matched the BC oracle regardless (an over-wide <code>r</code>
+round-trips through <code>sign</code>’s own output unchanged), but <code>verify</code> rejected nearly every
+valid signature until fixed. Caught by the oracle’s independent <code>verify</code>-direction check,
+not <code>sign</code> alone - closed with both an empirical fix and a second, <em>provable</em> test
+(<code>truncate_255_output_is_always_below_n</code>: <code>n &gt;= 2^255</code> unconditionally, <code>truncate_255</code>’s
+output is always <code>&lt; 2^255</code> by construction, so <code>r &lt; n</code> holds for every input, not just
+ones a random sample happened to cover).
+2. <strong><code>advisor()</code>-caught architecture reversal</strong>: this entry’s own earlier Decisions 1-3 (a
+curve-tagged <code>enum SigningKey</code>/<code>VerifyingKey</code>/<code>Signature</code> replacing <code>crypto_sign</code>’s
+existing types) would have broken <code>dstu-core-capi/src/sign.rs</code>’s C ABI for no benefit the
+alternative doesn’t also deliver - found only once the real fan-out
+(<code>grep -rl "crypto_sign::"</code>) was checked, after which <code>crypto_box512</code>/T-193’s own
+already-established precedent (additive sibling module, capi wiring deferred) applied
+directly. <code>crypto_sign257</code> ships as a full sibling of <code>crypto_sign</code>, not a breaking
+rewrite of it - see D-186’s addendum for the complete reasoning, now the actual shipped
+design, not just a proposal.
+Also closed under <code>advisor()</code> review before any CLI verify path shipped: <code>curve257</code>’s
+cofactor-4 small-subgroup gap (flagged open in this entry’s own earlier draft, step 6) -
+<code>signature257::verify</code> now checks <code>q.scalar_multiply(&amp;order()) == Infinity</code> (the general,
+cofactor-independent SP-800-56A-style check, not <code>m=163</code>’s cofactor-2-specific <code>x == 0</code>
+shortcut), proven against a real constructed order-2 point in
+<code>tests/dstu4145_signature257.rs</code>.
+Nonce derivation (D-186 Decision 5) resolved with <code>Kupyna384Kmac</code> (48-byte key/output, 128
+bits of margin over <code>curve257::order()</code>’s ~256-bit width) instead of <code>crypto_sign</code>’s
+<code>Kupyna256Kmac</code>.
+Original plan follows, unchanged (historical record - see the summary above for what
+actually shipped and where it diverged):</p>
+<pre><code>("Так давай зразу таску на те. З
+тестами першими" - "yes, let's make a task for that right away, tests first"). Add `m=257` as
+a second `hazmat::dstu4145` curve, alongside the existing `m=163` (not replacing it - `m=163`
+stays the `crypto_sign` default per D-46, this is a new `hazmat`-level option). Domain
+parameters, provenance, and the privacy constraint on any committed test vector are all in
+`docs/DECISIONS.md` D-185 - read that first, don't re-derive.
+
+**Why this curve specifically, not another of the 9 unimplemented sizes**: `m=257` is what
+Diia's own qualified-trust infrastructure actually issues today, confirmed from two
+independent real certificates (D-185) plus Bouncy Castle's `DSTU4145NamedCurves.java`
+`curves[6]` as a third match - not an arbitrary standard-compliant pick.
+
+**Scope decided 2026-08-09 (owner follow-up, `docs/DECISIONS.md` D-186 has the full
+reasoning - read that before implementing, don't re-derive)**: this ships in the `uacrypt`
+binary, not `hazmat`-only. `crypto_sign` supports `m=257` as a first-class signing option
+alongside `m=163` (not a replacement); `verify` self-determines which curve a given
+key/signature uses via an explicit one-byte tag prefix (`0x01`=m=163, `0x02`=m=257,
+D-186 Decision 1), verifies if the curve is supported and reports **which** curve validated
+it (`Result&lt;CurveId, VerifyError&gt;`, D-186 Decision 2 - a policy-sensitive caller must be able
+to reject a weaker-curve signature where a stronger one was expected, this is a real
+downgrade-shaped concern, not just ergonomics), and returns a specific
+`VerifyError::UnsupportedCurve(tag)` - not a generic parse failure or silent `false` - for any
+unrecognized tag (D-186 Decision 3).
+
+**Test-first plan, in order** (owner's explicit ask - tests before the implementation they
+exercise, same discipline `CLAUDE.md`'s "Test-first, always" already requires project-wide,
+stated here because this task starts from zero for `m=257`, nothing to retrofit):
+1. **Field arithmetic vectors first** (`gf2m257` or equivalent, mirroring `gf2m163`'s own
+   `multiply`/`square`/`reduce`/`invert` shape - D-25's "no reusable code, only a reusable
+   style reference" note applies again here, this is a new module, not a generalization of
+   `gf2m163`). Generate unit-level arithmetic vectors the same way `gf2m163_arith.json` was
+   made (Bouncy Castle as the sole oracle at this granularity, `oracles/bouncycastle-java`) -
+   write the failing test against those vectors before writing `multiply`/`reduce` themselves.
+   **Software and hardware paths land together, not sequentially** (D-186 Decision 4 -
+   `m=163`'s own hardware dispatch, D-184/T-198, only arrived as a later task because the
+   design wasn't proven yet; it is now): `poly_mul_wide`/`reduce` first against the BC
+   vectors, then `poly_mul_wide_hw` (`PCLMULQDQ`/`PMULL`, `std`-gated runtime dispatch, same
+   `clmul_native::feature_available()` pattern), plus the `multiply_sw`/
+   `multiply_matches_explicit_software_path` coverage-gap tests from day one so the portable
+   path stays under real test pressure on every capable CI runner.
+2. **Curve point arithmetic vectors next** (`curve257` or equivalent, mirroring `curve163`'s
+   `Point::add`/`double`/`scalar_multiply`/`negate`) - same BC-oracle-generation approach as
+   `curve163`'s own arithmetic tests, written failing before the point-arithmetic code exists.
+3. **Sign/verify oracle - no official worked example exists for `m=257`** (unlike `m=163`'s
+   Annex B.1) so the D-14/D-25-style "official vector" tier isn't available here; two options,
+   pick one or both before writing `sign`/`verify`:
+   - A Bouncy-Castle-generated sign/verify vector (`DSTU4145Signer` against this curve's
+     parameters), same dual-oracle posture already used elsewhere in this project when no
+     primary-text worked example exists.
+   - The **test**-CA signature from D-185's `czo.gov.ua` download (`ДП "ДІЯ" (ТЕСТ)` issuer,
+     already public/disposable by design, safe to vendor into `tests/vectors/`) - verify
+     against its real public key and real signature bytes. **Never** the owner's own
+     production certificate/signature from the same investigation - D-185's privacy note is
+     binding, not optional, for whatever gets committed here.
+   Nonce derivation for this curve's own ~256-bit order needs its own re-derivation, not a
+   copy of `m=163`'s KMAC-reduction constants (D-186 Decision 5) - test that reduction against
+   its own boundary cases before trusting `sign`'s output.
+4. **Tag-byte round trip and unsupported-curve dispatch, written as tests before the dispatch
+   code**: `SigningKey`/`VerifyingKey`/`Signature` parse to the right curve variant for
+   `0x01`/`0x02`, and a crafted `0x00`/`0x03`/`0xFF`-tagged input produces
+   `VerifyError::UnsupportedCurve(tag)` specifically (not a generic error, not a panic) -
+   this is the "якщо ні - повідомлення" requirement, verify it's an actual typed error a
+   caller can match on, not just that verification fails.
+5. Only after 1-4 have failing tests in place: implement `gf2m257`/`curve257`/the tagged
+   key-and-signature format/wire the new curve into `dstu4145`'s `sign`/`verify` until
+   everything passes.
+6. Full three-category coverage per `CLAUDE.md`'s standing rule once sign/verify exist:
+   correctness (step 3's oracle), rejection (tampered signature/wrong key), misuse (invalid
+   lengths, degenerate scalars, malformed tag byte) - plus the active-attack category T-183
+   already established for asymmetric primitives (invalid-curve/twist/boundary-scalar checks,
+   mirroring what T-189/D-172 already found for `m=163`'s own `verify` - re-derive for this
+   curve's own cofactor/subgroup structure, don't assume it carries over unchanged).
+
+**Resolved (see the completion summary above for the actual shipped shape)**: the type-shape
+question landed on distinct sibling types (`crypto_sign257`, not a curve-tagged enum) and
+`uacrypt` grew `sign-keygen257`/`sign-pubkey257`/`sign257` as separate subcommands (matching
+`box-keygen512`'s own already-established precedent) - `verify` alone stays unified and
+curve-tag-aware, since that's the one surface that actually receives curve-unknown-in-advance
+input.
 </code></pre>
 </li>
 <li>

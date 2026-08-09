@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-6b8f71a9.js";
+            window.path_to_searchindex_js = "../searchindex-f0354dc2.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-ce7e91c5.js"></script>
@@ -337,7 +337,9 @@ CSPRNG choice, once a higher-level layer exists to call it from).</li>
 <li>Curve domain-parameter tables beyond m=163 (<code>DSTU4145NamedCurves.java</code>, Annex Г’s recommended
 curves), compressed/precomputed point encoding for interoperable serialization
 (<code>DSTU4145PointEncoder.java</code>, <code>DSTU4145ECBinary.java</code>) — separate concerns from the sign/verify
-core above.</li>
+core above. <code>m=257</code> specifically is now planned, not just enumerated by BC — see <code>docs/TASKS.md</code>
+T-199 / <code>docs/DECISIONS.md</code> D-185 for why (real Diia-issued certificates, not just the standard
+allowing it) and the domain parameters extracted from them.</li>
 </ul>
 <h2 id="test-vectors"><a class="header" href="#test-vectors">Test vectors</a></h2>
 <p><code>crates/dstu-core/tests/vectors/dstu4145/gf2m163.json</code> — the official text’s own Annex B.1 worked
