@@ -3289,11 +3289,14 @@ item they point to is later removed.
       deferred: the rest of the full misuse/malformed-usage matrix (missing/unknown flags per
       command beyond what `smoke_dispatch.rs` already covers, directory-as-`--out`,
       `--iterations 0`) - `--in`==`--out` itself now landed, see the Phase 2 addendum above;
-      `docs/SECURITY.md` gaining a "CLI/binary" mention; large-file/streaming-boundedness proof for
-      `encrypt`/`decrypt`/`kupyna-digest`/`strumok-crypt` (D-42's claim, real subprocess + a real
-      large file, not asserted) - `--help`-text-as-pinned-claim tests themselves landed, see the
-      Phase 4 addendum above (a representative set of behavioral claims, not every claim in every
-      `*_HELP` constant - policy/advice claims nothing enforces were deliberately excluded). Same
+      large-file/streaming-boundedness proof for `encrypt`/`decrypt`/`kupyna-digest`/`strumok-crypt`
+      (D-42's claim, real subprocess + a real large file, not asserted) - `--help`-text-as-pinned-
+      claim tests themselves landed, see the Phase 4 addendum above (a representative set of
+      behavioral claims, not every claim in every `*_HELP` constant - policy/advice claims nothing
+      enforces were deliberately excluded); `docs/SECURITY.md` gaining a "CLI/binary" mention also
+      landed (new "CLI/binary attack surface (`uacrypt`)" section, right after "Threat model" -
+      states the wire-format/no-partial-output/`--in`==`--out` scope this file's tests actually
+      cover, points at D-187's finding, and names the still-open off-curve-key gap explicitly). Same
       phasing this entry's own original plan laid out - land independently, don't wait for all four.
 
       Original plan follows, unchanged (historical record - see the summary above for what actually

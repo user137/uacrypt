@@ -22,6 +22,32 @@ Explicitly out of scope (until stated otherwise):
 - Formal state certification by Держспецзв'язку — voluntary category for an open GitHub library;
   see `docs/dstu-crypto-project.md` "State certification".
 
+## CLI/binary attack surface (`uacrypt`)
+
+The threat model above is stated at the library (`dstu-core`) level; `uacrypt` (the CLI binary,
+`crates/uacrypt`) adds its own boundary - untrusted file contents, argv, and exit codes - which the
+same "attacker who can supply malformed/adversarial input" scope extends to. In scope specifically:
+
+- **On-disk wire formats as adversarial input**: a `--in` file is not guaranteed to be genuine
+  output of the corresponding `encrypt`/`sign`/`box-seal`/etc. command - truncation, tampering (any
+  byte, including framing/tag bytes, not just payload), and cross-format confusion (feeding one
+  command's output to a different command that expects a similarly-shaped file, e.g. a `keygen` key
+  where a `box-keygen` key is expected - same length, different meaning) must all fail cleanly, not
+  panic or silently produce wrong output.
+- **No partial output on failure**: a command that fails partway through must not leave a
+  half-written `--out` behind for a later, unrelated read to pick up.
+- **`--in`==`--out` (in-place usage)** must not corrupt data even when a command's own
+  implementation reads and writes the same path in more than one step.
+
+Real-subprocess coverage for this boundary lives in `crates/uacrypt/tests/` (`docs/TASKS.md`
+T-200) - `std::process::Command`-spawning the actual compiled binary, not the library's `run()`
+in-process, since exit codes, stdout/stderr routing, and real-filesystem behavior are only
+observable at the real process boundary. One real finding from this suite: `strumok-crypt
+--in`==`--out` used to silently truncate the input to zero bytes at exit code 0 before a fix -
+`docs/DECISIONS.md` D-187 has the full writeup. Off-curve/order-2/order-4 attacker-supplied public
+keys through `verify --key`/`box-seal --key`/`box-open512 --key` at this same file boundary are
+identified as a real gap but not yet covered (`docs/TASKS.md` T-200's own deferred list).
+
 ## Known cryptanalysis (third-party literature)
 
 Three papers sit in `docs/papers/` and were never actually surfaced anywhere in this project's
