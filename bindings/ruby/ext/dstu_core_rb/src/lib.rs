@@ -8,6 +8,7 @@
 //! is deferred to a later step.
 
 mod auth;
+mod box512;
 mod crypto_box;
 mod error;
 mod generichash;
@@ -17,6 +18,7 @@ mod randombytes;
 mod secretbox;
 mod secretstream;
 mod sign;
+mod sign257;
 mod stream;
 mod util;
 
@@ -48,10 +50,23 @@ fn init(ruby: &Ruby) -> Result<(), Error> {
     module.define_singleton_method("box_seal", function!(crypto_box::box_seal, 2))?;
     module.define_singleton_method("box_open", function!(crypto_box::box_open, 2))?;
 
+    module.define_singleton_method("box512_keygen", function!(box512::box512_keygen, 0))?;
+    module.define_singleton_method("box512_public_key", function!(box512::box512_public_key, 1))?;
+    module.define_singleton_method("box512_seal", function!(box512::box512_seal, 2))?;
+    module.define_singleton_method("box512_open", function!(box512::box512_open, 2))?;
+
     module.define_singleton_method("sign_keygen", function!(sign::sign_keygen, 0))?;
     module.define_singleton_method("sign_verifying_key", function!(sign::sign_verifying_key, 1))?;
     module.define_singleton_method("sign_message", function!(sign::sign_message, 2))?;
     module.define_singleton_method("sign_verify", function!(sign::sign_verify, 3))?;
+
+    module.define_singleton_method("sign257_keygen", function!(sign257::sign257_keygen, 0))?;
+    module.define_singleton_method(
+        "sign257_verifying_key",
+        function!(sign257::sign257_verifying_key, 1),
+    )?;
+    module.define_singleton_method("sign257_message", function!(sign257::sign257_message, 2))?;
+    module.define_singleton_method("sign257_verify", function!(sign257::sign257_verify, 3))?;
 
     module.define_singleton_method("auth_keygen", function!(auth::auth_keygen, 0))?;
     module.define_singleton_method("auth", function!(auth::auth, 2))?;
