@@ -3166,14 +3166,41 @@ item they point to is later removed.
       feature matrix (`--all-features`, `--no-default-features`,
       `-p dstu-core --no-default-features --features getrandom`) - all clean on both the dev machine
       and the (re-synced) Raspberry Pi.
-- [ ] **T-200** **Phase 1 + select Phase 2/3/4 landed 2026-08-09, owner-requested ("Давай 200 таску
-      із смоук тестами для бінарника. Врахуй які в нас там реалізації і як їх атакувати
-      найдоцільніше а не сліпо" - do T-200 now, ground it in what's actually implemented, attack it
-      the most worthwhile way rather than blindly). Owner explicitly chose "all three" when asked
-      which remaining items counted toward "full implementation" for the push gate (2026-08-09):
-      the rest of the misuse matrix, streaming-boundedness, and `dstu9041`/`crypto_box`'s own
-      differently-shaped small-subgroup attack at the sealed-file level. Misuse matrix and
-      streaming-boundedness landed (below); the `crypto_box` sealed-file attack remains.**
+- [x] **T-200** **Done 2026-08-09, owner-requested ("Давай 200 таску із смоук тестами для
+      бінарника. Врахуй які в нас там реалізації і як їх атакувати найдоцільніше а не сліпо" - do
+      T-200 now, ground it in what's actually implemented, attack it the most worthwhile way rather
+      than blindly). All items landed, including the three the owner explicitly named as "all
+      three" when asked which remaining ones counted toward "full implementation" for the push gate
+      (2026-08-09): the rest of the misuse matrix, streaming-boundedness, and `dstu9041`/
+      `crypto_box`'s own differently-shaped small-subgroup attack at the sealed-file level.**
+
+      **Phase 4 addendum, `crates/uacrypt/tests/smoke_crypto_box_attack.rs` (1 test)**: the last of
+      the "all three" items - `box-seal`/`box-open`'s own small-subgroup attack, grounded directly
+      in D-167 Finding 1 (a real, already-fixed security bug, not a hypothetical): clause 12 step 2
+      rejects `r=0`/`r=1`/`r^2=a*d^-1 (mod p)` but originally missed `r=p-1`, which reconstructs to
+      a genuine order-2 point `R'=(p-1,0)` outside the base point's own subgroup - left unrejected,
+      a chosen-ciphertext query with `r=p-1` would leak the private key's parity bit.
+      `point_from_x` was fixed to reject it explicitly; this test re-exercises that fix through the
+      real binary and sealed-file wire format, not just `hazmat`'s in-process API. Mechanics: seals
+      a real message via `box-seal`, overwrites the sealed file's first 32 bytes (`r`, confirmed by
+      reading both `crypto_box.rs`'s wire-format assembly and `hazmat::dstu9041::encryption::
+      encrypt`'s `ciphertext[..32] = r_bytes`) with `p - 1` computed via `fp256::FieldElement::sub`
+      at runtime (not hand-subtracted - mirrors `dstu9041_curve.rs`'s own `r_equals_p_minus_1_
+      reconstructs_the_order_two_point` construction, avoiding exactly the hand-hex-arithmetic risk
+      `CLAUDE.md` already warns about for transcription), then confirms `box-open` rejects it and
+      writes nothing to `--out`. Passed on first run.
+      - **Deliberately did not attempt an order-4 attack (D-167 Finding 2)**: `docs/DECISIONS.md`
+        D-173 already investigated this directly inside `dstu-core` itself (full internal-crate
+        access, a `#[cfg(test)]` module) and hit a genuine, still-open research question -
+        "whether a concrete order-4 point is reachable through `point_from_x`'s own reconstruction
+        formula at all is an open question, not confirmed either way." Existence is proven (Hasse's
+        bound); reachability through the actual public API is not. Attacking it from the CLI
+        subprocess boundary, with *less* internal access than D-173's own attempt had, cannot
+        responsibly claim to succeed where that investigation left an open analytic question
+        ("does an order-4 point's `x` ever satisfy `euler_criterion`?") - this needs a mathematical
+        answer, not more engineering, and is out of scope for a smoke-test task. Surfaced explicitly
+        rather than silently narrowing "the crypto_box attack" to only the order-2 case without
+        saying so.
 
       **Phase 2 addendum, `crates/uacrypt/tests/smoke_misuse_matrix.rs` (8 test functions)**: the
       rest of the misuse matrix beyond `--in`==`--out` (`smoke_misuse.rs`) and `smoke_dispatch.rs`'s
@@ -3327,12 +3354,13 @@ item they point to is later removed.
       **What landed**: `crates/uacrypt/tests/support/mod.rs` (hand-rolled `std::process::Command`
       harness, `env!("CARGO_BIN_EXE_uacrypt")`, no new `[dev-dependencies]` - confirmed working via
       a throwaway probe before writing anything else, per this task's own harness decision below)
-      plus ten real-subprocess test files (`smoke_misuse.rs`/`smoke_help_claims.rs`/
-      `smoke_off_curve_attack.rs`/`smoke_streaming_boundedness.rs`/`smoke_misuse_matrix.rs` added in
-      the Phase 2/4 addenda above), 74 `#[test]` functions total (one of which,
-      `missing_required_flag_matrix`, internally sweeps ~34 command shapes' worth of assertions; 4
-      of the 74 are `#[ignore]`d by default, see the streaming-boundedness addendum above - run via
-      `cargo xtask streaming-bounded`, not a plain `cargo test`), all passing on first full
+      plus eleven real-subprocess test files (`smoke_misuse.rs`/`smoke_help_claims.rs`/
+      `smoke_off_curve_attack.rs`/`smoke_streaming_boundedness.rs`/`smoke_misuse_matrix.rs`/
+      `smoke_crypto_box_attack.rs` added in the Phase 2/4 addenda above), 75 `#[test]` functions
+      total (one of which, `missing_required_flag_matrix`, internally sweeps ~34 command shapes'
+      worth of assertions; 4 of the 75 are `#[ignore]`d by default, see the streaming-boundedness
+      addendum above - run via `cargo xtask streaming-bounded`, not a plain `cargo test`), all
+      passing on first full
       workspace run
       (`cargo test --workspace --exclude dstu-core-capi`), `cargo clippy --all-features` (both the
       default gate and `--test <name>`-scoped `--all-targets` on just the new files, not the whole
@@ -3403,19 +3431,22 @@ item they point to is later removed.
       `--all-targets`; the 356 pre-existing findings are a separate, not-yet-filed cleanup item, not
       part of T-200's own scope.
 
-      **Explicitly deferred, not forgotten - the one item still open**: `box-seal --key`/
-      `box-open512 --key`'s differently-shaped `dstu9041`/`crypto_box` small-subgroup finding
-      (T-183/D-176). `verify --key`'s own off-curve/order-2 attack landed (Phase 4 addendum,
-      `smoke_off_curve_attack.rs`) but this one is a genuinely different shape - it needs a crafted
-      *sealed-file* wire format, not a crafted key file (see that addendum's own note for why the
-      two aren't the same task). Everything else this entry once listed as deferred has since
-      landed: the rest of the misuse matrix (`smoke_misuse_matrix.rs`, Phase 2 addendum above),
-      streaming-boundedness (`smoke_streaming_boundedness.rs` + `cargo xtask streaming-bounded`,
-      Phase 4 addendum above), `--help`-text-as-pinned-claim tests (`smoke_help_claims.rs`), and
-      `docs/SECURITY.md`'s "CLI/binary attack surface" section (states the wire-format/no-partial-
-      output/`--in`==`--out` scope this suite covers, points at D-187's finding, and until this
-      entry's next update once named the off-curve-key gap that section itself should be revisited
-      to narrow to just the remaining `crypto_box` item once that lands too).
+      **Closed 2026-08-09 - nothing left deferred that was in scope.** Every item this entry ever
+      listed as deferred has since landed: the rest of the misuse matrix (`smoke_misuse_matrix.rs`),
+      streaming-boundedness (`smoke_streaming_boundedness.rs` + `cargo xtask streaming-bounded`),
+      `--help`-text-as-pinned-claim tests (`smoke_help_claims.rs`), `docs/SECURITY.md`'s "CLI/binary
+      attack surface" section, `verify --key`'s off-curve/order-2 attack (`smoke_off_curve_attack.rs`),
+      and `box-open`'s `crypto_box`/`dstu9041` order-2 sealed-file attack
+      (`smoke_crypto_box_attack.rs`, above). `docs/SECURITY.md`'s CLI section should be revisited to
+      drop its now-stale "off-curve-key gap" phrasing next time that file is touched - not urgent
+      enough on its own to reopen this task purely to fix a doc-comment stale reference.
+      **One item was named in the owner's "all three" scope and explicitly NOT attempted, on
+      purpose, not by oversight**: an order-4 (not order-2) attack against `crypto_box`/`dstu9041`,
+      D-167 Finding 2. `docs/DECISIONS.md` D-173 already tried this at the `dstu-core` level with
+      full internal-crate access and left it a genuine open research question (order-4 point
+      *existence* is proven, *reachability* through the public `point_from_x` API is not confirmed
+      either way) - see the `smoke_crypto_box_attack.rs` addendum above for the full reasoning on
+      why this is a real dead end today, not a shortfall in this task's own effort.
 
       Original plan follows, unchanged (historical record - see the summary above for what actually
       shipped and where it diverged):

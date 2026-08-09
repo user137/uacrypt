@@ -24,15 +24,16 @@ All notable changes to this project are documented in this file. Format follows
   `sign257` CLI surface; `uacrypt verify` reads a curve tag byte from `--key` and handles both
   `m=163` and `m=257` signatures through the one command (`docs/TASKS.md` T-199, `docs/DECISIONS.md`
   D-185/D-186).
-- `uacrypt`: real binary-level (subprocess) smoke tests, `crates/uacrypt/tests/` - 74 tests
+- `uacrypt`: real binary-level (subprocess) smoke tests, `crates/uacrypt/tests/` - 75 tests
   spawning the actual compiled `uacrypt` binary (exit codes, stdout/stderr, real files), covering
   every leaf command's golden path plus targeted attack scenarios (T-199's tagged-verifying-key
   format, `crypto_secretstream`'s wire-format tamper resistance, cross-key-type confusion between
   same-length key files, `--in`==`--out` in-place usage, `--help` text checked as a pinned
   behavioral claim rather than prose, a constructed order-2/small-subgroup public key rejected by
-  `verify --key` for both DSTU 4145 curves, an exhaustive missing-required-flag sweep across all
-  ~34 leaf command shapes). Previously the entire 140-test suite only ever called the library's
-  `run()` in-process (`docs/TASKS.md` T-200).
+  `verify --key` for both DSTU 4145 curves and by `box-open` for `crypto_box`/`dstu9041`
+  (D-167 Finding 1's `r=p-1` case), an exhaustive missing-required-flag sweep across all ~34 leaf
+  command shapes). Previously the entire 140-test suite only ever called the library's `run()`
+  in-process (`docs/TASKS.md` T-200).
 - `cargo xtask streaming-bounded`: release-build proof, against a real 200 MiB file, that
   `encrypt`/`decrypt`/`kupyna-digest`/`strumok-crypt` stay memory-bounded rather than buffering the
   whole input (D-42's claim, previously asserted only in a doc comment) - samples the real
