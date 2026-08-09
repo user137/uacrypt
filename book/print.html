@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-dcbad20a.js";
+            window.path_to_searchindex_js = "searchindex-d01d0802.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-ce7e91c5.js"></script>
@@ -180,11 +180,9 @@
                     <main>
                         <h1 id="introduction"><a class="header" href="#introduction">Introduction</a></h1>
 <h1 id="uacrypt"><a class="header" href="#uacrypt">uacrypt</a></h1>
-<!-- uacrypt-version: 0.2.0 -->
-<p><strong>v0.2.0 — released 2026-08-02, work in progress.</strong> DSTU 9041 / <code>crypto_box</code> (and its <code>box-*</code> CLI
-commands) landed on <code>master</code> since that tag and is not yet in a tagged release — check
-<a href="https://github.com/user137/uacrypt/releases">GitHub Releases</a> before assuming a downloaded binary
-has it. Not a complete library or CLI yet, not audited, not
+<!-- uacrypt-version: 0.3.0 -->
+<p><strong>v0.3.0 — released 2026-08-09, first crates.io publish (<code>dstu-core</code> only — see
+<code>docs/CHANGELOG.md</code>), still work in progress.</strong> Not a complete library or CLI yet, not audited, not
 production-ready, and <strong>not a claim of side-channel resistance</strong>. Core primitives (Kalyna, Kupyna)
 are dual-oracle-verified against official test vectors; Strumok and the Kalyna-CCM mode are
 provisional (not yet confirmed against their primary standard text — see <code>docs/DECISIONS.md</code> D-15/D-41).
@@ -4554,11 +4552,9 @@ mdBook for the existing <code>docs/*.md</code> corpus, plus a mandatory <code>ca
 `# uacrypt</p>
 </li>
 </ul>
-<!-- uacrypt-version: 0.2.0 -->
-<p><strong>v0.2.0 — released 2026-08-02, work in progress.</strong> DSTU 9041 / <code>crypto_box</code> (and its <code>box-*</code> CLI
-commands) landed on <code>master</code> since that tag and is not yet in a tagged release — check
-<a href="https://github.com/user137/uacrypt/releases">GitHub Releases</a> before assuming a downloaded binary
-has it. Not a complete library or CLI yet, not audited, not
+<!-- uacrypt-version: 0.3.0 -->
+<p><strong>v0.3.0 — released 2026-08-09, first crates.io publish (<code>dstu-core</code> only — see
+<code>docs/CHANGELOG.md</code>), still work in progress.</strong> Not a complete library or CLI yet, not audited, not
 production-ready, and <strong>not a claim of side-channel resistance</strong>. Core primitives (Kalyna, Kupyna)
 are dual-oracle-verified against official test vectors; Strumok and the Kalyna-CCM mode are
 provisional (not yet confirmed against their primary standard text — see <code>docs/DECISIONS.md</code> D-15/D-41).
@@ -26535,6 +26531,15 @@ safe).</p>
 <p>All notable changes to this project are documented in this file. Format follows
 <a href="https://keepachangelog.com/en/1.1.0/">Keep a Changelog</a>.</p>
 <h2 id="unreleased"><a class="header" href="#unreleased">[Unreleased]</a></h2>
+<h2 id="030---2026-08-09"><a class="header" href="#030---2026-08-09">[0.3.0] - 2026-08-09</a></h2>
+<p><strong>First crates.io publish</strong> (<code>docs/TASKS.md</code> T-17) - <code>dstu-core</code> only; <code>uacrypt</code> stays GitHub
+Releases-only for now (prebuilt binaries are already the better distribution path for that
+persona, <code>cargo install</code> would only offer a from-source build). This does not change the project’s
+own honesty posture: still pre-1.0, still not independently audited, and the headline provisional
+gaps tracked in <code>docs/release-readiness.md</code> (D-05’s Kalyna-alone AEAD assumption and Strumok’s
+vectors, both not yet confirmed against their primary DSTU texts) are unchanged by this release -
+see that document and <code>docs/DECISIONS.md</code> for the full standing caveats, repeated here exactly as
+prominently as 0.2.0’s own notes did below.</p>
 <h3 id="added"><a class="header" href="#added">Added</a></h3>
 <ul>
 <li><code>hazmat::dstu9041</code>: DSTU 9041:2020 hybrid (ECIES-style) asymmetric encryption over a twisted
@@ -26546,6 +26551,16 @@ asymmetrically, expanded via <code>hazmat::kupyna_kdf</code>, then <code>crypto_
 message) - <code>seal</code>/<code>open</code>/<code>SecretKey</code>/<code>PublicKey</code> (32-byte compressed, <code>x</code>-coordinate only,
 <code>docs/TASKS.md</code> T-178, <code>docs/DECISIONS.md</code> D-169). <code>uacrypt box-keygen</code>/<code>box-pubkey</code>/<code>box-seal</code>/
 <code>box-open</code> CLI surface.</li>
+<li><code>hazmat::dstu9041</code>: <code>l(p)=512</code>/E512/1, the second curve size after <code>l(p)=256</code> -
+<code>message512</code>/<code>fp512</code>/<code>curve512</code>/<code>encryption512</code>, same phased/test-first pattern, verified against
+the standard’s own worked example; both <code>l(p)=256</code> security findings (an order-2 point, a
+cofactor-4 subgroup) independently re-derived and re-confirmed applicable, not assumed to carry
+over (<code>docs/TASKS.md</code> T-192).</li>
+<li><code>crypto_box512</code>: direct <code>l(p)=512</code> sibling of <code>crypto_box</code>, <code>PublicKey</code>/<code>SecretKey</code> at 64 bytes,
+seed deliberately fixed at 32 bytes/256 bits (not <code>l(p)=512</code>’s full KEM capacity, D-182) -
+<code>seal</code>/<code>open</code>/<code>SecretKey</code>/<code>PublicKey</code>, <code>uacrypt box-keygen512</code>/<code>box-pubkey512</code>/<code>box-seal512</code>/
+<code>box-open512</code> CLI surface. Not yet wired into any language binding or <code>dstu-core-capi</code> (separate
+future task, T-193’s own scope note) (<code>docs/TASKS.md</code> T-193, <code>docs/DECISIONS.md</code> D-182/D-183).</li>
 <li><code>hazmat::dstu4145</code>: a second curve, <code>m=257</code> (<code>gf2m257</code>/<code>curve257</code>/<code>scalar257</code>/<code>signature257</code>) -
 what real Diia-issued qualified signatures actually use in production (confirmed from real
 issued certificates, not just the standard’s own curve table), alongside the existing <code>m=163</code>.
@@ -26576,6 +26591,14 @@ new CI job matrixed across all three OSes (<code>docs/TASKS.md</code> T-200).</l
 </ul>
 <h3 id="fixed"><a class="header" href="#fixed">Fixed</a></h3>
 <ul>
+<li><code>crypto_sign</code>/<code>hazmat::dstu4145</code> (<code>m=163</code>): <code>VerifyingKey::from_uncompressed_bytes</code> accepted a
+caller-supplied public key with no on-curve check, and <code>verify</code> never validated its own <code>q</code>
+parameter either - a signature could be forged against <code>Point::Infinity</code> or the curve’s one
+order-2 point (cofactor <code>h=2</code>, confirmed dual-source against Bouncy Castle) without ever needing
+the real private key. Found auditing T-183, fixed immediately as a real vulnerability, not
+deferred to backlog. Three tests actively forge working <code>(r, s)</code> pairs against all three attack
+points to confirm rejection, rather than trusting a walkthrough (<code>docs/TASKS.md</code> T-189,
+<code>docs/DECISIONS.md</code> D-172).</li>
 <li><code>uacrypt strumok-crypt</code>: <code>--in</code>==<code>--out</code> (“apply the keystream to this file in place”) silently
 destroyed the input - exit code 0, 0-byte result, no error - instead of round-tripping. The
 streaming path opened <code>--out</code> via <code>File::create</code> (truncating it) before finishing reading <code>--in</code>.
