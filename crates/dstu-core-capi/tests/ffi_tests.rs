@@ -1160,10 +1160,6 @@ fn box512_seal_open_round_trip_tamper_rejection_and_undersized_buffers() {
 }
 
 #[test]
-#[cfg_attr(
-    miri,
-    ignore = "l(p)=512 scalar_multiply is too slow to interpret under Miri - box512 sibling of crypto_box's own untimed but noticeably heavier E512/1 ladder"
-)]
 fn box512_secretkey_from_bytes_round_trips_and_rejects_invalid_scalar() {
     let mut secret_ptr: *mut DstuBox512SecretKey = ptr::null_mut();
     assert_eq!(

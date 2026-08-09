@@ -88,9 +88,11 @@ dstu_secretbox_key_free(key);
 | Module | Functions/types | Notes |
 |---|---|---|
 | `crypto_secretbox` | `dstu_secretbox_key_generate`, `_from_bytes`, `_bytes`, `_free`, `dstu_secretbox_seal`, `_open` | Single-message authenticated encryption. `examples/secretbox.c`. |
-| `crypto_box` | `dstu_box_secretkey_*`, `DstuBoxPublicKey`/`dstu_box_publickey_*`, `dstu_box_seal`, `_open` | Public-key encryption (hybrid via KDF over `hazmat::dstu9041`, D-169). `dstu_box_seal`/`_open` are not memory-bounded — the whole message is held in memory. `examples/box.c`. |
+| `crypto_box` | `dstu_box_secretkey_*`, `DstuBoxPublicKey`/`dstu_box_publickey_*`, `dstu_box_seal`, `_open` | Public-key encryption (hybrid via KDF over `hazmat::dstu9041`, `l(p)=256`, D-169). `dstu_box_seal`/`_open` are not memory-bounded — the whole message is held in memory. `examples/box.c`. |
+| `crypto_box512` | `dstu_box512_secretkey_*`, `DstuBox512PublicKey`/`dstu_box512_publickey_*`, `dstu_box512_seal`, `_open` | `l(p)=512`/E512/1 sibling of `crypto_box` (T-193/T-204). Same not-memory-bounded caveat. `examples/box512.c`. |
 | `crypto_secretstream` | `dstu_secretstream_key_*`, `DstuPushState`/`dstu_secretstream_push_*`, `DstuPullState`/`dstu_secretstream_pull_*`, `DstuTag` | Raw chunked/streaming AEAD push/pull — no idiomatic-C stream wrapper here (a later consumer's own job). `examples/secretstream_file.c`. |
-| `crypto_sign` | `dstu_sign_key_*`, `DstuVerifyingKey`/`dstu_verifying_key_*`, `dstu_sign`, `_digest`, `dstu_verify`, `_digest` | DSTU 4145 digital signatures, deterministic nonce (no RNG dependency for signing). `examples/sign.c`. |
+| `crypto_sign` | `dstu_sign_key_*`, `DstuVerifyingKey`/`dstu_verifying_key_*`, `dstu_sign`, `_digest`, `dstu_verify`, `_digest` | DSTU 4145 `m=163` digital signatures, deterministic nonce (no RNG dependency for signing). `examples/sign.c`. |
+| `crypto_sign257` | `dstu_sign257_key_*`, `DstuVerifyingKey257`/`dstu_verifying_key257_*`, `dstu_sign257`, `_digest`, `dstu_verify257`, `_digest` | `m=257` sibling of `crypto_sign` (T-199/T-204) — the curve real Diia-issued qualified signatures use. Untagged, same as `crypto_sign` — the curve-tag byte lives at the `uacrypt` layer only, D-118. `examples/sign257.c`. |
 | `crypto_pwhash` | `dstu_pwhash_hash_password`, `_verify_password`, `DstuPwhashStrength` | Argon2id (the one deliberately non-DSTU component, D-49/D-50). `examples/misc.c`. |
 | `crypto_auth` | `dstu_auth_key_*`, `dstu_auth`, `_verify` | Keyed message authentication (Kupyna-KMAC). `examples/misc.c`. |
 | `crypto_kdf` | `dstu_kdf_master_key_*`, `dstu_kdf_derive_subkey` | Deterministic subkey derivation. `examples/misc.c`. |
