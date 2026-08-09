@@ -64,9 +64,11 @@ assert(dstu_core_secretbox_open($key, $sealed) === 'a message worth protecting')
 | Module | Functions/classes | Notes |
 |---|---|---|
 | `crypto_secretbox` | `dstu_core_secretbox_keygen`, `_seal`, `_open` | Single-message authenticated encryption. `examples/secretbox.php`. |
-| `crypto_box` | `dstu_core_box_keygen`, `_public_key`, `_seal`, `_open` | Public-key encryption (hybrid via KDF over `hazmat::dstu9041`, D-169). `_seal`/`_open` are not memory-bounded — the whole message is held in memory. `examples/box.php`. |
+| `crypto_box` | `dstu_core_box_keygen`, `_public_key`, `_seal`, `_open` | Public-key encryption (hybrid via KDF over `hazmat::dstu9041`, `l(p)=256`, D-169). `_seal`/`_open` are not memory-bounded — the whole message is held in memory. `examples/box.php`. |
+| `crypto_box512` | `dstu_core_box512_keygen`, `_public_key`, `_seal`, `_open` | `l(p)=512`/E512/1 sibling of `crypto_box` (T-193/T-204). `examples/box512.php`. |
 | `crypto_secretstream` | `dstu_core_secretstream_keygen`, `DstuCoreSecretStreamPushState`, `DstuCoreSecretStreamPullState`, `DstuCoreSecretStreamWriter`, `DstuCoreSecretStreamReader` | Chunked streaming AEAD. `Writer`/`Reader` (`lib/DstuCoreSecretStream.php`, plain PHP over a `resource`, implementing `Iterator`) wire format matches `uacrypt encrypt`/`decrypt` exactly (D-118/D-143). `examples/secretstream-file.php`. |
-| `crypto_sign` | `dstu_core_sign_keygen`, `_verifying_key`, `_message`, `_verify` | DSTU 4145 digital signatures, deterministic nonce (no RNG dependency). `examples/sign.php`. |
+| `crypto_sign` | `dstu_core_sign_keygen`, `_verifying_key`, `_message`, `_verify` | DSTU 4145 `m=163` digital signatures, deterministic nonce (no RNG dependency). `examples/sign.php`. |
+| `crypto_sign257` | `dstu_core_sign257_keygen`, `_verifying_key`, `_message`, `_verify` | `m=257` sibling of `crypto_sign` (T-199/T-204) — the curve real Diia-issued qualified signatures use. `examples/sign257.php`. |
 | `crypto_pwhash` | `dstu_core_pwhash_hash_password`, `_verify_password`, `DSTU_CORE_PWHASH_INTERACTIVE`/`_MODERATE`/`_SENSITIVE` | Argon2id (the one deliberately non-DSTU component, D-49/D-50). `examples/password-hashing.php`. |
 | `crypto_auth` | `dstu_core_auth_keygen`, `dstu_core_auth`, `_auth_verify` | Keyed message authentication (Kupyna-KMAC). `examples/misc.php`. |
 | `crypto_kdf` | `dstu_core_kdf_keygen`, `_derive_subkey` | Deterministic subkey derivation. `examples/misc.php`. |

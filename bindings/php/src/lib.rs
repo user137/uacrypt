@@ -19,6 +19,7 @@
 #![cfg_attr(windows, feature(abi_vectorcall))]
 
 mod auth;
+mod box512;
 mod crypto_box;
 mod error;
 mod generichash;
@@ -28,6 +29,7 @@ mod randombytes;
 mod secretbox;
 mod secretstream;
 mod sign;
+mod sign257;
 mod stream;
 mod util;
 
@@ -79,8 +81,10 @@ pub fn module(module: ModuleBuilder) -> ModuleBuilder {
 
     let module = error::register(module);
     let module = crypto_box::register(module);
+    let module = box512::register(module);
     let module = secretbox::register(module);
     let module = sign::register(module);
+    let module = sign257::register(module);
     let module = auth::register(module);
     let module = kdf::register(module);
     let module = generichash::register(module);
