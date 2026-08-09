@@ -41,9 +41,11 @@ correctness/rejection/misuse suite each surface is verified against (D-64/D-65).
 | Type | Members | Notes |
 |---|---|---|
 | `SecretBox` | `keygen`, `seal`, `open` | Single-message authenticated encryption. `examples secretbox`. |
-| `Box` | `keygen`, `publicKey`, `seal`, `open` | Public-key encryption (hybrid via KDF over `hazmat::dstu9041`, D-169). `seal`/`open` are not memory-bounded — the whole message is held in memory. `examples box`. |
+| `Box` | `keygen`, `publicKey`, `seal`, `open` | Public-key encryption (hybrid via KDF over `hazmat::dstu9041`, `l(p)=256`, D-169). `seal`/`open` are not memory-bounded — the whole message is held in memory. `examples box`. |
+| `Box512` | Same members as `Box` | `l(p)=512`/E512/1 sibling of `crypto_box` (T-193/T-204) — distinct class, not interchangeable. `examples box512`. |
 | `SecretStream`, `SecretStreamEncryptor`, `SecretStreamDecryptor` | `keygen`; `OutputStream`/`InputStream` subclasses | Chunked streaming AEAD. Wire format matches `uacrypt encrypt`/`decrypt` exactly (D-118). `close()` deliberately never emits the `Final` chunk — call `complete()` explicitly on the success path; see the class doc comment. `examples secretstream-file`. |
-| `Sign` | `keygen`, `verifyingKey`, `sign`, `verify` | DSTU 4145 digital signatures, deterministic nonce (no RNG dependency). `examples sign`. |
+| `Sign` | `keygen`, `verifyingKey`, `sign`, `verify` | DSTU 4145 `m=163` digital signatures, deterministic nonce (no RNG dependency). `examples sign`. |
+| `Sign257` | Same members as `Sign` | `m=257` sibling of `crypto_sign` (T-199/T-204) — the curve real Diia-issued qualified signatures use. Distinct class, untagged (curve dispatch stays a `uacrypt`-layer concern, D-118). `examples sign257`. |
 | `Pwhash`, `PwhashStrength` | `hashPassword`, `verifyPassword`, `{INTERACTIVE,MODERATE,SENSITIVE}` | Argon2id (the one deliberately non-DSTU component, D-49/D-50). `examples password-hashing`. |
 | `Auth` | `keygen`, `auth`, `verify` | Keyed message authentication (Kupyna-KMAC). `examples misc`. |
 | `Kdf` | `keygen`, `deriveSubkey` | Deterministic subkey derivation. `examples misc`. |
@@ -70,7 +72,7 @@ mvn compile
 javac -cp target/classes -d target/examples-classes examples/*.java
 java -cp "target/classes;target/examples-classes" Main secretbox          # Windows (`;` separator)
 java -cp "target/classes:target/examples-classes" Main secretbox          # Linux/macOS (`:` separator)
-# ... box, secretstream-file, sign, password-hashing, misc
+# ... box, box512, secretstream-file, sign, sign257, password-hashing, misc
 ```
 
 ## Packaging

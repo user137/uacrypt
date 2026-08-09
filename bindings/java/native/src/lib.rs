@@ -21,6 +21,7 @@
 #![allow(non_snake_case)]
 
 mod auth;
+mod box512;
 mod crypto_box;
 mod generichash;
 mod kdf;
@@ -30,5 +31,6 @@ mod secretbox;
 mod secretstream;
 mod selftest;
 mod sign;
+mod sign257;
 mod stream;
 mod util;
