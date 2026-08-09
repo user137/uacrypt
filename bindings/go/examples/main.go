@@ -1,5 +1,6 @@
 // Run: go run . <example>
-// where <example> is one of: secretbox, box, secretstream-file, sign, password-hashing, misc
+// where <example> is one of: secretbox, box, box512, secretstream-file, sign, sign257,
+// password-hashing, misc
 package main
 
 import (
@@ -9,7 +10,7 @@ import (
 
 func main() {
 	if len(os.Args) != 2 {
-		fmt.Fprintln(os.Stderr, "usage: go run . <secretbox|box|secretstream-file|sign|password-hashing|misc>")
+		fmt.Fprintln(os.Stderr, "usage: go run . <secretbox|box|box512|secretstream-file|sign|sign257|password-hashing|misc>")
 		os.Exit(1)
 	}
 
@@ -19,10 +20,14 @@ func main() {
 		err = runSecretbox()
 	case "box":
 		err = runBox()
+	case "box512":
+		err = runBox512()
 	case "secretstream-file":
 		err = runSecretstreamFile()
 	case "sign":
 		err = runSign()
+	case "sign257":
+		err = runSign257()
 	case "password-hashing":
 		err = runPasswordHashing()
 	case "misc":

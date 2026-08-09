@@ -9,7 +9,12 @@ const (
 	BoxPublicKeyBytes = int(C.DSTU_BOX_PUBLICKEY_BYTES)
 	// BoxSealOverhead is the 128-byte KEM ciphertext + 32-byte secretstream header + 16-byte tag
 	// added by BoxPublicKey.Seal.
-	BoxSealOverhead     = int(C.DSTU_BOX_SEAL_OVERHEAD)
+	BoxSealOverhead      = int(C.DSTU_BOX_SEAL_OVERHEAD)
+	Box512SecretKeyBytes = int(C.DSTU_BOX512_SECRETKEY_BYTES)
+	Box512PublicKeyBytes = int(C.DSTU_BOX512_PUBLICKEY_BYTES)
+	// Box512SealOverhead is the 256-byte KEM ciphertext + 32-byte secretstream header + 16-byte
+	// tag added by Box512PublicKey.Seal - the l(p)=512 sibling of BoxSealOverhead.
+	Box512SealOverhead  = int(C.DSTU_BOX512_SEAL_OVERHEAD)
 	AuthKeyBytes        = int(C.DSTU_AUTH_KEY_BYTES)
 	AuthTagBytes        = int(C.DSTU_AUTH_TAG_BYTES)
 	GenericHash256Bytes = int(C.DSTU_GENERICHASH_256_BYTES)
@@ -29,6 +34,10 @@ const (
 	SignPublicKeyBytes      = int(C.DSTU_SIGN_PUBLIC_KEY_BYTES)
 	SignSignatureBytes      = int(C.DSTU_SIGN_SIGNATURE_BYTES)
 	SignDigestBytes         = int(C.DSTU_SIGN_DIGEST_BYTES)
+	Sign257PrivateKeyBytes  = int(C.DSTU_SIGN257_PRIVATE_KEY_BYTES)
+	Sign257PublicKeyBytes   = int(C.DSTU_SIGN257_PUBLIC_KEY_BYTES)
+	Sign257SignatureBytes   = int(C.DSTU_SIGN257_SIGNATURE_BYTES)
+	Sign257DigestBytes      = int(C.DSTU_SIGN257_DIGEST_BYTES)
 	StreamKeyBytes          = int(C.DSTU_STREAM_KEY_BYTES)
 	// StreamOverhead is the 32-byte IV added by StreamCipherKey.Encrypt - no tag, unauthenticated.
 	StreamOverhead = int(C.DSTU_STREAM_OVERHEAD)
