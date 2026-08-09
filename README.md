@@ -1,7 +1,7 @@
 # uacrypt
 
 <!-- uacrypt-version: 0.3.0 -->
-**v0.3.0 — released 2026-08-09, first crates.io publish (`dstu-core` only — see
+**v0.3.0 — released 2026-08-09, first crates.io publish (`dstu-core` and `uacrypt` — see
 `docs/CHANGELOG.md`), still work in progress.** Not a complete library or CLI yet, not audited, not
 production-ready, and **not a claim of side-channel resistance**. Core primitives (Kalyna, Kupyna)
 are dual-oracle-verified against official test vectors; Strumok and the Kalyna-CCM mode are

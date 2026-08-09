@@ -7,14 +7,15 @@ All notable changes to this project are documented in this file. Format follows
 
 ## [0.3.0] - 2026-08-09
 
-**First crates.io publish** (`docs/TASKS.md` T-17) - `dstu-core` only; `uacrypt` stays GitHub
-Releases-only for now (prebuilt binaries are already the better distribution path for that
-persona, `cargo install` would only offer a from-source build). This does not change the project's
-own honesty posture: still pre-1.0, still not independently audited, and the headline provisional
-gaps tracked in `docs/release-readiness.md` (D-05's Kalyna-alone AEAD assumption and Strumok's
-vectors, both not yet confirmed against their primary DSTU texts) are unchanged by this release -
-see that document and `docs/DECISIONS.md` for the full standing caveats, repeated here exactly as
-prominently as 0.2.0's own notes did below.
+**First crates.io publish** (`docs/TASKS.md` T-17, `docs/DECISIONS.md` D-114) - both `dstu-core`
+and `uacrypt`, completing the `publish-crates` CI job D-114 wired in for this exact tag. `uacrypt`
+also stays available prebuilt via GitHub Releases as before - `cargo install uacrypt` is now an
+additional option, not a replacement. This does not change the project's own honesty posture:
+still pre-1.0, still not independently audited, and the headline provisional gaps tracked in
+`docs/release-readiness.md` (D-05's Kalyna-alone AEAD assumption and Strumok's vectors, both not
+yet confirmed against their primary DSTU texts) are unchanged by this release - see that document
+and `docs/DECISIONS.md` for the full standing caveats, repeated here exactly as prominently as
+0.2.0's own notes did below.
 
 ### Added
 
