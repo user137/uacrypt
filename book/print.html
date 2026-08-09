@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-d01d0802.js";
+            window.path_to_searchindex_js = "searchindex-778ad753.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-ce7e91c5.js"></script>
@@ -181,7 +181,7 @@
                         <h1 id="introduction"><a class="header" href="#introduction">Introduction</a></h1>
 <h1 id="uacrypt"><a class="header" href="#uacrypt">uacrypt</a></h1>
 <!-- uacrypt-version: 0.3.0 -->
-<p><strong>v0.3.0 — released 2026-08-09, first crates.io publish (<code>dstu-core</code> only — see
+<p><strong>v0.3.0 — released 2026-08-09, first crates.io publish (<code>dstu-core</code> and <code>uacrypt</code> — see
 <code>docs/CHANGELOG.md</code>), still work in progress.</strong> Not a complete library or CLI yet, not audited, not
 production-ready, and <strong>not a claim of side-channel resistance</strong>. Core primitives (Kalyna, Kupyna)
 are dual-oracle-verified against official test vectors; Strumok and the Kalyna-CCM mode are
@@ -4553,7 +4553,7 @@ mdBook for the existing <code>docs/*.md</code> corpus, plus a mandatory <code>ca
 </li>
 </ul>
 <!-- uacrypt-version: 0.3.0 -->
-<p><strong>v0.3.0 — released 2026-08-09, first crates.io publish (<code>dstu-core</code> only — see
+<p><strong>v0.3.0 — released 2026-08-09, first crates.io publish (<code>dstu-core</code> and <code>uacrypt</code> — see
 <code>docs/CHANGELOG.md</code>), still work in progress.</strong> Not a complete library or CLI yet, not audited, not
 production-ready, and <strong>not a claim of side-channel resistance</strong>. Core primitives (Kalyna, Kupyna)
 are dual-oracle-verified against official test vectors; Strumok and the Kalyna-CCM mode are
@@ -26532,14 +26532,15 @@ safe).</p>
 <a href="https://keepachangelog.com/en/1.1.0/">Keep a Changelog</a>.</p>
 <h2 id="unreleased"><a class="header" href="#unreleased">[Unreleased]</a></h2>
 <h2 id="030---2026-08-09"><a class="header" href="#030---2026-08-09">[0.3.0] - 2026-08-09</a></h2>
-<p><strong>First crates.io publish</strong> (<code>docs/TASKS.md</code> T-17) - <code>dstu-core</code> only; <code>uacrypt</code> stays GitHub
-Releases-only for now (prebuilt binaries are already the better distribution path for that
-persona, <code>cargo install</code> would only offer a from-source build). This does not change the project’s
-own honesty posture: still pre-1.0, still not independently audited, and the headline provisional
-gaps tracked in <code>docs/release-readiness.md</code> (D-05’s Kalyna-alone AEAD assumption and Strumok’s
-vectors, both not yet confirmed against their primary DSTU texts) are unchanged by this release -
-see that document and <code>docs/DECISIONS.md</code> for the full standing caveats, repeated here exactly as
-prominently as 0.2.0’s own notes did below.</p>
+<p><strong>First crates.io publish</strong> (<code>docs/TASKS.md</code> T-17, <code>docs/DECISIONS.md</code> D-114) - both <code>dstu-core</code>
+and <code>uacrypt</code>, completing the <code>publish-crates</code> CI job D-114 wired in for this exact tag. <code>uacrypt</code>
+also stays available prebuilt via GitHub Releases as before - <code>cargo install uacrypt</code> is now an
+additional option, not a replacement. This does not change the project’s own honesty posture:
+still pre-1.0, still not independently audited, and the headline provisional gaps tracked in
+<code>docs/release-readiness.md</code> (D-05’s Kalyna-alone AEAD assumption and Strumok’s vectors, both not
+yet confirmed against their primary DSTU texts) are unchanged by this release - see that document
+and <code>docs/DECISIONS.md</code> for the full standing caveats, repeated here exactly as prominently as
+0.2.0’s own notes did below.</p>
 <h3 id="added"><a class="header" href="#added">Added</a></h3>
 <ul>
 <li><code>hazmat::dstu9041</code>: DSTU 9041:2020 hybrid (ECIES-style) asymmetric encryption over a twisted
