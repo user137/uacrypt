@@ -290,20 +290,20 @@ html[data-lang="uk"] [lang="en"]{display:none;}
   </div>
 
   <div class="status-note">
-    <!-- uacrypt-version: 0.2.0 -->
-    <p lang="en"><strong>v0.2.0 — released 2026-08-02.</strong> DSTU 9041 / <code>crypto_box</code>
-    below is implemented on <code>master</code> but not yet in a tagged release — check
-    <a href="https://github.com/user137/uacrypt/releases">GitHub Releases</a> before assuming a
-    downloaded binary has it. Kalyna and Kupyna are dual-oracle verified: official DSTU test
+    <!-- uacrypt-version: 0.3.0 -->
+    <p lang="en"><strong>v0.3.0 — released 2026-08-09.</strong> First published to
+    <a href="https://crates.io/crates/dstu-core">crates.io</a> (<code>dstu-core</code> only — see
+    <a href="https://github.com/user137/uacrypt/blob/master/docs/CHANGELOG.md">docs/CHANGELOG.md</a>).
+    Kalyna and Kupyna are dual-oracle verified: official DSTU test
     vectors, cross-checked against real Bouncy Castle. Strumok, the Kalyna-CCM/GCM modes, and the
     CLI's AEAD framing each carry their own, more specific status below — read those before
     trusting a claim at face value. Not independently audited. Not a claim of resistance to
     hardware side-channel attacks (SPA/DPA) — that needs a separate, dedicated hardware audit this
     project hasn't had.</p>
-    <p lang="uk"><strong>v0.2.0 — реліз від 2026-08-02.</strong> ДСТУ 9041 / <code>crypto_box</code>
-    нижче реалізовано на <code>master</code>, але ще не увійшло до жодного тегованого релізу —
-    перевірте <a href="https://github.com/user137/uacrypt/releases">GitHub Releases</a>, перш ніж
-    припускати, що завантажений бінарник це має. Калина і Купина верифіковані за принципом
+    <p lang="uk"><strong>v0.3.0 — реліз від 2026-08-09.</strong> Вперше опубліковано на
+    <a href="https://crates.io/crates/dstu-core">crates.io</a> (лише <code>dstu-core</code> — див.
+    <a href="https://github.com/user137/uacrypt/blob/master/docs/CHANGELOG.md">docs/CHANGELOG.md</a>).
+    Калина і Купина верифіковані за принципом
     подвійного оракула: офіційні тестові вектори ДСТУ, звірені з реальною Bouncy Castle. Струмок,
     режими Kalyna-CCM/GCM та AEAD-обгортка CLI мають власні, детальніші статуси нижче — варто
     прочитати їх, а не довіряти узагальненню на слово. Незалежного аудиту немає. Це не заява про
@@ -858,8 +858,7 @@ uacrypt box-open   --key box.key  --in sealed.box   --out message.bin</code></pr
   <span class="eyebrow" lang="en">Status</span>
   <span class="eyebrow" lang="uk">Статус</span>
   <div lang="en" class="prose"><h2>Where this stands, and what's next</h2>
-  <p>v0.2.0 released; DSTU 9041/<code>crypto_box</code> landed on <code>master</code> since, not
-  yet in a tagged release. The phase-by-phase backlog lives in
+  <p>v0.3.0 released, first published to crates.io (<code>dstu-core</code> only). The phase-by-phase backlog lives in
   <a href="https://github.com/user137/uacrypt/blob/master/docs/TASKS.md">docs/TASKS.md</a>, the
   full gap analysis against a libsodium-equivalent 1.0 in
   <a href="https://github.com/user137/uacrypt/blob/master/docs/release-readiness.md">docs/release-readiness.md</a>,
@@ -867,8 +866,7 @@ uacrypt box-open   --key box.key  --in sealed.box   --out message.bin</code></pr
   <a href="https://github.com/user137/uacrypt/blob/master/docs/DECISIONS.md">docs/DECISIONS.md</a>.
   Dual-licensed MIT / Apache-2.0, the Rust ecosystem default.</p></div>
   <div lang="uk" class="prose"><h2>Де зараз проєкт і що далі</h2>
-  <p>v0.2.0 випущено; ДСТУ 9041/<code>crypto_box</code> з'явилися пізніше на <code>master</code>,
-  ще не увійшли до жодного тегованого релізу. Беклог по фазах — у
+  <p>v0.3.0 випущено, вперше опубліковано на crates.io (лише <code>dstu-core</code>). Беклог по фазах — у
   <a href="https://github.com/user137/uacrypt/blob/master/docs/TASKS.md">docs/TASKS.md</a>,
   повний аналіз розриву до рівня, еквівалентного libsodium 1.0, — у
   <a href="https://github.com/user137/uacrypt/blob/master/docs/release-readiness.md">docs/release-readiness.md</a>,
