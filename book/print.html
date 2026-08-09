@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-9075ae49.js";
+            window.path_to_searchindex_js = "searchindex-ef91bb4e.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-ce7e91c5.js"></script>
@@ -4179,6 +4179,48 @@ CI reconciliation (`docs/SECURITY.md` gains a "CLI/binary" mention, `docs/TASKS.
 Each phase should be a real, independently landable state, not a partial step waiting on the
 rest - same discipline T-199 itself just used successfully. No committed timeline; owner
 prioritizes which phase starts first.
+</code></pre>
+</li>
+<li>
+<p><input disabled="" type="checkbox"> <strong>T-201</strong> <strong>Not started, owner-requested (2026-08-09) - PKCS#11 (Cryptoki) support, as a
+separate sibling project, not part of this repository.</strong> <code>docs/DECISIONS.md</code> D-17 already
+excludes PKCS#11/12 from this project’s own scope explicitly (“the layer above crypto
+primitives… not this project’s job” - this repo is a libsodium-style primitives library,
+not a PKI/token-integration SDK, same reasoning that keeps ASN.1/X.509/CSR/browser-signing
+out too). Raised again directly by the owner asking to add a task for “safe/secure
+implementation” of PKCS#11; clarified in conversation that this means a new, separate
+repository that <em>depends on</em> this project, not a scope change to D-17 itself - consistent
+with D-17’s own “not acted on now, noted for later” aside about a future C-ABI-consuming PKI
+stack.</p>
+<pre><code>**The actual connection point already exists and needs no new work here**: `crates/
+dstu-core-capi` (D-119/D-148, T-158) already ships a stable C ABI - opaque handles, explicit
+`DstuStatus` error codes, `catch_unwind` at every boundary, zeroize-on-free, a `cbindgen`-
+generated `include/dstu_core.h`. A PKCS#11 module would link against the built `dstu_core`
+`.so`/`.dylib`/`.dll` exactly the way the .NET/Go/C++ bindings already do (`docs/
+bindings-strategy.md`), not reimplement Kalyna/Kupyna/Strumok/DSTU 4145/DSTU 9041.
+
+**What a PKCS#11 module actually is, so this isn't scoped naively**: mostly *not* crypto math
+- it's the Cryptoki C interface itself (`C_Initialize`/`C_GetSlotList`/`C_OpenSession`/
+`C_Login`/`C_Sign`/`C_Decrypt`/... - the full function table PKCS#11 v2.40/v3.0 mandates),
+plus session/slot/object/attribute-handle management, plus - the genuinely security-critical
+part the owner's "safe implementation" framing is really about - private-key custody:
+- **Real hardware/token backing** (a smart card, USB token, HSM): the private key never
+  leaves the device at all: this project's own primitives are used for the *public*-facing
+  operations (verify, maybe host-side hashing before a sign request), not for holding the
+  secret.
+- **Software-emulated token** (no real hardware, PKCS#11 as a local API shim): must honor
+  `CKA_SENSITIVE`/`CKA_EXTRACTABLE=false` for real, not just accept the attribute and ignore
+  it - the key material must not be exportable through the API surface even though it lives
+  in this process's own memory. Needs its own threat model pass (this repo's `docs/
+  SECURITY.md` pattern is the template, not a copy of it): PIN handling/rate-limiting, secure
+  erasure on session close, and being explicit that "software PKCS#11" is a weaker guarantee
+  than real hardware - never marketed as equivalent.
+
+**Explicitly not scoped here beyond this pointer**: no design for the new repo's own
+architecture, module layout, or implementation plan - that's real work for when this task is
+actually picked up, likely its own `advisor()`-reviewed plan given the security stakes (D-17's
+own "ask, don't guess" standard for scope forks with no settling citation applies just as much
+to a new sibling project's design as to a change inside this one). No committed timeline.
 </code></pre>
 </li>
 <li>
@@ -25916,6 +25958,20 @@ pair of <code>dstu9041</code> modules existed simultaneously to trigger CPD befo
 <p>Re-check this exclusion’s continued justification if <code>l(p)=384</code> is ever added (a third sibling set)
 or if a future generic-merge refactor is ever undertaken for unrelated reasons - don’t assume this
 decision is permanent, it was scoped to “not now,” not “never.”</p>
+<p><strong>Follow-up (2026-08-09, T-200’s own post-push CI check)</strong>: exactly the re-check this entry’s own
+closing paragraph anticipated, just from a different sibling pair than the one named. T-199’s push
+(m=257, <code>hazmat::dstu4145</code>) failed the same gate the same way - 8.5% density, 863 of 1082 new
+duplicated lines traced via <code>api/measures/component_tree</code> to <code>gf2m257.rs</code>/<code>gf2m163.rs</code>/
+<code>curve257.rs</code>/<code>curve163.rs</code>/<code>scalar257.rs</code>/<code>scalar.rs</code>/<code>crypto_sign257.rs</code>/<code>crypto_sign.rs</code> - the
+exact same “deliberate byte/field-width sibling, independently derived and test-vector-verified”
+shape this entry’s own reasoning already covers, just one level up (m=163/m=257 instead of
+<code>l(p)=256</code>/<code>l(p)=512</code>), missed when <code>sonar.cpd.exclusions</code> was written because that pair didn’t
+exist yet at T-192’s time. Fixed the same way: added to the exclusion list, not refactored into a
+shared generic, same rejection reasoning as above. <strong>The general lesson, not file-specific</strong>: any
+future per-size/per-width sibling module pair in this project (a pattern already established for
+Kalyna’s block-size variants, DSTU 4145’s curves, and DSTU 9041’s field sizes) will very likely
+retrigger this exact gate on its first push and needs the same treatment - check
+<code>sonar.cpd.exclusions</code> proactively when adding one, don’t wait for CI to catch it.</p>
 <h2 id="d-182-t-193-phase-0---crypto_box512s-seed-uses-a-fixed-32-byte256-bit-width-not-lp512s-full-424-bit-kem-capacity"><a class="header" href="#d-182-t-193-phase-0---crypto_box512s-seed-uses-a-fixed-32-byte256-bit-width-not-lp512s-full-424-bit-kem-capacity">D-182: T-193 Phase 0 - <code>crypto_box512</code>’s seed uses a fixed 32-byte/256-bit width, not <code>l(p)=512</code>’s full 424-bit KEM capacity</a></h2>
 <p><code>crypto_box.rs</code>’s <code>embed_seed</code> (<code>embedded[32 - SEED_LEN..]</code>, <code>SEED_LEN = L_MAX_P/8 = 25</code> at
 <code>l(p)=256</code>) does not generalize to <code>l(p)=512</code>: <code>L_MAX_P512 = 424</code> bits / <code>SEED_LEN512 = 53</code> bytes
