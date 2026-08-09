@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-e5a59ae1.js";
+            window.path_to_searchindex_js = "searchindex-3dfd1ea4.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-ce7e91c5.js"></script>
@@ -4233,22 +4233,149 @@ for primitives, applied here to release infrastructure instead.
 </code></pre>
 </li>
 <li>
-<p><input disabled="" type="checkbox"> <strong>T-204</strong> <strong>Not started, found this session (2026-08-09) auditing binding coverage after the
-owner asked directly whether the new signature curve reached the bindings.</strong> <code>crypto_sign257</code>
-(DSTU 4145 <code>m=257</code>, T-199, landed 2026-08-08) is <strong>not wired into any of the eight language
-bindings or <code>dstu-core-capi</code></strong> - confirmed by grepping actual binding source (not build
-artifacts) for <code>sign257</code>/<code>Sign257</code>/<code>m257</code> across <code>bindings/</code>: the only three hits were stale
-<code>.d</code> dependency-file paths under <code>target/debug</code>/<code>target/release</code> build output, zero real
-wrapper code in any binding or in <code>crates/dstu-core-capi/src</code>. This is the same shape of gap
-already flagged for <code>crypto_box512</code> (DSTU 9041 <code>l(p)=512</code>, T-193’s own scope note: “binding/
-capi wiring for <code>crypto_box512</code> … separate future task”) - that note had no task number
-assigned either, so both newer primitives are tracked together here rather than as two
-separate half-tracked gaps. <strong>Scope, once picked up</strong>: extend every binding’s existing
-<code>crypto_sign</code>/<code>crypto_box</code> wrapper pattern (T-181’s own precedent for how <code>crypto_box</code> reached
-all eight in one pass) to also cover <code>crypto_sign257</code>/<code>crypto_box512</code> - <code>dstu-core-capi</code> first
-(the foundation <code>.NET</code>/Go/C++ link against directly), then the five direct-Rust bindings
-(Python/Node/Ruby/PHP/Java). Not started; no committed timeline, owner prioritizes against
-T-203 above.</p>
+<p><input disabled="" type="checkbox" checked=""> <strong>T-204</strong> <strong>Closed 2026-08-09/10, same session, three phases.</strong> Found this session auditing binding coverage after the owner asked directly whether
+the new signature curve reached the bindings. <code>crypto_sign257</code> (DSTU 4145 <code>m=257</code>, T-199,
+landed 2026-08-08) was <strong>not wired into any of the eight language bindings or
+<code>dstu-core-capi</code></strong> - confirmed by grepping actual binding source (not build artifacts) for
+<code>sign257</code>/<code>Sign257</code>/<code>m257</code> across <code>bindings/</code>: the only three hits were stale <code>.d</code>
+dependency-file paths under <code>target/debug</code>/<code>target/release</code> build output, zero real wrapper
+code in any binding or in <code>crates/dstu-core-capi/src</code>. This was the same shape of gap already
+flagged for <code>crypto_box512</code> (DSTU 9041 <code>l(p)=512</code>, T-193’s own scope note: “binding/capi
+wiring for <code>crypto_box512</code> … separate future task”) - that note had no task number assigned
+either, so both newer primitives were tracked together here rather than as two separate
+half-tracked gaps.</p>
+<pre><code>**`dstu-core-capi` phase done 2026-08-09**, following T-181's own `crypto_box`-to-all-eight
+precedent for shape (mirror the sibling module, don't invent a new one) and D-148's existing
+capi conventions throughout: `crates/dstu-core-capi/src/sign257.rs` (`dstu_sign257_*`/
+`dstu_verify257_*`, 33/66/66/32-byte constants, untagged - the curve-tag dispatch stays a
+`uacrypt`-layer-only concern per `crypto_sign257`'s own module doc, not duplicated into the C
+ABI, the D-118 lesson) and `crates/dstu-core-capi/src/box512.rs` (`dstu_box512_*`, 64/64-byte
+keys, `DSTU_BOX512_SEAL_OVERHEAD = 304` - confirmed against `crypto_box512::open`'s own
+`MIN_LEN`, not assumed from module-doc prose). No new `DstuStatus` variant needed for either -
+`DSTU_ERR_INVALID_KEY`/`NULL_POINTER`/`RANDOM`/`TRUNCATED`/`BUFFER_TOO_SMALL`/`TAG_MISMATCH`
+already cover both, `box512::OpenError::InvalidCiphertext` reusing `TAG_MISMATCH` exactly like
+`crypto_box.rs`'s own top doc comment argues. `box512.rs` (not `crypto_box512.rs`) matches
+`crypto_box.rs`'s dropped-`crypto_`-prefix file/symbol convention for consistency, even though
+`box512` isn't a reserved keyword the way bare `box` is - a deliberate choice, not a coin
+flip, recorded in the module's own top doc comment. Verified: both modules registered in
+`lib.rs`; D-64/D-65 rejection+misuse Rust FFI tests added to `tests/ffi_tests.rs` (8 new tests
+- tampered sealed blob, wrong key, NULL handles, `sealed_len &lt; overhead`, buffer-too-small,
+zero-scalar/degenerate-point key rejection; `cargo test -p dstu-core-capi --release` 26/26
+pass); C-level `test_sign257`/`test_box512` added to `c-tests/test_capi.c` plus new
+`examples/sign257.c`/`examples/box512.c`, `xtask/src/main.rs`'s `CAPI_EXAMPLES` list extended
+to 7 (the sync point CLAUDE.md's own agent-discipline section warns is easy to miss) -
+`cargo xtask capi` passes end-to-end including the header-freshness diff (`include/dstu_core.h`
+regenerated and committed). `cargo clippy --all-features --all-targets -- -D warnings` and
+`cargo fmt --check` both clean. New scalar-multiply-heavy Rust FFI tests carry
+`#[cfg_attr(miri, ignore)]` (m=257 mirroring T-100/D-59's m=163 precedent; `l(p)=512`
+similarly, since it's roughly double `crypto_box`'s own `l(p)=256` width and that primitive's
+own capi tests are already an accepted, untimed cost) - **actual Miri wall-clock time for
+these two new suites has not been separately measured this session** (a full
+`cargo +nightly miri test --workspace` run is tens of minutes to hours; not run here), flagged
+as an open verification item rather than assumed safe.
+
+**Phase 2 (.NET/Go/C++) done 2026-08-09, same session, per owner's "продовжуй до кінця
+реалізуй для всіх мов" go-ahead.** Chosen order deliberately reversed from this entry's
+original text (advisor review: these three link `dstu-core-capi` directly, the exact surface
+Phase 1 just proved end-to-end via `xtask capi`, vs. the five direct-Rust bindings each
+needing a different macro system - front-load what's already de-risked). Each mirrors its
+own binding's existing `Box`/`Sign` (or `BoxSecretKey`/`SigningKey`, per binding) wrapper
+shape exactly, distinct types, no curve-tag byte (D-118):
+- **.NET**: `Box512.cs`/`Sign257.cs` (`Box512SecretKey`/`Box512PublicKey`,
+  `SigningKey257`/`VerifyingKey257`), `NativeMethods.cs`/`NativeHandles.cs` P/Invoke +
+  `SafeHandle` entries, `DstuConstants.cs` sizes. `Box512Tests.cs`/`Sign257Tests.cs` (18 new
+  `[Fact]`s) - `dotnet test` 86/86 pass; `dotnet format --verify-no-changes` clean;
+  `Box512Example.cs`/`Sign257Example.cs` added to `Program.cs`'s dispatch, both run
+  successfully. SDK-style `.csproj` globs `*.cs` automatically - no project-file sync point.
+- **Go**: `box512.go`/`sign257.go` (cgo against `dstu_core.h` directly, no hand-copied
+  prototypes to drift - confirmed reading `box.go`/`sign.go` first), `constants.go` sizes
+  pulled straight from the C header's own macros. `box512_test.go`/`sign257_test.go` (18 new
+  test functions) - `go vet`/`gofmt -l` clean, `go test ./...` full suite passes;
+  `examples/box512.go`/`sign257.go` wired into `examples/main.go`'s dispatch, both run.
+- **C++**: `include/dstu/box512.hpp`/`sign257.hpp` (header-only, RAII move-only, mirrors
+  `box.hpp`/`sign.hpp`), added to the `dstu.hpp` umbrella include, `constants.hpp` sizes.
+  `TestBox512`/`TestSign257` added to the single shared `tests/test_dstu.cpp` (no per-binding
+  test-file split in this binding) and called from `main()`; `CMakeLists.txt`'s example
+  `foreach` list extended (`box512`/`sign257`, the sync point most likely to be missed
+  silently, per advisor review - a name absent from that list just never builds, no error).
+  `cmake --build` + `ctest` clean (1/1), both new example executables verified to run.
+
+Per-binding doc sweep done alongside each commit (not deferred): `dstu-core-capi/README.md`'s
+own gap (found only because it was actually opened and read, not assumed current, per
+advisor's earlier-round finding) plus each of `.NET`/Go/C++'s own `README.md` module table.
+
+**Phase 3 (Python/Node.js/Ruby/Java/PHP) done 2026-08-10, same session.** The five direct-Rust
+bindings each needed their own macro-system wrapper (pyo3/napi-rs/magnus/jni/ext-php-rs) - same
+mirror-the-sibling-module discipline, same distinct-type/no-curve-tag rule (D-118), each with
+its own new test file (D-64/D-65 correctness/rejection/misuse, not the primitive-level suite,
+which already lives in `dstu-core` for both primitives):
+- **Python**: `src/box512.rs`/`sign257.rs` (plain `bytes` across the boundary, matching every
+  other function in this crate), registered in `lib.rs` and re-exported through
+  `python/dstu_core/__init__.py`'s import/`__all__` lists (a sync point the capi-linked
+  bindings don't have). `tests/test_box512.py`/`test_sign257.py` - 87/87 pytest pass (18 new);
+  `cargo fmt`/`clippy` clean; both examples run.
+- **Node.js**: `src/box512.rs`/`sign257.rs` (napi `Buffer`, explicit `js_name` camelCase per
+  D-126's own precedent), registered via `pub use` in `lib.rs` (napi-rs generates
+  `js/index.js`/`.d.ts` at build time, no hand-written index to sync).
+  `test/box512.test.js`/`sign257.test.js` - 82/82 `node --test` pass (18 new); `cargo fmt`/
+  `clippy` clean; both examples run.
+- **Ruby**: `ext/dstu_core_rb/src/box512.rs`/`sign257.rs` (magnus `RString`), registered via
+  `define_singleton_method` in `lib.rs`. Hit the same previously-diagnosed `rb-sys`/`libclang`
+  build failure this session's own background `cargo xtask ci` run had already hit
+  (`strings.h` not found) - **already had a documented fix** (`.claude.local.md`,
+  `LIBCLANG_PATH` pointed at the MSYS2 ucrt64 clang, found during T-160/D-133) that just
+  wasn't exported in this shell; applying it unblocked a full real verification, not a
+  written-but-unverified phase. `spec/box512_spec.rb`/`sign257_spec.rb` - 88/88 rspec pass
+  (18 new), rubocop clean, `cargo fmt`/`clippy` clean, both examples run.
+- **Java**: `native/src/box512.rs`/`sign257.rs` (JNI `byte[]`, `Java_ua_dstucrypto_dstucore_*`
+  symbol naming per this binding's own no-underscore-in-names convention), new
+  `Box512`/`Sign257` Java classes. `src/test/java/.../Box512Test.java`/`Sign257Test.java` -
+  86/86 `mvn test` pass (18 new); both examples run. `native/Cargo.lock` was still pinned to
+  `dstu-core` 0.2.0 - this session's earlier crates.io-publish version bump never touched this
+  separate workspace (D-119) - regenerated as a byproduct. `cargo clippy --all-targets` in
+  this workspace pre-existingly fails on unrelated `dstu-core` hazmat benchmark code
+  (`gf2m_wide.rs`/`tables.rs`) - reproduced via `git stash` against master *before* this
+  change too, so a pre-existing gap, not a T-204 regression; opened as **T-205**, not fixed
+  here (out of scope, and `cargo clippy` without `--all-targets` on this crate's own code is
+  clean).
+- **PHP**: `src/box512.rs`/`sign257.rs` (`ext_php_rs::binary::Binary&lt;u8&gt;`,
+  `dstu_core_*`-prefixed flat naming). **Found and fixed a real `ext-php-rs` pitfall**:
+  `#[php_function]`'s default `RenameRule::Snake` splits a letter/digit boundary, so
+  `dstu_core_box512_keygen` silently registered as PHP-callable `dstu_core_box_512_keygen`
+  instead - caught by an actual `function_exists()`/`get_extension_funcs()` check after the
+  first build, not assumed from reading the derive macro's source, then fixed with an
+  explicit `#[php(name = "dstu_core_box512_keygen")]` override on all 8 new functions (same
+  override the derive macro itself supports for exactly this case, confirmed by reading
+  `ext-php-rs-derive`'s own source, not guessed). `tests/Box512Test.php`/`Sign257Test.php` -
+  88/88 phpunit pass (18 new), `cargo fmt`/`clippy` clean, both examples run. PHP itself
+  turned out to already be installed on this machine (`C:\Users\Pa\tools\php83`, T-159's own
+  setup) - just not on `PATH` in this shell, matching the Ruby pattern above: a documented
+  fix existing but not applied in the current session, not a fresh toolchain install.
+
+**CLAUDE.md's two `crypto_box512`/`crypto_sign257` bullets updated to say all eight bindings
+are wired**, replacing the interim "three of eight, named" phrasing Phase 2 left there.
+
+Two reusable findings from this phase worth carrying forward: (1) a documented local-toolchain
+fix (`.claude.local.md`) can go stale in *this specific shell* even when correct and already
+applied elsewhere - always re-check `PATH`/env vars for a binding before concluding its build
+is actually broken, not just "known broken from an earlier session." (2) A derive/proc-macro's
+default case-conversion rule is a real, distinct risk surface from hand-written per-binding
+naming (Go/`.NET`/C++/Python/Ruby all pass identifiers through untouched or via an explicit
+per-function override already) - any *new* binding or macro system this project adopts later
+needs the same "does the auto-rename handle a digit-adjacent-to-letter identifier correctly"
+check `ext-php-rs` just failed, not an assumption it's fine because every other binding was.
+</code></pre>
+</li>
+<li>
+<p><input disabled="" type="checkbox"> <strong>T-205</strong> <strong>Not started, found during T-204 (2026-08-09/10) - <code>bindings/java/native</code>’s
+<code>cargo clippy --all-targets -- -D warnings</code> fails with 54 errors, all in <code>dstu-core</code>’s own
+hazmat benchmark code (<code>gf2m_wide.rs</code>’s <code>clippy::items_after_statements</code>/<code>cast_precision_loss</code>,
+<code>tables.rs</code>’s <code>clippy::needless_range_loop</code>), not in this binding’s own <code>native/src/*.rs</code>.</strong>
+Confirmed pre-existing, not a T-204 regression, via <code>git stash push -- bindings/java</code> against
+clean <code>master</code> (same 54 errors with zero T-204 changes present), <code>git stash pop</code> afterward to
+restore the work. Plain <code>cargo clippy</code> (no <code>--all-targets</code>) on this workspace is clean. Not
+fixed as part of T-204 - out of scope for a binding-wiring task, and the fix belongs in
+<code>dstu-core</code>’s own hazmat benchmark code, not in any binding.</p>
 </li>
 <li>
 <p><input disabled="" type="checkbox"> <strong>T-202</strong> <strong>Not started, owner-requested (2026-08-09) - research spike: is a Strumok-keystream
@@ -8295,8 +8422,13 @@ need <code>std</code> unconditionally, same reason <code>crypto_secretbox</code>
 <tr><td><code>hazmat::kalyna</code> (block primitive, not directly libsodium-mapped)</td><td><code>hazmat::kalyna</code> (<code>Kalyna128_128</code>/<code>Kalyna128_256</code>/<code>Kalyna256_256</code>/<code>Kalyna256_512</code>/<code>Kalyna512_512</code>)</td><td><strong>Implemented</strong> — single-block <code>encrypt</code>/<code>decrypt</code>, all 5 variants. See D-13 in <code>docs/DECISIONS.md</code>.</td></tr>
 <tr><td><code>hazmat::kalyna_ccm</code> (mode of operation, not directly libsodium-mapped)</td><td><code>hazmat::kalyna_ccm</code> (all 5 variants)</td><td><strong>Implemented, provisional</strong> — Kalyna-alone CCM, dual-oracle-verified (UAPKI + Bouncy Castle vectors), not confirmed against the primary DSTU 7624:2014 text. See D-41 in <code>docs/DECISIONS.md</code>. Sourced 255-byte plaintext/AAD limit; nonce-generation strategy still undecided (D-40, <code>docs/TASKS.md</code> T-82).</td></tr>
 <tr><td><em>(no libsodium equivalent — key wrapping/envelope encryption)</em></td><td><code>hazmat::kalyna_kw</code> (all 5 variants)</td><td><strong>Implemented, <code>hazmat</code>-only, deliberately no high-level <code>crypto_*</code> wrapper</strong> — libsodium itself has no dedicated key-wrap primitive to map to (roadmap Step 3 item 4, <code>docs/DECISIONS.md</code> D-66’s addendum), so this stays a documented gap in the libsodium-parity surface rather than an invented, non-libsodium-shaped <code>crypto_kw</code>. Dual-oracle-verified, not confirmed against the primary DSTU 7624:2014 text. See D-55 in <code>docs/DECISIONS.md</code>.</td></tr>
-<tr><td><code>crypto_sign</code></td><td><code>hazmat::dstu4145</code> + <code>dstu_core::crypto_sign</code></td><td><strong>Implemented (m=163 curve only)</strong> — <code>hazmat</code> has <code>GF(2^163)</code> field arithmetic, point add/double, constant-time scalar multiplication, and <code>sign</code>/<code>verify</code>, all verified against the official standard’s own Annex B.1 worked example plus a <code>proptest</code> round-trip (<code>docs/TASKS.md</code> T-41/T-43/T-44, <code>docs/DECISIONS.md</code> D-25). The high-level <code>crypto_sign</code> wrapper (T-48, done 2026-07-24, <code>docs/DECISIONS.md</code> D-46) now exists too — <code>SigningKey</code>/<code>VerifyingKey</code>/<code>Signature</code>, deterministic (not caller-random) nonce derivation via Kupyna-KMAC. The other 9 named curve sizes aren’t wired up.</td></tr>
-<tr><td><code>crypto_box</code></td><td><code>hazmat::dstu9041</code></td><td><strong>Done</strong> (<code>docs/TASKS.md</code> T-178, D-169) — <code>dstu_core::crypto_box::{seal,open,SecretKey,PublicKey}</code>, hybrid via KDF over the <code>hazmat::dstu9041</code> <code>l(p)=256</code>/E256/1 primitive (T-177, D-47’s “ship the recommended curve first” precedent), plus a <code>uacrypt box-keygen</code>/<code>box-pubkey</code>/<code>box-seal</code>/<code>box-open</code> CLI surface. <code>l(p)=512</code>/E512/1 has its own direct-sibling <code>dstu_core::crypto_box512</code> module and <code>box-keygen512</code>/<code>box-pubkey512</code>/<code>box-seal512</code>/<code>box-open512</code> CLI surface too (<code>docs/TASKS.md</code> T-193, D-182, 2026-08-08) — not wired into any language binding or <code>dstu-core-capi</code> yet, a separate future task. <code>l(p)=384/768</code> still not done.</td></tr>
+<tr><td><code>crypto_sign</code></td><td><code>hazmat::dstu4145</code> + <code>dstu_core::crypto_sign</code></td><td><strong>Implemented (m=163 curve only)</strong> — <code>hazmat</code> has <code>GF(2^163)</code> field arithmetic, point add/double, constant-time scalar multiplication, and <code>sign</code>/<code>verify</code>, all verified against the official standard’s own Annex B.1 worked example plus a <code>proptest</code> round-trip (<code>docs/TASKS.md</code> T-41/T-43/T-44, <code>docs/DECISIONS.md</code> D-25). The high-level <code>crypto_sign</code> wrapper (T-48, done 2026-07-24, <code>docs/DECISIONS.md</code> D-46) now exists too — <code>SigningKey</code>/<code>VerifyingKey</code>/<code>Signature</code>, deterministic (not caller-random) nonce derivation via Kupyna-KMAC. <code>crypto_sign257</code> (<code>m=257</code>,</td></tr>
+<tr><td><code>docs/TASKS.md</code> T-199, D-185/D-186) is a separate, additively-shipped sibling module with the same</td><td></td><td></td></tr>
+<tr><td>shape — the curve real Diia-issued qualified signatures use in production. Both <code>crypto_sign</code> and</td><td></td><td></td></tr>
+<tr><td><code>crypto_sign257</code> are wired into <code>dstu-core-capi</code> plus all eight language bindings (<code>docs/TASKS.md</code></td><td></td><td></td></tr>
+<tr><td>T-204, 2026-08-09/10). The other 8 named curve sizes aren’t wired up.</td><td></td><td></td></tr>
+<tr><td><code>crypto_box</code></td><td><code>hazmat::dstu9041</code></td><td><strong>Done</strong> (<code>docs/TASKS.md</code> T-178, D-169) — <code>dstu_core::crypto_box::{seal,open,SecretKey,PublicKey}</code>, hybrid via KDF over the <code>hazmat::dstu9041</code> <code>l(p)=256</code>/E256/1 primitive (T-177, D-47’s “ship the recommended curve first” precedent), plus a <code>uacrypt box-keygen</code>/<code>box-pubkey</code>/<code>box-seal</code>/<code>box-open</code> CLI surface. <code>l(p)=512</code>/E512/1 has its own direct-sibling <code>dstu_core::crypto_box512</code> module and <code>box-keygen512</code>/<code>box-pubkey512</code>/<code>box-seal512</code>/<code>box-open512</code> CLI surface too (<code>docs/TASKS.md</code> T-193, D-182, 2026-08-08). Wired into <code>dstu-core-capi</code> plus all eight language</td></tr>
+<tr><td>bindings (<code>docs/TASKS.md</code> T-204, 2026-08-09/10). <code>l(p)=384/768</code> still not done.</td><td></td><td></td></tr>
 <tr><td><code>crypto_secretbox</code></td><td><code>dstu_core::crypto_secretbox</code> (<code>seal</code>/<code>open</code>/<code>SecretKey</code>), over <code>hazmat::kalyna_gcm::Kalyna256_256Gcm</code></td><td><strong>Implemented, provisional</strong> — single fixed Kalyna-GCM variant (not all five), internal nonce, combined <code>nonce||ciphertext||tag</code> output, no caller-facing AAD (the nonce is passed as <code>kalyna_gcm</code>’s AAD internally, to bind it into the tag — D-63). Migrated 2026-07-25 from an earlier Kalyna-CCM construction, removing its 255-byte message cap entirely. Still not primary-text-confirmed (inherits D-56). See D-51/D-63 in <code>docs/DECISIONS.md</code>.</td></tr>
 <tr><td><code>crypto_auth</code>/<code>crypto_onetimeauth</code></td><td><code>dstu_core::crypto_auth</code> (<code>auth</code>/<code>verify</code>/<code>Key</code>, over <code>hazmat::kupyna_kmac::Kupyna256Kmac</code> only) + <code>hazmat::kupyna_kmac</code> (<code>Kupyna256Kmac</code>/<code>Kupyna384Kmac</code>/<code>Kupyna512Kmac</code>, all three sizes)</td><td><strong>Implemented, provisional</strong> — Kupyna-based KMAC, both UAPKI’s and Bouncy Castle’s constructions read and cross-checked byte-for-byte on all three sizes, not confirmed against the primary DSTU 7564:2014 text. High-level wrapper added <code>docs/TASKS.md</code> T-105/<code>docs/DECISIONS.md</code> D-66: only the 256-bit size is exposed (D-47’s “delete the knob”), key is an opaque <code>Zeroize</code>-on-drop <code>Key</code> type, which also forecloses <code>WrongKeyLength</code> at this layer. See D-44/D-66 in <code>docs/DECISIONS.md</code>.</td></tr>
 <tr><td><code>crypto_kdf</code></td><td><code>dstu_core::crypto_kdf</code> (<code>MasterKey::derive_subkey</code>, over <code>hazmat::kupyna_kdf::Kupyna256Kdf</code> only) + <code>hazmat::kupyna_kdf</code> (<code>Kupyna256Kdf</code>/<code>Kupyna384Kdf</code>/<code>Kupyna512Kdf</code>, all three sizes)</td><td><strong>Implemented</strong> — modeled after libsodium’s <code>crypto_kdf_derive_from_key</code> shape over <code>hazmat::kupyna_kmac</code>, not full RFC 5869 HKDF. No DSTU standard or reference implementation exists for this construction, so unlike the rest of this table’s “provisional” rows, there is no oracle vector at all, ever. High-level wrapper added <code>docs/TASKS.md</code> T-105/<code>docs/DECISIONS.md</code> D-66, same “delete the knob” / opaque <code>Zeroize</code>-on-drop key shape as <code>crypto_auth</code> above. See D-45/D-66 in <code>docs/DECISIONS.md</code>.</td></tr>
@@ -10189,6 +10321,25 @@ the public site) happens here, not before — per the owner’s own 2026-08-06 i
 gh-pages after all the tasks”). This mirrors T-162’s own precedent exactly (site refresh only after
 every binding it covers actually exists) — expect a smaller version of T-162’s own checklist above,
 not a full re-run, since the rest of the site’s binding-facing content doesn’t change.</p>
+<h3 id="t-204--crypto_box512crypto_sign257-across-all-eight-bindings--capi-closed-2026-08-0910"><a class="header" href="#t-204--crypto_box512crypto_sign257-across-all-eight-bindings--capi-closed-2026-08-0910">T-204 — <code>crypto_box512</code>/<code>crypto_sign257</code> across all eight bindings + capi (closed 2026-08-09/10)</a></h3>
+<p><strong>Same incremental shape as T-181</strong> — two new modules’ surfaces (<code>dstu_core::crypto_box512</code>,
+T-193/D-182; <code>dstu_core::crypto_sign257</code>, T-199/D-185/D-186), each a direct sibling of an existing
+wrapped module (<code>crypto_box</code>, <code>crypto_sign</code>) at a different curve size, added to every binding that
+already exists. No new step 1/4/5 per language, same as T-181’s own reasoning.</p>
+<p><strong>Order, three phases</strong>: (1) <code>dstu-core-capi</code> first (<code>crates/dstu-core-capi/src/box512.rs</code>,
+<code>sign257.rs</code>) — unblocks the C-ABI-consuming group, same dependency reason T-181 cites for
+<code>crypto_box</code>. (2) .NET/Go/C++ — consume the now-complete C ABI directly. (3) Python/Node.js/Ruby/
+Java/PHP — direct-Rust wrappers, each against its own macro system (PyO3/napi-rs/magnus/<code>jni</code>/
+ext-php-rs). All three phases done same session.</p>
+<p><strong>One binding-specific bug found</strong>: <code>ext-php-rs</code>’s <code>#[php_function]</code> macro’s default
+<code>RenameRule::Snake</code> splits a letter/digit boundary (<code>box512</code> → <code>box_512</code>), silently mis-registering
+all 8 new PHP function names — fixed with an explicit <code>#[php(name = "...")]</code> override per function
+(memory: <code>php_ext_php_rs_digit_rename_pitfall</code>). No equivalent issue in any other binding’s own
+macro system.</p>
+<p><strong>No new curve-tag dispatch anywhere</strong> — <code>crypto_sign257</code>/<code>crypto_box512</code> are distinct function/
+type names in every binding, same as the C ABI and core itself; tag-byte dispatch stays a
+<code>uacrypt</code>-CLI-only concern (D-118’s “don’t duplicate wire-format logic into every binding” lesson
+generalized).</p>
 <h3 id="publishing-all-registries--separate-owner-gated-not-scheduled"><a class="header" href="#publishing-all-registries--separate-owner-gated-not-scheduled">Publishing (all registries) — separate, owner-gated, not scheduled</a></h3>
 <p>One explicit ask per registry (PyPI/npm/Maven Central/NuGet/RubyGems/Packagist), the same class of
 decision T-17 already applies to crates.io. Not started, not broken into steps above — tracked only
@@ -26602,6 +26753,14 @@ safe).</p>
 <p>All notable changes to this project are documented in this file. Format follows
 <a href="https://keepachangelog.com/en/1.1.0/">Keep a Changelog</a>.</p>
 <h2 id="unreleased"><a class="header" href="#unreleased">[Unreleased]</a></h2>
+<h3 id="added"><a class="header" href="#added">Added</a></h3>
+<ul>
+<li><code>crypto_box512</code>/<code>crypto_sign257</code>: wired into <code>dstu-core-capi</code> and all eight language bindings
+(Python/Node.js/Ruby/Java/PHP/.NET/Go/C++) - both landed in <code>dstu-core</code> itself already, in 0.3.0
+above, without this wiring (<code>docs/TASKS.md</code> T-204, closed 2026-08-09/10). The next tagged release’s
+Python wheel (and any other binding artifact this project starts attaching to a GitHub Release)
+will be the first to actually ship this surface outside the Rust crate itself.</li>
+</ul>
 <h2 id="030---2026-08-09"><a class="header" href="#030---2026-08-09">[0.3.0] - 2026-08-09</a></h2>
 <p><strong>First crates.io publish</strong> (<code>docs/TASKS.md</code> T-17, <code>docs/DECISIONS.md</code> D-114) - both <code>dstu-core</code>
 and <code>uacrypt</code>, completing the <code>publish-crates</code> CI job D-114 wired in for this exact tag. <code>uacrypt</code>
@@ -26612,7 +26771,7 @@ still pre-1.0, still not independently audited, and the headline provisional gap
 yet confirmed against their primary DSTU texts) are unchanged by this release - see that document
 and <code>docs/DECISIONS.md</code> for the full standing caveats, repeated here exactly as prominently as
 0.2.0’s own notes did below.</p>
-<h3 id="added"><a class="header" href="#added">Added</a></h3>
+<h3 id="added-1"><a class="header" href="#added-1">Added</a></h3>
 <ul>
 <li><code>hazmat::dstu9041</code>: DSTU 9041:2020 hybrid (ECIES-style) asymmetric encryption over a twisted
 Edwards curve, <code>l(p)=256</code>/E256/1 only (D-47’s “ship the recommended curve first” precedent) -
@@ -26690,7 +26849,7 @@ DSTU 4145 <code>sign</code>/<code>verify</code> up ~26-32x on the dev machine (<
 <h2 id="020---2026-08-02"><a class="header" href="#020---2026-08-02">[0.2.0] - 2026-08-02</a></h2>
 <p>Second tagged release - GitHub Releases only, no crates.io publish (<code>docs/TASKS.md</code> T-17 stays
 separately gated, same posture as v0.1.0).</p>
-<h3 id="added-1"><a class="header" href="#added-1">Added</a></h3>
+<h3 id="added-2"><a class="header" href="#added-2">Added</a></h3>
 <ul>
 <li><code>crypto_sign</code>/<code>uacrypt</code>: DSTU 4145 digital-signature CLI commands - <code>sign-keygen</code>, <code>sign-pubkey</code>,
 <code>sign</code>, <code>verify</code> (<code>docs/TASKS.md</code> T-124).</li>
@@ -26740,7 +26899,7 @@ instead.</li>
 <p>First tagged release - GitHub Releases only (<code>docs/TASKS.md</code> T-18); not published to crates.io
 (<code>docs/TASKS.md</code> T-17 stays separately gated on an explicit owner request). Everything below predates
 this tag; there is no reconstructed per-commit history before it.</p>
-<h3 id="added-2"><a class="header" href="#added-2">Added</a></h3>
+<h3 id="added-3"><a class="header" href="#added-3">Added</a></h3>
 <ul>
 <li><code>dstu-core</code>: <code>hazmat</code> primitives for all three in-scope DSTU algorithms - Kupyna (DSTU
 7564:2014, one-shot and streaming), Kalyna (DSTU 7624:2014, single-block encrypt/decrypt across

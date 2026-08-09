@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-e5a59ae1.js";
+            window.path_to_searchindex_js = "searchindex-3dfd1ea4.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-ce7e91c5.js"></script>
@@ -1221,6 +1221,25 @@ the public site) happens here, not before — per the owner’s own 2026-08-06 i
 gh-pages after all the tasks”). This mirrors T-162’s own precedent exactly (site refresh only after
 every binding it covers actually exists) — expect a smaller version of T-162’s own checklist above,
 not a full re-run, since the rest of the site’s binding-facing content doesn’t change.</p>
+<h3 id="t-204--crypto_box512crypto_sign257-across-all-eight-bindings--capi-closed-2026-08-0910"><a class="header" href="#t-204--crypto_box512crypto_sign257-across-all-eight-bindings--capi-closed-2026-08-0910">T-204 — <code>crypto_box512</code>/<code>crypto_sign257</code> across all eight bindings + capi (closed 2026-08-09/10)</a></h3>
+<p><strong>Same incremental shape as T-181</strong> — two new modules’ surfaces (<code>dstu_core::crypto_box512</code>,
+T-193/D-182; <code>dstu_core::crypto_sign257</code>, T-199/D-185/D-186), each a direct sibling of an existing
+wrapped module (<code>crypto_box</code>, <code>crypto_sign</code>) at a different curve size, added to every binding that
+already exists. No new step 1/4/5 per language, same as T-181’s own reasoning.</p>
+<p><strong>Order, three phases</strong>: (1) <code>dstu-core-capi</code> first (<code>crates/dstu-core-capi/src/box512.rs</code>,
+<code>sign257.rs</code>) — unblocks the C-ABI-consuming group, same dependency reason T-181 cites for
+<code>crypto_box</code>. (2) .NET/Go/C++ — consume the now-complete C ABI directly. (3) Python/Node.js/Ruby/
+Java/PHP — direct-Rust wrappers, each against its own macro system (PyO3/napi-rs/magnus/<code>jni</code>/
+ext-php-rs). All three phases done same session.</p>
+<p><strong>One binding-specific bug found</strong>: <code>ext-php-rs</code>’s <code>#[php_function]</code> macro’s default
+<code>RenameRule::Snake</code> splits a letter/digit boundary (<code>box512</code> → <code>box_512</code>), silently mis-registering
+all 8 new PHP function names — fixed with an explicit <code>#[php(name = "...")]</code> override per function
+(memory: <code>php_ext_php_rs_digit_rename_pitfall</code>). No equivalent issue in any other binding’s own
+macro system.</p>
+<p><strong>No new curve-tag dispatch anywhere</strong> — <code>crypto_sign257</code>/<code>crypto_box512</code> are distinct function/
+type names in every binding, same as the C ABI and core itself; tag-byte dispatch stays a
+<code>uacrypt</code>-CLI-only concern (D-118’s “don’t duplicate wire-format logic into every binding” lesson
+generalized).</p>
 <h3 id="publishing-all-registries--separate-owner-gated-not-scheduled"><a class="header" href="#publishing-all-registries--separate-owner-gated-not-scheduled">Publishing (all registries) — separate, owner-gated, not scheduled</a></h3>
 <p>One explicit ask per registry (PyPI/npm/Maven Central/NuGet/RubyGems/Packagist), the same class of
 decision T-17 already applies to crates.io. Not started, not broken into steps above — tracked only
