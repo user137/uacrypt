@@ -3689,14 +3689,49 @@ item they point to is later removed.
       `cargo +nightly miri test --workspace` run is tens of minutes to hours; not run here), flagged
       as an open verification item rather than assumed safe.
 
+      **Phase 2 (.NET/Go/C++) done 2026-08-09, same session, per owner's "продовжуй до кінця
+      реалізуй для всіх мов" go-ahead.** Chosen order deliberately reversed from this entry's
+      original text (advisor review: these three link `dstu-core-capi` directly, the exact surface
+      Phase 1 just proved end-to-end via `xtask capi`, vs. the five direct-Rust bindings each
+      needing a different macro system - front-load what's already de-risked). Each mirrors its
+      own binding's existing `Box`/`Sign` (or `BoxSecretKey`/`SigningKey`, per binding) wrapper
+      shape exactly, distinct types, no curve-tag byte (D-118):
+      - **.NET**: `Box512.cs`/`Sign257.cs` (`Box512SecretKey`/`Box512PublicKey`,
+        `SigningKey257`/`VerifyingKey257`), `NativeMethods.cs`/`NativeHandles.cs` P/Invoke +
+        `SafeHandle` entries, `DstuConstants.cs` sizes. `Box512Tests.cs`/`Sign257Tests.cs` (18 new
+        `[Fact]`s) - `dotnet test` 86/86 pass; `dotnet format --verify-no-changes` clean;
+        `Box512Example.cs`/`Sign257Example.cs` added to `Program.cs`'s dispatch, both run
+        successfully. SDK-style `.csproj` globs `*.cs` automatically - no project-file sync point.
+      - **Go**: `box512.go`/`sign257.go` (cgo against `dstu_core.h` directly, no hand-copied
+        prototypes to drift - confirmed reading `box.go`/`sign.go` first), `constants.go` sizes
+        pulled straight from the C header's own macros. `box512_test.go`/`sign257_test.go` (18 new
+        test functions) - `go vet`/`gofmt -l` clean, `go test ./...` full suite passes;
+        `examples/box512.go`/`sign257.go` wired into `examples/main.go`'s dispatch, both run.
+      - **C++**: `include/dstu/box512.hpp`/`sign257.hpp` (header-only, RAII move-only, mirrors
+        `box.hpp`/`sign.hpp`), added to the `dstu.hpp` umbrella include, `constants.hpp` sizes.
+        `TestBox512`/`TestSign257` added to the single shared `tests/test_dstu.cpp` (no per-binding
+        test-file split in this binding) and called from `main()`; `CMakeLists.txt`'s example
+        `foreach` list extended (`box512`/`sign257`, the sync point most likely to be missed
+        silently, per advisor review - a name absent from that list just never builds, no error).
+        `cmake --build` + `ctest` clean (1/1), both new example executables verified to run.
+
+      Per-binding doc sweep done alongside each commit (not deferred): `dstu-core-capi/README.md`'s
+      own gap (found only because it was actually opened and read, not assumed current, per
+      advisor's earlier-round finding) plus each of `.NET`/Go/C++'s own `README.md` module table.
+      `CLAUDE.md`'s two `crypto_box512`/`crypto_sign257` bullets updated again to name the three
+      done bindings by name rather than repeat a blanket "still not wired into any of the eight"
+      claim that would now read as a false negative for these three specifically.
+
       **Still open**: the five direct-Rust bindings (Python/Node/Ruby/PHP/Java) link `dstu-core`
-      itself, not `dstu-core-capi`, so this phase's coverage doesn't extend to them automatically;
-      neither does it reach .NET/Go/C++, which link `dstu-core-capi` but each need their own
-      wrapper layer written on top of the new exported symbols. Scope for the remaining phase:
-      extend every binding's existing `crypto_sign`/`crypto_box` wrapper pattern to also cover
-      `crypto_sign257`/`crypto_box512`, per binding language, each with its own D-64/D-65(/D-92's
-      active-attack category per `feedback_active_attack_test_category` where applicable) test
-      suite - not started, no committed timeline, owner prioritizes against T-203 above.
+      itself, not `dstu-core-capi`, so neither phase's coverage extends to them automatically -
+      each needs its own macro-system wrapper (pyo3/napi-rs/magnus/ext-php-rs/jni) written test-first
+      against `crypto_sign257`/`crypto_box512`, with its own D-64/D-65(/D-92's active-attack category
+      per `feedback_active_attack_test_category` where applicable) test suite. Not started, no
+      committed timeline, owner prioritizes against T-203 above. Ruby's `rb-sys` build is currently
+      broken on this dev machine (`strings.h` not found under clang, confirmed in a background
+      `cargo xtask ci` run this same session) and PHP isn't on PATH at all - both will need that
+      local-toolchain gap closed (or built/tested on a different machine) before their own phase can
+      be verified the same way the first three were, not just written.
 - [ ] **T-202** **Not started, owner-requested (2026-08-09) - research spike: is a Strumok-keystream
       + MAC ("Encrypt-then-MAC") authenticated construction a faster-but-still-safe alternative to
       `crypto_secretstream`'s current Kalyna-GCM-based AEAD for `uacrypt encrypt`/`decrypt`?**

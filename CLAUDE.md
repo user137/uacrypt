@@ -98,7 +98,10 @@ canonical source (`docs/TASKS.md`/`docs/DECISIONS.md`) — this section states c
     alone is unified and reads a curve tag byte to handle both curves' signatures. Wired into
     `dstu-core-capi` (T-204, 2026-08-09, `src/sign257.rs`, `dstu_sign257_*`/`dstu_verify257_*`,
     untagged - the curve-tag dispatch stays a `uacrypt`-layer-only concern, not duplicated into the
-    C ABI) but **still not wired into any of the eight language bindings**.
+    C ABI) and, as of the same date, into the three bindings that link `dstu-core-capi` directly
+    (.NET `SigningKey257`/`VerifyingKey257`, Go `SigningKey257`/`VerifyingKey257`, C++
+    `SigningKey257`/`VerifyingKey257`) - **still not wired into the five direct-Rust bindings**
+    (Python/Node/Ruby/PHP/Java), T-204's own remaining scope.
   - `crypto_pwhash` (`hash_password`/`verify_password`/`Strength`) — wraps `argon2` behind a
     dedicated `pwhash` feature (off by default); `Strength::{Interactive,Moderate,Sensitive}` cites
     libsodium's own constants exactly (T-71/D-49/D-50).
@@ -122,8 +125,10 @@ canonical source (`docs/TASKS.md`/`docs/DECISIONS.md`) — this section states c
     is the direct `l(p)=512` (E512/1) sibling (T-193, 2026-08-08, D-182) — same shape, `PublicKey`/
     `SecretKey` at 64 bytes, seed deliberately fixed at 32 bytes/256 bits (not `l(p)=512`'s full
     424-bit KEM capacity, D-182). Wired into `dstu-core-capi` (T-204, 2026-08-09, `src/box512.rs`,
-    `dstu_box512_*`) but **still not wired into any of the eight language bindings** - T-204 tracks
-    that remaining half of the gap, same status as `crypto_sign257` below.
+    `dstu_box512_*`) and, as of the same date, into the three bindings that link `dstu-core-capi`
+    directly (.NET `Box512SecretKey`/`Box512PublicKey`, Go `Box512SecretKey`/`Box512PublicKey`,
+    C++ `Box512SecretKey`/`Box512PublicKey`) - **still not wired into the five direct-Rust
+    bindings** (Python/Node/Ruby/PHP/Java), same remaining T-204 scope as `crypto_sign257` below.
   - `randombytes::randombytes_buf` — `std`-gated `getrandom` wrapper (T-72/D-48).
 - `selftest` — `std`-gated (`selftest` feature, off by default) runtime KAT self-check: `run()`
   re-verifies one official vector per primitive (Kalyna-128/128, Kupyna-256, Strumok-256, DSTU
