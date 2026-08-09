@@ -46,6 +46,7 @@ fn main() -> ExitCode {
         "go" => go(),
         "cpp" => cpp(),
         "qemu-stm32" => qemu_stm32(),
+        "streaming-bounded" => streaming_bounded(),
         "ci" => ci(),
         "help" | "-h" | "--help" => {
             print_usage();
@@ -94,7 +95,8 @@ fn print_usage() {
          \x20 java           build+lint bindings/java/native, mvn test bindings/java (T-51) - needs a JDK 11+ (17 recommended, D-153)\n\
          \x20 go             build dstu-core-capi, gofmt -l + go vet + go test bindings/go (T-163)\n\
          \x20 cpp            build dstu-core-capi+uacrypt, cmake configure+build+ctest bindings/cpp (T-53)\n\
-         \x20 qemu-stm32     run firmware/qemu-stm32-smoketest under QEMU's netduinoplus2 (Cortex-M4F), no real hardware needed (T-170)"
+         \x20 qemu-stm32     run firmware/qemu-stm32-smoketest under QEMU's netduinoplus2 (Cortex-M4F), no real hardware needed (T-170)\n\
+         \x20 streaming-bounded  release-build proof that encrypt/decrypt/kupyna-digest/strumok-crypt stay memory-bounded on a large file (D-42, T-200) - #[ignore]d by default in a plain `cargo test` since debug-profile crypto over a large file is too slow for that"
     );
 }
 
@@ -1225,6 +1227,33 @@ fn qemu_stm32() -> bool {
     )
 }
 
+/// `crates/uacrypt/tests/smoke_streaming_boundedness.rs`'s tests are `#[ignore]`d by default -
+/// confirmed empirically, not assumed (T-200): the same property in a plain debug-profile
+/// `cargo test` run took over 5 minutes for a single test and was killed before finishing, since
+/// this project's unoptimized constant-time crypto paths are dramatically slower without release
+/// optimizations and this check needs a genuinely large file (hundreds of MiB) to make "peak RSS
+/// stayed far below `--in`'s size" a meaningful claim rather than noise. `--release` alone brought
+/// the same four tests down to under 10 seconds total. `--test-threads=1` avoids several
+/// hundred-MiB fixture files and their sampler subprocesses running concurrently and competing for
+/// the same memory this check is trying to measure precisely.
+fn streaming_bounded() -> bool {
+    run(
+        "cargo",
+        &[
+            "test",
+            "--release",
+            "-p",
+            "uacrypt",
+            "--test",
+            "smoke_streaming_boundedness",
+            "--",
+            "--ignored",
+            "--test-threads=1",
+        ],
+        None,
+    )
+}
+
 fn oracle_java() -> bool {
     if !require("mvn", "see README.md \"Building from source\" (Maven)") {
         return false;
@@ -1260,8 +1289,9 @@ fn oracle_dotnet() -> bool {
 }
 
 /// Mirrors `.github/workflows/rust.yml`'s mandatory `test` job exactly, then best-effort runs the
-/// optional layers (miri/kani/fuzz/audit/deny/oracle harnesses) - missing tools are reported, not fatal,
-/// so this is useful on a fresh machine that only has `cargo` so far, not just full CI runners.
+/// optional layers (miri/kani/fuzz/audit/deny/oracle harnesses/streaming-bounded) - missing tools
+/// are reported, not fatal, so this is useful on a fresh machine that only has `cargo` so far, not
+/// just full CI runners.
 fn ci() -> bool {
     let mandatory = fmt(true) && build() && test() && clippy() && docs_check();
     if !mandatory {
@@ -1285,6 +1315,7 @@ fn ci() -> bool {
         php,
         capi,
         qemu_stm32,
+        streaming_bounded,
     ] {
         optional();
     }

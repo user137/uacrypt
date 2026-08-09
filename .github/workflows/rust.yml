@@ -216,6 +216,25 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y qemu-system-arm qemu-system-misc
       - run: cargo xtask qemu-stm32
 
+  streaming-bounded:
+    name: uacrypt streaming-boundedness proof (${{ matrix.os }}, D-42/T-200)
+    # Matrixed across all three OSes on purpose, not just the dev machine this was written on
+    # (Windows): the memory-sampling harness (`crates/uacrypt/tests/support/mod.rs`) has a
+    # genuinely different implementation per platform (`/proc/<pid>/status` on Linux, a
+    # `Get-Process`-polling PowerShell watcher on Windows, a `ps -o rss=`-polling shell watcher on
+    # macOS) - only the Windows path was empirically verified locally before this job existed, so
+    # this is the first real confirmation the Linux/macOS paths work at all, not just that they
+    # compile.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo xtask streaming-bounded
+
   capi:
     name: capi (cbindgen header, C test harness, examples)
     # `dstu-core-capi` IS a real root-workspace member (D-119/D-148) - the `test` job above

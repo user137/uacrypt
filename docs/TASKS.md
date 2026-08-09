@@ -3169,9 +3169,68 @@ item they point to is later removed.
 - [ ] **T-200** **Phase 1 + select Phase 2/3/4 landed 2026-08-09, owner-requested ("Давай 200 таску
       із смоук тестами для бінарника. Врахуй які в нас там реалізації і як їх атакувати
       найдоцільніше а не сліпо" - do T-200 now, ground it in what's actually implemented, attack it
-      the most worthwhile way rather than blindly). Remaining items (the rest of the misuse matrix,
-      streaming-boundedness, `dstu9041`/`crypto_box`'s own differently-shaped small-subgroup attack
-      at the sealed-file level) still backlog, no committed timeline.**
+      the most worthwhile way rather than blindly). Owner explicitly chose "all three" when asked
+      which remaining items counted toward "full implementation" for the push gate (2026-08-09):
+      the rest of the misuse matrix, streaming-boundedness, and `dstu9041`/`crypto_box`'s own
+      differently-shaped small-subgroup attack at the sealed-file level. Streaming-boundedness
+      landed (below); the other two remain.**
+
+      **Phase 4 addendum, `crates/uacrypt/tests/smoke_streaming_boundedness.rs` (4 tests) +
+      `cargo xtask streaming-bounded`**: proves D-42's claim ("a `hazmat` streaming API existing
+      does not make the `uacrypt` command wrapping it memory-bounded") at the real process boundary
+      instead of leaving it asserted only in doc comments - spawns the real binary against a
+      genuinely large file (200 MiB) and samples its actual OS-reported resident memory while it
+      runs (`support::uacrypt_with_peak_rss`), for `kupyna-digest`, `strumok-crypt`, and
+      `encrypt`/`decrypt`. Includes a deliberate control case, `box_seal_is_not_memory_bounded_
+      control_case`: `box-seal`'s own `--help` text already says it reads `--in` whole into memory,
+      so this proves the measurement methodology can actually detect *unbounded* growth (peak RSS
+      visibly scales with `--in`'s size, confirmed >2x proportional in a real run) - without this,
+      "the streaming commands measured low" would be unfalsifiable, since an insensitive measurement
+      would also read low. Real measured numbers on this dev machine (release build): the three
+      bounded commands peaked at ~4.5-4.8 MiB against a 200 MiB input (the 60 MiB threshold has
+      roughly 12x margin either direction); the control case peaked at ~89 MiB (40 MiB input) and
+      ~526 MiB (180 MiB input) - unambiguous proportional growth, not noise.
+      - **Real architecture decision, not left implicit**: this genuinely does not fit in the
+        default `cargo test`/`cargo xtask test` path. Confirmed empirically, not assumed: the exact
+        same property in a plain debug-profile `cargo test` run took over 5 minutes for a *single*
+        test and was killed before finishing - this project's constant-time crypto paths are
+        dramatically slower unoptimized, and this check specifically needs a large file (hundreds of
+        MiB) for "peak stayed far below input size" to mean anything. `--release` alone brought the
+        same four tests down to ~13s total. Fix: all four tests carry a plain `#[ignore = "..."]`
+        (not the usual `#[cfg_attr(miri, ignore = ...)]` this file's siblings use - Miri already
+        can't reach an `#[ignore]`d test either, so one attribute covers both reasons), and a new
+        `cargo xtask streaming-bounded` subcommand runs them explicitly via
+        `cargo test --release -p uacrypt --test smoke_streaming_boundedness -- --ignored
+        --test-threads=1` (`xtask/src/main.rs`) - wired into `ci()`'s existing best-effort optional-
+        layer array (same treatment as `miri`/`fuzz`/`qemu-stm32`), plus its own real CI job
+        (`.github/workflows/rust.yml`'s new `streaming-bounded` job, matrixed across
+        `ubuntu-latest`/`macos-latest`/`windows-latest` on purpose - the memory-sampling harness has
+        a genuinely different implementation per OS, see the next bullet, so this is the first real
+        confirmation the Linux/macOS paths work at all, not just compile).
+      - **Cross-platform memory sampling, one implementation per OS, no new dependency**:
+        `crates/uacrypt/tests/support/mod.rs`'s `uacrypt_with_peak_rss` spawns the target subprocess
+        then samples its live OS-reported resident memory while it runs. Linux: a background thread
+        re-reads `/proc/<pid>/status`'s `VmRSS:` line directly (cheap, no subprocess per sample,
+        5ms interval). Windows: a helper `powershell` process polls `(Get-Process -Id
+        <pid>).WorkingSet64` in a loop, one sample per stdout line - the same `Get-Process`-based
+        liveness idiom `CLAUDE.md` already documents for watching a long-running process (there:
+        CPU time; here: memory), applied for the first time to something other than a human
+        watching it live. macOS: a helper shell loop polls `ps -o rss= -p <pid>` the same way (no
+        `/proc` on macOS, and no long-poll mode for `ps`, so a per-sample subprocess is the standard
+        idiom there). All three self-terminate once the target process is gone (`Get-Process`/
+        `kill -0` failing), no explicit stop signal needed. Deliberately not a raw WinAPI/`libc`
+        FFI approach (`GetProcessMemoryInfo`/`getrusage`) - considered and rejected: hand-rolling a
+        `rusage`/`PROCESS_MEMORY_COUNTERS` struct layout from memory to call unsafe FFI is exactly
+        the kind of homegrown-primitive risk this project's own hard constraints warn against
+        (wrong field layout is silent undefined behavior, not a compile error), where shelling out
+        to an OS-standard, already-present, well-documented text-output tool carries none of that
+        risk for a test-only harness.
+      - **Only the Windows path was empirically run locally** (this project's dev machine) - real
+        measured numbers above are all from Windows. The Linux (`/proc/PID/status` field name) and
+        macOS (`ps -o rss=` output format) paths rely on well-established, stable OS conventions but
+        were written, not locally verified - the new CI job above is deliberately matrixed across
+        all three OSes specifically so it's the first real confirmation for those two, not a second
+        local run of the one already-proven platform.
 
       **Phase 4 addendum, `crates/uacrypt/tests/smoke_off_curve_attack.rs` (2 tests)**: attacker-
       supplied off-curve/small-subgroup public keys through `verify --key`, at the real CLI/file
@@ -3235,8 +3294,10 @@ item they point to is later removed.
       **What landed**: `crates/uacrypt/tests/support/mod.rs` (hand-rolled `std::process::Command`
       harness, `env!("CARGO_BIN_EXE_uacrypt")`, no new `[dev-dependencies]` - confirmed working via
       a throwaway probe before writing anything else, per this task's own harness decision below)
-      plus eight real-subprocess test files (`smoke_misuse.rs`/`smoke_help_claims.rs`/
-      `smoke_off_curve_attack.rs` added in the Phase 2/4 addenda above), 62 tests total, all
+      plus nine real-subprocess test files (`smoke_misuse.rs`/`smoke_help_claims.rs`/
+      `smoke_off_curve_attack.rs`/`smoke_streaming_boundedness.rs` added in the Phase 2/4 addenda
+      above), 66 tests total (4 of which are `#[ignore]`d by default, see the streaming-boundedness
+      addendum above - run via `cargo xtask streaming-bounded`, not a plain `cargo test`), all
       passing on first full workspace run
       (`cargo test --workspace --exclude dstu-core-capi`), `cargo clippy --all-features` (both the
       default gate and `--test <name>`-scoped `--all-targets` on just the new files, not the whole

@@ -24,7 +24,7 @@ All notable changes to this project are documented in this file. Format follows
   `sign257` CLI surface; `uacrypt verify` reads a curve tag byte from `--key` and handles both
   `m=163` and `m=257` signatures through the one command (`docs/TASKS.md` T-199, `docs/DECISIONS.md`
   D-185/D-186).
-- `uacrypt`: real binary-level (subprocess) smoke tests, `crates/uacrypt/tests/` - 62 tests
+- `uacrypt`: real binary-level (subprocess) smoke tests, `crates/uacrypt/tests/` - 66 tests
   spawning the actual compiled `uacrypt` binary (exit codes, stdout/stderr, real files), covering
   every leaf command's golden path plus targeted attack scenarios (T-199's tagged-verifying-key
   format, `crypto_secretstream`'s wire-format tamper resistance, cross-key-type confusion between
@@ -32,6 +32,15 @@ All notable changes to this project are documented in this file. Format follows
   behavioral claim rather than prose, a constructed order-2/small-subgroup public key rejected by
   `verify --key` for both DSTU 4145 curves). Previously the entire 140-test suite only ever called
   the library's `run()` in-process (`docs/TASKS.md` T-200).
+- `cargo xtask streaming-bounded`: release-build proof, against a real 200 MiB file, that
+  `encrypt`/`decrypt`/`kupyna-digest`/`strumok-crypt` stay memory-bounded rather than buffering the
+  whole input (D-42's claim, previously asserted only in a doc comment) - samples the real
+  subprocess's OS-reported resident memory while it runs (`crates/uacrypt/tests/support/mod.rs`,
+  one implementation per OS, no new dependency), with a `box-seal` control case proving the
+  measurement can actually detect unbounded growth. `#[ignore]`d by default in a plain `cargo test`
+  (needs a release build for realistic timing - a debug-profile run of the same property took over
+  5 minutes and was killed before finishing); wired into `cargo xtask ci`'s optional layers and a
+  new CI job matrixed across all three OSes (`docs/TASKS.md` T-200).
 
 ### Fixed
 
