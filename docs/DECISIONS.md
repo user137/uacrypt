@@ -12181,3 +12181,117 @@ prose); `docs/dstu-crypto-project.md`'s `crypto_box` API-shape row updated to me
 **T-193 closed.** `crypto_box`/`crypto_box512` together now cover both curve sizes
 `hazmat::dstu9041` itself supports (`l(p) in {256, 512}`, T-177/T-192). T-194 (the combined
 performance table the owner actually asked for) is now unblocked.
+
+## D-184: T-198 - hardware `clmul` landed as production dispatch for `gf2m_wide`/`gf2m163`, this crate's first runtime hardware-dispatch path
+
+Owner-requested landing ("Тоді імплементуй попередні дослідження з апаратним прискоренням які
+працюють" - "then implement the previous hardware-acceleration investigations that work") of the
+two levers T-195/T-196 measured but deliberately left as `#[cfg(test)]`-only spikes pending a
+design decision on target-feature detection/`no_std`/fallback. T-197's MULX/ADCX/ADOX result (a
+measured *regression*) is explicitly excluded - "which work" rules it out by the owner's own
+framing, and `advisor()` confirmed that reading before any code was written.
+
+**Design, `advisor()`-directed before implementation started**: `std`-gated runtime dispatch
+(`is_x86_feature_detected!`/`std::arch::is_aarch64_feature_detected!`, both need a hosted
+environment - not available in `core`), portable software fallback unconditionally on every other
+build. Concretely: `multiply()` on `Gf2m128`/`Gf2m256`/`Gf2m512` (`gf2m_wide.rs`) and
+`dstu4145::gf2m163::FieldElement` checks `clmul_native::feature_available()` first (`#[cfg(all(
+feature = "std", not(kani), any(target_arch = "x86_64", target_arch = "aarch64")))]`, compiled out
+entirely otherwise) and calls a new `poly_mul_wide_hw` on success, falling back to the existing
+`poly_mul_wide` unconditionally when the feature check is absent or returns `false`. `no_std`/
+embedded/other-architecture builds see **zero behavior change** from before this task - same
+code path, same output, unconditionally.
+
+**Why not `#[cfg(target_feature = ...)]` (compile-time) instead**: would require a separate build
+per deployment CPU (this project explicitly rejected assuming a specific CPU family for its
+baseline build, `CLAUDE.md` MVP scope) and would make the fallback path untestable on a
+feature-capable CI machine (the exact gap this task's own `multiply_matches_explicit_software_path`
+tests close - see below). Runtime detection costs one relaxed-load-and-branch per call (`std`
+caches the CPUID/`getauxval` result behind a static internally) against a multiply that's tens to
+hundreds of nanoseconds even on the fast path - not worth hoisting into a cache of our own
+(`advisor()`: "keep the dispatch dumb").
+
+**`advisor()`'s review caught three things before any of this shipped, all fixed before landing**:
+
+1. **Inlining boundary.** The T-195/T-196 spikes' own `schoolbook_clmul_poly_mul_wide` had no
+   `#[target_feature]` attribute and called the separately-attributed `clmul_native::clmul64` for
+   every `(i, j)` pair - a real, non-inlinable function-call boundary at every one of them (9 calls
+   for `gf2m163`, up to 64 for `Gf2m512`), baked into the spikes' own 6.35x/4.16x numbers. Production
+   `poly_mul_wide_hw` puts the whole schoolbook double loop, intrinsic calls included, inside a
+   single `#[target_feature]`-attributed function instead - the spike numbers are a floor for this
+   shape, not a target. `clmul_native::clmul64`/`clmul64_impl` are now `#[cfg(any(test, kani))]`
+   only (differential-test oracles, no longer a production call site) - promoting them to
+   unconditional production code alongside `poly_mul_wide_hw` would have reintroduced exactly the
+   boundary this point exists to avoid.
+2. **Software-path test coverage gap.** Every dev machine and `x86_64`/`aarch64` CI runner has
+   `PCLMULQDQ`/`PMULL`, so the instant `multiply()` dispatches, every existing test that calls
+   `a.multiply(b)` - `field_axiom_tests`'s own commutativity/associativity/distributivity proptests,
+   every Kalyna-GCM/GMAC KAT, every DSTU 4145 signature test - silently stops exercising the
+   portable path at all. Green tests, zero coverage of what `no_std`/embedded/older-CPU builds
+   actually run. Closed by adding an explicit `multiply_sw`/`multiply_matches_explicit_software_path`
+   pair to both `gf2m_wide.rs` and `gf2m163.rs` (the latter also gets `multiply_sw_*` sibling
+   proptests for commutative/associative/distributive/identity, mirroring the axioms that already
+   existed for `multiply()`) - these call `reduce(poly_mul_wide(...))` directly, bypassing dispatch,
+   so the software path stays under real test pressure regardless of what hardware runs the suite.
+3. **Kani/Miri gating.** Grepped both crates' `#[cfg(kani)] mod kani_proofs` for any `.multiply()`/
+   `.square()` call before assuming CBMC would even reach the dispatch branch - neither module's Kani
+   proofs touch either (they exercise `reduce`/`conditional_sub_p`/`select`/`spread32to64` directly),
+   so `#[cfg(not(kani))]` on the dispatch is defensive, not a fix for an observed failure. Miri:
+   verified empirically (not assumed) rather than reaching for `#[cfg(not(miri))]` pre-emptively -
+   `MIRIFLAGS=-Zmiri-disable-isolation cargo +nightly miri test ... multiply_matches_explicit_
+   software_path` passes clean on both `gf2m_wide`/`gf2m163` (the `-Zmiri-disable-isolation` flag
+   itself is needed only to work around an unrelated, pre-existing Windows-Miri limitation -
+   `proptest`'s failure-persistence file writer calls `std::env::current_dir()`, which Miri's
+   isolation mode blocks; confirmed identical on an untouched pre-existing test, not something this
+   task introduced).
+
+**A real, pre-existing `clippy -D warnings` gap surfaced by promotion, not introduced by it**:
+`_mm_storeu_si128` into a stack `[u8; 16]` cast to `*mut __m128i` (`cast_ptr_alignment` - a `u8`
+pointer is never guaranteed 16-byte-aligned) and `.try_into().unwrap()` on the resulting byte slices
+(`clippy::unwrap_used`, denied crate-wide) both already existed in the T-195/T-196 spike code, just
+never linted - `cargo xtask clippy`'s real CI gate is `cargo clippy --workspace[--all-features] --
+-D warnings`, no `--all-targets`, so `#[cfg(test)]`-only code was never in its scope. The moment
+`poly_mul_wide_hw` made the equivalent code unconditional (`std` + arch, not `test`), a plain
+`--lib` clippy pass reached it and failed. Fixed by extracting both 64-bit halves via
+`_mm_cvtsi128_si64`/`_mm_srli_si128::<8>` (both SSE2, already implied by `__m128i` existing on this
+target) instead of the byte-array round-trip - no pointer cast, no `Result` to unwrap, and (verified
+after the fact, not assumed) not a measured regression on the same chained timing test.
+
+**Measured end-to-end, both real numbers now, not projections** (full detail and reproduction
+commands in `docs/PERFORMANCE.md`'s own T-198 section):
+
+| | Dev machine (Ryzen 5 PRO 4650U) | Raspberry Pi 5 (Cortex-A76) |
+|---|---|---|
+| Kalyna-GCM 256-256 encrypt, 100 MiB | 34.96 -> **~132-134 MB/s** | 37.33 -> **82.39 MB/s** |
+| Kalyna-GCM 256-256 decrypt, 100 MiB | 30.16 -> **~135-139 MB/s** | 37.04 -> **85.75 MB/s** |
+| DSTU 4145 `sign` ops/s | 667.39 -> **~17,250-17,680** | *(no prior Pi baseline)* **~14,290-14,400** |
+| DSTU 4145 `verify` ops/s (fast path) | 524.01 -> **~16,745-17,000** | *(no prior Pi baseline)* **~14,930-16,040** |
+
+Both machines' new Kalyna-GCM numbers checked against their own measured bare-cipher (Kalyna-XTS,
+no tag) ceiling before being trusted - dev machine 163.82/155.55 MB/s (pre-existing), Pi 93.78 MB/s
+(measured this task) - neither GCM number exceeds its ceiling. The DSTU 4145 speedup (~26-32x on
+the dev machine) is far larger than T-196's own "expect modest" caveat anticipated - `invert()`'s
+squaring-dominated addition chain doesn't touch `poly_mul_wide` at all, but `scalar_multiply`'s own
+ladder is multiply-heavy (8 `multiply()` vs. 7 `square()` per iteration, T-196's own gating check)
+and `poly_mul_wide`'s bit-serial cost was apparently the dominant per-iteration term by a wide
+margin - `square_wide`'s bit-spread was already known to be far cheaper than a full schoolbook
+carry-less multiply (that asymmetry is exactly what T-153/D-109 exploited to get its own ~2.6-4.4x),
+so a ~64x cheaper `multiply()` moving the total this much is a consistent, not surprising, result in
+hindsight - just larger than the pre-landing caveat guessed.
+
+**This is a side-channel-exposure statement, not a claim about resistance**: the hardware path
+introduces no secret-indexed memory access at all - `poly_mul_wide_hw`'s loop bounds and hardware
+instruction latency are both operand-value-independent, unlike the comb-method rewrite T-196
+rejected specifically for that reason - and the software path it falls back to never had one either
+(`gf2m163`'s own "no array indexing at all" design). `no_std`/embedded builds keep running the
+original bit-serial/comb-method software paths unconditionally. Neither path
+has ever been claimed side-channel-resistant against real SPA/DPA (`CLAUDE.md` MVP scope, `docs/
+SECURITY.md`) - this task changes throughput and (for the hardware path) removes one theoretical
+software-side timing variable a table-lookup-based alternative would have reintroduced; it makes no
+hardware-level claim about either path.
+
+**Full regression, both architectures**: `gf2m_wide`/`gf2m163` unit suites, `dstu4145_curve`/
+`dstu4145_gf2m`/`dstu4145_signature`/`kalyna_gcm`/`kalyna_gmac`/`kalyna_xts` integration suites,
+`cargo xtask clippy`/`fmt --check`, and the full `cargo xtask build` feature matrix (`--all-features`,
+`--no-default-features`, `-p dstu-core --no-default-features --features getrandom`) - all clean on
+both the dev machine and the (re-synced) Raspberry Pi.

@@ -3047,6 +3047,125 @@ item they point to is later removed.
       integration suites (official worked example, Bouncy Castle oracle harness, tampered-signature
       rejection, all three still green), `clippy -D warnings`, `fmt --check` - all clean on both
       the dev machine and the (re-synced) Raspberry Pi.
+- [x] **T-197** **Done 2026-08-09, owner-requested, T-196's own explicitly-deferred question
+      ("MULX/ADCX/ADOX теж досліди але врахуй щоб працювало і на арм... треба щось спільне") -
+      picked up with the cross-architecture constraint stated up front this time, not discovered
+      partway through. Clean negative result: no production change, unlike T-195/T-196.**
+
+      `hazmat::dstu9041::{fp256,fp512}`'s `wide_mul`/`reduce_wide` (`F_p` schoolbook
+      multiply-accumulate, DSTU 9041's/`crypto_box`'s hot path) is already plain portable
+      `u128`-based Rust - unlike GF(2^m) carry-less multiplication (T-195/T-196), there's no missing
+      stable-Rust primitive here forcing a choice between portable-slow and hardware-specific-fast.
+      The question was only whether that portable code was already reaching BMI2/ADX-quality x86
+      codegen, or leaving something on the table.
+
+      **Asm spike first** (`--emit=asm`, this project's own precedent): baseline `x86_64` target
+      compiles `multiply()` via legacy `mulq`/`adcq`/`addq` (20/37/26, 101 `movq`).
+      `-C target-feature=+bmi2,+adx` swaps every `mulq` for `mulxq` and halves the `movq` count (48)
+      by avoiding the `RAX`/`RDX` clobber - but the `adcq`/`addq` counts are **identical** either
+      way. LLVM never emits `adcx`/`adox` from this code shape even with the feature enabled - the
+      dual-independent-carry-chain restructuring ADX needs isn't something instruction selection
+      does on its own from generic `u128`-carry Rust.
+
+      **Whole-function timing (not just asm-reading) settles it**: a chained `acc =
+      acc.multiply(x)` loop, 200k iterations, `hazmat::dstu9041::fp256::bmi2_adx_timing::
+      isolated_timing_multiply_chain`, built twice with different `RUSTFLAGS` so there's no target-
+      feature/inlining boundary inside one binary to confound the number (three repeated runs per
+      row, both machines):
+
+      | Build | Dev machine | Raspberry Pi 5 |
+      |---|---|---|
+      | Baseline | 21.3-23.6 ns/op | 72.2-72.5 ns/op |
+      | `+bmi2,+adx` (x86) / `target-cpu=native` (ARM) | 24.4-27.0 ns/op (**slower**) | 75.3 ns/op (no real change) |
+
+      The x86 regression is small but consistently in the same direction every run, not noise.
+      **Root cause**: the accumulate chain is latency-bound (each `multiply()` waits on the previous
+      one's full result), not throughput-bound - `MULX`'s actual benefit (freeing execution ports by
+      not serializing through `RAX`/`RDX`) only pays off with independent work to overlap, and there
+      isn't any in a serial dependency chain. Different register allocation under `+bmi2,+adx` came
+      out a net loss here.
+
+      **"Треба щось спільне" answer: the portable code already is the common answer.**
+      `FieldElement::multiply()`'s baseline `aarch64` asm (`mul`+`umulh` for the widening multiply,
+      `adds`/`adcs`/`adc` for the carry chain) is already AArch64's idiomatic bignum pattern - and
+      unlike BMI2/ADX on x86, `mul`/`umulh`/`adds`/`adcs` are **base ISA**, not an optional
+      extension, so the same portable `u128` source produces it with zero flags, on every ARM64
+      target this project ships to (including the microcontroller-class ones with no `target-cpu`
+      tuning available at all). There's no "did we leave an ARM lever unpulled" question to answer -
+      the lever doesn't exist as a separate opt-in there the way it does on x86, and on x86 it was
+      measured to help nothing (or slightly hurt). `fp512` shares `fp256`'s exact `wide_mul`/
+      `reduce_wide` shape (`docs/DECISIONS.md` D-176, just 8 limbs not 4) so the same conclusion
+      applies structurally - not separately re-measured.
+
+      **No production code change** - the `RUSTFLAGS`-toggled timing test lives in `fp256.rs`'s own
+      `#[cfg(test)] mod bmi2_adx_timing` (compiles on both `x86_64` and `aarch64`, kept for
+      reproducibility per this project's own "Reproducing" convention), `wide_mul`/`reduce_wide`
+      themselves untouched. `docs/PERFORMANCE.md` has the full write-up (new "T-197" subsection,
+      right after the T-196 GF(2^163) section). Full `dstu9041_field`/`dstu9041_curve`/
+      `dstu9041_encryption` regression, `clippy -D warnings`, `fmt --check` - all clean on both the
+      dev machine and the (re-synced) Raspberry Pi.
+- [x] **T-198** **Done 2026-08-09, owner-requested ("Тоді імплементуй попередні дослідження з
+      апаратним прискоренням які працюють" - explicitly excludes T-197's negative result) - lands
+      the two hardware-`clmul` levers T-195/T-196 measured but kept `#[cfg(test)]`-only pending a
+      design decision. `advisor()` consulted before any code was written; full design/review detail
+      in `docs/DECISIONS.md` D-184 (new), full measured numbers in `docs/PERFORMANCE.md`'s own
+      T-198 section - this entry is the summary.**
+
+      **Design**: `std`-gated runtime dispatch (`clmul_native::feature_available()`, needs a hosted
+      environment - `is_x86_feature_detected!`/`is_aarch64_feature_detected!` aren't in `core`),
+      unconditional portable fallback everywhere else - `no_std`/embedded/other-arch builds see zero
+      behavior change. `multiply()` on `Gf2m128`/`Gf2m256`/`Gf2m512` and `gf2m163::FieldElement`
+      both gained this dispatch; a new `poly_mul_wide_hw` per type does the actual hardware work.
+
+      **`advisor()`'s pre-implementation review caught three things, all fixed before landing**:
+      (1) the T-195/T-196 spikes called a separately-`#[target_feature]`-attributed `clmul_native::
+      clmul64` for every `(i, j)` pair - a real non-inlinable call boundary baked into their own
+      6.35x/4.16x numbers; production `poly_mul_wide_hw` inlines the whole schoolbook loop inside
+      one `#[target_feature]` function instead, so those numbers are a floor, not a target, for the
+      landed shape; (2) every dev machine and `x86_64`/`aarch64` CI runner has the hardware feature,
+      so once `multiply()` dispatches, every pre-existing test calling `a.multiply(b)` silently
+      stops exercising the portable path at all - closed by adding `multiply_sw`/
+      `multiply_matches_explicit_software_path` (plus `multiply_sw_*` sibling axiom proptests in
+      `gf2m_wide.rs`) that call `reduce(poly_mul_wide(...))` directly, bypassing dispatch; (3)
+      grepped both crates' `kani_proofs` modules for any `.multiply()`/`.square()` call before
+      assuming CBMC would reach the dispatch branch (neither does - `#[cfg(not(kani))]` on the
+      dispatch is defensive, not an observed-failure fix), and verified Miri empirically rather than
+      pre-emptively excluding it (`MIRIFLAGS=-Zmiri-disable-isolation cargo +nightly miri test`
+      passes clean on both modules' dispatch-correctness tests - the `-Zmiri-disable-isolation` flag
+      itself works around an unrelated, pre-existing Windows-Miri limitation in `proptest`'s failure
+      persistence, confirmed by reproducing the identical error on an untouched pre-existing test).
+
+      **A real, pre-existing `clippy -D warnings` gap, surfaced not introduced**: the T-195/T-196
+      spike code's `_mm_storeu_si128`-into-a-byte-array-then-`try_into().unwrap()` pattern was
+      always `cast_ptr_alignment`/`unwrap_used`-unclean, just never linted (`cargo xtask clippy`'s
+      real gate has no `--all-targets`, so `#[cfg(test)]`-only code was never in scope). Promoting
+      the equivalent code to unconditional (`std` + arch) production code put it in scope for the
+      first time. Fixed by extracting both 64-bit halves via `_mm_cvtsi128_si64`/
+      `_mm_srli_si128::<8>` instead (both SSE2, no pointer cast, no `Result` to unwrap) - verified
+      not a regression on the same chained timing test afterward, not assumed.
+
+      **Measured end-to-end, both real numbers now, not projections** (`docs/PERFORMANCE.md` has
+      the full tables and reproduction commands): Kalyna-GCM 256-256 at 100 MiB - dev machine
+      encrypt 34.96 -> ~132-134 MB/s, decrypt 30.16 -> ~135-139 MB/s (~3.8x/~4.6x); Raspberry Pi
+      encrypt 37.33 -> 82.39 MB/s, decrypt 37.04 -> 85.75 MB/s (~2.21x/~2.31x) - both sanity-checked
+      against each machine's own measured bare-cipher (Kalyna-XTS) ceiling (dev 163.82/155.55 MB/s
+      pre-existing, Pi 93.78 MB/s measured this task) and land safely under it. DSTU 4145 `sign`/
+      `verify` (fast-path build) - dev machine 667.39 -> ~17,250-17,680 ops/s (~26x) and
+      524.01 -> ~16,745-17,000 ops/s (~32x); Raspberry Pi ~14,290-14,400/~14,930-16,040 ops/s (no
+      prior Pi baseline existed to compare against - new data points). The DSTU 4145 speedup is far
+      larger than T-196's own "expect modest" caveat, because that caveat only accounted for
+      `invert()` (squaring-dominated, correctly excluded) and missed that `scalar_multiply`'s own
+      multiply-heavy ladder (8 `multiply()` vs. 7 `square()` per iteration, T-196's own gating
+      check) was paying the *old*, much larger `multiply()` cost on the majority of its work the
+      whole time - `square_wide` was already known cheap (T-153/D-109), so a ~64x cheaper
+      `multiply()` removes what was actually the dominant per-iteration term, not a minor one.
+
+      **Full regression, both architectures**: `gf2m_wide`/`gf2m163` unit suites,
+      `dstu4145_curve`/`dstu4145_gf2m`/`dstu4145_signature`/`kalyna_gcm`/`kalyna_gmac`/`kalyna_xts`
+      integration suites, `cargo xtask clippy`/`fmt --check`, and the full `cargo xtask build`
+      feature matrix (`--all-features`, `--no-default-features`,
+      `-p dstu-core --no-default-features --features getrandom`) - all clean on both the dev machine
+      and the (re-synced) Raspberry Pi.
 - [x] **T-188** **Done 2026-08-07, owner-requested.** SonarCloud Quality Gate was
       `ERROR` on `new_duplicated_lines_density` (3.0% actual vs. `<=3%` required) - missed in T-187's
       own SonarCloud check because that check only queried `api/issues/search` (rule-violation

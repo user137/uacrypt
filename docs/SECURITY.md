@@ -64,6 +64,13 @@ attack closes the gap to the full round count for either cipher.
   the hardware side-channel carve-out below (see `docs/DECISIONS.md` D-19 for the full rationale and
   exact scope). Anything beyond that — an index that depends on a *comparison outcome*, or
   variable-time table selection — is still prohibited without exception.
+  - **`hazmat::gf2m_wide`/`hazmat::dstu4145::gf2m163`'s `std`-gated hardware-`clmul` dispatch**
+    (`docs/TASKS.md` T-198, `docs/DECISIONS.md` D-184) is not a new carve-out and not a
+    side-channel-resistance claim — the hardware path has no secret-indexed memory access at all
+    (fixed loop bounds, and `PCLMULQDQ`/`PMULL`'s own documented latency is operand-value-
+    independent), a strict improvement over the D-19 carve-out on the axis this bullet covers, not
+    a trade against it. `no_std`/embedded builds and CPUs without the feature keep running the
+    original software paths (including gf2m163's own no-array-indexing-at-all design) unchanged.
 - All comparisons involving secret data use `subtle::ConstantTimeEq`, never `==`.
 - All key-material types implement `Zeroize` / `ZeroizeOnDrop`.
 - No secret material (keys, nonces derived from secrets, plaintexts) in logs, panics, or error

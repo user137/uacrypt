@@ -87,8 +87,90 @@ macro_rules! gf2m_field {
                 Self(out)
             }
 
+            /// Hardware carry-less-multiply `poly_mul_wide` replacement (`docs/TASKS.md` T-198,
+            /// `docs/DECISIONS.md` D-184) - schoolbook combination of `$limbs * $limbs` pairwise
+            /// 64x64->128 hardware `clmul`s, the same limb-placement identity the software comb
+            /// method computes a different way (cross-checked directly by
+            /// `field_axiom_tests::*::multiply_matches_explicit_software_path` and
+            /// `clmul_spike::*_spike::clmul_poly_mul_wide_matches_software_reference` below).
+            /// Unlike the T-195 spike's
+            /// `schoolbook_clmul_poly_mul_wide`, every intrinsic call sits directly inside this
+            /// single `#[target_feature]`-attributed function rather than behind a plain (non-
+            /// `target_feature`) wrapper calling out to `clmul_native::clmul64` - that indirection
+            /// was a real, non-inlinable call boundary at every one of the `$limbs * $limbs` pairs
+            /// in the spike (`advisor()`-flagged before landing this), so the spike's own 6.35x/
+            /// 4.16x numbers are a floor for this production shape, not a target.
+            #[cfg(all(feature = "std", target_arch = "x86_64"))]
+            #[target_feature(enable = "pclmulqdq")]
+            #[allow(clippy::cast_possible_wrap, clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+            // deliberate: `_mm_set_epi64x`/`_mm_cvtsi128_si64` use `i64` purely as a bit container
+            // (no signed interpretation anywhere below) - the casts are the intended reinterpret,
+            // not a value-changing truncation.
+            unsafe fn poly_mul_wide_hw(a: &[u64; $limbs], b: &[u64; $limbs]) -> [u64; $limbs2] {
+                use std::arch::x86_64::{
+                    _mm_clmulepi64_si128, _mm_cvtsi128_si64, _mm_set_epi64x, _mm_srli_si128,
+                };
+                let mut out = [0u64; $limbs2];
+                for i in 0..$limbs {
+                    for j in 0..$limbs {
+                        // Safety: this function itself requires `pclmulqdq` (target_feature,
+                        // callers gate on `clmul_native::feature_available()` first). Extracting
+                        // both 64-bit halves via `_mm_cvtsi128_si64`/`_mm_srli_si128` (both SSE2,
+                        // already required for `__m128i` to exist on this target) avoids the
+                        // unaligned-pointer-cast `_mm_storeu_si128` into a stack byte array would
+                        // otherwise need.
+                        let ma = _mm_set_epi64x(0, a[i] as i64);
+                        let mb = _mm_set_epi64x(0, b[j] as i64);
+                        let prod = _mm_clmulepi64_si128(ma, mb, 0x00);
+                        let lo = _mm_cvtsi128_si64(prod) as u64;
+                        let hi = _mm_cvtsi128_si64(_mm_srli_si128::<8>(prod)) as u64;
+                        out[i + j] ^= lo;
+                        out[i + j + 1] ^= hi;
+                    }
+                }
+                out
+            }
+
+            /// `aarch64` sibling of the `x86_64` `poly_mul_wide_hw` above - see its own doc
+            /// comment for the rationale (`docs/TASKS.md` T-198). `PMULL` via `vmull_p64`, gated
+            /// on the `aes` target feature (`clmul_native`'s own doc comment has the citation for
+            /// why `PMULL` has no separate Rust target-feature name).
+            #[cfg(all(feature = "std", target_arch = "aarch64"))]
+            #[target_feature(enable = "aes")]
+            unsafe fn poly_mul_wide_hw(a: &[u64; $limbs], b: &[u64; $limbs]) -> [u64; $limbs2] {
+                use std::arch::aarch64::vmull_p64;
+                let mut out = [0u64; $limbs2];
+                for i in 0..$limbs {
+                    for j in 0..$limbs {
+                        // Safety: this function itself requires `aes`/`PMULL` (target_feature,
+                        // callers gate on `clmul_native::feature_available()` first).
+                        let prod: u128 = vmull_p64(a[i], b[j]);
+                        out[i + j] ^= prod as u64;
+                        out[i + j + 1] ^= (prod >> 64) as u64;
+                    }
+                }
+                out
+            }
+
+            /// Dispatches to the hardware-`clmul` `poly_mul_wide_hw` above when the CPU supports it
+            /// (`std`-gated runtime detection, `docs/TASKS.md` T-198) and falls back to the
+            /// portable `poly_mul_wide` comb method otherwise - `no_std`/embedded builds, CPUs
+            /// without the instruction, and (`not(kani)`) CBMC's own symbolic execution (which has
+            /// no model for `is_x86_feature_detected!`/hardware intrinsics) all take this same
+            /// unconditional software path, unchanged from before this task.
             #[must_use]
             pub fn multiply(self, other: Self) -> Self {
+                #[cfg(all(
+                    feature = "std",
+                    not(kani),
+                    any(target_arch = "x86_64", target_arch = "aarch64")
+                ))]
+                if clmul_native::feature_available() {
+                    // Safety: `feature_available()` just confirmed the CPU supports the target
+                    // feature `poly_mul_wide_hw` requires.
+                    let wide = unsafe { Self::poly_mul_wide_hw(&self.0, &other.0) };
+                    return Self::reduce(wide);
+                }
                 Self::reduce(Self::poly_mul_wide(&self.0, &other.0))
             }
 
@@ -336,6 +418,17 @@ mod field_axiom_tests {
                     })
                 }
 
+                /// Explicit software-only multiply, bypassing `multiply()`'s own hardware
+                /// dispatch entirely (`docs/TASKS.md` T-198). **Why this exists**: once `multiply()`
+                /// dispatches to `poly_mul_wide_hw` on any capable CPU (every dev machine and every
+                /// `x86_64`/`aarch64` CI runner has one), every axiom test below that calls
+                /// `a.multiply(b)` silently stops exercising the portable `poly_mul_wide` path at
+                /// all - green tests, zero coverage of the path every `no_std`/embedded/older-CPU
+                /// user actually runs. `advisor()`-flagged before this task was declared done.
+                fn multiply_sw(a: $elem, b: $elem) -> $elem {
+                    $elem::reduce($elem::poly_mul_wide(&a.0, &b.0))
+                }
+
                 #[test]
                 fn adding_an_element_to_itself_is_zero() {
                     // Characteristic 2: a XOR a == 0, independent of `multiply`/`reduce`.
@@ -422,6 +515,45 @@ mod field_axiom_tests {
                             $elem::reduce(wide),
                             $elem::reduce_bit_serial_reference(wide)
                         );
+                    }
+
+                    /// `multiply()`'s hardware dispatch (T-198) must be byte-identical to the
+                    /// always-software path on every input, on whichever machine actually runs
+                    /// this - the real regression gate for the hardware path's correctness (not
+                    /// just the raw `clmul` primitive, the *dispatch* including the CPU-feature
+                    /// check and the `poly_mul_wide_hw` schoolbook combination). A no-op comparison
+                    /// on a CPU without the hardware feature (both sides then take the same
+                    /// software path), a real one everywhere this project's own dev machine and CI
+                    /// actually run.
+                    #[test]
+                    fn multiply_matches_explicit_software_path(a in arb_element(), b in arb_element()) {
+                        prop_assert_eq!(a.multiply(b), multiply_sw(a, b));
+                    }
+
+                    /// Software-only axiom coverage (T-198's own gap-close, see `multiply_sw`'s
+                    /// doc comment) - mirrors `multiply_is_commutative`/`multiply_is_associative`/
+                    /// `multiply_distributes_over_add`/`multiply_by_one_is_identity` above exactly,
+                    /// just routed through `multiply_sw` instead of `a.multiply(b)` so the
+                    /// portable path stays under real test pressure regardless of what hardware
+                    /// the test happens to run on.
+                    #[test]
+                    fn multiply_sw_by_one_is_identity(a in arb_element()) {
+                        prop_assert_eq!(multiply_sw(a, ONE), a);
+                    }
+
+                    #[test]
+                    fn multiply_sw_is_commutative(a in arb_element(), b in arb_element()) {
+                        prop_assert_eq!(multiply_sw(a, b), multiply_sw(b, a));
+                    }
+
+                    #[test]
+                    fn multiply_sw_is_associative(a in arb_element(), b in arb_element(), c in arb_element()) {
+                        prop_assert_eq!(multiply_sw(multiply_sw(a, b), c), multiply_sw(a, multiply_sw(b, c)));
+                    }
+
+                    #[test]
+                    fn multiply_sw_distributes_over_add(a in arb_element(), b in arb_element(), c in arb_element()) {
+                        prop_assert_eq!(multiply_sw(a, b.add(c)), multiply_sw(a, b).add(multiply_sw(a, c)));
                     }
                 }
             }
@@ -684,18 +816,32 @@ mod kani_proofs {
 }
 
 /// A single pairwise 64x64 -> 128-bit hardware carry-less multiply, one implementation per
-/// architecture this project targets (`docs/TASKS.md` T-195's Tier 1 spike, `advisor()`-directed:
-/// owner asked to measure the real lever, not estimate it). `#[target_feature(enable = ...)]` on
-/// an `unsafe fn`, gated by a *runtime* feature check at every call site - not
-/// `#[cfg(target_feature = ...)]`, which would be `false` on this project's actual baseline build
-/// (no `-C target-feature=+...` override anywhere in `hazmat`) and would silently compile the
-/// hardware path out entirely, producing a false "no speedup" result instead of a missing one.
-#[cfg(all(test, target_arch = "x86_64"))]
+/// architecture this project targets. Originally a `docs/TASKS.md` T-195 Tier 1 spike
+/// (`advisor()`-directed: owner asked to measure the real lever, not estimate it); promoted to
+/// production, `docs/TASKS.md` T-198 (`docs/DECISIONS.md` D-184) - `feature_available()` is the
+/// dispatch gate `multiply()` uses below. `#[target_feature(enable = ...)]` on an `unsafe fn`,
+/// gated by a *runtime* feature check at every call site - not `#[cfg(target_feature = ...)]`,
+/// which would be `false` on this project's actual baseline build (no `-C target-feature=+...`
+/// override anywhere in `hazmat`) and would silently compile the hardware path out entirely on
+/// every CPU, hardware-capable or not. `std`-gated (D-184): runtime feature detection
+/// (`is_x86_feature_detected!`/`is_aarch64_feature_detected!`) needs a hosted environment the same
+/// way `randombytes`/`pwhash`/`selftest` already do (D-48's precedent) - `no_std`/embedded targets
+/// always take the portable `poly_mul_wide` path, unconditionally, with zero behavior change from
+/// before this task.
+#[cfg(all(feature = "std", target_arch = "x86_64"))]
 pub(crate) mod clmul_native {
+    #[cfg(any(test, kani))]
     use std::arch::x86_64::{__m128i, _mm_clmulepi64_si128, _mm_set_epi64x, _mm_storeu_si128};
 
     /// `PCLMULQDQ`, imm8 `0x00` selects the low 64 bits of both 128-bit operands - exactly the two
-    /// `u64`s placed there by `_mm_set_epi64x(0, x as i64)` below.
+    /// `u64`s placed there by `_mm_set_epi64x(0, x as i64)` below. Kept only as a differential-test
+    /// oracle (`docs/TASKS.md` T-198): production code (`poly_mul_wide_hw` in the `gf2m_field!`
+    /// macro, and `gf2m163`'s own copy) inlines its calls to the underlying intrinsic directly
+    /// inside a single `#[target_feature]` function instead of going through this wrapper, since a
+    /// call to a *separately*-`#[target_feature]`-attributed function is a real, non-inlinable call
+    /// boundary at every `(i, j)` pair (`advisor()`-flagged before landing, confirmed against the
+    /// T-195/T-196 spike numbers which paid exactly this cost).
+    #[cfg(any(test, kani))]
     #[target_feature(enable = "pclmulqdq")]
     unsafe fn clmul64_impl(a: u64, b: u64) -> (u64, u64) {
         let ma = _mm_set_epi64x(0, a as i64);
@@ -714,20 +860,25 @@ pub(crate) mod clmul_native {
 
     /// # Safety
     /// Caller must have checked [`feature_available`] first.
+    #[cfg(any(test, kani))]
     pub(crate) unsafe fn clmul64(a: u64, b: u64) -> (u64, u64) {
         clmul64_impl(a, b)
     }
 }
 
-#[cfg(all(test, target_arch = "aarch64"))]
+#[cfg(all(feature = "std", target_arch = "aarch64"))]
 pub(crate) mod clmul_native {
+    #[cfg(any(test, kani))]
     use std::arch::aarch64::vmull_p64;
 
     /// `PMULL` - gated by the `aes` target feature (ARM bundles `PMULL` into the same
     /// cryptographic-extension hardware block as AES, confirmed via this project's own
     /// `rustc --print target-features` output on the Raspberry Pi, "fuse-crypto-eor - CPU fuses
     /// AES/PMULL and EOR operations"; `/proc/cpuinfo`'s `pmull` flag is the actual presence check,
-    /// there is no separate `pmull`-named Rust target feature to gate on).
+    /// there is no separate `pmull`-named Rust target feature to gate on). Kept only as a
+    /// differential-test oracle, same reasoning as the `x86_64` sibling's own doc comment
+    /// (`docs/TASKS.md` T-198).
+    #[cfg(any(test, kani))]
     #[target_feature(enable = "aes")]
     unsafe fn clmul64_impl(a: u64, b: u64) -> (u64, u64) {
         let prod: u128 = vmull_p64(a, b);
@@ -740,24 +891,23 @@ pub(crate) mod clmul_native {
 
     /// # Safety
     /// Caller must have checked [`feature_available`] first.
+    #[cfg(any(test, kani))]
     pub(crate) unsafe fn clmul64(a: u64, b: u64) -> (u64, u64) {
         clmul64_impl(a, b)
     }
 }
 
-/// T-195 Tier 1 spike: does a hardware carry-less-multiply instruction move `multiply()`'s
-/// (not just `poly_mul_wide`'s) throughput? Schoolbook (not Karatsuba - checkable limb-by-limb
-/// against the existing reference, per `advisor()`) combination of pairwise hardware `clmul64`s:
-/// for narrow inputs `a`, `b` with `limbs` 64-bit words each, `out[i+j] ^= lo` / `out[i+j+1] ^= hi`
-/// for every `(i, j)` pair - the same limb-placement identity [`Gf2m256::poly_mul_wide`]'s comb
-/// method computes a different way, cross-checked against it directly below before any timing is
-/// trusted. Feeds the *production* [`Gf2m256::reduce`] afterward (not a second reduce
-/// implementation) so the measured number is `multiply()`'s real replacement cost, not
-/// `poly_mul_wide` in isolation - this session's own earlier mistake (T-195's "at most 38%"
-/// estimate, made before `reduce` itself got fixed) is exactly the shape a `poly_mul_wide`-only
-/// number would repeat. Diagnostic-only, `#[cfg(test)]`, no production code touched - see
-/// `docs/TASKS.md` T-195 for the still-open feature-detection/`no_std`/fallback design a real
-/// landing would need.
+/// Originally a T-195 Tier 1 spike measuring whether a hardware carry-less-multiply instruction
+/// moves `multiply()`'s (not just `poly_mul_wide`'s) throughput - landed as production dispatch,
+/// `docs/TASKS.md` T-198, `docs/DECISIONS.md` D-184 (see `poly_mul_wide_hw` above `multiply()`
+/// itself for the production implementation this module now uses). Kept here as a correctness/
+/// timing check against an independent reimplementation (`schoolbook_clmul_poly_mul_wide`, built
+/// from the lower-level `clmul_native::clmul64` oracle rather than the production
+/// `poly_mul_wide_hw`) - for narrow inputs `a`, `b` with `limbs` 64-bit words each,
+/// `out[i+j] ^= lo` / `out[i+j+1] ^= hi` for every `(i, j)` pair, the same limb-placement identity
+/// [`Gf2m256::poly_mul_wide`]'s comb method computes a different way, cross-checked against it
+/// directly below before any timing is trusted. Feeds the *production* [`Gf2m256::reduce`]
+/// afterward (not a second reduce implementation).
 #[cfg(all(test, any(target_arch = "x86_64", target_arch = "aarch64")))]
 mod clmul_spike {
     use super::clmul_native::{clmul64, feature_available};
@@ -826,14 +976,16 @@ mod clmul_spike {
                     let a = [0x1111_1111_1111_1111u64; $limbs];
                     let b = [0x5555_5555_5555_5555u64; $limbs];
 
-                    // Software baseline: existing production `multiply()` (comb `poly_mul_wide` +
-                    // word-wise `reduce`), chained the same way every other diagnostic in this file
+                    // Explicit software path (`poly_mul_wide` + `reduce`, bypassing `multiply()`'s
+                    // own dispatch - `docs/TASKS.md` T-198 landed the hardware path into `multiply()`
+                    // itself, so on any capable CPU `acc.multiply(...)` would now measure hw-vs-hw,
+                    // not hw-vs-sw), chained the same way every other diagnostic in this file
                     // chains, matching `kalyna_gcm`'s real accumulator dependency pattern.
                     let start = Instant::now();
-                    let mut acc = $elem(a);
-                    let operand = $elem(b);
+                    let mut acc = a;
                     for _ in 0..N {
-                        acc = black_box(acc.multiply(black_box(operand)));
+                        let wide = $elem::poly_mul_wide(black_box(&acc), black_box(&b));
+                        acc.copy_from_slice(&$elem::reduce(wide).0);
                     }
                     let sw_elapsed = start.elapsed();
                     black_box(acc);
@@ -854,7 +1006,7 @@ mod clmul_spike {
                     let sw_ns = sw_elapsed.as_nanos() as f64 / f64::from(N);
                     let hw_ns = hw_elapsed.as_nanos() as f64 / f64::from(N);
                     eprintln!(
-                        "{}: software multiply() = {sw_ns:.1} ns/op | hardware-clmul multiply = {hw_ns:.1} ns/op | speedup = {:.2}x | (Kalyna-XTS 256-256 ceiling = {} MB/s - no GCM projection may exceed this)",
+                        "{}: explicit software multiply = {sw_ns:.1} ns/op | hardware-clmul multiply = {hw_ns:.1} ns/op | speedup = {:.2}x | (Kalyna-XTS 256-256 ceiling = {} MB/s - no GCM projection may exceed this)",
                         stringify!($elem),
                         sw_ns / hw_ns,
                         KALYNA_XTS_256_256_CEILING_MB_S

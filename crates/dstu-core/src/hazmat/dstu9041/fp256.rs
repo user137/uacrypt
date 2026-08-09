@@ -456,3 +456,55 @@ mod kani_proofs {
         assert!(less_than_p(r.0));
     }
 }
+
+/// T-197 spike: is `multiply()`'s schoolbook `wide_mul`/`reduce_wide` chain, built as portable
+/// `u128`-based Rust, already getting BMI2 `mulx`/ADX `adcx`/`adox`-quality codegen at this
+/// project's baseline `x86_64` target, or does it need an explicit opt-in? Whole-function timing
+/// only (no isolated asm counting) - the crate is rebuilt twice with different `RUSTFLAGS` and each
+/// run's own number is compared offline, so there is no target-feature/inlining boundary inside a
+/// single binary to confound the measurement. Not landed as a build default: enabling
+/// `bmi2`/`adx` unconditionally would break this project's own "no build assumption may quietly
+/// assume a specific CPU family" rule (`CLAUDE.md` MVP scope) for the generic-hardware baseline.
+/// Also compiled on `aarch64` (same test, no `RUSTFLAGS` toggle needed there - ARM has no
+/// BMI2/ADX-equivalent optional feature to opt into) purely as a baseline cross-arch comparison
+/// point for the same measurement.
+#[cfg(all(test, any(target_arch = "x86_64", target_arch = "aarch64")))]
+mod bmi2_adx_timing {
+    use super::FieldElement;
+    use std::time::Instant;
+
+    #[test]
+    #[ignore]
+    fn isolated_timing_multiply_chain() {
+        let mut acc = FieldElement([
+            0x1111_1111_1111_1111,
+            0x2222_2222_2222_2222,
+            0x3333_3333_3333_3333,
+            0x0444_4444_4444_4444,
+        ]);
+        let x = FieldElement([
+            0x5555_5555_5555_5555,
+            0x6666_6666_6666_6666,
+            0x7777_7777_7777_7777,
+            0x0888_8888_8888_8888,
+        ]);
+
+        // Warm-up, not timed.
+        for _ in 0..1_000 {
+            acc = acc.multiply(x);
+        }
+
+        const ITERS: u32 = 200_000;
+        let start = Instant::now();
+        for _ in 0..ITERS {
+            acc = acc.multiply(x);
+        }
+        let elapsed = start.elapsed();
+        let ns_per_op = elapsed.as_secs_f64() * 1e9 / f64::from(ITERS);
+        eprintln!(
+            "fp256::multiply chain: {ns_per_op:.1} ns/op (acc last limb, prevents dead-code \
+             elimination: {:#018x})",
+            acc.0[0]
+        );
+    }
+}

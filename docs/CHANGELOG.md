@@ -17,6 +17,16 @@ All notable changes to this project are documented in this file. Format follows
   `docs/TASKS.md` T-178, `docs/DECISIONS.md` D-169). `uacrypt box-keygen`/`box-pubkey`/`box-seal`/
   `box-open` CLI surface.
 
+### Changed
+
+- `hazmat::gf2m_wide`/`hazmat::dstu4145::gf2m163`: `multiply()` now dispatches to a hardware
+  carry-less-multiply implementation (`PCLMULQDQ`/`PMULL`) at runtime when the CPU supports it and
+  the `std` feature is enabled, falling back to the existing portable software path otherwise -
+  `no_std`/embedded builds and CPUs without the instruction are unaffected. Real measured speedups:
+  Kalyna-GCM 256-256 throughput up ~2.2-4.6x on top of the already-landed word-wise `reduce` fix,
+  DSTU 4145 `sign`/`verify` up ~26-32x on the dev machine (`docs/TASKS.md` T-198,
+  `docs/DECISIONS.md` D-184).
+
 ## [0.2.0] - 2026-08-02
 
 Second tagged release - GitHub Releases only, no crates.io publish (`docs/TASKS.md` T-17 stays

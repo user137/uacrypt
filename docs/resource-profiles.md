@@ -176,13 +176,22 @@ audit-surface trade, not the memory-table trade every other row in this document
 
 | Profile | `verify` ops/s |
 |---|---:|
-| Default (fast path) | **239.31** |
-| `small-tables` (classic ladder, unchanged) | 120.06 |
-| Default is... | **~1.99x faster** |
+| Default (fast path) | **~16,850-17,055** |
+| `small-tables` (classic ladder) | ~8,850-9,040 |
+| Default is... | **~1.9x faster** |
+
+Updated 2026-08-09 (`docs/TASKS.md` T-198, `docs/DECISIONS.md` D-184) - both profiles now go
+through `hazmat::gf2m163`'s hardware-`clmul` dispatch (`FieldElement::multiply()`, orthogonal to
+which `verify_combine` algorithm wraps it), so both absolute numbers jumped by roughly the same
+factor versus the original D-108/T-153 measurements (239.31/120.06, then 524.01/328.20) - the
+**relative** gap between the two profiles stayed close to its original ~1.9-2.0x the whole time,
+since the hardware path accelerates the field multiply underneath both equally. See
+`docs/PERFORMANCE.md`'s own T-198 section for the full history and reproduction command.
 
 `sign`/`verifying_key()` (which multiply by a *secret* scalar - the ephemeral nonce or private key)
 are unaffected by either profile: `scalar_multiply` itself was deliberately left unchanged, in
-every build configuration.
+every build configuration. (Both still benefit from the same T-198 hardware dispatch - see
+`docs/PERFORMANCE.md`.)
 
 ## Which one do I need?
 
