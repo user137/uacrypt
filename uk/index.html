@@ -155,6 +155,10 @@ header{position:sticky;top:0;z-index:20;background:color-mix(in srgb, var(--bg) 
 .gh-link{color:var(--ink);text-decoration:none;font-size:.9rem;border:1px solid var(--rule);border-radius:99px;
   padding:.4em .95em;}
 .gh-link:hover{border-color:var(--ink-muted);}
+.nav-docs{display:flex;align-items:center;gap:.85rem;padding-right:.75rem;margin-right:.15rem;
+  border-right:1px solid var(--rule);}
+.nav-docs a{color:var(--ink-muted);text-decoration:none;font-size:.85rem;}
+.nav-docs a:hover{color:var(--ink);}
 
 /* ---------- hero ---------- */
 .hero{padding:4.4rem 0 2.6rem;}
@@ -243,7 +247,10 @@ html[data-lang="uk"] [lang="en"]{display:none;}
   <div class="container nav">
     <a class="wordmark" href="#top"><span>uacrypt</span><span class="tag">DSTU</span></a>
     <div class="nav-controls">
-      <a class="gh-link" href="../book/">Книга</a>
+      <div class="nav-docs">
+        <a href="../book/">Книга</a>
+        <a href="../api/">API</a>
+      </div>
       <a class="pill-btn" href="../" hreflang="en" aria-label="Перемкнути на англійську">EN</a>
       <button class="pill-btn" id="theme-toggle" type="button" aria-label="Toggle dark/light theme">◐</button>
       <a class="gh-link" href="https://github.com/user137/uacrypt">GitHub</a>
@@ -876,6 +883,7 @@ uacrypt box-open   --key box.key  --in sealed.box   --out message.bin</code></pr
   <div class="foot-links">
     <a href="https://github.com/user137/uacrypt">GitHub</a>
     <a href="../book/">Docs</a>
+    <a href="../api/">API</a>
     <a href="https://github.com/user137/uacrypt/blob/master/docs/SECURITY.md">Security</a>
     <a href="https://github.com/user137/uacrypt/blob/master/docs/CONTRIBUTING.md">Contributing</a>
     <a href="https://github.com/user137/uacrypt/blob/master/LICENSE-MIT">MIT</a>
