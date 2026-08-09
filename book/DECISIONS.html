@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-1006c68e.js";
+            window.path_to_searchindex_js = "searchindex-6b8f71a9.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-ce7e91c5.js"></script>
@@ -11148,6 +11148,113 @@ prose); <code>docs/dstu-crypto-project.md</code>’s <code>crypto_box</code> API
 <p><strong>T-193 closed.</strong> <code>crypto_box</code>/<code>crypto_box512</code> together now cover both curve sizes
 <code>hazmat::dstu9041</code> itself supports (<code>l(p) in {256, 512}</code>, T-177/T-192). T-194 (the combined
 performance table the owner actually asked for) is now unblocked.</p>
+<h2 id="d-184-t-198---hardware-clmul-landed-as-production-dispatch-for-gf2m_widegf2m163-this-crates-first-runtime-hardware-dispatch-path"><a class="header" href="#d-184-t-198---hardware-clmul-landed-as-production-dispatch-for-gf2m_widegf2m163-this-crates-first-runtime-hardware-dispatch-path">D-184: T-198 - hardware <code>clmul</code> landed as production dispatch for <code>gf2m_wide</code>/<code>gf2m163</code>, this crate’s first runtime hardware-dispatch path</a></h2>
+<p>Owner-requested landing (“Тоді імплементуй попередні дослідження з апаратним прискоренням які
+працюють” - “then implement the previous hardware-acceleration investigations that work”) of the
+two levers T-195/T-196 measured but deliberately left as <code>#[cfg(test)]</code>-only spikes pending a
+design decision on target-feature detection/<code>no_std</code>/fallback. T-197’s MULX/ADCX/ADOX result (a
+measured <em>regression</em>) is explicitly excluded - “which work” rules it out by the owner’s own
+framing, and <code>advisor()</code> confirmed that reading before any code was written.</p>
+<p><strong>Design, <code>advisor()</code>-directed before implementation started</strong>: <code>std</code>-gated runtime dispatch
+(<code>is_x86_feature_detected!</code>/<code>std::arch::is_aarch64_feature_detected!</code>, both need a hosted
+environment - not available in <code>core</code>), portable software fallback unconditionally on every other
+build. Concretely: <code>multiply()</code> on <code>Gf2m128</code>/<code>Gf2m256</code>/<code>Gf2m512</code> (<code>gf2m_wide.rs</code>) and
+<code>dstu4145::gf2m163::FieldElement</code> checks <code>clmul_native::feature_available()</code> first (<code>#[cfg(all( feature = "std", not(kani), any(target_arch = "x86_64", target_arch = "aarch64")))]</code>, compiled out
+entirely otherwise) and calls a new <code>poly_mul_wide_hw</code> on success, falling back to the existing
+<code>poly_mul_wide</code> unconditionally when the feature check is absent or returns <code>false</code>. <code>no_std</code>/
+embedded/other-architecture builds see <strong>zero behavior change</strong> from before this task - same
+code path, same output, unconditionally.</p>
+<p><strong>Why not <code>#[cfg(target_feature = ...)]</code> (compile-time) instead</strong>: would require a separate build
+per deployment CPU (this project explicitly rejected assuming a specific CPU family for its
+baseline build, <code>CLAUDE.md</code> MVP scope) and would make the fallback path untestable on a
+feature-capable CI machine (the exact gap this task’s own <code>multiply_matches_explicit_software_path</code>
+tests close - see below). Runtime detection costs one relaxed-load-and-branch per call (<code>std</code>
+caches the CPUID/<code>getauxval</code> result behind a static internally) against a multiply that’s tens to
+hundreds of nanoseconds even on the fast path - not worth hoisting into a cache of our own
+(<code>advisor()</code>: “keep the dispatch dumb”).</p>
+<p><strong><code>advisor()</code>’s review caught three things before any of this shipped, all fixed before landing</strong>:</p>
+<ol>
+<li><strong>Inlining boundary.</strong> The T-195/T-196 spikes’ own <code>schoolbook_clmul_poly_mul_wide</code> had no
+<code>#[target_feature]</code> attribute and called the separately-attributed <code>clmul_native::clmul64</code> for
+every <code>(i, j)</code> pair - a real, non-inlinable function-call boundary at every one of them (9 calls
+for <code>gf2m163</code>, up to 64 for <code>Gf2m512</code>), baked into the spikes’ own 6.35x/4.16x numbers. Production
+<code>poly_mul_wide_hw</code> puts the whole schoolbook double loop, intrinsic calls included, inside a
+single <code>#[target_feature]</code>-attributed function instead - the spike numbers are a floor for this
+shape, not a target. <code>clmul_native::clmul64</code>/<code>clmul64_impl</code> are now <code>#[cfg(any(test, kani))]</code>
+only (differential-test oracles, no longer a production call site) - promoting them to
+unconditional production code alongside <code>poly_mul_wide_hw</code> would have reintroduced exactly the
+boundary this point exists to avoid.</li>
+<li><strong>Software-path test coverage gap.</strong> Every dev machine and <code>x86_64</code>/<code>aarch64</code> CI runner has
+<code>PCLMULQDQ</code>/<code>PMULL</code>, so the instant <code>multiply()</code> dispatches, every existing test that calls
+<code>a.multiply(b)</code> - <code>field_axiom_tests</code>’s own commutativity/associativity/distributivity proptests,
+every Kalyna-GCM/GMAC KAT, every DSTU 4145 signature test - silently stops exercising the
+portable path at all. Green tests, zero coverage of what <code>no_std</code>/embedded/older-CPU builds
+actually run. Closed by adding an explicit <code>multiply_sw</code>/<code>multiply_matches_explicit_software_path</code>
+pair to both <code>gf2m_wide.rs</code> and <code>gf2m163.rs</code> (the latter also gets <code>multiply_sw_*</code> sibling
+proptests for commutative/associative/distributive/identity, mirroring the axioms that already
+existed for <code>multiply()</code>) - these call <code>reduce(poly_mul_wide(...))</code> directly, bypassing dispatch,
+so the software path stays under real test pressure regardless of what hardware runs the suite.</li>
+<li><strong>Kani/Miri gating.</strong> Grepped both crates’ <code>#[cfg(kani)] mod kani_proofs</code> for any <code>.multiply()</code>/
+<code>.square()</code> call before assuming CBMC would even reach the dispatch branch - neither module’s Kani
+proofs touch either (they exercise <code>reduce</code>/<code>conditional_sub_p</code>/<code>select</code>/<code>spread32to64</code> directly),
+so <code>#[cfg(not(kani))]</code> on the dispatch is defensive, not a fix for an observed failure. Miri:
+verified empirically (not assumed) rather than reaching for <code>#[cfg(not(miri))]</code> pre-emptively -
+<code>MIRIFLAGS=-Zmiri-disable-isolation cargo +nightly miri test ... multiply_matches_explicit_ software_path</code> passes clean on both <code>gf2m_wide</code>/<code>gf2m163</code> (the <code>-Zmiri-disable-isolation</code> flag
+itself is needed only to work around an unrelated, pre-existing Windows-Miri limitation -
+<code>proptest</code>’s failure-persistence file writer calls <code>std::env::current_dir()</code>, which Miri’s
+isolation mode blocks; confirmed identical on an untouched pre-existing test, not something this
+task introduced).</li>
+</ol>
+<p><strong>A real, pre-existing <code>clippy -D warnings</code> gap surfaced by promotion, not introduced by it</strong>:
+<code>_mm_storeu_si128</code> into a stack <code>[u8; 16]</code> cast to <code>*mut __m128i</code> (<code>cast_ptr_alignment</code> - a <code>u8</code>
+pointer is never guaranteed 16-byte-aligned) and <code>.try_into().unwrap()</code> on the resulting byte slices
+(<code>clippy::unwrap_used</code>, denied crate-wide) both already existed in the T-195/T-196 spike code, just
+never linted - <code>cargo xtask clippy</code>’s real CI gate is <code>cargo clippy --workspace[--all-features] -- -D warnings</code>, no <code>--all-targets</code>, so <code>#[cfg(test)]</code>-only code was never in its scope. The moment
+<code>poly_mul_wide_hw</code> made the equivalent code unconditional (<code>std</code> + arch, not <code>test</code>), a plain
+<code>--lib</code> clippy pass reached it and failed. Fixed by extracting both 64-bit halves via
+<code>_mm_cvtsi128_si64</code>/<code>_mm_srli_si128::&lt;8&gt;</code> (both SSE2, already implied by <code>__m128i</code> existing on this
+target) instead of the byte-array round-trip - no pointer cast, no <code>Result</code> to unwrap, and (verified
+after the fact, not assumed) not a measured regression on the same chained timing test.</p>
+<p><strong>Measured end-to-end, both real numbers now, not projections</strong> (full detail and reproduction
+commands in <code>docs/PERFORMANCE.md</code>’s own T-198 section):</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th></th><th>Dev machine (Ryzen 5 PRO 4650U)</th><th>Raspberry Pi 5 (Cortex-A76)</th></tr>
+</thead>
+<tbody>
+<tr><td>Kalyna-GCM 256-256 encrypt, 100 MiB</td><td>34.96 -&gt; <strong>~132-134 MB/s</strong></td><td>37.33 -&gt; <strong>82.39 MB/s</strong></td></tr>
+<tr><td>Kalyna-GCM 256-256 decrypt, 100 MiB</td><td>30.16 -&gt; <strong>~135-139 MB/s</strong></td><td>37.04 -&gt; <strong>85.75 MB/s</strong></td></tr>
+<tr><td>DSTU 4145 <code>sign</code> ops/s</td><td>667.39 -&gt; <strong>~17,250-17,680</strong></td><td><em>(no prior Pi baseline)</em> <strong>~14,290-14,400</strong></td></tr>
+<tr><td>DSTU 4145 <code>verify</code> ops/s (fast path)</td><td>524.01 -&gt; <strong>~16,745-17,000</strong></td><td><em>(no prior Pi baseline)</em> <strong>~14,930-16,040</strong></td></tr>
+</tbody>
+</table>
+</div>
+<p>Both machines’ new Kalyna-GCM numbers checked against their own measured bare-cipher (Kalyna-XTS,
+no tag) ceiling before being trusted - dev machine 163.82/155.55 MB/s (pre-existing), Pi 93.78 MB/s
+(measured this task) - neither GCM number exceeds its ceiling. The DSTU 4145 speedup (~26-32x on
+the dev machine) is far larger than T-196’s own “expect modest” caveat anticipated - <code>invert()</code>’s
+squaring-dominated addition chain doesn’t touch <code>poly_mul_wide</code> at all, but <code>scalar_multiply</code>’s own
+ladder is multiply-heavy (8 <code>multiply()</code> vs. 7 <code>square()</code> per iteration, T-196’s own gating check)
+and <code>poly_mul_wide</code>’s bit-serial cost was apparently the dominant per-iteration term by a wide
+margin - <code>square_wide</code>’s bit-spread was already known to be far cheaper than a full schoolbook
+carry-less multiply (that asymmetry is exactly what T-153/D-109 exploited to get its own ~2.6-4.4x),
+so a ~64x cheaper <code>multiply()</code> moving the total this much is a consistent, not surprising, result in
+hindsight - just larger than the pre-landing caveat guessed.</p>
+<p><strong>This is a side-channel-exposure statement, not a claim about resistance</strong>: the hardware path
+introduces no secret-indexed memory access at all - <code>poly_mul_wide_hw</code>’s loop bounds and hardware
+instruction latency are both operand-value-independent, unlike the comb-method rewrite T-196
+rejected specifically for that reason - and the software path it falls back to never had one either
+(<code>gf2m163</code>’s own “no array indexing at all” design). <code>no_std</code>/embedded builds keep running the
+original bit-serial/comb-method software paths unconditionally. Neither path
+has ever been claimed side-channel-resistant against real SPA/DPA (<code>CLAUDE.md</code> MVP scope, <code>docs/ SECURITY.md</code>) - this task changes throughput and (for the hardware path) removes one theoretical
+software-side timing variable a table-lookup-based alternative would have reintroduced; it makes no
+hardware-level claim about either path.</p>
+<p><strong>Full regression, both architectures</strong>: <code>gf2m_wide</code>/<code>gf2m163</code> unit suites, <code>dstu4145_curve</code>/
+<code>dstu4145_gf2m</code>/<code>dstu4145_signature</code>/<code>kalyna_gcm</code>/<code>kalyna_gmac</code>/<code>kalyna_xts</code> integration suites,
+<code>cargo xtask clippy</code>/<code>fmt --check</code>, and the full <code>cargo xtask build</code> feature matrix (<code>--all-features</code>,
+<code>--no-default-features</code>, <code>-p dstu-core --no-default-features --features getrandom</code>) - all clean on
+both the dev machine and the (re-synced) Raspberry Pi.</p>
 
                     </main>
 

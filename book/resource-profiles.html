@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-1006c68e.js";
+            window.path_to_searchindex_js = "searchindex-6b8f71a9.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-ce7e91c5.js"></script>
@@ -358,15 +358,23 @@ audit-surface trade, not the memory-table trade every other row in this document
 <tr><th>Profile</th><th style="text-align: right"><code>verify</code> ops/s</th></tr>
 </thead>
 <tbody>
-<tr><td>Default (fast path)</td><td style="text-align: right"><strong>239.31</strong></td></tr>
-<tr><td><code>small-tables</code> (classic ladder, unchanged)</td><td style="text-align: right">120.06</td></tr>
-<tr><td>Default is…</td><td style="text-align: right"><strong>~1.99x faster</strong></td></tr>
+<tr><td>Default (fast path)</td><td style="text-align: right"><strong>~16,850-17,055</strong></td></tr>
+<tr><td><code>small-tables</code> (classic ladder)</td><td style="text-align: right">~8,850-9,040</td></tr>
+<tr><td>Default is…</td><td style="text-align: right"><strong>~1.9x faster</strong></td></tr>
 </tbody>
 </table>
 </div>
+<p>Updated 2026-08-09 (<code>docs/TASKS.md</code> T-198, <code>docs/DECISIONS.md</code> D-184) - both profiles now go
+through <code>hazmat::gf2m163</code>’s hardware-<code>clmul</code> dispatch (<code>FieldElement::multiply()</code>, orthogonal to
+which <code>verify_combine</code> algorithm wraps it), so both absolute numbers jumped by roughly the same
+factor versus the original D-108/T-153 measurements (239.31/120.06, then 524.01/328.20) - the
+<strong>relative</strong> gap between the two profiles stayed close to its original ~1.9-2.0x the whole time,
+since the hardware path accelerates the field multiply underneath both equally. See
+<code>docs/PERFORMANCE.md</code>’s own T-198 section for the full history and reproduction command.</p>
 <p><code>sign</code>/<code>verifying_key()</code> (which multiply by a <em>secret</em> scalar - the ephemeral nonce or private key)
 are unaffected by either profile: <code>scalar_multiply</code> itself was deliberately left unchanged, in
-every build configuration.</p>
+every build configuration. (Both still benefit from the same T-198 hardware dispatch - see
+<code>docs/PERFORMANCE.md</code>.)</p>
 <h2 id="which-one-do-i-need"><a class="header" href="#which-one-do-i-need">Which one do I need?</a></h2>
 <p>A quick sizing guide by target, from <code>docs/DECISIONS.md</code> D-35’s survey of typical hardware — flash
 budget is what actually decides this, not a chip-family label:</p>

@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-1006c68e.js";
+            window.path_to_searchindex_js = "searchindex-6b8f71a9.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-ce7e91c5.js"></script>
@@ -243,7 +243,17 @@ table lookups mirroring the DSTU reference implementations (S-box/GF-multiplicat
 tables) — a documented, currently-accepted software cache-timing exposure, scoped identically to
 the hardware side-channel carve-out below (see <code>docs/DECISIONS.md</code> D-19 for the full rationale and
 exact scope). Anything beyond that — an index that depends on a <em>comparison outcome</em>, or
-variable-time table selection — is still prohibited without exception.</li>
+variable-time table selection — is still prohibited without exception.
+<ul>
+<li><strong><code>hazmat::gf2m_wide</code>/<code>hazmat::dstu4145::gf2m163</code>’s <code>std</code>-gated hardware-<code>clmul</code> dispatch</strong>
+(<code>docs/TASKS.md</code> T-198, <code>docs/DECISIONS.md</code> D-184) is not a new carve-out and not a
+side-channel-resistance claim — the hardware path has no secret-indexed memory access at all
+(fixed loop bounds, and <code>PCLMULQDQ</code>/<code>PMULL</code>’s own documented latency is operand-value-
+independent), a strict improvement over the D-19 carve-out on the axis this bullet covers, not
+a trade against it. <code>no_std</code>/embedded builds and CPUs without the feature keep running the
+original software paths (including gf2m163’s own no-array-indexing-at-all design) unchanged.</li>
+</ul>
+</li>
 <li>All comparisons involving secret data use <code>subtle::ConstantTimeEq</code>, never <code>==</code>.</li>
 <li>All key-material types implement <code>Zeroize</code> / <code>ZeroizeOnDrop</code>.</li>
 <li>No secret material (keys, nonces derived from secrets, plaintexts) in logs, panics, or error

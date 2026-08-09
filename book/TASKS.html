@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-1006c68e.js";
+            window.path_to_searchindex_js = "searchindex-6b8f71a9.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-ce7e91c5.js"></script>
@@ -2810,7 +2810,7 @@ same pass, not deferred. Full `cargo test -p dstu-core`/`cargo test -p uacrypt` 
 </code></pre>
 </li>
 <li>
-<p><input disabled="" type="checkbox"> <strong>T-194</strong> <strong>Not started, owner-requested 2026-08-08. Was blocked on T-193, now unblocked -
+<p><input disabled="" type="checkbox" checked=""> <strong>T-194</strong> <strong>Done 2026-08-08, owner-requested. Was blocked on T-193, now unblocked -
 T-193 done.</strong> Combined
 <code>l(p)=256</code>/<code>l(p)=512</code> performance table for <code>crypto_box</code>/<code>crypto_box512</code>, per owner’s explicit
 choice (both sizes in one table, full <code>seal</code>/<code>open</code> regime, not a narrower hazmat-only
@@ -2841,6 +2841,584 @@ trusting any timing number.
 **Platform scope**: dev machine (Ryzen) **and** the Raspberry Pi
 (`[[raspberry-pi-uacipher]]`/`.claude.local.md`) - owner explicitly asked for the Pi row too
 via `AskUserQuestion` this session, not dev-machine-only like T-179's original table.
+
+**T-194 done 2026-08-08 - see `docs/PERFORMANCE.md`'s "DSTU 9041 / `crypto_box` +
+`crypto_box512`" section (T-179/T-194) for the full tables/methodology, `advisor()`
+consulted before starting per its own recommendation.** Both `l(p)=256` and `l(p)=512`
+re-measured fresh this session (old T-179 numbers not reused); dev-machine + Pi both
+confirmed via a fresh `cargo build --release -p uacrypt` and `--help | grep 512` before any
+number was trusted (the Pi's `tar`+`ssh`-synced copy had no `crypto_box512` at all until
+re-synced this session, since T-193 landed the same day). `openssl speed ecdh` confirmed
+`brainpoolP512r1` present on both machines (no `secp521r1` fallback needed); `openssl cms`
+confirmed to round-trip through `brainpoolP512r1` before timing anything. Two discriminating
+sanity checks both passed: MB/s at 10 MiB is flat between `l(p)=256`/`l(p)=512` on both
+`uacrypt` and OpenSSL's side (confirms `crypto_box512` genuinely reuses the D-182 bulk path,
+not a measurement artifact), and primitive-level ops/s drops substantially (~6.5-8x) from
+`l(p)=256` to `l(p)=512` (confirms the KEM work is actually inside the timed loop, not
+hoisted out, D-80's failure shape). The two-scalar-mult-per-call caveat was independently
+re-derived against `curve512.rs`/`encryption512.rs` directly, not assumed to carry over from
+the `l(p)=256` write-up - same shape confirmed. New finding not in the original task text:
+OpenSSL's own `openssl.exe` process-spawn overhead is roughly half of each Windows
+dev-machine CMS call's own wall-clock time (~40 ms of an ~83-91 ms 10 MiB call), but
+negligible on the Pi (~3.6 ms) - Linux process creation being far cheaper than Windows',
+explaining part of why the dev machine and Pi disagree on which side wins (OpenSSL ~7.5-8.7x
+faster on the dev machine, `uacrypt` roughly competitive - within ~10-20% - on the Pi, the
+same kind of platform reversal already seen for Kalyna/Kupyna vs. UAPKI, D-33) - not
+root-caused further, out of this measurement task's own scope. `cargo xtask docs-check`
+clean. **Not done this pass, flagged for the owner instead**: the gh-pages landing page
+(`index.html`, separate worktree/branch, `C:\Users\Pa\AppData\Local\Temp\uacrypt-ghpages`)
+has its own stale `crypto_box` perf line ("~3.3-4.2x slower [...] the raw elliptic-curve math
+alone is close to parity") and an outdated "the standard also defines 384/512/768-bit
+variants, not yet implemented" note (now wrong for `l(p)=512` since T-192/T-193) - both
+predate this task, not introduced by it, but surfaced by this session's grep sweep; left
+unedited since a published-site edit felt like it needed explicit sign-off rather than a
+silent same-pass fix, unlike `docs/PERFORMANCE.md`/this file.
+</code></pre>
+</li>
+<li>
+<p><input disabled="" type="checkbox" checked=""> <strong>T-195</strong> <strong>Done 2026-08-08, owner-requested follow-up to T-194 - word-wise <code>reduce</code> landed as
+real code this session (see below); Tier 2 (EC windowing) remains plan-only, owner to decide.</strong>
+Owner asked two things: (1) re-run the <code>crypto_box</code>/<code>crypto_box512</code> MB/s comparison with a
+large enough payload to neutralize <code>openssl.exe</code>’s own process-spawn overhead (T-194’s 10 MiB
+pass had this confound; see <code>docs/PERFORMANCE.md</code>’s corrected table), and (2) investigate <em>why</em>
+this project is slower than OpenSSL with an actual algorithmic-complexity breakdown (“де ми
+платимо, де не платить опенссл”) and draft an improvement plan mirroring the <code>fused</code>/
+<code>small-tables</code> space-vs-speed precedent (“так само як із смол тейблс, буде оця реалізація -
+повільна і перфоманс”).</p>
+<pre><code>**Payload-size history this session**: started at 1 GiB (fully neutralizes spawn overhead,
+confirmed - OpenSSL's reported MB/s roughly doubled vs. the 10 MiB pass once neutralized), but
+the Raspberry Pi ran out of disk space mid-run at that size (`[[raspberry-pi-uacipher]]`'s
+`/dev/mmcblk0p2` is a 28G card, was already at 100% after the 1 GiB scratch files) - owner then
+asked to drop to 100 MiB instead and clean up scratch files on both machines afterward.
+100 MiB is still ~2500x the ~40 ms dev-machine spawn-overhead floor, so it stays fully
+neutralized; freed the Pi's disk (`rm` on the 1 GiB scratch files, `df` confirmed 4.2G
+recovered) before re-running there. **`docs/PERFORMANCE.md`'s main `crypto_box` table keeps its
+already-good 1 GiB dev-machine numbers** (redoing already-correct, already-neutralized
+measurements just to shrink the file would have been pure waste) **and gets its Pi row filled
+in at 100 MiB instead** (both sizes independently confirmed spawn-neutralized, so mixing them
+across the two machine columns is an honest, explicitly-labeled choice, not a hidden regime
+mismatch). All scratch payload/output files deleted on both machines after use (dev machine:
+`rm payload1g* payload100m* payload10m* ...` in the scratchpad `perf194` dir; Pi: same, plus the
+benchmark shell script self-deletes its own scratch files at the end of its run) - `~/perf194`
+on the Pi now holds only the small persistent keys/certs, not any of the multi-hundred-MB
+payloads.
+
+**`advisor()` consulted before the complexity investigation and gave the load-bearing
+redirect**: the EC/KEM layer was the wrong axis entirely. At bulk-message scale the two KEM
+scalar multiplications cost ~0.3 ms each against a multi-second call (~0.001% of total time,
+confirmed against this task's own primitive-level ops/s table) - no EC-side optimization could
+move the bulk MB/s number, no matter how much faster it made the EC math. Also: at the
+primitive level this project is *already ahead* of OpenSSL's field-matched curve (`box-seal`
+3355.93 ops/s vs. `brainpoolP256r1`'s 2906.0, while doing two scalar mults per call to their
+one) - the EC layer is not where the gap is. Redirected to decompose the *symmetric* layer
+instead, and separately flagged that the CMS 1 GiB numbers might be an I/O ceiling rather than
+a crypto one, needing a raw-cipher check to rule out.
+
+**Tier 1 (explains the owner's actual MB/s number) - symmetric-layer decomposition, done and
+published, corrected mid-session after owner pushback**: see `docs/PERFORMANCE.md`'s "Where the
+gap actually comes from" subsection (T-194 follow-up) for the full table/method and the
+correction note. **First version of this analysis was wrong**: it stopped at Kalyna-GCM
+(14.25/15.90 MB/s) and concluded "Kalyna itself is the ceiling, an AES-NI-vs-no-hardware-
+instruction ISA gap" - the owner pushed back ("в нас калина була сотні мегабайт на секунду"),
+correctly, from memory. Adding a `kalyna-xts` row (no authentication tag at all - pure block
+cipher, same variant/payload) caught it: the bare cipher reaches **163.82/155.55 MB/s**, ~10x
+faster than Kalyna-GCM. **The actual bottleneck is Kalyna-GCM's own GF(2^256) authenticated-tag
+multiply** - `hazmat::gf2m_wide`'s field multiply, the GCM/GMAC accumulator against the real
+field element `H` (D-56 divergence 3) - already isolated-timing-measured at 89.6% (m=128) to
+94.3% (m=512) of GCM's entire per-block cost in an *earlier* session (T-125/D-76, 2026-07-26,
+already improved once there, ~1.8-2.3x, via a 4-bit-window comb multiply) that this session
+failed to reconnect to before writing the first version of this analysis - this session's own
+14.25-15.90 MB/s number matches the already-published post-T-125-fix 256-256 GCM number
+(17.09-17.17 MB/s at 10 MiB) within normal sampling noise, so it was a correct measurement with
+a wrong causal story attached, not a new bug. **Corrected conclusion**: `crypto_box`'s full
+stack (16.32/16.98 MB/s) is not measurably slower than bare Kalyna-GCM, confirming the KEM/
+framing are not the ceiling as before - but Kalyna-GCM itself is ~10x slower than the bare
+cipher specifically because of its tag multiply, not because Kalyna the cipher lacks hardware
+support. Symmetrically, raw `openssl enc -aes-256-cbc` (261.78/402.44 MB/s) being faster than
+full CMS (205.59/296.45 MB/s) still answers `advisor()`'s I/O-vs-crypto-bound question the same
+way as before (a real crypto/envelope gap, not an I/O ceiling). One small, real, secondary
+finding, unaffected by the correction: `crypto_secretstream`'s own decrypt path runs ~28%
+slower than raw Kalyna-GCM's own decrypt, reproduced independently at both 1 GiB and 100 MiB -
+a genuine small `crypto_secretstream` decrypt-path question worth a future look, but far too
+small to explain the overall gap on its own.
+
+**Tier 1 recommendation, corrected: the Kalyna-cipher-vs-AES-NI framing is retired - the cipher
+itself (~155-164 MB/s via XTS) is not the open question, and this project's own T-129/D-88 and
+T-139/D-87 already closed that specific investigation with no code change.** The real, corrected
+lever is the GCM/GMAC tag's own field multiply, and unlike the cipher question, **this is not a
+closed investigation** - `hazmat::gf2m_wide::poly_mul_wide`'s 4-bit-window comb method (T-125's
+own fix) was never compared against a hardware carry-less-multiply instruction (`PCLMULQDQ` on
+x86-64, `PMULL` on AArch64), which is exactly the mechanism AES-GCM's own GHASH uses on any
+x86-64 CPU built since ~2010 - a real, unexplored, precedented lever, not a dead end. **Not
+picked up as code this session** (a genuine new investigation - target-feature detection,
+`no_std`-compatibility of any `core::arch` intrinsics used, a fallback path for targets without
+the instruction, and its own `--emit=asm`/spike pass per T-129/T-139's standing precedent -
+needs its own scoping and `advisor()` consultation, not folded into this task's close-out).
+Document the corrected gap as: cipher vs. cipher is a modest, already-investigated, largely-
+closed gap (same class as the already-published Strumok-vs-AVX2-ChaCha20 ~1.6-1.7x gap); tag
+multiply vs. hardware GHASH is the real, larger, and still-open ISA-level lever.
+
+**Tier 1 spike, same session, `advisor()`-directed before touching `poly_mul_wide`**: before
+picking a hardware-CLMUL rewrite, checked whether `Self::reduce` is still "a small fraction" of
+`Gf2m256::multiply()` as `hazmat::gf2m_wide`'s own module doc claimed - that claim was measured
+against the *pre-T-125* bit-serial multiply (~16,384 word-ops at m=512), a comparison that no
+longer holds now that `poly_mul_wide` is the 4-bit comb method. Extended the existing
+`#[ignore]`d diagnostic harness (`isolated_timing_gf2m256_poly_mul_wide_vs_reduce_split`,
+`gf2m_wide.rs`) rather than building a new one - project-sanctioned shape, throwaway/manual-
+timing, no production code touched. **First version of this diagnostic was itself wrong**:
+timed `poly_mul_wide`/`reduce` on fixed, non-chained inputs, which let the CPU pipeline
+independent iterations and undercounted both terms by ~2x relative to the sibling test's
+chained `multiply()` number - fixed by chaining each sub-loop's output back into its own next
+input, matching `kalyna_gcm`'s real `acc = acc.add(...).multiply(h_key)` accumulator pattern.
+**Corrected, reproduced twice**: `reduce` is **~62-64% of `multiply()`'s total** at m=256 (two
+runs: 61.7%/63.6%, `poly_mul_wide` ~476-520 ns/op, `reduce` ~832-838 ns/op) - now the *larger*
+term, inverted from the stale doc-comment claim. Updated `hazmat::gf2m_wide`'s module doc
+comment in place to record this (it had explicitly said "revisit only if a future measurement
+shows otherwise" - this is that revisit).
+
+**Consequence for the Tier 1 recommendation above**: a hardware carry-less-multiply rewrite of
+`poly_mul_wide` alone, even at zero marginal cost, could only ever remove ~38% of `multiply()`'s
+current time - `reduce`'s bit-at-a-time top-down loop (up to `2m-1` iterations, each a
+conditional branch plus up to 4 word `XOR`s) is the bigger term. `advisor()`'s own suggested
+cheaper first lever: m=256's pentanomial terms are `10/5/2/0` and m=512's are `8/5/2/0` - all
+`&lt; 64` - so a word-wise closed-form fold-down (the same shape `gf2m163::reduce` already uses,
+re-derived per field size rather than reused directly) replaces the bit-serial loop with pure
+Rust, no `target_feature`/`no_std` fork, no fallback-path design burden, and helps the
+Raspberry Pi row too (CLMUL requires `PMULL` detection there; a word-wise `reduce` doesn't).
+Order-of-operations: **word-wise `reduce` first, hardware CLMUL for `poly_mul_wide` second**
+(re-measure the split after the first lever lands, since it changes the ratio the second lever
+is evaluated against) - **picked up immediately, same session, owner asked "реалізуй word-wise
+reduce, test-first."**
+
+**Word-wise `reduce`, implemented test-first, `crates/dstu-core/src/hazmat/gf2m_wide.rs`**:
+- Added a free `const _: () = assert!($f1 &gt; 0 &amp;&amp; $f1 &lt; 64 &amp;&amp; ...)` per field-size
+  instantiation - the word-wise fold-down's `t &lt;&lt; shift` / `t &gt;&gt; (64 - shift)` split is only
+  UB-free if every pentanomial term is strictly between 0 and 64; checked at compile time
+  instead of trusted by inspection of the three macro invocations' literal arguments.
+- Renamed the old bit-serial `reduce` to `reduce_bit_serial_reference`, gated
+  `#[cfg(any(test, kani))]` (dead code in a release build) - kept as the already-years-verified
+  oracle for the new implementation rather than deleted, same "keep the old path as a test
+  oracle" shape `gf2m163`'s own history uses.
+- New `reduce`: for word index `i` from `$limbs2 - 1` down to `$limbs`, the whole word
+  `T = c[i]` folds down in one step (`base = i - $limbs`; XOR `T`, `T &lt;&lt; f1`, `T &lt;&lt; f2`,
+  `T &lt;&lt; f3` into `c[base]`, with each shift's carry-out XORed into `c[base + 1]`) instead of
+  64 bit-at-a-time steps - top-down word order guarantees every word a later iteration reads
+  has already received every contribution aimed at it, since a contribution from word `i`
+  only ever lands in words strictly below `i` (`$limbs &gt;= 2` in all three instantiations).
+- **Test-first**: wrote the differential proptest and two fixed-input regression tests
+  (`reduce_matches_bit_serial_reference`, plus all-zero/all-ones wide-input edge cases) against
+  `reduce_bit_serial_reference` in the same pass as the implementation, extending
+  `field_axiom_tests`'s existing `arb_element()` pattern with a new `arb_wide()` strategy (the
+  actual double-width input type `reduce` takes, which the old `arb_element()` never covered).
+  All pass, all three field sizes, ~256 proptest cases each.
+- **Exhaustive verification**: added `#[cfg(kani)] mod kani_proofs` (new to this file, mirrors
+  `gf2m163`'s own `kani_proofs` module) proving `reduce == reduce_bit_serial_reference` for
+  *every* possible double-width input, all three field sizes - reusing the real, already-
+  verified old implementation as the oracle rather than writing a fourth from-scratch
+  reference. **Cannot run on Windows at all** (D-102) - written following the established
+  macro/proof-shape precedent but not locally executed; CI (Linux) is the actual verification
+  venue, not yet confirmed green as of this session's close (re-check via `gh run view` once
+  pushed, per the standing "verify CI's real conclusion" rule).
+- **Regression check**: full `cargo test` (41 test binaries + doctests, 0 failures), the
+  official Kalyna-GCM/GMAC/XTS vectors for all five variants (unaffected - GCM/GMAC's tag
+  computation routes through the same `multiply()` call, just faster now), `clippy -D
+  warnings`, `fmt --check`, and both feature-matrix builds (default, `small-tables`, `no_std`)
+  all clean.
+- **Real, built-binary, measured result** (not projected): `uacrypt kalyna-gcm` at
+  `--variant 256-256`, 100 MiB payload, 5 iterations, same machine/methodology as the pre-fix
+  row in `docs/PERFORMANCE.md`'s layer-decomposition table - **14.25 -&gt; 34.96 MB/s encrypt
+  (~2.45x), 15.90 -&gt; 30.16 MB/s decrypt (~1.90x)**. `reduce`'s own isolated cost (chained
+  timing split, same diagnostic as the spike above) dropped from ~62-64% of `multiply()`'s
+  total to ~2.7% (17.6 ns/op vs. ~832-838 ns/op at m=256). See `docs/PERFORMANCE.md`'s "T-195's
+  word-wise `reduce` lever" subsection for the full table and the reopened-CLMUL-question note
+  (`poly_mul_wide` is back to being ~97%+ of `multiply()`'s remaining cost now that `reduce`
+  isn't competing for the larger share, closer to T-125's original ~89.6-94.3% estimate than
+  this session's own pre-fix "at most 38%" spike number, which was only ever valid against the
+  *unfixed* `reduce`).
+- Scratch payload/output files (`payload100m.bin`, `gcmkey.bin`, etc., dev-machine scratchpad
+  `perf195` dir) deleted after use, matching this task's own established cleanup discipline
+  from the payload-size-history section above; not run on the Raspberry Pi this pass (not
+  asked, and the fix is machine-independent pure-Rust code with no platform-specific path to
+  separately confirm - CLMUL, if picked up later, is the one that would need its own Pi check).
+
+**Tier 2 (the owner's actual "smol tables" analogy, and the right frame for the primitive-level
+table specifically - real, but does not move the bulk MB/s number, per the redirect above) -
+EC scalar-multiplication cost breakdown, plan only, no code changed**:
+- Read directly (`crates/dstu-core/src/hazmat/dstu9041/curve256.rs`/`curve512.rs`), counted by
+  hand, not estimated: `scalar_multiply` is a fixed 256-iteration (512 at `l(p)=512`) double-
+  and-select loop with **no separate doubling formula** - every iteration does an
+  unconditional double (`acc.add(acc)`) *and* an unconditional candidate add (`acc.add(base)`),
+  both routed through the same general "complete" projective addition law (Додаток Б.4),
+  counted at **13 field multiplications per point operation** (`zz`, `b=square`, `c`, `dd`,
+  `e=d*c*dd` (2), `cross`, `x_r` (3), `y_r` (2), `z_r` - 13 total). 256 iterations x 2 ops x 13
+  mults = **6656 field multiplications per `l(p)=256` scalar-multiply call**, no windowing/NAF.
+  `fp512.rs`'s 8-limb `wide_mul` (64 inner products vs. `fp256.rs`'s 4-limb/16) combined with
+  512 iterations (2x) closely matches this task's own measured ~6.5-8x ops/s drop from
+  `l(p)=256` to `l(p)=512` - the measured primitive-level gap is explained by this, not a
+  separate mystery. `fp{256,512}.rs`'s modular reduction already exploits the friendly
+  `p = 2^{256,512} - C` pseudo-Mersenne shape (cheap, not a target). `square()` calls
+  `multiply(self, self)` with no dedicated squaring routine (a well-known ~30-40% multiply-
+  count reduction is available and unclaimed here - the smallest, lowest-risk lever if this is
+  ever picked up). `invert()` (Fermat via `pow_mod`, ~512 field ops) is called once per
+  `scalar_multiply` in `to_affine` - ~7-8% of one call's cost, a real but secondary lever.
+- OpenSSL's own generic (non-assembly-optimized) EC path - confirmed via a direct source read
+  of `crypto/ec/ec_mult.c` this session, not assumed from memory: constant-time single-scalar
+  multiplication (the ECDH-shaped operation `openssl speed ecdh` measures) uses a Montgomery-
+  ladder-with-conditional-swaps (`ossl_ec_scalar_mul_ladder`), and - the confirmed structural
+  difference from this project's own code - `EC_POINT_dbl`/`EC_POINT_add` are **separate**,
+  curve-method-specific formulas "potentially using different formulas for efficiency," i.e. a
+  dedicated (cheaper) doubling exists there that this project's unified formula doesn't have.
+  **Exact OpenSSL Jacobian-formula multiplication counts were NOT independently re-derived this
+  session** (would need reading the actual brainpool-specific C path/asm, not just the
+  dispatcher) - flagged explicitly as unverified, per this project's own "read the actual asm
+  before proposing a fix" standing rule (T-129/T-139 precedent). The qualitative fact (a real,
+  dedicated doubling formula gap) is confirmed; the exact quantitative multiplier is not, and
+  any future implementation work must close that gap with a real spike before committing to a
+  rewrite, not before this plan.
+
+**Both blockers this task was told to gate on (see T-193's own Phase-0-style caution) are now
+resolved or explicitly scoped**:
+1. *Is Додаток Б.4's addition-law formula normative (must-use-literally) or descriptive (one
+   correct way to compute the group law)?* **Resolved while researching this task, from the
+   project's own `docs/pseudocode/dstu9041.md`**: clause 6.12 (scalar multiplication)'s own
+   transcription states the standard's own text disclaims its literal textbook double-and-add
+   as side-channel-unsafe *as written* and directs implementers to a real citation (Joye &amp; Yen,
+   "The Montgomery Powering Ladder," CHES 2002) instead - meaning any correct, constant-time
+   scalar-multiplication algorithm (windowed, ladder, or otherwise) already satisfies the
+   standard, not just a literal transcription of 6.12. Separately, Додаток Б.4's projective
+   formula is one concrete implementation of the *same* addition law already given in affine
+   form immediately above it in the same document - any provably-equivalent formula (extended
+   coordinates, a dedicated doubling formula, etc.) computes the identical mathematical point
+   addition, so swapping the specific field-operation sequence stays "per Додаток Б.4" in the
+   sense the citation requirement cares about (what operation is computed, not which exact
+   sequence of field ops implements it) - the same principle already applied to choosing
+   schoolbook vs. any other correct multiplication algorithm for the underlying `F_p` math.
+   Record as its own `docs/DECISIONS.md` entry if this plan is ever picked up - resolved here,
+   not yet written down as a citable decision.
+2. *Does a windowed/precomputed scheme's secret-indexed table lookup need its own documented
+   exception?* **Still open, not resolved by this task.** D-19's Kalyna S-box/MDS carve-out is
+   scoped specifically to that case and does not automatically extend to a new EC-scalar-mult
+   table - a real `docs/DECISIONS.md` entry is required before any implementation, not just an
+   assumption that D-19 already covers it.
+
+**Concrete levers, if this plan is ever picked up (ordered by effort/risk, smallest first)**:
+1. Dedicated squaring routine in `fp256.rs`/`fp512.rs` - lowest risk, fully isolated, no
+   windowing/table-lookup question at all, ~30-40% fewer multiplications in every `square()`
+   call.
+2. Fixed-width windowed scalar multiplication (e.g. a 4-bit window) with a constant-time
+   table-indexed lookup, replacing today's bit-by-bit ladder - **the natural home for the
+   owner's own "smol tables" analogy**: extend the *existing* `dstu-core/small-tables` Cargo
+   feature (already governing Kalyna/Kupyna/Strumok and DSTU 4145's `verify`,
+   `docs/resource-profiles.md`) rather than inventing a new flag, same default-fast/opt-in-
+   small polarity as every other primitive already on it - `fused` gets the windowed/
+   precomputed path, `small-tables` keeps today's zero-precompute ladder. Blocked on open
+   blocker 2 above.
+3. A fixed-base precomputed table specifically for `base_point()` (used by every `seal`'s
+   `R = epsilon * G`, and by DSTU 4145 signing's own base-point multiplication) - the single
+   biggest per-call win available, since it only benefits fixed-base multiplication, not
+   `seal`'s second, variable-base `T = epsilon * Q`. Same blocker as above.
+4. A dedicated (cheaper) doubling formula distinct from the general addition law - the largest
+   but most invasive change: touches the proven-complete/branch-free correctness argument for
+   both E256/1 and E512/1, needs its own completeness proof, not just a speed patch. Lowest
+   priority of the four.
+
+**Verification requirements before any of this ships (existing project rules, not new ones,
+restated here so a future implementer doesn't have to rediscover them)**: the existing Додаток
+Г worked-example tests check the *result* of point addition/scalar multiplication, not the
+algorithm, so they remain valid oracles regardless of which formula computes it - no new oracle
+needed, but every existing test must still pass unchanged. A fresh Kani-tractable-subset check
+for whatever new bounded operations are added (mirroring `fp256.rs`/`fp512.rs`'s existing
+`conditional_sub_p`/`select`/`add`/`sub`/`reduce_wide` proofs). Per T-129/T-139's own precedent:
+a genuine `--emit=asm`/`criterion` spike *before* committing to any rewrite, not after -
+"the hypothesis was wrong" is a complete, valuable outcome there, not a failure to route
+around.
+
+**Hardware-`clmul` spike, same session, owner-requested ("досліди зараз як нам допоможе
+апаратна інструкція... на разбері - дві різні архітектури"), `advisor()`-directed design**:
+measured, not estimated, whether `PCLMULQDQ`/`PMULL` would actually move `multiply()`'s
+throughput (not `poly_mul_wide` alone - the mistake shape this task's own earlier "at most
+38%" estimate would have repeated). New `#[cfg(test)]` modules in `gf2m_wide.rs`:
+`clmul_native` (one per `target_arch`, `#[target_feature(enable = "pclmulqdq")]`/
+`enable = "aes"` on an `unsafe fn`, gated by a *runtime* `is_x86_feature_detected!`/
+`is_aarch64_feature_detected!` check at every call site - not `#[cfg(target_feature = ...)]`,
+which would be `false` on this project's actual baseline build and silently produce a false
+"no speedup" result) and `clmul_spike` (schoolbook - not Karatsuba, checkable limb-by-limb -
+combination of pairwise hardware clmuls, one macro instantiation per field size, mirroring
+`field_axioms!`'s own shape). **Correctness gated first**: `clmul_poly_mul_wide_matches_
+software_reference`, a proptest against the existing software `poly_mul_wide`, all three
+field sizes, both architectures - all green before any timing was trusted. Then timed feeding
+the *same production* word-wise `reduce` this task's own earlier fix landed (not a second
+reduce implementation).
+
+**Real, measured, both architectures - `docs/PERFORMANCE.md`'s "T-195 Tier 1 hardware-`clmul`
+spike" subsection has the full tables**: `Gf2m256::multiply()` (software vs. hardware-`clmul`,
+chained, same methodology as every other timing diagnostic in this file) - dev machine
+(Ryzen 5 PRO 4650U) **6.35x** (505.8 -&gt; 79.7 ns/op), Raspberry Pi 5 (Cortex-A76) **4.16x**
+(487.2 -&gt; 117.2 ns/op), both stable across repeated runs. m=128/512 measured too for
+completeness (dev 1.84x/11.61x, Pi 1.90x/5.35x - m=512's schoolbook cost scales as `limbs^2`,
+64 pairwise clmuls vs. m=256's 16, hence the larger win there) but m=256 is what
+`crypto_secretstream`/`crypto_box` actually run through, so it's the number that matters for
+the bulk-throughput tables.
+
+**Real second-architecture confirmation of the word-wise `reduce` fix itself, found while
+setting up this spike**: the Pi's `~/cipher_ua` copy predated T-195's `reduce` rewrite (last
+synced before this session) - re-synced (tar+ssh per `.claude.local.md`), then ran the actual
+`kalyna-gcm` 256-256 benchmark there for the first time post-fix, 100 MiB, same methodology as
+the dev-machine row: **12.35 -&gt; 37.33 MB/s encrypt, 12.41 -&gt; 37.04 MB/s decrypt, ~3.0x** - a
+real measured result on the second architecture, not projected, and a *bigger* relative win
+than the dev machine's own ~2.45x/1.90x (consistent with the old bit-serial `reduce` costing
+proportionally more per cycle on this CPU). Scratch files (`payload100m.bin`, `gcmkey.bin`,
+`~/perf195` dir) deleted immediately after, `df` confirmed no net disk growth on the Pi's
+already-tight card.
+
+**Projected (not measured end-to-end) effect on real Kalyna-GCM throughput if the hardware
+path were actually landed**: swapping each machine's measured software-vs-hardware
+`multiply()` delta into its own real GCM per-block time and holding cipher-block/framing cost
+fixed - dev machine ~34.96 -&gt; ~68 MB/s encrypt, ~30.16 -&gt; ~52 MB/s decrypt; Pi ~37.33 -&gt; ~68
+MB/s encrypt, ~37.04 -&gt; ~67 MB/s decrypt. Both comfortably under their XTS (bare-cipher)
+ceilings (163.82/155.55 MB/s dev; Pi's own XTS number not separately measured this session).
+The projection is *smaller* than the raw `multiply()` speedup suggests on its own, because
+Kalyna256-256's own `encrypt_block` (201.4 ns dev / 323.4 ns Pi) becomes the new floor once
+the tag multiply shrinks enough - expected diminishing returns once a two-term sum stops
+being dominated by one term, not a sign the projection method is wrong.
+
+**Not picked up as production code this session, per `advisor()`'s explicit instruction**: the
+spike lives entirely in `#[cfg(test)]` (`clmul_native`/`clmul_spike` in `gf2m_wide.rs`),
+`poly_mul_wide` itself untouched. A real landing still needs, and this session deliberately
+did not resolve: target-feature detection strategy for a `no_std` core (compile-time
+`#[cfg(target_feature = ...)]` fork vs. runtime dispatch - the same `fused`/`small-tables`-
+shaped decision the owner invoked by name), a software fallback path for CPUs without the
+instruction, and a real `--emit=asm` pass on the *wired-in* version before committing, per
+T-129/T-139's standing precedent. That's a decision for the owner to make, not something this
+spike should pre-empt.
+
+**Status: both Tier 1 levers are now real, measured findings, not plans** - word-wise `reduce`
+landed as production code this session (~2.0-3.0x Kalyna-GCM speedup, confirmed on two
+architectures); hardware `clmul` is spiked and measured on both architectures (a further
+~1.9-2.0x projected on top, ~4-6x on `multiply()` alone) but not landed - the feature-
+detection/fallback design is a real decision still waiting on the owner. Tier 2 (EC
+scalar-multiplication windowing) remains plan-only, untouched this session.
+</code></pre>
+</li>
+<li>
+<p><input disabled="" type="checkbox" checked=""> <strong>T-196</strong> <strong>Done 2026-08-08, owner-requested (“Ми можем ще десь застосувати апаратні команди
+на всіх наших алгоритмах? Розшири покриття”) - hardware-<code>clmul</code> coverage extended from
+<code>gf2m_wide</code> (T-195) to the one other GF(2^m) binary-field algorithm in this project,
+<code>hazmat::dstu4145::gf2m163</code>; a software comb-method rewrite was also implemented, tested, and
+then reverted for a real security reason, recorded below rather than silently discarded.</strong></p>
+<pre><code>**Survey first** (owner asked "де ще" - answered by algorithm, not assumed): only
+`gf2m_wide` (Kalyna-GCM/GMAC's tag, T-195) and `gf2m163` (DSTU 4145's field) do GF(2^m)
+carry-less-multiply arithmetic - the one class `PCLMULQDQ`/`PMULL` actually accelerates.
+`hazmat::dstu9041`'s `fp256`/`fp512` are prime-field `F_p` (regular modular integer
+multiply, not carry-less) - a different hardware lever would apply there if any
+(`MULX`/`ADCX`/`ADOX`, big-integer widening multiply, the mechanism real curve25519/P-256
+implementations use) - not the same instruction, not investigated this session, a separate,
+larger-scoped question the owner did not ask for. Kalyna/Kupyna/Strumok have no applicable
+hardware instruction at all - already closed (T-129/D-88, T-139/D-87): AES-NI is hardwired to
+AES's own S-box/MixColumns, Kalyna's S-box differs, the instruction simply doesn't map to a
+different cipher's math.
+
+**`advisor()` consulted before writing any code, gave the gating check that mattered**: count
+`multiply()` vs `square()` calls in `curve163::scalar_multiply`'s own per-iteration ladder
+before assuming the lever is real - `invert()` is square-dominated (9 multiplies vs. ~162
+squares, D-109's addition chain) and doesn't touch `poly_mul_wide` at all, so if
+`scalar_multiply` were similarly square-heavy, this whole investigation would be a small
+lever, not a real one. Counted directly from `curve163.rs`'s main ladder loop (lines
+157-162): **8 `multiply()` calls vs. 7 `square()` calls per iteration** - multiply is not a
+minority share, the lever is real. Proceeded.
+
+**Comb-method software rewrite - implemented, tested, reverted, not landed.** `gf2m163::
+poly_mul_wide` was still the *original* right-to-left shift-and-add method (`Guide to
+Elliptic Curve Cryptography` Algorithm 2.33) - it never received `gf2m_wide`'s own T-125
+comb-method upgrade at all. Wrote the same 4-bit-window comb method (`NIBBLES =
+163.div_ceil(4) = 41` - **163 is not a multiple of 4**, unlike `gf2m_wide`'s m in
+{128,256,512}, so the top nibble reads one bit past the field's own top meaningful bit,
+`advisor()`-flagged as the real risk in this specific rewrite - added both a proptest
+differential against the retained bit-serial reference and two fixed edge cases, top-bit-set
+and all-163-bits-set, mirroring this module's own existing `square_wide_matches_multiply_
+wide_*` edge-case pattern). **All tests passed, including both edge cases.** Then reverted
+(`git checkout --`, nothing had been committed) after re-reading this module's own doc
+comment: "**Branchless by construction**... no array indexing at all." The comb method's
+`T[nibble]` lookup is exactly the secret-indexed access that principle exists to rule out -
+acceptable for `gf2m_wide`'s GCM tag (`H` is key-derived, D-76 already accepted it there) but
+not here, where `multiply()` runs on `curve163::scalar_multiply`'s own secret-scalar
+intermediates (the signing nonce, the private key) - the highest-value secret in the project.
+Flagged to the owner mid-task rather than resolved unilaterally either direction (land-with-
+caveat vs. revert vs. skip `poly_mul_wide` entirely) - owner chose revert, proceed to CLMUL.
+**Not a wasted step**: caught before shipping, not after, and the reverted code's own
+existence is why the CLMUL path's "no secret-indexed lookup at all" property could be stated
+as a real, checked comparison rather than an assumption.
+
+**Hardware-`clmul` spike - reuses `gf2m_wide::clmul_native` directly** (widened from
+`pub(super)` to `pub(crate)`, the only change to already-landed T-195 code; two architecture-
+specific intrinsics, not reimplemented a third time). Schoolbook: 3 limbs -&gt; 9 pairwise
+64x64-&gt;128 hardware clmuls (vs. `gf2m_wide`'s 16 at m=256) - correctness-proptested against
+the *original* `poly_mul_wide` (not the reverted comb method) first, all green both
+architectures, then timed feeding the same production `reduce`. Genuinely branchless *and*
+free of secret-indexed memory access - `clmul64` runs for a fixed 9 `(i, j)` pairs
+unconditionally, and the hardware instruction's own latency does not depend on operand bits
+(the actual property real GHASH implementations rely on) - a strict improvement over the
+bit-serial baseline on both the speed and the side-channel axis, unlike the comb method.
+
+**Real, measured, both architectures** (`docs/PERFORMANCE.md`'s T-196 subsection has the full
+table): `FieldElement::multiply()` (software bit-serial vs. hardware-`clmul`, chained, same
+methodology as every T-195 diagnostic) - dev machine (Ryzen 5 PRO 4650U) **~64-65x** (1264.6-
+1269.0 -&gt; 19.4-19.9 ns/op), Raspberry Pi 5 (Cortex-A76) **~42x** (1013.3 -&gt; 24.1-24.3 ns/op),
+both stable across repeated runs. Far larger than `gf2m_wide`'s own 6.35x/4.16x (T-195)
+*because* `gf2m163`'s software baseline is the un-upgraded bit-serial method, not because the
+hardware instruction behaves differently - this is hardware-vs-original, not hardware-vs-
+already-optimized-software the way the GCM number was.
+
+**Real sign/verify speedup: not measured this session, and not pinned down by the
+`multiply()` number alone.** `scalar_multiply`'s own per-iteration ladder is multiply-heavy
+(gating check above), but `scalar_multiply` also calls `invert()` two to three times for its
+own affine y-recovery, and `invert()` is square-dominated and never touches `poly_mul_wide`
+at all. The real `sign`/`verify` ops/s win from this lever sits somewhere between negligible
+and large, genuinely not measured - would need either wiring the hardware path into
+production (not done, same posture as T-195) or a dedicated `scalar_multiply`-level timing
+harness (also not built this session). `docs/PERFORMANCE.md`'s DSTU 4145-vs-OpenSSL section
+(T-150, `nistb163` row) is corrected in the same pass: its old "no CPU instruction-set
+asterisk to disclose here" line was accurate when written but is now factually wrong given
+this finding - fixed to say the algorithmic gap (no windowing/precomputation) is still the
+*dominant* cause, with a secondary, now-real hardware asterisk alongside it, not instead of
+it - avoiding the exact "wrong conclusion sitting two screens from the number that
+contradicts it" mistake T-194/T-195 already made once this session over Kalyna-GCM.
+
+**Not picked up as production code, same posture as T-195**: the spike lives in `gf2m163.rs`'s
+own `#[cfg(test)] mod clmul_spike`, `poly_mul_wide` itself untouched (back to the original
+bit-serial version after the comb-method revert). A real landing needs the same target-
+feature-detection/`no_std`/fallback design decision T-195 already scoped, still waiting on
+the owner - this task confirms the same lever exists on a second algorithm, with both a
+larger raw number and a concrete reason (not just caution) to prefer it over the cheaper
+software alternative here specifically.
+
+**Full regression, both architectures**: `dstu4145_curve`/`dstu4145_gf2m`/`dstu4145_signature`
+integration suites (official worked example, Bouncy Castle oracle harness, tampered-signature
+rejection, all three still green), `clippy -D warnings`, `fmt --check` - all clean on both
+the dev machine and the (re-synced) Raspberry Pi.
+</code></pre>
+</li>
+<li>
+<p><input disabled="" type="checkbox" checked=""> <strong>T-197</strong> <strong>Done 2026-08-09, owner-requested, T-196’s own explicitly-deferred question
+(“MULX/ADCX/ADOX теж досліди але врахуй щоб працювало і на арм… треба щось спільне”) -
+picked up with the cross-architecture constraint stated up front this time, not discovered
+partway through. Clean negative result: no production change, unlike T-195/T-196.</strong></p>
+<pre><code>`hazmat::dstu9041::{fp256,fp512}`'s `wide_mul`/`reduce_wide` (`F_p` schoolbook
+multiply-accumulate, DSTU 9041's/`crypto_box`'s hot path) is already plain portable
+`u128`-based Rust - unlike GF(2^m) carry-less multiplication (T-195/T-196), there's no missing
+stable-Rust primitive here forcing a choice between portable-slow and hardware-specific-fast.
+The question was only whether that portable code was already reaching BMI2/ADX-quality x86
+codegen, or leaving something on the table.
+
+**Asm spike first** (`--emit=asm`, this project's own precedent): baseline `x86_64` target
+compiles `multiply()` via legacy `mulq`/`adcq`/`addq` (20/37/26, 101 `movq`).
+`-C target-feature=+bmi2,+adx` swaps every `mulq` for `mulxq` and halves the `movq` count (48)
+by avoiding the `RAX`/`RDX` clobber - but the `adcq`/`addq` counts are **identical** either
+way. LLVM never emits `adcx`/`adox` from this code shape even with the feature enabled - the
+dual-independent-carry-chain restructuring ADX needs isn't something instruction selection
+does on its own from generic `u128`-carry Rust.
+
+**Whole-function timing (not just asm-reading) settles it**: a chained `acc =
+acc.multiply(x)` loop, 200k iterations, `hazmat::dstu9041::fp256::bmi2_adx_timing::
+isolated_timing_multiply_chain`, built twice with different `RUSTFLAGS` so there's no target-
+feature/inlining boundary inside one binary to confound the number (three repeated runs per
+row, both machines):
+
+| Build | Dev machine | Raspberry Pi 5 |
+|---|---|---|
+| Baseline | 21.3-23.6 ns/op | 72.2-72.5 ns/op |
+| `+bmi2,+adx` (x86) / `target-cpu=native` (ARM) | 24.4-27.0 ns/op (**slower**) | 75.3 ns/op (no real change) |
+
+The x86 regression is small but consistently in the same direction every run, not noise.
+**Root cause**: the accumulate chain is latency-bound (each `multiply()` waits on the previous
+one's full result), not throughput-bound - `MULX`'s actual benefit (freeing execution ports by
+not serializing through `RAX`/`RDX`) only pays off with independent work to overlap, and there
+isn't any in a serial dependency chain. Different register allocation under `+bmi2,+adx` came
+out a net loss here.
+
+**"Треба щось спільне" answer: the portable code already is the common answer.**
+`FieldElement::multiply()`'s baseline `aarch64` asm (`mul`+`umulh` for the widening multiply,
+`adds`/`adcs`/`adc` for the carry chain) is already AArch64's idiomatic bignum pattern - and
+unlike BMI2/ADX on x86, `mul`/`umulh`/`adds`/`adcs` are **base ISA**, not an optional
+extension, so the same portable `u128` source produces it with zero flags, on every ARM64
+target this project ships to (including the microcontroller-class ones with no `target-cpu`
+tuning available at all). There's no "did we leave an ARM lever unpulled" question to answer -
+the lever doesn't exist as a separate opt-in there the way it does on x86, and on x86 it was
+measured to help nothing (or slightly hurt). `fp512` shares `fp256`'s exact `wide_mul`/
+`reduce_wide` shape (`docs/DECISIONS.md` D-176, just 8 limbs not 4) so the same conclusion
+applies structurally - not separately re-measured.
+
+**No production code change** - the `RUSTFLAGS`-toggled timing test lives in `fp256.rs`'s own
+`#[cfg(test)] mod bmi2_adx_timing` (compiles on both `x86_64` and `aarch64`, kept for
+reproducibility per this project's own "Reproducing" convention), `wide_mul`/`reduce_wide`
+themselves untouched. `docs/PERFORMANCE.md` has the full write-up (new "T-197" subsection,
+right after the T-196 GF(2^163) section). Full `dstu9041_field`/`dstu9041_curve`/
+`dstu9041_encryption` regression, `clippy -D warnings`, `fmt --check` - all clean on both the
+dev machine and the (re-synced) Raspberry Pi.
+</code></pre>
+</li>
+<li>
+<p><input disabled="" type="checkbox" checked=""> <strong>T-198</strong> <strong>Done 2026-08-09, owner-requested (“Тоді імплементуй попередні дослідження з
+апаратним прискоренням які працюють” - explicitly excludes T-197’s negative result) - lands
+the two hardware-<code>clmul</code> levers T-195/T-196 measured but kept <code>#[cfg(test)]</code>-only pending a
+design decision. <code>advisor()</code> consulted before any code was written; full design/review detail
+in <code>docs/DECISIONS.md</code> D-184 (new), full measured numbers in <code>docs/PERFORMANCE.md</code>’s own
+T-198 section - this entry is the summary.</strong></p>
+<pre><code>**Design**: `std`-gated runtime dispatch (`clmul_native::feature_available()`, needs a hosted
+environment - `is_x86_feature_detected!`/`is_aarch64_feature_detected!` aren't in `core`),
+unconditional portable fallback everywhere else - `no_std`/embedded/other-arch builds see zero
+behavior change. `multiply()` on `Gf2m128`/`Gf2m256`/`Gf2m512` and `gf2m163::FieldElement`
+both gained this dispatch; a new `poly_mul_wide_hw` per type does the actual hardware work.
+
+**`advisor()`'s pre-implementation review caught three things, all fixed before landing**:
+(1) the T-195/T-196 spikes called a separately-`#[target_feature]`-attributed `clmul_native::
+clmul64` for every `(i, j)` pair - a real non-inlinable call boundary baked into their own
+6.35x/4.16x numbers; production `poly_mul_wide_hw` inlines the whole schoolbook loop inside
+one `#[target_feature]` function instead, so those numbers are a floor, not a target, for the
+landed shape; (2) every dev machine and `x86_64`/`aarch64` CI runner has the hardware feature,
+so once `multiply()` dispatches, every pre-existing test calling `a.multiply(b)` silently
+stops exercising the portable path at all - closed by adding `multiply_sw`/
+`multiply_matches_explicit_software_path` (plus `multiply_sw_*` sibling axiom proptests in
+`gf2m_wide.rs`) that call `reduce(poly_mul_wide(...))` directly, bypassing dispatch; (3)
+grepped both crates' `kani_proofs` modules for any `.multiply()`/`.square()` call before
+assuming CBMC would reach the dispatch branch (neither does - `#[cfg(not(kani))]` on the
+dispatch is defensive, not an observed-failure fix), and verified Miri empirically rather than
+pre-emptively excluding it (`MIRIFLAGS=-Zmiri-disable-isolation cargo +nightly miri test`
+passes clean on both modules' dispatch-correctness tests - the `-Zmiri-disable-isolation` flag
+itself works around an unrelated, pre-existing Windows-Miri limitation in `proptest`'s failure
+persistence, confirmed by reproducing the identical error on an untouched pre-existing test).
+
+**A real, pre-existing `clippy -D warnings` gap, surfaced not introduced**: the T-195/T-196
+spike code's `_mm_storeu_si128`-into-a-byte-array-then-`try_into().unwrap()` pattern was
+always `cast_ptr_alignment`/`unwrap_used`-unclean, just never linted (`cargo xtask clippy`'s
+real gate has no `--all-targets`, so `#[cfg(test)]`-only code was never in scope). Promoting
+the equivalent code to unconditional (`std` + arch) production code put it in scope for the
+first time. Fixed by extracting both 64-bit halves via `_mm_cvtsi128_si64`/
+`_mm_srli_si128::&lt;8&gt;` instead (both SSE2, no pointer cast, no `Result` to unwrap) - verified
+not a regression on the same chained timing test afterward, not assumed.
+
+**Measured end-to-end, both real numbers now, not projections** (`docs/PERFORMANCE.md` has
+the full tables and reproduction commands): Kalyna-GCM 256-256 at 100 MiB - dev machine
+encrypt 34.96 -&gt; ~132-134 MB/s, decrypt 30.16 -&gt; ~135-139 MB/s (~3.8x/~4.6x); Raspberry Pi
+encrypt 37.33 -&gt; 82.39 MB/s, decrypt 37.04 -&gt; 85.75 MB/s (~2.21x/~2.31x) - both sanity-checked
+against each machine's own measured bare-cipher (Kalyna-XTS) ceiling (dev 163.82/155.55 MB/s
+pre-existing, Pi 93.78 MB/s measured this task) and land safely under it. DSTU 4145 `sign`/
+`verify` (fast-path build) - dev machine 667.39 -&gt; ~17,250-17,680 ops/s (~26x) and
+524.01 -&gt; ~16,745-17,000 ops/s (~32x); Raspberry Pi ~14,290-14,400/~14,930-16,040 ops/s (no
+prior Pi baseline existed to compare against - new data points). The DSTU 4145 speedup is far
+larger than T-196's own "expect modest" caveat, because that caveat only accounted for
+`invert()` (squaring-dominated, correctly excluded) and missed that `scalar_multiply`'s own
+multiply-heavy ladder (8 `multiply()` vs. 7 `square()` per iteration, T-196's own gating
+check) was paying the *old*, much larger `multiply()` cost on the majority of its work the
+whole time - `square_wide` was already known cheap (T-153/D-109), so a ~64x cheaper
+`multiply()` removes what was actually the dominant per-iteration term, not a minor one.
+
+**Full regression, both architectures**: `gf2m_wide`/`gf2m163` unit suites,
+`dstu4145_curve`/`dstu4145_gf2m`/`dstu4145_signature`/`kalyna_gcm`/`kalyna_gmac`/`kalyna_xts`
+integration suites, `cargo xtask clippy`/`fmt --check`, and the full `cargo xtask build`
+feature matrix (`--all-features`, `--no-default-features`,
+`-p dstu-core --no-default-features --features getrandom`) - all clean on both the dev machine
+and the (re-synced) Raspberry Pi.
 </code></pre>
 </li>
 <li>
