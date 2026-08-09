@@ -3595,6 +3595,53 @@ item they point to is later removed.
       Each phase should be a real, independently landable state, not a partial step waiting on the
       rest - same discipline T-199 itself just used successfully. No committed timeline; owner
       prioritizes which phase starts first.
+- [ ] **T-202** **Not started, owner-requested (2026-08-09) - research spike: is a Strumok-keystream
+      + MAC ("Encrypt-then-MAC") authenticated construction a faster-but-still-safe alternative to
+      `crypto_secretstream`'s current Kalyna-GCM-based AEAD for `uacrypt encrypt`/`decrypt`?**
+      Prompted by the owner noticing Strumok's raw keystream throughput (~1870-2000 MB/s,
+      `docs/PERFORMANCE.md` "Strumok" sections) is far ahead of Kalyna-GCM's authenticated
+      throughput (~130-140 MB/s, `docs/DECISIONS.md` D-184's post-hardware-clmul numbers) and asking
+      whether the gap means Strumok should be preferred - clarified in conversation that "block vs.
+      stream cipher" is not actually the axis of that gap (GCM already turns Kalyna into a stream
+      cipher internally via counter mode, mechanically the same XOR-a-keystream shape Strumok uses
+      directly) - the real axis is authenticated (GHASH tag) vs. unauthenticated raw keystream.
+
+      **Research finding (this session, in-process spike only, not a `PERFORMANCE.md`-grade
+      binary-level number per D-34/[[perf_testing_policy]] - purely to answer the bottleneck
+      question before deciding whether a real spike is worth building)**: compared
+      `Kupyna256::digest` against `hazmat::kupyna_kmac::Kupyna256Kmac::mac` over the same buffers
+      (64 KiB/1 MiB/10 MiB, release build, `crates/dstu-core/examples/kmac_spike.rs`, written and
+      deleted this session, not committed). Result: KMAC tracks the bare digest almost exactly
+      (~130-135 MB/s at 64 KiB and 10 MiB, ratio 0.99; a 1 MiB dip to ~91 MB/s/ratio 0.71 is noise
+      from a single run, not repeated at the other two sizes) - **not** meaningfully slower than the
+      hash it's built on, as expected from its construction (one dominant Kupyna pass over
+      `PAD(K) || M || PAD(M) || ~K`, `hazmat/kupyna_kmac.rs`). This settles the open question from
+      this session's research: **a naive Strumok-keystream + Kupyna-KMAC Encrypt-then-MAC
+      construction would be MAC-bound at roughly the same ~130-140 MB/s ceiling Kalyna-GCM already
+      achieves**, despite Strumok's own keystream being ~14x faster in isolation - the MAC step, not
+      the cipher, is Kalyna-GCM's actual bottleneck today, and swapping the cipher alone would not
+      close it. No meaningful net speedup is expected from the naive version of this proposal.
+
+      **What would still be worth investigating, not yet attempted (real spike, not in-process
+      guess)**: whether a cheaper-than-Kupyna-KMAC MAC over a *derived* value (e.g. tag over one
+      short intermediate rather than the full message, at genuine cryptographic cost that would need
+      real analysis, not assumed safe) or a different composition entirely could beat the ~140 MB/s
+      ceiling while keeping Encrypt-then-MAC's standard safety shape. Kalyna-GMAC's own docs
+      numbers (`docs/PERFORMANCE.md` "Kalyna-GMAC" section, ~12-17 MB/s) are not a usable comparison
+      point either way - that table is a fixed single-block benchmark (D-71, sidesteps a UAPKI
+      streaming bug) and not representative of GMAC's real multi-block throughput, and GMAC is
+      Kalyna-based to begin with so it is not expected to be cheaper than the GCM tag it would
+      replace.
+
+      **D-47 tie-breaker applies before any implementation, not after**: no DSTU standard defines
+      this specific Strumok+MAC composition (Strumok is only standardized as a bare keystream, DSTU
+      8845:2019) - so if a genuinely faster composition is later found, its nonce/key-separation
+      design has no settling citation and must be resolved via D-47's ranked tie-breaker (TLS 1.3/
+      modern-AEAD consensus, then libsodium's API shape, then safe-modes-only) or asked directly of
+      the owner, matching every other from-scratch construction in this project
+      (`crypto_secretstream` itself, D-68). **Not picked up for implementation this session** - this
+      entry is the research/documentation half of the owner's own framing ("оформимо таску і
+      дослідимо" - formalize a task and research it), explicitly not a build-now request.
 - [ ] **T-201** **Not started, owner-requested (2026-08-09) - PKCS#11 (Cryptoki) support, as a
       separate sibling project, not part of this repository.** `docs/DECISIONS.md` D-17 already
       excludes PKCS#11/12 from this project's own scope explicitly ("the layer above crypto
