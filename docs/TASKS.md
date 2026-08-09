@@ -3622,16 +3622,35 @@ item they point to is later removed.
       the cipher, is Kalyna-GCM's actual bottleneck today, and swapping the cipher alone would not
       close it. No meaningful net speedup is expected from the naive version of this proposal.
 
-      **What would still be worth investigating, not yet attempted (real spike, not in-process
-      guess)**: whether a cheaper-than-Kupyna-KMAC MAC over a *derived* value (e.g. tag over one
-      short intermediate rather than the full message, at genuine cryptographic cost that would need
-      real analysis, not assumed safe) or a different composition entirely could beat the ~140 MB/s
-      ceiling while keeping Encrypt-then-MAC's standard safety shape. Kalyna-GMAC's own docs
-      numbers (`docs/PERFORMANCE.md` "Kalyna-GMAC" section, ~12-17 MB/s) are not a usable comparison
-      point either way - that table is a fixed single-block benchmark (D-71, sidesteps a UAPKI
-      streaming bug) and not representative of GMAC's real multi-block throughput, and GMAC is
-      Kalyna-based to begin with so it is not expected to be cheaper than the GCM tag it would
-      replace.
+      **Follow-up finding, same session (2026-08-09), owner asked to research the GHASH-reuse
+      variant specifically**: Kupyna-KMAC isn't the only candidate MAC - `hazmat::kalyna_gcm`'s own
+      `compute_tag` (the GHASH-equivalent accumulate-and-multiply step, `Gf2m256::multiply` under
+      it) is a *separate* step from its CTR-mode keystream generation (`apply_keystream`), already
+      hardware-`clmul`-accelerated (T-198/D-184) independent of which cipher generated the
+      keystream. Isolated both steps directly (temporary `#[cfg(test)] mod` inside
+      `crates/dstu-core/src/hazmat/kalyna_gcm.rs`, same "isolated timing diagnostic" pattern D-76/
+      D-184 already used - written, run, then removed this session, not committed) at 1 MiB/10 MiB:
+      `compute_tag` alone runs at **~950-960 MB/s**, `Strumok256::apply_keystream` alone at
+      **~1930-1940 MB/s** (both release-build, in-process - same D-34 caveat as above). Run
+      sequentially (as a real Encrypt-then-MAC construction would: keystream pass, then a separate
+      tag pass over the ciphertext, matching `compute_tag`'s current non-fused shape) the implied
+      combined throughput is **~637-642 MB/s** - **~4.6-4.9x faster than Kalyna-GCM's current
+      ~132-139 MB/s ceiling** (`docs/PERFORMANCE.md` T-198 section), and consistent with that
+      section's own observation that post-`clmul` GCM now runs at ~81-85% of Kalyna's *bare*
+      cipher ceiling (163.82 MB/s) - meaning the block cipher itself, not GHASH, is Kalyna-GCM's
+      remaining bottleneck, which a faster cipher (Strumok) directly attacks while reusing the
+      already-fast tag mechanism. **This is the first concrete, empirically-grounded case in this
+      task where a Strumok-based AEAD alternative shows a real, large projected win** - unlike the
+      Kupyna-KMAC variant above, which showed none. **Still not a decision to implement**: an actual
+      "Strumok + GHASH" construction needs its own from-scratch design (how the GHASH key `H` is
+      derived without a block cipher's `E_K(0)` - e.g. from Strumok's own first keystream block, the
+      way ChaCha20-Poly1305 derives its one-time Poly1305 key from ChaCha20's own first block - and
+      how nonce/AAD binding is handled), its own misuse/rejection/active-attack test matrix per this
+      project's standing test-first rules, and the D-47 tie-breaker below applies to that design the
+      same as it would to the Kupyna-KMAC variant. Kalyna-GMAC's own docs numbers
+      (`docs/PERFORMANCE.md` "Kalyna-GMAC" section, ~12-17 MB/s) are not a usable comparison point
+      either way - that table is a fixed single-block benchmark (D-71, sidesteps a UAPKI streaming
+      bug) and not representative of GMAC's real multi-block throughput.
 
       **D-47 tie-breaker applies before any implementation, not after**: no DSTU standard defines
       this specific Strumok+MAC composition (Strumok is only standardized as a bare keystream, DSTU
