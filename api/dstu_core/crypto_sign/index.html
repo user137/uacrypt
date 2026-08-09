@@ -1,0 +1,72 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="`crypto_sign` equivalent (`docs/dstu-crypto-project.md` “Mapping onto the libsodium API”, `docs/TASKS.md` T-48) - a libsodium-ergonomics wrapper over `hazmat::dstu4145::signature`. The first module in the high-level layer D-09 planned but never built (`docs/release-readiness.md` step 4) - this session’s shape for it: `SigningKey`/`VerifyingKey`/`Signature`, `ed25519-dalek`-style naming (`docs/DECISIONS.md` D-04’s addendum cites that crate’s convention)."><title>dstu_core::crypto_sign - Rust</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../static.files/rustdoc-17e0aaed.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="dstu_core" data-themes="" data-resource-suffix="" data-rustdoc-version="1.97.1 (8bab26f4f 2026-07-14)" data-channel="1.97.1" data-search-js="search-fd9372ac.js" data-stringdex-js="stringdex-2da4960a.js" data-settings-js="settings-170eb4bf.js" ><script src="../../static.files/storage-41dd4d93.js"></script><script defer src="../sidebar-items.js"></script><script defer src="../../static.files/main-fcd733ba.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-f7c3ffd8.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-044be391.svg"></head><body class="rustdoc mod"><a class="skip-main-content" href="#main-content">Skip to main content</a><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><rustdoc-topbar><h2><a href="#">Module crypto_sign</a></h2></rustdoc-topbar><nav class="sidebar"><div class="sidebar-crate"><h2><a href="../../dstu_core/index.html">dstu_<wbr>core</a><span class="version">0.2.0</span></h2></div><div class="sidebar-elems"><section id="rustdoc-toc"><h2 class="location"><a href="#">Module crypto_<wbr>sign</a></h2><h3><a href="#">Sections</a></h3><ul class="block top-toc"><li><a href="#example" title="Example">Example</a></li></ul><h3><a href="#structs">Module Items</a></h3><ul class="block"><li><a href="#structs" title="Structs">Structs</a></li><li><a href="#enums" title="Enums">Enums</a></li></ul></section><div id="rustdoc-modnav"><h2 class="in-crate"><a href="../index.html">In crate dstu_<wbr>core</a></h2></div></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><div class="width-limiter"><section id="main-content" class="content" tabindex="-1"><div class="main-heading"><div class="rustdoc-breadcrumbs"><a href="../index.html">dstu_core</a></div><h1>Module <span>crypto_<wbr>sign</span>&nbsp;<button id="copy-path" title="Copy item path to clipboard">Copy item path</button></h1><rustdoc-toolbar></rustdoc-toolbar><span class="sub-heading"><a class="src" href="../../src/dstu_core/crypto_sign.rs.html#1-311">Source</a> </span></div><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><p><code>crypto_sign</code> equivalent (<code>docs/dstu-crypto-project.md</code> “Mapping onto the libsodium API”,
+<code>docs/TASKS.md</code> T-48) - a libsodium-ergonomics wrapper over <code>hazmat::dstu4145::signature</code>. The first
+module in the high-level layer D-09 planned but never built (<code>docs/release-readiness.md</code> step
+4) - this session’s shape for it: <code>SigningKey</code>/<code>VerifyingKey</code>/<code>Signature</code>, <code>ed25519-dalek</code>-style
+naming (<code>docs/DECISIONS.md</code> D-04’s addendum cites that crate’s convention).</p>
+<p>Two departures from <code>hazmat::dstu4145::signature</code>’s raw API, both documented in <code>docs/DECISIONS.md</code>
+D-46:</p>
+<ul>
+<li><strong>The ephemeral nonce is derived deterministically</strong> from <code>(d, message)</code> via
+<code>hazmat::kupyna_kmac</code> (an RFC-6979-style adaptation, not a literal port - RFC 6979 is
+HMAC-specific, <code>hazmat::kupyna_kmac</code>’s construction is not HMAC). No RNG dependency anywhere
+in this module, unlike Bouncy Castle’s <code>DSTU4145Signer</code> (which uses <code>SecureRandom</code>) - a
+deliberate, user-confirmed deviation from the reference, matching Ed25519/libsodium’s own
+misuse-resistant signing design rather than the DSA-family default of caller-supplied
+randomness (whose reuse is a real-world catastrophic key-recovery class: PS3, several Bitcoin
+wallet thefts).</li>
+<li><strong><code>sign</code>/<code>verify</code> take a raw <code>message: &amp;[u8]</code>, not a pre-computed digest</strong> - this module
+hashes it internally with Kupyna-256 (<code>hazmat::kupyna::Kupyna256</code>), matching libsodium’s own
+<code>crypto_sign(message, ...)</code> ergonomics. <code>hazmat::dstu4145::signature</code> itself stays
+digest-agnostic (its own doc comment’s stated design), unaffected by this choice.</li>
+</ul>
+<p><strong>Large/streamed messages (<code>docs/TASKS.md</code> T-113): <code>sign_digest</code>/<code>verify_digest</code>.</strong> DSTU 4145 signs
+a hash of the message, not a domain-separated multi-part construction (<code>docs/pseudocode/ dstu4145.md</code> §5.9/§9/§10: <code>h ← hash_to_field(H(T))</code>) - so there is no “streaming signer” to
+build, only a need to let the hash itself be computed incrementally. <code>sign</code>/<code>verify</code> above
+still take the whole message and hash it with one <code>Kupyna256::digest</code> call, which needs it all
+in memory at once; <code>sign_digest</code>/<code>verify_digest</code> instead take an already-computed 32-byte
+Kupyna-256 digest directly, so a caller with a large or streamed message can hash it themselves
+via <code>hazmat::kupyna::Kupyna256Hasher::{new, update, finalize}</code> (already <code>no_std</code>-compatible,
+bounded memory regardless of message size) and pass the result in. <code>sign</code>/<code>verify</code> are now thin
+wrappers over these two.</p>
+<p><strong>Keypair generation (<code>docs/TASKS.md</code> T-122): <a href="struct.SigningKey.html#method.generate" title="associated function dstu_core::crypto_sign::SigningKey::generate"><code>SigningKey::generate</code></a>.</strong> <code>from_bytes</code> above only
+ever <em>validates</em> a caller-supplied <code>d</code> - until this method existed there was no way to obtain a
+valid <code>d</code> through the public API at all, without reaching into <code>hazmat</code> internals
+(<code>curve163::order()</code> isn’t part of this module’s own surface). <code>#[cfg(any(feature = "std", feature = "getrandom"))]</code>-gated (needs <code>crate::randombytes</code>, <code>docs/TASKS.md</code> T-123/<code>docs/DECISIONS.md</code>
+D-74), matching every other <code>crypto_*</code> module’s own <code>Key::generate</code> convention
+(<code>crypto_secretbox</code>/<code>crypto_auth</code>/<code>crypto_kdf</code>/<code>crypto_stream</code>/<code>crypto_secretstream</code>).</p>
+<p><code>VerifyingKey::to_uncompressed_bytes</code>/<code>from_uncompressed_bytes</code> use a plain 42-byte <code>x || y</code>
+encoding, <strong>not</strong> the DSTU 4145 standard’s own compressed point encoding (official text
+§6.9/§6.10, <code>DSTU4145PointEncoder.java</code> in Bouncy Castle) - that encoding isn’t implemented
+anywhere in this project yet (<code>docs/pseudocode/dstu4145.md</code>’s existing note lists it as future
+work, unrelated to sign/verify itself). Anyone needing interoperable, spec-compliant public-key
+serialization must wait for that, tracked separately in <code>docs/TASKS.md</code>.</p>
+<h2 id="example"><a class="doc-anchor" href="#example">§</a>Example</h2>
+<p>A signature proves a message came from whoever holds the signing key and hasn’t been altered
+since - unlike <a href="../crypto_secretbox/index.html" title="mod dstu_core::crypto_secretbox"><code>crate::crypto_secretbox</code></a>, it does not hide the message’s contents, only
+attests to its origin and integrity. Both the success path and a rejected forgery are shown
+below (<code>docs/TASKS.md</code> T-120’s own requirement - a signature example that only shows the happy path
+doesn’t demonstrate the primitive actually does what it claims).</p>
+
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>dstu_core::crypto_sign::SigningKey;
+
+<span class="kw">let </span>signing_key = SigningKey::generate().expect(<span class="string">"OS CSPRNG should not fail"</span>);
+<span class="kw">let </span>verifying_key = signing_key.verifying_key(); <span class="comment">// safe to share/publish
+
+</span><span class="kw">let </span>message = <span class="string">b"a message whose origin and integrity matter"</span>;
+<span class="kw">let </span>signature = signing_key.sign(message);
+<span class="macro">assert!</span>(verifying_key.verify(message, <span class="kw-2">&amp;</span>signature));
+
+<span class="comment">// A different message, or a signature from a different key, must fail to verify.
+</span><span class="macro">assert!</span>(!verifying_key.verify(<span class="string">b"a different message"</span>, <span class="kw-2">&amp;</span>signature));
+<span class="kw">let </span>other_key = SigningKey::generate().expect(<span class="string">"OS CSPRNG should not fail"</span>);
+<span class="macro">assert!</span>(!other_key.verifying_key().verify(message, <span class="kw-2">&amp;</span>signature));</code></pre></div></div></details><h2 id="structs" class="section-header">Structs<a href="#structs" class="anchor">§</a></h2><dl class="item-table"><dt><a class="struct" href="struct.Signature.html" title="struct dstu_core::crypto_sign::Signature">Signature</a></dt><dd>A DSTU 4145 signature, <code>r || s</code> (21 bytes each, 42 total - <code>hazmat::dstu4145::signature</code>’s own
+byte convention).</dd><dt><a class="struct" href="struct.SigningKey.html" title="struct dstu_core::crypto_sign::SigningKey">Signing<wbr>Key</a></dt><dd>A DSTU 4145 private key. Signing needs no RNG (see the module doc) - only key generation from
+external entropy is the caller’s concern, same posture as <code>hazmat::kalyna_ccm</code>’s nonce
+(<code>docs/DECISIONS.md</code> D-40): this module takes <code>d</code> as given rather than generating it.</dd><dt><a class="struct" href="struct.VerifyingKey.html" title="struct dstu_core::crypto_sign::VerifyingKey">Verifying<wbr>Key</a></dt><dd>A DSTU 4145 public key <code>Q = -d*G</code> (<code>hazmat::dstu4145::signature</code>’s module doc / <code>docs/DECISIONS.md</code>
+D-25’s follow-up entry on the sign convention).</dd></dl><h2 id="enums" class="section-header">Enums<a href="#enums" class="anchor">§</a></h2><dl class="item-table"><dt><a class="enum" href="enum.CurveId.html" title="enum dstu_core::crypto_sign::CurveId">CurveId</a></dt><dd>One-byte curve identifier for tagged, self-describing serialization of a
+<a href="struct.VerifyingKey.html" title="struct dstu_core::crypto_sign::VerifyingKey"><code>crate::crypto_sign::VerifyingKey</code></a> or <a href="../crypto_sign257/struct.VerifyingKey.html" title="struct dstu_core::crypto_sign257::VerifyingKey"><code>crate::crypto_sign257::VerifyingKey</code></a> - lives here
+(not duplicated in <code>crypto_sign257</code>, and not in <code>uacrypt</code> or any language binding) so every
+caller shares the same tag numbering, the D-118 lesson (<code>crypto_secretstream</code>’s wire-format
+validation) already learned once about not letting each binding re-hand-roll a parser
+(<code>docs/DECISIONS.md</code> D-186 Decision 1). Values <code>3</code> and above are reserved for the other 8
+<code>DSTU4145NamedCurves.java</code> curve sizes, if any are ever implemented (<code>docs/TASKS.md</code> T-199).</dd></dl></section></div></main></body></html>

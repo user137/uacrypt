@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["StreamError"],"fn":["decrypt","encrypt"],"struct":["Key"]};

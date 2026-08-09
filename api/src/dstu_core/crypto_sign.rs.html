@@ -1,0 +1,312 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `crates/dstu-core/src/crypto_sign.rs`."><title>crypto_sign.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../static.files/rustdoc-17e0aaed.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="dstu_core" data-themes="" data-resource-suffix="" data-rustdoc-version="1.97.1 (8bab26f4f 2026-07-14)" data-channel="1.97.1" data-search-js="search-fd9372ac.js" data-stringdex-js="stringdex-2da4960a.js" data-settings-js="settings-170eb4bf.js" ><script src="../../static.files/storage-41dd4d93.js"></script><script defer src="../../static.files/src-script-813739b1.js"></script><script defer src="../../src-files.js"></script><script defer src="../../static.files/main-fcd733ba.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-f7c3ffd8.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-044be391.svg"></head><body class="rustdoc src"><a class="skip-main-content" href="#main-content">Skip to main content</a><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><section id="main-content" class="content" tabindex="-1"><div class="main-heading"><h1><div class="sub-heading">dstu_core/</div>crypto_sign.rs</h1><rustdoc-toolbar></rustdoc-toolbar></div><div class="example-wrap digits-3"><pre class="rust"><code><a href=#1 id=1 data-nosnippet>1</a><span class="doccomment">//! `crypto_sign` equivalent (`docs/dstu-crypto-project.md` "Mapping onto the libsodium API",
+<a href=#2 id=2 data-nosnippet>2</a>//! `docs/TASKS.md` T-48) - a libsodium-ergonomics wrapper over `hazmat::dstu4145::signature`. The first
+<a href=#3 id=3 data-nosnippet>3</a>//! module in the high-level layer D-09 planned but never built (`docs/release-readiness.md` step
+<a href=#4 id=4 data-nosnippet>4</a>//! 4) - this session's shape for it: `SigningKey`/`VerifyingKey`/`Signature`, `ed25519-dalek`-style
+<a href=#5 id=5 data-nosnippet>5</a>//! naming (`docs/DECISIONS.md` D-04's addendum cites that crate's convention).
+<a href=#6 id=6 data-nosnippet>6</a>//!
+<a href=#7 id=7 data-nosnippet>7</a>//! Two departures from `hazmat::dstu4145::signature`'s raw API, both documented in `docs/DECISIONS.md`
+<a href=#8 id=8 data-nosnippet>8</a>//! D-46:
+<a href=#9 id=9 data-nosnippet>9</a>//! - **The ephemeral nonce is derived deterministically** from `(d, message)` via
+<a href=#10 id=10 data-nosnippet>10</a>//!   `hazmat::kupyna_kmac` (an RFC-6979-style adaptation, not a literal port - RFC 6979 is
+<a href=#11 id=11 data-nosnippet>11</a>//!   HMAC-specific, `hazmat::kupyna_kmac`'s construction is not HMAC). No RNG dependency anywhere
+<a href=#12 id=12 data-nosnippet>12</a>//!   in this module, unlike Bouncy Castle's `DSTU4145Signer` (which uses `SecureRandom`) - a
+<a href=#13 id=13 data-nosnippet>13</a>//!   deliberate, user-confirmed deviation from the reference, matching Ed25519/libsodium's own
+<a href=#14 id=14 data-nosnippet>14</a>//!   misuse-resistant signing design rather than the DSA-family default of caller-supplied
+<a href=#15 id=15 data-nosnippet>15</a>//!   randomness (whose reuse is a real-world catastrophic key-recovery class: PS3, several Bitcoin
+<a href=#16 id=16 data-nosnippet>16</a>//!   wallet thefts).
+<a href=#17 id=17 data-nosnippet>17</a>//! - **`sign`/`verify` take a raw `message: &amp;[u8]`, not a pre-computed digest** - this module
+<a href=#18 id=18 data-nosnippet>18</a>//!   hashes it internally with Kupyna-256 (`hazmat::kupyna::Kupyna256`), matching libsodium's own
+<a href=#19 id=19 data-nosnippet>19</a>//!   `crypto_sign(message, ...)` ergonomics. `hazmat::dstu4145::signature` itself stays
+<a href=#20 id=20 data-nosnippet>20</a>//!   digest-agnostic (its own doc comment's stated design), unaffected by this choice.
+<a href=#21 id=21 data-nosnippet>21</a>//!
+<a href=#22 id=22 data-nosnippet>22</a>//! **Large/streamed messages (`docs/TASKS.md` T-113): `sign_digest`/`verify_digest`.** DSTU 4145 signs
+<a href=#23 id=23 data-nosnippet>23</a>//! a hash of the message, not a domain-separated multi-part construction (`docs/pseudocode/
+<a href=#24 id=24 data-nosnippet>24</a>//! dstu4145.md` §5.9/§9/§10: `h ← hash_to_field(H(T))`) - so there is no "streaming signer" to
+<a href=#25 id=25 data-nosnippet>25</a>//! build, only a need to let the hash itself be computed incrementally. `sign`/`verify` above
+<a href=#26 id=26 data-nosnippet>26</a>//! still take the whole message and hash it with one `Kupyna256::digest` call, which needs it all
+<a href=#27 id=27 data-nosnippet>27</a>//! in memory at once; `sign_digest`/`verify_digest` instead take an already-computed 32-byte
+<a href=#28 id=28 data-nosnippet>28</a>//! Kupyna-256 digest directly, so a caller with a large or streamed message can hash it themselves
+<a href=#29 id=29 data-nosnippet>29</a>//! via `hazmat::kupyna::Kupyna256Hasher::{new, update, finalize}` (already `no_std`-compatible,
+<a href=#30 id=30 data-nosnippet>30</a>//! bounded memory regardless of message size) and pass the result in. `sign`/`verify` are now thin
+<a href=#31 id=31 data-nosnippet>31</a>//! wrappers over these two.
+<a href=#32 id=32 data-nosnippet>32</a>//!
+<a href=#33 id=33 data-nosnippet>33</a>//! **Keypair generation (`docs/TASKS.md` T-122): [`SigningKey::generate`].** `from_bytes` above only
+<a href=#34 id=34 data-nosnippet>34</a>//! ever *validates* a caller-supplied `d` - until this method existed there was no way to obtain a
+<a href=#35 id=35 data-nosnippet>35</a>//! valid `d` through the public API at all, without reaching into `hazmat` internals
+<a href=#36 id=36 data-nosnippet>36</a>//! (`curve163::order()` isn't part of this module's own surface). `#[cfg(any(feature = "std",
+<a href=#37 id=37 data-nosnippet>37</a>//! feature = "getrandom"))]`-gated (needs `crate::randombytes`, `docs/TASKS.md` T-123/`docs/DECISIONS.md`
+<a href=#38 id=38 data-nosnippet>38</a>//! D-74), matching every other `crypto_*` module's own `Key::generate` convention
+<a href=#39 id=39 data-nosnippet>39</a>//! (`crypto_secretbox`/`crypto_auth`/`crypto_kdf`/`crypto_stream`/`crypto_secretstream`).
+<a href=#40 id=40 data-nosnippet>40</a>//!
+<a href=#41 id=41 data-nosnippet>41</a>//! `VerifyingKey::to_uncompressed_bytes`/`from_uncompressed_bytes` use a plain 42-byte `x || y`
+<a href=#42 id=42 data-nosnippet>42</a>//! encoding, **not** the DSTU 4145 standard's own compressed point encoding (official text
+<a href=#43 id=43 data-nosnippet>43</a>//! §6.9/§6.10, `DSTU4145PointEncoder.java` in Bouncy Castle) - that encoding isn't implemented
+<a href=#44 id=44 data-nosnippet>44</a>//! anywhere in this project yet (`docs/pseudocode/dstu4145.md`'s existing note lists it as future
+<a href=#45 id=45 data-nosnippet>45</a>//! work, unrelated to sign/verify itself). Anyone needing interoperable, spec-compliant public-key
+<a href=#46 id=46 data-nosnippet>46</a>//! serialization must wait for that, tracked separately in `docs/TASKS.md`.
+<a href=#47 id=47 data-nosnippet>47</a>//!
+<a href=#48 id=48 data-nosnippet>48</a>//! # Example
+<a href=#49 id=49 data-nosnippet>49</a>//!
+<a href=#50 id=50 data-nosnippet>50</a>//! A signature proves a message came from whoever holds the signing key and hasn't been altered
+<a href=#51 id=51 data-nosnippet>51</a>//! since - unlike [`crate::crypto_secretbox`], it does not hide the message's contents, only
+<a href=#52 id=52 data-nosnippet>52</a>//! attests to its origin and integrity. Both the success path and a rejected forgery are shown
+<a href=#53 id=53 data-nosnippet>53</a>//! below (`docs/TASKS.md` T-120's own requirement - a signature example that only shows the happy path
+<a href=#54 id=54 data-nosnippet>54</a>//! doesn't demonstrate the primitive actually does what it claims).
+<a href=#55 id=55 data-nosnippet>55</a>//!
+<a href=#56 id=56 data-nosnippet>56</a>//! ```rust
+<a href=#57 id=57 data-nosnippet>57</a>//! use dstu_core::crypto_sign::SigningKey;
+<a href=#58 id=58 data-nosnippet>58</a>//!
+<a href=#59 id=59 data-nosnippet>59</a>//! # if cfg!(miri) { return; } // several Point::scalar_multiply calls - minutes each under Miri's
+<a href=#60 id=60 data-nosnippet>60</a>//! # // interpreter (docs/TASKS.md T-100/T-156/D-113); type-checked normally, just not executed
+<a href=#61 id=61 data-nosnippet>61</a>//! # // there. `cargo test` (not Miri) still runs this doctest for real every push.
+<a href=#62 id=62 data-nosnippet>62</a>//! let signing_key = SigningKey::generate().expect("OS CSPRNG should not fail");
+<a href=#63 id=63 data-nosnippet>63</a>//! let verifying_key = signing_key.verifying_key(); // safe to share/publish
+<a href=#64 id=64 data-nosnippet>64</a>//!
+<a href=#65 id=65 data-nosnippet>65</a>//! let message = b"a message whose origin and integrity matter";
+<a href=#66 id=66 data-nosnippet>66</a>//! let signature = signing_key.sign(message);
+<a href=#67 id=67 data-nosnippet>67</a>//! assert!(verifying_key.verify(message, &amp;signature));
+<a href=#68 id=68 data-nosnippet>68</a>//!
+<a href=#69 id=69 data-nosnippet>69</a>//! // A different message, or a signature from a different key, must fail to verify.
+<a href=#70 id=70 data-nosnippet>70</a>//! assert!(!verifying_key.verify(b"a different message", &amp;signature));
+<a href=#71 id=71 data-nosnippet>71</a>//! let other_key = SigningKey::generate().expect("OS CSPRNG should not fail");
+<a href=#72 id=72 data-nosnippet>72</a>//! assert!(!other_key.verifying_key().verify(message, &amp;signature));
+<a href=#73 id=73 data-nosnippet>73</a>//! ```
+<a href=#74 id=74 data-nosnippet>74</a>
+<a href=#75 id=75 data-nosnippet>75</a></span><span class="kw">use </span><span class="kw">crate</span>::hazmat::dstu4145::curve163::{<span class="self">self</span>, Point};
+<a href=#76 id=76 data-nosnippet>76</a><span class="kw">use </span><span class="kw">crate</span>::hazmat::dstu4145::gf2m163::FieldElement;
+<a href=#77 id=77 data-nosnippet>77</a><span class="kw">use </span><span class="kw">crate</span>::hazmat::dstu4145::scalar::Scalar;
+<a href=#78 id=78 data-nosnippet>78</a><span class="kw">use </span><span class="kw">crate</span>::hazmat::dstu4145::signature;
+<a href=#79 id=79 data-nosnippet>79</a><span class="kw">use </span><span class="kw">crate</span>::hazmat::kupyna::Kupyna256;
+<a href=#80 id=80 data-nosnippet>80</a><span class="kw">use </span><span class="kw">crate</span>::hazmat::kupyna_kmac::Kupyna256Kmac;
+<a href=#81 id=81 data-nosnippet>81</a><span class="kw">use </span>zeroize::Zeroize;
+<a href=#82 id=82 data-nosnippet>82</a>
+<a href=#83 id=83 data-nosnippet>83</a><span class="doccomment">/// One-byte curve identifier for tagged, self-describing serialization of a
+<a href=#84 id=84 data-nosnippet>84</a>/// [`crate::crypto_sign::VerifyingKey`] or [`crate::crypto_sign257::VerifyingKey`] - lives here
+<a href=#85 id=85 data-nosnippet>85</a>/// (not duplicated in `crypto_sign257`, and not in `uacrypt` or any language binding) so every
+<a href=#86 id=86 data-nosnippet>86</a>/// caller shares the same tag numbering, the D-118 lesson (`crypto_secretstream`'s wire-format
+<a href=#87 id=87 data-nosnippet>87</a>/// validation) already learned once about not letting each binding re-hand-roll a parser
+<a href=#88 id=88 data-nosnippet>88</a>/// (`docs/DECISIONS.md` D-186 Decision 1). Values `3` and above are reserved for the other 8
+<a href=#89 id=89 data-nosnippet>89</a>/// `DSTU4145NamedCurves.java` curve sizes, if any are ever implemented (`docs/TASKS.md` T-199).
+<a href=#90 id=90 data-nosnippet>90</a>///
+<a href=#91 id=91 data-nosnippet>91</a>/// This tags *keys/signatures a caller serializes themselves* (e.g. `uacrypt sign-pubkey`'s output
+<a href=#92 id=92 data-nosnippet>92</a>/// file) - `crypto_sign::VerifyingKey`/`crypto_sign257::VerifyingKey`'s own `to_uncompressed_bytes`
+<a href=#93 id=93 data-nosnippet>93</a>/// stay untagged fixed-width encodings (42/66 bytes), matching how they already worked before this
+<a href=#94 id=94 data-nosnippet>94</a>/// enum existed; a caller that wants a self-describing blob prepends the matching [`CurveId`] byte
+<a href=#95 id=95 data-nosnippet>95</a>/// itself, exactly as `uacrypt`'s own `sign-pubkey`/`sign-pubkey257`/`verify` commands do.
+<a href=#96 id=96 data-nosnippet>96</a></span><span class="attr">#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+<a href=#97 id=97 data-nosnippet>97</a>#[repr(u8)]
+<a href=#98 id=98 data-nosnippet>98</a></span><span class="kw">pub enum </span>CurveId {
+<a href=#99 id=99 data-nosnippet>99</a>    M163 = <span class="number">0x01</span>,
+<a href=#100 id=100 data-nosnippet>100</a>    M257 = <span class="number">0x02</span>,
+<a href=#101 id=101 data-nosnippet>101</a>}
+<a href=#102 id=102 data-nosnippet>102</a>
+<a href=#103 id=103 data-nosnippet>103</a><span class="kw">impl </span>CurveId {
+<a href=#104 id=104 data-nosnippet>104</a>    <span class="attr">#[must_use]
+<a href=#105 id=105 data-nosnippet>105</a>    </span><span class="kw">pub fn </span>to_byte(<span class="self">self</span>) -&gt; u8 {
+<a href=#106 id=106 data-nosnippet>106</a>        <span class="self">self </span><span class="kw">as </span>u8
+<a href=#107 id=107 data-nosnippet>107</a>    }
+<a href=#108 id=108 data-nosnippet>108</a>
+<a href=#109 id=109 data-nosnippet>109</a>    <span class="doccomment">/// Returns `None` for any tag this crate doesn't (yet) implement - the caller decides how to
+<a href=#110 id=110 data-nosnippet>110</a>    /// report that (`docs/DECISIONS.md` D-186 Decision 3's "a named error, not a silent `false`"
+<a href=#111 id=111 data-nosnippet>111</a>    /// applies at whatever layer actually surfaces this to a user, e.g. `uacrypt verify`'s own
+<a href=#112 id=112 data-nosnippet>112</a>    /// message).
+<a href=#113 id=113 data-nosnippet>113</a>    </span><span class="attr">#[must_use]
+<a href=#114 id=114 data-nosnippet>114</a>    </span><span class="kw">pub fn </span>from_byte(tag: u8) -&gt; <span class="prelude-ty">Option</span>&lt;<span class="self">Self</span>&gt; {
+<a href=#115 id=115 data-nosnippet>115</a>        <span class="kw">match </span>tag {
+<a href=#116 id=116 data-nosnippet>116</a>            <span class="number">0x01 </span>=&gt; <span class="prelude-val">Some</span>(CurveId::M163),
+<a href=#117 id=117 data-nosnippet>117</a>            <span class="number">0x02 </span>=&gt; <span class="prelude-val">Some</span>(CurveId::M257),
+<a href=#118 id=118 data-nosnippet>118</a>            <span class="kw">_ </span>=&gt; <span class="prelude-val">None</span>,
+<a href=#119 id=119 data-nosnippet>119</a>        }
+<a href=#120 id=120 data-nosnippet>120</a>    }
+<a href=#121 id=121 data-nosnippet>121</a>}
+<a href=#122 id=122 data-nosnippet>122</a>
+<a href=#123 id=123 data-nosnippet>123</a><span class="doccomment">/// A DSTU 4145 signature, `r || s` (21 bytes each, 42 total - `hazmat::dstu4145::signature`'s own
+<a href=#124 id=124 data-nosnippet>124</a>/// byte convention).
+<a href=#125 id=125 data-nosnippet>125</a></span><span class="attr">#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+<a href=#126 id=126 data-nosnippet>126</a></span><span class="kw">pub struct </span>Signature {
+<a href=#127 id=127 data-nosnippet>127</a>    r: [u8; <span class="number">21</span>],
+<a href=#128 id=128 data-nosnippet>128</a>    s: [u8; <span class="number">21</span>],
+<a href=#129 id=129 data-nosnippet>129</a>}
+<a href=#130 id=130 data-nosnippet>130</a>
+<a href=#131 id=131 data-nosnippet>131</a><span class="kw">impl </span>Signature {
+<a href=#132 id=132 data-nosnippet>132</a>    <span class="attr">#[must_use]
+<a href=#133 id=133 data-nosnippet>133</a>    </span><span class="kw">pub fn </span>to_bytes(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; [u8; <span class="number">42</span>] {
+<a href=#134 id=134 data-nosnippet>134</a>        <span class="kw">let </span><span class="kw-2">mut </span>out = [<span class="number">0u8</span>; <span class="number">42</span>];
+<a href=#135 id=135 data-nosnippet>135</a>        out[..<span class="number">21</span>].copy_from_slice(<span class="kw-2">&amp;</span><span class="self">self</span>.r);
+<a href=#136 id=136 data-nosnippet>136</a>        out[<span class="number">21</span>..].copy_from_slice(<span class="kw-2">&amp;</span><span class="self">self</span>.s);
+<a href=#137 id=137 data-nosnippet>137</a>        out
+<a href=#138 id=138 data-nosnippet>138</a>    }
+<a href=#139 id=139 data-nosnippet>139</a>
+<a href=#140 id=140 data-nosnippet>140</a>    <span class="attr">#[must_use]
+<a href=#141 id=141 data-nosnippet>141</a>    </span><span class="kw">pub fn </span>from_bytes(bytes: <span class="kw-2">&amp;</span>[u8; <span class="number">42</span>]) -&gt; <span class="self">Self </span>{
+<a href=#142 id=142 data-nosnippet>142</a>        <span class="kw">let </span><span class="kw-2">mut </span>r = [<span class="number">0u8</span>; <span class="number">21</span>];
+<a href=#143 id=143 data-nosnippet>143</a>        <span class="kw">let </span><span class="kw-2">mut </span>s = [<span class="number">0u8</span>; <span class="number">21</span>];
+<a href=#144 id=144 data-nosnippet>144</a>        r.copy_from_slice(<span class="kw-2">&amp;</span>bytes[..<span class="number">21</span>]);
+<a href=#145 id=145 data-nosnippet>145</a>        s.copy_from_slice(<span class="kw-2">&amp;</span>bytes[<span class="number">21</span>..]);
+<a href=#146 id=146 data-nosnippet>146</a>        Signature { r, s }
+<a href=#147 id=147 data-nosnippet>147</a>    }
+<a href=#148 id=148 data-nosnippet>148</a>}
+<a href=#149 id=149 data-nosnippet>149</a>
+<a href=#150 id=150 data-nosnippet>150</a><span class="doccomment">/// A DSTU 4145 private key. Signing needs no RNG (see the module doc) - only key generation from
+<a href=#151 id=151 data-nosnippet>151</a>/// external entropy is the caller's concern, same posture as `hazmat::kalyna_ccm`'s nonce
+<a href=#152 id=152 data-nosnippet>152</a>/// (`docs/DECISIONS.md` D-40): this module takes `d` as given rather than generating it.
+<a href=#153 id=153 data-nosnippet>153</a></span><span class="kw">pub struct </span>SigningKey(Scalar);
+<a href=#154 id=154 data-nosnippet>154</a>
+<a href=#155 id=155 data-nosnippet>155</a><span class="kw">impl </span>Drop <span class="kw">for </span>SigningKey {
+<a href=#156 id=156 data-nosnippet>156</a>    <span class="kw">fn </span>drop(<span class="kw-2">&amp;mut </span><span class="self">self</span>) {
+<a href=#157 id=157 data-nosnippet>157</a>        <span class="self">self</span>.<span class="number">0</span>.zeroize();
+<a href=#158 id=158 data-nosnippet>158</a>    }
+<a href=#159 id=159 data-nosnippet>159</a>}
+<a href=#160 id=160 data-nosnippet>160</a>
+<a href=#161 id=161 data-nosnippet>161</a><span class="doccomment">/// A DSTU 4145 public key `Q = -d*G` (`hazmat::dstu4145::signature`'s module doc / `docs/DECISIONS.md`
+<a href=#162 id=162 data-nosnippet>162</a>/// D-25's follow-up entry on the sign convention).
+<a href=#163 id=163 data-nosnippet>163</a></span><span class="attr">#[derive(Clone, Copy)]
+<a href=#164 id=164 data-nosnippet>164</a></span><span class="kw">pub struct </span>VerifyingKey(Point);
+<a href=#165 id=165 data-nosnippet>165</a>
+<a href=#166 id=166 data-nosnippet>166</a><span class="kw">impl </span>SigningKey {
+<a href=#167 id=167 data-nosnippet>167</a>    <span class="doccomment">/// Builds a signing key from a big-endian 21-byte scalar. Returns `None` if `d` is zero or
+<a href=#168 id=168 data-nosnippet>168</a>    /// not less than the curve order `n` - both invalid private keys, rejected here rather than
+<a href=#169 id=169 data-nosnippet>169</a>    /// left to silently misbehave later (`hazmat::dstu4145::scalar::Scalar::from_be_bytes` itself
+<a href=#170 id=170 data-nosnippet>170</a>    /// does not validate, by its own documented convention).
+<a href=#171 id=171 data-nosnippet>171</a>    </span><span class="attr">#[must_use]
+<a href=#172 id=172 data-nosnippet>172</a>    </span><span class="kw">pub fn </span>from_bytes(d: <span class="kw-2">&amp;</span>[u8; <span class="number">21</span>]) -&gt; <span class="prelude-ty">Option</span>&lt;<span class="self">Self</span>&gt; {
+<a href=#173 id=173 data-nosnippet>173</a>        <span class="kw">let </span>n = curve163::order();
+<a href=#174 id=174 data-nosnippet>174</a>        <span class="kw">if </span>d.iter().all(|<span class="kw-2">&amp;</span>b| b == <span class="number">0</span>) || d &gt;= <span class="kw-2">&amp;</span>n {
+<a href=#175 id=175 data-nosnippet>175</a>            <span class="kw">return </span><span class="prelude-val">None</span>;
+<a href=#176 id=176 data-nosnippet>176</a>        }
+<a href=#177 id=177 data-nosnippet>177</a>        <span class="prelude-val">Some</span>(SigningKey(Scalar::from_be_bytes(d)))
+<a href=#178 id=178 data-nosnippet>178</a>    }
+<a href=#179 id=179 data-nosnippet>179</a>
+<a href=#180 id=180 data-nosnippet>180</a>    <span class="doccomment">/// Generates a fresh signing key from the OS CSPRNG - libsodium's `crypto_sign_keypair()`
+<a href=#181 id=181 data-nosnippet>181</a>    /// equivalent (its public-key half is [`Self::verifying_key`]). `d` is drawn via **rejection
+<a href=#182 id=182 data-nosnippet>182</a>    /// sampling**, uniform over `[1, n)`, never a modulo reduction - `n` is not a power of two, so
+<a href=#183 id=183 data-nosnippet>183</a>    /// `candidate mod n` would bias small residues (`docs/TASKS.md` T-122). `n`'s top byte is `0x04`
+<a href=#184 id=184 data-nosnippet>184</a>    /// (`hazmat::dstu4145::curve163::order`'s own doc comment: `n` is a 163-bit value inside 21
+<a href=#185 id=185 data-nosnippet>185</a>    /// bytes/168 bits), so masking each candidate's top byte down to its low 3 bits (`0x07`) keeps
+<a href=#186 id=186 data-nosnippet>186</a>    /// the rejection rate near 50% instead of over 90% for an unmasked 168-bit draw. The
+<a href=#187 id=187 data-nosnippet>187</a>    /// range/nonzero check itself goes through [`Scalar::from_candidate_bytes`]'s constant-time
+<a href=#188 id=188 data-nosnippet>188</a>    /// comparison, not a branching `&gt;=`, so evaluating one candidate adds no data-dependent-branch
+<a href=#189 id=189 data-nosnippet>189</a>    /// timing signal beyond the draw count every rejection-sampling scheme inherently has.
+<a href=#190 id=190 data-nosnippet>190</a>    ///
+<a href=#191 id=191 data-nosnippet>191</a>    /// # Errors
+<a href=#192 id=192 data-nosnippet>192</a>    ///
+<a href=#193 id=193 data-nosnippet>193</a>    /// Returns [`crate::randombytes::RandomError`] if the OS CSPRNG fails while drawing a
+<a href=#194 id=194 data-nosnippet>194</a>    /// candidate.
+<a href=#195 id=195 data-nosnippet>195</a>    </span><span class="attr">#[cfg(any(feature = <span class="string">"std"</span>, feature = <span class="string">"getrandom"</span>))]
+<a href=#196 id=196 data-nosnippet>196</a>    </span><span class="kw">pub fn </span>generate() -&gt; <span class="prelude-ty">Result</span>&lt;<span class="self">Self</span>, <span class="kw">crate</span>::randombytes::RandomError&gt; {
+<a href=#197 id=197 data-nosnippet>197</a>        <span class="kw">loop </span>{
+<a href=#198 id=198 data-nosnippet>198</a>            <span class="kw">let </span><span class="kw-2">mut </span>candidate = [<span class="number">0u8</span>; <span class="number">21</span>];
+<a href=#199 id=199 data-nosnippet>199</a>            <span class="kw">crate</span>::randombytes::randombytes_buf(<span class="kw-2">&amp;mut </span>candidate)<span class="question-mark">?</span>;
+<a href=#200 id=200 data-nosnippet>200</a>            candidate[<span class="number">0</span>] &amp;= <span class="number">0x07</span>;
+<a href=#201 id=201 data-nosnippet>201</a>            <span class="kw">let </span>scalar = Scalar::from_candidate_bytes(<span class="kw-2">&amp;</span>candidate);
+<a href=#202 id=202 data-nosnippet>202</a>            candidate.zeroize();
+<a href=#203 id=203 data-nosnippet>203</a>            <span class="kw">if let </span><span class="prelude-val">Some</span>(scalar) = scalar {
+<a href=#204 id=204 data-nosnippet>204</a>                <span class="kw">return </span><span class="prelude-val">Ok</span>(SigningKey(scalar));
+<a href=#205 id=205 data-nosnippet>205</a>            }
+<a href=#206 id=206 data-nosnippet>206</a>        }
+<a href=#207 id=207 data-nosnippet>207</a>    }
+<a href=#208 id=208 data-nosnippet>208</a>
+<a href=#209 id=209 data-nosnippet>209</a>    <span class="doccomment">/// Returns `d`'s big-endian 21-byte encoding, so a generated key can be persisted (e.g.
+<a href=#210 id=210 data-nosnippet>210</a>    /// `uacrypt sign-keygen`, `docs/TASKS.md` T-124) and later reloaded via [`Self::from_bytes`]. The
+<a href=#211 id=211 data-nosnippet>211</a>    /// caller becomes responsible for zeroizing the returned array once done with it - the same
+<a href=#212 id=212 data-nosnippet>212</a>    /// convention `hazmat::dstu4145::scalar::Scalar::to_be_bytes` and
+<a href=#213 id=213 data-nosnippet>213</a>    /// `VerifyingKey::to_uncompressed_bytes` already have (this module has no wrapper type for a
+<a href=#214 id=214 data-nosnippet>214</a>    /// bare byte array to hang a `Drop` impl off of).
+<a href=#215 id=215 data-nosnippet>215</a>    </span><span class="attr">#[must_use]
+<a href=#216 id=216 data-nosnippet>216</a>    </span><span class="kw">pub fn </span>to_bytes(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; [u8; <span class="number">21</span>] {
+<a href=#217 id=217 data-nosnippet>217</a>        <span class="self">self</span>.<span class="number">0</span>.to_be_bytes()
+<a href=#218 id=218 data-nosnippet>218</a>    }
+<a href=#219 id=219 data-nosnippet>219</a>
+<a href=#220 id=220 data-nosnippet>220</a>    <span class="attr">#[must_use]
+<a href=#221 id=221 data-nosnippet>221</a>    </span><span class="kw">pub fn </span>verifying_key(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; VerifyingKey {
+<a href=#222 id=222 data-nosnippet>222</a>        <span class="kw">let </span>g = Point::generator();
+<a href=#223 id=223 data-nosnippet>223</a>        <span class="kw">let </span>q = g.scalar_multiply(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="number">0</span>.to_be_bytes()).negate();
+<a href=#224 id=224 data-nosnippet>224</a>        VerifyingKey(q)
+<a href=#225 id=225 data-nosnippet>225</a>    }
+<a href=#226 id=226 data-nosnippet>226</a>
+<a href=#227 id=227 data-nosnippet>227</a>    <span class="doccomment">/// Signs `message`, hashing it with Kupyna-256 and deriving the ephemeral nonce
+<a href=#228 id=228 data-nosnippet>228</a>    /// deterministically (see the module doc, `docs/DECISIONS.md` D-46). A thin wrapper over
+<a href=#229 id=229 data-nosnippet>229</a>    /// [`Self::sign_digest`] - see that method, and the module doc's T-113 note, for signing a
+<a href=#230 id=230 data-nosnippet>230</a>    /// message too large to hold in memory whole.
+<a href=#231 id=231 data-nosnippet>231</a>    </span><span class="attr">#[must_use]
+<a href=#232 id=232 data-nosnippet>232</a>    </span><span class="kw">pub fn </span>sign(<span class="kw-2">&amp;</span><span class="self">self</span>, message: <span class="kw-2">&amp;</span>[u8]) -&gt; Signature {
+<a href=#233 id=233 data-nosnippet>233</a>        <span class="self">self</span>.sign_digest(<span class="kw-2">&amp;</span>Kupyna256::digest(message))
+<a href=#234 id=234 data-nosnippet>234</a>    }
+<a href=#235 id=235 data-nosnippet>235</a>
+<a href=#236 id=236 data-nosnippet>236</a>    <span class="doccomment">/// Signs an already-computed 32-byte Kupyna-256 digest directly - for messages hashed
+<a href=#237 id=237 data-nosnippet>237</a>    /// incrementally via `hazmat::kupyna::Kupyna256Hasher` rather than held whole in memory (see
+<a href=#238 id=238 data-nosnippet>238</a>    /// the module doc's T-113 note). The hazmat-level degenerate rejections (`F_e == 0`, `r == 0`,
+<a href=#239 id=239 data-nosnippet>239</a>    /// `s == 0`, each ~`2^-163`) are retried here with the next nonce-derivation counter rather
+<a href=#240 id=240 data-nosnippet>240</a>    /// than surfaced to the caller - safe to retry because the nonce is re-derived, not reused.
+<a href=#241 id=241 data-nosnippet>241</a>    </span><span class="attr">#[must_use]
+<a href=#242 id=242 data-nosnippet>242</a>    </span><span class="kw">pub fn </span>sign_digest(<span class="kw-2">&amp;</span><span class="self">self</span>, digest: <span class="kw-2">&amp;</span>[u8; <span class="number">32</span>]) -&gt; Signature {
+<a href=#243 id=243 data-nosnippet>243</a>        <span class="kw">let </span>g = Point::generator();
+<a href=#244 id=244 data-nosnippet>244</a>        <span class="kw">let </span><span class="kw-2">mut </span>counter: u8 = <span class="number">0</span>;
+<a href=#245 id=245 data-nosnippet>245</a>        <span class="kw">loop </span>{
+<a href=#246 id=246 data-nosnippet>246</a>            <span class="kw">let </span>e = derive_nonce(<span class="self">self</span>.<span class="number">0</span>, digest, counter);
+<a href=#247 id=247 data-nosnippet>247</a>            <span class="kw">if let </span><span class="prelude-val">Some</span>((r, s)) = signature::sign(digest, <span class="self">self</span>.<span class="number">0</span>, e, g) {
+<a href=#248 id=248 data-nosnippet>248</a>                <span class="kw">return </span>Signature { r, s };
+<a href=#249 id=249 data-nosnippet>249</a>            }
+<a href=#250 id=250 data-nosnippet>250</a>            counter = counter.wrapping_add(<span class="number">1</span>);
+<a href=#251 id=251 data-nosnippet>251</a>        }
+<a href=#252 id=252 data-nosnippet>252</a>    }
+<a href=#253 id=253 data-nosnippet>253</a>}
+<a href=#254 id=254 data-nosnippet>254</a>
+<a href=#255 id=255 data-nosnippet>255</a><span class="kw">impl </span>VerifyingKey {
+<a href=#256 id=256 data-nosnippet>256</a>    <span class="attr">#[must_use]
+<a href=#257 id=257 data-nosnippet>257</a>    </span><span class="kw">pub fn </span>to_uncompressed_bytes(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; [u8; <span class="number">42</span>] {
+<a href=#258 id=258 data-nosnippet>258</a>        <span class="kw">let </span><span class="kw-2">mut </span>out = [<span class="number">0u8</span>; <span class="number">42</span>];
+<a href=#259 id=259 data-nosnippet>259</a>        <span class="kw">match </span><span class="self">self</span>.<span class="number">0 </span>{
+<a href=#260 id=260 data-nosnippet>260</a>            Point::Affine(x, y) =&gt; {
+<a href=#261 id=261 data-nosnippet>261</a>                out[..<span class="number">21</span>].copy_from_slice(<span class="kw-2">&amp;</span>x.to_be_bytes());
+<a href=#262 id=262 data-nosnippet>262</a>                out[<span class="number">21</span>..].copy_from_slice(<span class="kw-2">&amp;</span>y.to_be_bytes());
+<a href=#263 id=263 data-nosnippet>263</a>            }
+<a href=#264 id=264 data-nosnippet>264</a>            Point::Infinity =&gt; {} <span class="comment">// never produced by verifying_key() for a valid SigningKey
+<a href=#265 id=265 data-nosnippet>265</a>        </span>}
+<a href=#266 id=266 data-nosnippet>266</a>        out
+<a href=#267 id=267 data-nosnippet>267</a>    }
+<a href=#268 id=268 data-nosnippet>268</a>
+<a href=#269 id=269 data-nosnippet>269</a>    <span class="attr">#[must_use]
+<a href=#270 id=270 data-nosnippet>270</a>    </span><span class="kw">pub fn </span>from_uncompressed_bytes(bytes: <span class="kw-2">&amp;</span>[u8; <span class="number">42</span>]) -&gt; <span class="self">Self </span>{
+<a href=#271 id=271 data-nosnippet>271</a>        <span class="kw">let </span>x = FieldElement::from_be_bytes(<span class="kw-2">&amp;</span>bytes[..<span class="number">21</span>]);
+<a href=#272 id=272 data-nosnippet>272</a>        <span class="kw">let </span>y = FieldElement::from_be_bytes(<span class="kw-2">&amp;</span>bytes[<span class="number">21</span>..]);
+<a href=#273 id=273 data-nosnippet>273</a>        VerifyingKey(Point::Affine(x, y))
+<a href=#274 id=274 data-nosnippet>274</a>    }
+<a href=#275 id=275 data-nosnippet>275</a>
+<a href=#276 id=276 data-nosnippet>276</a>    <span class="doccomment">/// A thin wrapper over [`Self::verify_digest`] - see that method, and the module doc's T-113
+<a href=#277 id=277 data-nosnippet>277</a>    /// note, for verifying a message too large to hold in memory whole.
+<a href=#278 id=278 data-nosnippet>278</a>    </span><span class="attr">#[must_use]
+<a href=#279 id=279 data-nosnippet>279</a>    </span><span class="kw">pub fn </span>verify(<span class="kw-2">&amp;</span><span class="self">self</span>, message: <span class="kw-2">&amp;</span>[u8], sig: <span class="kw-2">&amp;</span>Signature) -&gt; bool {
+<a href=#280 id=280 data-nosnippet>280</a>        <span class="self">self</span>.verify_digest(<span class="kw-2">&amp;</span>Kupyna256::digest(message), sig)
+<a href=#281 id=281 data-nosnippet>281</a>    }
+<a href=#282 id=282 data-nosnippet>282</a>
+<a href=#283 id=283 data-nosnippet>283</a>    <span class="doccomment">/// Verifies against an already-computed 32-byte Kupyna-256 digest directly - for messages
+<a href=#284 id=284 data-nosnippet>284</a>    /// hashed incrementally via `hazmat::kupyna::Kupyna256Hasher` rather than held whole in memory
+<a href=#285 id=285 data-nosnippet>285</a>    /// (see the module doc's T-113 note).
+<a href=#286 id=286 data-nosnippet>286</a>    </span><span class="attr">#[must_use]
+<a href=#287 id=287 data-nosnippet>287</a>    </span><span class="kw">pub fn </span>verify_digest(<span class="kw-2">&amp;</span><span class="self">self</span>, digest: <span class="kw-2">&amp;</span>[u8; <span class="number">32</span>], sig: <span class="kw-2">&amp;</span>Signature) -&gt; bool {
+<a href=#288 id=288 data-nosnippet>288</a>        <span class="kw">let </span>g = Point::generator();
+<a href=#289 id=289 data-nosnippet>289</a>        signature::verify(digest, <span class="kw-2">&amp;</span>sig.r, <span class="kw-2">&amp;</span>sig.s, <span class="self">self</span>.<span class="number">0</span>, g)
+<a href=#290 id=290 data-nosnippet>290</a>    }
+<a href=#291 id=291 data-nosnippet>291</a>}
+<a href=#292 id=292 data-nosnippet>292</a>
+<a href=#293 id=293 data-nosnippet>293</a><span class="doccomment">/// Deterministic ephemeral-nonce derivation (`docs/DECISIONS.md` D-46): `e = reduce_mod_n(KMAC(key =
+<a href=#294 id=294 data-nosnippet>294</a>/// zero-padded d, message = hash || counter))`, retried with an incremented `counter` on the
+<a href=#295 id=295 data-nosnippet>295</a>/// ~`2^-163`-probability chance of a zero result or a hazmat-level degenerate rejection. `d`'s
+<a href=#296 id=296 data-nosnippet>296</a>/// 21-byte big-endian value is left-padded with zeros to `Kupyna256Kmac`'s required 32-byte key
+<a href=#297 id=297 data-nosnippet>297</a>/// length (`hazmat::kupyna_kmac`'s key length must equal its `mac_len`) - an embedding, not a
+<a href=#298 id=298 data-nosnippet>298</a>/// truncation, so no information about `d` is lost.
+<a href=#299 id=299 data-nosnippet>299</a></span><span class="kw">fn </span>derive_nonce(d: Scalar, hash: <span class="kw-2">&amp;</span>[u8; <span class="number">32</span>], counter: u8) -&gt; Scalar {
+<a href=#300 id=300 data-nosnippet>300</a>    <span class="kw">let </span><span class="kw-2">mut </span>key = [<span class="number">0u8</span>; <span class="number">32</span>];
+<a href=#301 id=301 data-nosnippet>301</a>    key[<span class="number">11</span>..].copy_from_slice(<span class="kw-2">&amp;</span>d.to_be_bytes());
+<a href=#302 id=302 data-nosnippet>302</a>    <span class="kw">let </span><span class="kw-2">mut </span>message = [<span class="number">0u8</span>; <span class="number">33</span>];
+<a href=#303 id=303 data-nosnippet>303</a>    message[..<span class="number">32</span>].copy_from_slice(hash);
+<a href=#304 id=304 data-nosnippet>304</a>    message[<span class="number">32</span>] = counter;
+<a href=#305 id=305 data-nosnippet>305</a>
+<a href=#306 id=306 data-nosnippet>306</a>    <span class="kw">let </span><span class="prelude-val">Ok</span>(mac) = Kupyna256Kmac::mac(<span class="kw-2">&amp;</span>key, <span class="kw-2">&amp;</span>message) <span class="kw">else </span>{
+<a href=#307 id=307 data-nosnippet>307</a>        <span class="macro">unreachable!</span>(<span class="string">"key is always exactly 32 bytes, Kupyna256Kmac's required length"</span>)
+<a href=#308 id=308 data-nosnippet>308</a>    };
+<a href=#309 id=309 data-nosnippet>309</a>    key.zeroize();
+<a href=#310 id=310 data-nosnippet>310</a>    Scalar::reduce_wide_bytes(<span class="kw-2">&amp;</span>mac)
+<a href=#311 id=311 data-nosnippet>311</a>}
+</code></pre></div></section></main></body></html>

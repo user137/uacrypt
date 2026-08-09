@@ -1,0 +1,165 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `crates/dstu-core/src/hazmat/dstu4145/signature257.rs`."><title>signature257.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../../../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../../../static.files/rustdoc-17e0aaed.css"><meta name="rustdoc-vars" data-root-path="../../../../" data-static-root-path="../../../../static.files/" data-current-crate="dstu_core" data-themes="" data-resource-suffix="" data-rustdoc-version="1.97.1 (8bab26f4f 2026-07-14)" data-channel="1.97.1" data-search-js="search-fd9372ac.js" data-stringdex-js="stringdex-2da4960a.js" data-settings-js="settings-170eb4bf.js" ><script src="../../../../static.files/storage-41dd4d93.js"></script><script defer src="../../../../static.files/src-script-813739b1.js"></script><script defer src="../../../../src-files.js"></script><script defer src="../../../../static.files/main-fcd733ba.js"></script><noscript><link rel="stylesheet" href="../../../../static.files/noscript-f7c3ffd8.css"></noscript><link rel="alternate icon" type="image/png" href="../../../../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../../../../static.files/favicon-044be391.svg"></head><body class="rustdoc src"><a class="skip-main-content" href="#main-content">Skip to main content</a><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><section id="main-content" class="content" tabindex="-1"><div class="main-heading"><h1><div class="sub-heading">dstu_core/hazmat/dstu4145/</div>signature257.rs</h1><rustdoc-toolbar></rustdoc-toolbar></div><div class="example-wrap digits-3"><pre class="rust"><code><a href=#1 id=1 data-nosnippet>1</a><span class="doccomment">//! DSTU 4145-2002 sign/verify for `m=257` - same algorithm and structure as `signature::{sign,
+<a href=#2 id=2 data-nosnippet>2</a>//! verify}` for `m=163` (see that module's own doc comment for the full citation and the
+<a href=#3 id=3 data-nosnippet>3</a>//! `Q = -d*G` convention, which applies identically here), built on `gf2m257`/`curve257`/
+<a href=#4 id=4 data-nosnippet>4</a>//! `scalar257` instead. `docs/TASKS.md` T-199, `docs/DECISIONS.md` D-185/D-186.
+<a href=#5 id=5 data-nosnippet>5</a>//!
+<a href=#6 id=6 data-nosnippet>6</a>//! **`verify`'s public-key validation uses the general (`SP 800-56A`-style) check, not
+<a href=#7 id=7 data-nosnippet>7</a>//! `signature::verify`'s `m=163`-specific `x == 0` rejection** - `curve257`'s cofactor is `4`, not
+<a href=#8 id=8 data-nosnippet>8</a>//! `2` (D-185's Bouncy Castle cross-check, `h_s[6] = FOUR`), so `m=163`'s fix (reject the curve's
+<a href=#9 id=9 data-nosnippet>9</a>//! one order-2 point directly by its known `x = 0` coordinate) does not carry over: a cofactor-4
+<a href=#10 id=10 data-nosnippet>10</a>//! curve's small subgroup also contains order-4 points, whose `x`-coordinates are not `0` and
+<a href=#11 id=11 data-nosnippet>11</a>//! would slip past that specific check. Instead: reject `q` unless `q.scalar_multiply(&amp;order())
+<a href=#12 id=12 data-nosnippet>12</a>//! == Point::Infinity` - `q` lies in the prime-order subgroup if and only if this holds, true for
+<a href=#13 id=13 data-nosnippet>13</a>//! *any* cofactor without needing to enumerate the small subgroup's actual points (`advisor()`
+<a href=#14 id=14 data-nosnippet>14</a>//! review, `docs/TASKS.md` T-199) - one extra full scalar multiplication per `verify` call, public
+<a href=#15 id=15 data-nosnippet>15</a>//! data throughout, same cost class as the two multiplications `verify` already pays. Tested
+<a href=#16 id=16 data-nosnippet>16</a>//! against the curve's genuine order-2 point (`x = 0`, same construction `signature.rs`'s own
+<a href=#17 id=17 data-nosnippet>17</a>//! `t189_public_key_validation` test uses) in `tests/dstu4145_signature257.rs` - sufficient to
+<a href=#18 id=18 data-nosnippet>18</a>//! prove the general check actually rejects a real small-subgroup point, not just the `m=163`-style
+<a href=#19 id=19 data-nosnippet>19</a>//! one this module deliberately does *not* special-case.
+<a href=#20 id=20 data-nosnippet>20</a>//!
+<a href=#21 id=21 data-nosnippet>21</a>//! `verify` is public-data-only throughout, same posture as `signature::verify` - ordinary
+<a href=#22 id=22 data-nosnippet>22</a>//! branches and `==` are fine here. No `verify_combine`-style projective fast path exists for
+<a href=#23 id=23 data-nosnippet>23</a>//! `curve257` yet (`curve257`'s own module doc) - `verify` pays three full `scalar_multiply` calls
+<a href=#24 id=24 data-nosnippet>24</a>//! now (the subgroup check, plus the original two).
+<a href=#25 id=25 data-nosnippet>25</a>
+<a href=#26 id=26 data-nosnippet>26</a></span><span class="kw">use </span><span class="kw">super</span>::curve257::{<span class="self">self</span>, Point};
+<a href=#27 id=27 data-nosnippet>27</a><span class="kw">use </span><span class="kw">super</span>::gf2m257::FieldElement;
+<a href=#28 id=28 data-nosnippet>28</a><span class="kw">use </span><span class="kw">super</span>::scalar257::Scalar;
+<a href=#29 id=29 data-nosnippet>29</a>
+<a href=#30 id=30 data-nosnippet>30</a><span class="doccomment">/// Same construction as `signature::hash_to_field`, widened to `m=257`/33 bytes: keep the hash's
+<a href=#31 id=31 data-nosnippet>31</a>/// last `min(len, 33)` bytes, masking the top byte to its low 1 bit if a full 33 were taken (257
+<a href=#32 id=32 data-nosnippet>32</a>/// bits total - `33*8 - 257 = 7` padding bits, so only bit 0 of the top byte is meaningful).
+<a href=#33 id=33 data-nosnippet>33</a></span><span class="attr">#[must_use]
+<a href=#34 id=34 data-nosnippet>34</a></span><span class="kw">pub fn </span>hash_to_field(hash: <span class="kw-2">&amp;</span>[u8]) -&gt; FieldElement {
+<a href=#35 id=35 data-nosnippet>35</a>    <span class="kw">let </span>take = hash.len().min(<span class="number">33</span>);
+<a href=#36 id=36 data-nosnippet>36</a>    <span class="kw">let </span><span class="kw-2">mut </span>bytes = [<span class="number">0u8</span>; <span class="number">33</span>];
+<a href=#37 id=37 data-nosnippet>37</a>    bytes[<span class="number">33 </span>- take..].copy_from_slice(<span class="kw-2">&amp;</span>hash[hash.len() - take..]);
+<a href=#38 id=38 data-nosnippet>38</a>    <span class="kw">if </span>take == <span class="number">33 </span>{
+<a href=#39 id=39 data-nosnippet>39</a>        bytes[<span class="number">0</span>] &amp;= <span class="number">0x01</span>; <span class="comment">// low 257 bits: the top byte holds only bit 256
+<a href=#40 id=40 data-nosnippet>40</a>    </span>}
+<a href=#41 id=41 data-nosnippet>41</a>    FieldElement::from_be_bytes(<span class="kw-2">&amp;</span>bytes)
+<a href=#42 id=42 data-nosnippet>42</a>}
+<a href=#43 id=43 data-nosnippet>43</a>
+<a href=#44 id=44 data-nosnippet>44</a><span class="doccomment">/// `truncate(y, n.bit_length() - 1)`: keeps the low `n.bit_length() - 1` bits of a field element's
+<a href=#45 id=45 data-nosnippet>45</a>/// integer value. **`n.bit_length()` is 256 here, not 257** - `curve257::order()`'s own top byte
+<a href=#46 id=46 data-nosnippet>46</a>/// is `0x80` (no leading-zero slack, `docs/DECISIONS.md` D-185), so `n.bit_length() == m` does
+<a href=#47 id=47 data-nosnippet>47</a>/// *not* hold the way it happens to for `m=163` (whose `n` has bit-length 163, coincidentally
+<a href=#48 id=48 data-nosnippet>48</a>/// matching `m`) - `signature::truncate_162`'s `m - 1 == n.bit_length() - 1` equivalence was a
+<a href=#49 id=49 data-nosnippet>49</a>/// coincidence of that curve's specific order, not a general rule, and does not carry over here.
+<a href=#50 id=50 data-nosnippet>50</a>/// This keeps the low **255** bits: byte 0 (global bits 256-263) cleared entirely, byte 1's top
+<a href=#51 id=51 data-nosnippet>51</a>/// bit (global bit 255) also cleared (`0x7F` mask) - found and fixed via the BC-generated
+<a href=#52 id=52 data-nosnippet>52</a>/// `signature_cases` oracle failing `verify` despite `sign` matching exactly (`docs/TASKS.md`
+<a href=#53 id=53 data-nosnippet>53</a>/// T-199): `sign`'s own `r` output was correct either way (`Scalar::from_be_bytes` doesn't reduce,
+<a href=#54 id=54 data-nosnippet>54</a>/// so an over-wide `r` still round-tripped through `sign`'s own output), but was never actually
+<a href=#55 id=55 data-nosnippet>55</a>/// `&lt; n` as `verify`'s domain check requires - a real correctness bug, not just a naming slip.
+<a href=#56 id=56 data-nosnippet>56</a>///
+<a href=#57 id=57 data-nosnippet>57</a>/// **This makes `r &lt; n` (and `s &lt; n`, since `s` is a `scalar257::Scalar` and therefore always
+<a href=#58 id=58 data-nosnippet>58</a>/// reduced) provable, not just empirically likely**: this function's output is always `&lt; 2^255`
+<a href=#59 id=59 data-nosnippet>59</a>/// (255 bits kept), and `n &gt;= 2^255` unconditionally (`n.bit_length() == 256` means `n` occupies
+<a href=#60 id=60 data-nosnippet>60</a>/// `[2^255, 2^256)`) - so `r &lt; 2^255 &lt;= n` holds for *every* input `y`, not just the ones a random
+<a href=#61 id=61 data-nosnippet>61</a>/// BC-oracle sample happened to cover. See `truncate_255_output_is_always_below_n` in
+<a href=#62 id=62 data-nosnippet>62</a>/// `tests/dstu4145_signature257.rs` for the boundary case that pins this down directly (`y` with
+<a href=#63 id=63 data-nosnippet>63</a>/// every bit set - the function's own maximum possible output).
+<a href=#64 id=64 data-nosnippet>64</a></span><span class="kw">fn </span>truncate_255(y: FieldElement) -&gt; [u8; <span class="number">33</span>] {
+<a href=#65 id=65 data-nosnippet>65</a>    <span class="kw">let </span><span class="kw-2">mut </span>bytes = y.to_be_bytes();
+<a href=#66 id=66 data-nosnippet>66</a>    bytes[<span class="number">0</span>] = <span class="number">0</span>;
+<a href=#67 id=67 data-nosnippet>67</a>    bytes[<span class="number">1</span>] &amp;= <span class="number">0x7F</span>;
+<a href=#68 id=68 data-nosnippet>68</a>    bytes
+<a href=#69 id=69 data-nosnippet>69</a>}
+<a href=#70 id=70 data-nosnippet>70</a>
+<a href=#71 id=71 data-nosnippet>71</a><span class="kw">fn </span>is_zero(bytes: <span class="kw-2">&amp;</span>[u8; <span class="number">33</span>]) -&gt; bool {
+<a href=#72 id=72 data-nosnippet>72</a>    bytes.iter().all(|<span class="kw-2">&amp;</span>b| b == <span class="number">0</span>)
+<a href=#73 id=73 data-nosnippet>73</a>}
+<a href=#74 id=74 data-nosnippet>74</a>
+<a href=#75 id=75 data-nosnippet>75</a><span class="doccomment">/// Big-endian byte-array comparison - public magnitude check (`r &lt; n`, `s &lt; n`).
+<a href=#76 id=76 data-nosnippet>76</a></span><span class="kw">fn </span>less_than(a: <span class="kw-2">&amp;</span>[u8; <span class="number">33</span>], b: <span class="kw-2">&amp;</span>[u8; <span class="number">33</span>]) -&gt; bool {
+<a href=#77 id=77 data-nosnippet>77</a>    a &lt; b
+<a href=#78 id=78 data-nosnippet>78</a>}
+<a href=#79 id=79 data-nosnippet>79</a>
+<a href=#80 id=80 data-nosnippet>80</a><span class="doccomment">/// `verifySignature`, `m=257`. `hash` is an already-computed message digest.
+<a href=#81 id=81 data-nosnippet>81</a></span><span class="attr">#[must_use]
+<a href=#82 id=82 data-nosnippet>82</a>#[allow(clippy::many_single_char_names)] </span><span class="comment">// r, s, q, g, h, n match the pseudocode doc's own names
+<a href=#83 id=83 data-nosnippet>83</a></span><span class="kw">pub fn </span>verify(hash: <span class="kw-2">&amp;</span>[u8], r: <span class="kw-2">&amp;</span>[u8; <span class="number">33</span>], s: <span class="kw-2">&amp;</span>[u8; <span class="number">33</span>], q: Point, g: Point) -&gt; bool {
+<a href=#84 id=84 data-nosnippet>84</a>    <span class="kw">let </span>n = curve257::order();
+<a href=#85 id=85 data-nosnippet>85</a>    <span class="kw">if </span>is_zero(r) || is_zero(s) || !less_than(r, <span class="kw-2">&amp;</span>n) || !less_than(s, <span class="kw-2">&amp;</span>n) {
+<a href=#86 id=86 data-nosnippet>86</a>        <span class="kw">return </span><span class="bool-val">false</span>;
+<a href=#87 id=87 data-nosnippet>87</a>    }
+<a href=#88 id=88 data-nosnippet>88</a>
+<a href=#89 id=89 data-nosnippet>89</a>    <span class="comment">// Full public-key validation (on-curve, non-identity, in the prime-order subgroup) - see the
+<a href=#90 id=90 data-nosnippet>90</a>    // module doc for why the general `n*q == Infinity` check is used here instead of `m=163`'s
+<a href=#91 id=91 data-nosnippet>91</a>    // `x == 0` shortcut (cofactor 4, not 2 - that shortcut doesn't cover this curve's order-4
+<a href=#92 id=92 data-nosnippet>92</a>    // points).
+<a href=#93 id=93 data-nosnippet>93</a>    </span><span class="kw">if </span>!q.is_on_curve() || q.scalar_multiply(<span class="kw-2">&amp;</span>n) != Point::Infinity {
+<a href=#94 id=94 data-nosnippet>94</a>        <span class="kw">return </span><span class="bool-val">false</span>;
+<a href=#95 id=95 data-nosnippet>95</a>    }
+<a href=#96 id=96 data-nosnippet>96</a>
+<a href=#97 id=97 data-nosnippet>97</a>    <span class="kw">let </span><span class="kw-2">mut </span>h = hash_to_field(hash);
+<a href=#98 id=98 data-nosnippet>98</a>    <span class="kw">if </span>h == FieldElement::ZERO {
+<a href=#99 id=99 data-nosnippet>99</a>        h = FieldElement::ONE;
+<a href=#100 id=100 data-nosnippet>100</a>    }
+<a href=#101 id=101 data-nosnippet>101</a>
+<a href=#102 id=102 data-nosnippet>102</a>    <span class="kw">let </span>s_point = g.scalar_multiply(s);
+<a href=#103 id=103 data-nosnippet>103</a>    <span class="kw">let </span>r_point = q.scalar_multiply(r);
+<a href=#104 id=104 data-nosnippet>104</a>    <span class="kw">let </span>big_r = s_point + r_point;
+<a href=#105 id=105 data-nosnippet>105</a>    <span class="kw">let </span>(rx, <span class="kw">_</span>) = <span class="kw">match </span>big_r {
+<a href=#106 id=106 data-nosnippet>106</a>        Point::Affine(x, y) =&gt; (x, y),
+<a href=#107 id=107 data-nosnippet>107</a>        Point::Infinity =&gt; <span class="kw">return </span><span class="bool-val">false</span>,
+<a href=#108 id=108 data-nosnippet>108</a>    };
+<a href=#109 id=109 data-nosnippet>109</a>
+<a href=#110 id=110 data-nosnippet>110</a>    <span class="kw">let </span>y = h.multiply(rx);
+<a href=#111 id=111 data-nosnippet>111</a>    <span class="kw-2">&amp;</span>truncate_255(y) == r
+<a href=#112 id=112 data-nosnippet>112</a>}
+<a href=#113 id=113 data-nosnippet>113</a>
+<a href=#114 id=114 data-nosnippet>114</a><span class="doccomment">/// `generateSignature`, `m=257`. `e` is the caller-supplied ephemeral scalar - see
+<a href=#115 id=115 data-nosnippet>115</a>/// `signature::sign`'s own doc comment for the freshness/secrecy requirement, identical here.
+<a href=#116 id=116 data-nosnippet>116</a></span><span class="attr">#[must_use]
+<a href=#117 id=117 data-nosnippet>117</a>#[allow(clippy::many_single_char_names)] </span><span class="comment">// r, s, d, e, h match the pseudocode doc's own names
+<a href=#118 id=118 data-nosnippet>118</a></span><span class="kw">pub fn </span>sign(hash: <span class="kw-2">&amp;</span>[u8], d: Scalar, e: Scalar, g: Point) -&gt; <span class="prelude-ty">Option</span>&lt;([u8; <span class="number">33</span>], [u8; <span class="number">33</span>])&gt; {
+<a href=#119 id=119 data-nosnippet>119</a>    <span class="kw">let </span><span class="kw-2">mut </span>h = hash_to_field(hash);
+<a href=#120 id=120 data-nosnippet>120</a>    <span class="kw">if </span>h == FieldElement::ZERO {
+<a href=#121 id=121 data-nosnippet>121</a>        h = FieldElement::ONE;
+<a href=#122 id=122 data-nosnippet>122</a>    }
+<a href=#123 id=123 data-nosnippet>123</a>
+<a href=#124 id=124 data-nosnippet>124</a>    <span class="kw">let </span>(fe_x, <span class="kw">_</span>) = <span class="kw">match </span>g.scalar_multiply(<span class="kw-2">&amp;</span>e.to_be_bytes()) {
+<a href=#125 id=125 data-nosnippet>125</a>        Point::Affine(x, y) =&gt; (x, y),
+<a href=#126 id=126 data-nosnippet>126</a>        Point::Infinity =&gt; <span class="kw">return </span><span class="prelude-val">None</span>,
+<a href=#127 id=127 data-nosnippet>127</a>    };
+<a href=#128 id=128 data-nosnippet>128</a>    <span class="kw">if </span>fe_x == FieldElement::ZERO {
+<a href=#129 id=129 data-nosnippet>129</a>        <span class="kw">return </span><span class="prelude-val">None</span>;
+<a href=#130 id=130 data-nosnippet>130</a>    }
+<a href=#131 id=131 data-nosnippet>131</a>
+<a href=#132 id=132 data-nosnippet>132</a>    <span class="kw">let </span>y = h.multiply(fe_x);
+<a href=#133 id=133 data-nosnippet>133</a>    <span class="kw">let </span>r_bytes = truncate_255(y);
+<a href=#134 id=134 data-nosnippet>134</a>    <span class="kw">if </span>is_zero(<span class="kw-2">&amp;</span>r_bytes) {
+<a href=#135 id=135 data-nosnippet>135</a>        <span class="kw">return </span><span class="prelude-val">None</span>;
+<a href=#136 id=136 data-nosnippet>136</a>    }
+<a href=#137 id=137 data-nosnippet>137</a>
+<a href=#138 id=138 data-nosnippet>138</a>    <span class="kw">let </span>r = Scalar::from_be_bytes(<span class="kw-2">&amp;</span>r_bytes);
+<a href=#139 id=139 data-nosnippet>139</a>    <span class="kw">let </span>s = r.multiply(d) + e;
+<a href=#140 id=140 data-nosnippet>140</a>    <span class="kw">if </span>s.is_zero() {
+<a href=#141 id=141 data-nosnippet>141</a>        <span class="kw">return </span><span class="prelude-val">None</span>;
+<a href=#142 id=142 data-nosnippet>142</a>    }
+<a href=#143 id=143 data-nosnippet>143</a>
+<a href=#144 id=144 data-nosnippet>144</a>    <span class="prelude-val">Some</span>((r_bytes, s.to_be_bytes()))
+<a href=#145 id=145 data-nosnippet>145</a>}
+<a href=#146 id=146 data-nosnippet>146</a>
+<a href=#147 id=147 data-nosnippet>147</a><span class="attr">#[cfg(test)]
+<a href=#148 id=148 data-nosnippet>148</a></span><span class="kw">mod </span>tests {
+<a href=#149 id=149 data-nosnippet>149</a>    <span class="kw">use super</span>::<span class="kw-2">*</span>;
+<a href=#150 id=150 data-nosnippet>150</a>
+<a href=#151 id=151 data-nosnippet>151</a>    <span class="doccomment">/// Proves `truncate_255`'s output is always `&lt; n`, not just empirically likely (see its own
+<a href=#152 id=152 data-nosnippet>152</a>    /// doc comment for the bit-count argument) - the boundary case, `y` with every representable
+<a href=#153 id=153 data-nosnippet>153</a>    /// bit set (the function's own maximum possible output), is the one input that actually
+<a href=#154 id=154 data-nosnippet>154</a>    /// exercises that bound; a random `y` from the BC oracle only demonstrates it by chance.
+<a href=#155 id=155 data-nosnippet>155</a>    </span><span class="attr">#[test]
+<a href=#156 id=156 data-nosnippet>156</a>    </span><span class="kw">fn </span>truncate_255_output_is_always_below_n() {
+<a href=#157 id=157 data-nosnippet>157</a>        <span class="kw">let </span>all_ones = FieldElement::from_be_bytes(<span class="kw-2">&amp;</span>[<span class="number">0xFFu8</span>; <span class="number">33</span>]);
+<a href=#158 id=158 data-nosnippet>158</a>        <span class="kw">let </span>r_bytes = truncate_255(all_ones);
+<a href=#159 id=159 data-nosnippet>159</a>        <span class="macro">assert!</span>(
+<a href=#160 id=160 data-nosnippet>160</a>            less_than(<span class="kw-2">&amp;</span>r_bytes, <span class="kw-2">&amp;</span>curve257::order()),
+<a href=#161 id=161 data-nosnippet>161</a>            <span class="string">"truncate_255's own maximum output must stay below n"
+<a href=#162 id=162 data-nosnippet>162</a>        </span>);
+<a href=#163 id=163 data-nosnippet>163</a>    }
+<a href=#164 id=164 data-nosnippet>164</a>}
+</code></pre></div></section></main></body></html>

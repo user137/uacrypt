@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["OpenError","SealError"],"fn":["open","seal"],"struct":["PublicKey","SecretKey"]};

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["MAX_AAD_LEN","MAX_PLAINTEXT_LEN"],"enum":["CcmError"],"struct":["Kalyna128_128Ccm","Kalyna128_256Ccm","Kalyna256_256Ccm","Kalyna256_512Ccm","Kalyna512_512Ccm"]};

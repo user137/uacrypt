@@ -1,0 +1,49 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Strumok stream cipher (DSTU 8845:2019), 256- and 512-bit key variants."><title>dstu_core::hazmat::strumok - Rust</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../../static.files/rustdoc-17e0aaed.css"><meta name="rustdoc-vars" data-root-path="../../../" data-static-root-path="../../../static.files/" data-current-crate="dstu_core" data-themes="" data-resource-suffix="" data-rustdoc-version="1.97.1 (8bab26f4f 2026-07-14)" data-channel="1.97.1" data-search-js="search-fd9372ac.js" data-stringdex-js="stringdex-2da4960a.js" data-settings-js="settings-170eb4bf.js" ><script src="../../../static.files/storage-41dd4d93.js"></script><script defer src="../sidebar-items.js"></script><script defer src="../../../static.files/main-fcd733ba.js"></script><noscript><link rel="stylesheet" href="../../../static.files/noscript-f7c3ffd8.css"></noscript><link rel="alternate icon" type="image/png" href="../../../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../../../static.files/favicon-044be391.svg"></head><body class="rustdoc mod"><a class="skip-main-content" href="#main-content">Skip to main content</a><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><rustdoc-topbar><h2><a href="#">Module strumok</a></h2></rustdoc-topbar><nav class="sidebar"><div class="sidebar-crate"><h2><a href="../../../dstu_core/index.html">dstu_<wbr>core</a><span class="version">0.2.0</span></h2></div><div class="sidebar-elems"><section id="rustdoc-toc"><h2 class="location"><a href="#">Module strumok</a></h2><h3><a href="#">Sections</a></h3><ul class="block top-toc"><li><a href="#warning-never-reuse-the-same-keyiv-pair-for-two-different-messages" title="Warning: never reuse the same key+IV pair for two different messages">Warning: never reuse the same key+IV pair for two different messages</a></li></ul><h3><a href="#structs">Module Items</a></h3><ul class="block"><li><a href="#structs" title="Structs">Structs</a></li></ul></section><div id="rustdoc-modnav"><h2><a href="../index.html">In dstu_<wbr>core::<wbr>hazmat</a></h2></div></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><div class="width-limiter"><section id="main-content" class="content" tabindex="-1"><div class="main-heading"><div class="rustdoc-breadcrumbs"><a href="../../index.html">dstu_core</a>::<wbr><a href="../index.html">hazmat</a></div><h1>Module <span>strumok</span>&nbsp;<button id="copy-path" title="Copy item path to clipboard">Copy item path</button></h1><rustdoc-toolbar></rustdoc-toolbar><span class="sub-heading"><a class="src" href="../../../src/dstu_core/hazmat/strumok.rs.html#1-1239">Source</a> </span></div><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><p>Strumok stream cipher (DSTU 8845:2019), 256- and 512-bit key variants.</p>
+<p>Ported from <code>docs/pseudocode/strumok.md</code> (itself transcribed from the designers’ paper,
+<code>docs/papers/Strumok.pdf</code> Sections 2-9) and structurally cross-checked against
+<code>oracles/strumok-dstu8845/strumok.c</code> (outspace, unofficial, no license) and
+<code>oracles/uapki/library/uapkic/src/dstu8845.c</code> (UAPKI, BSD-2-Clause, state-expertise pedigree -
+see <code>docs/ORACLES.md</code>). Citation and verification status: <code>docs/DECISIONS.md</code> D-18.</p>
+<p>The <code>T</code> nonlinear substitution (Section 7) is exactly one Kalyna/Kupyna round’s <code>eta</code> (S-box)
+composed with <code>tau</code> (the MDS linear layer) applied to a single 64-bit word treated as an
+8-byte column. Originally computed at runtime via <code>hazmat::tables::{SBOXES, MDS_MATRIX, apply_matrix}</code> (confirmed, by computing it that way and diffing all 2048 entries byte-for-byte
+against both oracles’ precomputed <code>T0..T7</code> tables, that the two are identical). <strong>Switched
+2026-07-22 (<code>docs/DECISIONS.md</code> D-26) to using those same precomputed <code>T0..T7</code> tables directly</strong>
+(transcribed from <code>oracles/strumok-dstu8845/strumok.c</code>, the same byte-for-byte cross-check
+already covers them) - a large, measured throughput win (<code>docs/PERFORMANCE.md</code>), since it replaces
+8 S-box lookups plus a full <code>GF(2^8)</code> matrix-multiply with 8 table lookups XOR-ed together.
+<strong>The <code>small-tables</code> feature (<code>docs/DECISIONS.md</code> D-35/D-38) reverts <code>t_function</code> to exactly this
+pre-D-26 runtime form</strong> - <code>T0..T7</code>’s 16 KB isn’t compiled at all in that profile.</p>
+<p><code>MUL_ALPHA</code>/<code>MUL_ALPHA_INV</code> (Sections 8-9, multiplication by the LFSR feedback polynomial’s
+generator in GF(2^64)) are <strong>not</strong> derivable from the Kalyna/Kupyna tables - they belong to a
+different field construction specific to Strumok’s LFSR. Transcribed here from
+<code>oracles/uapki/.../dstu8845.c</code>’s <code>mul_T</code>/<code>invmul_T</code> (cross-checked byte-identical against
+<code>oracles/strumok-dstu8845/strumok.c</code>’s <code>strumok_alpha_mul</code>/<code>strumok_alphainv_mul</code> - same
+lineage per <code>docs/DECISIONS.md</code> D-15, so this confirms transcription accuracy, not independence).</p>
+<p>The state-transition function (<code>Next</code>, Section 4) originally shifted the 16-word state
+register on every step (<code>s.copy_within(1..16, 0)</code>) - mechanically checkable against the spec
+text’s <code>Next(S_i, mode)</code> description, at the cost of a real 120-byte move every step. <strong>Switched
+2026-07-22 (D-26) to a ring buffer</strong>: a <code>head</code> index into the same fixed-size array, advanced
+modulo 16 each step, with the one slot that logically “falls off” (<code>S[0]</code>) overwritten in place
+to become the new <code>S[15]</code> - the same technique <code>oracles/strumok-dstu8845/strumok.c</code>’s
+<code>next_stream()</code> uses (there, fully unrolled instead of index-based). No data movement at all,
+same output for the same input - see the module’s existing test suite, unchanged by this.</p>
+<p><strong>Switched 2026-07-27 (<code>docs/TASKS.md</code> T-135, <code>docs/DECISIONS.md</code> D-86) to also batch-generate a full
+128-byte (16-word) block per call</strong> in <code>Core::apply_keystream</code>’s bulk phase, fusing the input
+XOR into the same pass at <code>u64</code> (word) granularity instead of one byte at a time - closing most
+of the remaining gap to <code>next_stream_full_crypt</code>’s equivalent path left open after D-26. See
+<code>next_block</code>’s own doc for why this uses a one-time array rotation instead of <code>next_step</code>’s
+per-step masked <code>head</code> indexing, and why not the 16-way const-generic dispatch <code>hazmat::kalyna</code>/
+<code>kupyna</code> use for their own analogous unrolling (<code>T-128</code>/<code>T-134</code>).</p>
+<p>Only raw keystream generation/XOR is provided here - no key/IV management beyond what
+<code>Init</code> (Section 3) requires, no higher-level nonce or AEAD construction (that is
+<code>crypto_stream</code>’s job, see <code>docs/dstu-crypto-project.md</code> “Concrete API shape”).</p>
+<h2 id="warning-never-reuse-the-same-keyiv-pair-for-two-different-messages"><a class="doc-anchor" href="#warning-never-reuse-the-same-keyiv-pair-for-two-different-messages">§</a>Warning: never reuse the same key+IV pair for two different messages</h2>
+<p>This is inherent to every stream cipher, not a bug here: two messages <code>XOR</code>-ed with the <em>same</em>
+keystream (same key, same IV) let an attacker recover <code>plaintext_a XOR plaintext_b</code> directly
+from <code>ciphertext_a XOR ciphertext_b</code>, with no key material needed at all (the classic “two-time
+pad” break). <code>apply_keystream</code>/<code>Strumok256</code>/<code>Strumok512</code> have no state to detect or prevent
+this - a fresh IV per message is entirely the caller’s responsibility. See
+<code>tests/strumok.rs</code>’s <code>reusing_key_and_iv_leaks_plaintext_xor</code> for the property pinned directly,
+the same pattern <code>hazmat::kalyna_gcm</code>’s nonce-coverage warning uses (D-56/D-63).</p>
+</div></details><h2 id="structs" class="section-header">Structs<a href="#structs" class="anchor">§</a></h2><dl class="item-table"><dt><a class="struct" href="struct.Strumok256.html" title="struct dstu_core::hazmat::strumok::Strumok256">Strumok256</a></dt><dd>32-byte key, 32-byte IV.</dd><dt><a class="struct" href="struct.Strumok512.html" title="struct dstu_core::hazmat::strumok::Strumok512">Strumok512</a></dt><dd>64-byte key, 32-byte IV.</dd></dl></section></div></main></body></html>

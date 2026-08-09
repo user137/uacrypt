@@ -1,0 +1,40 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `crates/dstu-core/src/crypto_generichash.rs`."><title>crypto_generichash.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../static.files/rustdoc-17e0aaed.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="dstu_core" data-themes="" data-resource-suffix="" data-rustdoc-version="1.97.1 (8bab26f4f 2026-07-14)" data-channel="1.97.1" data-search-js="search-fd9372ac.js" data-stringdex-js="stringdex-2da4960a.js" data-settings-js="settings-170eb4bf.js" ><script src="../../static.files/storage-41dd4d93.js"></script><script defer src="../../static.files/src-script-813739b1.js"></script><script defer src="../../src-files.js"></script><script defer src="../../static.files/main-fcd733ba.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-f7c3ffd8.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-044be391.svg"></head><body class="rustdoc src"><a class="skip-main-content" href="#main-content">Skip to main content</a><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><section id="main-content" class="content" tabindex="-1"><div class="main-heading"><h1><div class="sub-heading">dstu_core/</div>crypto_generichash.rs</h1><rustdoc-toolbar></rustdoc-toolbar></div><div class="example-wrap digits-2"><pre class="rust"><code><a href=#1 id=1 data-nosnippet>1</a><span class="doccomment">//! `crypto_generichash` equivalent (`docs/dstu-crypto-project.md` "Mapping onto the libsodium API",
+<a href=#2 id=2 data-nosnippet>2</a>//! `docs/TASKS.md` T-105, roadmap Step 3 item 2 - `docs/DECISIONS.md` D-66) - a bare re-export of
+<a href=#3 id=3 data-nosnippet>3</a>//! [`crate::hazmat::kupyna`]'s one-shot and streaming API under this crate's top-level `crypto_*`
+<a href=#4 id=4 data-nosnippet>4</a>//! namespace, for naming parity with `crypto_sign`/`crypto_secretbox`/`crypto_pwhash` rather than
+<a href=#5 id=5 data-nosnippet>5</a>//! a new wrapper.
+<a href=#6 id=6 data-nosnippet>6</a>//!
+<a href=#7 id=7 data-nosnippet>7</a>//! Unlike those three modules, there is nothing here for a wrapper to add: `hazmat::kupyna`'s
+<a href=#8 id=8 data-nosnippet>8</a>//! `digest()`/`Hasher` API already has no knob to hide (no algorithm choice beyond the output
+<a href=#9 id=9 data-nosnippet>9</a>//! size, no nonce, no length cap) and libsodium's own `crypto_generichash` value-adds over a bare
+<a href=#10 id=10 data-nosnippet>10</a>//! hash function - a caller-chosen variable output length, and an optional key for keyed hashing -
+<a href=#11 id=11 data-nosnippet>11</a>//! have no DSTU equivalent to re-derive: Kupyna has no variable-length-output mode, and DSTU
+<a href=#12 id=12 data-nosnippet>12</a>//! 7564:2014's own keyed construction is [`crate::hazmat::kupyna_kmac`], a distinct primitive
+<a href=#13 id=13 data-nosnippet>13</a>//! surfaced separately as [`crate::crypto_auth`], not a parameter of this one. See D-66's fuller
+<a href=#14 id=14 data-nosnippet>14</a>//! reasoning for why this module is a re-export rather than a table entry (discoverability under
+<a href=#15 id=15 data-nosnippet>15</a>//! this crate's `crypto_*` namespace) and why it is a re-export rather than a wrapper with new
+<a href=#16 id=16 data-nosnippet>16</a>//! logic (nothing left to wrap).
+<a href=#17 id=17 data-nosnippet>17</a>//!
+<a href=#18 id=18 data-nosnippet>18</a>//! # Example
+<a href=#19 id=19 data-nosnippet>19</a>//!
+<a href=#20 id=20 data-nosnippet>20</a>//! A hash gives a fixed-size fingerprint of a message - useful for checking a file wasn't
+<a href=#21 id=21 data-nosnippet>21</a>//! corrupted or changed, but (unlike [`crate::crypto_auth`]) it needs no secret key, so anyone can
+<a href=#22 id=22 data-nosnippet>22</a>//! compute or forge one; it is not proof of origin. One-shot for a whole in-memory message
+<a href=#23 id=23 data-nosnippet>23</a>//! ([`Kupyna256::digest`]), or incremental via [`Kupyna256Hasher`] for a large/streamed one (e.g.
+<a href=#24 id=24 data-nosnippet>24</a>//! `uacrypt hash`'s own chunked file reading) - both produce the same digest for the same bytes.
+<a href=#25 id=25 data-nosnippet>25</a>//!
+<a href=#26 id=26 data-nosnippet>26</a>//! ```rust
+<a href=#27 id=27 data-nosnippet>27</a>//! use dstu_core::crypto_generichash::{Kupyna256, Kupyna256Hasher};
+<a href=#28 id=28 data-nosnippet>28</a>//!
+<a href=#29 id=29 data-nosnippet>29</a>//! let whole = Kupyna256::digest(b"hello world");
+<a href=#30 id=30 data-nosnippet>30</a>//!
+<a href=#31 id=31 data-nosnippet>31</a>//! let mut hasher = Kupyna256Hasher::new();
+<a href=#32 id=32 data-nosnippet>32</a>//! hasher.update(b"hello ");
+<a href=#33 id=33 data-nosnippet>33</a>//! hasher.update(b"world");
+<a href=#34 id=34 data-nosnippet>34</a>//! let streamed = hasher.finalize();
+<a href=#35 id=35 data-nosnippet>35</a>//!
+<a href=#36 id=36 data-nosnippet>36</a>//! assert_eq!(whole, streamed);
+<a href=#37 id=37 data-nosnippet>37</a>//! ```
+<a href=#38 id=38 data-nosnippet>38</a>
+<a href=#39 id=39 data-nosnippet>39</a></span><span class="kw">pub use </span><span class="kw">crate</span>::hazmat::kupyna::{Kupyna256, Kupyna256Hasher, Kupyna512, Kupyna512Hasher};
+</code></pre></div></section></main></body></html>

@@ -1,0 +1,63 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="`crypto_stream` equivalent (`docs/dstu-crypto-project.md` “Mapping onto the libsodium API”, `docs/TASKS.md` roadmap Step 3 item 3, `docs/DECISIONS.md` D-67) - a libsodium-ergonomics wrapper over `hazmat::strumok::Strumok256`."><title>dstu_core::crypto_stream - Rust</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../static.files/rustdoc-17e0aaed.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="dstu_core" data-themes="" data-resource-suffix="" data-rustdoc-version="1.97.1 (8bab26f4f 2026-07-14)" data-channel="1.97.1" data-search-js="search-fd9372ac.js" data-stringdex-js="stringdex-2da4960a.js" data-settings-js="settings-170eb4bf.js" ><script src="../../static.files/storage-41dd4d93.js"></script><script defer src="../sidebar-items.js"></script><script defer src="../../static.files/main-fcd733ba.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-f7c3ffd8.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-044be391.svg"></head><body class="rustdoc mod"><a class="skip-main-content" href="#main-content">Skip to main content</a><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><rustdoc-topbar><h2><a href="#">Module crypto_stream</a></h2></rustdoc-topbar><nav class="sidebar"><div class="sidebar-crate"><h2><a href="../../dstu_core/index.html">dstu_<wbr>core</a><span class="version">0.2.0</span></h2></div><div class="sidebar-elems"><section id="rustdoc-toc"><h2 class="location"><a href="#">Module crypto_<wbr>stream</a></h2><h3><a href="#">Sections</a></h3><ul class="block top-toc"><li><a href="#no-authentication-whatsoever" title="No authentication whatsoever">No authentication whatsoever</a></li><li><a href="#hidden-iv" title="Hidden IV">Hidden IV</a></li><li><a href="#variant" title="Variant">Variant</a></li><li><a href="#provenance" title="Provenance">Provenance</a></li><li><a href="#example" title="Example">Example</a></li></ul><h3><a href="#structs">Module Items</a></h3><ul class="block"><li><a href="#structs" title="Structs">Structs</a></li><li><a href="#enums" title="Enums">Enums</a></li><li><a href="#functions" title="Functions">Functions</a></li></ul></section><div id="rustdoc-modnav"><h2 class="in-crate"><a href="../index.html">In crate dstu_<wbr>core</a></h2></div></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><div class="width-limiter"><section id="main-content" class="content" tabindex="-1"><div class="main-heading"><div class="rustdoc-breadcrumbs"><a href="../index.html">dstu_core</a></div><h1>Module <span>crypto_<wbr>stream</span>&nbsp;<button id="copy-path" title="Copy item path to clipboard">Copy item path</button></h1><rustdoc-toolbar></rustdoc-toolbar><span class="sub-heading"><a class="src" href="../../src/dstu_core/crypto_stream.rs.html#1-180">Source</a> </span></div><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><p><code>crypto_stream</code> equivalent (<code>docs/dstu-crypto-project.md</code> “Mapping onto the libsodium API”,
+<code>docs/TASKS.md</code> roadmap Step 3 item 3, <code>docs/DECISIONS.md</code> D-67) - a libsodium-ergonomics wrapper over
+<a href="../hazmat/strumok/struct.Strumok256.html" title="struct dstu_core::hazmat::strumok::Strumok256"><code>hazmat::strumok::Strumok256</code></a>.</p>
+<h2 id="no-authentication-whatsoever"><a class="doc-anchor" href="#no-authentication-whatsoever">§</a>No authentication whatsoever</h2>
+<p>Strumok is a bare keystream generator - XOR-ing it into a message provides confidentiality
+only, never integrity (<code>hazmat::strumok</code>’s own module doc, <code>docs/release-readiness.md</code>’s
+“Streaming audio, confidentiality only” use-case row). Unlike <a href="../crypto_secretbox/index.html" title="mod dstu_core::crypto_secretbox"><code>crate::crypto_secretbox</code></a>,
+<a href="fn.decrypt.html" title="fn dstu_core::crypto_stream::decrypt"><code>decrypt</code></a> <strong>never fails on tampered input</strong> - it has no tag to check, so a modified
+<code>sealed</code> value decrypts to different, silently-wrong plaintext instead of an error, the same
+documented no-integrity-by-design property <code>hazmat::kalyna_xts</code> already has
+(<code>tests/kalyna_xts.rs</code>’s <code>tampered_ciphertext_does_not_error_but_produces_garbage</code>). This is
+why this module’s functions are named <code>encrypt</code>/<code>decrypt</code>, not <code>seal</code>/<code>open</code> -
+<code>crypto_secretbox</code> reserves <code>seal</code>/<code>open</code> specifically to signal “this authenticates,” and
+this primitive does not. Callers needing integrity must wrap each message in
+<a href="../crypto_secretbox/index.html" title="mod dstu_core::crypto_secretbox"><code>crate::crypto_secretbox</code></a> (or a chunked <code>crypto_secretstream</code>, once T-40 exists) instead of,
+or on top of, this module - never rely on this module alone where tamper-detection matters.</p>
+<h2 id="hidden-iv"><a class="doc-anchor" href="#hidden-iv">§</a>Hidden IV</h2>
+<p>Confirmed with the project owner (roadmap Step 3 item 3 was left as an explicit open fork,
+unlike this roadmap’s other named forks): the IV is generated internally from the OS CSPRNG,
+the same choice <code>crypto_secretbox</code> made for its nonce (D-51), never caller-supplied. This
+matters more here than for most primitives: <code>hazmat::strumok</code>’s own module doc carries a
+“never reuse the same key+IV pair” warning, backed by a dedicated test
+(<code>reusing_key_and_iv_leaks_plaintext_xor</code>, <code>docs/TASKS.md</code> T-103) pinning the catastrophic two-time-
+pad property directly - reusing a key+IV pair XORs the two plaintexts together, recoverable
+without ever breaking the cipher itself. Hiding IV generation removes that footgun from the
+caller’s surface entirely, at the cost of matching libsodium’s own lower-level
+<code>crypto_stream_xor(c, m, mlen, n, k)</code> C signature (<code>n</code> is a caller-supplied parameter there) -
+a deliberate divergence, not an oversight, matching <code>crypto_secretbox</code>’s own precedent of
+prioritizing misuse-resistance over raw-API parity (D-47’s tie-breaker).</p>
+<h2 id="variant"><a class="doc-anchor" href="#variant">§</a>Variant</h2>
+<p>Only <code>Strumok256</code> is exposed here (D-47’s “delete the knob”, matching <code>crypto_auth</code>/
+<code>crypto_kdf</code>’s single-256-bit-variant choice, D-66) - <code>Strumok512</code> stays <code>hazmat</code>-only.</p>
+<h2 id="provenance"><a class="doc-anchor" href="#provenance">§</a>Provenance</h2>
+<p>Inherits <code>hazmat::strumok</code>’s own D-18 status: vectors are UAPKI-attributed, not confirmed
+against the primary DSTU 8845:2019 text.</p>
+<h2 id="example"><a class="doc-anchor" href="#example">§</a>Example</h2>
+<p>Confidentiality only, <strong>no integrity</strong> (see the “No authentication whatsoever” section above) -
+prefer <a href="../crypto_secretbox/index.html" title="mod dstu_core::crypto_secretbox"><code>crate::crypto_secretbox</code></a>/<a href="../crypto_secretstream/index.html" title="mod dstu_core::crypto_secretstream"><code>crate::crypto_secretstream</code></a> unless you specifically need a
+bare keystream cipher and are handling authentication yourself. Note what tampering does here,
+in contrast to <code>crypto_secretbox</code>’s example above: <code>decrypt</code> never errors, it just returns
+different, silently-wrong plaintext.</p>
+
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>dstu_core::crypto_stream::{encrypt, decrypt, Key};
+
+<span class="kw">let </span>key = Key::generate().expect(<span class="string">"OS CSPRNG should not fail"</span>);
+<span class="kw">let </span>sealed = encrypt(<span class="kw-2">&amp;</span>key, <span class="string">b"message"</span>).expect(<span class="string">"OS CSPRNG should not fail"</span>);
+<span class="kw">let </span>opened = decrypt(<span class="kw-2">&amp;</span>key, <span class="kw-2">&amp;</span>sealed).expect(<span class="string">"sealed is at least IV-length"</span>);
+<span class="macro">assert_eq!</span>(opened, <span class="string">b"message"</span>);
+
+<span class="comment">// Tampering is not detected - decrypt "succeeds" with garbage plaintext instead of erroring.
+</span><span class="kw">let </span><span class="kw-2">mut </span>tampered = sealed.clone();
+<span class="kw">let </span>last = tampered.len() - <span class="number">1</span>;
+tampered[last] ^= <span class="number">1</span>;
+<span class="kw">let </span>garbage = decrypt(<span class="kw-2">&amp;</span>key, <span class="kw-2">&amp;</span>tampered).expect(<span class="string">"still at least IV-length, so still Ok"</span>);
+<span class="macro">assert_ne!</span>(garbage, <span class="string">b"message"</span>);</code></pre></div></div></details><h2 id="structs" class="section-header">Structs<a href="#structs" class="anchor">§</a></h2><dl class="item-table"><dt><a class="struct" href="struct.Key.html" title="struct dstu_core::crypto_stream::Key">Key</a></dt><dd>A <code>crypto_stream</code> key. Always exactly 32 bytes - <code>Strumok256</code>’s key length (see the module
+doc).</dd></dl><h2 id="enums" class="section-header">Enums<a href="#enums" class="anchor">§</a></h2><dl class="item-table"><dt><a class="enum" href="enum.StreamError.html" title="enum dstu_core::crypto_stream::StreamError">Stream<wbr>Error</a></dt><dd><code>crypto_stream</code> can fail only if the OS CSPRNG fails while generating a fresh IV - there is no
+tag to mismatch (see the module doc’s “No authentication” section).</dd></dl><h2 id="functions" class="section-header">Functions<a href="#functions" class="anchor">§</a></h2><dl class="item-table"><dt><a class="fn" href="fn.decrypt.html" title="fn dstu_core::crypto_stream::decrypt">decrypt</a></dt><dd>Reverses <a href="fn.encrypt.html" title="fn dstu_core::crypto_stream::encrypt"><code>encrypt</code></a> under <code>key</code> - XOR is its own inverse
+(<a href="../hazmat/strumok/index.html" title="mod dstu_core::hazmat::strumok"><code>hazmat::strumok</code></a>’s <code>apply_keystream</code>), so this recovers the
+original plaintext bit-for-bit when <code>sealed</code> is exactly <a href="fn.encrypt.html" title="fn dstu_core::crypto_stream::encrypt"><code>encrypt</code></a>’s own output. <strong>Never
+fails on tampered input</strong> - see the module doc’s “No authentication” section; a modified
+<code>sealed</code> decrypts to different, silently-wrong plaintext, not an error.</dd><dt><a class="fn" href="fn.encrypt.html" title="fn dstu_core::crypto_stream::encrypt">encrypt</a></dt><dd>XORs <code>plaintext</code> with a fresh keystream under <code>key</code>, drawing a random IV internally. Returns
+<code>iv (32 bytes) || ciphertext (plaintext.len() bytes)</code> - no authentication (see the module
+doc’s “No authentication” section).</dd></dl></section></div></main></body></html>

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["FailureKind","Primitive"],"fn":["run"],"struct":["Failure","Report"]};

@@ -1,0 +1,65 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="`crypto_secretbox` equivalent (`docs/dstu-crypto-project.md` “Mapping onto the libsodium API”, `docs/TASKS.md` T-37, `docs/DECISIONS.md` D-51) - a single fixed `hazmat::kalyna_gcm::Kalyna256_256Gcm` construction (D-47’s tie-breaker rule: no algorithm knob when one safe default exists) with an internally-generated nonce (never caller-supplied, extending the pattern `uacrypt kalyna-ccm encrypt`’s CLI layer already used, D-40/T-82) and a combined `nonce || ciphertext || tag` wire format, matching libsodium’s own `crypto_secretbox_easy` ergonomics."><title>dstu_core::crypto_secretbox - Rust</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../static.files/rustdoc-17e0aaed.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="dstu_core" data-themes="" data-resource-suffix="" data-rustdoc-version="1.97.1 (8bab26f4f 2026-07-14)" data-channel="1.97.1" data-search-js="search-fd9372ac.js" data-stringdex-js="stringdex-2da4960a.js" data-settings-js="settings-170eb4bf.js" ><script src="../../static.files/storage-41dd4d93.js"></script><script defer src="../sidebar-items.js"></script><script defer src="../../static.files/main-fcd733ba.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-f7c3ffd8.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-044be391.svg"></head><body class="rustdoc mod"><a class="skip-main-content" href="#main-content">Skip to main content</a><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><rustdoc-topbar><h2><a href="#">Module crypto_secretbox</a></h2></rustdoc-topbar><nav class="sidebar"><div class="sidebar-crate"><h2><a href="../../dstu_core/index.html">dstu_<wbr>core</a><span class="version">0.2.0</span></h2></div><div class="sidebar-elems"><section id="rustdoc-toc"><h2 class="location"><a href="#">Module crypto_<wbr>secretbox</a></h2><h3><a href="#">Sections</a></h3><ul class="block top-toc"><li><a href="#no-message-length-cap" title="No message-length cap">No message-length cap</a></li><li><a href="#no-aad-caller-facing---but-the-nonce-is-bound-into-the-tag-internally" title="No AAD (caller-facing) - but the nonce is bound into the tag internally">No AAD (caller-facing) - but the nonce is bound into the tag internally</a></li><li><a href="#provenance" title="Provenance">Provenance</a></li><li><a href="#example" title="Example">Example</a></li></ul><h3><a href="#structs">Module Items</a></h3><ul class="block"><li><a href="#structs" title="Structs">Structs</a></li><li><a href="#enums" title="Enums">Enums</a></li><li><a href="#functions" title="Functions">Functions</a></li></ul></section><div id="rustdoc-modnav"><h2 class="in-crate"><a href="../index.html">In crate dstu_<wbr>core</a></h2></div></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><div class="width-limiter"><section id="main-content" class="content" tabindex="-1"><div class="main-heading"><div class="rustdoc-breadcrumbs"><a href="../index.html">dstu_core</a></div><h1>Module <span>crypto_<wbr>secretbox</span>&nbsp;<button id="copy-path" title="Copy item path to clipboard">Copy item path</button></h1><rustdoc-toolbar></rustdoc-toolbar><span class="sub-heading"><a class="src" href="../../src/dstu_core/crypto_secretbox.rs.html#1-206">Source</a> </span></div><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><p><code>crypto_secretbox</code> equivalent (<code>docs/dstu-crypto-project.md</code> “Mapping onto the libsodium API”,
+<code>docs/TASKS.md</code> T-37, <code>docs/DECISIONS.md</code> D-51) - a single fixed <code>hazmat::kalyna_gcm::Kalyna256_256Gcm</code>
+construction (D-47’s tie-breaker rule: no algorithm knob when one safe default exists) with an
+internally-generated nonce (never caller-supplied, extending the pattern <code>uacrypt kalyna-ccm encrypt</code>’s CLI layer already used, D-40/T-82) and a combined <code>nonce || ciphertext || tag</code> wire
+format, matching libsodium’s own <code>crypto_secretbox_easy</code> ergonomics.</p>
+<h2 id="no-message-length-cap"><a class="doc-anchor" href="#no-message-length-cap">§</a>No message-length cap</h2>
+<p>Migrated from Kalyna-CCM to Kalyna-GCM 2026-07-25 (roadmap Step 3 item 1, <code>docs/DECISIONS.md</code>
+D-63) - the original Kalyna-CCM construction capped plaintext/AAD at 255 bytes each (D-41,
+<code>ccm_padd</code>’s header encoding). GCM encodes no length into its construction at all, so that cap
+and <code>SecretboxError::MessageTooLong</code> are gone entirely, not just raised. This does not make
+disk-file encryption memory-bounded, though: an AEAD tag needs the full plaintext/ciphertext,
+so a large message still means a correspondingly large in-memory buffer (see <code>uacrypt</code>’s own
+<code>run_secretbox_command</code> doc comment for the concrete consequence at the CLI layer).
+<code>crypto_secretstream</code> (<code>docs/TASKS.md</code> T-40) remains the separately-tracked follow-up for a
+genuinely chunked/streaming construction; this module still does not attempt that.</p>
+<h2 id="no-aad-caller-facing---but-the-nonce-is-bound-into-the-tag-internally"><a class="doc-anchor" href="#no-aad-caller-facing---but-the-nonce-is-bound-into-the-tag-internally">§</a>No AAD (caller-facing) - but the nonce is bound into the tag internally</h2>
+<p>libsodium’s own <code>crypto_secretbox</code> has no associated-data parameter (that’s <code>crypto_aead</code>’s
+job) - <code>hazmat::kalyna_gcm</code> takes AAD, but exposing it here would quietly turn this into a
+different primitive than its name promises. No caller-supplied AAD exists.</p>
+<p>Internally, though, <code>seal</code>/<code>open</code> pass the nonce itself as <code>kalyna_gcm</code>’s AAD (never empty).
+This is not optional: unlike NIST AES-GCM, DSTU 7624’s Kalyna-GCM tag is computed purely from
+AAD and ciphertext (<code>E_K(accumulator XOR length_block)</code>, D-56 divergence 3) and never mixes in
+the IV/nonce at all - the nonce only seeds the keystream. For a combined
+<code>nonce || ciphertext || tag</code> blob, an unauthenticated nonce means an attacker can flip bits in
+the nonce prefix of a sealed message and <code>open</code> will still “succeed”, just against a different
+(attacker-uncontrolled but unverified-as-original) keystream - a real tamper-evidence gap the
+previous CCM-based construction did not have (CCM’s B0 formatting block ties the nonce into its
+CBC-MAC). Passing the nonce as AAD closes it using the construction’s own designed mechanism
+for authenticating out-of-band data, the same way a caller would bind a header to an AEAD tag.
+Caught by <code>tampered_nonce_is_rejected</code> during this migration, not assumed - see <code>docs/DECISIONS.md</code>
+D-63.</p>
+<h2 id="provenance"><a class="doc-anchor" href="#provenance">§</a>Provenance</h2>
+<p>Inherits <code>hazmat::kalyna_gcm</code>’s own provisional status (D-56): not yet confirmed against the
+primary DSTU 7624:2014 text, dual-oracle-cited (UAPKI + Bouncy Castle vectors) in the meantime -
+unchanged by the CCM-to-GCM migration. <code>Kalyna256_256Gcm</code> was chosen over the other four
+Kalyna-GCM variants as the sole construction here (256-bit key, matching the previous CCM
+construction’s key/nonce width exactly) - see D-51 for the fuller reasoning behind fixing one
+variant rather than exposing all five, including why the <code>Strength</code>-enum precedent from
+<code>crypto_pwhash</code> does not apply (a Kalyna variant is exactly the knob D-47 says to delete, not a
+genuine per-context tradeoff the caller must make). The 16-byte tag (truncated from GCM’s own
+full 32-byte tag, via the same prefix-comparison convention <code>hazmat::kalyna_gcm</code>/<code>kalyna_gmac</code>
+already support) matches the previous construction’s tag length and libsodium’s own
+<code>crypto_secretbox</code> tag size - a fixed choice, not a new knob.</p>
+<h2 id="example"><a class="doc-anchor" href="#example">§</a>Example</h2>
+<p>Encrypts a whole in-memory message under a freshly generated key. <code>seal</code>/<code>open</code> protect both
+confidentiality (nobody without the key can read the message) and integrity (<code>open</code> rejects
+anything tampered with, rather than returning wrong plaintext) - see below for the “tampered
+ciphertext is rejected” case, <code>docs/TASKS.md</code> T-120’s own required failure-path example.</p>
+
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>dstu_core::crypto_secretbox::{seal, open, SecretKey};
+
+<span class="kw">let </span>key = SecretKey::generate().expect(<span class="string">"OS CSPRNG should not fail"</span>);
+<span class="kw">let </span>sealed = seal(<span class="kw-2">&amp;</span>key, <span class="string">b"message"</span>).expect(<span class="string">"OS CSPRNG should not fail"</span>);
+<span class="kw">let </span>opened = open(<span class="kw-2">&amp;</span>key, <span class="kw-2">&amp;</span>sealed).expect(<span class="string">"authentic ciphertext"</span>);
+<span class="macro">assert_eq!</span>(opened, <span class="string">b"message"</span>);
+
+<span class="comment">// Tampering with the sealed blob (ciphertext, tag, or nonce) is detected, not silently
+// "decrypted" into wrong plaintext.
+</span><span class="kw">let </span><span class="kw-2">mut </span>tampered = sealed.clone();
+<span class="kw">let </span>last = tampered.len() - <span class="number">1</span>;
+tampered[last] ^= <span class="number">1</span>;
+<span class="macro">assert!</span>(open(<span class="kw-2">&amp;</span>key, <span class="kw-2">&amp;</span>tampered).is_err());</code></pre></div></div></details><h2 id="structs" class="section-header">Structs<a href="#structs" class="anchor">§</a></h2><dl class="item-table"><dt><a class="struct" href="struct.SecretKey.html" title="struct dstu_core::crypto_secretbox::SecretKey">Secret<wbr>Key</a></dt><dd>A <code>crypto_secretbox</code> key. Always exactly 32 bytes - <code>Kalyna256_256Ccm</code>’s key length, this
+module’s one fixed construction (see the module doc).</dd></dl><h2 id="enums" class="section-header">Enums<a href="#enums" class="anchor">§</a></h2><dl class="item-table"><dt><a class="enum" href="enum.SecretboxError.html" title="enum dstu_core::crypto_secretbox::SecretboxError">Secretbox<wbr>Error</a></dt><dd><code>crypto_secretbox</code> can fail for reasons beyond a wrong key.</dd></dl><h2 id="functions" class="section-header">Functions<a href="#functions" class="anchor">§</a></h2><dl class="item-table"><dt><a class="fn" href="fn.open.html" title="fn dstu_core::crypto_secretbox::open">open</a></dt><dd>Verifies and decrypts <code>sealed</code> (as produced by <a href="fn.seal.html" title="fn dstu_core::crypto_secretbox::seal"><code>seal</code></a>) under <code>key</code>.</dd><dt><a class="fn" href="fn.seal.html" title="fn dstu_core::crypto_secretbox::seal">seal</a></dt><dd>Encrypts and authenticates <code>plaintext</code> under <code>key</code>, drawing a fresh random nonce internally.
+Returns <code>nonce (32 bytes) || ciphertext (plaintext.len() bytes) || tag (16 bytes)</code> - no
+message-length cap (see the module doc comment).</dd></dl></section></div></main></body></html>

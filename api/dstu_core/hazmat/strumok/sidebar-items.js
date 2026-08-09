@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"struct":["Strumok256","Strumok512"]};

@@ -1,0 +1,50 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="`crypto_sign` equivalent for DSTU 4145’s `m=257` curve - additive sibling of `crate::crypto_sign`, mirroring its shape exactly (`SigningKey`/`VerifyingKey`/`Signature`, deterministic nonce derivation, `sign`/`sign_digest`/`verify`/`verify_digest`), built on `hazmat::dstu4145::{gf2m257, curve257, scalar257, signature257}` instead of the `m=163` modules. `docs/TASKS.md` T-199, `docs/DECISIONS.md` D-185/D-186."><title>dstu_core::crypto_sign257 - Rust</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../static.files/rustdoc-17e0aaed.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="dstu_core" data-themes="" data-resource-suffix="" data-rustdoc-version="1.97.1 (8bab26f4f 2026-07-14)" data-channel="1.97.1" data-search-js="search-fd9372ac.js" data-stringdex-js="stringdex-2da4960a.js" data-settings-js="settings-170eb4bf.js" ><script src="../../static.files/storage-41dd4d93.js"></script><script defer src="../sidebar-items.js"></script><script defer src="../../static.files/main-fcd733ba.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-f7c3ffd8.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-044be391.svg"></head><body class="rustdoc mod"><a class="skip-main-content" href="#main-content">Skip to main content</a><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><rustdoc-topbar><h2><a href="#">Module crypto_sign257</a></h2></rustdoc-topbar><nav class="sidebar"><div class="sidebar-crate"><h2><a href="../../dstu_core/index.html">dstu_<wbr>core</a><span class="version">0.2.0</span></h2></div><div class="sidebar-elems"><section id="rustdoc-toc"><h2 class="location"><a href="#">Module crypto_<wbr>sign257</a></h2><h3><a href="#">Sections</a></h3><ul class="block top-toc"><li><a href="#example" title="Example">Example</a></li></ul><h3><a href="#structs">Module Items</a></h3><ul class="block"><li><a href="#structs" title="Structs">Structs</a></li></ul></section><div id="rustdoc-modnav"><h2 class="in-crate"><a href="../index.html">In crate dstu_<wbr>core</a></h2></div></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><div class="width-limiter"><section id="main-content" class="content" tabindex="-1"><div class="main-heading"><div class="rustdoc-breadcrumbs"><a href="../index.html">dstu_core</a></div><h1>Module <span>crypto_<wbr>sign257</span>&nbsp;<button id="copy-path" title="Copy item path to clipboard">Copy item path</button></h1><rustdoc-toolbar></rustdoc-toolbar><span class="sub-heading"><a class="src" href="../../src/dstu_core/crypto_sign257.rs.html#1-238">Source</a> </span></div><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><p><code>crypto_sign</code> equivalent for DSTU 4145’s <code>m=257</code> curve - additive sibling of
+<a href="../crypto_sign/index.html" title="mod dstu_core::crypto_sign"><code>crate::crypto_sign</code></a>, mirroring its shape exactly (<code>SigningKey</code>/<code>VerifyingKey</code>/<code>Signature</code>,
+deterministic nonce derivation, <code>sign</code>/<code>sign_digest</code>/<code>verify</code>/<code>verify_digest</code>), built on
+<code>hazmat::dstu4145::{gf2m257, curve257, scalar257, signature257}</code> instead of the <code>m=163</code>
+modules. <code>docs/TASKS.md</code> T-199, <code>docs/DECISIONS.md</code> D-185/D-186.</p>
+<p><strong>Why a separate module, not a curve-selecting <code>crypto_sign</code></strong> (<code>docs/DECISIONS.md</code> D-186’s own
+addendum, reversing that entry’s original Decisions 1-3): converting <code>crypto_sign</code>’s
+<code>SigningKey</code>/<code>VerifyingKey</code>/<code>Signature</code> into curve-tagged enums would break
+<code>dstu-core-capi/src/sign.rs</code>’s C ABI (a separate root-workspace crate wrapping these exact
+types) for no benefit the additive-sibling shape doesn’t also deliver - and matches the
+project’s own established precedent for exactly this situation (<code>crypto_box512</code>, T-193:
+additive sibling module, capi/binding wiring explicitly deferred as a separate task). This
+shape is also <em>stronger</em> on the original downgrade concern D-186 Decision 2 raised: with
+distinct types, a caller wanting <code>m=257</code>-level assurance cannot accidentally accept an <code>m=163</code>
+signature at all - the compiler forbids it, rather than relying on a caller to inspect a
+returned <code>CurveId</code> and not ignore it.</p>
+<p><strong>The curve-tag byte (<code>docs/DECISIONS.md</code> D-186 Decision 1) lives at the <code>uacrypt</code>
+serialization layer, not here</strong> - this module’s own <code>to_bytes</code>/<code>from_bytes</code> are plain
+fixed-width encodings (33/66 bytes), same convention as <code>crypto_sign</code>’s untagged 21/42-byte
+ones. A shared <code>CurveId</code>/tagged-blob reader belongs where untrusted, curve-unknown-in-advance
+input is actually parsed (<code>uacrypt verify</code>, T-199’s own remaining scope) - duplicating a tag
+byte into every language binding’s own hand-rolled parser is exactly the D-118 lesson
+(<code>crypto_secretstream</code>’s wire-format validation) this project already learned once.</p>
+<p><code>VerifyingKey::verify</code>/<code>verify_digest</code> return a plain <code>bool</code>, same ergonomics as <code>crypto_sign</code>,
+not <code>Result&lt;CurveId, _&gt;</code> (D-186 Decision 2’s original text): once a caller holds a
+<code>crypto_sign257::VerifyingKey</code> rather than <code>crypto_sign::VerifyingKey</code>, the curve is already
+known statically, nothing to report back.</p>
+<p>Nonce derivation uses <code>hazmat::kupyna_kmac::Kupyna384Kmac</code> (48-byte key/output), <strong>not</strong>
+<code>crypto_sign</code>’s <code>Kupyna256Kmac</code>: <code>curve257::order()</code> is itself ~256 bits, so folding a
+same-width 256-bit KMAC output mod it (as <code>crypto_sign</code>’s 256-bit-output-mod-~163-bit-<code>n</code> does
+safely, that ratio being wide enough for the bias to be cryptographically negligible) would
+reintroduce real bias here - flagged as unresolved in <code>docs/DECISIONS.md</code> D-186 Decision 5,
+closed by widening to a 384-bit KMAC output instead (128 bits of margin over <code>n</code>’s ~256 bits).</p>
+<p>See <a href="../crypto_sign/index.html" title="mod dstu_core::crypto_sign"><code>crate::crypto_sign</code></a>’s own module doc for the full design rationale this mirrors
+(deterministic-nonce misuse-resistance argument, the <code>Q = -d*G</code> convention, the <code>sign</code>/
+<code>sign_digest</code> split for large/streamed messages) - not restated here.</p>
+<h2 id="example"><a class="doc-anchor" href="#example">§</a>Example</h2>
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>dstu_core::crypto_sign257::SigningKey;
+
+<span class="kw">let </span>signing_key = SigningKey::generate().expect(<span class="string">"OS CSPRNG should not fail"</span>);
+<span class="kw">let </span>verifying_key = signing_key.verifying_key();
+
+<span class="kw">let </span>message = <span class="string">b"a message whose origin and integrity matter"</span>;
+<span class="kw">let </span>signature = signing_key.sign(message);
+<span class="macro">assert!</span>(verifying_key.verify(message, <span class="kw-2">&amp;</span>signature));
+
+<span class="macro">assert!</span>(!verifying_key.verify(<span class="string">b"a different message"</span>, <span class="kw-2">&amp;</span>signature));
+<span class="kw">let </span>other_key = SigningKey::generate().expect(<span class="string">"OS CSPRNG should not fail"</span>);
+<span class="macro">assert!</span>(!other_key.verifying_key().verify(message, <span class="kw-2">&amp;</span>signature));</code></pre></div></div></details><h2 id="structs" class="section-header">Structs<a href="#structs" class="anchor">§</a></h2><dl class="item-table"><dt><a class="struct" href="struct.Signature.html" title="struct dstu_core::crypto_sign257::Signature">Signature</a></dt><dd>A DSTU 4145 <code>m=257</code> signature, <code>r || s</code> (33 bytes each, 66 total).</dd><dt><a class="struct" href="struct.SigningKey.html" title="struct dstu_core::crypto_sign257::SigningKey">Signing<wbr>Key</a></dt><dd>A DSTU 4145 <code>m=257</code> private key - see <a href="../crypto_sign/struct.SigningKey.html" title="struct dstu_core::crypto_sign::SigningKey"><code>crate::crypto_sign::SigningKey</code></a>’s own doc comment for
+why signing itself needs no RNG.</dd><dt><a class="struct" href="struct.VerifyingKey.html" title="struct dstu_core::crypto_sign257::VerifyingKey">Verifying<wbr>Key</a></dt><dd>A DSTU 4145 <code>m=257</code> public key <code>Q = -d*G</code> (same convention as <code>crypto_sign::VerifyingKey</code>).</dd></dl></section></div></main></body></html>

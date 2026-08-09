@@ -1,0 +1,106 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="`crypto_secretstream` equivalent (`docs/dstu-crypto-project.md` “Mapping onto the libsodium API”, `docs/TASKS.md` T-40/T-70, roadmap Step 5 item 1 - `docs/DECISIONS.md` D-68) - a chunked/streaming AEAD construction so a large message never needs to fit in memory all at once, unlike `crate::crypto_secretbox` (whose underlying AEAD tag needs the whole plaintext/ciphertext up front)."><title>dstu_core::crypto_secretstream - Rust</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../static.files/rustdoc-17e0aaed.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="dstu_core" data-themes="" data-resource-suffix="" data-rustdoc-version="1.97.1 (8bab26f4f 2026-07-14)" data-channel="1.97.1" data-search-js="search-fd9372ac.js" data-stringdex-js="stringdex-2da4960a.js" data-settings-js="settings-170eb4bf.js" ><script src="../../static.files/storage-41dd4d93.js"></script><script defer src="../sidebar-items.js"></script><script defer src="../../static.files/main-fcd733ba.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-f7c3ffd8.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-044be391.svg"></head><body class="rustdoc mod"><a class="skip-main-content" href="#main-content">Skip to main content</a><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><rustdoc-topbar><h2><a href="#">Module crypto_secretstream</a></h2></rustdoc-topbar><nav class="sidebar"><div class="sidebar-crate"><h2><a href="../../dstu_core/index.html">dstu_<wbr>core</a><span class="version">0.2.0</span></h2></div><div class="sidebar-elems"><section id="rustdoc-toc"><h2 class="location"><a href="#">Module crypto_<wbr>secretstream</a></h2><h3><a href="#">Sections</a></h3><ul class="block top-toc"><li><a href="#from-scratch-construction---no-dstu-standard-no-oracle-vector-ever" title="From-scratch construction - no DSTU standard, no oracle vector, ever">From-scratch construction - no DSTU standard, no oracle vector, ever</a></li><li><a href="#construction" title="Construction">Construction</a></li><li><a href="#tags" title="Tags">Tags</a></li><li><a href="#no_std-posture" title="`no_std` posture"><code>no_std</code> posture</a></li><li><a href="#example" title="Example">Example</a></li></ul><h3><a href="#structs">Module Items</a></h3><ul class="block"><li><a href="#structs" title="Structs">Structs</a></li><li><a href="#enums" title="Enums">Enums</a></li></ul></section><div id="rustdoc-modnav"><h2 class="in-crate"><a href="../index.html">In crate dstu_<wbr>core</a></h2></div></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><div class="width-limiter"><section id="main-content" class="content" tabindex="-1"><div class="main-heading"><div class="rustdoc-breadcrumbs"><a href="../index.html">dstu_core</a></div><h1>Module <span>crypto_<wbr>secretstream</span>&nbsp;<button id="copy-path" title="Copy item path to clipboard">Copy item path</button></h1><rustdoc-toolbar></rustdoc-toolbar><span class="sub-heading"><a class="src" href="../../src/dstu_core/crypto_secretstream.rs.html#1-427">Source</a> </span></div><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><p><code>crypto_secretstream</code> equivalent (<code>docs/dstu-crypto-project.md</code> “Mapping onto the libsodium
+API”, <code>docs/TASKS.md</code> T-40/T-70, roadmap Step 5 item 1 - <code>docs/DECISIONS.md</code> D-68) - a chunked/streaming
+AEAD construction so a large message never needs to fit in memory all at once, unlike
+<a href="../crypto_secretbox/index.html" title="mod dstu_core::crypto_secretbox"><code>crate::crypto_secretbox</code></a> (whose underlying AEAD tag needs the whole plaintext/ciphertext up
+front).</p>
+<h2 id="from-scratch-construction---no-dstu-standard-no-oracle-vector-ever"><a class="doc-anchor" href="#from-scratch-construction---no-dstu-standard-no-oracle-vector-ever">§</a>From-scratch construction - no DSTU standard, no oracle vector, ever</h2>
+<p>No DSTU standard defines a streaming/chunked AEAD mode. Per <code>docs/DECISIONS.md</code> D-47’s tie-breaker
+rule (no citation exists, so: TLS 1.3/modern-AEAD lessons, then libsodium’s own API shape), this
+follows libsodium’s <code>crypto_secretstream_xchacha20poly1305</code> shape - tag-per-chunk framing with a
+<code>FINAL</code> tag whose absence before end-of-input signals truncation - built on this crate’s own
+primitives (<a href="../hazmat/kalyna_gcm/struct.Kalyna256_256Gcm.html" title="struct dstu_core::hazmat::kalyna_gcm::Kalyna256_256Gcm"><code>crate::hazmat::kalyna_gcm::Kalyna256_256Gcm</code></a> for chunk encryption,
+<a href="../hazmat/kupyna_kmac/struct.Kupyna256Kmac.html" title="struct dstu_core::hazmat::kupyna_kmac::Kupyna256Kmac"><code>crate::hazmat::kupyna_kmac::Kupyna256Kmac</code></a> for subkey derivation) instead of
+<code>ChaCha20-Poly1305</code>. Same posture as <a href="../hazmat/kupyna_kdf/index.html" title="mod dstu_core::hazmat::kupyna_kdf"><code>crate::hazmat::kupyna_kdf</code></a> (D-45): verified by property test only,
+never citable as vector-verified.</p>
+<h2 id="construction"><a class="doc-anchor" href="#construction">§</a>Construction</h2>
+<p><a href="struct.PushState.html#method.init" title="associated function dstu_core::crypto_secretstream::PushState::init"><code>PushState::init</code></a> draws a random 32-byte <code>header</code> and derives the stream’s initial subkey as
+<code>Kupyna256Kmac::mac(key = master_key, message = header)</code>. This is the nonce/IV-coverage rule
+(see <a href="../crypto_secretbox/index.html" title="mod dstu_core::crypto_secretbox"><code>crate::crypto_secretbox</code></a>’s D-63 precedent) applied at stream setup instead of per-chunk
+AAD: the subkey itself is a function of the header, so a tampered header derives the wrong
+subkey and the very first chunk’s tag fails closed - no separate binding needed.</p>
+<p>Each chunk is encrypted with <a href="../hazmat/kalyna_gcm/struct.Kalyna256_256Gcm.html" title="struct dstu_core::hazmat::kalyna_gcm::Kalyna256_256Gcm"><code>Kalyna256_256Gcm</code></a>
+under a 32-byte IV that is all-zero except its low 8 bytes, which hold a <code>u64</code> counter -
+monotonically increasing per chunk, tracked identically on both sides, <strong>never transmitted and
+never reset</strong> (including across a <a href="enum.Tag.html#variant.Rekey" title="variant dstu_core::crypto_secretstream::Tag::Rekey"><code>Tag::Rekey</code></a>, the simplest safe choice). The chunk’s
+<a href="enum.Tag.html" title="enum dstu_core::crypto_secretstream::Tag"><code>Tag</code></a> byte and the counter are passed together as <code>kalyna_gcm</code>’s <code>aad</code> parameter
+(<code>counter.to_le_bytes() || [tag_byte]</code>) - the same “bind out-of-band data into the tag via
+AEAD’s own AAD mechanism” pattern D-63 established for <code>crypto_secretbox</code>’s nonce. Binding the
+counter into the AAD, rather than trusting a transmitted position, is what defeats reordering,
+interior chunk drops, and splicing a chunk from a different stream: a receiver always verifies
+against <em>its own</em> expected counter, so anything that isn’t exactly next-in-sequence fails its
+tag check. Splicing from a different stream under the same master key fails for a second,
+independent reason too: that stream has its own random header, hence its own derived subkey.</p>
+<p>Tampering the transmitted <code>tag_byte</code> itself (e.g. flipping <a href="enum.Tag.html#variant.Final" title="variant dstu_core::crypto_secretstream::Tag::Final"><code>Tag::Final</code></a> to <a href="enum.Tag.html#variant.Message" title="variant dstu_core::crypto_secretstream::Tag::Message"><code>Tag::Message</code></a>
+to hide truncation) is caught the same way: <a href="struct.PullState.html#method.pull" title="method dstu_core::crypto_secretstream::PullState::pull"><code>PullState::pull</code></a> uses the wire-read <code>tag_byte</code>
+directly as part of the AAD it verifies against, so a flipped byte changes the AAD and fails the
+tag check before the (wrong) <a href="enum.Tag.html" title="enum dstu_core::crypto_secretstream::Tag"><code>Tag</code></a> is ever trusted or returned to the caller.</p>
+<h2 id="tags"><a class="doc-anchor" href="#tags">§</a>Tags</h2>
+<p>Byte values match libsodium’s own encoding (<code>MESSAGE=0x00</code>, <code>PUSH=0x01</code>, <code>REKEY=0x02</code>,
+<code>FINAL=0x03</code>) - no DSTU reason to diverge, purely familiarity:</p>
+<ul>
+<li><a href="enum.Tag.html#variant.Message" title="variant dstu_core::crypto_secretstream::Tag::Message"><code>Tag::Message</code></a> - an ordinary chunk, no special handling.</li>
+<li><a href="enum.Tag.html#variant.Push" title="variant dstu_core::crypto_secretstream::Tag::Push"><code>Tag::Push</code></a> - marks a logical sub-message boundary within one continuous stream, for a
+caller multiplexing more than one logical message into a single stream.</li>
+<li><a href="enum.Tag.html#variant.Rekey" title="variant dstu_core::crypto_secretstream::Tag::Rekey"><code>Tag::Rekey</code></a> - after this chunk, both sides derive a fresh subkey:
+<code>new_subkey = Kupyna256Kmac::mac(key = current_subkey, message = b"DSTU-secretstream-rekey")</code>.
+One-way (KMAC), so a compromised later subkey does not recover earlier chunks’ key - the
+forward-secrecy property libsodium’s own rekey exists for.</li>
+<li><a href="enum.Tag.html#variant.Final" title="variant dstu_core::crypto_secretstream::Tag::Final"><code>Tag::Final</code></a> - after this chunk, the state is marked finalized
+(<a href="struct.PushState.html#method.is_finalized" title="method dstu_core::crypto_secretstream::PushState::is_finalized"><code>PushState::is_finalized</code></a>/<a href="struct.PullState.html#method.is_finalized" title="method dstu_core::crypto_secretstream::PullState::is_finalized"><code>PullState::is_finalized</code></a>); any further <a href="struct.PushState.html#method.push" title="method dstu_core::crypto_secretstream::PushState::push"><code>PushState::push</code></a>/
+<a href="struct.PullState.html#method.pull" title="method dstu_core::crypto_secretstream::PullState::pull"><code>PullState::pull</code></a> call on that state returns <a href="enum.SecretstreamError.html#variant.StreamFinalized" title="variant dstu_core::crypto_secretstream::SecretstreamError::StreamFinalized"><code>SecretstreamError::StreamFinalized</code></a>. This is
+what makes truncation detectable: a caller who reaches end-of-input without ever having seen
+<code>Final</code> knows the stream was cut short - the check itself lives in the caller’s I/O loop
+(<a href="struct.PullState.html#method.is_finalized" title="method dstu_core::crypto_secretstream::PullState::is_finalized"><code>PullState::is_finalized</code></a> is the primitive this module provides for it), since only the
+caller knows when its input is exhausted.</li>
+</ul>
+<h2 id="no_std-posture"><a class="doc-anchor" href="#no_std-posture">§</a><code>no_std</code> posture</h2>
+<p>Per-item <code>std</code> gating (the <a href="../crypto_auth/index.html" title="mod dstu_core::crypto_auth"><code>crate::crypto_auth</code></a>/<a href="../crypto_kdf/index.html" title="mod dstu_core::crypto_kdf"><code>crate::crypto_kdf</code></a> pattern, not
+<a href="../crypto_stream/index.html" title="mod dstu_core::crypto_stream"><code>crate::crypto_stream</code></a>’s whole-module gating): only <a href="struct.PushState.html#method.init" title="associated function dstu_core::crypto_secretstream::PushState::init"><code>PushState::init</code></a> (needs
+<a href="../randombytes/fn.randombytes_buf.html" title="fn dstu_core::randombytes::randombytes_buf"><code>crate::randombytes::randombytes_buf</code></a> for the header) is <code>#[cfg(feature = "std")]</code>.
+<a href="struct.PullState.html#method.init" title="associated function dstu_core::crypto_secretstream::PullState::init"><code>PullState::init</code></a>, <a href="struct.PushState.html#method.push" title="method dstu_core::crypto_secretstream::PushState::push"><code>PushState::push</code></a>, and <a href="struct.PullState.html#method.pull" title="method dstu_core::crypto_secretstream::PullState::pull"><code>PullState::pull</code></a> are unconditional - caller-
+supplied buffers mean no <code>Vec</code>/<code>alloc</code> is needed anywhere in the actual push/pull path. The
+<code>push</code>/<code>pull</code> step machinery itself is a stricter <code>no_std</code> fit than any other high-level
+<code>crypto_*</code> module’s equivalent step, <strong>but <code>PushState::init</code> is <code>PushState</code>’s only
+constructor</strong>, so under <code>no_std</code> a caller can build a <a href="struct.PullState.html" title="struct dstu_core::crypto_secretstream::PullState"><code>PullState</code></a> but has no way to start a
+new stream - this module is decrypt-only without <code>std</code> (D-09’s “<code>hazmat</code> never generates its
+own randomness” reasoning, unchanged, but worth stating plainly rather than implying the whole
+module is symmetric under <code>no_std</code>).</p>
+<h2 id="example"><a class="doc-anchor" href="#example">§</a>Example</h2>
+<p>A real caller processes a large file one bounded-size chunk at a time (see <code>uacrypt</code>’s own
+<code>encrypt</code>/<code>decrypt</code> commands for that shape); this example uses one chunk for clarity. Each
+chunk is authenticated individually - a tampered chunk, a dropped/reordered chunk, or one
+spliced from a different stream all fail closed at <a href="struct.PullState.html#method.pull" title="method dstu_core::crypto_secretstream::PullState::pull"><code>PullState::pull</code></a>, never producing wrong
+plaintext silently.</p>
+
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>dstu_core::crypto_secretstream::{Key, PushState, PullState, Tag};
+
+<span class="kw">let </span>key = Key::generate().expect(<span class="string">"OS CSPRNG should not fail"</span>);
+<span class="kw">let </span>plaintext = <span class="string">b"a whole file, conceptually split into chunks"</span>;
+
+<span class="comment">// Sender side: one chunk, marked Final since it's the only (and therefore last) one.
+</span><span class="kw">let </span>(<span class="kw-2">mut </span>push, header) = PushState::init(<span class="kw-2">&amp;</span>key).expect(<span class="string">"OS CSPRNG should not fail"</span>);
+<span class="kw">let </span><span class="kw-2">mut </span>ciphertext = <span class="macro">vec!</span>[<span class="number">0u8</span>; plaintext.len()];
+<span class="kw">let </span>tag = push
+    .push(Tag::Final, plaintext, <span class="kw-2">&amp;mut </span>ciphertext)
+    .expect(<span class="string">"push before finalization"</span>);
+
+<span class="comment">// Receiver side: needs the key and the transmitted header, ciphertext, and tag.
+</span><span class="kw">let </span><span class="kw-2">mut </span>pull = PullState::init(<span class="kw-2">&amp;</span>key, <span class="kw-2">&amp;</span>header);
+<span class="kw">let </span><span class="kw-2">mut </span>decrypted = <span class="macro">vec!</span>[<span class="number">0u8</span>; ciphertext.len()];
+<span class="kw">let </span>read_tag = pull
+    .pull(Tag::Final.to_byte(), <span class="kw-2">&amp;</span>ciphertext, <span class="kw-2">&amp;</span>tag, <span class="kw-2">&amp;mut </span>decrypted)
+    .expect(<span class="string">"authentic chunk"</span>);
+<span class="macro">assert_eq!</span>(read_tag, Tag::Final);
+<span class="macro">assert_eq!</span>(decrypted, plaintext);
+
+<span class="comment">// A tampered ciphertext byte is rejected, not silently decrypted into garbage.
+</span><span class="kw">let </span><span class="kw-2">mut </span>tampered = ciphertext.clone();
+tampered[<span class="number">0</span>] ^= <span class="number">1</span>;
+<span class="kw">let </span><span class="kw-2">mut </span>pull2 = PullState::init(<span class="kw-2">&amp;</span>key, <span class="kw-2">&amp;</span>header);
+<span class="kw">let </span><span class="kw-2">mut </span>out = <span class="macro">vec!</span>[<span class="number">0u8</span>; tampered.len()];
+<span class="macro">assert!</span>(pull2
+    .pull(Tag::Final.to_byte(), <span class="kw-2">&amp;</span>tampered, <span class="kw-2">&amp;</span>tag, <span class="kw-2">&amp;mut </span>out)
+    .is_err());</code></pre></div></div></details><h2 id="structs" class="section-header">Structs<a href="#structs" class="anchor">§</a></h2><dl class="item-table"><dt><a class="struct" href="struct.Key.html" title="struct dstu_core::crypto_secretstream::Key">Key</a></dt><dd>A <code>crypto_secretstream</code> master key. Always exactly 32 bytes - <a href="../hazmat/kupyna_kmac/struct.Kupyna256Kmac.html" title="struct dstu_core::hazmat::kupyna_kmac::Kupyna256Kmac"><code>Kupyna256Kmac</code></a>’s fixed
+key/MAC length (see the module doc).</dd><dt><a class="struct" href="struct.PullState.html" title="struct dstu_core::crypto_secretstream::PullState">Pull<wbr>State</a></dt><dd>Decrypting half of a <code>crypto_secretstream</code> session - built from the master key and the header
+<a href="struct.PushState.html#method.init" title="associated function dstu_core::crypto_secretstream::PushState::init"><code>PushState::init</code></a> produced, driven one chunk at a time by <a href="struct.PullState.html#method.pull" title="method dstu_core::crypto_secretstream::PullState::pull"><code>PullState::pull</code></a>.</dd><dt><a class="struct" href="struct.PushState.html" title="struct dstu_core::crypto_secretstream::PushState">Push<wbr>State</a></dt><dd>Encrypting half of a <code>crypto_secretstream</code> session - produced by <a href="struct.PushState.html#method.init" title="associated function dstu_core::crypto_secretstream::PushState::init"><code>PushState::init</code></a>, driven
+one chunk at a time by <a href="struct.PushState.html#method.push" title="method dstu_core::crypto_secretstream::PushState::push"><code>PushState::push</code></a>.</dd></dl><h2 id="enums" class="section-header">Enums<a href="#enums" class="anchor">§</a></h2><dl class="item-table"><dt><a class="enum" href="enum.SecretstreamError.html" title="enum dstu_core::crypto_secretstream::SecretstreamError">Secretstream<wbr>Error</a></dt><dt><a class="enum" href="enum.Tag.html" title="enum dstu_core::crypto_secretstream::Tag">Tag</a></dt><dd>A chunk’s role in the stream - see the module doc’s “Tags” section.</dd></dl></section></div></main></body></html>

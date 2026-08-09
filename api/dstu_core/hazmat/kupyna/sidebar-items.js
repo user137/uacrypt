@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"struct":["Kupyna256","Kupyna256Hasher","Kupyna512","Kupyna512Hasher"]};
