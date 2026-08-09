@@ -8,6 +8,7 @@
 //! when called with valid arguments constructed in Rust.
 
 use dstu_core_capi::auth::*;
+use dstu_core_capi::box512::*;
 use dstu_core_capi::crypto_box::*;
 use dstu_core_capi::generichash::*;
 use dstu_core_capi::kdf::*;
@@ -15,6 +16,7 @@ use dstu_core_capi::pwhash::*;
 use dstu_core_capi::secretbox::*;
 use dstu_core_capi::secretstream::*;
 use dstu_core_capi::sign::*;
+use dstu_core_capi::sign257::*;
 use dstu_core_capi::stream::*;
 use dstu_core_capi::{
     dstu_memzero, randombytes::dstu_randombytes_buf, selftest::dstu_selftest, DstuStatus,
@@ -563,6 +565,94 @@ fn sign_digest_matches_sign_of_the_same_hash() {
 }
 
 // ---------------------------------------------------------------------------------------------
+// crypto_sign257
+// ---------------------------------------------------------------------------------------------
+
+#[test]
+#[cfg_attr(
+    miri,
+    ignore = "Point::scalar_multiply's 257-iteration ladder is too slow to interpret under Miri - m=257 sibling of T-100's m=163 finding"
+)]
+fn sign257_verify_round_trip_and_forgery_rejection() {
+    let mut key_ptr: *mut DstuSigningKey257 = ptr::null_mut();
+    assert_eq!(
+        unsafe { dstu_sign257_key_generate(&mut key_ptr) },
+        DstuStatus::DSTU_OK
+    );
+    let verifying_ptr = unsafe { dstu_sign257_verifying_key(key_ptr) };
+    assert!(!verifying_ptr.is_null());
+
+    let message = b"a message whose origin and integrity matter";
+    let mut sig = [0u8; DSTU_SIGN257_SIGNATURE_BYTES];
+    unsafe { dstu_sign257(key_ptr, message.as_ptr(), message.len(), sig.as_mut_ptr()) };
+
+    assert!(unsafe {
+        dstu_verify257(verifying_ptr, message.as_ptr(), message.len(), sig.as_ptr())
+    });
+
+    // rejection: different message
+    let other = b"a different message";
+    assert!(!unsafe { dstu_verify257(verifying_ptr, other.as_ptr(), other.len(), sig.as_ptr()) });
+
+    // rejection: signature from a different key
+    let mut other_key_ptr: *mut DstuSigningKey257 = ptr::null_mut();
+    assert_eq!(
+        unsafe { dstu_sign257_key_generate(&mut other_key_ptr) },
+        DstuStatus::DSTU_OK
+    );
+    let other_verifying_ptr = unsafe { dstu_sign257_verifying_key(other_key_ptr) };
+    assert!(!unsafe {
+        dstu_verify257(
+            other_verifying_ptr,
+            message.as_ptr(),
+            message.len(),
+            sig.as_ptr(),
+        )
+    });
+
+    unsafe {
+        dstu_sign257_key_free(key_ptr);
+        dstu_sign257_key_free(other_key_ptr);
+        dstu_verifying_key257_free(verifying_ptr);
+        dstu_verifying_key257_free(other_verifying_ptr);
+    }
+}
+
+#[test]
+fn sign257_key_from_bytes_rejects_zero_scalar() {
+    let zero = [0u8; DSTU_SIGN257_PRIVATE_KEY_BYTES];
+    let mut out: *mut DstuSigningKey257 = ptr::null_mut();
+    assert_eq!(
+        unsafe { dstu_sign257_key_from_bytes(zero.as_ptr(), &mut out) },
+        DstuStatus::DSTU_ERR_INVALID_KEY
+    );
+    assert!(out.is_null());
+}
+
+#[test]
+#[cfg_attr(
+    miri,
+    ignore = "Point::scalar_multiply's 257-iteration ladder is too slow to interpret under Miri - m=257 sibling of T-100's m=163 finding"
+)]
+fn sign257_digest_matches_sign_of_the_same_hash() {
+    let mut key_ptr: *mut DstuSigningKey257 = ptr::null_mut();
+    unsafe { dstu_sign257_key_generate(&mut key_ptr) };
+    let verifying_ptr = unsafe { dstu_sign257_verifying_key(key_ptr) };
+
+    let mut digest = [0u8; DSTU_SIGN257_DIGEST_BYTES];
+    unsafe { dstu_generichash_256(b"a message".as_ptr(), 9, digest.as_mut_ptr()) };
+
+    let mut sig = [0u8; DSTU_SIGN257_SIGNATURE_BYTES];
+    unsafe { dstu_sign257_digest(key_ptr, digest.as_ptr(), sig.as_mut_ptr()) };
+    assert!(unsafe { dstu_verify257_digest(verifying_ptr, digest.as_ptr(), sig.as_ptr()) });
+
+    unsafe {
+        dstu_sign257_key_free(key_ptr);
+        dstu_verifying_key257_free(verifying_ptr);
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
 // crypto_stream
 // ---------------------------------------------------------------------------------------------
 
@@ -915,6 +1005,233 @@ fn box_publickey_from_bytes_round_trips_and_rejects_degenerate_x() {
 }
 
 // ---------------------------------------------------------------------------------------------
+// crypto_box512
+// ---------------------------------------------------------------------------------------------
+
+#[test]
+#[cfg_attr(
+    miri,
+    ignore = "l(p)=512 scalar_multiply is too slow to interpret under Miri - box512 sibling of crypto_box's own untimed but noticeably heavier E512/1 ladder"
+)]
+fn box512_seal_open_round_trip_tamper_rejection_and_undersized_buffers() {
+    let mut secret_ptr: *mut DstuBox512SecretKey = ptr::null_mut();
+    assert_eq!(
+        unsafe { dstu_box512_secretkey_generate(&mut secret_ptr) },
+        DstuStatus::DSTU_OK
+    );
+    let public_ptr = unsafe { dstu_box512_secretkey_public_key(secret_ptr) };
+    assert!(!public_ptr.is_null());
+
+    let message = b"a message for the public key's holder only";
+    let mut sealed = vec![0u8; message.len() + DSTU_BOX512_SEAL_OVERHEAD];
+    let mut sealed_len = 0usize;
+    assert_eq!(
+        unsafe {
+            dstu_box512_seal(
+                public_ptr,
+                message.as_ptr(),
+                message.len(),
+                sealed.as_mut_ptr(),
+                sealed.len(),
+                &mut sealed_len,
+            )
+        },
+        DstuStatus::DSTU_OK
+    );
+    // Self-check: DSTU_BOX512_SEAL_OVERHEAD is a hand-maintained constant mirroring dstu-core's
+    // own private wire-format constants (they aren't exported) - verify it against a real seal
+    // call rather than trusting the two never drift apart silently.
+    assert_eq!(sealed_len, message.len() + DSTU_BOX512_SEAL_OVERHEAD);
+
+    let mut opened = vec![0u8; message.len()];
+    let mut opened_len = 0usize;
+    assert_eq!(
+        unsafe {
+            dstu_box512_open(
+                secret_ptr,
+                sealed.as_ptr(),
+                sealed_len,
+                opened.as_mut_ptr(),
+                opened.len(),
+                &mut opened_len,
+            )
+        },
+        DstuStatus::DSTU_OK
+    );
+    assert_eq!(&opened[..opened_len], message);
+
+    // rejection: tampered ciphertext
+    let mut tampered = sealed.clone();
+    let last = tampered.len() - 1;
+    tampered[last] ^= 1;
+    let mut garbage = vec![0u8; message.len()];
+    let mut garbage_len = 0usize;
+    assert_eq!(
+        unsafe {
+            dstu_box512_open(
+                secret_ptr,
+                tampered.as_ptr(),
+                tampered.len(),
+                garbage.as_mut_ptr(),
+                garbage.len(),
+                &mut garbage_len,
+            )
+        },
+        DstuStatus::DSTU_ERR_TAG_MISMATCH
+    );
+    assert_eq!(garbage, vec![0u8; message.len()]); // left zeroed, not partially trusted
+
+    // rejection: wrong secret key
+    let mut other_secret_ptr: *mut DstuBox512SecretKey = ptr::null_mut();
+    assert_eq!(
+        unsafe { dstu_box512_secretkey_generate(&mut other_secret_ptr) },
+        DstuStatus::DSTU_OK
+    );
+    let mut wrong_key_out = vec![0u8; message.len()];
+    let mut wrong_key_len = 0usize;
+    assert_eq!(
+        unsafe {
+            dstu_box512_open(
+                other_secret_ptr,
+                sealed.as_ptr(),
+                sealed.len(),
+                wrong_key_out.as_mut_ptr(),
+                wrong_key_out.len(),
+                &mut wrong_key_len,
+            )
+        },
+        DstuStatus::DSTU_ERR_TAG_MISMATCH
+    );
+    unsafe { dstu_box512_secretkey_free(other_secret_ptr) };
+
+    // misuse: truncated input
+    let mut truncated_out = [0u8; 4];
+    let mut truncated_len = 0usize;
+    assert_eq!(
+        unsafe {
+            dstu_box512_open(
+                secret_ptr,
+                sealed.as_ptr(),
+                4,
+                truncated_out.as_mut_ptr(),
+                truncated_out.len(),
+                &mut truncated_len,
+            )
+        },
+        DstuStatus::DSTU_ERR_TRUNCATED
+    );
+
+    // misuse: undersized output buffer on seal
+    let mut small = [0u8; 4];
+    let mut small_len = 0usize;
+    assert_eq!(
+        unsafe {
+            dstu_box512_seal(
+                public_ptr,
+                message.as_ptr(),
+                message.len(),
+                small.as_mut_ptr(),
+                small.len(),
+                &mut small_len,
+            )
+        },
+        DstuStatus::DSTU_ERR_BUFFER_TOO_SMALL
+    );
+
+    // misuse: undersized output buffer on open
+    let mut small_open = [0u8; 4];
+    let mut small_open_len = 0usize;
+    assert_eq!(
+        unsafe {
+            dstu_box512_open(
+                secret_ptr,
+                sealed.as_ptr(),
+                sealed.len(),
+                small_open.as_mut_ptr(),
+                small_open.len(),
+                &mut small_open_len,
+            )
+        },
+        DstuStatus::DSTU_ERR_BUFFER_TOO_SMALL
+    );
+
+    unsafe { dstu_box512_publickey_free(public_ptr) };
+    unsafe { dstu_box512_secretkey_free(secret_ptr) };
+}
+
+#[test]
+#[cfg_attr(
+    miri,
+    ignore = "l(p)=512 scalar_multiply is too slow to interpret under Miri - box512 sibling of crypto_box's own untimed but noticeably heavier E512/1 ladder"
+)]
+fn box512_secretkey_from_bytes_round_trips_and_rejects_invalid_scalar() {
+    let mut secret_ptr: *mut DstuBox512SecretKey = ptr::null_mut();
+    assert_eq!(
+        unsafe { dstu_box512_secretkey_generate(&mut secret_ptr) },
+        DstuStatus::DSTU_OK
+    );
+    let mut bytes = [0u8; DSTU_BOX512_SECRETKEY_BYTES];
+    unsafe { dstu_box512_secretkey_bytes(secret_ptr, bytes.as_mut_ptr()) };
+    unsafe { dstu_box512_secretkey_free(secret_ptr) };
+
+    let mut reloaded_ptr: *mut DstuBox512SecretKey = ptr::null_mut();
+    assert_eq!(
+        unsafe { dstu_box512_secretkey_from_bytes(bytes.as_ptr(), &mut reloaded_ptr) },
+        DstuStatus::DSTU_OK
+    );
+    let mut reloaded_bytes = [0u8; DSTU_BOX512_SECRETKEY_BYTES];
+    unsafe { dstu_box512_secretkey_bytes(reloaded_ptr, reloaded_bytes.as_mut_ptr()) };
+    assert_eq!(reloaded_bytes, bytes);
+    unsafe { dstu_box512_secretkey_free(reloaded_ptr) };
+
+    // misuse: zero scalar is out of the valid range
+    let zero = [0u8; DSTU_BOX512_SECRETKEY_BYTES];
+    let mut invalid_ptr: *mut DstuBox512SecretKey = ptr::null_mut();
+    assert_eq!(
+        unsafe { dstu_box512_secretkey_from_bytes(zero.as_ptr(), &mut invalid_ptr) },
+        DstuStatus::DSTU_ERR_INVALID_KEY
+    );
+    assert!(invalid_ptr.is_null());
+}
+
+#[test]
+#[cfg_attr(
+    miri,
+    ignore = "l(p)=512 scalar_multiply is too slow to interpret under Miri - box512 sibling of crypto_box's own untimed but noticeably heavier E512/1 ladder"
+)]
+fn box512_publickey_from_bytes_round_trips_and_rejects_degenerate_x() {
+    let mut secret_ptr: *mut DstuBox512SecretKey = ptr::null_mut();
+    assert_eq!(
+        unsafe { dstu_box512_secretkey_generate(&mut secret_ptr) },
+        DstuStatus::DSTU_OK
+    );
+    let public_ptr = unsafe { dstu_box512_secretkey_public_key(secret_ptr) };
+    let mut bytes = [0u8; DSTU_BOX512_PUBLICKEY_BYTES];
+    unsafe { dstu_box512_publickey_bytes(public_ptr, bytes.as_mut_ptr()) };
+
+    let mut reloaded_ptr: *mut DstuBox512PublicKey = ptr::null_mut();
+    assert_eq!(
+        unsafe { dstu_box512_publickey_from_bytes(bytes.as_ptr(), &mut reloaded_ptr) },
+        DstuStatus::DSTU_OK
+    );
+    let mut reloaded_bytes = [0u8; DSTU_BOX512_PUBLICKEY_BYTES];
+    unsafe { dstu_box512_publickey_bytes(reloaded_ptr, reloaded_bytes.as_mut_ptr()) };
+    assert_eq!(reloaded_bytes, bytes);
+    unsafe { dstu_box512_publickey_free(reloaded_ptr) };
+    unsafe { dstu_box512_publickey_free(public_ptr) };
+    unsafe { dstu_box512_secretkey_free(secret_ptr) };
+
+    // misuse: x = 0 is explicitly rejected by point_from_x's own gauntlet
+    let zero = [0u8; DSTU_BOX512_PUBLICKEY_BYTES];
+    let mut invalid_ptr: *mut DstuBox512PublicKey = ptr::null_mut();
+    assert_eq!(
+        unsafe { dstu_box512_publickey_from_bytes(zero.as_ptr(), &mut invalid_ptr) },
+        DstuStatus::DSTU_ERR_INVALID_KEY
+    );
+    assert!(invalid_ptr.is_null());
+}
+
+// ---------------------------------------------------------------------------------------------
 // Cross-cutting misuse: null handles on operations that expect one
 // ---------------------------------------------------------------------------------------------
 
@@ -925,6 +1242,7 @@ fn null_handles_are_rejected_or_return_safe_defaults() {
         DstuStatus::DSTU_ERR_NULL_POINTER
     );
     assert!(unsafe { dstu_sign_verifying_key(ptr::null()) }.is_null());
+    assert!(unsafe { dstu_sign257_verifying_key(ptr::null()) }.is_null());
     assert!(!unsafe { dstu_secretstream_push_is_finalized(ptr::null()) });
     assert!(!unsafe { dstu_secretstream_pull_is_finalized(ptr::null()) });
     assert_eq!(
@@ -932,4 +1250,9 @@ fn null_handles_are_rejected_or_return_safe_defaults() {
         DstuStatus::DSTU_ERR_NULL_POINTER
     );
     assert!(unsafe { dstu_box_secretkey_public_key(ptr::null()) }.is_null());
+    assert_eq!(
+        unsafe { dstu_box512_secretkey_generate(ptr::null_mut()) },
+        DstuStatus::DSTU_ERR_NULL_POINTER
+    );
+    assert!(unsafe { dstu_box512_secretkey_public_key(ptr::null()) }.is_null());
 }

@@ -95,7 +95,10 @@ canonical source (`docs/TASKS.md`/`docs/DECISIONS.md`) — this section states c
     itself (that reversal, and why, is D-186's own addendum: converting `crypto_sign`'s types to
     a curve-tagged enum would have broken `dstu-core-capi`'s C ABI for no benefit). `uacrypt`'s
     `sign-keygen257`/`sign-pubkey257`/`sign257` mirror `sign-keygen`/`sign-pubkey`/`sign`; `verify`
-    alone is unified and reads a curve tag byte to handle both curves' signatures.
+    alone is unified and reads a curve tag byte to handle both curves' signatures. Wired into
+    `dstu-core-capi` (T-204, 2026-08-09, `src/sign257.rs`, `dstu_sign257_*`/`dstu_verify257_*`,
+    untagged - the curve-tag dispatch stays a `uacrypt`-layer-only concern, not duplicated into the
+    C ABI) but **still not wired into any of the eight language bindings**.
   - `crypto_pwhash` (`hash_password`/`verify_password`/`Strength`) — wraps `argon2` behind a
     dedicated `pwhash` feature (off by default); `Strength::{Interactive,Moderate,Sensitive}` cites
     libsodium's own constants exactly (T-71/D-49/D-50).
@@ -118,8 +121,9 @@ canonical source (`docs/TASKS.md`/`docs/DECISIONS.md`) — this section states c
     `PublicKey` is 32 bytes, the curve point's `x`-coordinate only (T-178/D-169). `crypto_box512`
     is the direct `l(p)=512` (E512/1) sibling (T-193, 2026-08-08, D-182) — same shape, `PublicKey`/
     `SecretKey` at 64 bytes, seed deliberately fixed at 32 bytes/256 bits (not `l(p)=512`'s full
-    424-bit KEM capacity, D-182). Not wired into any language binding or `dstu-core-capi` yet
-    (separate future task, T-193's own scope note).
+    424-bit KEM capacity, D-182). Wired into `dstu-core-capi` (T-204, 2026-08-09, `src/box512.rs`,
+    `dstu_box512_*`) but **still not wired into any of the eight language bindings** - T-204 tracks
+    that remaining half of the gap, same status as `crypto_sign257` below.
   - `randombytes::randombytes_buf` — `std`-gated `getrandom` wrapper (T-72/D-48).
 - `selftest` — `std`-gated (`selftest` feature, off by default) runtime KAT self-check: `run()`
   re-verifies one official vector per primitive (Kalyna-128/128, Kupyna-256, Strumok-256, DSTU
@@ -138,9 +142,12 @@ Kupyna-256 with no length cap, delegating to the streaming `Hasher`.
 the language bindings under `bindings/`, which are each their own separate Cargo workspace, D-119).
 Opaque handles, explicit `DstuStatus` error codes, `catch_unwind` at every boundary call,
 zeroize-on-free, `cbindgen`-generated header (`include/dstu_core.h`, regenerated+diffed via `cargo
-xtask capi`). Wraps the full `crypto_*` surface **except `crypto_box512`** (T-193, not yet wired -
-see the `crypto_box` bullet above). The foundation the .NET/Go/C++ bindings link against directly —
-usable from any language with a C FFI, not just those three.
+xtask capi`). Wraps the full `crypto_*` surface, including `crypto_box512`/`crypto_sign257` as of
+T-204 (2026-08-09) - see the `crypto_box`/`crypto_sign` bullets above. The foundation the
+.NET/Go/C++ bindings link against directly — usable from any language with a C FFI, not just those
+three. (The five direct-Rust bindings - Python/Node/Ruby/PHP/Java - link `dstu-core` itself, not
+this crate, so this crate's own coverage doesn't automatically extend to them; T-204 remains open
+for all eight.)
 
 Official test vectors are extracted and verified for Kalyna, Kupyna, and DSTU 4145
 (`crates/dstu-core/tests/vectors/{kalyna,kupyna,dstu4145}/*.json` — see `docs/ORACLES.md` for

@@ -55,6 +55,7 @@
 //! design forks this crate resolves, and each module below for its own function-level detail.
 
 pub mod auth;
+pub mod box512;
 pub mod crypto_box;
 pub mod error;
 pub mod generichash;
@@ -65,6 +66,7 @@ pub mod secretbox;
 pub mod secretstream;
 pub mod selftest;
 pub mod sign;
+pub mod sign257;
 pub mod stream;
 mod util;
 

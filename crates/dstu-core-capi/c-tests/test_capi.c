@@ -351,6 +351,42 @@ static void test_sign(void) {
   dstu_verifying_key_free(other_verifying);
 }
 
+static void test_sign257(void) {
+  DstuSigningKey257 *key = NULL;
+  CHECK(dstu_sign257_key_generate(&key) == DSTU_OK, "sign257 key generate should succeed");
+  DstuVerifyingKey257 *verifying = dstu_sign257_verifying_key(key);
+  CHECK(verifying != NULL, "verifying_key257 should be infallible");
+
+  const char *message = "a message whose origin and integrity matter";
+  uint8_t sig[DSTU_SIGN257_SIGNATURE_BYTES];
+  dstu_sign257(key, (const uint8_t *)message, strlen(message), sig);
+  CHECK(dstu_verify257(verifying, (const uint8_t *)message, strlen(message), sig),
+        "verify257 should accept its own signature");
+
+  const char *other = "a different message";
+  CHECK(!dstu_verify257(verifying, (const uint8_t *)other, strlen(other), sig),
+        "verify257 should reject a different message");
+
+  DstuSigningKey257 *other_key = NULL;
+  dstu_sign257_key_generate(&other_key);
+  DstuVerifyingKey257 *other_verifying = dstu_sign257_verifying_key(other_key);
+  CHECK(!dstu_verify257(other_verifying, (const uint8_t *)message, strlen(message), sig),
+        "verify257 should reject a signature from a different key");
+
+  /* misuse: zero scalar is an invalid private key */
+  uint8_t zero[DSTU_SIGN257_PRIVATE_KEY_BYTES];
+  memset(zero, 0, sizeof(zero));
+  DstuSigningKey257 *invalid = NULL;
+  CHECK(dstu_sign257_key_from_bytes(zero, &invalid) == DSTU_ERR_INVALID_KEY,
+        "sign257 from_bytes should reject an all-zero scalar");
+  CHECK(invalid == NULL, "an invalid key should not write *out");
+
+  dstu_sign257_key_free(key);
+  dstu_sign257_key_free(other_key);
+  dstu_verifying_key257_free(verifying);
+  dstu_verifying_key257_free(other_verifying);
+}
+
 static void test_stream(void) {
   DstuStreamKey *key = NULL;
   CHECK(dstu_stream_key_generate(&key) == DSTU_OK, "stream key generate should succeed");
@@ -505,13 +541,108 @@ static void test_box(void) {
   dstu_box_secretkey_free(secret);
 }
 
+static void test_box512(void) {
+  DstuBox512SecretKey *secret = NULL;
+  CHECK(dstu_box512_secretkey_generate(&secret) == DSTU_OK, "box512 secretkey generate should succeed");
+  DstuBox512PublicKey *public_key = dstu_box512_secretkey_public_key(secret);
+  CHECK(public_key != NULL, "box512 secretkey_public_key should not return NULL for a valid key");
+
+  const char *message = "a message for the public key's holder only";
+  size_t message_len = strlen(message);
+  size_t sealed_cap = message_len + DSTU_BOX512_SEAL_OVERHEAD;
+  uint8_t *sealed = malloc(sealed_cap);
+  size_t sealed_len = 0;
+  CHECK(dstu_box512_seal(public_key, (const uint8_t *)message, message_len, sealed, sealed_cap, &sealed_len) ==
+            DSTU_OK,
+        "box512 seal should succeed with an exactly-sized buffer");
+  CHECK(sealed_len == sealed_cap, "sealed_len should equal message_len + DSTU_BOX512_SEAL_OVERHEAD exactly");
+
+  uint8_t *opened = malloc(message_len);
+  size_t opened_len = 0;
+  CHECK(dstu_box512_open(secret, sealed, sealed_len, opened, message_len, &opened_len) == DSTU_OK,
+        "box512 open should succeed on an authentic ciphertext");
+  CHECK(opened_len == message_len && memcmp(opened, message, message_len) == 0,
+        "box512 opened plaintext should match the original message");
+
+  /* rejection: tampered ciphertext */
+  uint8_t *tampered = malloc(sealed_len);
+  memcpy(tampered, sealed, sealed_len);
+  tampered[sealed_len - 1] ^= 1;
+  uint8_t *garbage = malloc(message_len);
+  memset(garbage, 0xFF, message_len);
+  size_t garbage_len = 0;
+  CHECK(dstu_box512_open(secret, tampered, sealed_len, garbage, message_len, &garbage_len) ==
+            DSTU_ERR_TAG_MISMATCH,
+        "box512 open should reject a tampered ciphertext");
+  int garbage_all_zero = 1;
+  for (size_t i = 0; i < message_len; i++) {
+    if (garbage[i] != 0) {
+      garbage_all_zero = 0;
+    }
+  }
+  CHECK(garbage_all_zero, "box512 plaintext_out should be left zeroed on tag mismatch, never partially trusted");
+
+  /* rejection: wrong secret key */
+  DstuBox512SecretKey *other_secret = NULL;
+  CHECK(dstu_box512_secretkey_generate(&other_secret) == DSTU_OK, "second box512 secretkey generate should succeed");
+  uint8_t *wrong_key_out = malloc(message_len);
+  size_t wrong_key_len = 0;
+  CHECK(dstu_box512_open(other_secret, sealed, sealed_len, wrong_key_out, message_len, &wrong_key_len) ==
+            DSTU_ERR_TAG_MISMATCH,
+        "box512 open should reject the correct sealed message under the wrong secret key");
+  dstu_box512_secretkey_free(other_secret);
+  free(wrong_key_out);
+
+  /* misuse: truncated input */
+  uint8_t small_out[4];
+  size_t small_len = 0;
+  CHECK(dstu_box512_open(secret, sealed, 4, small_out, sizeof(small_out), &small_len) == DSTU_ERR_TRUNCATED,
+        "box512 open should reject input shorter than DSTU_BOX512_SEAL_OVERHEAD");
+
+  /* misuse: undersized output buffer on seal - checked before any crypto work runs */
+  uint8_t tiny[4];
+  size_t tiny_len = 0;
+  CHECK(dstu_box512_seal(public_key, (const uint8_t *)message, message_len, tiny, sizeof(tiny), &tiny_len) ==
+            DSTU_ERR_BUFFER_TOO_SMALL,
+        "box512 seal should reject an undersized output buffer");
+
+  /* misuse: undersized output buffer on open */
+  size_t tiny_open_len = 0;
+  CHECK(dstu_box512_open(secret, sealed, sealed_len, tiny, sizeof(tiny), &tiny_open_len) ==
+            DSTU_ERR_BUFFER_TOO_SMALL,
+        "box512 open should reject an undersized output buffer");
+
+  /* misuse: invalid key encodings */
+  uint8_t zero64[64] = {0};
+  DstuBox512SecretKey *invalid_secret = NULL;
+  CHECK(dstu_box512_secretkey_from_bytes(zero64, &invalid_secret) == DSTU_ERR_INVALID_KEY,
+        "box512 secretkey_from_bytes should reject a zero scalar");
+  CHECK(invalid_secret == NULL, "box512 secretkey_from_bytes should not write *out on failure");
+  DstuBox512PublicKey *invalid_public = NULL;
+  CHECK(dstu_box512_publickey_from_bytes(zero64, &invalid_public) == DSTU_ERR_INVALID_KEY,
+        "box512 publickey_from_bytes should reject x = 0");
+  CHECK(invalid_public == NULL, "box512 publickey_from_bytes should not write *out on failure");
+
+  free(sealed);
+  free(opened);
+  free(tampered);
+  free(garbage);
+  dstu_box512_publickey_free(public_key);
+  dstu_box512_secretkey_free(secret);
+}
+
 static void test_null_misuse(void) {
   CHECK(dstu_auth_key_generate(NULL) == DSTU_ERR_NULL_POINTER, "auth_key_generate(NULL) should be rejected");
   CHECK(dstu_sign_verifying_key(NULL) == NULL, "sign_verifying_key(NULL) should return NULL, not crash");
+  CHECK(dstu_sign257_verifying_key(NULL) == NULL, "sign257_verifying_key(NULL) should return NULL, not crash");
   CHECK(!dstu_secretstream_push_is_finalized(NULL), "push_is_finalized(NULL) should return false, not crash");
   CHECK(!dstu_secretstream_pull_is_finalized(NULL), "pull_is_finalized(NULL) should return false, not crash");
   CHECK(dstu_box_secretkey_generate(NULL) == DSTU_ERR_NULL_POINTER, "box_secretkey_generate(NULL) should be rejected");
   CHECK(dstu_box_secretkey_public_key(NULL) == NULL, "box_secretkey_public_key(NULL) should return NULL, not crash");
+  CHECK(dstu_box512_secretkey_generate(NULL) == DSTU_ERR_NULL_POINTER,
+        "box512_secretkey_generate(NULL) should be rejected");
+  CHECK(dstu_box512_secretkey_public_key(NULL) == NULL,
+        "box512_secretkey_public_key(NULL) should return NULL, not crash");
 }
 
 int main(void) {
@@ -524,9 +655,11 @@ int main(void) {
   test_secretbox();
   test_secretstream();
   test_sign();
+  test_sign257();
   test_stream();
   test_pwhash();
   test_box();
+  test_box512();
   test_null_misuse();
 
   if (failures == 0) {

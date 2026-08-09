@@ -17,6 +17,17 @@
 
 #define DSTU_AUTH_TAG_BYTES 32
 
+#define DSTU_BOX512_SECRETKEY_BYTES 64
+
+#define DSTU_BOX512_PUBLICKEY_BYTES 64
+
+/**
+ * `dstu9041_ciphertext (256) || secretstream_header (32) || tag (16)` - the fixed part of
+ * `seal`'s wire format (`crypto_box512`'s own module doc), added to `message_len` for `seal`'s
+ * required output capacity, and the exact minimum length `open` accepts.
+ */
+#define DSTU_BOX512_SEAL_OVERHEAD 304
+
 #define DSTU_BOX_SECRETKEY_BYTES 32
 
 #define DSTU_BOX_PUBLICKEY_BYTES 32
@@ -65,6 +76,14 @@
 #define DSTU_SIGN_SIGNATURE_BYTES 42
 
 #define DSTU_SIGN_DIGEST_BYTES 32
+
+#define DSTU_SIGN257_PRIVATE_KEY_BYTES 33
+
+#define DSTU_SIGN257_PUBLIC_KEY_BYTES 66
+
+#define DSTU_SIGN257_SIGNATURE_BYTES 66
+
+#define DSTU_SIGN257_DIGEST_BYTES 32
 
 #define DSTU_STREAM_KEY_BYTES 32
 
@@ -160,6 +179,17 @@ typedef enum {
 typedef struct DstuAuthKey DstuAuthKey;
 
 /**
+ * Opaque `crypto_box512` public-key handle.
+ */
+typedef struct DstuBox512PublicKey DstuBox512PublicKey;
+
+/**
+ * Opaque `crypto_box512` secret-key handle. `dstu_box512_secretkey_free`'s `Box::from_raw` fires
+ * the wrapped `SecretKey`'s own `Zeroize`-on-`Drop` impl.
+ */
+typedef struct DstuBox512SecretKey DstuBox512SecretKey;
+
+/**
  * Opaque `crypto_box` public-key handle.
  */
 typedef struct DstuBoxPublicKey DstuBoxPublicKey;
@@ -214,6 +244,12 @@ typedef struct DstuSecretstreamKey DstuSecretstreamKey;
 typedef struct DstuSigningKey DstuSigningKey;
 
 /**
+ * Opaque signing-key handle. `dstu_sign257_key_free`'s `Box::from_raw` fires the wrapped
+ * `SigningKey`'s own `Zeroize`-on-`Drop` impl.
+ */
+typedef struct DstuSigningKey257 DstuSigningKey257;
+
+/**
  * Opaque `crypto_stream` key handle. `dstu_stream_key_free`'s `Box::from_raw` fires the wrapped
  * `Key`'s own `Zeroize`-on-`Drop` impl.
  */
@@ -223,6 +259,11 @@ typedef struct DstuStreamKey DstuStreamKey;
  * Opaque verifying-key (public key) handle.
  */
 typedef struct DstuVerifyingKey DstuVerifyingKey;
+
+/**
+ * Opaque verifying-key (public key) handle.
+ */
+typedef struct DstuVerifyingKey257 DstuVerifyingKey257;
 
 #ifdef __cplusplus
 extern "C" {
@@ -299,6 +340,139 @@ DstuStatus dstu_auth_verify(const DstuAuthKey *key,
                             const uint8_t *message,
                             size_t message_len,
                             const uint8_t *tag);
+
+/**
+ * Generates a fresh secret key from the OS CSPRNG. Returns `DSTU_OK` (writing `*out`) or
+ * `DSTU_ERR_RANDOM`/`DSTU_ERR_NULL_POINTER`.
+ *
+ * # Safety
+ *
+ * `out` must be a valid, non-null pointer to a `*mut DstuBox512SecretKey`.
+ */
+ DstuStatus dstu_box512_secretkey_generate(DstuBox512SecretKey **out);
+
+/**
+ * Builds a secret key from a big-endian `DSTU_BOX512_SECRETKEY_BYTES`-byte scalar. Returns
+ * `DSTU_ERR_INVALID_KEY` if it's outside the valid range `{2, ..., n-2}`,
+ * `DSTU_ERR_NULL_POINTER` if `bytes`/`out` is NULL.
+ *
+ * # Safety
+ *
+ * `bytes` must be valid for reads of `DSTU_BOX512_SECRETKEY_BYTES` bytes when non-null; `out`
+ * must be a valid, non-null pointer to a `*mut DstuBox512SecretKey`.
+ */
+ DstuStatus dstu_box512_secretkey_from_bytes(const uint8_t *bytes, DstuBox512SecretKey **out);
+
+/**
+ * Copies the key's big-endian `DSTU_BOX512_SECRETKEY_BYTES`-byte encoding into `out`. **The
+ * caller must `dstu_memzero()` this once done** - same gap `dstu_box_secretkey_bytes` has. A NULL
+ * `key`/`out` is a no-op.
+ *
+ * # Safety
+ *
+ * `out` must be valid for writes of `DSTU_BOX512_SECRETKEY_BYTES` bytes when non-null.
+ */
+ void dstu_box512_secretkey_bytes(const DstuBox512SecretKey *key, uint8_t *out);
+
+/**
+ * Derives the public key for `key` - infallible. Returns NULL if `key` is NULL.
+ *
+ * # Safety
+ *
+ * `key` must be either NULL or a valid pointer from `dstu_box512_secretkey_generate`/
+ * `dstu_box512_secretkey_from_bytes`.
+ */
+ DstuBox512PublicKey *dstu_box512_secretkey_public_key(const DstuBox512SecretKey *key);
+
+/**
+ * Frees a secret key. NULL is a no-op.
+ *
+ * # Safety
+ *
+ * `key` must be either NULL or a pointer previously returned by `dstu_box512_secretkey_generate`/
+ * `dstu_box512_secretkey_from_bytes`, not already freed.
+ */
+ void dstu_box512_secretkey_free(DstuBox512SecretKey *key);
+
+/**
+ * Builds a public key from its compressed `DSTU_BOX512_PUBLICKEY_BYTES`-byte `x`-coordinate
+ * encoding (`crypto_box512`'s own module doc explains why `x` alone is a safe compression).
+ * Returns `DSTU_ERR_INVALID_KEY` if `bytes` isn't a valid field element, or doesn't reconstruct to
+ * a point inside the base point's own prime-order subgroup; `DSTU_ERR_NULL_POINTER` if
+ * `bytes`/`out` is NULL.
+ *
+ * # Safety
+ *
+ * `bytes` must be valid for reads of `DSTU_BOX512_PUBLICKEY_BYTES` bytes when non-null; `out`
+ * must be a valid, non-null pointer to a `*mut DstuBox512PublicKey`.
+ */
+ DstuStatus dstu_box512_publickey_from_bytes(const uint8_t *bytes, DstuBox512PublicKey **out);
+
+/**
+ * Copies the key's `DSTU_BOX512_PUBLICKEY_BYTES`-byte encoding into `out` - not secret, no
+ * `dstu_memzero` needed afterward. A NULL `key`/`out` is a no-op.
+ *
+ * # Safety
+ *
+ * `out` must be valid for writes of `DSTU_BOX512_PUBLICKEY_BYTES` bytes when non-null.
+ */
+ void dstu_box512_publickey_bytes(const DstuBox512PublicKey *key, uint8_t *out);
+
+/**
+ * Frees a public key. NULL is a no-op.
+ *
+ * # Safety
+ *
+ * `key` must be either NULL or a pointer previously returned by
+ * `dstu_box512_secretkey_public_key`/`dstu_box512_publickey_from_bytes`, not already freed.
+ */
+ void dstu_box512_publickey_free(DstuBox512PublicKey *key);
+
+/**
+ * Encrypts `message` (any length) to `recipient`, drawing a fresh random seed and ephemeral key
+ * internally - **not memory-bounded**, same caveat as `crypto_box`'s own `dstu_box_seal`: the
+ * whole message is read from `message`/held in `sealed_out`, never chunked. `sealed_out` must
+ * have capacity >= `message_len + DSTU_BOX512_SEAL_OVERHEAD` - checked before any crypto work
+ * runs; `DSTU_ERR_BUFFER_TOO_SMALL` if not. On `DSTU_OK`, `*sealed_len_out == message_len +
+ * DSTU_BOX512_SEAL_OVERHEAD` exactly.
+ *
+ * # Safety
+ *
+ * `recipient`/`sealed_len_out` must be non-null; `message` must be valid for reads of
+ * `message_len` bytes when non-null and `message_len > 0`; `sealed_out` must be valid for writes
+ * of `sealed_out_cap` bytes when non-null.
+ */
+
+DstuStatus dstu_box512_seal(const DstuBox512PublicKey *recipient,
+                            const uint8_t *message,
+                            size_t message_len,
+                            uint8_t *sealed_out,
+                            size_t sealed_out_cap,
+                            size_t *sealed_len_out);
+
+/**
+ * Decrypts `sealed` (as produced by [`dstu_box512_seal`]) under `secret` - **not
+ * memory-bounded**, same caveat as [`dstu_box512_seal`]. `sealed_len < DSTU_BOX512_SEAL_OVERHEAD`
+ * -> `DSTU_ERR_TRUNCATED`. `plaintext_out` must have capacity >= `sealed_len -
+ * DSTU_BOX512_SEAL_OVERHEAD` - checked before any crypto work runs; `DSTU_ERR_BUFFER_TOO_SMALL` if
+ * not. On `DSTU_OK`, `*plaintext_len_out == sealed_len - DSTU_BOX512_SEAL_OVERHEAD` exactly. On
+ * `DSTU_ERR_TAG_MISMATCH` (wrong key, or any tampered wire segment - deliberately not
+ * distinguished further, see this module's own top doc comment), `plaintext_out` is left zeroed,
+ * never partially-trusted plaintext.
+ *
+ * # Safety
+ *
+ * `secret`/`plaintext_len_out` must be non-null; `sealed` must be valid for reads of
+ * `sealed_len` bytes when non-null and `sealed_len > 0`; `plaintext_out` must be valid for
+ * writes of `plaintext_out_cap` bytes when non-null.
+ */
+
+DstuStatus dstu_box512_open(const DstuBox512SecretKey *secret,
+                            const uint8_t *sealed,
+                            size_t sealed_len,
+                            uint8_t *plaintext_out,
+                            size_t plaintext_out_cap,
+                            size_t *plaintext_len_out);
 
 /**
  * Generates a fresh secret key from the OS CSPRNG. Returns `DSTU_OK` (writing `*out`) or
@@ -1009,6 +1183,149 @@ bool dstu_verify(const DstuVerifyingKey *key,
  * be valid for reads of `DSTU_SIGN_SIGNATURE_BYTES` bytes when non-null.
  */
  bool dstu_verify_digest(const DstuVerifyingKey *key, const uint8_t *digest, const uint8_t *sig);
+
+/**
+ * Generates a fresh signing key from the OS CSPRNG. Returns `DSTU_OK` (writing `*out`) or
+ * `DSTU_ERR_RANDOM`/`DSTU_ERR_NULL_POINTER`.
+ *
+ * # Safety
+ *
+ * `out` must be a valid, non-null pointer to a `*mut DstuSigningKey257`.
+ */
+ DstuStatus dstu_sign257_key_generate(DstuSigningKey257 **out);
+
+/**
+ * Builds a signing key from a big-endian `DSTU_SIGN257_PRIVATE_KEY_BYTES`-byte scalar `d`.
+ * Returns `DSTU_ERR_INVALID_KEY` if `d` is zero or >= the curve order, `DSTU_ERR_NULL_POINTER` if
+ * `d`/`out` is NULL.
+ *
+ * # Safety
+ *
+ * `d` must be valid for reads of `DSTU_SIGN257_PRIVATE_KEY_BYTES` bytes when non-null; `out` must
+ * be a valid, non-null pointer to a `*mut DstuSigningKey257`.
+ */
+ DstuStatus dstu_sign257_key_from_bytes(const uint8_t *d, DstuSigningKey257 **out);
+
+/**
+ * Copies `d`'s big-endian `DSTU_SIGN257_PRIVATE_KEY_BYTES`-byte encoding into `out`. **The caller
+ * must `dstu_memzero()` this once done** - same gap `dstu_sign_key_bytes` has. A NULL `key`/`out`
+ * is a no-op.
+ *
+ * # Safety
+ *
+ * `out` must be valid for writes of `DSTU_SIGN257_PRIVATE_KEY_BYTES` bytes when non-null.
+ */
+ void dstu_sign257_key_bytes(const DstuSigningKey257 *key, uint8_t *out);
+
+/**
+ * Frees a signing key. NULL is a no-op.
+ *
+ * # Safety
+ *
+ * `key` must be either NULL or a pointer previously returned by `dstu_sign257_key_generate`/
+ * `dstu_sign257_key_from_bytes`, not already freed.
+ */
+ void dstu_sign257_key_free(DstuSigningKey257 *key);
+
+/**
+ * Derives the public verifying key for `key` - infallible. Returns NULL if `key` is NULL.
+ *
+ * # Safety
+ *
+ * `key` must be either NULL or a valid pointer from `dstu_sign257_key_generate`/
+ * `dstu_sign257_key_from_bytes`.
+ */
+ DstuVerifyingKey257 *dstu_sign257_verifying_key(const DstuSigningKey257 *key);
+
+/**
+ * Copies the key's plain `x || y` `DSTU_SIGN257_PUBLIC_KEY_BYTES`-byte encoding into `out` (not
+ * the DSTU 4145 standard's own compressed point encoding - see `crypto_sign`'s own module doc). A
+ * NULL `key`/`out` is a no-op.
+ *
+ * # Safety
+ *
+ * `out` must be valid for writes of `DSTU_SIGN257_PUBLIC_KEY_BYTES` bytes when non-null.
+ */
+ void dstu_verifying_key257_to_bytes(const DstuVerifyingKey257 *key, uint8_t *out);
+
+/**
+ * Builds a verifying key from `DSTU_SIGN257_PUBLIC_KEY_BYTES` bytes of plain `x || y` encoding -
+ * infallible, see this module's own top doc comment for why no on-curve check happens here.
+ * Returns NULL if `bytes` is NULL.
+ *
+ * # Safety
+ *
+ * `bytes` must be valid for reads of `DSTU_SIGN257_PUBLIC_KEY_BYTES` bytes when non-null.
+ */
+ DstuVerifyingKey257 *dstu_verifying_key257_from_bytes(const uint8_t *bytes);
+
+/**
+ * Frees a verifying key. NULL is a no-op.
+ *
+ * # Safety
+ *
+ * `key` must be either NULL or a pointer previously returned by `dstu_sign257_verifying_key`/
+ * `dstu_verifying_key257_from_bytes`, not already freed.
+ */
+ void dstu_verifying_key257_free(DstuVerifyingKey257 *key);
+
+/**
+ * Signs `message`, hashing it with Kupyna-256 internally and deriving the ephemeral nonce
+ * deterministically - infallible, no RNG dependency. A NULL `key`/`sig_out`, or a NULL `message`
+ * with `message_len > 0`, is a no-op.
+ *
+ * # Safety
+ *
+ * `message` must be valid for reads of `message_len` bytes when non-null and `message_len > 0`;
+ * `sig_out` must be valid for writes of `DSTU_SIGN257_SIGNATURE_BYTES` bytes when non-null.
+ */
+
+void dstu_sign257(const DstuSigningKey257 *key,
+                  const uint8_t *message,
+                  size_t message_len,
+                  uint8_t *sig_out);
+
+/**
+ * Signs an already-computed `DSTU_SIGN257_DIGEST_BYTES`-byte Kupyna-256 digest directly - for a
+ * message hashed incrementally rather than held whole in memory. Same null-handling convention as
+ * [`dstu_sign257`].
+ *
+ * # Safety
+ *
+ * `digest` must be valid for reads of `DSTU_SIGN257_DIGEST_BYTES` bytes when non-null; `sig_out`
+ * must be valid for writes of `DSTU_SIGN257_SIGNATURE_BYTES` bytes when non-null.
+ */
+ void dstu_sign257_digest(const DstuSigningKey257 *key, const uint8_t *digest, uint8_t *sig_out);
+
+/**
+ * Verifies `sig` over `message` under `key`. Returns `false` for a NULL `key`/`sig` (a misuse
+ * case with no distinct code to report through a plain `bool`), a NULL `message` with
+ * `message_len > 0`, or an actual verification failure.
+ *
+ * # Safety
+ *
+ * `message` must be valid for reads of `message_len` bytes when non-null and `message_len > 0`;
+ * `sig` must be valid for reads of `DSTU_SIGN257_SIGNATURE_BYTES` bytes when non-null.
+ */
+
+bool dstu_verify257(const DstuVerifyingKey257 *key,
+                    const uint8_t *message,
+                    size_t message_len,
+                    const uint8_t *sig);
+
+/**
+ * Verifies `sig` over an already-computed `DSTU_SIGN257_DIGEST_BYTES`-byte digest directly. Same
+ * null-handling convention as [`dstu_verify257`].
+ *
+ * # Safety
+ *
+ * `digest` must be valid for reads of `DSTU_SIGN257_DIGEST_BYTES` bytes when non-null; `sig` must
+ * be valid for reads of `DSTU_SIGN257_SIGNATURE_BYTES` bytes when non-null.
+ */
+
+bool dstu_verify257_digest(const DstuVerifyingKey257 *key,
+                           const uint8_t *digest,
+                           const uint8_t *sig);
 
 /**
  * Generates a fresh key from the OS CSPRNG. Returns `DSTU_OK` (writing `*out`) or

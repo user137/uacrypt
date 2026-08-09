@@ -3646,22 +3646,57 @@ item they point to is later removed.
       exists at all), and read that registry's actual current publish workflow requirements before
       writing any CI, the same "research before implementation" discipline `docs/CLAUDE.md` requires
       for primitives, applied here to release infrastructure instead.
-- [ ] **T-204** **Not started, found this session (2026-08-09) auditing binding coverage after the
-      owner asked directly whether the new signature curve reached the bindings.** `crypto_sign257`
-      (DSTU 4145 `m=257`, T-199, landed 2026-08-08) is **not wired into any of the eight language
-      bindings or `dstu-core-capi`** - confirmed by grepping actual binding source (not build
-      artifacts) for `sign257`/`Sign257`/`m257` across `bindings/`: the only three hits were stale
-      `.d` dependency-file paths under `target/debug`/`target/release` build output, zero real
-      wrapper code in any binding or in `crates/dstu-core-capi/src`. This is the same shape of gap
-      already flagged for `crypto_box512` (DSTU 9041 `l(p)=512`, T-193's own scope note: "binding/
-      capi wiring for `crypto_box512` ... separate future task") - that note had no task number
-      assigned either, so both newer primitives are tracked together here rather than as two
-      separate half-tracked gaps. **Scope, once picked up**: extend every binding's existing
-      `crypto_sign`/`crypto_box` wrapper pattern (T-181's own precedent for how `crypto_box` reached
-      all eight in one pass) to also cover `crypto_sign257`/`crypto_box512` - `dstu-core-capi` first
-      (the foundation `.NET`/Go/C++ link against directly), then the five direct-Rust bindings
-      (Python/Node/Ruby/PHP/Java). Not started; no committed timeline, owner prioritizes against
-      T-203 above.
+- [~] **T-204** **Phase 1 (`dstu-core-capi`) done 2026-08-09; the eight language bindings remain
+      open.** Found this session auditing binding coverage after the owner asked directly whether
+      the new signature curve reached the bindings. `crypto_sign257` (DSTU 4145 `m=257`, T-199,
+      landed 2026-08-08) was **not wired into any of the eight language bindings or
+      `dstu-core-capi`** - confirmed by grepping actual binding source (not build artifacts) for
+      `sign257`/`Sign257`/`m257` across `bindings/`: the only three hits were stale `.d`
+      dependency-file paths under `target/debug`/`target/release` build output, zero real wrapper
+      code in any binding or in `crates/dstu-core-capi/src`. This was the same shape of gap already
+      flagged for `crypto_box512` (DSTU 9041 `l(p)=512`, T-193's own scope note: "binding/capi
+      wiring for `crypto_box512` ... separate future task") - that note had no task number assigned
+      either, so both newer primitives were tracked together here rather than as two separate
+      half-tracked gaps.
+
+      **`dstu-core-capi` phase done 2026-08-09**, following T-181's own `crypto_box`-to-all-eight
+      precedent for shape (mirror the sibling module, don't invent a new one) and D-148's existing
+      capi conventions throughout: `crates/dstu-core-capi/src/sign257.rs` (`dstu_sign257_*`/
+      `dstu_verify257_*`, 33/66/66/32-byte constants, untagged - the curve-tag dispatch stays a
+      `uacrypt`-layer-only concern per `crypto_sign257`'s own module doc, not duplicated into the C
+      ABI, the D-118 lesson) and `crates/dstu-core-capi/src/box512.rs` (`dstu_box512_*`, 64/64-byte
+      keys, `DSTU_BOX512_SEAL_OVERHEAD = 304` - confirmed against `crypto_box512::open`'s own
+      `MIN_LEN`, not assumed from module-doc prose). No new `DstuStatus` variant needed for either -
+      `DSTU_ERR_INVALID_KEY`/`NULL_POINTER`/`RANDOM`/`TRUNCATED`/`BUFFER_TOO_SMALL`/`TAG_MISMATCH`
+      already cover both, `box512::OpenError::InvalidCiphertext` reusing `TAG_MISMATCH` exactly like
+      `crypto_box.rs`'s own top doc comment argues. `box512.rs` (not `crypto_box512.rs`) matches
+      `crypto_box.rs`'s dropped-`crypto_`-prefix file/symbol convention for consistency, even though
+      `box512` isn't a reserved keyword the way bare `box` is - a deliberate choice, not a coin
+      flip, recorded in the module's own top doc comment. Verified: both modules registered in
+      `lib.rs`; D-64/D-65 rejection+misuse Rust FFI tests added to `tests/ffi_tests.rs` (8 new tests
+      - tampered sealed blob, wrong key, NULL handles, `sealed_len < overhead`, buffer-too-small,
+      zero-scalar/degenerate-point key rejection; `cargo test -p dstu-core-capi --release` 26/26
+      pass); C-level `test_sign257`/`test_box512` added to `c-tests/test_capi.c` plus new
+      `examples/sign257.c`/`examples/box512.c`, `xtask/src/main.rs`'s `CAPI_EXAMPLES` list extended
+      to 7 (the sync point CLAUDE.md's own agent-discipline section warns is easy to miss) -
+      `cargo xtask capi` passes end-to-end including the header-freshness diff (`include/dstu_core.h`
+      regenerated and committed). `cargo clippy --all-features --all-targets -- -D warnings` and
+      `cargo fmt --check` both clean. New scalar-multiply-heavy Rust FFI tests carry
+      `#[cfg_attr(miri, ignore)]` (m=257 mirroring T-100/D-59's m=163 precedent; `l(p)=512`
+      similarly, since it's roughly double `crypto_box`'s own `l(p)=256` width and that primitive's
+      own capi tests are already an accepted, untimed cost) - **actual Miri wall-clock time for
+      these two new suites has not been separately measured this session** (a full
+      `cargo +nightly miri test --workspace` run is tens of minutes to hours; not run here), flagged
+      as an open verification item rather than assumed safe.
+
+      **Still open**: the five direct-Rust bindings (Python/Node/Ruby/PHP/Java) link `dstu-core`
+      itself, not `dstu-core-capi`, so this phase's coverage doesn't extend to them automatically;
+      neither does it reach .NET/Go/C++, which link `dstu-core-capi` but each need their own
+      wrapper layer written on top of the new exported symbols. Scope for the remaining phase:
+      extend every binding's existing `crypto_sign`/`crypto_box` wrapper pattern to also cover
+      `crypto_sign257`/`crypto_box512`, per binding language, each with its own D-64/D-65(/D-92's
+      active-attack category per `feedback_active_attack_test_category` where applicable) test
+      suite - not started, no committed timeline, owner prioritizes against T-203 above.
 - [ ] **T-202** **Not started, owner-requested (2026-08-09) - research spike: is a Strumok-keystream
       + MAC ("Encrypt-then-MAC") authenticated construction a faster-but-still-safe alternative to
       `crypto_secretstream`'s current Kalyna-GCM-based AEAD for `uacrypt encrypt`/`decrypt`?**
