@@ -120,6 +120,15 @@ fn verify_rejects_order_two_public_key_m163() {
         r.failure(),
         "an order-2 (small-subgroup) m=163 public key must never verify, regardless of r/s"
     );
+    // Must be the real signature-verification rejection (proves the x==0 check itself fired),
+    // not WrongLength/SignVerifyUnsupportedCurve from some earlier parse step rejecting the file
+    // for an unrelated reason and never reaching the check this test exists to exercise.
+    assert!(
+        r.stderr
+            .contains("signature does not verify - message, signature, or key do not match"),
+        "stderr={}",
+        r.stderr
+    );
 }
 
 #[test]
@@ -179,5 +188,11 @@ fn verify_rejects_order_two_public_key_m257() {
     assert!(
         r.failure(),
         "an order-2 (small-subgroup) m=257 public key must never verify, regardless of r/s"
+    );
+    assert!(
+        r.stderr
+            .contains("signature does not verify - message, signature, or key do not match"),
+        "stderr={}",
+        r.stderr
     );
 }
