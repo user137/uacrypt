@@ -89,6 +89,50 @@ internal static partial class NativeMethods
         nuint plaintextOutCap,
         out nuint plaintextLenOut);
 
+    // ---- crypto_box512 ----
+
+    [LibraryImport(LibName)]
+    internal static partial DstuStatus dstu_box512_secretkey_generate(out Box512SecretKeyHandle handle);
+
+    [LibraryImport(LibName)]
+    internal static partial DstuStatus dstu_box512_secretkey_from_bytes(byte[] bytes, out Box512SecretKeyHandle handle);
+
+    [LibraryImport(LibName)]
+    internal static partial void dstu_box512_secretkey_bytes(Box512SecretKeyHandle key, byte[] outBytes);
+
+    [LibraryImport(LibName)]
+    internal static partial Box512PublicKeyHandle dstu_box512_secretkey_public_key(Box512SecretKeyHandle key);
+
+    [LibraryImport(LibName)]
+    internal static partial void dstu_box512_secretkey_free(IntPtr key);
+
+    [LibraryImport(LibName)]
+    internal static partial DstuStatus dstu_box512_publickey_from_bytes(byte[] bytes, out Box512PublicKeyHandle handle);
+
+    [LibraryImport(LibName)]
+    internal static partial void dstu_box512_publickey_bytes(Box512PublicKeyHandle key, byte[] outBytes);
+
+    [LibraryImport(LibName)]
+    internal static partial void dstu_box512_publickey_free(IntPtr key);
+
+    [LibraryImport(LibName)]
+    internal static partial DstuStatus dstu_box512_seal(
+        Box512PublicKeyHandle recipient,
+        byte[]? message,
+        nuint messageLen,
+        byte[] sealedOut,
+        nuint sealedOutCap,
+        out nuint sealedLenOut);
+
+    [LibraryImport(LibName)]
+    internal static partial DstuStatus dstu_box512_open(
+        Box512SecretKeyHandle secret,
+        byte[]? sealedIn,
+        nuint sealedLen,
+        byte[] plaintextOut,
+        nuint plaintextOutCap,
+        out nuint plaintextLenOut);
+
     // ---- crypto_generichash ----
 
     [LibraryImport(LibName)]
@@ -283,6 +327,46 @@ internal static partial class NativeMethods
     [LibraryImport(LibName)]
     [return: MarshalAs(UnmanagedType.U1)]
     internal static partial bool dstu_verify_digest(VerifyingKeyHandle key, byte[] digest, byte[] sig);
+
+    // ---- crypto_sign257 ----
+
+    [LibraryImport(LibName)]
+    internal static partial DstuStatus dstu_sign257_key_generate(out SigningKey257Handle handle);
+
+    [LibraryImport(LibName)]
+    internal static partial DstuStatus dstu_sign257_key_from_bytes(byte[] d, out SigningKey257Handle handle);
+
+    [LibraryImport(LibName)]
+    internal static partial void dstu_sign257_key_bytes(SigningKey257Handle key, byte[] outBytes);
+
+    [LibraryImport(LibName)]
+    internal static partial void dstu_sign257_key_free(IntPtr key);
+
+    [LibraryImport(LibName)]
+    internal static partial VerifyingKey257Handle dstu_sign257_verifying_key(SigningKey257Handle key);
+
+    [LibraryImport(LibName)]
+    internal static partial void dstu_verifying_key257_to_bytes(VerifyingKey257Handle key, byte[] outBytes);
+
+    [LibraryImport(LibName)]
+    internal static partial VerifyingKey257Handle dstu_verifying_key257_from_bytes(byte[] bytes);
+
+    [LibraryImport(LibName)]
+    internal static partial void dstu_verifying_key257_free(IntPtr key);
+
+    [LibraryImport(LibName)]
+    internal static partial void dstu_sign257(SigningKey257Handle key, byte[]? message, nuint messageLen, byte[] sigOut);
+
+    [LibraryImport(LibName)]
+    internal static partial void dstu_sign257_digest(SigningKey257Handle key, byte[] digest, byte[] sigOut);
+
+    [LibraryImport(LibName)]
+    [return: MarshalAs(UnmanagedType.U1)]
+    internal static partial bool dstu_verify257(VerifyingKey257Handle key, byte[]? message, nuint messageLen, byte[] sig);
+
+    [LibraryImport(LibName)]
+    [return: MarshalAs(UnmanagedType.U1)]
+    internal static partial bool dstu_verify257_digest(VerifyingKey257Handle key, byte[] digest, byte[] sig);
 
     // ---- crypto_stream ----
 

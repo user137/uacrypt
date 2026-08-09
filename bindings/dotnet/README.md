@@ -40,9 +40,11 @@ correctness/rejection/misuse suite each surface is verified against (D-64/D-65).
 | Type | Members | Notes |
 |---|---|---|
 | `SecretboxKey` | `Generate`, `FromBytes`, `ToBytes`, `Seal`, `Open` | Single-message authenticated encryption. `examples secretbox`. |
-| `BoxSecretKey`, `BoxPublicKey` | `Generate`, `FromBytes`, `ToBytes`, `PublicKey`, `Seal`, `Open` | Public-key encryption (hybrid via KDF over `hazmat::dstu9041`, D-169). `Seal`/`Open` are not memory-bounded — the whole message is held in memory. `examples box`. |
+| `BoxSecretKey`, `BoxPublicKey` | `Generate`, `FromBytes`, `ToBytes`, `PublicKey`, `Seal`, `Open` | Public-key encryption (hybrid via KDF over `hazmat::dstu9041`, `l(p)=256`, D-169). `Seal`/`Open` are not memory-bounded — the whole message is held in memory. `examples box`. |
+| `Box512SecretKey`, `Box512PublicKey` | Same members as `BoxSecretKey`/`BoxPublicKey` | `l(p)=512`/E512/1 sibling of `crypto_box` (T-193/T-204) — distinct type, not interchangeable. `examples box512`. |
 | `SecretstreamKey`, `SecretStreamEncryptStream`, `SecretStreamDecryptStream` | `Generate`, `FromBytes`, `ToBytes` | Chunked streaming AEAD, `Stream`-derived (matches `CryptoStream`/`GZipStream`'s own shape). Wire format matches `uacrypt encrypt`/`decrypt` exactly (D-118). `Dispose()` deliberately never emits the final chunk — call `Complete()` explicitly on the success path; see the class doc comment. `examples secretstream-file`. |
-| `SigningKey`, `VerifyingKey` | `Generate`, `FromBytes`, `ToBytes`, `Sign`, `SignDigest`, `Verify`, `VerifyDigest` | DSTU 4145 digital signatures, deterministic nonce (no RNG dependency). `examples sign`. |
+| `SigningKey`, `VerifyingKey` | `Generate`, `FromBytes`, `ToBytes`, `Sign`, `SignDigest`, `Verify`, `VerifyDigest` | DSTU 4145 `m=163` digital signatures, deterministic nonce (no RNG dependency). `examples sign`. |
+| `SigningKey257`, `VerifyingKey257` | Same members as `SigningKey`/`VerifyingKey` | `m=257` sibling of `crypto_sign` (T-199/T-204) — the curve real Diia-issued qualified signatures use. Distinct type, untagged (curve dispatch stays a `uacrypt`-layer concern, D-118). `examples sign257`. |
 | `Pwhash` | `HashPassword`, `VerifyPassword`, `PwhashStrength.{Interactive,Moderate,Sensitive}` | Argon2id (the one deliberately non-DSTU component, D-49/D-50). `examples password-hashing`. |
 | `AuthKey` | `Generate`, `FromBytes`, `ToBytes`, `Compute`, `Verify` | Keyed message authentication (Kupyna-KMAC). `examples misc`. |
 | `KdfMasterKey` | `Generate`, `FromBytes`, `ToBytes`, `DeriveSubkey` | Deterministic subkey derivation. `examples misc`. |

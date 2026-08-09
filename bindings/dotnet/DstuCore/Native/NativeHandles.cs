@@ -47,6 +47,24 @@ internal sealed class BoxPublicKeyHandle : DstuNativeHandle
     }
 }
 
+internal sealed class Box512SecretKeyHandle : DstuNativeHandle
+{
+    protected override bool ReleaseHandle()
+    {
+        NativeMethods.dstu_box512_secretkey_free(handle);
+        return true;
+    }
+}
+
+internal sealed class Box512PublicKeyHandle : DstuNativeHandle
+{
+    protected override bool ReleaseHandle()
+    {
+        NativeMethods.dstu_box512_publickey_free(handle);
+        return true;
+    }
+}
+
 internal sealed class KdfMasterKeyHandle : DstuNativeHandle
 {
     protected override bool ReleaseHandle()
@@ -115,6 +133,24 @@ internal sealed class SigningKeyHandle : DstuNativeHandle
     protected override bool ReleaseHandle()
     {
         NativeMethods.dstu_sign_key_free(handle);
+        return true;
+    }
+}
+
+internal sealed class SigningKey257Handle : DstuNativeHandle
+{
+    protected override bool ReleaseHandle()
+    {
+        NativeMethods.dstu_sign257_key_free(handle);
+        return true;
+    }
+}
+
+internal sealed class VerifyingKey257Handle : DstuNativeHandle
+{
+    protected override bool ReleaseHandle()
+    {
+        NativeMethods.dstu_verifying_key257_free(handle);
         return true;
     }
 }

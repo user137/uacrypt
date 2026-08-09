@@ -14,6 +14,12 @@ public static class DstuConstants
     /// <summary>128-byte KEM ciphertext + 32-byte secretstream header + 16-byte tag.</summary>
     public const int BoxSealOverhead = 176;
 
+    public const int Box512SecretKeyBytes = 64;
+    public const int Box512PublicKeyBytes = 64;
+
+    /// <summary>256-byte KEM ciphertext + 32-byte secretstream header + 16-byte tag.</summary>
+    public const int Box512SealOverhead = 304;
+
     public const int GenericHash256Bytes = 32;
     public const int GenericHash512Bytes = 64;
 
@@ -41,6 +47,11 @@ public static class DstuConstants
     public const int SignPublicKeyBytes = 42;
     public const int SignSignatureBytes = 42;
     public const int SignDigestBytes = 32;
+
+    public const int Sign257PrivateKeyBytes = 33;
+    public const int Sign257PublicKeyBytes = 66;
+    public const int Sign257SignatureBytes = 66;
+    public const int Sign257DigestBytes = 32;
 
     public const int StreamKeyBytes = 32;
 
