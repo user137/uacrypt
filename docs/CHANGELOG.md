@@ -5,6 +5,14 @@ All notable changes to this project are documented in this file. Format follows
 
 ## [Unreleased]
 
+### Added
+
+- `crypto_box512`/`crypto_sign257`: wired into `dstu-core-capi` and all eight language bindings
+  (Python/Node.js/Ruby/Java/PHP/.NET/Go/C++) - both landed in `dstu-core` itself already, in 0.3.0
+  above, without this wiring (`docs/TASKS.md` T-204, closed 2026-08-09/10). The next tagged release's
+  Python wheel (and any other binding artifact this project starts attaching to a GitHub Release)
+  will be the first to actually ship this surface outside the Rust crate itself.
+
 ## [0.3.0] - 2026-08-09
 
 **First crates.io publish** (`docs/TASKS.md` T-17, `docs/DECISIONS.md` D-114) - both `dstu-core`

@@ -3749,9 +3749,9 @@ item they point to is later removed.
         separate workspace (D-119) - regenerated as a byproduct. `cargo clippy --all-targets` in
         this workspace pre-existingly fails on unrelated `dstu-core` hazmat benchmark code
         (`gf2m_wide.rs`/`tables.rs`) - reproduced via `git stash` against master *before* this
-        change too, so a pre-existing gap, not a T-204 regression; flagged for separate follow-up,
-        not fixed here (out of scope, and `cargo clippy` without `--all-targets` on this crate's own
-        code is clean).
+        change too, so a pre-existing gap, not a T-204 regression; opened as **T-205**, not fixed
+        here (out of scope, and `cargo clippy` without `--all-targets` on this crate's own code is
+        clean).
       - **PHP**: `src/box512.rs`/`sign257.rs` (`ext_php_rs::binary::Binary<u8>`,
         `dstu_core_*`-prefixed flat naming). **Found and fixed a real `ext-php-rs` pitfall**:
         `#[php_function]`'s default `RenameRule::Snake` splits a letter/digit boundary, so
@@ -3778,6 +3778,15 @@ item they point to is later removed.
       per-function override already) - any *new* binding or macro system this project adopts later
       needs the same "does the auto-rename handle a digit-adjacent-to-letter identifier correctly"
       check `ext-php-rs` just failed, not an assumption it's fine because every other binding was.
+- [ ] **T-205** **Not started, found during T-204 (2026-08-09/10) - `bindings/java/native`'s
+      `cargo clippy --all-targets -- -D warnings` fails with 54 errors, all in `dstu-core`'s own
+      hazmat benchmark code (`gf2m_wide.rs`'s `clippy::items_after_statements`/`cast_precision_loss`,
+      `tables.rs`'s `clippy::needless_range_loop`), not in this binding's own `native/src/*.rs`.**
+      Confirmed pre-existing, not a T-204 regression, via `git stash push -- bindings/java` against
+      clean `master` (same 54 errors with zero T-204 changes present), `git stash pop` afterward to
+      restore the work. Plain `cargo clippy` (no `--all-targets`) on this workspace is clean. Not
+      fixed as part of T-204 - out of scope for a binding-wiring task, and the fix belongs in
+      `dstu-core`'s own hazmat benchmark code, not in any binding.
 - [ ] **T-202** **Not started, owner-requested (2026-08-09) - research spike: is a Strumok-keystream
       + MAC ("Encrypt-then-MAC") authenticated construction a faster-but-still-safe alternative to
       `crypto_secretstream`'s current Kalyna-GCM-based AEAD for `uacrypt encrypt`/`decrypt`?**

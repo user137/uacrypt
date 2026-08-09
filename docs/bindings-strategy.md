@@ -1088,6 +1088,30 @@ gh-pages after all the tasks"). This mirrors T-162's own precedent exactly (site
 every binding it covers actually exists) — expect a smaller version of T-162's own checklist above,
 not a full re-run, since the rest of the site's binding-facing content doesn't change.
 
+### T-204 — `crypto_box512`/`crypto_sign257` across all eight bindings + capi (closed 2026-08-09/10)
+
+**Same incremental shape as T-181** — two new modules' surfaces (`dstu_core::crypto_box512`,
+T-193/D-182; `dstu_core::crypto_sign257`, T-199/D-185/D-186), each a direct sibling of an existing
+wrapped module (`crypto_box`, `crypto_sign`) at a different curve size, added to every binding that
+already exists. No new step 1/4/5 per language, same as T-181's own reasoning.
+
+**Order, three phases**: (1) `dstu-core-capi` first (`crates/dstu-core-capi/src/box512.rs`,
+`sign257.rs`) — unblocks the C-ABI-consuming group, same dependency reason T-181 cites for
+`crypto_box`. (2) .NET/Go/C++ — consume the now-complete C ABI directly. (3) Python/Node.js/Ruby/
+Java/PHP — direct-Rust wrappers, each against its own macro system (PyO3/napi-rs/magnus/`jni`/
+ext-php-rs). All three phases done same session.
+
+**One binding-specific bug found**: `ext-php-rs`'s `#[php_function]` macro's default
+`RenameRule::Snake` splits a letter/digit boundary (`box512` → `box_512`), silently mis-registering
+all 8 new PHP function names — fixed with an explicit `#[php(name = "...")]` override per function
+(memory: `php_ext_php_rs_digit_rename_pitfall`). No equivalent issue in any other binding's own
+macro system.
+
+**No new curve-tag dispatch anywhere** — `crypto_sign257`/`crypto_box512` are distinct function/
+type names in every binding, same as the C ABI and core itself; tag-byte dispatch stays a
+`uacrypt`-CLI-only concern (D-118's "don't duplicate wire-format logic into every binding" lesson
+generalized).
+
 ### Publishing (all registries) — separate, owner-gated, not scheduled
 
 One explicit ask per registry (PyPI/npm/Maven Central/NuGet/RubyGems/Packagist), the same class of
