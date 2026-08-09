@@ -12110,6 +12110,21 @@ Re-check this exclusion's continued justification if `l(p)=384` is ever added (a
 or if a future generic-merge refactor is ever undertaken for unrelated reasons - don't assume this
 decision is permanent, it was scoped to "not now," not "never."
 
+**Follow-up (2026-08-09, T-200's own post-push CI check)**: exactly the re-check this entry's own
+closing paragraph anticipated, just from a different sibling pair than the one named. T-199's push
+(m=257, `hazmat::dstu4145`) failed the same gate the same way - 8.5% density, 863 of 1082 new
+duplicated lines traced via `api/measures/component_tree` to `gf2m257.rs`/`gf2m163.rs`/
+`curve257.rs`/`curve163.rs`/`scalar257.rs`/`scalar.rs`/`crypto_sign257.rs`/`crypto_sign.rs` - the
+exact same "deliberate byte/field-width sibling, independently derived and test-vector-verified"
+shape this entry's own reasoning already covers, just one level up (m=163/m=257 instead of
+`l(p)=256`/`l(p)=512`), missed when `sonar.cpd.exclusions` was written because that pair didn't
+exist yet at T-192's time. Fixed the same way: added to the exclusion list, not refactored into a
+shared generic, same rejection reasoning as above. **The general lesson, not file-specific**: any
+future per-size/per-width sibling module pair in this project (a pattern already established for
+Kalyna's block-size variants, DSTU 4145's curves, and DSTU 9041's field sizes) will very likely
+retrigger this exact gate on its first push and needs the same treatment - check
+`sonar.cpd.exclusions` proactively when adding one, don't wait for CI to catch it.
+
 ## D-182: T-193 Phase 0 - `crypto_box512`'s seed uses a fixed 32-byte/256-bit width, not `l(p)=512`'s full 424-bit KEM capacity
 
 `crypto_box.rs`'s `embed_seed` (`embedded[32 - SEED_LEN..]`, `SEED_LEN = L_MAX_P/8 = 25` at
