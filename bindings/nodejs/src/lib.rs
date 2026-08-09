@@ -11,6 +11,7 @@
 //! `stream.Transform` wrapper is deferred to step 3, matching `bindings/python`'s own split.
 
 mod auth;
+mod box512;
 mod crypto_box;
 mod generichash;
 mod kdf;
@@ -19,10 +20,12 @@ mod randombytes;
 mod secretbox;
 mod secretstream;
 mod sign;
+mod sign257;
 mod stream;
 mod util;
 
 pub use auth::*;
+pub use box512::*;
 pub use crypto_box::*;
 pub use generichash::*;
 pub use kdf::*;
@@ -31,6 +34,7 @@ pub use randombytes::*;
 pub use secretbox::*;
 pub use secretstream::*;
 pub use sign::*;
+pub use sign257::*;
 pub use stream::*;
 
 use napi_derive::napi;

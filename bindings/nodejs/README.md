@@ -49,9 +49,11 @@ console.log(dstu.secretboxOpen(key, sealed).toString()); // "a message worth pro
 | Module | Functions/classes | Notes |
 |---|---|---|
 | `crypto_secretbox` | `secretboxKeygen`, `secretboxSeal`, `secretboxOpen` | Single-message authenticated encryption. `examples/secretbox.js`. |
-| `crypto_box` | `boxKeygen`, `boxPublicKey`, `boxSeal`, `boxOpen` | Public-key encryption (hybrid via KDF over `hazmat::dstu9041`, D-169). `boxSeal`/`boxOpen` are not memory-bounded — the whole message is held in memory. `examples/box.js`. |
+| `crypto_box` | `boxKeygen`, `boxPublicKey`, `boxSeal`, `boxOpen` | Public-key encryption (hybrid via KDF over `hazmat::dstu9041`, `l(p)=256`, D-169). `boxSeal`/`boxOpen` are not memory-bounded — the whole message is held in memory. `examples/box.js`. |
+| `crypto_box512` | `box512Keygen`, `box512PublicKey`, `box512Seal`, `box512Open` | `l(p)=512`/E512/1 sibling of `crypto_box` (T-193/T-204). `examples/box512.js`. |
 | `crypto_secretstream` | `secretstreamKeygen`, `SecretStreamPushState`, `SecretStreamPullState`, `SecretStreamEncryptor`, `SecretStreamDecryptor` | Chunked streaming AEAD. The `stream.Transform` `SecretStreamEncryptor`/`SecretStreamDecryptor` wire format matches `uacrypt encrypt`/`decrypt` exactly (D-118). `examples/secretstream-file.js`. |
-| `crypto_sign` | `signKeygen`, `signVerifyingKey`, `signMessage`, `signVerify` | DSTU 4145 digital signatures, deterministic nonce (no RNG dependency). `examples/sign.js`. |
+| `crypto_sign` | `signKeygen`, `signVerifyingKey`, `signMessage`, `signVerify` | DSTU 4145 `m=163` digital signatures, deterministic nonce (no RNG dependency). `examples/sign.js`. |
+| `crypto_sign257` | `sign257Keygen`, `sign257VerifyingKey`, `sign257Message`, `sign257Verify` | `m=257` sibling of `crypto_sign` (T-199/T-204) — the curve real Diia-issued qualified signatures use. `examples/sign257.js`. |
 | `crypto_pwhash` | `pwhashHashPassword`, `pwhashVerifyPassword`, `PWHASH_INTERACTIVE`/`PWHASH_MODERATE`/`PWHASH_SENSITIVE` | Argon2id (the one deliberately non-DSTU component, D-49/D-50). `examples/password-hashing.js`. |
 | `crypto_auth` | `authKeygen`, `auth`, `authVerify` | Keyed message authentication (Kupyna-KMAC). `examples/misc.js`. |
 | `crypto_kdf` | `kdfKeygen`, `kdfDeriveSubkey` | Deterministic subkey derivation. `subkeyId` is a plain non-negative `number`, not `BigInt`. `examples/misc.js`. |
