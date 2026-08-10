@@ -3787,8 +3787,9 @@ item they point to is later removed.
       restore the work. Plain `cargo clippy` (no `--all-targets`) on this workspace is clean. Not
       fixed as part of T-204 - out of scope for a binding-wiring task, and the fix belongs in
       `dstu-core`'s own hazmat benchmark code, not in any binding.
-- [~] **T-206** **Phase 1 done 2026-08-10 (root-cause fix + local Miri verification), phases 2-4
-      not started - `cargo miri test (dstu-core)` is
+- [~] **T-206** **Phase 1 done 2026-08-10 (m=257 root-cause fix), phase 2 done 2026-08-10 and
+      disproved Phase 1's own sufficiency, Phase 2b (real fix) done same session, phases 3-4
+      contingent on the next real CI number - `cargo miri test (dstu-core)` is
       exceeding its 240-min CI budget again (real timeout, not concurrency-group noise - confirmed
       via `gh run view` on run `31342605874`: job ran the full 240 min, `23:46:32`→`03:46:48`,
       `conclusion: cancelled`), the third time this exact job has hit its cap (150-min original
@@ -3830,23 +3831,79 @@ item they point to is later removed.
              respectively, all 8 newly-annotated tests showing `ignored, <reason>`, the 1 cheap test
              left in `dstu4145_curve257.rs` (`curve257_generator_is_on_curve`, no scalar_multiply)
              still actually ran under Miri, not skipped by accident.
-      2. [ ] Push, then verify via `gh run view` (not a green badge, not an assumption) that
-             `cargo miri test (dstu-core)` completes well under 240 min on the next real run - record
-             the actual duration next to D-59/D-103's own numbers for future margin comparisons.
-      3. [ ] **Only if step 2 still shows a thin/exceeded margin**: this is where "something
-             substantial" per the owner's own framing applies - split `dstu-core`'s Miri job into a
-             bucketed matrix (a handful of legs grouping heavy EC/DSTU-9041 files vs. everything else,
-             not a 43-way per-test-file matrix - advisor flagged that each matrix leg pays its own
-             `cargo +nightly miri setup` sysroot-build tax from cold unless cached, which could
-             dominate wall time for the ~30 fast `kalyna_*`/`kupyna_*`/`strumok` files and make a
-             maximally-fine split a net loss, not a win) instead of raising `timeout-minutes` a
-             fourth time. Also confirm any such split still reaches `--lib`'s own `#[cfg(test)]`
-             module (a separate binary from every `tests/*.rs` file, easy to silently drop from a
-             matrix built only around `--test <name>` legs).
-      4. [ ] Update `rust.yml`'s own Miri-job comment once the fix lands, so it documents the m=257
-             files by name alongside the m=163 ones it already names - the exact gap that let this go
-             unnoticed through two timeout cycles was a parallel-construction miss the comment had no
-             way to flag for a file that didn't exist when it was written.
+      2. [x] **Done, and disproved Phase 1 as sufficient.** Real CI run `31396063454` (triggered by
+             commit `0837911`, the Phase 1 push) hit the full 240-min cap exactly (`14:06:08`→
+             `18:06:23`) and was cancelled - `gh run view --json jobs` showed every other job in the
+             workflow (including `cargo miri test (uacrypt)`/`(dstu-core-capi)`) completed fine; only
+             `cargo miri test (dstu-core)` was cancelled. Pulling the job's own log
+             (`gh run view --log --job=<id>`) showed the m=257 fix worked exactly as measured locally
+             (both files' tests flew by) but the *actual* cost center was never touched by Phase 1:
+             `tests/crypto_box.rs` alone took 3608.94s (~60 min) for 17 tests, and
+             `tests/crypto_box512.rs` was still running when the job was killed - 11 of 17 tests done
+             in 158 min (`15:16:02`→`17:54:35`), each costing ~20-25 min, projecting to **~257 min for
+             that one file alone** (advisor's own projection, confirmed against the log's per-test
+             timestamp deltas). Neither file existed when D-59/T-100's original 84-min-local/143-min-CI
+             baseline was measured (`crypto_box` landed T-178, `crypto_box512` landed T-193, both after
+             2026-07-27) - the timeout kept recurring because each new `crypto_box*`-family addition
+             quietly added tens of minutes of Miri cost that no one had re-measured against the budget.
+      2b. [x] **Done, the actual fix.** Per advisor: every `crypto_box`/`crypto_box512` test that
+             calls `seal()` pays the same ~1-unit scalar-multiply cost regardless of what it's
+             *testing* (confirmed from the log's own per-test deltas - tamper/misuse tests cost the
+             same as `round_trip` because the tamper happens after an identical full `seal()` call),
+             and `hazmat::dstu9041`'s own `scalar_multiply` already has live, unignored Miri coverage
+             via `tests/dstu9041_encryption{,_512}.rs`'s `encrypt_matches_worked_example_ciphertext`/
+             `decrypt_matches_worked_example_message` - so re-interpreting the identical arithmetic
+             through `crypto_box`'s wrapper in 15 near-identical ways is redundant for Miri's actual
+             job (UB/aliasing detection, not functional re-verification; full functional/rejection
+             coverage already runs every push under plain `cargo test`, unaffected by any of this).
+             Kept exactly 2 tests live per file - `round_trip` (the success path) and
+             `tampered_ciphertext_is_rejected` (the representative failure path, so Miri still
+             interprets `open`'s error branch at least once) - and added
+             `#[cfg_attr(miri, ignore = "...")]` citing this task to the other 10 full-cost tests per
+             file (`zero_length_message_round_trips`, `message_far_larger_than_the_{25_byte,seed}_kem_
+             payload_round_trips`, `two_calls_use_different_ephemeral_material`,
+             `public_key_round_trips_through_bytes`, `wrong_secret_key_is_rejected`,
+             `tampered_kem_prefix_is_rejected`, `tampered_secretstream_header_is_rejected`,
+             `tampered_tag_is_rejected`, `kem_failure_and_secretstream_failure_are_indistinguishable`,
+             `trailing_garbage_after_valid_ciphertext_is_rejected`). The 4 already-instant tests per
+             file (no `seal()`/`open()` call - `truncated_input_is_rejected_not_a_panic`,
+             `secret_key_rejects_out_of_range_bytes{,_upper_boundary}`,
+             `public_key_rejects_degenerate_x_values`) and the already-ignored `round_trip_property`
+             proptest were untouched. Verified: (a) plain `cargo test -p dstu-core --test crypto_box
+             --test crypto_box512` - 34/34 pass, 0 ignored (Miri-gated attribute is inert otherwise);
+             (b) a real scoped `cargo +nightly miri test -p dstu-core --test crypto_box --test
+             crypto_box512` run (`MIRIFLAGS=-Zmiri-disable-isolation PROPTEST_CASES=1`), timed
+             locally before pushing: `crypto_box.rs` (6 live, 11 ignored) finished in **820.33s
+             (~13.7 min)**, `crypto_box512.rs` (6 live, 11 ignored) in **3778.75s (~63 min)** -
+             `real 76m42.5s` total for both files together, down from an unbounded run that hadn't
+             finished `crypto_box512.rs` alone after 158 min on the real CI run above. Local numbers
+             use the Windows GNU Miri backend (`x86_64-pc-windows-gnu`), not CI's Linux one
+             (`x86_64-unknown-linux-gnu`) - not directly comparable 1:1 (this session's own D-59
+             history shows CI running ~1.7x slower than local for the old pre-`crypto_box` baseline,
+             84 min local vs. 143 min CI), but bounded-and-finishing at all is the material change
+             from before this fix, where `crypto_box512.rs` alone was projected at ~257 min and
+             hadn't completed within the entire 240-min CI budget.
+      3. [ ] **Only if the next real CI run still shows a thin/exceeded margin**: split `dstu-core`'s
+             Miri job into a bucketed matrix (a handful of legs grouping heavy EC/DSTU-9041 files vs.
+             everything else, not a 43-way per-test-file matrix - advisor flagged that each matrix leg
+             pays its own `cargo +nightly miri setup` sysroot-build tax from cold unless cached, which
+             could dominate wall time for the ~30 fast `kalyna_*`/`kupyna_*`/`strumok` files and make a
+             maximally-fine split a net loss, not a win) instead of raising `timeout-minutes` a fourth
+             time. Also confirm any such split still reaches `--lib`'s own `#[cfg(test)]` module (a
+             separate binary from every `tests/*.rs` file, easy to silently drop from a matrix built
+             only around `--test <name>` legs).
+      4. [ ] Once the next real run's actual duration is known, **tighten `timeout-minutes` from 240
+             to a real number with margin** (not re-guessed - the whole point of this task per the
+             owner's framing), and update `rust.yml`'s own Miri-job comment to document the
+             `crypto_box`/`crypto_box512` cost story by name alongside the m=163/m=257 EC-ladder story
+             it already names - deliberately not guessed now, since this session's own arithmetic
+             (baseline ~143 min CI-measured pre-`crypto_box`, T-100/D-59, plus an estimated ~50-60 min
+             for the trimmed `crypto_box`/`crypto_box512` pair, plus whatever else has been added to
+             `dstu-core` since 2026-07-27 and never re-measured) is too uncertain to safely land under
+             advisor's suggested ~120-min figure without risking another D-103-style thin-margin false
+             failure - the same "verify a CI number via `gh run view`, don't assume" discipline this
+             file already states applies to setting the number in the first place, not just to
+             confirming a run's conclusion.
 - [x] **T-207** **Done 2026-08-10, owner-requested - `cargo xtask python` was missing both `ruff
       check` and `ruff format --check`, even though CI's `bindings-python.yml` runs both as
       required steps.** Found the hard way, twice: the T-204/T-206 push failed CI's

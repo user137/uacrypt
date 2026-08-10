@@ -26,6 +26,10 @@ fn round_trip() {
 }
 
 #[test]
+#[cfg_attr(
+    miri,
+    ignore = "same full seal/open scalar-multiply cost as round_trip (kept live under Miri) - functional coverage stays in cargo test, see docs/TASKS.md T-206"
+)]
 fn zero_length_message_round_trips() {
     let secret = SecretKey::generate().expect("OS CSPRNG available in test environment");
     let public = secret.public_key();
@@ -39,6 +43,10 @@ fn zero_length_message_round_trips() {
 /// cap - only the *asymmetric* half is capped at 25 bytes, and that cap is invisible to `seal`'s
 /// own caller since it only ever wraps a fresh random seed, never the message itself.
 #[test]
+#[cfg_attr(
+    miri,
+    ignore = "same full seal/open scalar-multiply cost as round_trip (kept live under Miri) - functional coverage stays in cargo test, see docs/TASKS.md T-206"
+)]
 fn message_far_larger_than_the_25_byte_kem_payload_round_trips() {
     let secret = SecretKey::generate().expect("OS CSPRNG available in test environment");
     let public = secret.public_key();
@@ -49,6 +57,10 @@ fn message_far_larger_than_the_25_byte_kem_payload_round_trips() {
 }
 
 #[test]
+#[cfg_attr(
+    miri,
+    ignore = "two seal calls cost ~2x round_trip's already-covered scalar-multiply path - functional coverage stays in cargo test, see docs/TASKS.md T-206"
+)]
 fn two_calls_use_different_ephemeral_material() {
     let secret = SecretKey::generate().expect("OS CSPRNG available in test environment");
     let public = secret.public_key();
@@ -63,6 +75,10 @@ fn two_calls_use_different_ephemeral_material() {
 }
 
 #[test]
+#[cfg_attr(
+    miri,
+    ignore = "same full seal/open scalar-multiply cost as round_trip (kept live under Miri) - functional coverage stays in cargo test, see docs/TASKS.md T-206"
+)]
 fn public_key_round_trips_through_bytes() {
     let secret = SecretKey::generate().expect("OS CSPRNG available in test environment");
     let public = secret.public_key();
@@ -89,6 +105,10 @@ fn truncated_input_is_rejected_not_a_panic() {
 }
 
 #[test]
+#[cfg_attr(
+    miri,
+    ignore = "same full seal/open scalar-multiply cost as tampered_ciphertext_is_rejected (kept live as the representative rejection path under Miri) - functional coverage stays in cargo test, see docs/TASKS.md T-206"
+)]
 fn wrong_secret_key_is_rejected() {
     let secret = SecretKey::generate().expect("OS CSPRNG available in test environment");
     let public = secret.public_key();
@@ -104,6 +124,10 @@ fn wrong_secret_key_is_rejected() {
 /// wrong bulk key, so `PullState::pull`'s tag check catches it (`docs/DECISIONS.md` D-63's own
 /// nonce/prefix-binding concern, re-derived for this construction rather than assumed).
 #[test]
+#[cfg_attr(
+    miri,
+    ignore = "same full seal/open scalar-multiply cost as tampered_ciphertext_is_rejected (kept live as the representative rejection path under Miri) - functional coverage stays in cargo test, see docs/TASKS.md T-206"
+)]
 fn tampered_kem_prefix_is_rejected() {
     let secret = SecretKey::generate().expect("OS CSPRNG available in test environment");
     let public = secret.public_key();
@@ -114,6 +138,10 @@ fn tampered_kem_prefix_is_rejected() {
 }
 
 #[test]
+#[cfg_attr(
+    miri,
+    ignore = "same full seal/open scalar-multiply cost as tampered_ciphertext_is_rejected (kept live as the representative rejection path under Miri) - functional coverage stays in cargo test, see docs/TASKS.md T-206"
+)]
 fn tampered_secretstream_header_is_rejected() {
     let secret = SecretKey::generate().expect("OS CSPRNG available in test environment");
     let public = secret.public_key();
@@ -135,6 +163,10 @@ fn tampered_ciphertext_is_rejected() {
 }
 
 #[test]
+#[cfg_attr(
+    miri,
+    ignore = "same full seal/open scalar-multiply cost as tampered_ciphertext_is_rejected (kept live as the representative rejection path under Miri) - functional coverage stays in cargo test, see docs/TASKS.md T-206"
+)]
 fn tampered_tag_is_rejected() {
     let secret = SecretKey::generate().expect("OS CSPRNG available in test environment");
     let public = secret.public_key();
@@ -166,6 +198,10 @@ fn tampered_tag_is_rejected() {
 /// the KEM's own hash check first - the same "foreclosed by contract, document rather than force a
 /// test" posture as D-111's `dstu4145` findings, not a gap being silently skipped.
 #[test]
+#[cfg_attr(
+    miri,
+    ignore = "two full seal/open pairs, ~2x round_trip's already-covered scalar-multiply path - functional coverage stays in cargo test, see docs/TASKS.md T-206"
+)]
 fn kem_failure_and_secretstream_failure_are_indistinguishable() {
     let secret = SecretKey::generate().expect("OS CSPRNG available in test environment");
     let public = secret.public_key();
@@ -239,6 +275,10 @@ fn secret_key_rejects_out_of_range_bytes_upper_boundary() {
 /// garbage* appended after an otherwise-valid sealed message (a "reject a lied-about length" gap,
 /// distinct from truncation).
 #[test]
+#[cfg_attr(
+    miri,
+    ignore = "same full seal/open scalar-multiply cost as tampered_ciphertext_is_rejected (kept live as the representative rejection path under Miri) - functional coverage stays in cargo test, see docs/TASKS.md T-206"
+)]
 fn trailing_garbage_after_valid_ciphertext_is_rejected() {
     let secret = SecretKey::generate().expect("OS CSPRNG available in test environment");
     let public = secret.public_key();
