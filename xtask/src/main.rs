@@ -91,7 +91,7 @@ fn print_usage() {
          \x20 python         build+lint bindings/python, maturin develop, pytest (T-49)\n\
          \x20 nodejs         build+lint bindings/nodejs, napi build, node --test, eslint (T-50/T-208)\n\
          \x20 ruby           build+lint bindings/ruby, rake compile, rspec (T-160)\n\
-         \x20 php            build+lint bindings/php, cargo build, phpunit (T-159)\n\
+         \x20 php            build+lint bindings/php, cargo build, phpunit, phpstan (T-159/T-208)\n\
          \x20 capi           regenerate+diff include/dstu_core.h, compile+run the C test harness and examples (T-158)\n\
          \x20 dotnet         dotnet format --verify-no-changes, dotnet test bindings/dotnet (T-52)\n\
          \x20 java           build+lint bindings/java/native, mvn verify bindings/java incl. SpotBugs (T-51/T-208) - needs a JDK 11+ (17 recommended, D-153)\n\
@@ -724,6 +724,18 @@ fn php() -> bool {
         );
         return false;
     }
+    // T-208: PHPStan, phar-based like phpunit.phar above (no Composer, D-144). Doesn't need the
+    // compiled extension loaded (phpstan.neon's bootstrapFiles declare the dstu_core_* surface
+    // itself), so it can run before/independent of the extension-build step below.
+    let phpstan = dir.join("phpstan.phar");
+    if !phpstan.is_file() {
+        eprintln!(
+            "xtask: '{}' not found - install with: curl -sL https://github.com/phpstan/phpstan/releases/latest/download/phpstan.phar -o {}",
+            phpstan.display(),
+            phpstan.display()
+        );
+        return false;
+    }
 
     let build_ok = run("cargo", &["build", "-p", "uacrypt", "--release"], None)
         && run("cargo", &["fmt", "--all", "--", "--check"], Some(dir))
@@ -762,6 +774,18 @@ fn php() -> bool {
         &[
             &format!("-dextension={}", ext_path.display()),
             "phpunit.phar",
+        ],
+        Some(dir),
+    ) && run(
+        "php",
+        &[
+            "phpstan.phar",
+            "analyse",
+            "--no-progress",
+            // Explicit, not left to whatever the ambient php.ini's own memory_limit happens to be -
+            // this dev machine's own default (128M) genuinely wasn't enough (confirmed by a real
+            // "PHPStan process crashed because it reached configured PHP memory limit" failure).
+            "--memory-limit=512M",
         ],
         Some(dir),
     )

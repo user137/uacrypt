@@ -1,0 +1,18 @@
+parameters:
+    level: 5
+    paths:
+        - lib
+        - examples
+        - tests
+    # `bootstrapFiles`, not `stubFiles` - confirmed empirically (T-208) that `stubFiles` only
+    # refines the *types* of symbols PHPStan already discovers some other way (autoloading,
+    # reflection), it does not declare brand-new symbols from scratch. `bootstrapFiles` are real
+    # PHP, actually executed once at analysis start, which is what makes the dstu_core_* functions/
+    # classes below exist for PHPStan's own function_exists()-based discovery at all.
+    bootstrapFiles:
+        - phpstan-stubs/dstu_core.stub.php
+        # `require`-ing the bundled phpunit.phar directly exposes PHPUnit\Framework\TestCase and
+        # friends without invoking its own CLI runner (confirmed empirically: no stray output/exit)
+        # - the same "no Composer" posture D-144 already takes for phpunit.phar's own test-running
+        # use, applied here too rather than adding phpstan/phpstan-phpunit as a Composer dependency.
+        - phpunit.phar

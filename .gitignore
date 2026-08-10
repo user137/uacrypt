@@ -102,6 +102,8 @@
 # test runner), downloaded per-machine/CI rather than vendored.
 /bindings/php/phpunit.phar
 /bindings/php/.phpunit.result.cache
+# PHPStan (T-208): same standalone-PHAR-no-Composer posture as phpunit.phar above.
+/bindings/php/phpstan.phar
 
 # .NET (T-52): standard MSBuild output dirs per project, `dotnet pack`'s own output, plus the
 # local NuGet feed step 4's fresh-install check publishes into (D-116 - build/local-install only,

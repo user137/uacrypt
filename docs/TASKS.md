@@ -3884,7 +3884,8 @@ item they point to is later removed.
       end - `cargo fmt`/`clippy` clean, 87/87 pytest pass, `ruff check .` and `ruff format --check .`
       both green - the same command that would have caught both of this session's CI failures
       before either push.
-- [~] **T-208** **Started 2026-08-10, owner-requested directly after T-207's audit - add a real
+- [x] **T-208** **Closed 2026-08-10, same session, all four languages - owner-requested directly
+      after T-207's audit - add a real
       language-native static analyzer (not just a formatter) to Node.js/PHP/Java/C++'s CI, the four
       bindings T-207 found have none at all, matching what Python (`ruff`)/Ruby (`rubocop`)/every
       Rust-side crate (`clippy`) already get.** Owner directly challenged the asymmetry ("подвійні
@@ -3910,13 +3911,13 @@ item they point to is later removed.
              is napi-rs-generated, not hand-written), only `js/index.js`/`js/secretstream.js` as real
              hand-written source. `eslint.config.js` with `@eslint/js` recommended rules, cheap to add.
              **Done this session** - see below.
-      4. [ ] **PHP / `PHPStan`** - lowest value, highest friction: no `composer.json` exists by
+      4. [x] **PHP / `PHPStan`** - lowest value, highest friction: no `composer.json` exists by
              deliberate design (D-144, Composer never manages compiled binaries) - fetching
              `phpstan.phar` via `curl` mirrors `phpunit.phar`'s own existing pattern correctly, but
              every `dstu_core_*` function is defined by the compiled `ext-php-rs` extension, not PHP
              source, so PHPStan will flag every call as an unknown function without a stub file
              (`.phpstan/stubs/dstu_core.stub.php` or similar) - a real design problem to solve, not a
-             one-line config addition. Scope this properly when picked up, don't rush a stub file.
+             one-line config addition. **Done this session** - see below.
 
       **C++ implementation (phase 1, done)**: `.clang-tidy` at `bindings/cpp/` root, curated check
       list (`bugprone-*`, `performance-*`, `clang-analyzer-*`, explicitly not `*` - advisor flagged
@@ -4027,6 +4028,52 @@ item they point to is later removed.
       here) - `npm run lint` itself (the real T-208 deliverable) was verified directly and
       independently, not through the broken full chain: `cd bindings/nodejs && npm install && npm
       run lint` exits 0.
+
+      **PHP implementation (phase 4, done - T-208 fully closed, all four languages)**: the
+      predicted friction was real, worked through methodically rather than rushed:
+      - `phpstan.phar` fetched via `curl` (`bindings-php.yml`/`xtask php()` both mirror
+        `phpunit.phar`'s own existing pattern - same D-144 "no Composer" posture, added to
+        `.gitignore` the same way).
+      - New `phpstan-stubs/dstu_core.stub.php` declares all 30 real `dstu_core_*` functions plus 5
+        classes (`DstuCoreException`, `DstuCoreKupyna256Hasher`/`512Hasher`,
+        `DstuCoreSecretStreamPushState`/`PullState`) and 7 constants - the compiled `ext-php-rs`
+        extension's entire surface, transcribed from `src/*.rs`'s own real signatures (every
+        `Binary<u8>` param/return is PHP `string`, matching the README's own documented convention),
+        not guessed.
+      - **A real, non-obvious PHPStan mechanism mistake found and fixed before landing**: the
+        obvious-looking `stubFiles` config key does *not* declare brand-new symbols from scratch -
+        confirmed empirically with an isolated repro (a stub function/class in a `stubFiles` entry
+        still reported "not found") - it only refines the *types* of symbols PHPStan already
+        discovers some other way (autoloading, reflection). `bootstrapFiles` (real PHP, actually
+        executed once at analysis start) is the correct mechanism for this exact case - re-verified
+        with the same isolated repro before trusting it, not assumed correct from switching the key
+        name alone.
+      - **PHPUnit's own `PHPUnit\Framework\TestCase` (and everything `tests/*.php` extends/calls)
+        was unknown for the same underlying reason** - no Composer autoload wires phpunit.phar's
+        classes anywhere. Fixed by adding `phpunit.phar` itself to `bootstrapFiles` - `require`-ing
+        the phar directly exposes its classes without invoking its own CLI runner (confirmed
+        empirically: no stray output/exit), avoiding a `phpstan/phpstan-phpunit` Composer dependency
+        this project's own no-Composer posture would reject anyway.
+      - One real gap in the stub file itself, found by the tool rather than assumed complete:
+        `dstu_core_throw_error` (used internally by `lib/DstuCoreSecretStream.php`, see
+        `src/error.rs`'s own doc comment) was missing - added with a real `never` return type (not
+        `void` - it always throws), verified PHP accepts declaring (not calling) a `never`-typed
+        function with an empty body before relying on it.
+      - `phpstan.neon`: `level: 5` (a solid, commonly-recommended baseline - not PHPStan's max
+        strictness, matching every other language's own "curated, not everything" analyzer posture
+        in this task, e.g. `.clang-tidy`'s own curated check list), `paths: [lib, examples, tests]`.
+        Needed `--memory-limit=512M` explicitly - this dev machine's own default `php.ini`
+        `memory_limit` (128M) genuinely wasn't enough, confirmed by a real crash, not assumed as a
+        precaution.
+      - Wired into `xtask php()` (after the `phpunit.phar` run) and `bindings-php.yml`. **Caught and
+        fixed a YAML-editing mistake before committing**: an `Edit` inserted the new PHPStan step in
+        the middle of the existing `phpunit.phar` step instead of after it, producing a duplicate
+        `working-directory:` key - caught by re-reading the diff (`git diff`, not just trusting the
+        edit succeeded) and independently confirmed valid YAML via `python -c "import yaml;
+        yaml.safe_load(...)"` before moving on.
+
+      Verified with a real `cargo xtask php` run, not just each tool run manually: 88/88 phpunit
+      tests pass, PHPStan reports 0 errors, `cargo fmt`/`clippy --all-targets` on `src/` clean.
 - [ ] **T-202** **Not started, owner-requested (2026-08-09) - research spike: is a Strumok-keystream
       + MAC ("Encrypt-then-MAC") authenticated construction a faster-but-still-safe alternative to
       `crypto_secretstream`'s current Kalyna-GCM-based AEAD for `uacrypt encrypt`/`decrypt`?**

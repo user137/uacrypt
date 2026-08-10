@@ -87,3 +87,16 @@ php -d extension=target/debug/dstu_core_php.dll phpunit.phar
 ```
 
 `cargo xtask php` (from the repo root) runs this whole sequence in one command.
+
+## Static analysis
+
+```sh
+curl -sL https://github.com/phpstan/phpstan/releases/latest/download/phpstan.phar -o phpstan.phar
+php phpstan.phar analyse --no-progress --memory-limit=512M
+```
+
+PHPStan, phar-based like `phpunit.phar` above (no Composer, D-144) - doesn't need the compiled
+extension loaded, since `phpstan-stubs/dstu_core.stub.php` (`phpstan.neon`'s `bootstrapFiles`, T-208)
+declares this extension's own `dstu_core_*` functions/classes for it. A real required CI step, and
+part of `cargo xtask php`. Keep the stub file in sync by hand whenever `src/*.rs` gains/changes a
+`#[php_function]`/`#[php_class]` - there is no automated generator for this.

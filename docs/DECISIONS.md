@@ -12669,3 +12669,56 @@ without_destroying_data`/`strumok_crypt_in_place_leaves_no_partial_output_on_rea
 for the three command families that were never at risk (`encrypt`/`decrypt`, `kupyna-digest`,
 `kalyna-block` - all read-whole-buffer-then-write, so nothing to fix, confirmed rather than assumed
 safe).
+
+## D-188: T-208 - a real static analyzer added to Node.js/PHP/Java/C++ (Python/Ruby/every Rust crate already had one), per-language tool choice and one reusable PHPStan mechanism finding
+
+Owner directly challenged an asymmetry T-207's own per-binding CI audit surfaced: Python (`ruff`),
+Ruby (`rubocop`), and every Rust crate in this workspace (`clippy`) get a real static analyzer as a
+required CI gate; Node.js/PHP/Java/C++ had none at all. No prior decision here excluded these four -
+it was a historical gap from scaffolding time (T-49 through T-163), not a considered choice.
+Advisor consult: implement one language at a time in priority order by realistic bug-catching value
+for this repo's actual code shape, not by ecosystem-parity alone, and don't add a style-only tool
+where a bug-pattern detector is the real `clippy` analog.
+
+**Per-language tool choice, with the rejected alternative and why**:
+
+- **C++**: `clang-tidy` (`bugprone-*`/`performance-*`/`clang-analyzer-*`) + `cppcheck`
+  (`warning`/`performance`/`portability`), not a single tool - two independently-engined analyzers
+  catching complementary bug classes. Curated check lists on both, not `--checks=*`/`--enable=all` -
+  an unscoped `clang-tidy *` floods on MinGW system headers, and `cppcheck --enable=all` pulls in
+  `style`/`unusedFunction`, noisy on a header-only library where most of the surface is public API
+  by design. `.clang-tidy`'s `HeaderFilterRegex` scoped to `include/dstu/` only, excluding the
+  `cbindgen`-generated `dstu_core.h` (not hand-fixable here).
+- **Java**: `SpotBugs`, not `Checkstyle` - Checkstyle is style-only and would mostly generate churn
+  on a ~6-class binding; SpotBugs is a bug-pattern detector, the real match for JNI's manual
+  `byte[]` handling risk shape.
+- **Node.js**: `ESLint` (`@eslint/js` recommended only) - the only real candidate for plain CommonJS
+  JS with no TypeScript source to add stricter rules for.
+- **PHP**: `PHPStan` at `level: 5` (a solid common baseline, not max strictness - same "curated, not
+  maximal" posture as the other three languages' own check-list choices), fetched as a standalone
+  `.phar` like `phpunit.phar` already is (D-144's "no Composer" posture extended here, not
+  reconsidered).
+
+**Reusable finding, not specific to this project's own code**: PHPStan's `stubFiles` config key does
+*not* declare brand-new symbols from scratch, contrary to what its name and common usage examples
+suggest - confirmed with an isolated minimal repro (a function/class declared only in a `stubFiles`
+entry still reported "not found"). It only refines the *types* of symbols PHPStan already discovers
+some other way (autoloading, reflection). `bootstrapFiles` (real PHP, actually executed once at
+analysis start, registering symbols the normal `function_exists()`-based way) is the correct
+mechanism for declaring a compiled extension's entire function/class surface from scratch - used for
+both `phpstan-stubs/dstu_core.stub.php` (the `dstu_core_php` extension's own 30 functions/5
+classes/7 constants, transcribed from `bindings/php/src/*.rs`) and, separately, `phpunit.phar`
+itself (`require`-ing the phar directly exposes `PHPUnit\Framework\TestCase` and everything
+`tests/*.php` needs, without invoking the phar's own CLI runner - confirmed empirically, no stray
+output/exit - avoiding a `phpstan/phpstan-phpunit` Composer dependency this project's own
+no-Composer stance would reject anyway).
+
+**Every analyzer wired as a real required gate** (fails the job on any finding, this project's own
+standing "CI must fail on problems, not warn" rule), both in each binding's own CI workflow and in
+`xtask` (`cpp-tidy`/`cpp-cppcheck` as new subcommands since `cpp()`'s own build+test matrix runs on
+all three OSes with no single OS reliably shipping both tools; `java()`/`nodejs()`/`php()` extended
+in place). First real run per language found genuine issues except Node.js (0 findings, matching the
+"modest value" prediction for a two-file binding) - see `docs/TASKS.md` T-208 for the full per-finding
+detail (11 C++ findings, 4 Java findings, 1 missing PHP stub function), all fixed or justifiably
+suppressed with a real `NOLINT`/`@SuppressFBWarnings` reasoning string, none left as unexplained
+noise.
