@@ -1,5 +1,7 @@
 package ua.dstucrypto.dstucore;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -37,6 +39,11 @@ public final class SecretStreamEncryptor extends OutputStream {
     private boolean completed = false;
     private boolean closed = false;
 
+    // A streaming encryptor's entire purpose is writing to the caller's sink repeatedly over its
+    // lifetime (SpotBugs EI_EXPOSE_REP2, T-208) - the same "store the wrapped stream by reference"
+    // shape java.io.FilterOutputStream/DeflaterOutputStream use in the JDK itself. There is no
+    // meaningful defensive copy of an OutputStream to make here.
+    @SuppressFBWarnings(value = "EI_EXPOSE_REP2", justification = "streaming encryptor must retain the caller's sink to write to it, same as java.io.FilterOutputStream")
     public SecretStreamEncryptor(byte[] key, OutputStream out) throws IOException {
         this.out = out;
         this.push = new SecretStreamPushState(key);

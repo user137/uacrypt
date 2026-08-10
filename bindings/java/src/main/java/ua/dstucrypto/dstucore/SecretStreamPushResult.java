@@ -14,11 +14,13 @@ public final class SecretStreamPushResult {
         this.authTag = authTag;
     }
 
+    // Defensive copies (SpotBugs EI_EXPOSE_REP, T-208) - see SecretStreamPullResult's own comment
+    // on this for the reasoning.
     public byte[] ciphertext() {
-        return ciphertext;
+        return ciphertext.clone();
     }
 
     public byte[] authTag() {
-        return authTag;
+        return authTag.clone();
     }
 }

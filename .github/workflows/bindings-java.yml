@@ -55,11 +55,14 @@ jobs:
       # test/node --test case, where per-test names really do appear in the log) - so the check
       # here is on SecretStreamTest's own aggregate "Skipped: 0" rather than grepping for
       # `interopWithUacryptCli` by name the way bindings-dotnet.yml/bindings-nodejs.yml do.
-      - name: mvn test (fail if the interop test was silently skipped)
+      # `verify`, not `test` - SpotBugs's `check` goal (T-208) is bound to the `verify` phase, past
+      # `test` in Maven's default lifecycle, so `mvn test` alone would silently skip it. Still
+      # produces the same surefire reports the interop-skip check below reads.
+      - name: mvn verify (fail if the interop test was silently skipped, or SpotBugs found anything)
         working-directory: bindings/java
         shell: bash
         run: |
-          mvn test
+          mvn verify
           grep -q "Skipped: 0" target/surefire-reports/ua.dstucrypto.dstucore.SecretStreamTest.txt
       # Sanity-check packaging on every OS, every push (not just a release) - a broken
       # native-library resource path would otherwise only be caught at release time. The real

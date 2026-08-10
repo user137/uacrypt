@@ -17,7 +17,10 @@ public final class SecretStreamPullResult {
         return tag;
     }
 
+    // Defensive copy (SpotBugs EI_EXPOSE_REP, T-208): a Java array stays mutable through a `final`
+    // field, so returning `plaintext` directly would let a caller mutate this otherwise-immutable
+    // value object's internal state via the returned reference.
     public byte[] plaintext() {
-        return plaintext;
+        return plaintext.clone();
     }
 }

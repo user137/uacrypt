@@ -3900,12 +3900,12 @@ item they point to is later removed.
              by hand, exactly the shape `bugprone-*` catches real mistakes in; `cppcheck` added
              alongside per a direct owner follow-up request, a second differently-engined analyzer
              for a complementary bug class. **Done this session** - see below.
-      2. [ ] **Java / `SpotBugs`, not Checkstyle** - Checkstyle is style-only (would mostly generate
+      2. [x] **Java / `SpotBugs`, not Checkstyle** - Checkstyle is style-only (would mostly generate
              churn on a ~6-class binding, not the `clippy` analog); SpotBugs is a bug-pattern
              detector, the real match for JNI's manual `byte[]`/`convert_byte_array`/
              `byte_array_from_slice` pairing (`native/src/*.rs` calls it, `Box512.java`/`Sign257.java`
              etc. declare the native methods) - exactly the resource/null-handling shape SpotBugs
-             finds bugs in.
+             finds bugs in. **Done this session** - see below.
       3. [ ] **Node.js / `ESLint`** - modest value: plain JS (no TypeScript source, `native/index.d.ts`
              is napi-rs-generated, not hand-written), only `js/index.js`/`js/secretstream.js` as real
              hand-written source. `eslint.config.js` with `@eslint/js` recommended rules, cheap to add.
@@ -3971,6 +3971,36 @@ item they point to is later removed.
       process-launch quirk (T-181's own finding, `CLAUDE.md`'s Agent-discipline section) rather than
       a real regression - confirmed by re-running the identical binary via the `PowerShell` tool,
       which passed clean, before concluding the C++ changes themselves were correct.
+
+      **Java implementation (phase 2, done)**: `pom.xml`'s new `spotbugs-maven-plugin` (`effort=Max`/
+      `threshold=Medium`, bound to the `verify` phase - `mvn test` alone does not reach it, so
+      `xtask java()`/`bindings-java.yml` both switched from `mvn test` to `mvn verify`, still reading
+      the same surefire reports for the existing interop-skip check). `spotbugs-annotations`
+      (`provided` scope - compile-time-only, not needed on a consumer's own classpath) for
+      `@SuppressFBWarnings` where a finding is a justified false positive rather than a real bug.
+
+      First `mvn verify` run found 4 real `EI_EXPOSE_REP`/`EI_EXPOSE_REP2` findings ("may expose
+      internal representation" - a Java array stays mutable through a `final` field regardless of
+      the modifier, so returning/storing one by reference breaks value-object immutability):
+      - **3x real bugs, fixed with a defensive copy**: `SecretStreamPullResult.plaintext()`,
+        `SecretStreamPushResult.ciphertext()`/`authTag()` all returned their internal `byte[]` field
+        directly - two calls to the same getter returned the *same* mutable array, so a caller
+        mutating one return value would silently corrupt what a later call returns. Fixed with
+        `.clone()` in each getter (each result object is a one-shot value from a single JNI call, not
+        reused internally, so cloning at read-time rather than construction-time is sufficient and
+        avoids a wasted extra copy for the common single-read case).
+      - **1x justified false positive, suppressed not changed**:
+        `SecretStreamEncryptor`'s constructor storing the caller's `OutputStream` by reference
+        (EI_EXPOSE_REP2) - a streaming encryptor's entire purpose is writing to that same sink
+        repeatedly over its lifetime, the identical "hold the wrapped stream by reference" shape
+        `java.io.FilterOutputStream`/`DeflaterOutputStream` use in the JDK itself; there is no
+        meaningful defensive copy of an `OutputStream` to make. Suppressed with
+        `@SuppressFBWarnings(value = "EI_EXPOSE_REP2", justification = "...")`, not a bare
+        annotation - the reasoning is in the source, not just in this task entry.
+
+      Verified with a real `mvn verify` run, not just a compile check: 86/86 JUnit tests pass,
+      SpotBugs reports 0 findings, `cargo xtask java` (Rust `fmt`/`clippy --all-targets` on
+      `native/`, then `mvn verify`) exits 0 end to end.
 - [ ] **T-202** **Not started, owner-requested (2026-08-09) - research spike: is a Strumok-keystream
       + MAC ("Encrypt-then-MAC") authenticated construction a faster-but-still-safe alternative to
       `crypto_secretstream`'s current Kalyna-GCM-based AEAD for `uacrypt encrypt`/`decrypt`?**

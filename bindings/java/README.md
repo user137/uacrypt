@@ -59,10 +59,17 @@ correctness/rejection/misuse suite each surface is verified against (D-64/D-65).
 ```sh
 cargo build -p uacrypt --release   # from the repo root - the SecretStream/uacrypt interop test needs this
 cd bindings/java/native && cargo build --release && cd ..
-mvn test
+mvn verify   # test, then SpotBugs (T-208) - `mvn test` alone skips the latter
 ```
 
 Or via the project's own cross-platform QA entry point: `cargo xtask java` (from the repo root).
+
+## Static analysis
+
+SpotBugs (bug-pattern detection, not a style-only linter - `pom.xml`'s `spotbugs-maven-plugin`,
+`effort=Max`/`threshold=Medium`) is bound to the `verify` phase, so `mvn verify`/`cargo xtask java`
+both gate on it as a real required check, not advisory (T-208). A justified finding is suppressed
+with `@SuppressFBWarnings` and a `justification` string, not silently excluded.
 
 ## Examples
 

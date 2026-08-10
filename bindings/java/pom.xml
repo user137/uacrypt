@@ -30,6 +30,14 @@
       <version>${junit.version}</version>
       <scope>test</scope>
     </dependency>
+    <!-- @SuppressFBWarnings only (T-208) - `provided` since it's a compile-time-only annotation,
+         not something a downstream consumer of the published jar needs on their own classpath. -->
+    <dependency>
+      <groupId>com.github.spotbugs</groupId>
+      <artifactId>spotbugs-annotations</artifactId>
+      <version>4.8.6</version>
+      <scope>provided</scope>
+    </dependency>
   </dependencies>
 
   <build>
@@ -100,6 +108,28 @@
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
         <version>3.2.5</version>
+      </plugin>
+      <!-- T-208: this binding's own static analyzer - a bug-pattern detector (the real `clippy`
+           analog), not a style-only tool like Checkstyle, matched to this binding's actual risk
+           shape (manual JNI byte[] handling in native/src/*.rs's own Rust callers, paired with
+           these Java-side native method declarations). Bound to `verify` so `mvn verify`/
+           `cargo xtask java` both gate on it, not just an opt-in `mvn spotbugs:check`. -->
+      <plugin>
+        <groupId>com.github.spotbugs</groupId>
+        <artifactId>spotbugs-maven-plugin</artifactId>
+        <version>4.8.6.6</version>
+        <configuration>
+          <effort>Max</effort>
+          <threshold>Medium</threshold>
+          <failOnError>true</failOnError>
+        </configuration>
+        <executions>
+          <execution>
+            <goals>
+              <goal>check</goal>
+            </goals>
+          </execution>
+        </executions>
       </plugin>
     </plugins>
   </build>

@@ -94,7 +94,7 @@ fn print_usage() {
          \x20 php            build+lint bindings/php, cargo build, phpunit (T-159)\n\
          \x20 capi           regenerate+diff include/dstu_core.h, compile+run the C test harness and examples (T-158)\n\
          \x20 dotnet         dotnet format --verify-no-changes, dotnet test bindings/dotnet (T-52)\n\
-         \x20 java           build+lint bindings/java/native, mvn test bindings/java (T-51) - needs a JDK 11+ (17 recommended, D-153)\n\
+         \x20 java           build+lint bindings/java/native, mvn verify bindings/java incl. SpotBugs (T-51/T-208) - needs a JDK 11+ (17 recommended, D-153)\n\
          \x20 go             build dstu-core-capi, gofmt -l + go vet + go test bindings/go (T-163)\n\
          \x20 cpp            build dstu-core-capi+uacrypt, cmake configure+build+ctest bindings/cpp (T-53)\n\
          \x20 cpp-tidy       clang-tidy over bindings/cpp's own headers/tests/examples (bugprone-*/performance-*/clang-analyzer-*, T-208)\n\
@@ -1123,7 +1123,9 @@ fn java() -> bool {
         return false;
     }
 
-    run("mvn", &["-q", "test"], Some(Path::new("bindings/java")))
+    // `verify`, not `test` - SpotBugs's `check` goal (T-208) is bound to the `verify` phase, past
+    // `test` in Maven's default lifecycle, so `mvn test` alone would silently skip it.
+    run("mvn", &["-q", "verify"], Some(Path::new("bindings/java")))
 }
 
 /// `bindings/go` (T-163) goes through the C ABI crate (`cgo` over `dstu_core.h`, D-155), same
