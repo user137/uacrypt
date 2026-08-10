@@ -65,6 +65,8 @@ jobs:
       # broken `files` field (D-128's real gotcha) would otherwise only be caught at release time.
       - run: npm pack --dry-run
         working-directory: bindings/nodejs
+      - run: npm run lint
+        working-directory: bindings/nodejs
 
   supply-chain:
     name: cargo deny / audit (bindings/nodejs)

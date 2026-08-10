@@ -3906,9 +3906,10 @@ item they point to is later removed.
              `byte_array_from_slice` pairing (`native/src/*.rs` calls it, `Box512.java`/`Sign257.java`
              etc. declare the native methods) - exactly the resource/null-handling shape SpotBugs
              finds bugs in. **Done this session** - see below.
-      3. [ ] **Node.js / `ESLint`** - modest value: plain JS (no TypeScript source, `native/index.d.ts`
+      3. [x] **Node.js / `ESLint`** - modest value: plain JS (no TypeScript source, `native/index.d.ts`
              is napi-rs-generated, not hand-written), only `js/index.js`/`js/secretstream.js` as real
              hand-written source. `eslint.config.js` with `@eslint/js` recommended rules, cheap to add.
+             **Done this session** - see below.
       4. [ ] **PHP / `PHPStan`** - lowest value, highest friction: no `composer.json` exists by
              deliberate design (D-144, Composer never manages compiled binaries) - fetching
              `phpstan.phar` via `curl` mirrors `phpunit.phar`'s own existing pattern correctly, but
@@ -4001,6 +4002,31 @@ item they point to is later removed.
       Verified with a real `mvn verify` run, not just a compile check: 86/86 JUnit tests pass,
       SpotBugs reports 0 findings, `cargo xtask java` (Rust `fmt`/`clippy --all-targets` on
       `native/`, then `mvn verify`) exits 0 end to end.
+
+      **Node.js implementation (phase 3, done)**: new `eslint.config.js` (flat config, ESLint 10) -
+      `@eslint/js` recommended rules only, the whole scope for plain CommonJS `js/`/`test/`/
+      `examples/` source with no TypeScript to add stricter rules for; `ignores: ['native/**']`
+      excludes napi-rs-generated output. `eslint`/`@eslint/js`/`globals` added as `devDependencies`,
+      new `npm run lint` script, wired into `xtask nodejs()` (after `npm test`) and
+      `bindings-nodejs.yml` (after the packaging sanity check). **First run: 0 findings** - matches
+      the "modest value" prediction going in (only two real hand-written source files), a genuine
+      result, not a sign the tool was misconfigured to be silent.
+
+      **A real, pre-existing, machine-local toolchain issue was found and ruled out as unrelated**,
+      not chased or "fixed" as part of this task: a full `cargo xtask nodejs` run on this dev machine
+      fails at the `napi build` step with `error[E0514]: found crate napi_build compiled by an
+      incompatible version of rustc` - `@napi-rs/cli`'s own build step explicitly shells out to the
+      `stable-x86_64-pc-windows-gnu` toolchain's `cargo.exe` by hardcoded path, bypassing this
+      directory's own `rustup override` (`1.87.0-x86_64-pc-windows-msvc`, `.claude.local.md`'s
+      already-documented 2026-08-02 fix for this exact binding, confirmed still active via
+      `rustup show`) entirely. **Confirmed unrelated to this session's changes via `git stash`**: the
+      identical failure reproduces on a clean `master` checkout with none of this task's edits
+      present. Not investigated further (out of scope for a static-analysis task, and GitHub's
+      hosted `windows-latest` CI runner defaults to MSVC already per D-125/D-130's own reasoning, so
+      this local-only toolchain-resolution quirk does not affect the actual CI gate being added
+      here) - `npm run lint` itself (the real T-208 deliverable) was verified directly and
+      independently, not through the broken full chain: `cd bindings/nodejs && npm install && npm
+      run lint` exits 0.
 - [ ] **T-202** **Not started, owner-requested (2026-08-09) - research spike: is a Strumok-keystream
       + MAC ("Encrypt-then-MAC") authenticated construction a faster-but-still-safe alternative to
       `crypto_secretstream`'s current Kalyna-GCM-based AEAD for `uacrypt encrypt`/`decrypt`?**

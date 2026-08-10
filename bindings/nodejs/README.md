@@ -72,3 +72,9 @@ node --test
 `test/secretstream.test.js`'s live `uacrypt` CLI interop test to actually run instead of skipping.
 `cargo xtask nodejs` (from the repo root) runs this whole sequence, including that build step, in
 one command.
+
+## Static analysis
+
+`npm run lint` (ESLint, `@eslint/js` recommended rules - `eslint.config.js`) over `js/`/`test/`/
+`examples/`, not `native/` (napi-rs-generated, never hand-edited). A real required CI step
+(`bindings-nodejs.yml`), and part of `cargo xtask nodejs` (T-208).

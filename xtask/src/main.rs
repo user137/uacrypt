@@ -89,7 +89,7 @@ fn print_usage() {
          \x20 oracle-java    run the Java/Bouncy Castle oracle harness via Maven\n\
          \x20 oracle-dotnet  run the .NET/Bouncy Castle oracle harness via dotnet run\n\
          \x20 python         build+lint bindings/python, maturin develop, pytest (T-49)\n\
-         \x20 nodejs         build+lint bindings/nodejs, napi build, node --test (T-50)\n\
+         \x20 nodejs         build+lint bindings/nodejs, napi build, node --test, eslint (T-50/T-208)\n\
          \x20 ruby           build+lint bindings/ruby, rake compile, rspec (T-160)\n\
          \x20 php            build+lint bindings/php, cargo build, phpunit (T-159)\n\
          \x20 capi           regenerate+diff include/dstu_core.h, compile+run the C test harness and examples (T-158)\n\
@@ -668,6 +668,7 @@ fn nodejs() -> bool {
         )
         && run("npm", &["run", "build"], Some(dir))
         && run("npm", &["test"], Some(dir))
+        && run("npm", &["run", "lint"], Some(dir))
 }
 
 /// Best-effort like python()/nodejs() above - bindings/ruby's own separate Cargo workspace
