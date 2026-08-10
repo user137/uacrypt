@@ -18,7 +18,9 @@ def test_sign_verify_round_trips() -> None:
 def test_signing_is_deterministic() -> None:
     signing_key = d.sign257_keygen()
     message = b"same message every time"
-    assert d.sign257_message(signing_key, message) == d.sign257_message(signing_key, message)
+    assert d.sign257_message(signing_key, message) == d.sign257_message(
+        signing_key, message
+    )
 
 
 def test_wrong_message_is_rejected() -> None:
