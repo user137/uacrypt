@@ -82,12 +82,29 @@ fn curve257_generator_is_on_curve() {
     assert!(Point::generator().is_on_curve());
 }
 
+// `scalar_multiply`'s 257-iteration constant-time ladder takes minutes per call to interpret
+// under Miri (docs/TASKS.md T-100/T-206), not seconds - excluded from CI's required Miri gate for
+// cost reasons; `cargo test` (required, fast) still covers this every push.
+#[cfg_attr(
+    miri,
+    ignore = "Point::scalar_multiply's 257-iteration ladder is too slow to interpret under Miri - see docs/TASKS.md T-206"
+)]
 #[test]
 fn curve257_generator_times_order_is_infinity() {
     let g = Point::generator();
     assert_eq!(g.scalar_multiply(&curve257::order()), Point::Infinity);
 }
 
+// Unlike `dstu4145_curve.rs`'s m=163 sibling (which splits each `op` into its own filtered test
+// function), this vector's cases are consumed via one match over every `op` at once - so ignoring
+// just the `scalar_multiply` cases would require restructuring the test, not just annotating it.
+// Ignoring the whole function trades away Miri coverage of the cheap add/double/invert/multiply/
+// square cases too, same tradeoff `dstu4145_curve.rs` already accepts for its own scalar_multiply-
+// only tests, `cargo test` still covers every case here on every push.
+#[cfg_attr(
+    miri,
+    ignore = "mixes cheap add/double/invert/multiply/square cases with Point::scalar_multiply's 257-iteration ladder in one match - see docs/TASKS.md T-206"
+)]
 #[test]
 fn curve257_point_arithmetic_matches_bouncy_castle() {
     let json = include_str!("vectors/dstu4145/gf2m257_arith.json");

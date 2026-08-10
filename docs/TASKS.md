@@ -3787,6 +3787,66 @@ item they point to is later removed.
       restore the work. Plain `cargo clippy` (no `--all-targets`) on this workspace is clean. Not
       fixed as part of T-204 - out of scope for a binding-wiring task, and the fix belongs in
       `dstu-core`'s own hazmat benchmark code, not in any binding.
+- [~] **T-206** **Phase 1 done 2026-08-10 (root-cause fix + local Miri verification), phases 2-4
+      not started - `cargo miri test (dstu-core)` is
+      exceeding its 240-min CI budget again (real timeout, not concurrency-group noise - confirmed
+      via `gh run view` on run `31342605874`: job ran the full 240 min, `23:46:32`→`03:46:48`,
+      `conclusion: cancelled`), the third time this exact job has hit its cap (150-min original
+      overrun T-146/D-103 raised it to 240; this is the next one). Owner wants something structural,
+      not a fourth timeout bump - this is the same band-aid twice already.**
+
+      **Root cause found this session, verified by grep, not assumed** (the multi-line
+      `#[cfg_attr(\n    miri,\n    ignore = "..."\n)]` form defeated a naive single-line grep on the
+      first pass - re-ran with a form that actually spans the attribute before trusting a "0 matches"
+      result). `dstu4145_curve.rs`/`dstu4145_gf2m.rs`/`dstu4145_signature.rs`/`crypto_sign.rs` (the
+      `m=163` files) correctly carry `#[cfg_attr(miri, ignore)]` on every `Point::scalar_multiply`-
+      heavy test (T-100/D-59's original fix, still genuinely in place - `rust.yml`'s own comment
+      claiming this was accurate, an earlier single-line grep this session had wrongly cast doubt on
+      it). `crypto_sign257.rs` correctly mirrors `crypto_sign.rs`'s own ignore pattern (12 of 13
+      ignored vs. 13 of 21). **But `dstu4145_curve257.rs` and `dstu4145_signature257.rs` - the direct
+      `m=257` siblings of the two hazmat-level files above, added in T-199 - have zero Miri-ignore
+      attributes between them**, despite `dstu4145_curve257.rs` calling `scalar_multiply` directly
+      (`curve257_generator_times_order_is_infinity`, `curve257_point_arithmetic_matches_bouncy_castle`)
+      and every one of `dstu4145_signature257.rs`'s 6 real tests calling `sign()`/`verify()`, which
+      internally scalar-multiply on the 257-bit curve (slower per call than `m=163`'s 163-iteration
+      ladder, not faster). `dstu4145_gf2m257.rs`'s own `invert()` calls are correctly *not* ignored -
+      confirmed its `FieldElement::invert` already uses the same fast 9-multiply addition-chain form
+      D-109/T-153 gave `gf2m163` (`crates/dstu-core/src/hazmat/dstu4145/gf2m257.rs` lines 106-118),
+      so that file needed no fix and none was assumed.
+
+      **Plan (per advisor consult - measure before restructuring, don't guess the fix's shape)**:
+      1. [x] **Done.** Added `#[cfg_attr(miri, ignore = "...")]` to `dstu4145_curve257.rs`'s 2
+             scalar-multiply tests (one of which - `curve257_point_arithmetic_matches_bouncy_castle` -
+             mixes cheap add/double/invert/multiply/square cases with `scalar_multiply` in one match,
+             unlike `dstu4145_curve.rs`'s m=163 sibling which splits each `op` into its own filtered
+             test function - ignoring the whole function trades away Miri coverage of the cheap cases
+             too, same tradeoff the m=163 file already accepts elsewhere, not a new one; restructuring
+             to split by `op` was out of scope for this fix) and `dstu4145_signature257.rs`'s 6 sign/
+             verify tests. Verified two ways before committing: (a) plain `cargo test` on both files -
+             9/9 pass, 0 ignored (the attribute is Miri-gated, inert otherwise); (b) a real scoped
+             `cargo +nightly miri test -p dstu-core --test dstu4145_curve257 --test
+             dstu4145_signature257` (`MIRIFLAGS=-Zmiri-disable-isolation PROPTEST_CASES=1`, CI's own
+             invocation) - dropped from an unbounded/hours-scale run to **2.01s** and **0.52s**
+             respectively, all 8 newly-annotated tests showing `ignored, <reason>`, the 1 cheap test
+             left in `dstu4145_curve257.rs` (`curve257_generator_is_on_curve`, no scalar_multiply)
+             still actually ran under Miri, not skipped by accident.
+      2. [ ] Push, then verify via `gh run view` (not a green badge, not an assumption) that
+             `cargo miri test (dstu-core)` completes well under 240 min on the next real run - record
+             the actual duration next to D-59/D-103's own numbers for future margin comparisons.
+      3. [ ] **Only if step 2 still shows a thin/exceeded margin**: this is where "something
+             substantial" per the owner's own framing applies - split `dstu-core`'s Miri job into a
+             bucketed matrix (a handful of legs grouping heavy EC/DSTU-9041 files vs. everything else,
+             not a 43-way per-test-file matrix - advisor flagged that each matrix leg pays its own
+             `cargo +nightly miri setup` sysroot-build tax from cold unless cached, which could
+             dominate wall time for the ~30 fast `kalyna_*`/`kupyna_*`/`strumok` files and make a
+             maximally-fine split a net loss, not a win) instead of raising `timeout-minutes` a
+             fourth time. Also confirm any such split still reaches `--lib`'s own `#[cfg(test)]`
+             module (a separate binary from every `tests/*.rs` file, easy to silently drop from a
+             matrix built only around `--test <name>` legs).
+      4. [ ] Update `rust.yml`'s own Miri-job comment once the fix lands, so it documents the m=257
+             files by name alongside the m=163 ones it already names - the exact gap that let this go
+             unnoticed through two timeout cycles was a parallel-construction miss the comment had no
+             way to flag for a file that didn't exist when it was written.
 - [ ] **T-202** **Not started, owner-requested (2026-08-09) - research spike: is a Strumok-keystream
       + MAC ("Encrypt-then-MAC") authenticated construction a faster-but-still-safe alternative to
       `crypto_secretstream`'s current Kalyna-GCM-based AEAD for `uacrypt encrypt`/`decrypt`?**

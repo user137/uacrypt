@@ -84,6 +84,14 @@ fn field_val<'a>(obj: &'a str, key: &str) -> &'a str {
     extract_all(obj, key)[0]
 }
 
+// `sign`/`verify` each scalar-multiply on the 257-bit curve internally - as slow to interpret
+// under Miri as `dstu4145_curve257.rs`'s own directly-annotated tests (docs/TASKS.md T-206, the
+// m=257 sibling gap T-100/D-59's original fix predates). `cargo test` (required, fast) still
+// covers every test in this file on every push.
+#[cfg_attr(
+    miri,
+    ignore = "sign/verify's 257-iteration scalar_multiply ladder is too slow to interpret under Miri - see docs/TASKS.md T-206"
+)]
 #[test]
 fn signature257_sign_matches_bouncy_castle() {
     let json = include_str!("vectors/dstu4145/gf2m257_arith.json");
@@ -114,6 +122,10 @@ fn signature257_sign_matches_bouncy_castle() {
     );
 }
 
+#[cfg_attr(
+    miri,
+    ignore = "sign/verify's 257-iteration scalar_multiply ladder is too slow to interpret under Miri - see docs/TASKS.md T-206"
+)]
 #[test]
 fn signature257_verify_accepts_bouncy_castle_signatures() {
     let json = include_str!("vectors/dstu4145/gf2m257_arith.json");
@@ -136,6 +148,10 @@ fn signature257_verify_accepts_bouncy_castle_signatures() {
     }
 }
 
+#[cfg_attr(
+    miri,
+    ignore = "sign/verify's 257-iteration scalar_multiply ladder is too slow to interpret under Miri - see docs/TASKS.md T-206"
+)]
 #[test]
 fn signature257_verify_rejects_tampered_signature() {
     let json = include_str!("vectors/dstu4145/gf2m257_arith.json");
@@ -154,6 +170,10 @@ fn signature257_verify_rejects_tampered_signature() {
     assert!(!verify(&hash, &r, &s, q, g));
 }
 
+#[cfg_attr(
+    miri,
+    ignore = "sign/verify's 257-iteration scalar_multiply ladder is too slow to interpret under Miri - see docs/TASKS.md T-206"
+)]
 #[test]
 fn signature257_verify_rejects_wrong_key() {
     let json = include_str!("vectors/dstu4145/gf2m257_arith.json");
@@ -174,6 +194,10 @@ fn signature257_verify_rejects_wrong_key() {
     assert!(!verify(&hash, &r, &s, q, g));
 }
 
+#[cfg_attr(
+    miri,
+    ignore = "sign/verify's 257-iteration scalar_multiply ladder is too slow to interpret under Miri - see docs/TASKS.md T-206"
+)]
 #[test]
 fn signature257_sign_then_verify_round_trip_for_random_keys() {
     // Independent of the BC vectors: derive Q = -d*G from a locally-chosen d (mirroring
@@ -206,6 +230,10 @@ fn signature257_sign_then_verify_round_trip_for_random_keys() {
 /// Since `curve257::order()` is odd (a prime group order), `n * (order-2 point) == the point
 /// itself`, never `Infinity` - so the general check must reject it, for any `r`/`s` at all (chosen
 /// arbitrarily below, not a constructed forgery - the point is rejected before `r`/`s` matter).
+#[cfg_attr(
+    miri,
+    ignore = "verify's general subgroup check scalar-multiplies the constructed key by curve257::order() - see docs/TASKS.md T-206"
+)]
 #[test]
 fn signature257_verify_rejects_order_two_small_subgroup_key() {
     let json = include_str!("vectors/dstu4145/gf2m257_arith.json");
