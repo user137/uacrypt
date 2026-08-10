@@ -3847,6 +3847,43 @@ item they point to is later removed.
              files by name alongside the m=163 ones it already names - the exact gap that let this go
              unnoticed through two timeout cycles was a parallel-construction miss the comment had no
              way to flag for a file that didn't exist when it was written.
+- [x] **T-207** **Done 2026-08-10, owner-requested - `cargo xtask python` was missing both `ruff
+      check` and `ruff format --check`, even though CI's `bindings-python.yml` runs both as
+      required steps.** Found the hard way, twice: the T-204/T-206 push failed CI's
+      `bindings-python` job on `ruff check .` (import-sort), fixed and pushed without locally
+      running the second check too; the very next push failed again on `ruff format --check .`
+      (line length) for the same reason - no single local command covered both, so each fix was
+      verified piecemeal instead of against the real CI surface. Owner asked directly whether every
+      binding's own language-native linter is mirrored in `xtask` the same way, to close this class
+      of gap for good rather than just patching Python.
+
+      **Audited all eight bindings' CI workflows against their own `xtask` function** before
+      changing anything, not assumed:
+      - **Ruby** (`bundle exec rubocop`) and **.NET** (`dotnet format --verify-no-changes`, both
+        `.csproj`s) - already correctly mirrored in `xtask ruby()`/`dotnet()`. No gap.
+      - **Go** - `bindings-go.yml` calls `cargo xtask go` directly as its own build/test step (not a
+        separate lint step CI runs independently) - structurally cannot drift from `xtask`.
+      - **Node.js/PHP/Java/C++** - confirmed (via each binding's own `package.json`/(missing)
+        `composer.json`/`pom.xml`/CI workflow) that **no language-native linter exists in CI for any
+        of these four today** - no eslint/prettier config anywhere under `bindings/nodejs` (not even
+        listed in `package.json`'s `devDependencies`), no `composer.json` for PHP, no checkstyle/
+        spotbugs/PMD plugin in Java's `pom.xml`, no `.clang-tidy` for C++. Each of these four already
+        gets its Rust-glue-layer `cargo fmt --check`/`clippy --all-targets -D warnings` from `xtask`,
+        which *is* the entirety of what CI checks for them beyond build/test - nothing to mirror
+        that isn't already there. **Not the same finding as Python's real gap** - a language having
+        no dedicated linter in CI at all is a separate, bigger scope decision (whether to add one)
+        the owner didn't ask for here; flagging it as an observation, not treating it as this task's
+        own gap.
+      - **Python** - the one real gap, fixed: `xtask python()` now `require()`s `ruff` (same pattern
+        as its existing `maturin`/`pytest` checks) and runs `ruff check .` then
+        `ruff format --check .` after `pytest -ra`, matching `bindings-python.yml`'s own step order
+        exactly.
+
+      Verified with a real full run, not just a compile check: `cargo xtask python` (venv activated,
+      `bindings/python/.venv`, per `.claude.local.md`'s documented setup) now runs cleanly end to
+      end - `cargo fmt`/`clippy` clean, 87/87 pytest pass, `ruff check .` and `ruff format --check .`
+      both green - the same command that would have caught both of this session's CI failures
+      before either push.
 - [ ] **T-202** **Not started, owner-requested (2026-08-09) - research spike: is a Strumok-keystream
       + MAC ("Encrypt-then-MAC") authenticated construction a faster-but-still-safe alternative to
       `crypto_secretstream`'s current Kalyna-GCM-based AEAD for `uacrypt encrypt`/`decrypt`?**

@@ -620,6 +620,16 @@ fn python() -> bool {
     ) {
         return false;
     }
+    // CI's own bindings-python.yml runs both of these as required, separate steps (found missing
+    // here after a real push failed on each in turn, T-207) - `ruff check` (import sort/lint) and
+    // `ruff format --check` (line-length/formatting) catch different things, so both are required,
+    // mirroring CI's own two-step split rather than merging them into one call.
+    if !require(
+        "ruff",
+        "pip install ruff (see bindings/python/pyproject.toml's dev group)",
+    ) {
+        return false;
+    }
     let dir = Path::new("bindings/python");
     run("cargo", &["build", "-p", "uacrypt", "--release"], None)
         && run("cargo", &["fmt", "--all", "--", "--check"], Some(dir))
@@ -630,6 +640,8 @@ fn python() -> bool {
         )
         && run("maturin", &["develop", "--release"], Some(dir))
         && run("pytest", &["-ra"], Some(dir))
+        && run("ruff", &["check", "."], Some(dir))
+        && run("ruff", &["format", "--check", "."], Some(dir))
 }
 
 /// Best-effort like python() above - bindings/nodejs's own separate Cargo workspace (D-119) isn't
