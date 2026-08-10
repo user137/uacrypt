@@ -45,6 +45,8 @@ fn main() -> ExitCode {
         "java" => java(),
         "go" => go(),
         "cpp" => cpp(),
+        "cpp-tidy" => cpp_clang_tidy(),
+        "cpp-cppcheck" => cpp_cppcheck(),
         "qemu-stm32" => qemu_stm32(),
         "streaming-bounded" => streaming_bounded(),
         "ci" => ci(),
@@ -95,6 +97,8 @@ fn print_usage() {
          \x20 java           build+lint bindings/java/native, mvn test bindings/java (T-51) - needs a JDK 11+ (17 recommended, D-153)\n\
          \x20 go             build dstu-core-capi, gofmt -l + go vet + go test bindings/go (T-163)\n\
          \x20 cpp            build dstu-core-capi+uacrypt, cmake configure+build+ctest bindings/cpp (T-53)\n\
+         \x20 cpp-tidy       clang-tidy over bindings/cpp's own headers/tests/examples (bugprone-*/performance-*/clang-analyzer-*, T-208)\n\
+         \x20 cpp-cppcheck   cppcheck over bindings/cpp (warning/performance/portability, complementary to cpp-tidy, T-208)\n\
          \x20 qemu-stm32     run firmware/qemu-stm32-smoketest under QEMU's netduinoplus2 (Cortex-M4F), no real hardware needed (T-170)\n\
          \x20 streaming-bounded  release-build proof that encrypt/decrypt/kupyna-digest/strumok-crypt stay memory-bounded on a large file (D-42, T-200) - #[ignore]d by default in a plain `cargo test` since debug-profile crypto over a large file is too slow for that"
     );
@@ -1228,6 +1232,134 @@ fn cpp() -> bool {
     )
 }
 
+/// Shared by `cpp_clang_tidy()`/`cpp_cppcheck()` below (T-208): builds `dstu-core-capi`, then
+/// configures a dedicated `build-tidy` CMake tree with `CMAKE_EXPORT_COMPILE_COMMANDS=ON` so both
+/// analyzers get the exact include paths/flags CMake used (`compile_commands.json`) instead of
+/// each guessing them separately. Deliberately a separate tree from `cpp()`'s own `build` - keeps
+/// a plain `cargo xtask cpp` untouched by either analyzer's config.
+fn cpp_configure_compile_commands(dir: &Path) -> bool {
+    if !require(
+        "cmake",
+        "https://cmake.org/download/ (or your OS package manager)",
+    ) {
+        return false;
+    }
+    if !run(
+        "cargo",
+        &["build", "-p", "dstu-core-capi", "--release"],
+        None,
+    ) {
+        return false;
+    }
+    run(
+        "cmake",
+        &[
+            "-S",
+            ".",
+            "-B",
+            "build-tidy",
+            "-DCMAKE_BUILD_TYPE=Release",
+            "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+        ],
+        Some(dir),
+    )
+}
+
+/// Every real translation unit in `bindings/cpp` - `dstu_core_cpp` itself is header-only
+/// (INTERFACE library, no .cpp of its own), so its headers are only reachable through the .cpp
+/// files that #include them. Shared by `cpp_clang_tidy()`/`cpp_cppcheck()`.
+fn cpp_sources(dir: &Path) -> Option<Vec<String>> {
+    let mut sources: Vec<String> = vec!["tests/test_dstu.cpp".to_string()];
+    match std::fs::read_dir(dir.join("examples")) {
+        Ok(entries) => {
+            let mut examples: Vec<String> = entries
+                .filter_map(|e| e.ok())
+                .map(|e| e.path())
+                .filter(|p| p.extension().is_some_and(|ext| ext == "cpp"))
+                .map(|p| format!("examples/{}", p.file_name().unwrap().to_string_lossy()))
+                .collect();
+            examples.sort();
+            sources.extend(examples);
+            Some(sources)
+        }
+        Err(e) => {
+            eprintln!("xtask: couldn't list bindings/cpp/examples: {e}");
+            None
+        }
+    }
+}
+
+/// T-208: `bindings/cpp`'s own static analyzer - this binding's hand-written RAII (`unique_ptr`
+/// custom deleters, `friend class` pairings mirrored by hand across sibling headers) had no
+/// language-native linter at all before this, unlike Python/Ruby/every Rust crate in this
+/// workspace. Best-effort locally like miri/fuzz (`require()` skips cleanly if `clang-tidy` isn't
+/// installed) - CI's own dedicated job (`bindings-cpp.yml`) installs `clang-tidy` explicitly, so
+/// there this same function is a real, required gate, not advisory. Deliberately its own function/
+/// CI job rather than folded into `cpp()` above: `cpp()`'s build+test matrix runs on all three OSes
+/// with each OS's own default compiler (MSVC/gcc/Xcode Clang), none of which reliably ships
+/// `clang-tidy` - a single Linux leg with `clang-tidy` installed via `apt` is the pragmatic scope,
+/// not a three-OS clang-tidy matrix this project doesn't otherwise need.
+fn cpp_clang_tidy() -> bool {
+    if !require(
+        "clang-tidy",
+        "apt install clang-tidy (Debian/Ubuntu) or your OS package manager",
+    ) {
+        return false;
+    }
+    let dir = Path::new("bindings/cpp");
+    if !cpp_configure_compile_commands(dir) {
+        return false;
+    }
+    let Some(sources) = cpp_sources(dir) else {
+        return false;
+    };
+
+    let mut args = vec!["-p".to_string(), "build-tidy".to_string()];
+    args.extend(sources);
+    run(
+        "clang-tidy",
+        &args.iter().map(String::as_str).collect::<Vec<_>>(),
+        Some(dir),
+    )
+}
+
+/// T-208: `cppcheck` alongside `clang-tidy` above - a second, differently-engined analyzer (not
+/// libclang-based) catching a complementary bug class (uninitialized values, resource leaks, null
+/// derefs) rather than duplicating clang-tidy's own bugprone/performance checks. Curated
+/// `warning`/`performance`/`portability` categories (not `--enable=all`, which pulls in
+/// `style`/`unusedFunction` - noisy on a header-only library where most of the surface is public
+/// API by design, not dead code) - same "curated, not everything" posture `.clang-tidy` already
+/// takes, for the same reason (avoid drowning real findings in triage noise).
+fn cpp_cppcheck() -> bool {
+    if !require(
+        "cppcheck",
+        "apt install cppcheck (Debian/Ubuntu) or your OS package manager",
+    ) {
+        return false;
+    }
+    let dir = Path::new("bindings/cpp");
+    if !cpp_configure_compile_commands(dir) {
+        return false;
+    }
+    if cpp_sources(dir).is_none() {
+        return false;
+    }
+
+    run(
+        "cppcheck",
+        &[
+            "--project=build-tidy/compile_commands.json",
+            "--enable=warning,performance,portability",
+            "--inline-suppr",
+            "--suppress=missingIncludeSystem",
+            "-i",
+            "build-tidy",
+            "--error-exitcode=1",
+        ],
+        Some(dir),
+    )
+}
+
 /// `firmware/qemu-stm32-smoketest` is its own Cargo workspace (own `.cargo/config.toml` pinning
 /// `target = thumbv7em-none-eabihf` and a QEMU runner) - T-170, docs/TASKS.md. `cargo run
 /// --release`'s exit code IS the check: the firmware calls ARM semihosting's `SYS_EXIT` with
@@ -1334,6 +1466,8 @@ fn ci() -> bool {
         ruby,
         php,
         capi,
+        cpp_clang_tidy,
+        cpp_cppcheck,
         qemu_stm32,
         streaming_bounded,
     ] {

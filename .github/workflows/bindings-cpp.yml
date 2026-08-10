@@ -35,3 +35,17 @@ jobs:
       # (MSVC on windows-latest, gcc on ubuntu-latest, Xcode Clang on macos-latest) - same
       # "already there, no extra install step" posture rust.yml's own `capi` job relies on.
       - run: cargo xtask cpp
+
+  static-analysis:
+    name: clang-tidy + cppcheck
+    # Ubuntu-only (T-208): neither analyzer reliably ships on windows-latest/macos-latest's default
+    # toolchains the way clang-tidy does via a plain `apt-get install`, and a three-OS analyzer
+    # matrix isn't otherwise needed for a header-only binding with no OS-specific code paths - same
+    # scope decision the `test` job's own build+test matrix doesn't need to make for these tools.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: sudo apt-get update && sudo apt-get install -y clang-tidy cppcheck
+      - run: cargo xtask cpp-tidy
+      - run: cargo xtask cpp-cppcheck

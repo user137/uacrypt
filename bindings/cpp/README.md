@@ -70,6 +70,15 @@ ctest --test-dir build --output-on-failure -C Release
 Or via the project's own cross-platform QA entry point: `cargo xtask cpp` (from the repo root) —
 builds `dstu-core-capi`+`uacrypt`, configures, builds, and runs `ctest`.
 
+## Static analysis
+
+`cargo xtask cpp-tidy` (clang-tidy: `bugprone-*`/`performance-*`/`clang-analyzer-*`, see
+`.clang-tidy`) and `cargo xtask cpp-cppcheck` (cppcheck: `warning`/`performance`/`portability`) —
+two independently-engined analyzers over this binding's own headers/tests/examples, a real required
+CI gate (`bindings-cpp.yml`'s `static-analysis` job, Linux-only), not advisory (T-208). Needs
+`clang-tidy`/`cppcheck` on `PATH` (`apt install clang-tidy cppcheck` on Debian/Ubuntu); both
+commands skip cleanly with an install hint if the tool isn't found.
+
 ## Examples
 
 ```sh

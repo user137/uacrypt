@@ -1,0 +1,17 @@
+# T-208: curated check list, not `*` - an unscoped `*` floods on system/MinGW headers and this
+# project's own header-only RAII style, costing far more triage time than it returns in real
+# findings (advisor guidance, docs/TASKS.md T-208). `bugprone-*`/`performance-*`/`clang-analyzer-*`
+# are the three families most likely to catch a real mistake in this binding's hand-written
+# unique_ptr-with-custom-deleter/friend-class pairing (box.hpp/box512.hpp/sign.hpp/sign257.hpp
+# etc.), mirrored by hand across sibling headers the same way the rest of this binding set is.
+Checks: >
+  -*,
+  bugprone-*,
+  performance-*,
+  clang-analyzer-*
+
+WarningsAsErrors: '*'
+
+# Only this binding's own hand-written headers - not crates/dstu-core-capi/include/dstu_core.h
+# (cbindgen-generated, not hand-fixable here) and not system/toolchain headers.
+HeaderFilterRegex: 'bindings/cpp/include/dstu/.*'

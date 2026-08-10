@@ -123,3 +123,6 @@
 # C++ (T-53): header-only, no Rust glue of its own - just CMake's own out-of-tree build directory
 # (compiled test/example binaries, copied-in dstu_core_capi shared library, CMakeCache.txt).
 /bindings/cpp/build/
+# Separate CMake tree cpp-tidy/cpp-cppcheck configure into for their own compile_commands.json
+# (T-208) - kept apart from /build above so a plain `cargo xtask cpp` never touches it.
+/bindings/cpp/build-tidy/

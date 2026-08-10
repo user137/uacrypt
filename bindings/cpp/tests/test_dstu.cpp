@@ -279,10 +279,17 @@ void TestSecretstream() {
 // pair before parsing rather than treating it as delimiting the executable path - wrapping the
 // whole command in one more pair of quotes is the standard workaround. No-op on POSIX (sh has no
 // such quirk).
+// Every `cmd` this is called with is built from a compile-time binary path (DSTU_UACRYPT_EXE) and
+// this test's own temp-directory file paths, never external/untrusted input - the real compiled
+// uacrypt.exe is the thing under test here (D-64/D-65 category 1's cross-binary interop check),
+// and there's no portable process-spawning alternative in the standard library that would avoid
+// this shell-out.
 int RunCommand(const std::string &cmd) {
 #ifdef _WIN32
+  // NOLINTNEXTLINE(bugprone-command-processor)
   return std::system(("\"" + cmd + "\"").c_str());
 #else
+  // NOLINTNEXTLINE(bugprone-command-processor)
   return std::system(cmd.c_str());
 #endif
 }
@@ -299,7 +306,6 @@ void TestUacryptInterop() {
   fs::path cppEncPath = dir / "cpp.enc";
   fs::path cliEncPath = dir / "cli.enc";
   fs::path cliDecPath = dir / "cli.dec";
-  fs::path cppDecPath = dir / "cpp.dec";
 
   auto key = dstu::SecretstreamKey::Generate();
   auto keyBytes = key.Bytes();
@@ -459,24 +465,33 @@ void TestPwhash() {
 
 }  // namespace
 
+// bugprone-exception-escape flags std::cout/cerr use reachable from main (ostream::operator<<'s
+// own theoretical ios_base::failure), unrelated to the dstu::DstuException catch below - same
+// false-positive shape as every example's own main(), see bindings/cpp/examples/box.cpp's comment.
+// NOLINTNEXTLINE(bugprone-exception-escape)
 int main() {
-  TestSelftest();
-  TestRandombytesAndMemzero();
-  TestAuth();
-  TestKdf();
-  TestGenerichashOfficialVector();
-  TestGenerichash();
-  TestSecretbox();
-  TestBox();
-  TestBox512();
-  TestSecretstream();
+  try {
+    TestSelftest();
+    TestRandombytesAndMemzero();
+    TestAuth();
+    TestKdf();
+    TestGenerichashOfficialVector();
+    TestGenerichash();
+    TestSecretbox();
+    TestBox();
+    TestBox512();
+    TestSecretstream();
 #ifdef DSTU_UACRYPT_EXE
-  TestUacryptInterop();
+    TestUacryptInterop();
 #endif
-  TestSign();
-  TestSign257();
-  TestStream();
-  TestPwhash();
+    TestSign();
+    TestSign257();
+    TestStream();
+    TestPwhash();
+  } catch (const dstu::DstuException &e) {
+    std::fprintf(stderr, "uncaught dstu::DstuException: %s\n", e.what());
+    return 1;
+  }
 
   if (failures == 0) {
     std::printf("all dstu-core C++ binding tests passed\n");

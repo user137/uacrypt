@@ -56,11 +56,20 @@ void DemoStream() {
 }
 }  // namespace
 
+// bugprone-exception-escape flags every std::cout/cerr use in main (ostream::operator<<'s own
+// theoretical ios_base::failure, unrelated to this example's dstu::DstuException catch below,
+// same as box.cpp's own comment on this) - inherent to any example that prints anything.
+// NOLINTNEXTLINE(bugprone-exception-escape)
 int main() {
-  DemoRandombytes();
-  DemoAuth();
-  DemoKdf();
-  DemoGenerichash();
-  DemoStream();
-  return 0;
+  try {
+    DemoRandombytes();
+    DemoAuth();
+    DemoKdf();
+    DemoGenerichash();
+    DemoStream();
+    return 0;
+  } catch (const dstu::DstuException &e) {
+    std::cerr << "error: " << e.what() << "\n";
+    return 1;
+  }
 }

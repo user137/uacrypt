@@ -3884,6 +3884,93 @@ item they point to is later removed.
       end - `cargo fmt`/`clippy` clean, 87/87 pytest pass, `ruff check .` and `ruff format --check .`
       both green - the same command that would have caught both of this session's CI failures
       before either push.
+- [~] **T-208** **Started 2026-08-10, owner-requested directly after T-207's audit - add a real
+      language-native static analyzer (not just a formatter) to Node.js/PHP/Java/C++'s CI, the four
+      bindings T-207 found have none at all, matching what Python (`ruff`)/Ruby (`rubocop`)/every
+      Rust-side crate (`clippy`) already get.** Owner directly challenged the asymmetry ("подвійні
+      стандарти") - correct to challenge: there is no `docs/DECISIONS.md` entry excluding these four
+      from static analysis, it is a real historical gap (these bindings never had one added at
+      scaffolding time, T-49-T-53/T-158-T-163), not a considered decision.
+
+      **Per advisor consult: implement in priority order, one language at a time, not all four in
+      one pass** - ranked by realistic bug-catching value for *this repo's actual code shape*, not
+      by ecosystem-parity alone:
+      1. [x] **C++ / `clang-tidy` + `cppcheck`** - highest value: `bindings/cpp` is hand-written RAII
+             (`unique_ptr` custom deleters, `friend class` pairings) mirrored across sibling headers
+             by hand, exactly the shape `bugprone-*` catches real mistakes in; `cppcheck` added
+             alongside per a direct owner follow-up request, a second differently-engined analyzer
+             for a complementary bug class. **Done this session** - see below.
+      2. [ ] **Java / `SpotBugs`, not Checkstyle** - Checkstyle is style-only (would mostly generate
+             churn on a ~6-class binding, not the `clippy` analog); SpotBugs is a bug-pattern
+             detector, the real match for JNI's manual `byte[]`/`convert_byte_array`/
+             `byte_array_from_slice` pairing (`native/src/*.rs` calls it, `Box512.java`/`Sign257.java`
+             etc. declare the native methods) - exactly the resource/null-handling shape SpotBugs
+             finds bugs in.
+      3. [ ] **Node.js / `ESLint`** - modest value: plain JS (no TypeScript source, `native/index.d.ts`
+             is napi-rs-generated, not hand-written), only `js/index.js`/`js/secretstream.js` as real
+             hand-written source. `eslint.config.js` with `@eslint/js` recommended rules, cheap to add.
+      4. [ ] **PHP / `PHPStan`** - lowest value, highest friction: no `composer.json` exists by
+             deliberate design (D-144, Composer never manages compiled binaries) - fetching
+             `phpstan.phar` via `curl` mirrors `phpunit.phar`'s own existing pattern correctly, but
+             every `dstu_core_*` function is defined by the compiled `ext-php-rs` extension, not PHP
+             source, so PHPStan will flag every call as an unknown function without a stub file
+             (`.phpstan/stubs/dstu_core.stub.php` or similar) - a real design problem to solve, not a
+             one-line config addition. Scope this properly when picked up, don't rush a stub file.
+
+      **C++ implementation (phase 1, done)**: `.clang-tidy` at `bindings/cpp/` root, curated check
+      list (`bugprone-*`, `performance-*`, `clang-analyzer-*`, explicitly not `*` - advisor flagged
+      that an unscoped `*` floods on MinGW system headers and this project's own header-only style,
+      costing the whole turn to triage noise instead of real findings), `HeaderFilterRegex` scoped to
+      `include/dstu/` only (excludes the `cbindgen`-generated `dstu_core.h` - not hand-fixable, and
+      system headers). New `xtask` functions `cpp-tidy`/`cpp-cppcheck` (owner asked for `cppcheck`
+      too, right after seeing the first tool's real findings - a second, differently-engined analyzer
+      catching a complementary bug class, not a duplicate of clang-tidy's own checks), both wired as
+      a real required CI job (`bindings-cpp.yml`'s new `static-analysis` job, Ubuntu-only - neither
+      tool reliably ships on the `test` job's other two OSes' default toolchains, and a three-OS
+      analyzer matrix isn't otherwise needed for a header-only binding with no OS-specific code
+      paths) - fails the job on any finding, matching this project's own "CI must fail on problems,
+      not warn" standard, not an advisory-only run.
+
+      **Real findings fixed this session, not left as noise** - `cargo xtask cpp-tidy` caught 11 real
+      issues on its first run against every example plus `tests/test_dstu.cpp`:
+      - **9x `bugprone-exception-escape` on every example's/test's `main()`** - every `dstu::*`
+        operation that can throw (`Generate()`/`Seal()`/`Open()`/etc., via `CheckStatus`) was called
+        directly in `main()` with no top-level catch, so an unexpected failure would `std::terminate`
+        with no clean message instead of the "error: <what>" a caller should see. Fixed by wrapping
+        each `main()` body in `try { ... } catch (const dstu::DstuException &e) { Die(e.what()); }`
+        (or the local equivalent). **A residual, structurally-inherent instance of the same warning
+        remains even after that fix** - `std::cout`/`std::cerr`'s own `operator<<` can theoretically
+        throw `std::ios_base::failure` (confirmed with an isolated repro this session, not assumed -
+        clang-tidy's trace pointed at this, not at the `dstu::DstuException` path, once the real
+        catch was in place), which no example's `try`/`catch` catches since it isn't a
+        `dstu::DstuException` and isn't a realistic failure mode for a fixed-destination stream -
+        suppressed with `// NOLINTNEXTLINE(bugprone-exception-escape)` directly on each `main()`,
+        with a comment citing this exact finding rather than a bare suppression.
+      - **1x `bugprone-command-processor`** (`test_dstu.cpp`'s `RunCommand`, the real `uacrypt.exe`
+        interop test's `std::system()` call) - genuinely safe here (every `cmd` is built from a
+        compile-time binary path plus this test's own temp-directory paths, never external input,
+        and there's no portable process-spawning alternative in the standard library) - suppressed
+        with a `NOLINTNEXTLINE` placed on the actual `std::system()` call itself (both `#ifdef`
+        branches), not on the enclosing function - the first attempt at this suppression put the
+        comment above the function signature instead of the throwing line, which doesn't suppress
+        anything; caught by re-running `cargo xtask cpp-tidy` after the "fix" and seeing the same
+        finding still present, not assumed fixed from reading the diff alone.
+      - **1x `bugprone-unused-local-non-trivial-variable`** (`test_dstu.cpp:302`'s `cppDecPath`) - a
+        real dead local, declared alongside four other path variables but never read anywhere in
+        `TestUacryptInterop()` (the C++-decrypts-uacrypt.exe's-output direction reads the plaintext
+        in-memory via `SecretStreamDecryptor` directly, never via a written-out `cpp.dec` file) -
+        removed, not suppressed, since it was genuinely unused rather than a false positive.
+
+      Verified two ways before committing, not assumed: `cargo xtask cpp-tidy`/`cargo xtask
+      cpp-cppcheck` both clean (0 findings) after the fixes, and a full `cargo xtask cpp` (build +
+      `ctest` + all 8 examples run manually via PowerShell, output inspected) still passes - the
+      `main()` try/catch rewrite touched every example's control flow, not just its lint status.
+      **PowerShell, not Git Bash, for the manual run**: `ctest`/the example `.exe`s reported a bogus
+      `STATUS_ENTRYPOINT_NOT_FOUND`ish failure (exit `0xc0000139`) launched directly from Git Bash
+      immediately after this change, matching an already-documented, unrelated MinGW-binary/Git-Bash
+      process-launch quirk (T-181's own finding, `CLAUDE.md`'s Agent-discipline section) rather than
+      a real regression - confirmed by re-running the identical binary via the `PowerShell` tool,
+      which passed clean, before concluding the C++ changes themselves were correct.
 - [ ] **T-202** **Not started, owner-requested (2026-08-09) - research spike: is a Strumok-keystream
       + MAC ("Encrypt-then-MAC") authenticated construction a faster-but-still-safe alternative to
       `crypto_secretstream`'s current Kalyna-GCM-based AEAD for `uacrypt encrypt`/`decrypt`?**
