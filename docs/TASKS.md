@@ -3832,7 +3832,9 @@ item they point to is later removed.
              left in `dstu4145_curve257.rs` (`curve257_generator_is_on_curve`, no scalar_multiply)
              still actually ran under Miri, not skipped by accident.
       2. [x] **Done, and disproved Phase 1 as sufficient.** Real CI run `31396063454` (triggered by
-             commit `0837911`, the Phase 1 push) hit the full 240-min cap exactly (`14:06:08`→
+             commit `523ca2a`, a later ruff-format fix pushed on top of the Phase 1 commit `0837911`
+             - `git merge-base --is-ancestor 0837911 523ca2a` confirms Phase 1's own m=257 changes
+             were present in the tested tree) hit the full 240-min cap exactly (`14:06:08`→
              `18:06:23`) and was cancelled - `gh run view --json jobs` showed every other job in the
              workflow (including `cargo miri test (uacrypt)`/`(dstu-core-capi)`) completed fine; only
              `cargo miri test (dstu-core)` was cancelled. Pulling the job's own log
