@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-7a0890d3.js";
+            window.path_to_searchindex_js = "searchindex-674367ea.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-ce7e91c5.js"></script>
@@ -370,7 +370,7 @@ implying arbitrary-file support, now corrected. No <code>uacrypt keygen</code> c
 this task’s stated scope, same gap <code>kalyna-block</code>/<code>kalyna-ccm</code> already have).</p>
 </li>
 <li>
-<p><input disabled="" type="checkbox"> <strong>T-17</strong> Publish <code>dstu-core</code> to crates.io. <strong>Readiness-checked (not performed) 2026-07-25,
+<p><input disabled="" type="checkbox" checked=""> <strong>T-17</strong> Publish <code>dstu-core</code> to crates.io. <strong>Readiness-checked (not performed) 2026-07-25,
 Step 4 of the roadmap, user explicitly asked to assess without actually publishing</strong>:
 <code>cargo publish --dry-run -p dstu-core</code> packages, verifies, and compiles cleanly from the
 packaged tarball (130 files, 764.7 KiB / 184.6 KiB compressed). One warning, not a blocker:
@@ -384,7 +384,13 @@ not a cosmetic issue for a crate whose entire pitch is “read this before you t
 key material.” Publish order also confirmed mechanically: <code>cargo publish --dry-run -p     uacrypt</code> fails today with “no matching package named <code>dstu-core</code> found” (its path dependency
 can’t resolve against the registry until <code>dstu-core</code> is actually published first) - expected,
 not a bug, just fixes the required order (<code>dstu-core</code> before <code>uacrypt</code>). None of this touched
-the actual crates.io registry - <code>--dry-run</code> uploads nothing.</p>
+the actual crates.io registry - <code>--dry-run</code> uploads nothing.
+<strong>Actually done 2026-08-09</strong>, via the <code>publish-crates</code> job <code>release.yml</code> already had
+(added at T-157/D-114) firing automatically on the <code>v0.3.0</code> tag push - <code>dstu-core</code> v0.3.0
+(crates.io <code>created_at</code> 2026-08-09T17:41:14Z) then <code>uacrypt</code> v0.3.0 (17:53:49Z), both
+confirmed live via crates.io’s own API. This checkbox and <code>CLAUDE.md</code>’s “MVP scope” line
+had gone stale (D-159’s failure shape - no task-ID string in either place for a grep to
+catch), found and fixed while starting T-164/T-203’s binding-registry work.</p>
 </li>
 <li>
 <p><input disabled="" type="checkbox" checked=""> <strong>T-18/T-119</strong> <strong>DONE 2026-07-26.</strong> Prebuilt Windows/Linux/macOS binaries via GitHub
@@ -3903,6 +3909,12 @@ PyPI/npm/NuGet/Maven Central as of 2026-08-02 and is already stale - no RubyGems
 exists at all), and read that registry's actual current publish workflow requirements before
 writing any CI, the same "research before implementation" discipline `docs/CLAUDE.md` requires
 for primitives, applied here to release infrastructure instead.
+
+**Stage 1 started 2026-08-12 - see T-164's own entry for the live status.** Owner picked
+PyPI + npm first; re-checked names live (still free on both). Found this stage's own
+Packagist step didn't hold up - D-144 already ruled it out for this specific PHP binding
+(compiled extension, not Composer-manageable), not re-derived when this plan was written -
+deferred, not dropped.
 </code></pre>
 </li>
 <li>
@@ -4400,6 +4412,21 @@ predicted friction was real, worked through methodically rather than rushed:
 Verified with a real `cargo xtask php` run, not just each tool run manually: 88/88 phpunit
 tests pass, PHPStan reports 0 errors, `cargo fmt`/`clippy --all-targets` on `src/` clean.
 </code></pre>
+</li>
+<li>
+<p><input disabled="" type="checkbox"> <strong>T-209</strong> <strong>Not started, owner-requested (2026-08-12) - ship <code>uacrypt</code> itself as a <code>pip     install</code>-able CLI, separate from the <code>dstu-core</code> Python binding.</strong> Raised while setting up
+T-164/T-203’s PyPI publisher for <code>dstu-core</code> - the owner asked whether the CLI binary should
+go on PyPI too. It’s a distinct package, not an addition to <code>dstu-core</code>’s existing one: a
+Python user who wants the <code>uacrypt</code> command has no <code>pip install</code> path today (only GitHub
+Releases or <code>cargo install</code>, crates.io - both outside the Python ecosystem entirely).
+<strong>Shape</strong> (well-trodden pattern - <code>ruff</code>/<code>maturin</code> themselves ship this way): reuse
+<code>release.yml</code>’s existing <code>build-binary</code> job outputs (Linux x86_64/macOS aarch64/Windows
+x86_64 - the exact three platforms already built) instead of adding a new build path; each
+platform gets a wheel bundling the prebuilt binary plus a thin Python shim exposing a
+<code>console_scripts</code> entry point that just execs it - no Rust/PyO3 involved, unlike <code>dstu-core</code>’s
+own maturin-based wheels. <strong>New PyPI project, own pending-publisher registration</strong> (name TBD,
+<code>uacrypt</code> unless taken - not yet live-checked) - does not reuse <code>dstu-core</code>’s trusted publisher
+or environment. Not started: no packaging code, no CI job, no name check yet.</p>
 </li>
 <li>
 <p><input disabled="" type="checkbox"> <strong>T-202</strong> <strong>Not started, owner-requested (2026-08-09) - research spike: is a Strumok-keystream
@@ -6593,8 +6620,23 @@ language’s own toolchain, run <code>cargo xtask &lt;lang&gt;</code>. There is 
 <code>dstu-core</code> (T-17). This is the exact same class of gate T-17 already sits behind — an
 explicit publish decision per registry, not something new documentation can close (see
 <code>docs/user-journey-gaps.md</code>’s persona-2 “Add dependency” row for why T-17 alone already reads
-this way). <strong>Not started</strong> — needs an explicit “yes, publish X” from the owner per registry,
-same bar as T-17; do not self-authorize any of the four.</li>
+this way). <strong>In progress 2026-08-12, per T-203’s staged plan</strong> — owner picked PyPI + npm to
+start (explicit go-ahead), deferred Packagist for now: <code>bindings/php</code> is a compiled
+<code>ext-php-rs</code> native extension, and Packagist only distributes Composer (PHP-source) packages
+— D-144 already made this exact call (“Composer never manages native extensions at all”),
+which T-203’s “Packagist — lowest risk” framing hadn’t re-derived. Needs its own future
+decision (a composer.json installer-script shim fetching a prebuilt binary vs. PECL vs. skip
+permanently) before it’s revisited, not a silent drop. <strong>This session</strong>: <code>publish-pypi</code>/
+<code>publish-npm</code> jobs landed in <code>release.yml</code>, both dormant behind their own GitHub Environment
+approval gate (<code>pypi</code>/<code>npm</code>) until the owner configures Trusted Publishing (OIDC) on each
+registry’s own web UI — no token pasted anywhere, the direct fix for T-203’s crates.io
+token-leak incident. <code>bindings/nodejs/package.json</code>’s <code>napi.triples</code> also fixed from
+<code>defaults: true</code> (which assumes <code>x86_64-apple-darwin</code>) to the explicit
+<code>x86_64-unknown-linux-gnu</code>/<code>aarch64-apple-darwin</code>/<code>x86_64-pc-windows-msvc</code> triple this
+project’s own 3-OS CI actually builds (<code>macos-latest</code> is Apple Silicon, same target
+<code>uacrypt</code>’s own release binary already uses) — the mismatched default would have scaffolded a
+platform package CI could never produce a matching binary for. Actual first publish to either
+registry is a separate, later, explicit go-ahead — not implied by this CI plumbing landing.</li>
 <li><input disabled="" type="checkbox" checked=""> <strong>T-165</strong> <strong>Done 2026-08-03.</strong> <strong><code>docs/CONTRIBUTING.md</code> has zero mentions of <code>bindings/</code>/<code>dstu-core-capi</code> anywhere
 (confirmed by grep, not assumed), added 2026-08-03.</strong> It was written entirely for core-crate
 contributors (a new primitive/mode) and predates all of Phase 3 — a contributor who wants to
