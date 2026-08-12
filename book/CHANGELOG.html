@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-14856a00.js";
+            window.path_to_searchindex_js = "searchindex-d21ffee6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-ce7e91c5.js"></script>
@@ -184,8 +184,43 @@
 <p>All notable changes to this project are documented in this file. Format follows
 <a href="https://keepachangelog.com/en/1.1.0/">Keep a Changelog</a>.</p>
 <h2 id="unreleased"><a class="header" href="#unreleased">[Unreleased]</a></h2>
-<h2 id="031---2026-08-12"><a class="header" href="#031---2026-08-12">[0.3.1] - 2026-08-12</a></h2>
+<h2 id="032---2026-08-12"><a class="header" href="#032---2026-08-12">[0.3.2] - 2026-08-12</a></h2>
 <h3 id="added"><a class="header" href="#added">Added</a></h3>
+<ul>
+<li><code>dstu-core</code> (Python bindings) is now genuinely live on <a href="https://pypi.org/project/dstu-core/">PyPI</a>
+0.1.0 - the 0.3.1 tag’s <code>publish-pypi</code> run actually went through (see Fixed, below), so this is
+the first release to reflect that as real instead of “prepared, not yet live.”</li>
+</ul>
+<h3 id="fixed"><a class="header" href="#fixed">Fixed</a></h3>
+<ul>
+<li><code>environment: pypi</code>/<code>npm</code> in <code>release.yml</code> were referenced but never actually protected -
+GitHub auto-creates an environment with zero protection rules the first time a workflow
+references it, so the 0.3.1 tag’s <code>publish-pypi</code> job ran straight through with no approval
+pause (harmless here - it was the intended package - but not the safety behavior this project
+claimed). Fixed via the GitHub API (<code>required_reviewers</code> added to both, project owner as
+reviewer) - not a file in this repo, recorded here so it isn’t lost.</li>
+<li><code>publish-npm</code>’s <code>npm install -g npm@latest</code> failed on Node 20 (<code>EBADENGINE</code> - npm’s own latest
+version now requires Node &gt;=22) before ever attempting a publish. Bumped to Node 22.</li>
+<li>npm (unlike PyPI) has no “pending trusted publisher” - a package that has never been published
+can’t configure Trusted Publishing for itself at all (open upstream issue, <code>npm/cli#8544</code>,
+confirmed live 2026-08-12), so OIDC alone can never reach a first npm publish here. Added a
+one-time bootstrap path: <code>NODE_AUTH_TOKEN</code> from a repo secret (<code>NPM_TOKEN</code>, an npm token pasted
+directly into GitHub’s own secret UI, never into any chat/session) covers only the first
+publish; once <code>dstu-core</code> exists on npm, Trusted Publishing takes over and both the env var and
+the secret get removed.</li>
+<li><code>publish-pypi</code> had no <code>skip-existing</code>, so any future tag whose Python binding hasn’t changed
+(its own version, 0.1.0, isn’t lockstepped with the Rust crates’ tag) would hard-fail
+re-uploading wheels PyPI already has, rather than skipping them.</li>
+<li>The 0.3.1 tag itself is stuck on an older commit that predates all of the above - none of these
+fixes could reach it by re-running its jobs (a git tag is a fixed pointer; re-running a job in
+an existing workflow run replays the workflow file as it existed at that commit, not the
+latest). This release exists specifically so npm’s first real publish attempt runs against a
+workflow that has the fixes, not to add anything else on top of 0.3.1’s own -
+crates.io/PyPI don’t need re-publishing, just <code>dstu-core</code>/<code>uacrypt</code>’s version bumped to
+<code>0.3.2</code> so <code>cargo publish</code> has something new to accept.</li>
+</ul>
+<h2 id="031---2026-08-12"><a class="header" href="#031---2026-08-12">[0.3.1] - 2026-08-12</a></h2>
+<h3 id="added-1"><a class="header" href="#added-1">Added</a></h3>
 <ul>
 <li><code>crypto_box512</code>/<code>crypto_sign257</code>: wired into <code>dstu-core-capi</code> and all eight language bindings
 (Python/Node.js/Ruby/Java/PHP/.NET/Go/C++) - both landed in <code>dstu-core</code> itself already, in 0.3.0
@@ -196,13 +231,13 @@ this surface outside the Rust crate itself.</li>
 PyPI and npm (<code>docs/TASKS.md</code> T-164/T-203) - both <code>publish-pypi</code>/<code>publish-npm</code> jobs in
 <code>release.yml</code> land dormant, gated behind their own GitHub Environment approval, and use OIDC
 Trusted Publishing exclusively (no token/secret stored anywhere) - the direct fix for a real
-crates.io token-leak incident T-203 records. <strong>Neither registry has an actual publish yet</strong> -
-this only prepares the pipeline; each needs the project owner to separately configure Trusted
-Publishing on that registry’s own site first. Packagist is deliberately not part of this pass -
+crates.io token-leak incident T-203 records. <strong>Intended as prepared-but-dormant</strong> - see 0.3.2
+above for what actually happened (the dormancy itself had a real gap) and what shipped since.
+Packagist is deliberately not part of this pass -
 <code>bindings/php</code> is a compiled <code>ext-php-rs</code> extension, and Packagist only distributes Composer
 (PHP-source) packages (<code>docs/DECISIONS.md</code> D-144).</li>
 </ul>
-<h3 id="fixed"><a class="header" href="#fixed">Fixed</a></h3>
+<h3 id="fixed-1"><a class="header" href="#fixed-1">Fixed</a></h3>
 <ul>
 <li><code>docs/TASKS.md</code> T-17 and <code>CLAUDE.md</code>’s “MVP scope” both still read “not started” for the
 crates.io publish that actually happened at 0.3.0 above - corrected to reflect reality
@@ -219,7 +254,7 @@ still pre-1.0, still not independently audited, and the headline provisional gap
 yet confirmed against their primary DSTU texts) are unchanged by this release - see that document
 and <code>docs/DECISIONS.md</code> for the full standing caveats, repeated here exactly as prominently as
 0.2.0’s own notes did below.</p>
-<h3 id="added-1"><a class="header" href="#added-1">Added</a></h3>
+<h3 id="added-2"><a class="header" href="#added-2">Added</a></h3>
 <ul>
 <li><code>hazmat::dstu9041</code>: DSTU 9041:2020 hybrid (ECIES-style) asymmetric encryption over a twisted
 Edwards curve, <code>l(p)=256</code>/E256/1 only (D-47’s “ship the recommended curve first” precedent) -
@@ -268,7 +303,7 @@ measurement can actually detect unbounded growth. <code>#[ignore]</code>d by def
 5 minutes and was killed before finishing); wired into <code>cargo xtask ci</code>’s optional layers and a
 new CI job matrixed across all three OSes (<code>docs/TASKS.md</code> T-200).</li>
 </ul>
-<h3 id="fixed-1"><a class="header" href="#fixed-1">Fixed</a></h3>
+<h3 id="fixed-2"><a class="header" href="#fixed-2">Fixed</a></h3>
 <ul>
 <li><code>crypto_sign</code>/<code>hazmat::dstu4145</code> (<code>m=163</code>): <code>VerifyingKey::from_uncompressed_bytes</code> accepted a
 caller-supplied public key with no on-curve check, and <code>verify</code> never validated its own <code>q</code>
@@ -297,7 +332,7 @@ DSTU 4145 <code>sign</code>/<code>verify</code> up ~26-32x on the dev machine (<
 <h2 id="020---2026-08-02"><a class="header" href="#020---2026-08-02">[0.2.0] - 2026-08-02</a></h2>
 <p>Second tagged release - GitHub Releases only, no crates.io publish (<code>docs/TASKS.md</code> T-17 stays
 separately gated, same posture as v0.1.0).</p>
-<h3 id="added-2"><a class="header" href="#added-2">Added</a></h3>
+<h3 id="added-3"><a class="header" href="#added-3">Added</a></h3>
 <ul>
 <li><code>crypto_sign</code>/<code>uacrypt</code>: DSTU 4145 digital-signature CLI commands - <code>sign-keygen</code>, <code>sign-pubkey</code>,
 <code>sign</code>, <code>verify</code> (<code>docs/TASKS.md</code> T-124).</li>
@@ -310,7 +345,7 @@ checked exhaustively over all 2^384 possible inputs (T-145).</li>
 <li>CodeQL advanced-setup CI migration, explicit least-privilege CI permissions (T-143); SonarCloud
 static analysis wired into CI (T-140).</li>
 </ul>
-<h3 id="fixed-2"><a class="header" href="#fixed-2">Fixed</a></h3>
+<h3 id="fixed-3"><a class="header" href="#fixed-3">Fixed</a></h3>
 <ul>
 <li>DSTU 4145 <code>scalar_multiply</code> returned a wrong result for scalars at/near the curve’s own group
 order - reachable in-contract at exactly one boundary value (<code>k == n-1</code>). No forgery risk
@@ -347,7 +382,7 @@ instead.</li>
 <p>First tagged release - GitHub Releases only (<code>docs/TASKS.md</code> T-18); not published to crates.io
 (<code>docs/TASKS.md</code> T-17 stays separately gated on an explicit owner request). Everything below predates
 this tag; there is no reconstructed per-commit history before it.</p>
-<h3 id="added-3"><a class="header" href="#added-3">Added</a></h3>
+<h3 id="added-4"><a class="header" href="#added-4">Added</a></h3>
 <ul>
 <li><code>dstu-core</code>: <code>hazmat</code> primitives for all three in-scope DSTU algorithms - Kupyna (DSTU
 7564:2014, one-shot and streaming), Kalyna (DSTU 7624:2014, single-block encrypt/decrypt across
