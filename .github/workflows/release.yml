@@ -216,9 +216,12 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          # Trusted Publishing (OIDC) needs a recent npm CLI, and `npm@latest` itself now requires
+          # Node >=22 (confirmed the hard way, 2026-08-12: `npm install -g npm@latest` failed on
+          # Node 20 with EBADENGINE) - Node 20 is still fine for the rest of this project's own
+          # bindings-nodejs.yml (`engines.node: >= 18`), this job alone needs the newer runtime.
+          node-version: "22"
           registry-url: "https://registry.npmjs.org"
-      # Trusted Publishing (OIDC) needs a recent npm CLI - don't rely on Node 20's bundled version.
       - run: npm install -g npm@latest
       - run: npm install
         working-directory: bindings/nodejs
