@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-bd0f977e.js";
+            window.path_to_searchindex_js = "searchindex-737d5250.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-ce7e91c5.js"></script>
@@ -180,12 +180,13 @@
                     <main>
                         <h1 id="introduction"><a class="header" href="#introduction">Introduction</a></h1>
 <h1 id="uacrypt"><a class="header" href="#uacrypt">uacrypt</a></h1>
-<!-- uacrypt-version: 0.3.4 -->
-<p><strong>v0.3.4 — released 2026-08-13. <code>dstu-core</code> (Python bindings) is now live on
-<a href="https://pypi.org/project/dstu-core/">PyPI</a>; the Node.js bindings’ npm publish is partially live
-(<code>dstu-core-linux-x64-gnu</code>, <code>dstu-core-darwin-arm64</code>) with the remaining platform package and the
-root <code>dstu-core</code> package pending this release’s fixed, idempotent publish step — see
-<code>docs/CHANGELOG.md</code>, still work in progress.</strong> Not a complete library or CLI yet, not audited, not
+<!-- uacrypt-version: 0.3.5 -->
+<p><strong>v0.3.5 — released 2026-08-13. <code>dstu-core</code> (Python bindings) is now live on
+<a href="https://pypi.org/project/dstu-core/">PyPI</a>; on npm, <code>dstu-core</code> (root), <code>dstu-core-linux-x64-gnu</code>,
+and <code>dstu-core-darwin-arm64</code> are live. <code>dstu-core-win32-x64-msvc</code> is deliberately deferred, blocked
+by npm’s own spam detection (external, not a code issue — see <code>docs/DECISIONS.md</code> D-189);
+<code>dstu-core-linux-arm64-gnu</code> is a new platform added this release. See <code>docs/CHANGELOG.md</code> for
+details.</strong> Not a complete library or CLI yet, not audited, not
 production-ready, and <strong>not a claim of side-channel resistance</strong>. Core primitives
 (Kalyna, Kupyna) are dual-oracle-verified against official test vectors; Strumok and the Kalyna-CCM mode are
 provisional (not yet confirmed against their primary standard text — see <code>docs/DECISIONS.md</code> D-15/D-41).
@@ -5131,12 +5132,13 @@ mdBook for the existing <code>docs/*.md</code> corpus, plus a mandatory <code>ca
 `# uacrypt</p>
 </li>
 </ul>
-<!-- uacrypt-version: 0.3.4 -->
-<p><strong>v0.3.4 — released 2026-08-13. <code>dstu-core</code> (Python bindings) is now live on
-<a href="https://pypi.org/project/dstu-core/">PyPI</a>; the Node.js bindings’ npm publish is partially live
-(<code>dstu-core-linux-x64-gnu</code>, <code>dstu-core-darwin-arm64</code>) with the remaining platform package and the
-root <code>dstu-core</code> package pending this release’s fixed, idempotent publish step — see
-<code>docs/CHANGELOG.md</code>, still work in progress.</strong> Not a complete library or CLI yet, not audited, not
+<!-- uacrypt-version: 0.3.5 -->
+<p><strong>v0.3.5 — released 2026-08-13. <code>dstu-core</code> (Python bindings) is now live on
+<a href="https://pypi.org/project/dstu-core/">PyPI</a>; on npm, <code>dstu-core</code> (root), <code>dstu-core-linux-x64-gnu</code>,
+and <code>dstu-core-darwin-arm64</code> are live. <code>dstu-core-win32-x64-msvc</code> is deliberately deferred, blocked
+by npm’s own spam detection (external, not a code issue — see <code>docs/DECISIONS.md</code> D-189);
+<code>dstu-core-linux-arm64-gnu</code> is a new platform added this release. See <code>docs/CHANGELOG.md</code> for
+details.</strong> Not a complete library or CLI yet, not audited, not
 production-ready, and <strong>not a claim of side-channel resistance</strong>. Core primitives
 (Kalyna, Kupyna) are dual-oracle-verified against official test vectors; Strumok and the Kalyna-CCM mode are
 provisional (not yet confirmed against their primary standard text — see <code>docs/DECISIONS.md</code> D-15/D-41).
@@ -6969,7 +6971,13 @@ token-leak incident. <code>bindings/nodejs/package.json</code>’s <code>napi.tr
 project’s own 3-OS CI actually builds (<code>macos-latest</code> is Apple Silicon, same target
 <code>uacrypt</code>’s own release binary already uses) — the mismatched default would have scaffolded a
 platform package CI could never produce a matching binary for. Actual first publish to either
-registry is a separate, later, explicit go-ahead — not implied by this CI plumbing landing.</li>
+registry is a separate, later, explicit go-ahead — not implied by this CI plumbing landing.
+<strong>Status as of v0.3.5 (2026-08-13)</strong>: PyPI (<code>dstu-core</code>) fully live. npm: root <code>dstu-core</code>,
+<code>dstu-core-linux-x64-gnu</code>, <code>dstu-core-darwin-arm64</code> live; <code>dstu-core-linux-arm64-gnu</code> added as
+a new platform this release; <code>dstu-core-win32-x64-msvc</code> deliberately deferred, blocked by
+npm’s own spam detection (external, confirmed not time-based) — see D-189 for the incident and
+the real fix (npm support, not a retry/rename). RubyGems/NuGet/Maven Central/Packagist not
+started.</li>
 <li><input disabled="" type="checkbox" checked=""> <strong>T-165</strong> <strong>Done 2026-08-03.</strong> <strong><code>docs/CONTRIBUTING.md</code> has zero mentions of <code>bindings/</code>/<code>dstu-core-capi</code> anywhere
 (confirmed by grep, not assumed), added 2026-08-03.</strong> It was written entirely for core-crate
 contributors (a new primitive/mode) and predates all of Phase 3 — a contributor who wants to
@@ -27196,13 +27204,60 @@ in place). First real run per language found genuine issues except Node.js (0 fi
 detail (11 C++ findings, 4 Java findings, 1 missing PHP stub function), all fixed or justifiably
 suppressed with a real <code>NOLINT</code>/<code>@SuppressFBWarnings</code> reasoning string, none left as unexplained
 noise.</p>
+<h2 id="d-189-t-164---dstu-core-win32-x64-msvc-deferred-on-npm-blocked-by-npms-own-spam-detection-not-a-code-issue-linux-arm64-gnu-added-as-a-new-platform-target-while-unblocking-the-rest"><a class="header" href="#d-189-t-164---dstu-core-win32-x64-msvc-deferred-on-npm-blocked-by-npms-own-spam-detection-not-a-code-issue-linux-arm64-gnu-added-as-a-new-platform-target-while-unblocking-the-rest">D-189: T-164 - <code>dstu-core-win32-x64-msvc</code> deferred on npm, blocked by npm’s own spam detection, not a code issue; <code>linux-arm64-gnu</code> added as a new platform target while unblocking the rest</a></h2>
+<p><strong>What happened</strong>: publishing the Node.js bindings’ npm packages (v0.3.3/v0.3.4, T-164) hit npm’s
+own <code>403 Package name triggered spam detection</code> on the 3rd platform subpackage
+(<code>dstu-core-win32-x64-msvc</code>) after 2 others (<code>dstu-core-linux-x64-gnu</code>, <code>dstu-core-darwin-arm64</code>)
+published successfully. Waiting 3+ hours and retrying the identical publish step reproduced the
+exact same block - not a time-based rate limit clearing on its own. Research (real precedent: a
+Node-RED forum thread, <code>discourse.nodered.org/t/problems-with-npm-publish-why-is-my-node-spam/ 40229</code>, same shape - platform/hardware-adjacent native-addon package names) found that <strong>renaming
+did not resolve an equivalent block</strong> in that case; only direct contact with npm support did,
+manually whitelisting the name and publishing the first version. npm’s own spam-detection criteria
+are not publicly documented (confirmed via <code>github.com/npm/npm</code> issues #20501/#20866 and npm’s own
+docs) - there is no accessible test the package name against beforehand.</p>
+<p><strong>Decision</strong>: don’t rename <code>dstu-core-win32-x64-msvc</code> speculatively - no evidence renaming fixes
+this class of block, real cost (new tag/version, another CI cycle) for a change with no known
+payoff. Defer this one platform package, publish everything else that’s ready
+(<code>dstu-core-linux-x64-gnu</code>, <code>dstu-core-darwin-arm64</code>, the root <code>dstu-core</code> package), and file the
+actual fix as contacting npm support directly (owner action, outside CI’s control) rather than
+looping further automated retries against an external, non-time-based block.</p>
+<p><strong><code>publish-npm</code>’s platform-subpackage loop skips <code>win32-x64-msvc</code> explicitly</strong> (not just tolerates
+its failure) so this one known-blocked package doesn’t stop the rest of the job on every run; the
+napi <code>triples</code> config still builds it every release so it’s ready to publish the moment npm support
+clears the name - re-check this decision (and re-enable the skip) once that happens.</p>
+<p><strong>Also added while touching this job</strong>: <code>aarch64-unknown-linux-gnu</code> (<code>linux-arm64-gnu</code>) as a new
+platform target, alongside the existing three - GitHub’s <code>ubuntu-24.04-arm</code> hosted runner (GA for
+public repos since 2025-08-07) builds it natively, no cross-compile toolchain/Docker image needed
+(confirmed via napi-rs’s own CI template, which cross-compiles this target only because it doesn’t
+assume a native arm64 runner exists - this project’s runner does, so the simpler native path
+applies). Genuinely new platform coverage, unrelated to the win32 block - bundled into the same
+release since both touch <code>publish-npm</code>/<code>build-nodejs-artifacts</code>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="changelog"><a class="header" href="#changelog">Changelog</a></h1>
 <p>All notable changes to this project are documented in this file. Format follows
 <a href="https://keepachangelog.com/en/1.1.0/">Keep a Changelog</a>.</p>
 <h2 id="unreleased"><a class="header" href="#unreleased">[Unreleased]</a></h2>
-<h2 id="034---2026-08-13"><a class="header" href="#034---2026-08-13">[0.3.4] - 2026-08-13</a></h2>
+<h2 id="035---2026-08-13"><a class="header" href="#035---2026-08-13">[0.3.5] - 2026-08-13</a></h2>
+<h3 id="added"><a class="header" href="#added">Added</a></h3>
+<ul>
+<li><code>dstu-core-linux-arm64-gnu</code> - a new npm platform package for the Node.js bindings
+(<code>aarch64-unknown-linux-gnu</code>), built natively on GitHub’s <code>ubuntu-24.04-arm</code> hosted runner (GA for
+public repos since 2025-08-07), no cross-compile toolchain needed.</li>
+</ul>
 <h3 id="fixed"><a class="header" href="#fixed">Fixed</a></h3>
+<ul>
+<li>v0.3.4’s npm publish (with the idempotency fix from that release) correctly skipped the two
+already-published platform packages and reached <code>dstu-core-win32-x64-msvc</code>, but that package hit
+npm’s own spam-detection block again - the same block from v0.3.3, confirmed not time-based (it
+reproduced identically after a 3+ hour wait). Deferred that one platform package explicitly
+(<code>publish-npm</code> now skips it outright rather than attempting and tolerating the failure) so the
+rest of the publish - root <code>dstu-core</code> and the two working platform packages - isn’t blocked by
+it. See <code>docs/DECISIONS.md</code> D-189 for the full incident, the research into what actually resolves
+this class of npm block (contacting npm support - renaming doesn’t, per a real precedent), and
+what un-defers it once support clears the name.</li>
+</ul>
+<h2 id="034---2026-08-13"><a class="header" href="#034---2026-08-13">[0.3.4] - 2026-08-13</a></h2>
+<h3 id="fixed-1"><a class="header" href="#fixed-1">Fixed</a></h3>
 <ul>
 <li>v0.3.3’s npm publish got past the provenance/access fix but hit npm’s own spam-detection
 heuristic on the 3rd platform subpackage (<code>dstu-core-win32-x64-msvc</code>) after two succeeded
@@ -27220,7 +27275,7 @@ npm’s external spam heuristic and rate limits are outside this workflow’s co
 wherever the previous attempt stopped.</li>
 </ul>
 <h2 id="033---2026-08-12"><a class="header" href="#033---2026-08-12">[0.3.3] - 2026-08-12</a></h2>
-<h3 id="fixed-1"><a class="header" href="#fixed-1">Fixed</a></h3>
+<h3 id="fixed-2"><a class="header" href="#fixed-2">Fixed</a></h3>
 <ul>
 <li><code>publish-npm</code>’s <code>napi prepublish</code> step failed publishing every platform subpackage
 (<code>Can't generate provenance for new or private package, you must set access to public</code>) - <code>npm publish --provenance</code> refuses to guess the intended access level for a package that’s never been
@@ -27234,13 +27289,13 @@ lacking <code>contents: write</code> in this job, failing 401 against) <code>rel
 failed attempt before retrying (<code>registry.npmjs.org/dstu-core*</code> still 404).</li>
 </ul>
 <h2 id="032---2026-08-12"><a class="header" href="#032---2026-08-12">[0.3.2] - 2026-08-12</a></h2>
-<h3 id="added"><a class="header" href="#added">Added</a></h3>
+<h3 id="added-1"><a class="header" href="#added-1">Added</a></h3>
 <ul>
 <li><code>dstu-core</code> (Python bindings) is now genuinely live on <a href="https://pypi.org/project/dstu-core/">PyPI</a>
 0.1.0 - the 0.3.1 tag’s <code>publish-pypi</code> run actually went through (see Fixed, below), so this is
 the first release to reflect that as real instead of “prepared, not yet live.”</li>
 </ul>
-<h3 id="fixed-2"><a class="header" href="#fixed-2">Fixed</a></h3>
+<h3 id="fixed-3"><a class="header" href="#fixed-3">Fixed</a></h3>
 <ul>
 <li><code>environment: pypi</code>/<code>npm</code> in <code>release.yml</code> were referenced but never actually protected -
 GitHub auto-creates an environment with zero protection rules the first time a workflow
@@ -27269,7 +27324,7 @@ crates.io/PyPI don’t need re-publishing, just <code>dstu-core</code>/<code>uac
 <code>0.3.2</code> so <code>cargo publish</code> has something new to accept.</li>
 </ul>
 <h2 id="031---2026-08-12"><a class="header" href="#031---2026-08-12">[0.3.1] - 2026-08-12</a></h2>
-<h3 id="added-1"><a class="header" href="#added-1">Added</a></h3>
+<h3 id="added-2"><a class="header" href="#added-2">Added</a></h3>
 <ul>
 <li><code>crypto_box512</code>/<code>crypto_sign257</code>: wired into <code>dstu-core-capi</code> and all eight language bindings
 (Python/Node.js/Ruby/Java/PHP/.NET/Go/C++) - both landed in <code>dstu-core</code> itself already, in 0.3.0
@@ -27286,7 +27341,7 @@ Packagist is deliberately not part of this pass -
 <code>bindings/php</code> is a compiled <code>ext-php-rs</code> extension, and Packagist only distributes Composer
 (PHP-source) packages (<code>docs/DECISIONS.md</code> D-144).</li>
 </ul>
-<h3 id="fixed-3"><a class="header" href="#fixed-3">Fixed</a></h3>
+<h3 id="fixed-4"><a class="header" href="#fixed-4">Fixed</a></h3>
 <ul>
 <li><code>docs/TASKS.md</code> T-17 and <code>CLAUDE.md</code>’s “MVP scope” both still read “not started” for the
 crates.io publish that actually happened at 0.3.0 above - corrected to reflect reality
@@ -27303,7 +27358,7 @@ still pre-1.0, still not independently audited, and the headline provisional gap
 yet confirmed against their primary DSTU texts) are unchanged by this release - see that document
 and <code>docs/DECISIONS.md</code> for the full standing caveats, repeated here exactly as prominently as
 0.2.0’s own notes did below.</p>
-<h3 id="added-2"><a class="header" href="#added-2">Added</a></h3>
+<h3 id="added-3"><a class="header" href="#added-3">Added</a></h3>
 <ul>
 <li><code>hazmat::dstu9041</code>: DSTU 9041:2020 hybrid (ECIES-style) asymmetric encryption over a twisted
 Edwards curve, <code>l(p)=256</code>/E256/1 only (D-47’s “ship the recommended curve first” precedent) -
@@ -27352,7 +27407,7 @@ measurement can actually detect unbounded growth. <code>#[ignore]</code>d by def
 5 minutes and was killed before finishing); wired into <code>cargo xtask ci</code>’s optional layers and a
 new CI job matrixed across all three OSes (<code>docs/TASKS.md</code> T-200).</li>
 </ul>
-<h3 id="fixed-4"><a class="header" href="#fixed-4">Fixed</a></h3>
+<h3 id="fixed-5"><a class="header" href="#fixed-5">Fixed</a></h3>
 <ul>
 <li><code>crypto_sign</code>/<code>hazmat::dstu4145</code> (<code>m=163</code>): <code>VerifyingKey::from_uncompressed_bytes</code> accepted a
 caller-supplied public key with no on-curve check, and <code>verify</code> never validated its own <code>q</code>
@@ -27381,7 +27436,7 @@ DSTU 4145 <code>sign</code>/<code>verify</code> up ~26-32x on the dev machine (<
 <h2 id="020---2026-08-02"><a class="header" href="#020---2026-08-02">[0.2.0] - 2026-08-02</a></h2>
 <p>Second tagged release - GitHub Releases only, no crates.io publish (<code>docs/TASKS.md</code> T-17 stays
 separately gated, same posture as v0.1.0).</p>
-<h3 id="added-3"><a class="header" href="#added-3">Added</a></h3>
+<h3 id="added-4"><a class="header" href="#added-4">Added</a></h3>
 <ul>
 <li><code>crypto_sign</code>/<code>uacrypt</code>: DSTU 4145 digital-signature CLI commands - <code>sign-keygen</code>, <code>sign-pubkey</code>,
 <code>sign</code>, <code>verify</code> (<code>docs/TASKS.md</code> T-124).</li>
@@ -27394,7 +27449,7 @@ checked exhaustively over all 2^384 possible inputs (T-145).</li>
 <li>CodeQL advanced-setup CI migration, explicit least-privilege CI permissions (T-143); SonarCloud
 static analysis wired into CI (T-140).</li>
 </ul>
-<h3 id="fixed-5"><a class="header" href="#fixed-5">Fixed</a></h3>
+<h3 id="fixed-6"><a class="header" href="#fixed-6">Fixed</a></h3>
 <ul>
 <li>DSTU 4145 <code>scalar_multiply</code> returned a wrong result for scalars at/near the curve’s own group
 order - reachable in-contract at exactly one boundary value (<code>k == n-1</code>). No forgery risk
@@ -27431,7 +27486,7 @@ instead.</li>
 <p>First tagged release - GitHub Releases only (<code>docs/TASKS.md</code> T-18); not published to crates.io
 (<code>docs/TASKS.md</code> T-17 stays separately gated on an explicit owner request). Everything below predates
 this tag; there is no reconstructed per-commit history before it.</p>
-<h3 id="added-4"><a class="header" href="#added-4">Added</a></h3>
+<h3 id="added-5"><a class="header" href="#added-5">Added</a></h3>
 <ul>
 <li><code>dstu-core</code>: <code>hazmat</code> primitives for all three in-scope DSTU algorithms - Kupyna (DSTU
 7564:2014, one-shot and streaming), Kalyna (DSTU 7624:2014, single-block encrypt/decrypt across

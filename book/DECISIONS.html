@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-bd0f977e.js";
+            window.path_to_searchindex_js = "searchindex-737d5250.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-ce7e91c5.js"></script>
@@ -11640,6 +11640,34 @@ in place). First real run per language found genuine issues except Node.js (0 fi
 detail (11 C++ findings, 4 Java findings, 1 missing PHP stub function), all fixed or justifiably
 suppressed with a real <code>NOLINT</code>/<code>@SuppressFBWarnings</code> reasoning string, none left as unexplained
 noise.</p>
+<h2 id="d-189-t-164---dstu-core-win32-x64-msvc-deferred-on-npm-blocked-by-npms-own-spam-detection-not-a-code-issue-linux-arm64-gnu-added-as-a-new-platform-target-while-unblocking-the-rest"><a class="header" href="#d-189-t-164---dstu-core-win32-x64-msvc-deferred-on-npm-blocked-by-npms-own-spam-detection-not-a-code-issue-linux-arm64-gnu-added-as-a-new-platform-target-while-unblocking-the-rest">D-189: T-164 - <code>dstu-core-win32-x64-msvc</code> deferred on npm, blocked by npm’s own spam detection, not a code issue; <code>linux-arm64-gnu</code> added as a new platform target while unblocking the rest</a></h2>
+<p><strong>What happened</strong>: publishing the Node.js bindings’ npm packages (v0.3.3/v0.3.4, T-164) hit npm’s
+own <code>403 Package name triggered spam detection</code> on the 3rd platform subpackage
+(<code>dstu-core-win32-x64-msvc</code>) after 2 others (<code>dstu-core-linux-x64-gnu</code>, <code>dstu-core-darwin-arm64</code>)
+published successfully. Waiting 3+ hours and retrying the identical publish step reproduced the
+exact same block - not a time-based rate limit clearing on its own. Research (real precedent: a
+Node-RED forum thread, <code>discourse.nodered.org/t/problems-with-npm-publish-why-is-my-node-spam/ 40229</code>, same shape - platform/hardware-adjacent native-addon package names) found that <strong>renaming
+did not resolve an equivalent block</strong> in that case; only direct contact with npm support did,
+manually whitelisting the name and publishing the first version. npm’s own spam-detection criteria
+are not publicly documented (confirmed via <code>github.com/npm/npm</code> issues #20501/#20866 and npm’s own
+docs) - there is no accessible test the package name against beforehand.</p>
+<p><strong>Decision</strong>: don’t rename <code>dstu-core-win32-x64-msvc</code> speculatively - no evidence renaming fixes
+this class of block, real cost (new tag/version, another CI cycle) for a change with no known
+payoff. Defer this one platform package, publish everything else that’s ready
+(<code>dstu-core-linux-x64-gnu</code>, <code>dstu-core-darwin-arm64</code>, the root <code>dstu-core</code> package), and file the
+actual fix as contacting npm support directly (owner action, outside CI’s control) rather than
+looping further automated retries against an external, non-time-based block.</p>
+<p><strong><code>publish-npm</code>’s platform-subpackage loop skips <code>win32-x64-msvc</code> explicitly</strong> (not just tolerates
+its failure) so this one known-blocked package doesn’t stop the rest of the job on every run; the
+napi <code>triples</code> config still builds it every release so it’s ready to publish the moment npm support
+clears the name - re-check this decision (and re-enable the skip) once that happens.</p>
+<p><strong>Also added while touching this job</strong>: <code>aarch64-unknown-linux-gnu</code> (<code>linux-arm64-gnu</code>) as a new
+platform target, alongside the existing three - GitHub’s <code>ubuntu-24.04-arm</code> hosted runner (GA for
+public repos since 2025-08-07) builds it natively, no cross-compile toolchain/Docker image needed
+(confirmed via napi-rs’s own CI template, which cross-compiles this target only because it doesn’t
+assume a native arm64 runner exists - this project’s runner does, so the simpler native path
+applies). Genuinely new platform coverage, unrelated to the win32 block - bundled into the same
+release since both touch <code>publish-npm</code>/<code>build-nodejs-artifacts</code>.</p>
 
                     </main>
 
