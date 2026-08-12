@@ -5,6 +5,26 @@ All notable changes to this project are documented in this file. Format follows
 
 ## [Unreleased]
 
+## [0.3.5] - 2026-08-13
+
+### Added
+
+- `dstu-core-linux-arm64-gnu` - a new npm platform package for the Node.js bindings
+  (`aarch64-unknown-linux-gnu`), built natively on GitHub's `ubuntu-24.04-arm` hosted runner (GA for
+  public repos since 2025-08-07), no cross-compile toolchain needed.
+
+### Fixed
+
+- v0.3.4's npm publish (with the idempotency fix from that release) correctly skipped the two
+  already-published platform packages and reached `dstu-core-win32-x64-msvc`, but that package hit
+  npm's own spam-detection block again - the same block from v0.3.3, confirmed not time-based (it
+  reproduced identically after a 3+ hour wait). Deferred that one platform package explicitly
+  (`publish-npm` now skips it outright rather than attempting and tolerating the failure) so the
+  rest of the publish - root `dstu-core` and the two working platform packages - isn't blocked by
+  it. See `docs/DECISIONS.md` D-189 for the full incident, the research into what actually resolves
+  this class of npm block (contacting npm support - renaming doesn't, per a real precedent), and
+  what un-defers it once support clears the name.
+
 ## [0.3.4] - 2026-08-13
 
 ### Fixed

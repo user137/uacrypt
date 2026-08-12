@@ -112,16 +112,22 @@ jobs:
   build-nodejs-artifacts:
     name: build node addon (${{ matrix.os }})
     # Same 3-OS matrix as build-python-wheels, one native addon per OS via napi-rs (D-119: separate
-    # Cargo workspace, same as bindings/python). bindings/nodejs/package.json's napi.triples pins
-    # the explicit x86_64-unknown-linux-gnu/aarch64-apple-darwin/x86_64-pc-windows-msvc triple - not
-    # napi-rs's own "defaults: true" preset, which assumes x86_64-apple-darwin. GitHub's macos-latest
-    # runner is Apple Silicon (arm64), the same target uacrypt's own release binary already uses
-    # (see build-binary's uacrypt-macos-aarch64.tar.gz above) - defaults:true would have scaffolded
-    # a platform package this CI can never actually produce a matching binary for.
+    # Cargo workspace, same as bindings/python), plus a 4th entry for linux-arm64-gnu (D-189).
+    # bindings/nodejs/package.json's napi.triples pins the explicit x86_64-unknown-linux-gnu/
+    # aarch64-apple-darwin/x86_64-pc-windows-msvc/aarch64-unknown-linux-gnu triples - not napi-rs's
+    # own "defaults: true" preset, which assumes x86_64-apple-darwin. GitHub's macos-latest runner is
+    # Apple Silicon (arm64), the same target uacrypt's own release binary already uses (see
+    # build-binary's uacrypt-macos-aarch64.tar.gz above) - defaults:true would have scaffolded a
+    # platform package this CI can never actually produce a matching binary for.
+    # `ubuntu-24.04-arm` builds aarch64-unknown-linux-gnu natively (host triple == target triple, no
+    # cross-compile toolchain/Docker image needed) - GA for public repos since 2025-08-07 (D-189).
+    # napi-rs's own official CI template cross-compiles this target via a Docker image only because
+    # it can't assume a native arm64 runner exists; this project's does, so `npm run build` (no
+    # explicit --target) auto-detects the host and Just Works, same as the other 3 matrix entries.
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest, ubuntu-24.04-arm]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -271,7 +277,7 @@ jobs:
           node -e '
             const fs = require("fs");
             const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
-            const platforms = ["linux-x64-gnu", "darwin-arm64", "win32-x64-msvc"];
+            const platforms = ["linux-x64-gnu", "darwin-arm64", "win32-x64-msvc", "linux-arm64-gnu"];
             pkg.optionalDependencies = Object.fromEntries(
               platforms.map((p) => [`${pkg.name}-${p}`, pkg.version])
             );
@@ -281,8 +287,18 @@ jobs:
         working-directory: bindings/nodejs
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        # dstu-core-win32-x64-msvc is deliberately skipped here, not attempted-and-tolerated like
+        # the "already published" case below: it's blocked by npm's own spam detection (external,
+        # not time-based - confirmed by a 3+ hour wait reproducing the identical block), and no
+        # retry from this job can fix that. docs/DECISIONS.md D-189 has the full incident and the
+        # real fix (npm support). Remove this skip once support clears the name - the napi `triples`
+        # config still builds this platform every release, so it's ready to publish immediately.
         run: |
           for dir in npm/*/; do
+            if [ "$dir" = "npm/win32-x64-msvc/" ]; then
+              echo "== Skipping $dir - blocked by npm spam detection, see docs/DECISIONS.md D-189 =="
+              continue
+            fi
             echo "== Publishing $dir =="
             set +e
             output=$(cd "$dir" && npm publish --provenance 2>&1)

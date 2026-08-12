@@ -6076,6 +6076,12 @@ configuration surface added in the process (D-47 still holds).
       `uacrypt`'s own release binary already uses) — the mismatched default would have scaffolded a
       platform package CI could never produce a matching binary for. Actual first publish to either
       registry is a separate, later, explicit go-ahead — not implied by this CI plumbing landing.
+      **Status as of v0.3.5 (2026-08-13)**: PyPI (`dstu-core`) fully live. npm: root `dstu-core`,
+      `dstu-core-linux-x64-gnu`, `dstu-core-darwin-arm64` live; `dstu-core-linux-arm64-gnu` added as
+      a new platform this release; `dstu-core-win32-x64-msvc` deliberately deferred, blocked by
+      npm's own spam detection (external, confirmed not time-based) — see D-189 for the incident and
+      the real fix (npm support, not a retry/rename). RubyGems/NuGet/Maven Central/Packagist not
+      started.
 - [x] **T-165** **Done 2026-08-03.** **`docs/CONTRIBUTING.md` has zero mentions of `bindings/`/`dstu-core-capi` anywhere
       (confirmed by grep, not assumed), added 2026-08-03.** It was written entirely for core-crate
       contributors (a new primitive/mode) and predates all of Phase 3 — a contributor who wants to

@@ -12722,3 +12722,37 @@ in place). First real run per language found genuine issues except Node.js (0 fi
 detail (11 C++ findings, 4 Java findings, 1 missing PHP stub function), all fixed or justifiably
 suppressed with a real `NOLINT`/`@SuppressFBWarnings` reasoning string, none left as unexplained
 noise.
+
+## D-189: T-164 - `dstu-core-win32-x64-msvc` deferred on npm, blocked by npm's own spam detection, not a code issue; `linux-arm64-gnu` added as a new platform target while unblocking the rest
+
+**What happened**: publishing the Node.js bindings' npm packages (v0.3.3/v0.3.4, T-164) hit npm's
+own `403 Package name triggered spam detection` on the 3rd platform subpackage
+(`dstu-core-win32-x64-msvc`) after 2 others (`dstu-core-linux-x64-gnu`, `dstu-core-darwin-arm64`)
+published successfully. Waiting 3+ hours and retrying the identical publish step reproduced the
+exact same block - not a time-based rate limit clearing on its own. Research (real precedent: a
+Node-RED forum thread, `discourse.nodered.org/t/problems-with-npm-publish-why-is-my-node-spam/
+40229`, same shape - platform/hardware-adjacent native-addon package names) found that **renaming
+did not resolve an equivalent block** in that case; only direct contact with npm support did,
+manually whitelisting the name and publishing the first version. npm's own spam-detection criteria
+are not publicly documented (confirmed via `github.com/npm/npm` issues #20501/#20866 and npm's own
+docs) - there is no accessible test the package name against beforehand.
+
+**Decision**: don't rename `dstu-core-win32-x64-msvc` speculatively - no evidence renaming fixes
+this class of block, real cost (new tag/version, another CI cycle) for a change with no known
+payoff. Defer this one platform package, publish everything else that's ready
+(`dstu-core-linux-x64-gnu`, `dstu-core-darwin-arm64`, the root `dstu-core` package), and file the
+actual fix as contacting npm support directly (owner action, outside CI's control) rather than
+looping further automated retries against an external, non-time-based block.
+
+**`publish-npm`'s platform-subpackage loop skips `win32-x64-msvc` explicitly** (not just tolerates
+its failure) so this one known-blocked package doesn't stop the rest of the job on every run; the
+napi `triples` config still builds it every release so it's ready to publish the moment npm support
+clears the name - re-check this decision (and re-enable the skip) once that happens.
+
+**Also added while touching this job**: `aarch64-unknown-linux-gnu` (`linux-arm64-gnu`) as a new
+platform target, alongside the existing three - GitHub's `ubuntu-24.04-arm` hosted runner (GA for
+public repos since 2025-08-07) builds it natively, no cross-compile toolchain/Docker image needed
+(confirmed via napi-rs's own CI template, which cross-compiles this target only because it doesn't
+assume a native arm64 runner exists - this project's runner does, so the simpler native path
+applies). Genuinely new platform coverage, unrelated to the win32 block - bundled into the same
+release since both touch `publish-npm`/`build-nodejs-artifacts`.
