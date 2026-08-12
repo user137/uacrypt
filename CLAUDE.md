@@ -284,203 +284,147 @@ Full detail and rationale in `docs/SECURITY.md` — this is the compressed versi
 
 ## Agent discipline
 
+Full incident narrative for any bulleted rule below lives under its cited `D-XX`/`T-XX` in
+`docs/DECISIONS.md`/`docs/TASKS.md` — these are the operative rules only, not the postmortems.
+
 - **UTF-8 everywhere, no exceptions** — every text file (source, docs, config, vector JSON), no BOM.
-  This project mixes English docs with Ukrainian source material and extracts hex/text from PDFs via
-  `pdftotext` on Windows, either of which can silently introduce UTF-16/BOM/CP1251 if a tool's
-  default isn't checked. Verify encoding on any doubt.
+  Verify encoding whenever mixing English/Ukrainian text or extracting via `pdftotext` on Windows
+  (silent UTF-16/BOM/CP1251 risk).
 - **`WebFetch`'s summarization is unreliable on Cyrillic/font-encoding-broken PDFs and wikitext**
-  (produced both a false "no relevant content" and a fabricated-sounding claim in the same D-05
-  research session) — fetch raw text/wikitext directly (`curl`) or render to PNG and read, never
-  trust a `WebFetch` prompt's summary at face value for these. D-05's 2026-07-24 revision.
+  (D-05) — fetch raw text/wikitext directly (`curl`) or render to PNG and read; never trust its
+  summary at face value for these.
 - **Excluding a dependency's own feature doesn't stop its transitive dependencies' *default*
-  features from turning on anyway** — Cargo feature unification is additive-only. Confirmed adding
-  `argon2` (D-50): skipping its `rand` feature didn't keep `rand_core` out, since `password-hash`'s
-  own defaults pull it in regardless. Always verify with `cargo tree -e normal --features <feature>`.
+  features from turning on anyway** — Cargo feature unification is additive-only (D-50). Verify with
+  `cargo tree -e normal --features <feature>`.
 - **Test-first, always** — a failing test (or test-vector check) before the implementation, every
   function, not just primitives.
   - **Every new primitive/mode/wrapper/CLI command ships three test categories**: (1) correctness
-    against a vector/oracle, (2) **rejection** — tampered ciphertext/tag/aad/nonce, wrong key,
-    wherever a tag exists to tamper with ("attack" pass, D-64), (3) **misuse** — invalid
-    lengths/args/paths, degenerate-but-legal input (empty file, all-zero key, `--iterations 0`)
-    succeeding rather than erroring, no partial output on failure ("fool" pass, D-65). Skipping
-    either because "it'll obviously pass" is backwards — D-63's nonce-authentication gap and several
-    `wrong_key_is_rejected` gaps were both found by noticing an *absent* test, not a walkthrough.
-  - **Where a misuse category is foreclosed by the type signature** (e.g. `[u8; 32]` makes "wrong
-    key length" uncompilable), record that as a `docs/DECISIONS.md` finding — don't write a test that
-    only proves the compiler works.
-  - **Rejection/misuse tests passing on first write is expected, not a test-first violation** — it's
-    coverage for already-correct code, not red-green development.
+    against a vector/oracle, (2) **rejection** — tampered ciphertext/tag/aad/nonce, wrong key
+    ("attack" pass, D-64), (3) **misuse** — invalid lengths/args/paths, degenerate-but-legal input
+    succeeding rather than erroring, no partial output on failure ("fool" pass, D-65). Don't skip
+    either as "obviously fine" — D-63's nonce-authentication gap was found by noticing an *absent*
+    test, not a walkthrough.
+  - **Where a misuse category is foreclosed by the type signature**, record that as a
+    `docs/DECISIONS.md` finding instead of writing a test that only proves the compiler works.
+  - **Rejection/misuse tests passing on first write is expected**, not a test-first violation.
   - **A formula-based correctness precondition (not a branch) is invisible to random sampling** —
-    fixed vectors and proptest alike. If validity silently depends on avoiding a low-probability
-    input (zero denominator, undefined inverse, a vanishing projective coordinate), find the
-    boundary by reading the code, test it explicitly, or prove exhaustively where tractable (Kani).
-    Found the hard way: `curve163::scalar_multiply`'s affine-recovery step assumed neither `kP` nor
-    `(k+1)P` was infinity, wrong at exactly `k ∈ {0, n-1, n}` — invisible to every KAT/proptest run
-    (`~2^-163` chance), D-110/T-152. `gf2m163::reduce`/`square_wide` are immune since Kani proves
-    them exhaustively; `scalar_multiply` was exposed precisely because it's the one function
-    exhaustive verification can't reach (D-109). Not a license to sprinkle boundary tests
-    generically — surveyed the other DSTU primitives for this shape, none apply, D-111/T-154.
+    fixed vectors and proptest alike. Find the boundary by reading the code, test it explicitly, or
+    prove exhaustively where tractable (Kani) (D-109/D-110/D-111).
 - **A `hazmat` streaming API existing does not make the `uacrypt` command wrapping it
-  memory-bounded** (D-42) — a CLI command must be deliberately wired to read in fixed chunks instead
-  of `std::fs::read`-ing the whole file, per new algorithm (unless the construction genuinely needs
-  the whole message up front). `kupyna-digest`/`strumok-crypt` both do this; for a cipher this means
-  chunking both the disk read *and* write.
+  memory-bounded** (D-42) — wire each new algorithm's CLI command to read in fixed chunks instead of
+  `std::fs::read`-ing the whole file (chunk both disk read and write for a cipher), unless the
+  construction genuinely needs the whole message up front.
 - **Three-attempts rule**: if the same problem survives 3 different approaches (especially
   toolchain/build/CI), stop, report what was tried, wait for direction — don't self-authorize a 4th.
 - **Research before implementation**: no primitive written from memory. Verify against the primary
   source (DSTU clause or real reference-implementation code) first, cite it in `docs/DECISIONS.md`.
-  **If only a reference implementation is available** (primary spec unread/nonexistent), mark the
-  citation provisional explicitly (Strumok's D-15 framing is the pattern), re-verify against the
-  primary text once available. **Porting logic from a reference implementation means porting its
-  calling convention too** — byte order/sign/units can differ from the primary spec's own
-  convention; copying internals without adopting (or flagging) that convention is a distinct failure
-  mode from getting the math wrong. Exactly how DSTU 4145's `hash_to_field` broke: transcribed from
-  Bouncy Castle's `hash2FieldElement` (expects its `hash` parameter pre-reversed relative to the
-  standard's own convention) without flagging the requirement — D-25's follow-up entries,
-  `docs/pseudocode/dstu4145.md`.
-- **Transcribing long same-character runs (repeated `F`/`0` digits in a hex modulus, etc.) from a
-  page image is exactly as failure-prone as OCR is for the same pattern — a human/AI eyeball count
-  can silently miscount by dozens of digits.** Confirmed doing DSTU 9041 extraction (T-174): a
-  manual re-read of a 256-bit prime's hex string overcounted a 61-`F` run as ~87 characters, caught
-  only because the resulting integer failed a primality check. Stroke-count such runs
-  programmatically (binarize the cropped row, count column-darkness gaps between glyphs) instead
-  of reading them by eye, and verify the result against an independent property (primality,
-  curve-membership, a known scalar multiple) before trusting it.
-- **Finding a numeric convention once (e.g. "this document's bare integers are hex, not decimal")
-  does not mean it was applied every time it recurs in the same source** — re-check each
-  occurrence fresh. Confirmed doing DSTU 9041 extraction (T-174/D-163): correctly identified a
-  hex-not-decimal convention for one parameter, then independently misread a *different* parameter
-  in the same worked example as decimal minutes later, flagging a false "erratum" before catching
-  that the same rule should have applied there too.
-- **Don't trust green tests alone for security-critical code.** Two corollaries from DSTU 4145 (D-25):
-  - **A test-vector fix not traceable to a specific citation is suspect.** If passing requires
-    changing the test's own input transformation (reversing bytes, reordering fields), that change
-    needs a cited reason before being accepted — an unexplained transform that merely produces the
-    expected output more likely masks a real implementation bug than fixes a genuine test mistake
-    (two wrong steps can cancel into a right-looking answer — exactly what happened here).
-  - **Check what a fixed vector actually exercises, not just whether it passes.** A vector supplying
-    a derived value directly (e.g. public key `Q`) rather than deriving it from what it also gives
-    (private key `d`) doesn't test that derivation step at all, no matter how many times it runs.
-    Before calling a multi-step primitive "vector-verified," check which steps the vector's inputs/
-    outputs actually reach — anything unreached needs its own property test (D-21/D-25).
+  If only a reference implementation is available, mark the citation provisional (D-15's framing)
+  and re-verify against the primary text once available. **Porting logic from a reference
+  implementation means porting its calling convention too** — byte order/sign/units can differ from
+  the primary spec's own convention; copying internals without flagging that convention is a
+  distinct failure mode from getting the math wrong (D-25, `docs/pseudocode/dstu4145.md`).
+- **Transcribing long same-character runs (repeated hex digits, etc.) from a page image is as
+  failure-prone as OCR for the same pattern** — a human/AI eyeball count can silently miscount by
+  dozens of digits (T-174/D-163). Stroke-count such runs programmatically instead of reading by eye,
+  and verify the result against an independent property (primality, curve-membership, a known
+  scalar multiple).
+- **Finding a numeric convention once (e.g. hex vs. decimal) does not mean it was applied every time
+  it recurs in the same source** — re-check each occurrence fresh (T-174/D-163).
+- **Don't trust green tests alone for security-critical code** (D-25):
+  - **A test-vector fix not traceable to a specific citation is suspect** — an unexplained input
+    transformation (reversing bytes, reordering fields) that merely produces the expected output
+    more likely masks a real bug than fixes a genuine test mistake.
+  - **Check what a fixed vector actually exercises, not just whether it passes** — a vector supplying
+    a derived value directly rather than deriving it from what it also gives doesn't test that
+    derivation step at all; anything unreached needs its own property test (D-21).
 - **A new Cargo feature that changes production behavior breaks `--all-features` as a stand-in for
-  "test the default profile"** — CI needs an explicit default-only step too, or the default path
-  silently drops out of coverage. Learned adding `small-tables` (D-39); `.github/workflows/rust.yml`
-  has the pattern.
+  "test the default profile"** — CI needs an explicit default-only step too (D-39, see
+  `.github/workflows/rust.yml`).
 - **Swapping a direct array index for a function call using the same loop variable can flip
   `clippy::needless_range_loop` from clean to a hard error** even though the variable also drives
   other index arithmetic — a heuristic quirk. Resolve with a documented `#[allow]`, don't restructure
-  fighting it (D-39, three instances in `hazmat::kalyna`/`kupyna`).
+  fighting it (D-39).
 - **`rust-toolchain.toml` pins `stable` repo-wide, silently overriding a CI step's installed nightly
-  toolchain** for any bare `cargo` invocation in the same job — fails confusingly later, not at the
-  wrong-toolchain step. Any CI step needing nightly (miri, fuzz) must say `cargo +nightly ...`
-  explicitly (confirmed missing in `.github/workflows/rust.yml` for a full day, T-85).
+  toolchain** for any bare `cargo` invocation in the same job. Any CI step needing nightly (miri,
+  fuzz) must say `cargo +nightly ...` explicitly (T-85).
 - **Verify a CI job's real conclusion via `gh run view`, never assume from a green badge or an older
-  note.** CI's `cargo miri test` job genuinely passes now (T-100/D-59: root cause was every DSTU 4145
-  EC-ladder/field-inversion test, not just the two suspected proptest suites — fixed via
-  `#[cfg_attr(miri, ignore)]` plus a 150-min job timeout, ~84 min measured locally).
+  note** (T-100/D-59).
 - **A `git stash`/`git stash pop` A/B benchmark cycle can leave `cargo bench`'s compiled binary
-  stale** — `cargo`'s own change detection does not reliably fire across a stash/pop, and the result
-  reads as a huge, *reproducible* performance anomaly rather than as an error (confirmed T-172/D-161:
-  two clean reruns of the same benchmark both showed a ~3x "regression" on one Kalyna variant;
-  `objdump -d` on the actual bench binary showed pre-change mangled symbol names, proving it hadn't
-  recompiled). Before trusting any benchmark number that follows a stash cycle, force a rebuild
-  (`touch` the changed file) or verify the binary's own symbols — don't assume `cargo` caught the
-  change, the same "verify, don't assume" standard as the CI-conclusion rule below.
+  stale** — Cargo's change detection does not reliably fire across a stash/pop, producing a
+  reproducible-looking performance anomaly instead of an error (T-172/D-161). Before trusting a
+  post-stash benchmark number, force a rebuild (`touch` the changed file) or verify the binary's own
+  symbols (`objdump -d`).
 - **A scoped local `cargo +nightly miri test` on a file with `proptest!` needs `PROPTEST_CASES` cut
-  down explicitly** — the default 256 cases can mean tens of CPU-minutes with zero output under
-  Miri's interpretation overhead (confirmed on `crypto_secretbox`'s suite: `$env:PROPTEST_CASES = "8"`
-  brought a ~40-CPU-minute stall down to 1135.80s/~19 min, 0 UB). A stuck-looking empty output file
-  with real accumulating CPU time (`Get-Process -Id <pid> | Select CPU`) means it's working, not hung.
+  down explicitly** (e.g. `$env:PROPTEST_CASES = "8"`) — the default 256 cases can mean tens of
+  CPU-minutes with zero output under Miri's interpretation overhead. A stuck-looking empty output
+  file with real accumulating CPU time (`Get-Process -Id <pid> | Select CPU`) means it's working,
+  not hung.
 - **Never pipe a long-running `cargo`/`miri` command through `| tail -N` on Windows** — `tail`
-  buffers everything until EOF, so the log stays completely empty for the run's entire duration
-  (confirmed twice in one session: an OCR script, then a `cargo miri test` re-verification that
-  looked hung for ~103 CPU-minutes with zero output, D-164). Redirecting straight to a file
-  (`> log 2>&1`, no pipe) is **not** a full fix either — Windows fully-buffers non-tty stdout, so
-  the file can still read 0 bytes until the process exits. Use `Get-Process`'s growing CPU time as
-  the actual liveness signal (per the bullet above), and add `-- --test-threads=1` so that once the
-  log does flush (on exit, or after a deliberate kill), its last completed test name is exactly the
-  one that was still running — this is how a stuck-on-one-specific-test root cause (D-164) gets
-  found instead of guessed at.
+  buffers until EOF, so the log stays empty for the run's entire duration (D-164). Redirecting to a
+  file (`> log 2>&1`, no pipe) is not a full fix either — Windows fully-buffers non-tty stdout. Use
+  `Get-Process`'s growing CPU time as the liveness signal, and add `-- --test-threads=1` so the log's
+  last completed test name is the one still running when it does flush.
 - **uapki's C test-vector struct literals use adjacent string-literal concatenation across
   `\`-continued lines** — a naive "grab every quoted string in file order" extractor desyncs the
-  field count (bit OFB, D-53). Parse brace-delimited case blocks and concatenate adjacent string
-  tokens per field, don't flatten the whole file's quoted strings into one list.
+  field count (D-53). Parse brace-delimited case blocks and concatenate adjacent string tokens per
+  field.
 - **Bumping a workspace crate's version means updating it in (at least) two places**: the crate's
   own `[package] version`, and any other workspace crate's path-dependency `version =` pointing at
-  it. Missing the second silently reintroduces the wildcard-dependency problem `cargo deny` once
-  caught (T-75/D-11). Regenerate `Cargo.lock` via a real build afterward, don't hand-edit it (D-43).
+  it (T-75/D-11). Regenerate `Cargo.lock` via a real build afterward, don't hand-edit it (D-43).
 - **Porting a `crypto_secretbox`-style wrapper onto a new AEAD construction means re-deriving, not
-  assuming, whether that construction's tag covers a caller-transmitted nonce/IV** — see the
-  "Crypto engineering hard constraints" section above for the standing rule (D-63's concrete case);
-  re-check for every future combined-AEAD wrapper, don't assume a one-off GCM-specific fix.
-- **Every language binding's `crypto_secretstream` wrapper (D-118) has two known pitfalls, found by
-  advisor review building the Python one (T-49) — re-check both for every later binding, don't
-  assume Python's fix generalizes automatically:** the language's own "always runs, even on error"
-  cleanup hook (`__exit__`/`Dispose`/try-with-resources/RAII destructor) must not finalize the
-  stream on the exception path, and the wire-format reader must itself bound the untrusted
-  length-prefixed chunk field and reject trailing data after `Final` — matching the wire format
-  isn't enough, its validation has to be ported too. Full detail: D-118,
+  assuming, whether that construction's tag covers a caller-transmitted nonce/IV** — see "Crypto
+  engineering hard constraints" above for the standing rule (D-63); re-check for every future
+  combined-AEAD wrapper.
+- **Every language binding's `crypto_secretstream` wrapper has two known pitfalls** (D-118, found
+  building the Python one, T-49) — re-check both for every later binding: the language's own
+  "always runs, even on error" cleanup hook (`__exit__`/`Dispose`/try-with-resources/RAII destructor)
+  must not finalize the stream on the exception path, and the wire-format reader must itself bound
+  the untrusted length-prefixed chunk field and reject trailing data after `Final`. Full detail:
   `docs/bindings-strategy.md`'s standard binding steps, step 3.
 - **This project's doc comments are long, citation-dense prose**, prone to
-  `clippy::doc_lazy_continuation` under `-D warnings`: any line starting with `**bold` or `- dash`
+  `clippy::doc_lazy_continuation` under `-D warnings`: a line starting with `**bold` or `- dash`
   (even mid-sentence) reads as an unindented list-item continuation and hard-errors. Don't start a
-  doc-comment line with `**`/`- ` unless actually writing a markdown list; run
+  doc-comment line with `**`/`- ` unless writing an actual markdown list; run
   `cargo clippy --workspace --all-features -- -D warnings` + `cargo fmt --all` right after writing
-  any doc comment, not deferred to a final batch check. Same lint pass flags `clippy::doc_markdown`
-  too — wrap an inline all-caps/CamelCase word used as a verb in backticks (`` `XOR`-ed ``).
+  any doc comment. Same lint pass flags `clippy::doc_markdown` — wrap inline all-caps/CamelCase
+  words used as verbs in backticks.
 - **When `Edit` fails with "String to replace not found" on an anchor `Read` shows as
   byte-identical**, don't retry the same long multi-line anchor (root cause is usually invisible
-  whitespace/encoding) — immediately retry with a much shorter, single unique line from the same
-  block instead.
+  whitespace/encoding) — retry with a much shorter, single unique line from the same block instead.
 - **Before declaring a multi-file feature "done," grep its own task ID across every file the doc
-  map's "Update when" column implicates** — not just the docs you remember touching. A stale "not
-  started" line next to your own new "Done" line is worse than never mentioning the doc at all.
+  map's "Update when" column implicates** — not just the docs you remember touching.
 - **A task-ID grep sweep is necessary but not sufficient — it misses free-standing state summaries
-  that go stale as an indirect consequence of a task landing, with no task-ID string in the
-  sentence for a grep to catch.** `CLAUDE.md`'s own "Project status" ("root Cargo workspace with
-  two crates" — silently wrong the moment T-158 added `dstu-core-capi` as a third) and "Second
-  priority" (a hardcoded five-language list, missing PHP/Ruby/Go entirely) sat stale through the
-  whole T-49→T-53 binding-landing phase because neither sentence ever cited a task ID — found only
-  by a full owner-requested cross-check, not by any per-task sweep (D-159). Before declaring a
-  doc-map sweep complete for a change that adds a workspace member or a headline-scope item,
-  separately re-read `CLAUDE.md`'s own "Project status"/"Second priority" sections and
-  `docs/CHANGELOG.md`'s `[Unreleased]` section — don't rely on the task-ID grep to reach them.
-  A missing `CHANGELOG.md` entry for an already-tagged release is the sharpest version of this: it
-  reads as nothing at all, not as stale prose, so a grep-for-stale-language pass walks right past
-  it. `docs/CHANGELOG.md` only covers what actually ships in a tagged GitHub Release/crates.io
-  publish, not every landed change (owner's own scoping, D-159) — check `gh release list` against
-  `docs/CHANGELOG.md`'s own version headers whenever auditing it, not just its prose for staleness
-  (confirmed the hard way: `v0.2.0` shipped 2026-08-02 with real content — DSTU 4145 signing, a
-  correctness fix, perf work — and had no `CHANGELOG.md` entry at all until this cross-check).
+  that go stale with no task-ID string for a grep to catch** (D-159, e.g. `CLAUDE.md`'s own
+  "Project status"/"Second priority" going stale through a whole binding-landing phase with no task
+  ID in either sentence). Before declaring a doc-map sweep complete for a change that adds a
+  workspace member or headline-scope item, separately re-read those two `CLAUDE.md` sections and
+  `docs/CHANGELOG.md`'s `[Unreleased]` section. A missing `CHANGELOG.md` entry for an already-tagged
+  release is the sharpest version — check `gh release list` against `docs/CHANGELOG.md`'s own
+  version headers, since `CHANGELOG.md` only covers what actually ships in a tagged
+  release/publish, not every landed change.
 - **Adding a new `cargo fuzz` target means syncing three places**: `fuzz/Cargo.toml`'s `[[bin]]`,
   `.github/workflows/rust.yml`'s `fuzz-smoke` matrix, `xtask/src/main.rs`'s `FUZZ_TARGETS` array —
-  missing the third means the project's single QA entry point silently skips the new target.
-- **`xtask/src/main.rs`'s `ci()` runs every optional layer (`miri`, `kani`, `fuzz`, ...) from one
-  `[fn() -> bool; N]` array, which requires every element to share that exact signature.** Giving
-  one of those functions a parameter (`miri(package: Option<&str>)`, so `cargo xtask miri <pkg>`
-  can scope to one crate, D-164/T-175) doesn't fit in the array directly — bind a same-shaped
-  closure first (`let optional_miri: fn() -> bool = || miri(None);`) and put that in the array
-  instead of changing the array's element type.
+  missing the third means the QA entry point silently skips the new target.
+- **`xtask/src/main.rs`'s `ci()` runs every optional layer from one `[fn() -> bool; N]` array,
+  requiring every element to share that exact signature.** Giving one of those functions a
+  parameter (D-164/T-175) doesn't fit directly — bind a same-shaped closure first
+  (`let optional_miri: fn() -> bool = || miri(None);`) and put that in the array instead.
 - **A `#[cfg(feature = "std")]`-gated variant on an otherwise-unconditional public error enum (not
   `#[non_exhaustive]`) changes that enum's variant count under Cargo's additive feature
   unification** — any dependency enabling this crate's `std` feature changes the enum for every
-  consumer. Not a reason to add `#[non_exhaustive]` speculatively — verify the shape is intentional
-  and record it, don't discover it from a downstream break.
+  consumer. Verify the shape is intentional and record it, don't discover it from a downstream break.
 - **`getrandom` 0.3's custom RNG backend is a compile-time/link-time mechanism** (`--cfg
   getrandom_backend="custom"` + `extern "Rust" fn __getrandom_v03_custom`), **not** a
   runtime-swappable callback like libsodium's `randombytes_set_implementation()`. Don't build a
-  home-grown pluggable-RNG registry to match that shape (D-03/D-04's reasoning against homegrown RNG
-  code). This mechanism is target-agnostic and testable on the host, no bare-metal rig needed.
+  home-grown pluggable-RNG registry to match that shape (D-03/D-04).
 - **A Cargo feature/build combination outside the usual `--all-features`/default-profile runs can
   hide a real `dead_code` warning** until that exact combination is built — build-check every entry
-  in the feature matrix individually (confirmed adding `getrandom`, D-74).
-- **The same "untested feature combination" pattern also hides a Miri-speed problem, not just a
-  `dead_code` warning** — `dstu-core-capi` unconditionally enables `dstu-core`'s `pwhash` feature,
-  so its FFI test suite runs Argon2id under Miri; `dstu-core`'s own miri run never does, since
-  `pwhash` is opt-in and off by default there. That specific combination (`pwhash` + Miri) only
-  exists in the downstream crate, so a downstream crate that force-enables a feature on its
-  dependency needs its own feature-matrix check, not just the upstream crate's (D-164).
+  in the feature matrix individually (D-74).
+- **The same "untested feature combination" pattern also hides a Miri-speed problem** —
+  `dstu-core-capi` unconditionally enables `dstu-core`'s `pwhash` feature, so its FFI suite runs
+  Argon2id under Miri even though `dstu-core`'s own miri run never does (`pwhash` is opt-in there).
+  A downstream crate that force-enables a dependency feature needs its own feature-matrix check, not
+  just the upstream crate's (D-164).
 - **When a README example must mirror a doctest's code verbatim, diff the two programmatically**
   rather than eyeballing — caught real silent drift this way (T-120/D-75).
 - **When a session accumulates more than one design fork resolved by implementation rather than
@@ -488,78 +432,54 @@ Full detail and rationale in `docs/SECURITY.md` — this is the compressed versi
   discover them one at a time reading `docs/DECISIONS.md` later.
 - **When writing a benchmark/comparison wrapper, verify the timer excludes one-time setup** (ctx
   alloc + key-schedule init) — copying a sibling wrapper's structure doesn't carry the same
-  guarantee. Invisible at bulk sizes, decisive at small ones (D-80: a real ~1.1-2.9x gap looked like
-  a bogus ~4-24x one). The opposite applies to an unkeyed/schedule-free primitive (hash digest) —
-  its benchmark wrapper must call init *inside* the timed loop, not hoist it out, matching
-  `uacrypt`'s own `bench_in_memory!`.
+  guarantee; invisible at bulk sizes, decisive at small ones (D-80). The opposite applies to an
+  unkeyed/schedule-free primitive (hash digest) — its benchmark wrapper must call init *inside* the
+  timed loop, matching `uacrypt`'s own `bench_in_memory!`.
 - **After a const-generic rewrite removes every production caller of an old runtime-parameterized
   function, expect a BATCH of `never used` clippy errors, not just one** — every function down that
-  call chain becomes dead at once (T-134: 7 functions in one pass). Run clippy right after rewiring
-  the call site, fix the whole batch together.
+  call chain becomes dead at once (T-134). Run clippy right after rewiring the call site, fix the
+  whole batch together.
 - **Before any `hazmat::{kalyna,kupyna,strumok}` perf rewrite, spike it and read the actual
   `--emit=asm` output — don't plan from source-level reasoning alone.**
-  `RUSTFLAGS="--emit=asm -C debuginfo=0" cargo build --release -p dstu-core --lib`. Reversed two
-  planned rewrites in one session (T-139, T-129) once actually spiked — both closed with no code
-  change, a complete outcome, not a shortfall.
+  `RUSTFLAGS="--emit=asm -C debuginfo=0" cargo build --release -p dstu-core --lib` (T-139/T-129,
+  both reversed once actually spiked).
 - **`oracles/uapki`'s vendored clone can be stale relative to upstream `main`** — a raw `diff`
-  against a fresh clone can show the *entire* file as different from CRLF-vs-LF alone
-  (`diff --strip-trailing-cr`, or normalize both sides first) with zero real code drift. Diff-normalize
-  and confirm line-number alignment before hand-copying a patch derived from the vendored copy.
+  against a fresh clone can show the *entire* file as different from CRLF-vs-LF alone with zero real
+  code drift. Diff-normalize (`diff --strip-trailing-cr`) and confirm line-number alignment before
+  hand-copying a patch derived from the vendored copy.
 - **When a CI static analyzer (SonarCloud/etc.) flags a finding on your own PR, read its actual
   symbolic-execution trace, not just the one-line summary, before proposing a fix.** `curl
   https://sonarcloud.io/api/issues/search?componentKeys=<project>&pullRequest=<N>` returns each
-  issue's `flows` array — the exact assumed path (`specinfo-ua/UAPKI#30`/T-137: a first fix
-  addressed a plausible mechanism the trace didn't actually show).
+  issue's `flows` array with the exact assumed path (T-137).
 - **`api/issues/search` does not surface duplication findings — that's a separate Quality Gate/
-  measures endpoint.** Duplication has no active rule in this project's ruleset, so it never
-  appears as an "issue"; check `api/qualitygates/project_status?projectKey=<key>&branch=<branch>`
-  (and `api/measures/component_tree`/`api/duplications/show` to find the actual duplicated lines)
-  whenever asked to verify SonarCloud is clean, not issues alone. Confirmed the hard way (T-187/
-  T-188): reported "0 issues" while the gate was actually `ERROR` on `new_duplicated_lines_density`.
-  `sonarcloud.yml`'s scan step now passes `-Dsonar.qualitygate.wait=true` for the same reason —
-  without it the job exits 0 before the gate is evaluated server-side, so a green CI run doesn't
-  mean the gate passed either.
+  measures endpoint.** Check `api/qualitygates/project_status?projectKey=<key>&branch=<branch>`
+  (and `api/measures/component_tree`/`api/duplications/show`) whenever verifying SonarCloud is
+  clean, not issues alone (T-187/T-188). `sonarcloud.yml`'s scan step passes
+  `-Dsonar.qualitygate.wait=true` for the same reason — without it the job exits 0 before the gate
+  is evaluated server-side.
 - **A repo with no root `.gitattributes` lets `windows-latest`'s hosted runner's own system
-  gitconfig (`core.autocrlf=true`, not the repo's or a user's setting) silently convert every LF
-  blob to CRLF on `actions/checkout`** — invisible unless a Windows-only step then diffs file
-  content byte-for-byte. `gofmt -l` does exactly this (it always emits LF), so it flagged *every*
-  `.go` file in `bindings/go` at once, not just files touched that session, on the Windows leg of
-  `bindings-go.yml` (D-155). Fix: repo-root `.gitattributes` with `* text=auto eol=lf` (plus
-  `*.pdf binary` for this repo's tracked PDFs) — `eol=lf` overrides `core.autocrlf` regardless of
-  the checkout machine's own config. Any future binding/tool with a Windows CI leg that does
-  format-checking or byte-level comparison (not just compiling) is exposed to the same failure
-  mode without this file.
+  gitconfig silently convert every LF blob to CRLF on `actions/checkout`** — invisible unless a
+  Windows-only step then diffs file content byte-for-byte (e.g. `gofmt -l`, D-155). Fix: repo-root
+  `.gitattributes` with `* text=auto eol=lf` (plus binary markers for tracked binaries) — `eol=lf`
+  overrides `core.autocrlf` regardless of the checkout machine's own config.
 - **`openssl cms`/`smime -encrypt`/`-decrypt` silently truncate binary input at the first `0x1A`
-  byte unless called with `-binary`** — the default S/MIME-oriented text-mode content handling reads
-  it as a text EOF marker. Confirmed doing T-179's `crypto_box`-vs-OpenSSL-CMS benchmark (D-170): a
-  10 MiB random payload came back as a 455-byte CMS structure with no error, caught only by checking
-  the output size before timing anything. Always pass `-binary` on both sides for any non-text
-  payload, and verify a byte-for-byte round trip before trusting a timing number from this command.
-  Separately, Git Bash's MSYS path conversion rewrites a leading `/CN=...` in `-subj` into a Windows
-  filesystem path — prefix with `MSYS_NO_PATHCONV=1`.
+  byte unless called with `-binary`** — the default S/MIME text-mode handling reads it as an EOF
+  marker (D-170). Always pass `-binary` on both sides for non-text payloads, and verify a
+  byte-for-byte round trip before trusting a timing number. Separately, Git Bash's MSYS path
+  conversion rewrites a leading `/CN=...` in `-subj` into a Windows path — prefix with
+  `MSYS_NO_PATHCONV=1`.
 - **`openssl speed`'s own `Doing ... ops in Ts` progress line is written to stderr, not stdout** —
-  only the final, coarser summary table (`type / AES-128-ECB  1012371.39k`) is on stdout. Invisible
-  in a manual `2>&1`-merged shell spike (how every `Reproducing` recipe in `docs/PERFORMANCE.md` is
-  written) — confirmed the hard way building `cargo xtask bench-compare` (T-187): the tool silently
-  produced zero data rows until this was found via temporary debug output and fixed by parsing
-  stderr instead.
-- **A MinGW-built `.exe` (this project's C/C++ test/example binaries, `cargo xtask cpp`) can fail
-  or hang when launched directly from Git Bash** (seen as `ctest`/a direct invocation reporting a
-  bogus `STATUS_ENTRYPOINT_NOT_FOUND`/exit 127) **while the identical binary runs and passes clean
-  from PowerShell** — confirmed on `bindings/cpp`'s `dstu_core_cpp_tests.exe` (T-181, adding
-  `crypto_box`): the DLL's exports were verified present with `objdump -p` first, ruling out a real
-  stale-build/missing-symbol cause, before concluding this was Git Bash's own process-launch
-  environment, not the code. When a Windows-native build/test tool (`cmake`/`ctest`, not a
-  Bash/POSIX script) reports a failure that doesn't match the actual program logic, re-run it via
-  the `PowerShell` tool before concluding there's a real bug — this is a different failure mode
-  than the already-documented Windows stdout-buffering/`tail` gotchas above, specific to process
-  launch, not I/O.
+  only the final summary table is on stdout. Invisible in a manual `2>&1`-merged shell spike
+  (T-187) — parse stderr, not stdout, when scripting this.
+- **A MinGW-built `.exe` can fail or hang when launched directly from Git Bash** (bogus
+  `STATUS_ENTRYPOINT_NOT_FOUND`/exit 127) **while the identical binary runs clean from PowerShell**
+  (T-181). Verify exports with `objdump -p` to rule out a real build issue first, then re-run via
+  the `PowerShell` tool before concluding there's a real bug — specific to process launch, not I/O.
 - **mdBook's `{{#include file.md}}` resolves relative markdown links in the included content
-  against the *including* file's directory, not the original file's.** `docs/introduction.md`
-  transcludes `README.md` (repo root) via `{{#include ../README.md}}` (T-186) — README's own
-  relative links (`bindings/python/README.md`, `docs/CONTRIBUTING.md`) broke inside the rendered
-  book until switched to absolute `github.com/.../blob/master/...` URLs, which read identically on
-  GitHub. Re-check this whenever README gains a new relative link, or another `{{#include}}` is added.
+  against the *including* file's directory, not the original file's** (T-186, `docs/introduction.md`
+  transcluding root `README.md`). Use absolute `github.com/.../blob/master/...` URLs for any
+  relative link in a transcluded file — re-check whenever README gains a new relative link, or
+  another `{{#include}}` is added.
 
 ## Reference implementations and oracles
 
