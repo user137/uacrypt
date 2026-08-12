@@ -5,13 +5,31 @@ All notable changes to this project are documented in this file. Format follows
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-08-12
+
 ### Added
 
 - `crypto_box512`/`crypto_sign257`: wired into `dstu-core-capi` and all eight language bindings
   (Python/Node.js/Ruby/Java/PHP/.NET/Go/C++) - both landed in `dstu-core` itself already, in 0.3.0
-  above, without this wiring (`docs/TASKS.md` T-204, closed 2026-08-09/10). The next tagged release's
-  Python wheel (and any other binding artifact this project starts attaching to a GitHub Release)
-  will be the first to actually ship this surface outside the Rust crate itself.
+  above, without this wiring (`docs/TASKS.md` T-204, closed 2026-08-09/10). This release's Python
+  wheel (and any other binding artifact attached to a GitHub Release) is the first to actually ship
+  this surface outside the Rust crate itself.
+- CI infrastructure for publishing the Python (`dstu-core`) and Node.js (`dstu-core`) bindings to
+  PyPI and npm (`docs/TASKS.md` T-164/T-203) - both `publish-pypi`/`publish-npm` jobs in
+  `release.yml` land dormant, gated behind their own GitHub Environment approval, and use OIDC
+  Trusted Publishing exclusively (no token/secret stored anywhere) - the direct fix for a real
+  crates.io token-leak incident T-203 records. **Neither registry has an actual publish yet** -
+  this only prepares the pipeline; each needs the project owner to separately configure Trusted
+  Publishing on that registry's own site first. Packagist is deliberately not part of this pass -
+  `bindings/php` is a compiled `ext-php-rs` extension, and Packagist only distributes Composer
+  (PHP-source) packages (`docs/DECISIONS.md` D-144).
+
+### Fixed
+
+- `docs/TASKS.md` T-17 and `CLAUDE.md`'s "MVP scope" both still read "not started" for the
+  crates.io publish that actually happened at 0.3.0 above - corrected to reflect reality
+  (`docs/DECISIONS.md` D-159's stale-doc failure shape: no task-ID string in either sentence for a
+  grep sweep to have caught).
 
 ## [0.3.0] - 2026-08-09
 

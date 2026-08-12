@@ -21,4 +21,4 @@ crate-type = ["cdylib", "staticlib", "rlib"]
 # `crates/uacrypt/Cargo.toml`'s own dependency line exactly (docs/DECISIONS.md D-148 point 4):
 # `catch_unwind` only exists in `std`, so there is no genuine no_std path for this crate to
 # preserve regardless.
-dstu-core = { path = "../dstu-core", version = "0.3.0", features = ["std", "selftest", "pwhash"] }
+dstu-core = { path = "../dstu-core", version = "0.3.1", features = ["std", "selftest", "pwhash"] }
