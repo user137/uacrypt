@@ -177,7 +177,7 @@ item they point to is later removed.
       loudly, not as a footnote — `CLAUDE.md`'s own MVP-scope example line previously read as
       implying arbitrary-file support, now corrected. No `uacrypt keygen` command added (out of
       this task's stated scope, same gap `kalyna-block`/`kalyna-ccm` already have).
-- [ ] **T-17** Publish `dstu-core` to crates.io. **Readiness-checked (not performed) 2026-07-25,
+- [x] **T-17** Publish `dstu-core` to crates.io. **Readiness-checked (not performed) 2026-07-25,
       Step 4 of the roadmap, user explicitly asked to assess without actually publishing**:
       `cargo publish --dry-run -p dstu-core` packages, verifies, and compiles cleanly from the
       packaged tarball (130 files, 764.7 KiB / 184.6 KiB compressed). One warning, not a blocker:
@@ -193,6 +193,12 @@ item they point to is later removed.
       can't resolve against the registry until `dstu-core` is actually published first) - expected,
       not a bug, just fixes the required order (`dstu-core` before `uacrypt`). None of this touched
       the actual crates.io registry - `--dry-run` uploads nothing.
+      **Actually done 2026-08-09**, via the `publish-crates` job `release.yml` already had
+      (added at T-157/D-114) firing automatically on the `v0.3.0` tag push - `dstu-core` v0.3.0
+      (crates.io `created_at` 2026-08-09T17:41:14Z) then `uacrypt` v0.3.0 (17:53:49Z), both
+      confirmed live via crates.io's own API. This checkbox and `CLAUDE.md`'s "MVP scope" line
+      had gone stale (D-159's failure shape - no task-ID string in either place for a grep to
+      catch), found and fixed while starting T-164/T-203's binding-registry work.
 - [x] **T-18/T-119** **DONE 2026-07-26.** Prebuilt Windows/Linux/macOS binaries via GitHub
       Releases, plus the `dstu-core` library source distribution attached to the same release -
       user-requested explicitly ("зроби реліз на гітхабі бінарника і самих бібліотек"), scoped down
@@ -3646,6 +3652,12 @@ item they point to is later removed.
       exists at all), and read that registry's actual current publish workflow requirements before
       writing any CI, the same "research before implementation" discipline `docs/CLAUDE.md` requires
       for primitives, applied here to release infrastructure instead.
+
+      **Stage 1 started 2026-08-12 - see T-164's own entry for the live status.** Owner picked
+      PyPI + npm first; re-checked names live (still free on both). Found this stage's own
+      Packagist step didn't hold up - D-144 already ruled it out for this specific PHP binding
+      (compiled extension, not Composer-manageable), not re-derived when this plan was written -
+      deferred, not dropped.
 - [x] **T-204** **Closed 2026-08-09/10, same session, three phases.** Found this session auditing binding coverage after the owner asked directly whether
       the new signature curve reached the bindings. `crypto_sign257` (DSTU 4145 `m=257`, T-199,
       landed 2026-08-08) was **not wired into any of the eight language bindings or
@@ -4133,6 +4145,20 @@ item they point to is later removed.
 
       Verified with a real `cargo xtask php` run, not just each tool run manually: 88/88 phpunit
       tests pass, PHPStan reports 0 errors, `cargo fmt`/`clippy --all-targets` on `src/` clean.
+- [ ] **T-209** **Not started, owner-requested (2026-08-12) - ship `uacrypt` itself as a `pip
+      install`-able CLI, separate from the `dstu-core` Python binding.** Raised while setting up
+      T-164/T-203's PyPI publisher for `dstu-core` - the owner asked whether the CLI binary should
+      go on PyPI too. It's a distinct package, not an addition to `dstu-core`'s existing one: a
+      Python user who wants the `uacrypt` command has no `pip install` path today (only GitHub
+      Releases or `cargo install`, crates.io - both outside the Python ecosystem entirely).
+      **Shape** (well-trodden pattern - `ruff`/`maturin` themselves ship this way): reuse
+      `release.yml`'s existing `build-binary` job outputs (Linux x86_64/macOS aarch64/Windows
+      x86_64 - the exact three platforms already built) instead of adding a new build path; each
+      platform gets a wheel bundling the prebuilt binary plus a thin Python shim exposing a
+      `console_scripts` entry point that just execs it - no Rust/PyO3 involved, unlike `dstu-core`'s
+      own maturin-based wheels. **New PyPI project, own pending-publisher registration** (name TBD,
+      `uacrypt` unless taken - not yet live-checked) - does not reuse `dstu-core`'s trusted publisher
+      or environment. Not started: no packaging code, no CI job, no name check yet.
 - [ ] **T-202** **Not started, owner-requested (2026-08-09) - research spike: is a Strumok-keystream
       + MAC ("Encrypt-then-MAC") authenticated construction a faster-but-still-safe alternative to
       `crypto_secretstream`'s current Kalyna-GCM-based AEAD for `uacrypt encrypt`/`decrypt`?**
@@ -6033,8 +6059,23 @@ configuration surface added in the process (D-47 still holds).
       `dstu-core` (T-17). This is the exact same class of gate T-17 already sits behind — an
       explicit publish decision per registry, not something new documentation can close (see
       `docs/user-journey-gaps.md`'s persona-2 "Add dependency" row for why T-17 alone already reads
-      this way). **Not started** — needs an explicit "yes, publish X" from the owner per registry,
-      same bar as T-17; do not self-authorize any of the four.
+      this way). **In progress 2026-08-12, per T-203's staged plan** — owner picked PyPI + npm to
+      start (explicit go-ahead), deferred Packagist for now: `bindings/php` is a compiled
+      `ext-php-rs` native extension, and Packagist only distributes Composer (PHP-source) packages
+      — D-144 already made this exact call ("Composer never manages native extensions at all"),
+      which T-203's "Packagist — lowest risk" framing hadn't re-derived. Needs its own future
+      decision (a composer.json installer-script shim fetching a prebuilt binary vs. PECL vs. skip
+      permanently) before it's revisited, not a silent drop. **This session**: `publish-pypi`/
+      `publish-npm` jobs landed in `release.yml`, both dormant behind their own GitHub Environment
+      approval gate (`pypi`/`npm`) until the owner configures Trusted Publishing (OIDC) on each
+      registry's own web UI — no token pasted anywhere, the direct fix for T-203's crates.io
+      token-leak incident. `bindings/nodejs/package.json`'s `napi.triples` also fixed from
+      `defaults: true` (which assumes `x86_64-apple-darwin`) to the explicit
+      `x86_64-unknown-linux-gnu`/`aarch64-apple-darwin`/`x86_64-pc-windows-msvc` triple this
+      project's own 3-OS CI actually builds (`macos-latest` is Apple Silicon, same target
+      `uacrypt`'s own release binary already uses) — the mismatched default would have scaffolded a
+      platform package CI could never produce a matching binary for. Actual first publish to either
+      registry is a separate, later, explicit go-ahead — not implied by this CI plumbing landing.
 - [x] **T-165** **Done 2026-08-03.** **`docs/CONTRIBUTING.md` has zero mentions of `bindings/`/`dstu-core-capi` anywhere
       (confirmed by grep, not assumed), added 2026-08-03.** It was written entirely for core-crate
       contributors (a new primitive/mode) and predates all of Phase 3 — a contributor who wants to

@@ -180,8 +180,8 @@ Algorithms in scope:
 - Single CLI binary over the core (`uacrypt`, D-36) — mode, nonce/IV etc. are hardcoded so there's
   nothing for the user to misconfigure. **Built** (T-16/D-52) — see "Project status" above for the
   current `encrypt`/`decrypt`/`hash` shape.
-- Publish the core crate to crates.io — not started, explicitly gated on an owner request (T-17,
-  distinct from a GitHub release, different platforms/reversibility).
+- Publish the core crate to crates.io — **done** (T-17): `dstu-core`/`uacrypt` v0.3.0 both live,
+  published 2026-08-09 via `release.yml`'s `publish-crates` job firing on the `v0.3.0` tag.
 - Prebuilt binaries for Windows/Linux/macOS via GitHub Releases, plus a `dstu-core` source
   distribution — **done** (T-18/T-119); `.github/workflows/release.yml` builds all three on a `v*`
   tag push.

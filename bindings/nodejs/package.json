@@ -1,9 +1,13 @@
 {
   "name": "dstu-core",
   "version": "0.1.0",
-  "private": true,
+  "private": false,
   "description": "Node.js bindings for dstu-core (Ukrainian DSTU cryptographic standards) - provisional, not yet published to npm",
   "main": "js/index.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/user137/uacrypt"
+  },
   "files": [
     "js/",
     "native/index.js",
@@ -13,7 +17,12 @@
   "napi": {
     "name": "dstu-core",
     "triples": {
-      "defaults": true
+      "defaults": false,
+      "additional": [
+        "x86_64-unknown-linux-gnu",
+        "aarch64-apple-darwin",
+        "x86_64-pc-windows-msvc"
+      ]
     }
   },
   "license": "MIT OR Apache-2.0",
@@ -30,6 +39,7 @@
     "build": "napi build native --platform --release",
     "build:debug": "napi build native --platform",
     "test": "node --test",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "prepublishOnly": "napi prepublish -t npm"
   }
 }
