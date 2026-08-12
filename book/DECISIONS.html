@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-df6d4230.js";
+            window.path_to_searchindex_js = "searchindex-7a0890d3.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-ce7e91c5.js"></script>
@@ -11591,6 +11591,55 @@ temp file is gone after success) and <code>smoke_misuse.rs</code>’s <code>stru
 for the three command families that were never at risk (<code>encrypt</code>/<code>decrypt</code>, <code>kupyna-digest</code>,
 <code>kalyna-block</code> - all read-whole-buffer-then-write, so nothing to fix, confirmed rather than assumed
 safe).</p>
+<h2 id="d-188-t-208---a-real-static-analyzer-added-to-nodejsphpjavac-pythonrubyevery-rust-crate-already-had-one-per-language-tool-choice-and-one-reusable-phpstan-mechanism-finding"><a class="header" href="#d-188-t-208---a-real-static-analyzer-added-to-nodejsphpjavac-pythonrubyevery-rust-crate-already-had-one-per-language-tool-choice-and-one-reusable-phpstan-mechanism-finding">D-188: T-208 - a real static analyzer added to Node.js/PHP/Java/C++ (Python/Ruby/every Rust crate already had one), per-language tool choice and one reusable PHPStan mechanism finding</a></h2>
+<p>Owner directly challenged an asymmetry T-207’s own per-binding CI audit surfaced: Python (<code>ruff</code>),
+Ruby (<code>rubocop</code>), and every Rust crate in this workspace (<code>clippy</code>) get a real static analyzer as a
+required CI gate; Node.js/PHP/Java/C++ had none at all. No prior decision here excluded these four -
+it was a historical gap from scaffolding time (T-49 through T-163), not a considered choice.
+Advisor consult: implement one language at a time in priority order by realistic bug-catching value
+for this repo’s actual code shape, not by ecosystem-parity alone, and don’t add a style-only tool
+where a bug-pattern detector is the real <code>clippy</code> analog.</p>
+<p><strong>Per-language tool choice, with the rejected alternative and why</strong>:</p>
+<ul>
+<li><strong>C++</strong>: <code>clang-tidy</code> (<code>bugprone-*</code>/<code>performance-*</code>/<code>clang-analyzer-*</code>) + <code>cppcheck</code>
+(<code>warning</code>/<code>performance</code>/<code>portability</code>), not a single tool - two independently-engined analyzers
+catching complementary bug classes. Curated check lists on both, not <code>--checks=*</code>/<code>--enable=all</code> -
+an unscoped <code>clang-tidy *</code> floods on MinGW system headers, and <code>cppcheck --enable=all</code> pulls in
+<code>style</code>/<code>unusedFunction</code>, noisy on a header-only library where most of the surface is public API
+by design. <code>.clang-tidy</code>’s <code>HeaderFilterRegex</code> scoped to <code>include/dstu/</code> only, excluding the
+<code>cbindgen</code>-generated <code>dstu_core.h</code> (not hand-fixable here).</li>
+<li><strong>Java</strong>: <code>SpotBugs</code>, not <code>Checkstyle</code> - Checkstyle is style-only and would mostly generate churn
+on a ~6-class binding; SpotBugs is a bug-pattern detector, the real match for JNI’s manual
+<code>byte[]</code> handling risk shape.</li>
+<li><strong>Node.js</strong>: <code>ESLint</code> (<code>@eslint/js</code> recommended only) - the only real candidate for plain CommonJS
+JS with no TypeScript source to add stricter rules for.</li>
+<li><strong>PHP</strong>: <code>PHPStan</code> at <code>level: 5</code> (a solid common baseline, not max strictness - same “curated, not
+maximal” posture as the other three languages’ own check-list choices), fetched as a standalone
+<code>.phar</code> like <code>phpunit.phar</code> already is (D-144’s “no Composer” posture extended here, not
+reconsidered).</li>
+</ul>
+<p><strong>Reusable finding, not specific to this project’s own code</strong>: PHPStan’s <code>stubFiles</code> config key does
+<em>not</em> declare brand-new symbols from scratch, contrary to what its name and common usage examples
+suggest - confirmed with an isolated minimal repro (a function/class declared only in a <code>stubFiles</code>
+entry still reported “not found”). It only refines the <em>types</em> of symbols PHPStan already discovers
+some other way (autoloading, reflection). <code>bootstrapFiles</code> (real PHP, actually executed once at
+analysis start, registering symbols the normal <code>function_exists()</code>-based way) is the correct
+mechanism for declaring a compiled extension’s entire function/class surface from scratch - used for
+both <code>phpstan-stubs/dstu_core.stub.php</code> (the <code>dstu_core_php</code> extension’s own 30 functions/5
+classes/7 constants, transcribed from <code>bindings/php/src/*.rs</code>) and, separately, <code>phpunit.phar</code>
+itself (<code>require</code>-ing the phar directly exposes <code>PHPUnit\Framework\TestCase</code> and everything
+<code>tests/*.php</code> needs, without invoking the phar’s own CLI runner - confirmed empirically, no stray
+output/exit - avoiding a <code>phpstan/phpstan-phpunit</code> Composer dependency this project’s own
+no-Composer stance would reject anyway).</p>
+<p><strong>Every analyzer wired as a real required gate</strong> (fails the job on any finding, this project’s own
+standing “CI must fail on problems, not warn” rule), both in each binding’s own CI workflow and in
+<code>xtask</code> (<code>cpp-tidy</code>/<code>cpp-cppcheck</code> as new subcommands since <code>cpp()</code>’s own build+test matrix runs on
+all three OSes with no single OS reliably shipping both tools; <code>java()</code>/<code>nodejs()</code>/<code>php()</code> extended
+in place). First real run per language found genuine issues except Node.js (0 findings, matching the
+“modest value” prediction for a two-file binding) - see <code>docs/TASKS.md</code> T-208 for the full per-finding
+detail (11 C++ findings, 4 Java findings, 1 missing PHP stub function), all fixed or justifiably
+suppressed with a real <code>NOLINT</code>/<code>@SuppressFBWarnings</code> reasoning string, none left as unexplained
+noise.</p>
 
                     </main>
 

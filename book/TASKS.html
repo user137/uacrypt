@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-df6d4230.js";
+            window.path_to_searchindex_js = "searchindex-7a0890d3.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-ce7e91c5.js"></script>
@@ -4051,8 +4051,9 @@ fixed as part of T-204 - out of scope for a binding-wiring task, and the fix bel
 <code>dstu-core</code>’s own hazmat benchmark code, not in any binding.</p>
 </li>
 <li>
-<p>[~] <strong>T-206</strong> <strong>Phase 1 done 2026-08-10 (root-cause fix + local Miri verification), phases 2-4
-not started - <code>cargo miri test (dstu-core)</code> is
+<p>[~] <strong>T-206</strong> <strong>Phase 1 done 2026-08-10 (m=257 root-cause fix), phase 2 done 2026-08-10 and
+disproved Phase 1’s own sufficiency, Phase 2b (real fix) done same session, phases 3-4
+contingent on the next real CI number - <code>cargo miri test (dstu-core)</code> is
 exceeding its 240-min CI budget again (real timeout, not concurrency-group noise - confirmed
 via <code>gh run view</code> on run <code>31342605874</code>: job ran the full 240 min, <code>23:46:32</code>→<code>03:46:48</code>,
 <code>conclusion: cancelled</code>), the third time this exact job has hit its cap (150-min original
@@ -4093,23 +4094,311 @@ so that file needed no fix and none was assumed.
        respectively, all 8 newly-annotated tests showing `ignored, &lt;reason&gt;`, the 1 cheap test
        left in `dstu4145_curve257.rs` (`curve257_generator_is_on_curve`, no scalar_multiply)
        still actually ran under Miri, not skipped by accident.
-2. [ ] Push, then verify via `gh run view` (not a green badge, not an assumption) that
-       `cargo miri test (dstu-core)` completes well under 240 min on the next real run - record
-       the actual duration next to D-59/D-103's own numbers for future margin comparisons.
-3. [ ] **Only if step 2 still shows a thin/exceeded margin**: this is where "something
-       substantial" per the owner's own framing applies - split `dstu-core`'s Miri job into a
-       bucketed matrix (a handful of legs grouping heavy EC/DSTU-9041 files vs. everything else,
-       not a 43-way per-test-file matrix - advisor flagged that each matrix leg pays its own
-       `cargo +nightly miri setup` sysroot-build tax from cold unless cached, which could
-       dominate wall time for the ~30 fast `kalyna_*`/`kupyna_*`/`strumok` files and make a
-       maximally-fine split a net loss, not a win) instead of raising `timeout-minutes` a
-       fourth time. Also confirm any such split still reaches `--lib`'s own `#[cfg(test)]`
-       module (a separate binary from every `tests/*.rs` file, easy to silently drop from a
-       matrix built only around `--test &lt;name&gt;` legs).
-4. [ ] Update `rust.yml`'s own Miri-job comment once the fix lands, so it documents the m=257
-       files by name alongside the m=163 ones it already names - the exact gap that let this go
-       unnoticed through two timeout cycles was a parallel-construction miss the comment had no
-       way to flag for a file that didn't exist when it was written.
+2. [x] **Done, and disproved Phase 1 as sufficient.** Real CI run `31396063454` (triggered by
+       commit `523ca2a`, a later ruff-format fix pushed on top of the Phase 1 commit `0837911`
+       - `git merge-base --is-ancestor 0837911 523ca2a` confirms Phase 1's own m=257 changes
+       were present in the tested tree) hit the full 240-min cap exactly (`14:06:08`→
+       `18:06:23`) and was cancelled - `gh run view --json jobs` showed every other job in the
+       workflow (including `cargo miri test (uacrypt)`/`(dstu-core-capi)`) completed fine; only
+       `cargo miri test (dstu-core)` was cancelled. Pulling the job's own log
+       (`gh run view --log --job=&lt;id&gt;`) showed the m=257 fix worked exactly as measured locally
+       (both files' tests flew by) but the *actual* cost center was never touched by Phase 1:
+       `tests/crypto_box.rs` alone took 3608.94s (~60 min) for 17 tests, and
+       `tests/crypto_box512.rs` was still running when the job was killed - 11 of 17 tests done
+       in 158 min (`15:16:02`→`17:54:35`), each costing ~20-25 min, projecting to **~257 min for
+       that one file alone** (advisor's own projection, confirmed against the log's per-test
+       timestamp deltas). Neither file existed when D-59/T-100's original 84-min-local/143-min-CI
+       baseline was measured (`crypto_box` landed T-178, `crypto_box512` landed T-193, both after
+       2026-07-27) - the timeout kept recurring because each new `crypto_box*`-family addition
+       quietly added tens of minutes of Miri cost that no one had re-measured against the budget.
+2b. [x] **Done, the actual fix.** Per advisor: every `crypto_box`/`crypto_box512` test that
+       calls `seal()` pays the same ~1-unit scalar-multiply cost regardless of what it's
+       *testing* (confirmed from the log's own per-test deltas - tamper/misuse tests cost the
+       same as `round_trip` because the tamper happens after an identical full `seal()` call),
+       and `hazmat::dstu9041`'s own `scalar_multiply` already has live, unignored Miri coverage
+       via `tests/dstu9041_encryption{,_512}.rs`'s `encrypt_matches_worked_example_ciphertext`/
+       `decrypt_matches_worked_example_message` - so re-interpreting the identical arithmetic
+       through `crypto_box`'s wrapper in 15 near-identical ways is redundant for Miri's actual
+       job (UB/aliasing detection, not functional re-verification; full functional/rejection
+       coverage already runs every push under plain `cargo test`, unaffected by any of this).
+       Kept exactly 2 tests live per file - `round_trip` (the success path) and
+       `tampered_ciphertext_is_rejected` (the representative failure path, so Miri still
+       interprets `open`'s error branch at least once) - and added
+       `#[cfg_attr(miri, ignore = "...")]` citing this task to the other 10 full-cost tests per
+       file (`zero_length_message_round_trips`, `message_far_larger_than_the_{25_byte,seed}_kem_
+       payload_round_trips`, `two_calls_use_different_ephemeral_material`,
+       `public_key_round_trips_through_bytes`, `wrong_secret_key_is_rejected`,
+       `tampered_kem_prefix_is_rejected`, `tampered_secretstream_header_is_rejected`,
+       `tampered_tag_is_rejected`, `kem_failure_and_secretstream_failure_are_indistinguishable`,
+       `trailing_garbage_after_valid_ciphertext_is_rejected`). The 4 already-instant tests per
+       file (no `seal()`/`open()` call - `truncated_input_is_rejected_not_a_panic`,
+       `secret_key_rejects_out_of_range_bytes{,_upper_boundary}`,
+       `public_key_rejects_degenerate_x_values`) and the already-ignored `round_trip_property`
+       proptest were untouched. Verified: (a) plain `cargo test -p dstu-core --test crypto_box
+       --test crypto_box512` - 34/34 pass, 0 ignored (Miri-gated attribute is inert otherwise);
+       (b) a real scoped `cargo +nightly miri test -p dstu-core --test crypto_box --test
+       crypto_box512` run (`MIRIFLAGS=-Zmiri-disable-isolation PROPTEST_CASES=1`), timed
+       locally before pushing: `crypto_box.rs` (6 live, 11 ignored) finished in **820.33s
+       (~13.7 min)**, `crypto_box512.rs` (6 live, 11 ignored) in **3778.75s (~63 min)** -
+       `real 76m42.5s` total for both files together, down from an unbounded run that hadn't
+       finished `crypto_box512.rs` alone after 158 min on the real CI run above. Local numbers
+       use the Windows GNU Miri backend (`x86_64-pc-windows-gnu`), not CI's Linux one
+       (`x86_64-unknown-linux-gnu`) - not directly comparable 1:1 (this session's own D-59
+       history shows CI running ~1.7x slower than local for the old pre-`crypto_box` baseline,
+       84 min local vs. 143 min CI), but bounded-and-finishing at all is the material change
+       from before this fix, where `crypto_box512.rs` alone was projected at ~257 min and
+       hadn't completed within the entire 240-min CI budget.
+3. [ ] **Only if the next real CI run still shows a thin/exceeded margin**: split `dstu-core`'s
+       Miri job into a bucketed matrix (a handful of legs grouping heavy EC/DSTU-9041 files vs.
+       everything else, not a 43-way per-test-file matrix - advisor flagged that each matrix leg
+       pays its own `cargo +nightly miri setup` sysroot-build tax from cold unless cached, which
+       could dominate wall time for the ~30 fast `kalyna_*`/`kupyna_*`/`strumok` files and make a
+       maximally-fine split a net loss, not a win) instead of raising `timeout-minutes` a fourth
+       time. Also confirm any such split still reaches `--lib`'s own `#[cfg(test)]` module (a
+       separate binary from every `tests/*.rs` file, easy to silently drop from a matrix built
+       only around `--test &lt;name&gt;` legs).
+4. [ ] Once the next real run's actual duration is known, **tighten `timeout-minutes` from 240
+       to a real number with margin** (not re-guessed - the whole point of this task per the
+       owner's framing), and update `rust.yml`'s own Miri-job comment to document the
+       `crypto_box`/`crypto_box512` cost story by name alongside the m=163/m=257 EC-ladder story
+       it already names - deliberately not guessed now, since this session's own arithmetic
+       (baseline ~143 min CI-measured pre-`crypto_box`, T-100/D-59, plus an estimated ~50-60 min
+       for the trimmed `crypto_box`/`crypto_box512` pair, plus whatever else has been added to
+       `dstu-core` since 2026-07-27 and never re-measured) is too uncertain to safely land under
+       advisor's suggested ~120-min figure without risking another D-103-style thin-margin false
+       failure - the same "verify a CI number via `gh run view`, don't assume" discipline this
+       file already states applies to setting the number in the first place, not just to
+       confirming a run's conclusion.
+</code></pre>
+</li>
+<li>
+<p><input disabled="" type="checkbox" checked=""> <strong>T-207</strong> <strong>Done 2026-08-10, owner-requested - <code>cargo xtask python</code> was missing both <code>ruff     check</code> and <code>ruff format --check</code>, even though CI’s <code>bindings-python.yml</code> runs both as
+required steps.</strong> Found the hard way, twice: the T-204/T-206 push failed CI’s
+<code>bindings-python</code> job on <code>ruff check .</code> (import-sort), fixed and pushed without locally
+running the second check too; the very next push failed again on <code>ruff format --check .</code>
+(line length) for the same reason - no single local command covered both, so each fix was
+verified piecemeal instead of against the real CI surface. Owner asked directly whether every
+binding’s own language-native linter is mirrored in <code>xtask</code> the same way, to close this class
+of gap for good rather than just patching Python.</p>
+<pre><code>**Audited all eight bindings' CI workflows against their own `xtask` function** before
+changing anything, not assumed:
+- **Ruby** (`bundle exec rubocop`) and **.NET** (`dotnet format --verify-no-changes`, both
+  `.csproj`s) - already correctly mirrored in `xtask ruby()`/`dotnet()`. No gap.
+- **Go** - `bindings-go.yml` calls `cargo xtask go` directly as its own build/test step (not a
+  separate lint step CI runs independently) - structurally cannot drift from `xtask`.
+- **Node.js/PHP/Java/C++** - confirmed (via each binding's own `package.json`/(missing)
+  `composer.json`/`pom.xml`/CI workflow) that **no language-native linter exists in CI for any
+  of these four today** - no eslint/prettier config anywhere under `bindings/nodejs` (not even
+  listed in `package.json`'s `devDependencies`), no `composer.json` for PHP, no checkstyle/
+  spotbugs/PMD plugin in Java's `pom.xml`, no `.clang-tidy` for C++. Each of these four already
+  gets its Rust-glue-layer `cargo fmt --check`/`clippy --all-targets -D warnings` from `xtask`,
+  which *is* the entirety of what CI checks for them beyond build/test - nothing to mirror
+  that isn't already there. **Not the same finding as Python's real gap** - a language having
+  no dedicated linter in CI at all is a separate, bigger scope decision (whether to add one)
+  the owner didn't ask for here; flagging it as an observation, not treating it as this task's
+  own gap.
+- **Python** - the one real gap, fixed: `xtask python()` now `require()`s `ruff` (same pattern
+  as its existing `maturin`/`pytest` checks) and runs `ruff check .` then
+  `ruff format --check .` after `pytest -ra`, matching `bindings-python.yml`'s own step order
+  exactly.
+
+Verified with a real full run, not just a compile check: `cargo xtask python` (venv activated,
+`bindings/python/.venv`, per `.claude.local.md`'s documented setup) now runs cleanly end to
+end - `cargo fmt`/`clippy` clean, 87/87 pytest pass, `ruff check .` and `ruff format --check .`
+both green - the same command that would have caught both of this session's CI failures
+before either push.
+</code></pre>
+</li>
+<li>
+<p><input disabled="" type="checkbox" checked=""> <strong>T-208</strong> <strong>Closed 2026-08-10, same session, all four languages - owner-requested directly
+after T-207’s audit - add a real
+language-native static analyzer (not just a formatter) to Node.js/PHP/Java/C++’s CI, the four
+bindings T-207 found have none at all, matching what Python (<code>ruff</code>)/Ruby (<code>rubocop</code>)/every
+Rust-side crate (<code>clippy</code>) already get.</strong> Owner directly challenged the asymmetry (“подвійні
+стандарти”) - correct to challenge: there is no <code>docs/DECISIONS.md</code> entry excluding these four
+from static analysis, it is a real historical gap (these bindings never had one added at
+scaffolding time, T-49-T-53/T-158-T-163), not a considered decision.</p>
+<pre><code>**Per advisor consult: implement in priority order, one language at a time, not all four in
+one pass** - ranked by realistic bug-catching value for *this repo's actual code shape*, not
+by ecosystem-parity alone:
+1. [x] **C++ / `clang-tidy` + `cppcheck`** - highest value: `bindings/cpp` is hand-written RAII
+       (`unique_ptr` custom deleters, `friend class` pairings) mirrored across sibling headers
+       by hand, exactly the shape `bugprone-*` catches real mistakes in; `cppcheck` added
+       alongside per a direct owner follow-up request, a second differently-engined analyzer
+       for a complementary bug class. **Done this session** - see below.
+2. [x] **Java / `SpotBugs`, not Checkstyle** - Checkstyle is style-only (would mostly generate
+       churn on a ~6-class binding, not the `clippy` analog); SpotBugs is a bug-pattern
+       detector, the real match for JNI's manual `byte[]`/`convert_byte_array`/
+       `byte_array_from_slice` pairing (`native/src/*.rs` calls it, `Box512.java`/`Sign257.java`
+       etc. declare the native methods) - exactly the resource/null-handling shape SpotBugs
+       finds bugs in. **Done this session** - see below.
+3. [x] **Node.js / `ESLint`** - modest value: plain JS (no TypeScript source, `native/index.d.ts`
+       is napi-rs-generated, not hand-written), only `js/index.js`/`js/secretstream.js` as real
+       hand-written source. `eslint.config.js` with `@eslint/js` recommended rules, cheap to add.
+       **Done this session** - see below.
+4. [x] **PHP / `PHPStan`** - lowest value, highest friction: no `composer.json` exists by
+       deliberate design (D-144, Composer never manages compiled binaries) - fetching
+       `phpstan.phar` via `curl` mirrors `phpunit.phar`'s own existing pattern correctly, but
+       every `dstu_core_*` function is defined by the compiled `ext-php-rs` extension, not PHP
+       source, so PHPStan will flag every call as an unknown function without a stub file
+       (`.phpstan/stubs/dstu_core.stub.php` or similar) - a real design problem to solve, not a
+       one-line config addition. **Done this session** - see below.
+
+**C++ implementation (phase 1, done)**: `.clang-tidy` at `bindings/cpp/` root, curated check
+list (`bugprone-*`, `performance-*`, `clang-analyzer-*`, explicitly not `*` - advisor flagged
+that an unscoped `*` floods on MinGW system headers and this project's own header-only style,
+costing the whole turn to triage noise instead of real findings), `HeaderFilterRegex` scoped to
+`include/dstu/` only (excludes the `cbindgen`-generated `dstu_core.h` - not hand-fixable, and
+system headers). New `xtask` functions `cpp-tidy`/`cpp-cppcheck` (owner asked for `cppcheck`
+too, right after seeing the first tool's real findings - a second, differently-engined analyzer
+catching a complementary bug class, not a duplicate of clang-tidy's own checks), both wired as
+a real required CI job (`bindings-cpp.yml`'s new `static-analysis` job, Ubuntu-only - neither
+tool reliably ships on the `test` job's other two OSes' default toolchains, and a three-OS
+analyzer matrix isn't otherwise needed for a header-only binding with no OS-specific code
+paths) - fails the job on any finding, matching this project's own "CI must fail on problems,
+not warn" standard, not an advisory-only run.
+
+**Real findings fixed this session, not left as noise** - `cargo xtask cpp-tidy` caught 11 real
+issues on its first run against every example plus `tests/test_dstu.cpp`:
+- **9x `bugprone-exception-escape` on every example's/test's `main()`** - every `dstu::*`
+  operation that can throw (`Generate()`/`Seal()`/`Open()`/etc., via `CheckStatus`) was called
+  directly in `main()` with no top-level catch, so an unexpected failure would `std::terminate`
+  with no clean message instead of the "error: &lt;what&gt;" a caller should see. Fixed by wrapping
+  each `main()` body in `try { ... } catch (const dstu::DstuException &amp;e) { Die(e.what()); }`
+  (or the local equivalent). **A residual, structurally-inherent instance of the same warning
+  remains even after that fix** - `std::cout`/`std::cerr`'s own `operator&lt;&lt;` can theoretically
+  throw `std::ios_base::failure` (confirmed with an isolated repro this session, not assumed -
+  clang-tidy's trace pointed at this, not at the `dstu::DstuException` path, once the real
+  catch was in place), which no example's `try`/`catch` catches since it isn't a
+  `dstu::DstuException` and isn't a realistic failure mode for a fixed-destination stream -
+  suppressed with `// NOLINTNEXTLINE(bugprone-exception-escape)` directly on each `main()`,
+  with a comment citing this exact finding rather than a bare suppression.
+- **1x `bugprone-command-processor`** (`test_dstu.cpp`'s `RunCommand`, the real `uacrypt.exe`
+  interop test's `std::system()` call) - genuinely safe here (every `cmd` is built from a
+  compile-time binary path plus this test's own temp-directory paths, never external input,
+  and there's no portable process-spawning alternative in the standard library) - suppressed
+  with a `NOLINTNEXTLINE` placed on the actual `std::system()` call itself (both `#ifdef`
+  branches), not on the enclosing function - the first attempt at this suppression put the
+  comment above the function signature instead of the throwing line, which doesn't suppress
+  anything; caught by re-running `cargo xtask cpp-tidy` after the "fix" and seeing the same
+  finding still present, not assumed fixed from reading the diff alone.
+- **1x `bugprone-unused-local-non-trivial-variable`** (`test_dstu.cpp:302`'s `cppDecPath`) - a
+  real dead local, declared alongside four other path variables but never read anywhere in
+  `TestUacryptInterop()` (the C++-decrypts-uacrypt.exe's-output direction reads the plaintext
+  in-memory via `SecretStreamDecryptor` directly, never via a written-out `cpp.dec` file) -
+  removed, not suppressed, since it was genuinely unused rather than a false positive.
+
+Verified two ways before committing, not assumed: `cargo xtask cpp-tidy`/`cargo xtask
+cpp-cppcheck` both clean (0 findings) after the fixes, and a full `cargo xtask cpp` (build +
+`ctest` + all 8 examples run manually via PowerShell, output inspected) still passes - the
+`main()` try/catch rewrite touched every example's control flow, not just its lint status.
+**PowerShell, not Git Bash, for the manual run**: `ctest`/the example `.exe`s reported a bogus
+`STATUS_ENTRYPOINT_NOT_FOUND`ish failure (exit `0xc0000139`) launched directly from Git Bash
+immediately after this change, matching an already-documented, unrelated MinGW-binary/Git-Bash
+process-launch quirk (T-181's own finding, `CLAUDE.md`'s Agent-discipline section) rather than
+a real regression - confirmed by re-running the identical binary via the `PowerShell` tool,
+which passed clean, before concluding the C++ changes themselves were correct.
+
+**Java implementation (phase 2, done)**: `pom.xml`'s new `spotbugs-maven-plugin` (`effort=Max`/
+`threshold=Medium`, bound to the `verify` phase - `mvn test` alone does not reach it, so
+`xtask java()`/`bindings-java.yml` both switched from `mvn test` to `mvn verify`, still reading
+the same surefire reports for the existing interop-skip check). `spotbugs-annotations`
+(`provided` scope - compile-time-only, not needed on a consumer's own classpath) for
+`@SuppressFBWarnings` where a finding is a justified false positive rather than a real bug.
+
+First `mvn verify` run found 4 real `EI_EXPOSE_REP`/`EI_EXPOSE_REP2` findings ("may expose
+internal representation" - a Java array stays mutable through a `final` field regardless of
+the modifier, so returning/storing one by reference breaks value-object immutability):
+- **3x real bugs, fixed with a defensive copy**: `SecretStreamPullResult.plaintext()`,
+  `SecretStreamPushResult.ciphertext()`/`authTag()` all returned their internal `byte[]` field
+  directly - two calls to the same getter returned the *same* mutable array, so a caller
+  mutating one return value would silently corrupt what a later call returns. Fixed with
+  `.clone()` in each getter (each result object is a one-shot value from a single JNI call, not
+  reused internally, so cloning at read-time rather than construction-time is sufficient and
+  avoids a wasted extra copy for the common single-read case).
+- **1x justified false positive, suppressed not changed**:
+  `SecretStreamEncryptor`'s constructor storing the caller's `OutputStream` by reference
+  (EI_EXPOSE_REP2) - a streaming encryptor's entire purpose is writing to that same sink
+  repeatedly over its lifetime, the identical "hold the wrapped stream by reference" shape
+  `java.io.FilterOutputStream`/`DeflaterOutputStream` use in the JDK itself; there is no
+  meaningful defensive copy of an `OutputStream` to make. Suppressed with
+  `@SuppressFBWarnings(value = "EI_EXPOSE_REP2", justification = "...")`, not a bare
+  annotation - the reasoning is in the source, not just in this task entry.
+
+Verified with a real `mvn verify` run, not just a compile check: 86/86 JUnit tests pass,
+SpotBugs reports 0 findings, `cargo xtask java` (Rust `fmt`/`clippy --all-targets` on
+`native/`, then `mvn verify`) exits 0 end to end.
+
+**Node.js implementation (phase 3, done)**: new `eslint.config.js` (flat config, ESLint 10) -
+`@eslint/js` recommended rules only, the whole scope for plain CommonJS `js/`/`test/`/
+`examples/` source with no TypeScript to add stricter rules for; `ignores: ['native/**']`
+excludes napi-rs-generated output. `eslint`/`@eslint/js`/`globals` added as `devDependencies`,
+new `npm run lint` script, wired into `xtask nodejs()` (after `npm test`) and
+`bindings-nodejs.yml` (after the packaging sanity check). **First run: 0 findings** - matches
+the "modest value" prediction going in (only two real hand-written source files), a genuine
+result, not a sign the tool was misconfigured to be silent.
+
+**A real, pre-existing, machine-local toolchain issue was found and ruled out as unrelated**,
+not chased or "fixed" as part of this task: a full `cargo xtask nodejs` run on this dev machine
+fails at the `napi build` step with `error[E0514]: found crate napi_build compiled by an
+incompatible version of rustc` - `@napi-rs/cli`'s own build step explicitly shells out to the
+`stable-x86_64-pc-windows-gnu` toolchain's `cargo.exe` by hardcoded path, bypassing this
+directory's own `rustup override` (`1.87.0-x86_64-pc-windows-msvc`, `.claude.local.md`'s
+already-documented 2026-08-02 fix for this exact binding, confirmed still active via
+`rustup show`) entirely. **Confirmed unrelated to this session's changes via `git stash`**: the
+identical failure reproduces on a clean `master` checkout with none of this task's edits
+present. Not investigated further (out of scope for a static-analysis task, and GitHub's
+hosted `windows-latest` CI runner defaults to MSVC already per D-125/D-130's own reasoning, so
+this local-only toolchain-resolution quirk does not affect the actual CI gate being added
+here) - `npm run lint` itself (the real T-208 deliverable) was verified directly and
+independently, not through the broken full chain: `cd bindings/nodejs &amp;&amp; npm install &amp;&amp; npm
+run lint` exits 0.
+
+**PHP implementation (phase 4, done - T-208 fully closed, all four languages)**: the
+predicted friction was real, worked through methodically rather than rushed:
+- `phpstan.phar` fetched via `curl` (`bindings-php.yml`/`xtask php()` both mirror
+  `phpunit.phar`'s own existing pattern - same D-144 "no Composer" posture, added to
+  `.gitignore` the same way).
+- New `phpstan-stubs/dstu_core.stub.php` declares all 30 real `dstu_core_*` functions plus 5
+  classes (`DstuCoreException`, `DstuCoreKupyna256Hasher`/`512Hasher`,
+  `DstuCoreSecretStreamPushState`/`PullState`) and 7 constants - the compiled `ext-php-rs`
+  extension's entire surface, transcribed from `src/*.rs`'s own real signatures (every
+  `Binary&lt;u8&gt;` param/return is PHP `string`, matching the README's own documented convention),
+  not guessed.
+- **A real, non-obvious PHPStan mechanism mistake found and fixed before landing**: the
+  obvious-looking `stubFiles` config key does *not* declare brand-new symbols from scratch -
+  confirmed empirically with an isolated repro (a stub function/class in a `stubFiles` entry
+  still reported "not found") - it only refines the *types* of symbols PHPStan already
+  discovers some other way (autoloading, reflection). `bootstrapFiles` (real PHP, actually
+  executed once at analysis start) is the correct mechanism for this exact case - re-verified
+  with the same isolated repro before trusting it, not assumed correct from switching the key
+  name alone.
+- **PHPUnit's own `PHPUnit\Framework\TestCase` (and everything `tests/*.php` extends/calls)
+  was unknown for the same underlying reason** - no Composer autoload wires phpunit.phar's
+  classes anywhere. Fixed by adding `phpunit.phar` itself to `bootstrapFiles` - `require`-ing
+  the phar directly exposes its classes without invoking its own CLI runner (confirmed
+  empirically: no stray output/exit), avoiding a `phpstan/phpstan-phpunit` Composer dependency
+  this project's own no-Composer posture would reject anyway.
+- One real gap in the stub file itself, found by the tool rather than assumed complete:
+  `dstu_core_throw_error` (used internally by `lib/DstuCoreSecretStream.php`, see
+  `src/error.rs`'s own doc comment) was missing - added with a real `never` return type (not
+  `void` - it always throws), verified PHP accepts declaring (not calling) a `never`-typed
+  function with an empty body before relying on it.
+- `phpstan.neon`: `level: 5` (a solid, commonly-recommended baseline - not PHPStan's max
+  strictness, matching every other language's own "curated, not everything" analyzer posture
+  in this task, e.g. `.clang-tidy`'s own curated check list), `paths: [lib, examples, tests]`.
+  Needed `--memory-limit=512M` explicitly - this dev machine's own default `php.ini`
+  `memory_limit` (128M) genuinely wasn't enough, confirmed by a real crash, not assumed as a
+  precaution.
+- Wired into `xtask php()` (after the `phpunit.phar` run) and `bindings-php.yml`. **Caught and
+  fixed a YAML-editing mistake before committing**: an `Edit` inserted the new PHPStan step in
+  the middle of the existing `phpunit.phar` step instead of after it, producing a duplicate
+  `working-directory:` key - caught by re-reading the diff (`git diff`, not just trusting the
+  edit succeeded) and independently confirmed valid YAML via `python -c "import yaml;
+  yaml.safe_load(...)"` before moving on.
+
+Verified with a real `cargo xtask php` run, not just each tool run manually: 88/88 phpunit
+tests pass, PHPStan reports 0 errors, `cargo fmt`/`clippy --all-targets` on `src/` clean.
 </code></pre>
 </li>
 <li>
