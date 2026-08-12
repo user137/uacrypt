@@ -192,11 +192,22 @@ jobs:
           packages-dir: dist
 
   publish-npm:
-    # Dormant until the owner configures npm Trusted Publishing (npmjs.com web UI, needs their
-    # login - cannot be done from this session) for package `dstu-core`, repo `user137/uacrypt`,
-    # workflow `release.yml`. Same OIDC-first reasoning and `environment: npm` manual-approval
-    # gate as publish-pypi above - no token/secret in this job, and a routine future `v*` tag still
-    # needs a click in the GitHub Environment's protection rules before it can publish.
+    # Same `environment: npm` manual-approval gate as publish-pypi above (both environments got
+    # real `required_reviewers` protection added via the GitHub API on 2026-08-12, after the v0.3.1
+    # PyPI run exposed that just referencing `environment:` in this file doesn't create one - GitHub
+    # auto-creates it with zero protection rules on first use).
+    #
+    # Bootstrap exception, temporary: unlike PyPI, npm has no "pending trusted publisher" - the
+    # npmjs.com UI requires a package to already exist before a Trusted Publisher can be configured
+    # for it (open upstream issue, npm/cli#8544, confirmed live 2026-08-12), so a genuinely
+    # never-published package can't use OIDC for its first version. `NODE_AUTH_TOKEN` below (an npm
+    # Automation token, repo secret `NPM_TOKEN`) covers only that one bootstrap publish - the owner
+    # pasted it directly into GitHub's own secret UI, never into chat, same "no token in the
+    # transcript" principle the crates.io incident (docs/TASKS.md T-203) established, just via a
+    # different mechanism than OIDC since OIDC alone can't reach a first publish here. Once
+    # `dstu-core` exists on npm, configure Trusted Publishing on its package settings page and
+    # remove both `NODE_AUTH_TOKEN` below and the `NPM_TOKEN` secret - every release after the first
+    # should be OIDC-only, matching publish-pypi.
     #
     # napi-rs's own documented recipe (napi.rs/docs/deep-dive/release, checked this session):
     # `create-npm-dir` scaffolds one subpackage directory per configured triple (gitignored,
@@ -241,6 +252,8 @@ jobs:
         working-directory: bindings/nodejs
       - run: npm publish --provenance
         working-directory: bindings/nodejs
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   publish-crates:
     # v0.2.0 itself predates this job (added in a later commit than the v0.2.0 tag, T-17/D-114) -
