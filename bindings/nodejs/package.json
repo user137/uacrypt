@@ -8,6 +8,9 @@
     "type": "git",
     "url": "https://github.com/user137/uacrypt"
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "files": [
     "js/",
     "native/index.js",
@@ -40,6 +43,6 @@
     "build:debug": "napi build native --platform",
     "test": "node --test",
     "lint": "eslint .",
-    "prepublishOnly": "napi prepublish -t npm"
+    "prepublishOnly": "napi prepublish -t npm --skip-gh-release"
   }
 }

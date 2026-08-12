@@ -5,6 +5,22 @@ All notable changes to this project are documented in this file. Format follows
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-08-12
+
+### Fixed
+
+- `publish-npm`'s `napi prepublish` step failed publishing every platform subpackage
+  (`Can't generate provenance for new or private package, you must set access to public`) - `npm
+  publish --provenance` refuses to guess the intended access level for a package that's never been
+  published, even unscoped ones. Added `"publishConfig": {"access": "public"}` to
+  `bindings/nodejs/package.json` - `napi create-npm-dir` already copies that field into every
+  generated subpackage (confirmed by reading its source), so this one line covers the root package
+  and all three platform packages. Also added `--skip-gh-release` to the `prepublishOnly` script -
+  `napi prepublish` tries to create/update a GitHub Release itself by default, redundant with (and,
+  lacking `contents: write` in this job, failing 401 against) `release.yml`'s own
+  `create GitHub release` job. Confirmed nothing had actually landed on the npm registry from the
+  failed attempt before retrying (`registry.npmjs.org/dstu-core*` still 404).
+
 ## [0.3.2] - 2026-08-12
 
 ### Added
