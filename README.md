@@ -1,9 +1,10 @@
 # uacrypt
 
-<!-- uacrypt-version: 0.3.1 -->
-**v0.3.1 — released 2026-08-12, PyPI/npm publish CI prepared for the Python/Node.js bindings (not
-yet live — see `docs/CHANGELOG.md`), still work in progress.** Not a complete library or CLI yet,
-not audited, not production-ready, and **not a claim of side-channel resistance**. Core primitives
+<!-- uacrypt-version: 0.3.2 -->
+**v0.3.2 — released 2026-08-12. `dstu-core` (Python bindings) is now live on
+[PyPI](https://pypi.org/project/dstu-core/); npm publish CI for the Node.js bindings is prepared
+but not yet live — see `docs/CHANGELOG.md`, still work in progress.** Not a complete library or
+CLI yet, not audited, not production-ready, and **not a claim of side-channel resistance**. Core primitives
 (Kalyna, Kupyna) are dual-oracle-verified against official test vectors; Strumok and the Kalyna-CCM mode are
 provisional (not yet confirmed against their primary standard text — see `docs/DECISIONS.md` D-15/D-41).
 **`crypto_secretstream` — the construction backing `encrypt`/`decrypt` — is provisional in a

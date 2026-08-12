@@ -5,6 +5,42 @@ All notable changes to this project are documented in this file. Format follows
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-08-12
+
+### Added
+
+- `dstu-core` (Python bindings) is now genuinely live on [PyPI](https://pypi.org/project/dstu-core/)
+  0.1.0 - the 0.3.1 tag's `publish-pypi` run actually went through (see Fixed, below), so this is
+  the first release to reflect that as real instead of "prepared, not yet live."
+
+### Fixed
+
+- `environment: pypi`/`npm` in `release.yml` were referenced but never actually protected -
+  GitHub auto-creates an environment with zero protection rules the first time a workflow
+  references it, so the 0.3.1 tag's `publish-pypi` job ran straight through with no approval
+  pause (harmless here - it was the intended package - but not the safety behavior this project
+  claimed). Fixed via the GitHub API (`required_reviewers` added to both, project owner as
+  reviewer) - not a file in this repo, recorded here so it isn't lost.
+- `publish-npm`'s `npm install -g npm@latest` failed on Node 20 (`EBADENGINE` - npm's own latest
+  version now requires Node >=22) before ever attempting a publish. Bumped to Node 22.
+- npm (unlike PyPI) has no "pending trusted publisher" - a package that has never been published
+  can't configure Trusted Publishing for itself at all (open upstream issue, `npm/cli#8544`,
+  confirmed live 2026-08-12), so OIDC alone can never reach a first npm publish here. Added a
+  one-time bootstrap path: `NODE_AUTH_TOKEN` from a repo secret (`NPM_TOKEN`, an npm token pasted
+  directly into GitHub's own secret UI, never into any chat/session) covers only the first
+  publish; once `dstu-core` exists on npm, Trusted Publishing takes over and both the env var and
+  the secret get removed.
+- `publish-pypi` had no `skip-existing`, so any future tag whose Python binding hasn't changed
+  (its own version, 0.1.0, isn't lockstepped with the Rust crates' tag) would hard-fail
+  re-uploading wheels PyPI already has, rather than skipping them.
+- The 0.3.1 tag itself is stuck on an older commit that predates all of the above - none of these
+  fixes could reach it by re-running its jobs (a git tag is a fixed pointer; re-running a job in
+  an existing workflow run replays the workflow file as it existed at that commit, not the
+  latest). This release exists specifically so npm's first real publish attempt runs against a
+  workflow that has the fixes, not to add anything else on top of 0.3.1's own -
+  crates.io/PyPI don't need re-publishing, just `dstu-core`/`uacrypt`'s version bumped to
+  `0.3.2` so `cargo publish` has something new to accept.
+
 ## [0.3.1] - 2026-08-12
 
 ### Added
@@ -18,9 +54,9 @@ All notable changes to this project are documented in this file. Format follows
   PyPI and npm (`docs/TASKS.md` T-164/T-203) - both `publish-pypi`/`publish-npm` jobs in
   `release.yml` land dormant, gated behind their own GitHub Environment approval, and use OIDC
   Trusted Publishing exclusively (no token/secret stored anywhere) - the direct fix for a real
-  crates.io token-leak incident T-203 records. **Neither registry has an actual publish yet** -
-  this only prepares the pipeline; each needs the project owner to separately configure Trusted
-  Publishing on that registry's own site first. Packagist is deliberately not part of this pass -
+  crates.io token-leak incident T-203 records. **Intended as prepared-but-dormant** - see 0.3.2
+  above for what actually happened (the dormancy itself had a real gap) and what shipped since.
+  Packagist is deliberately not part of this pass -
   `bindings/php` is a compiled `ext-php-rs` extension, and Packagist only distributes Composer
   (PHP-source) packages (`docs/DECISIONS.md` D-144).
 

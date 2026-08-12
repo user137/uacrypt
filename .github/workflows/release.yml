@@ -190,6 +190,10 @@ jobs:
       - uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: dist
+          # bindings/python's own version (0.1.0) isn't lockstepped with the tag - a future tag
+          # whose Python binding hasn't changed would otherwise hard-fail re-uploading identical
+          # wheels PyPI already has (confirmed the hard way, v0.3.1 -> v0.3.2, T-164/T-203).
+          skip-existing: true
 
   publish-npm:
     # Same `environment: npm` manual-approval gate as publish-pypi above (both environments got
