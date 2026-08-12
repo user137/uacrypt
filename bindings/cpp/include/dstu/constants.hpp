@@ -4,6 +4,7 @@
 #include "dstu_core.h"
 
 #include <cstddef>
+#include <cstdint>
 
 /// Fixed byte lengths mirroring the DSTU_* macros in dstu_core.h.
 namespace dstu {
@@ -47,14 +48,14 @@ inline constexpr std::size_t kStreamOverhead = DSTU_STREAM_OVERHEAD;
 
 /// Argon2id cost preset - mirrors DstuPwhashStrength in dstu_core.h and libsodium's own named
 /// OPSLIMIT/MEMLIMIT_* constants.
-enum class PwhashStrength {
+enum class PwhashStrength : std::uint8_t {
   kInteractive = DSTU_PWHASH_INTERACTIVE,
   kModerate = DSTU_PWHASH_MODERATE,
   kSensitive = DSTU_PWHASH_SENSITIVE,
 };
 
 /// A chunk's role in a secretstream - mirrors DstuTag in dstu_core.h.
-enum class SecretstreamTag {
+enum class SecretstreamTag : std::uint8_t {
   kMessage = DSTU_TAG_MESSAGE,
   kPush = DSTU_TAG_PUSH,
   kRekey = DSTU_TAG_REKEY,
