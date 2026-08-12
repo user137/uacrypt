@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-bcca91de.js";
+            window.path_to_searchindex_js = "searchindex-bd0f977e.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-ce7e91c5.js"></script>
@@ -180,10 +180,11 @@
                     <main>
                         <h1 id="introduction"><a class="header" href="#introduction">Introduction</a></h1>
 <h1 id="uacrypt"><a class="header" href="#uacrypt">uacrypt</a></h1>
-<!-- uacrypt-version: 0.3.3 -->
-<p><strong>v0.3.3 — released 2026-08-12. <code>dstu-core</code> (Python bindings) is now live on
-<a href="https://pypi.org/project/dstu-core/">PyPI</a>; npm publish CI for the Node.js bindings is fixed
-(provenance needs an explicit public-access declaration) but not yet live — see
+<!-- uacrypt-version: 0.3.4 -->
+<p><strong>v0.3.4 — released 2026-08-13. <code>dstu-core</code> (Python bindings) is now live on
+<a href="https://pypi.org/project/dstu-core/">PyPI</a>; the Node.js bindings’ npm publish is partially live
+(<code>dstu-core-linux-x64-gnu</code>, <code>dstu-core-darwin-arm64</code>) with the remaining platform package and the
+root <code>dstu-core</code> package pending this release’s fixed, idempotent publish step — see
 <code>docs/CHANGELOG.md</code>, still work in progress.</strong> Not a complete library or CLI yet, not audited, not
 production-ready, and <strong>not a claim of side-channel resistance</strong>. Core primitives
 (Kalyna, Kupyna) are dual-oracle-verified against official test vectors; Strumok and the Kalyna-CCM mode are
@@ -5130,10 +5131,11 @@ mdBook for the existing <code>docs/*.md</code> corpus, plus a mandatory <code>ca
 `# uacrypt</p>
 </li>
 </ul>
-<!-- uacrypt-version: 0.3.3 -->
-<p><strong>v0.3.3 — released 2026-08-12. <code>dstu-core</code> (Python bindings) is now live on
-<a href="https://pypi.org/project/dstu-core/">PyPI</a>; npm publish CI for the Node.js bindings is fixed
-(provenance needs an explicit public-access declaration) but not yet live — see
+<!-- uacrypt-version: 0.3.4 -->
+<p><strong>v0.3.4 — released 2026-08-13. <code>dstu-core</code> (Python bindings) is now live on
+<a href="https://pypi.org/project/dstu-core/">PyPI</a>; the Node.js bindings’ npm publish is partially live
+(<code>dstu-core-linux-x64-gnu</code>, <code>dstu-core-darwin-arm64</code>) with the remaining platform package and the
+root <code>dstu-core</code> package pending this release’s fixed, idempotent publish step — see
 <code>docs/CHANGELOG.md</code>, still work in progress.</strong> Not a complete library or CLI yet, not audited, not
 production-ready, and <strong>not a claim of side-channel resistance</strong>. Core primitives
 (Kalyna, Kupyna) are dual-oracle-verified against official test vectors; Strumok and the Kalyna-CCM mode are
@@ -27199,8 +27201,26 @@ noise.</p>
 <p>All notable changes to this project are documented in this file. Format follows
 <a href="https://keepachangelog.com/en/1.1.0/">Keep a Changelog</a>.</p>
 <h2 id="unreleased"><a class="header" href="#unreleased">[Unreleased]</a></h2>
-<h2 id="033---2026-08-12"><a class="header" href="#033---2026-08-12">[0.3.3] - 2026-08-12</a></h2>
+<h2 id="034---2026-08-13"><a class="header" href="#034---2026-08-13">[0.3.4] - 2026-08-13</a></h2>
 <h3 id="fixed"><a class="header" href="#fixed">Fixed</a></h3>
+<ul>
+<li>v0.3.3’s npm publish got past the provenance/access fix but hit npm’s own spam-detection
+heuristic on the 3rd platform subpackage (<code>dstu-core-win32-x64-msvc</code>) after two succeeded
+(<code>dstu-core-linux-x64-gnu</code>, <code>dstu-core-darwin-arm64</code> both published live). Retrying the same
+tag’s job after waiting failed differently: <code>napi prepublish</code> (the <code>prepublishOnly</code> hook driving
+the whole publish) is not idempotent - its per-platform loop aborts the entire command, root
+package included, the instant <code>npm publish</code> fails on any one platform, with no tolerance for
+“this version already exists”. The retry died on the 1st platform (already published from the
+prior attempt) and never reached the 3rd or the root package. Replaced the single
+<code>napi prepublish</code>-driven <code>npm publish --provenance</code> with explicit steps: set root
+<code>optionalDependencies</code> directly (the one other thing <code>napi prepublish</code> did), then publish each
+platform subpackage and finally the root package each tolerating an “already published” error
+instead of failing the whole job - so a partial-failure retry (the normal case here, given both
+npm’s external spam heuristic and rate limits are outside this workflow’s control) picks up
+wherever the previous attempt stopped.</li>
+</ul>
+<h2 id="033---2026-08-12"><a class="header" href="#033---2026-08-12">[0.3.3] - 2026-08-12</a></h2>
+<h3 id="fixed-1"><a class="header" href="#fixed-1">Fixed</a></h3>
 <ul>
 <li><code>publish-npm</code>’s <code>napi prepublish</code> step failed publishing every platform subpackage
 (<code>Can't generate provenance for new or private package, you must set access to public</code>) - <code>npm publish --provenance</code> refuses to guess the intended access level for a package that’s never been
@@ -27220,7 +27240,7 @@ failed attempt before retrying (<code>registry.npmjs.org/dstu-core*</code> still
 0.1.0 - the 0.3.1 tag’s <code>publish-pypi</code> run actually went through (see Fixed, below), so this is
 the first release to reflect that as real instead of “prepared, not yet live.”</li>
 </ul>
-<h3 id="fixed-1"><a class="header" href="#fixed-1">Fixed</a></h3>
+<h3 id="fixed-2"><a class="header" href="#fixed-2">Fixed</a></h3>
 <ul>
 <li><code>environment: pypi</code>/<code>npm</code> in <code>release.yml</code> were referenced but never actually protected -
 GitHub auto-creates an environment with zero protection rules the first time a workflow
@@ -27266,7 +27286,7 @@ Packagist is deliberately not part of this pass -
 <code>bindings/php</code> is a compiled <code>ext-php-rs</code> extension, and Packagist only distributes Composer
 (PHP-source) packages (<code>docs/DECISIONS.md</code> D-144).</li>
 </ul>
-<h3 id="fixed-2"><a class="header" href="#fixed-2">Fixed</a></h3>
+<h3 id="fixed-3"><a class="header" href="#fixed-3">Fixed</a></h3>
 <ul>
 <li><code>docs/TASKS.md</code> T-17 and <code>CLAUDE.md</code>’s “MVP scope” both still read “not started” for the
 crates.io publish that actually happened at 0.3.0 above - corrected to reflect reality
@@ -27332,7 +27352,7 @@ measurement can actually detect unbounded growth. <code>#[ignore]</code>d by def
 5 minutes and was killed before finishing); wired into <code>cargo xtask ci</code>’s optional layers and a
 new CI job matrixed across all three OSes (<code>docs/TASKS.md</code> T-200).</li>
 </ul>
-<h3 id="fixed-3"><a class="header" href="#fixed-3">Fixed</a></h3>
+<h3 id="fixed-4"><a class="header" href="#fixed-4">Fixed</a></h3>
 <ul>
 <li><code>crypto_sign</code>/<code>hazmat::dstu4145</code> (<code>m=163</code>): <code>VerifyingKey::from_uncompressed_bytes</code> accepted a
 caller-supplied public key with no on-curve check, and <code>verify</code> never validated its own <code>q</code>
@@ -27374,7 +27394,7 @@ checked exhaustively over all 2^384 possible inputs (T-145).</li>
 <li>CodeQL advanced-setup CI migration, explicit least-privilege CI permissions (T-143); SonarCloud
 static analysis wired into CI (T-140).</li>
 </ul>
-<h3 id="fixed-4"><a class="header" href="#fixed-4">Fixed</a></h3>
+<h3 id="fixed-5"><a class="header" href="#fixed-5">Fixed</a></h3>
 <ul>
 <li>DSTU 4145 <code>scalar_multiply</code> returned a wrong result for scalars at/near the curve’s own group
 order - reachable in-contract at exactly one boundary value (<code>k == n-1</code>). No forgery risk
