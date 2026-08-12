@@ -5,6 +5,25 @@ All notable changes to this project are documented in this file. Format follows
 
 ## [Unreleased]
 
+## [0.3.4] - 2026-08-13
+
+### Fixed
+
+- v0.3.3's npm publish got past the provenance/access fix but hit npm's own spam-detection
+  heuristic on the 3rd platform subpackage (`dstu-core-win32-x64-msvc`) after two succeeded
+  (`dstu-core-linux-x64-gnu`, `dstu-core-darwin-arm64` both published live). Retrying the same
+  tag's job after waiting failed differently: `napi prepublish` (the `prepublishOnly` hook driving
+  the whole publish) is not idempotent - its per-platform loop aborts the entire command, root
+  package included, the instant `npm publish` fails on any one platform, with no tolerance for
+  "this version already exists". The retry died on the 1st platform (already published from the
+  prior attempt) and never reached the 3rd or the root package. Replaced the single
+  `napi prepublish`-driven `npm publish --provenance` with explicit steps: set root
+  `optionalDependencies` directly (the one other thing `napi prepublish` did), then publish each
+  platform subpackage and finally the root package each tolerating an "already published" error
+  instead of failing the whole job - so a partial-failure retry (the normal case here, given both
+  npm's external spam heuristic and rate limits are outside this workflow's control) picks up
+  wherever the previous attempt stopped.
+
 ## [0.3.3] - 2026-08-12
 
 ### Fixed

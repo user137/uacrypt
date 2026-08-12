@@ -216,10 +216,18 @@ jobs:
     # napi-rs's own documented recipe (napi.rs/docs/deep-dive/release, checked this session):
     # `create-npm-dir` scaffolds one subpackage directory per configured triple (gitignored,
     # regenerated fresh here every run - see .gitignore's /bindings/nodejs/npm/ entry), `artifacts`
-    # copies the downloaded per-OS `.node` binaries into the matching subpackage, then `npm publish`
-    # on the root package runs its own `prepublishOnly` script (`napi prepublish -t npm`), which
-    # publishes every subpackage before the root package itself goes out - one `npm publish` call
-    # does all four packages (root + 3 platforms), not four separate ones.
+    # copies the downloaded per-OS `.node` binaries into the matching subpackage.
+    #
+    # Deliberately NOT using `napi prepublish` (root `npm publish`'s own `prepublishOnly` hook) to
+    # drive the actual publishing, unlike napi-rs's own documented one-call recipe: its per-platform
+    # loop (`PrePublishCommand.execute` in @napi-rs/cli) aborts the whole command - root package
+    # included - the instant any ONE platform's `npm publish` fails, with no tolerance for "this
+    # version already exists". Confirmed the hard way, 2026-08-12: a retry after npm's own
+    # spam-detection blocked the 3rd platform package died instead on the 1st (already-published
+    # from the prior attempt), never reaching the 3rd or the root package at all. A retry of a
+    # partially-succeeded publish is the normal case here (npm's spam heuristic and rate limits are
+    # both real, external, and not something this workflow controls), so every step below is written
+    # to tolerate "already published" and pick up wherever the previous attempt stopped.
     name: publish to npm
     needs: build-nodejs-artifacts
     runs-on: ubuntu-latest
@@ -254,10 +262,54 @@ jobs:
         working-directory: bindings/nodejs
       - run: npx napi artifacts
         working-directory: bindings/nodejs
-      - run: npm publish --provenance
+      # Root package's optionalDependencies is the one other thing `napi prepublish` did besides
+      # publishing each subpackage (docs/DECISIONS.md note above) - replicated here directly so it
+      # keeps happening even though the publish loop itself no longer goes through that command.
+      - name: Set root package optionalDependencies
+        working-directory: bindings/nodejs
+        run: |
+          node -e '
+            const fs = require("fs");
+            const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
+            const platforms = ["linux-x64-gnu", "darwin-arm64", "win32-x64-msvc"];
+            pkg.optionalDependencies = Object.fromEntries(
+              platforms.map((p) => [`${pkg.name}-${p}`, pkg.version])
+            );
+            fs.writeFileSync("package.json", JSON.stringify(pkg, null, 2));
+          '
+      - name: Publish platform subpackages (tolerating already-published)
         working-directory: bindings/nodejs
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          for dir in npm/*/; do
+            echo "== Publishing $dir =="
+            set +e
+            output=$(cd "$dir" && npm publish --provenance 2>&1)
+            status=$?
+            set -e
+            echo "$output"
+            if [ $status -ne 0 ]; then
+              if echo "$output" | grep -q "cannot publish over the previously published versions"; then
+                echo "Already published, continuing: $dir"
+              else
+                exit $status
+              fi
+            fi
+          done
+      - name: Publish root package (tolerating already-published)
+        working-directory: bindings/nodejs
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set +e
+          output=$(npm publish --provenance --ignore-scripts 2>&1)
+          status=$?
+          set -e
+          echo "$output"
+          if [ $status -ne 0 ] && ! echo "$output" | grep -q "cannot publish over the previously published versions"; then
+            exit $status
+          fi
 
   publish-crates:
     # v0.2.0 itself predates this job (added in a later commit than the v0.2.0 tag, T-17/D-114) -

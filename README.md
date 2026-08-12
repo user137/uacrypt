@@ -1,9 +1,10 @@
 # uacrypt
 
-<!-- uacrypt-version: 0.3.3 -->
-**v0.3.3 — released 2026-08-12. `dstu-core` (Python bindings) is now live on
-[PyPI](https://pypi.org/project/dstu-core/); npm publish CI for the Node.js bindings is fixed
-(provenance needs an explicit public-access declaration) but not yet live — see
+<!-- uacrypt-version: 0.3.4 -->
+**v0.3.4 — released 2026-08-13. `dstu-core` (Python bindings) is now live on
+[PyPI](https://pypi.org/project/dstu-core/); the Node.js bindings' npm publish is partially live
+(`dstu-core-linux-x64-gnu`, `dstu-core-darwin-arm64`) with the remaining platform package and the
+root `dstu-core` package pending this release's fixed, idempotent publish step — see
 `docs/CHANGELOG.md`, still work in progress.** Not a complete library or CLI yet, not audited, not
 production-ready, and **not a claim of side-channel resistance**. Core primitives
 (Kalyna, Kupyna) are dual-oracle-verified against official test vectors; Strumok and the Kalyna-CCM mode are
