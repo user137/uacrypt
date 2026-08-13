@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-e8cab89d.js";
+            window.path_to_searchindex_js = "searchindex-1c67383f.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-ce7e91c5.js"></script>
@@ -180,18 +180,12 @@
                     <main>
                         <h1 id="introduction"><a class="header" href="#introduction">Introduction</a></h1>
 <h1 id="uacrypt"><a class="header" href="#uacrypt">uacrypt</a></h1>
-<!-- uacrypt-version: 0.3.6 -->
-<p><strong>v0.3.6 — released 2026-08-13. <code>dstu-core</code> (Python bindings) is live on
-<a href="https://pypi.org/project/dstu-core/">PyPI</a>; on npm, <code>dstu-core</code> (root), <code>dstu-core-linux-x64-gnu</code>,
-and <code>dstu-core-darwin-arm64</code> are live. <code>dstu-core-win32-x64-msvc</code> is deliberately deferred, blocked
-by npm’s own spam detection (external, not a code issue — see <code>docs/DECISIONS.md</code> D-189);
-<code>dstu-core-linux-arm64-gnu</code> is a new platform added in v0.3.5. This release fixes a real bug found
-on the live PyPI/npm/crates.io pages: several package descriptions/READMEs still said “provisional,
-not yet published” or read like an internal engineering note, contradicting the fact that they were
-already live — see <code>docs/DECISIONS.md</code> D-191. RubyGems publishing (<code>dstu_core</code>) is wired up but
-still dormant pending the next tag. See <code>docs/CHANGELOG.md</code> for details.</strong> Not a complete library or
-CLI yet, not audited, not
-production-ready, and <strong>not a claim of side-channel resistance</strong>. Core primitives
+<!-- uacrypt-version: 0.3.7 -->
+<p><strong>v0.3.7.</strong> <code>dstu-core</code> is live on <a href="https://pypi.org/project/dstu-core/">PyPI</a> and
+<a href="https://www.npmjs.com/package/dstu-core">npm</a> (Python/Node.js bindings, one npm platform package
+still deferred — <code>docs/DECISIONS.md</code> D-189); RubyGems is wired up but not live yet. See
+<code>docs/CHANGELOG.md</code> for what changed each release. Not a complete library or CLI yet, not audited,
+not production-ready, and <strong>not a claim of side-channel resistance</strong>. Core primitives
 (Kalyna, Kupyna) are dual-oracle-verified against official test vectors; Strumok and the Kalyna-CCM mode are
 provisional (not yet confirmed against their primary standard text — see <code>docs/DECISIONS.md</code> D-15/D-41).
 <strong><code>crypto_secretstream</code> — the construction backing <code>encrypt</code>/<code>decrypt</code> — is provisional in a
@@ -469,24 +463,26 @@ crates.io yet (<code>docs/TASKS.md</code> T-17).</p>
 <p>Every binding in <code>docs/bindings-strategy.md</code>’s phased order is now built — the full <code>crypto_*</code>
 surface (<code>crypto_secretbox</code>/<code>secretstream</code>/<code>sign</code>/<code>auth</code>/<code>kdf</code>/<code>generichash</code>/<code>stream</code>/<code>pwhash</code>,
 <code>randombytes</code>, <code>selftest</code>), idiomatic errors and secretstream I/O per language, real
-correctness/rejection/misuse test suites against the same official vectors. <strong>None are published
-to a package registry yet</strong> (PyPI/npm/RubyGems/Packagist/NuGet/Maven Central — separately
-owner-gated, <code>docs/TASKS.md</code> T-164, same posture as <code>dstu-core</code> itself not being on crates.io yet)
-— build from source per the linked README:</p>
+correctness/rejection/misuse test suites against the same official vectors. <strong>Python and Node.js
+are published</strong> (PyPI/npm, see the banner above); the rest aren’t yet (RubyGems/Packagist/NuGet/
+Maven Central — separately owner-gated, <code>docs/TASKS.md</code> T-164) — build those from source per the
+linked README. The <strong>README column is the full docs</strong> for every binding regardless of publish
+status (usage examples, API table, security caveats); the <strong>Package column</strong> is only where you’d
+actually run an install command:</p>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Language</th><th>Approach</th><th>README</th></tr>
+<tr><th>Language</th><th>Approach</th><th>README</th><th>Package</th></tr>
 </thead>
 <tbody>
-<tr><td>Python</td><td>PyO3, direct Rust binding</td><td><a href="https://github.com/user137/uacrypt/blob/master/bindings/python/README.md"><code>bindings/python</code></a></td></tr>
-<tr><td>Node.js</td><td>napi-rs, direct Rust binding</td><td><a href="https://github.com/user137/uacrypt/blob/master/bindings/nodejs/README.md"><code>bindings/nodejs</code></a></td></tr>
-<tr><td>Ruby</td><td>magnus/rb-sys, direct Rust binding</td><td><a href="https://github.com/user137/uacrypt/blob/master/bindings/ruby/README.md"><code>bindings/ruby</code></a></td></tr>
-<tr><td>PHP</td><td>ext-php-rs, direct Rust binding</td><td><a href="https://github.com/user137/uacrypt/blob/master/bindings/php/README.md"><code>bindings/php</code></a></td></tr>
-<tr><td>.NET (C#)</td><td>P/Invoke over the C ABI</td><td><a href="https://github.com/user137/uacrypt/blob/master/bindings/dotnet/README.md"><code>bindings/dotnet</code></a></td></tr>
-<tr><td>Java</td><td><code>jni</code> crate, direct Rust binding</td><td><a href="https://github.com/user137/uacrypt/blob/master/bindings/java/README.md"><code>bindings/java</code></a></td></tr>
-<tr><td>Go</td><td><code>cgo</code> over the C ABI</td><td><a href="https://github.com/user137/uacrypt/blob/master/bindings/go/README.md"><code>bindings/go</code></a></td></tr>
-<tr><td>C++</td><td>header-only RAII wrapper over the C ABI</td><td><a href="https://github.com/user137/uacrypt/blob/master/bindings/cpp/README.md"><code>bindings/cpp</code></a></td></tr>
+<tr><td>Python</td><td>PyO3, direct Rust binding</td><td><a href="https://github.com/user137/uacrypt/blob/master/bindings/python/README.md"><code>bindings/python</code></a></td><td><a href="https://pypi.org/project/dstu-core/">PyPI</a></td></tr>
+<tr><td>Node.js</td><td>napi-rs, direct Rust binding</td><td><a href="https://github.com/user137/uacrypt/blob/master/bindings/nodejs/README.md"><code>bindings/nodejs</code></a></td><td><a href="https://www.npmjs.com/package/dstu-core">npm</a></td></tr>
+<tr><td>Ruby</td><td>magnus/rb-sys, direct Rust binding</td><td><a href="https://github.com/user137/uacrypt/blob/master/bindings/ruby/README.md"><code>bindings/ruby</code></a></td><td>not yet published</td></tr>
+<tr><td>PHP</td><td>ext-php-rs, direct Rust binding</td><td><a href="https://github.com/user137/uacrypt/blob/master/bindings/php/README.md"><code>bindings/php</code></a></td><td>not yet published</td></tr>
+<tr><td>.NET (C#)</td><td>P/Invoke over the C ABI</td><td><a href="https://github.com/user137/uacrypt/blob/master/bindings/dotnet/README.md"><code>bindings/dotnet</code></a></td><td>not yet published</td></tr>
+<tr><td>Java</td><td><code>jni</code> crate, direct Rust binding</td><td><a href="https://github.com/user137/uacrypt/blob/master/bindings/java/README.md"><code>bindings/java</code></a></td><td>not yet published</td></tr>
+<tr><td>Go</td><td><code>cgo</code> over the C ABI</td><td><a href="https://github.com/user137/uacrypt/blob/master/bindings/go/README.md"><code>bindings/go</code></a></td><td>not yet published</td></tr>
+<tr><td>C++</td><td>header-only RAII wrapper over the C ABI</td><td><a href="https://github.com/user137/uacrypt/blob/master/bindings/cpp/README.md"><code>bindings/cpp</code></a></td><td>not yet published</td></tr>
 </tbody>
 </table>
 </div>
@@ -4764,6 +4760,26 @@ own maturin-based wheels. <strong>New PyPI project, own pending-publisher regist
 or environment. Not started: no packaging code, no CI job, no name check yet.</p>
 </li>
 <li>
+<p><input disabled="" type="checkbox"> <strong>T-210</strong> <strong>Not started, owner-requested (2026-08-13) - post-publish smoke tests for each
+published language binding: install the real published package from its official registry
+(not local source), run usage examples against it, and cross-check against that binding’s own
+README/instructions.</strong> Raised right after D-191 (found by hand: PyPI/npm’s live pages still
+said “provisional, not yet published” and described no working install path, because nothing
+re-checks a live registry page against its own claims after a publish). This is that missing
+repeatable check, not another one-time manual sweep.
+<strong>Scope, per binding with a live publish</strong> (today: Python/PyPI, Node.js/npm; RubyGems
+pending T-164/D-190): (1) install the real published package via its own package manager
+(<code>pip install dstu-core</code>, <code>npm install dstu-core</code>, eventually <code>gem install dstu_core</code>) into a
+clean environment - not the repo’s own <code>.venv</code>/<code>node_modules</code>, which only proves the local
+source works, never what a real user gets; (2) run a handful of the same usage snippets shown
+in that binding’s own README (a <code>secretbox</code> round-trip, <code>selfTest</code>/<code>self_test</code>, one or two
+more modules) against the <em>installed</em> package; (3) flag it if the installed package’s
+behavior, exports, or install instructions don’t match what the README currently claims.
+Could run manually right after each publish, or as a CI job triggered after <code>publish-pypi</code>/
+<code>publish-npm</code>/<code>publish-rubygems</code> succeed - either way, closes the “standing gap” D-191 itself
+flagged. Not started: no script, no CI job, no chosen cadence yet.</p>
+</li>
+<li>
 <p><input disabled="" type="checkbox"> <strong>T-202</strong> <strong>Not started, owner-requested (2026-08-09) - research spike: is a Strumok-keystream
 + MAC (“Encrypt-then-MAC”) authenticated construction a faster-but-still-safe alternative to
 <code>crypto_secretstream</code>’s current Kalyna-GCM-based AEAD for <code>uacrypt encrypt</code>/<code>decrypt</code>?</strong>
@@ -5136,18 +5152,12 @@ mdBook for the existing <code>docs/*.md</code> corpus, plus a mandatory <code>ca
 `# uacrypt</p>
 </li>
 </ul>
-<!-- uacrypt-version: 0.3.6 -->
-<p><strong>v0.3.6 — released 2026-08-13. <code>dstu-core</code> (Python bindings) is live on
-<a href="https://pypi.org/project/dstu-core/">PyPI</a>; on npm, <code>dstu-core</code> (root), <code>dstu-core-linux-x64-gnu</code>,
-and <code>dstu-core-darwin-arm64</code> are live. <code>dstu-core-win32-x64-msvc</code> is deliberately deferred, blocked
-by npm’s own spam detection (external, not a code issue — see <code>docs/DECISIONS.md</code> D-189);
-<code>dstu-core-linux-arm64-gnu</code> is a new platform added in v0.3.5. This release fixes a real bug found
-on the live PyPI/npm/crates.io pages: several package descriptions/READMEs still said “provisional,
-not yet published” or read like an internal engineering note, contradicting the fact that they were
-already live — see <code>docs/DECISIONS.md</code> D-191. RubyGems publishing (<code>dstu_core</code>) is wired up but
-still dormant pending the next tag. See <code>docs/CHANGELOG.md</code> for details.</strong> Not a complete library or
-CLI yet, not audited, not
-production-ready, and <strong>not a claim of side-channel resistance</strong>. Core primitives
+<!-- uacrypt-version: 0.3.7 -->
+<p><strong>v0.3.7.</strong> <code>dstu-core</code> is live on <a href="https://pypi.org/project/dstu-core/">PyPI</a> and
+<a href="https://www.npmjs.com/package/dstu-core">npm</a> (Python/Node.js bindings, one npm platform package
+still deferred — <code>docs/DECISIONS.md</code> D-189); RubyGems is wired up but not live yet. See
+<code>docs/CHANGELOG.md</code> for what changed each release. Not a complete library or CLI yet, not audited,
+not production-ready, and <strong>not a claim of side-channel resistance</strong>. Core primitives
 (Kalyna, Kupyna) are dual-oracle-verified against official test vectors; Strumok and the Kalyna-CCM mode are
 provisional (not yet confirmed against their primary standard text — see <code>docs/DECISIONS.md</code> D-15/D-41).
 <strong><code>crypto_secretstream</code> — the construction backing <code>encrypt</code>/<code>decrypt</code> — is provisional in a
@@ -5425,24 +5435,26 @@ crates.io yet (<code>docs/TASKS.md</code> T-17).</p>
 <p>Every binding in <code>docs/bindings-strategy.md</code>’s phased order is now built — the full <code>crypto_*</code>
 surface (<code>crypto_secretbox</code>/<code>secretstream</code>/<code>sign</code>/<code>auth</code>/<code>kdf</code>/<code>generichash</code>/<code>stream</code>/<code>pwhash</code>,
 <code>randombytes</code>, <code>selftest</code>), idiomatic errors and secretstream I/O per language, real
-correctness/rejection/misuse test suites against the same official vectors. <strong>None are published
-to a package registry yet</strong> (PyPI/npm/RubyGems/Packagist/NuGet/Maven Central — separately
-owner-gated, <code>docs/TASKS.md</code> T-164, same posture as <code>dstu-core</code> itself not being on crates.io yet)
-— build from source per the linked README:</p>
+correctness/rejection/misuse test suites against the same official vectors. <strong>Python and Node.js
+are published</strong> (PyPI/npm, see the banner above); the rest aren’t yet (RubyGems/Packagist/NuGet/
+Maven Central — separately owner-gated, <code>docs/TASKS.md</code> T-164) — build those from source per the
+linked README. The <strong>README column is the full docs</strong> for every binding regardless of publish
+status (usage examples, API table, security caveats); the <strong>Package column</strong> is only where you’d
+actually run an install command:</p>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Language</th><th>Approach</th><th>README</th></tr>
+<tr><th>Language</th><th>Approach</th><th>README</th><th>Package</th></tr>
 </thead>
 <tbody>
-<tr><td>Python</td><td>PyO3, direct Rust binding</td><td><a href="https://github.com/user137/uacrypt/blob/master/bindings/python/README.md"><code>bindings/python</code></a></td></tr>
-<tr><td>Node.js</td><td>napi-rs, direct Rust binding</td><td><a href="https://github.com/user137/uacrypt/blob/master/bindings/nodejs/README.md"><code>bindings/nodejs</code></a></td></tr>
-<tr><td>Ruby</td><td>magnus/rb-sys, direct Rust binding</td><td><a href="https://github.com/user137/uacrypt/blob/master/bindings/ruby/README.md"><code>bindings/ruby</code></a></td></tr>
-<tr><td>PHP</td><td>ext-php-rs, direct Rust binding</td><td><a href="https://github.com/user137/uacrypt/blob/master/bindings/php/README.md"><code>bindings/php</code></a></td></tr>
-<tr><td>.NET (C#)</td><td>P/Invoke over the C ABI</td><td><a href="https://github.com/user137/uacrypt/blob/master/bindings/dotnet/README.md"><code>bindings/dotnet</code></a></td></tr>
-<tr><td>Java</td><td><code>jni</code> crate, direct Rust binding</td><td><a href="https://github.com/user137/uacrypt/blob/master/bindings/java/README.md"><code>bindings/java</code></a></td></tr>
-<tr><td>Go</td><td><code>cgo</code> over the C ABI</td><td><a href="https://github.com/user137/uacrypt/blob/master/bindings/go/README.md"><code>bindings/go</code></a></td></tr>
-<tr><td>C++</td><td>header-only RAII wrapper over the C ABI</td><td><a href="https://github.com/user137/uacrypt/blob/master/bindings/cpp/README.md"><code>bindings/cpp</code></a></td></tr>
+<tr><td>Python</td><td>PyO3, direct Rust binding</td><td><a href="https://github.com/user137/uacrypt/blob/master/bindings/python/README.md"><code>bindings/python</code></a></td><td><a href="https://pypi.org/project/dstu-core/">PyPI</a></td></tr>
+<tr><td>Node.js</td><td>napi-rs, direct Rust binding</td><td><a href="https://github.com/user137/uacrypt/blob/master/bindings/nodejs/README.md"><code>bindings/nodejs</code></a></td><td><a href="https://www.npmjs.com/package/dstu-core">npm</a></td></tr>
+<tr><td>Ruby</td><td>magnus/rb-sys, direct Rust binding</td><td><a href="https://github.com/user137/uacrypt/blob/master/bindings/ruby/README.md"><code>bindings/ruby</code></a></td><td>not yet published</td></tr>
+<tr><td>PHP</td><td>ext-php-rs, direct Rust binding</td><td><a href="https://github.com/user137/uacrypt/blob/master/bindings/php/README.md"><code>bindings/php</code></a></td><td>not yet published</td></tr>
+<tr><td>.NET (C#)</td><td>P/Invoke over the C ABI</td><td><a href="https://github.com/user137/uacrypt/blob/master/bindings/dotnet/README.md"><code>bindings/dotnet</code></a></td><td>not yet published</td></tr>
+<tr><td>Java</td><td><code>jni</code> crate, direct Rust binding</td><td><a href="https://github.com/user137/uacrypt/blob/master/bindings/java/README.md"><code>bindings/java</code></a></td><td>not yet published</td></tr>
+<tr><td>Go</td><td><code>cgo</code> over the C ABI</td><td><a href="https://github.com/user137/uacrypt/blob/master/bindings/go/README.md"><code>bindings/go</code></a></td><td>not yet published</td></tr>
+<tr><td>C++</td><td>header-only RAII wrapper over the C ABI</td><td><a href="https://github.com/user137/uacrypt/blob/master/bindings/cpp/README.md"><code>bindings/cpp</code></a></td><td>not yet published</td></tr>
 </tbody>
 </table>
 </div>
@@ -6996,7 +7008,14 @@ pre-publish “provisional, not yet published” README/description text, no <co
 <code>npm install</code> instructions anywhere. Fixed for both bindings (bumped <code>0.1.0</code>→<code>0.1.1</code> so the
 fix actually reaches the registry), plus <code>uacrypt</code>’s crates.io description and a distinct
 Ruby gemspec bug (<code>README.md</code> missing from <code>spec.files</code> entirely) caught in the same sweep,
-ahead of Ruby’s own first publish. See D-191.</li>
+ahead of Ruby’s own first publish. See D-191.
+<strong>v0.3.6’s actual release run then failed <code>build-ruby-gems</code> on all four platforms</strong> -
+<code>magnus 0.7.1</code> doesn’t support Ruby 4.0’s changed C ABI, and <code>cross-gem</code>‘s default
+<code>ruby-versions</code> cross-compiled against it anyway. <strong>v0.3.7 (2026-08-13)</strong> pins
+<code>ruby-versions: "3.1,3.2,3.3,3.4"</code> explicitly (D-190’s update) - RubyGems’ first real publish
+attempt is this tag. Also shortened the README/website status banners, which had grown into
+a wall of text restating every past release since v0.3.3 instead of just linking
+<code>docs/CHANGELOG.md</code>.</li>
 <li><input disabled="" type="checkbox" checked=""> <strong>T-165</strong> <strong>Done 2026-08-03.</strong> <strong><code>docs/CONTRIBUTING.md</code> has zero mentions of <code>bindings/</code>/<code>dstu-core-capi</code> anywhere
 (confirmed by grep, not assumed), added 2026-08-03.</strong> It was written entirely for core-crate
 contributors (a new primitive/mode) and predates all of Phase 3 — a contributor who wants to
@@ -27318,6 +27337,17 @@ allowed” 409).</p>
 protection rule as <code>pypi</code>/<code>npm</code> (D-189’s own note that referencing <code>environment:</code> in the workflow
 file alone creates an unprotected environment applies here too - created explicitly, not left to
 auto-create).</p>
+<p><strong>Update (v0.3.6’s actual release run, same day)</strong>: <code>build-ruby-gems</code> failed on all four platforms
+on its first real run, all with the identical error - confirmed by reading the job logs directly,
+not guessed. <code>oxidize-rb/actions/cross-gem</code>’s <code>ruby-versions</code> input was left at its own default
+(“default”, meaning no <code>--ruby-versions</code> flag passed to <code>rb-sys-dock</code>, which then cross-compiles
+against every Ruby version its Docker image knows about) - that set now includes Ruby 4.0, and
+<code>magnus 0.7.1</code> (this binding’s pinned dependency, <code>ext/dstu_core_rb/Cargo.toml</code>) doesn’t support
+Ruby 4.0’s changed C ABI yet (<code>rb_fiber_raise</code>’s <code>argv</code> mutability, <code>RTypedData</code> losing its
+<code>typed_flag</code> field) - a real upstream incompatibility between two dependencies, not a workflow
+misconfiguration. Fixed by pinning <code>ruby-versions: "3.1,3.2,3.3,3.4"</code> explicitly - the same range
+<code>bindings-ruby.yml</code>’s own test job and the gemspec’s <code>required_ruby_version</code> (<code>&gt;= 3.1</code>) already
+cover. Re-check/widen once <code>magnus</code> adds Ruby 4.0 support.</p>
 <h2 id="d-191-live-pypinpmcratesio-package-descriptions-still-said-provisional-not-yet-published-or-read-like-an-internal-note---checked-by-fetching-the-actual-registry-pages-not-assumed-from-local-source"><a class="header" href="#d-191-live-pypinpmcratesio-package-descriptions-still-said-provisional-not-yet-published-or-read-like-an-internal-note---checked-by-fetching-the-actual-registry-pages-not-assumed-from-local-source">D-191: Live PyPI/npm/crates.io package descriptions still said “provisional, not yet published” or read like an internal note - checked by fetching the actual registry pages, not assumed from local source</a></h2>
 <p><strong>What happened</strong>: while evaluating whether RubyGems would repeat any known publishing problem
 (D-190), the project owner asked whether npm’s package pages looked undocumented, and to verify
@@ -27365,8 +27395,9 @@ Ruby’s <code>spec.description</code> module-list wording, and <code>.csproj</c
 normalized to match every other not-yet-published binding’s phrasing.</p>
 <p><strong>Standing gap this leaves</strong>: nothing yet automatically re-verifies a live registry page against
 its own source after every publish - this was a manual, one-time sweep triggered by a direct
-question, not a repeatable check. <code>docs/TASKS.md</code> should get a real task for this if it recurs
-again, rather than relying on someone happening to look.</p>
+question, not a repeatable check. Filed as <code>docs/TASKS.md</code> T-210: install the real published
+package per binding (not local source) and smoke-test it against its own README’s usage examples,
+right after each publish rather than relying on someone happening to look.</p>
 <p><strong>Process note</strong> (why this matters beyond the immediate fix): the finding only surfaced because
 the actual registry pages were fetched and read (<code>registry.npmjs.org</code>/<code>pypi.org</code>/<code>crates.io</code>’s own
 JSON APIs), not because the local README/description files were re-read and judged stale by eye -
@@ -27380,6 +27411,25 @@ this establishes for every future publish-verification task.</p>
 <p>All notable changes to this project are documented in this file. Format follows
 <a href="https://keepachangelog.com/en/1.1.0/">Keep a Changelog</a>.</p>
 <h2 id="unreleased"><a class="header" href="#unreleased">[Unreleased]</a></h2>
+<h2 id="037---2026-08-13"><a class="header" href="#037---2026-08-13">[0.3.7] - 2026-08-13</a></h2>
+<h3 id="fixed"><a class="header" href="#fixed">Fixed</a></h3>
+<ul>
+<li>Root <code>README.md</code>’s “Language bindings” table and the website’s “Bindings” section both still
+said “not published to any package registry” and linked only this repo’s own README, even though
+Python/Node.js were already live on PyPI/npm as of v0.3.6 - same class of bug as D-191, found
+while answering whether the site links registries as well as the repo. Both now link the README
+(full docs, every binding) and the registry page (the actual install command) side by side where
+a binding is published. See <code>docs/DECISIONS.md</code> D-191’s addendum.</li>
+<li><code>build-ruby-gems</code> failed on all four platforms on v0.3.6’s actual release run: <code>magnus 0.7.1</code>
+doesn’t support Ruby 4.0’s changed C ABI, and <code>oxidize-rb/actions/cross-gem</code>’s default
+<code>ruby-versions</code> cross-compiled against Ruby 4.0 anyway. Pinned <code>ruby-versions</code> explicitly to
+<code>3.1,3.2,3.3,3.4</code>, matching what <code>bindings-ruby.yml</code>’s own test job and the gemspec’s
+<code>required_ruby_version</code> already cover. See <code>docs/DECISIONS.md</code> D-190’s update.</li>
+<li>The root <code>README.md</code> and website status banners had grown, release over release since v0.3.3,
+into a dense wall of text restating every past release’s own detail. Shortened both to a single
+current-state line, pointing to <code>docs/CHANGELOG.md</code> for what changed each release instead of
+re-narrating it in the banner itself.</li>
+</ul>
 <h2 id="036---2026-08-13"><a class="header" href="#036---2026-08-13">[0.3.6] - 2026-08-13</a></h2>
 <h3 id="added"><a class="header" href="#added">Added</a></h3>
 <ul>
@@ -27389,7 +27439,7 @@ native gem publishing for <code>dstu_core</code> (<code>x86_64-linux</code>, <co
 pre-registered pending publisher. Dormant behind the <code>rubygems</code> GitHub Environment approval
 gate until the next tag. See <code>docs/DECISIONS.md</code> D-190.</li>
 </ul>
-<h3 id="fixed"><a class="header" href="#fixed">Fixed</a></h3>
+<h3 id="fixed-1"><a class="header" href="#fixed-1">Fixed</a></h3>
 <ul>
 <li>The already-live PyPI and npm package pages (<code>dstu-core</code>) still had README/description text
 written pre-publish, claiming “provisional, not yet published” and offering only from-source
@@ -27409,7 +27459,7 @@ publish - fixed ahead of that first publish. See <code>docs/DECISIONS.md</code> 
 (<code>aarch64-unknown-linux-gnu</code>), built natively on GitHub’s <code>ubuntu-24.04-arm</code> hosted runner (GA for
 public repos since 2025-08-07), no cross-compile toolchain needed.</li>
 </ul>
-<h3 id="fixed-1"><a class="header" href="#fixed-1">Fixed</a></h3>
+<h3 id="fixed-2"><a class="header" href="#fixed-2">Fixed</a></h3>
 <ul>
 <li>v0.3.4’s npm publish (with the idempotency fix from that release) correctly skipped the two
 already-published platform packages and reached <code>dstu-core-win32-x64-msvc</code>, but that package hit
@@ -27422,7 +27472,7 @@ this class of npm block (contacting npm support - renaming doesn’t, per a real
 what un-defers it once support clears the name.</li>
 </ul>
 <h2 id="034---2026-08-13"><a class="header" href="#034---2026-08-13">[0.3.4] - 2026-08-13</a></h2>
-<h3 id="fixed-2"><a class="header" href="#fixed-2">Fixed</a></h3>
+<h3 id="fixed-3"><a class="header" href="#fixed-3">Fixed</a></h3>
 <ul>
 <li>v0.3.3’s npm publish got past the provenance/access fix but hit npm’s own spam-detection
 heuristic on the 3rd platform subpackage (<code>dstu-core-win32-x64-msvc</code>) after two succeeded
@@ -27440,7 +27490,7 @@ npm’s external spam heuristic and rate limits are outside this workflow’s co
 wherever the previous attempt stopped.</li>
 </ul>
 <h2 id="033---2026-08-12"><a class="header" href="#033---2026-08-12">[0.3.3] - 2026-08-12</a></h2>
-<h3 id="fixed-3"><a class="header" href="#fixed-3">Fixed</a></h3>
+<h3 id="fixed-4"><a class="header" href="#fixed-4">Fixed</a></h3>
 <ul>
 <li><code>publish-npm</code>’s <code>napi prepublish</code> step failed publishing every platform subpackage
 (<code>Can't generate provenance for new or private package, you must set access to public</code>) - <code>npm publish --provenance</code> refuses to guess the intended access level for a package that’s never been
@@ -27460,7 +27510,7 @@ failed attempt before retrying (<code>registry.npmjs.org/dstu-core*</code> still
 0.1.0 - the 0.3.1 tag’s <code>publish-pypi</code> run actually went through (see Fixed, below), so this is
 the first release to reflect that as real instead of “prepared, not yet live.”</li>
 </ul>
-<h3 id="fixed-4"><a class="header" href="#fixed-4">Fixed</a></h3>
+<h3 id="fixed-5"><a class="header" href="#fixed-5">Fixed</a></h3>
 <ul>
 <li><code>environment: pypi</code>/<code>npm</code> in <code>release.yml</code> were referenced but never actually protected -
 GitHub auto-creates an environment with zero protection rules the first time a workflow
@@ -27506,7 +27556,7 @@ Packagist is deliberately not part of this pass -
 <code>bindings/php</code> is a compiled <code>ext-php-rs</code> extension, and Packagist only distributes Composer
 (PHP-source) packages (<code>docs/DECISIONS.md</code> D-144).</li>
 </ul>
-<h3 id="fixed-5"><a class="header" href="#fixed-5">Fixed</a></h3>
+<h3 id="fixed-6"><a class="header" href="#fixed-6">Fixed</a></h3>
 <ul>
 <li><code>docs/TASKS.md</code> T-17 and <code>CLAUDE.md</code>’s “MVP scope” both still read “not started” for the
 crates.io publish that actually happened at 0.3.0 above - corrected to reflect reality
@@ -27572,7 +27622,7 @@ measurement can actually detect unbounded growth. <code>#[ignore]</code>d by def
 5 minutes and was killed before finishing); wired into <code>cargo xtask ci</code>’s optional layers and a
 new CI job matrixed across all three OSes (<code>docs/TASKS.md</code> T-200).</li>
 </ul>
-<h3 id="fixed-6"><a class="header" href="#fixed-6">Fixed</a></h3>
+<h3 id="fixed-7"><a class="header" href="#fixed-7">Fixed</a></h3>
 <ul>
 <li><code>crypto_sign</code>/<code>hazmat::dstu4145</code> (<code>m=163</code>): <code>VerifyingKey::from_uncompressed_bytes</code> accepted a
 caller-supplied public key with no on-curve check, and <code>verify</code> never validated its own <code>q</code>
@@ -27614,7 +27664,7 @@ checked exhaustively over all 2^384 possible inputs (T-145).</li>
 <li>CodeQL advanced-setup CI migration, explicit least-privilege CI permissions (T-143); SonarCloud
 static analysis wired into CI (T-140).</li>
 </ul>
-<h3 id="fixed-7"><a class="header" href="#fixed-7">Fixed</a></h3>
+<h3 id="fixed-8"><a class="header" href="#fixed-8">Fixed</a></h3>
 <ul>
 <li>DSTU 4145 <code>scalar_multiply</code> returned a wrong result for scalars at/near the curve’s own group
 order - reachable in-contract at exactly one boundary value (<code>k == n-1</code>). No forgery risk
