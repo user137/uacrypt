@@ -12976,3 +12976,56 @@ mdBook gotcha, T-186), so a relative link would resolve against `docs/` inside t
 the repo root and silently 404. Verified by actually building the book (`cargo xtask book`) and
 grepping the rendered HTML's `href`s, not assumed correct from the source alone.
 
+## D-193: gh-pages landing page (`index.html`/`uk/index.html`) - externalized inlined base64 fonts, dropped a mislabeled fake-bold face, fixed a second stale status blurb the README pass (D-192) hadn't touched
+
+**What happened**: same "check what similar-niche projects actually do" exercise as D-192, this
+time for the site (not the README). Fetched real comparables rather than reasoning from memory:
+`age-encryption.org` 302-redirects straight to its GitHub repo (no dedicated site at all);
+`openssl.org` is ~7 KB, plain, no marketing chrome; `doc.libsodium.org` is a stock GitBook instance
+with zero custom design; RustCrypto has no site, GitHub is the site. Unanimous pattern in this
+niche: no bespoke animated marketing page. Consulted the advisor before acting on that, since "the
+convention is minimalism" doesn't by itself justify deleting a working page the project owner
+explicitly didn't ask to delete (`"чи змінити"`, not "чи прибрати") - conclusion was to fix the
+page's real, measurable defects rather than restructure or remove it; the hero section itself
+already reads as a tight pitch (eyebrow → h1 → lede → CTA), unlike the README's problem, so no
+section reordering was done here.
+
+**Font bloat, found and fixed**: `index.html`/`uk/index.html` each inlined IBM Plex Sans/Serif as
+base64 `data:font/woff2` URIs directly in `<style>` - 287 KB of the ~354 KB page was font bytes, in
+both language pages independently. A `data:` URI source is never HTTP-cached and is re-parsed on
+every page load, unlike this same repo's own `book/fonts/*.woff2` (real files, genuinely cached) -
+an internal inconsistency, not just "other projects do less". Extracted all 8 `@font-face` payloads
+to real `fonts/*.woff2` files (own path - `book/fonts/` filenames are mdbook content-hashed and
+shift on a mdbook upgrade, confirmed via `git ls-tree`), referenced via relative `src:url()`
+(`fonts/` from `index.html`, `../fonts/` from `uk/index.html`, matching the page's own existing
+relative-link convention for `book/` etc.).
+
+**Second, sharper bug found while extracting**: `SHA-256`-hashing the six surviving font files
+showed IBM Plex Sans's declared `font-weight:600` face was byte-identical to its `400` face, in
+both language pages. `.btn{font-family:var(--font-body);font-weight:600;...}` was therefore
+rendering every button's text using the *regular*-weight glyphs under a false `600` label - not a
+performance defect, a real rendering bug, invisible without decoding and diffing the embedded
+payloads. Dropped the fake `600` face entirely rather than sourcing a real one (no design-asset
+change requested); the browser's own synthetic-bold fallback now applies against the genuine `400`
+face, which is strictly more correct than serving mislabeled duplicate bytes. Net: ~287 KB/page of
+embedded fonts → 152 KB, shared and actually cacheable across both pages.
+
+**Second stale-status-text instance, independent of D-192's README fix**: the page states project
+status twice - the hero `.status-note` (already read `v0.3.8`, correctly updated in a prior pass)
+and a second, separate "Status"/"Де зараз проєкт і що далі" section near the footer, which still
+opened with `v0.3.6 released - ...` and a paragraph of that release's specific per-registry detail.
+Same D-159 pattern (a free-standing state summary with no task-ID string for a grep sweep to catch)
+recurring in a second location the D-192 pass didn't know to check because it was working on
+`README.md`, not the gh-pages branch. Fixed with the same remedy already applied to the README and
+the hero note: replaced the per-release narration with a short, evergreen sentence pointing at
+`docs/CHANGELOG.md` and at the hero note above, so there is exactly one place on the page that
+narrates release-specific detail, not two drifting independently.
+
+**Not done, and why**: did not switch off the custom `IBM Plex Sans`/`IBM Plex Serif` pairing to a
+system-font stack (the more radical, `age`-style option) - `--font-body`'s existing fallback chain
+(`-apple-system, 'Segoe UI', Roboto, sans-serif`) already degrades gracefully on font-load failure,
+and changing the page's typographic identity is a visual-design call, not a technical-debt fix; the
+Chrome browser extension needed to screenshot the live page and judge that call was unavailable for
+this session (checked twice, per the three-attempts-adjacent discipline of not retrying a failing
+tool call indefinitely) - left for a later pass with a live screenshot in hand, not decided blind.
+

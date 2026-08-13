@@ -13,6 +13,11 @@ All notable changes to this project are documented in this file. Format follows
   (published in the mdBook knowledge base); the repository-structure tree, dev-environment setup,
   and Windows-specific troubleshooting moved to `docs/CONTRIBUTING.md`. See `docs/DECISIONS.md`
   D-192.
+- gh-pages landing page (`index.html`/`uk/index.html`, not a crate release): externalized ~287
+  KB/page of base64-inlined webfonts to real cacheable `fonts/*.woff2` files, dropped an IBM Plex
+  Sans "600" face that turned out to be byte-identical to the 400 face (buttons were silently
+  rendering non-bold glyphs under a false bold label), and fixed a second stale "v0.3.6 released"
+  status blurb the README pass above hadn't reached. See `docs/DECISIONS.md` D-193.
 
 ## [0.3.8] - 2026-08-13
 
