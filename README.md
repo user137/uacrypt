@@ -1,7 +1,7 @@
 # uacrypt
 
-<!-- uacrypt-version: 0.3.7 -->
-**v0.3.7.** `dstu-core` is live on [PyPI](https://pypi.org/project/dstu-core/) and
+<!-- uacrypt-version: 0.3.8 -->
+**v0.3.8.** `dstu-core` is live on [PyPI](https://pypi.org/project/dstu-core/) and
 [npm](https://www.npmjs.com/package/dstu-core) (Python/Node.js bindings, one npm platform package
 still deferred — `docs/DECISIONS.md` D-189); RubyGems is wired up but not live yet. See
 `docs/CHANGELOG.md` for what changed each release. Not a complete library or CLI yet, not audited,

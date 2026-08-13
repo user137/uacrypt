@@ -396,12 +396,12 @@ jobs:
     # 2026-08-13 ahead of this job landing - same "automation ahead of the actual first publish"
     # pattern T-17/publish-pypi already used.
     #
-    # rubygems/release-gem@v1 (RubyGems' own documented one-call recipe) isn't used here -
+    # rubygems/release-gem (RubyGems' own documented one-call recipe) isn't used here -
     # confirmed by reading its source (rubygems/release-gem's action.yml): it runs
     # `bundle exec rake release`, which builds and pushes a single SOURCE gem plus a brand-new
     # git tag. That doesn't fit a multi-platform native-gem release, where the gems are already
     # built by build-ruby-gems (cross-compiled per platform, real compiled extensions inside) and
-    # the tag already exists. rubygems/configure-rubygems-credentials@v1 - the credential step
+    # the tag already exists. rubygems/configure-rubygems-credentials - the credential step
     # release-gem itself wraps - is the right building block on its own: it sets up OIDC-based
     # `gem push` credentials for this job, then plain `gem push` per downloaded artifact does the
     # rest.
@@ -427,7 +427,12 @@ jobs:
           pattern: ruby-gem-*
           path: gems
           merge-multiple: true
-      - uses: rubygems/configure-rubygems-credentials@v1
+      # No floating `v1`/`v2` tag exists on this action (confirmed via its real tag list,
+      # `gh api repos/rubygems/configure-rubygems-credentials/tags` - only full semver tags) -
+      # `@v1` failed release resolution outright on v0.3.7's first real run ("unable to find
+      # version v1"). Pinned to the exact SHA/version `rubygems/release-gem`'s own action.yml uses
+      # internally for this same step, the authoritative source for what's current and correct.
+      - uses: rubygems/configure-rubygems-credentials@dc5a8d8553e6ee01fc26761a49e99e733d17954a # v2.1.0
       - name: Push gems (tolerating a genuine already-published conflict)
         run: |
           for gem in gems/*.gem; do

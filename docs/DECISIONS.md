@@ -12807,7 +12807,7 @@ a Windows target), explicitly excluding `x86_64-darwin` for the same reason Node
 does: this project only ever targets Apple Silicon macOS (`build-binary`'s own release asset is
 `uacrypt-macos-aarch64.tar.gz`).
 
-**Why not `rubygems/release-gem@v1`** (RubyGems' own documented one-call recipe): read its
+**Why not `rubygems/release-gem`** (RubyGems' own documented one-call recipe): read its
 `action.yml` source directly - it runs `bundle exec rake release`, which builds a single *source*
 gem via plain `rake build` and creates a new git tag as part of the same task. Both are wrong for
 this shape: the gems here are already built (four separately cross-compiled native artifacts from
@@ -12841,6 +12841,21 @@ Ruby 4.0's changed C ABI yet (`rb_fiber_raise`'s `argv` mutability, `RTypedData`
 misconfiguration. Fixed by pinning `ruby-versions: "3.1,3.2,3.3,3.4"` explicitly - the same range
 `bindings-ruby.yml`'s own test job and the gemspec's `required_ruby_version` (`>= 3.1`) already
 cover. Re-check/widen once `magnus` adds Ruby 4.0 support.
+
+**Update 2 (v0.3.7's real release run, after all four `build-ruby-gems` platforms passed)**:
+`publish to RubyGems` itself failed instantly ("Set up job", ~2s - a resolution failure, not a
+build/logic one): `rubygems/configure-rubygems-credentials@v1` doesn't exist -
+`gh api repos/rubygems/configure-rubygems-credentials/tags` shows only full semver tags
+(`v1.0.0`/`v2.0.0`/`v2.1.0`), no floating `v1`/`v2` major alias the way `actions/checkout@v4` or
+`oxidize-rb/actions/cross-gem@v1` provide. Assumed the same floating-tag convention applied here
+without checking - it doesn't, for this action. Fixed by pinning to the exact SHA
+(`dc5a8d8553e6ee01fc26761a49e99e733d17954a`, tagged `v2.1.0`) that `rubygems/release-gem`'s own
+`action.yml` uses internally for this same step - the authoritative source for what's current,
+rather than guessing a version number. Every other registry-publishing action already in this
+workflow (`pypa/gh-action-pypi-publish`, `actions/checkout`, `oxidize-rb/actions/cross-gem`) does
+publish a floating major tag; `rubygems/configure-rubygems-credentials` was the one exception, and
+it took a real failed run to surface that rather than checking every third-party action's tag list
+up front.
 
 ## D-191: Live PyPI/npm/crates.io package descriptions still said "provisional, not yet published" or read like an internal note - checked by fetching the actual registry pages, not assumed from local source
 

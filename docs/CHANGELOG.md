@@ -5,6 +5,16 @@ All notable changes to this project are documented in this file. Format follows
 
 ## [Unreleased]
 
+## [0.3.8] - 2026-08-13
+
+### Fixed
+
+- `publish to RubyGems` failed instantly on v0.3.7's real release run (after all four
+  `build-ruby-gems` platforms passed): `rubygems/configure-rubygems-credentials@v1` doesn't exist
+  - that action only publishes full semver tags (`v1.0.0`/`v2.0.0`/`v2.1.0`), no floating `v1`/`v2`
+  major alias. Pinned to the exact SHA `rubygems/release-gem`'s own `action.yml` uses internally
+  for this same step (`v2.1.0`). See `docs/DECISIONS.md` D-190's second update.
+
 ## [0.3.7] - 2026-08-13
 
 ### Fixed

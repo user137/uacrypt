@@ -6118,6 +6118,10 @@ configuration surface added in the process (D-47 still holds).
       attempt is this tag. Also shortened the README/website status banners, which had grown into
       a wall of text restating every past release since v0.3.3 instead of just linking
       `docs/CHANGELOG.md`.
+      **v0.3.7's `build-ruby-gems` all passed, but `publish to RubyGems` itself failed instantly**
+      - `rubygems/configure-rubygems-credentials@v1` doesn't exist, no floating major tag on that
+      action. **v0.3.8 (2026-08-13)** pins the exact SHA (`v2.1.0`) `rubygems/release-gem` uses
+      internally - RubyGems' first real publish attempt is now this tag.
 - [x] **T-165** **Done 2026-08-03.** **`docs/CONTRIBUTING.md` has zero mentions of `bindings/`/`dstu-core-capi` anywhere
       (confirmed by grep, not assumed), added 2026-08-03.** It was written entirely for core-crate
       contributors (a new primitive/mode) and predates all of Phase 3 — a contributor who wants to
