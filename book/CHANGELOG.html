@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-dd3c233c.js";
+            window.path_to_searchindex_js = "searchindex-35e9df56.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-6b977b4b.js"></script>
@@ -184,22 +184,39 @@
 <p>All notable changes to this project are documented in this file. Format follows
 <a href="https://keepachangelog.com/en/1.1.0/">Keep a Changelog</a>.</p>
 <h2 id="unreleased"><a class="header" href="#unreleased">[Unreleased]</a></h2>
+<h3 id="fixed"><a class="header" href="#fixed">Fixed</a></h3>
+<ul>
+<li>v0.3.8’s RubyGems publish (Ruby bindings, <code>dstu_core</code>) actually completed - blocked by a pending
+PyPI/npm environment approval and a transient third-party (<code>cargo-binstall</code>/QuickInstall) outage
+on the <code>arm64-darwin</code> build, both unrelated to this repo’s own code. Live on RubyGems.org as of
+this entry, all four platform gems. See <code>docs/DECISIONS.md</code> D-194.</li>
+</ul>
 <h3 id="changed"><a class="header" href="#changed">Changed</a></h3>
 <ul>
-<li>Root <code>README.md</code> restructured following real-world convention from libsodium/age/RustCrypto:
+<li>
+<p><code>bindings/ruby</code>’s gemspec/Cargo.toml description and README, plus root <code>README.md</code> and the
+gh-pages landing page (both languages), updated to reflect RubyGems actually being live - same
+stale “not yet published” pattern already fixed once for PyPI/npm/crates.io (D-191). See
+<code>docs/DECISIONS.md</code> D-194.</p>
+</li>
+<li>
+<p>Root <code>README.md</code> restructured following real-world convention from libsodium/age/RustCrypto:
 badges row, a short plain-language pitch, one verified code example, everything else linked to
 dedicated docs instead of inlined. The full CLI walkthrough moved to a new <code>docs/CLI.md</code>
 (published in the mdBook knowledge base); the repository-structure tree, dev-environment setup,
 and Windows-specific troubleshooting moved to <code>docs/CONTRIBUTING.md</code>. See <code>docs/DECISIONS.md</code>
-D-192.</li>
-<li>gh-pages landing page (<code>index.html</code>/<code>uk/index.html</code>, not a crate release): externalized ~287
+D-192.</p>
+</li>
+<li>
+<p>gh-pages landing page (<code>index.html</code>/<code>uk/index.html</code>, not a crate release): externalized ~287
 KB/page of base64-inlined webfonts to real cacheable <code>fonts/*.woff2</code> files, dropped an IBM Plex
 Sans “600” face that turned out to be byte-identical to the 400 face (buttons were silently
 rendering non-bold glyphs under a false bold label), and fixed a second stale “v0.3.6 released”
-status blurb the README pass above hadn’t reached. See <code>docs/DECISIONS.md</code> D-193.</li>
+status blurb the README pass above hadn’t reached. See <code>docs/DECISIONS.md</code> D-193.</p>
+</li>
 </ul>
 <h2 id="038---2026-08-13"><a class="header" href="#038---2026-08-13">[0.3.8] - 2026-08-13</a></h2>
-<h3 id="fixed"><a class="header" href="#fixed">Fixed</a></h3>
+<h3 id="fixed-1"><a class="header" href="#fixed-1">Fixed</a></h3>
 <ul>
 <li><code>publish to RubyGems</code> failed instantly on v0.3.7’s real release run (after all four
 <code>build-ruby-gems</code> platforms passed): <code>rubygems/configure-rubygems-credentials@v1</code> doesn’t exist
@@ -211,7 +228,7 @@ for this same step (<code>v2.1.0</code>). See <code>docs/DECISIONS.md</code> D-1
 </li>
 </ul>
 <h2 id="037---2026-08-13"><a class="header" href="#037---2026-08-13">[0.3.7] - 2026-08-13</a></h2>
-<h3 id="fixed-1"><a class="header" href="#fixed-1">Fixed</a></h3>
+<h3 id="fixed-2"><a class="header" href="#fixed-2">Fixed</a></h3>
 <ul>
 <li>Root <code>README.md</code>’s “Language bindings” table and the website’s “Bindings” section both still
 said “not published to any package registry” and linked only this repo’s own README, even though
@@ -238,7 +255,7 @@ native gem publishing for <code>dstu_core</code> (<code>x86_64-linux</code>, <co
 pre-registered pending publisher. Dormant behind the <code>rubygems</code> GitHub Environment approval
 gate until the next tag. See <code>docs/DECISIONS.md</code> D-190.</li>
 </ul>
-<h3 id="fixed-2"><a class="header" href="#fixed-2">Fixed</a></h3>
+<h3 id="fixed-3"><a class="header" href="#fixed-3">Fixed</a></h3>
 <ul>
 <li>The already-live PyPI and npm package pages (<code>dstu-core</code>) still had README/description text
 written pre-publish, claiming “provisional, not yet published” and offering only from-source
@@ -258,7 +275,7 @@ publish - fixed ahead of that first publish. See <code>docs/DECISIONS.md</code> 
 (<code>aarch64-unknown-linux-gnu</code>), built natively on GitHub’s <code>ubuntu-24.04-arm</code> hosted runner (GA for
 public repos since 2025-08-07), no cross-compile toolchain needed.</li>
 </ul>
-<h3 id="fixed-3"><a class="header" href="#fixed-3">Fixed</a></h3>
+<h3 id="fixed-4"><a class="header" href="#fixed-4">Fixed</a></h3>
 <ul>
 <li>v0.3.4’s npm publish (with the idempotency fix from that release) correctly skipped the two
 already-published platform packages and reached <code>dstu-core-win32-x64-msvc</code>, but that package hit
@@ -271,7 +288,7 @@ this class of npm block (contacting npm support - renaming doesn’t, per a real
 what un-defers it once support clears the name.</li>
 </ul>
 <h2 id="034---2026-08-13"><a class="header" href="#034---2026-08-13">[0.3.4] - 2026-08-13</a></h2>
-<h3 id="fixed-4"><a class="header" href="#fixed-4">Fixed</a></h3>
+<h3 id="fixed-5"><a class="header" href="#fixed-5">Fixed</a></h3>
 <ul>
 <li>v0.3.3’s npm publish got past the provenance/access fix but hit npm’s own spam-detection
 heuristic on the 3rd platform subpackage (<code>dstu-core-win32-x64-msvc</code>) after two succeeded
@@ -289,7 +306,7 @@ npm’s external spam heuristic and rate limits are outside this workflow’s co
 wherever the previous attempt stopped.</li>
 </ul>
 <h2 id="033---2026-08-12"><a class="header" href="#033---2026-08-12">[0.3.3] - 2026-08-12</a></h2>
-<h3 id="fixed-5"><a class="header" href="#fixed-5">Fixed</a></h3>
+<h3 id="fixed-6"><a class="header" href="#fixed-6">Fixed</a></h3>
 <ul>
 <li><code>publish-npm</code>’s <code>napi prepublish</code> step failed publishing every platform subpackage
 (<code>Can't generate provenance for new or private package, you must set access to public</code>) - <code>npm publish --provenance</code> refuses to guess the intended access level for a package that’s never been
@@ -309,7 +326,7 @@ failed attempt before retrying (<code>registry.npmjs.org/dstu-core*</code> still
 0.1.0 - the 0.3.1 tag’s <code>publish-pypi</code> run actually went through (see Fixed, below), so this is
 the first release to reflect that as real instead of “prepared, not yet live.”</li>
 </ul>
-<h3 id="fixed-6"><a class="header" href="#fixed-6">Fixed</a></h3>
+<h3 id="fixed-7"><a class="header" href="#fixed-7">Fixed</a></h3>
 <ul>
 <li><code>environment: pypi</code>/<code>npm</code> in <code>release.yml</code> were referenced but never actually protected -
 GitHub auto-creates an environment with zero protection rules the first time a workflow
@@ -355,7 +372,7 @@ Packagist is deliberately not part of this pass -
 <code>bindings/php</code> is a compiled <code>ext-php-rs</code> extension, and Packagist only distributes Composer
 (PHP-source) packages (<code>docs/DECISIONS.md</code> D-144).</li>
 </ul>
-<h3 id="fixed-7"><a class="header" href="#fixed-7">Fixed</a></h3>
+<h3 id="fixed-8"><a class="header" href="#fixed-8">Fixed</a></h3>
 <ul>
 <li><code>docs/TASKS.md</code> T-17 and <code>CLAUDE.md</code>’s “MVP scope” both still read “not started” for the
 crates.io publish that actually happened at 0.3.0 above - corrected to reflect reality
@@ -421,7 +438,7 @@ measurement can actually detect unbounded growth. <code>#[ignore]</code>d by def
 5 minutes and was killed before finishing); wired into <code>cargo xtask ci</code>’s optional layers and a
 new CI job matrixed across all three OSes (<code>docs/TASKS.md</code> T-200).</li>
 </ul>
-<h3 id="fixed-8"><a class="header" href="#fixed-8">Fixed</a></h3>
+<h3 id="fixed-9"><a class="header" href="#fixed-9">Fixed</a></h3>
 <ul>
 <li><code>crypto_sign</code>/<code>hazmat::dstu4145</code> (<code>m=163</code>): <code>VerifyingKey::from_uncompressed_bytes</code> accepted a
 caller-supplied public key with no on-curve check, and <code>verify</code> never validated its own <code>q</code>
@@ -463,7 +480,7 @@ checked exhaustively over all 2^384 possible inputs (T-145).</li>
 <li>CodeQL advanced-setup CI migration, explicit least-privilege CI permissions (T-143); SonarCloud
 static analysis wired into CI (T-140).</li>
 </ul>
-<h3 id="fixed-9"><a class="header" href="#fixed-9">Fixed</a></h3>
+<h3 id="fixed-10"><a class="header" href="#fixed-10">Fixed</a></h3>
 <ul>
 <li>DSTU 4145 <code>scalar_multiply</code> returned a wrong result for scalars at/near the curve’s own group
 order - reachable in-contract at exactly one boundary value (<code>k == n-1</code>). No forgery risk
