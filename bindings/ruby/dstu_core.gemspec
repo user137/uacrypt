@@ -8,7 +8,7 @@ Gem::Specification.new do |spec|
   spec.authors = ["dstu-core contributors"]
   spec.summary = "Ruby bindings for dstu-core (Ukrainian DSTU cryptographic standards)"
   spec.description = "Ruby bindings for dstu-core (Ukrainian DSTU cryptographic standards) - " \
-                     "provisional, not yet published to RubyGems."
+                     "not independently audited."
   spec.homepage = "https://github.com/user137/uacrypt"
   spec.licenses = ["MIT", "Apache-2.0"]
   spec.required_ruby_version = ">= 3.1"

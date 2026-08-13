@@ -1,11 +1,21 @@
 # dstu-core (Ruby bindings)
 
-**Provisional — not published to RubyGems, not independently audited.** See the root project's
-`docs/SECURITY.md` and `docs/DECISIONS.md` for the full threat model and per-construction status.
-This binding wraps the full `dstu_core::crypto_*` surface (`docs/bindings-strategy.md` T-160) —
-install from source as shown below.
+**Pre-1.0. Not independently audited.** See the root project's `docs/SECURITY.md` and
+`docs/DECISIONS.md` for the full threat model and per-construction status. This binding wraps the
+full `dstu_core::crypto_*` surface (`docs/bindings-strategy.md` T-160).
 
-## Installing (from source)
+## Installing
+
+```sh
+gem install dstu_core
+```
+
+```ruby
+require "dstu_core"
+DstuCore.self_test
+```
+
+## Building from source (contributors)
 
 ```sh
 gem install bundler

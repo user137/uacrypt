@@ -13029,3 +13029,33 @@ Chrome browser extension needed to screenshot the live page and judge that call 
 this session (checked twice, per the three-attempts-adjacent discipline of not retrying a failing
 tool call indefinitely) - left for a later pass with a live screenshot in hand, not decided blind.
 
+## D-194: T-164 - RubyGems publish confirmed live end-to-end (v0.3.8), same D-191 stale-description pattern fixed for the Ruby binding + gh-pages
+
+**What happened**: v0.3.8's `publish to RubyGems` job had never actually completed - the release
+run sat on two separate blockers found only by reading the run's own job list rather than trusting
+its "waiting" status: (1) `publish to PyPI`/`publish to npm` were still pending a manual environment
+approval that had simply never been clicked; (2) `build ruby gem (arm64-darwin)` failed on a
+transient third-party outage (`cargo-binstall`'s QuickInstall CDN backend returning `402 Payment
+Required` for `cargo-cache`, unrelated to this repo's own code or the `configure-rubygems-
+credentials` fix already landed for v0.3.8). `gh run rerun` refuses to retry a failed job while
+any other job in the same run is still non-terminal ("waiting" counts), so the PyPI/npm approval had
+to land first before the Ruby rebuild could even be attempted. Once both cleared: all four platform
+gems (`x86_64-linux`, `x64-mingw-ucrt`, `arm64-darwin`, `aarch64-linux`) built and `publish to
+RubyGems` succeeded - confirmed live via `curl https://rubygems.org/api/v1/versions/dstu_core.json`
+and `rubygems.org/gems/dstu_core` directly (this project's own standing rule after D-191: verify a
+publish by reading the live registry, not the CI checkmark).
+
+**Same stale-description bug as D-191, found the same way**: the live gem's `description` field
+still read "...provisional, not yet published to RubyGems" - true when written, false the moment the
+gem actually published, same class of bug as D-191's PyPI/npm find. Fixed in
+`bindings/ruby/dstu_core.gemspec` and `bindings/ruby/ext/dstu_core_rb/Cargo.toml` (matching the
+"not independently audited" phrasing already used for the Python/Node.js equivalents). Also gave
+`bindings/ruby/README.md` the same install-instructions upgrade the Python/Node.js READMEs got
+during D-192 - a real `## Installing` section (`gem install dstu_core`) ahead of a renamed
+`## Building from source (contributors)` section, rather than only ever documenting the from-source
+path. Root `README.md`'s bindings table, badge row, and status line, and the gh-pages landing
+page's hero status note and Bindings section (both languages, both still said RubyGems was "wired
+up but not live yet") updated to match - the same "two places say the same thing, only one gets
+updated" risk D-193 already flagged for this page, closed here for RubyGems specifically before it
+had the chance to go stale on its own.
+

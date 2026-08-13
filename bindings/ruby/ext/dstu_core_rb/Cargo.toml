@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 rust-version = "1.87.0"
 license = "MIT OR Apache-2.0"
-description = "Ruby bindings for dstu-core (Ukrainian DSTU cryptographic standards) - provisional, not yet published to RubyGems"
+description = "Ruby bindings for dstu-core (Ukrainian DSTU cryptographic standards) - not independently audited"
 publish = false
 
 [lib]

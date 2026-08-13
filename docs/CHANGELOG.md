@@ -5,7 +5,19 @@ All notable changes to this project are documented in this file. Format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- v0.3.8's RubyGems publish (Ruby bindings, `dstu_core`) actually completed - blocked by a pending
+  PyPI/npm environment approval and a transient third-party (`cargo-binstall`/QuickInstall) outage
+  on the `arm64-darwin` build, both unrelated to this repo's own code. Live on RubyGems.org as of
+  this entry, all four platform gems. See `docs/DECISIONS.md` D-194.
+
 ### Changed
+
+- `bindings/ruby`'s gemspec/Cargo.toml description and README, plus root `README.md` and the
+  gh-pages landing page (both languages), updated to reflect RubyGems actually being live - same
+  stale "not yet published" pattern already fixed once for PyPI/npm/crates.io (D-191). See
+  `docs/DECISIONS.md` D-194.
 
 - Root `README.md` restructured following real-world convention from libsodium/age/RustCrypto:
   badges row, a short plain-language pitch, one verified code example, everything else linked to

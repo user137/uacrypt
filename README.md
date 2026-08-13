@@ -4,6 +4,7 @@
 [![docs.rs](https://docs.rs/dstu-core/badge.svg)](https://docs.rs/dstu-core)
 [![PyPI](https://img.shields.io/pypi/v/dstu-core.svg)](https://pypi.org/project/dstu-core/)
 [![npm](https://img.shields.io/npm/v/dstu-core.svg)](https://www.npmjs.com/package/dstu-core)
+[![Gem](https://img.shields.io/gem/v/dstu_core.svg)](https://rubygems.org/gems/dstu_core)
 [![CI](https://github.com/user137/uacrypt/actions/workflows/rust.yml/badge.svg)](https://github.com/user137/uacrypt/actions/workflows/rust.yml)
 [![License: MIT/Apache-2.0](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](#license)
 
@@ -15,10 +16,10 @@ OpenSSL's flexible-but-easy-to-misconfigure API. Ships as a Rust crate (`dstu-co
 
 <!-- uacrypt-version: 0.3.8 -->
 **Pre-1.0. Not audited. Not a claim of side-channel resistance.** `dstu-core`/`uacrypt` are on
-[crates.io](https://crates.io/crates/dstu-core); the Python and Node.js bindings are on
-[PyPI](https://pypi.org/project/dstu-core/)/[npm](https://www.npmjs.com/package/dstu-core) too. See
-`docs/CHANGELOG.md` for what changed each release and `docs/release-readiness.md` for the gap
-analysis against a complete 1.0.
+[crates.io](https://crates.io/crates/dstu-core); the Python, Node.js, and Ruby bindings are on
+[PyPI](https://pypi.org/project/dstu-core/)/[npm](https://www.npmjs.com/package/dstu-core)/
+[RubyGems](https://rubygems.org/gems/dstu_core) too. See `docs/CHANGELOG.md` for what changed each
+release and `docs/release-readiness.md` for the gap analysis against a complete 1.0.
 
 ## Algorithms in scope
 
@@ -73,7 +74,7 @@ full per-language docs; the **Package column** is where you'd actually run an in
 |---|---|---|---|
 | Python | PyO3, direct Rust binding | [`bindings/python`](https://github.com/user137/uacrypt/blob/master/bindings/python/README.md) | [PyPI](https://pypi.org/project/dstu-core/) |
 | Node.js | napi-rs, direct Rust binding | [`bindings/nodejs`](https://github.com/user137/uacrypt/blob/master/bindings/nodejs/README.md) | [npm](https://www.npmjs.com/package/dstu-core) |
-| Ruby | magnus/rb-sys, direct Rust binding | [`bindings/ruby`](https://github.com/user137/uacrypt/blob/master/bindings/ruby/README.md) | not yet published |
+| Ruby | magnus/rb-sys, direct Rust binding | [`bindings/ruby`](https://github.com/user137/uacrypt/blob/master/bindings/ruby/README.md) | [RubyGems](https://rubygems.org/gems/dstu_core) |
 | PHP | ext-php-rs, direct Rust binding | [`bindings/php`](https://github.com/user137/uacrypt/blob/master/bindings/php/README.md) | not yet published |
 | .NET (C#) | P/Invoke over the C ABI | [`bindings/dotnet`](https://github.com/user137/uacrypt/blob/master/bindings/dotnet/README.md) | not yet published |
 | Java | `jni` crate, direct Rust binding | [`bindings/java`](https://github.com/user137/uacrypt/blob/master/bindings/java/README.md) | not yet published |
