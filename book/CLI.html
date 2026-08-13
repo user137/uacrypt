@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>DSTU 4145 field/curve arithmetic - uacrypt</title>
+        <title>CLI walkthrough - uacrypt</title>
 
 
         <!-- Custom HTML head -->
@@ -12,33 +12,33 @@
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
-        <link rel="icon" href="../favicon-de23e50b.svg">
-        <link rel="shortcut icon" href="../favicon-8114d1fc.png">
-        <link rel="stylesheet" href="../css/variables-8adf115d.css">
-        <link rel="stylesheet" href="../css/general-e96d0476.css">
-        <link rel="stylesheet" href="../css/chrome-d279d366.css">
-        <link rel="stylesheet" href="../css/print-9e4910d8.css" media="print">
+        <link rel="icon" href="favicon-de23e50b.svg">
+        <link rel="shortcut icon" href="favicon-8114d1fc.png">
+        <link rel="stylesheet" href="css/variables-8adf115d.css">
+        <link rel="stylesheet" href="css/general-e96d0476.css">
+        <link rel="stylesheet" href="css/chrome-d279d366.css">
+        <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
 
         <!-- Fonts -->
-        <link rel="stylesheet" href="../fonts/fonts-9644e21d.css">
+        <link rel="stylesheet" href="fonts/fonts-9644e21d.css">
 
         <!-- Highlight.js Stylesheets -->
-        <link rel="stylesheet" id="mdbook-highlight-css" href="../highlight-493f70e1.css">
-        <link rel="stylesheet" id="mdbook-tomorrow-night-css" href="../tomorrow-night-4c0ae647.css">
-        <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
+        <link rel="stylesheet" id="mdbook-highlight-css" href="highlight-493f70e1.css">
+        <link rel="stylesheet" id="mdbook-tomorrow-night-css" href="tomorrow-night-4c0ae647.css">
+        <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="ayu-highlight-3fdfc3ac.css">
 
         <!-- Custom theme stylesheets -->
 
 
         <!-- Provide site root and default themes to javascript -->
         <script>
-            const path_to_root = "../";
+            const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-aebb0e9e.js";
+            window.path_to_searchindex_js = "searchindex-aebb0e9e.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-6b977b4b.js"></script>
+        <script src="toc-6b977b4b.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -105,7 +105,7 @@
             <!-- populated by js -->
             <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
             <noscript>
-                <iframe class="sidebar-iframe-outer" src="../toc.html"></iframe>
+                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
             </noscript>
             <div id="mdbook-sidebar-resize-handle" class="sidebar-resize-handle">
                 <div class="sidebar-resize-indicator"></div>
@@ -140,13 +140,13 @@
                     <h1 class="menu-title">uacrypt</h1>
 
                     <div class="right-buttons">
-                        <a href="../print.html" title="Print this book" aria-label="Print this book">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
                             <span class=fa-svg id="print-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M128 0C92.7 0 64 28.7 64 64v96h64V64H354.7L384 93.3V160h64V93.3c0-17-6.7-33.3-18.7-45.3L400 18.7C388 6.7 371.7 0 354.7 0H128zM384 352v32 64H128V384 368 352H384zm64 32h32c17.7 0 32-14.3 32-32V256c0-35.3-28.7-64-64-64H64c-35.3 0-64 28.7-64 64v96c0 17.7 14.3 32 32 32H64v64c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V384zm-16-88c-13.3 0-24-10.7-24-24s10.7-24 24-24s24 10.7 24 24s-10.7 24-24 24z"/></svg></span>
                         </a>
                         <a href="https://github.com/user137/uacrypt" title="Git repository" aria-label="Git repository">
                             <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6zm-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3zm44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9zM244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8zM97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1zm-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7zm32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1zm-11.4-14.7c-1.6 1-1.6 3.6 0 5.9 1.6 2.3 4.3 3.3 5.6 2.3 1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2z"/></svg></span>
                         </a>
-                        <a href="https://github.com/user137/uacrypt/edit/master/docs/pseudocode/dstu4145.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
+                        <a href="https://github.com/user137/uacrypt/edit/master/docs/CLI.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
                             <span class=fa-svg id="git-edit-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M421.7 220.3l-11.3 11.3-22.6 22.6-205 205c-6.6 6.6-14.8 11.5-23.8 14.1L30.8 511c-8.4 2.5-17.5 .2-23.7-6.1S-1.5 489.7 1 481.2L38.7 353.1c2.6-9 7.5-17.2 14.1-23.8l205-205 22.6-22.6 11.3-11.3 33.9 33.9 62.1 62.1 33.9 33.9zM96 353.9l-9.3 9.3c-.9 .9-1.6 2.1-2 3.4l-25.3 86 86-25.3c1.3-.4 2.5-1.1 3.4-2l9.3-9.3H112c-8.8 0-16-7.2-16-16V353.9zM453.3 19.3l39.4 39.4c25 25 25 65.5 0 90.5l-14.5 14.5-22.6 22.6-11.3 11.3-33.9-33.9-62.1-62.1L314.3 67.7l11.3-11.3 22.6-22.6 14.5-14.5c25-25 65.5-25 90.5 0z"/></svg></span>
                         </a>
 
@@ -180,185 +180,103 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="dstu-4145-2002--pseudocode"><a class="header" href="#dstu-4145-2002--pseudocode">DSTU 4145-2002 — pseudocode</a></h1>
-<p><strong>Re-derived 2026-07-22 from the official standard text</strong> at <code>docs/papers/DSTU_4145-2002.pdf</code>
-(a scan, no text layer — rendered page-by-page and read as images, see <code>.claude.local.md</code>).
-Previously this document was a straight transcription of Bouncy Castle’s
-<code>DSTU4145Signer.java</code> (<code>oracles/bouncycastle-java/core/src/main/java/org/bouncycastle/crypto /signers/DSTU4145Signer.java</code>), with a note that re-deriving it from Sections 5-13 was a
-follow-up. That follow-up is this pass: every algorithm below cites its own section/page of the
-official text directly, cross-checked against both BC’s code and this project’s own Rust
-implementation (<code>crates/dstu-core/src/hazmat/dstu4145/</code>). <strong>Two real discrepancies were found and
-fixed doing this</strong> — both are called out inline below rather than only in <code>docs/DECISIONS.md</code> D-25,
-since this is exactly the kind of thing this doc’s own “flag ambiguity/discrepancy inline”
-convention exists for.</p>
-<p>Section numbers below (<code>§5.8</code>, <code>§9.2</code>, etc.) refer to the standard’s own numbering; PDF page
-numbers are the document’s own page number <strong>+5</strong> (e.g. §9 is on the document’s page 14, PDF page
-19 — see the front-matter table of contents, PDF pages 3-4).</p>
-<h2 id="domain-parameters-4-54-55"><a class="header" href="#domain-parameters-4-54-55">Domain parameters (§4, §5.4, §5.5)</a></h2>
-<p>Curve over a binary field <code>GF(2^m)</code> (not the twisted-Edwards curves of DSTU 9041 — a different
-algorithm, see the algorithms table in <code>CLAUDE.md</code>):</p>
-<pre><code>E: y² + xy = x³ + Ax² + B,   A, B ∈ GF(2^m), B ≠ 0, A ∈ {0, 1}
+                        <h1 id="using-uacrypt"><a class="header" href="#using-uacrypt">Using <code>uacrypt</code></a></h1>
+<p><code>uacrypt encrypt</code>/<code>decrypt</code>/<code>hash</code> (<code>docs/TASKS.md</code> T-16, <code>docs/DECISIONS.md</code> D-52) are the real,
+misuse-resistant top-level commands — mode, nonce, and algorithm are all hardcoded, nothing to
+misconfigure:</p>
+<pre><code>cargo build -p uacrypt --release
+uacrypt keygen --out key.bin
+uacrypt encrypt --key key.bin --in message.bin --out sealed.bin
+uacrypt decrypt --key key.bin --in sealed.bin --out message.bin
+uacrypt hash --in file.bin --out digest.bin
 </code></pre>
-<p>Base point <code>G</code> (the standard calls it <code>P</code>) of prime order <code>n</code>. Private key <code>d</code>, integer,
-<code>0 &lt; d &lt; n</code> (§9.1). Public key:</p>
-<pre><code>Q = -d·G
-</code></pre>
-<p><strong>This is §9.2’s own literal text</strong> (“Відкритий ключ цифрового підпису обчислюють як точку
-еліптичної кривої виду <code>Q = -dP</code>”) — not an inference from Bouncy Castle’s code. §10.2 (private-key
-self-check) confirms it again: <code>Q' = -dP</code>, valid iff <code>Q' = Q</code>. This project’s original transcription
-of this doc said <code>Q = d·G</code> (no negation) — wrong, found via a <code>proptest</code> round-trip over random
-keys (the fixed KAT vector uses a pre-computed <code>Q</code> and never exercises key derivation, so it never
-caught this). Confirmed independently against <code>DSTU4145KeyPairGenerator.java</code>’s
-<code>pub.getQ().negate()</code> before this doc was corrected — the code and the spec text agree, this was
-purely a documentation error in this project. See <code>docs/DECISIONS.md</code> D-25’s follow-up entry.
-<code>dstu_core::hazmat::dstu4145::curve163::Point::negate</code> (<code>(x, y) → (x, x+y)</code>, the standard char-2
-negation for this curve) is what a caller needs to derive <code>Q</code> from <code>d</code> correctly; <code>signature.rs</code>
-takes <code>Q</code> as given and cannot enforce the negation for you.</p>
-<h2 id="data-conversions-actually-used-by-signverify"><a class="header" href="#data-conversions-actually-used-by-signverify">Data conversions actually used by sign/verify</a></h2>
-<h3 id="58--field-element--integer-fieldelement2integer-bcs-name"><a class="header" href="#58--field-element--integer-fieldelement2integer-bcs-name">§5.8 — field element → integer (<code>fieldElement2Integer</code>, BC’s name)</a></h3>
-<p>Given a field element <code>x = (x_{m-1},...,x_0)</code> and the base-point order <code>n</code>:</p>
-<pre><code>1. If x = 0: return 0.
-2. k ← L(n) - 1                          // L(n) = bit-length of n
-3. a_i ← x_i for i = 0,...,k-1
-   j ← the largest i with a_i = 1 (i.e. the top set bit within those k bits)
-   If no such i: return 0.
-4. Return the integer (a_j,...,a_0)       // i.e. x mod 2^k, as an integer
-</code></pre>
-<p>This is exactly “keep the low <code>k = L(n) - 1</code> bits of <code>x</code>, as an integer” — <code>L(n) = 163</code> for the
-m=163 curve, so <code>k = 162</code>. Matches BC’s <code>fieldElement2Integer</code> (<code>truncate(fe.toBigInteger(), n.bitLength() - 1)</code>) and this project’s <code>truncate_162</code> exactly — no discrepancy found here.</p>
-<h3 id="59--hash-code--field-element-hash2fieldelement-bcs-name"><a class="header" href="#59--hash-code--field-element-hash2fieldelement-bcs-name">§5.9 — hash-code → field element (<code>hash2FieldElement</code>, BC’s name)</a></h3>
-<p>Given a hash-code <code>H</code>, represented per §5.6 as a bit-string <code>(h_{L_H-1},...,h_0)</code> (same
-“rightmost = index 0 = least significant” convention <code>§5.1</code> establishes for integers generally),
-and the field’s own bit-length <code>m</code>:</p>
-<pre><code>1. k ← min(m, L_H)
-2. x_i ← h_i for i = 0,...,k-1
-3. If k &lt; m: x_i ← 0 for i = k,...,m-1
-4. Return x = (x_{m-1},...,x_0)
-</code></pre>
-<p><strong>This is the one real algorithmic bug this pass found.</strong> In byte terms (§5.1/§5.6’s own
-convention: the <em>first</em> byte of a bit-string holds its highest-indexed, most-significant bits),
-this means: keep the hash’s own <strong>last</strong> <code>min(len, 21)</code> bytes, as-is, masking the first of those
-bytes to its low 3 bits if a full 21 bytes were taken (163 bits total) — <strong>no byte reversal</strong>.</p>
-<p>This project’s implementation originally did something else — reverse the <em>whole</em> hash, then keep
-the low 163 bits of <em>that</em> — copied from Bouncy Castle’s <code>hash2FieldElement</code>
-(<code>curve.fromBigInteger(truncate(new BigInteger(1, Arrays.reverse(hash)), curve.getFieldSize()))</code>).
-That reversal is not wrong <em>for Bouncy Castle</em> — it’s BC’s own documented parameter convention
-(its <code>hash</code> parameter is expected in the opposite byte order from what §5.6 describes directly, so
-BC reverses it back before doing the arithmetic; <code>DSTU4145Test.test163()</code> manually reverses its
-own hash literal before calling the signer for exactly this reason, confirmed by reading that test
-line-by-line). But this project’s Rust port had copied the reversal <em>without</em> also adopting BC’s
-reversed-input convention — so it only produced correct output when its own caller manually
-reversed the hash first, an undocumented, easy-to-forget requirement that happened to cancel out
-against how the <code>gf2m163.json</code> test vector’s source (<code>test163()</code>) constructs its input, masking
-the bug until the vector was fed to <code>verify</code>/<code>sign</code> without that extra manual step in an early
-draft of this project’s own test. Fixed in <code>dstu_core::hazmat::dstu4145::signature::hash_to_field</code>
-to implement §5.9 directly — take the hash’s own last bytes, no reversal, so callers just pass
-their Kupyna/GOST digest bytes as computed, no special convention to remember. Verified against
-<code>gf2m163.json</code>’s <code>hash_h_of_t</code> directly (<code>crates/dstu-core/tests/dstu4145_signature.rs</code>) — both
-<code>sign</code> (with the vector’s pinned ephemeral) and <code>verify</code> reproduce the vector exactly with this
-fix, no reversal anywhere in the test.</p>
-<h2 id="11--digital-pre-signature"><a class="header" href="#11--digital-pre-signature">§11 — Digital pre-signature</a></h2>
-<pre><code>compute_presignature(n, G):
-    loop:
-        e ← random integer, 0 &lt; e &lt; n                    // §6.3
-        R ← e·G = (x_R, y_R)
-    while x_R == 0
-    F_e ← x_R
-    return (F_e, e)                                       // e is secret, kept with F_e
-</code></pre>
-<h2 id="12--digital-signature"><a class="header" href="#12--digital-signature">§12 — Digital signature</a></h2>
-<pre><code>generate_signature(T, d, n, G):
-    h ← hash_to_field(H(T))                               // §5.9
-    if h == 0: h ← 1
-
-    loop:
-        (F_e, e) ← compute_presignature(n, G)             // §11, or a precomputed one reused
-        y ← h * F_e                                        // field multiplication
-        r ← field_element_to_integer(y, n)                // §5.8
-    while r == 0
-
-    s ← (e + d*r) mod n
-    if s == 0: retry from the presignature step
-
-    return (r, s)
-</code></pre>
-<p><code>s = (e + dr) mod n</code> is §12 step 12’s own literal formula (<code>Обчислюють ціле число s = (e + dr) mod n</code>) — same value as <code>r*d + e</code> (this project’s <code>Scalar::multiply(r, d) + e</code>), just written with the
-terms in the other order; no discrepancy, addition commutes.</p>
-<h2 id="13--signature-verification"><a class="header" href="#13--signature-verification">§13 — Signature verification</a></h2>
-<pre><code>verify_signature(T, r, s, Q, n, G):
-    if not (0 &lt; r &lt; n and 0 &lt; s &lt; n): return "invalid"
-
-    h ← hash_to_field(H(T))                               // §5.9
-    if h == 0: h ← 1
-
-    R ← s·G + r·Q = (x_R, y_R)                            // step 12
-    y ← h * x_R                                            // step 13
-    r' ← field_element_to_integer(y, n)                   // step 14, §5.8
-
-    return "valid" if r' == r else "invalid"
-</code></pre>
-<p>The official text doesn’t special-case <code>R</code> being the point at infinity the way this project’s
-earlier BC-derived draft did (<code>if R is infinity: return false</code>) — but if <code>R = O</code>, <code>x_R</code> is
-conventionally <code>0</code> (§5.5: <code>O</code> may be represented as <code>(0, 0)</code>), giving <code>y = 0</code>, <code>r' = 0</code>, and since
-step 10 already rejected <code>r = 0</code>, <code>r' == r</code> fails anyway. Handling it as an explicit early return
-(<code>dstu_core::hazmat::dstu4145::signature::verify</code> does this) is a safe, equivalent shortcut, not a
-deviation — kept for clarity, matching BC’s own explicit <code>R.isInfinity()</code> check too.</p>
-<h2 id="performance-only-choices-in-bouncy-castle-not-part-of-the-algorithm"><a class="header" href="#performance-only-choices-in-bouncy-castle-not-part-of-the-algorithm">Performance-only choices in Bouncy Castle, not part of the algorithm</a></h2>
+<p><strong><code>encrypt</code>/<code>decrypt</code> have no message-length cap and stream <code>--in</code>/<code>--out</code> in fixed-size chunks</strong> —
+as of 2026-07-25 they’re built over <code>dstu_core::crypto_secretstream</code> (<code>docs/TASKS.md</code> T-40/T-70,
+<code>docs/DECISIONS.md</code> D-68), a genuinely chunked construction over <code>hazmat::kalyna_gcm</code>, not the earlier
+whole-buffer <code>crypto_secretbox</code> (<code>docs/TASKS.md</code> T-37, <code>docs/DECISIONS.md</code> D-51/D-63) - a large input file no
+longer means a correspondingly large in-memory buffer. <strong>Breaking wire-format change</strong>: a file the
+prior <code>crypto_secretbox</code>-backed <code>encrypt</code> produced cannot be read by this <code>decrypt</code>, and vice versa</p>
 <ul>
-<li><code>s·G + r·Q</code> via <code>ECAlgorithms.sumOfTwoMultiplies</code> (Shamir’s trick) — mathematically equivalent
-to two separate scalar multiplications added together, which is what this project’s
-<code>Point::scalar_multiply</code> (called twice) + <code>Point::add</code> do. Any correct point arithmetic gives the
-same result.</li>
-<li>Signing’s <code>e·G</code> via <code>FixedPointCombMultiplier</code> (precomputed comb tables for a fixed point) — a
-speed optimization BC applies because <code>G</code> is fixed across many signatures; this project’s
-<code>scalar_multiply</code> doesn’t have this optimization (not needed for correctness, could be added
-later purely for speed).</li>
-<li>The triple nested retry (<code>F_e</code>/<code>r</code>/<code>s</code> landing on zero) is <strong>not</strong> a performance choice — it’s
-required by the algorithm itself (§11/§12 above), the same class of rejection ECDSA’s own nonce
-handling requires, and skipping it is not the same algorithm. <code>dstu_core</code>’s <code>sign</code> returns
-<code>Option::None</code> on any of these instead of looping internally, since — like every other <code>hazmat</code>
-primitive here — it takes randomness (<code>e</code>) as an explicit caller-supplied parameter rather than
-calling an RNG itself; the caller must retry with a fresh <code>e</code>.</li>
+<li>acceptable pre-1.0. <code>crypto_secretbox</code> itself is unchanged and still available as a library
+primitive for whole-message use, just no longer what this CLI command uses. <code>--key</code> is a raw
+32-byte file (<code>crypto_secretstream::Key</code>’s size) — <code>uacrypt keygen --out key.bin</code> generates one from
+the OS CSPRNG (<code>docs/TASKS.md</code> T-115). <code>encrypt</code> draws a fresh random header internally on every call
+and embeds it in <code>--out</code>; there is no <code>--nonce</code>/<code>--header</code> flag to supply or reuse by mistake.
+<strong><code>hash</code> has no such limit either</strong> — it streams <code>--in</code> from disk in fixed-size chunks regardless of
+size, fixed to Kupyna-256 (32-byte digest, no <code>--variant</code> choice).</li>
 </ul>
-<h2 id="not-yet-implemented--not-restated-here"><a class="header" href="#not-yet-implemented--not-restated-here">Not yet implemented / not restated here</a></h2>
-<ul>
-<li><strong>§6</strong> (auxiliary algorithms: random field element, trace/half-trace, quadratic-equation solving,
-random curve point, point compression <code>§6.9</code>/decompression <code>§6.10</code>, primitivity check, order
-primality check, the Menezes-Okamoto-Vanstone condition <code>§6.13</code>) — none of these are needed for
-sign/verify against an already-validated, fixed curve (which is all this project does so far);
-relevant if/when domain-parameter <em>generation</em> or compressed point encoding is implemented.</li>
-<li><strong>§7/§8</strong> (choosing and validating domain parameters — field, curve, base point) — this project
-uses the m=163 curve from <code>gf2m163.json</code>/Annex B directly (already dual-sourced, §7.1’s Table 1
-lists <code>x^163+x^7+x^6+x^3+1</code> as its first recommended field, matching <code>gf2m163::FieldElement</code>’s
-reduction polynomial exactly), rather than generating or validating parameters from scratch.</li>
-<li><strong>Annex A</strong> (the standard’s own DSTU 28147-based RNG) — this project uses <code>d</code>/<code>e</code> as
-caller-supplied parameters at the <code>hazmat</code> layer (see <code>docs/DECISIONS.md</code> D-04: OS <code>getrandom</code> is the
-CSPRNG choice, once a higher-level layer exists to call it from).</li>
-<li>Curve domain-parameter tables beyond m=163 (<code>DSTU4145NamedCurves.java</code>, Annex Г’s recommended
-curves), compressed/precomputed point encoding for interoperable serialization
-(<code>DSTU4145PointEncoder.java</code>, <code>DSTU4145ECBinary.java</code>) — separate concerns from the sign/verify
-core above. <code>m=257</code> specifically is now planned, not just enumerated by BC — see <code>docs/TASKS.md</code>
-T-199 / <code>docs/DECISIONS.md</code> D-185 for why (real Diia-issued certificates, not just the standard
-allowing it) and the domain parameters extracted from them.</li>
-</ul>
-<h2 id="test-vectors"><a class="header" href="#test-vectors">Test vectors</a></h2>
-<p><code>crates/dstu-core/tests/vectors/dstu4145/gf2m163.json</code> — the official text’s own Annex B.1 worked
-example (polynomial basis), independently cross-checked byte-for-byte against Bouncy Castle’s own
-hardcoded KAT (<code>DSTU4145Test.java</code> <code>test163()</code>) — see <code>docs/DECISIONS.md</code> D-14/D-25 and <code>docs/ORACLES.md</code>.
-Both directions (<code>sign</code> with the vector’s pinned ephemeral, and <code>verify</code>) reproduce it exactly.
-<code>gf2m163_arith.json</code> (unit-level field/point arithmetic, generated via Bouncy Castle as the sole
-oracle at that granularity) and a <code>proptest</code> round-trip over random keys/hashes cover the rest —
-see <code>docs/DECISIONS.md</code> D-25 for what each layer verifies and why.</p>
+<p><code>uacrypt sign-keygen</code>/<code>sign-pubkey</code>/<code>sign</code>/<code>verify</code> (<code>docs/TASKS.md</code> T-124, <code>docs/DECISIONS.md</code> D-73) are the
+digital-signature equivalent, built over <code>dstu_core::crypto_sign</code> (DSTU 4145): a signature proves a
+file came from whoever holds the signing key and hasn’t been changed since — unlike <code>encrypt</code>, it
+does not hide the file’s contents, only attests to who signed it and that it’s unmodified. Every
+command below was run for real against the release binary before being written here:</p>
+<pre><code>uacrypt sign-keygen --out signing.key
+uacrypt sign-pubkey --key signing.key --out verifying.key
+uacrypt sign --key signing.key --in message.bin --out message.bin.sig
+uacrypt verify --key verifying.key --in message.bin --sig message.bin.sig
+</code></pre>
+<p><code>sign-keygen</code>’s output (<code>signing.key</code>, 21 raw bytes) is secret — keep it like any other private key.
+<code>sign-pubkey</code> derives the matching <code>verifying.key</code> (42 raw bytes) from it, safe to share or publish.
+<code>verify</code> prints nothing and exits <code>0</code> on a valid signature; on a tampered file, a tampered signature,
+or the wrong verifying key, it exits <code>1</code> with an error and writes nothing — it does not, and cannot,
+silently accept a mismatch:</p>
+<pre><code>$ uacrypt verify --key verifying.key --in message.bin --sig message.bin.sig
+$ echo $?
+0
+
+$ echo "tampered" &gt; message.bin
+$ uacrypt verify --key verifying.key --in message.bin --sig message.bin.sig
+uacrypt: verify: signature does not verify - message, signature, or key do not match
+$ echo $?
+1
+</code></pre>
+<p><code>uacrypt box-keygen</code>/<code>box-pubkey</code>/<code>box-seal</code>/<code>box-open</code> (<code>docs/TASKS.md</code> T-178, <code>docs/DECISIONS.md</code>
+D-169) are public-key encryption, built over <code>dstu_core::crypto_box</code> (DSTU 9041, hybrid via KDF):
+unlike <code>encrypt</code> (which needs a shared symmetric key both sides already have), <code>box-seal</code> only needs
+the recipient’s public key — anyone can seal a message only the matching secret key can open:</p>
+<pre><code>uacrypt box-keygen --out box.key
+uacrypt box-pubkey --key box.key --out box.pub
+uacrypt box-seal --key box.pub --in message.bin --out message.bin.box
+uacrypt box-open --key box.key --in message.bin.box --out message.bin
+</code></pre>
+<p><code>box-keygen</code>’s output (<code>box.key</code>, 32 raw bytes) is secret. <code>box-pubkey</code> derives the matching
+<code>box.pub</code> (32 raw bytes, the curve point’s <code>x</code>-coordinate only) from it, safe to share or publish.
+<code>box-seal</code>/<code>box-open</code> are <strong>not memory-bounded</strong> yet — <code>--in</code> is read whole into memory, unlike
+<code>encrypt</code>/<code>decrypt</code>’s bounded-chunk streaming (see <code>crypto_box</code>’s own module doc for why).</p>
+<p>What exists below this level: <code>kalyna-block</code>, a single-block (no mode, no padding), <code>hazmat</code>-scoped
+command added for a binary-level performance comparison (<code>docs/PERFORMANCE.md</code>, <code>docs/DECISIONS.md</code> D-31):</p>
+<pre><code>uacrypt kalyna-block encrypt --variant 128-128 --key key.bin --in block.bin --out ct.bin
+uacrypt kalyna-block decrypt --variant 128-128 --key key.bin --in ct.bin --out pt.bin
+</code></pre>
+<p><code>--key</code>/<code>--in</code>/<code>--out</code> are raw binary files of the variant’s exact byte length (16/32/64 bytes
+depending on variant — see <code>--variant</code>’s five values).</p>
+<p><code>kalyna-ccm</code> (<code>docs/DECISIONS.md</code> D-41) additionally encrypts/authenticates arbitrary-length <strong>short</strong>
+messages (plaintext and <code>--aad</code> each capped at 255 bytes — a sourced property of the construction,
+not a CLI restriction, see <code>hazmat::kalyna_ccm</code>’s doc comment) using a provisional, dual-oracle-
+verified Kalyna-alone CCM mode, not yet confirmed against the primary DSTU 7624:2014 text:</p>
+<pre><code>uacrypt kalyna-ccm encrypt --variant 128-128 --key key.bin --nonce nonce.bin --aad aad.bin --in msg.bin --out ct.bin --tag tag.bin
+uacrypt kalyna-ccm decrypt --variant 128-128 --key key.bin --nonce nonce.bin --aad aad.bin --in ct.bin --out pt.bin --tag tag.bin
+</code></pre>
+<p><code>--nonce</code> is a raw file of exactly the variant’s block length (16/32/64 bytes) — but it’s an
+<strong>output</strong> on <code>encrypt</code>, not an input: <code>encrypt</code> generates a fresh random nonce itself (via the OS
+CSPRNG) and writes it there, so there is nothing for you to supply or accidentally reuse. <code>decrypt</code>
+reads <code>--nonce</code> back (the value <code>encrypt</code> produced) as an input, same as <code>--tag</code>. <code>--aad</code> is
+optional (an empty AAD is used if omitted); <code>decrypt</code> verifies the tag before writing <code>--out</code> and
+fails without writing anything on a mismatch. See <code>docs/DECISIONS.md</code> D-40 for why a random nonce is
+safe here (128 bits minimum across all five variants) and its per-key message-count guideline.</p>
+<p>Neither <code>kalyna-block</code> nor <code>kalyna-ccm</code> is the <code>encrypt</code>/<code>decrypt</code> surface above - both stay as
+lower-level, hazmat-scoped tools (<code>kalyna-block</code> for exactly one block, <code>kalyna-ccm</code> for full
+control over variant/nonce/AAD/tag as separate files) for anyone who explicitly wants that.</p>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../pseudocode/crypto-sign.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="introduction.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
-                            <a rel="next prefetch" href="../pseudocode/dstu9041.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="TASKS.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                             </a>
 
@@ -368,11 +286,11 @@ see <code>docs/DECISIONS.md</code> D-25 for what each layer verifies and why.</p
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../pseudocode/crypto-sign.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="introduction.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 
-                    <a rel="next prefetch" href="../pseudocode/dstu9041.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="TASKS.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                     </a>
             </nav>
@@ -392,13 +310,13 @@ see <code>docs/DECISIONS.md</code> D-25 for what each layer verifies and why.</p
         </script>
 
 
-        <script src="../elasticlunr-ef4e11c1.min.js"></script>
-        <script src="../mark-09e88c2c.min.js"></script>
-        <script src="../searcher-09f2665d.js"></script>
+        <script src="elasticlunr-ef4e11c1.min.js"></script>
+        <script src="mark-09e88c2c.min.js"></script>
+        <script src="searcher-09f2665d.js"></script>
 
-        <script src="../clipboard-1626706a.min.js"></script>
-        <script src="../highlight-abc7f01d.js"></script>
-        <script src="../book-609e4cb8.js"></script>
+        <script src="clipboard-1626706a.min.js"></script>
+        <script src="highlight-abc7f01d.js"></script>
+        <script src="book-609e4cb8.js"></script>
 
         <!-- Custom JS scripts -->
 

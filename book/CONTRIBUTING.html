@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-35daaf74.js";
+            window.path_to_searchindex_js = "searchindex-aebb0e9e.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-ce7e91c5.js"></script>
+        <script src="toc-6b977b4b.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -181,11 +181,121 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="contributing-to-uacrypt"><a class="header" href="#contributing-to-uacrypt">Contributing to uacrypt</a></h1>
-<p>Thanks for your interest — this is an open project and pull requests are welcome. It’s a <strong>v0.1.0
-pre-release, not yet audited, not production-ready</strong> (see the README’s Status paragraph), so expect
-some rough edges and a fair number of “why does this exist” citations in the code — this project
-cites its own reasoning heavily (<code>docs/DECISIONS.md</code>) rather than assuming it’s obvious.</p>
+<p>Thanks for your interest — this is an open project and pull requests are welcome. It’s <strong>pre-1.0,
+not yet audited, not production-ready</strong> (see the README’s status line and <code>docs/release-readiness.md</code>
+for the gap analysis), so expect some rough edges and a fair number of “why does this exist”
+citations in the code — this project cites its own reasoning heavily (<code>docs/DECISIONS.md</code>) rather
+than assuming it’s obvious.</p>
 <p>By participating, you’re expected to follow this project’s <a href="CODE_OF_CONDUCT.html">Code of Conduct</a>.</p>
+<h2 id="repository-structure"><a class="header" href="#repository-structure">Repository structure</a></h2>
+<pre><code>.
+├── CLAUDE.md              # operating guide for AI agents in this repo
+├── AGENTS.md              # thin pointer to CLAUDE.md's own reading order, for non-Claude-Code AI agents
+├── docs/SECURITY.md            # threat model, hard constraints, supply-chain vetting
+├── docs/DECISIONS.md           # architectural decisions with rejected alternatives
+├── docs/TASKS.md               # phase-by-phase task backlog and progress state
+├── docs/CHANGELOG.md           # Keep a Changelog-format release history
+├── docs/ORACLES.md             # oracle trust ranking, per-algorithm oracle map, test-vector provenance
+├── docs/PERFORMANCE.md         # benchmark methodology and recorded numbers
+├── docs/CONTRIBUTING.md        # this file
+├── docs/CODE_OF_CONDUCT.md     # community standards (Contributor Covenant)
+├── LICENSE-MIT
+├── LICENSE-APACHE
+├── .github/workflows/     # CI (rust.yml, oracle-harness.yml) and the release workflow (release.yml)
+├── .github/ISSUE_TEMPLATE/, PULL_REQUEST_TEMPLATE.md  # issue/PR templates
+├── .cargo/config.toml     # `cargo xtask` alias
+├── xtask/                 # cross-platform build/QA runner, see "Development commands" below
+├── docs/
+│   ├── dstu-crypto-project.md        # main project spec (scope, API mapping)
+│   ├── release-readiness.md          # gap analysis: current state vs. a libsodium-equivalent 1.0
+│   ├── user-journey-gaps.md          # persona/journey-organized companion gap analysis
+│   ├── resource-profiles.md          # fused vs small-tables: memory/speed numbers, which to pick
+│   ├── CLI.md                        # full `uacrypt` CLI walkthrough (every subcommand)
+│   ├── pseudocode/                   # per-algorithm pseudocode, cross-checked against oracles
+│   ├── rust_ai_ruleset.md            # generic Rust ruleset for AI assistants
+│   ├── cross-language-style-guide.md # naming/style conventions for non-Rust code
+│   ├── bindings-strategy.md          # Phase 3 language-binding plan: order, C-ABI split, per-binding checklist
+│   └── papers/                       # reference PDFs (specs, cryptanalysis, hardware papers)
+├── crates/                # Cargo workspace
+│   ├── dstu-core/          # core: Kalyna + Kupyna + Strumok
+│   ├── uacrypt/            # CLI binary on top of the core
+│   └── dstu-core-capi/     # C ABI - foundation for C++/.NET/Java/Go bindings (T-158)
+├── bindings/               # Phase 3 language bindings, see docs/bindings-strategy.md
+│   ├── python/             # PyO3, full crypto_* surface - on PyPI (T-49)
+│   ├── nodejs/             # napi-rs, full crypto_* surface - on npm (T-50)
+│   ├── ruby/               # magnus/rb-sys, full crypto_* surface - RubyGems in progress (T-160)
+│   ├── php/                # ext-php-rs, full crypto_* surface - not on Packagist yet (T-159)
+│   ├── dotnet/             # C# P/Invoke over dstu-core-capi - not on NuGet yet (T-52)
+│   ├── java/               # jni crate, full crypto_* surface - not on Maven Central yet (T-51)
+│   ├── go/                 # cgo over dstu-core-capi, full crypto_* surface - repo-relative only (T-163)
+│   └── cpp/                # header-only RAII wrapper over dstu-core-capi, full crypto_* surface (T-53)
+├── firmware/               # Phase 4 hardware/emulation checks, own Cargo workspace(s) - see docs/DECISIONS.md D-156
+│   └── qemu-stm32-smoketest/  # runs official Kalyna/Kupyna vectors under QEMU's netduinoplus2 (Cortex-M4F), no real board needed (T-170)
+├── tests/oracle-harness/   # Java/.NET/C harnesses that verify test vectors against real Bouncy Castle
+└── oracles/                # reference implementations used as oracles - not vendored, see oracles/README.md
+</code></pre>
+<h2 id="setting-up-a-dev-environment"><a class="header" href="#setting-up-a-dev-environment">Setting up a dev environment</a></h2>
+<p>Rust is the only hard requirement — everything else in this table is optional and only needed for
+the specific <code>cargo xtask</code> command listed. No admin rights required on any platform for any of it.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Tool</th><th>Needed for</th><th>Linux / macOS</th><th>Windows</th></tr>
+</thead>
+<tbody>
+<tr><td>Rust (stable, via <code>rustup</code>)</td><td>everything</td><td><code>curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh</code></td><td><code>winget install Rustlang.Rustup</code> (or <code>rustup-init.exe</code> from <a href="https://rustup.rs">rustup.rs</a>)</td></tr>
+<tr><td>C/C++ compiler</td><td><code>cargo xtask fuzz</code> (<code>libfuzzer-sys</code> builds C++); building the manual C oracle-differential harnesses under <code>tests/oracle-harness/*-differential/</code></td><td>usually preinstalled; else your distro’s <code>gcc</code>/<code>build-essential</code> package</td><td>MinGW-w64 GCC (e.g. <code>winget install BrechtSanders.WinLibs.POSIX.UCRT</code>) builds the crate and those harnesses; <strong><code>cargo xtask fuzz</code> additionally needs real MSVC</strong>, see below</td></tr>
+<tr><td><code>cargo-fuzz</code></td><td><code>cargo xtask fuzz</code></td><td><code>cargo install cargo-fuzz --locked</code> — runs directly against the native nightly toolchain</td><td>see “<code>cargo fuzz</code> on Windows” below</td></tr>
+<tr><td><code>miri</code> (nightly component)</td><td><code>cargo xtask miri</code></td><td><code>rustup component add miri --toolchain nightly</code></td><td>same</td></tr>
+<tr><td><code>kani-verifier</code></td><td><code>cargo xtask kani</code> (bounded model checking, <code>gf2m163::reduce</code> proofs)</td><td><code>cargo install kani-verifier &amp;&amp; cargo kani setup</code></td><td><strong>not supported</strong> — see below</td></tr>
+<tr><td><code>cargo-audit</code> / <code>cargo-deny</code></td><td><code>cargo xtask audit</code> / <code>cargo xtask deny</code></td><td><code>cargo install cargo-audit --locked</code> / <code>cargo install cargo-deny --locked</code></td><td>same install commands, but each needs <code>dlltool.exe</code> on <code>PATH</code> first — comes with a MinGW-w64 install (e.g. the WinLibs package above), not with <code>rustup</code> alone</td></tr>
+<tr><td>JDK 8+ and Maven 3.6+</td><td><code>cargo xtask oracle-java</code> (cross-check against real Bouncy Castle)</td><td>your distro’s packages, or Maven’s binary zip if unpackaged</td><td>same</td></tr>
+<tr><td>.NET SDK 8 or 9</td><td><code>cargo xtask oracle-dotnet</code> (cross-check against real Bouncy Castle)</td><td><a href="https://dotnet.microsoft.com/download">dotnet.microsoft.com</a></td><td>same</td></tr>
+</tbody>
+</table>
+</div>
+<p>This project builds against the GNU host toolchain on Windows (<code>x86_64-pc-windows-gnu</code>) by default,
+specifically to avoid a Visual Studio dependency for ordinary building/testing — run <code>rustup default stable-x86_64-pc-windows-gnu</code> if <code>rustup-init</code> didn’t already pick it. <code>rustup</code> reads
+<code>rust-toolchain.toml</code> and installs the pinned <code>stable</code> channel plus <code>clippy</code>/<code>rustfmt</code> automatically
+the first time you run any <code>cargo</code> command in this repo.</p>
+<p>The reference implementations used as correctness oracles (<code>oracles/kalyna-reference</code>, UAPKI,
+etc.) are <strong>not</strong> vendored in this repo — see <code>oracles/README.md</code> for what each one is and where to
+get it. You only need them for the manual differential harnesses; ordinary <code>cargo build</code>/<code>cargo test</code>/<code>cargo xtask ci</code> need none of it.</p>
+<pre><code>git clone &lt;this repo&gt;
+cd cipher_ua
+cargo build --workspace
+cargo test --workspace
+</code></pre>
+<h3 id="cargo-fuzz-on-windows-needs-msvc-not-this-projects-default-gnu-toolchain"><a class="header" href="#cargo-fuzz-on-windows-needs-msvc-not-this-projects-default-gnu-toolchain"><code>cargo fuzz</code> on Windows needs MSVC, not this project’s default GNU toolchain</a></h3>
+<p>libFuzzer’s Address Sanitizer only supports the MSVC target on Windows — the default
+<code>x86_64-pc-windows-gnu</code> toolchain above cannot build or run fuzz targets at all, no matter which
+flags are passed (<code>docs/DECISIONS.md</code> D-32 has the full diagnosis). To run <code>cargo xtask fuzz</code> locally on
+Windows:</p>
+<ol>
+<li>Install Visual Studio (or just the Build Tools) with the “Desktop development with C++”
+workload.</li>
+<li><code>rustup toolchain install nightly-x86_64-pc-windows-msvc</code> — an <em>additional</em> toolchain; this does
+not change the project’s default GNU host toolchain used for everything else.</li>
+<li>Run <code>cargo xtask fuzz</code>. It finds the Visual Studio install itself (via <code>vswhere.exe</code>’s fixed
+path) and the toolchain above, then runs each target through a <code>vcvars64.bat</code>-sourced shell with
+<code>--target x86_64-pc-windows-msvc</code> — both the environment and the explicit target flag are
+required, not just the extra toolchain (<code>docs/DECISIONS.md</code> D-32 explains why: without <code>vcvars64.bat</code>
+the ASan runtime DLL isn’t found at run time, even though the build itself succeeds; without the
+explicit <code>--target</code>, <code>cargo-fuzz</code> defaults back to the GNU target regardless of which toolchain
+invoked it).</li>
+</ol>
+<p>Without a Visual Studio C++ toolset installed, <code>cargo xtask fuzz</code> prints an install hint and skips
+cleanly on Windows, same as any other missing optional tool — CI (Linux) remains the actual,
+unconditional venue where fuzz targets run on every push.</p>
+<h3 id="cargo-xtask-kani-does-not-run-on-windows-at-all"><a class="header" href="#cargo-xtask-kani-does-not-run-on-windows-at-all"><code>cargo xtask kani</code> does not run on Windows at all</a></h3>
+<p>Unlike every other optional tool above, this isn’t a missing-install-step case: <code>kani-verifier</code>’s
+own source calls Unix-only std APIs (<code>std::os::unix::fs::symlink</code>, <code>Command::arg0</code>) that don’t
+exist on Windows, confirmed by trying <code>cargo install kani-verifier</code> directly (<code>docs/DECISIONS.md</code>
+D-102). It was also tried on this project’s aarch64 Raspberry Pi (Debian 12) — <code>cargo kani setup</code>
+completed, but the prebuilt bundle’s <code>cargo-kani</code> binary requires <code>GLIBC_2.39</code>, newer than bookworm’s
+<code>2.36</code>. <code>cargo xtask kani</code> prints this explanation and skips cleanly rather than a raw error — CI
+(<code>ubuntu-latest</code>, D-102’s <code>kani</code> job) is the actual, unconditional venue where these proofs run on
+every push.</p>
 <h2 id="before-you-start"><a class="header" href="#before-you-start">Before you start</a></h2>
 <p>Read these first — they’re short, and they explain <em>why</em> the code looks the way it does, not just
 what it does:</p>
@@ -235,14 +345,21 @@ source in <code>docs/DECISIONS.md</code> before merging. If only a reference imp
 (no primary spec text), say so explicitly and mark the citation provisional.</p>
 </li>
 <li>
-<p>Run the checks locally before opening a PR:</p>
-<pre><code>cargo xtask fmt      # cargo fmt --all
-cargo xtask clippy   # cargo clippy --workspace --all-features -- -D warnings
-cargo xtask test     # cargo test --workspace --all-features
-cargo xtask build    # both --all-features and no_std (--no-default-features)
+<p>Run the checks locally before opening a PR. <code>cargo xtask &lt;command&gt;</code> is the one cross-platform
+entry point for build/test/QA — the same command on Linux, Windows, and macOS (<code>docs/DECISIONS.md</code>
+D-12). Run <code>cargo xtask help</code> for the full list; the essentials:</p>
+<pre><code>cargo xtask build      # cargo build --workspace, both --all-features and no_std (--no-default-features)
+cargo xtask test       # cargo test --workspace --all-features
+cargo xtask fmt        # cargo fmt --all (add --check to verify without writing)
+cargo xtask clippy     # cargo clippy --workspace --all-features -- -D warnings
+cargo xtask docs-check # README/gh-pages version-marker freshness lint vs crates/dstu-core's Cargo.toml (T-186)
 </code></pre>
-<p><code>cargo xtask ci</code> runs all of the above plus best-effort miri/fuzz/audit/deny/oracle-harness
-layers (installs what it can, prints an install hint for anything missing rather than failing).</p>
+<p><code>cargo xtask ci</code> runs the five above, then best-effort miri/kani/book/fuzz/audit/deny/oracle-harness
+layers — each checks its own tool is installed first and prints an install hint instead of a raw
+error if it’s missing. <code>docs-check</code> needs no external tool, so it’s mandatory rather than
+best-effort — same standing as <code>fmt</code>/<code>build</code>/<code>test</code>/<code>clippy</code>. <code>cargo xtask book</code> builds the
+mdBook knowledge base this file is part of; <code>cargo xtask bench-compare</code> runs the uacrypt-vs-OpenSSL
+benchmark table (<code>docs/PERFORMANCE.md</code>).</p>
 </li>
 <li>
 <p>If you touched anything <code>no_std</code>-relevant (most of <code>dstu-core</code>), check the feature matrix

@@ -36,10 +36,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-35daaf74.js";
+            window.path_to_searchindex_js = "searchindex-aebb0e9e.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-ce7e91c5.js"></script>
+        <script src="toc-6b977b4b.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -180,39 +180,23 @@
                     <main>
                         <h1 id="introduction"><a class="header" href="#introduction">Introduction</a></h1>
 <h1 id="uacrypt"><a class="header" href="#uacrypt">uacrypt</a></h1>
+<p><a href="https://crates.io/crates/dstu-core"><img src="https://img.shields.io/crates/v/dstu-core.svg" alt="crates.io"></a>
+<a href="https://docs.rs/dstu-core"><img src="https://docs.rs/dstu-core/badge.svg" alt="docs.rs"></a>
+<a href="https://pypi.org/project/dstu-core/"><img src="https://img.shields.io/pypi/v/dstu-core.svg" alt="PyPI"></a>
+<a href="https://www.npmjs.com/package/dstu-core"><img src="https://img.shields.io/npm/v/dstu-core.svg" alt="npm"></a>
+<a href="https://github.com/user137/uacrypt/actions/workflows/rust.yml"><img src="https://github.com/user137/uacrypt/actions/workflows/rust.yml/badge.svg" alt="CI"></a>
+<a href="#license"><img src="https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg" alt="License: MIT/Apache-2.0"></a></p>
+<p>A Rust implementation of Ukrainian DSTU cryptographic standards — Kalyna (block cipher), Kupyna
+(hash), Strumok (stream cipher), DSTU 4145 (digital signatures), and DSTU 9041 (asymmetric
+encryption) — in the spirit of <strong>libsodium</strong>: hard, safe defaults, hard to misuse, rather than
+OpenSSL’s flexible-but-easy-to-misconfigure API. Ships as a Rust crate (<code>dstu-core</code>), a CLI
+(<code>uacrypt</code>), and bindings for eight languages.</p>
 <!-- uacrypt-version: 0.3.8 -->
-<p><strong>v0.3.8.</strong> <code>dstu-core</code> is live on <a href="https://pypi.org/project/dstu-core/">PyPI</a> and
-<a href="https://www.npmjs.com/package/dstu-core">npm</a> (Python/Node.js bindings, one npm platform package
-still deferred — <code>docs/DECISIONS.md</code> D-189); RubyGems is wired up but not live yet. See
-<code>docs/CHANGELOG.md</code> for what changed each release. Not a complete library or CLI yet, not audited,
-not production-ready, and <strong>not a claim of side-channel resistance</strong>. Core primitives
-(Kalyna, Kupyna) are dual-oracle-verified against official test vectors; Strumok and the Kalyna-CCM mode are
-provisional (not yet confirmed against their primary standard text — see <code>docs/DECISIONS.md</code> D-15/D-41).
-<strong><code>crypto_secretstream</code> — the construction backing <code>encrypt</code>/<code>decrypt</code> — is provisional in a
-stronger sense still</strong>: it’s a from-scratch chunked-AEAD framing with no DSTU standard defining
-anything like it, so unlike Strumok/Kalyna-CCM, no primary text or oracle vector can ever exist to
-confirm it against (see <code>docs/DECISIONS.md</code> D-68). See <code>docs/SECURITY.md</code> for the full threat model and hard
-constraints, and the Status paragraph below for what’s actually done.</p>
-<p>An open Rust library for modern Ukrainian cryptographic standards (DSTU) — in the
-spirit of <strong>libsodium</strong> (hard, safe defaults, hard to misuse), not OpenSSL
-(flexible, easy to misuse the API).</p>
-<p><strong>Status:</strong> all three in-scope DSTU primitives are implemented at <code>hazmat</code> — Kupyna (256/512,
-cross-checked against real Bouncy Castle), Kalyna (all 5 block/key-size variants, full DSTU 7624
-mode-of-operation coverage: ECB/CBC/CFB/OFB/CTR/CMAC/KW/CCM/GCM/GMAC/XTS), and Strumok (keystream
-generation, <code>docs/DECISIONS.md</code> D-15 — UAPKI-attributed vectors, not yet primary-text-confirmed).
-<code>hazmat::kalyna_ccm</code>/<code>kalyna_gcm</code> and Strumok remain <strong>provisional</strong> in that same sense (dual-oracle
-but not primary-DSTU-text-confirmed, <code>docs/DECISIONS.md</code> D-15/D-41/D-56). DSTU 4145 signatures
-(<code>hazmat::dstu4145</code>) are also implemented and vector-confirmed. DSTU 9041:2020 asymmetric encryption
-(<code>hazmat::dstu9041</code>, <code>l(p)=256</code>/E256/1 only) is implemented and verified against the standard’s own
-worked example (<code>docs/TASKS.md</code> T-177); <code>l(p)=384/512/768</code> remain unimplemented (T-182). On top of
-<code>hazmat</code>, the libsodium-shaped <code>crypto_*</code> layer (<code>crypto_secretbox</code>, <code>crypto_secretstream</code>,
-<code>crypto_sign</code>, <code>crypto_box</code>, <code>crypto_auth</code>, <code>crypto_kdf</code>, <code>crypto_generichash</code>, <code>crypto_stream</code>,
-<code>crypto_pwhash</code>, <code>randombytes</code>) and the <code>uacrypt</code> CLI (<code>keygen</code>/<code>encrypt</code>/<code>decrypt</code>/<code>hash</code>,
-<code>sign-keygen</code>/<code>sign-pubkey</code>/<code>sign</code>/<code>verify</code>, <code>box-keygen</code>/<code>box-pubkey</code>/<code>box-seal</code>/<code>box-open</code>, plus
-<code>--help</code>/<code>--version</code>) are built and tested — see “Using <code>uacrypt</code>” below. See <code>docs/TASKS.md</code> for
-the phase-by-phase backlog, <code>docs/dstu-crypto-project.md</code>’s “Concrete API shape” for the
-authoritative module-by-module status table, and <code>docs/release-readiness.md</code> for the gap analysis
-against a complete 1.0.</p>
+<p><strong>Pre-1.0. Not audited. Not a claim of side-channel resistance.</strong> <code>dstu-core</code>/<code>uacrypt</code> are on
+<a href="https://crates.io/crates/dstu-core">crates.io</a>; the Python and Node.js bindings are on
+<a href="https://pypi.org/project/dstu-core/">PyPI</a>/<a href="https://www.npmjs.com/package/dstu-core">npm</a> too. See
+<code>docs/CHANGELOG.md</code> for what changed each release and <code>docs/release-readiness.md</code> for the gap
+analysis against a complete 1.0.</p>
 <h2 id="algorithms-in-scope"><a class="header" href="#algorithms-in-scope">Algorithms in scope</a></h2>
 <div class="table-wrapper">
 <table>
@@ -228,148 +212,80 @@ against a complete 1.0.</p>
 </tbody>
 </table>
 </div>
-<p>Full MVP scope, architectural decisions, and the libsodium API mapping are in
-<code>docs/dstu-crypto-project.md</code>.</p>
-<p><code>dstu-core</code> builds in two resource profiles - fast/table-heavy (default) or small/flash-friendly
-(<code>--features dstu-core/small-tables</code>, for constrained MCUs). Same output either way, real memory
-vs. speed trade-off - see <code>docs/resource-profiles.md</code> for the numbers and which one fits your
-target.</p>
-<h2 id="repository-structure"><a class="header" href="#repository-structure">Repository structure</a></h2>
-<pre><code>.
-├── CLAUDE.md              # operating guide for AI agents in this repo
-├── AGENTS.md              # thin pointer to CLAUDE.md's own reading order, for non-Claude-Code AI agents
-├── docs/SECURITY.md            # threat model, hard constraints, supply-chain vetting
-├── docs/DECISIONS.md           # architectural decisions with rejected alternatives
-├── docs/TASKS.md               # phase-by-phase task backlog and progress state
-├── docs/CHANGELOG.md           # Keep a Changelog-format release history
-├── docs/ORACLES.md             # oracle trust ranking, per-algorithm oracle map, test-vector provenance
-├── docs/PERFORMANCE.md         # benchmark methodology and recorded numbers
-├── docs/CONTRIBUTING.md        # how to propose a change, test/verification bar, commit style
-├── docs/CODE_OF_CONDUCT.md     # community standards (Contributor Covenant)
-├── LICENSE-MIT
-├── LICENSE-APACHE
-├── .github/workflows/     # CI (rust.yml, oracle-harness.yml) and the release workflow (release.yml)
-├── .github/ISSUE_TEMPLATE/, PULL_REQUEST_TEMPLATE.md  # issue/PR templates
-├── .cargo/config.toml     # `cargo xtask` alias
-├── xtask/                 # cross-platform build/QA runner, see "Development commands" below
-├── docs/
-│   ├── dstu-crypto-project.md        # main project spec (scope, API mapping)
-│   ├── release-readiness.md          # gap analysis: current state vs. a libsodium-equivalent 1.0
-│   ├── user-journey-gaps.md          # persona/journey-organized companion gap analysis
-│   ├── resource-profiles.md          # fused vs small-tables: memory/speed numbers, which to pick
-│   ├── pseudocode/                   # per-algorithm pseudocode, cross-checked against oracles
-│   ├── rust_ai_ruleset.md            # generic Rust ruleset for AI assistants
-│   ├── cross-language-style-guide.md # naming/style conventions for non-Rust code
-│   ├── bindings-strategy.md          # Phase 3 language-binding plan: order, C-ABI split, per-binding checklist
-│   └── papers/                       # reference PDFs (specs, cryptanalysis, hardware papers)
-├── crates/                # Cargo workspace
-│   ├── dstu-core/          # core: Kalyna + Kupyna + Strumok
-│   ├── uacrypt/            # CLI binary on top of the core
-│   └── dstu-core-capi/     # C ABI - foundation for C++/.NET/Java/Go bindings (T-158)
-├── bindings/               # Phase 3 language bindings, see docs/bindings-strategy.md
-│   ├── python/             # PyO3, full crypto_* surface - provisional, not on PyPI (T-49)
-│   ├── nodejs/             # napi-rs, full crypto_* surface - provisional, not on npm (T-50)
-│   ├── ruby/               # magnus/rb-sys, full crypto_* surface - provisional, not on RubyGems (T-160)
-│   ├── php/                # ext-php-rs, full crypto_* surface - provisional, not on Packagist (T-159)
-│   ├── dotnet/             # C# P/Invoke over dstu-core-capi - provisional, not on NuGet (T-52)
-│   ├── java/               # jni crate, full crypto_* surface - provisional, not on Maven Central (T-51)
-│   ├── go/                 # cgo over dstu-core-capi, full crypto_* surface - provisional, repo-relative only (T-163)
-│   └── cpp/                # header-only RAII wrapper over dstu-core-capi, full crypto_* surface - provisional (T-53)
-├── firmware/               # Phase 4 hardware/emulation checks, own Cargo workspace(s) - see docs/DECISIONS.md D-156
-│   └── qemu-stm32-smoketest/  # runs official Kalyna/Kupyna vectors under QEMU's netduinoplus2 (Cortex-M4F), no real board needed (T-170)
-├── tests/oracle-harness/   # Java/.NET/C harnesses that verify test vectors against real Bouncy Castle
-└── oracles/                # reference implementations used as oracles - not vendored, see oracles/README.md
+<p>Full scope, architectural decisions, and the libsodium API mapping are in
+<code>docs/dstu-crypto-project.md</code>. <code>dstu-core</code> also builds in a small/flash-friendly resource profile
+for constrained MCUs (<code>--features small-tables</code>) — see <code>docs/resource-profiles.md</code> for the trade-off.</p>
+<h2 id="quick-start"><a class="header" href="#quick-start">Quick start</a></h2>
+<pre><code class="language-sh">cargo add dstu-core
 </code></pre>
-<h2 id="requirements"><a class="header" href="#requirements">Requirements</a></h2>
-<p>Rust is the only hard requirement — everything else in this table is optional and only needed for
-the specific <code>cargo xtask</code> command listed. No admin rights required on any platform for any of it.</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use dstu_core::crypto_secretbox::{seal, open, SecretKey};
+
+let key = SecretKey::generate().expect("OS CSPRNG should not fail");
+let sealed = seal(&amp;key, b"message").expect("OS CSPRNG should not fail");
+let opened = open(&amp;key, &amp;sealed).expect("authentic ciphertext");
+assert_eq!(opened, b"message");
+<span class="boring">}</span></code></pre>
+<p>Or the CLI, which streams arbitrarily large files with no in-memory cap:</p>
+<pre><code class="language-sh">cargo install uacrypt   # or download a prebuilt binary from GitHub Releases
+uacrypt keygen --out key.bin
+uacrypt encrypt --key key.bin --in message.bin --out sealed.bin
+uacrypt decrypt --key key.bin --in sealed.bin --out message.bin
+</code></pre>
+<p>See <a href="https://github.com/user137/uacrypt/blob/master/docs/CLI.md"><code>docs/CLI.md</code></a> for the full
+command reference (<code>sign</code>/<code>verify</code>, <code>box-seal</code>/<code>box-open</code>, and the lower-level <code>kalyna-block</code>/
+<code>kalyna-ccm</code> tools), and <a href="https://docs.rs/dstu-core">docs.rs</a> for the full library API.</p>
+<h2 id="language-bindings"><a class="header" href="#language-bindings">Language bindings</a></h2>
+<p>The full <code>crypto_*</code> surface (<code>secretbox</code>/<code>secretstream</code>/<code>sign</code>/<code>auth</code>/<code>kdf</code>/<code>generichash</code>/<code>stream</code>/
+<code>pwhash</code>, <code>randombytes</code>, <code>selftest</code>), idiomatic errors, and the same correctness/rejection/misuse
+test suite, in every language below — not a thin, partial wrapper. The <strong>README column</strong> is the
+full per-language docs; the <strong>Package column</strong> is where you’d actually run an install command.</p>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Tool</th><th>Needed for</th><th>Linux / macOS</th><th>Windows</th></tr>
+<tr><th>Language</th><th>Approach</th><th>README</th><th>Package</th></tr>
 </thead>
 <tbody>
-<tr><td>Rust (stable, via <code>rustup</code>)</td><td>everything</td><td><code>curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh</code></td><td><code>winget install Rustlang.Rustup</code> (or <code>rustup-init.exe</code> from <a href="https://rustup.rs">rustup.rs</a>)</td></tr>
-<tr><td>C/C++ compiler</td><td><code>cargo xtask fuzz</code> (<code>libfuzzer-sys</code> builds C++); building the manual C oracle-differential harnesses under <code>tests/oracle-harness/*-differential/</code></td><td>usually preinstalled; else your distro’s <code>gcc</code>/<code>build-essential</code> package</td><td>MinGW-w64 GCC (e.g. <code>winget install BrechtSanders.WinLibs.POSIX.UCRT</code>) builds the crate and those harnesses; <strong><code>cargo xtask fuzz</code> additionally needs real MSVC</strong>, see below</td></tr>
-<tr><td><code>cargo-fuzz</code></td><td><code>cargo xtask fuzz</code></td><td><code>cargo install cargo-fuzz --locked</code> — runs directly against the native nightly toolchain</td><td>see “<code>cargo fuzz</code> on Windows” below</td></tr>
-<tr><td><code>miri</code> (nightly component)</td><td><code>cargo xtask miri</code></td><td><code>rustup component add miri --toolchain nightly</code></td><td>same</td></tr>
-<tr><td><code>kani-verifier</code></td><td><code>cargo xtask kani</code> (bounded model checking, <code>gf2m163::reduce</code> proofs)</td><td><code>cargo install kani-verifier &amp;&amp; cargo kani setup</code></td><td><strong>not supported</strong> — see below</td></tr>
-<tr><td><code>cargo-audit</code> / <code>cargo-deny</code></td><td><code>cargo xtask audit</code> / <code>cargo xtask deny</code></td><td><code>cargo install cargo-audit --locked</code> / <code>cargo install cargo-deny --locked</code></td><td>same install commands, but each needs <code>dlltool.exe</code> on <code>PATH</code> first — comes with a MinGW-w64 install (e.g. the WinLibs package above), not with <code>rustup</code> alone</td></tr>
-<tr><td>JDK 8+ and Maven 3.6+</td><td><code>cargo xtask oracle-java</code> (cross-check against real Bouncy Castle)</td><td>your distro’s packages, or Maven’s binary zip if unpackaged</td><td>same</td></tr>
-<tr><td>.NET SDK 8 or 9</td><td><code>cargo xtask oracle-dotnet</code> (cross-check against real Bouncy Castle)</td><td><a href="https://dotnet.microsoft.com/download">dotnet.microsoft.com</a></td><td>same</td></tr>
+<tr><td>Python</td><td>PyO3, direct Rust binding</td><td><a href="https://github.com/user137/uacrypt/blob/master/bindings/python/README.md"><code>bindings/python</code></a></td><td><a href="https://pypi.org/project/dstu-core/">PyPI</a></td></tr>
+<tr><td>Node.js</td><td>napi-rs, direct Rust binding</td><td><a href="https://github.com/user137/uacrypt/blob/master/bindings/nodejs/README.md"><code>bindings/nodejs</code></a></td><td><a href="https://www.npmjs.com/package/dstu-core">npm</a></td></tr>
+<tr><td>Ruby</td><td>magnus/rb-sys, direct Rust binding</td><td><a href="https://github.com/user137/uacrypt/blob/master/bindings/ruby/README.md"><code>bindings/ruby</code></a></td><td>not yet published</td></tr>
+<tr><td>PHP</td><td>ext-php-rs, direct Rust binding</td><td><a href="https://github.com/user137/uacrypt/blob/master/bindings/php/README.md"><code>bindings/php</code></a></td><td>not yet published</td></tr>
+<tr><td>.NET (C#)</td><td>P/Invoke over the C ABI</td><td><a href="https://github.com/user137/uacrypt/blob/master/bindings/dotnet/README.md"><code>bindings/dotnet</code></a></td><td>not yet published</td></tr>
+<tr><td>Java</td><td><code>jni</code> crate, direct Rust binding</td><td><a href="https://github.com/user137/uacrypt/blob/master/bindings/java/README.md"><code>bindings/java</code></a></td><td>not yet published</td></tr>
+<tr><td>Go</td><td><code>cgo</code> over the C ABI</td><td><a href="https://github.com/user137/uacrypt/blob/master/bindings/go/README.md"><code>bindings/go</code></a></td><td>not yet published</td></tr>
+<tr><td>C++</td><td>header-only RAII wrapper over the C ABI</td><td><a href="https://github.com/user137/uacrypt/blob/master/bindings/cpp/README.md"><code>bindings/cpp</code></a></td><td>not yet published</td></tr>
 </tbody>
 </table>
 </div>
-<p>This project builds against the GNU host toolchain on Windows (<code>x86_64-pc-windows-gnu</code>) by default,
-specifically to avoid a Visual Studio dependency for ordinary building/testing — run <code>rustup default stable-x86_64-pc-windows-gnu</code> if <code>rustup-init</code> didn’t already pick it. <code>rustup</code> reads
-<code>rust-toolchain.toml</code> and installs the pinned <code>stable</code> channel plus <code>clippy</code>/<code>rustfmt</code> automatically
-the first time you run any <code>cargo</code> command in this repo.</p>
-<p>The reference implementations used as correctness oracles (<code>oracles/kalyna-reference</code>, UAPKI,
-etc.) are <strong>not</strong> vendored in this repo — see <code>oracles/README.md</code> for what each one is and where to
-get it. You only need them for the manual differential harnesses; ordinary <code>cargo build</code>/<code>cargo test</code>/<code>cargo xtask ci</code> need none of it.</p>
-<h3 id="cargo-fuzz-on-windows-needs-msvc-not-this-projects-default-gnu-toolchain"><a class="header" href="#cargo-fuzz-on-windows-needs-msvc-not-this-projects-default-gnu-toolchain"><code>cargo fuzz</code> on Windows needs MSVC, not this project’s default GNU toolchain</a></h3>
-<p>libFuzzer’s Address Sanitizer only supports the MSVC target on Windows — the default
-<code>x86_64-pc-windows-gnu</code> toolchain above cannot build or run fuzz targets at all, no matter which
-flags are passed (<code>docs/DECISIONS.md</code> D-32 has the full diagnosis). To run <code>cargo xtask fuzz</code> locally on
-Windows:</p>
-<ol>
-<li>Install Visual Studio (or just the Build Tools) with the “Desktop development with C++”
-workload.</li>
-<li><code>rustup toolchain install nightly-x86_64-pc-windows-msvc</code> — an <em>additional</em> toolchain; this does
-not change the project’s default GNU host toolchain used for everything else.</li>
-<li>Run <code>cargo xtask fuzz</code>. It finds the Visual Studio install itself (via <code>vswhere.exe</code>’s fixed
-path) and the toolchain above, then runs each target through a <code>vcvars64.bat</code>-sourced shell with
-<code>--target x86_64-pc-windows-msvc</code> — both the environment and the explicit target flag are
-required, not just the extra toolchain (<code>docs/DECISIONS.md</code> D-32 explains why: without <code>vcvars64.bat</code>
-the ASan runtime DLL isn’t found at run time, even though the build itself succeeds; without the
-explicit <code>--target</code>, <code>cargo-fuzz</code> defaults back to the GNU target regardless of which toolchain
-invoked it).</li>
-</ol>
-<p>Without a Visual Studio C++ toolset installed, <code>cargo xtask fuzz</code> prints an install hint and skips
-cleanly on Windows, same as any other missing optional tool — CI (Linux) remains the actual,
-unconditional venue where fuzz targets run on every push.</p>
-<h3 id="cargo-xtask-kani-does-not-run-on-windows-at-all"><a class="header" href="#cargo-xtask-kani-does-not-run-on-windows-at-all"><code>cargo xtask kani</code> does not run on Windows at all</a></h3>
-<p>Unlike every other optional tool above, this isn’t a missing-install-step case: <code>kani-verifier</code>’s
-own source calls Unix-only std APIs (<code>std::os::unix::fs::symlink</code>, <code>Command::arg0</code>) that don’t
-exist on Windows, confirmed by trying <code>cargo install kani-verifier</code> directly (<code>docs/DECISIONS.md</code>
-D-102). It was also tried on this project’s aarch64 Raspberry Pi (Debian 12) — <code>cargo kani setup</code>
-completed, but the prebuilt bundle’s <code>cargo-kani</code> binary requires <code>GLIBC_2.39</code>, newer than bookworm’s
-<code>2.36</code>. <code>cargo xtask kani</code> prints this explanation and skips cleanly rather than a raw error — CI
-(<code>ubuntu-latest</code>, D-102’s <code>kani</code> job) is the actual, unconditional venue where these proofs run on
-every push.</p>
-<h2 id="building-from-source"><a class="header" href="#building-from-source">Building from source</a></h2>
-<pre><code>git clone &lt;this repo&gt;
-cd cipher_ua
-cargo build --workspace
-cargo test --workspace
-</code></pre>
-<h2 id="development-commands"><a class="header" href="#development-commands">Development commands</a></h2>
-<p><code>cargo xtask &lt;command&gt;</code> is the one cross-platform entry point for build/test/QA — the same command
-on Linux, Windows, and macOS (see <code>docs/DECISIONS.md</code> D-12 for why this exists instead of separate
-shell/PowerShell scripts). Run <code>cargo xtask help</code> for the full list; the essentials:</p>
-<pre><code>cargo xtask build     # cargo build --workspace, both --all-features and no_std (--no-default-features)
-cargo xtask test      # cargo test --workspace --all-features
-cargo xtask fmt       # cargo fmt --all (add --check to verify without writing)
-cargo xtask clippy    # cargo clippy --workspace --all-features -- -D warnings
-cargo xtask docs-check # README/gh-pages version-marker freshness lint vs crates/dstu-core's Cargo.toml (T-186)
-cargo xtask ci        # the five above, then best-effort for miri/kani/book/fuzz/audit/deny/oracle harnesses
-cargo xtask book      # mdbook build - the docs/ knowledge base (T-186), published to gh-pages/book/ by CI
-cargo xtask bench-compare # uacrypt vs OpenSSL, one unified table per DSTU standard (T-187, docs/PERFORMANCE.md D-106)
-</code></pre>
-<p>The optional layers each check their own tool is installed first and print an install hint instead
-of a raw error if it’s missing (<code>cargo xtask miri</code>, <code>kani</code>, <code>book</code>, <code>bench-compare</code>, <code>fuzz</code>, <code>audit</code>,
-<code>deny</code>, <code>oracle-java</code>, <code>oracle-dotnet</code>) — see <code>docs/SECURITY.md</code> for why these are required in CI even though
-they’re optional locally. <code>docs-check</code> needs no external tool, so it’s mandatory in <code>ci</code> rather than
-best-effort — it fails the build outright on a version-marker mismatch, same standing as <code>fmt</code>/
-<code>build</code>/<code>test</code>/<code>clippy</code>.</p>
-<p>Before implementing any primitive, read <code>docs/SECURITY.md</code> (hard constraints, mandatory
-dual-oracle verification) and <code>docs/DECISIONS.md</code> (architectural decisions already made).</p>
-<h2 id="performance"><a class="header" href="#performance">Performance</a></h2>
-<p><code>cargo bench -p dstu-core --bench kalyna --bench kupyna --bench strumok</code> (<code>criterion</code>). See
-<code>docs/PERFORMANCE.md</code> for recorded baseline numbers, a comparison against the algorithm designers’
-reference C implementation and against UAPKI (a real, production PKI library), and how to check a
-change against the saved regression baseline.</p>
-<h2 id="using-uacrypt"><a class="header" href="#using-uacrypt">Using <code>uacrypt</code></a></h2>
+<p>The C ABI itself (<code>crates/dstu-core-capi</code>, opaque handles, <code>cbindgen</code>-generated header) is what the
+.NET, Go, and C++ bindings link against directly — usable from any language with a C FFI, not just
+those three. See <code>docs/bindings-strategy.md</code> for the per-binding design rationale.</p>
+<h2 id="embedded--no_std-targets"><a class="header" href="#embedded--no_std-targets">Embedded / <code>no_std</code> targets</a></h2>
+<p><code>dstu-core</code> is <code>no_std</code>-compatible from day one (<code>std</code>/<code>alloc</code>/<code>no_std</code> feature flags), and
+cross-compiles clean for real microcontroller targets (STM32 Cortex-M, ESP32-class RISC-V) with no
+custom toolchain. That’s a compilation claim, not a real-hardware validation or a side-channel
+resistance claim — see <code>docs/SECURITY.md</code> for the full threat model.</p>
+<h2 id="status-and-further-reading"><a class="header" href="#status-and-further-reading">Status and further reading</a></h2>
+<ul>
+<li><a href="https://github.com/user137/uacrypt/blob/master/docs/SECURITY.md"><code>docs/SECURITY.md</code></a> — threat model and hard constraints</li>
+<li><a href="https://github.com/user137/uacrypt/blob/master/docs/DECISIONS.md"><code>docs/DECISIONS.md</code></a> — architectural decisions, with rejected alternatives</li>
+<li><a href="https://github.com/user137/uacrypt/blob/master/docs/TASKS.md"><code>docs/TASKS.md</code></a> — phase-by-phase task backlog</li>
+<li><a href="https://github.com/user137/uacrypt/blob/master/docs/release-readiness.md"><code>docs/release-readiness.md</code></a> — gap analysis against a libsodium-equivalent 1.0</li>
+<li>Full knowledge base: <a href="https://user137.github.io/uacrypt/">user137.github.io/uacrypt</a></li>
+</ul>
+<h2 id="contributing"><a class="header" href="#contributing">Contributing</a></h2>
+<p>Pull requests are welcome. See <a href="https://github.com/user137/uacrypt/blob/master/docs/CONTRIBUTING.md"><code>docs/CONTRIBUTING.md</code></a>
+for dev environment setup, the test/verification bar (dual-oracle verification, three test
+categories per primitive), and commit style, and
+<a href="https://github.com/user137/uacrypt/blob/master/docs/CODE_OF_CONDUCT.md"><code>docs/CODE_OF_CONDUCT.md</code></a>
+for community standards. Security vulnerabilities go through GitHub Security Advisories, not a
+public issue — see <code>docs/SECURITY.md</code> “Reporting vulnerabilities”.</p>
+<h2 id="license"><a class="header" href="#license">License</a></h2>
+<p>Dual-licensed under MIT / Apache-2.0, at the user’s choice — the standard for the
+Rust ecosystem. See <code>LICENSE-MIT</code> and <code>LICENSE-APACHE</code>.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="using-uacrypt"><a class="header" href="#using-uacrypt">Using <code>uacrypt</code></a></h1>
 <p><code>uacrypt encrypt</code>/<code>decrypt</code>/<code>hash</code> (<code>docs/TASKS.md</code> T-16, <code>docs/DECISIONS.md</code> D-52) are the real,
 misuse-resistant top-level commands — mode, nonce, and algorithm are all hardcoded, nothing to
 misconfigure:</p>
@@ -455,61 +371,7 @@ fails without writing anything on a mismatch. See <code>docs/DECISIONS.md</code>
 safe here (128 bits minimum across all five variants) and its per-key message-count guideline.</p>
 <p>Neither <code>kalyna-block</code> nor <code>kalyna-ccm</code> is the <code>encrypt</code>/<code>decrypt</code> surface above - both stay as
 lower-level, hazmat-scoped tools (<code>kalyna-block</code> for exactly one block, <code>kalyna-ccm</code> for full
-control over variant/nonce/AAD/tag as separate files) for anyone who explicitly wants that.
-<strong>Prebuilt binaries are available via <a href="https://github.com/user137/uacrypt/releases">GitHub Releases</a></strong>
-for Windows/Linux/macOS (Apple Silicon), plus a <code>dstu-core</code> source distribution - not published to
-crates.io yet (<code>docs/TASKS.md</code> T-17).</p>
-<h2 id="language-bindings"><a class="header" href="#language-bindings">Language bindings</a></h2>
-<p>Every binding in <code>docs/bindings-strategy.md</code>’s phased order is now built — the full <code>crypto_*</code>
-surface (<code>crypto_secretbox</code>/<code>secretstream</code>/<code>sign</code>/<code>auth</code>/<code>kdf</code>/<code>generichash</code>/<code>stream</code>/<code>pwhash</code>,
-<code>randombytes</code>, <code>selftest</code>), idiomatic errors and secretstream I/O per language, real
-correctness/rejection/misuse test suites against the same official vectors. <strong>Python and Node.js
-are published</strong> (PyPI/npm, see the banner above); the rest aren’t yet (RubyGems/Packagist/NuGet/
-Maven Central — separately owner-gated, <code>docs/TASKS.md</code> T-164) — build those from source per the
-linked README. The <strong>README column is the full docs</strong> for every binding regardless of publish
-status (usage examples, API table, security caveats); the <strong>Package column</strong> is only where you’d
-actually run an install command:</p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Language</th><th>Approach</th><th>README</th><th>Package</th></tr>
-</thead>
-<tbody>
-<tr><td>Python</td><td>PyO3, direct Rust binding</td><td><a href="https://github.com/user137/uacrypt/blob/master/bindings/python/README.md"><code>bindings/python</code></a></td><td><a href="https://pypi.org/project/dstu-core/">PyPI</a></td></tr>
-<tr><td>Node.js</td><td>napi-rs, direct Rust binding</td><td><a href="https://github.com/user137/uacrypt/blob/master/bindings/nodejs/README.md"><code>bindings/nodejs</code></a></td><td><a href="https://www.npmjs.com/package/dstu-core">npm</a></td></tr>
-<tr><td>Ruby</td><td>magnus/rb-sys, direct Rust binding</td><td><a href="https://github.com/user137/uacrypt/blob/master/bindings/ruby/README.md"><code>bindings/ruby</code></a></td><td>not yet published</td></tr>
-<tr><td>PHP</td><td>ext-php-rs, direct Rust binding</td><td><a href="https://github.com/user137/uacrypt/blob/master/bindings/php/README.md"><code>bindings/php</code></a></td><td>not yet published</td></tr>
-<tr><td>.NET (C#)</td><td>P/Invoke over the C ABI</td><td><a href="https://github.com/user137/uacrypt/blob/master/bindings/dotnet/README.md"><code>bindings/dotnet</code></a></td><td>not yet published</td></tr>
-<tr><td>Java</td><td><code>jni</code> crate, direct Rust binding</td><td><a href="https://github.com/user137/uacrypt/blob/master/bindings/java/README.md"><code>bindings/java</code></a></td><td>not yet published</td></tr>
-<tr><td>Go</td><td><code>cgo</code> over the C ABI</td><td><a href="https://github.com/user137/uacrypt/blob/master/bindings/go/README.md"><code>bindings/go</code></a></td><td>not yet published</td></tr>
-<tr><td>C++</td><td>header-only RAII wrapper over the C ABI</td><td><a href="https://github.com/user137/uacrypt/blob/master/bindings/cpp/README.md"><code>bindings/cpp</code></a></td><td>not yet published</td></tr>
-</tbody>
-</table>
-</div>
-<p>The C ABI itself (<code>crates/dstu-core-capi</code>, opaque handles, <code>cbindgen</code>-generated header) is the
-foundation the .NET/Go/C++ bindings above link against directly — usable from any language with a
-C FFI, not just those three. See <code>docs/bindings-strategy.md</code> for the per-binding design rationale
-and <code>docs/DECISIONS.md</code> D-115 onward for the full decision history.</p>
-<h2 id="embedded--no_std-targets"><a class="header" href="#embedded--no_std-targets">Embedded / <code>no_std</code> targets</a></h2>
-<p><code>dstu-core</code> is <code>no_std</code>-compatible from day one (<code>cargo build --no-default-features</code>, checked by
-<code>cargo xtask build</code> and in CI on every push, but only against the <strong>host</strong> triple). <strong>Cross-compiling
-for a real embedded target is separately confirmed</strong> (<code>docs/TASKS.md</code> T-116, 2026-07-26): all 4
-<code>no_std</code>/<code>alloc</code>/<code>small-tables</code> combinations build clean, both dev and release profiles, for
-<code>thumbv7em-none-eabihf</code> (STM32 Cortex-M) and <code>riscv32imc-unknown-none-elf</code> (ESP32-C3-class
-RISC-V) via plain <code>rustup target add</code> — no custom toolchain needed for either. This means it
-<em>compiles</em> for real microcontroller targets — it is <strong>not</strong> a claim that it has been validated on
-real hardware, and specifically <strong>not</strong> a claim of resistance to hardware side-channel attacks
-(SPA/DPA), which would
-need a separate, dedicated hardware audit. Real-hardware validation is a distinct post-MVP phase.</p>
-<h2 id="contributing"><a class="header" href="#contributing">Contributing</a></h2>
-<p>Pull requests are welcome. See <a href="https://github.com/user137/uacrypt/blob/master/docs/CONTRIBUTING.md"><code>docs/CONTRIBUTING.md</code></a> for the test/
-verification bar (dual-oracle verification, the three test categories per primitive, commit style)
-and <a href="https://github.com/user137/uacrypt/blob/master/docs/CODE_OF_CONDUCT.md"><code>docs/CODE_OF_CONDUCT.md</code></a> for community standards. Security
-vulnerabilities go through GitHub Security Advisories, not a public issue — see
-<code>docs/SECURITY.md</code> “Reporting vulnerabilities”.</p>
-<h2 id="license"><a class="header" href="#license">License</a></h2>
-<p>Dual-licensed under MIT / Apache-2.0, at the user’s choice — the standard for the
-Rust ecosystem. See <code>LICENSE-MIT</code> and <code>LICENSE-APACHE</code>.</p>
+control over variant/nonce/AAD/tag as separate files) for anyone who explicitly wants that.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="docstasksmd"><a class="header" href="#docstasksmd">docs/TASKS.md</a></h1>
 <p>Progress tracker and task backlog for this project, grouped by phase. Check items off as they’re
@@ -5152,39 +5014,23 @@ mdBook for the existing <code>docs/*.md</code> corpus, plus a mandatory <code>ca
 `# uacrypt</p>
 </li>
 </ul>
+<p><a href="https://crates.io/crates/dstu-core"><img src="https://img.shields.io/crates/v/dstu-core.svg" alt="crates.io"></a>
+<a href="https://docs.rs/dstu-core"><img src="https://docs.rs/dstu-core/badge.svg" alt="docs.rs"></a>
+<a href="https://pypi.org/project/dstu-core/"><img src="https://img.shields.io/pypi/v/dstu-core.svg" alt="PyPI"></a>
+<a href="https://www.npmjs.com/package/dstu-core"><img src="https://img.shields.io/npm/v/dstu-core.svg" alt="npm"></a>
+<a href="https://github.com/user137/uacrypt/actions/workflows/rust.yml"><img src="https://github.com/user137/uacrypt/actions/workflows/rust.yml/badge.svg" alt="CI"></a>
+<a href="#license-1"><img src="https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg" alt="License: MIT/Apache-2.0"></a></p>
+<p>A Rust implementation of Ukrainian DSTU cryptographic standards — Kalyna (block cipher), Kupyna
+(hash), Strumok (stream cipher), DSTU 4145 (digital signatures), and DSTU 9041 (asymmetric
+encryption) — in the spirit of <strong>libsodium</strong>: hard, safe defaults, hard to misuse, rather than
+OpenSSL’s flexible-but-easy-to-misconfigure API. Ships as a Rust crate (<code>dstu-core</code>), a CLI
+(<code>uacrypt</code>), and bindings for eight languages.</p>
 <!-- uacrypt-version: 0.3.8 -->
-<p><strong>v0.3.8.</strong> <code>dstu-core</code> is live on <a href="https://pypi.org/project/dstu-core/">PyPI</a> and
-<a href="https://www.npmjs.com/package/dstu-core">npm</a> (Python/Node.js bindings, one npm platform package
-still deferred — <code>docs/DECISIONS.md</code> D-189); RubyGems is wired up but not live yet. See
-<code>docs/CHANGELOG.md</code> for what changed each release. Not a complete library or CLI yet, not audited,
-not production-ready, and <strong>not a claim of side-channel resistance</strong>. Core primitives
-(Kalyna, Kupyna) are dual-oracle-verified against official test vectors; Strumok and the Kalyna-CCM mode are
-provisional (not yet confirmed against their primary standard text — see <code>docs/DECISIONS.md</code> D-15/D-41).
-<strong><code>crypto_secretstream</code> — the construction backing <code>encrypt</code>/<code>decrypt</code> — is provisional in a
-stronger sense still</strong>: it’s a from-scratch chunked-AEAD framing with no DSTU standard defining
-anything like it, so unlike Strumok/Kalyna-CCM, no primary text or oracle vector can ever exist to
-confirm it against (see <code>docs/DECISIONS.md</code> D-68). See <code>docs/SECURITY.md</code> for the full threat model and hard
-constraints, and the Status paragraph below for what’s actually done.</p>
-<p>An open Rust library for modern Ukrainian cryptographic standards (DSTU) — in the
-spirit of <strong>libsodium</strong> (hard, safe defaults, hard to misuse), not OpenSSL
-(flexible, easy to misuse the API).</p>
-<p><strong>Status:</strong> all three in-scope DSTU primitives are implemented at <code>hazmat</code> — Kupyna (256/512,
-cross-checked against real Bouncy Castle), Kalyna (all 5 block/key-size variants, full DSTU 7624
-mode-of-operation coverage: ECB/CBC/CFB/OFB/CTR/CMAC/KW/CCM/GCM/GMAC/XTS), and Strumok (keystream
-generation, <code>docs/DECISIONS.md</code> D-15 — UAPKI-attributed vectors, not yet primary-text-confirmed).
-<code>hazmat::kalyna_ccm</code>/<code>kalyna_gcm</code> and Strumok remain <strong>provisional</strong> in that same sense (dual-oracle
-but not primary-DSTU-text-confirmed, <code>docs/DECISIONS.md</code> D-15/D-41/D-56). DSTU 4145 signatures
-(<code>hazmat::dstu4145</code>) are also implemented and vector-confirmed. DSTU 9041:2020 asymmetric encryption
-(<code>hazmat::dstu9041</code>, <code>l(p)=256</code>/E256/1 only) is implemented and verified against the standard’s own
-worked example (<code>docs/TASKS.md</code> T-177); <code>l(p)=384/512/768</code> remain unimplemented (T-182). On top of
-<code>hazmat</code>, the libsodium-shaped <code>crypto_*</code> layer (<code>crypto_secretbox</code>, <code>crypto_secretstream</code>,
-<code>crypto_sign</code>, <code>crypto_box</code>, <code>crypto_auth</code>, <code>crypto_kdf</code>, <code>crypto_generichash</code>, <code>crypto_stream</code>,
-<code>crypto_pwhash</code>, <code>randombytes</code>) and the <code>uacrypt</code> CLI (<code>keygen</code>/<code>encrypt</code>/<code>decrypt</code>/<code>hash</code>,
-<code>sign-keygen</code>/<code>sign-pubkey</code>/<code>sign</code>/<code>verify</code>, <code>box-keygen</code>/<code>box-pubkey</code>/<code>box-seal</code>/<code>box-open</code>, plus
-<code>--help</code>/<code>--version</code>) are built and tested — see “Using <code>uacrypt</code>” below. See <code>docs/TASKS.md</code> for
-the phase-by-phase backlog, <code>docs/dstu-crypto-project.md</code>’s “Concrete API shape” for the
-authoritative module-by-module status table, and <code>docs/release-readiness.md</code> for the gap analysis
-against a complete 1.0.</p>
+<p><strong>Pre-1.0. Not audited. Not a claim of side-channel resistance.</strong> <code>dstu-core</code>/<code>uacrypt</code> are on
+<a href="https://crates.io/crates/dstu-core">crates.io</a>; the Python and Node.js bindings are on
+<a href="https://pypi.org/project/dstu-core/">PyPI</a>/<a href="https://www.npmjs.com/package/dstu-core">npm</a> too. See
+<code>docs/CHANGELOG.md</code> for what changed each release and <code>docs/release-readiness.md</code> for the gap
+analysis against a complete 1.0.</p>
 <h2 id="algorithms-in-scope-1"><a class="header" href="#algorithms-in-scope-1">Algorithms in scope</a></h2>
 <div class="table-wrapper">
 <table>
@@ -5200,247 +5046,35 @@ against a complete 1.0.</p>
 </tbody>
 </table>
 </div>
-<p>Full MVP scope, architectural decisions, and the libsodium API mapping are in
-<code>docs/dstu-crypto-project.md</code>.</p>
-<p><code>dstu-core</code> builds in two resource profiles - fast/table-heavy (default) or small/flash-friendly
-(<code>--features dstu-core/small-tables</code>, for constrained MCUs). Same output either way, real memory
-vs. speed trade-off - see <code>docs/resource-profiles.md</code> for the numbers and which one fits your
-target.</p>
-<h2 id="repository-structure-1"><a class="header" href="#repository-structure-1">Repository structure</a></h2>
-<pre><code>.
-├── CLAUDE.md              # operating guide for AI agents in this repo
-├── AGENTS.md              # thin pointer to CLAUDE.md's own reading order, for non-Claude-Code AI agents
-├── docs/SECURITY.md            # threat model, hard constraints, supply-chain vetting
-├── docs/DECISIONS.md           # architectural decisions with rejected alternatives
-├── docs/TASKS.md               # phase-by-phase task backlog and progress state
-├── docs/CHANGELOG.md           # Keep a Changelog-format release history
-├── docs/ORACLES.md             # oracle trust ranking, per-algorithm oracle map, test-vector provenance
-├── docs/PERFORMANCE.md         # benchmark methodology and recorded numbers
-├── docs/CONTRIBUTING.md        # how to propose a change, test/verification bar, commit style
-├── docs/CODE_OF_CONDUCT.md     # community standards (Contributor Covenant)
-├── LICENSE-MIT
-├── LICENSE-APACHE
-├── .github/workflows/     # CI (rust.yml, oracle-harness.yml) and the release workflow (release.yml)
-├── .github/ISSUE_TEMPLATE/, PULL_REQUEST_TEMPLATE.md  # issue/PR templates
-├── .cargo/config.toml     # `cargo xtask` alias
-├── xtask/                 # cross-platform build/QA runner, see "Development commands" below
-├── docs/
-│   ├── dstu-crypto-project.md        # main project spec (scope, API mapping)
-│   ├── release-readiness.md          # gap analysis: current state vs. a libsodium-equivalent 1.0
-│   ├── user-journey-gaps.md          # persona/journey-organized companion gap analysis
-│   ├── resource-profiles.md          # fused vs small-tables: memory/speed numbers, which to pick
-│   ├── pseudocode/                   # per-algorithm pseudocode, cross-checked against oracles
-│   ├── rust_ai_ruleset.md            # generic Rust ruleset for AI assistants
-│   ├── cross-language-style-guide.md # naming/style conventions for non-Rust code
-│   ├── bindings-strategy.md          # Phase 3 language-binding plan: order, C-ABI split, per-binding checklist
-│   └── papers/                       # reference PDFs (specs, cryptanalysis, hardware papers)
-├── crates/                # Cargo workspace
-│   ├── dstu-core/          # core: Kalyna + Kupyna + Strumok
-│   ├── uacrypt/            # CLI binary on top of the core
-│   └── dstu-core-capi/     # C ABI - foundation for C++/.NET/Java/Go bindings (T-158)
-├── bindings/               # Phase 3 language bindings, see docs/bindings-strategy.md
-│   ├── python/             # PyO3, full crypto_* surface - provisional, not on PyPI (T-49)
-│   ├── nodejs/             # napi-rs, full crypto_* surface - provisional, not on npm (T-50)
-│   ├── ruby/               # magnus/rb-sys, full crypto_* surface - provisional, not on RubyGems (T-160)
-│   ├── php/                # ext-php-rs, full crypto_* surface - provisional, not on Packagist (T-159)
-│   ├── dotnet/             # C# P/Invoke over dstu-core-capi - provisional, not on NuGet (T-52)
-│   ├── java/               # jni crate, full crypto_* surface - provisional, not on Maven Central (T-51)
-│   ├── go/                 # cgo over dstu-core-capi, full crypto_* surface - provisional, repo-relative only (T-163)
-│   └── cpp/                # header-only RAII wrapper over dstu-core-capi, full crypto_* surface - provisional (T-53)
-├── firmware/               # Phase 4 hardware/emulation checks, own Cargo workspace(s) - see docs/DECISIONS.md D-156
-│   └── qemu-stm32-smoketest/  # runs official Kalyna/Kupyna vectors under QEMU's netduinoplus2 (Cortex-M4F), no real board needed (T-170)
-├── tests/oracle-harness/   # Java/.NET/C harnesses that verify test vectors against real Bouncy Castle
-└── oracles/                # reference implementations used as oracles - not vendored, see oracles/README.md
+<p>Full scope, architectural decisions, and the libsodium API mapping are in
+<code>docs/dstu-crypto-project.md</code>. <code>dstu-core</code> also builds in a small/flash-friendly resource profile
+for constrained MCUs (<code>--features small-tables</code>) — see <code>docs/resource-profiles.md</code> for the trade-off.</p>
+<h2 id="quick-start-1"><a class="header" href="#quick-start-1">Quick start</a></h2>
+<pre><code class="language-sh">cargo add dstu-core
 </code></pre>
-<h2 id="requirements-1"><a class="header" href="#requirements-1">Requirements</a></h2>
-<p>Rust is the only hard requirement — everything else in this table is optional and only needed for
-the specific <code>cargo xtask</code> command listed. No admin rights required on any platform for any of it.</p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Tool</th><th>Needed for</th><th>Linux / macOS</th><th>Windows</th></tr>
-</thead>
-<tbody>
-<tr><td>Rust (stable, via <code>rustup</code>)</td><td>everything</td><td><code>curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh</code></td><td><code>winget install Rustlang.Rustup</code> (or <code>rustup-init.exe</code> from <a href="https://rustup.rs">rustup.rs</a>)</td></tr>
-<tr><td>C/C++ compiler</td><td><code>cargo xtask fuzz</code> (<code>libfuzzer-sys</code> builds C++); building the manual C oracle-differential harnesses under <code>tests/oracle-harness/*-differential/</code></td><td>usually preinstalled; else your distro’s <code>gcc</code>/<code>build-essential</code> package</td><td>MinGW-w64 GCC (e.g. <code>winget install BrechtSanders.WinLibs.POSIX.UCRT</code>) builds the crate and those harnesses; <strong><code>cargo xtask fuzz</code> additionally needs real MSVC</strong>, see below</td></tr>
-<tr><td><code>cargo-fuzz</code></td><td><code>cargo xtask fuzz</code></td><td><code>cargo install cargo-fuzz --locked</code> — runs directly against the native nightly toolchain</td><td>see “<code>cargo fuzz</code> on Windows” below</td></tr>
-<tr><td><code>miri</code> (nightly component)</td><td><code>cargo xtask miri</code></td><td><code>rustup component add miri --toolchain nightly</code></td><td>same</td></tr>
-<tr><td><code>kani-verifier</code></td><td><code>cargo xtask kani</code> (bounded model checking, <code>gf2m163::reduce</code> proofs)</td><td><code>cargo install kani-verifier &amp;&amp; cargo kani setup</code></td><td><strong>not supported</strong> — see below</td></tr>
-<tr><td><code>cargo-audit</code> / <code>cargo-deny</code></td><td><code>cargo xtask audit</code> / <code>cargo xtask deny</code></td><td><code>cargo install cargo-audit --locked</code> / <code>cargo install cargo-deny --locked</code></td><td>same install commands, but each needs <code>dlltool.exe</code> on <code>PATH</code> first — comes with a MinGW-w64 install (e.g. the WinLibs package above), not with <code>rustup</code> alone</td></tr>
-<tr><td>JDK 8+ and Maven 3.6+</td><td><code>cargo xtask oracle-java</code> (cross-check against real Bouncy Castle)</td><td>your distro’s packages, or Maven’s binary zip if unpackaged</td><td>same</td></tr>
-<tr><td>.NET SDK 8 or 9</td><td><code>cargo xtask oracle-dotnet</code> (cross-check against real Bouncy Castle)</td><td><a href="https://dotnet.microsoft.com/download">dotnet.microsoft.com</a></td><td>same</td></tr>
-</tbody>
-</table>
-</div>
-<p>This project builds against the GNU host toolchain on Windows (<code>x86_64-pc-windows-gnu</code>) by default,
-specifically to avoid a Visual Studio dependency for ordinary building/testing — run <code>rustup default stable-x86_64-pc-windows-gnu</code> if <code>rustup-init</code> didn’t already pick it. <code>rustup</code> reads
-<code>rust-toolchain.toml</code> and installs the pinned <code>stable</code> channel plus <code>clippy</code>/<code>rustfmt</code> automatically
-the first time you run any <code>cargo</code> command in this repo.</p>
-<p>The reference implementations used as correctness oracles (<code>oracles/kalyna-reference</code>, UAPKI,
-etc.) are <strong>not</strong> vendored in this repo — see <code>oracles/README.md</code> for what each one is and where to
-get it. You only need them for the manual differential harnesses; ordinary <code>cargo build</code>/<code>cargo test</code>/<code>cargo xtask ci</code> need none of it.</p>
-<h3 id="cargo-fuzz-on-windows-needs-msvc-not-this-projects-default-gnu-toolchain-1"><a class="header" href="#cargo-fuzz-on-windows-needs-msvc-not-this-projects-default-gnu-toolchain-1"><code>cargo fuzz</code> on Windows needs MSVC, not this project’s default GNU toolchain</a></h3>
-<p>libFuzzer’s Address Sanitizer only supports the MSVC target on Windows — the default
-<code>x86_64-pc-windows-gnu</code> toolchain above cannot build or run fuzz targets at all, no matter which
-flags are passed (<code>docs/DECISIONS.md</code> D-32 has the full diagnosis). To run <code>cargo xtask fuzz</code> locally on
-Windows:</p>
-<ol>
-<li>Install Visual Studio (or just the Build Tools) with the “Desktop development with C++”
-workload.</li>
-<li><code>rustup toolchain install nightly-x86_64-pc-windows-msvc</code> — an <em>additional</em> toolchain; this does
-not change the project’s default GNU host toolchain used for everything else.</li>
-<li>Run <code>cargo xtask fuzz</code>. It finds the Visual Studio install itself (via <code>vswhere.exe</code>’s fixed
-path) and the toolchain above, then runs each target through a <code>vcvars64.bat</code>-sourced shell with
-<code>--target x86_64-pc-windows-msvc</code> — both the environment and the explicit target flag are
-required, not just the extra toolchain (<code>docs/DECISIONS.md</code> D-32 explains why: without <code>vcvars64.bat</code>
-the ASan runtime DLL isn’t found at run time, even though the build itself succeeds; without the
-explicit <code>--target</code>, <code>cargo-fuzz</code> defaults back to the GNU target regardless of which toolchain
-invoked it).</li>
-</ol>
-<p>Without a Visual Studio C++ toolset installed, <code>cargo xtask fuzz</code> prints an install hint and skips
-cleanly on Windows, same as any other missing optional tool — CI (Linux) remains the actual,
-unconditional venue where fuzz targets run on every push.</p>
-<h3 id="cargo-xtask-kani-does-not-run-on-windows-at-all-1"><a class="header" href="#cargo-xtask-kani-does-not-run-on-windows-at-all-1"><code>cargo xtask kani</code> does not run on Windows at all</a></h3>
-<p>Unlike every other optional tool above, this isn’t a missing-install-step case: <code>kani-verifier</code>’s
-own source calls Unix-only std APIs (<code>std::os::unix::fs::symlink</code>, <code>Command::arg0</code>) that don’t
-exist on Windows, confirmed by trying <code>cargo install kani-verifier</code> directly (<code>docs/DECISIONS.md</code>
-D-102). It was also tried on this project’s aarch64 Raspberry Pi (Debian 12) — <code>cargo kani setup</code>
-completed, but the prebuilt bundle’s <code>cargo-kani</code> binary requires <code>GLIBC_2.39</code>, newer than bookworm’s
-<code>2.36</code>. <code>cargo xtask kani</code> prints this explanation and skips cleanly rather than a raw error — CI
-(<code>ubuntu-latest</code>, D-102’s <code>kani</code> job) is the actual, unconditional venue where these proofs run on
-every push.</p>
-<h2 id="building-from-source-1"><a class="header" href="#building-from-source-1">Building from source</a></h2>
-<pre><code>git clone &lt;this repo&gt;
-cd cipher_ua
-cargo build --workspace
-cargo test --workspace
-</code></pre>
-<h2 id="development-commands-1"><a class="header" href="#development-commands-1">Development commands</a></h2>
-<p><code>cargo xtask &lt;command&gt;</code> is the one cross-platform entry point for build/test/QA — the same command
-on Linux, Windows, and macOS (see <code>docs/DECISIONS.md</code> D-12 for why this exists instead of separate
-shell/PowerShell scripts). Run <code>cargo xtask help</code> for the full list; the essentials:</p>
-<pre><code>cargo xtask build     # cargo build --workspace, both --all-features and no_std (--no-default-features)
-cargo xtask test      # cargo test --workspace --all-features
-cargo xtask fmt       # cargo fmt --all (add --check to verify without writing)
-cargo xtask clippy    # cargo clippy --workspace --all-features -- -D warnings
-cargo xtask docs-check # README/gh-pages version-marker freshness lint vs crates/dstu-core's Cargo.toml (T-186)
-cargo xtask ci        # the five above, then best-effort for miri/kani/book/fuzz/audit/deny/oracle harnesses
-cargo xtask book      # mdbook build - the docs/ knowledge base (T-186), published to gh-pages/book/ by CI
-cargo xtask bench-compare # uacrypt vs OpenSSL, one unified table per DSTU standard (T-187, docs/PERFORMANCE.md D-106)
-</code></pre>
-<p>The optional layers each check their own tool is installed first and print an install hint instead
-of a raw error if it’s missing (<code>cargo xtask miri</code>, <code>kani</code>, <code>book</code>, <code>bench-compare</code>, <code>fuzz</code>, <code>audit</code>,
-<code>deny</code>, <code>oracle-java</code>, <code>oracle-dotnet</code>) — see <code>docs/SECURITY.md</code> for why these are required in CI even though
-they’re optional locally. <code>docs-check</code> needs no external tool, so it’s mandatory in <code>ci</code> rather than
-best-effort — it fails the build outright on a version-marker mismatch, same standing as <code>fmt</code>/
-<code>build</code>/<code>test</code>/<code>clippy</code>.</p>
-<p>Before implementing any primitive, read <code>docs/SECURITY.md</code> (hard constraints, mandatory
-dual-oracle verification) and <code>docs/DECISIONS.md</code> (architectural decisions already made).</p>
-<h2 id="performance-1"><a class="header" href="#performance-1">Performance</a></h2>
-<p><code>cargo bench -p dstu-core --bench kalyna --bench kupyna --bench strumok</code> (<code>criterion</code>). See
-<code>docs/PERFORMANCE.md</code> for recorded baseline numbers, a comparison against the algorithm designers’
-reference C implementation and against UAPKI (a real, production PKI library), and how to check a
-change against the saved regression baseline.</p>
-<h2 id="using-uacrypt-1"><a class="header" href="#using-uacrypt-1">Using <code>uacrypt</code></a></h2>
-<p><code>uacrypt encrypt</code>/<code>decrypt</code>/<code>hash</code> (<code>docs/TASKS.md</code> T-16, <code>docs/DECISIONS.md</code> D-52) are the real,
-misuse-resistant top-level commands — mode, nonce, and algorithm are all hardcoded, nothing to
-misconfigure:</p>
-<pre><code>cargo build -p uacrypt --release
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use dstu_core::crypto_secretbox::{seal, open, SecretKey};
+
+let key = SecretKey::generate().expect("OS CSPRNG should not fail");
+let sealed = seal(&amp;key, b"message").expect("OS CSPRNG should not fail");
+let opened = open(&amp;key, &amp;sealed).expect("authentic ciphertext");
+assert_eq!(opened, b"message");
+<span class="boring">}</span></code></pre>
+<p>Or the CLI, which streams arbitrarily large files with no in-memory cap:</p>
+<pre><code class="language-sh">cargo install uacrypt   # or download a prebuilt binary from GitHub Releases
 uacrypt keygen --out key.bin
 uacrypt encrypt --key key.bin --in message.bin --out sealed.bin
 uacrypt decrypt --key key.bin --in sealed.bin --out message.bin
-uacrypt hash --in file.bin --out digest.bin
 </code></pre>
-<p><strong><code>encrypt</code>/<code>decrypt</code> have no message-length cap and stream <code>--in</code>/<code>--out</code> in fixed-size chunks</strong> —
-as of 2026-07-25 they’re built over <code>dstu_core::crypto_secretstream</code> (<code>docs/TASKS.md</code> T-40/T-70,
-<code>docs/DECISIONS.md</code> D-68), a genuinely chunked construction over <code>hazmat::kalyna_gcm</code>, not the earlier
-whole-buffer <code>crypto_secretbox</code> (<code>docs/TASKS.md</code> T-37, <code>docs/DECISIONS.md</code> D-51/D-63) - a large input file no
-longer means a correspondingly large in-memory buffer. <strong>Breaking wire-format change</strong>: a file the
-prior <code>crypto_secretbox</code>-backed <code>encrypt</code> produced cannot be read by this <code>decrypt</code>, and vice versa</p>
-<ul>
-<li>acceptable pre-1.0. <code>crypto_secretbox</code> itself is unchanged and still available as a library
-primitive for whole-message use, just no longer what this CLI command uses. <code>--key</code> is a raw
-32-byte file (<code>crypto_secretstream::Key</code>’s size) — <code>uacrypt keygen --out key.bin</code> generates one from
-the OS CSPRNG (<code>docs/TASKS.md</code> T-115). <code>encrypt</code> draws a fresh random header internally on every call
-and embeds it in <code>--out</code>; there is no <code>--nonce</code>/<code>--header</code> flag to supply or reuse by mistake.
-<strong><code>hash</code> has no such limit either</strong> — it streams <code>--in</code> from disk in fixed-size chunks regardless of
-size, fixed to Kupyna-256 (32-byte digest, no <code>--variant</code> choice).</li>
-</ul>
-<p><code>uacrypt sign-keygen</code>/<code>sign-pubkey</code>/<code>sign</code>/<code>verify</code> (<code>docs/TASKS.md</code> T-124, <code>docs/DECISIONS.md</code> D-73) are the
-digital-signature equivalent, built over <code>dstu_core::crypto_sign</code> (DSTU 4145): a signature proves a
-file came from whoever holds the signing key and hasn’t been changed since — unlike <code>encrypt</code>, it
-does not hide the file’s contents, only attests to who signed it and that it’s unmodified. Every
-command below was run for real against the release binary before being written here:</p>
-<pre><code>uacrypt sign-keygen --out signing.key
-uacrypt sign-pubkey --key signing.key --out verifying.key
-uacrypt sign --key signing.key --in message.bin --out message.bin.sig
-uacrypt verify --key verifying.key --in message.bin --sig message.bin.sig
-</code></pre>
-<p><code>sign-keygen</code>’s output (<code>signing.key</code>, 21 raw bytes) is secret — keep it like any other private key.
-<code>sign-pubkey</code> derives the matching <code>verifying.key</code> (42 raw bytes) from it, safe to share or publish.
-<code>verify</code> prints nothing and exits <code>0</code> on a valid signature; on a tampered file, a tampered signature,
-or the wrong verifying key, it exits <code>1</code> with an error and writes nothing — it does not, and cannot,
-silently accept a mismatch:</p>
-<pre><code>$ uacrypt verify --key verifying.key --in message.bin --sig message.bin.sig
-$ echo $?
-0
-
-$ echo "tampered" &gt; message.bin
-$ uacrypt verify --key verifying.key --in message.bin --sig message.bin.sig
-uacrypt: verify: signature does not verify - message, signature, or key do not match
-$ echo $?
-1
-</code></pre>
-<p><code>uacrypt box-keygen</code>/<code>box-pubkey</code>/<code>box-seal</code>/<code>box-open</code> (<code>docs/TASKS.md</code> T-178, <code>docs/DECISIONS.md</code>
-D-169) are public-key encryption, built over <code>dstu_core::crypto_box</code> (DSTU 9041, hybrid via KDF):
-unlike <code>encrypt</code> (which needs a shared symmetric key both sides already have), <code>box-seal</code> only needs
-the recipient’s public key — anyone can seal a message only the matching secret key can open:</p>
-<pre><code>uacrypt box-keygen --out box.key
-uacrypt box-pubkey --key box.key --out box.pub
-uacrypt box-seal --key box.pub --in message.bin --out message.bin.box
-uacrypt box-open --key box.key --in message.bin.box --out message.bin
-</code></pre>
-<p><code>box-keygen</code>’s output (<code>box.key</code>, 32 raw bytes) is secret. <code>box-pubkey</code> derives the matching
-<code>box.pub</code> (32 raw bytes, the curve point’s <code>x</code>-coordinate only) from it, safe to share or publish.
-<code>box-seal</code>/<code>box-open</code> are <strong>not memory-bounded</strong> yet — <code>--in</code> is read whole into memory, unlike
-<code>encrypt</code>/<code>decrypt</code>’s bounded-chunk streaming (see <code>crypto_box</code>’s own module doc for why).</p>
-<p>What exists below this level: <code>kalyna-block</code>, a single-block (no mode, no padding), <code>hazmat</code>-scoped
-command added for a binary-level performance comparison (<code>docs/PERFORMANCE.md</code>, <code>docs/DECISIONS.md</code> D-31):</p>
-<pre><code>uacrypt kalyna-block encrypt --variant 128-128 --key key.bin --in block.bin --out ct.bin
-uacrypt kalyna-block decrypt --variant 128-128 --key key.bin --in ct.bin --out pt.bin
-</code></pre>
-<p><code>--key</code>/<code>--in</code>/<code>--out</code> are raw binary files of the variant’s exact byte length (16/32/64 bytes
-depending on variant — see <code>--variant</code>’s five values).</p>
-<p><code>kalyna-ccm</code> (<code>docs/DECISIONS.md</code> D-41) additionally encrypts/authenticates arbitrary-length <strong>short</strong>
-messages (plaintext and <code>--aad</code> each capped at 255 bytes — a sourced property of the construction,
-not a CLI restriction, see <code>hazmat::kalyna_ccm</code>’s doc comment) using a provisional, dual-oracle-
-verified Kalyna-alone CCM mode, not yet confirmed against the primary DSTU 7624:2014 text:</p>
-<pre><code>uacrypt kalyna-ccm encrypt --variant 128-128 --key key.bin --nonce nonce.bin --aad aad.bin --in msg.bin --out ct.bin --tag tag.bin
-uacrypt kalyna-ccm decrypt --variant 128-128 --key key.bin --nonce nonce.bin --aad aad.bin --in ct.bin --out pt.bin --tag tag.bin
-</code></pre>
-<p><code>--nonce</code> is a raw file of exactly the variant’s block length (16/32/64 bytes) — but it’s an
-<strong>output</strong> on <code>encrypt</code>, not an input: <code>encrypt</code> generates a fresh random nonce itself (via the OS
-CSPRNG) and writes it there, so there is nothing for you to supply or accidentally reuse. <code>decrypt</code>
-reads <code>--nonce</code> back (the value <code>encrypt</code> produced) as an input, same as <code>--tag</code>. <code>--aad</code> is
-optional (an empty AAD is used if omitted); <code>decrypt</code> verifies the tag before writing <code>--out</code> and
-fails without writing anything on a mismatch. See <code>docs/DECISIONS.md</code> D-40 for why a random nonce is
-safe here (128 bits minimum across all five variants) and its per-key message-count guideline.</p>
-<p>Neither <code>kalyna-block</code> nor <code>kalyna-ccm</code> is the <code>encrypt</code>/<code>decrypt</code> surface above - both stay as
-lower-level, hazmat-scoped tools (<code>kalyna-block</code> for exactly one block, <code>kalyna-ccm</code> for full
-control over variant/nonce/AAD/tag as separate files) for anyone who explicitly wants that.
-<strong>Prebuilt binaries are available via <a href="https://github.com/user137/uacrypt/releases">GitHub Releases</a></strong>
-for Windows/Linux/macOS (Apple Silicon), plus a <code>dstu-core</code> source distribution - not published to
-crates.io yet (<code>docs/TASKS.md</code> T-17).</p>
+<p>See <a href="https://github.com/user137/uacrypt/blob/master/docs/CLI.md"><code>docs/CLI.md</code></a> for the full
+command reference (<code>sign</code>/<code>verify</code>, <code>box-seal</code>/<code>box-open</code>, and the lower-level <code>kalyna-block</code>/
+<code>kalyna-ccm</code> tools), and <a href="https://docs.rs/dstu-core">docs.rs</a> for the full library API.</p>
 <h2 id="language-bindings-1"><a class="header" href="#language-bindings-1">Language bindings</a></h2>
-<p>Every binding in <code>docs/bindings-strategy.md</code>’s phased order is now built — the full <code>crypto_*</code>
-surface (<code>crypto_secretbox</code>/<code>secretstream</code>/<code>sign</code>/<code>auth</code>/<code>kdf</code>/<code>generichash</code>/<code>stream</code>/<code>pwhash</code>,
-<code>randombytes</code>, <code>selftest</code>), idiomatic errors and secretstream I/O per language, real
-correctness/rejection/misuse test suites against the same official vectors. <strong>Python and Node.js
-are published</strong> (PyPI/npm, see the banner above); the rest aren’t yet (RubyGems/Packagist/NuGet/
-Maven Central — separately owner-gated, <code>docs/TASKS.md</code> T-164) — build those from source per the
-linked README. The <strong>README column is the full docs</strong> for every binding regardless of publish
-status (usage examples, API table, security caveats); the <strong>Package column</strong> is only where you’d
-actually run an install command:</p>
+<p>The full <code>crypto_*</code> surface (<code>secretbox</code>/<code>secretstream</code>/<code>sign</code>/<code>auth</code>/<code>kdf</code>/<code>generichash</code>/<code>stream</code>/
+<code>pwhash</code>, <code>randombytes</code>, <code>selftest</code>), idiomatic errors, and the same correctness/rejection/misuse
+test suite, in every language below — not a thin, partial wrapper. The <strong>README column</strong> is the
+full per-language docs; the <strong>Package column</strong> is where you’d actually run an install command.</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -5458,27 +5092,29 @@ actually run an install command:</p>
 </tbody>
 </table>
 </div>
-<p>The C ABI itself (<code>crates/dstu-core-capi</code>, opaque handles, <code>cbindgen</code>-generated header) is the
-foundation the .NET/Go/C++ bindings above link against directly — usable from any language with a
-C FFI, not just those three. See <code>docs/bindings-strategy.md</code> for the per-binding design rationale
-and <code>docs/DECISIONS.md</code> D-115 onward for the full decision history.</p>
+<p>The C ABI itself (<code>crates/dstu-core-capi</code>, opaque handles, <code>cbindgen</code>-generated header) is what the
+.NET, Go, and C++ bindings link against directly — usable from any language with a C FFI, not just
+those three. See <code>docs/bindings-strategy.md</code> for the per-binding design rationale.</p>
 <h2 id="embedded--no_std-targets-1"><a class="header" href="#embedded--no_std-targets-1">Embedded / <code>no_std</code> targets</a></h2>
-<p><code>dstu-core</code> is <code>no_std</code>-compatible from day one (<code>cargo build --no-default-features</code>, checked by
-<code>cargo xtask build</code> and in CI on every push, but only against the <strong>host</strong> triple). <strong>Cross-compiling
-for a real embedded target is separately confirmed</strong> (<code>docs/TASKS.md</code> T-116, 2026-07-26): all 4
-<code>no_std</code>/<code>alloc</code>/<code>small-tables</code> combinations build clean, both dev and release profiles, for
-<code>thumbv7em-none-eabihf</code> (STM32 Cortex-M) and <code>riscv32imc-unknown-none-elf</code> (ESP32-C3-class
-RISC-V) via plain <code>rustup target add</code> — no custom toolchain needed for either. This means it
-<em>compiles</em> for real microcontroller targets — it is <strong>not</strong> a claim that it has been validated on
-real hardware, and specifically <strong>not</strong> a claim of resistance to hardware side-channel attacks
-(SPA/DPA), which would
-need a separate, dedicated hardware audit. Real-hardware validation is a distinct post-MVP phase.</p>
+<p><code>dstu-core</code> is <code>no_std</code>-compatible from day one (<code>std</code>/<code>alloc</code>/<code>no_std</code> feature flags), and
+cross-compiles clean for real microcontroller targets (STM32 Cortex-M, ESP32-class RISC-V) with no
+custom toolchain. That’s a compilation claim, not a real-hardware validation or a side-channel
+resistance claim — see <code>docs/SECURITY.md</code> for the full threat model.</p>
+<h2 id="status-and-further-reading-1"><a class="header" href="#status-and-further-reading-1">Status and further reading</a></h2>
+<ul>
+<li><a href="https://github.com/user137/uacrypt/blob/master/docs/SECURITY.md"><code>docs/SECURITY.md</code></a> — threat model and hard constraints</li>
+<li><a href="https://github.com/user137/uacrypt/blob/master/docs/DECISIONS.md"><code>docs/DECISIONS.md</code></a> — architectural decisions, with rejected alternatives</li>
+<li><a href="https://github.com/user137/uacrypt/blob/master/docs/TASKS.md"><code>docs/TASKS.md</code></a> — phase-by-phase task backlog</li>
+<li><a href="https://github.com/user137/uacrypt/blob/master/docs/release-readiness.md"><code>docs/release-readiness.md</code></a> — gap analysis against a libsodium-equivalent 1.0</li>
+<li>Full knowledge base: <a href="https://user137.github.io/uacrypt/">user137.github.io/uacrypt</a></li>
+</ul>
 <h2 id="contributing-1"><a class="header" href="#contributing-1">Contributing</a></h2>
-<p>Pull requests are welcome. See <a href="https://github.com/user137/uacrypt/blob/master/docs/CONTRIBUTING.md"><code>docs/CONTRIBUTING.md</code></a> for the test/
-verification bar (dual-oracle verification, the three test categories per primitive, commit style)
-and <a href="https://github.com/user137/uacrypt/blob/master/docs/CODE_OF_CONDUCT.md"><code>docs/CODE_OF_CONDUCT.md</code></a> for community standards. Security
-vulnerabilities go through GitHub Security Advisories, not a public issue — see
-<code>docs/SECURITY.md</code> “Reporting vulnerabilities”.</p>
+<p>Pull requests are welcome. See <a href="https://github.com/user137/uacrypt/blob/master/docs/CONTRIBUTING.md"><code>docs/CONTRIBUTING.md</code></a>
+for dev environment setup, the test/verification bar (dual-oracle verification, three test
+categories per primitive), and commit style, and
+<a href="https://github.com/user137/uacrypt/blob/master/docs/CODE_OF_CONDUCT.md"><code>docs/CODE_OF_CONDUCT.md</code></a>
+for community standards. Security vulnerabilities go through GitHub Security Advisories, not a
+public issue — see <code>docs/SECURITY.md</code> “Reporting vulnerabilities”.</p>
 <h2 id="license-1"><a class="header" href="#license-1">License</a></h2>
 <p>Dual-licensed under MIT / Apache-2.0, at the user’s choice — the standard for the
 Rust ecosystem. See <code>LICENSE-MIT</code> and <code>LICENSE-APACHE</code>.<code>so README stays the single source of truth) -</code>src<code>points       straight at the existing</code>docs/<code>directory, **no existing file moved or renamed**, so none of       the many</code>docs/DECISIONS.md<code>-style cross-references anywhere in the repo needed touching.       Grouped into Project &amp; roadmap / Engineering / Algorithm pseudocode / History / Contributing,       mirroring </code>CLAUDE.md<code>'s own "Documentation map" table (that table already had the right       taxonomy, just not machine-readable). Spiked for real per </code>CLAUDE.md<code>'s own "read the actual       output, don't plan from config alone" rule: </code>cargo install mdbook –locked<code>, </code>mdbook build<code>       against the real tree - found and fixed a real issue, not a hypothetical one: README.md's       repo-relative links (</code>bindings/<em>/README.md<code>, </code>docs/CONTRIBUTING.md<code>/</code>CODE_OF_CONDUCT.md<code>)       resolve correctly on GitHub (README lives at repo root there) but wrong once transcluded into       </code>docs/introduction.md<code>(relative to</code>docs/<code>instead) - fixed by switching those 10 links to       absolute</code>github.com/user137/uacrypt/blob/master/…<code>URLs, which read identically on GitHub       and now also resolve correctly inside the book; no other</code>docs/</em>.md<code>file had this pattern       (checked directly, not assumed). New</code>cargo xtask book<code>subcommand (optional/best-effort,       same</code>require(“mdbook”, …)<code>pattern as</code>miri<code>/</code>kani<code>, added to </code>ci()<code>'s best-effort loop       too). New </code>.github/workflows/docs-book.yml<code>: builds on every push to </code>master<code>touching      </code>docs/**<code>/</code>book.toml<code>/</code>README.md<code>(owner's explicit choice: automatic, not      </code>workflow_dispatch<code>-gated), publishes </code>target/book/<code>into the existing</code>gh-pages<code>branch       under a new</code>/book/<code>subdirectory via plain git commands (not a third-party gh-pages action -      </code>cargo install mdbook –locked<code>from crates.io plus</code>git push<code>using the job's own      </code>GITHUB_TOKEN<code>, matching this project's existing supply-chain posture and the fact that       T-185 already published </code>gh-pages<code> by hand the same way) - the hand-crafted landing page       (</code>index.html<code>/</code>uk/index.html<code>) is never read or written by this workflow, only </code>book/<code> is       replaced each run. **This specific workflow's actual GitHub Actions run could not be       end-to-end-verified from this session** (no way to trigger/observe a real Actions run here) -       flagged honestly rather than claimed as tested; needs a first real push to confirm. Added a       "Docs" link (</code>book/<code>EN,</code>../book/<code> UK) to the landing page's existing footer, both languages       - the one hand-authored-content touch in this task, everything else about the site was       additions (marker comments) or new files.       **Freshness lint** (</code>cargo xtask docs-check<code>, new </code>docs_check()<code>in</code>xtask/src/main.rs<code>,       zero-dependency per </code>xtask<code>'s own stated design) - catches exactly the class of bug T-185       fixed by hand: (1) </code>crates/dstu-core<code>'s and </code>crates/uacrypt<code>'s </code>Cargo.toml<code> </code>[package]
@@ -11714,7 +11350,7 @@ cargo build -p uacrypt --release --features dstu-core/small-tables
 <code>cargo test --features dstu-core/small-tables</code> — see <code>docs/DECISIONS.md</code> D-39 for why one test suite
 covering both is sufficient rather than needing separate verification per profile.</p>
 <div style="break-before: page; page-break-before: always;"></div>
-<h1 id="performance-2"><a class="header" href="#performance-2">Performance</a></h1>
+<h1 id="performance"><a class="header" href="#performance">Performance</a></h1>
 <p>Canonical home for this project’s benchmark numbers, methodology, and comparisons against other
 implementations. <code>docs/DECISIONS.md</code> D-23 records <em>why</em> benchmarking exists at all and links here
 rather than duplicating the numbers; update this file, not D-23, when new numbers are measured.</p>
@@ -27424,11 +27060,175 @@ missed <code>uacrypt</code>’s crates.io-only “CLI over dstu-core” (no loca
 isolation - it only reads badly in the context of what actually renders on the crates.io page next
 to <code>dstu-core</code>’s own, better one). See the memory saved this session for the standing instruction
 this establishes for every future publish-verification task.</p>
+<h2 id="d-192-root-readmemd-restructured-to-a-short-pitch--links-following-real-world-conventions-from-libsodiumagerustcrypto---full-cli-walkthrough-and-contributor-setup-moved-to-dedicated-docs"><a class="header" href="#d-192-root-readmemd-restructured-to-a-short-pitch--links-following-real-world-conventions-from-libsodiumagerustcrypto---full-cli-walkthrough-and-contributor-setup-moved-to-dedicated-docs">D-192: Root README.md restructured to a short pitch + links, following real-world conventions from libsodium/age/RustCrypto - full CLI walkthrough and contributor setup moved to dedicated docs</a></h2>
+<p><strong>What happened</strong>: the README had grown to 374 lines/~3300 words with no badges, opening directly
+into dense, citation-heavy prose (<code>T-XX</code>/<code>D-XX</code> references in the very first paragraphs) rather
+than a plain-language pitch - flagged directly by the project owner after looking at the live
+GitHub repo page. Researched three real, comparable-niche projects for structural convention before
+redesigning, rather than guessing:</p>
+<ul>
+<li><strong>libsodium</strong> (this project’s own stated inspiration): badges → logo → 2-3 short plain-language
+sentences → feature bullets → a <strong>Documentation</strong> section that <em>links out</em> to separate docs
+rather than inlining detail → versioning → contributors → license. No directory tree, no internal
+decision-ID citations anywhere in it.</li>
+<li><strong>age</strong> (<code>FiloSottile/age</code>): badges → short pitch → a working usage example <em>before</em> install
+instructions → install table → deeper usage docs, still concise.</li>
+<li><strong>RustCrypto/AEADs</strong> (same “workspace of multiple crates” shape as this repo): ~80-90 lines total,
+crates.io/docs.rs/MSRV badges in a per-crate table, two-sentence pitch, everything else linked out.</li>
+</ul>
+<p><strong>Common pattern across all three, absent from this project’s README before this</strong>: a badges row
+immediately under the title; a short (2-4 sentence) plain-language pitch with no internal jargon or
+citation IDs; a working code example within the first screen; deep material (architecture, full API
+reference, contributor setup, troubleshooting) <em>linked to dedicated docs</em>, never inlined in the
+README itself. None of the three examples had anything resembling a repository directory tree in
+their README.</p>
+<p><strong>What moved where</strong> (nothing deleted, only relocated - this project’s docs are meant to be the
+source of truth, not the README):</p>
+<ul>
+<li>The 47-line “Repository structure” ASCII tree → <code>docs/CONTRIBUTING.md</code> (a new-contributor
+orientation aid, not something an end user installing the library needs to see first).</li>
+<li>The “Requirements” tool table, “Building from source”, the full <code>cargo xtask</code> command list, and
+both Windows-specific troubleshooting subsections (<code>cargo fuzz</code> needing MSVC, <code>kani</code> not running
+on Windows at all) → <code>docs/CONTRIBUTING.md</code>’s new “Repository structure” / “Setting up a dev
+environment” sections, consolidated with (not duplicated alongside) the dev-command list
+“Making a change” step 4 already had.</li>
+<li>The full <code>uacrypt</code> CLI walkthrough (<code>encrypt</code>/<code>decrypt</code>/<code>hash</code>, <code>sign</code>/<code>verify</code>, <code>box-seal</code>/
+<code>box-open</code>, <code>kalyna-block</code>/<code>kalyna-ccm</code>, ~110 lines with real command output) → a new
+<code>docs/CLI.md</code>, added to <code>docs/SUMMARY.md</code> so it publishes as part of the existing mdBook
+knowledge base (<code>cargo xtask book</code>, T-186) rather than living nowhere once out of the README.</li>
+<li><code>docs/CONTRIBUTING.md</code>’s own opening line separately still said “v0.1.0 pre-release” - stale by
+several minor versions (same class of bug as D-191, found while already touching this file) -
+fixed to a version-number-free “pre-1.0” phrasing so it can’t go stale the same way again.</li>
+</ul>
+<p><strong>What the new README keeps</strong>: title + a real badges row (crates.io, docs.rs, PyPI, npm, CI,
+license - all now truthful since Python/npm/crates.io are genuinely live), a 4-sentence pitch with
+no citations, the short version banner, the “Algorithms in scope” table (matches the AEADs
+per-crate-table pattern), a Quick start with one <em>verified</em> code example (copied verbatim from
+<code>crypto_secretbox</code>’s own module doc, not invented - <code>cargo test --doc</code> already exercises it) plus
+the CLI’s <code>keygen</code>/<code>encrypt</code>/<code>decrypt</code>, the Language bindings table (already well-structured, kept
+as-is), a short <code>no_std</code>/embedded paragraph, a links-only “Status and further reading” section, and
+Contributing/License.</p>
+<p><strong>Link-format gotcha re-applied</strong>: every relative <code>docs/*.md</code> link the new README needed was written
+as an absolute <code>github.com/.../blob/master/...</code> URL, not a relative path - <code>docs/introduction.md</code>
+transcludes the whole README via `# uacrypt</p>
+<p><a href="https://crates.io/crates/dstu-core"><img src="https://img.shields.io/crates/v/dstu-core.svg" alt="crates.io"></a>
+<a href="https://docs.rs/dstu-core"><img src="https://docs.rs/dstu-core/badge.svg" alt="docs.rs"></a>
+<a href="https://pypi.org/project/dstu-core/"><img src="https://img.shields.io/pypi/v/dstu-core.svg" alt="PyPI"></a>
+<a href="https://www.npmjs.com/package/dstu-core"><img src="https://img.shields.io/npm/v/dstu-core.svg" alt="npm"></a>
+<a href="https://github.com/user137/uacrypt/actions/workflows/rust.yml"><img src="https://github.com/user137/uacrypt/actions/workflows/rust.yml/badge.svg" alt="CI"></a>
+<a href="#license-2"><img src="https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg" alt="License: MIT/Apache-2.0"></a></p>
+<p>A Rust implementation of Ukrainian DSTU cryptographic standards — Kalyna (block cipher), Kupyna
+(hash), Strumok (stream cipher), DSTU 4145 (digital signatures), and DSTU 9041 (asymmetric
+encryption) — in the spirit of <strong>libsodium</strong>: hard, safe defaults, hard to misuse, rather than
+OpenSSL’s flexible-but-easy-to-misconfigure API. Ships as a Rust crate (<code>dstu-core</code>), a CLI
+(<code>uacrypt</code>), and bindings for eight languages.</p>
+<!-- uacrypt-version: 0.3.8 -->
+<p><strong>Pre-1.0. Not audited. Not a claim of side-channel resistance.</strong> <code>dstu-core</code>/<code>uacrypt</code> are on
+<a href="https://crates.io/crates/dstu-core">crates.io</a>; the Python and Node.js bindings are on
+<a href="https://pypi.org/project/dstu-core/">PyPI</a>/<a href="https://www.npmjs.com/package/dstu-core">npm</a> too. See
+<code>docs/CHANGELOG.md</code> for what changed each release and <code>docs/release-readiness.md</code> for the gap
+analysis against a complete 1.0.</p>
+<h2 id="algorithms-in-scope-3"><a class="header" href="#algorithms-in-scope-3">Algorithms in scope</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Algorithm</th><th>Standard</th><th>Type</th></tr>
+</thead>
+<tbody>
+<tr><td>Kalyna</td><td>DSTU 7624:2014</td><td>symmetric block cipher</td></tr>
+<tr><td>Kupyna</td><td>DSTU 7564:2014</td><td>hash function</td></tr>
+<tr><td>Strumok</td><td>DSTU 8845:2019</td><td>stream cipher</td></tr>
+<tr><td>—</td><td>DSTU 4145-2002</td><td>digital signature on elliptic curves</td></tr>
+<tr><td>—</td><td>DSTU 9041:2020</td><td>asymmetric encryption (twisted Edwards curves)</td></tr>
+</tbody>
+</table>
+</div>
+<p>Full scope, architectural decisions, and the libsodium API mapping are in
+<code>docs/dstu-crypto-project.md</code>. <code>dstu-core</code> also builds in a small/flash-friendly resource profile
+for constrained MCUs (<code>--features small-tables</code>) — see <code>docs/resource-profiles.md</code> for the trade-off.</p>
+<h2 id="quick-start-2"><a class="header" href="#quick-start-2">Quick start</a></h2>
+<pre><code class="language-sh">cargo add dstu-core
+</code></pre>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use dstu_core::crypto_secretbox::{seal, open, SecretKey};
+
+let key = SecretKey::generate().expect("OS CSPRNG should not fail");
+let sealed = seal(&amp;key, b"message").expect("OS CSPRNG should not fail");
+let opened = open(&amp;key, &amp;sealed).expect("authentic ciphertext");
+assert_eq!(opened, b"message");
+<span class="boring">}</span></code></pre>
+<p>Or the CLI, which streams arbitrarily large files with no in-memory cap:</p>
+<pre><code class="language-sh">cargo install uacrypt   # or download a prebuilt binary from GitHub Releases
+uacrypt keygen --out key.bin
+uacrypt encrypt --key key.bin --in message.bin --out sealed.bin
+uacrypt decrypt --key key.bin --in sealed.bin --out message.bin
+</code></pre>
+<p>See <a href="https://github.com/user137/uacrypt/blob/master/docs/CLI.md"><code>docs/CLI.md</code></a> for the full
+command reference (<code>sign</code>/<code>verify</code>, <code>box-seal</code>/<code>box-open</code>, and the lower-level <code>kalyna-block</code>/
+<code>kalyna-ccm</code> tools), and <a href="https://docs.rs/dstu-core">docs.rs</a> for the full library API.</p>
+<h2 id="language-bindings-2"><a class="header" href="#language-bindings-2">Language bindings</a></h2>
+<p>The full <code>crypto_*</code> surface (<code>secretbox</code>/<code>secretstream</code>/<code>sign</code>/<code>auth</code>/<code>kdf</code>/<code>generichash</code>/<code>stream</code>/
+<code>pwhash</code>, <code>randombytes</code>, <code>selftest</code>), idiomatic errors, and the same correctness/rejection/misuse
+test suite, in every language below — not a thin, partial wrapper. The <strong>README column</strong> is the
+full per-language docs; the <strong>Package column</strong> is where you’d actually run an install command.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Language</th><th>Approach</th><th>README</th><th>Package</th></tr>
+</thead>
+<tbody>
+<tr><td>Python</td><td>PyO3, direct Rust binding</td><td><a href="https://github.com/user137/uacrypt/blob/master/bindings/python/README.md"><code>bindings/python</code></a></td><td><a href="https://pypi.org/project/dstu-core/">PyPI</a></td></tr>
+<tr><td>Node.js</td><td>napi-rs, direct Rust binding</td><td><a href="https://github.com/user137/uacrypt/blob/master/bindings/nodejs/README.md"><code>bindings/nodejs</code></a></td><td><a href="https://www.npmjs.com/package/dstu-core">npm</a></td></tr>
+<tr><td>Ruby</td><td>magnus/rb-sys, direct Rust binding</td><td><a href="https://github.com/user137/uacrypt/blob/master/bindings/ruby/README.md"><code>bindings/ruby</code></a></td><td>not yet published</td></tr>
+<tr><td>PHP</td><td>ext-php-rs, direct Rust binding</td><td><a href="https://github.com/user137/uacrypt/blob/master/bindings/php/README.md"><code>bindings/php</code></a></td><td>not yet published</td></tr>
+<tr><td>.NET (C#)</td><td>P/Invoke over the C ABI</td><td><a href="https://github.com/user137/uacrypt/blob/master/bindings/dotnet/README.md"><code>bindings/dotnet</code></a></td><td>not yet published</td></tr>
+<tr><td>Java</td><td><code>jni</code> crate, direct Rust binding</td><td><a href="https://github.com/user137/uacrypt/blob/master/bindings/java/README.md"><code>bindings/java</code></a></td><td>not yet published</td></tr>
+<tr><td>Go</td><td><code>cgo</code> over the C ABI</td><td><a href="https://github.com/user137/uacrypt/blob/master/bindings/go/README.md"><code>bindings/go</code></a></td><td>not yet published</td></tr>
+<tr><td>C++</td><td>header-only RAII wrapper over the C ABI</td><td><a href="https://github.com/user137/uacrypt/blob/master/bindings/cpp/README.md"><code>bindings/cpp</code></a></td><td>not yet published</td></tr>
+</tbody>
+</table>
+</div>
+<p>The C ABI itself (<code>crates/dstu-core-capi</code>, opaque handles, <code>cbindgen</code>-generated header) is what the
+.NET, Go, and C++ bindings link against directly — usable from any language with a C FFI, not just
+those three. See <code>docs/bindings-strategy.md</code> for the per-binding design rationale.</p>
+<h2 id="embedded--no_std-targets-2"><a class="header" href="#embedded--no_std-targets-2">Embedded / <code>no_std</code> targets</a></h2>
+<p><code>dstu-core</code> is <code>no_std</code>-compatible from day one (<code>std</code>/<code>alloc</code>/<code>no_std</code> feature flags), and
+cross-compiles clean for real microcontroller targets (STM32 Cortex-M, ESP32-class RISC-V) with no
+custom toolchain. That’s a compilation claim, not a real-hardware validation or a side-channel
+resistance claim — see <code>docs/SECURITY.md</code> for the full threat model.</p>
+<h2 id="status-and-further-reading-2"><a class="header" href="#status-and-further-reading-2">Status and further reading</a></h2>
+<ul>
+<li><a href="https://github.com/user137/uacrypt/blob/master/docs/SECURITY.md"><code>docs/SECURITY.md</code></a> — threat model and hard constraints</li>
+<li><a href="https://github.com/user137/uacrypt/blob/master/docs/DECISIONS.md"><code>docs/DECISIONS.md</code></a> — architectural decisions, with rejected alternatives</li>
+<li><a href="https://github.com/user137/uacrypt/blob/master/docs/TASKS.md"><code>docs/TASKS.md</code></a> — phase-by-phase task backlog</li>
+<li><a href="https://github.com/user137/uacrypt/blob/master/docs/release-readiness.md"><code>docs/release-readiness.md</code></a> — gap analysis against a libsodium-equivalent 1.0</li>
+<li>Full knowledge base: <a href="https://user137.github.io/uacrypt/">user137.github.io/uacrypt</a></li>
+</ul>
+<h2 id="contributing-2"><a class="header" href="#contributing-2">Contributing</a></h2>
+<p>Pull requests are welcome. See <a href="https://github.com/user137/uacrypt/blob/master/docs/CONTRIBUTING.md"><code>docs/CONTRIBUTING.md</code></a>
+for dev environment setup, the test/verification bar (dual-oracle verification, three test
+categories per primitive), and commit style, and
+<a href="https://github.com/user137/uacrypt/blob/master/docs/CODE_OF_CONDUCT.md"><code>docs/CODE_OF_CONDUCT.md</code></a>
+for community standards. Security vulnerabilities go through GitHub Security Advisories, not a
+public issue — see <code>docs/SECURITY.md</code> “Reporting vulnerabilities”.</p>
+<h2 id="license-2"><a class="header" href="#license-2">License</a></h2>
+<p>Dual-licensed under MIT / Apache-2.0, at the user’s choice — the standard for the
+Rust ecosystem. See <code>LICENSE-MIT</code> and <code>LICENSE-APACHE</code>.<code>(already documented, CLAUDE.md's own mdBook gotcha, T-186), so a relative link would resolve against</code>docs/<code> inside the book instead of the repo root and silently 404. Verified by actually building the book (</code>cargo xtask book<code>) and grepping the rendered HTML's </code>href`s, not assumed correct from the source alone.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="changelog"><a class="header" href="#changelog">Changelog</a></h1>
 <p>All notable changes to this project are documented in this file. Format follows
 <a href="https://keepachangelog.com/en/1.1.0/">Keep a Changelog</a>.</p>
 <h2 id="unreleased"><a class="header" href="#unreleased">[Unreleased]</a></h2>
+<h3 id="changed"><a class="header" href="#changed">Changed</a></h3>
+<ul>
+<li>Root <code>README.md</code> restructured following real-world convention from libsodium/age/RustCrypto:
+badges row, a short plain-language pitch, one verified code example, everything else linked to
+dedicated docs instead of inlined. The full CLI walkthrough moved to a new <code>docs/CLI.md</code>
+(published in the mdBook knowledge base); the repository-structure tree, dev-environment setup,
+and Windows-specific troubleshooting moved to <code>docs/CONTRIBUTING.md</code>. See <code>docs/DECISIONS.md</code>
+D-192.</li>
+</ul>
 <h2 id="038---2026-08-13"><a class="header" href="#038---2026-08-13">[0.3.8] - 2026-08-13</a></h2>
 <h3 id="fixed"><a class="header" href="#fixed">Fixed</a></h3>
 <ul>
@@ -27668,7 +27468,7 @@ streaming path opened <code>--out</code> via <code>File::create</code> (truncati
 Found by T-200’s own <code>--in</code>==<code>--out</code> smoke-test probe of the real binary, fixed with the same
 temp-file-then-rename discipline <code>encrypt</code>/<code>decrypt</code> already use (<code>docs/DECISIONS.md</code> D-187).</li>
 </ul>
-<h3 id="changed"><a class="header" href="#changed">Changed</a></h3>
+<h3 id="changed-1"><a class="header" href="#changed-1">Changed</a></h3>
 <ul>
 <li><code>hazmat::gf2m_wide</code>/<code>hazmat::dstu4145::gf2m163</code>: <code>multiply()</code> now dispatches to a hardware
 carry-less-multiply implementation (<code>PCLMULQDQ</code>/<code>PMULL</code>) at runtime when the CPU supports it and
@@ -27701,7 +27501,7 @@ order - reachable in-contract at exactly one boundary value (<code>k == n-1</cod
 (confirmed via an independent Bouncy Castle cross-check), but a genuine correctness bug every
 <code>sign</code>/<code>verify</code> call went through. See <code>docs/DECISIONS.md</code> D-110.</li>
 </ul>
-<h3 id="changed-1"><a class="header" href="#changed-1">Changed</a></h3>
+<h3 id="changed-2"><a class="header" href="#changed-2">Changed</a></h3>
 <ul>
 <li>Performance: DSTU 4145 <code>sign</code> ~2.6x faster, <code>verify</code> ~4.4x faster (cumulative) - bit-interleave
 GF(2^163) squaring and an Itoh-Tsujii addition-chain field inversion, plus a projective/Shamir’s-
@@ -27755,7 +27555,7 @@ profile for constrained targets. Cross-compilation confirmed for <code>thumbv7em
 <li>Official DSTU test vectors for Kalyna, Kupyna, and DSTU 4145; dual-oracle verification
 (Bouncy Castle Java/.NET harnesses) for Kalyna and Kupyna.</li>
 </ul>
-<h3 id="changed-2"><a class="header" href="#changed-2">Changed</a></h3>
+<h3 id="changed-3"><a class="header" href="#changed-3">Changed</a></h3>
 <ul>
 <li><code>uacrypt encrypt</code>/<code>decrypt</code>’s on-disk wire format changed twice pre-release: originally a
 single-shot <code>crypto_secretbox</code> blob (255-byte cap), then migrated to uncapped <code>crypto_secretbox</code>
@@ -27965,11 +27765,121 @@ narrower path around it, not to guarantee one exists.</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="contributing-to-uacrypt"><a class="header" href="#contributing-to-uacrypt">Contributing to uacrypt</a></h1>
-<p>Thanks for your interest — this is an open project and pull requests are welcome. It’s a <strong>v0.1.0
-pre-release, not yet audited, not production-ready</strong> (see the README’s Status paragraph), so expect
-some rough edges and a fair number of “why does this exist” citations in the code — this project
-cites its own reasoning heavily (<code>docs/DECISIONS.md</code>) rather than assuming it’s obvious.</p>
+<p>Thanks for your interest — this is an open project and pull requests are welcome. It’s <strong>pre-1.0,
+not yet audited, not production-ready</strong> (see the README’s status line and <code>docs/release-readiness.md</code>
+for the gap analysis), so expect some rough edges and a fair number of “why does this exist”
+citations in the code — this project cites its own reasoning heavily (<code>docs/DECISIONS.md</code>) rather
+than assuming it’s obvious.</p>
 <p>By participating, you’re expected to follow this project’s <a href="#contributor-covenant-code-of-conduct">Code of Conduct</a>.</p>
+<h2 id="repository-structure"><a class="header" href="#repository-structure">Repository structure</a></h2>
+<pre><code>.
+├── CLAUDE.md              # operating guide for AI agents in this repo
+├── AGENTS.md              # thin pointer to CLAUDE.md's own reading order, for non-Claude-Code AI agents
+├── docs/SECURITY.md            # threat model, hard constraints, supply-chain vetting
+├── docs/DECISIONS.md           # architectural decisions with rejected alternatives
+├── docs/TASKS.md               # phase-by-phase task backlog and progress state
+├── docs/CHANGELOG.md           # Keep a Changelog-format release history
+├── docs/ORACLES.md             # oracle trust ranking, per-algorithm oracle map, test-vector provenance
+├── docs/PERFORMANCE.md         # benchmark methodology and recorded numbers
+├── docs/CONTRIBUTING.md        # this file
+├── docs/CODE_OF_CONDUCT.md     # community standards (Contributor Covenant)
+├── LICENSE-MIT
+├── LICENSE-APACHE
+├── .github/workflows/     # CI (rust.yml, oracle-harness.yml) and the release workflow (release.yml)
+├── .github/ISSUE_TEMPLATE/, PULL_REQUEST_TEMPLATE.md  # issue/PR templates
+├── .cargo/config.toml     # `cargo xtask` alias
+├── xtask/                 # cross-platform build/QA runner, see "Development commands" below
+├── docs/
+│   ├── dstu-crypto-project.md        # main project spec (scope, API mapping)
+│   ├── release-readiness.md          # gap analysis: current state vs. a libsodium-equivalent 1.0
+│   ├── user-journey-gaps.md          # persona/journey-organized companion gap analysis
+│   ├── resource-profiles.md          # fused vs small-tables: memory/speed numbers, which to pick
+│   ├── CLI.md                        # full `uacrypt` CLI walkthrough (every subcommand)
+│   ├── pseudocode/                   # per-algorithm pseudocode, cross-checked against oracles
+│   ├── rust_ai_ruleset.md            # generic Rust ruleset for AI assistants
+│   ├── cross-language-style-guide.md # naming/style conventions for non-Rust code
+│   ├── bindings-strategy.md          # Phase 3 language-binding plan: order, C-ABI split, per-binding checklist
+│   └── papers/                       # reference PDFs (specs, cryptanalysis, hardware papers)
+├── crates/                # Cargo workspace
+│   ├── dstu-core/          # core: Kalyna + Kupyna + Strumok
+│   ├── uacrypt/            # CLI binary on top of the core
+│   └── dstu-core-capi/     # C ABI - foundation for C++/.NET/Java/Go bindings (T-158)
+├── bindings/               # Phase 3 language bindings, see docs/bindings-strategy.md
+│   ├── python/             # PyO3, full crypto_* surface - on PyPI (T-49)
+│   ├── nodejs/             # napi-rs, full crypto_* surface - on npm (T-50)
+│   ├── ruby/               # magnus/rb-sys, full crypto_* surface - RubyGems in progress (T-160)
+│   ├── php/                # ext-php-rs, full crypto_* surface - not on Packagist yet (T-159)
+│   ├── dotnet/             # C# P/Invoke over dstu-core-capi - not on NuGet yet (T-52)
+│   ├── java/               # jni crate, full crypto_* surface - not on Maven Central yet (T-51)
+│   ├── go/                 # cgo over dstu-core-capi, full crypto_* surface - repo-relative only (T-163)
+│   └── cpp/                # header-only RAII wrapper over dstu-core-capi, full crypto_* surface (T-53)
+├── firmware/               # Phase 4 hardware/emulation checks, own Cargo workspace(s) - see docs/DECISIONS.md D-156
+│   └── qemu-stm32-smoketest/  # runs official Kalyna/Kupyna vectors under QEMU's netduinoplus2 (Cortex-M4F), no real board needed (T-170)
+├── tests/oracle-harness/   # Java/.NET/C harnesses that verify test vectors against real Bouncy Castle
+└── oracles/                # reference implementations used as oracles - not vendored, see oracles/README.md
+</code></pre>
+<h2 id="setting-up-a-dev-environment"><a class="header" href="#setting-up-a-dev-environment">Setting up a dev environment</a></h2>
+<p>Rust is the only hard requirement — everything else in this table is optional and only needed for
+the specific <code>cargo xtask</code> command listed. No admin rights required on any platform for any of it.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Tool</th><th>Needed for</th><th>Linux / macOS</th><th>Windows</th></tr>
+</thead>
+<tbody>
+<tr><td>Rust (stable, via <code>rustup</code>)</td><td>everything</td><td><code>curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh</code></td><td><code>winget install Rustlang.Rustup</code> (or <code>rustup-init.exe</code> from <a href="https://rustup.rs">rustup.rs</a>)</td></tr>
+<tr><td>C/C++ compiler</td><td><code>cargo xtask fuzz</code> (<code>libfuzzer-sys</code> builds C++); building the manual C oracle-differential harnesses under <code>tests/oracle-harness/*-differential/</code></td><td>usually preinstalled; else your distro’s <code>gcc</code>/<code>build-essential</code> package</td><td>MinGW-w64 GCC (e.g. <code>winget install BrechtSanders.WinLibs.POSIX.UCRT</code>) builds the crate and those harnesses; <strong><code>cargo xtask fuzz</code> additionally needs real MSVC</strong>, see below</td></tr>
+<tr><td><code>cargo-fuzz</code></td><td><code>cargo xtask fuzz</code></td><td><code>cargo install cargo-fuzz --locked</code> — runs directly against the native nightly toolchain</td><td>see “<code>cargo fuzz</code> on Windows” below</td></tr>
+<tr><td><code>miri</code> (nightly component)</td><td><code>cargo xtask miri</code></td><td><code>rustup component add miri --toolchain nightly</code></td><td>same</td></tr>
+<tr><td><code>kani-verifier</code></td><td><code>cargo xtask kani</code> (bounded model checking, <code>gf2m163::reduce</code> proofs)</td><td><code>cargo install kani-verifier &amp;&amp; cargo kani setup</code></td><td><strong>not supported</strong> — see below</td></tr>
+<tr><td><code>cargo-audit</code> / <code>cargo-deny</code></td><td><code>cargo xtask audit</code> / <code>cargo xtask deny</code></td><td><code>cargo install cargo-audit --locked</code> / <code>cargo install cargo-deny --locked</code></td><td>same install commands, but each needs <code>dlltool.exe</code> on <code>PATH</code> first — comes with a MinGW-w64 install (e.g. the WinLibs package above), not with <code>rustup</code> alone</td></tr>
+<tr><td>JDK 8+ and Maven 3.6+</td><td><code>cargo xtask oracle-java</code> (cross-check against real Bouncy Castle)</td><td>your distro’s packages, or Maven’s binary zip if unpackaged</td><td>same</td></tr>
+<tr><td>.NET SDK 8 or 9</td><td><code>cargo xtask oracle-dotnet</code> (cross-check against real Bouncy Castle)</td><td><a href="https://dotnet.microsoft.com/download">dotnet.microsoft.com</a></td><td>same</td></tr>
+</tbody>
+</table>
+</div>
+<p>This project builds against the GNU host toolchain on Windows (<code>x86_64-pc-windows-gnu</code>) by default,
+specifically to avoid a Visual Studio dependency for ordinary building/testing — run <code>rustup default stable-x86_64-pc-windows-gnu</code> if <code>rustup-init</code> didn’t already pick it. <code>rustup</code> reads
+<code>rust-toolchain.toml</code> and installs the pinned <code>stable</code> channel plus <code>clippy</code>/<code>rustfmt</code> automatically
+the first time you run any <code>cargo</code> command in this repo.</p>
+<p>The reference implementations used as correctness oracles (<code>oracles/kalyna-reference</code>, UAPKI,
+etc.) are <strong>not</strong> vendored in this repo — see <code>oracles/README.md</code> for what each one is and where to
+get it. You only need them for the manual differential harnesses; ordinary <code>cargo build</code>/<code>cargo test</code>/<code>cargo xtask ci</code> need none of it.</p>
+<pre><code>git clone &lt;this repo&gt;
+cd cipher_ua
+cargo build --workspace
+cargo test --workspace
+</code></pre>
+<h3 id="cargo-fuzz-on-windows-needs-msvc-not-this-projects-default-gnu-toolchain"><a class="header" href="#cargo-fuzz-on-windows-needs-msvc-not-this-projects-default-gnu-toolchain"><code>cargo fuzz</code> on Windows needs MSVC, not this project’s default GNU toolchain</a></h3>
+<p>libFuzzer’s Address Sanitizer only supports the MSVC target on Windows — the default
+<code>x86_64-pc-windows-gnu</code> toolchain above cannot build or run fuzz targets at all, no matter which
+flags are passed (<code>docs/DECISIONS.md</code> D-32 has the full diagnosis). To run <code>cargo xtask fuzz</code> locally on
+Windows:</p>
+<ol>
+<li>Install Visual Studio (or just the Build Tools) with the “Desktop development with C++”
+workload.</li>
+<li><code>rustup toolchain install nightly-x86_64-pc-windows-msvc</code> — an <em>additional</em> toolchain; this does
+not change the project’s default GNU host toolchain used for everything else.</li>
+<li>Run <code>cargo xtask fuzz</code>. It finds the Visual Studio install itself (via <code>vswhere.exe</code>’s fixed
+path) and the toolchain above, then runs each target through a <code>vcvars64.bat</code>-sourced shell with
+<code>--target x86_64-pc-windows-msvc</code> — both the environment and the explicit target flag are
+required, not just the extra toolchain (<code>docs/DECISIONS.md</code> D-32 explains why: without <code>vcvars64.bat</code>
+the ASan runtime DLL isn’t found at run time, even though the build itself succeeds; without the
+explicit <code>--target</code>, <code>cargo-fuzz</code> defaults back to the GNU target regardless of which toolchain
+invoked it).</li>
+</ol>
+<p>Without a Visual Studio C++ toolset installed, <code>cargo xtask fuzz</code> prints an install hint and skips
+cleanly on Windows, same as any other missing optional tool — CI (Linux) remains the actual,
+unconditional venue where fuzz targets run on every push.</p>
+<h3 id="cargo-xtask-kani-does-not-run-on-windows-at-all"><a class="header" href="#cargo-xtask-kani-does-not-run-on-windows-at-all"><code>cargo xtask kani</code> does not run on Windows at all</a></h3>
+<p>Unlike every other optional tool above, this isn’t a missing-install-step case: <code>kani-verifier</code>’s
+own source calls Unix-only std APIs (<code>std::os::unix::fs::symlink</code>, <code>Command::arg0</code>) that don’t
+exist on Windows, confirmed by trying <code>cargo install kani-verifier</code> directly (<code>docs/DECISIONS.md</code>
+D-102). It was also tried on this project’s aarch64 Raspberry Pi (Debian 12) — <code>cargo kani setup</code>
+completed, but the prebuilt bundle’s <code>cargo-kani</code> binary requires <code>GLIBC_2.39</code>, newer than bookworm’s
+<code>2.36</code>. <code>cargo xtask kani</code> prints this explanation and skips cleanly rather than a raw error — CI
+(<code>ubuntu-latest</code>, D-102’s <code>kani</code> job) is the actual, unconditional venue where these proofs run on
+every push.</p>
 <h2 id="before-you-start"><a class="header" href="#before-you-start">Before you start</a></h2>
 <p>Read these first — they’re short, and they explain <em>why</em> the code looks the way it does, not just
 what it does:</p>
@@ -28019,14 +27929,21 @@ source in <code>docs/DECISIONS.md</code> before merging. If only a reference imp
 (no primary spec text), say so explicitly and mark the citation provisional.</p>
 </li>
 <li>
-<p>Run the checks locally before opening a PR:</p>
-<pre><code>cargo xtask fmt      # cargo fmt --all
-cargo xtask clippy   # cargo clippy --workspace --all-features -- -D warnings
-cargo xtask test     # cargo test --workspace --all-features
-cargo xtask build    # both --all-features and no_std (--no-default-features)
+<p>Run the checks locally before opening a PR. <code>cargo xtask &lt;command&gt;</code> is the one cross-platform
+entry point for build/test/QA — the same command on Linux, Windows, and macOS (<code>docs/DECISIONS.md</code>
+D-12). Run <code>cargo xtask help</code> for the full list; the essentials:</p>
+<pre><code>cargo xtask build      # cargo build --workspace, both --all-features and no_std (--no-default-features)
+cargo xtask test       # cargo test --workspace --all-features
+cargo xtask fmt        # cargo fmt --all (add --check to verify without writing)
+cargo xtask clippy     # cargo clippy --workspace --all-features -- -D warnings
+cargo xtask docs-check # README/gh-pages version-marker freshness lint vs crates/dstu-core's Cargo.toml (T-186)
 </code></pre>
-<p><code>cargo xtask ci</code> runs all of the above plus best-effort miri/fuzz/audit/deny/oracle-harness
-layers (installs what it can, prints an install hint for anything missing rather than failing).</p>
+<p><code>cargo xtask ci</code> runs the five above, then best-effort miri/kani/book/fuzz/audit/deny/oracle-harness
+layers — each checks its own tool is installed first and prints an install hint instead of a raw
+error if it’s missing. <code>docs-check</code> needs no external tool, so it’s mandatory rather than
+best-effort — same standing as <code>fmt</code>/<code>build</code>/<code>test</code>/<code>clippy</code>. <code>cargo xtask book</code> builds the
+mdBook knowledge base this file is part of; <code>cargo xtask bench-compare</code> runs the uacrypt-vs-OpenSSL
+benchmark table (<code>docs/PERFORMANCE.md</code>).</p>
 </li>
 <li>
 <p>If you touched anything <code>no_std</code>-relevant (most of <code>dstu-core</code>), check the feature matrix

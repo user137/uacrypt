@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-35daaf74.js";
+            window.path_to_searchindex_js = "searchindex-aebb0e9e.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-ce7e91c5.js"></script>
+        <script src="toc-6b977b4b.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -11818,6 +11818,161 @@ missed <code>uacrypt</code>’s crates.io-only “CLI over dstu-core” (no loca
 isolation - it only reads badly in the context of what actually renders on the crates.io page next
 to <code>dstu-core</code>’s own, better one). See the memory saved this session for the standing instruction
 this establishes for every future publish-verification task.</p>
+<h2 id="d-192-root-readmemd-restructured-to-a-short-pitch--links-following-real-world-conventions-from-libsodiumagerustcrypto---full-cli-walkthrough-and-contributor-setup-moved-to-dedicated-docs"><a class="header" href="#d-192-root-readmemd-restructured-to-a-short-pitch--links-following-real-world-conventions-from-libsodiumagerustcrypto---full-cli-walkthrough-and-contributor-setup-moved-to-dedicated-docs">D-192: Root README.md restructured to a short pitch + links, following real-world conventions from libsodium/age/RustCrypto - full CLI walkthrough and contributor setup moved to dedicated docs</a></h2>
+<p><strong>What happened</strong>: the README had grown to 374 lines/~3300 words with no badges, opening directly
+into dense, citation-heavy prose (<code>T-XX</code>/<code>D-XX</code> references in the very first paragraphs) rather
+than a plain-language pitch - flagged directly by the project owner after looking at the live
+GitHub repo page. Researched three real, comparable-niche projects for structural convention before
+redesigning, rather than guessing:</p>
+<ul>
+<li><strong>libsodium</strong> (this project’s own stated inspiration): badges → logo → 2-3 short plain-language
+sentences → feature bullets → a <strong>Documentation</strong> section that <em>links out</em> to separate docs
+rather than inlining detail → versioning → contributors → license. No directory tree, no internal
+decision-ID citations anywhere in it.</li>
+<li><strong>age</strong> (<code>FiloSottile/age</code>): badges → short pitch → a working usage example <em>before</em> install
+instructions → install table → deeper usage docs, still concise.</li>
+<li><strong>RustCrypto/AEADs</strong> (same “workspace of multiple crates” shape as this repo): ~80-90 lines total,
+crates.io/docs.rs/MSRV badges in a per-crate table, two-sentence pitch, everything else linked out.</li>
+</ul>
+<p><strong>Common pattern across all three, absent from this project’s README before this</strong>: a badges row
+immediately under the title; a short (2-4 sentence) plain-language pitch with no internal jargon or
+citation IDs; a working code example within the first screen; deep material (architecture, full API
+reference, contributor setup, troubleshooting) <em>linked to dedicated docs</em>, never inlined in the
+README itself. None of the three examples had anything resembling a repository directory tree in
+their README.</p>
+<p><strong>What moved where</strong> (nothing deleted, only relocated - this project’s docs are meant to be the
+source of truth, not the README):</p>
+<ul>
+<li>The 47-line “Repository structure” ASCII tree → <code>docs/CONTRIBUTING.md</code> (a new-contributor
+orientation aid, not something an end user installing the library needs to see first).</li>
+<li>The “Requirements” tool table, “Building from source”, the full <code>cargo xtask</code> command list, and
+both Windows-specific troubleshooting subsections (<code>cargo fuzz</code> needing MSVC, <code>kani</code> not running
+on Windows at all) → <code>docs/CONTRIBUTING.md</code>’s new “Repository structure” / “Setting up a dev
+environment” sections, consolidated with (not duplicated alongside) the dev-command list
+“Making a change” step 4 already had.</li>
+<li>The full <code>uacrypt</code> CLI walkthrough (<code>encrypt</code>/<code>decrypt</code>/<code>hash</code>, <code>sign</code>/<code>verify</code>, <code>box-seal</code>/
+<code>box-open</code>, <code>kalyna-block</code>/<code>kalyna-ccm</code>, ~110 lines with real command output) → a new
+<code>docs/CLI.md</code>, added to <code>docs/SUMMARY.md</code> so it publishes as part of the existing mdBook
+knowledge base (<code>cargo xtask book</code>, T-186) rather than living nowhere once out of the README.</li>
+<li><code>docs/CONTRIBUTING.md</code>’s own opening line separately still said “v0.1.0 pre-release” - stale by
+several minor versions (same class of bug as D-191, found while already touching this file) -
+fixed to a version-number-free “pre-1.0” phrasing so it can’t go stale the same way again.</li>
+</ul>
+<p><strong>What the new README keeps</strong>: title + a real badges row (crates.io, docs.rs, PyPI, npm, CI,
+license - all now truthful since Python/npm/crates.io are genuinely live), a 4-sentence pitch with
+no citations, the short version banner, the “Algorithms in scope” table (matches the AEADs
+per-crate-table pattern), a Quick start with one <em>verified</em> code example (copied verbatim from
+<code>crypto_secretbox</code>’s own module doc, not invented - <code>cargo test --doc</code> already exercises it) plus
+the CLI’s <code>keygen</code>/<code>encrypt</code>/<code>decrypt</code>, the Language bindings table (already well-structured, kept
+as-is), a short <code>no_std</code>/embedded paragraph, a links-only “Status and further reading” section, and
+Contributing/License.</p>
+<p><strong>Link-format gotcha re-applied</strong>: every relative <code>docs/*.md</code> link the new README needed was written
+as an absolute <code>github.com/.../blob/master/...</code> URL, not a relative path - <code>docs/introduction.md</code>
+transcludes the whole README via `# uacrypt</p>
+<p><a href="https://crates.io/crates/dstu-core"><img src="https://img.shields.io/crates/v/dstu-core.svg" alt="crates.io"></a>
+<a href="https://docs.rs/dstu-core"><img src="https://docs.rs/dstu-core/badge.svg" alt="docs.rs"></a>
+<a href="https://pypi.org/project/dstu-core/"><img src="https://img.shields.io/pypi/v/dstu-core.svg" alt="PyPI"></a>
+<a href="https://www.npmjs.com/package/dstu-core"><img src="https://img.shields.io/npm/v/dstu-core.svg" alt="npm"></a>
+<a href="https://github.com/user137/uacrypt/actions/workflows/rust.yml"><img src="https://github.com/user137/uacrypt/actions/workflows/rust.yml/badge.svg" alt="CI"></a>
+<a href="#license"><img src="https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg" alt="License: MIT/Apache-2.0"></a></p>
+<p>A Rust implementation of Ukrainian DSTU cryptographic standards — Kalyna (block cipher), Kupyna
+(hash), Strumok (stream cipher), DSTU 4145 (digital signatures), and DSTU 9041 (asymmetric
+encryption) — in the spirit of <strong>libsodium</strong>: hard, safe defaults, hard to misuse, rather than
+OpenSSL’s flexible-but-easy-to-misconfigure API. Ships as a Rust crate (<code>dstu-core</code>), a CLI
+(<code>uacrypt</code>), and bindings for eight languages.</p>
+<!-- uacrypt-version: 0.3.8 -->
+<p><strong>Pre-1.0. Not audited. Not a claim of side-channel resistance.</strong> <code>dstu-core</code>/<code>uacrypt</code> are on
+<a href="https://crates.io/crates/dstu-core">crates.io</a>; the Python and Node.js bindings are on
+<a href="https://pypi.org/project/dstu-core/">PyPI</a>/<a href="https://www.npmjs.com/package/dstu-core">npm</a> too. See
+<code>docs/CHANGELOG.md</code> for what changed each release and <code>docs/release-readiness.md</code> for the gap
+analysis against a complete 1.0.</p>
+<h2 id="algorithms-in-scope"><a class="header" href="#algorithms-in-scope">Algorithms in scope</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Algorithm</th><th>Standard</th><th>Type</th></tr>
+</thead>
+<tbody>
+<tr><td>Kalyna</td><td>DSTU 7624:2014</td><td>symmetric block cipher</td></tr>
+<tr><td>Kupyna</td><td>DSTU 7564:2014</td><td>hash function</td></tr>
+<tr><td>Strumok</td><td>DSTU 8845:2019</td><td>stream cipher</td></tr>
+<tr><td>—</td><td>DSTU 4145-2002</td><td>digital signature on elliptic curves</td></tr>
+<tr><td>—</td><td>DSTU 9041:2020</td><td>asymmetric encryption (twisted Edwards curves)</td></tr>
+</tbody>
+</table>
+</div>
+<p>Full scope, architectural decisions, and the libsodium API mapping are in
+<code>docs/dstu-crypto-project.md</code>. <code>dstu-core</code> also builds in a small/flash-friendly resource profile
+for constrained MCUs (<code>--features small-tables</code>) — see <code>docs/resource-profiles.md</code> for the trade-off.</p>
+<h2 id="quick-start"><a class="header" href="#quick-start">Quick start</a></h2>
+<pre><code class="language-sh">cargo add dstu-core
+</code></pre>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use dstu_core::crypto_secretbox::{seal, open, SecretKey};
+
+let key = SecretKey::generate().expect("OS CSPRNG should not fail");
+let sealed = seal(&amp;key, b"message").expect("OS CSPRNG should not fail");
+let opened = open(&amp;key, &amp;sealed).expect("authentic ciphertext");
+assert_eq!(opened, b"message");
+<span class="boring">}</span></code></pre>
+<p>Or the CLI, which streams arbitrarily large files with no in-memory cap:</p>
+<pre><code class="language-sh">cargo install uacrypt   # or download a prebuilt binary from GitHub Releases
+uacrypt keygen --out key.bin
+uacrypt encrypt --key key.bin --in message.bin --out sealed.bin
+uacrypt decrypt --key key.bin --in sealed.bin --out message.bin
+</code></pre>
+<p>See <a href="https://github.com/user137/uacrypt/blob/master/docs/CLI.md"><code>docs/CLI.md</code></a> for the full
+command reference (<code>sign</code>/<code>verify</code>, <code>box-seal</code>/<code>box-open</code>, and the lower-level <code>kalyna-block</code>/
+<code>kalyna-ccm</code> tools), and <a href="https://docs.rs/dstu-core">docs.rs</a> for the full library API.</p>
+<h2 id="language-bindings"><a class="header" href="#language-bindings">Language bindings</a></h2>
+<p>The full <code>crypto_*</code> surface (<code>secretbox</code>/<code>secretstream</code>/<code>sign</code>/<code>auth</code>/<code>kdf</code>/<code>generichash</code>/<code>stream</code>/
+<code>pwhash</code>, <code>randombytes</code>, <code>selftest</code>), idiomatic errors, and the same correctness/rejection/misuse
+test suite, in every language below — not a thin, partial wrapper. The <strong>README column</strong> is the
+full per-language docs; the <strong>Package column</strong> is where you’d actually run an install command.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Language</th><th>Approach</th><th>README</th><th>Package</th></tr>
+</thead>
+<tbody>
+<tr><td>Python</td><td>PyO3, direct Rust binding</td><td><a href="https://github.com/user137/uacrypt/blob/master/bindings/python/README.md"><code>bindings/python</code></a></td><td><a href="https://pypi.org/project/dstu-core/">PyPI</a></td></tr>
+<tr><td>Node.js</td><td>napi-rs, direct Rust binding</td><td><a href="https://github.com/user137/uacrypt/blob/master/bindings/nodejs/README.md"><code>bindings/nodejs</code></a></td><td><a href="https://www.npmjs.com/package/dstu-core">npm</a></td></tr>
+<tr><td>Ruby</td><td>magnus/rb-sys, direct Rust binding</td><td><a href="https://github.com/user137/uacrypt/blob/master/bindings/ruby/README.md"><code>bindings/ruby</code></a></td><td>not yet published</td></tr>
+<tr><td>PHP</td><td>ext-php-rs, direct Rust binding</td><td><a href="https://github.com/user137/uacrypt/blob/master/bindings/php/README.md"><code>bindings/php</code></a></td><td>not yet published</td></tr>
+<tr><td>.NET (C#)</td><td>P/Invoke over the C ABI</td><td><a href="https://github.com/user137/uacrypt/blob/master/bindings/dotnet/README.md"><code>bindings/dotnet</code></a></td><td>not yet published</td></tr>
+<tr><td>Java</td><td><code>jni</code> crate, direct Rust binding</td><td><a href="https://github.com/user137/uacrypt/blob/master/bindings/java/README.md"><code>bindings/java</code></a></td><td>not yet published</td></tr>
+<tr><td>Go</td><td><code>cgo</code> over the C ABI</td><td><a href="https://github.com/user137/uacrypt/blob/master/bindings/go/README.md"><code>bindings/go</code></a></td><td>not yet published</td></tr>
+<tr><td>C++</td><td>header-only RAII wrapper over the C ABI</td><td><a href="https://github.com/user137/uacrypt/blob/master/bindings/cpp/README.md"><code>bindings/cpp</code></a></td><td>not yet published</td></tr>
+</tbody>
+</table>
+</div>
+<p>The C ABI itself (<code>crates/dstu-core-capi</code>, opaque handles, <code>cbindgen</code>-generated header) is what the
+.NET, Go, and C++ bindings link against directly — usable from any language with a C FFI, not just
+those three. See <code>docs/bindings-strategy.md</code> for the per-binding design rationale.</p>
+<h2 id="embedded--no_std-targets"><a class="header" href="#embedded--no_std-targets">Embedded / <code>no_std</code> targets</a></h2>
+<p><code>dstu-core</code> is <code>no_std</code>-compatible from day one (<code>std</code>/<code>alloc</code>/<code>no_std</code> feature flags), and
+cross-compiles clean for real microcontroller targets (STM32 Cortex-M, ESP32-class RISC-V) with no
+custom toolchain. That’s a compilation claim, not a real-hardware validation or a side-channel
+resistance claim — see <code>docs/SECURITY.md</code> for the full threat model.</p>
+<h2 id="status-and-further-reading"><a class="header" href="#status-and-further-reading">Status and further reading</a></h2>
+<ul>
+<li><a href="https://github.com/user137/uacrypt/blob/master/docs/SECURITY.md"><code>docs/SECURITY.md</code></a> — threat model and hard constraints</li>
+<li><a href="https://github.com/user137/uacrypt/blob/master/docs/DECISIONS.md"><code>docs/DECISIONS.md</code></a> — architectural decisions, with rejected alternatives</li>
+<li><a href="https://github.com/user137/uacrypt/blob/master/docs/TASKS.md"><code>docs/TASKS.md</code></a> — phase-by-phase task backlog</li>
+<li><a href="https://github.com/user137/uacrypt/blob/master/docs/release-readiness.md"><code>docs/release-readiness.md</code></a> — gap analysis against a libsodium-equivalent 1.0</li>
+<li>Full knowledge base: <a href="https://user137.github.io/uacrypt/">user137.github.io/uacrypt</a></li>
+</ul>
+<h2 id="contributing"><a class="header" href="#contributing">Contributing</a></h2>
+<p>Pull requests are welcome. See <a href="https://github.com/user137/uacrypt/blob/master/docs/CONTRIBUTING.md"><code>docs/CONTRIBUTING.md</code></a>
+for dev environment setup, the test/verification bar (dual-oracle verification, three test
+categories per primitive), and commit style, and
+<a href="https://github.com/user137/uacrypt/blob/master/docs/CODE_OF_CONDUCT.md"><code>docs/CODE_OF_CONDUCT.md</code></a>
+for community standards. Security vulnerabilities go through GitHub Security Advisories, not a
+public issue — see <code>docs/SECURITY.md</code> “Reporting vulnerabilities”.</p>
+<h2 id="license"><a class="header" href="#license">License</a></h2>
+<p>Dual-licensed under MIT / Apache-2.0, at the user’s choice — the standard for the
+Rust ecosystem. See <code>LICENSE-MIT</code> and <code>LICENSE-APACHE</code>.<code>(already documented, CLAUDE.md's own mdBook gotcha, T-186), so a relative link would resolve against</code>docs/<code> inside the book instead of the repo root and silently 404. Verified by actually building the book (</code>cargo xtask book<code>) and grepping the rendered HTML's </code>href`s, not assumed correct from the source alone.</p>
 
                     </main>
 

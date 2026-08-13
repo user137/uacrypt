@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-35daaf74.js";
+            window.path_to_searchindex_js = "searchindex-aebb0e9e.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-ce7e91c5.js"></script>
+        <script src="toc-6b977b4b.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -184,6 +184,15 @@
 <p>All notable changes to this project are documented in this file. Format follows
 <a href="https://keepachangelog.com/en/1.1.0/">Keep a Changelog</a>.</p>
 <h2 id="unreleased"><a class="header" href="#unreleased">[Unreleased]</a></h2>
+<h3 id="changed"><a class="header" href="#changed">Changed</a></h3>
+<ul>
+<li>Root <code>README.md</code> restructured following real-world convention from libsodium/age/RustCrypto:
+badges row, a short plain-language pitch, one verified code example, everything else linked to
+dedicated docs instead of inlined. The full CLI walkthrough moved to a new <code>docs/CLI.md</code>
+(published in the mdBook knowledge base); the repository-structure tree, dev-environment setup,
+and Windows-specific troubleshooting moved to <code>docs/CONTRIBUTING.md</code>. See <code>docs/DECISIONS.md</code>
+D-192.</li>
+</ul>
 <h2 id="038---2026-08-13"><a class="header" href="#038---2026-08-13">[0.3.8] - 2026-08-13</a></h2>
 <h3 id="fixed"><a class="header" href="#fixed">Fixed</a></h3>
 <ul>
@@ -423,7 +432,7 @@ streaming path opened <code>--out</code> via <code>File::create</code> (truncati
 Found by T-200’s own <code>--in</code>==<code>--out</code> smoke-test probe of the real binary, fixed with the same
 temp-file-then-rename discipline <code>encrypt</code>/<code>decrypt</code> already use (<code>docs/DECISIONS.md</code> D-187).</li>
 </ul>
-<h3 id="changed"><a class="header" href="#changed">Changed</a></h3>
+<h3 id="changed-1"><a class="header" href="#changed-1">Changed</a></h3>
 <ul>
 <li><code>hazmat::gf2m_wide</code>/<code>hazmat::dstu4145::gf2m163</code>: <code>multiply()</code> now dispatches to a hardware
 carry-less-multiply implementation (<code>PCLMULQDQ</code>/<code>PMULL</code>) at runtime when the CPU supports it and
@@ -456,7 +465,7 @@ order - reachable in-contract at exactly one boundary value (<code>k == n-1</cod
 (confirmed via an independent Bouncy Castle cross-check), but a genuine correctness bug every
 <code>sign</code>/<code>verify</code> call went through. See <code>docs/DECISIONS.md</code> D-110.</li>
 </ul>
-<h3 id="changed-1"><a class="header" href="#changed-1">Changed</a></h3>
+<h3 id="changed-2"><a class="header" href="#changed-2">Changed</a></h3>
 <ul>
 <li>Performance: DSTU 4145 <code>sign</code> ~2.6x faster, <code>verify</code> ~4.4x faster (cumulative) - bit-interleave
 GF(2^163) squaring and an Itoh-Tsujii addition-chain field inversion, plus a projective/Shamir’s-
@@ -510,7 +519,7 @@ profile for constrained targets. Cross-compilation confirmed for <code>thumbv7em
 <li>Official DSTU test vectors for Kalyna, Kupyna, and DSTU 4145; dual-oracle verification
 (Bouncy Castle Java/.NET harnesses) for Kalyna and Kupyna.</li>
 </ul>
-<h3 id="changed-2"><a class="header" href="#changed-2">Changed</a></h3>
+<h3 id="changed-3"><a class="header" href="#changed-3">Changed</a></h3>
 <ul>
 <li><code>uacrypt encrypt</code>/<code>decrypt</code>’s on-disk wire format changed twice pre-release: originally a
 single-shot <code>crypto_secretbox</code> blob (255-byte cap), then migrated to uncapped <code>crypto_secretbox</code>
