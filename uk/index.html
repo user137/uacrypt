@@ -286,11 +286,12 @@ html[data-lang="uk"] [lang="en"]{display:none;}
   <div class="status-note">
     <!-- uacrypt-version: 0.3.8 -->
     <p lang="en"><strong>v0.3.8.</strong> <code>dstu-core</code> is live on
-    <a href="https://pypi.org/project/dstu-core/">PyPI</a> and
-    <a href="https://www.npmjs.com/package/dstu-core">npm</a> (Python/Node.js bindings, one npm
-    platform package still deferred — see
+    <a href="https://pypi.org/project/dstu-core/">PyPI</a>,
+    <a href="https://www.npmjs.com/package/dstu-core">npm</a>, and
+    <a href="https://rubygems.org/gems/dstu_core">RubyGems</a> (Python/Node.js/Ruby bindings, one
+    npm platform package still deferred — see
     <a href="https://github.com/user137/uacrypt/blob/master/docs/DECISIONS.md">docs/DECISIONS.md</a>
-    D-189); RubyGems is wired up but not live yet.
+    D-189).
     <code>dstu-core</code>/<code>uacrypt</code> stay published to
     <a href="https://crates.io/crates/dstu-core">crates.io</a> as of 0.3.0. See
     <a href="https://github.com/user137/uacrypt/blob/master/docs/CHANGELOG.md">docs/CHANGELOG.md</a>
@@ -306,7 +307,8 @@ html[data-lang="uk"] [lang="en"]{display:none;}
     <a href="https://www.npmjs.com/package/dstu-core">npm</a> (Python/Node.js-байндинги, один
     платформний пакет npm ще відкладено — див.
     <a href="https://github.com/user137/uacrypt/blob/master/docs/DECISIONS.md">docs/DECISIONS.md</a>
-    D-189); RubyGems підключено, але ще не опубліковано.
+    <a href="https://rubygems.org/gems/dstu_core">RubyGems</a> (Python/Node.js/Ruby-байндинги, один
+    платформний пакет npm ще відкладено — D-189).
     <code>dstu-core</code>/<code>uacrypt</code> лишаються опублікованими на
     <a href="https://crates.io/crates/dstu-core">crates.io</a> з версії 0.3.0. Що змінилось у
     кожному релізі — див.
@@ -798,16 +800,17 @@ uacrypt box-open   --key box.key  --in sealed.box   --out message.bin</code></pr
   <span class="eyebrow" lang="uk">Байндінги</span>
   <div lang="en" class="prose"><h2>Eight languages, one C ABI</h2>
   <p>The full <code>crypto_*</code> surface, idiomatic errors and secretstream I/O, and the same
-  correctness/rejection/misuse test suite per language — not a thin, partial wrapper. Python and
-  Node.js are published (PyPI/npm); the rest aren't yet (RubyGems/Packagist/NuGet/Maven Central) —
+  correctness/rejection/misuse test suite per language — not a thin, partial wrapper. Python,
+  Node.js, and Ruby are published (PyPI/npm/RubyGems); the rest aren't yet (Packagist/NuGet/Maven
+  Central) —
   build those from source, same as the Rust crate itself before crates.io. Each card below links
   the README (full docs, every binding) and the package registry where one exists (the actual
   install command).</p></div>
   <div lang="uk" class="prose"><h2>Вісім мов, один C ABI</h2>
   <p>Повна поверхня <code>crypto_*</code>, ідіоматичні помилки та I/O для secretstream, той самий
   набір тестів на коректність/відхилення/некоректне використання для кожної мови — не тонка,
-  часткова обгортка. Python і Node.js опубліковані (PyPI/npm); решта — ще ні (RubyGems/Packagist/
-  NuGet/Maven Central) — для них поки що збірка з джерела, так само як і сам Rust-крейт до
+  часткова обгортка. Python, Node.js і Ruby опубліковані (PyPI/npm/RubyGems); решта — ще ні
+  (Packagist/NuGet/Maven Central) — для них поки що збірка з джерела, так само як і сам Rust-крейт до
   crates.io. Кожна картка нижче веде на README (повна документація, для всіх мов) і на реєстр
   пакетів там, де він є (реальна команда встановлення).</p></div>
 
