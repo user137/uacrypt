@@ -120,9 +120,15 @@ jobs:
     # to 240 (well under GitHub-hosted runners' 360-min hard cap) for real headroom instead of
     # nudging the number up by the smallest amount that would have covered just this one overrun.
     # `uacrypt`/`dstu-core-capi` have no equivalent measured-locally number yet (only ever run as
-    # part of the combined workspace job before T-175) - kept at the same 240 cap as `dstu-core`
+    # part of the combined workspace job before T-175) - kept at the same cap as `dstu-core`
     # rather than guessing a tighter one; tighten per-crate once each has its own real history.
-    timeout-minutes: 240
+    # Raised 240 -> 360 (GitHub-hosted runners' actual hard job cap, cannot go higher) 2026-08-13
+    # after run 31658054714 - left uncancelled for the first time in days - hit the 240-min ceiling
+    # mid-suite in `dstu-core`'s own job, with per-file times showing T-192/T-193/T-199's new
+    # l(p)=512/crypto_box512/m=257 Miri surface (four single files each 2000-3400s) added enough
+    # cost that dstu-core's total may now be close to or over even this new ceiling - see T-211,
+    # not yet confirmed either way pending a future uncancelled run.
+    timeout-minutes: 360
     strategy:
       fail-fast: false
       matrix:

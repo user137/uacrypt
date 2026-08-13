@@ -4177,6 +4177,26 @@ item they point to is later removed.
       Could run manually right after each publish, or as a CI job triggered after `publish-pypi`/
       `publish-npm`/`publish-rubygems` succeed - either way, closes the "standing gap" D-191 itself
       flagged. Not started: no script, no CI job, no chosen cadence yet.
+- [ ] **T-211** **Not started, found 2026-08-13 - `cargo miri test (dstu-core)` may now exceed
+      GitHub-hosted runners' 360-min hard job cap (not just the 240-min `timeout-minutes` setting,
+      raised to 360 in the same pass that found this).** Run `31658054714` was left uncancelled for
+      the first time in several days (every run since 2026-08-09 had been pre-empted by a rapid
+      follow-up push's `cancel-in-progress`, masking this) and hit the then-240-min ceiling mid-way
+      through `tests/dstu9041_encryption_512.rs`, four files before the end of the suite. Per-file
+      timings pulled from that run's own log (`gh run view --job=<id> --log`): `crypto_box512.rs`
+      2523s, `dstu4145_curve.rs` 3418s, `dstu9041_curve_512.rs` 2746s, `dstu9041_encryption.rs`
+      2065s - all four are new test surface from T-192/T-193/T-199 (l(p)=512, `crypto_box512`,
+      m=257) that didn't exist at the last actually-*completed* run (2026-08-08, 3h41m total, see
+      the `timeout-minutes` comment in `.github/workflows/rust.yml`). Still untested at cutoff:
+      `dstu9041_field{,_512}.rs`, `dstu9041_message{,_512}.rs`, all twelve `kalyna_*.rs` files, all
+      three `kupyna*.rs` files, `randombytes.rs`, `selftest.rs`, `strumok.rs` - a rough sum (known
+      completed time + a same-order-of-magnitude estimate for the unmeasured 512-bit-family files)
+      puts total real requirement close to or above 360 min, meaning the timeout bump alone may not
+      be sufficient and won't be confirmed either way until a future run is genuinely left
+      uncancelled for 6+ hours. If it isn't enough, the durable fix is splitting this one serial job
+      into a parallel matrix by test-file group (the same shape `cargo fuzz`'s per-target matrix
+      already uses in this workflow), not raising a number that has nowhere higher to go on
+      GitHub-hosted runners.
 - [ ] **T-202** **Not started, owner-requested (2026-08-09) - research spike: is a Strumok-keystream
       + MAC ("Encrypt-then-MAC") authenticated construction a faster-but-still-safe alternative to
       `crypto_secretstream`'s current Kalyna-GCM-based AEAD for `uacrypt encrypt`/`decrypt`?**
