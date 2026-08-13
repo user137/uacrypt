@@ -7,9 +7,10 @@ name: release
 # v0.2.0 (docs/TASKS.md T-17, docs/DECISIONS.md D-114), it also publishes both crates to crates.io
 # via `publish-crates` below - v0.2.0 itself predates that job and stayed GitHub-only, per an
 # explicit project-owner scope decision; both crates are live as of v0.3.0 (2026-08-09). The
-# `publish-pypi`/`publish-npm` jobs (docs/TASKS.md T-164/T-203) exist but are dormant behind their
-# own GitHub Environment approval gate until the owner separately configures Trusted Publishing on
-# each registry - landing the automation ahead of the actual first publish, same pattern T-17 used.
+# `publish-pypi`/`publish-npm`/`publish-rubygems` jobs (docs/TASKS.md T-164/T-203) exist but are
+# dormant behind their own GitHub Environment approval gate until the owner separately configures
+# Trusted Publishing on each registry - landing the automation ahead of the actual first publish,
+# same pattern T-17 used.
 on:
   push:
     tags:
@@ -144,6 +145,55 @@ jobs:
           name: node-native-${{ matrix.os }}
           path: bindings/nodejs/native/*.node
 
+  build-ruby-gems:
+    name: build ruby gem (${{ matrix.platform }})
+    # Cross-compiled from a single ubuntu-latest host via oxidize-rb/actions/cross-gem (a
+    # `rb-sys-dock` wrapper, itself a `rake-compiler-dock` derivative) - unlike
+    # build-python-wheels/build-nodejs-artifacts, this does NOT need a matching-OS runner per
+    # platform: rb-sys-dock ships prebuilt cross Ruby + cross Rust toolchains (bindgen/clang
+    # included) for every target inside its own Docker images, the same mechanism nokogiri/grpc
+    # et al. have shipped precompiled darwin/mingw native gems with for years - confirmed by
+    # reading rb-sys-dock's own source (gem/exe/rb-sys-dock in oxidize-rb/rb-sys) rather than
+    # assumed. bindings-ruby.yml's own MSYS2/D-133 clang dance is a *local test-build* concern
+    # (linking/running against a real installed Windows Ruby for RSpec) - it doesn't apply here.
+    #
+    # The Docker `docker run -v $(pwd):$(pwd)` mount is the whole repo (not just
+    # working-directory), so `ext/dstu_core_rb/Cargo.toml`'s `../../../../crates/dstu-core` path
+    # dependency resolves inside the container exactly as it does locally - verified by reading
+    # the mount logic, not assumed; a working-directory-only mount would have silently broken
+    # this monorepo layout.
+    #
+    # Setting RUBY_TARGET (which rb-sys-dock does internally, matching --platform) is what makes
+    # bindings/ruby's existing Rakefile/RbSys::ExtensionTask define the `native:$RUBY_TARGET gem`
+    # task at all (see ExtensionTask#init: `@cross_compile = ENV.key?("RUBY_TARGET")`) - no
+    # Rakefile changes needed for this to work.
+    #
+    # Platform set mirrors build-nodejs-artifacts' own choice (linux-x64/arm64-gnu, darwin-arm64,
+    # a Windows target) - deliberately no x86_64-darwin, matching this project's standing policy
+    # of only ever targeting Apple Silicon macOS (build-binary's own uacrypt release asset is
+    # macos-aarch64 only; build-nodejs-artifacts' own comment has the same reasoning).
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [x86_64-linux, aarch64-linux, arm64-darwin, x64-mingw-ucrt]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+          bundler-cache: true
+          working-directory: bindings/ruby
+      - uses: oxidize-rb/actions/cross-gem@v1
+        id: cross-gem
+        with:
+          platform: ${{ matrix.platform }}
+          working-directory: bindings/ruby
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ruby-gem-${{ matrix.platform }}
+          path: ${{ steps.cross-gem.outputs.gem-path }}
+
   publish-release:
     name: create GitHub release
     # Wheel-build failure blocks the release (same posture as package-library) - a deliberate
@@ -196,7 +246,7 @@ jobs:
       - uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: dist
-          # bindings/python's own version (0.1.0) isn't lockstepped with the tag - a future tag
+          # bindings/python's own version (0.1.1) isn't lockstepped with the tag - a future tag
           # whose Python binding hasn't changed would otherwise hard-fail re-uploading identical
           # wheels PyPI already has (confirmed the hard way, v0.3.1 -> v0.3.2, T-164/T-203).
           skip-existing: true
@@ -326,6 +376,66 @@ jobs:
           if [ $status -ne 0 ] && ! echo "$output" | grep -q "cannot publish over the previously published versions"; then
             exit $status
           fi
+
+  publish-rubygems:
+    # Trusted Publishing (OIDC), same "environment gate + no static secret" posture as
+    # publish-pypi - RubyGems, like PyPI and unlike npm (D-189's bootstrap-token workaround),
+    # supports a "pending trusted publisher" for a gem that doesn't exist yet
+    # (guides.rubygems.org/trusted-publishing), so no bootstrap token was ever needed here even
+    # for the very first publish. Owner registered the pending publisher on rubygems.org
+    # (gem dstu_core, repo user137/uacrypt, workflow release.yml, environment rubygems)
+    # 2026-08-13 ahead of this job landing - same "automation ahead of the actual first publish"
+    # pattern T-17/publish-pypi already used.
+    #
+    # rubygems/release-gem@v1 (RubyGems' own documented one-call recipe) isn't used here -
+    # confirmed by reading its source (rubygems/release-gem's action.yml): it runs
+    # `bundle exec rake release`, which builds and pushes a single SOURCE gem plus a brand-new
+    # git tag. That doesn't fit a multi-platform native-gem release, where the gems are already
+    # built by build-ruby-gems (cross-compiled per platform, real compiled extensions inside) and
+    # the tag already exists. rubygems/configure-rubygems-credentials@v1 - the credential step
+    # release-gem itself wraps - is the right building block on its own: it sets up OIDC-based
+    # `gem push` credentials for this job, then plain `gem push` per downloaded artifact does the
+    # rest.
+    #
+    # No "already published" tolerance loop like publish-npm's, by design, not an oversight:
+    # confirmed by reading rubygems.org's own Pusher model (app/models/pusher.rb) that a repeat
+    # push of an identical, already-indexed version returns HTTP 200 "Gem was already pushed"
+    # rather than erroring - `gem push` is naturally idempotent here, unlike npm's hard 403 on
+    # any repeat publish attempt. The grep below only guards the genuine-conflict case (same
+    # version/platform, different content).
+    name: publish to RubyGems
+    needs: build-ruby-gems
+    runs-on: ubuntu-latest
+    environment: rubygems
+    permissions:
+      id-token: write
+    steps:
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: ruby-gem-*
+          path: gems
+          merge-multiple: true
+      - uses: rubygems/configure-rubygems-credentials@v1
+      - name: Push gems (tolerating a genuine already-published conflict)
+        run: |
+          for gem in gems/*.gem; do
+            echo "== Pushing $gem =="
+            set +e
+            output=$(gem push "$gem" 2>&1)
+            status=$?
+            set -e
+            echo "$output"
+            if [ $status -ne 0 ]; then
+              if echo "$output" | grep -qi "repushing of gem versions is not allowed"; then
+                echo "Already published, continuing: $gem"
+              else
+                exit $status
+              fi
+            fi
+          done
 
   publish-crates:
     # v0.2.0 itself predates this job (added in a later commit than the v0.2.0 tag, T-17/D-114) -

@@ -4,8 +4,8 @@ build-backend = "maturin"
 
 [project]
 name = "dstu-core"
-version = "0.1.0"
-description = "Python bindings for dstu-core (Ukrainian DSTU cryptographic standards) - provisional, not yet published"
+version = "0.1.1"
+description = "Python bindings for dstu-core (Ukrainian DSTU cryptographic standards)"
 readme = "README.md"
 requires-python = ">=3.9"
 license = "MIT OR Apache-2.0"

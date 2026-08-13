@@ -6080,8 +6080,19 @@ configuration surface added in the process (D-47 still holds).
       `dstu-core-linux-x64-gnu`, `dstu-core-darwin-arm64` live; `dstu-core-linux-arm64-gnu` added as
       a new platform this release; `dstu-core-win32-x64-msvc` deliberately deferred, blocked by
       npm's own spam detection (external, confirmed not time-based) — see D-189 for the incident and
-      the real fix (npm support, not a retry/rename). RubyGems/NuGet/Maven Central/Packagist not
-      started.
+      the real fix (npm support, not a retry/rename). **RubyGems CI plumbing landed same day**
+      (`build-ruby-gems`/`publish-rubygems` in `release.yml`, cross-compiled via
+      `oxidize-rb/actions/cross-gem`/`rb-sys-dock` for `x86_64-linux`/`aarch64-linux`/
+      `arm64-darwin`/`x64-mingw-ucrt`, OIDC Trusted Publishing against a pending publisher the
+      owner already registered for `dstu_core` — see D-190) — dormant behind the `rubygems`
+      GitHub Environment approval gate until the next tag, same "land ahead of first publish"
+      posture PyPI/npm used. NuGet/Maven Central/Packagist not started.
+      **v0.3.6 (2026-08-13)**: fixed a real bug on the already-live PyPI/npm pages - stale
+      pre-publish "provisional, not yet published" README/description text, no `pip install`/
+      `npm install` instructions anywhere. Fixed for both bindings (bumped `0.1.0`→`0.1.1` so the
+      fix actually reaches the registry), plus `uacrypt`'s crates.io description and a distinct
+      Ruby gemspec bug (`README.md` missing from `spec.files` entirely) caught in the same sweep,
+      ahead of Ruby's own first publish. See D-191.
 - [x] **T-165** **Done 2026-08-03.** **`docs/CONTRIBUTING.md` has zero mentions of `bindings/`/`dstu-core-capi` anywhere
       (confirmed by grep, not assumed), added 2026-08-03.** It was written entirely for core-crate
       contributors (a new primitive/mode) and predates all of Phase 3 — a contributor who wants to

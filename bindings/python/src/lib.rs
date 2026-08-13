@@ -1,7 +1,6 @@
 //! PyO3 extension module for `dstu-core` (`docs/bindings-strategy.md` T-49, `docs/TASKS.md`'s
-//! Phase 3 "Language bindings" section). Provisional, not yet published to PyPI - see the root
-//! project's `docs/SECURITY.md`/`docs/DECISIONS.md` for the full threat model and per-construction
-//! status.
+//! Phase 3 "Language bindings" section). Not independently audited - see the root project's
+//! `docs/SECURITY.md`/`docs/DECISIONS.md` for the full threat model and per-construction status.
 //!
 //! This module is the compiled `_dstu_core` extension; `python/dstu_core/__init__.py` is the
 //! public-facing pure-Python package a consumer actually imports.

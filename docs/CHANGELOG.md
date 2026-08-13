@@ -5,6 +5,29 @@ All notable changes to this project are documented in this file. Format follows
 
 ## [Unreleased]
 
+## [0.3.6] - 2026-08-13
+
+### Added
+
+- `build-ruby-gems`/`publish-rubygems` jobs in `release.yml` (T-164): cross-compiled RubyGems
+  native gem publishing for `dstu_core` (`x86_64-linux`, `aarch64-linux`, `arm64-darwin`,
+  `x64-mingw-ucrt`) via `oxidize-rb/actions/cross-gem`, OIDC Trusted Publishing against a
+  pre-registered pending publisher. Dormant behind the `rubygems` GitHub Environment approval
+  gate until the next tag. See `docs/DECISIONS.md` D-190.
+
+### Fixed
+
+- The already-live PyPI and npm package pages (`dstu-core`) still had README/description text
+  written pre-publish, claiming "provisional, not yet published" and offering only from-source
+  build instructions - no `pip install dstu-core`/`npm install dstu-core` anywhere. Fixed the
+  README and every short description field (`pyproject.toml`, `package.json`, both crates'
+  `Cargo.toml`, module doc comments) for both bindings, bumped both to `0.1.1` so the fix actually
+  reaches the live registry page (PyPI/npm render metadata from the latest published version).
+  `uacrypt`'s crates.io description ("CLI over dstu-core") replaced with a real sentence. Ruby's
+  gemspec had a distinct, more serious bug caught in the same sweep: `README.md` was never in
+  `spec.files` at all, so the gem would have shipped with no description page content on its first
+  publish - fixed ahead of that first publish. See `docs/DECISIONS.md` D-191.
+
 ## [0.3.5] - 2026-08-13
 
 ### Added

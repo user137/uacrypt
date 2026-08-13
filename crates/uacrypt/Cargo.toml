@@ -1,10 +1,10 @@
 [package]
 name = "uacrypt"
-version = "0.3.5"
+version = "0.3.6"
 edition = "2021"
 rust-version = "1.87.0"
 license = "MIT OR Apache-2.0"
-description = "CLI over dstu-core"
+description = "Command-line tool for Ukrainian DSTU cryptographic standards (Kalyna, Kupyna, Strumok)"
 readme = "README.md"
 repository = "https://github.com/user137/uacrypt"
 homepage = "https://github.com/user137/uacrypt"
@@ -19,4 +19,4 @@ name = "uacrypt"
 all-features = true
 
 [dependencies]
-dstu-core = { path = "../dstu-core", version = "0.3.5" }
+dstu-core = { path = "../dstu-core", version = "0.3.6" }

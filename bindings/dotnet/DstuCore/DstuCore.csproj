@@ -14,7 +14,7 @@
          explicitly authorized (docs/bindings-strategy.md's per-binding checklist). -->
     <Version>0.1.0</Version>
     <Authors>cipher_ua</Authors>
-    <Description>P/Invoke .NET binding for dstu-core (Ukrainian DSTU cryptographic standards) - pre-release, provisional.</Description>
+    <Description>P/Invoke .NET binding for dstu-core (Ukrainian DSTU cryptographic standards) - provisional, not yet published to NuGet.</Description>
     <PackageLicenseExpression>MIT OR Apache-2.0</PackageLicenseExpression>
     <IsPackable>true</IsPackable>
     <WarningsAsErrors>Nullable</WarningsAsErrors>

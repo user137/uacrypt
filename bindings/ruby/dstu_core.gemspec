@@ -7,10 +7,8 @@ Gem::Specification.new do |spec|
   spec.version = DstuCore::VERSION
   spec.authors = ["dstu-core contributors"]
   spec.summary = "Ruby bindings for dstu-core (Ukrainian DSTU cryptographic standards)"
-  spec.description = "magnus/rb_sys bindings exposing dstu-core's full crypto_* surface " \
-                     "(secretbox, secretstream, sign, auth, kdf, generichash, stream, pwhash, " \
-                     "randombytes) plus a self_test check - provisional, not yet published to " \
-                     "RubyGems."
+  spec.description = "Ruby bindings for dstu-core (Ukrainian DSTU cryptographic standards) - " \
+                     "provisional, not yet published to RubyGems."
   spec.homepage = "https://github.com/user137/uacrypt"
   spec.licenses = ["MIT", "Apache-2.0"]
   spec.required_ruby_version = ">= 3.1"
@@ -20,7 +18,7 @@ Gem::Specification.new do |spec|
   # (the workspace anchor, D-133) and Cargo.lock - a gem that can't actually compile on install.
   spec.files = Dir.glob("lib/**/*.rb") +
                Dir.glob("ext/**/*.{rs,toml,rb}") +
-               ["Cargo.toml", "Cargo.lock", "Rakefile"]
+               ["Cargo.toml", "Cargo.lock", "Rakefile", "README.md"]
   spec.require_paths = ["lib"]
   spec.extensions = ["ext/dstu_core_rb/extconf.rb"]
   spec.metadata["rubygems_mfa_required"] = "true"

@@ -1,11 +1,17 @@
 # dstu-core (Node.js bindings)
 
-**Provisional — not published to npm, not independently audited.** See the root project's
-`docs/SECURITY.md` and `docs/DECISIONS.md` for the full threat model and per-construction status.
-This binding wraps the full `dstu_core::crypto_*` surface (`docs/bindings-strategy.md` T-50) —
-install from source as shown below.
+**Not independently audited.** See the root project's `docs/SECURITY.md` and `docs/DECISIONS.md`
+for the full threat model and per-construction status. This binding wraps the full
+`dstu_core::crypto_*` surface (`docs/bindings-strategy.md` T-50).
 
-## Installing (from source)
+## Installing
+
+```sh
+npm install dstu-core
+node -e "require('dstu-core').selfTest()"
+```
+
+## Building from source (contributors)
 
 ```sh
 npm install

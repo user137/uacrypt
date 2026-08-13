@@ -1,5 +1,5 @@
 //! Node.js bindings for `dstu-core` (`docs/bindings-strategy.md` T-50, `docs/TASKS.md`'s Phase 3
-//! "Language bindings" section). Provisional, not yet published to npm - see the root project's
+//! "Language bindings" section). Not independently audited - see the root project's
 //! `docs/SECURITY.md`/`docs/DECISIONS.md` for the full threat model and per-construction status.
 //!
 //! Step 2 of `docs/bindings-strategy.md`'s standard binding template: wraps the full `crypto_*`

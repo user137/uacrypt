@@ -1,11 +1,17 @@
 # dstu-core (Python bindings)
 
-**Provisional — not published to PyPI, not independently audited.** See the root project's
-`docs/SECURITY.md` and `docs/DECISIONS.md` for the full threat model and per-construction status.
-This binding wraps the full `dstu_core::crypto_*` surface (`docs/bindings-strategy.md` T-49) —
-install from source as shown below.
+**Not independently audited.** See the root project's `docs/SECURITY.md` and `docs/DECISIONS.md`
+for the full threat model and per-construction status. This binding wraps the full
+`dstu_core::crypto_*` surface (`docs/bindings-strategy.md` T-49).
 
-## Installing (from source)
+## Installing
+
+```sh
+pip install dstu-core
+python -c "import dstu_core; dstu_core.selftest()"
+```
+
+## Building from source (contributors)
 
 ```sh
 python -m venv .venv

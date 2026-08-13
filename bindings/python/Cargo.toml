@@ -10,7 +10,7 @@ version = "0.1.0"
 edition = "2021"
 rust-version = "1.87.0"
 license = "MIT OR Apache-2.0"
-description = "Python bindings for dstu-core (Ukrainian DSTU cryptographic standards) - provisional, not yet published to PyPI"
+description = "Python bindings for dstu-core (Ukrainian DSTU cryptographic standards)"
 publish = false
 
 [lib]

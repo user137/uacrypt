@@ -1,8 +1,8 @@
 {
   "name": "dstu-core",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": false,
-  "description": "Node.js bindings for dstu-core (Ukrainian DSTU cryptographic standards) - provisional, not yet published to npm",
+  "description": "Node.js bindings for dstu-core (Ukrainian DSTU cryptographic standards)",
   "main": "js/index.js",
   "repository": {
     "type": "git",

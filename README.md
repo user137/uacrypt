@@ -1,12 +1,16 @@
 # uacrypt
 
-<!-- uacrypt-version: 0.3.5 -->
-**v0.3.5 — released 2026-08-13. `dstu-core` (Python bindings) is now live on
+<!-- uacrypt-version: 0.3.6 -->
+**v0.3.6 — released 2026-08-13. `dstu-core` (Python bindings) is live on
 [PyPI](https://pypi.org/project/dstu-core/); on npm, `dstu-core` (root), `dstu-core-linux-x64-gnu`,
 and `dstu-core-darwin-arm64` are live. `dstu-core-win32-x64-msvc` is deliberately deferred, blocked
 by npm's own spam detection (external, not a code issue — see `docs/DECISIONS.md` D-189);
-`dstu-core-linux-arm64-gnu` is a new platform added this release. See `docs/CHANGELOG.md` for
-details.** Not a complete library or CLI yet, not audited, not
+`dstu-core-linux-arm64-gnu` is a new platform added in v0.3.5. This release fixes a real bug found
+on the live PyPI/npm/crates.io pages: several package descriptions/READMEs still said "provisional,
+not yet published" or read like an internal engineering note, contradicting the fact that they were
+already live — see `docs/DECISIONS.md` D-191. RubyGems publishing (`dstu_core`) is wired up but
+still dormant pending the next tag. See `docs/CHANGELOG.md` for details.** Not a complete library or
+CLI yet, not audited, not
 production-ready, and **not a claim of side-channel resistance**. Core primitives
 (Kalyna, Kupyna) are dual-oracle-verified against official test vectors; Strumok and the Kalyna-CCM mode are
 provisional (not yet confirmed against their primary standard text — see `docs/DECISIONS.md` D-15/D-41).
