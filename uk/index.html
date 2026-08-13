@@ -291,32 +291,32 @@ html[data-lang="uk"] [lang="en"]{display:none;}
 
   <div class="status-note">
     <!-- uacrypt-version: 0.3.6 -->
-    <p lang="en"><strong>v0.3.6 — released 2026-08-13.</strong> <code>dstu-core</code> (Python
-    bindings) is live on
-    <a href="https://pypi.org/project/dstu-core/">PyPI</a>. On npm, <code>dstu-core</code> (root),
-    <code>dstu-core-linux-x64-gnu</code>, and <code>dstu-core-darwin-arm64</code> are live.
-    <code>dstu-core-win32-x64-msvc</code> is deliberately deferred, blocked by npm's own spam
-    detection (external, not a code issue). This release also fixed a real bug on the live PyPI/npm
-    pages: descriptions/READMEs still said "not yet published" — see
-    <a href="https://github.com/user137/uacrypt/blob/master/docs/CHANGELOG.md">docs/CHANGELOG.md</a>.
+    <p lang="en"><strong>v0.3.6.</strong> <code>dstu-core</code> is live on
+    <a href="https://pypi.org/project/dstu-core/">PyPI</a> and
+    <a href="https://www.npmjs.com/package/dstu-core">npm</a> (Python/Node.js bindings, one npm
+    platform package still deferred — see
+    <a href="https://github.com/user137/uacrypt/blob/master/docs/DECISIONS.md">docs/DECISIONS.md</a>
+    D-189); RubyGems is wired up but not live yet.
     <code>dstu-core</code>/<code>uacrypt</code> stay published to
-    <a href="https://crates.io/crates/dstu-core">crates.io</a> as of 0.3.0.
+    <a href="https://crates.io/crates/dstu-core">crates.io</a> as of 0.3.0. See
+    <a href="https://github.com/user137/uacrypt/blob/master/docs/CHANGELOG.md">docs/CHANGELOG.md</a>
+    for what changed each release.
     Kalyna and Kupyna are dual-oracle verified: official DSTU test
     vectors, cross-checked against real Bouncy Castle. Strumok, the Kalyna-CCM/GCM modes, and the
     CLI's AEAD framing each carry their own, more specific status below — read those before
     trusting a claim at face value. Not independently audited. Not a claim of resistance to
     hardware side-channel attacks (SPA/DPA) — that needs a separate, dedicated hardware audit this
     project hasn't had.</p>
-    <p lang="uk"><strong>v0.3.6 — реліз від 2026-08-13.</strong> <code>dstu-core</code>
-    (Python-байндинг) живий на
-    <a href="https://pypi.org/project/dstu-core/">PyPI</a>. На npm живі <code>dstu-core</code>
-    (корінь), <code>dstu-core-linux-x64-gnu</code> і <code>dstu-core-darwin-arm64</code>.
-    <code>dstu-core-win32-x64-msvc</code> свідомо відкладено — заблоковано спам-детектором npm
-    (зовнішня причина, не проблема коду). Цей реліз також виправив реальний баг на живих сторінках
-    PyPI/npm: описи/README досі казали «ще не опубліковано» — див.
-    <a href="https://github.com/user137/uacrypt/blob/master/docs/CHANGELOG.md">docs/CHANGELOG.md</a>.
+    <p lang="uk"><strong>v0.3.6.</strong> <code>dstu-core</code> живий на
+    <a href="https://pypi.org/project/dstu-core/">PyPI</a> і
+    <a href="https://www.npmjs.com/package/dstu-core">npm</a> (Python/Node.js-байндинги, один
+    платформний пакет npm ще відкладено — див.
+    <a href="https://github.com/user137/uacrypt/blob/master/docs/DECISIONS.md">docs/DECISIONS.md</a>
+    D-189); RubyGems підключено, але ще не опубліковано.
     <code>dstu-core</code>/<code>uacrypt</code> лишаються опублікованими на
-    <a href="https://crates.io/crates/dstu-core">crates.io</a> з версії 0.3.0.
+    <a href="https://crates.io/crates/dstu-core">crates.io</a> з версії 0.3.0. Що змінилось у
+    кожному релізі — див.
+    <a href="https://github.com/user137/uacrypt/blob/master/docs/CHANGELOG.md">docs/CHANGELOG.md</a>.
     Калина і Купина верифіковані за принципом
     подвійного оракула: офіційні тестові вектори ДСТУ, звірені з реальною Bouncy Castle. Струмок,
     режими Kalyna-CCM/GCM та AEAD-обгортка CLI мають власні, детальніші статуси нижче — варто
