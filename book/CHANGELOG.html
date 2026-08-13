@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-aebb0e9e.js";
+            window.path_to_searchindex_js = "searchindex-ce503c21.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-6b977b4b.js"></script>
@@ -192,6 +192,11 @@ dedicated docs instead of inlined. The full CLI walkthrough moved to a new <code
 (published in the mdBook knowledge base); the repository-structure tree, dev-environment setup,
 and Windows-specific troubleshooting moved to <code>docs/CONTRIBUTING.md</code>. See <code>docs/DECISIONS.md</code>
 D-192.</li>
+<li>gh-pages landing page (<code>index.html</code>/<code>uk/index.html</code>, not a crate release): externalized ~287
+KB/page of base64-inlined webfonts to real cacheable <code>fonts/*.woff2</code> files, dropped an IBM Plex
+Sans “600” face that turned out to be byte-identical to the 400 face (buttons were silently
+rendering non-bold glyphs under a false bold label), and fixed a second stale “v0.3.6 released”
+status blurb the README pass above hadn’t reached. See <code>docs/DECISIONS.md</code> D-193.</li>
 </ul>
 <h2 id="038---2026-08-13"><a class="header" href="#038---2026-08-13">[0.3.8] - 2026-08-13</a></h2>
 <h3 id="fixed"><a class="header" href="#fixed">Fixed</a></h3>

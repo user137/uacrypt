@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-aebb0e9e.js";
+            window.path_to_searchindex_js = "searchindex-ce503c21.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-6b977b4b.js"></script>
@@ -11973,6 +11973,53 @@ public issue — see <code>docs/SECURITY.md</code> “Reporting vulnerabilities�
 <h2 id="license"><a class="header" href="#license">License</a></h2>
 <p>Dual-licensed under MIT / Apache-2.0, at the user’s choice — the standard for the
 Rust ecosystem. See <code>LICENSE-MIT</code> and <code>LICENSE-APACHE</code>.<code>(already documented, CLAUDE.md's own mdBook gotcha, T-186), so a relative link would resolve against</code>docs/<code> inside the book instead of the repo root and silently 404. Verified by actually building the book (</code>cargo xtask book<code>) and grepping the rendered HTML's </code>href`s, not assumed correct from the source alone.</p>
+<h2 id="d-193-gh-pages-landing-page-indexhtmlukindexhtml---externalized-inlined-base64-fonts-dropped-a-mislabeled-fake-bold-face-fixed-a-second-stale-status-blurb-the-readme-pass-d-192-hadnt-touched"><a class="header" href="#d-193-gh-pages-landing-page-indexhtmlukindexhtml---externalized-inlined-base64-fonts-dropped-a-mislabeled-fake-bold-face-fixed-a-second-stale-status-blurb-the-readme-pass-d-192-hadnt-touched">D-193: gh-pages landing page (<code>index.html</code>/<code>uk/index.html</code>) - externalized inlined base64 fonts, dropped a mislabeled fake-bold face, fixed a second stale status blurb the README pass (D-192) hadn’t touched</a></h2>
+<p><strong>What happened</strong>: same “check what similar-niche projects actually do” exercise as D-192, this
+time for the site (not the README). Fetched real comparables rather than reasoning from memory:
+<code>age-encryption.org</code> 302-redirects straight to its GitHub repo (no dedicated site at all);
+<code>openssl.org</code> is ~7 KB, plain, no marketing chrome; <code>doc.libsodium.org</code> is a stock GitBook instance
+with zero custom design; RustCrypto has no site, GitHub is the site. Unanimous pattern in this
+niche: no bespoke animated marketing page. Consulted the advisor before acting on that, since “the
+convention is minimalism” doesn’t by itself justify deleting a working page the project owner
+explicitly didn’t ask to delete (<code>"чи змінити"</code>, not “чи прибрати”) - conclusion was to fix the
+page’s real, measurable defects rather than restructure or remove it; the hero section itself
+already reads as a tight pitch (eyebrow → h1 → lede → CTA), unlike the README’s problem, so no
+section reordering was done here.</p>
+<p><strong>Font bloat, found and fixed</strong>: <code>index.html</code>/<code>uk/index.html</code> each inlined IBM Plex Sans/Serif as
+base64 <code>data:font/woff2</code> URIs directly in <code>&lt;style&gt;</code> - 287 KB of the ~354 KB page was font bytes, in
+both language pages independently. A <code>data:</code> URI source is never HTTP-cached and is re-parsed on
+every page load, unlike this same repo’s own <code>book/fonts/*.woff2</code> (real files, genuinely cached) -
+an internal inconsistency, not just “other projects do less”. Extracted all 8 <code>@font-face</code> payloads
+to real <code>fonts/*.woff2</code> files (own path - <code>book/fonts/</code> filenames are mdbook content-hashed and
+shift on a mdbook upgrade, confirmed via <code>git ls-tree</code>), referenced via relative <code>src:url()</code>
+(<code>fonts/</code> from <code>index.html</code>, <code>../fonts/</code> from <code>uk/index.html</code>, matching the page’s own existing
+relative-link convention for <code>book/</code> etc.).</p>
+<p><strong>Second, sharper bug found while extracting</strong>: <code>SHA-256</code>-hashing the six surviving font files
+showed IBM Plex Sans’s declared <code>font-weight:600</code> face was byte-identical to its <code>400</code> face, in
+both language pages. <code>.btn{font-family:var(--font-body);font-weight:600;...}</code> was therefore
+rendering every button’s text using the <em>regular</em>-weight glyphs under a false <code>600</code> label - not a
+performance defect, a real rendering bug, invisible without decoding and diffing the embedded
+payloads. Dropped the fake <code>600</code> face entirely rather than sourcing a real one (no design-asset
+change requested); the browser’s own synthetic-bold fallback now applies against the genuine <code>400</code>
+face, which is strictly more correct than serving mislabeled duplicate bytes. Net: ~287 KB/page of
+embedded fonts → 152 KB, shared and actually cacheable across both pages.</p>
+<p><strong>Second stale-status-text instance, independent of D-192’s README fix</strong>: the page states project
+status twice - the hero <code>.status-note</code> (already read <code>v0.3.8</code>, correctly updated in a prior pass)
+and a second, separate “Status”/“Де зараз проєкт і що далі” section near the footer, which still
+opened with <code>v0.3.6 released - ...</code> and a paragraph of that release’s specific per-registry detail.
+Same D-159 pattern (a free-standing state summary with no task-ID string for a grep sweep to catch)
+recurring in a second location the D-192 pass didn’t know to check because it was working on
+<code>README.md</code>, not the gh-pages branch. Fixed with the same remedy already applied to the README and
+the hero note: replaced the per-release narration with a short, evergreen sentence pointing at
+<code>docs/CHANGELOG.md</code> and at the hero note above, so there is exactly one place on the page that
+narrates release-specific detail, not two drifting independently.</p>
+<p><strong>Not done, and why</strong>: did not switch off the custom <code>IBM Plex Sans</code>/<code>IBM Plex Serif</code> pairing to a
+system-font stack (the more radical, <code>age</code>-style option) - <code>--font-body</code>’s existing fallback chain
+(<code>-apple-system, 'Segoe UI', Roboto, sans-serif</code>) already degrades gracefully on font-load failure,
+and changing the page’s typographic identity is a visual-design call, not a technical-debt fix; the
+Chrome browser extension needed to screenshot the live page and judge that call was unavailable for
+this session (checked twice, per the three-attempts-adjacent discipline of not retrying a failing
+tool call indefinitely) - left for a later pass with a live screenshot in hand, not decided blind.</p>
 
                     </main>
 
