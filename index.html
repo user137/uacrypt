@@ -290,13 +290,14 @@ html[data-lang="uk"] [lang="en"]{display:none;}
   </div>
 
   <div class="status-note">
-    <!-- uacrypt-version: 0.3.5 -->
-    <p lang="en"><strong>v0.3.5 — released 2026-08-13.</strong> <code>dstu-core</code> (Python
-    bindings) is now live on
+    <!-- uacrypt-version: 0.3.6 -->
+    <p lang="en"><strong>v0.3.6 — released 2026-08-13.</strong> <code>dstu-core</code> (Python
+    bindings) is live on
     <a href="https://pypi.org/project/dstu-core/">PyPI</a>. On npm, <code>dstu-core</code> (root),
     <code>dstu-core-linux-x64-gnu</code>, and <code>dstu-core-darwin-arm64</code> are live.
     <code>dstu-core-win32-x64-msvc</code> is deliberately deferred, blocked by npm's own spam
-    detection (external, not a code issue) — see
+    detection (external, not a code issue). This release also fixed a real bug on the live PyPI/npm
+    pages: descriptions/READMEs still said "not yet published" — see
     <a href="https://github.com/user137/uacrypt/blob/master/docs/CHANGELOG.md">docs/CHANGELOG.md</a>.
     <code>dstu-core</code>/<code>uacrypt</code> stay published to
     <a href="https://crates.io/crates/dstu-core">crates.io</a> as of 0.3.0.
@@ -306,12 +307,13 @@ html[data-lang="uk"] [lang="en"]{display:none;}
     trusting a claim at face value. Not independently audited. Not a claim of resistance to
     hardware side-channel attacks (SPA/DPA) — that needs a separate, dedicated hardware audit this
     project hasn't had.</p>
-    <p lang="uk"><strong>v0.3.5 — реліз від 2026-08-13.</strong> <code>dstu-core</code>
-    (Python-байндинг) тепер живий на
+    <p lang="uk"><strong>v0.3.6 — реліз від 2026-08-13.</strong> <code>dstu-core</code>
+    (Python-байндинг) живий на
     <a href="https://pypi.org/project/dstu-core/">PyPI</a>. На npm живі <code>dstu-core</code>
     (корінь), <code>dstu-core-linux-x64-gnu</code> і <code>dstu-core-darwin-arm64</code>.
     <code>dstu-core-win32-x64-msvc</code> свідомо відкладено — заблоковано спам-детектором npm
-    (зовнішня причина, не проблема коду) — див.
+    (зовнішня причина, не проблема коду). Цей реліз також виправив реальний баг на живих сторінках
+    PyPI/npm: описи/README досі казали «ще не опубліковано» — див.
     <a href="https://github.com/user137/uacrypt/blob/master/docs/CHANGELOG.md">docs/CHANGELOG.md</a>.
     <code>dstu-core</code>/<code>uacrypt</code> лишаються опублікованими на
     <a href="https://crates.io/crates/dstu-core">crates.io</a> з версії 0.3.0.
@@ -870,7 +872,7 @@ uacrypt box-open   --key box.key  --in sealed.box   --out message.bin</code></pr
   <span class="eyebrow" lang="en">Status</span>
   <span class="eyebrow" lang="uk">Статус</span>
   <div lang="en" class="prose"><h2>Where this stands, and what's next</h2>
-  <p>v0.3.5 released — <code>dstu-core</code> (Python bindings) is now live on PyPI; on npm, root + 2 of 4 platform packages are live, <code>dstu-core-win32-x64-msvc</code> deliberately deferred (npm spam detection, see docs/DECISIONS.md D-189); <code>dstu-core</code>/<code>uacrypt</code> stay published to crates.io as of 0.3.0. The phase-by-phase backlog lives in
+  <p>v0.3.6 released — <code>dstu-core</code> (Python bindings) is live on PyPI; on npm, root + 2 of 4 platform packages are live, <code>dstu-core-win32-x64-msvc</code> deliberately deferred (npm spam detection, see docs/DECISIONS.md D-189); fixed a real bug this release where the live PyPI/npm pages still said "not yet published" (see D-191); RubyGems publishing is wired up but still dormant; <code>dstu-core</code>/<code>uacrypt</code> stay published to crates.io as of 0.3.0. The phase-by-phase backlog lives in
   <a href="https://github.com/user137/uacrypt/blob/master/docs/TASKS.md">docs/TASKS.md</a>, the
   full gap analysis against a libsodium-equivalent 1.0 in
   <a href="https://github.com/user137/uacrypt/blob/master/docs/release-readiness.md">docs/release-readiness.md</a>,
@@ -878,7 +880,7 @@ uacrypt box-open   --key box.key  --in sealed.box   --out message.bin</code></pr
   <a href="https://github.com/user137/uacrypt/blob/master/docs/DECISIONS.md">docs/DECISIONS.md</a>.
   Dual-licensed MIT / Apache-2.0, the Rust ecosystem default.</p></div>
   <div lang="uk" class="prose"><h2>Де зараз проєкт і що далі</h2>
-  <p>v0.3.5 випущено — <code>dstu-core</code> (Python-байндинг) тепер живий на PyPI; на npm живі корінь + 2 з 4 платформних пакетів, <code>dstu-core-win32-x64-msvc</code> свідомо відкладено (спам-детектор npm, див. docs/DECISIONS.md D-189); <code>dstu-core</code>/<code>uacrypt</code> лишаються опублікованими на crates.io з версії 0.3.0. Беклог по фазах — у
+  <p>v0.3.6 випущено — <code>dstu-core</code> (Python-байндинг) живий на PyPI; на npm живі корінь + 2 з 4 платформних пакетів, <code>dstu-core-win32-x64-msvc</code> свідомо відкладено (спам-детектор npm, див. docs/DECISIONS.md D-189); виправлено реальний баг цього релізу — живі сторінки PyPI/npm досі казали «ще не опубліковано» (див. D-191); публікацію в RubyGems підключено, але вона ще неактивна; <code>dstu-core</code>/<code>uacrypt</code> лишаються опублікованими на crates.io з версії 0.3.0. Беклог по фазах — у
   <a href="https://github.com/user137/uacrypt/blob/master/docs/TASKS.md">docs/TASKS.md</a>,
   повний аналіз розриву до рівня, еквівалентного libsodium 1.0, — у
   <a href="https://github.com/user137/uacrypt/blob/master/docs/release-readiness.md">docs/release-readiness.md</a>,
