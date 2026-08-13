@@ -1,17 +1,11 @@
 # uacrypt
 
-<!-- uacrypt-version: 0.3.6 -->
-**v0.3.6 — released 2026-08-13. `dstu-core` (Python bindings) is live on
-[PyPI](https://pypi.org/project/dstu-core/); on npm, `dstu-core` (root), `dstu-core-linux-x64-gnu`,
-and `dstu-core-darwin-arm64` are live. `dstu-core-win32-x64-msvc` is deliberately deferred, blocked
-by npm's own spam detection (external, not a code issue — see `docs/DECISIONS.md` D-189);
-`dstu-core-linux-arm64-gnu` is a new platform added in v0.3.5. This release fixes a real bug found
-on the live PyPI/npm/crates.io pages: several package descriptions/READMEs still said "provisional,
-not yet published" or read like an internal engineering note, contradicting the fact that they were
-already live — see `docs/DECISIONS.md` D-191. RubyGems publishing (`dstu_core`) is wired up but
-still dormant pending the next tag. See `docs/CHANGELOG.md` for details.** Not a complete library or
-CLI yet, not audited, not
-production-ready, and **not a claim of side-channel resistance**. Core primitives
+<!-- uacrypt-version: 0.3.7 -->
+**v0.3.7.** `dstu-core` is live on [PyPI](https://pypi.org/project/dstu-core/) and
+[npm](https://www.npmjs.com/package/dstu-core) (Python/Node.js bindings, one npm platform package
+still deferred — `docs/DECISIONS.md` D-189); RubyGems is wired up but not live yet. See
+`docs/CHANGELOG.md` for what changed each release. Not a complete library or CLI yet, not audited,
+not production-ready, and **not a claim of side-channel resistance**. Core primitives
 (Kalyna, Kupyna) are dual-oracle-verified against official test vectors; Strumok and the Kalyna-CCM mode are
 provisional (not yet confirmed against their primary standard text — see `docs/DECISIONS.md` D-15/D-41).
 **`crypto_secretstream` — the construction backing `encrypt`/`decrypt` — is provisional in a
@@ -330,21 +324,23 @@ crates.io yet (`docs/TASKS.md` T-17).
 Every binding in `docs/bindings-strategy.md`'s phased order is now built — the full `crypto_*`
 surface (`crypto_secretbox`/`secretstream`/`sign`/`auth`/`kdf`/`generichash`/`stream`/`pwhash`,
 `randombytes`, `selftest`), idiomatic errors and secretstream I/O per language, real
-correctness/rejection/misuse test suites against the same official vectors. **None are published
-to a package registry yet** (PyPI/npm/RubyGems/Packagist/NuGet/Maven Central — separately
-owner-gated, `docs/TASKS.md` T-164, same posture as `dstu-core` itself not being on crates.io yet)
-— build from source per the linked README:
+correctness/rejection/misuse test suites against the same official vectors. **Python and Node.js
+are published** (PyPI/npm, see the banner above); the rest aren't yet (RubyGems/Packagist/NuGet/
+Maven Central — separately owner-gated, `docs/TASKS.md` T-164) — build those from source per the
+linked README. The **README column is the full docs** for every binding regardless of publish
+status (usage examples, API table, security caveats); the **Package column** is only where you'd
+actually run an install command:
 
-| Language | Approach | README |
-|---|---|---|
-| Python | PyO3, direct Rust binding | [`bindings/python`](https://github.com/user137/uacrypt/blob/master/bindings/python/README.md) |
-| Node.js | napi-rs, direct Rust binding | [`bindings/nodejs`](https://github.com/user137/uacrypt/blob/master/bindings/nodejs/README.md) |
-| Ruby | magnus/rb-sys, direct Rust binding | [`bindings/ruby`](https://github.com/user137/uacrypt/blob/master/bindings/ruby/README.md) |
-| PHP | ext-php-rs, direct Rust binding | [`bindings/php`](https://github.com/user137/uacrypt/blob/master/bindings/php/README.md) |
-| .NET (C#) | P/Invoke over the C ABI | [`bindings/dotnet`](https://github.com/user137/uacrypt/blob/master/bindings/dotnet/README.md) |
-| Java | `jni` crate, direct Rust binding | [`bindings/java`](https://github.com/user137/uacrypt/blob/master/bindings/java/README.md) |
-| Go | `cgo` over the C ABI | [`bindings/go`](https://github.com/user137/uacrypt/blob/master/bindings/go/README.md) |
-| C++ | header-only RAII wrapper over the C ABI | [`bindings/cpp`](https://github.com/user137/uacrypt/blob/master/bindings/cpp/README.md) |
+| Language | Approach | README | Package |
+|---|---|---|---|
+| Python | PyO3, direct Rust binding | [`bindings/python`](https://github.com/user137/uacrypt/blob/master/bindings/python/README.md) | [PyPI](https://pypi.org/project/dstu-core/) |
+| Node.js | napi-rs, direct Rust binding | [`bindings/nodejs`](https://github.com/user137/uacrypt/blob/master/bindings/nodejs/README.md) | [npm](https://www.npmjs.com/package/dstu-core) |
+| Ruby | magnus/rb-sys, direct Rust binding | [`bindings/ruby`](https://github.com/user137/uacrypt/blob/master/bindings/ruby/README.md) | not yet published |
+| PHP | ext-php-rs, direct Rust binding | [`bindings/php`](https://github.com/user137/uacrypt/blob/master/bindings/php/README.md) | not yet published |
+| .NET (C#) | P/Invoke over the C ABI | [`bindings/dotnet`](https://github.com/user137/uacrypt/blob/master/bindings/dotnet/README.md) | not yet published |
+| Java | `jni` crate, direct Rust binding | [`bindings/java`](https://github.com/user137/uacrypt/blob/master/bindings/java/README.md) | not yet published |
+| Go | `cgo` over the C ABI | [`bindings/go`](https://github.com/user137/uacrypt/blob/master/bindings/go/README.md) | not yet published |
+| C++ | header-only RAII wrapper over the C ABI | [`bindings/cpp`](https://github.com/user137/uacrypt/blob/master/bindings/cpp/README.md) | not yet published |
 
 The C ABI itself (`crates/dstu-core-capi`, opaque handles, `cbindgen`-generated header) is the
 foundation the .NET/Go/C++ bindings above link against directly — usable from any language with a

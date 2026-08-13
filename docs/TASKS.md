@@ -4159,6 +4159,24 @@ item they point to is later removed.
       own maturin-based wheels. **New PyPI project, own pending-publisher registration** (name TBD,
       `uacrypt` unless taken - not yet live-checked) - does not reuse `dstu-core`'s trusted publisher
       or environment. Not started: no packaging code, no CI job, no name check yet.
+- [ ] **T-210** **Not started, owner-requested (2026-08-13) - post-publish smoke tests for each
+      published language binding: install the real published package from its official registry
+      (not local source), run usage examples against it, and cross-check against that binding's own
+      README/instructions.** Raised right after D-191 (found by hand: PyPI/npm's live pages still
+      said "provisional, not yet published" and described no working install path, because nothing
+      re-checks a live registry page against its own claims after a publish). This is that missing
+      repeatable check, not another one-time manual sweep.
+      **Scope, per binding with a live publish** (today: Python/PyPI, Node.js/npm; RubyGems
+      pending T-164/D-190): (1) install the real published package via its own package manager
+      (`pip install dstu-core`, `npm install dstu-core`, eventually `gem install dstu_core`) into a
+      clean environment - not the repo's own `.venv`/`node_modules`, which only proves the local
+      source works, never what a real user gets; (2) run a handful of the same usage snippets shown
+      in that binding's own README (a `secretbox` round-trip, `selfTest`/`self_test`, one or two
+      more modules) against the *installed* package; (3) flag it if the installed package's
+      behavior, exports, or install instructions don't match what the README currently claims.
+      Could run manually right after each publish, or as a CI job triggered after `publish-pypi`/
+      `publish-npm`/`publish-rubygems` succeed - either way, closes the "standing gap" D-191 itself
+      flagged. Not started: no script, no CI job, no chosen cadence yet.
 - [ ] **T-202** **Not started, owner-requested (2026-08-09) - research spike: is a Strumok-keystream
       + MAC ("Encrypt-then-MAC") authenticated construction a faster-but-still-safe alternative to
       `crypto_secretstream`'s current Kalyna-GCM-based AEAD for `uacrypt encrypt`/`decrypt`?**
@@ -6093,6 +6111,13 @@ configuration surface added in the process (D-47 still holds).
       fix actually reaches the registry), plus `uacrypt`'s crates.io description and a distinct
       Ruby gemspec bug (`README.md` missing from `spec.files` entirely) caught in the same sweep,
       ahead of Ruby's own first publish. See D-191.
+      **v0.3.6's actual release run then failed `build-ruby-gems` on all four platforms** -
+      `magnus 0.7.1` doesn't support Ruby 4.0's changed C ABI, and `cross-gem`'s default
+      `ruby-versions` cross-compiled against it anyway. **v0.3.7 (2026-08-13)** pins
+      `ruby-versions: "3.1,3.2,3.3,3.4"` explicitly (D-190's update) - RubyGems' first real publish
+      attempt is this tag. Also shortened the README/website status banners, which had grown into
+      a wall of text restating every past release since v0.3.3 instead of just linking
+      `docs/CHANGELOG.md`.
 - [x] **T-165** **Done 2026-08-03.** **`docs/CONTRIBUTING.md` has zero mentions of `bindings/`/`dstu-core-capi` anywhere
       (confirmed by grep, not assumed), added 2026-08-03.** It was written entirely for core-crate
       contributors (a new primitive/mode) and predates all of Phase 3 — a contributor who wants to

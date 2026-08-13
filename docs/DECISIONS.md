@@ -12830,6 +12830,18 @@ protection rule as `pypi`/`npm` (D-189's own note that referencing `environment:
 file alone creates an unprotected environment applies here too - created explicitly, not left to
 auto-create).
 
+**Update (v0.3.6's actual release run, same day)**: `build-ruby-gems` failed on all four platforms
+on its first real run, all with the identical error - confirmed by reading the job logs directly,
+not guessed. `oxidize-rb/actions/cross-gem`'s `ruby-versions` input was left at its own default
+("default", meaning no `--ruby-versions` flag passed to `rb-sys-dock`, which then cross-compiles
+against every Ruby version its Docker image knows about) - that set now includes Ruby 4.0, and
+`magnus 0.7.1` (this binding's pinned dependency, `ext/dstu_core_rb/Cargo.toml`) doesn't support
+Ruby 4.0's changed C ABI yet (`rb_fiber_raise`'s `argv` mutability, `RTypedData` losing its
+`typed_flag` field) - a real upstream incompatibility between two dependencies, not a workflow
+misconfiguration. Fixed by pinning `ruby-versions: "3.1,3.2,3.3,3.4"` explicitly - the same range
+`bindings-ruby.yml`'s own test job and the gemspec's `required_ruby_version` (`>= 3.1`) already
+cover. Re-check/widen once `magnus` adds Ruby 4.0 support.
+
 ## D-191: Live PyPI/npm/crates.io package descriptions still said "provisional, not yet published" or read like an internal note - checked by fetching the actual registry pages, not assumed from local source
 
 **What happened**: while evaluating whether RubyGems would repeat any known publishing problem
@@ -12880,8 +12892,9 @@ normalized to match every other not-yet-published binding's phrasing.
 
 **Standing gap this leaves**: nothing yet automatically re-verifies a live registry page against
 its own source after every publish - this was a manual, one-time sweep triggered by a direct
-question, not a repeatable check. `docs/TASKS.md` should get a real task for this if it recurs
-again, rather than relying on someone happening to look.
+question, not a repeatable check. Filed as `docs/TASKS.md` T-210: install the real published
+package per binding (not local source) and smoke-test it against its own README's usage examples,
+right after each publish rather than relying on someone happening to look.
 
 **Process note** (why this matters beyond the immediate fix): the finding only surfaced because
 the actual registry pages were fetched and read (`registry.npmjs.org`/`pypi.org`/`crates.io`'s own

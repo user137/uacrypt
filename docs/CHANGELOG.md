@@ -5,6 +5,26 @@ All notable changes to this project are documented in this file. Format follows
 
 ## [Unreleased]
 
+## [0.3.7] - 2026-08-13
+
+### Fixed
+
+- Root `README.md`'s "Language bindings" table and the website's "Bindings" section both still
+  said "not published to any package registry" and linked only this repo's own README, even though
+  Python/Node.js were already live on PyPI/npm as of v0.3.6 - same class of bug as D-191, found
+  while answering whether the site links registries as well as the repo. Both now link the README
+  (full docs, every binding) and the registry page (the actual install command) side by side where
+  a binding is published. See `docs/DECISIONS.md` D-191's addendum.
+- `build-ruby-gems` failed on all four platforms on v0.3.6's actual release run: `magnus 0.7.1`
+  doesn't support Ruby 4.0's changed C ABI, and `oxidize-rb/actions/cross-gem`'s default
+  `ruby-versions` cross-compiled against Ruby 4.0 anyway. Pinned `ruby-versions` explicitly to
+  `3.1,3.2,3.3,3.4`, matching what `bindings-ruby.yml`'s own test job and the gemspec's
+  `required_ruby_version` already cover. See `docs/DECISIONS.md` D-190's update.
+- The root `README.md` and website status banners had grown, release over release since v0.3.3,
+  into a dense wall of text restating every past release's own detail. Shortened both to a single
+  current-state line, pointing to `docs/CHANGELOG.md` for what changed each release instead of
+  re-narrating it in the banner itself.
+
 ## [0.3.6] - 2026-08-13
 
 ### Added
