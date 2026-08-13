@@ -5,6 +5,15 @@ All notable changes to this project are documented in this file. Format follows
 
 ## [Unreleased]
 
+### Changed
+
+- Root `README.md` restructured following real-world convention from libsodium/age/RustCrypto:
+  badges row, a short plain-language pitch, one verified code example, everything else linked to
+  dedicated docs instead of inlined. The full CLI walkthrough moved to a new `docs/CLI.md`
+  (published in the mdBook knowledge base); the repository-structure tree, dev-environment setup,
+  and Windows-specific troubleshooting moved to `docs/CONTRIBUTING.md`. See `docs/DECISIONS.md`
+  D-192.
+
 ## [0.3.8] - 2026-08-13
 
 ### Fixed

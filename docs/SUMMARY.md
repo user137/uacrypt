@@ -2,6 +2,10 @@
 
 [Introduction](introduction.md)
 
+# Using uacrypt
+
+- [CLI walkthrough](CLI.md)
+
 # Project & roadmap
 
 - [Task backlog (TASKS.md)](TASKS.md)

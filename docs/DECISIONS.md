@@ -12919,3 +12919,60 @@ missed `uacrypt`'s crates.io-only "CLI over dstu-core" (no local file even has t
 isolation - it only reads badly in the context of what actually renders on the crates.io page next
 to `dstu-core`'s own, better one). See the memory saved this session for the standing instruction
 this establishes for every future publish-verification task.
+
+## D-192: Root README.md restructured to a short pitch + links, following real-world conventions from libsodium/age/RustCrypto - full CLI walkthrough and contributor setup moved to dedicated docs
+
+**What happened**: the README had grown to 374 lines/~3300 words with no badges, opening directly
+into dense, citation-heavy prose (`T-XX`/`D-XX` references in the very first paragraphs) rather
+than a plain-language pitch - flagged directly by the project owner after looking at the live
+GitHub repo page. Researched three real, comparable-niche projects for structural convention before
+redesigning, rather than guessing:
+- **libsodium** (this project's own stated inspiration): badges → logo → 2-3 short plain-language
+  sentences → feature bullets → a **Documentation** section that *links out* to separate docs
+  rather than inlining detail → versioning → contributors → license. No directory tree, no internal
+  decision-ID citations anywhere in it.
+- **age** (`FiloSottile/age`): badges → short pitch → a working usage example *before* install
+  instructions → install table → deeper usage docs, still concise.
+- **RustCrypto/AEADs** (same "workspace of multiple crates" shape as this repo): ~80-90 lines total,
+  crates.io/docs.rs/MSRV badges in a per-crate table, two-sentence pitch, everything else linked out.
+
+**Common pattern across all three, absent from this project's README before this**: a badges row
+immediately under the title; a short (2-4 sentence) plain-language pitch with no internal jargon or
+citation IDs; a working code example within the first screen; deep material (architecture, full API
+reference, contributor setup, troubleshooting) *linked to dedicated docs*, never inlined in the
+README itself. None of the three examples had anything resembling a repository directory tree in
+their README.
+
+**What moved where** (nothing deleted, only relocated - this project's docs are meant to be the
+source of truth, not the README):
+- The 47-line "Repository structure" ASCII tree → `docs/CONTRIBUTING.md` (a new-contributor
+  orientation aid, not something an end user installing the library needs to see first).
+- The "Requirements" tool table, "Building from source", the full `cargo xtask` command list, and
+  both Windows-specific troubleshooting subsections (`cargo fuzz` needing MSVC, `kani` not running
+  on Windows at all) → `docs/CONTRIBUTING.md`'s new "Repository structure" / "Setting up a dev
+  environment" sections, consolidated with (not duplicated alongside) the dev-command list
+  "Making a change" step 4 already had.
+- The full `uacrypt` CLI walkthrough (`encrypt`/`decrypt`/`hash`, `sign`/`verify`, `box-seal`/
+  `box-open`, `kalyna-block`/`kalyna-ccm`, ~110 lines with real command output) → a new
+  `docs/CLI.md`, added to `docs/SUMMARY.md` so it publishes as part of the existing mdBook
+  knowledge base (`cargo xtask book`, T-186) rather than living nowhere once out of the README.
+- `docs/CONTRIBUTING.md`'s own opening line separately still said "v0.1.0 pre-release" - stale by
+  several minor versions (same class of bug as D-191, found while already touching this file) -
+  fixed to a version-number-free "pre-1.0" phrasing so it can't go stale the same way again.
+
+**What the new README keeps**: title + a real badges row (crates.io, docs.rs, PyPI, npm, CI,
+license - all now truthful since Python/npm/crates.io are genuinely live), a 4-sentence pitch with
+no citations, the short version banner, the "Algorithms in scope" table (matches the AEADs
+per-crate-table pattern), a Quick start with one *verified* code example (copied verbatim from
+`crypto_secretbox`'s own module doc, not invented - `cargo test --doc` already exercises it) plus
+the CLI's `keygen`/`encrypt`/`decrypt`, the Language bindings table (already well-structured, kept
+as-is), a short `no_std`/embedded paragraph, a links-only "Status and further reading" section, and
+Contributing/License.
+
+**Link-format gotcha re-applied**: every relative `docs/*.md` link the new README needed was written
+as an absolute `github.com/.../blob/master/...` URL, not a relative path - `docs/introduction.md`
+transcludes the whole README via `{{#include ../README.md}}` (already documented, CLAUDE.md's own
+mdBook gotcha, T-186), so a relative link would resolve against `docs/` inside the book instead of
+the repo root and silently 404. Verified by actually building the book (`cargo xtask book`) and
+grepping the rendered HTML's `href`s, not assumed correct from the source alone.
+

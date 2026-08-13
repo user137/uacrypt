@@ -1,11 +1,130 @@
 # Contributing to uacrypt
 
-Thanks for your interest — this is an open project and pull requests are welcome. It's a **v0.1.0
-pre-release, not yet audited, not production-ready** (see the README's Status paragraph), so expect
-some rough edges and a fair number of "why does this exist" citations in the code — this project
-cites its own reasoning heavily (`docs/DECISIONS.md`) rather than assuming it's obvious.
+Thanks for your interest — this is an open project and pull requests are welcome. It's **pre-1.0,
+not yet audited, not production-ready** (see the README's status line and `docs/release-readiness.md`
+for the gap analysis), so expect some rough edges and a fair number of "why does this exist"
+citations in the code — this project cites its own reasoning heavily (`docs/DECISIONS.md`) rather
+than assuming it's obvious.
 
 By participating, you're expected to follow this project's [Code of Conduct](CODE_OF_CONDUCT.md).
+
+## Repository structure
+
+```
+.
+├── CLAUDE.md              # operating guide for AI agents in this repo
+├── AGENTS.md              # thin pointer to CLAUDE.md's own reading order, for non-Claude-Code AI agents
+├── docs/SECURITY.md            # threat model, hard constraints, supply-chain vetting
+├── docs/DECISIONS.md           # architectural decisions with rejected alternatives
+├── docs/TASKS.md               # phase-by-phase task backlog and progress state
+├── docs/CHANGELOG.md           # Keep a Changelog-format release history
+├── docs/ORACLES.md             # oracle trust ranking, per-algorithm oracle map, test-vector provenance
+├── docs/PERFORMANCE.md         # benchmark methodology and recorded numbers
+├── docs/CONTRIBUTING.md        # this file
+├── docs/CODE_OF_CONDUCT.md     # community standards (Contributor Covenant)
+├── LICENSE-MIT
+├── LICENSE-APACHE
+├── .github/workflows/     # CI (rust.yml, oracle-harness.yml) and the release workflow (release.yml)
+├── .github/ISSUE_TEMPLATE/, PULL_REQUEST_TEMPLATE.md  # issue/PR templates
+├── .cargo/config.toml     # `cargo xtask` alias
+├── xtask/                 # cross-platform build/QA runner, see "Development commands" below
+├── docs/
+│   ├── dstu-crypto-project.md        # main project spec (scope, API mapping)
+│   ├── release-readiness.md          # gap analysis: current state vs. a libsodium-equivalent 1.0
+│   ├── user-journey-gaps.md          # persona/journey-organized companion gap analysis
+│   ├── resource-profiles.md          # fused vs small-tables: memory/speed numbers, which to pick
+│   ├── CLI.md                        # full `uacrypt` CLI walkthrough (every subcommand)
+│   ├── pseudocode/                   # per-algorithm pseudocode, cross-checked against oracles
+│   ├── rust_ai_ruleset.md            # generic Rust ruleset for AI assistants
+│   ├── cross-language-style-guide.md # naming/style conventions for non-Rust code
+│   ├── bindings-strategy.md          # Phase 3 language-binding plan: order, C-ABI split, per-binding checklist
+│   └── papers/                       # reference PDFs (specs, cryptanalysis, hardware papers)
+├── crates/                # Cargo workspace
+│   ├── dstu-core/          # core: Kalyna + Kupyna + Strumok
+│   ├── uacrypt/            # CLI binary on top of the core
+│   └── dstu-core-capi/     # C ABI - foundation for C++/.NET/Java/Go bindings (T-158)
+├── bindings/               # Phase 3 language bindings, see docs/bindings-strategy.md
+│   ├── python/             # PyO3, full crypto_* surface - on PyPI (T-49)
+│   ├── nodejs/             # napi-rs, full crypto_* surface - on npm (T-50)
+│   ├── ruby/               # magnus/rb-sys, full crypto_* surface - RubyGems in progress (T-160)
+│   ├── php/                # ext-php-rs, full crypto_* surface - not on Packagist yet (T-159)
+│   ├── dotnet/             # C# P/Invoke over dstu-core-capi - not on NuGet yet (T-52)
+│   ├── java/               # jni crate, full crypto_* surface - not on Maven Central yet (T-51)
+│   ├── go/                 # cgo over dstu-core-capi, full crypto_* surface - repo-relative only (T-163)
+│   └── cpp/                # header-only RAII wrapper over dstu-core-capi, full crypto_* surface (T-53)
+├── firmware/               # Phase 4 hardware/emulation checks, own Cargo workspace(s) - see docs/DECISIONS.md D-156
+│   └── qemu-stm32-smoketest/  # runs official Kalyna/Kupyna vectors under QEMU's netduinoplus2 (Cortex-M4F), no real board needed (T-170)
+├── tests/oracle-harness/   # Java/.NET/C harnesses that verify test vectors against real Bouncy Castle
+└── oracles/                # reference implementations used as oracles - not vendored, see oracles/README.md
+```
+
+## Setting up a dev environment
+
+Rust is the only hard requirement — everything else in this table is optional and only needed for
+the specific `cargo xtask` command listed. No admin rights required on any platform for any of it.
+
+| Tool | Needed for | Linux / macOS | Windows |
+|---|---|---|---|
+| Rust (stable, via `rustup`) | everything | `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \| sh` | `winget install Rustlang.Rustup` (or `rustup-init.exe` from [rustup.rs](https://rustup.rs)) |
+| C/C++ compiler | `cargo xtask fuzz` (`libfuzzer-sys` builds C++); building the manual C oracle-differential harnesses under `tests/oracle-harness/*-differential/` | usually preinstalled; else your distro's `gcc`/`build-essential` package | MinGW-w64 GCC (e.g. `winget install BrechtSanders.WinLibs.POSIX.UCRT`) builds the crate and those harnesses; **`cargo xtask fuzz` additionally needs real MSVC**, see below |
+| `cargo-fuzz` | `cargo xtask fuzz` | `cargo install cargo-fuzz --locked` — runs directly against the native nightly toolchain | see "`cargo fuzz` on Windows" below |
+| `miri` (nightly component) | `cargo xtask miri` | `rustup component add miri --toolchain nightly` | same |
+| `kani-verifier` | `cargo xtask kani` (bounded model checking, `gf2m163::reduce` proofs) | `cargo install kani-verifier && cargo kani setup` | **not supported** — see below |
+| `cargo-audit` / `cargo-deny` | `cargo xtask audit` / `cargo xtask deny` | `cargo install cargo-audit --locked` / `cargo install cargo-deny --locked` | same install commands, but each needs `dlltool.exe` on `PATH` first — comes with a MinGW-w64 install (e.g. the WinLibs package above), not with `rustup` alone |
+| JDK 8+ and Maven 3.6+ | `cargo xtask oracle-java` (cross-check against real Bouncy Castle) | your distro's packages, or Maven's binary zip if unpackaged | same |
+| .NET SDK 8 or 9 | `cargo xtask oracle-dotnet` (cross-check against real Bouncy Castle) | [dotnet.microsoft.com](https://dotnet.microsoft.com/download) | same |
+
+This project builds against the GNU host toolchain on Windows (`x86_64-pc-windows-gnu`) by default,
+specifically to avoid a Visual Studio dependency for ordinary building/testing — run `rustup
+default stable-x86_64-pc-windows-gnu` if `rustup-init` didn't already pick it. `rustup` reads
+`rust-toolchain.toml` and installs the pinned `stable` channel plus `clippy`/`rustfmt` automatically
+the first time you run any `cargo` command in this repo.
+
+The reference implementations used as correctness oracles (`oracles/kalyna-reference`, UAPKI,
+etc.) are **not** vendored in this repo — see `oracles/README.md` for what each one is and where to
+get it. You only need them for the manual differential harnesses; ordinary `cargo build`/`cargo
+test`/`cargo xtask ci` need none of it.
+
+```
+git clone <this repo>
+cd cipher_ua
+cargo build --workspace
+cargo test --workspace
+```
+
+### `cargo fuzz` on Windows needs MSVC, not this project's default GNU toolchain
+
+libFuzzer's Address Sanitizer only supports the MSVC target on Windows — the default
+`x86_64-pc-windows-gnu` toolchain above cannot build or run fuzz targets at all, no matter which
+flags are passed (`docs/DECISIONS.md` D-32 has the full diagnosis). To run `cargo xtask fuzz` locally on
+Windows:
+
+1. Install Visual Studio (or just the Build Tools) with the "Desktop development with C++"
+   workload.
+2. `rustup toolchain install nightly-x86_64-pc-windows-msvc` — an *additional* toolchain; this does
+   not change the project's default GNU host toolchain used for everything else.
+3. Run `cargo xtask fuzz`. It finds the Visual Studio install itself (via `vswhere.exe`'s fixed
+   path) and the toolchain above, then runs each target through a `vcvars64.bat`-sourced shell with
+   `--target x86_64-pc-windows-msvc` — both the environment and the explicit target flag are
+   required, not just the extra toolchain (`docs/DECISIONS.md` D-32 explains why: without `vcvars64.bat`
+   the ASan runtime DLL isn't found at run time, even though the build itself succeeds; without the
+   explicit `--target`, `cargo-fuzz` defaults back to the GNU target regardless of which toolchain
+   invoked it).
+
+Without a Visual Studio C++ toolset installed, `cargo xtask fuzz` prints an install hint and skips
+cleanly on Windows, same as any other missing optional tool — CI (Linux) remains the actual,
+unconditional venue where fuzz targets run on every push.
+
+### `cargo xtask kani` does not run on Windows at all
+
+Unlike every other optional tool above, this isn't a missing-install-step case: `kani-verifier`'s
+own source calls Unix-only std APIs (`std::os::unix::fs::symlink`, `Command::arg0`) that don't
+exist on Windows, confirmed by trying `cargo install kani-verifier` directly (`docs/DECISIONS.md`
+D-102). It was also tried on this project's aarch64 Raspberry Pi (Debian 12) — `cargo kani setup`
+completed, but the prebuilt bundle's `cargo-kani` binary requires `GLIBC_2.39`, newer than bookworm's
+`2.36`. `cargo xtask kani` prints this explanation and skips cleanly rather than a raw error — CI
+(`ubuntu-latest`, D-102's `kani` job) is the actual, unconditional venue where these proofs run on
+every push.
 
 ## Before you start
 
@@ -50,17 +169,24 @@ via GitHub Security Advisories).
 3. **No primitive written from memory.** Cite the specific DSTU clause or reference-implementation
    source in `docs/DECISIONS.md` before merging. If only a reference implementation is available
    (no primary spec text), say so explicitly and mark the citation provisional.
-4. Run the checks locally before opening a PR:
+4. Run the checks locally before opening a PR. `cargo xtask <command>` is the one cross-platform
+   entry point for build/test/QA — the same command on Linux, Windows, and macOS (`docs/DECISIONS.md`
+   D-12). Run `cargo xtask help` for the full list; the essentials:
 
    ```
-   cargo xtask fmt      # cargo fmt --all
-   cargo xtask clippy   # cargo clippy --workspace --all-features -- -D warnings
-   cargo xtask test     # cargo test --workspace --all-features
-   cargo xtask build    # both --all-features and no_std (--no-default-features)
+   cargo xtask build      # cargo build --workspace, both --all-features and no_std (--no-default-features)
+   cargo xtask test       # cargo test --workspace --all-features
+   cargo xtask fmt        # cargo fmt --all (add --check to verify without writing)
+   cargo xtask clippy     # cargo clippy --workspace --all-features -- -D warnings
+   cargo xtask docs-check # README/gh-pages version-marker freshness lint vs crates/dstu-core's Cargo.toml (T-186)
    ```
 
-   `cargo xtask ci` runs all of the above plus best-effort miri/fuzz/audit/deny/oracle-harness
-   layers (installs what it can, prints an install hint for anything missing rather than failing).
+   `cargo xtask ci` runs the five above, then best-effort miri/kani/book/fuzz/audit/deny/oracle-harness
+   layers — each checks its own tool is installed first and prints an install hint instead of a raw
+   error if it's missing. `docs-check` needs no external tool, so it's mandatory rather than
+   best-effort — same standing as `fmt`/`build`/`test`/`clippy`. `cargo xtask book` builds the
+   mdBook knowledge base this file is part of; `cargo xtask bench-compare` runs the uacrypt-vs-OpenSSL
+   benchmark table (`docs/PERFORMANCE.md`).
 5. If you touched anything `no_std`-relevant (most of `dstu-core`), check the feature matrix
    individually, not just `--all-features` — a narrow combination (e.g.
    `--no-default-features --features dstu-core/small-tables`) can hide issues the broad profile
