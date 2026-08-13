@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-737d5250.js";
+            window.path_to_searchindex_js = "searchindex-e8cab89d.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-ce7e91c5.js"></script>
@@ -11668,6 +11668,130 @@ public repos since 2025-08-07) builds it natively, no cross-compile toolchain/Do
 assume a native arm64 runner exists - this project’s runner does, so the simpler native path
 applies). Genuinely new platform coverage, unrelated to the win32 block - bundled into the same
 release since both touch <code>publish-npm</code>/<code>build-nodejs-artifacts</code>.</p>
+<h2 id="d-190-t-164---rubygems-chosen-as-the-next-registry-build-ruby-gemspublish-rubygems-landed-via-oxidize-rbactionscross-gem-rb-sys-dock-oidc-trusted-publishing-with-a-pre-registered-pending-publisher"><a class="header" href="#d-190-t-164---rubygems-chosen-as-the-next-registry-build-ruby-gemspublish-rubygems-landed-via-oxidize-rbactionscross-gem-rb-sys-dock-oidc-trusted-publishing-with-a-pre-registered-pending-publisher">D-190: T-164 - RubyGems chosen as the next registry, <code>build-ruby-gems</code>/<code>publish-rubygems</code> landed via <code>oxidize-rb/actions/cross-gem</code> (rb-sys-dock), OIDC Trusted Publishing with a pre-registered pending publisher</a></h2>
+<p><strong>Why RubyGems next</strong>: after D-189’s npm spam-detection block, RubyGems was evaluated as
+structurally lower-risk for the same failure class, not just “the next language on the list” -
+RubyGems ships one gem name (<code>dstu_core</code>) with multiple platform-tagged <em>versions</em>
+(<code>dstu_core-0.1.0-x86_64-linux.gem</code>, etc.), unlike npm’s one-new-package-name-per-platform
+scheme - the “burst of new similarly-named packages from a low-reputation account” pattern that
+triggered npm’s block has no equivalent here. RubyGems also supports a <strong>pending trusted
+publisher</strong> for a gem that doesn’t exist yet (<code>guides.rubygems.org/trusted-publishing</code>) - unlike
+npm (D-189’s own bootstrap-token workaround, since npm’s Trusted Publishing UI requires the
+package to already exist, <code>npm/cli#8544</code>), no bootstrap classic-API-token step was ever needed;
+the owner registered <code>dstu_core</code> as a pending publisher (repo <code>user137/uacrypt</code>, workflow
+<code>release.yml</code>, environment <code>rubygems</code>) directly, matching PyPI’s smoother OIDC-first-publish
+experience (<code>publish-pypi</code>).</p>
+<p><strong>Prior local finding re-examined</strong>: <code>docs/bindings-strategy.md</code>’s D-136 recorded “Linux/macOS
+cross-compiled native gems need rake-compiler-dock/Docker, deferred” from building a Windows-only
+native gem locally on the project owner’s own machine. That framing is correct in substance
+(Docker genuinely is required for cross-compiling native gems for platforms other than the host)
+but was read as a bigger blocker than it is - <code>oxidize-rb/actions/cross-gem@v1</code> (the maintained
+GitHub Action wrapper around <code>rb-sys</code>’s own <code>rb-sys-dock</code> CLI) does this entirely inside CI, no
+local Docker setup needed, the same mechanism nokogiri/grpc and many other real-world Rust/Ruby
+native-extension gems have shipped precompiled darwin/mingw builds with for years. Verified by
+reading source rather than assumed, since a wrong guess here would have meant debugging a broken
+release pipeline instead of a docs mistake:</p>
+<ul>
+<li><code>gem/exe/rb-sys-dock</code> (<code>oxidize-rb/rb-sys</code>): <code>docker run -v $(pwd):$(pwd) ... -w &lt;expanded --directory&gt;</code> mounts the <strong>whole working tree</strong> the action was invoked from, not
+just the gem’s own subdirectory - critical for this repo’s monorepo layout, since
+<code>bindings/ruby/ext/dstu_core_rb/Cargo.toml</code> path-depends on <code>../../../../crates/dstu-core</code>
+(four levels up, out of <code>bindings/ruby</code> entirely). A working-directory-only mount would have
+silently broken this dependency inside the container.</li>
+<li>The same script sets <code>RUBY_TARGET</code> (matching <code>--platform</code>) as a container env var, which is
+exactly what <code>rb_sys/extensiontask.rb</code>’s <code>ExtensionTask#init</code> reads
+(<code>@cross_compile = ENV.key?("RUBY_TARGET")</code>) to define the <code>native:$RUBY_TARGET gem</code> Rake task
+in the first place - confirmed locally that <code>bundle exec rake -T</code> (no <code>RUBY_TARGET</code> set) shows
+no <code>native</code> task at all, ruling out a missing-Rakefile-config explanation. <strong>No Rakefile/gemspec
+change was needed</strong> - the existing <code>bindings/ruby/Rakefile</code>’s plain
+<code>RbSys::ExtensionTask.new("dstu_core_rb", GEMSPEC)</code> already supports this, it just needs the env
+var, which only <code>rb-sys-dock</code> (i.e., only inside the container) ever sets.</li>
+<li>The reference recipe (<code>oxidize-rb/oxi-test</code>’s own <code>.github/workflows/cross-gem.yml</code>, the
+project’s official example) confirmed the actual call shape: <code>ruby/setup-ruby</code> then
+<code>oxidize-rb/actions/cross-gem@v1</code> with a <code>platform</code> input, output gem at
+<code>pkg/*-&lt;platform&gt;.gem</code>.</li>
+</ul>
+<p><strong>Platform set</strong>: <code>x86_64-linux</code>, <code>aarch64-linux</code>, <code>arm64-darwin</code>, <code>x64-mingw-ucrt</code> - deliberately
+mirrors <code>build-nodejs-artifacts</code>’ own four platforms (D-189: linux-x64/arm64-gnu, darwin-arm64,
+a Windows target), explicitly excluding <code>x86_64-darwin</code> for the same reason Node’s build already
+does: this project only ever targets Apple Silicon macOS (<code>build-binary</code>’s own release asset is
+<code>uacrypt-macos-aarch64.tar.gz</code>).</p>
+<p><strong>Why not <code>rubygems/release-gem@v1</code></strong> (RubyGems’ own documented one-call recipe): read its
+<code>action.yml</code> source directly - it runs <code>bundle exec rake release</code>, which builds a single <em>source</em>
+gem via plain <code>rake build</code> and creates a new git tag as part of the same task. Both are wrong for
+this shape: the gems here are already built (four separately cross-compiled native artifacts from
+<code>build-ruby-gems</code>), and the tag this job runs under already exists (<code>release.yml</code> is
+tag-triggered). <code>rubygems/configure-rubygems-credentials@v1</code> - the credential-setup step
+<code>release-gem</code> itself wraps internally - is the correct primitive to use standalone: it configures
+OIDC-based <code>gem push</code> credentials for the job, and a plain <code>gem push</code> loop over the downloaded
+<code>.gem</code> files does the rest.</p>
+<p><strong><code>publish-rubygems</code> has no “tolerate already-published” retry loop</strong>, unlike <code>publish-npm</code>’s -
+by design, confirmed via reading <code>rubygems.org</code>‘s own <code>app/models/pusher.rb</code>: a repeat push of an
+identical, already-indexed gem version returns HTTP 200 (“Gem was already pushed”), not an error -
+<code>gem push</code> is naturally idempotent for the retry-a-partial-release case npm’s <code>publish-npm</code> needed
+its loop for. The one <code>grep</code> guard that exists only catches the genuine-conflict case (same
+version+platform, different content - RubyGems’ server-side “Repushing of gem versions is not
+allowed” 409).</p>
+<p><strong>Environment</strong>: <code>rubygems</code>, created via the GitHub API with the same <code>required_reviewers: user137</code>
+protection rule as <code>pypi</code>/<code>npm</code> (D-189’s own note that referencing <code>environment:</code> in the workflow
+file alone creates an unprotected environment applies here too - created explicitly, not left to
+auto-create).</p>
+<h2 id="d-191-live-pypinpmcratesio-package-descriptions-still-said-provisional-not-yet-published-or-read-like-an-internal-note---checked-by-fetching-the-actual-registry-pages-not-assumed-from-local-source"><a class="header" href="#d-191-live-pypinpmcratesio-package-descriptions-still-said-provisional-not-yet-published-or-read-like-an-internal-note---checked-by-fetching-the-actual-registry-pages-not-assumed-from-local-source">D-191: Live PyPI/npm/crates.io package descriptions still said “provisional, not yet published” or read like an internal note - checked by fetching the actual registry pages, not assumed from local source</a></h2>
+<p><strong>What happened</strong>: while evaluating whether RubyGems would repeat any known publishing problem
+(D-190), the project owner asked whether npm’s package pages looked undocumented, and to verify
+directly rather than guess. Fetching the live registry metadata (not the local source tree) for
+every already-published package found a real, confirmed bug, not just a stale-looking local file:</p>
+<ul>
+<li><code>registry.npmjs.org/dstu-core</code> and its three live platform subpackages: <code>description</code> field and
+the rendered README both still read <strong>“Provisional — not published to npm, not independently
+audited”</strong> / <strong>“provisional, not yet published to npm”</strong> - directly contradicting the fact that
+the visitor is looking at a live, installed package. The README’s only install instructions were
+“clone the repo, <code>npm install</code>, <code>npm run build</code>” - no <code>npm install dstu-core</code> anywhere.</li>
+<li><code>pypi.org/pypi/dstu-core/json</code>: the exact same pattern - <code>summary</code>/<code>description</code> both said
+“provisional, not yet published to PyPI”, install instructions were source-build-only
+(<code>maturin develop</code>), no <code>pip install dstu-core</code>.</li>
+<li><code>crates.io/api/v1/crates/uacrypt</code>: <code>description</code> was the literal string <code>"CLI over dstu-core"</code> -
+not a stale claim, but a genuine machine-log-style non-description that tells a crates.io visitor
+nothing about what the tool actually does. <code>dstu-core</code>’s own crates.io description was fine.</li>
+<li><code>bindings/ruby/dstu_core.gemspec</code>’s <code>spec.description</code> (not yet published, so no live-page bug,
+but caught in the same sweep) listed raw module identifiers
+(<code>secretbox, secretstream, sign, auth, kdf, generichash, stream, pwhash, randombytes</code>) instead of
+a human sentence - inconsistent with every sibling binding’s one-line style. Separately, and more
+seriously: <code>spec.files</code> never included <code>README.md</code> at all (fixed in the same pass, this session,
+before D-190’s own text above) - RubyGems has no npm-style automatic README/LICENSE inclusion, so
+the gem would have shipped with <strong>no description page content whatsoever</strong> on first publish, not
+just a stale one.</li>
+</ul>
+<p><strong>Root cause</strong>: every binding’s README/manifest description was written once, pre-publish, framed
+entirely around “this doesn’t exist on a registry yet, build it from source” - and never revisited
+at the moment each one actually went live. Nothing re-checks a live registry page against its
+source after publish; the two can silently diverge indefinitely.</p>
+<p><strong>Fix, this session</strong>: for the two <em>already-live</em> registries (PyPI, npm) - rewrote both README’s
+opening (dropped the false “not published” claim, added a real <code>pip install dstu-core</code>/
+<code>npm install dstu-core</code> “Installing” section, kept the from-source steps as a separate “Building
+from source (contributors)” section) and fixed every short description field
+(<code>pyproject.toml</code>, <code>bindings/python/Cargo.toml</code>, <code>python/dstu_core/__init__.py</code>’s docstring,
+<code>src/lib.rs</code>’s module doc, and the Node.js equivalents: <code>package.json</code>, <code>Cargo.toml</code>, <code>js/index.js</code>,
+<code>src/lib.rs</code>). Both bindings bumped <code>0.1.0</code> → <code>0.1.1</code> (their own independent versioning, not
+lockstepped with the Rust crates - <code>docs/TASKS.md</code> T-49/T-50) so the fixed README/description
+actually reaches the live page on next publish, since PyPI/npm render metadata from the latest
+published version, not the git source. <code>uacrypt</code>’s crates.io description fixed to a real sentence.
+For the <em>not-yet-live</em> bindings (Ruby, PHP, .NET, Java, Go, C++) - their “provisional, not yet
+published” wording is currently true and was left as-is (fixing it now would itself be a false
+claim); only genuine defects were fixed regardless of publish state: Ruby’s <code>spec.files</code> gap above,
+Ruby’s <code>spec.description</code> module-list wording, and <code>.csproj</code>’s redundant “pre-release, provisional”
+normalized to match every other not-yet-published binding’s phrasing.</p>
+<p><strong>Standing gap this leaves</strong>: nothing yet automatically re-verifies a live registry page against
+its own source after every publish - this was a manual, one-time sweep triggered by a direct
+question, not a repeatable check. <code>docs/TASKS.md</code> should get a real task for this if it recurs
+again, rather than relying on someone happening to look.</p>
+<p><strong>Process note</strong> (why this matters beyond the immediate fix): the finding only surfaced because
+the actual registry pages were fetched and read (<code>registry.npmjs.org</code>/<code>pypi.org</code>/<code>crates.io</code>’s own
+JSON APIs), not because the local README/description files were re-read and judged stale by eye -
+a local-file-only review would have found the individually-obvious “provisional” claims but likely
+missed <code>uacrypt</code>’s crates.io-only “CLI over dstu-core” (no local file even has that exact string in
+isolation - it only reads badly in the context of what actually renders on the crates.io page next
+to <code>dstu-core</code>’s own, better one). See the memory saved this session for the standing instruction
+this establishes for every future publish-verification task.</p>
 
                     </main>
 

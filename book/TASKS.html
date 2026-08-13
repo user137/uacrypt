@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-737d5250.js";
+            window.path_to_searchindex_js = "searchindex-e8cab89d.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-ce7e91c5.js"></script>
@@ -4801,13 +4801,17 @@ mdBook for the existing <code>docs/*.md</code> corpus, plus a mandatory <code>ca
 `# uacrypt</p>
 </li>
 </ul>
-<!-- uacrypt-version: 0.3.5 -->
-<p><strong>v0.3.5 — released 2026-08-13. <code>dstu-core</code> (Python bindings) is now live on
+<!-- uacrypt-version: 0.3.6 -->
+<p><strong>v0.3.6 — released 2026-08-13. <code>dstu-core</code> (Python bindings) is live on
 <a href="https://pypi.org/project/dstu-core/">PyPI</a>; on npm, <code>dstu-core</code> (root), <code>dstu-core-linux-x64-gnu</code>,
 and <code>dstu-core-darwin-arm64</code> are live. <code>dstu-core-win32-x64-msvc</code> is deliberately deferred, blocked
 by npm’s own spam detection (external, not a code issue — see <code>docs/DECISIONS.md</code> D-189);
-<code>dstu-core-linux-arm64-gnu</code> is a new platform added this release. See <code>docs/CHANGELOG.md</code> for
-details.</strong> Not a complete library or CLI yet, not audited, not
+<code>dstu-core-linux-arm64-gnu</code> is a new platform added in v0.3.5. This release fixes a real bug found
+on the live PyPI/npm/crates.io pages: several package descriptions/READMEs still said “provisional,
+not yet published” or read like an internal engineering note, contradicting the fact that they were
+already live — see <code>docs/DECISIONS.md</code> D-191. RubyGems publishing (<code>dstu_core</code>) is wired up but
+still dormant pending the next tag. See <code>docs/CHANGELOG.md</code> for details.</strong> Not a complete library or
+CLI yet, not audited, not
 production-ready, and <strong>not a claim of side-channel resistance</strong>. Core primitives
 (Kalyna, Kupyna) are dual-oracle-verified against official test vectors; Strumok and the Kalyna-CCM mode are
 provisional (not yet confirmed against their primary standard text — see <code>docs/DECISIONS.md</code> D-15/D-41).
@@ -6645,8 +6649,19 @@ registry is a separate, later, explicit go-ahead — not implied by this CI plum
 <code>dstu-core-linux-x64-gnu</code>, <code>dstu-core-darwin-arm64</code> live; <code>dstu-core-linux-arm64-gnu</code> added as
 a new platform this release; <code>dstu-core-win32-x64-msvc</code> deliberately deferred, blocked by
 npm’s own spam detection (external, confirmed not time-based) — see D-189 for the incident and
-the real fix (npm support, not a retry/rename). RubyGems/NuGet/Maven Central/Packagist not
-started.</li>
+the real fix (npm support, not a retry/rename). <strong>RubyGems CI plumbing landed same day</strong>
+(<code>build-ruby-gems</code>/<code>publish-rubygems</code> in <code>release.yml</code>, cross-compiled via
+<code>oxidize-rb/actions/cross-gem</code>/<code>rb-sys-dock</code> for <code>x86_64-linux</code>/<code>aarch64-linux</code>/
+<code>arm64-darwin</code>/<code>x64-mingw-ucrt</code>, OIDC Trusted Publishing against a pending publisher the
+owner already registered for <code>dstu_core</code> — see D-190) — dormant behind the <code>rubygems</code>
+GitHub Environment approval gate until the next tag, same “land ahead of first publish”
+posture PyPI/npm used. NuGet/Maven Central/Packagist not started.
+<strong>v0.3.6 (2026-08-13)</strong>: fixed a real bug on the already-live PyPI/npm pages - stale
+pre-publish “provisional, not yet published” README/description text, no <code>pip install</code>/
+<code>npm install</code> instructions anywhere. Fixed for both bindings (bumped <code>0.1.0</code>→<code>0.1.1</code> so the
+fix actually reaches the registry), plus <code>uacrypt</code>’s crates.io description and a distinct
+Ruby gemspec bug (<code>README.md</code> missing from <code>spec.files</code> entirely) caught in the same sweep,
+ahead of Ruby’s own first publish. See D-191.</li>
 <li><input disabled="" type="checkbox" checked=""> <strong>T-165</strong> <strong>Done 2026-08-03.</strong> <strong><code>docs/CONTRIBUTING.md</code> has zero mentions of <code>bindings/</code>/<code>dstu-core-capi</code> anywhere
 (confirmed by grep, not assumed), added 2026-08-03.</strong> It was written entirely for core-crate
 contributors (a new primitive/mode) and predates all of Phase 3 — a contributor who wants to

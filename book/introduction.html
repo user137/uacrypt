@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-737d5250.js";
+            window.path_to_searchindex_js = "searchindex-e8cab89d.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-ce7e91c5.js"></script>
@@ -182,13 +182,17 @@
                     <main>
                         <h1 id="introduction"><a class="header" href="#introduction">Introduction</a></h1>
 <h1 id="uacrypt"><a class="header" href="#uacrypt">uacrypt</a></h1>
-<!-- uacrypt-version: 0.3.5 -->
-<p><strong>v0.3.5 — released 2026-08-13. <code>dstu-core</code> (Python bindings) is now live on
+<!-- uacrypt-version: 0.3.6 -->
+<p><strong>v0.3.6 — released 2026-08-13. <code>dstu-core</code> (Python bindings) is live on
 <a href="https://pypi.org/project/dstu-core/">PyPI</a>; on npm, <code>dstu-core</code> (root), <code>dstu-core-linux-x64-gnu</code>,
 and <code>dstu-core-darwin-arm64</code> are live. <code>dstu-core-win32-x64-msvc</code> is deliberately deferred, blocked
 by npm’s own spam detection (external, not a code issue — see <code>docs/DECISIONS.md</code> D-189);
-<code>dstu-core-linux-arm64-gnu</code> is a new platform added this release. See <code>docs/CHANGELOG.md</code> for
-details.</strong> Not a complete library or CLI yet, not audited, not
+<code>dstu-core-linux-arm64-gnu</code> is a new platform added in v0.3.5. This release fixes a real bug found
+on the live PyPI/npm/crates.io pages: several package descriptions/READMEs still said “provisional,
+not yet published” or read like an internal engineering note, contradicting the fact that they were
+already live — see <code>docs/DECISIONS.md</code> D-191. RubyGems publishing (<code>dstu_core</code>) is wired up but
+still dormant pending the next tag. See <code>docs/CHANGELOG.md</code> for details.</strong> Not a complete library or
+CLI yet, not audited, not
 production-ready, and <strong>not a claim of side-channel resistance</strong>. Core primitives
 (Kalyna, Kupyna) are dual-oracle-verified against official test vectors; Strumok and the Kalyna-CCM mode are
 provisional (not yet confirmed against their primary standard text — see <code>docs/DECISIONS.md</code> D-15/D-41).
