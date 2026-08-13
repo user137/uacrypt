@@ -804,25 +804,29 @@ uacrypt box-open   --key box.key  --in sealed.box   --out message.bin</code></pr
   <span class="eyebrow" lang="uk">Байндінги</span>
   <div lang="en" class="prose"><h2>Eight languages, one C ABI</h2>
   <p>The full <code>crypto_*</code> surface, idiomatic errors and secretstream I/O, and the same
-  correctness/rejection/misuse test suite per language — not a thin, partial wrapper. Not yet
-  published to any package registry (PyPI/npm/RubyGems/Packagist/NuGet/Maven Central) — build from
-  source, same as the Rust crate itself before crates.io.</p></div>
+  correctness/rejection/misuse test suite per language — not a thin, partial wrapper. Python and
+  Node.js are published (PyPI/npm); the rest aren't yet (RubyGems/Packagist/NuGet/Maven Central) —
+  build those from source, same as the Rust crate itself before crates.io. Each card below links
+  the README (full docs, every binding) and the package registry where one exists (the actual
+  install command).</p></div>
   <div lang="uk" class="prose"><h2>Вісім мов, один C ABI</h2>
   <p>Повна поверхня <code>crypto_*</code>, ідіоматичні помилки та I/O для secretstream, той самий
   набір тестів на коректність/відхилення/некоректне використання для кожної мови — не тонка,
-  часткова обгортка. Ще не опубліковано в жодному реєстрі пакетів (PyPI/npm/RubyGems/Packagist/
-  NuGet/Maven Central) — збірка з джерела, так само як і сам Rust-крейт до crates.io.</p></div>
+  часткова обгортка. Python і Node.js опубліковані (PyPI/npm); решта — ще ні (RubyGems/Packagist/
+  NuGet/Maven Central) — для них поки що збірка з джерела, так само як і сам Rust-крейт до
+  crates.io. Кожна картка нижче веде на README (повна документація, для всіх мов) і на реєстр
+  пакетів там, де він є (реальна команда встановлення).</p></div>
 
   <div class="check-grid">
     <div class="check">
       <h3>Python</h3>
-      <p lang="en">PyO3, direct Rust binding — <a href="https://github.com/user137/uacrypt/blob/master/bindings/python/README.md">bindings/python</a>.</p>
-      <p lang="uk">PyO3, прямий Rust-байндінг — <a href="https://github.com/user137/uacrypt/blob/master/bindings/python/README.md">bindings/python</a>.</p>
+      <p lang="en">PyO3, direct Rust binding — <a href="https://github.com/user137/uacrypt/blob/master/bindings/python/README.md">bindings/python</a> (docs) · <a href="https://pypi.org/project/dstu-core/">PyPI</a> (install).</p>
+      <p lang="uk">PyO3, прямий Rust-байндінг — <a href="https://github.com/user137/uacrypt/blob/master/bindings/python/README.md">bindings/python</a> (документація) · <a href="https://pypi.org/project/dstu-core/">PyPI</a> (встановлення).</p>
     </div>
     <div class="check">
       <h3>Node.js</h3>
-      <p lang="en">napi-rs, direct Rust binding — <a href="https://github.com/user137/uacrypt/blob/master/bindings/nodejs/README.md">bindings/nodejs</a>.</p>
-      <p lang="uk">napi-rs, прямий Rust-байндінг — <a href="https://github.com/user137/uacrypt/blob/master/bindings/nodejs/README.md">bindings/nodejs</a>.</p>
+      <p lang="en">napi-rs, direct Rust binding — <a href="https://github.com/user137/uacrypt/blob/master/bindings/nodejs/README.md">bindings/nodejs</a> (docs) · <a href="https://www.npmjs.com/package/dstu-core">npm</a> (install).</p>
+      <p lang="uk">napi-rs, прямий Rust-байндінг — <a href="https://github.com/user137/uacrypt/blob/master/bindings/nodejs/README.md">bindings/nodejs</a> (документація) · <a href="https://www.npmjs.com/package/dstu-core">npm</a> (встановлення).</p>
     </div>
     <div class="check">
       <h3>Ruby</h3>
