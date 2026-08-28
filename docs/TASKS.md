@@ -4197,6 +4197,24 @@ item they point to is later removed.
       into a parallel matrix by test-file group (the same shape `cargo fuzz`'s per-target matrix
       already uses in this workflow), not raising a number that has nowhere higher to go on
       GitHub-hosted runners.
+- [ ] **T-212** **Not started, not committed - decision gate (2026-08-28): should the `uacrypt` CLI
+      binary also ship through npm and RubyGems, the way T-209 already plans for PyPI?** Raised by
+      the owner asking whether a libsodium-style project's CLI even belongs in language registries.
+      Conclusion reached in that conversation: the registries' native job in the libsodium model is
+      the *library* wrapper (`dstu-core` per language), which is already published for Python/Node/
+      Ruby - libsodium itself ships no CLI. Distributing a CLI via npm (`esbuild`/`biome`/`npx`),
+      PyPI (`ruff`/`uv`/`pipx`) or RubyGems (`rubocop`, gem `bin/`) is a real, well-trodden pattern
+      (unlike Packagist, foreclosed by D-144), but it is a secondary channel for a standalone crypto
+      CLI - the natural homes for that reach are Homebrew / Scoop / winget / GitHub Releases (done) /
+      `cargo install` (done). The only strong argument for it is the narrow persona already in a
+      pip/npm/gem workflow who wants the command without leaving it - the exact bet T-209 makes for
+      PyPI. **Gate**: do not open per-ecosystem CLI-packaging tasks for npm/RubyGems until either
+      (a) T-209 actually ships and shows uptake, or (b) a concrete user request lands. If unblocked,
+      each ecosystem gets its own task mirroring T-209's shape (reuse `release.yml`'s existing
+      `build-binary` outputs + a thin native-language shim over a bundled prebuilt binary, no
+      PyO3/napi-rs/magnus involved; new registry project, own name check). A separate, arguably
+      higher-value track if standalone-CLI reach is the real goal: a Homebrew tap / Scoop manifest /
+      winget submission - not tracked here yet.
 - [ ] **T-202** **Not started, owner-requested (2026-08-09) - research spike: is a Strumok-keystream
       + MAC ("Encrypt-then-MAC") authenticated construction a faster-but-still-safe alternative to
       `crypto_secretstream`'s current Kalyna-GCM-based AEAD for `uacrypt encrypt`/`decrypt`?**
