@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-35e9df56.js";
+            window.path_to_searchindex_js = "searchindex-ac928710.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-6b977b4b.js"></script>
@@ -4469,6 +4469,26 @@ uncancelled for 6+ hours. If it isn’t enough, the durable fix is splitting thi
 into a parallel matrix by test-file group (the same shape <code>cargo fuzz</code>’s per-target matrix
 already uses in this workflow), not raising a number that has nowhere higher to go on
 GitHub-hosted runners.</p>
+</li>
+<li>
+<p><input disabled="" type="checkbox"> <strong>T-212</strong> <strong>Not started, not committed - decision gate (2026-08-28): should the <code>uacrypt</code> CLI
+binary also ship through npm and RubyGems, the way T-209 already plans for PyPI?</strong> Raised by
+the owner asking whether a libsodium-style project’s CLI even belongs in language registries.
+Conclusion reached in that conversation: the registries’ native job in the libsodium model is
+the <em>library</em> wrapper (<code>dstu-core</code> per language), which is already published for Python/Node/
+Ruby - libsodium itself ships no CLI. Distributing a CLI via npm (<code>esbuild</code>/<code>biome</code>/<code>npx</code>),
+PyPI (<code>ruff</code>/<code>uv</code>/<code>pipx</code>) or RubyGems (<code>rubocop</code>, gem <code>bin/</code>) is a real, well-trodden pattern
+(unlike Packagist, foreclosed by D-144), but it is a secondary channel for a standalone crypto
+CLI - the natural homes for that reach are Homebrew / Scoop / winget / GitHub Releases (done) /
+<code>cargo install</code> (done). The only strong argument for it is the narrow persona already in a
+pip/npm/gem workflow who wants the command without leaving it - the exact bet T-209 makes for
+PyPI. <strong>Gate</strong>: do not open per-ecosystem CLI-packaging tasks for npm/RubyGems until either
+(a) T-209 actually ships and shows uptake, or (b) a concrete user request lands. If unblocked,
+each ecosystem gets its own task mirroring T-209’s shape (reuse <code>release.yml</code>’s existing
+<code>build-binary</code> outputs + a thin native-language shim over a bundled prebuilt binary, no
+PyO3/napi-rs/magnus involved; new registry project, own name check). A separate, arguably
+higher-value track if standalone-CLI reach is the real goal: a Homebrew tap / Scoop manifest /
+winget submission - not tracked here yet.</p>
 </li>
 <li>
 <p><input disabled="" type="checkbox"> <strong>T-202</strong> <strong>Not started, owner-requested (2026-08-09) - research spike: is a Strumok-keystream
