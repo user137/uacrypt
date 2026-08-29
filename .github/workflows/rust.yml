@@ -92,47 +92,16 @@ jobs:
     # `#[cfg_attr(miri, ignore)]`, T-175) wasn't distinguishable from the rest of the run without
     # manually picking the log apart. `fail-fast: false` so one crate's timeout/failure doesn't hide
     # the other two crates' results in the same push.
-    # This job never completed on any push before docs/TASKS.md T-100 (D-59) - PROPTEST_CASES=1 alone
-    # didn't bound its wall-clock time, because the bottleneck is per-case interpretation cost, not
-    # case *count*: every #[test] that calls `Point::scalar_multiply` (DSTU 4145's 163-iteration
-    # constant-time ladder) *or* `FieldElement::invert` (its own 162-step exponentiation, called by
-    # `Point::add`/`double` too) - not just the two proptest suites originally suspected - takes
-    # minutes per call under Miri's interpreter. Fixed at the source, not here: those tests now
-    # carry `#[cfg_attr(miri, ignore = "...")]` (dstu4145_curve.rs, dstu4145_gf2m.rs,
-    # dstu4145_signature.rs, crypto_sign.rs, and dstu-core-capi's ffi_tests.rs as of T-175), so this
-    # stays the one-liner below rather than a
-    # skip-list duplicating test names in two places (a CI-side skip list was considered and
-    # rejected once already, T-85 - same drift risk: a new EC-heavy test added later without the
-    # attribute silently reintroduces the timeout, but at least it's discoverable in the same file
-    # as the test, not a remote yaml). `cargo test` (the `test` job above) still runs these tests
-    # every push, unaffected - only Miri's UB-checking of the ladder/inversion is skipped, for cost
-    # reasons, not correctness ones.
-    # What remains after that fix is bounded but still genuinely slow (interpreted block-cipher-mode
-    # tests, not EC math) - measured locally at ~84 minutes for all of `dstu-core` alone (D-59's
-    # full table), a materially different situation from the open-ended runaway case the old 30-min
-    # cap was set against, so raising it here is the correct response, not a repeat of that mistake.
-    # 150 min was ~2.5x the measured dstu-core-only total at the time, but the last actually-
-    # completed run (commit 8e5a2a8, 2026-07-27, `gh run view 30286706271`) already used 2h23m of
-    # that 150-min budget - only ~5% margin left, with zero source/test changes since (confirmed via
-    # `git log 8e5a2a8..HEAD -- crates/`: one doc-citation-path rewrite, T-141, nothing else). The
-    # very next unpreempted run then genuinely exceeded 150 min and was cancelled (T-146/D-103) -
-    # ordinary CI runner variance tipping an already-razor-thin margin, not a code regression. Raised
-    # to 240 (well under GitHub-hosted runners' 360-min hard cap) for real headroom instead of
-    # nudging the number up by the smallest amount that would have covered just this one overrun.
-    # `uacrypt`/`dstu-core-capi` have no equivalent measured-locally number yet (only ever run as
-    # part of the combined workspace job before T-175) - kept at the same cap as `dstu-core`
-    # rather than guessing a tighter one; tighten per-crate once each has its own real history.
-    # Raised 240 -> 360 (GitHub-hosted runners' actual hard job cap, cannot go higher) 2026-08-13
-    # after run 31658054714 - left uncancelled for the first time in days - hit the 240-min ceiling
-    # mid-suite in `dstu-core`'s own job, with per-file times showing T-192/T-193/T-199's new
-    # l(p)=512/crypto_box512/m=257 Miri surface (four single files each 2000-3400s) added enough
-    # cost that dstu-core's total may now be close to or over even this new ceiling - see T-211,
-    # not yet confirmed either way pending a future uncancelled run.
+    # `dstu-core` itself moved out of this matrix into `miri-dstu-core` below (T-211/D-172) - its
+    # ~41-file test suite's real wall-clock total was measured (for the first time ever, via a
+    # sharded run's per-file timing) at ~9-10h, structurally unable to fit in one job even at
+    # GitHub-hosted runners' 360-min hard per-job cap. `uacrypt`/`dstu-core-capi` stay here: ~17min/
+    # ~12min respectively, comfortably one job each.
     timeout-minutes: 360
     strategy:
       fail-fast: false
       matrix:
-        package: [dstu-core, uacrypt, dstu-core-capi]
+        package: [uacrypt, dstu-core-capi]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@nightly
@@ -147,6 +116,68 @@ jobs:
       # convention to filter on) from making this job impractically slow under interpretation,
       # while still exercising each one at least once under Miri rather than skipping them outright.
       - run: cargo +nightly miri test -p ${{ matrix.package }}
+        env:
+          MIRIFLAGS: -Zmiri-disable-isolation
+          PROPTEST_CASES: 1
+
+  miri-dstu-core-discover:
+    name: discover dstu-core miri test targets
+    runs-on: ubuntu-latest
+    # Lists `crates/dstu-core/tests/*.rs` at run time so `miri-dstu-core` below always shards by
+    # whatever test files actually exist - a new test file (the next l(p) size, the next primitive)
+    # gets its own isolated shard automatically, with nobody needing to remember to add a line to
+    # this workflow (T-211/D-172). This job existing is itself the fix for the repeated-drift pattern
+    # (T-100 -> T-156 -> T-211) where a newly added EC-heavy test file kept silently reintroducing
+    # the old single-job timeout because nobody re-audited every file for `#[cfg_attr(miri,
+    # ignore)]` coverage before each push.
+    outputs:
+      targets: ${{ steps.list.outputs.targets }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: list
+        run: |
+          targets=$(cd crates/dstu-core/tests && ls *.rs | sed 's/\.rs$//' | jq -R -s -c 'split("\n")[:-1]')
+          echo "targets=$targets" >> "$GITHUB_OUTPUT"
+
+  miri-dstu-core:
+    name: cargo miri test (dstu-core, ${{ matrix.target }})
+    needs: miri-dstu-core-discover
+    runs-on: ubuntu-latest
+    # One job per integration-test file (T-211/D-172) instead of one job for the whole crate -
+    # `fail-fast: false` so this run is also the first-ever real per-file timing data for this
+    # suite (the job never completed before, so no prior run could produce it). 360 min (GitHub-
+    # hosted runners' hard per-job cap) kept unchanged here for this landing rather than guessing a
+    # tighter number per shard - tighten once a full sharded run's real per-file times exist to set
+    # each shard's cap to ~2x its measured max, the same margin discipline D-103 already established
+    # for the old single-job cap.
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJson(needs.miri-dstu-core-discover.outputs.targets) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: miri
+      - run: cargo +nightly miri test -p dstu-core --test ${{ matrix.target }}
+        env:
+          MIRIFLAGS: -Zmiri-disable-isolation
+          PROPTEST_CASES: 1
+
+  miri-dstu-core-lib:
+    name: cargo miri test (dstu-core, lib)
+    runs-on: ubuntu-latest
+    # dstu-core's own unit tests (src/lib.rs and submodules) - not an integration-test file, so
+    # `miri-dstu-core-discover` above can't see it; measured at ~8.4min in the run that surfaced
+    # this whole split (T-211/D-172), kept at the same 360-min cap as its siblings for now.
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: miri
+      - run: cargo +nightly miri test -p dstu-core --lib
         env:
           MIRIFLAGS: -Zmiri-disable-isolation
           PROPTEST_CASES: 1

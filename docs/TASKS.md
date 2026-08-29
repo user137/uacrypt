@@ -4177,26 +4177,25 @@ item they point to is later removed.
       Could run manually right after each publish, or as a CI job triggered after `publish-pypi`/
       `publish-npm`/`publish-rubygems` succeed - either way, closes the "standing gap" D-191 itself
       flagged. Not started: no script, no CI job, no chosen cadence yet.
-- [ ] **T-211** **Not started, found 2026-08-13 - `cargo miri test (dstu-core)` may now exceed
-      GitHub-hosted runners' 360-min hard job cap (not just the 240-min `timeout-minutes` setting,
-      raised to 360 in the same pass that found this).** Run `31658054714` was left uncancelled for
-      the first time in several days (every run since 2026-08-09 had been pre-empted by a rapid
-      follow-up push's `cancel-in-progress`, masking this) and hit the then-240-min ceiling mid-way
-      through `tests/dstu9041_encryption_512.rs`, four files before the end of the suite. Per-file
-      timings pulled from that run's own log (`gh run view --job=<id> --log`): `crypto_box512.rs`
-      2523s, `dstu4145_curve.rs` 3418s, `dstu9041_curve_512.rs` 2746s, `dstu9041_encryption.rs`
-      2065s - all four are new test surface from T-192/T-193/T-199 (l(p)=512, `crypto_box512`,
-      m=257) that didn't exist at the last actually-*completed* run (2026-08-08, 3h41m total, see
-      the `timeout-minutes` comment in `.github/workflows/rust.yml`). Still untested at cutoff:
-      `dstu9041_field{,_512}.rs`, `dstu9041_message{,_512}.rs`, all twelve `kalyna_*.rs` files, all
-      three `kupyna*.rs` files, `randombytes.rs`, `selftest.rs`, `strumok.rs` - a rough sum (known
-      completed time + a same-order-of-magnitude estimate for the unmeasured 512-bit-family files)
-      puts total real requirement close to or above 360 min, meaning the timeout bump alone may not
-      be sufficient and won't be confirmed either way until a future run is genuinely left
-      uncancelled for 6+ hours. If it isn't enough, the durable fix is splitting this one serial job
-      into a parallel matrix by test-file group (the same shape `cargo fuzz`'s per-target matrix
-      already uses in this workflow), not raising a number that has nowhere higher to go on
-      GitHub-hosted runners.
+- [x] **T-211** **Confirmed and fixed 2026-08-29 (D-195) - `cargo miri test (dstu-core)` genuinely
+      cannot fit in one job, at any `timeout-minutes` value.** Run `33208446660` (2026-08-28, left
+      uncancelled the whole way to the 360-min hard cap) confirmed the prediction below: it got
+      through only ~21 of ~41 test files before being killed, with `tests/dstu9041_encryption_512.rs`
+      alone still running past the +128min mark when the axe fell. Real per-file timing, pulled from
+      that run's log the same way this task originally proposed: lib unittests 504s, `crypto_box.rs`
+      549s, `crypto_box512.rs` 2384s, `dstu4145_curve.rs` 3323s (only 6 of ~15 EC-heavy tests carry
+      `#[cfg_attr(miri, ignore)]`, contradicting `rust.yml`'s own old comment claiming full coverage
+      - see D-195), `dstu4145_gf2m{,257}.rs` 274s/550s (zero ignores), `dstu9041_curve.rs` 724s,
+      `dstu9041_curve_512.rs` 2683s, `dstu9041_encryption.rs` 2040s, `dstu9041_encryption_512.rs`
+      >7682s and still running. Extrapolating the ~20 still-never-measured files (`dstu9041_field*`,
+      `dstu9041_message*`, `kalyna_*`, `kupyna*`, `randombytes.rs`, `selftest.rs`, `strumok.rs`) from
+      D-59's stale ~84-min figure, real total is ~9-10h - roughly 1.5-2.5x GitHub-hosted runners'
+      hard per-job ceiling, so no `timeout-minutes` value could ever have worked. Fixed by splitting
+      into a dynamically-discovered per-test-file matrix (`miri-dstu-core-discover` +
+      `miri-dstu-core` in `.github/workflows/rust.yml`) instead of raising the number a fifth time -
+      see D-195 for the full rationale and the deferred follow-up (tighten each shard's
+      `timeout-minutes` and extend the `#[cfg_attr(miri, ignore)]` audit once this shard-level data
+      exists for all 41 files, not just the ~21 this run reached).
 - [ ] **T-212** **Not started, not committed - decision gate (2026-08-28): should the `uacrypt` CLI
       binary also ship through npm and RubyGems, the way T-209 already plans for PyPI?** Raised by
       the owner asking whether a libsodium-style project's CLI even belongs in language registries.

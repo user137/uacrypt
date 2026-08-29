@@ -3476,6 +3476,11 @@ genuinely complete product" in `docs/TASKS.md` - trust/correctness fixes (T-97-T
 ## D-59: `cargo miri test`'s CI job (T-100) - real root cause was broader than the two proptest
 suites originally suspected; fixed by tagging every EC-heavy test, not by raising the timeout alone
 
+*(Superseded for timing purposes by D-195, 2026-08-29: this entry's ~84-min "all of `dstu-core`"
+figure predates the T-177/T-192/T-193/T-199 EC surface that made the suite's real total ~9-10h.
+Kept as-is below as the historical record of its own measurement date, per this project's
+"never silently deprecate a document" rule.)*
+
 **The premise going in was wrong, and measuring first caught it.** T-100's own text (and the
 `rust.yml` comment it quotes) named `dstu4145_sign_verify_roundtrip`/`dstu4145_crypto_sign_roundtrip`
 - the two `proptest` suites - as the suite(s) responsible for the miri job never completing.
@@ -13058,4 +13063,83 @@ page's hero status note and Bindings section (both languages, both still said Ru
 up but not live yet") updated to match - the same "two places say the same thing, only one gets
 updated" risk D-193 already flagged for this page, closed here for RubyGems specifically before it
 had the chance to go stale on its own.
+
+## D-195: T-211 - `cargo miri test (dstu-core)` split into a dynamically-discovered per-test-file matrix - the single-job timeout had nowhere higher to go
+
+**What happened**: run `33208446660` (2026-08-28) was left uncancelled all the way to the 360-min
+hard cap GitHub-hosted runners enforce (the highest `timeout-minutes` can ever be set) and still got
+killed mid-suite - `tests/dstu9041_encryption_512.rs` was still running past its own +128min mark
+when the job died, with roughly 20 of ~41 test files never reached at all. This confirms T-211's
+2026-08-13 prediction: raising `timeout-minutes` a fifth time (150 -> 240 -> 360, `.github/
+workflows/rust.yml`'s own comment history) was chasing a number that had already hit its ceiling,
+not fixing anything. Per-file timing pulled from the run's log (`gh run view <id> --log`, matching
+`Running tests/X.rs` lines to the *next* `test result:` line - an off-by-one in this pairing
+produced a wrong first read during this same investigation, worth flagging since it's an easy trap
+re-deriving this kind of timing table): lib unittests 504s, `crypto_auth.rs` 11s, `crypto_box.rs`
+549s, `crypto_box512.rs` 2384s, `crypto_generichash.rs` 3s, `dstu4145_curve.rs` 3323s,
+`dstu4145_gf2m.rs` 274s, `dstu4145_gf2m257.rs` 550s, `dstu4145_signature.rs` 511s, `dstu9041_curve.rs`
+724s, `dstu9041_curve_512.rs` 2683s, `dstu9041_encryption.rs` 2040s, `dstu9041_encryption_512.rs`
+still running past 7682s. The ~20 files never reached (`dstu9041_field{,_512}.rs`,
+`dstu9041_message{,_512}.rs`, all twelve `kalyna_*.rs`, all three `kupyna*.rs`, `randombytes.rs`,
+`selftest.rs`, `strumok.rs`) have no measured data even now - extrapolating from D-59's stale
+~84-min figure for that same file set (measured before T-177/T-192/T-193/T-199's EC-heavy additions
+existed), real total for the whole suite is on the order of 9-10h, roughly 1.5-2.5x the hard cap.
+
+**A second, independent gap found along the way**: `.github/workflows/rust.yml`'s own comment
+claimed `dstu4145_curve.rs`/`dstu4145_gf2m.rs` "carry `#[cfg_attr(miri, ignore = ...)]`" as of T-175.
+`dstu4145_curve.rs` actually carries it on only 6 of roughly 15 tests that call `Point::scalar_multiply`
+or `verify_combine` (T-156/D-113 fixed 2 of the missing ones reactively in 2026-08-02, not the rest) -
+that part is a real, unambiguous gap, the same drift class T-100/D-59 and T-156/D-113 already found
+twice before (a new EC-heavy test landing without the attribute, T-152/T-153 in this case).
+`dstu4145_gf2m.rs`/`dstu4145_gf2m257.rs` currently carry zero such attributes, where D-59 originally
+recorded tagging two of its tests (`gf2m163_field_arithmetic_matches_bouncy_castle`,
+`gf2m163_invert_is_involution_via_reciprocal` - both still present, unchanged names) - T-153
+(`b3fec3e`, same day) replaced `FieldElement::invert`'s 162-step brute-force exponentiation with
+Itoh-Tsujii, which speeds up but does not eliminate the cost, so this reads more like a dropped
+attribute than a confirmed non-issue: the file's own 274s measured runtime for 5 tests, one of which
+(`gf2m163_invert_is_involution_via_reciprocal`) loops `invert` over all 20 field cases, is real,
+non-trivial interpreted cost, not evidence it vanished. Treat as likely still needing the attribute
+until the follow-up below actually re-measures it, not as probably fine. Not fixed here (see Deferred
+below) - the measured numbers above show these files cost tens of minutes to a bit under an hour
+even un-audited, tolerable inside their own shard, not the multi-hour-plus runaway the job-level
+symptom looked like.
+
+**Fix**: replaced the single `cargo miri test -p dstu-core` step with two new jobs in `.github/
+workflows/rust.yml`: `miri-dstu-core-discover` lists `crates/dstu-core/tests/*.rs` at run time and
+emits the file-stem list as a job output; `miri-dstu-core` consumes it as a `fromJson` matrix,
+running `cargo +nightly miri test -p dstu-core --test <file>` per shard (`fail-fast: false`), plus a
+separate fixed `miri-dstu-core-lib` job for `--lib`. `uacrypt`/`dstu-core-capi` stay in the original
+per-package `miri` job unchanged (~17min/~12min each, no need to split). This closes the drift
+pattern structurally rather than by re-auditing harder: a future test file automatically gets its
+own isolated shard the moment it exists, with nobody needing to edit this workflow or re-run a
+mental audit of every `#[test]` in the crate before each push. `timeout-minutes: 360` kept
+unchanged on the new per-file jobs for this landing - genuinely no other job in this crate's test
+suite has ever completed, so there is no real per-file number yet to size a tighter cap against;
+tightening on a guess would repeat the exact D-103 mistake (a "razor-thin margin" cap set before the
+data existed) this whole file's history already warns against.
+
+**Verified before implementing**: `master`'s branch ruleset (`main-protection`) enforces only
+`deletion`/`non_fast_forward` - no required status check names this job, so renaming/splitting it
+doesn't silently drop or block on a gate (checked via `gh api repos/.../rulesets/<id>` - this would
+have needed a stable-named aggregator job if a required check existed).
+
+**Deferred, not silently dropped**: (1) extending the `#[cfg_attr(miri, ignore)]` audit to
+`dstu4145_gf2m{,257}.rs`, the rest of `dstu4145_curve.rs`, `dstu9041_curve{,_512}.rs`, and the
+individual (non-proptest) `encrypt`/`decrypt` round-trip tests in `dstu9041_encryption{,_512}.rs` -
+deferred to a follow-up once the sharded matrix's first real run gives per-file numbers for every
+one of the ~41 files, not just the ~21 this investigation could measure; (2) tightening each shard's
+`timeout-minutes` from 360 down to roughly 2x its own measured max, same margin discipline as (1);
+(3) `dstu9041_encryption_512.rs` was deliberately *not* given a preemptive ignore pass in this
+change despite being the run's single largest unknown - its individual (non-proptest) tests are
+structurally identical to `dstu9041_encryption.rs`'s (which completes in 34 min with the same
+tests un-ignored), so a several-times-256-bit slowdown is the expected, not anomalous, cost of a
+512-iteration ladder; isolating it into its own 360-min shard is expected to be enough headroom on
+its own, to be confirmed by (1)/(2)'s follow-up rather than assumed here. **If this specific shard
+still times out at 360 min in the first sharded run, the fix is the ignore pass on this file, not a
+higher cap - 360 is GitHub-hosted runners' hard per-job ceiling, the same wall this whole decision
+exists to stop running into.** (4) D-59's ~84-min figure
+for "all of `dstu-core`" is now stale and superseded by this decision's per-file numbers - left in
+place in `docs/DECISIONS.md` as a historical record (that section already documents its own
+measurement date) rather than edited, per this project's "never silently deprecate" rule; this
+paragraph is the pointer forward for any future reader who finds it.
 
