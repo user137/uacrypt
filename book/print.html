@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-d16d3714.js";
+            window.path_to_searchindex_js = "searchindex-c8b180a6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-6b977b4b.js"></script>
@@ -4662,6 +4662,20 @@ into a dynamically-discovered per-test-file matrix (<code>miri-dstu-core-discove
 see D-195 for the full rationale and the deferred follow-up (tighten each shard’s
 <code>timeout-minutes</code> and extend the <code>#[cfg_attr(miri, ignore)]</code> audit once this shard-level data
 exists for all 41 files, not just the ~21 this run reached).</p>
+<pre><code>**First sharded run (`33262340361`, 2026-08-29): all 47 miri jobs green** (43 per-file shards
++ `lib` + `uacrypt` + `dstu-core-capi` + the discover job), the first time this suite has ever
+completed on CI. Real per-file wall time (job duration, not just test time - includes runner
+setup): `dstu9041_encryption_512` 8862s/147.7min (the single biggest unknown going in - fits
+with ~212min of headroom under the 360-min cap, no ignore pass needed after all, superseding
+D-195's hedge on this file), `dstu4145_curve` 3322s/55.4min, `dstu9041_curve_512` 2641s/44.0min,
+`crypto_box512` 2496s/41.6min, `dstu9041_encryption` 1974s/32.9min, then a steep drop-off - every
+other file finished in well under 11 min, most under 2 min. Confirms this project's own
+"measure, don't assume" pattern one more time: the ~9-10h total estimated from D-59's stale
+figure was the right call to act on (a single job could never have finished), but the *reason*
+turned out to be four to five outlier files, not uniform growth across all ~43 - the
+`#[cfg_attr(miri, ignore)]` follow-up in D-195's deferred (1) should target those specifically,
+and `dstu9041_encryption_512` can now be dropped from that list.
+</code></pre>
 </li>
 <li>
 <p><input disabled="" type="checkbox"> <strong>T-212</strong> <strong>Not started, not committed - decision gate (2026-08-28): should the <code>uacrypt</code> CLI
