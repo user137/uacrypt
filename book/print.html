@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-ac928710.js";
+            window.path_to_searchindex_js = "searchindex-d16d3714.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-6b977b4b.js"></script>
@@ -4643,26 +4643,25 @@ Could run manually right after each publish, or as a CI job triggered after <cod
 flagged. Not started: no script, no CI job, no chosen cadence yet.</p>
 </li>
 <li>
-<p><input disabled="" type="checkbox"> <strong>T-211</strong> <strong>Not started, found 2026-08-13 - <code>cargo miri test (dstu-core)</code> may now exceed
-GitHub-hosted runners’ 360-min hard job cap (not just the 240-min <code>timeout-minutes</code> setting,
-raised to 360 in the same pass that found this).</strong> Run <code>31658054714</code> was left uncancelled for
-the first time in several days (every run since 2026-08-09 had been pre-empted by a rapid
-follow-up push’s <code>cancel-in-progress</code>, masking this) and hit the then-240-min ceiling mid-way
-through <code>tests/dstu9041_encryption_512.rs</code>, four files before the end of the suite. Per-file
-timings pulled from that run’s own log (<code>gh run view --job=&lt;id&gt; --log</code>): <code>crypto_box512.rs</code>
-2523s, <code>dstu4145_curve.rs</code> 3418s, <code>dstu9041_curve_512.rs</code> 2746s, <code>dstu9041_encryption.rs</code>
-2065s - all four are new test surface from T-192/T-193/T-199 (l(p)=512, <code>crypto_box512</code>,
-m=257) that didn’t exist at the last actually-<em>completed</em> run (2026-08-08, 3h41m total, see
-the <code>timeout-minutes</code> comment in <code>.github/workflows/rust.yml</code>). Still untested at cutoff:
-<code>dstu9041_field{,_512}.rs</code>, <code>dstu9041_message{,_512}.rs</code>, all twelve <code>kalyna_*.rs</code> files, all
-three <code>kupyna*.rs</code> files, <code>randombytes.rs</code>, <code>selftest.rs</code>, <code>strumok.rs</code> - a rough sum (known
-completed time + a same-order-of-magnitude estimate for the unmeasured 512-bit-family files)
-puts total real requirement close to or above 360 min, meaning the timeout bump alone may not
-be sufficient and won’t be confirmed either way until a future run is genuinely left
-uncancelled for 6+ hours. If it isn’t enough, the durable fix is splitting this one serial job
-into a parallel matrix by test-file group (the same shape <code>cargo fuzz</code>’s per-target matrix
-already uses in this workflow), not raising a number that has nowhere higher to go on
-GitHub-hosted runners.</p>
+<p><input disabled="" type="checkbox" checked=""> <strong>T-211</strong> <strong>Confirmed and fixed 2026-08-29 (D-195) - <code>cargo miri test (dstu-core)</code> genuinely
+cannot fit in one job, at any <code>timeout-minutes</code> value.</strong> Run <code>33208446660</code> (2026-08-28, left
+uncancelled the whole way to the 360-min hard cap) confirmed the prediction below: it got
+through only ~21 of ~41 test files before being killed, with <code>tests/dstu9041_encryption_512.rs</code>
+alone still running past the +128min mark when the axe fell. Real per-file timing, pulled from
+that run’s log the same way this task originally proposed: lib unittests 504s, <code>crypto_box.rs</code>
+549s, <code>crypto_box512.rs</code> 2384s, <code>dstu4145_curve.rs</code> 3323s (only 6 of ~15 EC-heavy tests carry
+<code>#[cfg_attr(miri, ignore)]</code>, contradicting <code>rust.yml</code>‘s own old comment claiming full coverage
+- see D-195), <code>dstu4145_gf2m{,257}.rs</code> 274s/550s (zero ignores), <code>dstu9041_curve.rs</code> 724s,
+<code>dstu9041_curve_512.rs</code> 2683s, <code>dstu9041_encryption.rs</code> 2040s, <code>dstu9041_encryption_512.rs</code>
+&gt;7682s and still running. Extrapolating the ~20 still-never-measured files (<code>dstu9041_field*</code>,
+<code>dstu9041_message*</code>, <code>kalyna_*</code>, <code>kupyna*</code>, <code>randombytes.rs</code>, <code>selftest.rs</code>, <code>strumok.rs</code>) from
+D-59’s stale ~84-min figure, real total is ~9-10h - roughly 1.5-2.5x GitHub-hosted runners’
+hard per-job ceiling, so no <code>timeout-minutes</code> value could ever have worked. Fixed by splitting
+into a dynamically-discovered per-test-file matrix (<code>miri-dstu-core-discover</code> +
+<code>miri-dstu-core</code> in <code>.github/workflows/rust.yml</code>) instead of raising the number a fifth time -
+see D-195 for the full rationale and the deferred follow-up (tighten each shard’s
+<code>timeout-minutes</code> and extend the <code>#[cfg_attr(miri, ignore)]</code> audit once this shard-level data
+exists for all 41 files, not just the ~21 this run reached).</p>
 </li>
 <li>
 <p><input disabled="" type="checkbox"> <strong>T-212</strong> <strong>Not started, not committed - decision gate (2026-08-28): should the <code>uacrypt</code> CLI
@@ -18584,6 +18583,10 @@ genuinely complete product” in <code>docs/TASKS.md</code> - trust/correctness 
 <code>small-tables</code> verification for Stage B-E, then the <code>crypto_*</code> frontend work.</p>
 <h2 id="d-59-cargo-miri-tests-ci-job-t-100---real-root-cause-was-broader-than-the-two-proptest"><a class="header" href="#d-59-cargo-miri-tests-ci-job-t-100---real-root-cause-was-broader-than-the-two-proptest">D-59: <code>cargo miri test</code>’s CI job (T-100) - real root cause was broader than the two proptest</a></h2>
 <p>suites originally suspected; fixed by tagging every EC-heavy test, not by raising the timeout alone</p>
+<p><em>(Superseded for timing purposes by D-195, 2026-08-29: this entry’s ~84-min “all of <code>dstu-core</code>”
+figure predates the T-177/T-192/T-193/T-199 EC surface that made the suite’s real total ~9-10h.
+Kept as-is below as the historical record of its own measurement date, per this project’s
+“never silently deprecate a document” rule.)</em></p>
 <p><strong>The premise going in was wrong, and measuring first caught it.</strong> T-100’s own text (and the
 <code>rust.yml</code> comment it quotes) named <code>dstu4145_sign_verify_roundtrip</code>/<code>dstu4145_crypto_sign_roundtrip</code></p>
 <ul>
@@ -27331,6 +27334,77 @@ page’s hero status note and Bindings section (both languages, both still said 
 up but not live yet”) updated to match - the same “two places say the same thing, only one gets
 updated” risk D-193 already flagged for this page, closed here for RubyGems specifically before it
 had the chance to go stale on its own.</p>
+<h2 id="d-195-t-211---cargo-miri-test-dstu-core-split-into-a-dynamically-discovered-per-test-file-matrix---the-single-job-timeout-had-nowhere-higher-to-go"><a class="header" href="#d-195-t-211---cargo-miri-test-dstu-core-split-into-a-dynamically-discovered-per-test-file-matrix---the-single-job-timeout-had-nowhere-higher-to-go">D-195: T-211 - <code>cargo miri test (dstu-core)</code> split into a dynamically-discovered per-test-file matrix - the single-job timeout had nowhere higher to go</a></h2>
+<p><strong>What happened</strong>: run <code>33208446660</code> (2026-08-28) was left uncancelled all the way to the 360-min
+hard cap GitHub-hosted runners enforce (the highest <code>timeout-minutes</code> can ever be set) and still got
+killed mid-suite - <code>tests/dstu9041_encryption_512.rs</code> was still running past its own +128min mark
+when the job died, with roughly 20 of ~41 test files never reached at all. This confirms T-211’s
+2026-08-13 prediction: raising <code>timeout-minutes</code> a fifth time (150 -&gt; 240 -&gt; 360, <code>.github/ workflows/rust.yml</code>’s own comment history) was chasing a number that had already hit its ceiling,
+not fixing anything. Per-file timing pulled from the run’s log (<code>gh run view &lt;id&gt; --log</code>, matching
+<code>Running tests/X.rs</code> lines to the <em>next</em> <code>test result:</code> line - an off-by-one in this pairing
+produced a wrong first read during this same investigation, worth flagging since it’s an easy trap
+re-deriving this kind of timing table): lib unittests 504s, <code>crypto_auth.rs</code> 11s, <code>crypto_box.rs</code>
+549s, <code>crypto_box512.rs</code> 2384s, <code>crypto_generichash.rs</code> 3s, <code>dstu4145_curve.rs</code> 3323s,
+<code>dstu4145_gf2m.rs</code> 274s, <code>dstu4145_gf2m257.rs</code> 550s, <code>dstu4145_signature.rs</code> 511s, <code>dstu9041_curve.rs</code>
+724s, <code>dstu9041_curve_512.rs</code> 2683s, <code>dstu9041_encryption.rs</code> 2040s, <code>dstu9041_encryption_512.rs</code>
+still running past 7682s. The ~20 files never reached (<code>dstu9041_field{,_512}.rs</code>,
+<code>dstu9041_message{,_512}.rs</code>, all twelve <code>kalyna_*.rs</code>, all three <code>kupyna*.rs</code>, <code>randombytes.rs</code>,
+<code>selftest.rs</code>, <code>strumok.rs</code>) have no measured data even now - extrapolating from D-59’s stale
+~84-min figure for that same file set (measured before T-177/T-192/T-193/T-199’s EC-heavy additions
+existed), real total for the whole suite is on the order of 9-10h, roughly 1.5-2.5x the hard cap.</p>
+<p><strong>A second, independent gap found along the way</strong>: <code>.github/workflows/rust.yml</code>’s own comment
+claimed <code>dstu4145_curve.rs</code>/<code>dstu4145_gf2m.rs</code> “carry <code>#[cfg_attr(miri, ignore = ...)]</code>” as of T-175.
+<code>dstu4145_curve.rs</code> actually carries it on only 6 of roughly 15 tests that call <code>Point::scalar_multiply</code>
+or <code>verify_combine</code> (T-156/D-113 fixed 2 of the missing ones reactively in 2026-08-02, not the rest) -
+that part is a real, unambiguous gap, the same drift class T-100/D-59 and T-156/D-113 already found
+twice before (a new EC-heavy test landing without the attribute, T-152/T-153 in this case).
+<code>dstu4145_gf2m.rs</code>/<code>dstu4145_gf2m257.rs</code> currently carry zero such attributes, where D-59 originally
+recorded tagging two of its tests (<code>gf2m163_field_arithmetic_matches_bouncy_castle</code>,
+<code>gf2m163_invert_is_involution_via_reciprocal</code> - both still present, unchanged names) - T-153
+(<code>b3fec3e</code>, same day) replaced <code>FieldElement::invert</code>’s 162-step brute-force exponentiation with
+Itoh-Tsujii, which speeds up but does not eliminate the cost, so this reads more like a dropped
+attribute than a confirmed non-issue: the file’s own 274s measured runtime for 5 tests, one of which
+(<code>gf2m163_invert_is_involution_via_reciprocal</code>) loops <code>invert</code> over all 20 field cases, is real,
+non-trivial interpreted cost, not evidence it vanished. Treat as likely still needing the attribute
+until the follow-up below actually re-measures it, not as probably fine. Not fixed here (see Deferred
+below) - the measured numbers above show these files cost tens of minutes to a bit under an hour
+even un-audited, tolerable inside their own shard, not the multi-hour-plus runaway the job-level
+symptom looked like.</p>
+<p><strong>Fix</strong>: replaced the single <code>cargo miri test -p dstu-core</code> step with two new jobs in <code>.github/ workflows/rust.yml</code>: <code>miri-dstu-core-discover</code> lists <code>crates/dstu-core/tests/*.rs</code> at run time and
+emits the file-stem list as a job output; <code>miri-dstu-core</code> consumes it as a <code>fromJson</code> matrix,
+running <code>cargo +nightly miri test -p dstu-core --test &lt;file&gt;</code> per shard (<code>fail-fast: false</code>), plus a
+separate fixed <code>miri-dstu-core-lib</code> job for <code>--lib</code>. <code>uacrypt</code>/<code>dstu-core-capi</code> stay in the original
+per-package <code>miri</code> job unchanged (~17min/~12min each, no need to split). This closes the drift
+pattern structurally rather than by re-auditing harder: a future test file automatically gets its
+own isolated shard the moment it exists, with nobody needing to edit this workflow or re-run a
+mental audit of every <code>#[test]</code> in the crate before each push. <code>timeout-minutes: 360</code> kept
+unchanged on the new per-file jobs for this landing - genuinely no other job in this crate’s test
+suite has ever completed, so there is no real per-file number yet to size a tighter cap against;
+tightening on a guess would repeat the exact D-103 mistake (a “razor-thin margin” cap set before the
+data existed) this whole file’s history already warns against.</p>
+<p><strong>Verified before implementing</strong>: <code>master</code>’s branch ruleset (<code>main-protection</code>) enforces only
+<code>deletion</code>/<code>non_fast_forward</code> - no required status check names this job, so renaming/splitting it
+doesn’t silently drop or block on a gate (checked via <code>gh api repos/.../rulesets/&lt;id&gt;</code> - this would
+have needed a stable-named aggregator job if a required check existed).</p>
+<p><strong>Deferred, not silently dropped</strong>: (1) extending the <code>#[cfg_attr(miri, ignore)]</code> audit to
+<code>dstu4145_gf2m{,257}.rs</code>, the rest of <code>dstu4145_curve.rs</code>, <code>dstu9041_curve{,_512}.rs</code>, and the
+individual (non-proptest) <code>encrypt</code>/<code>decrypt</code> round-trip tests in <code>dstu9041_encryption{,_512}.rs</code> -
+deferred to a follow-up once the sharded matrix’s first real run gives per-file numbers for every
+one of the ~41 files, not just the ~21 this investigation could measure; (2) tightening each shard’s
+<code>timeout-minutes</code> from 360 down to roughly 2x its own measured max, same margin discipline as (1);
+(3) <code>dstu9041_encryption_512.rs</code> was deliberately <em>not</em> given a preemptive ignore pass in this
+change despite being the run’s single largest unknown - its individual (non-proptest) tests are
+structurally identical to <code>dstu9041_encryption.rs</code>‘s (which completes in 34 min with the same
+tests un-ignored), so a several-times-256-bit slowdown is the expected, not anomalous, cost of a
+512-iteration ladder; isolating it into its own 360-min shard is expected to be enough headroom on
+its own, to be confirmed by (1)/(2)’s follow-up rather than assumed here. <strong>If this specific shard
+still times out at 360 min in the first sharded run, the fix is the ignore pass on this file, not a
+higher cap - 360 is GitHub-hosted runners’ hard per-job ceiling, the same wall this whole decision
+exists to stop running into.</strong> (4) D-59’s ~84-min figure
+for “all of <code>dstu-core</code>” is now stale and superseded by this decision’s per-file numbers - left in
+place in <code>docs/DECISIONS.md</code> as a historical record (that section already documents its own
+measurement date) rather than edited, per this project’s “never silently deprecate” rule; this
+paragraph is the pointer forward for any future reader who finds it.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="changelog"><a class="header" href="#changelog">Changelog</a></h1>
 <p>All notable changes to this project are documented in this file. Format follows

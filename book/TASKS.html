@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-ac928710.js";
+            window.path_to_searchindex_js = "searchindex-d16d3714.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-6b977b4b.js"></script>
@@ -4449,26 +4449,25 @@ Could run manually right after each publish, or as a CI job triggered after <cod
 flagged. Not started: no script, no CI job, no chosen cadence yet.</p>
 </li>
 <li>
-<p><input disabled="" type="checkbox"> <strong>T-211</strong> <strong>Not started, found 2026-08-13 - <code>cargo miri test (dstu-core)</code> may now exceed
-GitHub-hosted runners’ 360-min hard job cap (not just the 240-min <code>timeout-minutes</code> setting,
-raised to 360 in the same pass that found this).</strong> Run <code>31658054714</code> was left uncancelled for
-the first time in several days (every run since 2026-08-09 had been pre-empted by a rapid
-follow-up push’s <code>cancel-in-progress</code>, masking this) and hit the then-240-min ceiling mid-way
-through <code>tests/dstu9041_encryption_512.rs</code>, four files before the end of the suite. Per-file
-timings pulled from that run’s own log (<code>gh run view --job=&lt;id&gt; --log</code>): <code>crypto_box512.rs</code>
-2523s, <code>dstu4145_curve.rs</code> 3418s, <code>dstu9041_curve_512.rs</code> 2746s, <code>dstu9041_encryption.rs</code>
-2065s - all four are new test surface from T-192/T-193/T-199 (l(p)=512, <code>crypto_box512</code>,
-m=257) that didn’t exist at the last actually-<em>completed</em> run (2026-08-08, 3h41m total, see
-the <code>timeout-minutes</code> comment in <code>.github/workflows/rust.yml</code>). Still untested at cutoff:
-<code>dstu9041_field{,_512}.rs</code>, <code>dstu9041_message{,_512}.rs</code>, all twelve <code>kalyna_*.rs</code> files, all
-three <code>kupyna*.rs</code> files, <code>randombytes.rs</code>, <code>selftest.rs</code>, <code>strumok.rs</code> - a rough sum (known
-completed time + a same-order-of-magnitude estimate for the unmeasured 512-bit-family files)
-puts total real requirement close to or above 360 min, meaning the timeout bump alone may not
-be sufficient and won’t be confirmed either way until a future run is genuinely left
-uncancelled for 6+ hours. If it isn’t enough, the durable fix is splitting this one serial job
-into a parallel matrix by test-file group (the same shape <code>cargo fuzz</code>’s per-target matrix
-already uses in this workflow), not raising a number that has nowhere higher to go on
-GitHub-hosted runners.</p>
+<p><input disabled="" type="checkbox" checked=""> <strong>T-211</strong> <strong>Confirmed and fixed 2026-08-29 (D-195) - <code>cargo miri test (dstu-core)</code> genuinely
+cannot fit in one job, at any <code>timeout-minutes</code> value.</strong> Run <code>33208446660</code> (2026-08-28, left
+uncancelled the whole way to the 360-min hard cap) confirmed the prediction below: it got
+through only ~21 of ~41 test files before being killed, with <code>tests/dstu9041_encryption_512.rs</code>
+alone still running past the +128min mark when the axe fell. Real per-file timing, pulled from
+that run’s log the same way this task originally proposed: lib unittests 504s, <code>crypto_box.rs</code>
+549s, <code>crypto_box512.rs</code> 2384s, <code>dstu4145_curve.rs</code> 3323s (only 6 of ~15 EC-heavy tests carry
+<code>#[cfg_attr(miri, ignore)]</code>, contradicting <code>rust.yml</code>‘s own old comment claiming full coverage
+- see D-195), <code>dstu4145_gf2m{,257}.rs</code> 274s/550s (zero ignores), <code>dstu9041_curve.rs</code> 724s,
+<code>dstu9041_curve_512.rs</code> 2683s, <code>dstu9041_encryption.rs</code> 2040s, <code>dstu9041_encryption_512.rs</code>
+&gt;7682s and still running. Extrapolating the ~20 still-never-measured files (<code>dstu9041_field*</code>,
+<code>dstu9041_message*</code>, <code>kalyna_*</code>, <code>kupyna*</code>, <code>randombytes.rs</code>, <code>selftest.rs</code>, <code>strumok.rs</code>) from
+D-59’s stale ~84-min figure, real total is ~9-10h - roughly 1.5-2.5x GitHub-hosted runners’
+hard per-job ceiling, so no <code>timeout-minutes</code> value could ever have worked. Fixed by splitting
+into a dynamically-discovered per-test-file matrix (<code>miri-dstu-core-discover</code> +
+<code>miri-dstu-core</code> in <code>.github/workflows/rust.yml</code>) instead of raising the number a fifth time -
+see D-195 for the full rationale and the deferred follow-up (tighten each shard’s
+<code>timeout-minutes</code> and extend the <code>#[cfg_attr(miri, ignore)]</code> audit once this shard-level data
+exists for all 41 files, not just the ~21 this run reached).</p>
 </li>
 <li>
 <p><input disabled="" type="checkbox"> <strong>T-212</strong> <strong>Not started, not committed - decision gate (2026-08-28): should the <code>uacrypt</code> CLI
