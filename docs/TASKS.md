@@ -7839,3 +7839,119 @@ Phase 2+ and none currently in flight).
   history) never picks it up; only `v*` tags from here on will. Matches the owner's explicit,
   twice-confirmed scope split: v0.2.0 stays GitHub-only, automatic crates.io publication begins
   with the next tag. T-17 itself stays open - this is the automation, not the first actual publish.
+
+## FFI/security test-coverage roadmap (2026-08-31, from a QA/AppSec coverage audit)
+
+Owner asked for a Staff QA/AppSec-style test-coverage audit across all four layers (Core/CLI/
+C ABI/8 bindings), then to turn the findings into tracked tasks with an execution plan, saved so a
+future session starts from this without re-deriving it. Full matrices (per-primitive Core table,
+per-command CLI table, C ABI lifecycle table, 8-language cross-binding table) were built during the
+audit as a Claude artifact (private, not committed - see RESUME HERE below); this section is the
+actionable backlog, not a restatement of the matrices.
+
+Two facts anchored the priority ordering below, per the owner's own explicit criterion ("найвищий
+пріоритет - витоки пам'яті в FFI та захист ключів", i.e. memory leaks in FFI and key protection are
+the top priority): 0/8 language bindings have any memory-leak test, and 0/28 `uacrypt` subcommands
+verify a key never reaches stderr. Everything else is lower priority by comparison, including gaps
+that look severe in isolation (double-free, GC premature collection) - none of them is untested
+*and* actively suspected broken; all are untested *and* structurally mitigated already by the
+language's own ownership mechanism (`SafeHandle`, `unique_ptr`, RAII, cgo pinning). The risk is a
+silent regression in that mitigation, not a known-live bug.
+
+**Strict-layering check, done during the audit, not re-litigated here**: no violation found - CLI
+and all 8 bindings test round-trip/marshalling/rejection only, never DSTU math directly; the
+ownership split (D-64/D-65's three test categories belong to Core; CLI/bindings own I/O, exit
+codes, and memory lifecycle) stays intact and doesn't need its own task.
+
+### Step 1 (P0) - memory leaks and key protection, do these first
+
+- [ ] **T-213** FFI memory-leak test for all 8 language bindings (Python/Node.js/Ruby/PHP/.NET/
+  Java/Go/C++). None of the 8 has one today. Per-language mechanism: Python `tracemalloc` around a
+  create/use/free loop; Node `process.memoryUsage()` loop + `--expose-gc`; Ruby `GC.stat` loop;
+  PHP `memory_get_usage()` loop; .NET `GC.GetTotalMemory(true)` before/after a forced `GC.Collect()`
+  loop; Java a heap-dump-before/after loop (or `Runtime.getRuntime().totalMemory()` with forced
+  `System.gc()`); Go/C++ a `valgrind --tool=massif` (or leak-check) smoke run wired into CI, not
+  just a local loop, since neither language has a managed heap to introspect from inside the test.
+  Loop target: `crypto_secretstream` push/pull (the most stateful, longest-lived native object) and
+  one keyed one-shot primitive (`crypto_box`/`crypto_sign`) per language, N=1000+ iterations.
+- [ ] **T-214** CLI: no key/secret material in stderr or a crash artifact, across all 28
+  subcommands. New black-box test file (`smoke_no_secret_in_stderr.rs`, same pattern as the
+  existing `smoke_*.rs` files) - run each keyed command with a known, fixed key value, capture
+  stderr, assert the key's raw bytes and its hex encoding are both absent. Include the panic/crash
+  path if any exists (deliberately malformed args that could theoretically dump internal state).
+- [ ] **T-215** C ABI: zeroize-on-free test. Today only the raw `dstu_memzero` buffer-wipe helper is
+  tested; no test confirms a freed key handle's own backing memory is actually wiped. Needs an
+  `unsafe` test that captures the handle's raw pointer before calling `*_free`, then reads that
+  memory afterward and asserts it's zeroed - likely needs a debug-only accessor or a `#[cfg(test)]`
+  hook into the allocator, since reading freed memory through the public API alone isn't
+  well-defined.
+- [ ] **T-216** C ABI: harden the double-free contract. Currently explicitly undocumented-as-unsafe
+  in a code comment ("not expected to be safe (documented) - not tested"). Two parts, do both:
+  (1) confirm/strengthen the `include/dstu_core.h` doc comment so double-free is a named, explicit
+  UB contract, not just a source-comment aside; (2) add a CI-only regression backstop
+  (AddressSanitizer build of the C ABI + `c-tests/test_capi.c`, or a Miri run over `ffi_tests.rs` if
+  Miri can model the unsafe path) so a future refactor that makes double-free newly reachable from
+  safe-looking code gets caught, without claiming double-free itself becomes a supported operation.
+
+### Step 2 (P1) - other FFI lifecycle robustness
+
+- [ ] **T-217** .NET binding: add tests for the 47 existing `ArgumentNullException.ThrowIfNull(...)`
+  call sites across all 11 wrapper classes - implemented, zero test coverage today. One
+  `[Theory]`-per-class covering its public entry points is enough; don't need 47 separate tests.
+- [ ] **T-218** GC-premature-collection stress test for .NET and Java (the two bindings whose own
+  wrapper code - `SafeHandle`, native handle + `synchronized` loader - is explicitly designed
+  against this failure mode but has never been stress-tested against it). Wrap an in-flight
+  `crypto_secretstream` push/pull in a loop that forces `GC.Collect()` / `System.gc()` between calls
+  and confirms no crash/corruption.
+- [ ] **T-219** Thread-safety/concurrency tests across all 8 bindings. Minimum bar: for each
+  binding, either (a) a test demonstrating concurrent calls from multiple threads/tasks are safe, or
+  (b) if the wrapper type isn't meant to be shared across threads, a doc comment/README line saying
+  so explicitly and a test confirming the *type itself* isn't silently `Send`/`Sync`/thread-
+  shareable where that would be wrong. Don't skip a language as "obviously fine" - decide per
+  language, record it either way.
+- [ ] **T-220** C++ binding: add the missing `TestSecretstreamOversizedDeclaredChunkLength` case to
+  `test_dstu.cpp`'s `TestSecretstream` - the bounds check is implemented (mirrors `uacrypt`'s own
+  `CliError::SecretstreamChunkTooLarge`) but C++ is the only one of 8 bindings without a dedicated
+  test for it (all 7 others have one).
+
+### Step 3 (P2) - Core/CLI robustness beyond FFI
+
+- [ ] **T-221** C ABI: a real panic-injection test across the `catch_unwind` boundary (`util.rs`'s
+  `guard_status` family). Every exported function is wrapped, but nothing in `ffi_tests.rs`/
+  `test_capi.c` actually forces a Rust panic and asserts it surfaces as a `DstuStatus` error code
+  rather than unwinding into C. Needs a debug-only injection hook (e.g. a `#[cfg(test)]`-gated
+  function that deliberately panics) since production inputs shouldn't be able to trigger one at
+  all.
+- [ ] **T-222** CLI: SIGINT / interrupted-write safety test. `uacrypt`'s streaming commands already
+  use temp-file-then-rename atomicity (per `CLAUDE.md`) specifically so an interrupted write can't
+  corrupt the real output file - untested. Black-box test: spawn the process, send SIGINT mid-write
+  (a large enough input to guarantee the process is still writing), confirm the real output path
+  either doesn't exist or is the pre-existing file untouched, and no stray temp file survives.
+  Windows-vs-Unix signal-delivery differences apply here - confirm the test's mechanism works on
+  this project's actual CI runners, not just locally.
+- [ ] **T-223** Core: fuzz targets for the primitives that currently have none - highest value
+  first: `crypto_secretbox` and `crypto_box`/`crypto_box512` (parse untrusted wire-format bytes
+  directly from CLI/binding callers, unlike the hazmat-level primitives which already get fuzzed
+  indirectly through their AEAD/MAC/KW callers), then `crypto_stream`/`crypto_sign`/`crypto_sign257`,
+  then the `hazmat` primitives that still have none at all (`dstu4145`, `dstu9041`, `kalyna_cbc`/
+  `ctr`/`ecb`/`ofb`, `kupyna_kmac`/`kupyna_kdf`). Sync all three required spots per `CLAUDE.md`'s own
+  reminder: `fuzz/Cargo.toml`'s `[[bin]]`, `.github/workflows/rust.yml`'s `fuzz-smoke` matrix,
+  `xtask/src/main.rs`'s `FUZZ_TARGETS` array.
+- [ ] **T-224** Bindings: an oversized/near-32-bit-boundary length-prefix test per binding (not a
+  literal 2GB allocation - a crafted declared-length field just past a 32-bit boundary, same shape
+  as the existing "oversized declared chunk length" secretstream tests). Java int-indexed arrays and
+  historically-32-bit `Buffer` lengths in Node.js are the two languages where this class of bug is
+  most plausible - do those two first if sequencing this incrementally.
+
+### RESUME HERE (state as of 2026-08-31, saved for a memory-clear/new-session handoff)
+
+This roadmap (T-213 through T-224) has **not been started** - it is the direct output of a coverage
+audit, not yet any implementation. Start with **T-213** (FFI memory-leak tests) or **T-214** (CLI
+stderr key-leak test) - both P0, either order is fine, they touch disjoint files. Each task should
+get its own plan-mode + advisor pass before implementation per this project's standing "hard-to-
+revert change" discipline where the task is genuinely structural (T-213, T-216, T-221, T-223 clearly
+qualify; the others are closer to "one test file, one pattern" and may not need the full gate - use
+judgment same as any other task here). Full per-primitive/per-command/per-binding matrices this
+roadmap was derived from live in a private Claude artifact (not committed to the repo) - if it's no
+longer reachable, the fastest re-derivation path is the same two-agent survey approach (Core+CLI+
+capi inventory, bindings inventory) rather than re-reading this section's summaries as ground truth.
