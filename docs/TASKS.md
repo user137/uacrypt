@@ -7865,33 +7865,53 @@ codes, and memory lifecycle) stays intact and doesn't need its own task.
 
 ### Step 1 (P0) - memory leaks and key protection, do these first
 
-- [ ] **T-213** FFI memory-leak test for all 8 language bindings (Python/Node.js/Ruby/PHP/.NET/
-  Java/Go/C++). None of the 8 has one today. Per-language mechanism: Python `tracemalloc` around a
-  create/use/free loop; Node `process.memoryUsage()` loop + `--expose-gc`; Ruby `GC.stat` loop;
-  PHP `memory_get_usage()` loop; .NET `GC.GetTotalMemory(true)` before/after a forced `GC.Collect()`
-  loop; Java a heap-dump-before/after loop (or `Runtime.getRuntime().totalMemory()` with forced
-  `System.gc()`); Go/C++ a `valgrind --tool=massif` (or leak-check) smoke run wired into CI, not
-  just a local loop, since neither language has a managed heap to introspect from inside the test.
-  Loop target: `crypto_secretstream` push/pull (the most stateful, longest-lived native object) and
-  one keyed one-shot primitive (`crypto_box`/`crypto_sign`) per language, N=1000+ iterations.
-- [ ] **T-214** CLI: no key/secret material in stderr or a crash artifact, across all 28
-  subcommands. New black-box test file (`smoke_no_secret_in_stderr.rs`, same pattern as the
-  existing `smoke_*.rs` files) - run each keyed command with a known, fixed key value, capture
-  stderr, assert the key's raw bytes and its hex encoding are both absent. Include the panic/crash
-  path if any exists (deliberately malformed args that could theoretically dump internal state).
-- [ ] **T-215** C ABI: zeroize-on-free test. Today only the raw `dstu_memzero` buffer-wipe helper is
-  tested; no test confirms a freed key handle's own backing memory is actually wiped. Needs an
-  `unsafe` test that captures the handle's raw pointer before calling `*_free`, then reads that
-  memory afterward and asserts it's zeroed - likely needs a debug-only accessor or a `#[cfg(test)]`
-  hook into the allocator, since reading freed memory through the public API alone isn't
-  well-defined.
-- [ ] **T-216** C ABI: harden the double-free contract. Currently explicitly undocumented-as-unsafe
-  in a code comment ("not expected to be safe (documented) - not tested"). Two parts, do both:
-  (1) confirm/strengthen the `include/dstu_core.h` doc comment so double-free is a named, explicit
-  UB contract, not just a source-comment aside; (2) add a CI-only regression backstop
-  (AddressSanitizer build of the C ABI + `c-tests/test_capi.c`, or a Miri run over `ffi_tests.rs` if
-  Miri can model the unsafe path) so a future refactor that makes double-free newly reachable from
-  safe-looking code gets caught, without claiming double-free itself becomes a supported operation.
+- [x] **T-213** FFI memory-leak test for all 8 language bindings (Python/Node.js/Ruby/PHP/.NET/
+  Java/Go/C++) - done 2026-08-31. Actual mechanism per binding differs from what was planned here,
+  discovered mid-implementation, not guessed up front: Python `tracemalloc`, Node
+  `process.memoryUsage().heapUsed` (+`--expose-gc`), Ruby `GC.stat[:heap_live_slots]`, and PHP all
+  validated by an explicit negative-control spike (hold N handles alive, confirm the metric moves) -
+  PHP's own spike caught a real instrument-blindness bug first (`memory_get_usage(true)`, the
+  originally-planned mechanism, showed 0 growth for a 2000-handle deliberate leak; switched to
+  `memory_get_usage(false)` before committing). Java and .NET turned out to need a different
+  mechanism entirely: both wrap a native handle via the C ABI with no finalizer/Cleaner reliably
+  observable from managed-heap counters - `Runtime.totalMemory()-freeMemory()` /
+  `GC.GetTotalMemory` were confirmed empirically blind, and a Windows in-process
+  `WorkingSet64`/RSS-sampling follow-up attempt was too noisy to trust even with warmup + N=20000
+  (three-attempts rule invoked, stopped chasing a Windows-local signal). Landed on `/proc/self/status`'s
+  `VmRSS`, Linux-only, skipped/no-op on Windows/macOS - same mechanism then reused for Go (cgo
+  allocations invisible to `runtime.ReadMemStats`) and C++ (no GC at all, RAII already guarantees
+  release for correct code; kept as a regression backstop, not a real discriminator today). No CI-only
+  valgrind job was added for Go/C++ as this section originally sketched - the VmRSS mechanism covers
+  the same ground as a committed, always-running test instead. 8 commits, one per binding.
+- [x] **T-214** CLI: no key/secret material in stderr or a crash artifact, across all 28
+  subcommands - done 2026-08-31. `crates/uacrypt/tests/smoke_no_secret_in_stderr.rs`, 13 tests
+  covering every keyed command family via a forced error path (wrong key length or a tamper that
+  trips authentication), checking both raw bytes (on the unconverted byte stream, not the lossy-UTF8
+  `String`) and hex encoding. Sanity-checked as a real assertion (not a no-op) by temporarily
+  injecting a fake leak into `CliError::WrongLength`'s `Display` impl and confirming the test caught
+  it, reverted before commit.
+- [x] **T-215** C ABI: zeroize-on-free test - done 2026-08-31, redesigned from this entry's original
+  sketch ("read freed memory") after the pre-implementation `advisor` pass flagged that approach as
+  UB that wouldn't survive Miri. Actual mechanism: `crates/dstu-core-capi/tests/zeroize_on_free.rs`
+  installs a `#[global_allocator]` in that test binary only, capturing a matching pointer's bytes
+  inside `dealloc()` itself (after `Drop`/zeroize has run, before the real allocator reclaims the
+  page - legal, not UB), filtered by exact pointer address to avoid cross-test false positives.
+  Covers the 5 uniform-shape key handles (auth/secretbox/sign/stream/secretstream); includes a
+  negative control (a plain `Box` with no zeroize-on-drop) proving the harness detects non-zeroized
+  memory, not just that it never fails. The originally-planned compile-time `ZeroizeOnDrop`
+  trait-bound assertion doesn't apply - this crate's key types hand-roll `Drop`+`zeroize()` rather
+  than implementing that trait.
+- [x] **T-216** C ABI: harden the double-free contract - done 2026-08-31, both parts. (1)
+  `include/dstu_core.h`'s 17 per-handle free doc comments now explicitly name double-free as UB the
+  function cannot detect, not just an implicit "not already freed" precondition; header regenerated
+  via `cargo xtask capi` cbindgen check. (2) `capi-double-free-asan` CI job
+  (`.github/workflows/rust.yml`, Linux-only) plus `c-tests/test_capi_double_free_asan.c`, a
+  standalone program (not merged into `test_capi.c`'s `CHECK`/failures-counter harness, since an
+  ASan abort doesn't fit that shape) whose success condition is ASan catching the deliberate
+  double-free and aborting with a nonzero exit. Not verifiable end-to-end on this project's own
+  Windows dev machine (confirmed: `gcc -fsanitize=address` fails with "cannot find -lasan" for the
+  installed MinGW toolchain) - YAML syntax checked via Ruby's YAML parser, CI itself is the first
+  real confirmation this job catches what it's meant to.
 
 ### Step 2 (P1) - other FFI lifecycle robustness
 
@@ -7945,13 +7965,32 @@ codes, and memory lifecycle) stays intact and doesn't need its own task.
 
 ### RESUME HERE (state as of 2026-08-31, saved for a memory-clear/new-session handoff)
 
-This roadmap (T-213 through T-224) has **not been started** - it is the direct output of a coverage
-audit, not yet any implementation. Start with **T-213** (FFI memory-leak tests) or **T-214** (CLI
-stderr key-leak test) - both P0, either order is fine, they touch disjoint files. Each task should
-get its own plan-mode + advisor pass before implementation per this project's standing "hard-to-
-revert change" discipline where the task is genuinely structural (T-213, T-216, T-221, T-223 clearly
-qualify; the others are closer to "one test file, one pattern" and may not need the full gate - use
-judgment same as any other task here). Full per-primitive/per-command/per-binding matrices this
-roadmap was derived from live in a private Claude artifact (not committed to the repo) - if it's no
-longer reachable, the fastest re-derivation path is the same two-agent survey approach (Core+CLI+
-capi inventory, bindings inventory) rather than re-reading this section's summaries as ground truth.
+**Step 1 / P0 (T-213 through T-216) is done** - one `advisor`-reviewed plan-mode pass covered all
+four, implemented and committed as a single batch (2026-08-31, ~20 commits: T-214, T-215, T-216
+parts 1/2, then T-213's 8 per-binding commits plus 2 threshold-correction follow-ups for
+Node.js/Ruby found while measuring). Full `cargo fmt --check` + `cargo clippy --workspace -- -D
+warnings` + `cargo test --workspace` all green after the batch. See each task's own entry above for
+what was actually built - several mechanisms differ from what this roadmap originally sketched,
+discovered mid-implementation via empirical spikes rather than assumed:
+- T-213's biggest finding: a JVM/CLR managed-heap counter (`Runtime.totalMemory()-freeMemory()`,
+  `GC.GetTotalMemory`) is *structurally blind* to a native handle with no finalizer/Cleaner - true
+  for Java and .NET both, confirmed empirically, not assumed from the task text's own framing. A
+  Windows in-process RSS-sampling follow-up was tried for both and was too noisy to trust (three-
+  attempts rule invoked) - landed on `/proc/self/status`'s `VmRSS`, Linux-only, reused for Go/C++
+  too instead of the originally-sketched CI-only valgrind job.
+- T-215 was redesigned before implementation (advisor caught that "read memory after free" is UB)
+  to a `#[global_allocator]`-based capture instead.
+- No language needed the plain "hold the wrapper alive, `tracemalloc`/`GC.stat`/etc. sees it" path
+  without first spiking a negative control - do this for any future binding's own leak test rather
+  than trusting a plausible-sounding managed-heap mechanism.
+
+**Step 2 (P1, T-217..T-220) and Step 3 (P2, T-221..T-224) have not been started** - this was
+consciously scoped as Batch 1 = P0 only (surfaced and approved in the pre-implementation plan), P1/P2
+deferred to a later session as "Batch 2" material. Start with T-217 or T-220 (both "one test file,
+one pattern," no full plan-mode+advisor gate needed) or T-218/T-219 next; T-221 and T-223 are the two
+in this remaining set that likely still warrant the full structural-change gate given T-213/T-215's
+own experience of the sketched mechanism not surviving first contact with implementation. Full
+per-primitive/per-command/per-binding matrices this roadmap was originally derived from live in a
+private Claude artifact (not committed to the repo) - if it's no longer reachable, the fastest
+re-derivation path is the same two-agent survey approach (Core+CLI+capi inventory, bindings
+inventory) rather than re-reading this section's summaries as ground truth.
