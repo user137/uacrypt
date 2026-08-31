@@ -7929,11 +7929,22 @@ codes, and memory lifecycle) stays intact and doesn't need its own task.
   parameter - it exists purely to label the Theory row in test output) suppressed via a documented
   `#pragma warning disable/restore` around the shared `NullArgumentThrows` method in each file.
   `dotnet build` 0 warnings, `dotnet test` 137/137 passed.
-- [ ] **T-218** GC-premature-collection stress test for .NET and Java (the two bindings whose own
+- [x] **T-218** GC-premature-collection stress test for .NET and Java (the two bindings whose own
   wrapper code - `SafeHandle`, native handle + `synchronized` loader - is explicitly designed
   against this failure mode but has never been stress-tested against it). Wrap an in-flight
   `crypto_secretstream` push/pull in a loop that forces `GC.Collect()` / `System.gc()` between calls
-  and confirms no crash/corruption.
+  and confirms no crash/corruption. Done 2026-08-31:
+  `bindings/dotnet/DstuCore.Tests/GcStressTests.cs` (`GC.Collect(GC.MaxGeneration,
+  GCCollectionMode.Forced, blocking: true)` + `GC.WaitForPendingFinalizers()` around every
+  `Write`/`Read` call across 40 chunks spanning several real `SecretstreamChunkBytes` boundaries) and
+  `bindings/java/src/test/java/.../GcStressTest.java` (`System.gc()` + `System.runFinalization()`
+  around every `write`/`read` call, same shape, `String.repeat` avoided - `maven.compiler.release`
+  is 8). Both round-trip correctly under forced collection; `dotnet test` 138/138, `mvn test` green.
+  Java's own case is a documentation-by-test of T-213's finding, not a live premature-finalization
+  risk: `SecretStreamPushState`/`PullState` hold their handle in a plain `long` with no finalizer/
+  `Cleaner`, so native memory here is never tied to Java object GC timing at all - `close()` is the
+  only release path, unlike .NET's `SafeHandle` where the marshaller's keep-alive-during-the-call
+  guarantee is the actual mechanism under test.
 - [ ] **T-219** Thread-safety/concurrency tests across all 8 bindings. Minimum bar: for each
   binding, either (a) a test demonstrating concurrent calls from multiple threads/tasks are safe, or
   (b) if the wrapper type isn't meant to be shared across threads, a doc comment/README line saying
