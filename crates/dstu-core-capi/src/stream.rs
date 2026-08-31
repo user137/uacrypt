@@ -80,7 +80,7 @@ pub unsafe extern "C" fn dstu_stream_key_bytes(key: *const DstuStreamKey, out: *
 /// # Safety
 ///
 /// `key` must be either NULL or a pointer previously returned by `dstu_stream_key_generate`/
-/// `dstu_stream_key_from_bytes`, not already freed.
+/// `dstu_stream_key_from_bytes`, not already freed - freeing an already-freed pointer is undefined behavior, not merely unsupported; this fn cannot detect or reject it.
 #[no_mangle]
 pub unsafe extern "C" fn dstu_stream_key_free(key: *mut DstuStreamKey) {
     guard_void(|| {

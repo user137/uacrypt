@@ -108,7 +108,7 @@ pub unsafe extern "C" fn dstu_sign257_key_bytes(key: *const DstuSigningKey257, o
 /// # Safety
 ///
 /// `key` must be either NULL or a pointer previously returned by `dstu_sign257_key_generate`/
-/// `dstu_sign257_key_from_bytes`, not already freed.
+/// `dstu_sign257_key_from_bytes`, not already freed - freeing an already-freed pointer is undefined behavior, not merely unsupported; this fn cannot detect or reject it.
 #[no_mangle]
 pub unsafe extern "C" fn dstu_sign257_key_free(key: *mut DstuSigningKey257) {
     guard_void(|| {
@@ -193,7 +193,7 @@ pub unsafe extern "C" fn dstu_verifying_key257_from_bytes(
 /// # Safety
 ///
 /// `key` must be either NULL or a pointer previously returned by `dstu_sign257_verifying_key`/
-/// `dstu_verifying_key257_from_bytes`, not already freed.
+/// `dstu_verifying_key257_from_bytes`, not already freed - freeing an already-freed pointer is undefined behavior, not merely unsupported; this fn cannot detect or reject it.
 #[no_mangle]
 pub unsafe extern "C" fn dstu_verifying_key257_free(key: *mut DstuVerifyingKey257) {
     guard_void(|| {

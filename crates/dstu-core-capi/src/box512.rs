@@ -130,7 +130,7 @@ pub unsafe extern "C" fn dstu_box512_secretkey_public_key(
 /// # Safety
 ///
 /// `key` must be either NULL or a pointer previously returned by `dstu_box512_secretkey_generate`/
-/// `dstu_box512_secretkey_from_bytes`, not already freed.
+/// `dstu_box512_secretkey_from_bytes`, not already freed - freeing an already-freed pointer is undefined behavior, not merely unsupported; this fn cannot detect or reject it.
 #[no_mangle]
 pub unsafe extern "C" fn dstu_box512_secretkey_free(key: *mut DstuBox512SecretKey) {
     guard_void(|| {
@@ -200,7 +200,7 @@ pub unsafe extern "C" fn dstu_box512_publickey_bytes(
 /// # Safety
 ///
 /// `key` must be either NULL or a pointer previously returned by
-/// `dstu_box512_secretkey_public_key`/`dstu_box512_publickey_from_bytes`, not already freed.
+/// `dstu_box512_secretkey_public_key`/`dstu_box512_publickey_from_bytes`, not already freed - freeing an already-freed pointer is undefined behavior, not merely unsupported; this fn cannot detect or reject it.
 #[no_mangle]
 pub unsafe extern "C" fn dstu_box512_publickey_free(key: *mut DstuBox512PublicKey) {
     guard_void(|| {

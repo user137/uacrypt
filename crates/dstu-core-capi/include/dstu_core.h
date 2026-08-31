@@ -304,9 +304,10 @@ extern "C" {
  * # Safety
  *
  * `key` must be either NULL or a pointer previously returned by `dstu_auth_key_generate`/
- * `dstu_auth_key_from_bytes`, not already freed.
+ * `dstu_auth_key_from_bytes`, not already freed - freeing an already-freed pointer is undefined behavior, not merely unsupported; this fn cannot detect or reject it.
  */
- void dstu_auth_key_free(DstuAuthKey *key);
+
+void dstu_auth_key_free(DstuAuthKey *key);
 
 /**
  * Computes the MAC of `message` under `key` - infallible. A NULL `key`/`tag_out`, or a NULL
@@ -390,9 +391,10 @@ DstuStatus dstu_auth_verify(const DstuAuthKey *key,
  * # Safety
  *
  * `key` must be either NULL or a pointer previously returned by `dstu_box512_secretkey_generate`/
- * `dstu_box512_secretkey_from_bytes`, not already freed.
+ * `dstu_box512_secretkey_from_bytes`, not already freed - freeing an already-freed pointer is undefined behavior, not merely unsupported; this fn cannot detect or reject it.
  */
- void dstu_box512_secretkey_free(DstuBox512SecretKey *key);
+
+void dstu_box512_secretkey_free(DstuBox512SecretKey *key);
 
 /**
  * Builds a public key from its compressed `DSTU_BOX512_PUBLICKEY_BYTES`-byte `x`-coordinate
@@ -424,9 +426,10 @@ DstuStatus dstu_auth_verify(const DstuAuthKey *key,
  * # Safety
  *
  * `key` must be either NULL or a pointer previously returned by
- * `dstu_box512_secretkey_public_key`/`dstu_box512_publickey_from_bytes`, not already freed.
+ * `dstu_box512_secretkey_public_key`/`dstu_box512_publickey_from_bytes`, not already freed - freeing an already-freed pointer is undefined behavior, not merely unsupported; this fn cannot detect or reject it.
  */
- void dstu_box512_publickey_free(DstuBox512PublicKey *key);
+
+void dstu_box512_publickey_free(DstuBox512PublicKey *key);
 
 /**
  * Encrypts `message` (any length) to `recipient`, drawing a fresh random seed and ephemeral key
@@ -524,9 +527,10 @@ DstuStatus dstu_box512_open(const DstuBox512SecretKey *secret,
  * # Safety
  *
  * `key` must be either NULL or a pointer previously returned by `dstu_box_secretkey_generate`/
- * `dstu_box_secretkey_from_bytes`, not already freed.
+ * `dstu_box_secretkey_from_bytes`, not already freed - freeing an already-freed pointer is undefined behavior, not merely unsupported; this fn cannot detect or reject it.
  */
- void dstu_box_secretkey_free(DstuBoxSecretKey *key);
+
+void dstu_box_secretkey_free(DstuBoxSecretKey *key);
 
 /**
  * Builds a public key from its compressed `DSTU_BOX_PUBLICKEY_BYTES`-byte `x`-coordinate
@@ -558,9 +562,10 @@ DstuStatus dstu_box512_open(const DstuBox512SecretKey *secret,
  * # Safety
  *
  * `key` must be either NULL or a pointer previously returned by `dstu_box_secretkey_public_key`/
- * `dstu_box_publickey_from_bytes`, not already freed.
+ * `dstu_box_publickey_from_bytes`, not already freed - freeing an already-freed pointer is undefined behavior, not merely unsupported; this fn cannot detect or reject it.
  */
- void dstu_box_publickey_free(DstuBoxPublicKey *key);
+
+void dstu_box_publickey_free(DstuBoxPublicKey *key);
 
 /**
  * Encrypts `message` (any length) to `recipient`, drawing a fresh random seed and ephemeral key
@@ -663,9 +668,10 @@ DstuStatus dstu_box_open(const DstuBoxSecretKey *secret,
  * # Safety
  *
  * `hasher` must be either NULL or a pointer previously returned by `dstu_kupyna256_hasher_new`,
- * not already freed.
+ * not already freed - freeing an already-freed pointer is undefined behavior, not merely unsupported; this fn cannot detect or reject it.
  */
- void dstu_kupyna256_hasher_free(DstuKupyna256Hasher *hasher);
+
+void dstu_kupyna256_hasher_free(DstuKupyna256Hasher *hasher);
 
 /**
  * Creates a new streaming hasher - infallible.
@@ -699,9 +705,10 @@ DstuStatus dstu_box_open(const DstuBoxSecretKey *secret,
  * # Safety
  *
  * `hasher` must be either NULL or a pointer previously returned by `dstu_kupyna512_hasher_new`,
- * not already freed.
+ * not already freed - freeing an already-freed pointer is undefined behavior, not merely unsupported; this fn cannot detect or reject it.
  */
- void dstu_kupyna512_hasher_free(DstuKupyna512Hasher *hasher);
+
+void dstu_kupyna512_hasher_free(DstuKupyna512Hasher *hasher);
 
 /**
  * Generates a fresh master key from the OS CSPRNG. Returns `DSTU_OK` (writing `*out`) or
@@ -739,9 +746,10 @@ DstuStatus dstu_box_open(const DstuBoxSecretKey *secret,
  * # Safety
  *
  * `key` must be either NULL or a pointer previously returned by `dstu_kdf_master_key_generate`/
- * `dstu_kdf_master_key_from_bytes`, not already freed.
+ * `dstu_kdf_master_key_from_bytes`, not already freed - freeing an already-freed pointer is undefined behavior, not merely unsupported; this fn cannot detect or reject it.
  */
- void dstu_kdf_master_key_free(DstuKdfMasterKey *key);
+
+void dstu_kdf_master_key_free(DstuKdfMasterKey *key);
 
 /**
  * Derives a subkey from `key`/`subkey_id`/`context` - infallible. A NULL `key`/`context`/`out` is
@@ -838,9 +846,10 @@ DstuStatus dstu_pwhash_hash_password(const uint8_t *password,
  * # Safety
  *
  * `key` must be either NULL or a pointer previously returned by `dstu_secretbox_key_generate`/
- * `dstu_secretbox_key_from_bytes`, not already freed.
+ * `dstu_secretbox_key_from_bytes`, not already freed - freeing an already-freed pointer is undefined behavior, not merely unsupported; this fn cannot detect or reject it.
  */
- void dstu_secretbox_key_free(DstuSecretboxKey *key);
+
+void dstu_secretbox_key_free(DstuSecretboxKey *key);
 
 /**
  * Encrypts and authenticates `plaintext` under `key`, drawing a fresh random nonce internally.
@@ -920,9 +929,10 @@ DstuStatus dstu_secretbox_open(const DstuSecretboxKey *key,
  * # Safety
  *
  * `key` must be either NULL or a pointer previously returned by
- * `dstu_secretstream_key_generate`/`dstu_secretstream_key_from_bytes`, not already freed.
+ * `dstu_secretstream_key_generate`/`dstu_secretstream_key_from_bytes`, not already freed - freeing an already-freed pointer is undefined behavior, not merely unsupported; this fn cannot detect or reject it.
  */
- void dstu_secretstream_key_free(DstuSecretstreamKey *key);
+
+void dstu_secretstream_key_free(DstuSecretstreamKey *key);
 
 /**
  * Starts a new stream under `key`, drawing a fresh random header and writing it to `header_out`.
@@ -977,9 +987,10 @@ DstuStatus dstu_secretstream_push(DstuPushState *state,
  * # Safety
  *
  * `state` must be either NULL or a pointer previously returned by
- * `dstu_secretstream_push_init`, not already freed.
+ * `dstu_secretstream_push_init`, not already freed - freeing an already-freed pointer is undefined behavior, not merely unsupported; this fn cannot detect or reject it.
  */
- void dstu_secretstream_push_free(DstuPushState *state);
+
+void dstu_secretstream_push_free(DstuPushState *state);
 
 /**
  * Re-derives the stream's initial subkey from `key` and `header` (as produced by
@@ -1031,9 +1042,10 @@ DstuStatus dstu_secretstream_pull(DstuPullState *state,
  * # Safety
  *
  * `state` must be either NULL or a pointer previously returned by
- * `dstu_secretstream_pull_init`, not already freed.
+ * `dstu_secretstream_pull_init`, not already freed - freeing an already-freed pointer is undefined behavior, not merely unsupported; this fn cannot detect or reject it.
  */
- void dstu_secretstream_pull_free(DstuPullState *state);
+
+void dstu_secretstream_pull_free(DstuPullState *state);
 
 /**
  * Re-verifies one official test vector per primitive (Kalyna, Kupyna, Strumok, DSTU 4145)
@@ -1082,9 +1094,10 @@ DstuStatus dstu_secretstream_pull(DstuPullState *state,
  * # Safety
  *
  * `key` must be either NULL or a pointer previously returned by `dstu_sign_key_generate`/
- * `dstu_sign_key_from_bytes`, not already freed.
+ * `dstu_sign_key_from_bytes`, not already freed - freeing an already-freed pointer is undefined behavior, not merely unsupported; this fn cannot detect or reject it.
  */
- void dstu_sign_key_free(DstuSigningKey *key);
+
+void dstu_sign_key_free(DstuSigningKey *key);
 
 /**
  * Derives the public verifying key for `key` - infallible. Returns NULL if `key` is NULL.
@@ -1124,9 +1137,10 @@ DstuStatus dstu_secretstream_pull(DstuPullState *state,
  * # Safety
  *
  * `key` must be either NULL or a pointer previously returned by `dstu_sign_verifying_key`/
- * `dstu_verifying_key_from_bytes`, not already freed.
+ * `dstu_verifying_key_from_bytes`, not already freed - freeing an already-freed pointer is undefined behavior, not merely unsupported; this fn cannot detect or reject it.
  */
- void dstu_verifying_key_free(DstuVerifyingKey *key);
+
+void dstu_verifying_key_free(DstuVerifyingKey *key);
 
 /**
  * Signs `message`, hashing it with Kupyna-256 internally and deriving the ephemeral nonce
@@ -1223,9 +1237,10 @@ bool dstu_verify(const DstuVerifyingKey *key,
  * # Safety
  *
  * `key` must be either NULL or a pointer previously returned by `dstu_sign257_key_generate`/
- * `dstu_sign257_key_from_bytes`, not already freed.
+ * `dstu_sign257_key_from_bytes`, not already freed - freeing an already-freed pointer is undefined behavior, not merely unsupported; this fn cannot detect or reject it.
  */
- void dstu_sign257_key_free(DstuSigningKey257 *key);
+
+void dstu_sign257_key_free(DstuSigningKey257 *key);
 
 /**
  * Derives the public verifying key for `key` - infallible. Returns NULL if `key` is NULL.
@@ -1265,9 +1280,10 @@ bool dstu_verify(const DstuVerifyingKey *key,
  * # Safety
  *
  * `key` must be either NULL or a pointer previously returned by `dstu_sign257_verifying_key`/
- * `dstu_verifying_key257_from_bytes`, not already freed.
+ * `dstu_verifying_key257_from_bytes`, not already freed - freeing an already-freed pointer is undefined behavior, not merely unsupported; this fn cannot detect or reject it.
  */
- void dstu_verifying_key257_free(DstuVerifyingKey257 *key);
+
+void dstu_verifying_key257_free(DstuVerifyingKey257 *key);
 
 /**
  * Signs `message`, hashing it with Kupyna-256 internally and deriving the ephemeral nonce
@@ -1363,9 +1379,10 @@ bool dstu_verify257_digest(const DstuVerifyingKey257 *key,
  * # Safety
  *
  * `key` must be either NULL or a pointer previously returned by `dstu_stream_key_generate`/
- * `dstu_stream_key_from_bytes`, not already freed.
+ * `dstu_stream_key_from_bytes`, not already freed - freeing an already-freed pointer is undefined behavior, not merely unsupported; this fn cannot detect or reject it.
  */
- void dstu_stream_key_free(DstuStreamKey *key);
+
+void dstu_stream_key_free(DstuStreamKey *key);
 
 /**
  * XORs `plaintext` with a fresh keystream under `key`, drawing a random IV internally.

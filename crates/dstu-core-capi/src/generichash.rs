@@ -131,7 +131,7 @@ pub unsafe extern "C" fn dstu_kupyna256_hasher_finalize(
 /// # Safety
 ///
 /// `hasher` must be either NULL or a pointer previously returned by `dstu_kupyna256_hasher_new`,
-/// not already freed.
+/// not already freed - freeing an already-freed pointer is undefined behavior, not merely unsupported; this fn cannot detect or reject it.
 #[no_mangle]
 pub unsafe extern "C" fn dstu_kupyna256_hasher_free(hasher: *mut DstuKupyna256Hasher) {
     guard_void(|| {
@@ -208,7 +208,7 @@ pub unsafe extern "C" fn dstu_kupyna512_hasher_finalize(
 /// # Safety
 ///
 /// `hasher` must be either NULL or a pointer previously returned by `dstu_kupyna512_hasher_new`,
-/// not already freed.
+/// not already freed - freeing an already-freed pointer is undefined behavior, not merely unsupported; this fn cannot detect or reject it.
 #[no_mangle]
 pub unsafe extern "C" fn dstu_kupyna512_hasher_free(hasher: *mut DstuKupyna512Hasher) {
     guard_void(|| {

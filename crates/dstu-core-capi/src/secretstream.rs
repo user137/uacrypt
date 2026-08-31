@@ -121,7 +121,7 @@ pub unsafe extern "C" fn dstu_secretstream_key_bytes(
 /// # Safety
 ///
 /// `key` must be either NULL or a pointer previously returned by
-/// `dstu_secretstream_key_generate`/`dstu_secretstream_key_from_bytes`, not already freed.
+/// `dstu_secretstream_key_generate`/`dstu_secretstream_key_from_bytes`, not already freed - freeing an already-freed pointer is undefined behavior, not merely unsupported; this fn cannot detect or reject it.
 #[no_mangle]
 pub unsafe extern "C" fn dstu_secretstream_key_free(key: *mut DstuSecretstreamKey) {
     guard_void(|| {
@@ -237,7 +237,7 @@ pub unsafe extern "C" fn dstu_secretstream_push(
 /// # Safety
 ///
 /// `state` must be either NULL or a pointer previously returned by
-/// `dstu_secretstream_push_init`, not already freed.
+/// `dstu_secretstream_push_init`, not already freed - freeing an already-freed pointer is undefined behavior, not merely unsupported; this fn cannot detect or reject it.
 #[no_mangle]
 pub unsafe extern "C" fn dstu_secretstream_push_free(state: *mut DstuPushState) {
     guard_void(|| {
@@ -348,7 +348,7 @@ pub unsafe extern "C" fn dstu_secretstream_pull(
 /// # Safety
 ///
 /// `state` must be either NULL or a pointer previously returned by
-/// `dstu_secretstream_pull_init`, not already freed.
+/// `dstu_secretstream_pull_init`, not already freed - freeing an already-freed pointer is undefined behavior, not merely unsupported; this fn cannot detect or reject it.
 #[no_mangle]
 pub unsafe extern "C" fn dstu_secretstream_pull_free(state: *mut DstuPullState) {
     guard_void(|| {
