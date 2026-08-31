@@ -41,7 +41,9 @@ def test_secretstream_and_box_loop_does_not_leak() -> None:
     for _ in range(N):
         push = d.SecretStreamPushState(key)
         header = push.header
-        ciphertext, auth_tag = push.push(d.SECRETSTREAM_TAG_MESSAGE, b"leak-check chunk")
+        ciphertext, auth_tag = push.push(
+            d.SECRETSTREAM_TAG_MESSAGE, b"leak-check chunk"
+        )
         pull = d.SecretStreamPullState(key, header)
         pull.pull(d.SECRETSTREAM_TAG_MESSAGE, ciphertext, auth_tag)
         del push, pull, ciphertext, auth_tag, header
