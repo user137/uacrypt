@@ -21,9 +21,10 @@ const assert = require('node:assert/strict');
 const dstu = require('../js/index.js');
 
 const N = 1000;
-// Same reasoning as the Python threshold: well below "N leaked handles" worth of growth, well
-// above normal per-iteration bookkeeping noise.
-const MAX_ACCEPTABLE_GROWTH_BYTES = N * 200;
+// Measured normal-case growth is ~24KB for N=1000; a deliberate leak of all 2000 handles measures
+// ~249KB. 100KB sits with real margin on both sides of that gap (4x above normal, 2.5x below the
+// leak signal) rather than tucked close to either.
+const MAX_ACCEPTABLE_GROWTH_BYTES = N * 100;
 
 test('secretstream and box loop does not leak', { skip: typeof global.gc !== 'function' && 'run with node --expose-gc (see package.json test:leak script)' }, () => {
   const key = dstu.secretstreamKeygen();
