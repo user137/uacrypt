@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-40a50a95.js";
+            window.path_to_searchindex_js = "searchindex-6d5887e5.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-6b977b4b.js"></script>
@@ -8225,9 +8225,15 @@ real confirmation this job catches what it’s meant to.</li>
 </ul>
 <h3 id="step-2-p1---other-ffi-lifecycle-robustness"><a class="header" href="#step-2-p1---other-ffi-lifecycle-robustness">Step 2 (P1) - other FFI lifecycle robustness</a></h3>
 <ul>
-<li><input disabled="" type="checkbox"> <strong>T-217</strong> .NET binding: add tests for the 47 existing <code>ArgumentNullException.ThrowIfNull(...)</code>
+<li><input disabled="" type="checkbox" checked=""> <strong>T-217</strong> .NET binding: add tests for the 47 existing <code>ArgumentNullException.ThrowIfNull(...)</code>
 call sites across all 11 wrapper classes - implemented, zero test coverage today. One
-<code>[Theory]</code>-per-class covering its public entry points is enough; don’t need 47 separate tests.</li>
+<code>[Theory]</code>-per-class covering its public entry points is enough; don’t need 47 separate tests.
+Done 2026-08-31: one <code>NullArgumentCases</code> <code>[Theory]</code>/<code>[MemberData]</code> added per existing <code>*Tests.cs</code>
+file (41 rows total covering every <code>ThrowIfNull</code> site). Each lambda body is wrapped in a block
+(<code>() =&gt; { Expr(...); }</code>) rather than left as a bare expression - a bare non-void expression lambda
+assigned into an <code>object[]</code> array literal has no target-type context, so the compiler infers its
+natural type as <code>Func&lt;T&gt;</code> instead of <code>Action</code> and every such row throws
+<code>ArgumentException: Object of type 'Func\</code>1[…]’ cannot be converted to type ‘System.Action’<code>at runtime instead of running the intended check - caught by actually running the suite (41/137 failures) before this was understood, not by inspection.</code>xUnit1026<code>(unused</code>description<code>parameter - it exists purely to label the Theory row in test output) suppressed via a documented</code>#pragma warning disable/restore<code>around the shared</code>NullArgumentThrows<code>method in each file.</code>dotnet build<code>0 warnings,</code>dotnet test` 137/137 passed.</li>
 <li><input disabled="" type="checkbox"> <strong>T-218</strong> GC-premature-collection stress test for .NET and Java (the two bindings whose own
 wrapper code - <code>SafeHandle</code>, native handle + <code>synchronized</code> loader - is explicitly designed
 against this failure mode but has never been stress-tested against it). Wrap an in-flight
@@ -8239,10 +8245,14 @@ binding, either (a) a test demonstrating concurrent calls from multiple threads/
 so explicitly and a test confirming the <em>type itself</em> isn’t silently <code>Send</code>/<code>Sync</code>/thread-
 shareable where that would be wrong. Don’t skip a language as “obviously fine” - decide per
 language, record it either way.</li>
-<li><input disabled="" type="checkbox"> <strong>T-220</strong> C++ binding: add the missing <code>TestSecretstreamOversizedDeclaredChunkLength</code> case to
+<li><input disabled="" type="checkbox" checked=""> <strong>T-220</strong> C++ binding: add the missing <code>TestSecretstreamOversizedDeclaredChunkLength</code> case to
 <code>test_dstu.cpp</code>’s <code>TestSecretstream</code> - the bounds check is implemented (mirrors <code>uacrypt</code>’s own
 <code>CliError::SecretstreamChunkTooLarge</code>) but C++ is the only one of 8 bindings without a dedicated
-test for it (all 7 others have one).</li>
+test for it (all 7 others have one). Done 2026-08-31: new <code>TestSecretstreamOversizedDeclaredChunkLength</code>
+function mirrors the Java binding’s equivalent test (zero header + <code>Final</code> tag byte + declared
+chunk length <code>0xFFFFFFFF</code>), asserts <code>dstu::CryptoError</code>. Verified locally via PowerShell (MinGW
+<code>.exe</code> under Git Bash gives a bogus exit 127, per this file’s own noted pitfall) -
+<code>dstu_core_cpp_tests.exe</code> passes clean.</li>
 </ul>
 <h3 id="step-3-p2---corecli-robustness-beyond-ffi"><a class="header" href="#step-3-p2---corecli-robustness-beyond-ffi">Step 3 (P2) - Core/CLI robustness beyond FFI</a></h3>
 <ul>
