@@ -77,7 +77,7 @@ dependencies = [
 
 [[package]]
 name = "dstu-core"
-version = "0.3.5"
+version = "0.3.8"
 dependencies = [
  "argon2",
  "getrandom",
