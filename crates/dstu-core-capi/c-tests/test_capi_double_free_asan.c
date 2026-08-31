@@ -9,12 +9,13 @@
  * Expected result when built with -fsanitize=address and run: the process aborts with an
  * AddressSanitizer error and a nonzero exit code - that IS success for this program; a clean exit 0
  * means ASan failed to catch a real double-free and is the actual test failure. The specific
- * diagnostic ASan emits is NOT guaranteed to say "double-free": the second dstu_auth_key_free's
- * Box::from_raw re-drops the (already-dropped) key, whose Drop impl writes zeroize() bytes into
- * now-freed memory - ASan reports that as heap-use-after-free before the call ever reaches the
- * allocator's free(). Either diagnostic (or a literal double-free one, if the zeroize-on-drop write
- * doesn't happen to touch a poisoned page first) is a correct catch of this same underlying misuse -
- * see the CI job's own grep for the exact set of diagnostics treated as success.
+ * diagnostic ASan emits is NOT stable enough to match on: observed in CI as "attempting
+ * double-free" on one run, and the second dstu_auth_key_free's Box::from_raw re-drops the
+ * (already-dropped) key, whose Drop impl writes zeroize() bytes into now-freed memory, can also
+ * surface as heap-use-after-free before the call ever reaches the allocator's free(). The CI job's
+ * own check no longer enumerates specific diagnostic phrases for this reason - it matches on the
+ * "ERROR: AddressSanitizer" header line every ASan report emits, regardless of which diagnostic
+ * follows.
  * Never build/run this without ASan - without it, a double-free's behavior is simply undefined
  * (silent heap corruption, a crash somewhere unrelated, or no visible symptom at all), which proves
  * nothing either way. See `.github/workflows/rust.yml`'s `capi-double-free-asan` job (Linux-only)
