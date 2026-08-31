@@ -12,11 +12,13 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <atomic>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -550,6 +552,113 @@ void TestStream() {
         "stream decrypt should reject input shorter than the IV");
 }
 
+// T-219: concurrency contract for this binding's own wrapper types, decided and recorded rather
+// than assumed.
+//  - Read-only key types are safe to share across threads: dstu::VerifyingKey/SigningKey wrap an
+//    immutable native key behind a std::unique_ptr with a custom deleter; every operation on them
+//    (Verify/Sign, both `const`) only reads that key - no caller-visible mutable state exists to
+//    race on. Verified below by calling the SAME key concurrently from many std::threads.
+//  - Stateful streaming types are NOT safe to share across threads: dstu::SecretStreamEncryptor/
+//    SecretStreamDecryptor hold a native push/pull state that advances (nonce/counter) with every
+//    call, with no lock anywhere in this wrapper (and are non-movable/non-copyable, so sharing one
+//    across threads would require an explicit raw pointer + external synchronization this binding
+//    doesn't provide). The supported concurrency model is one stream per thread. Verified below:
+//    many threads, each driving its own encryptor/decryptor pair concurrently, all round-trip
+//    correctly - deliberately not tested by racing a single shared instance, since that would just
+//    induce undefined behavior on the native side rather than test a contract.
+void TestThreadSafety() {
+  {
+    auto signingKey = dstu::SigningKey::Generate();
+    auto verifyingKey = signingKey.Verifying();
+    const std::string message = "shared-key concurrent verify";
+    auto sig = signingKey.Sign(ToBytes(message));
+
+    constexpr int kThreads = 16;
+    constexpr int kPerThread = 200;
+    std::atomic<int> failures_seen{0};
+    std::vector<std::thread> threads;
+    for (int t = 0; t < kThreads; t++) {
+      threads.emplace_back([&] {
+        for (int i = 0; i < kPerThread; i++) {
+          if (!verifyingKey.Verify(ToBytes(message), sig)) {
+            failures_seen++;
+          }
+        }
+      });
+    }
+    for (auto &th : threads) {
+      th.join();
+    }
+    CHECK(failures_seen == 0, "concurrent Verify on a shared VerifyingKey should never fail on a valid signature");
+  }
+
+  {
+    auto signingKey = dstu::SigningKey::Generate();
+    auto verifyingKey = signingKey.Verifying();
+    const std::string message = "shared-key concurrent sign";
+
+    constexpr int kThreads = 16;
+    constexpr int kPerThread = 50;
+    std::atomic<int> failures_seen{0};
+    std::vector<std::thread> threads;
+    for (int t = 0; t < kThreads; t++) {
+      threads.emplace_back([&] {
+        for (int i = 0; i < kPerThread; i++) {
+          auto sig = signingKey.Sign(ToBytes(message));
+          if (!verifyingKey.Verify(ToBytes(message), sig)) {
+            failures_seen++;
+          }
+        }
+      });
+    }
+    for (auto &th : threads) {
+      th.join();
+    }
+    CHECK(failures_seen == 0, "concurrent Sign+Verify on a shared SigningKey/VerifyingKey should always agree");
+  }
+
+  {
+    constexpr int kThreads = 8;
+    constexpr int kChunksPerThread = 20;
+    std::atomic<int> failures_seen{0};
+    std::vector<std::thread> threads;
+    for (int t = 0; t < kThreads; t++) {
+      threads.emplace_back([&, t] {
+        auto key = dstu::SecretstreamKey::Generate();
+        std::vector<std::vector<std::uint8_t>> chunks;
+        std::vector<std::uint8_t> expected;
+        for (int i = 0; i < kChunksPerThread; i++) {
+          std::ostringstream label;
+          label << "thread " << t << " chunk " << i;
+          auto chunk = ToBytes(label.str());
+          expected.insert(expected.end(), chunk.begin(), chunk.end());
+          chunks.push_back(std::move(chunk));
+        }
+
+        std::ostringstream out;
+        {
+          dstu::SecretStreamEncryptor enc(out, key);
+          for (auto &chunk : chunks) {
+            enc.Write(chunk);
+          }
+          enc.Finish();
+        }
+
+        std::istringstream in(out.str());
+        dstu::SecretStreamDecryptor dec(in, key);
+        auto decrypted = dec.ReadAll();
+        if (decrypted != expected) {
+          failures_seen++;
+        }
+      });
+    }
+    for (auto &th : threads) {
+      th.join();
+    }
+    CHECK(failures_seen == 0, "independent secretstream loops on separate threads should each round-trip correctly");
+  }
+}
+
 void TestPwhash() {
   const std::string password = "correct horse battery staple";
   auto hash = dstu::HashPassword(ToBytes(password), dstu::PwhashStrength::kInteractive);
@@ -587,6 +696,7 @@ int main() {
     TestSign();
     TestSign257();
     TestStream();
+    TestThreadSafety();
     TestPwhash();
   } catch (const dstu::DstuException &e) {
     std::fprintf(stderr, "uncaught dstu::DstuException: %s\n", e.what());
