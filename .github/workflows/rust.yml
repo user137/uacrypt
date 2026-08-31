@@ -300,6 +300,43 @@ jobs:
       - run: cargo install cbindgen --locked
       - run: cargo xtask capi
 
+  capi-double-free-asan:
+    name: capi double-free contract (ASan regression backstop, CI-only)
+    # T-216 part 2: every dstu_*_free doc comment now explicitly names double-free as UB the
+    # function cannot detect (T-216 part 1). This job doesn't make double-free supported - it
+    # makes sure a future refactor that exposes it from safe-looking code gets caught rather than
+    # silently passing. Deliberately its own binary/job, not merged into `test_capi.c`'s
+    # CHECK()/failures-counter harness above: under ASan a double-free aborts the process, which
+    # doesn't fit that shape and would break the `capi` job on all three OSes if combined into the
+    # same main(). Linux-only (ASan needs libasan; this project's own Windows dev machine has none
+    # for its MinGW toolchain, confirmed 2026-08-31 - not locally verifiable there, CI is the first
+    # real confirmation).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo build -p dstu-core-capi --release
+      - name: build the ASan double-free harness
+        run: |
+          gcc -std=c11 -Wall -fsanitize=address -g \
+            -I crates/dstu-core-capi/include \
+            crates/dstu-core-capi/c-tests/test_capi_double_free_asan.c \
+            -o /tmp/capi_double_free_asan \
+            -L target/release -ldstu_core_capi -Wl,-rpath,target/release
+      - name: run it - expect ASan to abort with a double-free diagnostic (nonzero exit)
+        run: |
+          set +e
+          /tmp/capi_double_free_asan > /tmp/out.log 2>&1
+          code=$?
+          cat /tmp/out.log
+          set -e
+          if [ "$code" -eq 0 ]; then
+            echo "FAIL: process exited 0 - ASan did not catch the double-free"
+            exit 1
+          fi
+          grep -qi "double-free" /tmp/out.log || { echo "FAIL: nonzero exit but no ASan double-free diagnostic in output"; exit 1; }
+          echo "OK: ASan caught the deliberate double-free as expected"
+
   msrv:
     name: MSRV build (1.87.0)
     runs-on: ubuntu-latest
