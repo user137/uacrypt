@@ -577,6 +577,7 @@ void TestThreadSafety() {
     constexpr int kPerThread = 200;
     std::atomic<int> failures_seen{0};
     std::vector<std::thread> threads;
+    threads.reserve(kThreads);
     for (int t = 0; t < kThreads; t++) {
       threads.emplace_back([&] {
         for (int i = 0; i < kPerThread; i++) {
@@ -601,6 +602,7 @@ void TestThreadSafety() {
     constexpr int kPerThread = 50;
     std::atomic<int> failures_seen{0};
     std::vector<std::thread> threads;
+    threads.reserve(kThreads);
     for (int t = 0; t < kThreads; t++) {
       threads.emplace_back([&] {
         for (int i = 0; i < kPerThread; i++) {
@@ -622,6 +624,7 @@ void TestThreadSafety() {
     constexpr int kChunksPerThread = 20;
     std::atomic<int> failures_seen{0};
     std::vector<std::thread> threads;
+    threads.reserve(kThreads);
     for (int t = 0; t < kThreads; t++) {
       threads.emplace_back([&, t] {
         auto key = dstu::SecretstreamKey::Generate();
