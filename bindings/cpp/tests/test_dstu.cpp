@@ -8,12 +8,14 @@
 
 #include "dstu/dstu.hpp"
 
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -273,6 +275,83 @@ void TestSecretstream() {
   CHECK(Throws<dstu::CryptoError>([&] { truncatedDec.ReadAll(); }), "decryption should reject a truncated stream");
 }
 
+// T-213: FFI memory-leak smoke test. Unlike the other seven bindings in this batch, this one has
+// no GC/refcounting at all - every wrapper here (SecretstreamKey, BoxSecretKey, BoxPublicKey,
+// SecretStreamEncryptor/Decryptor) holds its native handle in a std::unique_ptr with a custom
+// deleter (dstu_*_free), so RAII already guarantees deterministic release at scope exit for
+// correctly-written code; this loop can't demonstrate anything close to what the Java/.NET/Go
+// tests in this same batch demonstrate (a GC/managed-heap counter provably blind to an off-heap
+// handle). Kept anyway as a living regression backstop - the value here is a future refactor that
+// accidentally moves a handle out of RAII (a raw pointer escape, a std::move bug, a destructor that
+// forgets to run) has some test noticing, not a claim that this loop is a meaningful discriminator
+// today. Linux-only VmRSS reading (matches the mechanism this batch's Java/.NET/Go tests already
+// settled on for the languages where it *is* the only reliable local signal - consistent story
+// across the batch rather than a one-off for this file). Not run on this project's own Windows dev
+// machine's build of this test binary (MinGW here, no /proc anyway) - CI's Linux leg is the real
+// exercise of this path, same documented-precedent posture as uacrypt_with_peak_rss.
+#ifdef __linux__
+std::int64_t CurrentVmRssBytes() {
+  std::ifstream status("/proc/self/status");
+  std::string line;
+  while (std::getline(status, line)) {
+    if (line.rfind("VmRSS:", 0) == 0) {
+      std::istringstream iss(line.substr(6));
+      std::int64_t kb = 0;
+      iss >> kb;
+      return kb * 1024;
+    }
+  }
+  throw std::runtime_error("VmRSS line not found in /proc/self/status");
+}
+
+void RunSecretstreamAndBoxLoop(const dstu::SecretstreamKey &key, const dstu::BoxSecretKey &boxSecret,
+                                const dstu::BoxPublicKey &boxPublic, int n) {
+  for (int i = 0; i < n; i++) {
+    std::ostringstream sink;
+    {
+      dstu::SecretStreamEncryptor enc(sink, key);
+      enc.Write(ToBytes(std::string("leak-check chunk")));
+      enc.Finish();
+    }
+    std::istringstream source(sink.str());
+    dstu::SecretStreamDecryptor dec(source, key);
+    auto decrypted = dec.ReadAll();
+    CHECK(decrypted == ToBytes(std::string("leak-check chunk")), "secretstream round trip should match in leak loop");
+
+    auto sealed = boxPublic.Seal(ToBytes(std::string("leak-check message")));
+    auto opened = boxSecret.Open(sealed);
+    CHECK(opened == ToBytes(std::string("leak-check message")), "box round trip should match in leak loop");
+  }
+}
+
+void TestMemoryLeak() {
+  const int warmup = 2000;
+  const int n = 20000;
+  // Comfortable margin above normal churn but far below what N leaked handles would show at this
+  // scale - same order of magnitude as this batch's Java/.NET/Go thresholds.
+  const std::int64_t maxAcceptableGrowthBytes = 8LL * 1024 * 1024;
+
+  auto key = dstu::SecretstreamKey::Generate();
+  auto boxSecret = dstu::BoxSecretKey::Generate();
+  auto boxPublic = boxSecret.Public();
+
+  RunSecretstreamAndBoxLoop(key, boxSecret, boxPublic, warmup);
+  std::int64_t before = CurrentVmRssBytes();
+
+  RunSecretstreamAndBoxLoop(key, boxSecret, boxPublic, n);
+
+  std::int64_t after = CurrentVmRssBytes();
+  std::int64_t growth = after - before;
+  CHECK(growth < maxAcceptableGrowthBytes, "VmRSS growth over the leak-check loop should stay below threshold");
+}
+#else
+void TestMemoryLeak() {
+  // VmRSS-based leak check only runs on Linux - see the #ifdef __linux__ block above for why the
+  // GC/managed-heap-counter alternatives this batch tried for Java/.NET were rejected as blind,
+  // and process-RSS-via-repeated-sampling was rejected as too noisy on Windows specifically.
+}
+#endif
+
 #ifdef DSTU_UACRYPT_EXE
 // std::system() shells out via `cmd.exe /c <command>` on Windows, which has a documented quirk:
 // when the command string's first character is a `"`, cmd.exe strips the outer first/last quote
@@ -481,6 +560,7 @@ int main() {
     TestBox();
     TestBox512();
     TestSecretstream();
+    TestMemoryLeak();
 #ifdef DSTU_UACRYPT_EXE
     TestUacryptInterop();
 #endif
