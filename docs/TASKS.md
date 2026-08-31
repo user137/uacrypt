@@ -7945,12 +7945,45 @@ codes, and memory lifecycle) stays intact and doesn't need its own task.
   `Cleaner`, so native memory here is never tied to Java object GC timing at all - `close()` is the
   only release path, unlike .NET's `SafeHandle` where the marshaller's keep-alive-during-the-call
   guarantee is the actual mechanism under test.
-- [ ] **T-219** Thread-safety/concurrency tests across all 8 bindings. Minimum bar: for each
+- [x] **T-219** Thread-safety/concurrency tests across all 8 bindings. Minimum bar: for each
   binding, either (a) a test demonstrating concurrent calls from multiple threads/tasks are safe, or
   (b) if the wrapper type isn't meant to be shared across threads, a doc comment/README line saying
   so explicitly and a test confirming the *type itself* isn't silently `Send`/`Sync`/thread-
   shareable where that would be wrong. Don't skip a language as "obviously fine" - decide per
-  language, record it either way.
+  language, record it either way. Done 2026-08-31, one contract decided and tested per binding, not
+  assumed to generalize from one language to the next:
+  - **.NET/Java/Go/C++/Python/Ruby (6 bindings, same shape)**: read-only key types
+    (`VerifyingKey`/`SigningKey` or the equivalent stateless functions) are safe to call
+    concurrently on a SHARED instance/key - verified with real concurrent execution
+    (`Parallel.For`, a fixed `ExecutorService`, goroutines, `std::thread`, Python `threading`,
+    Ruby `Thread`). Stateful secretstream push/pull state is NOT made thread-safe by any of these
+    wrappers (no internal lock anywhere) - the supported model is one stream per thread, verified
+    with many threads each driving an independent stream concurrently, deliberately not by racing
+    a shared instance (that would just induce UB/logical corruption rather than test a contract).
+    Go's version additionally passes `go test -race`. Java's/Ruby's/Python's versions are safe by
+    an even stronger reason than .NET/Go/C++: no native handle exists per key at all (plain
+    `byte[]`/`String`/`bytes` in, out) for Java's/Python's/Ruby's `Sign` surface specifically.
+  - **Node.js (7th)**: real OS-level concurrency only exists via `node:worker_threads` (JS itself
+    is single-threaded); used an `eval`'d inline worker script (loaded via an absolute
+    `require.resolve()` path) rather than a second file on disk, specifically because any file
+    dropped into `test/` would otherwise be picked up by `node --test`'s own default discovery as
+    a spurious test file. Same shared-key-safe / one-stream-per-worker contract as the others; a
+    native handle can't even be transferred across a worker boundary, so "racing a shared stream"
+    isn't expressible here at all.
+  - **PHP (8th, decided differently for a real reason)**: this project's PHP toolchain (dev
+    machine and CI both) is an NTS (non-thread-safe) build - no `Thread`-like class or
+    shared-memory-across-threads mechanism exists at all (`ext-pthreads`/`ext-parallel` both
+    hard-require ZTS), so there is nothing to guard against and no way to even attempt racing a
+    shared object. Verified, not just asserted: `bindings/php/tests/ThreadSafetyTest.php` checks
+    `PHP_ZTS` is false and neither `Thread` nor `parallel\Runtime` is loadable - if a future PHP
+    build here is ever ZTS, this test fails and the question needs re-deciding.
+  - Incidentally found and fixed while building/testing this batch (unrelated to T-219 itself):
+    `bindings/python/Cargo.lock` and `bindings/php/Cargo.lock` were both stale on their
+    path-dependency `dstu-core` version pin (this session's many `dstu-core` version bumps hadn't
+    been picked up by either binding's separate-workspace lock file) - refreshed via a real build
+    per `CLAUDE.md`'s own rule, not hand-edited. Also fixed a real `ruff format --check .` failure
+    in `bindings/python/tests/test_memory_leak.py` (T-213, pre-existing before this batch) found
+    while investigating a real CI failure on the T-217 commit.
 - [x] **T-220** C++ binding: add the missing `TestSecretstreamOversizedDeclaredChunkLength` case to
   `test_dstu.cpp`'s `TestSecretstream` - the bounds check is implemented (mirrors `uacrypt`'s own
   `CliError::SecretstreamChunkTooLarge`) but C++ is the only one of 8 bindings without a dedicated
@@ -8010,13 +8043,17 @@ discovered mid-implementation via empirical spikes rather than assumed:
   without first spiking a negative control - do this for any future binding's own leak test rather
   than trusting a plausible-sounding managed-heap mechanism.
 
-**Step 2 (P1, T-217..T-220) and Step 3 (P2, T-221..T-224) have not been started** - this was
-consciously scoped as Batch 1 = P0 only (surfaced and approved in the pre-implementation plan), P1/P2
-deferred to a later session as "Batch 2" material. Start with T-217 or T-220 (both "one test file,
-one pattern," no full plan-mode+advisor gate needed) or T-218/T-219 next; T-221 and T-223 are the two
-in this remaining set that likely still warrant the full structural-change gate given T-213/T-215's
-own experience of the sketched mechanism not surviving first contact with implementation. Full
-per-primitive/per-command/per-binding matrices this roadmap was originally derived from live in a
-private Claude artifact (not committed to the repo) - if it's no longer reachable, the fastest
-re-derivation path is the same two-agent survey approach (Core+CLI+capi inventory, bindings
-inventory) rather than re-reading this section's summaries as ground truth.
+**Step 2 (P1, T-217..T-220) is done** - all four landed 2026-08-31 in the same session as Step 1,
+across ~13 more commits (one per binding for T-219's 8, plus T-217/T-218/T-220 individually). See
+each task's own entry above for what was actually built; T-219 in particular decided a genuinely
+different contract for PHP than the other 7 bindings (NTS build, no threading primitive exists at
+all), not a copy-paste of one pattern across languages.
+
+**Step 3 (P2, T-221..T-224) has not been started.** T-221 and T-223 are the two in this remaining
+set that likely still warrant the full structural-change gate given T-213/T-215's own experience of
+the sketched mechanism not surviving first contact with implementation - do those two with a
+plan-mode+advisor pass, not a direct implement. Full per-primitive/per-command/per-binding matrices
+this roadmap was originally derived from live in a private Claude artifact (not committed to the
+repo) - if it's no longer reachable, the fastest re-derivation path is the same two-agent survey
+approach (Core+CLI+capi inventory, bindings inventory) rather than re-reading this section's
+summaries as ground truth.
