@@ -37,11 +37,24 @@ jobs:
         working-directory: bindings/dotnet
       - run: dotnet format DstuCore.Tests/DstuCore.Tests.csproj --verify-no-changes
         working-directory: bindings/dotnet
+      # MemoryLeakTests' Linux-only VmRSS-delta assertion (T-213) measures process-wide memory
+      # growth around its own loop, with no way to distinguish that from unrelated activity
+      # elsewhere in the same process. Running it as the sole test in its own `dotnet test`
+      # invocation (a fresh CLR host each time) rules that out entirely, rather than relying on
+      # in-process ordering/parallelization settings to keep other tests from having run first -
+      # confirmed necessary on real CI: disabling xUnit's own cross-class parallelization alone
+      # only reduced the contamination (64MB "growth" against an 8MB threshold down to 12.7MB),
+      # it didn't eliminate it - residual GC/thread-pool state from earlier tests in the same
+      # process outlives even a full GC.Collect()+WaitForPendingFinalizers pass.
+      - name: dotnet test - MemoryLeakTests in isolation (T-213, avoid cross-test VmRSS noise)
+        working-directory: bindings/dotnet/DstuCore.Tests
+        shell: bash
+        run: dotnet test --filter "FullyQualifiedName~MemoryLeakTests" --logger "console;verbosity=detailed"
       - name: dotnet test (fail if the interop test was silently skipped)
         working-directory: bindings/dotnet/DstuCore.Tests
         shell: bash
         run: |
-          dotnet test --logger "console;verbosity=detailed" 2>&1 | tee dotnet-test-output.txt
+          dotnet test --filter "FullyQualifiedName!~MemoryLeakTests" --logger "console;verbosity=detailed" 2>&1 | tee dotnet-test-output.txt
           test "${PIPESTATUS[0]}" -eq 0
           grep -q "InteropWithUacryptCli" dotnet-test-output.txt
       # Sanity-check the pack step itself on every push (not just a release), same posture as
