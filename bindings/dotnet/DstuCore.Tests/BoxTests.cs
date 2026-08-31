@@ -109,4 +109,24 @@ public sealed class BoxTests
         using var secretKey = BoxSecretKey.Generate();
         Assert.Throws<DstuException>(() => secretKey.Open(Encoding.ASCII.GetBytes("short")));
     }
+
+    // T-217: every ArgumentNullException.ThrowIfNull call site across BoxSecretKey/BoxPublicKey.
+    public static IEnumerable<object[]> NullArgumentCases()
+    {
+        yield return new object[] { "BoxSecretKey.FromBytes(null)", () => { BoxSecretKey.FromBytes(null!); } };
+        yield return new object[] { "BoxPublicKey.FromBytes(null)", () => { BoxPublicKey.FromBytes(null!); } };
+        var secretKey = BoxSecretKey.Generate();
+        var publicKey = secretKey.PublicKey();
+        yield return new object[] { "secretKey.Open(null)", () => { secretKey.Open(null!); } };
+        yield return new object[] { "publicKey.Seal(null)", () => { publicKey.Seal(null!); } };
+    }
+
+    [Theory]
+    [MemberData(nameof(NullArgumentCases))]
+#pragma warning disable xUnit1026 // description exists only to label this Theory row in test output
+    public void NullArgumentThrows(string description, Action action)
+#pragma warning restore xUnit1026
+    {
+        Assert.Throws<ArgumentNullException>(action);
+    }
 }

@@ -74,4 +74,36 @@ public sealed class SignTests
         using var verifyingKey = signingKey.VerifyingKey();
         Assert.Throws<ArgumentException>(() => verifyingKey.Verify(Encoding.ASCII.GetBytes("message"), new byte[5]));
     }
+
+    // T-217: every ArgumentNullException.ThrowIfNull call site across SigningKey/VerifyingKey.
+    public static IEnumerable<object[]> NullArgumentCases()
+    {
+        yield return new object[] { "SigningKey.FromBytes(null)", () => { SigningKey.FromBytes(null!); } };
+        yield return new object[] { "VerifyingKey.FromBytes(null)", () => { VerifyingKey.FromBytes(null!); } };
+        var signingKey = SigningKey.Generate();
+        var verifyingKey = signingKey.VerifyingKey();
+        var digest = new byte[DstuConstants.SignDigestBytes];
+        var sig = new byte[DstuConstants.SignSignatureBytes];
+        yield return new object[] { "signingKey.Sign(null)", () => { signingKey.Sign(null!); } };
+        yield return new object[] { "signingKey.SignDigest(null)", () => { signingKey.SignDigest(null!); } };
+        yield return new object[] { "verifyingKey.Verify(null, sig)", () => { verifyingKey.Verify(null!, sig); } };
+        yield return new object[]
+        {
+            "verifyingKey.Verify(message, null)", () => { verifyingKey.Verify(Encoding.ASCII.GetBytes("m"), null!); }
+        };
+        yield return new object[] { "verifyingKey.VerifyDigest(null, sig)", () => { verifyingKey.VerifyDigest(null!, sig); } };
+        yield return new object[]
+        {
+            "verifyingKey.VerifyDigest(digest, null)", () => { verifyingKey.VerifyDigest(digest, null!); }
+        };
+    }
+
+    [Theory]
+    [MemberData(nameof(NullArgumentCases))]
+#pragma warning disable xUnit1026 // description exists only to label this Theory row in test output
+    public void NullArgumentThrows(string description, Action action)
+#pragma warning restore xUnit1026
+    {
+        Assert.Throws<ArgumentNullException>(action);
+    }
 }

@@ -211,6 +211,58 @@ public sealed class SecretStreamTests
         Assert.Throws<InvalidOperationException>(() => enc.Write("more data"u8.ToArray(), 0, "more data"u8.Length));
     }
 
+    // T-217: every ArgumentNullException.ThrowIfNull call site across SecretstreamKey/
+    // SecretStreamEncryptStream/SecretStreamDecryptStream.
+    public static IEnumerable<object[]> NullArgumentCases()
+    {
+        yield return new object[] { "SecretstreamKey.FromBytes(null)", () => { SecretstreamKey.FromBytes(null!); } };
+        var key = SecretstreamKey.Generate();
+
+        yield return new object[]
+        {
+            "new SecretStreamEncryptStream(null, key)",
+            () => { using var _ = new SecretStreamEncryptStream(null!, key); }
+        };
+        yield return new object[]
+        {
+            "new SecretStreamEncryptStream(stream, null)",
+            () => { using var s = new MemoryStream(); using var _ = new SecretStreamEncryptStream(s, null!); }
+        };
+        yield return new object[]
+        {
+            "new SecretStreamDecryptStream(null, key)",
+            () => { using var _ = new SecretStreamDecryptStream(null!, key); }
+        };
+        yield return new object[]
+        {
+            "new SecretStreamDecryptStream(stream, null)",
+            () => { using var s = new MemoryStream(); using var _ = new SecretStreamDecryptStream(s, null!); }
+        };
+
+        var encryptedStream = new MemoryStream();
+        using (var enc = new SecretStreamEncryptStream(encryptedStream, key, leaveOpen: true))
+        {
+            enc.Write("data"u8.ToArray(), 0, "data"u8.Length);
+            enc.Complete();
+        }
+
+        encryptedStream.Position = 0;
+        var enc2 = new SecretStreamEncryptStream(new MemoryStream(), key, leaveOpen: true);
+        yield return new object[] { "enc.Write(null, 0, 0)", () => { enc2.Write(null!, 0, 0); } };
+
+        var dec2 = new SecretStreamDecryptStream(encryptedStream, key, leaveOpen: true);
+        yield return new object[] { "dec.Read(null, 0, 0)", () => { dec2.Read(null!, 0, 0); } };
+    }
+
+    [Theory]
+    [MemberData(nameof(NullArgumentCases))]
+#pragma warning disable xUnit1026 // description exists only to label this Theory row in test output
+    public void NullArgumentThrows(string description, Action action)
+#pragma warning restore xUnit1026
+    {
+        Assert.Throws<ArgumentNullException>(action);
+    }
+
     private sealed class TempDirectory : IDisposable
     {
         public string Path { get; } = Directory.CreateDirectory(

@@ -45,4 +45,21 @@ public sealed class KdfTests
         using var key = KdfMasterKey.Generate();
         Assert.Throws<ArgumentException>(() => key.DeriveSubkey(0, Encoding.ASCII.GetBytes("short")));
     }
+
+    // T-217: every ArgumentNullException.ThrowIfNull call site in this class, one Theory.
+    public static IEnumerable<object[]> NullArgumentCases()
+    {
+        yield return new object[] { "FromBytes(null)", () => { KdfMasterKey.FromBytes(null!); } };
+        var key = KdfMasterKey.Generate();
+        yield return new object[] { "DeriveSubkey(0, null)", () => { key.DeriveSubkey(0, null!); } };
+    }
+
+    [Theory]
+    [MemberData(nameof(NullArgumentCases))]
+#pragma warning disable xUnit1026 // description exists only to label this Theory row in test output
+    public void NullArgumentThrows(string description, Action action)
+#pragma warning restore xUnit1026
+    {
+        Assert.Throws<ArgumentNullException>(action);
+    }
 }

@@ -7915,9 +7915,20 @@ codes, and memory lifecycle) stays intact and doesn't need its own task.
 
 ### Step 2 (P1) - other FFI lifecycle robustness
 
-- [ ] **T-217** .NET binding: add tests for the 47 existing `ArgumentNullException.ThrowIfNull(...)`
+- [x] **T-217** .NET binding: add tests for the 47 existing `ArgumentNullException.ThrowIfNull(...)`
   call sites across all 11 wrapper classes - implemented, zero test coverage today. One
   `[Theory]`-per-class covering its public entry points is enough; don't need 47 separate tests.
+  Done 2026-08-31: one `NullArgumentCases` `[Theory]`/`[MemberData]` added per existing `*Tests.cs`
+  file (41 rows total covering every `ThrowIfNull` site). Each lambda body is wrapped in a block
+  (`() => { Expr(...); }`) rather than left as a bare expression - a bare non-void expression lambda
+  assigned into an `object[]` array literal has no target-type context, so the compiler infers its
+  natural type as `Func<T>` instead of `Action` and every such row throws
+  `ArgumentException: Object of type 'Func\`1[...]' cannot be converted to type 'System.Action'` at
+  runtime instead of running the intended check - caught by actually running the suite (41/137
+  failures) before this was understood, not by inspection. `xUnit1026` (unused `description`
+  parameter - it exists purely to label the Theory row in test output) suppressed via a documented
+  `#pragma warning disable/restore` around the shared `NullArgumentThrows` method in each file.
+  `dotnet build` 0 warnings, `dotnet test` 137/137 passed.
 - [ ] **T-218** GC-premature-collection stress test for .NET and Java (the two bindings whose own
   wrapper code - `SafeHandle`, native handle + `synchronized` loader - is explicitly designed
   against this failure mode but has never been stress-tested against it). Wrap an in-flight

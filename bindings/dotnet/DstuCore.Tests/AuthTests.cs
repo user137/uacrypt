@@ -47,4 +47,23 @@ public sealed class AuthTests
         using var key = AuthKey.Generate();
         Assert.Throws<ArgumentException>(() => key.Verify(Encoding.ASCII.GetBytes("message"), new byte[4]));
     }
+
+    // T-217: every ArgumentNullException.ThrowIfNull call site in this class, one Theory.
+    public static IEnumerable<object[]> NullArgumentCases()
+    {
+        yield return new object[] { "FromBytes(null)", () => { AuthKey.FromBytes(null!); } };
+        var key = AuthKey.Generate();
+        yield return new object[] { "Compute(null)", () => { key.Compute(null!); } };
+        yield return new object[] { "Verify(null, tag)", () => { key.Verify(null!, new byte[DstuConstants.AuthTagBytes]); } };
+        yield return new object[] { "Verify(message, null)", () => { key.Verify(Encoding.ASCII.GetBytes("m"), null!); } };
+    }
+
+    [Theory]
+    [MemberData(nameof(NullArgumentCases))]
+#pragma warning disable xUnit1026 // description exists only to label this Theory row in test output
+    public void NullArgumentThrows(string description, Action action)
+#pragma warning restore xUnit1026
+    {
+        Assert.Throws<ArgumentNullException>(action);
+    }
 }
