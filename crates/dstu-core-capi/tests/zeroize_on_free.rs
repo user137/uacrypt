@@ -18,6 +18,26 @@
 //! (e.g. `dstu_core::crypto_auth::Key`), so a compile-time `T: ZeroizeOnDrop` trait-bound assertion
 //! (the advisor-suggested second signal) doesn't type-check against this codebase's actual pattern
 //! - this runtime capture is the one instrument used here, not paired with a trait assertion.
+//!
+//! **Excluded under Miri on Windows only** (`#![cfg(not(all(miri, windows)))]` below). First
+//! discovered on this project's own Windows dev machine: registering ANY custom
+//! `#[global_allocator]` (confirmed with a minimal 15-line repro containing none of this crate's
+//! own logic - a bare passthrough to `System`) makes libtest's own internal teardown
+//! (`Box<Counter<Channel<CompletedTest>>>`'s drop, deallocating the harness's own result-reporting
+//! channel) fail a Stacked Borrows check inside `std::sys::alloc::windows::dealloc`'s hidden
+//! size-header lookup (`(ptr as *mut Header).sub(1)`) there. That's a Windows-target-specific code
+//! path with no Linux equivalent - confirmed by actually running this file's real, un-excluded
+//! form under `cargo +nightly miri test` on the project's Raspberry Pi (real `aarch64-unknown-
+//! linux-gnu`): all 6 tests pass clean, including the negative control. CI's own Miri job
+//! (`.github/workflows/rust.yml`, `ubuntu-latest`, `dstu-core-capi` in its matrix) is the same OS
+//! family as that confirmation, so this file runs there for real - the Windows-only exclusion below
+//! is scoped as narrowly as the actual finding, not a blanket Miri skip. The crash happens in the
+//! test *harness's own* teardown regardless of which individual tests run, so on Windows a per-test
+//! `#[cfg_attr(miri, ignore = "...")]` (this project's usual pattern, e.g. `crates/uacrypt/tests/
+//! support/mod.rs`'s subprocess-spawning tests) can't avoid it - only excluding the whole file (and
+//! therefore the `#[global_allocator]` registration itself) can, hence the file-level cfg rather
+//! than a per-test one.
+#![cfg(not(all(miri, windows)))]
 
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -49,8 +69,17 @@ unsafe impl GlobalAlloc for CapturingAllocator {
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
         if TARGET_PTR.load(Ordering::SeqCst) == ptr as usize {
-            let bytes = unsafe { std::slice::from_raw_parts(ptr, layout.size()) };
-            CAPTURED_ALL_ZERO.store(bytes.iter().all(|&b| b == 0), Ordering::SeqCst);
+            // Raw-pointer byte reads, deliberately not `slice::from_raw_parts` - constructing a
+            // `&[u8]` here and iterating it performs an implicit reborrow/retag under Stacked
+            // Borrows that Miri treats as invalidating the allocation-wide provenance the
+            // Windows target's own `System::deallocate` needs afterward for its hidden
+            // size-header lookup (`(ptr as *mut Header).sub(1)`) - confirmed the hard way, this
+            // exact function failed under `cargo +nightly miri test` with a
+            // "tag does not exist in the borrow stack" error until switched to this form. A raw
+            // `.read()` through the original pointer's own provenance, with no new reference
+            // created, doesn't have that effect.
+            let all_zero = (0..layout.size()).all(|i| unsafe { ptr.add(i).read() } == 0);
+            CAPTURED_ALL_ZERO.store(all_zero, Ordering::SeqCst);
             CAPTURED_LEN.store(layout.size(), Ordering::SeqCst);
             CAPTURE_FIRED.store(true, Ordering::SeqCst);
         }

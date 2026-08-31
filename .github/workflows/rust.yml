@@ -323,7 +323,7 @@ jobs:
             crates/dstu-core-capi/c-tests/test_capi_double_free_asan.c \
             -o /tmp/capi_double_free_asan \
             -L target/release -ldstu_core_capi -Wl,-rpath,target/release
-      - name: run it - expect ASan to abort with a double-free diagnostic (nonzero exit)
+      - name: run it - expect ASan to abort on the deliberate double-free (nonzero exit)
         run: |
           set +e
           /tmp/capi_double_free_asan > /tmp/out.log 2>&1
@@ -334,8 +334,14 @@ jobs:
             echo "FAIL: process exited 0 - ASan did not catch the double-free"
             exit 1
           fi
-          grep -qi "double-free" /tmp/out.log || { echo "FAIL: nonzero exit but no ASan double-free diagnostic in output"; exit 1; }
-          echo "OK: ASan caught the deliberate double-free as expected"
+          # The second dstu_auth_key_free's Box::from_raw re-drops the (already-dropped) Key,
+          # whose Drop impl writes zeroize() bytes into now-freed memory - ASan reports THAT as a
+          # heap-use-after-free before the call ever reaches the allocator's free(), so it never
+          # emits a "double-free" diagnostic specifically. Any ASan error on this deliberate misuse
+          # is the real success condition, not one particular diagnostic string.
+          grep -qiE "AddressSanitizer: (heap-use-after-free|double-free|attempting free)" /tmp/out.log \
+            || { echo "FAIL: nonzero exit but no ASan error found in output"; exit 1; }
+          echo "OK: ASan caught the deliberate double-free (as a use-after-free during zeroize-on-drop, or a double-free directly) as expected"
 
   msrv:
     name: MSRV build (1.87.0)
