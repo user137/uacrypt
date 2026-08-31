@@ -7929,10 +7929,14 @@ codes, and memory lifecycle) stays intact and doesn't need its own task.
   so explicitly and a test confirming the *type itself* isn't silently `Send`/`Sync`/thread-
   shareable where that would be wrong. Don't skip a language as "obviously fine" - decide per
   language, record it either way.
-- [ ] **T-220** C++ binding: add the missing `TestSecretstreamOversizedDeclaredChunkLength` case to
+- [x] **T-220** C++ binding: add the missing `TestSecretstreamOversizedDeclaredChunkLength` case to
   `test_dstu.cpp`'s `TestSecretstream` - the bounds check is implemented (mirrors `uacrypt`'s own
   `CliError::SecretstreamChunkTooLarge`) but C++ is the only one of 8 bindings without a dedicated
-  test for it (all 7 others have one).
+  test for it (all 7 others have one). Done 2026-08-31: new `TestSecretstreamOversizedDeclaredChunkLength`
+  function mirrors the Java binding's equivalent test (zero header + `Final` tag byte + declared
+  chunk length `0xFFFFFFFF`), asserts `dstu::CryptoError`. Verified locally via PowerShell (MinGW
+  `.exe` under Git Bash gives a bogus exit 127, per this file's own noted pitfall) -
+  `dstu_core_cpp_tests.exe` passes clean.
 
 ### Step 3 (P2) - Core/CLI robustness beyond FFI
 

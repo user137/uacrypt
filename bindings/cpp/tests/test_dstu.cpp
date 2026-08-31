@@ -275,6 +275,25 @@ void TestSecretstream() {
   CHECK(Throws<dstu::CryptoError>([&] { truncatedDec.ReadAll(); }), "decryption should reject a truncated stream");
 }
 
+// T-220: oversized declared chunk-length field. All 7 other bindings in this batch already have
+// this test; C++ was the one gap. A garbage header is fine here - dstu_secretstream_pull_init
+// derives a subkey from whatever bytes it's given and doesn't validate them, so the malicious
+// chunk-length field is what the decoder actually reads and rejects first (mirrors the Java
+// binding's SecretStreamTest.oversizedDeclaredChunkLengthIsRejected).
+void TestSecretstreamOversizedDeclaredChunkLength() {
+  auto key = dstu::SecretstreamKey::Generate();
+
+  std::string malicious(dstu::kSecretstreamHeaderBytes, '\0');  // header - unread past this
+  malicious.push_back(static_cast<char>(dstu::SecretstreamTag::kFinal));
+  malicious.append({static_cast<char>(0xFF), static_cast<char>(0xFF), static_cast<char>(0xFF),
+                     static_cast<char>(0xFF)});  // declared chunk length 0xFFFFFFFF, little-endian
+
+  std::istringstream source(malicious);
+  dstu::SecretStreamDecryptor dec(source, key);
+  CHECK(Throws<dstu::CryptoError>([&] { dec.ReadAll(); }),
+        "decryption should reject a declared chunk length exceeding kSecretstreamChunkBytes");
+}
+
 // T-213: FFI memory-leak smoke test. Unlike the other seven bindings in this batch, this one has
 // no GC/refcounting at all - every wrapper here (SecretstreamKey, BoxSecretKey, BoxPublicKey,
 // SecretStreamEncryptor/Decryptor) holds its native handle in a std::unique_ptr with a custom
@@ -560,6 +579,7 @@ int main() {
     TestBox();
     TestBox512();
     TestSecretstream();
+    TestSecretstreamOversizedDeclaredChunkLength();
     TestMemoryLeak();
 #ifdef DSTU_UACRYPT_EXE
     TestUacryptInterop();
