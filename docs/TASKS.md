@@ -7995,6 +7995,20 @@ codes, and memory lifecycle) stays intact and doesn't need its own task.
 
 ### Step 3 (P2) - Core/CLI robustness beyond FFI
 
+**Batch plan (decided 2026-09-02, owner-approved ordering).** Run as three sub-batches, in order:
+
+- **Batch 3a - T-221 + T-222.** Both Rust core/CLI, independent of each other, small. One
+  plan-mode+advisor pass covering T-221 (the debug-only panic-injection hook is a structural
+  change per the RESUME HERE note); T-222 is a black-box spawn test, no gate.
+- **Batch 3b - T-223 (tier-1 only).** Its own plan-mode+advisor pass. Scope this batch to
+  `crypto_secretbox` + `crypto_box` + `crypto_box512` only - the wrappers that parse untrusted
+  wire-format bytes straight from CLI/binding callers. Everything else T-223 originally listed is
+  split out to T-225.
+- **Batch 3c - T-224.** Per-binding sweep against the existing "oversized declared chunk length"
+  test shape, Java + Node.js first. No gate. Deliberately after 3b: the new `crypto_box`/
+  `crypto_secretbox` fuzz targets may surface parser bugs in the same wire formats T-224 probes
+  from the binding side, so 3c then tests already-hardened parsers.
+
 - [ ] **T-221** C ABI: a real panic-injection test across the `catch_unwind` boundary (`util.rs`'s
   `guard_status` family). Every exported function is wrapped, but nothing in `ffi_tests.rs`/
   `test_capi.c` actually forces a Rust panic and asserts it surfaces as a `DstuStatus` error code
@@ -8008,19 +8022,28 @@ codes, and memory lifecycle) stays intact and doesn't need its own task.
   either doesn't exist or is the pre-existing file untouched, and no stray temp file survives.
   Windows-vs-Unix signal-delivery differences apply here - confirm the test's mechanism works on
   this project's actual CI runners, not just locally.
-- [ ] **T-223** Core: fuzz targets for the primitives that currently have none - highest value
-  first: `crypto_secretbox` and `crypto_box`/`crypto_box512` (parse untrusted wire-format bytes
-  directly from CLI/binding callers, unlike the hazmat-level primitives which already get fuzzed
-  indirectly through their AEAD/MAC/KW callers), then `crypto_stream`/`crypto_sign`/`crypto_sign257`,
-  then the `hazmat` primitives that still have none at all (`dstu4145`, `dstu9041`, `kalyna_cbc`/
-  `ctr`/`ecb`/`ofb`, `kupyna_kmac`/`kupyna_kdf`). Sync all three required spots per `CLAUDE.md`'s own
-  reminder: `fuzz/Cargo.toml`'s `[[bin]]`, `.github/workflows/rust.yml`'s `fuzz-smoke` matrix,
-  `xtask/src/main.rs`'s `FUZZ_TARGETS` array.
+- [ ] **T-223** Core: fuzz targets for the high-value `crypto_*` wrappers that currently have none -
+  `crypto_secretbox`, `crypto_box`, `crypto_box512`. These parse untrusted wire-format bytes
+  directly from CLI/binding callers (`nonce||ciphertext||tag`, the sealed KEM blob), unlike the
+  hazmat-level primitives which already get fuzzed indirectly through their AEAD/MAC/KW callers.
+  Target the `open`/decrypt direction (the one that takes attacker-controlled bytes); a round-trip
+  arm is fine as a secondary. Sync all three required spots per `CLAUDE.md`'s own reminder:
+  `fuzz/Cargo.toml`'s `[[bin]]`, `.github/workflows/rust.yml`'s `fuzz-smoke` matrix,
+  `xtask/src/main.rs`'s `FUZZ_TARGETS` array. Scope narrowed from the original entry 2026-09-02
+  (owner decision) - the tier-2/tier-3 primitives it also listed are now T-225.
 - [ ] **T-224** Bindings: an oversized/near-32-bit-boundary length-prefix test per binding (not a
   literal 2GB allocation - a crafted declared-length field just past a 32-bit boundary, same shape
   as the existing "oversized declared chunk length" secretstream tests). Java int-indexed arrays and
   historically-32-bit `Buffer` lengths in Node.js are the two languages where this class of bug is
   most plausible - do those two first if sequencing this incrementally.
+- [ ] **T-225** Core: fuzz targets for the remaining primitives T-223's original entry listed
+  before it was narrowed (2026-09-02) - tier-2 `crypto_stream`/`crypto_sign`/`crypto_sign257`, then
+  the `hazmat` primitives that still have none at all (`dstu4145`, `dstu9041`, `kalyna_cbc`/`ctr`/
+  `ecb`/`ofb`, `kupyna_kmac`/`kupyna_kdf`). Same three-spot sync as T-223. Lower priority than
+  T-223: these either don't parse caller-controlled wire bytes at all (`crypto_stream` has a hidden
+  internal IV, the signature verifiers take structured key+sig not a length-prefixed blob) or are
+  hazmat-level and already exercised indirectly. Do after Batch 3c unless a T-223 finding points
+  straight at one of them.
 
 ### RESUME HERE (state as of 2026-08-31, saved for a memory-clear/new-session handoff)
 
@@ -8049,11 +8072,24 @@ each task's own entry above for what was actually built; T-219 in particular dec
 different contract for PHP than the other 7 bindings (NTS build, no threading primitive exists at
 all), not a copy-paste of one pattern across languages.
 
-**Step 3 (P2, T-221..T-224) has not been started.** T-221 and T-223 are the two in this remaining
-set that likely still warrant the full structural-change gate given T-213/T-215's own experience of
-the sketched mechanism not surviving first contact with implementation - do those two with a
-plan-mode+advisor pass, not a direct implement. Full per-primitive/per-command/per-binding matrices
-this roadmap was originally derived from live in a private Claude artifact (not committed to the
-repo) - if it's no longer reachable, the fastest re-derivation path is the same two-agent survey
-approach (Core+CLI+capi inventory, bindings inventory) rather than re-reading this section's
-summaries as ground truth.
+**Step 3 (P2) has not been started. Batch plan decided 2026-09-02** (owner-approved, see the
+"Batch plan" block under the Step 3 heading above): three sub-batches in order - **3a** = T-221 +
+T-222, **3b** = T-223 (narrowed to `crypto_secretbox`/`crypto_box`/`crypto_box512` only; the rest
+became T-225), **3c** = T-224. T-221 and T-223 each get their own plan-mode+advisor pass given
+T-213/T-215's experience of the sketched mechanism not surviving first contact with
+implementation; T-222 and T-224 are direct-implement. T-225 (deferred tier-2/hazmat fuzz targets)
+comes after 3c.
+
+Post-P0/P1 follow-up done 2026-09-02: T-213's Node.js leak test was red in CI on master from the
+P0 batch (2026-08-31) through 2026-09-02 - its absolute `heapUsed` threshold measured one-time V8
+heap cost (JIT/IC/heap-page), which lands at -65 KB locally and +244 KB on CI Linux for identical
+code. Fixed (`fe9b17a`) by switching to a scaling assertion (growth at 4N must not be ~4x growth
+at N, after a warmup + double `global.gc()`); negative control re-confirmed it still trips a real
+leak. `bindings-nodejs` green on all three OSes after the push. Lesson is the mirror of T-213's
+recorded one: not instrument blindness but instrument false sensitivity, from a `heapUsed`-based
+metric validated only on the platform where the test could not fail.
+
+Full per-primitive/per-command/per-binding matrices this roadmap was originally derived from live
+in a private Claude artifact (not committed to the repo) - if it's no longer reachable, the
+fastest re-derivation path is the same two-agent survey approach (Core+CLI+capi inventory,
+bindings inventory) rather than re-reading this section's summaries as ground truth.
