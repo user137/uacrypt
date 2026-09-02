@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-a381ce23.js";
+            window.path_to_searchindex_js = "searchindex-b5a39b13.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-6b977b4b.js"></script>
@@ -8301,33 +8301,70 @@ chunk length <code>0xFFFFFFFF</code>), asserts <code>dstu::CryptoError</code>. V
 <code>dstu_core_cpp_tests.exe</code> passes clean.</li>
 </ul>
 <h3 id="step-3-p2---corecli-robustness-beyond-ffi"><a class="header" href="#step-3-p2---corecli-robustness-beyond-ffi">Step 3 (P2) - Core/CLI robustness beyond FFI</a></h3>
+<p><strong>Batch plan (decided 2026-09-02, owner-approved ordering).</strong> Run as three sub-batches, in order:</p>
 <ul>
-<li><input disabled="" type="checkbox"> <strong>T-221</strong> C ABI: a real panic-injection test across the <code>catch_unwind</code> boundary (<code>util.rs</code>’s
+<li>
+<p><strong>Batch 3a - T-221 + T-222.</strong> Both Rust core/CLI, independent of each other, small. One
+plan-mode+advisor pass covering T-221 (the debug-only panic-injection hook is a structural
+change per the RESUME HERE note); T-222 is a black-box spawn test, no gate.</p>
+</li>
+<li>
+<p><strong>Batch 3b - T-223 (tier-1 only).</strong> Its own plan-mode+advisor pass. Scope this batch to
+<code>crypto_secretbox</code> + <code>crypto_box</code> + <code>crypto_box512</code> only - the wrappers that parse untrusted
+wire-format bytes straight from CLI/binding callers. Everything else T-223 originally listed is
+split out to T-225.</p>
+</li>
+<li>
+<p><strong>Batch 3c - T-224.</strong> Per-binding sweep against the existing “oversized declared chunk length”
+test shape, Java + Node.js first. No gate. Deliberately after 3b: the new <code>crypto_box</code>/
+<code>crypto_secretbox</code> fuzz targets may surface parser bugs in the same wire formats T-224 probes
+from the binding side, so 3c then tests already-hardened parsers.</p>
+</li>
+<li>
+<p><input disabled="" type="checkbox"> <strong>T-221</strong> C ABI: a real panic-injection test across the <code>catch_unwind</code> boundary (<code>util.rs</code>’s
 <code>guard_status</code> family). Every exported function is wrapped, but nothing in <code>ffi_tests.rs</code>/
 <code>test_capi.c</code> actually forces a Rust panic and asserts it surfaces as a <code>DstuStatus</code> error code
 rather than unwinding into C. Needs a debug-only injection hook (e.g. a <code>#[cfg(test)]</code>-gated
 function that deliberately panics) since production inputs shouldn’t be able to trigger one at
-all.</li>
-<li><input disabled="" type="checkbox"> <strong>T-222</strong> CLI: SIGINT / interrupted-write safety test. <code>uacrypt</code>’s streaming commands already
+all.</p>
+</li>
+<li>
+<p><input disabled="" type="checkbox"> <strong>T-222</strong> CLI: SIGINT / interrupted-write safety test. <code>uacrypt</code>’s streaming commands already
 use temp-file-then-rename atomicity (per <code>CLAUDE.md</code>) specifically so an interrupted write can’t
 corrupt the real output file - untested. Black-box test: spawn the process, send SIGINT mid-write
 (a large enough input to guarantee the process is still writing), confirm the real output path
 either doesn’t exist or is the pre-existing file untouched, and no stray temp file survives.
 Windows-vs-Unix signal-delivery differences apply here - confirm the test’s mechanism works on
-this project’s actual CI runners, not just locally.</li>
-<li><input disabled="" type="checkbox"> <strong>T-223</strong> Core: fuzz targets for the primitives that currently have none - highest value
-first: <code>crypto_secretbox</code> and <code>crypto_box</code>/<code>crypto_box512</code> (parse untrusted wire-format bytes
-directly from CLI/binding callers, unlike the hazmat-level primitives which already get fuzzed
-indirectly through their AEAD/MAC/KW callers), then <code>crypto_stream</code>/<code>crypto_sign</code>/<code>crypto_sign257</code>,
-then the <code>hazmat</code> primitives that still have none at all (<code>dstu4145</code>, <code>dstu9041</code>, <code>kalyna_cbc</code>/
-<code>ctr</code>/<code>ecb</code>/<code>ofb</code>, <code>kupyna_kmac</code>/<code>kupyna_kdf</code>). Sync all three required spots per <code>CLAUDE.md</code>’s own
-reminder: <code>fuzz/Cargo.toml</code>’s <code>[[bin]]</code>, <code>.github/workflows/rust.yml</code>’s <code>fuzz-smoke</code> matrix,
-<code>xtask/src/main.rs</code>’s <code>FUZZ_TARGETS</code> array.</li>
-<li><input disabled="" type="checkbox"> <strong>T-224</strong> Bindings: an oversized/near-32-bit-boundary length-prefix test per binding (not a
+this project’s actual CI runners, not just locally.</p>
+</li>
+<li>
+<p><input disabled="" type="checkbox"> <strong>T-223</strong> Core: fuzz targets for the high-value <code>crypto_*</code> wrappers that currently have none -
+<code>crypto_secretbox</code>, <code>crypto_box</code>, <code>crypto_box512</code>. These parse untrusted wire-format bytes
+directly from CLI/binding callers (<code>nonce||ciphertext||tag</code>, the sealed KEM blob), unlike the
+hazmat-level primitives which already get fuzzed indirectly through their AEAD/MAC/KW callers.
+Target the <code>open</code>/decrypt direction (the one that takes attacker-controlled bytes); a round-trip
+arm is fine as a secondary. Sync all three required spots per <code>CLAUDE.md</code>’s own reminder:
+<code>fuzz/Cargo.toml</code>’s <code>[[bin]]</code>, <code>.github/workflows/rust.yml</code>’s <code>fuzz-smoke</code> matrix,
+<code>xtask/src/main.rs</code>’s <code>FUZZ_TARGETS</code> array. Scope narrowed from the original entry 2026-09-02
+(owner decision) - the tier-2/tier-3 primitives it also listed are now T-225.</p>
+</li>
+<li>
+<p><input disabled="" type="checkbox"> <strong>T-224</strong> Bindings: an oversized/near-32-bit-boundary length-prefix test per binding (not a
 literal 2GB allocation - a crafted declared-length field just past a 32-bit boundary, same shape
 as the existing “oversized declared chunk length” secretstream tests). Java int-indexed arrays and
 historically-32-bit <code>Buffer</code> lengths in Node.js are the two languages where this class of bug is
-most plausible - do those two first if sequencing this incrementally.</li>
+most plausible - do those two first if sequencing this incrementally.</p>
+</li>
+<li>
+<p><input disabled="" type="checkbox"> <strong>T-225</strong> Core: fuzz targets for the remaining primitives T-223’s original entry listed
+before it was narrowed (2026-09-02) - tier-2 <code>crypto_stream</code>/<code>crypto_sign</code>/<code>crypto_sign257</code>, then
+the <code>hazmat</code> primitives that still have none at all (<code>dstu4145</code>, <code>dstu9041</code>, <code>kalyna_cbc</code>/<code>ctr</code>/
+<code>ecb</code>/<code>ofb</code>, <code>kupyna_kmac</code>/<code>kupyna_kdf</code>). Same three-spot sync as T-223. Lower priority than
+T-223: these either don’t parse caller-controlled wire bytes at all (<code>crypto_stream</code> has a hidden
+internal IV, the signature verifiers take structured key+sig not a length-prefixed blob) or are
+hazmat-level and already exercised indirectly. Do after Batch 3c unless a T-223 finding points
+straight at one of them.</p>
+</li>
 </ul>
 <h3 id="resume-here-state-as-of-2026-08-31-saved-for-a-memory-clearnew-session-handoff"><a class="header" href="#resume-here-state-as-of-2026-08-31-saved-for-a-memory-clearnew-session-handoff">RESUME HERE (state as of 2026-08-31, saved for a memory-clear/new-session handoff)</a></h3>
 <p><strong>Step 1 / P0 (T-213 through T-216) is done</strong> - one <code>advisor</code>-reviewed plan-mode pass covered all
@@ -8354,14 +8391,25 @@ across ~13 more commits (one per binding for T-219’s 8, plus T-217/T-218/T-220
 each task’s own entry above for what was actually built; T-219 in particular decided a genuinely
 different contract for PHP than the other 7 bindings (NTS build, no threading primitive exists at
 all), not a copy-paste of one pattern across languages.</p>
-<p><strong>Step 3 (P2, T-221..T-224) has not been started.</strong> T-221 and T-223 are the two in this remaining
-set that likely still warrant the full structural-change gate given T-213/T-215’s own experience of
-the sketched mechanism not surviving first contact with implementation - do those two with a
-plan-mode+advisor pass, not a direct implement. Full per-primitive/per-command/per-binding matrices
-this roadmap was originally derived from live in a private Claude artifact (not committed to the
-repo) - if it’s no longer reachable, the fastest re-derivation path is the same two-agent survey
-approach (Core+CLI+capi inventory, bindings inventory) rather than re-reading this section’s
-summaries as ground truth.</p>
+<p><strong>Step 3 (P2) has not been started. Batch plan decided 2026-09-02</strong> (owner-approved, see the
+“Batch plan” block under the Step 3 heading above): three sub-batches in order - <strong>3a</strong> = T-221 +
+T-222, <strong>3b</strong> = T-223 (narrowed to <code>crypto_secretbox</code>/<code>crypto_box</code>/<code>crypto_box512</code> only; the rest
+became T-225), <strong>3c</strong> = T-224. T-221 and T-223 each get their own plan-mode+advisor pass given
+T-213/T-215’s experience of the sketched mechanism not surviving first contact with
+implementation; T-222 and T-224 are direct-implement. T-225 (deferred tier-2/hazmat fuzz targets)
+comes after 3c.</p>
+<p>Post-P0/P1 follow-up done 2026-09-02: T-213’s Node.js leak test was red in CI on master from the
+P0 batch (2026-08-31) through 2026-09-02 - its absolute <code>heapUsed</code> threshold measured one-time V8
+heap cost (JIT/IC/heap-page), which lands at -65 KB locally and +244 KB on CI Linux for identical
+code. Fixed (<code>fe9b17a</code>) by switching to a scaling assertion (growth at 4N must not be ~4x growth
+at N, after a warmup + double <code>global.gc()</code>); negative control re-confirmed it still trips a real
+leak. <code>bindings-nodejs</code> green on all three OSes after the push. Lesson is the mirror of T-213’s
+recorded one: not instrument blindness but instrument false sensitivity, from a <code>heapUsed</code>-based
+metric validated only on the platform where the test could not fail.</p>
+<p>Full per-primitive/per-command/per-binding matrices this roadmap was originally derived from live
+in a private Claude artifact (not committed to the repo) - if it’s no longer reachable, the
+fastest re-derivation path is the same two-agent survey approach (Core+CLI+capi inventory,
+bindings inventory) rather than re-reading this section’s summaries as ground truth.</p>
 
                     </main>
 
