@@ -1,0 +1,160 @@
+name: canary
+
+# Drift canary (T-226, docs/DECISIONS.md D-196): catches a semver-compatible crates.io dependency
+# update breaking the build before a human notices - `rust.yml`'s own CI always builds against the
+# *committed* Cargo.lock, so a break that only shows up on fresh dependency resolution is otherwise
+# invisible until someone manually runs `cargo update`. `rust-toolchain.toml`'s `channel = "stable"`
+# already floats on every regular push/PR, so toolchain drift doesn't need a separate probe here -
+# `cargo xtask canary`'s own `cargo update` is the one thing regular CI structurally can't see.
+#
+# Scope is deliberately the root Cargo workspace only (dstu-core/uacrypt/dstu-core-capi), not the
+# language bindings - Python/Node.js churn faster (npm/pip) and are a known, tracked gap (T-227),
+# not an oversight; extending this same mechanism to them needs its own version-pin/lockfile
+# strategy first (see T-227), not a copy-paste into this file.
+#
+# Escalation is intentionally quiet on a single bad day: GitHub Actions itself is occasionally
+# flaky, and a schedule-driven job has no human watching it fail in real time the way a push does.
+# `report-canary-status` only opens/updates a GitHub Issue once the *same* job has failed 3
+# scheduled runs in a row (job-level conclusion via the Jobs API, not run-level - see the job's own
+# comments for why that distinction matters) and self-closes it once the canary is green again -
+# no separate state file, the run history itself is the source of truth.
+
+on:
+  schedule:
+    # Daily, offset from codeql.yml's Friday 05:36 UTC weekly scan so the two scheduled workflows
+    # don't compete for runner capacity at the same time.
+    - cron: "42 3 * * *"
+  workflow_dispatch:
+    inputs:
+      force_report:
+        description: >-
+          Run report-canary-status even though this isn't a scheduled run (for testing the
+          escalation path on demand - see docs/DECISIONS.md D-196 on why this exists instead of
+          hand-simulating the shell logic).
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}
+  # Deliberately not cancel-in-progress: a cancelled run's conclusion is neither a genuine pass nor
+  # a genuine fail - report-canary-status treats cancelled/skipped as streak-neutral (see below),
+  # and letting a run be cancelled just to start a new one would manufacture a neutral data point
+  # for no reason, since these builds are cheap and finish in minutes.
+  cancel-in-progress: false
+
+jobs:
+  canary:
+    name: canary
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo xtask canary
+
+  report-canary-status:
+    name: report canary status
+    needs: canary
+    if: always() && (github.event_name == 'schedule' || inputs.force_report)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # `gh issue`/`gh label` (unlike `gh api`, which always takes a full path) infer the repo from
+      # a git remote by default - this job has no `actions/checkout`, so GH_REPO is the only way
+      # those subcommands know what repo to act on.
+      GH_REPO: ${{ github.repository }}
+      REPO: ${{ github.repository }}
+      RUN_ID: ${{ github.run_id }}
+      LABEL: canary-failure
+    steps:
+      - name: Evaluate consecutive-failure streak and report
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # A run's own overall conclusion mixes in this very job (report-canary-status) - a
+          # rate-limited `gh` call or a bad jq expression here would then mark the whole day as a
+          # failure even when the build was green. So every data point below - today and history
+          # alike - is the *canary* job's own conclusion via the Jobs API, never a run-level or
+          # needs.<job>.result value.
+          job_conclusion() {
+            local run_id="$1"
+            # A run's job list is one page; `--jq`'s own `.[0] // ""` picks the first match instead
+            # of piping to `head -n1`, which under `pipefail` can SIGPIPE this whole command
+            # substitution with no diagnostic if `gh` ever wrote more than one line.
+            gh api "repos/$REPO/actions/runs/$run_id/jobs" \
+              --jq '[.jobs[] | select(.name=="canary") | .conclusion] | .[0] // ""'
+          }
+
+          is_strike() {
+            case "$1" in
+              failure|timed_out|startup_failure|action_required) return 0 ;;
+              *) return 1 ;;
+            esac
+          }
+
+          is_neutral() {
+            case "$1" in
+              cancelled|skipped|""|null) return 0 ;;
+              *) return 1 ;;
+            esac
+          }
+
+          today="$(job_conclusion "$RUN_ID")"
+          echo "today: $today"
+
+          # Previous two *valid* (non-neutral) scheduled runs, oldest excluded, current run
+          # excluded by id (not by status=completed - that's a timing assumption, not a guarantee).
+          # Query params go in the URL, not `-f` - `gh api` switches to POST the moment any `-f` is
+          # given, which would hit this read-only endpoint with the wrong HTTP method.
+          mapfile -t prior_run_ids < <(
+            gh api "repos/$REPO/actions/workflows/canary.yml/runs?event=schedule&per_page=6" \
+              --jq "[.workflow_runs[] | select(.id != $RUN_ID)] | .[].id"
+          )
+
+          prev=()
+          for id in "${prior_run_ids[@]}"; do
+            [ "${#prev[@]}" -ge 2 ] && break
+            c="$(job_conclusion "$id")"
+            is_neutral "$c" && continue
+            prev+=("$c")
+          done
+          echo "previous (newest first): ${prev[*]:-<none>}"
+
+          streak=false
+          if is_strike "$today" && [ "${#prev[@]}" -ge 2 ] \
+             && is_strike "${prev[0]}" && is_strike "${prev[1]}"; then
+            streak=true
+          fi
+
+          gh label create "$LABEL" --color b60205 \
+            --description "Canary build failed 3 scheduled runs in a row" >/dev/null 2>&1 || true
+
+          open_issue="$(gh issue list --label "$LABEL" --state open --json number --jq '.[0].number' || true)"
+
+          if [ "$streak" = true ]; then
+            body="Canary build (\`cargo xtask canary\` - fresh \`cargo update\` + build + test) has failed 3 scheduled runs in a row:
+          - https://github.com/$REPO/actions/runs/$RUN_ID (today: $today)
+          - previous: ${prev[0]}, ${prev[1]}
+
+          Likely cause: a semver-compatible crates.io dependency update, or a Rust \`stable\` update,
+          broke the build/tests against a freshly-resolved \`Cargo.lock\` (rust-toolchain.toml's
+          \`channel = \"stable\"\` already floats, so this usually isn't a toolchain pin issue).
+          Reproduce locally with \`cargo xtask canary\`."
+            if [ -n "$open_issue" ] && [ "$open_issue" != "null" ]; then
+              gh issue comment "$open_issue" --body "$body"
+            else
+              gh issue create --title "Canary: build failing 3 days in a row" --label "$LABEL" --body "$body"
+            fi
+          elif [ "$today" = "success" ] && [ -n "$open_issue" ] && [ "$open_issue" != "null" ]; then
+            gh issue comment "$open_issue" --body "Canary is green again (https://github.com/$REPO/actions/runs/$RUN_ID) - closing."
+            gh issue close "$open_issue"
+          else
+            echo "No escalation: not a 3-in-a-row strike (today=$today, prev=${prev[*]:-<none>})."
+          fi

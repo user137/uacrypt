@@ -6642,6 +6642,30 @@ no trustworthy runnable oracle exists for it at all (`outspace/dstu8845` is unof
       directly via `gh secret set`, not pasted in chat this time) - re-ran the same workflow run
       (`gh run rerun`, no new commit needed) to confirm the new token also works, which it did.
       **The 2 code-smell findings themselves, and their fixes, are their own entry - D-94.**
+- [ ] **T-226** Canary CI (`.github/workflows/canary.yml`, D-196): a daily `schedule`-triggered
+      workflow that runs `cargo xtask canary` (new xtask subcommand - `cargo update` for a fresh
+      dependency resolution, then the existing `build()`/`test()`) against the root Cargo workspace
+      only, so a semver-compatible crates.io dependency update that breaks the build is caught
+      without waiting for someone to manually `cargo update`. Escalates to a GitHub Issue (label
+      `canary-failure`) only after 3 consecutive scheduled failures of the *same job* (Jobs API
+      conclusion, not run-level - a bug in the reporter job itself must not inflate the streak),
+      self-closes the issue once green again, and never escalates on a manual `workflow_dispatch`
+      run unless `force_report: true` is passed (the one way to exercise the escalation path for
+      real without a 3-day wait). No separate state file - the run history itself is the source of
+      truth. See D-196 for the full design rationale, including a known residual risk (GitHub
+      auto-disables scheduled workflows after ~60 days of repo inactivity) and why toolchain drift
+      doesn't need its own probe here (`rust-toolchain.toml`'s `channel = "stable"` already floats).
+- [ ] **T-227** Extend T-226's same 3-strike/issue mechanism to `bindings/python` and
+      `bindings/nodejs` - the fastest-drifting surfaces this project has (npm/pip churn faster than
+      crates.io), and deliberately **not** included in T-226 itself (owner decision, not an
+      oversight): `bindings-python.yml`/`bindings-nodejs.yml` pin exact `MATURIN_VERSION`/
+      `PYTEST_VERSION`/`RUFF_VERSION`/`python-version`/`node-version` for their regular
+      per-push CI, so a canary variant needs those pins deliberately *not* applied (fresh
+      `pip`/`npm` resolution) to actually probe drift - reusing `cargo xtask python`/`cargo xtask
+      nodejs` as-is would just re-run the same pinned versions and prove nothing. Node.js
+      additionally needs a "fresh resolution" strategy analogous to `cargo update` (decide whether
+      to drop `bindings/nodejs/package-lock.json` in the canary variant, or run `npm update`) before
+      this can land. Not started.
 
 ## Full DSTU 7624 mode-of-operation coverage at `hazmat` (T-88 onward)
 

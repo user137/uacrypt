@@ -5,6 +5,14 @@ All notable changes to this project are documented in this file. Format follows
 
 ## [Unreleased]
 
+### Added
+
+- Canary CI (`.github/workflows/canary.yml`, `cargo xtask canary`, T-226): a daily scheduled
+  workflow that re-resolves `Cargo.lock` fresh against current crates.io before building/testing
+  the root Cargo workspace, catching a semver-compatible dependency update that breaks the build
+  before a human notices. Escalates to a GitHub Issue only after 3 consecutive scheduled failures
+  (self-closes once green again). See `docs/DECISIONS.md` D-196.
+
 ### Fixed
 
 - v0.3.8's RubyGems publish (Ruby bindings, `dstu_core`) actually completed - blocked by a pending

@@ -49,6 +49,7 @@ fn main() -> ExitCode {
         "cpp-cppcheck" => cpp_cppcheck(),
         "qemu-stm32" => qemu_stm32(),
         "streaming-bounded" => streaming_bounded(),
+        "canary" => canary(),
         "ci" => ci(),
         "help" | "-h" | "--help" => {
             print_usage();
@@ -77,7 +78,8 @@ fn print_usage() {
          \x20 fmt [--check]  cargo fmt --all, or --check to verify without writing\n\
          \x20 clippy         cargo clippy --workspace -- -D warnings (default profile) + --all-features\n\
          \x20 docs-check     README/gh-pages version-marker freshness lint against crates/dstu-core's Cargo.toml (T-186)\n\
-         \x20 ci             fmt --check + build + test + clippy + docs-check, then best-effort for the optional tools below\n\n\
+         \x20 ci             fmt --check + build + test + clippy + docs-check, then best-effort for the optional tools below\n\
+         \x20 canary         cargo update (fresh dependency resolution) then build + test - drift probe behind .github/workflows/canary.yml (T-226)\n\n\
          Optional (each checks its tool is installed first and prints an install hint if not):\n\
          \x20 miri [pkg]     cargo +nightly miri test --workspace, or -p <pkg> to scope to one crate (dstu-core, uacrypt, dstu-core-capi) - T-175\n\
          \x20 kani           cargo kani -p dstu-core (bounded model checking, see gf2m163.rs's kani_proofs, D-102) - Linux/macOS only, not Windows\n\
@@ -199,6 +201,18 @@ fn test() -> bool {
     // `.github/workflows/rust.yml`'s `test` job, which already has this split.
     run("cargo", &["test", "--workspace"], None)
         && run("cargo", &["test", "--workspace", "--all-features"], None)
+}
+
+/// Canary drift probe (T-226, `.github/workflows/canary.yml`): `cargo update` re-resolves
+/// `Cargo.lock` against current crates.io before `build()`/`test()` run against it - `rust-
+/// toolchain.toml`'s `channel = "stable"` already floats on every regular push/PR, so the one gap
+/// a committed lockfile hides is a semver-compatible dependency update that breaks the build. No
+/// `--locked` anywhere in `build()`/`test()`'s own call chain (checked), so this genuinely
+/// re-resolves rather than silently reusing the committed lock. Never commits the result - CI runs
+/// this on an ephemeral checkout; a local run leaves `Cargo.lock` changed on disk (`git checkout --
+/// Cargo.lock` to discard).
+fn canary() -> bool {
+    run("cargo", &["update"], None) && build() && test()
 }
 
 fn fmt(check: bool) -> bool {
