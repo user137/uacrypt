@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-b5a39b13.js";
+            window.path_to_searchindex_js = "searchindex-61195717.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-6b977b4b.js"></script>
@@ -7164,6 +7164,29 @@ code smells), not zeros/nulls. The user separately rotated <code>SONAR_TOKEN</co
 directly via <code>gh secret set</code>, not pasted in chat this time) - re-ran the same workflow run
 (<code>gh run rerun</code>, no new commit needed) to confirm the new token also works, which it did.
 <strong>The 2 code-smell findings themselves, and their fixes, are their own entry - D-94.</strong></li>
+<li><input disabled="" type="checkbox"> <strong>T-226</strong> Canary CI (<code>.github/workflows/canary.yml</code>, D-196): a daily <code>schedule</code>-triggered
+workflow that runs <code>cargo xtask canary</code> (new xtask subcommand - <code>cargo update</code> for a fresh
+dependency resolution, then the existing <code>build()</code>/<code>test()</code>) against the root Cargo workspace
+only, so a semver-compatible crates.io dependency update that breaks the build is caught
+without waiting for someone to manually <code>cargo update</code>. Escalates to a GitHub Issue (label
+<code>canary-failure</code>) only after 3 consecutive scheduled failures of the <em>same job</em> (Jobs API
+conclusion, not run-level - a bug in the reporter job itself must not inflate the streak),
+self-closes the issue once green again, and never escalates on a manual <code>workflow_dispatch</code>
+run unless <code>force_report: true</code> is passed (the one way to exercise the escalation path for
+real without a 3-day wait). No separate state file - the run history itself is the source of
+truth. See D-196 for the full design rationale, including a known residual risk (GitHub
+auto-disables scheduled workflows after ~60 days of repo inactivity) and why toolchain drift
+doesn’t need its own probe here (<code>rust-toolchain.toml</code>’s <code>channel = "stable"</code> already floats).</li>
+<li><input disabled="" type="checkbox"> <strong>T-227</strong> Extend T-226’s same 3-strike/issue mechanism to <code>bindings/python</code> and
+<code>bindings/nodejs</code> - the fastest-drifting surfaces this project has (npm/pip churn faster than
+crates.io), and deliberately <strong>not</strong> included in T-226 itself (owner decision, not an
+oversight): <code>bindings-python.yml</code>/<code>bindings-nodejs.yml</code> pin exact <code>MATURIN_VERSION</code>/
+<code>PYTEST_VERSION</code>/<code>RUFF_VERSION</code>/<code>python-version</code>/<code>node-version</code> for their regular
+per-push CI, so a canary variant needs those pins deliberately <em>not</em> applied (fresh
+<code>pip</code>/<code>npm</code> resolution) to actually probe drift - reusing <code>cargo xtask python</code>/<code>cargo xtask     nodejs</code> as-is would just re-run the same pinned versions and prove nothing. Node.js
+additionally needs a “fresh resolution” strategy analogous to <code>cargo update</code> (decide whether
+to drop <code>bindings/nodejs/package-lock.json</code> in the canary variant, or run <code>npm update</code>) before
+this can land. Not started.</li>
 </ul>
 <h2 id="full-dstu-7624-mode-of-operation-coverage-at-hazmat-t-88-onward"><a class="header" href="#full-dstu-7624-mode-of-operation-coverage-at-hazmat-t-88-onward">Full DSTU 7624 mode-of-operation coverage at <code>hazmat</code> (T-88 onward)</a></h2>
 <p>Only CCM (#8, T-81) was implemented before this. User asked 2026-07-24 for all 10 official modes at
@@ -27675,11 +27698,113 @@ for “all of <code>dstu-core</code>” is now stale and superseded by this deci
 place in <code>docs/DECISIONS.md</code> as a historical record (that section already documents its own
 measurement date) rather than edited, per this project’s “never silently deprecate” rule; this
 paragraph is the pointer forward for any future reader who finds it.</p>
+<h2 id="d-196-t-226---canary-ci-daily-cargolock-drift-probe-3-strike-github-issue-escalation-via-jobs-api-history"><a class="header" href="#d-196-t-226---canary-ci-daily-cargolock-drift-probe-3-strike-github-issue-escalation-via-jobs-api-history">D-196: T-226 - Canary CI: daily <code>Cargo.lock</code>-drift probe, 3-strike GitHub Issue escalation via Jobs API history</a></h2>
+<p><strong>Problem</strong>: <code>.github/workflows/rust.yml</code> always builds against the <em>committed</em> <code>Cargo.lock</code> - a
+semver-compatible crates.io dependency update that would break the build on fresh resolution
+(what a new user running <code>cargo build</code> for the first time, or anyone running <code>cargo update</code>,
+actually gets) is structurally invisible until someone manually re-resolves. Requested by the
+project owner as a “canary” mechanism, explicitly modeled on nightly/canary build-watchdog
+practice: run periodically, don’t shout on the first failure (GitHub Actions itself is
+occasionally flaky), only escalate after 3 consecutive scheduled failures.</p>
+<p><strong>Toolchain drift needs no separate probe</strong>: <code>rust-toolchain.toml</code> pins <code>channel = "stable"</code>, not a
+specific version - both <code>dtolnay/rust-toolchain@stable</code> (used by <code>rust.yml</code>) and this canary’s own
+same action already resolve “whatever stable is today” on every regular push/PR. The one real gap
+a committed lockfile hides is dependency <em>version</em> resolution, not the compiler.</p>
+<p><strong>Mechanism</strong>: <code>cargo xtask canary</code> (<code>xtask/src/main.rs</code>) runs <code>cargo update</code> (verified no
+<code>--locked</code> anywhere in <code>build()</code>/<code>test()</code>’s own call chain, so this is a genuine fresh resolution,
+not a no-op) then reuses the existing <code>build()</code>/<code>test()</code> unchanged - no duplicated logic, and a
+developer can reproduce a canary finding locally with the same one command. Never commits the
+result; CI runs it on an ephemeral checkout, a local run just leaves <code>Cargo.lock</code> changed on disk.</p>
+<p><strong>Cadence</strong>: daily (<code>cron: "42 3 * * *"</code>), offset from <code>codeql.yml</code>’s existing weekly Friday 05:36
+UTC schedule so the two scheduled workflows don’t compete for runner capacity. Daily is what the
+owner’s own 3-day escalation framing requires - weekly would take three weeks to escalate anything.</p>
+<p><strong>Escalation - two bugs caught by <code>advisor</code> review before implementation, both fixed in the design
+actually built</strong> (not left as ideas):</p>
+<ol>
+<li><strong>Run-level conclusion vs. job-level conclusion.</strong> A GitHub Actions <em>run</em>’s own <code>conclusion</code> is
+<code>failure</code> if <em>any</em> job in it failed - including the reporter job itself. Reading run-level
+conclusions for the streak would let a bug in <code>report-canary-status</code> (a <code>gh</code> rate-limit, a bad
+<code>jq</code> expression, a label-creation race) inflate the streak toward a false alarm even when the
+actual build was green. Fixed: every data point - “today” and each historical entry - is read as
+the <strong><code>canary</code> job’s own conclusion</strong>, via <code>gh api repos/$REPO/actions/runs/&lt;id&gt;/jobs --jq '.jobs[]|select(.name=="canary")|.conclusion'</code>, never <code>needs.canary.result</code> (that’s the job’s
+result but only for <em>today</em>, creating an inconsistent mix with run-level history) and never a
+run’s own top-level <code>conclusion</code>.</li>
+<li><strong>The escalation branch was untestable as designed.</strong> Gating the reporter purely on
+<code>github.event_name == 'schedule'</code> means the only branch that creates an Issue can never be
+exercised without a real 3-day wait, and hand-simulating the shell logic with faked <code>today</code>/
+<code>prev</code> values tests the shell, not the actual wiring (token, permissions, <code>jq</code> expressions, the
+Jobs API calls, the label-creation race). Fixed: <code>workflow_dispatch.inputs.force_report</code>
+(boolean) lets the exact same reporter code run on demand
+(<code>if: always() &amp;&amp; (github.event_name == 'schedule' || inputs.force_report == 'true')</code>), reading
+real current-run and real history data - a manual dry run without the input still runs the
+<code>canary</code> build but the reporter never fires, so testing never perturbs the real streak.</li>
+</ol>
+<p>Also fixed in the same pass (cheap, but real): the current run can transiently still show up in a
+naive “last N runs” query before the API reflects it as <code>completed</code> - fixed by excluding the
+current run explicitly by <code>id</code> (<code>github.run_id</code>), not by filtering on <code>status=completed</code> (a timing
+assumption, not a guarantee). <code>cancelled</code>/<code>skipped</code>/null conclusions are treated as <strong>streak-neutral</strong>
+(look one run further back, neither break nor extend the streak) rather than as a pass or a fail -
+otherwise a single cancelled run could either manufacture 3 false-clean days or falsely reset a real
+streak. <code>timed_out</code>/<code>startup_failure</code>/<code>action_required</code> count as strikes alongside <code>failure</code> - a
+hung canary is exactly the kind of drift this exists to catch, not a reason to stay silent.</p>
+<p><strong>Three more real bugs, all found by a second <code>advisor</code> pass reviewing the implemented YAML (not
+just the plan), all fixed before this landed</strong>: (1) <code>gh api ... -f event=schedule -f per_page=6</code>
+silently switches the request from GET to POST the moment any <code>-f</code> is present, which would hit this
+read-only endpoint with the wrong method - fixed by putting the params in the query string
+(<code>...runs?event=schedule&amp;per_page=6</code>) instead. (2) <code>workflow_dispatch</code>’s <code>force_report</code> is declared
+<code>type: boolean</code>, so the <code>inputs</code> context carries a real boolean - comparing it to the <em>string</em>
+<code>'true'</code> (<code>inputs.force_report == 'true'</code>) is always false because Actions casts mismatched types to
+number and <code>'true'</code> casts to <code>NaN</code>; fixed to <code>inputs.force_report</code> used directly as the truthy
+value. (3) <code>report-canary-status</code> has no <code>actions/checkout</code> step, so <code>gh issue</code>/<code>gh label</code> (unlike
+<code>gh api</code>, which always takes a full path) have no git remote to infer a repo from and would fail
+outright - fixed by setting <code>GH_REPO: ${{ github.repository }}</code> in the job’s <code>env</code>, which <code>gh</code>
+reads directly. A checked, not assumed, non-issue from that same review: the multi-line <code>body=</code>
+string’s continuation lines appeared indented in the raw file, but a YAML block scalar (<code>run: |</code>)
+strips every line’s leading whitespace down to the first content line’s own indentation - verified
+directly by parsing this exact file with PyYAML and printing the resulting <code>run</code> string, which comes
+out with zero leading whitespace on every continuation line; no heredoc or manual dedent was needed.</p>
+<p><strong>Why history from the GitHub Actions API, not a separate state file</strong>: the run history is already
+the single source of truth for “did this job pass” - a hand-rolled counter file (committed, or in
+Actions cache) is one more thing that can desync from what actually happened, for no benefit <code>gh api</code> doesn’t already provide. <code>gh</code> CLI ships on GitHub-hosted runners and is already this project’s
+own tool of choice for investigating CI (T-100’s <code>gh run view</code> rule, D-59) - no new marketplace
+action for issue creation.</p>
+<p><strong>Known residual risk, not fixable from inside the workflow</strong>: GitHub Actions automatically
+disables <code>schedule</code>-triggered workflows after roughly 60 days with no repository activity. This is
+the sharpest possible failure mode for a canary specifically - it goes quiet exactly when a repo
+has had no commits to accidentally re-surface a drift problem, which is precisely when unnoticed
+dependency drift is most likely to have accumulated. There is no in-workflow mitigation; a long
+quiet period must be read as “the canary hasn’t run,” never as “the canary confirmed nothing broke.”</p>
+<p><strong>Scope decision - root Cargo workspace only in v1, bindings deliberately deferred (T-227), not
+forgotten</strong>: raised directly during plan review - Python/Node.js dependency churn (npm/pip) is
+faster than crates.io’s, so a canary that only covers <code>dstu-core</code>/<code>uacrypt</code>/<code>dstu-core-capi</code> is
+covering this project’s <em>least</em> drift-prone surface, not its most urgent one. Owner’s explicit
+choice (asked directly, not decided silently): prove the 3-strike/Jobs-API/<code>force_report</code> mechanism
+once on the Rust core first, then repeat it for <code>bindings/python</code>/<code>bindings/nodejs</code> as an immediate
+follow-up (T-227) rather than build both at once. The real reason it isn’t just “reuse <code>cargo xtask python</code>/<code>cargo xtask nodejs</code> as-is”: <code>bindings-python.yml</code>/<code>bindings-nodejs.yml</code> deliberately pin
+exact <code>MATURIN_VERSION</code>/<code>PYTEST_VERSION</code>/<code>RUFF_VERSION</code>/<code>python-version</code>/<code>node-version</code> for their
+regular per-push CI (reproducibility), so a canary variant needs those pins <em>removed</em> to actually
+probe drift - running the pinned versions on a schedule would prove nothing new. Node.js also needs
+an explicit “fresh resolution” decision (drop <code>package-lock.json</code> in the canary variant, or <code>npm update</code>) with no <code>cargo update</code>-shaped precedent to copy - genuinely more design work than “two
+lines of YAML,” which is why it’s its own task rather than folded into this one.</p>
+<p><strong>Documentation gap found, not fixed here</strong>: <code>CLAUDE.md</code>’s <code>## Commands</code> block cross-references
+“README.md ‘Development commands’” for the <code>cargo xtask</code> command list (see the line above D-12’s
+citation). <code>README.md</code> has no such section and no mention of <code>xtask</code> at all (<code>grep -n "xtask" README.md</code> - zero matches, confirmed twice). This predates this change and is unrelated to canary
+CI itself - recorded here rather than silently fixed by inventing new README content outside this
+task’s scope, per “never silently deprecate/silently expand scope.” Worth a small follow-up to
+either add the section README currently lacks, or fix the stale cross-reference in <code>CLAUDE.md</code>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="changelog"><a class="header" href="#changelog">Changelog</a></h1>
 <p>All notable changes to this project are documented in this file. Format follows
 <a href="https://keepachangelog.com/en/1.1.0/">Keep a Changelog</a>.</p>
 <h2 id="unreleased"><a class="header" href="#unreleased">[Unreleased]</a></h2>
+<h3 id="added"><a class="header" href="#added">Added</a></h3>
+<ul>
+<li>Canary CI (<code>.github/workflows/canary.yml</code>, <code>cargo xtask canary</code>, T-226): a daily scheduled
+workflow that re-resolves <code>Cargo.lock</code> fresh against current crates.io before building/testing
+the root Cargo workspace, catching a semver-compatible dependency update that breaks the build
+before a human notices. Escalates to a GitHub Issue only after 3 consecutive scheduled failures
+(self-closes once green again). See <code>docs/DECISIONS.md</code> D-196.</li>
+</ul>
 <h3 id="fixed"><a class="header" href="#fixed">Fixed</a></h3>
 <ul>
 <li>v0.3.8’s RubyGems publish (Ruby bindings, <code>dstu_core</code>) actually completed - blocked by a pending
@@ -27743,7 +27868,7 @@ current-state line, pointing to <code>docs/CHANGELOG.md</code> for what changed 
 re-narrating it in the banner itself.</li>
 </ul>
 <h2 id="036---2026-08-13"><a class="header" href="#036---2026-08-13">[0.3.6] - 2026-08-13</a></h2>
-<h3 id="added"><a class="header" href="#added">Added</a></h3>
+<h3 id="added-1"><a class="header" href="#added-1">Added</a></h3>
 <ul>
 <li><code>build-ruby-gems</code>/<code>publish-rubygems</code> jobs in <code>release.yml</code> (T-164): cross-compiled RubyGems
 native gem publishing for <code>dstu_core</code> (<code>x86_64-linux</code>, <code>aarch64-linux</code>, <code>arm64-darwin</code>,
@@ -27765,7 +27890,7 @@ gemspec had a distinct, more serious bug caught in the same sweep: <code>README.
 publish - fixed ahead of that first publish. See <code>docs/DECISIONS.md</code> D-191.</li>
 </ul>
 <h2 id="035---2026-08-13"><a class="header" href="#035---2026-08-13">[0.3.5] - 2026-08-13</a></h2>
-<h3 id="added-1"><a class="header" href="#added-1">Added</a></h3>
+<h3 id="added-2"><a class="header" href="#added-2">Added</a></h3>
 <ul>
 <li><code>dstu-core-linux-arm64-gnu</code> - a new npm platform package for the Node.js bindings
 (<code>aarch64-unknown-linux-gnu</code>), built natively on GitHub’s <code>ubuntu-24.04-arm</code> hosted runner (GA for
@@ -27816,7 +27941,7 @@ lacking <code>contents: write</code> in this job, failing 401 against) <code>rel
 failed attempt before retrying (<code>registry.npmjs.org/dstu-core*</code> still 404).</li>
 </ul>
 <h2 id="032---2026-08-12"><a class="header" href="#032---2026-08-12">[0.3.2] - 2026-08-12</a></h2>
-<h3 id="added-2"><a class="header" href="#added-2">Added</a></h3>
+<h3 id="added-3"><a class="header" href="#added-3">Added</a></h3>
 <ul>
 <li><code>dstu-core</code> (Python bindings) is now genuinely live on <a href="https://pypi.org/project/dstu-core/">PyPI</a>
 0.1.0 - the 0.3.1 tag’s <code>publish-pypi</code> run actually went through (see Fixed, below), so this is
@@ -27851,7 +27976,7 @@ crates.io/PyPI don’t need re-publishing, just <code>dstu-core</code>/<code>uac
 <code>0.3.2</code> so <code>cargo publish</code> has something new to accept.</li>
 </ul>
 <h2 id="031---2026-08-12"><a class="header" href="#031---2026-08-12">[0.3.1] - 2026-08-12</a></h2>
-<h3 id="added-3"><a class="header" href="#added-3">Added</a></h3>
+<h3 id="added-4"><a class="header" href="#added-4">Added</a></h3>
 <ul>
 <li><code>crypto_box512</code>/<code>crypto_sign257</code>: wired into <code>dstu-core-capi</code> and all eight language bindings
 (Python/Node.js/Ruby/Java/PHP/.NET/Go/C++) - both landed in <code>dstu-core</code> itself already, in 0.3.0
@@ -27885,7 +28010,7 @@ still pre-1.0, still not independently audited, and the headline provisional gap
 yet confirmed against their primary DSTU texts) are unchanged by this release - see that document
 and <code>docs/DECISIONS.md</code> for the full standing caveats, repeated here exactly as prominently as
 0.2.0’s own notes did below.</p>
-<h3 id="added-4"><a class="header" href="#added-4">Added</a></h3>
+<h3 id="added-5"><a class="header" href="#added-5">Added</a></h3>
 <ul>
 <li><code>hazmat::dstu9041</code>: DSTU 9041:2020 hybrid (ECIES-style) asymmetric encryption over a twisted
 Edwards curve, <code>l(p)=256</code>/E256/1 only (D-47’s “ship the recommended curve first” precedent) -
@@ -27963,7 +28088,7 @@ DSTU 4145 <code>sign</code>/<code>verify</code> up ~26-32x on the dev machine (<
 <h2 id="020---2026-08-02"><a class="header" href="#020---2026-08-02">[0.2.0] - 2026-08-02</a></h2>
 <p>Second tagged release - GitHub Releases only, no crates.io publish (<code>docs/TASKS.md</code> T-17 stays
 separately gated, same posture as v0.1.0).</p>
-<h3 id="added-5"><a class="header" href="#added-5">Added</a></h3>
+<h3 id="added-6"><a class="header" href="#added-6">Added</a></h3>
 <ul>
 <li><code>crypto_sign</code>/<code>uacrypt</code>: DSTU 4145 digital-signature CLI commands - <code>sign-keygen</code>, <code>sign-pubkey</code>,
 <code>sign</code>, <code>verify</code> (<code>docs/TASKS.md</code> T-124).</li>
@@ -28013,7 +28138,7 @@ instead.</li>
 <p>First tagged release - GitHub Releases only (<code>docs/TASKS.md</code> T-18); not published to crates.io
 (<code>docs/TASKS.md</code> T-17 stays separately gated on an explicit owner request). Everything below predates
 this tag; there is no reconstructed per-commit history before it.</p>
-<h3 id="added-6"><a class="header" href="#added-6">Added</a></h3>
+<h3 id="added-7"><a class="header" href="#added-7">Added</a></h3>
 <ul>
 <li><code>dstu-core</code>: <code>hazmat</code> primitives for all three in-scope DSTU algorithms - Kupyna (DSTU
 7564:2014, one-shot and streaming), Kalyna (DSTU 7624:2014, single-block encrypt/decrypt across

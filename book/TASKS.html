@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-b5a39b13.js";
+            window.path_to_searchindex_js = "searchindex-61195717.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-6b977b4b.js"></script>
@@ -6970,6 +6970,29 @@ code smells), not zeros/nulls. The user separately rotated <code>SONAR_TOKEN</co
 directly via <code>gh secret set</code>, not pasted in chat this time) - re-ran the same workflow run
 (<code>gh run rerun</code>, no new commit needed) to confirm the new token also works, which it did.
 <strong>The 2 code-smell findings themselves, and their fixes, are their own entry - D-94.</strong></li>
+<li><input disabled="" type="checkbox"> <strong>T-226</strong> Canary CI (<code>.github/workflows/canary.yml</code>, D-196): a daily <code>schedule</code>-triggered
+workflow that runs <code>cargo xtask canary</code> (new xtask subcommand - <code>cargo update</code> for a fresh
+dependency resolution, then the existing <code>build()</code>/<code>test()</code>) against the root Cargo workspace
+only, so a semver-compatible crates.io dependency update that breaks the build is caught
+without waiting for someone to manually <code>cargo update</code>. Escalates to a GitHub Issue (label
+<code>canary-failure</code>) only after 3 consecutive scheduled failures of the <em>same job</em> (Jobs API
+conclusion, not run-level - a bug in the reporter job itself must not inflate the streak),
+self-closes the issue once green again, and never escalates on a manual <code>workflow_dispatch</code>
+run unless <code>force_report: true</code> is passed (the one way to exercise the escalation path for
+real without a 3-day wait). No separate state file - the run history itself is the source of
+truth. See D-196 for the full design rationale, including a known residual risk (GitHub
+auto-disables scheduled workflows after ~60 days of repo inactivity) and why toolchain drift
+doesn’t need its own probe here (<code>rust-toolchain.toml</code>’s <code>channel = "stable"</code> already floats).</li>
+<li><input disabled="" type="checkbox"> <strong>T-227</strong> Extend T-226’s same 3-strike/issue mechanism to <code>bindings/python</code> and
+<code>bindings/nodejs</code> - the fastest-drifting surfaces this project has (npm/pip churn faster than
+crates.io), and deliberately <strong>not</strong> included in T-226 itself (owner decision, not an
+oversight): <code>bindings-python.yml</code>/<code>bindings-nodejs.yml</code> pin exact <code>MATURIN_VERSION</code>/
+<code>PYTEST_VERSION</code>/<code>RUFF_VERSION</code>/<code>python-version</code>/<code>node-version</code> for their regular
+per-push CI, so a canary variant needs those pins deliberately <em>not</em> applied (fresh
+<code>pip</code>/<code>npm</code> resolution) to actually probe drift - reusing <code>cargo xtask python</code>/<code>cargo xtask     nodejs</code> as-is would just re-run the same pinned versions and prove nothing. Node.js
+additionally needs a “fresh resolution” strategy analogous to <code>cargo update</code> (decide whether
+to drop <code>bindings/nodejs/package-lock.json</code> in the canary variant, or run <code>npm update</code>) before
+this can land. Not started.</li>
 </ul>
 <h2 id="full-dstu-7624-mode-of-operation-coverage-at-hazmat-t-88-onward"><a class="header" href="#full-dstu-7624-mode-of-operation-coverage-at-hazmat-t-88-onward">Full DSTU 7624 mode-of-operation coverage at <code>hazmat</code> (T-88 onward)</a></h2>
 <p>Only CCM (#8, T-81) was implemented before this. User asked 2026-07-24 for all 10 official modes at
