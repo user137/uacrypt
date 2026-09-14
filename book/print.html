@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-61195717.js";
+            window.path_to_searchindex_js = "searchindex-f8281217.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-6b977b4b.js"></script>
@@ -7164,7 +7164,7 @@ code smells), not zeros/nulls. The user separately rotated <code>SONAR_TOKEN</co
 directly via <code>gh secret set</code>, not pasted in chat this time) - re-ran the same workflow run
 (<code>gh run rerun</code>, no new commit needed) to confirm the new token also works, which it did.
 <strong>The 2 code-smell findings themselves, and their fixes, are their own entry - D-94.</strong></li>
-<li><input disabled="" type="checkbox"> <strong>T-226</strong> Canary CI (<code>.github/workflows/canary.yml</code>, D-196): a daily <code>schedule</code>-triggered
+<li><input disabled="" type="checkbox" checked=""> <strong>T-226</strong> Canary CI (<code>.github/workflows/canary.yml</code>, D-196): a daily <code>schedule</code>-triggered
 workflow that runs <code>cargo xtask canary</code> (new xtask subcommand - <code>cargo update</code> for a fresh
 dependency resolution, then the existing <code>build()</code>/<code>test()</code>) against the root Cargo workspace
 only, so a semver-compatible crates.io dependency update that breaks the build is caught
@@ -7176,7 +7176,12 @@ run unless <code>force_report: true</code> is passed (the one way to exercise th
 real without a 3-day wait). No separate state file - the run history itself is the source of
 truth. See D-196 for the full design rationale, including a known residual risk (GitHub
 auto-disables scheduled workflows after ~60 days of repo inactivity) and why toolchain drift
-doesn’t need its own probe here (<code>rust-toolchain.toml</code>’s <code>channel = "stable"</code> already floats).</li>
+doesn’t need its own probe here (<code>rust-toolchain.toml</code>’s <code>channel = "stable"</code> already floats).
+<strong>Actually verified on GitHub, not just locally</strong> (2026-09-13, <code>385514c</code>): the regular
+push-triggered <code>rust.yml</code> run compiled/ran the new <code>xtask</code> code cleanly (all ~76 jobs green,
+confirmed via <code>gh run view --json jobs</code>); a manual <code>gh workflow run canary.yml -f     force_report=true</code> exercised <code>report-canary-status</code> for real - log shows <code>today: success</code>,
+<code>previous (newest first): &lt;none&gt;</code> (first-ever run, empty history as expected), <code>No     escalation</code> - proving the Jobs API calls, <code>GH_REPO</code>-based repo inference, and the boolean
+<code>inputs.force_report</code> comparison all work end-to-end, not just that the YAML parses.</li>
 <li><input disabled="" type="checkbox"> <strong>T-227</strong> Extend T-226’s same 3-strike/issue mechanism to <code>bindings/python</code> and
 <code>bindings/nodejs</code> - the fastest-drifting surfaces this project has (npm/pip churn faster than
 crates.io), and deliberately <strong>not</strong> included in T-226 itself (owner decision, not an
