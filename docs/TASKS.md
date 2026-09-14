@@ -6642,7 +6642,7 @@ no trustworthy runnable oracle exists for it at all (`outspace/dstu8845` is unof
       directly via `gh secret set`, not pasted in chat this time) - re-ran the same workflow run
       (`gh run rerun`, no new commit needed) to confirm the new token also works, which it did.
       **The 2 code-smell findings themselves, and their fixes, are their own entry - D-94.**
-- [ ] **T-226** Canary CI (`.github/workflows/canary.yml`, D-196): a daily `schedule`-triggered
+- [x] **T-226** Canary CI (`.github/workflows/canary.yml`, D-196): a daily `schedule`-triggered
       workflow that runs `cargo xtask canary` (new xtask subcommand - `cargo update` for a fresh
       dependency resolution, then the existing `build()`/`test()`) against the root Cargo workspace
       only, so a semver-compatible crates.io dependency update that breaks the build is caught
@@ -6655,6 +6655,13 @@ no trustworthy runnable oracle exists for it at all (`outspace/dstu8845` is unof
       truth. See D-196 for the full design rationale, including a known residual risk (GitHub
       auto-disables scheduled workflows after ~60 days of repo inactivity) and why toolchain drift
       doesn't need its own probe here (`rust-toolchain.toml`'s `channel = "stable"` already floats).
+      **Actually verified on GitHub, not just locally** (2026-09-13, `385514c`): the regular
+      push-triggered `rust.yml` run compiled/ran the new `xtask` code cleanly (all ~76 jobs green,
+      confirmed via `gh run view --json jobs`); a manual `gh workflow run canary.yml -f
+      force_report=true` exercised `report-canary-status` for real - log shows `today: success`,
+      `previous (newest first): <none>` (first-ever run, empty history as expected), `No
+      escalation` - proving the Jobs API calls, `GH_REPO`-based repo inference, and the boolean
+      `inputs.force_report` comparison all work end-to-end, not just that the YAML parses.
 - [ ] **T-227** Extend T-226's same 3-strike/issue mechanism to `bindings/python` and
       `bindings/nodejs` - the fastest-drifting surfaces this project has (npm/pip churn faster than
       crates.io), and deliberately **not** included in T-226 itself (owner decision, not an
