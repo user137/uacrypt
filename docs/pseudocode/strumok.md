@@ -20,6 +20,13 @@ examples, all 8 cases passing (`docs/DECISIONS.md` D-197, `crates/dstu-core/test
 not merely trusted on the library's word. Not lifted: Annex Б/В/Г's own constant tables (S-box,
 Tᵢ[a], Mulα) were read but not transcription-verified in full against `hazmat::tables`.
 
+**Update, 2026-09-17:** a ~100-entry spot check (first/last few entries of all 10 `Tᵢ[a]`/`Mulα`/
+`Mulα⁻¹` tables, read directly off Додаток В/Г of the genuine scan) found zero mismatches against
+the compiled constants (`docs/DECISIONS.md` D-198). Still not a full transcription verification -
+roughly 96% of the 2560 entries were never read against the scan - but the specific concern that
+the transcription source (`oracles/uapki`'s `dstu8845.c`) might diverge from the primary text at
+either end of any table is now checked and found not to hold, for every table.
+
 ## Parameters (Section 2)
 
 - Word size: 64 bits (unlike SNOW 2.0's 32-bit words).

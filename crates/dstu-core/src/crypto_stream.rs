@@ -39,9 +39,10 @@
 //!
 //! # Provenance
 //!
-//! Inherits `hazmat::strumok`'s own D-18/D-197 status: vectors are confirmed against the primary
-//! DSTU 8845:2019 text itself (Додаток Д, a genuine library scan); internal constant tables remain
-//! corroborated only indirectly, not independently transcription-verified in full.
+//! Inherits `hazmat::strumok`'s own D-18/D-197/D-198 status: vectors are confirmed against the
+//! primary DSTU 8845:2019 text itself (Додаток Д, a genuine library scan); `Tᵢ[a]`/`Mulα`/`Mulα⁻¹`
+//! constant tables are spot-checked against the same text (zero mismatches), but not independently
+//! transcription-verified in full.
 //!
 //! # Example
 //!

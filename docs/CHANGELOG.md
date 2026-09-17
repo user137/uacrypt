@@ -31,6 +31,11 @@ All notable changes to this project are documented in this file. Format follows
   languages). Internal constant tables (S-box, Tᵢ[a], Mulα) remain corroborated only indirectly, not
   independently transcription-verified. See `docs/DECISIONS.md` D-197.
 
+- Strumok's `Tᵢ[a]`/`Mulα`/`Mulα⁻¹` constant tables spot-checked (~100 of 2560 entries, spread
+  across all 10 tables) directly against the genuine DSTU 8845:2019 scan - zero mismatches. Not a
+  full transcription verification, but raises confidence beyond D-197's "corroborated only at the
+  entries the 8 vectors reach." See `docs/DECISIONS.md` D-198.
+
 - `bindings/ruby`'s gemspec/Cargo.toml description and README, plus root `README.md` and the
   gh-pages landing page (both languages), updated to reflect RubyGems actually being live - same
   stale "not yet published" pattern already fixed once for PyPI/npm/crates.io (D-191). See

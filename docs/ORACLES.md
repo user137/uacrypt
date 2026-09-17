@@ -317,6 +317,12 @@ comparable to all five other in-scope algorithms combined" framing, not just a p
   claim specifically. Untouched by this: the Додаток Б/В/Г constant tables (S-box, Tᵢ[a], Mulα)
   are corroborated only at the entries these 8 vectors happen to reach, not independently
   transcription-verified in full - a real, stated open item, not an oversight.
+- **Spot-checked 2026-09-17** (`docs/DECISIONS.md` D-198): ~100 of the 2560 `Tᵢ[a]`/`Mulα`/
+  `Mulα⁻¹` entries (first/last few of all 10 tables, spread across every table rather than
+  clustered) read directly off the same genuine scan and compared to the compiled constants -
+  zero mismatches. Deliberately not a full transcription (2560 hex words by hand is exactly
+  D-163's failure mode for a mechanical derivation of already-oracle-confirmed inputs) - raises
+  confidence, does not upgrade the "not independently transcription-verified in full" status above.
 
 ### DSTU 4145 (signature)
 - **Official text now in hand** (`docs/papers/DSTU_4145-2002.pdf`, added 2026-07-22) — corrects the

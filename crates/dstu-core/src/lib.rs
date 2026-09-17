@@ -5,8 +5,9 @@
 //! (`hazmat::kalyna_ccm`, `hazmat::kalyna_gcm`, and everything built on them) rests on an adopted
 //! assumption, not a confirmation against the primary DSTU 7624:2014 text (`docs/DECISIONS.md` D-05).
 //! Strumok's keystream generator is confirmed against the primary DSTU 8845:2019 text itself
-//! (`docs/DECISIONS.md` D-197); its internal constant tables are corroborated only at the entries
-//! the confirmed vectors reach, not independently transcription-verified in full. This crate makes
+//! (`docs/DECISIONS.md` D-197); its `Tᵢ[a]`/`Mulα`/`Mulα⁻¹` constant tables are spot-checked
+//! against the same text too (D-198, zero mismatches on a ~100-entry sample), but not
+//! independently transcription-verified in full. This crate makes
 //! **no claim of side-channel (SPA/DPA) resistance**. See
 //! `docs/SECURITY.md` and `docs/DECISIONS.md` in the project repository for the full threat model, citations,
 //! and per-construction status.

@@ -7640,6 +7640,17 @@ Phase 2+ and none currently in flight).
   (`docs/papers/DSTU_8845-2019.pdf`) is gitignored, never committed, same reasoning as the DSTU
   9041 files.
 
+- [x] **T-229** (2026-09-17) **Spot-checked Додаток В/Г's constant tables (`Tᵢ[a]`, `Mulα`/
+  `Mulα⁻¹`) against the genuine DSTU 8845:2019 scan - see `docs/DECISIONS.md` D-198.** Owner asked
+  whether T-228's remaining "constant tables not transcription-verified" gap was worth closing by
+  transferring the full tables from the standard. Full transcription (2560 hex words) was assessed
+  and rejected as disproportionate transcription-error risk for a mechanical derivation of
+  already-oracle-confirmed inputs (D-163's pattern); a ~100-entry spot check across all 10 tables
+  (first/last entries of each) was done instead, directly against `docs/papers/DSTU_8845-2019.pdf`
+  rendered via `pdftoppm` - zero mismatches. Updated everywhere T-228's "not transcription-verified
+  in full" caveat was stated (`CLAUDE.md` x3, `docs/ORACLES.md`, `docs/pseudocode/strumok.md`) to
+  note the spot check without overclaiming full verification.
+
 - [x] **T-148** **Corrected a false "font-encoding failure" claim across 5 PDFs; wrote
   `docs/pseudocode/dstu9041.md`; surfaced 3 unread cryptanalysis papers - see `docs/DECISIONS.md`
   D-105.** Owner asked why the Skorobahatko DSTU 9041 thesis PDF "doesn't get recognized" -

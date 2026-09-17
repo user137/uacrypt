@@ -74,8 +74,9 @@ canonical source (`docs/TASKS.md`/`docs/DECISIONS.md`) — this section states c
     scan, all 8 cases byte-for-byte — D-197), retroactively validating the original UAPKI
     attribution; also independently confirmed against two state-sourced supplementary vectors from
     Держспецзв'язку/ДНДІ ТКЗІ (D-104). Internal constant tables (S-box, Tᵢ[a], Mulα) remain
-    corroborated only at the entries these vectors reach, not independently transcription-verified
-    in full.
+    corroborated only at the entries these vectors reach, plus a ~100-entry spot check across all
+    10 `Tᵢ[a]`/`Mulα`/`Mulα⁻¹` tables against the genuine scan (zero mismatches, D-198) — not
+    independently transcription-verified in full.
   - `dstu9041` (`message`/`fp256`/`curve256`/`encryption` for `l(p)=256`; `message512`/`fp512`/
     `curve512`/`encryption512` for `l(p)=512`, T-192) — hybrid (ECIES-style) asymmetric encryption
     over a twisted Edwards curve. `l(p) ∈ {256, 512}` (E256/1, E512/1) — the two curve sizes whose
@@ -156,8 +157,10 @@ Official test vectors are extracted and verified for Kalyna, Kupyna, DSTU 4145, 
 for provenance/format) and additionally run against real Bouncy Castle (Java/.NET, published
 packages, not vendored clones) in `tests/oracle-harness/{java,dotnet}/` — see `docs/TASKS.md`
 "Infrastructure". Strumok's vectors are confirmed against the primary DSTU 8845:2019 text itself
-(Додаток Д, a genuine library scan) — D-15/D-16/D-104/D-197; its internal constant tables remain
-corroborated only indirectly, not independently transcription-verified in full.
+(Додаток Д, a genuine library scan) — D-15/D-16/D-104/D-197; its `Tᵢ[a]`/`Mulα`/`Mulα⁻¹` constant
+tables were spot-checked against the same scan (D-198, zero mismatches on ~100 sampled entries);
+the S-box was out of scope for that check (already cross-checked via Kalyna/Kupyna's own real
+Bouncy Castle oracle, D-10/D-13). None are independently transcription-verified in full.
 No C/cryptonite harness — tried and dropped, see `docs/TASKS.md`/`docs/ORACLES.md` for why.
 
 The concrete module-by-module API surface lives in `docs/dstu-crypto-project.md` "Concrete API
@@ -511,8 +514,9 @@ check) is in `docs/dstu-crypto-project.md` "Resources found".
   Strumok's are now confirmed against the primary DSTU 8845:2019 text itself (Додаток Д, a genuine
   library scan obtained via the National Library of Ukraine's EDD service), not just
   UAPKI-attributed, plus independently confirmed against two state-sourced supplementary vectors —
-  see `docs/ORACLES.md`/`docs/DECISIONS.md` D-15/D-16/D-104/D-197. Internal constant tables
-  (S-box, Tᵢ[a], Mulα) remain corroborated only indirectly, not transcription-verified in full.
+  see `docs/ORACLES.md`/`docs/DECISIONS.md` D-15/D-16/D-104/D-197. `Tᵢ[a]`/`Mulα`/`Mulα⁻¹` were
+  spot-checked against the same scan (D-198) with zero mismatches (S-box out of scope, already
+  covered via D-10/D-13); none are transcription-verified in full.
 - **`hazmat::dstu9041` (`l(p)=256`/E256/1) is implemented (T-177)** — a partial primary-text
   scan (T-173) plus a targeted supplement (T-176/D-165) gave clause citations for every algorithm
   the primitive needed (6.5–6.12); `message.rs`/`fp256.rs`/`curve256.rs`/`encryption.rs` were then
