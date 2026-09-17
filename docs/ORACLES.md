@@ -20,8 +20,12 @@ correlated — that inversion is the main thing this document has to make explic
    this project's pinned commit). Treat it as sitting at this tier for Kalyna/Kupyna/DSTU 4145
    (same underlying lineage as cryptonite), except for **Strumok, where it's the only source found
    at all** — no cryptonite equivalent exists to compare it against, so its self-declared
-   `// ДСТУ 8845:2019` attribution is taken on the library's word, not cross-tiered against
-   anything above it.
+   `// ДСТУ 8845:2019` attribution was originally taken on the library's word, not cross-tiered
+   against anything above it. **That attribution is now independently confirmed against the
+   primary text itself** (`docs/DECISIONS.md` D-197, 2026-09-16) — see the Strumok section below;
+   this paragraph's own tiering rationale (why UAPKI sat here for Strumok specifically) still
+   applies to how the vectors were originally sourced, it just no longer describes their current
+   confirmation status.
 5. An unofficial, single-maintainer, unaudited implementation (outspace/dstu8845).
 6. Excluded — untrusted provenance (`li0ard`, see D-07 in `docs/DECISIONS.md`).
 
@@ -301,6 +305,18 @@ comparable to all five other in-scope algorithms combined" framing, not just a p
   text" status above: it is now independently confirmed against a second, state-sourced oracle,
   but still not against Annex Д of the standard text itself (unpurchased) — D-15/D-16 stay open on
   that specific, narrower point.
+- **Closed 2026-09-16** (`docs/DECISIONS.md` D-197): Додаток Д itself was obtained, as a genuine
+  library scan via the National Library of Ukraine's EDD service (the same acquisition channel
+  D-165 used for DSTU 9041), not purchased outright. All 8 worked examples (4×256-bit, 4×512-bit,
+  с.22-23 and с.35-36) were verified two ways: against the committed `keystream-{256,512}.json`
+  vectors (byte-for-byte match, confirming UAPKI's attribution claim was correct all along) and
+  directly against `hazmat::strumok`'s own output (`crates/dstu-core/tests/strumok.rs`'s
+  `official_annex_d_vectors` module, a new, permanent regression test - not a one-off script).
+  **This is the point D-15's own closing paragraph named as the condition for a status change** -
+  unlike D-104's "upgrade, not closure," this one genuinely is a closure for the vector-confirmation
+  claim specifically. Untouched by this: the Додаток Б/В/Г constant tables (S-box, Tᵢ[a], Mulα)
+  are corroborated only at the entries these 8 vectors happen to reach, not independently
+  transcription-verified in full - a real, stated open item, not an oversight.
 
 ### DSTU 4145 (signature)
 - **Official text now in hand** (`docs/papers/DSTU_4145-2002.pdf`, added 2026-07-22) — corrects the

@@ -7620,6 +7620,26 @@ Phase 2+ and none currently in flight).
   9041:2020 untouched - the same letter confirms no oracle exists for it either, consistent with
   the existing `docs/ORACLES.md` entry.
 
+- [x] **T-228** (2026-09-16) **DSTU 8845:2019's own Додаток Д obtained via the National Library of
+  Ukraine's EDD service (same channel as D-165's DSTU 9041 supplement) and verified - genuinely
+  closes D-15/D-16's vector-confirmation gap, not another upgrade. See `docs/DECISIONS.md` D-197
+  for the full derivation.** All 4 256-bit and all 4 512-bit worked examples (с.22-23, с.35-36)
+  transcribed and checked two ways: byte-for-byte against the committed `keystream-{256,512}.json`
+  (retroactively confirms UAPKI's own attribution claim was correct) and directly against
+  `hazmat::strumok`'s output via a new permanent test module,
+  `crates/dstu-core/tests/strumok.rs`'s `official_annex_d_vectors` - all 8 cases pass. A real
+  transcription slip (one extra `e` in case 3's `Z4` word, misread off a wide page render) was
+  caught by the JSON comparison mismatching, not by re-reading the scan - re-zoomed and fixed
+  before the Rust test was written. Updated everywhere the old "UAPKI-attributed, not confirmed"
+  status was stated: both vector JSON files' `status`/`provenance`, `crates/dstu-core/src/lib.rs`'s
+  crate doc comment, `crates/dstu-core/tests/strumok.rs`'s own header, `docs/ORACLES.md` (tier-list
+  line + Strumok section), and both languages of the gh-pages landing page (status pill
+  `provisional`→`verified`, same "both languages" discipline as D-192/D-193). **Not closed**:
+  Додаток Б/В/Г's constant tables (S-box, Tᵢ[a], Mulα) were read but not transcription-verified in
+  full - corroborated only at the entries the 8 vectors reach. The scan itself
+  (`docs/papers/DSTU_8845-2019.pdf`) is gitignored, never committed, same reasoning as the DSTU
+  9041 files.
+
 - [x] **T-148** **Corrected a false "font-encoding failure" claim across 5 PDFs; wrote
   `docs/pseudocode/dstu9041.md`; surfaced 3 unread cryptanalysis papers - see `docs/DECISIONS.md`
   D-105.** Owner asked why the Skorobahatko DSTU 9041 thesis PDF "doesn't get recognized" -

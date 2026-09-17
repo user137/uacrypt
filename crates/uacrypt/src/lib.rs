@@ -3025,8 +3025,8 @@ uacrypt - a CLI over dstu-core, Ukrainian DSTU cryptographic standards (Kalyna, 
 
 Pre-release, provisional, not independently audited - see docs/SECURITY.md/DECISIONS.md in the project
 repository for the full threat model and citations (D-05: Kalyna's mode of operation is an adopted
-assumption, not primary-text confirmed; D-15: Strumok is UAPKI-attributed, not primary-text
-confirmed).
+assumption, not primary-text confirmed; D-197: Strumok's keystream vectors are confirmed against
+the primary DSTU 8845:2019 text itself, its internal constant tables only indirectly).
 
 USAGE:
     uacrypt <command> [flags]

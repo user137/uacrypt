@@ -30,6 +30,11 @@
 # reproduces, so the same redistribution restriction applies. Never committed either.
 /docs/papers/DSTU_9041-2020_Part of.pdf
 
+# DSTU 8845:2019 (Strumok) primary standard text - genuine library-scanned copy of с.4-49 (розділ
+# 7 + Додатки А-Е), obtained via the National Library of Ukraine's EDD service (docs/DECISIONS.md
+# D-197, T-228). Same redistribution restriction as the DSTU 9041 files above - never committed.
+/docs/papers/DSTU_8845-2019.pdf
+
 # Oracle-harness build artifacts and fetched dependencies (Java/.NET) — fetched fresh via
 # Maven/NuGet at build time (see tests/oracle-harness/*/README or docs/TASKS.md "Infrastructure"),
 # never vendored or committed, same rule as /oracles below.

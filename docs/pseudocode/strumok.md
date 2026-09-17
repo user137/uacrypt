@@ -10,8 +10,15 @@ source to copy from (`docs/DECISIONS.md` D-06).
 **Update, 2026-07-22:** at the time the paragraph above was written, no test vectors existed
 anywhere in this project's holdings, so the oracle cross-check confirmed structure only, never
 numeric correctness. That gap is closed — see "Test vectors" below and `docs/DECISIONS.md` D-15/D-18 —
-and `dstu_core::hazmat::strumok` now passes all of them. The provenance ceiling is unchanged
-though: those vectors are UAPKI-attributed, not the official DSTU 8845:2019 text itself.
+and `dstu_core::hazmat::strumok` now passes all of them. The provenance ceiling was unchanged at
+the time, though: those vectors were UAPKI-attributed, not the official DSTU 8845:2019 text itself.
+
+**Update, 2026-09-16:** the ceiling is lifted — the official text's own Додаток Д was obtained (a
+genuine library scan) and `hazmat::strumok`'s output verified directly against its printed worked
+examples, all 8 cases passing (`docs/DECISIONS.md` D-197, `crates/dstu-core/tests/strumok.rs`'s
+`official_annex_d_vectors` module). The UAPKI-attributed vectors above are now confirmed correct,
+not merely trusted on the library's word. Not lifted: Annex Б/В/Г's own constant tables (S-box,
+Tᵢ[a], Mulα) were read but not transcription-verified in full against `hazmat::tables`.
 
 ## Parameters (Section 2)
 

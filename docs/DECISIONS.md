@@ -13253,3 +13253,94 @@ CI itself - recorded here rather than silently fixed by inventing new README con
 task's scope, per "never silently deprecate/silently expand scope." Worth a small follow-up to
 either add the section README currently lacks, or fix the stale cross-reference in `CLAUDE.md`.
 
+## D-197: T-228 - DSTU 8845:2019's own Додаток Д obtained and verified - closes D-15/D-16's vector-confirmation gap for real
+
+**What was obtained.** The full text fragment requested via the National Library of Ukraine's EDD
+service (docs/DECISIONS.md D-165's same acquisition channel, cost estimated beforehand at roughly
+344 UAH for 46 pages at 7 грн/page scanning + flat order/delivery fees - a library reprography
+tariff, not `fnd-store.uas.gov.ua`'s per-page official-reproduction tariff used for a full-document
+purchase) arrived as `Стандарт.pdf` (46 pages, с.4-49: розділ 7 and Додатки А-Е). Verified this is
+the genuine requested fragment before trusting its content, same discipline D-165 already applied
+to a supplementary DSTU 9041 purchase: page 1's footer reads "4" and opens with §7's own heading
+(matching the standard's real с.4, confirmed by cross-referencing an unrelated, untrusted copy of
+the same standard's own table of contents - see below for why that copy was never used for
+anything beyond page numbers); the file is exactly 46 pages, matching the 46 pages ordered; the
+PDF producer field ("ACDSee") and visible verso bleed-through on several pages are consistent with
+a real physical photocopy, not a synthetic recreation.
+
+**Separately, and worth recording as its own fact**: earlier the same week, the project owner had
+been sent an unrelated, untrusted copy of what claimed to be this same standard's full text (from
+a source with no reason to be trusted with a Ukrainian state cryptographic standard - see this
+session's own earlier turns). That file was used **only** to extract its table-of-contents page
+numbers, to know which pages to actually request from the library - never for any technical
+content (S-box values, tables, vectors). Worth noting for the record: this genuine library scan's
+own table of contents landed on the exact same page numbers the untrusted copy had shown. That is
+a fact about the untrusted copy's structural metadata, not a retroactive endorsement of its
+technical content, which was never read, transcribed, or relied upon for anything.
+
+**What was verified, and how - two links, not one claim.** (1) *Annex Д's printed values equal the
+committed `tests/vectors/strumok/keystream-{256,512}.json`*: all 4 256-bit and all 4 512-bit cases
+from Додаток Д.1.1 (с.22-23) and Д.2.1 (с.35-36) were transcribed exactly as printed (K3..K0 or
+K7..K0, IV3..IV0, Z0..Z7, each a 16-hex-digit word) and compared byte-for-byte. (2) *The committed
+vectors equal `hazmat::strumok`'s actual output*: `cargo test -p dstu-core --test strumok` was
+re-run and passes (this link already existed via `strumok_{256,512}_uapki_attributed_vectors`, not
+a new claim, but re-confirmed rather than assumed). A third, stronger check subsumes both links at
+once: a new permanent test module, `crates/dstu-core/tests/strumok.rs`'s
+`official_annex_d_vectors`, runs `Strumok256`/`Strumok512` directly against the standard's own
+printed values (not against the JSON vectors at all) - all 8 cases pass. This is the module that
+actually closes the gap; the JSON-vs-scan comparison was the transcription check that came first.
+
+**Byte-order transform - re-derived, not assumed to carry over.** Annex Д labels key/IV words by
+descending significance (K3..K0, IV3..IV0) and prints each word as a 16-hex-digit string; the
+crate's internal byte layout is ascending word order (K0 first) with each word's own bytes
+independently reversed. This is the *same* transform D-104 already derived for the official
+letter's Key/IV/RandBlock notation - re-confirmed here by direct computation rather than assumed
+to carry over from a different document's own notation (D-163's "a convention found once still
+needs re-checking each new occurrence" rule; re-checking it here was not redundant caution that
+happened to agree - the letter's Key/IV used a *byte*-level descending-index label (`Key31..Key0`),
+Додoток Д uses a *word*-level one (`K3..K0`); the two conventions could plausibly have differed and
+didn't).
+
+**A real transcription slip, caught by the same mechanism that would have caught any other.**
+First read of Додаток Д.1.1's case 3, `Z4`, misread `b22eee96b2832072` as `b22eeee96b2832072` (one
+extra `e`) - by eye, off a wide page render. The JSON-comparison script's mismatch on that one case
+(3 of 4 cases matched immediately; this one didn't) was the signal, not a second read of the scan.
+Re-cropped and zoomed the specific line at 2x magnification and got the correct 16-character word;
+re-ran, all 4 cases matched. This is D-163's pattern recurring exactly as that entry warned it
+would ("a human/AI eyeball count can silently miscount") - the fix wasn't "be more careful," it was
+"have an independent check that a wrong transcription actually fails," which is exactly what the
+JSON comparison (and, redundantly, the direct implementation test) provided.
+
+**What this closes, and what it doesn't - stated precisely, not in bulk.** D-15's own closing
+paragraph named the exact condition for a status change: "until this project reads the actual DSTU
+8845:2019 text itself... turns up." That condition is now met for the keystream-generation claim
+specifically. This **retroactively validates UAPKI's attribution** (`// ДСТУ 8845:2019` in
+`dstu8845_self_test()`) - the open question D-15's own provenance field carried - rather than
+replacing it with a new, separate source. D-16 (UAPKI's standing as an oracle generally) is a
+different claim this finding doesn't touch directly, though the validated attribution is evidence
+in its favor. Unlike D-104, which explicitly framed itself as "an upgrade, not a closure," this
+entry **is** a genuine closure for the vector-confirmation claim - the first one in this project's
+Strumok history that actually is. **Not closed by this**: Додаток Б/В/Г's constant tables (S-box
+π₀-π₃, Tᵢ[a], Mulα/Mulα⁻¹) were read (page numbers, structure) but not transcribed or compared
+against `hazmat::tables` - the 8 passing keystream vectors corroborate only the specific table
+entries those 4 key/IV pairs actually reach, not the tables in full. A future task, not started
+here, not assumed to be low-value just because it's deferred.
+
+**Fixed, not left for a future sweep to find stale**: `crates/dstu-core/tests/vectors/strumok/
+keystream-{256,512}.json` (`status`/`provenance` fields - the old provenance text's closing
+sentence, "has NOT independently confirmed these values against the official (paid) DSTU 8845:2019
+text itself," was flatly false once this landed, not just stale framing), `crates/dstu-core/tests/
+strumok.rs`'s own top-of-file doc comment, `crates/dstu-core/src/lib.rs`'s crate-level doc comment
+(propagates to the published rustdoc site's `api/` pages on the next `cargo xtask book`/docs
+publish - not hand-edited there, since those pages are generated output), `docs/ORACLES.md` (the
+tier-list line for Strumok's UAPKI attribution, plus the Strumok oracle section itself),
+`docs/TASKS.md` (T-228), `docs/CHANGELOG.md` `[Unreleased]`, and both language versions of the
+gh-pages landing page (`index.html`/`uk/index.html`, Strumok's status pill `provisional`→`verified`
+plus its status-detail paragraph, same "both languages" discipline D-192/D-193 already established
+for other status-line fixes).
+
+**Not committed**: `Стандарт.pdf` itself - `.gitignore`'s existing DSTU 9041 block ("state-standard
+text redistribution rights are not ours to grant") is extended to cover this file too, same
+reasoning, kept local only like `DSTU_9041-2020_Part of.pdf`. This entry cites clause/annex and
+page number, not the file.
+

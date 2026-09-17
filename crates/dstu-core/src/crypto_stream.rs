@@ -39,8 +39,9 @@
 //!
 //! # Provenance
 //!
-//! Inherits `hazmat::strumok`'s own D-18 status: vectors are UAPKI-attributed, not confirmed
-//! against the primary DSTU 8845:2019 text.
+//! Inherits `hazmat::strumok`'s own D-18/D-197 status: vectors are confirmed against the primary
+//! DSTU 8845:2019 text itself (Додаток Д, a genuine library scan); internal constant tables remain
+//! corroborated only indirectly, not independently transcription-verified in full.
 //!
 //! # Example
 //!

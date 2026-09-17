@@ -22,6 +22,15 @@ All notable changes to this project are documented in this file. Format follows
 
 ### Changed
 
+- Strumok (DSTU 8845:2019) keystream vectors are now confirmed against the official standard text
+  itself (Додаток Д, obtained as a genuine library scan), not just UAPKI-attributed - a new
+  permanent test module (`crates/dstu-core/tests/strumok.rs`'s `official_annex_d_vectors`) checks
+  `hazmat::strumok`'s output directly against the standard's own printed worked examples, all 8
+  cases (4×256-bit, 4×512-bit) passing. Status text updated everywhere it appeared: both vector
+  JSON files, the crate's own doc comment, `docs/ORACLES.md`, and the gh-pages landing page (both
+  languages). Internal constant tables (S-box, Tᵢ[a], Mulα) remain corroborated only indirectly, not
+  independently transcription-verified. See `docs/DECISIONS.md` D-197.
+
 - `bindings/ruby`'s gemspec/Cargo.toml description and README, plus root `README.md` and the
   gh-pages landing page (both languages), updated to reflect RubyGems actually being live - same
   stale "not yet published" pattern already fixed once for PyPI/npm/crates.io (D-191). See

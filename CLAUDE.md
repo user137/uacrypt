@@ -70,9 +70,12 @@ canonical source (`docs/TASKS.md`/`docs/DECISIONS.md`) — this section states c
     `kupyna_kmac`; from-scratch design, no DSTU KDF standard or reference implementation exists at
     all, so no oracle vector is possible — verified by property test only (D-45).
   - `strumok::{Strumok256, Strumok512}` — keystream via `apply_keystream` (D-18). Vectors are
-    UAPKI-attributed, **not confirmed against the primary DSTU 8845:2019 text** (D-15), but
-    independently confirmed against two state-sourced supplementary vectors from
-    Держспецзв'язку/ДНДІ ТКЗІ (D-104).
+    **confirmed against the primary DSTU 8845:2019 text itself** (Додаток Д, a genuine library
+    scan, all 8 cases byte-for-byte — D-197), retroactively validating the original UAPKI
+    attribution; also independently confirmed against two state-sourced supplementary vectors from
+    Держспецзв'язку/ДНДІ ТКЗІ (D-104). Internal constant tables (S-box, Tᵢ[a], Mulα) remain
+    corroborated only at the entries these vectors reach, not independently transcription-verified
+    in full.
   - `dstu9041` (`message`/`fp256`/`curve256`/`encryption` for `l(p)=256`; `message512`/`fp512`/
     `curve512`/`encryption512` for `l(p)=512`, T-192) — hybrid (ECIES-style) asymmetric encryption
     over a twisted Edwards curve. `l(p) ∈ {256, 512}` (E256/1, E512/1) — the two curve sizes whose
@@ -148,11 +151,13 @@ three. (The five direct-Rust bindings - Python/Node/Ruby/PHP/Java - link `dstu-c
 this crate, but reached the same `crypto_box512`/`crypto_sign257` coverage independently, T-204's
 own Phase 3.)
 
-Official test vectors are extracted and verified for Kalyna, Kupyna, and DSTU 4145
-(`crates/dstu-core/tests/vectors/{kalyna,kupyna,dstu4145}/*.json` — see `docs/ORACLES.md` for
-provenance/format) and additionally run against real Bouncy Castle (Java/.NET, published packages,
-not vendored clones) in `tests/oracle-harness/{java,dotnet}/` — see `docs/TASKS.md` "Infrastructure".
-Strumok's vectors are UAPKI-attributed, not yet confirmed against the paid official text — D-15/D-16/D-104.
+Official test vectors are extracted and verified for Kalyna, Kupyna, DSTU 4145, and Strumok
+(`crates/dstu-core/tests/vectors/{kalyna,kupyna,dstu4145,strumok}/*.json` — see `docs/ORACLES.md`
+for provenance/format) and additionally run against real Bouncy Castle (Java/.NET, published
+packages, not vendored clones) in `tests/oracle-harness/{java,dotnet}/` — see `docs/TASKS.md`
+"Infrastructure". Strumok's vectors are confirmed against the primary DSTU 8845:2019 text itself
+(Додаток Д, a genuine library scan) — D-15/D-16/D-104/D-197; its internal constant tables remain
+corroborated only indirectly, not independently transcription-verified in full.
 No C/cryptonite harness — tried and dropped, see `docs/TASKS.md`/`docs/ORACLES.md` for why.
 
 The concrete module-by-module API surface lives in `docs/dstu-crypto-project.md` "Concrete API
@@ -501,10 +506,13 @@ check) is in `docs/dstu-crypto-project.md` "Resources found".
 ## Roadmap notes
 
 - Official documentation PDFs live in `docs/papers/`, including `DSTU_4145-2002.pdf` (a scan, see
-  `.claude.local.md` for the render-then-read workflow). Test vectors are extracted and verified for
-  Kalyna, Kupyna, and DSTU 4145; Strumok's are UAPKI-attributed plus independently confirmed against
-  two state-sourced supplementary vectors, still not confirmed against the paid official text — see
-  `docs/ORACLES.md`/`docs/DECISIONS.md` D-15/D-16/D-104.
+  `.claude.local.md` for the render-then-read workflow) and `DSTU_8845-2019.pdf` (gitignored,
+  T-228). Test vectors are extracted and verified for Kalyna, Kupyna, DSTU 4145, and Strumok —
+  Strumok's are now confirmed against the primary DSTU 8845:2019 text itself (Додаток Д, a genuine
+  library scan obtained via the National Library of Ukraine's EDD service), not just
+  UAPKI-attributed, plus independently confirmed against two state-sourced supplementary vectors —
+  see `docs/ORACLES.md`/`docs/DECISIONS.md` D-15/D-16/D-104/D-197. Internal constant tables
+  (S-box, Tᵢ[a], Mulα) remain corroborated only indirectly, not transcription-verified in full.
 - **`hazmat::dstu9041` (`l(p)=256`/E256/1) is implemented (T-177)** — a partial primary-text
   scan (T-173) plus a targeted supplement (T-176/D-165) gave clause citations for every algorithm
   the primitive needed (6.5–6.12); `message.rs`/`fp256.rs`/`curve256.rs`/`encryption.rs` were then

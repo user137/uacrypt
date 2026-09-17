@@ -1,8 +1,10 @@
 //! Black-box integration test for `dstu_core::hazmat::strumok` against the UAPKI-attributed
-//! keystream vectors in `tests/vectors/strumok/` — **not** the official DSTU 8845:2019 text
-//! itself (no copy of that has been located; see `docs/ORACLES.md` and `docs/DECISIONS.md` D-15). Same
-//! hand-rolled extractor as `tests/kalyna.rs`/`tests/kupyna.rs` — no JSON dependency for a fixed,
-//! project-controlled vector shape.
+//! keystream vectors in `tests/vectors/strumok/`. The `official_annex_d_vectors` module below
+//! verifies the same primitive directly against the official DSTU 8845:2019 text itself (Додаток
+//! Д, obtained as a genuine library scan — `docs/DECISIONS.md` D-197, closing D-15/D-16's
+//! "UAPKI-attributed, not independently confirmed" gap). Same hand-rolled extractor as
+//! `tests/kalyna.rs`/`tests/kupyna.rs` for the JSON-backed vectors — no JSON dependency for a
+//! fixed, project-controlled vector shape.
 
 use dstu_core::hazmat::strumok::{Strumok256, Strumok512};
 use proptest::prelude::*;
@@ -332,4 +334,321 @@ mod official_letter_vectors {
             "Strumok-512 official letter vector mismatch"
         );
     }
+}
+
+/// Verifies `hazmat::strumok` directly against ДСТУ 8845:2019's own Додаток Д "Приклади для
+/// перевіряння" (the standard's worked examples, с.22-23 for the 256-bit cases and с.35-36 for
+/// the 512-bit ones) - a genuine library scan obtained via the National Library of Ukraine's EDD
+/// service (docs/DECISIONS.md D-197), not the UAPKI/outspace-derived vectors this file's other
+/// tests use. Every hex word below is transcribed exactly as printed (K3..K0/K7..K0, IV3..IV0,
+/// Z0..Z7, each a 16-hex-digit word) - the byte-order transform is applied in code, not baked
+/// into the literals: word order is reversed to ascending (K0..K3/K0..K7, IV0..IV3) for key/IV
+/// (Annex Д labels these by descending significance, same convention D-104 already found for the
+/// official letter's Key/IV) and each word's own bytes are independently reversed for every one
+/// of key, IV, and keystream words alike (same convention D-104 found for RandBlock) - re-derived
+/// and re-confirmed for this annex independently, not assumed to carry over from the letter
+/// (D-163's "a convention found once still needs re-checking each new occurrence" rule).
+/// Transcription itself was cross-checked against `tests/vectors/strumok/keystream-{256,512}.json`
+/// (D-197) rather than trusted by eye alone - a genuine misreading of case 3's `Z4` word (an extra
+/// `e`, `b22eee96...` misread as `b22eeee96...`) was caught exactly this way, not by re-reading
+/// the scan a second time.
+mod official_annex_d_vectors {
+    use super::*;
+
+    fn word_bytes(word: &str) -> [u8; 8] {
+        let mut bytes = [0u8; 8];
+        for (i, b) in bytes.iter_mut().enumerate() {
+            *b = u8::from_str_radix(&word[i * 2..i * 2 + 2], 16)
+                .expect("valid hex digit in Annex Д transcription");
+        }
+        bytes.reverse();
+        bytes
+    }
+
+    macro_rules! annex_d_test_256 {
+        ($name:ident, $citation:literal, [$k3:literal, $k2:literal, $k1:literal, $k0:literal], [$iv3:literal, $iv2:literal, $iv1:literal, $iv0:literal], [$z0:literal, $z1:literal, $z2:literal, $z3:literal, $z4:literal, $z5:literal, $z6:literal, $z7:literal]) => {
+            #[test]
+            fn $name() {
+                let mut key = [0u8; 32];
+                for (i, w) in [$k0, $k1, $k2, $k3].into_iter().enumerate() {
+                    key[i * 8..i * 8 + 8].copy_from_slice(&word_bytes(w));
+                }
+                let mut iv = [0u8; 32];
+                for (i, w) in [$iv0, $iv1, $iv2, $iv3].into_iter().enumerate() {
+                    iv[i * 8..i * 8 + 8].copy_from_slice(&word_bytes(w));
+                }
+                let mut expected = [0u8; 64];
+                for (i, w) in [$z0, $z1, $z2, $z3, $z4, $z5, $z6, $z7]
+                    .into_iter()
+                    .enumerate()
+                {
+                    expected[i * 8..i * 8 + 8].copy_from_slice(&word_bytes(w));
+                }
+                let mut actual = [0u8; 64];
+                Strumok256::new(&key, &iv).apply_keystream(&mut actual);
+                assert_eq!(actual, expected, concat!("ДСТУ 8845:2019 ", $citation));
+            }
+        };
+    }
+
+    macro_rules! annex_d_test_512 {
+        ($name:ident, $citation:literal, [$k7:literal, $k6:literal, $k5:literal, $k4:literal, $k3:literal, $k2:literal, $k1:literal, $k0:literal], [$iv3:literal, $iv2:literal, $iv1:literal, $iv0:literal], [$z0:literal, $z1:literal, $z2:literal, $z3:literal, $z4:literal, $z5:literal, $z6:literal, $z7:literal]) => {
+            #[test]
+            fn $name() {
+                let mut key = [0u8; 64];
+                for (i, w) in [$k0, $k1, $k2, $k3, $k4, $k5, $k6, $k7]
+                    .into_iter()
+                    .enumerate()
+                {
+                    key[i * 8..i * 8 + 8].copy_from_slice(&word_bytes(w));
+                }
+                let mut iv = [0u8; 32];
+                for (i, w) in [$iv0, $iv1, $iv2, $iv3].into_iter().enumerate() {
+                    iv[i * 8..i * 8 + 8].copy_from_slice(&word_bytes(w));
+                }
+                let mut expected = [0u8; 64];
+                for (i, w) in [$z0, $z1, $z2, $z3, $z4, $z5, $z6, $z7]
+                    .into_iter()
+                    .enumerate()
+                {
+                    expected[i * 8..i * 8 + 8].copy_from_slice(&word_bytes(w));
+                }
+                let mut actual = [0u8; 64];
+                Strumok512::new(&key, &iv).apply_keystream(&mut actual);
+                assert_eq!(actual, expected, concat!("ДСТУ 8845:2019 ", $citation));
+            }
+        };
+    }
+
+    annex_d_test_256!(
+        strumok_256_case_1,
+        "Додаток Д.1.1, с.22, приклад 1",
+        [
+            "8000000000000000",
+            "0000000000000000",
+            "0000000000000000",
+            "0000000000000000"
+        ],
+        [
+            "0000000000000000",
+            "0000000000000000",
+            "0000000000000000",
+            "0000000000000000"
+        ],
+        [
+            "e442d15345dc66ca",
+            "f47d700ecc66408a",
+            "b4cb284b5477e641",
+            "a2afc9092e4124b0",
+            "728e5fa26b11a7d9",
+            "e6a7b9288c68f972",
+            "70eb3606de8ba44c",
+            "aced7956bd3e3de7"
+        ]
+    );
+
+    annex_d_test_256!(
+        strumok_256_case_2,
+        "Додаток Д.1.1, с.22, приклад 2",
+        [
+            "aaaaaaaaaaaaaaaa",
+            "aaaaaaaaaaaaaaaa",
+            "aaaaaaaaaaaaaaaa",
+            "aaaaaaaaaaaaaaaa"
+        ],
+        [
+            "0000000000000000",
+            "0000000000000000",
+            "0000000000000000",
+            "0000000000000000"
+        ],
+        [
+            "a7510b38c7a95d1d",
+            "cd5ea28a15b8654f",
+            "c5e2e2771d0373b2",
+            "98ae829686d5fcee",
+            "45bddf65c523dbb8",
+            "32a93fcdd950001f",
+            "752a7fb588af8c51",
+            "9de92736664212d4"
+        ]
+    );
+
+    annex_d_test_256!(
+        strumok_256_case_3,
+        "Додаток Д.1.1, с.23, приклад 3",
+        [
+            "8000000000000000",
+            "0000000000000000",
+            "0000000000000000",
+            "0000000000000000"
+        ],
+        [
+            "0000000000000004",
+            "0000000000000003",
+            "0000000000000002",
+            "0000000000000001"
+        ],
+        [
+            "fe44a2508b5a2acd",
+            "af355b4ed21d2742",
+            "dcd7fdd6a57a9e71",
+            "5d267bd2739fb5eb",
+            "b22eee96b2832072",
+            "c7de6a4cdaa9a847",
+            "72d5da93812680f2",
+            "4a0acb7e93da2ce0"
+        ]
+    );
+
+    annex_d_test_256!(
+        strumok_256_case_4,
+        "Додаток Д.1.1, с.23, приклад 4",
+        [
+            "aaaaaaaaaaaaaaaa",
+            "aaaaaaaaaaaaaaaa",
+            "aaaaaaaaaaaaaaaa",
+            "aaaaaaaaaaaaaaaa"
+        ],
+        [
+            "0000000000000004",
+            "0000000000000003",
+            "0000000000000002",
+            "0000000000000001"
+        ],
+        [
+            "e6d0efd9cea5abcd",
+            "1e78ba1a9b0e401e",
+            "bcfbea2c02ba0781",
+            "1bd375588ae08794",
+            "5493cf21e114c209",
+            "66cd5d7cc7d0e69a",
+            "a5cdb9f3380d07fa",
+            "2940d61a4d4e9ce4"
+        ]
+    );
+
+    annex_d_test_512!(
+        strumok_512_case_1,
+        "Додаток Д.2.1, с.35, приклад 1",
+        [
+            "8000000000000000",
+            "0000000000000000",
+            "0000000000000000",
+            "0000000000000000",
+            "0000000000000000",
+            "0000000000000000",
+            "0000000000000000",
+            "0000000000000000"
+        ],
+        [
+            "0000000000000000",
+            "0000000000000000",
+            "0000000000000000",
+            "0000000000000000"
+        ],
+        [
+            "f5b9ab51100f8317",
+            "898ef2086a4af395",
+            "59571fecb5158d0b",
+            "b7c45b6744c71fbb",
+            "ff2efcf05d8d8db9",
+            "7a585871e5c419c0",
+            "6b5c4691b9125e71",
+            "a55be7d2b358ec6e"
+        ]
+    );
+
+    annex_d_test_512!(
+        strumok_512_case_2,
+        "Додаток Д.2.1, с.35, приклад 2",
+        [
+            "aaaaaaaaaaaaaaaa",
+            "aaaaaaaaaaaaaaaa",
+            "aaaaaaaaaaaaaaaa",
+            "aaaaaaaaaaaaaaaa",
+            "aaaaaaaaaaaaaaaa",
+            "aaaaaaaaaaaaaaaa",
+            "aaaaaaaaaaaaaaaa",
+            "aaaaaaaaaaaaaaaa"
+        ],
+        [
+            "0000000000000000",
+            "0000000000000000",
+            "0000000000000000",
+            "0000000000000000"
+        ],
+        [
+            "d2a6103c50bd4e04",
+            "dc6a21af5eb13b73",
+            "df4ca6cb07797265",
+            "f453c253d8d01876",
+            "039a64dc7a01800c",
+            "688ce327dccb7e84",
+            "41e0250b5e526403",
+            "9936e478aa200f22"
+        ]
+    );
+
+    annex_d_test_512!(
+        strumok_512_case_3,
+        "Додаток Д.2.1, с.36, приклад 3",
+        [
+            "8000000000000000",
+            "0000000000000000",
+            "0000000000000000",
+            "0000000000000000",
+            "0000000000000000",
+            "0000000000000000",
+            "0000000000000000",
+            "0000000000000000"
+        ],
+        [
+            "0000000000000004",
+            "0000000000000003",
+            "0000000000000002",
+            "0000000000000001"
+        ],
+        [
+            "cca12eae8133aaaa",
+            "528d85507ce8501d",
+            "da83c7fe3e1823f1",
+            "21416ebf63b71a42",
+            "26d76d2bf1a625eb",
+            "eec66ee0cd0b1efc",
+            "02dd68f338a345a8",
+            "47538790a5411adb"
+        ]
+    );
+
+    annex_d_test_512!(
+        strumok_512_case_4,
+        "Додаток Д.2.1, с.36, приклад 4",
+        [
+            "aaaaaaaaaaaaaaaa",
+            "aaaaaaaaaaaaaaaa",
+            "aaaaaaaaaaaaaaaa",
+            "aaaaaaaaaaaaaaaa",
+            "aaaaaaaaaaaaaaaa",
+            "aaaaaaaaaaaaaaaa",
+            "aaaaaaaaaaaaaaaa",
+            "aaaaaaaaaaaaaaaa"
+        ],
+        [
+            "0000000000000004",
+            "0000000000000003",
+            "0000000000000002",
+            "0000000000000001"
+        ],
+        [
+            "965648e775c717d5",
+            "a63c2a7376e92df3",
+            "0b0eb0bbd47ca267",
+            "ea593d979ae5bd39",
+            "d773b5e5193cafe1",
+            "b0a26671d259422b",
+            "85b2aa326b280156",
+            "511ace6451435f0c"
+        ]
+    );
 }
