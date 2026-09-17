@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-f5990f63.js";
+            window.path_to_searchindex_js = "searchindex-ca277895.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-6b977b4b.js"></script>
@@ -8236,6 +8236,21 @@ the owner directly rather than fixed (unverifiable from repo content alone). Clo
 review ran after the D-199 findings section was drafted (opening review before Phase 1 also
 happened, per the gate-at-both-ends rule) - see D-199’s own closing paragraph for what it found
 and the follow-up fixes.</p>
+</li>
+<li>
+<p><input disabled="" type="checkbox"> <strong>T-231</strong> (2026-09-17) <strong>Investigate flaky VmRSS threshold in <code>bindings-dotnet</code>’s
+<code>MemoryLeakTests.SecretstreamAndBoxLoopDoesNotLeak</code> (T-213).</strong> Failed once in CI on commit
+<code>43ce442</code> (<code>docs</code>: T-230 phase 3 - a pure <code>docs/TASKS.md</code> text edit, no <code>.NET</code>/native code
+touched) - VmRSS grew 65404928 bytes over 20000 iterations against an 8388608-byte threshold,
+<code>ubuntu-latest</code>. Re-ran clean on the very next commit (<code>0814ff2</code>, identical binding code) and
+every other of the last 15 <code>bindings-dotnet</code> runs across both this range and further back -
+a single isolated failure, not a regression tied to any code change (per T-100/D-59, confirmed
+via <code>gh run list --workflow bindings-dotnet.yml</code>, not assumed from the later green run alone).
+Owner asked this be tracked rather than dismissed as a one-off. Likely cause: CI-runner GC
+non-determinism against a fixed byte threshold (same shape of risk as T-172/D-161’s stash/pop
+benchmark staleness, different mechanism) - not yet root-caused. Candidate fixes to evaluate:
+raise the threshold, force a GC/collect before measuring, add a retry-once-on-fail step, or
+switch to a relative/percentile-based check instead of a fixed byte count.</p>
 </li>
 <li>
 <p><input disabled="" type="checkbox" checked=""> <strong>T-148</strong> <strong>Corrected a false “font-encoding failure” claim across 5 PDFs; wrote
