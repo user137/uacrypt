@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e7ed95d1.js";
+            window.path_to_searchindex_js = "../searchindex-e6aae2d4.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-6b977b4b.js"></script>
@@ -198,6 +198,12 @@ examples, all 8 cases passing (<code>docs/DECISIONS.md</code> D-197, <code>crate
 <code>official_annex_d_vectors</code> module). The UAPKI-attributed vectors above are now confirmed correct,
 not merely trusted on the library’s word. Not lifted: Annex Б/В/Г’s own constant tables (S-box,
 Tᵢ[a], Mulα) were read but not transcription-verified in full against <code>hazmat::tables</code>.</p>
+<p><strong>Update, 2026-09-17:</strong> a ~100-entry spot check (first/last few entries of all 10 <code>Tᵢ[a]</code>/<code>Mulα</code>/
+<code>Mulα⁻¹</code> tables, read directly off Додаток В/Г of the genuine scan) found zero mismatches against
+the compiled constants (<code>docs/DECISIONS.md</code> D-198). Still not a full transcription verification -
+roughly 96% of the 2560 entries were never read against the scan - but the specific concern that
+the transcription source (<code>oracles/uapki</code>’s <code>dstu8845.c</code>) might diverge from the primary text at
+either end of any table is now checked and found not to hold, for every table.</p>
 <h2 id="parameters-section-2"><a class="header" href="#parameters-section-2">Parameters (Section 2)</a></h2>
 <ul>
 <li>Word size: 64 bits (unlike SNOW 2.0’s 32-bit words).</li>

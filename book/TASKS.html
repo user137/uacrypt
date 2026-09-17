@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-e7ed95d1.js";
+            window.path_to_searchindex_js = "searchindex-e6aae2d4.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-6b977b4b.js"></script>
@@ -7944,6 +7944,18 @@ line + Strumok section), and both languages of the gh-pages landing page (status
 full - corroborated only at the entries the 8 vectors reach. The scan itself
 (<code>docs/papers/DSTU_8845-2019.pdf</code>) is gitignored, never committed, same reasoning as the DSTU
 9041 files.</p>
+</li>
+<li>
+<p><input disabled="" type="checkbox" checked=""> <strong>T-229</strong> (2026-09-17) <strong>Spot-checked Додаток В/Г’s constant tables (<code>Tᵢ[a]</code>, <code>Mulα</code>/
+<code>Mulα⁻¹</code>) against the genuine DSTU 8845:2019 scan - see <code>docs/DECISIONS.md</code> D-198.</strong> Owner asked
+whether T-228’s remaining “constant tables not transcription-verified” gap was worth closing by
+transferring the full tables from the standard. Full transcription (2560 hex words) was assessed
+and rejected as disproportionate transcription-error risk for a mechanical derivation of
+already-oracle-confirmed inputs (D-163’s pattern); a ~100-entry spot check across all 10 tables
+(first/last entries of each) was done instead, directly against <code>docs/papers/DSTU_8845-2019.pdf</code>
+rendered via <code>pdftoppm</code> - zero mismatches. Updated everywhere T-228’s “not transcription-verified
+in full” caveat was stated (<code>CLAUDE.md</code> x3, <code>docs/ORACLES.md</code>, <code>docs/pseudocode/strumok.md</code>) to
+note the spot check without overclaiming full verification.</p>
 </li>
 <li>
 <p><input disabled="" type="checkbox" checked=""> <strong>T-148</strong> <strong>Corrected a false “font-encoding failure” claim across 5 PDFs; wrote

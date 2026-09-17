@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-e7ed95d1.js";
+            window.path_to_searchindex_js = "searchindex-e6aae2d4.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-6b977b4b.js"></script>
@@ -502,6 +502,12 @@ unlike D-104’s “upgrade, not closure,” this one genuinely is a closure for
 claim specifically. Untouched by this: the Додаток Б/В/Г constant tables (S-box, Tᵢ[a], Mulα)
 are corroborated only at the entries these 8 vectors happen to reach, not independently
 transcription-verified in full - a real, stated open item, not an oversight.</li>
+<li><strong>Spot-checked 2026-09-17</strong> (<code>docs/DECISIONS.md</code> D-198): ~100 of the 2560 <code>Tᵢ[a]</code>/<code>Mulα</code>/
+<code>Mulα⁻¹</code> entries (first/last few of all 10 tables, spread across every table rather than
+clustered) read directly off the same genuine scan and compared to the compiled constants -
+zero mismatches. Deliberately not a full transcription (2560 hex words by hand is exactly
+D-163’s failure mode for a mechanical derivation of already-oracle-confirmed inputs) - raises
+confidence, does not upgrade the “not independently transcription-verified in full” status above.</li>
 </ul>
 <h3 id="dstu-4145-signature"><a class="header" href="#dstu-4145-signature">DSTU 4145 (signature)</a></h3>
 <ul>

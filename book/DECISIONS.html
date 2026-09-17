@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-e7ed95d1.js";
+            window.path_to_searchindex_js = "searchindex-e6aae2d4.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-6b977b4b.js"></script>
@@ -12294,6 +12294,54 @@ for other status-line fixes).</p>
 text redistribution rights are not ours to grant”) is extended to cover this file too, same
 reasoning, kept local only like <code>DSTU_9041-2020_Part of.pdf</code>. This entry cites clause/annex and
 page number, not the file.</p>
+<h2 id="d-198-t-229---додаток-вг-constant-tables-spot-checked-against-the-genuine-scan---raises-confidence-does-not-close-d-197s-own-remaining-caveat"><a class="header" href="#d-198-t-229---додаток-вг-constant-tables-spot-checked-against-the-genuine-scan---raises-confidence-does-not-close-d-197s-own-remaining-caveat">D-198: T-229 - Додаток В/Г constant tables spot-checked against the genuine scan - raises confidence, does not close D-197’s own remaining caveat</a></h2>
+<p><strong>What prompted this</strong>: D-197 explicitly left open that Додаток Б/В/Г’s constant tables (S-box,
+<code>Tᵢ[a]</code>, <code>Mulα</code>/<code>Mulα⁻¹</code>) were “read (page numbers, structure) but not transcribed or compared
+against <code>hazmat::tables</code>”. The owner asked whether it’s worth transferring the standard’s own
+worked examples and other constant tables in full, now that the scan is in hand. Full
+transcription was considered and rejected, in favor of a targeted spot check.</p>
+<p><strong>Why not full transcription</strong>: <code>Tᵢ[a]</code> is 8x256 = 2048 sixty-four-bit words; <code>Mulα</code>/<code>Mulα⁻¹</code> add
+another 256 each - 2560 entries total. Manually retyping that volume of hex is exactly the failure
+mode D-163 already named (“transcribing long same-character runs… is as failure-prone as OCR”),
+for tables that are a mechanical derivation of already-oracle-confirmed inputs (the S-box/MDS
+matrix are shared with Kalyna/Kupyna and independently cross-checked against real Bouncy Castle,
+D-10/D-13). The transcription-error risk of a full re-transcription outweighs its marginal
+security value here.</p>
+<p><strong>What was done instead</strong>: rendered Додаток В (с.12-19, <code>Tᵢ[a]</code> tables) and Додаток Г (с.20-21,
+<code>Mulα</code>/<code>Mulα⁻¹</code>) directly from <code>docs/papers/DSTU_8845-2019.pdf</code> via <code>pdftoppm</code> at 100 DPI, and read
+them against <code>hazmat::strumok</code>’s compiled <code>T0..T7</code>/<code>MUL_ALPHA</code>/<code>MUL_ALPHA_INV</code> constants
+(<code>crates/dstu-core/src/hazmat/strumok.rs</code>). For each of the 8 <code>Tᵢ</code> tables, the first 4 printed
+entries were compared to the array’s first 4 elements; page breaks happened to also show the full
+tail of <code>T0</code>, <code>T5</code>, and <code>T6</code>, so those three got their last 2-4 entries checked too. For
+<code>MUL_ALPHA</code>: first 11 and last 3 entries (a page break landed at its very end). For
+<code>MUL_ALPHA_INV</code>: first 11 entries. Roughly 100 of the 2560 entries checked this way, spread across
+every one of the 10 tables rather than clustered in one - zero mismatches. <strong>The S-box (Додаток Б)
+was deliberately out of scope for this check</strong> - unlike <code>Tᵢ[a]</code>/<code>Mulα</code>/<code>Mulα⁻¹</code>, it already has a
+real independent oracle (Kalyna/Kupyna’s own cross-check against Bouncy Castle, D-10/D-13), so a
+spot check against this scan would add confirmation of a fact already established more strongly
+elsewhere, not close a real gap. Every place this finding is cited names <code>Tᵢ[a]</code>/<code>Mulα</code>/<code>Mulα⁻¹</code>
+specifically, never the S-box, to avoid a status line silently implying it was checked here too.</p>
+<p><strong>No byte-order transform needed, unlike Annex Д</strong>: Додаток В/Г print each word in the same
+hex-literal convention the compiled <code>u64</code> constants already use (most-significant byte first,
+matching Rust’s own big-endian hex literal reading) - direct digit-for-digit comparison, no
+reversal or reordering step the way D-197 had to re-derive for Annex Д’s K/IV/Z words. Worth
+stating explicitly (D-163’s “a convention found once still needs re-checking each new occurrence”
+rule, applied here in the direction of confirming no transform applies, not assuming one carries
+over) so a future reader doesn’t assume Annex Д’s transform is needed here too.</p>
+<p><strong>What this closes, and what it doesn’t</strong>: this raises confidence that the transcription source
+(<code>oracles/uapki</code>’s <code>dstu8845.c</code>, the origin of these compiled constants per the module’s own doc
+comment) matches the primary text’s own printed tables at both ends of every table, not just the
+specific entries the 8 Annex Д keystream vectors happen to reach. It does <strong>not</strong> constitute full
+transcription verification - roughly 96% of the 2560 entries were never read against the scan at
+all. The honest status is “spot-checked, zero mismatches found,” not “fully verified” -
+<code>docs/pseudocode/strumok.md</code>, <code>CLAUDE.md</code> (three places), <code>docs/ORACLES.md</code>,
+<code>crates/dstu-core/src/lib.rs</code>, <code>crates/dstu-core/src/crypto_stream.rs</code>, and
+<code>crates/uacrypt/src/lib.rs</code>’s <code>TOP_LEVEL_HELP</code> are updated to say exactly that, appending to their
+existing D-197 caveat rather than replacing it with an overclaiming one - a repo-wide grep for the
+caveat sentence, not just the file list D-197 itself touched, per this project’s own “a task-ID
+grep sweep is necessary but not sufficient” rule.</p>
+<p><strong>Not committed</strong>: same as D-197 - the rendered page images were scratch files only, never
+committed anywhere; the scan itself stays gitignored.</p>
 
                     </main>
 

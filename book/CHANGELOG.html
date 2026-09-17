@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-e7ed95d1.js";
+            window.path_to_searchindex_js = "searchindex-e6aae2d4.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-6b977b4b.js"></script>
@@ -210,6 +210,12 @@ cases (4×256-bit, 4×512-bit) passing. Status text updated everywhere it appear
 JSON files, the crate’s own doc comment, <code>docs/ORACLES.md</code>, and the gh-pages landing page (both
 languages). Internal constant tables (S-box, Tᵢ[a], Mulα) remain corroborated only indirectly, not
 independently transcription-verified. See <code>docs/DECISIONS.md</code> D-197.</p>
+</li>
+<li>
+<p>Strumok’s <code>Tᵢ[a]</code>/<code>Mulα</code>/<code>Mulα⁻¹</code> constant tables spot-checked (~100 of 2560 entries, spread
+across all 10 tables) directly against the genuine DSTU 8845:2019 scan - zero mismatches. Not a
+full transcription verification, but raises confidence beyond D-197’s “corroborated only at the
+entries the 8 vectors reach.” See <code>docs/DECISIONS.md</code> D-198.</p>
 </li>
 <li>
 <p><code>bindings/ruby</code>’s gemspec/Cargo.toml description and README, plus root <code>README.md</code> and the
