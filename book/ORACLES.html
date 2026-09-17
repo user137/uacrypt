@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-65fa2b5e.js";
+            window.path_to_searchindex_js = "searchindex-f5990f63.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-6b977b4b.js"></script>
@@ -630,8 +630,9 @@ vector oracle for that security level. See <code>docs/pseudocode/dstu9041.md</co
 “Implementation status” sections and <code>docs/TASKS.md</code> T-182.</li>
 </ul>
 <h2 id="test-vector-convention"><a class="header" href="#test-vector-convention">Test-vector convention</a></h2>
-<p>Populated for Kalyna and Kupyna. The Rust loader exists now (<code>crates/dstu-core/tests/kupyna.rs</code>,
-per D-10) — the earlier “waits for the first primitive” caveat no longer applies to Kupyna.</p>
+<p><strong>Updated - populated for Kalyna, Kupyna, DSTU 4145, and Strumok</strong>, not just the original two this
+section was written against. The Rust loader exists now (<code>crates/dstu-core/tests/kupyna.rs</code>, per
+D-10) — the earlier “waits for the first primitive” caveat no longer applies to Kupyna.</p>
 <ul>
 <li>Vectors live at <code>crates/dstu-core/tests/vectors/&lt;algorithm&gt;/&lt;case&gt;.json</code> — one file per
 block/key-size or hash-size variant, plain hex fields, human-diffable, not a binary blob.</li>
@@ -644,7 +645,9 @@ the Rust implementation — black-box, per <code>docs/rust_ai_ruleset.md</code> 
 <li><strong>Same files, consumed cross-language too:</strong> <code>tests/oracle-harness/{java,dotnet}/</code> run these
 vectors against real Bouncy Castle directly (not the Rust port), via the published Maven/NuGet
 packages — one vector format, multiple independent consumers. Both actually run and pass (all
-10 Kalyna + all 12 Kupyna cases). No cryptonite/C harness — tried on 2026-07-22 with a real
+10 Kalyna + all 12 Kupyna cases; the Java harness additionally carries dedicated DSTU 4145
+generators/oracles, <code>Dstu4145VectorGen{,257}.java</code>/<code>Dstu4145T152Oracle.java</code>, per the DSTU 4145
+section above). No cryptonite/C harness — tried on 2026-07-22 with a real
 local GCC and dropped: cryptonite’s own source doesn’t compile clean on a modern compiler
 (unrelated to Kalyna/Kupyna — an error in <code>dstu4145_prng_internal.c</code>), and the added value was
 already modest given the two harnesses above already independently confirm these vectors. See

@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-65fa2b5e.js";
+            window.path_to_searchindex_js = "searchindex-f5990f63.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-6b977b4b.js"></script>
@@ -4312,7 +4312,7 @@ fixed as part of T-204 - out of scope for a binding-wiring task, and the fix bel
 <code>dstu-core</code>’s own hazmat benchmark code, not in any binding.</p>
 </li>
 <li>
-<p>[~] <strong>T-206</strong> <strong>Phase 1 done 2026-08-10 (m=257 root-cause fix), phase 2 done 2026-08-10 and
+<p><input disabled="" type="checkbox" checked=""> <strong>T-206</strong> <strong>Phase 1 done 2026-08-10 (m=257 root-cause fix), phase 2 done 2026-08-10 and
 disproved Phase 1’s own sufficiency, Phase 2b (real fix) done same session, phases 3-4
 contingent on the next real CI number - <code>cargo miri test (dstu-core)</code> is
 exceeding its 240-min CI budget again (real timeout, not concurrency-group noise - confirmed
@@ -4430,6 +4430,14 @@ so that file needed no fix and none was assumed.
        failure - the same "verify a CI number via `gh run view`, don't assume" discipline this
        file already states applies to setting the number in the first place, not just to
        confirming a run's conclusion.
+
+**Closed by T-211 (2026-08-29, D-195/D-172), not left open here** - a later real CI run
+showed the job could never fit in one job at any `timeout-minutes` value (~9-10h total, not
+the thin-margin case items 3-4 above were planned around), so T-211 split it into a
+dynamically-discovered per-test-file matrix instead. Found during T-230's documentation
+audit: this entry was still sitting on its original `[~]` partial marker with items 3-4 open,
+never updated with a forward pointer once T-211 actually resolved it - fixed here rather than
+left for a future reader to wonder whether the miri timeout was ever really fixed.
 </code></pre>
 </li>
 <li>
@@ -8207,6 +8215,29 @@ in full” caveat was stated (<code>CLAUDE.md</code> x3, <code>docs/ORACLES.md</
 note the spot check without overclaiming full verification.</p>
 </li>
 <li>
+<p><input disabled="" type="checkbox" checked=""> <strong>T-230</strong> (2026-09-17) <strong>Scrupulous documentation-freshness audit, whole repo, file by file -
+see <code>docs/DECISIONS.md</code> D-199 for the full methodology and finding classes.</strong> Owner asked for a
+systematic pass after independently spotting a stale claim <code>docs-api.yml</code>’s own comment carried
+(“docs.rs only exists once published - not started”, though T-17 shipped weeks earlier). Plan
+reviewed by <code>advisor()</code> before starting. All 16 <code>.github/workflows/*.yml</code>, every narrative
+<code>docs/*.md</code>, <code>CLAUDE.md</code>’s remaining sections, <code>crates/*/README.md</code>, all 8 <code>bindings/*/README.md</code>
+read and each checkable claim verified against real state (grep into code, <code>gh release list</code>/
+<code>gh run list</code>, <code>cargo audit</code>/<code>cargo tree</code>/<code>cargo test --doc</code>, a live fetch of the published
+gh-pages site) - not judged from memory. <code>docs/DECISIONS.md</code>/<code>docs/TASKS.md</code> themselves checked
+structurally (marker integrity, recent-entry spot-check, CHANGELOG-vs-<code>gh release list</code>
+cross-check) rather than read end to end, per their own append-only nature. Real findings across
+~20 files, most in the same class as the triggering example (a status upgrade - T-17/T-164
+registry publishes, D-197/D-198 Strumok confirmation - that never propagated to every place the
+old status was stated); one structural <code>docs/TASKS.md</code> fix (T-206’s dangling <code>[~]</code> marker,
+superseded by T-211 with no forward pointer); one legal-status cross-reference
+(<code>docs/dstu9041-8845-info-request-draft.md</code> marked “not sent” when D-104 describes its own
+filed-and-answered outcome). <code>.claude.local.md</code> (gitignored) read last, one finding reported to
+the owner directly rather than fixed (unverifiable from repo content alone). Closing <code>advisor()</code>
+review ran after the D-199 findings section was drafted (opening review before Phase 1 also
+happened, per the gate-at-both-ends rule) - see D-199’s own closing paragraph for what it found
+and the follow-up fixes.</p>
+</li>
+<li>
 <p><input disabled="" type="checkbox" checked=""> <strong>T-148</strong> <strong>Corrected a false “font-encoding failure” claim across 5 PDFs; wrote
 <code>docs/pseudocode/dstu9041.md</code>; surfaced 3 unread cryptanalysis papers - see <code>docs/DECISIONS.md</code>
 D-105.</strong> Owner asked why the Skorobahatko DSTU 9041 thesis PDF “doesn’t get recognized” -
@@ -10889,10 +10920,11 @@ macro system.</p>
 type names in every binding, same as the C ABI and core itself; tag-byte dispatch stays a
 <code>uacrypt</code>-CLI-only concern (D-118’s “don’t duplicate wire-format logic into every binding” lesson
 generalized).</p>
-<h3 id="publishing-all-registries--separate-owner-gated-not-scheduled"><a class="header" href="#publishing-all-registries--separate-owner-gated-not-scheduled">Publishing (all registries) — separate, owner-gated, not scheduled</a></h3>
+<h3 id="publishing-all-registries--separate-owner-gated-requested-per-registry-as-it-happens"><a class="header" href="#publishing-all-registries--separate-owner-gated-requested-per-registry-as-it-happens">Publishing (all registries) — separate, owner-gated, requested per-registry as it happens</a></h3>
 <p>One explicit ask per registry (PyPI/npm/Maven Central/NuGet/RubyGems/Packagist), the same class of
-decision T-17 already applies to crates.io. Not started, not broken into steps above — tracked only
-once actually requested.</p>
+decision T-17 already applied to crates.io. <strong>Updated: three of six are done</strong> — PyPI and npm
+(T-164) and RubyGems (T-164 follow-up, D-194) are live; Maven Central/NuGet/Packagist remain not
+started, each needing its own separate owner ask.</p>
 <h3 id="t-162--github-facing-docs--gh-pages-site-refresh-last-after-every-binding-lands"><a class="header" href="#t-162--github-facing-docs--gh-pages-site-refresh-last-after-every-binding-lands">T-162 — GitHub-facing docs + <code>gh-pages</code> site refresh (last, after every binding lands)</a></h3>
 <p><strong>Done in full 2026-08-03.</strong> Requested 2026-08-02: once all bindings above exist, the project’s
 public-facing surfaces — <code>README.md</code>, the doc set under <code>docs/</code>, and the separate <code>gh-pages</code> branch
@@ -11555,8 +11587,9 @@ vector oracle for that security level. See <code>docs/pseudocode/dstu9041.md</co
 “Implementation status” sections and <code>docs/TASKS.md</code> T-182.</li>
 </ul>
 <h2 id="test-vector-convention"><a class="header" href="#test-vector-convention">Test-vector convention</a></h2>
-<p>Populated for Kalyna and Kupyna. The Rust loader exists now (<code>crates/dstu-core/tests/kupyna.rs</code>,
-per D-10) — the earlier “waits for the first primitive” caveat no longer applies to Kupyna.</p>
+<p><strong>Updated - populated for Kalyna, Kupyna, DSTU 4145, and Strumok</strong>, not just the original two this
+section was written against. The Rust loader exists now (<code>crates/dstu-core/tests/kupyna.rs</code>, per
+D-10) — the earlier “waits for the first primitive” caveat no longer applies to Kupyna.</p>
 <ul>
 <li>Vectors live at <code>crates/dstu-core/tests/vectors/&lt;algorithm&gt;/&lt;case&gt;.json</code> — one file per
 block/key-size or hash-size variant, plain hex fields, human-diffable, not a binary blob.</li>
@@ -11569,7 +11602,9 @@ the Rust implementation — black-box, per <code>docs/rust_ai_ruleset.md</code> 
 <li><strong>Same files, consumed cross-language too:</strong> <code>tests/oracle-harness/{java,dotnet}/</code> run these
 vectors against real Bouncy Castle directly (not the Rust port), via the published Maven/NuGet
 packages — one vector format, multiple independent consumers. Both actually run and pass (all
-10 Kalyna + all 12 Kupyna cases). No cryptonite/C harness — tried on 2026-07-22 with a real
+10 Kalyna + all 12 Kupyna cases; the Java harness additionally carries dedicated DSTU 4145
+generators/oracles, <code>Dstu4145VectorGen{,257}.java</code>/<code>Dstu4145T152Oracle.java</code>, per the DSTU 4145
+section above). No cryptonite/C harness — tried on 2026-07-22 with a real
 local GCC and dropped: cryptonite’s own source doesn’t compile clean on a modern compiler
 (unrelated to Kalyna/Kupyna — an error in <code>dstu4145_prng_internal.c</code>), and the added value was
 already modest given the two harnesses above already independently confirm these vectors. See
@@ -15523,9 +15558,9 @@ CSPRNG choice, once a higher-level layer exists to call it from).</li>
 <li>Curve domain-parameter tables beyond m=163 (<code>DSTU4145NamedCurves.java</code>, Annex Г’s recommended
 curves), compressed/precomputed point encoding for interoperable serialization
 (<code>DSTU4145PointEncoder.java</code>, <code>DSTU4145ECBinary.java</code>) — separate concerns from the sign/verify
-core above. <code>m=257</code> specifically is now planned, not just enumerated by BC — see <code>docs/TASKS.md</code>
-T-199 / <code>docs/DECISIONS.md</code> D-185 for why (real Diia-issued certificates, not just the standard
-allowing it) and the domain parameters extracted from them.</li>
+core above. <code>m=257</code> specifically is now implemented (<code>crypto_sign257</code>, <code>docs/TASKS.md</code> T-199,
+<code>docs/DECISIONS.md</code> D-185/D-186), not just enumerated by BC — real Diia-issued certificates, not
+just the standard allowing it, motivated pulling the domain parameters from them.</li>
 </ul>
 <h2 id="test-vectors-3"><a class="header" href="#test-vectors-3">Test vectors</a></h2>
 <p><code>crates/dstu-core/tests/vectors/dstu4145/gf2m163.json</code> — the official text’s own Annex B.1 worked
@@ -28090,6 +28125,90 @@ caveat sentence, not just the file list D-197 itself touched, per this project�
 grep sweep is necessary but not sufficient” rule.</p>
 <p><strong>Not committed</strong>: same as D-197 - the rendered page images were scratch files only, never
 committed anywhere; the scan itself stays gitignored.</p>
+<h2 id="d-199-t-230---scrupulous-documentation-freshness-audit-whole-repo-file-by-file"><a class="header" href="#d-199-t-230---scrupulous-documentation-freshness-audit-whole-repo-file-by-file">D-199: T-230 - Scrupulous documentation-freshness audit, whole repo, file by file</a></h2>
+<p><strong>What prompted this.</strong> During D-197/D-198 (Strumok verification) the owner independently spotted
+a stale claim in <code>docs-api.yml</code> (“docs.rs only exists once published - not started”, though T-17
+had shipped weeks earlier) and asked for a systematic pass: every doc file, read and verified
+against actual current state - code, CI config, git tags/releases, live registries - not assumed
+from memory or “probably still true.” Plan drafted, reviewed by <code>advisor()</code> before starting
+(caught: drop the originally-planned fork-based research mechanism in favor of direct read-verify-
+fix per file, since verification here means running a real command per claim, not summarizing a
+file; fix-per-file/commit-per-batch instead of batching all fixes to the end; a sharper test for
+<code>docs/PERFORMANCE.md</code>; write the two already-known findings into the plan explicitly).</p>
+<p><strong>Scope and method.</strong> All 16 <code>.github/workflows/*.yml</code>, then every narrative <code>docs/*.md</code> file
+(batched by theme: status/overview, process/meta, verification/performance, pseudocode, crate/
+binding READMEs, ancillary artifacts), <code>CLAUDE.md</code>’s remaining sections, then a bounded check of
+<code>docs/TASKS.md</code> (marker-integrity grep + spot-check of the most recent ~25 entries, not a full
+8000-line read) and <code>docs/CHANGELOG.md</code> (version-header cross-check against <code>gh release list</code>).
+<code>docs/DECISIONS.md</code> and <code>docs/TASKS.md</code> themselves were deliberately NOT rewritten wholesale -
+both are append-only logs by this project’s own convention; a stale entry gets a pointer-forward
+note, never a silent rewrite. <code>docs/rust_ai_ruleset.md</code> (external, canonical as-is) and the OCR
+transcripts under <code>docs/papers/</code> were out of scope by design. Each claim was checked with an actual
+command - <code>grep</code>/<code>Read</code> into the real source, <code>gh release list</code>/<code>gh run list</code>, <code>cargo audit</code>,
+<code>cargo tree</code>, <code>cargo test --doc</code>, a live <code>curl</code> of the published gh-pages site - not judged by eye.</p>
+<p><strong>What was found - by class, not enumerated finding-by-finding (see the individual commits on
+<code>master</code>, tagged <code>T-230 phase N batch M</code>, for exact diffs):</strong></p>
+<ul>
+<li><strong>The single largest recurring class</strong>: registry-publish status frozen at “not yet published”
+in a dozen-plus places across <code>CLAUDE.md</code>, <code>docs/dstu-crypto-project.md</code>, <code>docs/release- readiness.md</code> (repeated 5+ times), <code>docs/user-journey-gaps.md</code> (this document’s own central
+thesis for two of its five personas), <code>docs/SECURITY.md</code>, <code>docs/CONTRIBUTING.md</code>,
+<code>docs/bindings-strategy.md</code>, <code>.github/workflows/release.yml</code>, and both published crate READMEs -
+T-17 (crates.io, done 2026-08-09) and T-164 (PyPI/npm/RubyGems, done since) had each closed real
+gaps that a dozen separate sentences never caught up to.</li>
+<li><strong>Strumok’s D-197/D-198 primary-text-confirmation status</strong> (this session’s own earlier work) had
+the identical propagation problem in files outside the sweep D-197/D-198 themselves already
+covered: <code>docs/release-readiness.md</code> (3 places), <code>crates/dstu-core/README.md</code> (the actual
+crates.io-published text).</li>
+<li><strong>A genuinely stale “not built yet” claim about something long since built</strong>: <code>docs/dstu-crypto- project.md</code>’s “On the horizon” section described <code>dstu-core-capi</code> as a speculative, unscheduled
+idea with “no design work done” - it’s been a real root-workspace member since T-158, described
+elsewhere in the very same file.</li>
+<li><strong>Undersold current scope</strong>: <code>docs/cross-language-style-guide.md</code> still framed itself around 5
+languages and bindings “whichever get built first” (all 8 landed 2026-08-03); <code>docs/ORACLES.md</code>’s
+test-vector-convention summary said “Kalyna and Kupyna” when DSTU 4145/Strumok also have vectors
+and their own oracle-harness coverage; <code>CLAUDE.md</code>/<code>docs/CONTRIBUTING.md</code> described <code>cargo xtask ci</code>’s optional layers as “miri/kani/book/fuzz/audit/deny/oracle harnesses” when the real loop
+also runs every binding’s own build+test, <code>capi</code>, both C++ static analyzers, <code>qemu-stm32</code>, and
+the streaming-boundedness proof.</li>
+<li><strong>A genuinely missing reference</strong>: <code>docs/CLI.md</code> (the canonical CLI command reference per its own
+new <code>CLAUDE.md</code> “Documentation map” row, added this pass) was missing 9 of <code>uacrypt</code>’s 27 real
+subcommands entirely - <code>sign257</code>/<code>box512</code> families, <code>kupyna-digest</code>, <code>strumok-crypt</code>, and 5
+hazmat mode-of-operation tools (<code>kalyna-gcm</code>/<code>cmac</code>/<code>gmac</code>/<code>kw</code>/<code>xts</code>). <code>crates/uacrypt/README.md</code>
+additionally carried a hardcoded <code>v0.1.0</code> banner (actual: 0.3.8) with no lint covering it, and was
+entirely missing <code>crypto_box</code>/<code>box-*</code> from its own command list despite showing <code>sign</code>/<code>verify</code>.</li>
+<li><strong>A self-contradicting claim</strong>: <code>docs/SECURITY.md</code> said <code>cargo audit</code>/<code>cargo deny</code> “currently
+check an empty dependency tree (zero external dependencies)” five lines above its own supply-chain
+table listing 5 real dependencies with real versions.</li>
+<li><strong>A real, unrelated legal-status question resolved by cross-referencing</strong>: <code>docs/dstu9041-8845- info-request-draft.md</code> said “not yet sent” - <code>docs/DECISIONS.md</code> D-104 turned out to describe the
+filed and answered outcome of this exact request (same agency, same two standards), never linked
+back to the draft.</li>
+<li><strong>A structural TASKS.md gap, not a narrative one</strong>: T-206 (a CI-timeout investigation) sat on its
+original <code>[~]</code> partial marker with two sub-items still open, months after T-211 actually and
+fully resolved the underlying problem a different way - no forward pointer connected them.
+Closed here per this project’s own “never silently deprecate, add pointer-forward” rule.</li>
+<li><strong>One pseudocode staleness</strong>: <code>docs/pseudocode/dstu4145.md</code> said <code>m=257</code> was “now planned” when
+<code>crypto_sign257</code> has been fully implemented and wired into every binding for weeks.</li>
+</ul>
+<p><strong>What this does not claim.</strong> This pass fixed every stale claim it found and verified, not every
+stale claim that could exist - <code>docs/DECISIONS.md</code>’s 13000+ lines and <code>docs/TASKS.md</code>’s 8000+ lines
+were checked structurally and via spot-check, not read end to end (see “Scope and method” above for
+why that’s the right call for an append-only log, not a shortcut). <code>.claude.local.md</code> (gitignored,
+not part of any commit) was read last and reported to the owner directly rather than edited, per
+this file’s own private-content handling elsewhere in the project (D-174/D-175’s precedent) - one
+real finding there (a private disclosure to a third-party maintainer marked “not yet sent” as of
+2026-08-08, unverifiable from repo content alone) was surfaced, not resolved, since resolving it
+requires information outside this repository.</p>
+<p><strong>Closing <code>advisor()</code> review</strong>: the plan itself got an opening <code>advisor()</code> review before Phase 1
+started (see “What prompted this” above); a second, closing <code>advisor()</code> review ran after this
+entry’s findings section was drafted, per this project’s own “gate at both ends” rule. It found
+three things, each resolved in a follow-up commit rather than by rewriting this entry after the
+fact: (1) this very paragraph originally claimed the closing review was “done before the final
+push” in the past tense while the call had not actually happened yet - fixed to describe what’s
+actually verifiable, not predicted; (2) two of the nine <code>uacrypt</code> subcommands newly documented in
+<code>docs/CLI.md</code> (<code>sign-keygen257</code>’s family, <code>box-seal512</code>) were spot-checked against their real
+parser functions (<code>parse_sign_keygen_args</code>, <code>parse_box512_seal_args</code> in <code>crates/uacrypt/src/ lib.rs</code>), not just against the <code>*_HELP</code> string constants originally used to write them - both
+matched, no fix needed there; (3) <code>crates/uacrypt/README.md</code>’s new version-agnostic wording (see
+finding above) was confirmed to need no version-marker lint coverage, since it no longer states a
+version at all - nothing left for <code>cargo xtask docs-check</code> to catch drifting, by construction, not
+by oversight.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="changelog"><a class="header" href="#changelog">Changelog</a></h1>
 <p>All notable changes to this project are documented in this file. Format follows
@@ -28105,10 +28224,20 @@ before a human notices. Escalates to a GitHub Issue only after 3 consecutive sch
 </ul>
 <h3 id="fixed"><a class="header" href="#fixed">Fixed</a></h3>
 <ul>
-<li>v0.3.8’s RubyGems publish (Ruby bindings, <code>dstu_core</code>) actually completed - blocked by a pending
+<li>
+<p>v0.3.8’s RubyGems publish (Ruby bindings, <code>dstu_core</code>) actually completed - blocked by a pending
 PyPI/npm environment approval and a transient third-party (<code>cargo-binstall</code>/QuickInstall) outage
 on the <code>arm64-darwin</code> build, both unrelated to this repo’s own code. Live on RubyGems.org as of
-this entry, all four platform gems. See <code>docs/DECISIONS.md</code> D-194.</li>
+this entry, all four platform gems. See <code>docs/DECISIONS.md</code> D-194.</p>
+</li>
+<li>
+<p>Whole-repo documentation-freshness audit (T-230, <code>docs/DECISIONS.md</code> D-199): ~20 files across
+workflow comments, top-level docs, pseudocode, and published crate READMEs had status claims
+frozen from before a later fix landed - most commonly registry-publish status (T-17/T-164) and
+Strumok’s primary-text confirmation (D-197/D-198) that never propagated everywhere the old status
+was stated. <code>docs/CLI.md</code> was also missing 9 of <code>uacrypt</code>’s 27 real subcommands. See D-199 for the
+full finding-class breakdown.</p>
+</li>
 </ul>
 <h3 id="changed"><a class="header" href="#changed">Changed</a></h3>
 <ul>
@@ -28615,9 +28744,15 @@ with each new subtask.</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="draft-public-information-request-to-держспецзвязку-cipgovua"><a class="header" href="#draft-public-information-request-to-держспецзвязку-cipgovua">Draft public-information request to Держспецзв’язку (cip.gov.ua)</a></h1>
-<p><strong>Status: draft only, not legal advice, not yet sent.</strong> Written to help obtain DSTU 8845:2019
-(Strumok) and DSTU 9041:2020 test vectors / algorithm description without being redirected to
-purchase the copyrighted standard text from UkrNDNC. See chat discussion for the reasoning: the
+<p><strong>Status: sent, and answered - see <code>docs/DECISIONS.md</code> D-104.</strong> Originally drafted as “not legal
+advice, not yet sent”; the request below (same target agency, same two standards) was filed and a
+real response received, covered in full by D-104 - two supplementary Strumok-256/512 test examples
+from ДНДІ ТКЗІ, otherwise confirming no additional material exists beyond the standard texts
+themselves. Per D-104’s own de-anonymization caution, the request/response’s reference number,
+filing date, and signatory are deliberately not recorded here either - this file is kept as the
+sent request’s own text, not updated with outcome specifics beyond the D-104 pointer. Originally
+written to help obtain DSTU 8845:2019 (Strumok) and DSTU 9041:2020 test vectors / algorithm
+description without being redirected to purchase the copyrighted standard text from UkrNDNC: the
 request is framed around what Держспецзв’язку itself holds as regulator/certification body
 (conformance test vectors, its own methodological documents), not the copyrighted DSTU text
 itself (which belongs to a different legal entity, UkrNDNC, and is legitimately redirectable).</p>

@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-65fa2b5e.js";
+            window.path_to_searchindex_js = "searchindex-f5990f63.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-6b977b4b.js"></script>
@@ -4063,7 +4063,7 @@ fixed as part of T-204 - out of scope for a binding-wiring task, and the fix bel
 <code>dstu-core</code>’s own hazmat benchmark code, not in any binding.</p>
 </li>
 <li>
-<p>[~] <strong>T-206</strong> <strong>Phase 1 done 2026-08-10 (m=257 root-cause fix), phase 2 done 2026-08-10 and
+<p><input disabled="" type="checkbox" checked=""> <strong>T-206</strong> <strong>Phase 1 done 2026-08-10 (m=257 root-cause fix), phase 2 done 2026-08-10 and
 disproved Phase 1’s own sufficiency, Phase 2b (real fix) done same session, phases 3-4
 contingent on the next real CI number - <code>cargo miri test (dstu-core)</code> is
 exceeding its 240-min CI budget again (real timeout, not concurrency-group noise - confirmed
@@ -4181,6 +4181,14 @@ so that file needed no fix and none was assumed.
        failure - the same "verify a CI number via `gh run view`, don't assume" discipline this
        file already states applies to setting the number in the first place, not just to
        confirming a run's conclusion.
+
+**Closed by T-211 (2026-08-29, D-195/D-172), not left open here** - a later real CI run
+showed the job could never fit in one job at any `timeout-minutes` value (~9-10h total, not
+the thin-margin case items 3-4 above were planned around), so T-211 split it into a
+dynamically-discovered per-test-file matrix instead. Found during T-230's documentation
+audit: this entry was still sitting on its original `[~]` partial marker with items 3-4 open,
+never updated with a forward pointer once T-211 actually resolved it - fixed here rather than
+left for a future reader to wonder whether the miri timeout was ever really fixed.
 </code></pre>
 </li>
 <li>
@@ -7956,6 +7964,29 @@ already-oracle-confirmed inputs (D-163’s pattern); a ~100-entry spot check acr
 rendered via <code>pdftoppm</code> - zero mismatches. Updated everywhere T-228’s “not transcription-verified
 in full” caveat was stated (<code>CLAUDE.md</code> x3, <code>docs/ORACLES.md</code>, <code>docs/pseudocode/strumok.md</code>) to
 note the spot check without overclaiming full verification.</p>
+</li>
+<li>
+<p><input disabled="" type="checkbox" checked=""> <strong>T-230</strong> (2026-09-17) <strong>Scrupulous documentation-freshness audit, whole repo, file by file -
+see <code>docs/DECISIONS.md</code> D-199 for the full methodology and finding classes.</strong> Owner asked for a
+systematic pass after independently spotting a stale claim <code>docs-api.yml</code>’s own comment carried
+(“docs.rs only exists once published - not started”, though T-17 shipped weeks earlier). Plan
+reviewed by <code>advisor()</code> before starting. All 16 <code>.github/workflows/*.yml</code>, every narrative
+<code>docs/*.md</code>, <code>CLAUDE.md</code>’s remaining sections, <code>crates/*/README.md</code>, all 8 <code>bindings/*/README.md</code>
+read and each checkable claim verified against real state (grep into code, <code>gh release list</code>/
+<code>gh run list</code>, <code>cargo audit</code>/<code>cargo tree</code>/<code>cargo test --doc</code>, a live fetch of the published
+gh-pages site) - not judged from memory. <code>docs/DECISIONS.md</code>/<code>docs/TASKS.md</code> themselves checked
+structurally (marker integrity, recent-entry spot-check, CHANGELOG-vs-<code>gh release list</code>
+cross-check) rather than read end to end, per their own append-only nature. Real findings across
+~20 files, most in the same class as the triggering example (a status upgrade - T-17/T-164
+registry publishes, D-197/D-198 Strumok confirmation - that never propagated to every place the
+old status was stated); one structural <code>docs/TASKS.md</code> fix (T-206’s dangling <code>[~]</code> marker,
+superseded by T-211 with no forward pointer); one legal-status cross-reference
+(<code>docs/dstu9041-8845-info-request-draft.md</code> marked “not sent” when D-104 describes its own
+filed-and-answered outcome). <code>.claude.local.md</code> (gitignored) read last, one finding reported to
+the owner directly rather than fixed (unverifiable from repo content alone). Closing <code>advisor()</code>
+review ran after the D-199 findings section was drafted (opening review before Phase 1 also
+happened, per the gate-at-both-ends rule) - see D-199’s own closing paragraph for what it found
+and the follow-up fixes.</p>
 </li>
 <li>
 <p><input disabled="" type="checkbox" checked=""> <strong>T-148</strong> <strong>Corrected a false “font-encoding failure” claim across 5 PDFs; wrote

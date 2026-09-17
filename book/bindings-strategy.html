@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-65fa2b5e.js";
+            window.path_to_searchindex_js = "searchindex-f5990f63.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-6b977b4b.js"></script>
@@ -1240,10 +1240,11 @@ macro system.</p>
 type names in every binding, same as the C ABI and core itself; tag-byte dispatch stays a
 <code>uacrypt</code>-CLI-only concern (D-118’s “don’t duplicate wire-format logic into every binding” lesson
 generalized).</p>
-<h3 id="publishing-all-registries--separate-owner-gated-not-scheduled"><a class="header" href="#publishing-all-registries--separate-owner-gated-not-scheduled">Publishing (all registries) — separate, owner-gated, not scheduled</a></h3>
+<h3 id="publishing-all-registries--separate-owner-gated-requested-per-registry-as-it-happens"><a class="header" href="#publishing-all-registries--separate-owner-gated-requested-per-registry-as-it-happens">Publishing (all registries) — separate, owner-gated, requested per-registry as it happens</a></h3>
 <p>One explicit ask per registry (PyPI/npm/Maven Central/NuGet/RubyGems/Packagist), the same class of
-decision T-17 already applies to crates.io. Not started, not broken into steps above — tracked only
-once actually requested.</p>
+decision T-17 already applied to crates.io. <strong>Updated: three of six are done</strong> — PyPI and npm
+(T-164) and RubyGems (T-164 follow-up, D-194) are live; Maven Central/NuGet/Packagist remain not
+started, each needing its own separate owner ask.</p>
 <h3 id="t-162--github-facing-docs--gh-pages-site-refresh-last-after-every-binding-lands"><a class="header" href="#t-162--github-facing-docs--gh-pages-site-refresh-last-after-every-binding-lands">T-162 — GitHub-facing docs + <code>gh-pages</code> site refresh (last, after every binding lands)</a></h3>
 <p><strong>Done in full 2026-08-03.</strong> Requested 2026-08-02: once all bindings above exist, the project’s
 public-facing surfaces — <code>README.md</code>, the doc set under <code>docs/</code>, and the separate <code>gh-pages</code> branch

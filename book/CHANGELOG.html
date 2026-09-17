@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-65fa2b5e.js";
+            window.path_to_searchindex_js = "searchindex-f5990f63.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-6b977b4b.js"></script>
@@ -194,10 +194,20 @@ before a human notices. Escalates to a GitHub Issue only after 3 consecutive sch
 </ul>
 <h3 id="fixed"><a class="header" href="#fixed">Fixed</a></h3>
 <ul>
-<li>v0.3.8’s RubyGems publish (Ruby bindings, <code>dstu_core</code>) actually completed - blocked by a pending
+<li>
+<p>v0.3.8’s RubyGems publish (Ruby bindings, <code>dstu_core</code>) actually completed - blocked by a pending
 PyPI/npm environment approval and a transient third-party (<code>cargo-binstall</code>/QuickInstall) outage
 on the <code>arm64-darwin</code> build, both unrelated to this repo’s own code. Live on RubyGems.org as of
-this entry, all four platform gems. See <code>docs/DECISIONS.md</code> D-194.</li>
+this entry, all four platform gems. See <code>docs/DECISIONS.md</code> D-194.</p>
+</li>
+<li>
+<p>Whole-repo documentation-freshness audit (T-230, <code>docs/DECISIONS.md</code> D-199): ~20 files across
+workflow comments, top-level docs, pseudocode, and published crate READMEs had status claims
+frozen from before a later fix landed - most commonly registry-publish status (T-17/T-164) and
+Strumok’s primary-text confirmation (D-197/D-198) that never propagated everywhere the old status
+was stated. <code>docs/CLI.md</code> was also missing 9 of <code>uacrypt</code>’s 27 real subcommands. See D-199 for the
+full finding-class breakdown.</p>
+</li>
 </ul>
 <h3 id="changed"><a class="header" href="#changed">Changed</a></h3>
 <ul>
