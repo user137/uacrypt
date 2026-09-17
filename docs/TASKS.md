@@ -7681,19 +7681,28 @@ Phase 2+ and none currently in flight).
   happened, per the gate-at-both-ends rule) - see D-199's own closing paragraph for what it found
   and the follow-up fixes.
 
-- [ ] **T-231** (2026-09-17) **Investigate flaky VmRSS threshold in `bindings-dotnet`'s
-  `MemoryLeakTests.SecretstreamAndBoxLoopDoesNotLeak` (T-213).** Failed once in CI on commit
-  `43ce442` (`docs`: T-230 phase 3 - a pure `docs/TASKS.md` text edit, no `.NET`/native code
-  touched) - VmRSS grew 65404928 bytes over 20000 iterations against an 8388608-byte threshold,
-  `ubuntu-latest`. Re-ran clean on the very next commit (`0814ff2`, identical binding code) and
-  every other of the last 15 `bindings-dotnet` runs across both this range and further back -
-  a single isolated failure, not a regression tied to any code change (per T-100/D-59, confirmed
-  via `gh run list --workflow bindings-dotnet.yml`, not assumed from the later green run alone).
-  Owner asked this be tracked rather than dismissed as a one-off. Likely cause: CI-runner GC
-  non-determinism against a fixed byte threshold (same shape of risk as T-172/D-161's stash/pop
-  benchmark staleness, different mechanism) - not yet root-caused. Candidate fixes to evaluate:
-  raise the threshold, force a GC/collect before measuring, add a retry-once-on-fail step, or
-  switch to a relative/percentile-based check instead of a fixed byte count.
+- [ ] **T-231** (2026-09-17, corrected 2026-09-18) **Investigate recurring VmRSS-threshold failure
+  in `bindings-dotnet`'s `MemoryLeakTests.SecretstreamAndBoxLoopDoesNotLeak` (T-213).** First
+  entry here (written after a single observed failure on `43ce442`) called this "a single isolated
+  failure, not a regression" - wrong, corrected the next day after a second failure landed on the
+  very next `bindings-dotnet`-touching push (`0c50eec`) prompted a deeper check: `gh run list
+  --workflow bindings-dotnet.yml --limit 100` shows **4 failures out of 97 runs (~4%)**, not 1 -
+  two more on 2026-08-31 (`1ddf82c`, `707914e`) already existed before this session started. The
+  growth values themselves are the interesting signal, not just the fail count: three of the four
+  failures measured within 2% of each other (65404928 / 65351680 / 64024576 bytes over 20000
+  iterations) against an 8388608-byte threshold - an ~8x overshoot, clustered tightly, not noisy
+  scatter around the threshold the way GC-timing jitter would produce. The fourth was smaller
+  (12677120 bytes, ~1.5x over). This consistency across unrelated commits/dates points more toward
+  **glibc allocator page retention** (freed native memory kept in the allocator's arena for reuse
+  rather than returned to the OS via `brk`/`mmap` trim, so `VmRSS` doesn't shrink even though
+  `dstu-core-capi`'s handles were genuinely freed - a known false-positive source for RSS-based leak
+  tests, not proof of an actual leaked handle) than a real per-iteration native leak - but this is
+  not yet verified, only the more likely of two live explanations. Real handle leak remains open
+  until ruled out (`dstu-core-capi`'s `catch_unwind`+zeroize-on-free discipline is dual-oracle-
+  tested elsewhere, which weighs against it, but weighing isn't verifying). Next step: reproduce
+  locally under `valgrind --tool=massif` or `heaptrack` (distinguishes "freed but retained by
+  allocator" from "never freed") before touching the test's threshold/methodology at all - changing
+  the assertion first would hide the answer to which explanation is correct.
 
 - [x] **T-148** **Corrected a false "font-encoding failure" claim across 5 PDFs; wrote
   `docs/pseudocode/dstu9041.md`; surfaced 3 unread cryptanalysis papers - see `docs/DECISIONS.md`
