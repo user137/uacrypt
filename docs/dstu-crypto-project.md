@@ -31,8 +31,9 @@ implementation within a minute, without hassle — in the spirit of
   (`docs/TASKS.md` T-40/T-70, `docs/DECISIONS.md` D-68) instead — genuinely block-at-a-time
   disk streaming on both `--in` and `--out`, not whole-buffer I/O anymore, a
   breaking wire-format change from the prior `crypto_secretbox`-backed format.
-- Publish the core to crates.io. Not started - `docs/TASKS.md` T-17, explicitly gated on an owner
-  request, re-confirmed separately from T-18 below when that one was requested (2026-07-26).
+- Publish the core to crates.io. **Done** (`docs/TASKS.md` T-17) — `dstu-core`/`uacrypt` both live
+  as of v0.3.0 (2026-08-09), via `release.yml`'s `publish-crates` job. Was explicitly gated on an
+  owner request, re-confirmed separately from T-18 below when that one was requested (2026-07-26).
 - Prebuilt binaries for Windows/Linux via GitHub Releases (not "clone and
   build it yourself"). **Done 2026-07-26** (`docs/TASKS.md` T-18/T-119) — also macOS (Apple Silicon),
   plus a `dstu-core` source distribution on the same release. See `README.md`'s release link.
@@ -209,7 +210,7 @@ Module-by-module status (libsodium name → `dstu_core` module → status):
 | libsodium equivalent | `dstu_core` module | Status |
 |---|---|---|
 | `crypto_generichash` | `dstu_core::crypto_generichash` (a bare re-export of `hazmat::kupyna`'s `Kupyna256`/`Kupyna512`/`Kupyna256Hasher`/`Kupyna512Hasher`) | **Implemented** — one-shot `digest()` and streaming `update`/`finalize` (`docs/TASKS.md` T-83), byte-aligned messages only. Now reachable under the top-level `crypto_*` namespace too, not just `hazmat` (`docs/TASKS.md` T-105, `docs/DECISIONS.md` D-66) — a bare re-export, not a new wrapper, since there's no knob to hide and no libsodium value-add (variable output length, optional key) with a DSTU equivalent to re-derive. See D-10/D-66 in `docs/DECISIONS.md`. |
-| `crypto_stream` | `dstu_core::crypto_stream` (`encrypt`/`decrypt`/`Key`, over `hazmat::strumok::Strumok256` only) + `hazmat::strumok` (`Strumok256`, `Strumok512`, both sizes) | **Implemented** — keystream generation/`apply_keystream` at `hazmat`, both key sizes. High-level wrapper added (roadmap Step 3 item 3, `docs/DECISIONS.md` D-67): single 256-bit variant, internally-generated IV (hidden from the caller, confirmed with the project owner — the same choice `crypto_secretbox` made for its nonce, D-51), combined `iv \|\| ciphertext` output. **No authentication** — `decrypt` never fails on tampered input, unlike `crypto_secretbox`; named `encrypt`/`decrypt` rather than `seal`/`open` specifically to avoid implying tamper-evidence. Vectors are confirmed against the official DSTU 8845:2019 text itself (Додаток Д, D-197) — internal constant tables remain corroborated only indirectly. See D-18/D-67/D-197 in `docs/DECISIONS.md`. |
+| `crypto_stream` | `dstu_core::crypto_stream` (`encrypt`/`decrypt`/`Key`, over `hazmat::strumok::Strumok256` only) + `hazmat::strumok` (`Strumok256`, `Strumok512`, both sizes) | **Implemented** — keystream generation/`apply_keystream` at `hazmat`, both key sizes. High-level wrapper added (roadmap Step 3 item 3, `docs/DECISIONS.md` D-67): single 256-bit variant, internally-generated IV (hidden from the caller, confirmed with the project owner — the same choice `crypto_secretbox` made for its nonce, D-51), combined `iv \|\| ciphertext` output. **No authentication** — `decrypt` never fails on tampered input, unlike `crypto_secretbox`; named `encrypt`/`decrypt` rather than `seal`/`open` specifically to avoid implying tamper-evidence. Vectors are confirmed against the official DSTU 8845:2019 text itself (Додаток Д, D-197); its `Tᵢ[a]`/`Mulα`/`Mulα⁻¹` constant tables are spot-checked against the same text too (D-198), not independently transcription-verified in full. See D-18/D-67/D-197/D-198 in `docs/DECISIONS.md`. |
 | `hazmat::kalyna` (block primitive, not directly libsodium-mapped) | `hazmat::kalyna` (`Kalyna128_128`/`Kalyna128_256`/`Kalyna256_256`/`Kalyna256_512`/`Kalyna512_512`) | **Implemented** — single-block `encrypt`/`decrypt`, all 5 variants. See D-13 in `docs/DECISIONS.md`. |
 | `hazmat::kalyna_ccm` (mode of operation, not directly libsodium-mapped) | `hazmat::kalyna_ccm` (all 5 variants) | **Implemented, provisional** — Kalyna-alone CCM, dual-oracle-verified (UAPKI + Bouncy Castle vectors), not confirmed against the primary DSTU 7624:2014 text. See D-41 in `docs/DECISIONS.md`. Sourced 255-byte plaintext/AAD limit; nonce-generation strategy still undecided (D-40, `docs/TASKS.md` T-82). |
 | *(no libsodium equivalent — key wrapping/envelope encryption)* | `hazmat::kalyna_kw` (all 5 variants) | **Implemented, `hazmat`-only, deliberately no high-level `crypto_*` wrapper** — libsodium itself has no dedicated key-wrap primitive to map to (roadmap Step 3 item 4, `docs/DECISIONS.md` D-66's addendum), so this stays a documented gap in the libsodium-parity surface rather than an invented, non-libsodium-shaped `crypto_kw`. Dual-oracle-verified, not confirmed against the primary DSTU 7624:2014 text. See D-55 in `docs/DECISIONS.md`. |
@@ -304,16 +305,32 @@ changes.
 
 ## On the horizon
 
+This section's four original bullets described work that hadn't started yet; three of the four are
+now done, kept below (not deleted) per `CLAUDE.md`'s "never silently deprecate" rule, with an
+update note on each rather than a rewrite.
+
 - Obtain official documentation PDFs from the authors of each DSTU
   implementation (Kalyna, Kupyna, Strumok, DSTU 4145) with test vectors as
-  reference documentation.
+  reference documentation. **Done for all four** — Kalyna/Kupyna/DSTU 4145 official texts and
+  vectors have been in hand for a long time (`docs/ORACLES.md`); Strumok's own primary text
+  (Додаток Д) was the last to land, 2026-09-16 (D-197). DSTU 9041's primary text and Додаток Г
+  worked examples are in hand too (T-177/T-192), though that standard wasn't named in this
+  original bullet.
 - Cross-check our own implementation against Kalyna-reference and other
-  oracles.
-- Hardware validation on STM32/ESP32 — a separate phase after the MVP.
-- **Speculative, long-term, not MVP, not scheduled in any `docs/TASKS.md` phase:** `dstu-core` could
-  someday expose a C ABI (`cdylib`/`staticlib` + a plain-C header) so that C/C++ PKI stacks —
-  UAPKI (see D-17) is the concrete example that prompted this — could adopt this project's
-  audited Rust primitives instead of maintaining their own C implementations of the same
-  algorithms. Purely a "don't forget this occurred to us" note: no design work done, no task
-  created, no commitment implied. Revisit only if a concrete need or request for it shows up —
-  don't let it quietly expand MVP scope in the meantime.
+  oracles. **Done, and now the project's standing discipline, not a one-time item** — dual-oracle
+  verification (official vectors + an independent reference implementation) is a hard constraint
+  for every primitive, see `CLAUDE.md`'s "Crypto engineering hard constraints" and `docs/ORACLES.md`.
+- Hardware validation on STM32/ESP32 — a separate phase after the MVP. **Still not started** — the
+  one bullet in this section still accurately describing a future, not a past. QEMU-level
+  STM32 correctness smoke-testing exists as a cheaper intermediate step (D-156, T-170,
+  `firmware/qemu-stm32-smoketest`), but that explicitly doesn't claim anything about real-silicon
+  behavior — see `CLAUDE.md`'s MVP scope section.
+- **No longer speculative — built.** This bullet originally floated `dstu-core` someday exposing a
+  C ABI so C/C++ PKI stacks (UAPKI, D-17, was the concrete example that prompted the idea) could
+  adopt this project's primitives instead of maintaining their own. That happened: `crates/
+  dstu-core-capi` (T-158, D-148/D-149) is a real root-workspace member with opaque handles,
+  explicit error codes, and a `cbindgen`-generated header, wrapping the full `crypto_*` surface
+  (see the "Concrete API shape" table above) — it's what the .NET, Go, and C++ bindings link
+  against directly. No PKI stack has actually adopted it yet (that was always a "concrete example
+  of the shape of need," not a commitment from UAPKI's own maintainers) — that part of the original
+  motivation remains open, just the "build it" half is done.

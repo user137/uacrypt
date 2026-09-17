@@ -85,8 +85,11 @@ canonical source (`docs/TASKS.md`/`docs/DECISIONS.md`) — this section states c
     oracle for this primitive (T-177, T-192).
   - Kalyna/Kupyna share S-box/MDS tables (`hazmat::tables`); Strumok's `T` substitution reuses them
     too (D-13).
-  - `cargo fuzz` run on all three targets (Windows, MSVC toolchain), zero crashes (D-32); Linux CI
-    remains the unconditional per-push check.
+  - `cargo fuzz` run locally on Windows (MSVC toolchain), zero crashes, for the 3 targets that
+    existed at the time (D-32); the target list has since grown to 10 (`kupyna`/`kalyna`/
+    `kalyna_ccm`/`strumok`/`kalyna_cmac`/`kalyna_kw`/`kalyna_gcm`/`kalyna_gmac`/`kalyna_cfb`/
+    `crypto_secretstream`, T-98), all covered by `rust.yml`'s `fuzz-smoke` matrix on every push -
+    the unconditional per-push check, not just a one-time local Windows run.
 - `crypto_*` (high-level, misuse-resistant, zero-config — D-09's second layer, D-47's "delete the
   knob" applied throughout: one fixed construction/variant per module, no caller-facing nonce/IV/
   mode/AAD parameter unless noted):
@@ -216,9 +219,10 @@ Algorithms in scope:
 
 - Language bindings: Python, JavaScript (Node.js), Ruby, PHP, Java, .NET, Go, C++ — **all eight
   done as of 2026-08-03**, see `docs/bindings-strategy.md`; `crypto_box` added to all eight
-  2026-08-06 (T-181). Not yet published to any package
-  registry (PyPI/npm/RubyGems/Packagist/NuGet/Maven Central) — separately owner-gated, `docs/TASKS.md`
-  T-164, same posture as `dstu-core` itself not being on crates.io yet.
+  2026-08-06 (T-181). **Python/Node.js/Ruby are published** (PyPI/npm/RubyGems, T-164, D-191/D-194);
+  PHP/.NET/Java/Go/C++ are not yet published to their own registries (Packagist/NuGet/Maven
+  Central/pkg.go.dev/vcpkg) — separately owner-gated per registry, `docs/TASKS.md` T-164.
+  `dstu-core`/`uacrypt` themselves have been on crates.io since v0.3.0 (T-17).
 - Do not reimplement DSTU 4145 signatures in the native core — for Java/.NET, wrap/integrate
   Bouncy Castle (mature, `DSTU4145Signer`, decades in production, continuous external audit); for
   Rust, port with Bouncy Castle as a second verification oracle.
@@ -235,6 +239,7 @@ Algorithms in scope:
 
 | File | Read when | Update when | Canonical owner of |
 |---|---|---|---|
+| `docs/CLI.md` | need the `uacrypt` command reference for an external consumer (not this repo's own agent-facing docs) | a CLI subcommand is added/renamed/removed, or its flags change | consumer-facing CLI walkthrough (mdBook chapter, T-186) — README's own quick-start links here for the full command list |
 | `docs/TASKS.md` | starting or resuming any work session | a task is started, finished, or newly discovered | phase-by-phase task backlog and progress state — status only, not rationale |
 | `docs/dstu-crypto-project.md` | planning scope, API design, algorithm choices | scope or API-mapping decisions change | project scope, libsodium API mapping |
 | `docs/resource-profiles.md` | choosing/explaining `fused` vs `small-tables`, sizing a target's flash budget | the profile split's memory/speed numbers change, or a new MCU tier is added to the sizing guide | `small-tables` feature memory/speed numbers (D-35/D-38/D-39), per-target profile recommendation |
