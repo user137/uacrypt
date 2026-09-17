@@ -1,8 +1,14 @@
 # Draft public-information request to Держспецзв'язку (cip.gov.ua)
 
-**Status: draft only, not legal advice, not yet sent.** Written to help obtain DSTU 8845:2019
-(Strumok) and DSTU 9041:2020 test vectors / algorithm description without being redirected to
-purchase the copyrighted standard text from UkrNDNC. See chat discussion for the reasoning: the
+**Status: sent, and answered - see `docs/DECISIONS.md` D-104.** Originally drafted as "not legal
+advice, not yet sent"; the request below (same target agency, same two standards) was filed and a
+real response received, covered in full by D-104 - two supplementary Strumok-256/512 test examples
+from ДНДІ ТКЗІ, otherwise confirming no additional material exists beyond the standard texts
+themselves. Per D-104's own de-anonymization caution, the request/response's reference number,
+filing date, and signatory are deliberately not recorded here either - this file is kept as the
+sent request's own text, not updated with outcome specifics beyond the D-104 pointer. Originally
+written to help obtain DSTU 8845:2019 (Strumok) and DSTU 9041:2020 test vectors / algorithm
+description without being redirected to purchase the copyrighted standard text from UkrNDNC: the
 request is framed around what Держспецзв'язку itself holds as regulator/certification body
 (conformance test vectors, its own methodological documents), not the copyrighted DSTU text
 itself (which belongs to a different legal entity, UkrNDNC, and is legitimately redirectable).
