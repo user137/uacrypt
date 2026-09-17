@@ -7677,7 +7677,9 @@ Phase 2+ and none currently in flight).
   (`docs/dstu9041-8845-info-request-draft.md` marked "not sent" when D-104 describes its own
   filed-and-answered outcome). `.claude.local.md` (gitignored) read last, one finding reported to
   the owner directly rather than fixed (unverifiable from repo content alone). Closing `advisor()`
-  review done before the final push, per the project's own gate-at-both-ends rule.
+  review ran after the D-199 findings section was drafted (opening review before Phase 1 also
+  happened, per the gate-at-both-ends rule) - see D-199's own closing paragraph for what it found
+  and the follow-up fixes.
 
 - [x] **T-148** **Corrected a false "font-encoding failure" claim across 5 PDFs; wrote
   `docs/pseudocode/dstu9041.md`; surfaced 3 unread cryptanalysis papers - see `docs/DECISIONS.md`

@@ -13479,6 +13479,17 @@ real finding there (a private disclosure to a third-party maintainer marked "not
 2026-08-08, unverifiable from repo content alone) was surfaced, not resolved, since resolving it
 requires information outside this repository.
 
-**Closing `advisor()` review**: done before the final push, per this project's own "gate at both
-ends" rule - see the session transcript for what it found, applied as one more round of fixes
-before this entry was written, not after.
+**Closing `advisor()` review**: the plan itself got an opening `advisor()` review before Phase 1
+started (see "What prompted this" above); a second, closing `advisor()` review ran after this
+entry's findings section was drafted, per this project's own "gate at both ends" rule. It found
+three things, each resolved in a follow-up commit rather than by rewriting this entry after the
+fact: (1) this very paragraph originally claimed the closing review was "done before the final
+push" in the past tense while the call had not actually happened yet - fixed to describe what's
+actually verifiable, not predicted; (2) two of the nine `uacrypt` subcommands newly documented in
+`docs/CLI.md` (`sign-keygen257`'s family, `box-seal512`) were spot-checked against their real
+parser functions (`parse_sign_keygen_args`, `parse_box512_seal_args` in `crates/uacrypt/src/
+lib.rs`), not just against the `*_HELP` string constants originally used to write them - both
+matched, no fix needed there; (3) `crates/uacrypt/README.md`'s new version-agnostic wording (see
+finding above) was confirmed to need no version-marker lint coverage, since it no longer states a
+version at all - nothing left for `cargo xtask docs-check` to catch drifting, by construction, not
+by oversight.
