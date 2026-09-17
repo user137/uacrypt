@@ -7681,6 +7681,20 @@ Phase 2+ and none currently in flight).
   happened, per the gate-at-both-ends rule) - see D-199's own closing paragraph for what it found
   and the follow-up fixes.
 
+- [ ] **T-231** (2026-09-17) **Investigate flaky VmRSS threshold in `bindings-dotnet`'s
+  `MemoryLeakTests.SecretstreamAndBoxLoopDoesNotLeak` (T-213).** Failed once in CI on commit
+  `43ce442` (`docs`: T-230 phase 3 - a pure `docs/TASKS.md` text edit, no `.NET`/native code
+  touched) - VmRSS grew 65404928 bytes over 20000 iterations against an 8388608-byte threshold,
+  `ubuntu-latest`. Re-ran clean on the very next commit (`0814ff2`, identical binding code) and
+  every other of the last 15 `bindings-dotnet` runs across both this range and further back -
+  a single isolated failure, not a regression tied to any code change (per T-100/D-59, confirmed
+  via `gh run list --workflow bindings-dotnet.yml`, not assumed from the later green run alone).
+  Owner asked this be tracked rather than dismissed as a one-off. Likely cause: CI-runner GC
+  non-determinism against a fixed byte threshold (same shape of risk as T-172/D-161's stash/pop
+  benchmark staleness, different mechanism) - not yet root-caused. Candidate fixes to evaluate:
+  raise the threshold, force a GC/collect before measuring, add a retry-once-on-fail step, or
+  switch to a relative/percentile-based check instead of a fixed byte count.
+
 - [x] **T-148** **Corrected a false "font-encoding failure" claim across 5 PDFs; wrote
   `docs/pseudocode/dstu9041.md`; surfaced 3 unread cryptanalysis papers - see `docs/DECISIONS.md`
   D-105.** Owner asked why the Skorobahatko DSTU 9041 thesis PDF "doesn't get recognized" -
