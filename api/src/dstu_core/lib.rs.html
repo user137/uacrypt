@@ -5,35 +5,36 @@
 <a href=#5 id=5 data-nosnippet>5</a>//! (`hazmat::kalyna_ccm`, `hazmat::kalyna_gcm`, and everything built on them) rests on an adopted
 <a href=#6 id=6 data-nosnippet>6</a>//! assumption, not a confirmation against the primary DSTU 7624:2014 text (`docs/DECISIONS.md` D-05).
 <a href=#7 id=7 data-nosnippet>7</a>//! Strumok's keystream generator is confirmed against the primary DSTU 8845:2019 text itself
-<a href=#8 id=8 data-nosnippet>8</a>//! (`docs/DECISIONS.md` D-197); its internal constant tables are corroborated only at the entries
-<a href=#9 id=9 data-nosnippet>9</a>//! the confirmed vectors reach, not independently transcription-verified in full. This crate makes
-<a href=#10 id=10 data-nosnippet>10</a>//! **no claim of side-channel (SPA/DPA) resistance**. See
-<a href=#11 id=11 data-nosnippet>11</a>//! `docs/SECURITY.md` and `docs/DECISIONS.md` in the project repository for the full threat model, citations,
-<a href=#12 id=12 data-nosnippet>12</a>//! and per-construction status.
-<a href=#13 id=13 data-nosnippet>13</a>
-<a href=#14 id=14 data-nosnippet>14</a></span><span class="attr">#![cfg_attr(not(feature = <span class="string">"std"</span>), no_std)]
-<a href=#15 id=15 data-nosnippet>15</a>#![warn(clippy::pedantic)]
-<a href=#16 id=16 data-nosnippet>16</a>#![deny(clippy::unwrap_used, clippy::expect_used)]
-<a href=#17 id=17 data-nosnippet>17</a>
-<a href=#18 id=18 data-nosnippet>18</a></span><span class="kw">pub mod </span>crypto_auth;
-<a href=#19 id=19 data-nosnippet>19</a><span class="attr">#[cfg(feature = <span class="string">"std"</span>)]
-<a href=#20 id=20 data-nosnippet>20</a></span><span class="kw">pub mod </span>crypto_box;
-<a href=#21 id=21 data-nosnippet>21</a><span class="attr">#[cfg(feature = <span class="string">"std"</span>)]
-<a href=#22 id=22 data-nosnippet>22</a></span><span class="kw">pub mod </span>crypto_box512;
-<a href=#23 id=23 data-nosnippet>23</a><span class="kw">pub mod </span>crypto_generichash;
-<a href=#24 id=24 data-nosnippet>24</a><span class="kw">pub mod </span>crypto_kdf;
-<a href=#25 id=25 data-nosnippet>25</a><span class="attr">#[cfg(feature = <span class="string">"pwhash"</span>)]
-<a href=#26 id=26 data-nosnippet>26</a></span><span class="kw">pub mod </span>crypto_pwhash;
-<a href=#27 id=27 data-nosnippet>27</a><span class="attr">#[cfg(feature = <span class="string">"std"</span>)]
-<a href=#28 id=28 data-nosnippet>28</a></span><span class="kw">pub mod </span>crypto_secretbox;
-<a href=#29 id=29 data-nosnippet>29</a><span class="kw">pub mod </span>crypto_secretstream;
-<a href=#30 id=30 data-nosnippet>30</a><span class="kw">pub mod </span>crypto_sign;
-<a href=#31 id=31 data-nosnippet>31</a><span class="kw">pub mod </span>crypto_sign257;
-<a href=#32 id=32 data-nosnippet>32</a><span class="attr">#[cfg(feature = <span class="string">"std"</span>)]
-<a href=#33 id=33 data-nosnippet>33</a></span><span class="kw">pub mod </span>crypto_stream;
-<a href=#34 id=34 data-nosnippet>34</a><span class="kw">pub mod </span>hazmat;
-<a href=#35 id=35 data-nosnippet>35</a><span class="attr">#[cfg(any(feature = <span class="string">"std"</span>, feature = <span class="string">"getrandom"</span>))]
-<a href=#36 id=36 data-nosnippet>36</a></span><span class="kw">pub mod </span>randombytes;
-<a href=#37 id=37 data-nosnippet>37</a><span class="attr">#[cfg(feature = <span class="string">"selftest"</span>)]
-<a href=#38 id=38 data-nosnippet>38</a></span><span class="kw">pub mod </span>selftest;
+<a href=#8 id=8 data-nosnippet>8</a>//! (`docs/DECISIONS.md` D-197); its `Tᵢ[a]`/`Mulα`/`Mulα⁻¹` constant tables are spot-checked
+<a href=#9 id=9 data-nosnippet>9</a>//! against the same text too (D-198, zero mismatches on a ~100-entry sample), but not
+<a href=#10 id=10 data-nosnippet>10</a>//! independently transcription-verified in full. This crate makes
+<a href=#11 id=11 data-nosnippet>11</a>//! **no claim of side-channel (SPA/DPA) resistance**. See
+<a href=#12 id=12 data-nosnippet>12</a>//! `docs/SECURITY.md` and `docs/DECISIONS.md` in the project repository for the full threat model, citations,
+<a href=#13 id=13 data-nosnippet>13</a>//! and per-construction status.
+<a href=#14 id=14 data-nosnippet>14</a>
+<a href=#15 id=15 data-nosnippet>15</a></span><span class="attr">#![cfg_attr(not(feature = <span class="string">"std"</span>), no_std)]
+<a href=#16 id=16 data-nosnippet>16</a>#![warn(clippy::pedantic)]
+<a href=#17 id=17 data-nosnippet>17</a>#![deny(clippy::unwrap_used, clippy::expect_used)]
+<a href=#18 id=18 data-nosnippet>18</a>
+<a href=#19 id=19 data-nosnippet>19</a></span><span class="kw">pub mod </span>crypto_auth;
+<a href=#20 id=20 data-nosnippet>20</a><span class="attr">#[cfg(feature = <span class="string">"std"</span>)]
+<a href=#21 id=21 data-nosnippet>21</a></span><span class="kw">pub mod </span>crypto_box;
+<a href=#22 id=22 data-nosnippet>22</a><span class="attr">#[cfg(feature = <span class="string">"std"</span>)]
+<a href=#23 id=23 data-nosnippet>23</a></span><span class="kw">pub mod </span>crypto_box512;
+<a href=#24 id=24 data-nosnippet>24</a><span class="kw">pub mod </span>crypto_generichash;
+<a href=#25 id=25 data-nosnippet>25</a><span class="kw">pub mod </span>crypto_kdf;
+<a href=#26 id=26 data-nosnippet>26</a><span class="attr">#[cfg(feature = <span class="string">"pwhash"</span>)]
+<a href=#27 id=27 data-nosnippet>27</a></span><span class="kw">pub mod </span>crypto_pwhash;
+<a href=#28 id=28 data-nosnippet>28</a><span class="attr">#[cfg(feature = <span class="string">"std"</span>)]
+<a href=#29 id=29 data-nosnippet>29</a></span><span class="kw">pub mod </span>crypto_secretbox;
+<a href=#30 id=30 data-nosnippet>30</a><span class="kw">pub mod </span>crypto_secretstream;
+<a href=#31 id=31 data-nosnippet>31</a><span class="kw">pub mod </span>crypto_sign;
+<a href=#32 id=32 data-nosnippet>32</a><span class="kw">pub mod </span>crypto_sign257;
+<a href=#33 id=33 data-nosnippet>33</a><span class="attr">#[cfg(feature = <span class="string">"std"</span>)]
+<a href=#34 id=34 data-nosnippet>34</a></span><span class="kw">pub mod </span>crypto_stream;
+<a href=#35 id=35 data-nosnippet>35</a><span class="kw">pub mod </span>hazmat;
+<a href=#36 id=36 data-nosnippet>36</a><span class="attr">#[cfg(any(feature = <span class="string">"std"</span>, feature = <span class="string">"getrandom"</span>))]
+<a href=#37 id=37 data-nosnippet>37</a></span><span class="kw">pub mod </span>randombytes;
+<a href=#38 id=38 data-nosnippet>38</a><span class="attr">#[cfg(feature = <span class="string">"selftest"</span>)]
+<a href=#39 id=39 data-nosnippet>39</a></span><span class="kw">pub mod </span>selftest;
 </code></pre></div></section></main></body></html>
