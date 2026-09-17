@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-e6aae2d4.js";
+            window.path_to_searchindex_js = "searchindex-1284cdab.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-6b977b4b.js"></script>
@@ -211,10 +211,13 @@ against this working hypothesis” situation:</p>
 <li><code>hazmat::kalyna_ccm</code> (D-41) is unchanged — still dual-oracle-verified, still not
 primary-text-confirmed, but now also matches the standard’s own official mode list per both
 sources above (mode #8, “Вироблення імітовставки і гамування”).</li>
-<li>Strumok’s vector set is UAPKI-attributed, plus (D-104) independently confirmed
-against two state-sourced supplementary vectors from Держспецзв’язку/ДНДІ ТКЗІ — still not
-confirmed against the paid DSTU 8845:2019 text itself (D-15/D-16) — a separate, unrelated gap on
-a different algorithm, unaffected by D-05.</li>
+<li><strong>Updated 2026-09-16 (D-197)</strong>: Strumok’s vector set — UAPKI-attributed, plus (D-104)
+independently confirmed against two state-sourced supplementary vectors from Держспецзв’язку/
+ДНДІ ТКЗІ — is now also confirmed against the primary DSTU 8845:2019 text itself (Додаток Д, a
+genuine library scan, all 8 official cases byte-for-byte). This specific gap (D-15/D-16) is
+closed, a separate, unrelated question from D-05 above. Its <code>Tᵢ[a]</code>/<code>Mulα</code>/<code>Mulα⁻¹</code> constant
+tables are additionally spot-checked against the same text (D-198), not independently
+transcription-verified in full.</li>
 <li><strong><code>crypto_secretbox</code> (T-37) is done, see <code>docs/DECISIONS.md</code> D-51</strong> — a single fixed construction,
 internally-generated nonce, combined <code>nonce || ciphertext || tag</code> output, no caller-facing AAD
 parameter. <strong>Migrated 2026-07-25 from Kalyna-CCM to Kalyna-GCM</strong> (roadmap Step 3 item 1,
@@ -263,7 +266,7 @@ independent second-oracle cross-check (Bouncy Castle, Java and .NET):</p>
 <tbody>
 <tr><td>Kalyna</td><td>DSTU 7624:2014</td><td>All 5 block/key-size variants, single-block encrypt/decrypt, <code>ExpandedKey</code> API. Vector-confirmed + dual-oracle. <strong>Mode of operation: all 10/10 DSTU 7624 modes now implemented at <code>hazmat</code></strong>, updated 2026-07-25 (T-99) — ECB/CBC/OFB/CTR/CFB (Stage A), CMAC/KW/GCM/GMAC (Stage B-D, D-54-D-57), XTS (Stage E, T-96/D-58) all landed since this table’s last real update. CCM/GCM/KW are the three combined (confidentiality+integrity) modes and the only ones eligible for a public <code>crypto_secretbox</code>-style entry point (D-47); ECB/CBC/OFB/CTR/CFB/XTS are confidentiality-only, bare CMAC/GMAC are integrity-only — none of those six may become a public <code>encrypt</code>/<code>decrypt</code> entry point on their own. All ten still share CCM’s original caveat: dual-oracle-verified (UAPKI + Bouncy Castle where available), not primary-DSTU-7624:2014-text-confirmed.</td></tr>
 <tr><td>Kupyna</td><td>DSTU 7564:2014</td><td>Both 256/512 variants, one-shot <code>digest()</code> and streaming <code>Hasher</code>. Vector-confirmed + dual-oracle. KMAC (<code>crypto_auth</code> equivalent) now implemented too — <code>hazmat::kupyna_kmac</code>, dual-oracle with both constructions read (<code>docs/TASKS.md</code> T-38, <code>docs/DECISIONS.md</code> D-44), same provisional-pending-primary-text caveat. KDF (<code>crypto_kdf</code> equivalent) built on top of that KMAC — <code>hazmat::kupyna_kdf</code> (T-39, D-45); no DSTU standard or reference implementation exists for this construction at all, so unlike the KMAC row there is no oracle vector, ever — verified by determinism/distinctness property tests only.</td></tr>
-<tr><td>Strumok</td><td>DSTU 8845:2019</td><td>Both 256/512-bit key variants, keystream <code>apply_keystream</code>. UAPKI-attributed vectors, plus (D-104) two independently-sourced supplementary vectors from Держспецзв’язку/ДНДІ ТКЗІ — a real second, state-sourced oracle, though still <strong>not</strong> confirmed against the primary standard text itself (D-15/D-16); that specific gap remains a provenance ceiling, not a code-quality gap.</td></tr>
+<tr><td>Strumok</td><td>DSTU 8845:2019</td><td>Both 256/512-bit key variants, keystream <code>apply_keystream</code>. UAPKI-attributed vectors, plus (D-104) two independently-sourced supplementary vectors from Держспецзв’язку/ДНДІ ТКЗІ, <strong>and now (2026-09-16, D-197) confirmed against the primary standard text itself</strong> (Додаток Д, all 8 official cases byte-for-byte) — the former provenance ceiling (D-15/D-16) is closed. Constant tables spot-checked, not fully transcription-verified (D-198).</td></tr>
 </tbody>
 </table>
 </div>
@@ -386,31 +389,36 @@ bullet used to describe. A breaking wire-format change from the prior <code>cryp
 blob format, called out explicitly, acceptable pre-1.0. <code>hash</code> has no length limit either, and
 streams from disk already, unchanged. <code>kalyna-block</code>/<code>kalyna-ccm</code>/<code>kupyna-digest</code>/<code>strumok-crypt</code>
 remain as the hazmat-scoped, multi-variant tools underneath, unchanged.</li>
-<li><strong>T-17</strong>: <code>dstu-core</code> not published to crates.io. Now unblocked mechanically (D-43’s version bump),
-but publishing a <code>0.1.0</code> that is honest about D-05 (adopted on assumption, not primary-confirmed)/
-D-15/D-41’s provisional status is a judgment call for the project owner, not an engineering
-blocker.</li>
+<li><strong>T-17: done.</strong> <code>dstu-core</code>/<code>uacrypt</code> are both published to crates.io, live as of v0.3.0
+(2026-08-09) via <code>release.yml</code>’s <code>publish-crates</code> job. Still honest about D-05’s
+adopted-on-assumption status in the published crate’s own doc comments (<code>crates/dstu-core/src/ lib.rs</code>) - publishing didn’t wait for that gap to close, it shipped with the caveat stated.</li>
 <li><strong>T-18</strong>: <strong>Done 2026-07-26</strong>, see <code>docs/TASKS.md</code> T-18/T-119. Prebuilt <code>uacrypt</code> binaries for
 Windows/Linux/macOS (Apple Silicon only), plus a <code>dstu-core</code> source distribution, are published
 as GitHub Release assets on the <code>v0.1.0</code> tag via <code>.github/workflows/release.yml</code>, verified
 against the actual downloaded assets (not just a green CI run).</li>
-<li>No user-facing documentation beyond this repo’s own <code>.md</code> files exists yet (no rustdoc pass
-dedicated to public API ergonomics, no separate docs site/book) — a real release needs
-API-level docs a consumer reads without first reading <code>docs/DECISIONS.md</code>.</li>
+<li><strong>Largely done since this was written.</strong> <code>docs.rs/dstu-core</code> (rustdoc, live since the crates.io
+publish, T-17) covers public API ergonomics; <code>docs/CLI.md</code> (an mdBook chapter, T-186) is a
+consumer-facing CLI walkthrough that doesn’t require reading <code>docs/DECISIONS.md</code>; the gh-pages
+landing page (<code>user137.github.io/uacrypt</code>) and its published mdBook knowledge base
+(<code>gh-pages/book/</code>) are the separate docs site. Not independently re-audited for “would a fresh
+consumer, reading only these, get lost” the way <code>docs/user-journey-gaps.md</code> audits other
+journeys - that specific check remains open, distinct from “does the documentation exist at all.”</li>
 <li>Phase 3 (language bindings: Python/JS/Java/.NET/C++, plus PHP/Ruby/Go added 2026-08-02) — not
 required for a Rust-crate-only 1.0, but relevant if “libsodium-equivalent” is read to include
 libsodium’s multi-language reach. <strong>All nine bindings done</strong> (T-49/T-50/T-160/T-159/T-158/T-52/
 T-51/T-163/T-53): T-49 (Python) landed 2026-08-02 -
-full <code>crypto_*</code> surface, own CI, manylinux/macOS/Windows wheels attached to GitHub Releases, not
-yet published to PyPI (separately gated, same posture as crates.io’s T-17). T-50 (Node.js)
+full <code>crypto_*</code> surface, own CI, manylinux/macOS/Windows wheels attached to GitHub Releases -
+<strong>published to PyPI since T-164 (2026-08-2x range, see <code>docs/DECISIONS.md</code> D-191/D-194)</strong>, live at
+pypi.org/project/dstu-core. T-50 (Node.js)
 landed the same day - full <code>crypto_*</code> surface + idiomatic <code>stream.Transform</code> secretstream
-wrapper, own CI, prebuilt artifact verified via a real fresh-install round trip, not yet
-published to npm (same gating posture). T-160 (Ruby) landed the same day too - full <code>crypto_*</code>
+wrapper, own CI, prebuilt artifact verified via a real fresh-install round trip - <strong>published to
+npm since T-164 too</strong>, live at npmjs.com/package/dstu-core (one platform package, win32-x64-msvc,
+still deferred behind an npm-side spam-detection block, D-189). T-160 (Ruby) landed the same day too - full <code>crypto_*</code>
 surface + idiomatic <code>SecretStreamWriter</code>/<code>Reader</code> (modeled on stdlib’s own <code>Zlib::GzipWriter</code>/
 <code>GzipReader</code>), own CI, a genuine packaging finding (a source gem can’t install standalone at all
 <ul>
-<li>fixed via <code>rake native gem</code>’s precompiled, platform-tagged gem instead, D-136), not yet
-published to RubyGems (same gating posture). T-159 (PHP) landed the same day too - full
+<li>fixed via <code>rake native gem</code>’s precompiled, platform-tagged gem instead, D-136) - <strong>published to
+RubyGems since v0.3.8, D-194</strong>, live at rubygems.org/gems/dstu_core, all four platform gems. T-159 (PHP) landed the same day too - full
 <code>crypto_*</code> surface + idiomatic <code>DstuCoreSecretStreamWriter</code>/<code>Reader</code> (a native PHP stream filter
 was investigated and rejected, D-143), own CI (<code>shivammathur/setup-php</code>), a similarly honest
 packaging finding (no PECL/Composer publish path exists for a provisional binding, D-144), not
@@ -653,12 +661,14 @@ DSTU 7624:2014 text. Acquiring that text (or another authoritative source) and c
 revising against it remains open and would upgrade this from “assumption” to “confirmed” —
 <code>crypto_secretbox</code> (T-37, migrated to Kalyna-GCM 2026-07-25 by D-63) is built against it,
 inheriting the same provisional status, not a resolution of it.</li>
-<li><strong>Close Strumok’s provenance gap (D-15/D-16)</strong>, if the paid DSTU 8845:2019 text becomes
-available — partially narrowed (D-104) by two independently state-sourced
-supplementary vectors (Держспецзв’язку/ДНДІ ТКЗІ), confirmed matching, but that is still not the
-primary text itself. Otherwise, the release must state “Strumok vectors are UAPKI-attributed
-plus one independent state-sourced supplementary check, not primary-text-confirmed” as
-prominently as the README banner now states the pre-release status generally.</li>
+<li><strong>Done 2026-09-16, see <code>docs/DECISIONS.md</code> D-197 - Strumok’s provenance gap (D-15/D-16) is
+closed.</strong> The primary DSTU 8845:2019 text was obtained (a genuine library scan via the National
+Library of Ukraine’s EDD service), and all 8 official worked examples (Додаток Д) confirmed
+byte-for-byte against <code>hazmat::strumok</code>’s own output - a new permanent test module, not a
+one-off script. This retroactively validates the earlier UAPKI attribution and the D-104
+state-sourced supplementary vectors, rather than replacing them. Constant tables (<code>Tᵢ[a]</code>/
+<code>Mulα</code>/<code>Mulα⁻¹</code>) are additionally spot-checked (D-198), not independently transcription-verified
+in full - the one remaining, much narrower caveat.</li>
 <li><strong>Build the missing constructions</strong>: <code>crypto_auth</code> (T-38, D-44), <code>crypto_kdf</code> (T-39, D-45), and
 <code>crypto_secretbox</code> (T-37, D-51) all done, none blocked on external material — the Kalyna-alone
 working hypothesis (only CCM/GCM/KW eligible, per D-47, see the headline finding) is what
@@ -685,9 +695,11 @@ this note originally described. Still an open scope decision for 1.0 whether <co
 <code>l(p)=384/512/768</code> curve sizes, T-182) are required, or whether the current surface is acceptable
 for a first release — don’t treat either answer as decided by this entry.</li>
 <li><strong>Mechanical release work</strong>: <code>uacrypt</code>’s real <code>encrypt</code>/<code>decrypt</code>/<code>hash</code> commands are now done
-(T-16, D-52), and GitHub Releases binaries are too (T-18/T-119, 2026-07-26) — remaining:
-crates.io publish (T-17, still explicitly gated on an owner request) and a documentation pass
-aimed at an external consumer rather than an AI-agent-facing repo.</li>
+(T-16, D-52), GitHub Releases binaries are too (T-18/T-119, 2026-07-26), and crates.io/PyPI/npm/
+RubyGems publishing (T-17/T-164) are all done too, live as of v0.3.0/T-164/v0.3.8 respectively
+(D-191/D-194) — remaining: a documentation pass aimed at an external consumer rather than an
+AI-agent-facing repo (partially addressed since by <code>docs/CLI.md</code>, the mdBook knowledge base,
+T-186, and the gh-pages landing page, not tracked as fully closing this item).</li>
 </ol>
 <p>Steps 1-2 are the load-bearing ones: everything else can be built in parallel, but a release that
 skips them is a release of provisional cryptography labeled as final, which is exactly the outcome

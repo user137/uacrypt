@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-e6aae2d4.js";
+            window.path_to_searchindex_js = "searchindex-1284cdab.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-6b977b4b.js"></script>
@@ -215,8 +215,8 @@ table below.</p>
 <tr><th>State</th><th>Want</th><th>Have</th><th>Gap</th></tr>
 </thead>
 <tbody>
-<tr><td>Discover</td><td>Find the project, understand what it does and its current maturity</td><td><code>README.md</code> top banner states its current released version plainly (<code>v0.2.0</code> as of 2026-08-07, with an explicit note when a feature shown below it - e.g. DSTU 9041/<code>crypto_box</code> - is <code>master</code>-only and not yet in that tag)</td><td>none</td></tr>
-<tr><td>Acquire</td><td>A prebuilt binary for their OS, no Rust toolchain required</td><td><strong>Closed 2026-07-26, see <code>docs/TASKS.md</code> T-18/T-119.</strong> Every GitHub Release (first <code>v0.1.0</code>, latest <code>v0.2.0</code> as of 2026-08-02) ships <code>uacrypt-{linux-x86_64,macos-aarch64,windows-x86_64}</code> archives, built by <code>.github/workflows/release.yml</code> on a tag push. Verified against the actual downloaded Windows asset, not just a green CI run: extracted and ran standalone (no local <code>cargo</code>), <code>--version</code>/<code>keygen</code>/<code>encrypt</code>/<code>decrypt</code> round-trip all worked</td><td>macOS asset is <code>aarch64</code>-only (GitHub’s <code>macos-latest</code> runner) - an Intel Mac build isn’t covered, not previously scoped; <code>box-*</code> (DSTU 9041/<code>crypto_box</code>) is not in any tagged release yet, <code>master</code>-only</td></tr>
+<tr><td>Discover</td><td>Find the project, understand what it does and its current maturity</td><td><code>README.md</code> top banner states its current released version plainly (<code>v0.3.8</code> as of 2026-08-13 - <code>docs-check</code>’s version-marker lint, T-186, keeps this from silently drifting)</td><td>none</td></tr>
+<tr><td>Acquire</td><td>A prebuilt binary for their OS, no Rust toolchain required</td><td><strong>Closed 2026-07-26, see <code>docs/TASKS.md</code> T-18/T-119.</strong> Every GitHub Release (first <code>v0.1.0</code>, latest <code>v0.3.8</code> as of 2026-08-13) ships <code>uacrypt-{linux-x86_64,macos-aarch64,windows-x86_64}</code> archives, built by <code>.github/workflows/release.yml</code> on a tag push. Verified against the actual downloaded Windows asset, not just a green CI run: extracted and ran standalone (no local <code>cargo</code>), <code>--version</code>/<code>keygen</code>/<code>encrypt</code>/<code>decrypt</code> round-trip all worked</td><td>macOS asset is <code>aarch64</code>-only (GitHub’s <code>macos-latest</code> runner) - an Intel Mac build isn’t covered, not previously scoped. <code>box-*</code>/<code>box-*512</code> (DSTU 9041/<code>crypto_box</code>/<code>crypto_box512</code>) and <code>sign*257</code> shipped in v0.3.0+, no longer <code>master</code>-only</td></tr>
 <tr><td>Generate a key</td><td>A <code>uacrypt keygen</code> command, or at least a documented one-liner</td><td><strong>Closed 2026-07-26, see <code>docs/TASKS.md</code> T-115.</strong> <code>uacrypt keygen --out key.bin</code> now exists — draws a fresh 32-byte key from the OS CSPRNG via <code>crypto_secretstream::Key::generate</code>, writes it in the exact format <code>encrypt</code>/<code>decrypt --key</code> expect</td><td>none, as of T-115</td></tr>
 <tr><td>Run <code>encrypt</code>/<code>decrypt</code>/<code>hash</code></td><td>A misuse-resistant command with no mode/nonce to configure</td><td><code>README.md</code> “Using <code>uacrypt</code>” documents <code>encrypt</code>/<code>decrypt</code>/<code>hash</code> fully, including that they’re genuinely chunked (T-40/D-68) with no message-length cap</td><td>none, once a key exists</td></tr>
 <tr><td>Verify it does what’s claimed</td><td>Confirm round-trip correctness and see real throughput numbers</td><td><code>cargo test --workspace</code> for correctness; <code>docs/PERFORMANCE.md</code> “Binary-level (process) comparison” section for real <code>uacrypt</code>-binary MB/s numbers, <code>docs/resource-profiles.md</code> for the <code>fused</code>/<code>small-tables</code> speed table</td><td>For a <em>downloaded</em> binary specifically: correctness is now verifiable without a toolchain (the round-trip smoke test above), but the MB/s numbers still require building from source to reproduce - not re-measured per-platform for the release assets themselves</td></tr>
@@ -242,9 +242,10 @@ the journey directly.</p>
     Configure --&gt; Verify
     Verify --&gt; Ship
     Ship --&gt; [*]
-
-    AddDependency --&gt; Discover: not on crates.io, no docs.rs page
 </code></pre>
+<p><code>AddDependency</code>’s back-edge to <code>Discover</code> (present in the original 2026-07-25 version of this
+diagram, labeled “not on crates.io, no docs.rs page”) is removed as of T-17’s closure, 2026-08-09 -
+see the table below.</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -252,20 +253,20 @@ the journey directly.</p>
 </thead>
 <tbody>
 <tr><td>Discover</td><td>Find the crate and its API surface</td><td><code>README.md</code>, <code>crates/dstu-core/README.md</code></td><td>none</td></tr>
-<tr><td>Add dependency</td><td><code>cargo add dstu-core</code></td><td><strong>Not published to crates.io</strong> (T-17, explicitly gated on an owner request per the roadmap’s Step 4 note, <code>docs/TASKS.md</code> line ~2031). Only path today is a git/path dependency. <strong>Empirically re-confirmed 2026-07-26 (<code>docs/TASKS.md</code> T-117), not just cited</strong>: <code>cargo add dstu-core</code> in a real scratch crate fails with <code>error: the crate dstu-core could not be found in registry index</code></td><td><strong>Real gap, and it compounds another one</strong>: because the crate isn’t published, <code>docs.rs</code> has never built a page for it either — meaning T-110’s <code>[package.metadata.docs.rs]</code> <code>all-features = true</code> metadata (done, <code>docs/TASKS.md</code> T-110) is currently inert. A library user reading only crates.io/docs.rs (the normal Rust discovery path) finds nothing there at all; they’d have to already know to look at GitHub</td></tr>
+<tr><td>Add dependency</td><td><code>cargo add dstu-core</code></td><td><strong>Closed 2026-08-09, see <code>docs/DECISIONS.md</code> D-114/T-17.</strong> <code>dstu-core</code> is live on crates.io since v0.3.0; <code>cargo add dstu-core</code> works exactly as this row originally wanted. <code>docs.rs/dstu-core</code> also builds now (confirmed live, T-110’s <code>all-features = true</code> metadata is no longer inert)</td><td>none</td></tr>
 <tr><td>Pick layer</td><td>Understand <code>hazmat::*</code> vs <code>crypto_*</code> and which to reach for</td><td><code>crates/dstu-core/README.md</code> “Two layers” section states the split plainly and by name; <code>docs/dstu-crypto-project.md</code> “Concrete API shape” has the full module-by-module table</td><td>none</td></tr>
 <tr><td>Choose construction</td><td>Know which <code>crypto_*</code>/<code>hazmat</code> module fits their use case (AEAD, KDF, signing, streaming…)</td><td><code>docs/release-readiness.md</code> “Use-case coverage” table maps scenario → construction directly. <strong>Fixed 2026-07-26 (<code>docs/TASKS.md</code> T-117)</strong>: <code>crates/dstu-core/README.md</code>’s own <code>## Example</code> (the first code a library user actually copy-pastes, for <code>crypto_secretbox</code>) did not compile as written — <code>SecretKey::generate()</code>/<code>seal()</code> both return <code>Result</code>, the example used them as bare values. Found by actually building the example in a real path-dependency scratch crate, not by re-reading the doc; never caught by <code>cargo test</code> since the README isn’t wired in as a doctest</td><td>none, as of the T-117 fix — but this class of bug (an uncompiled README example) is structurally invisible to the existing test suite, so a regression here needs a human/agent to actually run the example again, not just <code>cargo test</code> passing</td></tr>
 <tr><td>Configure (features, cached schedule)</td><td>Know which Cargo features to enable, and how to use <code>ExpandedKey</code> for repeated-key throughput</td><td><code>crates/dstu-core/README.md</code> “Feature flags” table; <code>hazmat::kalyna</code>’s <code>ExpandedKey</code> type itself — but <strong>no doc page walks through <em>why</em>/<em>when</em> to use <code>ExpandedKey</code> over the bare <code>encrypt</code>/<code>decrypt</code> functions</strong>, only <code>docs/PERFORMANCE.md</code>’s benchmark methodology mentions “cached schedule” in passing (e.g. the <code>resource-profiles.md</code> speed table’s row labels)</td><td><strong>Minor gap</strong>: a library user optimizing for throughput has to infer the cached-schedule pattern from benchmark row labels rather than being told directly in <code>dstu-core</code>’s own README or rustdoc</td></tr>
 <tr><td>Verify</td><td>Confirm the crate does what it claims, on their own machine</td><td><code>cargo test --workspace --all-features</code>; <code>docs/PERFORMANCE.md</code>’s full benchmarking + <code>criterion</code> baseline instructions (<code>cargo bench -p dstu-core --bench kalyna --bench kupyna --bench strumok</code>)</td><td>none, once the dependency itself is resolved</td></tr>
-<tr><td>Ship</td><td>Depend on a stable, versioned release for their own downstream users</td><td>No stable crates.io version exists; a git-dependency consumer has no SemVer guarantee across commits, and <code>docs/CHANGELOG.md</code> (T-111, done) currently has no public release to anchor to</td><td>Same root cause as “Add dependency” above — not a separate gap, a downstream consequence of T-17</td></tr>
+<tr><td>Ship</td><td>Depend on a stable, versioned release for their own downstream users</td><td><strong>Closed alongside “Add dependency” above.</strong> <code>dstu-core</code>/<code>uacrypt</code> are stable, versioned crates.io releases (v0.3.8 as of this writing); <code>docs/CHANGELOG.md</code> anchors each one</td><td>none</td></tr>
 </tbody>
 </table>
 </div>
-<p><strong>Bottom line</strong>: every step from “Pick layer” onward is well documented and cited; the entire
-persona-2 gap is concentrated at “Add dependency” (no crates.io/docs.rs presence) and its
-downstream consequence for “Ship.” This is the same T-17 gate the roadmap already tracks — this
-persona view just shows it’s not only a publishing-hygiene item, it’s a hard stop partway through a
-concrete adoption path.</p>
+<p><strong>Bottom line, updated 2026-09-17</strong>: persona 2’s journey is now unblocked end to end. The original
+gap (“Add dependency”/“Ship”, no crates.io/docs.rs presence) was the one open item in this whole
+document as of when it was written - closed 2026-08-09 when T-17 landed (<code>docs/DECISIONS.md</code>
+D-114). This paragraph is kept, corrected in place rather than deleted, as the historical record of
+what this persona’s blocking gap used to be.</p>
 <h2 id="persona-3--constrained-target-microcontroller-user"><a class="header" href="#persona-3--constrained-target-microcontroller-user">Persona 3 — constrained-target (microcontroller) user</a></h2>
 <p>Needs the <code>no_std</code>/<code>small-tables</code> minimal-footprint variant for an STM32/ESP32-class target. Cares
 about flash/RAM budget and build-time feature selection, not raw throughput.</p>
@@ -316,8 +317,11 @@ package-registry install path, not <code>hazmat</code>/<code>crypto_*</code> int
     Verify --&gt; Ship
     Ship --&gt; [*]
 
-    Install --&gt; Discover: not on any package registry
+    Install --&gt; Discover: not on any package registry (5 of 8 bindings still)
 </code></pre>
+<p><strong>Updated 2026-08-3x/09-17</strong>: the back-edge above narrowed, not closed - Python/Node.js/Ruby are
+now on PyPI/npm/RubyGems (see the table below), the remaining five (PHP/.NET/Java/Go/C++) still
+build-from-source only.</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -326,17 +330,17 @@ package-registry install path, not <code>hazmat</code>/<code>crypto_*</code> int
 <tbody>
 <tr><td>Discover</td><td>Find out a binding exists for their language</td><td><code>README.md</code>’s language-bindings section (T-162); <code>docs/bindings-strategy.md</code></td><td>none</td></tr>
 <tr><td>Pick language</td><td>Confirm the binding covers what they need (<code>crypto_secretstream</code>, signing, etc.)</td><td>Each <code>bindings/&lt;lang&gt;/README.md</code> carries the same provisional-status banner (T-112) and documents its wrapped surface</td><td>none</td></tr>
-<tr><td>Install</td><td><code>pip install</code>/<code>npm install</code>/<code>gem install</code>/<code>composer require</code>/<code>nuget install</code>/a Maven dependency/<code>go get</code>/vcpkg — the normal registry path for their language</td><td><strong>Not published to any package registry</strong> (T-164, explicitly gated on a separate owner request, same posture as T-17 for <code>dstu-core</code> itself). Only path today is building from source inside <code>bindings/&lt;lang&gt;</code> using that language’s native tooling plus <code>cargo xtask &lt;lang&gt;</code></td><td><strong>Real gap, same shape as persona 2’s</strong>: a developer following their language’s normal discovery path (PyPI/npm/RubyGems/Packagist/NuGet/Maven Central/pkg.go.dev) finds nothing there at all; they’d have to already know to look at GitHub and build from source</td></tr>
+<tr><td>Install</td><td><code>pip install</code>/<code>npm install</code>/<code>gem install</code>/<code>composer require</code>/<code>nuget install</code>/a Maven dependency/<code>go get</code>/vcpkg — the normal registry path for their language</td><td><strong>Partially closed.</strong> Python (<code>pip install dstu-core</code>), Node.js (<code>npm install dstu-core</code>), and Ruby (<code>gem install dstu_core</code>) are live registries since T-164/D-194 - same closure persona 2’s crates.io gap got. PHP/.NET/Java/Go/C++ remain build-from-source only, still gated on a separate owner request per registry (Packagist/NuGet/Maven Central/pkg.go.dev/vcpkg each need their own setup)</td><td><strong>Real gap, narrower than before</strong>: 5 of 8 languages still have no registry presence; a developer in one of those 5 finds nothing on their normal discovery path and has to know to look at GitHub</td></tr>
 <tr><td>Run the API</td><td>Call <code>crypto_*</code> functions idiomatically from their own language</td><td><code>bindings/&lt;lang&gt;/examples/</code> plus each binding’s <code>README.md</code> show real usage (standard binding steps, step 7)</td><td>none, once installed</td></tr>
 <tr><td>Verify</td><td>Confirm the binding does what it claims, on their own machine</td><td>Each binding’s local test suite covers all three categories (correctness/rejection/misuse, D-64/D-65) against the shared official vectors (standard binding steps, step 6)</td><td>none</td></tr>
-<tr><td>Ship</td><td>Depend on a stable, versioned release for their own downstream users</td><td>No stable registry version exists for any binding</td><td>Same root cause as “Install” above — not a separate gap, a downstream consequence of T-164</td></tr>
+<tr><td>Ship</td><td>Depend on a stable, versioned release for their own downstream users</td><td>Python/Node.js/Ruby consumers can now depend on a stable, versioned PyPI/npm/RubyGems release (same closure as persona 2’s crates.io gap). PHP/.NET/Java/Go/C++ consumers still cannot</td><td>Same root cause as “Install” above for the remaining five — not a separate gap</td></tr>
 </tbody>
 </table>
 </div>
-<p><strong>Bottom line</strong>: persona 4’s gap is concentrated entirely at “Install”/“Ship,” structurally
-identical to persona 2’s crates.io gap — both are the same class of problem (real, working code
-with no registry presence yet), both explicitly gated on a separate owner request (T-164 mirrors
-T-17), not a new finding requiring its own task.</p>
+<p><strong>Bottom line, updated 2026-09-17</strong>: persona 4’s gap narrowed, didn’t close - three of eight
+languages (Python/Node.js/Ruby) got the same registry closure persona 2’s crates.io gap got
+(T-164/D-194), the remaining five (PHP/.NET/Java/Go/C++) are still exactly the gap this section
+originally described in full, each gated on its own separate registry setup.</p>
 <h2 id="persona-5--binding-contributor"><a class="header" href="#persona-5--binding-contributor">Persona 5 — binding contributor</a></h2>
 <p>Wants to fix, extend, or add a language binding under <code>bindings/</code> (or the C ABI crate it’s built
 on) — distinct from persona 4, who only <em>consumes</em> a binding.</p>
@@ -386,21 +390,25 @@ same as T-17 - and the owner made that request directly (“зроби релі�
 бібліотек”), 2026-07-26. <strong>Closed the same day, see <code>docs/TASKS.md</code> T-18/T-119</strong> - real GitHub Release
 <code>v0.1.0</code>, three platform binaries plus the <code>dstu-core</code> source distribution, verified against the
 actual downloaded assets.</li>
-<li><strong>Crates.io/docs.rs absence</strong> (persona 2) is the one gap in this whole document still open -
-tracked at the construction level as T-17, explicitly re-confirmed as still gated on a separate
-owner request when T-18/T-119 was scoped (GitHub Release ≠ crates.io publish, confirmed via
-<code>AskUserQuestion</code> rather than assumed to mean both).</li>
+<li><strong>Updated 2026-09-17: crates.io/docs.rs absence (persona 2) is closed, not open any more.</strong>
+T-17 landed 2026-08-09 (<code>docs/DECISIONS.md</code> D-114) - <code>dstu-core</code>/<code>uacrypt</code> are both live on
+crates.io, <code>docs.rs/dstu-core</code> builds. This was the one gap this document tracked as genuinely
+still open when first written; it no longer is. Paragraph kept as the historical record of what
+that gap used to be, not deleted.</li>
 <li>The findings above were not proposed as new task numbers when this document was first written,
 per T-114’s own scope (“this task’s value is the persona/journey framing itself”) — they were
-recorded as candidates for the project owner to triage. Three (<code>uacrypt keygen</code>, T-115; the
-cross-compile check, T-116; prebuilt binaries, T-18/T-119) have since been triaged and closed;
-crates.io publication (T-17) remains open, still explicitly gated on an owner request.</li>
+recorded as candidates for the project owner to triage. Four (<code>uacrypt keygen</code>, T-115; the
+cross-compile check, T-116; prebuilt binaries, T-18/T-119; crates.io publication, T-17) have
+since been triaged and closed - the only originally-open item from this list left is persona 4’s
+registry-install gap, and even that one is now three-eighths closed (see below).</li>
 <li><strong>Personas 4 and 5, added 2026-08-03 (<code>docs/TASKS.md</code> T-166)</strong>: the original three personas
 predated every language binding; walking the binding-user and binding-contributor journeys
-directly surfaced two gaps, both closed the same session — persona 4’s registry-install gap
-turned out to be structurally identical to persona 2’s (T-164 mirrors T-17, both owner-gated),
-and persona 5’s onboarding gap was closed immediately via T-165 (a <code>docs/CONTRIBUTING.md</code>
-section had never existed for bindings at all). Note: the root <code>README.md</code>’s stale repo tree
+directly surfaced two gaps. Persona 5’s onboarding gap was closed immediately via T-165 (a
+<code>docs/CONTRIBUTING.md</code> section had never existed for bindings at all). Persona 4’s
+registry-install gap turned out to be structurally identical to persona 2’s (T-164 mirrors T-17,
+both owner-gated) - <strong>updated 2026-09-17: three of eight languages (Python/Node.js/Ruby) are now
+closed the same way persona 2’s crates.io gap was (T-164/D-194); PHP/.NET/Java/Go/C++ remain
+open, each needing its own registry setup</strong>. Note: the root <code>README.md</code>’s stale repo tree
 (missing <code>bindings/ruby</code>/<code>bindings/php</code>/<code>crates/dstu-core-capi</code>) is tracked separately under
 T-162, deliberately deferred until every binding lands — not a new finding here.</li>
 <li><strong>Methodology note, 2026-07-26 (<code>docs/TASKS.md</code> T-117)</strong>: this document’s original findings were
