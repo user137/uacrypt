@@ -428,19 +428,23 @@ html[data-lang="uk"] [lang="en"]{display:none;}
       <div class="algo-head">
         <div><div class="algo-name">Strumok / Струмок</div>
         <div class="algo-meta">DSTU 8845:2019 · <span lang="en">stream cipher</span><span lang="uk">потоковий шифр</span></div></div>
-        <span class="pill pill-warn" lang="en">provisional</span>
-        <span class="pill pill-warn" lang="uk">попередньо</span>
+        <span class="pill pill-ok" lang="en">verified</span>
+        <span class="pill pill-ok" lang="uk">верифіковано</span>
       </div>
       <p class="algo-gloss" lang="en">"strumok" — brook, a small stream</p>
       <p class="algo-gloss" lang="uk">«струмок» — невеликий потік води, струмочок</p>
       <p class="desc" lang="en">256- and 512-bit keystream generation.</p>
       <p class="desc" lang="uk">Генерація keystream, 256 і 512 біт.</p>
-      <p class="status-detail" lang="en">UAPKI-attributed vectors, plus additional
-      officially-sourced supplementary vectors obtained separately — an upgrade, not a closure:
-      still not confirmed against the primary, paid DSTU 8845 text itself.</p>
-      <p class="status-detail" lang="uk">Вектори, атрибутовані UAPKI, плюс додаткові офіційні
-      вектори, отримані окремо, — це підвищення довіри, а не закриття питання: досі не звірено
-      з самим первинним, платним текстом DSTU 8845.</p>
+      <p class="status-detail" lang="en">Confirmed against DSTU 8845:2019's own worked examples
+      (Додаток Д) — a genuine library scan, all 8 official cases match the implementation's output
+      byte-for-byte. Internal constant tables (S-box, T<sub>i</sub>[a], Mul<sub>α</sub>) are
+      corroborated only at the entries these 8 vectors reach, not independently
+      transcription-verified in full.</p>
+      <p class="status-detail" lang="uk">Звірено із власними прикладами для перевіряння ДСТУ
+      8845:2019 (Додаток Д) — справжній бібліотечний скан, усі 8 офіційних прикладів збігаються з
+      виходом реалізації побайтно. Внутрішні таблиці констант (S-box, T<sub>i</sub>[a], Mul<sub>α</sub>)
+      підтверджено лише на тих значеннях, які реально задіяні цими 8 векторами, — не повністю
+      звірені транскрипцією.</p>
     </article>
 
     <article class="algo-card">
