@@ -4,9 +4,10 @@ CLI over `dstu-core` — Ukrainian DSTU cryptographic standards (Kalyna, Kupyna,
 spirit of **libsodium**: mode, nonce, and algorithm choices are hardcoded per command, nothing for
 the caller to misconfigure.
 
-**v0.1.0 — pre-release / work in progress.** Not audited, not a claim of side-channel resistance.
-See `dstu-core`'s README (or the project repository's `docs/SECURITY.md`) for the underlying primitives'
-verification status — every command below inherits it.
+**Pre-1.0 — work in progress.** Not audited, not a claim of side-channel resistance. See the
+project repository's `README.md` for the current released version, and `dstu-core`'s own README
+(or `docs/SECURITY.md`) for the underlying primitives' verification status — every command below
+inherits it.
 
 ## Commands
 
@@ -22,6 +23,11 @@ uacrypt sign-keygen --out signing.key
 uacrypt sign-pubkey --key signing.key --out verifying.key
 uacrypt sign --key signing.key --in file.bin --out file.bin.sig
 uacrypt verify --key verifying.key --in file.bin --sig file.bin.sig
+
+uacrypt box-keygen --out box.key
+uacrypt box-pubkey --key box.key --out box.pub
+uacrypt box-seal --key box.pub --in file.bin --out file.bin.box
+uacrypt box-open --key box.key --in file.bin.box --out file.bin
 ```
 
 `encrypt`/`decrypt` have no message-length cap and stream `--in`/`--out` in fixed-size chunks —
@@ -53,6 +59,13 @@ uacrypt strumok-crypt --variant 256 --key key.bin --iv iv.bin --in file.bin --ou
 encrypts/authenticates arbitrary-length **short** messages (plaintext and `--aad` each capped at
 255 bytes, a sourced property of the construction) using a provisional, dual-oracle-verified
 Kalyna-alone CCM mode, not yet confirmed against the primary DSTU 7624:2014 text.
+
+`box-seal`/`box-open` are public-key encryption (DSTU 9041, hybrid via KDF) — unlike `encrypt`
+(which needs a shared symmetric key both sides already have), `box-seal` only needs the recipient's
+public key. `l(p)=512` siblings (`box-keygen512`/`box-pubkey512`/`box-seal512`/`box-open512`) and
+`m=257` signature siblings (`sign-keygen257`/`sign-pubkey257`/`sign257`, `verify` unchanged) also
+exist — see `docs/CLI.md` in the project repository for the full command reference, including
+these and the remaining `hazmat`-scoped Kalyna modes (GCM/CMAC/GMAC/KW/XTS).
 
 `uacrypt keygen --out key.bin` generates a fresh 32-byte key from the OS CSPRNG, in the exact
 format `encrypt`/`decrypt --key` expect.

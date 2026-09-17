@@ -5,8 +5,9 @@ cipher), Kupyna (DSTU 7564:2014, hash), and Strumok (DSTU 8845:2019, stream ciph
 spirit of **libsodium** (hard, safe defaults, hard to misuse) rather than OpenSSL.
 
 **Pre-1.0, work in progress.** Not audited, not a claim of side-channel resistance.
-Kalyna and Kupyna are dual-oracle-verified against official test vectors; Strumok and every Kalyna
-mode of operation are provisional — not yet confirmed against their primary standard text (see
+Kalyna, Kupyna, and Strumok are dual-oracle-verified against official test vectors (Strumok
+directly against DSTU 8845:2019's own Annex Д since 2026-09-16); every Kalyna mode of operation
+remains provisional — not yet confirmed against its primary standard text (see
 `docs/DECISIONS.md`/`docs/SECURITY.md` in the project repository, not shipped in this package, for the full
 citation trail and threat model). `crypto_secretstream`/`crypto_kdf` have no oracle vector at all
 and never will, since no DSTU standard defines an equivalent construction — verified by property,
