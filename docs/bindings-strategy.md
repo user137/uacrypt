@@ -1112,11 +1112,12 @@ type names in every binding, same as the C ABI and core itself; tag-byte dispatc
 `uacrypt`-CLI-only concern (D-118's "don't duplicate wire-format logic into every binding" lesson
 generalized).
 
-### Publishing (all registries) — separate, owner-gated, not scheduled
+### Publishing (all registries) — separate, owner-gated, requested per-registry as it happens
 
 One explicit ask per registry (PyPI/npm/Maven Central/NuGet/RubyGems/Packagist), the same class of
-decision T-17 already applies to crates.io. Not started, not broken into steps above — tracked only
-once actually requested.
+decision T-17 already applied to crates.io. **Updated: three of six are done** — PyPI and npm
+(T-164) and RubyGems (T-164 follow-up, D-194) are live; Maven Central/NuGet/Packagist remain not
+started, each needing its own separate owner ask.
 
 ### T-162 — GitHub-facing docs + `gh-pages` site refresh (last, after every binding lands)
 

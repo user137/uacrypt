@@ -441,8 +441,9 @@ comparable to all five other in-scope algorithms combined" framing, not just a p
 
 ## Test-vector convention
 
-Populated for Kalyna and Kupyna. The Rust loader exists now (`crates/dstu-core/tests/kupyna.rs`,
-per D-10) — the earlier "waits for the first primitive" caveat no longer applies to Kupyna.
+**Updated - populated for Kalyna, Kupyna, DSTU 4145, and Strumok**, not just the original two this
+section was written against. The Rust loader exists now (`crates/dstu-core/tests/kupyna.rs`, per
+D-10) — the earlier "waits for the first primitive" caveat no longer applies to Kupyna.
 
 - Vectors live at `crates/dstu-core/tests/vectors/<algorithm>/<case>.json` — one file per
   block/key-size or hash-size variant, plain hex fields, human-diffable, not a binary blob.
@@ -455,7 +456,9 @@ per D-10) — the earlier "waits for the first primitive" caveat no longer appli
 - **Same files, consumed cross-language too:** `tests/oracle-harness/{java,dotnet}/` run these
   vectors against real Bouncy Castle directly (not the Rust port), via the published Maven/NuGet
   packages — one vector format, multiple independent consumers. Both actually run and pass (all
-  10 Kalyna + all 12 Kupyna cases). No cryptonite/C harness — tried on 2026-07-22 with a real
+  10 Kalyna + all 12 Kupyna cases; the Java harness additionally carries dedicated DSTU 4145
+  generators/oracles, `Dstu4145VectorGen{,257}.java`/`Dstu4145T152Oracle.java`, per the DSTU 4145
+  section above). No cryptonite/C harness — tried on 2026-07-22 with a real
   local GCC and dropped: cryptonite's own source doesn't compile clean on a modern compiler
   (unrelated to Kalyna/Kupyna — an error in `dstu4145_prng_internal.c`), and the added value was
   already modest given the two harnesses above already independently confirm these vectors. See
