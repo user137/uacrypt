@@ -7659,6 +7659,26 @@ Phase 2+ and none currently in flight).
   in full" caveat was stated (`CLAUDE.md` x3, `docs/ORACLES.md`, `docs/pseudocode/strumok.md`) to
   note the spot check without overclaiming full verification.
 
+- [x] **T-230** (2026-09-17) **Scrupulous documentation-freshness audit, whole repo, file by file -
+  see `docs/DECISIONS.md` D-199 for the full methodology and finding classes.** Owner asked for a
+  systematic pass after independently spotting a stale claim `docs-api.yml`'s own comment carried
+  ("docs.rs only exists once published - not started", though T-17 shipped weeks earlier). Plan
+  reviewed by `advisor()` before starting. All 16 `.github/workflows/*.yml`, every narrative
+  `docs/*.md`, `CLAUDE.md`'s remaining sections, `crates/*/README.md`, all 8 `bindings/*/README.md`
+  read and each checkable claim verified against real state (grep into code, `gh release list`/
+  `gh run list`, `cargo audit`/`cargo tree`/`cargo test --doc`, a live fetch of the published
+  gh-pages site) - not judged from memory. `docs/DECISIONS.md`/`docs/TASKS.md` themselves checked
+  structurally (marker integrity, recent-entry spot-check, CHANGELOG-vs-`gh release list`
+  cross-check) rather than read end to end, per their own append-only nature. Real findings across
+  ~20 files, most in the same class as the triggering example (a status upgrade - T-17/T-164
+  registry publishes, D-197/D-198 Strumok confirmation - that never propagated to every place the
+  old status was stated); one structural `docs/TASKS.md` fix (T-206's dangling `[~]` marker,
+  superseded by T-211 with no forward pointer); one legal-status cross-reference
+  (`docs/dstu9041-8845-info-request-draft.md` marked "not sent" when D-104 describes its own
+  filed-and-answered outcome). `.claude.local.md` (gitignored) read last, one finding reported to
+  the owner directly rather than fixed (unverifiable from repo content alone). Closing `advisor()`
+  review done before the final push, per the project's own gate-at-both-ends rule.
+
 - [x] **T-148** **Corrected a false "font-encoding failure" claim across 5 PDFs; wrote
   `docs/pseudocode/dstu9041.md`; surfaced 3 unread cryptanalysis papers - see `docs/DECISIONS.md`
   D-105.** Owner asked why the Skorobahatko DSTU 9041 thesis PDF "doesn't get recognized" -

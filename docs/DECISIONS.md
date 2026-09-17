@@ -13399,3 +13399,86 @@ grep sweep is necessary but not sufficient" rule.
 **Not committed**: same as D-197 - the rendered page images were scratch files only, never
 committed anywhere; the scan itself stays gitignored.
 
+
+## D-199: T-230 - Scrupulous documentation-freshness audit, whole repo, file by file
+
+**What prompted this.** During D-197/D-198 (Strumok verification) the owner independently spotted
+a stale claim in `docs-api.yml` ("docs.rs only exists once published - not started", though T-17
+had shipped weeks earlier) and asked for a systematic pass: every doc file, read and verified
+against actual current state - code, CI config, git tags/releases, live registries - not assumed
+from memory or "probably still true." Plan drafted, reviewed by `advisor()` before starting
+(caught: drop the originally-planned fork-based research mechanism in favor of direct read-verify-
+fix per file, since verification here means running a real command per claim, not summarizing a
+file; fix-per-file/commit-per-batch instead of batching all fixes to the end; a sharper test for
+`docs/PERFORMANCE.md`; write the two already-known findings into the plan explicitly).
+
+**Scope and method.** All 16 `.github/workflows/*.yml`, then every narrative `docs/*.md` file
+(batched by theme: status/overview, process/meta, verification/performance, pseudocode, crate/
+binding READMEs, ancillary artifacts), `CLAUDE.md`'s remaining sections, then a bounded check of
+`docs/TASKS.md` (marker-integrity grep + spot-check of the most recent ~25 entries, not a full
+8000-line read) and `docs/CHANGELOG.md` (version-header cross-check against `gh release list`).
+`docs/DECISIONS.md` and `docs/TASKS.md` themselves were deliberately NOT rewritten wholesale -
+both are append-only logs by this project's own convention; a stale entry gets a pointer-forward
+note, never a silent rewrite. `docs/rust_ai_ruleset.md` (external, canonical as-is) and the OCR
+transcripts under `docs/papers/` were out of scope by design. Each claim was checked with an actual
+command - `grep`/`Read` into the real source, `gh release list`/`gh run list`, `cargo audit`,
+`cargo tree`, `cargo test --doc`, a live `curl` of the published gh-pages site - not judged by eye.
+
+**What was found - by class, not enumerated finding-by-finding (see the individual commits on
+`master`, tagged `T-230 phase N batch M`, for exact diffs):**
+
+- **The single largest recurring class**: registry-publish status frozen at "not yet published"
+  in a dozen-plus places across `CLAUDE.md`, `docs/dstu-crypto-project.md`, `docs/release-
+  readiness.md` (repeated 5+ times), `docs/user-journey-gaps.md` (this document's own central
+  thesis for two of its five personas), `docs/SECURITY.md`, `docs/CONTRIBUTING.md`,
+  `docs/bindings-strategy.md`, `.github/workflows/release.yml`, and both published crate READMEs -
+  T-17 (crates.io, done 2026-08-09) and T-164 (PyPI/npm/RubyGems, done since) had each closed real
+  gaps that a dozen separate sentences never caught up to.
+- **Strumok's D-197/D-198 primary-text-confirmation status** (this session's own earlier work) had
+  the identical propagation problem in files outside the sweep D-197/D-198 themselves already
+  covered: `docs/release-readiness.md` (3 places), `crates/dstu-core/README.md` (the actual
+  crates.io-published text).
+- **A genuinely stale "not built yet" claim about something long since built**: `docs/dstu-crypto-
+  project.md`'s "On the horizon" section described `dstu-core-capi` as a speculative, unscheduled
+  idea with "no design work done" - it's been a real root-workspace member since T-158, described
+  elsewhere in the very same file.
+- **Undersold current scope**: `docs/cross-language-style-guide.md` still framed itself around 5
+  languages and bindings "whichever get built first" (all 8 landed 2026-08-03); `docs/ORACLES.md`'s
+  test-vector-convention summary said "Kalyna and Kupyna" when DSTU 4145/Strumok also have vectors
+  and their own oracle-harness coverage; `CLAUDE.md`/`docs/CONTRIBUTING.md` described `cargo xtask
+  ci`'s optional layers as "miri/kani/book/fuzz/audit/deny/oracle harnesses" when the real loop
+  also runs every binding's own build+test, `capi`, both C++ static analyzers, `qemu-stm32`, and
+  the streaming-boundedness proof.
+- **A genuinely missing reference**: `docs/CLI.md` (the canonical CLI command reference per its own
+  new `CLAUDE.md` "Documentation map" row, added this pass) was missing 9 of `uacrypt`'s 27 real
+  subcommands entirely - `sign257`/`box512` families, `kupyna-digest`, `strumok-crypt`, and 5
+  hazmat mode-of-operation tools (`kalyna-gcm`/`cmac`/`gmac`/`kw`/`xts`). `crates/uacrypt/README.md`
+  additionally carried a hardcoded `v0.1.0` banner (actual: 0.3.8) with no lint covering it, and was
+  entirely missing `crypto_box`/`box-*` from its own command list despite showing `sign`/`verify`.
+- **A self-contradicting claim**: `docs/SECURITY.md` said `cargo audit`/`cargo deny` "currently
+  check an empty dependency tree (zero external dependencies)" five lines above its own supply-chain
+  table listing 5 real dependencies with real versions.
+- **A real, unrelated legal-status question resolved by cross-referencing**: `docs/dstu9041-8845-
+  info-request-draft.md` said "not yet sent" - `docs/DECISIONS.md` D-104 turned out to describe the
+  filed and answered outcome of this exact request (same agency, same two standards), never linked
+  back to the draft.
+- **A structural TASKS.md gap, not a narrative one**: T-206 (a CI-timeout investigation) sat on its
+  original `[~]` partial marker with two sub-items still open, months after T-211 actually and
+  fully resolved the underlying problem a different way - no forward pointer connected them.
+  Closed here per this project's own "never silently deprecate, add pointer-forward" rule.
+- **One pseudocode staleness**: `docs/pseudocode/dstu4145.md` said `m=257` was "now planned" when
+  `crypto_sign257` has been fully implemented and wired into every binding for weeks.
+
+**What this does not claim.** This pass fixed every stale claim it found and verified, not every
+stale claim that could exist - `docs/DECISIONS.md`'s 13000+ lines and `docs/TASKS.md`'s 8000+ lines
+were checked structurally and via spot-check, not read end to end (see "Scope and method" above for
+why that's the right call for an append-only log, not a shortcut). `.claude.local.md` (gitignored,
+not part of any commit) was read last and reported to the owner directly rather than edited, per
+this file's own private-content handling elsewhere in the project (D-174/D-175's precedent) - one
+real finding there (a private disclosure to a third-party maintainer marked "not yet sent" as of
+2026-08-08, unverifiable from repo content alone) was surfaced, not resolved, since resolving it
+requires information outside this repository.
+
+**Closing `advisor()` review**: done before the final push, per this project's own "gate at both
+ends" rule - see the session transcript for what it found, applied as one more round of fixes
+before this entry was written, not after.

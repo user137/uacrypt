@@ -20,6 +20,13 @@ All notable changes to this project are documented in this file. Format follows
   on the `arm64-darwin` build, both unrelated to this repo's own code. Live on RubyGems.org as of
   this entry, all four platform gems. See `docs/DECISIONS.md` D-194.
 
+- Whole-repo documentation-freshness audit (T-230, `docs/DECISIONS.md` D-199): ~20 files across
+  workflow comments, top-level docs, pseudocode, and published crate READMEs had status claims
+  frozen from before a later fix landed - most commonly registry-publish status (T-17/T-164) and
+  Strumok's primary-text confirmation (D-197/D-198) that never propagated everywhere the old status
+  was stated. `docs/CLI.md` was also missing 9 of `uacrypt`'s 27 real subcommands. See D-199 for the
+  full finding-class breakdown.
+
 ### Changed
 
 - Strumok (DSTU 8845:2019) keystream vectors are now confirmed against the official standard text
