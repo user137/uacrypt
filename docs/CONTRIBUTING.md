@@ -24,7 +24,9 @@ By participating, you're expected to follow this project's [Code of Conduct](COD
 ├── docs/CODE_OF_CONDUCT.md     # community standards (Contributor Covenant)
 ├── LICENSE-MIT
 ├── LICENSE-APACHE
-├── .github/workflows/     # CI (rust.yml, oracle-harness.yml) and the release workflow (release.yml)
+├── .github/workflows/     # CI (rust.yml core build/test/lint, sonarcloud.yml, codeql.yml,
+│                          #   oracle-harness.yml, canary.yml, docs-api.yml/docs-book.yml,
+│                          #   one bindings-<lang>.yml per language), plus release.yml
 ├── .github/ISSUE_TEMPLATE/, PULL_REQUEST_TEMPLATE.md  # issue/PR templates
 ├── .cargo/config.toml     # `cargo xtask` alias
 ├── xtask/                 # cross-platform build/QA runner, see "Development commands" below
@@ -46,7 +48,7 @@ By participating, you're expected to follow this project's [Code of Conduct](COD
 ├── bindings/               # Phase 3 language bindings, see docs/bindings-strategy.md
 │   ├── python/             # PyO3, full crypto_* surface - on PyPI (T-49)
 │   ├── nodejs/             # napi-rs, full crypto_* surface - on npm (T-50)
-│   ├── ruby/               # magnus/rb-sys, full crypto_* surface - RubyGems in progress (T-160)
+│   ├── ruby/               # magnus/rb-sys, full crypto_* surface - on RubyGems (T-160/T-164, D-194)
 │   ├── php/                # ext-php-rs, full crypto_* surface - not on Packagist yet (T-159)
 │   ├── dotnet/             # C# P/Invoke over dstu-core-capi - not on NuGet yet (T-52)
 │   ├── java/               # jni crate, full crypto_* surface - not on Maven Central yet (T-51)
@@ -181,12 +183,15 @@ via GitHub Security Advisories).
    cargo xtask docs-check # README/gh-pages version-marker freshness lint vs crates/dstu-core's Cargo.toml (T-186)
    ```
 
-   `cargo xtask ci` runs the five above, then best-effort miri/kani/book/fuzz/audit/deny/oracle-harness
-   layers — each checks its own tool is installed first and prints an install hint instead of a raw
-   error if it's missing. `docs-check` needs no external tool, so it's mandatory rather than
-   best-effort — same standing as `fmt`/`build`/`test`/`clippy`. `cargo xtask book` builds the
-   mdBook knowledge base this file is part of; `cargo xtask bench-compare` runs the uacrypt-vs-OpenSSL
-   benchmark table (`docs/PERFORMANCE.md`).
+   `cargo xtask ci` runs the five above, then every other layer best-effort: miri/kani/book/fuzz/
+   audit/deny/the Java+.NET oracle harnesses, every language binding's own build+test
+   (python/nodejs/ruby/php/dotnet/java/go/cpp), `capi`, the C++ static analyzers (`cpp-tidy`/
+   `cpp-cppcheck`), the QEMU STM32 smoke test, and the streaming-boundedness proof - each checks its
+   own tool is installed first and prints an install hint instead of a raw error if it's missing.
+   `docs-check` needs no external tool, so it's mandatory rather than best-effort - same standing as
+   `fmt`/`build`/`test`/`clippy`. `cargo xtask book` builds the mdBook knowledge base this file is
+   part of; `cargo xtask bench-compare` runs the uacrypt-vs-OpenSSL benchmark table
+   (`docs/PERFORMANCE.md`).
 5. If you touched anything `no_std`-relevant (most of `dstu-core`), check the feature matrix
    individually, not just `--all-features` — a narrow combination (e.g.
    `--no-default-features --features dstu-core/small-tables`) can hide issues the broad profile

@@ -14,7 +14,7 @@ stay in whatever language they already use.
 ## Commands
 
 ```bash
-cargo xtask ci            # mandatory checks (incl. docs-check) + best-effort miri/kani/book/fuzz/audit/deny/oracle harnesses
+cargo xtask ci            # mandatory checks (incl. docs-check) + best-effort miri/kani/book/fuzz/audit/deny/oracle harnesses/every language binding's own build+test/capi/cpp static analyzers/qemu-stm32/streaming-bounded
 cargo xtask canary         # cargo update (fresh dependency resolution) then build+test - drift probe behind .github/workflows/canary.yml (T-226)
 cargo xtask build          # both feature-set builds
 cargo xtask test           # full test suite

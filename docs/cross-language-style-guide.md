@@ -1,14 +1,15 @@
-# Cross-language style/naming — Rust, C++, C#, Java, Python
+# Cross-language style/naming — Rust, C++, C#, Java, Python, Ruby, PHP, Go
 
 Goal: a developer coming from any one of these languages reads the code and immediately
 understands "what this is and why," without knowing the local idioms of the others. Achieved
 **not** by writing the same way everywhere (impossible without violating each language's own
 linter) but by the same **principles**, each expressed in the idiom native to its own language.
 
-Applies to this project's non-Rust code — currently `tests/oracle-harness/{java,dotnet}/`, and
-whichever language bindings from `docs/TASKS.md` Phase 3 (Python, JavaScript, Java, .NET, C++) get
-built first. For Rust specifically, `docs/rust_ai_ruleset.md` is the canonical, deeper ruleset —
-this file generalizes the same underlying principles across languages rather than replacing it.
+Applies to this project's non-Rust code — `tests/oracle-harness/{java,dotnet}/`, and all eight
+Phase 3 language bindings (Python, JavaScript/Node.js, Ruby, PHP, Java, .NET, Go, C++ — all built
+as of 2026-08-03, `docs/bindings-strategy.md`). For Rust specifically, `docs/rust_ai_ruleset.md` is
+the canonical, deeper ruleset — this file generalizes the same underlying principles across
+languages rather than replacing it.
 
 ---
 
@@ -105,6 +106,14 @@ patterns only when needed) still applies, with two refinements specific to this 
 
 ## Reference table by language
 
+**Covers 5 of the 8 languages this project actually ships bindings in** — Ruby, PHP, and Go rows
+were never added when those three bindings landed (2026-08-02/03, after this table was written).
+Not filled in here from memory to avoid a wrong-but-confident row; each binding's own linter is
+already real and enforced in CI (`rubocop` for Ruby, `phpstan` for PHP, `gofmt -l`/`go vet` for Go
+— see `xtask/src/main.rs`) even though this table doesn't yet document the per-language naming
+convention each one checks — adding the missing rows is a real, open follow-up, not done as part of
+this pass.
+
 | What | Rust | C++ | C# | Java | Python |
 |---|---|---|---|---|---|
 | Type/class | `UpperCamelCase` | `PascalCase` | `PascalCase` | `PascalCase` | `PascalCase` |
@@ -135,4 +144,5 @@ patterns only when needed) still applies, with two refinements specific to this 
   restating it.
 - Applies today to `tests/oracle-harness/{java,dotnet}/` (already follows this — `OracleHarness`
   in PascalCase with `camelCase` methods, `Program.cs`'s local functions in `PascalCase`,
-  matching the table above) and will apply to `docs/TASKS.md` Phase 3 language bindings when built.
+  matching the table above) and to all eight `docs/TASKS.md` Phase 3 language bindings, all built
+  as of 2026-08-03 - no longer a future item.
