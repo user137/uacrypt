@@ -3,8 +3,9 @@ name: docs-api
 # Builds dstu-core's rustdoc API reference (cargo doc --all-features --no-deps) and publishes it to
 # the gh-pages branch under /api/ - the hand-crafted landing page (index.html/uk/index.html) and
 # the mdBook (book/, docs-book.yml) at gh-pages' own root are never touched by this workflow, only
-# the api/ subdirectory is replaced each run. Self-hosted stand-in for docs.rs (which only exists
-# once dstu-core is published to crates.io - T-17, deliberately owner-gated, not started).
+# the api/ subdirectory is replaced each run. Complements docs.rs (live since dstu-core's crates.io
+# publish, T-17/0.3.0) rather than standing in for it - this mirror tracks master on every push
+# touching dstu-core's src, docs.rs only the latest tagged release.
 on:
   push:
     branches: [master]

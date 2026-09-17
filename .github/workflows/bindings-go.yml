@@ -6,7 +6,8 @@ name: bindings-go
 # so there is no separate Rust dependency tree here for a supply-chain job to audit
 # (docs/bindings-strategy.md T-163 step 5).
 #
-# Windows note (unconfirmed on real CI as of this writing, docs/DECISIONS.md D-155): cgo requires a
+# Windows note (confirmed on real CI, green on every push since T-163 landed - docs/DECISIONS.md
+# D-155): cgo requires a
 # MinGW-w64 gcc toolchain on Windows (it cannot link against an MSVC-built import library), but
 # `dtolnay/rust-toolchain@stable` installs the MSVC-hosted toolchain by default on windows-latest
 # (see rust.yml's own `capi` job comment). The Windows leg below forces the GNU-hosted Rust

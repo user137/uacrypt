@@ -7,10 +7,12 @@ name: release
 # v0.2.0 (docs/TASKS.md T-17, docs/DECISIONS.md D-114), it also publishes both crates to crates.io
 # via `publish-crates` below - v0.2.0 itself predates that job and stayed GitHub-only, per an
 # explicit project-owner scope decision; both crates are live as of v0.3.0 (2026-08-09). The
-# `publish-pypi`/`publish-npm`/`publish-rubygems` jobs (docs/TASKS.md T-164/T-203) exist but are
-# dormant behind their own GitHub Environment approval gate until the owner separately configures
-# Trusted Publishing on each registry - landing the automation ahead of the actual first publish,
-# same pattern T-17 used.
+# `publish-pypi`/`publish-npm`/`publish-rubygems` jobs (docs/TASKS.md T-164/T-203) landed the
+# automation ahead of each registry's actual first publish (same pattern T-17 used) - each still
+# gated behind its own GitHub Environment manual-approval rule so a routine tag push never
+# auto-publishes without a click. All three registries are live now (PyPI/npm since T-164, RubyGems
+# since v0.3.8/docs/DECISIONS.md D-194) - see each job's own comment below for its current posture
+# (npm still carries a bootstrap NODE_AUTH_TOKEN alongside OIDC, PyPI/RubyGems are OIDC-only).
 on:
   push:
     tags:
@@ -71,9 +73,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       # Same packaging `cargo publish` would produce (respects Cargo.toml's include/exclude), but
-      # without actually publishing to crates.io - T-17 stays separately gated. dstu-core has no
-      # path dependencies of its own, so this needs no --no-verify workaround the way packaging
-      # uacrypt (a path dependency on dstu-core, unpublished) would.
+      # without actually publishing - this job's own artifact is the downloadable source-dist
+      # attached to the GitHub Release; the real `cargo publish` to crates.io happens later, in
+      # `publish-crates` below. dstu-core has no path dependencies of its own, so this needs no
+      # --no-verify workaround the way packaging uacrypt (a path dependency on dstu-core) would.
       - run: cargo package -p dstu-core
       - uses: actions/upload-artifact@v4
         with:
@@ -231,15 +234,14 @@ jobs:
           generate_release_notes: true
 
   publish-pypi:
-    # Dormant until the owner configures a PyPI Trusted Publisher (pypi.org web UI, needs their
-    # login - cannot be done from this session) for project `dstu-core`, repo `user137/uacrypt`,
-    # workflow `release.yml`, environment `pypi` below. No token/secret anywhere in this job by
-    # design - PyPI's OIDC Trusted Publishing is the direct fix for the crates.io token-leak
-    # incident T-203/docs/TASKS.md records (a pasted `cargo login` token landed in the chat
-    # transcript twice). `environment: pypi` adds a second, independent safety layer: even once
-    # Trusted Publishing is enabled, a routine future `v*` tag (a patch release) still needs a
-    # manual approval click in that GitHub Environment's protection rules before this job runs -
-    # it does not silently auto-publish just because a tag was pushed.
+    # Owner configured a PyPI Trusted Publisher (pypi.org web UI) for project `dstu-core`, repo
+    # `user137/uacrypt`, workflow `release.yml`, environment `pypi` below - live since T-164. No
+    # token/secret anywhere in this job by design - PyPI's OIDC Trusted Publishing is the direct
+    # fix for the crates.io token-leak incident T-203/docs/TASKS.md records (a pasted `cargo login`
+    # token landed in the chat transcript twice). `environment: pypi` adds a second, independent
+    # safety layer: a routine future `v*` tag (a patch release) still needs a manual approval click
+    # in that GitHub Environment's protection rules before this job runs - it does not silently
+    # auto-publish just because a tag was pushed.
     name: publish to PyPI
     needs: build-python-wheels
     runs-on: ubuntu-latest

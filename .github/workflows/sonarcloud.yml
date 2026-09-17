@@ -7,10 +7,9 @@ name: sonarcloud
 # rust.yml's own build/test/clippy/fmt job.
 #
 # Requires a SONAR_TOKEN repository secret (Settings > Secrets and variables > Actions), generated
-# from the SonarQube Cloud project's own "Administration > Analysis Method" page - only exists
-# once the project itself has been created via sonarcloud.io's GitHub OAuth sign-in. Until that
-# secret exists, this workflow will fail at the scan step; it's safe to merge in that state (it
-# doesn't block rust.yml's own required checks) but won't produce a passing run until then.
+# from the SonarQube Cloud project's own "Administration > Analysis Method" page, created via
+# sonarcloud.io's GitHub OAuth sign-in - configured and green since T-140/D-92 (real findings since
+# triaged: T-137's symbolic-execution trace, T-187/T-188's duplication-density gate).
 
 on:
   push:
