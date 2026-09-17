@@ -303,12 +303,12 @@ html[data-lang="uk"] [lang="en"]{display:none;}
     hardware side-channel attacks (SPA/DPA) — that needs a separate, dedicated hardware audit this
     project hasn't had.</p>
     <p lang="uk"><strong>v0.3.8.</strong> <code>dstu-core</code> живий на
-    <a href="https://pypi.org/project/dstu-core/">PyPI</a> і
-    <a href="https://www.npmjs.com/package/dstu-core">npm</a> (Python/Node.js-байндинги, один
+    <a href="https://pypi.org/project/dstu-core/">PyPI</a>,
+    <a href="https://www.npmjs.com/package/dstu-core">npm</a> і
+    <a href="https://rubygems.org/gems/dstu_core">RubyGems</a> (Python/Node.js/Ruby-байндинги, один
     платформний пакет npm ще відкладено — див.
     <a href="https://github.com/user137/uacrypt/blob/master/docs/DECISIONS.md">docs/DECISIONS.md</a>
-    <a href="https://rubygems.org/gems/dstu_core">RubyGems</a> (Python/Node.js/Ruby-байндинги, один
-    платформний пакет npm ще відкладено — D-189).
+    D-189).
     <code>dstu-core</code>/<code>uacrypt</code> лишаються опублікованими на
     <a href="https://crates.io/crates/dstu-core">crates.io</a> з версії 0.3.0. Що змінилось у
     кожному релізі — див.
@@ -437,14 +437,16 @@ html[data-lang="uk"] [lang="en"]{display:none;}
       <p class="desc" lang="uk">Генерація keystream, 256 і 512 біт.</p>
       <p class="status-detail" lang="en">Confirmed against DSTU 8845:2019's own worked examples
       (Додаток Д) — a genuine library scan, all 8 official cases match the implementation's output
-      byte-for-byte. Internal constant tables (S-box, T<sub>i</sub>[a], Mul<sub>α</sub>) are
-      corroborated only at the entries these 8 vectors reach, not independently
-      transcription-verified in full.</p>
+      byte-for-byte. Its T<sub>i</sub>[a]/Mul<sub>α</sub>/Mul<sub>α</sub><sup>-1</sup> constant
+      tables are spot-checked against the same scan too (zero mismatches on ~100 sampled entries,
+      not a full transcription); the S-box is shared with Kalyna/Kupyna and already cross-checked
+      there against real Bouncy Castle.</p>
       <p class="status-detail" lang="uk">Звірено із власними прикладами для перевіряння ДСТУ
       8845:2019 (Додаток Д) — справжній бібліотечний скан, усі 8 офіційних прикладів збігаються з
-      виходом реалізації побайтно. Внутрішні таблиці констант (S-box, T<sub>i</sub>[a], Mul<sub>α</sub>)
-      підтверджено лише на тих значеннях, які реально задіяні цими 8 векторами, — не повністю
-      звірені транскрипцією.</p>
+      виходом реалізації побайтно. Таблиці констант T<sub>i</sub>[a]/Mul<sub>α</sub>/Mul<sub>α</sub><sup>-1</sup>
+      теж точково звірені з тим самим сканом (жодних розбіжностей на ~100 вибіркових значеннях, не
+      повна транскрипція); S-box спільний з Калиною/Купиною і вже звірений там з реальною Bouncy
+      Castle.</p>
     </article>
 
     <article class="algo-card">
@@ -481,16 +483,18 @@ html[data-lang="uk"] [lang="en"]{display:none;}
       libsodium — KEM обгортає випадкове зерно, яке породжує ключ для самого повідомлення через
       <code>crypto_secretstream</code>.</p>
       <p class="status-detail" lang="en">Vector-confirmed against the standard's own worked
-      example (Додаток Г), but only the recommended <code>l(p)=256</code>/E256/1 curve — the
-      standard also defines 384/512/768-bit variants, not yet implemented. The
-      <code>crypto_box</code> composition itself (KEM + KDF + <code>crypto_secretstream</code>)
-      isn't DSTU-specified, so it has no vector oracle of its own — verified by property and
-      tamper testing instead, the same posture as <code>crypto_secretstream</code>.</p>
-      <p class="status-detail" lang="uk">Звірено з власним прикладом стандарту (Додаток Г), але
-      лише для рекомендованої кривої <code>l(p)=256</code>/E256/1 — стандарт також визначає
-      варіанти на 384/512/768 біт, ще не реалізовані. Сама композиція <code>crypto_box</code>
-      (KEM + KDF + <code>crypto_secretstream</code>) не визначена стандартом, тож не має власного
-      тестового оракула — верифікована властивісними тестами й тестами на підробку, як і
+      examples (Додаток Г) for both the recommended <code>l(p)=256</code>/E256/1 curve and its
+      <code>l(p)=512</code>/E512/1 sibling (<code>crypto_box512</code>) — the standard also defines
+      384- and 768-bit variants, not yet implemented. The <code>crypto_box</code> composition
+      itself (KEM + KDF + <code>crypto_secretstream</code>) isn't DSTU-specified, so it has no
+      vector oracle of its own — verified by property and tamper testing instead, the same posture
+      as <code>crypto_secretstream</code>.</p>
+      <p class="status-detail" lang="uk">Звірено з власними прикладами стандарту (Додаток Г) для
+      рекомендованої кривої <code>l(p)=256</code>/E256/1 і для її сестри <code>l(p)=512</code>/
+      E512/1 (<code>crypto_box512</code>) — стандарт також визначає варіанти на 384 і 768 біт, ще
+      не реалізовані. Сама композиція <code>crypto_box</code> (KEM + KDF +
+      <code>crypto_secretstream</code>) не визначена стандартом, тож не має власного тестового
+      оракула — верифікована властивісними тестами й тестами на підробку, як і
       <code>crypto_secretstream</code>.</p>
     </article>
 
@@ -761,9 +765,9 @@ html[data-lang="uk"] [lang="en"]{display:none;}
 <section class="container">
   <span class="eyebrow" lang="en">Try it</span>
   <span class="eyebrow" lang="uk">Спробувати</span>
-  <div lang="en" class="prose"><h2>Every verb the CLI has — still nothing to misconfigure</h2>
+  <div lang="en" class="prose"><h2>The core CLI verbs — still nothing to misconfigure</h2>
   <p>Mode, nonce, and algorithm are hardcoded — there's nothing left to misconfigure.</p></div>
-  <div lang="uk" class="prose"><h2>Усі дієслова CLI — і досі нічого не можна неправильно налаштувати</h2>
+  <div lang="uk" class="prose"><h2>Основні дієслова CLI — і досі нічого не можна неправильно налаштувати</h2>
   <p>Режим, nonce і алгоритм зашиті наглухо — налаштовувати нічого.</p></div>
 
 <pre><code>cargo build -p uacrypt --release
@@ -782,12 +786,6 @@ uacrypt box-keygen --out box.key
 uacrypt box-pubkey --key box.key --out box.pub
 uacrypt box-seal   --key box.pub  --in message.bin --out sealed.box
 uacrypt box-open   --key box.key  --in sealed.box   --out message.bin</code></pre>
-
-  <p class="small" lang="en"><code>box-*</code> (DSTU 9041 / <code>crypto_box</code>) is on
-  <code>master</code>, not yet in a tagged release — see the version note above.</p>
-  <p class="small" lang="uk"><code>box-*</code> (ДСТУ 9041 / <code>crypto_box</code>) є на
-  <code>master</code>, ще не увійшло до жодного тегованого релізу — див. примітку про версію
-  вище.</p>
 
   <p lang="en"><code>encrypt</code>/<code>decrypt</code> stream the file in fixed-size chunks —
   no message-length cap, no whole-file memory buffer. Prebuilt binaries for Windows, Linux, and
@@ -877,7 +875,7 @@ uacrypt box-open   --key box.key  --in sealed.box   --out message.bin</code></pr
   <span class="eyebrow" lang="en">Status</span>
   <span class="eyebrow" lang="uk">Статус</span>
   <div lang="en" class="prose"><h2>Where this stands, and what's next</h2>
-  <p><code>dstu-core</code>/<code>uacrypt</code> are published to crates.io, PyPI, and npm — see
+  <p><code>dstu-core</code>/<code>uacrypt</code> are published to crates.io, PyPI, npm, and RubyGems — see
   <a href="https://github.com/user137/uacrypt/blob/master/docs/CHANGELOG.md">docs/CHANGELOG.md</a>
   for what changed each release, and the status note above for the current per-registry detail.
   The phase-by-phase backlog lives in
@@ -888,7 +886,7 @@ uacrypt box-open   --key box.key  --in sealed.box   --out message.bin</code></pr
   <a href="https://github.com/user137/uacrypt/blob/master/docs/DECISIONS.md">docs/DECISIONS.md</a>.
   Dual-licensed MIT / Apache-2.0, the Rust ecosystem default.</p></div>
   <div lang="uk" class="prose"><h2>Де зараз проєкт і що далі</h2>
-  <p><code>dstu-core</code>/<code>uacrypt</code> опубліковані на crates.io, PyPI та npm — див.
+  <p><code>dstu-core</code>/<code>uacrypt</code> опубліковані на crates.io, PyPI, npm та RubyGems — див.
   <a href="https://github.com/user137/uacrypt/blob/master/docs/CHANGELOG.md">docs/CHANGELOG.md</a>
   щодо змін у кожному релізі, і статус-банер вище — щодо деталей по кожному реєстру. Беклог по фазах — у
   <a href="https://github.com/user137/uacrypt/blob/master/docs/TASKS.md">docs/TASKS.md</a>,
