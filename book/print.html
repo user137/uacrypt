@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-1284cdab.js";
+            window.path_to_searchindex_js = "searchindex-65fa2b5e.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-6b977b4b.js"></script>
@@ -336,6 +336,18 @@ uacrypt: verify: signature does not verify - message, signature, or key do not m
 $ echo $?
 1
 </code></pre>
+<p><code>uacrypt sign-keygen257</code>/<code>sign-pubkey257</code>/<code>sign257</code> (<code>docs/TASKS.md</code> T-199, <code>docs/DECISIONS.md</code>
+D-185/D-186) mirror the four commands above exactly, over DSTU 4145’s <code>m=257</code> curve instead of
+<code>m=163</code> - a separate set of commands, not a <code>--curve</code> flag, since the two produce distinct,
+incompatible key shapes. <code>m=257</code> is what real Diia-issued qualified signatures use in production
+(confirmed from an actual issued certificate) - <code>m=163</code> stays the default (<code>sign-keygen</code>) only
+because it shipped first, not because it’s recommended over <code>m=257</code>. <code>verify</code> is shared - it reads
+a curve-tag byte from <code>--key</code> and handles both curves, so there is no separate <code>verify257</code>:</p>
+<pre><code>uacrypt sign-keygen257 --out signing257.key
+uacrypt sign-pubkey257 --key signing257.key --out verifying257.key
+uacrypt sign257 --key signing257.key --in message.bin --out message.bin.sig257
+uacrypt verify --key verifying257.key --in message.bin --sig message.bin.sig257
+</code></pre>
 <p><code>uacrypt box-keygen</code>/<code>box-pubkey</code>/<code>box-seal</code>/<code>box-open</code> (<code>docs/TASKS.md</code> T-178, <code>docs/DECISIONS.md</code>
 D-169) are public-key encryption, built over <code>dstu_core::crypto_box</code> (DSTU 9041, hybrid via KDF):
 unlike <code>encrypt</code> (which needs a shared symmetric key both sides already have), <code>box-seal</code> only needs
@@ -349,13 +361,38 @@ uacrypt box-open --key box.key --in message.bin.box --out message.bin
 <code>box.pub</code> (32 raw bytes, the curve point’s <code>x</code>-coordinate only) from it, safe to share or publish.
 <code>box-seal</code>/<code>box-open</code> are <strong>not memory-bounded</strong> yet — <code>--in</code> is read whole into memory, unlike
 <code>encrypt</code>/<code>decrypt</code>’s bounded-chunk streaming (see <code>crypto_box</code>’s own module doc for why).</p>
-<p>What exists below this level: <code>kalyna-block</code>, a single-block (no mode, no padding), <code>hazmat</code>-scoped
-command added for a binary-level performance comparison (<code>docs/PERFORMANCE.md</code>, <code>docs/DECISIONS.md</code> D-31):</p>
+<p><code>uacrypt box-keygen512</code>/<code>box-pubkey512</code>/<code>box-seal512</code>/<code>box-open512</code> (<code>docs/TASKS.md</code> T-193,
+<code>docs/DECISIONS.md</code> D-182) mirror the four commands above exactly, over DSTU 9041’s <code>l(p)=512</code>
+curve (E512/1) instead of <code>l(p)=256</code> - a separate set of commands, not a <code>--curve</code> flag, since the
+two produce distinct, incompatible key shapes (64-byte keys instead of 32-byte):</p>
+<pre><code>uacrypt box-keygen512 --out box512.key
+uacrypt box-pubkey512 --key box512.key --out box512.pub
+uacrypt box-seal512 --key box512.pub --in message.bin --out message.bin.box512
+uacrypt box-open512 --key box512.key --in message.bin.box512 --out message.bin
+</code></pre>
+<p>What exists below this level: <code>kalyna-block</code>, <code>kupyna-digest</code>, and <code>strumok-crypt</code>, all
+<code>hazmat</code>-scoped commands added for binary-level performance comparisons
+(<code>docs/PERFORMANCE.md</code>, <code>docs/DECISIONS.md</code> D-31/D-34) rather than everyday use - <code>hash</code> and
+<code>encrypt</code>/<code>decrypt</code> above are what most users want.</p>
+<p><code>kalyna-block</code> is a single block (no mode, no padding):</p>
 <pre><code>uacrypt kalyna-block encrypt --variant 128-128 --key key.bin --in block.bin --out ct.bin
 uacrypt kalyna-block decrypt --variant 128-128 --key key.bin --in ct.bin --out pt.bin
 </code></pre>
 <p><code>--key</code>/<code>--in</code>/<code>--out</code> are raw binary files of the variant’s exact byte length (16/32/64 bytes
 depending on variant — see <code>--variant</code>’s five values).</p>
+<p><code>kupyna-digest</code> hashes with a selectable variant (<code>hash</code> above is simpler for everyday use - fixed
+to Kupyna-256, no <code>--variant</code> flag):</p>
+<pre><code>uacrypt kupyna-digest --variant 512 --in report.pdf --out report.pdf.kupyna512
+</code></pre>
+<p><code>strumok-crypt</code> is the bare Strumok keystream cipher (XOR-based) - <strong>not authenticated</strong>: a
+tampered output decrypts silently into wrong plaintext, there is no tag to detect it. Never reuse
+the same <code>--key</code>/<code>--iv</code> pair for two different messages - doing so lets an attacker recover both
+messages by XORing the two ciphertexts together. Use <code>encrypt</code>/<code>decrypt</code> instead for a file cipher
+that detects tampering:</p>
+<pre><code>uacrypt strumok-crypt --variant 256 --key key.bin --iv iv.bin --in message.bin --out sealed.bin
+</code></pre>
+<p><code>--variant</code> is the key size in bits (256 or 512); <code>--iv</code> is always exactly 32 bytes regardless of
+variant.</p>
 <p><code>kalyna-ccm</code> (<code>docs/DECISIONS.md</code> D-41) additionally encrypts/authenticates arbitrary-length <strong>short</strong>
 messages (plaintext and <code>--aad</code> each capped at 255 bytes — a sourced property of the construction,
 not a CLI restriction, see <code>hazmat::kalyna_ccm</code>’s doc comment) using a provisional, dual-oracle-
@@ -370,9 +407,27 @@ reads <code>--nonce</code> back (the value <code>encrypt</code> produced) as an 
 optional (an empty AAD is used if omitted); <code>decrypt</code> verifies the tag before writing <code>--out</code> and
 fails without writing anything on a mismatch. See <code>docs/DECISIONS.md</code> D-40 for why a random nonce is
 safe here (128 bits minimum across all five variants) and its per-key message-count guideline.</p>
-<p>Neither <code>kalyna-block</code> nor <code>kalyna-ccm</code> is the <code>encrypt</code>/<code>decrypt</code> surface above - both stay as
-lower-level, hazmat-scoped tools (<code>kalyna-block</code> for exactly one block, <code>kalyna-ccm</code> for full
-control over variant/nonce/AAD/tag as separate files) for anyone who explicitly wants that.</p>
+<p>Five more <code>hazmat</code>-scoped, per-mode benchmarking/interop commands exist alongside <code>kalyna-ccm</code>
+(<code>docs/DECISIONS.md</code> D-31/D-71), all with the same <code>--variant</code> (one of the five Kalyna block/
+key-size combinations) and <code>--iterations</code> (benchmark timing) flags:</p>
+<ul>
+<li><code>kalyna-gcm encrypt</code>/<code>decrypt</code> — Kalyna-GCM (<code>--nonce</code>/<code>--tag</code> files, <code>--aad</code> optional), the same
+provisional construction <code>crypto_secretbox</code>/<code>crypto_secretstream</code> build on internally, exposed
+here with no message-length cap and no hidden nonce.</li>
+<li><code>kalyna-cmac compute</code>/<code>verify</code> — Kalyna-CMAC, a 16-byte tag, no encryption.</li>
+<li><code>kalyna-gmac compute</code>/<code>verify</code> — Kalyna-GMAC, a full-block tag, no encryption, no nonce.</li>
+<li><code>kalyna-kw wrap</code>/<code>unwrap</code> — Kalyna key wrap (1..=20 block-aligned blocks in, one block longer
+out, checksummed).</li>
+<li><code>kalyna-xts encrypt</code>/<code>decrypt</code> — Kalyna-XTS disk-sector mode (confidentiality only, no tag — the
+correct design for this use case, not a gap; caller supplies the <code>--tweak</code> block).</li>
+</ul>
+<p>Run any of them with no arguments (or <code>--help</code>) for the full flag reference and an example -
+covered here at a summary level since their shape mirrors <code>kalyna-ccm</code>/<code>kalyna-block</code> above rather
+than needing separate full walkthroughs.</p>
+<p>None of <code>kalyna-block</code>/<code>kupyna-digest</code>/<code>strumok-crypt</code>/<code>kalyna-ccm</code>/<code>kalyna-gcm</code>/<code>kalyna-cmac</code>/
+<code>kalyna-gmac</code>/<code>kalyna-kw</code>/<code>kalyna-xts</code> is the <code>encrypt</code>/<code>decrypt</code>/<code>hash</code> surface above - all nine
+stay as lower-level, hazmat-scoped tools for anyone who explicitly wants that level of control, or
+is benchmarking a specific primitive directly.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="docstasksmd"><a class="header" href="#docstasksmd">docs/TASKS.md</a></h1>
 <p>Progress tracker and task backlog for this project, grouped by phase. Check items off as they’re
@@ -11010,10 +11065,9 @@ for miri/fuzz/proptest, which stay required everywhere they already run.</li>
 <li><code>cargo fuzz</code> is required for every parser of untrusted input bytes, not optional.</li>
 <li><code>cargo audit</code> (RustSec advisory database — known vulnerabilities, yanked crates) and
 <code>cargo deny</code> (license policy, duplicate/banned crates, dependency-source allowlist — policy in
-<code>deny.toml</code>) are required CI layers, same standing as <code>cargo miri</code>/<code>cargo fuzz</code> above. Currently
-check an empty dependency tree (zero external dependencies in <code>dstu-core</code>/<code>uacrypt</code> so far) —
-that’s not a reason to treat them as inactive; they’re the automated enforcement of the
-supply-chain table below, and must stay green as soon as any dependency is added.</li>
+<code>deny.toml</code>) are required CI layers, same standing as <code>cargo miri</code>/<code>cargo fuzz</code> above — the
+automated enforcement of the supply-chain table below, which now has real entries
+(<code>subtle</code>/<code>zeroize</code>/<code>getrandom</code>/<code>argon2</code>/<code>rand_core</code>, not an empty tree).</li>
 <li><code>unsafe</code> code is isolated to the smallest possible module with a safe wrapper, and every
 <code>unsafe fn</code>/block carries a <code>// SAFETY: ...</code> comment stating the invariant that makes it sound.</li>
 <li><strong>Any self-contained wire format that transmits a nonce/IV alongside ciphertext+tag as one blob
@@ -14481,15 +14535,16 @@ target/release/uacrypt decrypt --key sym.key --in payload.enc --out payload.dec
 </li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
-<h1 id="cross-language-stylenaming--rust-c-c-java-python"><a class="header" href="#cross-language-stylenaming--rust-c-c-java-python">Cross-language style/naming — Rust, C++, C#, Java, Python</a></h1>
+<h1 id="cross-language-stylenaming--rust-c-c-java-python-ruby-php-go"><a class="header" href="#cross-language-stylenaming--rust-c-c-java-python-ruby-php-go">Cross-language style/naming — Rust, C++, C#, Java, Python, Ruby, PHP, Go</a></h1>
 <p>Goal: a developer coming from any one of these languages reads the code and immediately
 understands “what this is and why,” without knowing the local idioms of the others. Achieved
 <strong>not</strong> by writing the same way everywhere (impossible without violating each language’s own
 linter) but by the same <strong>principles</strong>, each expressed in the idiom native to its own language.</p>
-<p>Applies to this project’s non-Rust code — currently <code>tests/oracle-harness/{java,dotnet}/</code>, and
-whichever language bindings from <code>docs/TASKS.md</code> Phase 3 (Python, JavaScript, Java, .NET, C++) get
-built first. For Rust specifically, <code>docs/rust_ai_ruleset.md</code> is the canonical, deeper ruleset —
-this file generalizes the same underlying principles across languages rather than replacing it.</p>
+<p>Applies to this project’s non-Rust code — <code>tests/oracle-harness/{java,dotnet}/</code>, and all eight
+Phase 3 language bindings (Python, JavaScript/Node.js, Ruby, PHP, Java, .NET, Go, C++ — all built
+as of 2026-08-03, <code>docs/bindings-strategy.md</code>). For Rust specifically, <code>docs/rust_ai_ruleset.md</code> is
+the canonical, deeper ruleset — this file generalizes the same underlying principles across
+languages rather than replacing it.</p>
 <hr>
 <h2 id="principles-language-independent--always-apply-the-form-is-native-to-each-language"><a class="header" href="#principles-language-independent--always-apply-the-form-is-native-to-each-language">Principles (language-independent — always apply; the form is native to each language)</a></h2>
 <ol>
@@ -14585,6 +14640,13 @@ crypto-specific hard constraints (<code>docs/SECURITY.md</code>) — not instead
 </ul>
 <hr>
 <h2 id="reference-table-by-language"><a class="header" href="#reference-table-by-language">Reference table by language</a></h2>
+<p><strong>Covers 5 of the 8 languages this project actually ships bindings in</strong> — Ruby, PHP, and Go rows
+were never added when those three bindings landed (2026-08-02/03, after this table was written).
+Not filled in here from memory to avoid a wrong-but-confident row; each binding’s own linter is
+already real and enforced in CI (<code>rubocop</code> for Ruby, <code>phpstan</code> for PHP, <code>gofmt -l</code>/<code>go vet</code> for Go
+— see <code>xtask/src/main.rs</code>) even though this table doesn’t yet document the per-language naming
+convention each one checks — adding the missing rows is a real, open follow-up, not done as part of
+this pass.</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -14620,7 +14682,8 @@ crypto carve-out and the reference-implementation section above point there rath
 restating it.</li>
 <li>Applies today to <code>tests/oracle-harness/{java,dotnet}/</code> (already follows this — <code>OracleHarness</code>
 in PascalCase with <code>camelCase</code> methods, <code>Program.cs</code>’s local functions in <code>PascalCase</code>,
-matching the table above) and will apply to <code>docs/TASKS.md</code> Phase 3 language bindings when built.</li>
+matching the table above) and to all eight <code>docs/TASKS.md</code> Phase 3 language bindings, all built
+as of 2026-08-03 - no longer a future item.</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="kalyna-dstu-76242014--pseudocode"><a class="header" href="#kalyna-dstu-76242014--pseudocode">Kalyna (DSTU 7624:2014) — pseudocode</a></h1>
@@ -28643,7 +28706,9 @@ than assuming it’s obvious.</p>
 ├── docs/CODE_OF_CONDUCT.md     # community standards (Contributor Covenant)
 ├── LICENSE-MIT
 ├── LICENSE-APACHE
-├── .github/workflows/     # CI (rust.yml, oracle-harness.yml) and the release workflow (release.yml)
+├── .github/workflows/     # CI (rust.yml core build/test/lint, sonarcloud.yml, codeql.yml,
+│                          #   oracle-harness.yml, canary.yml, docs-api.yml/docs-book.yml,
+│                          #   one bindings-&lt;lang&gt;.yml per language), plus release.yml
 ├── .github/ISSUE_TEMPLATE/, PULL_REQUEST_TEMPLATE.md  # issue/PR templates
 ├── .cargo/config.toml     # `cargo xtask` alias
 ├── xtask/                 # cross-platform build/QA runner, see "Development commands" below
@@ -28665,7 +28730,7 @@ than assuming it’s obvious.</p>
 ├── bindings/               # Phase 3 language bindings, see docs/bindings-strategy.md
 │   ├── python/             # PyO3, full crypto_* surface - on PyPI (T-49)
 │   ├── nodejs/             # napi-rs, full crypto_* surface - on npm (T-50)
-│   ├── ruby/               # magnus/rb-sys, full crypto_* surface - RubyGems in progress (T-160)
+│   ├── ruby/               # magnus/rb-sys, full crypto_* surface - on RubyGems (T-160/T-164, D-194)
 │   ├── php/                # ext-php-rs, full crypto_* surface - not on Packagist yet (T-159)
 │   ├── dotnet/             # C# P/Invoke over dstu-core-capi - not on NuGet yet (T-52)
 │   ├── java/               # jni crate, full crypto_* surface - not on Maven Central yet (T-51)
@@ -28796,12 +28861,15 @@ cargo xtask fmt        # cargo fmt --all (add --check to verify without writing)
 cargo xtask clippy     # cargo clippy --workspace --all-features -- -D warnings
 cargo xtask docs-check # README/gh-pages version-marker freshness lint vs crates/dstu-core's Cargo.toml (T-186)
 </code></pre>
-<p><code>cargo xtask ci</code> runs the five above, then best-effort miri/kani/book/fuzz/audit/deny/oracle-harness
-layers — each checks its own tool is installed first and prints an install hint instead of a raw
-error if it’s missing. <code>docs-check</code> needs no external tool, so it’s mandatory rather than
-best-effort — same standing as <code>fmt</code>/<code>build</code>/<code>test</code>/<code>clippy</code>. <code>cargo xtask book</code> builds the
-mdBook knowledge base this file is part of; <code>cargo xtask bench-compare</code> runs the uacrypt-vs-OpenSSL
-benchmark table (<code>docs/PERFORMANCE.md</code>).</p>
+<p><code>cargo xtask ci</code> runs the five above, then every other layer best-effort: miri/kani/book/fuzz/
+audit/deny/the Java+.NET oracle harnesses, every language binding’s own build+test
+(python/nodejs/ruby/php/dotnet/java/go/cpp), <code>capi</code>, the C++ static analyzers (<code>cpp-tidy</code>/
+<code>cpp-cppcheck</code>), the QEMU STM32 smoke test, and the streaming-boundedness proof - each checks its
+own tool is installed first and prints an install hint instead of a raw error if it’s missing.
+<code>docs-check</code> needs no external tool, so it’s mandatory rather than best-effort - same standing as
+<code>fmt</code>/<code>build</code>/<code>test</code>/<code>clippy</code>. <code>cargo xtask book</code> builds the mdBook knowledge base this file is
+part of; <code>cargo xtask bench-compare</code> runs the uacrypt-vs-OpenSSL benchmark table
+(<code>docs/PERFORMANCE.md</code>).</p>
 </li>
 <li>
 <p>If you touched anything <code>no_std</code>-relevant (most of <code>dstu-core</code>), check the feature matrix

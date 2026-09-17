@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-1284cdab.js";
+            window.path_to_searchindex_js = "searchindex-65fa2b5e.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-6b977b4b.js"></script>
@@ -180,15 +180,16 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="cross-language-stylenaming--rust-c-c-java-python"><a class="header" href="#cross-language-stylenaming--rust-c-c-java-python">Cross-language style/naming — Rust, C++, C#, Java, Python</a></h1>
+                        <h1 id="cross-language-stylenaming--rust-c-c-java-python-ruby-php-go"><a class="header" href="#cross-language-stylenaming--rust-c-c-java-python-ruby-php-go">Cross-language style/naming — Rust, C++, C#, Java, Python, Ruby, PHP, Go</a></h1>
 <p>Goal: a developer coming from any one of these languages reads the code and immediately
 understands “what this is and why,” without knowing the local idioms of the others. Achieved
 <strong>not</strong> by writing the same way everywhere (impossible without violating each language’s own
 linter) but by the same <strong>principles</strong>, each expressed in the idiom native to its own language.</p>
-<p>Applies to this project’s non-Rust code — currently <code>tests/oracle-harness/{java,dotnet}/</code>, and
-whichever language bindings from <code>docs/TASKS.md</code> Phase 3 (Python, JavaScript, Java, .NET, C++) get
-built first. For Rust specifically, <code>docs/rust_ai_ruleset.md</code> is the canonical, deeper ruleset —
-this file generalizes the same underlying principles across languages rather than replacing it.</p>
+<p>Applies to this project’s non-Rust code — <code>tests/oracle-harness/{java,dotnet}/</code>, and all eight
+Phase 3 language bindings (Python, JavaScript/Node.js, Ruby, PHP, Java, .NET, Go, C++ — all built
+as of 2026-08-03, <code>docs/bindings-strategy.md</code>). For Rust specifically, <code>docs/rust_ai_ruleset.md</code> is
+the canonical, deeper ruleset — this file generalizes the same underlying principles across
+languages rather than replacing it.</p>
 <hr>
 <h2 id="principles-language-independent--always-apply-the-form-is-native-to-each-language"><a class="header" href="#principles-language-independent--always-apply-the-form-is-native-to-each-language">Principles (language-independent — always apply; the form is native to each language)</a></h2>
 <ol>
@@ -284,6 +285,13 @@ crypto-specific hard constraints (<code>docs/SECURITY.md</code>) — not instead
 </ul>
 <hr>
 <h2 id="reference-table-by-language"><a class="header" href="#reference-table-by-language">Reference table by language</a></h2>
+<p><strong>Covers 5 of the 8 languages this project actually ships bindings in</strong> — Ruby, PHP, and Go rows
+were never added when those three bindings landed (2026-08-02/03, after this table was written).
+Not filled in here from memory to avoid a wrong-but-confident row; each binding’s own linter is
+already real and enforced in CI (<code>rubocop</code> for Ruby, <code>phpstan</code> for PHP, <code>gofmt -l</code>/<code>go vet</code> for Go
+— see <code>xtask/src/main.rs</code>) even though this table doesn’t yet document the per-language naming
+convention each one checks — adding the missing rows is a real, open follow-up, not done as part of
+this pass.</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -319,7 +327,8 @@ crypto carve-out and the reference-implementation section above point there rath
 restating it.</li>
 <li>Applies today to <code>tests/oracle-harness/{java,dotnet}/</code> (already follows this — <code>OracleHarness</code>
 in PascalCase with <code>camelCase</code> methods, <code>Program.cs</code>’s local functions in <code>PascalCase</code>,
-matching the table above) and will apply to <code>docs/TASKS.md</code> Phase 3 language bindings when built.</li>
+matching the table above) and to all eight <code>docs/TASKS.md</code> Phase 3 language bindings, all built
+as of 2026-08-03 - no longer a future item.</li>
 </ul>
 
                     </main>

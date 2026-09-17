@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-1284cdab.js";
+            window.path_to_searchindex_js = "searchindex-65fa2b5e.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-6b977b4b.js"></script>
@@ -306,10 +306,9 @@ for miri/fuzz/proptest, which stay required everywhere they already run.</li>
 <li><code>cargo fuzz</code> is required for every parser of untrusted input bytes, not optional.</li>
 <li><code>cargo audit</code> (RustSec advisory database — known vulnerabilities, yanked crates) and
 <code>cargo deny</code> (license policy, duplicate/banned crates, dependency-source allowlist — policy in
-<code>deny.toml</code>) are required CI layers, same standing as <code>cargo miri</code>/<code>cargo fuzz</code> above. Currently
-check an empty dependency tree (zero external dependencies in <code>dstu-core</code>/<code>uacrypt</code> so far) —
-that’s not a reason to treat them as inactive; they’re the automated enforcement of the
-supply-chain table below, and must stay green as soon as any dependency is added.</li>
+<code>deny.toml</code>) are required CI layers, same standing as <code>cargo miri</code>/<code>cargo fuzz</code> above — the
+automated enforcement of the supply-chain table below, which now has real entries
+(<code>subtle</code>/<code>zeroize</code>/<code>getrandom</code>/<code>argon2</code>/<code>rand_core</code>, not an empty tree).</li>
 <li><code>unsafe</code> code is isolated to the smallest possible module with a safe wrapper, and every
 <code>unsafe fn</code>/block carries a <code>// SAFETY: ...</code> comment stating the invariant that makes it sound.</li>
 <li><strong>Any self-contained wire format that transmits a nonce/IV alongside ciphertext+tag as one blob

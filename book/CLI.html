@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-1284cdab.js";
+            window.path_to_searchindex_js = "searchindex-65fa2b5e.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-6b977b4b.js"></script>
@@ -230,6 +230,18 @@ uacrypt: verify: signature does not verify - message, signature, or key do not m
 $ echo $?
 1
 </code></pre>
+<p><code>uacrypt sign-keygen257</code>/<code>sign-pubkey257</code>/<code>sign257</code> (<code>docs/TASKS.md</code> T-199, <code>docs/DECISIONS.md</code>
+D-185/D-186) mirror the four commands above exactly, over DSTU 4145’s <code>m=257</code> curve instead of
+<code>m=163</code> - a separate set of commands, not a <code>--curve</code> flag, since the two produce distinct,
+incompatible key shapes. <code>m=257</code> is what real Diia-issued qualified signatures use in production
+(confirmed from an actual issued certificate) - <code>m=163</code> stays the default (<code>sign-keygen</code>) only
+because it shipped first, not because it’s recommended over <code>m=257</code>. <code>verify</code> is shared - it reads
+a curve-tag byte from <code>--key</code> and handles both curves, so there is no separate <code>verify257</code>:</p>
+<pre><code>uacrypt sign-keygen257 --out signing257.key
+uacrypt sign-pubkey257 --key signing257.key --out verifying257.key
+uacrypt sign257 --key signing257.key --in message.bin --out message.bin.sig257
+uacrypt verify --key verifying257.key --in message.bin --sig message.bin.sig257
+</code></pre>
 <p><code>uacrypt box-keygen</code>/<code>box-pubkey</code>/<code>box-seal</code>/<code>box-open</code> (<code>docs/TASKS.md</code> T-178, <code>docs/DECISIONS.md</code>
 D-169) are public-key encryption, built over <code>dstu_core::crypto_box</code> (DSTU 9041, hybrid via KDF):
 unlike <code>encrypt</code> (which needs a shared symmetric key both sides already have), <code>box-seal</code> only needs
@@ -243,13 +255,38 @@ uacrypt box-open --key box.key --in message.bin.box --out message.bin
 <code>box.pub</code> (32 raw bytes, the curve point’s <code>x</code>-coordinate only) from it, safe to share or publish.
 <code>box-seal</code>/<code>box-open</code> are <strong>not memory-bounded</strong> yet — <code>--in</code> is read whole into memory, unlike
 <code>encrypt</code>/<code>decrypt</code>’s bounded-chunk streaming (see <code>crypto_box</code>’s own module doc for why).</p>
-<p>What exists below this level: <code>kalyna-block</code>, a single-block (no mode, no padding), <code>hazmat</code>-scoped
-command added for a binary-level performance comparison (<code>docs/PERFORMANCE.md</code>, <code>docs/DECISIONS.md</code> D-31):</p>
+<p><code>uacrypt box-keygen512</code>/<code>box-pubkey512</code>/<code>box-seal512</code>/<code>box-open512</code> (<code>docs/TASKS.md</code> T-193,
+<code>docs/DECISIONS.md</code> D-182) mirror the four commands above exactly, over DSTU 9041’s <code>l(p)=512</code>
+curve (E512/1) instead of <code>l(p)=256</code> - a separate set of commands, not a <code>--curve</code> flag, since the
+two produce distinct, incompatible key shapes (64-byte keys instead of 32-byte):</p>
+<pre><code>uacrypt box-keygen512 --out box512.key
+uacrypt box-pubkey512 --key box512.key --out box512.pub
+uacrypt box-seal512 --key box512.pub --in message.bin --out message.bin.box512
+uacrypt box-open512 --key box512.key --in message.bin.box512 --out message.bin
+</code></pre>
+<p>What exists below this level: <code>kalyna-block</code>, <code>kupyna-digest</code>, and <code>strumok-crypt</code>, all
+<code>hazmat</code>-scoped commands added for binary-level performance comparisons
+(<code>docs/PERFORMANCE.md</code>, <code>docs/DECISIONS.md</code> D-31/D-34) rather than everyday use - <code>hash</code> and
+<code>encrypt</code>/<code>decrypt</code> above are what most users want.</p>
+<p><code>kalyna-block</code> is a single block (no mode, no padding):</p>
 <pre><code>uacrypt kalyna-block encrypt --variant 128-128 --key key.bin --in block.bin --out ct.bin
 uacrypt kalyna-block decrypt --variant 128-128 --key key.bin --in ct.bin --out pt.bin
 </code></pre>
 <p><code>--key</code>/<code>--in</code>/<code>--out</code> are raw binary files of the variant’s exact byte length (16/32/64 bytes
 depending on variant — see <code>--variant</code>’s five values).</p>
+<p><code>kupyna-digest</code> hashes with a selectable variant (<code>hash</code> above is simpler for everyday use - fixed
+to Kupyna-256, no <code>--variant</code> flag):</p>
+<pre><code>uacrypt kupyna-digest --variant 512 --in report.pdf --out report.pdf.kupyna512
+</code></pre>
+<p><code>strumok-crypt</code> is the bare Strumok keystream cipher (XOR-based) - <strong>not authenticated</strong>: a
+tampered output decrypts silently into wrong plaintext, there is no tag to detect it. Never reuse
+the same <code>--key</code>/<code>--iv</code> pair for two different messages - doing so lets an attacker recover both
+messages by XORing the two ciphertexts together. Use <code>encrypt</code>/<code>decrypt</code> instead for a file cipher
+that detects tampering:</p>
+<pre><code>uacrypt strumok-crypt --variant 256 --key key.bin --iv iv.bin --in message.bin --out sealed.bin
+</code></pre>
+<p><code>--variant</code> is the key size in bits (256 or 512); <code>--iv</code> is always exactly 32 bytes regardless of
+variant.</p>
 <p><code>kalyna-ccm</code> (<code>docs/DECISIONS.md</code> D-41) additionally encrypts/authenticates arbitrary-length <strong>short</strong>
 messages (plaintext and <code>--aad</code> each capped at 255 bytes — a sourced property of the construction,
 not a CLI restriction, see <code>hazmat::kalyna_ccm</code>’s doc comment) using a provisional, dual-oracle-
@@ -264,9 +301,27 @@ reads <code>--nonce</code> back (the value <code>encrypt</code> produced) as an 
 optional (an empty AAD is used if omitted); <code>decrypt</code> verifies the tag before writing <code>--out</code> and
 fails without writing anything on a mismatch. See <code>docs/DECISIONS.md</code> D-40 for why a random nonce is
 safe here (128 bits minimum across all five variants) and its per-key message-count guideline.</p>
-<p>Neither <code>kalyna-block</code> nor <code>kalyna-ccm</code> is the <code>encrypt</code>/<code>decrypt</code> surface above - both stay as
-lower-level, hazmat-scoped tools (<code>kalyna-block</code> for exactly one block, <code>kalyna-ccm</code> for full
-control over variant/nonce/AAD/tag as separate files) for anyone who explicitly wants that.</p>
+<p>Five more <code>hazmat</code>-scoped, per-mode benchmarking/interop commands exist alongside <code>kalyna-ccm</code>
+(<code>docs/DECISIONS.md</code> D-31/D-71), all with the same <code>--variant</code> (one of the five Kalyna block/
+key-size combinations) and <code>--iterations</code> (benchmark timing) flags:</p>
+<ul>
+<li><code>kalyna-gcm encrypt</code>/<code>decrypt</code> — Kalyna-GCM (<code>--nonce</code>/<code>--tag</code> files, <code>--aad</code> optional), the same
+provisional construction <code>crypto_secretbox</code>/<code>crypto_secretstream</code> build on internally, exposed
+here with no message-length cap and no hidden nonce.</li>
+<li><code>kalyna-cmac compute</code>/<code>verify</code> — Kalyna-CMAC, a 16-byte tag, no encryption.</li>
+<li><code>kalyna-gmac compute</code>/<code>verify</code> — Kalyna-GMAC, a full-block tag, no encryption, no nonce.</li>
+<li><code>kalyna-kw wrap</code>/<code>unwrap</code> — Kalyna key wrap (1..=20 block-aligned blocks in, one block longer
+out, checksummed).</li>
+<li><code>kalyna-xts encrypt</code>/<code>decrypt</code> — Kalyna-XTS disk-sector mode (confidentiality only, no tag — the
+correct design for this use case, not a gap; caller supplies the <code>--tweak</code> block).</li>
+</ul>
+<p>Run any of them with no arguments (or <code>--help</code>) for the full flag reference and an example -
+covered here at a summary level since their shape mirrors <code>kalyna-ccm</code>/<code>kalyna-block</code> above rather
+than needing separate full walkthroughs.</p>
+<p>None of <code>kalyna-block</code>/<code>kupyna-digest</code>/<code>strumok-crypt</code>/<code>kalyna-ccm</code>/<code>kalyna-gcm</code>/<code>kalyna-cmac</code>/
+<code>kalyna-gmac</code>/<code>kalyna-kw</code>/<code>kalyna-xts</code> is the <code>encrypt</code>/<code>decrypt</code>/<code>hash</code> surface above - all nine
+stay as lower-level, hazmat-scoped tools for anyone who explicitly wants that level of control, or
+is benchmarking a specific primitive directly.</p>
 
                     </main>
 
