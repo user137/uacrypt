@@ -3799,7 +3799,7 @@ item they point to is later removed.
       restore the work. Plain `cargo clippy` (no `--all-targets`) on this workspace is clean. Not
       fixed as part of T-204 - out of scope for a binding-wiring task, and the fix belongs in
       `dstu-core`'s own hazmat benchmark code, not in any binding.
-- [~] **T-206** **Phase 1 done 2026-08-10 (m=257 root-cause fix), phase 2 done 2026-08-10 and
+- [x] **T-206** **Phase 1 done 2026-08-10 (m=257 root-cause fix), phase 2 done 2026-08-10 and
       disproved Phase 1's own sufficiency, Phase 2b (real fix) done same session, phases 3-4
       contingent on the next real CI number - `cargo miri test (dstu-core)` is
       exceeding its 240-min CI budget again (real timeout, not concurrency-group noise - confirmed
@@ -3918,6 +3918,14 @@ item they point to is later removed.
              failure - the same "verify a CI number via `gh run view`, don't assume" discipline this
              file already states applies to setting the number in the first place, not just to
              confirming a run's conclusion.
+
+      **Closed by T-211 (2026-08-29, D-195/D-172), not left open here** - a later real CI run
+      showed the job could never fit in one job at any `timeout-minutes` value (~9-10h total, not
+      the thin-margin case items 3-4 above were planned around), so T-211 split it into a
+      dynamically-discovered per-test-file matrix instead. Found during T-230's documentation
+      audit: this entry was still sitting on its original `[~]` partial marker with items 3-4 open,
+      never updated with a forward pointer once T-211 actually resolved it - fixed here rather than
+      left for a future reader to wonder whether the miri timeout was ever really fixed.
 - [x] **T-207** **Done 2026-08-10, owner-requested - `cargo xtask python` was missing both `ruff
       check` and `ruff format --check`, even though CI's `bindings-python.yml` runs both as
       required steps.** Found the hard way, twice: the T-204/T-206 push failed CI's
