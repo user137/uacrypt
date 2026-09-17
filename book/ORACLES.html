@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-f8281217.js";
+            window.path_to_searchindex_js = "searchindex-e7ed95d1.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-6b977b4b.js"></script>
@@ -199,8 +199,12 @@ D-16 for exactly what that does and doesn’t certify — the conclusion predate
 this project’s pinned commit). Treat it as sitting at this tier for Kalyna/Kupyna/DSTU 4145
 (same underlying lineage as cryptonite), except for <strong>Strumok, where it’s the only source found
 at all</strong> — no cryptonite equivalent exists to compare it against, so its self-declared
-<code>// ДСТУ 8845:2019</code> attribution is taken on the library’s word, not cross-tiered against
-anything above it.</li>
+<code>// ДСТУ 8845:2019</code> attribution was originally taken on the library’s word, not cross-tiered
+against anything above it. <strong>That attribution is now independently confirmed against the
+primary text itself</strong> (<code>docs/DECISIONS.md</code> D-197, 2026-09-16) — see the Strumok section below;
+this paragraph’s own tiering rationale (why UAPKI sat here for Strumok specifically) still
+applies to how the vectors were originally sourced, it just no longer describes their current
+confirmation status.</li>
 <li>An unofficial, single-maintainer, unaudited implementation (outspace/dstu8845).</li>
 <li>Excluded — untrusted provenance (<code>li0ard</code>, see D-07 in <code>docs/DECISIONS.md</code>).</li>
 </ol>
@@ -486,6 +490,18 @@ notation before they matched; see that module’s doc comment and D-104 for the 
 text” status above: it is now independently confirmed against a second, state-sourced oracle,
 but still not against Annex Д of the standard text itself (unpurchased) — D-15/D-16 stay open on
 that specific, narrower point.</li>
+<li><strong>Closed 2026-09-16</strong> (<code>docs/DECISIONS.md</code> D-197): Додаток Д itself was obtained, as a genuine
+library scan via the National Library of Ukraine’s EDD service (the same acquisition channel
+D-165 used for DSTU 9041), not purchased outright. All 8 worked examples (4×256-bit, 4×512-bit,
+с.22-23 and с.35-36) were verified two ways: against the committed <code>keystream-{256,512}.json</code>
+vectors (byte-for-byte match, confirming UAPKI’s attribution claim was correct all along) and
+directly against <code>hazmat::strumok</code>’s own output (<code>crates/dstu-core/tests/strumok.rs</code>’s
+<code>official_annex_d_vectors</code> module, a new, permanent regression test - not a one-off script).
+<strong>This is the point D-15’s own closing paragraph named as the condition for a status change</strong> -
+unlike D-104’s “upgrade, not closure,” this one genuinely is a closure for the vector-confirmation
+claim specifically. Untouched by this: the Додаток Б/В/Г constant tables (S-box, Tᵢ[a], Mulα)
+are corroborated only at the entries these 8 vectors happen to reach, not independently
+transcription-verified in full - a real, stated open item, not an oversight.</li>
 </ul>
 <h3 id="dstu-4145-signature"><a class="header" href="#dstu-4145-signature">DSTU 4145 (signature)</a></h3>
 <ul>

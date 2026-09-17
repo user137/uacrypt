@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-f8281217.js";
+            window.path_to_searchindex_js = "searchindex-e7ed95d1.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-6b977b4b.js"></script>
@@ -201,6 +201,16 @@ this entry, all four platform gems. See <code>docs/DECISIONS.md</code> D-194.</l
 </ul>
 <h3 id="changed"><a class="header" href="#changed">Changed</a></h3>
 <ul>
+<li>
+<p>Strumok (DSTU 8845:2019) keystream vectors are now confirmed against the official standard text
+itself (Додаток Д, obtained as a genuine library scan), not just UAPKI-attributed - a new
+permanent test module (<code>crates/dstu-core/tests/strumok.rs</code>’s <code>official_annex_d_vectors</code>) checks
+<code>hazmat::strumok</code>’s output directly against the standard’s own printed worked examples, all 8
+cases (4×256-bit, 4×512-bit) passing. Status text updated everywhere it appeared: both vector
+JSON files, the crate’s own doc comment, <code>docs/ORACLES.md</code>, and the gh-pages landing page (both
+languages). Internal constant tables (S-box, Tᵢ[a], Mulα) remain corroborated only indirectly, not
+independently transcription-verified. See <code>docs/DECISIONS.md</code> D-197.</p>
+</li>
 <li>
 <p><code>bindings/ruby</code>’s gemspec/Cargo.toml description and README, plus root <code>README.md</code> and the
 gh-pages landing page (both languages), updated to reflect RubyGems actually being live - same

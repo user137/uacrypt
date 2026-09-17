@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-f8281217.js";
+            window.path_to_searchindex_js = "searchindex-e7ed95d1.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-6b977b4b.js"></script>
@@ -7923,6 +7923,27 @@ is committed, as <code>docs/papers/Strumok_official_test_vectors_2026-07-31.pdf<
 itself carries the owner’s own name/email and stays local, cited by number/date only. DSTU
 9041:2020 untouched - the same letter confirms no oracle exists for it either, consistent with
 the existing <code>docs/ORACLES.md</code> entry.</p>
+</li>
+<li>
+<p><input disabled="" type="checkbox" checked=""> <strong>T-228</strong> (2026-09-16) <strong>DSTU 8845:2019’s own Додаток Д obtained via the National Library of
+Ukraine’s EDD service (same channel as D-165’s DSTU 9041 supplement) and verified - genuinely
+closes D-15/D-16’s vector-confirmation gap, not another upgrade. See <code>docs/DECISIONS.md</code> D-197
+for the full derivation.</strong> All 4 256-bit and all 4 512-bit worked examples (с.22-23, с.35-36)
+transcribed and checked two ways: byte-for-byte against the committed <code>keystream-{256,512}.json</code>
+(retroactively confirms UAPKI’s own attribution claim was correct) and directly against
+<code>hazmat::strumok</code>’s output via a new permanent test module,
+<code>crates/dstu-core/tests/strumok.rs</code>‘s <code>official_annex_d_vectors</code> - all 8 cases pass. A real
+transcription slip (one extra <code>e</code> in case 3’s <code>Z4</code> word, misread off a wide page render) was
+caught by the JSON comparison mismatching, not by re-reading the scan - re-zoomed and fixed
+before the Rust test was written. Updated everywhere the old “UAPKI-attributed, not confirmed”
+status was stated: both vector JSON files’ <code>status</code>/<code>provenance</code>, <code>crates/dstu-core/src/lib.rs</code>’s
+crate doc comment, <code>crates/dstu-core/tests/strumok.rs</code>’s own header, <code>docs/ORACLES.md</code> (tier-list
+line + Strumok section), and both languages of the gh-pages landing page (status pill
+<code>provisional</code>→<code>verified</code>, same “both languages” discipline as D-192/D-193). <strong>Not closed</strong>:
+Додаток Б/В/Г’s constant tables (S-box, Tᵢ[a], Mulα) were read but not transcription-verified in
+full - corroborated only at the entries the 8 vectors reach. The scan itself
+(<code>docs/papers/DSTU_8845-2019.pdf</code>) is gitignored, never committed, same reasoning as the DSTU
+9041 files.</p>
 </li>
 <li>
 <p><input disabled="" type="checkbox" checked=""> <strong>T-148</strong> <strong>Corrected a false “font-encoding failure” claim across 5 PDFs; wrote

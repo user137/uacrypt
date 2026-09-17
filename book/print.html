@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-f8281217.js";
+            window.path_to_searchindex_js = "searchindex-e7ed95d1.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-6b977b4b.js"></script>
@@ -8119,6 +8119,27 @@ itself carries the owner’s own name/email and stays local, cited by number/dat
 the existing <code>docs/ORACLES.md</code> entry.</p>
 </li>
 <li>
+<p><input disabled="" type="checkbox" checked=""> <strong>T-228</strong> (2026-09-16) <strong>DSTU 8845:2019’s own Додаток Д obtained via the National Library of
+Ukraine’s EDD service (same channel as D-165’s DSTU 9041 supplement) and verified - genuinely
+closes D-15/D-16’s vector-confirmation gap, not another upgrade. See <code>docs/DECISIONS.md</code> D-197
+for the full derivation.</strong> All 4 256-bit and all 4 512-bit worked examples (с.22-23, с.35-36)
+transcribed and checked two ways: byte-for-byte against the committed <code>keystream-{256,512}.json</code>
+(retroactively confirms UAPKI’s own attribution claim was correct) and directly against
+<code>hazmat::strumok</code>’s output via a new permanent test module,
+<code>crates/dstu-core/tests/strumok.rs</code>‘s <code>official_annex_d_vectors</code> - all 8 cases pass. A real
+transcription slip (one extra <code>e</code> in case 3’s <code>Z4</code> word, misread off a wide page render) was
+caught by the JSON comparison mismatching, not by re-reading the scan - re-zoomed and fixed
+before the Rust test was written. Updated everywhere the old “UAPKI-attributed, not confirmed”
+status was stated: both vector JSON files’ <code>status</code>/<code>provenance</code>, <code>crates/dstu-core/src/lib.rs</code>’s
+crate doc comment, <code>crates/dstu-core/tests/strumok.rs</code>’s own header, <code>docs/ORACLES.md</code> (tier-list
+line + Strumok section), and both languages of the gh-pages landing page (status pill
+<code>provisional</code>→<code>verified</code>, same “both languages” discipline as D-192/D-193). <strong>Not closed</strong>:
+Додаток Б/В/Г’s constant tables (S-box, Tᵢ[a], Mulα) were read but not transcription-verified in
+full - corroborated only at the entries the 8 vectors reach. The scan itself
+(<code>docs/papers/DSTU_8845-2019.pdf</code>) is gitignored, never committed, same reasoning as the DSTU
+9041 files.</p>
+</li>
+<li>
 <p><input disabled="" type="checkbox" checked=""> <strong>T-148</strong> <strong>Corrected a false “font-encoding failure” claim across 5 PDFs; wrote
 <code>docs/pseudocode/dstu9041.md</code>; surfaced 3 unread cryptanalysis papers - see <code>docs/DECISIONS.md</code>
 D-105.</strong> Owner asked why the Skorobahatko DSTU 9041 thesis PDF “doesn’t get recognized” -
@@ -8844,7 +8865,7 @@ need <code>std</code> unconditionally, same reason <code>crypto_secretbox</code>
 </thead>
 <tbody>
 <tr><td><code>crypto_generichash</code></td><td><code>dstu_core::crypto_generichash</code> (a bare re-export of <code>hazmat::kupyna</code>’s <code>Kupyna256</code>/<code>Kupyna512</code>/<code>Kupyna256Hasher</code>/<code>Kupyna512Hasher</code>)</td><td><strong>Implemented</strong> — one-shot <code>digest()</code> and streaming <code>update</code>/<code>finalize</code> (<code>docs/TASKS.md</code> T-83), byte-aligned messages only. Now reachable under the top-level <code>crypto_*</code> namespace too, not just <code>hazmat</code> (<code>docs/TASKS.md</code> T-105, <code>docs/DECISIONS.md</code> D-66) — a bare re-export, not a new wrapper, since there’s no knob to hide and no libsodium value-add (variable output length, optional key) with a DSTU equivalent to re-derive. See D-10/D-66 in <code>docs/DECISIONS.md</code>.</td></tr>
-<tr><td><code>crypto_stream</code></td><td><code>dstu_core::crypto_stream</code> (<code>encrypt</code>/<code>decrypt</code>/<code>Key</code>, over <code>hazmat::strumok::Strumok256</code> only) + <code>hazmat::strumok</code> (<code>Strumok256</code>, <code>Strumok512</code>, both sizes)</td><td><strong>Implemented</strong> — keystream generation/<code>apply_keystream</code> at <code>hazmat</code>, both key sizes. High-level wrapper added (roadmap Step 3 item 3, <code>docs/DECISIONS.md</code> D-67): single 256-bit variant, internally-generated IV (hidden from the caller, confirmed with the project owner — the same choice <code>crypto_secretbox</code> made for its nonce, D-51), combined <code>iv || ciphertext</code> output. <strong>No authentication</strong> — <code>decrypt</code> never fails on tampered input, unlike <code>crypto_secretbox</code>; named <code>encrypt</code>/<code>decrypt</code> rather than <code>seal</code>/<code>open</code> specifically to avoid implying tamper-evidence. Vectors are UAPKI-attributed, not confirmed against the <em>official text</em> yet. See D-18/D-67 in <code>docs/DECISIONS.md</code>.</td></tr>
+<tr><td><code>crypto_stream</code></td><td><code>dstu_core::crypto_stream</code> (<code>encrypt</code>/<code>decrypt</code>/<code>Key</code>, over <code>hazmat::strumok::Strumok256</code> only) + <code>hazmat::strumok</code> (<code>Strumok256</code>, <code>Strumok512</code>, both sizes)</td><td><strong>Implemented</strong> — keystream generation/<code>apply_keystream</code> at <code>hazmat</code>, both key sizes. High-level wrapper added (roadmap Step 3 item 3, <code>docs/DECISIONS.md</code> D-67): single 256-bit variant, internally-generated IV (hidden from the caller, confirmed with the project owner — the same choice <code>crypto_secretbox</code> made for its nonce, D-51), combined <code>iv || ciphertext</code> output. <strong>No authentication</strong> — <code>decrypt</code> never fails on tampered input, unlike <code>crypto_secretbox</code>; named <code>encrypt</code>/<code>decrypt</code> rather than <code>seal</code>/<code>open</code> specifically to avoid implying tamper-evidence. Vectors are confirmed against the official DSTU 8845:2019 text itself (Додаток Д, D-197) — internal constant tables remain corroborated only indirectly. See D-18/D-67/D-197 in <code>docs/DECISIONS.md</code>.</td></tr>
 <tr><td><code>hazmat::kalyna</code> (block primitive, not directly libsodium-mapped)</td><td><code>hazmat::kalyna</code> (<code>Kalyna128_128</code>/<code>Kalyna128_256</code>/<code>Kalyna256_256</code>/<code>Kalyna256_512</code>/<code>Kalyna512_512</code>)</td><td><strong>Implemented</strong> — single-block <code>encrypt</code>/<code>decrypt</code>, all 5 variants. See D-13 in <code>docs/DECISIONS.md</code>.</td></tr>
 <tr><td><code>hazmat::kalyna_ccm</code> (mode of operation, not directly libsodium-mapped)</td><td><code>hazmat::kalyna_ccm</code> (all 5 variants)</td><td><strong>Implemented, provisional</strong> — Kalyna-alone CCM, dual-oracle-verified (UAPKI + Bouncy Castle vectors), not confirmed against the primary DSTU 7624:2014 text. See D-41 in <code>docs/DECISIONS.md</code>. Sourced 255-byte plaintext/AAD limit; nonce-generation strategy still undecided (D-40, <code>docs/TASKS.md</code> T-82).</td></tr>
 <tr><td><em>(no libsodium equivalent — key wrapping/envelope encryption)</em></td><td><code>hazmat::kalyna_kw</code> (all 5 variants)</td><td><strong>Implemented, <code>hazmat</code>-only, deliberately no high-level <code>crypto_*</code> wrapper</strong> — libsodium itself has no dedicated key-wrap primitive to map to (roadmap Step 3 item 4, <code>docs/DECISIONS.md</code> D-66’s addendum), so this stays a documented gap in the libsodium-parity surface rather than an invented, non-libsodium-shaped <code>crypto_kw</code>. Dual-oracle-verified, not confirmed against the primary DSTU 7624:2014 text. See D-55 in <code>docs/DECISIONS.md</code>.</td></tr>
@@ -11002,8 +11023,12 @@ D-16 for exactly what that does and doesn’t certify — the conclusion predate
 this project’s pinned commit). Treat it as sitting at this tier for Kalyna/Kupyna/DSTU 4145
 (same underlying lineage as cryptonite), except for <strong>Strumok, where it’s the only source found
 at all</strong> — no cryptonite equivalent exists to compare it against, so its self-declared
-<code>// ДСТУ 8845:2019</code> attribution is taken on the library’s word, not cross-tiered against
-anything above it.</li>
+<code>// ДСТУ 8845:2019</code> attribution was originally taken on the library’s word, not cross-tiered
+against anything above it. <strong>That attribution is now independently confirmed against the
+primary text itself</strong> (<code>docs/DECISIONS.md</code> D-197, 2026-09-16) — see the Strumok section below;
+this paragraph’s own tiering rationale (why UAPKI sat here for Strumok specifically) still
+applies to how the vectors were originally sourced, it just no longer describes their current
+confirmation status.</li>
 <li>An unofficial, single-maintainer, unaudited implementation (outspace/dstu8845).</li>
 <li>Excluded — untrusted provenance (<code>li0ard</code>, see D-07 in <code>docs/DECISIONS.md</code>).</li>
 </ol>
@@ -11289,6 +11314,18 @@ notation before they matched; see that module’s doc comment and D-104 for the 
 text” status above: it is now independently confirmed against a second, state-sourced oracle,
 but still not against Annex Д of the standard text itself (unpurchased) — D-15/D-16 stay open on
 that specific, narrower point.</li>
+<li><strong>Closed 2026-09-16</strong> (<code>docs/DECISIONS.md</code> D-197): Додаток Д itself was obtained, as a genuine
+library scan via the National Library of Ukraine’s EDD service (the same acquisition channel
+D-165 used for DSTU 9041), not purchased outright. All 8 worked examples (4×256-bit, 4×512-bit,
+с.22-23 and с.35-36) were verified two ways: against the committed <code>keystream-{256,512}.json</code>
+vectors (byte-for-byte match, confirming UAPKI’s attribution claim was correct all along) and
+directly against <code>hazmat::strumok</code>’s own output (<code>crates/dstu-core/tests/strumok.rs</code>’s
+<code>official_annex_d_vectors</code> module, a new, permanent regression test - not a one-off script).
+<strong>This is the point D-15’s own closing paragraph named as the condition for a status change</strong> -
+unlike D-104’s “upgrade, not closure,” this one genuinely is a closure for the vector-confirmation
+claim specifically. Untouched by this: the Додаток Б/В/Г constant tables (S-box, Tᵢ[a], Mulα)
+are corroborated only at the entries these 8 vectors happen to reach, not independently
+transcription-verified in full - a real, stated open item, not an oversight.</li>
 </ul>
 <h3 id="dstu-4145-signature"><a class="header" href="#dstu-4145-signature">DSTU 4145 (signature)</a></h3>
 <ul>
@@ -15026,8 +15063,14 @@ source to copy from (<code>docs/DECISIONS.md</code> D-06).</p>
 <p><strong>Update, 2026-07-22:</strong> at the time the paragraph above was written, no test vectors existed
 anywhere in this project’s holdings, so the oracle cross-check confirmed structure only, never
 numeric correctness. That gap is closed — see “Test vectors” below and <code>docs/DECISIONS.md</code> D-15/D-18 —
-and <code>dstu_core::hazmat::strumok</code> now passes all of them. The provenance ceiling is unchanged
-though: those vectors are UAPKI-attributed, not the official DSTU 8845:2019 text itself.</p>
+and <code>dstu_core::hazmat::strumok</code> now passes all of them. The provenance ceiling was unchanged at
+the time, though: those vectors were UAPKI-attributed, not the official DSTU 8845:2019 text itself.</p>
+<p><strong>Update, 2026-09-16:</strong> the ceiling is lifted — the official text’s own Додаток Д was obtained (a
+genuine library scan) and <code>hazmat::strumok</code>’s output verified directly against its printed worked
+examples, all 8 cases passing (<code>docs/DECISIONS.md</code> D-197, <code>crates/dstu-core/tests/strumok.rs</code>’s
+<code>official_annex_d_vectors</code> module). The UAPKI-attributed vectors above are now confirmed correct,
+not merely trusted on the library’s word. Not lifted: Annex Б/В/Г’s own constant tables (S-box,
+Tᵢ[a], Mulα) were read but not transcription-verified in full against <code>hazmat::tables</code>.</p>
 <h2 id="parameters-section-2"><a class="header" href="#parameters-section-2">Parameters (Section 2)</a></h2>
 <ul>
 <li>Word size: 64 bits (unlike SNOW 2.0’s 32-bit words).</li>
@@ -27797,6 +27840,86 @@ citation). <code>README.md</code> has no such section and no mention of <code>xt
 CI itself - recorded here rather than silently fixed by inventing new README content outside this
 task’s scope, per “never silently deprecate/silently expand scope.” Worth a small follow-up to
 either add the section README currently lacks, or fix the stale cross-reference in <code>CLAUDE.md</code>.</p>
+<h2 id="d-197-t-228---dstu-88452019s-own-додаток-д-obtained-and-verified---closes-d-15d-16s-vector-confirmation-gap-for-real"><a class="header" href="#d-197-t-228---dstu-88452019s-own-додаток-д-obtained-and-verified---closes-d-15d-16s-vector-confirmation-gap-for-real">D-197: T-228 - DSTU 8845:2019’s own Додаток Д obtained and verified - closes D-15/D-16’s vector-confirmation gap for real</a></h2>
+<p><strong>What was obtained.</strong> The full text fragment requested via the National Library of Ukraine’s EDD
+service (docs/DECISIONS.md D-165’s same acquisition channel, cost estimated beforehand at roughly
+344 UAH for 46 pages at 7 грн/page scanning + flat order/delivery fees - a library reprography
+tariff, not <code>fnd-store.uas.gov.ua</code>’s per-page official-reproduction tariff used for a full-document
+purchase) arrived as <code>Стандарт.pdf</code> (46 pages, с.4-49: розділ 7 and Додатки А-Е). Verified this is
+the genuine requested fragment before trusting its content, same discipline D-165 already applied
+to a supplementary DSTU 9041 purchase: page 1’s footer reads “4” and opens with §7’s own heading
+(matching the standard’s real с.4, confirmed by cross-referencing an unrelated, untrusted copy of
+the same standard’s own table of contents - see below for why that copy was never used for
+anything beyond page numbers); the file is exactly 46 pages, matching the 46 pages ordered; the
+PDF producer field (“ACDSee”) and visible verso bleed-through on several pages are consistent with
+a real physical photocopy, not a synthetic recreation.</p>
+<p><strong>Separately, and worth recording as its own fact</strong>: earlier the same week, the project owner had
+been sent an unrelated, untrusted copy of what claimed to be this same standard’s full text (from
+a source with no reason to be trusted with a Ukrainian state cryptographic standard - see this
+session’s own earlier turns). That file was used <strong>only</strong> to extract its table-of-contents page
+numbers, to know which pages to actually request from the library - never for any technical
+content (S-box values, tables, vectors). Worth noting for the record: this genuine library scan’s
+own table of contents landed on the exact same page numbers the untrusted copy had shown. That is
+a fact about the untrusted copy’s structural metadata, not a retroactive endorsement of its
+technical content, which was never read, transcribed, or relied upon for anything.</p>
+<p><strong>What was verified, and how - two links, not one claim.</strong> (1) <em>Annex Д’s printed values equal the
+committed <code>tests/vectors/strumok/keystream-{256,512}.json</code></em>: all 4 256-bit and all 4 512-bit cases
+from Додаток Д.1.1 (с.22-23) and Д.2.1 (с.35-36) were transcribed exactly as printed (K3..K0 or
+K7..K0, IV3..IV0, Z0..Z7, each a 16-hex-digit word) and compared byte-for-byte. (2) <em>The committed
+vectors equal <code>hazmat::strumok</code>’s actual output</em>: <code>cargo test -p dstu-core --test strumok</code> was
+re-run and passes (this link already existed via <code>strumok_{256,512}_uapki_attributed_vectors</code>, not
+a new claim, but re-confirmed rather than assumed). A third, stronger check subsumes both links at
+once: a new permanent test module, <code>crates/dstu-core/tests/strumok.rs</code>’s
+<code>official_annex_d_vectors</code>, runs <code>Strumok256</code>/<code>Strumok512</code> directly against the standard’s own
+printed values (not against the JSON vectors at all) - all 8 cases pass. This is the module that
+actually closes the gap; the JSON-vs-scan comparison was the transcription check that came first.</p>
+<p><strong>Byte-order transform - re-derived, not assumed to carry over.</strong> Annex Д labels key/IV words by
+descending significance (K3..K0, IV3..IV0) and prints each word as a 16-hex-digit string; the
+crate’s internal byte layout is ascending word order (K0 first) with each word’s own bytes
+independently reversed. This is the <em>same</em> transform D-104 already derived for the official
+letter’s Key/IV/RandBlock notation - re-confirmed here by direct computation rather than assumed
+to carry over from a different document’s own notation (D-163’s “a convention found once still
+needs re-checking each new occurrence” rule; re-checking it here was not redundant caution that
+happened to agree - the letter’s Key/IV used a <em>byte</em>-level descending-index label (<code>Key31..Key0</code>),
+Додoток Д uses a <em>word</em>-level one (<code>K3..K0</code>); the two conventions could plausibly have differed and
+didn’t).</p>
+<p><strong>A real transcription slip, caught by the same mechanism that would have caught any other.</strong>
+First read of Додаток Д.1.1’s case 3, <code>Z4</code>, misread <code>b22eee96b2832072</code> as <code>b22eeee96b2832072</code> (one
+extra <code>e</code>) - by eye, off a wide page render. The JSON-comparison script’s mismatch on that one case
+(3 of 4 cases matched immediately; this one didn’t) was the signal, not a second read of the scan.
+Re-cropped and zoomed the specific line at 2x magnification and got the correct 16-character word;
+re-ran, all 4 cases matched. This is D-163’s pattern recurring exactly as that entry warned it
+would (“a human/AI eyeball count can silently miscount”) - the fix wasn’t “be more careful,” it was
+“have an independent check that a wrong transcription actually fails,” which is exactly what the
+JSON comparison (and, redundantly, the direct implementation test) provided.</p>
+<p><strong>What this closes, and what it doesn’t - stated precisely, not in bulk.</strong> D-15’s own closing
+paragraph named the exact condition for a status change: “until this project reads the actual DSTU
+8845:2019 text itself… turns up.” That condition is now met for the keystream-generation claim
+specifically. This <strong>retroactively validates UAPKI’s attribution</strong> (<code>// ДСТУ 8845:2019</code> in
+<code>dstu8845_self_test()</code>) - the open question D-15’s own provenance field carried - rather than
+replacing it with a new, separate source. D-16 (UAPKI’s standing as an oracle generally) is a
+different claim this finding doesn’t touch directly, though the validated attribution is evidence
+in its favor. Unlike D-104, which explicitly framed itself as “an upgrade, not a closure,” this
+entry <strong>is</strong> a genuine closure for the vector-confirmation claim - the first one in this project’s
+Strumok history that actually is. <strong>Not closed by this</strong>: Додаток Б/В/Г’s constant tables (S-box
+π₀-π₃, Tᵢ[a], Mulα/Mulα⁻¹) were read (page numbers, structure) but not transcribed or compared
+against <code>hazmat::tables</code> - the 8 passing keystream vectors corroborate only the specific table
+entries those 4 key/IV pairs actually reach, not the tables in full. A future task, not started
+here, not assumed to be low-value just because it’s deferred.</p>
+<p><strong>Fixed, not left for a future sweep to find stale</strong>: <code>crates/dstu-core/tests/vectors/strumok/ keystream-{256,512}.json</code> (<code>status</code>/<code>provenance</code> fields - the old provenance text’s closing
+sentence, “has NOT independently confirmed these values against the official (paid) DSTU 8845:2019
+text itself,” was flatly false once this landed, not just stale framing), <code>crates/dstu-core/tests/ strumok.rs</code>’s own top-of-file doc comment, <code>crates/dstu-core/src/lib.rs</code>’s crate-level doc comment
+(propagates to the published rustdoc site’s <code>api/</code> pages on the next <code>cargo xtask book</code>/docs
+publish - not hand-edited there, since those pages are generated output), <code>docs/ORACLES.md</code> (the
+tier-list line for Strumok’s UAPKI attribution, plus the Strumok oracle section itself),
+<code>docs/TASKS.md</code> (T-228), <code>docs/CHANGELOG.md</code> <code>[Unreleased]</code>, and both language versions of the
+gh-pages landing page (<code>index.html</code>/<code>uk/index.html</code>, Strumok’s status pill <code>provisional</code>→<code>verified</code>
+plus its status-detail paragraph, same “both languages” discipline D-192/D-193 already established
+for other status-line fixes).</p>
+<p><strong>Not committed</strong>: <code>Стандарт.pdf</code> itself - <code>.gitignore</code>’s existing DSTU 9041 block (“state-standard
+text redistribution rights are not ours to grant”) is extended to cover this file too, same
+reasoning, kept local only like <code>DSTU_9041-2020_Part of.pdf</code>. This entry cites clause/annex and
+page number, not the file.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="changelog"><a class="header" href="#changelog">Changelog</a></h1>
 <p>All notable changes to this project are documented in this file. Format follows
@@ -27819,6 +27942,16 @@ this entry, all four platform gems. See <code>docs/DECISIONS.md</code> D-194.</l
 </ul>
 <h3 id="changed"><a class="header" href="#changed">Changed</a></h3>
 <ul>
+<li>
+<p>Strumok (DSTU 8845:2019) keystream vectors are now confirmed against the official standard text
+itself (Додаток Д, obtained as a genuine library scan), not just UAPKI-attributed - a new
+permanent test module (<code>crates/dstu-core/tests/strumok.rs</code>’s <code>official_annex_d_vectors</code>) checks
+<code>hazmat::strumok</code>’s output directly against the standard’s own printed worked examples, all 8
+cases (4×256-bit, 4×512-bit) passing. Status text updated everywhere it appeared: both vector
+JSON files, the crate’s own doc comment, <code>docs/ORACLES.md</code>, and the gh-pages landing page (both
+languages). Internal constant tables (S-box, Tᵢ[a], Mulα) remain corroborated only indirectly, not
+independently transcription-verified. See <code>docs/DECISIONS.md</code> D-197.</p>
+</li>
 <li>
 <p><code>bindings/ruby</code>’s gemspec/Cargo.toml description and README, plus root <code>README.md</code> and the
 gh-pages landing page (both languages), updated to reflect RubyGems actually being live - same

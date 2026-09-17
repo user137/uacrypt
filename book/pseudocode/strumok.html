@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-f8281217.js";
+            window.path_to_searchindex_js = "../searchindex-e7ed95d1.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-6b977b4b.js"></script>
@@ -190,8 +190,14 @@ source to copy from (<code>docs/DECISIONS.md</code> D-06).</p>
 <p><strong>Update, 2026-07-22:</strong> at the time the paragraph above was written, no test vectors existed
 anywhere in this project’s holdings, so the oracle cross-check confirmed structure only, never
 numeric correctness. That gap is closed — see “Test vectors” below and <code>docs/DECISIONS.md</code> D-15/D-18 —
-and <code>dstu_core::hazmat::strumok</code> now passes all of them. The provenance ceiling is unchanged
-though: those vectors are UAPKI-attributed, not the official DSTU 8845:2019 text itself.</p>
+and <code>dstu_core::hazmat::strumok</code> now passes all of them. The provenance ceiling was unchanged at
+the time, though: those vectors were UAPKI-attributed, not the official DSTU 8845:2019 text itself.</p>
+<p><strong>Update, 2026-09-16:</strong> the ceiling is lifted — the official text’s own Додаток Д was obtained (a
+genuine library scan) and <code>hazmat::strumok</code>’s output verified directly against its printed worked
+examples, all 8 cases passing (<code>docs/DECISIONS.md</code> D-197, <code>crates/dstu-core/tests/strumok.rs</code>’s
+<code>official_annex_d_vectors</code> module). The UAPKI-attributed vectors above are now confirmed correct,
+not merely trusted on the library’s word. Not lifted: Annex Б/В/Г’s own constant tables (S-box,
+Tᵢ[a], Mulα) were read but not transcription-verified in full against <code>hazmat::tables</code>.</p>
 <h2 id="parameters-section-2"><a class="header" href="#parameters-section-2">Parameters (Section 2)</a></h2>
 <ul>
 <li>Word size: 64 bits (unlike SNOW 2.0’s 32-bit words).</li>
