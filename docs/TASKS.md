@@ -8146,6 +8146,7 @@ codes, and memory lifecycle) stays intact and doesn't need its own task.
   `fuzz/Cargo.toml`'s `[[bin]]`, `.github/workflows/rust.yml`'s `fuzz-smoke` matrix,
   `xtask/src/main.rs`'s `FUZZ_TARGETS` array. Scope narrowed from the original entry 2026-09-02
   (owner decision) - the tier-2/tier-3 primitives it also listed are now T-225.
+  **2026-09-22 scope addition**: negative-property fuzz check - see "Security audit remediation" ("Attached to existing tasks").
 - [ ] **T-224** Bindings: an oversized/near-32-bit-boundary length-prefix test per binding (not a
   literal 2GB allocation - a crafted declared-length field just past a 32-bit boundary, same shape
   as the existing "oversized declared chunk length" secretstream tests). Java int-indexed arrays and
@@ -8208,3 +8209,273 @@ Full per-primitive/per-command/per-binding matrices this roadmap was originally 
 in a private Claude artifact (not committed to the repo) - if it's no longer reachable, the
 fastest re-derivation path is the same two-agent survey approach (Core+CLI+capi inventory,
 bindings inventory) rather than re-reading this section's summaries as ground truth.
+
+## Security audit remediation (2026-09-22, from an independent read-only audit)
+
+Owner ran a read-only "independent auditor" pass over the whole project (10 areas: constant time/
+secrets, `crypto_*` constructions, asymmetric, oracle-less constructions, C ABI, bindings, CLI,
+`no_std`, supply chain/QA, doc-vs-code). No code was changed during the audit; every finding marked
+Confirmed below was reproduced with a throwaway crate outside the repo (depending on
+`crates/dstu-core` by path) or end-to-end with `target/release/uacrypt.exe`. **Audited state: commit
+`f8bf046`, `dstu-core`/`uacrypt` 0.3.8.** The throwaway PoCs do not survive the session, so every
+task below carries its own reproduction recipe and vectors - re-derive nothing from memory.
+
+Clean areas (checked, nothing found - recorded so a re-audit doesn't redo them): Montgomery/Edwards
+ladders and `Scalar` arithmetic are branchless; Fermat inversions use public exponents; every tag/MAC
+compare is `subtle::ConstantTimeEq`; all 94 `extern "C"` exports start with a `guard_*`
+(`catch_unwind`) wrapper (checked by script); no self-recursive function anywhere in
+`crates/dstu-core/src` (checked by script); m=257 verify does full `n*Q == O`; DSTU 9041
+`point_from_x` rejects x in {0,1,p-1}, non-residues and non-subgroup points; D-118's two binding
+pitfalls are closed in all 8 bindings; `cargo audit` (117 crates) and `cargo deny check` clean;
+`dstu-core --no-default-features` pulls only `subtle`+`zeroize`. No instruction-like text found in
+`oracles/`.
+
+### Bouncy Castle cross-check (2026-09-22, at the owner's request - UAPKI is this crate's GCM/GMAC/CMAC source, so "UAPKI does the same" was not accepted as exoneration)
+
+Run against the **published `bcprov-jdk18on-1.85.jar`** (`~/.m2/repository/org/bouncycastle/
+bcprov-jdk18on/1.85/`, sources jar alongside it). `KGCMBlockCipher.java`/`KGMac.java` are **not** in
+this repo's sparse `oracles/bouncycastle-java` checkout (see T-237); read from the sources jar.
+Windows gotcha: `java -cp "C:/.../bcprov-jdk18on-1.85.jar;."` - a Git-Bash-style `/c/...` path or a
+`:` separator gives `NoClassDefFoundError`. Result:
+
+| Construction | UAPKI / ours | BC 1.85 | Verdict |
+|---|---|---|---|
+| Kalyna-GCM, block-aligned input | - | - | **byte-identical** (V2) |
+| Kalyna-GCM, non-aligned input | last block `0x80`-padded, length field = **padded** length | last block **zero**-padded, length field = **true** length (`KGCMBlockCipher.calculateMac`) | same ciphertext, **different tag** (V1); BC rejects the append forgery, ours accepts it |
+| Kalyna-GMAC, non-aligned | same as GCM row | same as GCM row | ours(`m`) == BC(`m ‖ 80 ‖ 00...`) exactly (V4) |
+| Kalyna-CMAC (`DSTU7624Mac`), empty vs one zero block | collide | **collide too** | same value in both (V3) - two implementations agree; BC throws on non-aligned input, so UAPKI's `0x80` + `E(1)` partial-block path still has **no** second oracle |
+
+BC's own `KGCMBlockCipher` class javadoc states its partial-block behaviour follows NIST SP 800-38D
+and "has **not** been confirmed against an independent conformant DSTU 7624 implementation. See
+github #287" - BC itself flags this exact interop question. **Neither reading is settled by the
+standard**: every official DSTU 7624 GCM/GMAC vector is block-aligned (D-56 already records this),
+which is exactly why the divergence was never caught.
+
+### Shared vectors (turn into JSON under `crates/dstu-core/tests/vectors/` per `docs/ORACLES.md`'s convention when implementing)
+
+- **V1** Kalyna256_256Gcm, key=`07`x32, iv=`01`x32, aad=iv (the `crypto_secretbox` shape),
+  pt=ASCII `PAY 100 UAH TO ALICE` (20 bytes). ct=`02dc6c4f36b29aa161257a5313d28c13279eff0e`
+  (both sides). tag[..16]: **ours/UAPKI** `5e9797b2d2bddd35b4dcf874150fa468`, **BC**
+  `4f902807d6dfeb088fba7ef06b4a05ef`.
+- **V2** same key/iv/aad, pt=`55`x32.
+  ct=`07c8603a52d7ffd46131672612c8f9073e82e91e25d4a0a168ec73c8dd7409d8`,
+  tag[..16]=`97c1b12f7248a4dcef617e4823f77405` - identical on both sides.
+- **V3** Kalyna128_128Cmac / BC `DSTU7624Mac(128,128)`, key=`03`x16: MAC(empty) = MAC(`00`x16) =
+  `f06313255015ecd20a2627109f5ee9b4` - ours and BC both.
+- **V4** Kalyna128_128Gmac / BC `KGMac(new KGCMBlockCipher(new DSTU7624Engine(128)), 128)` (iv=`00`x16
+  on the BC side - the tag does not depend on it; a fresh `KGMac` per message, BC refuses nonce
+  reuse), key=`03`x16: ours(`hello`) = ours(`hello ‖ 80 ‖ 00x10`) =
+  `162bf6f90bd4a9e40710d79f07295871` = BC(`hello ‖ 80 ‖ 00x10`); BC(`hello`) =
+  `9b87e954e1478a4259adbbb155518dd5`.
+- **V5** forgery recipes (library level): (a) append - take any `crypto_secretbox::seal` output whose
+  ciphertext length `L` has `L % 32 != 0`, insert `80 00...` (up to the next 32-byte boundary)
+  between ciphertext and tag -> `open` returns `Ok` with the original plaintext plus 1-31
+  pseudo-random bytes (keystream XOR `80 00...` - length attacker-chosen, content not). Same on a
+  `Tag::Final` secretstream chunk. (b) truncate - an aligned ciphertext ending in `80` (or
+  `80 00...`) with those bytes removed verifies under the same tag.
+- **V6** end-to-end (`uacrypt` 0.3.8): `keygen`, `encrypt` a 20001-byte file (records of
+  8192/8192/3617); (a) extend the final record's ciphertext with `80 00...` to 3648 bytes and fix its
+  `u32` length -> `decrypt` exit 0, output 20032 bytes, first 20001 intact; (b) re-encrypt until a
+  non-final record's ciphertext ends in `0x80` (~1/128 per encryption with 2 non-final records; took
+  2 tries), drop that byte and set its length to 8191 -> `decrypt` exit 0, output = original with
+  exactly one byte deleted mid-file. Wire record: `tag(1) ‖ len_u32_le(4) ‖ ct ‖ auth_tag(16)`
+  after a 32-byte header.
+
+### Owner decisions needed before implementation (surfaced, not picked)
+
+- **O-1 - ordering of the F-01 fix vs. the primary-text question.** (A, recommended) ship T-232 now:
+  F-01 is Critical and on crates.io/PyPI/npm/RubyGems; length-in-AAD closes it whichever GCM reading
+  wins, and T-232 adds a format version byte so any later hazmat switch (T-235) becomes a clean
+  versioned bump instead of a silent second break. (B) wait for T-234's primary text and do a single
+  wire-format break covering both. Cost of B: the forgery stays live on published packages for the
+  whole acquisition time (D-197's EDD precedent took weeks).
+- **O-2 - hazmat `kalyna_gcm`/`kalyna_gmac` semantics** (UAPKI reading vs BC reading vs both as
+  distinct types) - decide only after T-234. See T-235.
+- **O-3 - whether to fold T-248 (`crypto_box` KEM binding) into the same wire-format break as
+  T-232.**
+
+### Tasks
+
+  **2026-09-22 scope addition**: negative-property fuzz check - see "Security audit remediation" ("Attached to existing tasks").
+- [ ] **T-232** (audit F-01, **Critical**, Confirmed) `crypto_secretbox` + `crypto_secretstream`:
+  bind the ciphertext length into the AEAD tag. Root cause: `hazmat::kalyna_gcm::compute_tag`
+  (`kalyna_gcm.rs:153`) hashes the `0x80`-padded ciphertext and puts the *padded* length in the
+  length block (D-56 divergences 2/3, transcribed faithfully from UAPKI `dstu7624.c`), so `ct` and
+  `ct ‖ 80 ‖ 00...` share a tag; the wrappers' AAD (`crypto_secretbox.rs:162,195`: nonce only;
+  `crypto_secretstream.rs:249`: `counter ‖ tag_byte`) never carries the length. Impact: every
+  `uacrypt encrypt`/`decrypt` file, all 8 bindings' stream wrappers (shared wire format), the C
+  ABI - append of pseudo-random bytes always, deletion of plaintext bytes when a ciphertext ends in
+  `80 00*` (V5, V6). `crypto_box`/`box512` share the mechanism but are anonymous-sender by design,
+  so there is no practical impact there (note it, don't prioritize it). Fix (minimal, at the
+  `crypto_*` layer only - **do not touch `hazmat::kalyna_gcm`**, that would break the KATs and UAPKI
+  interop): secretbox AAD = `nonce ‖ ct_len_le64`; secretstream AAD =
+  `counter_le64 ‖ tag_byte ‖ ct_len_le64`. Add a 1-byte format version to the `uacrypt`/binding
+  stream header and to the secretbox blob (Q1 decides whether an external format constrains this).
+  Defence in depth: every reader (`uacrypt` `run_secretstream_decrypt` - today only
+  `chunk_len > SECRETSTREAM_CHUNK_BYTES` at `lib.rs:1513` - plus the 8 bindings) rejects a non-final
+  record whose length is not exactly `SECRETSTREAM_CHUNK_BYTES`. **Tests (write first, must fail on
+  `f8bf046`)**: Security & Boundary - V5(a)/(b) for secretbox and secretstream in
+  `crates/dstu-core/tests/`, V6(a)/(b) in `crates/uacrypt/tests/smoke_secretstream_attack.rs`, one
+  per binding in its own attack suite, plus a short-non-final-record rejection test per reader. Why
+  the existing suite missed it: tamper tests only flip bytes, and D-56's "covered by the proptest
+  round-trip" cannot detect a non-injective encoding. Wire-format break -> version bump +
+  `docs/CHANGELOG.md` + T-233. Gate: plan mode + advisor at both ends (protocol change).
+- [ ] **T-233** (F-01 follow-up, **owner-gated, outward-facing**) Disclosure + release for T-232:
+  GitHub Security Advisory and a RUSTSEC advisory for `dstu-core`/`uacrypt`; release notes for the
+  PyPI/npm/RubyGems packages. Affected range: every published version with the GCM-based secretbox
+  (`db10345`, T-37) / secretstream (`2950c62`, T-40) - confirm with `git tag --contains` on both
+  commits (expected: every tag `v0.1.0`..`v0.3.8`). Migration note: files written by <= 0.3.8 are
+  decryptable only by an old release, or by a documented legacy-read path if the owner wants one
+  (decide in T-232's plan). Nothing outward without explicit go-ahead (D-91 precedent).
+- [ ] **T-234** (research, unblocks T-235/T-236 and D-41) Obtain the **DSTU 7624:2014 primary
+  text** (the National Library EDD route that worked for DSTU 8845, D-197) and settle, with clause
+  citations: GCM/GMAC partial-block padding (`0x80` vs zero) and the length field (true vs padded);
+  CMAC empty-message handling; CCM (D-41's "not yet confirmed against the primary text"). Local OCR
+  only (no third-party OCR upload of a licensed scan). Not in `docs/papers/` today - only the Kalyna
+  paper, which does not specify mode padding.
+- [ ] **T-235** (audit F-01/F-02, hazmat, blocked on T-234 + O-2) Decide `hazmat::kalyna_gcm`/
+  `kalyna_gmac` partial-block semantics: (A) keep UAPKI's (current, non-injective); (B) switch to
+  BC's (injective; changes every non-aligned tag - V1/V4 flip sides); (C) ship both as distinct
+  types. Record the choice as a new `D-` entry citing T-234's clause. Regardless of the outcome,
+  document the non-injectivity now in both modules' rustdoc and `docs/SECURITY.md` ("never use above
+  hazmat without an external length binding"), and in `docs/CLI.md` for `kalyna-gcm`/`kalyna-gmac`.
+- [ ] **T-236** (audit F-02, CMAC, Medium) `Kalyna*Cmac`: `MAC(empty) == MAC(0^block)` in ours,
+  UAPKI (`padding()` at `dstu7624.c:2572` pads nothing for length 0, `rkey[0] = 0`) and BC
+  `DSTU7624Mac` (V3). Two implementations agree - whether BC's DSTU code is independent of the UAPKI
+  lineage is unknown (Q5). Until T-234: document in rustdoc/`docs/SECURITY.md`/`docs/CLI.md`
+  (`kalyna-cmac`). After T-234: decide whether hazmat rejects empty input (check first that no KAT
+  in `tests/vectors/` uses an empty message). Also record in `docs/ORACLES.md` that the non-aligned
+  CMAC path (`0x80` + `E(1)`) has UAPKI as its only oracle, since BC throws on it.
+- [ ] **T-237** (oracle infra, from the BC cross-check) Vendor `org/bouncycastle/crypto/modes/
+  KGCMBlockCipher.java` and `crypto/macs/KGMac.java` (plus the `modes/kgcm/*` multipliers if needed
+  for readability) into `oracles/bouncycastle-java`, and the .NET equivalents into
+  `oracles/bouncycastle-dotnet`; update the "not present" statements (`docs/DECISIONS.md` ~1991,
+  ~3250; `docs/ORACLES.md` ~142, ~158) and `oracles/README.md`. Add V1-V4 to
+  `tests/oracle-harness/{java,dotnet}` asserting the **currently documented** behaviour on each side
+  (aligned: equal; non-aligned: the known divergence), so a change on either side trips the harness.
+- [ ] **T-238** (audit F-04, Medium, Confirmed) `crypto_secretstream::PullState::pull` accepts an
+  `auth_tag` of 8..=32 bytes (it delegates to `kalyna_gcm::decrypt`'s range check,
+  `kalyna_gcm.rs:210`): an 8-byte prefix of a real tag verifies. Online forgery margin drops
+  2^-128 -> 2^-64 per attempt (no Ferguson-style amplification - the tag is `E_K(poly)`, not
+  `GHASH XOR mask`). C ABI and Java already pin 16 bytes; **Python
+  (`bindings/python/src/secretstream.rs:97`), Node.js, PHP and Ruby pass a caller-controlled length
+  through**. Fix: `if auth_tag.len() != TAG_LEN { return Err(InvalidLength) }` in `pull`. Tests: core
+  pull with 8- and 32-byte tags -> `InvalidLength`; one Misuse test per affected binding. Q2 attached.
+- [ ] **T-239** (audit F-03, Medium, Confirmed) `crypto_sign257::SigningKey::generate`
+  (`crypto_sign257.rs:139`, `candidate[1] &= 0x01`) draws keys only from `[1, 2^249)`, while
+  `curve257::order()` is `00 80 00 ... 0D` (n ~ 2^255). Empirical: 2000 keys -> OR of byte0 = `0x00`,
+  max byte1 = `0x01`. Effect: ~6 bits of key-space loss (kangaroo ~2^124.5 vs rho ~2^127.5), keys
+  distinguishable from DSTU-uniform; the doc comment's "~50% rejection" is false (actual ~0%).
+  `from_bytes` accepts the full range, so imported keys are unaffected. Fix: drop the `candidate[1]`
+  mask (keep `candidate[0] = 0`). Tests: statistical - over N keys the fraction >= 2^249 is ~97% and
+  the rejection rate ~50%, with bounds loose enough not to flake. CHANGELOG user note: m=257 keys
+  generated since T-199 (`5006101`) stay valid but should be regenerated. `dstu-core-capi` and every
+  binding delegate to this function - verify that, don't assume it.
+- [ ] **T-240** (audit F-05, Medium; path Confirmed, UB manifestation Plausible) The C ABI takes Rust
+  enums by value (`DstuPwhashStrength` at `capi/pwhash.rs:50`, `DstuTag` at
+  `capi/secretstream.rs:201`). Go (`type PwhashStrength int`), .NET (`(PwhashStrength)7` is legal C#)
+  and C++ (`static_cast`) can pass an out-of-range value -> invalid discriminant = UB in Rust. Fix:
+  take `u32`, map explicitly, return a new additive `DSTU_ERR_INVALID_ARGUMENT` status for unknown
+  values; regenerate `include/dstu_core.h` via `cargo xtask capi`; keep the enum constants in the
+  header. Tests: `ffi_tests.rs` with a raw `7`; one Misuse test each in Go/.NET/C++.
+- [ ] **T-241** (audit F-06, Medium, Confirmed) `uacrypt` file hygiene. (a) Secret keys (`keygen`
+  `lib.rs:1831`, `sign-keygen`/`sign-keygen257` ~1917/~1934, `box-keygen` ~2354, `box512-keygen`
+  ~2590) are written via `std::fs::write` -> mode `0666 & umask` (0644 typically, world-readable),
+  following a pre-existing symlink. (b) `secretstream_temp_path` (`lib.rs:1386`) is predictable
+  (`<out>.secretstream-tmp`) and opened with `File::create` (`lib.rs:1429,1499`) - a pre-planted
+  symlink in a shared directory redirects decrypted plaintext or truncates the symlink's target.
+  (c) No `fsync` before `rename` (Info). Fix: `OpenOptions::new().write(true).create_new(true)` plus
+  `#[cfg(unix)] mode(0o600)` for keys and the temp file; a random temp suffix; decide explicitly
+  whether keygen may overwrite an existing key (today it silently does - that destroys keys).
+  Windows: the default ACL inherits from the directory - document it, don't invent an ACL layer.
+  Tests (`#[cfg(unix)]`): key file mode is 0600; a symlink at the temp path makes the command fail
+  without touching the target. CHANGELOG note: users should check permissions on key files
+  generated so far.
+- [ ] **T-242** (audit F-07/F-08/F-14, Low) Secret-hygiene batch. Not zeroized: `kappa`,
+  `t_point`/`t_prime`, `m_prime`, `kw_plaintext`, `recovered` in `hazmat/dstu9041/encryption.rs`
+  (~90, ~135, ~139) and `encryption512.rs`; the KMAC output `mac` (the signing nonce source) in
+  `derive_nonce` (`crypto_sign.rs` ~306, `crypto_sign257.rs` ~233); `padded_key` and `full` in
+  `kupyna_kmac.rs`; KW's intermediate `b` array; `uacrypt`'s `key_bytes`/`key_arr` in
+  `run_secretstream_command`; the `capi` `*_key_from_bytes` stack copies. Not constant-time on the
+  secret `d`: `SigningKey::from_bytes` (`crypto_sign.rs:174`, `crypto_sign257.rs:115`,
+  `iter().all(== 0)` plus lexicographic `>=`) - reuse the borrow-based `from_candidate_bytes` shape.
+  `#[derive(Debug)]` on `Scalar`/`Scalar257` (they carry `d`/`e`) and on the field-element types -
+  redact or remove. Tests: a compile-fail doctest if `Debug` is removed; zeroization is otherwise
+  review-only (record it as a `D-` finding per the "foreclosed by type/review" convention).
+- [ ] **T-243** (audit F-09, Low) `cargo xtask ci` discards every optional layer's result
+  (`xtask/src/main.rs:1515`, `optional();`) and prints success even when miri/audit/capi/bindings
+  actually *fail*, not only when a tool is missing. GitHub CI is unaffected (separate jobs). Fix: a
+  tri-state per optional layer (passed / skipped-missing-tool / failed), non-zero exit on "failed",
+  and a summary table.
+- [ ] **T-244** (audit F-10/F-11, Low) C ABI. (a) `dstu_memzero` (`capi/util.rs:88`) uses
+  `ptr::write_bytes` + `compiler_fence` - not a volatile write; under cross-language LTO the store
+  can be elided. Use `zeroize` on the slice. (b) `include/dstu_core.h` never states that
+  input/output buffers must not alias (only `util.rs:32` does); libsodium explicitly allows in-place
+  use, so C users will do it, and overlapping `&[u8]`/`&mut [u8]` is UB. Decide: document "must not
+  overlap" in the cbindgen doc comments **and** detect overlap and return T-240's
+  `DSTU_ERR_INVALID_ARGUMENT`, or support in-place properly. Test: an overlapping call in
+  `ffi_tests.rs` returns the error, clean under Miri.
+- [ ] **T-245** (audit F-12/F-13, Info) (a) `crypto_secretstream`'s `self.counter += 1`
+  (`crypto_secretstream.rs:329,418`) wraps to 0 in release after 2^64 chunks -> IV reuse; use
+  `checked_add` plus a new `SecretstreamError` variant. Unreachable in practice - do it because the
+  global rule wants bounds safety provable from the line itself. (b) m=163 `signature::verify`
+  rejects only the order-2 point (`x == 0`); keys of order 2n (`Q' + T2`) pass. Not a forgery (the
+  attacker owns such a key), but non-standard validation. Q3 attached: if `x != 0` was not a
+  deliberate T-189 performance choice, switch to `n*Q == O` like m=257.
+- [ ] **T-246** (audit area 10, docs) Correct the claims the audit disproved, each in the file that
+  owns it: the `crypto_secretstream.rs`/`crypto_secretbox.rs` module docs ("a tampered chunk ... fail
+  closed" - true only after T-232); D-56's "covered by the proptest round-trip" (add a new `D-`
+  entry recording the non-injectivity and the BC divergence, don't rewrite D-56); the
+  `crypto_sign257::generate` "~50% rejection" comment (with T-239);
+  `hazmat/dstu9041/encryption.rs`'s "this crate denies unwrap/expect" vs `kupyna_kdf.rs:36`'s
+  `.expect` (probably not linted inside `macro_rules!` - verify, then convert it to the
+  `let Ok(..) else { unreachable!(..) }` shape used elsewhere, or correct the claim);
+  `CLAUDE.md`'s "cross-checked against real Bouncy Castle" wording scoped to block-aligned input for
+  GCM/GMAC (from T-237 - pair the addition with a deletion).
+- [ ] **T-247** (**owner-gated, outward-facing**) Upstream reports: (a) an issue on
+  specinfo-ua/UAPKI describing the GCM/GMAC padded-length non-injectivity and the CMAC empty-message
+  collision, with V1/V3/V4 (D-91 precedent for conventions: `MODULE: short description`, mixed
+  UA/EN); (b) a comment on bc-java github #287 with V1/V4 as a concrete UAPKI-vs-BC divergence data
+  point (and V3, which BC shares). Only after T-232 ships (don't disclose a live forgery on our own
+  published packages first), and only on explicit go-ahead.
+- [ ] **T-248** (audit Q4, design, owner decision - O-3) `crypto_box`/`crypto_box512` derive the
+  stream key from the seed alone (`Kupyna256Kdf::derive_subkey(seed, 0, b"cryptbox"/b"cryptbx5")`);
+  the KEM ciphertext and the recipient public key are not bound in (libsodium's sealed box binds
+  `epk ‖ pk` into the nonce). No concrete attack found (the seed is authenticated by 9041's own hash
+  check; the sender is anonymous by design), so this is hardening/non-malleability, not a bug. If
+  accepted, fold it into T-232's wire-format break rather than a separate one.
+- [ ] **T-249** (coverage gaps - what the 2026-09-22 audit did **not** check) Second pass over:
+  the `crypto_auth`/`crypto_kdf`/`crypto_generichash`/`crypto_pwhash`/`crypto_stream` wrappers
+  beyond a grep of their compares; `hazmat::strumok`; the Kalyna key schedule; `tables.rs`
+  transcription (relies on KATs/BC today); `dstu9041` l=512 files line by line (only structurally
+  compared to l=256); binding internals beyond the `pull`/close/FFI-enum sites; actually running
+  `cargo test`/Miri/Kani/fuzz (the audit only read CI). Hardware side channels stay out of scope.
+- Attached to existing tasks (no new IDs): **T-223** - add a negative-property check to the
+  `crypto_secretbox`/`crypto_box`/`crypto_box512` fuzz targets (a mutated, extended or truncated
+  sealed blob must never `open` successfully unless it is byte-identical to the original) - a
+  crash-only target could not have found F-01. **T-225** - the same negative property for
+  `crypto_secretstream`, plus targets for `crypto_sign`/`crypto_sign257` `verify` and
+  `VerifyingKey::from_uncompressed_bytes` (they parse untrusted bytes).
+
+**Open questions for the owner (each also attached to its task):**
+- Q1 (T-232/T-233) Must `crypto_secretbox` or the `uacrypt` stream format stay readable by any
+  external UAPKI/IIT-based format? Decides the legacy-read path and the version-byte shape.
+- Q2 (T-238) Does any external format need `PullState::pull` to accept a non-16-byte tag?
+- Q3 (T-245) m=163: was `x != 0` chosen over `n*Q == O` deliberately in T-189?
+- Q4 (T-248) Should `crypto_box` bind the KEM ciphertext/recipient key into the KDF?
+- Q5 (T-236) Is BC's DSTU 7624 code (`DSTU7624Mac`/`KGCMBlockCipher`) independent of the UAPKI
+  lineage, or written by the same contributors? It changes how much "two implementations agree"
+  (V3) is worth.
+
+**Recommended order** (the owner controls it - see O-1): T-232 + T-238 (T-238 is one line and shares
+T-232's test files) -> T-239 -> T-240 -> T-241 -> T-233 (release + advisory) -> T-246 docs; start
+T-234 (long-running acquisition) in parallel with T-232 -> T-235/T-236/T-237 once T-234 lands ->
+T-247 (after the release) -> T-242/T-243/T-244/T-245 hygiene -> T-248 (if accepted, with T-232
+instead) -> T-249.
+
+### RESUME HERE (state as of 2026-09-22, saved for a memory-clear/new-session handoff)
+
+Nothing implemented yet - this section is the audit's backlog only. First step is the owner's O-1
+decision; then T-232 in plan mode with an advisor pass before and after (protocol change). All
+reproduction data is in "Shared vectors" above; the throwaway PoC crates and the BC Java checks were
+outside the repo and are gone - rebuild them from V1-V6 plus bcprov 1.85, don't trust memory.
