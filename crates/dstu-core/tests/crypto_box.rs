@@ -1,6 +1,7 @@
 //! Tests for `dstu_core::crypto_box` (`docs/TASKS.md` T-178) - a hybrid public-key encryption
 //! construction over `hazmat::dstu9041` (`l(p)=256` KEM, wrapping a random 25-byte seed) plus
-//! `crypto_kdf`/`crypto_secretstream` (bulk encryption). No DSTU standard or reference
+//! a `Kupyna256Kmac` stream-key derivation over `kem_ct || recipient_pk` (T-248, D-201) and
+//! `crypto_secretstream` (bulk encryption). No DSTU standard or reference
 //! implementation defines this composite - like `crypto_secretstream` (D-68), verified by
 //! property/tamper/misuse tests only, never citable as vector-verified.
 

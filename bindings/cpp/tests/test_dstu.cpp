@@ -164,6 +164,13 @@ void TestSecretbox() {
 
   CHECK(Throws<dstu::CryptoError>([&] { key.Open(std::vector<std::uint8_t>{1, 2, 3}); }),
         "Open should reject input shorter than the nonce+tag overhead");
+
+  // T-232/D-202: byte 0 is the format version - DSTU_ERR_UNSUPPORTED_VERSION must map to
+  // CryptoError, not the InternalError default.
+  auto otherVersion = sealed;
+  otherVersion[0] = 3;
+  CHECK(Throws<dstu::CryptoError>([&] { key.Open(otherVersion); }),
+        "Open should report an unsupported format version as a CryptoError");
 }
 
 void TestBox() {

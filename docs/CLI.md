@@ -24,9 +24,10 @@ primitive for whole-message use, just no longer what this CLI command uses. `--k
 the OS CSPRNG (`docs/TASKS.md` T-115). `encrypt` draws a fresh random header internally on every call
 and embeds it in `--out`; there is no `--nonce`/`--header` flag to supply or reuse by mistake.
 **0.4.0 changed the `encrypt`/`box-seal`/`box-seal512` file formats** (T-232/T-248,
-`docs/DECISIONS.md` D-200-D-202). Files written by 0.3.x don't open with 0.4.0. `box-open` reports
-them as a different format version. Decrypt them with the release that wrote them, then
-re-encrypt.
+`docs/DECISIONS.md` D-200-D-202). Files written by 0.3.x don't open with 0.4.0. `box-open` almost
+always reports them as a different format version; ~1 in 256 happen to start with the current
+version byte and report an authentication failure instead. Decrypt them with the release that
+wrote them, then re-encrypt.
 **`hash` has no such limit either** — it streams `--in` from disk in fixed-size chunks regardless of
 size, fixed to Kupyna-256 (32-byte digest, no `--variant` choice).
 

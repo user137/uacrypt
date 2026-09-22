@@ -2,6 +2,7 @@ package dstu
 
 import (
 	"bytes"
+	"errors"
 	"testing"
 )
 
@@ -58,6 +59,20 @@ func TestSecretboxTamperedNonceIsRejected(t *testing.T) {
 	sealed[1] ^= 1
 	if _, err := key.Open(sealed); err == nil {
 		t.Fatal("expected an error")
+	}
+}
+
+// T-232/D-202: byte 0 is the format version - another value maps DSTU_ERR_UNSUPPORTED_VERSION
+// to a CryptoError, not the "please report this" InternalError.
+func TestSecretboxUnsupportedVersionIsACryptoError(t *testing.T) {
+	key, _ := GenerateSecretboxKey()
+	defer key.Close()
+	sealed, _ := key.Seal([]byte("message"))
+	sealed[0] = 3
+	_, err := key.Open(sealed)
+	var cryptoErr *CryptoError
+	if !errors.As(err, &cryptoErr) {
+		t.Fatalf("expected *CryptoError, got %T: %v", err, err)
 	}
 }
 

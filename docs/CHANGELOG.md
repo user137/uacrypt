@@ -15,8 +15,9 @@ All notable changes to this project are documented in this file. Format follows
   `docs/DECISIONS.md` D-200/D-201).
 - **Every sealed blob starts with a format-version byte.** This covers `crypto_secretbox`,
   `crypto_box` and `crypto_box512`, and the version byte is currently `2`. A blob from another
-  version fails with a new `UnsupportedVersion` error, or `DSTU_ERR_UNSUPPORTED_VERSION` (13) in
-  the C ABI. The C ABI overheads grow by one byte: `DSTU_SECRETBOX_OVERHEAD` 49,
+  version almost always fails with a new `UnsupportedVersion` error, or
+  `DSTU_ERR_UNSUPPORTED_VERSION` (13) in the C ABI. A 0.3.x blob had no version byte, so the ~1 in
+  256 of them whose first byte happens to be `0x02` fail as an authentication failure instead. The C ABI overheads grow by one byte: `DSTU_SECRETBOX_OVERHEAD` 49,
   `DSTU_BOX_SEAL_OVERHEAD` 177, `DSTU_BOX512_SEAL_OVERHEAD` 305 (D-202).
 - **Migration: data written by 0.3.x cannot be opened by 0.4.0.** That includes `uacrypt encrypt`
   files, `box-seal` files, and blobs from any binding. Decrypt it with the release that wrote it

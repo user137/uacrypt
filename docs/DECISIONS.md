@@ -13583,6 +13583,14 @@ so reporting it reveals nothing, which is the same reasoning that keeps `Truncat
 Effect: if T-235 later changes the hazmat GCM padding, that becomes a clean `3` instead of a
 second silent break.
 
+Caveat for 0.3.x data. Old blobs had no version byte: their first byte is a random nonce byte
+(secretbox) or the high byte of `r` (box). About 1 in 256 of them therefore start with `0x02`.
+Those pass the version check and fail as `TagMismatch`/`InvalidCiphertext` rather than
+`UnsupportedVersion`. That is still a clean failure, just a less specific one, and all public
+wording says "almost always".
+
+`DSTU_ERR_UNSUPPORTED_VERSION` takes status 13, so T-240's `DSTU_ERR_INVALID_ARGUMENT` becomes 14.
+
 C ABI overheads move by one byte:
 - `DSTU_SECRETBOX_OVERHEAD`: 48 -> 49
 - `DSTU_BOX_SEAL_OVERHEAD`: 176 -> 177

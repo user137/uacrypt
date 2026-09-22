@@ -43,6 +43,17 @@ public sealed class SecretBoxTests
         Assert.Throws<DstuException>(() => key.Open(sealedMessage));
     }
 
+    // T-232/D-202: byte 0 is the format version - another value maps DSTU_ERR_UNSUPPORTED_VERSION
+    // to DstuException, not the "please report this" InvalidOperationException.
+    [Fact]
+    public void UnsupportedVersionIsADstuException()
+    {
+        using var key = SecretboxKey.Generate();
+        var sealedMessage = key.Seal(Encoding.ASCII.GetBytes("message"));
+        sealedMessage[0] = 3;
+        Assert.Throws<DstuException>(() => key.Open(sealedMessage));
+    }
+
     [Fact]
     public void WrongKeyIsRejected()
     {
