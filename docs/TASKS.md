@@ -8437,7 +8437,8 @@ which is exactly why the divergence was never caught.
   `.expect` (probably not linted inside `macro_rules!` - verify, then convert it to the
   `let Ok(..) else { unreachable!(..) }` shape used elsewhere, or correct the claim);
   `CLAUDE.md`'s "cross-checked against real Bouncy Castle" wording scoped to block-aligned input for
-  GCM/GMAC (from T-237 - pair the addition with a deletion).
+  GCM/GMAC (from T-237 - pair the addition with a deletion). Also move the 2026-09-23 "Standards
+  baseline" table into `docs/SECURITY.md` (policy belongs there; TASKS.md keeps a pointer).
 - [ ] **T-247** (**owner-gated, outward-facing**) Upstream reports: (a) an issue on
   specinfo-ua/UAPKI describing the GCM/GMAC padded-length non-injectivity and the CMAC empty-message
   collision, with V1/V3/V4 (D-91 precedent for conventions: `MODULE: short description`, mixed
@@ -8496,7 +8497,7 @@ map onto existing tasks - no duplicates created. Verdicts:
   - "forbidden to change hazmat because of the test vectors" - every GCM/GMAC KAT is block-aligned
     (checked 2026-09-22); the real constraint is UAPKI interop. T-235 stays an open fork.
   - "96-bit nonce for secretbox" - `Kalyna256_256Gcm` takes a 32-byte IV, and a random 96-bit nonce
-    drops the collision bound to ~2^48 messages per key. Keep AAD = `nonce(32) ‖ ct_len_le64`, with
+    is capped at 2^32 invocations per key by NIST SP 800-38D §8.3. Keep AAD = `nonce(32) ‖ ct_len_le64`, with
     the length derived from the blob size, not transmitted as its own field.
   - "KEM: DSTU 4145 or 9041" - DSTU 4145 is a signature scheme, not a KEM; only 9041 applies.
   - "HKDF on Kupyna" - needs HMAC-Kupyna, a new construction with no DSTU citation and no oracle
@@ -8522,7 +8523,8 @@ map onto existing tasks - no duplicates created. Verdicts:
 
 Owner request 2026-09-23: the standards the constructions and the binary should follow. Each row
 names the task it governs; the implementing task cites the clause in its own `D-` entry.
-International references are used only as tie-breakers where DSTU is silent (D-47), never to
+**Clause numbers below were written from memory - confirm each against the primary document before it
+goes into a `D-` entry** (research-before-implementation rule). International references are used only as tie-breakers where DSTU is silent (D-47), never to
 replace a DSTU primitive.
 
 | Area | Standard / reference | What we take from it | Task |
@@ -8537,7 +8539,7 @@ replace a DSTU primitive.
 | public-key validation | SEC 1 v2 §3.2.2.1; NIST SP 800-56A r3 §5.6.2.3.3 (full validation incl. `n*Q = O`) | m=163 full validation | T-245b |
 | constant time / zeroization | ISO/IEC 19790 / FIPS 140-3 SSP zeroization (informational, not a certification claim); CWE-208, CWE-226 | what "zeroized" and "no timing leak" mean for review | T-242 |
 | FFI UB | CWE-758 (reliance on undefined behavior), Rust reference "invalid enum discriminant" | `u32` at the boundary | T-240 |
-| CLI file handling | CWE-377 (insecure temp file), CWE-59 (link following), CWE-732 (permissions), CWE-367 (TOCTOU); POSIX `open(O_CREAT‖O_EXCL‖O_NOFOLLOW)` | `create_new`, random temp name, `0o600` | T-241 |
+| CLI file handling | CWE-377 (insecure temp file), CWE-59 (link following), CWE-732 (permissions), CWE-367 (TOCTOU); POSIX `open(O_CREAT | O_EXCL | O_NOFOLLOW)` | `create_new`, random temp name, `0o600` | T-241 |
 | release artifacts | SLSA v1.0 Build L2/L3 provenance (GitHub `actions/attest-build-provenance`); signed SHA-256 checksums (Sigstore/cosign or minisign) | verifiable `uacrypt` binaries and binding artefacts | T-252 |
 | dependency transparency | CycloneDX or SPDX SBOM; `cargo auditable` (embeds the dependency list in the binary); `cargo build --locked` | an SBOM per release, and auditable binaries (`cargo audit bin`) | T-252 |
 | disclosure | ISO/IEC 29147 (vulnerability disclosure) + ISO/IEC 30111 (handling); GitHub Security Advisories; RustSec advisory-db | the process T-233 follows | T-233 |
@@ -8600,7 +8602,7 @@ replace a DSTU primitive.
    (fold T-248 into the same break - recommended: yes, one break instead of two), Q1 + T-250 (legacy
    migrate path - recommended: yes, CLI-only), Q3 (m=163 `n*Q == O` - recommended: yes), version
    number (recommended: 0.4.0), Q2, Q5. T-234's library order can start immediately in parallel.
-2. **Core fixes, test-first** (plan mode + advisor before and after - protocol change): T-232
+2. **Core fixes, test-first, inside the GHSA private fork (embargo, see RESUME HERE)** (plan mode + advisor before and after - protocol change): T-232
    together with T-238, and T-248 if accepted -> T-239 -> T-240 -> T-241 -> T-245 (a+b).
 3. **T-250** legacy migrate path (needs the old-format golden files generated with 0.3.8 *before*
    step 2's format change lands - generate them first thing in step 2).
@@ -8616,6 +8618,12 @@ replace a DSTU primitive.
    T-246 docs, then hygiene **T-242/T-243/T-244**, then **T-249**.
 
 ### RESUME HERE (state as of 2026-09-23, saved for a memory-clear/new-session handoff)
+
+**EMBARGO - do not push these audit commits to the public `master` before the fix ships.** The repo is
+public and `docs/SUMMARY.md` publishes TASKS.md to gh-pages, so pushing this section discloses a live
+Critical forgery (V5/V6 recipes, file:line, affected versions) on published packages. Develop T-232
+inside a draft GitHub Security Advisory's temporary private fork and publish fix + release + advisory
+together (coordinated disclosure, ISO/IEC 29147). The fix commit's tests reveal the bug just as clearly.
 
 Nothing implemented yet. Start at the execution plan's step 1 (owner decisions). All reproduction
 data is in "Shared vectors" above; the throwaway PoC crates and the BC Java checks were outside the
