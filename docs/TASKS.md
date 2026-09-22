@@ -8329,7 +8329,8 @@ which is exactly why the divergence was never caught.
   GitHub Security Advisory and a RUSTSEC advisory for `dstu-core`/`uacrypt`; release notes for the
   PyPI/npm/RubyGems packages. Affected range: every published version with the GCM-based secretbox
   (`db10345`, T-37) / secretstream (`2950c62`, T-40) - confirm with `git tag --contains` on both
-  commits (expected: every tag `v0.1.0`..`v0.3.8`). Migration note: files written by <= 0.3.8 are
+  commits. Published range (checked 2026-09-23): crates.io 0.3.0-0.3.8 only; GitHub Releases
+  v0.1.0-v0.3.8; PyPI/npm 0.1.0-0.1.1; RubyGems 0.1.0 - cleanup mechanics are T-251. Migration note: files written by <= 0.3.8 are
   decryptable only by an old release, or by a documented legacy-read path if the owner wants one
   (decide in T-232's plan). Nothing outward without explicit go-ahead (D-91 precedent).
 - [ ] **T-234** (research, unblocks T-235/T-236 and D-41) Obtain the **DSTU 7624:2014 primary
@@ -8448,7 +8449,10 @@ which is exactly why the divergence was never caught.
   the KEM ciphertext and the recipient public key are not bound in (libsodium's sealed box binds
   `epk ‖ pk` into the nonce). No concrete attack found (the seed is authenticated by 9041's own hash
   check; the sender is anonymous by design), so this is hardening/non-malleability, not a bug. If
-  accepted, fold it into T-232's wire-format break rather than a separate one.
+  accepted, fold it into T-232's wire-format break rather than a separate one. Shape (2026-09-23):
+  RFC 9180's `kem_context = enc ‖ pkR` -> bind `kem_ct ‖ recipient_pk`; `derive_subkey`'s fixed
+  8-byte context can't carry it, so add a new Kupyna-KMAC-based KDF entry point + `D-` entry - no
+  HKDF/HMAC-Kupyna (uncited construction). No sender static key exists (anonymous sealed box).
 - [ ] **T-249** (coverage gaps - what the 2026-09-22 audit did **not** check) Second pass over:
   the `crypto_auth`/`crypto_kdf`/`crypto_generichash`/`crypto_pwhash`/`crypto_stream` wrappers
   beyond a grep of their compares; `hazmat::strumok`; the Kalyna key schedule; `tables.rs`
@@ -8479,9 +8483,140 @@ T-234 (long-running acquisition) in parallel with T-232 -> T-235/T-236/T-237 onc
 T-247 (after the release) -> T-242/T-243/T-244/T-245 hygiene -> T-248 (if accepted, with T-232
 instead) -> T-249.
 
-### RESUME HERE (state as of 2026-09-22, saved for a memory-clear/new-session handoff)
+### Second-opinion triage (2026-09-23, Gemini output forwarded by the owner - input, not owner decisions)
 
-Nothing implemented yet - this section is the audit's backlog only. First step is the owner's O-1
-decision; then T-232 in plan mode with an advisor pass before and after (protocol change). All
-reproduction data is in "Shared vectors" above; the throwaway PoC crates and the BC Java checks were
-outside the repo and are gone - rebuild them from V1-V6 plus bcprov 1.85, don't trust memory.
+The owner asked Gemini for the standards to follow; it returned an action plan instead. Its items
+map onto existing tasks - no duplicates created. Verdicts:
+- **Accepted (already the plan)**: length in AAD with hazmat untouched -> T-232; drop the m=257 mask
+  -> T-239; `u32` + validation at the FFI boundary -> T-240; `0o600` + `create_new` -> T-241;
+  STREAM (Hoang-Reyhanitabar-Rogaway-Vizar) as the secretstream citation -> T-232's D- entry.
+- **Rejected / corrected** (one reason each):
+  - "hazmat has no problems" - false: F-02's GMAC/CMAC collisions are hazmat-level, and hazmat GCM
+    diverges from BC on non-aligned input. T-235/T-236 stay.
+  - "forbidden to change hazmat because of the test vectors" - every GCM/GMAC KAT is block-aligned
+    (checked 2026-09-22); the real constraint is UAPKI interop. T-235 stays an open fork.
+  - "96-bit nonce for secretbox" - `Kalyna256_256Gcm` takes a 32-byte IV, and a random 96-bit nonce
+    drops the collision bound to ~2^48 messages per key. Keep AAD = `nonce(32) ‖ ct_len_le64`, with
+    the length derived from the blob size, not transmitted as its own field.
+  - "KEM: DSTU 4145 or 9041" - DSTU 4145 is a signature scheme, not a KEM; only 9041 applies.
+  - "HKDF on Kupyna" - needs HMAC-Kupyna, a new construction with no DSTU citation and no oracle
+    (hard constraint: no primitive without a cited spec). Bind through the existing Kupyna-KMAC.
+  - "sender public key in `info`" - `crypto_box` is an anonymous sealed box: there is no static
+    sender key (the ephemeral R is inside `kem_ct`). The RFC 9180-shaped binding is
+    `kem_ct ‖ recipient_pk` (HPKE's `kem_context = enc ‖ pkR`). See T-248.
+  - "stream tags `0x00`/`0x01`" - the existing libsodium encoding (`FINAL = 0x03`) is already in the
+    AAD, and the missing-Final truncation check already exists. No change.
+  - "64 KB chunks" - no security gain; would touch all 8 bindings and the memory-bound claims.
+    Stays 8192.
+  - F-13 "prevents small-subgroup attacks" - overclaim: the attacker owns such a key. It is
+    standard-conformant hardening at the cost of one extra scalar multiplication per verify (T-245b).
+  - "major version bump" - pre-1.0 Cargo semver: a breaking change is a **0.x minor bump
+    (0.3.8 -> 0.4.0)**; 1.0 is the separate `docs/release-readiness.md` milestone. Recommendation,
+    not decision.
+  - Missing from Gemini's list and kept: T-238 (8-byte tag), F-02 (T-235/T-236), hygiene
+    T-242..T-245a, T-249.
+- Where Gemini leans on the open questions (not decisions): Q1 - assumes no external-format
+  compatibility; Q3 - favours `n*Q == O`; Q4/O-3 - favours the KEM binding.
+
+### Standards baseline (what each fix and the release pipeline should cite/follow)
+
+Owner request 2026-09-23: the standards the constructions and the binary should follow. Each row
+names the task it governs; the implementing task cites the clause in its own `D-` entry.
+International references are used only as tie-breakers where DSTU is silent (D-47), never to
+replace a DSTU primitive.
+
+| Area | Standard / reference | What we take from it | Task |
+|---|---|---|---|
+| secretbox interface | RFC 5116 (AEAD interface), §2.1-2.2 | AEAD inputs/outputs, and "the entire ciphertext is authenticated" including its length | T-232 |
+| secretbox nonce | NIST SP 800-38D §8.2-8.3 (IV uniqueness, random-IV bound) | justifies keeping the 256-bit random nonce over 96 bits | T-232 |
+| length binding | NIST SP 800-38D §7.1 step 5 (`len(A) ‖ len(C)` - true lengths) | why the padded-length field is non-injective; target property for our AAD | T-232, T-235 |
+| secretstream | Hoang, Reyhanitabar, Rogaway, Vizar, "Online Authenticated-Encryption and its Nonce-Reuse Misuse-Resistance" (CRYPTO 2015, STREAM); libsodium `crypto_secretstream` spec | per-segment nonce = counter, last-segment flag, truncation/reorder resistance | T-232 |
+| crypto_box | RFC 9180 (HPKE) §4.1, §5.1 (`kem_context = enc ‖ pkR`, key schedule binds `info`) | bind `kem_ct ‖ recipient_pk` into the key derivation | T-248 |
+| KDF shape | NIST SP 800-108r1 §4.4 (KDF using KMAC), SP 800-56C r2 (context/`FixedInfo`) | KMAC-based KDF with an explicit context string - analogy for Kupyna-KMAC (DSTU 7564), no HKDF | T-248 |
+| keygen uniformity | FIPS 186-5 Appendix A.2.2 (key pair generation by testing candidates) | rejection sampling over the full `[1, n-1]` | T-239 |
+| public-key validation | SEC 1 v2 §3.2.2.1; NIST SP 800-56A r3 §5.6.2.3.3 (full validation incl. `n*Q = O`) | m=163 full validation | T-245b |
+| constant time / zeroization | ISO/IEC 19790 / FIPS 140-3 SSP zeroization (informational, not a certification claim); CWE-208, CWE-226 | what "zeroized" and "no timing leak" mean for review | T-242 |
+| FFI UB | CWE-758 (reliance on undefined behavior), Rust reference "invalid enum discriminant" | `u32` at the boundary | T-240 |
+| CLI file handling | CWE-377 (insecure temp file), CWE-59 (link following), CWE-732 (permissions), CWE-367 (TOCTOU); POSIX `open(O_CREAT‖O_EXCL‖O_NOFOLLOW)` | `create_new`, random temp name, `0o600` | T-241 |
+| release artifacts | SLSA v1.0 Build L2/L3 provenance (GitHub `actions/attest-build-provenance`); signed SHA-256 checksums (Sigstore/cosign or minisign) | verifiable `uacrypt` binaries and binding artefacts | T-252 |
+| dependency transparency | CycloneDX or SPDX SBOM; `cargo auditable` (embeds the dependency list in the binary); `cargo build --locked` | an SBOM per release, and auditable binaries (`cargo audit bin`) | T-252 |
+| disclosure | ISO/IEC 29147 (vulnerability disclosure) + ISO/IEC 30111 (handling); GitHub Security Advisories; RustSec advisory-db | the process T-233 follows | T-233 |
+| project hygiene | OpenSSF Scorecard; OpenSSF Best Practices badge | periodic self-check of CI/release posture | T-252 |
+| key commitment (open question, not a finding) | Albertini et al., "How to Abuse and Fix Authenticated Encryption Without Key Commitment" (USENIX Security 2022) | Kalyna-GCM, like GCM, is not key-committing; relevant only if a caller tries multiple keys on one ciphertext | T-249 |
+
+### Tasks added 2026-09-23
+
+- [ ] **T-250** (**owner decision, blocks T-251**) Legacy read / migration path for data written by
+  <= 0.3.8. Deleting old binaries, or yanking before the new release can read the old format,
+  would strand every file users encrypted with `uacrypt` <= 0.3.8 and every `secretbox` blob. Proposal:
+  an explicit `uacrypt migrate --in old --out new` in 0.4.0 that decrypts the old format behind a
+  prominent warning (its authenticity cannot be guaranteed - F-01), then re-encrypts in the new
+  format. The same `open_legacy` entry point goes into the library and bindings only if the owner
+  wants it there. Tied to Q1. Tests: an old-format golden file (generated with 0.3.8 and committed)
+  migrates; a V6-tampered old file migrates *with* the warning (it cannot be detected - say so);
+  the new format never accepts old bytes.
+- [ ] **T-251** (**owner-gated, destructive/outward-facing - confirm every step separately**)
+  Registry and GitHub cleanup, **only after** 0.4.0 plus the binding releases are live and T-250
+  has shipped. Published state as checked 2026-09-23:
+  - **crates.io**: `dstu-core` and `uacrypt` 0.3.0-0.3.8, none yanked (0.1/0.2 were never
+    published there).
+  - **GitHub Releases**: v0.1.0-v0.3.8. v0.3.8 carries `uacrypt` binaries for linux-x86_64,
+    macos-aarch64 and windows-x86_64, plus `.whl`, `.node`, `.gem` and `.crate` assets.
+  - **PyPI** `dstu-core` 0.1.0-0.1.1; **npm** `dstu-core` 0.1.0-0.1.1; **RubyGems** `dstu_core`
+    0.1.0 (4 platforms).
+
+  Mechanics - **verify each against the registry's current policy page before acting**, don't
+  trust this list:
+  - crates.io: versions can't be deleted; `cargo yank --version X` (existing lockfiles still
+    resolve, new resolution skips them).
+  - PyPI: yank (PEP 592).
+  - npm: `npm deprecate` with an advisory message (unpublish is restricted).
+  - RubyGems: `gem yank` per platform.
+  - GitHub: keep the tags (advisories and reproducibility reference them), add a security banner
+    to every affected release's notes, and remove or keep the assets per T-250's outcome.
+
+  Each binding has its own version line (Python 0.1.1, npm 0.1.1, Ruby 0.1.0) and needs its own
+  breaking bump. Apply the publishing runbook memory and verify the live registry pages after
+  each step.
+- [ ] **T-252** (release supply-chain hardening, from the standards baseline) The release pipeline
+  (`.github/workflows/release.yml`) has npm `--provenance` only: no checksums, signatures, build
+  provenance or SBOM for the `uacrypt` binaries and the other artefacts. Add:
+  - `SHA256SUMS` plus a signature (Sigstore keyless or minisign - owner choice);
+  - `actions/attest-build-provenance` on every release asset (SLSA v1.0 Build L2+);
+  - `cargo auditable build --locked` for `uacrypt`;
+  - a CycloneDX SBOM per release;
+  - a README/`docs/CLI.md` "verify your download" section;
+  - optionally an OpenSSF Scorecard workflow.
+
+  Land this before T-251's 0.4.0 release, so the first fixed release is also the first verifiable
+  one.
+- Existing tasks, amended in place by this pass: T-233's affected range is corrected below; T-248
+  records that `Kupyna256Kdf::derive_subkey`'s fixed 8-byte context cannot carry
+  `kem_ct ‖ recipient_pk`, so a new KDF entry point plus a `D-` entry are needed (no HKDF).
+
+### Execution plan (persisted 2026-09-23 - survives a memory clear; the owner controls ordering)
+
+1. **Owner decisions** (one sitting): O-1 (fix now vs wait for T-234 - recommended: now), O-3/Q4
+   (fold T-248 into the same break - recommended: yes, one break instead of two), Q1 + T-250 (legacy
+   migrate path - recommended: yes, CLI-only), Q3 (m=163 `n*Q == O` - recommended: yes), version
+   number (recommended: 0.4.0), Q2, Q5. T-234's library order can start immediately in parallel.
+2. **Core fixes, test-first** (plan mode + advisor before and after - protocol change): T-232
+   together with T-238, and T-248 if accepted -> T-239 -> T-240 -> T-241 -> T-245 (a+b).
+3. **T-250** legacy migrate path (needs the old-format golden files generated with 0.3.8 *before*
+   step 2's format change lands - generate them first thing in step 2).
+4. **Bindings + C ABI** follow the new wire format (all 8, plus `dstu-core-capi`; the new-primitive
+   binding gate memory applies), then **T-252** release hardening.
+5. **Release 0.4.0** (`dstu-core`, `uacrypt`) plus the Python/npm/Ruby breaking bumps; CHANGELOG
+   with migration notes (T-239 regenerate-keys note, T-241 check-permissions note); verify live
+   registry pages.
+6. **T-233** advisory (GHSA + RustSec), then **T-251** yank/deprecate/GitHub banners - every step
+   confirmed separately.
+7. **T-247** upstream reports (UAPKI issue, bc-java #287) - owner go-ahead.
+8. **T-234 -> T-235/T-236/T-237** (primary-text-dependent hazmat decisions, oracle vendoring), then
+   T-246 docs, then hygiene **T-242/T-243/T-244**, then **T-249**.
+
+### RESUME HERE (state as of 2026-09-23, saved for a memory-clear/new-session handoff)
+
+Nothing implemented yet. Start at the execution plan's step 1 (owner decisions). All reproduction
+data is in "Shared vectors" above; the throwaway PoC crates and the BC Java checks were outside the
+repo and are gone - rebuild them from V1-V6 plus bcprov 1.85, don't trust memory.
