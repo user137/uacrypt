@@ -8343,6 +8343,36 @@ which is exactly why the divergence was never caught.
   the existing suite missed it: tamper tests only flip bytes, and D-56's "covered by the proptest
   round-trip" cannot detect a non-injective encoding. Wire-format break -> version bump +
   `docs/CHANGELOG.md` + T-233. Gate: plan mode + advisor at both ends (protocol change).
+  **Design notes for step 2 (2026-09-23, pre-plan-mode exploration, draft - NOT yet advisor-reviewed;
+  re-validate in plan mode before implementing):**
+  - **Bindings get the AAD change for free**: all 8 bindings and the C ABI call core
+    `PushState::push`/`PullState::pull`/`seal`/`open`, so the new AAD shape propagates on rebuild with
+    no binding code change. Only file *framing* (header ‖ records) lives in each binding.
+  - **Version byte - proposed split**: no version byte in the `crypto_secretbox`/`crypto_box`/`box512`
+    blobs (libsodium shape; old blobs just fail with TagMismatch because the AAD/KDF changed). A
+    1-byte format version goes into the **stream-file framing** only (uacrypt + 8 bindings), done in
+    step 4 together with the non-final-record-length check, so all 9 writers change at once.
+  - **New precondition bug found**: `uacrypt`'s `run_secretstream_encrypt` (`crates/uacrypt/src/lib.rs`
+    ~1438-1449) fills chunks with `File::read`, not `read_exact`/a fill loop, so a short read can emit a
+    non-final record < 8192 bytes. The "reject non-final record != 8192" defence (T-232) must first
+    fix every writer to fill chunks completely (uacrypt + check all 8 bindings' writers).
+  - **secretbox AAD** = `nonce(32) ‖ ct_len_le64` (length taken from the blob size).
+    **secretstream AAD** = `counter_le64 ‖ tag_byte ‖ ct_len_le64`.
+  - **crypto_box/box512 KEM binding (T-248)**: stream key = `Kupyna256Kmac::mac(key = embedded seed,
+    message = label ‖ kem_ct ‖ recipient_pk)` (label e.g. `b"cryptbox-v2"`/`b"cryptbx5-v2"`), as a
+    private helper in each module - no new public hazmat API, no HKDF. `open` recomputes
+    `recipient_pk` from the secret key (one extra scalar multiplication). Record in a new `D-` entry
+    citing RFC 9180's `kem_context = enc ‖ pkR` (clause to be verified).
+  - **T-250 migrate without a library legacy API**: `uacrypt migrate` reimplements the 0.3.8 read path
+    from public hazmat pieces (`Kupyna256Kmac`, `Kalyna256_256Gcm`, `dstu9041::{encryption,
+    encryption512}::decrypt`, `Kupyna256Kdf`) inside `uacrypt` only - consistent with Q1 (no
+    `open_legacy` in library/bindings). Covers stream files and box/box512 sealed files.
+  - **Golden files first**: before the format change lands, generate 0.3.8-format fixtures with the
+    current binary (a stream file with 2 non-final + 1 final record, a box and a box512 sealed file,
+    plus their keys) into e.g. `crates/uacrypt/tests/fixtures/legacy-0.3.8/`.
+  - **Commit split for step 2** (proposed): fixtures -> T-238 -> T-232 core (secretbox, secretstream)
+    -> T-248 -> uacrypt migrate (T-250) -> T-239 -> T-240 (capi only; binding signature updates in
+    step 4) -> T-241 -> T-245a/b. Version 0.4.0 bump at release time, not per commit.
 - [ ] **T-233** (F-01 follow-up, **owner-gated, outward-facing**) Disclosure + release for T-232:
   GitHub Security Advisory and a RUSTSEC advisory for `dstu-core`/`uacrypt`; release notes for the
   PyPI/npm/RubyGems packages. Affected range: every published version with the GCM-based secretbox
@@ -8644,7 +8674,8 @@ inside a draft GitHub Security Advisory's temporary private fork and publish fix
 together (coordinated disclosure, ISO/IEC 29147). The fix commit's tests reveal the bug just as clearly.
 
 Step 1 (owner decisions) is done - see "Owner decisions - resolved 2026-09-23". Next: step 2, T-232 +
-T-238 + T-248 in plan mode with an advisor pass before and after; generate the 0.3.8 old-format
+T-238 + T-248 - re-enter plan mode starting from T-232's "Design notes for step 2" (a draft;
+run the advisor gate before implementing), with an advisor pass before and after; generate the 0.3.8 old-format
 golden files for T-250 before the format change lands. All reproduction
 data is in "Shared vectors" above; the throwaway PoC crates and the BC Java checks were outside the
 repo and are gone - rebuild them from V1-V6 plus bcprov 1.85, don't trust memory.
