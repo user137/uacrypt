@@ -42,4 +42,7 @@ pub enum DstuStatus {
     /// this crate's top-level doc comment for why every exported function is wrapped in
     /// `catch_unwind`.
     DSTU_ERR_PANIC = 12,
+    /// A sealed blob (`crypto_secretbox`, `crypto_box`, `crypto_box512`) starts with a format
+    /// version byte this build does not read - written by an older or newer release, not tampered.
+    DSTU_ERR_UNSUPPORTED_VERSION = 13,
 }

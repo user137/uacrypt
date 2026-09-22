@@ -11,6 +11,33 @@ use dstu_core::crypto_secretstream::{Key, PullState, PushState, SecretstreamErro
 use proptest::prelude::*;
 
 const TAG_LEN: usize = 16;
+const BLOCK_LEN: usize = 32;
+
+/// `ciphertext || 80 00..` up to the next 32-byte Kalyna-256 block boundary (a full block if already
+/// aligned) - `hazmat::kalyna_gcm`'s own ciphertext padding (D-56 divergence 2), which shares a
+/// tag with the unpadded ciphertext unless the true length is bound in separately (T-232/F-01).
+fn with_gcm_padding(ciphertext: &[u8]) -> Vec<u8> {
+    let mut extended = ciphertext.to_vec();
+    extended.push(0x80);
+    extended.resize(
+        ciphertext.len() + BLOCK_LEN - ciphertext.len() % BLOCK_LEN,
+        0,
+    );
+    extended
+}
+
+/// Pulls `ciphertext` as the stream's first chunk.
+fn pull_first(
+    key: &Key,
+    header: &[u8; 32],
+    tag: Tag,
+    ciphertext: &[u8],
+    auth_tag: &[u8],
+) -> Result<Tag, SecretstreamError> {
+    let mut pull = PullState::init(key, header);
+    let mut out = vec![0u8; ciphertext.len()];
+    pull.pull(tag.to_byte(), ciphertext, auth_tag, &mut out)
+}
 
 fn push_one(key: &Key, tag: Tag, plaintext: &[u8]) -> ([u8; 32], Vec<u8>, [u8; TAG_LEN]) {
     let (mut state, header) =
@@ -416,6 +443,44 @@ fn mismatched_plaintext_out_length_is_rejected() {
     assert!(matches!(err, SecretstreamError::InvalidLength));
 }
 
+/// V5(a), T-232/F-01: `80 00..` appended to a chunk's ciphertext used to verify, on a `Final` and
+/// on a non-final chunk alike.
+#[test]
+fn appended_gcm_padding_is_rejected() {
+    let key = Key::generate().expect("OS CSPRNG available in test environment");
+    for tag in [Tag::Final, Tag::Message] {
+        let (header, ciphertext, auth_tag) = push_one(&key, tag, b"PAY 100 UAH TO ALICE");
+        let extended = with_gcm_padding(&ciphertext);
+        assert_eq!(extended.len(), BLOCK_LEN);
+        let err = pull_first(&key, &header, tag, &extended, &auth_tag)
+            .expect_err("an extended chunk must fail authentication");
+        assert!(matches!(err, SecretstreamError::TagMismatch), "{tag:?}");
+    }
+}
+
+/// V5(b)/V6(b), T-232/F-01: a block-aligned chunk ending in `0x80` with that byte removed used to
+/// verify - `uacrypt decrypt` then silently deleted one byte mid-file. Retries until a ciphertext
+/// ends in `0x80` (~1/256 per try; 4096 tries miss with probability ~1e-7) - too many GCM calls for
+/// Miri.
+#[test]
+#[cfg_attr(miri, ignore)]
+fn truncated_trailing_0x80_is_rejected() {
+    let key = Key::generate().expect("OS CSPRNG available in test environment");
+    let (header, ciphertext, auth_tag) = (0..4096)
+        .map(|_| push_one(&key, Tag::Message, &[0x55; BLOCK_LEN]))
+        .find(|(_, ciphertext, _)| ciphertext[BLOCK_LEN - 1] == 0x80)
+        .expect("a ciphertext ending in 0x80 within 4096 tries");
+    let err = pull_first(
+        &key,
+        &header,
+        Tag::Message,
+        &ciphertext[..BLOCK_LEN - 1],
+        &auth_tag,
+    )
+    .expect_err("a shortened chunk must fail authentication");
+    assert!(matches!(err, SecretstreamError::TagMismatch));
+}
+
 // T-238 (audit F-04): an 8-byte prefix of a real tag used to verify, because `pull` delegated the
 // length check to `kalyna_gcm::decrypt`'s DSTU-permitted 8..=32 range.
 #[test]
@@ -505,5 +570,18 @@ proptest! {
             prop_assert_eq!(&out, &chunks[i]);
         }
         prop_assert!(pull.is_finalized());
+    }
+
+    /// T-232/F-01 negative property: a chunk extended with `80 00..` never verifies.
+    #[test]
+    fn appended_gcm_padding_never_verifies(
+        chunk in proptest::collection::vec(any::<u8>(), 0..=256),
+        tag_byte in any::<u8>()
+    ) {
+        let key = Key::generate().expect("OS CSPRNG available in test environment");
+        let tag = if tag_byte % 2 == 0 { Tag::Final } else { non_final_tag(tag_byte) };
+        let (header, ciphertext, auth_tag) = push_one(&key, tag, &chunk);
+        let extended = with_gcm_padding(&ciphertext);
+        prop_assert!(pull_first(&key, &header, tag, &extended, &auth_tag).is_err());
     }
 }

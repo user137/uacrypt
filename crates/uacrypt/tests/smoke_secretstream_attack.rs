@@ -264,3 +264,32 @@ fn trailing_data_after_final_is_rejected() {
     assert!(r.stderr.contains("extra data found"), "stderr={}", r.stderr);
     let _ = f.plaintext_len; // silence unused-field warning if the length isn't asserted above
 }
+
+/// V6(a), T-232/F-01: the Final record's ciphertext extended with `80 00..` to the next 32-byte
+/// block boundary, its length field fixed up to match. Before T-232 `decrypt` accepted this and
+/// wrote the plaintext plus 12 attacker-appended bytes; it must now fail with no output file.
+#[test]
+#[cfg_attr(
+    miri,
+    ignore = "spawns the real uacrypt binary - Miri cannot run a subprocess"
+)]
+fn final_record_extended_with_gcm_padding_is_verify_failure() {
+    let dir = TempDir::new("ss_attack_gcm_padding");
+    let f = make_fixture(&dir, "gcm_padding", b"PAY 100 UAH TO ALICE");
+    assert_eq!(f.plaintext_len, 20);
+    let ct_start = HEADER_LEN + PREFIX_LEN;
+    let tag_start = ct_start + f.plaintext_len;
+    let mut tampered = f.good[..tag_start].to_vec();
+    tampered.push(0x80);
+    tampered.resize(ct_start + 32, 0);
+    tampered.extend_from_slice(&f.good[tag_start..]);
+    tampered[33..37].copy_from_slice(&32u32.to_le_bytes());
+    let r = try_decrypt(&dir, &f.key, &tampered, "gcm_padding");
+    assert!(r.failure(), "an extended record must not decrypt");
+    assert!(
+        r.stderr.contains("authentication failed"),
+        "stderr={}",
+        r.stderr
+    );
+    assert!(!dir.file("gcm_padding_out.bin").exists());
+}

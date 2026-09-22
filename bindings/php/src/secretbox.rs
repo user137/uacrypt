@@ -20,7 +20,7 @@ pub fn dstu_core_secretbox_keygen() -> Result<Binary<u8>, PhpException> {
     Ok(Binary::from(key.as_bytes().to_vec()))
 }
 
-/// Encrypts and authenticates `plaintext` under `key`. Returns `nonce || ciphertext || tag`.
+/// Encrypts and authenticates `plaintext` under `key`. Returns `version || nonce || ciphertext || tag`.
 #[php_function]
 pub fn dstu_core_secretbox_seal(
     key: Binary<u8>,

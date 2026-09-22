@@ -27,8 +27,9 @@
 //! under a 32-byte IV that is all-zero except its low 8 bytes, which hold a `u64` counter -
 //! monotonically increasing per chunk, tracked identically on both sides, **never transmitted and
 //! never reset** (including across a [`Tag::Rekey`], the simplest safe choice). The chunk's
-//! [`Tag`] byte and the counter are passed together as `kalyna_gcm`'s `aad` parameter
-//! (`counter.to_le_bytes() || [tag_byte]`) - the same "bind out-of-band data into the tag via
+//! [`Tag`] byte, the counter and the chunk's true ciphertext length are passed together as
+//! `kalyna_gcm`'s `aad` parameter (`counter.to_le_bytes() || [tag_byte] ||
+//! (ciphertext_len as u64).to_le_bytes()`) - the same "bind out-of-band data into the tag via
 //! AEAD's own AAD mechanism" pattern D-63 established for `crypto_secretbox`'s nonce. Binding the
 //! counter into the AAD, rather than trusting a transmitted position, is what defeats reordering,
 //! interior chunk drops, and splicing a chunk from a different stream: a receiver always verifies
@@ -40,6 +41,12 @@
 //! to hide truncation) is caught the same way: [`PullState::pull`] uses the wire-read `tag_byte`
 //! directly as part of the AAD it verifies against, so a flipped byte changes the AAD and fails the
 //! tag check before the (wrong) [`Tag`] is ever trusted or returned to the caller.
+//!
+//! The length is in the AAD because `kalyna_gcm`'s own tag does not bind it: the tag covers the
+//! `0x80`-padded ciphertext and only the padded length (D-56 divergences 2/3), so a chunk and the
+//! same chunk extended with `80 00..` to a block boundary share a tag. Before T-232 (audit F-01,
+//! `docs/DECISIONS.md` D-200) that let an attacker append bytes to, or delete a trailing `0x80`
+//! from, any chunk. Every received `auth_tag` must also be exactly 16 bytes (T-238).
 //!
 //! # Tags
 //!
@@ -247,10 +254,17 @@ fn chunk_iv(counter: u64) -> [u8; 32] {
     iv
 }
 
-fn chunk_aad(counter: u64, tag_byte: u8) -> [u8; 9] {
-    let mut aad = [0u8; 9];
+/// `counter LE || tag_byte || ciphertext_len as u64 LE`. The true length is needed because
+/// `hazmat::kalyna_gcm`'s tag covers only the `0x80`-padded ciphertext and its padded length
+/// (D-56 divergences 2/3), so without it `ct` and `ct || 80 00..` share a tag (T-232, audit F-01).
+fn chunk_aad(counter: u64, tag_byte: u8, ciphertext_len: usize) -> [u8; 17] {
+    let Ok(len) = u64::try_from(ciphertext_len) else {
+        unreachable!("a slice length always fits in u64 on every supported target")
+    };
+    let mut aad = [0u8; 17];
     aad[..8].copy_from_slice(&counter.to_le_bytes());
     aad[8] = tag_byte;
+    aad[9..].copy_from_slice(&len.to_le_bytes());
     aad
 }
 
@@ -322,7 +336,7 @@ impl PushState {
 
         let cipher = Kalyna256_256Gcm::new(&self.subkey);
         let iv = chunk_iv(self.counter);
-        let aad = chunk_aad(self.counter, tag.to_byte());
+        let aad = chunk_aad(self.counter, tag.to_byte(), plaintext.len());
         let Ok(full_tag) = cipher.encrypt(&iv, &aad, plaintext, ciphertext_out) else {
             unreachable!("ciphertext_out.len() == plaintext.len() checked above")
         };
@@ -409,7 +423,7 @@ impl PullState {
 
         let cipher = Kalyna256_256Gcm::new(&self.subkey);
         let iv = chunk_iv(self.counter);
-        let aad = chunk_aad(self.counter, tag_byte);
+        let aad = chunk_aad(self.counter, tag_byte, ciphertext.len());
 
         // `Kalyna256_256Gcm::decrypt` already uses `subtle::ConstantTimeEq` internally (D-56).
         match cipher.decrypt(&iv, &aad, ciphertext, auth_tag, plaintext_out) {

@@ -2,8 +2,11 @@
 //! `docs/TASKS.md` T-37, `docs/DECISIONS.md` D-51) - a single fixed `hazmat::kalyna_gcm::Kalyna256_256Gcm`
 //! construction (D-47's tie-breaker rule: no algorithm knob when one safe default exists) with an
 //! internally-generated nonce (never caller-supplied, extending the pattern `uacrypt kalyna-ccm
-//! encrypt`'s CLI layer already used, D-40/T-82) and a combined `nonce || ciphertext || tag` wire
-//! format, matching libsodium's own `crypto_secretbox_easy` ergonomics.
+//! encrypt`'s CLI layer already used, D-40/T-82) and a combined
+//! `version || nonce || ciphertext || tag` wire format, matching libsodium's own
+//! `crypto_secretbox_easy` ergonomics. The 1-byte version (currently `2`; 0.3.x blobs had none,
+//! T-232/D-202) lets a future format change fail with [`SecretboxError::UnsupportedVersion`]
+//! instead of an unexplained [`SecretboxError::TagMismatch`].
 //!
 //! # No message-length cap
 //!
@@ -17,7 +20,7 @@
 //! `crypto_secretstream` (`docs/TASKS.md` T-40) remains the separately-tracked follow-up for a
 //! genuinely chunked/streaming construction; this module still does not attempt that.
 //!
-//! # No AAD (caller-facing) - but the nonce is bound into the tag internally
+//! # No AAD (caller-facing) - but the version, nonce and length are bound into the tag internally
 //!
 //! libsodium's own `crypto_secretbox` has no associated-data parameter (that's `crypto_aead`'s
 //! job) - `hazmat::kalyna_gcm` takes AAD, but exposing it here would quietly turn this into a
@@ -35,6 +38,12 @@
 //! for authenticating out-of-band data, the same way a caller would bind a header to an AEAD tag.
 //! Caught by `tampered_nonce_is_rejected` during this migration, not assumed - see `docs/DECISIONS.md`
 //! D-63.
+//!
+//! The internal AAD is `version || nonce || (ciphertext_len as u64).to_le_bytes()`. The length is
+//! there because `kalyna_gcm`'s tag covers the `0x80`-padded ciphertext and only its padded length
+//! (D-56 divergences 2/3): without it, `ct` and `ct || 80 00..` (up to a block boundary) share a
+//! tag, which before T-232 (audit F-01, `docs/DECISIONS.md` D-200) let an attacker append bytes to,
+//! or strip a trailing `0x80` from, a sealed message and still have `open` succeed.
 //!
 //! # Provenance
 //!
@@ -78,17 +87,24 @@ use crate::randombytes::{randombytes_buf, RandomError};
 use core::fmt;
 use zeroize::Zeroize;
 
+/// Wire-format version, the blob's first byte (T-232; 0.3.x blobs had no version byte).
+const FORMAT_VERSION: u8 = 2;
 const NONCE_LEN: usize = 32;
+const HEADER_LEN: usize = 1 + NONCE_LEN;
 const TAG_LEN: usize = 16;
 
 /// `crypto_secretbox` can fail for reasons beyond a wrong key.
 #[derive(Debug)]
 pub enum SecretboxError {
-    /// The input to [`open`] is shorter than a nonce plus a tag (48 bytes) - too short to have
-    /// ever been produced by [`seal`].
+    /// The input to [`open`] is shorter than a version byte, a nonce and a tag (49 bytes) - too
+    /// short to have ever been produced by [`seal`].
     Truncated,
     /// Authentication failed: wrong key, or `sealed` was tampered with.
     TagMismatch,
+    /// The input to [`open`] starts with a format version byte this build does not read - a blob
+    /// from an older or newer `crypto_secretbox` wire format, not a tampered one (the version byte
+    /// is public and also bound into the tag).
+    UnsupportedVersion,
     /// The OS CSPRNG failed while generating a nonce (see [`crate::randombytes`]).
     Random(RandomError),
 }
@@ -98,6 +114,7 @@ impl fmt::Display for SecretboxError {
         match self {
             SecretboxError::Truncated => write!(f, "input too short to contain a nonce and tag"),
             SecretboxError::TagMismatch => write!(f, "authentication failed"),
+            SecretboxError::UnsupportedVersion => write!(f, "unsupported secretbox format version"),
             SecretboxError::Random(e) => write!(f, "{e}"),
         }
     }
@@ -145,9 +162,25 @@ impl SecretKey {
     }
 }
 
+/// `version || nonce || ciphertext_len as u64 LE` - binds the version, the nonce (D-63) and the
+/// true ciphertext length into the tag. The length is needed because `hazmat::kalyna_gcm`'s tag
+/// covers the `0x80`-padded ciphertext and only its padded length (D-56 divergences 2/3), so
+/// without it `ct` and `ct || 80 00..` share a tag (T-232, audit F-01). A fixed-length AAD is
+/// itself zero-padded with its true length recorded, so this AAD makes the tag input injective.
+fn aad(nonce: &[u8; NONCE_LEN], ciphertext_len: usize) -> [u8; HEADER_LEN + 8] {
+    let Ok(len) = u64::try_from(ciphertext_len) else {
+        unreachable!("a slice length always fits in u64 on every supported target")
+    };
+    let mut aad = [0u8; HEADER_LEN + 8];
+    aad[0] = FORMAT_VERSION;
+    aad[1..HEADER_LEN].copy_from_slice(nonce);
+    aad[HEADER_LEN..].copy_from_slice(&len.to_le_bytes());
+    aad
+}
+
 /// Encrypts and authenticates `plaintext` under `key`, drawing a fresh random nonce internally.
-/// Returns `nonce (32 bytes) || ciphertext (plaintext.len() bytes) || tag (16 bytes)` - no
-/// message-length cap (see the module doc comment).
+/// Returns `version (1 byte) || nonce (32 bytes) || ciphertext (plaintext.len() bytes) || tag (16
+/// bytes)` - no message-length cap (see the module doc comment).
 ///
 /// # Errors
 ///
@@ -158,12 +191,13 @@ pub fn seal(key: &SecretKey, plaintext: &[u8]) -> Result<Vec<u8>, SecretboxError
 
     let cipher = Kalyna256_256Gcm::new(key.as_bytes());
     let mut buf = vec![0u8; plaintext.len()];
-    // Nonce passed as AAD to bind it into the tag - see the module doc's "No AAD" section.
-    let Ok(full_tag) = cipher.encrypt(&nonce, &nonce, plaintext, &mut buf) else {
+    let Ok(full_tag) = cipher.encrypt(&nonce, &aad(&nonce, plaintext.len()), plaintext, &mut buf)
+    else {
         unreachable!("ciphertext_out.len() == plaintext.len() by construction")
     };
 
-    let mut out = Vec::with_capacity(NONCE_LEN + buf.len() + TAG_LEN);
+    let mut out = Vec::with_capacity(HEADER_LEN + buf.len() + TAG_LEN);
+    out.push(FORMAT_VERSION);
     out.extend_from_slice(&nonce);
     out.extend_from_slice(&buf);
     out.extend_from_slice(&full_tag[..TAG_LEN]);
@@ -174,31 +208,33 @@ pub fn seal(key: &SecretKey, plaintext: &[u8]) -> Result<Vec<u8>, SecretboxError
 ///
 /// # Errors
 ///
-/// Returns [`SecretboxError::Truncated`] if `sealed` is shorter than a nonce plus a tag, or
+/// Returns [`SecretboxError::Truncated`] if `sealed` is shorter than a version byte, a nonce and a
+/// tag, [`SecretboxError::UnsupportedVersion`] if its version byte is not this build's format, or
 /// [`SecretboxError::TagMismatch`] if authentication fails (wrong key, or `sealed` was tampered
 /// with) - `sealed` is never partially trusted on a mismatch.
 pub fn open(key: &SecretKey, sealed: &[u8]) -> Result<Vec<u8>, SecretboxError> {
-    if sealed.len() < NONCE_LEN + TAG_LEN {
+    if sealed.len() < HEADER_LEN + TAG_LEN {
         return Err(SecretboxError::Truncated);
+    }
+    if sealed[0] != FORMAT_VERSION {
+        return Err(SecretboxError::UnsupportedVersion);
     }
 
     let mut nonce = [0u8; NONCE_LEN];
-    nonce.copy_from_slice(&sealed[..NONCE_LEN]);
-    let ciphertext_len = sealed.len() - NONCE_LEN - TAG_LEN;
-    let ciphertext = &sealed[NONCE_LEN..NONCE_LEN + ciphertext_len];
-    let tag = &sealed[NONCE_LEN + ciphertext_len..];
+    nonce.copy_from_slice(&sealed[1..HEADER_LEN]);
+    let ciphertext_len = sealed.len() - HEADER_LEN - TAG_LEN;
+    let ciphertext = &sealed[HEADER_LEN..HEADER_LEN + ciphertext_len];
+    let tag = &sealed[HEADER_LEN + ciphertext_len..];
 
     let cipher = Kalyna256_256Gcm::new(key.as_bytes());
     let mut buf = vec![0u8; ciphertext_len];
-    // Nonce passed as AAD to bind it into the tag - see the module doc's "No AAD" section.
     cipher
-        .decrypt(&nonce, &nonce, ciphertext, tag, &mut buf)
+        .decrypt(&nonce, &aad(&nonce, ciphertext_len), ciphertext, tag, &mut buf)
         .map_err(|e| match e {
             GcmError::TagMismatch => SecretboxError::TagMismatch,
             GcmError::InvalidLength => {
                 unreachable!(
-                    "tag.len() == TAG_LEN (16, within 8..=block_bytes) and plaintext_out.len() \
-                     == ciphertext.len() by construction"
+                    "tag.len() == TAG_LEN (16, within 8..=block_bytes) and plaintext_out.len()                      == ciphertext.len() by construction"
                 )
             }
         })?;

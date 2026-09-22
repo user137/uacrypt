@@ -32,8 +32,8 @@ public static class DstuConstants
 
     public const int SecretboxKeyBytes = 32;
 
-    /// <summary>32-byte nonce + 16-byte tag.</summary>
-    public const int SecretboxOverhead = 48;
+    /// <summary>1-byte format version + 32-byte nonce + 16-byte tag.</summary>
+    public const int SecretboxOverhead = 49;
 
     public const int SecretstreamKeyBytes = 32;
     public const int SecretstreamHeaderBytes = 32;

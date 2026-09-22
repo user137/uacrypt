@@ -62,6 +62,8 @@ inline void CheckStatus(DstuStatus status) {
       throw CryptoError("crypto_pwhash: internal Argon2/PHC-encoding failure");
     case DSTU_ERR_INVALID_KEY:
       throw ArgumentError("invalid key material (e.g. a DSTU 4145 scalar that is zero or >= the curve order)");
+    case DSTU_ERR_UNSUPPORTED_VERSION:
+      throw CryptoError("sealed blob has an unsupported format version - written by an older or newer release");
     default:  // DSTU_ERR_BUFFER_TOO_SMALL, DSTU_ERR_NULL_POINTER, DSTU_ERR_INVALID_LENGTH, DSTU_ERR_PANIC
       throw InternalError(status);
   }

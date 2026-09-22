@@ -19,7 +19,7 @@ pub fn secretbox_keygen() -> Result<Buffer> {
         .map(|key| Buffer::from(key.as_bytes().to_vec()))
 }
 
-/// Encrypts and authenticates `plaintext` under `key`. Returns `nonce || ciphertext || tag`.
+/// Encrypts and authenticates `plaintext` under `key`. Returns `version || nonce || ciphertext || tag`.
 #[napi(js_name = "secretboxSeal")]
 pub fn secretbox_seal(key: Buffer, plaintext: Buffer) -> Result<Buffer> {
     let key = SecretKey::from_bytes(to_array::<32>(&key, "key")?);

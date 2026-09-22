@@ -8,8 +8,8 @@ use crate::util::{guard_ptr, guard_status, guard_void, slice_from_raw, slice_fro
 use dstu_core::crypto_secretbox::{open, seal, SecretKey, SecretboxError};
 
 pub const DSTU_SECRETBOX_KEY_BYTES: usize = 32;
-/// 32-byte nonce + 16-byte tag.
-pub const DSTU_SECRETBOX_OVERHEAD: usize = 48;
+/// 1-byte format version + 32-byte nonce + 16-byte tag.
+pub const DSTU_SECRETBOX_OVERHEAD: usize = 49;
 
 /// Opaque `crypto_secretbox` key handle. `dstu_secretbox_key_free`'s `Box::from_raw` fires the
 /// wrapped `SecretKey`'s own `Zeroize`-on-`Drop` impl.
@@ -142,6 +142,7 @@ pub unsafe extern "C" fn dstu_secretbox_seal(
 /// `DSTU_ERR_BUFFER_TOO_SMALL` if not. On `DSTU_OK`,
 /// `*plaintext_len_out == sealed_len - DSTU_SECRETBOX_OVERHEAD` exactly. On
 /// `DSTU_ERR_TAG_MISMATCH`, `plaintext_out` is left zeroed, never partially-trusted plaintext.
+/// `DSTU_ERR_UNSUPPORTED_VERSION` if the blob's first byte is not this build's format version.
 ///
 /// # Safety
 ///
@@ -186,6 +187,7 @@ pub unsafe extern "C" fn dstu_secretbox_open(
                 plaintext_out.fill(0);
                 DstuStatus::DSTU_ERR_TAG_MISMATCH
             }
+            Err(SecretboxError::UnsupportedVersion) => DstuStatus::DSTU_ERR_UNSUPPORTED_VERSION,
             Err(_) => unreachable!("checked sealed_len above, open() never generates randomness"),
         }
     })

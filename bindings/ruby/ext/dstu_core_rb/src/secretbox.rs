@@ -15,7 +15,7 @@ pub fn secretbox_keygen(ruby: &Ruby) -> Result<RString, Error> {
     Ok(ruby.str_from_slice(key.as_bytes()))
 }
 
-/// Encrypts and authenticates `plaintext` under `key`. Returns `nonce || ciphertext || tag`.
+/// Encrypts and authenticates `plaintext` under `key`. Returns `version || nonce || ciphertext || tag`.
 pub fn secretbox_seal(ruby: &Ruby, key: RString, plaintext: RString) -> Result<RString, Error> {
     let key = SecretKey::from_bytes(to_array::<32>(ruby, &key.to_bytes(), "key")?);
     let sealed = seal(&key, &plaintext.to_bytes()).dstu(ruby)?;

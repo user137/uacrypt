@@ -18,7 +18,7 @@ pub fn secretbox_keygen() -> PyResult<Vec<u8>> {
         .map(|key| key.as_bytes().to_vec())
 }
 
-/// Encrypts and authenticates `plaintext` under `key`. Returns `nonce || ciphertext || tag`.
+/// Encrypts and authenticates `plaintext` under `key`. Returns `version || nonce || ciphertext || tag`.
 #[pyfunction]
 pub fn secretbox_seal(key: &[u8], plaintext: &[u8]) -> PyResult<Vec<u8>> {
     let key = SecretKey::from_bytes(to_array::<32>(key, "key")?);

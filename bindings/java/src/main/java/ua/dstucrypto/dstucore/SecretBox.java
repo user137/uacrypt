@@ -14,7 +14,7 @@ public final class SecretBox {
     /** Generates a fresh 32-byte key from the OS CSPRNG. */
     public static native byte[] keygen();
 
-    /** Encrypts and authenticates {@code plaintext} under {@code key}. Returns {@code nonce || ciphertext || tag}. */
+    /** Encrypts and authenticates {@code plaintext} under {@code key}. Returns {@code version || nonce || ciphertext || tag}. */
     public static native byte[] seal(byte[] key, byte[] plaintext);
 
     /**

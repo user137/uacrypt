@@ -27,7 +27,7 @@ pub extern "system" fn Java_ua_dstucrypto_dstucore_SecretBox_keygen<'local>(
     })
 }
 
-/// Encrypts and authenticates `plaintext` under `key`. Returns `nonce || ciphertext || tag`.
+/// Encrypts and authenticates `plaintext` under `key`. Returns `version || nonce || ciphertext || tag`.
 #[no_mangle]
 pub extern "system" fn Java_ua_dstucrypto_dstucore_SecretBox_seal<'local>(
     mut env: JNIEnv<'local>,

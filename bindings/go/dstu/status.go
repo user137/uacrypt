@@ -49,6 +49,8 @@ func statusError(status C.DstuStatus) error {
 		return &CryptoError{"crypto_pwhash: internal Argon2/PHC-encoding failure"}
 	case C.DSTU_ERR_INVALID_KEY:
 		return &ArgumentError{"invalid key material (e.g. a DSTU 4145 scalar that is zero or >= the curve order)"}
+	case C.DSTU_ERR_UNSUPPORTED_VERSION:
+		return &CryptoError{"sealed blob has an unsupported format version - written by an older or newer release"}
 	default: // ErrBufferTooSmall, ErrNullPointer, ErrInvalidLength, ErrPanic
 		return &InternalError{status}
 	}

@@ -37,6 +37,8 @@ internal static class NativeStatus
                 throw new DstuException("crypto_pwhash: internal Argon2/PHC-encoding failure");
             case DstuStatus.ErrInvalidKey:
                 throw new ArgumentException("invalid key material (e.g. a DSTU 4145 scalar that is zero or >= the curve order)");
+            case DstuStatus.ErrUnsupportedVersion:
+                throw new DstuException("sealed blob has an unsupported format version - written by an older or newer release");
             case DstuStatus.ErrBufferTooSmall:
             case DstuStatus.ErrNullPointer:
             case DstuStatus.ErrInvalidLength:

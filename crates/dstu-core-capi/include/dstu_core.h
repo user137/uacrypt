@@ -59,9 +59,9 @@
 #define DSTU_SECRETBOX_KEY_BYTES 32
 
 /**
- * 32-byte nonce + 16-byte tag.
+ * 1-byte format version + 32-byte nonce + 16-byte tag.
  */
-#define DSTU_SECRETBOX_OVERHEAD 48
+#define DSTU_SECRETBOX_OVERHEAD 49
 
 #define DSTU_SECRETSTREAM_KEY_BYTES 32
 
@@ -150,6 +150,11 @@ typedef enum {
    * `catch_unwind`.
    */
   DSTU_ERR_PANIC = 12,
+  /**
+   * A sealed blob (`crypto_secretbox`, `crypto_box`, `crypto_box512`) starts with a format
+   * version byte this build does not read - written by an older or newer release, not tampered.
+   */
+  DSTU_ERR_UNSUPPORTED_VERSION = 13,
 } DstuStatus;
 
 /**
@@ -878,6 +883,7 @@ DstuStatus dstu_secretbox_seal(const DstuSecretboxKey *key,
  * `DSTU_ERR_BUFFER_TOO_SMALL` if not. On `DSTU_OK`,
  * `*plaintext_len_out == sealed_len - DSTU_SECRETBOX_OVERHEAD` exactly. On
  * `DSTU_ERR_TAG_MISMATCH`, `plaintext_out` is left zeroed, never partially-trusted plaintext.
+ * `DSTU_ERR_UNSUPPORTED_VERSION` if the blob's first byte is not this build's format version.
  *
  * # Safety
  *
