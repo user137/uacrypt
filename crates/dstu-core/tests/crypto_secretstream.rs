@@ -416,6 +416,35 @@ fn mismatched_plaintext_out_length_is_rejected() {
     assert!(matches!(err, SecretstreamError::InvalidLength));
 }
 
+// T-238 (audit F-04): an 8-byte prefix of a real tag used to verify, because `pull` delegated the
+// length check to `kalyna_gcm::decrypt`'s DSTU-permitted 8..=32 range.
+#[test]
+fn truncated_8_byte_auth_tag_prefix_is_rejected() {
+    let key = Key::generate().expect("OS CSPRNG available in test environment");
+    let (header, ciphertext, tag) = push_one(&key, Tag::Final, b"secret");
+    let mut pull = PullState::init(&key, &header);
+    let mut out = vec![0u8; ciphertext.len()];
+    let err = pull
+        .pull(Tag::Final.to_byte(), &ciphertext, &tag[..8], &mut out)
+        .expect_err("only a full 16-byte auth tag is accepted");
+    assert!(matches!(err, SecretstreamError::InvalidLength));
+    assert!(out.iter().all(|&b| b == 0));
+}
+
+#[test]
+fn oversized_32_byte_auth_tag_is_rejected() {
+    let key = Key::generate().expect("OS CSPRNG available in test environment");
+    let (header, ciphertext, tag) = push_one(&key, Tag::Final, b"secret");
+    let mut long_tag = [0u8; 32];
+    long_tag[..TAG_LEN].copy_from_slice(&tag);
+    let mut pull = PullState::init(&key, &header);
+    let mut out = vec![0u8; ciphertext.len()];
+    let err = pull
+        .pull(Tag::Final.to_byte(), &ciphertext, &long_tag, &mut out)
+        .expect_err("only a full 16-byte auth tag is accepted");
+    assert!(matches!(err, SecretstreamError::InvalidLength));
+}
+
 #[test]
 fn unknown_tag_byte_is_rejected() {
     let key = Key::generate().expect("OS CSPRNG available in test environment");

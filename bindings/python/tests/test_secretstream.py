@@ -181,3 +181,13 @@ def test_write_after_close_is_rejected() -> None:
     enc.close()
     with pytest.raises(ValueError):
         enc.write(b"more data")
+
+
+def test_truncated_auth_tag_prefix_is_rejected() -> None:
+    # T-238: an 8-byte prefix of a real tag used to verify through the core's 8..=32 range.
+    key = d.secretstream_keygen()
+    push = d.SecretStreamPushState(key)
+    ciphertext, auth_tag = push.push(d.SECRETSTREAM_TAG_FINAL, b"secret")
+    pull = d.SecretStreamPullState(key, push.header)
+    with pytest.raises(d.DstuError):
+        pull.pull(d.SECRETSTREAM_TAG_FINAL, ciphertext, auth_tag[:8])

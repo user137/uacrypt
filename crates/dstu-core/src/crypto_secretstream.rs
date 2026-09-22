@@ -192,7 +192,8 @@ impl Tag {
 #[derive(Debug)]
 pub enum SecretstreamError {
     /// `ciphertext_out.len() != plaintext.len()` (or the `plaintext_out`/`ciphertext` equivalent
-    /// on [`PullState::pull`]).
+    /// on [`PullState::pull`]), or an `auth_tag` passed to [`PullState::pull`] that isn't exactly
+    /// 16 bytes.
     InvalidLength,
     /// Authentication failed: wrong key, wrong header, tampered ciphertext/tag/tag-byte, or a
     /// chunk out of sequence (wrong counter) - reordered, dropped, or spliced from another stream.
@@ -382,7 +383,8 @@ impl PullState {
     /// # Errors
     ///
     /// Returns [`SecretstreamError::UnknownTag`] if `tag_byte` isn't a value [`Tag::to_byte`]
-    /// produces, [`SecretstreamError::InvalidLength`] if `plaintext_out.len() != ciphertext.len()`,
+    /// produces, [`SecretstreamError::InvalidLength`] if `plaintext_out.len() != ciphertext.len()`
+    /// or `auth_tag.len() != 16`,
     /// [`SecretstreamError::StreamFinalized`] if a previous chunk already used [`Tag::Final`], or
     /// [`SecretstreamError::TagMismatch`] if authentication fails - `plaintext_out` is left
     /// all-zero on any authentication failure, never unverified plaintext.
@@ -399,7 +401,9 @@ impl PullState {
         let Some(tag) = Tag::from_byte(tag_byte) else {
             return Err(SecretstreamError::UnknownTag);
         };
-        if plaintext_out.len() != ciphertext.len() {
+        // Pinned to exactly what `push` emits: `kalyna_gcm::decrypt` alone accepts the
+        // DSTU-permitted 8..=32, which would let an 8-byte tag prefix verify (T-238).
+        if plaintext_out.len() != ciphertext.len() || auth_tag.len() != TAG_LEN {
             return Err(SecretstreamError::InvalidLength);
         }
 
@@ -407,8 +411,7 @@ impl PullState {
         let iv = chunk_iv(self.counter);
         let aad = chunk_aad(self.counter, tag_byte);
 
-        // `Kalyna256_256Gcm::decrypt` already uses `subtle::ConstantTimeEq` internally (D-56) and
-        // validates `auth_tag.len()` itself (8..=32) - no separate check needed here.
+        // `Kalyna256_256Gcm::decrypt` already uses `subtle::ConstantTimeEq` internally (D-56).
         match cipher.decrypt(&iv, &aad, ciphertext, auth_tag, plaintext_out) {
             Ok(()) => {}
             Err(GcmError::TagMismatch) => return Err(SecretstreamError::TagMismatch),
