@@ -22,22 +22,22 @@
 #define DSTU_BOX512_PUBLICKEY_BYTES 64
 
 /**
- * `dstu9041_ciphertext (256) || secretstream_header (32) || tag (16)` - the fixed part of
+ * `version (1) || dstu9041_ciphertext (256) || secretstream_header (32) || tag (16)` - the fixed part of
  * `seal`'s wire format (`crypto_box512`'s own module doc), added to `message_len` for `seal`'s
  * required output capacity, and the exact minimum length `open` accepts.
  */
-#define DSTU_BOX512_SEAL_OVERHEAD 304
+#define DSTU_BOX512_SEAL_OVERHEAD 305
 
 #define DSTU_BOX_SECRETKEY_BYTES 32
 
 #define DSTU_BOX_PUBLICKEY_BYTES 32
 
 /**
- * `dstu9041_ciphertext (128) || secretstream_header (32) || tag (16)` - the fixed part of
+ * `version (1) || dstu9041_ciphertext (128) || secretstream_header (32) || tag (16)` - the fixed part of
  * `seal`'s wire format (`crypto_box`'s own module doc), added to `message_len` for `seal`'s
  * required output capacity, and the exact minimum length `open` accepts.
  */
-#define DSTU_BOX_SEAL_OVERHEAD 176
+#define DSTU_BOX_SEAL_OVERHEAD 177
 
 #define DSTU_GENERICHASH_256_BYTES 32
 

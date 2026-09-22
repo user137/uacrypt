@@ -54,7 +54,7 @@ final class BoxTest extends TestCase
         $secretKey = dstu_core_box_keygen();
         $publicKey = dstu_core_box_public_key($secretKey);
         $sealed = dstu_core_box_seal($publicKey, 'message');
-        $sealed[0] = chr(ord($sealed[0]) ^ 1);
+        $sealed[1] = chr(ord($sealed[1]) ^ 1);
         $this->expectException(DstuCoreException::class);
         dstu_core_box_open($secretKey, $sealed);
     }

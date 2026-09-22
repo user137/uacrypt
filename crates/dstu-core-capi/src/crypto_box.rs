@@ -18,10 +18,10 @@ use dstu_core::crypto_box::{open, seal, OpenError, PublicKey, SealError, SecretK
 
 pub const DSTU_BOX_SECRETKEY_BYTES: usize = 32;
 pub const DSTU_BOX_PUBLICKEY_BYTES: usize = 32;
-/// `dstu9041_ciphertext (128) || secretstream_header (32) || tag (16)` - the fixed part of
+/// `version (1) || dstu9041_ciphertext (128) || secretstream_header (32) || tag (16)` - the fixed part of
 /// `seal`'s wire format (`crypto_box`'s own module doc), added to `message_len` for `seal`'s
 /// required output capacity, and the exact minimum length `open` accepts.
-pub const DSTU_BOX_SEAL_OVERHEAD: usize = 176;
+pub const DSTU_BOX_SEAL_OVERHEAD: usize = 177;
 
 /// Opaque `crypto_box` secret-key handle. `dstu_box_secretkey_free`'s `Box::from_raw` fires the
 /// wrapped `SecretKey`'s own `Zeroize`-on-`Drop` impl.
@@ -302,6 +302,7 @@ pub unsafe extern "C" fn dstu_box_open(
                 plaintext_out.fill(0);
                 DstuStatus::DSTU_ERR_TAG_MISMATCH
             }
+            Err(OpenError::UnsupportedVersion) => DstuStatus::DSTU_ERR_UNSUPPORTED_VERSION,
             Err(OpenError::Truncated) => unreachable!("checked sealed_len above"),
         }
     })

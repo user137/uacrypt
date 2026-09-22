@@ -56,7 +56,7 @@ class BoxTest {
         byte[] secretKey = Box.keygen();
         byte[] publicKey = Box.publicKey(secretKey);
         byte[] sealed = Box.seal(publicKey, "message".getBytes("UTF-8"));
-        sealed[0] ^= 1;
+        sealed[1] ^= 1;
         assertThrows(DstuException.class, () -> Box.open(secretKey, sealed));
     }
 

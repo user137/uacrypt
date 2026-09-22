@@ -44,7 +44,7 @@ def test_tampered_kem_prefix_is_rejected() -> None:
     secret_key = d.box_keygen()
     public_key = d.box_public_key(secret_key)
     sealed = bytearray(d.box_seal(public_key, b"message"))
-    sealed[0] ^= 1
+    sealed[1] ^= 1
     with pytest.raises(d.DstuError):
         d.box_open(secret_key, bytes(sealed))
 

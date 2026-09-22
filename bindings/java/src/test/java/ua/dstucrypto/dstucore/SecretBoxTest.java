@@ -37,7 +37,7 @@ class SecretBoxTest {
     void tamperedNonceIsRejected() throws Exception {
         byte[] key = SecretBox.keygen();
         byte[] sealed = SecretBox.seal(key, "message".getBytes("UTF-8"));
-        sealed[0] ^= 1; // first byte of the nonce
+        sealed[1] ^= 1; // first byte of the nonce
         assertThrows(DstuException.class, () -> SecretBox.open(key, sealed));
     }
 

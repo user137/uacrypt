@@ -55,7 +55,7 @@ public sealed class BoxTests
         using var secretKey = BoxSecretKey.Generate();
         using var publicKey = secretKey.PublicKey();
         var sealedMessage = publicKey.Seal(Encoding.ASCII.GetBytes("message"));
-        sealedMessage[0] ^= 1;
+        sealedMessage[1] ^= 1;
         Assert.Throws<DstuException>(() => secretKey.Open(sealedMessage));
     }
 

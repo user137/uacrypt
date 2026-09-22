@@ -39,7 +39,7 @@ RSpec.describe "DstuCore box" do
     secret_key = DstuCore.box_keygen
     public_key = DstuCore.box_public_key(secret_key)
     sealed = DstuCore.box_seal(public_key, "message").dup
-    sealed[0] = (sealed[0].ord ^ 1).chr
+    sealed[1] = (sealed[1].ord ^ 1).chr
     expect { DstuCore.box_open(secret_key, sealed) }.to raise_error(DstuCore::Error)
   end
 

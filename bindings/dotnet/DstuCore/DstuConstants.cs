@@ -11,14 +11,14 @@ public static class DstuConstants
     public const int BoxSecretKeyBytes = 32;
     public const int BoxPublicKeyBytes = 32;
 
-    /// <summary>128-byte KEM ciphertext + 32-byte secretstream header + 16-byte tag.</summary>
-    public const int BoxSealOverhead = 176;
+    /// <summary>1-byte format version + 128-byte KEM ciphertext + 32-byte secretstream header + 16-byte tag.</summary>
+    public const int BoxSealOverhead = 177;
 
     public const int Box512SecretKeyBytes = 64;
     public const int Box512PublicKeyBytes = 64;
 
-    /// <summary>256-byte KEM ciphertext + 32-byte secretstream header + 16-byte tag.</summary>
-    public const int Box512SealOverhead = 304;
+    /// <summary>1-byte format version + 256-byte KEM ciphertext + 32-byte secretstream header + 16-byte tag.</summary>
+    public const int Box512SealOverhead = 305;
 
     public const int GenericHash256Bytes = 32;
     public const int GenericHash512Bytes = 64;

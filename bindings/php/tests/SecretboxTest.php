@@ -38,7 +38,7 @@ final class SecretboxTest extends TestCase
     {
         $key = dstu_core_secretbox_keygen();
         $sealed = dstu_core_secretbox_seal($key, 'message');
-        $sealed[0] = chr(ord($sealed[0]) ^ 1);
+        $sealed[1] = chr(ord($sealed[1]) ^ 1);
         $this->expectException(DstuCoreException::class);
         dstu_core_secretbox_open($key, $sealed);
     }

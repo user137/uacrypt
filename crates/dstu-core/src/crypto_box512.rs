@@ -8,14 +8,15 @@
 //! `crypto_box`'s own `embed_seed` (`l(p)=256`, `SEED_LEN = L_MAX_P/8 = 25`) does not generalize
 //! here: `l(p)=512`'s `L_MAX_P = 424` bits (53 bytes) exceeds `Kupyna256Kdf`'s 32-byte input
 //! width, so a literal copy-paste underflows. `docs/DECISIONS.md` D-182 resolved this: the seed
-//! stays a fixed 32 bytes (`Kupyna256Kdf`'s own native width, no embedding/padding step needed at
-//! all), wrapped via `dstu9041_encrypt(&seed, 256, ...)` (`message_bits` fixed at `256`, not
+//! stays a fixed 32 bytes (the stream-key derivation's own native key width - originally
+//! `Kupyna256Kdf`, `Kupyna256Kmac` since T-248 - no embedding/padding step needed at all),
+//! wrapped via `dstu9041_encrypt(&seed, 256, ...)` (`message_bits` fixed at `256`, not
 //! `L_MAX_P`). `open` requires the recovered bit length to be exactly `256` before trusting the
 //! recovered seed - confirmed against `message512.rs` directly (not assumed) that `decrypt`
 //! genuinely returns the encryptor-supplied bit length, not the buffer's fixed width (D-182).
 //! Leaving most of `L_MAX_P`'s 424 bits of KEM capacity unused is deliberate: the seed only ever
-//! needs to reach `Kupyna256Kdf`'s fixed input, matching `crypto_box`'s own "asymmetric step only
-//! ever establishes key material" framing.
+//! needs to reach that derivation's fixed 32-byte key input, matching `crypto_box`'s own
+//! "asymmetric step only ever establishes key material" framing.
 //!
 //! # `PublicKey` is 64 bytes - the curve point's `x`-coordinate only
 //!
@@ -33,11 +34,15 @@
 //!
 //! Same posture as [`crate::crypto_box`] - [`OpenError`] deliberately does not distinguish a KEM
 //! failure from a secretstream tag failure (D-56/D-63 precedent); only [`OpenError::Truncated`]
-//! stays separate. Wire format: `dstu9041_ciphertext (256 bytes) || secretstream_header (32
-//! bytes) || ciphertext (message.len() bytes) || tag (16 bytes)`.
+//! and [`OpenError::UnsupportedVersion`] stay separate. Wire format: `version (1 byte, currently
+//! 2) || dstu9041_ciphertext (256 bytes) || secretstream_header (32 bytes) || ciphertext
+//! (message.len() bytes) || tag (16 bytes)`. The stream key is `Kupyna256Kmac(key = seed,
+//! message = b"cryptbx5" || version || kem_ciphertext || recipient_public_key)` - the same
+//! RFC 9180 §4.1 `kem_context` binding as [`crate::crypto_box`] (T-248, `docs/DECISIONS.md`
+//! D-201).
 //!
 //! A `box-open`-length-valid `l(p)=512` sealed blob also clears [`crate::crypto_box::open`]'s own
-//! `MIN_LEN` check (176 bytes) and vice versa - both fall through to their own
+//! `MIN_LEN` check (177 bytes) and vice versa - both fall through to their own
 //! `InvalidCiphertext`/authentication-failure path rather than a distinct "wrong curve size"
 //! error. Defensible under the shared error-collapsing posture (recorded here, not left to be
 //! found by surprise): a curve-size mismatch is just another way for the KEM decrypt to fail.
@@ -54,6 +59,7 @@ use crate::hazmat::dstu9041::encryption512::{
     decrypt as dstu9041_decrypt, encrypt as dstu9041_encrypt,
 };
 use crate::hazmat::dstu9041::fp512::from_candidate_bytes;
+use crate::hazmat::kupyna_kmac::Kupyna256Kmac;
 use crate::randombytes::{randombytes_buf, RandomError};
 use core::fmt;
 use zeroize::Zeroize;
@@ -67,12 +73,39 @@ const SEED_BITS: usize = SEED_LEN * 8;
 const KEM_CIPHERTEXT_LEN: usize = 256;
 const HEADER_LEN: usize = 32;
 const TAG_LEN: usize = 16;
-/// Domain-separation context for the seed-to-stream-key derivation - distinct from `crypto_box`'s
-/// own `KDF_CONTEXT` (different KEM ciphertext shape, different `PublicKey`/`SecretKey` widths -
-/// a caller using both `crypto_box` and `crypto_box512` must never be able to conflate contexts).
-const KDF_CONTEXT: &[u8; 8] = b"cryptbx5";
+/// Wire-format version, the sealed blob's first byte (T-232/T-248; 0.3.x blobs had none).
+const FORMAT_VERSION: u8 = 2;
+/// `version || kem_ciphertext` - everything in front of the secretstream header.
+const PREFIX_LEN: usize = 1 + KEM_CIPHERTEXT_LEN;
+const PUBLIC_KEY_LEN: usize = 64;
+/// Domain-separation label for the stream-key derivation - distinct from `crypto_box`'s own label.
+const KDF_LABEL: &[u8; 8] = b"cryptbx5";
+const KDF_MESSAGE_LEN: usize = KDF_LABEL.len() + 1 + KEM_CIPHERTEXT_LEN + PUBLIC_KEY_LEN;
 
-use crate::hazmat::kupyna_kdf::Kupyna256Kdf;
+/// Derives the secretstream key as `Kupyna256Kmac(key = seed, message = label || version ||
+/// kem_ciphertext || recipient_public_key)`, binding the KEM ciphertext and the recipient into
+/// the key - RFC 9180 §4.1's DHKEM `kem_context = concat(enc, pkRm)` (T-248, `docs/DECISIONS.md`
+/// D-201). A plain `Kupyna256Kdf::derive_subkey` can't carry this: its context is a fixed 8 bytes.
+fn stream_key(
+    seed: &[u8; 32],
+    kem_ciphertext: &[u8; KEM_CIPHERTEXT_LEN],
+    recipient: &[u8; PUBLIC_KEY_LEN],
+) -> Key {
+    let mut message = [0u8; KDF_MESSAGE_LEN];
+    let (label, rest) = message.split_at_mut(KDF_LABEL.len());
+    label.copy_from_slice(KDF_LABEL);
+    let (version, rest) = rest.split_at_mut(1);
+    version[0] = FORMAT_VERSION;
+    let (kem, pk) = rest.split_at_mut(KEM_CIPHERTEXT_LEN);
+    kem.copy_from_slice(kem_ciphertext);
+    pk.copy_from_slice(recipient);
+    let Ok(mut key_bytes) = Kupyna256Kmac::mac(seed, &message) else {
+        unreachable!("seed is always exactly 32 bytes, Kupyna256Kmac's own mac_len")
+    };
+    let key = Key::from_bytes(key_bytes);
+    key_bytes.zeroize();
+    key
+}
 
 /// `crypto_box512` can fail while sealing for one reason: the OS CSPRNG.
 #[derive(Debug)]
@@ -99,9 +132,12 @@ impl From<RandomError> for SealError {
 /// `crypto_box512` can fail while opening for reasons beyond a wrong key.
 #[derive(Debug)]
 pub enum OpenError {
-    /// `sealed` is shorter than a KEM ciphertext plus a secretstream header and tag (304 bytes) -
-    /// too short to have ever been produced by [`seal`].
+    /// `sealed` is shorter than a version byte, a KEM ciphertext, a secretstream header and a tag
+    /// (305 bytes) - too short to have ever been produced by [`seal`].
     Truncated,
+    /// `sealed` starts with a format version byte this build does not read - a blob from an older
+    /// or newer wire format. The byte is public, so this reveals nothing about the key.
+    UnsupportedVersion,
     /// Any late-stage failure: wrong secret key, a tampered KEM prefix/header/ciphertext/tag, or a
     /// recovered seed whose bit length isn't exactly `SEED_BITS` - deliberately collapsed, see the
     /// module doc's "Error collapsing" section.
@@ -113,6 +149,7 @@ impl fmt::Display for OpenError {
         match self {
             OpenError::Truncated => write!(f, "input too short to contain a sealed message"),
             OpenError::InvalidCiphertext => write!(f, "authentication failed"),
+            OpenError::UnsupportedVersion => write!(f, "unsupported sealed-box format version"),
         }
     }
 }
@@ -220,10 +257,8 @@ pub fn seal(message: &[u8], recipient: &PublicKey) -> Result<Vec<u8>, SealError>
     };
     epsilon.zeroize();
 
-    let mut stream_key_bytes = Kupyna256Kdf::derive_subkey(&seed, 0, KDF_CONTEXT);
+    let key = stream_key(&seed, &kem_ciphertext, &recipient.to_bytes());
     seed.zeroize();
-    let key = Key::from_bytes(stream_key_bytes);
-    stream_key_bytes.zeroize();
 
     let (mut push, header) = match PushState::init(&key) {
         Ok(ok) => ok,
@@ -241,7 +276,8 @@ pub fn seal(message: &[u8], recipient: &PublicKey) -> Result<Vec<u8>, SealError>
         )
     };
 
-    let mut out = Vec::with_capacity(KEM_CIPHERTEXT_LEN + HEADER_LEN + ciphertext.len() + TAG_LEN);
+    let mut out = Vec::with_capacity(PREFIX_LEN + HEADER_LEN + ciphertext.len() + TAG_LEN);
+    out.push(FORMAT_VERSION);
     out.extend_from_slice(&kem_ciphertext);
     out.extend_from_slice(&header);
     out.extend_from_slice(&ciphertext);
@@ -253,21 +289,25 @@ pub fn seal(message: &[u8], recipient: &PublicKey) -> Result<Vec<u8>, SealError>
 ///
 /// # Errors
 ///
-/// Returns [`OpenError::Truncated`] if `sealed` is shorter than the minimum possible length, or
+/// Returns [`OpenError::Truncated`] if `sealed` is shorter than the minimum possible length,
+/// [`OpenError::UnsupportedVersion`] if its first byte is not this build's format version, or
 /// [`OpenError::InvalidCiphertext`] for any other failure - see the module doc's "Error collapsing"
 /// section.
 pub fn open(sealed: &[u8], secret: &SecretKey) -> Result<Vec<u8>, OpenError> {
-    const MIN_LEN: usize = KEM_CIPHERTEXT_LEN + HEADER_LEN + TAG_LEN;
+    const MIN_LEN: usize = PREFIX_LEN + HEADER_LEN + TAG_LEN;
     if sealed.len() < MIN_LEN {
         return Err(OpenError::Truncated);
     }
+    if sealed[0] != FORMAT_VERSION {
+        return Err(OpenError::UnsupportedVersion);
+    }
 
     let mut kem_ciphertext = [0u8; KEM_CIPHERTEXT_LEN];
-    kem_ciphertext.copy_from_slice(&sealed[..KEM_CIPHERTEXT_LEN]);
+    kem_ciphertext.copy_from_slice(&sealed[1..PREFIX_LEN]);
     let mut header = [0u8; HEADER_LEN];
-    header.copy_from_slice(&sealed[KEM_CIPHERTEXT_LEN..KEM_CIPHERTEXT_LEN + HEADER_LEN]);
+    header.copy_from_slice(&sealed[PREFIX_LEN..PREFIX_LEN + HEADER_LEN]);
     let ciphertext_len = sealed.len() - MIN_LEN;
-    let ciphertext_start = KEM_CIPHERTEXT_LEN + HEADER_LEN;
+    let ciphertext_start = PREFIX_LEN + HEADER_LEN;
     let ciphertext = &sealed[ciphertext_start..ciphertext_start + ciphertext_len];
     let tag = &sealed[ciphertext_start + ciphertext_len..];
 
@@ -286,10 +326,8 @@ pub fn open(sealed: &[u8], secret: &SecretKey) -> Result<Vec<u8>, OpenError> {
     let mut m_tilde = m_tilde;
     m_tilde.zeroize();
 
-    let mut stream_key_bytes = Kupyna256Kdf::derive_subkey(&seed, 0, KDF_CONTEXT);
+    let key = stream_key(&seed, &kem_ciphertext, &secret.public_key().to_bytes());
     seed.zeroize();
-    let key = Key::from_bytes(stream_key_bytes);
-    stream_key_bytes.zeroize();
 
     let mut pull = PullState::init(&key, &header);
     let mut plaintext = vec![0u8; ciphertext_len];
@@ -297,4 +335,42 @@ pub fn open(sealed: &[u8], secret: &SecretKey) -> Result<Vec<u8>, OpenError> {
         .map_err(|_| OpenError::InvalidCiphertext)?;
 
     Ok(plaintext)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// T-248: the KEM ciphertext (first, middle and last byte), the recipient key (first and last
+    /// byte) and the seed all feed the stream key - the property a round-trip test cannot show.
+    #[test]
+    fn stream_key_binds_kem_ciphertext_recipient_and_seed() {
+        let seed = [0x11u8; 32];
+        let kem = [0x22u8; KEM_CIPHERTEXT_LEN];
+        let pk = [0x33u8; PUBLIC_KEY_LEN];
+        let base = *stream_key(&seed, &kem, &pk).as_bytes();
+
+        for i in [0, KEM_CIPHERTEXT_LEN / 2, KEM_CIPHERTEXT_LEN - 1] {
+            let mut kem2 = kem;
+            kem2[i] ^= 1;
+            assert_ne!(
+                *stream_key(&seed, &kem2, &pk).as_bytes(),
+                base,
+                "kem byte {i}"
+            );
+        }
+        for i in [0, PUBLIC_KEY_LEN - 1] {
+            let mut pk2 = pk;
+            pk2[i] ^= 1;
+            assert_ne!(
+                *stream_key(&seed, &kem, &pk2).as_bytes(),
+                base,
+                "pk byte {i}"
+            );
+        }
+        let mut seed2 = seed;
+        seed2[0] ^= 1;
+        assert_ne!(*stream_key(&seed2, &kem, &pk).as_bytes(), base);
+        assert_eq!(*stream_key(&seed, &kem, &pk).as_bytes(), base);
+    }
 }

@@ -26,7 +26,7 @@ RSpec.describe "DstuCore secretbox" do
   it "rejects a tampered nonce" do
     key = DstuCore.secretbox_keygen
     sealed = DstuCore.secretbox_seal(key, "message").dup
-    sealed[0] = (sealed[0].ord ^ 1).chr
+    sealed[1] = (sealed[1].ord ^ 1).chr
     expect { DstuCore.secretbox_open(key, sealed) }.to raise_error(DstuCore::Error)
   end
 

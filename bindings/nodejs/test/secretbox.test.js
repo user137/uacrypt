@@ -33,7 +33,7 @@ test('tampered ciphertext is rejected', () => {
 test('tampered nonce is rejected', () => {
   const key = dstu.secretboxKeygen();
   const sealed = Buffer.from(dstu.secretboxSeal(key, Buffer.from('message')));
-  sealed[0] ^= 1; // first byte of the nonce
+  sealed[1] ^= 1; // first byte of the nonce
   assert.throws(() => dstu.secretboxOpen(key, sealed));
 });
 

@@ -90,9 +90,11 @@ pub enum CliError {
     BoxKeyInvalid,
     BoxOpenTruncated,
     BoxOpenFailed,
+    BoxOpenUnsupportedVersion,
     Box512KeyInvalid,
     Box512OpenTruncated,
     Box512OpenFailed,
+    Box512OpenUnsupportedVersion,
 }
 
 impl fmt::Display for CliError {
@@ -193,6 +195,11 @@ impl fmt::Display for CliError {
                 f,
                 "box-open: authentication failed - --in, --key, or the file itself do not match"
             ),
+            CliError::BoxOpenUnsupportedVersion => write!(
+                f,
+                "box-open: --in was sealed in a different format version (e.g. by uacrypt 0.3.x) - \
+                 open it with the release that sealed it"
+            ),
             CliError::Box512KeyInvalid => write!(
                 f,
                 "--key is not a valid crypto_box512 key (see uacrypt box-keygen512/box-pubkey512)"
@@ -204,6 +211,11 @@ impl fmt::Display for CliError {
             CliError::Box512OpenFailed => write!(
                 f,
                 "box-open512: authentication failed - --in, --key, or the file itself do not match"
+            ),
+            CliError::Box512OpenUnsupportedVersion => write!(
+                f,
+                "box-open512: --in was sealed in a different format version (e.g. by uacrypt \
+                 0.3.x) - open it with the release that sealed it"
             ),
         }
     }
@@ -2526,6 +2538,7 @@ pub fn run_box_open_command(args: &BoxOpenArgs) -> Result<(), CliError> {
     let map_open_err = |e| match e {
         dstu_core::crypto_box::OpenError::Truncated => CliError::BoxOpenTruncated,
         dstu_core::crypto_box::OpenError::InvalidCiphertext => CliError::BoxOpenFailed,
+        dstu_core::crypto_box::OpenError::UnsupportedVersion => CliError::BoxOpenUnsupportedVersion,
     };
 
     let start = Instant::now();
@@ -2749,6 +2762,9 @@ pub fn run_box512_open_command(args: &Box512OpenArgs) -> Result<(), CliError> {
     let map_open_err = |e| match e {
         dstu_core::crypto_box512::OpenError::Truncated => CliError::Box512OpenTruncated,
         dstu_core::crypto_box512::OpenError::InvalidCiphertext => CliError::Box512OpenFailed,
+        dstu_core::crypto_box512::OpenError::UnsupportedVersion => {
+            CliError::Box512OpenUnsupportedVersion
+        }
     };
 
     let start = Instant::now();
@@ -6822,7 +6838,7 @@ mod tests {
         .expect("box-seal should succeed");
 
         let sealed_bytes = std::fs::read(dir.file("msg.box")).expect("read sealed output");
-        assert_eq!(sealed_bytes.len(), 128 + 32 + 32 + 16); // KEM + header + message + tag
+        assert_eq!(sealed_bytes.len(), 1 + 128 + 32 + 32 + 16); // version + KEM + header + message + tag
         let pub_bytes = std::fs::read(dir.file("box.pub")).expect("read public key");
         assert_eq!(pub_bytes.len(), 32);
 

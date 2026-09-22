@@ -13,7 +13,11 @@ use proptest::prelude::*;
 const KEM_CIPHERTEXT_LEN: usize = 128;
 const HEADER_LEN: usize = 32;
 const TAG_LEN: usize = 16;
-const MIN_SEALED_LEN: usize = KEM_CIPHERTEXT_LEN + HEADER_LEN + TAG_LEN;
+const VERSION: u8 = 2;
+/// `version (1) || kem_ciphertext` - everything in front of the secretstream header.
+const PREFIX_LEN: usize = 1 + KEM_CIPHERTEXT_LEN;
+const MIN_SEALED_LEN: usize = PREFIX_LEN + HEADER_LEN + TAG_LEN;
+const BLOCK_LEN: usize = 32;
 
 #[test]
 fn round_trip() {
@@ -67,8 +71,8 @@ fn two_calls_use_different_ephemeral_material() {
     let a = seal(b"same message", &public).expect("OS CSPRNG available in test environment");
     let b = seal(b"same message", &public).expect("OS CSPRNG available in test environment");
     assert_ne!(
-        &a[..KEM_CIPHERTEXT_LEN],
-        &b[..KEM_CIPHERTEXT_LEN],
+        &a[1..PREFIX_LEN],
+        &b[1..PREFIX_LEN],
         "a fresh random seed/epsilon must be drawn per call"
     );
     assert_ne!(a, b);
@@ -132,7 +136,7 @@ fn tampered_kem_prefix_is_rejected() {
     let secret = SecretKey::generate().expect("OS CSPRNG available in test environment");
     let public = secret.public_key();
     let mut sealed = seal(b"secret", &public).expect("OS CSPRNG available in test environment");
-    sealed[0] ^= 0xFF;
+    sealed[1] ^= 0xFF;
     let err = open(&sealed, &secret).expect_err("tampered KEM prefix must fail");
     assert!(matches!(err, OpenError::InvalidCiphertext));
 }
@@ -146,7 +150,7 @@ fn tampered_secretstream_header_is_rejected() {
     let secret = SecretKey::generate().expect("OS CSPRNG available in test environment");
     let public = secret.public_key();
     let mut sealed = seal(b"secret", &public).expect("OS CSPRNG available in test environment");
-    sealed[KEM_CIPHERTEXT_LEN] ^= 0xFF;
+    sealed[PREFIX_LEN] ^= 0xFF;
     let err = open(&sealed, &secret).expect_err("tampered header must fail");
     assert!(matches!(err, OpenError::InvalidCiphertext));
 }
@@ -156,7 +160,7 @@ fn tampered_ciphertext_is_rejected() {
     let secret = SecretKey::generate().expect("OS CSPRNG available in test environment");
     let public = secret.public_key();
     let mut sealed = seal(b"secret", &public).expect("OS CSPRNG available in test environment");
-    let idx = KEM_CIPHERTEXT_LEN + HEADER_LEN;
+    let idx = PREFIX_LEN + HEADER_LEN;
     sealed[idx] ^= 0xFF;
     let err = open(&sealed, &secret).expect_err("tampered ciphertext must fail");
     assert!(matches!(err, OpenError::InvalidCiphertext));
@@ -304,6 +308,47 @@ fn public_key_rejects_degenerate_x_values() {
         PublicKey::from_bytes(&[0xFFu8; 32]).is_none(),
         "all-0xFF is not even a valid field element (>= p)"
     );
+}
+
+#[test]
+#[cfg_attr(
+    miri,
+    ignore = "full seal/open scalar-multiply cost, see docs/TASKS.md T-206"
+)]
+fn unknown_version_byte_is_rejected_with_its_own_error() {
+    let secret = SecretKey::generate().expect("OS CSPRNG available in test environment");
+    let sealed =
+        seal(b"secret", &secret.public_key()).expect("OS CSPRNG available in test environment");
+    assert_eq!(sealed[0], VERSION);
+    for version in [0u8, 1, 3, 0xFF] {
+        let mut other = sealed.clone();
+        other[0] = version;
+        let err = open(&other, &secret).expect_err("only the current format version is accepted");
+        assert!(
+            matches!(err, OpenError::UnsupportedVersion),
+            "version = {version}"
+        );
+    }
+}
+
+/// T-232/F-01 on the box's own secretstream chunk: `80 00..` appended to the ciphertext up to the
+/// next 32-byte block boundary must not open.
+#[test]
+#[cfg_attr(
+    miri,
+    ignore = "full seal/open scalar-multiply cost, see docs/TASKS.md T-206"
+)]
+fn appended_gcm_padding_is_rejected() {
+    let secret = SecretKey::generate().expect("OS CSPRNG available in test environment");
+    let sealed = seal(b"PAY 100 UAH TO ALICE", &secret.public_key())
+        .expect("OS CSPRNG available in test environment");
+    let tag_start = sealed.len() - TAG_LEN;
+    let mut forged = sealed[..tag_start].to_vec();
+    forged.push(0x80);
+    forged.resize(PREFIX_LEN + HEADER_LEN + BLOCK_LEN, 0);
+    forged.extend_from_slice(&sealed[tag_start..]);
+    let err = open(&forged, &secret).expect_err("an extended ciphertext must fail authentication");
+    assert!(matches!(err, OpenError::InvalidCiphertext));
 }
 
 proptest! {

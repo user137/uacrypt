@@ -86,7 +86,7 @@ func TestBoxTamperedKemPrefixIsRejected(t *testing.T) {
 	publicKey := secretKey.PublicKey()
 	defer publicKey.Close()
 	sealed, _ := publicKey.Seal([]byte("message"))
-	sealed[0] ^= 1
+	sealed[1] ^= 1
 	if _, err := secretKey.Open(sealed); err == nil {
 		t.Fatal("expected an error")
 	}

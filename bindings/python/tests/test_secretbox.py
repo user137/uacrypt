@@ -30,7 +30,7 @@ def test_tampered_ciphertext_is_rejected() -> None:
 def test_tampered_nonce_is_rejected() -> None:
     key = d.secretbox_keygen()
     sealed = bytearray(d.secretbox_seal(key, b"message"))
-    sealed[0] ^= 1  # first byte of the nonce
+    sealed[1] ^= 1  # first byte of the nonce
     with pytest.raises(d.DstuError):
         d.secretbox_open(key, bytes(sealed))
 

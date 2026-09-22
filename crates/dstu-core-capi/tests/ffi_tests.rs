@@ -902,6 +902,23 @@ fn box_seal_open_round_trip_tamper_rejection_and_undersized_buffers() {
     );
     unsafe { dstu_box_secretkey_free(other_secret_ptr) };
 
+    // misuse: a blob from another format version (T-232/D-202)
+    let mut other_version = sealed.clone();
+    other_version[0] = 1;
+    assert_eq!(
+        unsafe {
+            dstu_box_open(
+                secret_ptr,
+                other_version.as_ptr(),
+                other_version.len(),
+                garbage.as_mut_ptr(),
+                garbage.len(),
+                &mut garbage_len,
+            )
+        },
+        DstuStatus::DSTU_ERR_UNSUPPORTED_VERSION
+    );
+
     // misuse: truncated input
     let mut truncated_out = [0u8; 4];
     let mut truncated_len = 0usize;
@@ -1120,6 +1137,23 @@ fn box512_seal_open_round_trip_tamper_rejection_and_undersized_buffers() {
         DstuStatus::DSTU_ERR_TAG_MISMATCH
     );
     unsafe { dstu_box512_secretkey_free(other_secret_ptr) };
+
+    // misuse: a blob from another format version (T-232/D-202)
+    let mut other_version = sealed.clone();
+    other_version[0] = 1;
+    assert_eq!(
+        unsafe {
+            dstu_box512_open(
+                secret_ptr,
+                other_version.as_ptr(),
+                other_version.len(),
+                garbage.as_mut_ptr(),
+                garbage.len(),
+                &mut garbage_len,
+            )
+        },
+        DstuStatus::DSTU_ERR_UNSUPPORTED_VERSION
+    );
 
     // misuse: truncated input
     let mut truncated_out = [0u8; 4];

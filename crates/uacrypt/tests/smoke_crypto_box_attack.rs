@@ -27,9 +27,11 @@
 //! here.
 //!
 //! **Wire format** (`crypto_box.rs`'s `seal`/`open`, confirmed by reading both, not assumed):
-//! `[kem_ciphertext: 128 bytes][secretstream header: 32][ciphertext: N][auth tag: 16]`. The KEM
-//! ciphertext's own first 32 bytes are `r` (`hazmat::dstu9041::encryption::encrypt`'s
-//! `ciphertext[..32] = r_bytes`) - the exact field this attack overwrites.
+//! `[version: 1][kem_ciphertext: 128 bytes][secretstream header: 32][ciphertext: N][auth tag: 16]`
+//! (the version byte since T-232/D-202). The KEM ciphertext's own first 32 bytes are `r`
+//! (`hazmat::dstu9041::encryption::encrypt`'s `ciphertext[..32] = r_bytes`), i.e. file bytes
+//! `[1..33]` - the exact field this attack overwrites. Overwriting from byte 0 would hit the
+//! version byte and fail on `UnsupportedVersion` without ever reaching the `r` check.
 
 mod support;
 use support::{uacrypt, TempDir};
@@ -97,10 +99,14 @@ fn box_open_rejects_r_equals_p_minus_one_order_two_point() {
 
     let mut tampered = support::read_bytes(&sealed);
     assert!(
-        tampered.len() >= 32,
-        "a real sealed file must be at least 32 bytes (the r field alone)"
+        tampered.len() >= 33,
+        "a real sealed file must be at least 33 bytes (version byte + the r field)"
     );
-    tampered[..32].copy_from_slice(&r_bytes);
+    assert_eq!(
+        tampered[0], 2,
+        "sealed file must start with format version 2"
+    );
+    tampered[1..33].copy_from_slice(&r_bytes);
     support::write_bytes(&sealed, &tampered);
 
     let r = uacrypt([
@@ -118,7 +124,52 @@ fn box_open_rejects_r_equals_p_minus_one_order_two_point() {
          silently accepted as a real chosen-ciphertext oracle"
     );
     assert!(
+        r.stderr.contains("authentication failed"),
+        "must fail in the KEM/authentication path, not on the version byte: stderr={}",
+        r.stderr
+    );
+    assert!(
         !opened.exists(),
         "no partial/wrong plaintext written on this rejection"
     );
+}
+
+/// T-232/D-202: a sealed file from another format version (e.g. written by 0.3.x, which had no
+/// version byte) fails with its own message, not a generic authentication failure.
+#[test]
+#[cfg_attr(
+    miri,
+    ignore = "spawns the real uacrypt binary - Miri cannot run a subprocess"
+)]
+fn box_open_reports_an_unsupported_format_version() {
+    let dir = TempDir::new("box_attack_version");
+    let secret = dir.file("recipient.key");
+    let public = dir.file("recipient.pub");
+    let msg = dir.file("msg.txt");
+    let sealed = dir.file("msg.box");
+    let opened = dir.file("opened.txt");
+    let (s, p, m, c, o) = (
+        secret.to_str().unwrap(),
+        public.to_str().unwrap(),
+        msg.to_str().unwrap(),
+        sealed.to_str().unwrap(),
+        opened.to_str().unwrap(),
+    );
+    assert!(uacrypt(["box-keygen", "--out", s]).success());
+    assert!(uacrypt(["box-pubkey", "--key", s, "--out", p]).success());
+    support::write_bytes(&msg, b"sealed by a future release");
+    assert!(uacrypt(["box-seal", "--key", p, "--in", m, "--out", c]).success());
+
+    let mut other = support::read_bytes(&sealed);
+    other[0] = 3;
+    support::write_bytes(&sealed, &other);
+
+    let r = uacrypt(["box-open", "--key", s, "--in", c, "--out", o]);
+    assert!(r.failure());
+    assert!(
+        r.stderr.contains("different format version"),
+        "stderr={}",
+        r.stderr
+    );
+    assert!(!opened.exists());
 }

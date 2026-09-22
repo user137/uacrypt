@@ -39,7 +39,7 @@ public sealed class SecretBoxTests
     {
         using var key = SecretboxKey.Generate();
         var sealedMessage = key.Seal(Encoding.ASCII.GetBytes("message"));
-        sealedMessage[0] ^= 1;
+        sealedMessage[1] ^= 1;
         Assert.Throws<DstuException>(() => key.Open(sealedMessage));
     }
 

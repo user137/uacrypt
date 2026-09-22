@@ -55,7 +55,7 @@ func TestSecretboxTamperedNonceIsRejected(t *testing.T) {
 	key, _ := GenerateSecretboxKey()
 	defer key.Close()
 	sealed, _ := key.Seal([]byte("message"))
-	sealed[0] ^= 1
+	sealed[1] ^= 1
 	if _, err := key.Open(sealed); err == nil {
 		t.Fatal("expected an error")
 	}

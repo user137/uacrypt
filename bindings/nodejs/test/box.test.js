@@ -46,7 +46,7 @@ test('tampered KEM prefix is rejected', () => {
   const secretKey = dstu.boxKeygen();
   const publicKey = dstu.boxPublicKey(secretKey);
   const sealed = Buffer.from(dstu.boxSeal(publicKey, Buffer.from('message')));
-  sealed[0] ^= 1;
+  sealed[1] ^= 1;
   assert.throws(() => dstu.boxOpen(secretKey, sealed));
 });
 
