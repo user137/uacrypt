@@ -312,12 +312,13 @@ Full incident narrative for any bulleted rule below lives under its cited `D-XX`
   `cargo tree -e normal --features <feature>`.
 - **Test-first, always** — a failing test (or test-vector check) before the implementation, every
   function, not just primitives.
-  - **Every new primitive/mode/wrapper/CLI command ships three test categories**: (1) correctness
-    against a vector/oracle, (2) **rejection** — tampered ciphertext/tag/aad/nonce, wrong key
-    ("attack" pass, D-64), (3) **misuse** — invalid lengths/args/paths, degenerate-but-legal input
-    succeeding rather than erroring, no partial output on failure ("fool" pass, D-65). Don't skip
-    either as "obviously fine" — D-63's nonce-authentication gap was found by noticing an *absent*
-    test, not a walkthrough.
+  - **Every new primitive/mode/wrapper/CLI command ships the applicable test categories**
+    (`~/.claude/dev-practices.md` §3): (1) **Happy path** — vector/oracle correctness, (2)
+    **Security & Boundary** — tampered ciphertext/tag/aad/nonce, wrong key (D-64), (3) **Misuse &
+    Fool** — invalid lengths/args/paths, degenerate-but-legal input succeeding, no partial output
+    on failure (D-65), (4) **Error path** — CLI/file-I/O wrapper layer only, not `no_std`
+    primitives: disk-full/permission-denied on chunked I/O (D-42). Don't skip any as "obviously
+    fine" — D-63's nonce gap was found by noticing an *absent* test.
   - **Where a misuse category is foreclosed by the type signature**, record that as a
     `docs/DECISIONS.md` finding instead of writing a test that only proves the compiler works.
   - **Rejection/misuse tests passing on first write is expected**, not a test-first violation.
@@ -482,9 +483,8 @@ Full incident narrative for any bulleted rule below lives under its cited `D-XX`
   byte-for-byte round trip before trusting a timing number. Separately, Git Bash's MSYS path
   conversion rewrites a leading `/CN=...` in `-subj` into a Windows path — prefix with
   `MSYS_NO_PATHCONV=1`.
-- **`openssl speed`'s own `Doing ... ops in Ts` progress line is written to stderr, not stdout** —
-  only the final summary table is on stdout. Invisible in a manual `2>&1`-merged shell spike
-  (T-187) — parse stderr, not stdout, when scripting this.
+- **`openssl speed` writes its `Doing ... ops` progress to stderr, only the summary table to
+  stdout** (T-187) — parse stderr when scripting it.
 - **A MinGW-built `.exe` can fail or hang when launched directly from Git Bash** (bogus
   `STATUS_ENTRYPOINT_NOT_FOUND`/exit 127) **while the identical binary runs clean from PowerShell**
   (T-181). Verify exports with `objdump -p` to rule out a real build issue first, then re-run via
