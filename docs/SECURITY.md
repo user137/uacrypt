@@ -146,6 +146,15 @@ attack closes the gap to the full round count for either cipher.
   migration (`docs/DECISIONS.md` D-63) via a tamper test written during that migration, not caught by
   code review after the fact — re-verify this for every future combined-AEAD wire format
   (`crypto_secretstream`/T-40 included), it is not a one-time fix.
+- **The same check applies to the ciphertext length.** `hazmat::kalyna_gcm` pads a non-aligned
+  ciphertext with `0x80 00..` and records only the *padded* length, so `ct` and `ct || 80 00..`
+  (up to a block boundary) share a tag. The construction therefore does not authenticate the
+  ciphertext's length (`hazmat::kalyna_gmac` has the same property). Any wrapper must bind the
+  true length itself, e.g. `ct_len` in a fixed-length AAD, as `crypto_secretbox` and
+  `crypto_secretstream` do since T-232 (`docs/DECISIONS.md` D-200). Never use either hazmat mode
+  over data of attacker-controlled length without such an external binding. Missed from T-37 to
+  T-232 because every official vector is block-aligned and round-trip tests cannot see a
+  non-injective encoding.
 
 ## Supply-chain vetting (apply before adding any crypto-adjacent dependency)
 

@@ -5,6 +5,23 @@ All notable changes to this project are documented in this file. Format follows
 
 ## [Unreleased]
 
+### Security
+
+- **Breaking wire-format change (0.4.0).** `crypto_secretbox` and `crypto_secretstream` now bind
+  each ciphertext's true length into its authentication tag, and `crypto_secretstream`'s
+  `PullState::pull` accepts only a full 16-byte tag. This closes an integrity weakness in earlier
+  releases (advisory to follow). `crypto_box`/`crypto_box512` also bind the KEM
+  ciphertext and the recipient public key into their stream key (T-232/T-238/T-248,
+  `docs/DECISIONS.md` D-200/D-201).
+- **Every sealed blob starts with a format-version byte.** This covers `crypto_secretbox`,
+  `crypto_box` and `crypto_box512`, and the version byte is currently `2`. A blob from another
+  version fails with a new `UnsupportedVersion` error, or `DSTU_ERR_UNSUPPORTED_VERSION` (13) in
+  the C ABI. The C ABI overheads grow by one byte: `DSTU_SECRETBOX_OVERHEAD` 49,
+  `DSTU_BOX_SEAL_OVERHEAD` 177, `DSTU_BOX512_SEAL_OVERHEAD` 305 (D-202).
+- **Migration: data written by 0.3.x cannot be opened by 0.4.0.** That includes `uacrypt encrypt`
+  files, `box-seal` files, and blobs from any binding. Decrypt it with the release that wrote it
+  before upgrading, then re-encrypt. The 0.3.x GitHub release binaries stay available for this.
+
 ### Added
 
 - Canary CI (`.github/workflows/canary.yml`, `cargo xtask canary`, T-226): a daily scheduled

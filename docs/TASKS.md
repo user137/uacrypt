@@ -8323,7 +8323,8 @@ which is exactly why the divergence was never caught.
 
 ### Tasks
 
-- [ ] **T-232** (audit F-01, **Critical**, Confirmed) `crypto_secretbox` + `crypto_secretstream`:
+- [ ] **T-232** (audit F-01, **Critical**, Confirmed; **core part done 2026-09-23, D-200/D-202** - the
+  stream-file framing version byte + non-final-record-length check remain, execution-plan step 4) `crypto_secretbox` + `crypto_secretstream`:
   bind the ciphertext length into the AEAD tag. Root cause: `hazmat::kalyna_gcm::compute_tag`
   (`kalyna_gcm.rs:153`) hashes the `0x80`-padded ciphertext and puts the *padded* length in the
   length block (D-56 divergences 2/3, transcribed faithfully from UAPKI `dstu7624.c`), so `ct` and
@@ -8414,7 +8415,8 @@ which is exactly why the divergence was never caught.
   ~3250; `docs/ORACLES.md` ~142, ~158) and `oracles/README.md`. Add V1-V4 to
   `tests/oracle-harness/{java,dotnet}` asserting the **currently documented** behaviour on each side
   (aligned: equal; non-aligned: the known divergence), so a change on either side trips the harness.
-- [ ] **T-238** (audit F-04, Medium, Confirmed) `crypto_secretstream::PullState::pull` accepts an
+- [x] **T-238** (audit F-04, Medium, Confirmed; **done 2026-09-23**, core + Python test; the other
+  bindings' misuse tests are step 4) `crypto_secretstream::PullState::pull` accepts an
   `auth_tag` of 8..=32 bytes (it delegates to `kalyna_gcm::decrypt`'s range check,
   `kalyna_gcm.rs:210`): an 8-byte prefix of a real tag verifies. Online forgery margin drops
   2^-128 -> 2^-64 per attempt (no Ferguson-style amplification - the tag is `E_K(poly)`, not
@@ -8500,7 +8502,7 @@ which is exactly why the divergence was never caught.
   UA/EN); (b) a comment on bc-java github #287 with V1/V4 as a concrete UAPKI-vs-BC divergence data
   point (and V3, which BC shares). Only after T-232 ships (don't disclose a live forgery on our own
   published packages first), and only on explicit go-ahead.
-- [ ] **T-248** (audit Q4, design, owner decision - O-3) `crypto_box`/`crypto_box512` derive the
+- [x] **T-248** (audit Q4, design, owner decision - O-3; **done 2026-09-23, D-201**) `crypto_box`/`crypto_box512` derive the
   stream key from the seed alone (`Kupyna256Kdf::derive_subkey(seed, 0, b"cryptbox"/b"cryptbx5")`);
   the KEM ciphertext and the recipient public key are not bound in (libsodium's sealed box binds
   `epk ‖ pk` into the nonce). No concrete attack found (the seed is authenticated by 9041's own hash
@@ -8680,9 +8682,26 @@ Critical forgery (V5/V6 recipes, file:line, affected versions) on published pack
 inside a draft GitHub Security Advisory's temporary private fork and publish fix + release + advisory
 together (coordinated disclosure, ISO/IEC 29147). The fix commit's tests reveal the bug just as clearly.
 
-Step 1 (owner decisions) is done - see "Owner decisions - resolved 2026-09-23". Next: step 2, T-232 +
-T-238 + T-248 - re-enter plan mode starting from T-232's "Design notes for step 2" (a draft;
-run the advisor gate before implementing), with an advisor pass before and after; generate the 0.3.8 old-format
-golden files for T-250 before the format change lands. All reproduction
+Step 1 (owner decisions) is done. **Step 2a is done (2026-09-23, local commits only, not pushed)**:
+T-238, T-232's core part, and T-248. The details are in D-200/D-201/D-202 and in the approved plan
+(summary below).
+- `crypto_secretbox` AAD = `version || nonce || ct_len_le64`.
+- `crypto_secretstream` AAD = `counter || tag_byte || ct_len_le64`.
+- `crypto_box`/`box512` stream key = `Kupyna256Kmac(seed, label || version || kem_ct || pk)`.
+- There is now a 1-byte version (`2`) on every sealed blob, a new `UnsupportedVersion` error, and
+  C ABI status 13. Overheads are 49/177/305, and the .NET constants and the Go/.NET/C++ status
+  switches are updated.
+
+Next, in order:
+1. Step 2b: T-239 -> T-240 (use status **14** for `DSTU_ERR_INVALID_ARGUMENT`; 13 is taken) ->
+   T-241 -> T-245a/b, each a small test-first commit.
+2. Step 4: the stream-file framing for uacrypt and all 8 binding writers. It needs:
+   - a version byte;
+   - a "non-final record must be exactly 8192 bytes" check;
+   - uacrypt's short-read chunk fill fixed (`File::read` ~lib.rs:1438);
+   - every writer checked to fill chunks completely;
+   - a T-238 misuse test per remaining binding.
+
+Golden files / `uacrypt migrate` are not needed (T-250 was downgraded). All reproduction
 data is in "Shared vectors" above; the throwaway PoC crates and the BC Java checks were outside the
 repo and are gone - rebuild them from V1-V6 plus bcprov 1.85, don't trust memory.

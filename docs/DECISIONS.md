@@ -13493,3 +13493,118 @@ matched, no fix needed there; (3) `crates/uacrypt/README.md`'s new version-agnos
 finding above) was confirmed to need no version-marker lint coverage, since it no longer states a
 version at all - nothing left for `cargo xtask docs-check` to catch drifting, by construction, not
 by oversight.
+
+## D-200: T-232 - bind the true ciphertext length into `crypto_secretbox`/`crypto_secretstream`'s AAD (audit F-01)
+
+**Finding.** `hazmat::kalyna_gcm::compute_tag` pads a non-aligned ciphertext with `0x80 00..`
+and writes the *padded* ciphertext length into the length block (D-56 divergences 2/3, transcribed
+from UAPKI `dstu7624.c`). So `ct` and `ct || 80 00..` (up to the next block boundary) produce
+the same tag. Neither wrapper put the length anywhere else: `crypto_secretbox`'s AAD was the nonce
+(D-63) and `crypto_secretstream`'s was `counter || tag_byte` (D-68). An attacker could append 1-31
+bytes to any sealed message or chunk, or strip a trailing `0x80` from a block-aligned one, and
+`open`/`pull` returned `Ok`. This was reproduced end to end on `uacrypt` 0.3.8 (`docs/TASKS.md`
+"Security audit remediation", V5/V6). D-56's claim that this area was "covered by the proptest
+round-trip" did not hold: a round trip cannot detect a non-injective encoding.
+
+**Bouncy Castle diverges.** `bcprov-jdk18on` 1.85's `KGCMBlockCipher` zero-pads and writes the
+true length. It gives the same ciphertext with a different tag on non-aligned input (V1/V4) and
+rejects the append forgery. Its own javadoc says its partial-block handling follows NIST and
+"has not been confirmed against an independent conformant DSTU 7624 implementation" (github #287).
+Every official DSTU 7624 GCM/GMAC vector is block-aligned, so neither reading is settled by a
+vector. That fork is T-234/T-235 and waits for the primary text.
+
+**Decision (owner O-1, 2026-09-23): fix at the `crypto_*` layer now, leave hazmat untouched.**
+- `crypto_secretbox` AAD = `version || nonce || (ciphertext_len as u64).to_le_bytes()` (41 bytes).
+- `crypto_secretstream` AAD = `counter_le64 || tag_byte || ciphertext_len_le64` (17 bytes).
+
+Both AADs are fixed-length. GCM zero-pads the AAD and records its true length, so the pair
+(padded ciphertext, true length) goes into the tag input injectively. Any append or truncate
+changes the AAD and fails the tag check whichever GCM padding reading T-235 later adopts.
+
+Citations, checked against the fetched primary texts on 2026-09-23:
+- RFC 5116 §2.2: decryption must return FAIL for inputs not produced by the encrypt operation.
+- NIST SP 800-38D §7.1, Algorithm 4, step 5: `S = GHASH_H(A || 0^v || C || 0^u || [len(A)]64 ||
+  [len(C)]64)`. This is the true-length encoding that the padded-length variant loses.
+
+Same pass, T-238: `PullState::pull` now requires exactly a 16-byte `auth_tag`. `kalyna_gcm::decrypt`
+alone accepts the DSTU-permitted 8..=32 range, so an 8-byte prefix of a real tag used to verify.
+Hazmat keeps its range (Q2). Wire-format break, shipped in 0.4.0. Old blobs and files fail to open.
+There is no legacy reader (owner, 2026-09-23: decrypt old data with 0.3.8 first; T-250 downgraded).
+
+Tests:
+- V5(a)/(b) regression tests for both modules;
+- a negative proptest: "extended with `80 00..` never opens";
+- `uacrypt`'s V6(a) end-to-end test (`smoke_secretstream_attack.rs`);
+- a Python binding test for T-238.
+
+Each was confirmed red against the old AAD/range before the fix.
+
+## D-201: T-248 - bind the KEM ciphertext and recipient key into `crypto_box`/`crypto_box512`'s stream key
+
+**Before:** the stream key was `Kupyna256Kdf::derive_subkey(seed, 0, b"cryptbox"/b"cryptbx5")`,
+a function of the seed alone. No attack was found. The DSTU 9041 hash check authenticates the
+seed, and the sender is anonymous by design. The binding is hardening against malleability, and
+the owner folded it into the same wire-format break as D-200 (O-3/Q4).
+
+**Now:** `stream_key = Kupyna256Kmac(key = seed, message = label || version || kem_ciphertext ||
+recipient_public_key)`, with the labels `b"cryptbox"`/`b"cryptbx5"` unchanged. `seal` binds
+`recipient.to_bytes()`. `open` recomputes the key from the secret key
+(`secret.public_key().to_bytes()`, one extra scalar multiplication). The existing
+`public_key_round_trips_through_bytes` test pins that both sides produce the same bytes.
+
+Citation: RFC 9180 §4.1 (DHKEM Encap/Decap), `kem_context = concat(enc, pkRm)`. Verified in the
+fetched rfc9180.txt, 2026-09-23. There is no sender static key, so there is no `pkSm` (anonymous
+sealed box, like libsodium's `crypto_box_seal`, which binds `epk || pk` into its nonce).
+
+Not `Kupyna256Kdf`, because its fixed 8-byte context cannot carry a 160/320-byte `kem_context`.
+Not a new public hazmat API and not HKDF (uncited over Kupyna, see `docs/pseudocode/kupyna-kdf.md`).
+This is a private `stream_key` helper in each module, over the already dual-oracle-verified
+`Kupyna256Kmac` (D-44). A unit test in each module checks that every tested byte of the KEM
+ciphertext, the recipient key and the seed changes the derived key.
+
+## D-202: a 1-byte format version on every `crypto_*` sealed blob
+
+The owner chose this on 2026-09-23 (O-1's premise, restated in T-232). `crypto_secretbox`,
+`crypto_box` and `crypto_box512` blobs now start with a version byte, currently `2`; 0.3.x blobs,
+implicitly v1, had none.
+
+The byte is also bound in:
+- secretbox: it is in the AAD;
+- box: it is in the stream-key derivation.
+
+A flipped version byte therefore never opens.
+
+An unknown value returns a new, separate error: `SecretboxError::UnsupportedVersion`,
+`OpenError::UnsupportedVersion`, and C ABI `DSTU_ERR_UNSUPPORTED_VERSION = 13`, mapped in the
+Go/.NET/C++ status switches and in `uacrypt`'s `CliError`. It is not folded into
+`TagMismatch`/`InvalidCiphertext`. The byte is public and is checked before any secret is used,
+so reporting it reveals nothing, which is the same reasoning that keeps `Truncated` distinct.
+
+Effect: if T-235 later changes the hazmat GCM padding, that becomes a clean `3` instead of a
+second silent break.
+
+C ABI overheads move by one byte:
+- `DSTU_SECRETBOX_OVERHEAD`: 48 -> 49
+- `DSTU_BOX_SEAL_OVERHEAD`: 176 -> 177
+- `DSTU_BOX512_SEAL_OVERHEAD`: 304 -> 305
+
+The .NET binding hardcodes these values and is updated to match; Go and C++ read the header.
+
+`crypto_secretstream` itself has no blob, so its version byte belongs to the stream-file framing
+(`uacrypt` plus the 8 binding writers). That lands in execution-plan step 4, together with the
+"non-final record must be exactly 8192 bytes" check and fixing `uacrypt`'s short-read chunk fill.
+
+**Found while landing this (test-validity, not a crypto finding).** Several existing tamper tests
+flipped byte 0 of a sealed blob:
+- secretbox and box tests in all 8 bindings;
+- `uacrypt`'s `r = p-1` order-2 attack test (`smoke_crypto_box_attack.rs`, which overwrote bytes
+  `[..32]`).
+
+Byte 0 is now the public version byte. All of them would still have passed, but on
+`UnsupportedVersion` rather than on the nonce/KEM check they exist to exercise.
+
+They now target byte 1 (bytes `[1..33]` for `r`). The `r = p-1` test also asserts that the failure
+message is "authentication failed", so it cannot silently regress to the version check again.
+
+General rule: when a wire format gains a prefix, re-read every test that tampers at a fixed offset.
+A green result is not evidence the test still hits the field it was written for.

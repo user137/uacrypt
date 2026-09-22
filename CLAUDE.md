@@ -108,22 +108,22 @@ canonical source (`docs/TASKS.md`/`docs/DECISIONS.md`) — this section states c
   - `crypto_pwhash` (`hash_password`/`verify_password`/`Strength`) — wraps `argon2` behind a
     dedicated `pwhash` feature (off by default); `Strength::{Interactive,Moderate,Sensitive}` cites
     libsodium's own constants exactly (T-71/D-49/D-50).
-  - `crypto_secretbox` (`seal`/`open`/`SecretKey`) — `Kalyna256_256Gcm`, internal nonce, combined
-    `nonce||ciphertext||tag`, no AAD parameter; the nonce is passed as the construction's own
-    internal AAD to keep it authenticated (closes a real gap found migrating off Kalyna-CCM, no
-    message-length cap unlike the old CCM construction — T-37/D-51/D-63).
+  - `crypto_secretbox` (`seal`/`open`/`SecretKey`) — `Kalyna256_256Gcm`, internal nonce,
+    `version||nonce||ciphertext||tag`, no caller AAD; internal AAD `version||nonce||ct_len` binds the
+    nonce (D-63) and the true length (hazmat GCM's padded-length tag is non-injective, D-200/D-202).
+    No message-length cap (T-37/D-51).
   - `crypto_generichash`/`crypto_auth`/`crypto_kdf` — Kupyna hash/KMAC/KDF wrappers, only the
     256-bit variant exposed, opaque `Zeroize`-on-drop key types (T-105/D-66).
   - `crypto_stream` (`encrypt`/`decrypt`/`Key`) — `Strumok256` only, hidden internal IV, **no
     authentication** (`decrypt` never fails on tampered input) — hence `encrypt`/`decrypt` naming,
     not `seal`/`open` (T-106/D-67).
   - `crypto_secretstream` (`PushState`/`PullState`/`Key`/`Tag`) — genuinely chunked/streaming AEAD,
-    tag-per-chunk framing (`Message`/`Push`/`Rekey`/`Final`), header-derived subkeys + one-way
-    `Rekey` forward secrecy; no oracle vector can ever exist for this from-scratch construction,
-    verified by property/tamper/misuse tests instead (T-40/T-70/D-68).
+    tag-per-chunk framing, chunk AAD `counter||tag||ct_len` (D-200), 16-byte tag only (T-238),
+    header-derived subkeys + one-way `Rekey`; from-scratch, no oracle vector ever - verified by
+    property/tamper/misuse tests (T-40/T-70/D-68).
   - `crypto_box` (`seal`/`open`/`SecretKey`/`PublicKey`) — public-key encryption over
     `hazmat::dstu9041` (`l(p)=256`), hybrid via KDF (a random seed sealed asymmetrically,
-    expanded via `hazmat::kupyna_kdf`, then `crypto_secretstream` encrypts the actual message);
+    keyed into `Kupyna256Kmac` over `kem_ct||recipient_pk` (D-201), then secretstream encrypts);
     `PublicKey` is 32 bytes, the curve point's `x`-coordinate only (T-178/D-169). `crypto_box512`
     is the direct `l(p)=512` (E512/1) sibling (T-193, 2026-08-08, D-182) — same shape, `PublicKey`/
     `SecretKey` at 64 bytes, seed deliberately fixed at 32 bytes/256 bits (not `l(p)=512`'s full
@@ -292,9 +292,9 @@ Full detail and rationale in `docs/SECURITY.md` — this is the compressed versi
   nonce only seeds the keystream, unlike CCM (B0 folds the nonce into the CBC-MAC) or NIST AES-GCM
   (`J0` is nonce-derived). Uncovered + travels in the same trusted blob = an attacker can tamper the
   nonce prefix and get "successful" decryption of wrong plaintext instead of failing closed. Fix:
-  pass the nonce as the construction's own AAD (bind it via the mechanism already provided for
-  exactly this). See D-63 for the concrete case — check this again for every future combined-AEAD
-  wrapper, don't assume it only applied once.
+  pass the nonce as the construction's own AAD (D-63). **Same for the ciphertext length**: Kalyna-
+  GCM/GMAC tag only the `0x80`-padded length, so `ct` and `ct||80 00..` collide — bind `ct_len` in
+  a fixed-length AAD (D-200). Re-check both for every future combined-AEAD wrapper.
 
 ## Agent discipline
 

@@ -41,8 +41,8 @@ against this working hypothesis" situation:
   tables are additionally spot-checked against the same text (D-198), not independently
   transcription-verified in full.
 - **`crypto_secretbox` (T-37) is done, see `docs/DECISIONS.md` D-51** — a single fixed construction,
-  internally-generated nonce, combined `nonce || ciphertext || tag` output, no caller-facing AAD
-  parameter. **Migrated 2026-07-25 from Kalyna-CCM to Kalyna-GCM** (roadmap Step 3 item 1,
+  internally-generated nonce, combined `version || nonce || ciphertext || tag` output (version
+  byte and length-bound AAD since T-232, D-200/D-202), no caller-facing AAD parameter. **Migrated 2026-07-25 from Kalyna-CCM to Kalyna-GCM** (roadmap Step 3 item 1,
   `docs/DECISIONS.md` D-63) — `hazmat::kalyna_gcm::Kalyna256_256Gcm`, not all five variants, per D-47's
   "delete the knob" criterion. **The 255-byte cap is gone entirely, not just raised**
   (`SecretboxError::MessageTooLong` was removed, not left dormant) — GCM encodes no length into its
