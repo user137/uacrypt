@@ -8160,6 +8160,7 @@ codes, and memory lifecycle) stays intact and doesn't need its own task.
   internal IV, the signature verifiers take structured key+sig not a length-prefixed blob) or are
   hazmat-level and already exercised indirectly. Do after Batch 3c unless a T-223 finding points
   straight at one of them.
+  **2026-09-22 scope addition**: negative-property fuzz check - see "Security audit remediation" ("Attached to existing tasks").
 
 ### RESUME HERE (state as of 2026-08-31, saved for a memory-clear/new-session handoff)
 
@@ -8226,7 +8227,8 @@ compare is `subtle::ConstantTimeEq`; all 94 `extern "C"` exports start with a `g
 (`catch_unwind`) wrapper (checked by script); no self-recursive function anywhere in
 `crates/dstu-core/src` (checked by script); m=257 verify does full `n*Q == O`; DSTU 9041
 `point_from_x` rejects x in {0,1,p-1}, non-residues and non-subgroup points; D-118's two binding
-pitfalls are closed in all 8 bindings; `cargo audit` (117 crates) and `cargo deny check` clean;
+pitfalls are closed in Python, Ruby and `uacrypt` (read in full; the other 6 bindings only at grep
+level - see T-249); `cargo audit` (117 crates) and `cargo deny check` clean;
 `dstu-core --no-default-features` pulls only `subtle`+`zeroize`. No instruction-like text found in
 `oracles/`.
 
@@ -8296,7 +8298,6 @@ which is exactly why the divergence was never caught.
 
 ### Tasks
 
-  **2026-09-22 scope addition**: negative-property fuzz check - see "Security audit remediation" ("Attached to existing tasks").
 - [ ] **T-232** (audit F-01, **Critical**, Confirmed) `crypto_secretbox` + `crypto_secretstream`:
   bind the ciphertext length into the AEAD tag. Root cause: `hazmat::kalyna_gcm::compute_tag`
   (`kalyna_gcm.rs:153`) hashes the `0x80`-padded ciphertext and puts the *padded* length in the
@@ -8307,11 +8308,15 @@ which is exactly why the divergence was never caught.
   ABI - append of pseudo-random bytes always, deletion of plaintext bytes when a ciphertext ends in
   `80 00*` (V5, V6). `crypto_box`/`box512` share the mechanism but are anonymous-sender by design,
   so there is no practical impact there (note it, don't prioritize it). Fix (minimal, at the
-  `crypto_*` layer only - **do not touch `hazmat::kalyna_gcm`**, that would break the KATs and UAPKI
-  interop): secretbox AAD = `nonce ‖ ct_len_le64`; secretstream AAD =
+  `crypto_*` layer only - **do not touch `hazmat::kalyna_gcm`** here: every official GCM/GMAC KAT in
+  `tests/vectors/kalyna-gcm|gmac/` is block-aligned (checked 2026-09-22), so a switch to BC's reading
+  would break no KAT, but it would break UAPKI interop on non-aligned input - that fork is T-235's): secretbox AAD = `nonce ‖ ct_len_le64`; secretstream AAD =
   `counter_le64 ‖ tag_byte ‖ ct_len_le64`. Add a 1-byte format version to the `uacrypt`/binding
   stream header and to the secretbox blob (Q1 decides whether an external format constrains this).
-  Defence in depth: every reader (`uacrypt` `run_secretstream_decrypt` - today only
+  Defence in depth (precondition: first verify that **all 9 writers** - `uacrypt` plus the 8
+  bindings, esp. Go's pending-chunk logic and .NET's `WriteChunk(tag, pt, len)` - emit exactly
+  `SECRETSTREAM_CHUNK_BYTES` for every non-final record, or this check breaks cross-binding files):
+  every reader (`uacrypt` `run_secretstream_decrypt` - today only
   `chunk_len > SECRETSTREAM_CHUNK_BYTES` at `lib.rs:1513` - plus the 8 bindings) rejects a non-final
   record whose length is not exactly `SECRETSTREAM_CHUNK_BYTES`. **Tests (write first, must fail on
   `f8bf046`)**: Security & Boundary - V5(a)/(b) for secretbox and secretstream in
@@ -8367,7 +8372,7 @@ which is exactly why the divergence was never caught.
   max byte1 = `0x01`. Effect: ~6 bits of key-space loss (kangaroo ~2^124.5 vs rho ~2^127.5), keys
   distinguishable from DSTU-uniform; the doc comment's "~50% rejection" is false (actual ~0%).
   `from_bytes` accepts the full range, so imported keys are unaffected. Fix: drop the `candidate[1]`
-  mask (keep `candidate[0] = 0`). Tests: statistical - over N keys the fraction >= 2^249 is ~97% and
+  mask (keep `candidate[0] = 0`). Tests: statistical - over N keys the fraction >= 2^249 is ~98.4% (63/64) and
   the rejection rate ~50%, with bounds loose enough not to flake. CHANGELOG user note: m=257 keys
   generated since T-199 (`5006101`) stay valid but should be regenerated. `dstu-core-capi` and every
   binding delegate to this function - verify that, don't assume it.
@@ -8448,7 +8453,8 @@ which is exactly why the divergence was never caught.
   the `crypto_auth`/`crypto_kdf`/`crypto_generichash`/`crypto_pwhash`/`crypto_stream` wrappers
   beyond a grep of their compares; `hazmat::strumok`; the Kalyna key schedule; `tables.rs`
   transcription (relies on KATs/BC today); `dstu9041` l=512 files line by line (only structurally
-  compared to l=256); binding internals beyond the `pull`/close/FFI-enum sites; actually running
+  compared to l=256); binding internals beyond the `pull`/close/FFI-enum sites, incl. a full read of D-118's two pitfalls
+  in Node.js/PHP/Java/.NET/Go/C++ (only grep-checked - Node's exception path was never seen); actually running
   `cargo test`/Miri/Kani/fuzz (the audit only read CI). Hardware side channels stay out of scope.
 - Attached to existing tasks (no new IDs): **T-223** - add a negative-property check to the
   `crypto_secretbox`/`crypto_box`/`crypto_box512` fuzz targets (a mutated, extended or truncated
