@@ -8313,6 +8313,13 @@ which is exactly why the divergence was never caught.
   settles it.
 - **Version**: **0.4.0** for `dstu-core`/`uacrypt` (pre-1.0 breaking bump); bindings get their own
   breaking bumps.
+- **Binary compatibility (2026-09-23, owner)**: the project has few users yet, so `uacrypt` may be
+  broken freely (format, flags, subcommands) - no compatibility shims. Consequence (Claude's reading,
+  owner may correct): **T-250 is downgraded** - no `uacrypt migrate` command and no fixtures work;
+  instead a CHANGELOG/advisory note "decrypt your files with 0.3.8 before upgrading", and T-251
+  **keeps the old GitHub release assets** (tags + security banner) so old files stay decryptable,
+  while registries are still yanked/deprecated. The embargo is unchanged (low popularity does not
+  make disclosure-before-fix acceptable).
 
 ### Tasks
 
@@ -8363,11 +8370,11 @@ which is exactly why the divergence was never caught.
     private helper in each module - no new public hazmat API, no HKDF. `open` recomputes
     `recipient_pk` from the secret key (one extra scalar multiplication). Record in a new `D-` entry
     citing RFC 9180's `kem_context = enc ‖ pkR` (clause to be verified).
-  - **T-250 migrate without a library legacy API**: `uacrypt migrate` reimplements the 0.3.8 read path
+  - **[superseded 2026-09-23 - T-250 downgraded, see Owner decisions]** **T-250 migrate without a library legacy API**: `uacrypt migrate` reimplements the 0.3.8 read path
     from public hazmat pieces (`Kupyna256Kmac`, `Kalyna256_256Gcm`, `dstu9041::{encryption,
     encryption512}::decrypt`, `Kupyna256Kdf`) inside `uacrypt` only - consistent with Q1 (no
     `open_legacy` in library/bindings). Covers stream files and box/box512 sealed files.
-  - **Golden files first**: before the format change lands, generate 0.3.8-format fixtures with the
+  - **[superseded - not needed without migrate]** **Golden files first**: before the format change lands, generate 0.3.8-format fixtures with the
     current binary (a stream file with 2 non-final + 1 final record, a box and a box512 sealed file,
     plus their keys) into e.g. `crates/uacrypt/tests/fixtures/legacy-0.3.8/`.
   - **Commit split for step 2** (proposed): fixtures -> T-238 -> T-232 core (secretbox, secretstream)
