@@ -8296,6 +8296,24 @@ which is exactly why the divergence was never caught.
 - **O-3 - whether to fold T-248 (`crypto_box` KEM binding) into the same wire-format break as
   T-232.**
 
+### Owner decisions - resolved 2026-09-23 (execution plan step 1 done)
+
+- **Audit commits**: stay on local `master`, not pushed (embargo); no separate branch.
+- **O-1**: fix F-01 **now** (option A) - T-232 proceeds without waiting for T-234.
+- **O-3 / Q4**: **yes** - T-248's KEM binding ships in the same wire-format break as T-232.
+- **Q1 / T-250** (delegated to Claude): no external-format compatibility requirement - the
+  secretbox/stream/box formats are this project's own, not UAPKI/IIT CMS containers. Legacy
+  handling = **CLI-only `uacrypt migrate`**; no `open_legacy` in the library or bindings.
+- **Q3**: **yes** - m=163 verify switches to full `n*Q == O` (T-245b).
+- **Q2** (delegated): the 16-byte tag pin applies at the `crypto_*` layer only
+  (`PullState::pull`, T-238). `hazmat::kalyna_gcm` keeps its DSTU-permitted 8..=block tag range,
+  so the owner's microcontroller use of hazmat is unaffected.
+- **Q5** (delegated): unknown and not blocking - treat BC's `DSTU7624Mac` as **not proven
+  independent** of the UAPKI lineage, i.e. V3's agreement is weak evidence; T-234's primary text
+  settles it.
+- **Version**: **0.4.0** for `dstu-core`/`uacrypt` (pre-1.0 breaking bump); bindings get their own
+  breaking bumps.
+
 ### Tasks
 
 - [ ] **T-232** (audit F-01, **Critical**, Confirmed) `crypto_secretbox` + `crypto_secretstream`:
@@ -8598,7 +8616,7 @@ replace a DSTU primitive.
 
 ### Execution plan (persisted 2026-09-23 - survives a memory clear; the owner controls ordering)
 
-1. **Owner decisions** (one sitting): O-1 (fix now vs wait for T-234 - recommended: now), O-3/Q4
+1. **[done 2026-09-23 - see "Owner decisions - resolved"]** **Owner decisions** (one sitting): O-1 (fix now vs wait for T-234 - recommended: now), O-3/Q4
    (fold T-248 into the same break - recommended: yes, one break instead of two), Q1 + T-250 (legacy
    migrate path - recommended: yes, CLI-only), Q3 (m=163 `n*Q == O` - recommended: yes), version
    number (recommended: 0.4.0), Q2, Q5. T-234's library order can start immediately in parallel.
@@ -8625,6 +8643,8 @@ Critical forgery (V5/V6 recipes, file:line, affected versions) on published pack
 inside a draft GitHub Security Advisory's temporary private fork and publish fix + release + advisory
 together (coordinated disclosure, ISO/IEC 29147). The fix commit's tests reveal the bug just as clearly.
 
-Nothing implemented yet. Start at the execution plan's step 1 (owner decisions). All reproduction
+Step 1 (owner decisions) is done - see "Owner decisions - resolved 2026-09-23". Next: step 2, T-232 +
+T-238 + T-248 in plan mode with an advisor pass before and after; generate the 0.3.8 old-format
+golden files for T-250 before the format change lands. All reproduction
 data is in "Shared vectors" above; the throwaway PoC crates and the BC Java checks were outside the
 repo and are gone - rebuild them from V1-V6 plus bcprov 1.85, don't trust memory.
