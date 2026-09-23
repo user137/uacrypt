@@ -8858,6 +8858,10 @@ Next, in order:
      A CVE request does not publish a draft ("Requesting a CVE identification number doesn't make
      your security advisory public"; GitHub reviews within ~72 h), so request both as soon as the
      owner approves the texts, and the IDs are ready for the CHANGELOG.
+   - **2026-09-24: owner approved both advisory texts as drafted (T-232 stays High 7.5; D-207 keeps
+     its "other implementations were notified" sentence). CVEs requested for both via the API;
+     both still `draft`, CVE IDs pending GitHub review.** Check with
+     `gh api repos/user137/uacrypt/security-advisories/<GHSA> --jq .cve_id`.
    - **Release-day order (each step confirmed):** check the date rule -> Miri on
      `crypto_secretstream` recorded green -> CVE IDs assigned -> commit CHANGELOG `[Unreleased]` ->
      `[0.4.0] - <date>` with "advisory to follow" replaced by the GHSA/CVE IDs -> push both in one
