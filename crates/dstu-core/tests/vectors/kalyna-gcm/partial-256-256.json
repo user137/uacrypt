@@ -1,0 +1,48 @@
+{
+  "algorithm": "Kalyna-GCM-256/256",
+  "block_bits": 256,
+  "key_bits": 256,
+  "source": "T-234/D-204: partial-block cases for DSTU 7624:2014 (draft) §12.2/§12.5 semantics - a non-aligned AAD (O) and ciphertext (C) are each padded per annex Б.2 (a 1 bit, i.e. 0x80, then zeros) and the length block carries the TRUE bit lengths |O|, |C|. No annex example has a byte-level partial block (В.8.1.3 is a 139-bit GMAC example; it pins the O side and is checked by a unit test inside hazmat::kalyna_gmac). Tags generated in two independent ways that agree on all 60 scratch cases: (1) Bouncy Castle bcprov-jdk18on 1.85 KGMac as the GF(2^l) Horner chain over the pre-padded O*||C* (already block-aligned, so BC's own zero padding does not apply), with the length block swapped via tag = E(B xor lambda); (2) the same lambda swap over the pre-T-234 hazmat chain. Ciphertexts come from the CTR keystream, which matches every annex В.8 example. Not produced by the code under test. Key = 00 01 02 ..., AAD byte i = i xor 0x5A, plaintext byte i = i xor 0xC3. Full-block (q = l) tags.",
+  "cases": [
+    {
+      "key_hex": "000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F",
+      "iv_hex": "21262B30353A3F44494E53585D62676C71767B80858A8F94999EA3A8ADB2B7BC",
+      "aad_hex": "5A5B58595E5F5C5D5253505156575455",
+      "plaintext_hex": "C3C2C1C0C7C6C5C4CBCAC9C8CFCECDCCD3D2D1D0D7D6D5D4DBDAD9D8DFDEDDDC",
+      "ciphertext_hex": "81A0C6387A6DDE7BDC3755545C5B81EF9E417323B4D14651BEA6134D5A716C6D",
+      "tag_hex": "C1C653D01458B17C1048E23DB1C5AA1E399A5386A781F6E7BA6F2DD808A2D073"
+    },
+    {
+      "key_hex": "000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F",
+      "iv_hex": "21262B30353A3F44494E53585D62676C71767B80858A8F94999EA3A8ADB2B7BC",
+      "aad_hex": "",
+      "plaintext_hex": "C3C2C1C0C7",
+      "ciphertext_hex": "81A0C6387A",
+      "tag_hex": "76679E8541DEADF40C237F0F01CC15BED801C3189754B11AF3DF8B601DD6C777"
+    },
+    {
+      "key_hex": "000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F",
+      "iv_hex": "21262B30353A3F44494E53585D62676C71767B80858A8F94999EA3A8ADB2B7BC",
+      "aad_hex": "5A5B58595E5F5C5D5253505156575455",
+      "plaintext_hex": "C3C2C1C0C7C6C5C4CBCAC9C8CFCECDCCD3",
+      "ciphertext_hex": "81A0C6387A6DDE7BDC3755545C5B81EF9E",
+      "tag_hex": "DD18EA0347761349C3DC5A55E86CB2C266439A314EF4D096A2A2DB213C11FB12"
+    },
+    {
+      "key_hex": "000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F",
+      "iv_hex": "21262B30353A3F44494E53585D62676C71767B80858A8F94999EA3A8ADB2B7BC",
+      "aad_hex": "5A5B58595E5F5C",
+      "plaintext_hex": "C3C2C1C0C7C6C5C4CB",
+      "ciphertext_hex": "81A0C6387A6DDE7BDC",
+      "tag_hex": "07268B689D3DB827CE39F7805D758B634FD34EC7651AFDD3FA3D947C9B169B2F"
+    },
+    {
+      "key_hex": "000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F",
+      "iv_hex": "21262B30353A3F44494E53585D62676C71767B80858A8F94999EA3A8ADB2B7BC",
+      "aad_hex": "5A5B58595E5F5C5D52535051565754554A4B48494E4F4C4D42434041464744",
+      "plaintext_hex": "C3C2C1C0C7C6C5C4CBCAC9C8CFCECDCCD3D2D1D0D7D6D5D4DBDAD9D8DFDEDDDCE3",
+      "ciphertext_hex": "81A0C6387A6DDE7BDC3755545C5B81EF9E417323B4D14651BEA6134D5A716C6DA8",
+      "tag_hex": "D6F0432867CBED40D907669A9F2A092F5FC7E037FCF3BBDE2F3781ED88393BEA"
+    }
+  ]
+}

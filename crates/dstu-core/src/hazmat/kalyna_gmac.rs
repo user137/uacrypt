@@ -34,18 +34,19 @@
 //! [`super::kalyna_kw`]/[`super::kalyna_gcm`] already use (`padding()` in the C source) - unlike
 //! [`super::kalyna_kw`]'s block-aligned-only restriction, `encrypt_gmac`'s padding step is a
 //! self-contained one-shot allocation with no analogous OOB risk, so this module supports arbitrary
-//! lengths. The final length block holds the **padded** message bit-length (little-endian `u64`)
-//! always at a fixed low-8-byte offset, with every other byte zero - **not**
+//! lengths. The final length block holds the message's **true** bit-length (little-endian `u64`,
+//! DSTU 7624:2014 (draft) §12.5 `lambda_o = |O|`, confirmed by annex В.8.1.3 - T-234/D-204; before
+//! that `dstu7624.c`'s padded length was used) always at a fixed low-8-byte offset, with every other
+//! byte zero - **not**
 //! [`super::kalyna_gcm`]'s two-value, half-block-offset-scaled layout (there is only one stream
 //! here, no AAD/ciphertext split to keep separate).
 //!
-//! # Security: the tag does not bind the exact message length
+//! # Interoperability
 //!
-//! Because the tag covers the padded message and its padded length, messages of different lengths
-//! that pad to the same blocks can share a tag under the same key. Do not rely on this tag where an
-//! attacker can change a message's length, unless the true length is authenticated some other way
-//! (`docs/DECISIONS.md` D-200). Whether DSTU 7624:2014's own text specifies this padding is not yet
-//! confirmed (T-234).
+//! The Б.2 `0x80` marker plus the true length make the tag input injective, so `m` and `m || 80 00..`
+//! no longer share a tag (they did before T-234, `docs/DECISIONS.md` D-200/D-204). UAPKI's
+//! `encrypt_gmac` still uses the padded length, and Bouncy Castle 1.85's `KGMac` zero-pads, so for a
+//! non-block-aligned message neither matches this module - see `docs/COMPATIBILITY.md`.
 //!
 //! # No key separation from any encryption key
 //!
@@ -92,6 +93,20 @@ macro_rules! kalyna_gmac_variant {
                 cipher: &super::kalyna::$expanded,
                 message: &[u8],
             ) -> [u8; $block_bytes] {
+                #[allow(clippy::cast_possible_truncation)] // realistic lengths fit u64 trivially
+                let bit_len = (message.len() as u64) * 8;
+                Self::mac_with_bit_len(cipher, message, bit_len)
+            }
+
+            /// §12.5: pads `message` per annex Б.2 when it is not block-aligned, and puts `bit_len`
+            /// (the true length) into the length block. Split out from
+            /// [`Self::mac_with_cipher`] so a unit test can feed annex В.8.1.3's bit-level example
+            /// (139 bits, already padded by the annex itself).
+            fn mac_with_bit_len(
+                cipher: &super::kalyna::$expanded,
+                message: &[u8],
+                bit_len: u64,
+            ) -> [u8; $block_bytes] {
                 let h_key = <$gf>::from_le_bytes(&cipher.encrypt_block(&[0u8; $block_bytes]));
 
                 let msg_len = message.len();
@@ -118,9 +133,7 @@ macro_rules! kalyna_gmac_variant {
                 }
 
                 let mut length_block = [0u8; $block_bytes];
-                #[allow(clippy::cast_possible_truncation)] // realistic lengths fit u64 trivially
-                let padded_len_bits = (padded_len as u64) * 8;
-                length_block[..8].copy_from_slice(&padded_len_bits.to_le_bytes());
+                length_block[..8].copy_from_slice(&bit_len.to_le_bytes());
 
                 let acc_bytes = acc.to_le_bytes();
                 let mut combined = [0u8; $block_bytes];
@@ -181,3 +194,32 @@ kalyna_gmac_variant!(Kalyna128_256Gmac, Kalyna128_256ExpandedKey, 32, 16, Gf2m12
 kalyna_gmac_variant!(Kalyna256_256Gmac, Kalyna256_256ExpandedKey, 32, 32, Gf2m256);
 kalyna_gmac_variant!(Kalyna256_512Gmac, Kalyna256_512ExpandedKey, 64, 32, Gf2m256);
 kalyna_gmac_variant!(Kalyna512_512Gmac, Kalyna512_512ExpandedKey, 64, 64, Gf2m512);
+
+#[cfg(test)]
+mod tests {
+    use super::Kalyna128_128Gmac;
+    use crate::hazmat::kalyna::Kalyna128_128ExpandedKey;
+
+    /// DSTU 7624:2014 (draft) annex В.8.1.3: a 139-bit message `20..2F || 30E` (the last byte's top
+    /// 3 bits), which the annex itself pads to `20..2F || 30F0 00..` (the Б.2 "1" bit lands right
+    /// after the 139th bit), with `lambda_o = 0x8B` = 139 - the true length, not the padded 256.
+    #[test]
+    fn annex_v8_1_3_bit_level_example() {
+        let key: [u8; 16] = core::array::from_fn(|i| i as u8);
+        let cipher = Kalyna128_128ExpandedKey::new(&key);
+        let mut padded = [0u8; 32];
+        for (i, b) in padded[..16].iter_mut().enumerate() {
+            *b = 0x20 + i as u8;
+        }
+        padded[16] = 0x30;
+        padded[17] = 0xF0;
+        let tag = Kalyna128_128Gmac::mac_with_bit_len(&cipher, &padded, 139);
+        assert_eq!(
+            tag,
+            [
+                0x0E, 0x00, 0xDE, 0x1C, 0xB9, 0xC4, 0xB3, 0xA5, 0x5F, 0xD7, 0x26, 0x51, 0x65, 0x26,
+                0x6F, 0x5B
+            ]
+        );
+    }
+}

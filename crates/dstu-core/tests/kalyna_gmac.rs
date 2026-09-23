@@ -204,3 +204,51 @@ roundtrip_proptest!(k128_256, Kalyna128_256Gmac, 32, 16);
 roundtrip_proptest!(k256_256, Kalyna256_256Gmac, 32, 32);
 roundtrip_proptest!(k256_512, Kalyna256_512Gmac, 64, 32);
 roundtrip_proptest!(k512_512, Kalyna512_512Gmac, 64, 64);
+
+// T-234/D-204: DSTU 7624:2014 (draft) §12.5 - a non-aligned message is padded per annex Б.2 and the
+// length block carries its true bit length. Includes `Kalyna128_128Gmac`, which had no vector before.
+// Generated from Bouncy Castle's GF chain with the standard's length block (see `source`).
+official_vector_test!(
+    kalyna128_128_partial_block,
+    Kalyna128_128Gmac,
+    16,
+    "vectors/kalyna-gmac/partial-128-128.json"
+);
+official_vector_test!(
+    kalyna128_256_partial_block,
+    Kalyna128_256Gmac,
+    32,
+    "vectors/kalyna-gmac/partial-128-256.json"
+);
+official_vector_test!(
+    kalyna256_256_partial_block,
+    Kalyna256_256Gmac,
+    32,
+    "vectors/kalyna-gmac/partial-256-256.json"
+);
+official_vector_test!(
+    kalyna256_512_partial_block,
+    Kalyna256_512Gmac,
+    64,
+    "vectors/kalyna-gmac/partial-256-512.json"
+);
+official_vector_test!(
+    kalyna512_512_partial_block,
+    Kalyna512_512Gmac,
+    64,
+    "vectors/kalyna-gmac/partial-512-512.json"
+);
+
+/// `m` and `m || 80 00..` (padded to the same blocks) must not share a tag (true length, §12.5).
+#[test]
+fn message_and_its_padded_extension_have_different_tags() {
+    let key = [1u8; 32];
+    let message = [0x33u8; 40];
+    let mut extended = message.to_vec();
+    extended.push(0x80);
+    extended.resize(64, 0);
+    assert_ne!(
+        Kalyna256_256Gmac::mac(&key, &message),
+        Kalyna256_256Gmac::mac(&key, &extended)
+    );
+}

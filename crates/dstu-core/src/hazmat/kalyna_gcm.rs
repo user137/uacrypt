@@ -16,29 +16,21 @@
 //!    "three similar lines beats a premature abstraction across an already-verified boundary"
 //!    reasoning applied to every other mode in this roadmap).
 //! 2. **Horner-accumulate over AAD then ciphertext, no length block folded into the multiply
-//!    chain.** `H = E_K(0)` once; `B = 0`, then for each AAD block (zero-padded, no `0x80` marker,
-//!    if the last one is partial) and then each ciphertext block (**`0x80`-then-zeros padded** -
-//!    the same `padding()` construction [`super::kalyna_cmac`]/[`super::kalyna_kw`] use, not plain
-//!    zero-padding, and *not* symmetric with AAD's plain zero-padding - a real, easy-to-miss
-//!    asymmetry confirmed by reading the C source line by line): `B = (B XOR block) * H`.
+//!    chain.** `H = E_K(0)` once; `B = 0`, then for each AAD block and then each ciphertext block,
+//!    `B = (B XOR block) * H`. A partial last block of either is padded per annex Б.2 (`0x80` then
+//!    zeros) - DSTU 7624:2014 (draft) §12.2 `O*`/`C*` (T-234, `docs/DECISIONS.md` D-204).
 //! 3. **Tag = block-cipher-encrypt of `(accumulator XOR length block)`, not XOR with a keystream
-//!    block.** The length block holds the AAD bit-length (little-endian) in the low half-block and
-//!    the *padded* ciphertext bit-length (not the true, unpadded plaintext length - a direct
-//!    consequence of `dstu7624.c` reusing the same mutated length variable after its own padding
-//!    step) in the high half-block.
+//!    block.** The length block holds the true AAD bit-length (little-endian) in the low half-block
+//!    and the true ciphertext bit-length in the high half-block (§12.2 `lambda_o || lambda_C`).
 //!
-//! # Security: the tag does not bind the exact ciphertext length
+//! # Interoperability
 //!
-//! Divergences 2 and 3 together mean the tag covers the ciphertext's padded form and padded length.
-//! So ciphertexts of different lengths that pad to the same blocks can share a tag under the same
-//! key, nonce and AAD. A caller whose ciphertext length an attacker can change must bind the true
-//! length itself, e.g. with a fixed-length AAD that contains it, as
-//! [`crate::crypto_secretbox`]/[`crate::crypto_secretstream`] do (`docs/DECISIONS.md` D-200).
-//! Whether DSTU 7624:2014's own text specifies this padding is not yet confirmed (T-234).
-//!
-//! **None of the 6 official test vectors have non-block-aligned plaintext** - the `0x80` padding
-//! marker in divergence 2 is transcribed as found but not oracle-exercised; see `docs/DECISIONS.md`
-//! D-56 and the `proptest` round-trip in `tests/kalyna_gcm.rs`, which does cover it generically.
+//! Before T-234 this module followed `dstu7624.c`: AAD zero-padded and the *padded* ciphertext
+//! length in the length block, which let `ct` and `ct || 80 00..` share a tag (D-200). The
+//! standard's text and its own worked example В.8.1.3 say otherwise. UAPKI (that reading) and Bouncy
+//! Castle 1.85 (zero-padding both, NIST-style) therefore disagree with this module whenever the AAD
+//! or the ciphertext is not block-aligned; all three agree on block-aligned input, which is all the
+//! annex's GCM examples cover. See `docs/COMPATIBILITY.md`.
 //!
 //! # Byte/bit representation
 //!
@@ -118,51 +110,43 @@ macro_rules! kalyna_gcm_variant {
                 }
             }
 
+            /// Horner-accumulates `data` into `acc` (`acc = (acc XOR block) * h`), the last block
+            /// padded per annex Б.2 (`0x80` then zeros) when `data` is not block-aligned - §12.2
+            /// applies the same padding to the AAD (`O*`) and the ciphertext (`C*`).
+            fn absorb_padded(mut acc: $gf, h_key: $gf, data: &[u8]) -> $gf {
+                let mut chunks = data.chunks_exact($block_bytes);
+                for chunk in &mut chunks {
+                    let mut block = [0u8; $block_bytes];
+                    block.copy_from_slice(chunk);
+                    acc = acc.add(<$gf>::from_le_bytes(&block)).multiply(h_key);
+                }
+                let tail = chunks.remainder();
+                if !tail.is_empty() {
+                    let mut block = [0u8; $block_bytes];
+                    block[..tail.len()].copy_from_slice(tail);
+                    block[tail.len()] = 0x80;
+                    acc = acc.add(<$gf>::from_le_bytes(&block)).multiply(h_key);
+                }
+                acc
+            }
+
             /// Computes the full-block-length authentication tag over `aad` and `ciphertext` -
             /// see the module doc comment's divergences 2 and 3. Callers truncate to their chosen
             /// `q` themselves (a pure truncation of this value, per the source construction).
             fn compute_tag(&self, aad: &[u8], ciphertext: &[u8]) -> [u8; $block_bytes] {
                 let h_key = <$gf>::from_le_bytes(&self.key.encrypt_block(&[0u8; $block_bytes]));
-                let mut acc = <$gf>::ZERO;
+                let acc = Self::absorb_padded(<$gf>::ZERO, h_key, aad);
+                let acc = Self::absorb_padded(acc, h_key, ciphertext);
 
-                // AAD: plain zero-padded (no 0x80 marker) - divergence 2.
-                let mut off = 0usize;
-                while off < aad.len() {
-                    let end = (off + $block_bytes).min(aad.len());
-                    let mut block = [0u8; $block_bytes];
-                    block[..end - off].copy_from_slice(&aad[off..end]);
-                    acc = acc.add(<$gf>::from_le_bytes(&block)).multiply(h_key);
-                    off += $block_bytes;
-                }
-
-                // Ciphertext: 0x80-then-zeros padded (ISO/IEC 7816-4 style) - divergence 2.
-                let ct_len = ciphertext.len();
-                let rem = ct_len % $block_bytes;
-                let padded_ct_len = if rem == 0 { ct_len } else { ct_len + ($block_bytes - rem) };
-                let mut off = 0usize;
-                while off < padded_ct_len {
-                    let end = (off + $block_bytes).min(ct_len);
-                    let mut block = [0u8; $block_bytes];
-                    if end > off {
-                        block[..end - off].copy_from_slice(&ciphertext[off..end]);
-                    }
-                    if rem != 0 && ct_len >= off && ct_len < off + $block_bytes {
-                        block[ct_len - off] = 0x80;
-                    }
-                    acc = acc.add(<$gf>::from_le_bytes(&block)).multiply(h_key);
-                    off += $block_bytes;
-                }
-
-                // Length block: AAD bit-length (low half), padded-ciphertext bit-length (high
-                // half), both little-endian u64 - divergence 3.
+                // Length block: true AAD bit-length (low half), true ciphertext bit-length (high
+                // half), both little-endian u64 - divergence 3, §12.2 `lambda_o || lambda_C`.
                 let mut length_block = [0u8; $block_bytes];
                 #[allow(clippy::cast_possible_truncation)] // realistic lengths fit u64 trivially
-                let auth_len_bits = (aad.len() as u64) * 8;
+                let aad_len_bits = (aad.len() as u64) * 8;
                 #[allow(clippy::cast_possible_truncation)]
-                let padded_ct_len_bits = (padded_ct_len as u64) * 8;
-                length_block[..8].copy_from_slice(&auth_len_bits.to_le_bytes());
-                length_block[$half_bytes..$half_bytes + 8]
-                    .copy_from_slice(&padded_ct_len_bits.to_le_bytes());
+                let ct_len_bits = (ciphertext.len() as u64) * 8;
+                length_block[..8].copy_from_slice(&aad_len_bits.to_le_bytes());
+                length_block[$half_bytes..$half_bytes + 8].copy_from_slice(&ct_len_bits.to_le_bytes());
 
                 let acc_bytes = acc.to_le_bytes();
                 let mut combined = [0u8; $block_bytes];

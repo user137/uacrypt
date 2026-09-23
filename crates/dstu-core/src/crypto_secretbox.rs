@@ -39,17 +39,17 @@
 //! Caught by `tampered_nonce_is_rejected` during this migration, not assumed - see `docs/DECISIONS.md`
 //! D-63.
 //!
-//! The internal AAD is `version || nonce || (ciphertext_len as u64).to_le_bytes()`. The length is
-//! there because `kalyna_gcm`'s tag covers the `0x80`-padded ciphertext and only its padded length
-//! (D-56 divergences 2/3): without it, `ct` and `ct || 80 00..` (up to a block boundary) share a
-//! tag, which before T-232 (audit F-01, `docs/DECISIONS.md` D-200) let an attacker append bytes to,
-//! or strip a trailing `0x80` from, a sealed message and still have `open` succeed.
+//! The internal AAD is `version || nonce || (ciphertext_len as u64).to_le_bytes()`. The length was
+//! added by T-232 (audit F-01, `docs/DECISIONS.md` D-200) because `kalyna_gcm` then tagged only the
+//! padded ciphertext length, so `ct` and `ct || 80 00..` shared a tag. Since T-234 (D-204)
+//! `kalyna_gcm` binds the true length itself, per DSTU 7624:2014 §12.2; the AAD keeps it as defence
+//! in depth, so this format never depends on one hazmat detail for that property.
 //!
 //! # Provenance
 //!
-//! Inherits `hazmat::kalyna_gcm`'s own provisional status (D-56): not yet confirmed against the
-//! primary DSTU 7624:2014 text, dual-oracle-cited (UAPKI + Bouncy Castle vectors) in the meantime -
-//! unchanged by the CCM-to-GCM migration. `Kalyna256_256Gcm` was chosen over the other four
+//! Inherits `hazmat::kalyna_gcm`'s provenance: checked against DSTU 7624:2014 (draft edition) §12.2
+//! and its annex В.8 examples (T-234, D-204). Because this module's AAD is never block-aligned, its
+//! tags differ from what UAPKI or Bouncy Castle 1.85 would compute (`docs/COMPATIBILITY.md`). `Kalyna256_256Gcm` was chosen over the other four
 //! Kalyna-GCM variants as the sole construction here (256-bit key, matching the previous CCM
 //! construction's key/nonce width exactly) - see D-51 for the fuller reasoning behind fixing one
 //! variant rather than exposing all five, including why the `Strength`-enum precedent from
@@ -163,10 +163,8 @@ impl SecretKey {
 }
 
 /// `version || nonce || ciphertext_len as u64 LE` - binds the version, the nonce (D-63) and the
-/// true ciphertext length into the tag. The length is needed because `hazmat::kalyna_gcm`'s tag
-/// covers the `0x80`-padded ciphertext and only its padded length (D-56 divergences 2/3), so
-/// without it `ct` and `ct || 80 00..` share a tag (T-232, audit F-01). A fixed-length AAD is
-/// itself zero-padded with its true length recorded, so this AAD makes the tag input injective.
+/// true ciphertext length into the tag. `hazmat::kalyna_gcm` binds the true length too since T-234
+/// (D-204); the copy here is defence in depth from T-232 (audit F-01, D-200).
 fn aad(nonce: &[u8; NONCE_LEN], ciphertext_len: usize) -> [u8; HEADER_LEN + 8] {
     let Ok(len) = u64::try_from(ciphertext_len) else {
         unreachable!("a slice length always fits in u64 on every supported target")

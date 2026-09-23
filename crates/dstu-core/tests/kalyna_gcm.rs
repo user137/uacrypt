@@ -361,3 +361,82 @@ roundtrip_proptest!(k128_256, Kalyna128_256Gcm, 32, 16, 16);
 roundtrip_proptest!(k256_256, Kalyna256_256Gcm, 32, 32, 32);
 roundtrip_proptest!(k256_512, Kalyna256_512Gcm, 64, 32, 32);
 roundtrip_proptest!(k512_512, Kalyna512_512Gcm, 64, 64, 64);
+
+// T-234/D-204: DSTU 7624:2014 (draft) §12.2 - a non-aligned AAD or ciphertext is padded per annex
+// Б.2 (0x80 then zeros) and the length block carries the true bit lengths. Vectors come from Bouncy
+// Castle's GF chain with the standard's length block swapped in, not from this crate (see `source`).
+official_vector_test!(
+    kalyna128_128_partial_block,
+    Kalyna128_128Gcm,
+    16,
+    16,
+    "vectors/kalyna-gcm/partial-128-128.json"
+);
+official_vector_test!(
+    kalyna128_256_partial_block,
+    Kalyna128_256Gcm,
+    32,
+    16,
+    "vectors/kalyna-gcm/partial-128-256.json"
+);
+official_vector_test!(
+    kalyna256_256_partial_block,
+    Kalyna256_256Gcm,
+    32,
+    32,
+    "vectors/kalyna-gcm/partial-256-256.json"
+);
+official_vector_test!(
+    kalyna256_512_partial_block,
+    Kalyna256_512Gcm,
+    64,
+    32,
+    "vectors/kalyna-gcm/partial-256-512.json"
+);
+official_vector_test!(
+    kalyna512_512_partial_block,
+    Kalyna512_512Gcm,
+    64,
+    64,
+    "vectors/kalyna-gcm/partial-512-512.json"
+);
+
+/// T-232/F-01 at the hazmat level: `ct` and `ct || 80 00..` (padded to the same blocks) used to
+/// share a tag because the length block held the padded length. With the true length (§12.2) they
+/// must differ.
+#[test]
+fn ciphertext_and_its_padded_extension_have_different_tags() {
+    let key = [7u8; 32];
+    let iv = [9u8; 32];
+    let cipher = Kalyna256_256Gcm::new(&key);
+    let plaintext = [0x11u8; 20];
+    let mut ct = [0u8; 20];
+    let tag = cipher.encrypt(&iv, b"aad", &plaintext, &mut ct).unwrap();
+
+    let mut extended = ct.to_vec();
+    extended.push(0x80);
+    extended.resize(32, 0);
+    let mut out = [0u8; 32];
+    assert_eq!(
+        cipher.decrypt(&iv, b"aad", &extended, &tag, &mut out),
+        Err(GcmError::TagMismatch)
+    );
+}
+
+/// `aad` and `aad || 00` pad to the same block under zero padding, so only the length block keeps
+/// them apart. This already held before T-234 (the AAD length was always the true one); the §12.2
+/// `0x80` marker itself is pinned by the `partial_block` vectors above, not by this test.
+#[test]
+fn aad_and_its_zero_extension_have_different_tags() {
+    let key = [3u8; 16];
+    let iv = [4u8; 16];
+    let cipher = Kalyna128_128Gcm::new(&key);
+    let plaintext = [0x22u8; 16];
+    let mut ct = [0u8; 16];
+    let tag = cipher.encrypt(&iv, &[5u8; 7], &plaintext, &mut ct).unwrap();
+    let mut out = [0u8; 16];
+    assert_eq!(
+        cipher.decrypt(&iv, &[5, 5, 5, 5, 5, 5, 5, 0], &ct, &tag, &mut out),
+        Err(GcmError::TagMismatch)
+    );
+}

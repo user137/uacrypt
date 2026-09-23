@@ -42,11 +42,10 @@
 //! directly as part of the AAD it verifies against, so a flipped byte changes the AAD and fails the
 //! tag check before the (wrong) [`Tag`] is ever trusted or returned to the caller.
 //!
-//! The length is in the AAD because `kalyna_gcm`'s own tag does not bind it: the tag covers the
-//! `0x80`-padded ciphertext and only the padded length (D-56 divergences 2/3), so a chunk and the
-//! same chunk extended with `80 00..` to a block boundary share a tag. Before T-232 (audit F-01,
-//! `docs/DECISIONS.md` D-200) that let an attacker append bytes to, or delete a trailing `0x80`
-//! from, any chunk. Every received `auth_tag` must also be exactly 16 bytes (T-238).
+//! The length went into the AAD with T-232 (audit F-01, `docs/DECISIONS.md` D-200), when
+//! `kalyna_gcm` tagged only the padded length and a chunk shared a tag with the same chunk extended
+//! by `80 00..`. Since T-234 (D-204) `kalyna_gcm` binds the true length itself (DSTU 7624:2014
+//! §12.2); the AAD keeps it as defence in depth. Every received `auth_tag` must also be exactly 16 bytes (T-238).
 //!
 //! # Tags
 //!
@@ -261,9 +260,9 @@ fn chunk_iv(counter: u64) -> [u8; 32] {
     iv
 }
 
-/// `counter LE || tag_byte || ciphertext_len as u64 LE`. The true length is needed because
-/// `hazmat::kalyna_gcm`'s tag covers only the `0x80`-padded ciphertext and its padded length
-/// (D-56 divergences 2/3), so without it `ct` and `ct || 80 00..` share a tag (T-232, audit F-01).
+/// `counter LE || tag_byte || ciphertext_len as u64 LE`. The length is defence in depth:
+/// `hazmat::kalyna_gcm` binds the true length itself since T-234 (D-204), and it was added here by
+/// T-232 (audit F-01, D-200) when that was not yet so.
 fn chunk_aad(counter: u64, tag_byte: u8, ciphertext_len: usize) -> [u8; 17] {
     let Ok(len) = u64::try_from(ciphertext_len) else {
         unreachable!("a slice length always fits in u64 on every supported target")
