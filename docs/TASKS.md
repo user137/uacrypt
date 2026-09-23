@@ -8851,12 +8851,19 @@ Next, in order:
    - **T-252 signing:** Sigstore keyless.
    - **CVEs:** request a CVE for both advisories (T-232 and D-207).
    - **Draft advisories created 2026-09-24 (private, not published):** `GHSA-j2w3-628p-qw92` (T-232,
-     High 7.5 proposed - the audit said Critical, CVSS 3.1 caps an integrity-only break at 7.5) and
+     High 7.5 proposed; the audit said Critical. The vector AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:H/A:N gives
+     7.5: no key or privilege needed, but no confidentiality or availability impact, and scope
+     unchanged. Owner decides High vs Critical) and
      `GHSA-wqmx-6fx4-jr5r` (D-207, Medium 5.9). Source texts: `.claude/disclosure-drafts/advisory_*.md`.
-     CVEs are requested from the advisory page before publishing.
-   - **Release-day order (each step confirmed):** check the date rule -> advisory texts final ->
-     request CVEs -> commit CHANGELOG `[Unreleased]` -> `[0.4.0] - <date>` -> push `master` +
-     `gh-pages` (the local gh-pages commit bumps the site marker) -> tag `v0.4.0` -> approve
+     A CVE request does not publish a draft ("Requesting a CVE identification number doesn't make
+     your security advisory public"; GitHub reviews within ~72 h), so request both as soon as the
+     owner approves the texts, and the IDs are ready for the CHANGELOG.
+   - **Release-day order (each step confirmed):** check the date rule -> Miri on
+     `crypto_secretstream` recorded green -> CVE IDs assigned -> commit CHANGELOG `[Unreleased]` ->
+     `[0.4.0] - <date>` with "advisory to follow" replaced by the GHSA/CVE IDs -> push both in one
+     command, `git push origin master gh-pages` (docs-check reads `gh-pages:index.html`, and
+     `docs-book` pushes gh-pages on every master push, so a later gh-pages push would be rejected;
+     never force-push gh-pages) -> tag `v0.4.0` -> approve
      the PyPI/npm/RubyGems environments -> publish both advisories -> RustSec PR -> verify live
      registry pages and the T-252 verify commands on real assets -> T-251.
    Next: 0.4.0 release preparation (execution plan steps 4-6) - owner-gated, every outward step

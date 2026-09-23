@@ -205,6 +205,8 @@ cosign verify-blob --bundle SHA256SUMS.sigstore.json \
 
 # 2. The asset matches the signed checksum (--ignore-missing: only the files you downloaded)
 sha256sum --ignore-missing -c SHA256SUMS
+#    macOS: shasum -a 256 --ignore-missing -c SHA256SUMS
+#    Windows PowerShell: compare (Get-FileHash <file> -Algorithm SHA256).Hash with its line in SHA256SUMS
 
 # 3. Optional, independent of 1-2: GitHub's provenance record for the asset
 gh attestation verify uacrypt-linux-x86_64.tar.gz --repo user137/uacrypt \

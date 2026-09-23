@@ -13838,3 +13838,37 @@ test. The C ABI's `dstu_secretstream_pull` already documents that `auth_tag` mus
   write; it now also resolves on `'close'` and awaits reader and writer together.
 - PHP is not installed on the dev machine; its change is covered by CI only.
 
+
+## D-209: T-252 - verifiable releases: Sigstore keyless checksums, provenance, SBOM, tag-only publish gates
+
+**Context.** Before 0.4.0 the release pipeline shipped binaries with no checksums, signatures,
+provenance or SBOM (npm `--provenance` only). The first fixed release after F-01 should also be the
+first one a user can verify (T-252).
+
+**Decision.**
+- `SHA256SUMS` over every release asset, signed keyless with Sigstore (`cosign sign-blob --bundle`,
+  cosign 3.0.6 via `sigstore/cosign-installer` v4.1.2) - owner choice 2026-09-24 over minisign (no
+  long-lived key to store or leak) and over attestation-only (a plain checksum file most users can
+  check). The job verifies its own bundle against its exact workflow identity before uploading.
+- `actions/attest-build-provenance` v4.2.2 on every asset (SLSA build provenance), `cargo auditable
+  build --locked` for `uacrypt`, and a CycloneDX 1.5 SBOM (`cargo-cyclonedx` 0.5.9, `--target all`).
+  Tool versions and action SHAs are pinned.
+- A new `assemble-release-assets` job needs every build job, so the asset set is fixed. Before this,
+  the Node addons and Ruby gems were attached only if their jobs happened to finish before
+  `publish-release`.
+- Every publishing job and the GitHub Release step run only on a `v*` tag push, and
+  `workflow_dispatch` is a publish-free dry run. `publish-crates` needs only the builds, not
+  `publish-release`: a signing or attestation failure must not hold back a security fix on
+  crates.io. The GitHub Release then has to be finished by hand.
+- The user-facing checks (`docs/CLI.md`) pin the certificate identity to
+  `release.yml@refs/tags/v` and `gh attestation verify` to `--source-ref refs/tags/vX.Y.Z`. Both
+  reject an artefact built from a branch, which the dry run showed is otherwise accepted.
+
+**Verified.** Dry run 35929711949 on a temporary branch (origin/master plus this workflow only,
+deleted afterwards): every build, SBOM and assemble job green, every publish job skipped. On the
+downloaded assets: `sha256sum -c`, `cosign verify-blob` for the branch identity, the tag regexp
+rejecting it, `gh attestation verify` with and without `--source-ref`, and a tampered file
+failing both checks.
+
+**Rejected.** OpenSSF Scorecard (optional in T-252, left for later). A private mirror repo for the
+dry run was unnecessary, since the workflow change discloses nothing.
