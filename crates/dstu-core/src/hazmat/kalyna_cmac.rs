@@ -34,6 +34,9 @@ use subtle::ConstantTimeEq;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CmacError {
+    /// DSTU 7624:2014 §9 defines CMAC only for `n_o >= 1` blocks (and annex Б.2 pads only `N >= 1`
+    /// bits), so an empty message is outside the standard's domain (T-236, D-206).
+    EmptyMessage,
     TagMismatch,
 }
 
@@ -49,8 +52,11 @@ macro_rules! kalyna_cmac_variant {
             /// Computes the 16-byte CMAC tag of `message` under `key` - expands the key schedule
             /// fresh on every call. Prefer [`Self::mac_with_cipher`] for a caller computing a MAC
             /// for more than one message under the same key (see its doc comment for why).
-            #[must_use]
-            pub fn mac(key: &[u8; $key_bytes], message: &[u8]) -> [u8; 16] {
+            ///
+            /// # Errors
+            ///
+            /// Returns `Err(CmacError::EmptyMessage)` if `message` is empty (D-206).
+            pub fn mac(key: &[u8; $key_bytes], message: &[u8]) -> Result<[u8; 16], CmacError> {
                 let cipher = super::kalyna::$expanded::new(key);
                 Self::mac_with_cipher(&cipher, message)
             }
@@ -62,12 +68,19 @@ macro_rules! kalyna_cmac_variant {
             /// than one message under the same key - this method lets such a caller build the
             /// schedule once and reuse it, exactly like [`super::kalyna_gcm`]/[`super::kalyna_xts`]
             /// already do for their own modes.
-            #[must_use]
-            pub fn mac_with_cipher(cipher: &super::kalyna::$expanded, message: &[u8]) -> [u8; 16] {
+            ///
+            /// # Errors
+            ///
+            /// Returns `Err(CmacError::EmptyMessage)` if `message` is empty (D-206).
+            pub fn mac_with_cipher(
+                cipher: &super::kalyna::$expanded,
+                message: &[u8],
+            ) -> Result<[u8; 16], CmacError> {
+                if message.is_empty() {
+                    return Err(CmacError::EmptyMessage);
+                }
                 let len = message.len();
-                let chain_len = if len == 0 {
-                    0
-                } else if len % $block_bytes == 0 {
+                let chain_len = if len % $block_bytes == 0 {
                     len - $block_bytes
                 } else {
                     (len / $block_bytes) * $block_bytes
@@ -99,7 +112,7 @@ macro_rules! kalyna_cmac_variant {
 
                 let mut tag = [0u8; 16];
                 tag.copy_from_slice(&tag_block[..16]);
-                tag
+                Ok(tag)
             }
 
             /// Recomputes the CMAC tag and compares it against `expected` in constant time
@@ -108,7 +121,8 @@ macro_rules! kalyna_cmac_variant {
             ///
             /// # Errors
             ///
-            /// Returns `Err(CmacError::TagMismatch)` if the recomputed tag doesn't match
+            /// Returns `Err(CmacError::EmptyMessage)` for an empty `message`, or
+            /// `Err(CmacError::TagMismatch)` if the recomputed tag doesn't match
             /// `expected`.
             pub fn verify(
                 key: &[u8; $key_bytes],
@@ -124,14 +138,15 @@ macro_rules! kalyna_cmac_variant {
             ///
             /// # Errors
             ///
-            /// Returns `Err(CmacError::TagMismatch)` if the recomputed tag doesn't match
+            /// Returns `Err(CmacError::EmptyMessage)` for an empty `message`, or
+            /// `Err(CmacError::TagMismatch)` if the recomputed tag doesn't match
             /// `expected`.
             pub fn verify_with_cipher(
                 cipher: &super::kalyna::$expanded,
                 message: &[u8],
                 expected: &[u8; 16],
             ) -> Result<(), CmacError> {
-                let tag = Self::mac_with_cipher(cipher, message);
+                let tag = Self::mac_with_cipher(cipher, message)?;
                 if tag.ct_eq(expected).into() {
                     Ok(())
                 } else {

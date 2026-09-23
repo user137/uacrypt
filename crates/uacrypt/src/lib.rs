@@ -234,6 +234,17 @@ impl fmt::Display for CliError {
     }
 }
 
+impl From<dstu_core::hazmat::kalyna_cmac::CmacError> for CliError {
+    fn from(err: dstu_core::hazmat::kalyna_cmac::CmacError) -> Self {
+        match err {
+            dstu_core::hazmat::kalyna_cmac::CmacError::EmptyMessage => {
+                Self::EmptyInput("kalyna-cmac")
+            }
+            dstu_core::hazmat::kalyna_cmac::CmacError::TagMismatch => Self::CmacVerifyFailed,
+        }
+    }
+}
+
 impl From<dstu_core::hazmat::kalyna_ccm::CcmError> for CliError {
     fn from(err: dstu_core::hazmat::kalyna_ccm::CcmError) -> Self {
         match err {
@@ -956,10 +967,9 @@ pub fn run_cmac_command(verify: bool, args: &CmacArgs) -> Result<(), CliError> {
                 if verify {
                     let mut expected = [0u8; 16];
                     expected.copy_from_slice(tag_in.as_ref().unwrap());
-                    <$mac>::verify_with_cipher(&cipher, &message, &expected)
-                        .map_err(|_| CliError::CmacVerifyFailed)?;
+                    <$mac>::verify_with_cipher(&cipher, &message, &expected)?;
                 } else {
-                    tag = <$mac>::mac_with_cipher(&cipher, &message);
+                    tag = <$mac>::mac_with_cipher(&cipher, &message)?;
                 }
             }
             (tag, start.elapsed())
@@ -5666,7 +5676,7 @@ mod tests {
         };
         run_cmac_command(false, &compute_args).expect("compute should succeed");
 
-        let expected_tag = Kalyna128_128Cmac::mac(&key, &message);
+        let expected_tag = Kalyna128_128Cmac::mac(&key, &message).expect("non-empty message");
         assert_eq!(
             std::fs::read(dir.file("tag.bin")).expect("read"),
             expected_tag.to_vec()
@@ -5680,6 +5690,39 @@ mod tests {
         run_cmac_command(true, &verify_args).expect("verify should succeed against its own tag");
     }
 
+    /// "Fool" test (T-236/D-206): DSTU 7624:2014 §9 does not define CMAC for an empty message, so an
+    /// empty `--in` is rejected on both compute and verify instead of producing `MAC(0^l)`.
+    #[test]
+    fn run_cmac_command_empty_input_is_rejected() {
+        let dir = TempDir::new("kalyna_cmac_empty");
+        std::fs::write(dir.file("key.bin"), [0x55u8; 16]).expect("write key");
+        std::fs::write(dir.file("in.bin"), []).expect("write empty input");
+        std::fs::write(dir.file("tag_in.bin"), [0u8; 16]).expect("write tag");
+        let compute_args = CmacArgs {
+            variant: KalynaVariant::K128_128,
+            key_path: dir.file("key.bin"),
+            in_path: dir.file("in.bin"),
+            out_path: Some(dir.file("tag.bin")),
+            tag_path: None,
+            iterations: 1,
+        };
+        assert_eq!(
+            run_cmac_command(false, &compute_args),
+            Err(CliError::EmptyInput("kalyna-cmac"))
+        );
+        assert!(!dir.file("tag.bin").exists());
+
+        let verify_args = CmacArgs {
+            out_path: None,
+            tag_path: Some(dir.file("tag_in.bin")),
+            ..compute_args
+        };
+        assert_eq!(
+            run_cmac_command(true, &verify_args),
+            Err(CliError::EmptyInput("kalyna-cmac"))
+        );
+    }
+
     #[test]
     fn run_cmac_command_verify_rejects_tampered_tag() {
         let dir = TempDir::new("kalyna_cmac_tamper");
@@ -5688,7 +5731,7 @@ mod tests {
         std::fs::write(dir.file("key.bin"), key).expect("write key");
         std::fs::write(dir.file("in.bin"), &message).expect("write message");
 
-        let mut tag = Kalyna128_128Cmac::mac(&key, &message);
+        let mut tag = Kalyna128_128Cmac::mac(&key, &message).expect("non-empty message");
         tag[0] ^= 0x01;
         std::fs::write(dir.file("tag.bin"), tag).expect("write tampered tag");
 

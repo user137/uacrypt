@@ -63,7 +63,7 @@ fn kalyna128_128_official_vector() {
     for case in cases(include_str!("vectors/kalyna-cmac/128-128.json")) {
         let mut key = [0u8; 16];
         key.copy_from_slice(&case.key);
-        let mac = Kalyna128_128Cmac::mac(&key, &case.message);
+        let mac = Kalyna128_128Cmac::mac(&key, &case.message).unwrap();
         assert_eq!(mac.to_vec(), case.mac);
         assert!(Kalyna128_128Cmac::verify(&key, &case.message, &mac).is_ok());
     }
@@ -74,7 +74,7 @@ fn kalyna128_256_official_vector_padding_branch() {
     for case in cases(include_str!("vectors/kalyna-cmac/128-256.json")) {
         let mut key = [0u8; 32];
         key.copy_from_slice(&case.key);
-        let mac = Kalyna128_256Cmac::mac(&key, &case.message);
+        let mac = Kalyna128_256Cmac::mac(&key, &case.message).unwrap();
         assert_eq!(mac.to_vec(), case.mac);
         assert!(Kalyna128_256Cmac::verify(&key, &case.message, &mac).is_ok());
     }
@@ -85,7 +85,7 @@ fn kalyna512_512_official_vector() {
     for case in cases(include_str!("vectors/kalyna-cmac/512-512.json")) {
         let mut key = [0u8; 64];
         key.copy_from_slice(&case.key);
-        let mac = Kalyna512_512Cmac::mac(&key, &case.message);
+        let mac = Kalyna512_512Cmac::mac(&key, &case.message).unwrap();
         assert_eq!(mac.to_vec(), case.mac);
         assert!(Kalyna512_512Cmac::verify(&key, &case.message, &mac).is_ok());
     }
@@ -96,7 +96,7 @@ fn tampered_mac_is_rejected() {
     let case = &cases(include_str!("vectors/kalyna-cmac/128-128.json"))[0];
     let mut key = [0u8; 16];
     key.copy_from_slice(&case.key);
-    let mut mac = Kalyna128_128Cmac::mac(&key, &case.message);
+    let mut mac = Kalyna128_128Cmac::mac(&key, &case.message).unwrap();
     mac[0] ^= 0x01;
     assert_eq!(
         Kalyna128_128Cmac::verify(&key, &case.message, &mac),
@@ -110,7 +110,7 @@ fn tampered_message_is_rejected() {
     let mut key = [0u8; 16];
     key.copy_from_slice(&case.key);
     let mut message = case.message.clone();
-    let mac = Kalyna128_128Cmac::mac(&key, &message);
+    let mac = Kalyna128_128Cmac::mac(&key, &message).unwrap();
     message[0] ^= 0x01;
     assert_eq!(
         Kalyna128_128Cmac::verify(&key, &message, &mac),
@@ -123,7 +123,7 @@ fn wrong_key_is_rejected() {
     let case = &cases(include_str!("vectors/kalyna-cmac/128-128.json"))[0];
     let mut key = [0u8; 16];
     key.copy_from_slice(&case.key);
-    let mac = Kalyna128_128Cmac::mac(&key, &case.message);
+    let mac = Kalyna128_128Cmac::mac(&key, &case.message).unwrap();
 
     let mut wrong_key = key;
     wrong_key[0] ^= 0x01;
@@ -133,11 +133,20 @@ fn wrong_key_is_rejected() {
     );
 }
 
+/// DSTU 7624:2014 (draft) §9: `|O| = l * n_o` with `n_o >= 1`, and annex Б.2 pads only `N >= 1`
+/// bits - an empty message is outside the domain (T-236, `docs/DECISIONS.md` D-206). The old port
+/// returned `MAC(empty) == MAC(0^l)`, a collision.
 #[test]
-fn empty_message_does_not_panic() {
+fn empty_message_is_rejected() {
     let key = [0u8; 16];
-    let mac = Kalyna128_128Cmac::mac(&key, &[]);
-    assert!(Kalyna128_128Cmac::verify(&key, &[], &mac).is_ok());
+    assert_eq!(
+        Kalyna128_128Cmac::mac(&key, &[]),
+        Err(CmacError::EmptyMessage)
+    );
+    assert_eq!(
+        Kalyna128_128Cmac::verify(&key, &[], &[0u8; 16]),
+        Err(CmacError::EmptyMessage)
+    );
 }
 
 macro_rules! roundtrip_proptest {
@@ -155,13 +164,13 @@ macro_rules! roundtrip_proptest {
                 #[test]
                 fn mac_then_verify_roundtrips_and_detects_tamper(
                     key in proptest::collection::vec(any::<u8>(), $key_len),
-                    message in proptest::collection::vec(any::<u8>(), 0..300),
+                    message in proptest::collection::vec(any::<u8>(), 1..300),
                     flip_index in 0usize..16,
                 ) {
                     let mut key_arr = [0u8; $key_len];
                     key_arr.copy_from_slice(&key);
 
-                    let mac = <$variant>::mac(&key_arr, &message);
+                    let mac = <$variant>::mac(&key_arr, &message).unwrap();
                     prop_assert!(<$variant>::verify(&key_arr, &message, &mac).is_ok());
 
                     let mut tampered = mac;
