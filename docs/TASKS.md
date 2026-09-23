@@ -8777,12 +8777,13 @@ Next, in order:
    advisory, published with the main one; private heads-up to UAPKI/BC before publication (each
    outward message confirmed separately). D-207.** UAPKI report filed by the owner 2026-09-24 via
    GitHub private vulnerability reporting on `specinfo-ua/UAPKI` (incl. the CMAC empty-message
-   collision, uapkic 2.0.2). Bouncy Castle (`bcgit/bc-java`) report: not yet filed. Both PoCs
+   collision, uapkic 2.0.2). Bouncy Castle report: filed by the owner 2026-09-24 by email (see below). Both PoCs
    verified 2026-09-24 (uapkic 2.0.2 from `oracles/uapki`, bcprov-jdk18on 1.85; key 00..0f): GCM/GMAC
    tag = `E_K(0)` = `ea4597a6de4c4012f150277ca1a6cf3a`, CMAC(empty) = CMAC(0^16) =
    `44d2a5dc279e8a560c52f5a19cc55717`, identical in both. No publication date given in either report
    (owner: quiet coordination).
-   **State at the 2026-09-24 handoff:** UAPKI report filed; the follow-up comment (verified values,
+   **Done 2026-09-24 (owner): the UAPKI follow-up comment is posted and the BC email is sent** - both
+   third-party reports are filed; next is waiting for their replies. Earlier state: UAPKI report filed; the follow-up comment (verified values,
    affected version 2.0.2, §9.1 CMAC wording) is drafted, owner to post it. Bouncy Castle has no
    GitHub reporting - its SECURITY.md says email `feedback-crypto@bouncycastle.org`; the email
    (incl. the CMAC section, owner decided to include it) is drafted, owner to add their name and send.

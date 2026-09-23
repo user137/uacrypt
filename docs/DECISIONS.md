@@ -13765,7 +13765,9 @@ own CVE and severity score), published together with the main T-232 advisory - n
 neither severity rating is distorted, and not a CHANGELOG-only fix, since D-207 and the `mac` ->
 `Result` change are public in the release anyway. UAPKI and Bouncy Castle accept the same input and
 get a private heads-up before our publication (this entry and `docs/COMPATIBILITY.md` describe their
-behaviour); each outward message is confirmed by the owner before sending.
+behaviour); each outward message is confirmed by the owner before sending. Both heads-ups were sent
+by the owner on 2026-09-24 (UAPKI: GitHub private vulnerability reporting; Bouncy Castle: email per
+their SECURITY.md), with no publication date stated.
 
 **Tests.** `empty_aad_and_empty_plaintext_are_rejected` (GCM; one side empty still works),
 `empty_message_is_rejected` (GMAC), and the two CLI tests; proptests now draw non-empty AAD (GCM) /
