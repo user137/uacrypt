@@ -8862,6 +8862,11 @@ Next, in order:
      its "other implementations were notified" sentence). CVEs requested for both via the API;
      both still `draft`, CVE IDs pending GitHub review.** Check with
      `gh api repos/user137/uacrypt/security-advisories/<GHSA> --jq .cve_id`.
+   - **Miri on `crypto_secretstream` still running at the 2026-09-24 handoff** (PID 5548, started
+     00:19). Log: `%TEMP%/claude/C--Users-Pa-Projects-cipher-ua/6dfdf6e0-782c-4a67-8eae-1df1fc379c37/scratchpad/miri_secretstream.log`.
+     Windows buffers it, so it may show nothing until the process exits; use `Get-Process miri`'s
+     CPU as the liveness signal. If it is gone with no final `test result`, re-run with the command
+     in step 2 below.
    - **Release-day order (each step confirmed):** check the date rule -> Miri on
      `crypto_secretstream` recorded green -> CVE IDs assigned -> commit CHANGELOG `[Unreleased]` ->
      `[0.4.0] - <date>` with "advisory to follow" replaced by the GHSA/CVE IDs -> push both in one
