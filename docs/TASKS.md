@@ -8792,8 +8792,22 @@ Next, in order:
    `crates/dstu-core/tests/vectors/secretstream-file/v2.json` (incl. a real 0.3.8 file) run by
    uacrypt and all 8 bindings, T-238 tests per binding, help/`docs/CLI.md` updated. Verified:
    Python 100, Node 95, Ruby 101, Java `mvn verify`, .NET 151, Go ok, C++ ctest (PowerShell),
-   uacrypt and dstu-core suites. PHP changed but runs in CI only (not installed here).
-   Next: 0.4.0 release preparation (execution plan steps 4-6) - owner-gated.
+   uacrypt and dstu-core suites, `cargo xtask test`/`build` (feature matrix incl. `no_std`)/`capi`
+   (C harness + header diff)/`streaming-bounded`/`docs-check`/`book`, clippy, fmt, fuzz smoke
+   `crypto_secretstream` 60 s via the MSVC toolchain (39 505 runs, clean). **Open: scoped Miri on
+   `crypto_secretstream`** was still running at the session handoff (2026-09-24; tests up to
+   `appended_gcm_padding_is_rejected` passed, no UB so far). Re-run to completion:
+   `PROPTEST_CASES=8 MIRIFLAGS=-Zmiri-disable-isolation cargo +nightly miri test -p dstu-core
+   --all-features --test crypto_secretstream -- --test-threads=1` (proptests make it take ~1 h+).
+   Fuzzing on Windows needs the MSVC route (`cargo xtask fuzz`), not `cargo +nightly fuzz` on the
+   GNU host (no ASan).
+   **Release gate: the PHP secretstream suite (changed, not installable here) must be green in the
+   GHSA private-fork CI before the 0.4.0 tag.**
+   Next: 0.4.0 release preparation (execution plan steps 4-6) - owner-gated, every outward step
+   confirmed separately. After 0.4.0: the `uacrypt` UX batch T-255..T-265 as 0.5.0 (last section of
+   this file, decisions resolved; start with T-255).
+   Leftover, owner's call: `.git/worktrees/wt038` (and 13 older entries) could not be pruned -
+   "Permission denied"; the working directories themselves are gone.
 
 3. **`uacrypt` UX batch (T-255..T-265), planned 2026-09-23, not started** - see the last section
    of this file. Decisions resolved (all recommendations accepted); 0.5.0, after the 0.4.0
