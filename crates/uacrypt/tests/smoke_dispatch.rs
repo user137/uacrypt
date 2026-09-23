@@ -50,7 +50,10 @@ fn help_short_flag_prints_top_level_help() {
 fn version_long_flag_prints_version_and_exits_success() {
     let r = uacrypt(["--version"]);
     assert!(r.success());
-    assert!(r.stdout.starts_with("uacrypt "));
+    assert_eq!(
+        r.stdout.trim_end(),
+        format!("uacrypt {} (container format 2)", env!("CARGO_PKG_VERSION"))
+    );
     assert_eq!(r.stderr, "");
 }
 

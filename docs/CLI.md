@@ -181,3 +181,43 @@ None of `kalyna-block`/`kupyna-digest`/`strumok-crypt`/`kalyna-ccm`/`kalyna-gcm`
 `kalyna-gmac`/`kalyna-kw`/`kalyna-xts` is the `encrypt`/`decrypt`/`hash` surface above - all nine
 stay as lower-level, hazmat-scoped tools for anyone who explicitly wants that level of control, or
 is benchmarking a specific primitive directly.
+
+## File formats
+
+What each command writes, byte by byte. Sizes are in bytes, `||` means concatenation, and
+multi-byte integers are little-endian. `uacrypt --version` prints the container format version
+next to the release version (currently `2`, D-202).
+
+**Why containers.** Every everyday command writes a self-describing container, not a bare
+ciphertext. The container holds what decryption needs (the header, the KEM ciphertext), a format
+version where one exists, and the true ciphertext length inside every authentication tag. That last
+part matters: the Kalyna-GCM/GMAC tag in `hazmat` covers the data padded to a block boundary, so on
+its own it does not pin the exact length (`docs/DECISIONS.md` D-200). The containers bind it
+explicitly.
+
+| Command | File | Layout |
+|---|---|---|
+| `keygen` | symmetric key | 32 raw bytes |
+| `encrypt` | encrypted file | `header (32)`, then one or more records, each `chunk tag (1) \|\| ciphertext length (4) \|\| ciphertext \|\| auth tag (16)` |
+| `box-keygen` / `box-pubkey` | secret / public key | 32 raw bytes each (the public key is the curve point's `x`-coordinate) |
+| `box-seal` | sealed file | `version (1) \|\| KEM ciphertext (128) \|\| header (32) \|\| ciphertext \|\| auth tag (16)`: 177 bytes of overhead |
+| `box-keygen512` / `box-pubkey512` | secret / public key | 64 raw bytes each |
+| `box-seal512` | sealed file | `version (1) \|\| KEM ciphertext (256) \|\| header (32) \|\| ciphertext \|\| auth tag (16)`: 305 bytes of overhead |
+| `sign-keygen` / `sign-keygen257` | signing key | the scalar `d`, big-endian: 21 / 33 raw bytes |
+| `sign-pubkey` / `sign-pubkey257` | verifying key | `curve byte (1: 01 = m=163, 02 = m=257) \|\| x \|\| y`: 43 / 67 bytes |
+| `sign` / `sign257` | signature | 42 / 66 raw bytes; `verify` picks the curve from the verifying key's curve byte |
+| `hash` | digest | 32 raw bytes (Kupyna-256) |
+
+The `encrypt` record rules:
+- the plaintext is split into 8192-byte chunks, one record each;
+- the chunk tag byte is `0` (message) for every record but the last, and `3` (final) for the last;
+- an empty input still produces one final record with a zero-length ciphertext;
+- `decrypt` rejects a record longer than 8192 bytes, a missing final record (a truncated file) and
+  any bytes after the final record;
+- every record's auth tag covers its position in the stream, its chunk tag and its exact length,
+  so records cannot be reordered, dropped, cut or extended.
+
+**Raw, uncontained outputs.** `kalyna-gcm` writes the ciphertext, nonce and tag as separate raw
+files, and `kalyna-gmac` writes a bare tag. Neither binds the exact length, as explained above. If
+you must use them directly, put the ciphertext length into `--aad` (for `kalyna-gcm`), and never let
+an attacker-controlled length reach `kalyna-gmac`. For files, use `encrypt` or `box-seal`.

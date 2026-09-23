@@ -3032,6 +3032,11 @@ fn is_help_flag(s: &str) -> bool {
 /// `true` for `--version`/`-V` (the `-V` short form matches `cargo --version`'s own convention,
 /// e.g. `cargo -V`). Only checked at the top level (`uacrypt --version`), unlike `is_help_flag` -
 /// there is no per-subcommand version to report, every command ships as one binary.
+/// The version byte `box-seal`/`box-seal512` write first (`dstu_core::crypto_box`'s own
+/// `FORMAT_VERSION`, D-202), printed by `--version`. A unit test checks it against a real sealed
+/// file, so it cannot silently drift from the library.
+const CONTAINER_FORMAT_VERSION: u8 = 2;
+
 fn is_version_flag(s: &str) -> bool {
     s == "--version" || s == "-V"
 }
@@ -3048,7 +3053,7 @@ transcription-verified).
 USAGE:
     uacrypt <command> [flags]
     uacrypt <command> --help    show that command's flags and an example invocation
-    uacrypt --version           print the version and exit
+    uacrypt --version           print the version and the container format version, then exit
 
 EVERYDAY COMMANDS:
     keygen          Generate a fresh random 32-byte key for `encrypt`/`decrypt`.
@@ -3082,6 +3087,13 @@ LOWER-LEVEL COMMANDS (benchmarking/interop - most users want the three above ins
     kupyna-digest   Kupyna hash with a selectable variant (256/512) and a benchmark --iterations flag.
     strumok-crypt   Strumok keystream cipher - NOT authenticated, tampering is never detected.
 
+FILE FORMATS (byte layouts, with field sizes in bytes: see docs/CLI.md 'File formats'):
+    encrypt         header (32), then records: chunk tag (1) || length (4, LE) || ciphertext || auth tag (16)
+    box-seal(512)   version (1) || KEM ciphertext (128 / 256) || header (32) || ciphertext || auth tag (16)
+    keys            raw bytes, no header; verifying keys start with a curve byte (01 m=163, 02 m=257)
+    kalyna-gcm/-gmac write raw ciphertext/tag files with no container. Their tag does not bind the
+    exact length, so use `encrypt` or `box-seal` for files.
+
 Run `uacrypt <command> --help` for that command's flags and an example.
 ";
 
@@ -3108,6 +3120,11 @@ uacrypt encrypt - encrypt a file of any size with a 32-byte key.
 Streamed in bounded memory chunks (no whole-file buffering) and authenticated: `decrypt` detects
 any tampering with the output rather than silently returning wrong plaintext. Built on
 dstu_core::crypto_secretstream (see docs/DECISIONS.md D-68).
+
+OUTPUT FORMAT:
+    header (32) || records, each: chunk tag (1) || ciphertext length (4, little-endian) ||
+    ciphertext || auth tag (16). Plaintext is split into 8192-byte chunks; the last record is
+    tagged final, so a truncated file is rejected. See docs/CLI.md 'File formats'.
 
 USAGE:
     uacrypt encrypt --key <path> --in <path> --out <path>
@@ -3365,6 +3382,10 @@ symmetric key from it, and encrypts --in with that key.
 Not memory-bounded: --in is read whole into memory (unlike `encrypt`'s bounded-chunk streaming) -
 fine for typical messages/keys, not recommended for very large files yet.
 
+OUTPUT FORMAT:
+    version (1, currently 2) || KEM ciphertext (128) || header (32) || ciphertext (same length
+    as --in) || auth tag (16) - 177 bytes of overhead. See docs/CLI.md 'File formats'.
+
 USAGE:
     uacrypt box-seal --key <path> --in <path> --out <path> [--iterations <n>]
 
@@ -3446,6 +3467,10 @@ from it, and encrypts --in with that key.
 
 Not memory-bounded: --in is read whole into memory (unlike `encrypt`'s bounded-chunk streaming) -
 fine for typical messages/keys, not recommended for very large files yet.
+
+OUTPUT FORMAT:
+    version (1, currently 2) || KEM ciphertext (256) || header (32) || ciphertext (same length
+    as --in) || auth tag (16) - 305 bytes of overhead. See docs/CLI.md 'File formats'.
 
 USAGE:
     uacrypt box-seal512 --key <path> --in <path> --out <path> [--iterations <n>]
@@ -3534,6 +3559,12 @@ Benchmarking/interop tool (docs/DECISIONS.md D-31/D-71), same shape as `kalyna-c
 message-length cap - for everyday use, `encrypt`/`decrypt` (crypto_secretstream) are simpler and
 already stream to disk.
 
+WARNING:
+    The output is a raw ciphertext file plus separate nonce/tag files, with no container. The tag
+    covers the ciphertext padded to a block boundary, so it does not bind the exact ciphertext
+    length (docs/DECISIONS.md D-200). If you must use this mode directly, put the ciphertext's
+    length into --aad. For files, use `encrypt` or `box-seal`, which bind it for you.
+
 USAGE:
     uacrypt kalyna-gcm encrypt --variant <v> --key <path> --nonce <path> --in <path> --out <path> --tag <path> [--aad <path>] [--iterations <n>]
     uacrypt kalyna-gcm decrypt --variant <v> --key <path> --nonce <path> --in <path> --out <path> --tag <path> [--aad <path>] [--iterations <n>]
@@ -3581,6 +3612,11 @@ uacrypt kalyna-gmac - Kalyna-GMAC message authentication, for benchmarking/inter
 
 Computes or verifies a full-block-length tag over a message - no encryption, no nonce (unlike
 kalyna-gcm, hazmat::kalyna_gmac takes none). Do not reuse this key for any encryption mode.
+
+WARNING:
+    The tag covers the message padded to a block boundary, so it does not bind the exact message
+    length (docs/DECISIONS.md D-200): do not rely on it where an attacker can change a message's
+    length. Use `sign` to prove who wrote a file.
 
 USAGE:
     uacrypt kalyna-gmac compute --variant <v> --key <path> --in <path> --out <path> [--iterations <n>]
@@ -3880,7 +3916,10 @@ pub fn run(args: &[String]) -> Result<(), CliError> {
             Ok(())
         }
         Some(cmd) if is_version_flag(cmd) => {
-            println!("uacrypt {}", env!("CARGO_PKG_VERSION"));
+            println!(
+                "uacrypt {} (container format {CONTAINER_FORMAT_VERSION})",
+                env!("CARGO_PKG_VERSION")
+            );
             Ok(())
         }
         Some("kalyna-block") => {
@@ -5280,6 +5319,16 @@ mod tests {
     fn run_version_flag_succeeds() {
         assert!(run(&["--version".to_string()]).is_ok());
         assert!(run(&["-V".to_string()]).is_ok());
+    }
+
+    #[test]
+    fn help_texts_describe_formats_and_warn_on_raw_gcm_gmac() {
+        assert!(TOP_LEVEL_HELP.contains("FILE FORMATS"));
+        assert!(ENCRYPT_HELP.contains("OUTPUT FORMAT"));
+        assert!(BOX_SEAL_HELP.contains("OUTPUT FORMAT"));
+        assert!(BOX_SEAL512_HELP.contains("OUTPUT FORMAT"));
+        assert!(KALYNA_GCM_HELP.contains("does not bind the exact ciphertext"));
+        assert!(KALYNA_GMAC_HELP.contains("does not bind the exact message"));
     }
 
     #[test]
@@ -6839,6 +6888,7 @@ mod tests {
 
         let sealed_bytes = std::fs::read(dir.file("msg.box")).expect("read sealed output");
         assert_eq!(sealed_bytes.len(), 1 + 128 + 32 + 32 + 16); // version + KEM + header + message + tag
+        assert_eq!(sealed_bytes[0], CONTAINER_FORMAT_VERSION);
         let pub_bytes = std::fs::read(dir.file("box.pub")).expect("read public key");
         assert_eq!(pub_bytes.len(), 32);
 
