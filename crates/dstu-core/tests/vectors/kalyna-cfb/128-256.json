@@ -2,7 +2,7 @@
   "algorithm": "Kalyna-CFB-128/256",
   "block_bits": 128,
   "key_bits": 256,
-  "source": "oracles/uapki/library/uapkic/src/dstu7624.c dstu7624_cfb_self_test, cfb_test_data[4] (key/iv byte lengths select the variant) - programmatically extracted, not hand-transcribed. q=8 here is genuinely less than the 16-byte block size - the only Stage-A CFB vector exercising the partial-feedback-width path (as opposed to q == block size, full feedback).",
+  "source": "oracles/uapki/library/uapkic/src/dstu7624.c dstu7624_cfb_self_test, cfb_test_data[4] (key/iv byte lengths select the variant) - programmatically extracted, not hand-transcribed. q=8 here is genuinely less than the 16-byte block size - the only Stage-A CFB vector exercising the partial-feedback-width path (as opposed to q == block size, full feedback). Case 2 added by T-234: DSTU 7624:2014 (draft edition), annex В.4.3, q=8 bits (1 byte), N=85 bits -> 10 bytes. Values programmatically extracted from the annex text (not hand-transcribed). Where the annex's bit length N is not a multiple of 8, only the leading floor(N/8) whole bytes are kept (annex В.1: the last byte's (N mod 8) most significant bits carry the tail) - valid for a stream mode, since each output byte depends only on the keystream and its own input byte.",
   "cases": [
     {
       "key_hex": "1F1E1D1C1B1A191817161514131211100F0E0D0C0B0A09080706050403020100",
@@ -10,6 +10,13 @@
       "q": 8,
       "plaintext_hex": "26319A368D85DE43DD5FDB928D91A441493D8CE07B64797C8F9676C5921CD1EA743F5E2777C327AC58",
       "ciphertext_hex": "5F5E5D5C5B5A595857565554535251504F4E4D4C4B4A494847464544434241403F3E3D3C3B3A393837"
+    },
+    {
+      "key_hex": "000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F",
+      "iv_hex": "202122232425262728292A2B2C2D2E2F",
+      "plaintext_hex": "30313233343536373839",
+      "ciphertext_hex": "243D9D00A33B204455B3",
+      "q": 1
     }
   ]
 }

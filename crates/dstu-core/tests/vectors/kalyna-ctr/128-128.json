@@ -2,7 +2,7 @@
   "algorithm": "Kalyna-CTR-128/128",
   "block_bits": 128,
   "key_bits": 128,
-  "source": "oracles/uapki/library/uapkic/src/dstu7624.c dstu7624_ctr_self_test (case 1) and oracles/bouncycastle-java DSTU7624Test.java's BlockCipherVectorTest #25 (case 2, KCTRBlockCipher) - only Kalyna128_128 has any CTR vector in either vendored oracle; other variants are unverified against an external oracle for CTR specifically, relying instead on this mode's shared keystream logic with the already dual-oracle-verified hazmat::kalyna_ccm (both call the same dstu7624.c encrypt_ctr internally) plus the proptest chunk-invariance suite. BC test #24 is byte-for-byte identical to case 1 here (same dual-lineage relationship already established for CCM/GCM/KW), not an independent third vector.",
+  "source": "oracles/uapki/library/uapkic/src/dstu7624.c dstu7624_ctr_self_test (case 1) and oracles/bouncycastle-java DSTU7624Test.java's BlockCipherVectorTest #25 (case 2, KCTRBlockCipher) - only Kalyna128_128 has any CTR vector in either vendored oracle; other variants are unverified against an external oracle for CTR specifically, relying instead on this mode's shared keystream logic with the already dual-oracle-verified hazmat::kalyna_ccm (both call the same dstu7624.c encrypt_ctr internally) plus the proptest chunk-invariance suite. BC test #24 is byte-for-byte identical to case 1 here (same dual-lineage relationship already established for CCM/GCM/KW), not an independent third vector. Case 3 added by T-234: DSTU 7624:2014 (draft edition), annex В.3.2 (decryption example, N=20 bits -> 2 bytes). Values programmatically extracted from the annex text (not hand-transcribed). Where the annex's bit length N is not a multiple of 8, only the leading floor(N/8) whole bytes are kept (annex В.1: the last byte's (N mod 8) most significant bits carry the tail) - valid for a stream mode, since each output byte depends only on the keystream and its own input byte. Note (T-234): case 1 is itself annex В.3.1 - the uapki KAT and the annex are the same source.",
   "cases": [
     {
       "key_hex": "000102030405060708090A0B0C0D0E0F",
@@ -15,6 +15,12 @@
       "iv_hex": "101112131415161718191A1B1C1D1E1F",
       "plaintext_hex": "303132333435363738393A3B3C3D3E3F404142434445464748494A4B4C4D4E4F",
       "ciphertext_hex": "B91A7B8790BBCFCFE65D04E5538E98E216AC209DA33122FDA596E8928070BE51"
+    },
+    {
+      "key_hex": "0F0E0D0C0B0A09080706050403020100",
+      "iv_hex": "1F1E1D1C1B1A19181716151413121110",
+      "plaintext_hex": "A7BE",
+      "ciphertext_hex": "2F2E"
     }
   ]
 }

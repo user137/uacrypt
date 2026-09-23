@@ -8753,13 +8753,20 @@ Next, in order:
    New: the owner put the DSTU 7624:2014, 4145-2002 and 7564:2014 PDFs into `docs/papers/`. They
    are gitignored (a7f693c) and must never be committed. 7624 is the primary text T-234 was waiting
    for.
-   **Next-step choice for the owner, still open:**
-   - (a) T-234: read the 7624 GCM/GMAC clauses with local OCR/rendering, not WebFetch, and check
-     whether the `0x80` padding and the padded length block are in the standard itself. The
-     result feeds O-2/T-235.
-   - (b) Step 4 below.
-
-   Do not start either without the owner's go-ahead.
+   **Chosen: (a) T-234, done 2026-09-23.** The PDFs (draft editions of 7624/7564) were checked
+   against the code. Owner decision: **the standard governs**; UAPKI/BC divergences are their
+   choice and get a public compatibility table. The approved plan, one commit per phase:
+   - Phase 0: freeze the pre-change evidence (scratch only).
+   - Phase 1: new annex В vectors (CTR 4 variants, CFB В.4.3, CBC В.6.10).
+   - Phase 2: GCM/GMAC to §12 (`0x80` on AAD, true λ_C/λ_o). All v2 `crypto_*` tags change;
+     `FORMAT_VERSION` stays 2 (unreleased); D-200's `ct_len` binding is kept.
+   - Phase 3: CCM to §13 (flag = AAD present, empty AAD -> B = T(G1), G2 length formula, reject
+     empty M, `H_BUF_LEN` resized).
+   - Phase 4: CMAC rejects empty input (T-236).
+   - Phase 5: `docs/COMPATIBILITY.md` (UAPKI/BC 1.85 table), D-204..206, ORACLES/SECURITY/CLI
+     docs, CHANGELOG (breaking for v0.3.0 hazmat + `uacrypt kalyna-*`).
+   Parallel ask to the owner: order the final 7624:2014 text via the National Library EDD, since
+   our copy is a draft.
 2. Step 4: the stream-file framing for uacrypt and all 8 binding writers. It needs:
    - a version byte;
    - a "non-final record must be exactly 8192 bytes" check;

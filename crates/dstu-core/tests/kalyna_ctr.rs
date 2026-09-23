@@ -1,10 +1,9 @@
 //! Black-box integration test for `dstu_core::hazmat::kalyna_ctr` against the cross-oracle
 //! vectors in `tests/vectors/kalyna-ctr/` (`docs/TASKS.md` T-92, `docs/DECISIONS.md` D-53) - uapki plus a
 //! genuinely independent second Bouncy Castle vector (`KCTRBlockCipher`), for the one variant
-//! either oracle covers (Kalyna128_128). Other variants rely on this mode sharing its keystream
-//! logic with the already dual-oracle-verified `hazmat::kalyna_ccm` (both call the same
-//! `dstu7624.c` `encrypt_ctr` internally, per the module doc) plus the chunk-invariance `proptest`
-//! below across all five.
+//! either oracle covers (Kalyna128_128). The other four variants are checked against DSTU
+//! 7624:2014 (draft) annex В.3's own examples (T-234), plus the chunk-invariance `proptest` below
+//! across all five.
 
 use dstu_core::hazmat::kalyna_ctr::{
     Kalyna128_128Ctr, Kalyna128_256Ctr, Kalyna256_256Ctr, Kalyna256_512Ctr, Kalyna512_512Ctr,
@@ -134,3 +133,61 @@ fn official_vectors_apply_and_are_self_inverse() {
         assert_eq!(buf, case.plaintext, "decrypt mismatch");
     }
 }
+
+/// The other four variants' vectors come straight from DSTU 7624:2014 (draft) annex В.3 (T-234),
+/// which neither vendored oracle ships.
+macro_rules! annex_vector_test {
+    ($name:ident, $variant:ty, $key_len:literal, $block_len:literal, $file:literal) => {
+        #[test]
+        fn $name() {
+            let cases = cases(include_str!($file));
+            assert_eq!(
+                cases.len(),
+                2,
+                "annex has one encryption and one decryption example"
+            );
+            for case in cases {
+                let mut key = [0u8; $key_len];
+                key.copy_from_slice(&case.key);
+                let mut iv = [0u8; $block_len];
+                iv.copy_from_slice(&case.iv);
+
+                let mut buf = case.plaintext.clone();
+                <$variant>::new(&key, &iv).apply_in_place(&mut buf);
+                assert_eq!(buf, case.ciphertext, "encrypt mismatch");
+
+                <$variant>::new(&key, &iv).apply_in_place(&mut buf);
+                assert_eq!(buf, case.plaintext, "decrypt mismatch");
+            }
+        }
+    };
+}
+
+annex_vector_test!(
+    annex_128_256,
+    Kalyna128_256Ctr,
+    32,
+    16,
+    "vectors/kalyna-ctr/128-256.json"
+);
+annex_vector_test!(
+    annex_256_256,
+    Kalyna256_256Ctr,
+    32,
+    32,
+    "vectors/kalyna-ctr/256-256.json"
+);
+annex_vector_test!(
+    annex_256_512,
+    Kalyna256_512Ctr,
+    64,
+    32,
+    "vectors/kalyna-ctr/256-512.json"
+);
+annex_vector_test!(
+    annex_512_512,
+    Kalyna512_512Ctr,
+    64,
+    64,
+    "vectors/kalyna-ctr/512-512.json"
+);
