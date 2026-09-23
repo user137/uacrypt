@@ -189,6 +189,31 @@ None of `kalyna-block`/`kupyna-digest`/`strumok-crypt`/`kalyna-ccm`/`kalyna-gcm`
 stay as lower-level, hazmat-scoped tools for anyone who explicitly wants that level of control, or
 is benchmarking a specific primitive directly.
 
+## Verifying a downloaded release
+
+From 0.4.0 on, every GitHub Release carries `SHA256SUMS`, its Sigstore signature bundle
+`SHA256SUMS.sigstore.json`, and a CycloneDX SBOM (`uacrypt.cdx.json`); every asset also has a
+GitHub build-provenance attestation (T-252). Download the asset plus the two `SHA256SUMS` files into
+one directory, then:
+
+```sh
+# 1. The checksum file was signed by this repository's release workflow, from a release tag
+cosign verify-blob --bundle SHA256SUMS.sigstore.json \
+  --certificate-identity-regexp '^https://github\.com/user137/uacrypt/\.github/workflows/release\.yml@refs/tags/v' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  SHA256SUMS
+
+# 2. The asset matches the signed checksum (--ignore-missing: only the files you downloaded)
+sha256sum --ignore-missing -c SHA256SUMS
+
+# 3. Optional, independent of 1-2: GitHub's provenance record for the asset
+gh attestation verify uacrypt-linux-x86_64.tar.gz --repo user137/uacrypt \
+  --signer-workflow user137/uacrypt/.github/workflows/release.yml
+```
+
+The binaries are built with `cargo auditable`, so `cargo audit bin uacrypt` checks the dependency
+versions compiled into a downloaded binary against the RustSec advisory database.
+
 ## File formats
 
 What each command writes, byte by byte. Sizes are in bytes, `||` means concatenation, and

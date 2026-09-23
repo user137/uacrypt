@@ -58,6 +58,13 @@ All notable changes to this project are documented in this file. Format follows
 
 ### Added
 
+- Verifiable releases (T-252). Every GitHub Release now carries `SHA256SUMS` with a Sigstore
+  keyless signature (`SHA256SUMS.sigstore.json`), a CycloneDX SBOM for `uacrypt`, and a GitHub
+  build-provenance attestation for every asset. The `uacrypt` binaries are built with
+  `cargo auditable --locked`, so `cargo audit bin` can check them. See "Verifying a downloaded
+  release" in `docs/CLI.md`.
+- The Python and npm packages move to 0.2.0 and the Ruby gem to 0.2.0, carrying the breaking
+  format changes above.
 - `uacrypt` documents its file formats. `docs/CLI.md` has a new "File formats" section with every
   command's byte layout and why the everyday commands write containers rather than bare
   ciphertext. `uacrypt --help` has a short FILE FORMATS block, and `encrypt`/`box-seal`/`box-seal512`

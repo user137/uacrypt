@@ -14,7 +14,7 @@ encryption) — in the spirit of **libsodium**: hard, safe defaults, hard to mis
 OpenSSL's flexible-but-easy-to-misconfigure API. Ships as a Rust crate (`dstu-core`), a CLI
 (`uacrypt`), and bindings for eight languages.
 
-<!-- uacrypt-version: 0.3.8 -->
+<!-- uacrypt-version: 0.4.0 -->
 **Pre-1.0. Not audited. Not a claim of side-channel resistance.** `dstu-core`/`uacrypt` are on
 [crates.io](https://crates.io/crates/dstu-core); the Python, Node.js, and Ruby bindings are on
 [PyPI](https://pypi.org/project/dstu-core/)/[npm](https://www.npmjs.com/package/dstu-core)/
@@ -61,7 +61,8 @@ uacrypt decrypt --key key.bin --in sealed.bin --out message.bin
 
 See [`docs/CLI.md`](https://github.com/user137/uacrypt/blob/master/docs/CLI.md) for the full
 command reference (`sign`/`verify`, `box-seal`/`box-open`, and the lower-level `kalyna-block`/
-`kalyna-ccm` tools), and [docs.rs](https://docs.rs/dstu-core) for the full library API.
+`kalyna-ccm` tools) and for verifying a downloaded release (signed checksums, provenance), and
+[docs.rs](https://docs.rs/dstu-core) for the full library API.
 
 ## Language bindings
 

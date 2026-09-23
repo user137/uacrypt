@@ -13,10 +13,17 @@ name: release
 # auto-publishes without a click. All three registries are live now (PyPI/npm since T-164, RubyGems
 # since v0.3.8/docs/DECISIONS.md D-194) - see each job's own comment below for its current posture
 # (npm still carries a bootstrap NODE_AUTH_TOKEN alongside OIDC, PyPI/RubyGems are OIDC-only).
+#
+# T-252 (release supply-chain hardening): the uacrypt binaries are built with `cargo auditable
+# --locked`, a CycloneDX SBOM ships with them, and `assemble-release-assets` gives every release asset
+# a build-provenance attestation plus a Sigstore keyless-signed SHA256SUMS. `workflow_dispatch` is a
+# dry run of everything up to that point: every publishing job and step is gated on a real `v*` tag
+# push, so a manual run builds, signs and attests but publishes nothing.
 on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
 
 # Workflow-level default: build-binary/package-library only read the repo and upload build
 # artifacts. `publish-release` overrides this with `contents: write` (already present below) since
@@ -44,7 +51,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - run: cargo build -p uacrypt --release
+      # cargo-auditable embeds the resolved dependency list in the binary, so `cargo audit bin` can
+      # check a downloaded uacrypt against RustSec (T-252). --locked: the release builds exactly
+      # the committed Cargo.lock.
+      - run: cargo install cargo-auditable --locked --version 0.7.6
+      - run: cargo auditable build -p uacrypt --release --locked
       - name: Package (Unix)
         if: runner.os != 'Windows'
         run: |
@@ -206,19 +217,41 @@ jobs:
           name: ruby-gem-${{ matrix.platform }}
           path: ${{ steps.cross-gem.outputs.gem-path }}
 
-  publish-release:
-    name: create GitHub release
-    # Wheel-build failure blocks the release (same posture as package-library) - a deliberate
-    # choice, not a side effect: this binding's own CI (bindings-python.yml) already gates
-    # correctness/interop on every push, so a release-time wheel-build failure here means the
-    # packaging step itself broke, which should stop the release rather than ship silently without
-    # wheels attached.
-    needs: [build-binary, package-library, build-python-wheels]
+  sbom:
+    name: CycloneDX SBOM for uacrypt
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo install cargo-cyclonedx --locked --version 0.5.9
+      # --target all: one SBOM covering the dependencies of every platform the binaries ship for.
+      # It writes one file per workspace member; only uacrypt's is a release asset.
+      - run: >-
+          cargo cyclonedx --manifest-path crates/uacrypt/Cargo.toml -f json --spec-version 1.5
+          --target all --override-filename uacrypt.cdx
+      - uses: actions/upload-artifact@v4
+        with:
+          name: uacrypt-sbom
+          path: crates/uacrypt/uacrypt.cdx.json
+
+  assemble-release-assets:
+    name: checksums, signature, provenance
+    # Every build job is a dependency, so the asset set is fixed: before T-252 the Node addons and
+    # Ruby gems reached the release only when their jobs happened to finish first, and a checksum
+    # file must not silently miss what lost that race. A failed build blocks the release, as before.
+    needs:
+      - build-binary
+      - package-library
+      - build-python-wheels
+      - build-nodejs-artifacts
+      - build-ruby-gems
+      - sbom
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
@@ -226,8 +259,50 @@ jobs:
         run: |
           set -eu
           mkdir -p release-assets
+          dups=$(find artifacts -type f -printf '%f\n' | sort | uniq -d)
+          if [ -n "$dups" ]; then echo "duplicate asset names: $dups"; exit 1; fi
           find artifacts -type f -exec cp {} release-assets/ \;
           ls -la release-assets
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: release-assets/*
+      - name: SHA256SUMS
+        working-directory: release-assets
+        run: |
+          set -eu
+          sha256sum -- * > ../SHA256SUMS
+          mv ../SHA256SUMS .
+          cat SHA256SUMS
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      # Keyless: the certificate names this workflow run's identity, there is no key to keep.
+      # The self-check pins the exact workflow ref, which docs/CLI.md's user-facing command narrows
+      # to a release tag.
+      - name: Sign and verify SHA256SUMS
+        working-directory: release-assets
+        run: |
+          set -eu
+          cosign sign-blob --yes --bundle SHA256SUMS.sigstore.json SHA256SUMS
+          cosign verify-blob --bundle SHA256SUMS.sigstore.json \
+            --certificate-identity "https://github.com/${{ github.workflow_ref }}" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-assets
+          path: release-assets/*
+
+  publish-release:
+    name: create GitHub release
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: assemble-release-assets
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-assets
+          path: release-assets
       - uses: softprops/action-gh-release@v2
         with:
           files: release-assets/*
@@ -243,6 +318,7 @@ jobs:
     # in that GitHub Environment's protection rules before this job runs - it does not silently
     # auto-publish just because a tag was pushed.
     name: publish to PyPI
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     needs: build-python-wheels
     runs-on: ubuntu-latest
     environment: pypi
@@ -296,6 +372,7 @@ jobs:
     # both real, external, and not something this workflow controls), so every step below is written
     # to tolerate "already published" and pick up wherever the previous attempt stopped.
     name: publish to npm
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     needs: build-nodejs-artifacts
     runs-on: ubuntu-latest
     environment: npm
@@ -415,6 +492,7 @@ jobs:
     # any repeat publish attempt. The grep below only guards the genuine-conflict case (same
     # version/platform, different content).
     name: publish to RubyGems
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     needs: build-ruby-gems
     runs-on: ubuntu-latest
     environment: rubygems
@@ -460,8 +538,11 @@ jobs:
     # registry dependency (version = "0.2.0"), not the local path - path deps are stripped from the
     # published Cargo.toml, so uacrypt's own `cargo publish` verification build would fail against
     # crates.io until dstu-core is actually there.
+    # Needs only the builds, not publish-release (T-252): a failure in the signing/SBOM/attestation
+    # steps must never hold back a security fix's crates.io release.
     name: publish to crates.io
-    needs: publish-release
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: [build-binary, package-library]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

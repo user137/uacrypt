@@ -4545,7 +4545,10 @@ mod tests {
     }
 
     /// "Fool" test - pointing `--out` at a directory (an easy copy-paste mistake) must be a clean
-    /// `Io` error, not a panic, same convention as `run_secretstream_command`'s directory tests.
+    /// error, not a panic, same convention as `run_secretstream_command`'s directory tests. Which
+    /// error is OS-specific: on Unix `O_CREAT | O_EXCL` on an existing directory is `EEXIST`, so
+    /// T-241's refusal (`KeyFileExists`) fires; Windows reports access denied (`Io`). Found by the
+    /// first Unix run of these tests (Pi, 2026-09-24).
     #[test]
     fn run_keygen_command_directory_as_out_is_io_error_not_panic() {
         let dir = TempDir::new("keygen_dir_out");
@@ -4554,10 +4557,11 @@ mod tests {
         let args = KeygenArgs {
             out_path: dir.file("a_directory"),
         };
-        assert!(matches!(
-            run_keygen_command(&args),
-            Err(CliError::Io { .. })
-        ));
+        let result = run_keygen_command(&args);
+        #[cfg(unix)]
+        assert!(matches!(result, Err(CliError::KeyFileExists(_))));
+        #[cfg(not(unix))]
+        assert!(matches!(result, Err(CliError::Io { .. })));
     }
 
     #[test]
@@ -6704,12 +6708,14 @@ mod tests {
     fn run_sign_keygen_command_directory_as_out_is_io_error_not_panic() {
         let dir = TempDir::new("sign_keygen_dir_out");
         std::fs::create_dir_all(dir.file("a_directory")).expect("create sub-directory");
-        assert!(matches!(
-            run_sign_keygen_command(&SignKeygenArgs {
-                out_path: dir.file("a_directory"),
-            }),
-            Err(CliError::Io { .. })
-        ));
+        // OS-specific error, see run_keygen_command_directory_as_out_is_io_error_not_panic.
+        let result = run_sign_keygen_command(&SignKeygenArgs {
+            out_path: dir.file("a_directory"),
+        });
+        #[cfg(unix)]
+        assert!(matches!(result, Err(CliError::KeyFileExists(_))));
+        #[cfg(not(unix))]
+        assert!(matches!(result, Err(CliError::Io { .. })));
     }
 
     #[test]

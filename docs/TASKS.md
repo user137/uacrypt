@@ -8649,7 +8649,7 @@ replace a DSTU primitive.
 
 ### Tasks added 2026-09-23
 
-- [ ] **T-250** (**owner decision, blocks T-251**) Legacy read / migration path for data written by
+- [ ] **T-250** (**downgraded 2026-09-23, see Owner decisions: no `migrate`, no fixtures; the 0.3.x release binaries stay available for decrypting old data**) Legacy read / migration path for data written by
   <= 0.3.8. Deleting old binaries, or yanking before the new release can read the old format,
   would strand every file users encrypted with `uacrypt` <= 0.3.8 and every `secretbox` blob. Proposal:
   an explicit `uacrypt migrate --in old --out new` in 0.4.0 that decrypts the old format behind a
@@ -8659,8 +8659,8 @@ replace a DSTU primitive.
   migrates; a V6-tampered old file migrates *with* the warning (it cannot be detected - say so);
   the new format never accepts old bytes.
 - [ ] **T-251** (**owner-gated, destructive/outward-facing - confirm every step separately**)
-  Registry and GitHub cleanup, **only after** 0.4.0 plus the binding releases are live and T-250
-  has shipped. Published state as checked 2026-09-23:
+  Registry and GitHub cleanup, **only after** 0.4.0 plus the binding releases are live (T-250 was
+  downgraded, so keep the 0.3.x release assets: they are the documented way to decrypt old data). Published state as checked 2026-09-23:
   - **crates.io**: `dstu-core` and `uacrypt` 0.3.0-0.3.8, none yanked (0.1/0.2 were never
     published there).
   - **GitHub Releases**: v0.1.0-v0.3.8. v0.3.8 carries `uacrypt` binaries for linux-x86_64,
@@ -8687,7 +8687,12 @@ replace a DSTU primitive.
   padded form looks like `pt || N (LE) || 0x80..` (read §15.4 before implementing).
 - [ ] **T-254** (from T-234) Public Kupyna-384 digest (`R_384` of the 1024-bit-state core, as
   `Kupyna384Kmac` already uses internally) plus the DSTU 7564 annex Б vector (N = 760).
-- [ ] **T-252** (release supply-chain hardening, from the standards baseline) The release pipeline
+- [x] **T-252** (**done locally 2026-09-24, not yet run in CI** - `release.yml`: `cargo auditable
+  build --locked`, a CycloneDX SBOM job, `assemble-release-assets` with provenance attestations and a
+  Sigstore keyless-signed `SHA256SUMS`, every publish job gated to a `v*` tag push, and
+  `workflow_dispatch` as a publish-free dry run; `docs/CLI.md` "Verifying a downloaded release".
+  Scorecard left out. **Before the tag:** dry-run it (see RESUME HERE); **after 0.4.0:** run the
+  documented verify commands against the real assets) (release supply-chain hardening, from the standards baseline) The release pipeline
   (`.github/workflows/release.yml`) has npm `--provenance` only: no checksums, signatures, build
   provenance or SBOM for the `uacrypt` binaries and the other artefacts. Add:
   - `SHA256SUMS` plus a signature (Sigstore keyless or minisign - owner choice);
@@ -8821,6 +8826,16 @@ Next, in order:
    GNU host (no ASan).
    **Release gate: the PHP secretstream suite (changed, not installable here) must be green in the
    GHSA private-fork CI before the 0.4.0 tag.**
+   **Release decisions (owner, 2026-09-24):**
+   - **CI gate:** GHSA temporary private forks run no CI ("integrations, including CI, cannot access
+     temporary private forks", GitHub docs). The gate moves to the Pi instead: the PHP binding and
+     T-241's `#[cfg(unix)]` tests run there. The Pi was brought back online and its packages updated
+     2026-09-24.
+   - **Publication date:** after both UAPKI and BC reply, or 2026-10-08 (14 days after the reports),
+     whichever comes first. 0.4.0 publishes `docs/COMPATIBILITY.md` and D-207, which describe their
+     unfixed behaviour.
+   - **T-252 signing:** Sigstore keyless.
+   - **CVEs:** request a CVE for both advisories (T-232 and D-207).
    Next: 0.4.0 release preparation (execution plan steps 4-6) - owner-gated, every outward step
    confirmed separately. After 0.4.0: the `uacrypt` UX batch T-255..T-265 as 0.5.0 (last section of
    this file, decisions resolved; start with T-255).
