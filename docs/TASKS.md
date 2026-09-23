@@ -8737,7 +8737,8 @@ T-238, T-232's core part, and T-248. The details are in D-200/D-201/D-202 and in
   switches are updated.
 
 Next, in order:
-1. ~~Step 2b~~ **done 2026-09-23** (local commits 8f4218b..cbfee34, not pushed):
+1. ~~Step 2b~~ **done 2026-09-23** (local commits 8f4218b..a7f693c, not pushed; the closing
+   advisor review is done and its follow-ups are in a7f693c):
    - T-239;
    - T-240 (status 14);
    - uacrypt file-format docs (owner request);
@@ -8746,8 +8747,19 @@ Next, in order:
 
    Open item: T-241's `#[cfg(unix)]` tests have never run, because the Pi was unreachable. Run
    them on the Pi before the release.
-   New: the owner put the DSTU 7624:2014, 4145-2002 and 7564:2014 PDFs into `docs/papers/`
-   (untracked, do not commit). 7624 is the primary text T-234 was waiting for.
+   The Pi (192.168.1.114) timed out on SSH, so the owner was asked to power it on. Also not re-run
+   after T-245: the Python/Node/Ruby/Java binding test suites. Only `cargo check` ran for them; Go,
+   .NET, C++ and PHP ran their full suites.
+   New: the owner put the DSTU 7624:2014, 4145-2002 and 7564:2014 PDFs into `docs/papers/`. They
+   are gitignored (a7f693c) and must never be committed. 7624 is the primary text T-234 was waiting
+   for.
+   **Next-step choice for the owner, still open:**
+   - (a) T-234: read the 7624 GCM/GMAC clauses with local OCR/rendering, not WebFetch, and check
+     whether the `0x80` padding and the padded length block are in the standard itself. The
+     result feeds O-2/T-235.
+   - (b) Step 4 below.
+
+   Do not start either without the owner's go-ahead.
 2. Step 4: the stream-file framing for uacrypt and all 8 binding writers. It needs:
    - a version byte;
    - a "non-final record must be exactly 8192 bytes" check;
