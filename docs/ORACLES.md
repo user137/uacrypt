@@ -236,6 +236,10 @@ comparable to all five other in-scope algorithms combined" framing, not just a p
   - Annex Б: all 15 byte-level hashing examples pass (Kupyna-256/512, and 48/304/384 as the rightmost
     bytes of the 256/512 cores). Kupyna-384 N=760 is a new vector, waiting for a public Kupyna-384
     API (T-254).
+  - The six bit-length examples (N = 510/655 for 256/512, N = 33/1 for 384), which the byte API cannot
+    take, pass too: a unit test in `hazmat::kupyna` feeds the annex's own padded blocks into the
+    compression function and matches every intermediate state and the final hash
+    (`tests/vectors/kupyna/annex-b-bit-level.json`).
   - Annex В defines the KMAC `H(Pad(K) || Pad(M) || ~K)`, and its В.5 examples equal our three KMAC
     vectors, which confirms D-44.
   - The annex has at least one typo (Kupyna-384 N=33: INPUT is one byte short of what `padded`

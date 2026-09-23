@@ -103,6 +103,8 @@ All notable changes to this project are documented in this file. Format follows
 
   Where UAPKI and Bouncy Castle 1.85 read these modes differently, see `docs/COMPATIBILITY.md`.
 - New DSTU 7624 annex vectors: Kalyna-CTR for all five variants, CFB q=8 bits, CBC 512/512 decrypt.
+  DSTU 7564 annex Б's six bit-length Kupyna examples are now checked too, including every
+  intermediate state.
 - Strumok (DSTU 8845:2019) keystream vectors are now confirmed against the official standard text
   itself (Додаток Д, obtained as a genuine library scan), not just UAPKI-attributed - a new
   permanent test module (`crates/dstu-core/tests/strumok.rs`'s `official_annex_d_vectors`) checks

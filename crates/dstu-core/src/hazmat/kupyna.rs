@@ -459,6 +459,14 @@ impl KupynaCore {
             self.compress_block(&tail[i * block_bytes..(i + 1) * block_bytes]);
         }
 
+        self.output(output_bytes)
+    }
+
+    /// The output transformation alone, over whatever has been compressed so far - split out of
+    /// [`Self::finalize`] so a test can feed annex Б's already-padded bit-length examples
+    /// (T-234) without going through byte-level padding.
+    fn output(mut self, output_bytes: usize) -> [u8; 64] {
+        let block_bytes = self.block_bytes();
         // Output transformation: H = R_n(T(h_k) xor h_k) (Kupyna.pdf Section 4). Dispatches into
         // the const-generic `t_transform_n` (T-134, `docs/DECISIONS.md` D-85) - same rationale as
         // `compress_block` above: this runs once per `finalize`, not once per round, but for
@@ -711,4 +719,78 @@ mod const_shift_mix_tests {
         14,
         11
     );
+}
+
+/// DSTU 7564:2014 (draft) annex Б's bit-length examples (T-234): messages whose length is not a whole
+/// number of bytes, which the public byte API cannot take. The annex prints each one already padded,
+/// so this feeds those blocks straight into the compression function and checks every
+/// intermediate state and the final hash.
+#[cfg(test)]
+mod annex_bit_level_tests {
+    use super::KupynaCore;
+
+    const VECTORS: &str = include_str!("../../tests/vectors/kupyna/annex-b-bit-level.json");
+
+    fn decode_hex(s: &str) -> Vec<u8> {
+        assert!(s.len().is_multiple_of(2), "odd-length hex string: {s}");
+        (0..s.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&s[i..i + 2], 16).expect("valid hex digit"))
+            .collect()
+    }
+
+    fn string_field<'a>(case: &'a str, key: &str) -> &'a str {
+        let pattern = format!("\"{key}\": \"");
+        let start = case.find(&pattern).expect("field present") + pattern.len();
+        let len = case[start..].find('"').expect("closing quote");
+        &case[start..start + len]
+    }
+
+    fn state_bytes(core: &KupynaCore) -> Vec<u8> {
+        core.h[..core.columns].iter().flatten().copied().collect()
+    }
+
+    #[test]
+    fn annex_b_bit_length_examples() {
+        let cases: Vec<&str> = VECTORS.split("\"output_bits\": ").skip(1).collect();
+        assert_eq!(cases.len(), 6, "six bit-length examples in annex Б");
+        for case in cases {
+            let output_bits: usize = case[..case.find(',').expect("number")]
+                .parse()
+                .expect("int");
+            let padded = decode_hex(string_field(case, "padded_hex"));
+            let hash = decode_hex(string_field(case, "hash_hex"));
+            let states_start = case.find("\"block_states_hex\": [").expect("states") + 21;
+            let states_end = states_start + case[states_start..].find(']').expect("]");
+            let states: Vec<Vec<u8>> = case[states_start..states_end]
+                .split('"')
+                .skip(1)
+                .step_by(2)
+                .map(decode_hex)
+                .collect();
+
+            let (columns, rounds, shift) = if output_bits <= 256 {
+                (8, 10, 7)
+            } else {
+                (16, 14, 11)
+            };
+            let mut core = KupynaCore::new(columns, rounds, shift);
+            let blocks: Vec<&[u8]> = padded.chunks(core.block_bytes()).collect();
+            assert_eq!(blocks.len(), states.len());
+            for (i, block) in blocks.iter().enumerate() {
+                core.compress_block(block);
+                assert_eq!(
+                    state_bytes(&core),
+                    states[i],
+                    "state after block {i}, Kupyna-{output_bits}"
+                );
+            }
+            let out = core.output(output_bits / 8);
+            assert_eq!(
+                &out[..output_bits / 8],
+                hash.as_slice(),
+                "hash, Kupyna-{output_bits}"
+            );
+        }
+    }
 }

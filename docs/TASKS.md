@@ -8769,8 +8769,20 @@ Next, in order:
    - Phase 4 `792e023`: CMAC rejects empty input (T-236, D-206).
    - Phase 5: `docs/COMPATIBILITY.md` (UAPKI/BC 1.85 table), D-204..206, ORACLES/SECURITY/CLI
      docs, CHANGELOG. Follow-ups: T-253 (KW-p), T-254 (Kupyna-384 API).
+   Closing review added D-207, commit 207f5ad: GCM/GMAC with empty AAD **and** empty data returned
+   `E_K(0)` = the GHASH key, which enables forgery. It affects the v0.3.0 hazmat API and the
+   `kalyna-gcm`/`-gmac` CLI, not `crypto_*`. **Owner decision: whether it goes into the embargoed
+   advisory.**
+   Verified 2026-09-23: xtask fmt/build/test/clippy/docs-check/book/audit/deny/oracle-java/
+   oracle-dotnet/capi/streaming-bounded, fuzz smoke (all 10), and the bindings:
+   - Python 92/92, run against the in-tree build: a stale site-packages copy shadows it, see
+     `.claude.local.md`;
+   - Node 86/86; Ruby 92/92; Java `mvn verify`; .NET 143/143; Go ok; C++ 1/1 (ctest run from
+     PowerShell).
+   PHP and qemu-stm32 were not run (not installed here). Scoped Miri on the four changed modules:
+   see the next commit.
    Still open: the owner to order the final 7624:2014 text via the National Library EDD (our copy is
-   a draft); binding suites Python/Node/Ruby/Java not re-run since T-245 (tags changed again).
+   a draft).
 2. Step 4: the stream-file framing for uacrypt and all 8 binding writers. It needs:
    - a version byte;
    - a "non-final record must be exactly 8192 bytes" check;
