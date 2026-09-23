@@ -52,8 +52,8 @@
 //! tags differ from what UAPKI or Bouncy Castle 1.85 would compute (`docs/COMPATIBILITY.md`).
 //! `Kalyna256_256Gcm` was chosen over the other four Kalyna-GCM variants as the sole construction
 //! here (256-bit key, matching the previous CCM construction's key/nonce width exactly) - see D-51
-//! for the fuller reasoning behind fixing one variant rather than exposing all five, including why the `Strength`-enum precedent from
-//! `crypto_pwhash` does not apply (a Kalyna variant is exactly the knob D-47 says to delete, not a
+//! for the fuller reasoning behind fixing one variant rather than exposing all five, including why
+//! the `Strength`-enum precedent from `crypto_pwhash` does not apply (a Kalyna variant is exactly the knob D-47 says to delete, not a
 //! genuine per-context tradeoff the caller must make). The 16-byte tag (truncated from GCM's own
 //! full 32-byte tag, via the same prefix-comparison convention `hazmat::kalyna_gcm`/`kalyna_gmac`
 //! already support) matches the previous construction's tag length and libsodium's own
@@ -230,7 +230,7 @@ pub fn open(key: &SecretKey, sealed: &[u8]) -> Result<Vec<u8>, SecretboxError> {
         .decrypt(&nonce, &aad(&nonce, ciphertext_len), ciphertext, tag, &mut buf)
         .map_err(|e| match e {
             GcmError::TagMismatch => SecretboxError::TagMismatch,
-            GcmError::InvalidLength => {
+            GcmError::InvalidLength | GcmError::EmptyInput => {
                 unreachable!(
                     "tag.len() == TAG_LEN (16, within 8..=block_bytes) and plaintext_out.len()                      == ciphertext.len() by construction"
                 )

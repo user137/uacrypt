@@ -69,7 +69,7 @@ pub enum CliError {
         actual: usize,
     },
     /// The mode's DSTU 7624:2014 domain excludes an empty message (`kalyna-ccm` §13.1,
-    /// `kalyna-cmac` §9 - `docs/DECISIONS.md` D-205/D-206).
+    /// `kalyna-cmac` §9, `kalyna-gcm`/`kalyna-gmac` §12.1 - `docs/DECISIONS.md` D-205..D-207).
     EmptyInput(&'static str),
     PlaintextTooLong,
     AadTooLong,
@@ -229,6 +229,28 @@ impl fmt::Display for CliError {
                 "box-open512: --in was sealed in a different format version (e.g. by uacrypt \
                  0.3.x) - open it with the release that sealed it"
             ),
+        }
+    }
+}
+
+impl From<dstu_core::hazmat::kalyna_gcm::GcmError> for CliError {
+    fn from(err: dstu_core::hazmat::kalyna_gcm::GcmError) -> Self {
+        match err {
+            dstu_core::hazmat::kalyna_gcm::GcmError::EmptyInput => Self::EmptyInput("kalyna-gcm"),
+            dstu_core::hazmat::kalyna_gcm::GcmError::InvalidLength
+            | dstu_core::hazmat::kalyna_gcm::GcmError::TagMismatch => Self::GcmVerifyFailed,
+        }
+    }
+}
+
+impl From<dstu_core::hazmat::kalyna_gmac::GmacError> for CliError {
+    fn from(err: dstu_core::hazmat::kalyna_gmac::GmacError) -> Self {
+        match err {
+            dstu_core::hazmat::kalyna_gmac::GmacError::EmptyMessage => {
+                Self::EmptyInput("kalyna-gmac")
+            }
+            dstu_core::hazmat::kalyna_gmac::GmacError::InvalidLength
+            | dstu_core::hazmat::kalyna_gmac::GmacError::TagMismatch => Self::GmacVerifyFailed,
         }
     }
 }
@@ -829,13 +851,9 @@ pub fn run_gcm_command(decrypt: bool, args: &GcmArgs) -> Result<(), CliError> {
             let mut tag_out = [0u8; $block_len];
             for _ in 0..iterations {
                 if decrypt {
-                    cipher
-                        .decrypt(&nonce_arr, &aad, &input, tag_in.as_ref().unwrap(), &mut buf)
-                        .map_err(|_| CliError::GcmVerifyFailed)?;
+                    cipher.decrypt(&nonce_arr, &aad, &input, tag_in.as_ref().unwrap(), &mut buf)?;
                 } else {
-                    tag_out = cipher
-                        .encrypt(&nonce_arr, &aad, &input, &mut buf)
-                        .expect("ciphertext_out.len() == plaintext.len() by construction");
+                    tag_out = cipher.encrypt(&nonce_arr, &aad, &input, &mut buf)?;
                 }
             }
             let elapsed = start.elapsed();
@@ -1094,10 +1112,9 @@ pub fn run_gmac_command(verify: bool, args: &GmacArgs) -> Result<(), CliError> {
             let mut tag = [0u8; $block_len];
             for _ in 0..iterations {
                 if verify {
-                    <$mac>::verify_with_cipher(&cipher, &message, tag_in.as_ref().unwrap())
-                        .map_err(|_| CliError::GmacVerifyFailed)?;
+                    <$mac>::verify_with_cipher(&cipher, &message, tag_in.as_ref().unwrap())?;
                 } else {
-                    tag = <$mac>::mac_with_cipher(&cipher, &message);
+                    tag = <$mac>::mac_with_cipher(&cipher, &message)?;
                 }
             }
             (tag.to_vec(), start.elapsed())
@@ -3163,8 +3180,8 @@ FILE FORMATS (byte layouts, with field sizes in bytes: see docs/CLI.md 'File for
     encrypt         header (32), then records: chunk tag (1) || length (4, LE) || ciphertext || auth tag (16)
     box-seal(512)   version (1) || KEM ciphertext (128 / 256) || header (32) || ciphertext || auth tag (16)
     keys            raw bytes, no header; verifying keys start with a curve byte (01 m=163, 02 m=257)
-    kalyna-gcm/-gmac write raw ciphertext/tag files with no container. Their tag does not bind the
-    exact length, so use `encrypt` or `box-seal` for files.
+    kalyna-gcm/-gmac write raw ciphertext/tag files with no container and no format version, so
+    use `encrypt` or `box-seal` for files.
 
 Run `uacrypt <command> --help` for that command's flags and an example.
 ";
@@ -3634,10 +3651,9 @@ message-length cap - for everyday use, `encrypt`/`decrypt` (crypto_secretstream)
 already stream to disk.
 
 WARNING:
-    The output is a raw ciphertext file plus separate nonce/tag files, with no container. The tag
-    covers the ciphertext padded to a block boundary, so it does not bind the exact ciphertext
-    length (docs/DECISIONS.md D-200). If you must use this mode directly, put the ciphertext's
-    length into --aad. For files, use `encrypt` or `box-seal`, which bind it for you.
+    The output is a raw ciphertext file plus separate nonce/tag files, with no container and no
+    format version, and the tag does not cover the nonce (docs/DECISIONS.md D-63). An empty --in
+    with no --aad is rejected (D-207). For files, use `encrypt` or `box-seal`.
 
 USAGE:
     uacrypt kalyna-gcm encrypt --variant <v> --key <path> --nonce <path> --in <path> --out <path> --tag <path> [--aad <path>] [--iterations <n>]
@@ -3688,9 +3704,8 @@ Computes or verifies a full-block-length tag over a message - no encryption, no 
 kalyna-gcm, hazmat::kalyna_gmac takes none). Do not reuse this key for any encryption mode.
 
 WARNING:
-    The tag covers the message padded to a block boundary, so it does not bind the exact message
-    length (docs/DECISIONS.md D-200): do not rely on it where an attacker can change a message's
-    length. Use `sign` to prove who wrote a file.
+    A MAC proves only that someone holding the key produced the tag. An empty --in is rejected
+    (docs/DECISIONS.md D-207). Use `sign` to prove who wrote a file.
 
 USAGE:
     uacrypt kalyna-gmac compute --variant <v> --key <path> --in <path> --out <path> [--iterations <n>]
@@ -5427,8 +5442,9 @@ mod tests {
         assert!(ENCRYPT_HELP.contains("OUTPUT FORMAT"));
         assert!(BOX_SEAL_HELP.contains("OUTPUT FORMAT"));
         assert!(BOX_SEAL512_HELP.contains("OUTPUT FORMAT"));
-        assert!(KALYNA_GCM_HELP.contains("does not bind the exact ciphertext"));
-        assert!(KALYNA_GMAC_HELP.contains("does not bind the exact message"));
+        assert!(KALYNA_GCM_HELP.contains("does not cover the nonce"));
+        assert!(KALYNA_GCM_HELP.contains("An empty --in"));
+        assert!(KALYNA_GMAC_HELP.contains("An empty --in is rejected"));
     }
 
     #[test]
@@ -5628,6 +5644,51 @@ mod tests {
         assert!(!dir.file("pt.bin").exists());
     }
 
+    /// "Fool" test (T-234/D-207): DSTU 7624:2014 §12.1 needs `|O| + |M| >= 1`; with no `--aad`
+    /// and an empty `--in` the tag would be the GHASH key itself, so the command refuses.
+    #[test]
+    fn run_gcm_command_empty_aad_and_input_is_rejected() {
+        let dir = TempDir::new("gcm_empty");
+        std::fs::write(dir.file("key.bin"), [0u8; 16]).expect("write key");
+        std::fs::write(dir.file("in.bin"), []).expect("write empty input");
+        let args = GcmArgs {
+            variant: KalynaVariant::K128_128,
+            key_path: dir.file("key.bin"),
+            nonce_path: dir.file("nonce.bin"),
+            aad_path: None,
+            in_path: dir.file("in.bin"),
+            out_path: dir.file("out.bin"),
+            tag_path: dir.file("tag.bin"),
+            iterations: 1,
+        };
+        assert_eq!(
+            run_gcm_command(false, &args),
+            Err(CliError::EmptyInput("kalyna-gcm"))
+        );
+        assert!(!dir.file("tag.bin").exists());
+    }
+
+    /// Same rule for `kalyna-gmac` (§12.1/§12.5): an empty message would yield the GHASH key.
+    #[test]
+    fn run_gmac_command_empty_input_is_rejected() {
+        let dir = TempDir::new("gmac_empty");
+        std::fs::write(dir.file("key.bin"), [0u8; 16]).expect("write key");
+        std::fs::write(dir.file("in.bin"), []).expect("write empty input");
+        let args = GmacArgs {
+            variant: KalynaVariant::K128_128,
+            key_path: dir.file("key.bin"),
+            in_path: dir.file("in.bin"),
+            out_path: Some(dir.file("tag.bin")),
+            tag_path: None,
+            iterations: 1,
+        };
+        assert_eq!(
+            run_gmac_command(false, &args),
+            Err(CliError::EmptyInput("kalyna-gmac"))
+        );
+        assert!(!dir.file("tag.bin").exists());
+    }
+
     #[test]
     fn run_gcm_command_wrong_key_length_is_rejected() {
         let dir = TempDir::new("gcm_wrong_key_len");
@@ -5788,7 +5849,7 @@ mod tests {
         };
         run_gmac_command(false, &compute_args).expect("compute should succeed");
 
-        let expected_tag = Kalyna128_128Gmac::mac(&key, &message);
+        let expected_tag = Kalyna128_128Gmac::mac(&key, &message).expect("non-empty message");
         assert_eq!(
             std::fs::read(dir.file("tag.bin")).expect("read"),
             expected_tag.to_vec()
@@ -5810,7 +5871,7 @@ mod tests {
         std::fs::write(dir.file("key.bin"), key).expect("write key");
         std::fs::write(dir.file("in.bin"), &message).expect("write message");
 
-        let mut tag = Kalyna128_128Gmac::mac(&key, &message);
+        let mut tag = Kalyna128_128Gmac::mac(&key, &message).expect("non-empty message");
         tag[0] ^= 0x01;
         std::fs::write(dir.file("tag.bin"), tag).expect("write tampered tag");
 

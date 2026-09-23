@@ -57,8 +57,7 @@ uacrypt strumok-crypt --variant 256 --key key.bin --iv iv.bin --in file.bin --ou
 
 `kalyna-block` operates on exactly one block (no mode, no padding). `kalyna-ccm` additionally
 encrypts/authenticates arbitrary-length **short** messages (plaintext and `--aad` each capped at
-255 bytes, a sourced property of the construction) using a provisional, dual-oracle-verified
-Kalyna-alone CCM mode, not yet confirmed against the primary DSTU 7624:2014 text.
+255 bytes) using Kalyna-CCM as DSTU 7624:2014 §13 defines it; an empty message is rejected.
 
 `box-seal`/`box-open` are public-key encryption (DSTU 9041, hybrid via KDF) — unlike `encrypt`
 (which needs a shared symmetric key both sides already have), `box-seal` only needs the recipient's

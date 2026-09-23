@@ -334,7 +334,7 @@ macro_rules! roundtrip_proptest {
                 fn encrypt_then_decrypt_roundtrips(
                     key in proptest::collection::vec(any::<u8>(), $key_len),
                     iv in proptest::collection::vec(any::<u8>(), $iv_len),
-                    aad in proptest::collection::vec(any::<u8>(), 0..50),
+                    aad in proptest::collection::vec(any::<u8>(), 1..50),
                     plaintext in proptest::collection::vec(any::<u8>(), 0..(3 * $block_len + 7)),
                 ) {
                     let mut key_arr = [0u8; $key_len];
@@ -439,4 +439,25 @@ fn aad_and_its_zero_extension_have_different_tags() {
         cipher.decrypt(&iv, &[5, 5, 5, 5, 5, 5, 5, 0], &ct, &tag, &mut out),
         Err(GcmError::TagMismatch)
     );
+}
+
+/// DSTU 7624:2014 (draft) §12.1 requires `|O| + |M| >= 1`. With both empty the tag is `E_K(0)` -
+/// the GHASH key `H` itself, which lets anyone forge tags under that key (T-234, D-207). Either one
+/// alone may be empty.
+#[test]
+fn empty_aad_and_empty_plaintext_are_rejected() {
+    let cipher = Kalyna128_128Gcm::new(&[7u8; 16]);
+    let iv = [1u8; 16];
+    let mut empty: [u8; 0] = [];
+    assert_eq!(
+        cipher.encrypt(&iv, &[], &[], &mut empty),
+        Err(GcmError::EmptyInput)
+    );
+    assert_eq!(
+        cipher.decrypt(&iv, &[], &[], &[0u8; 16], &mut empty),
+        Err(GcmError::EmptyInput)
+    );
+    assert!(cipher.encrypt(&iv, b"aad", &[], &mut empty).is_ok());
+    let mut one = [0u8; 1];
+    assert!(cipher.encrypt(&iv, &[], &[0x42], &mut one).is_ok());
 }

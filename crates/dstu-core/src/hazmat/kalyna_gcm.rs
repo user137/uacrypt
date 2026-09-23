@@ -68,6 +68,9 @@ use super::gf2m_wide::{Gf2m128, Gf2m256, Gf2m512};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GcmError {
+    /// Both `aad` and the plaintext/ciphertext are empty. DSTU 7624:2014 §12.1 requires
+    /// `|O| + |M| >= 1`; the tag would otherwise be `E_K(0)`, the GHASH key itself (D-207).
+    EmptyInput,
     InvalidLength,
     TagMismatch,
 }
@@ -167,7 +170,8 @@ macro_rules! kalyna_gcm_variant {
             ///
             /// # Errors
             ///
-            /// Returns [`GcmError::InvalidLength`] if `ciphertext_out.len() != plaintext.len()`.
+            /// Returns [`GcmError::InvalidLength`] if `ciphertext_out.len() != plaintext.len()`, or
+            /// [`GcmError::EmptyInput`] if both `aad` and `plaintext` are empty.
             pub fn encrypt(
                 &self,
                 iv: &[u8; $block_bytes],
@@ -177,6 +181,9 @@ macro_rules! kalyna_gcm_variant {
             ) -> Result<[u8; $block_bytes], GcmError> {
                 if ciphertext_out.len() != plaintext.len() {
                     return Err(GcmError::InvalidLength);
+                }
+                if aad.is_empty() && plaintext.is_empty() {
+                    return Err(GcmError::EmptyInput);
                 }
                 self.apply_keystream(iv, plaintext, ciphertext_out);
                 Ok(self.compute_tag(aad, ciphertext_out))
@@ -189,9 +196,9 @@ macro_rules! kalyna_gcm_variant {
             /// # Errors
             ///
             /// Returns [`GcmError::InvalidLength`] if `tag.len()` is outside `8..=`[`$block_bytes`]
-            /// or `plaintext_out.len() != ciphertext.len()`, or [`GcmError::TagMismatch`] if
-            /// authentication fails - `plaintext_out` is left all-zero on failure, never unverified
-            /// plaintext.
+            /// or `plaintext_out.len() != ciphertext.len()`, [`GcmError::EmptyInput`] if both `aad`
+            /// and `ciphertext` are empty, or [`GcmError::TagMismatch`] if authentication fails -
+            /// `plaintext_out` is left all-zero on failure, never unverified plaintext.
             pub fn decrypt(
                 &self,
                 iv: &[u8; $block_bytes],
@@ -203,6 +210,9 @@ macro_rules! kalyna_gcm_variant {
                 if !(8..=$block_bytes).contains(&tag.len()) || plaintext_out.len() != ciphertext.len()
                 {
                     return Err(GcmError::InvalidLength);
+                }
+                if aad.is_empty() && ciphertext.is_empty() {
+                    return Err(GcmError::EmptyInput);
                 }
 
                 let expected = self.compute_tag(aad, ciphertext);

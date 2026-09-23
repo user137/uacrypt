@@ -141,6 +141,8 @@ fn compute_tag(
         h_len += aad.len();
     }
 
+    // `chunks_exact` would silently drop a remainder; the G2 formula makes one impossible.
+    debug_assert_eq!(h_len % block_len, 0);
     let mut b = [0u8; MAX_BLOCK];
     for chunk in h_buf[..h_len].chunks_exact(block_len) {
         for (acc, byte) in b.iter_mut().zip(chunk) {

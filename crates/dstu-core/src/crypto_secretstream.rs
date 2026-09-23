@@ -443,7 +443,10 @@ impl PullState {
         match cipher.decrypt(&iv, &aad, ciphertext, auth_tag, plaintext_out) {
             Ok(()) => {}
             Err(GcmError::TagMismatch) => return Err(SecretstreamError::TagMismatch),
-            Err(GcmError::InvalidLength) => return Err(SecretstreamError::InvalidLength),
+            // `EmptyInput` cannot happen: `chunk_aad` is never empty.
+            Err(GcmError::InvalidLength | GcmError::EmptyInput) => {
+                return Err(SecretstreamError::InvalidLength)
+            }
         }
 
         self.counter = next_counter;

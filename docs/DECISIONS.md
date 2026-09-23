@@ -86,6 +86,8 @@ easy/high-level layer (T-65), not a gap in what exists now. `uacrypt`'s direct, 
 probing, confirmed correct rather than assumed.
 
 ## D-05: AEAD working hypothesis is Kalyna-alone CCM, provisional pending the primary text
+
+> **Status (T-234, 2026-09-23):** confirmed - the DSTU 7624:2014 draft text defines GCM (§12) and CCM (§13) on Kalyna alone. The modes were then aligned to that text where UAPKI differed (D-204–D-207).
 (revised 2026-07-23, see D-41's follow-up entry for the original text this replaces)
 
 **Current working hypothesis: Kalyna-alone CCM** (`hazmat::kalyna_ccm`, D-41), not encrypt-then-MAC
@@ -13739,3 +13741,26 @@ The non-aligned CMAC path (`0x80` + `K_delta = T(1)`) is confirmed by annex В.5
   the three В.5 examples equal our vectors - confirmed against the (draft) text.
 - D-185 (`m = 257`): annex Г of DSTU 4145-2002 lists `A = 0`, `B`, `n` and `x^257 + x^12 + 1` exactly as
   implemented (and `m = 163`'s parameters too).
+
+## D-207: T-234 - Kalyna-GCM/GMAC reject an empty AAD-and-data input (the tag would be the GHASH key)
+
+**Finding** (closing advisor review of T-234). DSTU 7624:2014 (draft) §12.1: `|O| + |M| >= 1`. With
+both empty, `B = 0` and the length block is `0`, so the tag is `T(0) = H`, the GHASH key itself - and
+Kalyna-GCM puts no nonce-derived mask on the tag (D-56 divergence 3). Anyone who obtains that one tag
+knows `H` and can construct, for any message they have seen tagged, a different same-length message
+with the same accumulator, i.e. forge tags under that key. Confirmed empirically:
+`Kalyna128_128Gmac::mac(k, [])` and `Kalyna128_128Gcm::encrypt(.., [], [], ..)` both equalled
+`E_K(0)`. UAPKI and Bouncy Castle 1.85 accept this input and return the same value (all three agreed
+on the (0, 0) case in the T-234 scratch comparison).
+
+**Decision.** Follow §12.1: `GcmError::EmptyInput` when both `aad` and the plaintext/ciphertext are
+empty (either one alone may be empty), `GmacError::EmptyMessage` for an empty GMAC message, and
+`Kalyna*Gmac::mac`/`mac_with_cipher` now return `Result` (same shape as D-206). `uacrypt kalyna-gcm`/
+`kalyna-gmac` report `CliError::EmptyInput`. `crypto_secretbox`/`crypto_secretstream`/`crypto_box`
+are unaffected - their internal AAD is never empty - so the new variant is unreachable there.
+Affects `hazmat` and the CLI as published in v0.3.0: a disclosable finding for the embargoed
+advisory, owner's call.
+
+**Tests.** `empty_aad_and_empty_plaintext_are_rejected` (GCM; one side empty still works),
+`empty_message_is_rejected` (GMAC), and the two CLI tests; proptests now draw non-empty AAD (GCM) /
+message (GMAC).

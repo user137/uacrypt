@@ -169,10 +169,12 @@ key-size combinations) and `--iterations` (benchmark timing) flags:
 
 - `kalyna-gcm encrypt`/`decrypt` — Kalyna-GCM (`--nonce`/`--tag` files, `--aad` optional), the same
   construction `crypto_secretbox`/`crypto_secretstream` build on internally (DSTU 7624:2014 §12,
-  D-204), exposed here with no message-length cap and no hidden nonce.
+  D-204), exposed here with no message-length cap and no hidden nonce. An empty `--in` with no
+  `--aad` is rejected (D-207).
 - `kalyna-cmac compute`/`verify` — Kalyna-CMAC, a 16-byte tag, no encryption. An empty `--in` is
   rejected (DSTU 7624:2014 §9 does not define CMAC for an empty message, D-206).
-- `kalyna-gmac compute`/`verify` — Kalyna-GMAC, a full-block tag, no encryption, no nonce.
+- `kalyna-gmac compute`/`verify` — Kalyna-GMAC, a full-block tag, no encryption, no nonce. An empty
+  `--in` is rejected (D-207).
 - `kalyna-kw wrap`/`unwrap` — Kalyna key wrap (1..=20 block-aligned blocks in, one block longer
   out, checksummed).
 - `kalyna-xts encrypt`/`decrypt` — Kalyna-XTS disk-sector mode (confidentiality only, no tag — the

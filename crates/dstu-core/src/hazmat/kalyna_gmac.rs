@@ -59,6 +59,9 @@ use super::gf2m_wide::{Gf2m128, Gf2m256, Gf2m512};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GmacError {
+    /// DSTU 7624:2014 §12.1 requires `|O| + |M| >= 1`, and GMAC has no `M`: an empty message would
+    /// make the tag `E_K(0)`, the GHASH key itself (D-207).
+    EmptyMessage,
     InvalidLength,
     TagMismatch,
 }
@@ -77,8 +80,11 @@ macro_rules! kalyna_gmac_variant {
             /// computes a MAC for more than one message under the same key. Callers truncate to their chosen `q`
             /// (between 8 and one full block) themselves, per the source construction - matching
             /// [`super::kalyna_gcm`]'s own tag-truncation convention.
-            #[must_use]
-            pub fn mac(key: &[u8; $key_bytes], message: &[u8]) -> [u8; $block_bytes] {
+            ///
+            /// # Errors
+            ///
+            /// Returns [`GmacError::EmptyMessage`] if `message` is empty.
+            pub fn mac(key: &[u8; $key_bytes], message: &[u8]) -> Result<[u8; $block_bytes], GmacError> {
                 let cipher = super::kalyna::$expanded::new(key);
                 Self::mac_with_cipher(&cipher, message)
             }
@@ -88,14 +94,20 @@ macro_rules! kalyna_gmac_variant {
             /// [`super::kalyna_cmac`]'s own `mac_with_cipher` (`docs/DECISIONS.md` D-76 / `docs/TASKS.md`
             /// T-127): `mac` re-derives the full Kalyna round-key schedule on every call, an
             /// avoidable cost for any caller computing a MAC for more than one message under the same key.
-            #[must_use]
+            ///
+            /// # Errors
+            ///
+            /// Returns [`GmacError::EmptyMessage`] if `message` is empty.
             pub fn mac_with_cipher(
                 cipher: &super::kalyna::$expanded,
                 message: &[u8],
-            ) -> [u8; $block_bytes] {
+            ) -> Result<[u8; $block_bytes], GmacError> {
+                if message.is_empty() {
+                    return Err(GmacError::EmptyMessage);
+                }
                 #[allow(clippy::cast_possible_truncation)] // realistic lengths fit u64 trivially
                 let bit_len = (message.len() as u64) * 8;
-                Self::mac_with_bit_len(cipher, message, bit_len)
+                Ok(Self::mac_with_bit_len(cipher, message, bit_len))
             }
 
             /// §12.5: pads `message` per annex Б.2 when it is not block-aligned, and puts `bit_len`
@@ -152,7 +164,8 @@ macro_rules! kalyna_gmac_variant {
             ///
             /// # Errors
             ///
-            /// Returns [`GmacError::InvalidLength`] if `tag.len()` is outside 8 bytes to one full
+            /// Returns [`GmacError::EmptyMessage`] for an empty `message`, [`GmacError::InvalidLength`]
+            /// if `tag.len()` is outside 8 bytes to one full
             /// block, or [`GmacError::TagMismatch`] if authentication fails.
             pub fn verify(
                 key: &[u8; $key_bytes],
@@ -168,7 +181,8 @@ macro_rules! kalyna_gmac_variant {
             ///
             /// # Errors
             ///
-            /// Returns [`GmacError::InvalidLength`] if `tag.len()` is outside 8 bytes to one full
+            /// Returns [`GmacError::EmptyMessage`] for an empty `message`, [`GmacError::InvalidLength`]
+            /// if `tag.len()` is outside 8 bytes to one full
             /// block, or [`GmacError::TagMismatch`] if authentication fails.
             pub fn verify_with_cipher(
                 cipher: &super::kalyna::$expanded,
@@ -178,7 +192,7 @@ macro_rules! kalyna_gmac_variant {
                 if !(8..=$block_bytes).contains(&tag.len()) {
                     return Err(GmacError::InvalidLength);
                 }
-                let expected = Self::mac_with_cipher(cipher, message);
+                let expected = Self::mac_with_cipher(cipher, message)?;
                 if bool::from(expected[..tag.len()].ct_eq(tag)) {
                     Ok(())
                 } else {

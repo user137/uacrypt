@@ -1,6 +1,10 @@
 # Kupyna-based KMAC (DSTU 7564:2014's MAC mode)
 
-**Provenance note (read before trusting this as settled):** `docs/papers/Kupyna.pdf` (the
+**Confirmed (T-234, 2026-09-23):** DSTU 7564:2014 (draft edition) annex В defines this mode as
+`phi(M, K) = H(Pad(K) || Pad(M) || ~K)`, and its В.5 examples equal this project's vectors. The
+earlier note below is kept for history.
+
+**Provenance note (before T-234):** `docs/papers/Kupyna.pdf` (the
 designers' own paper, otherwise this project's highest-trust Kupyna source) states in its
 introduction that "the new standard defines both the hash function and its additional mode for
 message authentication code generation" but does not itself describe that mode anywhere in its

@@ -95,6 +95,11 @@ All notable changes to this project are documented in this file. Format follows
     for some AAD lengths.
   - CCM and CMAC reject an empty message (`CcmError::EmptyPlaintext`, `CmacError::EmptyMessage`).
     `Kalyna*Cmac::mac`/`mac_with_cipher` now return `Result`.
+  - **Security:** GCM with an empty AAD *and* empty data, and GMAC over an empty message, are
+    rejected (`GcmError::EmptyInput`, `GmacError::EmptyMessage`; §12.1 requires `|O|+|M| >= 1`).
+    Earlier releases returned `E_K(0)` there, which is the GHASH key: anyone who obtained that
+    tag could forge tags under the same key. `Kalyna*Gmac::mac`/`mac_with_cipher` now return
+    `Result`. `crypto_*` never hit this (its internal AAD is never empty).
 
   Where UAPKI and Bouncy Castle 1.85 read these modes differently, see `docs/COMPATIBILITY.md`.
 - New DSTU 7624 annex vectors: Kalyna-CTR for all five variants, CFB q=8 bits, CBC 512/512 decrypt.

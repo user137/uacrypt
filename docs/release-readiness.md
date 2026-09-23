@@ -16,8 +16,10 @@ document's findings.
 
 ## Headline finding
 
-**Updated 2026-07-24: D-05 is no longer formally open — adopted as a working assumption, still not
-primary-text-confirmed.** `docs/DECISIONS.md` D-05 — whether Kalyna alone is DSTU 7624's intended AEAD
+**Updated 2026-09-23 (T-234): D-05 is confirmed by the DSTU 7624:2014 text (draft edition) - §12/§13
+define GCM and CCM on Kalyna alone; the modes now follow that text (D-204–D-207).** Earlier status,
+kept for history: **2026-07-24: D-05 is no longer formally open — adopted as a working assumption,
+still not primary-text-confirmed.** `docs/DECISIONS.md` D-05 — whether Kalyna alone is DSTU 7624's intended AEAD
 construction, or whether confidentiality + integrity requires a separate Kalyna+Kupyna
 encrypt-then-MAC design — was resolved on assumption at the project owner's explicit direction:
 **Kalyna-alone** (CCM/GCM/KW), not encrypt-then-MAC. This is corroborated by two independent

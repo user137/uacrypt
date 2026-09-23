@@ -6,8 +6,9 @@ spirit of **libsodium** (hard, safe defaults, hard to misuse) rather than OpenSS
 
 **Pre-1.0, work in progress.** Not audited, not a claim of side-channel resistance.
 Kalyna, Kupyna, and Strumok are dual-oracle-verified against official test vectors (Strumok
-directly against DSTU 8845:2019's own Annex Д since 2026-09-16); every Kalyna mode of operation
-remains provisional — not yet confirmed against its primary standard text (see
+directly against DSTU 8845:2019's own Annex Д since 2026-09-16); Kalyna's modes of operation
+follow the DSTU 7624:2014 text as read from its draft edition, including where UAPKI and Bouncy
+Castle differ (see `docs/COMPATIBILITY.md` and
 `docs/DECISIONS.md`/`docs/SECURITY.md` in the project repository, not shipped in this package, for the full
 citation trail and threat model). `crypto_secretstream`/`crypto_kdf` have no oracle vector at all
 and never will, since no DSTU standard defines an equivalent construction — verified by property,

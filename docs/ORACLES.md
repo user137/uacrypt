@@ -168,10 +168,9 @@ comparable to all five other in-scope algorithms combined" framing, not just a p
   just each independently against this project's Rust port) and 4 of the 5 UAPKI cases matched a BC
   case byte-for-byte (128/128, 256/256, 256/512, 512/512) — independent-lineage agreement. The
   5th (128/256) has no BC vector at all (BC's `CCMModeTests` doesn't cover that variant), so that
-  one case is UAPKI-only, flagged as such in its vector file. **Still provisional** — this
-  cross-oracle agreement is reference-implementation evidence, not a reading of the primary DSTU
-  7624:2014 text; see D-41 and the "not yet confirmed against primary text" caveat repeated in
-  `hazmat::kalyna_ccm`'s module doc comment and every extracted vector file's `source` field. BC's
+  one case is UAPKI-only, flagged as such in its vector file. **Superseded in part (T-234):** all
+  five are annex В.9 examples of the DSTU 7624:2014 draft, and the construction now follows §13
+  where UAPKI differed from it (D-205); BC agrees only on block-aligned plaintext. BC's
   own `KCCMBlockCipher`/`KGCMBlockCipher` construction *source* is not present in this project's
   vendored sparse checkout of `oracles/bouncycastle-java` (only the test file importing them is) —
   the cross-check above is against BC's vector *outputs* only, not a second reading of BC's

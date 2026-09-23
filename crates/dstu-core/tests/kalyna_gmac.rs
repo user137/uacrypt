@@ -64,7 +64,7 @@ macro_rules! official_vector_test {
                 let mut key = [0u8; $key_len];
                 key.copy_from_slice(&case.key);
 
-                let tag = <$variant>::mac(&key, &case.message);
+                let tag = <$variant>::mac(&key, &case.message).unwrap();
                 assert_eq!(&tag[..case.tag.len()], case.tag.as_slice(), "tag mismatch");
 
                 <$variant>::verify(&key, &case.message, &case.tag)
@@ -170,12 +170,12 @@ macro_rules! roundtrip_proptest {
                 #[test]
                 fn mac_then_verify_roundtrips(
                     key in proptest::collection::vec(any::<u8>(), $key_len),
-                    message in proptest::collection::vec(any::<u8>(), 0..(3 * $block_len + 7)),
+                    message in proptest::collection::vec(any::<u8>(), 1..(3 * $block_len + 7)),
                 ) {
                     let mut key_arr = [0u8; $key_len];
                     key_arr.copy_from_slice(&key);
 
-                    let tag = <$variant>::mac(&key_arr, &message);
+                    let tag = <$variant>::mac(&key_arr, &message).unwrap();
                     prop_assert!(<$variant>::verify(&key_arr, &message, &tag).is_ok());
                 }
 
@@ -188,10 +188,10 @@ macro_rules! roundtrip_proptest {
                     let mut key_arr = [0u8; $key_len];
                     key_arr.copy_from_slice(&key);
 
-                    let tag = <$variant>::mac(&key_arr, &message);
+                    let tag = <$variant>::mac(&key_arr, &message).unwrap();
                     let mut altered = message.clone();
                     altered[flip_index] ^= 0x01;
-                    let altered_tag = <$variant>::mac(&key_arr, &altered);
+                    let altered_tag = <$variant>::mac(&key_arr, &altered).unwrap();
                     prop_assert_ne!(tag, altered_tag);
                 }
             }
@@ -248,7 +248,22 @@ fn message_and_its_padded_extension_have_different_tags() {
     extended.push(0x80);
     extended.resize(64, 0);
     assert_ne!(
-        Kalyna256_256Gmac::mac(&key, &message),
-        Kalyna256_256Gmac::mac(&key, &extended)
+        Kalyna256_256Gmac::mac(&key, &message).unwrap(),
+        Kalyna256_256Gmac::mac(&key, &extended).unwrap()
+    );
+}
+
+/// DSTU 7624:2014 (draft) §12.1 requires `|O| + |M| >= 1`. With an empty message the tag would be
+/// `E_K(0)` - the GHASH key `H` itself, which lets anyone forge tags under that key (T-234, D-207).
+#[test]
+fn empty_message_is_rejected() {
+    let key = [7u8; 16];
+    assert_eq!(
+        Kalyna128_128Gmac::mac(&key, &[]),
+        Err(GmacError::EmptyMessage)
+    );
+    assert_eq!(
+        Kalyna128_128Gmac::verify(&key, &[], &[0u8; 16]),
+        Err(GmacError::EmptyMessage)
     );
 }
