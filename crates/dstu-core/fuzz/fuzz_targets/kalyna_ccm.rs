@@ -20,7 +20,7 @@ macro_rules! fuzz_variant {
             nonce.copy_from_slice(&$data[$key_len..$key_len + $block_len]);
             let rest = &$data[$key_len + $block_len..];
 
-            let aad_len = (rest[0] as usize).min(rest.len().saturating_sub(1)).min(32);
+            let aad_len = (rest[0] as usize).min(rest.len().saturating_sub(1));
             let aad = &rest[1..1 + aad_len];
             let buf_source = &rest[1 + aad_len..];
             let cap = buf_source.len().min(64);

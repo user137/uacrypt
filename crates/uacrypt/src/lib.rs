@@ -69,6 +69,9 @@ pub enum CliError {
         expected: usize,
         actual: usize,
     },
+    /// The mode's DSTU 7624:2014 domain excludes an empty message (`kalyna-ccm` §13.1,
+    /// `kalyna-cmac` §9 - `docs/DECISIONS.md` D-205/D-206).
+    EmptyInput(&'static str),
     PlaintextTooLong,
     AadTooLong,
     CcmVerifyFailed,
@@ -127,6 +130,10 @@ impl fmt::Display for CliError {
                 expected,
                 actual,
             } => write!(f, "{what} must be exactly {expected} bytes, got {actual}"),
+            CliError::EmptyInput(command) => write!(
+                f,
+                "{command}: --in is empty - DSTU 7624:2014 does not define this mode for an empty message"
+            ),
             CliError::PlaintextTooLong => write!(
                 f,
                 "input exceeds kalyna-ccm's sourced 255-byte limit (see hazmat::kalyna_ccm docs)"
@@ -230,6 +237,9 @@ impl fmt::Display for CliError {
 impl From<dstu_core::hazmat::kalyna_ccm::CcmError> for CliError {
     fn from(err: dstu_core::hazmat::kalyna_ccm::CcmError) -> Self {
         match err {
+            dstu_core::hazmat::kalyna_ccm::CcmError::EmptyPlaintext => {
+                Self::EmptyInput("kalyna-ccm")
+            }
             dstu_core::hazmat::kalyna_ccm::CcmError::PlaintextTooLong => Self::PlaintextTooLong,
             dstu_core::hazmat::kalyna_ccm::CcmError::AadTooLong => Self::AadTooLong,
             dstu_core::hazmat::kalyna_ccm::CcmError::TagMismatch => Self::CcmVerifyFailed,
@@ -4594,6 +4604,31 @@ mod tests {
         };
         run_ccm_command(true, &decrypt_args).expect("decrypt should succeed");
         assert_eq!(std::fs::read(dir.file("pt.bin")).expect("read"), plaintext);
+    }
+
+    /// "Fool" test (T-234/D-205): DSTU 7624:2014 §13.1 requires a non-empty plaintext, so an empty
+    /// `--in` is rejected before anything is written.
+    #[test]
+    fn run_ccm_command_empty_input_is_rejected() {
+        let dir = TempDir::new("kalyna_ccm_empty");
+        std::fs::write(dir.file("key.bin"), [0x55u8; 16]).expect("write key");
+        std::fs::write(dir.file("in.bin"), []).expect("write empty input");
+        let args = CcmArgs {
+            variant: KalynaVariant::K128_128,
+            key_path: dir.file("key.bin"),
+            nonce_path: dir.file("nonce.bin"),
+            aad_path: None,
+            in_path: dir.file("in.bin"),
+            out_path: dir.file("out.bin"),
+            tag_path: dir.file("tag.bin"),
+            iterations: 1,
+        };
+        assert_eq!(
+            run_ccm_command(false, &args),
+            Err(CliError::EmptyInput("kalyna-ccm"))
+        );
+        assert!(!dir.file("out.bin").exists());
+        assert!(!dir.file("tag.bin").exists());
     }
 
     #[test]

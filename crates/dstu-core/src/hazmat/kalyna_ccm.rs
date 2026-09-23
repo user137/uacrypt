@@ -1,47 +1,48 @@
-//! Kalyna-CCM: a provisional, Kalyna-alone authenticated mode of operation (DSTU 7624:2014 CCM).
+//! Kalyna-CCM: DSTU 7624:2014 mode of operation "вироблення імітовставки і гамування" (§13).
 //!
-//! **Provisional, not confirmed against the primary DSTU 7624:2014 text** - the same posture as
-//! Strumok's UAPKI-attributed vectors (`docs/DECISIONS.md` D-15). Ported directly from
-//! `oracles/uapki/library/uapkic/src/dstu7624.c` (`dstu7624_init_ccm` at line 4139, `ccm_padd` at
-//! line 2621, `dstu7624_encrypt_ccm`/`dstu7624_decrypt_ccm` at lines 2792/2849), cross-checked
-//! against `oracles/bouncycastle-java`'s `DSTU7624Test.java` CCM vectors byte-for-byte (BC's own
-//! `KCCMBlockCipher` Java source is not present in this project's sparse vendored checkout, so the
-//! cross-check is against BC's *vector outputs* only, not a second reading of BC's construction
-//! code - a materially weaker claim than "read both implementations", stated explicitly here per
-//! `CLAUDE.md`'s citation discipline). See `docs/DECISIONS.md` D-05 (revised) and D-41 for the full
-//! citation and the reasoning for choosing this construction over encrypt-then-MAC.
+//! **Follows the standard's text** - DSTU 7624:2014, draft edition (T-234, `docs/DECISIONS.md`
+//! D-205), checked against all five annex В.9 examples. First ported from
+//! `oracles/uapki/library/uapkic/src/dstu7624.c` (`dstu7624_init_ccm`, `ccm_padd`,
+//! `dstu7624_encrypt_ccm`/`dstu7624_decrypt_ccm`, D-41), which matches the annex examples but not the
+//! text elsewhere. Three places were corrected to §13.2:
+//! - the flag byte's top bit marks a non-empty AAD (table 13.2), not a non-empty plaintext;
+//! - with no AAD the CBC-MAC starts from `T(G1)` alone (the draft literally says "B = G1", read as a
+//!   drafting slip - see D-205);
+//! - `G2` is `lambda_o` in `N_B` bytes LE plus exactly enough zeros to block-align `G1 || G2 || O`,
+//!   which can spill into another block.
 //!
-//! This module is a standalone hazmat-level primitive, not `crypto_secretbox` itself - see
-//! `dstu_core::crypto_secretbox` (`docs/TASKS.md` T-37, `docs/DECISIONS.md` D-51) for the high-level wrapper
-//! built on top of it (a single fixed variant, `Kalyna256_256Ccm`, with an internally-generated
-//! nonce and a combined output format) - both still inherit this module's own not-primary-text-
-//! confirmed status.
+//! An empty plaintext is rejected ([`CcmError::EmptyPlaintext`]): §13.1 requires `|M| >= 8` bits.
+//! UAPKI and Bouncy Castle 1.85 differ from this module on some inputs - see
+//! `docs/COMPATIBILITY.md`.
+//!
+//! This module is a standalone hazmat-level primitive. `crypto_secretbox` was first built on it
+//! (T-37, D-51) and moved to Kalyna-GCM in D-63; no `crypto_*` module uses it now.
 //!
 //! # Hard length limit - sourced, not chosen
 //!
-//! `ccm_padd`'s authentication header encodes both the plaintext length and the AAD length as a
-//! single byte each (`G1[tmp] = (uint8_t) p_data_len`, `G2[0] = (uint8_t) a_data_len`) - so this
-//! exact construction, as extracted, only correctly authenticates messages where **both plaintext
-//! and AAD are at most 255 bytes**. This is a property of the source, not a design choice made
-//! here; [`MAX_PLAINTEXT_LEN`]/[`MAX_AAD_LEN`] enforce it and [`seal`]/[`open`] reject anything
-//! longer rather than silently truncating the length field. It is also, concretely, why this is a
-//! *short-message* mode.
+//! `dstu7624.c`'s `ccm_padd` wrote the plaintext and AAD lengths as a single byte each, so the
+//! port capped **both at 255 bytes**. The standard itself writes them as `N_B`-byte LE fields (this
+//! module now does too, D-205), so the cap is a scope limit kept from the port, not a property of
+//! the standard. [`MAX_PLAINTEXT_LEN`]/[`MAX_AAD_LEN`] enforce it; longer input is rejected, never
+//! truncated.
 //!
 //! # Nonce
 //!
 //! The nonce is a full block-size buffer (matching the vectors, which supply a full-block IV even
-//! though `ccm_padd` only consumes a `block_len - ccm_nb - 1`-byte prefix of it for the
-//! authentication header - the remaining bytes still feed the CTR keystream, and it is the *full*
-//! block that seeds it via `Gamma::new`). **Strategy resolved, `docs/DECISIONS.md` D-40/`docs/TASKS.md`
+//! though `G1` only takes a `block_len - ccm_nb - 1`-byte prefix of it - the remaining bytes still
+//! feed the CTR keystream, and it is the *full* block that seeds it via `Gamma::new`). §13.1 requires
+//! only that **prefix** to be unique per key (11 bytes for a 128-bit block), so the uniqueness
+//! margin to plan for is the prefix's, not the full block's (D-205). **Strategy resolved, `docs/DECISIONS.md` D-40/`docs/TASKS.md`
 //! T-82**: this module always treats the nonce as caller-supplied, never generating one itself -
 //! `no_std` callers may have no OS CSPRNG to call. The recommended pattern for any caller that
 //! *does* have one is a fresh, independently-random full-block nonce per message under a given
 //! key (a libsodium-style wide random nonce, not a TLS-1.3-style stateful counter - a counter's
 //! uniqueness guarantee needs durable cross-reboot state this project can't assume for its
-//! embedded targets). The narrowest variants (128-bit block) have a 128-bit nonce, safe for
-//! roughly 2^48 messages under one key by the birthday bound - see D-40 for the full margin and
-//! the caveat about `increment_counter` carrying over the full block width, which makes that bound
-//! contingent on this module's own 255-byte plaintext cap. `uacrypt kalyna-ccm encrypt` (the CLI
+//! embedded targets). For the narrowest variants (128-bit block) a random nonce's 88-bit prefix
+//! gives a birthday bound of roughly 2^44 messages under one key, not the 2^48 D-40 first stated
+//! for the full 128-bit block (D-205). `increment_counter` carries across the whole block, where
+//! §13.3 increments only its low half; the two differ only after 2^64 blocks, unreachable under the
+//! 255-byte cap. `uacrypt kalyna-ccm encrypt` (the CLI
 //! layer) implements this recommendation by generating the nonce itself via `getrandom` rather
 //! than accepting one - the five `(ccm_nb, q)` pairs used here remain exactly what the cross-oracle
 //! vectors confirm, not a new choice made by this module.
@@ -55,14 +56,19 @@ pub const MAX_PLAINTEXT_LEN: usize = 255;
 /// Sourced limit - see the module doc comment's "Hard length limit" section.
 pub const MAX_AAD_LEN: usize = 255;
 
-/// `ccm_padd`'s two fixed header blocks (`G1`, `G2`), zero-padded so `G2`'s slice length rounds
-/// its length byte + AAD up to a block boundary, plus room for `MAX_AAD_LEN` bytes of AAD.
-const H_BUF_LEN: usize = 2 * MAX_BLOCK + MAX_AAD_LEN;
+/// Largest `N_B` (length-field width) any variant uses.
+const MAX_CCM_NB: usize = 8;
+/// `G1 || G2 || O` at its largest: `G1` is one block, `G2` is `N_B` length bytes plus at most
+/// `block_len - 1` zero bytes (§13.2), then up to `MAX_AAD_LEN` bytes of AAD. 512/512 with a 255-byte
+/// AAD needs exactly 64 + 65 + 255 = 384 bytes.
+const H_BUF_LEN: usize = MAX_BLOCK + (MAX_CCM_NB + MAX_BLOCK - 1) + MAX_AAD_LEN;
 /// Plaintext plus at most one block of `padding`'s 0x80-then-zeros pad.
 const P_BUF_LEN: usize = MAX_PLAINTEXT_LEN + MAX_BLOCK;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CcmError {
+    /// §13.1 requires `|M| = 8r` with `r >= 1`: an empty plaintext is outside the standard's domain.
+    EmptyPlaintext,
     PlaintextTooLong,
     AadTooLong,
     TagMismatch,
@@ -91,9 +97,10 @@ fn tag_length_code(q: usize) -> u8 {
     }
 }
 
-/// `ccm_padd` (`dstu7624.c:2621`): builds the CBC-MAC authentication header (`G1`/`G2`) and runs
-/// the CBC-MAC (repeated XOR-then-encrypt) over header || AAD || padded-plaintext. Returns a
-/// `MAX_BLOCK`-byte buffer whose first `q` bytes are the raw (unmasked) tag.
+/// DSTU 7624:2014 (draft) §13.2 (T-234, `docs/DECISIONS.md` D-205): builds `G1` (table 13.1) and,
+/// when the AAD `O` is non-empty, `G2 || O`, and runs the CBC-MAC (repeated XOR-then-encrypt) over
+/// them and the Б.2-padded plaintext. Returns a `MAX_BLOCK`-byte buffer whose first `q` bytes are
+/// the raw (unmasked) tag.
 #[allow(clippy::too_many_arguments)]
 fn compute_tag(
     encrypt_block: &dyn Fn(&[u8; MAX_BLOCK]) -> [u8; MAX_BLOCK],
@@ -104,15 +111,14 @@ fn compute_tag(
     aad: &[u8],
     plaintext: &[u8],
 ) -> [u8; MAX_BLOCK] {
-    let tmp = block_len - ccm_nb - 1;
+    let prefix_len = block_len - ccm_nb - 1;
 
+    // G1 = L(S) || |M|/8 as N_B bytes LE || flags (tables 13.1/13.2).
     let mut g1 = [0u8; MAX_BLOCK];
-    g1[..tmp].copy_from_slice(&nonce[..tmp]);
-    #[allow(clippy::cast_possible_truncation)] // sourced limit: plaintext.len() <= 255
-    {
-        g1[tmp] = plaintext.len() as u8;
-    }
-    let mut flags = if plaintext.is_empty() { 0u8 } else { 0x80 };
+    g1[..prefix_len].copy_from_slice(&nonce[..prefix_len]);
+    let m_len = (plaintext.len() as u64).to_le_bytes();
+    g1[prefix_len..prefix_len + ccm_nb].copy_from_slice(&m_len[..ccm_nb]);
+    let mut flags = if aad.is_empty() { 0u8 } else { 0x80 };
     flags |= tag_length_code(q) << 4;
     #[allow(clippy::cast_possible_truncation)] // ccm_nb is always one of {4,6,8}, fits easily
     {
@@ -120,32 +126,27 @@ fn compute_tag(
     }
     g1[block_len - 1] = flags;
 
-    let mut g2 = [0u8; MAX_BLOCK];
-    #[allow(clippy::cast_possible_truncation)] // sourced limit: aad.len() <= 255
-    {
-        g2[0] = aad.len() as u8;
+    // |O| > 0: G1 || G2 || O with G2 = lambda_o (N_B bytes LE) || 0^z, z chosen so the whole is
+    // block-aligned. |O| = 0: just G1, so B = T(G1) (the text's literal "B = G1" read as a drafting
+    // slip - see D-205).
+    let mut h_buf = [0u8; H_BUF_LEN];
+    h_buf[..block_len].copy_from_slice(&g1[..block_len]);
+    let mut h_len = block_len;
+    if !aad.is_empty() {
+        let o_len = (aad.len() as u64).to_le_bytes();
+        h_buf[h_len..h_len + ccm_nb].copy_from_slice(&o_len[..ccm_nb]);
+        let zeros = (2 * block_len - aad.len() % block_len - ccm_nb) % block_len;
+        h_len += ccm_nb + zeros;
+        h_buf[h_len..h_len + aad.len()].copy_from_slice(aad);
+        h_len += aad.len();
     }
 
-    let aad_rem = aad.len() % block_len;
-    let g2_len = block_len - aad_rem;
-
-    let mut h_buf = [0u8; H_BUF_LEN];
-    let mut h_len = 0usize;
-    h_buf[h_len..h_len + block_len].copy_from_slice(&g1[..block_len]);
-    h_len += block_len;
-    h_buf[h_len..h_len + g2_len].copy_from_slice(&g2[..g2_len]);
-    h_len += g2_len;
-    h_buf[h_len..h_len + aad.len()].copy_from_slice(aad);
-    h_len += aad.len();
-
     let mut b = [0u8; MAX_BLOCK];
-    let mut offset = 0usize;
-    while offset < h_len {
-        for i in 0..block_len {
-            b[i] ^= h_buf[offset + i];
+    for chunk in h_buf[..h_len].chunks_exact(block_len) {
+        for (acc, byte) in b.iter_mut().zip(chunk) {
+            *acc ^= byte;
         }
         b = encrypt_block(&b);
-        offset += block_len;
     }
 
     let mut p_buf = [0u8; P_BUF_LEN];
@@ -155,13 +156,11 @@ fn compute_tag(
         p_buf[p_len] = 0x80;
         p_len += block_len - (p_len % block_len);
     }
-    offset = 0;
-    while offset < p_len {
-        for i in 0..block_len {
-            b[i] ^= p_buf[offset + i];
+    for chunk in p_buf[..p_len].chunks_exact(block_len) {
+        for (acc, byte) in b.iter_mut().zip(chunk) {
+            *acc ^= byte;
         }
         b = encrypt_block(&b);
-        offset += block_len;
     }
 
     b
@@ -251,6 +250,9 @@ fn seal_core(
     aad: &[u8],
     buf: &mut [u8],
 ) -> Result<[u8; MAX_BLOCK], CcmError> {
+    if buf.is_empty() {
+        return Err(CcmError::EmptyPlaintext);
+    }
     if buf.len() > MAX_PLAINTEXT_LEN {
         return Err(CcmError::PlaintextTooLong);
     }
@@ -289,6 +291,9 @@ fn open_core(
     buf: &mut [u8],
     tag: &[u8],
 ) -> Result<(), CcmError> {
+    if buf.is_empty() {
+        return Err(CcmError::EmptyPlaintext);
+    }
     if buf.len() > MAX_PLAINTEXT_LEN {
         return Err(CcmError::PlaintextTooLong);
     }

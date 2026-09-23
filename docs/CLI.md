@@ -143,10 +143,11 @@ uacrypt strumok-crypt --variant 256 --key key.bin --iv iv.bin --in message.bin -
 `--variant` is the key size in bits (256 or 512); `--iv` is always exactly 32 bytes regardless of
 variant.
 
-`kalyna-ccm` (`docs/DECISIONS.md` D-41) additionally encrypts/authenticates arbitrary-length **short**
-messages (plaintext and `--aad` each capped at 255 bytes — a sourced property of the construction,
-not a CLI restriction, see `hazmat::kalyna_ccm`'s doc comment) using a provisional, dual-oracle-
-verified Kalyna-alone CCM mode, not yet confirmed against the primary DSTU 7624:2014 text:
+`kalyna-ccm` (`docs/DECISIONS.md` D-41/D-205) additionally encrypts/authenticates **short**
+messages (plaintext and `--aad` each capped at 255 bytes, see `hazmat::kalyna_ccm`'s doc comment)
+using Kalyna-CCM as DSTU 7624:2014 §13 defines it. An empty `--in` is rejected: the standard does not
+define CCM for an empty message. Tags differ from UAPKI's and Bouncy Castle's on some inputs, for
+example when `--aad` is omitted (see `COMPATIBILITY.md`):
 
 ```
 uacrypt kalyna-ccm encrypt --variant 128-128 --key key.bin --nonce nonce.bin --aad aad.bin --in msg.bin --out ct.bin --tag tag.bin
@@ -158,16 +159,17 @@ uacrypt kalyna-ccm decrypt --variant 128-128 --key key.bin --nonce nonce.bin --a
 CSPRNG) and writes it there, so there is nothing for you to supply or accidentally reuse. `decrypt`
 reads `--nonce` back (the value `encrypt` produced) as an input, same as `--tag`. `--aad` is
 optional (an empty AAD is used if omitted); `decrypt` verifies the tag before writing `--out` and
-fails without writing anything on a mismatch. See `docs/DECISIONS.md` D-40 for why a random nonce is
-safe here (128 bits minimum across all five variants) and its per-key message-count guideline.
+fails without writing anything on a mismatch. The standard requires only the nonce's first
+`block − N_Б − 1` bytes to be unique per key (11 bytes for a 128-bit block), so a random nonce is good
+for roughly 2^44 messages per key there (`docs/DECISIONS.md` D-40/D-205).
 
 Five more `hazmat`-scoped, per-mode benchmarking/interop commands exist alongside `kalyna-ccm`
 (`docs/DECISIONS.md` D-31/D-71), all with the same `--variant` (one of the five Kalyna block/
 key-size combinations) and `--iterations` (benchmark timing) flags:
 
 - `kalyna-gcm encrypt`/`decrypt` — Kalyna-GCM (`--nonce`/`--tag` files, `--aad` optional), the same
-  provisional construction `crypto_secretbox`/`crypto_secretstream` build on internally, exposed
-  here with no message-length cap and no hidden nonce.
+  construction `crypto_secretbox`/`crypto_secretstream` build on internally (DSTU 7624:2014 §12,
+  D-204), exposed here with no message-length cap and no hidden nonce.
 - `kalyna-cmac compute`/`verify` — Kalyna-CMAC, a 16-byte tag, no encryption.
 - `kalyna-gmac compute`/`verify` — Kalyna-GMAC, a full-block tag, no encryption, no nonce.
 - `kalyna-kw wrap`/`unwrap` — Kalyna key wrap (1..=20 block-aligned blocks in, one block longer
@@ -192,10 +194,10 @@ next to the release version (currently `2`, D-202).
 
 **Why containers.** Every everyday command writes a self-describing container, not a bare
 ciphertext. The container holds what decryption needs (the header, the KEM ciphertext), a format
-version where one exists, and the true ciphertext length inside every authentication tag. That last
-part matters: the Kalyna-GCM/GMAC tag in `hazmat` covers the data padded to a block boundary, so on
-its own it does not pin the exact length (`docs/DECISIONS.md` D-200). The containers bind it
-explicitly.
+version where one exists, and the true ciphertext length inside every authentication tag. Since
+T-234 (`docs/DECISIONS.md` D-204) the Kalyna-GCM/GMAC tag in `hazmat` binds the exact length itself,
+as DSTU 7624:2014 §12 specifies; the containers bind it a second time, which D-200 added when that
+was not yet so.
 
 | Command | File | Layout |
 |---|---|---|
@@ -220,6 +222,5 @@ The `encrypt` record rules:
   so records cannot be reordered, dropped, cut or extended.
 
 **Raw, uncontained outputs.** `kalyna-gcm` writes the ciphertext, nonce and tag as separate raw
-files, and `kalyna-gmac` writes a bare tag. Neither binds the exact length, as explained above. If
-you must use them directly, put the ciphertext length into `--aad` (for `kalyna-gcm`), and never let
-an attacker-controlled length reach `kalyna-gmac`. For files, use `encrypt` or `box-seal`.
+files, and `kalyna-gmac` writes a bare tag. They carry no format version and no nonce binding
+(`kalyna-gcm`'s tag does not cover the nonce, D-63). For files, use `encrypt` or `box-seal`.
