@@ -9018,3 +9018,10 @@ Additive - after the breaking part:
 
 Every task: test-first, all four categories (happy path, security/boundary, misuse, error path);
 update `docs/CLI.md`, README quick start, both help texts, CHANGELOG `[Unreleased]`; docs-check.
+
+## Code scanning triage (2026-09-24)
+
+- [x] **T-266** 7 open CodeQL alerts (#82-#85 `rust/access-invalid-pointer` in napi-generated code
+  of `bindings/nodejs`, #86-#88 `rust/cleartext-logging` in `uacrypt` tests) triaged as false
+  positives and dismissed via the Code Scanning API - evidence in `docs/DECISIONS.md` D-210. No code
+  changed.
