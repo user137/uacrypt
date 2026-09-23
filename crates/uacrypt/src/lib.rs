@@ -4,11 +4,10 @@
 //! `uacrypt`'s testable logic - `main.rs` is a thin wrapper that calls [`run`] and maps the
 //! result to a process exit code.
 //!
-//! **Pre-release and provisional - not independently audited.** The Kalyna-alone mode of
-//! operation backing `encrypt`/`decrypt`/`kalyna-ccm` rests on an adopted assumption, not a
-//! confirmation against the primary DSTU 7624:2014 text (`docs/DECISIONS.md` D-05). `strumok-crypt` is
-//! UAPKI-attributed only, not confirmed against the primary DSTU 8845:2019 text (`docs/DECISIONS.md`
-//! D-15). See `docs/SECURITY.md`/`docs/DECISIONS.md` in the project repository for the full threat model,
+//! **Pre-release and provisional - not independently audited.** The Kalyna modes behind
+//! `encrypt`/`decrypt`/`kalyna-*` follow the DSTU 7624:2014 draft-edition text (`docs/DECISIONS.md`
+//! D-204-D-206); `strumok-crypt` is confirmed against the DSTU 8845:2019 text (D-197). See
+//! `docs/SECURITY.md`/`docs/DECISIONS.md` in the project repository for the full threat model,
 //! citations, and per-construction status.
 //!
 //! **`kalyna-block` is deliberately not named `encrypt`/`decrypt`** - those names are the real
@@ -620,7 +619,7 @@ pub fn parse_ccm_args(args: &[String]) -> Result<CcmArgs, CliError> {
 }
 
 /// Runs `kalyna-ccm encrypt`/`decrypt` - see `hazmat::kalyna_ccm`'s module doc comment for the
-/// construction's provisional status and sourced 255-byte plaintext/AAD limit. Encrypt writes
+/// construction's status (D-205) and its 255-byte plaintext/AAD limit. Encrypt writes
 /// ciphertext to `--out`, the authentication tag to `--tag`, **and a freshly-generated random
 /// nonce to `--nonce`** (separate files - this CLI does not invent its own combined wire format).
 /// `--nonce` is an *output* on encrypt, not an input: per `docs/DECISIONS.md` D-40, the nonce is never
@@ -3602,7 +3601,7 @@ EXAMPLE:
 ";
 
 const KALYNA_CCM_HELP: &str = "\
-uacrypt kalyna-ccm - Kalyna-CCM authenticated encryption (provisional, docs/DECISIONS.md D-41).
+uacrypt kalyna-ccm - Kalyna-CCM authenticated encryption (DSTU 7624:2014 §13, docs/DECISIONS.md D-205).
 
 Messages and AAD are capped at 255 bytes each (see hazmat::kalyna_ccm docs) - for larger files use
 `encrypt`/`decrypt` instead, which have no such cap.
@@ -3617,7 +3616,7 @@ FLAGS:
     --nonce <path>   encrypt: OUTPUT, a fresh random nonce is generated and written here.
                      decrypt: INPUT, must be the nonce file `encrypt` produced.
     --aad <path>     optional - additional authenticated data (not encrypted, but tamper-checked)
-    --in <path>      plaintext (encrypt) or ciphertext (decrypt), <=255 bytes
+    --in <path>      plaintext (encrypt) or ciphertext (decrypt), 1 to 255 bytes
     --out <path>     ciphertext (encrypt) or plaintext (decrypt)
     --tag <path>     encrypt: OUTPUT auth tag. decrypt: INPUT, must be encrypt's tag.
     --iterations <n> (benchmarking only) repeat the operation n times, print timing to stderr
@@ -3628,7 +3627,7 @@ EXAMPLE:
 ";
 
 const KALYNA_GCM_HELP: &str = "\
-uacrypt kalyna-gcm - Kalyna-GCM authenticated encryption (provisional, docs/DECISIONS.md D-56).
+uacrypt kalyna-gcm - Kalyna-GCM authenticated encryption (DSTU 7624:2014 §12, docs/DECISIONS.md D-204).
 
 Benchmarking/interop tool (docs/DECISIONS.md D-31/D-71), same shape as `kalyna-ccm` but with no
 message-length cap - for everyday use, `encrypt`/`decrypt` (crypto_secretstream) are simpler and
@@ -3673,7 +3672,7 @@ USAGE:
 FLAGS:
     --variant <v>    one of 128-128, 128-256, 256-256, 256-512, 512-512
     --key <path>     key file - must be exactly the variant's key length
-    --in <path>      message to authenticate
+    --in <path>      message to authenticate (must not be empty, D-206)
     --out <path>     compute: OUTPUT, where to write the 16-byte tag
     --tag <path>     verify: INPUT, the tag to check against
     --iterations <n> (benchmarking only) repeat the operation n times, print timing to stderr
@@ -3700,7 +3699,7 @@ USAGE:
 FLAGS:
     --variant <v>    one of 128-128, 128-256, 256-256, 256-512, 512-512
     --key <path>     key file - must be exactly the variant's key length
-    --in <path>      message to authenticate
+    --in <path>      message to authenticate (must not be empty, D-206)
     --out <path>     compute: OUTPUT, where to write the tag (full block length)
     --tag <path>     verify: INPUT, the tag to check against
     --iterations <n> (benchmarking only) repeat the operation n times, print timing to stderr

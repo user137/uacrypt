@@ -49,10 +49,10 @@
 //!
 //! Inherits `hazmat::kalyna_gcm`'s provenance: checked against DSTU 7624:2014 (draft edition) §12.2
 //! and its annex В.8 examples (T-234, D-204). Because this module's AAD is never block-aligned, its
-//! tags differ from what UAPKI or Bouncy Castle 1.85 would compute (`docs/COMPATIBILITY.md`). `Kalyna256_256Gcm` was chosen over the other four
-//! Kalyna-GCM variants as the sole construction here (256-bit key, matching the previous CCM
-//! construction's key/nonce width exactly) - see D-51 for the fuller reasoning behind fixing one
-//! variant rather than exposing all five, including why the `Strength`-enum precedent from
+//! tags differ from what UAPKI or Bouncy Castle 1.85 would compute (`docs/COMPATIBILITY.md`).
+//! `Kalyna256_256Gcm` was chosen over the other four Kalyna-GCM variants as the sole construction
+//! here (256-bit key, matching the previous CCM construction's key/nonce width exactly) - see D-51
+//! for the fuller reasoning behind fixing one variant rather than exposing all five, including why the `Strength`-enum precedent from
 //! `crypto_pwhash` does not apply (a Kalyna variant is exactly the knob D-47 says to delete, not a
 //! genuine per-context tradeoff the caller must make). The 16-byte tag (truncated from GCM's own
 //! full 32-byte tag, via the same prefix-comparison convention `hazmat::kalyna_gcm`/`kalyna_gmac`

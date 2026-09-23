@@ -98,6 +98,23 @@ comparable to all five other in-scope algorithms combined" framing, not just a p
 ## Per-algorithm oracle map
 
 ### Kalyna (DSTU 7624)
+- **Primary text (T-234, 2026-09-23): DSTU 7624:2014, draft edition** (owner-supplied copy, gitignored
+  under `docs/papers/`; title page "ДСТУ ____-2014", order date left blank - cite it as the draft).
+  Findings:
+  - **UAPKI's Kalyna KATs *are* this text's annex В examples**, value for value. "Official vectors"
+    and "UAPKI" are one source, not two.
+  - Every byte-expressible annex example passes (99 in all). New vectors added from the annex: CTR for
+    the four non-128/128 variants, CFB В.4.3, CBC В.6.10. Bit-length stream examples are truncated to
+    whole bytes.
+  - The non-aligned CMAC path is confirmed by В.5.2. GMAC's partial-block semantics are confirmed by
+    В.8.1.3 (a 139-bit example, checked by a unit test).
+  - Where the text and UAPKI differ (GCM/GMAC partial blocks, CCM empty AAD and AAD edge lengths,
+    CMAC/CCM empty input), the text wins: D-204-D-206, [COMPATIBILITY.md](COMPATIBILITY.md).
+  - **Bouncy Castle 1.85 is not an oracle for partial-block GCM/GMAC/CCM.** It zero-pads GCM
+    NIST-style and fails annex В.9.2 (CCM); its own CCM tests are block-aligned only. The
+    partial-block GCM vectors still use BC's *GF multiplier*, over input that is already padded and
+    aligned so BC's own padding doesn't apply (D-204).
+  - KW-p (В.11.x.3/4) vectors exist for a future `kalyna_kw_p` (T-253).
 - **Pseudocode:** `docs/pseudocode/kalyna.md` — transcribed from the paper below, cross-checked
   against the reference C oracle. Its k=2l key-schedule branch (originally ambiguous from the
   paper's own notation) is read as a word-rotation rather than arithmetic addition, corroborated
@@ -216,6 +233,14 @@ comparable to all five other in-scope algorithms combined" framing, not just a p
   cross-architecture, per D-33's standing pattern).
 
 ### Kupyna (DSTU 7564)
+- **Primary text (T-234, 2026-09-23): DSTU 7564:2014, draft edition.**
+  - Annex Б: all 15 byte-level hashing examples pass (Kupyna-256/512, and 48/304/384 as the rightmost
+    bytes of the 256/512 cores). Kupyna-384 N=760 is a new vector, waiting for a public Kupyna-384
+    API (T-254).
+  - Annex В defines the KMAC `H(Pad(K) || Pad(M) || ~K)`, and its В.5 examples equal our three KMAC
+    vectors, which confirms D-44.
+  - The annex has at least one typo (Kupyna-384 N=33: INPUT is one byte short of what `padded`
+    shows).
 - **Pseudocode:** `docs/pseudocode/kupyna.md` — transcribed from the paper below, cross-checked
   against the reference C oracle; one extraction gap (the IV formula) resolved from the oracle
   and flagged as such. Additionally checked (2026-07-21) against
@@ -325,6 +350,8 @@ comparable to all five other in-scope algorithms combined" framing, not just a p
   confidence, does not upgrade the "not independently transcription-verified in full" status above.
 
 ### DSTU 4145 (signature)
+- **Annex Г (checked 2026-09-23, T-234):** the `m = 163` and `m = 257` curve parameters (`A`, `B`,
+  `n`, field polynomial) match `curve163`/`curve257` exactly.
 - **Official text now in hand** (`docs/papers/DSTU_4145-2002.pdf`, added 2026-07-22) — corrects the
   earlier "no spec paper exists" claim below and in `docs/pseudocode/dstu4145.md`'s header; this
   algorithm is no longer the BC-only exception to the "cited spec section" hard constraint. Sections

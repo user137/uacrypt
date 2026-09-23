@@ -147,7 +147,7 @@ variant.
 messages (plaintext and `--aad` each capped at 255 bytes, see `hazmat::kalyna_ccm`'s doc comment)
 using Kalyna-CCM as DSTU 7624:2014 §13 defines it. An empty `--in` is rejected: the standard does not
 define CCM for an empty message. Tags differ from UAPKI's and Bouncy Castle's on some inputs, for
-example when `--aad` is omitted (see `COMPATIBILITY.md`):
+example when `--aad` is omitted (see [COMPATIBILITY.md](COMPATIBILITY.md)):
 
 ```
 uacrypt kalyna-ccm encrypt --variant 128-128 --key key.bin --nonce nonce.bin --aad aad.bin --in msg.bin --out ct.bin --tag tag.bin

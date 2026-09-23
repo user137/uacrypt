@@ -1,10 +1,10 @@
 //! Kupyna-based KMAC - DSTU 7564:2014's own MAC mode (`crypto_auth`/`crypto_onetimeauth`
 //! equivalent, `docs/dstu-crypto-project.md` "Mapping onto the libsodium API").
 //!
-//! **Provisional, not confirmed against the primary DSTU 7564:2014 text** - the paper this project
-//! otherwise treats as its highest-trust Kupyna source (`docs/papers/Kupyna.pdf`) states this MAC
-//! mode exists in the standard but does not itself describe it. Ported from two independent
-//! reference implementations instead: `oracles/uapki/library/uapkic/src/dstu7564.c`
+//! **Confirmed against DSTU 7564:2014 (draft edition) annex В** (T-234): its
+//! `phi(M, K) = H(Pad(K) || Pad(M) || ~K)` is this construction, and its В.5 examples are this
+//! module's vectors. Before that, `docs/papers/Kupyna.pdf` only said the mode exists. Ported from
+//! two independent reference implementations: `oracles/uapki/library/uapkic/src/dstu7564.c`
 //! (`dstu7564_init_kmac`/`dstu7564_update_kmac`/`dstu7564_final_kmac`, whose own comment states
 //! the construction directly - `HMAC(M,K) = H(PAD(K) || PAD(M) || (~K))`) and
 //! `oracles/bouncycastle-java/.../macs/DSTU7564Mac.java` (an independent Java implementation, not

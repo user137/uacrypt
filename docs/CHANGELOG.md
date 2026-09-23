@@ -82,6 +82,22 @@ All notable changes to this project are documented in this file. Format follows
 
 ### Changed
 
+- **Breaking: Kalyna GCM, GMAC, CCM and CMAC now follow the DSTU 7624:2014 text** (checked against
+  its draft edition, T-234; `docs/DECISIONS.md` D-204–D-206). Earlier releases followed UAPKI's
+  `dstu7624.c`, which matches the standard's worked examples but not its text on other inputs.
+  Affects `hazmat::kalyna_gcm`, `kalyna_gmac`, `kalyna_ccm` and `kalyna_cmac`, the matching
+  `uacrypt kalyna-*` commands, and every `crypto_secretbox`/`crypto_secretstream`/`crypto_box` tag
+  (their internal AAD is never block-aligned):
+  - GCM/GMAC: a partial last AAD block is padded with `0x80`, and the tag covers the true lengths.
+    Tags change whenever the AAD or the data is not block-aligned.
+  - CCM: the flag byte marks AAD presence, an empty AAD no longer adds a header block, and the AAD
+    length block follows §13.2. Tags change for an empty AAD (the `uacrypt kalyna-ccm` default) and
+    for some AAD lengths.
+  - CCM and CMAC reject an empty message (`CcmError::EmptyPlaintext`, `CmacError::EmptyMessage`).
+    `Kalyna*Cmac::mac`/`mac_with_cipher` now return `Result`.
+
+  Where UAPKI and Bouncy Castle 1.85 read these modes differently, see `docs/COMPATIBILITY.md`.
+- New DSTU 7624 annex vectors: Kalyna-CTR for all five variants, CFB q=8 bits, CBC 512/512 decrypt.
 - Strumok (DSTU 8845:2019) keystream vectors are now confirmed against the official standard text
   itself (Додаток Д, obtained as a genuine library scan), not just UAPKI-attributed - a new
   permanent test module (`crates/dstu-core/tests/strumok.rs`'s `official_annex_d_vectors`) checks

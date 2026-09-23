@@ -1,9 +1,10 @@
 //! Rust implementations of Ukrainian DSTU cryptographic standards (Kalyna, Kupyna, Strumok).
 //!
 //! **Pre-release and provisional — not independently audited.** Kalyna and Kupyna are
-//! dual-oracle-verified against official test vectors. The Kalyna-alone mode of operation
-//! (`hazmat::kalyna_ccm`, `hazmat::kalyna_gcm`, and everything built on them) rests on an adopted
-//! assumption, not a confirmation against the primary DSTU 7624:2014 text (`docs/DECISIONS.md` D-05).
+//! dual-oracle-verified against official test vectors. Kalyna's modes of operation and Kupyna's KMAC
+//! follow the DSTU 7624:2014 and 7564:2014 texts as read from their draft editions, including where
+//! UAPKI and Bouncy Castle differ (`docs/DECISIONS.md` D-204–D-206, `docs/COMPATIBILITY.md`); the
+//! final published editions have not been checked.
 //! Strumok's keystream generator is confirmed against the primary DSTU 8845:2019 text itself
 //! (`docs/DECISIONS.md` D-197); its `Tᵢ[a]`/`Mulα`/`Mulα⁻¹` constant tables are spot-checked
 //! against the same text too (D-198, zero mismatches on a ~100-entry sample), but not

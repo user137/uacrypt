@@ -5,6 +5,7 @@
 # Using uacrypt
 
 - [CLI walkthrough](CLI.md)
+- [Compatibility with UAPKI / Bouncy Castle](COMPATIBILITY.md)
 
 # Project & roadmap
 

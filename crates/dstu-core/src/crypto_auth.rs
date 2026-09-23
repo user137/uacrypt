@@ -14,8 +14,8 @@
 //!   infallible and [`verify`]'s error type has only one variant. This is a type-signature
 //!   foreclosure, not an untested code path - see `docs/DECISIONS.md` D-66.
 //!
-//! Provenance is otherwise identical to the `hazmat` layer: dual-oracle-cited, not yet confirmed
-//! against the primary DSTU 7564:2014 text (D-44).
+//! Provenance is otherwise identical to the `hazmat` layer: dual-oracle-cited, and confirmed against
+//! the DSTU 7564:2014 draft text's annex В (D-44, T-234).
 //!
 //! # Example
 //!

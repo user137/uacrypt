@@ -1884,6 +1884,8 @@ neither is re-run here); CI's `miri`/`fuzz-smoke` jobs remain default-profile-on
 
 ## D-40: Kalyna-CCM nonce/counter-width strategy - deferred to its own follow-up task
 
+> **Status (T-234, 2026-09-23):** DSTU 7624:2014 §13.1 requires uniqueness of the nonce prefix only (11 bytes for a 128-bit block), so the 128-bit birthday figure below overstates the margin - see D-205 (f).
+
 Raised 2026-07-23 while implementing `hazmat::kalyna_ccm` (D-41): the nonce/counter split
 (`ccm_nb`, and with it the maximum message-count-before-repeat) is a tunable parameter of the CCM
 construction itself, not a fixed constant of DSTU 7624 - confirmed from
@@ -1970,6 +1972,8 @@ misconfigure" for the one user-facing surface that exists today; it does not tou
 `hazmat::kalyna_ccm`'s own signature, and it is not `crypto_secretbox` (still D-05-blocked).
 
 ## D-41: Kalyna-CCM implemented as the D-05 working hypothesis - provisional, dual-oracle-verified
+
+> **Status (T-234, 2026-09-23):** checked against the DSTU 7624:2014 draft text. The annex В.9 vectors are confirmed; the construction was corrected to §13 where the port differed (flag bit, empty AAD, G2 length, empty plaintext) - D-205. The BC cross-check below covered block-aligned vectors only.
 
 Follow-up to D-05's revision above, same day (2026-07-23). `dstu_core::hazmat::kalyna_ccm`
 implements DSTU 7624 CCM (all five Kalyna block/key-size variants) as a standalone hazmat-level
@@ -2142,6 +2146,8 @@ See `docs/release-readiness.md` (added same day) for the fuller gap analysis - w
 libsodium-equivalent 1.0 release still needs beyond this version bump.
 
 ## D-44: Kupyna-based KMAC (`crypto_auth` equivalent) implemented - dual-oracle, both constructions read
+
+> **Status (T-234, 2026-09-23):** confirmed against the DSTU 7564:2014 draft text - annex В's `H(Pad(K) || Pad(M) || ~K)` and its three В.5 examples equal this construction and its vectors (see the status notes after D-206).
 
 `docs/TASKS.md` T-38, first item worked from `docs/release-readiness.md`'s ordered list (T-38/T-39/
 T-40/T-48). `docs/papers/Kupyna.pdf` states DSTU 7564:2014 "defines both the hash function and its
@@ -3004,6 +3010,8 @@ candidate for a public entry point (D-05/D-47).
 
 ## D-54: `hazmat::kalyna_cmac` (T-93, Stage B) - one-shot API, `q` fixed at 16 bytes, single-oracle padding-branch gap recorded
 
+> **Status (T-234, 2026-09-23):** the non-aligned padding branch is confirmed by annex В.5.2 of the DSTU 7624:2014 draft (not only UAPKI); an empty message is now rejected - D-206.
+
 DSTU 7624:2014 mode #4. Cited to `oracles/uapki/library/uapkic/src/dstu7624.c`'s `cmac_update`/
 `cmac_final` (lines 4221-4310), `padding` (lines 2572-2592), `dstu7624_init_cmac` (lines 4070-4087);
 `Dstu7624Ctx`'s running MAC state confirmed zero-initialized via `dstu7624_alloc`'s
@@ -3161,6 +3169,8 @@ task changes that - still deferred, no decision made here.
 
 ## D-56: `hazmat::gf2m_wide` + `hazmat::kalyna_gcm` (T-95, Stage D, commit 1 of 2) - GCM landed; three real divergences from AES-GCM found by reading, not assumed; GMAC deferred to its own commit
 
+> **Status (T-234, 2026-09-23):** divergences 2 and 3 below (AAD zero-padded, padded ciphertext length) were UAPKI's reading, not the standard's; superseded by D-204. Divergence 1 stands.
+
 DSTU 7624:2014 mode #7 (GCM). This is the roadmap's "one real investment": new GF(2^m) field
 arithmetic at three sizes, landed together with GCM in one commit because **no standalone `gf2m`
 test vectors exist anywhere in the oracle** (confirmed by search) - the field module and GCM could
@@ -3270,6 +3280,8 @@ construction instead of or alongside CCM remains explicitly deferred, unchanged 
 Stage-A-era roadmap note.
 
 ## D-57: `hazmat::kalyna_gmac` (T-95, Stage D, commit 2 of 2) - ported from `encrypt_gmac`, not
+
+> **Status (T-234, 2026-09-23):** the length block now carries the true message length (DSTU 7624:2014 §12.5, annex В.8.1.3) - D-204.
 `gmac_update`/`gmac_final`, after finding a real multi-block bug in the streaming pair
 
 DSTU 7624:2014 mode #7's MAC-only sibling, closing out Stage D (GCM/GMAC). Same
@@ -12321,6 +12333,8 @@ both the dev machine and the (re-synced) Raspberry Pi.
 
 ## D-185: T-199 (planned) - `m=257` chosen as the second DSTU 4145 curve, on empirical evidence from real issued certificates, not a guess off the standard's own curve table
 
+> **Status (T-234, 2026-09-23):** DSTU 4145-2002 annex Г lists these `m = 257` parameters (`A = 0`, `B`, `n`, `x^257 + x^12 + 1`) exactly.
+
 Owner asked ("що б ти рекомендував?" -> "а пошукай які рекомендовані криві і що використовують
 держоргани" -> "а що використовує Дія?") whether `hazmat::dstu4145` should ever grow a second curve
 size beyond the currently-sole `m=163` (~80-bit security, `docs/pseudocode/dstu4145.md`'s "Not yet
@@ -13642,3 +13656,86 @@ the same check `signature257::verify` already used (D-185).
 **Test.** `tests/dstu4145_signature.rs` `order_2n_public_key_is_rejected` builds `Q + T2` via the
 public `curve163::verify_combine(Q, 1, T2, 1)` and uses a genuine signature with an even `r`. It was
 accepted before the fix (red, confirmed) and is rejected after it; the genuine key still verifies.
+
+## D-204: T-234/T-235 - Kalyna-GCM/GMAC follow DSTU 7624:2014 §12 (Б.2 padding on AAD and ciphertext, true lengths)
+
+**Source.** DSTU 7624:2014, owner-supplied copy of the **draft edition** ("ДСТУ ____-2014", order date
+left blank), gitignored under `docs/papers/`. §12.2 (printed p.25-26): if |C| or |O| is not a
+multiple of the block size, the Б.2 padding (a `1` bit, then zeros - `0x80` for byte data) gives
+`C*`/`O*`; `lambda_o = |O|`, `lambda_C = |C|` (the **true** bit lengths, `l/2` bits each, LE);
+`h = L_q(T(B xor (lambda_o || lambda_C)))`. §12.5 (GMAC): same, with `lambda_M = 0`. Annex В.8.1.3 is
+a worked 139-bit GMAC example (`padded` = `...30F000...`, `lambda_o = 8B`) that fixes the O side
+exactly; a unit test in `hazmat::kalyna_gmac` reproduces its `h`. No annex example has a partial
+ciphertext block, so the C side rests on the §12.2 text.
+
+**Finding.** D-56 transcribed `dstu7624.c`: AAD zero-padded (no marker), and the *padded* ciphertext
+length in `lambda_C`. That is the non-injectivity T-232 (D-200) had to patch around. Bouncy Castle
+1.85 `KGCMBlockCipher`/`KGMac` zero-pad both and use true lengths - its javadoc says it followed NIST
+SP 800-38D because "DSTU 7624:2014 does not publish a partial-block GCM/GMAC test vector" (github
+#287), but В.8.1.3 is such a vector. So on any non-aligned AAD or ciphertext the standard, UAPKI and
+BC give three different tags; on block-aligned input (every annex GCM example) all three agree.
+
+**Decision (O-2, owner, 2026-09-23: "the standard governs").** Implement §12 as written: supersedes
+D-56 divergences 2/3 (divergence 1, the double-encrypted counter, is unchanged).
+- The rejected T-235 option "switch to BC" would not have been the standard either.
+- `crypto_secretbox`/`crypto_secretstream`/`crypto_box` tags all change (their AAD - 41 and 17 bytes -
+  is never block-aligned). `FORMAT_VERSION` stays `2`: v2 was never released. D-200's `ct_len` stays
+  in their AAD as defence in depth.
+- Breaking for `hazmat::kalyna_gcm`/`kalyna_gmac` and `uacrypt kalyna-gcm`/`kalyna-gmac` as published in
+  v0.3.0, for non-aligned input only.
+
+**Tests / evidence.** `tests/vectors/kalyna-{gcm,gmac}/partial-*.json`: 23 GCM + 15 GMAC cases, all
+five variants (the first-ever `Kalyna128_128Gmac` vectors). Tags produced two independent ways that
+agreed on all 60 scratch cases: BC 1.85's GF chain (`KGMac` over the already-padded `O*||C*`, then the
+length block swapped via `tag = E(B xor lambda)`), and the same swap over the pre-change hazmat chain.
+Neither is the code under test. Plus injectivity regressions (`ct` vs `ct||80..`, GMAC `m` vs
+`m||80..`).
+
+## D-205: T-234 - Kalyna-CCM follows DSTU 7624:2014 §13 (flag, empty AAD, G2 length)
+
+**Source.** Same draft copy, §13.1-13.4 (printed p.28-31), tables 13.1-13.3.
+
+**Findings** (independent transcription of §13 reproduces all five annex В.9 examples; the old
+`hazmat::kalyna_ccm`, a `dstu7624.c` port, also matched them, but differed outside them):
+- (a) Flag bit 7 is `|O| > 0` (AAD present, table 13.2); the port set it from `!plaintext.is_empty()`.
+- (b) With `|O| = 0` the text reads "B = G1". §13.2's own general formula over the one-block
+  sequence `G1` gives `B = b_1 = T(G1)`, and the literal reading would feed `G1 xor m_1` into the
+  first encryption, unlike every other branch. Read as a drafting slip (the 7564 draft has a
+  similar one, a truncated INPUT field); BC 1.85 implements `T(G1)` with bit 7 = 0 and matches the
+  transcription on every empty-AAD, block-aligned-M case, all five variants. The port added a
+  zero G2 block instead.
+- (c) `G2 = lambda_o (N_B bytes LE) || 0^z`, `z = (l - |O| mod l - 8 N_B) mod l`: when `|O| mod l >
+  l/8 - N_B` G2 spills into a further block. The port used `block_len - (|O| mod l)` bytes, too
+  short to hold the `N_B`-byte length field. Text-only evidence (BC lays G2 out differently:
+  `len || AAD || zeros`).
+- (d) `|M| = 8r, r >= 1`: empty plaintext is outside the domain -> `CcmError::EmptyPlaintext`.
+- (e) The 255-byte caps (single-byte length fields in the port) are kept as a scope limit; the
+  standard's `N_B`-byte LE fields are now written in full.
+- (f) The standard requires uniqueness only of the nonce prefix `L_{l/8-(N_B+1)}(S)` (11 bytes for a
+  128-bit block): D-40's "128-bit nonce, ~2^48 messages" figure overstated the margin.
+- (g) §13.3 increments only the low half of the counter; the port carries across the block. Differs
+  only after `2^(l/2)` blocks, unreachable under the 255-byte cap - left as is.
+- BC 1.85 `KCCMBlockCipher` fails annex В.9.2 (AAD 12, M 15: ciphertext right, tag wrong): its own
+  tests cover only block-aligned CCM, so D-41's BC cross-check was aligned-only. Not an oracle for
+  partial-block CCM.
+
+**Decision.** Implement §13 as written, with (b) read as `T(G1)`. `H_BUF_LEN` resized to
+`MAX_BLOCK + (8 + MAX_BLOCK - 1) + MAX_AAD_LEN` (512/512 with a 255-byte AAD needs 384 bytes; the old
+size was 383). D-41's status: annex vectors confirmed; construction corrected to the text.
+
+**Tests.** `tests/vectors/kalyna-ccm/edge-*.json` (36 cases, each tagged "std transcription + BC 1.85"
+or "std transcription only"), including AAD = 255 for every variant; `empty_plaintext_is_rejected`.
+
+## D-206: T-234/T-236 - Kalyna-CMAC rejects an empty message
+
+§9.1-9.2: `|O| = l * n_o` with `n_o` a positive integer, and the Б.2 padding is defined for `N >= 1`
+only - an empty message is outside the standard's domain. The port returned `MAC(empty) ==
+MAC(0^l)`. `Kalyna*Cmac::mac`/`mac_with_cipher` now return `Result<[u8; 16], CmacError>` with
+`CmacError::EmptyMessage` (verify too). No KAT used an empty message. Same reasoning as D-205 (d).
+The non-aligned CMAC path (`0x80` + `K_delta = T(1)`) is confirmed by annex В.5.2, not only UAPKI.
+
+**Related status notes (T-234).**
+- D-44 (KMAC): the DSTU 7564:2014 draft's annex В gives `phi(M, K) = H(Pad(K) || Pad(M) || ~K)` and
+  the three В.5 examples equal our vectors - confirmed against the (draft) text.
+- D-185 (`m = 257`): annex Г of DSTU 4145-2002 lists `A = 0`, `B`, `n` and `x^257 + x^12 + 1` exactly as
+  implemented (and `m = 163`'s parameters too).

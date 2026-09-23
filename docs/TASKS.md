@@ -8291,7 +8291,7 @@ which is exactly why the divergence was never caught.
   versioned bump instead of a silent second break. (B) wait for T-234's primary text and do a single
   wire-format break covering both. Cost of B: the forgery stays live on published packages for the
   whole acquisition time (D-197's EDD precedent took weeks).
-- **O-2 - hazmat `kalyna_gcm`/`kalyna_gmac` semantics** (UAPKI reading vs BC reading vs both as
+- **O-2 (resolved 2026-09-23: the standard's reading - neither UAPKI's nor BC's; D-204)** - **hazmat `kalyna_gcm`/`kalyna_gmac` semantics** (UAPKI reading vs BC reading vs both as
   distinct types) - decide only after T-234. See T-235.
 - **O-3 - whether to fold T-248 (`crypto_box` KEM binding) into the same wire-format break as
   T-232.**
@@ -8389,26 +8389,26 @@ which is exactly why the divergence was never caught.
   v0.1.0-v0.3.8; PyPI/npm 0.1.0-0.1.1; RubyGems 0.1.0 - cleanup mechanics are T-251. Migration note: files written by <= 0.3.8 are
   decryptable only by an old release, or by a documented legacy-read path if the owner wants one
   (decide in T-232's plan). Nothing outward without explicit go-ahead (D-91 precedent).
-- [ ] **T-234** (research, unblocks T-235/T-236 and D-41) Obtain the **DSTU 7624:2014 primary
+- [x] **T-234** (**done 2026-09-23** with the owner-supplied draft-edition texts of 7624/7564/4145, report -> D-204..D-206, `docs/ORACLES.md`, `docs/COMPATIBILITY.md`) (research, unblocks T-235/T-236 and D-41) Obtain the **DSTU 7624:2014 primary
   text** (the National Library EDD route that worked for DSTU 8845, D-197) and settle, with clause
   citations: GCM/GMAC partial-block padding (`0x80` vs zero) and the length field (true vs padded);
   CMAC empty-message handling; CCM (D-41's "not yet confirmed against the primary text"). Local OCR
   only (no third-party OCR upload of a licensed scan). Not in `docs/papers/` today - only the Kalyna
   paper, which does not specify mode padding.
-- [ ] **T-235** (audit F-01/F-02, hazmat, blocked on T-234 + O-2) Decide `hazmat::kalyna_gcm`/
+- [x] **T-235** (**done 2026-09-23**: none of A/B/C - the standard's own reading (Б.2 on AAD and C, true lengths), which neither UAPKI (A) nor BC (B) implements; D-204, commit c4290af) (audit F-01/F-02, hazmat, blocked on T-234 + O-2) Decide `hazmat::kalyna_gcm`/
   `kalyna_gmac` partial-block semantics: (A) keep UAPKI's (current, non-injective); (B) switch to
   BC's (injective; changes every non-aligned tag - V1/V4 flip sides); (C) ship both as distinct
   types. Record the choice as a new `D-` entry citing T-234's clause. Regardless of the outcome,
   document the non-injectivity now in both modules' rustdoc and `docs/SECURITY.md` ("never use above
   hazmat without an external length binding"), and in `docs/CLI.md` for `kalyna-gcm`/`kalyna-gmac`.
-- [ ] **T-236** (audit F-02, CMAC, Medium) `Kalyna*Cmac`: `MAC(empty) == MAC(0^block)` in ours,
+- [x] **T-236** (**done 2026-09-23**: empty message rejected, outside §9's domain; D-206, commit 792e023) (audit F-02, CMAC, Medium) `Kalyna*Cmac`: `MAC(empty) == MAC(0^block)` in ours,
   UAPKI (`padding()` at `dstu7624.c:2572` pads nothing for length 0, `rkey[0] = 0`) and BC
   `DSTU7624Mac` (V3). Two implementations agree - whether BC's DSTU code is independent of the UAPKI
   lineage is unknown (Q5). Until T-234: document in rustdoc/`docs/SECURITY.md`/`docs/CLI.md`
   (`kalyna-cmac`). After T-234: decide whether hazmat rejects empty input (check first that no KAT
   in `tests/vectors/` uses an empty message). Also record in `docs/ORACLES.md` that the non-aligned
   CMAC path (`0x80` + `E(1)`) has UAPKI as its only oracle, since BC throws on it.
-- [ ] **T-237** (oracle infra, from the BC cross-check) Vendor `org/bouncycastle/crypto/modes/
+- [ ] **T-237** (**re-scoped 2026-09-23, optional**: BC 1.85 is documented as *not* an oracle for partial-block GCM/GMAC/CCM (D-204/D-205); the remaining value is a harness that pins `docs/COMPATIBILITY.md`'s BC column so a BC change is noticed) (oracle infra, from the BC cross-check) Vendor `org/bouncycastle/crypto/modes/
   KGCMBlockCipher.java` and `crypto/macs/KGMac.java` (plus the `modes/kgcm/*` multipliers if needed
   for readability) into `oracles/bouncycastle-java`, and the .NET equivalents into
   `oracles/bouncycastle-dotnet`; update the "not present" statements (`docs/DECISIONS.md` ~1991,
@@ -8575,7 +8575,7 @@ which is exactly why the divergence was never caught.
 - Q2 (T-238) Does any external format need `PullState::pull` to accept a non-16-byte tag?
 - Q3 (T-245) m=163: was `x != 0` chosen over `n*Q == O` deliberately in T-189?
 - Q4 (T-248) Should `crypto_box` bind the KEM ciphertext/recipient key into the KDF?
-- Q5 (T-236) Is BC's DSTU 7624 code (`DSTU7624Mac`/`KGCMBlockCipher`) independent of the UAPKI
+- Q5 (T-236; **answered 2026-09-23**: BC's GCM/CCM/CMAC code is independent of UAPKI - it reads partial blocks differently from both UAPKI and the standard, `docs/COMPATIBILITY.md`) Is BC's DSTU 7624 code (`DSTU7624Mac`/`KGCMBlockCipher`) independent of the UAPKI
   lineage, or written by the same contributors? It changes how much "two implementations agree"
   (V3) is worth.
 
@@ -8681,6 +8681,12 @@ replace a DSTU primitive.
   Each binding has its own version line (Python 0.1.1, npm 0.1.1, Ruby 0.1.0) and needs its own
   breaking bump. Apply the publishing runbook memory and verify the live registry pages after
   each step.
+- [ ] **T-253** (from T-234) `hazmat::kalyna_kw_p` - DSTU 7624:2014 §15.4/15.5 KW with padding,
+  needed for DSTU 9041 `l(p) = 384`. Annex В.11.x.3/4 vectors exist (byte-level for 128/128, 256/256,
+  256/512, 512/512; 128/256's is bit-level). Plain KW unwrap already strips their outer layer; the
+  padded form looks like `pt || N (LE) || 0x80..` (read §15.4 before implementing).
+- [ ] **T-254** (from T-234) Public Kupyna-384 digest (`R_384` of the 1024-bit-state core, as
+  `Kupyna384Kmac` already uses internally) plus the DSTU 7564 annex Б vector (N = 760).
 - [ ] **T-252** (release supply-chain hardening, from the standards baseline) The release pipeline
   (`.github/workflows/release.yml`) has npm `--provenance` only: no checksums, signatures, build
   provenance or SBOM for the `uacrypt` binaries and the other artefacts. Add:
@@ -8755,18 +8761,16 @@ Next, in order:
    for.
    **Chosen: (a) T-234, done 2026-09-23.** The PDFs (draft editions of 7624/7564) were checked
    against the code. Owner decision: **the standard governs**; UAPKI/BC divergences are their
-   choice and get a public compatibility table. The approved plan, one commit per phase:
-   - Phase 0: freeze the pre-change evidence (scratch only).
-   - Phase 1: new annex В vectors (CTR 4 variants, CFB В.4.3, CBC В.6.10).
-   - Phase 2: GCM/GMAC to §12 (`0x80` on AAD, true λ_C/λ_o). All v2 `crypto_*` tags change;
-     `FORMAT_VERSION` stays 2 (unreleased); D-200's `ct_len` binding is kept.
-   - Phase 3: CCM to §13 (flag = AAD present, empty AAD -> B = T(G1), G2 length formula, reject
-     empty M, `H_BUF_LEN` resized).
-   - Phase 4: CMAC rejects empty input (T-236).
+   choice and get a public compatibility table. **All phases done, local commits only (embargo):**
+   - Phase 1 `12b1162`: new annex В vectors (CTR 4 variants, CFB В.4.3, CBC В.6.10).
+   - Phase 2 `c4290af`: GCM/GMAC to §12 (`0x80` on AAD, true lengths, D-204). All v2 `crypto_*`
+     tags change; `FORMAT_VERSION` stays 2 (unreleased); D-200's `ct_len` binding is kept.
+   - Phase 3 `418ab14`: CCM to §13 (D-205).
+   - Phase 4 `792e023`: CMAC rejects empty input (T-236, D-206).
    - Phase 5: `docs/COMPATIBILITY.md` (UAPKI/BC 1.85 table), D-204..206, ORACLES/SECURITY/CLI
-     docs, CHANGELOG (breaking for v0.3.0 hazmat + `uacrypt kalyna-*`).
-   Parallel ask to the owner: order the final 7624:2014 text via the National Library EDD, since
-   our copy is a draft.
+     docs, CHANGELOG. Follow-ups: T-253 (KW-p), T-254 (Kupyna-384 API).
+   Still open: the owner to order the final 7624:2014 text via the National Library EDD (our copy is
+   a draft); binding suites Python/Node/Ruby/Java not re-run since T-245 (tags changed again).
 2. Step 4: the stream-file framing for uacrypt and all 8 binding writers. It needs:
    - a version byte;
    - a "non-final record must be exactly 8192 bytes" check;

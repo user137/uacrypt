@@ -96,6 +96,7 @@ resistance claim — see `docs/SECURITY.md` for the full threat model.
 
 - [`docs/SECURITY.md`](https://github.com/user137/uacrypt/blob/master/docs/SECURITY.md) — threat model and hard constraints
 - [`docs/DECISIONS.md`](https://github.com/user137/uacrypt/blob/master/docs/DECISIONS.md) — architectural decisions, with rejected alternatives
+- [`docs/COMPATIBILITY.md`](https://github.com/user137/uacrypt/blob/master/docs/COMPATIBILITY.md) — where UAPKI and Bouncy Castle read DSTU 7624 differently from the standard (and from this library)
 - [`docs/TASKS.md`](https://github.com/user137/uacrypt/blob/master/docs/TASKS.md) — phase-by-phase task backlog
 - [`docs/release-readiness.md`](https://github.com/user137/uacrypt/blob/master/docs/release-readiness.md) — gap analysis against a libsodium-equivalent 1.0
 - Full knowledge base: [user137.github.io/uacrypt](https://user137.github.io/uacrypt/)

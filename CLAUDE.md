@@ -60,12 +60,12 @@ canonical source (`docs/TASKS.md`/`docs/DECISIONS.md`) — this section states c
   - `kalyna::{Kalyna128_128, Kalyna128_256, Kalyna256_256, Kalyna256_512, Kalyna512_512}` —
     single-block `encrypt`/`decrypt` (D-13). Independently cross-checked against real Bouncy Castle
     (Java/.NET), T-10.
-  - `kalyna_ccm` — all five variants, provisional Kalyna-alone CCM, **not yet confirmed against the
-    primary DSTU 7624:2014 text** (D-41). Nonce strategy: a wide random nonce generated at the CLI
+  - `kalyna_ccm`/`kalyna_gcm`/`kalyna_gmac`/`kalyna_cmac` — follow the DSTU 7624:2014 (draft) text
+    where UAPKI/BC differ (T-234, D-204–D-206, `docs/COMPATIBILITY.md`). CCM nonce strategy: a wide random nonce generated at the CLI
     layer via `getrandom`, not a stateful counter — the `hazmat`-level API itself still takes a
     caller-supplied nonce, so it stays `no_std`-compatible (D-40/T-82).
   - `kupyna_kmac::{Kupyna256Kmac, Kupyna384Kmac, Kupyna512Kmac}` — the `crypto_auth` equivalent,
-    provisional but on stronger dual-oracle evidence than `kalyna_ccm`/Strumok (D-44).
+    confirmed against the DSTU 7564:2014 (draft) annex В (D-44).
   - `kupyna_kdf::{Kupyna256Kdf, Kupyna384Kdf, Kupyna512Kdf}` — the `crypto_kdf` equivalent, built on
     `kupyna_kmac`; from-scratch design, no DSTU KDF standard or reference implementation exists at
     all, so no oracle vector is possible — verified by property test only (D-45).
@@ -110,7 +110,7 @@ canonical source (`docs/TASKS.md`/`docs/DECISIONS.md`) — this section states c
     libsodium's own constants exactly (T-71/D-49/D-50).
   - `crypto_secretbox` (`seal`/`open`/`SecretKey`) — `Kalyna256_256Gcm`, internal nonce,
     `version||nonce||ciphertext||tag`, no caller AAD; internal AAD `version||nonce||ct_len` binds the
-    nonce (D-63) and the true length (hazmat GCM's padded-length tag is non-injective, D-200/D-202).
+    nonce (D-63) and the true length (defence in depth since D-204; D-200/D-202).
     No message-length cap (T-37/D-51).
   - `crypto_generichash`/`crypto_auth`/`crypto_kdf` — Kupyna hash/KMAC/KDF wrappers, only the
     256-bit variant exposed, opaque `Zeroize`-on-drop key types (T-105/D-66).
@@ -292,9 +292,9 @@ Full detail and rationale in `docs/SECURITY.md` — this is the compressed versi
   nonce only seeds the keystream, unlike CCM (B0 folds the nonce into the CBC-MAC) or NIST AES-GCM
   (`J0` is nonce-derived). Uncovered + travels in the same trusted blob = an attacker can tamper the
   nonce prefix and get "successful" decryption of wrong plaintext instead of failing closed. Fix:
-  pass the nonce as the construction's own AAD (D-63). **Same for the ciphertext length**: Kalyna-
-  GCM/GMAC tag only the `0x80`-padded length, so `ct` and `ct||80 00..` collide — bind `ct_len` in
-  a fixed-length AAD (D-200). Re-check both for every future combined-AEAD wrapper.
+  pass the nonce as the construction's own AAD (D-63). **Same for the exact length**: UAPKI's
+  GCM tagged the padded length, so `ct` and `ct||80 00..` collided (D-200, fixed per §12 in D-204).
+  Re-check both for every future combined-AEAD wrapper.
 
 ## Agent discipline
 
@@ -331,6 +331,9 @@ Full incident narrative for any bulleted rule below lives under its cited `D-XX`
   construction genuinely needs the whole message up front.
 - **Three-attempts rule**: if the same problem survives 3 different approaches (especially
   toolchain/build/CI), stop, report what was tried, wait for direction — don't self-authorize a 4th.
+- **The standard's text governs; UAPKI's KATs are the DSTU 7624 annex examples, not a second
+  oracle.** Reference implementations diverge exactly where no annex example reaches (partial
+  blocks, empty AAD/message, edge lengths) — test those branches against the clause text (T-234).
 - **Research before implementation**: no primitive written from memory. Verify against the primary
   source (DSTU clause or real reference-implementation code) first, cite it in `docs/DECISIONS.md`.
   If only a reference implementation is available, mark the citation provisional (D-15's framing)
@@ -513,15 +516,9 @@ check) is in `docs/dstu-crypto-project.md` "Resources found".
 
 ## Roadmap notes
 
-- Official documentation PDFs live in `docs/papers/`, including `DSTU_4145-2002.pdf` (a scan, see
-  `.claude.local.md` for the render-then-read workflow) and `DSTU_8845-2019.pdf` (gitignored,
-  T-228). Test vectors are extracted and verified for Kalyna, Kupyna, DSTU 4145, and Strumok —
-  Strumok's are now confirmed against the primary DSTU 8845:2019 text itself (Додаток Д, a genuine
-  library scan obtained via the National Library of Ukraine's EDD service), not just
-  UAPKI-attributed, plus independently confirmed against two state-sourced supplementary vectors —
-  see `docs/ORACLES.md`/`docs/DECISIONS.md` D-15/D-16/D-104/D-197. `Tᵢ[a]`/`Mulα`/`Mulα⁻¹` were
-  spot-checked against the same scan (D-198) with zero mismatches (S-box out of scope, already
-  covered via D-10/D-13); none are transcription-verified in full.
+- Official documentation PDFs live in `docs/papers/` (licensed scans/copies — all gitignored, never
+  commit; 7624/7564 are draft editions, T-234). Render with PyMuPDF, not poppler (`.claude.local.md`).
+  Vector provenance per algorithm: `docs/ORACLES.md` (Strumok: D-197/D-198).
 - **`hazmat::dstu9041` (`l(p)=256`/E256/1) is implemented (T-177)** — a partial primary-text
   scan (T-173) plus a targeted supplement (T-176/D-165) gave clause citations for every algorithm
   the primitive needed (6.5–6.12); `message.rs`/`fp256.rs`/`curve256.rs`/`encryption.rs` were then

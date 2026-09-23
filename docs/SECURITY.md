@@ -146,15 +146,23 @@ attack closes the gap to the full round count for either cipher.
   migration (`docs/DECISIONS.md` D-63) via a tamper test written during that migration, not caught by
   code review after the fact — re-verify this for every future combined-AEAD wire format
   (`crypto_secretstream`/T-40 included), it is not a one-time fix.
-- **The same check applies to the ciphertext length.** `hazmat::kalyna_gcm` pads a non-aligned
-  ciphertext with `0x80 00..` and records only the *padded* length, so `ct` and `ct || 80 00..`
-  (up to a block boundary) share a tag. The construction therefore does not authenticate the
-  ciphertext's length (`hazmat::kalyna_gmac` has the same property). Any wrapper must bind the
-  true length itself, e.g. `ct_len` in a fixed-length AAD, as `crypto_secretbox` and
-  `crypto_secretstream` do since T-232 (`docs/DECISIONS.md` D-200). Never use either hazmat mode
-  over data of attacker-controlled length without such an external binding. Missed from T-37 to
-  T-232 because every official vector is block-aligned and round-trip tests cannot see a
-  non-injective encoding.
+- **The same check applies to the ciphertext length.** Until T-234, `hazmat::kalyna_gcm` padded a
+  non-aligned ciphertext with `0x80 00..` but recorded only the *padded* length, so `ct` and
+  `ct || 80 00..` (up to a block boundary) shared a tag; `hazmat::kalyna_gmac` had the same property.
+  That was UAPKI's reading, not the standard's. DSTU 7624:2014 §12 records the true lengths, and
+  both modes now follow it (`docs/DECISIONS.md` D-204). `crypto_secretbox` and `crypto_secretstream`
+  keep `ct_len` in their fixed-length AAD (T-232, D-200) as defence in depth. The general rule
+  stands: for every future combined-AEAD wrapper, check by reading the construction that its tag
+  binds the exact length. This was missed from T-37 to T-232 because every official vector is
+  block-aligned, and round-trip tests cannot see a non-injective encoding.
+- **Usage limits from DSTU 7624:2014 annex Г (informative, draft edition).**
+  - Per-key block limits:
+    - CTR/CFB/CBC/OFB/XTS: 2^60 blocks for a 128-bit block, 2^124 for 256, 2^251 for 512;
+    - CMAC/CCM/GCM/GMAC/KW: 2^46, 2^109, 2^237 respectively.
+    - Above the 128-bit figures, use a wider block.
+  - Nonces must be unique per key (Г.3). CCM requires uniqueness only of the nonce prefix (§13.1).
+  - KW has no nonce: re-key before protecting the same message again.
+  - No mode detects replays (Г.4); that is the caller's job.
 
 ## Supply-chain vetting (apply before adding any crypto-adjacent dependency)
 

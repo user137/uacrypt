@@ -326,7 +326,7 @@ macro_rules! kalyna_ccm_variant {
     ($name:ident, $expanded:ident, $key_bytes:literal, $block_bytes:literal, $ccm_nb:literal, $q:literal) => {
         #[doc = concat!(
             "CCM mode over [`super::kalyna::", stringify!($expanded), "`] - see the module doc ",
-            "comment for the construction citation and its provisional status."
+            "comment for the construction citation and its standard alignment (D-205)."
         )]
         pub struct $name {
             key: super::kalyna::$expanded,
