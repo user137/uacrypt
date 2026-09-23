@@ -8869,7 +8869,9 @@ Next, in order:
      in step 2 below.
    - **Release-day order (each step confirmed):** check the date rule -> Miri on
      `crypto_secretstream` recorded green -> CVE IDs assigned -> commit CHANGELOG `[Unreleased]` ->
-     `[0.4.0] - <date>` with "advisory to follow" replaced by the GHSA/CVE IDs -> push both in one
+     `[0.4.0] - <date>` with "advisory to follow" replaced by the GHSA/CVE IDs (prepared 2026-09-24:
+     `python .claude/disclosure-drafts/finalize_changelog.py <date> <CVE T-232> <CVE D-207>`, gitignored,
+     dry-run tested on a copy; no local tag yet, the tag goes on that final commit) -> push both in one
      command, `git push origin master gh-pages` (docs-check reads `gh-pages:index.html`, and
      `docs-book` pushes gh-pages on every master push, so a later gh-pages push would be rejected;
      never force-push gh-pages) -> tag `v0.4.0` -> approve

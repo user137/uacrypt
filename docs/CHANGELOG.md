@@ -110,7 +110,8 @@ All notable changes to this project are documented in this file. Format follows
   - **Security:** GCM with an empty AAD *and* empty data, and GMAC over an empty message, are
     rejected (`GcmError::EmptyInput`, `GmacError::EmptyMessage`; §12.1 requires `|O|+|M| >= 1`).
     Earlier releases returned `E_K(0)` there, which is the GHASH key: anyone who obtained that
-    tag could forge tags under the same key. `Kalyna*Gmac::mac`/`mac_with_cipher` now return
+    tag could forge tags under the same key (separate advisory to follow, D-207).
+    `Kalyna*Gmac::mac`/`mac_with_cipher` now return
     `Result`. `crypto_*` never hit this (its internal AAD is never empty).
 
   Where UAPKI and Bouncy Castle 1.85 read these modes differently, see `docs/COMPATIBILITY.md`.
