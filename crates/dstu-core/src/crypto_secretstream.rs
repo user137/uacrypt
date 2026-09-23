@@ -18,7 +18,8 @@
 //! # Construction
 //!
 //! [`PushState::init`] draws a random 32-byte `header` and derives the stream's initial subkey as
-//! `Kupyna256Kmac::mac(key = master_key, message = header)`. This is the nonce/IV-coverage rule
+//! `Kupyna256Kmac::mac(key = master_key, message = "DSTU-secretstream-v2" || header)`. The label
+//! names the stream-file [`FORMAT_VERSION`] (D-208), so that version byte is bound too. This is the nonce/IV-coverage rule
 //! (see [`crate::crypto_secretbox`]'s D-63 precedent) applied at stream setup instead of per-chunk
 //! AAD: the subkey itself is a function of the header, so a tampered header derives the wrong
 //! subkey and the very first chunk's tag fails closed - no separate binding needed.
@@ -127,6 +128,26 @@ use zeroize::Zeroize;
 
 const TAG_LEN: usize = 16;
 const REKEY_CONTEXT: &[u8] = b"DSTU-secretstream-rekey";
+
+/// The stream-file format version (D-208): the first byte of every file `uacrypt encrypt` and the
+/// language bindings' stream writers produce. It is bound into the stream through
+/// [`INITIAL_SUBKEY_LABEL`], so a file whose version byte was changed never opens.
+pub const FORMAT_VERSION: u8 = 2;
+
+/// Prefixed to the header in the initial-subkey derivation. It names [`FORMAT_VERSION`], so a
+/// future format derives different subkeys and cannot be read under this one's rules.
+const INITIAL_SUBKEY_LABEL: &[u8; 20] = b"DSTU-secretstream-v2";
+
+/// `Kupyna256Kmac(key, INITIAL_SUBKEY_LABEL || header)`.
+fn initial_subkey(key: &Key, header: &[u8; 32]) -> [u8; 32] {
+    let mut message = [0u8; INITIAL_SUBKEY_LABEL.len() + 32];
+    message[..INITIAL_SUBKEY_LABEL.len()].copy_from_slice(INITIAL_SUBKEY_LABEL);
+    message[INITIAL_SUBKEY_LABEL.len()..].copy_from_slice(header);
+    let Ok(subkey) = Kupyna256Kmac::mac(key.as_bytes(), &message) else {
+        unreachable!("Key::as_bytes() is always exactly 32 bytes, Kupyna256Kmac's own mac_len")
+    };
+    subkey
+}
 
 /// A `crypto_secretstream` master key. Always exactly 32 bytes - [`Kupyna256Kmac`]'s fixed
 /// key/MAC length (see the module doc).
@@ -300,12 +321,9 @@ impl PushState {
     pub fn init(key: &Key) -> Result<(Self, [u8; 32]), SecretstreamError> {
         let mut header = [0u8; 32];
         crate::randombytes::randombytes_buf(&mut header)?;
-        let Ok(subkey) = Kupyna256Kmac::mac(key.as_bytes(), &header) else {
-            unreachable!("Key::as_bytes() is always exactly 32 bytes, Kupyna256Kmac's own mac_len")
-        };
         Ok((
             PushState {
-                subkey,
+                subkey: initial_subkey(key, &header),
                 counter: 0,
                 finalized: false,
             },
@@ -384,11 +402,8 @@ impl PullState {
     /// not detected here, only once the first chunk's tag fails to verify (see the module doc).
     #[must_use]
     pub fn init(key: &Key, header: &[u8; 32]) -> Self {
-        let Ok(subkey) = Kupyna256Kmac::mac(key.as_bytes(), header) else {
-            unreachable!("Key::as_bytes() is always exactly 32 bytes, Kupyna256Kmac's own mac_len")
-        };
         PullState {
-            subkey,
+            subkey: initial_subkey(key, header),
             counter: 0,
             finalized: false,
         }

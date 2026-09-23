@@ -7,7 +7,11 @@
 
 #![cfg(feature = "std")]
 
-use dstu_core::crypto_secretstream::{Key, PullState, PushState, SecretstreamError, Tag};
+use dstu_core::crypto_secretstream::{
+    Key, PullState, PushState, SecretstreamError, Tag, FORMAT_VERSION,
+};
+use dstu_core::hazmat::kalyna_gcm::Kalyna256_256Gcm;
+use dstu_core::hazmat::kupyna_kmac::Kupyna256Kmac;
 use proptest::prelude::*;
 
 const TAG_LEN: usize = 16;
@@ -47,6 +51,62 @@ fn push_one(key: &Key, tag: Tag, plaintext: &[u8]) -> ([u8; 32], Vec<u8>, [u8; T
         .push(tag, plaintext, &mut ciphertext)
         .expect("first push on a fresh state cannot fail");
     (header, ciphertext, auth_tag)
+}
+
+/// Builds a stream's first chunk (`Final`, counter 0) by hand from a given initial subkey, following
+/// the module doc's IV and AAD layout - independent of `PushState`, so the derivation under test is
+/// not just echoed back.
+fn first_final_chunk_under(subkey: &[u8; 32], plaintext: &[u8]) -> (Vec<u8>, [u8; TAG_LEN]) {
+    let cipher = Kalyna256_256Gcm::new(subkey);
+    let iv = [0u8; 32];
+    let mut aad = [0u8; 17];
+    aad[8] = Tag::Final.to_byte();
+    aad[9..].copy_from_slice(&(plaintext.len() as u64).to_le_bytes());
+    let mut ciphertext = vec![0u8; plaintext.len()];
+    let full = cipher
+        .encrypt(&iv, &aad, plaintext, &mut ciphertext)
+        .expect("non-empty AAD");
+    let mut tag = [0u8; TAG_LEN];
+    tag.copy_from_slice(&full[..TAG_LEN]);
+    (ciphertext, tag)
+}
+
+/// D-208: the initial subkey is `Kupyna256Kmac(key, "DSTU-secretstream-v2" || header)`, so the
+/// stream-file version byte is bound into every tag (a flipped version never opens, as D-202 does
+/// for the secretbox/box blobs).
+#[test]
+fn initial_subkey_is_derived_with_the_versioned_label() {
+    let key_bytes = [0x5a; 32];
+    let header = [0xc3; 32];
+    let mut message = b"DSTU-secretstream-v2".to_vec();
+    message.extend_from_slice(&header);
+    let subkey = Kupyna256Kmac::mac(&key_bytes, &message).expect("32-byte key");
+    let (ciphertext, tag) = first_final_chunk_under(&subkey, b"versioned");
+
+    let mut pull = PullState::init(&Key::from_bytes(key_bytes), &header);
+    let mut plaintext = vec![0u8; ciphertext.len()];
+    let read = pull
+        .pull(Tag::Final.to_byte(), &ciphertext, &tag, &mut plaintext)
+        .expect("chunk built under the versioned subkey");
+    assert_eq!(read, Tag::Final);
+    assert_eq!(plaintext, b"versioned");
+    assert_eq!(FORMAT_VERSION, 2);
+}
+
+/// The pre-D-208 derivation `Kupyna256Kmac(key, header)` (no label) must not open.
+#[test]
+fn unlabelled_subkey_derivation_does_not_open() {
+    let key_bytes = [0x5a; 32];
+    let header = [0xc3; 32];
+    let subkey = Kupyna256Kmac::mac(&key_bytes, &header).expect("32-byte key");
+    let (ciphertext, tag) = first_final_chunk_under(&subkey, b"versioned");
+
+    let mut pull = PullState::init(&Key::from_bytes(key_bytes), &header);
+    let mut plaintext = vec![0u8; ciphertext.len()];
+    assert!(matches!(
+        pull.pull(Tag::Final.to_byte(), &ciphertext, &tag, &mut plaintext),
+        Err(SecretstreamError::TagMismatch)
+    ));
 }
 
 #[test]
