@@ -8723,6 +8723,8 @@ replace a DSTU primitive.
 7. **T-247** upstream reports (UAPKI issue, bc-java #287) - owner go-ahead.
 8. **T-234 -> T-235/T-236/T-237** (primary-text-dependent hazmat decisions, oracle vendoring), then
    T-246 docs, then hygiene **T-242/T-243/T-244**, then **T-249**.
+9. **`uacrypt` UX batch T-255..T-265** (section "CLI usability and misuse resistance" at the end of
+   this file) - owner decisions resolved 2026-09-23; ships as 0.5.0, after 0.4.0 (B1 a).
 
 ### RESUME HERE (state as of 2026-09-23, saved for a memory-clear/new-session handoff)
 
@@ -8793,6 +8795,140 @@ Next, in order:
      `ENCRYPT_HELP`'s OUTPUT FORMAT for the new `encrypt` layout. These went in on 2026-09-23 at
      the owner's request, and describe the pre-step-4 layout.
 
+3. **`uacrypt` UX batch (T-255..T-265), planned 2026-09-23, not started** - see the last section
+   of this file. Decisions resolved (all recommendations accepted); 0.5.0, after the 0.4.0
+   security release. Start with T-255; T-256/T-257 need plan mode + advisor.
+
 Golden files / `uacrypt migrate` are not needed (T-250 was downgraded). All reproduction
 data is in "Shared vectors" above; the throwaway PoC crates and the BC Java checks were outside the
 repo and are gone - rebuild them from V1-V6 plus bcprov 1.85, don't trust memory.
+
+## CLI usability and misuse resistance - `uacrypt` UX batch (2026-09-23, owner-requested)
+
+Owner brief: "герметичний, щоб користувач не вистрілив собі в ногу випадково, і при тому простий. По
+духу лібсодіума." Source: a hands-on review of `uacrypt` 0.3.8 (release build) on 2026-09-23.
+
+Findings that started this (reproduced, not assumed):
+- Key files are raw, untyped bytes. `box-seal --key <box SECRET key>` succeeded 2 of 6 tries (the
+  32 secret bytes happened to be a valid x-coordinate) and wrote a file nobody can open;
+  `encrypt --key <box secret key>` succeeds (both 32 bytes).
+- A repeated flag silently wins last: `encrypt --key a --key b` encrypts under `b`.
+- `keygen`'s "already exists" message has a run of spaces mid-sentence (`lib.rs:124`, a `\`
+  continuation inside a string literal).
+- `hash` writes only a binary digest file; no hex on stdout, no `--check`.
+- No stdin/stdout (`-`), no `--flag=value`, no `help` command, no typo suggestion.
+- Top-level help cites internal D-numbers; its D-05 line is stale after T-234; "most users want the
+  three above" sits under 19 commands.
+- 8 curve-suffixed twin commands (`sign257`, `box-seal512`, ...).
+- `encrypt`/`decrypt`/`hash`/`sign` silently overwrite an existing `--out` (only `keygen` refuses).
+- Every failure is exit code 1 (usage error = tampered file = bad signature).
+- `verify` prints nothing on success.
+
+### Design rules for this batch (derived from the brief; every task below cites them)
+- **R1 Self-describing artefacts.** Every key file says what it is. A wrong kind of key is rejected
+  by name before any work ("this is a box-256 secret key; box-seal needs a public key - run
+  `uacrypt box-pubkey`"), never "authentication failed" later.
+- **R2 No silent destruction.** Never replace an existing file without an explicit `--force`; keys
+  are never replaced at all (T-241 stays). Never leave partial output in a file.
+- **R3 Choices happen once, at key generation, and are recorded in the key.** Operation commands
+  (`sign`, `box-seal`, ...) take no algorithm/curve flag; they read it from the key.
+- **R4 Strict, explicit parsing.** Every path is a named flag (no positional order to swap `--in`
+  and `--out`); unknown, repeated or missing flags are usage errors (exit 2) with a suggestion.
+- **R5 No new dependencies without an owner decision** (supply chain, `docs/SECURITY.md`). Use
+  `std::io::IsTerminal`, own small helpers.
+- **R6 Secret parsing stays constant-time** (hard constraint): key text decoding uses branch-free
+  hex decoding, compared with `subtle`.
+- **R7 Secrets never go to stdout or a terminal.** A secret key file can only be written to a new
+  file (`--out -` is refused for every `*-keygen`); public keys may go to stdout.
+
+### Owner decisions - resolved 2026-09-23
+The owner accepted every recommendation: **B1 (a)** - 0.4.0 carries only the security fixes and
+step 4; this batch is 0.5.0. **K1 (a)** typed text keys with a check value. **K2 (a)**
+`key-import`. **K3 (a)** twins kept for key generation only. **O1 (a)** refuse an existing
+`--out` without `--force`. **S1 (a)** decrypt to stdout, verified chunks only, INCOMPLETE on a
+missing Final. **A1** later or never. **P1** had no recommendation: deferred to T-262's own start
+(`rpassword` vs own code is decided then).
+
+### Options as surfaced (kept for the record)
+- **B1 Which release carries this batch.** 0.4.0 is the embargoed release fixing a live Critical
+  forgery (GHSA private fork, see the audit section's RESUME HERE). (a) 0.4.0 ships only the
+  security fixes plus step 4's framing; this batch follows as 0.5.0 - a second pre-1.0 break
+  (keys and CLI), but the security fix is not delayed. (b) bundle both into 0.4.0 - one break for
+  users, but the fix and the embargo wait for six UX tasks. UX work never goes into the private
+  fork either way.
+- **K1 Key file format.** (a, recommended) one text line `<prefix>:<hex>:<check>`. Public keys:
+  `uacrypt-box256-public:9f3c...:1a2b3c4d`, copy-pasteable into chat/email like age/minisign
+  public keys. Secret keys get a visually distinct upper-case prefix (`UACRYPT-SECRET-BOX256:...`,
+  like age's `AGE-SECRET-KEY-`) and are never meant to be pasted anywhere. `check` = first 4 bytes
+  of Kupyna-256(`"uacrypt-key-v1" || kind || key bytes`) - catches a mistyped public key before it
+  becomes a sealed file nobody can open. (b) binary magic header + raw bytes (not paste-able).
+  (c) keep raw (status quo, the bug stays).
+- **K2 Existing 0.3.x raw key files.** (a, recommended) `uacrypt key-import --kind <kind> --in raw
+  --out typed` - one explicit, validating conversion (the only place a kind is typed by hand; it
+  prints what it produced and the derived public key's check). (b) no import, "regenerate your
+  keys" in CHANGELOG (T-239 already asks m=257 users to regenerate; encrypted 0.3.x files are
+  unreadable in 0.4.0 anyway).
+- **K3 Curve choice once operation commands auto-detect (T-257).** D-73 rejected a type flag on
+  `keygen` (a typo'd value silently picks the wrong algorithm), so a `--curve` flag must answer
+  D-73 in its own D-entry. (a, recommended) keep twins only for key generation: `sign-keygen`
+  (m=163) / `sign-keygen257`, `box-keygen` (l(p)=256) / `box-keygen512`; every other command
+  reads the curve from the typed key - no flag anywhere, 19 everyday commands -> 14. (b) one
+  `sign-keygen`/`box-keygen` with `--curve`, strongest as default (`sign-keygen` = m=257, the size
+  Diia uses; m=163 is ~80-bit, D-185) - 12 commands, but a knob D-73 argued against. (c) as (a),
+  but make m=257 the plain `sign-keygen` and rename the m=163 one `sign-keygen163`.
+- **O1 Overwrite policy.** (a, recommended) refuse an existing `--out` everywhere unless `--force`;
+  in-place (`--in` == `--out`) needs `--force` too. (b) keep today's silent overwrite for
+  non-key outputs.
+- **S1 Decrypt to stdout.** Chunks are authenticated one by one, but a truncated stream is only
+  known at the end. (a, recommended - age's behaviour) allow `--out -`, write each chunk only after
+  its tag verifies, exit 1 with "output is INCOMPLETE" if Final never arrives; refuse binary output
+  to a terminal. (b) stdout only for `encrypt`/`hash`, never for `decrypt`/`box-open`.
+- **P1 Passphrase encryption** (`age -p` equivalent, Argon2id via `crypto_pwhash`). Reading a
+  passphrase without echo needs either the `rpassword` crate (R5) or ~80 lines of own
+  termios/Windows-console code. (a) do it after the breaking part, with `rpassword`; (b) own code; (c) not now.
+- **A1 Text ("armor") output for encrypted files/signatures** (age `-a`). Recommended: later
+  or never; `decrypt` would auto-detect.
+
+### Tasks
+Breaking - 0.5.0 (B1 a):
+- [ ] **T-255** Strict parser and help (no owner decision; R4). Repeated flag -> error; accept
+  `--flag=value`; `uacrypt help [cmd]`; "did you mean" for unknown commands/flags (own edit
+  distance, R5); exit codes 0 ok / 1 rejected (auth failure, bad signature, `--check` mismatch) /
+  2 usage / 3 I/O or key-file error; fix the `lib.rs:124` message; top-level help without internal
+  D-numbers, stale D-05 line removed, `--iterations` hidden from everyday help (still accepted,
+  documented in `docs/PERFORMANCE.md`); `verify` prints `Signature OK (DSTU 4145, m=257)` to
+  stderr, stdout stays empty.
+- [ ] **T-256** Typed key files (K1, K2; R1, R6). Plan mode + advisor (format decision). All 9
+  kinds: symmetric, sign163/257 secret/public, box256/512 secret/public. Supersedes the verifying
+  key curve byte (D-73 follow-up). Errors name both the found and the expected kind and the
+  command that makes the right one. CRLF/trailing newline tolerated, nothing else. Secret key
+  files keep `create_new` + 0600 (R7). Scope: the codec lives in `uacrypt` only, the format is
+  specified in `docs/CLI.md`; `kalyna-*`, `strumok-crypt` and `kupyna-digest` keep raw keys
+  (interop/benchmarks); bindings and `dstu-core-capi` are untouched, so the new-primitive binding
+  gate does not fire.
+- [ ] **T-257** Remove the curve twin commands (K3; R3). Depends on T-256. `sign`/`sign-pubkey`/
+  `verify`/`box-pubkey`/`box-seal`/`box-open` read the curve from the key; 19 everyday commands ->
+  14 (K3 a). Removed names return a usage error naming the replacement. D-entry answering D-73.
+  Update `xtask bench-compare` (`xtask/src/main.rs:875` uses `sign257`).
+- [ ] **T-258** Overwrite policy (O1; R2). One shared "open output" helper; `--force` never
+  applies to key files.
+- [ ] **T-259** `hash` like `sha256sum`: prints `<hex>  <path>` to stdout; `--check <file>` verifies
+  such lines (exit 1 on any mismatch, names each). The binary `--out` goes; `kupyna-digest` keeps
+  binary output for interop.
+- [ ] **T-260** stdin/stdout via `-` (S1; R2, R4). `--key` never from stdin; binary output to a
+  terminal refused; secret keys never to stdout (R7); temp-then-rename stays for real files.
+
+Additive - after the breaking part:
+- [ ] **T-261** Progress indicator: automatic only when stderr is a terminal and the input is large
+  (known size >= 64 MiB, or a byte counter for stdin); no flag, no dependency, <= 10 redraws/s,
+  cleared at the end; nothing at all when piped.
+- [ ] **T-262** Passphrase encryption (P1). Decrypt auto-detects from the header; confirm twice,
+  refuse empty; Argon2id parameters in the header. Plan mode + advisor (new file format).
+- [ ] **T-263** Text output (A1), only if the owner wants it.
+- [ ] **T-264** Shell completions (`uacrypt completions bash|zsh|fish|powershell`) and a man page,
+  generated from the same command table the parser uses.
+- [ ] **T-265** Bounded-memory `box-seal`/`box-open` (today they read `--in` whole). Needs a
+  multi-chunk `crypto_box` stream API in `dstu-core` -> the new-primitive binding gate applies.
+
+Every task: test-first, all four categories (happy path, security/boundary, misuse, error path);
+update `docs/CLI.md`, README quick start, both help texts, CHANGELOG `[Unreleased]`; docs-check.
