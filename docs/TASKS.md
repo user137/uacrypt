@@ -8831,6 +8831,20 @@ Next, in order:
      temporary private forks", GitHub docs). The gate moves to the Pi instead: the PHP binding and
      T-241's `#[cfg(unix)]` tests run there. The Pi was brought back online and its packages updated
      2026-09-24.
+   - **Pi gate done 2026-09-24:** `cargo xtask test` green (132 test binaries, 0 failures), incl.
+     T-241's Unix tests (`every_keygen_writes_its_key_with_mode_0600`, `decrypt_output_is_mode_0600`,
+     `create_private_new_refuses_an_existing_path`) for the first time. That run found that the two
+     directory-as-`--out` keygen tests assumed the Windows error: on Unix `O_EXCL` on a directory
+     is `EEXIST`, so the result is `KeyFileExists`. The tests are now per-platform, and the code was
+     already correct. PHP binding: 99/99 tests incl. the v2 stream-file vectors, phpstan clean.
+     The release gate is met.
+   - **T-252 dry run done 2026-09-24:** run 35929711949 on a temporary `release-dryrun` branch
+     (origin/master + the `release.yml` change only; branch deleted afterwards). All build, SBOM
+     and assemble jobs green; every publish job skipped. On the downloaded assets `sha256sum -c`
+     passed, `cosign verify-blob` passed for the branch identity, and the documented tag regexp
+     rejected it as it should. `gh attestation verify` passed; with `--source-ref refs/tags/...`
+     it rejects the branch build, so the docs now pin that. A tampered file fails both checks.
+     (Git Bash rewrites `\.` in a cosign regexp: run it with `MSYS_NO_PATHCONV=1`.)
    - **Publication date:** after both UAPKI and BC reply, or 2026-10-08 (14 days after the reports),
      whichever comes first. 0.4.0 publishes `docs/COMPATIBILITY.md` and D-207, which describe their
      unfixed behaviour.
