@@ -159,7 +159,7 @@ final class SecretstreamTest extends TestCase
     {
         $key = dstu_core_secretstream_keygen();
         $push = new DstuCoreSecretStreamPushState($key);
-        $malicious = $push->header() . pack('C', DSTU_CORE_SECRETSTREAM_TAG_FINAL) . pack('V', 0xFFFFFFFF);
+        $malicious = chr(2) . $push->header() . pack('C', DSTU_CORE_SECRETSTREAM_TAG_FINAL) . pack('V', 0xFFFFFFFF);
 
         $in = self::memoryStream($malicious);
         $this->expectException(DstuCoreException::class);
@@ -199,6 +199,60 @@ final class SecretstreamTest extends TestCase
         rewind($out);
         $this->expectException(DstuCoreException::class);
         DstuCoreSecretStreamReader::withStream($key, $out, fn ($r) => $r->readAll());
+    }
+
+    /** D-208: the same files every reader (uacrypt and all 8 bindings) is tested against. */
+    public static function sharedStreamFileVectors(): array
+    {
+        $path = dirname(__DIR__, 3) . '/crates/dstu-core/tests/vectors/secretstream-file/v2.json';
+        $vectors = json_decode(file_get_contents($path), true, flags: JSON_THROW_ON_ERROR);
+        $cases = [];
+        foreach ($vectors['cases'] as $case) {
+            $cases[$case['name']] = [$vectors['key_hex'], $case];
+        }
+
+        return $cases;
+    }
+
+    #[DataProvider('sharedStreamFileVectors')]
+    public function testSharedStreamFileVector(string $keyHex, array $case): void
+    {
+        $key = hex2bin($keyHex);
+        $in = self::memoryStream((string) hex2bin($case['file_hex']));
+        if ($case['expect'] === 'ok') {
+            $result = DstuCoreSecretStreamReader::withStream($key, $in, fn ($r) => $r->readAll());
+            $this->assertSame((string) hex2bin($case['plaintext_hex']), $result);
+
+            return;
+        }
+        $messages = [
+            'unsupported_version' => '/unsupported stream format version/',
+            'bad_chunk_length' => '/non-final chunk/',
+            'truncated' => '/truncated/',
+            'auth' => '/./',
+        ];
+        $this->expectException(DstuCoreException::class);
+        $this->expectExceptionMessageMatches($messages[$case['expect']]);
+        DstuCoreSecretStreamReader::withStream($key, $in, fn ($r) => $r->readAll());
+    }
+
+    public function testWritesTheFormatVersionFirst(): void
+    {
+        $out = self::memoryStream();
+        DstuCoreSecretStreamWriter::withStream(dstu_core_secretstream_keygen(), $out, fn ($w) => $w->write('x'));
+        rewind($out);
+        $this->assertSame(2, ord(fread($out, 1)));
+    }
+
+    public function testRejectsATruncatedEightByteAuthTag(): void
+    {
+        // T-238: an 8-byte prefix of a real tag used to verify through the core's 8..=32 range.
+        $key = dstu_core_secretstream_keygen();
+        $push = new DstuCoreSecretStreamPushState($key);
+        [$ciphertext, $authTag] = $push->push(DSTU_CORE_SECRETSTREAM_TAG_FINAL, 'secret');
+        $pull = new DstuCoreSecretStreamPullState($key, $push->header());
+        $this->expectException(DstuCoreException::class);
+        $pull->pull(DSTU_CORE_SECRETSTREAM_TAG_FINAL, $ciphertext, substr($authTag, 0, 8));
     }
 
     public function testRejectsAWrongLengthKey(): void

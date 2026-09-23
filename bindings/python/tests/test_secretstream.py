@@ -8,6 +8,7 @@ oversized chunk, trailing data), misuse (wrong-length key, write-after-close).
 from __future__ import annotations
 
 import io
+import json
 import os
 import subprocess
 from pathlib import Path
@@ -133,7 +134,9 @@ def test_truncated_stream_is_rejected() -> None:
 
 def test_oversized_declared_chunk_length_is_rejected() -> None:
     key = d.secretstream_keygen()
-    malicious = bytes(32) + bytes([0x03]) + (0xFFFFFFFF).to_bytes(4, "little")
+    malicious = (
+        bytes([2]) + bytes(32) + bytes([0x03]) + (0xFFFFFFFF).to_bytes(4, "little")
+    )
     with (
         pytest.raises(d.DstuError, match="too large"),
         d.SecretStreamDecryptor(key, io.BytesIO(malicious)) as dec,
@@ -191,3 +194,45 @@ def test_truncated_auth_tag_prefix_is_rejected() -> None:
     pull = d.SecretStreamPullState(key, push.header)
     with pytest.raises(d.DstuError):
         pull.pull(d.SECRETSTREAM_TAG_FINAL, ciphertext, auth_tag[:8])
+
+
+_SHARED_VECTORS = (
+    _REPO_ROOT
+    / "crates"
+    / "dstu-core"
+    / "tests"
+    / "vectors"
+    / "secretstream-file"
+    / "v2.json"
+)
+_EXPECTED_MESSAGE = {
+    "unsupported_version": "unsupported stream format version",
+    "bad_chunk_length": "non-final chunk",
+    "truncated": "truncated",
+    "auth": "",
+}
+
+
+def _shared_cases() -> list[dict[str, str]]:
+    return json.loads(_SHARED_VECTORS.read_text(encoding="utf-8"))["cases"]
+
+
+@pytest.mark.parametrize("case", _shared_cases(), ids=lambda c: c["name"])
+def test_shared_stream_file_vectors(case: dict[str, str]) -> None:
+    """D-208: the same files every reader (uacrypt and all 8 bindings) is tested against."""
+    vectors = json.loads(_SHARED_VECTORS.read_text(encoding="utf-8"))
+    key = bytes.fromhex(vectors["key_hex"])
+    data = io.BytesIO(bytes.fromhex(case["file_hex"]))
+    if case["expect"] == "ok":
+        with d.SecretStreamDecryptor(key, data) as dec:
+            assert dec.read_all() == bytes.fromhex(case["plaintext_hex"])
+    else:
+        with pytest.raises(d.DstuError, match=_EXPECTED_MESSAGE[case["expect"]]):
+            d.SecretStreamDecryptor(key, data).read_all()
+
+
+def test_encryptor_writes_the_format_version_first() -> None:
+    out = io.BytesIO()
+    with d.SecretStreamEncryptor(d.secretstream_keygen(), out) as enc:
+        enc.write(b"x")
+    assert out.getvalue()[0] == 2

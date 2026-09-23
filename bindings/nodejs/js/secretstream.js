@@ -9,9 +9,11 @@
  * standing pitfalls this port re-checks below).
  *
  * Wire format matches `uacrypt encrypt`/`decrypt` exactly (crates/uacrypt/src/lib.rs's
- * run_secretstream_encrypt/run_secretstream_decrypt, D-68): `header (32 bytes)` followed by one
- * record per chunk, `tagByte (1) || chunkLenU32LE (4) || ciphertext (chunkLen) || authTag (16)`,
- * chunks capped at 8 KiB (matching SECRETSTREAM_CHUNK_BYTES, not an independent choice).
+ * run_secretstream_encrypt/run_secretstream_decrypt, D-68): `version (1) || header (32 bytes)`
+ * followed by one record per chunk, `tagByte (1) || chunkLenU32LE (4) || ciphertext (chunkLen) ||
+ * authTag (16)`. Every record but the Final one is exactly 8 KiB (SECRETSTREAM_CHUNK_BYTES, part of
+ * the format since D-208, not an independent choice). The shared vectors in
+ * crates/dstu-core/tests/vectors/secretstream-file/ pin this.
  */
 
 const { Transform } = require('node:stream');
@@ -21,6 +23,8 @@ const native = require('../native/index.js');
 // interop with `uacrypt encrypt`/`decrypt`, not an independent choice.
 const CHUNK_BYTES = 8 * 1024;
 const AUTH_TAG_BYTES = 16;
+// Matches dstu-core's crypto_secretstream::FORMAT_VERSION (D-208); the shared vectors pin it.
+const FORMAT_VERSION = 2;
 
 /**
  * Write-only Transform: buffers input and pushes each full 8 KiB chunk downstream as it fills,
@@ -42,7 +46,7 @@ class SecretStreamEncryptor extends Transform {
     super(options);
     this._pushState = new native.SecretStreamPushState(key);
     this._buf = Buffer.alloc(0);
-    this.push(this._pushState.header);
+    this.push(Buffer.concat([Buffer.from([FORMAT_VERSION]), this._pushState.header]));
   }
 
   _pushChunk(tag, data) {
@@ -122,9 +126,12 @@ class SecretStreamDecryptor extends Transform {
 
   _drain() {
     if (!this._pullState) {
-      if (this._buf.length < 32) return;
-      const header = this._buf.subarray(0, 32);
-      this._buf = this._buf.subarray(32);
+      if (this._buf.length >= 1 && this._buf[0] !== FORMAT_VERSION) {
+        throw new Error(`unsupported stream format version ${this._buf[0]} (this build reads ${FORMAT_VERSION})`);
+      }
+      if (this._buf.length < 33) return;
+      const header = this._buf.subarray(1, 33);
+      this._buf = this._buf.subarray(33);
       this._pullState = new native.SecretStreamPullState(this._key, header);
     }
     for (;;) {
@@ -139,6 +146,9 @@ class SecretStreamDecryptor extends Transform {
       const chunkLen = this._buf.readUInt32LE(1);
       if (chunkLen > CHUNK_BYTES) {
         throw new Error(`secretstream chunk too large: declared ${chunkLen} bytes, max ${CHUNK_BYTES}`);
+      }
+      if (tagByte !== native.SECRETSTREAM_TAG_FINAL && chunkLen !== CHUNK_BYTES) {
+        throw new Error(`non-final chunk of ${chunkLen} bytes, must be exactly ${CHUNK_BYTES} (D-208)`);
       }
       const recordLen = 5 + chunkLen + AUTH_TAG_BYTES;
       if (this._buf.length < recordLen) return;

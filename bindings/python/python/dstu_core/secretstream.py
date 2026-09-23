@@ -5,10 +5,11 @@ exposes (step 2), rather than new Rust glue.
 
 **Wire format matches `uacrypt encrypt`/`decrypt` exactly**
 (crates/uacrypt/src/lib.rs's `run_secretstream_encrypt`/`run_secretstream_decrypt`, D-68):
-`header (32 bytes)` followed by one record per chunk, `tag_byte (1) || chunk_len_u32_le (4) ||
-ciphertext (chunk_len) || auth_tag (16)`, chunks capped at 8 KiB (matching
-`SECRETSTREAM_CHUNK_BYTES`, not an independent choice) - a file `SecretStreamEncryptor` writes is
-decryptable by `uacrypt decrypt` and vice versa.
+`version (1) || header (32 bytes)` followed by one record per chunk, `tag_byte (1) ||
+chunk_len_u32_le (4) || ciphertext (chunk_len) || auth_tag (16)`. Every record but the Final one is
+exactly 8 KiB (matching `SECRETSTREAM_CHUNK_BYTES`, part of the format since D-208, not an
+independent choice) - a file `SecretStreamEncryptor` writes is decryptable by `uacrypt decrypt` and
+vice versa. The shared vectors in `crates/dstu-core/tests/vectors/secretstream-file/` pin this.
 """
 
 from __future__ import annotations
@@ -28,6 +29,9 @@ from ._dstu_core import (
 _CHUNK_BYTES = 8 * 1024
 
 _AUTH_TAG_BYTES = 16
+
+# Matches dstu-core's `crypto_secretstream::FORMAT_VERSION` (D-208); the shared vectors pin it.
+_FORMAT_VERSION = 2
 
 
 class _Writable(Protocol):
@@ -51,6 +55,7 @@ class SecretStreamEncryptor:
     def __init__(self, key: bytes, out: _Writable) -> None:
         self._out = out
         self._push = SecretStreamPushState(key)
+        self._out.write(bytes([_FORMAT_VERSION]))
         self._out.write(self._push.header)
         self._buf = bytearray()
         self._closed = False
@@ -132,6 +137,11 @@ class SecretStreamDecryptor:
     """
 
     def __init__(self, key: bytes, inp: _Readable) -> None:
+        version = _read_exact(inp, 1, "format version")[0]
+        if version != _FORMAT_VERSION:
+            raise DstuError(
+                f"unsupported stream format version {version} (this build reads {_FORMAT_VERSION})"
+            )
         header = _read_exact(inp, 32, "header")
         self._inp = inp
         self._pull = SecretStreamPullState(key, header)
@@ -153,6 +163,10 @@ class SecretStreamDecryptor:
         if chunk_len > _CHUNK_BYTES:
             raise DstuError(
                 f"secretstream chunk too large: declared {chunk_len} bytes, max {_CHUNK_BYTES}"
+            )
+        if tag_byte != SECRETSTREAM_TAG_FINAL and chunk_len != _CHUNK_BYTES:
+            raise DstuError(
+                f"non-final chunk of {chunk_len} bytes, must be exactly {_CHUNK_BYTES} (D-208)"
             )
         ciphertext = _read_exact(self._inp, chunk_len, "chunk ciphertext")
         auth_tag = _read_exact(self._inp, _AUTH_TAG_BYTES, "chunk auth tag")

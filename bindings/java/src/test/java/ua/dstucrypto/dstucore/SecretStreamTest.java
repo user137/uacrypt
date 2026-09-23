@@ -3,14 +3,21 @@ package ua.dstucrypto.dstucore;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.SecureRandom;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -153,6 +160,7 @@ class SecretStreamTest {
     void oversizedDeclaredChunkLengthIsRejected() throws Exception {
         byte[] key = SecretStream.keygen();
         ByteArrayOutputStream malicious = new ByteArrayOutputStream();
+        malicious.write(2); // format version (D-208)
         malicious.write(new byte[32]); // header (unread past this - the chunk-length check fires first)
         malicious.write(0x03); // tag byte (Final)
         malicious.write(0xFF);
@@ -196,6 +204,109 @@ class SecretStreamTest {
         }
         try (SecretStreamDecryptor dec = new SecretStreamDecryptor(key, new ByteArrayInputStream(out.toByteArray()))) {
             assertThrows(DstuException.class, dec::readAll);
+        }
+    }
+
+    private static final Path SHARED_VECTORS = RepoRoot.find().resolve("crates").resolve("dstu-core")
+            .resolve("tests").resolve("vectors").resolve("secretstream-file").resolve("v2.json");
+
+    static final class SharedCase {
+        final String name;
+        final String expect;
+        final byte[] file;
+        final byte[] plaintext;
+
+        SharedCase(String name, String expect, byte[] file, byte[] plaintext) {
+            this.name = name;
+            this.expect = expect;
+            this.file = file;
+            this.plaintext = plaintext;
+        }
+
+        @Override
+        public String toString() {
+            return name;
+        }
+    }
+
+    private static String sharedJson() throws IOException {
+        return new String(Files.readAllBytes(SHARED_VECTORS), StandardCharsets.UTF_8);
+    }
+
+    private static byte[] unhex(String hex) {
+        byte[] out = new byte[hex.length() / 2];
+        for (int i = 0; i < out.length; i++) {
+            out[i] = (byte) Integer.parseInt(hex.substring(2 * i, 2 * i + 2), 16);
+        }
+        return out;
+    }
+
+    static List<SharedCase> sharedCases() throws IOException {
+        Pattern line = Pattern.compile("\"name\": \"([^\"]+)\", \"expect\": \"([^\"]+)\", "
+                + "\"file_hex\": \"([0-9a-f]*)\", \"plaintext_hex\": \"([0-9a-f]*)\"");
+        Matcher m = line.matcher(sharedJson());
+        List<SharedCase> cases = new ArrayList<>();
+        while (m.find()) {
+            cases.add(new SharedCase(m.group(1), m.group(2), unhex(m.group(3)), unhex(m.group(4))));
+        }
+        assertEquals(7, cases.size(), "shared vector file is incomplete");
+        return cases;
+    }
+
+    /** D-208: the same files every reader (uacrypt and all 8 bindings) is tested against. */
+    @ParameterizedTest
+    @MethodSource("sharedCases")
+    void sharedStreamFileVector(SharedCase c) throws Exception {
+        Matcher keyMatch = Pattern.compile("\"key_hex\": \"([0-9a-f]+)\"").matcher(sharedJson());
+        assertTrue(keyMatch.find());
+        byte[] key = unhex(keyMatch.group(1));
+        if (c.expect.equals("ok")) {
+            try (SecretStreamDecryptor dec = new SecretStreamDecryptor(key, new ByteArrayInputStream(c.file))) {
+                assertArrayEquals(c.plaintext, dec.readAll());
+            }
+            return;
+        }
+        String wanted;
+        if (c.expect.equals("unsupported_version")) {
+            wanted = "unsupported stream format version";
+        } else if (c.expect.equals("bad_chunk_length")) {
+            wanted = "non-final chunk";
+        } else if (c.expect.equals("truncated")) {
+            wanted = "truncated";
+        } else {
+            wanted = "";
+        }
+        DstuException e = assertThrows(DstuException.class, () -> {
+            try (SecretStreamDecryptor dec = new SecretStreamDecryptor(key, new ByteArrayInputStream(c.file))) {
+                dec.readAll();
+            }
+        });
+        assertTrue(e.getMessage().contains(wanted), e.getMessage());
+    }
+
+    @Test
+    void encryptorWritesTheFormatVersionFirst() throws Exception {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        try (SecretStreamEncryptor enc = new SecretStreamEncryptor(SecretStream.keygen(), out)) {
+            enc.write(new byte[] {'x'});
+            enc.complete();
+        }
+        assertEquals(2, out.toByteArray()[0]);
+    }
+
+    /** T-238: an 8-byte prefix of a real tag used to verify through the core's 8..=32 range. */
+    @Test
+    void truncatedEightByteAuthTagIsRejected() {
+        byte[] key = SecretStream.keygen();
+        try (SecretStreamPushState push = new SecretStreamPushState(key)) {
+            SecretStreamPushResult r = push.push(SecretStreamTag.FINAL, "secret".getBytes(StandardCharsets.UTF_8));
+            try (SecretStreamPullState pull = new SecretStreamPullState(key, push.header())) {
+                byte[] shortTag = Arrays.copyOf(r.authTag(), 8);
+                // The core rejects a non-16-byte tag as a length error, which this binding maps to
+                // IllegalArgumentException, not DstuException: a caller bug, not a forgery.
+                assertThrows(IllegalArgumentException.class,
+                        () -> pull.pull(SecretStreamTag.FINAL.ordinal(), r.ciphertext(), shortTag));
+            }
         }
     }
 

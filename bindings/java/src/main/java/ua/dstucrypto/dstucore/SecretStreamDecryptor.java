@@ -18,7 +18,7 @@ import java.io.InputStream;
  * freed - {@code close()} does that here.
  */
 public final class SecretStreamDecryptor extends InputStream {
-    private static final int CHUNK_BYTES = 8 * 1024;
+    private static final int CHUNK_BYTES = SecretStreamEncryptor.CHUNK_BYTES;
     private static final int AUTH_TAG_BYTES = 16;
 
     private final InputStream in;
@@ -30,6 +30,11 @@ public final class SecretStreamDecryptor extends InputStream {
 
     public SecretStreamDecryptor(byte[] key, InputStream in) throws IOException {
         this.in = in;
+        int version = readExact(in, 1, "format version")[0] & 0xFF;
+        if (version != SecretStreamEncryptor.FORMAT_VERSION) {
+            throw new DstuException("unsupported stream format version " + version
+                    + " (this build reads " + SecretStreamEncryptor.FORMAT_VERSION + ")");
+        }
         byte[] header = readExact(in, 32, "header");
         this.pull = new SecretStreamPullState(key, header);
     }
@@ -72,6 +77,10 @@ public final class SecretStreamDecryptor extends InputStream {
         if (chunkLen < 0 || chunkLen > CHUNK_BYTES) {
             throw new DstuException(
                     "secretstream chunk too large: declared " + chunkLen + " bytes, max " + CHUNK_BYTES);
+        }
+        if (tagByte != SecretStreamTag.FINAL.ordinal() && chunkLen != CHUNK_BYTES) {
+            throw new DstuException("non-final chunk of " + chunkLen + " bytes, must be exactly "
+                    + CHUNK_BYTES + " (D-208)");
         }
         byte[] ciphertext = readExact(in, chunkLen, "chunk ciphertext");
         byte[] authTag = readExact(in, AUTH_TAG_BYTES, "chunk auth tag");

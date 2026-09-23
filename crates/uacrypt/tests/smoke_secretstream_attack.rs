@@ -1,18 +1,22 @@
 //! T-200 Phase 3/4: `decrypt`'s on-disk wire format (`crypto_secretstream`, D-68) - length-prefixed
-//! chunk framing `[header:32][tag:1][len:4 LE][ciphertext:len][auth_tag:16]...`, terminated by a
+//! chunk framing `[version:1][header:32][tag:1][len:4 LE][ciphertext:len][auth_tag:16]...` (the
+//! version byte since D-208), terminated by a
 //! chunk tagged `Final` - attacked directly at the file layer, mapped to the specific named
 //! `CliError` each malformed shape should produce (never just "a nonzero exit code"). Wire offsets
 //! taken from `crates/uacrypt/src/lib.rs`'s own `run_secretstream_decrypt` (header then
 //! `[tag:1][len_le:4][ciphertext][auth_tag:SECRETSTREAM_TAG_LEN]`, `SECRETSTREAM_TAG_LEN = 16`,
 //! `SECRETSTREAM_CHUNK_BYTES = 8192`) - every fixture here is a real `encrypt` output for a message
 //! well under the chunk size, so it is exactly one record tagged `Final` (per `run_secretstream_
-//! encrypt`'s own one-chunk-ahead buffering doc comment): bytes `[0..32)` header, `[32]` tag byte
-//! `0x03`, `[33..37)` little-endian length, `[37..37+len)` ciphertext, then a 16-byte auth tag.
+//! encrypt`'s own one-chunk-ahead buffering doc comment): byte `[0]` version `0x02`, `[1..33)`
+//! header, `[33]` tag byte `0x03`, `[34..38)` little-endian length, `[38..38+len)` ciphertext, then
+//! a 16-byte auth tag.
 
 mod support;
 use support::{uacrypt, write_bytes, TempDir};
 
-const HEADER_LEN: usize = 32;
+/// Version byte (1) plus the secretstream header (32).
+const HEADER_LEN: usize = 33;
+const LEN_FIELD: std::ops::Range<usize> = HEADER_LEN + 1..HEADER_LEN + 5;
 const TAG_LEN: usize = 16;
 const PREFIX_LEN: usize = 5; // 1 tag byte + 4-byte LE length
 
@@ -44,7 +48,11 @@ fn make_fixture(dir: &TempDir, label: &str, plaintext: &[u8]) -> Fixture {
         good[HEADER_LEN], 0x03,
         "fixture is not a single Final-tagged record as assumed"
     );
-    let claimed_len = u32::from_le_bytes([good[33], good[34], good[35], good[36]]) as usize;
+    assert_eq!(
+        good[0], 0x02,
+        "fixture does not start with format version 2"
+    );
+    let claimed_len = u32::from_le_bytes(good[LEN_FIELD].try_into().unwrap()) as usize;
     assert_eq!(claimed_len, plaintext.len());
     assert_eq!(good.len(), HEADER_LEN + PREFIX_LEN + claimed_len + TAG_LEN);
     Fixture {
@@ -134,7 +142,7 @@ fn oversized_chunk_length_field_is_rejected_before_reading_that_much() {
     let dir = TempDir::new("ss_attack_oversized_len");
     let f = make_fixture(&dir, "oversized", b"short");
     let mut tampered = f.good.clone();
-    tampered[33..37].copy_from_slice(&u32::MAX.to_le_bytes());
+    tampered[LEN_FIELD].copy_from_slice(&u32::MAX.to_le_bytes());
     let r = try_decrypt(&dir, &f.key, &tampered, "oversized");
     assert!(r.failure());
     assert!(
@@ -174,7 +182,9 @@ fn unknown_tag_byte_is_secretstream_unknown_tag() {
 )]
 fn final_tag_flipped_to_message_is_verify_failure_not_silently_accepted() {
     let dir = TempDir::new("ss_attack_flip_final");
-    let f = make_fixture(&dir, "flip_final", b"message that should not decrypt");
+    // Exactly one full chunk, so after the flip the record still has the length a Message record
+    // must have (D-208) and only authentication can catch it.
+    let f = make_fixture(&dir, "flip_final", &[0x5a; 8192]);
     let mut tampered = f.good.clone();
     assert_eq!(tampered[HEADER_LEN], 0x03);
     tampered[HEADER_LEN] = 0x00; // Final -> Message, otherwise byte-identical
@@ -239,7 +249,7 @@ fn tampered_header_byte_is_verify_failure() {
     let dir = TempDir::new("ss_attack_tamper_header");
     let f = make_fixture(&dir, "tamper_header", b"tamper the header");
     let mut tampered = f.good.clone();
-    tampered[0] ^= 0x01;
+    tampered[1] ^= 0x01; // first secretstream header byte; byte 0 is the version (next test)
     let r = try_decrypt(&dir, &f.key, &tampered, "tamper_header");
     assert!(r.failure());
     assert!(
@@ -247,6 +257,28 @@ fn tampered_header_byte_is_verify_failure() {
         "stderr={}",
         r.stderr
     );
+}
+
+/// D-208: the version byte is checked first and reported by name. It is also bound into the stream's
+/// subkey derivation, so even a reader that skipped this check could not open the file.
+#[test]
+#[cfg_attr(
+    miri,
+    ignore = "spawns the real uacrypt binary - Miri cannot run a subprocess"
+)]
+fn changed_version_byte_is_unsupported_version() {
+    let dir = TempDir::new("ss_attack_version");
+    let f = make_fixture(&dir, "version", b"version byte");
+    let mut tampered = f.good.clone();
+    tampered[0] = 0x03;
+    let r = try_decrypt(&dir, &f.key, &tampered, "version");
+    assert!(r.failure());
+    assert!(
+        r.stderr.contains("unsupported stream format version 3"),
+        "stderr={}",
+        r.stderr
+    );
+    assert!(!dir.file("version_out.bin").exists());
 }
 
 #[test]
@@ -283,7 +315,7 @@ fn final_record_extended_with_gcm_padding_is_verify_failure() {
     tampered.push(0x80);
     tampered.resize(ct_start + 32, 0);
     tampered.extend_from_slice(&f.good[tag_start..]);
-    tampered[33..37].copy_from_slice(&32u32.to_le_bytes());
+    tampered[LEN_FIELD].copy_from_slice(&32u32.to_le_bytes());
     let r = try_decrypt(&dir, &f.key, &tampered, "gcm_padding");
     assert!(r.failure(), "an extended record must not decrypt");
     assert!(

@@ -43,6 +43,10 @@ public static class DstuConstants
     /// binding's own <c>SECRETSTREAM_CHUNK_BYTES</c> and <c>uacrypt</c>'s own CLI chunking.</summary>
     public const int SecretstreamChunkBytes = 8192;
 
+    /// <summary>First byte of every stream file - matches dstu-core's
+    /// <c>crypto_secretstream::FORMAT_VERSION</c> (D-208); the shared vectors pin it.</summary>
+    public const byte SecretstreamFormatVersion = 2;
+
     public const int SignPrivateKeyBytes = 21;
     public const int SignPublicKeyBytes = 42;
     public const int SignSignatureBytes = 42;

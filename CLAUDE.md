@@ -117,10 +117,10 @@ canonical source (`docs/TASKS.md`/`docs/DECISIONS.md`) — this section states c
   - `crypto_stream` (`encrypt`/`decrypt`/`Key`) — `Strumok256` only, hidden internal IV, **no
     authentication** (`decrypt` never fails on tampered input) — hence `encrypt`/`decrypt` naming,
     not `seal`/`open` (T-106/D-67).
-  - `crypto_secretstream` (`PushState`/`PullState`/`Key`/`Tag`) — genuinely chunked/streaming AEAD,
-    tag-per-chunk framing, chunk AAD `counter||tag||ct_len` (D-200), 16-byte tag only (T-238),
-    header-derived subkeys + one-way `Rekey`; from-scratch, no oracle vector ever - verified by
-    property/tamper/misuse tests (T-40/T-70/D-68).
+  - `crypto_secretstream` (`PushState`/`PullState`/`Key`/`Tag`) — chunked AEAD, chunk AAD
+    `counter||tag||ct_len` (D-200), 16-byte tag only (T-238), versioned header-derived subkeys +
+    one-way `Rekey`; stream file = version byte + exact 8 KiB non-final records, shared vectors
+    (D-208); no oracle: property/tamper tests (T-40/T-70/D-68).
   - `crypto_box` (`seal`/`open`/`SecretKey`/`PublicKey`) — public-key encryption over
     `hazmat::dstu9041` (`l(p)=256`), hybrid via KDF (a random seed sealed asymmetrically,
     keyed into `Kupyna256Kmac` over `kem_ct||recipient_pk` (D-201), then secretstream encrypts);

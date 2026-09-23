@@ -13764,3 +13764,69 @@ advisory, owner's call.
 **Tests.** `empty_aad_and_empty_plaintext_are_rejected` (GCM; one side empty still works),
 `empty_message_is_rejected` (GMAC), and the two CLI tests; proptests now draw non-empty AAD (GCM) /
 message (GMAC).
+
+## D-208: stream-file format v2 - a bound version byte and exact 8192-byte non-final records (T-232 completion, execution-plan step 4)
+
+**Context.** D-202 put a version byte on every `crypto_*` blob but left the stream file (`uacrypt
+encrypt` and the 8 bindings' writers and readers) for this step, together with T-232's
+defence-in-depth rule that every non-`Final` record is exactly `SECRETSTREAM_CHUNK_BYTES`. Checked
+first: all 8 binding writers already emitted exact 8192-byte non-`Final` records (a buffered
+`> 8192` loop or a full pending buffer). `uacrypt` did not: `run_secretstream_encrypt` filled each
+chunk with one `File::read`, which may legally return fewer bytes, so a short read could write a
+short non-`Final` record. It never showed on local files, but the new rule would have rejected
+such a file.
+
+**Decision.**
+- Layout: `version (1) = 2 || header (32) || records`; records unchanged (`tag (1) || len (4, LE)
+  || ciphertext || auth tag (16)`).
+- The version is bound in the core: `crypto_secretstream`'s initial subkey is now
+  `Kupyna256Kmac(key, "DSTU-secretstream-v2" || header)`, and `FORMAT_VERSION = 2` is exported.
+  A changed version byte never opens, as in D-202, and a future format with its own label cannot
+  be read under this one's rules. The label also adds the domain separation the bare
+  `KMAC(key, header)` lacked. The owner chose this over a framing-only byte (2026-09-23 plan
+  approval). Cost: v2 stream and box tags change again; v2 was never released.
+- Every reader (uacrypt plus 8 bindings) checks, in order: the version byte (a distinct
+  "unsupported stream format version N" error; the byte is public, D-202's reasoning), the existing
+  `len > 8192` bound, then **non-`Final` record length must equal 8192** (a distinct "non-final
+  chunk" error). `uacrypt` additionally reports an unknown tag byte before the length rule; the
+  bindings leave unknown tags to the core's `pull`. Both reject, only the message differs.
+- `uacrypt` fills each chunk with a read loop (`fill_chunk`); `write_secretstream_file` is generic
+  over `Read`, so a one-byte-per-read test reader proves full records.
+- **The chunk size is now part of the wire format.** Changing `SECRETSTREAM_CHUNK_BYTES` (or any
+  binding's copy) needs a new format version, not just a rebuild; the old "split a MAX constant
+  someday" note on that constant is gone.
+- No magic bytes: the layout keeps the box-blob shape (version first). A foreign file fails the
+  version check about 255 times in 256 and authentication otherwise. Self-describing typed files
+  belong to the 0.5.0 UX batch (T-255..T-265).
+- Each binding hardcodes `2` next to its hardcoded 8192; `uacrypt`'s `CONTAINER_FORMAT_VERSION` is
+  const-asserted equal to `crypto_secretstream::FORMAT_VERSION`.
+
+**Shared vectors (D-124).** `crates/dstu-core/tests/vectors/secretstream-file/v2.json`, written by
+`crates/uacrypt/tests/gen_secretstream_file_vectors.rs` (`#[ignore]`, run by hand) over core
+`PushState`, a second encoder independent of `uacrypt`'s writer. A self-generated interop pin, not an
+oracle. Seven cases: `valid` (two 8192-byte records plus a 100-byte `Final`), `valid_empty`,
+`valid_exact_multiple`, `bad_version`, `short_non_final` (genuinely valid tags, so rejecting it proves
+the length rule, not authentication), `v1_0_3_8` (a real file from `uacrypt` 0.3.8 built at tag
+`v0.3.8`; its first byte is `0xc3`, so the expected error is an unsupported version) and
+`version_only`. `uacrypt` and all 8 bindings run every case; the uacrypt interop tests no longer
+carry the whole interop claim alone (they skip when no `uacrypt` is built).
+
+**T-238 per binding.** Python, Node, Ruby, PHP and Java expose a low-level pull that takes a
+caller-sized tag, so each got a "truncated 8-byte tag is rejected" test (Java maps the core's length
+error to `IllegalArgumentException`). Go, .NET and C++ expose only the framed reader, which always
+reads exactly 16 tag bytes: the misuse is foreclosed by construction, recorded here instead of a
+test. The C ABI's `dstu_secretstream_pull` already documents that `auth_tag` must be valid for
+`DSTU_SECRETSTREAM_TAG_BYTES` bytes.
+
+**Found while landing this.**
+- Fixed-offset tests shifted by one, per D-202's rule: `smoke_secretstream_attack.rs` (a named
+  `HEADER_LEN = 33`/`LEN_FIELD`; the header-tamper test now flips byte 1 and a new test covers
+  byte 0), two `uacrypt` unit tests (one had been tampering the tag byte while its comment said
+  "ciphertext"), and the oversized-length tests in every binding.
+- `final_tag_flipped_to_message_is_verify_failure` now uses an exact 8192-byte message: with a short
+  `Final` record, the flip is caught by the length rule before authentication, and the test exists
+  to prove the tag byte is authenticated.
+- Node's test helper waited for `'drain'` forever when a reader rejected the very first 16 KiB
+  write; it now also resolves on `'close'` and awaits reader and writer together.
+- PHP is not installed on the dev machine; its change is covered by CI only.
+

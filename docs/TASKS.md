@@ -8323,8 +8323,8 @@ which is exactly why the divergence was never caught.
 
 ### Tasks
 
-- [ ] **T-232** (audit F-01, **Critical**, Confirmed; **core part done 2026-09-23, D-200/D-202** - the
-  stream-file framing version byte + non-final-record-length check remain, execution-plan step 4) `crypto_secretbox` + `crypto_secretstream`:
+- [x] **T-232** (audit F-01, **Critical**, Confirmed; **done 2026-09-23**: core D-200/D-202, stream-file
+  framing v2 D-208 - bound version byte, exact 8192-byte non-final records, shared vectors) `crypto_secretbox` + `crypto_secretstream`:
   bind the ciphertext length into the AEAD tag. Root cause: `hazmat::kalyna_gcm::compute_tag`
   (`kalyna_gcm.rs:153`) hashes the `0x80`-padded ciphertext and puts the *padded* length in the
   length block (D-56 divergences 2/3, transcribed faithfully from UAPKI `dstu7624.c`), so `ct` and
@@ -8415,8 +8415,8 @@ which is exactly why the divergence was never caught.
   ~3250; `docs/ORACLES.md` ~142, ~158) and `oracles/README.md`. Add V1-V4 to
   `tests/oracle-harness/{java,dotnet}` asserting the **currently documented** behaviour on each side
   (aligned: equal; non-aligned: the known divergence), so a change on either side trips the harness.
-- [x] **T-238** (audit F-04, Medium, Confirmed; **done 2026-09-23**, core + Python test; the other
-  bindings' misuse tests are step 4) `crypto_secretstream::PullState::pull` accepts an
+- [x] **T-238** (audit F-04, Medium, Confirmed; **done 2026-09-23**, core + Python test; Node/Ruby/
+  PHP/Java tests in step 4, Go/.NET/C++ foreclosed by construction, D-208) `crypto_secretstream::PullState::pull` accepts an
   `auth_tag` of 8..=32 bytes (it delegates to `kalyna_gcm::decrypt`'s range check,
   `kalyna_gcm.rs:210`): an 8-byte prefix of a real tag verifies. Online forgery margin drops
   2^-128 -> 2^-64 per attempt (no Ferguson-style amplification - the tag is `E_K(poly)`, not
@@ -8781,19 +8781,19 @@ Next, in order:
      `.claude.local.md`;
    - Node 86/86; Ruby 92/92; Java `mvn verify`; .NET 143/143; Go ok; C++ 1/1 (ctest run from
      PowerShell).
-   PHP and qemu-stm32 were not run (not installed here). Scoped Miri on the four changed modules:
-   see the next commit.
+   PHP and qemu-stm32 were not run (not installed here). Scoped Miri on the four changed modules
+   (`PROPTEST_CASES=8`, `MIRIFLAGS=-Zmiri-disable-isolation`): kalyna_ccm 43, kalyna_cmac 12,
+   kalyna_gcm 27, kalyna_gmac 25 - all pass, no UB (2026-09-23, ~2.5 h).
    Still open: the owner to order the final 7624:2014 text via the National Library EDD (our copy is
    a draft).
-2. Step 4: the stream-file framing for uacrypt and all 8 binding writers. It needs:
-   - a version byte;
-   - a "non-final record must be exactly 8192 bytes" check;
-   - uacrypt's short-read chunk fill fixed (`File::read` ~lib.rs:1438);
-   - every writer checked to fill chunks completely;
-   - a T-238 misuse test per remaining binding;
-   - update `docs/CLI.md` "File formats", `uacrypt --help`'s FILE FORMATS block and
-     `ENCRYPT_HELP`'s OUTPUT FORMAT for the new `encrypt` layout. These went in on 2026-09-23 at
-     the owner's request, and describe the pre-step-4 layout.
+2. ~~Step 4~~ **done 2026-09-23 (local commits, not pushed), D-208**: stream-file v2 framing -
+   version byte bound into the subkey derivation (owner chose the core binding), exact 8192-byte
+   non-final records in all 9 readers, `uacrypt`'s short-read fill fixed, shared vectors
+   `crates/dstu-core/tests/vectors/secretstream-file/v2.json` (incl. a real 0.3.8 file) run by
+   uacrypt and all 8 bindings, T-238 tests per binding, help/`docs/CLI.md` updated. Verified:
+   Python 100, Node 95, Ruby 101, Java `mvn verify`, .NET 151, Go ok, C++ ctest (PowerShell),
+   uacrypt and dstu-core suites. PHP changed but runs in CI only (not installed here).
+   Next: 0.4.0 release preparation (execution plan steps 4-6) - owner-gated.
 
 3. **`uacrypt` UX batch (T-255..T-265), planned 2026-09-23, not started** - see the last section
    of this file. Decisions resolved (all recommendations accepted); 0.5.0, after the 0.4.0

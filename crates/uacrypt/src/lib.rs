@@ -87,6 +87,8 @@ pub enum CliError {
     SecretstreamUnknownTag,
     SecretstreamTrailingData,
     SecretstreamChunkTooLarge,
+    SecretstreamUnsupportedVersion(u8),
+    SecretstreamBadChunkLength,
     SignKeyInvalid,
     SignVerifyFailed,
     SignVerifyUnsupportedCurve(u8),
@@ -182,6 +184,15 @@ impl fmt::Display for CliError {
             CliError::SecretstreamChunkTooLarge => write!(
                 f,
                 "decrypt: a chunk length in --in exceeds this build's maximum chunk size - not real encrypt output"
+            ),
+            CliError::SecretstreamUnsupportedVersion(v) => write!(
+                f,
+                "decrypt: unsupported stream format version {v} in --in - this build reads version {} only; files from uacrypt 0.3.x and earlier cannot be read",
+                dstu_core::crypto_secretstream::FORMAT_VERSION
+            ),
+            CliError::SecretstreamBadChunkLength => write!(
+                f,
+                "decrypt: a non-final chunk in --in is not exactly {SECRETSTREAM_CHUNK_BYTES} bytes - not real encrypt output"
             ),
             CliError::SignKeyInvalid => write!(
                 f,
@@ -1399,16 +1410,11 @@ const SECRETSTREAM_KEY_LEN: usize = 32;
 const SECRETSTREAM_HEADER_LEN: usize = 32;
 const SECRETSTREAM_TAG_LEN: usize = 16;
 
-/// Read/write chunk size for `encrypt`'s real streaming path - same rationale and size as
-/// `kupyna-digest`/`strumok-crypt`'s own constants (D-42): small enough that peak memory stays
-/// bounded by this constant rather than `--in`'s size. `decrypt` also uses this same constant as
-/// the on-disk record-length ceiling it enforces on every chunk it parses (see
-/// [`run_secretstream_decrypt`]) - correct only because encoder and decoder share one binary and
-/// therefore one build of this constant; a `decrypt` reading a file from a build with a *larger*
-/// `SECRETSTREAM_CHUNK_BYTES` would wrongly reject its legitimately-larger chunks as
-/// [`CliError::SecretstreamChunkTooLarge`]. Not a concern while this value has never changed
-/// across a release, but worth a real `SECRETSTREAM_MAX_CHUNK_BYTES` split (distinct from the
-/// encoder's own chunk size) the day it ever does.
+/// Plaintext bytes per record in the `encrypt` file format. It is part of the wire format (D-208):
+/// every non-`Final` record is exactly this long and the `Final` one at most this long, `decrypt`
+/// rejects anything else, and the 8 language bindings' readers and writers use the same number.
+/// Changing it therefore needs a new format version, not just a rebuild. It also bounds peak
+/// memory on both sides, independent of `--in`'s size (D-42).
 const SECRETSTREAM_CHUNK_BYTES: usize = 8 * 1024;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -1524,41 +1530,54 @@ fn read_exact_or_truncated(
 /// (`cur`/`next`) is what lets the last chunk be tagged
 /// [`Tag::Final`](dstu_core::crypto_secretstream::Tag::Final) without a second pass over the file -
 /// including the empty-input case, which produces a single zero-length `Final` chunk.
-fn run_secretstream_encrypt(
+/// Reads from `reader` until `buf` is full or the input ends, and returns how many bytes it got. A
+/// single `read` may legally return fewer bytes than asked for, which would emit a short
+/// non-`Final` record that every reader rejects (D-208).
+fn fill_chunk(reader: &mut impl std::io::Read, buf: &mut [u8]) -> std::io::Result<usize> {
+    let mut filled = 0;
+    while filled < buf.len() {
+        match reader.read(&mut buf[filled..]) {
+            Ok(0) => break,
+            Ok(n) => filled += n,
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(filled)
+}
+
+/// Writes the `encrypt` file format (D-208) for everything `input` yields: the format version byte,
+/// the secretstream header, then one record per [`SECRETSTREAM_CHUNK_BYTES`] of plaintext.
+fn write_secretstream_file(
     key: &dstu_core::crypto_secretstream::Key,
-    in_path: &PathBuf,
+    input: &mut impl std::io::Read,
+    in_path: &std::path::Path,
+    out_file: &mut impl std::io::Write,
     tmp_path: &std::path::Path,
 ) -> Result<(), CliError> {
-    use dstu_core::crypto_secretstream::{PushState, Tag};
-    use std::io::{Read, Write};
+    use dstu_core::crypto_secretstream::{PushState, Tag, FORMAT_VERSION};
 
     let (mut push, header) = PushState::init(key)?;
+    out_file
+        .write_all(&[FORMAT_VERSION])
+        .and_then(|()| out_file.write_all(&header))
+        .map_err(|e| CliError::Io {
+            path: tmp_path.to_path_buf(),
+            message: e.to_string(),
+        })?;
 
-    let mut in_file = std::fs::File::open(in_path).map_err(|e| CliError::Io {
-        path: in_path.clone(),
-        message: e.to_string(),
-    })?;
-    let mut out_file = create_private_new(tmp_path).map_err(|e| CliError::Io {
-        path: tmp_path.to_path_buf(),
-        message: e.to_string(),
-    })?;
-    out_file.write_all(&header).map_err(|e| CliError::Io {
-        path: tmp_path.to_path_buf(),
-        message: e.to_string(),
-    })?;
-
-    let read_chunk = |file: &mut std::fs::File, buf: &mut [u8]| -> Result<usize, CliError> {
-        file.read(buf).map_err(|e| CliError::Io {
-            path: in_path.clone(),
+    let mut read_chunk = |buf: &mut [u8]| -> Result<usize, CliError> {
+        fill_chunk(input, buf).map_err(|e| CliError::Io {
+            path: in_path.to_path_buf(),
             message: e.to_string(),
         })
     };
 
     let mut cur = vec![0u8; SECRETSTREAM_CHUNK_BYTES];
-    let mut cur_len = read_chunk(&mut in_file, &mut cur)?;
+    let mut cur_len = read_chunk(&mut cur)?;
     loop {
         let mut next = vec![0u8; SECRETSTREAM_CHUNK_BYTES];
-        let next_len = read_chunk(&mut in_file, &mut next)?;
+        let next_len = read_chunk(&mut next)?;
         let tag = if next_len == 0 {
             Tag::Final
         } else {
@@ -1587,7 +1606,23 @@ fn run_secretstream_encrypt(
         cur = next;
         cur_len = next_len;
     }
+    Ok(())
+}
 
+fn run_secretstream_encrypt(
+    key: &dstu_core::crypto_secretstream::Key,
+    in_path: &PathBuf,
+    tmp_path: &std::path::Path,
+) -> Result<(), CliError> {
+    let mut in_file = std::fs::File::open(in_path).map_err(|e| CliError::Io {
+        path: in_path.clone(),
+        message: e.to_string(),
+    })?;
+    let mut out_file = create_private_new(tmp_path).map_err(|e| CliError::Io {
+        path: tmp_path.to_path_buf(),
+        message: e.to_string(),
+    })?;
+    write_secretstream_file(key, &mut in_file, in_path, &mut out_file, tmp_path)?;
     out_file.sync_all().map_err(|e| CliError::Io {
         path: tmp_path.to_path_buf(),
         message: e.to_string(),
@@ -1595,7 +1630,9 @@ fn run_secretstream_encrypt(
 }
 
 /// Decrypts `in_path` into `tmp_path` (the caller renames onto the real `--out` only after this
-/// returns `Ok`) using [`dstu_core::crypto_secretstream::PullState`]. Stops as soon as a
+/// returns `Ok`) using [`dstu_core::crypto_secretstream::PullState`]. It checks the format version
+/// byte first, and that every non-`Final` record is exactly [`SECRETSTREAM_CHUNK_BYTES`] long
+/// (D-208). Stops as soon as a
 /// [`Tag::Final`](dstu_core::crypto_secretstream::Tag::Final) chunk verifies, then checks for
 /// trailing bytes - both an early EOF (no `Final` ever seen, via [`read_exact_or_truncated`]) and
 /// leftover bytes after `Final` are rejected, not silently accepted.
@@ -1616,6 +1653,11 @@ fn run_secretstream_decrypt(
         message: e.to_string(),
     })?;
 
+    let mut version = [0u8; 1];
+    read_exact_or_truncated(&mut in_file, &mut version, in_path)?;
+    if version[0] != dstu_core::crypto_secretstream::FORMAT_VERSION {
+        return Err(CliError::SecretstreamUnsupportedVersion(version[0]));
+    }
     let mut header = [0u8; SECRETSTREAM_HEADER_LEN];
     read_exact_or_truncated(&mut in_file, &mut header, in_path)?;
     let mut pull = PullState::init(key, &header);
@@ -1627,6 +1669,12 @@ fn run_secretstream_decrypt(
         let chunk_len = u32::from_le_bytes([prefix[1], prefix[2], prefix[3], prefix[4]]) as usize;
         if chunk_len > SECRETSTREAM_CHUNK_BYTES {
             return Err(CliError::SecretstreamChunkTooLarge);
+        }
+        let Some(declared) = Tag::from_byte(tag_byte) else {
+            return Err(CliError::SecretstreamUnknownTag);
+        };
+        if declared != Tag::Final && chunk_len != SECRETSTREAM_CHUNK_BYTES {
+            return Err(CliError::SecretstreamBadChunkLength);
         }
 
         let mut ciphertext = vec![0u8; chunk_len];
@@ -1682,8 +1730,9 @@ fn run_secretstream_decrypt(
 /// Returns [`CliError::WrongLength`] if `--key` isn't exactly 32 bytes,
 /// [`CliError::SecretstreamTruncated`] if `--in` (on `decrypt`) ends before a `Final` chunk is
 /// read, [`CliError::SecretstreamVerifyFailed`] if a chunk fails authentication,
-/// [`CliError::SecretstreamUnknownTag`]/[`CliError::SecretstreamChunkTooLarge`] for a malformed
-/// chunk record, [`CliError::SecretstreamTrailingData`] if bytes remain after `Final`, or
+/// [`CliError::SecretstreamUnsupportedVersion`] if `--in` does not start with this build's format
+/// version, [`CliError::SecretstreamUnknownTag`]/[`CliError::SecretstreamChunkTooLarge`]/
+/// [`CliError::SecretstreamBadChunkLength`] for a malformed chunk record, [`CliError::SecretstreamTrailingData`] if bytes remain after `Final`, or
 /// [`CliError::Io`] for file read/write failures - `--out` is left untouched on every error path.
 pub fn run_secretstream_command(decrypt: bool, args: &SecretstreamArgs) -> Result<(), CliError> {
     let key_bytes = read_exact_file(&args.key_path, "key", SECRETSTREAM_KEY_LEN)?;
@@ -3121,10 +3170,12 @@ fn is_help_flag(s: &str) -> bool {
 /// `true` for `--version`/`-V` (the `-V` short form matches `cargo --version`'s own convention,
 /// e.g. `cargo -V`). Only checked at the top level (`uacrypt --version`), unlike `is_help_flag` -
 /// there is no per-subcommand version to report, every command ships as one binary.
-/// The version byte `box-seal`/`box-seal512` write first (`dstu_core::crypto_box`'s own
-/// `FORMAT_VERSION`, D-202), printed by `--version`. A unit test checks it against a real sealed
-/// file, so it cannot silently drift from the library.
+/// The version byte `encrypt` and `box-seal`/`box-seal512` write first (`dstu_core`'s
+/// `crypto_secretstream::FORMAT_VERSION` and `crypto_box`'s `FORMAT_VERSION`, D-202/D-208), printed
+/// by `--version`. A const assert pins the first and a unit test checks a real sealed file for the
+/// second, so it cannot silently drift from the library.
 const CONTAINER_FORMAT_VERSION: u8 = 2;
+const _: () = assert!(CONTAINER_FORMAT_VERSION == dstu_core::crypto_secretstream::FORMAT_VERSION);
 
 fn is_version_flag(s: &str) -> bool {
     s == "--version" || s == "-V"
@@ -3177,7 +3228,8 @@ LOWER-LEVEL COMMANDS (benchmarking/interop - most users want the three above ins
     strumok-crypt   Strumok keystream cipher - NOT authenticated, tampering is never detected.
 
 FILE FORMATS (byte layouts, with field sizes in bytes: see docs/CLI.md 'File formats'):
-    encrypt         header (32), then records: chunk tag (1) || length (4, LE) || ciphertext || auth tag (16)
+    encrypt         version (1) || header (32), then records:
+                    chunk tag (1) || length (4, LE) || ciphertext || auth tag (16)
     box-seal(512)   version (1) || KEM ciphertext (128 / 256) || header (32) || ciphertext || auth tag (16)
     keys            raw bytes, no header; verifying keys start with a curve byte (01 m=163, 02 m=257)
     kalyna-gcm/-gmac write raw ciphertext/tag files with no container and no format version, so
@@ -3213,9 +3265,10 @@ any tampering with the output rather than silently returning wrong plaintext. Bu
 dstu_core::crypto_secretstream (see docs/DECISIONS.md D-68).
 
 OUTPUT FORMAT:
-    header (32) || records, each: chunk tag (1) || ciphertext length (4, little-endian) ||
-    ciphertext || auth tag (16). Plaintext is split into 8192-byte chunks; the last record is
-    tagged final, so a truncated file is rejected. See docs/CLI.md 'File formats'.
+    version (1, currently 2) || header (32) || records, each: chunk tag (1) || ciphertext
+    length (4, little-endian) || ciphertext || auth tag (16). Plaintext is split into 8192-byte
+    chunks: every record but the last is exactly 8192 bytes, and the last is tagged final, so a
+    truncated file is rejected. See docs/CLI.md 'File formats'.
 
 USAGE:
     uacrypt encrypt --key <path> --in <path> --out <path>
@@ -4394,6 +4447,53 @@ mod tests {
         );
     }
 
+    /// Returns one byte per `read`, as a pipe or a slow device may.
+    struct Trickle<'a>(&'a [u8]);
+
+    impl std::io::Read for Trickle<'_> {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            if self.0.is_empty() || buf.is_empty() {
+                return Ok(0);
+            }
+            buf[0] = self.0[0];
+            self.0 = &self.0[1..];
+            Ok(1)
+        }
+    }
+
+    /// D-208: short reads must not produce short non-`Final` records.
+    #[test]
+    fn short_reads_still_produce_full_non_final_records() {
+        let key = dstu_core::crypto_secretstream::Key::from_bytes([7; 32]);
+        let plaintext = vec![0xab; 2 * SECRETSTREAM_CHUNK_BYTES + 3];
+        let mut file = Vec::new();
+        write_secretstream_file(
+            &key,
+            &mut Trickle(&plaintext),
+            std::path::Path::new("in"),
+            &mut file,
+            std::path::Path::new("out"),
+        )
+        .expect("encrypt");
+
+        assert_eq!(file[0], dstu_core::crypto_secretstream::FORMAT_VERSION);
+        let mut pos = 1 + SECRETSTREAM_HEADER_LEN;
+        let mut lengths = Vec::new();
+        while pos < file.len() {
+            let len = u32::from_le_bytes(file[pos + 1..pos + 5].try_into().unwrap()) as usize;
+            lengths.push((file[pos], len));
+            pos += 5 + len + SECRETSTREAM_TAG_LEN;
+        }
+        assert_eq!(
+            lengths,
+            [
+                (0x00, SECRETSTREAM_CHUNK_BYTES),
+                (0x00, SECRETSTREAM_CHUNK_BYTES),
+                (0x03, 3)
+            ]
+        );
+    }
+
     #[test]
     fn run_keygen_command_writes_a_32_byte_key_usable_by_encrypt() {
         let dir = TempDir::new("keygen");
@@ -4822,8 +4922,8 @@ mod tests {
         let sealed1 = std::fs::read(dir.file("sealed1.bin")).expect("read sealed1");
         let sealed2 = std::fs::read(dir.file("sealed2.bin")).expect("read sealed2");
         assert_ne!(
-            &sealed1[..SECRETSTREAM_HEADER_LEN],
-            &sealed2[..SECRETSTREAM_HEADER_LEN],
+            &sealed1[1..=SECRETSTREAM_HEADER_LEN],
+            &sealed2[1..=SECRETSTREAM_HEADER_LEN],
             "two encrypt calls with the same key/plaintext must not reuse a header"
         );
     }
@@ -4844,8 +4944,8 @@ mod tests {
         run_secretstream_command(false, &encrypt_args).expect("encrypt should succeed");
 
         let mut tampered = std::fs::read(dir.file("sealed.bin")).expect("read sealed");
-        // Byte just past the header - inside the single chunk's ciphertext.
-        tampered[SECRETSTREAM_HEADER_LEN] ^= 0x01;
+        // First ciphertext byte: after the version byte, the header and the record's tag+length.
+        tampered[1 + SECRETSTREAM_HEADER_LEN + 5] ^= 0x01;
         std::fs::write(dir.file("sealed.bin"), &tampered).expect("write tampered output");
 
         let decrypt_args = SecretstreamArgs {
@@ -5030,13 +5130,11 @@ mod tests {
             in_path: dir.file("garbage.bin"),
             out_path: dir.file("out.bin"),
         };
-        // 64 bytes of garbage: the first 32 are read as a header (always succeeds - any bytes are
-        // a valid header), then the next 5 bytes are read as a chunk prefix - the 0x99 length
-        // bytes decode to a chunk_len far larger than SECRETSTREAM_CHUNK_BYTES, so this fails the
-        // sanity bound before ever reaching authentication.
+        // 64 bytes of garbage: the first byte is read as the format version (D-208), and 0x99 is
+        // not one, so this fails before any key material is used.
         assert_eq!(
             run_secretstream_command(true, &args),
-            Err(CliError::SecretstreamChunkTooLarge)
+            Err(CliError::SecretstreamUnsupportedVersion(0x99))
         );
         assert!(!dir.file("out.bin").exists());
     }

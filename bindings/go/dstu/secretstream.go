@@ -5,11 +5,16 @@ import "C"
 
 import (
 	"encoding/binary"
+	"fmt"
 	"io"
 )
 
 // SecretstreamChunkBytes is the plaintext chunk size uacrypt encrypt's own wire format frames at.
 const SecretstreamChunkBytes = 8192
+
+// SecretstreamFormatVersion is the first byte of every stream file. It matches dstu-core's
+// crypto_secretstream::FORMAT_VERSION (D-208); the shared vectors pin it.
+const SecretstreamFormatVersion = 2
 
 // SecretstreamKey is a genuinely chunked/streaming AEAD master key (crypto_secretstream).
 //
@@ -54,9 +59,10 @@ func (k *SecretstreamKey) Close() error {
 	return nil
 }
 
-// SecretStreamEncryptWriter encrypts writes into uacrypt encrypt's own wire format: a 32-byte
-// header, then tag(1) || len_u32_le(4) || ciphertext || authTag(16) records framed at
-// SecretstreamChunkBytes-byte plaintext boundaries.
+// SecretStreamEncryptWriter encrypts writes into uacrypt encrypt's own wire format: a version byte
+// and a 32-byte header, then tag(1) || len_u32_le(4) || ciphertext || authTag(16) records. Every
+// record but the Final one carries exactly SecretstreamChunkBytes bytes (part of the format since
+// D-208).
 //
 // Deliberately does not flush a Final chunk from Close - unlike a typical io.WriteCloser's
 // close-flushes convention. Call Complete explicitly once all plaintext has been written; a
@@ -86,7 +92,7 @@ func NewSecretStreamEncryptWriter(inner io.Writer, key *SecretstreamKey, leaveOp
 	if err := statusError(C.dstu_secretstream_push_init(key.ptr, &state, headerPtr)); err != nil {
 		return nil, err
 	}
-	if _, err := inner.Write(header); err != nil {
+	if _, err := inner.Write(append([]byte{SecretstreamFormatVersion}, header...)); err != nil {
 		C.dstu_secretstream_push_free(state)
 		return nil, err
 	}
@@ -215,10 +221,17 @@ type SecretStreamDecryptReader struct {
 	finalized   bool
 }
 
-// NewSecretStreamDecryptReader reads the 32-byte header from inner immediately and re-derives the
-// stream's initial subkey. If inner implements io.Closer, Close closes it too unless leaveOpen is
+// NewSecretStreamDecryptReader reads the version byte and the 32-byte header from inner immediately
+// and re-derives the stream's initial subkey. If inner implements io.Closer, Close closes it too unless leaveOpen is
 // true.
 func NewSecretStreamDecryptReader(inner io.Reader, key *SecretstreamKey, leaveOpen bool) (*SecretStreamDecryptReader, error) {
+	version, err := readExactly(inner, 1)
+	if err != nil {
+		return nil, err
+	}
+	if version[0] != SecretstreamFormatVersion {
+		return nil, &CryptoError{fmt.Sprintf("unsupported stream format version %d (this build reads %d)", version[0], SecretstreamFormatVersion)}
+	}
 	header, err := readExactly(inner, SecretstreamHeaderBytes)
 	if err != nil {
 		return nil, err
@@ -270,6 +283,10 @@ func (r *SecretStreamDecryptReader) readNextChunk() (bool, error) {
 	length := binary.LittleEndian.Uint32(lenBytes)
 	if length > SecretstreamChunkBytes {
 		return false, &CryptoError{"secretstream chunk length exceeds the maximum SecretstreamChunkBytes - the input is corrupted"}
+	}
+
+	if SecretstreamTag(tagByte[0]) != TagFinal && length != SecretstreamChunkBytes {
+		return false, &CryptoError{fmt.Sprintf("non-final chunk of %d bytes, must be exactly %d (D-208)", length, SecretstreamChunkBytes)}
 	}
 
 	ciphertext, err := readExactly(r.inner, int(length))

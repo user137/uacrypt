@@ -44,8 +44,9 @@ public sealed class SecretstreamKey : IDisposable
 
 /// <summary>
 /// Encrypts a write-side <see cref="System.IO.Stream"/> into <c>uacrypt encrypt</c>'s own wire
-/// format: a 32-byte header, then <c>tag(1) || len_u32_le(4) || ciphertext || authTag(16)</c>
-/// records framed at <see cref="DstuConstants.SecretstreamChunkBytes"/>-byte plaintext boundaries.
+/// format: a version byte and a 32-byte header, then <c>tag(1) || len_u32_le(4) || ciphertext ||
+/// authTag(16)</c> records. Every record but the <c>Final</c> one carries exactly
+/// <see cref="DstuConstants.SecretstreamChunkBytes"/> bytes (part of the format since D-208).
 ///
 /// <para><b>Deliberately does not flush a <see cref="SecretStreamTag.Final"/> chunk from
 /// <see cref="Dispose"/></b> - unlike <c>CryptoStream</c>/<c>GZipStream</c>'s own close-flushes
@@ -73,6 +74,7 @@ public sealed class SecretStreamEncryptStream : Stream
         _leaveOpen = leaveOpen;
         var header = new byte[DstuConstants.SecretstreamHeaderBytes];
         NativeStatus.ThrowIfError(NativeMethods.dstu_secretstream_push_init(key.Handle, out _state, header));
+        _inner.WriteByte(DstuConstants.SecretstreamFormatVersion);
         _inner.Write(header, 0, header.Length);
     }
 
@@ -214,6 +216,13 @@ public sealed class SecretStreamDecryptStream : Stream
         ArgumentNullException.ThrowIfNull(key);
         _inner = inner;
         _leaveOpen = leaveOpen;
+        var version = ReadExactly(1)[0];
+        if (version != DstuConstants.SecretstreamFormatVersion)
+        {
+            throw new DstuException(
+                $"unsupported stream format version {version} (this build reads {DstuConstants.SecretstreamFormatVersion})");
+        }
+
         var header = ReadExactly(DstuConstants.SecretstreamHeaderBytes);
         _state = NativeMethods.dstu_secretstream_pull_init(key.Handle, header);
     }
@@ -278,6 +287,12 @@ public sealed class SecretStreamDecryptStream : Stream
         {
             throw new DstuException(
                 $"secretstream chunk length {len} exceeds the maximum {DstuConstants.SecretstreamChunkBytes} bytes - the input is corrupted");
+        }
+
+        if (tagByte != (int)SecretStreamTag.Final && len != DstuConstants.SecretstreamChunkBytes)
+        {
+            throw new DstuException(
+                $"non-final chunk of {len} bytes, must be exactly {DstuConstants.SecretstreamChunkBytes} (D-208)");
         }
 
         var ciphertext = ReadExactly((int)len);

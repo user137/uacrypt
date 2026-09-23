@@ -21,6 +21,10 @@ namespace dstu {
 /// crates/uacrypt/src/lib.rs's SECRETSTREAM_CHUNK_BYTES.
 inline constexpr std::size_t kSecretstreamChunkBytes = 8192;
 
+/// The first byte of every stream file - matches dstu-core's crypto_secretstream::FORMAT_VERSION
+/// (D-208); the shared vectors pin it.
+inline constexpr std::uint8_t kSecretstreamFormatVersion = 2;
+
 /// A genuinely chunked/streaming AEAD master key (crypto_secretstream). Move-only, same
 /// handle-ownership shape as AuthKey.
 class SecretstreamKey {
@@ -61,9 +65,10 @@ class SecretstreamKey {
   std::unique_ptr<DstuSecretstreamKey, void (*)(DstuSecretstreamKey *)> ptr_;
 };
 
-/// Encrypts writes into uacrypt encrypt's own wire format: a kSecretstreamHeaderBytes-byte
-/// header, then tag(1) || len_u32_le(4) || ciphertext || authTag(kSecretstreamTagBytes) records
-/// framed at kSecretstreamChunkBytes-byte plaintext boundaries. Writes to a caller-owned
+/// Encrypts writes into uacrypt encrypt's own wire format: a version byte and a
+/// kSecretstreamHeaderBytes-byte header, then tag(1) || len_u32_le(4) || ciphertext ||
+/// authTag(kSecretstreamTagBytes) records. Every record but the Final one carries exactly
+/// kSecretstreamChunkBytes bytes (part of the format since D-208). Writes to a caller-owned
 /// std::ostream& (this wrapper never opens or closes it - the idiomatic C++ shape for "any byte
 /// sink", D-158 point 2).
 ///
@@ -84,6 +89,7 @@ class SecretStreamEncryptor {
     DstuPushState *state = nullptr;
     CheckStatus(dstu_secretstream_push_init(key.native_handle(), &state, header.data()));
     state_.reset(state);
+    WriteToStream(&kSecretstreamFormatVersion, 1);
     WriteToStream(header.data(), header.size());
   }
 
@@ -194,10 +200,15 @@ class SecretStreamEncryptor {
 /// CliError::SecretstreamChunkTooLarge/SecretstreamTrailingData).
 class SecretStreamDecryptor {
  public:
-  /// Reads the kSecretstreamHeaderBytes-byte header from in immediately and re-derives the
-  /// stream's initial subkey.
+  /// Reads the version byte and the kSecretstreamHeaderBytes-byte header from in immediately and
+  /// re-derives the stream's initial subkey.
   SecretStreamDecryptor(std::istream &in, const SecretstreamKey &key)
       : in_(&in), state_(nullptr, &dstu_secretstream_pull_free) {
+    const std::uint8_t version = ReadExactly(1)[0];
+    if (version != kSecretstreamFormatVersion) {
+      throw CryptoError("unsupported stream format version " + std::to_string(version) + " (this build reads " +
+                        std::to_string(kSecretstreamFormatVersion) + ")");
+    }
     std::vector<std::uint8_t> header = ReadExactly(kSecretstreamHeaderBytes);
     state_.reset(dstu_secretstream_pull_init(key.native_handle(), header.data()));
   }
@@ -258,6 +269,11 @@ class SecretStreamDecryptor {
                   (static_cast<std::uint32_t>(lenBytes[2]) << 16) | (static_cast<std::uint32_t>(lenBytes[3]) << 24);
     if (length > kSecretstreamChunkBytes) {
       throw CryptoError("secretstream chunk length exceeds the maximum kSecretstreamChunkBytes - the input is corrupted");
+    }
+
+    if (static_cast<SecretstreamTag>(tagByte) != SecretstreamTag::kFinal && length != kSecretstreamChunkBytes) {
+      throw CryptoError("non-final chunk of " + std::to_string(length) + " bytes, must be exactly " +
+                        std::to_string(kSecretstreamChunkBytes) + " (D-208)");
     }
 
     std::vector<std::uint8_t> ciphertext = ReadExactly(length);

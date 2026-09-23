@@ -19,6 +19,11 @@ All notable changes to this project are documented in this file. Format follows
   `DSTU_ERR_UNSUPPORTED_VERSION` (13) in the C ABI. A 0.3.x blob had no version byte, so the ~1 in
   256 of them whose first byte happens to be `0x02` fail as an authentication failure instead. The C ABI overheads grow by one byte: `DSTU_SECRETBOX_OVERHEAD` 49,
   `DSTU_BOX_SEAL_OVERHEAD` 177, `DSTU_BOX512_SEAL_OVERHEAD` 305 (D-202).
+- **Stream files (`uacrypt encrypt` and every binding's stream writer) start with a format-version
+  byte too**, bound into the stream's key derivation, and every record but the last must be exactly
+  8192 bytes. `decrypt` and every binding's reader name an unsupported version and reject a short
+  non-final record. `uacrypt encrypt` no longer risks writing a short record on a short read.
+  `crypto_secretstream` and `crypto_box` tags change once more (D-208).
 - **Migration: data written by 0.3.x cannot be opened by 0.4.0.** That includes `uacrypt encrypt`
   files, `box-seal` files, and blobs from any binding. Decrypt it with the release that wrote it
   before upgrading, then re-encrypt. The 0.3.x GitHub release binaries stay available for this.

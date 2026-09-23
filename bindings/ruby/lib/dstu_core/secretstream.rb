@@ -10,10 +10,11 @@
 #
 # **Wire format matches `uacrypt encrypt`/`decrypt` exactly**
 # (crates/uacrypt/src/lib.rs's `run_secretstream_encrypt`/`run_secretstream_decrypt`, D-68):
-# `header (32 bytes)` followed by one record per chunk, `tag_byte (1) || chunk_len_u32_le (4) ||
-# ciphertext (chunk_len) || auth_tag (16)`, chunks capped at 8 KiB (matching
-# `SECRETSTREAM_CHUNK_BYTES`, not an independent choice) - a file `SecretStreamWriter` writes is
-# decryptable by `uacrypt decrypt` and vice versa.
+# `version (1) || header (32 bytes)` followed by one record per chunk, `tag_byte (1) ||
+# chunk_len_u32_le (4) || ciphertext (chunk_len) || auth_tag (16)`. Every record but the Final one is
+# exactly 8 KiB (`SECRETSTREAM_CHUNK_BYTES`, part of the format since D-208, not an independent
+# choice) - a file `SecretStreamWriter` writes is decryptable by `uacrypt decrypt` and vice versa.
+# The shared vectors in crates/dstu-core/tests/vectors/secretstream-file/ pin this.
 #
 # **Every `String` this wrapper touches is binary (`ASCII-8BIT`/`BINARY`)**, both what it writes
 # to `out`/`inp` and what `#read_all`/`#each` yield - matching every underlying `crypto_*` wrapper
@@ -26,6 +27,8 @@ module DstuCore
   # wire-format interop with `uacrypt encrypt`/`decrypt`, not an independent choice.
   SECRETSTREAM_CHUNK_BYTES = 8 * 1024
   SECRETSTREAM_AUTH_TAG_BYTES = 16
+  # Matches dstu-core's crypto_secretstream::FORMAT_VERSION (D-208); the shared vectors pin it.
+  SECRETSTREAM_FORMAT_VERSION = 2
 
   # Write-only wrapper: buffers input and pushes each full 8 KiB chunk to `out` as it fills, hiding
   # the header/tag/framing bookkeeping entirely.
@@ -38,6 +41,7 @@ module DstuCore
       @out = out
       @out.binmode if @out.respond_to?(:binmode)
       @push = SecretStreamPushState.new(key)
+      @out.write([SECRETSTREAM_FORMAT_VERSION].pack("C"))
       @out.write(@push.header)
       @buf = +""
       @closed = false
@@ -115,6 +119,11 @@ module DstuCore
     def initialize(key, inp)
       @inp = inp
       @inp.binmode if @inp.respond_to?(:binmode)
+      version = read_exact(1, "format version").unpack1("C")
+      if version != SECRETSTREAM_FORMAT_VERSION
+        raise DstuCore::Error,
+              "unsupported stream format version #{version} (this build reads #{SECRETSTREAM_FORMAT_VERSION})"
+      end
       header = read_exact(32, "header")
       @pull = SecretStreamPullState.new(key, header)
       @done = false
@@ -151,6 +160,10 @@ module DstuCore
       if chunk_len > SECRETSTREAM_CHUNK_BYTES
         raise DstuCore::Error,
               "secretstream chunk too large: declared #{chunk_len} bytes, max #{SECRETSTREAM_CHUNK_BYTES}"
+      end
+      if tag_byte != SECRETSTREAM_TAG_FINAL && chunk_len != SECRETSTREAM_CHUNK_BYTES
+        raise DstuCore::Error,
+              "non-final chunk of #{chunk_len} bytes, must be exactly #{SECRETSTREAM_CHUNK_BYTES} (D-208)"
       end
       ciphertext = read_exact(chunk_len, "chunk ciphertext")
       auth_tag = read_exact(SECRETSTREAM_AUTH_TAG_BYTES, "chunk auth tag")

@@ -17,10 +17,11 @@ declare(strict_types=1);
  *
  * **Wire format matches `uacrypt encrypt`/`decrypt` exactly**
  * (crates/uacrypt/src/lib.rs's `run_secretstream_encrypt`/`run_secretstream_decrypt`, D-68):
- * a 32-byte header followed by one record per chunk, `tag_byte (1) || chunk_len_u32_le (4) ||
- * ciphertext (chunk_len) || auth_tag (16)`, chunks capped at 8 KiB (matching
- * SECRETSTREAM_CHUNK_BYTES, not an independent choice) - a file DstuCoreSecretStreamWriter writes
- * is decryptable by `uacrypt decrypt` and vice versa.
+ * a version byte and a 32-byte header, followed by one record per chunk, `tag_byte (1) ||
+ * chunk_len_u32_le (4) || ciphertext (chunk_len) || auth_tag (16)`. Every record but the Final one
+ * is exactly 8 KiB (SECRETSTREAM_CHUNK_BYTES, part of the format since D-208, not an independent
+ * choice) - a file DstuCoreSecretStreamWriter writes is decryptable by `uacrypt decrypt` and vice
+ * versa. The shared vectors in crates/dstu-core/tests/vectors/secretstream-file/ pin this.
  */
 
 /**
@@ -36,6 +37,8 @@ declare(strict_types=1);
 final class DstuCoreSecretStreamWriter
 {
     public const CHUNK_BYTES = 8192;
+    // Matches dstu-core's crypto_secretstream::FORMAT_VERSION (D-208); the shared vectors pin it.
+    public const FORMAT_VERSION = 2;
 
     /** @var resource */
     private $out;
@@ -48,7 +51,7 @@ final class DstuCoreSecretStreamWriter
     {
         $this->out = $out;
         $this->push = new DstuCoreSecretStreamPushState($key);
-        fwrite($this->out, $this->push->header());
+        fwrite($this->out, chr(self::FORMAT_VERSION) . $this->push->header());
     }
 
     /**
@@ -153,6 +156,12 @@ final class DstuCoreSecretStreamReader implements Iterator
     public function __construct($key, $inp)
     {
         $this->inp = $inp;
+        $version = ord($this->readExact(1, 'format version'));
+        if ($version !== DstuCoreSecretStreamWriter::FORMAT_VERSION) {
+            dstu_core_throw_error(
+                "unsupported stream format version {$version} (this build reads " . DstuCoreSecretStreamWriter::FORMAT_VERSION . ')'
+            );
+        }
         $header = $this->readExact(32, 'header');
         $this->pull = new DstuCoreSecretStreamPullState($key, $header);
     }
@@ -225,6 +234,11 @@ final class DstuCoreSecretStreamReader implements Iterator
         if ($chunkLen > DstuCoreSecretStreamWriter::CHUNK_BYTES) {
             dstu_core_throw_error(
                 "secretstream chunk too large: declared {$chunkLen} bytes, max " . DstuCoreSecretStreamWriter::CHUNK_BYTES
+            );
+        }
+        if ($tagByte !== DSTU_CORE_SECRETSTREAM_TAG_FINAL && $chunkLen !== DstuCoreSecretStreamWriter::CHUNK_BYTES) {
+            dstu_core_throw_error(
+                "non-final chunk of {$chunkLen} bytes, must be exactly " . DstuCoreSecretStreamWriter::CHUNK_BYTES . ' (D-208)'
             );
         }
         $ciphertext = $this->readExact($chunkLen, 'chunk ciphertext');

@@ -483,6 +483,9 @@ D-10) — the earlier "waits for the first primitive" caveat no longer applies t
   against its declared bit size before being committed here — see the PDF extraction notes below.
 - Integration tests in `crates/dstu-core/tests/<algorithm>.rs` load these files and assert against
   the Rust implementation — black-box, per `docs/rust_ai_ruleset.md` §11.
+- **Exception, not an oracle:** `secretstream-file/v2.json` (D-208) is a self-generated interop pin
+  for the stream-file format, which has no external reference. `uacrypt` and all 8 bindings'
+  readers run it; its `source` field says so.
 - **Same files, consumed cross-language too:** `tests/oracle-harness/{java,dotnet}/` run these
   vectors against real Bouncy Castle directly (not the Rust port), via the published Maven/NuGet
   packages — one vector format, multiple independent consumers. Both actually run and pass (all

@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "json"
 require "stringio"
 require "tempfile"
 
@@ -109,7 +110,7 @@ RSpec.describe "DstuCore secretstream" do
   it "rejects an oversized declared chunk length" do
     key = DstuCore.secretstream_keygen
     push = DstuCore::SecretStreamPushState.new(key)
-    malicious = push.header + [DstuCore::SECRETSTREAM_TAG_FINAL].pack("C") + [0xFFFFFFFF].pack("V")
+    malicious = [2].pack("C") + push.header + [DstuCore::SECRETSTREAM_TAG_FINAL].pack("C") + [0xFFFFFFFF].pack("V")
     expect do
       DstuCore::SecretStreamReader.open(key, StringIO.new(malicious), &:read_all)
     end.to raise_error(DstuCore::Error, /too large/)
@@ -138,6 +139,47 @@ RSpec.describe "DstuCore secretstream" do
     out.rewind
     expect do
       DstuCore::SecretStreamReader.open(key, out, &:read_all)
+    end.to raise_error(DstuCore::Error)
+  end
+
+  # D-208: the same files every reader (uacrypt and all 8 bindings) is tested against.
+  shared = JSON.parse(
+    File.read(File.join(repo_root, "crates", "dstu-core", "tests", "vectors", "secretstream-file", "v2.json"))
+  )
+  expected_message = {
+    "unsupported_version" => /unsupported stream format version/,
+    "bad_chunk_length" => /non-final chunk/,
+    "truncated" => /truncated/,
+    "auth" => /./
+  }
+  shared["cases"].each do |c|
+    it "handles the shared stream-file vector #{c['name']}" do
+      key = [shared["key_hex"]].pack("H*")
+      file = StringIO.new([c["file_hex"]].pack("H*"))
+      if c["expect"] == "ok"
+        plaintext = DstuCore::SecretStreamReader.open(key, file, &:read_all)
+        expect(plaintext).to eq([c["plaintext_hex"]].pack("H*"))
+      else
+        expect do
+          DstuCore::SecretStreamReader.open(key, file, &:read_all)
+        end.to raise_error(DstuCore::Error, expected_message.fetch(c["expect"]))
+      end
+    end
+  end
+
+  it "writes the format version first" do
+    out = StringIO.new
+    DstuCore::SecretStreamWriter.open(DstuCore.secretstream_keygen, out) { |w| w.write("x") }
+    expect(out.string.getbyte(0)).to eq(2)
+  end
+
+  it "rejects a truncated 8-byte auth tag (T-238)" do
+    key = DstuCore.secretstream_keygen
+    push = DstuCore::SecretStreamPushState.new(key)
+    ciphertext, auth_tag = push.push(DstuCore::SECRETSTREAM_TAG_FINAL, "secret")
+    pull = DstuCore::SecretStreamPullState.new(key, push.header)
+    expect do
+      pull.pull(DstuCore::SECRETSTREAM_TAG_FINAL, ciphertext, auth_tag.byteslice(0, 8))
     end.to raise_error(DstuCore::Error)
   end
 

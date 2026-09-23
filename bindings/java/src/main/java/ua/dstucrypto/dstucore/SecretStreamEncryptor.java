@@ -15,9 +15,10 @@ import java.util.Arrays;
  *
  * <p><strong>Wire format matches {@code uacrypt encrypt}/{@code decrypt} exactly</strong>
  * ({@code crates/uacrypt/src/lib.rs}'s {@code run_secretstream_encrypt}/
- * {@code run_secretstream_decrypt}, D-68): a 32-byte header followed by one record per chunk,
- * {@code tagByte(1) || chunkLenLE(4) || ciphertext(chunkLen) || authTag(16)}, chunks capped at
- * 8 KiB.
+ * {@code run_secretstream_decrypt}, D-68): a version byte and a 32-byte header, followed by one
+ * record per chunk, {@code tagByte(1) || chunkLenLE(4) || ciphertext(chunkLen) || authTag(16)}.
+ * Every record but the {@code Final} one is exactly 8 KiB (part of the format since D-208); the
+ * shared vectors in {@code crates/dstu-core/tests/vectors/secretstream-file/} pin this.
  *
  * <p><strong>{@link #close} never finalizes the stream</strong> - only an explicit call to
  * {@link #complete} pushes the buffered bytes as the {@code Final} chunk. This is the same
@@ -31,7 +32,9 @@ import java.util.Arrays;
 public final class SecretStreamEncryptor extends OutputStream {
     // Matches crates/uacrypt/src/lib.rs's SECRETSTREAM_CHUNK_BYTES exactly - required for
     // wire-format interop with `uacrypt encrypt`/`decrypt`, not an independent choice.
-    private static final int CHUNK_BYTES = 8 * 1024;
+    static final int CHUNK_BYTES = 8 * 1024;
+    // Matches dstu-core's crypto_secretstream::FORMAT_VERSION (D-208); the shared vectors pin it.
+    static final int FORMAT_VERSION = 2;
 
     private final OutputStream out;
     private final SecretStreamPushState push;
@@ -47,6 +50,7 @@ public final class SecretStreamEncryptor extends OutputStream {
     public SecretStreamEncryptor(byte[] key, OutputStream out) throws IOException {
         this.out = out;
         this.push = new SecretStreamPushState(key);
+        out.write(FORMAT_VERSION);
         out.write(push.header());
     }
 

@@ -266,7 +266,7 @@ void TestSecretstream() {
 
   // rejection: tampered ciphertext byte right after the header
   std::string tamperedWire = wire;
-  tamperedWire[dstu::kSecretstreamHeaderBytes + 5] ^= 1;
+  tamperedWire[1 + dstu::kSecretstreamHeaderBytes + 5] ^= 1;  // version, header, tag+length
   std::istringstream tamperedSource(tamperedWire);
   dstu::SecretStreamDecryptor tamperedDec(tamperedSource, key);
   CHECK(Throws<dstu::CryptoError>([&] { tamperedDec.ReadAll(); }), "decryption should reject a tampered chunk");
@@ -278,7 +278,7 @@ void TestSecretstream() {
   CHECK(Throws<dstu::CryptoError>([&] { trailingDec.ReadAll(); }), "decryption should reject trailing data after Final");
 
   // misuse: truncated stream (no Final chunk ever seen)
-  std::string truncatedWire = wire.substr(0, dstu::kSecretstreamHeaderBytes + 3);
+  std::string truncatedWire = wire.substr(0, 1 + dstu::kSecretstreamHeaderBytes + 3);
   std::istringstream truncatedSource(truncatedWire);
   dstu::SecretStreamDecryptor truncatedDec(truncatedSource, key);
   CHECK(Throws<dstu::CryptoError>([&] { truncatedDec.ReadAll(); }), "decryption should reject a truncated stream");
@@ -292,7 +292,8 @@ void TestSecretstream() {
 void TestSecretstreamOversizedDeclaredChunkLength() {
   auto key = dstu::SecretstreamKey::Generate();
 
-  std::string malicious(dstu::kSecretstreamHeaderBytes, '\0');  // header - unread past this
+  std::string malicious(1, static_cast<char>(dstu::kSecretstreamFormatVersion));
+  malicious.append(dstu::kSecretstreamHeaderBytes, '\0');  // header - unread past this
   malicious.push_back(static_cast<char>(dstu::SecretstreamTag::kFinal));
   malicious.append({static_cast<char>(0xFF), static_cast<char>(0xFF), static_cast<char>(0xFF),
                      static_cast<char>(0xFF)});  // declared chunk length 0xFFFFFFFF, little-endian
@@ -301,6 +302,78 @@ void TestSecretstreamOversizedDeclaredChunkLength() {
   dstu::SecretStreamDecryptor dec(source, key);
   CHECK(Throws<dstu::CryptoError>([&] { dec.ReadAll(); }),
         "decryption should reject a declared chunk length exceeding kSecretstreamChunkBytes");
+}
+
+// D-208: the shared stream-file vectors every reader (uacrypt and all 8 bindings) is tested
+// against. No stdlib JSON (see the file header): the generator writes one case per line, so a
+// per-line field lookup is enough.
+std::string JsonField(const std::string &text, const std::string &key) {
+  const std::string pattern = "\"" + key + "\": \"";
+  const std::size_t start = text.find(pattern);
+  if (start == std::string::npos) {
+    return std::string();
+  }
+  const std::size_t from = start + pattern.size();
+  return text.substr(from, text.find('"', from) - from);
+}
+
+std::vector<std::uint8_t> FromHex(const std::string &hex) {
+  std::vector<std::uint8_t> out;
+  for (std::size_t i = 0; i + 1 < hex.size(); i += 2) {
+    out.push_back(static_cast<std::uint8_t>(std::stoi(hex.substr(i, 2), nullptr, 16)));
+  }
+  return out;
+}
+
+void TestSecretstreamSharedVectors() {
+  std::ifstream file(DSTU_SECRETSTREAM_VECTORS);
+  CHECK(file.good(), "the shared stream-file vectors should be readable");
+  std::stringstream all;
+  all << file.rdbuf();
+  const std::string text = all.str();
+  auto key = dstu::SecretstreamKey::FromBytes(FromHex(JsonField(text, "key_hex")));
+
+  int cases = 0;
+  std::istringstream lines(text);
+  for (std::string line; std::getline(lines, line);) {
+    if (line.find("{\"name\"") == std::string::npos) {
+      continue;
+    }
+    cases++;
+    const std::string name = JsonField(line, "name");
+    const std::string expect = JsonField(line, "expect");
+    const std::vector<std::uint8_t> wire = FromHex(JsonField(line, "file_hex"));
+    std::string message;
+    std::vector<std::uint8_t> plaintext;
+    try {
+      std::istringstream source(std::string(wire.begin(), wire.end()));
+      dstu::SecretStreamDecryptor dec(source, key);
+      plaintext = dec.ReadAll();
+    } catch (const dstu::CryptoError &e) {
+      message = e.what();
+    }
+    if (expect == "ok") {
+      CHECK(message.empty() && plaintext == FromHex(JsonField(line, "plaintext_hex")), name.c_str());
+      continue;
+    }
+    std::string wanted;
+    if (expect == "unsupported_version") {
+      wanted = "unsupported stream format version";
+    } else if (expect == "bad_chunk_length") {
+      wanted = "non-final chunk";
+    } else if (expect == "truncated") {
+      wanted = "truncated";
+    }
+    CHECK(!message.empty() && message.find(wanted) != std::string::npos, name.c_str());
+  }
+  CHECK(cases == 7, "the shared vector file should hold 7 cases");
+
+  std::ostringstream sink;
+  dstu::SecretStreamEncryptor enc(sink, key);
+  enc.Write(ToBytes("x"));
+  enc.Finish();
+  CHECK(static_cast<std::uint8_t>(sink.str()[0]) == dstu::kSecretstreamFormatVersion,
+        "the encryptor should write the format version first");
 }
 
 // T-213: FFI memory-leak smoke test. Unlike the other seven bindings in this batch, this one has
@@ -704,6 +777,7 @@ int main() {
     TestBox512();
     TestSecretstream();
     TestSecretstreamOversizedDeclaredChunkLength();
+    TestSecretstreamSharedVectors();
     TestMemoryLeak();
 #ifdef DSTU_UACRYPT_EXE
     TestUacryptInterop();

@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Security.Cryptography;
+using System.Text.Json;
 using DstuCore;
 using Xunit;
 
@@ -149,9 +150,10 @@ public sealed class SecretStreamTests
     public void OversizedDeclaredChunkLengthIsRejected()
     {
         using var key = SecretstreamKey.Generate();
-        var malicious = new byte[32 + 1 + 4];
-        malicious[32] = 0x03; // Final tag
-        BitConverter.GetBytes(0xFFFFFFFFu).CopyTo(malicious, 33);
+        var malicious = new byte[1 + 32 + 1 + 4];
+        malicious[0] = 2; // format version (D-208)
+        malicious[33] = 0x03; // Final tag
+        BitConverter.GetBytes(0xFFFFFFFFu).CopyTo(malicious, 34);
         using var dec = new SecretStreamDecryptStream(new MemoryStream(malicious), key);
         var ex = Assert.Throws<DstuException>(() => dec.CopyTo(new MemoryStream()));
         Assert.Contains("exceeds the maximum", ex.Message);
@@ -192,6 +194,71 @@ public sealed class SecretStreamTests
         stream.Position = 0;
         using var dec = new SecretStreamDecryptStream(stream, key, leaveOpen: true);
         Assert.Throws<DstuException>(() => dec.CopyTo(new MemoryStream()));
+    }
+
+    private static readonly string SharedVectorPath = Path.Combine(
+        RepoRoot.Path, "crates", "dstu-core", "tests", "vectors", "secretstream-file", "v2.json");
+
+    public static TheoryData<string> SharedCaseNames()
+    {
+        using var doc = JsonDocument.Parse(File.ReadAllText(SharedVectorPath));
+        var names = new TheoryData<string>();
+        foreach (var c in doc.RootElement.GetProperty("cases").EnumerateArray())
+        {
+            names.Add(c.GetProperty("name").GetString()!);
+        }
+
+        return names;
+    }
+
+    /// <summary>D-208: the same files every reader (uacrypt and all 8 bindings) is tested
+    /// against.</summary>
+    [Theory]
+    [MemberData(nameof(SharedCaseNames))]
+    public void SharedStreamFileVector(string name)
+    {
+        using var doc = JsonDocument.Parse(File.ReadAllText(SharedVectorPath));
+        var root = doc.RootElement;
+        var c = root.GetProperty("cases").EnumerateArray().Single(e => e.GetProperty("name").GetString() == name);
+        using var key = SecretstreamKey.FromBytes(Convert.FromHexString(root.GetProperty("key_hex").GetString()!));
+        var file = Convert.FromHexString(c.GetProperty("file_hex").GetString()!);
+        var expect = c.GetProperty("expect").GetString();
+        if (expect == "ok")
+        {
+            using var dec = new SecretStreamDecryptStream(new MemoryStream(file), key);
+            using var output = new MemoryStream();
+            dec.CopyTo(output);
+            Assert.Equal(Convert.FromHexString(c.GetProperty("plaintext_hex").GetString()!), output.ToArray());
+            return;
+        }
+
+        var wanted = expect switch
+        {
+            "unsupported_version" => "unsupported stream format version",
+            "bad_chunk_length" => "non-final chunk",
+            "truncated" => "truncated",
+            _ => string.Empty,
+        };
+        var ex = Assert.Throws<DstuException>(() =>
+        {
+            using var dec = new SecretStreamDecryptStream(new MemoryStream(file), key);
+            dec.CopyTo(new MemoryStream());
+        });
+        Assert.Contains(wanted, ex.Message);
+    }
+
+    [Fact]
+    public void EncryptorWritesTheFormatVersionFirst()
+    {
+        using var key = SecretstreamKey.Generate();
+        using var output = new MemoryStream();
+        using (var enc = new SecretStreamEncryptStream(output, key, leaveOpen: true))
+        {
+            enc.Write([0x78], 0, 1);
+            enc.Complete();
+        }
+
+        Assert.Equal(2, output.ToArray()[0]);
     }
 
     [Fact]

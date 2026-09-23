@@ -205,7 +205,7 @@ was not yet so.
 | Command | File | Layout |
 |---|---|---|
 | `keygen` | symmetric key | 32 raw bytes |
-| `encrypt` | encrypted file | `header (32)`, then one or more records, each `chunk tag (1) \|\| ciphertext length (4) \|\| ciphertext \|\| auth tag (16)` |
+| `encrypt` | encrypted file | `version (1) \|\| header (32)`, then one or more records, each `chunk tag (1) \|\| ciphertext length (4) \|\| ciphertext \|\| auth tag (16)` |
 | `box-keygen` / `box-pubkey` | secret / public key | 32 raw bytes each (the public key is the curve point's `x`-coordinate) |
 | `box-seal` | sealed file | `version (1) \|\| KEM ciphertext (128) \|\| header (32) \|\| ciphertext \|\| auth tag (16)`: 177 bytes of overhead |
 | `box-keygen512` / `box-pubkey512` | secret / public key | 64 raw bytes each |
@@ -216,11 +216,16 @@ was not yet so.
 | `hash` | digest | 32 raw bytes (Kupyna-256) |
 
 The `encrypt` record rules:
-- the plaintext is split into 8192-byte chunks, one record each;
+- the version byte is currently `2` and is bound into the stream's key derivation, so a changed
+  version byte never decrypts; `decrypt` names an unsupported version instead of reporting an
+  authentication failure. Files from `uacrypt` 0.3.x and earlier have no version byte and cannot
+  be read;
+- the plaintext is split into 8192-byte chunks, one record each; every record but the last is
+  exactly 8192 bytes, so the chunk size is part of the format;
 - the chunk tag byte is `0` (message) for every record but the last, and `3` (final) for the last;
 - an empty input still produces one final record with a zero-length ciphertext;
-- `decrypt` rejects a record longer than 8192 bytes, a missing final record (a truncated file) and
-  any bytes after the final record;
+- `decrypt` rejects a record longer than 8192 bytes, a non-final record of any other length than
+  8192, a missing final record (a truncated file) and any bytes after the final record;
 - every record's auth tag covers its position in the stream, its chunk tag and its exact length,
   so records cannot be reordered, dropped, cut or extended.
 

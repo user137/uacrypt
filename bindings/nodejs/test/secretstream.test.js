@@ -43,13 +43,21 @@ async function runThrough(transform, input) {
   const reading = (async () => {
     for await (const c of transform) chunks.push(c);
   })();
-  for (const piece of input) {
-    if (!transform.write(piece)) {
-      await new Promise((resolve) => transform.once('drain', resolve));
+  const writing = (async () => {
+    for (const piece of input) {
+      if (transform.destroyed) return;
+      if (!transform.write(piece)) {
+        // 'close' too: a reader that rejects the very first write (e.g. a bad version byte) is
+        // destroyed and never emits 'drain', which would otherwise leave this await hanging.
+        await new Promise((resolve) => {
+          transform.once('drain', resolve);
+          transform.once('close', resolve);
+        });
+      }
     }
-  }
-  transform.end();
-  await reading;
+    if (!transform.destroyed) transform.end();
+  })();
+  await Promise.all([reading, writing]);
   return Buffer.concat(chunks);
 }
 
@@ -116,7 +124,7 @@ test('oversized declared chunk length is rejected', async () => {
   const key = dstu.secretstreamKeygen();
   const lenBuf = Buffer.alloc(4);
   lenBuf.writeUInt32LE(0xffffffff, 0);
-  const malicious = Buffer.concat([Buffer.alloc(32), Buffer.from([0x00]), lenBuf]);
+  const malicious = Buffer.concat([Buffer.from([2]), Buffer.alloc(32), Buffer.from([0x00]), lenBuf]);
   await assert.rejects(() => decryptAll(key, malicious), /too large/);
 });
 
@@ -158,4 +166,43 @@ test('write after end is rejected', async () => {
   await new Promise((resolve) => enc.on('finish', resolve));
   assert.strictEqual(enc.writableEnded, true);
   assert.strictEqual(enc.write(Buffer.from('more data')), false);
+});
+
+// D-208: the same files every reader (uacrypt and all 8 bindings) is tested against.
+const SHARED_VECTORS = JSON.parse(
+  fs.readFileSync(
+    path.join(REPO_ROOT, 'crates', 'dstu-core', 'tests', 'vectors', 'secretstream-file', 'v2.json'),
+    'utf8',
+  ),
+);
+const EXPECTED_MESSAGE = {
+  unsupported_version: /unsupported stream format version/,
+  bad_chunk_length: /non-final chunk/,
+  truncated: /truncated/,
+  auth: /./,
+};
+
+for (const c of SHARED_VECTORS.cases) {
+  test(`shared stream-file vector: ${c.name}`, async () => {
+    const key = Buffer.from(SHARED_VECTORS.key_hex, 'hex');
+    const file = Buffer.from(c.file_hex, 'hex');
+    if (c.expect === 'ok') {
+      assert.deepStrictEqual(await decryptAll(key, file), Buffer.from(c.plaintext_hex, 'hex'));
+    } else {
+      await assert.rejects(() => decryptAll(key, file), EXPECTED_MESSAGE[c.expect]);
+    }
+  });
+}
+
+test('the encryptor writes the format version first', async () => {
+  const out = await encryptAll(dstu.secretstreamKeygen(), Buffer.from('x'));
+  assert.equal(out[0], 2);
+});
+
+test('a truncated 8-byte auth tag is rejected (T-238)', () => {
+  const key = dstu.secretstreamKeygen();
+  const push = new dstu.SecretStreamPushState(key);
+  const { ciphertext, authTag } = push.push(dstu.SECRETSTREAM_TAG_FINAL, Buffer.from('secret'));
+  const pull = new dstu.SecretStreamPullState(key, push.header);
+  assert.throws(() => pull.pull(dstu.SECRETSTREAM_TAG_FINAL, ciphertext, authTag.subarray(0, 8)));
 });

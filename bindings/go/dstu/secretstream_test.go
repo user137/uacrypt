@@ -3,10 +3,13 @@ package dstu
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/hex"
+	"encoding/json"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -215,9 +218,10 @@ func TestSecretstreamTruncatedStreamIsRejected(t *testing.T) {
 func TestSecretstreamOversizedDeclaredChunkLengthIsRejected(t *testing.T) {
 	key, _ := GenerateSecretstreamKey()
 	defer key.Close()
-	malicious := make([]byte, 32+1+4)
-	malicious[32] = byte(TagFinal)
-	binary.LittleEndian.PutUint32(malicious[33:], 0xFFFFFFFF)
+	malicious := make([]byte, 1+32+1+4)
+	malicious[0] = SecretstreamFormatVersion
+	malicious[33] = byte(TagFinal)
+	binary.LittleEndian.PutUint32(malicious[34:], 0xFFFFFFFF)
 	r, err := NewSecretStreamDecryptReader(bytes.NewReader(malicious), key, true)
 	if err != nil {
 		t.Fatal(err)
@@ -296,5 +300,83 @@ func TestSecretstreamWriteAfterCompleteIsRejected(t *testing.T) {
 	}
 	if _, err := w.Write([]byte("more data")); err == nil {
 		t.Fatal("expected an error")
+	}
+}
+
+// TestSecretstreamSharedStreamFileVectors (D-208) runs the same files every reader (uacrypt and all
+// 8 bindings) is tested against.
+func TestSecretstreamSharedStreamFileVectors(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join(repoRoot(t), "crates", "dstu-core", "tests", "vectors", "secretstream-file", "v2.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var vectors struct {
+		KeyHex string `json:"key_hex"`
+		Cases  []struct {
+			Name         string `json:"name"`
+			Expect       string `json:"expect"`
+			FileHex      string `json:"file_hex"`
+			PlaintextHex string `json:"plaintext_hex"`
+		} `json:"cases"`
+	}
+	if err := json.Unmarshal(raw, &vectors); err != nil {
+		t.Fatal(err)
+	}
+	keyBytes, _ := hex.DecodeString(vectors.KeyHex)
+	wanted := map[string]string{
+		"unsupported_version": "unsupported stream format version",
+		"bad_chunk_length":    "non-final chunk",
+		"truncated":           "truncated",
+		"auth":                "",
+	}
+	for _, c := range vectors.Cases {
+		t.Run(c.Name, func(t *testing.T) {
+			key, err := SecretstreamKeyFromBytes(keyBytes)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer key.Close()
+			file, _ := hex.DecodeString(c.FileHex)
+			got, err := decryptShared(file, key)
+			if c.Expect == "ok" {
+				want, _ := hex.DecodeString(c.PlaintextHex)
+				if err != nil || !bytes.Equal(got, want) {
+					t.Fatalf("expected the plaintext, got err=%v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), wanted[c.Expect]) {
+				t.Fatalf("expected an error containing %q, got %v", wanted[c.Expect], err)
+			}
+		})
+	}
+}
+
+func decryptShared(file []byte, key *SecretstreamKey) ([]byte, error) {
+	r, err := NewSecretStreamDecryptReader(bytes.NewReader(file), key, true)
+	if err != nil {
+		return nil, err
+	}
+	defer r.Close()
+	return io.ReadAll(r)
+}
+
+func TestSecretstreamWriterWritesTheFormatVersionFirst(t *testing.T) {
+	key, _ := GenerateSecretstreamKey()
+	defer key.Close()
+	var out bytes.Buffer
+	w, err := NewSecretStreamEncryptWriter(&out, key, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+	if _, err := w.Write([]byte("x")); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Complete(); err != nil {
+		t.Fatal(err)
+	}
+	if out.Bytes()[0] != SecretstreamFormatVersion {
+		t.Fatalf("first byte = %d, want %d", out.Bytes()[0], SecretstreamFormatVersion)
 	}
 }

@@ -475,7 +475,9 @@ Standard steps above, with:
   what D-118 asks for, and file I/O against arbitrary Python file-like objects is more natural to
   write directly in Python than via PyO3 callbacks). `write()`/iterate hide chunk/tag/header
   bookkeeping entirely. **Wire format matches `uacrypt encrypt`/`decrypt` exactly** (8 KiB chunks,
-  `tag || len_u32_le || ciphertext || auth_tag` records after a 32-byte header) - a deliberate
+  `tag || len_u32_le || ciphertext || auth_tag` records after a 32-byte header; since D-208 a
+  version byte comes first, non-final records are exactly 8 KiB, and every binding runs the shared
+  `secretstream-file/v2.json` vectors) - a deliberate
   choice, not required by D-118 itself, verified with a real interop test in both directions
   against the built `uacrypt` binary (not just self-consistency): a file `SecretStreamEncryptor`
   wrote round-tripped through `uacrypt decrypt`, and a file `uacrypt encrypt` wrote round-tripped
