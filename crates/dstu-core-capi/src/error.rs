@@ -45,4 +45,7 @@ pub enum DstuStatus {
     /// A sealed blob (`crypto_secretbox`, `crypto_box`, `crypto_box512`) starts with a format
     /// version byte this build does not read - written by an older or newer release, not tampered.
     DSTU_ERR_UNSUPPORTED_VERSION = 13,
+    /// An integer argument that stands for one of this header's enum constants (a `DSTU_TAG_*` or
+    /// `DSTU_PWHASH_*` value) is outside that enum's range.
+    DSTU_ERR_INVALID_ARGUMENT = 14,
 }

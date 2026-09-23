@@ -23,20 +23,23 @@ pub enum DstuPwhashStrength {
     DSTU_PWHASH_SENSITIVE = 2,
 }
 
-impl From<DstuPwhashStrength> for Strength {
-    fn from(strength: DstuPwhashStrength) -> Self {
-        match strength {
-            DstuPwhashStrength::DSTU_PWHASH_INTERACTIVE => Strength::Interactive,
-            DstuPwhashStrength::DSTU_PWHASH_MODERATE => Strength::Moderate,
-            DstuPwhashStrength::DSTU_PWHASH_SENSITIVE => Strength::Sensitive,
-        }
+/// Maps a raw `DstuPwhashStrength` value from C. The parameter is a `u32`, not the enum itself,
+/// because a C/Go/.NET caller can pass any integer and an out-of-range enum value is undefined
+/// behavior in Rust (T-240).
+fn strength_from_raw(strength: u32) -> Option<Strength> {
+    match strength {
+        x if x == DstuPwhashStrength::DSTU_PWHASH_INTERACTIVE as u32 => Some(Strength::Interactive),
+        x if x == DstuPwhashStrength::DSTU_PWHASH_MODERATE as u32 => Some(Strength::Moderate),
+        x if x == DstuPwhashStrength::DSTU_PWHASH_SENSITIVE as u32 => Some(Strength::Sensitive),
+        _ => None,
     }
 }
 
 /// Hashes `password` into a NUL-terminated PHC string written to `out` (a caller-owned buffer of
 /// at least `DSTU_PWHASH_STRBYTES` bytes). Returns `DSTU_ERR_RANDOM` if the OS CSPRNG fails,
 /// `DSTU_ERR_HASH_ERROR` on an internal Argon2/PHC-encoding failure (not expected in practice for
-/// this module's own fixed-length salt), or `DSTU_ERR_NULL_POINTER`.
+/// this module's own fixed-length salt), or `DSTU_ERR_NULL_POINTER`. `strength` must be one of the
+/// `DSTU_PWHASH_*` values - `DSTU_ERR_INVALID_ARGUMENT` otherwise, checked before any hashing.
 ///
 /// # Safety
 ///
@@ -47,17 +50,20 @@ impl From<DstuPwhashStrength> for Strength {
 pub unsafe extern "C" fn dstu_pwhash_hash_password(
     password: *const u8,
     password_len: usize,
-    strength: DstuPwhashStrength,
+    strength: u32,
     out: *mut c_char,
 ) -> DstuStatus {
     guard_status(|| {
+        let Some(strength) = strength_from_raw(strength) else {
+            return DstuStatus::DSTU_ERR_INVALID_ARGUMENT;
+        };
         if out.is_null() {
             return DstuStatus::DSTU_ERR_NULL_POINTER;
         }
         let Some(password) = (unsafe { slice_from_raw(password, password_len) }) else {
             return DstuStatus::DSTU_ERR_NULL_POINTER;
         };
-        match hash_password(password, strength.into()) {
+        match hash_password(password, strength) {
             Ok(hash) => {
                 let bytes = hash.as_bytes();
                 // `+ 1` for the NUL terminator - never expected to trip for this module's own

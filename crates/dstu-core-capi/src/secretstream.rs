@@ -27,12 +27,15 @@ pub enum DstuTag {
 }
 
 impl DstuTag {
-    fn to_core(self) -> Tag {
-        match self {
-            DstuTag::DSTU_TAG_MESSAGE => Tag::Message,
-            DstuTag::DSTU_TAG_PUSH => Tag::Push,
-            DstuTag::DSTU_TAG_REKEY => Tag::Rekey,
-            DstuTag::DSTU_TAG_FINAL => Tag::Final,
+    /// Maps a raw `DstuTag` value from C - see `pwhash.rs`'s `strength_from_raw` for why the
+    /// parameter is a `u32` (T-240).
+    fn core_from_raw(tag: u32) -> Option<Tag> {
+        match tag {
+            x if x == DstuTag::DSTU_TAG_MESSAGE as u32 => Some(Tag::Message),
+            x if x == DstuTag::DSTU_TAG_PUSH as u32 => Some(Tag::Push),
+            x if x == DstuTag::DSTU_TAG_REKEY as u32 => Some(Tag::Rekey),
+            x if x == DstuTag::DSTU_TAG_FINAL as u32 => Some(Tag::Final),
+            _ => None,
         }
     }
 
@@ -187,7 +190,8 @@ pub unsafe extern "C" fn dstu_secretstream_push_is_finalized(state: *const DstuP
 
 /// Encrypts one chunk. `ciphertext_out_len` must equal `plaintext_len` exactly -
 /// `DSTU_ERR_INVALID_LENGTH` otherwise. `DSTU_ERR_FINALIZED` if a previous chunk already used
-/// `DSTU_TAG_FINAL`.
+/// `DSTU_TAG_FINAL`. `tag` must be one of the `DSTU_TAG_*` values - `DSTU_ERR_INVALID_ARGUMENT`
+/// otherwise, checked before the state is touched.
 ///
 /// # Safety
 ///
@@ -198,7 +202,7 @@ pub unsafe extern "C" fn dstu_secretstream_push_is_finalized(state: *const DstuP
 #[no_mangle]
 pub unsafe extern "C" fn dstu_secretstream_push(
     state: *mut DstuPushState,
-    tag: DstuTag,
+    tag: u32,
     plaintext: *const u8,
     plaintext_len: usize,
     ciphertext_out: *mut u8,
@@ -218,7 +222,10 @@ pub unsafe extern "C" fn dstu_secretstream_push(
             return DstuStatus::DSTU_ERR_NULL_POINTER;
         };
         let state = unsafe { &mut *state };
-        match state.0.push(tag.to_core(), plaintext, ciphertext_out) {
+        let Some(tag) = DstuTag::core_from_raw(tag) else {
+            return DstuStatus::DSTU_ERR_INVALID_ARGUMENT;
+        };
+        match state.0.push(tag, plaintext, ciphertext_out) {
             Ok(full_tag) => {
                 let tag_out =
                     unsafe { std::slice::from_raw_parts_mut(tag_out, DSTU_SECRETSTREAM_TAG_BYTES) };

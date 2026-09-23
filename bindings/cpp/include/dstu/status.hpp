@@ -64,6 +64,8 @@ inline void CheckStatus(DstuStatus status) {
       throw ArgumentError("invalid key material (e.g. a DSTU 4145 scalar that is zero or >= the curve order)");
     case DSTU_ERR_UNSUPPORTED_VERSION:
       throw CryptoError("sealed blob has an unsupported format version - written by an older or newer release");
+    case DSTU_ERR_INVALID_ARGUMENT:
+      throw ArgumentError("an enum argument is outside its valid range (e.g. an unknown pwhash strength)");
     default:  // DSTU_ERR_BUFFER_TOO_SMALL, DSTU_ERR_NULL_POINTER, DSTU_ERR_INVALID_LENGTH, DSTU_ERR_PANIC
       throw InternalError(status);
   }

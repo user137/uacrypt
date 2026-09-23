@@ -15,7 +15,7 @@ func HashPassword(password []byte, strength PwhashStrength) (string, error) {
 	out := make([]byte, PwhashStrBytes)
 	pwPtr, pwLen := cBytes(password)
 	outPtr, _ := cBytes(out)
-	if err := statusError(C.dstu_pwhash_hash_password(pwPtr, pwLen, C.DstuPwhashStrength(strength), (*C.char)(unsafe.Pointer(outPtr)))); err != nil {
+	if err := statusError(C.dstu_pwhash_hash_password(pwPtr, pwLen, C.uint32_t(strength), (*C.char)(unsafe.Pointer(outPtr)))); err != nil {
 		return "", err
 	}
 	if nul := bytes.IndexByte(out, 0); nul >= 0 {

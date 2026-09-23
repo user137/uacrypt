@@ -8438,13 +8438,25 @@ which is exactly why the divergence was never caught.
   corrected. Red first: `generate_covers_the_full_range_below_n` (at least 48 of 64 keys at
   `d >= 2^249`; the old code gave 0). The capi and all 8 bindings call core `SigningKey::generate()`
   directly (checked by grep). CHANGELOG `[Unreleased]` has the regenerate note.
-- [ ] **T-240** (audit F-05, Medium; path Confirmed, UB manifestation Plausible) The C ABI takes Rust
+- [x] **T-240** (audit F-05, Medium; path Confirmed, UB manifestation Plausible) The C ABI takes Rust
   enums by value (`DstuPwhashStrength` at `capi/pwhash.rs:50`, `DstuTag` at
   `capi/secretstream.rs:201`). Go (`type PwhashStrength int`), .NET (`(PwhashStrength)7` is legal C#)
   and C++ (`static_cast`) can pass an out-of-range value -> invalid discriminant = UB in Rust. Fix:
   take `u32`, map explicitly, return a new additive `DSTU_ERR_INVALID_ARGUMENT` status for unknown
   values; regenerate `include/dstu_core.h` via `cargo xtask capi`; keep the enum constants in the
   header. Tests: `ffi_tests.rs` with a raw `7`; one Misuse test each in Go/.NET/C++.
+  **Done 2026-09-23 (local commit, not pushed):**
+  - Both parameters are now `u32`, mapped by `match`; an unknown value returns
+    `DSTU_ERR_INVALID_ARGUMENT` = 14 before any hashing and before the push state is touched.
+  - `DSTU_ERR_UNKNOWN_TAG` (6) stays reserved for a tag byte that comes from the wire in `pull`.
+  - `cbindgen.toml` now exports `DstuPwhashStrength` explicitly, since no function references it
+    any more.
+  - The tag is chosen by the wrapper in every binding, so only `strength` is reachable from
+    binding callers.
+  - The Go/.NET/C++ casts and status-14 mapping are updated in this commit. This moves the "binding
+    signature updates in step 4" note forward, because the header change breaks Go's build.
+  - Tests: `ffi_tests` (red = compile failure against the old enum signature) and one misuse test
+    each in Go/.NET/C++. The Go test was red when its status-14 arm was removed.
 - [ ] **T-241** (audit F-06, Medium, Confirmed) `uacrypt` file hygiene. (a) Secret keys (`keygen`
   `lib.rs:1831`, `sign-keygen`/`sign-keygen257` ~1917/~1934, `box-keygen` ~2354, `box512-keygen`
   ~2590) are written via `std::fs::write` -> mode `0666 & umask` (0644 typically, world-readable),

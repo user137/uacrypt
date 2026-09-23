@@ -1,6 +1,9 @@
 package dstu
 
-import "testing"
+import (
+	"errors"
+	"testing"
+)
 
 // Pwhash (crypto_pwhash, Argon2id). Correctness: round trip. Rejection: wrong password, malformed
 // hash string. PwhashInteractive throughout so this file stays fast - Sensitive alone takes real
@@ -24,6 +27,15 @@ func TestWrongPasswordIsRejected(t *testing.T) {
 	}
 	if VerifyPassword([]byte("wrong guess"), stored) {
 		t.Fatal("expected the wrong password to be rejected")
+	}
+}
+
+// T-240: the C ABI takes strength as a uint32_t and rejects values outside DSTU_PWHASH_*.
+func TestUnknownStrengthIsAnArgumentError(t *testing.T) {
+	_, err := HashPassword([]byte("anything"), PwhashStrength(7))
+	var argErr *ArgumentError
+	if !errors.As(err, &argErr) {
+		t.Fatalf("expected *ArgumentError, got %T: %v", err, err)
 	}
 }
 

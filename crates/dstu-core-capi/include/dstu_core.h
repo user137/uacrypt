@@ -155,16 +155,12 @@ typedef enum {
    * version byte this build does not read - written by an older or newer release, not tampered.
    */
   DSTU_ERR_UNSUPPORTED_VERSION = 13,
+  /**
+   * An integer argument that stands for one of this header's enum constants (a `DSTU_TAG_*` or
+   * `DSTU_PWHASH_*` value) is outside that enum's range.
+   */
+  DSTU_ERR_INVALID_ARGUMENT = 14,
 } DstuStatus;
-
-/**
- * Argon2id cost preset - mirrors libsodium's own named `OPSLIMIT`/`MEMLIMIT_*` constants.
- */
-typedef enum {
-  DSTU_PWHASH_INTERACTIVE = 0,
-  DSTU_PWHASH_MODERATE = 1,
-  DSTU_PWHASH_SENSITIVE = 2,
-} DstuPwhashStrength;
 
 /**
  * A chunk's role in the stream - byte values match libsodium's own encoding, see the wrapped
@@ -176,6 +172,15 @@ typedef enum {
   DSTU_TAG_REKEY = 2,
   DSTU_TAG_FINAL = 3,
 } DstuTag;
+
+/**
+ * Argon2id cost preset - mirrors libsodium's own named `OPSLIMIT`/`MEMLIMIT_*` constants.
+ */
+typedef enum {
+  DSTU_PWHASH_INTERACTIVE = 0,
+  DSTU_PWHASH_MODERATE = 1,
+  DSTU_PWHASH_SENSITIVE = 2,
+} DstuPwhashStrength;
 
 /**
  * Opaque `crypto_auth` key handle. `dstu_auth_key_free`'s `Box::from_raw` fires the wrapped
@@ -775,7 +780,8 @@ void dstu_kdf_derive_subkey(const DstuKdfMasterKey *key,
  * Hashes `password` into a NUL-terminated PHC string written to `out` (a caller-owned buffer of
  * at least `DSTU_PWHASH_STRBYTES` bytes). Returns `DSTU_ERR_RANDOM` if the OS CSPRNG fails,
  * `DSTU_ERR_HASH_ERROR` on an internal Argon2/PHC-encoding failure (not expected in practice for
- * this module's own fixed-length salt), or `DSTU_ERR_NULL_POINTER`.
+ * this module's own fixed-length salt), or `DSTU_ERR_NULL_POINTER`. `strength` must be one of the
+ * `DSTU_PWHASH_*` values - `DSTU_ERR_INVALID_ARGUMENT` otherwise, checked before any hashing.
  *
  * # Safety
  *
@@ -786,7 +792,7 @@ void dstu_kdf_derive_subkey(const DstuKdfMasterKey *key,
 
 DstuStatus dstu_pwhash_hash_password(const uint8_t *password,
                                      size_t password_len,
-                                     DstuPwhashStrength strength,
+                                     uint32_t strength,
                                      char *out);
 
 /**
@@ -969,7 +975,8 @@ DstuStatus dstu_secretstream_push_init(const DstuSecretstreamKey *key,
 /**
  * Encrypts one chunk. `ciphertext_out_len` must equal `plaintext_len` exactly -
  * `DSTU_ERR_INVALID_LENGTH` otherwise. `DSTU_ERR_FINALIZED` if a previous chunk already used
- * `DSTU_TAG_FINAL`.
+ * `DSTU_TAG_FINAL`. `tag` must be one of the `DSTU_TAG_*` values - `DSTU_ERR_INVALID_ARGUMENT`
+ * otherwise, checked before the state is touched.
  *
  * # Safety
  *
@@ -980,7 +987,7 @@ DstuStatus dstu_secretstream_push_init(const DstuSecretstreamKey *key,
  */
 
 DstuStatus dstu_secretstream_push(DstuPushState *state,
-                                  DstuTag tag,
+                                  uint32_t tag,
                                   const uint8_t *plaintext,
                                   size_t plaintext_len,
                                   uint8_t *ciphertext_out,

@@ -24,6 +24,14 @@ public sealed class PwhashTests
         Assert.False(Pwhash.VerifyPassword(Encoding.ASCII.GetBytes("wrong guess"), stored));
     }
 
+    // T-240: a C# enum can hold any int, so an out-of-range strength reaches the C ABI, which now
+    // takes a uint32_t and rejects it instead of reading an invalid Rust enum.
+    [Fact]
+    public void UnknownStrengthIsAnArgumentException()
+    {
+        Assert.Throws<ArgumentException>(() => Pwhash.HashPassword(Encoding.ASCII.GetBytes("anything"), (PwhashStrength)7));
+    }
+
     [Fact]
     public void MalformedHashStringIsRejected()
     {

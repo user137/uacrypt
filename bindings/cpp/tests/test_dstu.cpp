@@ -678,6 +678,11 @@ void TestPwhash() {
   CHECK(!dstu::VerifyPassword(ToBytes(wrong), hash), "VerifyPassword should reject the wrong password");
   CHECK(!dstu::VerifyPassword(ToBytes(password), "not a real phc string"),
         "VerifyPassword should reject a malformed hash string, not crash");
+
+  // T-240: PwhashStrength has a fixed underlying type, so 7 is a legal value that reaches the C ABI.
+  CHECK(Throws<dstu::ArgumentError>(
+            [] { dstu::HashPassword(ToBytes("anything"), static_cast<dstu::PwhashStrength>(7)); }),
+        "an out-of-range strength should throw ArgumentError");
 }
 
 }  // namespace

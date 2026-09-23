@@ -165,7 +165,7 @@ func (w *SecretStreamEncryptWriter) writeChunk(tag SecretstreamTag, plaintext []
 	ptPtr, ptLen := cBytes(plaintext)
 	ctPtr, ctLen := cBytes(ciphertext)
 	tagOutPtr, _ := cBytes(tagOut)
-	if err := statusError(C.dstu_secretstream_push(w.state, C.DstuTag(tag), ptPtr, ptLen, ctPtr, ctLen, tagOutPtr)); err != nil {
+	if err := statusError(C.dstu_secretstream_push(w.state, C.uint32_t(tag), ptPtr, ptLen, ctPtr, ctLen, tagOutPtr)); err != nil {
 		return err
 	}
 

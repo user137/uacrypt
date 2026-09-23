@@ -51,6 +51,8 @@ func statusError(status C.DstuStatus) error {
 		return &ArgumentError{"invalid key material (e.g. a DSTU 4145 scalar that is zero or >= the curve order)"}
 	case C.DSTU_ERR_UNSUPPORTED_VERSION:
 		return &CryptoError{"sealed blob has an unsupported format version - written by an older or newer release"}
+	case C.DSTU_ERR_INVALID_ARGUMENT:
+		return &ArgumentError{"an enum argument is outside its valid range (e.g. an unknown pwhash strength)"}
 	default: // ErrBufferTooSmall, ErrNullPointer, ErrInvalidLength, ErrPanic
 		return &InternalError{status}
 	}

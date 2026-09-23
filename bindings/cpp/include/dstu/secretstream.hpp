@@ -153,7 +153,7 @@ class SecretStreamEncryptor {
   void WriteChunk(SecretstreamTag tag, ByteView plaintext) {
     std::vector<std::uint8_t> ciphertext(plaintext.size());
     std::vector<std::uint8_t> tagOut(kSecretstreamTagBytes);
-    CheckStatus(dstu_secretstream_push(state_.get(), static_cast<DstuTag>(tag), plaintext.data(),
+    CheckStatus(dstu_secretstream_push(state_.get(), static_cast<std::uint32_t>(tag), plaintext.data(),
                                         plaintext.size(), ciphertext.data(), ciphertext.size(), tagOut.data()));
 
     std::uint8_t header[5];

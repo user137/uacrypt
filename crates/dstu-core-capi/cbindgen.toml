@@ -28,6 +28,9 @@ usize_is_size_t = true
 
 [export]
 prefix = ""
+# `dstu_pwhash_hash_password` takes `strength` as a `uint32_t` (T-240), so nothing references the
+# enum any more - keep its named constants in the header for C callers.
+include = ["DstuPwhashStrength"]
 
 [enum]
 rename_variants = "None"

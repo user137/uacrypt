@@ -368,15 +368,35 @@ fn secretstream_round_trip_tamper_and_finalize_rejection() {
     let mut ciphertext = vec![0u8; plaintext.len()];
     let mut tag = [0u8; DSTU_SECRETSTREAM_TAG_BYTES];
 
+    // misuse (T-240): a tag value outside DSTU_TAG_* is rejected before the state is touched. The
+    // round trip below still starts at chunk 0, which proves the counter did not move.
+    let mut dummy_tag = [0u8; DSTU_SECRETSTREAM_TAG_BYTES];
+    let mut unknown_tag_out = vec![0u8; plaintext.len()];
+    assert_eq!(
+        unsafe {
+            dstu_secretstream_push(
+                push_ptr,
+                7,
+                plaintext.as_ptr(),
+                plaintext.len(),
+                unknown_tag_out.as_mut_ptr(),
+                unknown_tag_out.len(),
+                dummy_tag.as_mut_ptr(),
+            )
+        },
+        DstuStatus::DSTU_ERR_INVALID_ARGUMENT
+    );
+    assert_eq!(unknown_tag_out, vec![0u8; plaintext.len()]);
+    assert!(!unsafe { dstu_secretstream_push_is_finalized(push_ptr) });
+
     // misuse: length mismatch, tested against the still-fresh (not finalized) push state so this
     // actually exercises DSTU_ERR_INVALID_LENGTH rather than being pre-empted by a finalized check.
-    let mut dummy_tag = [0u8; DSTU_SECRETSTREAM_TAG_BYTES];
     let mut wrong_len_out = [0u8; 2];
     assert_eq!(
         unsafe {
             dstu_secretstream_push(
                 push_ptr,
-                DstuTag::DSTU_TAG_MESSAGE,
+                DstuTag::DSTU_TAG_MESSAGE as u32,
                 plaintext.as_ptr(),
                 plaintext.len(),
                 wrong_len_out.as_mut_ptr(),
@@ -391,7 +411,7 @@ fn secretstream_round_trip_tamper_and_finalize_rejection() {
         unsafe {
             dstu_secretstream_push(
                 push_ptr,
-                DstuTag::DSTU_TAG_FINAL,
+                DstuTag::DSTU_TAG_FINAL as u32,
                 plaintext.as_ptr(),
                 plaintext.len(),
                 ciphertext.as_mut_ptr(),
@@ -409,7 +429,7 @@ fn secretstream_round_trip_tamper_and_finalize_rejection() {
         unsafe {
             dstu_secretstream_push(
                 push_ptr,
-                DstuTag::DSTU_TAG_MESSAGE,
+                DstuTag::DSTU_TAG_MESSAGE as u32,
                 b"x".as_ptr(),
                 1,
                 dummy_ct.as_mut_ptr(),
@@ -780,7 +800,7 @@ fn pwhash_hash_and_verify_round_trip_and_rejects_wrong_password() {
             dstu_pwhash_hash_password(
                 password.as_ptr(),
                 password.len(),
-                DstuPwhashStrength::DSTU_PWHASH_INTERACTIVE,
+                DstuPwhashStrength::DSTU_PWHASH_INTERACTIVE as u32,
                 out.as_mut_ptr(),
             )
         },
@@ -804,6 +824,20 @@ fn pwhash_hash_and_verify_round_trip_and_rejects_wrong_password() {
     assert!(!unsafe {
         dstu_pwhash_verify_password(password.as_ptr(), password.len(), ptr::null())
     });
+}
+
+// T-240: an out-of-range strength is rejected before any hashing, so this runs under Miri.
+#[test]
+fn pwhash_rejects_unknown_strength() {
+    let password = b"correct horse battery staple";
+    let mut out = [0 as std::os::raw::c_char; DSTU_PWHASH_STRBYTES];
+    assert_eq!(
+        unsafe {
+            dstu_pwhash_hash_password(password.as_ptr(), password.len(), 7, out.as_mut_ptr())
+        },
+        DstuStatus::DSTU_ERR_INVALID_ARGUMENT
+    );
+    assert!(out.iter().all(|&c| c == 0));
 }
 
 // ---------------------------------------------------------------------------------------------

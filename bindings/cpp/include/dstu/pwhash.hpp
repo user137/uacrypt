@@ -6,6 +6,7 @@
 #include "dstu_core.h"
 #include "status.hpp"
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -16,7 +17,7 @@ namespace dstu {
 inline std::string HashPassword(ByteView password, PwhashStrength strength) {
   std::vector<char> out(kPwhashStrBytes);
   CheckStatus(dstu_pwhash_hash_password(password.data(), password.size(),
-                                         static_cast<DstuPwhashStrength>(strength), out.data()));
+                                         static_cast<std::uint32_t>(strength), out.data()));
   return std::string(out.data());  // NUL-terminated by the callee; stops at the first NUL.
 }
 
