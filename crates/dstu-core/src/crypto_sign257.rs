@@ -120,11 +120,11 @@ impl SigningKey {
 
     /// Generates a fresh signing key from the OS CSPRNG - same rejection-sampling approach as
     /// `crypto_sign::SigningKey::generate` (`docs/TASKS.md` T-122), re-derived for this curve's
-    /// own order rather than assumed to carry over: `curve257::order()`'s top byte is `0x00`
-    /// (D-185 - unlike `m=163`'s `0x04`), so masking each 33-byte candidate's top byte down to
-    /// zero and its second byte to its low bit (`n`'s own bit-length is 256, one bit narrower than
-    /// the 33-byte/264-bit draw) keeps the rejection rate near 50%, the same target
-    /// `crypto_sign`'s own masking hits for `m=163`.
+    /// own order rather than assumed to carry over: `curve257::order()` is `00 80 00 .. 0D` (D-185),
+    /// just above 2^255. Zeroing each 33-byte candidate's top byte leaves a uniform 256-bit draw,
+    /// about half of which falls below `n` - the same ~50% rejection target `crypto_sign`'s own
+    /// masking hits for `m=163`. Masking any bit of the second byte would shrink the key space
+    /// (T-239).
     ///
     /// # Errors
     ///
@@ -136,7 +136,6 @@ impl SigningKey {
             let mut candidate = [0u8; 33];
             crate::randombytes::randombytes_buf(&mut candidate)?;
             candidate[0] = 0;
-            candidate[1] &= 0x01;
             let scalar = Scalar::from_candidate_bytes(&candidate);
             candidate.zeroize();
             if let Some(scalar) = scalar {

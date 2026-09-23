@@ -191,6 +191,22 @@ fn two_calls_to_generate_produce_different_keys() {
     );
 }
 
+// T-239: `n` is ~2^255, so a uniform `d` in [1, n-1] lies at or above 2^249 (byte 1 >= 0x02) with
+// probability ~63/64. The old generator masked byte 1 to its low bit and never reached it. Needing
+// only 48 of 64 keeps a false failure far below 2^-40.
+#[test]
+fn generate_covers_the_full_range_below_n() {
+    let high = (0..64)
+        .filter(|_| {
+            let d = SigningKey::generate()
+                .expect("OS CSPRNG available in test environment")
+                .to_bytes();
+            d[1] >= 0x02
+        })
+        .count();
+    assert!(high >= 48, "only {high} of 64 keys reached d >= 2^249");
+}
+
 #[test]
 fn from_bytes_rejects_zero_scalar() {
     assert!(SigningKey::from_bytes(&[0u8; 33]).is_none());

@@ -8424,7 +8424,7 @@ which is exactly why the divergence was never caught.
   (`bindings/python/src/secretstream.rs:97`), Node.js, PHP and Ruby pass a caller-controlled length
   through**. Fix: `if auth_tag.len() != TAG_LEN { return Err(InvalidLength) }` in `pull`. Tests: core
   pull with 8- and 32-byte tags -> `InvalidLength`; one Misuse test per affected binding. Q2 attached.
-- [ ] **T-239** (audit F-03, Medium, Confirmed) `crypto_sign257::SigningKey::generate`
+- [x] **T-239** (audit F-03, Medium, Confirmed) `crypto_sign257::SigningKey::generate`
   (`crypto_sign257.rs:139`, `candidate[1] &= 0x01`) draws keys only from `[1, 2^249)`, while
   `curve257::order()` is `00 80 00 ... 0D` (n ~ 2^255). Empirical: 2000 keys -> OR of byte0 = `0x00`,
   max byte1 = `0x01`. Effect: ~6 bits of key-space loss (kangaroo ~2^124.5 vs rho ~2^127.5), keys
@@ -8434,6 +8434,10 @@ which is exactly why the divergence was never caught.
   the rejection rate ~50%, with bounds loose enough not to flake. CHANGELOG user note: m=257 keys
   generated since T-199 (`5006101`) stay valid but should be regenerated. `dstu-core-capi` and every
   binding delegate to this function - verify that, don't assume it.
+  **Done 2026-09-23 (local commit, not pushed):** the `candidate[1]` mask is gone and the doc comment is
+  corrected. Red first: `generate_covers_the_full_range_below_n` (at least 48 of 64 keys at
+  `d >= 2^249`; the old code gave 0). The capi and all 8 bindings call core `SigningKey::generate()`
+  directly (checked by grep). CHANGELOG `[Unreleased]` has the regenerate note.
 - [ ] **T-240** (audit F-05, Medium; path Confirmed, UB manifestation Plausible) The C ABI takes Rust
   enums by value (`DstuPwhashStrength` at `capi/pwhash.rs:50`, `DstuTag` at
   `capi/secretstream.rs:201`). Go (`type PwhashStrength int`), .NET (`(PwhashStrength)7` is legal C#)
