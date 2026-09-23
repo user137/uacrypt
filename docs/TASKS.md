@@ -8773,8 +8773,25 @@ Next, in order:
      docs, CHANGELOG. Follow-ups: T-253 (KW-p), T-254 (Kupyna-384 API).
    Closing review added D-207, commit 207f5ad: GCM/GMAC with empty AAD **and** empty data returned
    `E_K(0)` = the GHASH key, which enables forgery. It affects the v0.3.0 hazmat API and the
-   `kalyna-gcm`/`-gmac` CLI, not `crypto_*`. **Owner decision: whether it goes into the embargoed
-   advisory.**
+   `kalyna-gcm`/`-gmac` CLI, not `crypto_*`. **Owner decision (2026-09-24): a separate lower-severity
+   advisory, published with the main one; private heads-up to UAPKI/BC before publication (each
+   outward message confirmed separately). D-207.** UAPKI report filed by the owner 2026-09-24 via
+   GitHub private vulnerability reporting on `specinfo-ua/UAPKI` (incl. the CMAC empty-message
+   collision, uapkic 2.0.2). Bouncy Castle (`bcgit/bc-java`) report: not yet filed. Both PoCs
+   verified 2026-09-24 (uapkic 2.0.2 from `oracles/uapki`, bcprov-jdk18on 1.85; key 00..0f): GCM/GMAC
+   tag = `E_K(0)` = `ea4597a6de4c4012f150277ca1a6cf3a`, CMAC(empty) = CMAC(0^16) =
+   `44d2a5dc279e8a560c52f5a19cc55717`, identical in both. No publication date given in either report
+   (owner: quiet coordination).
+   **State at the 2026-09-24 handoff:** UAPKI report filed; the follow-up comment (verified values,
+   affected version 2.0.2, §9.1 CMAC wording) is drafted, owner to post it. Bouncy Castle has no
+   GitHub reporting - its SECURITY.md says email `feedback-crypto@bouncycastle.org`; the email
+   (incl. the CMAC section, owner decided to include it) is drafted, owner to add their name and send.
+   Drafts + both PoC sources are kept locally, gitignored, in `.claude/disclosure-drafts/`
+   (never commit: they describe third-party issues not yet fixed). PoC build: BC - `javac`/`java`
+   with `~/.m2/.../bcprov-jdk18on-1.85.jar` (Windows classpath via `cygpath -w`); UAPKI - `gcc
+   -DUAPKIC_STATIC -I include -I src poc.c src/*.c`, run the `.exe` from PowerShell.
+   Scoped Miri on `crypto_secretstream` was restarted 2026-09-24 and was still running at this
+   handoff (2 of 29 tests passed); re-run with the command in step 2 below if its result is lost.
    Verified 2026-09-23: xtask fmt/build/test/clippy/docs-check/book/audit/deny/oracle-java/
    oracle-dotnet/capi/streaming-bounded, fuzz smoke (all 10), and the bindings:
    - Python 92/92, run against the in-tree build: a stale site-packages copy shadows it, see

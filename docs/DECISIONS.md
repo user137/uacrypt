@@ -13758,8 +13758,14 @@ empty (either one alone may be empty), `GmacError::EmptyMessage` for an empty GM
 `Kalyna*Gmac::mac`/`mac_with_cipher` now return `Result` (same shape as D-206). `uacrypt kalyna-gcm`/
 `kalyna-gmac` report `CliError::EmptyInput`. `crypto_secretbox`/`crypto_secretstream`/`crypto_box`
 are unaffected - their internal AAD is never empty - so the new variant is unreachable there.
-Affects `hazmat` and the CLI as published in v0.3.0: a disclosable finding for the embargoed
-advisory, owner's call.
+Affects `hazmat` and the CLI as published in v0.3.0.
+
+**Disclosure (owner decision 2026-09-24).** A separate, lower-severity GitHub Security Advisory (its
+own CVE and severity score), published together with the main T-232 advisory - not folded into it, so
+neither severity rating is distorted, and not a CHANGELOG-only fix, since D-207 and the `mac` ->
+`Result` change are public in the release anyway. UAPKI and Bouncy Castle accept the same input and
+get a private heads-up before our publication (this entry and `docs/COMPATIBILITY.md` describe their
+behaviour); each outward message is confirmed by the owner before sending.
 
 **Tests.** `empty_aad_and_empty_plaintext_are_rejected` (GCM; one side empty still works),
 `empty_message_is_rejected` (GMAC), and the two CLI tests; proptests now draw non-empty AAD (GCM) /
