@@ -27,7 +27,8 @@ pub enum DstuStatus {
     DSTU_ERR_BUFFER_TOO_SMALL = 5,
     /// `crypto_secretstream`: `tag_byte` isn't one of the four valid values.
     DSTU_ERR_UNKNOWN_TAG = 6,
-    /// A `crypto_secretstream` push/pull state, or a Kupyna hasher, was already finalized.
+    /// A `crypto_secretstream` push/pull state, or a Kupyna hasher, was already finalized - or a
+    /// `crypto_secretstream` state's chunk counter is exhausted (after 2^64 - 1 chunks).
     DSTU_ERR_FINALIZED = 7,
     /// `dstu_selftest()`'s own known-answer self-check failed.
     DSTU_ERR_SELFTEST_FAILED = 8,

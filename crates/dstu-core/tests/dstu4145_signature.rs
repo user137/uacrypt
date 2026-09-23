@@ -389,4 +389,54 @@ mod t189_public_key_validation {
             "a forged signature under the point-at-infinity public key must not verify"
         );
     }
+
+    // T-245b: `Q' = Q + T2` (T2 the order-2 point) is on the curve with x != 0 but has order 2n,
+    // so only full validation (`n*Q' == O`, SEC 1 v2 §3.2.2.1) rejects it. A genuine signature
+    // with an even `r` also verifies under `Q'`, since `r*T2 == O`.
+    #[cfg_attr(
+        miri,
+        ignore = "scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see docs/TASKS.md T-100"
+    )]
+    #[test]
+    fn order_2n_public_key_is_rejected() {
+        use dstu_core::hazmat::dstu4145::scalar::Scalar;
+        use dstu_core::hazmat::dstu4145::signature::sign;
+
+        let json = include_str!("vectors/dstu4145/gf2m163.json");
+        let b = field(extract(json, "b"));
+        let mut t2_y = b;
+        for _ in 0..162 {
+            t2_y = t2_y.square();
+        }
+        let t2 = Point::Affine(FieldElement::ZERO, t2_y);
+
+        let g = Point::generator();
+        let d_bytes = encode_u32(0x1234_5678);
+        let q = g.scalar_multiply(&d_bytes).negate();
+        let one = encode_u32(1);
+        let q_2n = curve163::verify_combine(q, &one, t2, &one);
+        assert!(q_2n.is_on_curve(), "Q + T2 must be a valid curve point");
+        assert!(!matches!(q_2n, Point::Affine(x, _) if x == FieldElement::ZERO));
+
+        let hash = decode_hex(ARBITRARY_HASH);
+        let (r, s) = (2..200u32)
+            .filter_map(|e| {
+                sign(
+                    &hash,
+                    Scalar::from_be_bytes(&d_bytes),
+                    Scalar::from_be_bytes(&encode_u32(e)),
+                    g,
+                )
+            })
+            .find(|(r, _)| r[20] & 1 == 0)
+            .expect("about half of all signatures have an even r");
+        assert!(
+            verify(&hash, &r, &s, q, g),
+            "the genuine key must still verify"
+        );
+        assert!(
+            !verify(&hash, &r, &s, q_2n, g),
+            "a public key of order 2n must be rejected"
+        );
+    }
 }

@@ -124,7 +124,8 @@ typedef enum {
    */
   DSTU_ERR_UNKNOWN_TAG = 6,
   /**
-   * A `crypto_secretstream` push/pull state, or a Kupyna hasher, was already finalized.
+   * A `crypto_secretstream` push/pull state, or a Kupyna hasher, was already finalized - or a
+   * `crypto_secretstream` state's chunk counter is exhausted (after 2^64 - 1 chunks).
    */
   DSTU_ERR_FINALIZED = 7,
   /**

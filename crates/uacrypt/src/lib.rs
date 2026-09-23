@@ -244,9 +244,11 @@ impl From<dstu_core::crypto_secretstream::SecretstreamError> for CliError {
             SecretstreamError::TagMismatch => Self::SecretstreamVerifyFailed,
             SecretstreamError::UnknownTag => Self::SecretstreamUnknownTag,
             SecretstreamError::Random(e) => Self::Random(e.to_string()),
-            SecretstreamError::InvalidLength | SecretstreamError::StreamFinalized => unreachable!(
-                "uacrypt always supplies matching buffer lengths and never calls push/pull \
-                 again after a Final chunk"
+            SecretstreamError::InvalidLength
+            | SecretstreamError::StreamFinalized
+            | SecretstreamError::CounterExhausted => unreachable!(
+                "uacrypt always supplies matching buffer lengths, never calls push/pull again \
+                 after a Final chunk, and cannot reach 2^64 - 1 chunks of 8 KiB"
             ),
         }
     }

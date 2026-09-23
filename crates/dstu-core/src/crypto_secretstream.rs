@@ -211,6 +211,10 @@ pub enum SecretstreamError {
     /// [`PushState::push`]/[`PullState::pull`] called again after a [`Tag::Final`] chunk already
     /// closed this state.
     StreamFinalized,
+    /// The per-chunk counter (it is also the chunk's IV) has no next value: 2^64 - 1 chunks were
+    /// already processed on this state. Unreachable in practice, but checked so the counter can
+    /// never wrap and reuse an IV (T-245a).
+    CounterExhausted,
     /// [`PushState::init`]'s OS CSPRNG call failed while generating a header.
     #[cfg(any(feature = "std", feature = "getrandom"))]
     Random(crate::randombytes::RandomError),
@@ -224,6 +228,9 @@ impl fmt::Display for SecretstreamError {
             SecretstreamError::UnknownTag => write!(f, "unrecognized chunk tag byte"),
             SecretstreamError::StreamFinalized => {
                 write!(f, "stream already finalized, no more chunks accepted")
+            }
+            SecretstreamError::CounterExhausted => {
+                write!(f, "chunk counter exhausted, no more chunks accepted")
             }
             #[cfg(any(feature = "std", feature = "getrandom"))]
             SecretstreamError::Random(e) => write!(f, "{e}"),
@@ -320,7 +327,8 @@ impl PushState {
     /// # Errors
     ///
     /// Returns [`SecretstreamError::InvalidLength`] if `ciphertext_out.len() != plaintext.len()`,
-    /// or [`SecretstreamError::StreamFinalized`] if a previous chunk already used [`Tag::Final`].
+    /// [`SecretstreamError::StreamFinalized`] if a previous chunk already used [`Tag::Final`], or
+    /// [`SecretstreamError::CounterExhausted`] after 2^64 - 1 chunks.
     pub fn push(
         &mut self,
         tag: Tag,
@@ -333,6 +341,9 @@ impl PushState {
         if ciphertext_out.len() != plaintext.len() {
             return Err(SecretstreamError::InvalidLength);
         }
+        let Some(next_counter) = self.counter.checked_add(1) else {
+            return Err(SecretstreamError::CounterExhausted);
+        };
 
         let cipher = Kalyna256_256Gcm::new(&self.subkey);
         let iv = chunk_iv(self.counter);
@@ -341,7 +352,7 @@ impl PushState {
             unreachable!("ciphertext_out.len() == plaintext.len() checked above")
         };
 
-        self.counter += 1;
+        self.counter = next_counter;
         match tag {
             Tag::Rekey => rekey(&mut self.subkey),
             Tag::Final => self.finalized = true,
@@ -399,7 +410,8 @@ impl PullState {
     /// Returns [`SecretstreamError::UnknownTag`] if `tag_byte` isn't a value [`Tag::to_byte`]
     /// produces, [`SecretstreamError::InvalidLength`] if `plaintext_out.len() != ciphertext.len()`
     /// or `auth_tag.len() != 16`,
-    /// [`SecretstreamError::StreamFinalized`] if a previous chunk already used [`Tag::Final`], or
+    /// [`SecretstreamError::StreamFinalized`] if a previous chunk already used [`Tag::Final`],
+    /// [`SecretstreamError::CounterExhausted`] after 2^64 - 1 chunks, or
     /// [`SecretstreamError::TagMismatch`] if authentication fails - `plaintext_out` is left
     /// all-zero on any authentication failure, never unverified plaintext.
     pub fn pull(
@@ -420,6 +432,9 @@ impl PullState {
         if plaintext_out.len() != ciphertext.len() || auth_tag.len() != TAG_LEN {
             return Err(SecretstreamError::InvalidLength);
         }
+        let Some(next_counter) = self.counter.checked_add(1) else {
+            return Err(SecretstreamError::CounterExhausted);
+        };
 
         let cipher = Kalyna256_256Gcm::new(&self.subkey);
         let iv = chunk_iv(self.counter);
@@ -432,7 +447,7 @@ impl PullState {
             Err(GcmError::InvalidLength) => return Err(SecretstreamError::InvalidLength),
         }
 
-        self.counter += 1;
+        self.counter = next_counter;
         match tag {
             Tag::Rekey => rekey(&mut self.subkey),
             Tag::Final => self.finalized = true,
@@ -440,5 +455,48 @@ impl PullState {
         }
 
         Ok(tag)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // T-245a: the chunk counter is the IV, so it must never wrap. Once it is exhausted, push and
+    // pull must refuse before touching their output buffer.
+    #[cfg(any(feature = "std", feature = "getrandom"))]
+    #[test]
+    fn push_and_pull_refuse_to_wrap_the_chunk_counter() {
+        let key = Key::from_bytes([7u8; 32]);
+        let (mut push, header) = PushState::init(&key).expect("OS CSPRNG available");
+        push.counter = u64::MAX - 1;
+        let mut ciphertext = [0u8; 3];
+        let auth_tag = push
+            .push(Tag::Message, b"abc", &mut ciphertext)
+            .expect("the last usable counter still encrypts");
+        let mut unused = [0u8; 3];
+        assert!(matches!(
+            push.push(Tag::Message, b"abc", &mut unused),
+            Err(SecretstreamError::CounterExhausted)
+        ));
+        assert_eq!(unused, [0u8; 3]);
+
+        let mut pull = PullState::init(&key, &header);
+        pull.counter = u64::MAX - 1;
+        let mut plaintext = [0u8; 3];
+        pull.pull(
+            Tag::Message.to_byte(),
+            &ciphertext,
+            &auth_tag,
+            &mut plaintext,
+        )
+        .expect("the last usable counter still decrypts");
+        assert_eq!(&plaintext, b"abc");
+        let mut unused = [0u8; 3];
+        assert!(matches!(
+            pull.pull(Tag::Message.to_byte(), &ciphertext, &auth_tag, &mut unused),
+            Err(SecretstreamError::CounterExhausted)
+        ));
+        assert_eq!(unused, [0u8; 3]);
     }
 }

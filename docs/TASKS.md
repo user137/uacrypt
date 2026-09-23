@@ -8514,13 +8514,21 @@ which is exactly why the divergence was never caught.
   overlap" in the cbindgen doc comments **and** detect overlap and return T-240's
   `DSTU_ERR_INVALID_ARGUMENT`, or support in-place properly. Test: an overlapping call in
   `ffi_tests.rs` returns the error, clean under Miri.
-- [ ] **T-245** (audit F-12/F-13, Info) (a) `crypto_secretstream`'s `self.counter += 1`
+- [x] **T-245** (audit F-12/F-13, Info) (a) `crypto_secretstream`'s `self.counter += 1`
   (`crypto_secretstream.rs:329,418`) wraps to 0 in release after 2^64 chunks -> IV reuse; use
   `checked_add` plus a new `SecretstreamError` variant. Unreachable in practice - do it because the
   global rule wants bounds safety provable from the line itself. (b) m=163 `signature::verify`
   rejects only the order-2 point (`x == 0`); keys of order 2n (`Q' + T2`) pass. Not a forgery (the
   attacker owns such a key), but non-standard validation. Q3 attached: if `x != 0` was not a
   deliberate T-189 performance choice, switch to `n*Q == O` like m=257.
+  **Done 2026-09-23 (local commit, not pushed).**
+  - **(a)** `push`/`pull` compute `checked_add(1)` before any work and assign it only after
+    success. The new `SecretstreamError::CounterExhausted` maps to `DSTU_ERR_FINALIZED` in the
+    capi (no new status) and to the `unreachable!` arm in uacrypt. In-module red test (it did not
+    compile against the old code; the old code panics on overflow in debug).
+  - **(b)** m=163 `verify` now checks `!is_on_curve || n*q != O`, replacing the `x == 0` check. The
+    red test `order_2n_public_key_is_rejected` uses `Q + T2`, built via `verify_combine`, with a
+    genuine even-`r` signature: it verified before the fix and is rejected after it. See D-203.
 - [ ] **T-246** (audit area 10, docs) Correct the claims the audit disproved, each in the file that
   owns it: the `crypto_secretstream.rs`/`crypto_secretbox.rs` module docs ("a tampered chunk ... fail
   closed" - true only after T-232); D-56's "covered by the proptest round-trip" (add a new `D-`

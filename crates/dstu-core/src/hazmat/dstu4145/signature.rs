@@ -69,13 +69,12 @@ pub fn verify(hash: &[u8], r: &[u8; 21], s: &[u8; 21], q: Point, g: Point) -> bo
     }
 
     // `docs/TASKS.md` T-189: `q` is caller-supplied and was never validated - `is_on_curve`
-    // rejects `Infinity` and any off-curve point; the explicit `x != 0` rejection additionally
-    // excludes the curve's one non-identity small subgroup (cofactor 2, confirmed both via
-    // Hasse's bound and Bouncy Castle's own `DSTU4145NamedCurves.java` `h_s[0] = TWO`). Without
-    // this, `q`'s order dividing 2 is a real universal-forgery primitive, not just bad hygiene -
-    // see `tests/dstu4145_signature.rs`'s `t189_public_key_validation` module.
-    let q_x_is_zero = matches!(q, Point::Affine(x, _) if x == FieldElement::ZERO);
-    if q_x_is_zero || !q.is_on_curve() {
+    // rejects `Infinity` and any off-curve point. Without this, `q`'s order dividing 2 is a real
+    // universal-forgery primitive - see `tests/dstu4145_signature.rs`'s
+    // `t189_public_key_validation` module. T-245b: full validation `n*q == O` (SEC 1 v2 §3.2.2.1,
+    // as `signature257::verify` already does) instead of rejecting only `x == 0`, which let a key
+    // of order 2n (`Q + T2`, cofactor 2) through. It costs one more scalar multiplication.
+    if !q.is_on_curve() || q.scalar_multiply(&n) != Point::Infinity {
         return false;
     }
 

@@ -233,8 +233,12 @@ pub unsafe extern "C" fn dstu_secretstream_push(
                 DstuStatus::DSTU_OK
             }
             Err(SecretstreamError::InvalidLength) => DstuStatus::DSTU_ERR_INVALID_LENGTH,
-            Err(SecretstreamError::StreamFinalized) => DstuStatus::DSTU_ERR_FINALIZED,
-            Err(_) => unreachable!("push() only ever returns InvalidLength/StreamFinalized"),
+            Err(SecretstreamError::StreamFinalized | SecretstreamError::CounterExhausted) => {
+                DstuStatus::DSTU_ERR_FINALIZED
+            }
+            Err(_) => unreachable!(
+                "push() only ever returns InvalidLength/StreamFinalized/CounterExhausted"
+            ),
         }
     })
 }
@@ -343,7 +347,9 @@ pub unsafe extern "C" fn dstu_secretstream_pull(
             }
             Err(SecretstreamError::UnknownTag) => DstuStatus::DSTU_ERR_UNKNOWN_TAG,
             Err(SecretstreamError::InvalidLength) => DstuStatus::DSTU_ERR_INVALID_LENGTH,
-            Err(SecretstreamError::StreamFinalized) => DstuStatus::DSTU_ERR_FINALIZED,
+            Err(SecretstreamError::StreamFinalized | SecretstreamError::CounterExhausted) => {
+                DstuStatus::DSTU_ERR_FINALIZED
+            }
             Err(SecretstreamError::TagMismatch) => DstuStatus::DSTU_ERR_TAG_MISMATCH,
             Err(_) => unreachable!("pull() has no Random variant reachable here"),
         }

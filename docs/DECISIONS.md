@@ -11599,6 +11599,9 @@ with the corrected ordering spelled out.
 
 ## D-172: T-189 - `hazmat::dstu4145::signature::verify` accepted an unvalidated public key, a real universal-forgery bug
 
+> **Superseded in part by D-203 (T-245b, 2026-09-23):** the "`x != 0` rejection is complete" conclusion below
+> covered small-subgroup points only, not keys of order `2n`. `verify` now does full validation `n*Q == O`.
+
 **Found auditing T-183** (owner-directed adversarial-test-coverage audit of `crypto_box`/
 `dstu9041`) - out of that task's own dstu9041-only scope, but the same shape of gap: `verify`'s `q`
 parameter (`VerifyingKey::from_uncompressed_bytes` at the `crypto_sign` layer, and every direct
@@ -13616,3 +13619,23 @@ message is "authentication failed", so it cannot silently regress to the version
 
 General rule: when a wire format gains a prefix, re-read every test that tampers at a fixed offset.
 A green result is not evidence the test still hits the field it was written for.
+
+## D-203: T-245b - full public-key validation (`n*Q == O`) for DSTU 4145 `m=163` verify
+
+**Finding (audit F-13, Info).** D-172's fix rejected `Infinity`, any off-curve point, and the one
+non-identity point of order 2 (`x = 0`). With cofactor 2 the group is cyclic of order `2n`, so a
+point `Q' = Q + T2` (`T2` the order-2 point) is on the curve, has `x != 0` and has order `2n`. D-172's
+check let it through. Every signature with an even `r` that is valid under `Q` also verifies under
+`Q'`, since `r*T2 = O`. This is not a forgery: `Q'` is a key only its creator (who knows `d`) can
+publish. But it is non-standard validation, and signatures are no longer bound to one key.
+
+**Decision.** `signature::verify` checks `!q.is_on_curve() || q.scalar_multiply(&n) != Infinity`,
+the same check `signature257::verify` already used (D-185).
+- Citations: SEC 1 v2 §3.2.2.1 and NIST SP 800-56A r3 §5.6.2.3.3, full public-key validation
+  including `n*Q = O`.
+- Cost: one more scalar multiplication per verify (public data).
+- Owner question Q3 answered "yes" on 2026-09-23 (`docs/TASKS.md`, "Owner decisions").
+
+**Test.** `tests/dstu4145_signature.rs` `order_2n_public_key_is_rejected` builds `Q + T2` via the
+public `curve163::verify_combine(Q, 1, T2, 1)` and uses a genuine signature with an even `r`. It was
+accepted before the fix (red, confirmed) and is rejected after it; the genuine key still verifies.

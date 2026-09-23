@@ -3,10 +3,10 @@
 //! `Q = -d*G` convention, which applies identically here), built on `gf2m257`/`curve257`/
 //! `scalar257` instead. `docs/TASKS.md` T-199, `docs/DECISIONS.md` D-185/D-186.
 //!
-//! **`verify`'s public-key validation uses the general (`SP 800-56A`-style) check, not
-//! `signature::verify`'s `m=163`-specific `x == 0` rejection** - `curve257`'s cofactor is `4`, not
-//! `2` (D-185's Bouncy Castle cross-check, `h_s[6] = FOUR`), so `m=163`'s fix (reject the curve's
-//! one order-2 point directly by its known `x = 0` coordinate) does not carry over: a cofactor-4
+//! **`verify`'s public-key validation uses the general (`SP 800-56A`-style) check, not the
+//! `x == 0` rejection `signature::verify` used for `m=163` until T-245b** - `curve257`'s cofactor
+//! is `4`, not `2` (D-185's Bouncy Castle cross-check, `h_s[6] = FOUR`), so that fix (reject the
+//! curve's one order-2 point directly by its known `x = 0` coordinate) does not carry over: a cofactor-4
 //! curve's small subgroup also contains order-4 points, whose `x`-coordinates are not `0` and
 //! would slip past that specific check. Instead: reject `q` unless `q.scalar_multiply(&order())
 //! == Point::Infinity` - `q` lies in the prime-order subgroup if and only if this holds, true for
