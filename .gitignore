@@ -35,6 +35,12 @@
 # D-197, T-228). Same redistribution restriction as the DSTU 9041 files above - never committed.
 /docs/papers/DSTU_8845-2019.pdf
 
+# DSTU 7624:2014 (Kalyna), DSTU 4145-2002, DSTU 7564:2014 (Kupyna) standard texts, added by the
+# owner 2026-09-23 (T-234 primary-text check). Same redistribution restriction - never committed.
+/docs/papers/*7624*2014*.pdf
+/docs/papers/*4145*2002*.pdf
+/docs/papers/*7564*2014*.pdf
+
 # Oracle-harness build artifacts and fetched dependencies (Java/.NET) — fetched fresh via
 # Maven/NuGet at build time (see tests/oracle-harness/*/README or docs/TASKS.md "Infrastructure"),
 # never vendored or committed, same rule as /oracles below.

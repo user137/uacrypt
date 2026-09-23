@@ -13626,8 +13626,11 @@ A green result is not evidence the test still hits the field it was written for.
 non-identity point of order 2 (`x = 0`). With cofactor 2 the group is cyclic of order `2n`, so a
 point `Q' = Q + T2` (`T2` the order-2 point) is on the curve, has `x != 0` and has order `2n`. D-172's
 check let it through. Every signature with an even `r` that is valid under `Q` also verifies under
-`Q'`, since `r*T2 = O`. This is not a forgery: `Q'` is a key only its creator (who knows `d`) can
-publish. But it is non-standard validation, and signatures are no longer bound to one key.
+`Q'`, since `r*T2 = O`. `T2` comes from the public curve parameters, so **anyone** can compute
+`Q'` from a victim's public key, without `d`. That is key substitution (duplicate-signature key
+selection): an attacker publishes `Q'` as their own key, and about half of the victim's existing
+signatures then verify under it. No new message can be forged (still Info), but signatures were no
+longer bound to one key.
 
 **Decision.** `signature::verify` checks `!q.is_on_curve() || q.scalar_multiply(&n) != Infinity`,
 the same check `signature257::verify` already used (D-185).

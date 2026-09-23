@@ -39,6 +39,14 @@
 //! [`super::kalyna_gcm`]'s two-value, half-block-offset-scaled layout (there is only one stream
 //! here, no AAD/ciphertext split to keep separate).
 //!
+//! # Security: the tag does not bind the exact message length
+//!
+//! Because the tag covers the padded message and its padded length, messages of different lengths
+//! that pad to the same blocks can share a tag under the same key. Do not rely on this tag where an
+//! attacker can change a message's length, unless the true length is authenticated some other way
+//! (`docs/DECISIONS.md` D-200). Whether DSTU 7624:2014's own text specifies this padding is not yet
+//! confirmed (T-234).
+//!
 //! # No key separation from any encryption key
 //!
 //! **Do not use this for new designs without a specific, understood reason.** Same misuse warning

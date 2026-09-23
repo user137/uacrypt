@@ -1670,6 +1670,10 @@ file> --out ... --iterations <3000|30>`.
 
 ### DSTU 4145 vs. ECDSA (sign/verify, ops/s — higher is better) — T-150
 
+**The `verify/s` numbers below predate T-245b (2026-09-23).** Since T-245b, `m=163` `verify` also
+checks `n*Q == O` (one extra scalar multiplication, D-203), so these numbers are optimistic until
+they are re-measured.
+
 `sign`/`verify` had no `--iterations` flag before this pass (unlike every other benchmarkable
 command) - added for exactly this comparison (D-34's own policy: use the actual built binary, not
 an internal `criterion` number, for any cross-implementation claim). The message is hashed once
@@ -1928,6 +1932,10 @@ nonce); `sign-keygen`/`sign-pubkey`/`sign --iterations 5000`/`verify --iteration
 table. Correctness spot-checked before timing (`cmp` on the GCM round trip) on every run.
 
 ### `verify`: classic vs. fast path (ops/s — higher is better) — T-151/D-108
+
+**The `verify/s` numbers below predate T-245b (2026-09-23).** Since T-245b, `m=163` `verify` also
+checks `n*Q == O` (one extra scalar multiplication, D-203), so these numbers are optimistic until
+they are re-measured.
 
 **Absolute numbers in this section and the next (T-153) are superseded by T-198's hardware-`clmul`
 landing** (see that section above) - `FieldElement::multiply()` got ~64x cheaper on capable CPUs

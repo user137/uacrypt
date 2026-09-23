@@ -27,6 +27,15 @@
 //!    consequence of `dstu7624.c` reusing the same mutated length variable after its own padding
 //!    step) in the high half-block.
 //!
+//! # Security: the tag does not bind the exact ciphertext length
+//!
+//! Divergences 2 and 3 together mean the tag covers the ciphertext's padded form and padded length.
+//! So ciphertexts of different lengths that pad to the same blocks can share a tag under the same
+//! key, nonce and AAD. A caller whose ciphertext length an attacker can change must bind the true
+//! length itself, e.g. with a fixed-length AAD that contains it, as
+//! [`crate::crypto_secretbox`]/[`crate::crypto_secretstream`] do (`docs/DECISIONS.md` D-200).
+//! Whether DSTU 7624:2014's own text specifies this padding is not yet confirmed (T-234).
+//!
 //! **None of the 6 official test vectors have non-block-aligned plaintext** - the `0x80` padding
 //! marker in divergence 2 is transcribed as found but not oracle-exercised; see `docs/DECISIONS.md`
 //! D-56 and the `proptest` round-trip in `tests/kalyna_gcm.rs`, which does cover it generically.
