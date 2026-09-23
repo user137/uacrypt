@@ -208,8 +208,11 @@ sha256sum --ignore-missing -c SHA256SUMS
 
 # 3. Optional, independent of 1-2: GitHub's provenance record for the asset
 gh attestation verify uacrypt-linux-x86_64.tar.gz --repo user137/uacrypt \
-  --signer-workflow user137/uacrypt/.github/workflows/release.yml
+  --signer-workflow user137/uacrypt/.github/workflows/release.yml --source-ref refs/tags/v0.4.0
 ```
+
+In step 3, `--source-ref` accepts only an asset built from that release tag, not from a branch; put
+your version there.
 
 The binaries are built with `cargo auditable`, so `cargo audit bin uacrypt` checks the dependency
 versions compiled into a downloaded binary against the RustSec advisory database.

@@ -8836,6 +8836,15 @@ Next, in order:
      unfixed behaviour.
    - **T-252 signing:** Sigstore keyless.
    - **CVEs:** request a CVE for both advisories (T-232 and D-207).
+   - **Draft advisories created 2026-09-24 (private, not published):** `GHSA-j2w3-628p-qw92` (T-232,
+     High 7.5 proposed - the audit said Critical, CVSS 3.1 caps an integrity-only break at 7.5) and
+     `GHSA-wqmx-6fx4-jr5r` (D-207, Medium 5.9). Source texts: `.claude/disclosure-drafts/advisory_*.md`.
+     CVEs are requested from the advisory page before publishing.
+   - **Release-day order (each step confirmed):** check the date rule -> advisory texts final ->
+     request CVEs -> commit CHANGELOG `[Unreleased]` -> `[0.4.0] - <date>` -> push `master` +
+     `gh-pages` (the local gh-pages commit bumps the site marker) -> tag `v0.4.0` -> approve
+     the PyPI/npm/RubyGems environments -> publish both advisories -> RustSec PR -> verify live
+     registry pages and the T-252 verify commands on real assets -> T-251.
    Next: 0.4.0 release preparation (execution plan steps 4-6) - owner-gated, every outward step
    confirmed separately. After 0.4.0: the `uacrypt` UX batch T-255..T-265 as 0.5.0 (last section of
    this file, decisions resolved; start with T-255).
