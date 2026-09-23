@@ -21,7 +21,9 @@ prior `crypto_secretbox`-backed `encrypt` produced cannot be read by this `decry
 - acceptable pre-1.0. `crypto_secretbox` itself is unchanged and still available as a library
 primitive for whole-message use, just no longer what this CLI command uses. `--key` is a raw
 32-byte file (`crypto_secretstream::Key`'s size) — `uacrypt keygen --out key.bin` generates one from
-the OS CSPRNG (`docs/TASKS.md` T-115). `encrypt` draws a fresh random header internally on every call
+the OS CSPRNG (`docs/TASKS.md` T-115). Like every `*-keygen` command, it refuses to overwrite an
+existing `--out`, so a repeated run cannot destroy a key, and on Unix it writes the key with mode
+`0600` (T-241). `encrypt` draws a fresh random header internally on every call
 and embeds it in `--out`; there is no `--nonce`/`--header` flag to supply or reuse by mistake.
 **0.4.0 changed the `encrypt`/`box-seal`/`box-seal512` file formats** (T-232/T-248,
 `docs/DECISIONS.md` D-200-D-202). Files written by 0.3.x don't open with 0.4.0. `box-open` almost

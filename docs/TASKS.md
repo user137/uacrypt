@@ -8457,7 +8457,7 @@ which is exactly why the divergence was never caught.
     signature updates in step 4" note forward, because the header change breaks Go's build.
   - Tests: `ffi_tests` (red = compile failure against the old enum signature) and one misuse test
     each in Go/.NET/C++. The Go test was red when its status-14 arm was removed.
-- [ ] **T-241** (audit F-06, Medium, Confirmed) `uacrypt` file hygiene. (a) Secret keys (`keygen`
+- [x] **T-241** (audit F-06, Medium, Confirmed) `uacrypt` file hygiene. (a) Secret keys (`keygen`
   `lib.rs:1831`, `sign-keygen`/`sign-keygen257` ~1917/~1934, `box-keygen` ~2354, `box512-keygen`
   ~2590) are written via `std::fs::write` -> mode `0666 & umask` (0644 typically, world-readable),
   following a pre-existing symlink. (b) `secretstream_temp_path` (`lib.rs:1386`) is predictable
@@ -8470,6 +8470,26 @@ which is exactly why the divergence was never caught.
   Tests (`#[cfg(unix)]`): key file mode is 0600; a symlink at the temp path makes the command fail
   without touching the target. CHANGELOG note: users should check permissions on key files
   generated so far.
+  **Done 2026-09-23 (local commit, not pushed).**
+  - **Owner decision:** keygen must not overwrite. The owner first answered "keep overwrite", then
+    chose "refuse" once the options were explained.
+  - All five `*-keygen` commands go through `write_new_secret_key`: `create_new` plus Unix `0600`
+    plus `sync_all`. They return `CliError::KeyFileExists` if the path exists, including as a
+    symlink, and remove a partial file on a write error.
+  - `secretstream_temp_path`/`strumok_temp_path` are replaced by `temp_path_beside`, which adds a
+    random 8-byte hex suffix, plus `create_private_new` and a `sync_all` before `rename`.
+  - Tests:
+    - every keygen refuses an existing file and leaves it untouched;
+    - temp names differ between calls;
+    - `create_new` refuses an existing path;
+    - tests that checked for a leftover temp file by its old fixed name now count directory
+      entries.
+  - `#[cfg(unix)]` tests cover key mode 0600 for all five keygens, a symlink at `--out` (target
+    untouched) and decrypt output mode 0600. **They only type-checked on the Windows machine
+    (`cargo check --target x86_64-unknown-linux-gnu --tests`).** They have never run: the Pi was
+    unreachable (SSH timeout). Run them on the Pi or in Linux CI before the release.
+  - Public keys and signatures still overwrite. They are not secret, and the owner decision covered
+    keys only.
 - [ ] **T-242** (audit F-07/F-08/F-14, Low) Secret-hygiene batch. Not zeroized: `kappa`,
   `t_point`/`t_prime`, `m_prime`, `kw_plaintext`, `recovered` in `hazmat/dstu9041/encryption.rs`
   (~90, ~135, ~139) and `encryption512.rs`; the KMAC output `mac` (the signing nonce source) in

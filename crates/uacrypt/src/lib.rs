@@ -79,6 +79,7 @@ pub enum CliError {
     KwChecksumMismatch,
     XtsInvalidLength,
     Random(String),
+    KeyFileExists(PathBuf),
     SecretstreamTruncated,
     SecretstreamVerifyFailed,
     SecretstreamUnknownTag,
@@ -116,6 +117,11 @@ impl fmt::Display for CliError {
             CliError::Io { path, message } => {
                 write!(f, "{}: {message}", path.display())
             }
+            CliError::KeyFileExists(path) => write!(
+                f,
+                "{} already exists - refusing to overwrite a key file; delete it first if you                  really want a new key",
+                path.display()
+            ),
             CliError::WrongLength {
                 what,
                 expected,
@@ -1391,14 +1397,70 @@ pub fn parse_secretstream_args(args: &[String]) -> Result<SecretstreamArgs, CliE
     })
 }
 
-/// Appends a fixed suffix to `path` rather than using `Path::with_extension` (which would replace
-/// an existing extension) or `format!("{}", path.display())` (lossy on non-UTF-8 paths) - an
-/// `OsString` append is correct for both cases and still lands next to `out_path`, which
-/// [`run_secretstream_command`] needs so the final `std::fs::rename` stays on the same filesystem.
-fn secretstream_temp_path(out_path: &std::path::Path) -> PathBuf {
+/// A fresh temp path next to `out_path` (same directory, so the final `std::fs::rename` stays on
+/// one filesystem), with a random suffix from the OS CSPRNG. A fixed suffix let anyone who can
+/// write to that directory plant a symlink there in advance (T-241). The suffix is appended to the
+/// `OsString`, not built with `Path::with_extension` (which would replace an existing extension) or
+/// `format!` (lossy on non-UTF-8 paths).
+///
+/// # Errors
+///
+/// Returns [`CliError::Random`] if the OS CSPRNG fails.
+fn temp_path_beside(out_path: &std::path::Path) -> Result<PathBuf, CliError> {
+    let mut suffix = [0u8; 8];
+    dstu_core::randombytes::randombytes_buf(&mut suffix)
+        .map_err(|e| CliError::Random(e.to_string()))?;
     let mut name = out_path.as_os_str().to_os_string();
-    name.push(".secretstream-tmp");
-    PathBuf::from(name)
+    name.push(".uacrypt-tmp-");
+    for byte in suffix {
+        name.push(format!("{byte:02x}"));
+    }
+    Ok(PathBuf::from(name))
+}
+
+/// Opens `path` for writing only if nothing exists there yet, whether a file or a symlink:
+/// `create_new` is `O_CREAT | O_EXCL`, which never follows a link. On Unix the file gets mode
+/// `0600`, so a key, a temp file or a decrypted plaintext is never readable by other users. On
+/// Windows it inherits its directory's ACL (T-241).
+fn create_private_new(path: &std::path::Path) -> std::io::Result<std::fs::File> {
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    options.open(path)
+}
+
+/// Writes a freshly generated secret key to `path` via [`create_private_new`]. It refuses to
+/// replace anything already there, because a keygen run over an existing key file would destroy
+/// that key and everything encrypted to it (T-241, owner decision 2026-09-23). A failed write
+/// removes the partial file.
+///
+/// # Errors
+///
+/// Returns [`CliError::KeyFileExists`] if `path` exists (including as a symlink), or
+/// [`CliError::Io`] for any other open/write/sync failure.
+fn write_new_secret_key(path: &std::path::Path, bytes: &[u8]) -> Result<(), CliError> {
+    use std::io::Write;
+    let io_err = |e: std::io::Error| CliError::Io {
+        path: path.to_path_buf(),
+        message: e.to_string(),
+    };
+    let mut file = create_private_new(path).map_err(|e| {
+        if e.kind() == std::io::ErrorKind::AlreadyExists {
+            CliError::KeyFileExists(path.to_path_buf())
+        } else {
+            io_err(e)
+        }
+    })?;
+    if let Err(e) = file.write_all(bytes).and_then(|()| file.sync_all()) {
+        drop(file);
+        let _ = std::fs::remove_file(path);
+        return Err(io_err(e));
+    }
+    Ok(())
 }
 
 fn read_exact_or_truncated(
@@ -1427,7 +1489,7 @@ fn read_exact_or_truncated(
 fn run_secretstream_encrypt(
     key: &dstu_core::crypto_secretstream::Key,
     in_path: &PathBuf,
-    tmp_path: &PathBuf,
+    tmp_path: &std::path::Path,
 ) -> Result<(), CliError> {
     use dstu_core::crypto_secretstream::{PushState, Tag};
     use std::io::{Read, Write};
@@ -1438,12 +1500,12 @@ fn run_secretstream_encrypt(
         path: in_path.clone(),
         message: e.to_string(),
     })?;
-    let mut out_file = std::fs::File::create(tmp_path).map_err(|e| CliError::Io {
-        path: tmp_path.clone(),
+    let mut out_file = create_private_new(tmp_path).map_err(|e| CliError::Io {
+        path: tmp_path.to_path_buf(),
         message: e.to_string(),
     })?;
     out_file.write_all(&header).map_err(|e| CliError::Io {
-        path: tmp_path.clone(),
+        path: tmp_path.to_path_buf(),
         message: e.to_string(),
     })?;
 
@@ -1477,7 +1539,7 @@ fn run_secretstream_encrypt(
             .and_then(|()| out_file.write_all(&ciphertext))
             .and_then(|()| out_file.write_all(&auth_tag))
             .map_err(|e| CliError::Io {
-                path: tmp_path.clone(),
+                path: tmp_path.to_path_buf(),
                 message: e.to_string(),
             })?;
 
@@ -1488,7 +1550,10 @@ fn run_secretstream_encrypt(
         cur_len = next_len;
     }
 
-    Ok(())
+    out_file.sync_all().map_err(|e| CliError::Io {
+        path: tmp_path.to_path_buf(),
+        message: e.to_string(),
+    })
 }
 
 /// Decrypts `in_path` into `tmp_path` (the caller renames onto the real `--out` only after this
@@ -1499,7 +1564,7 @@ fn run_secretstream_encrypt(
 fn run_secretstream_decrypt(
     key: &dstu_core::crypto_secretstream::Key,
     in_path: &PathBuf,
-    tmp_path: &PathBuf,
+    tmp_path: &std::path::Path,
 ) -> Result<(), CliError> {
     use dstu_core::crypto_secretstream::{PullState, Tag};
     use std::io::{Read, Write};
@@ -1508,8 +1573,8 @@ fn run_secretstream_decrypt(
         path: in_path.clone(),
         message: e.to_string(),
     })?;
-    let mut out_file = std::fs::File::create(tmp_path).map_err(|e| CliError::Io {
-        path: tmp_path.clone(),
+    let mut out_file = create_private_new(tmp_path).map_err(|e| CliError::Io {
+        path: tmp_path.to_path_buf(),
         message: e.to_string(),
     })?;
 
@@ -1534,7 +1599,7 @@ fn run_secretstream_decrypt(
         let mut plaintext = vec![0u8; chunk_len];
         let tag = pull.pull(tag_byte, &ciphertext, &auth_tag, &mut plaintext)?;
         out_file.write_all(&plaintext).map_err(|e| CliError::Io {
-            path: tmp_path.clone(),
+            path: tmp_path.to_path_buf(),
             message: e.to_string(),
         })?;
 
@@ -1552,7 +1617,10 @@ fn run_secretstream_decrypt(
         return Err(CliError::SecretstreamTrailingData);
     }
 
-    Ok(())
+    out_file.sync_all().map_err(|e| CliError::Io {
+        path: tmp_path.to_path_buf(),
+        message: e.to_string(),
+    })
 }
 
 /// Runs `encrypt`/`decrypt` over `dstu_core::crypto_secretstream` (T-40/T-70, `docs/DECISIONS.md` D-68 -
@@ -1585,7 +1653,7 @@ pub fn run_secretstream_command(decrypt: bool, args: &SecretstreamArgs) -> Resul
     key_arr.copy_from_slice(&key_bytes);
     let key = dstu_core::crypto_secretstream::Key::from_bytes(key_arr);
 
-    let tmp_path = secretstream_temp_path(&args.out_path);
+    let tmp_path = temp_path_beside(&args.out_path)?;
     let result = if decrypt {
         run_secretstream_decrypt(&key, &args.in_path, &tmp_path)
     } else {
@@ -1840,10 +1908,7 @@ pub fn parse_keygen_args(args: &[String]) -> Result<KeygenArgs, CliError> {
 pub fn run_keygen_command(args: &KeygenArgs) -> Result<(), CliError> {
     let key = dstu_core::crypto_secretstream::Key::generate()
         .map_err(|e| CliError::Random(e.to_string()))?;
-    std::fs::write(&args.out_path, key.as_bytes()).map_err(|e| CliError::Io {
-        path: args.out_path.clone(),
-        message: e.to_string(),
-    })
+    write_new_secret_key(&args.out_path, key.as_bytes())
 }
 
 /// Read-buffer size for streaming a message through Kupyna-256 on `sign`/`verify`'s behalf
@@ -1926,10 +1991,7 @@ pub fn parse_sign_keygen_args(args: &[String]) -> Result<SignKeygenArgs, CliErro
 pub fn run_sign_keygen_command(args: &SignKeygenArgs) -> Result<(), CliError> {
     let key = dstu_core::crypto_sign::SigningKey::generate()
         .map_err(|e| CliError::Random(e.to_string()))?;
-    std::fs::write(&args.out_path, key.to_bytes()).map_err(|e| CliError::Io {
-        path: args.out_path.clone(),
-        message: e.to_string(),
-    })
+    write_new_secret_key(&args.out_path, &key.to_bytes())
 }
 
 /// `m=257` sibling of [`run_sign_keygen_command`] - writes the raw 33-byte private scalar.
@@ -1943,10 +2005,7 @@ pub fn run_sign_keygen_command(args: &SignKeygenArgs) -> Result<(), CliError> {
 pub fn run_sign_keygen257_command(args: &SignKeygenArgs) -> Result<(), CliError> {
     let key = dstu_core::crypto_sign257::SigningKey::generate()
         .map_err(|e| CliError::Random(e.to_string()))?;
-    std::fs::write(&args.out_path, key.to_bytes()).map_err(|e| CliError::Io {
-        path: args.out_path.clone(),
-        message: e.to_string(),
-    })
+    write_new_secret_key(&args.out_path, &key.to_bytes())
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -2363,10 +2422,7 @@ pub fn parse_box_keygen_args(args: &[String]) -> Result<BoxKeygenArgs, CliError>
 pub fn run_box_keygen_command(args: &BoxKeygenArgs) -> Result<(), CliError> {
     let key = dstu_core::crypto_box::SecretKey::generate()
         .map_err(|e| CliError::Random(e.to_string()))?;
-    std::fs::write(&args.out_path, key.to_bytes()).map_err(|e| CliError::Io {
-        path: args.out_path.clone(),
-        message: e.to_string(),
-    })
+    write_new_secret_key(&args.out_path, &key.to_bytes())
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -2600,10 +2656,7 @@ pub fn parse_box512_keygen_args(args: &[String]) -> Result<Box512KeygenArgs, Cli
 pub fn run_box512_keygen_command(args: &Box512KeygenArgs) -> Result<(), CliError> {
     let key = dstu_core::crypto_box512::SecretKey::generate()
         .map_err(|e| CliError::Random(e.to_string()))?;
-    std::fs::write(&args.out_path, key.to_bytes()).map_err(|e| CliError::Io {
-        path: args.out_path.clone(),
-        message: e.to_string(),
-    })
+    write_new_secret_key(&args.out_path, &key.to_bytes())
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -2845,7 +2898,7 @@ pub fn parse_strumok_args(args: &[String]) -> Result<StrumokArgs, CliError> {
 /// makes feeding it one chunk at a time - instead of the whole file - safe to begin with.
 const STRUMOK_STREAM_CHUNK_BYTES: usize = 8 * 1024;
 
-/// Same rationale and shape as [`secretstream_temp_path`]: `--out` is written to a temp file next
+/// Temp file: same rationale and shape as [`run_secretstream_command`]'s: `--out` is written to a temp file next
 /// to it first and only `std::fs::rename`d onto the real path once the whole stream succeeds. Found
 /// necessary the hard way (not designed in up front): `strumok-crypt`'s old streaming path opened
 /// `--out` via `File::create` (truncating it) before finishing reading `--in`, so `--in`==`--out`
@@ -2854,12 +2907,7 @@ const STRUMOK_STREAM_CHUNK_BYTES: usize = 8 * 1024;
 /// also happens to fix a second, independent gap: an I/O error mid-stream used to leave a partially-
 /// written `--out` behind, violating this project's own no-partial-output-on-failure standard (D-65)
 /// that every other command already meets.
-fn strumok_temp_path(out_path: &std::path::Path) -> PathBuf {
-    let mut name = out_path.as_os_str().to_os_string();
-    name.push(".strumok-tmp");
-    PathBuf::from(name)
-}
-
+///
 /// Streams `--in` to a temp file next to `--out` in fixed-size chunks (the `iterations <= 1`, real
 /// usage path), then renames onto `args.out_path` only once the whole stream has succeeded -
 /// removing the temp file instead on any error. Split out of [`run_strumok_command`] to keep that
@@ -2873,7 +2921,7 @@ fn strumok_temp_path(out_path: &std::path::Path) -> PathBuf {
 fn run_strumok_stream(args: &StrumokArgs, key: &[u8], iv: &[u8]) -> Result<(), CliError> {
     use std::io::{Read, Write};
 
-    let tmp_path = strumok_temp_path(&args.out_path);
+    let tmp_path = temp_path_beside(&args.out_path)?;
 
     macro_rules! stream_variant {
         ($cipher:ty, $key_len:literal) => {{
@@ -2886,8 +2934,8 @@ fn run_strumok_stream(args: &StrumokArgs, key: &[u8], iv: &[u8]) -> Result<(), C
                 path: args.in_path.clone(),
                 message: e.to_string(),
             })?;
-            let mut out_file = std::fs::File::create(&tmp_path).map_err(|e| CliError::Io {
-                path: tmp_path.clone(),
+            let mut out_file = create_private_new(&tmp_path).map_err(|e| CliError::Io {
+                path: tmp_path.to_path_buf(),
                 message: e.to_string(),
             })?;
             let mut cipher = <$cipher>::new(&key_arr, &iv_arr);
@@ -2902,11 +2950,14 @@ fn run_strumok_stream(args: &StrumokArgs, key: &[u8], iv: &[u8]) -> Result<(), C
                 }
                 cipher.apply_keystream(&mut chunk[..n]);
                 out_file.write_all(&chunk[..n]).map_err(|e| CliError::Io {
-                    path: tmp_path.clone(),
+                    path: tmp_path.to_path_buf(),
                     message: e.to_string(),
                 })?;
             }
-            Ok(())
+            out_file.sync_all().map_err(|e| CliError::Io {
+                path: tmp_path.to_path_buf(),
+                message: e.to_string(),
+            })
         }};
     }
 
@@ -3101,8 +3152,10 @@ const KEYGEN_HELP: &str = "\
 uacrypt keygen - generate a fresh random 32-byte key for `encrypt`/`decrypt`.
 
 Draws from the OS CSPRNG (dstu_core::randombytes, via crypto_secretstream::Key::generate) and
-writes the raw 32 bytes to --out - the exact format `encrypt`/`decrypt --key` expect. Overwrites
---out if it already exists, same as every other command here that writes a file.
+writes the raw 32 bytes to --out - the exact format `encrypt`/`decrypt --key` expect. Refuses to overwrite
+--out if it already exists (so a repeated run cannot destroy a key); delete the old file first if
+you really want a new key. Every `*-keygen` command behaves the same way, and on Unix writes the
+key with mode 0600.
 
 USAGE:
     uacrypt keygen --out <path>
@@ -5256,7 +5309,7 @@ mod tests {
     /// (`iterations <= 1`) path used to open `--out` via `File::create` - truncating it - before
     /// finishing reading `--in`, so "encrypt this file in place" silently produced a 0-byte file
     /// (exit code 0, no error). Fixed via the same temp-file-then-rename discipline
-    /// `run_secretstream_command` already used (`strumok_temp_path`). Strumok is its own inverse
+    /// `run_secretstream_command` already used (`temp_path_beside`). Strumok is its own inverse
     /// (XOR keystream), so applying the same command twice in place must recover the plaintext.
     #[test]
     fn run_strumok_command_in_and_out_same_path_round_trips() {
@@ -5293,9 +5346,10 @@ mod tests {
             "applying the keystream twice must recover the original plaintext"
         );
 
-        assert!(
-            !dir.file("data.bin.strumok-tmp").exists(),
-            "no leftover temp file after a successful run"
+        assert_eq!(
+            std::fs::read_dir(&dir.0).expect("list dir").count(),
+            3,
+            "no leftover temp file after a successful run (only key, iv, data)"
         );
     }
 
@@ -7342,5 +7396,135 @@ mod tests {
             run(&["sign".to_string(), "--bogus".to_string()]),
             Err(CliError::UnknownFlag("--bogus".to_string()))
         );
+    }
+
+    // T-241: every secret-key command, as (label, run-with-this-out-path).
+    fn secret_keygens() -> Vec<(&'static str, Box<dyn Fn(PathBuf) -> Result<(), CliError>>)> {
+        vec![
+            (
+                "keygen",
+                Box::new(|out_path| run_keygen_command(&KeygenArgs { out_path })),
+            ),
+            (
+                "sign-keygen",
+                Box::new(|out_path| run_sign_keygen_command(&SignKeygenArgs { out_path })),
+            ),
+            (
+                "sign-keygen257",
+                Box::new(|out_path| run_sign_keygen257_command(&SignKeygenArgs { out_path })),
+            ),
+            (
+                "box-keygen",
+                Box::new(|out_path| run_box_keygen_command(&BoxKeygenArgs { out_path })),
+            ),
+            (
+                "box-keygen512",
+                Box::new(|out_path| run_box512_keygen_command(&Box512KeygenArgs { out_path })),
+            ),
+        ]
+    }
+
+    // T-241 (owner decision 2026-09-23): a keygen run must never destroy an existing key file.
+    #[test]
+    fn every_keygen_refuses_an_existing_out_and_leaves_it_untouched() {
+        let dir = TempDir::new("t241_keygen_exists");
+        for (label, keygen) in secret_keygens() {
+            let out = dir.file(&format!("{label}.key"));
+            std::fs::write(&out, b"an existing key").expect("write existing key");
+            assert_eq!(
+                keygen(out.clone()),
+                Err(CliError::KeyFileExists(out.clone())),
+                "{label}"
+            );
+            assert_eq!(
+                std::fs::read(&out).expect("read"),
+                b"an existing key",
+                "{label}"
+            );
+        }
+        let names: Vec<_> = std::fs::read_dir(&dir.0)
+            .expect("list dir")
+            .map(|e| e.expect("entry").file_name())
+            .collect();
+        assert_eq!(
+            names.len(),
+            secret_keygens().len(),
+            "no stray files: {names:?}"
+        );
+    }
+
+    #[test]
+    fn temp_path_beside_is_unpredictable_and_stays_in_the_same_directory() {
+        let dir = TempDir::new("t241_temp_name");
+        let out = dir.file("out.bin");
+        let a = temp_path_beside(&out).expect("temp path");
+        let b = temp_path_beside(&out).expect("temp path");
+        assert_ne!(a, b);
+        assert_eq!(a.parent(), out.parent());
+        assert_eq!(b.parent(), out.parent());
+    }
+
+    #[test]
+    fn create_private_new_refuses_an_existing_path() {
+        let dir = TempDir::new("t241_create_new");
+        let path = dir.file("taken.bin");
+        std::fs::write(&path, b"keep me").expect("write");
+        let err = create_private_new(&path).expect_err("must not open an existing path");
+        assert_eq!(err.kind(), std::io::ErrorKind::AlreadyExists);
+        assert_eq!(std::fs::read(&path).expect("read"), b"keep me");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn every_keygen_writes_its_key_with_mode_0600() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = TempDir::new("t241_keygen_mode");
+        for (label, keygen) in secret_keygens() {
+            let out = dir.file(&format!("{label}.key"));
+            keygen(out.clone()).expect("keygen");
+            let mode = std::fs::metadata(&out).expect("stat").permissions().mode();
+            assert_eq!(mode & 0o777, 0o600, "{label}");
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn keygen_refuses_a_symlink_at_out_and_leaves_its_target_untouched() {
+        let dir = TempDir::new("t241_keygen_symlink");
+        let target = dir.file("victim.txt");
+        std::fs::write(&target, b"not a key").expect("write target");
+        let link = dir.file("key.bin");
+        std::os::unix::fs::symlink(&target, &link).expect("symlink");
+        assert!(run_keygen_command(&KeygenArgs {
+            out_path: link.clone()
+        })
+        .is_err());
+        assert_eq!(std::fs::read(&target).expect("read"), b"not a key");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn decrypt_output_is_mode_0600() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = TempDir::new("t241_decrypt_mode");
+        std::fs::write(dir.file("key.bin"), [0x42u8; 32]).expect("write key");
+        std::fs::write(dir.file("pt.bin"), b"secret plaintext").expect("write input");
+        let enc = SecretstreamArgs {
+            key_path: dir.file("key.bin"),
+            in_path: dir.file("pt.bin"),
+            out_path: dir.file("ct.bin"),
+        };
+        run_secretstream_command(false, &enc).expect("encrypt");
+        let dec = SecretstreamArgs {
+            key_path: dir.file("key.bin"),
+            in_path: dir.file("ct.bin"),
+            out_path: dir.file("out.bin"),
+        };
+        run_secretstream_command(true, &dec).expect("decrypt");
+        let mode = std::fs::metadata(dir.file("out.bin"))
+            .expect("stat")
+            .permissions()
+            .mode();
+        assert_eq!(mode & 0o777, 0o600);
     }
 }

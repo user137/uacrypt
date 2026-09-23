@@ -75,8 +75,11 @@ fn strumok_crypt_in_place_round_trips_without_destroying_data() {
         "applying the keystream twice in place must recover the original plaintext"
     );
 
-    let leftover = dir.file("data.bin.strumok-tmp");
-    assert!(!leftover.exists(), "no leftover temp file after success");
+    assert_eq!(
+        std::fs::read_dir(&dir.0).expect("list dir").count(),
+        3,
+        "no leftover temp file after success (only key, iv, data)"
+    );
 }
 
 #[test]
@@ -108,9 +111,10 @@ fn strumok_crypt_in_place_leaves_no_partial_output_on_read_failure() {
     ]);
     assert!(r.failure());
     assert!(!out.exists(), "no partial --out on failure (D-65)");
-    assert!(
-        !dir.file("out.bin.strumok-tmp").exists(),
-        "no leftover temp file on failure either"
+    assert_eq!(
+        std::fs::read_dir(&dir.0).expect("list dir").count(),
+        2,
+        "no leftover temp file on failure either (only key, iv)"
     );
 }
 
