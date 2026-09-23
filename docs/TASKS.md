@@ -8737,8 +8737,17 @@ T-238, T-232's core part, and T-248. The details are in D-200/D-201/D-202 and in
   switches are updated.
 
 Next, in order:
-1. Step 2b: T-239 -> T-240 (use status **14** for `DSTU_ERR_INVALID_ARGUMENT`; 13 is taken) ->
-   T-241 -> T-245a/b, each a small test-first commit.
+1. ~~Step 2b~~ **done 2026-09-23** (local commits 8f4218b..cbfee34, not pushed):
+   - T-239;
+   - T-240 (status 14);
+   - uacrypt file-format docs (owner request);
+   - T-241 (keygen refuses to overwrite, by owner decision);
+   - T-245a/b (D-203).
+
+   Open item: T-241's `#[cfg(unix)]` tests have never run, because the Pi was unreachable. Run
+   them on the Pi before the release.
+   New: the owner put the DSTU 7624:2014, 4145-2002 and 7564:2014 PDFs into `docs/papers/`
+   (untracked, do not commit). 7624 is the primary text T-234 was waiting for.
 2. Step 4: the stream-file framing for uacrypt and all 8 binding writers. It needs:
    - a version byte;
    - a "non-final record must be exactly 8192 bytes" check;
