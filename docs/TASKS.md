@@ -8716,7 +8716,10 @@ Next, in order:
    - a "non-final record must be exactly 8192 bytes" check;
    - uacrypt's short-read chunk fill fixed (`File::read` ~lib.rs:1438);
    - every writer checked to fill chunks completely;
-   - a T-238 misuse test per remaining binding.
+   - a T-238 misuse test per remaining binding;
+   - update `docs/CLI.md` "File formats", `uacrypt --help`'s FILE FORMATS block and
+     `ENCRYPT_HELP`'s OUTPUT FORMAT for the new `encrypt` layout. These went in on 2026-09-23 at
+     the owner's request, and describe the pre-step-4 layout.
 
 Golden files / `uacrypt migrate` are not needed (T-250 was downgraded). All reproduction
 data is in "Shared vectors" above; the throwaway PoC crates and the BC Java checks were outside the

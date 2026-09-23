@@ -35,6 +35,13 @@ All notable changes to this project are documented in this file. Format follows
 
 ### Added
 
+- `uacrypt` documents its file formats. `docs/CLI.md` has a new "File formats" section with every
+  command's byte layout and why the everyday commands write containers rather than bare
+  ciphertext. `uacrypt --help` has a short FILE FORMATS block, and `encrypt`/`box-seal`/`box-seal512`
+  have an OUTPUT FORMAT block. `uacrypt --version` now also prints the container format version
+  (`uacrypt 0.x.y (container format 2)`). `kalyna-gcm`/`kalyna-gmac --help` warn that their raw
+  outputs do not bind the exact length (D-200).
+
 - Canary CI (`.github/workflows/canary.yml`, `cargo xtask canary`, T-226): a daily scheduled
   workflow that re-resolves `Cargo.lock` fresh against current crates.io before building/testing
   the root Cargo workspace, catching a semver-compatible dependency update that breaks the build
