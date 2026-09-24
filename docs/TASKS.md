@@ -8740,8 +8740,7 @@ T-265). Ran: `cargo test -p uacrypt` here and on the Pi, the new ignored piped-s
 release (mutation-checked), scoped Miri on `progress.rs`, `cargo xtask clippy`/`fmt --check`/
 `docs-check`, a Linux pty by hand on the Pi. **Not run:** the Windows consoles by eye, the
 binding suites and `bench-compare` (their `uacrypt` runs have a piped stderr; bench uses the
-  lower-level commands), the
-rest of `cargo xtask streaming-bounded`, CI (branch unpushed), the GHSA/CVE status check.
+lower-level commands), the rest of `cargo xtask streaming-bounded`, CI (branch unpushed), the GHSA/CVE status check.
 **Next: T-262** (passphrase encryption - plan mode + advisor, new file format).
 
 **Previous handoff (2026-09-24, fifth session end).** Working copy clean on

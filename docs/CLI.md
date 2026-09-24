@@ -92,7 +92,10 @@ erased before the command prints its result or its error. For stdin, where the s
 is a byte counter (`uacrypt: 96.0 MiB read`) that appears once 64 MiB have been read. There is no
 flag: with stderr redirected or piped (`2>file`, `2>&1 | ...`, a script, CI) nothing is printed at
 all. `box-seal`/`box-open` show none until they stop reading `--in` whole (T-265), and the
-lower-level `kalyna-*`/`kupyna-digest`/`strumok-crypt` commands never do.
+lower-level `kalyna-*`/`kupyna-digest`/`strumok-crypt` commands never do. Known cosmetic limit:
+in `decrypt --out - | more` on a large file, the line is drawn over the pager's screen, because
+both share the terminal (do not silence it with `2>/dev/null` - that hides the INCOMPLETE warning
+too). Ctrl-C leaves the last line on screen without a newline.
 
 `uacrypt encrypt`/`decrypt`/`hash` (`docs/TASKS.md` T-16, `docs/DECISIONS.md` D-52) are the real,
 misuse-resistant top-level commands — mode, nonce, and algorithm are all hardcoded, nothing to

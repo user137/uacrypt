@@ -14450,6 +14450,16 @@ before the command prints its result (the reader is dropped inside `hash_file_st
 `main` prints an error). A failing stderr write is ignored: progress never fails a command and
 never panics (no `eprint!`).
 
+**Also decided while implementing (reported to the owner).** The `hash --check` list read goes
+through `open()` too (harmless: a list is far below 64 MiB in practice). Sizes are truncated, not
+rounded, so the line never shows more than was read. `hash --check` over several large files
+shows one unnamed line per file, erased before each `OK`/`FAILED`. Ctrl-C leaves the last line on
+screen with no newline (`Drop` does not run; no signal handler without a dependency). A pager
+reading `decrypt --out -` shares the terminal, so the line draws over its screen; documented in
+`docs/CLI.md`, not worked around (`2>/dev/null` would also hide the INCOMPLETE warning). Only the
+top-level help gains a `PROGRESS` section: the per-command help and the README quick start are
+unchanged, since the line asks nothing of the user.
+
 **Misuse category foreclosed.** No flag, no argument, no user-supplied value reaches this code;
 the only inputs are the byte count and the terminal check, both covered below.
 
