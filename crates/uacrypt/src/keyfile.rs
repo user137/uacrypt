@@ -252,6 +252,18 @@ pub(crate) fn check_hex(kind: KeyKind, key: &[u8]) -> String {
         })
 }
 
+/// Bytes [`sniff_kind`] needs: the longest prefix plus its `:`.
+pub(crate) const SNIFF_LEN: usize = 25;
+
+/// The kind of a file starting with `<prefix>:` - the start of a key line, even a damaged one.
+/// Looks at no key hex, so a caller only ever reads [`SNIFF_LEN`] bytes of a secret key file.
+pub(crate) fn sniff_kind(head: &[u8]) -> Option<KeyKind> {
+    ALL_KINDS.into_iter().find(|kind| {
+        head.strip_prefix(kind.prefix().as_bytes())
+            .is_some_and(|rest| rest.first() == Some(&b':'))
+    })
+}
+
 /// Parses one key line. Only a single trailing `\n` or `\r\n` is tolerated.
 pub(crate) fn decode(text: &[u8]) -> Result<(KeyKind, Zeroizing<Vec<u8>>), DecodeError> {
     let line = text
@@ -395,6 +407,43 @@ mod tests {
         }
         let lens: Vec<usize> = ALL_KINDS.iter().map(|k| k.key_len()).collect();
         assert_eq!(lens, [32, 21, 42, 33, 66, 32, 32, 64, 64]);
+    }
+
+    #[test]
+    fn sniff_kind_matches_only_prefix_colon_at_offset_zero() {
+        for kind in ALL_KINDS {
+            let prefix = kind.prefix().as_bytes();
+            assert!(prefix.len() < SNIFF_LEN, "{kind:?}");
+            let mut head = prefix.to_vec();
+            head.push(b':');
+            assert_eq!(sniff_kind(&head), Some(kind));
+            head.extend_from_slice(b"not hex at all");
+            assert_eq!(sniff_kind(&head), Some(kind));
+            assert_eq!(sniff_kind(prefix), None, "{kind:?}: no colon");
+            assert_eq!(sniff_kind(&prefix[..prefix.len() - 1]), None);
+            let mut shifted = b" ".to_vec();
+            shifted.extend_from_slice(&head);
+            assert_eq!(sniff_kind(&shifted), None);
+            let mut bom = b"\xef\xbb\xbf".to_vec();
+            bom.extend_from_slice(&head);
+            assert_eq!(sniff_kind(&bom), None);
+            let swapped: Vec<u8> = head
+                .iter()
+                .map(|b| {
+                    if b.is_ascii_uppercase() {
+                        b.to_ascii_lowercase()
+                    } else {
+                        b.to_ascii_uppercase()
+                    }
+                })
+                .collect();
+            assert_eq!(sniff_kind(&swapped), None, "{kind:?}: case swapped");
+        }
+        assert_eq!(
+            ALL_KINDS.iter().map(|k| k.prefix().len() + 1).max(),
+            Some(SNIFF_LEN)
+        );
+        assert_eq!(sniff_kind(b""), None);
     }
 
     #[test]

@@ -32,6 +32,11 @@ output path, never the file it points to. On Unix every output file is created w
 (owner only), also when `--force` replaces a `0644` file; `chmod` it to share it. Key files
 (`*-keygen`, `sign-pubkey`, `box-pubkey`, `key-import`) are never replaced at all and do not
 accept `--force`: `box-pubkey --key box.key --out box.key` would otherwise destroy the secret key.
+No other command replaces an existing key file either, with or without `--force` (T-268,
+`docs/DECISIONS.md` D-216): an `--out` that starts like a typed key line (`UACRYPT-SECRET-...:`
+or `uacrypt-...-public:`) is refused with exit 3, and so is an existing output that cannot be read
+to check. Delete the file yourself if you really mean to replace it. Raw keys of the lower-level
+commands are not recognised.
 A killed process (power loss, `kill -9`) can leave an empty output file, which the next run
 refuses until you delete it or pass `--force`.
 

@@ -149,6 +149,16 @@ pub enum CliError {
     },
     /// An output names the same file as another output or a key input (T-258, D-214).
     SameOutputPath(&'static str, &'static str),
+    /// An existing output is a typed key file; never replaced, even with `--force` (T-268, D-216).
+    OutputIsKeyFile {
+        path: PathBuf,
+        kind: KeyKind,
+    },
+    /// An existing output could not be read to rule out a key file (T-268, D-216).
+    OutputUncheckable {
+        path: PathBuf,
+        message: String,
+    },
     /// Neither of two alternative flags was given (`hash --in` / `--check`, T-259).
     MissingOneOf(&'static str, &'static str),
     /// Two mutually exclusive flags were both given.
@@ -283,6 +293,17 @@ impl fmt::Display for CliError {
             } => write!(
                 f,
                 "{} already exists and is the same file as --in - pass --force to replace it in place",
+                path.display()
+            ),
+            CliError::OutputIsKeyFile { path, kind } => write!(
+                f,
+                "{} is a uacrypt {} - refusing to replace a key file, even with --force; delete it yourself if you really mean to",
+                path.display(),
+                kind.label()
+            ),
+            CliError::OutputUncheckable { path, message } => write!(
+                f,
+                "{} already exists and could not be read to check it is not a key file ({message}) - not replacing it",
                 path.display()
             ),
             CliError::SameOutputPath(first, second) => {
@@ -504,6 +525,8 @@ impl CliError {
             CliError::Io { .. }
             | CliError::KeyFileExists(_)
             | CliError::OutputExists { .. }
+            | CliError::OutputIsKeyFile { .. }
+            | CliError::OutputUncheckable { .. }
             | CliError::Random(_)
             | CliError::SignKeyInvalid
             | CliError::KeyFileNotTyped(_)
@@ -1897,6 +1920,37 @@ fn create_private_new(path: &std::path::Path) -> std::io::Result<std::fs::File> 
     options.open(path)
 }
 
+/// Refuses an existing regular file at an output path that starts like a typed key file, or that
+/// cannot be read to find out (T-268, R2, `docs/DECISIONS.md` D-216): `--force` never destroys a
+/// key. Reads only [`keyfile::SNIFF_LEN`] bytes, never key hex. A symlink is not followed: the
+/// rename replaces the link itself. A safety net, not a boundary - raw keys are not recognised, and
+/// the file can change between this check and the rename.
+///
+/// # Errors
+///
+/// [`CliError::OutputIsKeyFile`] or [`CliError::OutputUncheckable`].
+fn refuse_key_file(path: &std::path::Path) -> Result<(), CliError> {
+    use std::io::Read;
+
+    if !std::fs::symlink_metadata(path).is_ok_and(|meta| meta.is_file()) {
+        return Ok(());
+    }
+    let mut head = Vec::with_capacity(keyfile::SNIFF_LEN);
+    std::fs::File::open(path)
+        .and_then(|file| file.take(keyfile::SNIFF_LEN as u64).read_to_end(&mut head))
+        .map_err(|e| CliError::OutputUncheckable {
+            path: path.to_path_buf(),
+            message: e.to_string(),
+        })?;
+    match keyfile::sniff_kind(&head) {
+        Some(kind) => Err(CliError::OutputIsKeyFile {
+            path: path.to_path_buf(),
+            kind,
+        }),
+        None => Ok(()),
+    }
+}
+
 /// One non-key output file (`docs/TASKS.md` T-258, rule R2, `docs/DECISIONS.md` D-214). The
 /// result is written to a private temp file beside `path` and only renamed onto it by
 /// [`OutputFile::commit`], so a failed command never leaves partial output. Without `--force`,
@@ -1935,21 +1989,24 @@ impl OutputFile {
             placeholder: false,
             committed: false,
         };
-        if !force {
-            create_private_new(path).map_err(|e| {
+        if force {
+            refuse_key_file(path)?;
+        } else {
+            match create_private_new(path) {
+                Ok(_) => output.placeholder = true,
                 // Windows reports a directory as access denied, not as already existing.
-                if path.is_dir() {
-                    io_err(path, std::io::Error::other("is a directory"))
-                } else if e.kind() == std::io::ErrorKind::AlreadyExists {
-                    CliError::OutputExists {
+                Err(_) if path.is_dir() => {
+                    return Err(io_err(path, std::io::Error::other("is a directory")));
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                    refuse_key_file(path)?;
+                    return Err(CliError::OutputExists {
                         path: path.to_path_buf(),
                         same_as_input: same_file(path, input),
-                    }
-                } else {
-                    io_err(path, e)
+                    });
                 }
-            })?;
-            output.placeholder = true;
+                Err(e) => return Err(io_err(path, e)),
+            }
         }
         let tmp_path = temp_path_beside(path)?;
         let file = create_private_new(&tmp_path).map_err(|e| io_err(&tmp_path, e))?;
@@ -3951,7 +4008,7 @@ The curve is chosen once, by the keygen command; every other command reads it fr
 
 An existing output file is never replaced unless you pass --force; a failed command leaves no
 output behind. Key files (secret or public) are never replaced at all - there is no --force for
-them.
+them, and another command's --force does not replace an existing key file either.
 
 EXIT STATUS:
     0   success

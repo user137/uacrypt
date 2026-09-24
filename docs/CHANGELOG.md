@@ -55,6 +55,10 @@ All notable changes to this project are documented in this file. Format follows
   `--force`. On Unix every output file is created `0600`. **Migration:** scripts that rewrite the
   same output add `--force`. Library API: every non-key `*Args` gains `force: bool`; new
   `CliError::OutputExists`/`SameOutputPath`.
+- **`--force` never replaces a key file** (T-268, `docs/DECISIONS.md` D-216). An existing `--out`
+  that is a typed key file (secret or public, even a damaged one) is refused with exit 3 by every
+  command, with or without `--force`; so is an existing output that cannot be read to check.
+  Library API: new `CliError::OutputIsKeyFile`/`OutputUncheckable`.
 - **`hash` works like `sha256sum`** (T-259, `docs/DECISIONS.md` D-215). `hash --in <path>` prints
   `<64 hex digits>  <path>` to stdout instead of writing a binary digest file; `hash --check
   <file>` verifies such lines, printing `<path>: OK`/`FAILED` and exiting 1 if any listed file does

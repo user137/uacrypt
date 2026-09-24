@@ -14110,6 +14110,7 @@ plaintext; without `--force` the "pass --force" hint would be wrong. Key inputs 
 `--nonce`/`--tag`. Compared as `std::path::absolute` paths and, when both exist, canonicalized.
 Not covered: `--force` onto a key file this command does not read (`box-open --out other.key
 --force`); refusing that means sniffing the old file's contents, left as an owner option.
+**Closed by D-216 (T-268):** such a file is now refused too.
 An existing directory at the output path is refused as "is a directory" (no `--force` hint;
 Windows reports it as access denied, so it is checked by path, not by error kind).
 
@@ -14215,8 +14216,63 @@ list saved by 5.1's `Out-File -Encoding utf8`, or by Notepad, then checks). Test
 parser unit cases. The racy closed-pipe test was replaced by a deterministic `cfg(unix)` one that
 points stdout at `/dev/full` and asserts exit 3 naming `<stdout>`.
 
+**Owner, 2026-09-24:** accepted every choice above as it stands ("the decision is yours, go by
+best practice and the logic of the app").
+
 **Rejected.** Several `--in` in one call (conflicts with T-255's repeated-flag rule; a positional
 file list conflicts with R4). GNU's lenient mode that skips malformed lines with a warning (a
 check that silently checks less than the file lists). Resolving paths relative to the check file
 (differs from every `*sum` tool). A specific "`--out` was removed" hint for `hash` (the generic
 unknown-flag error plus the help text and CHANGELOG were judged enough; revisit if users hit it).
+
+## D-216: T-268 - no output replaces an existing typed key file, even with `--force` (0.5.0)
+
+**Context.** D-214 left one gap as an owner option (Decision 3): `--force` could replace an
+existing key file that the command does not itself read, for example `box-open --key a.key --in f
+--out b.key --force` destroys `b.key`. A lost secret key cannot be recovered and makes everything
+encrypted to it unreadable. The owner delegated the decision on 2026-09-24 ("go by best practice,
+the logic of the app and what similar tools do").
+
+**Decision - refuse it.** Rule R2 already says keys are never replaced; D-214 Decision 4 applies it
+to every key-writing command, public keys included. This closes the remaining path. Peer tools
+generally do not guard key files against another command's output flag, so this is stricter than
+them, deliberately: the cost is one manual delete in a rare case, the benefit is that no mistyped
+`--out` plus a habitual `--force` loses a key.
+
+**Detection.** `refuse_key_file` in `OutputFile::create`, on both branches: with `--force` before
+the temp file is created; without it after `create_new` reports the file exists, so a key file
+gets `OutputIsKeyFile` instead of the "pass --force" hint. It applies only to an existing
+*regular* file (`symlink_metadata().is_file()`): a symlink is replaced, never followed (D-214), and
+a directory keeps its own "is a directory" path. It reads at most `keyfile::SNIFF_LEN` (25) bytes
+and `keyfile::sniff_kind` matches exactly `<prefix>:` of one of the nine kinds at offset 0 - never
+the key hex, never `keyfile::decode`, so no secret bytes enter memory and the constant-time rule
+(R6) is not involved. A damaged key file with an intact prefix is still protected; a lookalike
+(no colon, other case, a leading space or BOM) is not a key file. Both secret and public kinds are
+protected, matching Decision 4.
+
+**Unreadable existing output: fail closed.** With or without `--force`, an existing regular file
+that cannot be opened or read is not replaced (`OutputUncheckable`, exit 3): it might be a key.
+The user deletes it themselves.
+
+**Errors and precedence.** `CliError::OutputIsKeyFile { path, kind }` (names the kind, no key
+bytes, says `--force` does not apply) and `OutputUncheckable { path, message }`, both exit 3 (a
+file could not be used, D-211). `SameOutputPath` (exit 2, `--out` naming the command's own key
+input) is checked earlier and still wins. In-place `--in k.key --out k.key --force` is now refused
+as a key file too: write to a new file, then delete the old one.
+
+**Limits.** A safety net, not a security boundary. Raw keys (0.3.x/0.4 key files, and the raw keys
+of `kalyna-*`/`strumok-crypt`/`kupyna-digest`) are not recognised, and the file can change between
+the check and the rename (TOCTOU), which only matters against an attacker who can already write to
+the output directory.
+
+**Tests.** `tests/smoke_key_output_guard.rs`: all nine kinds as `--out` of `encrypt`, `decrypt`,
+`sign`, `box-seal` and `kupyna-digest`, with and without `--force` - exit 3, "key file" and no
+"pass --force" on stderr, key bytes and directory listing unchanged (no temp file); a damaged key
+file protected and five lookalikes replaced; `SameOutputPath` still exit 2; Unix only (Pi): a
+symlink to a key file is replaced with the key intact, and a `0000` existing output is not
+replaced. Unit: `keyfile::sniff_kind` table for every kind (Miri: no UB).
+
+**Rejected.** Protecting only secret kinds (Decision 4 already treats public keys the same, and a
+per-kind rule is one more thing to drift). A full `decode` of the old file (reads secret bytes for
+no gain). Following symlinks (contradicts D-214: the link, not the target, is replaced). Failing
+open on an unreadable file (the one case where a key could slip through).

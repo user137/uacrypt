@@ -8737,8 +8737,8 @@ replace a DSTU primitive.
 `ux-0.5.0` (T-258 = `99e7b02`, Pi test fixes = `71efd17`, then this handoff), nothing pushed
 (embargo). `bindings/ruby/Gemfile.lock` committed on `ux-0.5.0` (bundler sync to the gem's
 `VERSION` 0.2.0, set in `f83459d`); `master`'s copy still says 0.1.0 - sync it there on release
-day if the gem publish needs it. Open owner option from T-258: also refuse `--force` onto an
-existing typed key file the command does not read (D-214 Decision 3). T-255..T-259 done (T-258: D-214;
+day if the gem publish needs it. D-214 Decision 3 is closed by **T-268** (owner delegated the
+call 2026-09-24, D-216): no `--force` replaces an existing typed key file. T-255..T-259 done (T-258: D-214;
 **T-259: D-215, commit `43ad089` plus a closing-review follow-up** - `hash` prints/checks
 `sha256sum` lines; Windows PowerShell 5.1's UTF-16 `>` is refused by name, see D-215's addendum;
 Pi `cargo test -p uacrypt` green for both commits, see D-215); **next: T-260** (stdin/stdout via
@@ -9057,13 +9057,16 @@ Breaking - 0.5.0 (B1 a):
   applies to key files. Owner also chose (2026-09-24): public-key outputs (`sign-pubkey`,
   `box-pubkey`, public `key-import`) are never replaced either, and every output is `0600` on
   Unix. An output naming a key input (`--key`/`--iv`/`--tweak`, decrypt-side
-  `--nonce`/`--tag`) is a usage error even with `--force` (closing review). Open owner option:
-  also refuse `--force` onto an existing typed key file the command does not read (sniff the
-  prefix), D-214 Decision 3. The two `cfg(unix)` tests in `smoke_overwrite.rs` (symlink, `0600`)
+  `--nonce`/`--tag`) is a usage error even with `--force` (closing review). The open owner
+  option (D-214 Decision 3) is done as T-268. The two `cfg(unix)` tests in `smoke_overwrite.rs` (symlink, `0600`)
   and PHP interop passed on the Pi 2026-09-24.
 - [x] **T-259** (done 2026-09-24 on `ux-0.5.0`, D-215; `smoke_hash.rs`) `hash` like `sha256sum`: prints `<hex>  <path>` to stdout; `--check <file>` verifies
   such lines (exit 1 on any mismatch, names each). The binary `--out` goes; `kupyna-digest` keeps
   binary output for interop.
+- [x] **T-268** (done 2026-09-24 on `ux-0.5.0`, D-216; `smoke_key_output_guard.rs`) No
+  output replaces an existing typed key file, with or without `--force` (closes D-214
+  Decision 3; the owner delegated the decision). Sniffs only `<prefix>:` at offset 0; an
+  unreadable existing output is not replaced either; symlinks keep D-214's behaviour.
 - [ ] **T-260** stdin/stdout via `-` (S1; R2, R4). `--key` never from stdin; binary output to a
   terminal refused; secret keys never to stdout (R7); temp-then-rename stays for real files.
 
