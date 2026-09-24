@@ -8737,11 +8737,12 @@ replace a DSTU primitive.
 - 0.4.0 is prepared locally, nothing pushed (embargo). Release commit `f83459d` (versions, T-252),
   `6433caf` (CHANGELOG placeholders). The CHANGELOG edit for release day is scripted:
   `python .claude/disclosure-drafts/finalize_changelog.py <date> <CVE T-232> <CVE D-207>`
-  (gitignored, dry-run tested on a copy). **No tag yet, on purpose**: `v0.4.0` goes on the commit
+  (gitignored, dry-run tested on a copy; now refuses to run off `master`). **No tag yet, on purpose**: `v0.4.0` goes on the commit
   that script produces, and pushing a tag starts the publish jobs.
 - Still waiting for three things: (1) Miri on `crypto_secretstream` (PID 5548, log path below;
-  last seen passing `mismatched_plaintext_out_length_is_rejected`, no UB); (2) CVE IDs for
-  `GHSA-j2w3-628p-qw92`/`GHSA-wqmx-6fx4-jr5r` (both `draft`, `cve_id` null at 02:50);
+  still running at the later session end, last seen passing
+  `push_tag_marks_a_boundary_and_is_reported_back`, no UB); (2) CVE IDs for
+  `GHSA-j2w3-628p-qw92`/`GHSA-wqmx-6fx4-jr5r` (both still `draft`, `cve_id` null, re-checked 2026-09-24);
   (3) the date rule (UAPKI/BC replies or 2026-10-08).
 - CodeQL alerts #82-#88 dismissed as false positives (T-266, D-210); 0 open.
 - 0.5.0 work goes on branch `ux-0.5.0`, never on `master` before the 0.4.0 push. **T-255 is done
