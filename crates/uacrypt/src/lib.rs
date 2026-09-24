@@ -4060,7 +4060,7 @@ FLAGS:
     --key <path>    a key file made by `uacrypt keygen` (not a passphrase)
     --in <path>     file to encrypt
     --out <path>    where to write the encrypted output
-    --force         replace --out if it already exists (without it: refused)
+    --force         replace --out if it already exists (without it: refused; never a key file)
 
 EXAMPLE:
     uacrypt encrypt --key key.bin --in report.pdf --out report.pdf.enc
@@ -4085,7 +4085,7 @@ FLAGS:
     --key <path>    the same key file used for `encrypt`
     --in <path>     the encrypted file (must be real `encrypt` output)
     --out <path>    where to write the decrypted output
-    --force         replace --out if it already exists (without it: refused)
+    --force         replace --out if it already exists (without it: refused; never a key file)
 
 EXAMPLE:
     uacrypt decrypt --key key.bin --in report.pdf.enc --out report.pdf
@@ -4184,7 +4184,7 @@ FLAGS:
     --key <path>        a signing key (from `uacrypt sign-keygen` or `sign-keygen257`)
     --in <path>         file to sign
     --out <path>        where to write the signature
-    --force             replace --out if it already exists (without it: refused)
+    --force             replace --out if it already exists (without it: refused; never a key file)
 
 EXAMPLE:
     uacrypt sign --key signing.key --in report.pdf --out report.pdf.sig
@@ -4298,7 +4298,7 @@ FLAGS:
     --key <path>        the recipient's public key (from `uacrypt box-pubkey`, either curve)
     --in <path>         file to encrypt
     --out <path>        where to write the sealed output
-    --force             replace --out if it already exists (without it: refused)
+    --force             replace --out if it already exists (without it: refused; never a key file)
 
 EXAMPLE:
     uacrypt box-seal --key recipient.pub --in message.txt --out message.txt.box
@@ -4317,7 +4317,7 @@ FLAGS:
     --key <path>        the recipient's secret key (from `uacrypt box-keygen` or `box-keygen512`)
     --in <path>         the sealed file (must be real `box-seal` output)
     --out <path>        where to write the decrypted output
-    --force             replace --out if it already exists (without it: refused)
+    --force             replace --out if it already exists (without it: refused; never a key file)
 
 EXAMPLE:
     uacrypt box-open --key box.key --in message.txt.box --out message.txt
@@ -4384,7 +4384,7 @@ FLAGS:
     --key <path>       key file - must be exactly the variant's key length
     --in <path>        input file - must be exactly one block (the variant's block length)
     --out <path>       where to write the one-block result
-    --force            replace --out if it already exists (without it: refused)
+    --force            replace --out if it already exists (without it: refused; never a key file)
     --iterations <n>   (benchmarking only) repeat the operation n times, print timing to stderr
     --raw-schedule     (benchmarking only) re-expand the key schedule on every iteration
 
@@ -4411,7 +4411,7 @@ FLAGS:
     --in <path>      plaintext (encrypt) or ciphertext (decrypt), 1 to 255 bytes
     --out <path>     ciphertext (encrypt) or plaintext (decrypt)
     --tag <path>     encrypt: OUTPUT auth tag. decrypt: INPUT, must be encrypt's tag.
-    --force          replace existing output files instead of refusing
+    --force          replace existing output files instead of refusing (never a key file)
     --iterations <n> (benchmarking only) repeat the operation n times, print timing to stderr
 
 EXAMPLE:
@@ -4444,7 +4444,7 @@ FLAGS:
     --in <path>      plaintext (encrypt) or ciphertext (decrypt), any length
     --out <path>     ciphertext (encrypt) or plaintext (decrypt)
     --tag <path>     encrypt: OUTPUT auth tag (full block length). decrypt: INPUT, must be encrypt's tag.
-    --force          replace existing output files instead of refusing
+    --force          replace existing output files instead of refusing (never a key file)
     --iterations <n> (benchmarking only) repeat the operation n times, print timing to stderr
 
 EXAMPLE:
@@ -4468,7 +4468,7 @@ FLAGS:
     --in <path>      message to authenticate (must not be empty, D-206)
     --out <path>     compute: OUTPUT, where to write the 16-byte tag
     --tag <path>     verify: INPUT, the tag to check against
-    --force          replace --out if it already exists (without it: refused)
+    --force          replace --out if it already exists (without it: refused; never a key file)
     --iterations <n> (benchmarking only) repeat the operation n times, print timing to stderr
 
 EXAMPLE:
@@ -4495,7 +4495,7 @@ FLAGS:
     --in <path>      message to authenticate (must not be empty, D-206)
     --out <path>     compute: OUTPUT, where to write the tag (full block length)
     --tag <path>     verify: INPUT, the tag to check against
-    --force          replace --out if it already exists (without it: refused)
+    --force          replace --out if it already exists (without it: refused; never a key file)
     --iterations <n> (benchmarking only) repeat the operation n times, print timing to stderr
 
 EXAMPLE:
@@ -4517,7 +4517,7 @@ FLAGS:
     --key <path>     key file - must be exactly the variant's key length
     --in <path>      key material to wrap (block-aligned) or a wrapped blob to unwrap
     --out <path>     wrapped blob (wrap) or recovered key material (unwrap)
-    --force          replace --out if it already exists (without it: refused)
+    --force          replace --out if it already exists (without it: refused; never a key file)
     --iterations <n> (benchmarking only) repeat the operation n times, print timing to stderr
 
 EXAMPLE:
@@ -4541,7 +4541,7 @@ FLAGS:
                      encoded into a block-length buffer by the caller; this CLI does not derive one)
     --in <path>      plaintext (encrypt) or ciphertext (decrypt), at least one block
     --out <path>     ciphertext (encrypt) or plaintext (decrypt)
-    --force          replace --out if it already exists (without it: refused)
+    --force          replace --out if it already exists (without it: refused; never a key file)
     --iterations <n> (benchmarking only) repeat the operation n times, print timing to stderr
 
 EXAMPLE:
@@ -4561,7 +4561,7 @@ FLAGS:
     --variant <v>      256 or 512
     --in <path>        file to hash
     --out <path>       where to write the digest
-    --force            replace --out if it already exists (without it: refused)
+    --force            replace --out if it already exists (without it: refused; never a key file)
     --iterations <n>   (benchmarking only) re-hash n times, print timing/MB-per-s to stderr
 
 EXAMPLE:
@@ -4586,7 +4586,7 @@ FLAGS:
     --iv <path>        IV file - must be exactly 32 bytes
     --in <path>        file to encrypt or decrypt (same operation either way - XOR keystream)
     --out <path>       where to write the result
-    --force            replace --out if it already exists (without it: refused)
+    --force            replace --out if it already exists (without it: refused; never a key file)
     --iterations <n>   (benchmarking only) repeat n times, print timing/MB-per-s to stderr
     --raw-schedule     (benchmarking only) re-initialize the cipher fresh on every iteration
 

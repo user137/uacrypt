@@ -9067,6 +9067,8 @@ Breaking - 0.5.0 (B1 a):
   output replaces an existing typed key file, with or without `--force` (closes D-214
   Decision 3; the owner delegated the decision). Sniffs only `<prefix>:` at offset 0; an
   unreadable existing output is not replaced either; symlinks keep D-214's behaviour.
+  Commits `23d319d` + closing-review follow-up (BOM, `box-open`, multi-output test, verified
+  age/minisign comparison); Pi `cargo test -p uacrypt` green for both.
 - [ ] **T-260** stdin/stdout via `-` (S1; R2, R4). `--key` never from stdin; binary output to a
   terminal refused; secret keys never to stdout (R7); temp-then-rename stays for real files.
 

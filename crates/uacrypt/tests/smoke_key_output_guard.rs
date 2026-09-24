@@ -19,6 +19,7 @@ const KINDS: [(&str, usize); 9] = [
 
 fn fixtures(dir: &TempDir) {
     write_bytes(&dir.file("in32"), &[0x66; 32]);
+    write_bytes(&dir.file("k16"), &[0x11; 16]);
     let p = |n: &str| dir.file(n).to_string_lossy().into_owned();
     for (cmd, out) in [
         ("keygen", "sym.key"),
@@ -27,8 +28,17 @@ fn fixtures(dir: &TempDir) {
     ] {
         assert!(uacrypt([cmd, "--out", &p(out)]).success(), "{cmd}");
     }
-    let prep: [&[&str]; 2] = [
+    let prep: [&[&str]; 3] = [
         &["box-pubkey", "--key", &p("box.key"), "--out", &p("box.pub")],
+        &[
+            "box-seal",
+            "--key",
+            &p("box.pub"),
+            "--in",
+            &p("in32"),
+            "--out",
+            &p("sealed"),
+        ],
         &[
             "encrypt",
             "--key",
@@ -53,6 +63,7 @@ fn commands(dir: &TempDir) -> Vec<Vec<String>> {
         vec!["decrypt", "--key", &p("sym.key"), "--in", &p("ct")],
         vec!["sign", "--key", &p("sign.key"), "--in", &p("in32")],
         vec!["box-seal", "--key", &p("box.pub"), "--in", &p("in32")],
+        vec!["box-open", "--key", &p("box.key"), "--in", &p("sealed")],
         vec!["kupyna-digest", "--variant", "256", "--in", &p("in32")],
     ]
     .into_iter()
@@ -122,18 +133,23 @@ fn a_damaged_key_file_is_still_protected_but_a_look_alike_is_not() {
         ])
     };
 
-    write_bytes(&dir.file("damaged"), b"UACRYPT-SECRET-BOX256:zz");
-    let r = run("damaged");
-    assert_eq!(r.code, Some(3), "{}", r.stderr);
-    assert_eq!(
-        read_bytes(&dir.file("damaged")),
-        b"UACRYPT-SECRET-BOX256:zz"
-    );
+    for (name, content) in [
+        ("damaged", &b"UACRYPT-SECRET-BOX256:zz"[..]),
+        ("editor_bom", &b"\xef\xbb\xbfuacrypt-box256-public:00"[..]),
+    ] {
+        write_bytes(&dir.file(name), content);
+        let r = run(name);
+        assert_eq!(r.code, Some(3), "{name}: {}", r.stderr);
+        assert_eq!(read_bytes(&dir.file(name)), content, "{name}");
+    }
 
     for (name, content) in [
         ("no_colon", &b"UACRYPT-SECRET-BOX256"[..]),
         ("not_at_start", &b" UACRYPT-SECRET-BOX256:00"[..]),
-        ("bom", &b"\xef\xbb\xbfuacrypt-box256-public:00"[..]),
+        (
+            "two_boms",
+            &b"\xef\xbb\xbf\xef\xbb\xbfuacrypt-box256-public:00"[..],
+        ),
         ("case", &b"uacrypt-secret-box256:00"[..]),
         ("empty", &b""[..]),
     ] {
@@ -230,4 +246,49 @@ fn naming_the_commands_own_key_stays_a_usage_error() {
         "--force",
     ]);
     assert_eq!(r.code, Some(2), "{}", r.stderr);
+}
+
+/// A key file as the third output of a three-output command: the outputs reserved before it are
+/// released, leaving no placeholder or temp file behind.
+#[test]
+#[cfg_attr(
+    miri,
+    ignore = "spawns the real uacrypt binary - Miri cannot run a subprocess"
+)]
+fn a_key_file_as_a_later_output_releases_the_earlier_ones() {
+    let dir = TempDir::new("key_guard_multi");
+    fixtures(&dir);
+    let p = |n: &str| dir.file(n).to_string_lossy().into_owned();
+    let key = read_bytes(&dir.file("sym.key"));
+    for force in [false, true] {
+        let before = listing(&dir);
+        let mut args = vec![
+            "kalyna-gcm".to_string(),
+            "encrypt".into(),
+            "--variant".into(),
+            "128-128".into(),
+            "--key".into(),
+            p("k16"),
+            "--nonce".into(),
+            p("nonce"),
+            "--in".into(),
+            p("in32"),
+            "--out".into(),
+            p("out"),
+            "--tag".into(),
+            p("sym.key"),
+        ];
+        if force {
+            args.push("--force".into());
+        }
+        let r = uacrypt(&args);
+        assert_eq!(r.code, Some(3), "force={force}: {}", r.stderr);
+        assert!(r.stderr.contains("key file"), "{}", r.stderr);
+        assert_eq!(read_bytes(&dir.file("sym.key")), key);
+        assert_eq!(
+            listing(&dir),
+            before,
+            "force={force}: placeholder or temp file left"
+        );
+    }
 }

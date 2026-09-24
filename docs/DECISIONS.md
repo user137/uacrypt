@@ -14234,10 +14234,18 @@ encrypted to it unreadable. The owner delegated the decision on 2026-09-24 ("go 
 the logic of the app and what similar tools do").
 
 **Decision - refuse it.** Rule R2 already says keys are never replaced; D-214 Decision 4 applies it
-to every key-writing command, public keys included. This closes the remaining path. Peer tools
-generally do not guard key files against another command's output flag, so this is stricter than
-them, deliberately: the cost is one manual delete in a rare case, the benefit is that no mistyped
-`--out` plus a habitual `--force` loses a key.
+to every key-writing command, public keys included. This closes the remaining path.
+
+What similar tools do (source read 2026-09-24, not recalled): age (`FiloSottile/age` `main` @
+`b74dce4`, `cmd/age/age.go`) opens `-o` with `os.Create`, so it replaces any existing file with no
+flag at all; it refuses only an output that is one of the command's own inputs (`inUseFiles`:
+identity, recipients and input files) - our `SameOutputPath`. `age-keygen`
+(`cmd/age-keygen/keygen.go`) opens with `O_EXCL` and never overwrites. minisign
+(`jedisct1/minisign` `master` @ `4ade112`, `src/minisign.c` `abort_on_existing_key_files`) refuses
+existing key files on `-G` unless `-f`. So peers protect a key file from key *generation*, and from
+being the same command's own input, but none protects an unrelated key file from another
+command's output. uacrypt is deliberately stricter: the cost is one manual delete in a rare case,
+the benefit is that no mistyped `--out` plus a habitual `--force` loses a key.
 
 **Detection.** `refuse_key_file` in `OutputFile::create`, on both branches: with `--force` before
 the temp file is created; without it after `create_new` reports the file exists, so a key file
@@ -14246,8 +14254,10 @@ gets `OutputIsKeyFile` instead of the "pass --force" hint. It applies only to an
 a directory keeps its own "is a directory" path. It reads at most `keyfile::SNIFF_LEN` (25) bytes
 and `keyfile::sniff_kind` matches exactly `<prefix>:` of one of the nine kinds at offset 0 - never
 the key hex, never `keyfile::decode`, so no secret bytes enter memory and the constant-time rule
-(R6) is not involved. A damaged key file with an intact prefix is still protected; a lookalike
-(no colon, other case, a leading space or BOM) is not a key file. Both secret and public kinds are
+(R6) is not involved. A damaged key file with an intact prefix is still protected, and so is one
+an editor re-saved with one leading UTF-8 BOM (Notepad, PowerShell 5.1's `Out-File -Encoding
+utf8` - D-215's addendum; `SNIFF_LEN` is 28 = BOM + longest prefix + `:`). A lookalike (no colon,
+other case, a leading space, two BOMs) is not a key file. `decode` itself still refuses a BOM. Both secret and public kinds are
 protected, matching Decision 4.
 
 **Unreadable existing output: fail closed.** With or without `--force`, an existing regular file
@@ -14266,9 +14276,11 @@ the check and the rename (TOCTOU), which only matters against an attacker who ca
 the output directory.
 
 **Tests.** `tests/smoke_key_output_guard.rs`: all nine kinds as `--out` of `encrypt`, `decrypt`,
-`sign`, `box-seal` and `kupyna-digest`, with and without `--force` - exit 3, "key file" and no
-"pass --force" on stderr, key bytes and directory listing unchanged (no temp file); a damaged key
-file protected and five lookalikes replaced; `SameOutputPath` still exit 2; Unix only (Pi): a
+`sign`, `box-seal`, `box-open` and `kupyna-digest`, with and without `--force` - exit 3, "key
+file" and no "pass --force" on stderr, key bytes and directory listing unchanged (no temp file); a
+damaged and a BOM key file protected and five lookalikes replaced; a key file as `kalyna-gcm
+encrypt`'s third output (`--tag`) releases the already reserved `--out`/`--nonce` (no placeholder
+left); `SameOutputPath` still exit 2; Unix only (Pi): a
 symlink to a key file is replaced with the key intact, and a `0000` existing output is not
 replaced. Unit: `keyfile::sniff_kind` table for every kind (Miri: no UB).
 

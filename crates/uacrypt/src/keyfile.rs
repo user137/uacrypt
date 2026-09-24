@@ -252,12 +252,14 @@ pub(crate) fn check_hex(kind: KeyKind, key: &[u8]) -> String {
         })
 }
 
-/// Bytes [`sniff_kind`] needs: the longest prefix plus its `:`.
-pub(crate) const SNIFF_LEN: usize = 25;
+/// Bytes [`sniff_kind`] needs: a UTF-8 BOM, the longest prefix and its `:`.
+pub(crate) const SNIFF_LEN: usize = 28;
 
-/// The kind of a file starting with `<prefix>:` - the start of a key line, even a damaged one.
-/// Looks at no key hex, so a caller only ever reads [`SNIFF_LEN`] bytes of a secret key file.
+/// The kind of a file starting with `<prefix>:` - the start of a key line, even a damaged one or
+/// one an editor re-saved with a UTF-8 BOM. Looks at no key hex, so a caller only ever reads
+/// [`SNIFF_LEN`] bytes of a secret key file.
 pub(crate) fn sniff_kind(head: &[u8]) -> Option<KeyKind> {
+    let head = head.strip_prefix(b"\xef\xbb\xbf").unwrap_or(head);
     ALL_KINDS.into_iter().find(|kind| {
         head.strip_prefix(kind.prefix().as_bytes())
             .is_some_and(|rest| rest.first() == Some(&b':'))
@@ -426,7 +428,9 @@ mod tests {
             assert_eq!(sniff_kind(&shifted), None);
             let mut bom = b"\xef\xbb\xbf".to_vec();
             bom.extend_from_slice(&head);
-            assert_eq!(sniff_kind(&bom), None);
+            assert_eq!(sniff_kind(&bom), Some(kind), "{kind:?}: an editor's BOM");
+            bom.splice(0..0, *b"\xef\xbb\xbf");
+            assert_eq!(sniff_kind(&bom), None, "{kind:?}: only one BOM");
             let swapped: Vec<u8> = head
                 .iter()
                 .map(|b| {
@@ -440,7 +444,7 @@ mod tests {
             assert_eq!(sniff_kind(&swapped), None, "{kind:?}: case swapped");
         }
         assert_eq!(
-            ALL_KINDS.iter().map(|k| k.prefix().len() + 1).max(),
+            ALL_KINDS.iter().map(|k| 3 + k.prefix().len() + 1).max(),
             Some(SNIFF_LEN)
         );
         assert_eq!(sniff_kind(b""), None);
