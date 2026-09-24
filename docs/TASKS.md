@@ -8733,7 +8733,10 @@ replace a DSTU primitive.
 
 ### RESUME HERE (state as of 2026-09-23, saved for a memory-clear/new-session handoff)
 
-**Latest handoff (2026-09-24, session end) - read this first.**
+**Latest handoff (2026-09-24, second session end) - read this first.** Working copy on
+`ux-0.5.0`, head `2c7a196`, nothing pushed (embargo). T-255/T-256/T-257 done; **next: T-258**
+(overwrite policy, O1 a). Miri on `crypto_secretstream` finished (no UB). Both GHSAs still `draft`,
+`cve_id` null (checked end of session). `bindings/ruby/Gemfile.lock` still uncommitted - owner's call.
 - 0.4.0 is prepared locally, nothing pushed (embargo). Release commit `f83459d` (versions, T-252),
   `6433caf` (CHANGELOG placeholders). The CHANGELOG edit for release day is scripted:
   `python .claude/disclosure-drafts/finalize_changelog.py <date> <CVE T-232> <CVE D-207>`
