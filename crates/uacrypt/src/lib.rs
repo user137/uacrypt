@@ -7314,13 +7314,15 @@ mod tests {
             KeyKind::Sign163Secret,
             &small_signing_key(0x11),
         );
-        assert!(matches!(
-            run_sign_pubkey_command(&SignPubkeyArgs {
-                key_path: dir.file("signing.key"),
-                out_path: dir.file("a_directory"),
-            }),
-            Err(CliError::Io { .. })
-        ));
+        // Written like a keygen since T-258 (D-214), so the same OS-specific error.
+        let result = run_sign_pubkey_command(&SignPubkeyArgs {
+            key_path: dir.file("signing.key"),
+            out_path: dir.file("a_directory"),
+        });
+        #[cfg(unix)]
+        assert!(matches!(result, Err(CliError::KeyFileExists(_))));
+        #[cfg(not(unix))]
+        assert!(matches!(result, Err(CliError::Io { .. })));
     }
 
     #[test]
@@ -8366,18 +8368,20 @@ mod tests {
     fn decrypt_output_is_mode_0600() {
         use std::os::unix::fs::PermissionsExt;
         let dir = TempDir::new("t241_decrypt_mode");
-        std::fs::write(dir.file("key.bin"), [0x42u8; 32]).expect("write key");
+        write_typed_key(&dir.file("key.bin"), KeyKind::Symmetric, &[0x42u8; 32]);
         std::fs::write(dir.file("pt.bin"), b"secret plaintext").expect("write input");
         let enc = SecretstreamArgs {
             key_path: dir.file("key.bin"),
             in_path: dir.file("pt.bin"),
             out_path: dir.file("ct.bin"),
+            force: false,
         };
         run_secretstream_command(false, &enc).expect("encrypt");
         let dec = SecretstreamArgs {
             key_path: dir.file("key.bin"),
             in_path: dir.file("ct.bin"),
             out_path: dir.file("out.bin"),
+            force: false,
         };
         run_secretstream_command(true, &dec).expect("decrypt");
         let mode = std::fs::metadata(dir.file("out.bin"))

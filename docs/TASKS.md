@@ -8737,9 +8737,15 @@ replace a DSTU primitive.
 `ux-0.5.0`, nothing pushed (embargo). T-255..T-258 done (T-258: D-214); **next: T-259** (`hash`
 like `sha256sum`). T-258 ran: `cargo test -p uacrypt` (all green), `cargo xtask clippy`/`fmt`/
 `docs-check`, the documented CLI examples in one directory, `bench-compare` (every row printed),
-and every binding suite except PHP: Ruby 101/101, Node 95/95, Python 100/100, .NET 151/151, Go
-(`-count=1`), Java `mvn verify`, C++ ctest. The Unix-only tests of T-241 and T-258 still wait for
-the Pi. Miri on `crypto_secretstream` finished (no UB). Both GHSAs still `draft`,
+and every binding suite: Ruby 101/101, Node 95/95, Python 100/100, .NET 151/151, Go
+(`-count=1`), Java `mvn verify`, C++ ctest here; PHP 99/99 + phpstan on the Pi. **Pi run
+2026-09-24** (aarch64, synced working copy): `cargo test -p uacrypt` 300 passed, 0 failed, so every
+`cfg(unix)` test of T-241, T-256 and T-258 has now run. It found two stale Unix-only tests, fixed:
+`decrypt_output_is_mode_0600` wrote a raw key (broken since T-256) and missed `force`;
+`run_sign_pubkey_command_directory_as_out_...` expected `Io`, now `KeyFileExists` on Unix like
+`sign-keygen` (T-258). `master` (`2a71e17`, via `git archive`) on the Pi: `cargo test -p uacrypt`
+241 passed, 0 failed, including T-241's three Unix tests - so the 0.4.0 open item below is closed
+(master's own copy of this file still lists it open). Miri on `crypto_secretstream` finished (no UB). Both GHSAs still `draft`,
 `cve_id` null (checked end of session). `bindings/ruby/Gemfile.lock` still uncommitted - owner's call.
 - 0.4.0 is prepared locally, nothing pushed (embargo). Release commit `f83459d` (versions, T-252),
   `6433caf` (CHANGELOG placeholders). The CHANGELOG edit for release day is scripted:
@@ -8761,8 +8767,8 @@ the Pi. Miri on `crypto_secretstream` finished (no UB). Both GHSAs still `draft`
   suite locally except PHP (not installed): Node 95/95 (`env -u CARGO npm`), Ruby 101/101 (with
   `LIBCLANG_PATH`), Python 100/100 (`PYTHONPATH=python`), Java `mvn verify`, .NET, Go, C++ (ctest
   from PowerShell). New T-267: update the site after the 0.5.0 release (owner request).
-  Not yet run: `smoke_typed_keys.rs`'s `cfg(unix)` 0600 test (run it on the Pi with T-241's unix
-  tests) and the PHP interop edit (PHP not installed here; the branch is unpushed, so no CI yet).
+  `smoke_typed_keys.rs`'s `cfg(unix)` 0600 test and the PHP interop edit passed on the Pi
+  2026-09-24 (see the latest handoff above).
   Scoped Miri on `uacrypt --lib keyfile`: 7/7, no UB (2026-09-24).
   Session end 2026-09-24: the working copy is on `ux-0.5.0`. Miri on `crypto_secretstream`
   finished: 28 passed, 1 ignored, no UB. CVE IDs are still null for both GHSAs. `bindings/ruby/Gemfile.lock` is modified but left
@@ -8795,8 +8801,8 @@ Next, in order:
    - T-241 (keygen refuses to overwrite, by owner decision);
    - T-245a/b (D-203).
 
-   Open item: T-241's `#[cfg(unix)]` tests have never run, because the Pi was unreachable. Run
-   them on the Pi before the release.
+   ~~Open item: T-241's `#[cfg(unix)]` tests have never run.~~ Done 2026-09-24: `master`
+   `2a71e17` on the Pi, `cargo test -p uacrypt` 241 passed, 0 failed.
    The Pi (192.168.1.114) timed out on SSH, so the owner was asked to power it on. Also not re-run
    after T-245: the Python/Node/Ruby/Java binding test suites. Only `cargo check` ran for them; Go,
    .NET, C++ and PHP ran their full suites.
@@ -9046,8 +9052,8 @@ Breaking - 0.5.0 (B1 a):
   Unix. An output naming a key input (`--key`/`--iv`/`--tweak`, decrypt-side
   `--nonce`/`--tag`) is a usage error even with `--force` (closing review). Open owner option:
   also refuse `--force` onto an existing typed key file the command does not read (sniff the
-  prefix), D-214 Decision 3. Not yet run: the two `cfg(unix)` tests in `smoke_overwrite.rs` (symlink, `0600`) - run on
-  the Pi with T-241's; PHP interop (not installed here).
+  prefix), D-214 Decision 3. The two `cfg(unix)` tests in `smoke_overwrite.rs` (symlink, `0600`)
+  and PHP interop passed on the Pi 2026-09-24.
 - [ ] **T-259** `hash` like `sha256sum`: prints `<hex>  <path>` to stdout; `--check <file>` verifies
   such lines (exit 1 on any mismatch, names each). The binary `--out` goes; `kupyna-digest` keeps
   binary output for interop.
