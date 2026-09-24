@@ -14565,7 +14565,7 @@ passphrase file format stays `uacrypt`-only until then.
   `rpassword` sets the console input mode to `ENABLE_PROCESSED_INPUT` only, so Ctrl-C there is
   handled by the system's default handler, which ends the process before `Drop` restores the
   mode (read in its source, `src/windows.rs`). Measured 2026-09-24 (see "Windows console"
-  below): the input mode is left at `0x1`. The guard is a no-op there; the fix is T-271.
+  below): the input mode is left at `0x1`. Fixed by T-271 (below).
 - The terminal is asked only when stderr is a terminal (T-261's predicate); otherwise exit 2
   naming `--passphrase-file`. That keeps every test deterministic: `rpassword` opens /dev/tty or
   `CONIN$` directly, so a child of an interactive shell could otherwise block on a prompt.
@@ -14630,8 +14630,26 @@ only the prompts, never a passphrase. Ctrl-C at either command's prompt -> exit
 `0x1` (was `0x1f7`: echo, line input and the rest off). Inside an interactive shell: `cmd`
 resets the mode itself (`0x7`) and the next typed command echoes - no visible harm; PowerShell 7
 keeps working (PSReadLine draws its own input) but the console stays at `0x1` for programs it
-starts afterwards and after it exits. Fix tracked as T-271. Windows Terminal and mintty's
-`winpty` path were not tried.
+starts afterwards and after it exits. Fixed by T-271 (next paragraph). Windows Terminal and
+mintty's `winpty` path were not tried.
+
+**T-271 - Windows Ctrl-C restores the console mode (2026-09-24, owner go-ahead).** The Windows
+twin of fork (a): Ctrl-C there is a console event, not a signal that can be ignored, so
+`sigint.rs`'s `Ignored` guard opens `CONIN$` (never the std input handle - stdin may be a
+file), saves `GetConsoleMode` into a static `AtomicU64` (`u64::MAX` = no guard alive, one
+atomic so the handler thread never sees a half-set state), and only if that succeeded
+registers a `SetConsoleCtrlHandler` routine; `Drop` unregisters it and clears the saved mode.
+The routine opens `CONIN$` itself, sets exactly the saved mode (no hardcoded "sane" mode) and
+returns FALSE for every event, so the default handler still ends the process with
+`STATUS_CONTROL_C_EXIT`; handles are `OwnedHandle` (RAII). `windows-sys` 0.61.2 became a direct
+Windows-only dependency with a subset of `rpassword`'s features (`Cargo.lock` gained only an
+edge; `cargo deny` clean). Unit test: the routine returns FALSE for C/Break/Close. The restore
+path itself is not unit-testable (it needs a real console and a real Ctrl-C event), so it was
+measured with the same `WriteConsoleInputW` probe in a PowerShell 7 console, release build:
+Ctrl-C at `Passphrase:` and at `Repeat passphrase:` -> exit `0xC000013A`, no output, mode
+`0x1F7` before and after (`0x1` while the prompt is open); a normal entry -> exit 0, output
+written, mode unchanged. Control run, same probe on the pre-fix binary: mode left at `0x1`.
+`cargo test -p uacrypt` green on Windows and on the Pi (the `cfg` arms changed).
 
 **Found while landing this, not fixed here.** Clippy 1.98.1 (the Pi's stable; the dev machine has
 1.97.1) rejects five `cast_possible_truncation` casts in `dstu-core`'s `gf2m_field!` macro (e.g.

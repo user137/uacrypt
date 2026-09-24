@@ -851,6 +851,7 @@ dependencies = [
  "libc",
  "rpassword",
  "subtle",
+ "windows-sys",
  "zeroize",
 ]
 

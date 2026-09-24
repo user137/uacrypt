@@ -105,8 +105,8 @@ All notable changes to this project are documented in this file. Format follows
   Linux/macOS exits by SIGINT with the terminal restored (`libc` is now a direct Unix
   dependency: SIGINT is ignored while the prompt is open, `uacrypt`'s first `unsafe`); inside
   Git Bash's mintty window the prompt is refused - use `winpty`, another console or
-  `--passphrase-file`. Known issue (T-271): on Windows, Ctrl-C at the prompt leaves the console
-  without echo for programs started afterwards from PowerShell 7 (cmd resets it). Library API: new
+  `--passphrase-file`. On Windows, Ctrl-C at the prompt puts the console input mode back before
+  the process ends (T-271; `windows-sys` is now a direct Windows dependency). Library API: new
   `Credential`, `parse_encrypt_args`/`parse_decrypt_args` replace `parse_secretstream_args`,
   `SecretstreamArgs::key_path` becomes `credential`; new `CliError::PassphraseNoTerminal`/
   `PassphraseMintty`/`PassphraseEmpty`/`PassphraseMismatch`/`PassphraseFileInvalid`/

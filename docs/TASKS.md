@@ -8733,7 +8733,15 @@ replace a DSTU primitive.
 
 ### RESUME HERE (state as of 2026-09-23, saved for a memory-clear/new-session handoff)
 
-**Latest handoff (2026-09-24, eighth session end) - read this first.** Working copy clean on
+**Latest handoff (2026-09-24, ninth session end) - read this first.** Working copy clean on
+`ux-0.5.0`, nothing pushed (embargo). This session: **T-271** implemented as designed (console
+Ctrl handler in `sigint.rs`, `windows-sys` direct Windows-only dependency, lock gained only an
+edge). Ran: the new unit test, `cargo test -p uacrypt` on Windows and on the Pi, `cargo xtask
+clippy`/`fmt --check`, `cargo deny check`, the `WriteConsoleInputW` probe in a pwsh 7 console
+(3 cases + a control run on the pre-fix binary, D-219 "T-271"). **Not run:** CI (unpushed),
+Windows Terminal. **Next: T-270**, then the "Remaining, in order" list.
+
+**Previous handoff (2026-09-24, eighth session end).** Working copy clean on
 `ux-0.5.0`, nothing pushed (embargo). This session: owner **approved T-271's fix** (console Ctrl
 handler, design in its entry below; no code written yet). On the owner's request, a binary smoke
 run of the release `uacrypt` on the Pi and on Windows: Pi `cargo test -p uacrypt --release`
@@ -9166,7 +9174,7 @@ Additive - after the breaking part:
 
 Remaining, in order (owner 2026-09-24: follow-ups found while landing the batch join this one
 plan):
-1. T-271 - Windows Ctrl-C console mode (a T-262 defect; owner go-ahead for the `unsafe` first).
+1. ~~T-271 - Windows Ctrl-C console mode~~ (done 2026-09-24).
 2. T-270 - clippy 1.98 in `dstu-core` (small; unblocks CI on a current toolchain).
 3. T-264 - shell completions and man page.
 4. T-265 - bounded-memory `box-seal`/`box-open` (new `dstu-core` API).
@@ -9174,7 +9182,9 @@ plan):
 6. T-263 - only if the owner wants it.
 7. Release 0.5.0 (after 0.4.0, B1 a), then T-267.
 
-- [ ] **T-271** Windows Ctrl-C at the passphrase prompt leaves the console input mode at `0x1`
+- [x] **T-271** (done 2026-09-24 on `ux-0.5.0`, D-219 "T-271"; `sigint.rs`; probe: mode `0x1F7`
+  before and after Ctrl-C at both prompts, control run on the old binary left `0x1`) Windows
+  Ctrl-C at the passphrase prompt leaves the console input mode at `0x1`
   (echo and line input off; measured, D-219): `rpassword` sets `ENABLE_PROCESSED_INPUT` only and
   the system's default Ctrl-C handler ends the process before its `Drop`. cmd resets the mode,
   PowerShell 7 does not. Proposed fix, the Windows twin of the owner's Unix choice (a): save the

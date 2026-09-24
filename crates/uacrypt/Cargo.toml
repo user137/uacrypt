@@ -30,3 +30,8 @@ zeroize = { version = "1.9.0", default-features = false, features = ["alloc"] }
 # SIGINT ignored while the passphrase prompt is open (T-262, D-219); already locked through
 # getrandom and rpassword.
 libc = "0.2.189"
+
+[target.'cfg(windows)'.dependencies]
+# Console input mode restored on Ctrl-C at the passphrase prompt (T-271, D-219); already locked
+# through rpassword, with a subset of its features.
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Security", "Win32_Storage_FileSystem", "Win32_System_Console"] }
