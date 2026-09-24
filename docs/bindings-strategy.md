@@ -379,6 +379,10 @@ retroactively the same day it was added, see that entry.)
          `uacrypt decrypt` already has (`CliError::SecretstreamChunkTooLarge`/
          `CliError::SecretstreamTrailingData`, `crates/uacrypt/src/lib.rs`) — port them explicitly
          into every language's own reader, they don't come for free from the wire format matching.
+       - **The `uacrypt` interop test must convert its raw key first** (since 0.5.0, T-256/D-212):
+         `uacrypt encrypt`/`decrypt --key` read typed key files only, so the test writes the
+         binding's raw 32-byte key, runs `uacrypt key-import --kind symmetric --in <raw> --out
+         <typed>`, and passes the typed file to `uacrypt`. The binding's own API keeps raw keys.
 4. [ ] Prebuilt-artifact packaging for the target platform(s) (D-116) — build/local-install only,
        no registry publish.
 5. [ ] `cargo xtask` subcommand + CI wiring (D-12).

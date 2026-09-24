@@ -101,7 +101,8 @@ canonical source (`docs/TASKS.md`/`docs/DECISIONS.md`) — this section states c
     itself (that reversal, and why, is D-186's own addendum: converting `crypto_sign`'s types to
     a curve-tagged enum would have broken `dstu-core-capi`'s C ABI for no benefit). `uacrypt`'s
     `sign-keygen257`/`sign-pubkey257`/`sign257` mirror `sign-keygen`/`sign-pubkey`/`sign`; `verify`
-    alone is unified and reads a curve tag byte to handle both curves' signatures. **Wired into all
+    alone is unified and handles both curves' signatures (on `ux-0.5.0`, D-212: the typed
+    verifying-key file names its curve instead of a leading curve tag byte). **Wired into all
     eight language bindings plus `dstu-core-capi` as of T-204 (2026-08-09/10)** - untagged
     everywhere, the curve-tag dispatch stays a `uacrypt`-layer-only concern, never duplicated into
     a binding (D-118).
