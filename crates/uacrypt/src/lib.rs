@@ -311,7 +311,7 @@ impl fmt::Display for CliError {
             ),
             CliError::SignKeyInvalid => write!(
                 f,
-                "--key is not a valid signing key (must be nonzero and less than the curve order - see uacrypt sign-keygen)"
+                "--key is not a valid signing key (must be nonzero and less than the curve order - see uacrypt sign-keygen/sign-keygen257)"
             ),
             CliError::SignVerifyFailed => write!(
                 f,
@@ -2791,19 +2791,17 @@ fn read_verifying_key(path: &std::path::Path) -> Result<AnyVerifyingKey, CliErro
 }
 
 /// Runs `verify`: hashes `--in` with Kupyna-256 in bounded-memory chunks
-/// ([`hash_file_streamed`], D-42), reads `--key`'s own curve tag
-/// ([`read_tagged_verifying_key`], `docs/DECISIONS.md` D-186 Decision 1) to determine which curve
-/// applies and reports a specific error for any tag this build doesn't support (Decision 3), then
-/// checks `--sig` against it. On a valid signature prints `Signature OK (DSTU 4145, m=...)` to
+/// ([`hash_file_streamed`], D-42), reads `--key` as a verifying key of either curve (the key
+/// line names it, D-212), then checks `--sig` against it. On a valid signature prints `Signature OK (DSTU 4145, m=...)` to
 /// stderr and returns `Ok(())` (T-255); stdout stays empty. `iterations > 1` is the D-34
 /// benchmark path, same shape as [`run_sign_command`]: hash/key/signature parsed once, only
 /// `verify_digest` itself timed in a loop.
 ///
 /// # Errors
 ///
-/// Returns [`CliError::Io`]/[`CliError::WrongLength`] for file problems,
-/// [`CliError::SignVerifyUnsupportedCurve`] if `--key`'s tag isn't `0x01`/`0x02`, or
-/// [`CliError::SignVerifyFailed`] if the signature does not verify.
+/// Returns [`CliError::Io`] or a key-file error for `--key`, [`CliError::WrongLength`] if `--sig`
+/// has the wrong length for the key's curve, or [`CliError::SignVerifyFailed`] if the signature
+/// does not verify.
 #[allow(clippy::cast_precision_loss)] // human-readable ops/s diagnostic, not exact at any realistic count
 pub fn run_verify_command(args: &VerifyArgs) -> Result<(), CliError> {
     let verifying_key = read_verifying_key(&args.key_path)?;
@@ -3013,14 +3011,14 @@ pub fn parse_box_pubkey_args(args: &[String]) -> Result<BoxPubkeyArgs, CliError>
     })
 }
 
-/// Runs `box-pubkey`: reads a 32-byte `crypto_box` secret key from `--key`, derives its public key
-/// ([`dstu_core::crypto_box::SecretKey::public_key`]), and writes the 32-byte compressed
-/// (`x`-coordinate only, see `crypto_box`'s own module doc) encoding to `--out` - the format
-/// `box-seal --key` expects.
+/// Runs `box-pubkey`: reads a `crypto_box` secret key of either curve from `--key`, derives its
+/// public key (`SecretKey::public_key`), and writes the compressed (`x`-coordinate only, 32 or 64
+/// bytes, see `crypto_box`'s own module doc) encoding to `--out` as a public-key line of the same
+/// curve - the format `box-seal --key` expects (T-257).
 ///
 /// # Errors
 ///
-/// Returns [`CliError::Io`]/[`CliError::WrongLength`] for file problems, or
+/// Returns [`CliError::Io`] or a key-file error for file problems, or
 /// [`CliError::BoxKeyInvalid`] if `--key` isn't a valid `crypto_box` secret key.
 pub fn run_box_pubkey_command(args: &BoxPubkeyArgs) -> Result<(), CliError> {
     let line = read_box_secret_key(&args.key_path, "box-pubkey")?.public_key_line();
@@ -3054,8 +3052,8 @@ pub fn parse_box_seal_args(args: &[String]) -> Result<BoxSealArgs, CliError> {
     })
 }
 
-/// Runs `box-seal`: reads a 32-byte recipient public key from `--key` and encrypts `--in` to it
-/// ([`dstu_core::crypto_box::seal`]).
+/// Runs `box-seal`: reads a recipient public key of either curve from `--key` and encrypts `--in`
+/// to it (`crypto_box::seal` or `crypto_box512::seal`, by the key's kind, T-257).
 ///
 /// **Not memory-bounded** (D-42 note, deliberate rather than overlooked): `crypto_box::seal`
 /// itself takes `message: &[u8]` - a genuinely chunked `seal_stream` would need its own library
@@ -3070,9 +3068,9 @@ pub fn parse_box_seal_args(args: &[String]) -> Result<BoxSealArgs, CliError> {
 ///
 /// # Errors
 ///
-/// Returns [`CliError::Io`] if `--key`/`--in` can't be read or `--out` can't be written,
-/// [`CliError::WrongLength`] if `--key` isn't 32 bytes, [`CliError::BoxKeyInvalid`] if `--key`
-/// isn't a valid public key, or [`CliError::Random`] if the OS CSPRNG fails.
+/// Returns [`CliError::Io`] if `--key`/`--in` can't be read or `--out` can't be written, a key-file
+/// error if `--key` isn't a box public-key line, [`CliError::BoxKeyInvalid`] if its bytes aren't a
+/// valid public key, or [`CliError::Random`] if the OS CSPRNG fails.
 #[allow(clippy::cast_precision_loss)] // human-readable ops/s diagnostic, not exact at any realistic count
 pub fn run_box_seal_command(args: &BoxSealArgs) -> Result<(), CliError> {
     let public = read_box_public_key(&args.key_path, "box-seal")?;
@@ -3135,8 +3133,8 @@ pub fn parse_box_open_args(args: &[String]) -> Result<BoxOpenArgs, CliError> {
     })
 }
 
-/// Runs `box-open`: reads a 32-byte secret key from `--key` and decrypts `--in`
-/// ([`dstu_core::crypto_box::open`]) - see [`run_box_seal_command`]'s doc comment for the same
+/// Runs `box-open`: reads a secret key of either curve from `--key` and decrypts `--in`
+/// (`crypto_box::open` or `crypto_box512::open`, by the key's kind, T-257) - see [`run_box_seal_command`]'s doc comment for the same
 /// not-memory-bounded caveat.
 ///
 /// `iterations > 1` is the D-34/T-179 benchmark path: `open` is deterministic given the same
@@ -3145,10 +3143,11 @@ pub fn parse_box_open_args(args: &[String]) -> Result<BoxOpenArgs, CliError> {
 ///
 /// # Errors
 ///
-/// Returns [`CliError::Io`] if `--key`/`--in` can't be read or `--out` can't be written,
-/// [`CliError::WrongLength`] if `--key` isn't 32 bytes, [`CliError::BoxKeyInvalid`] if `--key`
-/// isn't a valid secret key, [`CliError::BoxOpenTruncated`] if `--in` is too short to be real
-/// `box-seal` output, or [`CliError::BoxOpenFailed`] for any other authentication failure.
+/// Returns [`CliError::Io`] if `--key`/`--in` can't be read or `--out` can't be written, a key-file
+/// error if `--key` isn't a box secret-key line, [`CliError::BoxKeyInvalid`] if its bytes aren't a
+/// valid secret key, [`CliError::BoxOpenTruncated`] if `--in` is too short to be real `box-seal`
+/// output for the key's curve, or [`CliError::BoxOpenFailed`] for any other authentication failure
+/// (including a file sealed to the other curve).
 #[allow(clippy::cast_precision_loss)] // human-readable ops/s diagnostic, not exact at any realistic count
 pub fn run_box_open_command(args: &BoxOpenArgs) -> Result<(), CliError> {
     let secret = read_box_secret_key(&args.key_path, "box-open")?;
@@ -4154,9 +4153,9 @@ fn run_help_command(rest: &[String]) -> Result<(), CliError> {
     }
 }
 
-/// Dispatches `sign-keygen`/`sign-pubkey`/`sign`/`verify` - split out of [`run`] for the same
-/// `clippy::pedantic` line-count reason as [`dispatch_kalyna_mode`] (`docs/DECISIONS.md` D-71's
-/// precedent, `docs/TASKS.md` T-124); `cmd` is always one of the four literals [`run`]'s own match arm
+/// Dispatches `sign-keygen`/`sign-keygen257`/`sign-pubkey`/`sign`/`verify` - split out of [`run`] for
+/// the same `clippy::pedantic` line-count reason as [`dispatch_kalyna_mode`] (`docs/DECISIONS.md`
+/// D-71's precedent, `docs/TASKS.md` T-124); `cmd` is always one of the five literals [`run`]'s own match arm
 /// already narrowed it to. `rest` excludes both the program name and `cmd` itself.
 /// Shared "check `--help` once, then parse-and-run" shape every single-purpose command
 /// (`kupyna-digest`/`strumok-crypt`/`hash`/`keygen`/`encrypt`/`decrypt`) repeated inline in
@@ -4194,8 +4193,8 @@ fn dispatch_sign_command(cmd: &str, rest: &[String]) -> Result<(), CliError> {
     }
 }
 
-/// Dispatches `box-keygen`/`box-pubkey`/`box-seal`/`box-open` - same D-71 line-count-lint reason as
-/// [`dispatch_sign_command`]; `cmd` is always one of the four literals [`run`]'s own match arm
+/// Dispatches `box-keygen`/`box-keygen512`/`box-pubkey`/`box-seal`/`box-open` - same D-71
+/// line-count-lint reason as [`dispatch_sign_command`]; `cmd` is always one of the five literals [`run`]'s own match arm
 /// already narrowed it to. `rest` excludes both the program name and `cmd` itself.
 fn dispatch_box_command(cmd: &str, rest: &[String]) -> Result<(), CliError> {
     if rest.iter().any(|a| is_help_flag(a)) {

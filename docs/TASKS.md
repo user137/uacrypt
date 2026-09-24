@@ -8746,8 +8746,11 @@ replace a DSTU primitive.
 - CodeQL alerts #82-#88 dismissed as false positives (T-266, D-210); 0 open.
 - 0.5.0 work goes on branch `ux-0.5.0`, never on `master` before the 0.4.0 push. **T-255 done
   there 2026-09-24** (local commits, D-211). **T-256 (typed key files, D-212) is done too
-  (2026-09-24, commit `c1ac1ec`).** **T-257 (curve twins removed, D-213) done too (2026-09-24).**
-  Next: T-258 (overwrite policy). T-256 ran every binding
+  (2026-09-24, commit `c1ac1ec`).** **T-257 (curve twins removed, D-213) done too (2026-09-24,
+  commit `daca2ee` + a rustdoc follow-up).** Ran: `cargo xtask test` (136 suites green), clippy,
+  fmt, docs-check, `--iterations 3` of `sign`/`box-seal`/`box-open` on both curves (release
+  binary, `ops_per_s=` present), scoped Miri on `keyfile` 7/7 + `removed_commands` 1/1, no UB. Not run: PHP (comment-only edit), the full `bench-compare`, CI
+  (branch unpushed). Next: T-258 (overwrite policy). T-256 ran every binding
   suite locally except PHP (not installed): Node 95/95 (`env -u CARGO npm`), Ruby 101/101 (with
   `LIBCLANG_PATH`), Python 100/100 (`PYTHONPATH=python`), Java `mvn verify`, .NET, Go, C++ (ctest
   from PowerShell). New T-267: update the site after the 0.5.0 release (owner request).
