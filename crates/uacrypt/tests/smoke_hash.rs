@@ -303,25 +303,71 @@ fn a_path_with_a_control_character_is_refused() {
     }
 }
 
+/// A write error on stdout (here: a full device) is exit 3 naming `<stdout>`, never a panic.
+#[cfg(unix)]
 #[test]
 #[cfg_attr(
     miri,
     ignore = "spawns the real uacrypt binary - Miri cannot run a subprocess"
 )]
-fn a_closed_stdout_is_an_error_not_a_panic() {
-    use std::process::{Command, Stdio};
-    let dir = TempDir::new("hash_closed_stdout");
+fn a_failing_stdout_is_exit_3_not_a_panic() {
+    let dir = TempDir::new("hash_full_stdout");
     write_bytes(&dir.file("a"), b"first");
-    let mut child = Command::new(env!("CARGO_BIN_EXE_uacrypt"))
+    let full = std::fs::File::create("/dev/full").expect("open /dev/full");
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_uacrypt"))
         .args(["hash", "--in", "a"])
         .current_dir(&dir.0)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
+        .stdout(full)
+        .output()
         .expect("spawn");
-    drop(child.stdout.take());
-    let output = child.wait_with_output().expect("wait");
     let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(3), "{stderr}");
+    assert!(stderr.contains("<stdout>"), "{stderr}");
     assert!(!stderr.contains("panicked"), "{stderr}");
-    assert_ne!(output.status.code(), Some(101), "{stderr}");
+}
+
+#[test]
+#[cfg_attr(
+    miri,
+    ignore = "spawns the real uacrypt binary - Miri cannot run a subprocess"
+)]
+fn a_cyrillic_path_round_trips() {
+    let dir = TempDir::new("hash_cyrillic");
+    write_bytes(&dir.file("звіт.pdf"), b"x");
+    let r = uacrypt_in(&dir.0, &["hash", "--in", "звіт.pdf"]);
+    assert!(r.success(), "{}", r.stderr);
+    assert!(r.stdout.ends_with("  звіт.pdf\n"), "{}", r.stdout);
+    write_bytes(&dir.file("SUMS"), r.stdout.as_bytes());
+    let r = uacrypt_in(&dir.0, &["hash", "--check", "SUMS"]);
+    assert!(r.success(), "{}", r.stderr);
+    assert_eq!(r.stdout, "звіт.pdf: OK\n");
+}
+
+/// Windows PowerShell 5.1's `>` writes UTF-16LE with a BOM: named, not "line 1 malformed". A
+/// UTF-8 BOM (`Out-File -Encoding utf8`) is accepted.
+#[test]
+#[cfg_attr(
+    miri,
+    ignore = "spawns the real uacrypt binary - Miri cannot run a subprocess"
+)]
+fn a_utf16_check_file_is_named_and_a_utf8_bom_is_accepted() {
+    let dir = TempDir::new("hash_bom");
+    write_bytes(&dir.file("a"), b"first");
+    let line = line_for(std::path::Path::new("a"), b"first");
+    let utf16: Vec<u8> = [0xff, 0xfe]
+        .into_iter()
+        .chain(line.bytes().flat_map(|b| [b, 0]))
+        .collect();
+    write_bytes(&dir.file("SUMS16"), &utf16);
+    let r = uacrypt_in(&dir.0, &["hash", "--check", "SUMS16"]);
+    assert_eq!(r.code, Some(1), "{}", r.stderr);
+    assert!(r.stderr.contains("UTF-16"), "{}", r.stderr);
+    assert_eq!(r.stdout, "");
+
+    let mut bom = vec![0xef, 0xbb, 0xbf];
+    bom.extend_from_slice(line.as_bytes());
+    write_bytes(&dir.file("SUMS8"), &bom);
+    let r = uacrypt_in(&dir.0, &["hash", "--check", "SUMS8"]);
+    assert!(r.success(), "{}", r.stderr);
+    assert_eq!(r.stdout, "a: OK\n");
 }

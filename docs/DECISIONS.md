@@ -14196,12 +14196,24 @@ the working directory, CRLF/upper-case/no final newline accepted, ten malformed 
 a non-UTF-8 one, and a blank middle line) each rejected with `line 2` and empty stdout, empty
 check file, the 16 MiB boundary (exactly at the cap is parsed, one byte over is "larger than"),
 usage errors exit 2 (incl. `--out`, `--force`, repeated `--in`), file errors exit 3 (missing,
-directory, for both flags), a Unix-only newline/escape path refusal, and a closed stdout that must
-not panic. Unit tests in `lib.rs`: `parse_check_list` accept/reject tables (pure, Miri-able), the
+directory, for both flags), a Unix-only newline/escape path refusal, and (see the addendum) stdout write errors. Unit tests in `lib.rs`: `parse_check_list` accept/reject tables (pure, Miri-able), the
 multi-chunk streaming check through `run_hash_command`, parsing. `smoke_overwrite.rs`,
 `smoke_misuse_matrix.rs` and `smoke_golden_path.rs` used `hash --out` as a representative output
 command; those rows now use `kupyna-digest --variant 256` (same shared output helper), so D-214's
 coverage is unchanged except that `hash` is no longer in its table (14 invocations, was 15).
+
+**Addendum - Windows shells (closing review, measured 2026-09-24).** `hash --in звіт.pdf > SUMS`
+then `--check SUMS` round-trips in PowerShell 7.6 (raw UTF-8 bytes, no BOM), cmd and Git Bash.
+Windows PowerShell 5.1 fails twice: its `>` writes UTF-16LE with a BOM (`FF FE`), and it decodes
+native stdout through the console code page (cp866 here) before re-encoding, so even
+`| Out-File -Encoding utf8` stores a garbled Cyrillic path (with a UTF-8 BOM). uacrypt cannot undo
+the second (the bytes are already wrong), so it does not decode UTF-16 either: a leading UTF-16 BOM
+is `HashCheckUtf16` (exit 1) naming PowerShell 7 and `cmd /c "uacrypt hash --in <f> > <list>"`
+(verified from 5.1 with the Cyrillic file: `OK`), and one leading UTF-8 BOM is skipped (an ASCII
+list saved by 5.1's `Out-File -Encoding utf8`, or by Notepad, then checks). Tests:
+`a_cyrillic_path_round_trips`, `a_utf16_check_file_is_named_and_a_utf8_bom_is_accepted`, and
+parser unit cases. The racy closed-pipe test was replaced by a deterministic `cfg(unix)` one that
+points stdout at `/dev/full` and asserts exit 3 naming `<stdout>`.
 
 **Rejected.** Several `--in` in one call (conflicts with T-255's repeated-flag rule; a positional
 file list conflicts with R4). GNU's lenient mode that skips malformed lines with a warning (a

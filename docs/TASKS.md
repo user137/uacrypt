@@ -8738,8 +8738,11 @@ replace a DSTU primitive.
 (embargo). `bindings/ruby/Gemfile.lock` committed on `ux-0.5.0` (bundler sync to the gem's
 `VERSION` 0.2.0, set in `f83459d`); `master`'s copy still says 0.1.0 - sync it there on release
 day if the gem publish needs it. Open owner option from T-258: also refuse `--force` onto an
-existing typed key file the command does not read (D-214 Decision 3). T-255..T-258 done (T-258: D-214); **next: T-259** (`hash`
-like `sha256sum`). T-258 ran: `cargo test -p uacrypt` (all green), `cargo xtask clippy`/`fmt`/
+existing typed key file the command does not read (D-214 Decision 3). T-255..T-259 done (T-258: D-214;
+**T-259: D-215, commit `43ad089` plus a closing-review follow-up** - `hash` prints/checks
+`sha256sum` lines; Windows PowerShell 5.1's UTF-16 `>` is refused by name, see D-215's addendum;
+Pi `cargo test -p uacrypt` green for both commits, see D-215); **next: T-260** (stdin/stdout via
+`-`). T-258 ran: `cargo test -p uacrypt` (all green), `cargo xtask clippy`/`fmt`/
 `docs-check`, the documented CLI examples in one directory, `bench-compare` (every row printed),
 and every binding suite: Ruby 101/101, Node 95/95, Python 100/100, .NET 151/151, Go
 (`-count=1`), Java `mvn verify`, C++ ctest here; PHP 99/99 + phpstan on the Pi. **Pi run
@@ -9079,7 +9082,8 @@ Additive - after the breaking part:
 Release:
 - [ ] **T-267** After the 0.5.0 release (owner request 2026-09-24): update the site - the
   `gh-pages` `index.html` (version marker that `docs-check` reads, and its CLI examples: typed key
-  files, `key-import`, the exit codes) - and check the published book (`docs/CLI.md` "Key files")
+  files, `key-import`, the exit codes, `hash` printing to stdout and `hash --check` instead of
+  `hash --out`) - and check the published book (`docs/CLI.md` "Key files")
   on the live site.
 
 Every task: test-first, all four categories (happy path, security/boundary, misuse, error path);

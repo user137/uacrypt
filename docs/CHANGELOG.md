@@ -64,8 +64,9 @@ All notable changes to this project are documented in this file. Format follows
   `hash --in f > d` (a text line, not 32 raw bytes); `hash` no longer takes `--out`/`--force`.
   For the old raw digest file use `kupyna-digest --variant 256 --in f --out d`. Library API:
   `HashArgs` is an enum (`File`/`Check`); new `CliError::MissingOneOf`/`ExclusiveFlags`/
-  `HashPathUnprintable`/`HashCheckTooLarge`/`HashCheckEmpty`/`HashCheckMalformed`/
-  `HashCheckFailed`.
+  `HashPathUnprintable`/`HashCheckTooLarge`/`HashCheckEmpty`/`HashCheckUtf16`/
+  `HashCheckMalformed`/`HashCheckFailed`. On Windows, create check files with PowerShell 7 or
+  cmd: Windows PowerShell 5.1's `>` writes UTF-16, which `--check` refuses by name.
 
 ### Security
 

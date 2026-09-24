@@ -78,7 +78,10 @@ naming the line and checks nothing. Relative paths are resolved against the curr
 the check file's. `hash --in` refuses a path that is not UTF-8 or contains a control character
 (exit 2): it could not be read back as one line, and a terminal escape in a path would be echoed
 back by `--check`. The digests are Kupyna-256, so a `sha256sum` file reports every line as
-FAILED. For a raw binary digest file (the 0.4 `hash --out` output), use
+FAILED. On Windows, PowerShell 7 and cmd write `>` as plain UTF-8; Windows PowerShell 5.1 writes it
+as UTF-16 (which `--check` names as such and refuses) and garbles non-ASCII paths even with
+`Out-File -Encoding utf8`, so from 5.1 use `cmd /c "uacrypt hash --in <file> > <list>"`. One
+leading UTF-8 BOM is accepted. For a raw binary digest file (the 0.4 `hash --out` output), use
 `kupyna-digest --variant 256 --out`.
 
 `uacrypt sign-keygen`/`sign-pubkey`/`sign`/`verify` (`docs/TASKS.md` T-124, `docs/DECISIONS.md` D-73) are the

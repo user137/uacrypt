@@ -160,6 +160,7 @@ pub enum CliError {
         limit: usize,
     },
     HashCheckEmpty(PathBuf),
+    HashCheckUtf16(PathBuf),
     HashCheckMalformed {
         path: PathBuf,
         line: usize,
@@ -302,6 +303,12 @@ impl fmt::Display for CliError {
             CliError::HashCheckTooLarge { path, limit } => write!(
                 f,
                 "{}: checksum file is larger than {limit} bytes",
+                path.display()
+            ),
+            CliError::HashCheckUtf16(path) => write!(
+                f,
+                "{}: checksum file is UTF-16 (Windows PowerShell 5.1 writes `>` that way); create \
+                 it with PowerShell 7 or `cmd /c \"uacrypt hash --in <file> > <list>\"`",
                 path.display()
             ),
             CliError::HashCheckEmpty(path) => {
@@ -541,6 +548,7 @@ impl CliError {
             | CliError::BoxOpenUnsupportedVersion
             | CliError::HashCheckTooLarge { .. }
             | CliError::HashCheckEmpty(_)
+            | CliError::HashCheckUtf16(_)
             | CliError::HashCheckMalformed { .. }
             | CliError::HashCheckFailed { .. } => REJECTED,
         }
@@ -2549,6 +2557,8 @@ struct CheckEntry {
 #[derive(Debug, PartialEq, Eq)]
 enum CheckListError {
     Empty,
+    /// Starts with a UTF-16 byte-order mark: Windows PowerShell 5.1's `>` (D-215).
+    Utf16,
     /// 1-based line number.
     Malformed(usize),
 }
@@ -2560,8 +2570,13 @@ fn is_printable_path(path: &str) -> bool {
 }
 
 /// Parses a whole check file: one `<64 hex digits>  <path>` per line, upper- or lower-case hex, an
-/// optional `\r` before each `\n`, the last `\n` optional. Anything else rejects the whole file.
+/// optional `\r` before each `\n`, the last `\n` optional, one leading UTF-8 byte-order mark
+/// ignored. Anything else rejects the whole file.
 fn parse_check_list(text: &[u8]) -> Result<Vec<CheckEntry>, CheckListError> {
+    if text.starts_with(&[0xff, 0xfe]) || text.starts_with(&[0xfe, 0xff]) {
+        return Err(CheckListError::Utf16);
+    }
+    let text = text.strip_prefix(b"\xef\xbb\xbf").unwrap_or(text);
     let text = text.strip_suffix(b"\n").unwrap_or(text);
     if text.is_empty() {
         return Err(CheckListError::Empty);
@@ -2669,6 +2684,7 @@ fn run_hash_check(list: &PathBuf) -> Result<(), CliError> {
 
     let entries = parse_check_list(&read_check_list(list)?).map_err(|e| match e {
         CheckListError::Empty => CliError::HashCheckEmpty(list.clone()),
+        CheckListError::Utf16 => CliError::HashCheckUtf16(list.clone()),
         CheckListError::Malformed(line) => CliError::HashCheckMalformed {
             path: list.clone(),
             line,
@@ -4049,6 +4065,8 @@ Notes:
     - Relative paths in the check file are resolved against the current directory, not the check
       file's directory - run --check from where you ran `hash`.
     - The digests are Kupyna-256, not SHA-256: a `sha256sum` file checks as FAILED on every line.
+    - Windows PowerShell 5.1's `>` writes UTF-16 and garbles non-ASCII paths; use PowerShell 7,
+      cmd or `cmd /c \"uacrypt hash --in <file> > <list>\"`. A UTF-8 BOM is accepted.
     - A path that is not UTF-8 or contains a control character (a newline, a terminal escape) is
       refused: it could not be read back as one line.
 ";
@@ -5175,6 +5193,18 @@ mod tests {
         let good = check_line(&Kupyna256::digest(b"a"), "x");
         let hex = &good[..64];
         assert_eq!(parse_check_list(b""), Err(CheckListError::Empty));
+        let mut utf8_bom = b"\xef\xbb\xbf".to_vec();
+        utf8_bom.extend_from_slice(good.as_bytes());
+        assert_eq!(parse_check_list(&utf8_bom).map(|v| v.len()), Ok(1));
+        let utf16le: Vec<u8> = [0xff, 0xfe]
+            .into_iter()
+            .chain(good.bytes().flat_map(|b| [b, 0]))
+            .collect();
+        assert_eq!(parse_check_list(&utf16le), Err(CheckListError::Utf16));
+        assert_eq!(
+            parse_check_list(b"\xfe\xff\x00a"),
+            Err(CheckListError::Utf16)
+        );
         assert_eq!(parse_check_list(b"\n"), Err(CheckListError::Empty));
         for bad in [
             String::new(),
