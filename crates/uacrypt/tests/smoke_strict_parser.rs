@@ -259,6 +259,10 @@ fn help_command_prints_top_level_and_per_command_help() {
     assert!(r.stdout.starts_with("uacrypt encrypt"), "{}", r.stdout);
     assert_eq!(r.stdout, uacrypt(["encrypt", "--help"]).stdout);
 
+    let r = uacrypt(["help", "help"]);
+    assert_code(&r, 0);
+    assert!(r.stdout.contains("EXIT STATUS:"), "{}", r.stdout);
+
     let r = uacrypt(["help", "kalyna-gcm"]);
     assert_code(&r, 0);
     assert!(r.stdout.starts_with("uacrypt kalyna-gcm"), "{}", r.stdout);
@@ -406,4 +410,29 @@ fn wrong_length_tag_is_a_rejection_not_a_file_problem() {
         p(&tag),
     ]);
     assert_code(&r, 1);
+}
+
+#[test]
+#[cfg_attr(
+    miri,
+    ignore = "spawns the real uacrypt binary - Miri cannot run a subprocess"
+)]
+fn unwritable_output_exits_3_and_leaves_nothing() {
+    let dir = TempDir::new("strict_exit_3_write");
+    let key = keygen(&dir, "key.bin");
+    let pt = dir.file("pt.bin");
+    write_bytes(&pt, b"hello");
+    let out = dir.file("no-such-dir").join("ct.bin");
+    let r = uacrypt([
+        "encrypt",
+        "--key",
+        p(&key),
+        "--in",
+        p(&pt),
+        "--out",
+        p(&out),
+    ]);
+    assert_code(&r, 3);
+    assert!(!out.exists());
+    assert!(!dir.file("no-such-dir").exists());
 }

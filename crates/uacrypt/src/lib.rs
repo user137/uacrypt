@@ -4153,7 +4153,7 @@ fn run_help_command(rest: &[String]) -> Result<(), CliError> {
             print_command_help("");
             Ok(())
         }
-        [cmd] if is_help_flag(cmd) => {
+        [cmd] if is_help_flag(cmd) || cmd == "help" => {
             print_command_help("");
             Ok(())
         }

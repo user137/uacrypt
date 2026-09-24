@@ -8745,8 +8745,10 @@ replace a DSTU primitive.
   (3) the date rule (UAPKI/BC replies or 2026-10-08).
 - CodeQL alerts #82-#88 dismissed as false positives (T-266, D-210); 0 open.
 - 0.5.0 work goes on branch `ux-0.5.0`, never on `master` before the 0.4.0 push. **T-255 done
-  there 2026-09-24** (local commit, D-211). Next: T-256 (typed key files), plan mode + advisor
-  first (format decision).
+  there 2026-09-24** (local commits, D-211). Next: T-256 (typed key files), plan mode + advisor
+  first (format decision). Release-day steps for 0.4.0 run on `master` only (the finalize script
+  now refuses any other branch). When this branch is rebased onto the finalized `master`, the
+  0.5.0 CHANGELOG block must stay under `## [Unreleased]`, above `## [0.4.0]`.
 
 **EMBARGO - do not push these audit commits to the public `master` before the fix ships.** The repo is
 public and `docs/SUMMARY.md` publishes TASKS.md to gh-pages, so pushing this section discloses a live
