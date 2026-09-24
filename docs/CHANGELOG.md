@@ -101,7 +101,11 @@ All notable changes to this project are documented in this file. Format follows
   `MODERATE` limits (256 MiB, t=3, about a second per run); a 28-byte header (`0x50`, versions,
   costs, salt) in front of the usual stream. `decrypt` names the other kind when given a key for
   a passphrase file or the reverse. New dependency: `rpassword` 7.5.4 (+ `rtoolbox`), owner
-  decision P1; `uacrypt` now enables `dstu-core`'s `pwhash` feature. Library API: new
+  decision P1; `uacrypt` now enables `dstu-core`'s `pwhash` feature. Ctrl-C at the prompt on
+  Linux/macOS exits by SIGINT with the terminal restored (`libc` is now a direct Unix
+  dependency: SIGINT is ignored while the prompt is open, `uacrypt`'s first `unsafe`); inside
+  Git Bash's mintty window the prompt is refused - use `winpty`, another console or
+  `--passphrase-file`. Library API: new
   `Credential`, `parse_encrypt_args`/`parse_decrypt_args` replace `parse_secretstream_args`,
   `SecretstreamArgs::key_path` becomes `credential`; new `CliError::PassphraseNoTerminal`/
   `PassphraseMintty`/`PassphraseEmpty`/`PassphraseMismatch`/`PassphraseFileInvalid`/

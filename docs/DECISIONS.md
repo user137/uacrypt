@@ -14559,9 +14559,13 @@ passphrase file format stays `uacrypt`-only until then.
   chose (a) (2026-09-24). `src/sigint.rs`: an `Ignored` guard sets `SIG_IGN` around each
   `prompt_password` and restores the previous disposition; on `Interrupted` uacrypt re-raises
   SIGINT, so it still dies by the signal (status 130). This is `uacrypt`'s first `unsafe` (three
-  `libc` calls, `libc` now a direct Unix-only dependency, already locked). A shell loop around
+  `libc` calls, `libc` now a direct Unix-only dependency, already locked) - F1 still avoided the
+  ~150 lines of terminal FFI that own prompt code would have needed. A shell loop around
   uacrypt does not stop on this Ctrl-C: in raw mode the shell itself gets no SIGINT. Windows
-  `rpassword` sends a console Ctrl-C event instead; not checked by hand.
+  `rpassword` sets the console input mode to `ENABLE_PROCESSED_INPUT` only, so Ctrl-C there is
+  handled by the system's default handler, which ends the process before `Drop` restores the
+  mode (read in its source, `src/windows.rs`); whether cmd/PowerShell restore their console mode
+  afterwards is not checked by hand. The guard is a no-op there.
 - The terminal is asked only when stderr is a terminal (T-261's predicate); otherwise exit 2
   naming `--passphrase-file`. That keeps every test deterministic: `rpassword` opens /dev/tty or
   `CONIN$` directly, so a child of an interactive shell could otherwise block on a prompt.
@@ -14609,7 +14613,9 @@ nothing (the passphrase is absent from the transcript), `encrypt` asks twice, a 
 with no output, `decrypt` asks once and decrypts, a wrong passphrase exits 1 by name, an empty one
 exits 2, `--in -` data with the passphrase from the terminal works; Ctrl-C at either prompt of
 `encrypt` and at `decrypt`'s: status 130, terminal back at `echo`, no output or temp file. mintty
-as above. Pi `cargo test -p uacrypt` green; `cargo clippy -p uacrypt --no-deps` clean on the Pi's
+as above; the Ctrl-C and no-leftover behaviour is hand-checked only (no automated test drives a
+pty). Pi `cargo test -p uacrypt` green on the final code (after the output-order change,
+`sigint.rs` and closing `--in` before the rename); `cargo clippy -p uacrypt --no-deps` clean on the Pi's
 Rust 1.98.1 as well. Scoped Miri on `passphrase.rs`'s 4 unit tests: no UB. **Not checked:** the terminal prompt in cmd, PowerShell 7 and Windows
 Terminal (typing into a console window from this session was not attempted: it would send keys
 to the owner's desktop), and Ctrl-C on Windows.

@@ -2798,6 +2798,8 @@ fn run_secretstream_encrypt(
     let result = header
         .map_or(Ok(()), |header| out.write_all(&header))
         .and_then(|()| write_secretstream_file(&key, &mut input, source, &mut out));
+    // Closed before the rename: an in-place `--force` must not rename over an open `--in`.
+    drop(input);
     out.finish(result)
 }
 
@@ -2845,6 +2847,7 @@ fn run_secretstream_decrypt(
         Err(CliError::SecretstreamVerifyFailed) if by_passphrase => Err(CliError::PassphraseWrong),
         other => other,
     };
+    drop(input);
     out.finish(result)
 }
 

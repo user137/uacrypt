@@ -8737,10 +8737,12 @@ replace a DSTU primitive.
 `ux-0.5.0`, nothing pushed (embargo). This session: **T-262** (passphrase encryption, D-219),
 plan approved with forks F1-F4 as recommended, plus the Ctrl-C fork (a) found on the Pi. Ran:
 `cargo test -p dstu-core --features pwhash --test crypto_pwhash` (libsodium vectors),
-`cargo test -p uacrypt` here and on the Pi, `cargo test -p dstu-core-capi`, `cargo xtask clippy`/
+`cargo xtask test` (146 test binaries, incl. the `derive_key` doctest), `cargo test -p uacrypt`
+on the Pi on the final code, `cargo test -p dstu-core-capi`, `cargo xtask clippy`/
 `fmt --check`/`docs-check`, `cargo deny check`, `cargo audit`, scoped Miri on `passphrase.rs`'s
 4 unit tests, the pty prompt and Ctrl-C by hand on the Pi, the mintty refusal in a real mintty
-window. **Not run:** the Windows console prompt and Windows Ctrl-C by hand, the binding
+window. **Owner to check by hand:** the Windows console prompt and Windows Ctrl-C (cmd,
+PowerShell 7; rpassword's Windows path may leave the console without echo). **Not run:** the binding
 suites, CI (branch unpushed), the GHSA/CVE status check. New: T-269 (binding gate), T-270 (clippy
 1.98 in `dstu-core`, pre-existing). **Next: T-270 or T-264** (owner's call; T-263 only if wanted).
 
@@ -9162,7 +9164,8 @@ Release:
 - [ ] **T-267** After the 0.5.0 release (owner request 2026-09-24): update the site - the
   `gh-pages` `index.html` (version marker that `docs-check` reads, and its CLI examples: typed key
   files, `key-import`, the exit codes, `hash` printing to stdout and `hash --check` instead of
-  `hash --out`) - and check the published book (`docs/CLI.md` "Key files")
+  `hash --out`, and the passphrase commands `encrypt --passphrase`/`decrypt` asking, T-262) -
+  and check the published book (`docs/CLI.md` "Key files")
   on the live site.
 
 Every task: test-first, all four categories (happy path, security/boundary, misuse, error path);

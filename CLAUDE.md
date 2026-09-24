@@ -148,8 +148,8 @@ Kupyna-256 with no length cap, delegating to the streaming `Hasher`.
 the language bindings under `bindings/`, which are each their own separate Cargo workspace, D-119).
 Opaque handles, explicit `DstuStatus` error codes, `catch_unwind` at every boundary call,
 zeroize-on-free, `cbindgen`-generated header (`include/dstu_core.h`, regenerated+diffed via `cargo
-xtask capi`). Wraps the full `crypto_*` surface, including `crypto_box512`/`crypto_sign257` as of
-T-204 (2026-08-09) - see the `crypto_box`/`crypto_sign` bullets above. The foundation the
+xtask capi`). Wraps the full `crypto_*` surface except `crypto_pwhash::derive_key` (T-269). The
+foundation the
 .NET/Go/C++ bindings link against directly — usable from any language with a C FFI, not just those
 three. (The five direct-Rust bindings - Python/Node/Ruby/PHP/Java - link `dstu-core` itself, not
 this crate, but reached the same `crypto_box512`/`crypto_sign257` coverage independently, T-204's

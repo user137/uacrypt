@@ -358,7 +358,7 @@ doesn't need re-deriving from the table alone next time.
 | `crypto_sign` sign/verify | `hazmat::dstu4145` + `crypto_sign` | Done |
 | `crypto_sign` keypair generation | `SigningKey::generate()` | Done (T-122, D-72) |
 | `crypto_kem`/ML-KEM768 (post-quantum) | none | Explicitly out of scope, D-08's spirit - recorded so it isn't rediscovered |
-| `crypto_pwhash` (+ `_str`/`_str_verify`) | `crypto_pwhash` (Argon2id) | Done - `hash_password` already returns the same opaque-string shape as `_str` |
+| `crypto_pwhash` (+ `_str`/`_str_verify`) | `crypto_pwhash` (Argon2id) | Done - `hash_password` already returns the same opaque-string shape as `_str`; `derive_key` is `crypto_pwhash` itself (T-262, D-219) |
 | `crypto_kdf` | `crypto_kdf` (Kupyna-KDF) | Done |
 | `crypto_kdf_hkdf_*` (RFC 5869 HKDF) | none | No DSTU angle - not scheduled (see stale-claim correction below) |
 | `crypto_kx` | none | Not started (T-47); the DSTU 9041 curve primitive now exists (T-177), design work not started |

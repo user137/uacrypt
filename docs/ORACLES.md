@@ -469,6 +469,16 @@ comparable to all five other in-scope algorithms combined" framing, not just a p
   vector oracle for that security level. See `docs/pseudocode/dstu9041.md`'s "Open gaps"/
   "Implementation status" sections and `docs/TASKS.md` T-182.
 
+### Argon2id (`crypto_pwhash`, not DSTU)
+
+No DSTU standard covers password hashing (D-03). Two oracles: the `argon2` crate itself is
+checked against RFC 9106's Appendix A Argon2id vector (`src/crypto_pwhash.rs` unit test), and
+`derive_key` against libsodium's `crypto_pwhash` (ARGON2ID13, `OPSLIMIT_MODERATE`,
+`MEMLIMIT_MODERATE`, 32-byte output) through PyNaCl 1.6.2's bundled libsodium, installed in a
+throwaway venv (T-262, D-219). The three cases (ASCII, Ukrainian UTF-8, empty password) are in
+`crates/dstu-core/tests/vectors/pwhash/derive_key.json`, with the generator's source named in the
+file; they are also the shared cross-language vectors for T-269.
+
 ## Test-vector convention
 
 **Updated - populated for Kalyna, Kupyna, DSTU 4145, and Strumok**, not just the original two this
