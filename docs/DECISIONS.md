@@ -14564,8 +14564,8 @@ passphrase file format stays `uacrypt`-only until then.
   uacrypt does not stop on this Ctrl-C: in raw mode the shell itself gets no SIGINT. Windows
   `rpassword` sets the console input mode to `ENABLE_PROCESSED_INPUT` only, so Ctrl-C there is
   handled by the system's default handler, which ends the process before `Drop` restores the
-  mode (read in its source, `src/windows.rs`); whether cmd/PowerShell restore their console mode
-  afterwards is not checked by hand. The guard is a no-op there.
+  mode (read in its source, `src/windows.rs`). Measured 2026-09-24 (see "Windows console"
+  below): the input mode is left at `0x1`. The guard is a no-op there; the fix is T-271.
 - The terminal is asked only when stderr is a terminal (T-261's predicate); otherwise exit 2
   naming `--passphrase-file`. That keeps every test deterministic: `rpassword` opens /dev/tty or
   `CONIN$` directly, so a child of an interactive shell could otherwise block on a prompt.
@@ -14616,9 +14616,22 @@ exits 2, `--in -` data with the passphrase from the terminal works; Ctrl-C at ei
 as above; the Ctrl-C and no-leftover behaviour is hand-checked only (no automated test drives a
 pty). Pi `cargo test -p uacrypt` green on the final code (after the output-order change,
 `sigint.rs` and closing `--in` before the rename); `cargo clippy -p uacrypt --no-deps` clean on the Pi's
-Rust 1.98.1 as well. Scoped Miri on `passphrase.rs`'s 4 unit tests: no UB. **Not checked:** the terminal prompt in cmd, PowerShell 7 and Windows
-Terminal (typing into a console window from this session was not attempted: it would send keys
-to the owner's desktop), and Ctrl-C on Windows.
+Rust 1.98.1 as well. Scoped Miri on `passphrase.rs`'s 4 unit tests: no UB.
+
+**Windows console (measured 2026-09-24, debug build, owner request).** No keys were sent to the
+desktop: a PowerShell 7 script in its own new console window started `uacrypt` (or an
+interactive `cmd`/`pwsh`) in that console, wrote the keystrokes into the console's own input
+buffer with `WriteConsoleInputW`, sent Ctrl-C the way the system does
+(`GenerateConsoleCtrlEvent`, the script itself ignoring it), and read back `GetConsoleMode` and
+the screen buffer. Results: `encrypt --passphrase` twice -> exit 0; mismatch -> exit 2, no
+output; `decrypt` once -> exit 0, plaintext equal; wrong passphrase -> exit 1; the screen shows
+only the prompts, never a passphrase. Ctrl-C at either command's prompt -> exit
+`STATUS_CONTROL_C_EXIT`, no output or temp file left, but the console input mode is left at
+`0x1` (was `0x1f7`: echo, line input and the rest off). Inside an interactive shell: `cmd`
+resets the mode itself (`0x7`) and the next typed command echoes - no visible harm; PowerShell 7
+keeps working (PSReadLine draws its own input) but the console stays at `0x1` for programs it
+starts afterwards and after it exits. Fix tracked as T-271. Windows Terminal and mintty's
+`winpty` path were not tried.
 
 **Found while landing this, not fixed here.** Clippy 1.98.1 (the Pi's stable; the dev machine has
 1.97.1) rejects five `cast_possible_truncation` casts in `dstu-core`'s `gf2m_field!` macro (e.g.

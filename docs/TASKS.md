@@ -8741,10 +8741,12 @@ plan approved with forks F1-F4 as recommended, plus the Ctrl-C fork (a) found on
 on the Pi on the final code, `cargo test -p dstu-core-capi`, `cargo xtask clippy`/
 `fmt --check`/`docs-check`, `cargo deny check`, `cargo audit`, scoped Miri on `passphrase.rs`'s
 4 unit tests, the pty prompt and Ctrl-C by hand on the Pi, the mintty refusal in a real mintty
-window. **Owner to check by hand:** the Windows console prompt and Windows Ctrl-C (cmd,
-PowerShell 7; rpassword's Windows path may leave the console without echo). **Not run:** the binding
+window, and (on the owner's request) the Windows console prompt and Ctrl-C through console
+input injection in a separate window - prompt fine, Ctrl-C leaves the mode at `0x1` (T-271,
+needs the owner's go-ahead). **Not run:** the binding
 suites, CI (branch unpushed), the GHSA/CVE status check. New: T-269 (binding gate), T-270 (clippy
-1.98 in `dstu-core`, pre-existing). **Next: T-270 or T-264** (owner's call; T-263 only if wanted).
+1.98 in `dstu-core`, pre-existing), T-271 (Windows Ctrl-C console mode). **Next: T-271 (after the
+owner's go-ahead), T-270 or T-264** (owner's call; T-263 only if wanted).
 
 **Previous handoff (2026-09-24, sixth session end).** Working copy clean on
 `ux-0.5.0`, nothing pushed (embargo). This session: **T-261** (progress line on stderr, D-218).
@@ -9147,10 +9149,19 @@ Additive - after the breaking part:
   the Ctrl-C fork found on the Pi (SIGINT ignored around the prompt, first `unsafe` in uacrypt).
   Core gained `crypto_pwhash::derive_key`, checked against libsodium (PyNaCl) vectors. mintty is
   refused (measured: it hangs otherwise). Output is reserved only after the prompt. Pi tests
-  green, pty checked by hand; Windows console prompt and Windows Ctrl-C not checked by hand.
+  green, pty checked by hand; Windows console prompt checked 2026-09-24 via console input
+  injection (works; Ctrl-C leaves the console mode at `0x1` -> T-271).
 - [ ] **T-269** Binding gate for T-262: wire `crypto_pwhash::derive_key` into the 8 bindings and
   `dstu-core-capi` (shared vectors `crates/dstu-core/tests/vectors/pwhash/derive_key.json`), and
   decide whether the bindings also read/write the passphrase file format (D-219).
+- [ ] **T-271** Windows Ctrl-C at the passphrase prompt leaves the console input mode at `0x1`
+  (echo and line input off; measured, D-219): `rpassword` sets `ENABLE_PROCESSED_INPUT` only and
+  the system's default Ctrl-C handler ends the process before its `Drop`. cmd resets the mode,
+  PowerShell 7 does not. Proposed fix, the Windows twin of the owner's Unix choice (a): save the
+  mode before the prompt and register a console Ctrl handler that restores it and returns FALSE
+  (default exit follows) - a few lines of `unsafe` over `windows-sys` (already in the tree via
+  `rpassword`, would become a direct Windows-only dependency). Needs the owner's go-ahead; verify
+  with the same `WriteConsoleInputW` probe.
 - [ ] **T-270** Clippy 1.98 rejects five `cast_possible_truncation` casts in `dstu-core`'s
   `gf2m_field!` under `-D warnings` (found on the Pi 2026-09-24, D-219); CI fails on any runner
   with stable >= 1.98. Existing code, not from T-262.
