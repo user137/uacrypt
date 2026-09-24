@@ -14288,3 +14288,97 @@ replaced. Unit: `keyfile::sniff_kind` table for every kind (Miri: no UB).
 per-kind rule is one more thing to drift). A full `decode` of the old file (reads secret bytes for
 no gain). Following symlinks (contradicts D-214: the link, not the target, is replaced). Failing
 open on an unreadable file (the one case where a key could slip through).
+
+## D-217: T-260 - stdin/stdout via `-` (0.5.0)
+
+**Context.** Owner decision S1 (a) (TASKS "CLI usability and misuse resistance", rules R2, R4,
+R7): `-` as stdin/stdout; `decrypt` to stdout writes only verified chunks and says the output is
+INCOMPLETE if `Final` never arrives; binary output to a terminal is refused; `--key` never reads
+stdin; secret keys never go to stdout. Plan approved by the owner 2026-09-24 with the four forks
+below as recommended. Compared with age (`FiloSottile/age` `main` @ `b74dce4`, `cmd/age/age.go`,
+read 2026-09-24, not recalled).
+
+**Decision 1 - scope.** `--in -`: `encrypt`, `decrypt`, `hash`, `sign`, `verify`, `box-seal`,
+`box-open`. Binary `--out -`: `encrypt`, `decrypt`, `sign`, `box-seal`, `box-open`. Text `--out -`
+(a public key line, also to a terminal): `sign-pubkey`, `box-pubkey`, `key-import` of a public
+kind. Only `--in` reads stdin, so no command can read it twice. Every other path flag refuses `-`
+(`StdioNotAccepted`, exit 2, message suggests `./-`): `--key`, `--sig`, `key-import --in`,
+`hash --check` and all paths of `kalyna-*`/`kupyna-digest`/`strumok-crypt` (interop and
+benchmarks keep file paths). Before, `-` silently named a file called `-` everywhere, and T-258's
+placeholder made `--out -` create one. `--out -` on a keygen or a secret `key-import` is
+`SecretKeyToStdout` (exit 2, R7's own wording).
+
+**Decision 2 - `-` becomes stdin/stdout only in the argument scanner** (`ArgScanner::input`/
+`output`, types `Source`/`Sink`). `hash --check` builds `Source::File` for every listed path, so a
+`-` line names a file called `-`: a check list can never make uacrypt read stdin (a hostile list
+could otherwise hang a run), and D-215's grammar is unchanged. Consequence: a `hash --in -` line
+(`<hex>  -`) does not check stdin later. GNU `sha256sum -c` reads stdin for `-`; that
+compatibility (and `--check -`) was surfaced to the owner and deferred.
+
+**Decision 3 - terminal refusal (fork 1).** Binary `--out -` with a terminal stdout
+(`std::io::IsTerminal`) is `BinaryToTerminal`, exit 2, for `decrypt`/`box-open` as well as the
+always-binary outputs. It is checked after the key files are read and before any output or input
+is touched (D-214's order), so `--in - --out -` in a bare terminal fails at once instead of
+waiting for typed input. Divergence from age, on purpose: age refuses binary to a terminal only
+for its *default* stdout and treats an explicit `-o -` as "force anyway"; uacrypt's `--out` is
+mandatory, so `--out -` is always explicit and there is no quiet default to guard. age's decrypt
+buffers the whole plaintext when stdout is a terminal and prints it if it is valid UTF-8 text;
+that breaks `decrypt`'s bounded memory (D-42), so reading a decrypted text on screen is
+`--out - | more`. Verified in real terminals 2026-09-24: cmd and PowerShell 7.6 consoles, Git
+Bash's mintty (std detects the msys pty), and a Linux pty on the Pi via `script`; each refused
+with exit 2 and printed nothing, while `box-pubkey --out -` printed its line.
+
+**Decision 4 - partial output (S1 (a)).** `decrypt` already wrote each chunk only after
+`PullState::pull` verified it, so stdout never carries unauthenticated plaintext. Any error after
+the first byte reached the stdout writer - truncation, a tampered later chunk, trailing bytes
+after `Final`, or a stdout write/flush failure - becomes `StdoutIncomplete(inner)`: the inner
+message plus "the output already written to stdout is INCOMPLETE - discard it", and **the inner
+error's exit code** (1 for a rejected file, 3 for I/O), so a script's rules from D-211 still
+hold. A wrong key or a header-only input fails before anything is printed and is not marked.
+`encrypt --out -` writes the header first, so any encrypt failure over stdout is marked. Stdout
+goes through a 64 KiB `BufWriter` (std's stdout is line-buffered, which flushes on every `0x0A`
+in binary data) with an explicit flush mapped to `Io("<stdout>")`; dropping it on the error path
+flushes verified bytes only. `box-open` decrypts the whole message before writing, so it never
+prints part of one. Documented footgun: in `... --out - | tar x` the shell reports `tar`'s status
+unless `set -o pipefail`.
+
+**Decision 5 - `--force` with `--out -` (fork 2)** is `ForceWithStdout`, exit 2: a flag that
+cannot do anything signals a mistaken command (R4). `check_outputs`/`SameOutputPath` and the
+key-file guard (D-216) apply only to file outputs; `OutputFile::create` takes the input path as
+an `Option`, so stdin never feeds `std::path::absolute("-")` or `same_file` (which would resolve a
+real file named `-` in the working directory).
+
+**Decision 6 - Windows PowerShell 5.1 (fork 4, measured before building).** 2026-09-24, this
+machine: `encrypt --out - > f` from Windows PowerShell 5.1 turned a 310-byte output into 594 bytes
+starting `FF FE` (re-encoded as UTF-16LE); PowerShell 7.6 and cmd kept it byte-identical and it
+decrypted. `decrypt` read `FF` as a format version and blamed "uacrypt 0.3.x", which is wrong, so
+`SecretstreamUnsupportedVersion` for `0xEF`/`0xFE`/`0xFF` (the byte-order-mark starts) now names
+text redirection and PowerShell 5.1 instead (message only, same variant and exit code 1).
+`box-open` is unchanged (its version error carries no byte).
+
+**Reading.** stdin is read in the same fixed-size chunks as a file for `encrypt`/`decrypt`/
+`hash`/`sign`/`verify` (D-42: `fill_chunk`, `read_exact_or_truncated`, the hasher loop - which
+now also retries `Interrupted`). `box-seal`/`box-open` read stdin whole, as they read a file
+(T-265).
+
+**Tests.** `tests/smoke_stdio.rs` (8): stdio round trip at 0, 1, 8191, 8192, 8193 and 3×8192+5
+bytes, and stdin→file / file→stdout with the same wire format; `sign --in -` byte-identical to
+`sign --in <file>` on both curves (deterministic nonce), `verify --in -` accepting and rejecting,
+`hash --in -` printing `-`; `box-seal`/`box-open` through stdio on both curves, `box-pubkey`/
+`sign-pubkey`/public `key-import` to stdout equal to the file output; a 3+-chunk stream truncated
+before `Final` prints exactly the three verified chunks, a tampered second chunk prints exactly
+the first, trailing data prints all - each exit 1 and INCOMPLETE - while a wrong key and a
+header-only input print nothing and are not marked, and a tampered `box-open` prints nothing;
+16 refusals (every non-stdio `-`, and `--force` with `--out -`) exit 2 with nothing printed and
+no file created, six secret-key `--out -` refusals naming "secret"; `./-` reaches a file named
+`-`; the byte-order-mark message; Unix only (Pi): stdout on `/dev/full` exits 3 naming
+`<stdout>` and INCOMPLETE for `decrypt` and `encrypt`. Unit: `refuse_binary_to_terminal`,
+`StdoutIncomplete` keeps the inner exit code. The existing unit tests build the new `Source`/
+`Sink` fields; all other smoke files pass unchanged.
+
+**Rejected.** age's printable-text check for a terminal (unbounded buffer). Silently ignoring
+`--force` with stdout. `-` in a check list as stdin (deferred, see Decision 2). Accepting `--sig -`
+as a second stdin input (one stdin reader per command keeps "read twice" impossible by
+construction). Keeping `-` as a literal file name on the other flags (R4: `--key -` meaning a file
+is a trap). A mark-free exit code for partial output (a new code would break D-211's "1 = the
+input was rejected").

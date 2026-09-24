@@ -40,6 +40,43 @@ commands are not recognised.
 A killed process (power loss, `kill -9`) can leave an empty output file, which the next run
 refuses until you delete it or pass `--force`.
 
+**stdin and stdout (0.5.0, T-260, `docs/DECISIONS.md` D-217).** `--in -` reads stdin in
+`encrypt`, `decrypt`, `hash`, `sign`, `verify`, `box-seal` and `box-open`; `--out -` writes stdout
+in `encrypt`, `decrypt`, `sign`, `box-seal` and `box-open`, and prints the public key line of
+`sign-pubkey`, `box-pubkey` and `key-import` (public kinds only):
+
+```
+tar c docs | uacrypt encrypt --key key.bin --in - --out docs.tar.enc
+uacrypt decrypt --key key.bin --in docs.tar.enc --out - | tar x
+uacrypt sign-pubkey --key signing.key --out -
+cat report.pdf | uacrypt hash --in -          # prints "<hex>  -"
+```
+
+- Binary output (everything above except the public keys) is refused with exit 2 when stdout is a
+  terminal - it would garble the screen. To read a decrypted text on screen, pipe it: `--out - |
+  more`. Checked in cmd, PowerShell 7, Git Bash (mintty) and a Linux terminal.
+- Secret keys are never written to stdout: `--out -` on every `*-keygen` command and on a secret
+  `key-import` is a usage error. `--key` never reads stdin.
+- Every other path flag (`--key`, `--sig`, `key-import --in`, `hash --check`, and all paths of
+  the lower-level `kalyna-*`/`kupyna-digest`/`strumok-crypt` commands) refuses `-` as a usage
+  error, so `-` never silently names a file. A file really named `-` is `./-`. In a `hash --check`
+  list, a line for `-` names a file called `-`, never stdin.
+- `--force` with `--out -` is a usage error: there is no file to replace.
+- **`decrypt --out -` can print part of a message.** Each chunk is written once its tag verifies,
+  so nothing unauthenticated is ever printed, but a stream cut short or tampered with halfway
+  prints its verified beginning before the error. The error then ends with "the output already
+  written to stdout is INCOMPLETE - discard it", and the exit status is non-zero (1 for a bad
+  file, 3 if stdout itself failed). Check it: in a shell pipeline such as `... --out - | tar x`
+  the pipeline's status is `tar`'s unless you `set -o pipefail`. With `--out <file>` nothing is
+  written unless the whole file verifies. `box-open` decrypts the whole message before printing
+  anything, so it never prints part of one.
+- Windows: PowerShell 7 (7.4 and later) and cmd pass bytes through `|` and `>` unchanged. Windows
+  PowerShell 5.1 re-encodes a native command's output as UTF-16 text, which corrupts binary data
+  (measured: a 310-byte `encrypt` output became 594 bytes starting `FF FE`); `decrypt` names this
+  cause when it sees such a file. From 5.1, use `--out <file>` or `cmd /c "..."`.
+- `box-seal`/`box-open` read all of stdin into memory, as they do a file (not bounded yet, T-265);
+  `encrypt`/`decrypt`/`hash`/`sign`/`verify` read stdin in the same fixed-size chunks as a file.
+
 `uacrypt encrypt`/`decrypt`/`hash` (`docs/TASKS.md` T-16, `docs/DECISIONS.md` D-52) are the real,
 misuse-resistant top-level commands — mode, nonce, and algorithm are all hardcoded, nothing to
 misconfigure:

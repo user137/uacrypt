@@ -9082,8 +9082,14 @@ Breaking - 0.5.0 (B1 a):
   unreadable existing output is not replaced either; symlinks keep D-214's behaviour.
   Commits `23d319d` + closing-review follow-up (BOM, `box-open`, multi-output test, verified
   age/minisign comparison); Pi `cargo test -p uacrypt` green for both.
-- [ ] **T-260** stdin/stdout via `-` (S1; R2, R4). `--key` never from stdin; binary output to a
+- [x] **T-260** (done 2026-09-24 on `ux-0.5.0`, D-217; `smoke_stdio.rs`) stdin/stdout via `-`
+  (S1; R2, R4). `--key` never from stdin; binary output to a
   terminal refused; secret keys never to stdout (R7); temp-then-rename stays for real files.
+  Owner approved the plan with forks as recommended: decrypt/box-open to a terminal refused too,
+  `--force` with `--out -` a usage error, `hash --check -`/`-` list entries deferred (GNU
+  compatibility, not built), PowerShell 5.1 hint after measuring. Every other path flag refuses
+  `-` (`./-` for a file). Pi `cargo test -p uacrypt` green (incl. `/dev/full`); terminal refusal
+  checked by hand in cmd, PowerShell 7, mintty and a Linux pty.
 
 Additive - after the breaking part:
 - [ ] **T-261** Progress indicator: automatic only when stderr is a terminal and the input is large

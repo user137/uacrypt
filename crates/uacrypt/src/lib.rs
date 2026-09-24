@@ -220,6 +220,15 @@ pub enum CliError {
     BoxOpenTruncated(&'static str),
     BoxOpenFailed(&'static str),
     BoxOpenUnsupportedVersion,
+    /// `-` given to a path flag that is not stdin/stdout (T-260, D-217).
+    StdioNotAccepted(&'static str),
+    /// A secret key's `--out -` (R7).
+    SecretKeyToStdout,
+    ForceWithStdout,
+    /// Binary `--out -` while stdout is a terminal.
+    BinaryToTerminal,
+    /// `inner` happened after output had already gone to stdout; exits with `inner`'s code.
+    StdoutIncomplete(Box<CliError>),
 }
 
 impl fmt::Display for CliError {
@@ -403,6 +412,14 @@ impl fmt::Display for CliError {
                 f,
                 "decrypt: a chunk length in --in exceeds this build's maximum chunk size - not real encrypt output"
             ),
+            // 0xFF/0xFE/0xEF start a UTF-16/UTF-8 byte-order mark: measured 2026-09-24, Windows
+            // PowerShell 5.1's `>` re-encodes binary stdout as UTF-16LE (D-217).
+            CliError::SecretstreamUnsupportedVersion(v @ (0xef | 0xfe | 0xff)) => write!(
+                f,
+                "decrypt: --in starts with byte {v:#04x}, like a text byte-order mark - it was \
+                 probably saved through Windows PowerShell 5.1's `>` or a text pipe, which \
+                 corrupts binary data; encrypt again with --out <file>, or use PowerShell 7 or cmd"
+            ),
             CliError::SecretstreamUnsupportedVersion(v) => write!(
                 f,
                 "decrypt: unsupported stream format version {v} in --in - this build reads version {} only; files from uacrypt 0.3.x and earlier cannot be read",
@@ -491,6 +508,26 @@ impl fmt::Display for CliError {
                 "box-open: --in was sealed in a different format version (e.g. by uacrypt 0.3.x) - \
                  open it with the release that sealed it"
             ),
+            CliError::StdioNotAccepted(flag) => write!(
+                f,
+                "{flag} does not accept `-` (stdin/stdout); for a file named `-`, write ./-"
+            ),
+            CliError::SecretKeyToStdout => write!(
+                f,
+                "a secret key is never written to stdout - pass a file path to --out"
+            ),
+            CliError::ForceWithStdout => {
+                write!(f, "--force has no effect with --out - (stdout); remove it")
+            }
+            CliError::BinaryToTerminal => write!(
+                f,
+                "refusing to write binary output to a terminal - redirect it (> file, | command) \
+                 or pass a file path to --out"
+            ),
+            CliError::StdoutIncomplete(inner) => write!(
+                f,
+                "{inner}; the output already written to stdout is INCOMPLETE - discard it"
+            ),
         }
     }
 }
@@ -521,7 +558,12 @@ impl CliError {
             | CliError::SameOutputPath(..)
             | CliError::MissingOneOf(..)
             | CliError::ExclusiveFlags(..)
-            | CliError::HashPathUnprintable(_) => USAGE,
+            | CliError::HashPathUnprintable(_)
+            | CliError::StdioNotAccepted(_)
+            | CliError::SecretKeyToStdout
+            | CliError::ForceWithStdout
+            | CliError::BinaryToTerminal => USAGE,
+            CliError::StdoutIncomplete(inner) => inner.exit_code(),
             CliError::Io { .. }
             | CliError::KeyFileExists(_)
             | CliError::OutputExists { .. }
@@ -836,15 +878,51 @@ impl ArgScanner {
         Ok(Self { values, flags })
     }
 
+    /// A file path; `-` is refused, so it can never silently name a file called `-` (T-260).
     fn path(&self, flag: &'static str) -> Result<PathBuf, CliError> {
-        self.values
-            .get(flag)
-            .map(PathBuf::from)
+        self.path_opt(flag)?
             .ok_or(CliError::MissingFlag(&flag[2..]))
     }
 
-    fn path_opt(&self, flag: &'static str) -> Option<PathBuf> {
-        self.values.get(flag).map(PathBuf::from)
+    fn path_opt(&self, flag: &'static str) -> Result<Option<PathBuf>, CliError> {
+        match self.values.get(flag).map(String::as_str) {
+            Some("-") => Err(CliError::StdioNotAccepted(flag)),
+            value => Ok(value.map(PathBuf::from)),
+        }
+    }
+
+    /// A path, or stdin for `-` - the only place a `-` becomes stdin (T-260, D-217).
+    fn input(&self, flag: &'static str) -> Result<Source, CliError> {
+        match self.values.get(flag).map(String::as_str) {
+            Some("-") => Ok(Source::Stdin),
+            _ => self.path(flag).map(Source::File),
+        }
+    }
+
+    /// A path, or stdout for `-`.
+    fn output(&self, flag: &'static str) -> Result<Sink, CliError> {
+        match self.values.get(flag).map(String::as_str) {
+            Some("-") => Ok(Sink::Stdout),
+            _ => self.path(flag).map(Sink::File),
+        }
+    }
+
+    /// A secret key's output path: `-` is refused with R7's own message.
+    fn secret_key_path(&self, flag: &'static str) -> Result<PathBuf, CliError> {
+        match self.values.get(flag).map(String::as_str) {
+            Some("-") => Err(CliError::SecretKeyToStdout),
+            _ => self.path(flag),
+        }
+    }
+
+    /// `--out` plus `--force`; `--force` with stdout is a usage error (R4).
+    fn output_and_force(&self) -> Result<(Sink, bool), CliError> {
+        let out = self.output("--out")?;
+        let force = self.bool_flag("--force");
+        if force && out == Sink::Stdout {
+            return Err(CliError::ForceWithStdout);
+        }
+        Ok((out, force))
     }
 
     fn variant<T>(&self, parse: impl FnOnce(&str) -> Option<T>) -> Result<T, CliError> {
@@ -985,7 +1063,7 @@ fn read_exact_file(
 pub fn run_block_command(decrypt: bool, args: &BlockArgs) -> Result<(), CliError> {
     let key = read_exact_file(&args.key_path, LengthOf::Key, args.variant.key_len())?;
     check_outputs(&[("--out", &args.out_path)], &[("--key", &args.key_path)])?;
-    let (out, out_file) = OutputFile::create(&args.out_path, &args.in_path, args.force)?;
+    let (out, out_file) = OutputFile::create(&args.out_path, Some(&args.in_path), args.force)?;
     let expected_in_len = args.variant.block_len();
     let input = read_exact_file(&args.in_path, LengthOf::InputBlock, expected_in_len)?;
 
@@ -1060,7 +1138,7 @@ pub fn parse_ccm_args(args: &[String]) -> Result<CcmArgs, CliError> {
         variant: scanner.variant(KalynaVariant::parse)?,
         key_path: scanner.path("--key")?,
         nonce_path: scanner.path("--nonce")?,
-        aad_path: scanner.path_opt("--aad"),
+        aad_path: scanner.path_opt("--aad")?,
         in_path: scanner.path("--in")?,
         out_path: scanner.path("--out")?,
         tag_path: scanner.path("--tag")?,
@@ -1221,7 +1299,7 @@ pub fn parse_gcm_args(args: &[String]) -> Result<GcmArgs, CliError> {
         variant: scanner.variant(KalynaVariant::parse)?,
         key_path: scanner.path("--key")?,
         nonce_path: scanner.path("--nonce")?,
-        aad_path: scanner.path_opt("--aad"),
+        aad_path: scanner.path_opt("--aad")?,
         in_path: scanner.path("--in")?,
         out_path: scanner.path("--out")?,
         tag_path: scanner.path("--tag")?,
@@ -1370,8 +1448,8 @@ pub fn parse_cmac_args(args: &[String]) -> Result<CmacArgs, CliError> {
         variant: scanner.variant(KalynaVariant::parse)?,
         key_path: scanner.path("--key")?,
         in_path: scanner.path("--in")?,
-        out_path: scanner.path_opt("--out"),
-        tag_path: scanner.path_opt("--tag"),
+        out_path: scanner.path_opt("--out")?,
+        tag_path: scanner.path_opt("--tag")?,
         iterations: scanner.iterations()?,
         force: scanner.bool_flag("--force"),
     })
@@ -1394,7 +1472,11 @@ pub fn run_cmac_command(verify: bool, args: &CmacArgs) -> Result<(), CliError> {
     } else {
         let out_path = args.out_path.as_ref().ok_or(CliError::MissingFlag("out"))?;
         check_outputs(&[("--out", out_path)], &[("--key", &args.key_path)])?;
-        Some(OutputFile::create(out_path, &args.in_path, args.force)?)
+        Some(OutputFile::create(
+            out_path,
+            Some(&args.in_path),
+            args.force,
+        )?)
     };
     let message = std::fs::read(&args.in_path).map_err(|e| CliError::Io {
         path: args.in_path.clone(),
@@ -1507,8 +1589,8 @@ pub fn parse_gmac_args(args: &[String]) -> Result<GmacArgs, CliError> {
         variant: scanner.variant(KalynaVariant::parse)?,
         key_path: scanner.path("--key")?,
         in_path: scanner.path("--in")?,
-        out_path: scanner.path_opt("--out"),
-        tag_path: scanner.path_opt("--tag"),
+        out_path: scanner.path_opt("--out")?,
+        tag_path: scanner.path_opt("--tag")?,
         iterations: scanner.iterations()?,
         force: scanner.bool_flag("--force"),
     })
@@ -1528,7 +1610,11 @@ pub fn run_gmac_command(verify: bool, args: &GmacArgs) -> Result<(), CliError> {
     } else {
         let out_path = args.out_path.as_ref().ok_or(CliError::MissingFlag("out"))?;
         check_outputs(&[("--out", out_path)], &[("--key", &args.key_path)])?;
-        Some(OutputFile::create(out_path, &args.in_path, args.force)?)
+        Some(OutputFile::create(
+            out_path,
+            Some(&args.in_path),
+            args.force,
+        )?)
     };
     let message = std::fs::read(&args.in_path).map_err(|e| CliError::Io {
         path: args.in_path.clone(),
@@ -1651,7 +1737,7 @@ pub fn parse_kw_args(args: &[String]) -> Result<KwArgs, CliError> {
 pub fn run_kw_command(unwrap: bool, args: &KwArgs) -> Result<(), CliError> {
     let key = read_exact_file(&args.key_path, LengthOf::Key, args.variant.key_len())?;
     check_outputs(&[("--out", &args.out_path)], &[("--key", &args.key_path)])?;
-    let (out, out_file) = OutputFile::create(&args.out_path, &args.in_path, args.force)?;
+    let (out, out_file) = OutputFile::create(&args.out_path, Some(&args.in_path), args.force)?;
     let input = std::fs::read(&args.in_path).map_err(|e| CliError::Io {
         path: args.in_path.clone(),
         message: e.to_string(),
@@ -1790,7 +1876,7 @@ pub fn run_xts_command(decrypt: bool, args: &XtsArgs) -> Result<(), CliError> {
         &[("--out", &args.out_path)],
         &[("--key", &args.key_path), ("--tweak", &args.tweak_path)],
     )?;
-    let (out, out_file) = OutputFile::create(&args.out_path, &args.in_path, args.force)?;
+    let (out, out_file) = OutputFile::create(&args.out_path, Some(&args.in_path), args.force)?;
     let input = std::fs::read(&args.in_path).map_err(|e| CliError::Io {
         path: args.in_path.clone(),
         message: e.to_string(),
@@ -1860,8 +1946,8 @@ const SECRETSTREAM_CHUNK_BYTES: usize = 8 * 1024;
 #[derive(Debug, PartialEq, Eq)]
 pub struct SecretstreamArgs {
     pub key_path: PathBuf,
-    pub in_path: PathBuf,
-    pub out_path: PathBuf,
+    pub in_path: Source,
+    pub out_path: Sink,
     /// Replace an existing output (T-258, D-214).
     pub force: bool,
 }
@@ -1876,11 +1962,14 @@ pub struct SecretstreamArgs {
 /// Returns [`CliError::MissingFlag`] or [`CliError::UnknownFlag`].
 pub fn parse_secretstream_args(args: &[String]) -> Result<SecretstreamArgs, CliError> {
     let scanner = ArgScanner::scan(args, &["--key", "--in", "--out"], &["--force"])?;
+    let key_path = scanner.path("--key")?;
+    let in_path = scanner.input("--in")?;
+    let (out_path, force) = scanner.output_and_force()?;
     Ok(SecretstreamArgs {
-        key_path: scanner.path("--key")?,
-        in_path: scanner.path("--in")?,
-        out_path: scanner.path("--out")?,
-        force: scanner.bool_flag("--force"),
+        key_path,
+        in_path,
+        out_path,
+        force,
     })
 }
 
@@ -1968,7 +2057,7 @@ struct OutputFile {
 
 impl OutputFile {
     /// Reserves `path` (unless `force`) and opens the temp file the output is written to.
-    /// `input` only shapes the error message when `path` already exists.
+    /// `input` (none for stdin) only shapes the error message when `path` already exists.
     ///
     /// # Errors
     ///
@@ -1976,7 +2065,7 @@ impl OutputFile {
     /// temp name cannot be drawn, or [`CliError::Io`].
     fn create(
         path: &std::path::Path,
-        input: &std::path::Path,
+        input: Option<&std::path::Path>,
         force: bool,
     ) -> Result<(Self, std::fs::File), CliError> {
         let io_err = |p: &std::path::Path, e: std::io::Error| CliError::Io {
@@ -2002,7 +2091,7 @@ impl OutputFile {
                     refuse_key_file(path)?;
                     return Err(CliError::OutputExists {
                         path: path.to_path_buf(),
-                        same_as_input: same_file(path, input),
+                        same_as_input: input.is_some_and(|input| same_file(path, input)),
                     });
                 }
                 Err(e) => return Err(io_err(path, e)),
@@ -2070,6 +2159,185 @@ impl Drop for OutputFile {
     }
 }
 
+/// Where a command reads `--in` from: a file, or stdin for `--in -` (T-260, `docs/DECISIONS.md`
+/// D-217). Only [`ArgScanner::input`] makes a [`Source::Stdin`], so a `-` inside a `hash --check`
+/// list stays a file name.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Source {
+    Stdin,
+    File(PathBuf),
+}
+
+impl Source {
+    /// The name used in error messages.
+    fn label(&self) -> PathBuf {
+        match self {
+            Source::Stdin => PathBuf::from("<stdin>"),
+            Source::File(path) => path.clone(),
+        }
+    }
+
+    fn path(&self) -> Option<&std::path::Path> {
+        match self {
+            Source::Stdin => None,
+            Source::File(path) => Some(path),
+        }
+    }
+
+    fn io_error(&self, e: &std::io::Error) -> CliError {
+        CliError::Io {
+            path: self.label(),
+            message: e.to_string(),
+        }
+    }
+
+    /// Opens the input; nothing is read yet.
+    fn open(&self) -> Result<Box<dyn std::io::Read>, CliError> {
+        match self {
+            Source::Stdin => Ok(Box::new(std::io::stdin().lock())),
+            Source::File(path) => std::fs::File::open(path)
+                .map(|file| Box::new(file) as Box<dyn std::io::Read>)
+                .map_err(|e| self.io_error(&e)),
+        }
+    }
+
+    /// Reads the whole input - only for `box-seal`/`box-open`, which are not bounded yet (T-265).
+    fn read_all(&self) -> Result<Vec<u8>, CliError> {
+        use std::io::Read;
+        let mut bytes = Vec::new();
+        self.open()?
+            .read_to_end(&mut bytes)
+            .map_err(|e| self.io_error(&e))?;
+        Ok(bytes)
+    }
+}
+
+/// Where a command writes `--out`: a file (through [`OutputFile`]), or stdout for `--out -`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Sink {
+    Stdout,
+    File(PathBuf),
+}
+
+impl Sink {
+    /// Runs [`check_outputs`] for a file output; stdout names no file.
+    fn check_against(&self, keys: &[(&'static str, &std::path::Path)]) -> Result<(), CliError> {
+        match self {
+            Sink::Stdout => Ok(()),
+            Sink::File(path) => check_outputs(&[("--out", path)], keys),
+        }
+    }
+}
+
+/// Refuses binary output to a terminal: it would garble the screen and cannot be copied back
+/// (S1 (a), D-217). A separate function so the decision is testable without a terminal.
+fn refuse_binary_to_terminal(stdout_is_terminal: bool) -> Result<(), CliError> {
+    if stdout_is_terminal {
+        return Err(CliError::BinaryToTerminal);
+    }
+    Ok(())
+}
+
+/// The binary output of `encrypt`/`decrypt`/`sign`/`box-seal`/`box-open`: an [`OutputFile`]
+/// (temp file, renamed on commit) or stdout. Stdout cannot be taken back, so [`Output::finish`]
+/// marks an error after the first byte as [`CliError::StdoutIncomplete`]; `decrypt` writes only
+/// chunks whose tag verified, so what was printed is authentic but not the whole message.
+enum Output {
+    File(OutputFile, std::fs::File),
+    Stdout {
+        writer: std::io::BufWriter<std::io::StdoutLock<'static>>,
+        written: bool,
+    },
+}
+
+impl Output {
+    /// Call after the key files are read and before `--in` is read (D-214's order), so a refused
+    /// output costs no work and a terminal never waits for typed input.
+    ///
+    /// # Errors
+    ///
+    /// [`CliError::BinaryToTerminal`], or whatever [`OutputFile::create`] returns.
+    fn create(sink: &Sink, input: &Source, force: bool) -> Result<Self, CliError> {
+        use std::io::IsTerminal;
+        match sink {
+            Sink::Stdout => {
+                let stdout = std::io::stdout();
+                refuse_binary_to_terminal(stdout.is_terminal())?;
+                Ok(Output::Stdout {
+                    writer: std::io::BufWriter::with_capacity(64 * 1024, stdout.lock()),
+                    written: false,
+                })
+            }
+            Sink::File(path) => {
+                let (output, file) = OutputFile::create(path, input.path(), force)?;
+                Ok(Output::File(output, file))
+            }
+        }
+    }
+}
+
+/// A write that reports failures as [`CliError`], naming what failed. [`Output`] is the real one;
+/// unit tests write to a `Vec`.
+trait WriteOutput {
+    fn write_all(&mut self, bytes: &[u8]) -> Result<(), CliError>;
+}
+
+impl WriteOutput for Output {
+    /// Writes `bytes`, naming the temp file or `<stdout>` on failure.
+    fn write_all(&mut self, bytes: &[u8]) -> Result<(), CliError> {
+        use std::io::Write;
+        match self {
+            Output::File(output, file) => file.write_all(bytes).map_err(|e| CliError::Io {
+                path: output.tmp_path().to_path_buf(),
+                message: e.to_string(),
+            }),
+            Output::Stdout { writer, written } => {
+                *written |= !bytes.is_empty();
+                writer.write_all(bytes).map_err(|e| stdout_error(&e))
+            }
+        }
+    }
+}
+
+impl Output {
+    /// Commits the output if `result` is `Ok`; otherwise drops it (a file output leaves nothing
+    /// behind). A failure once stdout has output becomes [`CliError::StdoutIncomplete`].
+    ///
+    /// # Errors
+    ///
+    /// `result`'s error, or a commit/flush [`CliError::Io`].
+    fn finish(self, result: Result<(), CliError>) -> Result<(), CliError> {
+        use std::io::Write;
+        match self {
+            Output::File(output, file) => result.and_then(|()| output.commit(file)),
+            Output::Stdout {
+                mut writer,
+                written,
+            } => {
+                let result = result.and_then(|()| writer.flush().map_err(|e| stdout_error(&e)));
+                match result {
+                    Err(e) if written => Err(CliError::StdoutIncomplete(Box::new(e))),
+                    other => other,
+                }
+            }
+        }
+    }
+}
+
+/// Writes a key line to a new file ([`write_new_key_file`]) or, for a public key, to stdout.
+fn write_key_output(sink: &Sink, line: &[u8]) -> Result<(), CliError> {
+    use std::io::Write;
+    match sink {
+        Sink::File(path) => write_new_key_file(path, line),
+        Sink::Stdout => {
+            let mut out = std::io::stdout().lock();
+            out.write_all(line)
+                .and_then(|()| out.flush())
+                .map_err(|e| stdout_error(&e))
+        }
+    }
+}
+
 /// Whether `a` and `b` resolve to the same existing path (symlinks followed). Only used to word
 /// [`CliError::OutputExists`]; a hard link to `--in` is still refused, just without the hint.
 fn same_file(a: &std::path::Path, b: &std::path::Path) -> bool {
@@ -2108,15 +2376,15 @@ fn reserve_aead_outputs(
             &[("--out", out)],
             &[("--key", key), ("--nonce", nonce), ("--tag", tag)],
         )?;
-        return Ok((OutputFile::create(out, input, force)?, None, None));
+        return Ok((OutputFile::create(out, Some(input), force)?, None, None));
     }
     check_outputs(
         &[("--nonce", nonce), ("--out", out), ("--tag", tag)],
         &[("--key", key)],
     )?;
-    let out = OutputFile::create(out, input, force)?;
-    let nonce = OutputFile::create(nonce, input, force)?;
-    let tag = OutputFile::create(tag, input, force)?;
+    let out = OutputFile::create(out, Some(input), force)?;
+    let nonce = OutputFile::create(nonce, Some(input), force)?;
+    let tag = OutputFile::create(tag, Some(input), force)?;
     Ok((out, Some(nonce), Some(tag)))
 }
 
@@ -2176,20 +2444,16 @@ fn write_new_key_file(path: &std::path::Path, bytes: &[u8]) -> Result<(), CliErr
 }
 
 fn read_exact_or_truncated(
-    file: &mut std::fs::File,
+    input: &mut impl std::io::Read,
     buf: &mut [u8],
-    path: &std::path::Path,
+    source: &Source,
 ) -> Result<(), CliError> {
-    use std::io::Read;
-    match file.read_exact(buf) {
+    match input.read_exact(buf) {
         Ok(()) => Ok(()),
         Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
             Err(CliError::SecretstreamTruncated)
         }
-        Err(e) => Err(CliError::Io {
-            path: path.to_path_buf(),
-            message: e.to_string(),
-        }),
+        Err(e) => Err(source.io_error(&e)),
     }
 }
 
@@ -2219,26 +2483,17 @@ fn fill_chunk(reader: &mut impl std::io::Read, buf: &mut [u8]) -> std::io::Resul
 fn write_secretstream_file(
     key: &dstu_core::crypto_secretstream::Key,
     input: &mut impl std::io::Read,
-    in_path: &std::path::Path,
-    out_file: &mut impl std::io::Write,
-    tmp_path: &std::path::Path,
+    source: &Source,
+    out: &mut impl WriteOutput,
 ) -> Result<(), CliError> {
     use dstu_core::crypto_secretstream::{PushState, Tag, FORMAT_VERSION};
 
     let (mut push, header) = PushState::init(key)?;
-    out_file
-        .write_all(&[FORMAT_VERSION])
-        .and_then(|()| out_file.write_all(&header))
-        .map_err(|e| CliError::Io {
-            path: tmp_path.to_path_buf(),
-            message: e.to_string(),
-        })?;
+    out.write_all(&[FORMAT_VERSION])?;
+    out.write_all(&header)?;
 
     let mut read_chunk = |buf: &mut [u8]| -> Result<usize, CliError> {
-        fill_chunk(input, buf).map_err(|e| CliError::Io {
-            path: in_path.to_path_buf(),
-            message: e.to_string(),
-        })
+        fill_chunk(input, buf).map_err(|e| source.io_error(&e))
     };
 
     let mut cur = vec![0u8; SECRETSTREAM_CHUNK_BYTES];
@@ -2258,15 +2513,10 @@ fn write_secretstream_file(
         #[allow(clippy::cast_possible_truncation)]
         // cur_len <= SECRETSTREAM_CHUNK_BYTES, always << u32::MAX
         let chunk_len = cur_len as u32;
-        out_file
-            .write_all(&[tag.to_byte()])
-            .and_then(|()| out_file.write_all(&chunk_len.to_le_bytes()))
-            .and_then(|()| out_file.write_all(&ciphertext))
-            .and_then(|()| out_file.write_all(&auth_tag))
-            .map_err(|e| CliError::Io {
-                path: tmp_path.to_path_buf(),
-                message: e.to_string(),
-            })?;
+        out.write_all(&[tag.to_byte()])?;
+        out.write_all(&chunk_len.to_le_bytes())?;
+        out.write_all(&ciphertext)?;
+        out.write_all(&auth_tag)?;
 
         if next_len == 0 {
             break;
@@ -2275,19 +2525,6 @@ fn write_secretstream_file(
         cur_len = next_len;
     }
     Ok(())
-}
-
-fn run_secretstream_encrypt(
-    key: &dstu_core::crypto_secretstream::Key,
-    in_path: &PathBuf,
-    out_file: &mut std::fs::File,
-    tmp_path: &std::path::Path,
-) -> Result<(), CliError> {
-    let mut in_file = std::fs::File::open(in_path).map_err(|e| CliError::Io {
-        path: in_path.clone(),
-        message: e.to_string(),
-    })?;
-    write_secretstream_file(key, &mut in_file, in_path, out_file, tmp_path)
 }
 
 /// Decrypts `in_path` into `tmp_path` (the caller renames onto the real `--out` only after this
@@ -2299,30 +2536,26 @@ fn run_secretstream_encrypt(
 /// leftover bytes after `Final` are rejected, not silently accepted.
 fn run_secretstream_decrypt(
     key: &dstu_core::crypto_secretstream::Key,
-    in_path: &PathBuf,
-    out_file: &mut std::fs::File,
-    tmp_path: &std::path::Path,
+    source: &Source,
+    out: &mut Output,
 ) -> Result<(), CliError> {
     use dstu_core::crypto_secretstream::{PullState, Tag};
-    use std::io::{Read, Write};
+    use std::io::Read;
 
-    let mut in_file = std::fs::File::open(in_path).map_err(|e| CliError::Io {
-        path: in_path.clone(),
-        message: e.to_string(),
-    })?;
+    let mut in_file = source.open()?;
 
     let mut version = [0u8; 1];
-    read_exact_or_truncated(&mut in_file, &mut version, in_path)?;
+    read_exact_or_truncated(&mut in_file, &mut version, source)?;
     if version[0] != dstu_core::crypto_secretstream::FORMAT_VERSION {
         return Err(CliError::SecretstreamUnsupportedVersion(version[0]));
     }
     let mut header = [0u8; SECRETSTREAM_HEADER_LEN];
-    read_exact_or_truncated(&mut in_file, &mut header, in_path)?;
+    read_exact_or_truncated(&mut in_file, &mut header, source)?;
     let mut pull = PullState::init(key, &header);
 
     loop {
         let mut prefix = [0u8; 5];
-        read_exact_or_truncated(&mut in_file, &mut prefix, in_path)?;
+        read_exact_or_truncated(&mut in_file, &mut prefix, source)?;
         let tag_byte = prefix[0];
         let chunk_len = u32::from_le_bytes([prefix[1], prefix[2], prefix[3], prefix[4]]) as usize;
         if chunk_len > SECRETSTREAM_CHUNK_BYTES {
@@ -2336,16 +2569,13 @@ fn run_secretstream_decrypt(
         }
 
         let mut ciphertext = vec![0u8; chunk_len];
-        read_exact_or_truncated(&mut in_file, &mut ciphertext, in_path)?;
+        read_exact_or_truncated(&mut in_file, &mut ciphertext, source)?;
         let mut auth_tag = [0u8; SECRETSTREAM_TAG_LEN];
-        read_exact_or_truncated(&mut in_file, &mut auth_tag, in_path)?;
+        read_exact_or_truncated(&mut in_file, &mut auth_tag, source)?;
 
         let mut plaintext = vec![0u8; chunk_len];
         let tag = pull.pull(tag_byte, &ciphertext, &auth_tag, &mut plaintext)?;
-        out_file.write_all(&plaintext).map_err(|e| CliError::Io {
-            path: tmp_path.to_path_buf(),
-            message: e.to_string(),
-        })?;
+        out.write_all(&plaintext)?;
 
         if tag == Tag::Final {
             break;
@@ -2353,10 +2583,7 @@ fn run_secretstream_decrypt(
     }
 
     let mut probe = [0u8; 1];
-    let trailing = in_file.read(&mut probe).map_err(|e| CliError::Io {
-        path: in_path.clone(),
-        message: e.to_string(),
-    })?;
+    let trailing = in_file.read(&mut probe).map_err(|e| source.io_error(&e))?;
     if trailing != 0 {
         return Err(CliError::SecretstreamTrailingData);
     }
@@ -2395,15 +2622,16 @@ pub fn run_secretstream_command(decrypt: bool, args: &SecretstreamArgs) -> Resul
     key_arr.copy_from_slice(&key_bytes);
     let key = dstu_core::crypto_secretstream::Key::from_bytes(*key_arr);
 
-    check_outputs(&[("--out", &args.out_path)], &[("--key", &args.key_path)])?;
-    let (out, mut out_file) = OutputFile::create(&args.out_path, &args.in_path, args.force)?;
-    let tmp_path = out.tmp_path().to_path_buf();
-    if decrypt {
-        run_secretstream_decrypt(&key, &args.in_path, &mut out_file, &tmp_path)?;
+    args.out_path.check_against(&[("--key", &args.key_path)])?;
+    let mut out = Output::create(&args.out_path, &args.in_path, args.force)?;
+    let result = if decrypt {
+        run_secretstream_decrypt(&key, &args.in_path, &mut out)
     } else {
-        run_secretstream_encrypt(&key, &args.in_path, &mut out_file, &tmp_path)?;
-    }
-    out.commit(out_file)
+        args.in_path.open().and_then(|mut input| {
+            write_secretstream_file(&key, &mut input, &args.in_path, &mut out)
+        })
+    };
+    out.finish(result)
 }
 
 /// The two hash/key sizes shared by Kupyna (output width) and Strumok (key width) - `"256"`/
@@ -2491,7 +2719,7 @@ const DIGEST_BENCH_CHUNK_BYTES: usize = 1024 * 1024;
 pub fn run_digest_command(args: &DigestArgs) -> Result<(), CliError> {
     use std::io::Read;
 
-    let (out, out_file) = OutputFile::create(&args.out_path, &args.in_path, args.force)?;
+    let (out, out_file) = OutputFile::create(&args.out_path, Some(&args.in_path), args.force)?;
 
     let iterations = args.iterations.max(1);
 
@@ -2579,8 +2807,8 @@ pub fn run_digest_command(args: &DigestArgs) -> Result<(), CliError> {
 /// `hash`'s two modes (T-259, `docs/DECISIONS.md` D-215).
 #[derive(Debug, PartialEq, Eq)]
 pub enum HashArgs {
-    /// `--in <path>`: print `<hex>  <path>` to stdout.
-    File(PathBuf),
+    /// `--in <path>`: print `<hex>  <path>` to stdout; `--in -` hashes stdin and prints `-`.
+    File(Source),
     /// `--check <file>`: verify every `<hex>  <path>` line of a file.
     Check(PathBuf),
 }
@@ -2593,8 +2821,13 @@ pub enum HashArgs {
 /// Returns [`CliError::MissingOneOf`], [`CliError::ExclusiveFlags`] or another usage error.
 pub fn parse_hash_args(args: &[String]) -> Result<HashArgs, CliError> {
     let scanner = ArgScanner::scan(args, &["--in", "--check"], &[])?;
-    match (scanner.path_opt("--in"), scanner.path_opt("--check")) {
-        (Some(path), None) => Ok(HashArgs::File(path)),
+    let input = if scanner.values.contains_key("--in") {
+        Some(scanner.input("--in")?)
+    } else {
+        None
+    };
+    match (input, scanner.path_opt("--check")?) {
+        (Some(source), None) => Ok(HashArgs::File(source)),
         (None, Some(list)) => Ok(HashArgs::Check(list)),
         (Some(_), Some(_)) => Err(CliError::ExclusiveFlags("in", "check")),
         (None, None) => Err(CliError::MissingOneOf("in", "check")),
@@ -2699,12 +2932,15 @@ pub fn run_hash_command(args: &HashArgs) -> Result<(), CliError> {
     use std::io::Write as _;
 
     match args {
-        HashArgs::File(path) => {
-            let shown = path
-                .to_str()
-                .filter(|p| is_printable_path(p))
-                .ok_or_else(|| CliError::HashPathUnprintable(path.clone()))?;
-            let digest = hash_file_streamed(path)?;
+        HashArgs::File(source) => {
+            let shown = match source {
+                Source::Stdin => "-",
+                Source::File(path) => path
+                    .to_str()
+                    .filter(|p| is_printable_path(p))
+                    .ok_or_else(|| CliError::HashPathUnprintable(path.clone()))?,
+            };
+            let digest = hash_file_streamed(source)?;
             let mut out = std::io::stdout().lock();
             writeln!(out, "{}  {shown}", hex_lower(&digest))
                 .and_then(|()| out.flush())
@@ -2750,7 +2986,8 @@ fn run_hash_check(list: &PathBuf) -> Result<(), CliError> {
     let mut out = std::io::stdout().lock();
     let mut failed = 0;
     for entry in &entries {
-        let status = match hash_file_streamed(&PathBuf::from(&entry.path)) {
+        // A `-` entry is a file named `-`, never stdin (D-217).
+        let status = match hash_file_streamed(&Source::File(PathBuf::from(&entry.path))) {
             // A file digest is public: no constant-time comparison needed.
             Ok(digest) if digest == entry.digest => "OK".to_string(),
             Ok(_) => "FAILED".to_string(),
@@ -2786,7 +3023,7 @@ pub struct KeygenArgs {
 pub fn parse_keygen_args(args: &[String]) -> Result<KeygenArgs, CliError> {
     let scanner = ArgScanner::scan(args, &["--out"], &[])?;
     Ok(KeygenArgs {
-        out_path: scanner.path("--out")?,
+        out_path: scanner.secret_key_path("--out")?,
     })
 }
 
@@ -2813,7 +3050,8 @@ pub fn run_keygen_command(args: &KeygenArgs) -> Result<(), CliError> {
 pub struct KeyImportArgs {
     pub kind: KeyKind,
     pub in_path: PathBuf,
-    pub out_path: PathBuf,
+    /// Stdout (`--out -`) only for a public kind (R7).
+    pub out_path: Sink,
 }
 
 /// Parses `key-import`'s flags (`--kind`/`--in`/`--out`, all required).
@@ -2823,10 +3061,17 @@ pub struct KeyImportArgs {
 /// Returns [`CliError::MissingFlag`], [`CliError::UnknownKeyKind`] or [`CliError::UnknownFlag`].
 pub fn parse_key_import_args(args: &[String]) -> Result<KeyImportArgs, CliError> {
     let scanner = ArgScanner::scan(args, &["--kind", "--in", "--out"], &[])?;
+    let kind = scanner.key_kind()?;
+    let in_path = scanner.path("--in")?;
+    let out_path = if kind.is_secret() {
+        Sink::File(scanner.secret_key_path("--out")?)
+    } else {
+        scanner.output("--out")?
+    };
     Ok(KeyImportArgs {
-        kind: scanner.key_kind()?,
-        in_path: scanner.path("--in")?,
-        out_path: scanner.path("--out")?,
+        kind,
+        in_path,
+        out_path,
     })
 }
 
@@ -2936,14 +3181,18 @@ pub fn run_key_import_command(args: &KeyImportArgs) -> Result<(), CliError> {
     };
     let public_check = validate_imported_key(kind, key)?;
     let line = keyfile::encode(kind, key);
-    write_new_key_file(&args.out_path, &line)?;
+    write_key_output(&args.out_path, &line)?;
+    let destination = match &args.out_path {
+        Sink::Stdout => PathBuf::from("stdout"),
+        Sink::File(path) => path.clone(),
+    };
     let public_note = public_check
         .map(|check| format!("; its public key has check {check}"))
         .unwrap_or_default();
     eprintln!(
         "wrote {} to {} (check {}){public_note}",
         kind.label(),
-        args.out_path.display(),
+        destination.display(),
         keyfile::check_hex(kind, key)
     );
     Ok(())
@@ -2957,21 +3206,18 @@ pub fn run_key_import_command(args: &KeyImportArgs) -> Result<(), CliError> {
 /// `SigningKey::sign`/`VerifyingKey::verify`'s own whole-message convenience wrappers.
 const SIGN_STREAM_CHUNK_BYTES: usize = 8 * 1024;
 
-/// Hashes `path` with Kupyna-256 in [`SIGN_STREAM_CHUNK_BYTES`]-sized chunks, for `sign`/`verify`.
-fn hash_file_streamed(path: &PathBuf) -> Result<[u8; 32], CliError> {
-    use std::io::Read;
-
-    let mut file = std::fs::File::open(path).map_err(|e| CliError::Io {
-        path: path.clone(),
-        message: e.to_string(),
-    })?;
+/// Hashes a file or stdin with Kupyna-256 in [`SIGN_STREAM_CHUNK_BYTES`]-sized chunks, for
+/// `hash`/`sign`/`verify`.
+fn hash_file_streamed(source: &Source) -> Result<[u8; 32], CliError> {
+    let mut input = source.open()?;
     let mut hasher = Kupyna256Hasher::new();
     let mut chunk = [0u8; SIGN_STREAM_CHUNK_BYTES];
     loop {
-        let n = file.read(&mut chunk).map_err(|e| CliError::Io {
-            path: path.clone(),
-            message: e.to_string(),
-        })?;
+        let n = match input.read(&mut chunk) {
+            Ok(n) => n,
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(e) => return Err(source.io_error(&e)),
+        };
         if n == 0 {
             break;
         }
@@ -3046,7 +3292,7 @@ pub struct SignKeygenArgs {
 pub fn parse_sign_keygen_args(args: &[String]) -> Result<SignKeygenArgs, CliError> {
     let scanner = ArgScanner::scan(args, &["--out"], &[])?;
     Ok(SignKeygenArgs {
-        out_path: scanner.path("--out")?,
+        out_path: scanner.secret_key_path("--out")?,
     })
 }
 
@@ -3090,7 +3336,8 @@ pub fn run_sign_keygen257_command(args: &SignKeygenArgs) -> Result<(), CliError>
 #[derive(Debug, PartialEq, Eq)]
 pub struct SignPubkeyArgs {
     pub key_path: PathBuf,
-    pub out_path: PathBuf,
+    /// A new file, or stdout for `--out -` (a public key line, T-260).
+    pub out_path: Sink,
 }
 
 /// Parses `sign-pubkey`'s flags (`--key`/`--out`, both required).
@@ -3102,7 +3349,7 @@ pub fn parse_sign_pubkey_args(args: &[String]) -> Result<SignPubkeyArgs, CliErro
     let scanner = ArgScanner::scan(args, &["--key", "--out"], &[])?;
     Ok(SignPubkeyArgs {
         key_path: scanner.path("--key")?,
-        out_path: scanner.path("--out")?,
+        out_path: scanner.output("--out")?,
     })
 }
 
@@ -3117,14 +3364,14 @@ pub fn parse_sign_pubkey_args(args: &[String]) -> Result<SignPubkeyArgs, CliErro
 pub fn run_sign_pubkey_command(args: &SignPubkeyArgs) -> Result<(), CliError> {
     let signing_key = read_signing_key(&args.key_path, "sign-pubkey")?;
     let line = signing_key.verifying_key_line();
-    write_new_key_file(&args.out_path, &line)
+    write_key_output(&args.out_path, &line)
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct SignArgs {
     pub key_path: PathBuf,
-    pub in_path: PathBuf,
-    pub out_path: PathBuf,
+    pub in_path: Source,
+    pub out_path: Sink,
     pub iterations: u32,
     /// Replace an existing output (T-258, D-214).
     pub force: bool,
@@ -3143,12 +3390,15 @@ pub fn parse_sign_args(args: &[String]) -> Result<SignArgs, CliError> {
         &["--key", "--in", "--out", "--iterations"],
         &["--force"],
     )?;
+    let key_path = scanner.path("--key")?;
+    let in_path = scanner.input("--in")?;
+    let (out_path, force) = scanner.output_and_force()?;
     Ok(SignArgs {
-        key_path: scanner.path("--key")?,
-        in_path: scanner.path("--in")?,
-        out_path: scanner.path("--out")?,
+        key_path,
+        in_path,
+        out_path,
         iterations: scanner.iterations()?,
-        force: scanner.bool_flag("--force"),
+        force,
     })
 }
 
@@ -3168,8 +3418,8 @@ pub fn parse_sign_args(args: &[String]) -> Result<SignArgs, CliError> {
 #[allow(clippy::cast_precision_loss)] // human-readable ops/s diagnostic, not exact at any realistic count
 pub fn run_sign_command(args: &SignArgs) -> Result<(), CliError> {
     let signing_key = read_signing_key(&args.key_path, "sign")?;
-    check_outputs(&[("--out", &args.out_path)], &[("--key", &args.key_path)])?;
-    let (out, out_file) = OutputFile::create(&args.out_path, &args.in_path, args.force)?;
+    args.out_path.check_against(&[("--key", &args.key_path)])?;
+    let mut out = Output::create(&args.out_path, &args.in_path, args.force)?;
     let digest = hash_file_streamed(&args.in_path)?;
     let iterations = args.iterations.max(1);
 
@@ -3180,7 +3430,8 @@ pub fn run_sign_command(args: &SignArgs) -> Result<(), CliError> {
     }
     let elapsed = start.elapsed();
 
-    out.write_all_and_commit(out_file, &sig)?;
+    let written = out.write_all(&sig);
+    out.finish(written)?;
 
     if args.iterations > 1 {
         let per_op_ns = elapsed.as_nanos() / u128::from(args.iterations);
@@ -3202,7 +3453,7 @@ pub fn run_sign_command(args: &SignArgs) -> Result<(), CliError> {
 #[derive(Debug, PartialEq, Eq)]
 pub struct VerifyArgs {
     pub key_path: PathBuf,
-    pub in_path: PathBuf,
+    pub in_path: Source,
     pub sig_path: PathBuf,
     pub iterations: u32,
 }
@@ -3217,7 +3468,7 @@ pub fn parse_verify_args(args: &[String]) -> Result<VerifyArgs, CliError> {
     let scanner = ArgScanner::scan(args, &["--key", "--in", "--sig", "--iterations"], &[])?;
     Ok(VerifyArgs {
         key_path: scanner.path("--key")?,
-        in_path: scanner.path("--in")?,
+        in_path: scanner.input("--in")?,
         sig_path: scanner.path("--sig")?,
         iterations: scanner.iterations()?,
     })
@@ -3474,7 +3725,7 @@ pub struct BoxKeygenArgs {
 pub fn parse_box_keygen_args(args: &[String]) -> Result<BoxKeygenArgs, CliError> {
     let scanner = ArgScanner::scan(args, &["--out"], &[])?;
     Ok(BoxKeygenArgs {
-        out_path: scanner.path("--out")?,
+        out_path: scanner.secret_key_path("--out")?,
     })
 }
 
@@ -3500,7 +3751,8 @@ pub fn run_box_keygen_command(args: &BoxKeygenArgs) -> Result<(), CliError> {
 #[derive(Debug, PartialEq, Eq)]
 pub struct BoxPubkeyArgs {
     pub key_path: PathBuf,
-    pub out_path: PathBuf,
+    /// A new file, or stdout for `--out -` (a public key line, T-260).
+    pub out_path: Sink,
 }
 
 /// Parses `box-pubkey`'s flags (`--key`/`--out`, both required).
@@ -3512,7 +3764,7 @@ pub fn parse_box_pubkey_args(args: &[String]) -> Result<BoxPubkeyArgs, CliError>
     let scanner = ArgScanner::scan(args, &["--key", "--out"], &[])?;
     Ok(BoxPubkeyArgs {
         key_path: scanner.path("--key")?,
-        out_path: scanner.path("--out")?,
+        out_path: scanner.output("--out")?,
     })
 }
 
@@ -3527,14 +3779,14 @@ pub fn parse_box_pubkey_args(args: &[String]) -> Result<BoxPubkeyArgs, CliError>
 /// [`CliError::BoxKeyInvalid`] if `--key` isn't a valid `crypto_box` secret key.
 pub fn run_box_pubkey_command(args: &BoxPubkeyArgs) -> Result<(), CliError> {
     let line = read_box_secret_key(&args.key_path, "box-pubkey")?.public_key_line();
-    write_new_key_file(&args.out_path, &line)
+    write_key_output(&args.out_path, &line)
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct BoxSealArgs {
     pub key_path: PathBuf,
-    pub in_path: PathBuf,
-    pub out_path: PathBuf,
+    pub in_path: Source,
+    pub out_path: Sink,
     pub iterations: u32,
     /// Replace an existing output (T-258, D-214).
     pub force: bool,
@@ -3552,12 +3804,15 @@ pub fn parse_box_seal_args(args: &[String]) -> Result<BoxSealArgs, CliError> {
         &["--key", "--in", "--out", "--iterations"],
         &["--force"],
     )?;
+    let key_path = scanner.path("--key")?;
+    let in_path = scanner.input("--in")?;
+    let (out_path, force) = scanner.output_and_force()?;
     Ok(BoxSealArgs {
-        key_path: scanner.path("--key")?,
-        in_path: scanner.path("--in")?,
-        out_path: scanner.path("--out")?,
+        key_path,
+        in_path,
+        out_path,
         iterations: scanner.iterations()?,
-        force: scanner.bool_flag("--force"),
+        force,
     })
 }
 
@@ -3583,12 +3838,9 @@ pub fn parse_box_seal_args(args: &[String]) -> Result<BoxSealArgs, CliError> {
 #[allow(clippy::cast_precision_loss)] // human-readable ops/s diagnostic, not exact at any realistic count
 pub fn run_box_seal_command(args: &BoxSealArgs) -> Result<(), CliError> {
     let public = read_box_public_key(&args.key_path, "box-seal")?;
-    check_outputs(&[("--out", &args.out_path)], &[("--key", &args.key_path)])?;
-    let (out, out_file) = OutputFile::create(&args.out_path, &args.in_path, args.force)?;
-    let message = std::fs::read(&args.in_path).map_err(|e| CliError::Io {
-        path: args.in_path.clone(),
-        message: e.to_string(),
-    })?;
+    args.out_path.check_against(&[("--key", &args.key_path)])?;
+    let mut out = Output::create(&args.out_path, &args.in_path, args.force)?;
+    let message = args.in_path.read_all()?;
     let iterations = args.iterations.max(1);
 
     let start = Instant::now();
@@ -3598,7 +3850,8 @@ pub fn run_box_seal_command(args: &BoxSealArgs) -> Result<(), CliError> {
     }
     let elapsed = start.elapsed();
 
-    out.write_all_and_commit(out_file, &sealed)?;
+    let written = out.write_all(&sealed);
+    out.finish(written)?;
 
     if args.iterations > 1 {
         let per_op_ns = elapsed.as_nanos() / u128::from(args.iterations);
@@ -3620,8 +3873,8 @@ pub fn run_box_seal_command(args: &BoxSealArgs) -> Result<(), CliError> {
 #[derive(Debug, PartialEq, Eq)]
 pub struct BoxOpenArgs {
     pub key_path: PathBuf,
-    pub in_path: PathBuf,
-    pub out_path: PathBuf,
+    pub in_path: Source,
+    pub out_path: Sink,
     pub iterations: u32,
     /// Replace an existing output (T-258, D-214).
     pub force: bool,
@@ -3639,12 +3892,15 @@ pub fn parse_box_open_args(args: &[String]) -> Result<BoxOpenArgs, CliError> {
         &["--key", "--in", "--out", "--iterations"],
         &["--force"],
     )?;
+    let key_path = scanner.path("--key")?;
+    let in_path = scanner.input("--in")?;
+    let (out_path, force) = scanner.output_and_force()?;
     Ok(BoxOpenArgs {
-        key_path: scanner.path("--key")?,
-        in_path: scanner.path("--in")?,
-        out_path: scanner.path("--out")?,
+        key_path,
+        in_path,
+        out_path,
         iterations: scanner.iterations()?,
-        force: scanner.bool_flag("--force"),
+        force,
     })
 }
 
@@ -3666,12 +3922,9 @@ pub fn parse_box_open_args(args: &[String]) -> Result<BoxOpenArgs, CliError> {
 #[allow(clippy::cast_precision_loss)] // human-readable ops/s diagnostic, not exact at any realistic count
 pub fn run_box_open_command(args: &BoxOpenArgs) -> Result<(), CliError> {
     let secret = read_box_secret_key(&args.key_path, "box-open")?;
-    check_outputs(&[("--out", &args.out_path)], &[("--key", &args.key_path)])?;
-    let (out, out_file) = OutputFile::create(&args.out_path, &args.in_path, args.force)?;
-    let sealed = std::fs::read(&args.in_path).map_err(|e| CliError::Io {
-        path: args.in_path.clone(),
-        message: e.to_string(),
-    })?;
+    args.out_path.check_against(&[("--key", &args.key_path)])?;
+    let mut out = Output::create(&args.out_path, &args.in_path, args.force)?;
+    let sealed = args.in_path.read_all()?;
     let iterations = args.iterations.max(1);
 
     let start = Instant::now();
@@ -3681,7 +3934,8 @@ pub fn run_box_open_command(args: &BoxOpenArgs) -> Result<(), CliError> {
     }
     let elapsed = start.elapsed();
 
-    out.write_all_and_commit(out_file, &opened)?;
+    let written = out.write_all(&opened);
+    out.finish(written)?;
 
     if args.iterations > 1 {
         let per_op_ns = elapsed.as_nanos() / u128::from(args.iterations);
@@ -3872,7 +4126,7 @@ pub fn run_strumok_command(args: &StrumokArgs) -> Result<(), CliError> {
         &[("--out", &args.out_path)],
         &[("--key", &args.key_path), ("--iv", &args.iv_path)],
     )?;
-    let (out, out_file) = OutputFile::create(&args.out_path, &args.in_path, args.force)?;
+    let (out, out_file) = OutputFile::create(&args.out_path, Some(&args.in_path), args.force)?;
     let iterations = args.iterations.max(1);
 
     if iterations <= 1 {
@@ -4010,6 +4264,14 @@ An existing output file is never replaced unless you pass --force; a failed comm
 output behind. Key files (secret or public) are never replaced at all - there is no --force for
 them, and another command's --force does not replace an existing key file either.
 
+STDIN AND STDOUT:
+    `--in -` reads stdin (encrypt, decrypt, hash, sign, verify, box-seal, box-open); `--out -`
+    writes stdout (the same commands but hash and verify, plus the public keys of sign-pubkey,
+    box-pubkey and key-import). Binary output is refused when stdout is a terminal; secret keys
+    are never written to stdout, and --key never reads stdin. For a file named `-`, write ./-.
+    `decrypt --out -` prints each chunk once it is verified: if it then fails, it says the output
+    is INCOMPLETE and exits non-zero - check the exit status (in a pipeline: set -o pipefail).
+
 EXIT STATUS:
     0   success
     1   the input was checked and rejected (authentication failed, bad signature, malformed data,
@@ -4034,7 +4296,7 @@ USAGE:
     uacrypt keygen --out <path>
 
 FLAGS:
-    --out <path>    where to write the key
+    --out <path>    where to write the key (a file - a secret key is never written to stdout)
 
 EXAMPLE:
     uacrypt keygen --out key.bin
@@ -4058,12 +4320,13 @@ USAGE:
 
 FLAGS:
     --key <path>    a key file made by `uacrypt keygen` (not a passphrase)
-    --in <path>     file to encrypt
-    --out <path>    where to write the encrypted output
+    --in <path>     file to encrypt, or - for stdin
+    --out <path>    where to write the encrypted output, or - for stdout (not a terminal)
     --force         replace --out if it already exists (without it: refused; never a key file)
 
 EXAMPLE:
     uacrypt encrypt --key key.bin --in report.pdf --out report.pdf.enc
+    tar c docs | uacrypt encrypt --key key.bin --in - --out docs.tar.enc
 
 Notes:
     - Make a key with `uacrypt keygen --out key.bin`; a raw key file from uacrypt 0.4 or older
@@ -4076,19 +4339,25 @@ const DECRYPT_HELP: &str = "\
 uacrypt decrypt - decrypt a file produced by `encrypt`, using the same key.
 
 Streamed in bounded memory chunks and authenticated: a wrong key or a tampered/truncated file is
-rejected with an error before anything is written to --out, rather than producing wrong plaintext.
+rejected with an error before anything is written to an --out file, rather than producing wrong
+plaintext.
 
 USAGE:
     uacrypt decrypt --key <path> --in <path> --out <path> [--force]
 
 FLAGS:
     --key <path>    the same key file used for `encrypt`
-    --in <path>     the encrypted file (must be real `encrypt` output)
-    --out <path>    where to write the decrypted output
+    --in <path>     the encrypted file (must be real `encrypt` output), or - for stdin
+    --out <path>    where to write the decrypted output, or - for stdout (not a terminal)
     --force         replace --out if it already exists (without it: refused; never a key file)
 
 EXAMPLE:
     uacrypt decrypt --key key.bin --in report.pdf.enc --out report.pdf
+    uacrypt decrypt --key key.bin --in docs.tar.enc --out - | tar x
+
+With --out - each chunk is printed once its tag verifies, so a file cut short or tampered with
+halfway prints its verified start, then an error saying the output is INCOMPLETE, and exits 1.
+Check the exit status (in a shell pipeline: set -o pipefail) before trusting what was printed.
 
 Notes:
     - --in and --out may be the same path (decrypts in place) with --force.
@@ -4108,7 +4377,7 @@ USAGE:
     uacrypt hash --check <file>
 
 FLAGS:
-    --in <path>      file to hash; prints `<64 hex digits>  <path>` to stdout
+    --in <path>      file to hash, or - for stdin; prints `<64 hex digits>  <path>` to stdout
     --check <file>   read such lines and hash each listed file; prints `<path>: OK` or
                      `<path>: FAILED` and exits 1 if any file does not match or cannot be read
 
@@ -4126,6 +4395,7 @@ Notes:
       cmd or `cmd /c \"uacrypt hash --in <file> > <list>\"`. A UTF-8 BOM is accepted.
     - A path that is not UTF-8 or contains a control character (a newline, a terminal escape) is
       refused: it could not be read back as one line.
+    - `--in -` prints `-` as the path. In a check file `-` is a file named `-`, never stdin.
 ";
 
 const SIGN_KEYGEN_HELP: &str = "\
@@ -4164,7 +4434,7 @@ USAGE:
 
 FLAGS:
     --key <path>    a signing key (from `uacrypt sign-keygen` or `sign-keygen257`)
-    --out <path>    where to write the verifying key
+    --out <path>    where to write the verifying key, or - to print it
 
 EXAMPLE:
     uacrypt sign-pubkey --key signing.key --out verifying.key
@@ -4182,8 +4452,8 @@ USAGE:
 
 FLAGS:
     --key <path>        a signing key (from `uacrypt sign-keygen` or `sign-keygen257`)
-    --in <path>         file to sign
-    --out <path>        where to write the signature
+    --in <path>         file to sign, or - for stdin
+    --out <path>        where to write the signature, or - for stdout (not a terminal)
     --force             replace --out if it already exists (without it: refused; never a key file)
 
 EXAMPLE:
@@ -4204,7 +4474,7 @@ USAGE:
 
 FLAGS:
     --key <path>        a verifying key (from `uacrypt sign-pubkey`)
-    --in <path>         the file that was signed
+    --in <path>         the file that was signed, or - for stdin
     --sig <path>        the signature (from `uacrypt sign`, made with the matching signing key)
 
 EXAMPLE:
@@ -4269,7 +4539,7 @@ USAGE:
 
 FLAGS:
     --key <path>    a crypto_box secret key (from `uacrypt box-keygen` or `box-keygen512`)
-    --out <path>    where to write the public key
+    --out <path>    where to write the public key, or - to print it
 
 EXAMPLE:
     uacrypt box-pubkey --key box.key --out box.pub
@@ -4296,8 +4566,8 @@ USAGE:
 
 FLAGS:
     --key <path>        the recipient's public key (from `uacrypt box-pubkey`, either curve)
-    --in <path>         file to encrypt
-    --out <path>        where to write the sealed output
+    --in <path>         file to encrypt, or - for stdin
+    --out <path>        where to write the sealed output, or - for stdout (not a terminal)
     --force             replace --out if it already exists (without it: refused; never a key file)
 
 EXAMPLE:
@@ -4308,15 +4578,16 @@ const BOX_OPEN_HELP: &str = "\
 uacrypt box-open - decrypt a file produced by `box-seal`, using the matching secret key.
 
 A wrong key (including one of the other curve) or a tampered/truncated file is rejected with an
-error before anything is written to --out, rather than producing wrong plaintext.
+error before anything is written to --out (a file or stdout), rather than producing wrong
+plaintext.
 
 USAGE:
     uacrypt box-open --key <path> --in <path> --out <path> [--force]
 
 FLAGS:
     --key <path>        the recipient's secret key (from `uacrypt box-keygen` or `box-keygen512`)
-    --in <path>         the sealed file (must be real `box-seal` output)
-    --out <path>        where to write the decrypted output
+    --in <path>         the sealed file (must be real `box-seal` output), or - for stdin
+    --out <path>        where to write the decrypted output, or - for stdout (not a terminal)
     --force             replace --out if it already exists (without it: refused; never a key file)
 
 EXAMPLE:
@@ -4341,7 +4612,7 @@ FLAGS:
     --kind <kind>   symmetric (a `keygen` key), sign163-secret, sign163-public, sign257-secret,
                     sign257-public, box256-secret, box256-public, box512-secret, box512-public
     --in <path>     the raw key file
-    --out <path>    where to write the typed key file
+    --out <path>    where to write the typed key file; - prints a public key (never a secret one)
 
 EXAMPLE:
     uacrypt key-import --kind box256-secret --in box.key --out box.key.txt
@@ -5181,7 +5452,7 @@ mod tests {
         let args = |a: &[&str]| a.iter().map(|s| (*s).to_string()).collect::<Vec<_>>();
         assert_eq!(
             parse_hash_args(&args(&["--in", "msg.bin"])),
-            Ok(HashArgs::File(PathBuf::from("msg.bin")))
+            Ok(HashArgs::File(Source::File(PathBuf::from("msg.bin"))))
         );
         assert_eq!(
             parse_hash_args(&args(&["--check=SUMS"])),
@@ -5329,6 +5600,42 @@ mod tests {
         );
     }
 
+    impl WriteOutput for Vec<u8> {
+        fn write_all(&mut self, bytes: &[u8]) -> Result<(), CliError> {
+            self.extend_from_slice(bytes);
+            Ok(())
+        }
+    }
+
+    /// S1 (a), D-217: binary `--out -` is refused exactly when stdout is a terminal.
+    #[test]
+    fn binary_output_is_refused_only_on_a_terminal() {
+        assert_eq!(
+            refuse_binary_to_terminal(true),
+            Err(CliError::BinaryToTerminal)
+        );
+        assert_eq!(refuse_binary_to_terminal(false), Ok(()));
+        assert_eq!(CliError::BinaryToTerminal.exit_code(), 2);
+    }
+
+    /// An error after stdout output keeps the inner error's exit status.
+    #[test]
+    fn stdout_incomplete_keeps_the_inner_exit_code() {
+        let wrap = |e| CliError::StdoutIncomplete(Box::new(e));
+        assert_eq!(wrap(CliError::SecretstreamTruncated).exit_code(), 1);
+        assert_eq!(
+            wrap(CliError::Io {
+                path: PathBuf::from("<stdout>"),
+                message: String::new()
+            })
+            .exit_code(),
+            3
+        );
+        assert!(wrap(CliError::SecretstreamTruncated)
+            .to_string()
+            .contains("INCOMPLETE"));
+    }
+
     /// Returns one byte per `read`, as a pipe or a slow device may.
     struct Trickle<'a>(&'a [u8]);
 
@@ -5352,9 +5659,8 @@ mod tests {
         write_secretstream_file(
             &key,
             &mut Trickle(&plaintext),
-            std::path::Path::new("in"),
+            &Source::File(PathBuf::from("in")),
             &mut file,
-            std::path::Path::new("out"),
         )
         .expect("encrypt");
 
@@ -5394,15 +5700,15 @@ mod tests {
         std::fs::write(dir.file("msg.bin"), b"keygen output must actually work").expect("write");
         let enc_args = SecretstreamArgs {
             key_path: dir.file("key.bin"),
-            in_path: dir.file("msg.bin"),
-            out_path: dir.file("msg.enc"),
+            in_path: Source::File(dir.file("msg.bin")),
+            out_path: Sink::File(dir.file("msg.enc")),
             force: false,
         };
         run_secretstream_command(false, &enc_args).expect("encrypt with generated key");
         let dec_args = SecretstreamArgs {
             key_path: dir.file("key.bin"),
-            in_path: dir.file("msg.enc"),
-            out_path: dir.file("msg.dec"),
+            in_path: Source::File(dir.file("msg.enc")),
+            out_path: Sink::File(dir.file("msg.dec")),
             force: false,
         };
         run_secretstream_command(true, &dec_args).expect("decrypt with generated key");
@@ -5735,8 +6041,8 @@ mod tests {
             parse_secretstream_args(&args),
             Ok(SecretstreamArgs {
                 key_path: PathBuf::from("key.bin"),
-                in_path: PathBuf::from("msg.bin"),
-                out_path: PathBuf::from("sealed.bin"),
+                in_path: Source::File(PathBuf::from("msg.bin")),
+                out_path: Sink::File(PathBuf::from("sealed.bin")),
                 force: false,
             })
         );
@@ -5784,15 +6090,15 @@ mod tests {
 
         let encrypt_args = SecretstreamArgs {
             key_path: dir.file("key.bin"),
-            in_path: dir.file("in.bin"),
-            out_path: dir.file("sealed.bin"),
+            in_path: Source::File(dir.file("in.bin")),
+            out_path: Sink::File(dir.file("sealed.bin")),
             force: false,
         };
         run_secretstream_command(false, &encrypt_args).expect("encrypt should succeed");
 
         let decrypt_args = SecretstreamArgs {
-            in_path: dir.file("sealed.bin"),
-            out_path: dir.file("pt.bin"),
+            in_path: Source::File(dir.file("sealed.bin")),
+            out_path: Sink::File(dir.file("pt.bin")),
             ..encrypt_args
         };
         run_secretstream_command(true, &decrypt_args).expect("decrypt should succeed");
@@ -5809,14 +6115,14 @@ mod tests {
 
         let base_args = SecretstreamArgs {
             key_path: dir.file("key.bin"),
-            in_path: dir.file("in.bin"),
-            out_path: dir.file("sealed1.bin"),
+            in_path: Source::File(dir.file("in.bin")),
+            out_path: Sink::File(dir.file("sealed1.bin")),
             force: false,
         };
         run_secretstream_command(false, &base_args).expect("first encrypt should succeed");
 
         let second_args = SecretstreamArgs {
-            out_path: dir.file("sealed2.bin"),
+            out_path: Sink::File(dir.file("sealed2.bin")),
             ..base_args
         };
         run_secretstream_command(false, &second_args).expect("second encrypt should succeed");
@@ -5840,8 +6146,8 @@ mod tests {
 
         let encrypt_args = SecretstreamArgs {
             key_path: dir.file("key.bin"),
-            in_path: dir.file("in.bin"),
-            out_path: dir.file("sealed.bin"),
+            in_path: Source::File(dir.file("in.bin")),
+            out_path: Sink::File(dir.file("sealed.bin")),
             force: false,
         };
         run_secretstream_command(false, &encrypt_args).expect("encrypt should succeed");
@@ -5852,8 +6158,8 @@ mod tests {
         std::fs::write(dir.file("sealed.bin"), &tampered).expect("write tampered output");
 
         let decrypt_args = SecretstreamArgs {
-            in_path: dir.file("sealed.bin"),
-            out_path: dir.file("pt.bin"),
+            in_path: Source::File(dir.file("sealed.bin")),
+            out_path: Sink::File(dir.file("pt.bin")),
             ..encrypt_args
         };
         let result = run_secretstream_command(true, &decrypt_args);
@@ -5876,16 +6182,16 @@ mod tests {
 
         let encrypt_args = SecretstreamArgs {
             key_path: dir.file("key.bin"),
-            in_path: dir.file("in.bin"),
-            out_path: dir.file("sealed.bin"),
+            in_path: Source::File(dir.file("in.bin")),
+            out_path: Sink::File(dir.file("sealed.bin")),
             force: false,
         };
         run_secretstream_command(false, &encrypt_args).expect("encrypt should succeed");
 
         let decrypt_args = SecretstreamArgs {
             key_path: dir.file("key.bin"),
-            in_path: dir.file("sealed.bin"),
-            out_path: dir.file("out.bin"),
+            in_path: Source::File(dir.file("sealed.bin")),
+            out_path: Sink::File(dir.file("out.bin")),
             force: false,
         };
         run_secretstream_command(true, &decrypt_args).expect("decrypt should succeed");
@@ -5905,16 +6211,16 @@ mod tests {
 
         let encrypt_args = SecretstreamArgs {
             key_path: dir.file("key.bin"),
-            in_path: dir.file("in.bin"),
-            out_path: dir.file("sealed.bin"),
+            in_path: Source::File(dir.file("in.bin")),
+            out_path: Sink::File(dir.file("sealed.bin")),
             force: false,
         };
         run_secretstream_command(false, &encrypt_args).expect("encrypt should succeed");
 
         let decrypt_args = SecretstreamArgs {
             key_path: dir.file("key.bin"),
-            in_path: dir.file("sealed.bin"),
-            out_path: dir.file("out.bin"),
+            in_path: Source::File(dir.file("sealed.bin")),
+            out_path: Sink::File(dir.file("out.bin")),
             force: false,
         };
         run_secretstream_command(true, &decrypt_args).expect("decrypt should succeed");
@@ -5932,8 +6238,8 @@ mod tests {
 
         let args = SecretstreamArgs {
             key_path: dir.file("key.bin"),
-            in_path: dir.file("in.bin"),
-            out_path: dir.file("out.bin"),
+            in_path: Source::File(dir.file("in.bin")),
+            out_path: Sink::File(dir.file("out.bin")),
             force: false,
         };
         assert_eq!(
@@ -5952,8 +6258,8 @@ mod tests {
 
         let args = SecretstreamArgs {
             key_path: dir.file("key.bin"),
-            in_path: dir.file("does_not_exist.bin"),
-            out_path: dir.file("out.bin"),
+            in_path: Source::File(dir.file("does_not_exist.bin")),
+            out_path: Sink::File(dir.file("out.bin")),
             force: false,
         };
         assert!(matches!(
@@ -5973,8 +6279,8 @@ mod tests {
 
         let args = SecretstreamArgs {
             key_path: dir.file("key.bin"),
-            in_path: dir.file("a_directory"),
-            out_path: dir.file("out.bin"),
+            in_path: Source::File(dir.file("a_directory")),
+            out_path: Sink::File(dir.file("out.bin")),
             force: false,
         };
         assert!(matches!(
@@ -5999,8 +6305,8 @@ mod tests {
 
         let refused = SecretstreamArgs {
             key_path: dir.file("key.bin"),
-            in_path: dir.file("data.bin"),
-            out_path: dir.file("data.bin"),
+            in_path: Source::File(dir.file("data.bin")),
+            out_path: Sink::File(dir.file("data.bin")),
             force: false,
         };
         assert!(matches!(
@@ -6046,8 +6352,8 @@ mod tests {
 
         let args = SecretstreamArgs {
             key_path: dir.file("key.bin"),
-            in_path: dir.file("garbage.bin"),
-            out_path: dir.file("out.bin"),
+            in_path: Source::File(dir.file("garbage.bin")),
+            out_path: Sink::File(dir.file("out.bin")),
             force: false,
         };
         // 64 bytes of garbage: the first byte is read as the format version (D-208), and 0x99 is
@@ -6071,8 +6377,8 @@ mod tests {
 
         let encrypt_args = SecretstreamArgs {
             key_path: dir.file("key.bin"),
-            in_path: dir.file("in.bin"),
-            out_path: dir.file("sealed.bin"),
+            in_path: Source::File(dir.file("in.bin")),
+            out_path: Sink::File(dir.file("sealed.bin")),
             force: false,
         };
         run_secretstream_command(false, &encrypt_args).expect("encrypt should succeed");
@@ -6083,8 +6389,8 @@ mod tests {
 
         let decrypt_args = SecretstreamArgs {
             key_path: dir.file("key.bin"),
-            in_path: dir.file("truncated.bin"),
-            out_path: dir.file("out.bin"),
+            in_path: Source::File(dir.file("truncated.bin")),
+            out_path: Sink::File(dir.file("out.bin")),
             force: false,
         };
         assert_eq!(
@@ -6106,8 +6412,8 @@ mod tests {
 
         let encrypt_args = SecretstreamArgs {
             key_path: dir.file("key.bin"),
-            in_path: dir.file("in.bin"),
-            out_path: dir.file("sealed.bin"),
+            in_path: Source::File(dir.file("in.bin")),
+            out_path: Sink::File(dir.file("sealed.bin")),
             force: false,
         };
         run_secretstream_command(false, &encrypt_args).expect("encrypt should succeed");
@@ -6118,8 +6424,8 @@ mod tests {
 
         let decrypt_args = SecretstreamArgs {
             key_path: dir.file("key.bin"),
-            in_path: dir.file("extended.bin"),
-            out_path: dir.file("out.bin"),
+            in_path: Source::File(dir.file("extended.bin")),
+            out_path: Sink::File(dir.file("out.bin")),
             force: false,
         };
         assert_eq!(
@@ -7218,7 +7524,7 @@ mod tests {
             parse_sign_pubkey_args(&args),
             Ok(SignPubkeyArgs {
                 key_path: PathBuf::from("signing.key"),
-                out_path: PathBuf::from("verifying.key"),
+                out_path: Sink::File(PathBuf::from("verifying.key")),
             })
         );
     }
@@ -7260,8 +7566,8 @@ mod tests {
             parse_sign_args(&args),
             Ok(SignArgs {
                 key_path: PathBuf::from("signing.key"),
-                in_path: PathBuf::from("msg.bin"),
-                out_path: PathBuf::from("msg.sig"),
+                in_path: Source::File(PathBuf::from("msg.bin")),
+                out_path: Sink::File(PathBuf::from("msg.sig")),
                 iterations: 1,
                 force: false,
             })
@@ -7344,7 +7650,7 @@ mod tests {
             parse_verify_args(&args),
             Ok(VerifyArgs {
                 key_path: PathBuf::from("verifying.key"),
-                in_path: PathBuf::from("msg.bin"),
+                in_path: Source::File(PathBuf::from("msg.bin")),
                 sig_path: PathBuf::from("msg.sig"),
                 iterations: 1,
             })
@@ -7428,14 +7734,14 @@ mod tests {
         .expect("sign-keygen should succeed");
         run_sign_pubkey_command(&SignPubkeyArgs {
             key_path: dir.file("signing.key"),
-            out_path: dir.file("verifying.key"),
+            out_path: Sink::File(dir.file("verifying.key")),
         })
         .expect("sign-pubkey should succeed");
         std::fs::write(dir.file("msg.bin"), b"a real message to sign").expect("write message");
         run_sign_command(&SignArgs {
             key_path: dir.file("signing.key"),
-            in_path: dir.file("msg.bin"),
-            out_path: dir.file("msg.sig"),
+            in_path: Source::File(dir.file("msg.bin")),
+            out_path: Sink::File(dir.file("msg.sig")),
             iterations: 1,
             force: false,
         })
@@ -7449,7 +7755,7 @@ mod tests {
 
         run_verify_command(&VerifyArgs {
             key_path: dir.file("verifying.key"),
-            in_path: dir.file("msg.bin"),
+            in_path: Source::File(dir.file("msg.bin")),
             sig_path: dir.file("msg.sig"),
             iterations: 1,
         })
@@ -7472,15 +7778,15 @@ mod tests {
         .expect("sign-keygen257 should succeed");
         run_sign_pubkey_command(&SignPubkeyArgs {
             key_path: dir.file("signing.key"),
-            out_path: dir.file("verifying.key"),
+            out_path: Sink::File(dir.file("verifying.key")),
         })
         .expect("sign-pubkey should succeed on an m=257 key");
         std::fs::write(dir.file("msg.bin"), b"a real message to sign, m=257")
             .expect("write message");
         run_sign_command(&SignArgs {
             key_path: dir.file("signing.key"),
-            in_path: dir.file("msg.bin"),
-            out_path: dir.file("msg.sig"),
+            in_path: Source::File(dir.file("msg.bin")),
+            out_path: Sink::File(dir.file("msg.sig")),
             iterations: 1,
             force: false,
         })
@@ -7494,7 +7800,7 @@ mod tests {
 
         run_verify_command(&VerifyArgs {
             key_path: dir.file("verifying.key"),
-            in_path: dir.file("msg.bin"),
+            in_path: Source::File(dir.file("msg.bin")),
             sig_path: dir.file("msg.sig"),
             iterations: 1,
         })
@@ -7521,7 +7827,7 @@ mod tests {
         .expect("sign-keygen should succeed");
         run_sign_pubkey_command(&SignPubkeyArgs {
             key_path: dir.file("signing163.key"),
-            out_path: dir.file("verifying163.key"),
+            out_path: Sink::File(dir.file("verifying163.key")),
         })
         .expect("sign-pubkey should succeed");
         run_sign_keygen257_command(&SignKeygenArgs {
@@ -7531,8 +7837,8 @@ mod tests {
         std::fs::write(dir.file("msg.bin"), b"cross-curve test message").expect("write message");
         run_sign_command(&SignArgs {
             key_path: dir.file("signing257.key"),
-            in_path: dir.file("msg.bin"),
-            out_path: dir.file("msg.sig257"),
+            in_path: Source::File(dir.file("msg.bin")),
+            out_path: Sink::File(dir.file("msg.sig257")),
             iterations: 1,
             force: false,
         })
@@ -7541,7 +7847,7 @@ mod tests {
         assert!(matches!(
             run_verify_command(&VerifyArgs {
                 key_path: dir.file("verifying163.key"), // m=163 key
-                in_path: dir.file("msg.bin"),
+                in_path: Source::File(dir.file("msg.bin")),
                 sig_path: dir.file("msg.sig257"), // m=257 signature, wrong length for m=163
                 iterations: 1,
             }),
@@ -7570,15 +7876,15 @@ mod tests {
         .expect("sign-keygen should succeed");
         run_sign_pubkey_command(&SignPubkeyArgs {
             key_path: dir.file("signing.key"),
-            out_path: dir.file("verifying.key"),
+            out_path: Sink::File(dir.file("verifying.key")),
         })
         .expect("sign-pubkey should succeed");
         std::fs::write(dir.file("msg.bin"), b"benchmarked message").expect("write message");
 
         run_sign_command(&SignArgs {
             key_path: dir.file("signing.key"),
-            in_path: dir.file("msg.bin"),
-            out_path: dir.file("msg.sig"),
+            in_path: Source::File(dir.file("msg.bin")),
+            out_path: Sink::File(dir.file("msg.sig")),
             iterations: 25,
             force: false,
         })
@@ -7586,7 +7892,7 @@ mod tests {
 
         run_verify_command(&VerifyArgs {
             key_path: dir.file("verifying.key"),
-            in_path: dir.file("msg.bin"),
+            in_path: Source::File(dir.file("msg.bin")),
             sig_path: dir.file("msg.sig"),
             iterations: 25,
         })
@@ -7611,8 +7917,8 @@ mod tests {
 
         run_sign_command(&SignArgs {
             key_path: dir.file("signing.key"),
-            in_path: dir.file("msg.bin"),
-            out_path: dir.file("msg.sig"),
+            in_path: Source::File(dir.file("msg.bin")),
+            out_path: Sink::File(dir.file("msg.sig")),
             iterations: 1,
             force: false,
         })
@@ -7673,7 +7979,7 @@ mod tests {
         // Written like a keygen since T-258 (D-214), so the same OS-specific error.
         let result = run_sign_pubkey_command(&SignPubkeyArgs {
             key_path: dir.file("signing.key"),
-            out_path: dir.file("a_directory"),
+            out_path: Sink::File(dir.file("a_directory")),
         });
         #[cfg(unix)]
         assert!(matches!(result, Err(CliError::KeyFileExists(_))));
@@ -7688,7 +7994,7 @@ mod tests {
         assert_eq!(
             run_sign_pubkey_command(&SignPubkeyArgs {
                 key_path: dir.file("signing.key"),
-                out_path: dir.file("verifying.key"),
+                out_path: Sink::File(dir.file("verifying.key")),
             }),
             Err(CliError::KeyFileNotTyped(dir.file("signing.key")))
         );
@@ -7702,8 +8008,8 @@ mod tests {
         assert_eq!(
             run_sign_command(&SignArgs {
                 key_path: dir.file("signing.key"),
-                in_path: dir.file("msg.bin"),
-                out_path: dir.file("msg.sig"),
+                in_path: Source::File(dir.file("msg.bin")),
+                out_path: Sink::File(dir.file("msg.sig")),
                 iterations: 1,
                 force: false,
             }),
@@ -7722,8 +8028,8 @@ mod tests {
         assert_eq!(
             run_sign_command(&SignArgs {
                 key_path: dir.file("signing.key"),
-                in_path: dir.file("msg.bin"),
-                out_path: dir.file("msg.sig"),
+                in_path: Source::File(dir.file("msg.bin")),
+                out_path: Sink::File(dir.file("msg.sig")),
                 iterations: 1,
                 force: false,
             }),
@@ -7742,8 +8048,8 @@ mod tests {
         assert!(matches!(
             run_sign_command(&SignArgs {
                 key_path: dir.file("signing.key"),
-                in_path: dir.file("does_not_exist.bin"),
-                out_path: dir.file("msg.sig"),
+                in_path: Source::File(dir.file("does_not_exist.bin")),
+                out_path: Sink::File(dir.file("msg.sig")),
                 iterations: 1,
                 force: false,
             }),
@@ -7764,14 +8070,14 @@ mod tests {
         .expect("sign-keygen should succeed");
         run_sign_pubkey_command(&SignPubkeyArgs {
             key_path: dir.file("signing.key"),
-            out_path: dir.file("verifying.key"),
+            out_path: Sink::File(dir.file("verifying.key")),
         })
         .expect("sign-pubkey should succeed");
         std::fs::write(dir.file("msg.bin"), b"original message").expect("write message");
         run_sign_command(&SignArgs {
             key_path: dir.file("signing.key"),
-            in_path: dir.file("msg.bin"),
-            out_path: dir.file("msg.sig"),
+            in_path: Source::File(dir.file("msg.bin")),
+            out_path: Sink::File(dir.file("msg.sig")),
             iterations: 1,
             force: false,
         })
@@ -7781,7 +8087,7 @@ mod tests {
         assert_eq!(
             run_verify_command(&VerifyArgs {
                 key_path: dir.file("verifying.key"),
-                in_path: dir.file("msg.bin"),
+                in_path: Source::File(dir.file("msg.bin")),
                 sig_path: dir.file("msg.sig"),
                 iterations: 1,
             }),
@@ -7802,14 +8108,14 @@ mod tests {
         .expect("sign-keygen should succeed");
         run_sign_pubkey_command(&SignPubkeyArgs {
             key_path: dir.file("signing.key"),
-            out_path: dir.file("verifying.key"),
+            out_path: Sink::File(dir.file("verifying.key")),
         })
         .expect("sign-pubkey should succeed");
         std::fs::write(dir.file("msg.bin"), b"a message").expect("write message");
         run_sign_command(&SignArgs {
             key_path: dir.file("signing.key"),
-            in_path: dir.file("msg.bin"),
-            out_path: dir.file("msg.sig"),
+            in_path: Source::File(dir.file("msg.bin")),
+            out_path: Sink::File(dir.file("msg.sig")),
             iterations: 1,
             force: false,
         })
@@ -7822,7 +8128,7 @@ mod tests {
         assert_eq!(
             run_verify_command(&VerifyArgs {
                 key_path: dir.file("verifying.key"),
-                in_path: dir.file("msg.bin"),
+                in_path: Source::File(dir.file("msg.bin")),
                 sig_path: dir.file("msg.sig"),
                 iterations: 1,
             }),
@@ -7847,14 +8153,14 @@ mod tests {
         .expect("sign-keygen b should succeed");
         run_sign_pubkey_command(&SignPubkeyArgs {
             key_path: dir.file("signing_b.key"),
-            out_path: dir.file("verifying_b.key"),
+            out_path: Sink::File(dir.file("verifying_b.key")),
         })
         .expect("sign-pubkey b should succeed");
         std::fs::write(dir.file("msg.bin"), b"a message").expect("write message");
         run_sign_command(&SignArgs {
             key_path: dir.file("signing_a.key"),
-            in_path: dir.file("msg.bin"),
-            out_path: dir.file("msg.sig"),
+            in_path: Source::File(dir.file("msg.bin")),
+            out_path: Sink::File(dir.file("msg.sig")),
             iterations: 1,
             force: false,
         })
@@ -7863,7 +8169,7 @@ mod tests {
         assert_eq!(
             run_verify_command(&VerifyArgs {
                 key_path: dir.file("verifying_b.key"),
-                in_path: dir.file("msg.bin"),
+                in_path: Source::File(dir.file("msg.bin")),
                 sig_path: dir.file("msg.sig"),
                 iterations: 1,
             }),
@@ -7882,7 +8188,7 @@ mod tests {
         assert_eq!(
             run_verify_command(&VerifyArgs {
                 key_path: dir.file("verifying.key"),
-                in_path: dir.file("msg.bin"),
+                in_path: Source::File(dir.file("msg.bin")),
                 sig_path: dir.file("msg.sig"),
                 iterations: 1,
             }),
@@ -7900,7 +8206,7 @@ mod tests {
         assert_eq!(
             run_verify_command(&VerifyArgs {
                 key_path: dir.file("verifying.key"),
-                in_path: dir.file("msg.bin"),
+                in_path: Source::File(dir.file("msg.bin")),
                 sig_path: dir.file("msg.sig"),
                 iterations: 1,
             }),
@@ -7926,7 +8232,7 @@ mod tests {
         assert_eq!(
             run_verify_command(&VerifyArgs {
                 key_path: dir.file("verifying.key"),
-                in_path: dir.file("msg.bin"),
+                in_path: Source::File(dir.file("msg.bin")),
                 sig_path: dir.file("msg.sig"),
                 iterations: 1,
             }),
@@ -7950,7 +8256,7 @@ mod tests {
         assert!(matches!(
             run_verify_command(&VerifyArgs {
                 key_path: dir.file("verifying.key"),
-                in_path: dir.file("does_not_exist.bin"),
+                in_path: Source::File(dir.file("does_not_exist.bin")),
                 sig_path: dir.file("msg.sig"),
                 iterations: 1,
             }),
@@ -7989,7 +8295,7 @@ mod tests {
             parse_box_pubkey_args(&args),
             Ok(BoxPubkeyArgs {
                 key_path: PathBuf::from("box.key"),
-                out_path: PathBuf::from("box.pub"),
+                out_path: Sink::File(PathBuf::from("box.pub")),
             })
         );
     }
@@ -8020,8 +8326,8 @@ mod tests {
             parse_box_seal_args(&args),
             Ok(BoxSealArgs {
                 key_path: PathBuf::from("recipient.pub"),
-                in_path: PathBuf::from("msg.txt"),
-                out_path: PathBuf::from("msg.box"),
+                in_path: Source::File(PathBuf::from("msg.txt")),
+                out_path: Sink::File(PathBuf::from("msg.box")),
                 iterations: 1,
                 force: false,
             })
@@ -8104,8 +8410,8 @@ mod tests {
             parse_box_open_args(&args),
             Ok(BoxOpenArgs {
                 key_path: PathBuf::from("box.key"),
-                in_path: PathBuf::from("msg.box"),
-                out_path: PathBuf::from("msg.txt"),
+                in_path: Source::File(PathBuf::from("msg.box")),
+                out_path: Sink::File(PathBuf::from("msg.txt")),
                 iterations: 1,
                 force: false,
             })
@@ -8132,7 +8438,7 @@ mod tests {
         .expect("box-keygen should succeed");
         run_box_pubkey_command(&BoxPubkeyArgs {
             key_path: dir.file("box.key"),
-            out_path: dir.file("box.pub"),
+            out_path: Sink::File(dir.file("box.pub")),
         })
         .expect("box-pubkey should succeed");
         std::fs::write(dir.file("msg.txt"), b"a message for the recipient only")
@@ -8140,8 +8446,8 @@ mod tests {
 
         run_box_seal_command(&BoxSealArgs {
             key_path: dir.file("box.pub"),
-            in_path: dir.file("msg.txt"),
-            out_path: dir.file("msg.box"),
+            in_path: Source::File(dir.file("msg.txt")),
+            out_path: Sink::File(dir.file("msg.box")),
             iterations: 1,
             force: false,
         })
@@ -8158,8 +8464,8 @@ mod tests {
 
         run_box_open_command(&BoxOpenArgs {
             key_path: dir.file("box.key"),
-            in_path: dir.file("msg.box"),
-            out_path: dir.file("msg.out"),
+            in_path: Source::File(dir.file("msg.box")),
+            out_path: Sink::File(dir.file("msg.out")),
             iterations: 1,
             force: false,
         })
@@ -8184,15 +8490,15 @@ mod tests {
         .expect("box-keygen should succeed");
         run_box_pubkey_command(&BoxPubkeyArgs {
             key_path: dir.file("box.key"),
-            out_path: dir.file("box.pub"),
+            out_path: Sink::File(dir.file("box.pub")),
         })
         .expect("box-pubkey should succeed");
         std::fs::write(dir.file("msg.txt"), b"benchmarked message").expect("write message");
 
         run_box_seal_command(&BoxSealArgs {
             key_path: dir.file("box.pub"),
-            in_path: dir.file("msg.txt"),
-            out_path: dir.file("msg.box"),
+            in_path: Source::File(dir.file("msg.txt")),
+            out_path: Sink::File(dir.file("msg.box")),
             iterations: 5,
             force: false,
         })
@@ -8200,8 +8506,8 @@ mod tests {
 
         run_box_open_command(&BoxOpenArgs {
             key_path: dir.file("box.key"),
-            in_path: dir.file("msg.box"),
-            out_path: dir.file("msg.out"),
+            in_path: Source::File(dir.file("msg.box")),
+            out_path: Sink::File(dir.file("msg.out")),
             iterations: 5,
             force: false,
         })
@@ -8228,14 +8534,14 @@ mod tests {
         .expect("box-keygen should succeed");
         run_box_pubkey_command(&BoxPubkeyArgs {
             key_path: dir.file("box.key"),
-            out_path: dir.file("box.pub"),
+            out_path: Sink::File(dir.file("box.pub")),
         })
         .expect("box-pubkey should succeed");
         std::fs::write(dir.file("msg.txt"), b"secret").expect("write message");
         run_box_seal_command(&BoxSealArgs {
             key_path: dir.file("box.pub"),
-            in_path: dir.file("msg.txt"),
-            out_path: dir.file("msg.box"),
+            in_path: Source::File(dir.file("msg.txt")),
+            out_path: Sink::File(dir.file("msg.box")),
             iterations: 1,
             force: false,
         })
@@ -8244,8 +8550,8 @@ mod tests {
         assert_eq!(
             run_box_open_command(&BoxOpenArgs {
                 key_path: dir.file("other.key"),
-                in_path: dir.file("msg.box"),
-                out_path: dir.file("msg.out"),
+                in_path: Source::File(dir.file("msg.box")),
+                out_path: Sink::File(dir.file("msg.out")),
                 iterations: 1,
                 force: false,
             }),
@@ -8266,14 +8572,14 @@ mod tests {
         .expect("box-keygen should succeed");
         run_box_pubkey_command(&BoxPubkeyArgs {
             key_path: dir.file("box.key"),
-            out_path: dir.file("box.pub"),
+            out_path: Sink::File(dir.file("box.pub")),
         })
         .expect("box-pubkey should succeed");
         std::fs::write(dir.file("msg.txt"), b"secret").expect("write message");
         run_box_seal_command(&BoxSealArgs {
             key_path: dir.file("box.pub"),
-            in_path: dir.file("msg.txt"),
-            out_path: dir.file("msg.box"),
+            in_path: Source::File(dir.file("msg.txt")),
+            out_path: Sink::File(dir.file("msg.box")),
             iterations: 1,
             force: false,
         })
@@ -8287,8 +8593,8 @@ mod tests {
         assert_eq!(
             run_box_open_command(&BoxOpenArgs {
                 key_path: dir.file("box.key"),
-                in_path: dir.file("msg.box"),
-                out_path: dir.file("msg.out"),
+                in_path: Source::File(dir.file("msg.box")),
+                out_path: Sink::File(dir.file("msg.out")),
                 iterations: 1,
                 force: false,
             }),
@@ -8308,8 +8614,8 @@ mod tests {
         assert_eq!(
             run_box_open_command(&BoxOpenArgs {
                 key_path: dir.file("box.key"),
-                in_path: dir.file("msg.box"),
-                out_path: dir.file("msg.out"),
+                in_path: Source::File(dir.file("msg.box")),
+                out_path: Sink::File(dir.file("msg.out")),
                 iterations: 1,
                 force: false,
             }),
@@ -8324,7 +8630,7 @@ mod tests {
         assert_eq!(
             run_box_pubkey_command(&BoxPubkeyArgs {
                 key_path: dir.file("box.key"),
-                out_path: dir.file("box.pub"),
+                out_path: Sink::File(dir.file("box.pub")),
             }),
             Err(CliError::KeyFileNotTyped(dir.file("box.key")))
         );
@@ -8337,7 +8643,7 @@ mod tests {
         assert_eq!(
             run_box_pubkey_command(&BoxPubkeyArgs {
                 key_path: dir.file("box.key"),
-                out_path: dir.file("box.pub"),
+                out_path: Sink::File(dir.file("box.pub")),
             }),
             Err(CliError::BoxKeyInvalid)
         );
@@ -8728,15 +9034,15 @@ mod tests {
         std::fs::write(dir.file("pt.bin"), b"secret plaintext").expect("write input");
         let enc = SecretstreamArgs {
             key_path: dir.file("key.bin"),
-            in_path: dir.file("pt.bin"),
-            out_path: dir.file("ct.bin"),
+            in_path: Source::File(dir.file("pt.bin")),
+            out_path: Sink::File(dir.file("ct.bin")),
             force: false,
         };
         run_secretstream_command(false, &enc).expect("encrypt");
         let dec = SecretstreamArgs {
             key_path: dir.file("key.bin"),
-            in_path: dir.file("ct.bin"),
-            out_path: dir.file("out.bin"),
+            in_path: Source::File(dir.file("ct.bin")),
+            out_path: Sink::File(dir.file("out.bin")),
             force: false,
         };
         run_secretstream_command(true, &dec).expect("decrypt");
