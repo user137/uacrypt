@@ -8738,7 +8738,9 @@ replace a DSTU primitive.
 The owner chose both forks as recommended (stdin counter after 64 MiB; none for `box-*` until
 T-265). Ran: `cargo test -p uacrypt` here and on the Pi, the new ignored piped-stderr test in
 release (mutation-checked), scoped Miri on `progress.rs`, `cargo xtask clippy`/`fmt --check`/
-`docs-check`, a Linux pty by hand on the Pi. **Not run:** the Windows consoles by eye, the
+`docs-check`, a Linux pty by hand on the Pi, a real cmd console (screen read back, D-218).
+Commits `e48e3d8` + `2a838ee` (closing review) + this handoff. **Not run:** PowerShell 7 and
+mintty by eye, the
 binding suites and `bench-compare` (their `uacrypt` runs have a piped stderr; bench uses the
 lower-level commands), the rest of `cargo xtask streaming-bounded`, CI (branch unpushed), the GHSA/CVE status check.
 **Next: T-262** (passphrase encryption - plan mode + advisor, new file format).
@@ -9123,8 +9125,8 @@ Additive - after the breaking part:
   (known size >= 64 MiB, or a byte counter for stdin); no flag, no dependency, <= 10 redraws/s,
   cleared at the end; nothing at all when piped. Owner forks: the stdin counter appears after
   64 MiB; `box-seal`/`box-open` get none until T-265. Hooked into `Source::open`, so the
-  lower-level interop/bench commands are untouched. Linux pty checked by hand on the Pi; Windows
-  consoles (cmd, PowerShell 7, mintty) not yet looked at.
+  lower-level interop/bench commands are untouched. Linux pty (Pi) and a real cmd console
+  checked; PowerShell 7 and mintty not yet looked at.
 - [ ] **T-262** Passphrase encryption (P1). Decrypt auto-detects from the header; confirm twice,
   refuse empty; Argon2id parameters in the header. Plan mode + advisor (new file format).
 - [ ] **T-263** Text output (A1), only if the owner wants it.

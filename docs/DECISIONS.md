@@ -14475,5 +14475,10 @@ terminal check removed it fails). By hand on the Pi (Linux pty via `script`, rel
 `encrypt` of a 200 MB file drew `8.0 KiB / 190.7 MiB (0%)` onward; `hash --in -` drew nothing
 until `64.0 MiB read`, then erased the line before printing its hash; a 1 MB file drew nothing; a
 truncated `decrypt` erased the line before its error. Scoped Miri on the 14 unit tests: no UB.
-Pi `cargo test -p uacrypt` green. Not yet looked at by eye: the Windows consoles (cmd,
-PowerShell 7, mintty); `IsTerminal` itself was verified on all three for stdout in D-217.
+Pi `cargo test -p uacrypt` green. cmd checked 2026-09-24 in a real console window (release
+build, 200 MiB file; screen read back with PowerShell's `RawUI.GetBufferContents` from inside the
+same console): mid-`encrypt` showed `uacrypt: 62.9 MiB / 200.0 MiB (31%)` and left an empty
+screen after; `type big.bin | uacrypt hash --in -` showed `uacrypt: 64.0 MiB read` mid-run and
+only the hash line after; a truncated `decrypt` left only its error line; a 99-byte file only its
+hash line. Not yet looked at: PowerShell 7 and mintty (`IsTerminal` itself was verified on both
+for stdout in D-217).
