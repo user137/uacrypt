@@ -57,10 +57,13 @@ cat report.pdf | uacrypt hash --in -          # prints "<hex>  -"
   more`. Checked in cmd, PowerShell 7, Git Bash (mintty) and a Linux terminal.
 - Secret keys are never written to stdout: `--out -` on every `*-keygen` command and on a secret
   `key-import` is a usage error. `--key` never reads stdin.
-- Every other path flag (`--key`, `--sig`, `key-import --in`, `hash --check`, and all paths of
+- `hash --check -` reads the checksum list from stdin (like `sha256sum -c -`, same 16 MiB cap and
+  grammar). A line for `-` inside any list is never read from stdin - an untrusted list must not
+  consume or wait on your script's stdin - so it is reported as `-: FAILED (stdin is not read from
+  a check list ...)` and counts as a failure; a file really named `-` is listed as `./-`.
+- Every other path flag (`--key`, `--sig`, `key-import --in`, and all paths of
   the lower-level `kalyna-*`/`kupyna-digest`/`strumok-crypt` commands) refuses `-` as a usage
-  error, so `-` never silently names a file. A file really named `-` is `./-`. In a `hash --check`
-  list, a line for `-` names a file called `-`, never stdin.
+  error, so `-` never silently names a file. A file really named `-` is `./-`.
 - `--force` with `--out -` is a usage error: there is no file to replace.
 - **`decrypt --out -` can print part of a message.** Each chunk is written once its tag verifies,
   so nothing unauthenticated is ever printed, but a stream cut short or tampered with halfway

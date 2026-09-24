@@ -2810,8 +2810,9 @@ pub fn run_digest_command(args: &DigestArgs) -> Result<(), CliError> {
 pub enum HashArgs {
     /// `--in <path>`: print `<hex>  <path>` to stdout; `--in -` hashes stdin and prints `-`.
     File(Source),
-    /// `--check <file>`: verify every `<hex>  <path>` line of a file.
-    Check(PathBuf),
+    /// `--check <file>`: verify every `<hex>  <path>` line of a file; `--check -` reads the list
+    /// from stdin.
+    Check(Source),
 }
 
 /// Parses `hash`'s flags: exactly one of `--in`/`--check`. No `--variant` (fixed to Kupyna-256,
@@ -2822,12 +2823,14 @@ pub enum HashArgs {
 /// Returns [`CliError::MissingOneOf`], [`CliError::ExclusiveFlags`] or another usage error.
 pub fn parse_hash_args(args: &[String]) -> Result<HashArgs, CliError> {
     let scanner = ArgScanner::scan(args, &["--in", "--check"], &[])?;
-    let input = if scanner.values.contains_key("--in") {
-        Some(scanner.input("--in")?)
-    } else {
-        None
+    let input_opt = |flag| {
+        if scanner.values.contains_key(flag) {
+            scanner.input(flag).map(Some)
+        } else {
+            Ok(None)
+        }
     };
-    match (input, scanner.path_opt("--check")?) {
+    match (input_opt("--in")?, input_opt("--check")?) {
         (Some(source), None) => Ok(HashArgs::File(source)),
         (None, Some(list)) => Ok(HashArgs::Check(list)),
         (Some(_), Some(_)) => Err(CliError::ExclusiveFlags("in", "check")),
@@ -2951,43 +2954,47 @@ pub fn run_hash_command(args: &HashArgs) -> Result<(), CliError> {
     }
 }
 
-fn read_check_list(list: &PathBuf) -> Result<Vec<u8>, CliError> {
+fn read_check_list(list: &Source) -> Result<Vec<u8>, CliError> {
     use std::io::Read;
 
-    let io_error = |e: std::io::Error| CliError::Io {
-        path: list.clone(),
-        message: e.to_string(),
-    };
     let mut text = Vec::new();
-    std::fs::File::open(list)
-        .map_err(io_error)?
+    list.open()?
         .take(HASH_CHECK_LIST_MAX_BYTES as u64 + 1)
         .read_to_end(&mut text)
-        .map_err(io_error)?;
+        .map_err(|e| list.io_error(&e))?;
     if text.len() > HASH_CHECK_LIST_MAX_BYTES {
         return Err(CliError::HashCheckTooLarge {
-            path: list.clone(),
+            path: list.label(),
             limit: HASH_CHECK_LIST_MAX_BYTES,
         });
     }
     Ok(text)
 }
 
-fn run_hash_check(list: &PathBuf) -> Result<(), CliError> {
+fn run_hash_check(list: &Source) -> Result<(), CliError> {
     use std::io::Write as _;
 
     let entries = parse_check_list(&read_check_list(list)?).map_err(|e| match e {
-        CheckListError::Empty => CliError::HashCheckEmpty(list.clone()),
-        CheckListError::Utf16 => CliError::HashCheckUtf16(list.clone()),
+        CheckListError::Empty => CliError::HashCheckEmpty(list.label()),
+        CheckListError::Utf16 => CliError::HashCheckUtf16(list.label()),
         CheckListError::Malformed(line) => CliError::HashCheckMalformed {
-            path: list.clone(),
+            path: list.label(),
             line,
         },
     })?;
     let mut out = std::io::stdout().lock();
     let mut failed = 0;
     for entry in &entries {
-        // A `-` entry is a file named `-`, never stdin (D-217).
+        // An untrusted list must not consume or wait on the caller's stdin (D-217 addendum).
+        if entry.path == "-" {
+            failed += 1;
+            writeln!(
+                out,
+                "-: FAILED (stdin is not read from a check list; hash it with `hash --in -`,                  or write ./- for a file named -)"
+            )
+            .map_err(|e| stdout_error(&e))?;
+            continue;
+        }
         let status = match hash_file_streamed(&Source::File(PathBuf::from(&entry.path))) {
             // A file digest is public: no constant-time comparison needed.
             Ok(digest) if digest == entry.digest => "OK".to_string(),
@@ -4266,7 +4273,8 @@ output file behind. Key files (secret or public) are never replaced at all - the
 them, and another command's --force does not replace an existing key file either.
 
 STDIN AND STDOUT:
-    `--in -` reads stdin (encrypt, decrypt, hash, sign, verify, box-seal, box-open); `--out -`
+    `--in -` reads stdin (encrypt, decrypt, hash, sign, verify, box-seal, box-open; also
+    `hash --check -`); `--out -`
     writes stdout (the same commands but hash and verify, plus the public keys of sign-pubkey,
     box-pubkey and key-import). Binary output is refused when stdout is a terminal; secret keys
     are never written to stdout, and --key never reads stdin. For a file named `-`, write ./-.
@@ -4379,8 +4387,9 @@ USAGE:
 
 FLAGS:
     --in <path>      file to hash, or - for stdin; prints `<64 hex digits>  <path>` to stdout
-    --check <file>   read such lines and hash each listed file; prints `<path>: OK` or
-                     `<path>: FAILED` and exits 1 if any file does not match or cannot be read
+    --check <file>   read such lines (- for stdin) and hash each listed file; prints
+                     `<path>: OK` or `<path>: FAILED` and exits 1 if any file does not match
+                     or cannot be read
 
 EXAMPLE:
     uacrypt hash --in report.pdf > report.pdf.kupyna256
@@ -4396,7 +4405,8 @@ Notes:
       cmd or `cmd /c \"uacrypt hash --in <file> > <list>\"`. A UTF-8 BOM is accepted.
     - A path that is not UTF-8 or contains a control character (a newline, a terminal escape) is
       refused: it could not be read back as one line.
-    - `--in -` prints `-` as the path. In a check file `-` is a file named `-`, never stdin.
+    - `--in -` prints `-` as the path. A `-` line in a check file is never read from stdin: it
+      is reported as FAILED; write ./- for a file named `-`.
 ";
 
 const SIGN_KEYGEN_HELP: &str = "\
@@ -5457,7 +5467,7 @@ mod tests {
         );
         assert_eq!(
             parse_hash_args(&args(&["--check=SUMS"])),
-            Ok(HashArgs::Check(PathBuf::from("SUMS")))
+            Ok(HashArgs::Check(Source::File(PathBuf::from("SUMS"))))
         );
     }
 
@@ -5793,13 +5803,14 @@ mod tests {
         let len = SIGN_STREAM_CHUNK_BYTES * 2 + 513;
         let message: Vec<u8> = (0..len).map(|i| (i as u8).wrapping_mul(53)).collect();
         let list = write_check_list(&dir, &message, &Kupyna256::digest(&message));
-        run_hash_command(&HashArgs::Check(list)).expect("the listed digest must match");
+        run_hash_command(&HashArgs::Check(Source::File(list)))
+            .expect("the listed digest must match");
 
         let mut wrong = Kupyna256::digest(&message);
         wrong[31] ^= 1;
         let list = write_check_list(&dir, &message, &wrong);
         assert_eq!(
-            run_hash_command(&HashArgs::Check(list)),
+            run_hash_command(&HashArgs::Check(Source::File(list))),
             Err(CliError::HashCheckFailed {
                 failed: 1,
                 total: 1
@@ -6442,7 +6453,8 @@ mod tests {
     fn run_hash_command_empty_file_produces_the_empty_input_digest() {
         let dir = TempDir::new("hash_empty");
         let list = write_check_list(&dir, &[], &Kupyna256::digest(&[]));
-        run_hash_command(&HashArgs::Check(list)).expect("hashing an empty file must succeed");
+        run_hash_command(&HashArgs::Check(Source::File(list)))
+            .expect("hashing an empty file must succeed");
     }
 
     /// "Fool" test - `--iterations 0` (a plausible off-by-one from a user expecting "0 extra

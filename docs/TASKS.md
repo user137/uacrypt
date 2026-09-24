@@ -8742,7 +8742,8 @@ Miri on the two new unit tests, terminal refusal by hand (cmd, PowerShell 7.6, m
 Windows shell byte-exactness (cmd and PowerShell 7.6 `>`/`|` exact; 5.1 corrupts - hint added).
 **Not run this session:** the binding suites and `bench-compare` (none passes `-`; file-path
 behaviour unchanged), the rest of `cargo xtask streaming-bounded`, CI (branch unpushed), the
-GHSA/CVE status check. Deferred by owner choice: `hash --check -` and `-` list entries as stdin.
+GHSA/CVE status check. The deferred `hash --check -` fork was then delegated to me and done
+(D-217 addendum): `--check -` reads stdin, a `-` list line is FAILED, never stdin.
 **Next: T-261** (progress indicator).
 
 **Previous handoff (2026-09-24, fourth session end).** Working copy clean on
@@ -9104,6 +9105,8 @@ Breaking - 0.5.0 (B1 a):
   checked by hand in cmd, PowerShell 7, mintty and a Linux pty. Commits `87ec3fc` + closing-review
   follow-up (measured-only Windows claims, help text no longer promises "no output" for
   `--out -`, stdio peak-RSS test in `smoke_streaming_boundedness.rs`, closed-pipe exit 3).
+  Deferred fork then delegated by the owner and done: `hash --check -` reads the list from stdin;
+  a `-` line in a list is FAILED, never stdin (D-217 addendum).
 
 Additive - after the breaking part:
 - [ ] **T-261** Progress indicator: automatic only when stderr is a terminal and the input is large

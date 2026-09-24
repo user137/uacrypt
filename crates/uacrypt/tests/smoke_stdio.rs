@@ -395,7 +395,6 @@ fn dash_is_refused_everywhere_it_is_not_stdio() {
             "--out",
             "o",
         ],
-        &["hash", "--check", "-"],
         &[
             "kupyna-digest",
             "--variant",
@@ -574,4 +573,50 @@ fn a_byte_order_mark_is_named_as_text_redirection() {
         );
         assert_eq!(r.stderr.contains("0.3.x"), !powershell, "{}", r.stderr);
     }
+}
+
+/// `hash --check -` reads the list from stdin, like `sha256sum -c -`. A `-` line inside a list
+/// never reads stdin (an untrusted list must not consume or wait on the caller's stdin): it fails
+/// with a reason, and `./-` names a file called `-` (D-217 addendum).
+#[test]
+#[cfg_attr(
+    miri,
+    ignore = "spawns the real uacrypt binary - Miri cannot run a subprocess"
+)]
+fn hash_check_reads_its_list_from_stdin_but_never_a_dash_entry() {
+    let dir = TempDir::new("stdio_hash_check");
+    write_bytes(&dir.file("a"), b"first");
+    write_bytes(&dir.file("-"), b"dash file");
+    let line =
+        |name: &str, content: &[u8]| format!("{}  {name}\n", hex(&Kupyna256::digest(content)));
+
+    let list = line("a", b"first") + &line("./-", b"dash file");
+    let r = run(&dir.0, &["hash", "--check", "-"], list.as_bytes());
+    ok(&r);
+    assert_eq!(String::from_utf8(r.stdout).unwrap(), "a: OK\n./-: OK\n");
+
+    let bad = line("a", b"other");
+    let r = run(&dir.0, &["hash", "--check", "-"], bad.as_bytes());
+    assert_eq!(r.code, Some(1), "{}", r.stderr);
+    assert_eq!(String::from_utf8(r.stdout).unwrap(), "a: FAILED\n");
+
+    let r = run(&dir.0, &["hash", "--check", "-"], b"not a checksum line\n");
+    assert_eq!(r.code, Some(1), "{}", r.stderr);
+    assert!(
+        r.stderr.contains("<stdin>") && r.stderr.contains("line 1"),
+        "{}",
+        r.stderr
+    );
+    let r = run(&dir.0, &["hash", "--check", "-"], b"");
+    assert_eq!(r.code, Some(1), "{}", r.stderr);
+
+    // A `-` entry: FAILED with a reason, the other lines still checked, stdin untouched.
+    let with_dash = line("-", b"dash file") + &line("a", b"first");
+    write_bytes(&dir.file("SUMS"), with_dash.as_bytes());
+    let r = run(&dir.0, &["hash", "--check", "SUMS"], b"dash file");
+    assert_eq!(r.code, Some(1), "{}", r.stderr);
+    let out = String::from_utf8(r.stdout).unwrap();
+    assert!(out.starts_with("-: FAILED (stdin is not read"), "{out}");
+    assert!(out.ends_with("a: OK\n"), "{out}");
+    assert!(r.stderr.contains("1 of 2"), "{}", r.stderr);
 }

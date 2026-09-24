@@ -76,14 +76,15 @@ All notable changes to this project are documented in this file. Format follows
   in `encrypt`, `decrypt`, `sign`, `box-seal`, `box-open` and prints the public key of
   `sign-pubkey`, `box-pubkey` and public `key-import`. Binary output to a terminal is refused
   (exit 2); secret keys never go to stdout; `--force` with `--out -` is a usage error.
-  `decrypt --out -` prints only verified chunks, and if the stream then fails it says the output
+  `hash --check -` reads the list from stdin; a `-` line in a list is reported as FAILED, never
+  read from stdin. `decrypt --out -` prints only verified chunks, and if the stream then fails it says the output
   is INCOMPLETE and exits non-zero - check the exit status (`set -o pipefail`). **Migration:** `-`
-  is now refused by every other path flag (`--key`, `--sig`, `hash --check`, the lower-level
+  is now refused by every other path flag (`--key`, `--sig`, the lower-level
   commands); a file named `-` is `./-`. `decrypt` names Windows PowerShell 5.1's UTF-16
   redirection when a file starts with a byte-order mark. Library API: `Source`/`Sink`; the
   `in_path`/`out_path` of `SecretstreamArgs`, `SignArgs`, `VerifyArgs` (`in_path`),
   `BoxSealArgs`, `BoxOpenArgs`, and the `out_path` of `SignPubkeyArgs`, `BoxPubkeyArgs`,
-  `KeyImportArgs` use them; `HashArgs::File` holds a `Source`; new `CliError::StdioNotAccepted`/
+  `KeyImportArgs` use them; `HashArgs::File`/`Check` hold a `Source`; new `CliError::StdioNotAccepted`/
   `SecretKeyToStdout`/`ForceWithStdout`/`BinaryToTerminal`/`StdoutIncomplete`.
 
 ### Security

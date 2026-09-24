@@ -14308,7 +14308,8 @@ benchmarks keep file paths). Before, `-` silently named a file called `-` everyw
 placeholder made `--out -` create one. `--out -` on a keygen or a secret `key-import` is
 `SecretKeyToStdout` (exit 2, R7's own wording).
 
-**Decision 2 - `-` becomes stdin/stdout only in the argument scanner** (`ArgScanner::input`/
+**Decision 2 - `-` becomes stdin/stdout only in the argument scanner** (its `hash --check` part is
+superseded by the addendum below) (`ArgScanner::input`/
 `output`, types `Source`/`Sink`). `hash --check` builds `Source::File` for every listed path, so a
 `-` line names a file called `-`: a check list can never make uacrypt read stdin (a hostile list
 could otherwise hang a run), and D-215's grammar is unchanged. Consequence: a `hash --in -` line
@@ -14382,6 +14383,19 @@ feeds stdin from a file and writes stdout to a file; passed in release on Window
 hand on the Pi: `decrypt --out - | head -c 100` exits 3 with the INCOMPLETE message
 (`PIPESTATUS=3 0`). The existing unit tests build the new `Source`/
 `Sink` fields; all other smoke files pass unchanged.
+
+**Addendum - `hash --check` and `-` (owner delegated, 2026-09-24: "your choice, consistent with
+the app and best practice for use and convenience").** This replaces Decision 2's deferral.
+`hash --check -` reads the list from stdin (`sha256sum -c -` compatibility; the same 16 MiB cap,
+grammar and `<stdin>` in error messages). A `-` line inside a list still never reads stdin, but no
+longer silently names a file either: it is `-: FAILED (stdin is not read from a check list ...)`,
+counted in `HashCheckFailed` (exit 1), and the other lines are still checked. GNU would read stdin
+there; rejected because a list is untrusted input (D-215) and reading stdin from it could consume
+a script's stdin or wait on a terminal, and because it matches this batch's rule that `-` is
+never a silent file name. A file really named `-` is listed as `./-`. A `hash --in -` line
+therefore cannot be checked later from a list; hash the data again with `hash --in -`. Test:
+`smoke_stdio.rs` `hash_check_reads_its_list_from_stdin_but_never_a_dash_entry` (OK/FAILED/
+malformed/empty lists over stdin, a `-` entry failing with the other line OK and stdin unread).
 
 **Also decided while implementing (closing review, reported to the owner).** The byte-order-mark
 hint covers `decrypt` only. The Kupyna hasher loop behind `hash`/`sign`/`verify` now retries
