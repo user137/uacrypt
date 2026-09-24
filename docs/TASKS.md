@@ -8728,7 +8728,7 @@ replace a DSTU primitive.
 7. **T-247** upstream reports (UAPKI issue, bc-java #287) - owner go-ahead.
 8. **T-234 -> T-235/T-236/T-237** (primary-text-dependent hazmat decisions, oracle vendoring), then
    T-246 docs, then hygiene **T-242/T-243/T-244**, then **T-249**.
-9. **`uacrypt` UX batch T-255..T-265** (section "CLI usability and misuse resistance" at the end of
+9. **`uacrypt` UX batch T-255..T-271** (section "CLI usability and misuse resistance" at the end of
    this file) - owner decisions resolved 2026-09-23; ships as 0.5.0, after 0.4.0 (B1 a).
 
 ### RESUME HERE (state as of 2026-09-23, saved for a memory-clear/new-session handoff)
@@ -8745,8 +8745,8 @@ window, and (on the owner's request) the Windows console prompt and Ctrl-C throu
 input injection in a separate window - prompt fine, Ctrl-C leaves the mode at `0x1` (T-271,
 needs the owner's go-ahead). **Not run:** the binding
 suites, CI (branch unpushed), the GHSA/CVE status check. New: T-269 (binding gate), T-270 (clippy
-1.98 in `dstu-core`, pre-existing), T-271 (Windows Ctrl-C console mode). **Next: T-271 (after the
-owner's go-ahead), T-270 or T-264** (owner's call; T-263 only if wanted).
+1.98 in `dstu-core`, pre-existing), T-271 (Windows Ctrl-C console mode). **Next: the batch's "Remaining, in order" list** (T-271 first, after
+the owner's go-ahead).
 
 **Previous handoff (2026-09-24, sixth session end).** Working copy clean on
 `ux-0.5.0`, nothing pushed (embargo). This session: **T-261** (progress line on stderr, D-218).
@@ -8981,7 +8981,7 @@ Next, in order:
      the PyPI/npm/RubyGems environments -> publish both advisories -> RustSec PR -> verify live
      registry pages and the T-252 verify commands on real assets -> T-251.
    Next: 0.4.0 release preparation (execution plan steps 4-6) - owner-gated, every outward step
-   confirmed separately. After 0.4.0: the `uacrypt` UX batch T-255..T-265 as 0.5.0 (last section of
+   confirmed separately. After 0.4.0: the `uacrypt` UX batch T-255..T-271 as 0.5.0 (last section of
    this file, decisions resolved; start with T-255).
    Leftover, owner's call: `.git/worktrees/wt038` (and 13 older entries) could not be pruned -
    "Permission denied"; the working directories themselves are gone.
@@ -9151,9 +9151,17 @@ Additive - after the breaking part:
   refused (measured: it hangs otherwise). Output is reserved only after the prompt. Pi tests
   green, pty checked by hand; Windows console prompt checked 2026-09-24 via console input
   injection (works; Ctrl-C leaves the console mode at `0x1` -> T-271).
-- [ ] **T-269** Binding gate for T-262: wire `crypto_pwhash::derive_key` into the 8 bindings and
-  `dstu-core-capi` (shared vectors `crates/dstu-core/tests/vectors/pwhash/derive_key.json`), and
-  decide whether the bindings also read/write the passphrase file format (D-219).
+
+Remaining, in order (owner 2026-09-24: follow-ups found while landing the batch join this one
+plan):
+1. T-271 - Windows Ctrl-C console mode (a T-262 defect; owner go-ahead for the `unsafe` first).
+2. T-270 - clippy 1.98 in `dstu-core` (small; unblocks CI on a current toolchain).
+3. T-264 - shell completions and man page.
+4. T-265 - bounded-memory `box-seal`/`box-open` (new `dstu-core` API).
+5. T-269 - binding gate for T-262 and T-265 together.
+6. T-263 - only if the owner wants it.
+7. Release 0.5.0 (after 0.4.0, B1 a), then T-267.
+
 - [ ] **T-271** Windows Ctrl-C at the passphrase prompt leaves the console input mode at `0x1`
   (echo and line input off; measured, D-219): `rpassword` sets `ENABLE_PROCESSED_INPUT` only and
   the system's default Ctrl-C handler ends the process before its `Drop`. cmd resets the mode,
@@ -9164,12 +9172,17 @@ Additive - after the breaking part:
   with the same `WriteConsoleInputW` probe.
 - [ ] **T-270** Clippy 1.98 rejects five `cast_possible_truncation` casts in `dstu-core`'s
   `gf2m_field!` under `-D warnings` (found on the Pi 2026-09-24, D-219); CI fails on any runner
-  with stable >= 1.98. Existing code, not from T-262.
-- [ ] **T-263** Text output (A1), only if the owner wants it.
+  with stable >= 1.98. Existing code, not from T-262 - in this plan by owner request
+  (2026-09-24, "all in one plan"); it breaks `master`'s CI too, so the fix is cherry-picked
+  there as well.
 - [ ] **T-264** Shell completions (`uacrypt completions bash|zsh|fish|powershell`) and a man page,
   generated from the same command table the parser uses.
 - [ ] **T-265** Bounded-memory `box-seal`/`box-open` (today they read `--in` whole). Needs a
   multi-chunk `crypto_box` stream API in `dstu-core` -> the new-primitive binding gate applies.
+- [ ] **T-269** Binding gate for T-262 and T-265, one pass: wire `crypto_pwhash::derive_key`
+  and T-265's streaming `crypto_box` API into the 8 bindings and `dstu-core-capi` (shared vectors `crates/dstu-core/tests/vectors/pwhash/derive_key.json`), and
+  decide whether the bindings also read/write the passphrase file format (D-219).
+- [ ] **T-263** Text output (A1), only if the owner wants it.
 
 Release:
 - [ ] **T-267** After the 0.5.0 release (owner request 2026-09-24): update the site - the
