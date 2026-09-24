@@ -2457,11 +2457,6 @@ fn read_exact_or_truncated(
     }
 }
 
-/// Encrypts `in_path` into `tmp_path` (the caller renames onto the real `--out` only after this
-/// returns `Ok`) using [`dstu_core::crypto_secretstream::PushState`]. One-chunk-ahead buffering
-/// (`cur`/`next`) is what lets the last chunk be tagged
-/// [`Tag::Final`](dstu_core::crypto_secretstream::Tag::Final) without a second pass over the file -
-/// including the empty-input case, which produces a single zero-length `Final` chunk.
 /// Reads from `reader` until `buf` is full or the input ends, and returns how many bytes it got. A
 /// single `read` may legally return fewer bytes than asked for, which would emit a short
 /// non-`Final` record that every reader rejects (D-208).
@@ -2479,7 +2474,11 @@ fn fill_chunk(reader: &mut impl std::io::Read, buf: &mut [u8]) -> std::io::Resul
 }
 
 /// Writes the `encrypt` file format (D-208) for everything `input` yields: the format version byte,
-/// the secretstream header, then one record per [`SECRETSTREAM_CHUNK_BYTES`] of plaintext.
+/// the secretstream header, then one record per [`SECRETSTREAM_CHUNK_BYTES`] of plaintext, using
+/// [`dstu_core::crypto_secretstream::PushState`]. One-chunk-ahead buffering (`cur`/`next`) is what
+/// lets the last chunk be tagged [`Tag::Final`](dstu_core::crypto_secretstream::Tag::Final)
+/// without a second pass over the input - including the empty-input case, which produces a single
+/// zero-length `Final` chunk.
 fn write_secretstream_file(
     key: &dstu_core::crypto_secretstream::Key,
     input: &mut impl std::io::Read,
@@ -2527,8 +2526,9 @@ fn write_secretstream_file(
     Ok(())
 }
 
-/// Decrypts `in_path` into `tmp_path` (the caller renames onto the real `--out` only after this
-/// returns `Ok`) using [`dstu_core::crypto_secretstream::PullState`]. It checks the format version
+/// Decrypts `source` into `out` using [`dstu_core::crypto_secretstream::PullState`], writing each
+/// chunk only after its tag verifies (a file `--out` is renamed into place only on success; stdout
+/// cannot be taken back, see [`Output::finish`]). It checks the format version
 /// byte first, and that every non-`Final` record is exactly [`SECRETSTREAM_CHUNK_BYTES`] long
 /// (D-208). Stops as soon as a
 /// [`Tag::Final`](dstu_core::crypto_secretstream::Tag::Final) chunk verifies, then checks for
@@ -2614,7 +2614,8 @@ fn run_secretstream_decrypt(
 /// [`CliError::SecretstreamUnsupportedVersion`] if `--in` does not start with this build's format
 /// version, [`CliError::SecretstreamUnknownTag`]/[`CliError::SecretstreamChunkTooLarge`]/
 /// [`CliError::SecretstreamBadChunkLength`] for a malformed chunk record, [`CliError::SecretstreamTrailingData`] if bytes remain after `Final`, or
-/// [`CliError::Io`] for file read/write failures - `--out` is left untouched on every error path.
+/// [`CliError::Io`] for file read/write failures - a file `--out` is left untouched on every error
+/// path; with `--out -` an error after output was printed is [`CliError::StdoutIncomplete`].
 pub fn run_secretstream_command(decrypt: bool, args: &SecretstreamArgs) -> Result<(), CliError> {
     let command = if decrypt { "decrypt" } else { "encrypt" };
     let (_, key_bytes) = keyfile::read_key(&args.key_path, command, &[KeyKind::Symmetric])?;
@@ -4261,7 +4262,7 @@ FILE FORMATS (byte layouts, with field sizes in bytes: see docs/CLI.md 'File for
 The curve is chosen once, by the keygen command; every other command reads it from the key.
 
 An existing output file is never replaced unless you pass --force; a failed command leaves no
-output behind. Key files (secret or public) are never replaced at all - there is no --force for
+output file behind. Key files (secret or public) are never replaced at all - there is no --force for
 them, and another command's --force does not replace an existing key file either.
 
 STDIN AND STDOUT:
@@ -4332,7 +4333,7 @@ Notes:
     - Make a key with `uacrypt keygen --out key.bin`; a raw key file from uacrypt 0.4 or older
       can be converted with `uacrypt key-import --kind symmetric`.
     - --in and --out may be the same path (encrypts in place) with --force; --out is only
-      replaced after the whole file is written, so a failure never leaves partial output.
+      replaced after the whole file is written, so a failure never leaves a partial --out file.
 ";
 
 const DECRYPT_HELP: &str = "\
@@ -4361,8 +4362,8 @@ Check the exit status (in a shell pipeline: set -o pipefail) before trusting wha
 
 Notes:
     - --in and --out may be the same path (decrypts in place) with --force.
-    - Fails loudly (no --out written) on a wrong key, a wrong/tampered file, or a file produced by
-      an older uacrypt version - the on-disk format is not yet stable pre-1.0.
+    - Fails loudly (no --out file written) on a wrong key, a wrong/tampered file, or a file
+      produced by an older uacrypt version - the on-disk format is not yet stable pre-1.0.
 ";
 
 const HASH_HELP: &str = "\

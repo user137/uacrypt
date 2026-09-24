@@ -138,9 +138,9 @@ canonical source (`docs/TASKS.md`/`docs/DECISIONS.md`) — this section states c
 **`crates/uacrypt`** — the CLI binary (renamed from `dstutool`, D-36). `kalyna-block`,
 `kupyna-digest`, `strumok-crypt`, `kalyna-ccm` subcommands exist for binary-level comparisons
 (D-31/D-41, see `docs/PERFORMANCE.md`). Top-level `encrypt`/`decrypt`/`hash` are real (T-16/D-52):
-`encrypt`/`decrypt` are backed by `crypto_secretstream` (migrated from `crypto_secretbox`, a
-breaking pre-1.0 wire-format change — T-40/T-70/D-68), no message-length cap, `--in`/`--out`
-genuinely streamed in fixed-size chunks, temp-file-then-rename atomicity; `hash` is fixed to
+`encrypt`/`decrypt` are backed by `crypto_secretstream` (T-40/T-70/D-68), no message-length cap,
+`--in`/`--out` streamed in fixed-size chunks, temp-then-rename for a file `--out` (`-` =
+stdin/stdout, T-260/D-217); `hash` is fixed to
 Kupyna-256 with no length cap, delegating to the streaming `Hasher`.
 
 **`crates/dstu-core-capi`** — the C ABI (T-158, D-148/D-149), a real root-workspace member (unlike

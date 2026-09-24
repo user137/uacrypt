@@ -8733,7 +8733,19 @@ replace a DSTU primitive.
 
 ### RESUME HERE (state as of 2026-09-23, saved for a memory-clear/new-session handoff)
 
-**Latest handoff (2026-09-24, fourth session end) - read this first.** Working copy clean on
+**Latest handoff (2026-09-24, fifth session end) - read this first.** Working copy clean on
+`ux-0.5.0`, nothing pushed (embargo). This session: **T-260** (stdin/stdout via `-`, D-217:
+`87ec3fc` + closing-review follow-up). The owner approved the plan with the four forks as
+recommended. Ran: `cargo test -p uacrypt` here and on the Pi (incl. `/dev/full`), the new ignored
+stdio peak-RSS test in release on both, `cargo xtask clippy`/`fmt --check`/`docs-check`, scoped
+Miri on the two new unit tests, terminal refusal by hand (cmd, PowerShell 7.6, mintty, Linux pty),
+Windows shell byte-exactness (cmd and PowerShell 7.6 `>`/`|` exact; 5.1 corrupts - hint added).
+**Not run this session:** the binding suites and `bench-compare` (none passes `-`; file-path
+behaviour unchanged), the rest of `cargo xtask streaming-bounded`, CI (branch unpushed), the
+GHSA/CVE status check. Deferred by owner choice: `hash --check -` and `-` list entries as stdin.
+**Next: T-261** (progress indicator).
+
+**Previous handoff (2026-09-24, fourth session end).** Working copy clean on
 `ux-0.5.0`, nothing pushed (embargo). This session: **T-259** (`hash` like `sha256sum`, D-215:
 `43ad089` + `e0a501e`) and **T-268** (`--force` never replaces an existing typed key file, closes
 D-214 Decision 3, D-216: `23d319d` + `a8617e4`). The owner delegated T-268's decision and accepted
@@ -9089,7 +9101,9 @@ Breaking - 0.5.0 (B1 a):
   `--force` with `--out -` a usage error, `hash --check -`/`-` list entries deferred (GNU
   compatibility, not built), PowerShell 5.1 hint after measuring. Every other path flag refuses
   `-` (`./-` for a file). Pi `cargo test -p uacrypt` green (incl. `/dev/full`); terminal refusal
-  checked by hand in cmd, PowerShell 7, mintty and a Linux pty.
+  checked by hand in cmd, PowerShell 7, mintty and a Linux pty. Commits `87ec3fc` + closing-review
+  follow-up (measured-only Windows claims, help text no longer promises "no output" for
+  `--out -`, stdio peak-RSS test in `smoke_streaming_boundedness.rs`, closed-pipe exit 3).
 
 Additive - after the breaking part:
 - [ ] **T-261** Progress indicator: automatic only when stderr is a terminal and the input is large

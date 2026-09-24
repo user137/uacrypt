@@ -14350,8 +14350,10 @@ real file named `-` in the working directory).
 
 **Decision 6 - Windows PowerShell 5.1 (fork 4, measured before building).** 2026-09-24, this
 machine: `encrypt --out - > f` from Windows PowerShell 5.1 turned a 310-byte output into 594 bytes
-starting `FF FE` (re-encoded as UTF-16LE); PowerShell 7.6 and cmd kept it byte-identical and it
-decrypted. `decrypt` read `FF` as a format version and blamed "uacrypt 0.3.x", which is wrong, so
+starting `FF FE` (re-encoded as UTF-16LE), and 5.1's `encrypt --out - | decrypt --in -` fed
+`decrypt` data starting `EF` (a UTF-8 BOM). PowerShell 7.6 `>`, 7.6 `|` and cmd `>`/`|` kept a
+100 kB output byte-identical and it decrypted (hash-compared). Other PowerShell 7 versions were not
+measured. `decrypt` read `FF` as a format version and blamed "uacrypt 0.3.x", which is wrong, so
 `SecretstreamUnsupportedVersion` for `0xEF`/`0xFE`/`0xFF` (the byte-order-mark starts) now names
 text redirection and PowerShell 5.1 instead (message only, same variant and exit code 1).
 `box-open` is unchanged (its version error carries no byte).
@@ -14373,8 +14375,19 @@ header-only input print nothing and are not marked, and a tampered `box-open` pr
 no file created, six secret-key `--out -` refusals naming "secret"; `./-` reaches a file named
 `-`; the byte-order-mark message; Unix only (Pi): stdout on `/dev/full` exits 3 naming
 `<stdout>` and INCOMPLETE for `decrypt` and `encrypt`. Unit: `refuse_binary_to_terminal`,
-`StdoutIncomplete` keeps the inner exit code. The existing unit tests build the new `Source`/
+`StdoutIncomplete` keeps the inner exit code. `smoke_streaming_boundedness.rs` (ignored, run by
+`cargo xtask streaming-bounded`): `encrypt`/`decrypt --in - --out -` over a 200 MiB stdin stay
+under the same 60 MiB peak-RSS bound as the file paths (new `support::uacrypt_with_peak_rss_stdio`
+feeds stdin from a file and writes stdout to a file; passed in release on Windows and the Pi). Measured by
+hand on the Pi: `decrypt --out - | head -c 100` exits 3 with the INCOMPLETE message
+(`PIPESTATUS=3 0`). The existing unit tests build the new `Source`/
 `Sink` fields; all other smoke files pass unchanged.
+
+**Also decided while implementing (closing review, reported to the owner).** The byte-order-mark
+hint covers `decrypt` only. The Kupyna hasher loop behind `hash`/`sign`/`verify` now retries
+`ErrorKind::Interrupted` (a pipe can return it; a file practically never does). A reader closing
+the pipe early (`decrypt --out - | head -c 100`) makes `decrypt` exit 3 with the INCOMPLETE
+message - correct per D-211, documented in `docs/CLI.md`.
 
 **Rejected.** age's printable-text check for a terminal (unbounded buffer). Silently ignoring
 `--force` with stdout. `-` in a check list as stdin (deferred, see Decision 2). Accepting `--sig -`

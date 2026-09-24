@@ -13,7 +13,9 @@
 //! grows with `--in`'s size for a command that really does buffer it all.
 
 mod support;
-use support::{uacrypt, uacrypt_with_peak_rss, write_large_file, TempDir};
+use support::{
+    uacrypt, uacrypt_with_peak_rss, uacrypt_with_peak_rss_stdio, write_large_file, TempDir,
+};
 
 const LARGE_FILE_BYTES: usize = 200 * 1024 * 1024; // 200 MiB
 /// Generous margin: real streaming overhead here is a small fixed buffer
@@ -136,6 +138,42 @@ fn encrypt_and_decrypt_stay_memory_bounded_on_a_large_file() {
             "decrypt: peak RSS {peak} bytes for a {LARGE_FILE_BYTES}-byte input"
         );
     }
+}
+
+/// T-260 (D-217): the same bound when `--in -`/`--out -` read stdin and write stdout.
+#[test]
+#[ignore = "expensive: writes large fixture files and needs a release build for realistic timing/memory numbers - run via cargo xtask streaming-bounded, not a plain cargo test"]
+fn encrypt_and_decrypt_stay_memory_bounded_through_stdin_and_stdout() {
+    let dir = TempDir::new("bound_secretstream_stdio");
+    let key = dir.file("key.bin");
+    let input = dir.file("large.bin");
+    let ciphertext = dir.file("large.enc");
+    let recovered = dir.file("large.dec");
+    assert!(uacrypt(["keygen", "--out", key.to_str().unwrap()]).success());
+    write_large_file(&input, LARGE_FILE_BYTES);
+    let key = key.to_str().unwrap();
+
+    for (command, stdin, stdout) in [
+        ("encrypt", &input, &ciphertext),
+        ("decrypt", &ciphertext, &recovered),
+    ] {
+        let (r, peak) = uacrypt_with_peak_rss_stdio(
+            [command, "--key", key, "--in", "-", "--out", "-"],
+            stdin,
+            stdout,
+        );
+        ok(&r);
+        if let Some(peak) = peak {
+            assert!(
+                peak < BOUNDED_THRESHOLD_BYTES,
+                "{command}: peak RSS {peak} bytes for a {LARGE_FILE_BYTES}-byte stdin"
+            );
+        }
+    }
+    assert_eq!(
+        std::fs::metadata(&recovered).unwrap().len(),
+        LARGE_FILE_BYTES as u64
+    );
 }
 
 /// Control case (see module doc): `box-seal` is documented as reading `--in` whole into memory.

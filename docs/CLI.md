@@ -26,7 +26,7 @@ decrypt in place) only with `--force`. An output naming another output or one of
 key inputs (`--key`, `--iv`, `--tweak`, or a decrypt-side `--nonce`/`--tag`) is a usage error
 (exit 2), with or without `--force`, so `decrypt --key k.key --out k.key --force` cannot replace
 the key with plaintext. The result is written to a temp file next to the
-output and renamed onto it only when the command succeeds, so a failed command leaves no output,
+output and renamed onto it only when the command succeeds, so a failed command leaves no output file,
 no temp file and, with `--force`, the old file unchanged. `--force` replaces a symlink at the
 output path, never the file it points to. On Unix every output file is created with mode `0600`
 (owner only), also when `--force` replaces a `0644` file; `chmod` it to share it. Key files
@@ -70,10 +70,15 @@ cat report.pdf | uacrypt hash --in -          # prints "<hex>  -"
   the pipeline's status is `tar`'s unless you `set -o pipefail`. With `--out <file>` nothing is
   written unless the whole file verifies. `box-open` decrypts the whole message before printing
   anything, so it never prints part of one.
-- Windows: PowerShell 7 (7.4 and later) and cmd pass bytes through `|` and `>` unchanged. Windows
-  PowerShell 5.1 re-encodes a native command's output as UTF-16 text, which corrupts binary data
-  (measured: a 310-byte `encrypt` output became 594 bytes starting `FF FE`); `decrypt` names this
-  cause when it sees such a file. From 5.1, use `--out <file>` or `cmd /c "..."`.
+- Windows (measured 2026-09-24): cmd and PowerShell 7.6 passed a 100 kB `encrypt --out -` through
+  `>` and through `| uacrypt decrypt --in -` byte for byte. Windows PowerShell 5.1 re-encodes a
+  native command's output as text, which corrupts binary data: its `>` turned a 310-byte output
+  into 594 bytes starting `FF FE` (UTF-16), and its `|` fed `decrypt` data starting `EF` (a UTF-8
+  byte-order mark). `decrypt` names this cause when it sees such a start. From 5.1, use
+  `--out <file>` or `cmd /c "..."`.
+- A closed pipe is an error, not a silent stop: `decrypt ... --out - | head -c 100` makes
+  `decrypt` exit 3 with the INCOMPLETE message once `head` exits, which fails a `set -o pipefail`
+  pipeline.
 - `box-seal`/`box-open` read all of stdin into memory, as they do a file (not bounded yet, T-265);
   `encrypt`/`decrypt`/`hash`/`sign`/`verify` read stdin in the same fixed-size chunks as a file.
 

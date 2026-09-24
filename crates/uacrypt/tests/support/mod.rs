@@ -139,11 +139,34 @@ where
 {
     use std::process::Stdio;
 
-    let exe = env!("CARGO_BIN_EXE_uacrypt");
-    let child = Command::new(exe)
+    let mut command = Command::new(env!("CARGO_BIN_EXE_uacrypt"));
+    command.args(args).stdout(Stdio::piped());
+    peak_rss_of(command)
+}
+
+/// [`uacrypt_with_peak_rss`] with stdin read from `stdin_path` and stdout written to
+/// `stdout_path` - the process reads fd 0 and writes fd 1 (`--in -`/`--out -`, T-260) without the
+/// test holding either stream in memory or risking a pipe deadlock.
+pub fn uacrypt_with_peak_rss_stdio<I, S>(
+    args: I,
+    stdin_path: &std::path::Path,
+    stdout_path: &std::path::Path,
+) -> (Run, Option<u64>)
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<OsStr>,
+{
+    let mut command = Command::new(env!("CARGO_BIN_EXE_uacrypt"));
+    command
         .args(args)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+        .stdin(std::fs::File::open(stdin_path).expect("open stdin fixture"))
+        .stdout(std::fs::File::create(stdout_path).expect("create stdout file"));
+    peak_rss_of(command)
+}
+
+fn peak_rss_of(mut command: Command) -> (Run, Option<u64>) {
+    let child = command
+        .stderr(std::process::Stdio::piped())
         .spawn()
         .expect("spawn the real uacrypt binary");
     let pid = child.id();
