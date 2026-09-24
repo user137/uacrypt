@@ -14066,3 +14066,82 @@ one row per existing command.
 m=163 to `sign-keygen163` (it breaks every existing script for a default nobody asked to change).
 Keeping the removed names as silent aliases (two spellings of one command, and the old names would
 stay in help and suggestions).
+
+## D-214: T-258 - no output file is replaced without `--force`; key files never (0.5.0)
+
+**Context.** Owner decision O1 (a) (TASKS "CLI usability and misuse resistance", rule R2). Up to
+0.4 `encrypt`, `decrypt`, `hash`, `sign`, `box-seal`, `box-open` and every `kalyna-*`/
+`kupyna-digest`/`strumok-crypt` command silently replaced an existing `--out`; only the keygen
+commands refused (T-241). `sign-pubkey`, `box-pubkey` and `key-import` of a public kind also wrote
+with plain `fs::write`, so `box-pubkey --key box.key --out box.key` destroyed the secret key.
+Surveyed before deciding (source read 2026-09-24): age `-o` and minisign/signify signature output
+overwrite silently; age-keygen and signify never replace a key file, with no force flag;
+minisign `-G`/`-R` refuse unless `-f`. gpg asks interactively and needs `--yes` in scripts. This
+decision is stricter than age for data outputs, on purpose, and matches signify for keys.
+
+**Decision 1 - one shared helper, `OutputFile`.** Every non-key output goes through it. Without
+`--force` it first reserves the path with `create_new` (an empty placeholder, `O_CREAT|O_EXCL`,
+which also refuses a symlink without following it), then writes to a private temp file beside it
+and renames that onto the placeholder on success. std has no rename that refuses to replace, and a
+hard-link publish (`link()` then `unlink()`) fails on FAT/exFAT, where USB sticks with encrypted
+files live, so the placeholder is what makes the refusal atomic. With `--force` there is no
+placeholder, and the rename replaces the old file (a symlink itself, never its target). `Drop`
+removes the temp file and the placeholder unless `commit` ran, so no error path leaves output
+behind, and with `--force` the old file survives a failed decrypt. Known limit: a killed process
+leaves an empty placeholder, which the next run refuses until deleted or `--force`d.
+`kalyna-ccm`/`kalyna-gcm encrypt` commit their three outputs one after another, so a rename that
+fails after the first can leave a mismatched set (with `--force`, a new ciphertext beside the old
+tag).
+
+**Decision 2 - where the refusal happens.** Outputs are reserved after the key files are read
+and before `--in` is read, so a wrong-kind key is still reported by name (D-212) and nothing is
+computed for an output that will be refused. `kalyna-ccm`/`kalyna-gcm encrypt` reserve `--nonce`,
+`--out` and `--tag` together up front; before, the nonce file was written before `--in` was read,
+so a failed run left a nonce file behind. On decrypt/verify `--nonce`/`--tag` are inputs and
+untouched by the policy. In place (`--in` = `--out`) needs no special case: the output exists, so
+it needs `--force`; the error says "is the same file as --in" when both paths canonicalize to the
+same file (a hard link is still refused, just without that wording).
+
+**Decision 3 - an output may not name another output or a key input** (`check_outputs`,
+`SameOutputPath`, exit 2), with or without `--force`. Two outputs would silently replace each
+other, and `decrypt --key k --out k --force` would replace the only key for the file with its
+plaintext; without `--force` the "pass --force" hint would be wrong. Key inputs are `--key`, plus
+`--iv` (`strumok-crypt`), `--tweak` (`kalyna-xts`) and, on `kalyna-ccm`/`kalyna-gcm decrypt`,
+`--nonce`/`--tag`. Compared as `std::path::absolute` paths and, when both exist, canonicalized.
+Not covered: `--force` onto a key file this command does not read (`box-open --out other.key
+--force`); refusing that means sniffing the old file's contents, left as an owner option.
+An existing directory at the output path is refused as "is a directory" (no `--force` hint;
+Windows reports it as access denied, so it is checked by path, not by error kind).
+
+**Decision 4 - key files are never replaced and take no `--force`** (owner, 2026-09-24).
+`write_new_secret_key` became `write_new_key_file` and now also writes `sign-pubkey`/`box-pubkey`/
+public `key-import` output. `--force` is not in those commands' flag lists, so it is an unknown
+flag (exit 2), and `KeyFileExists` does not mention it.
+
+**Decision 5 - every output is `0600` on Unix** (owner, 2026-09-24), because the temp file is
+created by `create_private_new`, also when `--force` replaces a `0644` file. Stricter than age or
+signify (which leave ciphertext and signatures to the umask), so a decrypted plaintext is never
+readable by other users; sharing a file on a multi-user host needs a `chmod`. Rejected: `0600` only
+for `decrypt`/`box-open` (a per-command classification that can drift).
+
+**Exit codes (D-211).** `OutputExists` is 3 (a file could not be used), `SameOutputPath` is 2.
+
+**Tests.** `smoke_overwrite.rs`: every non-key command (15 invocations, all their outputs) writes
+fresh outputs without `--force`, refuses each existing one (exit 3, file byte-identical, directory
+listing unchanged), replaces all with `--force` and leaves no temp file; in place is refused then
+round-trips with `--force`; failed decrypt/box-open/missing-input runs leave the directory
+unchanged with and without `--force`; a failing `kalyna-ccm encrypt` releases all three
+reservations; duplicate outputs; decrypt-side `--nonce`/`--tag` and verify-side `--tag` stay
+inputs; an output naming `--key`/`--iv`/decrypt-side `--nonce` is refused with and without
+`--force`, the key byte-identical; a directory output is refused, and with `--force` the failed
+rename (the commit-failure path) leaves the directory and its parent unchanged; every key-writing
+command refuses an existing file and rejects `--force`; `*-pubkey` pointed at its own secret key
+leaves it intact; help offers `--force` exactly where it is accepted. Unix-only (run on the Pi, not yet run): a symlink `--out` is refused and `--force`
+replaces the link, not its target; outputs are `0600`. Existing in-place tests (unit and smoke)
+now pass `--force` and the unit one also asserts the refusal. `xtask bench-compare` passes
+`--force` where one output path is reused across its loop, so no table row is silently dropped.
+
+**Rejected.** O1 (b), keeping silent overwrite for non-key outputs. An interactive "Overwrite?"
+prompt like gpg (breaks scripts and pipes). A pre-check followed by a plain rename (a
+check-then-act race). Hard-link publishing (FAT/exFAT). `--force` for public keys (a mistyped
+`--out` would then still destroy a secret key).

@@ -170,6 +170,7 @@ fn bench_kalyna_vs_aes(dir: &Path) {
             &block_path.to_string_lossy(),
             "--out",
             &out_path.to_string_lossy(),
+            "--force",
             "--iterations",
             "500000",
         ]) else {
@@ -239,6 +240,7 @@ fn bench_kupyna_vs_whirlpool(dir: &Path) {
                 &in_path.to_string_lossy(),
                 "--out",
                 &out_path.to_string_lossy(),
+                "--force",
                 "--iterations",
                 &iterations.to_string(),
             ]) else {
@@ -312,6 +314,7 @@ fn bench_strumok_vs_chacha20(dir: &Path) {
                 &in_path.to_string_lossy(),
                 "--out",
                 &out_path.to_string_lossy(),
+                "--force",
                 "--iterations",
                 &iterations.to_string(),
             ]) else {

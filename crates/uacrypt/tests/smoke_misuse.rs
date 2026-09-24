@@ -56,6 +56,7 @@ fn strumok_crypt_in_place_round_trips_without_destroying_data() {
         data.to_str().unwrap(),
         "--out",
         data.to_str().unwrap(),
+        "--force",
     ];
 
     ok(&uacrypt(args));
@@ -139,6 +140,7 @@ fn secretstream_encrypt_decrypt_in_place_round_trips() {
         data.to_str().unwrap(),
         "--out",
         data.to_str().unwrap(),
+        "--force",
     ]));
     assert_ne!(support::read_bytes(&data), plaintext);
 
@@ -150,6 +152,7 @@ fn secretstream_encrypt_decrypt_in_place_round_trips() {
         data.to_str().unwrap(),
         "--out",
         data.to_str().unwrap(),
+        "--force",
     ]));
     assert_eq!(support::read_bytes(&data), plaintext);
 }
@@ -175,6 +178,7 @@ fn kupyna_digest_in_place_does_not_corrupt_before_reading() {
         data.to_str().unwrap(),
         "--out",
         data.to_str().unwrap(),
+        "--force",
     ]));
     let out = support::read_bytes(&data);
     assert_eq!(
@@ -208,6 +212,7 @@ fn kalyna_block_in_place_does_not_corrupt_before_reading() {
         data.to_str().unwrap(),
         "--out",
         data.to_str().unwrap(),
+        "--force",
     ]));
     let ct = support::read_bytes(&data);
     assert_eq!(ct.len(), 32);
@@ -224,6 +229,7 @@ fn kalyna_block_in_place_does_not_corrupt_before_reading() {
         data.to_str().unwrap(),
         "--out",
         data.to_str().unwrap(),
+        "--force",
     ]));
     assert_eq!(support::read_bytes(&data), plaintext);
 }

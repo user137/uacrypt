@@ -60,10 +60,11 @@ RSpec.describe "DstuCore secretstream" do
             DstuCore::SecretStreamWriter.open(key, f) { |w| w.write(plaintext) }
           end
 
+          # Tempfile.create makes the file, and uacrypt refuses an existing --out without --force.
           Tempfile.create("uacrypt_decrypted") do |uacrypt_decrypted|
             uacrypt_decrypted.close
             system(uacrypt, "decrypt", "--key", typed_key, "--in", rb_encrypted.path,
-                   "--out", uacrypt_decrypted.path, exception: true)
+                   "--out", uacrypt_decrypted.path, "--force", exception: true)
             expect(File.binread(uacrypt_decrypted.path)).to eq(plaintext)
           end
         end
@@ -71,7 +72,7 @@ RSpec.describe "DstuCore secretstream" do
         Tempfile.create("uacrypt_encrypted") do |uacrypt_encrypted|
           uacrypt_encrypted.close
           system(uacrypt, "encrypt", "--key", typed_key, "--in", plain_file.path,
-                 "--out", uacrypt_encrypted.path, exception: true)
+                 "--out", uacrypt_encrypted.path, "--force", exception: true)
           File.open(uacrypt_encrypted.path, "rb") do |f|
             result = DstuCore::SecretStreamReader.open(key, f, &:read_all)
             expect(result).to eq(plaintext)

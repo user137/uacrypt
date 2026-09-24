@@ -141,6 +141,14 @@ pub enum CliError {
     XtsInvalidLength,
     Random(String),
     KeyFileExists(PathBuf),
+    /// A non-key output already exists and `--force` was not given (T-258, D-214).
+    /// `same_as_input` is set when it is `--in` itself (by path, after resolving symlinks).
+    OutputExists {
+        path: PathBuf,
+        same_as_input: bool,
+    },
+    /// An output names the same file as another output or a key input (T-258, D-214).
+    SameOutputPath(&'static str, &'static str),
     SecretstreamTruncated,
     SecretstreamVerifyFailed,
     SecretstreamUnknownTag,
@@ -241,6 +249,25 @@ impl fmt::Display for CliError {
                 "{} already exists - refusing to overwrite a key file; delete it first if you really want a new key",
                 path.display()
             ),
+            CliError::OutputExists {
+                path,
+                same_as_input: false,
+            } => write!(
+                f,
+                "{} already exists - pass --force to replace it",
+                path.display()
+            ),
+            CliError::OutputExists {
+                path,
+                same_as_input: true,
+            } => write!(
+                f,
+                "{} already exists and is the same file as --in - pass --force to replace it in place",
+                path.display()
+            ),
+            CliError::SameOutputPath(first, second) => {
+                write!(f, "{first} and {second} name the same file")
+            }
             CliError::WrongLength {
                 what,
                 expected,
@@ -414,9 +441,11 @@ impl CliError {
             | CliError::FlagTakesNoValue(_)
             | CliError::UnexpectedArgument(_)
             | CliError::InvalidIterations(_)
-            | CliError::UnknownKeyKind { .. } => USAGE,
+            | CliError::UnknownKeyKind { .. }
+            | CliError::SameOutputPath(..) => USAGE,
             CliError::Io { .. }
             | CliError::KeyFileExists(_)
+            | CliError::OutputExists { .. }
             | CliError::Random(_)
             | CliError::SignKeyInvalid
             | CliError::KeyFileNotTyped(_)
@@ -810,6 +839,8 @@ pub struct BlockArgs {
     pub out_path: PathBuf,
     pub iterations: u32,
     pub raw_schedule: bool,
+    /// Replace an existing output (T-258, D-214).
+    pub force: bool,
 }
 
 /// Parses `kalyna-block encrypt`/`decrypt`'s own flags (`--variant`/`--key`/`--in`/`--out`
@@ -824,7 +855,7 @@ pub fn parse_block_args(args: &[String]) -> Result<BlockArgs, CliError> {
     let scanner = ArgScanner::scan(
         args,
         &["--variant", "--key", "--in", "--out", "--iterations"],
-        &["--raw-schedule"],
+        &["--raw-schedule", "--force"],
     )?;
     Ok(BlockArgs {
         variant: scanner.variant(KalynaVariant::parse)?,
@@ -833,6 +864,7 @@ pub fn parse_block_args(args: &[String]) -> Result<BlockArgs, CliError> {
         out_path: scanner.path("--out")?,
         iterations: scanner.iterations()?,
         raw_schedule: scanner.bool_flag("--raw-schedule"),
+        force: scanner.bool_flag("--force"),
     })
 }
 
@@ -866,6 +898,8 @@ fn read_exact_file(
 /// expected length.
 pub fn run_block_command(decrypt: bool, args: &BlockArgs) -> Result<(), CliError> {
     let key = read_exact_file(&args.key_path, LengthOf::Key, args.variant.key_len())?;
+    check_outputs(&[("--out", &args.out_path)], &[("--key", &args.key_path)])?;
+    let (out, out_file) = OutputFile::create(&args.out_path, &args.in_path, args.force)?;
     let expected_in_len = args.variant.block_len();
     let input = read_exact_file(&args.in_path, LengthOf::InputBlock, expected_in_len)?;
 
@@ -878,10 +912,7 @@ pub fn run_block_command(decrypt: bool, args: &BlockArgs) -> Result<(), CliError
         args.raw_schedule,
     );
 
-    std::fs::write(&args.out_path, &output).map_err(|e| CliError::Io {
-        path: args.out_path.clone(),
-        message: e.to_string(),
-    })?;
+    out.write_all_and_commit(out_file, &output)?;
 
     if args.iterations > 1 {
         let per_op_ns = elapsed.as_nanos() / u128::from(args.iterations);
@@ -911,6 +942,8 @@ pub struct CcmArgs {
     /// (benchmarking only, `docs/TASKS.md` T-120) repeats seal/open `iterations` times over the same
     /// in-memory buffer before writing the final result - same convention as [`BlockArgs`].
     pub iterations: u32,
+    /// Replace an existing output (T-258, D-214).
+    pub force: bool,
 }
 
 /// Parses `kalyna-ccm encrypt`/`decrypt`'s flags: `--variant`/`--key`/`--nonce`/`--in`/`--out`/
@@ -935,7 +968,7 @@ pub fn parse_ccm_args(args: &[String]) -> Result<CcmArgs, CliError> {
             "--tag",
             "--iterations",
         ],
-        &[],
+        &["--force"],
     )?;
     Ok(CcmArgs {
         variant: scanner.variant(KalynaVariant::parse)?,
@@ -946,6 +979,7 @@ pub fn parse_ccm_args(args: &[String]) -> Result<CcmArgs, CliError> {
         out_path: scanner.path("--out")?,
         tag_path: scanner.path("--tag")?,
         iterations: scanner.iterations()?,
+        force: scanner.bool_flag("--force"),
     })
 }
 
@@ -967,16 +1001,19 @@ pub fn parse_ccm_args(args: &[String]) -> Result<CcmArgs, CliError> {
 /// OS CSPRNG fails on encrypt, or [`CliError::CcmVerifyFailed`] if `decrypt` fails to authenticate.
 pub fn run_ccm_command(decrypt: bool, args: &CcmArgs) -> Result<(), CliError> {
     let key = read_exact_file(&args.key_path, LengthOf::Key, args.variant.key_len())?;
+    let ((out, out_file), nonce_out, tag_out) = reserve_aead_outputs(
+        decrypt,
+        [&args.key_path, &args.nonce_path, &args.tag_path],
+        &args.in_path,
+        &args.out_path,
+        args.force,
+    )?;
     let nonce = if decrypt {
         read_exact_file(&args.nonce_path, LengthOf::Nonce, args.variant.block_len())?
     } else {
         let mut generated = vec![0u8; args.variant.block_len()];
         dstu_core::randombytes::randombytes_buf(&mut generated)
             .map_err(|e| CliError::Random(e.to_string()))?;
-        std::fs::write(&args.nonce_path, &generated).map_err(|e| CliError::Io {
-            path: args.nonce_path.clone(),
-            message: e.to_string(),
-        })?;
         generated
     };
     let aad = match &args.aad_path {
@@ -1034,15 +1071,12 @@ pub fn run_ccm_command(decrypt: bool, args: &CcmArgs) -> Result<(), CliError> {
         KalynaVariant::K512_512 => run_ccm_variant!(Kalyna512_512Ccm, 64, 64, 64),
     };
 
-    std::fs::write(&args.out_path, &output).map_err(|e| CliError::Io {
-        path: args.out_path.clone(),
-        message: e.to_string(),
-    })?;
-    if let Some(tag) = tag {
-        std::fs::write(&args.tag_path, &tag).map_err(|e| CliError::Io {
-            path: args.tag_path.clone(),
-            message: e.to_string(),
-        })?;
+    out.write_all_and_commit(out_file, &output)?;
+    if let (Some(tag), Some((tag_out, tag_file))) = (tag, tag_out) {
+        tag_out.write_all_and_commit(tag_file, &tag)?;
+    }
+    if let Some((nonce_out, nonce_file)) = nonce_out {
+        nonce_out.write_all_and_commit(nonce_file, &nonce)?;
     }
 
     if args.iterations > 1 {
@@ -1073,6 +1107,8 @@ pub struct GcmArgs {
     /// the knob", same call `crypto_secretbox` already made for its own fixed-length tag).
     pub tag_path: PathBuf,
     pub iterations: u32,
+    /// Replace an existing output (T-258, D-214).
+    pub force: bool,
 }
 
 /// Parses `kalyna-gcm encrypt`/`decrypt`'s flags - same shape as [`parse_ccm_args`].
@@ -1093,7 +1129,7 @@ pub fn parse_gcm_args(args: &[String]) -> Result<GcmArgs, CliError> {
             "--tag",
             "--iterations",
         ],
-        &[],
+        &["--force"],
     )?;
     Ok(GcmArgs {
         variant: scanner.variant(KalynaVariant::parse)?,
@@ -1104,6 +1140,7 @@ pub fn parse_gcm_args(args: &[String]) -> Result<GcmArgs, CliError> {
         out_path: scanner.path("--out")?,
         tag_path: scanner.path("--tag")?,
         iterations: scanner.iterations()?,
+        force: scanner.bool_flag("--force"),
     })
 }
 
@@ -1116,16 +1153,19 @@ pub fn parse_gcm_args(args: &[String]) -> Result<GcmArgs, CliError> {
 /// Same cases as [`run_ccm_command`], plus [`CliError::GcmVerifyFailed`] on a failed decrypt.
 pub fn run_gcm_command(decrypt: bool, args: &GcmArgs) -> Result<(), CliError> {
     let key = read_exact_file(&args.key_path, LengthOf::Key, args.variant.key_len())?;
+    let ((out, out_file), nonce_out, tag_out) = reserve_aead_outputs(
+        decrypt,
+        [&args.key_path, &args.nonce_path, &args.tag_path],
+        &args.in_path,
+        &args.out_path,
+        args.force,
+    )?;
     let nonce = if decrypt {
         read_exact_file(&args.nonce_path, LengthOf::Nonce, args.variant.block_len())?
     } else {
         let mut generated = vec![0u8; args.variant.block_len()];
         dstu_core::randombytes::randombytes_buf(&mut generated)
             .map_err(|e| CliError::Random(e.to_string()))?;
-        std::fs::write(&args.nonce_path, &generated).map_err(|e| CliError::Io {
-            path: args.nonce_path.clone(),
-            message: e.to_string(),
-        })?;
         generated
     };
     let aad = match &args.aad_path {
@@ -1183,15 +1223,12 @@ pub fn run_gcm_command(decrypt: bool, args: &GcmArgs) -> Result<(), CliError> {
         KalynaVariant::K512_512 => run_gcm_variant!(Kalyna512_512Gcm, 64, 64),
     };
 
-    std::fs::write(&args.out_path, &output).map_err(|e| CliError::Io {
-        path: args.out_path.clone(),
-        message: e.to_string(),
-    })?;
-    if let Some(tag) = tag {
-        std::fs::write(&args.tag_path, &tag).map_err(|e| CliError::Io {
-            path: args.tag_path.clone(),
-            message: e.to_string(),
-        })?;
+    out.write_all_and_commit(out_file, &output)?;
+    if let (Some(tag), Some((tag_out, tag_file))) = (tag, tag_out) {
+        tag_out.write_all_and_commit(tag_file, &tag)?;
+    }
+    if let Some((nonce_out, nonce_file)) = nonce_out {
+        nonce_out.write_all_and_commit(nonce_file, &nonce)?;
     }
 
     if args.iterations > 1 {
@@ -1217,6 +1254,8 @@ pub struct CmacArgs {
     /// `verify`: INPUT, the tag to check against. `compute`: unused (see `out_path`).
     pub tag_path: Option<PathBuf>,
     pub iterations: u32,
+    /// Replace an existing output (T-258, D-214).
+    pub force: bool,
 }
 
 /// Parses `kalyna-cmac compute`/`verify`'s flags: `--variant`/`--key`/`--in` required, plus
@@ -1239,7 +1278,7 @@ pub fn parse_cmac_args(args: &[String]) -> Result<CmacArgs, CliError> {
             "--tag",
             "--iterations",
         ],
-        &[],
+        &["--force"],
     )?;
     Ok(CmacArgs {
         variant: scanner.variant(KalynaVariant::parse)?,
@@ -1248,6 +1287,7 @@ pub fn parse_cmac_args(args: &[String]) -> Result<CmacArgs, CliError> {
         out_path: scanner.path_opt("--out"),
         tag_path: scanner.path_opt("--tag"),
         iterations: scanner.iterations()?,
+        force: scanner.bool_flag("--force"),
     })
 }
 
@@ -1263,6 +1303,13 @@ pub fn parse_cmac_args(args: &[String]) -> Result<CmacArgs, CliError> {
 /// [`CliError::CmacVerifyFailed`] if `verify` fails to authenticate.
 pub fn run_cmac_command(verify: bool, args: &CmacArgs) -> Result<(), CliError> {
     let key = read_exact_file(&args.key_path, LengthOf::Key, args.variant.key_len())?;
+    let tag_out = if verify {
+        None
+    } else {
+        let out_path = args.out_path.as_ref().ok_or(CliError::MissingFlag("out"))?;
+        check_outputs(&[("--out", out_path)], &[("--key", &args.key_path)])?;
+        Some(OutputFile::create(out_path, &args.in_path, args.force)?)
+    };
     let message = std::fs::read(&args.in_path).map_err(|e| CliError::Io {
         path: args.in_path.clone(),
         message: e.to_string(),
@@ -1320,12 +1367,8 @@ pub fn run_cmac_command(verify: bool, args: &CmacArgs) -> Result<(), CliError> {
         }
     };
 
-    if !verify {
-        let out_path = args.out_path.as_ref().ok_or(CliError::MissingFlag("out"))?;
-        std::fs::write(out_path, tag).map_err(|e| CliError::Io {
-            path: out_path.clone(),
-            message: e.to_string(),
-        })?;
+    if let Some((tag_out, tag_file)) = tag_out {
+        tag_out.write_all_and_commit(tag_file, &tag)?;
     }
 
     if args.iterations > 1 {
@@ -1349,6 +1392,8 @@ pub struct GmacArgs {
     pub out_path: Option<PathBuf>,
     pub tag_path: Option<PathBuf>,
     pub iterations: u32,
+    /// Replace an existing output (T-258, D-214).
+    pub force: bool,
 }
 
 /// Parses `kalyna-gmac compute`/`verify`'s flags - same shape as [`parse_cmac_args`]. **No
@@ -1370,7 +1415,7 @@ pub fn parse_gmac_args(args: &[String]) -> Result<GmacArgs, CliError> {
             "--tag",
             "--iterations",
         ],
-        &[],
+        &["--force"],
     )?;
     Ok(GmacArgs {
         variant: scanner.variant(KalynaVariant::parse)?,
@@ -1379,6 +1424,7 @@ pub fn parse_gmac_args(args: &[String]) -> Result<GmacArgs, CliError> {
         out_path: scanner.path_opt("--out"),
         tag_path: scanner.path_opt("--tag"),
         iterations: scanner.iterations()?,
+        force: scanner.bool_flag("--force"),
     })
 }
 
@@ -1391,6 +1437,13 @@ pub fn parse_gmac_args(args: &[String]) -> Result<GmacArgs, CliError> {
 /// Same cases as [`run_cmac_command`], plus [`CliError::GmacVerifyFailed`] on a failed `verify`.
 pub fn run_gmac_command(verify: bool, args: &GmacArgs) -> Result<(), CliError> {
     let key = read_exact_file(&args.key_path, LengthOf::Key, args.variant.key_len())?;
+    let tag_out = if verify {
+        None
+    } else {
+        let out_path = args.out_path.as_ref().ok_or(CliError::MissingFlag("out"))?;
+        check_outputs(&[("--out", out_path)], &[("--key", &args.key_path)])?;
+        Some(OutputFile::create(out_path, &args.in_path, args.force)?)
+    };
     let message = std::fs::read(&args.in_path).map_err(|e| CliError::Io {
         path: args.in_path.clone(),
         message: e.to_string(),
@@ -1448,12 +1501,8 @@ pub fn run_gmac_command(verify: bool, args: &GmacArgs) -> Result<(), CliError> {
         }
     };
 
-    if !verify {
-        let out_path = args.out_path.as_ref().ok_or(CliError::MissingFlag("out"))?;
-        std::fs::write(out_path, tag).map_err(|e| CliError::Io {
-            path: out_path.clone(),
-            message: e.to_string(),
-        })?;
+    if let Some((tag_out, tag_file)) = tag_out {
+        tag_out.write_all_and_commit(tag_file, &tag)?;
     }
 
     if args.iterations > 1 {
@@ -1476,6 +1525,8 @@ pub struct KwArgs {
     pub in_path: PathBuf,
     pub out_path: PathBuf,
     pub iterations: u32,
+    /// Replace an existing output (T-258, D-214).
+    pub force: bool,
 }
 
 /// Parses `kalyna-kw wrap`/`unwrap`'s flags: `--variant`/`--key`/`--in`/`--out` required,
@@ -1489,7 +1540,7 @@ pub fn parse_kw_args(args: &[String]) -> Result<KwArgs, CliError> {
     let scanner = ArgScanner::scan(
         args,
         &["--variant", "--key", "--in", "--out", "--iterations"],
-        &[],
+        &["--force"],
     )?;
     Ok(KwArgs {
         variant: scanner.variant(KalynaVariant::parse)?,
@@ -1497,6 +1548,7 @@ pub fn parse_kw_args(args: &[String]) -> Result<KwArgs, CliError> {
         in_path: scanner.path("--in")?,
         out_path: scanner.path("--out")?,
         iterations: scanner.iterations()?,
+        force: scanner.bool_flag("--force"),
     })
 }
 
@@ -1512,6 +1564,8 @@ pub fn parse_kw_args(args: &[String]) -> Result<KwArgs, CliError> {
 /// trailing checksum block doesn't verify.
 pub fn run_kw_command(unwrap: bool, args: &KwArgs) -> Result<(), CliError> {
     let key = read_exact_file(&args.key_path, LengthOf::Key, args.variant.key_len())?;
+    check_outputs(&[("--out", &args.out_path)], &[("--key", &args.key_path)])?;
+    let (out, out_file) = OutputFile::create(&args.out_path, &args.in_path, args.force)?;
     let input = std::fs::read(&args.in_path).map_err(|e| CliError::Io {
         path: args.in_path.clone(),
         message: e.to_string(),
@@ -1576,10 +1630,7 @@ pub fn run_kw_command(unwrap: bool, args: &KwArgs) -> Result<(), CliError> {
         }
     };
 
-    std::fs::write(&args.out_path, &output).map_err(|e| CliError::Io {
-        path: args.out_path.clone(),
-        message: e.to_string(),
-    })?;
+    out.write_all_and_commit(out_file, &output)?;
 
     if args.iterations > 1 {
         let per_op_ns = elapsed.as_nanos() / u128::from(args.iterations);
@@ -1604,6 +1655,8 @@ pub struct XtsArgs {
     pub in_path: PathBuf,
     pub out_path: PathBuf,
     pub iterations: u32,
+    /// Replace an existing output (T-258, D-214).
+    pub force: bool,
 }
 
 /// Parses `kalyna-xts encrypt`/`decrypt`'s flags: `--variant`/`--key`/`--tweak`/`--in`/`--out`
@@ -1623,7 +1676,7 @@ pub fn parse_xts_args(args: &[String]) -> Result<XtsArgs, CliError> {
             "--out",
             "--iterations",
         ],
-        &[],
+        &["--force"],
     )?;
     Ok(XtsArgs {
         variant: scanner.variant(KalynaVariant::parse)?,
@@ -1632,6 +1685,7 @@ pub fn parse_xts_args(args: &[String]) -> Result<XtsArgs, CliError> {
         in_path: scanner.path("--in")?,
         out_path: scanner.path("--out")?,
         iterations: scanner.iterations()?,
+        force: scanner.bool_flag("--force"),
     })
 }
 
@@ -1646,6 +1700,11 @@ pub fn parse_xts_args(args: &[String]) -> Result<XtsArgs, CliError> {
 pub fn run_xts_command(decrypt: bool, args: &XtsArgs) -> Result<(), CliError> {
     let key = read_exact_file(&args.key_path, LengthOf::Key, args.variant.key_len())?;
     let tweak = read_exact_file(&args.tweak_path, LengthOf::Tweak, args.variant.block_len())?;
+    check_outputs(
+        &[("--out", &args.out_path)],
+        &[("--key", &args.key_path), ("--tweak", &args.tweak_path)],
+    )?;
+    let (out, out_file) = OutputFile::create(&args.out_path, &args.in_path, args.force)?;
     let input = std::fs::read(&args.in_path).map_err(|e| CliError::Io {
         path: args.in_path.clone(),
         message: e.to_string(),
@@ -1686,10 +1745,7 @@ pub fn run_xts_command(decrypt: bool, args: &XtsArgs) -> Result<(), CliError> {
         KalynaVariant::K512_512 => run_xts_variant!(Kalyna512_512Xts, 64, 64),
     };
 
-    std::fs::write(&args.out_path, &output).map_err(|e| CliError::Io {
-        path: args.out_path.clone(),
-        message: e.to_string(),
-    })?;
+    out.write_all_and_commit(out_file, &output)?;
 
     if args.iterations > 1 {
         let per_op_ns = elapsed.as_nanos() / u128::from(args.iterations);
@@ -1720,6 +1776,8 @@ pub struct SecretstreamArgs {
     pub key_path: PathBuf,
     pub in_path: PathBuf,
     pub out_path: PathBuf,
+    /// Replace an existing output (T-258, D-214).
+    pub force: bool,
 }
 
 /// Parses `encrypt`/`decrypt`'s flags (`--key`/`--in`/`--out`, all required). No `--nonce`/`--tag`/
@@ -1731,11 +1789,12 @@ pub struct SecretstreamArgs {
 ///
 /// Returns [`CliError::MissingFlag`] or [`CliError::UnknownFlag`].
 pub fn parse_secretstream_args(args: &[String]) -> Result<SecretstreamArgs, CliError> {
-    let scanner = ArgScanner::scan(args, &["--key", "--in", "--out"], &[])?;
+    let scanner = ArgScanner::scan(args, &["--key", "--in", "--out"], &["--force"])?;
     Ok(SecretstreamArgs {
         key_path: scanner.path("--key")?,
         in_path: scanner.path("--in")?,
         out_path: scanner.path("--out")?,
+        force: scanner.bool_flag("--force"),
     })
 }
 
@@ -1775,16 +1834,207 @@ fn create_private_new(path: &std::path::Path) -> std::io::Result<std::fs::File> 
     options.open(path)
 }
 
-/// Writes a freshly generated secret key to `path` via [`create_private_new`]. It refuses to
+/// One non-key output file (`docs/TASKS.md` T-258, rule R2, `docs/DECISIONS.md` D-214). The
+/// result is written to a private temp file beside `path` and only renamed onto it by
+/// [`OutputFile::commit`], so a failed command never leaves partial output. Without `--force`,
+/// [`OutputFile::create`] first reserves `path` as an empty placeholder with `create_new`, which
+/// refuses an existing file or symlink atomically and before any work is done; std has no
+/// rename that refuses to replace, and a hard-link publish fails on FAT/exFAT. With `--force` there
+/// is no placeholder and the rename replaces the old file (or a symlink itself, never its target).
+/// Dropped without a commit, it removes the temp file and the placeholder.
+struct OutputFile {
+    path: PathBuf,
+    tmp_path: Option<PathBuf>,
+    placeholder: bool,
+    committed: bool,
+}
+
+impl OutputFile {
+    /// Reserves `path` (unless `force`) and opens the temp file the output is written to.
+    /// `input` only shapes the error message when `path` already exists.
+    ///
+    /// # Errors
+    ///
+    /// [`CliError::OutputExists`] if `path` exists and `force` is off, [`CliError::Random`] if the
+    /// temp name cannot be drawn, or [`CliError::Io`].
+    fn create(
+        path: &std::path::Path,
+        input: &std::path::Path,
+        force: bool,
+    ) -> Result<(Self, std::fs::File), CliError> {
+        let io_err = |p: &std::path::Path, e: std::io::Error| CliError::Io {
+            path: p.to_path_buf(),
+            message: e.to_string(),
+        };
+        let mut output = Self {
+            path: path.to_path_buf(),
+            tmp_path: None,
+            placeholder: false,
+            committed: false,
+        };
+        if !force {
+            create_private_new(path).map_err(|e| {
+                // Windows reports a directory as access denied, not as already existing.
+                if path.is_dir() {
+                    io_err(path, std::io::Error::other("is a directory"))
+                } else if e.kind() == std::io::ErrorKind::AlreadyExists {
+                    CliError::OutputExists {
+                        path: path.to_path_buf(),
+                        same_as_input: same_file(path, input),
+                    }
+                } else {
+                    io_err(path, e)
+                }
+            })?;
+            output.placeholder = true;
+        }
+        let tmp_path = temp_path_beside(path)?;
+        let file = create_private_new(&tmp_path).map_err(|e| io_err(&tmp_path, e))?;
+        output.tmp_path = Some(tmp_path);
+        Ok((output, file))
+    }
+
+    /// The temp path, for error messages about writes to the file [`OutputFile::create`] returned.
+    fn tmp_path(&self) -> &std::path::Path {
+        self.tmp_path.as_deref().unwrap_or(&self.path)
+    }
+
+    /// Flushes `file` to disk, closes it (Windows cannot rename an open file) and renames it onto
+    /// the output path.
+    ///
+    /// # Errors
+    ///
+    /// [`CliError::Io`]; the temp file and placeholder are then removed on drop.
+    fn commit(mut self, file: std::fs::File) -> Result<(), CliError> {
+        file.sync_all().map_err(|e| CliError::Io {
+            path: self.tmp_path().to_path_buf(),
+            message: e.to_string(),
+        })?;
+        drop(file);
+        if let Some(tmp_path) = &self.tmp_path {
+            std::fs::rename(tmp_path, &self.path).map_err(|e| CliError::Io {
+                path: self.path.clone(),
+                message: e.to_string(),
+            })?;
+        }
+        self.committed = true;
+        Ok(())
+    }
+
+    /// Writes `bytes` to `file` and commits it - the whole-buffer commands' single write.
+    ///
+    /// # Errors
+    ///
+    /// [`CliError::Io`].
+    fn write_all_and_commit(self, mut file: std::fs::File, bytes: &[u8]) -> Result<(), CliError> {
+        use std::io::Write;
+        file.write_all(bytes).map_err(|e| CliError::Io {
+            path: self.tmp_path().to_path_buf(),
+            message: e.to_string(),
+        })?;
+        self.commit(file)
+    }
+}
+
+impl Drop for OutputFile {
+    fn drop(&mut self) {
+        if self.committed {
+            return;
+        }
+        if let Some(tmp_path) = &self.tmp_path {
+            let _ = std::fs::remove_file(tmp_path);
+        }
+        if self.placeholder {
+            let _ = std::fs::remove_file(&self.path);
+        }
+    }
+}
+
+/// Whether `a` and `b` resolve to the same existing path (symlinks followed). Only used to word
+/// [`CliError::OutputExists`]; a hard link to `--in` is still refused, just without the hint.
+fn same_file(a: &std::path::Path, b: &std::path::Path) -> bool {
+    matches!(
+        (std::fs::canonicalize(a), std::fs::canonicalize(b)),
+        (Ok(x), Ok(y)) if x == y
+    )
+}
+
+/// One reserved output and the temp file it is written to.
+type ReservedOutput = (OutputFile, std::fs::File);
+
+/// The outputs of `kalyna-ccm`/`kalyna-gcm` (T-258, D-214): `--out` always, plus `--nonce` and
+/// `--tag` on encrypt, all reserved up front so a failure releases every one. On decrypt `--nonce`
+/// and `--tag` are inputs, protected like `--key` from being named as `--out`.
+///
+/// # Errors
+///
+/// [`CliError::SameOutputPath`], or whatever [`OutputFile::create`] returns.
+fn reserve_aead_outputs(
+    decrypt: bool,
+    [key, nonce, tag]: [&std::path::Path; 3],
+    input: &std::path::Path,
+    out: &std::path::Path,
+    force: bool,
+) -> Result<
+    (
+        ReservedOutput,
+        Option<ReservedOutput>,
+        Option<ReservedOutput>,
+    ),
+    CliError,
+> {
+    if decrypt {
+        check_outputs(
+            &[("--out", out)],
+            &[("--key", key), ("--nonce", nonce), ("--tag", tag)],
+        )?;
+        return Ok((OutputFile::create(out, input, force)?, None, None));
+    }
+    check_outputs(
+        &[("--nonce", nonce), ("--out", out), ("--tag", tag)],
+        &[("--key", key)],
+    )?;
+    let out = OutputFile::create(out, input, force)?;
+    let nonce = OutputFile::create(nonce, input, force)?;
+    let tag = OutputFile::create(tag, input, force)?;
+    Ok((out, Some(nonce), Some(tag)))
+}
+
+/// Refuses an output that names the same file as another output or as one of the command's key
+/// inputs (T-258, D-214): `decrypt --key k --out k --force` would otherwise replace the only key
+/// for the file with its plaintext, and two outputs would silently replace each other. A usage
+/// error with or without `--force`; without it the "pass --force" hint would be wrong. Paths are
+/// compared as absolute paths and, when both exist, after resolving symlinks.
+///
+/// # Errors
+///
+/// [`CliError::SameOutputPath`] for the first such pair.
+fn check_outputs(
+    outputs: &[(&'static str, &std::path::Path)],
+    keys: &[(&'static str, &std::path::Path)],
+) -> Result<(), CliError> {
+    let absolute = |p: &std::path::Path| std::path::absolute(p).unwrap_or_else(|_| p.to_path_buf());
+    for (i, (flag, path)) in outputs.iter().enumerate() {
+        for (other, other_path) in outputs[i + 1..].iter().chain(keys) {
+            if absolute(path) == absolute(other_path) || same_file(path, other_path) {
+                return Err(CliError::SameOutputPath(flag, other));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Writes a key file (secret or public) to `path` via [`create_private_new`]. It refuses to
 /// replace anything already there, because a keygen run over an existing key file would destroy
-/// that key and everything encrypted to it (T-241, owner decision 2026-09-23). A failed write
-/// removes the partial file.
+/// that key and everything encrypted to it (T-241, owner decision 2026-09-23); a public key gets
+/// the same refusal, with no `--force`, since `box-pubkey --key k --out k` would otherwise destroy
+/// the secret key it was derived from (T-258, D-214). A failed write removes the partial file.
 ///
 /// # Errors
 ///
 /// Returns [`CliError::KeyFileExists`] if `path` exists (including as a symlink), or
 /// [`CliError::Io`] for any other open/write/sync failure.
-fn write_new_secret_key(path: &std::path::Path, bytes: &[u8]) -> Result<(), CliError> {
+fn write_new_key_file(path: &std::path::Path, bytes: &[u8]) -> Result<(), CliError> {
     use std::io::Write;
     let io_err = |e: std::io::Error| CliError::Io {
         path: path.to_path_buf(),
@@ -1910,21 +2160,14 @@ fn write_secretstream_file(
 fn run_secretstream_encrypt(
     key: &dstu_core::crypto_secretstream::Key,
     in_path: &PathBuf,
+    out_file: &mut std::fs::File,
     tmp_path: &std::path::Path,
 ) -> Result<(), CliError> {
     let mut in_file = std::fs::File::open(in_path).map_err(|e| CliError::Io {
         path: in_path.clone(),
         message: e.to_string(),
     })?;
-    let mut out_file = create_private_new(tmp_path).map_err(|e| CliError::Io {
-        path: tmp_path.to_path_buf(),
-        message: e.to_string(),
-    })?;
-    write_secretstream_file(key, &mut in_file, in_path, &mut out_file, tmp_path)?;
-    out_file.sync_all().map_err(|e| CliError::Io {
-        path: tmp_path.to_path_buf(),
-        message: e.to_string(),
-    })
+    write_secretstream_file(key, &mut in_file, in_path, out_file, tmp_path)
 }
 
 /// Decrypts `in_path` into `tmp_path` (the caller renames onto the real `--out` only after this
@@ -1937,6 +2180,7 @@ fn run_secretstream_encrypt(
 fn run_secretstream_decrypt(
     key: &dstu_core::crypto_secretstream::Key,
     in_path: &PathBuf,
+    out_file: &mut std::fs::File,
     tmp_path: &std::path::Path,
 ) -> Result<(), CliError> {
     use dstu_core::crypto_secretstream::{PullState, Tag};
@@ -1944,10 +2188,6 @@ fn run_secretstream_decrypt(
 
     let mut in_file = std::fs::File::open(in_path).map_err(|e| CliError::Io {
         path: in_path.clone(),
-        message: e.to_string(),
-    })?;
-    let mut out_file = create_private_new(tmp_path).map_err(|e| CliError::Io {
-        path: tmp_path.to_path_buf(),
         message: e.to_string(),
     })?;
 
@@ -2000,11 +2240,7 @@ fn run_secretstream_decrypt(
     if trailing != 0 {
         return Err(CliError::SecretstreamTrailingData);
     }
-
-    out_file.sync_all().map_err(|e| CliError::Io {
-        path: tmp_path.to_path_buf(),
-        message: e.to_string(),
-    })
+    Ok(())
 }
 
 /// Runs `encrypt`/`decrypt` over `dstu_core::crypto_secretstream` (T-40/T-70, `docs/DECISIONS.md` D-68 -
@@ -2039,23 +2275,15 @@ pub fn run_secretstream_command(decrypt: bool, args: &SecretstreamArgs) -> Resul
     key_arr.copy_from_slice(&key_bytes);
     let key = dstu_core::crypto_secretstream::Key::from_bytes(*key_arr);
 
-    let tmp_path = temp_path_beside(&args.out_path)?;
-    let result = if decrypt {
-        run_secretstream_decrypt(&key, &args.in_path, &tmp_path)
+    check_outputs(&[("--out", &args.out_path)], &[("--key", &args.key_path)])?;
+    let (out, mut out_file) = OutputFile::create(&args.out_path, &args.in_path, args.force)?;
+    let tmp_path = out.tmp_path().to_path_buf();
+    if decrypt {
+        run_secretstream_decrypt(&key, &args.in_path, &mut out_file, &tmp_path)?;
     } else {
-        run_secretstream_encrypt(&key, &args.in_path, &tmp_path)
-    };
-
-    match result {
-        Ok(()) => std::fs::rename(&tmp_path, &args.out_path).map_err(|e| CliError::Io {
-            path: args.out_path.clone(),
-            message: e.to_string(),
-        }),
-        Err(e) => {
-            let _ = std::fs::remove_file(&tmp_path);
-            Err(e)
-        }
+        run_secretstream_encrypt(&key, &args.in_path, &mut out_file, &tmp_path)?;
     }
+    out.commit(out_file)
 }
 
 /// The two hash/key sizes shared by Kupyna (output width) and Strumok (key width) - `"256"`/
@@ -2084,6 +2312,8 @@ pub struct DigestArgs {
     pub in_path: PathBuf,
     pub out_path: PathBuf,
     pub iterations: u32,
+    /// Replace an existing output (T-258, D-214).
+    pub force: bool,
 }
 
 /// Parses `kupyna-digest`'s flags (`--variant`/`--in`/`--out` required, `--iterations` optional).
@@ -2094,12 +2324,17 @@ pub struct DigestArgs {
 /// or [`CliError::UnknownFlag`] - same cases as [`parse_block_args`], minus the key/raw-schedule
 /// flags Kupyna (unkeyed) has no use for.
 pub fn parse_digest_args(args: &[String]) -> Result<DigestArgs, CliError> {
-    let scanner = ArgScanner::scan(args, &["--variant", "--in", "--out", "--iterations"], &[])?;
+    let scanner = ArgScanner::scan(
+        args,
+        &["--variant", "--in", "--out", "--iterations"],
+        &["--force"],
+    )?;
     Ok(DigestArgs {
         variant: scanner.variant(HashBits::parse)?,
         in_path: scanner.path("--in")?,
         out_path: scanner.path("--out")?,
         iterations: scanner.iterations()?,
+        force: scanner.bool_flag("--force"),
     })
 }
 
@@ -2135,6 +2370,8 @@ const DIGEST_BENCH_CHUNK_BYTES: usize = 1024 * 1024;
 #[allow(clippy::cast_precision_loss)] // human-readable MB/s diagnostic, not exact at any realistic byte count
 pub fn run_digest_command(args: &DigestArgs) -> Result<(), CliError> {
     use std::io::Read;
+
+    let (out, out_file) = OutputFile::create(&args.out_path, &args.in_path, args.force)?;
 
     let iterations = args.iterations.max(1);
 
@@ -2200,10 +2437,7 @@ pub fn run_digest_command(args: &DigestArgs) -> Result<(), CliError> {
     }
     let elapsed = start.elapsed();
 
-    std::fs::write(&args.out_path, &digest).map_err(|e| CliError::Io {
-        path: args.out_path.clone(),
-        message: e.to_string(),
-    })?;
+    out.write_all_and_commit(out_file, &digest)?;
 
     if args.iterations > 1 {
         let per_op_ns = elapsed.as_nanos() / u128::from(args.iterations);
@@ -2226,6 +2460,8 @@ pub fn run_digest_command(args: &DigestArgs) -> Result<(), CliError> {
 pub struct HashArgs {
     pub in_path: PathBuf,
     pub out_path: PathBuf,
+    /// Replace an existing output (T-258, D-214).
+    pub force: bool,
 }
 
 /// Parses `hash`'s flags (`--in`/`--out`, both required). No `--variant` (fixed to Kupyna-256, see
@@ -2236,10 +2472,11 @@ pub struct HashArgs {
 ///
 /// Returns [`CliError::MissingFlag`] or [`CliError::UnknownFlag`].
 pub fn parse_hash_args(args: &[String]) -> Result<HashArgs, CliError> {
-    let scanner = ArgScanner::scan(args, &["--in", "--out"], &[])?;
+    let scanner = ArgScanner::scan(args, &["--in", "--out"], &["--force"])?;
     Ok(HashArgs {
         in_path: scanner.path("--in")?,
         out_path: scanner.path("--out")?,
+        force: scanner.bool_flag("--force"),
     })
 }
 
@@ -2260,6 +2497,7 @@ pub fn run_hash_command(args: &HashArgs) -> Result<(), CliError> {
         in_path: args.in_path.clone(),
         out_path: args.out_path.clone(),
         iterations: 1,
+        force: args.force,
     })
 }
 
@@ -2294,7 +2532,7 @@ pub fn parse_keygen_args(args: &[String]) -> Result<KeygenArgs, CliError> {
 pub fn run_keygen_command(args: &KeygenArgs) -> Result<(), CliError> {
     let key = dstu_core::crypto_secretstream::Key::generate()
         .map_err(|e| CliError::Random(e.to_string()))?;
-    write_new_secret_key(
+    write_new_key_file(
         &args.out_path,
         &keyfile::encode(KeyKind::Symmetric, key.as_bytes()),
     )
@@ -2409,7 +2647,7 @@ fn validate_imported_key(kind: KeyKind, key: &[u8]) -> Result<Option<String>, Cl
 /// [`CliError::Io`]/[`CliError::WrongLength`] for the raw file, [`CliError::KeyImportCurveByte`]
 /// for a verifying key of the other curve, [`CliError::SignKeyInvalid`]/
 /// [`CliError::BoxKeyInvalid`] for invalid key bytes, and
-/// [`CliError::KeyFileExists`] if a secret key's `--out` exists.
+/// [`CliError::KeyFileExists`] if `--out` exists.
 pub fn run_key_import_command(args: &KeyImportArgs) -> Result<(), CliError> {
     let kind = args.kind;
     let (what, len, curve_byte) = raw_key_layout(kind);
@@ -2427,14 +2665,7 @@ pub fn run_key_import_command(args: &KeyImportArgs) -> Result<(), CliError> {
     };
     let public_check = validate_imported_key(kind, key)?;
     let line = keyfile::encode(kind, key);
-    if kind.is_secret() {
-        write_new_secret_key(&args.out_path, &line)?;
-    } else {
-        std::fs::write(&args.out_path, line.as_slice()).map_err(|e| CliError::Io {
-            path: args.out_path.clone(),
-            message: e.to_string(),
-        })?;
-    }
+    write_new_key_file(&args.out_path, &line)?;
     let public_note = public_check
         .map(|check| format!("; its public key has check {check}"))
         .unwrap_or_default();
@@ -2562,7 +2793,7 @@ pub fn parse_sign_keygen_args(args: &[String]) -> Result<SignKeygenArgs, CliErro
 pub fn run_sign_keygen_command(args: &SignKeygenArgs) -> Result<(), CliError> {
     let key = dstu_core::crypto_sign::SigningKey::generate()
         .map_err(|e| CliError::Random(e.to_string()))?;
-    write_new_secret_key(
+    write_new_key_file(
         &args.out_path,
         &keyfile::encode(KeyKind::Sign163Secret, &key.to_bytes()),
     )
@@ -2579,7 +2810,7 @@ pub fn run_sign_keygen_command(args: &SignKeygenArgs) -> Result<(), CliError> {
 pub fn run_sign_keygen257_command(args: &SignKeygenArgs) -> Result<(), CliError> {
     let key = dstu_core::crypto_sign257::SigningKey::generate()
         .map_err(|e| CliError::Random(e.to_string()))?;
-    write_new_secret_key(
+    write_new_key_file(
         &args.out_path,
         &keyfile::encode(KeyKind::Sign257Secret, &key.to_bytes()),
     )
@@ -2615,10 +2846,7 @@ pub fn parse_sign_pubkey_args(args: &[String]) -> Result<SignPubkeyArgs, CliErro
 pub fn run_sign_pubkey_command(args: &SignPubkeyArgs) -> Result<(), CliError> {
     let signing_key = read_signing_key(&args.key_path, "sign-pubkey")?;
     let line = signing_key.verifying_key_line();
-    std::fs::write(&args.out_path, line.as_slice()).map_err(|e| CliError::Io {
-        path: args.out_path.clone(),
-        message: e.to_string(),
-    })
+    write_new_key_file(&args.out_path, &line)
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -2627,6 +2855,8 @@ pub struct SignArgs {
     pub in_path: PathBuf,
     pub out_path: PathBuf,
     pub iterations: u32,
+    /// Replace an existing output (T-258, D-214).
+    pub force: bool,
 }
 
 /// Parses `sign`'s flags (`--key`/`--in`/`--out` required, `--iterations` optional - benchmarking
@@ -2637,12 +2867,17 @@ pub struct SignArgs {
 ///
 /// Returns [`CliError::MissingFlag`], [`CliError::InvalidIterations`], or [`CliError::UnknownFlag`].
 pub fn parse_sign_args(args: &[String]) -> Result<SignArgs, CliError> {
-    let scanner = ArgScanner::scan(args, &["--key", "--in", "--out", "--iterations"], &[])?;
+    let scanner = ArgScanner::scan(
+        args,
+        &["--key", "--in", "--out", "--iterations"],
+        &["--force"],
+    )?;
     Ok(SignArgs {
         key_path: scanner.path("--key")?,
         in_path: scanner.path("--in")?,
         out_path: scanner.path("--out")?,
         iterations: scanner.iterations()?,
+        force: scanner.bool_flag("--force"),
     })
 }
 
@@ -2662,6 +2897,8 @@ pub fn parse_sign_args(args: &[String]) -> Result<SignArgs, CliError> {
 #[allow(clippy::cast_precision_loss)] // human-readable ops/s diagnostic, not exact at any realistic count
 pub fn run_sign_command(args: &SignArgs) -> Result<(), CliError> {
     let signing_key = read_signing_key(&args.key_path, "sign")?;
+    check_outputs(&[("--out", &args.out_path)], &[("--key", &args.key_path)])?;
+    let (out, out_file) = OutputFile::create(&args.out_path, &args.in_path, args.force)?;
     let digest = hash_file_streamed(&args.in_path)?;
     let iterations = args.iterations.max(1);
 
@@ -2672,10 +2909,7 @@ pub fn run_sign_command(args: &SignArgs) -> Result<(), CliError> {
     }
     let elapsed = start.elapsed();
 
-    std::fs::write(&args.out_path, &sig).map_err(|e| CliError::Io {
-        path: args.out_path.clone(),
-        message: e.to_string(),
-    })?;
+    out.write_all_and_commit(out_file, &sig)?;
 
     if args.iterations > 1 {
         let per_op_ns = elapsed.as_nanos() / u128::from(args.iterations);
@@ -2986,7 +3220,7 @@ pub fn parse_box_keygen_args(args: &[String]) -> Result<BoxKeygenArgs, CliError>
 pub fn run_box_keygen_command(args: &BoxKeygenArgs) -> Result<(), CliError> {
     let key = dstu_core::crypto_box::SecretKey::generate()
         .map_err(|e| CliError::Random(e.to_string()))?;
-    write_new_secret_key(
+    write_new_key_file(
         &args.out_path,
         &keyfile::encode(KeyKind::Box256Secret, &key.to_bytes()),
     )
@@ -3022,10 +3256,7 @@ pub fn parse_box_pubkey_args(args: &[String]) -> Result<BoxPubkeyArgs, CliError>
 /// [`CliError::BoxKeyInvalid`] if `--key` isn't a valid `crypto_box` secret key.
 pub fn run_box_pubkey_command(args: &BoxPubkeyArgs) -> Result<(), CliError> {
     let line = read_box_secret_key(&args.key_path, "box-pubkey")?.public_key_line();
-    std::fs::write(&args.out_path, line.as_slice()).map_err(|e| CliError::Io {
-        path: args.out_path.clone(),
-        message: e.to_string(),
-    })
+    write_new_key_file(&args.out_path, &line)
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -3034,6 +3265,8 @@ pub struct BoxSealArgs {
     pub in_path: PathBuf,
     pub out_path: PathBuf,
     pub iterations: u32,
+    /// Replace an existing output (T-258, D-214).
+    pub force: bool,
 }
 
 /// Parses `box-seal`'s flags (`--key`/`--in`/`--out` required, `--iterations` optional -
@@ -3043,12 +3276,17 @@ pub struct BoxSealArgs {
 ///
 /// Returns [`CliError::MissingFlag`], [`CliError::InvalidIterations`], or [`CliError::UnknownFlag`].
 pub fn parse_box_seal_args(args: &[String]) -> Result<BoxSealArgs, CliError> {
-    let scanner = ArgScanner::scan(args, &["--key", "--in", "--out", "--iterations"], &[])?;
+    let scanner = ArgScanner::scan(
+        args,
+        &["--key", "--in", "--out", "--iterations"],
+        &["--force"],
+    )?;
     Ok(BoxSealArgs {
         key_path: scanner.path("--key")?,
         in_path: scanner.path("--in")?,
         out_path: scanner.path("--out")?,
         iterations: scanner.iterations()?,
+        force: scanner.bool_flag("--force"),
     })
 }
 
@@ -3074,6 +3312,8 @@ pub fn parse_box_seal_args(args: &[String]) -> Result<BoxSealArgs, CliError> {
 #[allow(clippy::cast_precision_loss)] // human-readable ops/s diagnostic, not exact at any realistic count
 pub fn run_box_seal_command(args: &BoxSealArgs) -> Result<(), CliError> {
     let public = read_box_public_key(&args.key_path, "box-seal")?;
+    check_outputs(&[("--out", &args.out_path)], &[("--key", &args.key_path)])?;
+    let (out, out_file) = OutputFile::create(&args.out_path, &args.in_path, args.force)?;
     let message = std::fs::read(&args.in_path).map_err(|e| CliError::Io {
         path: args.in_path.clone(),
         message: e.to_string(),
@@ -3087,10 +3327,7 @@ pub fn run_box_seal_command(args: &BoxSealArgs) -> Result<(), CliError> {
     }
     let elapsed = start.elapsed();
 
-    std::fs::write(&args.out_path, sealed).map_err(|e| CliError::Io {
-        path: args.out_path.clone(),
-        message: e.to_string(),
-    })?;
+    out.write_all_and_commit(out_file, &sealed)?;
 
     if args.iterations > 1 {
         let per_op_ns = elapsed.as_nanos() / u128::from(args.iterations);
@@ -3115,6 +3352,8 @@ pub struct BoxOpenArgs {
     pub in_path: PathBuf,
     pub out_path: PathBuf,
     pub iterations: u32,
+    /// Replace an existing output (T-258, D-214).
+    pub force: bool,
 }
 
 /// Parses `box-open`'s flags (`--key`/`--in`/`--out` required, `--iterations` optional -
@@ -3124,12 +3363,17 @@ pub struct BoxOpenArgs {
 ///
 /// Returns [`CliError::MissingFlag`], [`CliError::InvalidIterations`], or [`CliError::UnknownFlag`].
 pub fn parse_box_open_args(args: &[String]) -> Result<BoxOpenArgs, CliError> {
-    let scanner = ArgScanner::scan(args, &["--key", "--in", "--out", "--iterations"], &[])?;
+    let scanner = ArgScanner::scan(
+        args,
+        &["--key", "--in", "--out", "--iterations"],
+        &["--force"],
+    )?;
     Ok(BoxOpenArgs {
         key_path: scanner.path("--key")?,
         in_path: scanner.path("--in")?,
         out_path: scanner.path("--out")?,
         iterations: scanner.iterations()?,
+        force: scanner.bool_flag("--force"),
     })
 }
 
@@ -3151,6 +3395,8 @@ pub fn parse_box_open_args(args: &[String]) -> Result<BoxOpenArgs, CliError> {
 #[allow(clippy::cast_precision_loss)] // human-readable ops/s diagnostic, not exact at any realistic count
 pub fn run_box_open_command(args: &BoxOpenArgs) -> Result<(), CliError> {
     let secret = read_box_secret_key(&args.key_path, "box-open")?;
+    check_outputs(&[("--out", &args.out_path)], &[("--key", &args.key_path)])?;
+    let (out, out_file) = OutputFile::create(&args.out_path, &args.in_path, args.force)?;
     let sealed = std::fs::read(&args.in_path).map_err(|e| CliError::Io {
         path: args.in_path.clone(),
         message: e.to_string(),
@@ -3164,10 +3410,7 @@ pub fn run_box_open_command(args: &BoxOpenArgs) -> Result<(), CliError> {
     }
     let elapsed = start.elapsed();
 
-    std::fs::write(&args.out_path, opened).map_err(|e| CliError::Io {
-        path: args.out_path.clone(),
-        message: e.to_string(),
-    })?;
+    out.write_all_and_commit(out_file, &opened)?;
 
     if args.iterations > 1 {
         let per_op_ns = elapsed.as_nanos() / u128::from(args.iterations);
@@ -3199,7 +3442,7 @@ pub fn run_box_open_command(args: &BoxOpenArgs) -> Result<(), CliError> {
 pub fn run_box512_keygen_command(args: &BoxKeygenArgs) -> Result<(), CliError> {
     let key = dstu_core::crypto_box512::SecretKey::generate()
         .map_err(|e| CliError::Random(e.to_string()))?;
-    write_new_secret_key(
+    write_new_key_file(
         &args.out_path,
         &keyfile::encode(KeyKind::Box512Secret, &key.to_bytes()),
     )
@@ -3214,6 +3457,8 @@ pub struct StrumokArgs {
     pub out_path: PathBuf,
     pub iterations: u32,
     pub raw_schedule: bool,
+    /// Replace an existing output (T-258, D-214).
+    pub force: bool,
 }
 
 /// Parses `strumok-crypt`'s flags (`--variant`/`--key`/`--iv`/`--in`/`--out` required,
@@ -3233,7 +3478,7 @@ pub fn parse_strumok_args(args: &[String]) -> Result<StrumokArgs, CliError> {
             "--out",
             "--iterations",
         ],
-        &["--raw-schedule"],
+        &["--raw-schedule", "--force"],
     )?;
     Ok(StrumokArgs {
         variant: scanner.variant(HashBits::parse)?,
@@ -3243,6 +3488,7 @@ pub fn parse_strumok_args(args: &[String]) -> Result<StrumokArgs, CliError> {
         out_path: scanner.path("--out")?,
         iterations: scanner.iterations()?,
         raw_schedule: scanner.bool_flag("--raw-schedule"),
+        force: scanner.bool_flag("--force"),
     })
 }
 
@@ -3274,10 +3520,14 @@ const STRUMOK_STREAM_CHUNK_BYTES: usize = 8 * 1024;
 ///
 /// Returns [`CliError::Io`] if `--in` can't be read or the temp/final `--out` path can't be
 /// written/renamed.
-fn run_strumok_stream(args: &StrumokArgs, key: &[u8], iv: &[u8]) -> Result<(), CliError> {
+fn run_strumok_stream(
+    args: &StrumokArgs,
+    key: &[u8],
+    iv: &[u8],
+    out: OutputFile,
+    mut out_file: std::fs::File,
+) -> Result<(), CliError> {
     use std::io::{Read, Write};
-
-    let tmp_path = temp_path_beside(&args.out_path)?;
 
     macro_rules! stream_variant {
         ($cipher:ty, $key_len:literal) => {{
@@ -3288,10 +3538,6 @@ fn run_strumok_stream(args: &StrumokArgs, key: &[u8], iv: &[u8]) -> Result<(), C
 
             let mut in_file = std::fs::File::open(&args.in_path).map_err(|e| CliError::Io {
                 path: args.in_path.clone(),
-                message: e.to_string(),
-            })?;
-            let mut out_file = create_private_new(&tmp_path).map_err(|e| CliError::Io {
-                path: tmp_path.to_path_buf(),
                 message: e.to_string(),
             })?;
             let mut cipher = <$cipher>::new(&key_arr, &iv_arr);
@@ -3306,32 +3552,18 @@ fn run_strumok_stream(args: &StrumokArgs, key: &[u8], iv: &[u8]) -> Result<(), C
                 }
                 cipher.apply_keystream(&mut chunk[..n]);
                 out_file.write_all(&chunk[..n]).map_err(|e| CliError::Io {
-                    path: tmp_path.to_path_buf(),
+                    path: out.tmp_path().to_path_buf(),
                     message: e.to_string(),
                 })?;
             }
-            out_file.sync_all().map_err(|e| CliError::Io {
-                path: tmp_path.to_path_buf(),
-                message: e.to_string(),
-            })
         }};
     }
 
-    let result: Result<(), CliError> = match args.variant {
+    match args.variant {
         HashBits::B256 => stream_variant!(Strumok256, 32),
         HashBits::B512 => stream_variant!(Strumok512, 64),
-    };
-
-    match result {
-        Ok(()) => std::fs::rename(&tmp_path, &args.out_path).map_err(|e| CliError::Io {
-            path: args.out_path.clone(),
-            message: e.to_string(),
-        }),
-        Err(e) => {
-            let _ = std::fs::remove_file(&tmp_path);
-            Err(e)
-        }
     }
+    out.commit(out_file)
 }
 
 /// Runs `strumok-crypt`: applies the keystream to `--in` (arbitrary length).
@@ -3365,10 +3597,15 @@ pub fn run_strumok_command(args: &StrumokArgs) -> Result<(), CliError> {
     };
     let key = read_exact_file(&args.key_path, LengthOf::Key, key_len)?;
     let iv = read_exact_file(&args.iv_path, LengthOf::Iv, 32)?;
+    check_outputs(
+        &[("--out", &args.out_path)],
+        &[("--key", &args.key_path), ("--iv", &args.iv_path)],
+    )?;
+    let (out, out_file) = OutputFile::create(&args.out_path, &args.in_path, args.force)?;
     let iterations = args.iterations.max(1);
 
     if iterations <= 1 {
-        return run_strumok_stream(args, &key, &iv);
+        return run_strumok_stream(args, &key, &iv, out, out_file);
     }
 
     let input = std::fs::read(&args.in_path).map_err(|e| CliError::Io {
@@ -3405,10 +3642,7 @@ pub fn run_strumok_command(args: &StrumokArgs) -> Result<(), CliError> {
         HashBits::B512 => run_strumok_variant!(Strumok512, 64),
     };
 
-    std::fs::write(&args.out_path, &output).map_err(|e| CliError::Io {
-        path: args.out_path.clone(),
-        message: e.to_string(),
-    })?;
+    out.write_all_and_commit(out_file, &output)?;
 
     if args.iterations > 1 {
         let per_op_ns = elapsed.as_nanos() / u128::from(args.iterations);
@@ -3501,6 +3735,10 @@ FILE FORMATS (byte layouts, with field sizes in bytes: see docs/CLI.md 'File for
 
 The curve is chosen once, by the keygen command; every other command reads it from the key.
 
+An existing output file is never replaced unless you pass --force; a failed command leaves no
+output behind. Key files (secret or public) are never replaced at all - there is no --force for
+them.
+
 EXIT STATUS:
     0   success
     1   the input was checked and rejected (authentication failed, bad signature, malformed data)
@@ -3544,12 +3782,13 @@ OUTPUT FORMAT:
     truncated file is rejected. See docs/CLI.md 'File formats'.
 
 USAGE:
-    uacrypt encrypt --key <path> --in <path> --out <path>
+    uacrypt encrypt --key <path> --in <path> --out <path> [--force]
 
 FLAGS:
     --key <path>    a key file made by `uacrypt keygen` (not a passphrase)
     --in <path>     file to encrypt
     --out <path>    where to write the encrypted output
+    --force         replace --out if it already exists (without it: refused)
 
 EXAMPLE:
     uacrypt encrypt --key key.bin --in report.pdf --out report.pdf.enc
@@ -3557,8 +3796,8 @@ EXAMPLE:
 Notes:
     - Make a key with `uacrypt keygen --out key.bin`; a raw key file from uacrypt 0.4 or older
       can be converted with `uacrypt key-import --kind symmetric`.
-    - --in and --out may be the same path (encrypts in place); --out is only replaced after the
-      whole file is written and verified, so a failure never leaves partial output.
+    - --in and --out may be the same path (encrypts in place) with --force; --out is only
+      replaced after the whole file is written, so a failure never leaves partial output.
 ";
 
 const DECRYPT_HELP: &str = "\
@@ -3568,18 +3807,19 @@ Streamed in bounded memory chunks and authenticated: a wrong key or a tampered/t
 rejected with an error before anything is written to --out, rather than producing wrong plaintext.
 
 USAGE:
-    uacrypt decrypt --key <path> --in <path> --out <path>
+    uacrypt decrypt --key <path> --in <path> --out <path> [--force]
 
 FLAGS:
     --key <path>    the same key file used for `encrypt`
     --in <path>     the encrypted file (must be real `encrypt` output)
     --out <path>    where to write the decrypted output
+    --force         replace --out if it already exists (without it: refused)
 
 EXAMPLE:
     uacrypt decrypt --key key.bin --in report.pdf.enc --out report.pdf
 
 Notes:
-    - --in and --out may be the same path (decrypts in place).
+    - --in and --out may be the same path (decrypts in place) with --force.
     - Fails loudly (no --out written) on a wrong key, a wrong/tampered file, or a file produced by
       an older uacrypt version - the on-disk format is not yet stable pre-1.0.
 ";
@@ -3592,11 +3832,12 @@ Fixed to Kupyna-256 (no --variant knob) - for the other Kupyna variant or benchm
 memory concern.
 
 USAGE:
-    uacrypt hash --in <path> --out <path>
+    uacrypt hash --in <path> --out <path> [--force]
 
 FLAGS:
     --in <path>     file to hash
     --out <path>    where to write the 32-byte digest
+    --force         replace --out if it already exists (without it: refused)
 
 EXAMPLE:
     uacrypt hash --in report.pdf --out report.pdf.kupyna256
@@ -3631,6 +3872,7 @@ uacrypt sign-pubkey - derive the matching verifying key from a signing key.
 
 Reads --key (a `sign-keygen` or `sign-keygen257` output) and writes the matching verifying key,
 of the same curve, to --out as a typed key file - safe to share, unlike the signing key.
+Never replaces an existing --out, which could be the secret key itself.
 
 USAGE:
     uacrypt sign-pubkey --key <path> --out <path>
@@ -3651,12 +3893,13 @@ no RNG involved in signing itself, only in `sign-keygen`). The curve is the key'
 42-byte signature to --out for an m=163 key, 66 bytes for an m=257 key.
 
 USAGE:
-    uacrypt sign --key <path> --in <path> --out <path>
+    uacrypt sign --key <path> --in <path> --out <path> [--force]
 
 FLAGS:
     --key <path>        a signing key (from `uacrypt sign-keygen` or `sign-keygen257`)
     --in <path>         file to sign
     --out <path>        where to write the signature
+    --force             replace --out if it already exists (without it: refused)
 
 EXAMPLE:
     uacrypt sign --key signing.key --in report.pdf --out report.pdf.sig
@@ -3734,6 +3977,7 @@ uacrypt box-pubkey - derive the matching public key from a crypto_box secret key
 Reads --key (a `box-keygen` or `box-keygen512` output) and writes the matching public key, of the
 same curve, that `box-seal` needs to --out as a typed key file - safe to share, unlike the secret
 key itself.
+Never replaces an existing --out, which could be the secret key itself.
 
 USAGE:
     uacrypt box-pubkey --key <path> --out <path>
@@ -3763,12 +4007,13 @@ OUTPUT FORMAT:
     overhead. See docs/CLI.md 'File formats'.
 
 USAGE:
-    uacrypt box-seal --key <path> --in <path> --out <path>
+    uacrypt box-seal --key <path> --in <path> --out <path> [--force]
 
 FLAGS:
     --key <path>        the recipient's public key (from `uacrypt box-pubkey`, either curve)
     --in <path>         file to encrypt
     --out <path>        where to write the sealed output
+    --force             replace --out if it already exists (without it: refused)
 
 EXAMPLE:
     uacrypt box-seal --key recipient.pub --in message.txt --out message.txt.box
@@ -3781,12 +4026,13 @@ A wrong key (including one of the other curve) or a tampered/truncated file is r
 error before anything is written to --out, rather than producing wrong plaintext.
 
 USAGE:
-    uacrypt box-open --key <path> --in <path> --out <path>
+    uacrypt box-open --key <path> --in <path> --out <path> [--force]
 
 FLAGS:
     --key <path>        the recipient's secret key (from `uacrypt box-keygen` or `box-keygen512`)
     --in <path>         the sealed file (must be real `box-seal` output)
     --out <path>        where to write the decrypted output
+    --force             replace --out if it already exists (without it: refused)
 
 EXAMPLE:
     uacrypt box-open --key box.key --in message.txt.box --out message.txt
@@ -3801,7 +4047,7 @@ such file. --kind says what the raw file is - the only place you ever type a key
 bytes are checked exactly as the commands that use them will check them. A raw verifying key
 must carry the curve byte `sign-pubkey`/`sign-pubkey257` wrote. Prints the new file's check value
 to stderr, and for a secret key its public key's check value too, so you can compare it with a
-public key you already shared. Like every keygen, it never overwrites a secret key file.
+public key you already shared. Like every keygen, it never overwrites an existing file.
 
 USAGE:
     uacrypt key-import --kind <kind> --in <path> --out <path>
@@ -3845,14 +4091,15 @@ Low-level: this is a single block-cipher call, not a file-encryption tool - it d
 multiple blocks or add padding. For encrypting a whole file, use `encrypt`/`decrypt` instead.
 
 USAGE:
-    uacrypt kalyna-block encrypt --variant <v> --key <path> --in <path> --out <path>
-    uacrypt kalyna-block decrypt --variant <v> --key <path> --in <path> --out <path>
+    uacrypt kalyna-block encrypt --variant <v> --key <path> --in <path> --out <path> [--force]
+    uacrypt kalyna-block decrypt --variant <v> --key <path> --in <path> --out <path> [--force]
 
 FLAGS:
     --variant <v>      one of 128-128, 128-256, 256-256, 256-512, 512-512 (block/key size in bits)
     --key <path>       key file - must be exactly the variant's key length
     --in <path>        input file - must be exactly one block (the variant's block length)
     --out <path>       where to write the one-block result
+    --force            replace --out if it already exists (without it: refused)
     --iterations <n>   (benchmarking only) repeat the operation n times, print timing to stderr
     --raw-schedule     (benchmarking only) re-expand the key schedule on every iteration
 
@@ -3867,8 +4114,8 @@ Messages and AAD are capped at 255 bytes each (see hazmat::kalyna_ccm docs) - fo
 `encrypt`/`decrypt` instead, which have no such cap.
 
 USAGE:
-    uacrypt kalyna-ccm encrypt --variant <v> --key <path> --nonce <path> --in <path> --out <path> --tag <path> [--aad <path>]
-    uacrypt kalyna-ccm decrypt --variant <v> --key <path> --nonce <path> --in <path> --out <path> --tag <path> [--aad <path>]
+    uacrypt kalyna-ccm encrypt --variant <v> --key <path> --nonce <path> --in <path> --out <path> --tag <path> [--aad <path>] [--force]
+    uacrypt kalyna-ccm decrypt --variant <v> --key <path> --nonce <path> --in <path> --out <path> --tag <path> [--aad <path>] [--force]
 
 FLAGS:
     --variant <v>    one of 128-128, 128-256, 256-256, 256-512, 512-512
@@ -3879,6 +4126,7 @@ FLAGS:
     --in <path>      plaintext (encrypt) or ciphertext (decrypt), 1 to 255 bytes
     --out <path>     ciphertext (encrypt) or plaintext (decrypt)
     --tag <path>     encrypt: OUTPUT auth tag. decrypt: INPUT, must be encrypt's tag.
+    --force          replace existing output files instead of refusing
     --iterations <n> (benchmarking only) repeat the operation n times, print timing to stderr
 
 EXAMPLE:
@@ -3899,8 +4147,8 @@ WARNING:
     with no --aad is rejected (D-207). For files, use `encrypt` or `box-seal`.
 
 USAGE:
-    uacrypt kalyna-gcm encrypt --variant <v> --key <path> --nonce <path> --in <path> --out <path> --tag <path> [--aad <path>] [--iterations <n>]
-    uacrypt kalyna-gcm decrypt --variant <v> --key <path> --nonce <path> --in <path> --out <path> --tag <path> [--aad <path>] [--iterations <n>]
+    uacrypt kalyna-gcm encrypt --variant <v> --key <path> --nonce <path> --in <path> --out <path> --tag <path> [--aad <path>] [--iterations <n>] [--force]
+    uacrypt kalyna-gcm decrypt --variant <v> --key <path> --nonce <path> --in <path> --out <path> --tag <path> [--aad <path>] [--iterations <n>] [--force]
 
 FLAGS:
     --variant <v>    one of 128-128, 128-256, 256-256, 256-512, 512-512
@@ -3911,6 +4159,7 @@ FLAGS:
     --in <path>      plaintext (encrypt) or ciphertext (decrypt), any length
     --out <path>     ciphertext (encrypt) or plaintext (decrypt)
     --tag <path>     encrypt: OUTPUT auth tag (full block length). decrypt: INPUT, must be encrypt's tag.
+    --force          replace existing output files instead of refusing
     --iterations <n> (benchmarking only) repeat the operation n times, print timing to stderr
 
 EXAMPLE:
@@ -3925,7 +4174,7 @@ Computes or verifies a 16-byte tag over a message - no encryption. Do not reuse 
 encryption mode in this crate (see hazmat::kalyna_cmac docs for why).
 
 USAGE:
-    uacrypt kalyna-cmac compute --variant <v> --key <path> --in <path> --out <path> [--iterations <n>]
+    uacrypt kalyna-cmac compute --variant <v> --key <path> --in <path> --out <path> [--iterations <n>] [--force]
     uacrypt kalyna-cmac verify --variant <v> --key <path> --in <path> --tag <path> [--iterations <n>]
 
 FLAGS:
@@ -3934,6 +4183,7 @@ FLAGS:
     --in <path>      message to authenticate (must not be empty, D-206)
     --out <path>     compute: OUTPUT, where to write the 16-byte tag
     --tag <path>     verify: INPUT, the tag to check against
+    --force          replace --out if it already exists (without it: refused)
     --iterations <n> (benchmarking only) repeat the operation n times, print timing to stderr
 
 EXAMPLE:
@@ -3951,7 +4201,7 @@ WARNING:
     (docs/DECISIONS.md D-207). Use `sign` to prove who wrote a file.
 
 USAGE:
-    uacrypt kalyna-gmac compute --variant <v> --key <path> --in <path> --out <path> [--iterations <n>]
+    uacrypt kalyna-gmac compute --variant <v> --key <path> --in <path> --out <path> [--iterations <n>] [--force]
     uacrypt kalyna-gmac verify --variant <v> --key <path> --in <path> --tag <path> [--iterations <n>]
 
 FLAGS:
@@ -3960,6 +4210,7 @@ FLAGS:
     --in <path>      message to authenticate (must not be empty, D-206)
     --out <path>     compute: OUTPUT, where to write the tag (full block length)
     --tag <path>     verify: INPUT, the tag to check against
+    --force          replace --out if it already exists (without it: refused)
     --iterations <n> (benchmarking only) repeat the operation n times, print timing to stderr
 
 EXAMPLE:
@@ -3973,14 +4224,15 @@ Wraps block-aligned key material (1..=20 blocks) into a blob one block longer, w
 block for tamper-evidence - not a general-purpose cipher, see hazmat::kalyna_kw docs.
 
 USAGE:
-    uacrypt kalyna-kw wrap --variant <v> --key <path> --in <path> --out <path> [--iterations <n>]
-    uacrypt kalyna-kw unwrap --variant <v> --key <path> --in <path> --out <path> [--iterations <n>]
+    uacrypt kalyna-kw wrap --variant <v> --key <path> --in <path> --out <path> [--iterations <n>] [--force]
+    uacrypt kalyna-kw unwrap --variant <v> --key <path> --in <path> --out <path> [--iterations <n>] [--force]
 
 FLAGS:
     --variant <v>    one of 128-128, 128-256, 256-256, 256-512, 512-512
     --key <path>     key file - must be exactly the variant's key length
     --in <path>      key material to wrap (block-aligned) or a wrapped blob to unwrap
     --out <path>     wrapped blob (wrap) or recovered key material (unwrap)
+    --force          replace --out if it already exists (without it: refused)
     --iterations <n> (benchmarking only) repeat the operation n times, print timing to stderr
 
 EXAMPLE:
@@ -3994,8 +4246,8 @@ Confidentiality only, no tag - the correct design for disk-sector encryption, no
 hazmat::kalyna_xts docs). --in must be at least one block long.
 
 USAGE:
-    uacrypt kalyna-xts encrypt --variant <v> --key <path> --tweak <path> --in <path> --out <path> [--iterations <n>]
-    uacrypt kalyna-xts decrypt --variant <v> --key <path> --tweak <path> --in <path> --out <path> [--iterations <n>]
+    uacrypt kalyna-xts encrypt --variant <v> --key <path> --tweak <path> --in <path> --out <path> [--iterations <n>] [--force]
+    uacrypt kalyna-xts decrypt --variant <v> --key <path> --tweak <path> --in <path> --out <path> [--iterations <n>] [--force]
 
 FLAGS:
     --variant <v>    one of 128-128, 128-256, 256-256, 256-512, 512-512
@@ -4004,6 +4256,7 @@ FLAGS:
                      encoded into a block-length buffer by the caller; this CLI does not derive one)
     --in <path>      plaintext (encrypt) or ciphertext (decrypt), at least one block
     --out <path>     ciphertext (encrypt) or plaintext (decrypt)
+    --force          replace --out if it already exists (without it: refused)
     --iterations <n> (benchmarking only) repeat the operation n times, print timing to stderr
 
 EXAMPLE:
@@ -4017,12 +4270,13 @@ uacrypt kupyna-digest - Kupyna hash with a selectable variant, for benchmarking/
 For everyday hashing, `hash` is simpler (fixed to Kupyna-256, no --variant flag needed).
 
 USAGE:
-    uacrypt kupyna-digest --variant <v> --in <path> --out <path> [--iterations <n>]
+    uacrypt kupyna-digest --variant <v> --in <path> --out <path> [--iterations <n>] [--force]
 
 FLAGS:
     --variant <v>      256 or 512
     --in <path>        file to hash
     --out <path>       where to write the digest
+    --force            replace --out if it already exists (without it: refused)
     --iterations <n>   (benchmarking only) re-hash n times, print timing/MB-per-s to stderr
 
 EXAMPLE:
@@ -4039,7 +4293,7 @@ doing so lets an attacker recover both messages by XORing the two ciphertexts to
 
 USAGE:
     uacrypt strumok-crypt --variant <v> --key <path> --iv <path> --in <path> --out <path> \\
-        [--iterations <n>] [--raw-schedule]
+        [--iterations <n>] [--raw-schedule] [--force]
 
 FLAGS:
     --variant <v>      256 or 512 (key size in bits; IV is always 32 bytes)
@@ -4047,6 +4301,7 @@ FLAGS:
     --iv <path>        IV file - must be exactly 32 bytes
     --in <path>        file to encrypt or decrypt (same operation either way - XOR keystream)
     --out <path>       where to write the result
+    --force            replace --out if it already exists (without it: refused)
     --iterations <n>   (benchmarking only) repeat n times, print timing/MB-per-s to stderr
     --raw-schedule     (benchmarking only) re-initialize the cipher fresh on every iteration
 
@@ -4564,6 +4819,7 @@ mod tests {
             in_path: dir.file("msg.bin"),
             out_path: dir.file("digest.bin"),
             iterations: 1,
+            force: false,
         };
         run_digest_command(&args).expect("digest command should succeed");
 
@@ -4581,6 +4837,7 @@ mod tests {
             in_path: dir.file("msg.bin"),
             out_path: dir.file("digest_one.bin"),
             iterations: 1,
+            force: false,
         };
         run_digest_command(&args_one).expect("first run should succeed");
         let args_many = DigestArgs {
@@ -4614,6 +4871,7 @@ mod tests {
             in_path: dir.file("msg.bin"),
             out_path: dir.file("digest_single.bin"),
             iterations: 1,
+            force: false,
         };
         run_digest_command(&single_pass_args).expect("single-pass run should succeed");
         assert_eq!(
@@ -4646,6 +4904,7 @@ mod tests {
             Ok(HashArgs {
                 in_path: PathBuf::from("msg.bin"),
                 out_path: PathBuf::from("digest.bin"),
+                force: false,
             })
         );
     }
@@ -4767,12 +5026,14 @@ mod tests {
             key_path: dir.file("key.bin"),
             in_path: dir.file("msg.bin"),
             out_path: dir.file("msg.enc"),
+            force: false,
         };
         run_secretstream_command(false, &enc_args).expect("encrypt with generated key");
         let dec_args = SecretstreamArgs {
             key_path: dir.file("key.bin"),
             in_path: dir.file("msg.enc"),
             out_path: dir.file("msg.dec"),
+            force: false,
         };
         run_secretstream_command(true, &dec_args).expect("decrypt with generated key");
         assert_eq!(
@@ -4852,6 +5113,7 @@ mod tests {
         let args = HashArgs {
             in_path: dir.file("msg.bin"),
             out_path: dir.file("digest.bin"),
+            force: false,
         };
         run_hash_command(&args).expect("hash run should succeed");
         assert_eq!(
@@ -4961,6 +5223,7 @@ mod tests {
             out_path: dir.file("ct.bin"),
             tag_path: dir.file("tag.bin"),
             iterations: 1,
+            force: false,
         };
         run_ccm_command(false, &encrypt_args).expect("encrypt should succeed");
 
@@ -5008,6 +5271,7 @@ mod tests {
             out_path: dir.file("out.bin"),
             tag_path: dir.file("tag.bin"),
             iterations: 1,
+            force: false,
         };
         assert_eq!(
             run_ccm_command(false, &args),
@@ -5034,6 +5298,7 @@ mod tests {
             out_path: dir.file("ct1.bin"),
             tag_path: dir.file("tag1.bin"),
             iterations: 1,
+            force: false,
         };
         run_ccm_command(false, &base_args).expect("first encrypt should succeed");
 
@@ -5070,6 +5335,7 @@ mod tests {
             out_path: dir.file("ct.bin"),
             tag_path: dir.file("tag.bin"),
             iterations: 1,
+            force: false,
         };
         run_ccm_command(false, &encrypt_args).expect("encrypt should succeed");
 
@@ -5103,6 +5369,7 @@ mod tests {
                 key_path: PathBuf::from("key.bin"),
                 in_path: PathBuf::from("msg.bin"),
                 out_path: PathBuf::from("sealed.bin"),
+                force: false,
             })
         );
     }
@@ -5151,6 +5418,7 @@ mod tests {
             key_path: dir.file("key.bin"),
             in_path: dir.file("in.bin"),
             out_path: dir.file("sealed.bin"),
+            force: false,
         };
         run_secretstream_command(false, &encrypt_args).expect("encrypt should succeed");
 
@@ -5175,6 +5443,7 @@ mod tests {
             key_path: dir.file("key.bin"),
             in_path: dir.file("in.bin"),
             out_path: dir.file("sealed1.bin"),
+            force: false,
         };
         run_secretstream_command(false, &base_args).expect("first encrypt should succeed");
 
@@ -5205,6 +5474,7 @@ mod tests {
             key_path: dir.file("key.bin"),
             in_path: dir.file("in.bin"),
             out_path: dir.file("sealed.bin"),
+            force: false,
         };
         run_secretstream_command(false, &encrypt_args).expect("encrypt should succeed");
 
@@ -5240,6 +5510,7 @@ mod tests {
             key_path: dir.file("key.bin"),
             in_path: dir.file("in.bin"),
             out_path: dir.file("sealed.bin"),
+            force: false,
         };
         run_secretstream_command(false, &encrypt_args).expect("encrypt should succeed");
 
@@ -5247,6 +5518,7 @@ mod tests {
             key_path: dir.file("key.bin"),
             in_path: dir.file("sealed.bin"),
             out_path: dir.file("out.bin"),
+            force: false,
         };
         run_secretstream_command(true, &decrypt_args).expect("decrypt should succeed");
 
@@ -5267,6 +5539,7 @@ mod tests {
             key_path: dir.file("key.bin"),
             in_path: dir.file("in.bin"),
             out_path: dir.file("sealed.bin"),
+            force: false,
         };
         run_secretstream_command(false, &encrypt_args).expect("encrypt should succeed");
 
@@ -5274,6 +5547,7 @@ mod tests {
             key_path: dir.file("key.bin"),
             in_path: dir.file("sealed.bin"),
             out_path: dir.file("out.bin"),
+            force: false,
         };
         run_secretstream_command(true, &decrypt_args).expect("decrypt should succeed");
         assert_eq!(std::fs::read(dir.file("out.bin")).expect("read output"), []);
@@ -5292,6 +5566,7 @@ mod tests {
             key_path: dir.file("key.bin"),
             in_path: dir.file("in.bin"),
             out_path: dir.file("out.bin"),
+            force: false,
         };
         assert_eq!(
             run_secretstream_command(false, &args),
@@ -5311,6 +5586,7 @@ mod tests {
             key_path: dir.file("key.bin"),
             in_path: dir.file("does_not_exist.bin"),
             out_path: dir.file("out.bin"),
+            force: false,
         };
         assert!(matches!(
             run_secretstream_command(false, &args),
@@ -5331,6 +5607,7 @@ mod tests {
             key_path: dir.file("key.bin"),
             in_path: dir.file("a_directory"),
             out_path: dir.file("out.bin"),
+            force: false,
         };
         assert!(matches!(
             run_secretstream_command(false, &args),
@@ -5340,7 +5617,8 @@ mod tests {
     }
 
     /// "Fool" test - passing the same path for `--in` and `--out` (an easy mistake when scripting
-    /// "encrypt this file in place"). The temp-file-then-rename atomicity (module doc) is what
+    /// "encrypt this file in place"): refused without `--force` (T-258, D-214), round-trips with
+    /// it. The temp-file-then-rename atomicity (module doc) is what
     /// keeps this safe under genuine streaming I/O, not a whole-buffer read like the old
     /// `crypto_secretbox`-backed command relied on.
     #[test]
@@ -5351,10 +5629,27 @@ mod tests {
         write_typed_key(&dir.file("key.bin"), KeyKind::Symmetric, &key);
         std::fs::write(dir.file("data.bin"), &plaintext).expect("write input");
 
-        let encrypt_args = SecretstreamArgs {
+        let refused = SecretstreamArgs {
             key_path: dir.file("key.bin"),
             in_path: dir.file("data.bin"),
             out_path: dir.file("data.bin"),
+            force: false,
+        };
+        assert!(matches!(
+            run_secretstream_command(false, &refused),
+            Err(CliError::OutputExists {
+                same_as_input: true,
+                ..
+            })
+        ));
+        assert_eq!(
+            std::fs::read(dir.file("data.bin")).expect("read"),
+            plaintext
+        );
+
+        let encrypt_args = SecretstreamArgs {
+            force: true,
+            ..refused
         };
         run_secretstream_command(false, &encrypt_args).expect("in-place encrypt should succeed");
         assert_ne!(
@@ -5363,12 +5658,7 @@ mod tests {
             "the file must now hold sealed output, not the original plaintext"
         );
 
-        let decrypt_args = SecretstreamArgs {
-            key_path: dir.file("key.bin"),
-            in_path: dir.file("data.bin"),
-            out_path: dir.file("data.bin"),
-        };
-        run_secretstream_command(true, &decrypt_args).expect("in-place decrypt should succeed");
+        run_secretstream_command(true, &encrypt_args).expect("in-place decrypt should succeed");
         assert_eq!(
             std::fs::read(dir.file("data.bin")).expect("read"),
             plaintext
@@ -5390,6 +5680,7 @@ mod tests {
             key_path: dir.file("key.bin"),
             in_path: dir.file("garbage.bin"),
             out_path: dir.file("out.bin"),
+            force: false,
         };
         // 64 bytes of garbage: the first byte is read as the format version (D-208), and 0x99 is
         // not one, so this fails before any key material is used.
@@ -5414,6 +5705,7 @@ mod tests {
             key_path: dir.file("key.bin"),
             in_path: dir.file("in.bin"),
             out_path: dir.file("sealed.bin"),
+            force: false,
         };
         run_secretstream_command(false, &encrypt_args).expect("encrypt should succeed");
 
@@ -5425,6 +5717,7 @@ mod tests {
             key_path: dir.file("key.bin"),
             in_path: dir.file("truncated.bin"),
             out_path: dir.file("out.bin"),
+            force: false,
         };
         assert_eq!(
             run_secretstream_command(true, &decrypt_args),
@@ -5447,6 +5740,7 @@ mod tests {
             key_path: dir.file("key.bin"),
             in_path: dir.file("in.bin"),
             out_path: dir.file("sealed.bin"),
+            force: false,
         };
         run_secretstream_command(false, &encrypt_args).expect("encrypt should succeed");
 
@@ -5458,6 +5752,7 @@ mod tests {
             key_path: dir.file("key.bin"),
             in_path: dir.file("extended.bin"),
             out_path: dir.file("out.bin"),
+            force: false,
         };
         assert_eq!(
             run_secretstream_command(true, &decrypt_args),
@@ -5476,6 +5771,7 @@ mod tests {
         let args = HashArgs {
             in_path: dir.file("empty.bin"),
             out_path: dir.file("digest.bin"),
+            force: false,
         };
         run_hash_command(&args).expect("hashing an empty file must succeed");
 
@@ -5500,6 +5796,7 @@ mod tests {
             in_path: dir.file("msg.bin"),
             out_path: dir.file("digest_zero.bin"),
             iterations: 0,
+            force: false,
         })
         .expect("iterations=0 must still hash successfully");
         run_digest_command(&DigestArgs {
@@ -5507,6 +5804,7 @@ mod tests {
             in_path: dir.file("msg.bin"),
             out_path: dir.file("digest_one.bin"),
             iterations: 1,
+            force: false,
         })
         .expect("iterations=1 baseline");
 
@@ -5534,6 +5832,7 @@ mod tests {
             out_path: dir.file("out.bin"),
             tag_path: dir.file("tag.bin"),
             iterations: 1,
+            force: false,
         };
         assert_eq!(
             run_ccm_command(false, &args),
@@ -5565,6 +5864,7 @@ mod tests {
             out_path: dir.file("out.bin"),
             tag_path: dir.file("tag.bin"),
             iterations: 1,
+            force: false,
         };
         assert_eq!(
             run_ccm_command(true, &args),
@@ -5652,6 +5952,7 @@ mod tests {
             out_path: dir.file("out.bin"),
             iterations: 1,
             raw_schedule: false,
+            force: false,
         };
         run_strumok_command(&args).expect("strumok command should succeed");
 
@@ -5678,6 +5979,7 @@ mod tests {
             out_path: dir.file("ct.bin"),
             iterations: 1,
             raw_schedule: false,
+            force: false,
         };
         run_strumok_command(&encrypt_args).expect("encrypt should succeed");
 
@@ -5716,6 +6018,7 @@ mod tests {
             out_path: dir.file("out.bin"),
             iterations: 1,
             raw_schedule: false,
+            force: false,
         };
         run_strumok_command(&args).expect("strumok command should succeed");
 
@@ -5749,6 +6052,7 @@ mod tests {
             out_path: dir.file("data.bin"),
             iterations: 1,
             raw_schedule: false,
+            force: true,
         };
         run_strumok_command(&args).expect("in-place apply should succeed");
         let after_first = std::fs::read(dir.file("data.bin")).expect("read");
@@ -5907,6 +6211,7 @@ mod tests {
             out_path: dir.file("ct.bin"),
             tag_path: dir.file("tag.bin"),
             iterations: 1,
+            force: false,
         };
         run_gcm_command(false, &encrypt_args).expect("encrypt should succeed");
 
@@ -5958,6 +6263,7 @@ mod tests {
             out_path: dir.file("ct.bin"),
             tag_path: dir.file("tag.bin"),
             iterations: 5,
+            force: false,
         };
         run_gcm_command(false, &encrypt_args).expect("iterated encrypt should succeed");
 
@@ -5988,6 +6294,7 @@ mod tests {
             out_path: dir.file("ct.bin"),
             tag_path: dir.file("tag.bin"),
             iterations: 1,
+            force: false,
         };
         run_gcm_command(false, &encrypt_args).expect("encrypt should succeed");
 
@@ -6021,6 +6328,7 @@ mod tests {
             out_path: dir.file("out.bin"),
             tag_path: dir.file("tag.bin"),
             iterations: 1,
+            force: false,
         };
         assert_eq!(
             run_gcm_command(false, &args),
@@ -6042,6 +6350,7 @@ mod tests {
             out_path: Some(dir.file("tag.bin")),
             tag_path: None,
             iterations: 1,
+            force: false,
         };
         assert_eq!(
             run_gmac_command(false, &args),
@@ -6065,6 +6374,7 @@ mod tests {
             out_path: dir.file("out.bin"),
             tag_path: dir.file("tag.bin"),
             iterations: 1,
+            force: false,
         };
         assert_eq!(
             run_gcm_command(false, &args),
@@ -6094,6 +6404,7 @@ mod tests {
             out_path: Some(dir.file("tag.bin")),
             tag_path: None,
             iterations: 1,
+            force: false,
         };
         run_cmac_command(false, &compute_args).expect("compute should succeed");
 
@@ -6126,6 +6437,7 @@ mod tests {
             out_path: Some(dir.file("tag.bin")),
             tag_path: None,
             iterations: 1,
+            force: false,
         };
         assert_eq!(
             run_cmac_command(false, &compute_args),
@@ -6163,6 +6475,7 @@ mod tests {
             out_path: None,
             tag_path: Some(dir.file("tag.bin")),
             iterations: 1,
+            force: false,
         };
         assert_eq!(
             run_cmac_command(true, &verify_args),
@@ -6183,6 +6496,7 @@ mod tests {
             out_path: None,
             tag_path: None,
             iterations: 1,
+            force: false,
         };
         assert_eq!(
             run_cmac_command(true, &args),
@@ -6207,6 +6521,7 @@ mod tests {
             out_path: Some(dir.file("tag.bin")),
             tag_path: None,
             iterations: 1,
+            force: false,
         };
         run_gmac_command(false, &compute_args).expect("compute should succeed");
 
@@ -6243,6 +6558,7 @@ mod tests {
             out_path: None,
             tag_path: Some(dir.file("tag.bin")),
             iterations: 1,
+            force: false,
         };
         assert_eq!(
             run_gmac_command(true, &verify_args),
@@ -6266,6 +6582,7 @@ mod tests {
             in_path: dir.file("in.bin"),
             out_path: dir.file("wrapped.bin"),
             iterations: 1,
+            force: false,
         };
         run_kw_command(false, &wrap_args).expect("wrap should succeed");
 
@@ -6303,6 +6620,7 @@ mod tests {
             in_path: dir.file("in.bin"),
             out_path: dir.file("wrapped.bin"),
             iterations: 1,
+            force: false,
         };
         run_kw_command(false, &wrap_args).expect("wrap should succeed");
 
@@ -6336,6 +6654,7 @@ mod tests {
             in_path: dir.file("in.bin"),
             out_path: dir.file("out.bin"),
             iterations: 1,
+            force: false,
         };
         assert_eq!(run_kw_command(false, &args), Err(CliError::KwInvalidLength));
         assert!(!dir.file("out.bin").exists());
@@ -6360,6 +6679,7 @@ mod tests {
             in_path: dir.file("in.bin"),
             out_path: dir.file("ct.bin"),
             iterations: 1,
+            force: false,
         };
         run_xts_command(false, &encrypt_args).expect("encrypt should succeed");
 
@@ -6399,6 +6719,7 @@ mod tests {
             in_path: dir.file("in.bin"),
             out_path: dir.file("out.bin"),
             iterations: 1,
+            force: false,
         };
         assert_eq!(
             run_xts_command(false, &args),
@@ -6586,6 +6907,7 @@ mod tests {
                 in_path: PathBuf::from("msg.bin"),
                 out_path: PathBuf::from("msg.sig"),
                 iterations: 1,
+                force: false,
             })
         );
     }
@@ -6759,6 +7081,7 @@ mod tests {
             in_path: dir.file("msg.bin"),
             out_path: dir.file("msg.sig"),
             iterations: 1,
+            force: false,
         })
         .expect("sign should succeed");
 
@@ -6803,6 +7126,7 @@ mod tests {
             in_path: dir.file("msg.bin"),
             out_path: dir.file("msg.sig"),
             iterations: 1,
+            force: false,
         })
         .expect("sign should succeed on an m=257 key");
 
@@ -6854,6 +7178,7 @@ mod tests {
             in_path: dir.file("msg.bin"),
             out_path: dir.file("msg.sig257"),
             iterations: 1,
+            force: false,
         })
         .expect("sign should succeed on an m=257 key");
 
@@ -6899,6 +7224,7 @@ mod tests {
             in_path: dir.file("msg.bin"),
             out_path: dir.file("msg.sig"),
             iterations: 25,
+            force: false,
         })
         .expect("sign with iterations should succeed");
 
@@ -6932,6 +7258,7 @@ mod tests {
             in_path: dir.file("msg.bin"),
             out_path: dir.file("msg.sig"),
             iterations: 1,
+            force: false,
         })
         .expect("sign should succeed");
 
@@ -7020,6 +7347,7 @@ mod tests {
                 in_path: dir.file("msg.bin"),
                 out_path: dir.file("msg.sig"),
                 iterations: 1,
+                force: false,
             }),
             Err(CliError::KeyFileNotTyped(dir.file("signing.key")))
         );
@@ -7039,6 +7367,7 @@ mod tests {
                 in_path: dir.file("msg.bin"),
                 out_path: dir.file("msg.sig"),
                 iterations: 1,
+                force: false,
             }),
             Err(CliError::SignKeyInvalid)
         );
@@ -7058,6 +7387,7 @@ mod tests {
                 in_path: dir.file("does_not_exist.bin"),
                 out_path: dir.file("msg.sig"),
                 iterations: 1,
+                force: false,
             }),
             Err(CliError::Io { .. })
         ));
@@ -7085,6 +7415,7 @@ mod tests {
             in_path: dir.file("msg.bin"),
             out_path: dir.file("msg.sig"),
             iterations: 1,
+            force: false,
         })
         .expect("sign should succeed");
 
@@ -7122,6 +7453,7 @@ mod tests {
             in_path: dir.file("msg.bin"),
             out_path: dir.file("msg.sig"),
             iterations: 1,
+            force: false,
         })
         .expect("sign should succeed");
 
@@ -7166,6 +7498,7 @@ mod tests {
             in_path: dir.file("msg.bin"),
             out_path: dir.file("msg.sig"),
             iterations: 1,
+            force: false,
         })
         .expect("sign with key a should succeed");
 
@@ -7332,6 +7665,7 @@ mod tests {
                 in_path: PathBuf::from("msg.txt"),
                 out_path: PathBuf::from("msg.box"),
                 iterations: 1,
+                force: false,
             })
         );
     }
@@ -7415,6 +7749,7 @@ mod tests {
                 in_path: PathBuf::from("msg.box"),
                 out_path: PathBuf::from("msg.txt"),
                 iterations: 1,
+                force: false,
             })
         );
     }
@@ -7450,6 +7785,7 @@ mod tests {
             in_path: dir.file("msg.txt"),
             out_path: dir.file("msg.box"),
             iterations: 1,
+            force: false,
         })
         .expect("box-seal should succeed");
 
@@ -7467,6 +7803,7 @@ mod tests {
             in_path: dir.file("msg.box"),
             out_path: dir.file("msg.out"),
             iterations: 1,
+            force: false,
         })
         .expect("box-open should succeed on the real sealed output");
 
@@ -7499,6 +7836,7 @@ mod tests {
             in_path: dir.file("msg.txt"),
             out_path: dir.file("msg.box"),
             iterations: 5,
+            force: false,
         })
         .expect("box-seal with iterations should succeed");
 
@@ -7507,6 +7845,7 @@ mod tests {
             in_path: dir.file("msg.box"),
             out_path: dir.file("msg.out"),
             iterations: 5,
+            force: false,
         })
         .expect("box-open with iterations should succeed on the real sealed output");
 
@@ -7540,6 +7879,7 @@ mod tests {
             in_path: dir.file("msg.txt"),
             out_path: dir.file("msg.box"),
             iterations: 1,
+            force: false,
         })
         .expect("box-seal should succeed");
 
@@ -7549,6 +7889,7 @@ mod tests {
                 in_path: dir.file("msg.box"),
                 out_path: dir.file("msg.out"),
                 iterations: 1,
+                force: false,
             }),
             Err(CliError::BoxOpenFailed("l(p)=256"))
         );
@@ -7576,6 +7917,7 @@ mod tests {
             in_path: dir.file("msg.txt"),
             out_path: dir.file("msg.box"),
             iterations: 1,
+            force: false,
         })
         .expect("box-seal should succeed");
 
@@ -7590,6 +7932,7 @@ mod tests {
                 in_path: dir.file("msg.box"),
                 out_path: dir.file("msg.out"),
                 iterations: 1,
+                force: false,
             }),
             Err(CliError::BoxOpenFailed("l(p)=256"))
         );
@@ -7610,6 +7953,7 @@ mod tests {
                 in_path: dir.file("msg.box"),
                 out_path: dir.file("msg.out"),
                 iterations: 1,
+                force: false,
             }),
             Err(CliError::BoxOpenTruncated("l(p)=256"))
         );

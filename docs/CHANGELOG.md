@@ -44,6 +44,17 @@ All notable changes to this project are documented in this file. Format follows
   `Box512*Args` go (`run_sign_keygen257_command`/`run_box512_keygen_command` stay, the latter now
   taking `BoxKeygenArgs`); `CliError::Box512*` merge into the `Box*` variants,
   `BoxOpenTruncated`/`BoxOpenFailed` carry the key's curve; new `CliError::RemovedCommand`.
+- **No silent overwrite** (T-258, `docs/DECISIONS.md` D-214). `encrypt`, `decrypt`, `hash`,
+  `sign`, `box-seal`, `box-open` and every lower-level command refuse an existing output file
+  (exit 3) unless given the new `--force`; in-place `--in` = `--out` needs `--force` too. A failed
+  command leaves no output or temp file, and with `--force` the old file stays unchanged. An
+  output naming another output or one of the command's key inputs (`decrypt --key k --out k`) is
+  a usage error, even with `--force`. `sign-pubkey`, `box-pubkey` and `key-import` of a
+  public key now also never replace an existing file (they silently did, so
+  `box-pubkey --key k --out k` could destroy the secret key); key-writing commands take no
+  `--force`. On Unix every output file is created `0600`. **Migration:** scripts that rewrite the
+  same output add `--force`. Library API: every non-key `*Args` gains `force: bool`; new
+  `CliError::OutputExists`/`SameOutputPath`.
 
 ### Security
 

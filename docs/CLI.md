@@ -14,9 +14,26 @@ with `--` can be passed as `--in=--odd-name`. `uacrypt help` prints the overview
 | 0 | success | also `--help`, `help`, `--version` |
 | 1 | the input was checked and rejected | authentication failed, bad signature, truncated or malformed ciphertext, an empty or over-long message for a mode that forbids it, a wrong-length signature or tag |
 | 2 | usage error | unknown command or flag, missing/repeated flag, missing value, missing subcommand |
-| 3 | a file or key could not be used | missing or unreadable file, a key file of the wrong kind, damaged or not typed (see [Key files](#key-files)), wrong-size or invalid key/nonce/IV/tweak, a `*-keygen --out` that already exists |
+| 3 | a file or key could not be used | missing or unreadable file, a key file of the wrong kind, damaged or not typed (see [Key files](#key-files)), wrong-size or invalid key/nonce/IV/tweak, an `--out` that already exists (see below) |
 
 A script can therefore tell "this file was forged" (1) from "I typed the command wrong" (2).
+
+**Existing output files (0.5.0, T-258, `docs/DECISIONS.md` D-214).** No command replaces an
+existing file unless you pass `--force`; without it an existing `--out` (or `--nonce`/`--tag` on
+`kalyna-ccm`/`kalyna-gcm encrypt`) is refused with exit 3 before any work is done, and the message
+says when it is the `--in` file itself. `--in` and `--out` may name the same file (encrypt or
+decrypt in place) only with `--force`. An output naming another output or one of the command's
+key inputs (`--key`, `--iv`, `--tweak`, or a decrypt-side `--nonce`/`--tag`) is a usage error
+(exit 2), with or without `--force`, so `decrypt --key k.key --out k.key --force` cannot replace
+the key with plaintext. The result is written to a temp file next to the
+output and renamed onto it only when the command succeeds, so a failed command leaves no output,
+no temp file and, with `--force`, the old file unchanged. `--force` replaces a symlink at the
+output path, never the file it points to. On Unix every output file is created with mode `0600`
+(owner only), also when `--force` replaces a `0644` file; `chmod` it to share it. Key files
+(`*-keygen`, `sign-pubkey`, `box-pubkey`, `key-import`) are never replaced at all and do not
+accept `--force`: `box-pubkey --key box.key --out box.key` would otherwise destroy the secret key.
+A killed process (power loss, `kill -9`) can leave an empty output file, which the next run
+refuses until you delete it or pass `--force`.
 
 `uacrypt encrypt`/`decrypt`/`hash` (`docs/TASKS.md` T-16, `docs/DECISIONS.md` D-52) are the real,
 misuse-resistant top-level commands — mode, nonce, and algorithm are all hardcoded, nothing to
@@ -26,7 +43,7 @@ misconfigure:
 cargo build -p uacrypt --release
 uacrypt keygen --out key.bin
 uacrypt encrypt --key key.bin --in message.bin --out sealed.bin
-uacrypt decrypt --key key.bin --in sealed.bin --out message.bin
+uacrypt decrypt --key key.bin --in sealed.bin --out decrypted.bin
 uacrypt hash --in file.bin --out digest.bin
 ```
 
@@ -40,7 +57,7 @@ prior `crypto_secretbox`-backed `encrypt` produced cannot be read by this `decry
 primitive for whole-message use, just no longer what this CLI command uses. `--key` is a typed
 key file ([Key files](#key-files)) holding a 32-byte `crypto_secretstream::Key` — `uacrypt keygen
 --out key.bin` generates one from the OS CSPRNG (`docs/TASKS.md` T-115). Like every `*-keygen` command, it refuses to overwrite an
-existing `--out`, so a repeated run cannot destroy a key, and on Unix it writes the key with mode
+existing `--out` (with no `--force` to override it), so a repeated run cannot destroy a key, and on Unix it writes the key with mode
 `0600` (T-241). `encrypt` draws a fresh random header internally on every call
 and embeds it in `--out`; there is no `--nonce`/`--header` flag to supply or reuse by mistake.
 **0.4.0 changed the `encrypt`/`box-seal` file formats (both curves)** (T-232/T-248,
@@ -96,8 +113,8 @@ over `m=257`:
 ```
 uacrypt sign-keygen257 --out signing257.key
 uacrypt sign-pubkey --key signing257.key --out verifying257.key
-uacrypt sign --key signing257.key --in message.bin --out message.bin.sig
-uacrypt verify --key verifying257.key --in message.bin --sig message.bin.sig
+uacrypt sign --key signing257.key --in message.bin --out message.bin.sig257
+uacrypt verify --key verifying257.key --in message.bin --sig message.bin.sig257
 ```
 
 `uacrypt box-keygen`/`box-pubkey`/`box-seal`/`box-open` (`docs/TASKS.md` T-178, `docs/DECISIONS.md`
@@ -109,7 +126,7 @@ the recipient's public key — anyone can seal a message only the matching secre
 uacrypt box-keygen --out box.key
 uacrypt box-pubkey --key box.key --out box.pub
 uacrypt box-seal --key box.pub --in message.bin --out message.bin.box
-uacrypt box-open --key box.key --in message.bin.box --out message.bin
+uacrypt box-open --key box.key --in message.bin.box --out opened.bin
 ```
 
 `box-keygen`'s output (`box.key`) is secret. `box-pubkey` derives the matching `box.pub` (the
@@ -127,8 +144,8 @@ curve's key like any other wrong key:
 ```
 uacrypt box-keygen512 --out box512.key
 uacrypt box-pubkey --key box512.key --out box512.pub
-uacrypt box-seal --key box512.pub --in message.bin --out message.bin.box
-uacrypt box-open --key box512.key --in message.bin.box --out message.bin
+uacrypt box-seal --key box512.pub --in message.bin --out message.bin.box512
+uacrypt box-open --key box512.key --in message.bin.box512 --out opened512.bin
 ```
 
 Up to 0.4, the non-keygen commands had curve twins (`sign-pubkey257`, `sign257`, `box-pubkey512`,
@@ -330,7 +347,7 @@ uacrypt key-import --kind box256-secret --in old-box.key --out box.key
 as the commands that use them check them (a verifying key must still start with the curve byte
 0.4 wrote: `01` for m=163, `02` for m=257). `key-import` prints the new file's check value and, for
 a secret key, the check value of its public key - compare it with the last field of the public key
-file you already shared. Like every keygen, it never overwrites a secret key file.
+file you already shared. Like every keygen, it never overwrites an existing file.
 
 **Raw, uncontained outputs.** `kalyna-gcm` writes the ciphertext, nonce and tag as separate raw
 files, and `kalyna-gmac` writes a bare tag. They carry no format version and no nonce binding

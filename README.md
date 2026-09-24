@@ -56,7 +56,7 @@ Or the CLI, which streams arbitrarily large files with no in-memory cap:
 cargo install uacrypt   # or download a prebuilt binary from GitHub Releases
 uacrypt keygen --out key.bin
 uacrypt encrypt --key key.bin --in message.bin --out sealed.bin
-uacrypt decrypt --key key.bin --in sealed.bin --out message.bin
+uacrypt decrypt --key key.bin --in sealed.bin --out decrypted.bin
 ```
 
 See [`docs/CLI.md`](https://github.com/user137/uacrypt/blob/master/docs/CLI.md) for the full

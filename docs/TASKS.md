@@ -8733,9 +8733,13 @@ replace a DSTU primitive.
 
 ### RESUME HERE (state as of 2026-09-23, saved for a memory-clear/new-session handoff)
 
-**Latest handoff (2026-09-24, second session end) - read this first.** Working copy on
-`ux-0.5.0`, head `2c7a196`, nothing pushed (embargo). T-255/T-256/T-257 done; **next: T-258**
-(overwrite policy, O1 a). Miri on `crypto_secretstream` finished (no UB). Both GHSAs still `draft`,
+**Latest handoff (2026-09-24, third session) - read this first.** Working copy on
+`ux-0.5.0`, nothing pushed (embargo). T-255..T-258 done (T-258: D-214); **next: T-259** (`hash`
+like `sha256sum`). T-258 ran: `cargo test -p uacrypt` (all green), `cargo xtask clippy`/`fmt`/
+`docs-check`, the documented CLI examples in one directory, `bench-compare` (every row printed),
+and every binding suite except PHP: Ruby 101/101, Node 95/95, Python 100/100, .NET 151/151, Go
+(`-count=1`), Java `mvn verify`, C++ ctest. The Unix-only tests of T-241 and T-258 still wait for
+the Pi. Miri on `crypto_secretstream` finished (no UB). Both GHSAs still `draft`,
 `cve_id` null (checked end of session). `bindings/ruby/Gemfile.lock` still uncommitted - owner's call.
 - 0.4.0 is prepared locally, nothing pushed (embargo). Release commit `f83459d` (versions, T-252),
   `6433caf` (CHANGELOG placeholders). The CHANGELOG edit for release day is scripted:
@@ -9035,8 +9039,15 @@ Breaking - 0.5.0 (B1 a):
   14 (K3 a). Removed names return a usage error naming the replacement. D-entry answering D-73.
   `xtask bench-compare` (`xtask/src/bench.rs`) makes its keys with the keygen commands; check it
   still runs after the rename (`xtask/src/main.rs:875` is the C ABI example list, not a CLI call).
-- [ ] **T-258** Overwrite policy (O1; R2). One shared "open output" helper; `--force` never
-  applies to key files.
+- [x] **T-258** (done 2026-09-24 on `ux-0.5.0`, D-214; `smoke_overwrite.rs`) Overwrite policy
+  (O1; R2). One shared "open output" helper; `--force` never
+  applies to key files. Owner also chose (2026-09-24): public-key outputs (`sign-pubkey`,
+  `box-pubkey`, public `key-import`) are never replaced either, and every output is `0600` on
+  Unix. An output naming a key input (`--key`/`--iv`/`--tweak`, decrypt-side
+  `--nonce`/`--tag`) is a usage error even with `--force` (closing review). Open owner option:
+  also refuse `--force` onto an existing typed key file the command does not read (sniff the
+  prefix), D-214 Decision 3. Not yet run: the two `cfg(unix)` tests in `smoke_overwrite.rs` (symlink, `0600`) - run on
+  the Pi with T-241's; PHP interop (not installed here).
 - [ ] **T-259** `hash` like `sha256sum`: prints `<hex>  <path>` to stdout; `--check <file>` verifies
   such lines (exit 1 on any mismatch, names each). The binary `--out` goes; `kupyna-digest` keeps
   binary output for interop.

@@ -231,6 +231,7 @@ fn a_file_sealed_to_one_curve_is_rejected_by_the_other_curves_key() {
             p(&msg),
             "--out",
             p(&sealed),
+            "--force",
         ]));
         let r = uacrypt([
             "box-open",
