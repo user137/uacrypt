@@ -599,7 +599,7 @@ impl fmt::Display for CliError {
             ),
             CliError::BoxOpenFailed(curve) => write!(
                 f,
-                "box-open: authentication failed - --in was not sealed to this {curve} key, or                  it was modified"
+                "box-open: authentication failed - --in was not sealed to this {curve} key, or it was modified"
             ),
             CliError::BoxOpenUnsupportedVersion => write!(
                 f,
@@ -3322,7 +3322,7 @@ fn run_hash_check(list: &Source) -> Result<(), CliError> {
             failed += 1;
             writeln!(
                 out,
-                "-: FAILED (stdin is not read from a check list; hash it with `hash --in -`,                  or write ./- for a file named -)"
+                "-: FAILED (stdin is not read from a check list; hash it with `hash --in -`, or write ./- for a file named -)"
             )
             .map_err(|e| stdout_error(&e))?;
             continue;
@@ -8931,6 +8931,9 @@ mod tests {
             }),
             Err(CliError::BoxOpenFailed("l(p)=256"))
         );
+        assert!(!CliError::BoxOpenFailed("l(p)=256")
+            .to_string()
+            .contains("  "));
     }
 
     #[cfg_attr(

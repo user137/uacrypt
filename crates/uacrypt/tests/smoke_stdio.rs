@@ -617,6 +617,7 @@ fn hash_check_reads_its_list_from_stdin_but_never_a_dash_entry() {
     assert_eq!(r.code, Some(1), "{}", r.stderr);
     let out = String::from_utf8(r.stdout).unwrap();
     assert!(out.starts_with("-: FAILED (stdin is not read"), "{out}");
+    assert!(!out.contains("  "), "{out}");
     assert!(out.ends_with("a: OK\n"), "{out}");
     assert!(r.stderr.contains("1 of 2"), "{}", r.stderr);
 }
