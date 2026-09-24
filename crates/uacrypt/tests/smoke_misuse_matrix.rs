@@ -113,7 +113,8 @@ const CASES: &[Case] = &[
     Case {
         name: "decrypt",
         args: &["decrypt", "--key", "k", "--in", "i", "--out", "o"],
-        required: &["--key", "--in", "--out"],
+        // No `--key` asks for a passphrase instead (T-262); `smoke_passphrase.rs` covers it.
+        required: &["--in", "--out"],
     },
     Case {
         name: "strumok-crypt",

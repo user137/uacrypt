@@ -23,7 +23,9 @@
 //! single-block file operation.
 
 mod keyfile;
+mod passphrase;
 mod progress;
+mod sigint;
 
 use dstu_core::hazmat::kalyna::{
     Kalyna128_128, Kalyna128_128ExpandedKey, Kalyna128_256, Kalyna128_256ExpandedKey,
@@ -230,6 +232,36 @@ pub enum CliError {
     BinaryToTerminal,
     /// `inner` happened after output had already gone to stdout; exits with `inner`'s code.
     StdoutIncomplete(Box<CliError>),
+    /// A passphrase is needed but stderr is not a terminal to ask on (T-262, D-219).
+    PassphraseNoTerminal,
+    /// Windows, inside mintty: the prompt would go to a hidden console (D-219).
+    PassphraseMintty,
+    PassphraseEmpty,
+    PassphraseMismatch,
+    PassphraseFileInvalid {
+        path: PathBuf,
+        problem: passphrase::FileProblem,
+    },
+    /// A passphrase file of another container version or KDF.
+    PassphraseFormatUnsupported {
+        version: u8,
+        kdf: u8,
+    },
+    /// Argon2 costs other than the one preset `encrypt` writes - refused before any Argon2 work.
+    PassphraseParamsUnsupported {
+        m_cost: u32,
+        t_cost: u32,
+        p_cost: u8,
+    },
+    PassphraseWrong,
+    /// Argon2 could not run (not enough memory for the preset).
+    PassphraseDerive(String),
+    /// `decrypt` of a key-encrypted file without `--key`.
+    DecryptNeedsKey,
+    /// `decrypt --key` of a passphrase-encrypted file.
+    DecryptKeyForPassphraseFile,
+    /// `decrypt --passphrase`: decrypt tells the two kinds of file apart by itself.
+    PassphraseFlagOnDecrypt,
 }
 
 impl fmt::Display for CliError {
@@ -398,6 +430,71 @@ impl fmt::Display for CliError {
                 f,
                 "--in ends before a Final chunk was ever read - truncated or not real encrypt output"
             ),
+            CliError::PassphraseNoTerminal => write!(
+                f,
+                "no terminal to ask for the passphrase on (stderr is not a terminal) - pass \
+                 --passphrase-file <path>"
+            ),
+            CliError::PassphraseMintty => write!(
+                f,
+                "cannot ask for the passphrase inside mintty (Git Bash's window): the prompt \
+                 would go to a hidden console - run `winpty uacrypt ...`, use cmd, PowerShell or \
+                 Windows Terminal, or pass --passphrase-file <path>"
+            ),
+            CliError::PassphraseEmpty => write!(f, "the passphrase is empty"),
+            CliError::PassphraseMismatch => write!(f, "the two passphrases do not match"),
+            CliError::PassphraseFileInvalid { path, problem } => {
+                let what = match problem {
+                    passphrase::FileProblem::Empty => "is empty".to_string(),
+                    passphrase::FileProblem::TooLong => format!(
+                        "is longer than {} bytes - is it really a passphrase file?",
+                        passphrase::MAX_FILE_BYTES
+                    ),
+                    passphrase::FileProblem::MoreThanOneLine => {
+                        "has more than one line - it must hold only the passphrase".to_string()
+                    }
+                    passphrase::FileProblem::NotUtf8 => {
+                        "is not UTF-8 text (saved as UTF-16?)".to_string()
+                    }
+                };
+                write!(f, "--passphrase-file {}: {what}", path.display())
+            }
+            CliError::PassphraseFormatUnsupported { version, kdf } => write!(
+                f,
+                "decrypt: --in is a passphrase file of an unsupported kind (container version \
+                 {version}, KDF {kdf}) - made by a newer uacrypt, or damaged"
+            ),
+            CliError::PassphraseParamsUnsupported {
+                m_cost,
+                t_cost,
+                p_cost,
+            } => write!(
+                f,
+                "decrypt: unsupported passphrase parameters in --in (Argon2id m={m_cost} KiB, \
+                 t={t_cost}, p={p_cost}) - this build reads only the ones it writes; damaged, or \
+                 made by another uacrypt version"
+            ),
+            CliError::PassphraseWrong => write!(
+                f,
+                "decrypt: wrong passphrase, or --in was changed after it was encrypted"
+            ),
+            CliError::PassphraseDerive(message) => {
+                write!(f, "cannot derive the key from the passphrase: {message}")
+            }
+            CliError::DecryptNeedsKey => write!(
+                f,
+                "decrypt: --in was encrypted with a key file, not a passphrase - pass --key <path>"
+            ),
+            CliError::DecryptKeyForPassphraseFile => write!(
+                f,
+                "decrypt: --in was encrypted with a passphrase, not a key file - drop --key (you \
+                 will be asked for the passphrase) or pass --passphrase-file <path>"
+            ),
+            CliError::PassphraseFlagOnDecrypt => write!(
+                f,
+                "decrypt takes no --passphrase: it finds out from --in itself and asks when \
+                 needed (or pass --passphrase-file <path>)"
+            ),
             CliError::SecretstreamVerifyFailed => write!(
                 f,
                 "decrypt: authentication failed - --in, --key, or the file itself do not match"
@@ -563,7 +660,14 @@ impl CliError {
             | CliError::StdioNotAccepted(_)
             | CliError::SecretKeyToStdout
             | CliError::ForceWithStdout
-            | CliError::BinaryToTerminal => USAGE,
+            | CliError::BinaryToTerminal
+            | CliError::PassphraseNoTerminal
+            | CliError::PassphraseMintty
+            | CliError::PassphraseEmpty
+            | CliError::PassphraseMismatch
+            | CliError::DecryptNeedsKey
+            | CliError::DecryptKeyForPassphraseFile
+            | CliError::PassphraseFlagOnDecrypt => USAGE,
             CliError::StdoutIncomplete(inner) => inner.exit_code(),
             CliError::Io { .. }
             | CliError::KeyFileExists(_)
@@ -577,7 +681,9 @@ impl CliError {
             | CliError::KeyCheckMismatch { .. }
             | CliError::KeyKindMismatch { .. }
             | CliError::KeyImportCurveByte { .. }
-            | CliError::BoxKeyInvalid => FILE_OR_KEY,
+            | CliError::BoxKeyInvalid
+            | CliError::PassphraseFileInvalid { .. }
+            | CliError::PassphraseDerive(_) => FILE_OR_KEY,
             CliError::WrongLength { what, .. } => match what {
                 LengthOf::Key
                 | LengthOf::Nonce
@@ -616,7 +722,10 @@ impl CliError {
             | CliError::HashCheckEmpty(_)
             | CliError::HashCheckUtf16(_)
             | CliError::HashCheckMalformed { .. }
-            | CliError::HashCheckFailed { .. } => REJECTED,
+            | CliError::HashCheckFailed { .. }
+            | CliError::PassphraseFormatUnsupported { .. }
+            | CliError::PassphraseParamsUnsupported { .. }
+            | CliError::PassphraseWrong => REJECTED,
         }
     }
 }
@@ -1944,30 +2053,96 @@ const SECRETSTREAM_TAG_LEN: usize = 16;
 /// memory on both sides, independent of `--in`'s size (D-42).
 const SECRETSTREAM_CHUNK_BYTES: usize = 8 * 1024;
 
+/// What `encrypt`/`decrypt` derive the stream key from (T-262, `docs/DECISIONS.md` D-219).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Credential {
+    /// `--key`: a `keygen` key file.
+    Key(PathBuf),
+    /// `--passphrase-file`.
+    PassphraseFile(PathBuf),
+    /// Asked on the terminal: `encrypt --passphrase`, or `decrypt` with neither flag.
+    PassphraseTerminal,
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct SecretstreamArgs {
-    pub key_path: PathBuf,
+    pub credential: Credential,
     pub in_path: Source,
     pub out_path: Sink,
     /// Replace an existing output (T-258, D-214).
     pub force: bool,
 }
 
-/// Parses `encrypt`/`decrypt`'s flags (`--key`/`--in`/`--out`, all required). No `--nonce`/`--tag`/
-/// `--aad`/`--variant` - `dstu_core::crypto_secretstream` (D-68) already removed every one of those
-/// knobs: a single fixed construction, an internally-generated header, no caller-facing AAD, and
-/// one chunked output stream, so there is nothing left here for a CLI flag to expose.
+/// Parses `encrypt`'s flags: exactly one of `--key`/`--passphrase`/`--passphrase-file`, plus
+/// `--in`/`--out`. No `--nonce`/`--tag`/`--aad`/`--variant` - `dstu_core::crypto_secretstream`
+/// (D-68) already removed every one of those knobs, and the Argon2 cost is fixed too (D-219).
 ///
 /// # Errors
 ///
-/// Returns [`CliError::MissingFlag`] or [`CliError::UnknownFlag`].
-pub fn parse_secretstream_args(args: &[String]) -> Result<SecretstreamArgs, CliError> {
-    let scanner = ArgScanner::scan(args, &["--key", "--in", "--out"], &["--force"])?;
-    let key_path = scanner.path("--key")?;
+/// [`CliError::MissingOneOf`], [`CliError::ExclusiveFlags`], [`CliError::MissingFlag`],
+/// [`CliError::UnknownFlag`] and the other [`ArgScanner`] errors.
+pub fn parse_encrypt_args(args: &[String]) -> Result<SecretstreamArgs, CliError> {
+    let scanner = ArgScanner::scan(
+        args,
+        &["--key", "--passphrase-file", "--in", "--out"],
+        &["--passphrase", "--force"],
+    )?;
+    let credential = match (
+        scanner.path_opt("--key")?,
+        scanner.bool_flag("--passphrase"),
+        scanner.path_opt("--passphrase-file")?,
+    ) {
+        (Some(key), false, None) => Credential::Key(key),
+        (None, true, None) => Credential::PassphraseTerminal,
+        (None, false, Some(file)) => Credential::PassphraseFile(file),
+        (None, false, None) => return Err(CliError::MissingOneOf("key", "passphrase")),
+        (Some(_), true, _) => return Err(CliError::ExclusiveFlags("key", "passphrase")),
+        (Some(_), false, Some(_)) => {
+            return Err(CliError::ExclusiveFlags("key", "passphrase-file"))
+        }
+        (None, true, Some(_)) => {
+            return Err(CliError::ExclusiveFlags("passphrase", "passphrase-file"))
+        }
+    };
+    secretstream_args(&scanner, credential)
+}
+
+/// Parses `decrypt`'s flags: `--key` or `--passphrase-file` or neither (the terminal is asked if
+/// `--in` turns out to be a passphrase file), plus `--in`/`--out`.
+///
+/// # Errors
+///
+/// [`CliError::PassphraseFlagOnDecrypt`], [`CliError::ExclusiveFlags`] and the other
+/// [`ArgScanner`] errors.
+pub fn parse_decrypt_args(args: &[String]) -> Result<SecretstreamArgs, CliError> {
+    let scanner = ArgScanner::scan(
+        args,
+        &["--key", "--passphrase-file", "--in", "--out"],
+        &["--passphrase", "--force"],
+    )?;
+    if scanner.bool_flag("--passphrase") {
+        return Err(CliError::PassphraseFlagOnDecrypt);
+    }
+    let credential = match (
+        scanner.path_opt("--key")?,
+        scanner.path_opt("--passphrase-file")?,
+    ) {
+        (Some(key), None) => Credential::Key(key),
+        (None, Some(file)) => Credential::PassphraseFile(file),
+        (None, None) => Credential::PassphraseTerminal,
+        (Some(_), Some(_)) => return Err(CliError::ExclusiveFlags("key", "passphrase-file")),
+    };
+    secretstream_args(&scanner, credential)
+}
+
+fn secretstream_args(
+    scanner: &ArgScanner,
+    credential: Credential,
+) -> Result<SecretstreamArgs, CliError> {
     let in_path = scanner.input("--in")?;
     let (out_path, force) = scanner.output_and_force()?;
     Ok(SecretstreamArgs {
-        key_path,
+        credential,
         in_path,
         out_path,
         force,
@@ -2195,8 +2370,15 @@ impl Source {
     /// Opens the input, with a progress line on stderr for a long read (T-261, D-218); nothing is
     /// read yet. The line is gone once the reader is dropped.
     fn open(&self) -> Result<Box<dyn std::io::Read>, CliError> {
+        let (reader, total) = self.open_sized()?;
+        Ok(progress::wrap(reader, total))
+    }
+
+    /// Opens the input and returns its size when known, for a caller that starts the progress line
+    /// itself later (`decrypt`, after a passphrase prompt).
+    fn open_sized(&self) -> Result<(Box<dyn std::io::Read>, Option<u64>), CliError> {
         match self {
-            Source::Stdin => Ok(progress::wrap(Box::new(std::io::stdin().lock()), None)),
+            Source::Stdin => Ok((Box::new(std::io::stdin().lock()), None)),
             Source::File(path) => {
                 let file = std::fs::File::open(path).map_err(|e| self.io_error(&e))?;
                 // A FIFO or device reports no useful length: counted like stdin.
@@ -2205,7 +2387,7 @@ impl Source {
                     .ok()
                     .filter(std::fs::Metadata::is_file)
                     .map(|m| m.len());
-                Ok(progress::wrap(Box::new(file), total))
+                Ok((Box::new(file), total))
             }
         }
     }
@@ -2246,6 +2428,39 @@ impl Sink {
             Sink::Stdout => Ok(()),
             Sink::File(path) => check_outputs(&[("--out", path)], keys),
         }
+    }
+
+    /// The refusals of [`Output::create`], checked without creating anything, for a command that
+    /// asks for a passphrase before reserving its output (D-219): nobody types a passphrase only
+    /// to hear that `--out` exists. `Output::create` still decides for real afterwards.
+    ///
+    /// # Errors
+    ///
+    /// [`CliError::BinaryToTerminal`], [`CliError::OutputExists`], [`CliError::OutputIsKeyFile`],
+    /// [`CliError::OutputUncheckable`] or [`CliError::Io`] for a directory.
+    fn precheck(&self, input: &Source, force: bool) -> Result<(), CliError> {
+        use std::io::IsTerminal;
+        let path = match self {
+            Sink::Stdout => return refuse_binary_to_terminal(std::io::stdout().is_terminal()),
+            Sink::File(path) => path,
+        };
+        if force {
+            return refuse_key_file(path);
+        }
+        if std::fs::symlink_metadata(path).is_err() {
+            return Ok(());
+        }
+        if path.is_dir() {
+            return Err(CliError::Io {
+                path: path.clone(),
+                message: "is a directory".to_string(),
+            });
+        }
+        refuse_key_file(path)?;
+        Err(CliError::OutputExists {
+            path: path.clone(),
+            same_as_input: input.path().is_some_and(|input| same_file(path, input)),
+        })
     }
 }
 
@@ -2546,7 +2761,95 @@ fn write_secretstream_file(
     Ok(())
 }
 
-/// Decrypts `source` into `out` using [`dstu_core::crypto_secretstream::PullState`], writing each
+/// The stream key `encrypt`/`decrypt` use, once `--key` or `--passphrase-file` is read.
+enum StreamSecret {
+    Key(dstu_core::crypto_secretstream::Key),
+    /// `None`: ask on the terminal when the passphrase is needed.
+    Passphrase(Option<zeroize::Zeroizing<Vec<u8>>>),
+}
+
+/// Writes `encrypt`'s output: for a passphrase, the D-219 header first and the stream under the
+/// Argon2id-derived key. `--in` is opened before the terminal is asked, so a missing input costs
+/// no typing, and before anything is read, so no progress line is drawn over the prompt. The
+/// output is reserved (`create`) only after the key exists: a Ctrl-C at the prompt kills the
+/// process without `Drop`, and would otherwise leave the reserved `--out` and its temp file
+/// behind (D-219); [`Sink::precheck`] has already refused an output `create` would refuse.
+fn run_secretstream_encrypt(
+    secret: StreamSecret,
+    source: &Source,
+    create: impl FnOnce() -> Result<Output, CliError>,
+) -> Result<(), CliError> {
+    let mut input = source.open()?;
+    let (key, header) = match secret {
+        StreamSecret::Key(key) => (key, None),
+        StreamSecret::Passphrase(given) => {
+            let phrase = match given {
+                Some(phrase) => phrase,
+                None => passphrase::from_terminal(true)?,
+            };
+            let mut salt = [0u8; dstu_core::crypto_pwhash::SALT_BYTES];
+            dstu_core::randombytes::randombytes_buf(&mut salt)
+                .map_err(|e| CliError::Random(e.to_string()))?;
+            let key = passphrase::stream_key(&phrase, &salt)?;
+            (key, Some(passphrase::encode_header(&salt)))
+        }
+    };
+    let mut out = create()?;
+    let result = header
+        .map_or(Ok(()), |header| out.write_all(&header))
+        .and_then(|()| write_secretstream_file(&key, &mut input, source, &mut out));
+    out.finish(result)
+}
+
+/// Reads `--in`'s first byte to tell a passphrase file (D-219) from a key-encrypted stream, then
+/// decrypts it. The header is read from the bare input and the progress line (T-261) starts only
+/// after the passphrase is known, so it never draws over the prompt; the output is reserved only
+/// then too (see [`run_secretstream_encrypt`]). A failed tag under a passphrase is reported as a
+/// wrong passphrase.
+fn run_secretstream_decrypt(
+    secret: StreamSecret,
+    source: &Source,
+    create: impl FnOnce() -> Result<Output, CliError>,
+) -> Result<(), CliError> {
+    use dstu_core::crypto_secretstream::FORMAT_VERSION;
+
+    let (mut raw, total) = source.open_sized()?;
+    let mut first = [0u8; 1];
+    read_exact_or_truncated(&mut raw, &mut first, source)?;
+    let (key, by_passphrase) = match (first[0], secret) {
+        (passphrase::CONTAINER_TYPE, StreamSecret::Key(_)) => {
+            return Err(CliError::DecryptKeyForPassphraseFile)
+        }
+        (passphrase::CONTAINER_TYPE, StreamSecret::Passphrase(given)) => {
+            let mut header = [0u8; passphrase::HEADER_LEN];
+            header[0] = first[0];
+            read_exact_or_truncated(&mut raw, &mut header[1..], source)?;
+            let salt = passphrase::parse_header(&header)?;
+            let phrase = match given {
+                Some(phrase) => phrase,
+                None => passphrase::from_terminal(false)?,
+            };
+            let key = passphrase::stream_key(&phrase, &salt)?;
+            read_exact_or_truncated(&mut raw, &mut first, source)?;
+            (key, true)
+        }
+        (FORMAT_VERSION, StreamSecret::Passphrase(_)) => return Err(CliError::DecryptNeedsKey),
+        (other, StreamSecret::Passphrase(_)) => {
+            return Err(CliError::SecretstreamUnsupportedVersion(other))
+        }
+        (_, StreamSecret::Key(key)) => (key, false),
+    };
+    let mut out = create()?;
+    let mut input = progress::wrap(raw, total);
+    let result = match decrypt_stream_records(&key, first[0], &mut input, source, &mut out) {
+        Err(CliError::SecretstreamVerifyFailed) if by_passphrase => Err(CliError::PassphraseWrong),
+        other => other,
+    };
+    out.finish(result)
+}
+
+/// Decrypts a stream file (D-208) whose version byte `version` was already read from `in_file`,
+/// using [`dstu_core::crypto_secretstream::PullState`], writing each
 /// chunk only after its tag verifies (a file `--out` is renamed into place only on success; stdout
 /// cannot be taken back, see [`Output::finish`]). It checks the format version
 /// byte first, and that every non-`Final` record is exactly [`SECRETSTREAM_CHUNK_BYTES`] long
@@ -2554,28 +2857,25 @@ fn write_secretstream_file(
 /// [`Tag::Final`](dstu_core::crypto_secretstream::Tag::Final) chunk verifies, then checks for
 /// trailing bytes - both an early EOF (no `Final` ever seen, via [`read_exact_or_truncated`]) and
 /// leftover bytes after `Final` are rejected, not silently accepted.
-fn run_secretstream_decrypt(
+fn decrypt_stream_records(
     key: &dstu_core::crypto_secretstream::Key,
+    version: u8,
+    in_file: &mut impl std::io::Read,
     source: &Source,
     out: &mut Output,
 ) -> Result<(), CliError> {
     use dstu_core::crypto_secretstream::{PullState, Tag};
-    use std::io::Read;
 
-    let mut in_file = source.open()?;
-
-    let mut version = [0u8; 1];
-    read_exact_or_truncated(&mut in_file, &mut version, source)?;
-    if version[0] != dstu_core::crypto_secretstream::FORMAT_VERSION {
-        return Err(CliError::SecretstreamUnsupportedVersion(version[0]));
+    if version != dstu_core::crypto_secretstream::FORMAT_VERSION {
+        return Err(CliError::SecretstreamUnsupportedVersion(version));
     }
     let mut header = [0u8; SECRETSTREAM_HEADER_LEN];
-    read_exact_or_truncated(&mut in_file, &mut header, source)?;
+    read_exact_or_truncated(in_file, &mut header, source)?;
     let mut pull = PullState::init(key, &header);
 
     loop {
         let mut prefix = [0u8; 5];
-        read_exact_or_truncated(&mut in_file, &mut prefix, source)?;
+        read_exact_or_truncated(in_file, &mut prefix, source)?;
         let tag_byte = prefix[0];
         let chunk_len = u32::from_le_bytes([prefix[1], prefix[2], prefix[3], prefix[4]]) as usize;
         if chunk_len > SECRETSTREAM_CHUNK_BYTES {
@@ -2589,9 +2889,9 @@ fn run_secretstream_decrypt(
         }
 
         let mut ciphertext = vec![0u8; chunk_len];
-        read_exact_or_truncated(&mut in_file, &mut ciphertext, source)?;
+        read_exact_or_truncated(in_file, &mut ciphertext, source)?;
         let mut auth_tag = [0u8; SECRETSTREAM_TAG_LEN];
-        read_exact_or_truncated(&mut in_file, &mut auth_tag, source)?;
+        read_exact_or_truncated(in_file, &mut auth_tag, source)?;
 
         let mut plaintext = vec![0u8; chunk_len];
         let tag = pull.pull(tag_byte, &ciphertext, &auth_tag, &mut plaintext)?;
@@ -2638,21 +2938,30 @@ fn run_secretstream_decrypt(
 /// path; with `--out -` an error after output was printed is [`CliError::StdoutIncomplete`].
 pub fn run_secretstream_command(decrypt: bool, args: &SecretstreamArgs) -> Result<(), CliError> {
     let command = if decrypt { "decrypt" } else { "encrypt" };
-    let (_, key_bytes) = keyfile::read_key(&args.key_path, command, &[KeyKind::Symmetric])?;
-    let mut key_arr = zeroize::Zeroizing::new([0u8; SECRETSTREAM_KEY_LEN]);
-    key_arr.copy_from_slice(&key_bytes);
-    let key = dstu_core::crypto_secretstream::Key::from_bytes(*key_arr);
-
-    args.out_path.check_against(&[("--key", &args.key_path)])?;
-    let mut out = Output::create(&args.out_path, &args.in_path, args.force)?;
-    let result = if decrypt {
-        run_secretstream_decrypt(&key, &args.in_path, &mut out)
-    } else {
-        args.in_path.open().and_then(|mut input| {
-            write_secretstream_file(&key, &mut input, &args.in_path, &mut out)
-        })
+    let (secret, named_inputs): (_, Vec<(&'static str, &std::path::Path)>) = match &args.credential
+    {
+        Credential::Key(path) => {
+            let (_, key_bytes) = keyfile::read_key(path, command, &[KeyKind::Symmetric])?;
+            let mut key_arr = zeroize::Zeroizing::new([0u8; SECRETSTREAM_KEY_LEN]);
+            key_arr.copy_from_slice(&key_bytes);
+            let key = dstu_core::crypto_secretstream::Key::from_bytes(*key_arr);
+            (StreamSecret::Key(key), vec![("--key", path.as_path())])
+        }
+        Credential::PassphraseFile(path) => (
+            StreamSecret::Passphrase(Some(passphrase::read_file(path)?)),
+            vec![("--passphrase-file", path.as_path())],
+        ),
+        Credential::PassphraseTerminal => (StreamSecret::Passphrase(None), Vec::new()),
     };
-    out.finish(result)
+
+    args.out_path.check_against(&named_inputs)?;
+    args.out_path.precheck(&args.in_path, args.force)?;
+    let create = || Output::create(&args.out_path, &args.in_path, args.force);
+    if decrypt {
+        run_secretstream_decrypt(secret, &args.in_path, create)
+    } else {
+        run_secretstream_encrypt(secret, &args.in_path, create)
+    }
 }
 
 /// The two hash/key sizes shared by Kupyna (output width) and Strumok (key width) - `"256"`/
@@ -4251,8 +4560,9 @@ USAGE:
 
 EVERYDAY COMMANDS:
     keygen          Generate a fresh random key for `encrypt`/`decrypt`.
-    encrypt         Encrypt a file of any size with a `keygen` key (authenticated, streamed).
-    decrypt         Decrypt a file produced by `encrypt`.
+    encrypt         Encrypt a file of any size with a `keygen` key or a passphrase (authenticated,
+                    streamed).
+    decrypt         Decrypt a file produced by `encrypt` (asks for the passphrase if it needs one).
     hash            Print a file's Kupyna-256 digest, or --check a list of them.
     sign-keygen     Generate a fresh signing key (DSTU 4145, m=163).
     sign-keygen257  Generate a fresh signing key (DSTU 4145, m=257, what Diia signatures use).
@@ -4280,7 +4590,10 @@ LOWER-LEVEL COMMANDS (benchmarking and interop with other DSTU implementations):
 FILE FORMATS (byte layouts, with field sizes in bytes: see docs/CLI.md 'File formats'):
     encrypt         version (1) || header (32), then records:
                     chunk tag (1) || length (4, LE) || ciphertext || auth tag (16)
-    box-seal        version (1) || KEM ciphertext (128 / 256) || header (32) || ciphertext || auth tag (16)
+    encrypt with a passphrase
+                    0x50 || 0x01 || 0x01 || Argon2id m KiB (4, LE) || t (4, LE) || p (1)
+                    || salt (16), then the same stream as above
+    box-seal       version (1) || KEM ciphertext (128 / 256) || header (32) || ciphertext || auth tag (16)
     key files       one text line `<kind>:<key hex>:<check hex>`, see docs/CLI.md 'Key files';
                     the lower-level commands above take raw key bytes instead
     kalyna-gcm/-gmac write raw ciphertext/tag files with no container and no format version, so
@@ -4337,56 +4650,76 @@ EXAMPLE:
 ";
 
 const ENCRYPT_HELP: &str = "\
-uacrypt encrypt - encrypt a file of any size with a `keygen` key.
+uacrypt encrypt - encrypt a file of any size with a `keygen` key or a passphrase.
 
 Streamed in bounded memory chunks (no whole-file buffering) and authenticated: `decrypt` detects
 any tampering with the output rather than silently returning wrong plaintext. Built on
-dstu_core::crypto_secretstream.
+dstu_core::crypto_secretstream; a passphrase is turned into the key with Argon2id
+(dstu_core::crypto_pwhash, 256 MiB of memory and about a second, on purpose - it makes guessing
+passphrases slow).
 
 OUTPUT FORMAT:
     version (1, currently 2) || header (32) || records, each: chunk tag (1) || ciphertext
     length (4, little-endian) || ciphertext || auth tag (16). Plaintext is split into 8192-byte
     chunks: every record but the last is exactly 8192 bytes, and the last is tagged final, so a
-    truncated file is rejected. See docs/CLI.md 'File formats'.
+    truncated file is rejected. With a passphrase, 28 bytes come first: 0x50 0x01 0x01, the
+    Argon2id costs and a random salt. See docs/CLI.md 'File formats'.
 
 USAGE:
     uacrypt encrypt --key <path> --in <path> --out <path> [--force]
+    uacrypt encrypt --passphrase --in <path> --out <path> [--force]
+    uacrypt encrypt --passphrase-file <path> --in <path> --out <path> [--force]
 
 FLAGS:
-    --key <path>    a key file made by `uacrypt keygen` (not a passphrase)
-    --in <path>     file to encrypt, or - for stdin
-    --out <path>    where to write the encrypted output, or - for stdout (not a terminal)
-    --force         replace --out if it already exists (without it: refused; never a key file)
+    --key <path>              a key file made by `uacrypt keygen`
+    --passphrase              ask for a passphrase on the terminal, twice, without echo
+    --passphrase-file <path>  read the passphrase from the first line of a file (for scripts)
+    --in <path>               file to encrypt, or - for stdin
+    --out <path>              where to write the encrypted output, or - for stdout (not a terminal)
+    --force                   replace --out if it already exists (without it: refused; never a
+                              key file)
 
 EXAMPLE:
     uacrypt encrypt --key key.bin --in report.pdf --out report.pdf.enc
+    uacrypt encrypt --passphrase --in report.pdf --out report.pdf.enc
     tar c docs | uacrypt encrypt --key key.bin --in - --out docs.tar.enc
 
 Notes:
+    - Give exactly one of --key, --passphrase, --passphrase-file.
     - Make a key with `uacrypt keygen --out key.bin`; a raw key file from uacrypt 0.4 or older
       can be converted with `uacrypt key-import --kind symmetric`.
+    - A passphrase is used byte for byte as UTF-8: spaces count, and a letter typed as a different
+      Unicode form (e.g. a precomposed vs a decomposed й) is a different passphrase. A passphrase
+      file may end with one newline and may start with a UTF-8 BOM; both are dropped, nothing else.
+    - The terminal prompt needs stderr to be a terminal. In Git Bash's mintty window use
+      `winpty uacrypt ...` or --passphrase-file.
     - --in and --out may be the same path (encrypts in place) with --force; --out is only
       replaced after the whole file is written, so a failure never leaves a partial --out file.
 ";
 
 const DECRYPT_HELP: &str = "\
-uacrypt decrypt - decrypt a file produced by `encrypt`, using the same key.
+uacrypt decrypt - decrypt a file produced by `encrypt`, using the same key or passphrase.
 
-Streamed in bounded memory chunks and authenticated: a wrong key or a tampered/truncated file is
-rejected with an error before anything is written to an --out file, rather than producing wrong
-plaintext.
+Streamed in bounded memory chunks and authenticated: a wrong key or passphrase, or a
+tampered/truncated file, is rejected with an error before anything is written to an --out file,
+rather than producing wrong plaintext. Whether --in needs a key or a passphrase is read from its
+first byte; for a passphrase file without --passphrase-file, the terminal is asked once.
 
 USAGE:
     uacrypt decrypt --key <path> --in <path> --out <path> [--force]
+    uacrypt decrypt [--passphrase-file <path>] --in <path> --out <path> [--force]
 
 FLAGS:
-    --key <path>    the same key file used for `encrypt`
-    --in <path>     the encrypted file (must be real `encrypt` output), or - for stdin
-    --out <path>    where to write the decrypted output, or - for stdout (not a terminal)
-    --force         replace --out if it already exists (without it: refused; never a key file)
+    --key <path>              the same key file used for `encrypt`
+    --passphrase-file <path>  read the passphrase from the first line of a file (for scripts)
+    --in <path>               the encrypted file (must be real `encrypt` output), or - for stdin
+    --out <path>              where to write the decrypted output, or - for stdout (not a terminal)
+    --force                   replace --out if it already exists (without it: refused; never a
+                              key file)
 
 EXAMPLE:
     uacrypt decrypt --key key.bin --in report.pdf.enc --out report.pdf
+    uacrypt decrypt --in report.pdf.enc --out report.pdf        (asks for the passphrase)
     uacrypt decrypt --key key.bin --in docs.tar.enc --out - | tar x
 
 With --out - each chunk is printed once its tag verifies, so a file cut short or tampered with
@@ -5198,10 +5531,10 @@ pub fn run(args: &[String]) -> Result<(), CliError> {
         Some("keygen") => {
             dispatch_simple("keygen", &args[1..], parse_keygen_args, run_keygen_command)
         }
-        Some("encrypt") => dispatch_simple("encrypt", &args[1..], parse_secretstream_args, |a| {
+        Some("encrypt") => dispatch_simple("encrypt", &args[1..], parse_encrypt_args, |a| {
             run_secretstream_command(false, a)
         }),
-        Some("decrypt") => dispatch_simple("decrypt", &args[1..], parse_secretstream_args, |a| {
+        Some("decrypt") => dispatch_simple("decrypt", &args[1..], parse_decrypt_args, |a| {
             run_secretstream_command(true, a)
         }),
         Some(cmd @ ("sign-keygen" | "sign-keygen257" | "sign-pubkey" | "sign" | "verify")) => {
@@ -5735,14 +6068,14 @@ mod tests {
         // the length.
         std::fs::write(dir.file("msg.bin"), b"keygen output must actually work").expect("write");
         let enc_args = SecretstreamArgs {
-            key_path: dir.file("key.bin"),
+            credential: Credential::Key(dir.file("key.bin")),
             in_path: Source::File(dir.file("msg.bin")),
             out_path: Sink::File(dir.file("msg.enc")),
             force: false,
         };
         run_secretstream_command(false, &enc_args).expect("encrypt with generated key");
         let dec_args = SecretstreamArgs {
-            key_path: dir.file("key.bin"),
+            credential: Credential::Key(dir.file("key.bin")),
             in_path: Source::File(dir.file("msg.enc")),
             out_path: Sink::File(dir.file("msg.dec")),
             force: false,
@@ -6065,7 +6398,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_secretstream_args_happy_path() {
+    fn parse_encrypt_args_happy_path() {
         let args = vec![
             "--key".to_string(),
             "key.bin".to_string(),
@@ -6075,9 +6408,9 @@ mod tests {
             "sealed.bin".to_string(),
         ];
         assert_eq!(
-            parse_secretstream_args(&args),
+            parse_encrypt_args(&args),
             Ok(SecretstreamArgs {
-                key_path: PathBuf::from("key.bin"),
+                credential: Credential::Key(PathBuf::from("key.bin")),
                 in_path: Source::File(PathBuf::from("msg.bin")),
                 out_path: Sink::File(PathBuf::from("sealed.bin")),
                 force: false,
@@ -6086,17 +6419,17 @@ mod tests {
     }
 
     #[test]
-    fn parse_secretstream_args_requires_key_in_out() {
+    fn parse_encrypt_args_requires_a_credential_in_out() {
         assert_eq!(
-            parse_secretstream_args(&["--in".to_string(), "m".to_string()]),
-            Err(CliError::MissingFlag("key"))
+            parse_encrypt_args(&["--in".to_string(), "m".to_string()]),
+            Err(CliError::MissingOneOf("key", "passphrase"))
         );
         assert_eq!(
-            parse_secretstream_args(&["--key".to_string(), "k".to_string()]),
+            parse_encrypt_args(&["--key".to_string(), "k".to_string()]),
             Err(CliError::MissingFlag("in"))
         );
         assert_eq!(
-            parse_secretstream_args(&[
+            parse_encrypt_args(&[
                 "--key".to_string(),
                 "k".to_string(),
                 "--in".to_string(),
@@ -6107,9 +6440,9 @@ mod tests {
     }
 
     #[test]
-    fn parse_secretstream_args_rejects_unknown_flag() {
+    fn parse_encrypt_args_rejects_unknown_flag() {
         assert_eq!(
-            parse_secretstream_args(&["--nonce".to_string(), "n.bin".to_string()]),
+            parse_encrypt_args(&["--nonce".to_string(), "n.bin".to_string()]),
             Err(CliError::UnknownFlag {
                 flag: "--nonce".to_string(),
                 suggestion: None,
@@ -6126,7 +6459,7 @@ mod tests {
         std::fs::write(dir.file("in.bin"), &plaintext).expect("write input");
 
         let encrypt_args = SecretstreamArgs {
-            key_path: dir.file("key.bin"),
+            credential: Credential::Key(dir.file("key.bin")),
             in_path: Source::File(dir.file("in.bin")),
             out_path: Sink::File(dir.file("sealed.bin")),
             force: false,
@@ -6151,7 +6484,7 @@ mod tests {
         std::fs::write(dir.file("in.bin"), &plaintext).expect("write input");
 
         let base_args = SecretstreamArgs {
-            key_path: dir.file("key.bin"),
+            credential: Credential::Key(dir.file("key.bin")),
             in_path: Source::File(dir.file("in.bin")),
             out_path: Sink::File(dir.file("sealed1.bin")),
             force: false,
@@ -6182,7 +6515,7 @@ mod tests {
         std::fs::write(dir.file("in.bin"), &plaintext).expect("write input");
 
         let encrypt_args = SecretstreamArgs {
-            key_path: dir.file("key.bin"),
+            credential: Credential::Key(dir.file("key.bin")),
             in_path: Source::File(dir.file("in.bin")),
             out_path: Sink::File(dir.file("sealed.bin")),
             force: false,
@@ -6218,7 +6551,7 @@ mod tests {
         std::fs::write(dir.file("in.bin"), &large).expect("write input");
 
         let encrypt_args = SecretstreamArgs {
-            key_path: dir.file("key.bin"),
+            credential: Credential::Key(dir.file("key.bin")),
             in_path: Source::File(dir.file("in.bin")),
             out_path: Sink::File(dir.file("sealed.bin")),
             force: false,
@@ -6226,7 +6559,7 @@ mod tests {
         run_secretstream_command(false, &encrypt_args).expect("encrypt should succeed");
 
         let decrypt_args = SecretstreamArgs {
-            key_path: dir.file("key.bin"),
+            credential: Credential::Key(dir.file("key.bin")),
             in_path: Source::File(dir.file("sealed.bin")),
             out_path: Sink::File(dir.file("out.bin")),
             force: false,
@@ -6247,7 +6580,7 @@ mod tests {
         std::fs::write(dir.file("in.bin"), []).expect("write empty input");
 
         let encrypt_args = SecretstreamArgs {
-            key_path: dir.file("key.bin"),
+            credential: Credential::Key(dir.file("key.bin")),
             in_path: Source::File(dir.file("in.bin")),
             out_path: Sink::File(dir.file("sealed.bin")),
             force: false,
@@ -6255,7 +6588,7 @@ mod tests {
         run_secretstream_command(false, &encrypt_args).expect("encrypt should succeed");
 
         let decrypt_args = SecretstreamArgs {
-            key_path: dir.file("key.bin"),
+            credential: Credential::Key(dir.file("key.bin")),
             in_path: Source::File(dir.file("sealed.bin")),
             out_path: Sink::File(dir.file("out.bin")),
             force: false,
@@ -6274,7 +6607,7 @@ mod tests {
         std::fs::write(dir.file("in.bin"), b"data").expect("write input");
 
         let args = SecretstreamArgs {
-            key_path: dir.file("key.bin"),
+            credential: Credential::Key(dir.file("key.bin")),
             in_path: Source::File(dir.file("in.bin")),
             out_path: Sink::File(dir.file("out.bin")),
             force: false,
@@ -6294,7 +6627,7 @@ mod tests {
         write_typed_key(&dir.file("key.bin"), KeyKind::Symmetric, &[0u8; 32]);
 
         let args = SecretstreamArgs {
-            key_path: dir.file("key.bin"),
+            credential: Credential::Key(dir.file("key.bin")),
             in_path: Source::File(dir.file("does_not_exist.bin")),
             out_path: Sink::File(dir.file("out.bin")),
             force: false,
@@ -6315,7 +6648,7 @@ mod tests {
         std::fs::create_dir_all(dir.file("a_directory")).expect("create sub-directory");
 
         let args = SecretstreamArgs {
-            key_path: dir.file("key.bin"),
+            credential: Credential::Key(dir.file("key.bin")),
             in_path: Source::File(dir.file("a_directory")),
             out_path: Sink::File(dir.file("out.bin")),
             force: false,
@@ -6341,7 +6674,7 @@ mod tests {
         std::fs::write(dir.file("data.bin"), &plaintext).expect("write input");
 
         let refused = SecretstreamArgs {
-            key_path: dir.file("key.bin"),
+            credential: Credential::Key(dir.file("key.bin")),
             in_path: Source::File(dir.file("data.bin")),
             out_path: Sink::File(dir.file("data.bin")),
             force: false,
@@ -6388,7 +6721,7 @@ mod tests {
         std::fs::write(dir.file("garbage.bin"), [0x99u8; 64]).expect("write garbage");
 
         let args = SecretstreamArgs {
-            key_path: dir.file("key.bin"),
+            credential: Credential::Key(dir.file("key.bin")),
             in_path: Source::File(dir.file("garbage.bin")),
             out_path: Sink::File(dir.file("out.bin")),
             force: false,
@@ -6413,7 +6746,7 @@ mod tests {
         std::fs::write(dir.file("in.bin"), &plaintext).expect("write input");
 
         let encrypt_args = SecretstreamArgs {
-            key_path: dir.file("key.bin"),
+            credential: Credential::Key(dir.file("key.bin")),
             in_path: Source::File(dir.file("in.bin")),
             out_path: Sink::File(dir.file("sealed.bin")),
             force: false,
@@ -6425,7 +6758,7 @@ mod tests {
         std::fs::write(dir.file("truncated.bin"), cut).expect("write truncated output");
 
         let decrypt_args = SecretstreamArgs {
-            key_path: dir.file("key.bin"),
+            credential: Credential::Key(dir.file("key.bin")),
             in_path: Source::File(dir.file("truncated.bin")),
             out_path: Sink::File(dir.file("out.bin")),
             force: false,
@@ -6448,7 +6781,7 @@ mod tests {
         std::fs::write(dir.file("in.bin"), &plaintext).expect("write input");
 
         let encrypt_args = SecretstreamArgs {
-            key_path: dir.file("key.bin"),
+            credential: Credential::Key(dir.file("key.bin")),
             in_path: Source::File(dir.file("in.bin")),
             out_path: Sink::File(dir.file("sealed.bin")),
             force: false,
@@ -6460,7 +6793,7 @@ mod tests {
         std::fs::write(dir.file("extended.bin"), &extended).expect("write extended output");
 
         let decrypt_args = SecretstreamArgs {
-            key_path: dir.file("key.bin"),
+            credential: Credential::Key(dir.file("key.bin")),
             in_path: Source::File(dir.file("extended.bin")),
             out_path: Sink::File(dir.file("out.bin")),
             force: false,
@@ -9071,14 +9404,14 @@ mod tests {
         write_typed_key(&dir.file("key.bin"), KeyKind::Symmetric, &[0x42u8; 32]);
         std::fs::write(dir.file("pt.bin"), b"secret plaintext").expect("write input");
         let enc = SecretstreamArgs {
-            key_path: dir.file("key.bin"),
+            credential: Credential::Key(dir.file("key.bin")),
             in_path: Source::File(dir.file("pt.bin")),
             out_path: Sink::File(dir.file("ct.bin")),
             force: false,
         };
         run_secretstream_command(false, &enc).expect("encrypt");
         let dec = SecretstreamArgs {
-            key_path: dir.file("key.bin"),
+            credential: Credential::Key(dir.file("key.bin")),
             in_path: Source::File(dir.file("ct.bin")),
             out_path: Sink::File(dir.file("out.bin")),
             force: false,

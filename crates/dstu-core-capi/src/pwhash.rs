@@ -80,7 +80,10 @@ pub unsafe extern "C" fn dstu_pwhash_hash_password(
                 DstuStatus::DSTU_OK
             }
             Err(PwHashError::Random(_)) => DstuStatus::DSTU_ERR_RANDOM,
-            Err(PwHashError::Hash(_)) => DstuStatus::DSTU_ERR_HASH_ERROR,
+            // `hash_password` never returns the `derive_key`-only variants (D-219).
+            Err(PwHashError::Hash(_) | PwHashError::OutOfMemory | PwHashError::Derive(_)) => {
+                DstuStatus::DSTU_ERR_HASH_ERROR
+            }
         }
     })
 }

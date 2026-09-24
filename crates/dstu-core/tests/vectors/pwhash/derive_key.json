@@ -1,0 +1,26 @@
+{
+  "description": "crypto_pwhash::derive_key(Strength::Moderate) = libsodium crypto_pwhash (ARGON2ID13, OPSLIMIT_MODERATE, MEMLIMIT_MODERATE, 32-byte output)",
+  "source": "PyNaCl 1.6.2 (bundled libsodium), crypto_pwhash_alg",
+  "opslimit": 3,
+  "memlimit_bytes": 268435456,
+  "cases": [
+    {
+      "name": "ascii",
+      "password_hex": "636f727265637420686f727365206261747465727920737461706c65",
+      "salt_hex": "000102030405060708090a0b0c0d0e0f",
+      "key_hex": "aad608b5866cef907f47d5cae529ed01a91301c92c5d5fef46e1a65e394e5742"
+    },
+    {
+      "name": "ukrainian_utf8",
+      "password_hex": "d0bfd0b0d180d0bed0bbd18c20d197d0b6d0b0d0ba20d291d0b0d0bdd0bed0ba",
+      "salt_hex": "f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff",
+      "key_hex": "8386851ecfee674408d7a170b5436498b64f8170f36b72ae419d82a23893ebce"
+    },
+    {
+      "name": "empty_password",
+      "password_hex": "",
+      "salt_hex": "00000000000000000000000000000000",
+      "key_hex": "f339dbbdd197d3c07c5d26043eecc7e512933f9453344dfb75c19fd139f2fcc3"
+    }
+  ]
+}

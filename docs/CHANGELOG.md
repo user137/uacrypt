@@ -92,6 +92,27 @@ All notable changes to this project are documented in this file. Format follows
   10 redraws a second, erased before the result or error is printed. No flag, no new dependency;
   with stderr redirected or piped nothing changes.
 
+### Added
+
+- **Passphrase encryption** (T-262, `docs/DECISIONS.md` D-219), like `age -p`:
+  `encrypt --passphrase` asks twice on the terminal without echo, `encrypt --passphrase-file
+  <path>` reads the first line of a file (for scripts); `decrypt` recognises a passphrase file by
+  its first byte and asks once, or takes `--passphrase-file`. Argon2id with libsodium's
+  `MODERATE` limits (256 MiB, t=3, about a second per run); a 28-byte header (`0x50`, versions,
+  costs, salt) in front of the usual stream. `decrypt` names the other kind when given a key for
+  a passphrase file or the reverse. New dependency: `rpassword` 7.5.4 (+ `rtoolbox`), owner
+  decision P1; `uacrypt` now enables `dstu-core`'s `pwhash` feature. Library API: new
+  `Credential`, `parse_encrypt_args`/`parse_decrypt_args` replace `parse_secretstream_args`,
+  `SecretstreamArgs::key_path` becomes `credential`; new `CliError::PassphraseNoTerminal`/
+  `PassphraseMintty`/`PassphraseEmpty`/`PassphraseMismatch`/`PassphraseFileInvalid`/
+  `PassphraseFormatUnsupported`/`PassphraseParamsUnsupported`/`PassphraseWrong`/
+  `PassphraseDerive`/`DecryptNeedsKey`/`DecryptKeyForPassphraseFile`/`PassphraseFlagOnDecrypt`.
+- `dstu_core::crypto_pwhash::derive_key` (libsodium's `crypto_pwhash`: Argon2id to a 32-byte key,
+  byte-identical to libsodium, vectors in `tests/vectors/pwhash/derive_key.json`),
+  `Strength::cost`/`from_cost`, `SALT_BYTES`/`KEY_BYTES`, and `PwHashError::OutOfMemory`/`Derive`
+  (Argon2's memory is reserved fallibly; breaking for an exhaustive `match` on `PwHashError`). Not
+  in the bindings or the C ABI yet (T-269).
+
 ### Security
 
 - **Breaking wire-format change (0.4.0).** `crypto_secretbox` and `crypto_secretstream` now bind

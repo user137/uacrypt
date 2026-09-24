@@ -1,3 +1,11 @@
 [workspace]
 resolver = "2"
 members = ["crates/dstu-core", "crates/uacrypt", "crates/dstu-core-capi"]
+
+# Argon2 at `Strength::Moderate` (256 MiB, t=3) takes ~30 s per call unoptimised; debug builds and
+# tests optimise just these two crates (D-219, uacrypt passphrase tests).
+[profile.dev.package.argon2]
+opt-level = 3
+
+[profile.dev.package.blake2]
+opt-level = 3

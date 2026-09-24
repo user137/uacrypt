@@ -17,6 +17,8 @@ cargo build -p uacrypt --release
 uacrypt keygen --out key.bin
 uacrypt encrypt --key key.bin --in message.bin --out sealed.bin
 uacrypt decrypt --key key.bin --in sealed.bin --out message.bin
+uacrypt encrypt --passphrase --in message.bin --out sealed.bin   # asks twice, no echo
+uacrypt decrypt --in sealed.bin --out decrypted.bin              # asks for the passphrase
 uacrypt hash --in file.bin > file.bin.kupyna256
 uacrypt hash --check file.bin.kupyna256
 

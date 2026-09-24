@@ -128,6 +128,28 @@ and embeds it in `--out`; there is no `--nonce`/`--header` flag to supply or reu
 always reports them as a different format version; ~1 in 256 happen to start with the current
 version byte and report an authentication failure instead. Decrypt them with the release that
 wrote them, then re-encrypt.
+
+**A passphrase instead of a key file** (0.5.0, T-262, `docs/DECISIONS.md` D-219), like `age -p`:
+
+```
+uacrypt encrypt --passphrase --in report.pdf --out report.pdf.enc   # asks twice, no echo
+uacrypt decrypt --in report.pdf.enc --out report.pdf                # asks once
+uacrypt encrypt --passphrase-file pass.txt --in report.pdf --out report.pdf.enc   # scripts
+```
+
+`decrypt` tells a passphrase file from a key-encrypted one by its first byte and says which one
+it needs when given the other. The passphrase goes through Argon2id (`dstu_core::crypto_pwhash::
+derive_key`, libsodium's `crypto_pwhash` with its `MODERATE` limits: 256 MiB of memory, t=3), so
+each `encrypt` or `decrypt` with a passphrase takes about a second and 256 MiB on purpose; the
+streaming itself stays bounded as above. The prompt appears only when stderr is a terminal; with
+stderr redirected, pass `--passphrase-file`. In Git Bash's mintty window the prompt is refused
+(it would go to a hidden console): use `winpty uacrypt ...`, cmd, PowerShell or Windows Terminal,
+or `--passphrase-file`. A passphrase file holds one line; a trailing newline (`\n` or `\r\n`) and a
+leading UTF-8 BOM are dropped, nothing else, and a file longer than 1024 bytes, with a second
+line, or not UTF-8 is refused. The passphrase is used as UTF-8 bytes with no Unicode
+normalisation: a letter such as `й` typed as one precomposed character and as `и` plus a combining
+mark are different passphrases. An empty passphrase is refused.
+
 **`hash` has no such limit either** — it streams `--in` from disk in fixed-size chunks regardless of
 size, fixed to Kupyna-256 (no `--variant` choice). Since 0.5.0 it works like `sha256sum` (T-259,
 `docs/DECISIONS.md` D-215): `hash --in <path>` prints one line, `<64 hex digits>  <path>`, to
@@ -358,6 +380,7 @@ was not yet so.
 |---|---|---|
 | `keygen` | symmetric key | a key line, see [Key files](#key-files) |
 | `encrypt` | encrypted file | `version (1) \|\| header (32)`, then one or more records, each `chunk tag (1) \|\| ciphertext length (4) \|\| ciphertext \|\| auth tag (16)` |
+| `encrypt --passphrase` / `--passphrase-file` | encrypted file | `0x50 \|\| 0x01 \|\| 0x01 \|\| m_cost KiB (4) \|\| t_cost (4) \|\| p_cost (1) \|\| salt (16)`, then the `encrypt` layout above |
 | `box-keygen` / `box-keygen512` / `box-pubkey` | secret / public key | a key line each (the public key is the curve point's `x`-coordinate) |
 | `box-seal` | sealed file | `version (1) \|\| KEM ciphertext (128, or 256 for an l(p)=512 key) \|\| header (32) \|\| ciphertext \|\| auth tag (16)`: 177 or 305 bytes of overhead |
 | `sign-keygen` / `sign-keygen257` | signing key | a key line (the scalar `d`, big-endian) |
@@ -378,6 +401,17 @@ The `encrypt` record rules:
   8192, a missing final record (a truncated file) and any bytes after the final record;
 - every record's auth tag covers its position in the stream, its chunk tag and its exact length,
   so records cannot be reordered, dropped, cut or extended.
+
+The passphrase header (D-219):
+- `0x50` marks a passphrase file (a key-encrypted file starts with its version byte, `2`), then
+  the passphrase container version `1` and the KDF id `1` (Argon2id v1.3);
+- the Argon2id costs are `m_cost = 262144` KiB, `t_cost = 3`, `p_cost = 1`; `decrypt` refuses any
+  other values before running Argon2, so a changed header cannot make it allocate more memory;
+- the stream key is Argon2id(passphrase, salt) with no secret and no associated data, 32 bytes -
+  the same bytes libsodium's `crypto_pwhash` gives, so any Argon2id library can recompute it;
+- the header itself carries no tag: a changed salt gives a different key and the first record
+  fails (reported as a wrong passphrase, or a changed file); a changed marker, version, KDF id or
+  cost is refused by name.
 
 ### Key files
 

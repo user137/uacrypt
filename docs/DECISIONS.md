@@ -14482,3 +14482,140 @@ screen after; `type big.bin | uacrypt hash --in -` showed `uacrypt: 64.0 MiB rea
 only the hash line after; a truncated `decrypt` left only its error line; a 99-byte file only its
 hash line. Not yet looked at: PowerShell 7 and mintty (`IsTerminal` itself was verified on both
 for stdout in D-217).
+
+
+## D-219: T-262 - passphrase encryption for `encrypt`/`decrypt` (0.5.0)
+
+**Context.** T-262 (P1): the `age -p` equivalent. `encrypt` takes a passphrase instead of a key
+file, `decrypt` finds out from the file which one it needs. It is a new on-disk format, so it went
+through plan mode and an advisor review before code. Four forks were put to the owner with their
+consequences; the owner chose every recommendation (2026-09-24):
+- **F1 (= P1) terminal reading: `rpassword` 7.5.4**, not own code. Own code would have put the
+  first `unsafe` into `uacrypt` (termios and Windows console FFI, ~150 lines tested per OS).
+  `rpassword` adds `rtoolbox` 0.0.6 (same maintainer, pinned `0.0`, so it floats across breaking
+  releases - re-check on `cargo update`) and moves `windows-sys` 0.61 from dev-only into the
+  Windows production tree; `libc` was already there. Both Apache-2.0; `cargo deny`/`cargo audit`
+  clean. Supply-chain rows in `docs/SECURITY.md`.
+- **F2 `--passphrase-file <path>`** for scripts and tests, besides the terminal (age has only the
+  terminal).
+- **F3 cost: libsodium `MODERATE`** (Argon2id, 256 MiB, t=3, one lane), the same memory as age's
+  scrypt. `Sensitive` (1 GiB) can fail on small machines; `Interactive` (64 MiB) makes guessing
+  cheaper.
+- **F4 no Argon2 associated data.** Plain Argon2id means `derive_key` equals libsodium's
+  `crypto_pwhash` byte for byte, which gives an independent oracle now (dual-oracle rule) and lets
+  any Argon2id library read the file. With AD over the header, only Bouncy Castle could check it,
+  and the core API would grow an `ad` knob (D-47).
+
+**Decision - file format.**
+```
+0x50 || 0x01 (container version) || 0x01 (KDF: Argon2id v1.3)
+  || m_cost KiB (u32 LE) || t_cost (u32 LE) || p_cost (u8) || salt (16) || <v2 stream, D-208>
+```
+- The stream key is `crypto_pwhash::derive_key(passphrase, salt, Moderate)`; the unchanged D-208
+  stream follows, so the existing writer and record reader are reused and the version byte stays
+  bound into the stream's key derivation.
+- `0x50` cannot be a stream version byte in use (`2`), so `decrypt` dispatches on byte 0: `0x50`
+  -> passphrase, `2` -> key file, anything else -> the existing unsupported-version error. 0.3/0.4
+  builds read `0x50` as "unsupported stream format version 80": they fail closed.
+- `decrypt` accepts exactly the costs `encrypt` writes (`Strength::from_cost` must give
+  `Moderate`); anything else is refused before Argon2 runs, so a changed header cannot make it
+  allocate 1 GiB or 4 GiB. Accepting the other two presets would be a speculative feature and a
+  bigger allocation an attacker can ask for. The header keeps the costs so a later version can
+  change them.
+- The header carries no tag of its own: a changed salt gives another key and the first record
+  fails; a changed marker/version/KDF id/cost is refused by name. A failed tag under a passphrase
+  is reported as "wrong passphrase, or --in was changed" (R1).
+- Salt: 16 bytes from the OS CSPRNG per `encrypt`.
+
+**Decision - core.** `dstu_core::crypto_pwhash::derive_key(password, &[u8; 16], Strength) ->
+Zeroizing<[u8; 32]>`, plus `Strength::cost`/`from_cost`, `SALT_BYTES`, `KEY_BYTES`. Argon2's
+memory is reserved with `try_reserve_exact` and passed to `hash_password_into_with_memory`, so a
+machine without 256 MiB gets `PwHashError::OutOfMemory` (exit 3 in `uacrypt`) instead of an
+abort, and the blocks are zeroized before they are freed. Two new `PwHashError` variants
+(`OutOfMemory`, `Derive`) break an exhaustive `match`; `dstu-core-capi`'s one match maps them to
+`DSTU_ERR_HASH_ERROR` (`hash_password` never returns them). **Binding gate:** `derive_key` is a
+new `crypto_*` function, so T-269 tracks wiring it into the 8 bindings and the C ABI; the
+passphrase file format stays `uacrypt`-only until then.
+
+**Decision - CLI.**
+- `encrypt`: exactly one of `--key`, `--passphrase` (terminal, asked twice), `--passphrase-file`.
+  `decrypt`: `--key`, `--passphrase-file`, or neither (terminal, asked once, only if `--in` turns
+  out to be a passphrase file). `decrypt --passphrase` is a usage error that explains the
+  auto-detection; a key for a passphrase file, or no key for a key file, is refused by name
+  (exit 2).
+- Order: key file or passphrase file read -> `--out` checks (`--out` may not name the passphrase
+  file) -> `Sink::precheck` (every refusal of `Output::create`, creating nothing) -> `--in` opened
+  -> (`decrypt`: 28-byte header read from the bare input) -> terminal asked, Argon2 -> **only then
+  `Output::create`** -> stream. A refused output or a missing input costs no typing. The plan
+  had `Output::create` before the prompt; on the Pi a Ctrl-C at the prompt then left the reserved
+  `--out` placeholder and its temp file behind (the process dies without `Drop`), and a rerun said
+  "already exists". The key-file path uses the same order; `Output::create` still makes the real,
+  atomic decision. T-261's progress line starts after the prompt, so it never draws over it.
+- **Ctrl-C at the prompt (Unix).** Measured on the Pi: `rpassword` 7.5.4 turns echo and ISIG off,
+  reads Ctrl-C as a byte, and calls `raise(SIGINT)` before its `Drop` restores the terminal - the
+  process died with the terminal left at `-echo`. The F1 explanation to the owner had said it
+  restores echo; that was wrong, and was corrected and put to the owner as a new fork: (a) ignore
+  SIGINT only while the prompt is open, (b) document `stty sane`, (c) the `ctrlc` crate. The owner
+  chose (a) (2026-09-24). `src/sigint.rs`: an `Ignored` guard sets `SIG_IGN` around each
+  `prompt_password` and restores the previous disposition; on `Interrupted` uacrypt re-raises
+  SIGINT, so it still dies by the signal (status 130). This is `uacrypt`'s first `unsafe` (three
+  `libc` calls, `libc` now a direct Unix-only dependency, already locked). A shell loop around
+  uacrypt does not stop on this Ctrl-C: in raw mode the shell itself gets no SIGINT. Windows
+  `rpassword` sends a console Ctrl-C event instead; not checked by hand.
+- The terminal is asked only when stderr is a terminal (T-261's predicate); otherwise exit 2
+  naming `--passphrase-file`. That keeps every test deterministic: `rpassword` opens /dev/tty or
+  `CONIN$` directly, so a child of an interactive shell could otherwise block on a prompt.
+- **mintty (Git Bash's window) is refused** on Windows when `TERM_PROGRAM=mintty`, with a hint
+  (`winpty uacrypt ...`, cmd/PowerShell/Windows Terminal, or `--passphrase-file`). `rpassword`'s
+  Windows code reads `CONIN$` with no msys handling (read in its source), and under mintty a
+  Windows program's console is hidden, so the prompt would wait where nobody can type. std's
+  `IsTerminal` still reports mintty's pipe as a terminal, hence the environment check. Measured
+  in a real mintty window (Git for Windows' `mintty.exe`, debug build, stderr a terminal):
+  `encrypt --passphrase` exits 2 within a second; the same run with `TERM_PROGRAM` unset hung
+  until `timeout 8` killed it (status 124). A mintty with ConPTY enabled would be refused
+  needlessly (the hint covers it).
+- Passphrase bytes: UTF-8 exactly as typed or read, no Unicode normalisation (`й`/`ї` have
+  decomposed forms; NFC would need a new dependency, R5) - documented in the help and
+  `docs/CLI.md`. A passphrase file: a leading UTF-8 BOM and one trailing `\n`/`\r\n` dropped,
+  spaces kept; empty, a second line (even a blank one), non-UTF-8, or over 1024 bytes (more
+  likely the wrong file) refused with exit 3. An empty or mismatched terminal entry: exit 2. The
+  passphrase is held in `Zeroizing` buffers (the file buffer is allocated at full size up front,
+  so it never reallocates); the two entries are compared with `subtle`.
+- Debug builds: Argon2 at 256 MiB took ~33 s per call unoptimised, too slow for the smoke tests;
+  the workspace `Cargo.toml` now builds `argon2` and `blake2` with `opt-level = 3` in the dev
+  profile (~1 s). Release builds are unaffected.
+- Peak memory: a passphrase run adds Argon2's 256 MiB for about a second before streaming starts;
+  the streaming bound (D-42) is unchanged, and the bounded-memory tests stay on the key path.
+
+**Tests.** Core (`tests/crypto_pwhash.rs`): three libsodium vectors (PyNaCl 1.6.2's bundled
+libsodium, `crypto_pwhash_alg(ARGON2ID13, OPSLIMIT_MODERATE, MEMLIMIT_MODERATE)`: ASCII, Ukrainian
+UTF-8, empty password) in `tests/vectors/pwhash/derive_key.json`, the shared vector file for
+T-269; salt and strength change the key; `cost`/`from_cost` round trip and reject the rest.
+`uacrypt` unit tests (`passphrase.rs`): header round trip and rejection per field, the file rules,
+the prompt decision incl. mintty. `tests/smoke_passphrase.rs` (17, real binary): round trips
+(empty, one and several chunks, stdin to stdout); a file written by `uacrypt` decoded with
+`dstu-core` directly from the format description, and a file built from the description decrypted
+by `uacrypt`; fresh salt per run; LF/CRLF/BOM/no-newline files give the same passphrase; wrong
+passphrase (exit 1, named, no output); every header byte and the inner version byte flipped (exit
+1, no output); four unsupported cost triples refused in under 5 s; truncation inside the header;
+key vs passphrase file both ways, named; passphrase never echoed in stdout/stderr; seven flag
+combinations exit 2; no terminal -> exit 2 naming `--passphrase-file`; empty/blank/BOM-only/
+two-line/non-UTF-8/oversized files exit 3; `--out` naming the passphrase file refused; a missing
+passphrase file exit 3. `smoke_misuse_matrix.rs`: `--key` is no longer a required flag of
+`decrypt`.
+
+**Checked by hand.** Pi (Linux pty via `script`, input typed with delays): the prompt echoes
+nothing (the passphrase is absent from the transcript), `encrypt` asks twice, a mismatch exits 2
+with no output, `decrypt` asks once and decrypts, a wrong passphrase exits 1 by name, an empty one
+exits 2, `--in -` data with the passphrase from the terminal works; Ctrl-C at either prompt of
+`encrypt` and at `decrypt`'s: status 130, terminal back at `echo`, no output or temp file. mintty
+as above. Pi `cargo test -p uacrypt` green; `cargo clippy -p uacrypt --no-deps` clean on the Pi's
+Rust 1.98.1 as well. Scoped Miri on `passphrase.rs`'s 4 unit tests: no UB. **Not checked:** the terminal prompt in cmd, PowerShell 7 and Windows
+Terminal (typing into a console window from this session was not attempted: it would send keys
+to the owner's desktop), and Ctrl-C on Windows.
+
+**Found while landing this, not fixed here.** Clippy 1.98.1 (the Pi's stable; the dev machine has
+1.97.1) rejects five `cast_possible_truncation` casts in `dstu-core`'s `gf2m_field!` macro (e.g.
+`out[i + j] ^= prod as u64;`) under `-D warnings`. Existing code, untouched by T-262; since
+`rust-toolchain.toml` pins `stable`, CI hits it on any runner whose stable is 1.98 or newer.
+Tracked as T-270.

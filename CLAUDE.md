@@ -104,9 +104,9 @@ canonical source (`docs/TASKS.md`/`docs/DECISIONS.md`) — this section states c
     eight language bindings plus `dstu-core-capi` as of T-204 (2026-08-09/10)** - untagged
     everywhere, the curve-tag dispatch stays a `uacrypt`-layer-only concern, never duplicated into
     a binding (D-118).
-  - `crypto_pwhash` (`hash_password`/`verify_password`/`Strength`) — wraps `argon2` behind a
-    dedicated `pwhash` feature (off by default); `Strength::{Interactive,Moderate,Sensitive}` cites
-    libsodium's own constants exactly (T-71/D-49/D-50).
+  - `crypto_pwhash` (`hash_password`/`verify_password`/`derive_key`/`Strength`) — `argon2` behind
+    a `pwhash` feature (off by default); presets are libsodium's constants, `derive_key` equals
+    libsodium's `crypto_pwhash` byte for byte (T-71/D-50/D-219).
   - `crypto_secretbox` (`seal`/`open`/`SecretKey`) — `Kalyna256_256Gcm`, internal nonce,
     `version||nonce||ciphertext||tag`, no caller AAD; internal AAD `version||nonce||ct_len` binds the
     nonce (D-63) and the true length (defence in depth since D-204; D-200/D-202).
@@ -135,10 +135,11 @@ canonical source (`docs/TASKS.md`/`docs/DECISIONS.md`) — this section states c
   4145's Annex B.1) against the live compiled build, embedded via `include_str!`. Built so every
   language binding wraps one shared check instead of reimplementing it (T-161/D-117).
 
-**`crates/uacrypt`** — the CLI binary (renamed from `dstutool`, D-36). `kalyna-block`,
+**`crates/uacrypt`** — the CLI binary. `kalyna-block`,
 `kupyna-digest`, `strumok-crypt`, `kalyna-ccm` subcommands exist for binary-level comparisons
 (D-31/D-41, see `docs/PERFORMANCE.md`). Top-level `encrypt`/`decrypt`/`hash` are real (T-16/D-52):
-`encrypt`/`decrypt` are backed by `crypto_secretstream` (T-40/T-70/D-68), no message-length cap,
+`encrypt`/`decrypt` are backed by `crypto_secretstream` (T-40/T-70/D-68), key file or passphrase
+(Argon2id header, D-219), no message-length cap,
 `--in`/`--out` streamed in fixed-size chunks, temp-then-rename for a file `--out` (`-` =
 stdin/stdout, T-260/D-217); `hash` is fixed to
 Kupyna-256 with no length cap, delegating to the streaming `Hasher`.

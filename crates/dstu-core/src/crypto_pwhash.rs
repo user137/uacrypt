@@ -70,7 +70,35 @@ impl Strength {
             Err(_) => panic!("Strength's own hardcoded (m_cost, t_cost, 1) is always valid"),
         }
     }
+
+    /// This preset's `(m_cost in KiB, t_cost, p_cost)`, for a file format that records them
+    /// (`uacrypt`'s passphrase container, `docs/DECISIONS.md` D-219).
+    #[must_use]
+    pub const fn cost(self) -> (u32, u32, u32) {
+        let (m_cost, t_cost) = self.m_and_t_cost();
+        (m_cost, t_cost, 1)
+    }
+
+    /// The preset whose [`cost`](Self::cost) is exactly `(m_cost, t_cost, p_cost)`, or `None`. A
+    /// reader of untrusted parameters uses this to accept only the known presets instead of
+    /// running Argon2 with attacker-chosen memory.
+    #[must_use]
+    pub fn from_cost(m_cost: u32, t_cost: u32, p_cost: u32) -> Option<Self> {
+        [
+            Strength::Interactive,
+            Strength::Moderate,
+            Strength::Sensitive,
+        ]
+        .into_iter()
+        .find(|s| s.cost() == (m_cost, t_cost, p_cost))
+    }
 }
+
+/// Salt length for [`derive_key`] - `crypto_pwhash_argon2id_SALTBYTES`.
+pub const SALT_BYTES: usize = 16;
+
+/// Output length of [`derive_key`] - one `crypto_secretstream`/`crypto_secretbox` key.
+pub const KEY_BYTES: usize = 32;
 
 /// `crypto_pwhash_str`/`_str_verify` can fail for reasons unrelated to a wrong password: this
 /// covers those.
@@ -82,6 +110,12 @@ pub enum PwHashError {
     /// salt this module always generates - included because the underlying crate's API is
     /// fallible, not because a known failure mode exists here.
     Hash(argon2::password_hash::Error),
+    /// [`derive_key`] could not allocate the preset's Argon2 memory (256 MiB for
+    /// [`Strength::Moderate`]) - reported instead of aborting the process.
+    OutOfMemory,
+    /// [`derive_key`]'s raw Argon2 call failed. Not expected for the fixed presets, salt and
+    /// output length used here.
+    Derive(argon2::Error),
 }
 
 impl fmt::Display for PwHashError {
@@ -89,6 +123,8 @@ impl fmt::Display for PwHashError {
         match self {
             PwHashError::Random(e) => write!(f, "{e}"),
             PwHashError::Hash(e) => write!(f, "Argon2 hashing failed: {e}"),
+            PwHashError::OutOfMemory => write!(f, "not enough memory for Argon2"),
+            PwHashError::Derive(e) => write!(f, "Argon2 key derivation failed: {e}"),
         }
     }
 }
@@ -137,6 +173,54 @@ pub fn verify_password(password: &[u8], hash: &str) -> bool {
         return false;
     };
     Argon2::default().verify_password(password, &parsed).is_ok()
+}
+
+/// Derives a 32-byte key from `password` and `salt` - libsodium's `crypto_pwhash` equivalent
+/// (Argon2id v1.3, one lane, no secret, no associated data), byte-identical to libsodium for the
+/// same preset (`tests/vectors/pwhash/derive_key.json`, `docs/DECISIONS.md` D-219). The caller
+/// stores the salt (and the preset's [`Strength::cost`]) next to the ciphertext; a fresh random
+/// salt per encryption is the caller's job.
+///
+/// The Argon2 memory is reserved with `try_reserve_exact`, so a machine without the preset's
+/// memory gets [`PwHashError::OutOfMemory`] rather than an aborted process, and it is zeroized
+/// before being freed.
+///
+/// ```rust
+/// use dstu_core::crypto_pwhash::{derive_key, Strength, SALT_BYTES};
+///
+/// let salt = [7u8; SALT_BYTES]; // store this next to the ciphertext; random in real use
+/// let key = derive_key(b"correct horse battery staple", &salt, Strength::Interactive)?;
+/// assert_eq!(key.len(), 32);
+/// # Ok::<(), dstu_core::crypto_pwhash::PwHashError>(())
+/// ```
+///
+/// # Errors
+///
+/// [`PwHashError::OutOfMemory`] if the preset's memory cannot be allocated;
+/// [`PwHashError::Derive`] is not expected for the fixed parameters used here.
+pub fn derive_key(
+    password: &[u8],
+    salt: &[u8; SALT_BYTES],
+    strength: Strength,
+) -> Result<zeroize::Zeroizing<[u8; KEY_BYTES]>, PwHashError> {
+    use zeroize::Zeroize;
+
+    let params = strength.params();
+    let block_count = params.block_count();
+    let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
+
+    let mut blocks = Vec::new();
+    blocks
+        .try_reserve_exact(block_count)
+        .map_err(|_| PwHashError::OutOfMemory)?;
+    blocks.resize(block_count, argon2::Block::default());
+
+    let mut key = zeroize::Zeroizing::new([0u8; KEY_BYTES]);
+    let result =
+        argon2.hash_password_into_with_memory(password, salt, key.as_mut_slice(), &mut blocks);
+    blocks.iter_mut().for_each(Zeroize::zeroize);
+    result.map_err(PwHashError::Derive)?;
+    Ok(key)
 }
 
 #[cfg(test)]

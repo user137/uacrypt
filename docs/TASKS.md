@@ -8733,7 +8733,18 @@ replace a DSTU primitive.
 
 ### RESUME HERE (state as of 2026-09-23, saved for a memory-clear/new-session handoff)
 
-**Latest handoff (2026-09-24, sixth session end) - read this first.** Working copy clean on
+**Latest handoff (2026-09-24, seventh session end) - read this first.** Working copy on
+`ux-0.5.0`, nothing pushed (embargo). This session: **T-262** (passphrase encryption, D-219),
+plan approved with forks F1-F4 as recommended, plus the Ctrl-C fork (a) found on the Pi. Ran:
+`cargo test -p dstu-core --features pwhash --test crypto_pwhash` (libsodium vectors),
+`cargo test -p uacrypt` here and on the Pi, `cargo test -p dstu-core-capi`, `cargo xtask clippy`/
+`fmt --check`/`docs-check`, `cargo deny check`, `cargo audit`, scoped Miri on `passphrase.rs`'s
+4 unit tests, the pty prompt and Ctrl-C by hand on the Pi, the mintty refusal in a real mintty
+window. **Not run:** the Windows console prompt and Windows Ctrl-C by hand, the binding
+suites, CI (branch unpushed), the GHSA/CVE status check. New: T-269 (binding gate), T-270 (clippy
+1.98 in `dstu-core`, pre-existing). **Next: T-270 or T-264** (owner's call; T-263 only if wanted).
+
+**Previous handoff (2026-09-24, sixth session end).** Working copy clean on
 `ux-0.5.0`, nothing pushed (embargo). This session: **T-261** (progress line on stderr, D-218).
 The owner chose both forks as recommended (stdin counter after 64 MiB; none for `box-*` until
 T-265). Ran: `cargo test -p uacrypt` here and on the Pi, the new ignored piped-stderr test in
@@ -9127,8 +9138,20 @@ Additive - after the breaking part:
   64 MiB; `box-seal`/`box-open` get none until T-265. Hooked into `Source::open`, so the
   lower-level interop/bench commands are untouched. Linux pty (Pi) and a real cmd console
   checked; PowerShell 7 and mintty not yet looked at.
-- [ ] **T-262** Passphrase encryption (P1). Decrypt auto-detects from the header; confirm twice,
+- [x] **T-262** (done 2026-09-24 on `ux-0.5.0`, D-219; `passphrase.rs`, `sigint.rs`,
+  `smoke_passphrase.rs`) Passphrase encryption (P1). Decrypt auto-detects from the header; confirm twice,
   refuse empty; Argon2id parameters in the header. Plan mode + advisor (new file format).
+  Owner forks: `rpassword`, `--passphrase-file`, libsodium `MODERATE`, no Argon2 AD; then (a) for
+  the Ctrl-C fork found on the Pi (SIGINT ignored around the prompt, first `unsafe` in uacrypt).
+  Core gained `crypto_pwhash::derive_key`, checked against libsodium (PyNaCl) vectors. mintty is
+  refused (measured: it hangs otherwise). Output is reserved only after the prompt. Pi tests
+  green, pty checked by hand; Windows console prompt and Windows Ctrl-C not checked by hand.
+- [ ] **T-269** Binding gate for T-262: wire `crypto_pwhash::derive_key` into the 8 bindings and
+  `dstu-core-capi` (shared vectors `crates/dstu-core/tests/vectors/pwhash/derive_key.json`), and
+  decide whether the bindings also read/write the passphrase file format (D-219).
+- [ ] **T-270** Clippy 1.98 rejects five `cast_possible_truncation` casts in `dstu-core`'s
+  `gf2m_field!` under `-D warnings` (found on the Pi 2026-09-24, D-219); CI fails on any runner
+  with stable >= 1.98. Existing code, not from T-262.
 - [ ] **T-263** Text output (A1), only if the owner wants it.
 - [ ] **T-264** Shell completions (`uacrypt completions bash|zsh|fish|powershell`) and a man page,
   generated from the same command table the parser uses.

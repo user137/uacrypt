@@ -19,7 +19,14 @@ name = "uacrypt"
 all-features = true
 
 [dependencies]
-dstu-core = { path = "../dstu-core", version = "0.4.0" }
+dstu-core = { path = "../dstu-core", version = "0.4.0", features = ["pwhash"] }
+# Reads a passphrase from the terminal without echo (T-262, owner choice P1/F1, D-219).
+rpassword = "7.5.4"
 # Both already locked through dstu-core; direct for typed key files (T-256, D-212).
 subtle = { version = "2.6.1", default-features = false }
 zeroize = { version = "1.9.0", default-features = false, features = ["alloc"] }
+
+[target.'cfg(unix)'.dependencies]
+# SIGINT ignored while the passphrase prompt is open (T-262, D-219); already locked through
+# getrandom and rpassword.
+libc = "0.2.189"

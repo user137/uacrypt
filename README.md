@@ -58,6 +58,8 @@ uacrypt keygen --out key.bin
 uacrypt encrypt --key key.bin --in message.bin --out sealed.bin
 uacrypt decrypt --key key.bin --in sealed.bin --out decrypted.bin
 tar c docs | uacrypt encrypt --key key.bin --in - --out docs.tar.enc   # - is stdin/stdout
+uacrypt encrypt --passphrase --in message.bin --out sealed.bin   # asks twice, no echo
+uacrypt decrypt --in sealed.bin --out decrypted.bin              # asks for the passphrase
 ```
 
 See [`docs/CLI.md`](https://github.com/user137/uacrypt/blob/master/docs/CLI.md) for the full
