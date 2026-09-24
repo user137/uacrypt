@@ -115,11 +115,12 @@ fn open_conin() -> Option<std::os::windows::io::OwnedHandle> {
 /// so the next handler - the default one, ending the process with `0xC000013A` - still runs.
 #[cfg(windows)]
 unsafe extern "system" fn restore_console(_event: u32) -> windows_sys::core::BOOL {
-    let saved = SAVED_MODE.load(Ordering::SeqCst);
-    if let (Ok(mode), Some(conin)) = (u32::try_from(saved), open_conin()) {
-        // SAFETY: `conin` is a live console handle.
-        unsafe {
-            SetConsoleMode(conin.as_raw_handle(), mode);
+    if let Ok(mode) = u32::try_from(SAVED_MODE.load(Ordering::SeqCst)) {
+        if let Some(conin) = open_conin() {
+            // SAFETY: `conin` is a live console handle.
+            unsafe {
+                SetConsoleMode(conin.as_raw_handle(), mode);
+            }
         }
     }
     0
