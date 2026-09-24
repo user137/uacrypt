@@ -8733,7 +8733,19 @@ replace a DSTU primitive.
 
 ### RESUME HERE (state as of 2026-09-23, saved for a memory-clear/new-session handoff)
 
-**Latest handoff (2026-09-24, seventh session end) - read this first.** Working copy on
+**Latest handoff (2026-09-24, eighth session end) - read this first.** Working copy clean on
+`ux-0.5.0`, nothing pushed (embargo). This session: owner **approved T-271's fix** (console Ctrl
+handler, design in its entry below; no code written yet). On the owner's request, a binary smoke
+run of the release `uacrypt` on the Pi and on Windows: Pi `cargo test -p uacrypt --release`
+369/369, smoke script 81/81 on the Pi (70/70 on Windows) - keygen/encrypt/decrypt at 0 B-64 MB,
+stdin/stdout, `--force` in place, wrong key/tamper/truncation with no partial output,
+`--passphrase-file` incl. wrong passphrase and key-vs-passphrase mixup, no-terminal refusal,
+`hash`/`--check`, sign/verify 163 and 257, box 256 and 512, plus Windows-made artifacts
+decrypted/verified on the Pi byte for byte. It found stray space runs in two error messages
+(`box-open` wrong key, `hash --check` `-` entry; from T-257's reflow) - fixed in `4c5fb24`
+with tests. **Next: T-271 implementation**, then the "Remaining, in order" list.
+
+**Previous handoff (2026-09-24, seventh session end).** Working copy on
 `ux-0.5.0`, nothing pushed (embargo). This session: **T-262** (passphrase encryption, D-219),
 plan approved with forks F1-F4 as recommended, plus the Ctrl-C fork (a) found on the Pi. Ran:
 `cargo test -p dstu-core --features pwhash --test crypto_pwhash` (libsodium vectors),
@@ -9168,8 +9180,19 @@ plan):
   PowerShell 7 does not. Proposed fix, the Windows twin of the owner's Unix choice (a): save the
   mode before the prompt and register a console Ctrl handler that restores it and returns FALSE
   (default exit follows) - a few lines of `unsafe` over `windows-sys` (already in the tree via
-  `rpassword`, would become a direct Windows-only dependency). Needs the owner's go-ahead; verify
-  with the same `WriteConsoleInputW` probe.
+  `rpassword`, would become a direct Windows-only dependency). Verify with the same
+  `WriteConsoleInputW` probe. **Owner approved the fix 2026-09-24.** Design (reviewed): in
+  `sigint.rs`'s `Ignored::new`, open `CONIN$` (never the std input handle - stdin may be a file),
+  `GetConsoleMode`, store it in a static `AtomicU32`, then `SetConsoleCtrlHandler(Some(h), TRUE)`
+  only if that succeeded (a `registered` field; `Drop` unregisters). The handler opens `CONIN$`
+  itself, restores exactly the saved mode (no hardcoded "sane" mode), returns FALSE for every
+  event so the default exit (`0xC000013A`) follows. Handles via `OwnedHandle` (RAII), not manual
+  `CloseHandle`. Keep a `cfg(not(any(unix, windows)))` no-op arm; fix the module doc ("no-op off
+  Unix"). `windows-sys = "0.61.2"` under `cfg(windows)` with a subset of `rpassword`'s features
+  (`Cargo.lock` must gain only an edge); `cargo deny`. Unit test first: the handler returns FALSE
+  for C/Break/Close; the restore path itself is not unit-testable (record in D-219). Probe with a
+  pwsh 7 child: mode before == after (full value), exit code, Ctrl-C at "Repeat passphrase" too,
+  a normal entry still works. Then `cargo test -p uacrypt` on the Pi (cfg arms changed).
 - [ ] **T-270** Clippy 1.98 rejects five `cast_possible_truncation` casts in `dstu-core`'s
   `gf2m_field!` under `-D warnings` (found on the Pi 2026-09-24, D-219); CI fails on any runner
   with stable >= 1.98. Existing code, not from T-262 - in this plan by owner request
