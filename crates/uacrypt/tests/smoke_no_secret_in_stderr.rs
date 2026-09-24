@@ -507,16 +507,16 @@ fn sign_wrong_key_length_does_not_leak_key() {
     miri,
     ignore = "spawns the real uacrypt binary - Miri cannot run a subprocess"
 )]
-fn sign257_wrong_key_length_does_not_leak_key() {
+fn sign_wrong_m257_key_length_does_not_leak_key() {
     let dir = TempDir::new("nosecret_sign257");
     let sk = dir.file("sk.bin");
     let msg = dir.file("msg.bin");
     let sig = dir.file("sig.bin");
     write_bytes(&sk, &SECRET[..11]); // not a valid 33-byte m=257 signing key
-    write_bytes(&msg, b"sign257 no-secret-leak test message");
+    write_bytes(&msg, b"m=257 sign no-secret-leak test message");
 
     let args = [
-        "sign257",
+        "sign",
         "--key",
         sk.to_str().unwrap(),
         "--in",
@@ -526,7 +526,7 @@ fn sign257_wrong_key_length_does_not_leak_key() {
     ];
     let r = uacrypt(args);
     assert!(r.failure(), "expected a signing-key error, got success");
-    assert_no_secret_leak("sign257", &raw_stderr(args), &SECRET[..11]);
+    assert_no_secret_leak("sign", &raw_stderr(args), &SECRET[..11]);
 }
 
 #[test]
@@ -598,7 +598,7 @@ fn box_open512_wrong_key_does_not_leak_key() {
 
     assert!(uacrypt(["box-keygen512", "--out", sk_real.to_str().unwrap()]).success());
     assert!(uacrypt([
-        "box-pubkey512",
+        "box-pubkey",
         "--key",
         sk_real.to_str().unwrap(),
         "--out",
@@ -606,7 +606,7 @@ fn box_open512_wrong_key_does_not_leak_key() {
     ])
     .success());
     assert!(uacrypt([
-        "box-seal512",
+        "box-seal",
         "--key",
         pk.to_str().unwrap(),
         "--in",
@@ -616,11 +616,11 @@ fn box_open512_wrong_key_does_not_leak_key() {
     ])
     .success());
 
-    // 64-byte wrong secret key for box-open512 - reuse SECRET twice for the required length.
+    // 64-byte wrong secret key for an l(p)=512 box-open - reuse SECRET twice for the required length.
     let wrong64: Vec<u8> = SECRET.iter().chain(SECRET.iter()).copied().collect();
     write_bytes(&sk_wrong, &wrong64);
     let args = [
-        "box-open512",
+        "box-open",
         "--key",
         sk_wrong.to_str().unwrap(),
         "--in",
@@ -629,6 +629,6 @@ fn box_open512_wrong_key_does_not_leak_key() {
         opened.to_str().unwrap(),
     ];
     let r = uacrypt(args);
-    assert!(r.failure(), "expected Box512OpenFailed, got success");
-    assert_no_secret_leak("box-open512", &raw_stderr(args), &wrong64);
+    assert!(r.failure(), "expected BoxOpenFailed, got success");
+    assert_no_secret_leak("box-open", &raw_stderr(args), &wrong64);
 }

@@ -288,7 +288,7 @@ operations rather than spawning a process per operation, which would measure OS 
 not crypto.
 
 Since 0.5.0 (T-255) the everyday commands' `--help` no longer lists `--iterations`
-(`sign`/`sign257`/`verify`/`box-seal`/`box-open`/`box-seal512`/`box-open512`); the flag is still
+(`sign`/`verify`/`box-seal`/`box-open`, either curve); the flag is still
 accepted there and still prints `iterations=... total_ns=... per_op_ns=... ops_per_s=...` to stderr.
 The lower-level `kalyna-*`/`kupyna-digest`/`strumok-crypt` help keeps documenting it.
 
@@ -2204,11 +2204,13 @@ openssl cms -encrypt -binary -recip ec512.crt -aes-256-cbc -in payload.bin -out 
 openssl cms -decrypt -binary -inkey ec512.key -recip ec512.crt -in payload512.p7 -inform DER -out payload512.dec
 # uacrypt side, same payload, one process, N iterations built in:
 target/release/uacrypt box-keygen --out box256.key && target/release/uacrypt box-pubkey --key box256.key --out box256.pub
-target/release/uacrypt box-keygen512 --out box512.key && target/release/uacrypt box-pubkey512 --key box512.key --out box512.pub
+target/release/uacrypt box-keygen512 --out box512.key && target/release/uacrypt box-pubkey --key box512.key --out box512.pub
 target/release/uacrypt box-seal --key box256.pub --in payload.bin --out payload256.box --iterations 3
 target/release/uacrypt box-open --key box256.key --in payload256.box --out payload256.unbox --iterations 3
-target/release/uacrypt box-seal512 --key box512.pub --in payload.bin --out payload512.box --iterations 3
-target/release/uacrypt box-open512 --key box512.key --in payload512.box --out payload512.unbox --iterations 3
+target/release/uacrypt box-seal --key box512.pub --in payload.bin --out payload512.box --iterations 3
+target/release/uacrypt box-open --key box512.key --in payload512.box --out payload512.unbox --iterations 3
+# (recorded with 0.4's `box-pubkey512`/`box-seal512`/`box-open512`; since 0.5.0, T-257, the plain
+# commands read the curve from the key and run the same code)
 ```
 
 #### Where the gap actually comes from: symmetric-layer decomposition — T-194 follow-up (owner-requested)

@@ -14015,3 +14015,54 @@ benchmarks against other DSTU implementations.
 **Rejected.** A binary magic header (K1 b: not paste-able); a `pub` encoder in the `uacrypt`
 library for tests (grows the published API; the tests carry their own independent encoder
 instead); bech32 or base64 (a new dependency or more code for no gain at these lengths).
+
+## D-213: T-257 - curve chosen at key generation only; the other commands read it from the key (0.5.0)
+
+**Context.** Owner decision K3 (a) (TASKS "CLI usability and misuse resistance", rule R3). Up to
+0.4 every sign/box command had a curve twin (`sign-pubkey257`, `sign257`, `box-pubkey512`,
+`box-seal512`, `box-open512`), because raw key files could not say which curve they were for.
+Since D-212 every key line names its kind and curve, so the twins only repeated what the key
+already says.
+
+**Decision 1 - keygen keeps its twins, nothing else does.** `sign-keygen`/`sign-keygen257` and
+`box-keygen`/`box-keygen512` stay separate commands; `sign-pubkey`, `sign`, `verify`, `box-pubkey`,
+`box-seal` and `box-open` take a key of either curve and dispatch on its kind. This answers D-73's
+objection to a type flag: D-73 rejected `keygen --type` because a mistyped value silently picks
+the wrong algorithm. Key generation is the only moment a choice exists, and a separate command has
+no value to mistype. The operation commands have no flag at all: the choice is read from a key
+whose check value (D-212 Decision 2) refuses a relabelled or edited line. Everyday commands: 19 ->
+14, plus `key-import`.
+
+**Decision 2 - removed names are usage errors.** `REMOVED_COMMANDS` maps each old name to its
+replacement; `unknown_command()` turns it into `CliError::RemovedCommand` (exit 2, "`sign257` was
+removed in uacrypt 0.5 - use `uacrypt sign`, it reads the curve from the key"). One check covers
+the command itself, `<name> --help` and `help <name>`. The table is kept out of `COMMANDS`, so help,
+"did you mean" suggestions and future completions never offer the old names.
+
+**Decision 3 - a sealed file carries no curve id; the key decides.** The `crypto_box` wire format
+(D-201/D-202) is unchanged. A file sealed to one curve and opened with the other curve's key fails
+like any other wrong key (exit 1, nothing written). `BoxOpenTruncated`/`BoxOpenFailed` now name the
+key's curve so the message still makes sense in that case. No heuristic guesses the curve from the
+file length.
+
+**Decision 4 - hints.** Supersedes D-212 Decision 5's twin clause: a wrong-kind error no longer
+points to a twin, it names the command that makes the right key, each command once (both public
+kinds are made by the same `sign-pubkey`/`box-pubkey`).
+
+**Code shape.** `uacrypt`-only dispatch enums `AnySigningKey`/`AnyBoxSecret`/`AnyBoxPublic`, the
+same pattern as the existing `AnyVerifyingKey`. The library types stay separate and untagged
+(D-186), and no binding or `dstu-core-capi` code changes. `CliError::Box512*` merge into the `Box*`
+variants.
+
+**Tests.** `smoke_curve_from_key.rs` compares `sign`, `sign-pubkey` and `box-pubkey` output byte for
+byte with direct `dstu_core` calls on both curves (the signing nonce is deterministic), and checks a
+CLI-sealed file against the library's `open`, so a crossed dispatch cannot pass on self-consistency.
+It also covers cross-curve open/verify rejection, the removed names in all three forms, and the
+wrong-kind hints. The twin-name cases in the existing smoke files were converted to the base
+command with the other curve's key. The missing-flag matrix lost its five twin rows, since it has
+one row per existing command.
+
+**Rejected.** K3 (b), one keygen with `--curve` (the knob D-73 argued against). K3 (c), renaming
+m=163 to `sign-keygen163` (it breaks every existing script for a default nobody asked to change).
+Keeping the removed names as silent aliases (two spellings of one command, and the old names would
+stay in help and suggestions).

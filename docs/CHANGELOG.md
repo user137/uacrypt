@@ -35,6 +35,15 @@ All notable changes to this project are documented in this file. Format follows
   commands keep raw keys. Library API: new `KeyKind`, `CliError::KeyFileNotTyped`/
   `KeyFileMalformed`/`KeyCheckMismatch`/`KeyKindMismatch`/`UnknownKeyKind`/`KeyImportCurveByte`;
   `SignVerifyUnsupportedCurve` is gone.
+- **Curve twins removed** (T-257, `docs/DECISIONS.md` D-213). The curve is chosen once, by
+  `sign-keygen`/`sign-keygen257` or `box-keygen`/`box-keygen512`, and every other command reads it
+  from the typed key. **Migration:** `sign-pubkey257` -> `sign-pubkey`, `sign257` -> `sign`,
+  `box-pubkey512` -> `box-pubkey`, `box-seal512` -> `box-seal`, `box-open512` -> `box-open`; the
+  old names fail with a usage error (exit 2) that names the replacement. File formats are
+  unchanged. Library API: the `*257`/`*512` sign/box `parse_*`/`run_*` functions and
+  `Box512*Args` go (`run_sign_keygen257_command`/`run_box512_keygen_command` stay, the latter now
+  taking `BoxKeygenArgs`); `CliError::Box512*` merge into the `Box*` variants,
+  `BoxOpenTruncated`/`BoxOpenFailed` carry the key's curve; new `CliError::RemovedCommand`.
 
 ### Security
 

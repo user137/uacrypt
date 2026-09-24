@@ -98,11 +98,9 @@ canonical source (`docs/TASKS.md`/`docs/DECISIONS.md`) — this section states c
     `crypto_sign257` (T-199, D-185/D-186) is its `m=257` sibling — what real Diia-issued
     qualified signatures actually use in production, confirmed from real issued certificates —
     a separate, additively-shipped module with the same shape, not a curve flag on `crypto_sign`
-    itself (that reversal, and why, is D-186's own addendum: converting `crypto_sign`'s types to
-    a curve-tagged enum would have broken `dstu-core-capi`'s C ABI for no benefit). `uacrypt`'s
-    `sign-keygen257`/`sign-pubkey257`/`sign257` mirror `sign-keygen`/`sign-pubkey`/`sign`; `verify`
-    alone is unified and handles both curves' signatures (on `ux-0.5.0`, D-212: the typed
-    verifying-key file names its curve instead of a leading curve tag byte). **Wired into all
+    itself (D-186's addendum: a curve-tagged enum would have broken the C ABI). In `uacrypt` only
+    the keygen has a twin (`sign-keygen257`); `sign-pubkey`/`sign`/`verify` read the curve from
+    the typed key (on `ux-0.5.0`, D-212/D-213). **Wired into all
     eight language bindings plus `dstu-core-capi` as of T-204 (2026-08-09/10)** - untagged
     everywhere, the curve-tag dispatch stays a `uacrypt`-layer-only concern, never duplicated into
     a binding (D-118).

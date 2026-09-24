@@ -156,8 +156,8 @@ fn same_length_keys_of_another_kind_are_rejected_by_name() {
 
 /// `[0x02; 64]` is both a valid box-512 secret key and a valid box-512 public key (D-182), so the
 /// same bytes used to mean two different things depending only on the flag. Typed, a secret key
-/// line is refused where a public key is needed - and a box-512 key given to the box-256 command
-/// points to its twin (until T-257 merges them).
+/// line is refused where a public key is needed, and the hint names the one command that makes the
+/// right key (T-257: `box-pubkey` serves both curves).
 #[test]
 #[cfg_attr(
     miri,
@@ -172,8 +172,8 @@ fn box512_dual_valid_bytes_are_told_apart_by_kind() {
     write_key(&public, "uacrypt-box512-public", &[0x02; 64]);
     write_bytes(&msg, b"irrelevant");
 
-    ok(&run_box(&dir, "box-seal512", &public, &msg));
-    let r = run_box(&dir, "box-seal512", &secret, &msg);
+    ok(&run_box(&dir, "box-seal", &public, &msg));
+    let r = run_box(&dir, "box-seal", &secret, &msg);
     assert_eq!(r.code, Some(3), "{}", r.stderr);
     assert!(
         r.stderr
@@ -182,10 +182,11 @@ fn box512_dual_valid_bytes_are_told_apart_by_kind() {
         r.stderr
     );
 
-    let r = run_box(&dir, "box-seal", &public, &msg);
-    assert_eq!(r.code, Some(3), "{}", r.stderr);
     assert!(
-        r.stderr.contains("use `uacrypt box-seal512` for this key"),
+        r.stderr.contains(
+            "make the right key with `uacrypt box-pubkey`
+"
+        ),
         "{}",
         r.stderr
     );

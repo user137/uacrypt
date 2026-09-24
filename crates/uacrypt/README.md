@@ -60,9 +60,9 @@ encrypts/authenticates arbitrary-length **short** messages (plaintext and `--aad
 
 `box-seal`/`box-open` are public-key encryption (DSTU 9041, hybrid via KDF) — unlike `encrypt`
 (which needs a shared symmetric key both sides already have), `box-seal` only needs the recipient's
-public key. `l(p)=512` siblings (`box-keygen512`/`box-pubkey512`/`box-seal512`/`box-open512`) and
-`m=257` signature siblings (`sign-keygen257`/`sign-pubkey257`/`sign257`, `verify` unchanged) also
-exist — see `docs/CLI.md` in the project repository for the full command reference, including
+public key. The `l(p)=512` curve (`box-keygen512`) and the `m=257` signature curve
+(`sign-keygen257`) are chosen at key generation; every other command reads the curve from the key
+— see `docs/CLI.md` in the project repository for the full command reference, including
 these and the remaining `hazmat`-scoped Kalyna modes (GCM/CMAC/GMAC/KW/XTS).
 
 `uacrypt keygen --out key.bin` generates a fresh 32-byte key from the OS CSPRNG. Since 0.5.0 every

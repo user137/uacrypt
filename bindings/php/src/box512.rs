@@ -57,7 +57,7 @@ pub fn dstu_core_box512_public_key(secret_key: Binary<u8>) -> Result<Binary<u8>,
 
 /// Encrypts `message` (any length) to the holder of `public_key`, drawing a fresh random seed and
 /// ephemeral key internally. Not memory-bounded - the whole message is held in memory, matching
-/// `uacrypt box-seal512`'s own documented limitation.
+/// `uacrypt box-seal`'s own documented limitation.
 #[php_function]
 #[php(name = "dstu_core_box512_seal")]
 pub fn dstu_core_box512_seal(

@@ -42,7 +42,7 @@ pub fn box512_public_key(ruby: &Ruby, secret_key: RString) -> Result<RString, Er
 
 /// Encrypts `message` (any length) to the holder of `public_key`, drawing a fresh random seed and
 /// ephemeral key internally. Not memory-bounded - the whole message is held in memory, matching
-/// `uacrypt box-seal512`'s own documented limitation.
+/// `uacrypt box-seal`'s own documented limitation.
 pub fn box512_seal(ruby: &Ruby, public_key: RString, message: RString) -> Result<RString, Error> {
     let key = public_key_from_bytes(ruby, &public_key.to_bytes())?;
     let sealed = seal(&message.to_bytes(), &key).dstu(ruby)?;

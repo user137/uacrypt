@@ -312,7 +312,7 @@ fn tampered_ciphertext_exits_1() {
 fn verify_success_reports_the_curve_on_stderr_and_bad_signature_exits_1() {
     for (keygen_cmd, pubkey_cmd, sign_cmd, curve) in [
         ("sign-keygen", "sign-pubkey", "sign", "m=163"),
-        ("sign-keygen257", "sign-pubkey257", "sign257", "m=257"),
+        ("sign-keygen257", "sign-pubkey", "sign", "m=257"),
     ] {
         let dir = TempDir::new(&format!("strict_verify_{curve}"));
         let sk = dir.file("sk.bin");

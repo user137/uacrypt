@@ -63,28 +63,13 @@ const CASES: &[Case] = &[
         required: &["--key", "--out"],
     },
     Case {
-        name: "sign-pubkey257",
-        args: &["sign-pubkey257", "--key", "k", "--out", "o"],
-        required: &["--key", "--out"],
-    },
-    Case {
         name: "box-pubkey",
         args: &["box-pubkey", "--key", "k", "--out", "o"],
         required: &["--key", "--out"],
     },
     Case {
-        name: "box-pubkey512",
-        args: &["box-pubkey512", "--key", "k", "--out", "o"],
-        required: &["--key", "--out"],
-    },
-    Case {
         name: "sign",
         args: &["sign", "--key", "k", "--in", "i", "--out", "o"],
-        required: &["--key", "--in", "--out"],
-    },
-    Case {
-        name: "sign257",
-        args: &["sign257", "--key", "k", "--in", "i", "--out", "o"],
         required: &["--key", "--in", "--out"],
     },
     Case {
@@ -100,16 +85,6 @@ const CASES: &[Case] = &[
     Case {
         name: "box-open",
         args: &["box-open", "--key", "k", "--in", "i", "--out", "o"],
-        required: &["--key", "--in", "--out"],
-    },
-    Case {
-        name: "box-seal512",
-        args: &["box-seal512", "--key", "k", "--in", "i", "--out", "o"],
-        required: &["--key", "--in", "--out"],
-    },
-    Case {
-        name: "box-open512",
-        args: &["box-open512", "--key", "k", "--in", "i", "--out", "o"],
         required: &["--key", "--in", "--out"],
     },
     Case {

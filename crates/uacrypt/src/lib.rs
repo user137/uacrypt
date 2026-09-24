@@ -101,6 +101,11 @@ pub enum CliError {
         command: String,
         suggestion: Option<&'static str>,
     },
+    /// A curve twin removed in 0.5 (T-257, D-213); `replacement` reads the curve from the key.
+    RemovedCommand {
+        command: String,
+        replacement: &'static str,
+    },
     MissingSubcommand(&'static str),
     UnknownVariant(String),
     MissingFlag(&'static str),
@@ -173,13 +178,10 @@ pub enum CliError {
         byte: u8,
     },
     BoxKeyInvalid,
-    BoxOpenTruncated,
-    BoxOpenFailed,
+    /// Carries the key's curve: a file sealed to the other curve's key fails here too.
+    BoxOpenTruncated(&'static str),
+    BoxOpenFailed(&'static str),
     BoxOpenUnsupportedVersion,
-    Box512KeyInvalid,
-    Box512OpenTruncated,
-    Box512OpenFailed,
-    Box512OpenUnsupportedVersion,
 }
 
 impl fmt::Display for CliError {
@@ -200,6 +202,14 @@ impl fmt::Display for CliError {
                 }
                 write!(f, " - run `uacrypt help` for the list of commands")
             }
+            CliError::RemovedCommand {
+                command,
+                replacement,
+            } => write!(
+                f,
+                "`{command}` was removed in uacrypt 0.5 - use `uacrypt {replacement}`, it reads \
+                 the curve from the key"
+            ),
             CliError::MissingSubcommand(choices) => {
                 write!(f, "missing subcommand: expected one of {choices}")
             }
@@ -339,7 +349,7 @@ impl fmt::Display for CliError {
                     path.display(),
                     found.label(),
                     wanted.join(" or a "),
-                    keyfile::wrong_kind_hint(command, *found, expected)
+                    keyfile::wrong_kind_hint(expected)
                 )
             }
             CliError::KeyImportCurveByte { path, kind, byte } => write!(
@@ -365,35 +375,18 @@ impl fmt::Display for CliError {
                 f,
                 "--key is not a valid crypto_box key (see uacrypt box-keygen/box-pubkey)"
             ),
-            CliError::BoxOpenTruncated => write!(
+            CliError::BoxOpenTruncated(curve) => write!(
                 f,
-                "box-open: --in is too short to be real box-seal output"
+                "box-open: --in is too short to be real box-seal output for this {curve} key"
             ),
-            CliError::BoxOpenFailed => write!(
+            CliError::BoxOpenFailed(curve) => write!(
                 f,
-                "box-open: authentication failed - --in, --key, or the file itself do not match"
+                "box-open: authentication failed - --in was not sealed to this {curve} key, or                  it was modified"
             ),
             CliError::BoxOpenUnsupportedVersion => write!(
                 f,
                 "box-open: --in was sealed in a different format version (e.g. by uacrypt 0.3.x) - \
                  open it with the release that sealed it"
-            ),
-            CliError::Box512KeyInvalid => write!(
-                f,
-                "--key is not a valid crypto_box512 key (see uacrypt box-keygen512/box-pubkey512)"
-            ),
-            CliError::Box512OpenTruncated => write!(
-                f,
-                "box-open512: --in is too short to be real box-seal512 output"
-            ),
-            CliError::Box512OpenFailed => write!(
-                f,
-                "box-open512: authentication failed - --in, --key, or the file itself do not match"
-            ),
-            CliError::Box512OpenUnsupportedVersion => write!(
-                f,
-                "box-open512: --in was sealed in a different format version (e.g. by uacrypt \
-                 0.3.x) - open it with the release that sealed it"
             ),
         }
     }
@@ -411,6 +404,7 @@ impl CliError {
         const FILE_OR_KEY: u8 = 3;
         match self {
             CliError::UnknownCommand { .. }
+            | CliError::RemovedCommand { .. }
             | CliError::MissingSubcommand(_)
             | CliError::UnknownVariant(_)
             | CliError::MissingFlag(_)
@@ -430,8 +424,7 @@ impl CliError {
             | CliError::KeyCheckMismatch { .. }
             | CliError::KeyKindMismatch { .. }
             | CliError::KeyImportCurveByte { .. }
-            | CliError::BoxKeyInvalid
-            | CliError::Box512KeyInvalid => FILE_OR_KEY,
+            | CliError::BoxKeyInvalid => FILE_OR_KEY,
             CliError::WrongLength { what, .. } => match what {
                 LengthOf::Key
                 | LengthOf::Nonce
@@ -463,12 +456,9 @@ impl CliError {
             | CliError::SecretstreamUnsupportedVersion(_)
             | CliError::SecretstreamBadChunkLength
             | CliError::SignVerifyFailed
-            | CliError::BoxOpenTruncated
-            | CliError::BoxOpenFailed
-            | CliError::BoxOpenUnsupportedVersion
-            | CliError::Box512OpenTruncated
-            | CliError::Box512OpenFailed
-            | CliError::Box512OpenUnsupportedVersion => REJECTED,
+            | CliError::BoxOpenTruncated(_)
+            | CliError::BoxOpenFailed(_)
+            | CliError::BoxOpenUnsupportedVersion => REJECTED,
         }
     }
 }
@@ -2394,7 +2384,7 @@ fn validate_imported_key(kind: KeyKind, key: &[u8]) -> Result<Option<String>, Cl
         }
         KeyKind::Box512Secret => {
             let sk = dstu_core::crypto_box512::SecretKey::from_bytes(&key_array::<64>(key))
-                .ok_or(CliError::Box512KeyInvalid)?;
+                .ok_or(CliError::BoxKeyInvalid)?;
             Some(keyfile::check_hex(
                 KeyKind::Box512Public,
                 &sk.public_key().to_bytes(),
@@ -2402,7 +2392,7 @@ fn validate_imported_key(kind: KeyKind, key: &[u8]) -> Result<Option<String>, Cl
         }
         KeyKind::Box512Public => {
             dstu_core::crypto_box512::PublicKey::from_bytes(&key_array::<64>(key))
-                .ok_or(CliError::Box512KeyInvalid)?;
+                .ok_or(CliError::BoxKeyInvalid)?;
             None
         }
     })
@@ -2418,7 +2408,7 @@ fn validate_imported_key(kind: KeyKind, key: &[u8]) -> Result<Option<String>, Cl
 ///
 /// [`CliError::Io`]/[`CliError::WrongLength`] for the raw file, [`CliError::KeyImportCurveByte`]
 /// for a verifying key of the other curve, [`CliError::SignKeyInvalid`]/
-/// [`CliError::BoxKeyInvalid`]/[`CliError::Box512KeyInvalid`] for invalid key bytes, and
+/// [`CliError::BoxKeyInvalid`] for invalid key bytes, and
 /// [`CliError::KeyFileExists`] if a secret key's `--out` exists.
 pub fn run_key_import_command(args: &KeyImportArgs) -> Result<(), CliError> {
     let kind = args.kind;
@@ -2488,27 +2478,56 @@ fn hash_file_streamed(path: &PathBuf) -> Result<[u8; 32], CliError> {
     Ok(hasher.finalize())
 }
 
-/// Reads a 21-byte signing-key file and validates it via
-/// [`dstu_core::crypto_sign::SigningKey::from_bytes`].
+/// A signing key of either curve; the key file's kind decides which (T-257, D-213). Like
+/// [`AnyVerifyingKey`], a `uacrypt`-only dispatch enum: the library types stay separate (D-186).
+enum AnySigningKey {
+    M163(dstu_core::crypto_sign::SigningKey),
+    M257(dstu_core::crypto_sign257::SigningKey),
+}
+
+impl AnySigningKey {
+    /// `r || s`: 42 bytes for m=163, 66 for m=257.
+    fn sign_digest(&self, digest: &[u8; 32]) -> Vec<u8> {
+        match self {
+            AnySigningKey::M163(k) => k.sign_digest(digest).to_bytes().to_vec(),
+            AnySigningKey::M257(k) => k.sign_digest(digest).to_bytes().to_vec(),
+        }
+    }
+
+    /// The matching verifying key as a typed key line of the same curve.
+    fn verifying_key_line(&self) -> zeroize::Zeroizing<Vec<u8>> {
+        match self {
+            AnySigningKey::M163(k) => keyfile::encode(
+                KeyKind::Sign163Public,
+                &k.verifying_key().to_uncompressed_bytes(),
+            ),
+            AnySigningKey::M257(k) => keyfile::encode(
+                KeyKind::Sign257Public,
+                &k.verifying_key().to_uncompressed_bytes(),
+            ),
+        }
+    }
+}
+
+/// Reads a signing key of either curve and validates it with that curve's
+/// `SigningKey::from_bytes`.
 fn read_signing_key(
     path: &std::path::Path,
     command: &'static str,
-) -> Result<dstu_core::crypto_sign::SigningKey, CliError> {
-    let (_, bytes) = keyfile::read_key(path, command, &[KeyKind::Sign163Secret])?;
-    let mut d = zeroize::Zeroizing::new([0u8; 21]);
-    d.copy_from_slice(&bytes);
-    dstu_core::crypto_sign::SigningKey::from_bytes(&d).ok_or(CliError::SignKeyInvalid)
-}
-
-/// `m=257` sibling of [`read_signing_key`] - see `docs/TASKS.md` T-199.
-fn read_signing_key257(
-    path: &std::path::Path,
-    command: &'static str,
-) -> Result<dstu_core::crypto_sign257::SigningKey, CliError> {
-    let (_, bytes) = keyfile::read_key(path, command, &[KeyKind::Sign257Secret])?;
-    let mut d = zeroize::Zeroizing::new([0u8; 33]);
-    d.copy_from_slice(&bytes);
-    dstu_core::crypto_sign257::SigningKey::from_bytes(&d).ok_or(CliError::SignKeyInvalid)
+) -> Result<AnySigningKey, CliError> {
+    let (kind, bytes) = keyfile::read_key(
+        path,
+        command,
+        &[KeyKind::Sign163Secret, KeyKind::Sign257Secret],
+    )?;
+    let key = if kind == KeyKind::Sign163Secret {
+        dstu_core::crypto_sign::SigningKey::from_bytes(&key_array::<21>(&bytes))
+            .map(AnySigningKey::M163)
+    } else {
+        dstu_core::crypto_sign257::SigningKey::from_bytes(&key_array::<33>(&bytes))
+            .map(AnySigningKey::M257)
+    };
+    key.ok_or(CliError::SignKeyInvalid)
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -2585,46 +2604,17 @@ pub fn parse_sign_pubkey_args(args: &[String]) -> Result<SignPubkeyArgs, CliErro
     })
 }
 
-/// Runs `sign-pubkey`: reads a 21-byte signing key from `--key`, derives `Q = -d*G`
-/// ([`dstu_core::crypto_sign::SigningKey::verifying_key`]), and writes a 1-byte curve tag
-/// ([`dstu_core::crypto_sign::CurveId::M163`]) followed by its 42-byte uncompressed `x || y`
-/// encoding (43 bytes total) to `--out` - the tagged file format `verify --key` expects
-/// (`docs/DECISIONS.md` D-186 Decision 1, `docs/TASKS.md` T-199). Breaking change from this
-/// project's earlier untagged 42-byte format - acceptable pre-1.0, same posture as every other
-/// wire-format change already recorded in `docs/CHANGELOG.md`.
+/// Runs `sign-pubkey`: reads a signing key of either curve from `--key`, derives `Q = -d*G`
+/// (`SigningKey::verifying_key`), and writes it to `--out` as a verifying-key line of the same
+/// curve (D-212), the format `verify --key` expects.
 ///
 /// # Errors
 ///
-/// Returns [`CliError::Io`]/[`CliError::WrongLength`] for file problems, or
+/// Returns [`CliError::Io`] or a key-file error for file problems, or
 /// [`CliError::SignKeyInvalid`] if `--key` isn't a valid signing key.
 pub fn run_sign_pubkey_command(args: &SignPubkeyArgs) -> Result<(), CliError> {
     let signing_key = read_signing_key(&args.key_path, "sign-pubkey")?;
-    let verifying_key = signing_key.verifying_key();
-    let line = keyfile::encode(
-        KeyKind::Sign163Public,
-        &verifying_key.to_uncompressed_bytes(),
-    );
-    std::fs::write(&args.out_path, line.as_slice()).map_err(|e| CliError::Io {
-        path: args.out_path.clone(),
-        message: e.to_string(),
-    })
-}
-
-/// `m=257` sibling of [`run_sign_pubkey_command`] - writes
-/// [`dstu_core::crypto_sign::CurveId::M257`]'s tag byte followed by the 66-byte uncompressed
-/// key (67 bytes total). See `docs/TASKS.md` T-199.
-///
-/// # Errors
-///
-/// Returns [`CliError::Io`]/[`CliError::WrongLength`] for file problems, or
-/// [`CliError::SignKeyInvalid`] if `--key` isn't a valid signing key.
-pub fn run_sign_pubkey257_command(args: &SignPubkeyArgs) -> Result<(), CliError> {
-    let signing_key = read_signing_key257(&args.key_path, "sign-pubkey257")?;
-    let verifying_key = signing_key.verifying_key();
-    let line = keyfile::encode(
-        KeyKind::Sign257Public,
-        &verifying_key.to_uncompressed_bytes(),
-    );
+    let line = signing_key.verifying_key_line();
     std::fs::write(&args.out_path, line.as_slice()).map_err(|e| CliError::Io {
         path: args.out_path.clone(),
         message: e.to_string(),
@@ -2657,9 +2647,9 @@ pub fn parse_sign_args(args: &[String]) -> Result<SignArgs, CliError> {
 }
 
 /// Runs `sign`: hashes `--in` with Kupyna-256 in bounded-memory chunks
-/// ([`hash_file_streamed`], D-42), signs the digest with `--key`
-/// ([`dstu_core::crypto_sign::SigningKey::sign_digest`], deterministic nonce - D-46), and writes
-/// the 42-byte `r || s` signature to `--out`. `iterations > 1` is the D-34 benchmark path: the
+/// ([`hash_file_streamed`], D-42), signs the digest with `--key` of either curve
+/// (`SigningKey::sign_digest`, deterministic nonce - D-46), and writes the `r || s` signature to
+/// `--out` (42 bytes for m=163, 66 for m=257; the key's kind picks the curve, T-257). `iterations > 1` is the D-34 benchmark path: the
 /// message is hashed once (matching `openssl speed`'s own methodology of signing one fixed digest
 /// repeatedly, not re-hashing per call, `docs/DECISIONS.md` D-106's extension note), then only the
 /// `sign_digest` call itself is timed in a loop, key parsed once outside it (D-80's cached-schedule
@@ -2682,49 +2672,7 @@ pub fn run_sign_command(args: &SignArgs) -> Result<(), CliError> {
     }
     let elapsed = start.elapsed();
 
-    std::fs::write(&args.out_path, sig.to_bytes()).map_err(|e| CliError::Io {
-        path: args.out_path.clone(),
-        message: e.to_string(),
-    })?;
-
-    if args.iterations > 1 {
-        let per_op_ns = elapsed.as_nanos() / u128::from(args.iterations);
-        let ops_per_s = if per_op_ns == 0 {
-            0.0
-        } else {
-            1e9 / (per_op_ns as f64)
-        };
-        eprintln!(
-            "iterations={} total_ns={} per_op_ns={per_op_ns} ops_per_s={ops_per_s:.2}",
-            args.iterations,
-            elapsed.as_nanos(),
-        );
-    }
-
-    Ok(())
-}
-
-/// `m=257` sibling of [`run_sign_command`] - writes the 66-byte `r || s` signature. See
-/// `docs/TASKS.md` T-199.
-///
-/// # Errors
-///
-/// Returns [`CliError::Io`]/[`CliError::WrongLength`] for file problems, or
-/// [`CliError::SignKeyInvalid`] if `--key` isn't a valid signing key.
-#[allow(clippy::cast_precision_loss)] // human-readable ops/s diagnostic, not exact at any realistic count
-pub fn run_sign257_command(args: &SignArgs) -> Result<(), CliError> {
-    let signing_key = read_signing_key257(&args.key_path, "sign257")?;
-    let digest = hash_file_streamed(&args.in_path)?;
-    let iterations = args.iterations.max(1);
-
-    let start = Instant::now();
-    let mut sig = signing_key.sign_digest(&digest);
-    for _ in 1..iterations {
-        sig = signing_key.sign_digest(&digest);
-    }
-    let elapsed = start.elapsed();
-
-    std::fs::write(&args.out_path, sig.to_bytes()).map_err(|e| CliError::Io {
+    std::fs::write(&args.out_path, &sig).map_err(|e| CliError::Io {
         path: args.out_path.clone(),
         message: e.to_string(),
     })?;
@@ -2896,52 +2844,118 @@ pub fn run_verify_command(args: &VerifyArgs) -> Result<(), CliError> {
     }
 }
 
-/// Reads a 32-byte `crypto_box` secret-key file and validates it via
-/// [`dstu_core::crypto_box::SecretKey::from_bytes`].
+/// A `crypto_box` secret key of either curve; the key file's kind decides which (T-257, D-213).
+enum AnyBoxSecret {
+    L256(dstu_core::crypto_box::SecretKey),
+    L512(dstu_core::crypto_box512::SecretKey),
+}
+
+/// A `crypto_box` public key of either curve; the key file's kind decides which (T-257, D-213).
+enum AnyBoxPublic {
+    L256(dstu_core::crypto_box::PublicKey),
+    L512(dstu_core::crypto_box512::PublicKey),
+}
+
+impl AnyBoxSecret {
+    fn curve_label(&self) -> &'static str {
+        match self {
+            AnyBoxSecret::L256(_) => "l(p)=256",
+            AnyBoxSecret::L512(_) => "l(p)=512",
+        }
+    }
+
+    fn public_key_line(&self) -> zeroize::Zeroizing<Vec<u8>> {
+        match self {
+            AnyBoxSecret::L256(k) => {
+                keyfile::encode(KeyKind::Box256Public, &k.public_key().to_bytes())
+            }
+            AnyBoxSecret::L512(k) => {
+                keyfile::encode(KeyKind::Box512Public, &k.public_key().to_bytes())
+            }
+        }
+    }
+
+    fn open(&self, sealed: &[u8]) -> Result<Vec<u8>, CliError> {
+        let curve = self.curve_label();
+        match self {
+            AnyBoxSecret::L256(k) => dstu_core::crypto_box::open(sealed, k).map_err(|e| match e {
+                dstu_core::crypto_box::OpenError::Truncated => CliError::BoxOpenTruncated(curve),
+                dstu_core::crypto_box::OpenError::InvalidCiphertext => {
+                    CliError::BoxOpenFailed(curve)
+                }
+                dstu_core::crypto_box::OpenError::UnsupportedVersion => {
+                    CliError::BoxOpenUnsupportedVersion
+                }
+            }),
+            AnyBoxSecret::L512(k) => {
+                dstu_core::crypto_box512::open(sealed, k).map_err(|e| match e {
+                    dstu_core::crypto_box512::OpenError::Truncated => {
+                        CliError::BoxOpenTruncated(curve)
+                    }
+                    dstu_core::crypto_box512::OpenError::InvalidCiphertext => {
+                        CliError::BoxOpenFailed(curve)
+                    }
+                    dstu_core::crypto_box512::OpenError::UnsupportedVersion => {
+                        CliError::BoxOpenUnsupportedVersion
+                    }
+                })
+            }
+        }
+    }
+}
+
+impl AnyBoxPublic {
+    fn seal(&self, message: &[u8]) -> Result<Vec<u8>, CliError> {
+        match self {
+            AnyBoxPublic::L256(k) => {
+                dstu_core::crypto_box::seal(message, k).map_err(|e| CliError::Random(e.to_string()))
+            }
+            AnyBoxPublic::L512(k) => dstu_core::crypto_box512::seal(message, k)
+                .map_err(|e| CliError::Random(e.to_string())),
+        }
+    }
+}
+
+/// Reads a `crypto_box` secret key of either curve and validates it with that curve's
+/// `SecretKey::from_bytes`.
 fn read_box_secret_key(
     path: &std::path::Path,
     command: &'static str,
-) -> Result<dstu_core::crypto_box::SecretKey, CliError> {
-    let (_, bytes) = keyfile::read_key(path, command, &[KeyKind::Box256Secret])?;
-    let mut raw = zeroize::Zeroizing::new([0u8; 32]);
-    raw.copy_from_slice(&bytes);
-    dstu_core::crypto_box::SecretKey::from_bytes(&raw).ok_or(CliError::BoxKeyInvalid)
+) -> Result<AnyBoxSecret, CliError> {
+    let (kind, bytes) = keyfile::read_key(
+        path,
+        command,
+        &[KeyKind::Box256Secret, KeyKind::Box512Secret],
+    )?;
+    let key = if kind == KeyKind::Box256Secret {
+        dstu_core::crypto_box::SecretKey::from_bytes(&key_array::<32>(&bytes))
+            .map(AnyBoxSecret::L256)
+    } else {
+        dstu_core::crypto_box512::SecretKey::from_bytes(&key_array::<64>(&bytes))
+            .map(AnyBoxSecret::L512)
+    };
+    key.ok_or(CliError::BoxKeyInvalid)
 }
 
-/// Reads a 64-byte `crypto_box512` secret-key file and validates it via
-/// [`dstu_core::crypto_box512::SecretKey::from_bytes`].
-fn read_box512_secret_key(
-    path: &std::path::Path,
-    command: &'static str,
-) -> Result<dstu_core::crypto_box512::SecretKey, CliError> {
-    let (_, bytes) = keyfile::read_key(path, command, &[KeyKind::Box512Secret])?;
-    let mut raw = zeroize::Zeroizing::new([0u8; 64]);
-    raw.copy_from_slice(&bytes);
-    dstu_core::crypto_box512::SecretKey::from_bytes(&raw).ok_or(CliError::Box512KeyInvalid)
-}
-
-/// Reads a 64-byte `crypto_box512` public-key file and validates it via
-/// [`dstu_core::crypto_box512::PublicKey::from_bytes`].
-fn read_box512_public_key(
-    path: &std::path::Path,
-    command: &'static str,
-) -> Result<dstu_core::crypto_box512::PublicKey, CliError> {
-    let (_, bytes) = keyfile::read_key(path, command, &[KeyKind::Box512Public])?;
-    let mut raw = [0u8; 64];
-    raw.copy_from_slice(&bytes);
-    dstu_core::crypto_box512::PublicKey::from_bytes(&raw).ok_or(CliError::Box512KeyInvalid)
-}
-
-/// Reads a 32-byte `crypto_box` public-key file and validates it via
-/// [`dstu_core::crypto_box::PublicKey::from_bytes`].
+/// Reads a `crypto_box` public key of either curve and validates it with that curve's
+/// `PublicKey::from_bytes`.
 fn read_box_public_key(
     path: &std::path::Path,
     command: &'static str,
-) -> Result<dstu_core::crypto_box::PublicKey, CliError> {
-    let (_, bytes) = keyfile::read_key(path, command, &[KeyKind::Box256Public])?;
-    let mut raw = [0u8; 32];
-    raw.copy_from_slice(&bytes);
-    dstu_core::crypto_box::PublicKey::from_bytes(&raw).ok_or(CliError::BoxKeyInvalid)
+) -> Result<AnyBoxPublic, CliError> {
+    let (kind, bytes) = keyfile::read_key(
+        path,
+        command,
+        &[KeyKind::Box256Public, KeyKind::Box512Public],
+    )?;
+    let key = if kind == KeyKind::Box256Public {
+        dstu_core::crypto_box::PublicKey::from_bytes(&key_array::<32>(&bytes))
+            .map(AnyBoxPublic::L256)
+    } else {
+        dstu_core::crypto_box512::PublicKey::from_bytes(&key_array::<64>(&bytes))
+            .map(AnyBoxPublic::L512)
+    };
+    key.ok_or(CliError::BoxKeyInvalid)
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -3009,9 +3023,7 @@ pub fn parse_box_pubkey_args(args: &[String]) -> Result<BoxPubkeyArgs, CliError>
 /// Returns [`CliError::Io`]/[`CliError::WrongLength`] for file problems, or
 /// [`CliError::BoxKeyInvalid`] if `--key` isn't a valid `crypto_box` secret key.
 pub fn run_box_pubkey_command(args: &BoxPubkeyArgs) -> Result<(), CliError> {
-    let secret = read_box_secret_key(&args.key_path, "box-pubkey")?;
-    let public = secret.public_key();
-    let line = keyfile::encode(KeyKind::Box256Public, &public.to_bytes());
+    let line = read_box_secret_key(&args.key_path, "box-pubkey")?.public_key_line();
     std::fs::write(&args.out_path, line.as_slice()).map_err(|e| CliError::Io {
         path: args.out_path.clone(),
         message: e.to_string(),
@@ -3071,11 +3083,9 @@ pub fn run_box_seal_command(args: &BoxSealArgs) -> Result<(), CliError> {
     let iterations = args.iterations.max(1);
 
     let start = Instant::now();
-    let mut sealed = dstu_core::crypto_box::seal(&message, &public)
-        .map_err(|e| CliError::Random(e.to_string()))?;
+    let mut sealed = public.seal(&message)?;
     for _ in 1..iterations {
-        sealed = dstu_core::crypto_box::seal(&message, &public)
-            .map_err(|e| CliError::Random(e.to_string()))?;
+        sealed = public.seal(&message)?;
     }
     let elapsed = start.elapsed();
 
@@ -3147,16 +3157,11 @@ pub fn run_box_open_command(args: &BoxOpenArgs) -> Result<(), CliError> {
         message: e.to_string(),
     })?;
     let iterations = args.iterations.max(1);
-    let map_open_err = |e| match e {
-        dstu_core::crypto_box::OpenError::Truncated => CliError::BoxOpenTruncated,
-        dstu_core::crypto_box::OpenError::InvalidCiphertext => CliError::BoxOpenFailed,
-        dstu_core::crypto_box::OpenError::UnsupportedVersion => CliError::BoxOpenUnsupportedVersion,
-    };
 
     let start = Instant::now();
-    let mut opened = dstu_core::crypto_box::open(&sealed, &secret).map_err(map_open_err)?;
+    let mut opened = secret.open(&sealed)?;
     for _ in 1..iterations {
-        opened = dstu_core::crypto_box::open(&sealed, &secret).map_err(map_open_err)?;
+        opened = secret.open(&sealed)?;
     }
     let elapsed = start.elapsed();
 
@@ -3180,23 +3185,6 @@ pub fn run_box_open_command(args: &BoxOpenArgs) -> Result<(), CliError> {
     }
 
     Ok(())
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub struct Box512KeygenArgs {
-    pub out_path: PathBuf,
-}
-
-/// Parses `box-keygen512`'s flags (`--out`, required).
-///
-/// # Errors
-///
-/// Returns [`CliError::MissingFlag`] or [`CliError::UnknownFlag`].
-pub fn parse_box512_keygen_args(args: &[String]) -> Result<Box512KeygenArgs, CliError> {
-    let scanner = ArgScanner::scan(args, &["--out"], &[])?;
-    Ok(Box512KeygenArgs {
-        out_path: scanner.path("--out")?,
-    })
 }
 
 /// Runs `box-keygen512`: draws a fresh `crypto_box512` secret key via rejection sampling
@@ -3209,204 +3197,13 @@ pub fn parse_box512_keygen_args(args: &[String]) -> Result<Box512KeygenArgs, Cli
 ///
 /// Returns [`CliError::Random`] if the OS CSPRNG fails, or [`CliError::Io`] if `--out` can't be
 /// written.
-pub fn run_box512_keygen_command(args: &Box512KeygenArgs) -> Result<(), CliError> {
+pub fn run_box512_keygen_command(args: &BoxKeygenArgs) -> Result<(), CliError> {
     let key = dstu_core::crypto_box512::SecretKey::generate()
         .map_err(|e| CliError::Random(e.to_string()))?;
     write_new_secret_key(
         &args.out_path,
         &keyfile::encode(KeyKind::Box512Secret, &key.to_bytes()),
     )
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub struct Box512PubkeyArgs {
-    pub key_path: PathBuf,
-    pub out_path: PathBuf,
-}
-
-/// Parses `box-pubkey512`'s flags (`--key`/`--out`, both required).
-///
-/// # Errors
-///
-/// Returns [`CliError::MissingFlag`] or [`CliError::UnknownFlag`].
-pub fn parse_box512_pubkey_args(args: &[String]) -> Result<Box512PubkeyArgs, CliError> {
-    let scanner = ArgScanner::scan(args, &["--key", "--out"], &[])?;
-    Ok(Box512PubkeyArgs {
-        key_path: scanner.path("--key")?,
-        out_path: scanner.path("--out")?,
-    })
-}
-
-/// Runs `box-pubkey512`: reads a 64-byte `crypto_box512` secret key from `--key`, derives its
-/// public key ([`dstu_core::crypto_box512::SecretKey::public_key`]), and writes the 64-byte
-/// compressed (`x`-coordinate only, see `crypto_box512`'s own module doc) encoding to `--out` -
-/// the format `box-seal512 --key` expects.
-///
-/// # Errors
-///
-/// Returns [`CliError::Io`]/[`CliError::WrongLength`] for file problems, or
-/// [`CliError::Box512KeyInvalid`] if `--key` isn't a valid `crypto_box512` secret key.
-pub fn run_box512_pubkey_command(args: &Box512PubkeyArgs) -> Result<(), CliError> {
-    let secret = read_box512_secret_key(&args.key_path, "box-pubkey512")?;
-    let public = secret.public_key();
-    let line = keyfile::encode(KeyKind::Box512Public, &public.to_bytes());
-    std::fs::write(&args.out_path, line.as_slice()).map_err(|e| CliError::Io {
-        path: args.out_path.clone(),
-        message: e.to_string(),
-    })
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub struct Box512SealArgs {
-    pub key_path: PathBuf,
-    pub in_path: PathBuf,
-    pub out_path: PathBuf,
-    pub iterations: u32,
-}
-
-/// Parses `box-seal512`'s flags (`--key`/`--in`/`--out` required, `--iterations` optional -
-/// benchmarking only, same shape as [`parse_box_seal_args`]).
-///
-/// # Errors
-///
-/// Returns [`CliError::MissingFlag`], [`CliError::InvalidIterations`], or [`CliError::UnknownFlag`].
-pub fn parse_box512_seal_args(args: &[String]) -> Result<Box512SealArgs, CliError> {
-    let scanner = ArgScanner::scan(args, &["--key", "--in", "--out", "--iterations"], &[])?;
-    Ok(Box512SealArgs {
-        key_path: scanner.path("--key")?,
-        in_path: scanner.path("--in")?,
-        out_path: scanner.path("--out")?,
-        iterations: scanner.iterations()?,
-    })
-}
-
-/// Runs `box-seal512`: reads a 64-byte recipient public key from `--key` and encrypts `--in` to
-/// it ([`dstu_core::crypto_box512::seal`]) - see [`run_box_seal_command`]'s doc comment for the
-/// same not-memory-bounded caveat and the same `iterations > 1` benchmark-path reasoning
-/// (D-34/T-179/T-194).
-///
-/// # Errors
-///
-/// Returns [`CliError::Io`] if `--key`/`--in` can't be read or `--out` can't be written,
-/// [`CliError::WrongLength`] if `--key` isn't 64 bytes, [`CliError::Box512KeyInvalid`] if `--key`
-/// isn't a valid public key, or [`CliError::Random`] if the OS CSPRNG fails.
-#[allow(clippy::cast_precision_loss)] // human-readable ops/s diagnostic, not exact at any realistic count
-pub fn run_box512_seal_command(args: &Box512SealArgs) -> Result<(), CliError> {
-    let public = read_box512_public_key(&args.key_path, "box-seal512")?;
-    let message = std::fs::read(&args.in_path).map_err(|e| CliError::Io {
-        path: args.in_path.clone(),
-        message: e.to_string(),
-    })?;
-    let iterations = args.iterations.max(1);
-
-    let start = Instant::now();
-    let mut sealed = dstu_core::crypto_box512::seal(&message, &public)
-        .map_err(|e| CliError::Random(e.to_string()))?;
-    for _ in 1..iterations {
-        sealed = dstu_core::crypto_box512::seal(&message, &public)
-            .map_err(|e| CliError::Random(e.to_string()))?;
-    }
-    let elapsed = start.elapsed();
-
-    std::fs::write(&args.out_path, sealed).map_err(|e| CliError::Io {
-        path: args.out_path.clone(),
-        message: e.to_string(),
-    })?;
-
-    if args.iterations > 1 {
-        let per_op_ns = elapsed.as_nanos() / u128::from(args.iterations);
-        let ops_per_s = if per_op_ns == 0 {
-            0.0
-        } else {
-            1e9 / (per_op_ns as f64)
-        };
-        eprintln!(
-            "iterations={} total_ns={} per_op_ns={per_op_ns} ops_per_s={ops_per_s:.2}",
-            args.iterations,
-            elapsed.as_nanos(),
-        );
-    }
-
-    Ok(())
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub struct Box512OpenArgs {
-    pub key_path: PathBuf,
-    pub in_path: PathBuf,
-    pub out_path: PathBuf,
-    pub iterations: u32,
-}
-
-/// Parses `box-open512`'s flags (`--key`/`--in`/`--out` required, `--iterations` optional -
-/// benchmarking only, same shape as [`parse_box_open_args`]).
-///
-/// # Errors
-///
-/// Returns [`CliError::MissingFlag`], [`CliError::InvalidIterations`], or [`CliError::UnknownFlag`].
-pub fn parse_box512_open_args(args: &[String]) -> Result<Box512OpenArgs, CliError> {
-    let scanner = ArgScanner::scan(args, &["--key", "--in", "--out", "--iterations"], &[])?;
-    Ok(Box512OpenArgs {
-        key_path: scanner.path("--key")?,
-        in_path: scanner.path("--in")?,
-        out_path: scanner.path("--out")?,
-        iterations: scanner.iterations()?,
-    })
-}
-
-/// Runs `box-open512`: reads a 64-byte secret key from `--key` and decrypts `--in`
-/// ([`dstu_core::crypto_box512::open`]) - see [`run_box_open_command`]'s doc comment for the same
-/// not-memory-bounded caveat and the same `iterations > 1` benchmark-path reasoning.
-///
-/// # Errors
-///
-/// Returns [`CliError::Io`] if `--key`/`--in` can't be read or `--out` can't be written,
-/// [`CliError::WrongLength`] if `--key` isn't 64 bytes, [`CliError::Box512KeyInvalid`] if `--key`
-/// isn't a valid secret key, [`CliError::Box512OpenTruncated`] if `--in` is too short to be real
-/// `box-seal512` output, or [`CliError::Box512OpenFailed`] for any other authentication failure.
-#[allow(clippy::cast_precision_loss)] // human-readable ops/s diagnostic, not exact at any realistic count
-pub fn run_box512_open_command(args: &Box512OpenArgs) -> Result<(), CliError> {
-    let secret = read_box512_secret_key(&args.key_path, "box-open512")?;
-    let sealed = std::fs::read(&args.in_path).map_err(|e| CliError::Io {
-        path: args.in_path.clone(),
-        message: e.to_string(),
-    })?;
-    let iterations = args.iterations.max(1);
-    let map_open_err = |e| match e {
-        dstu_core::crypto_box512::OpenError::Truncated => CliError::Box512OpenTruncated,
-        dstu_core::crypto_box512::OpenError::InvalidCiphertext => CliError::Box512OpenFailed,
-        dstu_core::crypto_box512::OpenError::UnsupportedVersion => {
-            CliError::Box512OpenUnsupportedVersion
-        }
-    };
-
-    let start = Instant::now();
-    let mut opened = dstu_core::crypto_box512::open(&sealed, &secret).map_err(map_open_err)?;
-    for _ in 1..iterations {
-        opened = dstu_core::crypto_box512::open(&sealed, &secret).map_err(map_open_err)?;
-    }
-    let elapsed = start.elapsed();
-
-    std::fs::write(&args.out_path, opened).map_err(|e| CliError::Io {
-        path: args.out_path.clone(),
-        message: e.to_string(),
-    })?;
-
-    if args.iterations > 1 {
-        let per_op_ns = elapsed.as_nanos() / u128::from(args.iterations);
-        let ops_per_s = if per_op_ns == 0 {
-            0.0
-        } else {
-            1e9 / (per_op_ns as f64)
-        };
-        eprintln!(
-            "iterations={} total_ns={} per_op_ns={per_op_ns} ops_per_s={ops_per_s:.2}",
-            args.iterations,
-            elapsed.as_nanos(),
-        );
-    }
-
-    Ok(())
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -3643,7 +3440,7 @@ fn is_help_flag(s: &str) -> bool {
 /// `true` for `--version`/`-V` (the `-V` short form matches `cargo --version`'s own convention,
 /// e.g. `cargo -V`). Only checked at the top level (`uacrypt --version`), unlike `is_help_flag` -
 /// there is no per-subcommand version to report, every command ships as one binary.
-/// The version byte `encrypt` and `box-seal`/`box-seal512` write first (`dstu_core`'s
+/// The version byte `encrypt` and `box-seal` write first (`dstu_core`'s
 /// `crypto_secretstream::FORMAT_VERSION` and `crypto_box`'s `FORMAT_VERSION`, D-202/D-208), printed
 /// by `--version`. A const assert pins the first and a unit test checks a real sealed file for the
 /// second, so it cannot silently drift from the library.
@@ -3671,21 +3468,16 @@ EVERYDAY COMMANDS:
     encrypt         Encrypt a file of any size with a `keygen` key (authenticated, streamed).
     decrypt         Decrypt a file produced by `encrypt`.
     hash            Compute a Kupyna-256 digest of a file of any size.
-    sign-keygen     Generate a fresh signing key for `sign` (DSTU 4145, m=163).
+    sign-keygen     Generate a fresh signing key (DSTU 4145, m=163).
+    sign-keygen257  Generate a fresh signing key (DSTU 4145, m=257, what Diia signatures use).
     sign-pubkey     Derive the matching verifying key from a signing key, for `verify`.
-    sign            Sign a file of any size with a signing key (DSTU 4145, m=163).
-    verify          Check a `sign`/`sign257` signature against a verifying key (auto-detects curve).
-    sign-keygen257  Like `sign-keygen`, over DSTU 4145's m=257 curve instead of m=163.
-    sign-pubkey257  Like `sign-pubkey`, for a `sign-keygen257` key.
-    sign257         Like `sign`, for a `sign-keygen257` key.
-    box-keygen      Generate a fresh crypto_box secret key for `box-open`.
+    sign            Sign a file of any size with a signing key.
+    verify          Check a `sign` signature against a verifying key.
+    box-keygen      Generate a fresh crypto_box secret key (DSTU 9041, l(p)=256).
+    box-keygen512   Generate a fresh crypto_box secret key (DSTU 9041, l(p)=512).
     box-pubkey      Derive the matching public key from a secret key, for `box-seal`.
     box-seal        Encrypt a file to a recipient's public key (DSTU 9041, hybrid via KDF).
     box-open        Decrypt a file produced by `box-seal`.
-    box-keygen512   Like `box-keygen`, over DSTU 9041's l(p)=512 curve (E512/1) instead of l(p)=256.
-    box-pubkey512   Like `box-pubkey`, for a `box-keygen512` key.
-    box-seal512     Like `box-seal`, for a `box-pubkey512` recipient key.
-    box-open512     Decrypt a file produced by `box-seal512`.
     key-import      Convert a raw key file from uacrypt 0.4 or older into a typed key file.
 
 LOWER-LEVEL COMMANDS (benchmarking and interop with other DSTU implementations):
@@ -3702,11 +3494,13 @@ LOWER-LEVEL COMMANDS (benchmarking and interop with other DSTU implementations):
 FILE FORMATS (byte layouts, with field sizes in bytes: see docs/CLI.md 'File formats'):
     encrypt         version (1) || header (32), then records:
                     chunk tag (1) || length (4, LE) || ciphertext || auth tag (16)
-    box-seal(512)   version (1) || KEM ciphertext (128 / 256) || header (32) || ciphertext || auth tag (16)
+    box-seal        version (1) || KEM ciphertext (128 / 256) || header (32) || ciphertext || auth tag (16)
     key files       one text line `<kind>:<key hex>:<check hex>`, see docs/CLI.md 'Key files';
                     the lower-level commands above take raw key bytes instead
     kalyna-gcm/-gmac write raw ciphertext/tag files with no container and no format version, so
     use `encrypt` or `box-seal` for files.
+
+The curve is chosen once, by the keygen command; every other command reads it from the key.
 
 EXIT STATUS:
     0   success
@@ -3816,9 +3610,8 @@ Draws from the OS CSPRNG via rejection sampling against the DSTU 4145 curve orde
 reduction, which would bias the result) and writes it to --out as a typed key file
 (docs/CLI.md 'Key files'). A separate command from `keygen` - a signing key and an `encrypt`/`decrypt` key
 are different, incompatible things, not two settings of the same command. For DSTU 4145's other
-implemented curve (m=257, what real Diia-issued signatures use), use
-`sign-keygen257` instead - a separate command, not a --curve flag on this one, same reasoning
-`box-keygen512`'s own help text gives.
+implemented curve (m=257, what real Diia-issued signatures use), use `sign-keygen257` instead.
+`sign-pubkey`, `sign` and `verify` take a key of either curve and read the curve from it.
 
 USAGE:
     uacrypt sign-keygen --out <path>
@@ -3832,21 +3625,19 @@ EXAMPLE:
 Notes:
     - Keep this file secret - anyone who has it can sign as you.
     - Derive the matching public verifying key with `uacrypt sign-pubkey`.
-    - Not interchangeable with `sign-keygen257`/`sign-pubkey257`/`sign257` - those are m=257.
 ";
 
 const SIGN_PUBKEY_HELP: &str = "\
 uacrypt sign-pubkey - derive the matching verifying key from a signing key.
 
-Reads --key (a `sign-keygen` output) and writes the matching verifying key to --out as a typed
-key file - safe to share, unlike the signing key. The key line names its curve, so `verify`
-tells it apart from a `sign-pubkey257` key by itself.
+Reads --key (a `sign-keygen` or `sign-keygen257` output) and writes the matching verifying key,
+of the same curve, to --out as a typed key file - safe to share, unlike the signing key.
 
 USAGE:
     uacrypt sign-pubkey --key <path> --out <path>
 
 FLAGS:
-    --key <path>    a signing key (from `uacrypt sign-keygen`)
+    --key <path>    a signing key (from `uacrypt sign-keygen` or `sign-keygen257`)
     --out <path>    where to write the verifying key
 
 EXAMPLE:
@@ -3854,29 +3645,29 @@ EXAMPLE:
 ";
 
 const SIGN_HELP: &str = "\
-uacrypt sign - sign a file of any size with a signing key (DSTU 4145, m=163).
+uacrypt sign - sign a file of any size with a signing key (DSTU 4145).
 
 Hashes --in with Kupyna-256 in bounded memory chunks, then signs the digest (deterministic nonce -
-no RNG involved in signing itself, only in `sign-keygen`). Writes the 42-byte signature to --out.
+no RNG involved in signing itself, only in `sign-keygen`). The curve is the key's: writes a
+42-byte signature to --out for an m=163 key, 66 bytes for an m=257 key.
 
 USAGE:
     uacrypt sign --key <path> --in <path> --out <path>
 
 FLAGS:
-    --key <path>        a signing key (from `uacrypt sign-keygen`)
+    --key <path>        a signing key (from `uacrypt sign-keygen` or `sign-keygen257`)
     --in <path>         file to sign
-    --out <path>        where to write the 42-byte signature
+    --out <path>        where to write the signature
 
 EXAMPLE:
     uacrypt sign --key signing.key --in report.pdf --out report.pdf.sig
 ";
 
 const VERIFY_HELP: &str = "\
-uacrypt verify - check a `sign`/`sign257` signature against a verifying key (DSTU 4145).
+uacrypt verify - check a `sign` signature against a verifying key (DSTU 4145).
 
-Hashes --in the same way `sign`/`sign257` did, then checks --sig against --key (a `sign-pubkey` or
-`sign-pubkey257` output - the same `verify` command handles both). The key file names its curve,
-so you never need to tell `verify` which one; a key of any other kind is refused by name. Prints `Signature OK (DSTU 4145, m=...)` to stderr and exits 0 on a
+Hashes --in the same way `sign` did, then checks --sig against --key (a `sign-pubkey` output, of
+either curve). The key file names its curve, so you never need to tell `verify` which one; a key of any other kind is refused by name. Prints `Signature OK (DSTU 4145, m=...)` to stderr and exits 0 on a
 valid signature; exits with an error
 (nothing written) if the message, signature, or key do not match - a tampered file or a wrong key
 is detected, not silently accepted.
@@ -3885,22 +3676,22 @@ USAGE:
     uacrypt verify --key <path> --in <path> --sig <path>
 
 FLAGS:
-    --key <path>        a verifying key (from `uacrypt sign-pubkey` or `sign-pubkey257`)
+    --key <path>        a verifying key (from `uacrypt sign-pubkey`)
     --in <path>         the file that was signed
-    --sig <path>        the signature (from `uacrypt sign` or `sign257`, matching --key's curve)
+    --sig <path>        the signature (from `uacrypt sign`, made with the matching signing key)
 
 EXAMPLE:
     uacrypt verify --key verifying.key --in report.pdf --sig report.pdf.sig
 ";
 
 const SIGN_KEYGEN257_HELP: &str = "\
-uacrypt sign-keygen257 - generate a fresh signing key for `sign257` (DSTU 4145, m=257).
+uacrypt sign-keygen257 - generate a fresh signing key for `sign` (DSTU 4145, m=257).
 
-Same shape as `sign-keygen`, over DSTU 4145's m=257 curve instead of m=163 - a separate command, not a --curve flag, since the two are
-distinct, incompatible key shapes (same convention `box-keygen512`'s own help text already uses).
+Same shape as `sign-keygen`, over DSTU 4145's m=257 curve instead of m=163. The curve is chosen
+here, once, and recorded in the key: `sign-pubkey`, `sign` and `verify` read it from there.
 m=257 is what real Diia-issued qualified signatures use in production, confirmed by inspecting an
-actual issued certificate - m=163 is still the default here (`sign-keygen`) since it's what this
-project shipped first, not because it's recommended over m=257.
+actual issued certificate - m=163 is the plain `sign-keygen` only because this project shipped it
+first, not because it's recommended over m=257.
 
 USAGE:
     uacrypt sign-keygen257 --out <path>
@@ -3913,43 +3704,7 @@ EXAMPLE:
 
 Notes:
     - Keep this file secret - anyone who has it can sign as you.
-    - Derive the matching public verifying key with `uacrypt sign-pubkey257`.
-    - Not interchangeable with `sign-keygen`/`sign-pubkey`/`sign` - those are m=163.
-";
-
-const SIGN_PUBKEY257_HELP: &str = "\
-uacrypt sign-pubkey257 - derive the matching verifying key from a `sign-keygen257` key.
-
-Reads --key (a `sign-keygen257` output) and writes the matching verifying key to --out as a typed
-key file. The same `verify` command as for `sign-pubkey` reads it - the key line names its
-curve, so there is no `verify257`.
-
-USAGE:
-    uacrypt sign-pubkey257 --key <path> --out <path>
-
-FLAGS:
-    --key <path>    a signing key (from `uacrypt sign-keygen257`)
-    --out <path>    where to write the verifying key
-
-EXAMPLE:
-    uacrypt sign-pubkey257 --key signing257.key --out verifying257.key
-";
-
-const SIGN257_HELP: &str = "\
-uacrypt sign257 - sign a file of any size with a `sign-keygen257` key (DSTU 4145, m=257).
-
-Same shape as `sign`, over m=257 instead of m=163. Writes the 66-byte signature to --out.
-
-USAGE:
-    uacrypt sign257 --key <path> --in <path> --out <path>
-
-FLAGS:
-    --key <path>        a signing key (from `uacrypt sign-keygen257`)
-    --in <path>         file to sign
-    --out <path>        where to write the 66-byte signature
-
-EXAMPLE:
-    uacrypt sign257 --key signing257.key --in report.pdf --out report.pdf.sig257
+    - Derive the matching public verifying key with `uacrypt sign-pubkey`.
 ";
 
 const BOX_KEYGEN_HELP: &str = "\
@@ -3957,7 +3712,8 @@ uacrypt box-keygen - generate a fresh crypto_box secret key for `box-open`.
 
 Draws from the OS CSPRNG via rejection sampling against the DSTU 9041 curve order and
 writes it to --out as a typed key file (docs/CLI.md 'Key files'). A separate command from `keygen`/
-`sign-keygen` - a crypto_box key is a third, incompatible key shape.
+`sign-keygen` - a crypto_box key is a third, incompatible key shape. This is the l(p)=256 curve;
+`box-keygen512` makes an l(p)=512 key, and every other box command reads the curve from the key.
 
 USAGE:
     uacrypt box-keygen --out <path>
@@ -3976,14 +3732,15 @@ Notes:
 const BOX_PUBKEY_HELP: &str = "\
 uacrypt box-pubkey - derive the matching public key from a crypto_box secret key.
 
-Reads --key (a `box-keygen` output) and writes the matching public key that `box-seal` needs to
---out as a typed key file - safe to share, unlike the secret key itself.
+Reads --key (a `box-keygen` or `box-keygen512` output) and writes the matching public key, of the
+same curve, that `box-seal` needs to --out as a typed key file - safe to share, unlike the secret
+key itself.
 
 USAGE:
     uacrypt box-pubkey --key <path> --out <path>
 
 FLAGS:
-    --key <path>    a crypto_box secret key (from `uacrypt box-keygen`)
+    --key <path>    a crypto_box secret key (from `uacrypt box-keygen` or `box-keygen512`)
     --out <path>    where to write the public key
 
 EXAMPLE:
@@ -3995,21 +3752,22 @@ uacrypt box-seal - encrypt a file to a recipient's public key (DSTU 9041, hybrid
 
 Unlike `encrypt` (which needs a shared symmetric key both sides already have), box-seal only needs
 the recipient's public key - anyone can seal a message only the matching secret key can open. Wraps
-a fresh random seed asymmetrically (dstu_core::crypto_box), derives a
-symmetric key from it, and encrypts --in with that key.
+a fresh random seed asymmetrically (dstu_core::crypto_box or crypto_box512, whichever curve --key
+is), derives a symmetric key from it, and encrypts --in with that key.
 
 Not memory-bounded: --in is read whole into memory (unlike `encrypt`'s bounded-chunk streaming) -
 fine for typical messages/keys, not recommended for very large files yet.
 
 OUTPUT FORMAT:
-    version (1, currently 2) || KEM ciphertext (128) || header (32) || ciphertext (same length
-    as --in) || auth tag (16) - 177 bytes of overhead. See docs/CLI.md 'File formats'.
+    version (1, currently 2) || KEM ciphertext (128 for an l(p)=256 key, 256 for l(p)=512) ||
+    header (32) || ciphertext (same length as --in) || auth tag (16) - 177 or 305 bytes of
+    overhead. See docs/CLI.md 'File formats'.
 
 USAGE:
     uacrypt box-seal --key <path> --in <path> --out <path>
 
 FLAGS:
-    --key <path>        the recipient's public key (from `uacrypt box-pubkey`)
+    --key <path>        the recipient's public key (from `uacrypt box-pubkey`, either curve)
     --in <path>         file to encrypt
     --out <path>        where to write the sealed output
 
@@ -4020,14 +3778,14 @@ EXAMPLE:
 const BOX_OPEN_HELP: &str = "\
 uacrypt box-open - decrypt a file produced by `box-seal`, using the matching secret key.
 
-A wrong key or a tampered/truncated file is rejected with an error before anything is written to
---out, rather than producing wrong plaintext.
+A wrong key (including one of the other curve) or a tampered/truncated file is rejected with an
+error before anything is written to --out, rather than producing wrong plaintext.
 
 USAGE:
     uacrypt box-open --key <path> --in <path> --out <path>
 
 FLAGS:
-    --key <path>        the recipient's secret key (from `uacrypt box-keygen`)
+    --key <path>        the recipient's secret key (from `uacrypt box-keygen` or `box-keygen512`)
     --in <path>         the sealed file (must be real `box-seal` output)
     --out <path>        where to write the decrypted output
 
@@ -4060,12 +3818,12 @@ EXAMPLE:
 ";
 
 const BOX_KEYGEN512_HELP: &str = "\
-uacrypt box-keygen512 - generate a fresh crypto_box512 secret key for `box-open512`.
+uacrypt box-keygen512 - generate a fresh crypto_box secret key over DSTU 9041's l(p)=512 curve.
 
-Same shape as `box-keygen`, over DSTU 9041's l(p)=512 curve (E512/1) instead
-of l(p)=256 - a separate command, not a `--curve` flag, since the two are distinct, incompatible
-key shapes. Draws from the OS CSPRNG via rejection sampling and writes it to --out as a typed key
-file.
+Same shape as `box-keygen`, over DSTU 9041's l(p)=512 curve (E512/1) instead of l(p)=256. The
+curve is chosen here, once, and recorded in the key: `box-pubkey`, `box-seal` and `box-open` read
+it from there. Draws from the OS CSPRNG via rejection sampling and writes it to --out as a typed
+key file.
 
 USAGE:
     uacrypt box-keygen512 --out <path>
@@ -4078,68 +3836,7 @@ EXAMPLE:
 
 Notes:
     - Keep this file secret - anyone who has it can decrypt messages sealed to it.
-    - Derive the matching public key with `uacrypt box-pubkey512`.
-    - Not interchangeable with `box-keygen`/`box-pubkey`/`box-seal`/`box-open` - those are l(p)=256.
-";
-
-const BOX_PUBKEY512_HELP: &str = "\
-uacrypt box-pubkey512 - derive the matching public key from a crypto_box512 secret key.
-
-Reads --key (a `box-keygen512` output) and writes the matching public key that `box-seal512` needs
-to --out as a typed key file - safe to share, unlike the secret key itself.
-
-USAGE:
-    uacrypt box-pubkey512 --key <path> --out <path>
-
-FLAGS:
-    --key <path>    a crypto_box512 secret key (from `uacrypt box-keygen512`)
-    --out <path>    where to write the public key
-
-EXAMPLE:
-    uacrypt box-pubkey512 --key box512.key --out box512.pub
-";
-
-const BOX_SEAL512_HELP: &str = "\
-uacrypt box-seal512 - encrypt a file to a recipient's public key (DSTU 9041 l(p)=512, hybrid via KDF).
-
-Same construction as `box-seal`, over the l(p)=512 curve (dstu_core::crypto_box512). Wraps a fresh random 32-byte seed asymmetrically, derives a symmetric key
-from it, and encrypts --in with that key.
-
-Not memory-bounded: --in is read whole into memory (unlike `encrypt`'s bounded-chunk streaming) -
-fine for typical messages/keys, not recommended for very large files yet.
-
-OUTPUT FORMAT:
-    version (1, currently 2) || KEM ciphertext (256) || header (32) || ciphertext (same length
-    as --in) || auth tag (16) - 305 bytes of overhead. See docs/CLI.md 'File formats'.
-
-USAGE:
-    uacrypt box-seal512 --key <path> --in <path> --out <path>
-
-FLAGS:
-    --key <path>        the recipient's public key (from `uacrypt box-pubkey512`)
-    --in <path>         file to encrypt
-    --out <path>        where to write the sealed output
-
-EXAMPLE:
-    uacrypt box-seal512 --key recipient.pub --in message.txt --out message.txt.box
-";
-
-const BOX_OPEN512_HELP: &str = "\
-uacrypt box-open512 - decrypt a file produced by `box-seal512`, using the matching secret key.
-
-A wrong key or a tampered/truncated file is rejected with an error before anything is written to
---out, rather than producing wrong plaintext.
-
-USAGE:
-    uacrypt box-open512 --key <path> --in <path> --out <path>
-
-FLAGS:
-    --key <path>        the recipient's secret key (from `uacrypt box-keygen512`)
-    --in <path>         the sealed file (must be real `box-seal512` output)
-    --out <path>        where to write the decrypted output
-
-EXAMPLE:
-    uacrypt box-open512 --key box512.key --in message.txt.box --out message.txt
+    - Derive the matching public key with `uacrypt box-pubkey`.
 ";
 
 const KALYNA_BLOCK_HELP: &str = "\
@@ -4371,16 +4068,11 @@ const COMMANDS: &[(&str, &str)] = &[
     ("sign", SIGN_HELP),
     ("verify", VERIFY_HELP),
     ("sign-keygen257", SIGN_KEYGEN257_HELP),
-    ("sign-pubkey257", SIGN_PUBKEY257_HELP),
-    ("sign257", SIGN257_HELP),
     ("box-keygen", BOX_KEYGEN_HELP),
     ("box-pubkey", BOX_PUBKEY_HELP),
     ("box-seal", BOX_SEAL_HELP),
     ("box-open", BOX_OPEN_HELP),
     ("box-keygen512", BOX_KEYGEN512_HELP),
-    ("box-pubkey512", BOX_PUBKEY512_HELP),
-    ("box-seal512", BOX_SEAL512_HELP),
-    ("box-open512", BOX_OPEN512_HELP),
     ("key-import", KEY_IMPORT_HELP),
     ("kalyna-block", KALYNA_BLOCK_HELP),
     ("kalyna-ccm", KALYNA_CCM_HELP),
@@ -4400,7 +4092,23 @@ fn command_help(command: &str) -> Option<&'static str> {
         .map(|(_, help)| *help)
 }
 
+/// The curve twins T-257 removed, each with the command that replaces it (D-213). Kept out of
+/// [`COMMANDS`] so help, suggestions and completions never offer them.
+const REMOVED_COMMANDS: &[(&str, &str)] = &[
+    ("sign-pubkey257", "sign-pubkey"),
+    ("sign257", "sign"),
+    ("box-pubkey512", "box-pubkey"),
+    ("box-seal512", "box-seal"),
+    ("box-open512", "box-open"),
+];
+
 fn unknown_command(command: &str) -> CliError {
+    if let Some(&(_, replacement)) = REMOVED_COMMANDS.iter().find(|(old, _)| *old == command) {
+        return CliError::RemovedCommand {
+            command: command.to_string(),
+            replacement,
+        };
+    }
     let names = COMMANDS.iter().map(|(name, _)| *name).chain(["help"]);
     CliError::UnknownCommand {
         command: command.to_string(),
@@ -4479,28 +4187,10 @@ fn dispatch_sign_command(cmd: &str, rest: &[String]) -> Result<(), CliError> {
     }
     match cmd {
         "sign-keygen" => run_sign_keygen_command(&parse_sign_keygen_args(rest)?),
+        "sign-keygen257" => run_sign_keygen257_command(&parse_sign_keygen_args(rest)?),
         "sign-pubkey" => run_sign_pubkey_command(&parse_sign_pubkey_args(rest)?),
         "sign" => run_sign_command(&parse_sign_args(rest)?),
         _ => run_verify_command(&parse_verify_args(rest)?),
-    }
-}
-
-/// `m=257` sibling of [`dispatch_sign_command`] - `sign-keygen257`/`sign-pubkey257`/`sign257`
-/// only, no `verify257`: `verify` itself is curve-tag-aware (`docs/DECISIONS.md` D-186 Decision 1,
-/// `read_tagged_verifying_key`) and already handles both curves, `docs/TASKS.md` T-199. Argument
-/// parsing is reused as-is from [`parse_sign_keygen_args`]/[`parse_sign_pubkey_args`]/
-/// [`parse_sign_args`] - same flag shapes (`--out`; `--key`/`--out`; `--key`/`--in`/`--out`/
-/// `--iterations`), only the byte widths written/read differ, which the `run_*257_command`
-/// functions themselves handle.
-fn dispatch_sign257_command(cmd: &str, rest: &[String]) -> Result<(), CliError> {
-    if rest.iter().any(|a| is_help_flag(a)) {
-        print_command_help(cmd);
-        return Ok(());
-    }
-    match cmd {
-        "sign-keygen257" => run_sign_keygen257_command(&parse_sign_keygen_args(rest)?),
-        "sign-pubkey257" => run_sign_pubkey257_command(&parse_sign_pubkey_args(rest)?),
-        _ => run_sign257_command(&parse_sign_args(rest)?),
     }
 }
 
@@ -4514,25 +4204,10 @@ fn dispatch_box_command(cmd: &str, rest: &[String]) -> Result<(), CliError> {
     }
     match cmd {
         "box-keygen" => run_box_keygen_command(&parse_box_keygen_args(rest)?),
+        "box-keygen512" => run_box512_keygen_command(&parse_box_keygen_args(rest)?),
         "box-pubkey" => run_box_pubkey_command(&parse_box_pubkey_args(rest)?),
         "box-seal" => run_box_seal_command(&parse_box_seal_args(rest)?),
         _ => run_box_open_command(&parse_box_open_args(rest)?),
-    }
-}
-
-/// Dispatches `box-keygen512`/`box-pubkey512`/`box-seal512`/`box-open512` - same D-71 line-count-
-/// lint reason as [`dispatch_box_command`]; `cmd` is always one of the four literals [`run`]'s own
-/// match arm already narrowed it to. `rest` excludes both the program name and `cmd` itself.
-fn dispatch_box512_command(cmd: &str, rest: &[String]) -> Result<(), CliError> {
-    if rest.iter().any(|a| is_help_flag(a)) {
-        print_command_help(cmd);
-        return Ok(());
-    }
-    match cmd {
-        "box-keygen512" => run_box512_keygen_command(&parse_box512_keygen_args(rest)?),
-        "box-pubkey512" => run_box512_pubkey_command(&parse_box512_pubkey_args(rest)?),
-        "box-seal512" => run_box512_seal_command(&parse_box512_seal_args(rest)?),
-        _ => run_box512_open_command(&parse_box512_open_args(rest)?),
     }
 }
 
@@ -4683,17 +4358,11 @@ pub fn run(args: &[String]) -> Result<(), CliError> {
         Some("decrypt") => dispatch_simple("decrypt", &args[1..], parse_secretstream_args, |a| {
             run_secretstream_command(true, a)
         }),
-        Some(cmd @ ("sign-keygen" | "sign-pubkey" | "sign" | "verify")) => {
+        Some(cmd @ ("sign-keygen" | "sign-keygen257" | "sign-pubkey" | "sign" | "verify")) => {
             dispatch_sign_command(cmd, &args[1..])
         }
-        Some(cmd @ ("sign-keygen257" | "sign-pubkey257" | "sign257")) => {
-            dispatch_sign257_command(cmd, &args[1..])
-        }
-        Some(cmd @ ("box-keygen" | "box-pubkey" | "box-seal" | "box-open")) => {
+        Some(cmd @ ("box-keygen" | "box-keygen512" | "box-pubkey" | "box-seal" | "box-open")) => {
             dispatch_box_command(cmd, &args[1..])
-        }
-        Some(cmd @ ("box-keygen512" | "box-pubkey512" | "box-seal512" | "box-open512")) => {
-            dispatch_box512_command(cmd, &args[1..])
         }
         Some("key-import") => dispatch_simple(
             "key-import",
@@ -6132,7 +5801,6 @@ mod tests {
         assert!(TOP_LEVEL_HELP.contains("FILE FORMATS"));
         assert!(ENCRYPT_HELP.contains("OUTPUT FORMAT"));
         assert!(BOX_SEAL_HELP.contains("OUTPUT FORMAT"));
-        assert!(BOX_SEAL512_HELP.contains("OUTPUT FORMAT"));
         assert!(KALYNA_GCM_HELP.contains("does not cover the nonce"));
         assert!(KALYNA_GCM_HELP.contains("An empty --in"));
         assert!(KALYNA_GMAC_HELP.contains("An empty --in is rejected"));
@@ -7110,10 +6778,9 @@ mod tests {
         .expect("verify should succeed on the real signature");
     }
 
-    /// `m=257` sibling of `sign_verify_golden_path_round_trips`: `sign-keygen257` ->
-    /// `sign-pubkey257` -> `sign257` -> the *same* `verify` command (not `verify257` - it doesn't
-    /// exist, `docs/TASKS.md` T-199) - proves `verify`'s own curve-tag dispatch actually reaches
-    /// the `crypto_sign257` path, not just that it compiles.
+    /// `m=257` sibling of `sign_verify_golden_path_round_trips`: `sign-keygen257` -> the same
+    /// `sign-pubkey` -> `sign` -> `verify` commands (T-257) - proves each one's key-kind dispatch
+    /// actually reaches the `crypto_sign257` path, not just that it compiles.
     #[cfg_attr(
         miri,
         ignore = "Point::scalar_multiply's 257-iteration ladder is too slow to interpret under Miri - see docs/TASKS.md T-100"
@@ -7125,20 +6792,20 @@ mod tests {
             out_path: dir.file("signing.key"),
         })
         .expect("sign-keygen257 should succeed");
-        run_sign_pubkey257_command(&SignPubkeyArgs {
+        run_sign_pubkey_command(&SignPubkeyArgs {
             key_path: dir.file("signing.key"),
             out_path: dir.file("verifying.key"),
         })
-        .expect("sign-pubkey257 should succeed");
+        .expect("sign-pubkey should succeed on an m=257 key");
         std::fs::write(dir.file("msg.bin"), b"a real message to sign, m=257")
             .expect("write message");
-        run_sign257_command(&SignArgs {
+        run_sign_command(&SignArgs {
             key_path: dir.file("signing.key"),
             in_path: dir.file("msg.bin"),
             out_path: dir.file("msg.sig"),
             iterations: 1,
         })
-        .expect("sign257 should succeed");
+        .expect("sign should succeed on an m=257 key");
 
         let sig_bytes = std::fs::read(dir.file("msg.sig")).expect("read signature");
         assert_eq!(sig_bytes.len(), 66);
@@ -7183,13 +6850,13 @@ mod tests {
         })
         .expect("sign-keygen257 should succeed");
         std::fs::write(dir.file("msg.bin"), b"cross-curve test message").expect("write message");
-        run_sign257_command(&SignArgs {
+        run_sign_command(&SignArgs {
             key_path: dir.file("signing257.key"),
             in_path: dir.file("msg.bin"),
             out_path: dir.file("msg.sig257"),
             iterations: 1,
         })
-        .expect("sign257 should succeed");
+        .expect("sign should succeed on an m=257 key");
 
         assert!(matches!(
             run_verify_command(&VerifyArgs {
@@ -7884,7 +7551,7 @@ mod tests {
                 out_path: dir.file("msg.out"),
                 iterations: 1,
             }),
-            Err(CliError::BoxOpenFailed)
+            Err(CliError::BoxOpenFailed("l(p)=256"))
         );
     }
 
@@ -7925,7 +7592,7 @@ mod tests {
                 out_path: dir.file("msg.out"),
                 iterations: 1,
             }),
-            Err(CliError::BoxOpenFailed)
+            Err(CliError::BoxOpenFailed("l(p)=256"))
         );
     }
 
@@ -7945,7 +7612,7 @@ mod tests {
                 out_path: dir.file("msg.out"),
                 iterations: 1,
             }),
-            Err(CliError::BoxOpenTruncated)
+            Err(CliError::BoxOpenTruncated("l(p)=256"))
         );
     }
 
@@ -8071,7 +7738,7 @@ mod tests {
         run(&keygen).expect("box-keygen512 dispatch should succeed");
 
         let pubkey: Vec<String> = [
-            "box-pubkey512",
+            "box-pubkey",
             "--key",
             &path(&dir.file("box.key")),
             "--out",
@@ -8080,11 +7747,11 @@ mod tests {
         .into_iter()
         .map(String::from)
         .collect();
-        run(&pubkey).expect("box-pubkey512 dispatch should succeed");
+        run(&pubkey).expect("box-pubkey dispatch should succeed on the other curve's key");
 
         std::fs::write(dir.file("msg.txt"), b"dispatch me 512").expect("write message");
         let seal: Vec<String> = [
-            "box-seal512",
+            "box-seal",
             "--key",
             &path(&dir.file("box.pub")),
             "--in",
@@ -8095,10 +7762,10 @@ mod tests {
         .into_iter()
         .map(String::from)
         .collect();
-        run(&seal).expect("box-seal512 dispatch should succeed");
+        run(&seal).expect("box-seal dispatch should succeed on the other curve's key");
 
         let open: Vec<String> = [
-            "box-open512",
+            "box-open",
             "--key",
             &path(&dir.file("box.key")),
             "--in",
@@ -8109,7 +7776,7 @@ mod tests {
         .into_iter()
         .map(String::from)
         .collect();
-        run(&open).expect("box-open512 dispatch should succeed");
+        run(&open).expect("box-open dispatch should succeed on the other curve's key");
 
         let opened = std::fs::read(dir.file("msg.out")).expect("read opened output");
         assert_eq!(opened, b"dispatch me 512");
@@ -8174,8 +7841,8 @@ mod tests {
 
     /// `m=257` sibling of `sign_verify_dispatch_through_top_level_run`, through `run()` itself
     /// (real command-line tokens, not the internal `run_*_command` functions directly) - proves
-    /// `sign-keygen257`/`sign-pubkey257`/`sign257` are actually reachable as real subcommands, and
-    /// that the *same* `verify` token used for `m=163` above also handles an `m=257` signature.
+    /// `sign-keygen257` is reachable and that the *same* `sign-pubkey`/`sign`/`verify` tokens used
+    /// for `m=163` above also handle an `m=257` key (T-257).
     #[cfg_attr(
         miri,
         ignore = "Point::scalar_multiply's 257-iteration ladder is too slow to interpret under Miri - see docs/TASKS.md T-100"
@@ -8192,7 +7859,7 @@ mod tests {
         run(&keygen).expect("sign-keygen257 dispatch should succeed");
 
         let pubkey: Vec<String> = [
-            "sign-pubkey257",
+            "sign-pubkey",
             "--key",
             &path(&dir.file("signing.key")),
             "--out",
@@ -8201,11 +7868,11 @@ mod tests {
         .into_iter()
         .map(String::from)
         .collect();
-        run(&pubkey).expect("sign-pubkey257 dispatch should succeed");
+        run(&pubkey).expect("sign-pubkey dispatch should succeed on the other curve's key");
 
         std::fs::write(dir.file("msg.bin"), b"dispatch me, m=257").expect("write message");
         let sign: Vec<String> = [
-            "sign257",
+            "sign",
             "--key",
             &path(&dir.file("signing.key")),
             "--in",
@@ -8216,7 +7883,7 @@ mod tests {
         .into_iter()
         .map(String::from)
         .collect();
-        run(&sign).expect("sign257 dispatch should succeed");
+        run(&sign).expect("sign dispatch should succeed on an m=257 key");
 
         let verify: Vec<String> = [
             "verify",
@@ -8268,7 +7935,7 @@ mod tests {
             ),
             (
                 "box-keygen512",
-                Box::new(|out_path| run_box512_keygen_command(&Box512KeygenArgs { out_path })),
+                Box::new(|out_path| run_box512_keygen_command(&BoxKeygenArgs { out_path })),
             ),
         ]
     }
@@ -8531,19 +8198,30 @@ mod tests {
             SIGN_HELP,
             VERIFY_HELP,
             SIGN_KEYGEN257_HELP,
-            SIGN_PUBKEY257_HELP,
-            SIGN257_HELP,
             BOX_KEYGEN_HELP,
             BOX_PUBKEY_HELP,
             BOX_SEAL_HELP,
             BOX_OPEN_HELP,
             BOX_KEYGEN512_HELP,
-            BOX_PUBKEY512_HELP,
-            BOX_SEAL512_HELP,
-            BOX_OPEN512_HELP,
         ] {
             assert!(!has_ref(help), "{help}");
             assert!(!help.contains("--iterations"), "{help}");
+        }
+    }
+
+    #[test]
+    fn removed_commands_point_to_real_commands_and_are_not_commands_themselves() {
+        for (old, replacement) in REMOVED_COMMANDS {
+            assert!(command_help(replacement).is_some(), "{replacement}");
+            assert!(command_help(old).is_none(), "{old}");
+            assert_eq!(
+                unknown_command(old).exit_code(),
+                2,
+                "{old} must be a usage error"
+            );
+            assert!(unknown_command(old)
+                .to_string()
+                .contains(&format!("`uacrypt {replacement}`")));
         }
     }
 

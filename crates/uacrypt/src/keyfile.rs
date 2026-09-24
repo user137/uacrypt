@@ -128,28 +128,11 @@ impl KeyKind {
         match self {
             KeyKind::Symmetric => "uacrypt keygen",
             KeyKind::Sign163Secret => "uacrypt sign-keygen",
-            KeyKind::Sign163Public => "uacrypt sign-pubkey",
             KeyKind::Sign257Secret => "uacrypt sign-keygen257",
-            KeyKind::Sign257Public => "uacrypt sign-pubkey257",
+            KeyKind::Sign163Public | KeyKind::Sign257Public => "uacrypt sign-pubkey",
             KeyKind::Box256Secret => "uacrypt box-keygen",
-            KeyKind::Box256Public => "uacrypt box-pubkey",
             KeyKind::Box512Secret => "uacrypt box-keygen512",
-            KeyKind::Box512Public => "uacrypt box-pubkey512",
-        }
-    }
-
-    /// The same kind on the other curve, if the kind has one.
-    fn curve_sibling(self) -> Option<KeyKind> {
-        match self {
-            KeyKind::Symmetric => None,
-            KeyKind::Sign163Secret => Some(KeyKind::Sign257Secret),
-            KeyKind::Sign257Secret => Some(KeyKind::Sign163Secret),
-            KeyKind::Sign163Public => Some(KeyKind::Sign257Public),
-            KeyKind::Sign257Public => Some(KeyKind::Sign163Public),
-            KeyKind::Box256Secret => Some(KeyKind::Box512Secret),
-            KeyKind::Box512Secret => Some(KeyKind::Box256Secret),
-            KeyKind::Box256Public => Some(KeyKind::Box512Public),
-            KeyKind::Box512Public => Some(KeyKind::Box256Public),
+            KeyKind::Box256Public | KeyKind::Box512Public => "uacrypt box-pubkey",
         }
     }
 
@@ -162,37 +145,15 @@ impl KeyKind {
     }
 }
 
-/// The twin command that takes the other curve's key, for a hint like "use `uacrypt box-seal512`
-/// for this key". `None` for commands without a twin. T-257 removes the twins and this with them.
-fn twin_command(command: &str) -> Option<&'static str> {
-    Some(match command {
-        "sign" => "sign257",
-        "sign257" => "sign",
-        "sign-pubkey" => "sign-pubkey257",
-        "sign-pubkey257" => "sign-pubkey",
-        "box-pubkey" => "box-pubkey512",
-        "box-pubkey512" => "box-pubkey",
-        "box-seal" => "box-seal512",
-        "box-seal512" => "box-seal",
-        "box-open" => "box-open512",
-        "box-open512" => "box-open",
-        _ => return None,
-    })
-}
-
 /// The "what to do instead" sentence of a wrong-kind error.
-pub(crate) fn wrong_kind_hint(command: &str, found: KeyKind, expected: &[KeyKind]) -> String {
-    if let [want] = expected {
-        if want.curve_sibling() == Some(found) {
-            if let Some(twin) = twin_command(command) {
-                return format!("use `uacrypt {twin}` for this key");
-            }
+/// Both curves' public kinds are made by the same command, so makers are deduplicated.
+pub(crate) fn wrong_kind_hint(expected: &[KeyKind]) -> String {
+    let mut makers: Vec<String> = Vec::new();
+    for maker in expected.iter().map(|k| format!("`{}`", k.made_by())) {
+        if !makers.contains(&maker) {
+            makers.push(maker);
         }
     }
-    let makers: Vec<String> = expected
-        .iter()
-        .map(|k| format!("`{}`", k.made_by()))
-        .collect();
     format!("make the right key with {}", makers.join(" or "))
 }
 
@@ -563,25 +524,21 @@ mod tests {
     }
 
     #[test]
-    fn hint_points_to_the_twin_command_for_the_other_curve_only() {
+    fn hint_names_each_making_command_once() {
         assert_eq!(
-            wrong_kind_hint("box-seal", KeyKind::Box512Public, &[KeyKind::Box256Public]),
-            "use `uacrypt box-seal512` for this key"
-        );
-        assert_eq!(
-            wrong_kind_hint("box-seal", KeyKind::Box256Secret, &[KeyKind::Box256Public]),
+            wrong_kind_hint(&[KeyKind::Box256Public, KeyKind::Box512Public]),
             "make the right key with `uacrypt box-pubkey`"
         );
         assert_eq!(
-            wrong_kind_hint(
-                "verify",
-                KeyKind::Sign163Secret,
-                &[KeyKind::Sign163Public, KeyKind::Sign257Public]
-            ),
-            "make the right key with `uacrypt sign-pubkey` or `uacrypt sign-pubkey257`"
+            wrong_kind_hint(&[KeyKind::Sign163Secret, KeyKind::Sign257Secret]),
+            "make the right key with `uacrypt sign-keygen` or `uacrypt sign-keygen257`"
         );
         assert_eq!(
-            wrong_kind_hint("encrypt", KeyKind::Box256Secret, &[KeyKind::Symmetric]),
+            wrong_kind_hint(&[KeyKind::Sign163Public, KeyKind::Sign257Public]),
+            "make the right key with `uacrypt sign-pubkey`"
+        );
+        assert_eq!(
+            wrong_kind_hint(&[KeyKind::Symmetric]),
             "make the right key with `uacrypt keygen`"
         );
     }

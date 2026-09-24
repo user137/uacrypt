@@ -107,9 +107,9 @@ fn make_all_keys(dir: &TempDir) {
     }
     for (cmd, key, out) in [
         ("sign-pubkey", "sign163.key", "sign163.pub"),
-        ("sign-pubkey257", "sign257.key", "sign257.pub"),
+        ("sign-pubkey", "sign257.key", "sign257.pub"),
         ("box-pubkey", "box256.key", "box256.pub"),
-        ("box-pubkey512", "box512.key", "box512.pub"),
+        ("box-pubkey", "box512.key", "box512.pub"),
     ] {
         ok(&uacrypt([
             cmd,
@@ -127,29 +127,22 @@ fn run_with_key(dir: &TempDir, cmd: &str, key: &str) -> support::Run {
     let key = path(dir, key);
     let (input, out) = (path(dir, "input.bin"), path(dir, "out.bin"));
     match cmd {
-        "sign-pubkey" | "sign-pubkey257" | "box-pubkey" | "box-pubkey512" => {
-            uacrypt([cmd, "--key", &key, "--out", &out])
-        }
+        "sign-pubkey" | "box-pubkey" => uacrypt([cmd, "--key", &key, "--out", &out]),
         "verify" => uacrypt([cmd, "--key", &key, "--in", &input, "--sig", &input]),
         _ => uacrypt([cmd, "--key", &key, "--in", &input, "--out", &out]),
     }
 }
 
 /// Every command that reads `--key`, with the key files it accepts.
-const CONSUMERS: [(&str, &[&str]); 13] = [
+const CONSUMERS: [(&str, &[&str]); 8] = [
     ("encrypt", &["sym.key"]),
     ("decrypt", &["sym.key"]),
-    ("sign", &["sign163.key"]),
-    ("sign257", &["sign257.key"]),
-    ("sign-pubkey", &["sign163.key"]),
-    ("sign-pubkey257", &["sign257.key"]),
+    ("sign", &["sign163.key", "sign257.key"]),
+    ("sign-pubkey", &["sign163.key", "sign257.key"]),
     ("verify", &["sign163.pub", "sign257.pub"]),
-    ("box-pubkey", &["box256.key"]),
-    ("box-pubkey512", &["box512.key"]),
-    ("box-seal", &["box256.pub"]),
-    ("box-seal512", &["box512.pub"]),
-    ("box-open", &["box256.key"]),
-    ("box-open512", &["box512.key"]),
+    ("box-pubkey", &["box256.key", "box512.key"]),
+    ("box-seal", &["box256.pub", "box512.pub"]),
+    ("box-open", &["box256.key", "box512.key"]),
 ];
 
 #[test]
@@ -216,32 +209,25 @@ fn every_command_rejects_every_other_key_kind_by_name() {
     }
 }
 
-/// The twin commands (removed by T-257) each take one curve; the other curve's key points to the
-/// twin.
+/// T-257: every command takes both curves' keys of its kind - an accepted key never gets a
+/// kind error (exit 3) or a usage error (exit 2), whatever the dummy input then does.
 #[test]
 #[cfg_attr(
     miri,
     ignore = "spawns the real uacrypt binary - Miri cannot run a subprocess"
 )]
-fn the_other_curve_points_to_the_twin_command() {
-    let dir = TempDir::new("typed_twin");
+fn every_consumer_accepts_both_curves_of_its_kind() {
+    let dir = TempDir::new("typed_both_curves");
     make_all_keys(&dir);
     write_bytes(&dir.file("input.bin"), b"x");
-    for (cmd, key, twin) in [
-        ("sign", "sign257.key", "sign257"),
-        ("sign257", "sign163.key", "sign"),
-        ("sign-pubkey", "sign257.key", "sign-pubkey257"),
-        ("box-pubkey512", "box256.key", "box-pubkey"),
-        ("box-seal", "box512.pub", "box-seal512"),
-        ("box-open512", "box256.key", "box-open"),
-    ] {
-        let r = run_with_key(&dir, cmd, key);
-        assert!(
-            r.stderr
-                .contains(&format!("use `uacrypt {twin}` for this key")),
-            "{cmd}: {}",
-            r.stderr
-        );
+    for (cmd, accepted) in CONSUMERS {
+        for key in accepted {
+            let _ = std::fs::remove_file(dir.file("out.bin"));
+            let r = run_with_key(&dir, cmd, key);
+            let context = format!("{cmd} --key {key}: {}", r.stderr);
+            assert!(r.code != Some(2) && r.code != Some(3), "{context}");
+            assert!(!r.stderr.contains(" needs a "), "{context}");
+        }
     }
 }
 
@@ -458,7 +444,7 @@ fn key_import_refuses_bad_input_without_writing() {
             "box512-public",
             &[0xFF; 64],
             3,
-            "not a valid crypto_box512 key",
+            "not a valid crypto_box key",
         ),
         (
             "sign163-public",

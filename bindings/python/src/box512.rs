@@ -42,7 +42,7 @@ pub fn box512_public_key(secret_key: &[u8]) -> PyResult<Vec<u8>> {
 
 /// Encrypts `message` (any length) to the holder of `public_key`, drawing a fresh random seed and
 /// ephemeral key internally. Not memory-bounded - the whole message is held in memory, matching
-/// `uacrypt box-seal512`'s own documented limitation.
+/// `uacrypt box-seal`'s own documented limitation.
 #[pyfunction]
 pub fn box512_seal(public_key: &[u8], message: &[u8]) -> PyResult<Vec<u8>> {
     let key = public_key_from_bytes(public_key)?;

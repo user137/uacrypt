@@ -43,7 +43,7 @@ key file ([Key files](#key-files)) holding a 32-byte `crypto_secretstream::Key` 
 existing `--out`, so a repeated run cannot destroy a key, and on Unix it writes the key with mode
 `0600` (T-241). `encrypt` draws a fresh random header internally on every call
 and embeds it in `--out`; there is no `--nonce`/`--header` flag to supply or reuse by mistake.
-**0.4.0 changed the `encrypt`/`box-seal`/`box-seal512` file formats** (T-232/T-248,
+**0.4.0 changed the `encrypt`/`box-seal` file formats (both curves)** (T-232/T-248,
 `docs/DECISIONS.md` D-200-D-202). Files written by 0.3.x don't open with 0.4.0. `box-open` almost
 always reports them as a different format version; ~1 in 256 happen to start with the current
 version byte and report an authentication failure instead. Decrypt them with the release that
@@ -85,19 +85,19 @@ $ echo $?
 1
 ```
 
-`uacrypt sign-keygen257`/`sign-pubkey257`/`sign257` (`docs/TASKS.md` T-199, `docs/DECISIONS.md`
-D-185/D-186) mirror the four commands above exactly, over DSTU 4145's `m=257` curve instead of
-`m=163` - a separate set of commands, not a `--curve` flag, since the two produce distinct,
-incompatible key shapes. `m=257` is what real Diia-issued qualified signatures use in production
-(confirmed from an actual issued certificate) - `m=163` stays the default (`sign-keygen`) only
-because it shipped first, not because it's recommended over `m=257`. `verify` is shared - it reads
-a curve-tag byte from `--key` and handles both curves, so there is no separate `verify257`:
+For DSTU 4145's `m=257` curve (`docs/TASKS.md` T-199, `docs/DECISIONS.md` D-185), generate the
+key with `sign-keygen257` instead; the other three commands are the same. The curve is chosen once,
+at key generation, and recorded in the key: `sign-pubkey`, `sign` and `verify` read it from there
+(T-257, D-213), and `sign` writes a 66-byte signature instead of 42. `m=257` is what real
+Diia-issued qualified signatures use in production (confirmed from an actual issued certificate) -
+`m=163` is the plain `sign-keygen` only because it shipped first, not because it's recommended
+over `m=257`:
 
 ```
 uacrypt sign-keygen257 --out signing257.key
-uacrypt sign-pubkey257 --key signing257.key --out verifying257.key
-uacrypt sign257 --key signing257.key --in message.bin --out message.bin.sig257
-uacrypt verify --key verifying257.key --in message.bin --sig message.bin.sig257
+uacrypt sign-pubkey --key signing257.key --out verifying257.key
+uacrypt sign --key signing257.key --in message.bin --out message.bin.sig
+uacrypt verify --key verifying257.key --in message.bin --sig message.bin.sig
 ```
 
 `uacrypt box-keygen`/`box-pubkey`/`box-seal`/`box-open` (`docs/TASKS.md` T-178, `docs/DECISIONS.md`
@@ -118,17 +118,22 @@ curve point's `x`-coordinate only) from it, safe to share or publish. Both are t
 `box-seal`/`box-open` are **not memory-bounded** yet — `--in` is read whole into memory, unlike
 `encrypt`/`decrypt`'s bounded-chunk streaming (see `crypto_box`'s own module doc for why).
 
-`uacrypt box-keygen512`/`box-pubkey512`/`box-seal512`/`box-open512` (`docs/TASKS.md` T-193,
-`docs/DECISIONS.md` D-182) mirror the four commands above exactly, over DSTU 9041's `l(p)=512`
-curve (E512/1) instead of `l(p)=256` - a separate set of commands, not a `--curve` flag, since the
-two produce distinct, incompatible key shapes (64-byte keys instead of 32-byte):
+For DSTU 9041's `l(p)=512` curve (E512/1, `docs/TASKS.md` T-193, `docs/DECISIONS.md` D-182),
+generate the key with `box-keygen512` instead; `box-pubkey`, `box-seal` and `box-open` read the
+curve from the key (T-257, D-213). Keys are 64 bytes instead of 32, and a sealed file has 305
+bytes of overhead instead of 177. A file sealed to one curve's key is refused by the other
+curve's key like any other wrong key:
 
 ```
 uacrypt box-keygen512 --out box512.key
-uacrypt box-pubkey512 --key box512.key --out box512.pub
-uacrypt box-seal512 --key box512.pub --in message.bin --out message.bin.box512
-uacrypt box-open512 --key box512.key --in message.bin.box512 --out message.bin
+uacrypt box-pubkey --key box512.key --out box512.pub
+uacrypt box-seal --key box512.pub --in message.bin --out message.bin.box
+uacrypt box-open --key box512.key --in message.bin.box --out message.bin
 ```
+
+Up to 0.4, the non-keygen commands had curve twins (`sign-pubkey257`, `sign257`, `box-pubkey512`,
+`box-seal512`, `box-open512`). They are gone in 0.5.0; each name now fails as a usage error
+(exit 2) that names the command to use instead.
 
 What exists below this level: `kalyna-block`, `kupyna-digest`, and `strumok-crypt`, all
 `hazmat`-scoped commands added for binary-level performance comparisons
@@ -258,13 +263,11 @@ was not yet so.
 |---|---|---|
 | `keygen` | symmetric key | a key line, see [Key files](#key-files) |
 | `encrypt` | encrypted file | `version (1) \|\| header (32)`, then one or more records, each `chunk tag (1) \|\| ciphertext length (4) \|\| ciphertext \|\| auth tag (16)` |
-| `box-keygen` / `box-pubkey` | secret / public key | a key line each (the public key is the curve point's `x`-coordinate) |
-| `box-seal` | sealed file | `version (1) \|\| KEM ciphertext (128) \|\| header (32) \|\| ciphertext \|\| auth tag (16)`: 177 bytes of overhead |
-| `box-keygen512` / `box-pubkey512` | secret / public key | a key line each |
-| `box-seal512` | sealed file | `version (1) \|\| KEM ciphertext (256) \|\| header (32) \|\| ciphertext \|\| auth tag (16)`: 305 bytes of overhead |
+| `box-keygen` / `box-keygen512` / `box-pubkey` | secret / public key | a key line each (the public key is the curve point's `x`-coordinate) |
+| `box-seal` | sealed file | `version (1) \|\| KEM ciphertext (128, or 256 for an l(p)=512 key) \|\| header (32) \|\| ciphertext \|\| auth tag (16)`: 177 or 305 bytes of overhead |
 | `sign-keygen` / `sign-keygen257` | signing key | a key line (the scalar `d`, big-endian) |
-| `sign-pubkey` / `sign-pubkey257` | verifying key | a key line (`x \|\| y`) |
-| `sign` / `sign257` | signature | 42 / 66 raw bytes; `verify` picks the curve from the verifying key's kind |
+| `sign-pubkey` | verifying key | a key line (`x \|\| y`) of the signing key's curve |
+| `sign` | signature | 42 raw bytes for an m=163 key, 66 for m=257; `verify` picks the curve from the verifying key's kind |
 | `hash` | digest | 32 raw bytes (Kupyna-256) |
 
 The `encrypt` record rules:
@@ -297,9 +300,9 @@ spaces, no second line, no byte-order mark, no upper-case hex. The prefix names 
 |---|---|---|---|
 | `symmetric` | `UACRYPT-SECRET-SYMMETRIC` | 32 | `keygen` |
 | `sign163-secret` / `sign163-public` | `UACRYPT-SECRET-SIGN163` / `uacrypt-sign163-public` | 21 / 42 | `sign-keygen` / `sign-pubkey` |
-| `sign257-secret` / `sign257-public` | `UACRYPT-SECRET-SIGN257` / `uacrypt-sign257-public` | 33 / 66 | `sign-keygen257` / `sign-pubkey257` |
+| `sign257-secret` / `sign257-public` | `UACRYPT-SECRET-SIGN257` / `uacrypt-sign257-public` | 33 / 66 | `sign-keygen257` / `sign-pubkey` |
 | `box256-secret` / `box256-public` | `UACRYPT-SECRET-BOX256` / `uacrypt-box256-public` | 32 / 32 | `box-keygen` / `box-pubkey` |
-| `box512-secret` / `box512-public` | `UACRYPT-SECRET-BOX512` / `uacrypt-box512-public` | 64 / 64 | `box-keygen512` / `box-pubkey512` |
+| `box512-secret` / `box512-public` | `UACRYPT-SECRET-BOX512` / `uacrypt-box512-public` | 64 / 64 | `box-keygen512` / `box-pubkey` |
 
 Secret keys have an upper-case prefix so they are hard to mistake for something to share; public
 keys are short enough to paste into an email or chat. The check is the first 4 bytes of

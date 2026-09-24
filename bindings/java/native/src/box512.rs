@@ -66,7 +66,7 @@ pub extern "system" fn Java_ua_dstucrypto_dstucore_Box512_publicKey<'local>(
 
 /// Encrypts `message` (any length) to the holder of `publicKey`, drawing a fresh random seed and
 /// ephemeral key internally. Not memory-bounded - the whole message is held in memory, matching
-/// `uacrypt box-seal512`'s own documented limitation.
+/// `uacrypt box-seal`'s own documented limitation.
 #[no_mangle]
 pub extern "system" fn Java_ua_dstucrypto_dstucore_Box512_seal<'local>(
     mut env: JNIEnv<'local>,

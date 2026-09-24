@@ -310,3 +310,93 @@ fn box_open_help_claims_wrong_key_leaves_no_partial_output() {
     assert!(r.failure());
     assert!(!out.exists());
 }
+
+fn p(path: &std::path::Path) -> &str {
+    path.to_str().unwrap()
+}
+
+/// `SIGN_HELP` (T-257): "The curve is the key's: writes a 42-byte signature to --out for an m=163
+/// key, 66 bytes for an m=257 key." The help text is read from the binary itself, so the claim and
+/// the behaviour are checked together.
+#[test]
+#[cfg_attr(
+    miri,
+    ignore = "spawns the real uacrypt binary - Miri cannot run a subprocess"
+)]
+fn sign_help_claims_signature_length_follows_the_key_curve() {
+    let help = uacrypt(["sign", "--help"]);
+    ok(&help);
+    assert!(help.stdout.contains("42-byte signature"), "{}", help.stdout);
+    assert!(
+        help.stdout.contains("66 bytes for an m=257 key"),
+        "{}",
+        help.stdout
+    );
+
+    let dir = TempDir::new("help_sign_curve_len");
+    let msg = dir.file("msg");
+    write_bytes(&msg, b"help claim");
+    for (keygen, len) in [("sign-keygen", 42), ("sign-keygen257", 66)] {
+        let key = dir.file(&format!("{keygen}.key"));
+        let sig = dir.file(&format!("{keygen}.sig"));
+        ok(&uacrypt([keygen, "--out", p(&key)]));
+        ok(&uacrypt([
+            "sign",
+            "--key",
+            p(&key),
+            "--in",
+            p(&msg),
+            "--out",
+            p(&sig),
+        ]));
+        assert_eq!(support::read_bytes(&sig).len(), len, "{keygen}");
+    }
+}
+
+/// `BOX_SEAL_HELP` (T-257): "177 or 305 bytes of overhead", by the curve of --key.
+#[test]
+#[cfg_attr(
+    miri,
+    ignore = "spawns the real uacrypt binary - Miri cannot run a subprocess"
+)]
+fn box_seal_help_claims_overhead_follows_the_key_curve() {
+    let help = uacrypt(["box-seal", "--help"]);
+    ok(&help);
+    assert!(
+        help.stdout.contains("177 or 305 bytes of"),
+        "{}",
+        help.stdout
+    );
+
+    let dir = TempDir::new("help_box_seal_overhead");
+    let msg = dir.file("msg");
+    let message = b"help claim, box-seal overhead";
+    write_bytes(&msg, message);
+    for (keygen, overhead) in [("box-keygen", 177), ("box-keygen512", 305)] {
+        let key = dir.file(&format!("{keygen}.key"));
+        let public = dir.file(&format!("{keygen}.pub"));
+        let sealed = dir.file(&format!("{keygen}.box"));
+        ok(&uacrypt([keygen, "--out", p(&key)]));
+        ok(&uacrypt([
+            "box-pubkey",
+            "--key",
+            p(&key),
+            "--out",
+            p(&public),
+        ]));
+        ok(&uacrypt([
+            "box-seal",
+            "--key",
+            p(&public),
+            "--in",
+            p(&msg),
+            "--out",
+            p(&sealed),
+        ]));
+        assert_eq!(
+            support::read_bytes(&sealed).len(),
+            message.len() + overhead,
+            "{keygen}"
+        );
+    }
+}

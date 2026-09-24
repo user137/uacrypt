@@ -568,7 +568,7 @@ fn sign_m257_full_flow_keygen_pubkey_sign_verify() {
     support::assert_key_line(&sk, "UACRYPT-SECRET-SIGN257", 33);
 
     ok(&uacrypt([
-        "sign-pubkey257",
+        "sign-pubkey",
         "--key",
         sk.to_str().unwrap(),
         "--out",
@@ -577,7 +577,7 @@ fn sign_m257_full_flow_keygen_pubkey_sign_verify() {
     support::assert_key_line(&vk, "uacrypt-sign257-public", 66);
 
     ok(&uacrypt([
-        "sign257",
+        "sign",
         "--key",
         sk.to_str().unwrap(),
         "--in",
@@ -587,8 +587,8 @@ fn sign_m257_full_flow_keygen_pubkey_sign_verify() {
     ]));
     assert_eq!(support::read_bytes(&sig).len(), 66);
 
-    // The one command surface where both curves genuinely converge: `verify` alone is
-    // key-kind-aware (the key line names its curve) and handles an m=257 signature with no separate `verify257` command.
+    // Only the keygen names a curve (T-257): `sign-pubkey`, `sign` and `verify` read it from the
+    // key line.
     let r = uacrypt([
         "verify",
         "--key",
@@ -666,7 +666,7 @@ fn box512_full_flow_keygen_pubkey_seal_open() {
     support::assert_key_line(&sk, "UACRYPT-SECRET-BOX512", 64);
 
     ok(&uacrypt([
-        "box-pubkey512",
+        "box-pubkey",
         "--key",
         sk.to_str().unwrap(),
         "--out",
@@ -675,7 +675,7 @@ fn box512_full_flow_keygen_pubkey_seal_open() {
     support::assert_key_line(&pk, "uacrypt-box512-public", 64);
 
     ok(&uacrypt([
-        "box-seal512",
+        "box-seal",
         "--key",
         pk.to_str().unwrap(),
         "--in",
@@ -684,7 +684,7 @@ fn box512_full_flow_keygen_pubkey_seal_open() {
         sealed.to_str().unwrap(),
     ]));
     ok(&uacrypt([
-        "box-open512",
+        "box-open",
         "--key",
         sk.to_str().unwrap(),
         "--in",
