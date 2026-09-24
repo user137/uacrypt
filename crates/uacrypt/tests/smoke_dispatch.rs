@@ -69,8 +69,8 @@ fn version_short_flag_matches_long_flag() {
     assert!(short.success());
 }
 
-/// The one thing genuinely new here vs. the in-process suite: `main.rs`'s own `ExitCode::FAILURE`
-/// mapping and its `"uacrypt: {e}"` stderr prefix, exercised by a real process for the first time.
+/// The one thing genuinely new here vs. the in-process suite: `main.rs`'s own exit-code mapping
+/// (usage errors are 2, T-255) and its `"uacrypt: {e}"` stderr prefix, exercised by a real process.
 #[test]
 #[cfg_attr(
     miri,
@@ -79,7 +79,7 @@ fn version_short_flag_matches_long_flag() {
 fn unknown_command_exits_failure_with_prefixed_stderr() {
     let r = uacrypt(["nonexistent-command"]);
     assert!(r.failure(), "code={:?} stdout={}", r.code, r.stdout);
-    assert_eq!(r.code, Some(1));
+    assert_eq!(r.code, Some(2));
     assert!(
         r.stderr
             .contains("uacrypt: unknown command: nonexistent-command"),
@@ -94,12 +94,12 @@ fn unknown_command_exits_failure_with_prefixed_stderr() {
     miri,
     ignore = "spawns the real uacrypt binary - Miri cannot run a subprocess"
 )]
-fn kalyna_block_with_no_subcommand_reports_missing_flag() {
+fn kalyna_block_with_no_subcommand_reports_missing_subcommand() {
     let r = uacrypt(["kalyna-block"]);
     assert!(r.failure());
     assert!(
         r.stderr
-            .contains("uacrypt: missing required flag: --encrypt|decrypt"),
+            .contains("uacrypt: missing subcommand: expected one of encrypt|decrypt"),
         "stderr={}",
         r.stderr
     );

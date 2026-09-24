@@ -5,6 +5,24 @@ All notable changes to this project are documented in this file. Format follows
 
 ## [Unreleased]
 
+### Changed - `uacrypt` CLI, 0.5.0 (breaking, branch `ux-0.5.0`)
+
+- **Exit codes are split** (T-255, `docs/DECISIONS.md` D-211): 1 = the input was checked and
+  rejected (authentication failure, bad signature, malformed data), 2 = usage error, 3 = a file or
+  key could not be used. Previously every failure was 1.
+- **Stricter command line.** A repeated flag is an error instead of silently using the last value;
+  `--key --in x` is a missing value, not a key path; a bare positional argument is an error.
+  `--flag=value` is accepted. New `uacrypt help [command]`, and "did you mean" suggestions for
+  commands, subcommands and flags. A missing `kalyna-*` subcommand is reported as such, not as a
+  bogus `--encrypt|decrypt` flag.
+- `verify` prints `Signature OK (DSTU 4145, m=...)` to stderr on success (stdout stays empty).
+- Help text: no internal decision/task numbers in the top-level and everyday-command help, an
+  `EXIT STATUS` section, and `--iterations` no longer listed for everyday commands (still accepted,
+  `docs/PERFORMANCE.md`). `keygen`'s "already exists" message lost its run of spaces.
+- Library API of the `uacrypt` crate: `CliError::UnknownCommand`/`UnknownFlag` are struct variants
+  with a `suggestion`; new `RepeatedFlag`/`MissingValue`/`FlagTakesNoValue`/`UnexpectedArgument`/
+  `MissingSubcommand`; `WrongLength::what` is a `LengthOf` enum; `CliError::exit_code()`.
+
 ### Security
 
 - **Breaking wire-format change (0.4.0).** `crypto_secretbox` and `crypto_secretstream` now bind

@@ -52,19 +52,70 @@ use std::fmt;
 use std::path::PathBuf;
 use std::time::Instant;
 
+/// Which fixed-length file a [`CliError::WrongLength`] is about. An enum rather than a string so
+/// [`CliError::exit_code`] can classify it with an exhaustive match: a key or parameter file is
+/// exit 3, input data (a block, a signature, a tag being verified) is exit 1.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LengthOf {
+    Key,
+    Nonce,
+    Tweak,
+    Iv,
+    SigningKey,
+    VerifyingKey,
+    BoxSecretKey,
+    BoxPublicKey,
+    Box512SecretKey,
+    Box512PublicKey,
+    InputBlock,
+    Signature,
+    Tag,
+}
+
+impl fmt::Display for LengthOf {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            LengthOf::Key => "key",
+            LengthOf::Nonce => "nonce",
+            LengthOf::Tweak => "tweak",
+            LengthOf::Iv => "IV",
+            LengthOf::SigningKey => "signing key",
+            LengthOf::VerifyingKey => "verifying key",
+            LengthOf::BoxSecretKey => "box secret key",
+            LengthOf::BoxPublicKey => "box public key",
+            LengthOf::Box512SecretKey => "box512 secret key",
+            LengthOf::Box512PublicKey => "box512 public key",
+            LengthOf::InputBlock => "input block",
+            LengthOf::Signature => "signature",
+            LengthOf::Tag => "tag",
+        })
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum CliError {
-    UnknownCommand(String),
+    UnknownCommand {
+        command: String,
+        suggestion: Option<&'static str>,
+    },
+    MissingSubcommand(&'static str),
     UnknownVariant(String),
     MissingFlag(&'static str),
-    UnknownFlag(String),
+    UnknownFlag {
+        flag: String,
+        suggestion: Option<&'static str>,
+    },
+    RepeatedFlag(&'static str),
+    MissingValue(&'static str),
+    FlagTakesNoValue(&'static str),
+    UnexpectedArgument(String),
     InvalidIterations(String),
     Io {
         path: PathBuf,
         message: String,
     },
     WrongLength {
-        what: &'static str,
+        what: LengthOf,
         expected: usize,
         actual: usize,
     },
@@ -110,20 +161,45 @@ impl fmt::Display for CliError {
     #[allow(clippy::too_many_lines)]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            CliError::UnknownCommand(c) => write!(f, "unknown command: {c}"),
+            CliError::UnknownCommand {
+                command,
+                suggestion,
+            } => {
+                write!(f, "unknown command: {command}")?;
+                if let Some(s) = suggestion {
+                    write!(f, " (did you mean `{s}`?)")?;
+                }
+                write!(f, " - run `uacrypt help` for the list of commands")
+            }
+            CliError::MissingSubcommand(choices) => {
+                write!(f, "missing subcommand: expected one of {choices}")
+            }
             CliError::UnknownVariant(v) => write!(
                 f,
                 "unknown variant: {v} (expected one of 128-128, 128-256, 256-256, 256-512, 512-512)"
             ),
             CliError::MissingFlag(name) => write!(f, "missing required flag: --{name}"),
-            CliError::UnknownFlag(f2) => write!(f, "unknown flag: {f2}"),
+            CliError::UnknownFlag { flag, suggestion } => {
+                write!(f, "unknown flag: {flag}")?;
+                match suggestion {
+                    Some(s) => write!(f, " (did you mean `{s}`?)"),
+                    None => Ok(()),
+                }
+            }
+            CliError::RepeatedFlag(flag) => write!(f, "{flag} given more than once"),
+            CliError::MissingValue(flag) => write!(f, "{flag} needs a value"),
+            CliError::FlagTakesNoValue(flag) => write!(f, "{flag} takes no value"),
+            CliError::UnexpectedArgument(arg) => write!(
+                f,
+                "unexpected argument: {arg} - every input is a named flag, e.g. --in <path>"
+            ),
             CliError::InvalidIterations(v) => write!(f, "invalid --iterations value: {v}"),
             CliError::Io { path, message } => {
                 write!(f, "{}: {message}", path.display())
             }
             CliError::KeyFileExists(path) => write!(
                 f,
-                "{} already exists - refusing to overwrite a key file; delete it first if you                  really want a new key",
+                "{} already exists - refusing to overwrite a key file; delete it first if you really want a new key",
                 path.display()
             ),
             CliError::WrongLength {
@@ -240,6 +316,75 @@ impl fmt::Display for CliError {
                 "box-open512: --in was sealed in a different format version (e.g. by uacrypt \
                  0.3.x) - open it with the release that sealed it"
             ),
+        }
+    }
+}
+
+impl CliError {
+    /// The process exit status for this error (`docs/CLI.md` "Exit status", `docs/DECISIONS.md`
+    /// D-211): 1 = the input data was checked and rejected, 2 = the command line is wrong,
+    /// 3 = a file or key could not be used. Exhaustive on purpose - a new variant must be
+    /// classified here to compile.
+    #[must_use]
+    pub fn exit_code(&self) -> u8 {
+        const REJECTED: u8 = 1;
+        const USAGE: u8 = 2;
+        const FILE_OR_KEY: u8 = 3;
+        match self {
+            CliError::UnknownCommand { .. }
+            | CliError::MissingSubcommand(_)
+            | CliError::UnknownVariant(_)
+            | CliError::MissingFlag(_)
+            | CliError::UnknownFlag { .. }
+            | CliError::RepeatedFlag(_)
+            | CliError::MissingValue(_)
+            | CliError::FlagTakesNoValue(_)
+            | CliError::UnexpectedArgument(_)
+            | CliError::InvalidIterations(_) => USAGE,
+            CliError::Io { .. }
+            | CliError::KeyFileExists(_)
+            | CliError::Random(_)
+            | CliError::SignKeyInvalid
+            | CliError::SignVerifyUnsupportedCurve(_)
+            | CliError::BoxKeyInvalid
+            | CliError::Box512KeyInvalid => FILE_OR_KEY,
+            CliError::WrongLength { what, .. } => match what {
+                LengthOf::Key
+                | LengthOf::Nonce
+                | LengthOf::Tweak
+                | LengthOf::Iv
+                | LengthOf::SigningKey
+                | LengthOf::VerifyingKey
+                | LengthOf::BoxSecretKey
+                | LengthOf::BoxPublicKey
+                | LengthOf::Box512SecretKey
+                | LengthOf::Box512PublicKey => FILE_OR_KEY,
+                LengthOf::InputBlock | LengthOf::Signature | LengthOf::Tag => REJECTED,
+            },
+            CliError::EmptyInput(_)
+            | CliError::PlaintextTooLong
+            | CliError::AadTooLong
+            | CliError::CcmVerifyFailed
+            | CliError::GcmVerifyFailed
+            | CliError::CmacVerifyFailed
+            | CliError::GmacVerifyFailed
+            | CliError::KwInvalidLength
+            | CliError::KwChecksumMismatch
+            | CliError::XtsInvalidLength
+            | CliError::SecretstreamTruncated
+            | CliError::SecretstreamVerifyFailed
+            | CliError::SecretstreamUnknownTag
+            | CliError::SecretstreamTrailingData
+            | CliError::SecretstreamChunkTooLarge
+            | CliError::SecretstreamUnsupportedVersion(_)
+            | CliError::SecretstreamBadChunkLength
+            | CliError::SignVerifyFailed
+            | CliError::BoxOpenTruncated
+            | CliError::BoxOpenFailed
+            | CliError::BoxOpenUnsupportedVersion
+            | CliError::Box512OpenTruncated
+            | CliError::Box512OpenFailed
+            | CliError::Box512OpenUnsupportedVersion => REJECTED,
         }
     }
 }
@@ -442,10 +587,13 @@ struct ArgScanner {
 }
 
 impl ArgScanner {
-    /// `value_flags` each consume exactly one following argument; `bool_flags` consume none.
-    /// Anything else in `args` is [`CliError::UnknownFlag`] - same behavior as every hand-rolled
-    /// loop this replaces, including "last occurrence wins" if a flag repeats, and returning the
-    /// first problem encountered while scanning left to right rather than collecting every one.
+    /// `value_flags` each take one value, either as the next argument or as `--flag=value`;
+    /// `bool_flags` take none. Strict by design (`docs/TASKS.md` T-255, rule R4): a repeated flag,
+    /// a missing or empty value, a value on a bool flag, an unknown flag (with a "did you mean"
+    /// suggestion) and a bare positional argument are all usage errors. A separate value that
+    /// starts with `--` is read as a forgotten value, not a path (`--key --in x`); a path that
+    /// really starts with `--` is still reachable as `--in=--x`. Returns the first problem found
+    /// scanning left to right.
     fn scan(
         args: &[String],
         value_flags: &[&'static str],
@@ -457,15 +605,43 @@ impl ArgScanner {
         let mut i = 0;
         while i < args.len() {
             let token = args[i].as_str();
-            if let Some(&name) = bool_flags.iter().find(|f| **f == token) {
-                flags.insert(name, true);
+            let (name, inline) = match token.split_once('=') {
+                Some((n, v)) if n.starts_with("--") => (n, Some(v)),
+                _ => (token, None),
+            };
+            if let Some(&flag) = bool_flags.iter().find(|f| **f == name) {
+                if inline.is_some() {
+                    return Err(CliError::FlagTakesNoValue(flag));
+                }
+                if flags.insert(flag, true) == Some(true) {
+                    return Err(CliError::RepeatedFlag(flag));
+                }
                 i += 1;
-            } else if let Some(&name) = value_flags.iter().find(|f| **f == token) {
-                let v = args.get(i + 1).ok_or(CliError::MissingFlag(&name[2..]))?;
-                values.insert(name, v.clone());
-                i += 2;
+            } else if let Some(&flag) = value_flags.iter().find(|f| **f == name) {
+                let value = if let Some(v) = inline {
+                    i += 1;
+                    v
+                } else {
+                    i += 2;
+                    match args.get(i - 1) {
+                        Some(v) if !v.starts_with("--") => v.as_str(),
+                        _ => "",
+                    }
+                };
+                if value.is_empty() {
+                    return Err(CliError::MissingValue(flag));
+                }
+                if values.insert(flag, value.to_string()).is_some() {
+                    return Err(CliError::RepeatedFlag(flag));
+                }
+            } else if token.starts_with('-') {
+                let candidates = value_flags.iter().chain(bool_flags).copied();
+                return Err(CliError::UnknownFlag {
+                    flag: name.to_string(),
+                    suggestion: suggest(name, candidates.chain(["--help"])),
+                });
             } else {
-                return Err(CliError::UnknownFlag(token.to_string()));
+                return Err(CliError::UnexpectedArgument(token.to_string()));
             }
         }
         Ok(Self { values, flags })
@@ -504,6 +680,43 @@ impl ArgScanner {
     }
 }
 
+/// The candidate closest to `input`, if it is close enough to be a plausible typo: at most
+/// one edit per three characters of `input` (ignoring leading dashes), minimum one. Ties go to the
+/// earliest candidate.
+fn suggest<'a>(input: &str, candidates: impl IntoIterator<Item = &'a str>) -> Option<&'a str> {
+    let limit = (input.trim_start_matches('-').len() / 3).max(1);
+    candidates
+        .into_iter()
+        .map(|c| (edit_distance(input, c), c))
+        .filter(|&(d, _)| d <= limit)
+        .min_by_key(|&(d, _)| d)
+        .map(|(_, c)| c)
+}
+
+/// Optimal-string-alignment distance (Levenshtein plus adjacent transposition, so `encrpyt` is
+/// one edit from `encrypt`), iterative over three rows. Byte-wise: every name it compares against
+/// is ASCII.
+fn edit_distance(a: &str, b: &str) -> usize {
+    let (a, b) = (a.as_bytes(), b.as_bytes());
+    let mut before_prev = vec![0usize; b.len() + 1];
+    let mut prev: Vec<usize> = (0..=b.len()).collect();
+    let mut cur = vec![0usize; b.len() + 1];
+    for i in 1..=a.len() {
+        cur[0] = i;
+        for j in 1..=b.len() {
+            let cost = usize::from(a[i - 1] != b[j - 1]);
+            let mut d = (prev[j] + 1).min(cur[j - 1] + 1).min(prev[j - 1] + cost);
+            if i >= 2 && j >= 2 && a[i - 1] == b[j - 2] && a[i - 2] == b[j - 1] {
+                d = d.min(before_prev[j - 2] + 1);
+            }
+            cur[j] = d;
+        }
+        std::mem::swap(&mut before_prev, &mut prev);
+        std::mem::swap(&mut prev, &mut cur);
+    }
+    prev[b.len()]
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct BlockArgs {
     pub variant: KalynaVariant,
@@ -540,7 +753,7 @@ pub fn parse_block_args(args: &[String]) -> Result<BlockArgs, CliError> {
 
 fn read_exact_file(
     path: &PathBuf,
-    what: &'static str,
+    what: LengthOf,
     expected_len: usize,
 ) -> Result<Vec<u8>, CliError> {
     let bytes = std::fs::read(path).map_err(|e| CliError::Io {
@@ -567,9 +780,9 @@ fn read_exact_file(
 /// written, or [`CliError::WrongLength`] if the key or input file isn't exactly the variant's
 /// expected length.
 pub fn run_block_command(decrypt: bool, args: &BlockArgs) -> Result<(), CliError> {
-    let key = read_exact_file(&args.key_path, "key", args.variant.key_len())?;
+    let key = read_exact_file(&args.key_path, LengthOf::Key, args.variant.key_len())?;
     let expected_in_len = args.variant.block_len();
-    let input = read_exact_file(&args.in_path, "input block", expected_in_len)?;
+    let input = read_exact_file(&args.in_path, LengthOf::InputBlock, expected_in_len)?;
 
     let (output, elapsed) = run_block_op(
         args.variant,
@@ -668,9 +881,9 @@ pub fn parse_ccm_args(args: &[String]) -> Result<CcmArgs, CliError> {
 /// [`CliError::AadTooLong`] if `--in`/`--aad` exceed the sourced limit, [`CliError::Random`] if the
 /// OS CSPRNG fails on encrypt, or [`CliError::CcmVerifyFailed`] if `decrypt` fails to authenticate.
 pub fn run_ccm_command(decrypt: bool, args: &CcmArgs) -> Result<(), CliError> {
-    let key = read_exact_file(&args.key_path, "key", args.variant.key_len())?;
+    let key = read_exact_file(&args.key_path, LengthOf::Key, args.variant.key_len())?;
     let nonce = if decrypt {
-        read_exact_file(&args.nonce_path, "nonce", args.variant.block_len())?
+        read_exact_file(&args.nonce_path, LengthOf::Nonce, args.variant.block_len())?
     } else {
         let mut generated = vec![0u8; args.variant.block_len()];
         dstu_core::randombytes::randombytes_buf(&mut generated)
@@ -703,7 +916,7 @@ pub fn run_ccm_command(decrypt: bool, args: &CcmArgs) -> Result<(), CliError> {
             let cipher = <$cipher>::new(&key_arr);
 
             let tag_in = if decrypt {
-                let tag = read_exact_file(&args.tag_path, "tag", $tag_len)?;
+                let tag = read_exact_file(&args.tag_path, LengthOf::Tag, $tag_len)?;
                 let mut tag_arr = [0u8; $tag_len];
                 tag_arr.copy_from_slice(&tag);
                 Some(tag_arr)
@@ -817,9 +1030,9 @@ pub fn parse_gcm_args(args: &[String]) -> Result<GcmArgs, CliError> {
 ///
 /// Same cases as [`run_ccm_command`], plus [`CliError::GcmVerifyFailed`] on a failed decrypt.
 pub fn run_gcm_command(decrypt: bool, args: &GcmArgs) -> Result<(), CliError> {
-    let key = read_exact_file(&args.key_path, "key", args.variant.key_len())?;
+    let key = read_exact_file(&args.key_path, LengthOf::Key, args.variant.key_len())?;
     let nonce = if decrypt {
-        read_exact_file(&args.nonce_path, "nonce", args.variant.block_len())?
+        read_exact_file(&args.nonce_path, LengthOf::Nonce, args.variant.block_len())?
     } else {
         let mut generated = vec![0u8; args.variant.block_len()];
         dstu_core::randombytes::randombytes_buf(&mut generated)
@@ -852,7 +1065,7 @@ pub fn run_gcm_command(decrypt: bool, args: &GcmArgs) -> Result<(), CliError> {
             let cipher = <$cipher>::new(&key_arr);
 
             let tag_in = if decrypt {
-                Some(read_exact_file(&args.tag_path, "tag", $block_len)?)
+                Some(read_exact_file(&args.tag_path, LengthOf::Tag, $block_len)?)
             } else {
                 None
             };
@@ -964,7 +1177,7 @@ pub fn parse_cmac_args(args: &[String]) -> Result<CmacArgs, CliError> {
 /// `compute` is missing `--out` or `verify` is missing `--tag`, or
 /// [`CliError::CmacVerifyFailed`] if `verify` fails to authenticate.
 pub fn run_cmac_command(verify: bool, args: &CmacArgs) -> Result<(), CliError> {
-    let key = read_exact_file(&args.key_path, "key", args.variant.key_len())?;
+    let key = read_exact_file(&args.key_path, LengthOf::Key, args.variant.key_len())?;
     let message = std::fs::read(&args.in_path).map_err(|e| CliError::Io {
         path: args.in_path.clone(),
         message: e.to_string(),
@@ -972,7 +1185,7 @@ pub fn run_cmac_command(verify: bool, args: &CmacArgs) -> Result<(), CliError> {
     let tag_in = if verify {
         Some(read_exact_file(
             args.tag_path.as_ref().ok_or(CliError::MissingFlag("tag"))?,
-            "tag",
+            LengthOf::Tag,
             16,
         )?)
     } else {
@@ -1092,7 +1305,7 @@ pub fn parse_gmac_args(args: &[String]) -> Result<GmacArgs, CliError> {
 ///
 /// Same cases as [`run_cmac_command`], plus [`CliError::GmacVerifyFailed`] on a failed `verify`.
 pub fn run_gmac_command(verify: bool, args: &GmacArgs) -> Result<(), CliError> {
-    let key = read_exact_file(&args.key_path, "key", args.variant.key_len())?;
+    let key = read_exact_file(&args.key_path, LengthOf::Key, args.variant.key_len())?;
     let message = std::fs::read(&args.in_path).map_err(|e| CliError::Io {
         path: args.in_path.clone(),
         message: e.to_string(),
@@ -1213,7 +1426,7 @@ pub fn parse_kw_args(args: &[String]) -> Result<KwArgs, CliError> {
 /// `--in` isn't block-aligned or within `MAX_R`, or [`CliError::KwChecksumMismatch`] if `unwrap`'s
 /// trailing checksum block doesn't verify.
 pub fn run_kw_command(unwrap: bool, args: &KwArgs) -> Result<(), CliError> {
-    let key = read_exact_file(&args.key_path, "key", args.variant.key_len())?;
+    let key = read_exact_file(&args.key_path, LengthOf::Key, args.variant.key_len())?;
     let input = std::fs::read(&args.in_path).map_err(|e| CliError::Io {
         path: args.in_path.clone(),
         message: e.to_string(),
@@ -1346,8 +1559,8 @@ pub fn parse_xts_args(args: &[String]) -> Result<XtsArgs, CliError> {
 /// [`CliError::Io`]/[`CliError::WrongLength`] for file problems, or
 /// [`CliError::XtsInvalidLength`] if `--in` is shorter than one block.
 pub fn run_xts_command(decrypt: bool, args: &XtsArgs) -> Result<(), CliError> {
-    let key = read_exact_file(&args.key_path, "key", args.variant.key_len())?;
-    let tweak = read_exact_file(&args.tweak_path, "tweak", args.variant.block_len())?;
+    let key = read_exact_file(&args.key_path, LengthOf::Key, args.variant.key_len())?;
+    let tweak = read_exact_file(&args.tweak_path, LengthOf::Tweak, args.variant.block_len())?;
     let input = std::fs::read(&args.in_path).map_err(|e| CliError::Io {
         path: args.in_path.clone(),
         message: e.to_string(),
@@ -1735,7 +1948,7 @@ fn run_secretstream_decrypt(
 /// [`CliError::SecretstreamBadChunkLength`] for a malformed chunk record, [`CliError::SecretstreamTrailingData`] if bytes remain after `Final`, or
 /// [`CliError::Io`] for file read/write failures - `--out` is left untouched on every error path.
 pub fn run_secretstream_command(decrypt: bool, args: &SecretstreamArgs) -> Result<(), CliError> {
-    let key_bytes = read_exact_file(&args.key_path, "key", SECRETSTREAM_KEY_LEN)?;
+    let key_bytes = read_exact_file(&args.key_path, LengthOf::Key, SECRETSTREAM_KEY_LEN)?;
     let mut key_arr = [0u8; SECRETSTREAM_KEY_LEN];
     key_arr.copy_from_slice(&key_bytes);
     let key = dstu_core::crypto_secretstream::Key::from_bytes(key_arr);
@@ -2032,7 +2245,7 @@ fn hash_file_streamed(path: &PathBuf) -> Result<[u8; 32], CliError> {
 /// Reads a 21-byte signing-key file and validates it via
 /// [`dstu_core::crypto_sign::SigningKey::from_bytes`].
 fn read_signing_key(path: &PathBuf) -> Result<dstu_core::crypto_sign::SigningKey, CliError> {
-    let bytes = read_exact_file(path, "signing key", 21)?;
+    let bytes = read_exact_file(path, LengthOf::SigningKey, 21)?;
     let mut d = [0u8; 21];
     d.copy_from_slice(&bytes);
     dstu_core::crypto_sign::SigningKey::from_bytes(&d).ok_or(CliError::SignKeyInvalid)
@@ -2040,7 +2253,7 @@ fn read_signing_key(path: &PathBuf) -> Result<dstu_core::crypto_sign::SigningKey
 
 /// `m=257` sibling of [`read_signing_key`] - see `docs/TASKS.md` T-199.
 fn read_signing_key257(path: &PathBuf) -> Result<dstu_core::crypto_sign257::SigningKey, CliError> {
-    let bytes = read_exact_file(path, "signing key", 33)?;
+    let bytes = read_exact_file(path, LengthOf::SigningKey, 33)?;
     let mut d = [0u8; 33];
     d.copy_from_slice(&bytes);
     dstu_core::crypto_sign257::SigningKey::from_bytes(&d).ok_or(CliError::SignKeyInvalid)
@@ -2307,12 +2520,19 @@ enum AnyVerifyingKey {
 }
 
 impl AnyVerifyingKey {
+    fn curve_label(&self) -> &'static str {
+        match self {
+            AnyVerifyingKey::M163(_) => "m=163",
+            AnyVerifyingKey::M257(_) => "m=257",
+        }
+    }
+
     fn verify_digest(&self, digest: &[u8; 32], sig_bytes: &[u8]) -> Result<bool, CliError> {
         match self {
             AnyVerifyingKey::M163(k) => {
                 if sig_bytes.len() != 42 {
                     return Err(CliError::WrongLength {
-                        what: "signature",
+                        what: LengthOf::Signature,
                         expected: 42,
                         actual: sig_bytes.len(),
                     });
@@ -2325,7 +2545,7 @@ impl AnyVerifyingKey {
             AnyVerifyingKey::M257(k) => {
                 if sig_bytes.len() != 66 {
                     return Err(CliError::WrongLength {
-                        what: "signature",
+                        what: LengthOf::Signature,
                         expected: 66,
                         actual: sig_bytes.len(),
                     });
@@ -2352,7 +2572,7 @@ fn read_tagged_verifying_key(path: &PathBuf) -> Result<AnyVerifyingKey, CliError
     })?;
     let Some((&tag, rest)) = bytes.split_first() else {
         return Err(CliError::WrongLength {
-            what: "verifying key",
+            what: LengthOf::VerifyingKey,
             expected: 43, // the common case's length; the error message states the byte's role either way
             actual: 0,
         });
@@ -2361,7 +2581,7 @@ fn read_tagged_verifying_key(path: &PathBuf) -> Result<AnyVerifyingKey, CliError
         Some(dstu_core::crypto_sign::CurveId::M163) => {
             if rest.len() != 42 {
                 return Err(CliError::WrongLength {
-                    what: "verifying key",
+                    what: LengthOf::VerifyingKey,
                     expected: 43,
                     actual: bytes.len(),
                 });
@@ -2375,7 +2595,7 @@ fn read_tagged_verifying_key(path: &PathBuf) -> Result<AnyVerifyingKey, CliError
         Some(dstu_core::crypto_sign::CurveId::M257) => {
             if rest.len() != 66 {
                 return Err(CliError::WrongLength {
-                    what: "verifying key",
+                    what: LengthOf::VerifyingKey,
                     expected: 67,
                     actual: bytes.len(),
                 });
@@ -2394,8 +2614,8 @@ fn read_tagged_verifying_key(path: &PathBuf) -> Result<AnyVerifyingKey, CliError
 /// ([`hash_file_streamed`], D-42), reads `--key`'s own curve tag
 /// ([`read_tagged_verifying_key`], `docs/DECISIONS.md` D-186 Decision 1) to determine which curve
 /// applies and reports a specific error for any tag this build doesn't support (Decision 3), then
-/// checks `--sig` against it. Succeeds silently (`Ok(())`, exit 0) on a valid signature, matching
-/// `kalyna-cmac verify`/`kalyna-gmac verify`'s own convention. `iterations > 1` is the D-34
+/// checks `--sig` against it. On a valid signature prints `Signature OK (DSTU 4145, m=...)` to
+/// stderr and returns `Ok(())` (T-255); stdout stays empty. `iterations > 1` is the D-34
 /// benchmark path, same shape as [`run_sign_command`]: hash/key/signature parsed once, only
 /// `verify_digest` itself timed in a loop.
 ///
@@ -2437,6 +2657,7 @@ pub fn run_verify_command(args: &VerifyArgs) -> Result<(), CliError> {
     }
 
     if ok {
+        eprintln!("Signature OK (DSTU 4145, {})", verifying_key.curve_label());
         Ok(())
     } else {
         Err(CliError::SignVerifyFailed)
@@ -2446,7 +2667,7 @@ pub fn run_verify_command(args: &VerifyArgs) -> Result<(), CliError> {
 /// Reads a 32-byte `crypto_box` secret-key file and validates it via
 /// [`dstu_core::crypto_box::SecretKey::from_bytes`].
 fn read_box_secret_key(path: &PathBuf) -> Result<dstu_core::crypto_box::SecretKey, CliError> {
-    let bytes = read_exact_file(path, "box secret key", 32)?;
+    let bytes = read_exact_file(path, LengthOf::BoxSecretKey, 32)?;
     let mut e = [0u8; 32];
     e.copy_from_slice(&bytes);
     dstu_core::crypto_box::SecretKey::from_bytes(&e).ok_or(CliError::BoxKeyInvalid)
@@ -2455,7 +2676,7 @@ fn read_box_secret_key(path: &PathBuf) -> Result<dstu_core::crypto_box::SecretKe
 /// Reads a 64-byte `crypto_box512` secret-key file and validates it via
 /// [`dstu_core::crypto_box512::SecretKey::from_bytes`].
 fn read_box512_secret_key(path: &PathBuf) -> Result<dstu_core::crypto_box512::SecretKey, CliError> {
-    let bytes = read_exact_file(path, "box512 secret key", 64)?;
+    let bytes = read_exact_file(path, LengthOf::Box512SecretKey, 64)?;
     let mut e = [0u8; 64];
     e.copy_from_slice(&bytes);
     dstu_core::crypto_box512::SecretKey::from_bytes(&e).ok_or(CliError::Box512KeyInvalid)
@@ -2464,7 +2685,7 @@ fn read_box512_secret_key(path: &PathBuf) -> Result<dstu_core::crypto_box512::Se
 /// Reads a 64-byte `crypto_box512` public-key file and validates it via
 /// [`dstu_core::crypto_box512::PublicKey::from_bytes`].
 fn read_box512_public_key(path: &PathBuf) -> Result<dstu_core::crypto_box512::PublicKey, CliError> {
-    let bytes = read_exact_file(path, "box512 public key", 64)?;
+    let bytes = read_exact_file(path, LengthOf::Box512PublicKey, 64)?;
     let mut x = [0u8; 64];
     x.copy_from_slice(&bytes);
     dstu_core::crypto_box512::PublicKey::from_bytes(&x).ok_or(CliError::Box512KeyInvalid)
@@ -2473,7 +2694,7 @@ fn read_box512_public_key(path: &PathBuf) -> Result<dstu_core::crypto_box512::Pu
 /// Reads a 32-byte `crypto_box` public-key file and validates it via
 /// [`dstu_core::crypto_box::PublicKey::from_bytes`].
 fn read_box_public_key(path: &PathBuf) -> Result<dstu_core::crypto_box::PublicKey, CliError> {
-    let bytes = read_exact_file(path, "box public key", 32)?;
+    let bytes = read_exact_file(path, LengthOf::BoxPublicKey, 32)?;
     let mut x = [0u8; 32];
     x.copy_from_slice(&bytes);
     dstu_core::crypto_box::PublicKey::from_bytes(&x).ok_or(CliError::BoxKeyInvalid)
@@ -3094,8 +3315,8 @@ pub fn run_strumok_command(args: &StrumokArgs) -> Result<(), CliError> {
         HashBits::B256 => 32,
         HashBits::B512 => 64,
     };
-    let key = read_exact_file(&args.key_path, "key", key_len)?;
-    let iv = read_exact_file(&args.iv_path, "IV", 32)?;
+    let key = read_exact_file(&args.key_path, LengthOf::Key, key_len)?;
+    let iv = read_exact_file(&args.iv_path, LengthOf::Iv, 32)?;
     let iterations = args.iterations.max(1);
 
     if iterations <= 1 {
@@ -3184,15 +3405,13 @@ fn is_version_flag(s: &str) -> bool {
 const TOP_LEVEL_HELP: &str = "\
 uacrypt - a CLI over dstu-core, Ukrainian DSTU cryptographic standards (Kalyna, Kupyna, Strumok).
 
-Pre-release, provisional, not independently audited - see docs/SECURITY.md/DECISIONS.md in the project
-repository for the full threat model and citations (D-05: Kalyna's mode of operation is an adopted
-assumption, not primary-text confirmed; D-197: Strumok's keystream vectors are confirmed against
-the primary DSTU 8845:2019 text itself; D-198: its constant tables are spot-checked, not fully
-transcription-verified).
+Pre-release, not independently audited - see docs/SECURITY.md in the project repository for the
+threat model.
 
 USAGE:
     uacrypt <command> [flags]
     uacrypt <command> --help    show that command's flags and an example invocation
+    uacrypt help [<command>]    the same, or this overview
     uacrypt --version           print the version and the container format version, then exit
 
 EVERYDAY COMMANDS:
@@ -3216,7 +3435,7 @@ EVERYDAY COMMANDS:
     box-seal512     Like `box-seal`, for a `box-pubkey512` recipient key.
     box-open512     Decrypt a file produced by `box-seal512`.
 
-LOWER-LEVEL COMMANDS (benchmarking/interop - most users want the three above instead):
+LOWER-LEVEL COMMANDS (benchmarking and interop with other DSTU implementations):
     kalyna-block    Single Kalyna block encrypt/decrypt - exactly one block, no file support.
     kalyna-ccm      Kalyna-CCM authenticated encryption - messages/AAD capped at 255 bytes.
     kalyna-gcm      Kalyna-GCM authenticated encryption - no message-length cap.
@@ -3234,6 +3453,12 @@ FILE FORMATS (byte layouts, with field sizes in bytes: see docs/CLI.md 'File for
     keys            raw bytes, no header; verifying keys start with a curve byte (01 m=163, 02 m=257)
     kalyna-gcm/-gmac write raw ciphertext/tag files with no container and no format version, so
     use `encrypt` or `box-seal` for files.
+
+EXIT STATUS:
+    0   success
+    1   the input was checked and rejected (authentication failed, bad signature, malformed data)
+    2   usage error (unknown command or flag, a flag missing, repeated or without a value)
+    3   a file or key could not be used (missing, unreadable, wrong size, already exists)
 
 Run `uacrypt <command> --help` for that command's flags and an example.
 ";
@@ -3262,7 +3487,7 @@ uacrypt encrypt - encrypt a file of any size with a 32-byte key.
 
 Streamed in bounded memory chunks (no whole-file buffering) and authenticated: `decrypt` detects
 any tampering with the output rather than silently returning wrong plaintext. Built on
-dstu_core::crypto_secretstream (see docs/DECISIONS.md D-68).
+dstu_core::crypto_secretstream.
 
 OUTPUT FORMAT:
     version (1, currently 2) || header (32) || records, each: chunk tag (1) || ciphertext
@@ -3332,10 +3557,10 @@ const SIGN_KEYGEN_HELP: &str = "\
 uacrypt sign-keygen - generate a fresh signing key for `sign` (DSTU 4145, m=163).
 
 Draws from the OS CSPRNG via rejection sampling against the DSTU 4145 curve order (never a modulo
-reduction, which would bias the result - docs/DECISIONS.md D-72) and writes the raw 21-byte private
+reduction, which would bias the result) and writes the raw 21-byte private
 scalar to --out. A separate command from `keygen` - a signing key and an `encrypt`/`decrypt` key
 are different, incompatible things, not two settings of the same command. For DSTU 4145's other
-implemented curve (m=257, what real Diia-issued signatures use - docs/DECISIONS.md D-185), use
+implemented curve (m=257, what real Diia-issued signatures use), use
 `sign-keygen257` instead - a separate command, not a --curve flag on this one, same reasoning
 `box-keygen512`'s own help text gives.
 
@@ -3360,7 +3585,7 @@ uacrypt sign-pubkey - derive the matching verifying key from a signing key.
 Reads --key (a `sign-keygen` output) and writes a tagged verifying-key file to --out (43 bytes: a
 1-byte curve tag, then the 42-byte public key) - the format `verify` expects. `verify` reads the
 tag itself to tell this apart from a `sign-pubkey257` key, so it always knows which curve to use
-and reports a clear error for any tag it doesn't recognize (docs/DECISIONS.md D-186).
+and reports a clear error for any tag it doesn't recognize.
 
 USAGE:
     uacrypt sign-pubkey --key <path> --out <path>
@@ -3386,7 +3611,6 @@ FLAGS:
     --key <path>        a signing key (from `uacrypt sign-keygen`)
     --in <path>         file to sign
     --out <path>        where to write the 42-byte signature
-    --iterations <n>    (benchmarking only) repeat the sign call n times, print timing to stderr
 
 EXAMPLE:
     uacrypt sign --key signing.key --in report.pdf --out report.pdf.sig
@@ -3399,7 +3623,8 @@ Hashes --in the same way `sign`/`sign257` did, then checks --sig against --key (
 `sign-pubkey257` output - the same `verify` command handles both). --key's own first byte is a
 curve tag: `verify` reads it to know whether the rest is an m=163 or m=257 key, so you never need
 to tell it which. An unrecognized tag is reported by name (which byte, which tags are supported),
-not a generic parse failure. Prints nothing and exits 0 on a valid signature; exits with an error
+not a generic parse failure. Prints `Signature OK (DSTU 4145, m=...)` to stderr and exits 0 on a
+valid signature; exits with an error
 (nothing written) if the message, signature, or key do not match - a tampered file or a wrong key
 is detected, not silently accepted.
 
@@ -3410,7 +3635,6 @@ FLAGS:
     --key <path>        a verifying key (from `uacrypt sign-pubkey` or `sign-pubkey257`)
     --in <path>         the file that was signed
     --sig <path>        the signature (from `uacrypt sign` or `sign257`, matching --key's curve)
-    --iterations <n>    (benchmarking only) repeat the verify call n times, print timing to stderr
 
 EXAMPLE:
     uacrypt verify --key verifying.key --in report.pdf --sig report.pdf.sig
@@ -3419,8 +3643,7 @@ EXAMPLE:
 const SIGN_KEYGEN257_HELP: &str = "\
 uacrypt sign-keygen257 - generate a fresh signing key for `sign257` (DSTU 4145, m=257).
 
-Same shape as `sign-keygen`, over DSTU 4145's m=257 curve (docs/DECISIONS.md D-185/D-186,
-docs/TASKS.md T-199) instead of m=163 - a separate command, not a --curve flag, since the two are
+Same shape as `sign-keygen`, over DSTU 4145's m=257 curve instead of m=163 - a separate command, not a --curve flag, since the two are
 distinct, incompatible key shapes (same convention `box-keygen512`'s own help text already uses).
 m=257 is what real Diia-issued qualified signatures use in production, confirmed by inspecting an
 actual issued certificate - m=163 is still the default here (`sign-keygen`) since it's what this
@@ -3471,7 +3694,6 @@ FLAGS:
     --key <path>        a signing key (from `uacrypt sign-keygen257`)
     --in <path>         file to sign
     --out <path>        where to write the 66-byte signature
-    --iterations <n>    (benchmarking only) repeat the sign call n times, print timing to stderr
 
 EXAMPLE:
     uacrypt sign257 --key signing257.key --in report.pdf --out report.pdf.sig257
@@ -3480,8 +3702,8 @@ EXAMPLE:
 const BOX_KEYGEN_HELP: &str = "\
 uacrypt box-keygen - generate a fresh crypto_box secret key for `box-open`.
 
-Draws from the OS CSPRNG via rejection sampling against the DSTU 9041 curve order (docs/TASKS.md
-T-178) and writes the raw 32-byte private scalar to --out. A separate command from `keygen`/
+Draws from the OS CSPRNG via rejection sampling against the DSTU 9041 curve order and
+writes the raw 32-byte private scalar to --out. A separate command from `keygen`/
 `sign-keygen` - a crypto_box key is a third, incompatible key shape.
 
 USAGE:
@@ -3520,7 +3742,7 @@ uacrypt box-seal - encrypt a file to a recipient's public key (DSTU 9041, hybrid
 
 Unlike `encrypt` (which needs a shared symmetric key both sides already have), box-seal only needs
 the recipient's public key - anyone can seal a message only the matching secret key can open. Wraps
-a fresh random seed asymmetrically (dstu_core::crypto_box, docs/TASKS.md T-178), derives a
+a fresh random seed asymmetrically (dstu_core::crypto_box), derives a
 symmetric key from it, and encrypts --in with that key.
 
 Not memory-bounded: --in is read whole into memory (unlike `encrypt`'s bounded-chunk streaming) -
@@ -3531,13 +3753,12 @@ OUTPUT FORMAT:
     as --in) || auth tag (16) - 177 bytes of overhead. See docs/CLI.md 'File formats'.
 
 USAGE:
-    uacrypt box-seal --key <path> --in <path> --out <path> [--iterations <n>]
+    uacrypt box-seal --key <path> --in <path> --out <path>
 
 FLAGS:
     --key <path>        the recipient's public key (from `uacrypt box-pubkey`)
     --in <path>         file to encrypt
     --out <path>        where to write the sealed output
-    --iterations <n>    (benchmarking only) repeat the seal call n times, print timing to stderr
 
 EXAMPLE:
     uacrypt box-seal --key recipient.pub --in message.txt --out message.txt.box
@@ -3550,13 +3771,12 @@ A wrong key or a tampered/truncated file is rejected with an error before anythi
 --out, rather than producing wrong plaintext.
 
 USAGE:
-    uacrypt box-open --key <path> --in <path> --out <path> [--iterations <n>]
+    uacrypt box-open --key <path> --in <path> --out <path>
 
 FLAGS:
     --key <path>        the recipient's secret key (from `uacrypt box-keygen`)
     --in <path>         the sealed file (must be real `box-seal` output)
     --out <path>        where to write the decrypted output
-    --iterations <n>    (benchmarking only) repeat the open call n times, print timing to stderr
 
 EXAMPLE:
     uacrypt box-open --key box.key --in message.txt.box --out message.txt
@@ -3565,7 +3785,7 @@ EXAMPLE:
 const BOX_KEYGEN512_HELP: &str = "\
 uacrypt box-keygen512 - generate a fresh crypto_box512 secret key for `box-open512`.
 
-Same shape as `box-keygen`, over DSTU 9041's l(p)=512 curve (E512/1, docs/TASKS.md T-193) instead
+Same shape as `box-keygen`, over DSTU 9041's l(p)=512 curve (E512/1) instead
 of l(p)=256 - a separate command, not a `--curve` flag, since the two are distinct, incompatible
 key shapes. Draws from the OS CSPRNG via rejection sampling and writes the raw 64-byte private
 scalar to --out.
@@ -3605,8 +3825,7 @@ EXAMPLE:
 const BOX_SEAL512_HELP: &str = "\
 uacrypt box-seal512 - encrypt a file to a recipient's public key (DSTU 9041 l(p)=512, hybrid via KDF).
 
-Same construction as `box-seal`, over the l(p)=512 curve (dstu_core::crypto_box512,
-docs/TASKS.md T-193). Wraps a fresh random 32-byte seed asymmetrically, derives a symmetric key
+Same construction as `box-seal`, over the l(p)=512 curve (dstu_core::crypto_box512). Wraps a fresh random 32-byte seed asymmetrically, derives a symmetric key
 from it, and encrypts --in with that key.
 
 Not memory-bounded: --in is read whole into memory (unlike `encrypt`'s bounded-chunk streaming) -
@@ -3617,13 +3836,12 @@ OUTPUT FORMAT:
     as --in) || auth tag (16) - 305 bytes of overhead. See docs/CLI.md 'File formats'.
 
 USAGE:
-    uacrypt box-seal512 --key <path> --in <path> --out <path> [--iterations <n>]
+    uacrypt box-seal512 --key <path> --in <path> --out <path>
 
 FLAGS:
     --key <path>        the recipient's public key (from `uacrypt box-pubkey512`)
     --in <path>         file to encrypt
     --out <path>        where to write the sealed output
-    --iterations <n>    (benchmarking only) repeat the seal call n times, print timing to stderr
 
 EXAMPLE:
     uacrypt box-seal512 --key recipient.pub --in message.txt --out message.txt.box
@@ -3636,13 +3854,12 @@ A wrong key or a tampered/truncated file is rejected with an error before anythi
 --out, rather than producing wrong plaintext.
 
 USAGE:
-    uacrypt box-open512 --key <path> --in <path> --out <path> [--iterations <n>]
+    uacrypt box-open512 --key <path> --in <path> --out <path>
 
 FLAGS:
     --key <path>        the recipient's secret key (from `uacrypt box-keygen512`)
     --in <path>         the sealed file (must be real `box-seal512` output)
     --out <path>        where to write the decrypted output
-    --iterations <n>    (benchmarking only) repeat the open call n times, print timing to stderr
 
 EXAMPLE:
     uacrypt box-open512 --key box512.key --in message.txt.box --out message.txt
@@ -3864,42 +4081,91 @@ EXAMPLE:
     uacrypt strumok-crypt --variant 256 --key key.bin --iv iv.bin --in msg.bin --out msg.enc
 ";
 
-/// Prints one command's `--help` text to stdout. `command` is expected to be one of the literal
-/// top-level command names [`run`] matches on; anything else falls back to [`TOP_LEVEL_HELP`]
-/// rather than panicking, since this is only ever called with a string [`run`] just matched.
+/// Every top-level command with its `--help` text - the one table typo suggestions,
+/// `uacrypt help <command>` and (later) shell completions read, so they cannot drift apart. A unit
+/// test checks it against [`run`]'s own dispatch arms.
+const COMMANDS: &[(&str, &str)] = &[
+    ("keygen", KEYGEN_HELP),
+    ("encrypt", ENCRYPT_HELP),
+    ("decrypt", DECRYPT_HELP),
+    ("hash", HASH_HELP),
+    ("sign-keygen", SIGN_KEYGEN_HELP),
+    ("sign-pubkey", SIGN_PUBKEY_HELP),
+    ("sign", SIGN_HELP),
+    ("verify", VERIFY_HELP),
+    ("sign-keygen257", SIGN_KEYGEN257_HELP),
+    ("sign-pubkey257", SIGN_PUBKEY257_HELP),
+    ("sign257", SIGN257_HELP),
+    ("box-keygen", BOX_KEYGEN_HELP),
+    ("box-pubkey", BOX_PUBKEY_HELP),
+    ("box-seal", BOX_SEAL_HELP),
+    ("box-open", BOX_OPEN_HELP),
+    ("box-keygen512", BOX_KEYGEN512_HELP),
+    ("box-pubkey512", BOX_PUBKEY512_HELP),
+    ("box-seal512", BOX_SEAL512_HELP),
+    ("box-open512", BOX_OPEN512_HELP),
+    ("kalyna-block", KALYNA_BLOCK_HELP),
+    ("kalyna-ccm", KALYNA_CCM_HELP),
+    ("kalyna-gcm", KALYNA_GCM_HELP),
+    ("kalyna-cmac", KALYNA_CMAC_HELP),
+    ("kalyna-gmac", KALYNA_GMAC_HELP),
+    ("kalyna-kw", KALYNA_KW_HELP),
+    ("kalyna-xts", KALYNA_XTS_HELP),
+    ("kupyna-digest", KUPYNA_DIGEST_HELP),
+    ("strumok-crypt", STRUMOK_CRYPT_HELP),
+];
+
+fn command_help(command: &str) -> Option<&'static str> {
+    COMMANDS
+        .iter()
+        .find(|(name, _)| *name == command)
+        .map(|(_, help)| *help)
+}
+
+fn unknown_command(command: &str) -> CliError {
+    let names = COMMANDS.iter().map(|(name, _)| *name).chain(["help"]);
+    CliError::UnknownCommand {
+        command: command.to_string(),
+        suggestion: suggest(command, names),
+    }
+}
+
+/// `cmd other` where `other` is not one of `cmd`'s subcommands; the suggestion is the bare
+/// subcommand.
+fn unknown_subcommand(cmd: &str, other: &str, choices: &[&'static str]) -> CliError {
+    CliError::UnknownCommand {
+        command: format!("{cmd} {other}"),
+        suggestion: suggest(other, choices.iter().copied()),
+    }
+}
+
+/// Prints one command's `--help` text to stdout, or [`TOP_LEVEL_HELP`] for anything not in
+/// [`COMMANDS`] (including `""`).
 fn print_command_help(command: &str) {
-    let text = match command {
-        "keygen" => KEYGEN_HELP,
-        "encrypt" => ENCRYPT_HELP,
-        "decrypt" => DECRYPT_HELP,
-        "hash" => HASH_HELP,
-        "sign-keygen" => SIGN_KEYGEN_HELP,
-        "sign-pubkey" => SIGN_PUBKEY_HELP,
-        "sign" => SIGN_HELP,
-        "verify" => VERIFY_HELP,
-        "sign-keygen257" => SIGN_KEYGEN257_HELP,
-        "sign-pubkey257" => SIGN_PUBKEY257_HELP,
-        "sign257" => SIGN257_HELP,
-        "box-keygen" => BOX_KEYGEN_HELP,
-        "box-pubkey" => BOX_PUBKEY_HELP,
-        "box-seal" => BOX_SEAL_HELP,
-        "box-open" => BOX_OPEN_HELP,
-        "box-keygen512" => BOX_KEYGEN512_HELP,
-        "box-pubkey512" => BOX_PUBKEY512_HELP,
-        "box-seal512" => BOX_SEAL512_HELP,
-        "box-open512" => BOX_OPEN512_HELP,
-        "kalyna-block" => KALYNA_BLOCK_HELP,
-        "kalyna-ccm" => KALYNA_CCM_HELP,
-        "kalyna-gcm" => KALYNA_GCM_HELP,
-        "kalyna-cmac" => KALYNA_CMAC_HELP,
-        "kalyna-gmac" => KALYNA_GMAC_HELP,
-        "kalyna-kw" => KALYNA_KW_HELP,
-        "kalyna-xts" => KALYNA_XTS_HELP,
-        "kupyna-digest" => KUPYNA_DIGEST_HELP,
-        "strumok-crypt" => STRUMOK_CRYPT_HELP,
-        _ => TOP_LEVEL_HELP,
-    };
-    println!("{text}");
+    println!("{}", command_help(command).unwrap_or(TOP_LEVEL_HELP));
+}
+
+/// `uacrypt help [command]`: no argument prints the top-level help, a known command its own help;
+/// anything else is a usage error.
+fn run_help_command(rest: &[String]) -> Result<(), CliError> {
+    match rest {
+        [] => {
+            print_command_help("");
+            Ok(())
+        }
+        [cmd] if is_help_flag(cmd) => {
+            print_command_help("");
+            Ok(())
+        }
+        [cmd] => match command_help(cmd) {
+            Some(text) => {
+                println!("{text}");
+                Ok(())
+            }
+            None => Err(unknown_command(cmd)),
+        },
+        [_, extra, ..] => Err(CliError::UnexpectedArgument(extra.clone())),
+    }
 }
 
 /// Dispatches `sign-keygen`/`sign-pubkey`/`sign`/`verify` - split out of [`run`] for the same
@@ -4006,32 +4272,48 @@ fn dispatch_kalyna_mode(cmd: &str, rest: &[String]) -> Result<(), CliError> {
         "kalyna-gcm" => match sub {
             Some("encrypt") => run_gcm_command(false, &parse_gcm_args(&rest[1..])?),
             Some("decrypt") => run_gcm_command(true, &parse_gcm_args(&rest[1..])?),
-            Some(other) => Err(CliError::UnknownCommand(format!("kalyna-gcm {other}"))),
-            None => Err(CliError::MissingFlag("encrypt|decrypt")),
+            Some(other) => Err(unknown_subcommand(
+                "kalyna-gcm",
+                other,
+                &["encrypt", "decrypt"],
+            )),
+            None => Err(CliError::MissingSubcommand("encrypt|decrypt")),
         },
         "kalyna-cmac" => match sub {
             Some("compute") => run_cmac_command(false, &parse_cmac_args(&rest[1..])?),
             Some("verify") => run_cmac_command(true, &parse_cmac_args(&rest[1..])?),
-            Some(other) => Err(CliError::UnknownCommand(format!("kalyna-cmac {other}"))),
-            None => Err(CliError::MissingFlag("compute|verify")),
+            Some(other) => Err(unknown_subcommand(
+                "kalyna-cmac",
+                other,
+                &["compute", "verify"],
+            )),
+            None => Err(CliError::MissingSubcommand("compute|verify")),
         },
         "kalyna-gmac" => match sub {
             Some("compute") => run_gmac_command(false, &parse_gmac_args(&rest[1..])?),
             Some("verify") => run_gmac_command(true, &parse_gmac_args(&rest[1..])?),
-            Some(other) => Err(CliError::UnknownCommand(format!("kalyna-gmac {other}"))),
-            None => Err(CliError::MissingFlag("compute|verify")),
+            Some(other) => Err(unknown_subcommand(
+                "kalyna-gmac",
+                other,
+                &["compute", "verify"],
+            )),
+            None => Err(CliError::MissingSubcommand("compute|verify")),
         },
         "kalyna-kw" => match sub {
             Some("wrap") => run_kw_command(false, &parse_kw_args(&rest[1..])?),
             Some("unwrap") => run_kw_command(true, &parse_kw_args(&rest[1..])?),
-            Some(other) => Err(CliError::UnknownCommand(format!("kalyna-kw {other}"))),
-            None => Err(CliError::MissingFlag("wrap|unwrap")),
+            Some(other) => Err(unknown_subcommand("kalyna-kw", other, &["wrap", "unwrap"])),
+            None => Err(CliError::MissingSubcommand("wrap|unwrap")),
         },
         _ => match sub {
             Some("encrypt") => run_xts_command(false, &parse_xts_args(&rest[1..])?),
             Some("decrypt") => run_xts_command(true, &parse_xts_args(&rest[1..])?),
-            Some(other) => Err(CliError::UnknownCommand(format!("kalyna-xts {other}"))),
-            None => Err(CliError::MissingFlag("encrypt|decrypt")),
+            Some(other) => Err(unknown_subcommand(
+                "kalyna-xts",
+                other,
+                &["encrypt", "decrypt"],
+            )),
+            None => Err(CliError::MissingSubcommand("encrypt|decrypt")),
         },
     }
 }
@@ -4073,8 +4355,12 @@ pub fn run(args: &[String]) -> Result<(), CliError> {
             match rest.first().map(String::as_str) {
                 Some("encrypt") => run_block_command(false, &parse_block_args(&rest[1..])?),
                 Some("decrypt") => run_block_command(true, &parse_block_args(&rest[1..])?),
-                Some(other) => Err(CliError::UnknownCommand(format!("kalyna-block {other}"))),
-                None => Err(CliError::MissingFlag("encrypt|decrypt")),
+                Some(other) => Err(unknown_subcommand(
+                    "kalyna-block",
+                    other,
+                    &["encrypt", "decrypt"],
+                )),
+                None => Err(CliError::MissingSubcommand("encrypt|decrypt")),
             }
         }
         Some("kalyna-ccm") => {
@@ -4086,8 +4372,12 @@ pub fn run(args: &[String]) -> Result<(), CliError> {
             match rest.first().map(String::as_str) {
                 Some("encrypt") => run_ccm_command(false, &parse_ccm_args(&rest[1..])?),
                 Some("decrypt") => run_ccm_command(true, &parse_ccm_args(&rest[1..])?),
-                Some(other) => Err(CliError::UnknownCommand(format!("kalyna-ccm {other}"))),
-                None => Err(CliError::MissingFlag("encrypt|decrypt")),
+                Some(other) => Err(unknown_subcommand(
+                    "kalyna-ccm",
+                    other,
+                    &["encrypt", "decrypt"],
+                )),
+                None => Err(CliError::MissingSubcommand("encrypt|decrypt")),
             }
         }
         Some(cmd @ ("kalyna-gcm" | "kalyna-cmac" | "kalyna-gmac" | "kalyna-kw" | "kalyna-xts")) => {
@@ -4127,7 +4417,8 @@ pub fn run(args: &[String]) -> Result<(), CliError> {
         Some(cmd @ ("box-keygen512" | "box-pubkey512" | "box-seal512" | "box-open512")) => {
             dispatch_box512_command(cmd, &args[1..])
         }
-        Some(other) => Err(CliError::UnknownCommand(other.to_string())),
+        Some("help") => run_help_command(&args[1..]),
+        Some(other) => Err(unknown_command(other)),
     }
 }
 
@@ -4419,7 +4710,10 @@ mod tests {
     fn parse_hash_args_rejects_unknown_flag() {
         assert_eq!(
             parse_hash_args(&["--variant".to_string(), "256".to_string()]),
-            Err(CliError::UnknownFlag("--variant".to_string()))
+            Err(CliError::UnknownFlag {
+                flag: "--variant".to_string(),
+                suggestion: None,
+            })
         );
     }
 
@@ -4443,7 +4737,10 @@ mod tests {
     fn parse_keygen_args_rejects_unknown_flag() {
         assert_eq!(
             parse_keygen_args(&["--variant".to_string(), "256".to_string()]),
-            Err(CliError::UnknownFlag("--variant".to_string()))
+            Err(CliError::UnknownFlag {
+                flag: "--variant".to_string(),
+                suggestion: None,
+            })
         );
     }
 
@@ -4874,7 +5171,10 @@ mod tests {
     fn parse_secretstream_args_rejects_unknown_flag() {
         assert_eq!(
             parse_secretstream_args(&["--nonce".to_string(), "n.bin".to_string()]),
-            Err(CliError::UnknownFlag("--nonce".to_string()))
+            Err(CliError::UnknownFlag {
+                flag: "--nonce".to_string(),
+                suggestion: None,
+            })
         );
     }
 
@@ -5035,7 +5335,7 @@ mod tests {
         assert_eq!(
             run_secretstream_command(false, &args),
             Err(CliError::WrongLength {
-                what: "key",
+                what: LengthOf::Key,
                 expected: 32,
                 actual: 31,
             })
@@ -5281,7 +5581,7 @@ mod tests {
         assert_eq!(
             run_ccm_command(false, &args),
             Err(CliError::WrongLength {
-                what: "key",
+                what: LengthOf::Key,
                 expected: 16,
                 actual: 15,
             })
@@ -5312,7 +5612,7 @@ mod tests {
         assert_eq!(
             run_ccm_command(true, &args),
             Err(CliError::WrongLength {
-                what: "nonce",
+                what: LengthOf::Nonce,
                 expected: 16,
                 actual: 15,
             })
@@ -5561,7 +5861,10 @@ mod tests {
     fn run_unknown_command_is_still_an_error() {
         assert_eq!(
             run(&["bogus".to_string()]),
-            Err(CliError::UnknownCommand("bogus".to_string()))
+            Err(CliError::UnknownCommand {
+                command: "bogus".to_string(),
+                suggestion: None,
+            })
         );
     }
 
@@ -5810,7 +6113,7 @@ mod tests {
         assert_eq!(
             run_gcm_command(false, &args),
             Err(CliError::WrongLength {
-                what: "key",
+                what: LengthOf::Key,
                 expected: 16,
                 actual: 15,
             })
@@ -6231,7 +6534,7 @@ mod tests {
         ] {
             let result = run(&[cmd.to_string(), "not-a-real-subcommand".to_string()]);
             assert!(
-                matches!(result, Err(CliError::UnknownCommand(_))),
+                matches!(result, Err(CliError::UnknownCommand { .. })),
                 "{cmd} with an unknown subcommand should be rejected, got {result:?}"
             );
         }
@@ -6263,7 +6566,10 @@ mod tests {
     fn parse_sign_keygen_args_rejects_unknown_flag() {
         assert_eq!(
             parse_sign_keygen_args(&["--variant".to_string(), "256".to_string()]),
-            Err(CliError::UnknownFlag("--variant".to_string()))
+            Err(CliError::UnknownFlag {
+                flag: "--variant".to_string(),
+                suggestion: None,
+            })
         );
     }
 
@@ -6300,7 +6606,10 @@ mod tests {
     fn parse_sign_pubkey_args_rejects_unknown_flag() {
         assert_eq!(
             parse_sign_pubkey_args(&["--variant".to_string(), "256".to_string()]),
-            Err(CliError::UnknownFlag("--variant".to_string()))
+            Err(CliError::UnknownFlag {
+                flag: "--variant".to_string(),
+                suggestion: None,
+            })
         );
     }
 
@@ -6380,7 +6689,10 @@ mod tests {
     fn parse_sign_args_rejects_unknown_flag() {
         assert_eq!(
             parse_sign_args(&["--variant".to_string(), "256".to_string()]),
-            Err(CliError::UnknownFlag("--variant".to_string()))
+            Err(CliError::UnknownFlag {
+                flag: "--variant".to_string(),
+                suggestion: None,
+            })
         );
     }
 
@@ -6460,7 +6772,10 @@ mod tests {
     fn parse_verify_args_rejects_unknown_flag() {
         assert_eq!(
             parse_verify_args(&["--variant".to_string(), "256".to_string()]),
-            Err(CliError::UnknownFlag("--variant".to_string()))
+            Err(CliError::UnknownFlag {
+                flag: "--variant".to_string(),
+                suggestion: None,
+            })
         );
     }
 
@@ -6609,7 +6924,7 @@ mod tests {
                 iterations: 1,
             }),
             Err(CliError::WrongLength {
-                what: "signature",
+                what: LengthOf::Signature,
                 expected: 42,
                 ..
             })
@@ -6742,7 +7057,7 @@ mod tests {
                 out_path: dir.file("verifying.key"),
             }),
             Err(CliError::WrongLength {
-                what: "signing key",
+                what: LengthOf::SigningKey,
                 expected: 21,
                 actual: 20,
             })
@@ -6762,7 +7077,7 @@ mod tests {
                 iterations: 1,
             }),
             Err(CliError::WrongLength {
-                what: "signing key",
+                what: LengthOf::SigningKey,
                 expected: 21,
                 actual: 20,
             })
@@ -6936,7 +7251,7 @@ mod tests {
                 iterations: 1,
             }),
             Err(CliError::WrongLength {
-                what: "verifying key",
+                what: LengthOf::VerifyingKey,
                 expected: 43,
                 actual: key.len(),
             })
@@ -6976,7 +7291,7 @@ mod tests {
                 iterations: 1,
             }),
             Err(CliError::WrongLength {
-                what: "signature",
+                what: LengthOf::Signature,
                 expected: 42,
                 actual: 41,
             })
@@ -7125,7 +7440,10 @@ mod tests {
     fn parse_box_seal_args_rejects_unknown_flag() {
         assert_eq!(
             parse_box_seal_args(&["--variant".to_string(), "256".to_string()]),
-            Err(CliError::UnknownFlag("--variant".to_string()))
+            Err(CliError::UnknownFlag {
+                flag: "--variant".to_string(),
+                suggestion: None,
+            })
         );
     }
 
@@ -7353,7 +7671,7 @@ mod tests {
                 out_path: dir.file("box.pub"),
             }),
             Err(CliError::WrongLength {
-                what: "box secret key",
+                what: LengthOf::BoxSecretKey,
                 expected: 32,
                 actual: 31,
             })
@@ -7638,7 +7956,10 @@ mod tests {
         // `UnknownCommand`, since `dispatch_sign_command` hands `rest` straight to `parse_*_args`.
         assert_eq!(
             run(&["sign".to_string(), "--bogus".to_string()]),
-            Err(CliError::UnknownFlag("--bogus".to_string()))
+            Err(CliError::UnknownFlag {
+                flag: "--bogus".to_string(),
+                suggestion: None,
+            })
         );
     }
 
@@ -7770,5 +8091,181 @@ mod tests {
             .permissions()
             .mode();
         assert_eq!(mode & 0o777, 0o600);
+    }
+
+    // T-255: strict parsing, help, exit codes.
+
+    #[test]
+    fn wrong_length_exit_class_pins_every_length_kind() {
+        let class = |what| {
+            CliError::WrongLength {
+                what,
+                expected: 1,
+                actual: 0,
+            }
+            .exit_code()
+        };
+        for what in [
+            LengthOf::Key,
+            LengthOf::Nonce,
+            LengthOf::Tweak,
+            LengthOf::Iv,
+            LengthOf::SigningKey,
+            LengthOf::VerifyingKey,
+            LengthOf::BoxSecretKey,
+            LengthOf::BoxPublicKey,
+            LengthOf::Box512SecretKey,
+            LengthOf::Box512PublicKey,
+        ] {
+            assert_eq!(class(what), 3, "{what}");
+        }
+        for what in [LengthOf::InputBlock, LengthOf::Signature, LengthOf::Tag] {
+            assert_eq!(class(what), 1, "{what}");
+        }
+    }
+
+    #[test]
+    fn edit_distance_counts_a_transposition_as_one_edit() {
+        assert_eq!(edit_distance("encrypt", "encrypt"), 0);
+        assert_eq!(edit_distance("encrpyt", "encrypt"), 1);
+        assert_eq!(edit_distance("", "abc"), 3);
+        assert_eq!(edit_distance("abc", ""), 3);
+        assert_eq!(edit_distance("kitten", "sitting"), 3);
+    }
+
+    #[test]
+    fn suggest_needs_a_plausible_typo() {
+        let names = ["encrypt", "decrypt", "hash"];
+        assert_eq!(suggest("encrpyt", names), Some("encrypt"));
+        assert_eq!(suggest("hsah", names), Some("hash"));
+        assert_eq!(suggest("foo", names), None);
+        assert_eq!(suggest("--kye", ["--key", "--in"]), Some("--key"));
+        assert_eq!(suggest("--zzzzzz", ["--key", "--in", "--help"]), None);
+    }
+
+    #[test]
+    fn scan_rejects_repeats_missing_values_and_positionals() {
+        let args = |v: &[&str]| v.iter().map(ToString::to_string).collect::<Vec<_>>();
+        let scan = |v: &[&str]| ArgScanner::scan(&args(v), &["--in", "--out"], &["--raw"]).err();
+        assert_eq!(
+            scan(&["--in", "a", "--in=b"]),
+            Some(CliError::RepeatedFlag("--in"))
+        );
+        assert_eq!(
+            scan(&["--raw", "--raw"]),
+            Some(CliError::RepeatedFlag("--raw"))
+        );
+        assert_eq!(scan(&["--in"]), Some(CliError::MissingValue("--in")));
+        assert_eq!(
+            scan(&["--in", "--out", "x"]),
+            Some(CliError::MissingValue("--in"))
+        );
+        assert_eq!(scan(&["--in="]), Some(CliError::MissingValue("--in")));
+        assert_eq!(
+            scan(&["--raw=yes"]),
+            Some(CliError::FlagTakesNoValue("--raw"))
+        );
+        assert_eq!(
+            scan(&["file.txt"]),
+            Some(CliError::UnexpectedArgument("file.txt".to_string()))
+        );
+        assert_eq!(
+            scan(&["--otu", "x"]),
+            Some(CliError::UnknownFlag {
+                flag: "--otu".to_string(),
+                suggestion: Some("--out"),
+            })
+        );
+        let ok = ArgScanner::scan(
+            &args(&["--in=--odd", "--out", "o"]),
+            &["--in", "--out"],
+            &[],
+        )
+        .expect("scan");
+        assert_eq!(ok.path("--in"), Ok(PathBuf::from("--odd")));
+    }
+
+    #[test]
+    fn every_command_in_the_table_has_its_own_help_and_dispatches() {
+        for (name, help) in COMMANDS {
+            assert_ne!(*help, TOP_LEVEL_HELP, "{name}");
+            assert!(help.starts_with(&format!("uacrypt {name} ")), "{name}");
+            assert_eq!(
+                run(&[(*name).to_string(), "--help".to_string()]),
+                Ok(()),
+                "{name}"
+            );
+        }
+    }
+
+    #[test]
+    fn every_command_run_dispatches_is_in_the_table() {
+        let src = include_str!("lib.rs");
+        let start = src.find("pub fn run(args: &[String])").expect("run");
+        let body = &src[start
+            ..start
+                + src[start..]
+                    .find(
+                        "
+}
+",
+                    )
+                    .expect("end of run")];
+        // Top-level arms only (8-space indent); deeper `Some("encrypt")` lines are subcommands.
+        let mut found = Vec::new();
+        for line in body.lines() {
+            let Some(arm) = line.strip_prefix("        Some(") else {
+                continue;
+            };
+            let head = arm.split("=>").next().unwrap_or_default();
+            found.extend(head.split('"').skip(1).step_by(2).map(str::to_string));
+        }
+        assert!(found.len() > 20, "{found:?}");
+        for name in found.iter().filter(|n| *n != "help") {
+            assert!(
+                COMMANDS.iter().any(|(n, _)| n == name),
+                "`{name}` is dispatched by run but missing from COMMANDS"
+            );
+        }
+    }
+
+    #[test]
+    fn help_texts_carry_no_internal_references_or_benchmark_flags() {
+        let has_ref = |text: &str| {
+            text.as_bytes()
+                .windows(3)
+                .any(|w| (w[0] == b'D' || w[0] == b'T') && w[1] == b'-' && w[2].is_ascii_digit())
+        };
+        assert!(!has_ref(TOP_LEVEL_HELP));
+        for help in [
+            KEYGEN_HELP,
+            ENCRYPT_HELP,
+            DECRYPT_HELP,
+            HASH_HELP,
+            SIGN_KEYGEN_HELP,
+            SIGN_PUBKEY_HELP,
+            SIGN_HELP,
+            VERIFY_HELP,
+            SIGN_KEYGEN257_HELP,
+            SIGN_PUBKEY257_HELP,
+            SIGN257_HELP,
+            BOX_KEYGEN_HELP,
+            BOX_PUBKEY_HELP,
+            BOX_SEAL_HELP,
+            BOX_OPEN_HELP,
+            BOX_KEYGEN512_HELP,
+            BOX_PUBKEY512_HELP,
+            BOX_SEAL512_HELP,
+            BOX_OPEN512_HELP,
+        ] {
+            assert!(!has_ref(help), "{help}");
+            assert!(!help.contains("--iterations"), "{help}");
+        }
+    }
+
+    #[test]
+    fn key_file_exists_message_has_no_run_of_spaces() {
+        let msg = CliError::KeyFileExists(PathBuf::from("k.bin")).to_string();
+        assert!(!msg.contains("  "), "{msg}");
     }
 }

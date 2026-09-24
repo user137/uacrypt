@@ -46,7 +46,7 @@ fn empty_key_file_is_wrong_length_not_a_panic() {
     write_bytes(&key, &[]);
     let r = run_verify(&dir, &key);
     assert!(r.failure());
-    assert_eq!(r.code, Some(1));
+    assert_eq!(r.code, Some(3));
     assert!(
         r.stderr
             .contains("verifying key must be exactly 43 bytes, got 0"),

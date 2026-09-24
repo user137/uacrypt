@@ -1,5 +1,23 @@
 # Using `uacrypt`
 
+**Command line rules (0.5.0, T-255).** Every input is a named flag: `--key k` or `--key=k`. A flag
+given twice, a flag with no value (`--key --in x` does not make `--in` the key path), a value on a
+flag that takes none, an unknown flag and a bare positional argument are all usage errors, with a
+"did you mean" suggestion for a near-miss command, subcommand or flag. A path that really starts
+with `--` can be passed as `--in=--odd-name`. `uacrypt help` prints the overview and `uacrypt help
+<command>` the same text as `uacrypt <command> --help`.
+
+**Exit status.**
+
+| Code | Meaning | Examples |
+|---|---|---|
+| 0 | success | also `--help`, `help`, `--version` |
+| 1 | the input was checked and rejected | authentication failed, bad signature, truncated or malformed ciphertext, an empty or over-long message for a mode that forbids it, a wrong-length signature or tag |
+| 2 | usage error | unknown command or flag, missing/repeated flag, missing value, missing subcommand |
+| 3 | a file or key could not be used | missing or unreadable file, wrong-size or invalid key/nonce/IV/tweak, a `*-keygen --out` that already exists |
+
+A script can therefore tell "this file was forged" (1) from "I typed the command wrong" (2).
+
 `uacrypt encrypt`/`decrypt`/`hash` (`docs/TASKS.md` T-16, `docs/DECISIONS.md` D-52) are the real,
 misuse-resistant top-level commands — mode, nonce, and algorithm are all hardcoded, nothing to
 misconfigure:
@@ -48,12 +66,14 @@ uacrypt verify --key verifying.key --in message.bin --sig message.bin.sig
 
 `sign-keygen`'s output (`signing.key`, 21 raw bytes) is secret — keep it like any other private key.
 `sign-pubkey` derives the matching `verifying.key` (42 raw bytes) from it, safe to share or publish.
-`verify` prints nothing and exits `0` on a valid signature; on a tampered file, a tampered signature,
+`verify` prints `Signature OK (DSTU 4145, m=163)` (or `m=257`) to stderr, nothing to stdout, and
+exits `0` on a valid signature; on a tampered file, a tampered signature,
 or the wrong verifying key, it exits `1` with an error and writes nothing — it does not, and cannot,
 silently accept a mismatch:
 
 ```
 $ uacrypt verify --key verifying.key --in message.bin --sig message.bin.sig
+Signature OK (DSTU 4145, m=163)
 $ echo $?
 0
 

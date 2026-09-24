@@ -13907,3 +13907,46 @@ catch real bugs in non-generated, non-test code, so turning them off repo-wide w
 
 **Rejected.** Renaming `as_secret` in the smoke tests only to satisfy the heuristic. Not done for
 now; the owner can revisit if #86/#87 reopen.
+
+## D-211: T-255 - `uacrypt` exit-code classes and strict argument parsing (0.5.0)
+
+**Context.** First task of the owner-requested CLI batch (TASKS "CLI usability and misuse
+resistance", rule R4). Every failure exited 1, so a script could not tell a forged file from a
+typo; a repeated flag silently won last (`encrypt --key a --key b` used `b`).
+
+**Decision 1 - exit classes.** `CliError::exit_code()` is an exhaustive match (no wildcard), so a
+new variant must be classified to compile:
+- 1 = the input data was checked and rejected: every authentication/tag/signature failure, every
+  malformed-ciphertext error (truncated, unknown chunk tag, trailing data, unsupported version,
+  bad chunk length), and data-shape errors of `--in`/`--sig`/`--tag` (`EmptyInput`,
+  `PlaintextTooLong`, `AadTooLong`, `KwInvalidLength`, `XtsInvalidLength`, a wrong-length input
+  block, signature or tag).
+- 2 = usage: unknown/missing/repeated flag, missing value, value on a bool flag, positional
+  argument, unknown command/subcommand/variant, bad `--iterations`.
+- 3 = a file or key could not be used: I/O errors, `KeyFileExists`, RNG failure, invalid keys, an
+  unsupported verifying-key curve tag, a wrong-length key/nonce/IV/tweak.
+
+This is broader than T-255's own wording (1 = auth failure, bad signature, `--check` mismatch). The
+rule applied: "the program read the data and refused it" is 1; "the command line is wrong" is 2;
+"a file or key could not be used" is 3. The owner saw this interpretation before approving the plan.
+A wrong-length `--tag` is 1, not 3: it is verification input, like a signature. `WrongLength`'s
+`what` became a `LengthOf` enum (was `&'static str`) so this split is itself an exhaustive match,
+not a string comparison.
+
+**Decision 2 - strict parsing** in `ArgScanner::scan`, the one place every command parses flags:
+repeated flag, missing or empty value, value on a bool flag and a positional argument are usage
+errors; `--flag=value` is accepted. A separate value starting with `--` is treated as a forgotten
+value (`--key --in x` would otherwise use `--in` as the key path); a path that really starts with
+`--` stays reachable as `--in=--x`.
+
+**Decision 3 - suggestions** use an own optimal-string-alignment distance (R5, no dependency),
+limit one edit per three characters (minimum one), over one `COMMANDS` table that also feeds
+`help <command>` (and later T-264's completions). Unit tests check the table against `run`'s own
+dispatch arms in both directions.
+
+**Security note.** The new `CliError` variants carry only argv strings and `&'static str` flag
+names, no key material - D-210's `cleartext-logging` reasoning still holds.
+
+**Rejected.** Classifying `WrongLength` by its `what` string (a silent default for any new
+string); a separate `WrongInputLength` variant (touches the same call sites, less precise than
+`LengthOf`).

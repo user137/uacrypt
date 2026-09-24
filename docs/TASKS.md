@@ -8744,15 +8744,9 @@ replace a DSTU primitive.
   `GHSA-j2w3-628p-qw92`/`GHSA-wqmx-6fx4-jr5r` (both `draft`, `cve_id` null at 02:50);
   (3) the date rule (UAPKI/BC replies or 2026-10-08).
 - CodeQL alerts #82-#88 dismissed as false positives (T-266, D-210); 0 open.
-- 0.5.0 work goes on branch `ux-0.5.0` (currently = master, no own commits), never on `master`
-  before the 0.4.0 push. Next: T-255, plan mode + advisor first (exit codes are a CLI contract).
-  Orientation done so far: `ArgScanner::scan` (`crates/uacrypt/src/lib.rs` ~l.449) is the single
-  place where a repeated flag wins last and where `--flag=value` would go; dispatchers are
-  `run()` (~l.4050), `dispatch_simple`/`dispatch_sign_command`/`dispatch_kalyna_mode` (~l.3918+),
-  help in `print_command_help` (~l.3870) and `TOP_LEVEL_HELP` (~l.3184, the stale D-05 line);
-  `main.rs` maps every error to exit 1 - the exit-code split (0/1/2/3) needs a
-  `CliError -> class` mapping there. The `KeyFileExists` message has the mid-string spaces
-  (`lib.rs` ~l.124). Still to check: how `crates/uacrypt/tests/` assert exit status.
+- 0.5.0 work goes on branch `ux-0.5.0`, never on `master` before the 0.4.0 push. **T-255 done
+  there 2026-09-24** (local commit, D-211). Next: T-256 (typed key files), plan mode + advisor
+  first (format decision).
 
 **EMBARGO - do not push these audit commits to the public `master` before the fix ships.** The repo is
 public and `docs/SUMMARY.md` publishes TASKS.md to gh-pages, so pushing this section discloses a live
@@ -9000,7 +8994,8 @@ missing Final. **A1** later or never. **P1** had no recommendation: deferred to 
 
 ### Tasks
 Breaking - 0.5.0 (B1 a):
-- [ ] **T-255** Strict parser and help (no owner decision; R4). Repeated flag -> error; accept
+- [x] **T-255** (done 2026-09-24 on `ux-0.5.0`, D-211; exit 1 also covers malformed input data,
+  not only auth/signature failures - owner-approved reading) Strict parser and help (no owner decision; R4). Repeated flag -> error; accept
   `--flag=value`; `uacrypt help [cmd]`; "did you mean" for unknown commands/flags (own edit
   distance, R5); exit codes 0 ok / 1 rejected (auth failure, bad signature, `--check` mismatch) /
   2 usage / 3 I/O or key-file error; fix the `lib.rs:124` message; top-level help without internal

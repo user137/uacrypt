@@ -287,6 +287,11 @@ library's own key-setup-once convention) — this amortizes the one-time process
 operations rather than spawning a process per operation, which would measure OS process creation,
 not crypto.
 
+Since 0.5.0 (T-255) the everyday commands' `--help` no longer lists `--iterations`
+(`sign`/`sign257`/`verify`/`box-seal`/`box-open`/`box-seal512`/`box-open512`); the flag is still
+accepted there and still prints `iterations=... total_ns=... per_op_ns=... ops_per_s=...` to stderr.
+The lower-level `kalyna-*`/`kupyna-digest`/`strumok-crypt` help keeps documenting it.
+
 **Machines**: both the Ryzen 5 PRO 4650U dev machine and the Raspberry Pi 5 (see "Methodology"
 above) now have `uacrypt` plus a CLI wrapper for UAPKI built; outspace's Strumok wrapper is built
 on both too. Oliynykov's reference C stays excluded from these tables — a deliberate, unchanged
