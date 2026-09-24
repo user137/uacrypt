@@ -8745,8 +8745,11 @@ replace a DSTU primitive.
   (3) the date rule (UAPKI/BC replies or 2026-10-08).
 - CodeQL alerts #82-#88 dismissed as false positives (T-266, D-210); 0 open.
 - 0.5.0 work goes on branch `ux-0.5.0`, never on `master` before the 0.4.0 push. **T-255 done
-  there 2026-09-24** (local commits, D-211). Next: T-256 (typed key files), plan mode + advisor
-  first (format decision). Release-day steps for 0.4.0 run on `master` only (the finalize script
+  there 2026-09-24** (local commits, D-211). **T-256 (typed key files, D-212) is done too
+  (2026-09-24, commit `c1ac1ec`).** Next: T-257 (plan mode + advisor). T-256 ran every binding
+  suite locally except PHP (not installed): Node 95/95 (`env -u CARGO npm`), Ruby 101/101 (with
+  `LIBCLANG_PATH`), Python 100/100 (`PYTHONPATH=python`), Java `mvn verify`, .NET, Go, C++ (ctest
+  from PowerShell). New T-267: update the site after the 0.5.0 release (owner request). Release-day steps for 0.4.0 run on `master` only (the finalize script
   now refuses any other branch). When this branch is rebased onto the finalized `master`, the
   0.5.0 CHANGELOG block must stay under `## [Unreleased]`, above `## [0.4.0]`.
 
