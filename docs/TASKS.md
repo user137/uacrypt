@@ -8752,7 +8752,11 @@ replace a DSTU primitive.
   from PowerShell). New T-267: update the site after the 0.5.0 release (owner request).
   Not yet run: `smoke_typed_keys.rs`'s `cfg(unix)` 0600 test (run it on the Pi with T-241's unix
   tests) and the PHP interop edit (PHP not installed here; the branch is unpushed, so no CI yet).
-  Scoped Miri on `uacrypt --lib keyfile`: 7/7, no UB (2026-09-24). Release-day steps for 0.4.0 run on `master` only (the finalize script
+  Scoped Miri on `uacrypt --lib keyfile`: 7/7, no UB (2026-09-24).
+  Session end 2026-09-24: the working copy is on `ux-0.5.0`. Miri on `crypto_secretstream`
+  (PID 5548) is still running, last seen passing `rekey_changes_the_subkey_and_old_subkey_no_longer_decrypts`,
+  no UB. CVE IDs are still null for both GHSAs. `bindings/ruby/Gemfile.lock` is modified but left
+  uncommitted: bundler's 0.1.0 -> 0.2.0 sync, the owner decides whether to commit it. Release-day steps for 0.4.0 run on `master` only (the finalize script
   now refuses any other branch). When this branch is rebased onto the finalized `master`, the
   0.5.0 CHANGELOG block must stay under `## [Unreleased]`, above `## [0.4.0]`.
 
