@@ -8733,8 +8733,12 @@ replace a DSTU primitive.
 
 ### RESUME HERE (state as of 2026-09-23, saved for a memory-clear/new-session handoff)
 
-**Latest handoff (2026-09-24, third session) - read this first.** Working copy on
-`ux-0.5.0`, nothing pushed (embargo). T-255..T-258 done (T-258: D-214); **next: T-259** (`hash`
+**Latest handoff (2026-09-24, third session end) - read this first.** Working copy clean on
+`ux-0.5.0` (T-258 = `99e7b02`, Pi test fixes = `71efd17`, then this handoff), nothing pushed
+(embargo). `bindings/ruby/Gemfile.lock` committed on `ux-0.5.0` (bundler sync to the gem's
+`VERSION` 0.2.0, set in `f83459d`); `master`'s copy still says 0.1.0 - sync it there on release
+day if the gem publish needs it. Open owner option from T-258: also refuse `--force` onto an
+existing typed key file the command does not read (D-214 Decision 3). T-255..T-258 done (T-258: D-214); **next: T-259** (`hash`
 like `sha256sum`). T-258 ran: `cargo test -p uacrypt` (all green), `cargo xtask clippy`/`fmt`/
 `docs-check`, the documented CLI examples in one directory, `bench-compare` (every row printed),
 and every binding suite: Ruby 101/101, Node 95/95, Python 100/100, .NET 151/151, Go
