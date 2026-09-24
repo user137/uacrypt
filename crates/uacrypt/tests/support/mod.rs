@@ -247,3 +247,39 @@ fn spawn_rss_sampler(
         let _ = watcher.wait();
     })
 }
+
+/// A typed key line (`docs/CLI.md` "Key files", D-212) built independently of `uacrypt`'s own
+/// private encoder: plain `format!` hex and `dstu_core`'s Kupyna-256 for the check value.
+/// `smoke_typed_keys.rs` cross-checks it against the same golden lines `keyfile`'s unit tests pin.
+/// It can wrap any bytes, including invalid key material with a correct check value, so a test
+/// can reach a command's own key validation behind the key-file layer.
+pub fn typed_key_line(prefix: &str, raw: &[u8]) -> String {
+    let mut hasher = dstu_core::hazmat::kupyna::Kupyna256Hasher::new();
+    hasher.update(b"uacrypt-key-v1\0");
+    hasher.update(prefix.as_bytes());
+    hasher.update(b"\0");
+    hasher.update(raw);
+    let digest = hasher.finalize();
+    let hex = |bytes: &[u8]| bytes.iter().map(|b| format!("{b:02x}")).collect::<String>();
+    format!("{prefix}:{}:{}\n", hex(raw), hex(&digest[..4]))
+}
+
+/// Writes [`typed_key_line`] to `path`.
+pub fn write_key(path: &std::path::Path, prefix: &str, raw: &[u8]) {
+    write_bytes(path, typed_key_line(prefix, raw).as_bytes());
+}
+
+/// Asserts `path` holds exactly one typed key line of `prefix` with a `key_len`-byte key, and that
+/// its check value is the one [`typed_key_line`] computes independently. Returns the key bytes.
+pub fn assert_key_line(path: &std::path::Path, prefix: &str, key_len: usize) -> Vec<u8> {
+    let text = String::from_utf8(read_bytes(path)).expect("a key file is UTF-8 text");
+    let fields: Vec<&str> = text.trim_end_matches('\n').split(':').collect();
+    assert_eq!(fields.len(), 3, "{text:?}");
+    assert_eq!(fields[0], prefix);
+    assert_eq!(fields[1].len(), 2 * key_len, "{text:?}");
+    let key: Vec<u8> = (0..key_len)
+        .map(|i| u8::from_str_radix(&fields[1][2 * i..2 * i + 2], 16).expect("hex"))
+        .collect();
+    assert_eq!(text, typed_key_line(prefix, &key));
+    key
+}

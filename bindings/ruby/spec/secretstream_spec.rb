@@ -44,6 +44,10 @@ RSpec.describe "DstuCore secretstream" do
       key_file.binmode
       key_file.write(key)
       key_file.close
+      # uacrypt reads typed key files (D-212): convert the raw key once.
+      typed_key = "#{key_file.path}.txt"
+      system(uacrypt, "key-import", "--kind", "symmetric", "--in", key_file.path,
+             "--out", typed_key, exception: true)
 
       Tempfile.create("plain") do |plain_file|
         plain_file.binmode
@@ -58,7 +62,7 @@ RSpec.describe "DstuCore secretstream" do
 
           Tempfile.create("uacrypt_decrypted") do |uacrypt_decrypted|
             uacrypt_decrypted.close
-            system(uacrypt, "decrypt", "--key", key_file.path, "--in", rb_encrypted.path,
+            system(uacrypt, "decrypt", "--key", typed_key, "--in", rb_encrypted.path,
                    "--out", uacrypt_decrypted.path, exception: true)
             expect(File.binread(uacrypt_decrypted.path)).to eq(plaintext)
           end
@@ -66,7 +70,7 @@ RSpec.describe "DstuCore secretstream" do
 
         Tempfile.create("uacrypt_encrypted") do |uacrypt_encrypted|
           uacrypt_encrypted.close
-          system(uacrypt, "encrypt", "--key", key_file.path, "--in", plain_file.path,
+          system(uacrypt, "encrypt", "--key", typed_key, "--in", plain_file.path,
                  "--out", uacrypt_encrypted.path, exception: true)
           File.open(uacrypt_encrypted.path, "rb") do |f|
             result = DstuCore::SecretStreamReader.open(key, f, &:read_all)
@@ -74,6 +78,8 @@ RSpec.describe "DstuCore secretstream" do
           end
         end
       end
+    ensure
+      File.delete(typed_key) if typed_key && File.exist?(typed_key)
     end
   end
 

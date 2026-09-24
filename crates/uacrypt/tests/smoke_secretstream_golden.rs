@@ -60,7 +60,12 @@ fn expected_message(expect: &str) -> &'static str {
 fn every_shared_vector_decrypts_or_fails_as_specified() {
     let dir = TempDir::new("ss_golden");
     let key = dir.file("key.bin");
-    write_bytes(&key, &decode_hex(field(VECTORS, "key_hex")));
+    // The shared vectors carry the raw key; `uacrypt` reads typed key files (D-212).
+    support::write_key(
+        &key,
+        "UACRYPT-SECRET-SYMMETRIC",
+        &decode_hex(field(VECTORS, "key_hex")),
+    );
     let all = cases();
     assert_eq!(all.len(), 7, "fixture is incomplete");
     for case in all {

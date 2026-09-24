@@ -22,6 +22,8 @@
 //! in `docs/PERFORMANCE.md` (`docs/TASKS.md`, D-28/29/30 follow-up) - with `iterations <= 1` this is just a
 //! single-block file operation.
 
+mod keyfile;
+
 use dstu_core::hazmat::kalyna::{
     Kalyna128_128, Kalyna128_128ExpandedKey, Kalyna128_256, Kalyna128_256ExpandedKey,
     Kalyna256_256, Kalyna256_256ExpandedKey, Kalyna256_512, Kalyna256_512ExpandedKey,
@@ -47,6 +49,7 @@ use dstu_core::hazmat::kalyna_xts::{
 };
 use dstu_core::hazmat::kupyna::{Kupyna256Hasher, Kupyna512Hasher};
 use dstu_core::hazmat::strumok::{Strumok256, Strumok512};
+pub use keyfile::KeyKind;
 use std::collections::HashMap;
 use std::fmt;
 use std::path::PathBuf;
@@ -142,7 +145,33 @@ pub enum CliError {
     SecretstreamBadChunkLength,
     SignKeyInvalid,
     SignVerifyFailed,
-    SignVerifyUnsupportedCurve(u8),
+    /// `--key` is not a typed key file (D-212): a raw 0.3.x/0.4.0 key or some other file.
+    KeyFileNotTyped(PathBuf),
+    KeyFileMalformed {
+        path: PathBuf,
+        kind: KeyKind,
+    },
+    KeyCheckMismatch {
+        path: PathBuf,
+        kind: KeyKind,
+    },
+    KeyKindMismatch {
+        path: PathBuf,
+        command: &'static str,
+        found: KeyKind,
+        expected: &'static [KeyKind],
+    },
+    UnknownKeyKind {
+        value: String,
+        suggestion: Option<&'static str>,
+    },
+    /// `key-import --kind sign*-public` given an old verifying-key file whose D-186 curve byte
+    /// names another curve (or no known one).
+    KeyImportCurveByte {
+        path: PathBuf,
+        kind: KeyKind,
+        byte: u8,
+    },
     BoxKeyInvalid,
     BoxOpenTruncated,
     BoxOpenFailed,
@@ -278,10 +307,60 @@ impl fmt::Display for CliError {
                 f,
                 "verify: signature does not verify - message, signature, or key do not match"
             ),
-            CliError::SignVerifyUnsupportedCurve(tag) => write!(
+            CliError::KeyFileNotTyped(path) => write!(
                 f,
-                "verify: --key is tagged with curve id {tag} (0x{tag:02X}), which this build does not support - supported: 0x01 (m=163, sign-pubkey), 0x02 (m=257, sign-pubkey257)"
+                "{} is not a uacrypt key file - a raw key file from uacrypt 0.4 or older can be converted with `uacrypt key-import`",
+                path.display()
             ),
+            CliError::KeyFileMalformed { path, kind } => write!(
+                f,
+                "{} starts like a {} but is not a well-formed key line (`{}:<{} hex digits>:<8 hex digits>`)",
+                path.display(),
+                kind.label(),
+                kind.prefix(),
+                2 * kind.key_len()
+            ),
+            CliError::KeyCheckMismatch { path, kind } => write!(
+                f,
+                "{} is damaged: its check value does not match the {} it holds (edited or mistyped?)",
+                path.display(),
+                kind.label()
+            ),
+            CliError::KeyKindMismatch {
+                path,
+                command,
+                found,
+                expected,
+            } => {
+                let wanted: Vec<&str> = expected.iter().map(|k| k.label()).collect();
+                write!(
+                    f,
+                    "{} is a {}, but {command} needs a {} - {}",
+                    path.display(),
+                    found.label(),
+                    wanted.join(" or a "),
+                    keyfile::wrong_kind_hint(command, *found, expected)
+                )
+            }
+            CliError::KeyImportCurveByte { path, kind, byte } => write!(
+                f,
+                "{} starts with curve byte 0x{byte:02x}, but a raw {} file starts with 0x{:02x} - check --kind",
+                path.display(),
+                kind.label(),
+                if *kind == KeyKind::Sign163Public {
+                    dstu_core::crypto_sign::CurveId::M163.to_byte()
+                } else {
+                    dstu_core::crypto_sign::CurveId::M257.to_byte()
+                }
+            ),
+            CliError::UnknownKeyKind { value, suggestion } => {
+                write!(f, "unknown key kind: {value}")?;
+                if let Some(s) = suggestion {
+                    write!(f, " (did you mean `{s}`?)")?;
+                }
+                let names: Vec<&str> = KeyKind::names().collect();
+                write!(f, " - expected one of {}", names.join(", "))
+            }
             CliError::BoxKeyInvalid => write!(
                 f,
                 "--key is not a valid crypto_box key (see uacrypt box-keygen/box-pubkey)"
@@ -340,12 +419,17 @@ impl CliError {
             | CliError::MissingValue(_)
             | CliError::FlagTakesNoValue(_)
             | CliError::UnexpectedArgument(_)
-            | CliError::InvalidIterations(_) => USAGE,
+            | CliError::InvalidIterations(_)
+            | CliError::UnknownKeyKind { .. } => USAGE,
             CliError::Io { .. }
             | CliError::KeyFileExists(_)
             | CliError::Random(_)
             | CliError::SignKeyInvalid
-            | CliError::SignVerifyUnsupportedCurve(_)
+            | CliError::KeyFileNotTyped(_)
+            | CliError::KeyFileMalformed { .. }
+            | CliError::KeyCheckMismatch { .. }
+            | CliError::KeyKindMismatch { .. }
+            | CliError::KeyImportCurveByte { .. }
             | CliError::BoxKeyInvalid
             | CliError::Box512KeyInvalid => FILE_OR_KEY,
             CliError::WrongLength { what, .. } => match what {
@@ -673,6 +757,17 @@ impl ArgScanner {
                 .map_err(|_| CliError::InvalidIterations(v.clone())),
             None => Ok(1),
         }
+    }
+
+    fn key_kind(&self) -> Result<KeyKind, CliError> {
+        let v = self
+            .values
+            .get("--kind")
+            .ok_or(CliError::MissingFlag("kind"))?;
+        KeyKind::parse_name(v).ok_or_else(|| CliError::UnknownKeyKind {
+            value: v.clone(),
+            suggestion: suggest(v, KeyKind::names()),
+        })
     }
 
     fn bool_flag(&self, flag: &'static str) -> bool {
@@ -1948,10 +2043,11 @@ fn run_secretstream_decrypt(
 /// [`CliError::SecretstreamBadChunkLength`] for a malformed chunk record, [`CliError::SecretstreamTrailingData`] if bytes remain after `Final`, or
 /// [`CliError::Io`] for file read/write failures - `--out` is left untouched on every error path.
 pub fn run_secretstream_command(decrypt: bool, args: &SecretstreamArgs) -> Result<(), CliError> {
-    let key_bytes = read_exact_file(&args.key_path, LengthOf::Key, SECRETSTREAM_KEY_LEN)?;
-    let mut key_arr = [0u8; SECRETSTREAM_KEY_LEN];
+    let command = if decrypt { "decrypt" } else { "encrypt" };
+    let (_, key_bytes) = keyfile::read_key(&args.key_path, command, &[KeyKind::Symmetric])?;
+    let mut key_arr = zeroize::Zeroizing::new([0u8; SECRETSTREAM_KEY_LEN]);
     key_arr.copy_from_slice(&key_bytes);
-    let key = dstu_core::crypto_secretstream::Key::from_bytes(key_arr);
+    let key = dstu_core::crypto_secretstream::Key::from_bytes(*key_arr);
 
     let tmp_path = temp_path_beside(&args.out_path)?;
     let result = if decrypt {
@@ -2208,7 +2304,157 @@ pub fn parse_keygen_args(args: &[String]) -> Result<KeygenArgs, CliError> {
 pub fn run_keygen_command(args: &KeygenArgs) -> Result<(), CliError> {
     let key = dstu_core::crypto_secretstream::Key::generate()
         .map_err(|e| CliError::Random(e.to_string()))?;
-    write_new_secret_key(&args.out_path, key.as_bytes())
+    write_new_secret_key(
+        &args.out_path,
+        &keyfile::encode(KeyKind::Symmetric, key.as_bytes()),
+    )
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct KeyImportArgs {
+    pub kind: KeyKind,
+    pub in_path: PathBuf,
+    pub out_path: PathBuf,
+}
+
+/// Parses `key-import`'s flags (`--kind`/`--in`/`--out`, all required).
+///
+/// # Errors
+///
+/// Returns [`CliError::MissingFlag`], [`CliError::UnknownKeyKind`] or [`CliError::UnknownFlag`].
+pub fn parse_key_import_args(args: &[String]) -> Result<KeyImportArgs, CliError> {
+    let scanner = ArgScanner::scan(args, &["--kind", "--in", "--out"], &[])?;
+    Ok(KeyImportArgs {
+        kind: scanner.key_kind()?,
+        in_path: scanner.path("--in")?,
+        out_path: scanner.path("--out")?,
+    })
+}
+
+/// The raw 0.4-and-older file layout of `kind`: its length, plus D-186's leading curve byte for a
+/// verifying key.
+fn raw_key_layout(kind: KeyKind) -> (LengthOf, usize, Option<u8>) {
+    match kind {
+        KeyKind::Symmetric => (LengthOf::Key, 32, None),
+        KeyKind::Sign163Secret | KeyKind::Sign257Secret => {
+            (LengthOf::SigningKey, kind.key_len(), None)
+        }
+        KeyKind::Sign163Public => (
+            LengthOf::VerifyingKey,
+            43,
+            Some(dstu_core::crypto_sign::CurveId::M163.to_byte()),
+        ),
+        KeyKind::Sign257Public => (
+            LengthOf::VerifyingKey,
+            67,
+            Some(dstu_core::crypto_sign::CurveId::M257.to_byte()),
+        ),
+        KeyKind::Box256Secret => (LengthOf::BoxSecretKey, 32, None),
+        KeyKind::Box256Public => (LengthOf::BoxPublicKey, 32, None),
+        KeyKind::Box512Secret => (LengthOf::Box512SecretKey, 64, None),
+        KeyKind::Box512Public => (LengthOf::Box512PublicKey, 64, None),
+    }
+}
+
+fn key_array<const N: usize>(key: &[u8]) -> zeroize::Zeroizing<[u8; N]> {
+    let mut out = zeroize::Zeroizing::new([0u8; N]);
+    out.copy_from_slice(key);
+    out
+}
+
+/// Validates `key` as `kind` the same way the commands that use it will, and returns the check
+/// value of the matching public key for a sign/box secret key.
+fn validate_imported_key(kind: KeyKind, key: &[u8]) -> Result<Option<String>, CliError> {
+    Ok(match kind {
+        KeyKind::Symmetric | KeyKind::Sign163Public | KeyKind::Sign257Public => None,
+        KeyKind::Sign163Secret => {
+            let sk = dstu_core::crypto_sign::SigningKey::from_bytes(&key_array::<21>(key))
+                .ok_or(CliError::SignKeyInvalid)?;
+            let pk = sk.verifying_key().to_uncompressed_bytes();
+            Some(keyfile::check_hex(KeyKind::Sign163Public, &pk))
+        }
+        KeyKind::Sign257Secret => {
+            let sk = dstu_core::crypto_sign257::SigningKey::from_bytes(&key_array::<33>(key))
+                .ok_or(CliError::SignKeyInvalid)?;
+            let pk = sk.verifying_key().to_uncompressed_bytes();
+            Some(keyfile::check_hex(KeyKind::Sign257Public, &pk))
+        }
+        KeyKind::Box256Secret => {
+            let sk = dstu_core::crypto_box::SecretKey::from_bytes(&key_array::<32>(key))
+                .ok_or(CliError::BoxKeyInvalid)?;
+            Some(keyfile::check_hex(
+                KeyKind::Box256Public,
+                &sk.public_key().to_bytes(),
+            ))
+        }
+        KeyKind::Box256Public => {
+            dstu_core::crypto_box::PublicKey::from_bytes(&key_array::<32>(key))
+                .ok_or(CliError::BoxKeyInvalid)?;
+            None
+        }
+        KeyKind::Box512Secret => {
+            let sk = dstu_core::crypto_box512::SecretKey::from_bytes(&key_array::<64>(key))
+                .ok_or(CliError::Box512KeyInvalid)?;
+            Some(keyfile::check_hex(
+                KeyKind::Box512Public,
+                &sk.public_key().to_bytes(),
+            ))
+        }
+        KeyKind::Box512Public => {
+            dstu_core::crypto_box512::PublicKey::from_bytes(&key_array::<64>(key))
+                .ok_or(CliError::Box512KeyInvalid)?;
+            None
+        }
+    })
+}
+
+/// Runs `key-import` (`docs/TASKS.md` T-256, K2 (a)): converts one raw key file written by
+/// uacrypt 0.4 or older into a typed key file (D-212). `--kind` is the only place a key kind is
+/// ever typed by hand, so the raw bytes are validated exactly as the commands using them will
+/// validate them, and the report line on stderr gives the new file's check value - and, for a
+/// secret key, its public key's check value, to compare with a public key already shared.
+///
+/// # Errors
+///
+/// [`CliError::Io`]/[`CliError::WrongLength`] for the raw file, [`CliError::KeyImportCurveByte`]
+/// for a verifying key of the other curve, [`CliError::SignKeyInvalid`]/
+/// [`CliError::BoxKeyInvalid`]/[`CliError::Box512KeyInvalid`] for invalid key bytes, and
+/// [`CliError::KeyFileExists`] if a secret key's `--out` exists.
+pub fn run_key_import_command(args: &KeyImportArgs) -> Result<(), CliError> {
+    let kind = args.kind;
+    let (what, len, curve_byte) = raw_key_layout(kind);
+    let raw = zeroize::Zeroizing::new(read_exact_file(&args.in_path, what, len)?);
+    let key = match curve_byte {
+        Some(expected) if raw[0] != expected => {
+            return Err(CliError::KeyImportCurveByte {
+                path: args.in_path.clone(),
+                kind,
+                byte: raw[0],
+            })
+        }
+        Some(_) => &raw[1..],
+        None => &raw[..],
+    };
+    let public_check = validate_imported_key(kind, key)?;
+    let line = keyfile::encode(kind, key);
+    if kind.is_secret() {
+        write_new_secret_key(&args.out_path, &line)?;
+    } else {
+        std::fs::write(&args.out_path, line.as_slice()).map_err(|e| CliError::Io {
+            path: args.out_path.clone(),
+            message: e.to_string(),
+        })?;
+    }
+    let public_note = public_check
+        .map(|check| format!("; its public key has check {check}"))
+        .unwrap_or_default();
+    eprintln!(
+        "wrote {} to {} (check {}){public_note}",
+        kind.label(),
+        args.out_path.display(),
+        keyfile::check_hex(kind, key)
+    );
+    Ok(())
 }
 
 /// Read-buffer size for streaming a message through Kupyna-256 on `sign`/`verify`'s behalf
@@ -2244,17 +2490,23 @@ fn hash_file_streamed(path: &PathBuf) -> Result<[u8; 32], CliError> {
 
 /// Reads a 21-byte signing-key file and validates it via
 /// [`dstu_core::crypto_sign::SigningKey::from_bytes`].
-fn read_signing_key(path: &PathBuf) -> Result<dstu_core::crypto_sign::SigningKey, CliError> {
-    let bytes = read_exact_file(path, LengthOf::SigningKey, 21)?;
-    let mut d = [0u8; 21];
+fn read_signing_key(
+    path: &std::path::Path,
+    command: &'static str,
+) -> Result<dstu_core::crypto_sign::SigningKey, CliError> {
+    let (_, bytes) = keyfile::read_key(path, command, &[KeyKind::Sign163Secret])?;
+    let mut d = zeroize::Zeroizing::new([0u8; 21]);
     d.copy_from_slice(&bytes);
     dstu_core::crypto_sign::SigningKey::from_bytes(&d).ok_or(CliError::SignKeyInvalid)
 }
 
 /// `m=257` sibling of [`read_signing_key`] - see `docs/TASKS.md` T-199.
-fn read_signing_key257(path: &PathBuf) -> Result<dstu_core::crypto_sign257::SigningKey, CliError> {
-    let bytes = read_exact_file(path, LengthOf::SigningKey, 33)?;
-    let mut d = [0u8; 33];
+fn read_signing_key257(
+    path: &std::path::Path,
+    command: &'static str,
+) -> Result<dstu_core::crypto_sign257::SigningKey, CliError> {
+    let (_, bytes) = keyfile::read_key(path, command, &[KeyKind::Sign257Secret])?;
+    let mut d = zeroize::Zeroizing::new([0u8; 33]);
     d.copy_from_slice(&bytes);
     dstu_core::crypto_sign257::SigningKey::from_bytes(&d).ok_or(CliError::SignKeyInvalid)
 }
@@ -2291,7 +2543,10 @@ pub fn parse_sign_keygen_args(args: &[String]) -> Result<SignKeygenArgs, CliErro
 pub fn run_sign_keygen_command(args: &SignKeygenArgs) -> Result<(), CliError> {
     let key = dstu_core::crypto_sign::SigningKey::generate()
         .map_err(|e| CliError::Random(e.to_string()))?;
-    write_new_secret_key(&args.out_path, &key.to_bytes())
+    write_new_secret_key(
+        &args.out_path,
+        &keyfile::encode(KeyKind::Sign163Secret, &key.to_bytes()),
+    )
 }
 
 /// `m=257` sibling of [`run_sign_keygen_command`] - writes the raw 33-byte private scalar.
@@ -2305,7 +2560,10 @@ pub fn run_sign_keygen_command(args: &SignKeygenArgs) -> Result<(), CliError> {
 pub fn run_sign_keygen257_command(args: &SignKeygenArgs) -> Result<(), CliError> {
     let key = dstu_core::crypto_sign257::SigningKey::generate()
         .map_err(|e| CliError::Random(e.to_string()))?;
-    write_new_secret_key(&args.out_path, &key.to_bytes())
+    write_new_secret_key(
+        &args.out_path,
+        &keyfile::encode(KeyKind::Sign257Secret, &key.to_bytes()),
+    )
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -2340,12 +2598,13 @@ pub fn parse_sign_pubkey_args(args: &[String]) -> Result<SignPubkeyArgs, CliErro
 /// Returns [`CliError::Io`]/[`CliError::WrongLength`] for file problems, or
 /// [`CliError::SignKeyInvalid`] if `--key` isn't a valid signing key.
 pub fn run_sign_pubkey_command(args: &SignPubkeyArgs) -> Result<(), CliError> {
-    let signing_key = read_signing_key(&args.key_path)?;
+    let signing_key = read_signing_key(&args.key_path, "sign-pubkey")?;
     let verifying_key = signing_key.verifying_key();
-    let mut out = Vec::with_capacity(43);
-    out.push(dstu_core::crypto_sign::CurveId::M163.to_byte());
-    out.extend_from_slice(&verifying_key.to_uncompressed_bytes());
-    std::fs::write(&args.out_path, out).map_err(|e| CliError::Io {
+    let line = keyfile::encode(
+        KeyKind::Sign163Public,
+        &verifying_key.to_uncompressed_bytes(),
+    );
+    std::fs::write(&args.out_path, line.as_slice()).map_err(|e| CliError::Io {
         path: args.out_path.clone(),
         message: e.to_string(),
     })
@@ -2360,12 +2619,13 @@ pub fn run_sign_pubkey_command(args: &SignPubkeyArgs) -> Result<(), CliError> {
 /// Returns [`CliError::Io`]/[`CliError::WrongLength`] for file problems, or
 /// [`CliError::SignKeyInvalid`] if `--key` isn't a valid signing key.
 pub fn run_sign_pubkey257_command(args: &SignPubkeyArgs) -> Result<(), CliError> {
-    let signing_key = read_signing_key257(&args.key_path)?;
+    let signing_key = read_signing_key257(&args.key_path, "sign-pubkey257")?;
     let verifying_key = signing_key.verifying_key();
-    let mut out = Vec::with_capacity(67);
-    out.push(dstu_core::crypto_sign::CurveId::M257.to_byte());
-    out.extend_from_slice(&verifying_key.to_uncompressed_bytes());
-    std::fs::write(&args.out_path, out).map_err(|e| CliError::Io {
+    let line = keyfile::encode(
+        KeyKind::Sign257Public,
+        &verifying_key.to_uncompressed_bytes(),
+    );
+    std::fs::write(&args.out_path, line.as_slice()).map_err(|e| CliError::Io {
         path: args.out_path.clone(),
         message: e.to_string(),
     })
@@ -2411,7 +2671,7 @@ pub fn parse_sign_args(args: &[String]) -> Result<SignArgs, CliError> {
 /// [`CliError::SignKeyInvalid`] if `--key` isn't a valid signing key.
 #[allow(clippy::cast_precision_loss)] // human-readable ops/s diagnostic, not exact at any realistic count
 pub fn run_sign_command(args: &SignArgs) -> Result<(), CliError> {
-    let signing_key = read_signing_key(&args.key_path)?;
+    let signing_key = read_signing_key(&args.key_path, "sign")?;
     let digest = hash_file_streamed(&args.in_path)?;
     let iterations = args.iterations.max(1);
 
@@ -2453,7 +2713,7 @@ pub fn run_sign_command(args: &SignArgs) -> Result<(), CliError> {
 /// [`CliError::SignKeyInvalid`] if `--key` isn't a valid signing key.
 #[allow(clippy::cast_precision_loss)] // human-readable ops/s diagnostic, not exact at any realistic count
 pub fn run_sign257_command(args: &SignArgs) -> Result<(), CliError> {
-    let signing_key = read_signing_key257(&args.key_path)?;
+    let signing_key = read_signing_key257(&args.key_path, "sign257")?;
     let digest = hash_file_streamed(&args.in_path)?;
     let iterations = args.iterations.max(1);
 
@@ -2559,54 +2819,26 @@ impl AnyVerifyingKey {
     }
 }
 
-/// Reads a tagged `verify --key` file (`docs/DECISIONS.md` D-186 Decision 1): the first byte is a
-/// [`dstu_core::crypto_sign::CurveId`], the rest is that curve's own fixed-width uncompressed
-/// encoding (42 bytes for `M163`, 66 for `M257`). An unrecognized tag is
-/// [`CliError::SignVerifyUnsupportedCurve`] - a named, specific error
-/// (`docs/DECISIONS.md` D-186 Decision 3), not folded into the generic `WrongLength`/`SignKeyInvalid`
-/// cases a malformed-but-correctly-tagged file would hit instead.
-fn read_tagged_verifying_key(path: &PathBuf) -> Result<AnyVerifyingKey, CliError> {
-    let bytes = std::fs::read(path).map_err(|e| CliError::Io {
-        path: path.clone(),
-        message: e.to_string(),
-    })?;
-    let Some((&tag, rest)) = bytes.split_first() else {
-        return Err(CliError::WrongLength {
-            what: LengthOf::VerifyingKey,
-            expected: 43, // the common case's length; the error message states the byte's role either way
-            actual: 0,
-        });
-    };
-    match dstu_core::crypto_sign::CurveId::from_byte(tag) {
-        Some(dstu_core::crypto_sign::CurveId::M163) => {
-            if rest.len() != 42 {
-                return Err(CliError::WrongLength {
-                    what: LengthOf::VerifyingKey,
-                    expected: 43,
-                    actual: bytes.len(),
-                });
-            }
-            let mut q = [0u8; 42];
-            q.copy_from_slice(rest);
-            Ok(AnyVerifyingKey::M163(
-                dstu_core::crypto_sign::VerifyingKey::from_uncompressed_bytes(&q),
-            ))
-        }
-        Some(dstu_core::crypto_sign::CurveId::M257) => {
-            if rest.len() != 66 {
-                return Err(CliError::WrongLength {
-                    what: LengthOf::VerifyingKey,
-                    expected: 67,
-                    actual: bytes.len(),
-                });
-            }
-            let mut q = [0u8; 66];
-            q.copy_from_slice(rest);
-            Ok(AnyVerifyingKey::M257(
-                dstu_core::crypto_sign257::VerifyingKey::from_uncompressed_bytes(&q),
-            ))
-        }
-        None => Err(CliError::SignVerifyUnsupportedCurve(tag)),
+/// Reads `verify --key`: a verifying key of either curve (D-212 - the key line's prefix names
+/// the curve, replacing D-186's leading tag byte).
+fn read_verifying_key(path: &std::path::Path) -> Result<AnyVerifyingKey, CliError> {
+    let (kind, bytes) = keyfile::read_key(
+        path,
+        "verify",
+        &[KeyKind::Sign163Public, KeyKind::Sign257Public],
+    )?;
+    if kind == KeyKind::Sign163Public {
+        let mut q = [0u8; 42];
+        q.copy_from_slice(&bytes);
+        Ok(AnyVerifyingKey::M163(
+            dstu_core::crypto_sign::VerifyingKey::from_uncompressed_bytes(&q),
+        ))
+    } else {
+        let mut q = [0u8; 66];
+        q.copy_from_slice(&bytes);
+        Ok(AnyVerifyingKey::M257(
+            dstu_core::crypto_sign257::VerifyingKey::from_uncompressed_bytes(&q),
+        ))
     }
 }
 
@@ -2626,7 +2858,7 @@ fn read_tagged_verifying_key(path: &PathBuf) -> Result<AnyVerifyingKey, CliError
 /// [`CliError::SignVerifyFailed`] if the signature does not verify.
 #[allow(clippy::cast_precision_loss)] // human-readable ops/s diagnostic, not exact at any realistic count
 pub fn run_verify_command(args: &VerifyArgs) -> Result<(), CliError> {
-    let verifying_key = read_tagged_verifying_key(&args.key_path)?;
+    let verifying_key = read_verifying_key(&args.key_path)?;
     let sig_bytes = std::fs::read(&args.sig_path).map_err(|e| CliError::Io {
         path: args.sig_path.clone(),
         message: e.to_string(),
@@ -2666,38 +2898,50 @@ pub fn run_verify_command(args: &VerifyArgs) -> Result<(), CliError> {
 
 /// Reads a 32-byte `crypto_box` secret-key file and validates it via
 /// [`dstu_core::crypto_box::SecretKey::from_bytes`].
-fn read_box_secret_key(path: &PathBuf) -> Result<dstu_core::crypto_box::SecretKey, CliError> {
-    let bytes = read_exact_file(path, LengthOf::BoxSecretKey, 32)?;
-    let mut e = [0u8; 32];
-    e.copy_from_slice(&bytes);
-    dstu_core::crypto_box::SecretKey::from_bytes(&e).ok_or(CliError::BoxKeyInvalid)
+fn read_box_secret_key(
+    path: &std::path::Path,
+    command: &'static str,
+) -> Result<dstu_core::crypto_box::SecretKey, CliError> {
+    let (_, bytes) = keyfile::read_key(path, command, &[KeyKind::Box256Secret])?;
+    let mut raw = zeroize::Zeroizing::new([0u8; 32]);
+    raw.copy_from_slice(&bytes);
+    dstu_core::crypto_box::SecretKey::from_bytes(&raw).ok_or(CliError::BoxKeyInvalid)
 }
 
 /// Reads a 64-byte `crypto_box512` secret-key file and validates it via
 /// [`dstu_core::crypto_box512::SecretKey::from_bytes`].
-fn read_box512_secret_key(path: &PathBuf) -> Result<dstu_core::crypto_box512::SecretKey, CliError> {
-    let bytes = read_exact_file(path, LengthOf::Box512SecretKey, 64)?;
-    let mut e = [0u8; 64];
-    e.copy_from_slice(&bytes);
-    dstu_core::crypto_box512::SecretKey::from_bytes(&e).ok_or(CliError::Box512KeyInvalid)
+fn read_box512_secret_key(
+    path: &std::path::Path,
+    command: &'static str,
+) -> Result<dstu_core::crypto_box512::SecretKey, CliError> {
+    let (_, bytes) = keyfile::read_key(path, command, &[KeyKind::Box512Secret])?;
+    let mut raw = zeroize::Zeroizing::new([0u8; 64]);
+    raw.copy_from_slice(&bytes);
+    dstu_core::crypto_box512::SecretKey::from_bytes(&raw).ok_or(CliError::Box512KeyInvalid)
 }
 
 /// Reads a 64-byte `crypto_box512` public-key file and validates it via
 /// [`dstu_core::crypto_box512::PublicKey::from_bytes`].
-fn read_box512_public_key(path: &PathBuf) -> Result<dstu_core::crypto_box512::PublicKey, CliError> {
-    let bytes = read_exact_file(path, LengthOf::Box512PublicKey, 64)?;
-    let mut x = [0u8; 64];
-    x.copy_from_slice(&bytes);
-    dstu_core::crypto_box512::PublicKey::from_bytes(&x).ok_or(CliError::Box512KeyInvalid)
+fn read_box512_public_key(
+    path: &std::path::Path,
+    command: &'static str,
+) -> Result<dstu_core::crypto_box512::PublicKey, CliError> {
+    let (_, bytes) = keyfile::read_key(path, command, &[KeyKind::Box512Public])?;
+    let mut raw = [0u8; 64];
+    raw.copy_from_slice(&bytes);
+    dstu_core::crypto_box512::PublicKey::from_bytes(&raw).ok_or(CliError::Box512KeyInvalid)
 }
 
 /// Reads a 32-byte `crypto_box` public-key file and validates it via
 /// [`dstu_core::crypto_box::PublicKey::from_bytes`].
-fn read_box_public_key(path: &PathBuf) -> Result<dstu_core::crypto_box::PublicKey, CliError> {
-    let bytes = read_exact_file(path, LengthOf::BoxPublicKey, 32)?;
-    let mut x = [0u8; 32];
-    x.copy_from_slice(&bytes);
-    dstu_core::crypto_box::PublicKey::from_bytes(&x).ok_or(CliError::BoxKeyInvalid)
+fn read_box_public_key(
+    path: &std::path::Path,
+    command: &'static str,
+) -> Result<dstu_core::crypto_box::PublicKey, CliError> {
+    let (_, bytes) = keyfile::read_key(path, command, &[KeyKind::Box256Public])?;
+    let mut raw = [0u8; 32];
+    raw.copy_from_slice(&bytes);
+    dstu_core::crypto_box::PublicKey::from_bytes(&raw).ok_or(CliError::BoxKeyInvalid)
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -2730,7 +2974,10 @@ pub fn parse_box_keygen_args(args: &[String]) -> Result<BoxKeygenArgs, CliError>
 pub fn run_box_keygen_command(args: &BoxKeygenArgs) -> Result<(), CliError> {
     let key = dstu_core::crypto_box::SecretKey::generate()
         .map_err(|e| CliError::Random(e.to_string()))?;
-    write_new_secret_key(&args.out_path, &key.to_bytes())
+    write_new_secret_key(
+        &args.out_path,
+        &keyfile::encode(KeyKind::Box256Secret, &key.to_bytes()),
+    )
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -2762,9 +3009,10 @@ pub fn parse_box_pubkey_args(args: &[String]) -> Result<BoxPubkeyArgs, CliError>
 /// Returns [`CliError::Io`]/[`CliError::WrongLength`] for file problems, or
 /// [`CliError::BoxKeyInvalid`] if `--key` isn't a valid `crypto_box` secret key.
 pub fn run_box_pubkey_command(args: &BoxPubkeyArgs) -> Result<(), CliError> {
-    let secret = read_box_secret_key(&args.key_path)?;
+    let secret = read_box_secret_key(&args.key_path, "box-pubkey")?;
     let public = secret.public_key();
-    std::fs::write(&args.out_path, public.to_bytes()).map_err(|e| CliError::Io {
+    let line = keyfile::encode(KeyKind::Box256Public, &public.to_bytes());
+    std::fs::write(&args.out_path, line.as_slice()).map_err(|e| CliError::Io {
         path: args.out_path.clone(),
         message: e.to_string(),
     })
@@ -2815,7 +3063,7 @@ pub fn parse_box_seal_args(args: &[String]) -> Result<BoxSealArgs, CliError> {
 /// isn't a valid public key, or [`CliError::Random`] if the OS CSPRNG fails.
 #[allow(clippy::cast_precision_loss)] // human-readable ops/s diagnostic, not exact at any realistic count
 pub fn run_box_seal_command(args: &BoxSealArgs) -> Result<(), CliError> {
-    let public = read_box_public_key(&args.key_path)?;
+    let public = read_box_public_key(&args.key_path, "box-seal")?;
     let message = std::fs::read(&args.in_path).map_err(|e| CliError::Io {
         path: args.in_path.clone(),
         message: e.to_string(),
@@ -2893,7 +3141,7 @@ pub fn parse_box_open_args(args: &[String]) -> Result<BoxOpenArgs, CliError> {
 /// `box-seal` output, or [`CliError::BoxOpenFailed`] for any other authentication failure.
 #[allow(clippy::cast_precision_loss)] // human-readable ops/s diagnostic, not exact at any realistic count
 pub fn run_box_open_command(args: &BoxOpenArgs) -> Result<(), CliError> {
-    let secret = read_box_secret_key(&args.key_path)?;
+    let secret = read_box_secret_key(&args.key_path, "box-open")?;
     let sealed = std::fs::read(&args.in_path).map_err(|e| CliError::Io {
         path: args.in_path.clone(),
         message: e.to_string(),
@@ -2964,7 +3212,10 @@ pub fn parse_box512_keygen_args(args: &[String]) -> Result<Box512KeygenArgs, Cli
 pub fn run_box512_keygen_command(args: &Box512KeygenArgs) -> Result<(), CliError> {
     let key = dstu_core::crypto_box512::SecretKey::generate()
         .map_err(|e| CliError::Random(e.to_string()))?;
-    write_new_secret_key(&args.out_path, &key.to_bytes())
+    write_new_secret_key(
+        &args.out_path,
+        &keyfile::encode(KeyKind::Box512Secret, &key.to_bytes()),
+    )
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -2996,9 +3247,10 @@ pub fn parse_box512_pubkey_args(args: &[String]) -> Result<Box512PubkeyArgs, Cli
 /// Returns [`CliError::Io`]/[`CliError::WrongLength`] for file problems, or
 /// [`CliError::Box512KeyInvalid`] if `--key` isn't a valid `crypto_box512` secret key.
 pub fn run_box512_pubkey_command(args: &Box512PubkeyArgs) -> Result<(), CliError> {
-    let secret = read_box512_secret_key(&args.key_path)?;
+    let secret = read_box512_secret_key(&args.key_path, "box-pubkey512")?;
     let public = secret.public_key();
-    std::fs::write(&args.out_path, public.to_bytes()).map_err(|e| CliError::Io {
+    let line = keyfile::encode(KeyKind::Box512Public, &public.to_bytes());
+    std::fs::write(&args.out_path, line.as_slice()).map_err(|e| CliError::Io {
         path: args.out_path.clone(),
         message: e.to_string(),
     })
@@ -3040,7 +3292,7 @@ pub fn parse_box512_seal_args(args: &[String]) -> Result<Box512SealArgs, CliErro
 /// isn't a valid public key, or [`CliError::Random`] if the OS CSPRNG fails.
 #[allow(clippy::cast_precision_loss)] // human-readable ops/s diagnostic, not exact at any realistic count
 pub fn run_box512_seal_command(args: &Box512SealArgs) -> Result<(), CliError> {
-    let public = read_box512_public_key(&args.key_path)?;
+    let public = read_box512_public_key(&args.key_path, "box-seal512")?;
     let message = std::fs::read(&args.in_path).map_err(|e| CliError::Io {
         path: args.in_path.clone(),
         message: e.to_string(),
@@ -3114,7 +3366,7 @@ pub fn parse_box512_open_args(args: &[String]) -> Result<Box512OpenArgs, CliErro
 /// `box-seal512` output, or [`CliError::Box512OpenFailed`] for any other authentication failure.
 #[allow(clippy::cast_precision_loss)] // human-readable ops/s diagnostic, not exact at any realistic count
 pub fn run_box512_open_command(args: &Box512OpenArgs) -> Result<(), CliError> {
-    let secret = read_box512_secret_key(&args.key_path)?;
+    let secret = read_box512_secret_key(&args.key_path, "box-open512")?;
     let sealed = std::fs::read(&args.in_path).map_err(|e| CliError::Io {
         path: args.in_path.clone(),
         message: e.to_string(),
@@ -3415,8 +3667,8 @@ USAGE:
     uacrypt --version           print the version and the container format version, then exit
 
 EVERYDAY COMMANDS:
-    keygen          Generate a fresh random 32-byte key for `encrypt`/`decrypt`.
-    encrypt         Encrypt a file of any size with a 32-byte key (authenticated, streamed).
+    keygen          Generate a fresh random key for `encrypt`/`decrypt`.
+    encrypt         Encrypt a file of any size with a `keygen` key (authenticated, streamed).
     decrypt         Decrypt a file produced by `encrypt`.
     hash            Compute a Kupyna-256 digest of a file of any size.
     sign-keygen     Generate a fresh signing key for `sign` (DSTU 4145, m=163).
@@ -3434,6 +3686,7 @@ EVERYDAY COMMANDS:
     box-pubkey512   Like `box-pubkey`, for a `box-keygen512` key.
     box-seal512     Like `box-seal`, for a `box-pubkey512` recipient key.
     box-open512     Decrypt a file produced by `box-seal512`.
+    key-import      Convert a raw key file from uacrypt 0.4 or older into a typed key file.
 
 LOWER-LEVEL COMMANDS (benchmarking and interop with other DSTU implementations):
     kalyna-block    Single Kalyna block encrypt/decrypt - exactly one block, no file support.
@@ -3450,7 +3703,8 @@ FILE FORMATS (byte layouts, with field sizes in bytes: see docs/CLI.md 'File for
     encrypt         version (1) || header (32), then records:
                     chunk tag (1) || length (4, LE) || ciphertext || auth tag (16)
     box-seal(512)   version (1) || KEM ciphertext (128 / 256) || header (32) || ciphertext || auth tag (16)
-    keys            raw bytes, no header; verifying keys start with a curve byte (01 m=163, 02 m=257)
+    key files       one text line `<kind>:<key hex>:<check hex>`, see docs/CLI.md 'Key files';
+                    the lower-level commands above take raw key bytes instead
     kalyna-gcm/-gmac write raw ciphertext/tag files with no container and no format version, so
     use `encrypt` or `box-seal` for files.
 
@@ -3464,10 +3718,11 @@ Run `uacrypt <command> --help` for that command's flags and an example.
 ";
 
 const KEYGEN_HELP: &str = "\
-uacrypt keygen - generate a fresh random 32-byte key for `encrypt`/`decrypt`.
+uacrypt keygen - generate a fresh random key for `encrypt`/`decrypt`.
 
 Draws from the OS CSPRNG (dstu_core::randombytes, via crypto_secretstream::Key::generate) and
-writes the raw 32 bytes to --out - the exact format `encrypt`/`decrypt --key` expect. Refuses to overwrite
+writes it to --out as a typed key file: one text line that names its kind, so no other command
+mistakes it for its own kind of key (docs/CLI.md 'Key files'). Refuses to overwrite
 --out if it already exists (so a repeated run cannot destroy a key); delete the old file first if
 you really want a new key. Every `*-keygen` command behaves the same way, and on Unix writes the
 key with mode 0600.
@@ -3476,14 +3731,14 @@ USAGE:
     uacrypt keygen --out <path>
 
 FLAGS:
-    --out <path>    where to write the 32-byte key
+    --out <path>    where to write the key
 
 EXAMPLE:
     uacrypt keygen --out key.bin
 ";
 
 const ENCRYPT_HELP: &str = "\
-uacrypt encrypt - encrypt a file of any size with a 32-byte key.
+uacrypt encrypt - encrypt a file of any size with a `keygen` key.
 
 Streamed in bounded memory chunks (no whole-file buffering) and authenticated: `decrypt` detects
 any tampering with the output rather than silently returning wrong plaintext. Built on
@@ -3499,7 +3754,7 @@ USAGE:
     uacrypt encrypt --key <path> --in <path> --out <path>
 
 FLAGS:
-    --key <path>    a 32-byte binary key file (exactly 32 bytes, not a passphrase)
+    --key <path>    a key file made by `uacrypt keygen` (not a passphrase)
     --in <path>     file to encrypt
     --out <path>    where to write the encrypted output
 
@@ -3507,13 +3762,14 @@ EXAMPLE:
     uacrypt encrypt --key key.bin --in report.pdf --out report.pdf.enc
 
 Notes:
-    - --key must be exactly 32 raw bytes - generate one with `uacrypt keygen --out key.bin`.
+    - Make a key with `uacrypt keygen --out key.bin`; a raw key file from uacrypt 0.4 or older
+      can be converted with `uacrypt key-import --kind symmetric`.
     - --in and --out may be the same path (encrypts in place); --out is only replaced after the
       whole file is written and verified, so a failure never leaves partial output.
 ";
 
 const DECRYPT_HELP: &str = "\
-uacrypt decrypt - decrypt a file produced by `encrypt`, using the same 32-byte key.
+uacrypt decrypt - decrypt a file produced by `encrypt`, using the same key.
 
 Streamed in bounded memory chunks and authenticated: a wrong key or a tampered/truncated file is
 rejected with an error before anything is written to --out, rather than producing wrong plaintext.
@@ -3522,7 +3778,7 @@ USAGE:
     uacrypt decrypt --key <path> --in <path> --out <path>
 
 FLAGS:
-    --key <path>    the same 32-byte binary key file used for `encrypt`
+    --key <path>    the same key file used for `encrypt`
     --in <path>     the encrypted file (must be real `encrypt` output)
     --out <path>    where to write the decrypted output
 
@@ -3557,8 +3813,8 @@ const SIGN_KEYGEN_HELP: &str = "\
 uacrypt sign-keygen - generate a fresh signing key for `sign` (DSTU 4145, m=163).
 
 Draws from the OS CSPRNG via rejection sampling against the DSTU 4145 curve order (never a modulo
-reduction, which would bias the result) and writes the raw 21-byte private
-scalar to --out. A separate command from `keygen` - a signing key and an `encrypt`/`decrypt` key
+reduction, which would bias the result) and writes it to --out as a typed key file
+(docs/CLI.md 'Key files'). A separate command from `keygen` - a signing key and an `encrypt`/`decrypt` key
 are different, incompatible things, not two settings of the same command. For DSTU 4145's other
 implemented curve (m=257, what real Diia-issued signatures use), use
 `sign-keygen257` instead - a separate command, not a --curve flag on this one, same reasoning
@@ -3568,7 +3824,7 @@ USAGE:
     uacrypt sign-keygen --out <path>
 
 FLAGS:
-    --out <path>    where to write the 21-byte signing key
+    --out <path>    where to write the signing key
 
 EXAMPLE:
     uacrypt sign-keygen --out signing.key
@@ -3582,17 +3838,16 @@ Notes:
 const SIGN_PUBKEY_HELP: &str = "\
 uacrypt sign-pubkey - derive the matching verifying key from a signing key.
 
-Reads --key (a `sign-keygen` output) and writes a tagged verifying-key file to --out (43 bytes: a
-1-byte curve tag, then the 42-byte public key) - the format `verify` expects. `verify` reads the
-tag itself to tell this apart from a `sign-pubkey257` key, so it always knows which curve to use
-and reports a clear error for any tag it doesn't recognize.
+Reads --key (a `sign-keygen` output) and writes the matching verifying key to --out as a typed
+key file - safe to share, unlike the signing key. The key line names its curve, so `verify`
+tells it apart from a `sign-pubkey257` key by itself.
 
 USAGE:
     uacrypt sign-pubkey --key <path> --out <path>
 
 FLAGS:
     --key <path>    a signing key (from `uacrypt sign-keygen`)
-    --out <path>    where to write the tagged 43-byte verifying key
+    --out <path>    where to write the verifying key
 
 EXAMPLE:
     uacrypt sign-pubkey --key signing.key --out verifying.key
@@ -3620,10 +3875,8 @@ const VERIFY_HELP: &str = "\
 uacrypt verify - check a `sign`/`sign257` signature against a verifying key (DSTU 4145).
 
 Hashes --in the same way `sign`/`sign257` did, then checks --sig against --key (a `sign-pubkey` or
-`sign-pubkey257` output - the same `verify` command handles both). --key's own first byte is a
-curve tag: `verify` reads it to know whether the rest is an m=163 or m=257 key, so you never need
-to tell it which. An unrecognized tag is reported by name (which byte, which tags are supported),
-not a generic parse failure. Prints `Signature OK (DSTU 4145, m=...)` to stderr and exits 0 on a
+`sign-pubkey257` output - the same `verify` command handles both). The key file names its curve,
+so you never need to tell `verify` which one; a key of any other kind is refused by name. Prints `Signature OK (DSTU 4145, m=...)` to stderr and exits 0 on a
 valid signature; exits with an error
 (nothing written) if the message, signature, or key do not match - a tampered file or a wrong key
 is detected, not silently accepted.
@@ -3653,7 +3906,7 @@ USAGE:
     uacrypt sign-keygen257 --out <path>
 
 FLAGS:
-    --out <path>    where to write the 33-byte signing key
+    --out <path>    where to write the signing key
 
 EXAMPLE:
     uacrypt sign-keygen257 --out signing257.key
@@ -3667,16 +3920,16 @@ Notes:
 const SIGN_PUBKEY257_HELP: &str = "\
 uacrypt sign-pubkey257 - derive the matching verifying key from a `sign-keygen257` key.
 
-Reads --key (a `sign-keygen257` output) and writes a tagged verifying-key file to --out (67 bytes:
-a 1-byte curve tag, then the 66-byte public key). Same `verify` command as `sign-pubkey` uses reads
-this file - the tag byte is what tells them apart, so you don't need `verify257`.
+Reads --key (a `sign-keygen257` output) and writes the matching verifying key to --out as a typed
+key file. The same `verify` command as for `sign-pubkey` reads it - the key line names its
+curve, so there is no `verify257`.
 
 USAGE:
     uacrypt sign-pubkey257 --key <path> --out <path>
 
 FLAGS:
     --key <path>    a signing key (from `uacrypt sign-keygen257`)
-    --out <path>    where to write the tagged 67-byte verifying key
+    --out <path>    where to write the verifying key
 
 EXAMPLE:
     uacrypt sign-pubkey257 --key signing257.key --out verifying257.key
@@ -3703,14 +3956,14 @@ const BOX_KEYGEN_HELP: &str = "\
 uacrypt box-keygen - generate a fresh crypto_box secret key for `box-open`.
 
 Draws from the OS CSPRNG via rejection sampling against the DSTU 9041 curve order and
-writes the raw 32-byte private scalar to --out. A separate command from `keygen`/
+writes it to --out as a typed key file (docs/CLI.md 'Key files'). A separate command from `keygen`/
 `sign-keygen` - a crypto_box key is a third, incompatible key shape.
 
 USAGE:
     uacrypt box-keygen --out <path>
 
 FLAGS:
-    --out <path>    where to write the 32-byte secret key
+    --out <path>    where to write the secret key
 
 EXAMPLE:
     uacrypt box-keygen --out box.key
@@ -3723,15 +3976,15 @@ Notes:
 const BOX_PUBKEY_HELP: &str = "\
 uacrypt box-pubkey - derive the matching public key from a crypto_box secret key.
 
-Reads --key (a `box-keygen` output) and writes the 32-byte compressed public key that `box-seal`
-needs - safe to share, unlike the secret key itself.
+Reads --key (a `box-keygen` output) and writes the matching public key that `box-seal` needs to
+--out as a typed key file - safe to share, unlike the secret key itself.
 
 USAGE:
     uacrypt box-pubkey --key <path> --out <path>
 
 FLAGS:
     --key <path>    a crypto_box secret key (from `uacrypt box-keygen`)
-    --out <path>    where to write the 32-byte public key
+    --out <path>    where to write the public key
 
 EXAMPLE:
     uacrypt box-pubkey --key box.key --out box.pub
@@ -3782,19 +4035,43 @@ EXAMPLE:
     uacrypt box-open --key box.key --in message.txt.box --out message.txt
 ";
 
+const KEY_IMPORT_HELP: &str = "\
+uacrypt key-import - convert a raw key file from uacrypt 0.4 or older into a typed key file.
+
+uacrypt 0.5 key files are one text line that names the key's kind (see docs/CLI.md 'Key files'),
+so a key of the wrong kind is rejected by name. Older versions wrote raw bytes; this converts one
+such file. --kind says what the raw file is - the only place you ever type a key's kind - and the
+bytes are checked exactly as the commands that use them will check them. A raw verifying key
+must carry the curve byte `sign-pubkey`/`sign-pubkey257` wrote. Prints the new file's check value
+to stderr, and for a secret key its public key's check value too, so you can compare it with a
+public key you already shared. Like every keygen, it never overwrites a secret key file.
+
+USAGE:
+    uacrypt key-import --kind <kind> --in <path> --out <path>
+
+FLAGS:
+    --kind <kind>   symmetric (a `keygen` key), sign163-secret, sign163-public, sign257-secret,
+                    sign257-public, box256-secret, box256-public, box512-secret, box512-public
+    --in <path>     the raw key file
+    --out <path>    where to write the typed key file
+
+EXAMPLE:
+    uacrypt key-import --kind box256-secret --in box.key --out box.key.txt
+";
+
 const BOX_KEYGEN512_HELP: &str = "\
 uacrypt box-keygen512 - generate a fresh crypto_box512 secret key for `box-open512`.
 
 Same shape as `box-keygen`, over DSTU 9041's l(p)=512 curve (E512/1) instead
 of l(p)=256 - a separate command, not a `--curve` flag, since the two are distinct, incompatible
-key shapes. Draws from the OS CSPRNG via rejection sampling and writes the raw 64-byte private
-scalar to --out.
+key shapes. Draws from the OS CSPRNG via rejection sampling and writes it to --out as a typed key
+file.
 
 USAGE:
     uacrypt box-keygen512 --out <path>
 
 FLAGS:
-    --out <path>    where to write the 64-byte secret key
+    --out <path>    where to write the secret key
 
 EXAMPLE:
     uacrypt box-keygen512 --out box512.key
@@ -3808,15 +4085,15 @@ Notes:
 const BOX_PUBKEY512_HELP: &str = "\
 uacrypt box-pubkey512 - derive the matching public key from a crypto_box512 secret key.
 
-Reads --key (a `box-keygen512` output) and writes the 64-byte compressed public key that
-`box-seal512` needs - safe to share, unlike the secret key itself.
+Reads --key (a `box-keygen512` output) and writes the matching public key that `box-seal512` needs
+to --out as a typed key file - safe to share, unlike the secret key itself.
 
 USAGE:
     uacrypt box-pubkey512 --key <path> --out <path>
 
 FLAGS:
     --key <path>    a crypto_box512 secret key (from `uacrypt box-keygen512`)
-    --out <path>    where to write the 64-byte public key
+    --out <path>    where to write the public key
 
 EXAMPLE:
     uacrypt box-pubkey512 --key box512.key --out box512.pub
@@ -4104,6 +4381,7 @@ const COMMANDS: &[(&str, &str)] = &[
     ("box-pubkey512", BOX_PUBKEY512_HELP),
     ("box-seal512", BOX_SEAL512_HELP),
     ("box-open512", BOX_OPEN512_HELP),
+    ("key-import", KEY_IMPORT_HELP),
     ("kalyna-block", KALYNA_BLOCK_HELP),
     ("kalyna-ccm", KALYNA_CCM_HELP),
     ("kalyna-gcm", KALYNA_GCM_HELP),
@@ -4417,6 +4695,12 @@ pub fn run(args: &[String]) -> Result<(), CliError> {
         Some(cmd @ ("box-keygen512" | "box-pubkey512" | "box-seal512" | "box-open512")) => {
             dispatch_box512_command(cmd, &args[1..])
         }
+        Some("key-import") => dispatch_simple(
+            "key-import",
+            &args[1..],
+            parse_key_import_args,
+            run_key_import_command,
+        ),
         Some("help") => run_help_command(&args[1..]),
         Some(other) => Err(unknown_command(other)),
     }
@@ -4565,6 +4849,10 @@ mod tests {
     /// `dstu_core::hazmat::dstu4145::curve163::order`) for `sign`/`verify` tests that just need
     /// *some* valid key, distinguished only by its low byte - same convention as
     /// `dstu-core`'s own `tests/crypto_sign.rs::small_scalar`.
+    fn write_typed_key(path: &std::path::Path, kind: KeyKind, raw: &[u8]) {
+        std::fs::write(path, keyfile::encode(kind, raw).as_slice()).expect("write typed key");
+    }
+
     fn small_signing_key(low_byte: u8) -> [u8; 21] {
         let mut out = [0u8; 21];
         out[20] = low_byte;
@@ -4792,15 +5080,16 @@ mod tests {
     }
 
     #[test]
-    fn run_keygen_command_writes_a_32_byte_key_usable_by_encrypt() {
+    fn run_keygen_command_writes_a_typed_key_usable_by_encrypt() {
         let dir = TempDir::new("keygen");
         let args = KeygenArgs {
             out_path: dir.file("key.bin"),
         };
         run_keygen_command(&args).expect("keygen should succeed");
 
-        let key_bytes = std::fs::read(dir.file("key.bin")).expect("read generated key");
-        assert_eq!(key_bytes.len(), 32);
+        let key_text = std::fs::read(dir.file("key.bin")).expect("read generated key");
+        let (kind, key_bytes) = keyfile::decode(&key_text).expect("a typed key line");
+        assert_eq!((kind, key_bytes.len()), (KeyKind::Symmetric, 32));
 
         // The generated key is a real, usable crypto_secretstream key, not just 32 arbitrary
         // bytes - round-trip it through encrypt/decrypt to prove it, rather than only checking
@@ -4873,7 +5162,11 @@ mod tests {
         .map(String::from)
         .collect();
         run(&args).expect("keygen dispatch should succeed");
-        assert_eq!(std::fs::read(dir.file("key.bin")).expect("read").len(), 32);
+        let key_text = std::fs::read(dir.file("key.bin")).expect("read");
+        assert_eq!(
+            keyfile::decode(&key_text).map(|(kind, _)| kind),
+            Ok(KeyKind::Symmetric)
+        );
     }
 
     /// `hash` is fixed to Kupyna-256 (no `--variant` knob) and must genuinely stream a multi-chunk,
@@ -5183,7 +5476,7 @@ mod tests {
         let dir = TempDir::new("secretstream_roundtrip");
         let key_bytes = [0x22u8; 32];
         let plaintext = b"short message".to_vec();
-        std::fs::write(dir.file("key.bin"), key_bytes).expect("write key");
+        write_typed_key(&dir.file("key.bin"), KeyKind::Symmetric, &key_bytes);
         std::fs::write(dir.file("in.bin"), &plaintext).expect("write input");
 
         let encrypt_args = SecretstreamArgs {
@@ -5207,7 +5500,7 @@ mod tests {
         let dir = TempDir::new("secretstream_fresh_header");
         let key = [0x44u8; 32];
         let plaintext = b"same input twice".to_vec();
-        std::fs::write(dir.file("key.bin"), key).expect("write key");
+        write_typed_key(&dir.file("key.bin"), KeyKind::Symmetric, &key);
         std::fs::write(dir.file("in.bin"), &plaintext).expect("write input");
 
         let base_args = SecretstreamArgs {
@@ -5237,7 +5530,7 @@ mod tests {
         let dir = TempDir::new("secretstream_tamper");
         let key = [0x66u8; 32];
         let plaintext = b"do not trust me".to_vec();
-        std::fs::write(dir.file("key.bin"), key).expect("write key");
+        write_typed_key(&dir.file("key.bin"), KeyKind::Symmetric, &key);
         std::fs::write(dir.file("in.bin"), &plaintext).expect("write input");
 
         let encrypt_args = SecretstreamArgs {
@@ -5272,7 +5565,7 @@ mod tests {
         let large: Vec<u8> = (0..SECRETSTREAM_CHUNK_BYTES * 3 + 777)
             .map(|i| (i % 256) as u8)
             .collect();
-        std::fs::write(dir.file("key.bin"), key).expect("write key");
+        write_typed_key(&dir.file("key.bin"), KeyKind::Symmetric, &key);
         std::fs::write(dir.file("in.bin"), &large).expect("write input");
 
         let encrypt_args = SecretstreamArgs {
@@ -5299,7 +5592,7 @@ mod tests {
     fn run_secretstream_command_empty_file_round_trips() {
         let dir = TempDir::new("secretstream_empty");
         let key = [0x11u8; 32];
-        std::fs::write(dir.file("key.bin"), key).expect("write key");
+        write_typed_key(&dir.file("key.bin"), KeyKind::Symmetric, &key);
         std::fs::write(dir.file("in.bin"), []).expect("write empty input");
 
         let encrypt_args = SecretstreamArgs {
@@ -5322,7 +5615,7 @@ mod tests {
     /// download, a copy-paste that dropped bytes) must be a clean, typed error, not a panic or a
     /// silently-zero-padded key.
     #[test]
-    fn run_secretstream_command_wrong_key_length_is_rejected() {
+    fn run_secretstream_command_raw_key_file_is_rejected() {
         let dir = TempDir::new("secretstream_wrong_key_len");
         std::fs::write(dir.file("key.bin"), [0u8; 31]).expect("write short key");
         std::fs::write(dir.file("in.bin"), b"data").expect("write input");
@@ -5334,11 +5627,7 @@ mod tests {
         };
         assert_eq!(
             run_secretstream_command(false, &args),
-            Err(CliError::WrongLength {
-                what: LengthOf::Key,
-                expected: 32,
-                actual: 31,
-            })
+            Err(CliError::KeyFileNotTyped(dir.file("key.bin")))
         );
         assert!(!dir.file("out.bin").exists());
     }
@@ -5348,7 +5637,7 @@ mod tests {
     #[test]
     fn run_secretstream_command_nonexistent_input_is_io_error_not_panic() {
         let dir = TempDir::new("secretstream_no_input");
-        std::fs::write(dir.file("key.bin"), [0u8; 32]).expect("write key");
+        write_typed_key(&dir.file("key.bin"), KeyKind::Symmetric, &[0u8; 32]);
 
         let args = SecretstreamArgs {
             key_path: dir.file("key.bin"),
@@ -5367,7 +5656,7 @@ mod tests {
     #[test]
     fn run_secretstream_command_directory_as_input_is_io_error_not_panic() {
         let dir = TempDir::new("secretstream_dir_input");
-        std::fs::write(dir.file("key.bin"), [0u8; 32]).expect("write key");
+        write_typed_key(&dir.file("key.bin"), KeyKind::Symmetric, &[0u8; 32]);
         std::fs::create_dir_all(dir.file("a_directory")).expect("create sub-directory");
 
         let args = SecretstreamArgs {
@@ -5391,7 +5680,7 @@ mod tests {
         let dir = TempDir::new("secretstream_same_path");
         let key = [0x55u8; 32];
         let plaintext = b"overwrite me in place".to_vec();
-        std::fs::write(dir.file("key.bin"), key).expect("write key");
+        write_typed_key(&dir.file("key.bin"), KeyKind::Symmetric, &key);
         std::fs::write(dir.file("data.bin"), &plaintext).expect("write input");
 
         let encrypt_args = SecretstreamArgs {
@@ -5426,7 +5715,7 @@ mod tests {
     #[test]
     fn run_secretstream_command_decrypt_rejects_never_sealed_garbage_without_writing_out() {
         let dir = TempDir::new("secretstream_garbage");
-        std::fs::write(dir.file("key.bin"), [0x88u8; 32]).expect("write key");
+        write_typed_key(&dir.file("key.bin"), KeyKind::Symmetric, &[0x88u8; 32]);
         std::fs::write(dir.file("garbage.bin"), [0x99u8; 64]).expect("write garbage");
 
         let args = SecretstreamArgs {
@@ -5450,7 +5739,7 @@ mod tests {
         let dir = TempDir::new("secretstream_truncated");
         let key = [0x33u8; 32];
         let plaintext = b"a message that gets cut short".to_vec();
-        std::fs::write(dir.file("key.bin"), key).expect("write key");
+        write_typed_key(&dir.file("key.bin"), KeyKind::Symmetric, &key);
         std::fs::write(dir.file("in.bin"), &plaintext).expect("write input");
 
         let encrypt_args = SecretstreamArgs {
@@ -5483,7 +5772,7 @@ mod tests {
         let dir = TempDir::new("secretstream_trailing");
         let key = [0x99u8; 32];
         let plaintext = b"legit message".to_vec();
-        std::fs::write(dir.file("key.bin"), key).expect("write key");
+        write_typed_key(&dir.file("key.bin"), KeyKind::Symmetric, &key);
         std::fs::write(dir.file("in.bin"), &plaintext).expect("write input");
 
         let encrypt_args = SecretstreamArgs {
@@ -5624,7 +5913,7 @@ mod tests {
     fn run_dispatches_encrypt_and_decrypt_correctly() {
         let dir = TempDir::new("secretbox_dispatch");
         let key = [0x88u8; 32];
-        std::fs::write(dir.file("key.bin"), key).expect("write key");
+        write_typed_key(&dir.file("key.bin"), KeyKind::Symmetric, &key);
         std::fs::write(dir.file("in.bin"), b"dispatch me").expect("write input");
 
         let key_str = dir
@@ -6808,16 +7097,9 @@ mod tests {
 
         let sig_bytes = std::fs::read(dir.file("msg.sig")).expect("read signature");
         assert_eq!(sig_bytes.len(), 42);
-        let key_bytes = std::fs::read(dir.file("verifying.key")).expect("read verifying key");
-        assert_eq!(
-            key_bytes.len(),
-            43,
-            "1-byte curve tag + 42-byte uncompressed key"
-        );
-        assert_eq!(
-            key_bytes[0],
-            dstu_core::crypto_sign::CurveId::M163.to_byte()
-        );
+        let key_text = std::fs::read(dir.file("verifying.key")).expect("read verifying key");
+        let (kind, key_bytes) = keyfile::decode(&key_text).expect("a typed key line");
+        assert_eq!((kind, key_bytes.len()), (KeyKind::Sign163Public, 42));
 
         run_verify_command(&VerifyArgs {
             key_path: dir.file("verifying.key"),
@@ -6860,16 +7142,9 @@ mod tests {
 
         let sig_bytes = std::fs::read(dir.file("msg.sig")).expect("read signature");
         assert_eq!(sig_bytes.len(), 66);
-        let key_bytes = std::fs::read(dir.file("verifying.key")).expect("read verifying key");
-        assert_eq!(
-            key_bytes.len(),
-            67,
-            "1-byte curve tag + 66-byte uncompressed key"
-        );
-        assert_eq!(
-            key_bytes[0],
-            dstu_core::crypto_sign::CurveId::M257.to_byte()
-        );
+        let key_text = std::fs::read(dir.file("verifying.key")).expect("read verifying key");
+        let (kind, key_bytes) = keyfile::decode(&key_text).expect("a typed key line");
+        assert_eq!((kind, key_bytes.len()), (KeyKind::Sign257Public, 66));
 
         run_verify_command(&VerifyArgs {
             key_path: dir.file("verifying.key"),
@@ -6979,7 +7254,11 @@ mod tests {
         let dir = TempDir::new("sign_matches_dstu_core");
         let signing_key = dstu_core::crypto_sign::SigningKey::generate()
             .expect("OS CSPRNG available in test environment");
-        std::fs::write(dir.file("signing.key"), signing_key.to_bytes()).expect("write key");
+        write_typed_key(
+            &dir.file("signing.key"),
+            KeyKind::Sign163Secret,
+            &signing_key.to_bytes(),
+        );
         std::fs::write(dir.file("msg.bin"), b"cross-check me").expect("write message");
 
         run_sign_command(&SignArgs {
@@ -7037,7 +7316,11 @@ mod tests {
     fn run_sign_pubkey_command_directory_as_out_is_io_error_not_panic() {
         let dir = TempDir::new("sign_pubkey_dir_out");
         std::fs::create_dir_all(dir.file("a_directory")).expect("create sub-directory");
-        std::fs::write(dir.file("signing.key"), small_signing_key(0x11)).expect("write key");
+        write_typed_key(
+            &dir.file("signing.key"),
+            KeyKind::Sign163Secret,
+            &small_signing_key(0x11),
+        );
         assert!(matches!(
             run_sign_pubkey_command(&SignPubkeyArgs {
                 key_path: dir.file("signing.key"),
@@ -7048,7 +7331,7 @@ mod tests {
     }
 
     #[test]
-    fn run_sign_pubkey_command_wrong_key_length_is_rejected() {
+    fn run_sign_pubkey_command_raw_key_file_is_rejected() {
         let dir = TempDir::new("sign_pubkey_wrong_len");
         std::fs::write(dir.file("signing.key"), [0x11u8; 20]).expect("write short key");
         assert_eq!(
@@ -7056,16 +7339,12 @@ mod tests {
                 key_path: dir.file("signing.key"),
                 out_path: dir.file("verifying.key"),
             }),
-            Err(CliError::WrongLength {
-                what: LengthOf::SigningKey,
-                expected: 21,
-                actual: 20,
-            })
+            Err(CliError::KeyFileNotTyped(dir.file("signing.key")))
         );
     }
 
     #[test]
-    fn run_sign_command_wrong_key_length_is_rejected() {
+    fn run_sign_command_raw_key_file_is_rejected() {
         let dir = TempDir::new("sign_wrong_len");
         std::fs::write(dir.file("signing.key"), [0x11u8; 20]).expect("write short key");
         std::fs::write(dir.file("msg.bin"), b"hello").expect("write message");
@@ -7076,11 +7355,7 @@ mod tests {
                 out_path: dir.file("msg.sig"),
                 iterations: 1,
             }),
-            Err(CliError::WrongLength {
-                what: LengthOf::SigningKey,
-                expected: 21,
-                actual: 20,
-            })
+            Err(CliError::KeyFileNotTyped(dir.file("signing.key")))
         );
     }
 
@@ -7090,7 +7365,7 @@ mod tests {
     #[test]
     fn run_sign_command_zero_key_is_rejected() {
         let dir = TempDir::new("sign_zero_key");
-        std::fs::write(dir.file("signing.key"), [0u8; 21]).expect("write zero key");
+        write_typed_key(&dir.file("signing.key"), KeyKind::Sign163Secret, &[0u8; 21]);
         std::fs::write(dir.file("msg.bin"), b"hello").expect("write message");
         assert_eq!(
             run_sign_command(&SignArgs {
@@ -7106,7 +7381,11 @@ mod tests {
     #[test]
     fn run_sign_command_nonexistent_input_is_io_error_not_panic() {
         let dir = TempDir::new("sign_missing_in");
-        std::fs::write(dir.file("signing.key"), small_signing_key(0x11)).expect("write key");
+        write_typed_key(
+            &dir.file("signing.key"),
+            KeyKind::Sign163Secret,
+            &small_signing_key(0x11),
+        );
         assert!(matches!(
             run_sign_command(&SignArgs {
                 key_path: dir.file("signing.key"),
@@ -7236,7 +7515,7 @@ mod tests {
     }
 
     #[test]
-    fn run_verify_command_wrong_key_length_is_rejected() {
+    fn run_verify_command_raw_key_file_is_rejected() {
         let dir = TempDir::new("verify_wrong_key_len");
         let mut key = vec![dstu_core::crypto_sign::CurveId::M163.to_byte()];
         key.extend_from_slice(&[0x11u8; 41]); // one short of the 42 bytes m=163 needs
@@ -7250,18 +7529,15 @@ mod tests {
                 sig_path: dir.file("msg.sig"),
                 iterations: 1,
             }),
-            Err(CliError::WrongLength {
-                what: LengthOf::VerifyingKey,
-                expected: 43,
-                actual: key.len(),
-            })
+            Err(CliError::KeyFileNotTyped(dir.file("verifying.key")))
         );
     }
 
     #[test]
-    fn run_verify_command_rejects_unrecognized_curve_tag() {
-        let dir = TempDir::new("verify_bad_tag");
-        std::fs::write(dir.file("verifying.key"), [0xFFu8; 43]).expect("write bad-tag key");
+    fn run_verify_command_rejects_a_signing_key_by_kind() {
+        let dir = TempDir::new("verify_signing_key");
+        let signing = keyfile::encode(KeyKind::Sign163Secret, &small_signing_key(0x11));
+        std::fs::write(dir.file("verifying.key"), signing.as_slice()).expect("write key");
         std::fs::write(dir.file("msg.bin"), b"hello").expect("write message");
         std::fs::write(dir.file("msg.sig"), [0x22u8; 42]).expect("write signature");
         assert_eq!(
@@ -7271,16 +7547,23 @@ mod tests {
                 sig_path: dir.file("msg.sig"),
                 iterations: 1,
             }),
-            Err(CliError::SignVerifyUnsupportedCurve(0xFF))
+            Err(CliError::KeyKindMismatch {
+                path: dir.file("verifying.key"),
+                command: "verify",
+                found: KeyKind::Sign163Secret,
+                expected: &[KeyKind::Sign163Public, KeyKind::Sign257Public],
+            })
         );
     }
 
     #[test]
     fn run_verify_command_wrong_signature_length_is_rejected() {
         let dir = TempDir::new("verify_wrong_sig_len");
-        let mut key = vec![dstu_core::crypto_sign::CurveId::M163.to_byte()];
-        key.extend_from_slice(&[0x11u8; 42]);
-        std::fs::write(dir.file("verifying.key"), key).expect("write key");
+        write_typed_key(
+            &dir.file("verifying.key"),
+            KeyKind::Sign163Public,
+            &[0x11u8; 42],
+        );
         std::fs::write(dir.file("msg.bin"), b"hello").expect("write message");
         std::fs::write(dir.file("msg.sig"), [0x22u8; 41]).expect("write short signature");
         assert_eq!(
@@ -7301,9 +7584,11 @@ mod tests {
     #[test]
     fn run_verify_command_nonexistent_input_is_io_error_not_panic() {
         let dir = TempDir::new("verify_missing_in");
-        let mut key = vec![dstu_core::crypto_sign::CurveId::M163.to_byte()];
-        key.extend_from_slice(&[0x11u8; 42]);
-        std::fs::write(dir.file("verifying.key"), key).expect("write key");
+        write_typed_key(
+            &dir.file("verifying.key"),
+            KeyKind::Sign163Public,
+            &[0x11u8; 42],
+        );
         std::fs::write(dir.file("msg.sig"), [0x22u8; 42]).expect("write signature");
         assert!(matches!(
             run_verify_command(&VerifyArgs {
@@ -7505,8 +7790,11 @@ mod tests {
         let sealed_bytes = std::fs::read(dir.file("msg.box")).expect("read sealed output");
         assert_eq!(sealed_bytes.len(), 1 + 128 + 32 + 32 + 16); // version + KEM + header + message + tag
         assert_eq!(sealed_bytes[0], CONTAINER_FORMAT_VERSION);
-        let pub_bytes = std::fs::read(dir.file("box.pub")).expect("read public key");
-        assert_eq!(pub_bytes.len(), 32);
+        let pub_text = std::fs::read(dir.file("box.pub")).expect("read public key");
+        assert_eq!(
+            keyfile::decode(&pub_text).map(|(kind, _)| kind),
+            Ok(KeyKind::Box256Public)
+        );
 
         run_box_open_command(&BoxOpenArgs {
             key_path: dir.file("box.key"),
@@ -7662,7 +7950,7 @@ mod tests {
     }
 
     #[test]
-    fn run_box_pubkey_command_wrong_key_length_is_rejected() {
+    fn run_box_pubkey_command_raw_key_file_is_rejected() {
         let dir = TempDir::new("box_pubkey_wrong_len");
         std::fs::write(dir.file("box.key"), [0x11u8; 31]).expect("write short key");
         assert_eq!(
@@ -7670,18 +7958,14 @@ mod tests {
                 key_path: dir.file("box.key"),
                 out_path: dir.file("box.pub"),
             }),
-            Err(CliError::WrongLength {
-                what: LengthOf::BoxSecretKey,
-                expected: 32,
-                actual: 31,
-            })
+            Err(CliError::KeyFileNotTyped(dir.file("box.key")))
         );
     }
 
     #[test]
     fn run_box_pubkey_command_zero_key_is_rejected() {
         let dir = TempDir::new("box_pubkey_zero_key");
-        std::fs::write(dir.file("box.key"), [0u8; 32]).expect("write zero key");
+        write_typed_key(&dir.file("box.key"), KeyKind::Box256Secret, &[0u8; 32]);
         assert_eq!(
             run_box_pubkey_command(&BoxPubkeyArgs {
                 key_path: dir.file("box.key"),

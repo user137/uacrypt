@@ -84,8 +84,11 @@ test('interop with the uacrypt CLI', { skip: findUacrypt() === null ? 'uacrypt b
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dstu-node-test-'));
   try {
     const key = dstu.secretstreamKeygen();
-    const keyPath = path.join(tmpDir, 'key.bin');
-    fs.writeFileSync(keyPath, key);
+    const rawKeyPath = path.join(tmpDir, 'key.bin');
+    fs.writeFileSync(rawKeyPath, key);
+    // uacrypt reads typed key files (D-212): convert the raw key once.
+    const keyPath = path.join(tmpDir, 'key.txt');
+    execFileSync(uacrypt, ['key-import', '--kind', 'symmetric', '--in', rawKeyPath, '--out', keyPath]);
     const plaintext = require('node:crypto').randomBytes(8 * 1024 * 2 + 555);
     const plainPath = path.join(tmpDir, 'plain.bin');
     fs.writeFileSync(plainPath, plaintext);

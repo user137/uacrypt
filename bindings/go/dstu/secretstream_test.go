@@ -87,10 +87,13 @@ func TestSecretstreamInteropWithUacryptCli(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer key.Close()
-	keyPath := filepath.Join(tempDir, "key.bin")
-	if err := os.WriteFile(keyPath, key.Bytes(), 0o600); err != nil {
+	rawKeyPath := filepath.Join(tempDir, "key.bin")
+	if err := os.WriteFile(rawKeyPath, key.Bytes(), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	// uacrypt reads typed key files (D-212): convert the raw key once.
+	keyPath := filepath.Join(tempDir, "key.txt")
+	runUacrypt(t, uacrypt, "key-import", "--kind", "symmetric", "--in", rawKeyPath, "--out", keyPath)
 	plaintext, err := RandomBytes(8*1024*2 + 555)
 	if err != nil {
 		t.Fatal(err)

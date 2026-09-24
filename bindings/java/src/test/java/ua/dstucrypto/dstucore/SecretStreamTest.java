@@ -91,8 +91,12 @@ class SecretStreamTest {
 
         Path tmpDir = Files.createTempDirectory("dstu-java-secretstream-interop");
         byte[] key = SecretStream.keygen();
-        Path keyPath = tmpDir.resolve("key.bin");
-        Files.write(keyPath, key);
+        Path rawKeyPath = tmpDir.resolve("key.bin");
+        Files.write(rawKeyPath, key);
+        // uacrypt reads typed key files (D-212): convert the raw key once.
+        Path keyPath = tmpDir.resolve("key.txt");
+        runUacrypt(uacrypt, "key-import", "--kind", "symmetric", "--in", rawKeyPath.toString(), "--out",
+                keyPath.toString());
         byte[] plaintext = randomBytes(8 * 1024 * 2 + 555);
         Path plainPath = tmpDir.resolve("plain.bin");
         Files.write(plainPath, plaintext);

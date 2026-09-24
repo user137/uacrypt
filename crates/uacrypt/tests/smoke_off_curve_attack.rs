@@ -8,8 +8,8 @@
 //! `r`/`s` are ever examined - so any syntactically-valid signature bytes trigger the same
 //! rejection path. This file constructs the curve's own order-2 point (`x = 0`, `y = sqrt(b)`) the
 //! same way `crates/dstu-core/tests/dstu4145_signature{,257}.rs` already do at the library level,
-//! encodes it into the exact tagged-verifying-key file format `verify --key` reads
-//! (`read_tagged_verifying_key`, D-186 Decision 1), and confirms the real binary rejects it.
+//! encodes it into the typed verifying-key file `verify --key` reads (a correct check value, so it
+//! reaches the curve checks - `docs/DECISIONS.md` D-212), and confirms the real binary rejects it.
 //!
 //! `dstu9041`/`crypto_box`'s own order-2/order-4 finding (T-183, `docs/DECISIONS.md` D-176) is a
 //! different shape and stays deferred: it is about a compressed x-only point reconstructing to a
@@ -19,7 +19,7 @@
 //! genuinely separate task.
 
 mod support;
-use support::{uacrypt, write_bytes, TempDir};
+use support::{uacrypt, write_bytes, write_key, TempDir};
 
 use dstu_core::hazmat::dstu4145::{curve163, curve257, gf2m163, gf2m257};
 
@@ -84,17 +84,13 @@ fn verify_rejects_order_two_public_key_m163() {
 
     let dir = TempDir::new("off_curve_m163");
     let key_path = dir.file("attacker.key");
-    let mut key_bytes = vec![0x01u8]; // CurveId::M163
+    let mut key_bytes = Vec::new();
     if let curve163::Point::Affine(x, y) = q {
         key_bytes.extend_from_slice(&x.to_be_bytes());
         key_bytes.extend_from_slice(&y.to_be_bytes());
     }
-    assert_eq!(
-        key_bytes.len(),
-        43,
-        "1 tag byte + 42-byte uncompressed x||y"
-    );
-    write_bytes(&key_path, &key_bytes);
+    assert_eq!(key_bytes.len(), 42, "42-byte uncompressed x||y");
+    write_key(&key_path, "uacrypt-sign163-public", &key_bytes);
 
     let msg_path = dir.file("msg.bin");
     write_bytes(
@@ -153,17 +149,13 @@ fn verify_rejects_order_two_public_key_m257() {
 
     let dir = TempDir::new("off_curve_m257");
     let key_path = dir.file("attacker.key");
-    let mut key_bytes = vec![0x02u8]; // CurveId::M257
+    let mut key_bytes = Vec::new();
     if let curve257::Point::Affine(x, y) = q {
         key_bytes.extend_from_slice(&x.to_be_bytes());
         key_bytes.extend_from_slice(&y.to_be_bytes());
     }
-    assert_eq!(
-        key_bytes.len(),
-        67,
-        "1 tag byte + 66-byte uncompressed x||y"
-    );
-    write_bytes(&key_path, &key_bytes);
+    assert_eq!(key_bytes.len(), 66, "66-byte uncompressed x||y");
+    write_key(&key_path, "uacrypt-sign257-public", &key_bytes);
 
     let msg_path = dir.file("msg.bin");
     write_bytes(

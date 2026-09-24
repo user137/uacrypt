@@ -13950,3 +13950,68 @@ names, no key material - D-210's `cleartext-logging` reasoning still holds.
 **Rejected.** Classifying `WrongLength` by its `what` string (a silent default for any new
 string); a separate `WrongInputLength` variant (touches the same call sites, less precise than
 `LengthOf`).
+
+## D-212: T-256 - typed key files for `uacrypt` (0.5.0)
+
+**Context.** `uacrypt` key files were raw bytes, so same-length keys of different kinds were
+indistinguishable: `box-seal --key <box SECRET key>` succeeded whenever the 32 bytes decoded a
+curve point (2 of 6 tries in the 2026-09-23 review) and sealed a file nobody could open;
+`encrypt --key <box secret key>` always succeeded. Owner decisions K1 (a) and K2 (a) (TASKS "CLI
+usability and misuse resistance", rules R1/R6/R7) fixed the shape; this entry records the details
+chosen in the approved plan.
+
+**Decision 1 - format.** One ASCII line `<prefix>:<lower-case hex key>:<8 hex check digits>`, then
+one `\n` (a `\r\n` is tolerated, nothing else: no spaces, BOM, second line or upper-case hex).
+Nine kinds, one prefix each; secret prefixes are upper case (`UACRYPT-SECRET-BOX256`, age's
+`AGE-SECRET-KEY-` convention), public ones lower case (`uacrypt-box256-public`). Full table:
+`docs/CLI.md` "Key files". A file over 256 bytes is refused without being read whole.
+
+**Decision 2 - check value.** First 4 bytes of Kupyna-256(`"uacrypt-key-v1" || 0x00 || prefix ||
+0x00 || key`). The prefix is inside the hash, so relabelling a line to another kind fails its
+check; `-v1` is the format version. 32 bits catch typos and edits, not attacks: whoever can write
+a key file can write a valid check too, which is the same trust as the key itself. Golden lines
+for all nine kinds were computed outside the code (Python builds the preimage, `uacrypt
+kupyna-digest` hashes it) and are pinned by `keyfile`'s unit tests and, through an independent
+encoder in `tests/support`, by `smoke_typed_keys.rs`.
+
+**Decision 3 - constant-time parsing (R6).** Hex is encoded and decoded arithmetically, no branch
+and no table lookup on key digits (D-19 allows table lookups only for S-boxes); decoding ORs an
+error flag over every digit and tests it once. The check is compared with
+`subtle::ConstantTimeEq`, and the file text, decoded key and fixed-size key arrays are held in
+`zeroize::Zeroizing`. Branches depend only on public data: file length, prefix, separator
+positions. Errors never echo file content.
+
+**Decision 4 - supersedes D-186 Decision 1's file tag.** Verifying-key files no longer start with
+a curve byte; the prefix names the curve, and `verify` still takes both curves. The library stays
+untagged, as D-186 decided. `CliError::SignVerifyUnsupportedCurve` and `smoke_verify_key_tag.rs`
+are removed; the adversarial-key-file cases moved to `smoke_typed_keys.rs`.
+
+**Decision 5 - errors and hints.** A key of another kind is `KeyKindMismatch`: it names the kind
+found, what the command needs and a hint. The other curve of the right family points to the twin
+command (`use uacrypt box-seal512`, until T-257 removes the twins); anything else points to the
+command that makes the right key. A non-typed file is `KeyFileNotTyped` with a pointer to
+`key-import`. All are exit 3 (D-211).
+
+**Decision 6 - `key-import` (K2 a).** `key-import --kind <kind> --in <raw> --out <typed>` reads
+the exact 0.4 raw layout (verifying keys with their D-186 curve byte, which must match `--kind`),
+validates the bytes with the same `from_bytes` the commands use, and writes secret kinds through
+`write_new_secret_key` (never overwrites, 0600 on Unix). On stderr it prints the new file's check
+and, for a secret key, its public key's check, to compare with a public key already shared.
+
+**Fork 1 (owner, by approving the plan) - `subtle` and `zeroize` as direct `uacrypt`
+dependencies.** Both were already in `Cargo.lock` through `dstu-core` (same versions,
+`default-features = false`), so R5 ("no new dependencies") is not engaged; the alternative was a
+hand-written constant-time compare outside the project's stated rule.
+
+**Fork 2 (owner, by approving the plan) - binding interop tests.** The eight bindings' secretstream
+interop tests call the real `uacrypt encrypt`/`decrypt`; each now converts its raw key with one
+`uacrypt key-import --kind symmetric` call instead of re-implementing the key format eight times.
+Test code only; no binding API or `dstu-core-capi` change, so the new-primitive binding gate does
+not fire.
+
+**Scope kept.** `kalyna-*`, `strumok-crypt` and `kupyna-digest` keep raw keys, for interop and
+benchmarks against other DSTU implementations.
+
+**Rejected.** A binary magic header (K1 b: not paste-able); a `pub` encoder in the `uacrypt`
+library for tests (grows the published API; the tests carry their own independent encoder
+instead); bech32 or base64 (a new dependency or more code for no gain at these lengths).

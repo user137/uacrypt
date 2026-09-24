@@ -827,6 +827,8 @@ name = "uacrypt"
 version = "0.4.0"
 dependencies = [
  "dstu-core",
+ "subtle",
+ "zeroize",
 ]
 
 [[package]]

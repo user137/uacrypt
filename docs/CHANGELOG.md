@@ -22,6 +22,19 @@ All notable changes to this project are documented in this file. Format follows
 - Library API of the `uacrypt` crate: `CliError::UnknownCommand`/`UnknownFlag` are struct variants
   with a `suggestion`; new `RepeatedFlag`/`MissingValue`/`FlagTakesNoValue`/`UnexpectedArgument`/
   `MissingSubcommand`; `WrongLength::what` is a `LengthOf` enum; `CliError::exit_code()`.
+- **Typed key files** (T-256, `docs/DECISIONS.md` D-212). Every key that `keygen`, `sign-*` and
+  `box-*` write, and that `encrypt`/`decrypt`/`sign*`/`verify`/`box-*` read, is now one text line
+  `<kind>:<key hex>:<check>` (`docs/CLI.md` "Key files"). A command given a key of another kind
+  refuses it by name before doing any work (for example a box secret key passed to `box-seal`,
+  which 0.4 could accept and seal a file nobody can open). A mistyped or edited key fails its check
+  value. Verifying keys lose the 0.4 curve byte; the key line names the curve.
+  **Migration:** raw key files from 0.4 and older are refused; convert each once with
+  `uacrypt key-import --kind <kind> --in old.key --out new.key` (kinds: `symmetric`,
+  `sign163-secret`/`-public`, `sign257-secret`/`-public`, `box256-secret`/`-public`,
+  `box512-secret`/`-public`). The lower-level `kalyna-*`/`strumok-crypt`/`kupyna-digest`
+  commands keep raw keys. Library API: new `KeyKind`, `CliError::KeyFileNotTyped`/
+  `KeyFileMalformed`/`KeyCheckMismatch`/`KeyKindMismatch`/`UnknownKeyKind`/`KeyImportCurveByte`;
+  `SignVerifyUnsupportedCurve` is gone.
 
 ### Security
 

@@ -66,8 +66,11 @@ public sealed class SecretStreamTests
 
         using var tempDir = new TempDirectory();
         using var key = SecretstreamKey.Generate();
-        var keyPath = Path.Combine(tempDir.Path, "key.bin");
-        File.WriteAllBytes(keyPath, key.ToBytes());
+        var rawKeyPath = Path.Combine(tempDir.Path, "key.bin");
+        File.WriteAllBytes(rawKeyPath, key.ToBytes());
+        // uacrypt reads typed key files (D-212): convert the raw key once.
+        var keyPath = Path.Combine(tempDir.Path, "key.txt");
+        RunUacrypt(uacrypt, "key-import", "--kind", "symmetric", "--in", rawKeyPath, "--out", keyPath);
         var plaintext = RandomNumberGenerator.GetBytes(8 * 1024 * 2 + 555);
         var plainPath = Path.Combine(tempDir.Path, "plain.bin");
         File.WriteAllBytes(plainPath, plaintext);

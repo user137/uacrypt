@@ -14,7 +14,7 @@ with `--` can be passed as `--in=--odd-name`. `uacrypt help` prints the overview
 | 0 | success | also `--help`, `help`, `--version` |
 | 1 | the input was checked and rejected | authentication failed, bad signature, truncated or malformed ciphertext, an empty or over-long message for a mode that forbids it, a wrong-length signature or tag |
 | 2 | usage error | unknown command or flag, missing/repeated flag, missing value, missing subcommand |
-| 3 | a file or key could not be used | missing or unreadable file, wrong-size or invalid key/nonce/IV/tweak, a `*-keygen --out` that already exists |
+| 3 | a file or key could not be used | missing or unreadable file, a key file of the wrong kind, damaged or not typed (see [Key files](#key-files)), wrong-size or invalid key/nonce/IV/tweak, a `*-keygen --out` that already exists |
 
 A script can therefore tell "this file was forged" (1) from "I typed the command wrong" (2).
 
@@ -37,9 +37,9 @@ whole-buffer `crypto_secretbox` (`docs/TASKS.md` T-37, `docs/DECISIONS.md` D-51/
 longer means a correspondingly large in-memory buffer. **Breaking wire-format change**: a file the
 prior `crypto_secretbox`-backed `encrypt` produced cannot be read by this `decrypt`, and vice versa
 - acceptable pre-1.0. `crypto_secretbox` itself is unchanged and still available as a library
-primitive for whole-message use, just no longer what this CLI command uses. `--key` is a raw
-32-byte file (`crypto_secretstream::Key`'s size) — `uacrypt keygen --out key.bin` generates one from
-the OS CSPRNG (`docs/TASKS.md` T-115). Like every `*-keygen` command, it refuses to overwrite an
+primitive for whole-message use, just no longer what this CLI command uses. `--key` is a typed
+key file ([Key files](#key-files)) holding a 32-byte `crypto_secretstream::Key` — `uacrypt keygen
+--out key.bin` generates one from the OS CSPRNG (`docs/TASKS.md` T-115). Like every `*-keygen` command, it refuses to overwrite an
 existing `--out`, so a repeated run cannot destroy a key, and on Unix it writes the key with mode
 `0600` (T-241). `encrypt` draws a fresh random header internally on every call
 and embeds it in `--out`; there is no `--nonce`/`--header` flag to supply or reuse by mistake.
@@ -64,8 +64,9 @@ uacrypt sign --key signing.key --in message.bin --out message.bin.sig
 uacrypt verify --key verifying.key --in message.bin --sig message.bin.sig
 ```
 
-`sign-keygen`'s output (`signing.key`, 21 raw bytes) is secret — keep it like any other private key.
-`sign-pubkey` derives the matching `verifying.key` (42 raw bytes) from it, safe to share or publish.
+`sign-keygen`'s output (`signing.key`) is secret — keep it like any other private key.
+`sign-pubkey` derives the matching `verifying.key` from it, safe to share or publish. Both are typed
+key files ([Key files](#key-files)); `verify` reads the curve from the verifying key's own line.
 `verify` prints `Signature OK (DSTU 4145, m=163)` (or `m=257`) to stderr, nothing to stdout, and
 exits `0` on a valid signature; on a tampered file, a tampered signature,
 or the wrong verifying key, it exits `1` with an error and writes nothing — it does not, and cannot,
@@ -111,8 +112,9 @@ uacrypt box-seal --key box.pub --in message.bin --out message.bin.box
 uacrypt box-open --key box.key --in message.bin.box --out message.bin
 ```
 
-`box-keygen`'s output (`box.key`, 32 raw bytes) is secret. `box-pubkey` derives the matching
-`box.pub` (32 raw bytes, the curve point's `x`-coordinate only) from it, safe to share or publish.
+`box-keygen`'s output (`box.key`) is secret. `box-pubkey` derives the matching `box.pub` (the
+curve point's `x`-coordinate only) from it, safe to share or publish. Both are typed key files
+([Key files](#key-files)), so `box-seal` refuses a secret key by name instead of sealing to it.
 `box-seal`/`box-open` are **not memory-bounded** yet — `--in` is read whole into memory, unlike
 `encrypt`/`decrypt`'s bounded-chunk streaming (see `crypto_box`'s own module doc for why).
 
@@ -254,15 +256,15 @@ was not yet so.
 
 | Command | File | Layout |
 |---|---|---|
-| `keygen` | symmetric key | 32 raw bytes |
+| `keygen` | symmetric key | a key line, see [Key files](#key-files) |
 | `encrypt` | encrypted file | `version (1) \|\| header (32)`, then one or more records, each `chunk tag (1) \|\| ciphertext length (4) \|\| ciphertext \|\| auth tag (16)` |
-| `box-keygen` / `box-pubkey` | secret / public key | 32 raw bytes each (the public key is the curve point's `x`-coordinate) |
+| `box-keygen` / `box-pubkey` | secret / public key | a key line each (the public key is the curve point's `x`-coordinate) |
 | `box-seal` | sealed file | `version (1) \|\| KEM ciphertext (128) \|\| header (32) \|\| ciphertext \|\| auth tag (16)`: 177 bytes of overhead |
-| `box-keygen512` / `box-pubkey512` | secret / public key | 64 raw bytes each |
+| `box-keygen512` / `box-pubkey512` | secret / public key | a key line each |
 | `box-seal512` | sealed file | `version (1) \|\| KEM ciphertext (256) \|\| header (32) \|\| ciphertext \|\| auth tag (16)`: 305 bytes of overhead |
-| `sign-keygen` / `sign-keygen257` | signing key | the scalar `d`, big-endian: 21 / 33 raw bytes |
-| `sign-pubkey` / `sign-pubkey257` | verifying key | `curve byte (1: 01 = m=163, 02 = m=257) \|\| x \|\| y`: 43 / 67 bytes |
-| `sign` / `sign257` | signature | 42 / 66 raw bytes; `verify` picks the curve from the verifying key's curve byte |
+| `sign-keygen` / `sign-keygen257` | signing key | a key line (the scalar `d`, big-endian) |
+| `sign-pubkey` / `sign-pubkey257` | verifying key | a key line (`x \|\| y`) |
+| `sign` / `sign257` | signature | 42 / 66 raw bytes; `verify` picks the curve from the verifying key's kind |
 | `hash` | digest | 32 raw bytes (Kupyna-256) |
 
 The `encrypt` record rules:
@@ -278,6 +280,54 @@ The `encrypt` record rules:
   8192, a missing final record (a truncated file) and any bytes after the final record;
 - every record's auth tag covers its position in the stream, its chunk tag and its exact length,
   so records cannot be reordered, dropped, cut or extended.
+
+### Key files
+
+Since 0.5.0 (`docs/TASKS.md` T-256, `docs/DECISIONS.md` D-212) every key a `uacrypt` command writes
+or reads (`keygen`, `sign-*`, `box-*`, `encrypt`/`decrypt`, `verify`) is one ASCII text line:
+
+```
+<prefix>:<key as lower-case hex>:<check as lower-case hex>
+```
+
+followed by one `\n` (a `\r\n` from a Windows editor is accepted too). Nothing else is allowed: no
+spaces, no second line, no byte-order mark, no upper-case hex. The prefix names the kind:
+
+| Kind (`key-import --kind`) | Prefix | Key bytes | Made by |
+|---|---|---|---|
+| `symmetric` | `UACRYPT-SECRET-SYMMETRIC` | 32 | `keygen` |
+| `sign163-secret` / `sign163-public` | `UACRYPT-SECRET-SIGN163` / `uacrypt-sign163-public` | 21 / 42 | `sign-keygen` / `sign-pubkey` |
+| `sign257-secret` / `sign257-public` | `UACRYPT-SECRET-SIGN257` / `uacrypt-sign257-public` | 33 / 66 | `sign-keygen257` / `sign-pubkey257` |
+| `box256-secret` / `box256-public` | `UACRYPT-SECRET-BOX256` / `uacrypt-box256-public` | 32 / 32 | `box-keygen` / `box-pubkey` |
+| `box512-secret` / `box512-public` | `UACRYPT-SECRET-BOX512` / `uacrypt-box512-public` | 64 / 64 | `box-keygen512` / `box-pubkey512` |
+
+Secret keys have an upper-case prefix so they are hard to mistake for something to share; public
+keys are short enough to paste into an email or chat. The check is the first 4 bytes of
+Kupyna-256 over `"uacrypt-key-v1" || 0x00 || prefix || 0x00 || key bytes`, so a mistyped or
+edited key is reported as damaged instead of becoming a key nobody holds. For example, the 32-byte
+key `00 01 .. 1f` as a box public key is:
+
+```
+uacrypt-box256-public:000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f:4614d28c
+```
+
+A command given a key of another kind stops before doing any work and names both kinds and the
+command that makes the right one (exit 3). A key file is at most a few hundred bytes; a larger
+file is refused without being read whole. The lower-level commands (`kalyna-*`, `strumok-crypt`,
+`kupyna-digest`) keep taking raw key bytes, for interop with other DSTU implementations.
+
+**Keys from uacrypt 0.4 or older** are raw bytes and are refused with a pointer to `key-import`,
+which converts one file:
+
+```
+uacrypt key-import --kind box256-secret --in old-box.key --out box.key
+```
+
+`--kind` is the only place a key's kind is ever typed by hand, so the raw bytes are checked exactly
+as the commands that use them check them (a verifying key must still start with the curve byte
+0.4 wrote: `01` for m=163, `02` for m=257). `key-import` prints the new file's check value and, for
+a secret key, the check value of its public key - compare it with the last field of the public key
+file you already shared. Like every keygen, it never overwrites a secret key file.
 
 **Raw, uncontained outputs.** `kalyna-gcm` writes the ciphertext, nonce and tag as separate raw
 files, and `kalyna-gmac` writes a bare tag. They carry no format version and no nonce binding

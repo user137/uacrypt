@@ -33,7 +33,9 @@ same "attacker who can supply malformed/adversarial input" scope extends to. In 
   byte, including framing/tag bytes, not just payload), and cross-format confusion (feeding one
   command's output to a different command that expects a similarly-shaped file, e.g. a `keygen` key
   where a `box-keygen` key is expected - same length, different meaning) must all fail cleanly, not
-  panic or silently produce wrong output.
+  panic or silently produce wrong output. For key files this is closed by construction since 0.5.0:
+  every key file names its kind and carries a check value, and a command refuses any other kind
+  by name before doing any work (T-256, `docs/DECISIONS.md` D-212).
 - **No partial output on failure**: a command that fails partway through must not leave a
   half-written `--out` behind for a later, unrelated read to pick up.
 - **`--in`==`--out` (in-place usage)** must not corrupt data even when a command's own

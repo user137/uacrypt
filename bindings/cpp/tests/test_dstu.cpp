@@ -481,7 +481,8 @@ void TestUacryptInterop() {
   namespace fs = std::filesystem;
   fs::path dir = fs::temp_directory_path() / "dstu_cpp_uacrypt_interop";
   fs::create_directories(dir);
-  fs::path keyPath = dir / "key.bin";
+  fs::path rawKeyPath = dir / "key.bin";
+  fs::path keyPath = dir / "key.txt";
   fs::path plainPath = dir / "plain.bin";
   fs::path cppEncPath = dir / "cpp.enc";
   fs::path cliEncPath = dir / "cli.enc";
@@ -490,9 +491,15 @@ void TestUacryptInterop() {
   auto key = dstu::SecretstreamKey::Generate();
   auto keyBytes = key.Bytes();
   {
-    std::ofstream f(keyPath, std::ios::binary);
+    std::ofstream f(rawKeyPath, std::ios::binary);
     f.write(reinterpret_cast<const char *>(keyBytes.data()), static_cast<std::streamsize>(keyBytes.size()));
   }
+  // uacrypt reads typed key files (D-212): convert the raw key once. key-import never replaces a
+  // secret key file, and this directory is reused across runs.
+  fs::remove(keyPath);
+  std::string importCmd = "\"" DSTU_UACRYPT_EXE "\" key-import --kind symmetric --in \"" + rawKeyPath.string() +
+                          "\" --out \"" + keyPath.string() + "\"";
+  CHECK(RunCommand(importCmd) == 0, "uacrypt.exe key-import should convert the raw key");
   const std::string plaintext = "real uacrypt.exe interop, both directions";
   {
     std::ofstream f(plainPath, std::ios::binary);

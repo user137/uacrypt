@@ -61,8 +61,23 @@ def test_interop_with_uacrypt_cli(tmp_path: Path) -> None:
     assert uacrypt is not None
 
     key = d.secretstream_keygen()
-    key_path = tmp_path / "key.bin"
-    key_path.write_bytes(key)
+    raw_key_path = tmp_path / "key.bin"
+    raw_key_path.write_bytes(key)
+    # uacrypt reads typed key files (D-212): convert the raw key once.
+    key_path = tmp_path / "key.txt"
+    subprocess.run(
+        [
+            str(uacrypt),
+            "key-import",
+            "--kind",
+            "symmetric",
+            "--in",
+            str(raw_key_path),
+            "--out",
+            str(key_path),
+        ],
+        check=True,
+    )
     plaintext = os.urandom(8 * 1024 * 2 + 555)
     plain_path = tmp_path / "plain.bin"
     plain_path.write_bytes(plaintext)

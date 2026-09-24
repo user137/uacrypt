@@ -458,11 +458,11 @@ fn hash_produces_32_byte_kupyna256_digest() {
     miri,
     ignore = "spawns the real uacrypt binary - Miri cannot run a subprocess"
 )]
-fn keygen_produces_32_byte_key() {
+fn keygen_produces_a_typed_32_byte_key() {
     let dir = TempDir::new("golden_keygen");
     let out = dir.file("key.bin");
     ok(&uacrypt(["keygen", "--out", out.to_str().unwrap()]));
-    assert_eq!(support::read_bytes(&out).len(), 32);
+    support::assert_key_line(&out, "UACRYPT-SECRET-SYMMETRIC", 32);
 }
 
 #[test]
@@ -516,7 +516,7 @@ fn sign_m163_full_flow_keygen_pubkey_sign_verify() {
     write_bytes(&msg, b"sign m=163 smoke test message");
 
     ok(&uacrypt(["sign-keygen", "--out", sk.to_str().unwrap()]));
-    assert_eq!(support::read_bytes(&sk).len(), 21);
+    support::assert_key_line(&sk, "UACRYPT-SECRET-SIGN163", 21);
 
     ok(&uacrypt([
         "sign-pubkey",
@@ -525,9 +525,7 @@ fn sign_m163_full_flow_keygen_pubkey_sign_verify() {
         "--out",
         vk.to_str().unwrap(),
     ]));
-    let vk_bytes = support::read_bytes(&vk);
-    assert_eq!(vk_bytes.len(), 43);
-    assert_eq!(vk_bytes[0], 0x01); // CurveId::M163 tag
+    support::assert_key_line(&vk, "uacrypt-sign163-public", 42);
 
     ok(&uacrypt([
         "sign",
@@ -567,7 +565,7 @@ fn sign_m257_full_flow_keygen_pubkey_sign_verify() {
     write_bytes(&msg, b"sign m=257 smoke test message");
 
     ok(&uacrypt(["sign-keygen257", "--out", sk.to_str().unwrap()]));
-    assert_eq!(support::read_bytes(&sk).len(), 33);
+    support::assert_key_line(&sk, "UACRYPT-SECRET-SIGN257", 33);
 
     ok(&uacrypt([
         "sign-pubkey257",
@@ -576,9 +574,7 @@ fn sign_m257_full_flow_keygen_pubkey_sign_verify() {
         "--out",
         vk.to_str().unwrap(),
     ]));
-    let vk_bytes = support::read_bytes(&vk);
-    assert_eq!(vk_bytes.len(), 67);
-    assert_eq!(vk_bytes[0], 0x02); // CurveId::M257 tag
+    support::assert_key_line(&vk, "uacrypt-sign257-public", 66);
 
     ok(&uacrypt([
         "sign257",
@@ -592,7 +588,7 @@ fn sign_m257_full_flow_keygen_pubkey_sign_verify() {
     assert_eq!(support::read_bytes(&sig).len(), 66);
 
     // The one command surface where both curves genuinely converge: `verify` alone is
-    // curve-tag-aware and handles an m=257 signature with no separate `verify257` command.
+    // key-kind-aware (the key line names its curve) and handles an m=257 signature with no separate `verify257` command.
     let r = uacrypt([
         "verify",
         "--key",
@@ -620,7 +616,7 @@ fn box_full_flow_keygen_pubkey_seal_open() {
     write_bytes(&msg, b"crypto_box smoke test message");
 
     ok(&uacrypt(["box-keygen", "--out", sk.to_str().unwrap()]));
-    assert_eq!(support::read_bytes(&sk).len(), 32);
+    support::assert_key_line(&sk, "UACRYPT-SECRET-BOX256", 32);
 
     ok(&uacrypt([
         "box-pubkey",
@@ -629,7 +625,7 @@ fn box_full_flow_keygen_pubkey_seal_open() {
         "--out",
         pk.to_str().unwrap(),
     ]));
-    assert_eq!(support::read_bytes(&pk).len(), 32);
+    support::assert_key_line(&pk, "uacrypt-box256-public", 32);
 
     ok(&uacrypt([
         "box-seal",
@@ -667,7 +663,7 @@ fn box512_full_flow_keygen_pubkey_seal_open() {
     write_bytes(&msg, b"crypto_box512 smoke test message");
 
     ok(&uacrypt(["box-keygen512", "--out", sk.to_str().unwrap()]));
-    assert_eq!(support::read_bytes(&sk).len(), 64);
+    support::assert_key_line(&sk, "UACRYPT-SECRET-BOX512", 64);
 
     ok(&uacrypt([
         "box-pubkey512",
@@ -676,7 +672,7 @@ fn box512_full_flow_keygen_pubkey_seal_open() {
         "--out",
         pk.to_str().unwrap(),
     ]));
-    assert_eq!(support::read_bytes(&pk).len(), 64);
+    support::assert_key_line(&pk, "uacrypt-box512-public", 64);
 
     ok(&uacrypt([
         "box-seal512",

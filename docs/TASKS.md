@@ -9004,7 +9004,9 @@ Breaking - 0.5.0 (B1 a):
   D-numbers, stale D-05 line removed, `--iterations` hidden from everyday help (still accepted,
   documented in `docs/PERFORMANCE.md`); `verify` prints `Signature OK (DSTU 4145, m=257)` to
   stderr, stdout stays empty.
-- [ ] **T-256** Typed key files (K1, K2; R1, R6). Plan mode + advisor (format decision). All 9
+- [x] **T-256** Typed key files (K1, K2; R1, R6). **Done 2026-09-24 on `ux-0.5.0`, D-212**:
+  `crates/uacrypt/src/keyfile.rs`, `key-import`, `smoke_typed_keys.rs`; the 8 binding interop tests
+  convert their raw key with `key-import`. Original scope: Plan mode + advisor (format decision). All 9
   kinds: symmetric, sign163/257 secret/public, box256/512 secret/public. Supersedes the verifying
   key curve byte (D-73 follow-up). Errors name both the found and the expected kind and the
   command that makes the right one. CRLF/trailing newline tolerated, nothing else. Secret key
@@ -9015,7 +9017,8 @@ Breaking - 0.5.0 (B1 a):
 - [ ] **T-257** Remove the curve twin commands (K3; R3). Depends on T-256. `sign`/`sign-pubkey`/
   `verify`/`box-pubkey`/`box-seal`/`box-open` read the curve from the key; 19 everyday commands ->
   14 (K3 a). Removed names return a usage error naming the replacement. D-entry answering D-73.
-  Update `xtask bench-compare` (`xtask/src/main.rs:875` uses `sign257`).
+  `xtask bench-compare` (`xtask/src/bench.rs`) makes its keys with the keygen commands; check it
+  still runs after the rename (`xtask/src/main.rs:875` is the C ABI example list, not a CLI call).
 - [ ] **T-258** Overwrite policy (O1; R2). One shared "open output" helper; `--force` never
   applies to key files.
 - [ ] **T-259** `hash` like `sha256sum`: prints `<hex>  <path>` to stdout; `--check <file>` verifies
@@ -9035,6 +9038,12 @@ Additive - after the breaking part:
   generated from the same command table the parser uses.
 - [ ] **T-265** Bounded-memory `box-seal`/`box-open` (today they read `--in` whole). Needs a
   multi-chunk `crypto_box` stream API in `dstu-core` -> the new-primitive binding gate applies.
+
+Release:
+- [ ] **T-267** After the 0.5.0 release (owner request 2026-09-24): update the site - the
+  `gh-pages` `index.html` (version marker that `docs-check` reads, and its CLI examples: typed key
+  files, `key-import`, the exit codes) - and check the published book (`docs/CLI.md` "Key files")
+  on the live site.
 
 Every task: test-first, all four categories (happy path, security/boundary, misuse, error path);
 update `docs/CLI.md`, README quick start, both help texts, CHANGELOG `[Unreleased]`; docs-check.

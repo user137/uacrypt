@@ -32,7 +32,7 @@ uacrypt box-open --key box.key --in file.bin.box --out file.bin
 
 `encrypt`/`decrypt` have no message-length cap and stream `--in`/`--out` in fixed-size chunks —
 built over `dstu_core::crypto_secretstream`, a genuinely chunked AEAD construction, not a
-whole-buffer one. `--key` is a raw 32-byte file; `encrypt` draws a fresh random header internally
+whole-buffer one. `--key` is a typed key file made by `uacrypt keygen`; `encrypt` draws a fresh random header internally
 on every call and embeds it in `--out` — there is no `--nonce`/`--header` flag to supply or reuse
 by mistake. `hash` streams `--in` from disk in fixed-size chunks regardless of size, fixed to
 Kupyna-256 (32-byte digest, no `--variant` choice).
@@ -40,10 +40,9 @@ Kupyna-256 (32-byte digest, no `--variant` choice).
 `sign`/`verify` are the DSTU 4145 digital-signature equivalent, built over `dstu_core::crypto_sign`
 (deterministic nonce — no RNG involved in signing itself, only in `sign-keygen`). Both stream
 `--in` through Kupyna-256 in fixed-size chunks before signing/checking the digest, so file size is
-not a memory concern. `--key` for `sign` is a raw 21-byte private scalar (`sign-keygen`'s output);
-`--key` for `verify` is a raw 42-byte uncompressed public point (`sign-pubkey`'s output, safe to
-share); the signature itself is a raw 42-byte file. `verify` prints nothing and exits 0 on a valid
-signature, or exits with an error (nothing written) if the message, signature, or key don't match.
+not a memory concern. `--key` for `sign` is the signing key `sign-keygen` wrote; `--key` for
+`verify` is the verifying key `sign-pubkey` derived from it (safe to share); the signature itself is
+a raw 42-byte file. `verify` prints `Signature OK` to stderr and exits 0 on a valid signature, or exits with an error (nothing written) if the message, signature, or key don't match.
 
 Lower-level, `hazmat`-scoped commands also exist for anyone who wants direct control instead of the
 misuse-resistant trio above:
@@ -66,8 +65,10 @@ public key. `l(p)=512` siblings (`box-keygen512`/`box-pubkey512`/`box-seal512`/`
 exist — see `docs/CLI.md` in the project repository for the full command reference, including
 these and the remaining `hazmat`-scoped Kalyna modes (GCM/CMAC/GMAC/KW/XTS).
 
-`uacrypt keygen --out key.bin` generates a fresh 32-byte key from the OS CSPRNG, in the exact
-format `encrypt`/`decrypt --key` expect.
+`uacrypt keygen --out key.bin` generates a fresh 32-byte key from the OS CSPRNG. Since 0.5.0 every
+key file is one text line that names its kind (`UACRYPT-SECRET-SYMMETRIC:<hex>:<check>`), so a
+command given the wrong kind of key refuses it by name; `uacrypt key-import` converts a raw key file
+from 0.4 or older. See `docs/CLI.md` "Key files" in the project repository.
 
 ## Status and safety
 

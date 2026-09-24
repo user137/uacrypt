@@ -440,7 +440,7 @@ fn secretstream_decrypt_tampered_ciphertext_does_not_leak_key() {
     let pt = dir.file("pt.bin");
     let ct = dir.file("ct.bin");
     let rt = dir.file("rt.bin");
-    write_bytes(&key, &SECRET);
+    support::write_key(&key, "UACRYPT-SECRET-SYMMETRIC", &SECRET);
     write_bytes(&pt, b"encrypt/decrypt no-secret-leak test plaintext");
 
     assert!(uacrypt([

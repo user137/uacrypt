@@ -85,8 +85,11 @@ final class SecretstreamTest extends TestCase
         mkdir($tmpDir);
 
         try {
-            $keyFile = "{$tmpDir}/key.bin";
-            file_put_contents($keyFile, $key);
+            $rawKeyFile = "{$tmpDir}/key.bin";
+            file_put_contents($rawKeyFile, $key);
+            // uacrypt reads typed key files (D-212): convert the raw key once.
+            $keyFile = "{$tmpDir}/key.txt";
+            $this->runUacrypt($uacrypt, ['key-import', '--kind', 'symmetric', '--in', $rawKeyFile, '--out', $keyFile]);
 
             $plainFile = "{$tmpDir}/plain.bin";
             file_put_contents($plainFile, $plaintext);
