@@ -149,6 +149,25 @@ pub enum CliError {
     },
     /// An output names the same file as another output or a key input (T-258, D-214).
     SameOutputPath(&'static str, &'static str),
+    /// Neither of two alternative flags was given (`hash --in` / `--check`, T-259).
+    MissingOneOf(&'static str, &'static str),
+    /// Two mutually exclusive flags were both given.
+    ExclusiveFlags(&'static str, &'static str),
+    /// `hash --in` names a path that cannot be printed as one check-file line (D-215).
+    HashPathUnprintable(PathBuf),
+    HashCheckTooLarge {
+        path: PathBuf,
+        limit: usize,
+    },
+    HashCheckEmpty(PathBuf),
+    HashCheckMalformed {
+        path: PathBuf,
+        line: usize,
+    },
+    HashCheckFailed {
+        failed: usize,
+        total: usize,
+    },
     SecretstreamTruncated,
     SecretstreamVerifyFailed,
     SecretstreamUnknownTag,
@@ -268,6 +287,35 @@ impl fmt::Display for CliError {
             CliError::SameOutputPath(first, second) => {
                 write!(f, "{first} and {second} name the same file")
             }
+            CliError::MissingOneOf(one, other) => {
+                write!(f, "missing required flag: --{one} (or --{other})")
+            }
+            CliError::ExclusiveFlags(one, other) => {
+                write!(f, "--{one} and --{other} cannot be used together")
+            }
+            CliError::HashPathUnprintable(path) => write!(
+                f,
+                "{}: a path that is not UTF-8 or contains a control character cannot be \
+                 written as a checksum line",
+                path.display()
+            ),
+            CliError::HashCheckTooLarge { path, limit } => write!(
+                f,
+                "{}: checksum file is larger than {limit} bytes",
+                path.display()
+            ),
+            CliError::HashCheckEmpty(path) => {
+                write!(f, "{}: no checksum lines", path.display())
+            }
+            CliError::HashCheckMalformed { path, line } => write!(
+                f,
+                "{}: line {line} is not `<64 hex digits><two spaces><path>`; nothing was checked",
+                path.display()
+            ),
+            CliError::HashCheckFailed { failed, total } => write!(
+                f,
+                "{failed} of {total} listed files did NOT match or could not be read"
+            ),
             CliError::WrongLength {
                 what,
                 expected,
@@ -442,7 +490,10 @@ impl CliError {
             | CliError::UnexpectedArgument(_)
             | CliError::InvalidIterations(_)
             | CliError::UnknownKeyKind { .. }
-            | CliError::SameOutputPath(..) => USAGE,
+            | CliError::SameOutputPath(..)
+            | CliError::MissingOneOf(..)
+            | CliError::ExclusiveFlags(..)
+            | CliError::HashPathUnprintable(_) => USAGE,
             CliError::Io { .. }
             | CliError::KeyFileExists(_)
             | CliError::OutputExists { .. }
@@ -487,7 +538,11 @@ impl CliError {
             | CliError::SignVerifyFailed
             | CliError::BoxOpenTruncated(_)
             | CliError::BoxOpenFailed(_)
-            | CliError::BoxOpenUnsupportedVersion => REJECTED,
+            | CliError::BoxOpenUnsupportedVersion
+            | CliError::HashCheckTooLarge { .. }
+            | CliError::HashCheckEmpty(_)
+            | CliError::HashCheckMalformed { .. }
+            | CliError::HashCheckFailed { .. } => REJECTED,
         }
     }
 }
@@ -2456,49 +2511,192 @@ pub fn run_digest_command(args: &DigestArgs) -> Result<(), CliError> {
     Ok(())
 }
 
+/// `hash`'s two modes (T-259, `docs/DECISIONS.md` D-215).
 #[derive(Debug, PartialEq, Eq)]
-pub struct HashArgs {
-    pub in_path: PathBuf,
-    pub out_path: PathBuf,
-    /// Replace an existing output (T-258, D-214).
-    pub force: bool,
+pub enum HashArgs {
+    /// `--in <path>`: print `<hex>  <path>` to stdout.
+    File(PathBuf),
+    /// `--check <file>`: verify every `<hex>  <path>` line of a file.
+    Check(PathBuf),
 }
 
-/// Parses `hash`'s flags (`--in`/`--out`, both required). No `--variant` (fixed to Kupyna-256, see
-/// [`run_hash_command`]'s doc comment) and no `--iterations` (that's `kupyna-digest`'s D-34
-/// benchmark-only flag, not something a real user of `hash` needs).
+/// Parses `hash`'s flags: exactly one of `--in`/`--check`. No `--variant` (fixed to Kupyna-256,
+/// see [`run_hash_command`]) and no `--out`: the digest goes to stdout.
 ///
 /// # Errors
 ///
-/// Returns [`CliError::MissingFlag`] or [`CliError::UnknownFlag`].
+/// Returns [`CliError::MissingOneOf`], [`CliError::ExclusiveFlags`] or another usage error.
 pub fn parse_hash_args(args: &[String]) -> Result<HashArgs, CliError> {
-    let scanner = ArgScanner::scan(args, &["--in", "--out"], &["--force"])?;
-    Ok(HashArgs {
-        in_path: scanner.path("--in")?,
-        out_path: scanner.path("--out")?,
-        force: scanner.bool_flag("--force"),
+    let scanner = ArgScanner::scan(args, &["--in", "--check"], &[])?;
+    match (scanner.path_opt("--in"), scanner.path_opt("--check")) {
+        (Some(path), None) => Ok(HashArgs::File(path)),
+        (None, Some(list)) => Ok(HashArgs::Check(list)),
+        (Some(_), Some(_)) => Err(CliError::ExclusiveFlags("in", "check")),
+        (None, None) => Err(CliError::MissingOneOf("in", "check")),
+    }
+}
+
+/// Upper bound on a `hash --check` file: it is untrusted input and is read whole.
+const HASH_CHECK_LIST_MAX_BYTES: usize = 16 * 1024 * 1024;
+
+/// One `<hex>  <path>` line of a `hash --check` file.
+#[derive(Debug, PartialEq, Eq)]
+struct CheckEntry {
+    digest: [u8; 32],
+    path: String,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum CheckListError {
+    Empty,
+    /// 1-based line number.
+    Malformed(usize),
+}
+
+/// A path that round-trips through one checksum line and cannot move the terminal: UTF-8, no
+/// control character (a newline would split the line, an escape sequence would be echoed).
+fn is_printable_path(path: &str) -> bool {
+    !path.is_empty() && !path.chars().any(char::is_control)
+}
+
+/// Parses a whole check file: one `<64 hex digits>  <path>` per line, upper- or lower-case hex, an
+/// optional `\r` before each `\n`, the last `\n` optional. Anything else rejects the whole file.
+fn parse_check_list(text: &[u8]) -> Result<Vec<CheckEntry>, CheckListError> {
+    let text = text.strip_suffix(b"\n").unwrap_or(text);
+    if text.is_empty() {
+        return Err(CheckListError::Empty);
+    }
+    text.split(|&b| b == b'\n')
+        .enumerate()
+        .map(|(index, line)| {
+            parse_check_line(line.strip_suffix(b"\r").unwrap_or(line))
+                .ok_or(CheckListError::Malformed(index + 1))
+        })
+        .collect()
+}
+
+fn parse_check_line(line: &[u8]) -> Option<CheckEntry> {
+    let (hex, rest) = line.split_at_checked(64)?;
+    let path = std::str::from_utf8(rest.strip_prefix(b"  ")?).ok()?;
+    if !is_printable_path(path) {
+        return None;
+    }
+    let mut lower = [0u8; 64];
+    for (out, c) in lower.iter_mut().zip(hex) {
+        *out = c.to_ascii_lowercase();
+    }
+    let mut digest = [0u8; 32];
+    (keyfile::decode_hex(&lower, &mut digest) == 1).then(|| CheckEntry {
+        digest,
+        path: path.to_string(),
     })
 }
 
-/// Runs `hash`: hashes `--in` with Kupyna-256, writes the 32-byte digest to `--out`. Fixed to
-/// Kupyna-256 - no `--variant` knob (D-47's "no knob when a safe default exists"; `crypto_sign`
-/// already established Kupyna-256 as this project's own default message-hash choice, `docs/DECISIONS.md`
-/// D-46). Delegates to [`run_digest_command`] with `iterations: 1` rather than duplicating its
-/// streaming loop - this reuses `kupyna-digest`'s already-tested, genuinely-streaming-from-disk
-/// (D-42, 8 KiB chunks) implementation directly, so `hash` inherits its memory-bounded property
-/// without new code to verify it. Unlike `encrypt`/`decrypt`, `hash` has no message-length cap.
+fn hex_lower(bytes: &[u8]) -> String {
+    use std::fmt::Write as _;
+
+    bytes
+        .iter()
+        .fold(String::with_capacity(2 * bytes.len()), |mut out, b| {
+            let _ = write!(out, "{b:02x}");
+            out
+        })
+}
+
+fn stdout_error(e: &std::io::Error) -> CliError {
+    CliError::Io {
+        path: PathBuf::from("<stdout>"),
+        message: e.to_string(),
+    }
+}
+
+/// Runs `hash`. `--in`: prints `<hex>  <path>` (the path as given) to stdout, like `sha256sum`.
+/// `--check`: reads such lines, hashes each listed file (relative paths against the working
+/// directory) and prints `<path>: OK` or `<path>: FAILED`. Fixed to Kupyna-256 - no `--variant`
+/// knob (D-47; Kupyna-256 is this project's default message hash, D-46). Files are streamed in
+/// bounded chunks via [`hash_file_streamed`] (D-42), so there is no size limit.
 ///
 /// # Errors
 ///
-/// Returns [`CliError::Io`] if `--in` can't be read or `--out` can't be written.
+/// Returns [`CliError::Io`] if `--in`, the check file or stdout fails,
+/// [`CliError::HashPathUnprintable`] for a path that cannot be a checksum line,
+/// [`CliError::HashCheckTooLarge`]/[`CliError::HashCheckEmpty`]/[`CliError::HashCheckMalformed`]
+/// for a bad check file (nothing is hashed then), and [`CliError::HashCheckFailed`] if any listed
+/// file does not match or cannot be read.
 pub fn run_hash_command(args: &HashArgs) -> Result<(), CliError> {
-    run_digest_command(&DigestArgs {
-        variant: HashBits::B256,
-        in_path: args.in_path.clone(),
-        out_path: args.out_path.clone(),
-        iterations: 1,
-        force: args.force,
-    })
+    use std::io::Write as _;
+
+    match args {
+        HashArgs::File(path) => {
+            let shown = path
+                .to_str()
+                .filter(|p| is_printable_path(p))
+                .ok_or_else(|| CliError::HashPathUnprintable(path.clone()))?;
+            let digest = hash_file_streamed(path)?;
+            let mut out = std::io::stdout().lock();
+            writeln!(out, "{}  {shown}", hex_lower(&digest))
+                .and_then(|()| out.flush())
+                .map_err(|e| stdout_error(&e))
+        }
+        HashArgs::Check(list) => run_hash_check(list),
+    }
+}
+
+fn read_check_list(list: &PathBuf) -> Result<Vec<u8>, CliError> {
+    use std::io::Read;
+
+    let io_error = |e: std::io::Error| CliError::Io {
+        path: list.clone(),
+        message: e.to_string(),
+    };
+    let mut text = Vec::new();
+    std::fs::File::open(list)
+        .map_err(io_error)?
+        .take(HASH_CHECK_LIST_MAX_BYTES as u64 + 1)
+        .read_to_end(&mut text)
+        .map_err(io_error)?;
+    if text.len() > HASH_CHECK_LIST_MAX_BYTES {
+        return Err(CliError::HashCheckTooLarge {
+            path: list.clone(),
+            limit: HASH_CHECK_LIST_MAX_BYTES,
+        });
+    }
+    Ok(text)
+}
+
+fn run_hash_check(list: &PathBuf) -> Result<(), CliError> {
+    use std::io::Write as _;
+
+    let entries = parse_check_list(&read_check_list(list)?).map_err(|e| match e {
+        CheckListError::Empty => CliError::HashCheckEmpty(list.clone()),
+        CheckListError::Malformed(line) => CliError::HashCheckMalformed {
+            path: list.clone(),
+            line,
+        },
+    })?;
+    let mut out = std::io::stdout().lock();
+    let mut failed = 0;
+    for entry in &entries {
+        let status = match hash_file_streamed(&PathBuf::from(&entry.path)) {
+            // A file digest is public: no constant-time comparison needed.
+            Ok(digest) if digest == entry.digest => "OK".to_string(),
+            Ok(_) => "FAILED".to_string(),
+            Err(CliError::Io { message, .. }) => format!("FAILED (cannot read: {message})"),
+            Err(e) => format!("FAILED (cannot read: {e})"),
+        };
+        if status != "OK" {
+            failed += 1;
+        }
+        writeln!(out, "{}: {status}", entry.path).map_err(|e| stdout_error(&e))?;
+    }
+    out.flush().map_err(|e| stdout_error(&e))?;
+    if failed > 0 {
+        return Err(CliError::HashCheckFailed {
+            failed,
+            total: entries.len(),
+        });
+    }
+    Ok(())
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -3700,7 +3898,7 @@ EVERYDAY COMMANDS:
     keygen          Generate a fresh random key for `encrypt`/`decrypt`.
     encrypt         Encrypt a file of any size with a `keygen` key (authenticated, streamed).
     decrypt         Decrypt a file produced by `encrypt`.
-    hash            Compute a Kupyna-256 digest of a file of any size.
+    hash            Print a file's Kupyna-256 digest, or --check a list of them.
     sign-keygen     Generate a fresh signing key (DSTU 4145, m=163).
     sign-keygen257  Generate a fresh signing key (DSTU 4145, m=257, what Diia signatures use).
     sign-pubkey     Derive the matching verifying key from a signing key, for `verify`.
@@ -3741,7 +3939,8 @@ them.
 
 EXIT STATUS:
     0   success
-    1   the input was checked and rejected (authentication failed, bad signature, malformed data)
+    1   the input was checked and rejected (authentication failed, bad signature, malformed data,
+        a `hash --check` mismatch)
     2   usage error (unknown command or flag, a flag missing, repeated or without a value)
     3   a file or key could not be used (missing, unreadable, wrong size, already exists)
 
@@ -3825,22 +4024,33 @@ Notes:
 ";
 
 const HASH_HELP: &str = "\
-uacrypt hash - compute a Kupyna-256 digest of a file of any size.
+uacrypt hash - print a file's Kupyna-256 digest, or check a list of them (like sha256sum).
 
-Fixed to Kupyna-256 (no --variant knob) - for the other Kupyna variant or benchmarking, see
-`kupyna-digest --help`. Streams the input from disk in bounded chunks, so file size is not a
-memory concern.
+Fixed to Kupyna-256 (no --variant knob) - for the other Kupyna variant, a binary digest file or
+benchmarking, see `kupyna-digest --help`. Streams each file from disk in bounded chunks, so file
+size is not a memory concern.
 
 USAGE:
-    uacrypt hash --in <path> --out <path> [--force]
+    uacrypt hash --in <path>
+    uacrypt hash --check <file>
 
 FLAGS:
-    --in <path>     file to hash
-    --out <path>    where to write the 32-byte digest
-    --force         replace --out if it already exists (without it: refused)
+    --in <path>      file to hash; prints `<64 hex digits>  <path>` to stdout
+    --check <file>   read such lines and hash each listed file; prints `<path>: OK` or
+                     `<path>: FAILED` and exits 1 if any file does not match or cannot be read
 
 EXAMPLE:
-    uacrypt hash --in report.pdf --out report.pdf.kupyna256
+    uacrypt hash --in report.pdf > report.pdf.kupyna256
+    uacrypt hash --check report.pdf.kupyna256
+
+Notes:
+    - The check file is validated whole before anything is hashed: every line must be exactly
+      `<64 hex digits><two spaces><path>` (CRLF and upper-case hex are accepted), at most 16 MiB.
+    - Relative paths in the check file are resolved against the current directory, not the check
+      file's directory - run --check from where you ran `hash`.
+    - The digests are Kupyna-256, not SHA-256: a `sha256sum` file checks as FAILED on every line.
+    - A path that is not UTF-8 or contains a control character (a newline, a terminal escape) is
+      refused: it could not be read back as one line.
 ";
 
 const SIGN_KEYGEN_HELP: &str = "\
@@ -4893,31 +5103,104 @@ mod tests {
 
     #[test]
     fn parse_hash_args_happy_path() {
-        let args = vec![
-            "--in".to_string(),
-            "msg.bin".to_string(),
-            "--out".to_string(),
-            "digest.bin".to_string(),
-        ];
+        let args = |a: &[&str]| a.iter().map(|s| (*s).to_string()).collect::<Vec<_>>();
         assert_eq!(
-            parse_hash_args(&args),
-            Ok(HashArgs {
-                in_path: PathBuf::from("msg.bin"),
-                out_path: PathBuf::from("digest.bin"),
-                force: false,
-            })
+            parse_hash_args(&args(&["--in", "msg.bin"])),
+            Ok(HashArgs::File(PathBuf::from("msg.bin")))
+        );
+        assert_eq!(
+            parse_hash_args(&args(&["--check=SUMS"])),
+            Ok(HashArgs::Check(PathBuf::from("SUMS")))
         );
     }
 
     #[test]
-    fn parse_hash_args_requires_in_and_out() {
+    fn parse_hash_args_requires_exactly_one_of_in_and_check() {
+        let args = |a: &[&str]| a.iter().map(|s| (*s).to_string()).collect::<Vec<_>>();
         assert_eq!(
-            parse_hash_args(&["--out".to_string(), "digest.bin".to_string()]),
-            Err(CliError::MissingFlag("in"))
+            parse_hash_args(&[]),
+            Err(CliError::MissingOneOf("in", "check"))
         );
         assert_eq!(
-            parse_hash_args(&["--in".to_string(), "msg.bin".to_string()]),
-            Err(CliError::MissingFlag("out"))
+            parse_hash_args(&args(&["--in", "a", "--check", "b"])),
+            Err(CliError::ExclusiveFlags("in", "check"))
+        );
+        assert_eq!(
+            parse_hash_args(&args(&["--in", "a", "--out", "b"])),
+            Err(CliError::UnknownFlag {
+                flag: "--out".to_string(),
+                suggestion: None,
+            })
+        );
+    }
+
+    fn check_line(digest: &[u8], path: &str) -> String {
+        format!("{}  {path}", hex_lower(digest))
+    }
+
+    #[test]
+    fn parse_check_list_accepts_the_hash_output_format() {
+        let a = Kupyna256::digest(b"a");
+        let b = Kupyna256::digest(b"b");
+        let text = format!("{}\n{}\n", check_line(&a, "x"), check_line(&b, "dir/y z"));
+        assert_eq!(
+            parse_check_list(text.as_bytes()),
+            Ok(vec![
+                CheckEntry {
+                    digest: a,
+                    path: "x".to_string()
+                },
+                CheckEntry {
+                    digest: b,
+                    path: "dir/y z".to_string()
+                },
+            ])
+        );
+        let crlf_upper = format!(
+            "{}\r\n",
+            check_line(&a, "x").to_uppercase().replace("  X", "  x")
+        );
+        assert_eq!(
+            parse_check_list(crlf_upper.as_bytes()).map(|v| v.len()),
+            Ok(1)
+        );
+        assert_eq!(
+            parse_check_list(check_line(&a, "x").as_bytes()).map(|v| v.len()),
+            Ok(1)
+        );
+    }
+
+    #[test]
+    fn parse_check_list_rejects_everything_else_with_the_line_number() {
+        let good = check_line(&Kupyna256::digest(b"a"), "x");
+        let hex = &good[..64];
+        assert_eq!(parse_check_list(b""), Err(CheckListError::Empty));
+        assert_eq!(parse_check_list(b"\n"), Err(CheckListError::Empty));
+        for bad in [
+            String::new(),
+            format!("{hex} x"),
+            format!("{hex} *x"),
+            format!("{hex}  "),
+            format!("{}  x", &hex[..63]),
+            format!("{hex}0  x"),
+            format!("{}g  x", &hex[..63]),
+            format!("{hex}  x\ty"),
+            format!("{hex}  x\u{7f}"),
+            format!("{hex}  x\u{9b}"),
+            format!("{hex}  x\r\r"),
+        ] {
+            let text = format!("{good}\n{bad}\n{good}\n");
+            assert_eq!(
+                parse_check_list(text.as_bytes()),
+                Err(CheckListError::Malformed(2)),
+                "{bad:?}"
+            );
+        }
+        let mut not_utf8 = format!("{hex}  x").into_bytes();
+        not_utf8.push(0xff);
+        assert_eq!(
+            parse_check_list(&not_utf8),
+            Err(CheckListError::Malformed(1))
         );
     }
 
@@ -5098,50 +5381,48 @@ mod tests {
         );
     }
 
-    /// `hash` is fixed to Kupyna-256 (no `--variant` knob) and must genuinely stream a multi-chunk,
-    /// non-chunk-aligned message from disk - same shape as
-    /// `run_digest_command_streams_multi_chunk_input_correctly`, but through `run_hash_command`'s own
-    /// dispatch (it delegates to `run_digest_command` internally, this confirms the delegation is
-    /// wired correctly, not just that `run_digest_command` itself works).
+    /// Writes a one-line check file for `message` (stored at `msg.bin`) with `digest` listed.
+    fn write_check_list(dir: &TempDir, message: &[u8], digest: &[u8]) -> PathBuf {
+        std::fs::write(dir.file("msg.bin"), message).expect("write message");
+        let path = dir.file("msg.bin");
+        let line = check_line(digest, path.to_str().expect("valid utf-8 path"));
+        std::fs::write(dir.file("SUMS"), format!("{line}\n")).expect("write check list");
+        dir.file("SUMS")
+    }
+
+    /// `hash` is fixed to Kupyna-256 and must genuinely stream a multi-chunk, non-chunk-aligned
+    /// message from disk: the check passes against `dstu-core`'s one-shot digest and fails against
+    /// any other digest.
     #[test]
     fn run_hash_command_matches_dstu_core_kupyna256_directly() {
         let dir = TempDir::new("hash_multichunk");
-        let len = DIGEST_STREAM_CHUNK_BYTES * 2 + 513;
+        let len = SIGN_STREAM_CHUNK_BYTES * 2 + 513;
         let message: Vec<u8> = (0..len).map(|i| (i as u8).wrapping_mul(53)).collect();
-        std::fs::write(dir.file("msg.bin"), &message).expect("write message");
+        let list = write_check_list(&dir, &message, &Kupyna256::digest(&message));
+        run_hash_command(&HashArgs::Check(list)).expect("the listed digest must match");
 
-        let args = HashArgs {
-            in_path: dir.file("msg.bin"),
-            out_path: dir.file("digest.bin"),
-            force: false,
-        };
-        run_hash_command(&args).expect("hash run should succeed");
+        let mut wrong = Kupyna256::digest(&message);
+        wrong[31] ^= 1;
+        let list = write_check_list(&dir, &message, &wrong);
         assert_eq!(
-            std::fs::read(dir.file("digest.bin")).expect("read"),
-            Kupyna256::digest(&message).to_vec()
+            run_hash_command(&HashArgs::Check(list)),
+            Err(CliError::HashCheckFailed {
+                failed: 1,
+                total: 1
+            })
         );
     }
 
     #[test]
     fn run_dispatches_hash_command_correctly() {
         let dir = TempDir::new("hash_dispatch");
-        std::fs::write(dir.file("msg.bin"), b"dispatch me").expect("write message");
-
-        let args: Vec<String> = [
-            "hash",
-            "--in",
-            dir.file("msg.bin").to_str().expect("valid utf-8 path"),
-            "--out",
-            dir.file("digest.bin").to_str().expect("valid utf-8 path"),
-        ]
-        .into_iter()
-        .map(String::from)
-        .collect();
+        let list = write_check_list(&dir, b"dispatch me", &Kupyna256::digest(b"dispatch me"));
+        let list = list.to_str().expect("valid utf-8 path");
+        let args: Vec<String> = ["hash", "--check", list]
+            .into_iter()
+            .map(String::from)
+            .collect();
         run(&args).expect("hash dispatch should succeed");
-        assert_eq!(
-            std::fs::read(dir.file("digest.bin")).expect("read"),
-            Kupyna256::digest(b"dispatch me").to_vec()
-        );
     }
 
     #[test]
@@ -5766,20 +6047,8 @@ mod tests {
     #[test]
     fn run_hash_command_empty_file_produces_the_empty_input_digest() {
         let dir = TempDir::new("hash_empty");
-        std::fs::write(dir.file("empty.bin"), []).expect("write empty file");
-
-        let args = HashArgs {
-            in_path: dir.file("empty.bin"),
-            out_path: dir.file("digest.bin"),
-            force: false,
-        };
-        run_hash_command(&args).expect("hashing an empty file must succeed");
-
-        let digest = std::fs::read(dir.file("digest.bin")).expect("read digest");
-        assert_eq!(
-            digest,
-            dstu_core::hazmat::kupyna::Kupyna256::digest(&[]).to_vec()
-        );
+        let list = write_check_list(&dir, &[], &Kupyna256::digest(&[]));
+        run_hash_command(&HashArgs::Check(list)).expect("hashing an empty file must succeed");
     }
 
     /// "Fool" test - `--iterations 0` (a plausible off-by-one from a user expecting "0 extra

@@ -89,8 +89,8 @@ const CASES: &[Case] = &[
     },
     Case {
         name: "hash",
-        args: &["hash", "--in", "i", "--out", "o"],
-        required: &["--in", "--out"],
+        args: &["hash", "--in", "i"],
+        required: &["--in"],
     },
     Case {
         name: "kupyna-digest",
@@ -402,7 +402,7 @@ fn missing_required_flag_matrix() {
 fn unknown_flag_is_rejected_across_representative_commands() {
     let reps: &[&[&str]] = &[
         &["keygen", "--out", "o", "--bogus", "x"],
-        &["hash", "--in", "i", "--out", "o", "--bogus"],
+        &["hash", "--in", "i", "--bogus"],
         &[
             "verify", "--key", "k", "--in", "i", "--sig", "s", "--curve", "m163",
         ],
@@ -570,7 +570,6 @@ fn directory_as_out_is_rejected_across_representative_commands() {
 
     let cases: &[&[&str]] = &[
         &["keygen", "--out", out_str],
-        &["hash", "--in", input.to_str().unwrap(), "--out", out_str],
         &[
             "encrypt",
             "--key",

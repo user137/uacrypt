@@ -14145,3 +14145,66 @@ now pass `--force` and the unit one also asserts the refusal. `xtask bench-compa
 prompt like gpg (breaks scripts and pipes). A pre-check followed by a plain rename (a
 check-then-act race). Hard-link publishing (FAT/exFAT). `--force` for public keys (a mistyped
 `--out` would then still destroy a secret key).
+
+## D-215: T-259 - `hash` prints and checks `sha256sum`-style lines (0.5.0)
+
+**Context.** Up to 0.4, `uacrypt hash --in f --out d` wrote a 32-byte binary Kupyna-256 digest
+file: no hex on the terminal, nothing to compare it with. T-259 (owner-approved in the 0.5.0
+batch) makes it work like `sha256sum`. The line format is GNU's text-mode line, so the only
+decisions were how strict to be and what the exit codes are.
+
+**Decision 1 - output.** `hash --in <path>` prints `<64 lower-case hex>  <path>\n` to stdout,
+the path exactly as given, and writes no file. `--out`/`--force` are gone from `hash` (a plain
+unknown-flag usage error; the CHANGELOG migration note points at `> file` and at
+`kupyna-digest --variant 256 --out` for the old raw digest). One `--in` per call: T-255 made a
+repeated flag an error (R4), and a shell loop with `>>` covers many files. Stdout is written
+through a locked handle with `writeln!` and an explicit flush, both mapped to `CliError::Io`
+(`<stdout>`), so a closed pipe is exit 3, never a `println!` panic (exit 101). Digests come from
+the same bounded-memory `hash_file_streamed` that `sign`/`verify` use (D-42); `hash` no longer
+goes through `run_digest_command`.
+
+**Decision 2 - exactly one of `--in`/`--check`.** Neither is `CliError::MissingOneOf` ("missing
+required flag: --in (or --check)"), both is `ExclusiveFlags`; both exit 2.
+
+**Decision 3 - the check file is untrusted input.** It is read whole with a 16 MiB cap
+(`HASH_CHECK_LIST_MAX_BYTES`; about 150k lines of 100-character paths) - `HashCheckTooLarge`
+above it. It is parsed completely before anything is hashed, so a malformed file prints no
+partial `OK` lines. Grammar, per line: exactly 64 hex digits (either case), exactly two spaces, a
+non-empty UTF-8 path with no control character (`char::is_control`: C0, DEL, C1). One `\r`
+before each `\n` and a missing final `\n` are accepted; a blank line anywhere, GNU's ` *` binary
+marker, BSD `SHA256 (f) = ...` tags and GNU's `\`-escaped names are not. Any violation is
+`HashCheckMalformed { line }` (1-based), zero lines is `HashCheckEmpty`. Rejecting control
+characters has two reasons: a newline in a path cannot round-trip through a line format, and a
+hostile check file could otherwise make `--check` echo terminal escape sequences as
+`<path>: OK`. For the same reason `hash --in` refuses such a path, and a non-UTF-8 one, before
+hashing (`HashPathUnprintable`, exit 2 - the argument cannot be used this way). GNU instead
+escapes names containing `\` or a newline with a leading `\`; that would mangle every Windows path,
+so it is not copied. Relative paths are resolved against the current directory, like `sha256sum`,
+not against the check file's directory.
+
+**Decision 4 - exit codes (D-211).** Check file missing or unreadable: 3 (`Io`). Malformed, empty
+or too large: 1 (T-255's owner-approved reading: malformed input data is "rejected"). Any listed
+file that does not match *or cannot be read*: printed as `FAILED` / `FAILED (cannot read: ...)`,
+every line is still checked, then `HashCheckFailed { failed, total }`, exit 1 - one rule for the
+caller, as in GNU (`sha256sum -c` also exits 1 for an unreadable file). The digest comparison is
+plain `==`: a file digest is public, not a secret (the `subtle` rule covers secrets).
+
+**Tests.** `tests/smoke_hash.rs` (11): the printed line against `dstu-core`'s one-shot
+`Kupyna256::digest` (also for an empty file), hash-then-check round trip writing no file,
+mismatch and missing file both named with `2 of 3` on stderr and exit 1, relative paths against
+the working directory, CRLF/upper-case/no final newline accepted, ten malformed second lines (and
+a non-UTF-8 one, and a blank middle line) each rejected with `line 2` and empty stdout, empty
+check file, the 16 MiB boundary (exactly at the cap is parsed, one byte over is "larger than"),
+usage errors exit 2 (incl. `--out`, `--force`, repeated `--in`), file errors exit 3 (missing,
+directory, for both flags), a Unix-only newline/escape path refusal, and a closed stdout that must
+not panic. Unit tests in `lib.rs`: `parse_check_list` accept/reject tables (pure, Miri-able), the
+multi-chunk streaming check through `run_hash_command`, parsing. `smoke_overwrite.rs`,
+`smoke_misuse_matrix.rs` and `smoke_golden_path.rs` used `hash --out` as a representative output
+command; those rows now use `kupyna-digest --variant 256` (same shared output helper), so D-214's
+coverage is unchanged except that `hash` is no longer in its table (14 invocations, was 15).
+
+**Rejected.** Several `--in` in one call (conflicts with T-255's repeated-flag rule; a positional
+file list conflicts with R4). GNU's lenient mode that skips malformed lines with a warning (a
+check that silently checks less than the file lists). Resolving paths relative to the check file
+(differs from every `*sum` tool). A specific "`--out` was removed" hint for `hash` (the generic
+unknown-flag error plus the help text and CHANGELOG were judged enough; revisit if users hit it).

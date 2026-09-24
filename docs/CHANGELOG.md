@@ -44,7 +44,7 @@ All notable changes to this project are documented in this file. Format follows
   `Box512*Args` go (`run_sign_keygen257_command`/`run_box512_keygen_command` stay, the latter now
   taking `BoxKeygenArgs`); `CliError::Box512*` merge into the `Box*` variants,
   `BoxOpenTruncated`/`BoxOpenFailed` carry the key's curve; new `CliError::RemovedCommand`.
-- **No silent overwrite** (T-258, `docs/DECISIONS.md` D-214). `encrypt`, `decrypt`, `hash`,
+- **No silent overwrite** (T-258, `docs/DECISIONS.md` D-214). `encrypt`, `decrypt`,
   `sign`, `box-seal`, `box-open` and every lower-level command refuse an existing output file
   (exit 3) unless given the new `--force`; in-place `--in` = `--out` needs `--force` too. A failed
   command leaves no output or temp file, and with `--force` the old file stays unchanged. An
@@ -55,6 +55,17 @@ All notable changes to this project are documented in this file. Format follows
   `--force`. On Unix every output file is created `0600`. **Migration:** scripts that rewrite the
   same output add `--force`. Library API: every non-key `*Args` gains `force: bool`; new
   `CliError::OutputExists`/`SameOutputPath`.
+- **`hash` works like `sha256sum`** (T-259, `docs/DECISIONS.md` D-215). `hash --in <path>` prints
+  `<64 hex digits>  <path>` to stdout instead of writing a binary digest file; `hash --check
+  <file>` verifies such lines, printing `<path>: OK`/`FAILED` and exiting 1 if any listed file does
+  not match or cannot be read. A malformed check file (strict format, at most 16 MiB) is rejected
+  whole, naming the line, before anything is hashed. A path that is not UTF-8 or contains a
+  control character is refused (exit 2). **Migration:** `hash --in f --out d` becomes
+  `hash --in f > d` (a text line, not 32 raw bytes); `hash` no longer takes `--out`/`--force`.
+  For the old raw digest file use `kupyna-digest --variant 256 --in f --out d`. Library API:
+  `HashArgs` is an enum (`File`/`Check`); new `CliError::MissingOneOf`/`ExclusiveFlags`/
+  `HashPathUnprintable`/`HashCheckTooLarge`/`HashCheckEmpty`/`HashCheckMalformed`/
+  `HashCheckFailed`.
 
 ### Security
 

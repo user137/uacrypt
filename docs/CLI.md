@@ -12,7 +12,7 @@ with `--` can be passed as `--in=--odd-name`. `uacrypt help` prints the overview
 | Code | Meaning | Examples |
 |---|---|---|
 | 0 | success | also `--help`, `help`, `--version` |
-| 1 | the input was checked and rejected | authentication failed, bad signature, truncated or malformed ciphertext, an empty or over-long message for a mode that forbids it, a wrong-length signature or tag |
+| 1 | the input was checked and rejected | authentication failed, bad signature, truncated or malformed ciphertext, an empty or over-long message for a mode that forbids it, a wrong-length signature or tag, a `hash --check` file that is malformed or lists a file that does not match or cannot be read |
 | 2 | usage error | unknown command or flag, missing/repeated flag, missing value, missing subcommand |
 | 3 | a file or key could not be used | missing or unreadable file, a key file of the wrong kind, damaged or not typed (see [Key files](#key-files)), wrong-size or invalid key/nonce/IV/tweak, an `--out` that already exists (see below) |
 
@@ -44,7 +44,8 @@ cargo build -p uacrypt --release
 uacrypt keygen --out key.bin
 uacrypt encrypt --key key.bin --in message.bin --out sealed.bin
 uacrypt decrypt --key key.bin --in sealed.bin --out decrypted.bin
-uacrypt hash --in file.bin --out digest.bin
+uacrypt hash --in file.bin > file.bin.kupyna256
+uacrypt hash --check file.bin.kupyna256
 ```
 
 **`encrypt`/`decrypt` have no message-length cap and stream `--in`/`--out` in fixed-size chunks** —
@@ -66,7 +67,19 @@ always reports them as a different format version; ~1 in 256 happen to start wit
 version byte and report an authentication failure instead. Decrypt them with the release that
 wrote them, then re-encrypt.
 **`hash` has no such limit either** — it streams `--in` from disk in fixed-size chunks regardless of
-size, fixed to Kupyna-256 (32-byte digest, no `--variant` choice).
+size, fixed to Kupyna-256 (no `--variant` choice). Since 0.5.0 it works like `sha256sum` (T-259,
+`docs/DECISIONS.md` D-215): `hash --in <path>` prints one line, `<64 hex digits>  <path>`, to
+stdout (the path exactly as given), and writes no file. `hash --check <file>` reads such lines,
+hashes every listed file and prints `<path>: OK` or `<path>: FAILED`; it exits 1 if any file does
+not match or cannot be read. The check file is validated whole before anything is hashed: every
+line must be exactly `<64 hex digits><two spaces><path>` (CRLF line ends and upper-case hex are
+accepted, a blank line or GNU's `*` binary marker is not), at most 16 MiB, or `--check` exits 1
+naming the line and checks nothing. Relative paths are resolved against the current directory, not
+the check file's. `hash --in` refuses a path that is not UTF-8 or contains a control character
+(exit 2): it could not be read back as one line, and a terminal escape in a path would be echoed
+back by `--check`. The digests are Kupyna-256, so a `sha256sum` file reports every line as
+FAILED. For a raw binary digest file (the 0.4 `hash --out` output), use
+`kupyna-digest --variant 256 --out`.
 
 `uacrypt sign-keygen`/`sign-pubkey`/`sign`/`verify` (`docs/TASKS.md` T-124, `docs/DECISIONS.md` D-73) are the
 digital-signature equivalent, built over `dstu_core::crypto_sign` (DSTU 4145): a signature proves a
@@ -285,7 +298,7 @@ was not yet so.
 | `sign-keygen` / `sign-keygen257` | signing key | a key line (the scalar `d`, big-endian) |
 | `sign-pubkey` | verifying key | a key line (`x \|\| y`) of the signing key's curve |
 | `sign` | signature | 42 raw bytes for an m=163 key, 66 for m=257; `verify` picks the curve from the verifying key's kind |
-| `hash` | digest | 32 raw bytes (Kupyna-256) |
+| `hash` | digest line (stdout) | `<64 lower-case hex digits>  <path>` and a newline (Kupyna-256); `kupyna-digest --out` writes the raw 32 or 64 bytes |
 
 The `encrypt` record rules:
 - the version byte is currently `2` and is bound into the stream's key derivation, so a changed

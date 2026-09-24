@@ -17,7 +17,8 @@ cargo build -p uacrypt --release
 uacrypt keygen --out key.bin
 uacrypt encrypt --key key.bin --in message.bin --out sealed.bin
 uacrypt decrypt --key key.bin --in sealed.bin --out message.bin
-uacrypt hash --in file.bin --out digest.bin
+uacrypt hash --in file.bin > file.bin.kupyna256
+uacrypt hash --check file.bin.kupyna256
 
 uacrypt sign-keygen --out signing.key
 uacrypt sign-pubkey --key signing.key --out verifying.key
@@ -35,7 +36,8 @@ built over `dstu_core::crypto_secretstream`, a genuinely chunked AEAD constructi
 whole-buffer one. `--key` is a typed key file made by `uacrypt keygen`; `encrypt` draws a fresh random header internally
 on every call and embeds it in `--out` — there is no `--nonce`/`--header` flag to supply or reuse
 by mistake. `hash` streams `--in` from disk in fixed-size chunks regardless of size, fixed to
-Kupyna-256 (32-byte digest, no `--variant` choice).
+Kupyna-256 (no `--variant` choice), and works like `sha256sum`: it prints `<hex>  <path>` to
+stdout, and `hash --check` verifies a file of such lines.
 
 `sign`/`verify` are the DSTU 4145 digital-signature equivalent, built over `dstu_core::crypto_sign`
 (deterministic nonce — no RNG involved in signing itself, only in `sign-keygen`). Both stream

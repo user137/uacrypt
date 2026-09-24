@@ -73,10 +73,6 @@ const CASES: &[Case] = &[
         outputs: &["--out"],
     },
     Case {
-        argv: &["hash", "--in", "in32", "--out", "{out}"],
-        outputs: &["--out"],
-    },
-    Case {
         argv: &[
             "sign", "--key", "sign.key", "--in", "in32", "--out", "{out}",
         ],
@@ -422,7 +418,10 @@ fn a_failed_command_leaves_no_output_placeholder_or_temp_file() {
             &["decrypt", "--key", &p("sym.key"), "--in", &p("missing")],
             3,
         ),
-        (&["hash", "--in", &p("missing")], 3),
+        (
+            &["kupyna-digest", "--variant", "256", "--in", &p("missing")],
+            3,
+        ),
     ];
     for (argv, code) in failing {
         let before = listing(&dir);
@@ -656,7 +655,16 @@ fn force_takes_no_value() {
     let dir = TempDir::new("overwrite_force_value");
     fixtures(&dir);
     let p = |n: &str| dir.file(n).to_string_lossy().into_owned();
-    let r = uacrypt(["hash", "--in", &p("in32"), "--out", &p("h"), "--force=yes"]);
+    let r = uacrypt([
+        "kupyna-digest",
+        "--variant",
+        "256",
+        "--in",
+        &p("in32"),
+        "--out",
+        &p("h"),
+        "--force=yes",
+    ]);
     assert_eq!(r.code, Some(2), "{}", r.stderr);
     assert!(!dir.file("h").exists());
 }
@@ -674,11 +682,28 @@ fn a_symlink_output_is_refused_and_force_replaces_the_link_not_its_target() {
     write_bytes(&dir.file("target"), EXISTING);
     std::os::unix::fs::symlink(dir.file("target"), dir.file("link")).expect("symlink");
 
-    let r = uacrypt(["hash", "--in", &p("in32"), "--out", &p("link")]);
+    let r = uacrypt([
+        "kupyna-digest",
+        "--variant",
+        "256",
+        "--in",
+        &p("in32"),
+        "--out",
+        &p("link"),
+    ]);
     assert_eq!(r.code, Some(3), "{}", r.stderr);
     assert_eq!(read_bytes(&dir.file("target")), EXISTING);
 
-    let r = uacrypt(["hash", "--in", &p("in32"), "--out", &p("link"), "--force"]);
+    let r = uacrypt([
+        "kupyna-digest",
+        "--variant",
+        "256",
+        "--in",
+        &p("in32"),
+        "--out",
+        &p("link"),
+        "--force",
+    ]);
     assert!(r.success(), "{}", r.stderr);
     assert_eq!(read_bytes(&dir.file("target")), EXISTING);
     let meta = std::fs::symlink_metadata(dir.file("link")).expect("stat link");
@@ -696,12 +721,29 @@ fn every_output_is_owner_only_even_when_force_replaces_a_0644_file() {
     let dir = TempDir::new("overwrite_mode");
     fixtures(&dir);
     let p = |n: &str| dir.file(n).to_string_lossy().into_owned();
-    let r = uacrypt(["hash", "--in", &p("in32"), "--out", &p("fresh")]);
+    let r = uacrypt([
+        "kupyna-digest",
+        "--variant",
+        "256",
+        "--in",
+        &p("in32"),
+        "--out",
+        &p("fresh"),
+    ]);
     assert!(r.success(), "{}", r.stderr);
     write_bytes(&dir.file("shared"), EXISTING);
     std::fs::set_permissions(dir.file("shared"), std::fs::Permissions::from_mode(0o644))
         .expect("chmod");
-    let r = uacrypt(["hash", "--in", &p("in32"), "--out", &p("shared"), "--force"]);
+    let r = uacrypt([
+        "kupyna-digest",
+        "--variant",
+        "256",
+        "--in",
+        &p("in32"),
+        "--out",
+        &p("shared"),
+        "--force",
+    ]);
     assert!(r.success(), "{}", r.stderr);
     for name in ["fresh", "shared"] {
         let mode = std::fs::metadata(dir.file(name))
@@ -892,7 +934,15 @@ fn a_directory_output_is_refused_and_left_intact_with_or_without_force() {
     write_bytes(&dir.file("sub").join("inside"), EXISTING);
     let before = listing(&dir);
 
-    let r = uacrypt(["hash", "--in", &p("in32"), "--out", &p("sub")]);
+    let r = uacrypt([
+        "kupyna-digest",
+        "--variant",
+        "256",
+        "--in",
+        &p("in32"),
+        "--out",
+        &p("sub"),
+    ]);
     assert_eq!(r.code, Some(3), "{}", r.stderr);
     assert!(r.stderr.contains("is a directory"), "{}", r.stderr);
     assert!(!r.stderr.contains("--force"), "{}", r.stderr);

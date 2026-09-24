@@ -437,20 +437,17 @@ fn strumok_crypt_round_trips_via_second_pass() {
     miri,
     ignore = "spawns the real uacrypt binary - Miri cannot run a subprocess"
 )]
-fn hash_produces_32_byte_kupyna256_digest() {
+fn hash_prints_a_kupyna256_line_that_checks_ok() {
     let dir = TempDir::new("golden_hash");
     let input = dir.file("in.bin");
-    let out = dir.file("out.bin");
+    let sums = dir.file("SUMS");
     write_bytes(&input, b"hash smoke test");
 
-    ok(&uacrypt([
-        "hash",
-        "--in",
-        input.to_str().unwrap(),
-        "--out",
-        out.to_str().unwrap(),
-    ]));
-    assert_eq!(support::read_bytes(&out).len(), 32);
+    let r = uacrypt(["hash", "--in", input.to_str().unwrap()]);
+    ok(&r);
+    assert_eq!(r.stdout.len(), 64 + 2 + input.to_str().unwrap().len() + 1);
+    write_bytes(&sums, r.stdout.as_bytes());
+    ok(&uacrypt(["hash", "--check", sums.to_str().unwrap()]));
 }
 
 #[test]

@@ -9058,7 +9058,7 @@ Breaking - 0.5.0 (B1 a):
   also refuse `--force` onto an existing typed key file the command does not read (sniff the
   prefix), D-214 Decision 3. The two `cfg(unix)` tests in `smoke_overwrite.rs` (symlink, `0600`)
   and PHP interop passed on the Pi 2026-09-24.
-- [ ] **T-259** `hash` like `sha256sum`: prints `<hex>  <path>` to stdout; `--check <file>` verifies
+- [x] **T-259** (done 2026-09-24 on `ux-0.5.0`, D-215; `smoke_hash.rs`) `hash` like `sha256sum`: prints `<hex>  <path>` to stdout; `--check <file>` verifies
   such lines (exit 1 on any mismatch, names each). The binary `--out` goes; `kupyna-digest` keeps
   binary output for interop.
 - [ ] **T-260** stdin/stdout via `-` (S1; R2, R4). `--key` never from stdin; binary output to a

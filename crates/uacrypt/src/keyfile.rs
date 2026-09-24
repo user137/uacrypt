@@ -205,7 +205,7 @@ fn hex_value(c: u8) -> (u8, u8) {
 }
 
 /// Decodes `hex` into `out` (`hex.len() == 2 * out.len()`); returns 1 if every digit was valid.
-fn decode_hex(hex: &[u8], out: &mut [u8]) -> u8 {
+pub(crate) fn decode_hex(hex: &[u8], out: &mut [u8]) -> u8 {
     let mut ok = 1u8;
     for (byte, pair) in out.iter_mut().zip(hex.chunks_exact(2)) {
         let (hi, hi_ok) = hex_value(pair[0]);
