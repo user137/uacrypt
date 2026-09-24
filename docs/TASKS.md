@@ -8733,7 +8733,20 @@ replace a DSTU primitive.
 
 ### RESUME HERE (state as of 2026-09-23, saved for a memory-clear/new-session handoff)
 
-**Latest handoff (2026-09-24, third session end) - read this first.** Working copy clean on
+**Latest handoff (2026-09-24, fourth session end) - read this first.** Working copy clean on
+`ux-0.5.0`, nothing pushed (embargo). This session: **T-259** (`hash` like `sha256sum`, D-215:
+`43ad089` + `e0a501e`) and **T-268** (`--force` never replaces an existing typed key file, closes
+D-214 Decision 3, D-216: `23d319d` + `a8617e4`). The owner delegated T-268's decision and accepted
+T-259's eight design choices as they stand (recorded in D-215). Ran for both: `cargo test -p
+uacrypt` here and on the Pi (all green, incl. every new `cfg(unix)` test), `cargo xtask clippy`/
+`fmt --check`/`docs-check`, scoped Miri on `parse_check_list` and `keyfile::sniff_kind` (no UB),
+real Windows shells for `hash > file` (PowerShell 7, cmd, Git Bash OK; Windows PowerShell 5.1
+writes UTF-16 - refused by name, `cmd /c` workaround verified). **Not run this session:** the
+binding suites and `bench-compare` (no binding or `xtask` calls `uacrypt hash`; T-268 only adds a
+refusal for an existing key file as output), CI (branch unpushed), the GHSA/CVE status check.
+**Next: T-260** (stdin/stdout via `-`); `hash --in -` belongs there too.
+
+**Previous handoff (2026-09-24, third session end).** Working copy clean on
 `ux-0.5.0` (T-258 = `99e7b02`, Pi test fixes = `71efd17`, then this handoff), nothing pushed
 (embargo). `bindings/ruby/Gemfile.lock` committed on `ux-0.5.0` (bundler sync to the gem's
 `VERSION` 0.2.0, set in `f83459d`); `master`'s copy still says 0.1.0 - sync it there on release
