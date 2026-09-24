@@ -23,6 +23,7 @@
 //! single-block file operation.
 
 mod keyfile;
+mod progress;
 
 use dstu_core::hazmat::kalyna::{
     Kalyna128_128, Kalyna128_128ExpandedKey, Kalyna128_256, Kalyna128_256ExpandedKey,
@@ -2191,8 +2192,26 @@ impl Source {
         }
     }
 
-    /// Opens the input; nothing is read yet.
+    /// Opens the input, with a progress line on stderr for a long read (T-261, D-218); nothing is
+    /// read yet. The line is gone once the reader is dropped.
     fn open(&self) -> Result<Box<dyn std::io::Read>, CliError> {
+        match self {
+            Source::Stdin => Ok(progress::wrap(Box::new(std::io::stdin().lock()), None)),
+            Source::File(path) => {
+                let file = std::fs::File::open(path).map_err(|e| self.io_error(&e))?;
+                // A FIFO or device reports no useful length: counted like stdin.
+                let total = file
+                    .metadata()
+                    .ok()
+                    .filter(std::fs::Metadata::is_file)
+                    .map(|m| m.len());
+                Ok(progress::wrap(Box::new(file), total))
+            }
+        }
+    }
+
+    /// Opens the input without a progress line.
+    fn open_plain(&self) -> Result<Box<dyn std::io::Read>, CliError> {
         match self {
             Source::Stdin => Ok(Box::new(std::io::stdin().lock())),
             Source::File(path) => std::fs::File::open(path)
@@ -2202,10 +2221,11 @@ impl Source {
     }
 
     /// Reads the whole input - only for `box-seal`/`box-open`, which are not bounded yet (T-265).
+    /// No progress line: it would reach 100% and then sit through the in-memory seal (D-218).
     fn read_all(&self) -> Result<Vec<u8>, CliError> {
         use std::io::Read;
         let mut bytes = Vec::new();
-        self.open()?
+        self.open_plain()?
             .read_to_end(&mut bytes)
             .map_err(|e| self.io_error(&e))?;
         Ok(bytes)
@@ -4280,6 +4300,11 @@ STDIN AND STDOUT:
     are never written to stdout, and --key never reads stdin. For a file named `-`, write ./-.
     `decrypt --out -` prints each chunk once it is verified: if it then fails, it says the output
     is INCOMPLETE and exits non-zero - check the exit status (in a pipeline: set -o pipefail).
+
+PROGRESS:
+    encrypt, decrypt, hash, sign and verify show a progress line on stderr when stderr is a
+    terminal and --in is 64 MiB or more (for stdin: once 64 MiB have been read). It is erased
+    before the result is printed; with stderr redirected or piped nothing is printed.
 
 EXIT STATUS:
     0   success

@@ -176,6 +176,36 @@ fn encrypt_and_decrypt_stay_memory_bounded_through_stdin_and_stdout() {
     );
 }
 
+/// T-261 (D-218): the progress line is drawn only when stderr is a terminal - a piped stderr gets
+/// nothing at all, even for an input far above the 64 MiB threshold, from a file or from stdin.
+#[test]
+#[ignore = "expensive: writes large fixture files and needs a release build for realistic timing/memory numbers - run via cargo xtask streaming-bounded, not a plain cargo test"]
+fn no_progress_line_on_a_piped_stderr() {
+    let dir = TempDir::new("progress_piped");
+    let key = dir.file("key.bin");
+    let input = dir.file("large.bin");
+    let ciphertext = dir.file("large.enc");
+    let digest = dir.file("digest.txt");
+    assert!(uacrypt(["keygen", "--out", key.to_str().unwrap()]).success());
+    write_large_file(&input, LARGE_FILE_BYTES);
+
+    let (r, _) = uacrypt_with_peak_rss([
+        "encrypt",
+        "--key",
+        key.to_str().unwrap(),
+        "--in",
+        input.to_str().unwrap(),
+        "--out",
+        ciphertext.to_str().unwrap(),
+    ]);
+    ok(&r);
+    assert_eq!(r.stderr, "", "encrypt from a file");
+
+    let (r, _) = uacrypt_with_peak_rss_stdio(["hash", "--in", "-"], &input, &digest);
+    ok(&r);
+    assert_eq!(r.stderr, "", "hash from stdin");
+}
+
 /// Control case (see module doc): `box-seal` is documented as reading `--in` whole into memory.
 /// Peak RSS must visibly grow with `--in`'s size here, proving the measurement methodology above
 /// can actually detect unbounded memory use rather than being uniformly insensitive.

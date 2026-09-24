@@ -14409,3 +14409,61 @@ as a second stdin input (one stdin reader per command keeps "read twice" impossi
 construction). Keeping `-` as a literal file name on the other flags (R4: `--key -` meaning a file
 is a trap). A mark-free exit code for partial output (a new code would break D-211's "1 = the
 input was rejected").
+
+## D-218: T-261 - progress line on stderr for a long `--in` read (0.5.0)
+
+**Context.** T-261: a progress indicator shown automatically only when stderr is a terminal and
+the input is large (known size >= 64 MiB, or a byte counter for stdin); no flag, no dependency,
+<= 10 redraws/s, cleared at the end, nothing at all when piped. Two forks went to the owner
+2026-09-24; both were answered as recommended (below).
+
+**Decision 1 - one hook: `Source::open`.** The `--in` reader is wrapped in
+`progress::ProgressReader` (`crates/uacrypt/src/progress.rs`), so `encrypt`, `decrypt`, `hash`,
+`hash --check` (each listed file, and the list itself) and `sign`/`verify` (via
+`hash_file_streamed`) get it without touching their loops. The lower-level
+`kalyna-*`/`kupyna-digest`/`strumok-crypt` commands open their own files and are left out on
+purpose: they exist for interop and `bench-compare`, whose timings must not change.
+
+**Decision 2 - the decision is made once, at open.** `wanted(stderr_is_terminal, total)`: stderr
+must be a terminal (`std::io::IsTerminal`), and a known size must be >= 64 MiB. Otherwise `wrap`
+returns the plain reader, so a piped or redirected stderr costs nothing and receives nothing. The
+size comes from the opened file's `metadata()` and counts only for a regular file; a FIFO or
+device (length 0 or meaningless) is treated like stdin. The percentage is clamped to 100% (a file
+growing while read) and computed in `u128`.
+
+**Decision 3 - stdin (owner fork 1, "after 64 MiB").** Size unknown, so a byte counter
+(`uacrypt: 96.0 MiB read`) that appears only once 64 MiB have been read; small pipes stay silent,
+like small files. Rejected: showing it from the first byte (a flash on every short
+`echo ... | uacrypt hash --in -`).
+
+**Decision 4 - `box-seal`/`box-open` get none (owner fork 2).** They read `--in` whole before
+sealing (T-265); a line that reaches 100% and then sits through the in-memory work misleads.
+`Source::read_all` uses a new `open_plain`. Revisit with T-265.
+
+**Decision 5 - drawing.** One short line (at most 39 columns up to 1 TiB, no file path), because
+terminal width cannot be read without a dependency and a wrapped line breaks every `\r` redraw.
+Each redraw is `\r` + line + spaces covering a longer previous line, written in one `write_all`;
+at most one per 100 ms (`Instant`). Clearing is `\r` + spaces + `\r` (no ANSI erase sequence,
+which older Windows consoles do not honour). `Progress`'s `Drop` clears, so the line is gone
+before the command prints its result (the reader is dropped inside `hash_file_streamed`,
+`run_secretstream_decrypt`, and `encrypt`'s closure, all before `Output::finish` and before
+`main` prints an error). A failing stderr write is ignored: progress never fails a command and
+never panics (no `eprint!`).
+
+**Misuse category foreclosed.** No flag, no argument, no user-supplied value reaches this code;
+the only inputs are the byte count and the terminal check, both covered below.
+
+**Tests.** `progress.rs` unit tests (14): the `wanted` decision at 64 MiB - 1 / 64 MiB / unknown /
+not a terminal; size formatting incl. `u64::MAX`; the line with and without a size; clamping and
+`0/0`; width <= 40; drawing at once and clearing on drop; the stdin threshold; nothing drawn =
+nothing cleared; exactly 10 redraws over a second of 1 ms reads; a redraw 1 ms early skipped; a
+shorter line fully covering a longer one; a failing stderr never failing the read; bytes passed
+through and counted; a read error passed through with the line still cleared. Integration:
+`smoke_streaming_boundedness.rs` `no_progress_line_on_a_piped_stderr` (ignored, release): 200 MiB
+through `encrypt` from a file and `hash --in -`, stderr byte-empty; mutation-checked (with the
+terminal check removed it fails). By hand on the Pi (Linux pty via `script`, release build):
+`encrypt` of a 200 MB file drew `8.0 KiB / 190.7 MiB (0%)` onward; `hash --in -` drew nothing
+until `64.0 MiB read`, then erased the line before printing its hash; a 1 MB file drew nothing; a
+truncated `decrypt` erased the line before its error. Scoped Miri on the 14 unit tests: no UB.
+Pi `cargo test -p uacrypt` green. Not yet looked at by eye: the Windows consoles (cmd,
+PowerShell 7, mintty); `IsTerminal` itself was verified on all three for stdout in D-217.

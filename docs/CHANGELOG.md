@@ -86,6 +86,11 @@ All notable changes to this project are documented in this file. Format follows
   `BoxSealArgs`, `BoxOpenArgs`, and the `out_path` of `SignPubkeyArgs`, `BoxPubkeyArgs`,
   `KeyImportArgs` use them; `HashArgs::File`/`Check` hold a `Source`; new `CliError::StdioNotAccepted`/
   `SecretKeyToStdout`/`ForceWithStdout`/`BinaryToTerminal`/`StdoutIncomplete`.
+- **Progress line** (T-261, `docs/DECISIONS.md` D-218). `encrypt`, `decrypt`, `hash`, `sign` and
+  `verify` show `uacrypt: 1.2 GiB / 4.0 GiB (30%)` on stderr for an `--in` file of 64 MiB or more,
+  or a byte counter for stdin once 64 MiB have been read - only when stderr is a terminal, at most
+  10 redraws a second, erased before the result or error is printed. No flag, no new dependency;
+  with stderr redirected or piped nothing changes.
 
 ### Security
 

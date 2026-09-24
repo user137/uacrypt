@@ -85,6 +85,15 @@ cat report.pdf | uacrypt hash --in -          # prints "<hex>  -"
 - `box-seal`/`box-open` read all of stdin into memory, as they do a file (not bounded yet, T-265);
   `encrypt`/`decrypt`/`hash`/`sign`/`verify` read stdin in the same fixed-size chunks as a file.
 
+**Progress (0.5.0, T-261, `docs/DECISIONS.md` D-218).** When stderr is a terminal and `--in` is
+a file of 64 MiB or more, `encrypt`, `decrypt`, `hash`, `sign` and `verify` show one line on
+stderr, such as `uacrypt: 1.2 GiB / 4.0 GiB (30%)`. It is redrawn at most 10 times a second and
+erased before the command prints its result or its error. For stdin, where the size is unknown, it
+is a byte counter (`uacrypt: 96.0 MiB read`) that appears once 64 MiB have been read. There is no
+flag: with stderr redirected or piped (`2>file`, `2>&1 | ...`, a script, CI) nothing is printed at
+all. `box-seal`/`box-open` show none until they stop reading `--in` whole (T-265), and the
+lower-level `kalyna-*`/`kupyna-digest`/`strumok-crypt` commands never do.
+
 `uacrypt encrypt`/`decrypt`/`hash` (`docs/TASKS.md` T-16, `docs/DECISIONS.md` D-52) are the real,
 misuse-resistant top-level commands — mode, nonce, and algorithm are all hardcoded, nothing to
 misconfigure:

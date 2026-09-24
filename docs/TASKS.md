@@ -8733,7 +8733,18 @@ replace a DSTU primitive.
 
 ### RESUME HERE (state as of 2026-09-23, saved for a memory-clear/new-session handoff)
 
-**Latest handoff (2026-09-24, fifth session end) - read this first.** Working copy clean on
+**Latest handoff (2026-09-24, sixth session end) - read this first.** Working copy clean on
+`ux-0.5.0`, nothing pushed (embargo). This session: **T-261** (progress line on stderr, D-218).
+The owner chose both forks as recommended (stdin counter after 64 MiB; none for `box-*` until
+T-265). Ran: `cargo test -p uacrypt` here and on the Pi, the new ignored piped-stderr test in
+release (mutation-checked), scoped Miri on `progress.rs`, `cargo xtask clippy`/`fmt --check`/
+`docs-check`, a Linux pty by hand on the Pi. **Not run:** the Windows consoles by eye, the
+binding suites and `bench-compare` (their `uacrypt` runs have a piped stderr; bench uses the
+  lower-level commands), the
+rest of `cargo xtask streaming-bounded`, CI (branch unpushed), the GHSA/CVE status check.
+**Next: T-262** (passphrase encryption - plan mode + advisor, new file format).
+
+**Previous handoff (2026-09-24, fifth session end).** Working copy clean on
 `ux-0.5.0`, nothing pushed (embargo). This session: **T-260** (stdin/stdout via `-`, D-217:
 `87ec3fc` + closing-review follow-up). The owner approved the plan with the four forks as
 recommended. Ran: `cargo test -p uacrypt` here and on the Pi (incl. `/dev/full`), the new ignored
@@ -9109,9 +9120,12 @@ Breaking - 0.5.0 (B1 a):
   a `-` line in a list is FAILED, never stdin (D-217 addendum).
 
 Additive - after the breaking part:
-- [ ] **T-261** Progress indicator: automatic only when stderr is a terminal and the input is large
+- [x] **T-261** (done 2026-09-24 on `ux-0.5.0`, D-218; `progress.rs`) Progress indicator: automatic only when stderr is a terminal and the input is large
   (known size >= 64 MiB, or a byte counter for stdin); no flag, no dependency, <= 10 redraws/s,
-  cleared at the end; nothing at all when piped.
+  cleared at the end; nothing at all when piped. Owner forks: the stdin counter appears after
+  64 MiB; `box-seal`/`box-open` get none until T-265. Hooked into `Source::open`, so the
+  lower-level interop/bench commands are untouched. Linux pty checked by hand on the Pi; Windows
+  consoles (cmd, PowerShell 7, mintty) not yet looked at.
 - [ ] **T-262** Passphrase encryption (P1). Decrypt auto-detects from the header; confirm twice,
   refuse empty; Argon2id parameters in the header. Plan mode + advisor (new file format).
 - [ ] **T-263** Text output (A1), only if the owner wants it.
