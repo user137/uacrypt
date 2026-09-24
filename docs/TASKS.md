@@ -8739,8 +8739,8 @@ replace a DSTU primitive.
   `python .claude/disclosure-drafts/finalize_changelog.py <date> <CVE T-232> <CVE D-207>`
   (gitignored, dry-run tested on a copy). **No tag yet, on purpose**: `v0.4.0` goes on the commit
   that script produces, and pushing a tag starts the publish jobs.
-- Still waiting for three things: (1) Miri on `crypto_secretstream` (PID 5548, log path below;
-  last seen passing `mismatched_plaintext_out_length_is_rejected`, no UB); (2) CVE IDs for
+- Still waiting for two things (Miri on `crypto_secretstream` finished 2026-09-24 13:27: 28
+  passed, 1 ignored, no UB, ~13 h): (2) CVE IDs for
   `GHSA-j2w3-628p-qw92`/`GHSA-wqmx-6fx4-jr5r` (both `draft`, `cve_id` null at 02:50);
   (3) the date rule (UAPKI/BC replies or 2026-10-08).
 - CodeQL alerts #82-#88 dismissed as false positives (T-266, D-210); 0 open.
@@ -8758,8 +8758,7 @@ replace a DSTU primitive.
   tests) and the PHP interop edit (PHP not installed here; the branch is unpushed, so no CI yet).
   Scoped Miri on `uacrypt --lib keyfile`: 7/7, no UB (2026-09-24).
   Session end 2026-09-24: the working copy is on `ux-0.5.0`. Miri on `crypto_secretstream`
-  (PID 5548) is still running, last seen passing `rekey_changes_the_subkey_and_old_subkey_no_longer_decrypts`,
-  no UB. CVE IDs are still null for both GHSAs. `bindings/ruby/Gemfile.lock` is modified but left
+  finished: 28 passed, 1 ignored, no UB. CVE IDs are still null for both GHSAs. `bindings/ruby/Gemfile.lock` is modified but left
   uncommitted: bundler's 0.1.0 -> 0.2.0 sync, the owner decides whether to commit it. Release-day steps for 0.4.0 run on `master` only (the finalize script
   now refuses any other branch). When this branch is rebased onto the finalized `master`, the
   0.5.0 CHANGELOG block must stay under `## [Unreleased]`, above `## [0.4.0]`.
@@ -8893,8 +8892,8 @@ Next, in order:
      its "other implementations were notified" sentence). CVEs requested for both via the API;
      both still `draft`, CVE IDs pending GitHub review.** Check with
      `gh api repos/user137/uacrypt/security-advisories/<GHSA> --jq .cve_id`.
-   - **Miri on `crypto_secretstream` still running at the 2026-09-24 handoff** (PID 5548, started
-     00:19). Log: `%TEMP%/claude/C--Users-Pa-Projects-cipher-ua/6dfdf6e0-782c-4a67-8eae-1df1fc379c37/scratchpad/miri_secretstream.log`.
+   - **Done: Miri on `crypto_secretstream`** - 28 passed, 1 ignored, no UB (finished 2026-09-24
+     13:27, started 00:19). Log: `%TEMP%/claude/C--Users-Pa-Projects-cipher-ua/6dfdf6e0-782c-4a67-8eae-1df1fc379c37/scratchpad/miri_secretstream.log`.
      Windows buffers it, so it may show nothing until the process exits; use `Get-Process miri`'s
      CPU as the liveness signal. If it is gone with no final `test result`, re-run with the command
      in step 2 below.
