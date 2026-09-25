@@ -9175,6 +9175,9 @@ Additive - after the breaking part:
   green, pty checked by hand; Windows console prompt checked 2026-09-24 via console input
   injection (works; Ctrl-C leaves the console mode at `0x1` -> T-271).
 
+**Superseded 2026-09-25 by "Merged 0.5.0 plan" in the "Architecture & performance review"
+section at the end of this file** - the list below is kept for the record, not as the order.
+
 Remaining, in order (owner 2026-09-24: follow-ups found while landing the batch join this one
 plan):
 1. ~~T-271 - Windows Ctrl-C console mode~~ (done 2026-09-24).
@@ -9700,7 +9703,51 @@ points at the machine state rather than a GCM-specific regression, but that is n
   - **O-F:** Java follows the filter-stream convention (`complete()` flushes, `close()` closes the
     sink, no `leaveOpen`).
 
-### Batch plan (updated 2026-09-25 with D-220 - the owner controls ordering)
+### Merged 0.5.0 plan (owner-approved 2026-09-25 - supersedes both ordered lists)
+
+This replaces the UX batch's "Remaining, in order" list and the AP-1..AP-6 batch plan below.
+Neither list is deleted; both carry a pointer here. Tasks that change the same files are grouped,
+so each file is edited once. Everything happens on `ux-0.5.0`. The 0.4.0 release on `master` is
+unchanged, and 0.5.0 ships after it.
+
+**Owner choice (B), 2026-09-25:** the core stream-file codec (T-284) moves to **0.6.0**, so that
+0.5.0 ships sooner and ends T-272's embargo sooner. The codec changes no wire format, so the move
+breaks nothing. The small PHP/Java wrapper fixes (T-274/T-276) land in 0.5.0 and are partly
+rewritten when the codec arrives. T-277's shared vectors guard the 9 parsers until then.
+
+1. **Unblock CI and make the local gate honest** (no plan mode):
+   - T-270 together with T-282 (same `gf2m_field!` macro in `gf2m_wide.rs`);
+   - T-279 together with T-243 (`cargo xtask ci` covers all 8 bindings, with pass/skip/fail).
+2. **Core security and correctness:**
+   - T-272 in core and capi (plan mode + advisor);
+   - T-273 (plan mode + advisor; the same file as step 1, so it comes after);
+   - T-278, T-283;
+   - the T-242/T-246 leftovers from the 0.4.0 audit.
+3. **New core APIs the bindings need** (plan mode + advisor, new format):
+   - T-277's extended shared vectors first, as the oracle;
+   - then T-265 (streaming `crypto_box`, core + capi) together with T-287 (public key cached in
+     `SecretKey`).
+4. **`uacrypt`:**
+   - T-265's CLI side;
+   - T-286 (buffered stream I/O, binary-level before/after);
+   - T-264 (completions and man page; independent, done here because the CLI is being touched).
+5. **One pass over the bindings, one binding at a time, one commit per task per binding:**
+   - T-269 (`derive_key` and streaming `crypto_box`, plus its passphrase-file-format decision);
+   - T-272's binding tests;
+   - T-274 and T-276 for PHP (on the Pi);
+   - T-275 and T-276 for Java;
+   - T-277's vector runner in every reader.
+6. **Docs and release:**
+   - T-280, T-281, the CHANGELOG `[Unreleased]` sweep;
+   - the owner decides T-263;
+   - release 0.5.0 after 0.4.0, with a T-272 advisory - confirmed separately, as an outward step;
+   - then T-267.
+
+**0.6.0:** T-284 (core stream-file codec plus capi), then one binding pass moving every reader and
+writer onto it.
+
+### Batch plan (updated 2026-09-25 with D-220 - superseded as the order by the merged plan above;
+kept for its per-batch "done when" criteria)
 
 Order: security, then binding correctness, then test gaps, then QA/docs/hygiene, then
 architecture, then performance. Performance goes last because T-277/T-278 must pin behaviour first.
@@ -9748,11 +9795,13 @@ work and never touches the 0.4.0 release on `master`). Fit this batch into the U
   guard line in the 2026-09-23 RESUME HERE). Nothing is implemented.
 - **Owner decisions resolved 2026-09-25 (D-220):** T-272 in 0.5.0; the rest delegated and
   decided (see "Owner decisions - resolved"). T-285 closed.
-- **Next:** AP-1 (T-272, then T-273), each in plan mode + advisor, with prompt 2 in a fresh
-  session. The embargo still holds: do not push `ux-0.5.0` before 0.5.0 ships T-272's fix.
+- **Next:** step 1 of "Merged 0.5.0 plan" (T-270 + T-282, then T-279 + T-243), using prompt 2
+  in a fresh session and naming the step, e.g. "merged step 1". Then step 2 (T-272, T-273 in
+  plan mode + advisor). T-284 is deferred to 0.6.0 (owner choice B). The embargo still holds: do not push `ux-0.5.0` before 0.5.0 ships T-272's fix.
 - **When resuming:**
   - Read this section and the owner's answers.
-  - Execute with `docs/prompts/arch-perf-review.md` prompt 2, naming an `AP-n` sub-batch.
+  - Execute with `docs/prompts/arch-perf-review.md` prompt 2, naming a merged-plan step. The
+    AP-n "done when" criteria still apply to the tasks inside each step.
   - Every Confirmed task carries its recipe inline; the scratch crates, the Java/Ruby/PHP scripts
     and the asm output lived outside the repo and are gone, so rebuild them from the recipes.
   - For PHP, the Pi needs `cargo build --release` in `bindings/php`. The extension is at

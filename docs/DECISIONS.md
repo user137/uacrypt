@@ -14702,6 +14702,9 @@ implementing task cites them (research-before-implementation rule).
     vs a masked 16-entry scan), with a differential test against the comb and clmul paths.
   - D-184's sentence gets an addendum (T-280(d)).
 - **O-C, stream-file framing (T-284): one core codec, staged.**
+  - **Addendum (owner, 2026-09-25, option B):** the codec ships in **0.6.0**, not 0.5.0, so
+    0.5.0 (and T-272's fix) ships sooner. T-277's vectors still land in 0.5.0. The merged plan is
+    in `docs/TASKS.md`, "Merged 0.5.0 plan".
   - T-277's shared vectors first (AP-3), then a `no_std` record codec in `crypto_secretstream` plus
     capi functions (AP-5).
   - The bindings keep only I/O; the wire format is unchanged, so every existing file stays readable.
