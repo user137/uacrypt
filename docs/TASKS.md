@@ -8736,7 +8736,7 @@ replace a DSTU primitive.
 **Latest handoff (2026-09-24, ninth session end) - read this first.** Working copy clean on
 `ux-0.5.0`, nothing pushed (embargo). This session: **T-271** implemented as designed (console
 Ctrl handler in `sigint.rs`, `windows-sys` direct Windows-only dependency, lock gained only an
-edge). Ran: the new unit test, `cargo test -p uacrypt` on Windows and on the Pi, `cargo xtask
+edge; commits `58ba097` + `0ea809a`). Ran: the new unit test, `cargo test -p uacrypt` on Windows and on the Pi, `cargo xtask
 clippy`/`fmt --check`, `cargo deny check`, the `WriteConsoleInputW` probe in a pwsh 7 console
 (3 cases + a control run on the pre-fix binary, D-219 "T-271"). **Not run:** CI (unpushed),
 Windows Terminal. **Next: T-270**, then the "Remaining, in order" list.
