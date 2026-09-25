@@ -8733,7 +8733,8 @@ replace a DSTU primitive.
 
 ### RESUME HERE (state as of 2026-09-23, saved for a memory-clear/new-session handoff)
 
-**Embargo guard (2026-09-25):** commit `e60ddff` on `ux-0.5.0` added the "Architecture & performance review" section at the end of this file, with T-272's recipe for a Confirmed bug in published versions. **Do not push `ux-0.5.0` (not even for CI, T-270) until the owner answers O-B there.**
+**Embargo guard (2026-09-25):** commit `e60ddff` on `ux-0.5.0` added the "Architecture & performance review" section at the end of this file, with T-272's recipe for a Confirmed bug in published versions. O-B answered 2026-09-25 (fix ships in 0.5.0, D-220): **do not push `ux-0.5.0` (not even for CI,
+T-270) before the 0.5.0 release carries T-272's fix, unless the owner says otherwise.**
 
 **Latest handoff (2026-09-24, ninth session end) - read this first.** Working copy clean on
 `ux-0.5.0`, nothing pushed (embargo). This session: **T-271** implemented as designed (console
@@ -9594,7 +9595,8 @@ points at the machine state rather than a GCM-specific regression, but that is n
   - Tests under (b): T-277's vectors against the codec, a fuzz target for the parser (three-place
     sync), and all 9 existing suites unchanged.
   - Effort: (a) S-M, (b) L; (b) needs plan mode + advisor (new public API plus capi).
-- [ ] **T-285** (Low, perf, **Plausible** - cost split measured; depends: O-E, T-278) DSTU 4145
+- [x] **T-285** (**closed 2026-09-25 as won't do - O-E, D-220: the per-verify check stays, no API
+  break**) (Low, perf, **Plausible** - cost split measured; depends: O-E, T-278) DSTU 4145
   `verify` re-validates the public key (`n*Q == O`, D-185/D-203) on every call
   (`hazmat/dstu4145/signature.rs:77`, `signature257.rs:93`; the infallible parsers are
   `crypto_sign.rs:270` and `crypto_sign257.rs:198`).
@@ -9683,7 +9685,22 @@ points at the machine state rather than a GCM-specific regression, but that is n
   - (b) Also close `out` on `close()`, with a `leaveOpen` flag like .NET/Go: same shape across
     bindings, and a behaviour change for callers who reuse the sink.
 
-### Batch plan (proposed - the owner controls ordering)
+### Owner decisions - resolved 2026-09-25 (D-220)
+
+- **O-B(2):** T-272 ships in **0.5.0** (owner). The recipe stays under the push embargo until 0.5.0
+  is released. An advisory with 0.5.0 is recommended and confirmed separately at release time.
+- Everything else was delegated ("most compatibility with other software, strict adherence to
+  Ukrainian and foreign standards - NIST and others"). Full reasoning is in D-220.
+  - **O-B(1):** bounded - argon2id and argon2i, v=0x13 only, RFC 9106 minimums, `m` capped at the
+    Sensitive preset, fallible allocation, argon2d and v=16 rejected.
+  - **O-A:** constant-time software GHASH.
+  - **O-C:** one core codec, staged after T-277.
+  - **O-D:** keep `alloc` as a documented, reserved no-op.
+  - **O-E:** keep the check on every verify; **T-285 closed as won't do**.
+  - **O-F:** Java follows the filter-stream convention (`complete()` flushes, `close()` closes the
+    sink, no `leaveOpen`).
+
+### Batch plan (updated 2026-09-25 with D-220 - the owner controls ordering)
 
 Order: security, then binding correctness, then test gaps, then QA/docs/hygiene, then
 architecture, then performance. Performance goes last because T-277/T-278 must pin behaviour first.
@@ -9708,18 +9725,18 @@ Group by file, so no file is edited twice.
   T-246/T-242 attachments if still open.** No plan mode.
   - Done when: `cargo xtask ci` reports all 8 bindings and the tri-state; the claims are corrected;
     clippy/fmt/Miri are clean on the touched modules.
-- **AP-5 - architecture: T-284 per O-C, T-285 per O-E.** Plan mode + advisor for each, because
-  both change public API.
-  - Done when: every reader/writer passes T-277's vectors through the chosen design; the verify
-    change is measured at binary level.
+- **AP-5 - architecture: T-284 (core codec, O-C).** Plan mode + advisor, because it adds public
+  API and capi surface. (T-285 is closed.)
+  - Done when: every reader/writer passes T-277's vectors through the codec, and the shared
+    vectors are unchanged.
 - **AP-6 - performance: T-286, T-287.** Only after AP-3.
   - Done when: binary-level MB/s and ops/s before/after are in `docs/PERFORMANCE.md` on both
     machines, and no new secret-dependent branch or index exists (asm check where a primitive is
     touched).
 
-**Relation to the plans already in flight:**
-- If O-B(2) says "0.4.0", AP-1's T-272 runs first, before the 0.4.0 release-day steps.
-- Otherwise, fit this batch into the UX batch's "Remaining, in order" list:
+**Relation to the plans already in flight** (O-B(2) = 0.5.0, so everything here is `ux-0.5.0`
+work and never touches the 0.4.0 release on `master`). Fit this batch into the UX batch's
+"Remaining, in order" list:
   - AP-2..AP-4 after T-270;
   - T-272's binding tests in the same binding pass as T-269;
   - AP-6 together with T-265, which touches the same uacrypt I/O and `crypto_box` code.
@@ -9729,11 +9746,10 @@ Group by file, so no file is edited twice.
 - The audit is done and committed as docs only, on `ux-0.5.0` (`e60ddff`, then a follow-up with
   the closing review's fixes), not pushed (embargo - see this section's first paragraph and the
   guard line in the 2026-09-23 RESUME HERE). Nothing is implemented.
-- **Waiting on the owner:**
-  - O-B (T-272 strictness and disclosure route; this decides the branch);
-  - O-A (T-273);
-  - O-C, O-D, O-E, O-F;
-  - approval or reordering of the AP-1..AP-6 batch plan.
+- **Owner decisions resolved 2026-09-25 (D-220):** T-272 in 0.5.0; the rest delegated and
+  decided (see "Owner decisions - resolved"). T-285 closed.
+- **Next:** AP-1 (T-272, then T-273), each in plan mode + advisor, with prompt 2 in a fresh
+  session. The embargo still holds: do not push `ux-0.5.0` before 0.5.0 ships T-272's fix.
 - **When resuming:**
   - Read this section and the owner's answers.
   - Execute with `docs/prompts/arch-perf-review.md` prompt 2, naming an `AP-n` sub-batch.

@@ -14656,3 +14656,72 @@ written, mode unchanged. Control run, same probe on the pre-fix binary: mode lef
 `out[i + j] ^= prod as u64;`) under `-D warnings`. Existing code, untouched by T-262; since
 `rust-toolchain.toml` pins `stable`, CI hits it on any runner whose stable is 1.98 or newer.
 Tracked as T-270.
+
+## D-220: Architecture & performance review (2026-09-25) - owner decision on T-272, delegated forks O-A..O-F
+
+**Owner, 2026-09-25:** T-272 ships in **0.5.0**. The other forks were delegated to Claude:
+"the most compatibility with other software possible, but strict adherence to the standards,
+Ukrainian and foreign (NIST and others)." Tie-break order used: the standard's text first, then
+compatibility with widely used implementations, then this project's own rules (D-47, D-118).
+Clause numbers below come from memory and must be checked against the primary text before the
+implementing task cites them (research-before-implementation rule).
+
+- **O-B(1), `verify_password` (T-272): bounded, not preset-only.**
+  - Accept `$argon2id$` and `$argon2i$`, **version 0x13 only**; reject `$argon2d$` and v=16.
+    - RFC 9106 defines version 0x13 and recommends Argon2id.
+    - libsodium's `crypto_pwhash_str_verify` verifies exactly argon2id and argon2i (older libsodium
+      hashes are argon2i), so this keeps interop with it.
+    - Argon2d is rejected: RFC 9106 warns it is exposed to side channels, and libsodium does not
+      support it either.
+    - v=16 (0x10) predates the RFC.
+  - Parameter bounds, checked before any allocation:
+    - `p >= 1`, `m >= 8*p` KiB, `t >= 1` (RFC 9106's own minimums);
+    - `m <= 1 048 576` KiB, the Sensitive preset, so no single call exceeds what this crate itself
+      recommends;
+    - `t` and `p` capped at small fixed maxima (proposed 16 each; the implementing task confirms them
+      against libsodium's and common library defaults - PHP `password_hash` m=65536/t=4/p=1,
+      argon2-cffi m=65536/t=3/p=4);
+    - salt and tag lengths within RFC 9106's minimums (salt >= 8 bytes, tag >= 4 bytes).
+  - Memory is reserved with `try_reserve_exact` (the `derive_key` shape), so an allocation failure is
+    `false`, never an abort. The tag comparison stays constant-time.
+  - Rejected: (a) preset-only. It would refuse hashes from PHP's `password_hash`, argon2-cffi and
+    others whose defaults are not libsodium's presets, which works against the owner's
+    compatibility goal without a standard requiring it.
+- **O-B(2): the fix lands on `ux-0.5.0` and ships in 0.5.0**, not in the 0.4.0 security release.
+  - Until 0.5.0 is released, the reproduction recipe in TASKS.md stays under the push embargo.
+  - Whether a GitHub advisory accompanies 0.5.0 is an outward-facing step, confirmed separately at
+    release time. Recommended: yes, same shape as D-207's lower-severity advisory.
+- **O-A, GHASH software path (T-273): constant time.**
+  - The project's hard constraint forbids secret-dependent indexing outside D-19's scope.
+  - Constant-time GHASH is the modern-implementation norm (the bitsliced/constant-time software
+    GHASH in BearSSL and libsodium's AES-GCM code, which falls back to "not supported" rather than a
+    table), and NIST SP 800-38D's security argument assumes no key leakage.
+  - Output is byte-identical, so compatibility is unaffected. Only software GHASH throughput on
+    non-clmul targets drops.
+  - Technique is chosen in T-273's plan mode (a branchless bit-serial multiply for the no-clmul case
+    vs a masked 16-entry scan), with a differential test against the comb and clmul paths.
+  - D-184's sentence gets an addendum (T-280(d)).
+- **O-C, stream-file framing (T-284): one core codec, staged.**
+  - T-277's shared vectors first (AP-3), then a `no_std` record codec in `crypto_secretstream` plus
+    capi functions (AP-5).
+  - The bindings keep only I/O; the wire format is unchanged, so every existing file stays readable.
+  - This is D-118's "one parser, not one per binding" applied to the file layer; T-274/T-275/T-276
+    were three divergences that lived in the 9 copies.
+- **O-D, the `alloc` feature (T-281): keep, documented as reserved.**
+  - Removing it would make any build that enables it fail (Cargo "feature not found"). Keeping it
+    costs nothing.
+  - `Cargo.toml` and `CLAUDE.md` will say it currently enables nothing and that every allocating API
+    is under `std`.
+- **O-E, verifying-key validation (T-285): keep the check on every verify; T-285 is closed as won't
+  do.**
+  - SEC 1 and NIST SP 800-56A require full validation before use, and the current code meets that.
+  - Moving it to parse time would make `from_uncompressed_bytes` fallible - a break in core, the capi
+    and all 8 bindings - for a 30-40% speedup on a non-hot path.
+  - An additive validated constructor stays possible later if a real workload needs it.
+- **O-F, Java sink ownership (T-275): follow `java.io`'s filter-stream convention.**
+  - `complete()` finalizes and flushes the sink, `flush()` forwards, and `close()` closes the sink
+    without finalizing (D-118 still holds). This is the `CipherOutputStream`/`GZIPOutputStream`
+    shape Java callers expect, and it matches .NET/Go's default (`leaveOpen = false`).
+  - `SecretStreamDecryptor.close()` closes its source the same way.
+  - No `leaveOpen` flag: `java.io` has none (callers who need one wrap the sink themselves).
+  - Nothing breaks for users - the Java binding is not published yet (T-164).
