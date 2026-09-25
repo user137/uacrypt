@@ -9234,3 +9234,478 @@ update `docs/CLI.md`, README quick start, both help texts, CHANGELOG `[Unrelease
   of `bindings/nodejs`, #86-#88 `rust/cleartext-logging` in `uacrypt` tests) triaged as false
   positives and dismissed via the Code Scanning API - evidence in `docs/DECISIONS.md` D-210. No code
   changed.
+
+## Architecture & performance review (2026-09-25, read-only audit at `06b4397`)
+
+**EMBARGO-SENSITIVE - read before pushing anything that contains this section.** T-272 below is a
+Confirmed, published-version bug with an inline reproduction recipe (a crafted password-hash string
+aborts the host process through the C ABI and all 8 bindings). The repo is public and
+`docs/SUMMARY.md` publishes this file to gh-pages, so pushing a commit that contains this section
+discloses it. Its disclosure route is an open owner question (O-B); until it is answered, this
+section falls under the same "do not push" rule as the 2026-09-22 audit section above.
+
+**Audited state:** branch `ux-0.5.0` at `06b4397` (not `master`, which is at `2a71e17`).
+`dstu-core` 0.4.0, `uacrypt` 0.4.0, `dstu-core-capi` 0.1.0; bindings: Python 0.2.0 (pyproject; its
+Rust crate 0.1.0), Node.js 0.2.0 (package.json), Ruby 0.2.0, PHP/Java/.NET 0.1.0, Go/C++
+unversioned. Working tree clean. No code was changed; every PoC ran in scratch crates/programs
+outside the repo, so every Confirmed task below carries its own recipe.
+
+**Scope:** `crates/dstu-core` (hazmat + `crypto_*` + selftest), `crates/uacrypt`,
+`crates/dstu-core-capi`, `xtask`, `crates/dstu-core/fuzz`, `.github/workflows`, all 8 bindings.
+`firmware/` only as far as its CI wiring.
+
+**Method.**
+- Read in full: both `CLAUDE.md` files, `~/.claude/dev-practices.md`'s test-first section,
+  `docs/SECURITY.md`, `docs/rust_ai_ruleset.md`, `docs/resource-profiles.md`, and this file's
+  "Security audit remediation", "FFI roadmap", UX batch and code-scanning sections, plus every open
+  task's title.
+- Read by targeted section/grep only (too large to hold at once): `docs/DECISIONS.md` (D-19, D-68's
+  enum note, D-76, D-118, D-184, D-203, D-208), `docs/PERFORMANCE.md`, `docs/bindings-strategy.md`,
+  `docs/dstu-crypto-project.md`, `docs/cross-language-style-guide.md`.
+- Code: every `crypto_*` module, `kalyna_gcm`, `gf2m_wide`, `kalyna_xts`, `kupyna_kmac`/`kdf`,
+  `KupynaCore`, `dstu9041` curve256/encryption, the capi `util`/`error`/`secretstream`/`secretbox`
+  modules, uacrypt's stream I/O and output layer, `xtask` build/test/ci/fuzz, `rust.yml` and the 8
+  binding workflows, and the stream wrappers of all 8 bindings (Node, PHP, Java, .NET, Go, C++ in
+  full; Python/Ruby writer paths).
+- Measurements: in-process scratch crates (cost splits only - diagnostics, never cross-implementation
+  claims, D-34), the release `uacrypt` binary, a Java program against the built binding jar, a Ruby
+  script against the built binding, and a PHP script on the Pi (the Pi's
+  `bindings/php/lib/DstuCoreSecretStream.php` md5 `b2bd65e3...` equals this commit's).
+- asm: `RUSTFLAGS="--emit=asm -C debuginfo=0" cargo build --release -p dstu-core --lib` (only for
+  T-282).
+
+**Machine state for every number below:** Ryzen 5 PRO 4650U on AC, Windows "Balanced" power plan,
+CPU reported at 1.7 GHz. On this state `uacrypt kupyna-digest --variant 256` on 100 MiB ran at
+55.5 MB/s (PERFORMANCE.md records 136 MB/s) and `uacrypt kalyna-gcm encrypt --variant 256-256` on
+100 MiB at 45.4 MB/s (D-184 records ~132-134). Both are ~2.5-2.9x below their baselines, which
+points at the machine state rather than a GCM-specific regression, but that is not proven (see
+"Not covered"). **Read every number below as a ratio inside one run, not as an absolute.**
+
+**Clean areas (checked, nothing found - do not redo):**
+- D-118's two pitfalls in the six bindings T-249 left at grep level: Node.js, PHP, Java, .NET, Go
+  and C++ stream wrappers read in full. None finalizes on its error/cleanup path (Node `_flush`
+  only; PHP `withStream` skips `close()` on a throw; Java/.NET/Go `close`/`Dispose`/`Close` never
+  push `Final`; C++ destructor is `= default`). All six bound the declared length before reading,
+  reject short non-final records (D-208) and reject trailing data after `Final`; Java also rejects a
+  negative `int`. This closes T-249's D-118 sub-item (its other sub-items stay open).
+- AAD/KDF shapes in `crypto_secretbox` (`version || nonce || ct_len`), `crypto_secretstream`
+  (`counter || tag || ct_len`, versioned initial-subkey label) and `crypto_box`/`box512`
+  (`KMAC(seed, label || version || kem_ct || pk)`) match D-200/D-201/D-202/D-208; version bytes are
+  checked before any work; `open`'s length arithmetic is guarded by the `MIN_LEN` check.
+- `SecretstreamError::Random`'s `cfg`-gated variant on a non-`#[non_exhaustive]` enum is intentional
+  and recorded (DECISIONS.md, `crypto_secretstream` entry near line 4315).
+- Fuzz target lists agree in all three places (10 each: `fuzz/Cargo.toml`, `rust.yml` matrix,
+  `xtask` `FUZZ_TARGETS`); `xtask` `CAPI_EXAMPLES` matches `crates/dstu-core-capi/examples/` (7).
+- Binding CI: all 8 workflows build and test on ubuntu/macos/windows, plus cargo deny/audit jobs for
+  the Rust-glue bindings; Java's job fails if its uacrypt interop test is skipped.
+- `uacrypt`'s passphrase header accepts only the preset Argon2 parameters
+  (`Strength::from_cost`), so T-272 does not reach `uacrypt`.
+- Writer buffering in Ruby (measured linear: 16 MiB single write 388 ms vs 416 ms in 16 KiB writes),
+  Python (`del bytearray[:n]` at the front is amortized O(1) in CPython) and Node (`subarray`) is
+  not quadratic - only Java and PHP are (T-276).
+- Deliberate trade-offs measured and left alone: `crypto_secretstream` re-expanding the Kalyna
+  schedule every chunk costs 5.0 us of a 142.6 us 8 KiB `push` (3.5%) - `docs/resource-profiles.md`
+  records it as a chosen RAM/speed trade; `ExpandedKey::new` also builds the unused decrypt
+  schedule for encrypt-only modes (inside the same 3.5%).
+- Not a finding: the capi `*_open` functions copy the core's plaintext `Vec` into the caller buffer
+  and drop it unzeroized - plaintext is not key material under `docs/SECURITY.md`'s rule (noted
+  under T-242 for completeness only).
+
+**Not covered by this audit (a re-audit should start here):**
+- Kalyna/Kupyna/Strumok round functions and `tables.rs`: no new performance hypothesis was formed,
+  so no asm was read for them (T-139/T-129 rule); the D-33 Pi reversal is untouched.
+- Whether the machine-wide ~2.5-2.9x slowdown above is only the power state: re-run
+  `kupyna-digest`/`kalyna-gcm` on a performance plan against PERFORMANCE.md's baselines.
+- `dstu9041` l=512 line by line, the CMAC/CCM/KW/CTR/CBC/OFB/CFB/ECB internals, `selftest`,
+  `release.yml`, `bench-compare`, each binding's Rust/cgo/JNI glue beyond the stream and pwhash
+  entry points (all still T-249 territory).
+- `cargo test`/Miri/Kani/fuzz were not run; CI is not reachable for this branch (unpushed).
+
+### Security-relevant findings - owner question before any work (see O-A, O-B)
+
+- [ ] **T-272** (Medium, security/misuse, **Confirmed**) `crypto_pwhash::verify_password`
+  (`crates/dstu-core/src/crypto_pwhash.rs`, `Argon2::default().verify_password(password, &parsed)`)
+  takes the algorithm, version and `m`/`t`/`p` from the PHC string it is given.
+  - (1) A crafted string with a huge `m` aborts the process: the allocation failure is an abort, not
+    a panic, so `catch_unwind` in `dstu-core-capi` cannot stop it, and it kills the host interpreter
+    or VM in every binding. `verify_password` is exposed by the capi (`dstu_pwhash_verify_password`)
+    and all 8 bindings.
+  - (2) It verifies Argon2d/Argon2i, version 0x10, and parameters far below every preset, while
+    `hash_password` only ever produces Argon2id v=19 with a libsodium preset. That reopens the
+    algorithm/parameter knob D-47 closed.
+  - Rule: `docs/SECURITY.md` threat model, "attacker who can supply malformed/adversarial input to
+    parsers - must not panic"; D-47 "delete the knob"; D-65 misuse category.
+  - **Recipe** (scratch crate, `dstu-core = { path = ".../crates/dstu-core", features = ["std",
+    "pwhash"] }`, release build):
+    - `verify_password(b"pw", "$argon2id$v=19$m=2147483648,t=1,p=1$c29tZXNhbHRzb21lc2FsdA$aGFzaGhhc2hoYXNoaGFzaGhhc2hoYXNoaGFzaGhhc2g")`
+      printed `memory allocation of 2199023255552 bytes failed` and the process died (exit 127 under
+      Git Bash).
+    - `verify_password(b"pw", "$argon2d$v=16$m=8,t=1,p=1$MDEyMzQ1Njc4OWFiY2RlZg$rRfl2h++HvpEWhgavpjwXIYD4I6qlTgwk/wzcSkoCyc")`
+      returned `true` (an Argon2d, v=16, 8 KiB, t=1 hash of `pw` made with `argon2` 0.5.3). The
+      Argon2i equivalent `$argon2i$v=16$m=8,t=1,p=1$MDEyMzQ1Njc4OWFiY2RlZg$cKDyvdsiY66IcIjdBE6uUin+pb2KiaHFcNvnLmY1Z/s`
+      also returned `true`.
+  - Direction (not implementation; depends on O-B): reject anything but `argon2id`, `v=19` and a
+    parameter set inside an explicit bound before any allocation. Allocate the way `derive_key`
+    already does (`try_reserve_exact`, error instead of abort).
+  - Tests: Security & Boundary (huge `m` returns `false` without aborting; argon2d/argon2i/v=16/
+    below-preset strings return `false`); Misuse (malformed PHC strings, empty string); happy path
+    unchanged for `hash_password` output at all three presets; one capi test and one per binding
+    (the same two strings). Run Miri with `PROPTEST_CASES` cut on the new unit tests only.
+  - Regression risk: hashes made by other tools with non-preset parameters stop verifying under the
+    strict option (O-B). Effort M (core S, 9 thin binding tests). Attach to T-225: a
+    `verify_password` fuzz target run with `-malloc_limit_mb` (that is what would have caught this).
+- [ ] **T-273** (Medium, security policy / side channel; code path **Confirmed**, leakage not
+  measured) The portable GF(2^m) multiply behind Kalyna-GCM/GMAC indexes a table with the secret
+  GHASH key.
+  - `hazmat::gf2m_wide::poly_mul_wide` (`gf2m_wide.rs:232-262`) builds `t[i] = a*i` and reads
+    `t[nibble]` with `nibble` taken from `b` (`:255-257`).
+  - `kalyna_gcm.rs:124,131` (and `kalyna_gmac`) call `acc.add(block).multiply(h_key)`, so `b` is `H =
+    E_K(0)`. At m=256 each `t[i]` is 64 bytes, so each nibble of `H` selects its own cache line.
+  - Path reached when `multiply` does not dispatch to hardware clmul (`gf2m_wide.rs:162-174`):
+    every `no_std` build, `std` builds on anything but x86_64/aarch64, and x86_64 without
+    PCLMULQDQ / aarch64 without `aes`. `crypto_secretbox`, `crypto_secretstream` and `crypto_box`
+    inherit it.
+  - Rule broken: `CLAUDE.md` "Secret-dependent array indexing is allowed only for fixed-latency
+    S-box/GF-multiplication table lookups mirroring the DSTU reference implementations". D-19 scopes
+    that to S-boxes and Strumok's `mul_alpha` const tables. This table is built at run time from
+    secret data, and UAPKI's `gf2m_mul_64_fast` (`math-gf2m-internal.c:285`) is a bit-serial
+    shift-and-XOR, not a table, so it does not "mirror the reference". (UAPKI branches on the secret
+    bits instead, so it is not constant-time either.)
+  - Inconsistent with this crate's own record: T-196 implemented and reverted this exact comb
+    technique for `gf2m163` because it "needs a secret-indexed `T[nibble]` table lookup"
+    (`gf2m163.rs:177-181`). D-184 then says the software fallback "never had one either", which is
+    true for `gf2m163` and false for `gf2m_wide`.
+  - Recipe (code-level): read the three locations above; `Gf2m256(pub [u64; 4])` has `$limbs2 = 8`,
+    so `t` is `[[u64; 8]; 16]`, 64 bytes per entry.
+  - Direction: O-A decides. (a) Constant-time software path: either a masked full scan of all 16
+    `t` entries per nibble, or T-125's branchless bit-serial method for the no-clmul case only. Plan
+    mode + advisor, and `--emit=asm` on `thumbv7em-none-eabihf` and x86_64 without `+pclmulqdq`.
+    (b) Accept it: a new D-entry that extends D-19 by name to this table, citing UAPKI's branching
+    multiply as the reference's own exposure, plus an addendum to D-184 correcting the sentence.
+  - Tests: under (a), a differential proptest (new path == comb == clmul on random operands) and the
+    existing field-axiom tests; GCM/GMAC KATs unchanged; dudect-style timing is not a gate (D-19).
+  - Regression risk under (a): GCM/GMAC throughput on no-clmul targets (D-76 measured the comb at
+    ~1.8-2.3x the bit-serial speed). Effort M under (a), S under (b).
+
+### Binding correctness
+
+- [ ] **T-274** (Medium, error path, **Confirmed**) PHP `DstuCoreSecretStreamWriter` never checks
+  `fwrite()`'s return value: the header write in `__construct` and the four writes in `pushChunk`
+  (`bindings/php/lib/DstuCoreSecretStream.php`, lines 121-124 in the synced copy). A failed or short
+  write only raises `E_NOTICE`, and `write()`/`close()` return normally. The caller believes the
+  file is encrypted while the stream on disk is corrupt; this only shows up at decrypt time. Every
+  other binding raises on a failed sink write.
+  - Rule: dev-practices §3 Error path ("does the failure mode leave the user worse off, and will
+    they notice?"); D-65.
+  - Recipe (Pi, PHP 8.2, extension from `cargo build --release` in `bindings/php`):
+    `$w = new DstuCoreSecretStreamWriter(str_repeat("\0", 32), fopen("/etc/hostname", "r"));
+    $w->write(str_repeat("x", 20000)); $w->close();` prints 7 `fwrite(): Write of N bytes failed with
+    errno=9 Bad file descriptor` notices and returns normally, with no exception.
+  - Direction: compare each `fwrite` result with `strlen` and throw via `dstu_core_throw_error`;
+    keep D-118 (no `Final` after a failed write).
+  - Tests: Error path (read-only stream, and a user stream wrapper whose `stream_write` returns 0)
+    raises and writes no `Final`; happy path unchanged. Effort S. Do it with T-276's PHP half (same
+    file).
+- [ ] **T-275** (Medium, API/error path, **Confirmed**) Java `SecretStreamEncryptor.complete()`
+  never flushes its sink, and `close()` neither flushes nor closes it
+  (`bindings/java/src/main/java/ua/dstucrypto/dstucore/SecretStreamEncryptor.java`). So the natural
+  try-with-resources shape with an inline buffered sink silently loses the stream's tail.
+  - .NET `Complete()` flushes its inner stream and `Dispose()` closes it unless `leaveOpen`; Go's
+    `Close()` closes the sink unless `leaveOpen`. The Java class doc explains why `close()` does not
+    finalize, but says nothing about the sink.
+  - Recipe (jar `bindings/java/target/dstu-core-0.1.0.jar`, JDK 17, key = 32 zero bytes):
+    ```java
+    try (SecretStreamEncryptor enc = new SecretStreamEncryptor(key,
+            new BufferedOutputStream(Files.newOutputStream(p)))) {
+        enc.write(new byte[20000]);
+        enc.complete();
+    }
+    ```
+    The file then holds 16443 bytes; a complete stream is 20096. `SecretStreamDecryptor` then fails
+    with `truncated secretstream: expected 16 bytes for chunk auth tag, got 0`. No exception at
+    encrypt time.
+  - Direction: at least `complete()` flushes `out` (the .NET parity point). Whether `close()` also
+    closes `out` (the `FilterOutputStream` convention, or a `leaveOpen` flag as in .NET/Go) is O-F.
+    Document the sink contract in the class doc and in `docs/bindings-strategy.md`'s Java step 3.
+  - Tests: the recipe above as a regression test (bytes on disk == complete length, decrypt
+    succeeds); Error path (a sink whose `flush()` throws surfaces from `complete()`). Effort S. Do it
+    with T-276's Java half.
+- [ ] **T-276** (Medium, perf, **Confirmed**) Quadratic write buffering in the Java and PHP stream
+  writers.
+  - Java `write(byte[], int, int)` runs `buffer.toByteArray()` plus two `Arrays.copyOfRange` plus a
+    rewrite of the remainder for every 8 KiB it emits. PHP `write()` runs `substr($this->buf, 8192)`
+    per chunk. One large write of N bytes therefore copies O(N^2/8192) bytes.
+  - Measured (one process each, whole message in memory, null/`php://memory` sink):
+
+    | Binding | Size | One `write` | 16 KiB `write`s |
+    |---|---|---|---|
+    | Java (JDK 17, Windows) | 1 MiB | 285.5 ms | 22.1 ms |
+    | Java | 4 MiB | 619.7 ms | 78.5 ms |
+    | Java | 8 MiB | 2132.3 ms | 148.0 ms |
+    | Java | 16 MiB | 7975.6 ms | 284.2 ms |
+    | PHP 8.2 (Pi) | 1 MiB | 27.8 ms | 21.0 ms |
+    | PHP 8.2 (Pi) | 4 MiB | 315.3 ms | 63.1 ms |
+    | PHP 8.2 (Pi) | 16 MiB | 5245.4 ms | 245.0 ms |
+
+  - `enc.write(Files.readAllBytes(p))` / `$w->write(file_get_contents($f))` are the natural calls
+    that hit this.
+  - Recipe: the table's program, Java: `new SecretStreamEncryptor(new byte[32],
+    OutputStream.nullOutputStream())`, then `write(new byte[16 << 20])` + `complete()` versus the
+    same bytes in 16384-byte `write`s. PHP: `new DstuCoreSecretStreamWriter(str_repeat("\0", 32),
+    fopen("php://memory", "w+"))`, then `write(str_repeat("U", 16 << 20))` + `close()` versus
+    16 KiB `substr` slices.
+  - Direction: consume full chunks straight from the caller's array/string by offset and keep only
+    the tail (the Go/.NET/C++ shape); no API change.
+  - Tests: happy path (one big write and many small writes decrypt to the same plaintext); a
+    64 MiB single write finishes under a generous bound (not a microbenchmark). Effort S per
+    binding. Risk: the one-chunk-ahead `Final` rule (an exact multiple of 8192 must end in a full
+    `Final` record) - the shared v2 `valid_exact_multiple` vector pins it.
+
+### Test gaps
+
+- [ ] **T-277** (Low, test-gap) The shared stream-file vectors
+  (`crates/dstu-core/tests/vectors/secretstream-file/v2.json`, D-208) have 3 positive and 4 negative
+  cases: `bad_version`, `short_non_final`, `v1_0_3_8`, `version_only`.
+  - Every one of the 9 readers (uacrypt + 8 bindings) hand-rolls the same parser (T-284), yet these
+    rejections are covered only by per-binding ad hoc tests, if at all: trailing data after `Final`;
+    a declared length above 8192 (8193 and `0xFFFFFFFF`, the T-224 shape); a stream that ends
+    cleanly after a non-final record (no `Final`); truncation inside a record (inside the ciphertext
+    and inside the tag); an unknown tag byte (`0x04`); a tampered auth tag.
+  - Direction: generate these with the existing `#[ignore]`d `gen_secretstream_file_vectors.rs`,
+    extend each reader's vector runner to assert the error class. This is option (a) of O-C and
+    worth doing under either option.
+  - Tests: Security & Boundary for all 9 readers. Effort S-M (one generator change, 9 runners).
+    Risk: none to production code.
+- [ ] **T-278** (Low, test-gap, active-attack) DSTU 4145 m=257 has only one malicious-key test:
+  `signature257_verify_rejects_order_two_small_subgroup_key`
+  (`tests/dstu4145_signature257.rs:238`).
+  - m=163's T-189/T-245b siblings have no m=257 twin: an off-curve key, `Infinity`, and the order-2n
+    key-substitution case `Q + T2` with a genuine even-`r` signature (D-203's
+    `order_2n_public_key_is_rejected`, built via the public `curve257` combine/add API).
+  - The code already does full `n*Q` validation (D-185), so these should pass on first write; that
+    is expected (CLAUDE.md "rejection tests passing on first write").
+  - Also add the `crypto_sign257` level equivalent through `VerifyingKey::from_uncompressed_bytes`.
+    `#[cfg_attr(miri, ignore = ...)]` per T-206. Effort S.
+
+### QA, docs and hygiene
+
+- [ ] **T-279** (Medium, qa, **Confirmed** by reading) `cargo xtask ci` never builds or tests the
+  .NET, Java, Go or C++ bindings. Their functions exist (`xtask/src/main.rs` `dotnet()` :1095,
+  `java()` :1138, `go()` :1175, `cpp()` :1226), but `ci()`'s optional list (:1497-1515) omits them.
+  `CLAUDE.md`'s command table and `print_usage` both say `ci` runs "every language binding's own
+  build+test".
+  - Also absent from `ci()` relative to `rust.yml`: the MSRV 1.87 build, and clippy for `-p
+    dstu-core --no-default-features --features getrandom`.
+  - With T-243 (optional results are discarded), a green local `ci` says nothing about 4 of 8
+    bindings.
+  - Direction: add the four (best-effort, same `require` pattern). Do it in the same change as T-243
+    so the summary table shows them.
+  - Tests: run `cargo xtask ci` with one of those toolchains missing and confirm it is reported as
+    skipped, not passed (T-243's tri-state). Effort S. Depends on T-243.
+- [ ] **T-280** (Low, docs) Claims this audit found false or stale, each in its owning file. Pair
+  every `CLAUDE.md` addition with a deletion.
+  - (a) `CLAUDE.md` Commands: "every language binding's own build+test" (after T-279 lands, or
+    reword now).
+  - (b) `CLAUDE.md` Project status: "`crypto_generichash`/`crypto_auth`/`crypto_kdf` ... only the
+    256-bit variant exposed". `crypto_generichash` re-exports `Kupyna512`/`Kupyna512Hasher` by
+    D-66's own design.
+  - (c) `crypto_sign::CurveId`'s rustdoc says uacrypt's `sign-pubkey`/`verify` prepend the curve
+    byte. Since T-256 typed keys, only `key-import` of raw 0.3.x files uses it.
+  - (d) D-184's "the software path it falls back to never had one either": an addendum per T-273's
+    outcome (don't rewrite D-184); the matching `docs/SECURITY.md` `gf2m_wide` bullet too.
+  - (e) `crypto_pwhash::Strength::params`'s doc says "an invalid preset would be a compile-time
+    error". It is a `const fn` called at run time; make that true with `const _: () = { ... }`
+    assertions for the three presets, or correct the sentence. Effort S.
+- [ ] **T-281** (Low, arch) The public `alloc` Cargo feature (`crates/dstu-core/Cargo.toml`,
+  `alloc = []`) does nothing: no `cfg(feature = "alloc")` exists anywhere in `crates/dstu-core/src`.
+  `CLAUDE.md` still presents `std`/`alloc`/`no_std` as the feature set (D-01).
+  - A published crate advertising a knob with no effect is D-47's "delete the knob" in reverse.
+  - Direction: O-D. Effort S.
+- [ ] **T-282** (Low, hygiene/constant time) `gf2m_wide`'s `double()` (`gf2m_wide.rs:202`) branches
+  on `top_bit` with `if top_bit == 1`. Kalyna-XTS uses it on the tweak `E_K(iv)`, a secret. CLAUDE.md
+  forbids secret-dependent branching outright.
+  - The x86-64 release build compiles it branch-free: `xorq $135` / `$1061` / `$293` followed by
+    `testq` + `cmovnsq` in `Kalyna{128_128,256_256,512_512}Xts::encrypt_in_place`, from the
+    `--emit=asm` command in "Method".
+  - That depends on the backend (thumbv6m has no `cmov`).
+  - Direction: mask form (`let mask = 0u64.wrapping_sub(top_bit)`, XOR the constant under `mask`);
+    re-check the asm on x86_64 and `thumbv7em-none-eabihf`.
+  - Tests: the existing `double_matches_general_multiply_by_two` proptest and XTS KATs. Effort S.
+- [ ] **T-283** (Low, hygiene) Bit-length conversions `(len as u64) * 8` are unchecked:
+  `kalyna_gcm.rs:148,150`, `kalyna_gmac.rs:109`, `kupyna_kmac.rs:51,64`, and `KupynaCore::finalize`'s
+  `self.total_len * 8`.
+  - They overflow only past 2^61 bytes, which is not reachable in practice, but that is not provable
+    from the line (global rule; T-245a is the precedent). The `#[allow(clippy::cast_possible_truncation)]`
+    comments name the wrong risk (the cast cannot truncate; the multiply can overflow).
+  - Direction: `checked_mul` into the modules' existing `InvalidLength`, or a length bound tied to
+    DSTU 7624 annex Г's per-key limits (`docs/SECURITY.md`).
+  - Tests: Misuse, a unit test on the helper, since no real slice can reach it. Effort S.
+- Attached to existing tasks (no new IDs):
+  - **T-246**: `kalyna_gcm.rs:103` has an unlinted `.try_into().unwrap()` inside `macro_rules!`,
+    the same class as its `kupyna_kdf.rs:36` `.expect` item.
+  - **T-242**: `hazmat::kupyna::KupynaCore` has no `Zeroize`. In KMAC it buffers `!K` (the key,
+    bit-inverted) until `finalize`, and `let block = self.buffer;` copies it again; neither is wiped.
+    That covers the DSTU 4145 signing key `d` (`derive_nonce` keys KMAC with `d`) and every
+    secretstream/box subkey derivation. Also the capi plaintext `Vec` Note above.
+  - **T-225**: add the `verify_password` fuzz target (T-272).
+  - **T-249**: its D-118 sub-item is covered by this audit (Clean areas); the rest stays open.
+  - **T-243**: land together with T-279.
+
+### Architecture (owner decision first)
+
+- [ ] **T-284** (Medium, arch; O-C) The stream-file framing is implemented 9 times: uacrypt's
+  `write_secretstream_file`/`decrypt_stream_records` plus one writer and one reader per binding.
+  That framing is the version byte, header, `tag || len_le32 || ct || tag16` records, the
+  exact-8192 non-final rule, the length bound, the missing-`Final` check and the trailing-data
+  check.
+  - D-118 already drew the lesson "don't let each binding hand-roll a parser" for the wire format;
+    D-208's shared vectors mitigate it only for the cases they contain (T-277).
+  - This audit's T-274/T-275/T-276 are three divergences that live exactly in those copies.
+  - Direction per O-C. (a) Keep the 9 copies, make T-277 the enforcement point, and add one
+    error-path sink test per writer. (b) Add a `no_std` record codec to `crypto_secretstream`
+    (header encode/parse plus an incremental record parser that enforces every rule above) and
+    capi functions for it, so bindings keep only their language's I/O.
+  - Tests under (b): T-277's vectors against the codec, a fuzz target for the parser (three-place
+    sync), and all 9 existing suites unchanged.
+  - Effort: (a) S-M, (b) L; (b) needs plan mode + advisor (new public API plus capi).
+- [ ] **T-285** (Low, perf/API; O-E) DSTU 4145 `verify` re-validates the public key (`n*Q == O`,
+  D-185/D-203) on every call.
+  - Measured in-process: one `Point::scalar_multiply(n)` is 102.1 us of a 253.2 us m=163 verify
+    (40%) and 333.3 us of a 1120.2 us m=257 verify (30%).
+  - `VerifyingKey::from_uncompressed_bytes` is infallible, so a key verified many times pays that
+    every time.
+  - Direction per O-E: validate once at parse time (`from_uncompressed_bytes` returns `Option`, or a
+    validated newtype), and skip the per-verify check only for keys built that way. That is a
+    breaking API change for `crypto_sign`, `crypto_sign257`, the capi and the 8 bindings.
+  - Tests: every existing malicious-key test moves to the parse step (and T-278's), so invalid keys
+    are refused at parse; verify stays correct. Binary-level before/after with `uacrypt verify
+    --iterations` (D-34), both curves.
+  - Effort M; plan mode + advisor (API).
+
+### Performance (after the test-gap and arch batches)
+
+- [ ] **T-286** (Low-Medium, perf; Plausible, pattern measured) `uacrypt encrypt`/`decrypt` do
+  unbuffered file I/O.
+  - `Output::File` wraps a bare `std::fs::File`, so `write_secretstream_file` issues 4 `write`
+    calls per 8 KiB record (tag byte, length, ciphertext, tag). `decrypt_stream_records` issues 3
+    `read`s per record through an unbuffered `Box<dyn Read>`.
+  - Both allocate 2 fresh `Vec`s per record.
+  - Measured on Windows, in-process A/B of exactly that write pattern over the same core (128 MiB
+    random input, 3 rounds): unbuffered 41.1 / 41.5 / 41.1 MB/s, same writes through a 64 KiB
+    `BufWriter` 49.5 / 49.6 / 49.3 MB/s (+20%). The release `uacrypt encrypt` on the same file ran
+    at 38.1 / 39.0 / 39.5 MB/s.
+  - Direction: a `BufWriter` inside `OutputFile` (flushed and error-checked before `sync_all` in
+    `commit`, never left to `Drop`), a `BufReader` under the decrypt reader (keep the
+    trailing-data probe and the progress reader correct), and reused record buffers.
+  - Tests: every existing smoke/streaming-bounded test; Error path - a flush failure at `commit`
+    leaves no output (the Pi's `/dev/full` pattern).
+  - Measure before/after as the binary (`uacrypt encrypt`/`decrypt`, MB/s, 100+ MiB, both OSes,
+    D-34), and record the numbers in `docs/PERFORMANCE.md`.
+  - Effort S-M. Do it next to T-265 (same I/O layer).
+- [ ] **T-287** (Low, perf; Plausible, cost split measured) `crypto_box::open`/`crypto_box512::open`
+  recompute the recipient public key (`secret.public_key()`, one full ladder) on every call for the
+  T-248 KDF binding.
+  - Measured in-process: 325.7 us of a 1145.1 us box256 `open` (28.4%) and 2837.9 us of a
+    9621.5 us box512 `open` (29.5%).
+  - Also `point_from_x` recomputes the constant `a * d^-1` (one `invert`, 25.1 us, 2.1% of `open`).
+  - Direction: carry the public key inside `SecretKey` (computed once in `from_bytes`/`generate`;
+    `from_bytes` gets one ladder slower), and make `a * d^-1` a constant. Check first whether each
+    binding keeps a `SecretKey` handle or rebuilds it per call; only handle-keeping callers gain.
+  - Tests: happy path plus every existing box test; a unit test that the cached key equals
+    `base_point * e`. Binary-level before/after with `uacrypt box-open --iterations` on both curves.
+  - Effort S. Do it with T-265 (new streaming `crypto_box` API).
+
+### Owner decisions needed (not picked - each needs your answer)
+
+- **O-A (T-273) - the GHASH table on the non-clmul path.**
+  - (a) Make it constant time: no secret-indexed memory access anywhere in GCM/GMAC. Software GHASH
+    on non-x86/ARM targets and `no_std` gets slower, roughly back to the pre-T-125 speed.
+  - (b) Accept it and record it: no code change, and D-19's carve-out grows by one runtime-built
+    table. Anyone reading `CLAUDE.md` then learns that GCM on an MCU leaks cache-timing information
+    about its MAC key wherever the MCU has a data cache.
+- **O-B (T-272) - two questions.**
+  - (1) Strictness:
+    - (a) Accept only Argon2id v=19 with one of the three presets. Simplest; matches
+      `hash_password`. Hashes created elsewhere with other parameters no longer verify.
+    - (b) Accept any Argon2id v=19 up to the Sensitive preset's memory/time. Keeps those hashes
+      working; it is a bound, not a fixed list.
+  - (2) Disclosure: it is in every published version that has `crypto_pwhash`. Choose between
+    folding it into the 0.4.0 release and GHSA embargo on `master`, a third advisory, or treating it
+    as hardening in 0.5.0. This decides which branch the fix lands on.
+- **O-C (T-284) - where the stream-file framing lives.**
+  - (a) Stay in 9 places plus T-277's vectors: no new API, but every future framing rule is still
+    written 9 times.
+  - (b) One core codec: new public API plus capi surface, and a breaking change for the bindings'
+    internals only. Each future rule is then written once.
+- **O-D (T-281) - the `alloc` feature.**
+  - (a) Remove it at the next breaking `dstu-core` bump: anyone who enables it gets a Cargo error
+    and must drop it.
+  - (b) Keep it as a documented, reserved no-op: nothing breaks, the knob keeps meaning nothing.
+- **O-E (T-285) - key validation.**
+  - (a) Validate once when parsing a verifying key: verify gets ~30-40% faster, but
+    `from_uncompressed_bytes` can now fail - breaking in core, capi and 8 bindings.
+  - (b) Keep checking on every verify: no break, and the cost stays.
+- **O-F (T-275) - who owns the Java sink.**
+  - (a) `complete()` flushes `out`, and the caller still closes it: minimal change, fixes the
+    data loss.
+  - (b) Also close `out` on `close()`, with a `leaveOpen` flag like .NET/Go: same shape across
+    bindings, and a behaviour change for callers who reuse the sink.
+
+### Batch plan (proposed - the owner controls ordering)
+
+Order: security, then binding correctness, then test gaps, then QA/docs/hygiene, then
+architecture, then performance. Performance goes last because T-277/T-278 must pin behaviour first.
+Group by file, so no file is edited twice.
+
+- **AP-1 - security (gated on O-A/O-B): T-272, then T-273.** T-272's branch follows O-B(2): if it
+  joins 0.4.0, it is done on `master` before the release-day steps and cherry-picked to `ux-0.5.0`.
+  - Plan mode + advisor for both: T-272 changes behaviour in core, capi and 8 bindings; T-273(a)
+    replaces a field multiply.
+  - Done when: both PoC strings are rejected without abort in core, capi and every binding; the
+    T-225 fuzz target exists; T-273 has either the new constant-time path with a differential test
+    and an asm check, or the D-19 extension entry.
+- **AP-2 - binding correctness: {T-274 + T-276 PHP} as one change, {T-275 + T-276 Java} as
+  another.** Same files, no plan mode (small, local). Closing advisor after both.
+  - Done when: T-274's and T-275's recipes are regression tests that fail on `06b4397` and pass; the
+    T-276 tables are re-measured and shrink to linear.
+  - Needs the Pi for PHP.
+- **AP-3 - test gaps: T-277, T-278.** No plan mode.
+  - Done when: all 9 readers pass the extended v2 vectors, and the m=257 attack tests are in.
+  - Run before AP-5, because O-C(b) is checked against T-277's vectors.
+- **AP-4 - QA/docs/hygiene: T-279 (with T-243), T-280, T-281 (per O-D), T-282, T-283, plus the
+  T-246/T-242 attachments if still open.** No plan mode.
+  - Done when: `cargo xtask ci` reports all 8 bindings and the tri-state; the claims are corrected;
+    clippy/fmt/Miri are clean on the touched modules.
+- **AP-5 - architecture: T-284 per O-C, T-285 per O-E.** Plan mode + advisor for each, because
+  both change public API.
+  - Done when: every reader/writer passes T-277's vectors through the chosen design; the verify
+    change is measured at binary level.
+- **AP-6 - performance: T-286, T-287.** Only after AP-3.
+  - Done when: binary-level MB/s and ops/s before/after are in `docs/PERFORMANCE.md` on both
+    machines, and no new secret-dependent branch or index exists (asm check where a primitive is
+    touched).
+
+**Relation to the plans already in flight:**
+- If O-B(2) says "0.4.0", AP-1's T-272 runs first, before the 0.4.0 release-day steps.
+- Otherwise, fit this batch into the UX batch's "Remaining, in order" list:
+  - AP-2..AP-4 after T-270;
+  - T-272's binding tests in the same binding pass as T-269;
+  - AP-6 together with T-265, which touches the same uacrypt I/O and `crypto_box` code.
+
+### RESUME HERE (this review, 2026-09-25)
+
+- The audit is done and committed as docs only, on `ux-0.5.0`, not pushed (embargo - see this
+  section's first paragraph). Nothing is implemented.
+- **Waiting on the owner:**
+  - O-B (T-272 strictness and disclosure route; this decides the branch);
+  - O-A (T-273);
+  - O-C, O-D, O-E, O-F;
+  - approval or reordering of the AP-1..AP-6 batch plan.
+- **When resuming:**
+  - Read this section and the owner's answers.
+  - Execute with `docs/prompts/arch-perf-review.md` prompt 2, naming an `AP-n` sub-batch.
+  - Every Confirmed task carries its recipe inline; the scratch crates, the Java/Ruby/PHP scripts
+    and the asm output lived outside the repo and are gone, so rebuild them from the recipes.
+  - For PHP, the Pi needs `cargo build --release` in `bindings/php`. The extension is at
+    `target/release/libdstu_core_php.so`; load it with `php -d extension=...`.
+- Before trusting any absolute MB/s number, check the machine state first (see the intro).
