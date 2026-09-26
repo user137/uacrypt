@@ -2064,7 +2064,8 @@ optimistic until they are re-measured. The raw scalar-multiplication table is un
 `fp256`/`fp512` masks now pass through `black_box` so that they cannot compile to branches. That
 costs about 1.57x (`crypto_box`) and 1.19x (`crypto_box512`) per seal/open, in an in-process
 diagnostic on the dev machine. Every table here, the raw scalar-multiplication one included, is
-optimistic until re-measured.
+optimistic until re-measured. **T-291 (D-227) adds about 2x more on x86_64** (bitwise carries in
+`hazmat::limb`): about 3.1x (`crypto_box`) and 2.3x (`crypto_box512`) against these tables in total.
 
 **T-194 (2026-08-08) extends both tables to `crypto_box512`/`l(p)=512` (E512/1, T-193) alongside the
 original `crypto_box`/`l(p)=256` numbers, and both curve sizes were re-measured fresh in the same

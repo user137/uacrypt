@@ -9991,10 +9991,10 @@ work and never touches the 0.4.0 release on `master`). Fit this batch into the U
   review. Then (owner 2026-09-26): T-291 and T-292 in step 2, then T-278, T-283.
 - **Step 2, T-291 done (2026-09-26, local, not pushed):** D-226 (owner: 0.5.0 + widened advisory,
   one code path) and D-227 (`hazmat::limb` bitwise carries; riscv32 carry branches 0 at O3/`s`/`z`;
-  `crypto_box` about 2x slower on x86_64). T-290's full `cargo xtask test` re-run was green
-  (146 suites). **Pending at commit:** T-290's scoped Miri (running), T-291's scoped Miri
-  (`limb`/`fp256`/`fp512`/`scalar`), T-291's full `cargo xtask test`, both closing advisor
-  reviews. Then: T-292, then T-278, T-283. Owner request 2026-09-26: after T-291, find why
+  `crypto_box` about 2x slower on x86_64). T-290 closed: `cargo xtask test` re-run green (146
+  suites), scoped Miri 94/0. T-291: `cargo xtask test` green (146), scoped Miri 26/0, closing
+  advisor review done (claims in D-227 narrowed to what was read, `s`/`z` baselines built and
+  read). Then: T-292, then T-278, T-283. Owner request 2026-09-26: after T-291, find why
   `cargo clippy --workspace --all-features --all-targets -- -D warnings` fails with 379 errors in
   `uacrypt`'s test targets (`xtask clippy` does not pass `--all-targets`) and fix it.
 - **Next:** T-278, T-283 and the

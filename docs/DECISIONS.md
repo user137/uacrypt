@@ -14990,7 +14990,8 @@ side-channel-resistance claim.
 is not observable from a unit test, so that test category is foreclosed. The asm check stands in
 for it. The existing KATs, the sw-vs-hw clmul proptests, the Додаток Г worked examples and the
 field-axiom proptests pass unchanged (`cargo test -p dstu-core --all-features`,
-`cargo xtask test`).
+`cargo xtask test`: 146 suites green on re-run). Scoped Miri (`MIRIFLAGS=-Zmiri-disable-isolation`,
+`PROPTEST_CASES=4`, `--lib dstu4145 dstu9041 gf2m_wide`): 94 passed / 0 failed, 3868 s.
 
 **Cost.** Release build, in-process, dev machine (x86_64, PCLMULQDQ). Internal regression
 numbers per D-34's allowance, not a cross-implementation claim. The binary-level `uacrypt` runs
@@ -15014,7 +15015,7 @@ borrow compares in the limb arithmetic (`overflowing_add`/`overflowing_sub` on `
 `beq <hi_a>,<hi_b>` around an `sltu`, which is a branch on whether the high 32-bit halves of two
 limbs are equal. In `fp256::add` after this fix, 5 such jumps remain, and there are more in
 `multiply`. This is a different mechanism from the mask idiom (no `wrapping_sub` mask is
-involved), so the barrier does not reach it.
+involved), so the barrier does not reach it. Scope and decisions: D-226; fix: D-227.
 
 ## D-226: T-291 - scope, disclosure and fix shape (2026-09-26)
 
@@ -15036,6 +15037,7 @@ loops; the `u128` product itself (`mul`/`mulhu`) is branch-free. Affected on ris
   run it. Accepted cost: the spike's `wide_mul` is ~2.3x slower on x86_64 (noisy, measured with a
   test run in parallel); the real `crypto_box` number is measured after the fix. T-293 may win some
   back.
+- Fix and asm check: D-227.
 
 ## D-227: T-291 - bitwise carries in `hazmat::limb` (2026-09-26)
 
@@ -15054,23 +15056,40 @@ store/load per limb product. The risk is a future LLVM folding the majority form
 
 **Asm check** (D-225's recipe, rustc 1.97.1, baseline from a `git worktree` at `a513a66`):
 - riscv32imc at `opt-level` 3, `s` and `z`: zero `beq X,Y` + `sltu _,X,Y` carry shapes (was 4-48
-  per function), and no `__multi3`/`__muldi3` calls. Per function at O3: `fp256::add` 5 -> 0,
+  per function), and no `__multi3`/`__muldi3` calls. At `z`, `limb::mac` and every
+  `OUTLINED_FUNCTION_*` body have no jumps. Per function at O3: `fp256::add` 5 -> 0,
   `multiply` 33 -> 2; `fp512` add 9 -> 0, sub 8 -> 0, multiply 35 -> 2; `ProjectivePoint::add`
   31/32 -> 0; `scalar::multiply` 17 -> 3, `scalar257::multiply` 52 -> 5, `scalar257` `Add` 15 -> 1.
-- Every remaining jump in the touched functions was read: loop counters, the reduction's bit and
-  limb indices, `wide_mul`'s tail index (8/16/24, no longer unrolled), `from_candidate_bytes`'s
-  final `Some`/`None` (public rejection), and `signature::sign`'s spec retry checks and `Option`
-  tags. None tests limb data.
+- Read at riscv32imc O3, after filtering `addi r,r,k` + compare loop ends by script:
+  `fp256`/`fp512` `multiply`, `scalar`/`scalar257` `multiply` and `Add`, `from_candidate_bytes`,
+  `signature::sign`, `crypto_sign`/`crypto_sign257::sign_digest`, `encryption`/`encryption512`
+  `decrypt`. What is left: loop counters, the reduction's bit and limb indices, `wide_mul`'s tail
+  index (8/16/24, no longer unrolled), shift-amount checks, `Option` tags and `memcmp` results,
+  `from_candidate_bytes`'s final `Some`/`None` (public rejection of public input), the spec retry
+  checks in `sign`, and `is_valid_scalar(e)` split by LLVM into two jumps on its two final
+  booleans (for a valid key both are always true; an invalid key is a public error). None tests
+  limb data. At `s`/`z`, read: `fp256`/`fp512` add/sub/multiply, `conditional_sub_p`,
+  `add_limbs`, `scalar`/`scalar257` multiply/`Add`/`cond_sub_if_ge`, `is_less_than`: only
+  counters (`li N`/`beqz`/`bnez` around outlined bodies), the bit index (`li 63`) and lengths.
+  Not read: the other wrappers at `s`/`z` (`encrypt`/`decrypt`/`sign_digest`), whose inlined
+  arithmetic is the functions above.
 - thumbv7em/x86_64/aarch64: the only new jumps are `wide_mul`'s tail index in `fp256::multiply`
-  (0 -> 3/4) and one more counter jump in `scalar257::multiply`; read, public. thumbv7em's two
-  `scalar257::multiply` jumps left open by T-291's trace are the bit counter (`cmp r9,#1; bhi`) and
-  the limb counter.
+  (0 -> 3/4) and one more counter jump in `scalar257::multiply`; read, public. thumbv7em
+  `scalar257::multiply`'s four: flags from `subs r1,#1` (loop), `cmp r8,#43` (byte index), and
+  `cmp r1,#1`/`cmp r0,#0` on stack-held counters, the same shape as `scalar::multiply`'s bit and
+  limb counters. thumbv7em at `s`/`z`: per-function counts equal the baseline except new
+  `OUTLINED_FUNCTION_*`/`limb::mac` bodies at `z`, which have no jumps.
+- Found, outside T-291's mechanism (counts unchanged), not read, for T-292's per-symbol
+  allowlist: `signature257::sign` (49 jumps), `signature::verify` (48), and `curve163`/`curve257`
+  `Point::add` (`Option` tags and point-equality checks).
 
 **Tests.** `limb.rs` tests written first and seen failing: an edge grid {0, 1, 2^63-1, 2^63,
 MAX-1, MAX} against a `u128` reference (`mac` over all four inputs, 1296 cases), the all-`MAX`
 `mac` extreme, proptests for all three, and a `debug_assert` misuse test per carry-in
 (`cfg(debug_assertions)`). The error-path category is foreclosed (pure arithmetic, no I/O). The
-existing KATs, Додаток Г worked examples and field/scalar proptests pass unchanged.
+existing KATs, Додаток Г worked examples and field/scalar proptests pass unchanged. Scoped Miri
+(`MIRIFLAGS=-Zmiri-disable-isolation`, `PROPTEST_CASES=4`, `--lib limb fp256 fp512 scalar`): 26
+passed / 0 failed, 452 s. `cargo xtask test`: 146 suites green.
 
 **Cost.** Release, in-process, x86_64 dev machine, internal regression numbers per D-34's
 allowance (two interleaved runs, a Miri run in parallel, so noisy):

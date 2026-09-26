@@ -451,7 +451,8 @@ mod kani_proofs {
 /// assume a specific CPU family" rule (`CLAUDE.md` MVP scope) for the generic-hardware baseline.
 /// Also compiled on `aarch64` (same test, no `RUSTFLAGS` toggle needed there - ARM has no
 /// BMI2/ADX-equivalent optional feature to opt into) purely as a baseline cross-arch comparison
-/// point for the same measurement.
+/// point for the same measurement. Its numbers predate T-291 (D-227): the carries now go through
+/// `hazmat::limb`'s bitwise formulas, not `u128` sums, so `adcx`/`adox` no longer apply.
 #[cfg(all(test, any(target_arch = "x86_64", target_arch = "aarch64")))]
 mod bmi2_adx_timing {
     use super::FieldElement;
