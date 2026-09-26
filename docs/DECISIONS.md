@@ -14881,3 +14881,20 @@ PMULL, so `uacrypt` never runs this path on either. The slowdown is accepted und
 `gf2m163`/`gf2m257`'s `FieldElement::multiply` on x86_64 (the DSTU 4145 software path, taken
 without PCLMULQDQ), not yet traced to its source. It is the idiom this entry found unsafe on its
 own.
+
+## D-224: T-290 disclosure - delegated fork (2026-09-26)
+
+The owner delegated how T-290 (a possible operand-bit branch in `gf2m163`/`gf2m257`'s software
+multiply, published since 0.3.x) is disclosed ("on your choice"). Tie-break per the delegation rule:
+project rules, then safety, then compatibility.
+- **Trace first.** T-290 is an asm observation, not a confirmed leak. Nothing is disclosed before
+  the branch is traced to its source line and shown to depend on secret data.
+- **If confirmed, it follows T-272's path (D-220 O-B(2)):** fixed on `ux-0.5.0`, shipped in 0.5.0,
+  covered by the same advisory as T-272, same push embargo until then. One coordinated disclosure
+  instead of a second, separate one. The exposure is narrow: the hardware clmul path is taken on
+  every x86_64 CPU with PCLMULQDQ and every aarch64 CPU with PMULL, and thumbv7em showed only IT
+  predication.
+- **Escalate back to the owner** if the trace shows a branch on the signing key's path on a
+  mainstream default target (x86_64/aarch64 with hardware clmul, or thumbv7em). That would justify
+  an out-of-band release, which is the owner's call, not a delegated one.
+

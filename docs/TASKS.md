@@ -9645,6 +9645,7 @@ points at the machine state rather than a GCM-specific regression, but that is n
     `gf2m_wide::double`, others found by grep), on x86_64, thumbv7em and riscv32imc. `double` was
     asm-checked in T-282 on x86_64/thumbv7em; riscv32imc's `kalyna_xts` functions showed no branch
     attributable to it in T-273's pass, not proven.
+  - Disclosure: D-224 (trace first; if confirmed, 0.5.0 + T-272's advisory).
   - Fix shape if confirmed: D-223's barrier. Possible deliverable: an automated asm check
     (`xtask`) over the audited symbols, so a toolchain bump cannot silently undo it.
 - Attached to existing tasks (no new IDs):
@@ -9911,7 +9912,7 @@ work and never touches the 0.4.0 release on `master`). Fit this batch into the U
   re-run `MIRIFLAGS=-Zmiri-disable-isolation PROPTEST_CASES=4 cargo +nightly miri test -p
   dstu-core --features std --lib gf2m_wide -- --test-threads=1` (tens of CPU-minutes) and
   replace D-223's "interrupted" Miri sentence with the result; (2) the closing advisor review
-  of T-273 has not run; (3) owner question on T-290's disclosure not yet answered.
+  of T-273 has not run; (3) T-290's disclosure: delegated by the owner, decided in D-224.
 - **Next:** T-278, T-283 and the
   T-242/T-246 leftovers. T-284 is deferred to 0.6.0 (owner choice B). The embargo still
   holds: do not push `ux-0.5.0` before 0.5.0 ships T-272's fix.
