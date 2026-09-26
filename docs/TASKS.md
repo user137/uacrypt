@@ -9209,11 +9209,20 @@ plan):
   for C/Break/Close; the restore path itself is not unit-testable (record in D-219). Probe with a
   pwsh 7 child: mode before == after (full value), exit code, Ctrl-C at "Repeat passphrase" too,
   a normal entry still works. Then `cargo test -p uacrypt` on the Pi (cfg arms changed).
-- [ ] **T-270** Clippy 1.98 rejects five `cast_possible_truncation` casts in `dstu-core`'s
+- [x] **T-270** Clippy 1.98 rejects five `cast_possible_truncation` casts in `dstu-core`'s
   `gf2m_field!` under `-D warnings` (found on the Pi 2026-09-24, D-219); CI fails on any runner
   with stable >= 1.98. Existing code, not from T-262 - in this plan by owner request
   (2026-09-24, "all in one plan"); it breaks `master`'s CI too, so the fix is cherry-picked
   there as well.
+  **Done 2026-09-26 on `ux-0.5.0` (D-219 addendum).** Correction to the text above: only 3 of the
+  5 casts are in `gf2m_field!` (one per instantiation); the other 2 are the same `prod as u64` in
+  `gf2m163.rs`/`gf2m257.rs`. All 5 sit in the aarch64-only PMULL `poly_mul_wide_hw`, so CI (x86_64
+  only) was never broken: `rust.yml`'s clippy job passed on 1.98.1 (run 35288797619). Fix: a
+  documented `#[allow(clippy::cast_possible_truncation)]`, the x86 sibling's shape. Gate:
+  `rust.yml` now also runs clippy `--target aarch64-unknown-linux-gnu`. Checked: 1.98.0 cross
+  clippy, all four CI invocations, clean; Pi (1.98.1) `cargo xtask clippy` + getrandom/small-tables
+  clippy clean, `cargo test -p dstu-core --all-features` 760/760. The `master` cherry-pick is not
+  done (its reason was wrong; owner decides).
 - [ ] **T-264** Shell completions (`uacrypt completions bash|zsh|fish|powershell`) and a man page,
   generated from the same command table the parser uses.
 - [ ] **T-265** Bounded-memory `box-seal`/`box-open` (today they read `--in` whole). Needs a

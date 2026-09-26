@@ -223,6 +223,10 @@ unsafe fn poly_mul_wide_hw(a: &[u64; 3], b: &[u64; 3]) -> [u64; 6] {
 /// rationale (`docs/TASKS.md` T-198).
 #[cfg(all(feature = "std", target_arch = "aarch64"))]
 #[target_feature(enable = "aes")]
+#[allow(clippy::cast_possible_truncation)]
+// deliberate: `prod as u64` keeps the low 64 bits of the 128-bit product on purpose (the high
+// half is taken separately via `prod >> 64`) - the intended split, not a value-changing
+// truncation (clippy 1.98 started flagging it, docs/TASKS.md T-270).
 unsafe fn poly_mul_wide_hw(a: &[u64; 3], b: &[u64; 3]) -> [u64; 6] {
     use std::arch::aarch64::vmull_p64;
     let mut out = [0u64; 6];

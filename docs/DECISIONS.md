@@ -14657,6 +14657,17 @@ written, mode unchanged. Control run, same probe on the pre-fix binary: mode lef
 `rust-toolchain.toml` pins `stable`, CI hits it on any runner whose stable is 1.98 or newer.
 Tracked as T-270.
 
+**Addendum (2026-09-26, T-270 done).** The CI claim above is wrong. All five casts are the
+low-half `prod as u64` inside the aarch64-only (PMULL) `poly_mul_wide_hw`: three from
+`gf2m_field!`'s three instantiations, one each in `gf2m163.rs`/`gf2m257.rs`. `rust.yml`'s clippy
+job runs on x86_64 only, never compiles that arm, and passed on 1.98.1 (run 35288797619). The binding
+workflows lint on arm64 macOS, but only their own crates, not the `dstu-core` path dependency. So
+the real gap was that no CI job lints aarch64. Fix: `#[allow(clippy::cast_possible_truncation)]`
+with a comment, the same shape as the x86 sibling (D-39: resolve a lint quirk with a documented
+allow). A mask such as `(prod & u128::from(u64::MAX)) as u64` was not used: it is still a cast, and
+the allow states the intent. New gate: `rust.yml` adds `cargo clippy --workspace --all-features
+--target aarch64-unknown-linux-gnu` (check only, needs the target's std, no linker).
+
 ## D-220: Architecture & performance review (2026-09-25) - owner decision on T-272, delegated forks O-A..O-F
 
 **Owner, 2026-09-25:** T-272 ships in **0.5.0**. The other forks were delegated to Claude:
