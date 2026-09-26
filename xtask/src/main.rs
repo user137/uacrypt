@@ -242,10 +242,12 @@ fn fmt(check: bool) -> bool {
 }
 
 fn clippy() -> bool {
-    // Same default-profile-first reasoning as `test()` above (D-39/T-172/D-161).
+    // Same default-profile-first reasoning as `test()` above (D-39/T-172/D-161). `--all-targets`
+    // lints the test code too; `clippy.toml` exempts `unwrap`/`expect` there. The `getrandom`-only
+    // run stays lib-only: the test code needs `std`/`alloc` and does not build there (rust.yml).
     run(
         "cargo",
-        &["clippy", "--workspace", "--", "-D", "warnings"],
+        &["clippy", "--workspace", "--all-targets", "--", "-D", "warnings"],
         None,
     ) && run(
         "cargo",
@@ -253,6 +255,7 @@ fn clippy() -> bool {
             "clippy",
             "--workspace",
             "--all-features",
+            "--all-targets",
             "--",
             "-D",
             "warnings",

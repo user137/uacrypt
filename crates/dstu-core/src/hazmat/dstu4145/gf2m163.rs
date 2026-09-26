@@ -623,16 +623,16 @@ mod clmul_spike {
     }
 
     #[test]
-    #[ignore]
+    #[ignore = "timing diagnostic, run by hand with --ignored"]
     fn isolated_timing_dispatch_vs_explicit_software_multiply() {
+        use std::hint::black_box;
+        use std::time::Instant;
+        const N: u32 = 2_000_000;
         if !feature_available() {
             eprintln!("gf2m163: hardware clmul feature not available on this CPU, skipping");
             return;
         }
-        use std::hint::black_box;
-        use std::time::Instant;
 
-        const N: u32 = 2_000_000;
         let a = FieldElement([
             0x1111_1111_1111_1111u64,
             0x2222_2222_2222_2222,
@@ -666,8 +666,8 @@ mod clmul_spike {
         let hw_elapsed = start.elapsed();
         black_box(acc);
 
-        let sw_ns = sw_elapsed.as_nanos() as f64 / f64::from(N);
-        let hw_ns = hw_elapsed.as_nanos() as f64 / f64::from(N);
+        let sw_ns = sw_elapsed.as_secs_f64() * 1e9 / f64::from(N);
+        let hw_ns = hw_elapsed.as_secs_f64() * 1e9 / f64::from(N);
         eprintln!(
             "gf2m163: explicit software multiply = {sw_ns:.1} ns/op | multiply() (hw dispatch) = {hw_ns:.1} ns/op | speedup = {:.2}x",
             sw_ns / hw_ns

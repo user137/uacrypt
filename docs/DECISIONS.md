@@ -15103,3 +15103,27 @@ allowance (two interleaved runs, a Miri run in parallel, so noisy):
 The cost is the MAC: on x86_64 `u128` sums were `add`/`adc`, the majority formula is several
 bitwise ops per carry. The owner accepted about 2x (D-226). T-293 does not reach it (no barrier
 here); any win-back needs its own plan.
+
+## D-228: T-294 - clippy lints test code too (2026-09-26)
+
+**Problem.** `cargo clippy --workspace --all-features --all-targets -- -D warnings` failed with 449
+errors (379 in `uacrypt`'s lib test, the same count class on `master`). `xtask clippy` and
+`rust.yml` never passed `--all-targets`, so no test target had ever been linted, and the
+crate-level `#![deny(clippy::unwrap_used, clippy::expect_used)]` / `#![warn(clippy::pedantic)]`
+reach `#[cfg(test)]` modules.
+
+**Decision.** A root `clippy.toml` with `allow-unwrap-in-tests`/`allow-expect-in-tests`, not a
+per-module `#[allow]`: a failing test should panic, and the production `deny` stays as it is
+(`#[test]` fns and `#[cfg(test)]` modules only; a `cfg(any(test, kani))` helper outside a test
+module is not exempt, so `gf2m_wide::clmul_native::clmul64_impl` now extracts the halves with
+`_mm_cvtsi128_si64`/`_mm_srli_si128`, like the production `poly_mul_wide_hw`). The other 49
+were fixed in the code, no new `allow`s: `#[ignore]` reasons on the timing diagnostics, their
+`use`/`const` moved to the top of the fn, `as_secs_f64()` instead of `as_nanos() as f64`,
+cast-free byte patterns (`(0..=u8::MAX).cycle()`), a `KeygenRun` type alias, `checked_sub` on an
+`Instant`, `enumerate()` loops in `tables.rs`, and one doc line starting with `- `.
+
+**Gate.** `--all-targets` on the default, `small-tables` and `--all-features` clippy runs, in
+`xtask clippy` and `rust.yml`. Not on the `getrandom`-only run: its test code needs `std`/`alloc`
+and does not build (already noted in `rust.yml`). Not on the aarch64 cross lint yet: the target
+is not installed locally, so the change could not be checked before CI sees it.
+

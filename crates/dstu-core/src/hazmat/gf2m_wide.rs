@@ -632,8 +632,9 @@ mod field_axiom_tests {
     // manual-timing diagnostic, not a correctness assertion; run with `--release --ignored
     // --nocapture` for a meaningful number.
     #[test]
-    #[ignore]
+    #[ignore = "timing diagnostic, run by hand with --ignored"]
     fn isolated_timing_gf2m256_multiply_vs_kalyna256_256_encrypt_block() {
+        const N: u32 = 2_000_000;
         use std::hint::black_box;
         use std::time::Instant;
 
@@ -654,8 +655,6 @@ mod field_axiom_tests {
             0x8888_8888_8888_8888,
         ]);
 
-        const N: u32 = 2_000_000;
-
         let start = Instant::now();
         let mut acc_block = block;
         for _ in 0..N {
@@ -672,8 +671,8 @@ mod field_axiom_tests {
         let mult_elapsed = start.elapsed();
         black_box(acc);
 
-        let block_ns = block_elapsed.as_nanos() as f64 / f64::from(N);
-        let mult_ns = mult_elapsed.as_nanos() as f64 / f64::from(N);
+        let block_ns = block_elapsed.as_secs_f64() * 1e9 / f64::from(N);
+        let mult_ns = mult_elapsed.as_secs_f64() * 1e9 / f64::from(N);
         eprintln!(
             "encrypt_block: {block_ns:.1} ns/op | Gf2m256::multiply: {mult_ns:.1} ns/op | ratio (multiply/block) = {:.2}x",
             mult_ns / block_ns
@@ -691,7 +690,7 @@ mod field_axiom_tests {
     // accumulator. Manual timing, same posture as the diagnostics above; run with `--release
     // --ignored --nocapture`.
     #[test]
-    #[ignore]
+    #[ignore = "timing diagnostic, run by hand with --ignored"]
     fn isolated_timing_poly_mul_wide_constant_time_vs_comb() {
         use std::hint::black_box;
         use std::time::Instant;
@@ -708,7 +707,7 @@ mod field_axiom_tests {
                         a.copy_from_slice(&wide[..$limbs]);
                     }
                     black_box(a);
-                    start.elapsed().as_nanos() as f64 / f64::from(N)
+                    start.elapsed().as_secs_f64() * 1e9 / f64::from(N)
                 };
                 let comb = time($elem::poly_mul_wide_comb_reference);
                 let constant_time = time($elem::poly_mul_wide);
@@ -725,8 +724,9 @@ mod field_axiom_tests {
     }
 
     #[test]
-    #[ignore]
+    #[ignore = "timing diagnostic, run by hand with --ignored"]
     fn isolated_timing_gf2m256_poly_mul_wide_vs_reduce_split() {
+        const N: u32 = 2_000_000;
         // Each sub-loop chains its output back into the next iteration's input (matching
         // `kalyna_gcm`'s real `acc = acc.add(...).multiply(h_key)` accumulator pattern, and the
         // sibling `isolated_timing_gf2m256_multiply_vs_kalyna256_256_encrypt_block` test above) -
@@ -742,8 +742,6 @@ mod field_axiom_tests {
             0x7777_7777_7777_7777,
             0x8888_8888_8888_8888,
         ];
-
-        const N: u32 = 2_000_000;
 
         let start = Instant::now();
         let mut a: [u64; 4] = [
@@ -777,8 +775,8 @@ mod field_axiom_tests {
         let reduce_elapsed = start.elapsed();
         black_box(wide);
 
-        let mul_ns = mul_elapsed.as_nanos() as f64 / f64::from(N);
-        let reduce_ns = reduce_elapsed.as_nanos() as f64 / f64::from(N);
+        let mul_ns = mul_elapsed.as_secs_f64() * 1e9 / f64::from(N);
+        let reduce_ns = reduce_elapsed.as_secs_f64() * 1e9 / f64::from(N);
         let total_ns = mul_ns + reduce_ns;
         eprintln!(
             "poly_mul_wide (chained): {mul_ns:.1} ns/op | reduce (chained): {reduce_ns:.1} ns/op | reduce share = {:.1}% | sum = {total_ns:.1} ns/op",
@@ -787,8 +785,9 @@ mod field_axiom_tests {
     }
 
     #[test]
-    #[ignore]
+    #[ignore = "timing diagnostic, run by hand with --ignored"]
     fn isolated_timing_gf2m128_multiply_vs_kalyna128_128_encrypt_block() {
+        const N: u32 = 2_000_000;
         use std::hint::black_box;
         use std::time::Instant;
 
@@ -798,8 +797,6 @@ mod field_axiom_tests {
 
         let a = Gf2m128([0x1111_1111_1111_1111u64, 0x2222_2222_2222_2222]);
         let b = Gf2m128([0x5555_5555_5555_5555u64, 0x6666_6666_6666_6666]);
-
-        const N: u32 = 2_000_000;
 
         let start = Instant::now();
         let mut acc_block = block;
@@ -817,8 +814,8 @@ mod field_axiom_tests {
         let mult_elapsed = start.elapsed();
         black_box(acc);
 
-        let block_ns = block_elapsed.as_nanos() as f64 / f64::from(N);
-        let mult_ns = mult_elapsed.as_nanos() as f64 / f64::from(N);
+        let block_ns = block_elapsed.as_secs_f64() * 1e9 / f64::from(N);
+        let mult_ns = mult_elapsed.as_secs_f64() * 1e9 / f64::from(N);
         eprintln!(
             "encrypt_block: {block_ns:.1} ns/op | Gf2m128::multiply: {mult_ns:.1} ns/op | ratio (multiply/block) = {:.2}x",
             mult_ns / block_ns
@@ -826,8 +823,9 @@ mod field_axiom_tests {
     }
 
     #[test]
-    #[ignore]
+    #[ignore = "timing diagnostic, run by hand with --ignored"]
     fn isolated_timing_gf2m512_multiply_vs_kalyna512_512_encrypt_block() {
+        const N: u32 = 2_000_000;
         use std::hint::black_box;
         use std::time::Instant;
 
@@ -856,8 +854,6 @@ mod field_axiom_tests {
             0x8888_8888_8888_8888,
         ]);
 
-        const N: u32 = 2_000_000;
-
         let start = Instant::now();
         let mut acc_block = block;
         for _ in 0..N {
@@ -874,8 +870,8 @@ mod field_axiom_tests {
         let mult_elapsed = start.elapsed();
         black_box(acc);
 
-        let block_ns = block_elapsed.as_nanos() as f64 / f64::from(N);
-        let mult_ns = mult_elapsed.as_nanos() as f64 / f64::from(N);
+        let block_ns = block_elapsed.as_secs_f64() * 1e9 / f64::from(N);
+        let mult_ns = mult_elapsed.as_secs_f64() * 1e9 / f64::from(N);
         eprintln!(
             "encrypt_block: {block_ns:.1} ns/op | Gf2m512::multiply: {mult_ns:.1} ns/op | ratio (multiply/block) = {:.2}x",
             mult_ns / block_ns
@@ -932,7 +928,9 @@ mod kani_proofs {
 #[cfg(all(feature = "std", target_arch = "x86_64"))]
 pub(crate) mod clmul_native {
     #[cfg(any(test, kani))]
-    use std::arch::x86_64::{__m128i, _mm_clmulepi64_si128, _mm_set_epi64x, _mm_storeu_si128};
+    use std::arch::x86_64::{
+        _mm_clmulepi64_si128, _mm_cvtsi128_si64, _mm_set_epi64x, _mm_srli_si128,
+    };
 
     /// `PCLMULQDQ`, imm8 `0x00` selects the low 64 bits of both 128-bit operands - exactly the two
     /// `u64`s placed there by `_mm_set_epi64x(0, x as i64)` below. Kept only as a differential-test
@@ -945,13 +943,11 @@ pub(crate) mod clmul_native {
     #[cfg(any(test, kani))]
     #[target_feature(enable = "pclmulqdq")]
     unsafe fn clmul64_impl(a: u64, b: u64) -> (u64, u64) {
-        let ma = _mm_set_epi64x(0, a as i64);
-        let mb = _mm_set_epi64x(0, b as i64);
+        let ma = _mm_set_epi64x(0, a.cast_signed());
+        let mb = _mm_set_epi64x(0, b.cast_signed());
         let prod = _mm_clmulepi64_si128(ma, mb, 0x00);
-        let mut bytes = [0u8; 16];
-        _mm_storeu_si128(bytes.as_mut_ptr().cast::<__m128i>(), prod);
-        let lo = u64::from_le_bytes(bytes[0..8].try_into().unwrap());
-        let hi = u64::from_le_bytes(bytes[8..16].try_into().unwrap());
+        let lo = _mm_cvtsi128_si64(prod).cast_unsigned();
+        let hi = _mm_cvtsi128_si64(_mm_srli_si128::<8>(prod)).cast_unsigned();
         (lo, hi)
     }
 
@@ -1061,8 +1057,11 @@ mod clmul_spike {
                 }
 
                 #[test]
-                #[ignore]
+                #[ignore = "timing diagnostic, run by hand with --ignored"]
                 fn isolated_timing_clmul_vs_software_multiply() {
+                    use std::hint::black_box;
+                    use std::time::Instant;
+                    const N: u32 = 2_000_000;
                     if !feature_available() {
                         eprintln!(
                             "{}: hardware clmul feature not available on this CPU, skipping",
@@ -1070,10 +1069,7 @@ mod clmul_spike {
                         );
                         return;
                     }
-                    use std::hint::black_box;
-                    use std::time::Instant;
 
-                    const N: u32 = 2_000_000;
                     let a = [0x1111_1111_1111_1111u64; $limbs];
                     let b = [0x5555_5555_5555_5555u64; $limbs];
 
@@ -1104,8 +1100,8 @@ mod clmul_spike {
                     let hw_elapsed = start.elapsed();
                     black_box(chained);
 
-                    let sw_ns = sw_elapsed.as_nanos() as f64 / f64::from(N);
-                    let hw_ns = hw_elapsed.as_nanos() as f64 / f64::from(N);
+                    let sw_ns = sw_elapsed.as_secs_f64() * 1e9 / f64::from(N);
+                    let hw_ns = hw_elapsed.as_secs_f64() * 1e9 / f64::from(N);
                     eprintln!(
                         "{}: explicit software multiply = {sw_ns:.1} ns/op | hardware-clmul multiply = {hw_ns:.1} ns/op | speedup = {:.2}x | (Kalyna-XTS 256-256 ceiling = {} MB/s - no GCM projection may exceed this)",
                         stringify!($elem),

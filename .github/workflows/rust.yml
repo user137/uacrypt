@@ -46,12 +46,12 @@ jobs:
       - run: cargo build --workspace
       - run: cargo build --workspace --no-default-features
       - run: cargo test --workspace
-      - run: cargo clippy --workspace -- -D warnings
+      - run: cargo clippy --workspace --all-targets -- -D warnings
       # small-tables resource profile (docs/DECISIONS.md D-35/D-38/D-39) - constrained-target table set.
       - run: cargo build --workspace --features dstu-core/small-tables
       - run: cargo build --workspace --no-default-features --features dstu-core/small-tables
       - run: cargo test --workspace --features dstu-core/small-tables
-      - run: cargo clippy --workspace --features dstu-core/small-tables -- -D warnings
+      - run: cargo clippy --workspace --features dstu-core/small-tables --all-targets -- -D warnings
       # `getrandom` feature (docs/DECISIONS.md D-74, docs/TASKS.md T-123): makes `randombytes`/`Key::generate`
       # reachable on a bare `no_std` build without pulling in `std`/`alloc` - build-only, not
       # `cargo test`, since unrelated pre-existing `proptest`/`Vec` strategies elsewhere in
@@ -63,7 +63,7 @@ jobs:
       # side alone would.
       - run: cargo build --workspace --all-features
       - run: cargo test --workspace --all-features
-      - run: cargo clippy --workspace --all-features -- -D warnings
+      - run: cargo clippy --workspace --all-features --all-targets -- -D warnings
       # aarch64-only `cfg` arms (the PMULL `poly_mul_wide_hw`s) never compile on this x86_64
       # runner, so clippy never saw them - clippy 1.98 flagged five casts there that only the Pi
       # found (docs/TASKS.md T-270). A check-only cross lint needs the target's std, no linker.

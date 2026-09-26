@@ -245,7 +245,12 @@ mod tests {
         let start = Instant::now();
         let mut p = Progress::new(&mut sink, Some(THRESHOLD));
         p.advance(1, start);
-        p.advance(1, start + REDRAW_EVERY - Duration::from_millis(1));
+        p.advance(
+            1,
+            (start + REDRAW_EVERY)
+                .checked_sub(Duration::from_millis(1))
+                .unwrap(),
+        );
         p.advance(1, start + REDRAW_EVERY);
         drop(p);
         assert_eq!(text(&sink).matches("uacrypt:").count(), 2);

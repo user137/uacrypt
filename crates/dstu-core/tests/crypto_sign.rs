@@ -4,8 +4,8 @@
 //! mock: every test below is itself deterministic.
 //!
 //! `verifying_key()`'s `Q = -d*G` derivation is cross-checked against the official Annex B.1
-//! worked example's own `private_key_d`/`public_key_q` pair (`tests/vectors/dstu4145/gf2m163.json`)
-//! - the one part of this wrapper with an external oracle. Sign/verify itself has no oracle for
+//! worked example's own `private_key_d`/`public_key_q` pair (`tests/vectors/dstu4145/gf2m163.json`),
+//! the one part of this wrapper with an external oracle. Sign/verify itself has no oracle for
 //! *this* wrapper's deterministic nonce (no reference implementation derives DSTU 4145 nonces this
 //! way), so it's tested via round-trip + tamper-rejection + a proptest sweep, same posture as
 //! `hazmat::kupyna_kdf`'s tests (`docs/pseudocode/kupyna-kdf.md`).

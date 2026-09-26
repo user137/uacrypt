@@ -5791,7 +5791,11 @@ mod tests {
     fn run_digest_command_streams_multi_chunk_input_correctly() {
         let dir = TempDir::new("digest_multichunk");
         let len = DIGEST_STREAM_CHUNK_BYTES * 3 + 777;
-        let message: Vec<u8> = (0..len).map(|i| (i as u8).wrapping_mul(97)).collect();
+        let message: Vec<u8> = (0..=u8::MAX)
+            .cycle()
+            .take(len)
+            .map(|b| b.wrapping_mul(97))
+            .collect();
         std::fs::write(dir.file("msg.bin"), &message).expect("write message");
 
         let single_pass_args = DigestArgs {
@@ -6162,7 +6166,11 @@ mod tests {
     fn run_hash_command_matches_dstu_core_kupyna256_directly() {
         let dir = TempDir::new("hash_multichunk");
         let len = SIGN_STREAM_CHUNK_BYTES * 2 + 513;
-        let message: Vec<u8> = (0..len).map(|i| (i as u8).wrapping_mul(53)).collect();
+        let message: Vec<u8> = (0..=u8::MAX)
+            .cycle()
+            .take(len)
+            .map(|b| b.wrapping_mul(53))
+            .collect();
         let list = write_check_list(&dir, &message, &Kupyna256::digest(&message));
         run_hash_command(&HashArgs::Check(Source::File(list)))
             .expect("the listed digest must match");
@@ -6547,8 +6555,9 @@ mod tests {
     fn run_secretstream_command_multi_chunk_message_round_trips() {
         let dir = TempDir::new("secretstream_large");
         let key = [0x77u8; 32];
-        let large: Vec<u8> = (0..SECRETSTREAM_CHUNK_BYTES * 3 + 777)
-            .map(|i| (i % 256) as u8)
+        let large: Vec<u8> = (0..=u8::MAX)
+            .cycle()
+            .take(SECRETSTREAM_CHUNK_BYTES * 3 + 777)
             .collect();
         write_typed_key(&dir.file("key.bin"), KeyKind::Symmetric, &key);
         std::fs::write(dir.file("in.bin"), &large).expect("write input");
@@ -7041,7 +7050,11 @@ mod tests {
         let key = [0x22u8; 64];
         let iv = [0x33u8; 32];
         let len = STRUMOK_STREAM_CHUNK_BYTES * 2 + 555; // deliberately not chunk-aligned
-        let plaintext: Vec<u8> = (0..len).map(|i| (i as u8).wrapping_mul(61)).collect();
+        let plaintext: Vec<u8> = (0..=u8::MAX)
+            .cycle()
+            .take(len)
+            .map(|b| b.wrapping_mul(61))
+            .collect();
         std::fs::write(dir.file("key.bin"), key).expect("write key");
         std::fs::write(dir.file("iv.bin"), iv).expect("write iv");
         std::fs::write(dir.file("in.bin"), &plaintext).expect("write input");
@@ -9298,8 +9311,10 @@ mod tests {
         );
     }
 
+    type KeygenRun = Box<dyn Fn(PathBuf) -> Result<(), CliError>>;
+
     // T-241: every secret-key command, as (label, run-with-this-out-path).
-    fn secret_keygens() -> Vec<(&'static str, Box<dyn Fn(PathBuf) -> Result<(), CliError>>)> {
+    fn secret_keygens() -> Vec<(&'static str, KeygenRun)> {
         vec![
             (
                 "keygen",

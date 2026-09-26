@@ -219,11 +219,11 @@ mod tests {
     /// after the 139th bit), with `lambda_o = 0x8B` = 139 - the true length, not the padded 256.
     #[test]
     fn annex_v8_1_3_bit_level_example() {
-        let key: [u8; 16] = core::array::from_fn(|i| i as u8);
+        let key: [u8; 16] = core::array::from_fn(|i| u8::try_from(i).unwrap());
         let cipher = Kalyna128_128ExpandedKey::new(&key);
         let mut padded = [0u8; 32];
         for (i, b) in padded[..16].iter_mut().enumerate() {
-            *b = 0x20 + i as u8;
+            *b = 0x20 + u8::try_from(i).unwrap();
         }
         padded[16] = 0x30;
         padded[17] = 0xF0;

@@ -9709,6 +9709,14 @@ points at the machine state rather than a GCM-specific regression, but that is n
   This stops a toolchain bump from silently undoing D-223/D-225 (`black_box` is best effort).
   Also D-227's `hazmat::limb` (no barrier at all there): riscv32imc/thumbv7em at `opt-level` `s`
   and `z` too, not only O3, and fail on any `__multi3`/`__muldi3` call.
+- [x] **T-294** (Low, infra; owner request 2026-09-26; **done 2026-09-26 on `ux-0.5.0`, D-228**)
+  `cargo clippy --all-targets -- -D warnings` failed: 379 errors in `uacrypt`'s lib test, 67 in
+  `dstu-core`'s, 3 in `tests/crypto_sign.rs`; the same on `master`. Cause: neither `xtask clippy`
+  nor `rust.yml` passed `--all-targets`, so test code was never linted, while the crate-level
+  `#![deny(clippy::unwrap_used, clippy::expect_used)]` and `#![warn(clippy::pedantic)]` apply to
+  `#[cfg(test)]` modules too. Fix: root `clippy.toml` (`allow-unwrap-in-tests`,
+  `allow-expect-in-tests`), the remaining 49 fixed in the code, and `--all-targets` on the default,
+  `small-tables` and `--all-features` clippy runs (xtask and `rust.yml`).
 - [ ] **T-293** (Low, perf; depends: T-290) A register-only barrier in place of `black_box`
   (`core::arch::asm!("", inout(reg) x, options(pure, nomem, nostack))` per supported arch, with
   `black_box` as the fallback) to win back `crypto_box`'s 1.57x (D-225). It adds `unsafe` and
@@ -9996,7 +10004,8 @@ work and never touches the 0.4.0 release on `master`). Fit this batch into the U
   advisor review done (claims in D-227 narrowed to what was read, `s`/`z` baselines built and
   read). Then: T-292, then T-278, T-283. Owner request 2026-09-26: after T-291, find why
   `cargo clippy --workspace --all-features --all-targets -- -D warnings` fails with 379 errors in
-  `uacrypt`'s test targets (`xtask clippy` does not pass `--all-targets`) and fix it.
+  `uacrypt`'s test targets (`xtask clippy` does not pass `--all-targets`) and fix it. Done as
+  T-294 (D-228).
 - **Next:** T-278, T-283 and the
   T-242/T-246 leftovers. T-284 is deferred to 0.6.0 (owner choice B). The embargo still
   holds: do not push `ux-0.5.0` before 0.5.0 ships T-272's fix.

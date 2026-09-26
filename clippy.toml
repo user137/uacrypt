@@ -1,0 +1,5 @@
+# `#![deny(clippy::unwrap_used, clippy::expect_used)]` guards production code; a failing test
+# should panic, so `#[test]` fns and `#[cfg(test)]` modules are exempt. Checked by
+# `cargo xtask clippy`'s `--all-targets` run.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true

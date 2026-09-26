@@ -459,8 +459,9 @@ mod bmi2_adx_timing {
     use std::time::Instant;
 
     #[test]
-    #[ignore]
+    #[ignore = "timing diagnostic, run by hand with --ignored"]
     fn isolated_timing_multiply_chain() {
+        const ITERS: u32 = 200_000;
         let mut acc = FieldElement([
             0x1111_1111_1111_1111,
             0x2222_2222_2222_2222,
@@ -479,7 +480,6 @@ mod bmi2_adx_timing {
             acc = acc.multiply(x);
         }
 
-        const ITERS: u32 = 200_000;
         let start = Instant::now();
         for _ in 0..ITERS {
             acc = acc.multiply(x);

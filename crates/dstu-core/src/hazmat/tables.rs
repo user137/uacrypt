@@ -4571,18 +4571,18 @@ mod tests {
 
     fn expected_column(matrix: &[[u8; ROWS]; ROWS], in_row: usize, byte: u8) -> u64 {
         let mut word = 0u64;
-        for out_row in 0..ROWS {
-            word |= u64::from(gf_mul(byte, matrix[out_row][in_row])) << (8 * out_row);
+        for (out_row, row) in matrix.iter().enumerate() {
+            word |= u64::from(gf_mul(byte, row[in_row])) << (8 * out_row);
         }
         word
     }
 
     #[test]
     fn mds_table_matches_gf_mul_exhaustively() {
-        for in_row in 0..ROWS {
+        for (in_row, table_row) in MDS_TABLE.iter().enumerate() {
             for byte in 0..=u8::MAX {
                 assert_eq!(
-                    MDS_TABLE[in_row][byte as usize],
+                    table_row[byte as usize],
                     expected_column(&MDS_MATRIX, in_row, byte),
                     "MDS_TABLE[{in_row}][{byte}] mismatch"
                 );
@@ -4592,10 +4592,10 @@ mod tests {
 
     #[test]
     fn mds_inv_table_matches_gf_mul_exhaustively() {
-        for in_row in 0..ROWS {
+        for (in_row, table_row) in MDS_INV_TABLE.iter().enumerate() {
             for byte in 0..=u8::MAX {
                 assert_eq!(
-                    MDS_INV_TABLE[in_row][byte as usize],
+                    table_row[byte as usize],
                     expected_column(&MDS_INV_MATRIX, in_row, byte),
                     "MDS_INV_TABLE[{in_row}][{byte}] mismatch"
                 );
