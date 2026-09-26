@@ -10006,9 +10006,14 @@ work and never touches the 0.4.0 release on `master`). Fit this batch into the U
   `cargo clippy --workspace --all-features --all-targets -- -D warnings` fails with 379 errors in
   `uacrypt`'s test targets (`xtask clippy` does not pass `--all-targets`) and fix it. Done as
   T-294 (D-228).
-- **Next:** T-278, T-283 and the
-  T-242/T-246 leftovers. T-284 is deferred to 0.6.0 (owner choice B). The embargo still
-  holds: do not push `ux-0.5.0` before 0.5.0 ships T-272's fix.
+- **State 2026-09-26 (session end):** `ux-0.5.0` at T-294's commit, clean tree, nothing pushed
+  (`ux-0.5.0` has no remote branch). Done this session: T-290 closed, T-291 (D-226/D-227), T-294
+  (D-228). Scratch asm/bench trees live only in the session scratchpad (not needed to resume; D-225's
+  recipe rebuilds them).
+- **Next:** T-292 (asm check in `xtask`; D-227's `s`/`z` matrix and the unread-symbol list), then
+  T-278, T-283 and the T-242/T-246 leftovers. T-284 is deferred to 0.6.0 (owner choice B). The
+  embargo still holds: do not push `ux-0.5.0` before 0.5.0 ships T-272's fix; T-290/T-291 are
+  under the same advisory (D-224/D-226).
 - **When resuming:**
   - Read this section and the owner's answers.
   - Execute with `docs/prompts/arch-perf-review.md` prompt 2, naming a merged-plan step. The
