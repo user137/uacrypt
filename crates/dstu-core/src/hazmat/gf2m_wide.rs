@@ -18,9 +18,10 @@
 //! D-25): a branchless bit-select shift-and-add multiply (mirroring `gf2m163::poly_mul_wide`'s
 //! technique exactly), then a simple bit-at-a-time top-down modular reduction. **Multiplication
 //! was measured (`docs/TASKS.md` T-125) to be 89.6-94.3% of `kalyna_gcm`/`kalyna_gmac`'s per-block cost,
-//! not the block cipher, and was switched to a 4-bit-window comb method** (`docs/DECISIONS.md` D-76, see
-//! `poly_mul_wide`'s own doc comment for the technique); `reduce` is still the original
-//! bit-at-a-time top-down method, not `gf2m163::reduce`'s word-offset-optimized closed form
+//! not the block cipher, and was switched to a 4-bit-window comb method** (`docs/DECISIONS.md` D-76).
+//! That comb indexed its table with the secret operand, so T-273 (D-223) replaced it with a masked
+//! 4-bit window, checked branch-free in release asm (see `poly_mul_wide`'s own doc comment).
+//! `reduce` is still the original bit-at-a-time top-down method, not `gf2m163::reduce`'s word-offset-optimized closed form
 //! (hand-derived specifically for `m=163`/64-bit words, does not generalize to three more field
 //! sizes without redoing that derivation three times), and not
 //! `oracles/uapki/library/uapkic/src/math-gf2m-internal.c`'s Karatsuba-based library either (no
@@ -216,25 +217,61 @@ macro_rules! gf2m_field {
                 Self(out)
             }
 
-            /// Binary-polynomial (carry-less) multiplication into a double-width product - a
-            /// 4-bit-window comb method (`docs/DECISIONS.md` D-76 / `docs/TASKS.md` T-125's field-multiply
-            /// root cause, `advisor()`-directed): precompute `T[i] = a*i` for every nibble value
-            /// `i` in `0..16` (`T[0] = 0`, `T[1] = a`, `T[2i] = T[i] << 1`, `T[2i+1] = T[2i] XOR
-            /// a]` - the standard doubling construction, 7 shift+XOR pairs), then walk `b`'s
-            /// nibbles most-significant-first, shifting the accumulator left by 4 bits and `XOR`ing
-            /// in `T[nibble]` each step. This is `m/4` accumulator iterations instead of the
-            /// previous bit-serial method's `m`, each doing one 4-bit shift instead of four 1-bit
-            /// ones - measured ~1.8-2.3x faster on the multiply alone (narrower than the ~4-6x a
-            /// pure iteration-count argument predicts, most likely the table-build overhead plus
-            /// the indexed `T[nibble]` lookup costing more than the old branchless masked-`XOR`
-            /// per bit did - not chased further, see the `isolated_timing_*` diagnostics in
-            /// `field_axiom_tests` below for the measured numbers), which for
-            /// [`super::kalyna_gcm`]/[`super::kalyna_gmac`] (where this multiply was measured to be
-            /// 89.6-94.3% of the per-block cost before this change, not the block cipher)
-            /// translates directly to throughput. Was the previous right-to-left bit-serial method
-            /// mirroring `gf2m163::poly_mul_wide` (`docs/DECISIONS.md` D-25); that citation's
-            /// *technique* no longer applies here; `gf2m163` itself is untouched.
+            /// Binary-polynomial (carry-less) multiplication into a double-width product, with no
+            /// branch or memory index derived from either operand (`docs/TASKS.md` T-273,
+            /// `docs/DECISIONS.md` D-223). Both operands are secret in GHASH: `b` is the key `H`
+            /// and `a` is the accumulator, which depends on `H` after the first block. The previous
+            /// 4-bit comb (D-76, now [`Self::poly_mul_wide_comb_reference`]) read `T[nibble of b]`
+            /// from a table built at run time, one cache line per nibble value at m=256.
+            ///
+            /// This keeps the comb's 4-bit window but not its table: `rows[j] = a << j` for
+            /// `j` in `0..4` are the comb's rows 1/2/4/8, always all four read, and each nibble of
+            /// `b` (most significant first) shifts the accumulator left by 4 and `XOR`s in every
+            /// row under an all-ones/all-zeros mask made from the matching bit - the idiom
+            /// `gf2m163::poly_mul_wide` and [`Self::double`] use. Each `b` word is walked with
+            /// constant shifts only. A row is `a` shifted by at most 3 bits, so it is zero above
+            /// word `$limbs` and the `XOR` stops there. Constant-time discipline, not a
+            /// side-channel-resistance claim (`CLAUDE.md`).
+            // One real symbol, so D-223's asm check reads the shipped code, not an inlined copy.
+            #[inline(never)]
             fn poly_mul_wide(a: &[u64; $limbs], b: &[u64; $limbs]) -> [u64; $limbs2] {
+                let mut rows = [[0u64; $limbs2]; 4];
+                rows[0][..$limbs].copy_from_slice(a);
+                for j in 1..4 {
+                    let mut shifted = rows[j - 1];
+                    Self::shl1(&mut shifted);
+                    rows[j] = shifted;
+                }
+
+                let mut acc = [0u64; $limbs2];
+                for &word in b.iter().rev() {
+                    let mut w = word;
+                    for _ in 0..16 {
+                        Self::shl4(&mut acc);
+                        let masks = core::hint::black_box([
+                            0u64.wrapping_sub((w >> 60) & 1),
+                            0u64.wrapping_sub((w >> 61) & 1),
+                            0u64.wrapping_sub((w >> 62) & 1),
+                            0u64.wrapping_sub((w >> 63) & 1),
+                        ]);
+                        for (row, mask) in rows.iter().zip(masks) {
+                            for (acc_w, row_w) in acc.iter_mut().zip(row).take($limbs + 1) {
+                                *acc_w ^= row_w & mask;
+                            }
+                        }
+                        w <<= 4;
+                    }
+                }
+
+                acc
+            }
+
+            /// The previous production `poly_mul_wide` (D-76's 4-bit comb) - its `t[nibble]` lookup
+            /// is indexed by the secret operand (`docs/TASKS.md` T-273), so it is kept only as a
+            /// test oracle for the constant-time replacement, the same role as
+            /// [`Self::reduce_bit_serial_reference`].
+            #[cfg(test)]
+            fn poly_mul_wide_comb_reference(a: &[u64; $limbs], b: &[u64; $limbs]) -> [u64; $limbs2] {
                 let mut a_wide = [0u64; $limbs2];
                 a_wide[..$limbs].copy_from_slice(a);
 
@@ -462,6 +499,16 @@ mod field_axiom_tests {
                 }
 
                 #[test]
+                fn poly_mul_wide_matches_comb_reference_at_the_extremes() {
+                    for (a, b) in [(ALL_ONES, ALL_ONES), (ALL_ONES, ONE), (ONE, ALL_ONES), ($elem::ZERO, ALL_ONES)] {
+                        assert_eq!(
+                            $elem::poly_mul_wide(&a.0, &b.0),
+                            $elem::poly_mul_wide_comb_reference(&a.0, &b.0)
+                        );
+                    }
+                }
+
+                #[test]
                 fn reduce_of_all_zero_wide_matches_bit_serial_reference() {
                     assert_eq!(
                         $elem::reduce([0u64; $limbs2]),
@@ -507,6 +554,16 @@ mod field_axiom_tests {
                     #[test]
                     fn multiply_distributes_over_add(a in arb_element(), b in arb_element(), c in arb_element()) {
                         prop_assert_eq!(a.multiply(b.add(c)), a.multiply(b).add(a.multiply(c)));
+                    }
+
+                    /// T-273: the constant-time `poly_mul_wide` must be byte-identical to the
+                    /// comb it replaced, on arbitrary operands.
+                    #[test]
+                    fn poly_mul_wide_matches_comb_reference(a in arb_element(), b in arb_element()) {
+                        prop_assert_eq!(
+                            $elem::poly_mul_wide(&a.0, &b.0),
+                            $elem::poly_mul_wide_comb_reference(&a.0, &b.0)
+                        );
                     }
 
                     #[test]
@@ -628,6 +685,44 @@ mod field_axiom_tests {
     // "small fraction" claim was measured against the old bit-serial multiply (~16,384 word-ops),
     // not the current one. Not a permanent test, same `#[ignore]`d/manual-timing posture as the
     // sibling diagnostics above; remove after the split is recorded in `docs/TASKS.md`.
+    // T-273 (`docs/DECISIONS.md` D-223): the constant-time `poly_mul_wide` against the comb it
+    // replaced, side by side in one binary rather than across an edit (D-161), chained like GHASH's
+    // accumulator. Manual timing, same posture as the diagnostics above; run with `--release
+    // --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn isolated_timing_poly_mul_wide_constant_time_vs_comb() {
+        use std::hint::black_box;
+        use std::time::Instant;
+        const N: u32 = 1_000_000;
+
+        macro_rules! time_pair {
+            ($elem:ident, $limbs:literal) => {{
+                let b = [0x9E37_79B9_7F4A_7C15u64; $limbs];
+                let time = |f: fn(&[u64; $limbs], &[u64; $limbs]) -> [u64; $limbs * 2]| {
+                    let mut a = [0x0123_4567_89AB_CDEFu64; $limbs];
+                    let start = Instant::now();
+                    for _ in 0..N {
+                        let wide = black_box(f(black_box(&a), black_box(&b)));
+                        a.copy_from_slice(&wide[..$limbs]);
+                    }
+                    black_box(a);
+                    start.elapsed().as_nanos() as f64 / f64::from(N)
+                };
+                let comb = time($elem::poly_mul_wide_comb_reference);
+                let constant_time = time($elem::poly_mul_wide);
+                eprintln!(
+                    "{}: comb {comb:.1} ns/op | constant-time {constant_time:.1} ns/op | ratio {:.2}x",
+                    stringify!($elem),
+                    constant_time / comb
+                );
+            }};
+        }
+        time_pair!(Gf2m128, 2);
+        time_pair!(Gf2m256, 4);
+        time_pair!(Gf2m512, 8);
+    }
+
     #[test]
     #[ignore]
     fn isolated_timing_gf2m256_poly_mul_wide_vs_reduce_split() {
