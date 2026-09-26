@@ -77,7 +77,7 @@ fn print_usage() {
          \x20 build          cargo build --workspace, --all-features + --no-default-features (no_std check) + dstu-core's no_std/getrandom combo (D-74)\n\
          \x20 test           cargo test --workspace (default profile) + --all-features\n\
          \x20 fmt [--check]  cargo fmt --all, or --check to verify without writing\n\
-         \x20 clippy         cargo clippy --workspace -- -D warnings (default profile) + --all-features\n\
+         \x20 clippy         cargo clippy --workspace -- -D warnings (default profile) + --all-features + dstu-core's no_std/getrandom combo (D-74)\n\
          \x20 docs-check     README/gh-pages version-marker freshness lint against crates/dstu-core's Cargo.toml (T-186)\n\
          \x20 ci             fmt --check + build + test + clippy + docs-check, then best-effort for the optional tools below\n\
          \x20 canary         cargo update (fresh dependency resolution) then build + test - drift probe behind .github/workflows/canary.yml (T-226)\n\n\
@@ -250,6 +250,21 @@ fn clippy() -> bool {
             "clippy",
             "--workspace",
             "--all-features",
+            "--",
+            "-D",
+            "warnings",
+        ],
+        None,
+    ) && run(
+        // rust.yml's `getrandom`-without-`std` lint (D-74), missing here until T-279.
+        "cargo",
+        &[
+            "clippy",
+            "-p",
+            "dstu-core",
+            "--no-default-features",
+            "--features",
+            "getrandom",
             "--",
             "-D",
             "warnings",
@@ -1502,7 +1517,7 @@ fn ci() -> bool {
 
     println!("\nMandatory checks passed. Running optional layers best-effort:\n");
     let optional_miri: fn() -> bool = || miri(None);
-    let layers: [Layer; 17] = [
+    let layers: [Layer; 21] = [
         ("miri", optional_miri),
         ("kani", kani),
         ("book", book),
@@ -1516,6 +1531,10 @@ fn ci() -> bool {
         ("ruby", ruby),
         ("php", php),
         ("capi", capi),
+        ("dotnet", dotnet),
+        ("java", java),
+        ("go", go),
+        ("cpp", cpp),
         ("cpp-tidy", cpp_clang_tidy),
         ("cpp-cppcheck", cpp_cppcheck),
         ("qemu-stm32", qemu_stm32),

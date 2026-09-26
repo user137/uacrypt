@@ -9531,7 +9531,11 @@ points at the machine state rather than a GCM-specific regression, but that is n
 
 ### QA, docs and hygiene
 
-- [ ] **T-279** (Medium, qa, **Confirmed** by reading; depends: T-243) `cargo xtask ci` never builds or tests the
+- [x] **T-279** (**done 2026-09-26 on `ux-0.5.0`**: `ci()` runs `dotnet`/`java`/`go`/`cpp`, and
+  mandatory `clippy()` now includes the `getrandom` no_std lint. **Left open on purpose:** the MSRV
+  1.87 build (this machine has only the MSVC 1.87 toolchain and the host is GNU, so a local layer
+  would always skip; `rust.yml`'s `msrv` job stays the gate - owner fork) and a local aarch64
+  cross-clippy layer (`rust.yml` has it since T-270; owner fork)) (Medium, qa, **Confirmed** by reading; depends: T-243) `cargo xtask ci` never builds or tests the
   .NET, Java, Go or C++ bindings. Their functions exist (`xtask/src/main.rs` `dotnet()` :1095,
   `java()` :1138, `go()` :1175, `cpp()` :1226), but `ci()`'s optional list (:1497-1515) omits them.
   `CLAUDE.md`'s command table and `print_usage` both say `ci` runs "every language binding's own
@@ -9588,6 +9592,28 @@ points at the machine state rather than a GCM-specific regression, but that is n
   - Direction: `checked_mul` into the modules' existing `InvalidLength`, or a length bound tied to
     DSTU 7624 annex Г's per-key limits (`docs/SECURITY.md`).
   - Tests: Misuse, a unit test on the helper, since no real slice can reach it. Effort S.
+- [ ] **T-288** (Medium, qa, **Confirmed** 2026-09-26 by the first T-243 `ci` run; depends: none)
+  Both Bouncy Castle oracle harnesses fail on Kupyna. `tests/oracle-harness/dotnet/Program.cs:83`
+  (and the Java twin) read `hash_bits` from every file in `crates/dstu-core/tests/vectors/kupyna/`,
+  and T-234's (`1c87f53`) bit-length annex Б file has a different schema. Java: `missing int field
+  "hash_bits"`; .NET: `KeyNotFoundException`. The commit is on `master` as well. `oracle-harness.yml`
+  last passed 2026-09-17, so check its path filters too. Direction: skip (or handle) the bit-length
+  file by its `algorithm` field; BC has no bit-length API. Effort S.
+- [ ] **T-289** (Low, qa - local gate, **Confirmed** 2026-09-26, same run; depends: none) Three
+  binding layers fail locally for reasons that live on this machine, not in the bindings; before
+  T-243 they were hidden:
+  - `nodejs`: E0514, because the napi CLI inherits `CARGO` from the `cargo xtask` process
+    (`.claude.local.md`). `run()` already strips `RUSTUP_TOOLCHAIN` for a binding `dir` (D-146);
+    also stripping `CARGO` would fix it in xtask itself.
+  - `python`: pytest imports a globally installed PyPI `dstu_core` 0.1.1 (Python313 site-packages,
+    2026-08-31) instead of the `maturin develop` build: 9 failures, all stream-format ones.
+  - `ruby`: `rb-sys` bindgen `strings.h` not found, because `LIBCLANG_PATH` is unset
+    (`.claude.local.md`, D-133).
+  - `cpp` (after T-279 added it): `ctest` exits `0xc0000139` (entry point not found) when `ci` is
+    started from Git Bash; the same `ctest` passes from PowerShell (the MinGW-launch issue, T-181).
+  - Also: `miri` always shows as skipped locally, because `require("cargo-miri")` probes the pinned
+    `stable`. A fixed probe makes local `ci` run the ~10 h `miri --workspace` (D-172), so the
+    owner decides: fix the probe and scope the layer, or keep it as a documented skip.
 - Attached to existing tasks (no new IDs):
   - **T-246**: `kalyna_gcm.rs:103` has an unlinted `.try_into().unwrap()` inside `macro_rules!`,
     the same class as its `kupyna_kdf.rs:36` `.expect` item.
