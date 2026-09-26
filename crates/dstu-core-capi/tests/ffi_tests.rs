@@ -826,6 +826,20 @@ fn pwhash_hash_and_verify_round_trip_and_rejects_wrong_password() {
     });
 }
 
+// T-272: an `m` of 2 TiB used to abort the host process (not a catchable panic), and argon2d
+// verified `true`. Both are rejected before any hashing, so this runs under Miri.
+#[test]
+fn pwhash_verify_rejects_out_of_bounds_hash_strings() {
+    let password = b"pw";
+    let huge_m = c"$argon2id$v=19$m=2147483648,t=1,p=1$c29tZXNhbHRzb21lc2FsdA$aGFzaGhhc2hoYXNoaGFzaGhhc2hoYXNoaGFzaGhhc2g";
+    let argon2d = c"$argon2d$v=19$m=8,t=1,p=1$MDEyMzQ1Njc4OWFiY2RlZg$s3AK2Di5RQsRymcFP7P23bPcctkxiiW312ailQcFTsY";
+    for hash in [huge_m, argon2d] {
+        assert!(!unsafe {
+            dstu_pwhash_verify_password(password.as_ptr(), password.len(), hash.as_ptr())
+        });
+    }
+}
+
 // T-240: an out-of-range strength is rejected before any hashing, so this runs under Miri.
 #[test]
 fn pwhash_rejects_unknown_strength() {

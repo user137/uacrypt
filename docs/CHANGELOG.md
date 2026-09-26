@@ -120,6 +120,15 @@ All notable changes to this project are documented in this file. Format follows
 
 ### Security
 
+- **`crypto_pwhash::verify_password` checks the hash string before running Argon2** (0.5.0,
+  T-272, `docs/DECISIONS.md` D-222). It took the algorithm and costs from the string it was given,
+  so a crafted string with a huge memory cost ended the calling process (an allocation abort,
+  not a catchable error, also through the C ABI and every binding), and argon2d, version 0x10 and
+  arbitrarily low or high costs were verified. Now only what libsodium verifies is accepted -
+  `argon2id` or `argon2i`, `v=19`, exactly `m`/`t`/`p` - with memory up to 1 GiB, memory x passes
+  up to the `Sensitive` preset's, a salt of 8+ bytes and a tag of 16-64 bytes; anything else is
+  `false` before any memory is allocated. Hashes from `hash_password` and libsodium still
+  verify; the default costs of PHP's `password_hash` and argon2-cffi are inside the bounds.
 - **Breaking wire-format change (0.4.0).** `crypto_secretbox` and `crypto_secretstream` now bind
   each ciphertext's true length into its authentication tag, and `crypto_secretstream`'s
   `PullState::pull` accepts only a full 16-byte tag. This closes an integrity weakness in earlier

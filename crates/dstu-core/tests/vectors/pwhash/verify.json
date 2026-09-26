@@ -1,0 +1,160 @@
+{
+  "description": "crypto_pwhash::verify_password accept/reject cases (T-272, docs/DECISIONS.md D-222). 'accept' hashes verify for 'password'; every case must return false for any other password.",
+  "source": "libsodium = PyNaCl 1.6.2 (bundled libsodium) crypto_pwhash_str; argon2-ref = argon2-cffi 25.1.0 (reference C implementation) hash_secret; 'edited' = an argon2-ref hash with one field changed by hand; hand-made = fake salt/tag, rejected before any hashing",
+  "cases": [
+    {
+      "name": "libsodium argon2id t=1 m=8KiB",
+      "source": "libsodium",
+      "password": "pw",
+      "hash": "$argon2id$v=19$m=8,t=1,p=1$MM7p8pZ+Zv0uwQhZWFVdjQ$55O0thdcrmabA2bI+Sm0JOHdlmeCQGdzJzYURiLqOkc",
+      "expect": "accept"
+    },
+    {
+      "name": "libsodium argon2i t=3 m=8KiB",
+      "source": "libsodium",
+      "password": "pw",
+      "hash": "$argon2i$v=19$m=8,t=3,p=1$l6RAG7gKfs6WoqWouckfDQ$jS57eyN+OiQbGkCNM1QvBOUO0oII7iZu1MZbjj0r20Y",
+      "expect": "accept"
+    },
+    {
+      "name": "argon2id p=4",
+      "source": "argon2-ref",
+      "password": "pw",
+      "hash": "$argon2id$v=19$m=32,t=1,p=4$MDEyMzQ1Njc4OWFiY2RlZg$+03dn5G/xoLFx+hX/n4GBgMhACZzvUiwFk24FIS2KnA",
+      "expect": "accept"
+    },
+    {
+      "name": "argon2i p=2 t=2",
+      "source": "argon2-ref",
+      "password": "pw",
+      "hash": "$argon2i$v=19$m=16,t=2,p=2$MDEyMzQ1Njc4OWFiY2RlZg$fpy5SC5RQfGTqe4m5ndbDJL69TOF4disMUpIyiHHvls",
+      "expect": "accept"
+    },
+    {
+      "name": "argon2id 8-byte salt",
+      "source": "argon2-ref",
+      "password": "pw",
+      "hash": "$argon2id$v=19$m=8,t=1,p=1$MDEyMzQ1Njc$+s8kbOH1EPpdQc8k/B4cdhE2r0fg7KMlEniCMSFPozk",
+      "expect": "accept"
+    },
+    {
+      "name": "argon2id 16-byte tag",
+      "source": "argon2-ref",
+      "password": "pw",
+      "hash": "$argon2id$v=19$m=8,t=1,p=1$MDEyMzQ1Njc4OWFiY2RlZg$BakdoT79sW0ReHVoHmRIFg",
+      "expect": "accept"
+    },
+    {
+      "name": "argon2id 64-byte tag",
+      "source": "argon2-ref",
+      "password": "pw",
+      "hash": "$argon2id$v=19$m=8,t=1,p=1$MDEyMzQ1Njc4OWFiY2RlZg$jhDxZ8+nqjz2xnSN+zYTsY1zfLrg2hTcnIrQSupGk6tsMvT5QNYBPlWL5tkP7J4sCtY7rlMzpjOSesRy+m/aDg",
+      "expect": "accept"
+    },
+    {
+      "name": "argon2d v=19",
+      "source": "argon2-ref",
+      "password": "pw",
+      "hash": "$argon2d$v=19$m=8,t=1,p=1$MDEyMzQ1Njc4OWFiY2RlZg$s3AK2Di5RQsRymcFP7P23bPcctkxiiW312ailQcFTsY",
+      "expect": "reject"
+    },
+    {
+      "name": "argon2id v=16",
+      "source": "argon2-ref",
+      "password": "pw",
+      "hash": "$argon2id$v=16$m=8,t=1,p=1$MDEyMzQ1Njc4OWFiY2RlZg$8PdbDt/KBN7InfNAWacKcm5W7OQrnlojxJR7dSUF8R0",
+      "expect": "reject"
+    },
+    {
+      "name": "argon2i v=16",
+      "source": "argon2-ref",
+      "password": "pw",
+      "hash": "$argon2i$v=16$m=8,t=1,p=1$MDEyMzQ1Njc4OWFiY2RlZg$cKDyvdsiY66IcIjdBE6uUin+pb2KiaHFcNvnLmY1Z/s",
+      "expect": "reject"
+    },
+    {
+      "name": "argon2id 12-byte tag",
+      "source": "argon2-ref",
+      "password": "pw",
+      "hash": "$argon2id$v=19$m=8,t=1,p=1$MDEyMzQ1Njc4OWFiY2RlZg$Q66t+A5NesXuMs/W",
+      "expect": "reject"
+    },
+    {
+      "name": "argon2id without v=",
+      "source": "argon2-ref, edited",
+      "password": "pw",
+      "hash": "$argon2id$m=8,t=1,p=1$MDEyMzQ1Njc4OWFiY2RlZg$LSf8dWS2rDg/5QPLiItELqsao0qJtl8C2FnmF6Ddpms",
+      "expect": "reject"
+    },
+    {
+      "name": "argon2id with keyid",
+      "source": "argon2-ref, edited",
+      "password": "pw",
+      "hash": "$argon2id$v=19$m=8,t=1,p=1,keyid=AAAAAAAA$MDEyMzQ1Njc4OWFiY2RlZg$LSf8dWS2rDg/5QPLiItELqsao0qJtl8C2FnmF6Ddpms",
+      "expect": "reject"
+    },
+    {
+      "name": "argon2id m=2^31 KiB (T-272 abort)",
+      "source": "hand-made",
+      "password": "pw",
+      "hash": "$argon2id$v=19$m=2147483648,t=1,p=1$c29tZXNhbHRzb21lc2FsdA$aGFzaGhhc2hoYXNoaGFzaGhhc2hoYXNoaGFzaGhhc2g",
+      "expect": "reject"
+    },
+    {
+      "name": "argon2id m=1048577 KiB",
+      "source": "hand-made",
+      "password": "pw",
+      "hash": "$argon2id$v=19$m=1048577,t=1,p=1$c29tZXNhbHRzb21lc2FsdA$aGFzaGhhc2hoYXNoaGFzaGhhc2hoYXNoaGFzaGhhc2g",
+      "expect": "reject"
+    },
+    {
+      "name": "argon2id t=2^32-1",
+      "source": "hand-made",
+      "password": "pw",
+      "hash": "$argon2id$v=19$m=8,t=4294967295,p=1$c29tZXNhbHRzb21lc2FsdA$aGFzaGhhc2hoYXNoaGFzaGhhc2hoYXNoaGFzaGhhc2g",
+      "expect": "reject"
+    },
+    {
+      "name": "argon2id m=65536 t=65 (over m*t)",
+      "source": "hand-made",
+      "password": "pw",
+      "hash": "$argon2id$v=19$m=65536,t=65,p=1$c29tZXNhbHRzb21lc2FsdA$aGFzaGhhc2hoYXNoaGFzaGhhc2hoYXNoaGFzaGhhc2g",
+      "expect": "reject"
+    },
+    {
+      "name": "empty",
+      "source": "hand-made",
+      "password": "pw",
+      "hash": "",
+      "expect": "reject"
+    },
+    {
+      "name": "not PHC",
+      "source": "hand-made",
+      "password": "pw",
+      "hash": "not a PHC string",
+      "expect": "reject"
+    },
+    {
+      "name": "missing hash",
+      "source": "argon2-ref, edited",
+      "password": "pw",
+      "hash": "$argon2id$v=19$m=8,t=1,p=1$MDEyMzQ1Njc4OWFiY2RlZg",
+      "expect": "reject"
+    },
+    {
+      "name": "duplicate m",
+      "source": "argon2-ref, edited",
+      "password": "pw",
+      "hash": "$argon2id$v=19$m=8,m=8,t=1,p=1$MDEyMzQ1Njc4OWFiY2RlZg$LSf8dWS2rDg/5QPLiItELqsao0qJtl8C2FnmF6Ddpms",
+      "expect": "reject"
+    },
+    {
+      "name": "missing p",
+      "source": "argon2-ref, edited",
+      "password": "pw",
+      "hash": "$argon2id$v=19$m=8,t=1$MDEyMzQ1Njc4OWFiY2RlZg$LSf8dWS2rDg/5QPLiItELqsao0qJtl8C2FnmF6Ddpms",
+      "expect": "reject"
+    }
+  ]
+}

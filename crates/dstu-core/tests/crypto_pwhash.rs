@@ -126,3 +126,33 @@ fn strength_cost_round_trips_and_rejects_anything_else() {
     assert_eq!(Strength::from_cost(u32::MAX, 3, 1), None);
     assert_eq!(Strength::from_cost(262_144, 4, 1), None);
 }
+
+/// `verify_password` against hashes made by libsodium and the reference C implementation
+/// (`tests/vectors/pwhash/verify.json`, `docs/DECISIONS.md` D-222). Accepts argon2id/argon2i
+/// v=19 within the bounds; rejects argon2d, v=16, short tags, extra/duplicate/missing
+/// parameters, and costs above the Sensitive preset - the last without allocating or hashing
+/// (T-272: `m=2^31` used to abort the process, `t=2^32-1` used to run for hours). Also the shared
+/// cross-language vector file for the bindings.
+#[test]
+fn verify_password_matches_shared_accept_reject_vectors() {
+    let json = include_str!("vectors/pwhash/verify.json");
+    let names = extract_all(json, "name");
+    let passwords = extract_all(json, "password");
+    let hashes = extract_all(json, "hash");
+    let expects = extract_all(json, "expect");
+    assert_eq!(names.len(), 22, "extractor or fixture is broken");
+    assert_eq!(names.len(), passwords.len());
+    assert_eq!(names.len(), hashes.len());
+    assert_eq!(names.len(), expects.len());
+    for (((name, password), hash), expect) in
+        names.into_iter().zip(passwords).zip(hashes).zip(expects)
+    {
+        let accept = match expect {
+            "accept" => true,
+            "reject" => false,
+            other => panic!("{name}: unknown expect {other:?}"),
+        };
+        assert_eq!(verify_password(password.as_bytes(), hash), accept, "{name}");
+        assert!(!verify_password(b"wrong", hash), "{name}: wrong password");
+    }
+}

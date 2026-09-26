@@ -479,6 +479,14 @@ throwaway venv (T-262, D-219). The three cases (ASCII, Ukrainian UTF-8, empty pa
 `crates/dstu-core/tests/vectors/pwhash/derive_key.json`, with the generator's source named in the
 file; they are also the shared cross-language vectors for T-269.
 
+`verify_password`'s accept/reject cases (T-272, D-222) are in
+`crates/dstu-core/tests/vectors/pwhash/verify.json`: accepted hashes come from libsodium
+(PyNaCl 1.6.2, `crypto_pwhash_str` for argon2id and argon2i) and from the reference C
+implementation (argon2-cffi 25.1.0, `hash_secret`, for p=4, an 8-byte salt and 16/64-byte tags),
+each also verified by argon2-cffi when generated. Rejected cases are reference hashes of the same
+password under argon2d/v=16/a 12-byte tag, or with one field edited, plus hand-made strings with
+out-of-bound costs. Shared cross-language vectors for the bindings' T-272 tests.
+
 ## Test-vector convention
 
 **Updated - populated for Kalyna, Kupyna, DSTU 4145, and Strumok**, not just the original two this

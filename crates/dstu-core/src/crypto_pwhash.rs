@@ -32,7 +32,7 @@
 //! ```
 
 use crate::randombytes::{randombytes_buf, RandomError};
-use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
+use argon2::password_hash::{PasswordHash, PasswordHasher, SaltString};
 use argon2::{Algorithm, Argon2, Params, Version};
 use core::fmt;
 
@@ -163,16 +163,110 @@ pub fn hash_password(password: &[u8], strength: Strength) -> Result<String, PwHa
     Ok(hash.to_string())
 }
 
+/// Largest `m_cost` (KiB) [`verify_password`] accepts: the [`Strength::Sensitive`] preset.
+const VERIFY_MAX_M_COST: u32 = 1_048_576;
+
+/// Largest `m_cost * t_cost` [`verify_password`] accepts: the work of [`Strength::Sensitive`]
+/// (1 GiB x 4), which libsodium's argon2i `SENSITIVE` preset (512 MiB x 8) also lands on exactly.
+const VERIFY_MAX_WORK: u64 = 4 * 1_048_576;
+
+/// Shortest tag [`verify_password`] accepts - libsodium's `ARGON2_MIN_OUTLEN`.
+const VERIFY_MIN_TAG_LEN: usize = 16;
+
+/// Checks everything [`verify_password`] takes from an untrusted PHC string before any memory is
+/// allocated (`docs/DECISIONS.md` D-222) and returns the Argon2 context to run.
+fn verify_context(
+    algorithm: &str,
+    version: Option<u32>,
+    (m_cost, t_cost, p_cost): (u32, u32, u32),
+    tag_len: usize,
+    salt_len: usize,
+) -> Option<Argon2<'static>> {
+    let algorithm = match algorithm {
+        "argon2id" => Algorithm::Argon2id,
+        "argon2i" => Algorithm::Argon2i,
+        _ => return None,
+    };
+    if version != Some(0x13)
+        || m_cost > VERIFY_MAX_M_COST
+        || u64::from(m_cost) * u64::from(t_cost) > VERIFY_MAX_WORK
+        || !(VERIFY_MIN_TAG_LEN..=argon2::password_hash::Output::MAX_LENGTH).contains(&tag_len)
+        || salt_len < argon2::MIN_SALT_LEN
+    {
+        return None;
+    }
+    let params = Params::new(m_cost, t_cost, p_cost, Some(tag_len)).ok()?;
+    Some(Argon2::new(algorithm, Version::V0x13, params))
+}
+
+/// The `m`, `t` and `p` of a PHC string, each exactly once and nothing else.
+fn phc_costs(parsed: &PasswordHash<'_>) -> Option<(u32, u32, u32)> {
+    let (mut m, mut t, mut p) = (None, None, None);
+    for (ident, value) in parsed.params.iter() {
+        let slot = match ident.as_str() {
+            "m" => &mut m,
+            "t" => &mut t,
+            "p" => &mut p,
+            _ => return None,
+        };
+        if slot.replace(value.decimal().ok()?).is_some() {
+            return None;
+        }
+    }
+    Some((m?, t?, p?))
+}
+
 /// Verifies `password` against a PHC string produced by [`hash_password`] - libsodium's
 /// `crypto_pwhash_str_verify` equivalent. Returns `false` for both a wrong password and a
 /// malformed/unparseable hash string, mirroring libsodium's own single pass/fail return (nothing
 /// for a caller to mishandle by branching differently on the two failure cases).
+///
+/// The string is untrusted, so only what libsodium itself verifies is accepted, within this
+/// module's own costs (`docs/DECISIONS.md` D-222): `argon2id` or `argon2i`, `v=19`, exactly the
+/// `m`/`t`/`p` parameters, `m` at most the [`Strength::Sensitive`] preset's 1 GiB, `m * t` at most
+/// that preset's work, a salt of at least 8 bytes and a tag of 16 to 64 bytes. Anything else is
+/// `false` before any memory is allocated, and a machine that cannot allocate an accepted `m` gets
+/// `false` rather than an aborted process.
 #[must_use]
 pub fn verify_password(password: &[u8], hash: &str) -> bool {
+    use subtle::ConstantTimeEq;
+    use zeroize::Zeroize;
+
     let Ok(parsed) = PasswordHash::new(hash) else {
         return false;
     };
-    Argon2::default().verify_password(password, &parsed).is_ok()
+    let (Some(salt), Some(expected)) = (parsed.salt, parsed.hash) else {
+        return false;
+    };
+    let Some(costs) = phc_costs(&parsed) else {
+        return false;
+    };
+    let mut salt_buf = [0u8; argon2::password_hash::Salt::MAX_LENGTH];
+    let Ok(salt) = salt.decode_b64(&mut salt_buf) else {
+        return false;
+    };
+    let Some(argon2) = verify_context(
+        parsed.algorithm.as_str(),
+        parsed.version,
+        costs,
+        expected.len(),
+        salt.len(),
+    ) else {
+        return false;
+    };
+
+    let block_count = argon2.params().block_count();
+    let mut blocks = Vec::new();
+    if blocks.try_reserve_exact(block_count).is_err() {
+        return false;
+    }
+    blocks.resize(block_count, argon2::Block::default());
+
+    let mut tag_buf = zeroize::Zeroizing::new([0u8; argon2::password_hash::Output::MAX_LENGTH]);
+    let tag = &mut tag_buf[..expected.len()];
+    let result = argon2.hash_password_into_with_memory(password, salt, tag, &mut blocks);
+    blocks.iter_mut().for_each(Zeroize::zeroize);
+    result.is_ok() && bool::from(tag.ct_eq(expected.as_bytes()))
 }
 
 /// Derives a 32-byte key from `password` and `salt` - libsodium's `crypto_pwhash` equivalent
@@ -269,6 +363,48 @@ mod tests {
     /// unoptimized debug build (too expensive for every CI push), and `Interactive`/`Moderate`
     /// already prove (`tests/crypto_pwhash.rs`) that `Strength` flows into the PHC string through
     /// this exact code path - only the constants differ for `Sensitive`, checked here for free.
+    /// The bounds of `verify_context` at each edge, without running Argon2: a real hash at the
+    /// memory/work bound would cost 1 GiB and seconds, so the vector file cannot reach them
+    /// (`docs/DECISIONS.md` D-222).
+    #[test]
+    fn verify_context_accepts_exactly_up_to_each_bound() {
+        let ok = |alg, ver, costs, tag, salt| verify_context(alg, ver, costs, tag, salt).is_some();
+        let v19 = Some(0x13);
+
+        assert!(ok("argon2id", v19, Strength::Sensitive.cost(), 32, 16));
+        assert!(
+            ok("argon2i", v19, (524_288, 8, 1), 32, 16),
+            "libsodium argon2i SENSITIVE"
+        );
+        assert!(!ok("argon2id", v19, (1_048_577, 1, 1), 32, 16));
+        assert!(!ok("argon2id", v19, (1_048_576, 5, 1), 32, 16));
+        assert!(ok("argon2id", v19, (65_536, 64, 1), 32, 16));
+        assert!(!ok("argon2id", v19, (65_536, 65, 1), 32, 16));
+        assert!(
+            !ok("argon2id", v19, (1_048_576, u32::MAX, 1), 32, 16),
+            "u64 product"
+        );
+        assert!(!ok("argon2id", v19, (8, u32::MAX, 1), 32, 16));
+
+        assert!(!ok("argon2id", v19, (8, 1, 1), 15, 16));
+        assert!(ok("argon2id", v19, (8, 1, 1), 16, 16));
+        assert!(ok("argon2id", v19, (8, 1, 1), 64, 16));
+        assert!(!ok("argon2id", v19, (8, 1, 1), 65, 16));
+        assert!(!ok("argon2id", v19, (8, 1, 1), 32, 7));
+        assert!(ok("argon2id", v19, (8, 1, 1), 32, 8));
+
+        assert!(
+            ok("argon2id", v19, (1_048_576, 1, 64), 32, 16),
+            "no cap on lanes"
+        );
+        assert!(!ok("argon2id", v19, (8, 1, 2), 32, 16), "RFC 9106: m >= 8p");
+        assert!(!ok("argon2id", v19, (8, 0, 1), 32, 16));
+        assert!(!ok("argon2id", v19, (8, 1, 0), 32, 16));
+        assert!(!ok("argon2d", v19, (8, 1, 1), 32, 16));
+        assert!(!ok("argon2id", Some(0x10), (8, 1, 1), 32, 16));
+        assert!(!ok("argon2id", None, (8, 1, 1), 32, 16));
+    }
+
     #[test]
     fn sensitive_preset_has_libsodiums_sensitive_params() {
         let params = Strength::Sensitive.params();

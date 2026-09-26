@@ -9350,6 +9350,9 @@ points at the machine state rather than a GCM-specific regression, but that is n
   `crypto_pwhash::verify_password` (`crates/dstu-core/src/crypto_pwhash.rs:171`,
   `Argon2::default().verify_password(password, &parsed)`)
   takes the algorithm, version and `m`/`t`/`p` from the PHC string it is given.
+  - **Status 2026-09-26:** core + capi fixed on `ux-0.5.0` (D-222; bounds differ from D-220's
+    text in four recorded points). Shared vectors `tests/vectors/pwhash/verify.json`. Remaining:
+    one test per binding over those vectors (merged plan step 5), and the fuzz target (T-225).
   - (1) A crafted string with a huge `m` aborts the process: the allocation failure is an abort, not
     a panic, so `catch_unwind` in `dstu-core-capi` cannot stop it, and it kills the host process
     (reproduced for Ruby below; the other bindings follow from abort semantics). `verify_password` is exposed by the capi (`dstu_pwhash_verify_password`)

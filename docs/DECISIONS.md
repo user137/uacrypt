@@ -14764,3 +14764,47 @@ T-279). Tie-break: the project's own rules first, then safety, then compatibilit
 - **No local MSRV or aarch64 cross-clippy layer.** This host has only the MSVC 1.87 toolchain, so
   an MSRV layer would always skip. The aarch64 lint needs an extra rustup target. `rust.yml`
   runs both on every push, and a duplicate local layer adds no coverage.
+
+## D-222: `verify_password` bounds (T-272, 2026-09-26) - D-220's O-B(1) as implemented
+
+`crypto_pwhash::verify_password` now checks the PHC string before any allocation and runs Argon2
+into caller-reserved memory (`try_reserve_exact`, the `derive_key` shape), comparing the tag with
+`subtle::ConstantTimeEq`. Accepted: `argon2id` or `argon2i`; `v=19` present; exactly the `m`,
+`t`, `p` parameters, each once; `m <= 1 048 576` KiB; `m * t <= 4 * 1 048 576` (u64); a salt of
+at least 8 bytes; a tag of 16 to 64 bytes; RFC 9106's own minimums via `Params::new`. Everything
+else is `false`.
+
+**Sources checked (research-before-implementation, D-220 asked for it):**
+- RFC 9106 §3.1 (rfc-editor.org text): p 1..2^24-1, tag >= 4 bytes, m >= 8p KiB, t >= 1,
+  "Version number v MUST be one byte 0x13", salt only "16 bytes is RECOMMENDED" - no minimum.
+  §1: Argon2d is for applications "with no threats from side-channel timing attacks".
+- libsodium through PyNaCl 1.6.2, probed with `nacl.pwhash.verify`: accepts argon2id/argon2i v=19,
+  p=4, an 8-byte salt, t=17; refuses argon2d (`CryptPrefixError`), v=16, a 4-byte tag. Its
+  argon2i presets are (t, MiB) 4/32, 6/128, 8/512; argon2id 2/64, 3/256, 4/1024.
+- `argon2` 0.5.3 / `password-hash` 0.5.0 source: `Params::try_from(&PasswordHash)` also takes
+  `keyid`/`data`; a missing `v=` becomes `Version::default()` (0x13); `Output::MIN_LENGTH` is 10.
+
+**Where this differs from D-220's text (delegated, tie-break: project rules > safety > compat):**
+1. **Work bound `m * t` instead of a flat `t <= 16`.** `t <= 16` allowed 4x the Sensitive preset's
+   work at m = 1 GiB and refused legitimate low-memory, high-`t` hashes. The product bound is never
+   more than `Strength::Sensitive`, and both libsodium Sensitive presets (argon2id 1 GiB x 4,
+   argon2i 512 MiB x 8) land exactly on it, so the `<=` is load-bearing and unit-tested.
+2. **No cap on `p`.** With `m` fixed, `p` changes neither memory nor work; `argon2` 0.5.3 fills
+   lanes one after another; libsodium verifies any `p`; real configs set `p` to the core count.
+3. **Tag >= 16 bytes, not >= 4.** libsodium itself refuses shorter tags; RFC 9106 permits 4 but
+   does not require verifiers to accept it. Safety over the rare short-tag hash.
+4. **Citation fix:** the 8-byte salt minimum is libsodium's and the reference implementation's
+   `ARGON2_MIN_SALT_LENGTH` (and the crate's `MIN_SALT_LEN`), not RFC 9106. It is now checked
+   before allocation, not inside the hash call.
+5. Also rejected, beyond D-220's list: a missing `v=` (libsodium reads it as 0x10; the crate read
+   it as 0x13), duplicate or missing `m`/`t`/`p`, and `keyid`/`data` (never written by
+   `hash_password`, refused by libsodium; `keyid` was inert and verified `true`).
+
+**Test-first evidence:** each case in `tests/vectors/pwhash/verify.json` was run on the unfixed
+code in its own process: 10 of the 15 reject cases were accepted (argon2d, both v=16, 12-byte tag,
+missing `v=`, `keyid`, duplicate `m`, missing `p`), aborted (`m = 2^31`) or ran past a 30 s
+timeout (`t = 2^32-1`). The other five were already `false` for another reason (bad tag, parse
+error) and stay as misuse cases; the memory and work edges are unit-tested on `verify_context`
+directly, since a real hash at the bound costs 1 GiB. Not tested: `try_reserve_exact` failing for an
+accepted `m` (cannot be forced in a unit test), and a `data=` hash (no independent generator
+at hand; the parameter is rejected by name before use).
