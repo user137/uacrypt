@@ -9831,6 +9831,10 @@ rewritten when the codec arrives. T-277's shared vectors guard the 9 parsers unt
 2. **Core security and correctness:**
    - T-272 in core and capi (plan mode + advisor);
    - T-273 (plan mode + advisor; the same file as step 1, so it comes after);
+   - T-290 (done 2026-09-26, D-225);
+   - T-291 (riscv32 `u64` carry branches; trace first, then fix, plan mode + advisor) and T-292
+     (`xtask` asm check over the audited symbols, which guards D-223/D-225 and T-291's fix).
+     Added by the owner 2026-09-26. T-291 ships under the same 0.5.0 advisory and embargo.
    - T-278, T-283;
    - the T-242/T-246 leftovers from the 0.4.0 audit.
 3. **New core APIs the bindings need** (plan mode + advisor, new format):
@@ -9950,7 +9954,7 @@ work and never touches the 0.4.0 release on `master`). Fit this batch into the U
   at commit:** the full `cargo xtask test` run was in progress (101 suites green, no failure yet;
   `dstu-core --all-features`, fmt, clippy, docs-check already green) - re-run it; then scoped Miri
   (`dstu4145`/`dstu9041`/`gf2m_wide`, `PROPTEST_CASES=4`, background, D-164) and the closing advisor
-  review. Then: T-278, T-283.
+  review. Then (owner 2026-09-26): T-291 and T-292 in step 2, then T-278, T-283.
 - **Next:** T-278, T-283 and the
   T-242/T-246 leftovers. T-284 is deferred to 0.6.0 (owner choice B). The embargo still
   holds: do not push `ux-0.5.0` before 0.5.0 ships T-272's fix.
