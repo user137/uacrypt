@@ -14907,5 +14907,6 @@ project rules, then safety, then compatibility.
   (`gf2m163.rs:159-167`) to `ldr` of the operand word, `tst` of the bit, and a `b.eq` that skips the
   six `XOR`s - a branch on every bit of `a`. In signing, `a` is an intermediate coordinate of the
   scalar multiplication by the secret nonce. `gf2m257` has the same loop (`gf2m257.rs:145-154`) and
-  the same shape. Owner decision pending (T-290).
+  the same shape. **Owner decision 2026-09-26:** fix ships in 0.5.0 with T-272, under the same
+  advisory and push embargo.
 

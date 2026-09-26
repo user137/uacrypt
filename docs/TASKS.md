@@ -9637,7 +9637,7 @@ points at the machine state rather than a GCM-specific regression, but that is n
   (x86_64) on operand bits (D-223).
   - **Confirmed on aarch64-unknown-none 2026-09-26 (D-224):** `gf2m163.rs:159-167`'s loop compiles
     to `tst` of each bit of `a` + `b.eq` skipping the `XOR`s; `gf2m257.rs:145-154` the same.
-    Owner decision on the release pending (D-224's escalation fired).
+    Owner decision 2026-09-26: fix in 0.5.0 with T-272, same advisory and embargo (D-224).
   - Software path = every `no_std` build, aarch64 without PMULL, x86_64 without PCLMULQDQ, every
     other `std` target. `gf2m163`/`gf2m257`'s `FieldElement::multiply` also shows a `btq` + `jae` pair in
     the x86_64 release asm; thumbv7em shows only `it pl` predication; riscv32imc shows a `beqz`
@@ -9913,7 +9913,8 @@ work and never touches the 0.4.0 release on `master`). Fit this batch into the U
   embargo-sensitive T-290 (the same idiom in `gf2m163`/`gf2m257`), surfaced to the owner.
   Scoped Miri on `gf2m_wide`: 60 passed / 0 failed, 2348 s (D-223). Closing advisor review done:
   aarch64 added to the asm check, D-224's trigger corrected - and it fired: T-290 is confirmed
-  on aarch64 no_std. **Waiting on the owner:** T-290's release path (0.5.0 or out of band).
+  on aarch64 no_std. Owner: T-290 ships in 0.5.0 with T-272 (D-224). Next: T-290's fix (D-223's
+  barrier, plan mode + advisor), then T-278, T-283.
 - **Next:** T-278, T-283 and the
   T-242/T-246 leftovers. T-284 is deferred to 0.6.0 (owner choice B). The embargo still
   holds: do not push `ux-0.5.0` before 0.5.0 ships T-272's fix.
