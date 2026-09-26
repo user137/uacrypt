@@ -184,9 +184,9 @@ macro_rules! gf2m_field {
             /// tweak-doubling is exactly this fixed-constant case, and paying the general path's
             /// full O(m^2) schoolbook multiply for it is unneeded work that scales worst at the
             /// largest `m` (512). `x`'s only nonzero bit is bit 1, so multiplying by it is a
-            /// single left-shift of the whole element - O(m/64) word ops - plus, only when the
-            /// shifted-out top bit (degree `m-1`) was set, one XOR of the reduction polynomial's
-            /// low-degree terms to substitute for the `x^m` term that shifted out of range
+            /// single left-shift of the whole element - O(m/64) word ops - plus one XOR of the
+            /// reduction polynomial's low-degree terms, masked in when the shifted-out top bit
+            /// (degree `m-1`) was set, to substitute for the `x^m` term that shifted out of range
             /// (`x^m = x^f1 + x^f2 + x^f3 + 1` mod the reduction polynomial - the same identity
             /// [`Self::reduce`] uses, applied once instead of once per set bit). Must stay
             /// byte-identical to `self.multiply(Self` with only bit 1 set `)` - checked directly
@@ -203,14 +203,15 @@ macro_rules! gf2m_field {
                     out[i] = (self.0[i] << 1) | carry;
                     carry = next_carry;
                 }
-                if top_bit == 1 {
-                    out[0] ^= 1;
-                    let terms: [u32; 3] = [$f1, $f2, $f3];
-                    for term in terms {
-                        let l = (term / 64) as usize;
-                        let b = term % 64;
-                        out[l] ^= 1u64 << b;
-                    }
+                // All ones when `top_bit` is 1, all zeros when 0: the reduction is applied under a
+                // mask, never behind a branch on the (secret, for XTS) top bit (T-282).
+                let mask = 0u64.wrapping_sub(top_bit);
+                out[0] ^= mask & 1;
+                let terms: [u32; 3] = [$f1, $f2, $f3];
+                for term in terms {
+                    let l = (term / 64) as usize;
+                    let b = term % 64;
+                    out[l] ^= mask & (1u64 << b);
                 }
                 Self(out)
             }

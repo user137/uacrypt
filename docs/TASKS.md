@@ -9558,8 +9558,10 @@ points at the machine state rather than a GCM-specific regression, but that is n
   `CLAUDE.md` still presents `std`/`alloc`/`no_std` as the feature set (D-01).
   - A published crate advertising a knob with no effect is D-47's "delete the knob" in reverse.
   - Direction: O-D. Effort S.
-- [ ] **T-282** (Low, arch - constant-time hygiene, **Confirmed** in source, branch-free on
-  x86-64 by asm; depends: none) `gf2m_wide`'s `double()` (`gf2m_wide.rs:202`) branches
+- [x] **T-282** (**done 2026-09-26 on `ux-0.5.0`**: mask form; asm branch-free before and after
+  on x86_64 (`cmovns`) and thumbv7em (`it mi`/`eormi`); `uacrypt kalyna-xts` A/B within noise,
+  `docs/PERFORMANCE.md` "Kalyna-XTS"; `double` proptests pass, also under scoped Miri) (Low, arch -
+  constant-time hygiene, **Confirmed** in source, branch-free on x86-64 by asm; depends: none) `gf2m_wide`'s `double()` (`gf2m_wide.rs:202`) branches
   on `top_bit` with `if top_bit == 1`. Kalyna-XTS uses it on the tweak `E_K(iv)`, a secret. CLAUDE.md
   forbids secret-dependent branching outright.
   - The x86-64 release build compiles it branch-free: `xorq $135` / `$1061` / `$293` followed by

@@ -1096,6 +1096,31 @@ depends on block count at all, only on `m`).
 **Reproducing**: `target/release/uacrypt kalyna-xts encrypt --variant <v> --key <path> --tweak
 <path> --in <path> --out <path> --iterations <N>`.
 
+**T-282 (2026-09-26): `double()`'s reduction moved from `if top_bit == 1` to a mask.** A
+constant-time hygiene change, not a speed change. Release `uacrypt` before and after (the only
+difference is this change), 100 MiB random input, `--iterations 3`, runs interleaved
+before/after, 3 rounds. Machine: Ryzen 5 PRO 4650U, on AC, Windows "Balanced" plan, 1.7 GHz
+reported, the same state as the 2026-09-25 review (absolute numbers sit below this section's
+older baselines, so compare only within these rows). MB/s per round:
+
+| Variant, direction | before | after |
+|---|---|---|
+| 128-128 encrypt | 105.8 / 192.9 / 182.1 | 103.6 / 215.3 / 200.0 |
+| 128-128 decrypt | 104.6 / 197.7 / 180.8 | 161.7 / 196.2 / 186.7 |
+| 256-256 encrypt | 146.2 / 145.2 / 149.3 | 148.9 / 144.2 / 154.5 |
+| 256-256 decrypt | 138.8 / 130.4 / 134.4 | 134.9 / 128.1 / 114.5 |
+| 512-512 encrypt | 120.0 / 112.6 / 96.1 | 123.8 / 112.9 / 83.8 |
+| 512-512 decrypt | 117.1 / 105.7 / 84.3 | 116.0 / 99.7 / 90.4 |
+
+No difference beyond the run-to-run spread, and it goes in both directions (round 1 of 128-128 is a
+warm-up outlier in both binaries). That matches the asm (`--emit=asm`, `Kalyna*Xts::{en,de}crypt_in_place`):
+both before and after are branch-free at the reduction. x86_64 uses `xorq` + `testq` + `cmovns`/`cmovs`. thumbv7em-none-eabihf
+uses `it mi` + `eormi`. After the change LLVM folds the `x^0` term into the shift itself: the top bit
+is rotated into bit 0, so the immediates become 134/1060/292 instead of 135/1061/293. The change
+makes the property hold in the source, so it no longer depends on the backend (a target without
+`cmov` or predication could have branched on the old `if`). No criterion bench exists for XTS; none
+was added.
+
 ### 10 MiB re-measurement pass (T-125 follow-up, requested 2026-07-26)
 
 Every mode whose input length isn't inherently capped was re-measured at 10 MiB (`--iterations 50`)
