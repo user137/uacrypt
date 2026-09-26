@@ -151,7 +151,9 @@ impl FieldElement {
 /// Binary-polynomial (carry-less) multiplication of two 163-bit operands into a 6-limb (384-bit
 /// capacity, up to 325 significant bits) product - the right-to-left shift-and-add method
 /// (`Guide to Elliptic Curve Cryptography`, Hankerson/Menezes/Vanstone, Algorithm 2.33), written
-/// with a branchless bit-select (`mask`) in place of the algorithm's `if a_i = 1` step.
+/// with a bit-select (`mask`) in place of the algorithm's `if a_i = 1` step. The mask alone was
+/// not branch-free: LLVM turned it back into a skip over the `XOR`s (`docs/DECISIONS.md` D-225),
+/// so it passes through `black_box`.
 fn poly_mul_wide(a: &[u64; 3], b: &[u64; 3]) -> [u64; 6] {
     let mut acc = [0u64; 6];
     let mut shifted = [b[0], b[1], b[2], 0u64, 0u64, 0u64];
@@ -160,7 +162,8 @@ fn poly_mul_wide(a: &[u64; 3], b: &[u64; 3]) -> [u64; 6] {
         let limb = (bit_index / 64) as usize;
         let bit = bit_index % 64;
         let bit_value = (a[limb] >> bit) & 1;
-        let mask = 0u64.wrapping_sub(bit_value); // all-ones if the bit is 1, all-zeros otherwise
+        // All-ones if the bit is 1, all-zeros otherwise; `black_box` keeps it a mask (D-225).
+        let mask = core::hint::black_box(0u64.wrapping_sub(bit_value));
         for i in 0..6 {
             acc[i] ^= shifted[i] & mask;
         }

@@ -109,7 +109,14 @@ attack closes the gap to the full round count for either cipher.
     (`docs/DECISIONS.md` D-223): D-184's "never had one either" did not hold for it. It is now a
     masked multiply with a `black_box` barrier, checked branch- and index-free in release asm on
     x86_64, thumbv7em, riscv32imc and aarch64. The plain mask idiom was not: LLVM compiled it to branches,
-    so a mask in source is not evidence on its own (T-290 re-checks the other mask sites).
+    so a mask in source is not evidence on its own.
+  - **T-290 (`docs/DECISIONS.md` D-225) found the same idiom branching elsewhere, and fixed it.**
+    It branched on operand bits in `gf2m163`/`gf2m257`'s software multiply (`crypto_sign`) on all
+    four checked targets. It also branched on `a+b >= p` in `fp256`/`fp512` add and reduction
+    (`crypto_box`/`crypto_box512`, every platform). All 17 mask sites in `hazmat` now use the
+    barrier, and each is asm-checked on x86_64, thumbv7em, riscv32imc and aarch64.
+  - **Open (T-291):** riscv32imc still branches in the `u64` carry lowering of the limb arithmetic,
+    through a different mechanism than the mask idiom.
 - All comparisons involving secret data use `subtle::ConstantTimeEq`, never `==`.
 - All key-material types implement `Zeroize` / `ZeroizeOnDrop`.
 - No secret material (keys, nonces derived from secrets, plaintexts) in logs, panics, or error

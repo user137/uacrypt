@@ -136,7 +136,8 @@ fn sub5(a: [u64; 5], b: [u64; 5]) -> ([u64; 5], u64) {
 /// Returns `a - b` if `a >= b`, otherwise `a` unchanged - constant-time select on the borrow flag.
 fn cond_sub_if_ge(a: [u64; 5], b: [u64; 5]) -> [u64; 5] {
     let (diff, borrow) = sub5(a, b);
-    let mask = borrow.wrapping_sub(1);
+    // `black_box` keeps the mask from becoming a branch (D-225).
+    let mask = core::hint::black_box(borrow.wrapping_sub(1));
     let mut out = [0u64; 5];
     for i in 0..5 {
         out[i] = a[i] ^ (mask & (a[i] ^ diff[i]));

@@ -149,7 +149,9 @@ fn sub3(a: [u64; 3], b: [u64; 3]) -> ([u64; 3], u64) {
 /// subtraction's borrow flag (`borrow == 0` means `a >= b`), never a branch on the comparison.
 fn cond_sub_if_ge(a: [u64; 3], b: [u64; 3]) -> [u64; 3] {
     let (diff, borrow) = sub3(a, b);
-    let mask = borrow.wrapping_sub(1); // borrow == 0 (a >= b) -> all-ones; borrow == 1 -> all-zeros
+    // borrow == 0 (a >= b) -> all-ones; borrow == 1 -> all-zeros. `black_box` keeps the mask from
+    // becoming a branch (D-225).
+    let mask = core::hint::black_box(borrow.wrapping_sub(1));
     let mut out = [0u64; 3];
     for i in 0..3 {
         out[i] = a[i] ^ (mask & (a[i] ^ diff[i]));

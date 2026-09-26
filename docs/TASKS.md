@@ -9631,7 +9631,7 @@ points at the machine state rather than a GCM-specific regression, but that is n
     Miri on purpose, with a message (~10 h, D-172; CI's per-crate jobs are the gate). The
     `cargo xtask miri [pkg]` probe now uses `cargo +nightly miri --version`.
   - Still open (machine setup, not code): `python`, `ruby`, `cpp` above.
-- [ ] **T-290** (Medium, arch, **security-flagged**, **embargo-sensitive**; found by T-273's asm
+- [x] **T-290** (Medium, arch, **security-flagged**, **embargo-sensitive**; found by T-273's asm
   pass, not yet traced; depends: none) The `0u64.wrapping_sub(bit)` mask idiom is not
   branch-free by itself: in T-273 LLVM turned it into `bmi`/`bpl` (thumbv7em) and `btq`+`jb`
   (x86_64) on operand bits (D-223).
@@ -9651,6 +9651,35 @@ points at the machine state rather than a GCM-specific regression, but that is n
   - Disclosure: D-224 (trace first; if confirmed, 0.5.0 + T-272's advisory).
   - Fix shape if confirmed: D-223's barrier. Possible deliverable: an automated asm check
     (`xtask`) over the audited symbols, so a toolchain bump cannot silently undo it.
+  - **Done 2026-09-26 (D-225), local on `ux-0.5.0`, not pushed:** `core::hint::black_box` on all
+    17 production mask sites in `hazmat` (gf2m163/257, fp256/512, curve163/257 `cswap`/
+    `is_zero_mask`, scalar/scalar257, `gf2m_wide::double`), applied group by group with an asm
+    rebuild on x86_64/thumbv7em/riscv32imc/aarch64 after each. Confirmed leaks: `gf2m` on all four
+    targets; `fp256`/`fp512` add and reduction on x86_64/thumbv7em/aarch64, which is every platform
+    (`crypto_box` has no hardware path), so D-224 fired a second time. Owner: same 0.5.0 advisory.
+    curve/scalar/`double` traced clean; the barrier is kept as a margin. Cost: `crypto_box` 1.57x,
+    `crypto_box512` 1.19x, `gf2m163` software 1.7x *faster*.
+- [ ] **T-291** (Medium, arch, **security-flagged**, **embargo-sensitive**; found by T-290's asm
+  pass; depends: none) On riscv32imc (ESP32-C3), LLVM lowers the `u64` carry/borrow compares in
+  the limb arithmetic (`overflowing_add`/`overflowing_sub`) to `beq <hi>,<hi>` around an `sltu`,
+  which is a branch on whether the high 32-bit halves of two limbs are equal (D-225). Seen in
+  `fp256::add` (5 jumps left after T-290) and `multiply`; not yet traced across `fp512`,
+  `scalar`/`scalar257`, `kalyna` or `strumok`. The mask barrier does not reach it.
+  - First: trace which functions do this and whether the operands are secret. It is a
+    32-bit-target-only lowering, so thumbv7em's `adds`/`adcs` flags are the comparison point.
+  - Fix directions to evaluate: carry via a bitwise majority formula (`(a & b) | ((a | b) & !s)`
+    top bit), which needs no 64-bit compare; or 32-bit limbs on 32-bit targets. Asm-check both.
+  - Disclosure: owner decides (published code, `no_std` riscv32 only). Keep the recipe on
+    unpushed `ux-0.5.0`, same as T-290.
+- [ ] **T-292** (Low, infra; depends: T-290) An `xtask` asm check: build the four targets from
+  D-225's recipe and fail on any conditional jump in the audited symbols (the `poly_mul_wide`s,
+  `fp256`/`fp512` add/sub/multiply, the ladders) except known public ones, listed per symbol.
+  This stops a toolchain bump from silently undoing D-223/D-225 (`black_box` is best effort).
+- [ ] **T-293** (Low, perf; depends: T-290) A register-only barrier in place of `black_box`
+  (`core::arch::asm!("", inout(reg) x, options(pure, nomem, nostack))` per supported arch, with
+  `black_box` as the fallback) to win back `crypto_box`'s 1.57x (D-225). It adds `unsafe` and
+  per-arch code, so it needs its own plan, an asm re-check on all four targets, and a Miri note
+  (Miri cannot run inline asm, so the fallback path must be the one used under `cfg(miri)`).
 - Attached to existing tasks (no new IDs):
   - **T-246**: `kalyna_gcm.rs:103` has an unlinted `.try_into().unwrap()` inside `macro_rules!`,
     the same class as its `kupyna_kdf.rs:36` `.expect` item.
@@ -9913,8 +9942,15 @@ work and never touches the 0.4.0 release on `master`). Fit this batch into the U
   embargo-sensitive T-290 (the same idiom in `gf2m163`/`gf2m257`), surfaced to the owner.
   Scoped Miri on `gf2m_wide`: 60 passed / 0 failed, 2348 s (D-223). Closing advisor review done:
   aarch64 added to the asm check, D-224's trigger corrected - and it fired: T-290 is confirmed
-  on aarch64 no_std. Owner: T-290 ships in 0.5.0 with T-272 (D-224). Next: T-290's fix (D-223's
-  barrier, plan mode + advisor), then T-278, T-283.
+  on aarch64 no_std. Owner: T-290 ships in 0.5.0 with T-272 (D-224).
+- **Step 2, T-290 done (2026-09-26, local, not pushed):** D-225. Barrier on all 17 mask sites;
+  `crypto_box`'s field arithmetic also branched on every platform, so D-224 fired again and the
+  owner widened the 0.5.0 advisory. New: T-291 (riscv32 `u64` carry branches, embargo-sensitive,
+  owner decides disclosure), T-292 (xtask asm check), T-293 (cheaper barrier). **Still pending
+  at commit:** the full `cargo xtask test` run was in progress (101 suites green, no failure yet;
+  `dstu-core --all-features`, fmt, clippy, docs-check already green) - re-run it; then scoped Miri
+  (`dstu4145`/`dstu9041`/`gf2m_wide`, `PROPTEST_CASES=4`, background, D-164) and the closing advisor
+  review. Then: T-278, T-283.
 - **Next:** T-278, T-283 and the
   T-242/T-246 leftovers. T-284 is deferred to 0.6.0 (owner choice B). The embargo still
   holds: do not push `ux-0.5.0` before 0.5.0 ships T-272's fix.

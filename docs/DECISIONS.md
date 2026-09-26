@@ -14909,4 +14909,109 @@ project rules, then safety, then compatibility.
   scalar multiplication by the secret nonce. `gf2m257` has the same loop (`gf2m257.rs:145-154`) and
   the same shape. **Owner decision 2026-09-26:** fix ships in 0.5.0 with T-272, under the same
   advisory and push embargo.
+- **Fired again during T-290's trace (D-225):** the same idiom branches in `fp256`/`fp512`
+  (`crypto_box`/`crypto_box512`), which have no hardware dispatch - every platform. Owner decision
+  2026-09-26: same path (0.5.0, one widened advisory, embargo unchanged).
 
+## D-225: T-290 - `black_box` barrier on every `hazmat` mask site (2026-09-26)
+
+**Problem.** `0u64.wrapping_sub(bit)` is not branch-free on its own (D-223). LLVM proves the mask
+is 0 or all-ones, turns `x & mask` back into a select, and lowers the select to a branch. T-290
+traced every production mask site in `hazmat` on four targets.
+
+**Method.** The release asm is built with `RUSTFLAGS="--emit=asm -C debuginfo=0" cargo build
+--release -p dstu-core --lib --no-default-features --target <t>` on x86_64-unknown-linux-gnu,
+thumbv7em-none-eabihf, riscv32imc-unknown-none-elf and aarch64-unknown-none, with rustc 1.97.1.
+Only real conditional jumps are counted per function:
+- x86_64: `j<cc>` (not `jmp`);
+- thumbv7em: `b<cc>[.w|.n]`, `cbz`/`cbnz`;
+- riscv32imc: `beq[z]`/`bne[z]`/`blt[z|u]`/`bge[z|u]` and the `c.` forms;
+- aarch64: `b.<cc>`, `cbz`/`cbnz`, `tbz`/`tbnz`.
+
+`cmov`/`setcc`/`csel`/`cset`/`it` are selects, not branches, so they are not counted. The
+barrier was applied one group at a time (gf2m, fp, curve, scalar, `double`), with a rebuild of all
+four targets after each group. Each removed jump was read in the asm and named. A count delta is
+not taken as evidence on its own: counts also move when `black_box` reshapes a loop, and they did
+in `kalyna_xts`.
+
+**Confirmed secret-dependent branches, before the fix:**
+
+| Site | Target | Instruction | What it tests |
+|---|---|---|---|
+| `gf2m163`/`gf2m257::poly_mul_wide` (inlined in `multiply`, `invert`, `curve257::scalar_multiply`, ...) | x86_64 | `btq %rcx,%rbp; jae` over the `XOR`s | bit `i` of `a` |
+| same | thumbv7em | `ands r1,r3; orrs r0,r1; bne.w` back to the loop head | bit `i` of `a` |
+| same | riscv32imc | `and`/`or` chain, `beqz a0` over the `XOR`s | bit `i` of `a` |
+| same | aarch64 | `tst x6,x5; b.eq` over six `eor`s | bit `i` of `a` |
+| `fp256::add` (`take_t` mask) | x86_64 | `cmpb $1,%bl; jne` around `addq $435` | `a+b >= p` |
+| same | thumbv7em | `cmp r0,#1; bne` around `movw r0,#435` | `a+b >= p` |
+| same | aarch64 | `cmp w18,#1; b.ne` around `add x9,x9,#435` | `a+b >= p` |
+| `fp256::multiply` (`conditional_sub_p`, inlined) | x86_64 | `jb`/`jne` around `addq $435` | result `>= p` |
+| `fp512::add` | x86_64 | `jne` around `addq $875` | `a+b >= p` |
+
+After the fp group, the jumps are also gone from every function that inlines these helpers:
+`fp256`/`fp512` `pow_mod`/`sqrt`/`invert`/`euler_criterion`, `curve256::ProjectivePoint::add`,
+`is_on_curve`, `point_from_x`, and riscv32imc `curve256`/`curve512::scalar_multiply` (25 -> 2 and
+49 -> 2 jumps).
+
+**Exposure.**
+- **gf2m (DSTU 4145, `crypto_sign`/`crypto_sign257`):** the software path only. That is every
+  `no_std` build and every CPU without PCLMULQDQ/PMULL (D-224). `a` is an intermediate of the
+  scalar multiplication by the secret nonce.
+- **fp (DSTU 9041, `crypto_box`/`crypto_box512`):** there is no hardware dispatch, so it is
+  **every build on every platform**, including x86_64 desktops and the Pi. The operands are
+  intermediates of the scalar multiplication by the recipient's secret key (`open`) and by the
+  ephemeral key (`seal`).
+- Both have been published since 0.3.0.
+- **Owner decision 2026-09-26** (D-224's escalation fired a second time, with this wider
+  population): the fix ships in 0.5.0 together with T-272/T-290, under one advisory with the
+  wider scope. The push embargo on `ux-0.5.0` is unchanged.
+
+**Traced clean, barrier added anyway:**
+- `curve163`/`curve257` `cswap`/`is_zero_mask`. The remaining jumps are the input `Option` tag,
+  the fixed ladder counter, and the final "result is infinity" check, which decides the returned
+  `None` (public output).
+- `scalar`/`scalar257` `cond_sub_if_ge`. Its remaining jumps are fixed loop counters
+  (`movl $65` / `decq` / `ja`, `b.hi` on aarch64).
+- `gf2m_wide::double`. aarch64 already used `cmp x25,#0; csel ... mi`; riscv32imc showed only
+  length and counter jumps in `kalyna_xts`.
+
+These are kept behind the barrier on purpose, as a tradeoff for robustness against the next
+toolchain bump: the source idiom is the same one that did branch elsewhere, and LLVM's choice
+differs by target and version.
+
+**Fix.** Every production `let mask = ...wrapping_sub(...)` in `hazmat`, plus the two
+`is_zero_mask` return expressions, now reads `core::hint::black_box(...)`. That is 17 sites in 9
+files; `gf2m_wide::poly_mul_wide` already had D-223's barrier. The output is byte-identical.
+`black_box` is best effort, not a guarantee, so the claim rests on the asm check above; repeat it
+after a toolchain bump (T-292 automates it). This is constant-time discipline, not a
+side-channel-resistance claim.
+
+**Tests.** No new behavioral test: the arithmetic is unchanged, and the constant-time property
+is not observable from a unit test, so that test category is foreclosed. The asm check stands in
+for it. The existing KATs, the sw-vs-hw clmul proptests, the Додаток Г worked examples and the
+field-axiom proptests pass unchanged (`cargo test -p dstu-core --all-features`,
+`cargo xtask test`).
+
+**Cost.** Release build, in-process, dev machine (x86_64, PCLMULQDQ). Internal regression
+numbers per D-34's allowance, not a cross-implementation claim. The binary-level `uacrypt` runs
+were dominated by about 33 ms of process start with ±10 ms noise, so they could not resolve the
+change.
+
+| Operation | Before | After | Ratio |
+|---|---|---|---|
+| `crypto_box::seal` / `open` (1 KiB) | 303-309 / 498-516 us | 478-480 / 796-802 us | 1.57x |
+| `crypto_box512::seal` / `open` | 2343-2351 / 3915-3989 us | 2793-2794 / 4664-4864 us | 1.19x |
+| `crypto_sign` / `crypto_sign257` sign | 65-67 / 178-191 us | 65-66 / 175-176 us | unchanged (hw clmul) |
+| `fp256::multiply` chain | 23-34 ns | 36-39 ns | about 1.5x |
+| `gf2m163` explicit software multiply | 1357-1775 ns | 796-919 ns | **faster**, about 1.7x |
+
+The `gf2m163` software multiply got faster: the branch it replaced mispredicted on random operand
+bits. The `crypto_box` cost is the store/load round trip that `black_box` forces on each
+cheap field add/sub. It is accepted for now; a register-only barrier is T-293.
+
+**Found on the way, not fixed here (T-291):** on riscv32imc, LLVM lowers the 64-bit carry and
+borrow compares in the limb arithmetic (`overflowing_add`/`overflowing_sub` on `u64`) as
+`beq <hi_a>,<hi_b>` around an `sltu`, which is a branch on whether the high 32-bit halves of two
+limbs are equal. In `fp256::add` after this fix, 5 such jumps remain, and there are more in
+`multiply`. This is a different mechanism from the mask idiom (no `wrapping_sub` mask is
+involved), so the barrier does not reach it.

@@ -2060,6 +2060,12 @@ is our EC math" vs. "how fast is a real seal/open call").
 recipient's public key (one extra scalar multiplication), so the `box-open`/`box-open512` rows are
 optimistic until they are re-measured. The raw scalar-multiplication table is unaffected.
 
+**All numbers in this section also predate T-290 (2026-09-26, `docs/DECISIONS.md` D-225).** The
+`fp256`/`fp512` masks now pass through `black_box` so that they cannot compile to branches. That
+costs about 1.57x (`crypto_box`) and 1.19x (`crypto_box512`) per seal/open, in an in-process
+diagnostic on the dev machine. Every table here, the raw scalar-multiplication one included, is
+optimistic until re-measured.
+
 **T-194 (2026-08-08) extends both tables to `crypto_box512`/`l(p)=512` (E512/1, T-193) alongside the
 original `crypto_box`/`l(p)=256` numbers, and both curve sizes were re-measured fresh in the same
 sitting** — the `l(p)=256` numbers below are *not* T-179's original figures spliced in; several

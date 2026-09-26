@@ -101,7 +101,8 @@ fn conditional_sub_p(x: [u64; 8]) -> [u64; 8] {
         t[i] = d;
         borrow = bw;
     }
-    let mask = 0u64.wrapping_sub(borrow ^ 1);
+    // `black_box` keeps the mask from becoming a branch (D-225).
+    let mask = core::hint::black_box(0u64.wrapping_sub(borrow ^ 1));
     let mut out = [0u64; 8];
     for i in 0..8 {
         out[i] = (t[i] & mask) | (x[i] & !mask);
@@ -218,7 +219,8 @@ impl FieldElement {
             borrow = bw;
         }
         let take_t = carry | (borrow ^ 1);
-        let mask = 0u64.wrapping_sub(take_t);
+        // `black_box` keeps the mask from becoming a branch (D-225).
+        let mask = core::hint::black_box(0u64.wrapping_sub(take_t));
         let mut out = [0u64; 8];
         for i in 0..8 {
             out[i] = (t[i] & mask) | (r[i] & !mask);
@@ -239,7 +241,8 @@ impl FieldElement {
         }
         // borrow==1 means self < other: r currently equals (self - other) mod 2^512, i.e.
         // (self-other)+2^512; subtracting C once corrects it to (self-other)+p, landing in [0,p).
-        let mask = 0u64.wrapping_sub(borrow);
+        // `black_box` keeps the mask from becoming a branch (D-225).
+        let mask = core::hint::black_box(0u64.wrapping_sub(borrow));
         let mut out = [0u64; 8];
         let mut inner_borrow = 0u64;
         for i in 0..8 {
@@ -267,7 +270,8 @@ impl FieldElement {
     #[allow(clippy::needless_range_loop)]
     pub(crate) fn select(bit: u64, a: Self, b: Self) -> Self {
         debug_assert!(bit <= 1, "select's bit argument must be 0 or 1");
-        let mask = 0u64.wrapping_sub(bit);
+        // `black_box` keeps the mask from becoming a branch (D-225).
+        let mask = core::hint::black_box(0u64.wrapping_sub(bit));
         let mut out = [0u64; 8];
         for i in 0..8 {
             out[i] = (a.0[i] & mask) | (b.0[i] & !mask);

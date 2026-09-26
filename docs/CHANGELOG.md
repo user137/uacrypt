@@ -135,6 +135,16 @@ All notable changes to this project are documented in this file. Format follows
   for `crypto_secretbox`, `crypto_secretstream` and `crypto_box`. It is now a masked multiply,
   checked branch-free in release asm; output is unchanged, the software field multiply is
   1.2-1.4x slower.
+- **Secret-dependent branches removed from DSTU 4145 and DSTU 9041 field arithmetic** (0.5.0,
+  T-290, `docs/DECISIONS.md` D-225).
+  - The bit-mask selects in the source compiled to conditional branches. They branched on operand
+    bits in the software GF(2^m) multiply behind `crypto_sign`/`crypto_sign257` (`no_std` builds
+    and CPUs without PCLMULQDQ/PMULL). They also branched on whether a sum was at least `p` in the
+    prime-field add and reduction behind `crypto_box`/`crypto_box512`, on every platform.
+  - Every such mask now passes through a compiler barrier, checked branch-free in release asm on
+    x86_64, thumbv7em, riscv32imc and aarch64. Output is unchanged.
+  - `crypto_box` is about 1.57x slower and `crypto_box512` about 1.19x slower. The software
+    GF(2^m) multiply is about 1.7x faster.
 - **Breaking wire-format change (0.4.0).** `crypto_secretbox` and `crypto_secretstream` now bind
   each ciphertext's true length into its authentication tag, and `crypto_secretstream`'s
   `PullState::pull` accepts only a full 16-byte tag. This closes an integrity weakness in earlier

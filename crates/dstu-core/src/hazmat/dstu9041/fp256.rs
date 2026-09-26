@@ -92,7 +92,8 @@ fn conditional_sub_p(x: [u64; 4]) -> [u64; 4] {
         borrow = bw;
     }
     // borrow == 0 means x >= p (subtraction succeeded) -> take t; borrow == 1 means x < p -> keep x.
-    let mask = 0u64.wrapping_sub(borrow ^ 1);
+    // `black_box` keeps the mask from becoming a branch (D-225).
+    let mask = core::hint::black_box(0u64.wrapping_sub(borrow ^ 1));
     let mut out = [0u64; 4];
     for i in 0..4 {
         out[i] = (t[i] & mask) | (x[i] & !mask);
@@ -211,7 +212,8 @@ impl FieldElement {
         // r (with its carry limb) >= p iff carry==1 (definitely overflowed p) or borrow==0 (the
         // direct subtraction succeeded without needing the carry limb).
         let take_t = carry | (borrow ^ 1);
-        let mask = 0u64.wrapping_sub(take_t);
+        // `black_box` keeps the mask from becoming a branch (D-225).
+        let mask = core::hint::black_box(0u64.wrapping_sub(take_t));
         let mut out = [0u64; 4];
         for i in 0..4 {
             out[i] = (t[i] & mask) | (r[i] & !mask);
@@ -232,7 +234,8 @@ impl FieldElement {
         }
         // borrow==1 means self < other: r currently equals (self - other) mod 2^256, i.e.
         // (self-other)+2^256; subtracting C once corrects it to (self-other)+p, landing in [0,p).
-        let mask = 0u64.wrapping_sub(borrow);
+        // `black_box` keeps the mask from becoming a branch (D-225).
+        let mask = core::hint::black_box(0u64.wrapping_sub(borrow));
         let mut out = [0u64; 4];
         let mut inner_borrow = 0u64;
         for i in 0..4 {
@@ -262,7 +265,8 @@ impl FieldElement {
     #[allow(clippy::needless_range_loop)]
     pub(crate) fn select(bit: u64, a: Self, b: Self) -> Self {
         debug_assert!(bit <= 1, "select's bit argument must be 0 or 1");
-        let mask = 0u64.wrapping_sub(bit);
+        // `black_box` keeps the mask from becoming a branch (D-225).
+        let mask = core::hint::black_box(0u64.wrapping_sub(bit));
         let mut out = [0u64; 4];
         for i in 0..4 {
             out[i] = (a.0[i] & mask) | (b.0[i] & !mask);

@@ -146,7 +146,8 @@ fn poly_mul_wide(a: &[u64; 5], b: &[u64; 5]) -> [u64; 10] {
         let limb = (bit_index / 64) as usize;
         let bit = bit_index % 64;
         let bit_value = (a[limb] >> bit) & 1;
-        let mask = 0u64.wrapping_sub(bit_value); // all-ones if the bit is 1, all-zeros otherwise
+        // All-ones if the bit is 1, all-zeros otherwise; `black_box` keeps it a mask (D-225).
+        let mask = core::hint::black_box(0u64.wrapping_sub(bit_value));
         for i in 0..10 {
             acc[i] ^= shifted[i] & mask;
         }

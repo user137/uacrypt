@@ -206,7 +206,8 @@ macro_rules! gf2m_field {
                 }
                 // All ones when `top_bit` is 1, all zeros when 0: the reduction is applied under a
                 // mask, never behind a branch on the (secret, for XTS) top bit (T-282).
-                let mask = 0u64.wrapping_sub(top_bit);
+                // `black_box` keeps the mask from becoming a branch (D-225).
+                let mask = core::hint::black_box(0u64.wrapping_sub(top_bit));
                 out[0] ^= mask & 1;
                 let terms: [u32; 3] = [$f1, $f2, $f3];
                 for term in terms {

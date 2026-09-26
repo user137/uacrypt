@@ -203,7 +203,8 @@ fn bit_at(bytes: &[u8; 33], i: u32) -> u64 {
 
 /// Constant-time conditional swap - same shape as `curve163::cswap`, widened to 5 limbs.
 fn cswap(swap: u64, a: &mut FieldElement, b: &mut FieldElement) {
-    let mask = 0u64.wrapping_sub(swap);
+    // `black_box` keeps the mask from becoming a branch (D-225).
+    let mask = core::hint::black_box(0u64.wrapping_sub(swap));
     for i in 0..5 {
         let t = mask & (a.0[i] ^ b.0[i]);
         a.0[i] ^= t;
@@ -216,7 +217,8 @@ fn cswap(swap: u64, a: &mut FieldElement, b: &mut FieldElement) {
 fn is_zero_mask(a: FieldElement) -> u64 {
     let combined = a.0[0] | a.0[1] | a.0[2] | a.0[3] | a.0[4];
     let is_nonzero = (combined | combined.wrapping_neg()) >> 63;
-    0u64.wrapping_sub(1 ^ is_nonzero)
+    // `black_box` keeps the mask from becoming a branch (D-225).
+    core::hint::black_box(0u64.wrapping_sub(1 ^ is_nonzero))
 }
 
 /// Constant-time select - same shape as `curve163::select`, widened to 5 limbs.
