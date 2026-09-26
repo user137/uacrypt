@@ -7,7 +7,7 @@
 //! Then every symbol in [`ZERO_JUMPS`] must have no conditional or indirect jump in that target
 //! and `opt-level`. Symbols that keep public jumps (loop counters, `Option` tags) are not counted
 //! (owner, 2026-09-26): a count would only say "something changed" and would need a re-read after
-//! every rustc release. A failure after a rustc bump names the version change ([`AUDITED_RUSTC`]):
+//! every rustc release. The one exception is [`EXACT_JUMPS`], `gf2m` `multiply` (D-230). A failure after a rustc bump names the version change ([`AUDITED_RUSTC`]):
 //! read the asm; a row may only be dropped once its new jump has been read and is public.
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -149,7 +149,43 @@ const ZERO_JUMPS: &[(&str, &str, &str)] = &[
     (RISCV32, "z", "OUTLINED_FUNCTION_*"),
 ];
 
+/// `(target, opt-level, spec, jumps)`: the one exception to "no counts" (D-230). `gf2m`
+/// `multiply` keeps public loop jumps, so it cannot be a zero-jump row, but it is where T-290's
+/// secret branch was (`poly_mul_wide` inlined, `btq; jae` per bit of `a` on x86_64, D-225).
+/// Exact counts at [`AUDITED_RUSTC`], read in D-229's audit.
+const EXACT_JUMPS: &[(&str, &str, &str, u32)] = &[
+    (X86_64, "3", "gf2m163::FieldElement::multiply", 1),
+    (X86_64, "3", "gf2m257::FieldElement::multiply", 1),
+    (AARCH64, "3", "gf2m163::FieldElement::multiply", 1),
+    (AARCH64, "3", "gf2m257::FieldElement::multiply", 1),
+    (THUMB, "3", "gf2m163::FieldElement::multiply", 1),
+    (THUMB, "3", "gf2m257::FieldElement::multiply", 1),
+    (THUMB, "s", "gf2m163::FieldElement::multiply", 3),
+    (THUMB, "s", "gf2m257::FieldElement::multiply", 3),
+    (THUMB, "z", "gf2m163::FieldElement::multiply", 3),
+    (THUMB, "z", "gf2m257::FieldElement::multiply", 3),
+    (RISCV32, "3", "gf2m163::FieldElement::multiply", 2),
+    (RISCV32, "3", "gf2m257::FieldElement::multiply", 2),
+    (RISCV32, "s", "gf2m163::FieldElement::multiply", 4),
+    (RISCV32, "s", "gf2m257::FieldElement::multiply", 4),
+    (RISCV32, "z", "gf2m163::FieldElement::multiply", 5),
+    (RISCV32, "z", "gf2m257::FieldElement::multiply", 5),
+];
+
 const OUTLINED: &str = "OUTLINED_FUNCTION_*";
+
+fn exact_jumps_failure(
+    arch: Arch,
+    functions: &[Function],
+    spec: &str,
+    expected: u32,
+) -> Option<String> {
+    match row_jumps(arch, functions, spec) {
+        Ok(found) if found == expected => None,
+        Ok(found) => Some(format!("{spec}: {found} jumps, expected {expected}")),
+        Err(e) => Some(e),
+    }
+}
 
 /// [`find_one`] for a spec, or the summed outlined bodies for [`OUTLINED`].
 fn row_jumps(arch: Arch, functions: &[Function], spec: &str) -> Result<u32, String> {
@@ -204,8 +240,9 @@ pub(crate) fn run() -> bool {
     }
     if failures.is_empty() {
         println!(
-            "asm-check: {} zero-jump rows and the hard rules hold (rustc {rustc})",
-            ZERO_JUMPS.len()
+            "asm-check: {} zero-jump rows, {} exact-count rows and the hard rules hold (rustc {rustc})",
+            ZERO_JUMPS.len(),
+            EXACT_JUMPS.len()
         );
         return true;
     }
@@ -310,6 +347,12 @@ fn check_cell(asm: &str, target: &str, arch: Arch, opt: &str) -> Vec<String> {
             Ok(found) => failures.push(format!("{spec}: {found} jumps, expected none")),
             Err(e) => failures.push(e),
         }
+    }
+    let exact = EXACT_JUMPS
+        .iter()
+        .filter(|(t, o, _, _)| *t == target && *o == opt);
+    for (_, _, spec, expected) in exact {
+        failures.extend(exact_jumps_failure(arch, &functions, spec, *expected));
     }
     for function in &functions {
         if arch == Arch::Riscv32 && in_carry_scope(function) && carry_shapes(function) > 0 {
@@ -609,8 +652,8 @@ fn find_one<'f, 'a>(functions: &'f [Function<'a>], spec: &str) -> Result<&'f Fun
 #[cfg(test)]
 mod tests {
     use super::{
-        carry_shapes, classify, find_one, in_carry_scope, jumps, mul_calls, parse, symbol_matches,
-        Arch, Function, Insn, Kind,
+        carry_shapes, classify, exact_jumps_failure, find_one, in_carry_scope, jumps, mul_calls,
+        parse, symbol_matches, Arch, Function, Insn, Kind,
     };
 
     fn kind(arch: Arch, line: &str) -> Kind {
@@ -888,6 +931,32 @@ mod tests {
         assert_eq!(
             find_one(&fns[..1], "scalar::multiply").unwrap().name,
             fns[0].name
+        );
+    }
+
+    #[test]
+    fn exact_jumps_row_fails_on_any_other_count() {
+        let asm = "	.type	_RNvMNtC7gf2m16312FieldElement8multiply,@function
+            _RNvMNtC7gf2m16312FieldElement8multiply:
+            .LBB0_1:
+	beq	a1, a2, .LBB0_1
+	bnez	a3, .LBB0_1
+	ret
+.Lfunc_end0:
+";
+        let fns = parse(asm, Arch::Riscv32).unwrap();
+        let spec = "gf2m163::FieldElement::multiply";
+        assert_eq!(exact_jumps_failure(Arch::Riscv32, &fns, spec, 2), None);
+        assert!(exact_jumps_failure(Arch::Riscv32, &fns, spec, 1)
+            .unwrap()
+            .contains("2 jumps, expected 1"));
+        assert!(exact_jumps_failure(Arch::Riscv32, &fns, spec, 3)
+            .unwrap()
+            .contains("2 jumps, expected 3"));
+        assert!(
+            exact_jumps_failure(Arch::Riscv32, &fns, "gf2m257::FieldElement::multiply", 2)
+                .unwrap()
+                .contains("no symbol")
         );
     }
 }

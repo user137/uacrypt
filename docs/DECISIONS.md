@@ -15241,3 +15241,27 @@ missing-target skip was not exercised.
   "no symbol". T-273's own bug was a secret-indexed table read, not a branch: this check does not
   see memory-access patterns at all (D-19's documented exception is out of its scope too).
 
+
+## D-230: T-292 follow-up - a `gf2m` `multiply` count row and `fmt` for the `xtask` workspace (2026-09-26)
+
+Owner, 2026-09-26: "your choice" on both open questions from T-292's session state. Decided by
+safety first (the delegated-forks rule), recorded here.
+
+**(1) Exact-count rows for `gf2m163`/`gf2m257` `FieldElement::multiply` only** (`EXACT_JUMPS` in
+`xtask/src/asm_check.rs`, 16 rows: 2 symbols x 8 cells). D-229 dropped all counts, which left
+T-290's own regression (the `poly_mul_wide` mask turning back into a per-bit branch) uncaught:
+`multiply` keeps public loop jumps, so it cannot be a zero-jump row. One symbol pair keeps D-229's
+cost small (a rustc bump that reshapes this loop needs one re-read of one function) and covers the
+branch that has actually happened. Counts are D-229's audited values at rustc 1.97.1 (x86_64/
+aarch64/thumb O3: 1; thumb `s`/`z`: 3; riscv32 O3: 2, `s`: 4, `z`: 5); `dstu-core/src` is unchanged
+since that audit. Any other count, a missing or an ambiguous symbol fails. Other symbols with
+public jumps stay uncounted (D-229 unchanged).
+- Tests: a unit test first (`exact_jumps_row_fails_on_any_other_count`, seen failing to compile,
+  then passing); real run green (112 zero-jump + 16 exact rows); mutation: dropping the
+  `black_box` in `gf2m163::poly_mul_wide` fails x86_64/aarch64/thumb O3 (2 jumps, expected 1)
+  and riscv32 `s` (3, expected 4).
+
+**(2) `cargo xtask fmt [--check]` and `rust.yml` also run `cargo fmt --manifest-path
+xtask/Cargo.toml --all`.** `xtask` is its own workspace, so `--all` never reached it; that is how
+T-294's drift got in. Checked: `fmt --check` exits 1 on a misformatted `xtask` line and 0 after
+restoring it. The `rust.yml` step is unverified in CI (embargo, D-224/D-226).

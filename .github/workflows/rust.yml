@@ -33,6 +33,8 @@ jobs:
         with:
           components: clippy, rustfmt
       - run: cargo fmt --all -- --check
+      # xtask is its own workspace, not reached by `--all` (D-230).
+      - run: cargo fmt --manifest-path xtask/Cargo.toml --all -- --check
       # Freshness lint (T-186, mandatory): README/gh-pages version markers vs crates/dstu-core's
       # Cargo.toml. Self-fetches the gh-pages branch if it isn't already resolvable (xtask's own
       # `resolve_gh_pages_ref`) - no separate checkout/fetch step needed here.

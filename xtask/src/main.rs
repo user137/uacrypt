@@ -78,7 +78,7 @@ fn print_usage() {
          Always available (only need cargo/rustup, see README.md \"Building from source\"):\n\
          \x20 build          cargo build --workspace, --all-features + --no-default-features (no_std check) + dstu-core's no_std/getrandom combo (D-74)\n\
          \x20 test           cargo test --workspace (default profile) + --all-features\n\
-         \x20 fmt [--check]  cargo fmt --all, or --check to verify without writing\n\
+         \x20 fmt [--check]  cargo fmt --all (root and xtask workspaces), or --check to verify without writing\n\
          \x20 clippy         cargo clippy --workspace -- -D warnings (default profile) + --all-features + dstu-core's no_std/getrandom combo (D-74)\n\
          \x20 docs-check     README/gh-pages version-marker freshness lint against crates/dstu-core's Cargo.toml (T-186)\n\
          \x20 ci             fmt --check + build + test + clippy + docs-check, then best-effort for the optional tools below\n\
@@ -237,11 +237,14 @@ fn canary() -> bool {
 }
 
 fn fmt(check: bool) -> bool {
+    // `xtask` is its own workspace, not reached by `--all` (D-230, the T-294 drift).
     let mut args = vec!["fmt", "--all"];
+    let mut xtask_args = vec!["fmt", "--manifest-path", "xtask/Cargo.toml", "--all"];
     if check {
         args.extend(["--", "--check"]);
+        xtask_args.extend(["--", "--check"]);
     }
-    run("cargo", &args, None)
+    run("cargo", &args, None) && run("cargo", &xtask_args, None)
 }
 
 fn clippy() -> bool {

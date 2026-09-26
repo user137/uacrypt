@@ -10059,6 +10059,12 @@ work and never touches the 0.4.0 release on `master`). Fit this batch into the U
   xtask/Cargo.toml --check`), which is how the T-294 drift got in. `.git/worktrees` holds ~20
   stale entries that `git worktree prune` cannot delete (Permission denied), harmless.
 - **T-278 done (2026-09-26, local, not pushed):** m=257 malicious-key tests, see T-278.
+- **D-230 done (2026-09-26, local, not pushed):** owner left both open questions of the second
+  session end to Claude ("your choice"): `asm-check` gained exact-count rows for `gf2m`
+  `multiply` only (catches T-290's branch again, mutation-checked), and `xtask fmt`/`rust.yml`
+  now also format-check the `xtask` workspace. No open owner questions remain from T-292.
+- **State 2026-09-26 (third session end):** `ux-0.5.0` at D-230's commit, clean tree, nothing
+  pushed. Done this session: T-278, D-230.
 - **Next:** T-283 and the T-242/T-246 leftovers. T-284 is deferred to 0.6.0 (owner choice B). The
   embargo still holds: do not push `ux-0.5.0` before 0.5.0 ships T-272's fix; T-290/T-291 are
   under the same advisory (D-224/D-226).
