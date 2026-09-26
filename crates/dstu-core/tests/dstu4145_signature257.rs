@@ -228,8 +228,9 @@ fn signature257_sign_then_verify_round_trip_for_random_keys() {
 /// `t189_public_key_validation::order_two_public_key_forgery_is_rejected` uses for `m=163`) -
 /// `sqrt(b) = b^(2^256)` via 256 repeated squarings (Frobenius has order 257 over `GF(2^257)`).
 /// Since `curve257::order()` is odd (a prime group order), `n * (order-2 point) == the point
-/// itself`, never `Infinity` - so the general check must reject it, for any `r`/`s` at all (chosen
-/// arbitrarily below, not a constructed forgery - the point is rejected before `r`/`s` matter).
+/// itself`, never `Infinity` - so the general check must reject it. The signature below is a
+/// forgery that satisfies the unvalidated verify equation (T-278), so this test fails if the
+/// subgroup check is removed.
 #[cfg_attr(
     miri,
     ignore = "verify's general subgroup check scalar-multiplies the constructed key by curve257::order() - see docs/TASKS.md T-206"
@@ -256,15 +257,17 @@ fn signature257_verify_rejects_order_two_small_subgroup_key() {
         "constructed order-2 point must itself be on-curve"
     );
 
-    let g = Point::generator();
-    let mut r = [0u8; 33];
-    r[32] = 1;
-    let mut s = [0u8; 33];
-    s[32] = 1;
+    // T-278: a forged even-`r` signature (r*Q == Infinity), not arbitrary r/s - arbitrary r/s
+    // would be rejected by the verify equation itself even with the subgroup check removed.
     let hash = [0x11u8; 32];
+    let (r, s) = forge_with_s_times_g(&hash, true);
     assert!(
-        !verify(&hash, &r, &s, q, g),
-        "an order-2 (small-subgroup) public key must never verify, regardless of r/s"
+        passes_verify_equation(&hash, &r, &s, q),
+        "test setup: the forgery must satisfy the unvalidated verify equation"
+    );
+    assert!(
+        !verify(&hash, &r, &s, q, Point::generator()),
+        "an order-2 (small-subgroup) public key must be rejected"
     );
 }
 
@@ -327,7 +330,8 @@ fn passes_verify_equation(hash: &[u8], r: &[u8; 33], s: &[u8; 33], q: Point) -> 
 )]
 #[test]
 fn signature257_verify_rejects_infinity_public_key_forgery() {
-    // Infinity has order 1: r*Infinity == Infinity for every r.
+    // Infinity has order 1: r*Infinity == Infinity for every r. `n*Infinity == Infinity` passes
+    // the subgroup check, so only `is_on_curve` rejects it.
     let hash = [0x22u8; 32];
     let (r, s) = forge_with_s_times_g(&hash, false);
     assert!(
@@ -347,8 +351,9 @@ fn signature257_verify_rejects_infinity_public_key_forgery() {
 #[test]
 fn signature257_verify_rejects_off_curve_x_zero_public_key_forgery() {
     // y = ONE does not satisfy y^2 = b, so the point is off the curve, but the ladder still maps
-    // it to Infinity for an even r - the missing on-curve check is exploitable on its own, not
-    // only through the subgroup check.
+    // it to Infinity for an even r. Either half of the validation rejects it on its own (T-278's
+    // split mutation run: `n*(0, 1)` is not Infinity), so this pins "at least one check", not the
+    // on-curve check specifically - the Infinity test above is the one that pins that.
     let json = include_str!("vectors/dstu4145/gf2m257_arith.json");
     let b = field(extract_all(json, "b")[0]);
     assert_ne!(

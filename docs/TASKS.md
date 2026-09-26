@@ -9529,10 +9529,12 @@ points at the machine state rather than a GCM-specific regression, but that is n
 - [x] **T-278** (**done 2026-09-26 on `ux-0.5.0`**: 3 hazmat tests in
   `tests/dstu4145_signature257.rs` (Infinity, off-curve `(0, 1)`, `Q + T2` with a genuine even-`r`
   signature) and 2 in `tests/crypto_sign257.rs` via `from_uncompressed_bytes` (all-zero/off-curve/
-  order-2 keys; `Q + T2`). Each asserts its forgery satisfies the unvalidated verify equation;
-  mutation check: all 5 fail with `verify`'s key validation removed. The older
-  `signature257_verify_rejects_order_two_small_subgroup_key` uses arbitrary `r`/`s`, so it passes
-  even without validation - the new forged order-2 case covers it; left unchanged)
+  order-2 keys; `Q + T2`). Each asserts its forgery satisfies the unvalidated verify equation.
+  The older `signature257_verify_rejects_order_two_small_subgroup_key` used arbitrary `r`/`s` and
+  passed with validation removed (so `signature257.rs`'s module doc citing it was not backed); it
+  now uses a forged even-`r` signature too. Split mutation run: without `is_on_curve` only the
+  Infinity test fails (`n*O == O`; the off-curve `(0, 1)` key is also caught by the subgroup
+  check); without the `n*Q` check the order-2 and order-2n tests fail)
   (Low, test-gap - active-attack, **Confirmed** by reading the tests; depends:
   none) DSTU 4145 m=257 has only one malicious-key test:
   `signature257_verify_rejects_order_two_small_subgroup_key`

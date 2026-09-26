@@ -301,6 +301,23 @@ fn forge_even_r(digest: &[u8; 32]) -> Signature {
         .expect("about half of all candidates give a nonzero even r")
 }
 
+/// The unvalidated verify equation: `r == truncate(h * (s*G + r*Q).x)`.
+fn passes_verify_equation(digest: &[u8; 32], sig: &Signature, q: Point) -> bool {
+    let bytes = sig.to_bytes();
+    let r: [u8; 33] = bytes[..33].try_into().unwrap();
+    let s: [u8; 33] = bytes[33..].try_into().unwrap();
+    let h = signature257::hash_to_field(digest);
+    match Point::generator().scalar_multiply(&s) + q.scalar_multiply(&r) {
+        Point::Affine(x, _) => {
+            let mut candidate = h.multiply(x).to_be_bytes();
+            candidate[0] = 0;
+            candidate[1] &= 0x7F;
+            candidate == r
+        }
+        Point::Infinity => false,
+    }
+}
+
 #[cfg_attr(
     miri,
     ignore = "Point::scalar_multiply's 257-iteration ladder is too slow to interpret under Miri - see docs/TASKS.md T-100"
@@ -315,6 +332,14 @@ fn malformed_verifying_keys_are_rejected() {
         ("off-curve (0, 1)", encode_point(zero, FieldElement::ONE)),
         ("order-2 (0, sqrt(b))", encode_point(zero, t2_y)),
     ] {
+        let q = Point::Affine(
+            FieldElement::from_be_bytes(bytes[..33].try_into().unwrap()),
+            FieldElement::from_be_bytes(bytes[33..].try_into().unwrap()),
+        );
+        assert!(
+            passes_verify_equation(&digest, &sig, q),
+            "test setup: the forgery must satisfy the unvalidated verify equation under {name}"
+        );
         let key = VerifyingKey::from_uncompressed_bytes(&bytes);
         assert!(!key.verify_digest(&digest, &sig), "{name}");
     }
