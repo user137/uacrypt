@@ -104,11 +104,11 @@ attack closes the gap to the full round count for either cipher.
     (fixed loop bounds, and `PCLMULQDQ`/`PMULL`'s own documented latency is operand-value-
     independent), a strict improvement over the D-19 carve-out on the axis this bullet covers, not
     a trade against it. `no_std`/embedded builds and CPUs without the feature keep running the
-    original software paths (including gf2m163's own no-array-indexing-at-all design) unchanged.
+    software paths (`gf2m_wide`'s replaced by T-273; see the next bullet and T-290 for `gf2m163`).
   - **`gf2m_wide`'s software path indexed a table with the secret GHASH operand until T-273**
     (`docs/DECISIONS.md` D-223): D-184's "never had one either" did not hold for it. It is now a
     masked multiply with a `black_box` barrier, checked branch- and index-free in release asm on
-    x86_64, thumbv7em and riscv32imc. The plain mask idiom was not: LLVM compiled it to branches,
+    x86_64, thumbv7em, riscv32imc and aarch64. The plain mask idiom was not: LLVM compiled it to branches,
     so a mask in source is not evidence on its own (T-290 re-checks the other mask sites).
 - All comparisons involving secret data use `subtle::ConstantTimeEq`, never `==`.
 - All key-material types implement `Zeroize` / `ZeroizeOnDrop`.

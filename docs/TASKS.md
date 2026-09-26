@@ -9398,7 +9398,7 @@ points at the machine state rather than a GCM-specific regression, but that is n
     strict option (O-B). Effort M (core S, 9 thin binding tests). Attach to T-225: a
     `verify_password` fuzz target run with `-malloc_limit_mb` (that is what would have caught this).
 - [x] **T-273** (**done 2026-09-26 on `ux-0.5.0`**, D-223: masked 4-bit window with a
-  `black_box` barrier, asm-checked on x86_64/thumbv7em/riscv32imc; the plain mask compiled to
+  `black_box` barrier, asm-checked on x86_64/thumbv7em/riscv32imc/aarch64; the plain mask compiled to
   branches; 1.2-1.4x slower in software; found T-290) (Medium, arch, **security-flagged**; code path **Confirmed**, leakage not
   measured; depends: O-A) The portable GF(2^m) multiply behind Kalyna-GCM/GMAC indexes a table with the secret
   GHASH key.
@@ -9635,8 +9635,11 @@ points at the machine state rather than a GCM-specific regression, but that is n
   pass, not yet traced; depends: none) The `0u64.wrapping_sub(bit)` mask idiom is not
   branch-free by itself: in T-273 LLVM turned it into `bmi`/`bpl` (thumbv7em) and `btq`+`jb`
   (x86_64) on operand bits (D-223).
-  - `gf2m163`/`gf2m257`'s `FieldElement::multiply` (the DSTU 4145 software path, taken on x86_64
-    without PCLMULQDQ and on every non-x86_64/aarch64 `std` target) shows a `btq` + `jae` pair in
+  - **Confirmed on aarch64-unknown-none 2026-09-26 (D-224):** `gf2m163.rs:159-167`'s loop compiles
+    to `tst` of each bit of `a` + `b.eq` skipping the `XOR`s; `gf2m257.rs:145-154` the same.
+    Owner decision on the release pending (D-224's escalation fired).
+  - Software path = every `no_std` build, aarch64 without PMULL, x86_64 without PCLMULQDQ, every
+    other `std` target. `gf2m163`/`gf2m257`'s `FieldElement::multiply` also shows a `btq` + `jae` pair in
     the x86_64 release asm; thumbv7em shows only `it pl` predication; riscv32imc shows a `beqz`
     after an `and`/`or` chain. Trace each to its source line first. It is published code
     (`crypto_sign`/`crypto_sign257` since 0.3.x), so the owner decides disclosure, same as T-272:
@@ -9908,9 +9911,9 @@ work and never touches the 0.4.0 release on `master`). Fit this batch into the U
 - **Step 2, T-273 done (2026-09-26, local, not pushed):** D-223. The plain mask compiled to
   branches, so a `black_box` barrier was added and the asm re-checked on three targets. New
   embargo-sensitive T-290 (the same idiom in `gf2m163`/`gf2m257`), surfaced to the owner.
-  Scoped Miri on `gf2m_wide`: 60 passed / 0 failed, 2348 s (D-223). T-290's disclosure was
-  delegated by the owner and decided in D-224. **Still open:** the closing advisor review of
-  T-273.
+  Scoped Miri on `gf2m_wide`: 60 passed / 0 failed, 2348 s (D-223). Closing advisor review done:
+  aarch64 added to the asm check, D-224's trigger corrected - and it fired: T-290 is confirmed
+  on aarch64 no_std. **Waiting on the owner:** T-290's release path (0.5.0 or out of band).
 - **Next:** T-278, T-283 and the
   T-242/T-246 leftovers. T-284 is deferred to 0.6.0 (owner choice B). The embargo still
   holds: do not push `ux-0.5.0` before 0.5.0 ships T-272's fix.

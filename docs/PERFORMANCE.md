@@ -526,7 +526,8 @@ timing (unlike CCM, GCM's wire format matches: same-length ciphertext, tag retur
 the secret GHASH key and was replaced by a masked constant-time multiply, 1.2-1.4x slower on the
 multiply alone (in-process diagnostic, D-223's table). No binary-level number: both measurement
 machines have hardware clmul, so `uacrypt` never runs the software path there. The GCM numbers
-below are the comb's and describe only CPUs with clmul now.
+below predate the clmul dispatch (T-198) and were measured on the comb: historical, they describe
+no current configuration.
 
 **Root-caused and fixed 2026-07-26, `docs/TASKS.md` T-125, `docs/DECISIONS.md` D-76**: an isolated timing
 diagnostic (`hazmat::gf2m_wide`'s `field_axiom_tests::isolated_timing_*`, comparing

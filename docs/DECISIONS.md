@@ -14848,8 +14848,9 @@ the select into a branch. The four masks of each nibble now pass through `core::
 one barrier per nibble. After that change, the release asm of `poly_mul_wide` for all three field
 sizes contains only loop back-edges (`subs`/`decl`/`addi` of a fixed counter, or a `cmp` of the
 `b` iterator pointer) and no load indexed by operand data. This holds on x86_64,
-thumbv7em-none-eabihf and riscv32imc-unknown-none-elf. The last is ESP32-C3, which has no `cmov`
-and no IT predication, so any select there would show up as a branch. `poly_mul_wide` is
+thumbv7em-none-eabihf, riscv32imc-unknown-none-elf and aarch64-unknown-none. riscv32imc is
+ESP32-C3, which has no `cmov` and no IT predication, so any select there would show up as a branch.
+aarch64 covers the CPUs without PMULL, which run this path (added in the closing review). `poly_mul_wide` is
 `#[inline(never)]`, so the checked symbol is the one that ships.
 - `black_box` is documented as best effort, not a security guarantee. The same is true of
   `subtle`'s default `read_volatile` barrier (`default-features = false` here), which would also
@@ -14892,10 +14893,19 @@ project rules, then safety, then compatibility.
   the branch is traced to its source line and shown to depend on secret data.
 - **If confirmed, it follows T-272's path (D-220 O-B(2)):** fixed on `ux-0.5.0`, shipped in 0.5.0,
   covered by the same advisory as T-272, same push embargo until then. One coordinated disclosure
-  instead of a second, separate one. The exposure is narrow: the hardware clmul path is taken on
-  every x86_64 CPU with PCLMULQDQ and every aarch64 CPU with PMULL, and thumbv7em showed only IT
-  predication.
-- **Escalate back to the owner** if the trace shows a branch on the signing key's path on a
-  mainstream default target (x86_64/aarch64 with hardware clmul, or thumbv7em). That would justify
-  an out-of-band release, which is the owner's call, not a delegated one.
+  instead of a second, separate one.
+- **Who runs the software path:** every `no_std` build (the clmul dispatch is `std`-gated), so every
+  MCU signer; `std` builds on aarch64 CPUs without the optional ARMv8 Crypto Extensions (no PMULL);
+  x86_64 without PCLMULQDQ; every other `std` target. x86_64/aarch64 machines with hardware clmul
+  never run it.
+- **Escalate back to the owner** when a secret-dependent branch is confirmed on any supported target
+  that runs the software path: the release decision (0.5.0 or out of band) is then the owner's.
+  (Corrected in the closing review the same day: the first wording named clmul machines, which
+  never run this code, so it could not fire where it matters.)
+- **Fired the same day (T-273's closing review):** on `aarch64-unknown-none` (release, rustc
+  1.97.1), `gf2m163::FieldElement::multiply` compiles `poly_mul_wide`'s loop
+  (`gf2m163.rs:159-167`) to `ldr` of the operand word, `tst` of the bit, and a `b.eq` that skips the
+  six `XOR`s - a branch on every bit of `a`. In signing, `a` is an intermediate coordinate of the
+  scalar multiplication by the secret nonce. `gf2m257` has the same loop (`gf2m257.rs:145-154`) and
+  the same shape. Owner decision pending (T-290).
 
