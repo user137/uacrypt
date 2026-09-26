@@ -168,6 +168,10 @@ All notable changes to this project are documented in this file. Format follows
 - `crypto_secretstream` refuses a chunk once its counter would wrap. This takes 2^64 - 1 chunks,
   so it is unreachable in practice. The new `SecretstreamError::CounterExhausted` variant is
   `DSTU_ERR_FINALIZED` in the C ABI (T-245a).
+- Kalyna-XTS tweak doubling (`gf2m_wide` `double()`) now applies its reduction under a mask
+  instead of an `if` on the secret top bit. The compiled code was already branch-free on x86_64
+  and Cortex-M4; now the source guarantees it on every backend. Output is unchanged (T-282,
+  branch `ux-0.5.0`).
 
 ### Added
 

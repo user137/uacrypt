@@ -9552,7 +9552,9 @@ points at the machine state rather than a GCM-specific regression, but that is n
   Claims this audit found false or stale, each in its owning file. Pair
   every `CLAUDE.md` addition with a deletion.
   - (a) `CLAUDE.md` Commands: "every language binding's own build+test" (after T-279 lands, or
-    reword now).
+    reword now). **True since T-279 (2026-09-26); no rewording needed.** Still add that `ci` now
+    ends with a passed/skipped/FAILED table and exits 1 when a layer fails (T-243), so a local
+    exit 1 is expected until T-288/T-289 are fixed.
   - (b) `CLAUDE.md` Project status: "`crypto_generichash`/`crypto_auth`/`crypto_kdf` ... only the
     256-bit variant exposed". `crypto_generichash` re-exports `Kupyna512`/`Kupyna512Hasher` by
     D-66's own design.
@@ -9596,9 +9598,12 @@ points at the machine state rather than a GCM-specific regression, but that is n
   Both Bouncy Castle oracle harnesses fail on Kupyna. `tests/oracle-harness/dotnet/Program.cs:83`
   (and the Java twin) read `hash_bits` from every file in `crates/dstu-core/tests/vectors/kupyna/`,
   and T-234's (`1c87f53`) bit-length annex Б file has a different schema. Java: `missing int field
-  "hash_bits"`; .NET: `KeyNotFoundException`. The commit is on `master` as well. `oracle-harness.yml`
-  last passed 2026-09-17, so check its path filters too. Direction: skip (or handle) the bit-length
-  file by its `algorithm` field; BC has no bit-length API. Effort S.
+  "hash_bits"`; .NET: `KeyNotFoundException`. **0.4.0 impact:** `1c87f53` is on local `master`
+  but not pushed (`origin/master` is `f8bf046`, the last green `oracle-harness` run), and
+  `oracle-harness.yml` runs on every push to `master` with no path filter, so pushing `master` for
+  0.4.0 turns it red. The owner decides which branch gets the fix. Direction: skip (or handle) the
+  bit-length file by its `algorithm` field; first check whether BC can express bit-length messages
+  at all. Effort S.
 - [ ] **T-289** (Low, qa - local gate, **Confirmed** 2026-09-26, same run; depends: none) Three
   binding layers fail locally for reasons that live on this machine, not in the bindings; before
   T-243 they were hidden:
@@ -9839,9 +9844,19 @@ work and never touches the 0.4.0 release on `master`). Fit this batch into the U
   guard line in the 2026-09-23 RESUME HERE). Nothing is implemented.
 - **Owner decisions resolved 2026-09-25 (D-220):** T-272 in 0.5.0; the rest delegated and
   decided (see "Owner decisions - resolved"). T-285 closed.
-- **Next:** step 1 of "Merged 0.5.0 plan" (T-270 + T-282, then T-279 + T-243), using prompt 2
-  in a fresh session and naming the step, e.g. "merged step 1". Then step 2 (T-272, T-273 in
-  plan mode + advisor). T-284 is deferred to 0.6.0 (owner choice B). The embargo still holds: do not push `ux-0.5.0` before 0.5.0 ships T-272's fix.
+- **Step 1 of the merged plan is done (2026-09-26, local commits on `ux-0.5.0`, not pushed):**
+  `29ee5a8` T-270, `ad77b73` T-282, `94bc328` T-243, `b69b508` T-279, `fd647ce` (docs). The plan
+  called step 1 "unblock CI", but CI was never blocked (T-270's premise was wrong, see D-219's
+  addendum); the real gap was that no aarch64 target was linted anywhere. The two new `rust.yml`
+  steps (aarch64 cross-clippy, xtask unit tests) have not run in CI yet (branch unpushed).
+- **How to read local `cargo xtask ci` now:** the "Mandatory checks passed" line is the gate; the
+  closing table shows each optional layer. **Exit 1 is expected on this machine** until T-288 (a
+  real oracle-harness bug, and a 0.4.0 release-day risk) and T-289 (local environment) are fixed.
+  `cpp` also depends on the launching shell (fails from Git Bash, passes from PowerShell).
+- **Next:** step 2 (T-272, then T-273, each in plan mode + advisor), after the owner answers the
+  step-1 forks (T-270 cherry-pick to `master`, T-288's branch, T-289's Miri probe and `CARGO`
+  strip, local MSRV/aarch64 layers). T-284 is deferred to 0.6.0 (owner choice B). The embargo still
+  holds: do not push `ux-0.5.0` before 0.5.0 ships T-272's fix.
 - **When resuming:**
   - Read this section and the owner's answers.
   - Execute with `docs/prompts/arch-perf-review.md` prompt 2, naming a merged-plan step. The

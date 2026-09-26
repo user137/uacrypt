@@ -14661,7 +14661,9 @@ Tracked as T-270.
 low-half `prod as u64` inside the aarch64-only (PMULL) `poly_mul_wide_hw`: three from
 `gf2m_field!`'s three instantiations, one each in `gf2m163.rs`/`gf2m257.rs`. `rust.yml`'s clippy
 job runs on x86_64 only, never compiles that arm, and passed on 1.98.1 (run 35288797619). The binding
-workflows lint on arm64 macOS, but only their own crates, not the `dstu-core` path dependency. So
+workflows lint on arm64 macOS, but only their own crates, not the `dstu-core` path dependency.
+Observed, not only inferred: `bindings-python`'s `macos-latest` job (aarch64, rustc 1.98.1) passed
+its `cargo clippy --all-targets` on 2026-09-17 with the same casts in the code. So
 the real gap was that no CI job lints aarch64. Fix: `#[allow(clippy::cast_possible_truncation)]`
 with a comment, the same shape as the x86 sibling (D-39: resolve a lint quirk with a documented
 allow). A mask such as `(prod & u128::from(u64::MAX)) as u64` was not used: it is still a cast, and
