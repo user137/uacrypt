@@ -9872,6 +9872,11 @@ work and never touches the 0.4.0 release on `master`). Fit this batch into the U
   plan approval. Local `cargo xtask ci`: mandatory checks passed on `e01725b`; pwhash/capi/xtask
   tests re-run green on `ed83f80`. Fuzz: 271 303 runs / 129 s clean locally (MSVC recipe in
   `.claude.local.md`, VS path moved to `...\Microsoft Visual Studio\18\...`); not yet in CI.
+  Full local `ci` on `e01725b` exited 1: `oracle-java`/`oracle-dotnet` (T-288, known) plus two
+  **new local-environment failures, not T-272**: `python` - `maturin develop` installed 0.2.0 but
+  `pytest` imported the published 0.1.1 from the global `site-packages` (stale wire format, so
+  interop/T-238/D-208 tests fail); `ruby` - `rb-sys`'s bindgen can't find `strings.h` (a clang
+  without MinGW headers). Each needs a small follow-up task (env fix or xtask isolation).
   The closing advisor review for T-272 has **not** run yet - do it first when resuming.
   Binding tests over `verify.json` stay in step 5.
 - **Next:** closing advisor on T-272, then T-273 (plan mode + advisor), then T-278, T-283 and the
