@@ -9,7 +9,7 @@
 use dstu_core::hazmat::dstu4145::curve257::Point;
 use dstu_core::hazmat::dstu4145::gf2m257::FieldElement;
 use dstu_core::hazmat::dstu4145::scalar257::Scalar;
-use dstu_core::hazmat::dstu4145::signature257::{sign, verify};
+use dstu_core::hazmat::dstu4145::signature257::{self, sign, verify};
 
 fn decode_hex(s: &str) -> Vec<u8> {
     assert!(
@@ -265,5 +265,150 @@ fn signature257_verify_rejects_order_two_small_subgroup_key() {
     assert!(
         !verify(&hash, &r, &s, q, g),
         "an order-2 (small-subgroup) public key must never verify, regardless of r/s"
+    );
+}
+
+// T-278: the m=163 T-189/T-245b attack tests, ported to m=257. Each builds a forgery that would
+// verify if `verify` skipped its public-key validation (asserted as a precondition via the public
+// `scalar_multiply`/`+` API), then checks that `verify` rejects it.
+
+/// This curve's order-2 point `(0, sqrt(b))` - see `signature257_verify_rejects_order_two_small_subgroup_key`.
+fn order_two_point() -> Point {
+    let json = include_str!("vectors/dstu4145/gf2m257_arith.json");
+    let b = field(extract_all(json, "b")[0]);
+    let mut y = b;
+    for _ in 0..256 {
+        y = y.square();
+    }
+    Point::Affine(FieldElement::ZERO, y)
+}
+
+/// `signature257::truncate_255` (private there): the low 255 bits of `y`.
+fn truncate_255(y: FieldElement) -> [u8; 33] {
+    let mut bytes = y.to_be_bytes();
+    bytes[0] = 0;
+    bytes[1] &= 0x7F;
+    bytes
+}
+
+/// Picks `s` so that `r = truncate(h * (s*G).x)` is nonzero and, if `want_even`, even. Then
+/// `s*G + r*Q == s*G` whenever `r*Q == Infinity`, so `(r, s)` verifies under `Q` unless `Q` is
+/// validated first.
+fn forge_with_s_times_g(hash: &[u8], want_even: bool) -> ([u8; 33], [u8; 33]) {
+    let g = Point::generator();
+    let h = signature257::hash_to_field(hash);
+    (1..200u8)
+        .find_map(|k| {
+            let mut s = [0u8; 33];
+            s[32] = k;
+            s[20] = k.wrapping_mul(29);
+            let Point::Affine(x, _) = g.scalar_multiply(&s) else {
+                return None;
+            };
+            let r = truncate_255(h.multiply(x));
+            let usable = r != [0u8; 33] && (!want_even || r[32] & 1 == 0);
+            usable.then_some((r, s))
+        })
+        .expect("about half of all candidates give a nonzero even r")
+}
+
+/// The unvalidated verify equation: does `(r, s)` satisfy `r == truncate(h * (s*G + r*Q).x)`?
+fn passes_verify_equation(hash: &[u8], r: &[u8; 33], s: &[u8; 33], q: Point) -> bool {
+    let h = signature257::hash_to_field(hash);
+    match Point::generator().scalar_multiply(s) + q.scalar_multiply(r) {
+        Point::Affine(x, _) => &truncate_255(h.multiply(x)) == r,
+        Point::Infinity => false,
+    }
+}
+
+#[cfg_attr(
+    miri,
+    ignore = "sign/verify's 257-iteration scalar_multiply ladder is too slow to interpret under Miri - see docs/TASKS.md T-206"
+)]
+#[test]
+fn signature257_verify_rejects_infinity_public_key_forgery() {
+    // Infinity has order 1: r*Infinity == Infinity for every r.
+    let hash = [0x22u8; 32];
+    let (r, s) = forge_with_s_times_g(&hash, false);
+    assert!(
+        passes_verify_equation(&hash, &r, &s, Point::Infinity),
+        "test setup: the forgery must satisfy the unvalidated verify equation"
+    );
+    assert!(
+        !verify(&hash, &r, &s, Point::Infinity, Point::generator()),
+        "a forged signature under the point-at-infinity public key must not verify"
+    );
+}
+
+#[cfg_attr(
+    miri,
+    ignore = "sign/verify's 257-iteration scalar_multiply ladder is too slow to interpret under Miri - see docs/TASKS.md T-206"
+)]
+#[test]
+fn signature257_verify_rejects_off_curve_x_zero_public_key_forgery() {
+    // y = ONE does not satisfy y^2 = b, so the point is off the curve, but the ladder still maps
+    // it to Infinity for an even r - the missing on-curve check is exploitable on its own, not
+    // only through the subgroup check.
+    let json = include_str!("vectors/dstu4145/gf2m257_arith.json");
+    let b = field(extract_all(json, "b")[0]);
+    assert_ne!(
+        FieldElement::ONE.square(),
+        b,
+        "test setup: y must NOT satisfy the curve equation"
+    );
+    let q = Point::Affine(FieldElement::ZERO, FieldElement::ONE);
+    assert!(!q.is_on_curve());
+
+    let hash = [0x33u8; 32];
+    let (r, s) = forge_with_s_times_g(&hash, true);
+    assert!(
+        passes_verify_equation(&hash, &r, &s, q),
+        "test setup: the forgery must satisfy the unvalidated verify equation"
+    );
+    assert!(
+        !verify(&hash, &r, &s, q, Point::generator()),
+        "a forged signature under an off-curve public key must not verify"
+    );
+}
+
+// T-245b's m=257 twin: `Q' = Q + T2` is on the curve with x != 0 but has order 2n, so only full
+// validation (`n*Q' == O`) rejects it. A genuine signature with an even `r` also verifies under
+// `Q'`, since `r*T2 == O`.
+#[cfg_attr(
+    miri,
+    ignore = "sign/verify's 257-iteration scalar_multiply ladder is too slow to interpret under Miri - see docs/TASKS.md T-206"
+)]
+#[test]
+fn signature257_verify_rejects_order_2n_public_key() {
+    let g = Point::generator();
+    let mut d_bytes = [0u8; 33];
+    d_bytes[29..].copy_from_slice(&0x1234_5678u32.to_be_bytes());
+    let d = Scalar::from_be_bytes(&d_bytes);
+    let q = g.scalar_multiply(&d_bytes).negate();
+    let q_2n = q + order_two_point();
+    assert!(q_2n.is_on_curve(), "Q + T2 must be a valid curve point");
+    assert!(!matches!(q_2n, Point::Affine(x, _) if x == FieldElement::ZERO));
+
+    let hash = [0x44u8; 32];
+    let (r, s) = (2..200u8)
+        .filter_map(|k| {
+            let mut e = [0u8; 33];
+            e[32] = k;
+            e[12] = k.wrapping_mul(17);
+            sign(&hash, d, Scalar::from_be_bytes(&e), g)
+        })
+        .find(|(r, _)| r[32] & 1 == 0)
+        .expect("about half of all signatures have an even r");
+    assert!(
+        verify(&hash, &r, &s, q, g),
+        "the genuine key must still verify"
+    );
+    assert!(
+        passes_verify_equation(&hash, &r, &s, q_2n),
+        "test setup: the genuine signature must satisfy the unvalidated equation under Q + T2"
+    );
+    assert!(
+        !verify(&hash, &r, &s, q_2n, g),
+        "a public key of order 2n must be rejected"
     );
 }

@@ -9526,7 +9526,14 @@ points at the machine state rather than a GCM-specific regression, but that is n
     worth doing under either option.
   - Tests: Security & Boundary for all 9 readers. Effort S-M (one generator change, 9 runners).
     Risk: none to production code.
-- [ ] **T-278** (Low, test-gap - active-attack, **Confirmed** by reading the tests; depends:
+- [x] **T-278** (**done 2026-09-26 on `ux-0.5.0`**: 3 hazmat tests in
+  `tests/dstu4145_signature257.rs` (Infinity, off-curve `(0, 1)`, `Q + T2` with a genuine even-`r`
+  signature) and 2 in `tests/crypto_sign257.rs` via `from_uncompressed_bytes` (all-zero/off-curve/
+  order-2 keys; `Q + T2`). Each asserts its forgery satisfies the unvalidated verify equation;
+  mutation check: all 5 fail with `verify`'s key validation removed. The older
+  `signature257_verify_rejects_order_two_small_subgroup_key` uses arbitrary `r`/`s`, so it passes
+  even without validation - the new forged order-2 case covers it; left unchanged)
+  (Low, test-gap - active-attack, **Confirmed** by reading the tests; depends:
   none) DSTU 4145 m=257 has only one malicious-key test:
   `signature257_verify_rejects_order_two_small_subgroup_key`
   (`tests/dstu4145_signature257.rs:238`).
@@ -10049,7 +10056,8 @@ work and never touches the 0.4.0 release on `master`). Fit this batch into the U
   `rust.yml` do not cover the separate `xtask` workspace (`cargo fmt --manifest-path
   xtask/Cargo.toml --check`), which is how the T-294 drift got in. `.git/worktrees` holds ~20
   stale entries that `git worktree prune` cannot delete (Permission denied), harmless.
-- **Next:** T-278, T-283 and the T-242/T-246 leftovers. T-284 is deferred to 0.6.0 (owner choice B). The
+- **T-278 done (2026-09-26, local, not pushed):** m=257 malicious-key tests, see T-278.
+- **Next:** T-283 and the T-242/T-246 leftovers. T-284 is deferred to 0.6.0 (owner choice B). The
   embargo still holds: do not push `ux-0.5.0` before 0.5.0 ships T-272's fix; T-290/T-291 are
   under the same advisory (D-224/D-226).
 - **When resuming:**

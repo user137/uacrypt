@@ -10,7 +10,10 @@
 //! (deterministic nonce derivation, digest API, `generate`/`from_bytes` round-tripping), not the
 //! underlying curve math again.
 
-use dstu_core::crypto_sign257::SigningKey;
+use dstu_core::crypto_sign257::{Signature, SigningKey, VerifyingKey};
+use dstu_core::hazmat::dstu4145::curve257::Point;
+use dstu_core::hazmat::dstu4145::gf2m257::FieldElement;
+use dstu_core::hazmat::dstu4145::signature257;
 use dstu_core::hazmat::kupyna::{Kupyna256, Kupyna256Hasher};
 use proptest::prelude::*;
 
@@ -240,4 +243,117 @@ proptest! {
         let sig = signing_key.sign(&message);
         prop_assert!(verifying_key.verify(&message, &sig));
     }
+}
+
+// T-278: the malicious-key rejections of `tests/dstu4145_signature257.rs`, through the public
+// `VerifyingKey::from_uncompressed_bytes` decoding path. `Infinity` has no 66-byte encoding here;
+// the all-zero encoding decodes to the off-curve `(0, 0)` instead.
+
+fn curve257_order_two_point() -> (FieldElement, FieldElement) {
+    let json = include_str!("vectors/dstu4145/gf2m257_arith.json");
+    let pattern = "\"b\": \"";
+    let start = json.find(pattern).expect("curve b in test vector JSON") + pattern.len();
+    let hex = &json[start..start + json[start..].find('"').expect("well-formed JSON")];
+    let mut b_bytes = [0u8; 33];
+    let digits = hex.len() / 2;
+    for i in 0..digits {
+        b_bytes[33 - digits + i] =
+            u8::from_str_radix(&hex[2 * i..2 * i + 2], 16).expect("valid hex digit");
+    }
+    let b = FieldElement::from_be_bytes(&b_bytes);
+    let mut y = b;
+    for _ in 0..256 {
+        y = y.square();
+    }
+    assert_eq!(y.square(), b, "test setup: y must satisfy y^2 = b");
+    (FieldElement::ZERO, y)
+}
+
+fn encode_point(x: FieldElement, y: FieldElement) -> [u8; 66] {
+    let mut out = [0u8; 66];
+    out[..33].copy_from_slice(&x.to_be_bytes());
+    out[33..].copy_from_slice(&y.to_be_bytes());
+    out
+}
+
+/// A forgery for any key `Q` with `r*Q == Infinity` for even `r`: `s*G + r*Q == s*G`, so
+/// `r = truncate(h * (s*G).x)` satisfies the verify equation unless `Q` is validated first.
+fn forge_even_r(digest: &[u8; 32]) -> Signature {
+    let h = signature257::hash_to_field(digest);
+    (1..200u8)
+        .find_map(|k| {
+            let mut s = [0u8; 33];
+            s[32] = k;
+            s[20] = k.wrapping_mul(29);
+            let Point::Affine(x, _) = Point::generator().scalar_multiply(&s) else {
+                return None;
+            };
+            let mut r = h.multiply(x).to_be_bytes();
+            r[0] = 0;
+            r[1] &= 0x7F;
+            (r != [0u8; 33] && r[32] & 1 == 0).then(|| {
+                let mut bytes = [0u8; 66];
+                bytes[..33].copy_from_slice(&r);
+                bytes[33..].copy_from_slice(&s);
+                Signature::from_bytes(&bytes)
+            })
+        })
+        .expect("about half of all candidates give a nonzero even r")
+}
+
+#[cfg_attr(
+    miri,
+    ignore = "Point::scalar_multiply's 257-iteration ladder is too slow to interpret under Miri - see docs/TASKS.md T-100"
+)]
+#[test]
+fn malformed_verifying_keys_are_rejected() {
+    let digest = [0x55u8; 32];
+    let sig = forge_even_r(&digest);
+    let (zero, t2_y) = curve257_order_two_point();
+    for (name, bytes) in [
+        ("all-zero", [0u8; 66]),
+        ("off-curve (0, 1)", encode_point(zero, FieldElement::ONE)),
+        ("order-2 (0, sqrt(b))", encode_point(zero, t2_y)),
+    ] {
+        let key = VerifyingKey::from_uncompressed_bytes(&bytes);
+        assert!(!key.verify_digest(&digest, &sig), "{name}");
+    }
+}
+
+#[cfg_attr(
+    miri,
+    ignore = "Point::scalar_multiply's 257-iteration ladder is too slow to interpret under Miri - see docs/TASKS.md T-100"
+)]
+#[test]
+fn order_2n_verifying_key_is_rejected() {
+    let signing_key = SigningKey::from_bytes(&small_scalar(0x2A)).expect("nonzero, below n");
+    let genuine = signing_key.verifying_key();
+    let q_bytes = genuine.to_uncompressed_bytes();
+    let q = Point::Affine(
+        FieldElement::from_be_bytes(q_bytes[..33].try_into().unwrap()),
+        FieldElement::from_be_bytes(q_bytes[33..].try_into().unwrap()),
+    );
+    let (t2_x, t2_y) = curve257_order_two_point();
+    let Point::Affine(x, y) = q + Point::Affine(t2_x, t2_y) else {
+        panic!("Q + T2 is never Infinity: Q has odd order n");
+    };
+    let substituted = VerifyingKey::from_uncompressed_bytes(&encode_point(x, y));
+
+    // An even r means r*T2 == O, so this genuine signature also satisfies the equation under Q + T2.
+    let (message, sig) = (0u8..=255)
+        .map(|i| {
+            let message = [b'm', i];
+            let sig = signing_key.sign(&message);
+            (message, sig)
+        })
+        .find(|(_, sig)| sig.to_bytes()[32] & 1 == 0)
+        .expect("about half of all signatures have an even r");
+    assert!(
+        genuine.verify(&message, &sig),
+        "the genuine key must still verify"
+    );
+    assert!(
+        !substituted.verify(&message, &sig),
+        "a verifying key of order 2n must be rejected"
+    );
 }
