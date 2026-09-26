@@ -218,7 +218,7 @@ jobs:
     strategy:
       matrix:
         target:
-          [kupyna, kalyna, kalyna_ccm, strumok, kalyna_cmac, kalyna_kw, kalyna_gcm, kalyna_gmac, kalyna_cfb, crypto_secretstream]
+          [kupyna, kalyna, kalyna_ccm, strumok, kalyna_cmac, kalyna_kw, kalyna_gcm, kalyna_gmac, kalyna_cfb, crypto_secretstream, crypto_pwhash_verify]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@nightly

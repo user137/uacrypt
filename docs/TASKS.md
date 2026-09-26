@@ -8160,6 +8160,7 @@ codes, and memory lifecycle) stays intact and doesn't need its own task.
   internal IV, the signature verifiers take structured key+sig not a length-prefixed blob) or are
   hazmat-level and already exercised indirectly. Do after Batch 3c unless a T-223 finding points
   straight at one of them.
+  - **Done 2026-09-26:** `crypto_pwhash_verify` (T-272's attachment, D-222) - the 11th target.
   **2026-09-22 scope addition**: negative-property fuzz check - see "Security audit remediation" ("Attached to existing tasks").
 
 ### RESUME HERE (state as of 2026-08-31, saved for a memory-clear/new-session handoff)
@@ -9352,7 +9353,8 @@ points at the machine state rather than a GCM-specific regression, but that is n
   takes the algorithm, version and `m`/`t`/`p` from the PHC string it is given.
   - **Status 2026-09-26:** core + capi fixed on `ux-0.5.0` (D-222; bounds differ from D-220's
     text in four recorded points). Shared vectors `tests/vectors/pwhash/verify.json`. Remaining:
-    one test per binding over those vectors (merged plan step 5), and the fuzz target (T-225).
+    one test per binding over those vectors (merged plan step 5). Fuzz target
+    `crypto_pwhash_verify` added (T-225 attachment; found and fixed a `p` overflow, D-222).
   - (1) A crafted string with a huge `m` aborts the process: the allocation failure is an abort, not
     a panic, so `catch_unwind` in `dstu-core-capi` cannot stop it, and it kills the host process
     (reproduced for Ruby below; the other bindings follow from abort semantics). `verify_password` is exposed by the capi (`dstu_pwhash_verify_password`)

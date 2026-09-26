@@ -9,9 +9,11 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "0.4"
+password-hash = "0.5.0"
 
 [dependencies.dstu-core]
 path = ".."
+features = ["pwhash"]
 
 [[bin]]
 name = "kupyna"
@@ -79,6 +81,13 @@ bench = false
 [[bin]]
 name = "crypto_secretstream"
 path = "fuzz_targets/crypto_secretstream.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "crypto_pwhash_verify"
+path = "fuzz_targets/crypto_pwhash_verify.rs"
 test = false
 doc = false
 bench = false
