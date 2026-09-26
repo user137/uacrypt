@@ -11,7 +11,9 @@
 //! not a knob either), a 16-byte salt (`crypto_pwhash_argon2id_SALTBYTES`), a 32-byte hash
 //! (`STR_HASHBYTES`), and three named strength presets mirroring
 //! `OPSLIMIT`/`MEMLIMIT_{INTERACTIVE,MODERATE,SENSITIVE}` exactly - no raw `m_cost`/`t_cost` knob
-//! exposed, per D-47's "libsodium API shape, no misconfigurable knobs" criterion.
+//! exposed, per D-47's "libsodium API shape, no misconfigurable knobs" criterion. `verify_password`
+//! reads its parameters from an untrusted string, so it accepts only a bounded set (argon2id or
+//! libsodium's argon2i, `v=19`, costs up to [`Strength::Sensitive`] - `docs/DECISIONS.md` D-222).
 //!
 //! # Example
 //!
@@ -361,11 +363,6 @@ mod tests {
         Ok(())
     }
 
-    /// `Sensitive`'s own `(m_cost, t_cost, p_cost)` checked directly against a real `Params`,
-    /// instead of through a real `hash_password` call - a real 1024 MiB/t=4 hash took ~85s in an
-    /// unoptimized debug build (too expensive for every CI push), and `Interactive`/`Moderate`
-    /// already prove (`tests/crypto_pwhash.rs`) that `Strength` flows into the PHC string through
-    /// this exact code path - only the constants differ for `Sensitive`, checked here for free.
     /// The bounds of `verify_context` at each edge, without running Argon2: a real hash at the
     /// memory/work bound would cost 1 GiB and seconds, so the vector file cannot reach them
     /// (`docs/DECISIONS.md` D-222).
@@ -412,6 +409,11 @@ mod tests {
         assert!(!ok("argon2id", None, (8, 1, 1), 32, 16));
     }
 
+    /// `Sensitive`'s own `(m_cost, t_cost, p_cost)` checked directly against a real `Params`,
+    /// instead of through a real `hash_password` call - a real 1024 MiB/t=4 hash took ~85s in an
+    /// unoptimized debug build (too expensive for every CI push), and `Interactive`/`Moderate`
+    /// already prove (`tests/crypto_pwhash.rs`) that `Strength` flows into the PHC string through
+    /// this exact code path - only the constants differ for `Sensitive`, checked here for free.
     #[test]
     fn sensitive_preset_has_libsodiums_sensitive_params() {
         let params = Strength::Sensitive.params();

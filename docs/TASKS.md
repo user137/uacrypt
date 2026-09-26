@@ -9352,7 +9352,9 @@ points at the machine state rather than a GCM-specific regression, but that is n
   `Argon2::default().verify_password(password, &parsed)`)
   takes the algorithm, version and `m`/`t`/`p` from the PHC string it is given.
   - **Status 2026-09-26:** core + capi fixed on `ux-0.5.0` (D-222; bounds differ from D-220's
-    text in four recorded points). Shared vectors `tests/vectors/pwhash/verify.json`. Remaining:
+    text in four recorded points, plus extra rejections). Per D-220's O-B(1) (option (b), delegated),
+    argon2i v=19 and costs below the presets down to RFC 9106's minimums are **accepted** - this
+    supersedes the "argon2i/below-preset return `false`" wording in (2), Direction and Tests below. Shared vectors `tests/vectors/pwhash/verify.json`. Remaining:
     one test per binding over those vectors (merged plan step 5). Fuzz target
     `crypto_pwhash_verify` added (T-225 attachment; found and fixed a `p` overflow, D-222).
   - (1) A crafted string with a huge `m` aborts the process: the allocation failure is an abort, not
@@ -9877,9 +9879,13 @@ work and never touches the 0.4.0 release on `master`). Fit this batch into the U
   `pytest` imported the published 0.1.1 from the global `site-packages` (stale wire format, so
   interop/T-238/D-208 tests fail); `ruby` - `rb-sys`'s bindgen can't find `strings.h` (a clang
   without MinGW headers). Each needs a small follow-up task (env fix or xtask isolation).
-  The closing advisor review for T-272 has **not** run yet - do it first when resuming.
+  Closing advisor review done 2026-09-26: fixed a misplaced test doc comment, added the D-222
+  bounds to the module doc and `docs/dstu-crypto-project.md`, marked T-272's stale argon2i/
+  below-preset wording as superseded by D-220 O-B(1)(b); fmt/clippy green on the head; Miri green
+  on both new tests (`verify_context_accepts_exactly_up_to_each_bound`, capi
+  `pwhash_verify_rejects_out_of_bounds_hash_strings`).
   Binding tests over `verify.json` stay in step 5.
-- **Next:** closing advisor on T-272, then T-273 (plan mode + advisor), then T-278, T-283 and the
+- **Next:** T-273 (plan mode + advisor), then T-278, T-283 and the
   T-242/T-246 leftovers. T-284 is deferred to 0.6.0 (owner choice B). The embargo still
   holds: do not push `ux-0.5.0` before 0.5.0 ships T-272's fix.
 - **When resuming:**
