@@ -9864,8 +9864,18 @@ work and never touches the 0.4.0 release on `master`). Fit this batch into the U
   to `master` in the 0.4.0 release prep (not done yet; that is 0.4.0 work, outside the merged
   plan); Miri is a deliberate skip in `ci`; the `CARGO` strip is done; no local MSRV/aarch64
   layers.
-- **Next:** step 2 (T-272, then T-273, each in plan mode + advisor). T-284 is deferred to 0.6.0
-  (owner choice B). The embargo still
+- **Step 2, T-272 core + capi done (2026-09-26, local, not pushed):** `e01725b` (bounded
+  `verify_password`, shared vectors `tests/vectors/pwhash/verify.json`), `c821ffe` (`p` overflow
+  found by the fuzz target), `ed83f80` (fuzz target `crypto_pwhash_verify`, 11 targets now).
+  D-222 records the bounds and four deviations from D-220's text (m*t work bound instead of
+  t<=16, no p cap, tag >= 16, salt-minimum citation) - delegated forks, surfaced to the owner at
+  plan approval. Local `cargo xtask ci`: mandatory checks passed on `e01725b`; pwhash/capi/xtask
+  tests re-run green on `ed83f80`. Fuzz: 271 303 runs / 129 s clean locally (MSVC recipe in
+  `.claude.local.md`, VS path moved to `...\Microsoft Visual Studio\18\...`); not yet in CI.
+  The closing advisor review for T-272 has **not** run yet - do it first when resuming.
+  Binding tests over `verify.json` stay in step 5.
+- **Next:** closing advisor on T-272, then T-273 (plan mode + advisor), then T-278, T-283 and the
+  T-242/T-246 leftovers. T-284 is deferred to 0.6.0 (owner choice B). The embargo still
   holds: do not push `ux-0.5.0` before 0.5.0 ships T-272's fix.
 - **When resuming:**
   - Read this section and the owner's answers.
