@@ -250,7 +250,14 @@ fn clippy() -> bool {
     // run stays lib-only: the test code needs `std`/`alloc` and does not build there (rust.yml).
     run(
         "cargo",
-        &["clippy", "--workspace", "--all-targets", "--", "-D", "warnings"],
+        &[
+            "clippy",
+            "--workspace",
+            "--all-targets",
+            "--",
+            "-D",
+            "warnings",
+        ],
         None,
     ) && run(
         "cargo",
