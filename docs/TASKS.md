@@ -9726,10 +9726,17 @@ points at the machine state rather than a GCM-specific regression, but that is n
     Unread symbols: `signature257::sign` read jump by jump (secret nonce/key); `signature::verify`
     and `curve163`/`curve257` `Point::add` callers checked first, count tripwire if public-only.
     Embargo: the `rust.yml` job stays unverified in CI until `ux-0.5.0` is pushed.
-  - **Done:** 288 rows over 45 specs + summed outlined bodies; `s`/`z` rows of every secret-data
-    symbol read (none tests secret data), `signature257::sign` read. Fires on `a513a66` (105
+  - **Owner simplification (2026-09-26):** only the hard rules and 112 zero-jump rows are kept; the
+    exact counts of symbols with public jumps were dropped (no re-read after every rustc release,
+    D-229). The audit below stays as the 1.97.1 evidence.
+  - **Done:** 424 rows over 62 specs + summed outlined bodies; `s`/`z` rows of every secret-data
+    symbol read (none tests secret data), `signature257::sign` read. Closing review: the first
+    thumb filter trusted any immediate compare (D-225's own branch shape), so thumb `s`/`z` was
+    re-read with an induction-variable filter; the hard rules now cover the whole crate
+    (`__multi3`) and every limb-module function (carry shape), and fp `invert`/`pow_mod`/`sqrt`/
+    `square`/`euler_criterion`, `to_affine`, gf2m `invert`, `encrypt` got rows. Fires on `a513a66` (105
     failures incl. the carry shape), `d438bec` (147, `fp::add` zero rows, gf2m 2 vs 1) and
-    `7ddfb18` (171). Plan change: the stale `.s` is not deleted (a cached build does not rewrite
+    `7ddfb18` (171); simplified version: 64/89/89, but T-290's gf2m branch no longer caught. Plan change: the stale `.s` is not deleted (a cached build does not rewrite
     it); the rlib hash picks it. **Unverified in CI** until the embargo lifts.
 - [x] **T-294** (Low, infra; owner request 2026-09-26; **done 2026-09-26 on `ux-0.5.0`, D-228**)
   `cargo clippy --all-targets -- -D warnings` failed: 379 errors in `uacrypt`'s lib test, 67 in

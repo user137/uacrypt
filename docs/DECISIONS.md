@@ -15137,12 +15137,19 @@ no barrier at all (D-227), so a toolchain bump could silently bring a secret-dep
 `--release -p dstu-core --lib --no-default-features`) on x86_64-unknown-linux-gnu and
 aarch64-unknown-none at O3, and on thumbv7em-none-eabihf and riscv32imc-unknown-none-elf at O3,
 `s` and `z` (`CARGO_PROFILE_RELEASE_OPT_LEVEL`), each in its own `target/asm-check/opt-<o>`.
-- **Hard rules, no exceptions:** no riscv32 carry-compare shape (a two-register branch followed by
-  `sltu` on the same pair, D-226) and no `__multi3`/`__muldi3` call, in any audited symbol or
-  `OUTLINED_FUNCTION_*` body.
-- **Per cell, per audited symbol:** the count of conditional plus indirect jumps must equal the
-  table (288 rows). A symbol missing where the table has a row, matched more than once, or present
-  without a row is a failure. At `z` the outlined bodies' jumps are summed into one row.
+- **Hard rules, no exceptions:** no `__multi3`/`__muldi3` call anywhere in the crate, and no
+  riscv32 carry-compare shape (a two-register branch followed by `sltu` on the same pair, D-226)
+  in any function of `dstu9041`/`dstu4145`/`gf2m_wide`/`limb` or any `OUTLINED_FUNCTION_*` body.
+  So the functions `limb` is inlined into (`invert`, `pow_mod`, `to_affine`, ...) are covered
+  whether or not they have a row. The carry rule is not crate-wide because the same shape is a
+  public `RangeInclusive` step in `kalyna_kw::wrap_with_cipher` (riscv32 O3, 5 hits, read); both
+  rules measured crate-wide on HEAD before scoping, zero hits otherwise.
+- **Zero-jump rows:** 112 `(target, opt-level, symbol)` rows where a secret-data symbol has no
+  conditional or indirect jump at all: fp `add`/`sub`/`square`/`invert`/`euler_criterion`/`sqrt`,
+  `ProjectivePoint::add`/`to_affine`, `limb::mac`, gf2m `square`/`invert`, scalar `Add`, and at
+  riscv32 `z` the summed outlined bodies - in every cell where each is a separate symbol with
+  no jump. A listed symbol with any jump, missing (inlined or renamed) or matched more than once
+  is a failure.
 - **Fails closed:** every branch-like mnemonic in the whole crate must be classified, otherwise it
   is an error. Classification per target: riscv32 every `b*`, `jr` other than `ra` (and `t0` in an
   outlined body, the outliner's return) is indirect; thumb `b<cc>`/`bl<cc>`/`bx<cc>`/`cbz`,
@@ -15157,28 +15164,47 @@ aarch64-unknown-none at O3, and on thumbv7em-none-eabihf and riscv32imc-unknown-
 - **Cache:** a fresh build does not rewrite the `.s`, so it is not deleted; the file read is the
   one whose hash matches the newest `libdstu_core-*.rlib`.
 
-**Counts are a tripwire, not a proof.** One jump swapped for another keeps the count. The strong
-part is the zero rows (`fp` add/sub, `ProjectivePoint::add`, `limb::mac`, the O3 `square`s) and
-the hard rules. The table belongs to `AUDITED_RUSTC`; a mismatch under another rustc fails and
-names the version change. Re-audit: read the changed jumps, then take the rows from
-`cargo xtask asm-check --print`.
+**No counts for symbols with public jumps (owner, 2026-09-26).** The first version also pinned
+the exact jump count of every symbol that keeps public jumps (ladders, gf2m/fp/scalar multiply,
+`sign`, `decrypt`, ...; 424 rows). The owner dropped those: a count cannot tell a public jump
+from a secret one, and every rustc release that reshapes a loop would have turned CI red and
+forced a re-read. Accepted cost: a new secret branch inside one of those symbols is not caught
+automatically, unless it is a carry shape or a `__multi3` call (hard rules) or it also shows in a
+zero-jump symbol that inlines into it. A failure under another rustc names the version change
+(`AUDITED_RUSTC`); a row is dropped only once its new jump has been read and is public.
 
-**Audit behind the table** (rustc 1.97.1). O3 rows were read in D-225/D-227, except
+**Audit at rustc 1.97.1** (evidence that the symbols without a row had only public jumps when
+this was written; no longer enforced). O3 rows were read in D-225/D-227, except
 `signature257::sign` on riscv32 (49): 33 are the unrolled `is_zero(&r_bytes)` (r is the public
 signature half, the spec's retry check), the rest `memcmp` against a zero constant (`fe_x`/`h`
 retry checks), the ladder result's `Option` tag, shift-amount checks on a bit index and loop
-ends. The `s`/`z` rows of every symbol with secret data (gf2m multiply and `poly_mul_wide`,
-`cswap`, both ladders, scalar multiply/`cond_sub_if_ge`, fp multiply/sub, `sign`, `sign_digest`,
-`decrypt`) were read after a script set aside jumps whose operands were last written by
-`li`/`addi r,r,k`/an iterator's `next` (riscv32) or a flag set from an immediate compare (thumb).
-What is left: loop counters and pointer ends, the bit index of `gf2m163::multiply`'s 163-step
-loop and its shift-amount checks, input and result `Option` tags, the ladder's final
-"result is infinity" check (public output, D-225), `is_valid_scalar`/`from_candidate_bytes`/
-`point_from_x`/`parse_m_prime`/KW-unwrap rejections and the padding check in `decrypt`, KMAC's
-length error in `sign_digest`, and the spec retry checks in `sign`. None tests secret data. At
-`z`, riscv32's outlined bodies have no jumps. The public-input symbols (`verify`, `curve163`/
-`curve257` `Point::Add::add`: callers are the verification path only) are count tripwires, not
-read.
+ends. The `s`/`z` rows (thumbv7em and riscv32imc) of every secret-data symbol were read with a
+script that sets a jump aside only when every non-constant operand (for thumb: of the flag-setting
+`cmp`/`subs`/`adds`, or the `cbz` register) is an induction variable, i.e. updated in the same
+function by `addi r,r,k` / `adds|subs|add|sub r,[r,]#k`. A first, looser filter that trusted any
+immediate compare was dropped: D-225's thumb branch was `cmp r0,#1; bne`. Everything left was read:
+- thumb: loop bounds `cmp rX,#32/#64/#48` with the offset stepped inside an outlined body at
+  `z`; the `cmp rX,#1; b(hi)` cases are bit counters counting down (`scalar::multiply` 64,
+  `sign_digest` 8, `pow_mod` 8; the exponent bit itself is a mask behind `@APP`, selected with
+  `and`/`orr`); `fp::sub`'s `#435`/`#875` is applied as `and`, no jump; Result/`Option` tags;
+- riscv32: pointer-loop ends (`E = sp+k` or `P+24`, `P` stepped by 8), bit counters compared with
+  a loaded `1`, loop-entry guards `beqz R` right after `li R,N`, and at `z` counters stepped
+  inside the called outlined body (23 of 25 checked by script to contain `addi R,R,k`; the other
+  two are the input point's `Option` tag and `Gf2m512`'s `li s2,16` nibble counter);
+- both: shift-amount checks on a bit index, input and result `Option` tags, the ladder's final
+  "result is infinity" check (public output, D-225), `is_valid_scalar`/`from_candidate_bytes`/
+  `point_from_x`/`parse_m_prime`/KW rejections, the padding check in `decrypt`, KMAC's length
+  error in `sign_digest`, and the spec retry checks in `sign`.
+The rows added after the closing review (`gf2m` `invert`, fp `square`/`invert`/`pow_mod`/`sqrt`/
+`euler_criterion`, `to_affine`, `encrypt`) went through the same filter on all
+four targets at O3 and on the 32-bit two at `s`/`z`; what was left: loop back-edges and counters,
+and in `encrypt` the two final booleans of `is_valid_scalar(e)` (`jns`/`js` on bit 63 on x86_64,
+`tbz`/`tbnz #63` on aarch64) after a branch-free borrow chain - the split D-227 already
+recorded; for a valid ephemeral key both are true, an invalid one is a public error. None of the
+jumps read tests secret data. At `z`, riscv32's outlined bodies have no jumps and thumb's 36 are
+`bx rN` tail calls. Count-only, not read: the public-input symbols (`verify`, `curve163`/
+`curve257` `Point::Add::add`, whose callers are the verification path only; `point_from_x`,
+which takes public input).
 
 **CI** (owner choice (b), 2026-09-26): a `rust.yml` job on every push, plus an optional
 `xtask ci` layer (skipped when a target is not installed). Unverified in CI until `ux-0.5.0` is
@@ -15186,12 +15212,23 @@ pushed (embargo, D-224/D-226).
 
 **Tests.** Written first and seen failing: the parser (function bounds, comments per target,
 unterminated function), the classifier per target (including the traps above), jump counting,
-the carry shape, `__multi3`/`__muldi3`, symbol matching and exactly-once (17 xtask tests with
-the existing ones). Error path: the missing-`.s` error was hit for real (the first version deleted
-the `.s` before building, and a cached build did not rewrite it, which is why the rlib-hash lookup
-exists); the missing-target skip was not exercised.
+the carry shape, `__multi3`/`__muldi3`, symbol matching and exactly-once. The carry-rule scope
+test came with the closing-review fix, not before it (18 xtask tests with the existing ones).
+Error path: the missing-`.s` error was hit for real (the first version deleted the `.s` before
+building, and a cached build did not rewrite it, which is why the rlib-hash lookup exists); the
+missing-target skip was not exercised.
 
-**Proof it fires.** The finished xtask, run in `git worktree`s of older commits:
+**Proof it fires, simplified version** (zero-jump rows + hard rules), in `git worktree`s:
+- `a513a66` (before T-291): 64 failures, 55 of them the riscv32 carry shape.
+- `d438bec` (before T-290): 89 failures - carry shape (T-291 not yet fixed), and the zero rows
+  `fp256`/`fp512::add` (1 jump on x86_64/aarch64/thumbv7em, D-225's `jne` around `addq $435`),
+  `ProjectivePoint::add` (3; riscv32 37/32), fp `invert`/`sqrt`/`euler_criterion`, scalar `Add`.
+  **Not caught any more:** T-290's gf2m branch. Only the dropped count showed it
+  (`gf2m163`/`gf2m257::multiply` 2 instead of 1); the gf2m zero rows (`square`, `invert`) did not
+  change. This is the accepted cost above, seen on a real regression.
+- `7ddfb18` (before T-273): 89 failures, the same fp/carry ones.
+
+**Proof it fires, first version** (with the counts), for the record:
 - `a513a66` (before T-291): 105 failures, among them the carry shape in `fp`/`scalar`/
   `ProjectivePoint::add`/`sign_digest` on riscv32 at O3/`s`/`z`, and riscv32 O3 counts equal to
   D-227's "before" column (`fp256::add` 5, `multiply` 33, `fp512` add/sub/multiply 9/8/35,

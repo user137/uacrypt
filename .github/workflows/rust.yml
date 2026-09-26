@@ -263,8 +263,8 @@ jobs:
   asm-check:
     name: constant-time asm check (T-292, D-229)
     # Every push, owner choice (b): the floating stable toolchain is exactly what this guards
-    # against. A count mismatch after a rustc release fails and names the version change; re-read
-    # the changed jumps, then take the rows from `cargo xtask asm-check --print`.
+    # against. A jump in a listed zero-jump symbol after a rustc release fails and names the
+    # version change; read that jump before touching the row.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

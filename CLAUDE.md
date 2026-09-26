@@ -23,7 +23,7 @@ cargo xtask fmt --check
 cargo xtask docs-check     # README/gh-pages version-marker freshness lint (T-186, mandatory)
 cargo xtask book           # mdbook build - docs/ knowledge base (T-186), published to gh-pages/book/ by CI
 cargo xtask bench-compare  # uacrypt vs OpenSSL, one unified table per DSTU standard (T-187, docs/PERFORMANCE.md D-106)
-cargo xtask asm-check      # constant-time asm guard, 4 targets, O3/s/z (T-292, D-229); --print after a rustc bump
+cargo xtask asm-check      # constant-time asm guard, 4 targets, O3/s/z (T-292, D-229)
 ```
 
 `xtask` (see `xtask/`, aliased via `.cargo/config.toml`) is the one cross-platform build/QA entry

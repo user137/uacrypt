@@ -1,15 +1,14 @@
 //! `cargo xtask asm-check` (T-292, `docs/DECISIONS.md` D-229): builds `dstu-core`'s release asm
-//! with D-225's recipe and fails if the constant-time shape of the audited symbols changed.
+//! with D-225's recipe and fails if a constant-time fix of D-223/D-225/D-227 comes undone.
 //!
-//! Hard rules, no exceptions: no riscv32 64-bit carry compare shape (D-226) and no
-//! `__multi3`/`__muldi3` call in any audited symbol or `OUTLINED_FUNCTION_*` body (D-227's
-//! `hazmat::limb` has no barrier, so this is its only guard). Then every audited symbol's
-//! conditional + indirect jump count must equal [`EXPECTED`], per target and `opt-level`.
-//! Counts are a tripwire, not a proof: one jump swapped for another keeps the count. The strong
-//! part is the zero rows and the hard rules. Counts belong to one rustc ([`AUDITED_RUSTC`]); after
-//! a bump, `cargo xtask asm-check --print` prints the new rows, which go in only once the changed
-//! jumps have been read.
-
+//! Hard rules, no exceptions: no riscv32 64-bit carry compare shape (D-226) in any function of
+//! the limb-arithmetic modules or any `OUTLINED_FUNCTION_*` body, and no `__multi3`/`__muldi3`
+//! call anywhere in the crate (D-227's `hazmat::limb` has no barrier, so this is its only guard).
+//! Then every symbol in [`ZERO_JUMPS`] must have no conditional or indirect jump in that target
+//! and `opt-level`. Symbols that keep public jumps (loop counters, `Option` tags) are not counted
+//! (owner, 2026-09-26): a count would only say "something changed" and would need a re-read after
+//! every rustc release. A failure after a rustc bump names the version change ([`AUDITED_RUSTC`]):
+//! read the asm; a row may only be dropped once its new jump has been read and is public.
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -32,65 +31,128 @@ const CELLS: [(&str, Arch, &str); 8] = [
     (RISCV32, Arch::Riscv32, "z"),
 ];
 
-/// Symbols handling secret data (D-223/D-225/D-227), plus public-input ones kept as a count
-/// tripwire. A spec present in a cell must have an [`EXPECTED`] row there.
-const AUDITED: &[&str] = &[
-    // DSTU 4145 (`crypto_sign`/`crypto_sign257`): gf2m multiply (D-223/D-225), ladders, scalars.
-    "gf2m_wide::Gf2m128::poly_mul_wide",
-    "gf2m_wide::Gf2m256::poly_mul_wide",
-    "gf2m_wide::Gf2m512::poly_mul_wide",
-    "gf2m163::FieldElement::multiply",
-    "gf2m163::FieldElement::square",
-    "gf2m257::FieldElement::multiply",
-    "gf2m257::FieldElement::square",
-    "curve163::Point::scalar_multiply",
-    "curve163::cswap",
-    "curve257::Point::scalar_multiply",
-    "curve257::cswap",
-    "scalar::Scalar::multiply",
-    "scalar::Scalar::Add::add",
-    "scalar::cond_sub_if_ge",
-    "scalar257::Scalar::multiply",
-    "scalar257::Scalar::Add::add",
-    "scalar257::cond_sub_if_ge",
-    "signature::sign",
-    "signature257::sign",
-    "crypto_sign::SigningKey::sign_digest",
-    "crypto_sign257::SigningKey::sign_digest",
-    // DSTU 4145, public inputs only (verification): count tripwire.
-    "curve163::Point::Add::add",
-    "curve257::Point::Add::add",
-    "signature::verify",
-    "signature257::verify",
-    // DSTU 9041 (`crypto_box`/`crypto_box512`): fp arithmetic (D-225/D-227), ladders.
-    "fp256::FieldElement::add",
-    "fp256::FieldElement::sub",
-    "fp256::FieldElement::multiply",
-    "fp256::add_limbs",
-    "fp256::conditional_sub_p",
-    "fp512::FieldElement::add",
-    "fp512::FieldElement::sub",
-    "fp512::FieldElement::multiply",
-    "fp512::add_limbs",
-    "fp512::conditional_sub_p",
-    "curve256::ProjectivePoint::add",
-    "curve256::Point::scalar_multiply",
-    "curve512::ProjectivePoint::add",
-    "curve512::Point::scalar_multiply",
-    "encryption::decrypt",
-    "encryption512::decrypt",
-    // D-227's carries, when not inlined.
-    "limb::adc",
-    "limb::sbb",
-    "limb::mac",
-    // At `z` the secret work of the symbols above moves into outlined bodies: their jumps summed.
-    OUTLINED,
+/// `(target, opt-level, spec)`: symbols with secret data and no jump at all at rustc
+/// [`AUDITED_RUSTC`] (D-225/D-227), plus the summed outlined bodies ([`OUTLINED`]) where they have
+/// none. A spec is `::`-separated idents, see [`symbol_matches`].
+const ZERO_JUMPS: &[(&str, &str, &str)] = &[
+    (X86_64, "3", "gf2m163::FieldElement::square"),
+    (X86_64, "3", "gf2m257::FieldElement::square"),
+    (X86_64, "3", "scalar::Scalar::Add::add"),
+    (X86_64, "3", "fp256::FieldElement::add"),
+    (X86_64, "3", "fp512::FieldElement::add"),
+    (X86_64, "3", "fp512::FieldElement::sub"),
+    (X86_64, "3", "fp256::FieldElement::square"),
+    (X86_64, "3", "fp256::FieldElement::invert"),
+    (X86_64, "3", "fp256::FieldElement::sqrt"),
+    (X86_64, "3", "fp256::FieldElement::euler_criterion"),
+    (X86_64, "3", "fp512::FieldElement::square"),
+    (X86_64, "3", "fp512::FieldElement::invert"),
+    (X86_64, "3", "fp512::FieldElement::sqrt"),
+    (X86_64, "3", "fp512::FieldElement::euler_criterion"),
+    (X86_64, "3", "curve256::ProjectivePoint::add"),
+    (X86_64, "3", "curve512::ProjectivePoint::add"),
+    (AARCH64, "3", "gf2m163::FieldElement::square"),
+    (AARCH64, "3", "gf2m257::FieldElement::square"),
+    (AARCH64, "3", "scalar::Scalar::Add::add"),
+    (AARCH64, "3", "scalar257::Scalar::Add::add"),
+    (AARCH64, "3", "fp256::FieldElement::add"),
+    (AARCH64, "3", "fp512::FieldElement::add"),
+    (AARCH64, "3", "fp512::FieldElement::sub"),
+    (AARCH64, "3", "fp256::FieldElement::square"),
+    (AARCH64, "3", "fp256::FieldElement::invert"),
+    (AARCH64, "3", "fp256::FieldElement::sqrt"),
+    (AARCH64, "3", "fp256::FieldElement::euler_criterion"),
+    (AARCH64, "3", "fp512::FieldElement::square"),
+    (AARCH64, "3", "fp512::FieldElement::invert"),
+    (AARCH64, "3", "fp512::FieldElement::sqrt"),
+    (AARCH64, "3", "fp512::FieldElement::euler_criterion"),
+    (AARCH64, "3", "curve256::ProjectivePoint::add"),
+    (AARCH64, "3", "curve512::ProjectivePoint::add"),
+    (THUMB, "3", "gf2m163::FieldElement::square"),
+    (THUMB, "3", "gf2m257::FieldElement::square"),
+    (THUMB, "3", "scalar::Scalar::Add::add"),
+    (THUMB, "3", "fp256::FieldElement::add"),
+    (THUMB, "3", "fp512::FieldElement::add"),
+    (THUMB, "3", "fp512::FieldElement::sub"),
+    (THUMB, "3", "fp256::FieldElement::square"),
+    (THUMB, "3", "fp256::FieldElement::invert"),
+    (THUMB, "3", "fp256::FieldElement::sqrt"),
+    (THUMB, "3", "fp256::FieldElement::euler_criterion"),
+    (THUMB, "3", "fp512::FieldElement::square"),
+    (THUMB, "3", "fp512::FieldElement::invert"),
+    (THUMB, "3", "fp512::FieldElement::sqrt"),
+    (THUMB, "3", "fp512::FieldElement::euler_criterion"),
+    (THUMB, "3", "curve256::ProjectivePoint::add"),
+    (THUMB, "3", "curve512::ProjectivePoint::add"),
+    (THUMB, "s", "fp256::FieldElement::square"),
+    (THUMB, "s", "fp256::FieldElement::invert"),
+    (THUMB, "s", "fp256::FieldElement::euler_criterion"),
+    (THUMB, "s", "fp512::FieldElement::square"),
+    (THUMB, "s", "fp512::FieldElement::invert"),
+    (THUMB, "s", "fp512::FieldElement::euler_criterion"),
+    (THUMB, "s", "curve256::ProjectivePoint::to_affine"),
+    (THUMB, "s", "curve512::ProjectivePoint::to_affine"),
+    (THUMB, "z", "gf2m163::FieldElement::invert"),
+    (THUMB, "z", "gf2m257::FieldElement::invert"),
+    (THUMB, "z", "fp256::FieldElement::square"),
+    (THUMB, "z", "fp256::FieldElement::invert"),
+    (THUMB, "z", "fp256::FieldElement::sqrt"),
+    (THUMB, "z", "fp256::FieldElement::euler_criterion"),
+    (THUMB, "z", "fp512::FieldElement::square"),
+    (THUMB, "z", "fp512::FieldElement::invert"),
+    (THUMB, "z", "fp512::FieldElement::sqrt"),
+    (THUMB, "z", "fp512::FieldElement::euler_criterion"),
+    (THUMB, "z", "curve256::ProjectivePoint::add"),
+    (THUMB, "z", "curve256::ProjectivePoint::to_affine"),
+    (THUMB, "z", "curve512::ProjectivePoint::add"),
+    (THUMB, "z", "curve512::ProjectivePoint::to_affine"),
+    (THUMB, "z", "limb::mac"),
+    (RISCV32, "3", "gf2m163::FieldElement::square"),
+    (RISCV32, "3", "gf2m257::FieldElement::square"),
+    (RISCV32, "3", "scalar::Scalar::Add::add"),
+    (RISCV32, "3", "fp256::FieldElement::add"),
+    (RISCV32, "3", "fp512::FieldElement::add"),
+    (RISCV32, "3", "fp512::FieldElement::sub"),
+    (RISCV32, "3", "fp256::FieldElement::square"),
+    (RISCV32, "3", "fp256::FieldElement::invert"),
+    (RISCV32, "3", "fp256::FieldElement::sqrt"),
+    (RISCV32, "3", "fp256::FieldElement::euler_criterion"),
+    (RISCV32, "3", "fp512::FieldElement::square"),
+    (RISCV32, "3", "fp512::FieldElement::invert"),
+    (RISCV32, "3", "fp512::FieldElement::sqrt"),
+    (RISCV32, "3", "fp512::FieldElement::euler_criterion"),
+    (RISCV32, "3", "curve256::ProjectivePoint::add"),
+    (RISCV32, "3", "curve512::ProjectivePoint::add"),
+    (RISCV32, "s", "fp256::FieldElement::square"),
+    (RISCV32, "s", "fp256::FieldElement::invert"),
+    (RISCV32, "s", "fp256::FieldElement::euler_criterion"),
+    (RISCV32, "s", "fp512::FieldElement::square"),
+    (RISCV32, "s", "fp512::FieldElement::invert"),
+    (RISCV32, "s", "fp512::FieldElement::euler_criterion"),
+    (RISCV32, "s", "curve256::ProjectivePoint::to_affine"),
+    (RISCV32, "s", "curve512::ProjectivePoint::to_affine"),
+    (RISCV32, "z", "gf2m163::FieldElement::invert"),
+    (RISCV32, "z", "gf2m257::FieldElement::invert"),
+    (RISCV32, "z", "fp256::FieldElement::square"),
+    (RISCV32, "z", "fp256::FieldElement::invert"),
+    (RISCV32, "z", "fp256::FieldElement::sqrt"),
+    (RISCV32, "z", "fp256::FieldElement::euler_criterion"),
+    (RISCV32, "z", "fp512::FieldElement::square"),
+    (RISCV32, "z", "fp512::FieldElement::invert"),
+    (RISCV32, "z", "fp512::FieldElement::sqrt"),
+    (RISCV32, "z", "fp512::FieldElement::euler_criterion"),
+    (RISCV32, "z", "curve256::ProjectivePoint::add"),
+    (RISCV32, "z", "curve256::ProjectivePoint::to_affine"),
+    (RISCV32, "z", "curve512::ProjectivePoint::add"),
+    (RISCV32, "z", "curve512::ProjectivePoint::to_affine"),
+    (RISCV32, "z", "limb::mac"),
+    (RISCV32, "z", "OUTLINED_FUNCTION_*"),
 ];
 
 const OUTLINED: &str = "OUTLINED_FUNCTION_*";
 
-/// [`find_one`] for a spec, or the summed outlined bodies for [`OUTLINED`] (absent if none).
-fn audited_jumps(arch: Arch, functions: &[Function], spec: &str) -> Result<u32, String> {
+/// [`find_one`] for a spec, or the summed outlined bodies for [`OUTLINED`].
+fn row_jumps(arch: Arch, functions: &[Function], spec: &str) -> Result<u32, String> {
     if spec != OUTLINED {
         return jumps(arch, find_one(functions, spec)?);
     }
@@ -101,299 +163,7 @@ fn audited_jumps(arch: Arch, functions: &[Function], spec: &str) -> Result<u32, 
     outlined.into_iter().map(|f| jumps(arch, f)).sum()
 }
 
-/// `(target, opt-level, spec, conditional + indirect jumps)`.
-const EXPECTED: &[(&str, &str, &str, u32)] = &[
-    (X86_64, "3", "gf2m_wide::Gf2m128::poly_mul_wide", 2),
-    (X86_64, "3", "gf2m_wide::Gf2m256::poly_mul_wide", 4),
-    (X86_64, "3", "gf2m_wide::Gf2m512::poly_mul_wide", 2),
-    (X86_64, "3", "gf2m163::FieldElement::multiply", 1),
-    (X86_64, "3", "gf2m163::FieldElement::square", 0),
-    (X86_64, "3", "gf2m257::FieldElement::multiply", 1),
-    (X86_64, "3", "gf2m257::FieldElement::square", 0),
-    (X86_64, "3", "curve163::Point::scalar_multiply", 3),
-    (X86_64, "3", "curve257::Point::scalar_multiply", 4),
-    (X86_64, "3", "scalar::Scalar::multiply", 6),
-    (X86_64, "3", "scalar::Scalar::Add::add", 0),
-    (X86_64, "3", "scalar257::Scalar::multiply", 4),
-    (X86_64, "3", "scalar257::Scalar::Add::add", 1),
-    (X86_64, "3", "signature::sign", 6),
-    (X86_64, "3", "signature257::sign", 9),
-    (X86_64, "3", "crypto_sign::SigningKey::sign_digest", 3),
-    (X86_64, "3", "crypto_sign257::SigningKey::sign_digest", 7),
-    (X86_64, "3", "curve163::Point::Add::add", 4),
-    (X86_64, "3", "curve257::Point::Add::add", 4),
-    (X86_64, "3", "signature::verify", 10),
-    (X86_64, "3", "signature257::verify", 8),
-    (X86_64, "3", "fp256::FieldElement::add", 0),
-    (X86_64, "3", "fp256::FieldElement::multiply", 3),
-    (X86_64, "3", "fp512::FieldElement::add", 0),
-    (X86_64, "3", "fp512::FieldElement::sub", 0),
-    (X86_64, "3", "fp512::FieldElement::multiply", 8),
-    (X86_64, "3", "curve256::ProjectivePoint::add", 0),
-    (X86_64, "3", "curve256::Point::scalar_multiply", 2),
-    (X86_64, "3", "curve512::ProjectivePoint::add", 0),
-    (X86_64, "3", "curve512::Point::scalar_multiply", 2),
-    (X86_64, "3", "encryption::decrypt", 7),
-    (X86_64, "3", "encryption512::decrypt", 7),
-    (AARCH64, "3", "gf2m_wide::Gf2m128::poly_mul_wide", 2),
-    (AARCH64, "3", "gf2m_wide::Gf2m256::poly_mul_wide", 4),
-    (AARCH64, "3", "gf2m_wide::Gf2m512::poly_mul_wide", 2),
-    (AARCH64, "3", "gf2m163::FieldElement::multiply", 1),
-    (AARCH64, "3", "gf2m163::FieldElement::square", 0),
-    (AARCH64, "3", "gf2m257::FieldElement::multiply", 1),
-    (AARCH64, "3", "gf2m257::FieldElement::square", 0),
-    (AARCH64, "3", "curve163::Point::scalar_multiply", 3),
-    (AARCH64, "3", "curve257::Point::scalar_multiply", 3),
-    (AARCH64, "3", "scalar::Scalar::multiply", 6),
-    (AARCH64, "3", "scalar::Scalar::Add::add", 0),
-    (AARCH64, "3", "scalar257::Scalar::multiply", 3),
-    (AARCH64, "3", "scalar257::Scalar::Add::add", 0),
-    (AARCH64, "3", "signature::sign", 6),
-    (AARCH64, "3", "signature257::sign", 6),
-    (AARCH64, "3", "crypto_sign::SigningKey::sign_digest", 3),
-    (AARCH64, "3", "crypto_sign257::SigningKey::sign_digest", 4),
-    (AARCH64, "3", "curve163::Point::Add::add", 4),
-    (AARCH64, "3", "curve257::Point::Add::add", 4),
-    (AARCH64, "3", "signature::verify", 10),
-    (AARCH64, "3", "signature257::verify", 8),
-    (AARCH64, "3", "fp256::FieldElement::add", 0),
-    (AARCH64, "3", "fp256::FieldElement::multiply", 3),
-    (AARCH64, "3", "fp512::FieldElement::add", 0),
-    (AARCH64, "3", "fp512::FieldElement::sub", 0),
-    (AARCH64, "3", "fp512::FieldElement::multiply", 8),
-    (AARCH64, "3", "curve256::ProjectivePoint::add", 0),
-    (AARCH64, "3", "curve256::Point::scalar_multiply", 2),
-    (AARCH64, "3", "curve512::ProjectivePoint::add", 0),
-    (AARCH64, "3", "curve512::Point::scalar_multiply", 2),
-    (AARCH64, "3", "encryption::decrypt", 7),
-    (AARCH64, "3", "encryption512::decrypt", 7),
-    (THUMB, "3", "gf2m_wide::Gf2m128::poly_mul_wide", 2),
-    (THUMB, "3", "gf2m_wide::Gf2m256::poly_mul_wide", 2),
-    (THUMB, "3", "gf2m_wide::Gf2m512::poly_mul_wide", 3),
-    (THUMB, "3", "gf2m163::FieldElement::multiply", 1),
-    (THUMB, "3", "gf2m163::FieldElement::square", 0),
-    (THUMB, "3", "gf2m257::FieldElement::multiply", 1),
-    (THUMB, "3", "gf2m257::FieldElement::square", 0),
-    (THUMB, "3", "curve163::Point::scalar_multiply", 3),
-    (THUMB, "3", "curve257::Point::scalar_multiply", 4),
-    (THUMB, "3", "scalar::Scalar::multiply", 3),
-    (THUMB, "3", "scalar::Scalar::Add::add", 0),
-    (THUMB, "3", "scalar257::Scalar::multiply", 4),
-    (THUMB, "3", "scalar257::Scalar::Add::add", 1),
-    (THUMB, "3", "signature::sign", 6),
-    (THUMB, "3", "signature257::sign", 8),
-    (THUMB, "3", "crypto_sign::SigningKey::sign_digest", 4),
-    (THUMB, "3", "crypto_sign257::SigningKey::sign_digest", 7),
-    (THUMB, "3", "curve163::Point::Add::add", 4),
-    (THUMB, "3", "curve257::Point::Add::add", 4),
-    (THUMB, "3", "signature::verify", 28),
-    (THUMB, "3", "signature257::verify", 8),
-    (THUMB, "3", "fp256::FieldElement::add", 0),
-    (THUMB, "3", "fp256::FieldElement::multiply", 4),
-    (THUMB, "3", "fp512::FieldElement::add", 0),
-    (THUMB, "3", "fp512::FieldElement::sub", 0),
-    (THUMB, "3", "fp512::FieldElement::multiply", 8),
-    (THUMB, "3", "curve256::ProjectivePoint::add", 0),
-    (THUMB, "3", "curve256::Point::scalar_multiply", 2),
-    (THUMB, "3", "curve512::ProjectivePoint::add", 0),
-    (THUMB, "3", "curve512::Point::scalar_multiply", 2),
-    (THUMB, "3", "encryption::decrypt", 7),
-    (THUMB, "3", "encryption512::decrypt", 7),
-    (THUMB, "s", "gf2m_wide::Gf2m128::poly_mul_wide", 8),
-    (THUMB, "s", "gf2m_wide::Gf2m256::poly_mul_wide", 8),
-    (THUMB, "s", "gf2m_wide::Gf2m512::poly_mul_wide", 8),
-    (THUMB, "s", "gf2m163::FieldElement::multiply", 3),
-    (THUMB, "s", "gf2m163::FieldElement::square", 1),
-    (THUMB, "s", "gf2m257::FieldElement::multiply", 3),
-    (THUMB, "s", "gf2m257::FieldElement::square", 1),
-    (THUMB, "s", "curve163::Point::scalar_multiply", 4),
-    (THUMB, "s", "curve163::cswap", 1),
-    (THUMB, "s", "curve257::Point::scalar_multiply", 4),
-    (THUMB, "s", "curve257::cswap", 1),
-    (THUMB, "s", "scalar::Scalar::multiply", 5),
-    (THUMB, "s", "scalar::Scalar::Add::add", 1),
-    (THUMB, "s", "scalar::cond_sub_if_ge", 2),
-    (THUMB, "s", "scalar257::Scalar::multiply", 5),
-    (THUMB, "s", "scalar257::Scalar::Add::add", 1),
-    (THUMB, "s", "scalar257::cond_sub_if_ge", 2),
-    (THUMB, "s", "signature::sign", 9),
-    (THUMB, "s", "signature257::sign", 9),
-    (THUMB, "s", "crypto_sign::SigningKey::sign_digest", 7),
-    (THUMB, "s", "crypto_sign257::SigningKey::sign_digest", 7),
-    (THUMB, "s", "curve163::Point::Add::add", 4),
-    (THUMB, "s", "curve257::Point::Add::add", 4),
-    (THUMB, "s", "signature::verify", 11),
-    (THUMB, "s", "signature257::verify", 11),
-    (THUMB, "s", "fp256::FieldElement::add", 3),
-    (THUMB, "s", "fp256::FieldElement::sub", 2),
-    (THUMB, "s", "fp256::FieldElement::multiply", 13),
-    (THUMB, "s", "fp512::FieldElement::add", 3),
-    (THUMB, "s", "fp512::FieldElement::sub", 2),
-    (THUMB, "s", "fp512::FieldElement::multiply", 13),
-    (THUMB, "s", "curve256::ProjectivePoint::add", 2),
-    (THUMB, "s", "curve256::Point::scalar_multiply", 5),
-    (THUMB, "s", "curve512::ProjectivePoint::add", 2),
-    (THUMB, "s", "curve512::Point::scalar_multiply", 5),
-    (THUMB, "s", "encryption::decrypt", 8),
-    (THUMB, "s", "encryption512::decrypt", 8),
-    (THUMB, "z", "gf2m_wide::Gf2m128::poly_mul_wide", 8),
-    (THUMB, "z", "gf2m_wide::Gf2m256::poly_mul_wide", 8),
-    (THUMB, "z", "gf2m_wide::Gf2m512::poly_mul_wide", 8),
-    (THUMB, "z", "gf2m163::FieldElement::multiply", 3),
-    (THUMB, "z", "gf2m163::FieldElement::square", 1),
-    (THUMB, "z", "gf2m257::FieldElement::multiply", 3),
-    (THUMB, "z", "gf2m257::FieldElement::square", 1),
-    (THUMB, "z", "curve163::Point::scalar_multiply", 4),
-    (THUMB, "z", "curve163::cswap", 1),
-    (THUMB, "z", "curve257::Point::scalar_multiply", 5),
-    (THUMB, "z", "curve257::cswap", 1),
-    (THUMB, "z", "scalar::Scalar::multiply", 4),
-    (THUMB, "z", "scalar::Scalar::Add::add", 1),
-    (THUMB, "z", "scalar::cond_sub_if_ge", 2),
-    (THUMB, "z", "scalar257::Scalar::multiply", 4),
-    (THUMB, "z", "scalar257::Scalar::Add::add", 1),
-    (THUMB, "z", "scalar257::cond_sub_if_ge", 2),
-    (THUMB, "z", "signature::sign", 5),
-    (THUMB, "z", "signature257::sign", 5),
-    (THUMB, "z", "crypto_sign::SigningKey::sign_digest", 4),
-    (THUMB, "z", "crypto_sign257::SigningKey::sign_digest", 4),
-    (THUMB, "z", "curve163::Point::Add::add", 4),
-    (THUMB, "z", "curve257::Point::Add::add", 4),
-    (THUMB, "z", "signature::verify", 8),
-    (THUMB, "z", "signature257::verify", 8),
-    (THUMB, "z", "fp256::FieldElement::add", 2),
-    (THUMB, "z", "fp256::FieldElement::sub", 2),
-    (THUMB, "z", "fp256::FieldElement::multiply", 4),
-    (THUMB, "z", "fp256::add_limbs", 1),
-    (THUMB, "z", "fp256::conditional_sub_p", 2),
-    (THUMB, "z", "fp512::FieldElement::add", 2),
-    (THUMB, "z", "fp512::FieldElement::sub", 2),
-    (THUMB, "z", "fp512::FieldElement::multiply", 4),
-    (THUMB, "z", "fp512::add_limbs", 1),
-    (THUMB, "z", "fp512::conditional_sub_p", 2),
-    (THUMB, "z", "curve256::ProjectivePoint::add", 0),
-    (THUMB, "z", "curve256::Point::scalar_multiply", 2),
-    (THUMB, "z", "curve512::ProjectivePoint::add", 0),
-    (THUMB, "z", "curve512::Point::scalar_multiply", 2),
-    (THUMB, "z", "encryption::decrypt", 7),
-    (THUMB, "z", "encryption512::decrypt", 7),
-    (THUMB, "z", "limb::mac", 0),
-    (THUMB, "z", "OUTLINED_FUNCTION_*", 36),
-    (RISCV32, "3", "gf2m_wide::Gf2m128::poly_mul_wide", 2),
-    (RISCV32, "3", "gf2m_wide::Gf2m256::poly_mul_wide", 2),
-    (RISCV32, "3", "gf2m_wide::Gf2m512::poly_mul_wide", 3),
-    (RISCV32, "3", "gf2m163::FieldElement::multiply", 2),
-    (RISCV32, "3", "gf2m163::FieldElement::square", 0),
-    (RISCV32, "3", "gf2m257::FieldElement::multiply", 2),
-    (RISCV32, "3", "gf2m257::FieldElement::square", 0),
-    (RISCV32, "3", "curve163::Point::scalar_multiply", 3),
-    (RISCV32, "3", "curve257::Point::scalar_multiply", 4),
-    (RISCV32, "3", "scalar::Scalar::multiply", 3),
-    (RISCV32, "3", "scalar::Scalar::Add::add", 0),
-    (RISCV32, "3", "scalar257::Scalar::multiply", 5),
-    (RISCV32, "3", "scalar257::Scalar::Add::add", 1),
-    (RISCV32, "3", "signature::sign", 6),
-    (RISCV32, "3", "signature257::sign", 49),
-    (RISCV32, "3", "crypto_sign::SigningKey::sign_digest", 4),
-    (RISCV32, "3", "crypto_sign257::SigningKey::sign_digest", 10),
-    (RISCV32, "3", "curve163::Point::Add::add", 4),
-    (RISCV32, "3", "curve257::Point::Add::add", 4),
-    (RISCV32, "3", "signature::verify", 48),
-    (RISCV32, "3", "signature257::verify", 11),
-    (RISCV32, "3", "fp256::FieldElement::add", 0),
-    (RISCV32, "3", "fp256::FieldElement::multiply", 2),
-    (RISCV32, "3", "fp512::FieldElement::add", 0),
-    (RISCV32, "3", "fp512::FieldElement::sub", 0),
-    (RISCV32, "3", "fp512::FieldElement::multiply", 2),
-    (RISCV32, "3", "curve256::ProjectivePoint::add", 0),
-    (RISCV32, "3", "curve256::Point::scalar_multiply", 2),
-    (RISCV32, "3", "curve512::ProjectivePoint::add", 0),
-    (RISCV32, "3", "curve512::Point::scalar_multiply", 2),
-    (RISCV32, "3", "encryption::decrypt", 7),
-    (RISCV32, "3", "encryption512::decrypt", 8),
-    (RISCV32, "s", "gf2m_wide::Gf2m128::poly_mul_wide", 8),
-    (RISCV32, "s", "gf2m_wide::Gf2m256::poly_mul_wide", 8),
-    (RISCV32, "s", "gf2m_wide::Gf2m512::poly_mul_wide", 8),
-    (RISCV32, "s", "gf2m163::FieldElement::multiply", 4),
-    (RISCV32, "s", "gf2m163::FieldElement::square", 1),
-    (RISCV32, "s", "gf2m257::FieldElement::multiply", 4),
-    (RISCV32, "s", "gf2m257::FieldElement::square", 1),
-    (RISCV32, "s", "curve163::Point::scalar_multiply", 4),
-    (RISCV32, "s", "curve163::cswap", 1),
-    (RISCV32, "s", "curve257::Point::scalar_multiply", 4),
-    (RISCV32, "s", "curve257::cswap", 1),
-    (RISCV32, "s", "scalar::Scalar::multiply", 6),
-    (RISCV32, "s", "scalar::Scalar::Add::add", 1),
-    (RISCV32, "s", "scalar::cond_sub_if_ge", 2),
-    (RISCV32, "s", "scalar257::Scalar::multiply", 6),
-    (RISCV32, "s", "scalar257::Scalar::Add::add", 1),
-    (RISCV32, "s", "scalar257::cond_sub_if_ge", 2),
-    (RISCV32, "s", "signature::sign", 12),
-    (RISCV32, "s", "signature257::sign", 12),
-    (RISCV32, "s", "crypto_sign::SigningKey::sign_digest", 8),
-    (RISCV32, "s", "crypto_sign257::SigningKey::sign_digest", 8),
-    (RISCV32, "s", "curve163::Point::Add::add", 4),
-    (RISCV32, "s", "curve257::Point::Add::add", 4),
-    (RISCV32, "s", "signature::verify", 12),
-    (RISCV32, "s", "signature257::verify", 12),
-    (RISCV32, "s", "fp256::FieldElement::add", 3),
-    (RISCV32, "s", "fp256::FieldElement::sub", 2),
-    (RISCV32, "s", "fp256::FieldElement::multiply", 13),
-    (RISCV32, "s", "fp512::FieldElement::add", 3),
-    (RISCV32, "s", "fp512::FieldElement::sub", 2),
-    (RISCV32, "s", "fp512::FieldElement::multiply", 13),
-    (RISCV32, "s", "curve256::ProjectivePoint::add", 2),
-    (RISCV32, "s", "curve256::Point::scalar_multiply", 5),
-    (RISCV32, "s", "curve512::ProjectivePoint::add", 1),
-    (RISCV32, "s", "curve512::Point::scalar_multiply", 5),
-    (RISCV32, "s", "encryption::decrypt", 8),
-    (RISCV32, "s", "encryption512::decrypt", 8),
-    (RISCV32, "z", "gf2m_wide::Gf2m128::poly_mul_wide", 11),
-    (RISCV32, "z", "gf2m_wide::Gf2m256::poly_mul_wide", 11),
-    (RISCV32, "z", "gf2m_wide::Gf2m512::poly_mul_wide", 12),
-    (RISCV32, "z", "gf2m163::FieldElement::multiply", 5),
-    (RISCV32, "z", "gf2m163::FieldElement::square", 2),
-    (RISCV32, "z", "gf2m257::FieldElement::multiply", 5),
-    (RISCV32, "z", "gf2m257::FieldElement::square", 2),
-    (RISCV32, "z", "curve163::Point::scalar_multiply", 6),
-    (RISCV32, "z", "curve163::cswap", 2),
-    (RISCV32, "z", "curve257::Point::scalar_multiply", 6),
-    (RISCV32, "z", "curve257::cswap", 2),
-    (RISCV32, "z", "scalar::Scalar::multiply", 7),
-    (RISCV32, "z", "scalar::Scalar::Add::add", 2),
-    (RISCV32, "z", "scalar::cond_sub_if_ge", 4),
-    (RISCV32, "z", "scalar257::Scalar::multiply", 7),
-    (RISCV32, "z", "scalar257::Scalar::Add::add", 2),
-    (RISCV32, "z", "scalar257::cond_sub_if_ge", 4),
-    (RISCV32, "z", "signature::sign", 5),
-    (RISCV32, "z", "signature257::sign", 5),
-    (RISCV32, "z", "crypto_sign::SigningKey::sign_digest", 5),
-    (RISCV32, "z", "crypto_sign257::SigningKey::sign_digest", 5),
-    (RISCV32, "z", "curve163::Point::Add::add", 4),
-    (RISCV32, "z", "curve257::Point::Add::add", 4),
-    (RISCV32, "z", "signature::verify", 8),
-    (RISCV32, "z", "signature257::verify", 8),
-    (RISCV32, "z", "fp256::FieldElement::add", 4),
-    (RISCV32, "z", "fp256::FieldElement::sub", 3),
-    (RISCV32, "z", "fp256::FieldElement::multiply", 8),
-    (RISCV32, "z", "fp256::add_limbs", 2),
-    (RISCV32, "z", "fp256::conditional_sub_p", 4),
-    (RISCV32, "z", "fp512::FieldElement::add", 4),
-    (RISCV32, "z", "fp512::FieldElement::sub", 3),
-    (RISCV32, "z", "fp512::FieldElement::multiply", 8),
-    (RISCV32, "z", "fp512::add_limbs", 2),
-    (RISCV32, "z", "fp512::conditional_sub_p", 4),
-    (RISCV32, "z", "curve256::ProjectivePoint::add", 0),
-    (RISCV32, "z", "curve256::Point::scalar_multiply", 3),
-    (RISCV32, "z", "curve512::ProjectivePoint::add", 0),
-    (RISCV32, "z", "curve512::Point::scalar_multiply", 3),
-    (RISCV32, "z", "encryption::decrypt", 8),
-    (RISCV32, "z", "encryption512::decrypt", 8),
-    (RISCV32, "z", "limb::mac", 0),
-    (RISCV32, "z", "OUTLINED_FUNCTION_*", 0),
-];
-
-pub(crate) fn run(print: bool) -> bool {
+pub(crate) fn run() -> bool {
     let installed = match output("rustup", &["target", "list", "--installed"]) {
         Ok(list) => list,
         Err(e) => {
@@ -424,7 +194,6 @@ pub(crate) fn run(print: bool) -> bool {
             std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))
         });
         match result {
-            Ok(asm) if print => print_rows(&asm, target, arch, opt),
             Ok(asm) => failures.extend(
                 check_cell(&asm, target, arch, opt)
                     .into_iter()
@@ -433,22 +202,20 @@ pub(crate) fn run(print: bool) -> bool {
             Err(e) => failures.push(format!("{target} {opt}: {e}")),
         }
     }
-    if print || failures.is_empty() {
-        if !print {
-            println!(
-                "asm-check: {} rows and the hard rules hold (rustc {rustc})",
-                EXPECTED.len()
-            );
-        }
-        return failures.is_empty();
+    if failures.is_empty() {
+        println!(
+            "asm-check: {} zero-jump rows and the hard rules hold (rustc {rustc})",
+            ZERO_JUMPS.len()
+        );
+        return true;
     }
     for failure in &failures {
         eprintln!("asm-check: {failure}");
     }
     if rustc != AUDITED_RUSTC {
         eprintln!(
-            "asm-check: rustc changed from {AUDITED_RUSTC} to {rustc}: read the changed symbols' \
-             asm, then take the new rows from `cargo xtask asm-check --print` (D-229)"
+            "asm-check: rustc changed from {AUDITED_RUSTC} to {rustc}: read the failing symbols' \
+             asm before changing a row (D-229)"
         );
     }
     false
@@ -534,29 +301,18 @@ fn check_cell(asm: &str, target: &str, arch: Arch, opt: &str) -> Vec<String> {
             failures.push(e);
         }
     }
-    let mut guarded: Vec<&Function> = functions.iter().filter(|f| f.is_outlined()).collect();
-    guarded.extend(
-        AUDITED
-            .iter()
-            .filter_map(|spec| find_one(&functions, spec).ok()),
-    );
-    for spec in AUDITED {
-        let row = EXPECTED
-            .iter()
-            .find(|(t, o, s, _)| *t == target && *o == opt && s == spec);
-        match (audited_jumps(arch, &functions, spec), row) {
-            (Ok(found), Some(&(_, _, _, expected))) if found != expected => {
-                failures.push(format!("{spec}: {found} jumps, expected {expected}"));
-            }
-            (Ok(_), Some(_)) => {}
-            (Ok(_), None) => failures.push(format!("{spec}: present but has no EXPECTED row")),
-            (Err(e), Some(_)) => failures.push(e),
-            (Err(e), None) if !e.contains("no symbol") => failures.push(e),
-            (Err(_), None) => {}
+    let rows = ZERO_JUMPS
+        .iter()
+        .filter(|(t, o, _)| *t == target && *o == opt);
+    for (_, _, spec) in rows {
+        match row_jumps(arch, &functions, spec) {
+            Ok(0) => {}
+            Ok(found) => failures.push(format!("{spec}: {found} jumps, expected none")),
+            Err(e) => failures.push(e),
         }
     }
-    for function in guarded {
-        if arch == Arch::Riscv32 && carry_shapes(function) > 0 {
+    for function in &functions {
+        if arch == Arch::Riscv32 && in_carry_scope(function) && carry_shapes(function) > 0 {
             failures.push(format!(
                 "{}: riscv32 64-bit carry compare shape (D-226)",
                 function.name
@@ -569,30 +325,15 @@ fn check_cell(asm: &str, target: &str, arch: Arch, opt: &str) -> Vec<String> {
     failures
 }
 
-fn print_rows(asm: &str, target: &str, arch: Arch, opt: &str) {
-    let functions = match parse(asm, arch) {
-        Ok(functions) => functions,
-        Err(e) => return eprintln!("asm-check: {target} {opt}: {e}"),
-    };
-    for spec in AUDITED {
-        match audited_jumps(arch, &functions, spec) {
-            Ok(count) => println!(
-                "    ({}, \"{opt}\", \"{spec}\", {count}),",
-                const_name(target)
-            ),
-            Err(e) if !e.contains("no symbol") => eprintln!("asm-check: {target} {opt}: {e}"),
-            Err(_) => {}
-        }
-    }
-}
-
-fn const_name(target: &str) -> &'static str {
-    match target {
-        X86_64 => "X86_64",
-        AARCH64 => "AARCH64",
-        THUMB => "THUMB",
-        _ => "RISCV32",
-    }
+/// The carry shape also matches a public `RangeInclusive` step (`bgeu` + `sltu`, `kalyna_kw`), so
+/// that rule covers every function of the limb-arithmetic modules and every outlined body, which
+/// takes in what `limb` is inlined into (`invert`, `pow_mod`, `to_affine`, ...). The
+/// `__multi3`/`__muldi3` rule has no such false match and covers the whole crate.
+fn in_carry_scope(function: &Function) -> bool {
+    function.is_outlined()
+        || ["8dstu9041", "8dstu4145", "9gf2m_wide", "4limb"]
+            .iter()
+            .any(|module| function.name.contains(module))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -868,7 +609,8 @@ fn find_one<'f, 'a>(functions: &'f [Function<'a>], spec: &str) -> Result<&'f Fun
 #[cfg(test)]
 mod tests {
     use super::{
-        carry_shapes, classify, find_one, jumps, mul_calls, parse, symbol_matches, Arch, Insn, Kind,
+        carry_shapes, classify, find_one, in_carry_scope, jumps, mul_calls, parse, symbol_matches,
+        Arch, Function, Insn, Kind,
     };
 
     fn kind(arch: Arch, line: &str) -> Kind {
@@ -1074,6 +816,21 @@ mod tests {
         // Same pair, either order; `bne a5, a6` + `sltu a0, a5, a7` is not the shape.
         assert_eq!(carry_shapes(&fns[0]), 2);
         assert_eq!(carry_shapes(&fns[1]), 0);
+    }
+
+    #[test]
+    fn carry_scope_is_the_limb_modules_and_outlined_bodies_only() {
+        let named = |name| Function {
+            name,
+            insns: Vec::new(),
+        };
+        assert!(in_carry_scope(&named(FP_ADD)));
+        assert!(in_carry_scope(&named(
+            "_RNvNtNtC9dstu_core6hazmat4limb3mac"
+        )));
+        assert!(in_carry_scope(&named("OUTLINED_FUNCTION_7")));
+        let kw = "_RNvMNtNtC9dstu_core6hazmat9kalyna_kwNtB5_15Kalyna128_128Kw16wrap_with_cipher";
+        assert!(!in_carry_scope(&named(kw)));
     }
 
     #[test]

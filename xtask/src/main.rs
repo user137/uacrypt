@@ -52,7 +52,7 @@ fn main() -> ExitCode {
         "qemu-stm32" => qemu_stm32(),
         "streaming-bounded" => streaming_bounded(),
         "canary" => canary(),
-        "asm-check" => asm_check::run(args.any(|a| a == "--print")),
+        "asm-check" => asm_check::run(),
         "ci" => ci(),
         "help" | "-h" | "--help" => {
             print_usage();
@@ -104,7 +104,7 @@ fn print_usage() {
          \x20 cpp            build dstu-core-capi+uacrypt, cmake configure+build+ctest bindings/cpp (T-53)\n\
          \x20 cpp-tidy       clang-tidy over bindings/cpp's own headers/tests/examples (bugprone-*/performance-*/clang-analyzer-*, T-208)\n\
          \x20 cpp-cppcheck   cppcheck over bindings/cpp (warning/performance/portability, complementary to cpp-tidy, T-208)\n\
-         \x20 asm-check [--print]  dstu-core release asm on x86_64/aarch64/thumbv7em/riscv32imc (O3, s/z on the 32-bit two): no riscv32 carry-compare shape or __multi3 call, audited jump counts unchanged (T-292, D-229); --print emits the current rows for a re-audit\n\
+         \x20 asm-check      dstu-core release asm on x86_64/aarch64/thumbv7em/riscv32imc (O3, s/z on the 32-bit two): no riscv32 carry-compare shape or __multi3 call, no jump in the listed symbols (T-292, D-229)\n\
          \x20 qemu-stm32     run firmware/qemu-stm32-smoketest under QEMU's netduinoplus2 (Cortex-M4F), no real hardware needed (T-170)\n\
          \x20 streaming-bounded  release-build proof that encrypt/decrypt/kupyna-digest/strumok-crypt stay memory-bounded on a large file (D-42, T-200) - #[ignore]d by default in a plain `cargo test` since debug-profile crypto over a large file is too slow for that"
     );
@@ -1539,7 +1539,6 @@ fn ci() -> bool {
     let optional_miri: fn() -> bool = || {
         skip("xtask: ci does not run miri (~10 h for the workspace, D-172) - run `cargo xtask miri <pkg>`")
     };
-    let optional_asm_check: fn() -> bool = || asm_check::run(false);
     let layers: [Layer; 22] = [
         ("miri", optional_miri),
         ("kani", kani),
@@ -1560,7 +1559,7 @@ fn ci() -> bool {
         ("cpp", cpp),
         ("cpp-tidy", cpp_clang_tidy),
         ("cpp-cppcheck", cpp_cppcheck),
-        ("asm-check", optional_asm_check),
+        ("asm-check", asm_check::run),
         ("qemu-stm32", qemu_stm32),
         ("streaming-bounded", streaming_bounded),
     ];
