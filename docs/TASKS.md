@@ -9671,6 +9671,26 @@ points at the machine state rather than a GCM-specific regression, but that is n
     top bit), which needs no 64-bit compare; or 32-bit limbs on 32-bit targets. Asm-check both.
   - Disclosure: owner decides (published code, `no_std` riscv32 only). Keep the recipe on
     unpushed `ux-0.5.0`, same as T-290.
+  - **Trace 2026-09-26 (rustc 1.97.1, D-225's recipe):** RV32 has no conditional select, so every
+    `i64` carry compare (from `overflowing_add`/`overflowing_sub` and from `u128` adds in the MAC
+    loops) becomes `beq hi,hi` + `sltu`. The mul expansion itself (`mul`/`mulhu`) is branch-free.
+    Counted by `beq X,Y` followed by `sltu _,X,Y`: `fp256` add 4, multiply 29; `fp512` add 8,
+    sub 8, multiply 30; `curve256`/`curve512` `ProjectivePoint::add` 28/32 (inlined fp);
+    `scalar`/`scalar257` multiply 14/48 and `Add` 4/14 (DSTU 4145 signing, `s = e + d*r`);
+    `sign_digest`/`signature::sign`/`encryption*` 2-7 (inlined). The detector catches one shape
+    only: `fp256::add`'s 5th jump (`beqz` -> `li 1`/`xori`) and `multiply`'s extras (a `beq`
+    with the `sltu` scheduled away) are the same `i64` compare in other shapes; `scalar::multiply`'s
+    leftovers are the reduction's public bit-shift index. Kalyna, Kupyna and Strumok: none of this
+    shape (their `wrapping_add`s need no carry-out); `KupynaCore::compress_block` and Strumok
+    `apply_keystream` read - width dispatch, lengths, loop counters; `KupynaCore::finalize` not
+    read. thumbv7em has none of this shape; `fp512::multiply`'s 8 are the loop index; 2 of
+    `scalar257::multiply`'s 4 (`bhi.w`, `cmp r9,#0; bne.w`) are not yet attributed.
+  - **Scope grew:** DSTU 4145 scalar arithmetic (`add3`/`mul3`, the reduction behind
+    `s = e + d*r`) is in, so `crypto_sign`/`crypto_sign257` on riscv32 `no_std`, not only
+    `crypto_box`. Owner decides disclosure before the fix.
+  - **Spike (scratch crate):** carry `((a & b) | ((a | b) & !s)) >> 63`, borrow
+    `((!a & b) | ((!a | b) & d)) >> 63`, and the MAC as `u128` product + two such adds: riscv32
+    `add4` 4 -> 0 jumps, `wide_mul` 28 -> 0 (only the loop counter left); thumbv7em unchanged at 0.
 - [ ] **T-292** (Low, infra; depends: T-290) An `xtask` asm check: build the four targets from
   D-225's recipe and fail on any conditional jump in the audited symbols (the `poly_mul_wide`s,
   `fp256`/`fp512` add/sub/multiply, the ladders) except known public ones, listed per symbol.

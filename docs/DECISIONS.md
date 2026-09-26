@@ -15015,3 +15015,24 @@ borrow compares in the limb arithmetic (`overflowing_add`/`overflowing_sub` on `
 limbs are equal. In `fp256::add` after this fix, 5 such jumps remain, and there are more in
 `multiply`. This is a different mechanism from the mask idiom (no `wrapping_sub` mask is
 involved), so the barrier does not reach it.
+
+## D-226: T-291 - scope, disclosure and fix shape (2026-09-26)
+
+**Trace** (rustc 1.97.1, D-225's recipe; detail in `docs/TASKS.md` T-291). RV32 base ISA has no
+conditional select, so LLVM lowers every `i64` carry/borrow compare to a branch on the high
+halves. The sources are `overflowing_add`/`overflowing_sub` and the `u128` adds in the MAC
+loops; the `u128` product itself (`mul`/`mulhu`) is branch-free. Affected on riscv32imc:
+`fp256`/`fp512` add/sub/multiply (and every function that inlines them), and DSTU 4145's
+`scalar`/`scalar257` add and multiply, which compute `s = e + d*r` with the signing key `d`. So
+`crypto_box`/`crypto_box512` and `crypto_sign`/`crypto_sign257`, riscv32 only (ESP32-C3 class,
+`no_std`). thumbv7em/x86_64/aarch64 use carry flags; Kalyna/Kupyna/Strumok need no carry-out.
+
+**Owner decisions 2026-09-26** (asked with per-option consequences):
+- **Disclosure (a):** fixed in 0.5.0 under the same advisory as T-272/T-290, widened to riscv32
+  `crypto_sign`/`crypto_box`; the push embargo on `ux-0.5.0` is unchanged.
+- **Design (1):** one code path on every target: carry `((a & b) | ((a | b) & !s)) >> 63`, borrow
+  `((!a & b) | ((!a | b) & d)) >> 63`, the MAC as `u128` product + two such adds. Rejected (2), a
+  `cfg(target_pointer_width = "32")` path: it would run in production only where host tests never
+  run it. Accepted cost: the spike's `wide_mul` is ~2.3x slower on x86_64 (noisy, measured with a
+  test run in parallel); the real `crypto_box` number is measured after the fix. T-293 may win some
+  back.
