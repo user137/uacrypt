@@ -23,6 +23,7 @@ cargo xtask fmt --check
 cargo xtask docs-check     # README/gh-pages version-marker freshness lint (T-186, mandatory)
 cargo xtask book           # mdbook build - docs/ knowledge base (T-186), published to gh-pages/book/ by CI
 cargo xtask bench-compare  # uacrypt vs OpenSSL, one unified table per DSTU standard (T-187, docs/PERFORMANCE.md D-106)
+cargo xtask asm-check      # constant-time asm guard, 4 targets, O3/s/z (T-292, D-229); --print after a rustc bump
 ```
 
 `xtask` (see `xtask/`, aliased via `.cargo/config.toml`) is the one cross-platform build/QA entry
@@ -459,9 +460,8 @@ Full incident narrative for any bulleted rule below lives under its cited `D-XX`
   call chain becomes dead at once (T-134). Run clippy right after rewiring the call site, fix the
   whole batch together.
 - **Before any `hazmat::{kalyna,kupyna,strumok}` perf rewrite, spike it and read the actual
-  `--emit=asm` output — don't plan from source-level reasoning alone.**
-  `RUSTFLAGS="--emit=asm -C debuginfo=0" cargo build --release -p dstu-core --lib` (T-139/T-129,
-  both reversed once actually spiked).
+  `--emit=asm` output — don't plan from source-level reasoning alone.** `cargo xtask asm-check`
+  leaves it under `target/asm-check/` (T-139/T-129, both reversed once actually spiked).
 - **`oracles/uapki`'s vendored clone can be stale relative to upstream `main`** — a raw `diff`
   against a fresh clone can show the *entire* file as different from CRLF-vs-LF alone with zero real
   code drift. Diff-normalize (`diff --strip-trailing-cr`) and confirm line-number alignment before

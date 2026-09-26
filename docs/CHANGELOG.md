@@ -156,6 +156,8 @@ All notable changes to this project are documented in this file. Format follows
     and thumbv7em also at `opt-level` `s` and `z`. Output is unchanged.
   - `crypto_box`/`crypto_box512` are about 2x slower on x86_64 on top of T-290's cost. Signing is
     unchanged.
+  - CI now rebuilds this release asm on every push and fails if a compiler update brings such a
+    branch back (`cargo xtask asm-check`, T-292, `docs/DECISIONS.md` D-229).
 - **Breaking wire-format change (0.4.0).** `crypto_secretbox` and `crypto_secretstream` now bind
   each ciphertext's true length into its authentication tag, and `crypto_secretstream`'s
   `PullState::pull` accepts only a full 16-byte tag. This closes an integrity weakness in earlier

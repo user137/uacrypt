@@ -260,6 +260,19 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y qemu-system-arm qemu-system-misc
       - run: cargo xtask qemu-stm32
 
+  asm-check:
+    name: constant-time asm check (T-292, D-229)
+    # Every push, owner choice (b): the floating stable toolchain is exactly what this guards
+    # against. A count mismatch after a rustc release fails and names the version change; re-read
+    # the changed jumps, then take the rows from `cargo xtask asm-check --print`.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-gnu,aarch64-unknown-none,thumbv7em-none-eabihf,riscv32imc-unknown-none-elf
+      - run: cargo xtask asm-check
+
   streaming-bounded:
     name: uacrypt streaming-boundedness proof (${{ matrix.os }}, D-42/T-200)
     # Matrixed across all three OSes on purpose, not just the dev machine this was written on

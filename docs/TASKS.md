@@ -9703,12 +9703,34 @@ points at the machine state rather than a GCM-specific regression, but that is n
   - **Spike (scratch crate):** carry `((a & b) | ((a | b) & !s)) >> 63`, borrow
     `((!a & b) | ((!a | b) & d)) >> 63`, and the MAC as `u128` product + two such adds: riscv32
     `add4` 4 -> 0 jumps, `wide_mul` 28 -> 0 (only the loop counter left); thumbv7em unchanged at 0.
-- [ ] **T-292** (Low, infra; depends: T-290) An `xtask` asm check: build the four targets from
+- [x] **T-292** (Low, infra; depends: T-290; **done 2026-09-26 on `ux-0.5.0`, D-229, not pushed**)
+  An `xtask` asm check: build the four targets from
   D-225's recipe and fail on any conditional jump in the audited symbols (the `poly_mul_wide`s,
   `fp256`/`fp512` add/sub/multiply, the ladders) except known public ones, listed per symbol.
   This stops a toolchain bump from silently undoing D-223/D-225 (`black_box` is best effort).
   Also D-227's `hazmat::limb` (no barrier at all there): riscv32imc/thumbv7em at `opt-level` `s`
   and `z` too, not only O3, and fail on any `__multi3`/`__muldi3` call.
+  - **Plan (owner 2026-09-26, after advisor):** `cargo xtask asm-check`, new `xtask/src/asm_check.rs`.
+    Matrix: x86_64/aarch64 at O3, thumbv7em/riscv32imc at O3/`s`/`z` (8 builds,
+    `CARGO_PROFILE_RELEASE_OPT_LEVEL`, own target dir, stale `.s` deleted, exactly one `.s` after).
+    Symbols matched with no dependency (owner): ordered length-prefixed v0 idents (`5fp256`,
+    `3add`), exactly one match per (target, opt) cell, else error. Table per cell: symbol -> exact
+    jump count, plus the audited rustc version. Hard rules: riscv32 `beq X,Y` + `sltu _,X,Y` shape
+    and `__multi3`/`__muldi3` calls = 0 in audited symbols and every `OUTLINED_FUNCTION_*`. The
+    classifier fails closed: every branch-looking mnemonic must be classified (riscv32 all `b*`,
+    thumb IT-block returns `bx<cc>`/`pop<cc> {pc}`, indirect `tbb`/`br`/`jr`/`jmp *`); function
+    bodies end at `.Lfunc_end`. CI (owner choice (b)): a `rust.yml` job on every push; zero rules
+    always fail, a count mismatch fails and names the rustc change when the version differs.
+    Proof it fires: unit tests with synthetic snippets first; then the xtask must fail on a
+    worktree at `a513a66` (T-291's carry shape) and before T-290 (`poly_mul_wide`/`fp` `add`).
+    Unread symbols: `signature257::sign` read jump by jump (secret nonce/key); `signature::verify`
+    and `curve163`/`curve257` `Point::add` callers checked first, count tripwire if public-only.
+    Embargo: the `rust.yml` job stays unverified in CI until `ux-0.5.0` is pushed.
+  - **Done:** 288 rows over 45 specs + summed outlined bodies; `s`/`z` rows of every secret-data
+    symbol read (none tests secret data), `signature257::sign` read. Fires on `a513a66` (105
+    failures incl. the carry shape), `d438bec` (147, `fp::add` zero rows, gf2m 2 vs 1) and
+    `7ddfb18` (171). Plan change: the stale `.s` is not deleted (a cached build does not rewrite
+    it); the rlib hash picks it. **Unverified in CI** until the embargo lifts.
 - [x] **T-294** (Low, infra; owner request 2026-09-26; **done 2026-09-26 on `ux-0.5.0`, D-228**)
   `cargo clippy --all-targets -- -D warnings` failed: 379 errors in `uacrypt`'s lib test, 67 in
   `dstu-core`'s, 3 in `tests/crypto_sign.rs`; the same on `master`. Cause: neither `xtask clippy`
@@ -10010,8 +10032,10 @@ work and never touches the 0.4.0 release on `master`). Fit this batch into the U
   (`ux-0.5.0` has no remote branch). Done this session: T-290 closed, T-291 (D-226/D-227), T-294
   (D-228). Scratch asm/bench trees live only in the session scratchpad (not needed to resume; D-225's
   recipe rebuilds them).
-- **Next:** T-292 (asm check in `xtask`; D-227's `s`/`z` matrix and the unread-symbol list), then
-  T-278, T-283 and the T-242/T-246 leftovers. T-284 is deferred to 0.6.0 (owner choice B). The
+- **Step 2, T-292 done (2026-09-26, local, not pushed):** D-229, `cargo xtask asm-check` (owner:
+  CI on every push, choice (b); no demangler dependency). The `rust.yml` job is unverified in CI
+  (embargo).
+- **Next:** T-278, T-283 and the T-242/T-246 leftovers. T-284 is deferred to 0.6.0 (owner choice B). The
   embargo still holds: do not push `ux-0.5.0` before 0.5.0 ships T-272's fix; T-290/T-291 are
   under the same advisory (D-224/D-226).
 - **When resuming:**

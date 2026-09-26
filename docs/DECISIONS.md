@@ -15127,3 +15127,80 @@ cast-free byte patterns (`(0..=u8::MAX).cycle()`), a `KeygenRun` type alias, `ch
 and does not build (already noted in `rust.yml`). Not on the aarch64 cross lint yet: the target
 is not installed locally, so the change could not be checked before CI sees it.
 
+## D-229: T-292 - `cargo xtask asm-check` guards the constant-time asm (2026-09-26)
+
+**Problem.** D-223/D-225/D-227 rest on reading release asm with one rustc (1.97.1), while
+`rust-toolchain.toml` and CI float on `stable`. `black_box` is best effort, and `hazmat::limb` has
+no barrier at all (D-227), so a toolchain bump could silently bring a secret-dependent branch back.
+
+**What it does** (`xtask/src/asm_check.rs`). D-225's recipe (`--emit=asm -C debuginfo=0`,
+`--release -p dstu-core --lib --no-default-features`) on x86_64-unknown-linux-gnu and
+aarch64-unknown-none at O3, and on thumbv7em-none-eabihf and riscv32imc-unknown-none-elf at O3,
+`s` and `z` (`CARGO_PROFILE_RELEASE_OPT_LEVEL`), each in its own `target/asm-check/opt-<o>`.
+- **Hard rules, no exceptions:** no riscv32 carry-compare shape (a two-register branch followed by
+  `sltu` on the same pair, D-226) and no `__multi3`/`__muldi3` call, in any audited symbol or
+  `OUTLINED_FUNCTION_*` body.
+- **Per cell, per audited symbol:** the count of conditional plus indirect jumps must equal the
+  table (288 rows). A symbol missing where the table has a row, matched more than once, or present
+  without a row is a failure. At `z` the outlined bodies' jumps are summed into one row.
+- **Fails closed:** every branch-like mnemonic in the whole crate must be classified, otherwise it
+  is an error. Classification per target: riscv32 every `b*`, `jr` other than `ra` (and `t0` in an
+  outlined body, the outliner's return) is indirect; thumb `b<cc>`/`bl<cc>`/`bx<cc>`/`cbz`,
+  `pop<cc>`/`ldm<cc>` with `pc`, `tbb`/`tbh`, `bx` other than `lr`; aarch64 `b.<cc>`,
+  `cbz`/`tbz`, `br`; x86_64 `j<cc>`, `jmp *reg`. Calls through a register (`callq *%rbx`,
+  `blx r6`, `jalr`) are not counted: their target is a constant the compiler keeps in a register.
+  `bx rN` is counted (thumb `z` uses it for tail calls, 36 in the outlined bodies, all read).
+- **Symbols without a demangler** (owner, 2026-09-26): a spec like `fp256::FieldElement::add` is
+  matched as ordered v0 length-prefixed idents (`5fp256`, `12FieldElement`, `3add` at the end).
+  No digit-boundary rule: `8dstu90415fp256` shows an ident can end in a digit. A false match is
+  possible in principle and caught by the exactly-once rule.
+- **Cache:** a fresh build does not rewrite the `.s`, so it is not deleted; the file read is the
+  one whose hash matches the newest `libdstu_core-*.rlib`.
+
+**Counts are a tripwire, not a proof.** One jump swapped for another keeps the count. The strong
+part is the zero rows (`fp` add/sub, `ProjectivePoint::add`, `limb::mac`, the O3 `square`s) and
+the hard rules. The table belongs to `AUDITED_RUSTC`; a mismatch under another rustc fails and
+names the version change. Re-audit: read the changed jumps, then take the rows from
+`cargo xtask asm-check --print`.
+
+**Audit behind the table** (rustc 1.97.1). O3 rows were read in D-225/D-227, except
+`signature257::sign` on riscv32 (49): 33 are the unrolled `is_zero(&r_bytes)` (r is the public
+signature half, the spec's retry check), the rest `memcmp` against a zero constant (`fe_x`/`h`
+retry checks), the ladder result's `Option` tag, shift-amount checks on a bit index and loop
+ends. The `s`/`z` rows of every symbol with secret data (gf2m multiply and `poly_mul_wide`,
+`cswap`, both ladders, scalar multiply/`cond_sub_if_ge`, fp multiply/sub, `sign`, `sign_digest`,
+`decrypt`) were read after a script set aside jumps whose operands were last written by
+`li`/`addi r,r,k`/an iterator's `next` (riscv32) or a flag set from an immediate compare (thumb).
+What is left: loop counters and pointer ends, the bit index of `gf2m163::multiply`'s 163-step
+loop and its shift-amount checks, input and result `Option` tags, the ladder's final
+"result is infinity" check (public output, D-225), `is_valid_scalar`/`from_candidate_bytes`/
+`point_from_x`/`parse_m_prime`/KW-unwrap rejections and the padding check in `decrypt`, KMAC's
+length error in `sign_digest`, and the spec retry checks in `sign`. None tests secret data. At
+`z`, riscv32's outlined bodies have no jumps. The public-input symbols (`verify`, `curve163`/
+`curve257` `Point::Add::add`: callers are the verification path only) are count tripwires, not
+read.
+
+**CI** (owner choice (b), 2026-09-26): a `rust.yml` job on every push, plus an optional
+`xtask ci` layer (skipped when a target is not installed). Unverified in CI until `ux-0.5.0` is
+pushed (embargo, D-224/D-226).
+
+**Tests.** Written first and seen failing: the parser (function bounds, comments per target,
+unterminated function), the classifier per target (including the traps above), jump counting,
+the carry shape, `__multi3`/`__muldi3`, symbol matching and exactly-once (17 xtask tests with
+the existing ones). Error path: the missing-`.s` error was hit for real (the first version deleted
+the `.s` before building, and a cached build did not rewrite it, which is why the rlib-hash lookup
+exists); the missing-target skip was not exercised.
+
+**Proof it fires.** The finished xtask, run in `git worktree`s of older commits:
+- `a513a66` (before T-291): 105 failures, among them the carry shape in `fp`/`scalar`/
+  `ProjectivePoint::add`/`sign_digest` on riscv32 at O3/`s`/`z`, and riscv32 O3 counts equal to
+  D-227's "before" column (`fp256::add` 5, `multiply` 33, `fp512` add/sub/multiply 9/8/35,
+  `ProjectivePoint::add` 31/32, `scalar257::multiply` 52).
+- `d438bec` (before T-290): 147 failures, among them the zero rows `fp256`/`fp512::add` (1 jump on
+  x86_64/aarch64/thumbv7em, D-225's `jne` around `addq $435`), `ProjectivePoint::add` (3, riscv32
+  37/32), and `gf2m163`/`gf2m257::multiply` 2 instead of 1 on every O3 target with the
+  `curve257` ladder at 30 instead of 4 (the inlined gf2m branch).
+- `7ddfb18` (before T-273): 171 failures; `poly_mul_wide` did not exist yet, so its rows fail as
+  "no symbol". T-273's own bug was a secret-indexed table read, not a branch: this check does not
+  see memory-access patterns at all (D-19's documented exception is out of its scope too).
+
