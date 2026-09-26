@@ -188,7 +188,8 @@ via GitHub Security Advisories).
    (python/nodejs/ruby/php/dotnet/java/go/cpp), `capi`, the C++ static analyzers (`cpp-tidy`/
    `cpp-cppcheck`), the QEMU STM32 smoke test, and the streaming-boundedness proof - each checks its
    own tool is installed first and prints an install hint instead of a raw error if it's missing.
-   `docs-check` needs no external tool, so it's mandatory rather than best-effort - same standing as
+   It ends with a passed/skipped/FAILED table, one row per layer, and exits non-zero if any layer
+   failed. A missing tool counts as skipped, not failed (T-243). `docs-check` needs no external tool, so it's mandatory rather than best-effort - same standing as
    `fmt`/`build`/`test`/`clippy`. `cargo xtask book` builds the mdBook knowledge base this file is
    part of; `cargo xtask bench-compare` runs the uacrypt-vs-OpenSSL benchmark table
    (`docs/PERFORMANCE.md`).
