@@ -129,6 +129,11 @@ All notable changes to this project are documented in this file. Format follows
   up to the `Sensitive` preset's, a salt of 8+ bytes and a tag of 16-64 bytes; anything else is
   `false` before any memory is allocated. Hashes from `hash_password` and libsodium still
   verify; the default costs of PHP's `password_hash` and argon2-cffi are inside the bounds.
+- **Kalyna-GCM/GMAC's software GHASH no longer indexes a table with the secret key** (0.5.0,
+  T-273, `docs/DECISIONS.md` D-223). On `no_std` builds and CPUs without PCLMULQDQ/PMULL, the
+  field multiply read one of 16 table rows chosen by the GHASH key `H`, a cache-timing exposure
+  for `crypto_secretbox`, `crypto_secretstream` and `crypto_box`. It is now a masked multiply,
+  checked branch-free in release asm; output is unchanged, the software path is 1.2-1.4x slower.
 - **Breaking wire-format change (0.4.0).** `crypto_secretbox` and `crypto_secretstream` now bind
   each ciphertext's true length into its authentication tag, and `crypto_secretstream`'s
   `PullState::pull` accepts only a full 16-byte tag. This closes an integrity weakness in earlier

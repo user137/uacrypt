@@ -1,0 +1,12 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 44a213fbe5b8dacd5b1c67dd038a8b8310d9698a85c58a1f4d3e632a416d17e3 # shrinks to a = [0, 1], b = [0, 1]
+cc 8bfb47b8426abae5b41a757c68db4f55bcfa5bb469bb478d24ea1e7a2d301daf # shrinks to a = Gf2m128([0, 1]), b = Gf2m128([0, 1])
+cc 559ea8633772fde691786494aeb6b6555fc7b0eccadc52101e2a9916d10b937e # shrinks to a = [0, 0, 0, 1], b = [0, 0, 0, 1]
+cc fe018d6517388be7b1a4ef5877ee2397525d131d35797488d3a173bf88662ddd # shrinks to a = Gf2m256([0, 0, 0, 1]), b = Gf2m256([0, 0, 0, 1])
+cc 9b3c944b7f1c94f859781cc22f7b6eb07099179ee9d0d79aa87ea4cf56f3677a # shrinks to a = [0, 0, 0, 0, 0, 0, 0, 1], b = [0, 0, 0, 0, 0, 0, 0, 1]
+cc de3b5034ccad08df4a5326ee8ce153afdc04265e4d479ca5b57b8e6ee0e41451 # shrinks to a = Gf2m512([0, 0, 0, 0, 0, 0, 0, 1]), b = Gf2m512([0, 0, 0, 0, 0, 0, 0, 1])

@@ -9397,7 +9397,9 @@ points at the machine state rather than a GCM-specific regression, but that is n
   - Regression risk: hashes made by other tools with non-preset parameters stop verifying under the
     strict option (O-B). Effort M (core S, 9 thin binding tests). Attach to T-225: a
     `verify_password` fuzz target run with `-malloc_limit_mb` (that is what would have caught this).
-- [ ] **T-273** (Medium, arch, **security-flagged**; code path **Confirmed**, leakage not
+- [x] **T-273** (**done 2026-09-26 on `ux-0.5.0`**, D-223: masked 4-bit window with a
+  `black_box` barrier, asm-checked on x86_64/thumbv7em/riscv32imc; the plain mask compiled to
+  branches; 1.2-1.4x slower in software; found T-290) (Medium, arch, **security-flagged**; code path **Confirmed**, leakage not
   measured; depends: O-A) The portable GF(2^m) multiply behind Kalyna-GCM/GMAC indexes a table with the secret
   GHASH key.
   - `hazmat::gf2m_wide::poly_mul_wide` (`gf2m_wide.rs:232-262`) builds `t[i] = a*i` and reads
@@ -9567,7 +9569,8 @@ points at the machine state rather than a GCM-specific regression, but that is n
     D-66's own design.
   - (c) `crypto_sign::CurveId`'s rustdoc says uacrypt's `sign-pubkey`/`verify` prepend the curve
     byte. Since T-256 typed keys, only `key-import` of raw 0.3.x files uses it.
-  - (d) D-184's "the software path it falls back to never had one either": an addendum per T-273's
+  - (d) **Done 2026-09-26 with T-273** (D-184 addendum, `docs/SECURITY.md` bullet).
+    D-184's "the software path it falls back to never had one either": an addendum per T-273's
     outcome (don't rewrite D-184); the matching `docs/SECURITY.md` `gf2m_wide` bullet too.
   - (e) `crypto_pwhash::Strength::params`'s doc says "an invalid preset would be a compile-time
     error". It is a `const fn` called at run time; make that true with `const _: () = { ... }`
@@ -9628,6 +9631,22 @@ points at the machine state rather than a GCM-specific regression, but that is n
     Miri on purpose, with a message (~10 h, D-172; CI's per-crate jobs are the gate). The
     `cargo xtask miri [pkg]` probe now uses `cargo +nightly miri --version`.
   - Still open (machine setup, not code): `python`, `ruby`, `cpp` above.
+- [ ] **T-290** (Medium, arch, **security-flagged**, **embargo-sensitive**; found by T-273's asm
+  pass, not yet traced; depends: none) The `0u64.wrapping_sub(bit)` mask idiom is not
+  branch-free by itself: in T-273 LLVM turned it into `bmi`/`bpl` (thumbv7em) and `btq`+`jb`
+  (x86_64) on operand bits (D-223).
+  - `gf2m163`/`gf2m257`'s `FieldElement::multiply` (the DSTU 4145 software path, taken on x86_64
+    without PCLMULQDQ and on every non-x86_64/aarch64 `std` target) shows a `btq` + `jae` pair in
+    the x86_64 release asm; thumbv7em shows only `it pl` predication; riscv32imc shows a `beqz`
+    after an `and`/`or` chain. Trace each to its source line first. It is published code
+    (`crypto_sign`/`crypto_sign257` since 0.3.x), so the owner decides disclosure, same as T-272:
+    keep the recipe on unpushed `ux-0.5.0`.
+  - Scope: every `wrapping_sub` mask site in `hazmat` (`gf2m163`/`gf2m257` `poly_mul_wide`,
+    `gf2m_wide::double`, others found by grep), on x86_64, thumbv7em and riscv32imc. `double` was
+    asm-checked in T-282 on x86_64/thumbv7em; riscv32imc's `kalyna_xts` functions showed no branch
+    attributable to it in T-273's pass, not proven.
+  - Fix shape if confirmed: D-223's barrier. Possible deliverable: an automated asm check
+    (`xtask`) over the audited symbols, so a toolchain bump cannot silently undo it.
 - Attached to existing tasks (no new IDs):
   - **T-246**: `kalyna_gcm.rs:103` has an unlinted `.try_into().unwrap()` inside `macro_rules!`,
     the same class as its `kupyna_kdf.rs:36` `.expect` item.
@@ -9885,7 +9904,15 @@ work and never touches the 0.4.0 release on `master`). Fit this batch into the U
   on both new tests (`verify_context_accepts_exactly_up_to_each_bound`, capi
   `pwhash_verify_rejects_out_of_bounds_hash_strings`).
   Binding tests over `verify.json` stay in step 5.
-- **Next:** T-273 (plan mode + advisor), then T-278, T-283 and the
+- **Step 2, T-273 done (2026-09-26, local, not pushed):** D-223. The plain mask compiled to
+  branches, so a `black_box` barrier was added and the asm re-checked on three targets. New
+  embargo-sensitive T-290 (the same idiom in `gf2m163`/`gf2m257`), surfaced to the owner.
+  **Still open when resuming:** (1) scoped Miri on `gf2m_wide` did not finish before a restart -
+  re-run `MIRIFLAGS=-Zmiri-disable-isolation PROPTEST_CASES=4 cargo +nightly miri test -p
+  dstu-core --features std --lib gf2m_wide -- --test-threads=1` (tens of CPU-minutes) and
+  replace D-223's "interrupted" Miri sentence with the result; (2) the closing advisor review
+  of T-273 has not run; (3) owner question on T-290's disclosure not yet answered.
+- **Next:** T-278, T-283 and the
   T-242/T-246 leftovers. T-284 is deferred to 0.6.0 (owner choice B). The embargo still
   holds: do not push `ux-0.5.0` before 0.5.0 ships T-272's fix.
 - **When resuming:**

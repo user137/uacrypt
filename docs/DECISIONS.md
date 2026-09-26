@@ -5003,6 +5003,9 @@ sections and its new "10 MiB re-measurement pass" subsection.
 
 ## D-76 continued: T-125's own GCM/GMAC finding, root-caused and fixed the same day
 
+**Superseded 2026-09-26 by D-223 (T-273):** the comb below indexed its table with the secret
+GHASH key; the production multiply is now a masked 4-bit window, and the comb is a test oracle.
+
 Requested as a direct follow-up ("continue the investigation where we still lag by a multiple") -
 of the gaps left in this file's first half, T-125's own Kalyna-GCM 256-256/256-512 anomaly (~2.1-2.2x
 at 1 MiB) was the only one still genuinely multiple-fold and unexplained; the core-round-function gap
@@ -12333,6 +12336,10 @@ hardware-level claim about either path.
 `--no-default-features`, `-p dstu-core --no-default-features --features getrandom`) - all clean on
 both the dev machine and the (re-synced) Raspberry Pi.
 
+**Addendum 2026-09-26 (T-273, D-223, T-280(d)):** "the software path it falls back to never had one
+either" was true for `gf2m163` and false for `gf2m_wide`, whose comb read `T[nibble]` indexed by
+the secret operand. D-223 replaced it with a masked, asm-checked multiply.
+
 ## D-185: T-199 (planned) - `m=257` chosen as the second DSTU 4145 curve, on empirical evidence from real issued certificates, not a guess off the standard's own curve table
 
 > **Status (T-234, 2026-09-23):** DSTU 4145-2002 annex Г lists these `m = 257` parameters (`A = 0`, `B`, `n`, `x^257 + x^12 + 1`) exactly.
@@ -14817,3 +14824,60 @@ release build. The unfixed `verify_password` had the same path. `verify_context`
 `p > Params::MAX_P_COST` (RFC 9106's own ceiling, 2^24-1) before calling `Params::new`; a unit
 test with `p = u32::MAX` panicked before the fix. Re-run after it: 271 303 runs in 129 s, no crash
 (Windows MSVC toolchain, `.claude.local.md`'s recipe; not yet run in CI - branch unpushed).
+
+## D-223: T-273 - constant-time software multiply in `gf2m_wide` (2026-09-26) - D-220's O-A as implemented
+
+`hazmat::gf2m_wide::poly_mul_wide` is the software GF(2^m) multiply behind Kalyna-GCM/GMAC's GHASH,
+and so behind `crypto_secretbox`/`crypto_secretstream`/`crypto_box`, on every `no_std` build and on
+every CPU without PCLMULQDQ/PMULL. It no longer reads a table at an index taken from an operand.
+The output is byte-identical.
+
+**Technique (the fork D-220 left to T-273's plan):** a masked 4-bit window. For every nibble of `b`
+it reads all four rows `a`, `a<<1`, `a<<2`, `a<<3` (the comb's rows 1/2/4/8) and `XOR`s each in
+under an all-ones/all-zeros mask made from the matching bit. Each `b` word is walked with constant
+shifts only. In GHASH both operands are secret: `b` is `H`, and `a` is the accumulator, which
+depends on `H` after the first block. So the property is "no branch and no memory index derived
+from either operand". Rejected: a masked scan of all 16 comb rows per nibble. It would not leak
+either, but it costs 16 row reads per nibble against 4.
+
+**The mask alone was not enough (asm finding):** the first version used the same
+`0u64.wrapping_sub(bit)` idiom as `gf2m163::poly_mul_wide`. It compiled to conditional branches on
+the operand bits: `bmi`/`bpl` on thumbv7em-none-eabihf, and `btq` + `jb`/`jns` on x86_64 (release
+builds). LLVM proves the mask is 0 or all-ones, turns `x & mask` back into a select, and then turns
+the select into a branch. The four masks of each nibble now pass through `core::hint::black_box`,
+one barrier per nibble. After that change, the release asm of `poly_mul_wide` for all three field
+sizes contains only loop back-edges (`subs`/`decl`/`addi` of a fixed counter, or a `cmp` of the
+`b` iterator pointer) and no load indexed by operand data. This holds on x86_64,
+thumbv7em-none-eabihf and riscv32imc-unknown-none-elf. The last is ESP32-C3, which has no `cmov`
+and no IT predication, so any select there would show up as a branch. `poly_mul_wide` is
+`#[inline(never)]`, so the checked symbol is the one that ships.
+- `black_box` is documented as best effort, not a security guarantee. The same is true of
+  `subtle`'s default `read_volatile` barrier (`default-features = false` here), which would also
+  cost a memory round trip per bit. The claim therefore rests on the asm check, done with rustc
+  1.97.1. Repeat it after a toolchain bump: `RUSTFLAGS="--emit=asm -C debuginfo=0" cargo build
+  --release -p dstu-core --lib --no-default-features --target <target>`, then read the three
+  `poly_mul_wide` symbols.
+- This is constant-time discipline, not a side-channel-resistance claim (`CLAUDE.md`).
+
+**Tests:** the old comb stays as `poly_mul_wide_comb_reference` (`#[cfg(test)]`). The new
+`poly_mul_wide_matches_comb_reference` proptest and four extreme operand pairs compare against it;
+both failed on a zero stub first. `multiply_matches_explicit_software_path` still checks the
+software path against hardware clmul. The field-axiom tests and the GCM/GMAC/XTS KATs pass
+unchanged. Scoped Miri: started 2026-09-26 (`MIRIFLAGS=-Zmiri-disable-isolation`, `PROPTEST_CASES=4`, `--lib gf2m_wide`), interrupted by a session restart before it finished - re-run it before closing T-273.
+
+**Cost:** `isolated_timing_poly_mul_wide_constant_time_vs_comb` (release, x86_64 dev machine, both
+versions in one binary, two runs):
+
+| Field | Comb (ns/op) | Constant-time (ns/op) | Ratio |
+|---|---|---|---|
+| m=128 | 130-134 | 175 | 1.30-1.34x |
+| m=256 | 477-481 | 665-668 | 1.39x |
+| m=512 | 2118-2125 | 2525-2542 | 1.19-1.20x |
+
+There is no binary-level (D-34) number. The dev machine has PCLMULQDQ and the Pi (Cortex-A76) has
+PMULL, so `uacrypt` never runs this path on either. The slowdown is accepted under O-A.
+
+**Found on the way, not fixed here (T-290):** the same asm pass shows a `btq` + `jae` pair in
+`gf2m163`/`gf2m257`'s `FieldElement::multiply` on x86_64 (the DSTU 4145 software path, taken
+without PCLMULQDQ), not yet traced to its source. It is the idiom this entry found unsafe on its
+own.
