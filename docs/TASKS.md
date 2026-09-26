@@ -9601,24 +9601,26 @@ points at the machine state rather than a GCM-specific regression, but that is n
   "hash_bits"`; .NET: `KeyNotFoundException`. **0.4.0 impact:** `1c87f53` is on local `master`
   but not pushed (`origin/master` is `f8bf046`, the last green `oracle-harness` run), and
   `oracle-harness.yml` runs on every push to `master` with no path filter, so pushing `master` for
-  0.4.0 turns it red. The owner decides which branch gets the fix. Direction: skip (or handle) the
+  0.4.0 turns it red. **Branch (D-221):** fix on `master` in the 0.4.0 release prep, together
+  with the T-270 cherry-pick, then cherry-pick it to `ux-0.5.0`. Direction: skip (or handle) the
   bit-length file by its `algorithm` field; first check whether BC can express bit-length messages
   at all. Effort S.
 - [ ] **T-289** (Low, qa - local gate, **Confirmed** 2026-09-26, same run; depends: none) Three
   binding layers fail locally for reasons that live on this machine, not in the bindings; before
   T-243 they were hidden:
-  - `nodejs`: E0514, because the napi CLI inherits `CARGO` from the `cargo xtask` process
-    (`.claude.local.md`). `run()` already strips `RUSTUP_TOOLCHAIN` for a binding `dir` (D-146);
-    also stripping `CARGO` would fix it in xtask itself.
+  - ~~`nodejs`: E0514, because the napi CLI inherits `CARGO` from the `cargo xtask` process~~
+    **Fixed 2026-09-26 (D-221):** `run()` now strips `CARGO` as well as `RUSTUP_TOOLCHAIN`;
+    `cargo xtask nodejs` gives 95 pass / 0 fail.
   - `python`: pytest imports a globally installed PyPI `dstu_core` 0.1.1 (Python313 site-packages,
     2026-08-31) instead of the `maturin develop` build: 9 failures, all stream-format ones.
   - `ruby`: `rb-sys` bindgen `strings.h` not found, because `LIBCLANG_PATH` is unset
     (`.claude.local.md`, D-133).
   - `cpp` (after T-279 added it): `ctest` exits `0xc0000139` (entry point not found) when `ci` is
     started from Git Bash; the same `ctest` passes from PowerShell (the MinGW-launch issue, T-181).
-  - Also: `miri` always shows as skipped locally, because `require("cargo-miri")` probes the pinned
-    `stable`. A fixed probe makes local `ci` run the ~10 h `miri --workspace` (D-172), so the
-    owner decides: fix the probe and scope the layer, or keep it as a documented skip.
+  - ~~`miri` always skipped because of a wrong probe~~ **Decided 2026-09-26 (D-221):** `ci` skips
+    Miri on purpose, with a message (~10 h, D-172; CI's per-crate jobs are the gate). The
+    `cargo xtask miri [pkg]` probe now uses `cargo +nightly miri --version`.
+  - Still open (machine setup, not code): `python`, `ruby`, `cpp` above.
 - Attached to existing tasks (no new IDs):
   - **T-246**: `kalyna_gcm.rs:103` has an unlinted `.try_into().unwrap()` inside `macro_rules!`,
     the same class as its `kupyna_kdf.rs:36` `.expect` item.
@@ -9853,9 +9855,12 @@ work and never touches the 0.4.0 release on `master`). Fit this batch into the U
   closing table shows each optional layer. **Exit 1 is expected on this machine** until T-288 (a
   real oracle-harness bug, and a 0.4.0 release-day risk) and T-289 (local environment) are fixed.
   `cpp` also depends on the launching shell (fails from Git Bash, passes from PowerShell).
-- **Next:** step 2 (T-272, then T-273, each in plan mode + advisor), after the owner answers the
-  step-1 forks (T-270 cherry-pick to `master`, T-288's branch, T-289's Miri probe and `CARGO`
-  strip, local MSRV/aarch64 layers). T-284 is deferred to 0.6.0 (owner choice B). The embargo still
+- **Step-1 forks resolved 2026-09-26 (delegated, D-221):** T-288 and the T-270 cherry-pick go
+  to `master` in the 0.4.0 release prep (not done yet; that is 0.4.0 work, outside the merged
+  plan); Miri is a deliberate skip in `ci`; the `CARGO` strip is done; no local MSRV/aarch64
+  layers.
+- **Next:** step 2 (T-272, then T-273, each in plan mode + advisor). T-284 is deferred to 0.6.0
+  (owner choice B). The embargo still
   holds: do not push `ux-0.5.0` before 0.5.0 ships T-272's fix.
 - **When resuming:**
   - Read this section and the owner's answers.

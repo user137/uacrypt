@@ -156,6 +156,9 @@ fn run(base: &str, args: &[&str], dir: Option<&Path>) -> bool {
     if let Some(dir) = dir {
         command.current_dir(dir);
         command.env_remove("RUSTUP_TOOLCHAIN");
+        // Same inheritance problem for `CARGO`: the napi CLI calls whatever it names (stable-gnu,
+        // this process's cargo) while the directory override picks another rustc - E0514 (T-289).
+        command.env_remove("CARGO");
     }
     println!("+ {base} {}", args.join(" "));
     command.status().is_ok_and(|s| s.success())
@@ -279,11 +282,19 @@ fn clippy() -> bool {
 /// alongside it (docs/TASKS.md T-175 - a stuck `dstu-core-capi` test was indistinguishable from
 /// the rest of a `--workspace` run until picked apart by hand).
 fn miri(package: Option<&str>) -> bool {
-    if !require(
-        "cargo-miri",
-        "rustup component add miri --toolchain nightly",
-    ) {
-        return false;
+    // Probed through `+nightly`: a bare `cargo-miri --version` resolves to the repo's pinned
+    // `stable`, which never has miri, so this always skipped (T-289).
+    let installed = Command::new("cargo")
+        .args(["+nightly", "miri", "--version"])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_ok_and(|s| s.success());
+    if !installed {
+        return skip(
+            "xtask: miri not installed for nightly - skipping.\n  install with: rustup component \
+             add miri --toolchain nightly",
+        );
     }
     match package {
         Some(pkg) => run("cargo", &["+nightly", "miri", "test", "-p", pkg], None),
@@ -1516,7 +1527,11 @@ fn ci() -> bool {
     }
 
     println!("\nMandatory checks passed. Running optional layers best-effort:\n");
-    let optional_miri: fn() -> bool = || miri(None);
+    // A deliberate skip, not a missing tool: `miri --workspace` takes ~10 h (D-172), too long for a
+    // local gate. CI's per-crate miri jobs are the gate; run `cargo xtask miri <pkg>` by hand (T-289).
+    let optional_miri: fn() -> bool = || {
+        skip("xtask: ci does not run miri (~10 h for the workspace, D-172) - run `cargo xtask miri <pkg>`")
+    };
     let layers: [Layer; 21] = [
         ("miri", optional_miri),
         ("kani", kani),

@@ -14741,3 +14741,26 @@ implementing task cites them (research-before-implementation rule).
   - `SecretStreamDecryptor.close()` closes its source the same way.
   - No `leaveOpen` flag: `java.io` has none (callers who need one wrap the sink themselves).
   - Nothing breaks for users - the Java binding is not published yet (T-164).
+
+## D-221: Merged-plan step 1 forks (2026-09-26) - delegated to Claude
+
+**Owner, 2026-09-26:** "your choice" on the five forks step 1 left open (T-270, T-288, T-289,
+T-279). Tie-break: the project's own rules first, then safety, then compatibility.
+
+- **T-288 lands on `master`, in the 0.4.0 release prep, then is cherry-picked to `ux-0.5.0`.**
+  `1c87f53` (T-234) is on local `master`, and `oracle-harness.yml` runs on every push to `master`,
+  so the 0.4.0 push would otherwise turn it red. The fix is a test-harness change only, with no
+  disclosure content, so the embargo does not stop it. Not implemented in step 1.
+- **T-270 is cherry-picked to `master` in the same pass** (the cast fix plus `rust.yml`'s aarch64
+  cross-clippy step). The original reason, broken CI, was wrong. It still goes over because it is
+  harmless and gives `master` the same aarch64 lint gate.
+- **Miri in local `ci`: a deliberate skip with a message, not a run.** `miri --workspace` takes
+  ~10 h (D-172), which is not a local gate. CI's per-crate Miri jobs stay the gate. The standalone
+  `cargo xtask miri [pkg]` probe now checks `cargo +nightly miri --version`. The old
+  `cargo-miri --version` resolved to the pinned `stable` and always skipped.
+- **xtask's `run()` also removes `CARGO` for a binding directory**, like `RUSTUP_TOOLCHAIN`
+  (D-146). This fixes the Node E0514 inside xtask instead of a manual `env -u CARGO`. Verified:
+  `cargo xtask nodejs` 95 pass / 0 fail; `java` and `go` still pass.
+- **No local MSRV or aarch64 cross-clippy layer.** This host has only the MSVC 1.87 toolchain, so
+  an MSRV layer would always skip. The aarch64 lint needs an extra rustup target. `rust.yml`
+  runs both on every push, and a duplicate local layer adds no coverage.
