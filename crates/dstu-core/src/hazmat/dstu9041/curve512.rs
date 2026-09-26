@@ -14,7 +14,8 @@
 //! (`n*candidate == NEUTRAL`) that catches order-4 points too, independent of locating one by
 //! coordinates.
 
-use super::fp512::{sbb, FieldElement};
+use super::fp512::FieldElement;
+use crate::hazmat::limb::sbb;
 
 const BASE_X: [u8; 64] = [
     0x52, 0x30, 0xA1, 0xEE, 0x74, 0x70, 0x50, 0xA0, 0x72, 0xBD, 0x73, 0x19, 0x74, 0x15, 0x86, 0xEA,

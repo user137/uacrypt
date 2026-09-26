@@ -145,6 +145,17 @@ All notable changes to this project are documented in this file. Format follows
     x86_64, thumbv7em, riscv32imc and aarch64. Output is unchanged.
   - `crypto_box` is about 1.57x slower and `crypto_box512` about 1.19x slower. The software
     GF(2^m) multiply is about 1.7x faster.
+- **Secret-dependent branches removed from 64-bit carry arithmetic on 32-bit RISC-V** (0.5.0,
+  T-291, `docs/DECISIONS.md` D-226/D-227).
+  - RV32 has no conditional select. On riscv32 (ESP32-C3 class, `no_std`), every carry and borrow
+    in the 64-bit limb arithmetic compiled to a branch on limb data. That covered the prime-field
+    add, sub and multiply behind `crypto_box`/`crypto_box512`, and the DSTU 4145 scalar add and
+    multiply behind `crypto_sign`/`crypto_sign257` (`s = e + d*r`, with the signing key `d`).
+  - Carries and borrows are now computed with bitwise operations only, the same code on every
+    target. Checked in release asm on x86_64, thumbv7em, riscv32imc and aarch64, and on riscv32imc
+    and thumbv7em also at `opt-level` `s` and `z`. Output is unchanged.
+  - `crypto_box`/`crypto_box512` are about 2x slower on x86_64 on top of T-290's cost. Signing is
+    unchanged.
 - **Breaking wire-format change (0.4.0).** `crypto_secretbox` and `crypto_secretstream` now bind
   each ciphertext's true length into its authentication tag, and `crypto_secretstream`'s
   `PullState::pull` accepts only a full 16-byte tag. This closes an integrity weakness in earlier

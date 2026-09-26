@@ -10,6 +10,8 @@
 //! sibling module, not a generic-over-width one, per this project's existing `gf2m163`/`fp256`
 //! precedent of one fixed-width type per field rather than premature generics.
 
+use crate::hazmat::limb::{adc, mac, sbb};
+
 /// `p`'s limbs, little-endian (`P_LIMBS[0]` is the least-significant 64 bits).
 const P_LIMBS: [u64; 8] = [
     0xFFFF_FFFF_FFFF_FC95,
@@ -62,20 +64,6 @@ const P_PLUS_3_OVER_8: [u8; 64] = [
 pub struct FieldElement([u64; 8]);
 
 #[inline]
-fn adc(a: u64, b: u64, carry_in: u64) -> (u64, u64) {
-    let (s1, c1) = a.overflowing_add(b);
-    let (s2, c2) = s1.overflowing_add(carry_in);
-    (s2, u64::from(c1) | u64::from(c2))
-}
-
-#[inline]
-pub(crate) fn sbb(a: u64, b: u64, borrow_in: u64) -> (u64, u64) {
-    let (d1, b1) = a.overflowing_sub(b);
-    let (d2, b2) = d1.overflowing_sub(borrow_in);
-    (d2, u64::from(b1) | u64::from(b2))
-}
-
-#[inline]
 #[allow(clippy::needless_range_loop)]
 #[allow(clippy::many_single_char_names)]
 fn add_limbs(a: [u64; 8], b: [u64; 8]) -> ([u64; 8], u64) {
@@ -113,16 +101,13 @@ fn conditional_sub_p(x: [u64; 8]) -> [u64; 8] {
 /// `a * c` for a small constant `c < 2^16`, returning the low 512 bits plus a tiny overflow limb.
 #[inline]
 #[allow(clippy::needless_range_loop)]
-#[allow(clippy::cast_possible_truncation)]
 fn mul_small(a: [u64; 8], c: u64) -> ([u64; 8], u64) {
     let mut r = [0u64; 8];
-    let mut carry: u128 = 0;
+    let mut carry = 0u64;
     for i in 0..8 {
-        let sum = u128::from(a[i]) * u128::from(c) + carry;
-        r[i] = sum as u64;
-        carry = sum >> 64;
+        (r[i], carry) = mac(0, a[i], c, carry);
     }
-    (r, carry as u64)
+    (r, carry)
 }
 
 /// Schoolbook 8x8-limb multiply producing a 16-limb (1024-bit) wide product. Carry propagation
@@ -130,23 +115,19 @@ fn mul_small(a: [u64; 8], c: u64) -> ([u64; 8], u64) {
 /// a public loop position, not secret data) - no early exit.
 #[inline]
 #[allow(clippy::needless_range_loop)]
-#[allow(clippy::cast_possible_truncation)]
 fn wide_mul(a: [u64; 8], b: [u64; 8]) -> [u64; 16] {
     let mut r = [0u64; 16];
     for i in 0..8 {
-        let mut carry: u128 = 0;
+        let mut carry = 0u64;
         for j in 0..8 {
             let idx = i + j;
-            let sum = u128::from(r[idx]) + u128::from(a[i]) * u128::from(b[j]) + carry;
-            r[idx] = sum as u64;
-            carry = sum >> 64;
+            (r[idx], carry) = mac(r[idx], a[i], b[j], carry);
         }
         let mut idx = i + 8;
-        let mut c = carry as u64;
+        // `carry` may be any `u64` here: it goes in as `adc`'s addend, not its carry-in.
+        let mut c = carry;
         while idx < 16 {
-            let sum = u128::from(r[idx]) + u128::from(c);
-            r[idx] = sum as u64;
-            c = (sum >> 64) as u64;
+            (r[idx], c) = adc(r[idx], c, 0);
             idx += 1;
         }
     }

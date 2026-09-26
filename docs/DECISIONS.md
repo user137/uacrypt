@@ -15036,3 +15036,51 @@ loops; the `u128` product itself (`mul`/`mulhu`) is branch-free. Affected on ris
   run it. Accepted cost: the spike's `wide_mul` is ~2.3x slower on x86_64 (noisy, measured with a
   test run in parallel); the real `crypto_box` number is measured after the fix. T-293 may win some
   back.
+
+## D-227: T-291 - bitwise carries in `hazmat::limb` (2026-09-26)
+
+**Fix.** New `pub(crate)` module `hazmat/limb.rs`: `adc`/`sbb` compute the carry/borrow-out as the
+bit-63 majority `((a & b) | ((a | b) & !s)) >> 63` / `((!a & b) | ((!a | b) & d)) >> 63` (valid
+for a carry-in of 0 or 1, `debug_assert`ed), and `mac(r, a, b, carry)` is the `u128` product plus
+two such adds (the high word cannot overflow: `(2^64-1)^2 + 2(2^64-1) = 2^128-1`). They replace
+the local `adc`/`sbb` and every `u128` sum in `fp256`/`fp512` (`add_limbs`, `conditional_sub_p`,
+`add`/`sub`, `mul_small`, `wide_mul` and its tail) and `scalar`/`scalar257` (`add`/`sub`/`mul`);
+`curve256`/`curve512` import `sbb` from `limb`. One code path on every target (D-226 design (1)).
+
+**No `black_box` in `limb.rs`, on purpose.** This departs from D-225's "barrier kept as a margin"
+policy: there is no compare left for LLVM to lower, and a barrier in the multiply loop would add a
+store/load per limb product. The risk is a future LLVM folding the majority formula back into an
+`icmp`. T-292's asm check is the guard, and its matrix includes `opt-level` `s`/`z`.
+
+**Asm check** (D-225's recipe, rustc 1.97.1, baseline from a `git worktree` at `a513a66`):
+- riscv32imc at `opt-level` 3, `s` and `z`: zero `beq X,Y` + `sltu _,X,Y` carry shapes (was 4-48
+  per function), and no `__multi3`/`__muldi3` calls. Per function at O3: `fp256::add` 5 -> 0,
+  `multiply` 33 -> 2; `fp512` add 9 -> 0, sub 8 -> 0, multiply 35 -> 2; `ProjectivePoint::add`
+  31/32 -> 0; `scalar::multiply` 17 -> 3, `scalar257::multiply` 52 -> 5, `scalar257` `Add` 15 -> 1.
+- Every remaining jump in the touched functions was read: loop counters, the reduction's bit and
+  limb indices, `wide_mul`'s tail index (8/16/24, no longer unrolled), `from_candidate_bytes`'s
+  final `Some`/`None` (public rejection), and `signature::sign`'s spec retry checks and `Option`
+  tags. None tests limb data.
+- thumbv7em/x86_64/aarch64: the only new jumps are `wide_mul`'s tail index in `fp256::multiply`
+  (0 -> 3/4) and one more counter jump in `scalar257::multiply`; read, public. thumbv7em's two
+  `scalar257::multiply` jumps left open by T-291's trace are the bit counter (`cmp r9,#1; bhi`) and
+  the limb counter.
+
+**Tests.** `limb.rs` tests written first and seen failing: an edge grid {0, 1, 2^63-1, 2^63,
+MAX-1, MAX} against a `u128` reference (`mac` over all four inputs, 1296 cases), the all-`MAX`
+`mac` extreme, proptests for all three, and a `debug_assert` misuse test per carry-in
+(`cfg(debug_assertions)`). The error-path category is foreclosed (pure arithmetic, no I/O). The
+existing KATs, Додаток Г worked examples and field/scalar proptests pass unchanged.
+
+**Cost.** Release, in-process, x86_64 dev machine, internal regression numbers per D-34's
+allowance (two interleaved runs, a Miri run in parallel, so noisy):
+
+| Operation | Before (T-290) | After | Ratio |
+|---|---|---|---|
+| `crypto_box::seal` / `open` (1 KiB) | 485-516 / 824-872 us | 979-991 / 1632-1712 us | about 2x |
+| `crypto_box512::seal` / `open` | 2942-3218 / 5185-5249 us | 5969-6024 / 9691-9745 us | about 1.9x |
+| `crypto_sign` / `crypto_sign257` sign | 68-74 / 181-189 us | 67-74 / 191-193 us | unchanged (noise) |
+
+The cost is the MAC: on x86_64 `u128` sums were `add`/`adc`, the majority formula is several
+bitwise ops per carry. The owner accepted about 2x (D-226). T-293 does not reach it (no barrier
+here); any win-back needs its own plan.

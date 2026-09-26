@@ -17,7 +17,8 @@
 //! formula has no exceptional/branching cases, so `scalar_multiply` is a fixed 256-iteration
 //! double-and-select loop with no early exit and no add/double distinction.
 
-use super::fp256::{sbb, FieldElement};
+use super::fp256::FieldElement;
+use crate::hazmat::limb::sbb;
 
 const BASE_X: [u8; 32] = [
     0x91, 0xF5, 0xD0, 0xE7, 0xE2, 0xD4, 0x17, 0xE3, 0x10, 0x8B, 0x13, 0xB0, 0x75, 0xCD, 0xC7, 0x75,

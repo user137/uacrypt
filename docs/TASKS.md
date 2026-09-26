@@ -9659,8 +9659,8 @@ points at the machine state rather than a GCM-specific regression, but that is n
     (`crypto_box` has no hardware path), so D-224 fired a second time. Owner: same 0.5.0 advisory.
     curve/scalar/`double` traced clean; the barrier is kept as a margin. Cost: `crypto_box` 1.57x,
     `crypto_box512` 1.19x, `gf2m163` software 1.7x *faster*.
-- [ ] **T-291** (Medium, arch, **security-flagged**, **embargo-sensitive**; found by T-290's asm
-  pass; depends: none) On riscv32imc (ESP32-C3), LLVM lowers the `u64` carry/borrow compares in
+- [x] **T-291** (Medium, arch, **security-flagged**, **embargo-sensitive**; found by T-290's asm
+  pass; depends: none; **done 2026-09-26 on `ux-0.5.0`, D-227, not pushed**) On riscv32imc (ESP32-C3), LLVM lowers the `u64` carry/borrow compares in
   the limb arithmetic (`overflowing_add`/`overflowing_sub`) to `beq <hi>,<hi>` around an `sltu`,
   which is a branch on whether the high 32-bit halves of two limbs are equal (D-225). Seen in
   `fp256::add` (5 jumps left after T-290) and `multiply`; not yet traced across `fp512`,
@@ -9685,6 +9685,18 @@ points at the machine state rather than a GCM-specific regression, but that is n
     `apply_keystream` read - width dispatch, lengths, loop counters; `KupynaCore::finalize` not
     read. thumbv7em has none of this shape; `fp512::multiply`'s 8 are the loop index; 2 of
     `scalar257::multiply`'s 4 (`bhi.w`, `cmp r9,#0; bne.w`) are not yet attributed.
+  - **Plan (approved 2026-09-26, D-226):** new `pub(crate)` `hazmat/limb.rs` with `adc`/`sbb`
+    (majority formulas above, `carry_in` in {0,1}, `debug_assert`ed) and `mac(r, a, b, carry)` =
+    `u128` product + two `adc`s (bound `(2^64-1)^2 + 2(2^64-1) = 2^128-1`). They replace the local
+    `adc`/`sbb`/`u128` sums in `fp256`/`fp512` (`mul_small`, `wide_mul` incl. its tail) and in
+    `scalar`/`scalar257` (`add`/`sub`/`mul`); `curve256`/`curve512` import `sbb` from `limb`. No
+    `black_box` in `limb.rs` on purpose (no compare left; T-292 is the guard, `s`/`z` included).
+    Tests first: boundary grid {0, 1, 2^63-1, 2^63, MAX-1, MAX} vs a `u128` reference, proptest,
+    `debug_assert` misuse test under `cfg(debug_assertions)`. Verify: tests/clippy/fmt/`no_std`,
+    asm on 4 targets (riscv32imc/thumbv7em also at `s`/`z`) reading every remaining jump, scoped
+    Miri, x86_64 cost via a `git worktree` baseline, `cargo xtask test`, D-227, closing advisor.
+    Step 0 gate passed: at `opt-level` `s`/`z` the spike has no `__multi3` call and only loop
+    counters left.
   - **Scope grew:** DSTU 4145 scalar arithmetic (`add3`/`mul3`, the reduction behind
     `s = e + d*r`) is in, so `crypto_sign`/`crypto_sign257` on riscv32 `no_std`, not only
     `crypto_box`. Owner decides disclosure before the fix.
@@ -9695,6 +9707,8 @@ points at the machine state rather than a GCM-specific regression, but that is n
   D-225's recipe and fail on any conditional jump in the audited symbols (the `poly_mul_wide`s,
   `fp256`/`fp512` add/sub/multiply, the ladders) except known public ones, listed per symbol.
   This stops a toolchain bump from silently undoing D-223/D-225 (`black_box` is best effort).
+  Also D-227's `hazmat::limb` (no barrier at all there): riscv32imc/thumbv7em at `opt-level` `s`
+  and `z` too, not only O3, and fail on any `__multi3`/`__muldi3` call.
 - [ ] **T-293** (Low, perf; depends: T-290) A register-only barrier in place of `black_box`
   (`core::arch::asm!("", inout(reg) x, options(pure, nomem, nostack))` per supported arch, with
   `black_box` as the fallback) to win back `crypto_box`'s 1.57x (D-225). It adds `unsafe` and
@@ -9975,6 +9989,14 @@ work and never touches the 0.4.0 release on `master`). Fit this batch into the U
   `dstu-core --all-features`, fmt, clippy, docs-check already green) - re-run it; then scoped Miri
   (`dstu4145`/`dstu9041`/`gf2m_wide`, `PROPTEST_CASES=4`, background, D-164) and the closing advisor
   review. Then (owner 2026-09-26): T-291 and T-292 in step 2, then T-278, T-283.
+- **Step 2, T-291 done (2026-09-26, local, not pushed):** D-226 (owner: 0.5.0 + widened advisory,
+  one code path) and D-227 (`hazmat::limb` bitwise carries; riscv32 carry branches 0 at O3/`s`/`z`;
+  `crypto_box` about 2x slower on x86_64). T-290's full `cargo xtask test` re-run was green
+  (146 suites). **Pending at commit:** T-290's scoped Miri (running), T-291's scoped Miri
+  (`limb`/`fp256`/`fp512`/`scalar`), T-291's full `cargo xtask test`, both closing advisor
+  reviews. Then: T-292, then T-278, T-283. Owner request 2026-09-26: after T-291, find why
+  `cargo clippy --workspace --all-features --all-targets -- -D warnings` fails with 379 errors in
+  `uacrypt`'s test targets (`xtask clippy` does not pass `--all-targets`) and fix it.
 - **Next:** T-278, T-283 and the
   T-242/T-246 leftovers. T-284 is deferred to 0.6.0 (owner choice B). The embargo still
   holds: do not push `ux-0.5.0` before 0.5.0 ships T-272's fix.

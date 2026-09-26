@@ -13,6 +13,7 @@
 //! `gf2m163`'s field reduction.
 
 use super::curve163;
+use crate::hazmat::limb::{adc, mac, sbb};
 use zeroize::Zeroize;
 
 // Not `ZeroizeOnDrop`: `Scalar` is `Copy` and used by-value pervasively (arithmetic ops, hazmat
@@ -124,10 +125,7 @@ fn add3(a: [u64; 3], b: [u64; 3]) -> ([u64; 3], u64) {
     let mut out = [0u64; 3];
     let mut carry = 0u64;
     for i in 0..3 {
-        let (s1, c1) = a[i].overflowing_add(b[i]);
-        let (s2, c2) = s1.overflowing_add(carry);
-        out[i] = s2;
-        carry = u64::from(c1) + u64::from(c2);
+        (out[i], carry) = adc(a[i], b[i], carry);
     }
     (out, carry)
 }
@@ -137,10 +135,7 @@ fn sub3(a: [u64; 3], b: [u64; 3]) -> ([u64; 3], u64) {
     let mut out = [0u64; 3];
     let mut borrow = 0u64;
     for i in 0..3 {
-        let (d1, b1) = a[i].overflowing_sub(b[i]);
-        let (d2, b2) = d1.overflowing_sub(borrow);
-        out[i] = d2;
-        borrow = u64::from(b1) + u64::from(b2);
+        (out[i], borrow) = sbb(a[i], b[i], borrow);
     }
     (out, borrow)
 }
@@ -161,17 +156,14 @@ fn cond_sub_if_ge(a: [u64; 3], b: [u64; 3]) -> [u64; 3] {
 
 /// 3-limb by 3-limb schoolbook multiplication into 6 limbs (real carrying arithmetic, unlike
 /// `gf2m163`'s carryless `poly_mul_wide`).
-#[allow(clippy::cast_possible_truncation)] // deliberate: low 64 bits of a u128 partial product
 fn mul3(a: [u64; 3], b: [u64; 3]) -> [u64; 6] {
     let mut out = [0u64; 6];
     for i in 0..3 {
-        let mut carry = 0u128;
+        let mut carry = 0u64;
         for j in 0..3 {
-            let product = u128::from(a[i]) * u128::from(b[j]) + u128::from(out[i + j]) + carry;
-            out[i + j] = product as u64;
-            carry = product >> 64;
+            (out[i + j], carry) = mac(out[i + j], a[i], b[j], carry);
         }
-        out[i + 3] = carry as u64;
+        out[i + 3] = carry;
     }
     out
 }

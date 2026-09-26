@@ -24,5 +24,6 @@ pub mod kalyna_xts;
 pub mod kupyna;
 pub mod kupyna_kdf;
 pub mod kupyna_kmac;
+mod limb;
 pub mod strumok;
 mod tables;
