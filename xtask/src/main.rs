@@ -11,6 +11,7 @@
 use std::env;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 mod bench;
 
@@ -164,7 +165,21 @@ pub(crate) fn require(tool: &str, install_hint: &str) -> bool {
     if tool_available(tool) {
         return true;
     }
-    eprintln!("xtask: '{tool}' not found on PATH - skipping.\n  install with: {install_hint}");
+    skip(&format!(
+        "xtask: '{tool}' not found on PATH - skipping.\n  install with: {install_hint}"
+    ))
+}
+
+/// Set by [`skip`]: the command returning `false` did so because a tool or platform is missing,
+/// not because a check failed. `ci()` clears it before each optional layer (T-243). Every caller
+/// returns `false` straight after `skip()`, so no later real failure in the same layer can be
+/// reported as a skip. Only a genuinely absent tool/platform may call it; anything else is a
+/// failure, since a false "failed" gets noticed and a false "skipped" is the bug T-243 fixed.
+static SKIPPED: AtomicBool = AtomicBool::new(false);
+
+fn skip(message: &str) -> bool {
+    eprintln!("{message}");
+    SKIPPED.store(true, Ordering::Relaxed);
     false
 }
 
@@ -269,13 +284,12 @@ fn miri(package: Option<&str>) -> bool {
 fn kani() -> bool {
     #[cfg(windows)]
     {
-        eprintln!(
+        skip(
             "xtask: 'cargo kani' does not support Windows - kani-verifier's own source requires \
              Unix-only std APIs, confirmed by trying to install it here (docs/DECISIONS.md D-102). \
              CI (Linux) is the actual, unconditional venue for this - see the `kani` job in \
-             rust.yml."
-        );
-        false
+             rust.yml.",
+        )
     }
     #[cfg(not(windows))]
     {
@@ -392,20 +406,18 @@ fn fuzz_windows_msvc() -> bool {
     use std::os::windows::process::CommandExt;
 
     let Some(vcvars) = find_vcvars64() else {
-        eprintln!(
+        return skip(
             "xtask: no Visual Studio C++ toolset found (vswhere.exe absent or reported nothing) \
              - skipping fuzz.\n  install: Visual Studio Build Tools, \"Desktop development with \
-             C++\" workload"
+             C++\" workload",
         );
-        return false;
     };
     const MSVC_TOOLCHAIN: &str = "nightly-x86_64-pc-windows-msvc";
     if !rustup_toolchain_installed(MSVC_TOOLCHAIN) {
-        eprintln!(
+        return skip(&format!(
             "xtask: rustup toolchain '{MSVC_TOOLCHAIN}' not installed - skipping fuzz.\n  install \
              with: rustup toolchain install {MSVC_TOOLCHAIN}"
-        );
-        return false;
+        ));
     }
     for target in FUZZ_TARGETS {
         let inner = format!(
@@ -731,24 +743,22 @@ fn php() -> bool {
     let dir = Path::new("bindings/php");
     let phpunit = dir.join("phpunit.phar");
     if !phpunit.is_file() {
-        eprintln!(
+        return skip(&format!(
             "xtask: '{}' not found - install with: curl -sL https://phar.phpunit.de/phpunit-11.phar -o {}",
             phpunit.display(),
             phpunit.display()
-        );
-        return false;
+        ));
     }
     // T-208: PHPStan, phar-based like phpunit.phar above (no Composer, D-144). Doesn't need the
     // compiled extension loaded (phpstan.neon's bootstrapFiles declare the dstu_core_* surface
     // itself), so it can run before/independent of the extension-build step below.
     let phpstan = dir.join("phpstan.phar");
     if !phpstan.is_file() {
-        eprintln!(
+        return skip(&format!(
             "xtask: '{}' not found - install with: curl -sL https://github.com/phpstan/phpstan/releases/latest/download/phpstan.phar -o {}",
             phpstan.display(),
             phpstan.display()
-        );
-        return false;
+        ));
     }
 
     let build_ok = run("cargo", &["build", "-p", "uacrypt", "--release"], None)
@@ -1048,12 +1058,11 @@ fn capi_compile_msvc(
     use std::os::windows::process::CommandExt;
 
     let Some(vcvars) = find_vcvars64() else {
-        eprintln!(
+        return skip(
             "xtask: no Visual Studio C++ toolset found (vswhere.exe absent or reported nothing) \
              - skipping capi C harness/examples.\n  install: Visual Studio Build Tools, \"Desktop \
-             development with C++\" workload"
+             development with C++\" workload",
         );
-        return false;
     };
     let exe_path = out_dir.join(format!("{exe_stem}.exe"));
     let inner = format!(
@@ -1493,26 +1502,105 @@ fn ci() -> bool {
 
     println!("\nMandatory checks passed. Running optional layers best-effort:\n");
     let optional_miri: fn() -> bool = || miri(None);
-    for optional in [
-        optional_miri,
-        kani,
-        book,
-        fuzz,
-        audit,
-        deny,
-        oracle_java,
-        oracle_dotnet,
-        python,
-        nodejs,
-        ruby,
-        php,
-        capi,
-        cpp_clang_tidy,
-        cpp_cppcheck,
-        qemu_stm32,
-        streaming_bounded,
-    ] {
-        optional();
+    let layers: [Layer; 17] = [
+        ("miri", optional_miri),
+        ("kani", kani),
+        ("book", book),
+        ("fuzz", fuzz),
+        ("audit", audit),
+        ("deny", deny),
+        ("oracle-java", oracle_java),
+        ("oracle-dotnet", oracle_dotnet),
+        ("python", python),
+        ("nodejs", nodejs),
+        ("ruby", ruby),
+        ("php", php),
+        ("capi", capi),
+        ("cpp-tidy", cpp_clang_tidy),
+        ("cpp-cppcheck", cpp_cppcheck),
+        ("qemu-stm32", qemu_stm32),
+        ("streaming-bounded", streaming_bounded),
+    ];
+    let mut results = Vec::with_capacity(layers.len());
+    for (name, layer) in layers {
+        SKIPPED.store(false, Ordering::Relaxed);
+        let ok = layer();
+        results.push((name, Outcome::of(ok, SKIPPED.load(Ordering::Relaxed))));
     }
-    true
+
+    println!("\nOptional layers:");
+    for (name, outcome) in &results {
+        println!("  {name:<18} {}", outcome.label());
+    }
+    let passed = no_failures(&results);
+    if !passed {
+        eprintln!("\nxtask: ci: at least one optional layer failed (see the table above)");
+    }
+    passed
+}
+
+/// One optional `ci()` layer: its name in the summary table, and the command itself.
+type Layer = (&'static str, fn() -> bool);
+
+/// Result of one optional `ci()` layer (T-243). Skipped means a tool or platform is missing,
+/// which a best-effort layer tolerates; Failed means the tool ran and a check did not pass.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Outcome {
+    Passed,
+    Skipped,
+    Failed,
+}
+
+impl Outcome {
+    fn of(ok: bool, skipped: bool) -> Self {
+        match (ok, skipped) {
+            (true, _) => Self::Passed,
+            (false, true) => Self::Skipped,
+            (false, false) => Self::Failed,
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Passed => "passed",
+            Self::Skipped => "skipped (tool or platform missing)",
+            Self::Failed => "FAILED",
+        }
+    }
+}
+
+fn no_failures(results: &[(&str, Outcome)]) -> bool {
+    results
+        .iter()
+        .all(|(_, outcome)| *outcome != Outcome::Failed)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{no_failures, Outcome};
+
+    #[test]
+    fn one_failed_layer_fails_the_run() {
+        let results = [
+            ("miri", Outcome::Passed),
+            ("php", Outcome::Failed),
+            ("kani", Outcome::Skipped),
+        ];
+        assert!(!no_failures(&results));
+    }
+
+    #[test]
+    fn skipped_layers_do_not_fail_the_run() {
+        let results = [("kani", Outcome::Skipped), ("book", Outcome::Passed)];
+        assert!(no_failures(&results));
+    }
+
+    #[test]
+    fn a_false_result_is_failed_unless_a_skip_was_recorded() {
+        assert_eq!(Outcome::of(true, false), Outcome::Passed);
+        assert_eq!(Outcome::of(false, true), Outcome::Skipped);
+        assert_eq!(Outcome::of(false, false), Outcome::Failed);
+        // A skip recorded by a sub-step that the layer then got past is not a skip.
+        assert_eq!(Outcome::of(true, true), Outcome::Passed);
+    }
 }

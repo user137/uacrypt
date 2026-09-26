@@ -8501,7 +8501,14 @@ which is exactly why the divergence was never caught.
   `#[derive(Debug)]` on `Scalar`/`Scalar257` (they carry `d`/`e`) and on the field-element types -
   redact or remove. Tests: a compile-fail doctest if `Debug` is removed; zeroization is otherwise
   review-only (record it as a `D-` finding per the "foreclosed by type/review" convention).
-- [ ] **T-243** (audit F-09, Low) `cargo xtask ci` discards every optional layer's result
+- [x] **T-243** (**done 2026-09-26 on `ux-0.5.0`**: `skip()` records a missing tool/platform
+  (`require()`, Kani on Windows, fuzz's vcvars/MSVC toolchain, PHP's phars, capi's vcvars); every
+  other `false` is Failed. `ci()` prints a per-layer passed/skipped/FAILED table and exits
+  non-zero on any Failed. Unit tests in `xtask` (new `rust.yml` step). Found while landing it,
+  not changed: local `ci` always reports Miri skipped, because `require("cargo-miri")` probes
+  the repo's pinned `stable`, which has no miri component, even when `cargo +nightly miri` works
+  - an owner fork, since a fixed probe makes local `ci` run the ~10 h `miri --workspace`, D-172)
+  (audit F-09, Low) `cargo xtask ci` discards every optional layer's result
   (`xtask/src/main.rs:1515`, `optional();`) and prints success even when miri/audit/capi/bindings
   actually *fail*, not only when a tool is missing. GitHub CI is unaffected (separate jobs). Fix: a
   tri-state per optional layer (passed / skipped-missing-tool / failed), non-zero exit on "failed",
