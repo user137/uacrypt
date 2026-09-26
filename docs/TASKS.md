@@ -10040,8 +10040,15 @@ work and never touches the 0.4.0 release on `master`). Fit this batch into the U
   (D-228). Scratch asm/bench trees live only in the session scratchpad (not needed to resume; D-225's
   recipe rebuilds them).
 - **Step 2, T-292 done (2026-09-26, local, not pushed):** D-229, `cargo xtask asm-check` (owner:
-  CI on every push, choice (b); no demangler dependency). The `rust.yml` job is unverified in CI
-  (embargo).
+  CI on every push, choice (b); no demangler dependency; then simplified to hard rules + 112
+  zero-jump rows, which no longer catches T-290's gf2m branch - accepted). The `rust.yml` job is
+  unverified in CI (embargo). Also `xtask/src/main.rs` rustfmt'd (T-294 leftover).
+- **State 2026-09-26 (second session end):** `ux-0.5.0` at the xtask rustfmt commit, clean tree,
+  nothing pushed. Open questions for the owner, not decided: (1) a count row for `gf2m::multiply`
+  only, to catch T-290's gf2m branch again (D-229's accepted cost); (2) `xtask fmt --check` and
+  `rust.yml` do not cover the separate `xtask` workspace (`cargo fmt --manifest-path
+  xtask/Cargo.toml --check`), which is how the T-294 drift got in. `.git/worktrees` holds ~20
+  stale entries that `git worktree prune` cannot delete (Permission denied), harmless.
 - **Next:** T-278, T-283 and the T-242/T-246 leftovers. T-284 is deferred to 0.6.0 (owner choice B). The
   embargo still holds: do not push `ux-0.5.0` before 0.5.0 ships T-272's fix; T-290/T-291 are
   under the same advisory (D-224/D-226).
