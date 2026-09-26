@@ -9908,11 +9908,9 @@ work and never touches the 0.4.0 release on `master`). Fit this batch into the U
 - **Step 2, T-273 done (2026-09-26, local, not pushed):** D-223. The plain mask compiled to
   branches, so a `black_box` barrier was added and the asm re-checked on three targets. New
   embargo-sensitive T-290 (the same idiom in `gf2m163`/`gf2m257`), surfaced to the owner.
-  **Still open when resuming:** (1) scoped Miri on `gf2m_wide` did not finish before a restart -
-  re-run `MIRIFLAGS=-Zmiri-disable-isolation PROPTEST_CASES=4 cargo +nightly miri test -p
-  dstu-core --features std --lib gf2m_wide -- --test-threads=1` (tens of CPU-minutes) and
-  replace D-223's "interrupted" Miri sentence with the result; (2) the closing advisor review
-  of T-273 has not run; (3) T-290's disclosure: delegated by the owner, decided in D-224.
+  Scoped Miri on `gf2m_wide`: 60 passed / 0 failed, 2348 s (D-223). T-290's disclosure was
+  delegated by the owner and decided in D-224. **Still open:** the closing advisor review of
+  T-273.
 - **Next:** T-278, T-283 and the
   T-242/T-246 leftovers. T-284 is deferred to 0.6.0 (owner choice B). The embargo still
   holds: do not push `ux-0.5.0` before 0.5.0 ships T-272's fix.

@@ -14863,7 +14863,8 @@ and no IT predication, so any select there would show up as a branch. `poly_mul_
 `poly_mul_wide_matches_comb_reference` proptest and four extreme operand pairs compare against it;
 both failed on a zero stub first. `multiply_matches_explicit_software_path` still checks the
 software path against hardware clmul. The field-axiom tests and the GCM/GMAC/XTS KATs pass
-unchanged. Scoped Miri: started 2026-09-26 (`MIRIFLAGS=-Zmiri-disable-isolation`, `PROPTEST_CASES=4`, `--lib gf2m_wide`), interrupted by a session restart before it finished - re-run it before closing T-273.
+unchanged. Scoped Miri (`MIRIFLAGS=-Zmiri-disable-isolation`, `PROPTEST_CASES=4`, `--lib gf2m_wide`): 60
+passed, 0 failed, 8 ignored, 2348 s.
 
 **Cost:** `isolated_timing_poly_mul_wide_constant_time_vs_comb` (release, x86_64 dev machine, both
 versions in one binary, two runs):
