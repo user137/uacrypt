@@ -14808,3 +14808,12 @@ error) and stay as misuse cases; the memory and work edges are unit-tested on `v
 directly, since a real hash at the bound costs 1 GiB. Not tested: `try_reserve_exact` failing for an
 accepted `m` (cannot be forced in a unit test), and a `data=` hash (no independent generator
 at hand; the parameter is rejected by name before use).
+
+**Fuzz finding (same day, before closing):** the new `crypto_pwhash_verify` target (T-225, structured
+PHC strings) crashed within seconds on `p >= 2^29`: `argon2` 0.5.3's `Params::new` computes
+`p_cost * 8` before its own `MAX_P_COST` check, which is an overflow panic wherever overflow checks
+are on (debug builds, fuzz builds) and a wrapped compare that `MAX_P_COST` then catches in a plain
+release build. The unfixed `verify_password` had the same path. `verify_context` now rejects
+`p > Params::MAX_P_COST` (RFC 9106's own ceiling, 2^24-1) before calling `Params::new`; a unit
+test with `p = u32::MAX` panicked before the fix. Re-run after it: 271 303 runs in 129 s, no crash
+(Windows MSVC toolchain, `.claude.local.md`'s recipe; not yet run in CI - branch unpushed).

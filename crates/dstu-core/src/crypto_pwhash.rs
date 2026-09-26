@@ -192,6 +192,9 @@ fn verify_context(
         || u64::from(m_cost) * u64::from(t_cost) > VERIFY_MAX_WORK
         || !(VERIFY_MIN_TAG_LEN..=argon2::password_hash::Output::MAX_LENGTH).contains(&tag_len)
         || salt_len < argon2::MIN_SALT_LEN
+        // `Params::new` computes `p_cost * 8` before its own `MAX_P_COST` check: an overflow panic
+        // with overflow checks on (T-272's fuzz target found it), so reject that range first.
+        || p_cost > Params::MAX_P_COST
     {
         return None;
     }
@@ -400,6 +403,10 @@ mod tests {
         assert!(!ok("argon2id", v19, (8, 1, 2), 32, 16), "RFC 9106: m >= 8p");
         assert!(!ok("argon2id", v19, (8, 0, 1), 32, 16));
         assert!(!ok("argon2id", v19, (8, 1, 0), 32, 16));
+        assert!(
+            !ok("argon2id", v19, (8, 1, u32::MAX), 32, 16),
+            "argon2's own 8p overflows"
+        );
         assert!(!ok("argon2d", v19, (8, 1, 1), 32, 16));
         assert!(!ok("argon2id", Some(0x10), (8, 1, 1), 32, 16));
         assert!(!ok("argon2id", None, (8, 1, 1), 32, 16));
