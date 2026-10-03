@@ -15265,3 +15265,24 @@ public jumps stay uncounted (D-229 unchanged).
 xtask/Cargo.toml --all`.** `xtask` is its own workspace, so `--all` never reached it; that is how
 T-294's drift got in. Checked: `fmt --check` exits 1 on a misformatted `xtask` line and 0 after
 restoring it. The `rust.yml` step is unverified in CI (embargo, D-224/D-226).
+
+## D-231: UAPKI 2.0.3 as a second oracle for the Kalyna GCM/GMAC/CCM/CMAC vectors (2026-10-03)
+
+**Context.** UAPKI rewrote its GCM/GMAC/CCM to the DSTU 7624:2014 text in uapkic 2.0.3 (`deffe4a`,
+2026-09-29), after our D-207 report. Before that, BC 1.85 could not confirm partial-block CCM
+(D-204/D-205), so 21 CCM edge cases with a non-empty AAD were "std transcription only". Owner,
+2026-10-03: add UAPKI 2.0.3 as an oracle, as a manual harness (not a CI layer).
+
+**Result.** `tests/oracle-harness/uapki-kalyna-modes/` (C harness + Python driver, pinned to UAPKI
+`main` `0bf2b68`) runs every `kalyna-{gcm,gmac,ccm,cmac}` vector file: 78/93 identical. All 15
+differences are CCM with an empty AAD: same ciphertext, different tag, because UAPKI reads §13.2's
+"B = G1" literally where we read `T(G1)` (D-205 (b), which BC 1.85 shares). The 21 non-empty-AAD
+CCM edge cases are now marked "std transcription + UAPKI 2.0.3". All GCM/GMAC partial-block vectors
+(D-204) and both CMAC paths match too. Empty CMAC input is rejected by us and accepted by UAPKI, so
+no vector covers it. `dstu7624_self_test` passes on that build (annex examples, incl. XTS/KW).
+
+**Independence.** Partial. UAPKI's rewrite came after our report, which described only the empty
+GCM/GMAC input and empty CMAC, not CCM and not the padding/length rules. Our fixed code was never
+public (embargo), so it could not have been copied. Its comments cite the standard's own formulas.
+Treat it as a second transcription of the same text, not as an unrelated oracle: it confirms our
+reading where the two agree, and the empty-AAD CCM case remains a reading question (D-205 (b)).

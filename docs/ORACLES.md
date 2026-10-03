@@ -114,6 +114,11 @@ comparable to all five other in-scope algorithms combined" framing, not just a p
     NIST-style and fails annex В.9.2 (CCM); its own CCM tests are block-aligned only. The
     partial-block GCM vectors still use BC's *GF multiplier*, over input that is already padded and
     aligned so BC's own padding doesn't apply (D-204).
+  - **UAPKI 2.0.3 (uapkic, 2026-09-29) now follows the text for GCM/GMAC/CCM** and confirms every
+    GCM/GMAC/CCM/CMAC vector except CCM with an empty AAD, which it reads as a literal "B = G1"
+    (78/93, `tests/oracle-harness/uapki-kalyna-modes/`, manual, not CI). It is a partly independent
+    second transcription, not an unrelated oracle (D-231). Older uapkic (≤ 2.0.2) is not an oracle
+    for these modes.
   - KW-p (В.11.x.3/4) vectors exist for a future `kalyna_kw_p` (T-253).
 - **Pseudocode:** `docs/pseudocode/kalyna.md` — transcribed from the paper below, cross-checked
   against the reference C oracle. Its k=2l key-schedule branch (originally ambiguous from the
