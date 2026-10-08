@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    dstu_core (0.1.0)
+    dstu_core (0.2.0)
 
 GEM
   remote: https://rubygems.org/
