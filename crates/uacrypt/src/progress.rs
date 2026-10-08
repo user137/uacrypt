@@ -222,7 +222,7 @@ mod tests {
             let mut p = Progress::new(&mut sink, None);
             p.advance(MIB, Instant::now());
         }
-        assert!(sink.is_empty());
+        assert_eq!(sink, [] as [u8; 0]);
     }
 
     #[test]

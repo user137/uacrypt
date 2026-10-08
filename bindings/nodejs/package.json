@@ -1,6 +1,6 @@
 {
   "name": "dstu-core",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": false,
   "description": "Node.js bindings for dstu-core (Ukrainian DSTU cryptographic standards)",
   "main": "js/index.js",

@@ -14,7 +14,7 @@ encryption) — in the spirit of **libsodium**: hard, safe defaults, hard to mis
 OpenSSL's flexible-but-easy-to-misconfigure API. Ships as a Rust crate (`dstu-core`), a CLI
 (`uacrypt`), and bindings for eight languages.
 
-<!-- uacrypt-version: 0.4.0 -->
+<!-- uacrypt-version: 0.5.0 -->
 **Pre-1.0. Not audited. Not a claim of side-channel resistance.** `dstu-core`/`uacrypt` are on
 [crates.io](https://crates.io/crates/dstu-core); the Python, Node.js, and Ruby bindings are on
 [PyPI](https://pypi.org/project/dstu-core/)/[npm](https://www.npmjs.com/package/dstu-core)/
