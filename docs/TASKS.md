@@ -9264,6 +9264,24 @@ Release:
   `hash --out`, and the passphrase commands `encrypt --passphrase`/`decrypt` asking, T-262) -
   and check the published book (`docs/CLI.md` "Key files")
   on the live site.
+- [ ] **T-295** Publish the `uacrypt` Windows binary to winget (owner request 2026-10-08), so
+  `winget install uacrypt` works. Not started; the "Homebrew / Scoop / winget" track noted under
+  T-209's gate, opened for winget only.
+  - Source: the `uacrypt-windows-x86_64.zip` asset `release.yml` already builds (MSVC,
+    `cargo auditable`, in the signed `SHA256SUMS`). winget installs a zip via
+    `InstallerType: zip` + `NestedInstallerType: portable` (adds `uacrypt.exe` to PATH, no MSI).
+  - Steps: pick the package identifier (e.g. `User137.uacrypt` - check the naming rules and that
+    it is free); write the manifests (version, defaultLocale, installer) against the 0.5.0 asset
+    URL and SHA256; validate with `winget validate` and `winget install --manifest` in a clean
+    Windows sandbox; open the PR to `microsoft/winget-pkgs` (outward step, owner confirms).
+  - Later releases: automate with `komac` or `wingetcreate update` in a `release.yml` job after
+    `publish-release`, behind its own environment approval (same dormant-first rule as the other
+    registries, `cipher_ua_publishing_runbook`); needs a GitHub token with fork/PR rights.
+  - Check first: winget's policy for unsigned binaries (SmartScreen / Defender submission - the
+    exe is not Authenticode-signed, only Sigstore-signed checksums), and whether a zip without an
+    installer needs `ArchiveBinariesDependOnPath`.
+  - Done when: `winget install <id>` on a clean machine gives a working `uacrypt --version`, and
+    `docs/CLI.md`/README list it as an install option.
 
 Every task: test-first, all four categories (happy path, security/boundary, misuse, error path);
 update `docs/CLI.md`, README quick start, both help texts, CHANGELOG `[Unreleased]`; docs-check.
