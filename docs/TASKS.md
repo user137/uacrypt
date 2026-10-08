@@ -8841,7 +8841,7 @@ and every binding suite: Ruby 101/101, Node 95/95, Python 100/100, .NET 151/151,
 - 0.4.0 is prepared locally, nothing pushed (embargo). Release commit `f83459d` (versions, T-252),
   `6433caf` (CHANGELOG placeholders). The CHANGELOG edit for release day is scripted:
   `python .claude/disclosure-drafts/finalize_changelog.py <date> <CVE T-232> <CVE D-207>`
-  (gitignored, dry-run tested on a copy). **No tag yet, on purpose**: `v0.4.0` goes on the commit
+  (gitignored, dry-run tested on a copy; now refuses to run off `master`). **No tag yet, on purpose**: `v0.4.0` goes on the commit
   that script produces, and pushing a tag starts the publish jobs.
 - Still waiting for two things (Miri on `crypto_secretstream` finished 2026-09-24 13:27: 28
   passed, 1 ignored, no UB, ~13 h): (2) CVE IDs for
@@ -8993,6 +8993,12 @@ Next, in order:
      `docs/COMPATIBILITY.md` has a UAPKI 2.0.3 column. BC: no reply yet. Owner posted a follow-up
      comment on that GHSA 2026-10-03 (CMAC still open - intentional? our table publishes 10-08).
      UAPKI 2.0.3 added as a manual oracle for the Kalyna mode vectors (D-231).
+   - **Release day 2026-10-08 (owner decisions):** the date rule is met (14 days; BC never
+     replied). Both GHSAs still had `cve_id` null after 14 days, so **0.4.0 ships without CVE IDs**:
+     the CHANGELOG cites the GHSA IDs only, the CVE requests stay open. **0.5.0 follows as it stands**
+     on `ux-0.5.0` (T-272/T-290/T-291 fixes + the UX batch); the unfinished merged-plan items move
+     to 0.6.0. Every outward step (push, tag, environment approval, advisory publication, RustSec PR)
+     is confirmed separately.
    - **T-252 signing:** Sigstore keyless.
    - **CVEs:** request a CVE for both advisories (T-232 and D-207).
    - **Draft advisories created 2026-09-24 (private, not published):** `GHSA-j2w3-628p-qw92` (T-232,

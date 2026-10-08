@@ -158,10 +158,19 @@ All notable changes to this project are documented in this file. Format follows
     unchanged.
   - CI now rebuilds this release asm on every push and fails if a compiler update brings such a
     branch back (`cargo xtask asm-check`, T-292, `docs/DECISIONS.md` D-229).
+- Kalyna-XTS tweak doubling (`gf2m_wide` `double()`) now applies its reduction under a mask
+  instead of an `if` on the secret top bit. The compiled code was already branch-free on x86_64
+  and Cortex-M4; now the source guarantees it on every backend. Output is unchanged (T-282,
+  branch `ux-0.5.0`).
+
+## [0.4.0] - 2026-10-08
+
+### Security
+
 - **Breaking wire-format change (0.4.0).** `crypto_secretbox` and `crypto_secretstream` now bind
   each ciphertext's true length into its authentication tag, and `crypto_secretstream`'s
   `PullState::pull` accepts only a full 16-byte tag. This closes an integrity weakness in earlier
-  releases (advisory to follow). `crypto_box`/`crypto_box512` also bind the KEM
+  releases (GHSA-j2w3-628p-qw92). `crypto_box`/`crypto_box512` also bind the KEM
   ciphertext and the recipient public key into their stream key (T-232/T-238/T-248,
   `docs/DECISIONS.md` D-200/D-201).
 - **Every sealed blob starts with a format-version byte.** This covers `crypto_secretbox`,
@@ -206,10 +215,6 @@ All notable changes to this project are documented in this file. Format follows
 - `crypto_secretstream` refuses a chunk once its counter would wrap. This takes 2^64 - 1 chunks,
   so it is unreachable in practice. The new `SecretstreamError::CounterExhausted` variant is
   `DSTU_ERR_FINALIZED` in the C ABI (T-245a).
-- Kalyna-XTS tweak doubling (`gf2m_wide` `double()`) now applies its reduction under a mask
-  instead of an `if` on the secret top bit. The compiled code was already branch-free on x86_64
-  and Cortex-M4; now the source guarantees it on every backend. Output is unchanged (T-282,
-  branch `ux-0.5.0`).
 
 ### Added
 
@@ -265,7 +270,7 @@ All notable changes to this project are documented in this file. Format follows
   - **Security:** GCM with an empty AAD *and* empty data, and GMAC over an empty message, are
     rejected (`GcmError::EmptyInput`, `GmacError::EmptyMessage`; §12.1 requires `|O|+|M| >= 1`).
     Earlier releases returned `E_K(0)` there, which is the GHASH key: anyone who obtained that
-    tag could forge tags under the same key (separate advisory to follow, D-207).
+    tag could forge tags under the same key (GHSA-wqmx-6fx4-jr5r, D-207).
     `Kalyna*Gmac::mac`/`mac_with_cipher` now return
     `Result`. `crypto_*` never hit this (its internal AAD is never empty).
 

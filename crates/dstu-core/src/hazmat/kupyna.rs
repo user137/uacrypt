@@ -425,7 +425,7 @@ impl KupynaCore {
                 // call. Returning here (rather than falling through to the remainder-writing
                 // code below) matters: that code unconditionally overwrites `buffer_len` from
                 // `data`'s remainder, which would wipe out this still-partial fill.
-                debug_assert!(data.is_empty());
+                debug_assert_eq!(data, []);
                 return;
             }
             let block = self.buffer;

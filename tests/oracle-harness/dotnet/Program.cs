@@ -80,7 +80,13 @@ static int RunKupyna(string dir)
     {
         using var doc = JsonDocument.Parse(File.ReadAllText(file));
         var root = doc.RootElement;
-        int hashBits = root.GetProperty("hash_bits").GetInt32();
+        // T-288: annex Б bit-length vectors (no `hash_bits`) are not expressible through BC's byte API.
+        if (!root.TryGetProperty("hash_bits", out var hashBitsElement))
+        {
+            Console.WriteLine($"SKIP {Path.GetFileName(file)}: bit-length messages, not expressible in Dstu7564Digest");
+            continue;
+        }
+        int hashBits = hashBitsElement.GetInt32();
 
         foreach (var testCase in root.GetProperty("cases").EnumerateArray())
         {
