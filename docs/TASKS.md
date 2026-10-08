@@ -9985,6 +9985,33 @@ on the Pi); `cargo xtask test` 146 suites green, `cargo clippy --workspace --all
 --all-targets` clean. The 0.5.0 advisory (T-272 + T-290/T-291) text is drafted in
 `.claude/disclosure-drafts/advisory_050.md`, not yet created on GitHub.
 
+**RELEASE-DAY HANDOFF (2026-10-08, saved before a context compact) - read this first.**
+- **0.4.0 state:** `master` and `gh-pages` are pushed (owner ran the push; `master` = `39fdb53`:
+  UAPKI 2.0.3 column, CHANGELOG `[0.4.0] - 2026-10-08` with GHSA IDs and no CVE, clippy 1.99 fix,
+  Ruby Gemfile.lock 0.2.0, T-288 oracle-harness skip, two clang-tidy NOLINTs). CI on `39fdb53`: all
+  green except `rust` run 37741580319, still in its Miri jobs (no failure so far).
+  **Not done yet: tag `v0.4.0`.** Owner decision: tag only after that `rust` run is green. The tag
+  goes on `39fdb53` and publishes crates.io immediately (no approval); PyPI/npm/RubyGems wait for
+  the owner's environment approval. `NPM_TOKEN` dates from 2026-08-12 - may have expired.
+- **After the tag, in order (each outward step confirmed):** approve environments -> publish
+  GHSA-j2w3-628p-qw92 and GHSA-wqmx-6fx4-jr5r (texts final; wqmx's live text has no stray comment,
+  owner chose "no names", unchanged) -> RustSec PR -> verify live registry pages + T-252 verify
+  commands on the real assets -> T-251. Dependabot alert #3 (brace-expansion, dev-only npm
+  lockfile) - merge its PR after the release.
+- **0.5.0 (`ux-0.5.0`, local only, embargo holds):** verified locally on 2026-10-08: asm-check
+  (rustc 1.99: 112 zero-jump + 16 exact-count rows), the new `rust.yml` clippy steps incl. aarch64
+  cross-clippy, xtask fmt/test, MSRV 1.87 build. Owner decided: GHSA #3 covers T-272, T-273,
+  T-290/T-291 (not XTS) - draft updated, awaiting the owner's text approval, then create the draft
+  on GitHub (and request a CVE). Release order for 0.5.0: 0.4.0 fully done -> GHSA #3 created ->
+  0.5.0 CHANGELOG finalize (`[Unreleased]` -> `[0.5.0] - <date>`, drop "(breaking, branch
+  `ux-0.5.0`)" from the header, cite GHSA #3; `finalize_changelog.py` is 0.4.0-only) -> fetch,
+  rebuild the 0.5.0 marker commit on the latest `origin/gh-pages` -> owner pushes
+  `ux-0.5.0:master` (fast-forward) + gh-pages -> CI green -> tag `v0.5.0`. Tell the owner the
+  disclosure window (push to published packages, ~2 h of Miri + approvals). Never push
+  `ux-0.5.0-pre-rebase` (local backup) or `worktree-agent-*`.
+- Pushes are done by the owner (`! git push ...`): the auto-mode classifier blocks Claude's push.
+- New: T-295 (winget).
+
 ### Batch plan (updated 2026-09-25 with D-220 - superseded as the order by the merged plan above;
 kept for its per-batch "done when" criteria)
 
