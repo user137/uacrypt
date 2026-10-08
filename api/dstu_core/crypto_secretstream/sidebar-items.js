@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"enum":["SecretstreamError","Tag"],"struct":["Key","PullState","PushState"]};
+window.SIDEBAR_ITEMS = {"constant":["FORMAT_VERSION"],"enum":["SecretstreamError","Tag"],"struct":["Key","PullState","PushState"]};
