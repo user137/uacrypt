@@ -8865,6 +8865,22 @@ Next, in order:
    - **Publication date:** after both UAPKI and BC reply, or 2026-10-08 (14 days after the reports),
      whichever comes first. 0.4.0 publishes `docs/COMPATIBILITY.md` and D-207, which describe their
      unfixed behaviour.
+   - **UAPKI replied with a fix (checked 2026-10-03):** uapkic 2.0.3 (`deffe4a`, 2026-09-29, public
+     commit, no tagged release yet - latest release v2.0.17 still has 2.0.2). Its GHSA-wh5v-4g9f-6hcv
+     was closed the same day, not published, no CVE. Our PoC on `master` `0bf2b68`: GCM/GMAC with
+     empty AAD + data now rejected; **CMAC(empty) = CMAC(0^16) is not fixed**. The public code comment
+     already says an empty-message tag "reveals H", so D-207 is effectively public. The August DSTU
+     4145 report (GHSA-mvm5-8j3x-rp6f, order-2 key forgery) was fixed 2026-08-14 (`38926db`, `n*Q = O`
+     check); its PoC is now rejected. 2.0.3 rewrote GCM/GMAC/CCM to the text - it matches dstu-core on
+     every tested Kalyna-128/128 input except CCM with empty AAD (literal "B = G1", D-205 (b));
+     `docs/COMPATIBILITY.md` has a UAPKI 2.0.3 column. BC: no reply yet. Owner posted a follow-up
+     comment on that GHSA 2026-10-03 (CMAC still open - intentional? our table publishes 10-08).
+   - **Release day 2026-10-08 (owner decisions):** the date rule is met (14 days; BC never
+     replied). Both GHSAs still had `cve_id` null after 14 days, so **0.4.0 ships without CVE IDs**:
+     the CHANGELOG cites the GHSA IDs only, the CVE requests stay open. **0.5.0 follows as it stands**
+     on `ux-0.5.0` (T-272/T-290/T-291 fixes + the UX batch); the unfinished merged-plan items move
+     to 0.6.0. Every outward step (push, tag, environment approval, advisory publication, RustSec PR)
+     is confirmed separately.
    - **T-252 signing:** Sigstore keyless.
    - **CVEs:** request a CVE for both advisories (T-232 and D-207).
    - **Draft advisories created 2026-09-24 (private, not published):** `GHSA-j2w3-628p-qw92` (T-232,
