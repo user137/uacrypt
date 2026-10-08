@@ -80,6 +80,11 @@ public final class OracleHarness {
     private static void runKupyna(Path dir) throws IOException {
         for (Path file : sortedJsonFiles(dir)) {
             String json = readFile(file);
+            // T-288: annex Б bit-length vectors (no hash_bits) are not expressible through BC's byte API.
+            if (!json.contains("\"hash_bits\"")) {
+                System.out.println("SKIP " + file.getFileName() + ": bit-length messages, not expressible in DSTU7564Digest");
+                continue;
+            }
             int hashBits = extractInt(json, "hash_bits");
 
             for (String caseJson : extractCases(json)) {

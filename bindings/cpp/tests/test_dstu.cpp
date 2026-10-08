@@ -307,6 +307,7 @@ void TestSecretstreamOversizedDeclaredChunkLength() {
 // D-208: the shared stream-file vectors every reader (uacrypt and all 8 bindings) is tested
 // against. No stdlib JSON (see the file header): the generator writes one case per line, so a
 // per-line field lookup is enough.
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
 std::string JsonField(const std::string &text, const std::string &key) {
   const std::string pattern = "\"" + key + "\": \"";
   const std::size_t start = text.find(pattern);
@@ -754,6 +755,8 @@ void TestPwhash() {
 
   // T-240: PwhashStrength has a fixed underlying type, so 7 is a legal value that reaches the C ABI.
   CHECK(Throws<dstu::ArgumentError>(
+            // The out-of-range value is the point of the test.
+            // NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange)
             [] { dstu::HashPassword(ToBytes("anything"), static_cast<dstu::PwhashStrength>(7)); }),
         "an out-of-range strength should throw ArgumentError");
 }
