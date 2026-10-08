@@ -35,10 +35,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-a37f2eba.js";
+            window.path_to_searchindex_js = "../searchindex-522a1f90.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-6b977b4b.js"></script>
+        <script src="../toc-bc9924e8.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -181,7 +181,10 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="kupyna-based-kmac-dstu-75642014s-mac-mode"><a class="header" href="#kupyna-based-kmac-dstu-75642014s-mac-mode">Kupyna-based KMAC (DSTU 7564:2014’s MAC mode)</a></h1>
-<p><strong>Provenance note (read before trusting this as settled):</strong> <code>docs/papers/Kupyna.pdf</code> (the
+<p><strong>Confirmed (T-234, 2026-09-23):</strong> DSTU 7564:2014 (draft edition) annex В defines this mode as
+<code>phi(M, K) = H(Pad(K) || Pad(M) || ~K)</code>, and its В.5 examples equal this project’s vectors. The
+earlier note below is kept for history.</p>
+<p><strong>Provenance note (before T-234):</strong> <code>docs/papers/Kupyna.pdf</code> (the
 designers’ own paper, otherwise this project’s highest-trust Kupyna source) states in its
 introduction that “the new standard defines both the hash function and its additional mode for
 message authentication code generation” but does not itself describe that mode anywhere in its

@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-a37f2eba.js";
+            window.path_to_searchindex_js = "searchindex-522a1f90.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-6b977b4b.js"></script>
+        <script src="toc-bc9924e8.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -281,6 +281,26 @@ comparable to all five other in-scope algorithms combined” framing, not just a
 <h2 id="per-algorithm-oracle-map"><a class="header" href="#per-algorithm-oracle-map">Per-algorithm oracle map</a></h2>
 <h3 id="kalyna-dstu-7624"><a class="header" href="#kalyna-dstu-7624">Kalyna (DSTU 7624)</a></h3>
 <ul>
+<li><strong>Primary text (T-234, 2026-09-23): DSTU 7624:2014, draft edition</strong> (owner-supplied copy, gitignored
+under <code>docs/papers/</code>; title page “ДСТУ ____-2014”, order date left blank - cite it as the draft).
+Findings:
+<ul>
+<li><strong>UAPKI’s Kalyna KATs <em>are</em> this text’s annex В examples</strong>, value for value. “Official vectors”
+and “UAPKI” are one source, not two.</li>
+<li>Every byte-expressible annex example passes (99 in all). New vectors added from the annex: CTR for
+the four non-128/128 variants, CFB В.4.3, CBC В.6.10. Bit-length stream examples are truncated to
+whole bytes.</li>
+<li>The non-aligned CMAC path is confirmed by В.5.2. GMAC’s partial-block semantics are confirmed by
+В.8.1.3 (a 139-bit example, checked by a unit test).</li>
+<li>Where the text and UAPKI differ (GCM/GMAC partial blocks, CCM empty AAD and AAD edge lengths,
+CMAC/CCM empty input), the text wins: D-204-D-206, <a href="COMPATIBILITY.html">COMPATIBILITY.md</a>.</li>
+<li><strong>Bouncy Castle 1.85 is not an oracle for partial-block GCM/GMAC/CCM.</strong> It zero-pads GCM
+NIST-style and fails annex В.9.2 (CCM); its own CCM tests are block-aligned only. The
+partial-block GCM vectors still use BC’s <em>GF multiplier</em>, over input that is already padded and
+aligned so BC’s own padding doesn’t apply (D-204).</li>
+<li>KW-p (В.11.x.3/4) vectors exist for a future <code>kalyna_kw_p</code> (T-253).</li>
+</ul>
+</li>
 <li><strong>Pseudocode:</strong> <code>docs/pseudocode/kalyna.md</code> — transcribed from the paper below, cross-checked
 against the reference C oracle. Its k=2l key-schedule branch (originally ambiguous from the
 paper’s own notation) is read as a word-rotation rather than arithmetic addition, corroborated
@@ -334,10 +354,9 @@ genuine dual-oracle case, not a same-vendor recheck: <code>dstu7624_ccm_self_tes
 just each independently against this project’s Rust port) and 4 of the 5 UAPKI cases matched a BC
 case byte-for-byte (128/128, 256/256, 256/512, 512/512) — independent-lineage agreement. The
 5th (128/256) has no BC vector at all (BC’s <code>CCMModeTests</code> doesn’t cover that variant), so that
-one case is UAPKI-only, flagged as such in its vector file. <strong>Still provisional</strong> — this
-cross-oracle agreement is reference-implementation evidence, not a reading of the primary DSTU
-7624:2014 text; see D-41 and the “not yet confirmed against primary text” caveat repeated in
-<code>hazmat::kalyna_ccm</code>’s module doc comment and every extracted vector file’s <code>source</code> field. BC’s
+one case is UAPKI-only, flagged as such in its vector file. <strong>Superseded in part (T-234):</strong> all
+five are annex В.9 examples of the DSTU 7624:2014 draft, and the construction now follows §13
+where UAPKI differed from it (D-205); BC agrees only on block-aligned plaintext. BC’s
 own <code>KCCMBlockCipher</code>/<code>KGCMBlockCipher</code> construction <em>source</em> is not present in this project’s
 vendored sparse checkout of <code>oracles/bouncycastle-java</code> (only the test file importing them is) —
 the cross-check above is against BC’s vector <em>outputs</em> only, not a second reading of BC’s
@@ -400,6 +419,21 @@ cross-architecture, per D-33’s standing pattern).</li>
 </ul>
 <h3 id="kupyna-dstu-7564"><a class="header" href="#kupyna-dstu-7564">Kupyna (DSTU 7564)</a></h3>
 <ul>
+<li><strong>Primary text (T-234, 2026-09-23): DSTU 7564:2014, draft edition.</strong>
+<ul>
+<li>Annex Б: all 15 byte-level hashing examples pass (Kupyna-256/512, and 48/304/384 as the rightmost
+bytes of the 256/512 cores). Kupyna-384 N=760 is a new vector, waiting for a public Kupyna-384
+API (T-254).</li>
+<li>The six bit-length examples (N = 510/655 for 256/512, N = 33/1 for 384), which the byte API cannot
+take, pass too: a unit test in <code>hazmat::kupyna</code> feeds the annex’s own padded blocks into the
+compression function and matches every intermediate state and the final hash
+(<code>tests/vectors/kupyna/annex-b-bit-level.json</code>).</li>
+<li>Annex В defines the KMAC <code>H(Pad(K) || Pad(M) || ~K)</code>, and its В.5 examples equal our three KMAC
+vectors, which confirms D-44.</li>
+<li>The annex has at least one typo (Kupyna-384 N=33: INPUT is one byte short of what <code>padded</code>
+shows).</li>
+</ul>
+</li>
 <li><strong>Pseudocode:</strong> <code>docs/pseudocode/kupyna.md</code> — transcribed from the paper below, cross-checked
 against the reference C oracle; one extraction gap (the IV formula) resolved from the oracle
 and flagged as such. Additionally checked (2026-07-21) against
@@ -511,6 +545,8 @@ confidence, does not upgrade the “not independently transcription-verified in 
 </ul>
 <h3 id="dstu-4145-signature"><a class="header" href="#dstu-4145-signature">DSTU 4145 (signature)</a></h3>
 <ul>
+<li><strong>Annex Г (checked 2026-09-23, T-234):</strong> the <code>m = 163</code> and <code>m = 257</code> curve parameters (<code>A</code>, <code>B</code>,
+<code>n</code>, field polynomial) match <code>curve163</code>/<code>curve257</code> exactly.</li>
 <li><strong>Official text now in hand</strong> (<code>docs/papers/DSTU_4145-2002.pdf</code>, added 2026-07-22) — corrects the
 earlier “no spec paper exists” claim below and in <code>docs/pseudocode/dstu4145.md</code>’s header; this
 algorithm is no longer the BC-only exception to the “cited spec section” hard constraint. Sections
@@ -642,6 +678,9 @@ without a cited spec section.” Every hex field has been length/validity-checke
 against its declared bit size before being committed here — see the PDF extraction notes below.</li>
 <li>Integration tests in <code>crates/dstu-core/tests/&lt;algorithm&gt;.rs</code> load these files and assert against
 the Rust implementation — black-box, per <code>docs/rust_ai_ruleset.md</code> §11.</li>
+<li><strong>Exception, not an oracle:</strong> <code>secretstream-file/v2.json</code> (D-208) is a self-generated interop pin
+for the stream-file format, which has no external reference. <code>uacrypt</code> and all 8 bindings’
+readers run it; its <code>source</code> field says so.</li>
 <li><strong>Same files, consumed cross-language too:</strong> <code>tests/oracle-harness/{java,dotnet}/</code> run these
 vectors against real Bouncy Castle directly (not the Rust port), via the published Maven/NuGet
 packages — one vector format, multiple independent consumers. Both actually run and pass (all

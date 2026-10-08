@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-a37f2eba.js";
+            window.path_to_searchindex_js = "searchindex-522a1f90.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-6b977b4b.js"></script>
+        <script src="toc-bc9924e8.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -200,8 +200,15 @@ prior <code>crypto_secretbox</code>-backed <code>encrypt</code> produced cannot 
 <li>acceptable pre-1.0. <code>crypto_secretbox</code> itself is unchanged and still available as a library
 primitive for whole-message use, just no longer what this CLI command uses. <code>--key</code> is a raw
 32-byte file (<code>crypto_secretstream::Key</code>’s size) — <code>uacrypt keygen --out key.bin</code> generates one from
-the OS CSPRNG (<code>docs/TASKS.md</code> T-115). <code>encrypt</code> draws a fresh random header internally on every call
+the OS CSPRNG (<code>docs/TASKS.md</code> T-115). Like every <code>*-keygen</code> command, it refuses to overwrite an
+existing <code>--out</code>, so a repeated run cannot destroy a key, and on Unix it writes the key with mode
+<code>0600</code> (T-241). <code>encrypt</code> draws a fresh random header internally on every call
 and embeds it in <code>--out</code>; there is no <code>--nonce</code>/<code>--header</code> flag to supply or reuse by mistake.
+<strong>0.4.0 changed the <code>encrypt</code>/<code>box-seal</code>/<code>box-seal512</code> file formats</strong> (T-232/T-248,
+<code>docs/DECISIONS.md</code> D-200-D-202). Files written by 0.3.x don’t open with 0.4.0. <code>box-open</code> almost
+always reports them as a different format version; ~1 in 256 happen to start with the current
+version byte and report an authentication failure instead. Decrypt them with the release that
+wrote them, then re-encrypt.
 <strong><code>hash</code> has no such limit either</strong> — it streams <code>--in</code> from disk in fixed-size chunks regardless of
 size, fixed to Kupyna-256 (32-byte digest, no <code>--variant</code> choice).</li>
 </ul>
@@ -287,10 +294,11 @@ that detects tampering:</p>
 </code></pre>
 <p><code>--variant</code> is the key size in bits (256 or 512); <code>--iv</code> is always exactly 32 bytes regardless of
 variant.</p>
-<p><code>kalyna-ccm</code> (<code>docs/DECISIONS.md</code> D-41) additionally encrypts/authenticates arbitrary-length <strong>short</strong>
-messages (plaintext and <code>--aad</code> each capped at 255 bytes — a sourced property of the construction,
-not a CLI restriction, see <code>hazmat::kalyna_ccm</code>’s doc comment) using a provisional, dual-oracle-
-verified Kalyna-alone CCM mode, not yet confirmed against the primary DSTU 7624:2014 text:</p>
+<p><code>kalyna-ccm</code> (<code>docs/DECISIONS.md</code> D-41/D-205) additionally encrypts/authenticates <strong>short</strong>
+messages (plaintext and <code>--aad</code> each capped at 255 bytes, see <code>hazmat::kalyna_ccm</code>’s doc comment)
+using Kalyna-CCM as DSTU 7624:2014 §13 defines it. An empty <code>--in</code> is rejected: the standard does not
+define CCM for an empty message. Tags differ from UAPKI’s and Bouncy Castle’s on some inputs, for
+example when <code>--aad</code> is omitted (see <a href="COMPATIBILITY.html">COMPATIBILITY.md</a>):</p>
 <pre><code>uacrypt kalyna-ccm encrypt --variant 128-128 --key key.bin --nonce nonce.bin --aad aad.bin --in msg.bin --out ct.bin --tag tag.bin
 uacrypt kalyna-ccm decrypt --variant 128-128 --key key.bin --nonce nonce.bin --aad aad.bin --in ct.bin --out pt.bin --tag tag.bin
 </code></pre>
@@ -299,17 +307,21 @@ uacrypt kalyna-ccm decrypt --variant 128-128 --key key.bin --nonce nonce.bin --a
 CSPRNG) and writes it there, so there is nothing for you to supply or accidentally reuse. <code>decrypt</code>
 reads <code>--nonce</code> back (the value <code>encrypt</code> produced) as an input, same as <code>--tag</code>. <code>--aad</code> is
 optional (an empty AAD is used if omitted); <code>decrypt</code> verifies the tag before writing <code>--out</code> and
-fails without writing anything on a mismatch. See <code>docs/DECISIONS.md</code> D-40 for why a random nonce is
-safe here (128 bits minimum across all five variants) and its per-key message-count guideline.</p>
+fails without writing anything on a mismatch. The standard requires only the nonce’s first
+<code>block − N_Б − 1</code> bytes to be unique per key (11 bytes for a 128-bit block), so a random nonce is good
+for roughly 2^44 messages per key there (<code>docs/DECISIONS.md</code> D-40/D-205).</p>
 <p>Five more <code>hazmat</code>-scoped, per-mode benchmarking/interop commands exist alongside <code>kalyna-ccm</code>
 (<code>docs/DECISIONS.md</code> D-31/D-71), all with the same <code>--variant</code> (one of the five Kalyna block/
 key-size combinations) and <code>--iterations</code> (benchmark timing) flags:</p>
 <ul>
 <li><code>kalyna-gcm encrypt</code>/<code>decrypt</code> — Kalyna-GCM (<code>--nonce</code>/<code>--tag</code> files, <code>--aad</code> optional), the same
-provisional construction <code>crypto_secretbox</code>/<code>crypto_secretstream</code> build on internally, exposed
-here with no message-length cap and no hidden nonce.</li>
-<li><code>kalyna-cmac compute</code>/<code>verify</code> — Kalyna-CMAC, a 16-byte tag, no encryption.</li>
-<li><code>kalyna-gmac compute</code>/<code>verify</code> — Kalyna-GMAC, a full-block tag, no encryption, no nonce.</li>
+construction <code>crypto_secretbox</code>/<code>crypto_secretstream</code> build on internally (DSTU 7624:2014 §12,
+D-204), exposed here with no message-length cap and no hidden nonce. An empty <code>--in</code> with no
+<code>--aad</code> is rejected (D-207).</li>
+<li><code>kalyna-cmac compute</code>/<code>verify</code> — Kalyna-CMAC, a 16-byte tag, no encryption. An empty <code>--in</code> is
+rejected (DSTU 7624:2014 §9 does not define CMAC for an empty message, D-206).</li>
+<li><code>kalyna-gmac compute</code>/<code>verify</code> — Kalyna-GMAC, a full-block tag, no encryption, no nonce. An empty
+<code>--in</code> is rejected (D-207).</li>
 <li><code>kalyna-kw wrap</code>/<code>unwrap</code> — Kalyna key wrap (1..=20 block-aligned blocks in, one block longer
 out, checksummed).</li>
 <li><code>kalyna-xts encrypt</code>/<code>decrypt</code> — Kalyna-XTS disk-sector mode (confidentiality only, no tag — the
@@ -322,6 +334,77 @@ than needing separate full walkthroughs.</p>
 <code>kalyna-gmac</code>/<code>kalyna-kw</code>/<code>kalyna-xts</code> is the <code>encrypt</code>/<code>decrypt</code>/<code>hash</code> surface above - all nine
 stay as lower-level, hazmat-scoped tools for anyone who explicitly wants that level of control, or
 is benchmarking a specific primitive directly.</p>
+<h2 id="verifying-a-downloaded-release"><a class="header" href="#verifying-a-downloaded-release">Verifying a downloaded release</a></h2>
+<p>From 0.4.0 on, every GitHub Release carries <code>SHA256SUMS</code>, its Sigstore signature bundle
+<code>SHA256SUMS.sigstore.json</code>, and a CycloneDX SBOM (<code>uacrypt.cdx.json</code>); every asset also has a
+GitHub build-provenance attestation (T-252). Download the asset plus the two <code>SHA256SUMS</code> files into
+one directory, then:</p>
+<pre><code class="language-sh"># 1. The checksum file was signed by this repository's release workflow, from a release tag
+cosign verify-blob --bundle SHA256SUMS.sigstore.json \
+  --certificate-identity-regexp '^https://github\.com/user137/uacrypt/\.github/workflows/release\.yml@refs/tags/v' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  SHA256SUMS
+
+# 2. The asset matches the signed checksum (--ignore-missing: only the files you downloaded)
+sha256sum --ignore-missing -c SHA256SUMS
+#    macOS: shasum -a 256 --ignore-missing -c SHA256SUMS
+#    Windows PowerShell: compare (Get-FileHash &lt;file&gt; -Algorithm SHA256).Hash with its line in SHA256SUMS
+
+# 3. Optional, independent of 1-2: GitHub's provenance record for the asset
+gh attestation verify uacrypt-linux-x86_64.tar.gz --repo user137/uacrypt \
+  --signer-workflow user137/uacrypt/.github/workflows/release.yml --source-ref refs/tags/v0.4.0
+</code></pre>
+<p>In step 3, <code>--source-ref</code> accepts only an asset built from that release tag, not from a branch; put
+your version there.</p>
+<p>The binaries are built with <code>cargo auditable</code>, so <code>cargo audit bin uacrypt</code> checks the dependency
+versions compiled into a downloaded binary against the RustSec advisory database.</p>
+<h2 id="file-formats"><a class="header" href="#file-formats">File formats</a></h2>
+<p>What each command writes, byte by byte. Sizes are in bytes, <code>||</code> means concatenation, and
+multi-byte integers are little-endian. <code>uacrypt --version</code> prints the container format version
+next to the release version (currently <code>2</code>, D-202).</p>
+<p><strong>Why containers.</strong> Every everyday command writes a self-describing container, not a bare
+ciphertext. The container holds what decryption needs (the header, the KEM ciphertext), a format
+version where one exists, and the true ciphertext length inside every authentication tag. Since
+T-234 (<code>docs/DECISIONS.md</code> D-204) the Kalyna-GCM/GMAC tag in <code>hazmat</code> binds the exact length itself,
+as DSTU 7624:2014 §12 specifies; the containers bind it a second time, which D-200 added when that
+was not yet so.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Command</th><th>File</th><th>Layout</th></tr>
+</thead>
+<tbody>
+<tr><td><code>keygen</code></td><td>symmetric key</td><td>32 raw bytes</td></tr>
+<tr><td><code>encrypt</code></td><td>encrypted file</td><td><code>version (1) || header (32)</code>, then one or more records, each <code>chunk tag (1) || ciphertext length (4) || ciphertext || auth tag (16)</code></td></tr>
+<tr><td><code>box-keygen</code> / <code>box-pubkey</code></td><td>secret / public key</td><td>32 raw bytes each (the public key is the curve point’s <code>x</code>-coordinate)</td></tr>
+<tr><td><code>box-seal</code></td><td>sealed file</td><td><code>version (1) || KEM ciphertext (128) || header (32) || ciphertext || auth tag (16)</code>: 177 bytes of overhead</td></tr>
+<tr><td><code>box-keygen512</code> / <code>box-pubkey512</code></td><td>secret / public key</td><td>64 raw bytes each</td></tr>
+<tr><td><code>box-seal512</code></td><td>sealed file</td><td><code>version (1) || KEM ciphertext (256) || header (32) || ciphertext || auth tag (16)</code>: 305 bytes of overhead</td></tr>
+<tr><td><code>sign-keygen</code> / <code>sign-keygen257</code></td><td>signing key</td><td>the scalar <code>d</code>, big-endian: 21 / 33 raw bytes</td></tr>
+<tr><td><code>sign-pubkey</code> / <code>sign-pubkey257</code></td><td>verifying key</td><td><code>curve byte (1: 01 = m=163, 02 = m=257) || x || y</code>: 43 / 67 bytes</td></tr>
+<tr><td><code>sign</code> / <code>sign257</code></td><td>signature</td><td>42 / 66 raw bytes; <code>verify</code> picks the curve from the verifying key’s curve byte</td></tr>
+<tr><td><code>hash</code></td><td>digest</td><td>32 raw bytes (Kupyna-256)</td></tr>
+</tbody>
+</table>
+</div>
+<p>The <code>encrypt</code> record rules:</p>
+<ul>
+<li>the version byte is currently <code>2</code> and is bound into the stream’s key derivation, so a changed
+version byte never decrypts; <code>decrypt</code> names an unsupported version instead of reporting an
+authentication failure. Files from <code>uacrypt</code> 0.3.x and earlier have no version byte and cannot
+be read;</li>
+<li>the plaintext is split into 8192-byte chunks, one record each; every record but the last is
+exactly 8192 bytes, so the chunk size is part of the format;</li>
+<li>the chunk tag byte is <code>0</code> (message) for every record but the last, and <code>3</code> (final) for the last;</li>
+<li>an empty input still produces one final record with a zero-length ciphertext;</li>
+<li><code>decrypt</code> rejects a record longer than 8192 bytes, a non-final record of any other length than
+8192, a missing final record (a truncated file) and any bytes after the final record;</li>
+<li>every record’s auth tag covers its position in the stream, its chunk tag and its exact length,
+so records cannot be reordered, dropped, cut or extended.</li>
+</ul>
+<p><strong>Raw, uncontained outputs.</strong> <code>kalyna-gcm</code> writes the ciphertext, nonce and tag as separate raw
+files, and <code>kalyna-gmac</code> writes a bare tag. They carry no format version and no nonce binding
+(<code>kalyna-gcm</code>’s tag does not cover the nonce, D-63). For files, use <code>encrypt</code> or <code>box-seal</code>.</p>
 
                     </main>
 
@@ -331,7 +414,7 @@ is benchmarking a specific primitive directly.</p>
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
-                            <a rel="next prefetch" href="TASKS.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="COMPATIBILITY.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                             </a>
 
@@ -345,7 +428,7 @@ is benchmarking a specific primitive directly.</p>
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 
-                    <a rel="next prefetch" href="TASKS.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="COMPATIBILITY.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                     </a>
             </nav>

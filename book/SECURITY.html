@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-a37f2eba.js";
+            window.path_to_searchindex_js = "searchindex-522a1f90.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-6b977b4b.js"></script>
+        <script src="toc-bc9924e8.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -326,6 +326,29 @@ add an ad hoc secondary check. Found and fixed in <code>crypto_secretbox</code>�
 migration (<code>docs/DECISIONS.md</code> D-63) via a tamper test written during that migration, not caught by
 code review after the fact — re-verify this for every future combined-AEAD wire format
 (<code>crypto_secretstream</code>/T-40 included), it is not a one-time fix.</li>
+<li><strong>The same check applies to the ciphertext length.</strong> Until T-234, <code>hazmat::kalyna_gcm</code> padded a
+non-aligned ciphertext with <code>0x80 00..</code> but recorded only the <em>padded</em> length, so <code>ct</code> and
+<code>ct || 80 00..</code> (up to a block boundary) shared a tag; <code>hazmat::kalyna_gmac</code> had the same property.
+That was UAPKI’s reading, not the standard’s. DSTU 7624:2014 §12 records the true lengths, and
+both modes now follow it (<code>docs/DECISIONS.md</code> D-204). <code>crypto_secretbox</code> and <code>crypto_secretstream</code>
+keep <code>ct_len</code> in their fixed-length AAD (T-232, D-200) as defence in depth. The general rule
+stands: for every future combined-AEAD wrapper, check by reading the construction that its tag
+binds the exact length. This was missed from T-37 to T-232 because every official vector is
+block-aligned, and round-trip tests cannot see a non-injective encoding.</li>
+<li><strong>Usage limits from DSTU 7624:2014 annex Г (informative, draft edition).</strong>
+<ul>
+<li>Per-key block limits:
+<ul>
+<li>CTR/CFB/CBC/OFB/XTS: 2^60 blocks for a 128-bit block, 2^124 for 256, 2^251 for 512;</li>
+<li>CMAC/CCM/GCM/GMAC/KW: 2^46, 2^109, 2^237 respectively.</li>
+<li>Above the 128-bit figures, use a wider block.</li>
+</ul>
+</li>
+<li>Nonces must be unique per key (Г.3). CCM requires uniqueness only of the nonce prefix (§13.1).</li>
+<li>KW has no nonce: re-key before protecting the same message again.</li>
+<li>No mode detects replays (Г.4); that is the caller’s job.</li>
+</ul>
+</li>
 </ul>
 <h2 id="supply-chain-vetting-apply-before-adding-any-crypto-adjacent-dependency"><a class="header" href="#supply-chain-vetting-apply-before-adding-any-crypto-adjacent-dependency">Supply-chain vetting (apply before adding any crypto-adjacent dependency)</a></h2>
 <div class="table-wrapper">

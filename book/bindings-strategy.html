@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-a37f2eba.js";
+            window.path_to_searchindex_js = "searchindex-522a1f90.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-6b977b4b.js"></script>
+        <script src="toc-bc9924e8.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -634,7 +634,9 @@ reconfirmed unaffected.</li>
 what D-118 asks for, and file I/O against arbitrary Python file-like objects is more natural to
 write directly in Python than via PyO3 callbacks). <code>write()</code>/iterate hide chunk/tag/header
 bookkeeping entirely. <strong>Wire format matches <code>uacrypt encrypt</code>/<code>decrypt</code> exactly</strong> (8 KiB chunks,
-<code>tag || len_u32_le || ciphertext || auth_tag</code> records after a 32-byte header) - a deliberate
+<code>tag || len_u32_le || ciphertext || auth_tag</code> records after a 32-byte header; since D-208 a
+version byte comes first, non-final records are exactly 8 KiB, and every binding runs the shared
+<code>secretstream-file/v2.json</code> vectors) - a deliberate
 choice, not required by D-118 itself, verified with a real interop test in both directions
 against the built <code>uacrypt</code> binary (not just self-consistency): a file <code>SecretStreamEncryptor</code>
 wrote round-tripped through <code>uacrypt decrypt</code>, and a file <code>uacrypt encrypt</code> wrote round-tripped

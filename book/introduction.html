@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-a37f2eba.js";
+            window.path_to_searchindex_js = "searchindex-522a1f90.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-6b977b4b.js"></script>
+        <script src="toc-bc9924e8.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -194,7 +194,7 @@
 encryption) — in the spirit of <strong>libsodium</strong>: hard, safe defaults, hard to misuse, rather than
 OpenSSL’s flexible-but-easy-to-misconfigure API. Ships as a Rust crate (<code>dstu-core</code>), a CLI
 (<code>uacrypt</code>), and bindings for eight languages.</p>
-<!-- uacrypt-version: 0.3.8 -->
+<!-- uacrypt-version: 0.4.0 -->
 <p><strong>Pre-1.0. Not audited. Not a claim of side-channel resistance.</strong> <code>dstu-core</code>/<code>uacrypt</code> are on
 <a href="https://crates.io/crates/dstu-core">crates.io</a>; the Python, Node.js, and Ruby bindings are on
 <a href="https://pypi.org/project/dstu-core/">PyPI</a>/<a href="https://www.npmjs.com/package/dstu-core">npm</a>/
@@ -238,7 +238,8 @@ uacrypt decrypt --key key.bin --in sealed.bin --out message.bin
 </code></pre>
 <p>See <a href="https://github.com/user137/uacrypt/blob/master/docs/CLI.md"><code>docs/CLI.md</code></a> for the full
 command reference (<code>sign</code>/<code>verify</code>, <code>box-seal</code>/<code>box-open</code>, and the lower-level <code>kalyna-block</code>/
-<code>kalyna-ccm</code> tools), and <a href="https://docs.rs/dstu-core">docs.rs</a> for the full library API.</p>
+<code>kalyna-ccm</code> tools) and for verifying a downloaded release (signed checksums, provenance), and
+<a href="https://docs.rs/dstu-core">docs.rs</a> for the full library API.</p>
 <h2 id="language-bindings"><a class="header" href="#language-bindings">Language bindings</a></h2>
 <p>The full <code>crypto_*</code> surface (<code>secretbox</code>/<code>secretstream</code>/<code>sign</code>/<code>auth</code>/<code>kdf</code>/<code>generichash</code>/<code>stream</code>/
 <code>pwhash</code>, <code>randombytes</code>, <code>selftest</code>), idiomatic errors, and the same correctness/rejection/misuse
@@ -273,6 +274,7 @@ resistance claim — see <code>docs/SECURITY.md</code> for the full threat model
 <ul>
 <li><a href="https://github.com/user137/uacrypt/blob/master/docs/SECURITY.md"><code>docs/SECURITY.md</code></a> — threat model and hard constraints</li>
 <li><a href="https://github.com/user137/uacrypt/blob/master/docs/DECISIONS.md"><code>docs/DECISIONS.md</code></a> — architectural decisions, with rejected alternatives</li>
+<li><a href="https://github.com/user137/uacrypt/blob/master/docs/COMPATIBILITY.md"><code>docs/COMPATIBILITY.md</code></a> — where UAPKI and Bouncy Castle read DSTU 7624 differently from the standard (and from this library)</li>
 <li><a href="https://github.com/user137/uacrypt/blob/master/docs/TASKS.md"><code>docs/TASKS.md</code></a> — phase-by-phase task backlog</li>
 <li><a href="https://github.com/user137/uacrypt/blob/master/docs/release-readiness.md"><code>docs/release-readiness.md</code></a> — gap analysis against a libsodium-equivalent 1.0</li>
 <li>Full knowledge base: <a href="https://user137.github.io/uacrypt/">user137.github.io/uacrypt</a></li>

@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-a37f2eba.js";
+            window.path_to_searchindex_js = "searchindex-522a1f90.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-6b977b4b.js"></script>
+        <script src="toc-bc9924e8.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -194,8 +194,10 @@ companion view — it surfaces gaps this document’s construction-organized fra
 <code>uacrypt keygen</code> command, no bare-metal cross-compile ever run) rather than duplicating this
 document’s findings.</p>
 <h2 id="headline-finding"><a class="header" href="#headline-finding">Headline finding</a></h2>
-<p><strong>Updated 2026-07-24: D-05 is no longer formally open — adopted as a working assumption, still not
-primary-text-confirmed.</strong> <code>docs/DECISIONS.md</code> D-05 — whether Kalyna alone is DSTU 7624’s intended AEAD
+<p><strong>Updated 2026-09-23 (T-234): D-05 is confirmed by the DSTU 7624:2014 text (draft edition) - §12/§13
+define GCM and CCM on Kalyna alone; the modes now follow that text (D-204–D-207).</strong> Earlier status,
+kept for history: <strong>2026-07-24: D-05 is no longer formally open — adopted as a working assumption,
+still not primary-text-confirmed.</strong> <code>docs/DECISIONS.md</code> D-05 — whether Kalyna alone is DSTU 7624’s intended AEAD
 construction, or whether confidentiality + integrity requires a separate Kalyna+Kupyna
 encrypt-then-MAC design — was resolved on assumption at the project owner’s explicit direction:
 <strong>Kalyna-alone</strong> (CCM/GCM/KW), not encrypt-then-MAC. This is corroborated by two independent
@@ -219,8 +221,8 @@ closed, a separate, unrelated question from D-05 above. Its <code>Tᵢ[a]</code>
 tables are additionally spot-checked against the same text (D-198), not independently
 transcription-verified in full.</li>
 <li><strong><code>crypto_secretbox</code> (T-37) is done, see <code>docs/DECISIONS.md</code> D-51</strong> — a single fixed construction,
-internally-generated nonce, combined <code>nonce || ciphertext || tag</code> output, no caller-facing AAD
-parameter. <strong>Migrated 2026-07-25 from Kalyna-CCM to Kalyna-GCM</strong> (roadmap Step 3 item 1,
+internally-generated nonce, combined <code>version || nonce || ciphertext || tag</code> output (version
+byte and length-bound AAD since T-232, D-200/D-202), no caller-facing AAD parameter. <strong>Migrated 2026-07-25 from Kalyna-CCM to Kalyna-GCM</strong> (roadmap Step 3 item 1,
 <code>docs/DECISIONS.md</code> D-63) — <code>hazmat::kalyna_gcm::Kalyna256_256Gcm</code>, not all five variants, per D-47’s
 “delete the knob” criterion. <strong>The 255-byte cap is gone entirely, not just raised</strong>
 (<code>SecretboxError::MessageTooLong</code> was removed, not left dormant) — GCM encodes no length into its

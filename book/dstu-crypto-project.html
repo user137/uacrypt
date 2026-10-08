@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-a37f2eba.js";
+            window.path_to_searchindex_js = "searchindex-522a1f90.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-6b977b4b.js"></script>
+        <script src="toc-bc9924e8.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -401,7 +401,7 @@ need <code>std</code> unconditionally, same reason <code>crypto_secretbox</code>
 <tr><td>shape — the curve real Diia-issued qualified signatures use in production. Both <code>crypto_sign</code> and</td><td></td><td></td></tr>
 <tr><td><code>crypto_sign257</code> are wired into <code>dstu-core-capi</code> plus all eight language bindings (<code>docs/TASKS.md</code></td><td></td><td></td></tr>
 <tr><td>T-204, 2026-08-09/10). The other 8 named curve sizes aren’t wired up.</td><td></td><td></td></tr>
-<tr><td><code>crypto_box</code></td><td><code>hazmat::dstu9041</code></td><td><strong>Done</strong> (<code>docs/TASKS.md</code> T-178, D-169) — <code>dstu_core::crypto_box::{seal,open,SecretKey,PublicKey}</code>, hybrid via KDF over the <code>hazmat::dstu9041</code> <code>l(p)=256</code>/E256/1 primitive (T-177, D-47’s “ship the recommended curve first” precedent), plus a <code>uacrypt box-keygen</code>/<code>box-pubkey</code>/<code>box-seal</code>/<code>box-open</code> CLI surface. <code>l(p)=512</code>/E512/1 has its own direct-sibling <code>dstu_core::crypto_box512</code> module and <code>box-keygen512</code>/<code>box-pubkey512</code>/<code>box-seal512</code>/<code>box-open512</code> CLI surface too (<code>docs/TASKS.md</code> T-193, D-182, 2026-08-08). Wired into <code>dstu-core-capi</code> plus all eight language</td></tr>
+<tr><td><code>crypto_box</code></td><td><code>hazmat::dstu9041</code></td><td><strong>Done</strong> (<code>docs/TASKS.md</code> T-178, D-169) — <code>dstu_core::crypto_box::{seal,open,SecretKey,PublicKey}</code>, hybrid via KDF (since T-248/D-201 a <code>Kupyna256Kmac</code> derivation binding `kem_ct</td></tr>
 <tr><td>bindings (<code>docs/TASKS.md</code> T-204, 2026-08-09/10). <code>l(p)=384/768</code> still not done.</td><td></td><td></td></tr>
 <tr><td><code>crypto_secretbox</code></td><td><code>dstu_core::crypto_secretbox</code> (<code>seal</code>/<code>open</code>/<code>SecretKey</code>), over <code>hazmat::kalyna_gcm::Kalyna256_256Gcm</code></td><td><strong>Implemented, provisional</strong> — single fixed Kalyna-GCM variant (not all five), internal nonce, combined <code>nonce||ciphertext||tag</code> output, no caller-facing AAD (the nonce is passed as <code>kalyna_gcm</code>’s AAD internally, to bind it into the tag — D-63). Migrated 2026-07-25 from an earlier Kalyna-CCM construction, removing its 255-byte message cap entirely. Still not primary-text-confirmed (inherits D-56). See D-51/D-63 in <code>docs/DECISIONS.md</code>.</td></tr>
 <tr><td><code>crypto_auth</code>/<code>crypto_onetimeauth</code></td><td><code>dstu_core::crypto_auth</code> (<code>auth</code>/<code>verify</code>/<code>Key</code>, over <code>hazmat::kupyna_kmac::Kupyna256Kmac</code> only) + <code>hazmat::kupyna_kmac</code> (<code>Kupyna256Kmac</code>/<code>Kupyna384Kmac</code>/<code>Kupyna512Kmac</code>, all three sizes)</td><td><strong>Implemented, provisional</strong> — Kupyna-based KMAC, both UAPKI’s and Bouncy Castle’s constructions read and cross-checked byte-for-byte on all three sizes, not confirmed against the primary DSTU 7564:2014 text. High-level wrapper added <code>docs/TASKS.md</code> T-105/<code>docs/DECISIONS.md</code> D-66: only the 256-bit size is exposed (D-47’s “delete the knob”), key is an opaque <code>Zeroize</code>-on-drop <code>Key</code> type, which also forecloses <code>WrongKeyLength</code> at this layer. See D-44/D-66 in <code>docs/DECISIONS.md</code>.</td></tr>

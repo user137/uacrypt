@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-a37f2eba.js";
+            window.path_to_searchindex_js = "searchindex-522a1f90.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-6b977b4b.js"></script>
+        <script src="toc-bc9924e8.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -249,7 +249,10 @@ easy/high-level layer (T-65), not a gap in what exists now. <code>uacrypt</code>
 <code>no_std</code> library dependency of anything else - the distinction the user’s question was really
 probing, confirmed correct rather than assumed.</p>
 <h2 id="d-05-aead-working-hypothesis-is-kalyna-alone-ccm-provisional-pending-the-primary-text"><a class="header" href="#d-05-aead-working-hypothesis-is-kalyna-alone-ccm-provisional-pending-the-primary-text">D-05: AEAD working hypothesis is Kalyna-alone CCM, provisional pending the primary text</a></h2>
-<p>(revised 2026-07-23, see D-41’s follow-up entry for the original text this replaces)</p>
+<blockquote>
+<p><strong>Status (T-234, 2026-09-23):</strong> confirmed - the DSTU 7624:2014 draft text defines GCM (§12) and CCM (§13) on Kalyna alone. The modes were then aligned to that text where UAPKI differed (D-204–D-207).
+(revised 2026-07-23, see D-41’s follow-up entry for the original text this replaces)</p>
+</blockquote>
 <p><strong>Current working hypothesis: Kalyna-alone CCM</strong> (<code>hazmat::kalyna_ccm</code>, D-41), not encrypt-then-MAC
 with a separate Kupyna-keyed MAC. This reverses this entry’s original stance below - recorded as a
 revision, not a silent overwrite, per <code>CLAUDE.md</code>’s “never silently deprecate” rule.</p>
@@ -1874,6 +1877,9 @@ only) the fused-vs-naive/decrypt-fusion property tests all pass under both profi
 verification bar - official vectors plus differential-oracle harnesses - doesn’t require it, and
 neither is re-run here); CI’s <code>miri</code>/<code>fuzz-smoke</code> jobs remain default-profile-only.</p>
 <h2 id="d-40-kalyna-ccm-noncecounter-width-strategy---deferred-to-its-own-follow-up-task"><a class="header" href="#d-40-kalyna-ccm-noncecounter-width-strategy---deferred-to-its-own-follow-up-task">D-40: Kalyna-CCM nonce/counter-width strategy - deferred to its own follow-up task</a></h2>
+<blockquote>
+<p><strong>Status (T-234, 2026-09-23):</strong> DSTU 7624:2014 §13.1 requires uniqueness of the nonce prefix only (11 bytes for a 128-bit block), so the 128-bit birthday figure below overstates the margin - see D-205 (f).</p>
+</blockquote>
 <p>Raised 2026-07-23 while implementing <code>hazmat::kalyna_ccm</code> (D-41): the nonce/counter split
 (<code>ccm_nb</code>, and with it the maximum message-count-before-repeat) is a tunable parameter of the CCM
 construction itself, not a fixed constant of DSTU 7624 - confirmed from
@@ -1957,6 +1963,9 @@ that’s the value <code>encrypt</code> produced). This is the concrete realizat
 misconfigure” for the one user-facing surface that exists today; it does not touch
 <code>hazmat::kalyna_ccm</code>’s own signature, and it is not <code>crypto_secretbox</code> (still D-05-blocked).</p>
 <h2 id="d-41-kalyna-ccm-implemented-as-the-d-05-working-hypothesis---provisional-dual-oracle-verified"><a class="header" href="#d-41-kalyna-ccm-implemented-as-the-d-05-working-hypothesis---provisional-dual-oracle-verified">D-41: Kalyna-CCM implemented as the D-05 working hypothesis - provisional, dual-oracle-verified</a></h2>
+<blockquote>
+<p><strong>Status (T-234, 2026-09-23):</strong> checked against the DSTU 7624:2014 draft text. The annex В.9 vectors are confirmed; the construction was corrected to §13 where the port differed (flag bit, empty AAD, G2 length, empty plaintext) - D-205. The BC cross-check below covered block-aligned vectors only.</p>
+</blockquote>
 <p>Follow-up to D-05’s revision above, same day (2026-07-23). <code>dstu_core::hazmat::kalyna_ccm</code>
 implements DSTU 7624 CCM (all five Kalyna block/key-size variants) as a standalone hazmat-level
 primitive - not <code>crypto_secretbox</code> itself, which stays blocked on D-05’s primary-text confirmation.</p>
@@ -2106,6 +2115,9 @@ bumps.</p>
 <p>See <code>docs/release-readiness.md</code> (added same day) for the fuller gap analysis - what a genuine
 libsodium-equivalent 1.0 release still needs beyond this version bump.</p>
 <h2 id="d-44-kupyna-based-kmac-crypto_auth-equivalent-implemented---dual-oracle-both-constructions-read"><a class="header" href="#d-44-kupyna-based-kmac-crypto_auth-equivalent-implemented---dual-oracle-both-constructions-read">D-44: Kupyna-based KMAC (<code>crypto_auth</code> equivalent) implemented - dual-oracle, both constructions read</a></h2>
+<blockquote>
+<p><strong>Status (T-234, 2026-09-23):</strong> confirmed against the DSTU 7564:2014 draft text - annex В’s <code>H(Pad(K) || Pad(M) || ~K)</code> and its three В.5 examples equal this construction and its vectors (see the status notes after D-206).</p>
+</blockquote>
 <p><code>docs/TASKS.md</code> T-38, first item worked from <code>docs/release-readiness.md</code>’s ordered list (T-38/T-39/
 T-40/T-48). <code>docs/papers/Kupyna.pdf</code> states DSTU 7564:2014 “defines both the hash function and its
 additional mode for message authentication code generation” but does not itself describe that mode
@@ -2882,6 +2894,9 @@ field sizes), Stage E (XTS, T-96, sequenced after D). Public <code>crypto_secret
 throughout Stage A, as designed - none of these five modes are AEAD-shaped, so none was ever a
 candidate for a public entry point (D-05/D-47).</p>
 <h2 id="d-54-hazmatkalyna_cmac-t-93-stage-b---one-shot-api-q-fixed-at-16-bytes-single-oracle-padding-branch-gap-recorded"><a class="header" href="#d-54-hazmatkalyna_cmac-t-93-stage-b---one-shot-api-q-fixed-at-16-bytes-single-oracle-padding-branch-gap-recorded">D-54: <code>hazmat::kalyna_cmac</code> (T-93, Stage B) - one-shot API, <code>q</code> fixed at 16 bytes, single-oracle padding-branch gap recorded</a></h2>
+<blockquote>
+<p><strong>Status (T-234, 2026-09-23):</strong> the non-aligned padding branch is confirmed by annex В.5.2 of the DSTU 7624:2014 draft (not only UAPKI); an empty message is now rejected - D-206.</p>
+</blockquote>
 <p>DSTU 7624:2014 mode #4. Cited to <code>oracles/uapki/library/uapkic/src/dstu7624.c</code>’s <code>cmac_update</code>/
 <code>cmac_final</code> (lines 4221-4310), <code>padding</code> (lines 2572-2592), <code>dstu7624_init_cmac</code> (lines 4070-4087);
 <code>Dstu7624Ctx</code>’s running MAC state confirmed zero-initialized via <code>dstu7624_alloc</code>’s
@@ -3024,6 +3039,9 @@ field arithmetic at three field sizes), Stage E (XTS, T-96, sequenced after D). 
 integrity) so it remains a theoretical future candidate, same standing as GCM, but nothing in this
 task changes that - still deferred, no decision made here.</p>
 <h2 id="d-56-hazmatgf2m_wide--hazmatkalyna_gcm-t-95-stage-d-commit-1-of-2---gcm-landed-three-real-divergences-from-aes-gcm-found-by-reading-not-assumed-gmac-deferred-to-its-own-commit"><a class="header" href="#d-56-hazmatgf2m_wide--hazmatkalyna_gcm-t-95-stage-d-commit-1-of-2---gcm-landed-three-real-divergences-from-aes-gcm-found-by-reading-not-assumed-gmac-deferred-to-its-own-commit">D-56: <code>hazmat::gf2m_wide</code> + <code>hazmat::kalyna_gcm</code> (T-95, Stage D, commit 1 of 2) - GCM landed; three real divergences from AES-GCM found by reading, not assumed; GMAC deferred to its own commit</a></h2>
+<blockquote>
+<p><strong>Status (T-234, 2026-09-23):</strong> divergences 2 and 3 below (AAD zero-padded, padded ciphertext length) were UAPKI’s reading, not the standard’s; superseded by D-204. Divergence 1 stands.</p>
+</blockquote>
 <p>DSTU 7624:2014 mode #7 (GCM). This is the roadmap’s “one real investment”: new GF(2^m) field
 arithmetic at three sizes, landed together with GCM in one commit because <strong>no standalone <code>gf2m</code>
 test vectors exist anywhere in the oracle</strong> (confirmed by search) - the field module and GCM could
@@ -3124,7 +3142,10 @@ field module). Public <code>crypto_secretbox</code> surface unchanged - whether 
 construction instead of or alongside CCM remains explicitly deferred, unchanged from the original
 Stage-A-era roadmap note.</p>
 <h2 id="d-57-hazmatkalyna_gmac-t-95-stage-d-commit-2-of-2---ported-from-encrypt_gmac-not"><a class="header" href="#d-57-hazmatkalyna_gmac-t-95-stage-d-commit-2-of-2---ported-from-encrypt_gmac-not">D-57: <code>hazmat::kalyna_gmac</code> (T-95, Stage D, commit 2 of 2) - ported from <code>encrypt_gmac</code>, not</a></h2>
-<p><code>gmac_update</code>/<code>gmac_final</code>, after finding a real multi-block bug in the streaming pair</p>
+<blockquote>
+<p><strong>Status (T-234, 2026-09-23):</strong> the length block now carries the true message length (DSTU 7624:2014 §12.5, annex В.8.1.3) - D-204.
+<code>gmac_update</code>/<code>gmac_final</code>, after finding a real multi-block bug in the streaming pair</p>
+</blockquote>
 <p>DSTU 7624:2014 mode #7’s MAC-only sibling, closing out Stage D (GCM/GMAC). Same
 <code>hazmat::gf2m_wide</code> field module as D-56’s GCM commit - no new field arithmetic needed. Consulted
 <code>advisor()</code> before writing any code, as planned; it corrected two things in the working premise at
@@ -10640,6 +10661,10 @@ planning-time claim. Python/Node/Ruby/PHP (direct FFI) and Java (pending its own
 spike) were never blocked by T-178c. <code>docs/bindings-strategy.md</code> now carries T-181’s own phase entry
 with the corrected ordering spelled out.</p>
 <h2 id="d-172-t-189---hazmatdstu4145signatureverify-accepted-an-unvalidated-public-key-a-real-universal-forgery-bug"><a class="header" href="#d-172-t-189---hazmatdstu4145signatureverify-accepted-an-unvalidated-public-key-a-real-universal-forgery-bug">D-172: T-189 - <code>hazmat::dstu4145::signature::verify</code> accepted an unvalidated public key, a real universal-forgery bug</a></h2>
+<blockquote>
+<p><strong>Superseded in part by D-203 (T-245b, 2026-09-23):</strong> the “<code>x != 0</code> rejection is complete” conclusion below
+covered small-subgroup points only, not keys of order <code>2n</code>. <code>verify</code> now does full validation <code>n*Q == O</code>.</p>
+</blockquote>
 <p><strong>Found auditing T-183</strong> (owner-directed adversarial-test-coverage audit of <code>crypto_box</code>/
 <code>dstu9041</code>) - out of that task’s own dstu9041-only scope, but the same shape of gap: <code>verify</code>’s <code>q</code>
 parameter (<code>VerifyingKey::from_uncompressed_bytes</code> at the <code>crypto_sign</code> layer, and every direct
@@ -11274,6 +11299,9 @@ hardware-level claim about either path.</p>
 <code>--no-default-features</code>, <code>-p dstu-core --no-default-features --features getrandom</code>) - all clean on
 both the dev machine and the (re-synced) Raspberry Pi.</p>
 <h2 id="d-185-t-199-planned---m257-chosen-as-the-second-dstu-4145-curve-on-empirical-evidence-from-real-issued-certificates-not-a-guess-off-the-standards-own-curve-table"><a class="header" href="#d-185-t-199-planned---m257-chosen-as-the-second-dstu-4145-curve-on-empirical-evidence-from-real-issued-certificates-not-a-guess-off-the-standards-own-curve-table">D-185: T-199 (planned) - <code>m=257</code> chosen as the second DSTU 4145 curve, on empirical evidence from real issued certificates, not a guess off the standard’s own curve table</a></h2>
+<blockquote>
+<p><strong>Status (T-234, 2026-09-23):</strong> DSTU 4145-2002 annex Г lists these <code>m = 257</code> parameters (<code>A = 0</code>, <code>B</code>, <code>n</code>, <code>x^257 + x^12 + 1</code>) exactly.</p>
+</blockquote>
 <p>Owner asked (“що б ти рекомендував?” -&gt; “а пошукай які рекомендовані криві і що використовують
 держоргани” -&gt; “а що використовує Дія?”) whether <code>hazmat::dstu4145</code> should ever grow a second curve
 size beyond the currently-sole <code>m=163</code> (~80-bit security, <code>docs/pseudocode/dstu4145.md</code>’s “Not yet
@@ -11885,7 +11913,7 @@ transcludes the whole README via `# uacrypt</p>
 encryption) — in the spirit of <strong>libsodium</strong>: hard, safe defaults, hard to misuse, rather than
 OpenSSL’s flexible-but-easy-to-misconfigure API. Ships as a Rust crate (<code>dstu-core</code>), a CLI
 (<code>uacrypt</code>), and bindings for eight languages.</p>
-<!-- uacrypt-version: 0.3.8 -->
+<!-- uacrypt-version: 0.4.0 -->
 <p><strong>Pre-1.0. Not audited. Not a claim of side-channel resistance.</strong> <code>dstu-core</code>/<code>uacrypt</code> are on
 <a href="https://crates.io/crates/dstu-core">crates.io</a>; the Python, Node.js, and Ruby bindings are on
 <a href="https://pypi.org/project/dstu-core/">PyPI</a>/<a href="https://www.npmjs.com/package/dstu-core">npm</a>/
@@ -11929,7 +11957,8 @@ uacrypt decrypt --key key.bin --in sealed.bin --out message.bin
 </code></pre>
 <p>See <a href="https://github.com/user137/uacrypt/blob/master/docs/CLI.md"><code>docs/CLI.md</code></a> for the full
 command reference (<code>sign</code>/<code>verify</code>, <code>box-seal</code>/<code>box-open</code>, and the lower-level <code>kalyna-block</code>/
-<code>kalyna-ccm</code> tools), and <a href="https://docs.rs/dstu-core">docs.rs</a> for the full library API.</p>
+<code>kalyna-ccm</code> tools) and for verifying a downloaded release (signed checksums, provenance), and
+<a href="https://docs.rs/dstu-core">docs.rs</a> for the full library API.</p>
 <h2 id="language-bindings"><a class="header" href="#language-bindings">Language bindings</a></h2>
 <p>The full <code>crypto_*</code> surface (<code>secretbox</code>/<code>secretstream</code>/<code>sign</code>/<code>auth</code>/<code>kdf</code>/<code>generichash</code>/<code>stream</code>/
 <code>pwhash</code>, <code>randombytes</code>, <code>selftest</code>), idiomatic errors, and the same correctness/rejection/misuse
@@ -11964,6 +11993,7 @@ resistance claim — see <code>docs/SECURITY.md</code> for the full threat model
 <ul>
 <li><a href="https://github.com/user137/uacrypt/blob/master/docs/SECURITY.md"><code>docs/SECURITY.md</code></a> — threat model and hard constraints</li>
 <li><a href="https://github.com/user137/uacrypt/blob/master/docs/DECISIONS.md"><code>docs/DECISIONS.md</code></a> — architectural decisions, with rejected alternatives</li>
+<li><a href="https://github.com/user137/uacrypt/blob/master/docs/COMPATIBILITY.md"><code>docs/COMPATIBILITY.md</code></a> — where UAPKI and Bouncy Castle read DSTU 7624 differently from the standard (and from this library)</li>
 <li><a href="https://github.com/user137/uacrypt/blob/master/docs/TASKS.md"><code>docs/TASKS.md</code></a> — phase-by-phase task backlog</li>
 <li><a href="https://github.com/user137/uacrypt/blob/master/docs/release-readiness.md"><code>docs/release-readiness.md</code></a> — gap analysis against a libsodium-equivalent 1.0</li>
 <li>Full knowledge base: <a href="https://user137.github.io/uacrypt/">user137.github.io/uacrypt</a></li>
@@ -12426,6 +12456,353 @@ matched, no fix needed there; (3) <code>crates/uacrypt/README.md</code>’s new 
 finding above) was confirmed to need no version-marker lint coverage, since it no longer states a
 version at all - nothing left for <code>cargo xtask docs-check</code> to catch drifting, by construction, not
 by oversight.</p>
+<h2 id="d-200-t-232---bind-the-true-ciphertext-length-into-crypto_secretboxcrypto_secretstreams-aad-audit-f-01"><a class="header" href="#d-200-t-232---bind-the-true-ciphertext-length-into-crypto_secretboxcrypto_secretstreams-aad-audit-f-01">D-200: T-232 - bind the true ciphertext length into <code>crypto_secretbox</code>/<code>crypto_secretstream</code>’s AAD (audit F-01)</a></h2>
+<p><strong>Finding.</strong> <code>hazmat::kalyna_gcm::compute_tag</code> pads a non-aligned ciphertext with <code>0x80 00..</code>
+and writes the <em>padded</em> ciphertext length into the length block (D-56 divergences 2/3, transcribed
+from UAPKI <code>dstu7624.c</code>). So <code>ct</code> and <code>ct || 80 00..</code> (up to the next block boundary) produce
+the same tag. Neither wrapper put the length anywhere else: <code>crypto_secretbox</code>’s AAD was the nonce
+(D-63) and <code>crypto_secretstream</code>’s was <code>counter || tag_byte</code> (D-68). An attacker could append 1-31
+bytes to any sealed message or chunk, or strip a trailing <code>0x80</code> from a block-aligned one, and
+<code>open</code>/<code>pull</code> returned <code>Ok</code>. This was reproduced end to end on <code>uacrypt</code> 0.3.8 (<code>docs/TASKS.md</code>
+“Security audit remediation”, V5/V6). D-56’s claim that this area was “covered by the proptest
+round-trip” did not hold: a round trip cannot detect a non-injective encoding.</p>
+<p><strong>Bouncy Castle diverges.</strong> <code>bcprov-jdk18on</code> 1.85’s <code>KGCMBlockCipher</code> zero-pads and writes the
+true length. It gives the same ciphertext with a different tag on non-aligned input (V1/V4) and
+rejects the append forgery. Its own javadoc says its partial-block handling follows NIST and
+“has not been confirmed against an independent conformant DSTU 7624 implementation” (github #287).
+Every official DSTU 7624 GCM/GMAC vector is block-aligned, so neither reading is settled by a
+vector. That fork is T-234/T-235 and waits for the primary text.</p>
+<p><strong>Decision (owner O-1, 2026-09-23): fix at the <code>crypto_*</code> layer now, leave hazmat untouched.</strong></p>
+<ul>
+<li><code>crypto_secretbox</code> AAD = <code>version || nonce || (ciphertext_len as u64).to_le_bytes()</code> (41 bytes).</li>
+<li><code>crypto_secretstream</code> AAD = <code>counter_le64 || tag_byte || ciphertext_len_le64</code> (17 bytes).</li>
+</ul>
+<p>Both AADs are fixed-length. GCM zero-pads the AAD and records its true length, so the pair
+(padded ciphertext, true length) goes into the tag input injectively. Any append or truncate
+changes the AAD and fails the tag check whichever GCM padding reading T-235 later adopts.</p>
+<p>Citations, checked against the fetched primary texts on 2026-09-23:</p>
+<ul>
+<li>RFC 5116 §2.2: decryption must return FAIL for inputs not produced by the encrypt operation.</li>
+<li>NIST SP 800-38D §7.1, Algorithm 4, step 5: <code>S = GHASH_H(A || 0^v || C || 0^u || [len(A)]64 || [len(C)]64)</code>. This is the true-length encoding that the padded-length variant loses.</li>
+</ul>
+<p>Same pass, T-238: <code>PullState::pull</code> now requires exactly a 16-byte <code>auth_tag</code>. <code>kalyna_gcm::decrypt</code>
+alone accepts the DSTU-permitted 8..=32 range, so an 8-byte prefix of a real tag used to verify.
+Hazmat keeps its range (Q2). Wire-format break, shipped in 0.4.0. Old blobs and files fail to open.
+There is no legacy reader (owner, 2026-09-23: decrypt old data with 0.3.8 first; T-250 downgraded).</p>
+<p>Tests:</p>
+<ul>
+<li>V5(a)/(b) regression tests for both modules;</li>
+<li>a negative proptest: “extended with <code>80 00..</code> never opens”;</li>
+<li><code>uacrypt</code>’s V6(a) end-to-end test (<code>smoke_secretstream_attack.rs</code>);</li>
+<li>a Python binding test for T-238.</li>
+</ul>
+<p>Each was confirmed red against the old AAD/range before the fix.</p>
+<h2 id="d-201-t-248---bind-the-kem-ciphertext-and-recipient-key-into-crypto_boxcrypto_box512s-stream-key"><a class="header" href="#d-201-t-248---bind-the-kem-ciphertext-and-recipient-key-into-crypto_boxcrypto_box512s-stream-key">D-201: T-248 - bind the KEM ciphertext and recipient key into <code>crypto_box</code>/<code>crypto_box512</code>’s stream key</a></h2>
+<p><strong>Before:</strong> the stream key was <code>Kupyna256Kdf::derive_subkey(seed, 0, b"cryptbox"/b"cryptbx5")</code>,
+a function of the seed alone. No attack was found. The DSTU 9041 hash check authenticates the
+seed, and the sender is anonymous by design. The binding is hardening against malleability, and
+the owner folded it into the same wire-format break as D-200 (O-3/Q4).</p>
+<p><strong>Now:</strong> <code>stream_key = Kupyna256Kmac(key = seed, message = label || version || kem_ciphertext || recipient_public_key)</code>, with the labels <code>b"cryptbox"</code>/<code>b"cryptbx5"</code> unchanged. <code>seal</code> binds
+<code>recipient.to_bytes()</code>. <code>open</code> recomputes the key from the secret key
+(<code>secret.public_key().to_bytes()</code>, one extra scalar multiplication). The existing
+<code>public_key_round_trips_through_bytes</code> test pins that both sides produce the same bytes.</p>
+<p>Citation: RFC 9180 §4.1 (DHKEM Encap/Decap), <code>kem_context = concat(enc, pkRm)</code>. Verified in the
+fetched rfc9180.txt, 2026-09-23. There is no sender static key, so there is no <code>pkSm</code> (anonymous
+sealed box, like libsodium’s <code>crypto_box_seal</code>, which binds <code>epk || pk</code> into its nonce).</p>
+<p>Not <code>Kupyna256Kdf</code>, because its fixed 8-byte context cannot carry a 160/320-byte <code>kem_context</code>.
+Not a new public hazmat API and not HKDF (uncited over Kupyna, see <code>docs/pseudocode/kupyna-kdf.md</code>).
+This is a private <code>stream_key</code> helper in each module, over the already dual-oracle-verified
+<code>Kupyna256Kmac</code> (D-44). A unit test in each module checks that every tested byte of the KEM
+ciphertext, the recipient key and the seed changes the derived key.</p>
+<h2 id="d-202-a-1-byte-format-version-on-every-crypto_-sealed-blob"><a class="header" href="#d-202-a-1-byte-format-version-on-every-crypto_-sealed-blob">D-202: a 1-byte format version on every <code>crypto_*</code> sealed blob</a></h2>
+<p>The owner chose this on 2026-09-23 (O-1’s premise, restated in T-232). <code>crypto_secretbox</code>,
+<code>crypto_box</code> and <code>crypto_box512</code> blobs now start with a version byte, currently <code>2</code>; 0.3.x blobs,
+implicitly v1, had none.</p>
+<p>The byte is also bound in:</p>
+<ul>
+<li>secretbox: it is in the AAD;</li>
+<li>box: it is in the stream-key derivation.</li>
+</ul>
+<p>A flipped version byte therefore never opens.</p>
+<p>An unknown value returns a new, separate error: <code>SecretboxError::UnsupportedVersion</code>,
+<code>OpenError::UnsupportedVersion</code>, and C ABI <code>DSTU_ERR_UNSUPPORTED_VERSION = 13</code>, mapped in the
+Go/.NET/C++ status switches and in <code>uacrypt</code>’s <code>CliError</code>. It is not folded into
+<code>TagMismatch</code>/<code>InvalidCiphertext</code>. The byte is public and is checked before any secret is used,
+so reporting it reveals nothing, which is the same reasoning that keeps <code>Truncated</code> distinct.</p>
+<p>Effect: if T-235 later changes the hazmat GCM padding, that becomes a clean <code>3</code> instead of a
+second silent break.</p>
+<p>Caveat for 0.3.x data. Old blobs had no version byte: their first byte is a random nonce byte
+(secretbox) or the high byte of <code>r</code> (box). About 1 in 256 of them therefore start with <code>0x02</code>.
+Those pass the version check and fail as <code>TagMismatch</code>/<code>InvalidCiphertext</code> rather than
+<code>UnsupportedVersion</code>. That is still a clean failure, just a less specific one, and all public
+wording says “almost always”.</p>
+<p><code>DSTU_ERR_UNSUPPORTED_VERSION</code> takes status 13, so T-240’s <code>DSTU_ERR_INVALID_ARGUMENT</code> becomes 14.</p>
+<p>C ABI overheads move by one byte:</p>
+<ul>
+<li><code>DSTU_SECRETBOX_OVERHEAD</code>: 48 -&gt; 49</li>
+<li><code>DSTU_BOX_SEAL_OVERHEAD</code>: 176 -&gt; 177</li>
+<li><code>DSTU_BOX512_SEAL_OVERHEAD</code>: 304 -&gt; 305</li>
+</ul>
+<p>The .NET binding hardcodes these values and is updated to match; Go and C++ read the header.</p>
+<p><code>crypto_secretstream</code> itself has no blob, so its version byte belongs to the stream-file framing
+(<code>uacrypt</code> plus the 8 binding writers). That lands in execution-plan step 4, together with the
+“non-final record must be exactly 8192 bytes” check and fixing <code>uacrypt</code>’s short-read chunk fill.</p>
+<p><strong>Found while landing this (test-validity, not a crypto finding).</strong> Several existing tamper tests
+flipped byte 0 of a sealed blob:</p>
+<ul>
+<li>secretbox and box tests in all 8 bindings;</li>
+<li><code>uacrypt</code>’s <code>r = p-1</code> order-2 attack test (<code>smoke_crypto_box_attack.rs</code>, which overwrote bytes
+<code>[..32]</code>).</li>
+</ul>
+<p>Byte 0 is now the public version byte. All of them would still have passed, but on
+<code>UnsupportedVersion</code> rather than on the nonce/KEM check they exist to exercise.</p>
+<p>They now target byte 1 (bytes <code>[1..33]</code> for <code>r</code>). The <code>r = p-1</code> test also asserts that the failure
+message is “authentication failed”, so it cannot silently regress to the version check again.</p>
+<p>General rule: when a wire format gains a prefix, re-read every test that tampers at a fixed offset.
+A green result is not evidence the test still hits the field it was written for.</p>
+<h2 id="d-203-t-245b---full-public-key-validation-nq--o-for-dstu-4145-m163-verify"><a class="header" href="#d-203-t-245b---full-public-key-validation-nq--o-for-dstu-4145-m163-verify">D-203: T-245b - full public-key validation (<code>n*Q == O</code>) for DSTU 4145 <code>m=163</code> verify</a></h2>
+<p><strong>Finding (audit F-13, Info).</strong> D-172’s fix rejected <code>Infinity</code>, any off-curve point, and the one
+non-identity point of order 2 (<code>x = 0</code>). With cofactor 2 the group is cyclic of order <code>2n</code>, so a
+point <code>Q' = Q + T2</code> (<code>T2</code> the order-2 point) is on the curve, has <code>x != 0</code> and has order <code>2n</code>. D-172’s
+check let it through. Every signature with an even <code>r</code> that is valid under <code>Q</code> also verifies under
+<code>Q'</code>, since <code>r*T2 = O</code>. <code>T2</code> comes from the public curve parameters, so <strong>anyone</strong> can compute
+<code>Q'</code> from a victim’s public key, without <code>d</code>. That is key substitution (duplicate-signature key
+selection): an attacker publishes <code>Q'</code> as their own key, and about half of the victim’s existing
+signatures then verify under it. No new message can be forged (still Info), but signatures were no
+longer bound to one key.</p>
+<p><strong>Decision.</strong> <code>signature::verify</code> checks <code>!q.is_on_curve() || q.scalar_multiply(&amp;n) != Infinity</code>,
+the same check <code>signature257::verify</code> already used (D-185).</p>
+<ul>
+<li>Citations: SEC 1 v2 §3.2.2.1 and NIST SP 800-56A r3 §5.6.2.3.3, full public-key validation
+including <code>n*Q = O</code>.</li>
+<li>Cost: one more scalar multiplication per verify (public data).</li>
+<li>Owner question Q3 answered “yes” on 2026-09-23 (<code>docs/TASKS.md</code>, “Owner decisions”).</li>
+</ul>
+<p><strong>Test.</strong> <code>tests/dstu4145_signature.rs</code> <code>order_2n_public_key_is_rejected</code> builds <code>Q + T2</code> via the
+public <code>curve163::verify_combine(Q, 1, T2, 1)</code> and uses a genuine signature with an even <code>r</code>. It was
+accepted before the fix (red, confirmed) and is rejected after it; the genuine key still verifies.</p>
+<h2 id="d-204-t-234t-235---kalyna-gcmgmac-follow-dstu-76242014-12-б2-padding-on-aad-and-ciphertext-true-lengths"><a class="header" href="#d-204-t-234t-235---kalyna-gcmgmac-follow-dstu-76242014-12-б2-padding-on-aad-and-ciphertext-true-lengths">D-204: T-234/T-235 - Kalyna-GCM/GMAC follow DSTU 7624:2014 §12 (Б.2 padding on AAD and ciphertext, true lengths)</a></h2>
+<p><strong>Source.</strong> DSTU 7624:2014, owner-supplied copy of the <strong>draft edition</strong> (“ДСТУ ____-2014”, order date
+left blank), gitignored under <code>docs/papers/</code>. §12.2 (printed p.25-26): if |C| or |O| is not a
+multiple of the block size, the Б.2 padding (a <code>1</code> bit, then zeros - <code>0x80</code> for byte data) gives
+<code>C*</code>/<code>O*</code>; <code>lambda_o = |O|</code>, <code>lambda_C = |C|</code> (the <strong>true</strong> bit lengths, <code>l/2</code> bits each, LE);
+<code>h = L_q(T(B xor (lambda_o || lambda_C)))</code>. §12.5 (GMAC): same, with <code>lambda_M = 0</code>. Annex В.8.1.3 is
+a worked 139-bit GMAC example (<code>padded</code> = <code>...30F000...</code>, <code>lambda_o = 8B</code>) that fixes the O side
+exactly; a unit test in <code>hazmat::kalyna_gmac</code> reproduces its <code>h</code>. No annex example has a partial
+ciphertext block, so the C side rests on the §12.2 text.</p>
+<p><strong>Finding.</strong> D-56 transcribed <code>dstu7624.c</code>: AAD zero-padded (no marker), and the <em>padded</em> ciphertext
+length in <code>lambda_C</code>. That is the non-injectivity T-232 (D-200) had to patch around. Bouncy Castle
+1.85 <code>KGCMBlockCipher</code>/<code>KGMac</code> zero-pad both and use true lengths - its javadoc says it followed NIST
+SP 800-38D because “DSTU 7624:2014 does not publish a partial-block GCM/GMAC test vector” (github
+#287), but В.8.1.3 is such a vector. So on any non-aligned AAD or ciphertext the standard, UAPKI and
+BC give three different tags; on block-aligned input (every annex GCM example) all three agree.</p>
+<p><strong>Decision (O-2, owner, 2026-09-23: “the standard governs”).</strong> Implement §12 as written: supersedes
+D-56 divergences 2/3 (divergence 1, the double-encrypted counter, is unchanged).</p>
+<ul>
+<li>The rejected T-235 option “switch to BC” would not have been the standard either.</li>
+<li><code>crypto_secretbox</code>/<code>crypto_secretstream</code>/<code>crypto_box</code> tags all change (their AAD - 41 and 17 bytes -
+is never block-aligned). <code>FORMAT_VERSION</code> stays <code>2</code>: v2 was never released. D-200’s <code>ct_len</code> stays
+in their AAD as defence in depth.</li>
+<li>Breaking for <code>hazmat::kalyna_gcm</code>/<code>kalyna_gmac</code> and <code>uacrypt kalyna-gcm</code>/<code>kalyna-gmac</code> as published in
+v0.3.0, for non-aligned input only.</li>
+</ul>
+<p><strong>Tests / evidence.</strong> <code>tests/vectors/kalyna-{gcm,gmac}/partial-*.json</code>: 23 GCM + 15 GMAC cases, all
+five variants (the first-ever <code>Kalyna128_128Gmac</code> vectors). Tags produced two independent ways that
+agreed on all 60 scratch cases: BC 1.85’s GF chain (<code>KGMac</code> over the already-padded <code>O*||C*</code>, then the
+length block swapped via <code>tag = E(B xor lambda)</code>), and the same swap over the pre-change hazmat chain.
+Neither is the code under test. Plus injectivity regressions (<code>ct</code> vs <code>ct||80..</code>, GMAC <code>m</code> vs
+<code>m||80..</code>).</p>
+<h2 id="d-205-t-234---kalyna-ccm-follows-dstu-76242014-13-flag-empty-aad-g2-length"><a class="header" href="#d-205-t-234---kalyna-ccm-follows-dstu-76242014-13-flag-empty-aad-g2-length">D-205: T-234 - Kalyna-CCM follows DSTU 7624:2014 §13 (flag, empty AAD, G2 length)</a></h2>
+<p><strong>Source.</strong> Same draft copy, §13.1-13.4 (printed p.28-31), tables 13.1-13.3.</p>
+<p><strong>Findings</strong> (independent transcription of §13 reproduces all five annex В.9 examples; the old
+<code>hazmat::kalyna_ccm</code>, a <code>dstu7624.c</code> port, also matched them, but differed outside them):</p>
+<ul>
+<li>(a) Flag bit 7 is <code>|O| &gt; 0</code> (AAD present, table 13.2); the port set it from <code>!plaintext.is_empty()</code>.</li>
+<li>(b) With <code>|O| = 0</code> the text reads “B = G1”. §13.2’s own general formula over the one-block
+sequence <code>G1</code> gives <code>B = b_1 = T(G1)</code>, and the literal reading would feed <code>G1 xor m_1</code> into the
+first encryption, unlike every other branch. Read as a drafting slip (the 7564 draft has a
+similar one, a truncated INPUT field); BC 1.85 implements <code>T(G1)</code> with bit 7 = 0 and matches the
+transcription on every empty-AAD, block-aligned-M case, all five variants. The port added a
+zero G2 block instead.</li>
+<li>(c) <code>G2 = lambda_o (N_B bytes LE) || 0^z</code>, <code>z = (l - |O| mod l - 8 N_B) mod l</code>: when <code>|O| mod l &gt; l/8 - N_B</code> G2 spills into a further block. The port used <code>block_len - (|O| mod l)</code> bytes, too
+short to hold the <code>N_B</code>-byte length field. Text-only evidence (BC lays G2 out differently:
+<code>len || AAD || zeros</code>).</li>
+<li>(d) <code>|M| = 8r, r &gt;= 1</code>: empty plaintext is outside the domain -&gt; <code>CcmError::EmptyPlaintext</code>.</li>
+<li>(e) The 255-byte caps (single-byte length fields in the port) are kept as a scope limit; the
+standard’s <code>N_B</code>-byte LE fields are now written in full.</li>
+<li>(f) The standard requires uniqueness only of the nonce prefix <code>L_{l/8-(N_B+1)}(S)</code> (11 bytes for a
+128-bit block): D-40’s “128-bit nonce, ~2^48 messages” figure overstated the margin.</li>
+<li>(g) §13.3 increments only the low half of the counter; the port carries across the block. Differs
+only after <code>2^(l/2)</code> blocks, unreachable under the 255-byte cap - left as is.</li>
+<li>BC 1.85 <code>KCCMBlockCipher</code> fails annex В.9.2 (AAD 12, M 15: ciphertext right, tag wrong): its own
+tests cover only block-aligned CCM, so D-41’s BC cross-check was aligned-only. Not an oracle for
+partial-block CCM.</li>
+</ul>
+<p><strong>Decision.</strong> Implement §13 as written, with (b) read as <code>T(G1)</code>. <code>H_BUF_LEN</code> resized to
+<code>MAX_BLOCK + (8 + MAX_BLOCK - 1) + MAX_AAD_LEN</code> (512/512 with a 255-byte AAD needs 384 bytes; the old
+size was 383). D-41’s status: annex vectors confirmed; construction corrected to the text.</p>
+<p><strong>Tests.</strong> <code>tests/vectors/kalyna-ccm/edge-*.json</code> (36 cases, each tagged “std transcription + BC 1.85”
+or “std transcription only”), including AAD = 255 for every variant; <code>empty_plaintext_is_rejected</code>.</p>
+<h2 id="d-206-t-234t-236---kalyna-cmac-rejects-an-empty-message"><a class="header" href="#d-206-t-234t-236---kalyna-cmac-rejects-an-empty-message">D-206: T-234/T-236 - Kalyna-CMAC rejects an empty message</a></h2>
+<p>§9.1-9.2: <code>|O| = l * n_o</code> with <code>n_o</code> a positive integer, and the Б.2 padding is defined for <code>N &gt;= 1</code>
+only - an empty message is outside the standard’s domain. The port returned <code>MAC(empty) == MAC(0^l)</code>. <code>Kalyna*Cmac::mac</code>/<code>mac_with_cipher</code> now return <code>Result&lt;[u8; 16], CmacError&gt;</code> with
+<code>CmacError::EmptyMessage</code> (verify too). No KAT used an empty message. Same reasoning as D-205 (d).
+The non-aligned CMAC path (<code>0x80</code> + <code>K_delta = T(1)</code>) is confirmed by annex В.5.2, not only UAPKI.</p>
+<p><strong>Related status notes (T-234).</strong></p>
+<ul>
+<li>D-44 (KMAC): the DSTU 7564:2014 draft’s annex В gives <code>phi(M, K) = H(Pad(K) || Pad(M) || ~K)</code> and
+the three В.5 examples equal our vectors - confirmed against the (draft) text.</li>
+<li>D-185 (<code>m = 257</code>): annex Г of DSTU 4145-2002 lists <code>A = 0</code>, <code>B</code>, <code>n</code> and <code>x^257 + x^12 + 1</code> exactly as
+implemented (and <code>m = 163</code>’s parameters too).</li>
+</ul>
+<h2 id="d-207-t-234---kalyna-gcmgmac-reject-an-empty-aad-and-data-input-the-tag-would-be-the-ghash-key"><a class="header" href="#d-207-t-234---kalyna-gcmgmac-reject-an-empty-aad-and-data-input-the-tag-would-be-the-ghash-key">D-207: T-234 - Kalyna-GCM/GMAC reject an empty AAD-and-data input (the tag would be the GHASH key)</a></h2>
+<p><strong>Finding</strong> (closing advisor review of T-234). DSTU 7624:2014 (draft) §12.1: <code>|O| + |M| &gt;= 1</code>. With
+both empty, <code>B = 0</code> and the length block is <code>0</code>, so the tag is <code>T(0) = H</code>, the GHASH key itself - and
+Kalyna-GCM puts no nonce-derived mask on the tag (D-56 divergence 3). Anyone who obtains that one tag
+knows <code>H</code> and can construct, for any message they have seen tagged, a different same-length message
+with the same accumulator, i.e. forge tags under that key. Confirmed empirically:
+<code>Kalyna128_128Gmac::mac(k, [])</code> and <code>Kalyna128_128Gcm::encrypt(.., [], [], ..)</code> both equalled
+<code>E_K(0)</code>. UAPKI and Bouncy Castle 1.85 accept this input and return the same value (all three agreed
+on the (0, 0) case in the T-234 scratch comparison).</p>
+<p><strong>Decision.</strong> Follow §12.1: <code>GcmError::EmptyInput</code> when both <code>aad</code> and the plaintext/ciphertext are
+empty (either one alone may be empty), <code>GmacError::EmptyMessage</code> for an empty GMAC message, and
+<code>Kalyna*Gmac::mac</code>/<code>mac_with_cipher</code> now return <code>Result</code> (same shape as D-206). <code>uacrypt kalyna-gcm</code>/
+<code>kalyna-gmac</code> report <code>CliError::EmptyInput</code>. <code>crypto_secretbox</code>/<code>crypto_secretstream</code>/<code>crypto_box</code>
+are unaffected - their internal AAD is never empty - so the new variant is unreachable there.
+Affects <code>hazmat</code> and the CLI as published in v0.3.0.</p>
+<p><strong>Disclosure (owner decision 2026-09-24).</strong> A separate, lower-severity GitHub Security Advisory (its
+own CVE and severity score), published together with the main T-232 advisory - not folded into it, so
+neither severity rating is distorted, and not a CHANGELOG-only fix, since D-207 and the <code>mac</code> -&gt;
+<code>Result</code> change are public in the release anyway. UAPKI and Bouncy Castle accept the same input and
+get a private heads-up before our publication (this entry and <code>docs/COMPATIBILITY.md</code> describe their
+behaviour); each outward message is confirmed by the owner before sending. Both heads-ups were sent
+by the owner on 2026-09-24 (UAPKI: GitHub private vulnerability reporting; Bouncy Castle: email per
+their SECURITY.md), with no publication date stated.</p>
+<p><strong>Tests.</strong> <code>empty_aad_and_empty_plaintext_are_rejected</code> (GCM; one side empty still works),
+<code>empty_message_is_rejected</code> (GMAC), and the two CLI tests; proptests now draw non-empty AAD (GCM) /
+message (GMAC).</p>
+<h2 id="d-208-stream-file-format-v2---a-bound-version-byte-and-exact-8192-byte-non-final-records-t-232-completion-execution-plan-step-4"><a class="header" href="#d-208-stream-file-format-v2---a-bound-version-byte-and-exact-8192-byte-non-final-records-t-232-completion-execution-plan-step-4">D-208: stream-file format v2 - a bound version byte and exact 8192-byte non-final records (T-232 completion, execution-plan step 4)</a></h2>
+<p><strong>Context.</strong> D-202 put a version byte on every <code>crypto_*</code> blob but left the stream file (<code>uacrypt encrypt</code> and the 8 bindings’ writers and readers) for this step, together with T-232’s
+defence-in-depth rule that every non-<code>Final</code> record is exactly <code>SECRETSTREAM_CHUNK_BYTES</code>. Checked
+first: all 8 binding writers already emitted exact 8192-byte non-<code>Final</code> records (a buffered
+<code>&gt; 8192</code> loop or a full pending buffer). <code>uacrypt</code> did not: <code>run_secretstream_encrypt</code> filled each
+chunk with one <code>File::read</code>, which may legally return fewer bytes, so a short read could write a
+short non-<code>Final</code> record. It never showed on local files, but the new rule would have rejected
+such a file.</p>
+<p><strong>Decision.</strong></p>
+<ul>
+<li>Layout: <code>version (1) = 2 || header (32) || records</code>; records unchanged (<code>tag (1) || len (4, LE) || ciphertext || auth tag (16)</code>).</li>
+<li>The version is bound in the core: <code>crypto_secretstream</code>’s initial subkey is now
+<code>Kupyna256Kmac(key, "DSTU-secretstream-v2" || header)</code>, and <code>FORMAT_VERSION = 2</code> is exported.
+A changed version byte never opens, as in D-202, and a future format with its own label cannot
+be read under this one’s rules. The label also adds the domain separation the bare
+<code>KMAC(key, header)</code> lacked. The owner chose this over a framing-only byte (2026-09-23 plan
+approval). Cost: v2 stream and box tags change again; v2 was never released.</li>
+<li>Every reader (uacrypt plus 8 bindings) checks, in order: the version byte (a distinct
+“unsupported stream format version N” error; the byte is public, D-202’s reasoning), the existing
+<code>len &gt; 8192</code> bound, then <strong>non-<code>Final</code> record length must equal 8192</strong> (a distinct “non-final
+chunk” error). <code>uacrypt</code> additionally reports an unknown tag byte before the length rule; the
+bindings leave unknown tags to the core’s <code>pull</code>. Both reject, only the message differs.</li>
+<li><code>uacrypt</code> fills each chunk with a read loop (<code>fill_chunk</code>); <code>write_secretstream_file</code> is generic
+over <code>Read</code>, so a one-byte-per-read test reader proves full records.</li>
+<li><strong>The chunk size is now part of the wire format.</strong> Changing <code>SECRETSTREAM_CHUNK_BYTES</code> (or any
+binding’s copy) needs a new format version, not just a rebuild; the old “split a MAX constant
+someday” note on that constant is gone.</li>
+<li>No magic bytes: the layout keeps the box-blob shape (version first). A foreign file fails the
+version check about 255 times in 256 and authentication otherwise. Self-describing typed files
+belong to the 0.5.0 UX batch (T-255..T-265).</li>
+<li>Each binding hardcodes <code>2</code> next to its hardcoded 8192; <code>uacrypt</code>’s <code>CONTAINER_FORMAT_VERSION</code> is
+const-asserted equal to <code>crypto_secretstream::FORMAT_VERSION</code>.</li>
+</ul>
+<p><strong>Shared vectors (D-124).</strong> <code>crates/dstu-core/tests/vectors/secretstream-file/v2.json</code>, written by
+<code>crates/uacrypt/tests/gen_secretstream_file_vectors.rs</code> (<code>#[ignore]</code>, run by hand) over core
+<code>PushState</code>, a second encoder independent of <code>uacrypt</code>’s writer. A self-generated interop pin, not an
+oracle. Seven cases: <code>valid</code> (two 8192-byte records plus a 100-byte <code>Final</code>), <code>valid_empty</code>,
+<code>valid_exact_multiple</code>, <code>bad_version</code>, <code>short_non_final</code> (genuinely valid tags, so rejecting it proves
+the length rule, not authentication), <code>v1_0_3_8</code> (a real file from <code>uacrypt</code> 0.3.8 built at tag
+<code>v0.3.8</code>; its first byte is <code>0xc3</code>, so the expected error is an unsupported version) and
+<code>version_only</code>. <code>uacrypt</code> and all 8 bindings run every case; the uacrypt interop tests no longer
+carry the whole interop claim alone (they skip when no <code>uacrypt</code> is built).</p>
+<p><strong>T-238 per binding.</strong> Python, Node, Ruby, PHP and Java expose a low-level pull that takes a
+caller-sized tag, so each got a “truncated 8-byte tag is rejected” test (Java maps the core’s length
+error to <code>IllegalArgumentException</code>). Go, .NET and C++ expose only the framed reader, which always
+reads exactly 16 tag bytes: the misuse is foreclosed by construction, recorded here instead of a
+test. The C ABI’s <code>dstu_secretstream_pull</code> already documents that <code>auth_tag</code> must be valid for
+<code>DSTU_SECRETSTREAM_TAG_BYTES</code> bytes.</p>
+<p><strong>Found while landing this.</strong></p>
+<ul>
+<li>Fixed-offset tests shifted by one, per D-202’s rule: <code>smoke_secretstream_attack.rs</code> (a named
+<code>HEADER_LEN = 33</code>/<code>LEN_FIELD</code>; the header-tamper test now flips byte 1 and a new test covers
+byte 0), two <code>uacrypt</code> unit tests (one had been tampering the tag byte while its comment said
+“ciphertext”), and the oversized-length tests in every binding.</li>
+<li><code>final_tag_flipped_to_message_is_verify_failure</code> now uses an exact 8192-byte message: with a short
+<code>Final</code> record, the flip is caught by the length rule before authentication, and the test exists
+to prove the tag byte is authenticated.</li>
+<li>Node’s test helper waited for <code>'drain'</code> forever when a reader rejected the very first 16 KiB
+write; it now also resolves on <code>'close'</code> and awaits reader and writer together.</li>
+<li>PHP is not installed on the dev machine; its change is covered by CI only.</li>
+</ul>
+<h2 id="d-209-t-252---verifiable-releases-sigstore-keyless-checksums-provenance-sbom-tag-only-publish-gates"><a class="header" href="#d-209-t-252---verifiable-releases-sigstore-keyless-checksums-provenance-sbom-tag-only-publish-gates">D-209: T-252 - verifiable releases: Sigstore keyless checksums, provenance, SBOM, tag-only publish gates</a></h2>
+<p><strong>Context.</strong> Before 0.4.0 the release pipeline shipped binaries with no checksums, signatures,
+provenance or SBOM (npm <code>--provenance</code> only). The first fixed release after F-01 should also be the
+first one a user can verify (T-252).</p>
+<p><strong>Decision.</strong></p>
+<ul>
+<li><code>SHA256SUMS</code> over every release asset, signed keyless with Sigstore (<code>cosign sign-blob --bundle</code>,
+cosign 3.0.6 via <code>sigstore/cosign-installer</code> v4.1.2) - owner choice 2026-09-24 over minisign (no
+long-lived key to store or leak) and over attestation-only (a plain checksum file most users can
+check). The job verifies its own bundle against its exact workflow identity before uploading.</li>
+<li><code>actions/attest-build-provenance</code> v4.2.2 on every asset (SLSA build provenance), <code>cargo auditable build --locked</code> for <code>uacrypt</code>, and a CycloneDX 1.5 SBOM (<code>cargo-cyclonedx</code> 0.5.9, <code>--target all</code>).
+Tool versions and action SHAs are pinned.</li>
+<li>A new <code>assemble-release-assets</code> job needs every build job, so the asset set is fixed. Before this,
+the Node addons and Ruby gems were attached only if their jobs happened to finish before
+<code>publish-release</code>.</li>
+<li>Every publishing job and the GitHub Release step run only on a <code>v*</code> tag push, and
+<code>workflow_dispatch</code> is a publish-free dry run. <code>publish-crates</code> needs only the builds, not
+<code>publish-release</code>: a signing or attestation failure must not hold back a security fix on
+crates.io. The GitHub Release then has to be finished by hand.</li>
+<li>The user-facing checks (<code>docs/CLI.md</code>) pin the certificate identity to
+<code>release.yml@refs/tags/v</code> and <code>gh attestation verify</code> to <code>--source-ref refs/tags/vX.Y.Z</code>. Both
+reject an artefact built from a branch, which the dry run showed is otherwise accepted.</li>
+</ul>
+<p><strong>Verified.</strong> Dry run 35929711949 on a temporary branch (origin/master plus this workflow only,
+deleted afterwards): every build, SBOM and assemble job green, every publish job skipped. On the
+downloaded assets: <code>sha256sum -c</code>, <code>cosign verify-blob</code> for the branch identity, the tag regexp
+rejecting it, <code>gh attestation verify</code> with and without <code>--source-ref</code>, and a tampered file
+failing both checks.</p>
+<p><strong>Rejected.</strong> OpenSSF Scorecard (optional in T-252, left for later). A private mirror repo for the
+dry run was unnecessary, since the workflow change discloses nothing.</p>
+<h2 id="d-210-t-266---the-7-open-codeql-alerts-82-88-are-false-positives-dismissed"><a class="header" href="#d-210-t-266---the-7-open-codeql-alerts-82-88-are-false-positives-dismissed">D-210: T-266 - the 7 open CodeQL alerts (#82-#88) are false positives, dismissed</a></h2>
+<p><strong>Context.</strong> Owner surfaced the Code Scanning page on 2026-09-24: 7 open High alerts, all first seen
+on <code>f8bf046</code> (2026-08-28), none triaged in D-98/D-99. Two rules.</p>
+<p><strong><code>rust/access-invalid-pointer</code> (#82-#85)</strong> - <code>bindings/nodejs/src/generichash.rs:24/63</code>
+(<code>Kupyna256Hasher</code>/<code>Kupyna512Hasher</code>), <code>secretstream.rs:47/90</code> (<code>SecretStreamPushState</code>/
+<code>SecretStreamPullState</code>). Each points at a <code>pub struct</code> under <code>#[napi]</code>, i.e. at code generated by
+<code>napi-derive</code> 2 (napi 2.16.17), not at code in this repo. Checked by expanding the crate
+(<code>cargo +nightly rustc --lib -- -Zunpretty=expanded</code>): the generated <code>ToNapiValue</code>/<code>into_reference</code>
+do <code>Box::into_raw(Box::new(val))</code>, swap a <code>0x1</code> (zero-sized-type dangling) pointer for a real
+1-byte allocation, and hand the pointer to <code>napi_wrap</code> with <code>raw_finalize_unchecked::&lt;T&gt;</code> as the
+finalizer that frees it. This is napi-rs’s standard ownership transfer to the JS GC; the analyzer
+does not model the finalizer. Nothing to change on our side.</p>
+<p><strong><code>rust/cleartext-logging</code> (#86-#88)</strong> - all in tests.</p>
+<ul>
+<li><code>crates/uacrypt/tests/smoke_key_confusion.rs:138/297</code>: the source is the variable name
+<code>as_secret</code> (the CLI run’s output); the sink is an <code>assert!</code> message printing that run’s stderr.
+No key bytes reach it.</li>
+<li><code>crates/uacrypt/src/lib.rs:5874</code> (<code>#[cfg(test)]</code>,
+<code>run_unknown_subcommand_for_each_new_mode_is_rejected</code>): flows from <code>read_box_secret_key</code>/
+<code>read_box512_secret_key</code>/<code>run_secretstream_command</code> into <code>{result:?}</code> of a
+<code>Result&lt;(), CliError&gt;</code>. <code>Ok</code> is <code>()</code>, and no <code>CliError</code> variant carries key material: they hold
+flag/command strings, paths, I/O messages, lengths, <code>&amp;'static str</code> and version bytes. The key
+readers return only <code>Io</code>/<code>WrongLength</code>/<code>BoxKeyInvalid</code>/<code>Box512KeyInvalid</code>. Re-checked against
+the local, unpushed <code>CliError</code> too: the new variants (<code>EmptyInput</code>, <code>KeyFileExists</code>,
+<code>*UnsupportedVersion</code>, <code>SecretstreamBadChunkLength</code>) also carry none.</li>
+</ul>
+<p><strong>Decision.</strong> Dismiss all 7 as false positives through the Code Scanning API, with a reason on
+each alert that points here. There’s no query filter this time (D-99’s approach): both rules also
+catch real bugs in non-generated, non-test code, so turning them off repo-wide would lose coverage.</p>
+<p><strong>Rejected.</strong> Renaming <code>as_secret</code> in the smoke tests only to satisfy the heuristic. Not done for
+now; the owner can revisit if #86/#87 reopen.</p>
 
                     </main>
 
