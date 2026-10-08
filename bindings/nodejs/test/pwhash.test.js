@@ -9,6 +9,8 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const dstu = require('../js/index.js');
 
 test('hash/verify round-trips', () => {
@@ -28,3 +30,13 @@ test('malformed hash string is rejected', () => {
 test('invalid strength is rejected', () => {
   assert.throws(() => dstu.pwhashHashPassword(Buffer.from('password'), 255));
 });
+
+// T-272/D-222: a crafted hash string returns false instead of aborting the Node process.
+const VERIFY_VECTORS = path.resolve(__dirname, '..', '..', '..', 'crates', 'dstu-core', 'tests', 'vectors', 'pwhash', 'verify.json');
+for (const c of JSON.parse(fs.readFileSync(VERIFY_VECTORS, 'utf8')).cases) {
+  test(`shared verify vector: ${c.name}`, () => {
+    const password = Buffer.from(c.password);
+    assert.strictEqual(dstu.pwhashVerifyPassword(password, c.hash), c.expect === 'accept');
+    assert.strictEqual(dstu.pwhashVerifyPassword(Buffer.concat([password, Buffer.from('x')]), c.hash), false);
+  });
+}

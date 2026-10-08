@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json;
 using DstuCore;
 using Xunit;
 
@@ -56,5 +57,32 @@ public sealed class PwhashTests
 #pragma warning restore xUnit1026
     {
         Assert.Throws<ArgumentNullException>(action);
+    }
+
+    private static readonly string VerifyVectorPath = Path.Combine(
+        RepoRoot.Path, "crates", "dstu-core", "tests", "vectors", "pwhash", "verify.json");
+
+    public static TheoryData<string, string, string, string> VerifyCases()
+    {
+        using var doc = JsonDocument.Parse(File.ReadAllText(VerifyVectorPath));
+        var cases = new TheoryData<string, string, string, string>();
+        foreach (var c in doc.RootElement.GetProperty("cases").EnumerateArray())
+        {
+            cases.Add(c.GetProperty("name").GetString()!, c.GetProperty("password").GetString()!,
+                c.GetProperty("hash").GetString()!, c.GetProperty("expect").GetString()!);
+        }
+
+        return cases;
+    }
+
+    /// <summary>T-272/D-222: a crafted hash string returns false instead of aborting the process.</summary>
+    [Theory]
+    [MemberData(nameof(VerifyCases))]
+#pragma warning disable xUnit1026 // name exists only to label this Theory row in test output
+    public void SharedVerifyVector(string name, string password, string hash, string expect)
+#pragma warning restore xUnit1026
+    {
+        Assert.Equal(expect == "accept", Pwhash.VerifyPassword(Encoding.UTF8.GetBytes(password), hash));
+        Assert.False(Pwhash.VerifyPassword(Encoding.UTF8.GetBytes(password + "x"), hash));
     }
 }

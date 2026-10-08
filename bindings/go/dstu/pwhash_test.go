@@ -1,7 +1,10 @@
 package dstu
 
 import (
+	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -42,5 +45,35 @@ func TestUnknownStrengthIsAnArgumentError(t *testing.T) {
 func TestMalformedHashStringIsRejected(t *testing.T) {
 	if VerifyPassword([]byte("anything"), "not a real PHC string") {
 		t.Fatal("expected a malformed hash to be rejected")
+	}
+}
+
+// TestPwhashSharedVerifyVectors (T-272/D-222): a crafted hash string returns false instead of
+// aborting the process.
+func TestPwhashSharedVerifyVectors(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join(repoRoot(t), "crates", "dstu-core", "tests", "vectors", "pwhash", "verify.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var vectors struct {
+		Cases []struct {
+			Name     string `json:"name"`
+			Password string `json:"password"`
+			Hash     string `json:"hash"`
+			Expect   string `json:"expect"`
+		} `json:"cases"`
+	}
+	if err := json.Unmarshal(raw, &vectors); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range vectors.Cases {
+		t.Run(c.Name, func(t *testing.T) {
+			if got := VerifyPassword([]byte(c.Password), c.Hash); got != (c.Expect == "accept") {
+				t.Fatalf("VerifyPassword = %v, want %v", got, c.Expect == "accept")
+			}
+			if VerifyPassword([]byte(c.Password+"x"), c.Hash) {
+				t.Fatal("a wrong password verified")
+			}
+		})
 	}
 }

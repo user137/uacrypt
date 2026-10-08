@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -33,5 +34,25 @@ final class PwhashTest extends TestCase
     {
         $this->expectException(\ValueError::class);
         dstu_core_pwhash_hash_password('password', 255);
+    }
+
+    /** T-272/D-222: a crafted hash string returns false instead of aborting the PHP process. */
+    public static function sharedVerifyVectors(): array
+    {
+        $path = dirname(__DIR__, 3) . '/crates/dstu-core/tests/vectors/pwhash/verify.json';
+        $vectors = json_decode(file_get_contents($path), true, flags: JSON_THROW_ON_ERROR);
+        $cases = [];
+        foreach ($vectors['cases'] as $case) {
+            $cases[$case['name']] = [$case['password'], $case['hash'], $case['expect']];
+        }
+
+        return $cases;
+    }
+
+    #[DataProvider('sharedVerifyVectors')]
+    public function testSharedVerifyVector(string $password, string $hash, string $expect): void
+    {
+        $this->assertSame($expect === 'accept', dstu_core_pwhash_verify_password($password, $hash));
+        $this->assertFalse(dstu_core_pwhash_verify_password($password . 'x', $hash));
     }
 }

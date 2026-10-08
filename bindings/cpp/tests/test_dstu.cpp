@@ -769,6 +769,32 @@ void TestPwhash() {
         "an out-of-range strength should throw ArgumentError");
 }
 
+// T-272/D-222: a crafted hash string returns false instead of aborting the process. The file has
+// one field per line, so the per-line JsonField lookup applies here too.
+void TestPwhashSharedVerifyVectors() {
+  std::ifstream file(DSTU_PWHASH_VERIFY_VECTORS);
+  CHECK(file.good(), "the shared pwhash verify vectors should be readable");
+  int cases = 0;
+  std::string name;
+  std::string password;
+  std::string hash;
+  for (std::string line; std::getline(file, line);) {
+    if (line.find("\"name\":") != std::string::npos) {
+      name = JsonField(line, "name");
+    } else if (line.find("\"password\":") != std::string::npos) {
+      password = JsonField(line, "password");
+    } else if (line.find("\"hash\":") != std::string::npos) {
+      hash = JsonField(line, "hash");
+    } else if (line.find("\"expect\":") != std::string::npos) {
+      cases++;
+      const bool accept = JsonField(line, "expect") == "accept";
+      CHECK(dstu::VerifyPassword(ToBytes(password), hash) == accept, name.c_str());
+      CHECK(!dstu::VerifyPassword(ToBytes(password + "x"), hash), name.c_str());
+    }
+  }
+  CHECK(cases == 22, "the shared pwhash verify file should hold 22 cases");
+}
+
 }  // namespace
 
 // bugprone-exception-escape flags std::cout/cerr use reachable from main (ostream::operator<<'s
@@ -798,6 +824,7 @@ int main() {
     TestStream();
     TestThreadSafety();
     TestPwhash();
+    TestPwhashSharedVerifyVectors();
   } catch (const dstu::DstuException &e) {
     std::fprintf(stderr, "uncaught dstu::DstuException: %s\n", e.what());
     return 1;

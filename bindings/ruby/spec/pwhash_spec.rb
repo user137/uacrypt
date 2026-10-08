@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "json"
+
 # crypto_pwhash (Argon2id, the one deliberately non-DSTU component, D-49/D-50). Correctness: round
 # trip. Rejection: wrong password, malformed hash string. Misuse: invalid strength value.
 # PWHASH_INTERACTIVE is used throughout (not the default PWHASH_MODERATE) so this file's own specs
@@ -21,5 +23,14 @@ RSpec.describe "DstuCore pwhash" do
 
   it "rejects an invalid strength value" do
     expect { DstuCore.pwhash_hash_password("password", 255) }.to raise_error(ArgumentError)
+  end
+
+  # T-272/D-222: a crafted hash string returns false instead of aborting the interpreter.
+  vectors = File.expand_path("../../../crates/dstu-core/tests/vectors/pwhash/verify.json", __dir__)
+  JSON.parse(File.read(vectors, encoding: "UTF-8"))["cases"].each do |c|
+    it "shared verify vector: #{c['name']}" do
+      expect(DstuCore.pwhash_verify_password(c["password"], c["hash"])).to be(c["expect"] == "accept")
+      expect(DstuCore.pwhash_verify_password("#{c['password']}x", c["hash"])).to be(false)
+    end
   end
 end
