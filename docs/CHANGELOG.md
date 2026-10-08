@@ -129,6 +129,8 @@ All notable changes to this project are documented in this file. Format follows
   up to the `Sensitive` preset's, a salt of 8+ bytes and a tag of 16-64 bytes; anything else is
   `false` before any memory is allocated. Hashes from `hash_password` and libsodium still
   verify; the default costs of PHP's `password_hash` and argon2-cffi are inside the bounds.
+  Every binding now runs the shared `tests/vectors/pwhash/verify.json` cases through its own
+  wrapper. The Python, npm and RubyGems packages carrying this fix are 0.3.0.
 - **Kalyna-GCM/GMAC's software GHASH no longer indexes a table with the secret key** (0.5.0,
   T-273, `docs/DECISIONS.md` D-223). On `no_std` builds and CPUs without PCLMULQDQ/PMULL, the
   field multiply read one of 16 table rows chosen by the GHASH key `H`, a cache-timing exposure

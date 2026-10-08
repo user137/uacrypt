@@ -9957,6 +9957,16 @@ rewritten when the codec arrives. T-277's shared vectors guard the 9 parsers unt
 **0.6.0:** T-284 (core stream-file codec plus capi), then one binding pass moving every reader and
 writer onto it.
 
+**Owner, 2026-10-08: 0.5.0 ships as it stands** (the day 0.4.0 shipped). Moved to 0.6.0, still
+open: T-242/T-246 leftovers, T-283, T-277, T-265 + T-287, T-286, T-264, T-269, T-274/T-275/T-276,
+T-280, T-281, T-263 (owner's call), T-267 (after 0.5.0). Done for 0.5.0 on 2026-10-08:
+`master` (0.4.0 final) merged in; versions 0.5.0 (crates) / 0.3.0 (Python/npm/Ruby); clippy
+1.99's `assert_is_empty` fixed; T-272's binding tests over `verify.json` in all 8 bindings
+(Python 26, Node 26, Ruby 26, Java `mvn verify`, .NET 29, Go, C++ ctest here; PHP 121 + phpstan
+on the Pi); `cargo xtask test` 146 suites green, `cargo clippy --workspace --all-features
+--all-targets` clean. The 0.5.0 advisory (T-272 + T-290/T-291) text is drafted in
+`.claude/disclosure-drafts/advisory_050.md`, not yet created on GitHub.
+
 ### Batch plan (updated 2026-09-25 with D-220 - superseded as the order by the merged plan above;
 kept for its per-batch "done when" criteria)
 
