@@ -213,7 +213,7 @@ fn spawn_rss_sampler(
 fn parse_proc_status_vm_rss_kb(status_text: &str) -> Option<u64> {
     for line in status_text.lines() {
         if let Some(rest) = line.strip_prefix("VmRSS:") {
-            return rest.trim().split_whitespace().next()?.parse().ok();
+            return rest.split_whitespace().next()?.parse().ok();
         }
     }
     None

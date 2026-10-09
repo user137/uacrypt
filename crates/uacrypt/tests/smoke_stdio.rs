@@ -506,7 +506,8 @@ fn a_file_named_dash_is_reachable_as_dot_slash_dash() {
 }
 
 #[test]
-#[cfg(unix)]
+// `/dev/full` is Linux-only (macOS has none).
+#[cfg(target_os = "linux")]
 #[cfg_attr(
     miri,
     ignore = "spawns the real uacrypt binary - Miri cannot run a subprocess"

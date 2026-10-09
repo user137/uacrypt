@@ -304,7 +304,8 @@ fn a_path_with_a_control_character_is_refused() {
 }
 
 /// A write error on stdout (here: a full device) is exit 3 naming `<stdout>`, never a panic.
-#[cfg(unix)]
+// `/dev/full` is Linux-only (macOS has none).
+#[cfg(target_os = "linux")]
 #[test]
 #[cfg_attr(
     miri,

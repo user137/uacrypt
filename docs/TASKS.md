@@ -9996,7 +9996,7 @@ on the Pi); `cargo xtask test` 146 suites green, `cargo clippy --workspace --all
 
 **RELEASE-DAY HANDOFF (2026-10-08, saved before a context compact) - read this first.**
 - **NEXT STEP (2026-10-09):** GHSA #3 text approved, draft created: GHSA-4644-j77c-h3hg (payload
-  `.claude/disclosure-drafts/ghsa3.json`); CVE request still the owner's call. CHANGELOG finalized
+  `.claude/disclosure-drafts/ghsa3.json`); no CVE (owner 2026-10-09, same as 0.4.0). CHANGELOG finalized
   as `[0.5.0] - 2026-10-09` (change the date if the tag slips) and cites it; `docs/CLI.md` has the
   cosign v2 note. Next: fetch, rebuild the gh-pages marker, then the push/tag steps below.
   `master` = `39fdb53` = `v0.4.0`.
