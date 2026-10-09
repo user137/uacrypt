@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-e57879cc.js";
+            window.path_to_searchindex_js = "searchindex-ad261942.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -9294,7 +9294,9 @@ step 4) -&gt; T-241 -&gt; T-245a/b. Version 0.4.0 bump at release time, not per 
 </ul>
 </li>
 <li><input disabled="" type="checkbox" checked=""> <strong>T-233</strong> (<strong>done 2026-10-08/09</strong>: GHSA-j2w3-628p-qw92 and GHSA-wqmx-6fx4-jr5r published
-2026-10-08 10:40 UTC, no CVE; RustSec PRs rustsec/advisory-db#3339/#3340 open, lint green,
+2026-10-08 10:40 UTC, no CVE; RustSec PRs rustsec/advisory-db#3339/#3340 closed unmerged 2026-10-09 by a maintainer: the crate
+fails RustSec’s minimum notability criteria (so no RustSec PR for GHSA #3 either; retry only once
+usage grows, then as one PR with one commit per advisory);
 <code>dstu-core</code> only - <code>uacrypt</code> named in the text; v0.4.0 release notes cite both) (F-01 follow-up,
 <strong>owner-gated, outward-facing</strong>) Disclosure + release for T-232:
 GitHub Security Advisory and a RUSTSEC advisory for <code>dstu-core</code>/<code>uacrypt</code>; release notes for the
@@ -9323,7 +9325,7 @@ lineage is unknown (Q5). Until T-234: document in rustdoc/<code>docs/SECURITY.md
 (<code>kalyna-cmac</code>). After T-234: decide whether hazmat rejects empty input (check first that no KAT
 in <code>tests/vectors/</code> uses an empty message). Also record in <code>docs/ORACLES.md</code> that the non-aligned
 CMAC path (<code>0x80</code> + <code>E(1)</code>) has UAPKI as its only oracle, since BC throws on it.</li>
-<li><input disabled="" type="checkbox"> <strong>T-237</strong> (<strong>re-scoped 2026-09-23, optional</strong>: BC 1.85 is documented as <em>not</em> an oracle for partial-block GCM/GMAC/CCM (D-204/D-205); the remaining value is a harness that pins <code>docs/COMPATIBILITY.md</code>’s BC column so a BC change is noticed) (oracle infra, from the BC cross-check) Vendor <code>org/bouncycastle/crypto/modes/ KGCMBlockCipher.java</code> and <code>crypto/macs/KGMac.java</code> (plus the <code>modes/kgcm/*</code> multipliers if needed
+<li><input disabled="" type="checkbox"> <strong>T-237</strong> (<strong>after 1.0 (owner 2026-10-09).</strong> <strong>re-scoped 2026-09-23, optional</strong>: BC 1.85 is documented as <em>not</em> an oracle for partial-block GCM/GMAC/CCM (D-204/D-205); the remaining value is a harness that pins <code>docs/COMPATIBILITY.md</code>’s BC column so a BC change is noticed) (oracle infra, from the BC cross-check) Vendor <code>org/bouncycastle/crypto/modes/ KGCMBlockCipher.java</code> and <code>crypto/macs/KGMac.java</code> (plus the <code>modes/kgcm/*</code> multipliers if needed
 for readability) into <code>oracles/bouncycastle-java</code>, and the .NET equivalents into
 <code>oracles/bouncycastle-dotnet</code>; update the “not present” statements (<code>docs/DECISIONS.md</code> ~1991,
 ~3250; <code>docs/ORACLES.md</code> ~142, ~158) and <code>oracles/README.md</code>. Add V1-V4 to
@@ -9593,7 +9595,7 @@ replace a DSTU primitive.</p>
 <h3 id="tasks-added-2026-09-23"><a class="header" href="#tasks-added-2026-09-23">Tasks added 2026-09-23</a></h3>
 <ul>
 <li>
-<p><input disabled="" type="checkbox"> <strong>T-250</strong> (<strong>downgraded 2026-09-23, see Owner decisions: no <code>migrate</code>, no fixtures; the 0.3.x release binaries stay available for decrypting old data</strong>) Legacy read / migration path for data written by
+<p><input disabled="" type="checkbox" checked=""> <strong>T-250</strong> (<strong>closed 2026-10-09, won’t do (owner): no migration.</strong> <strong>downgraded 2026-09-23, see Owner decisions: no <code>migrate</code>, no fixtures; the 0.3.x release binaries stay available for decrypting old data</strong>) Legacy read / migration path for data written by
 &lt;= 0.3.8. Deleting old binaries, or yanking before the new release can read the old format,
 would strand every file users encrypted with <code>uacrypt</code> &lt;= 0.3.8 and every <code>secretbox</code> blob. Proposal:
 an explicit <code>uacrypt migrate --in old --out new</code> in 0.4.0 that decrypts the old format behind a
@@ -10211,7 +10213,7 @@ multi-chunk <code>crypto_box</code> stream API in <code>dstu-core</code> -&gt; t
 <li><input disabled="" type="checkbox"> <strong>T-269</strong> Binding gate for T-262 and T-265, one pass: wire <code>crypto_pwhash::derive_key</code>
 and T-265’s streaming <code>crypto_box</code> API into the 8 bindings and <code>dstu-core-capi</code> (shared vectors <code>crates/dstu-core/tests/vectors/pwhash/derive_key.json</code>), and
 decide whether the bindings also read/write the passphrase file format (D-219).</li>
-<li><input disabled="" type="checkbox"> <strong>T-263</strong> Text output (A1), only if the owner wants it.</li>
+<li><input disabled="" type="checkbox"> <strong>T-263</strong> Text output (A1), only if the owner wants it. <strong>After 1.0 (owner 2026-10-09).</strong></li>
 </ul>
 <p>Release:</p>
 <ul>
@@ -10240,6 +10242,22 @@ exe is not Authenticode-signed, only Sigstore-signed checksums), and whether a z
 installer needs <code>ArchiveBinariesDependOnPath</code>.</li>
 <li>Done when: <code>winget install &lt;id&gt;</code> on a clean machine gives a working <code>uacrypt --version</code>, and
 <code>docs/CLI.md</code>/README list it as an install option.</li>
+</ul>
+</li>
+<li><input disabled="" type="checkbox"> <strong>T-296</strong> (Low, qa; owner 2026-10-09, 0.6.0) Shorten the Miri wall time. On 0.5.0’s
+<code>d8aa1f0</code> run, <code>cargo miri test (uacrypt)</code> took 86+ min (31 min on 0.4.0) and
+<code>dstu9041_encryption_512</code> 80+ min still running (2 h 28 min on 0.4.0), with <code>PROPTEST_CASES: 1</code>
+already set.
+<ul>
+<li>Found 2026-10-09: <code>tests/smoke_passphrase.rs</code> (T-262) had no <code>cfg_attr(miri, ignore)</code>, so Miri
+ran Argon2id at the <code>Moderate</code> preset in-process; fixed in the same commit as this note. Re-measure
+<code>uacrypt</code> after that before sharding.</li>
+<li>Shard <code>uacrypt</code>’s Miri job by test target, as <code>miri-dstu-core</code> does (<code>miri.yml</code>, D-172).</li>
+<li>Measure which tests dominate (a guess to check, not a finding: Argon2id passphrase tests at real
+costs in <code>uacrypt</code>’s lib tests; the masked 512-bit ladder since T-290/T-291) and give those a
+Miri-only smaller input or split the file, without dropping what Miri checks.</li>
+<li>Done when: no Miri job exceeds ~60 min, and the set of tests run under Miri is unchanged or
+every exclusion is listed with its reason.</li>
 </ul>
 </li>
 </ul>
@@ -11043,7 +11061,31 @@ Added by the owner 2026-09-26. T-291 ships under the same 0.5.0 advisory and emb
 </li>
 </ol>
 <p><strong>0.6.0:</strong> T-284 (core stream-file codec plus capi), then one binding pass moving every reader and
-writer onto it.</p>
+writer onto it. Superseded in detail by the plan below.</p>
+<h3 id="060--070-plan-owner-approved-2026-10-09"><a class="header" href="#060--070-plan-owner-approved-2026-10-09">0.6.0 / 0.7.0 plan (owner-approved 2026-10-09)</a></h3>
+<p>0.6.0 hardens what exists; 0.7.0 adds features. Order within each release is the owner’s to change.</p>
+<p><strong>0.6.0, in order:</strong>
+0. Done 2026-10-09: Miri split into <code>miri.yml</code>, runs on code changes + daily (D-232).</p>
+<ol>
+<li>CI and test footing: T-288 (check what 0.4.0 left), T-289, T-231, T-296, T-277.</li>
+<li>T-284 core stream-file codec plus capi, then one binding pass onto it; closes T-274, T-276 and
+T-275 (O-F: Java <code>close()</code> closes the sink - a behaviour change, Java package minor bump).</li>
+<li>Hygiene: T-242, T-244, T-283, T-281 (O-D: documented reserved no-op).</li>
+<li>Docs: T-246, T-280.</li>
+</ol>
+<p><strong>0.7.0, in order:</strong></p>
+<ol>
+<li>T-265 bounded-memory <code>box-seal</code>/<code>box-open</code> (new streaming <code>crypto_box</code> API) + T-269 binding gate
+(incl. <code>crypto_pwhash::derive_key</code>).</li>
+<li>Perf after T-265: T-286, T-287, T-293.</li>
+<li>New primitives: T-253 (<code>kalyna_kw_p</code>, opens DSTU 9041 <code>l(p)=384</code>), T-254 (Kupyna-384).</li>
+<li>T-264 shell completions and man page.</li>
+<li>T-249 second audit pass, last.</li>
+</ol>
+<p><strong>Outside the versions:</strong> T-267 (site, right after 0.5.0), T-295 (winget, after 0.5.0), T-247
+(upstream reports, owner go-ahead only).</p>
+<p><strong>After 1.0 (owner 2026-10-09):</strong> T-237 (BC harness), T-263 (text/armor output). <strong>Closed:</strong> T-250
+(no migration; the 0.3.x binaries stay available for decrypting old data).</p>
 <p><strong>Owner, 2026-10-08: 0.5.0 ships as it stands</strong> (the day 0.4.0 shipped). Moved to 0.6.0, still
 open: T-242/T-246 leftovers, T-283, T-277, T-265 + T-287, T-286, T-264, T-269, T-274/T-275/T-276,
 T-280, T-281, T-263 (owner’s call), T-267 (after 0.5.0). Done for 0.5.0 on 2026-10-08:
@@ -11064,8 +11106,7 @@ Miri was green; release run 37761634603 green (npm needed a new <code>NPM_TOKEN<
 Live: crates.io 0.4.0, PyPI/npm/RubyGems 0.2.0 (npm without <code>win32-x64-msvc</code>, D-189). T-252
 verify commands run on the real assets: cosign <code>Verified OK</code> (cosign v2 needs
 <code>--new-bundle-format</code>; add that to <code>docs/CLI.md</code> in 0.5.0), checksums OK, attestations point at
-<code>refs/tags/v0.4.0</code>. Advisories, RustSec and registry cleanup: T-233, T-251. Still open: watch
-the RustSec PRs; Dependabot alert #3 (brace-expansion, dev-only npm lockfile) - merge its PR.</li>
+<code>refs/tags/v0.4.0</code>. Advisories, RustSec and registry cleanup: T-233, T-251. Still open: Dependabot alert #3 (brace-expansion, dev-only npm lockfile) - merge its PR.</li>
 <li><strong>0.5.0 (<code>ux-0.5.0</code>, local only, embargo holds):</strong> verified locally on 2026-10-08: asm-check
 (rustc 1.99: 112 zero-jump + 16 exact-count rows), the new <code>rust.yml</code> clippy steps incl. aarch64
 cross-clippy, xtask fmt/test, MSRV 1.87 build. Owner decided: GHSA #3 covers T-272, T-273,
@@ -32531,6 +32572,17 @@ GCM/GMAC input and empty CMAC, not CCM and not the padding/length rules. Our fix
 public (embargo), so it could not have been copied. Its comments cite the standard’s own formulas.
 Treat it as a second transcription of the same text, not as an unrelated oracle: it confirms our
 reading where the two agree, and the empty-AAD CCM case remains a reading question (D-205 (b)).</p>
+<h2 id="d-232-miri-runs-on-code-changes-and-daily-not-on-every-push-2026-10-09"><a class="header" href="#d-232-miri-runs-on-code-changes-and-daily-not-on-every-push-2026-10-09">D-232: Miri runs on code changes and daily, not on every push (2026-10-09)</a></h2>
+<p><strong>Decision (owner).</strong> Miri moves out of <code>rust.yml</code> into its own <code>miri.yml</code>, which runs on a push or
+PR that touches <code>crates/**</code>, the root Cargo files, <code>rust-toolchain.toml</code> or <code>.cargo/**</code>, once a day
+(02:17 UTC) and on <code>workflow_dispatch</code>.</p>
+<p><strong>Why.</strong> The Miri jobs take about two hours of runner time per push, and most pushes (docs,
+bindings, CI) change nothing Miri checks. The owner asked whether Miri could wait until the end of
+0.7.0; rejected because 0.6.0 rewrites the stream codec and the C ABI, the code where undefined
+behaviour is most likely, and a late finding would have to be bisected across two releases.</p>
+<p><strong>Rule kept.</strong> Miri stays a required layer (<code>CLAUDE.md</code>). A green Miri run covering the code being
+tagged is still required before every release tag: either the latest <code>miri.yml</code> run is on or after
+the last code change, or start one with <code>gh workflow run miri.yml --ref master</code>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="changelog"><a class="header" href="#changelog">Changelog</a></h1>
 <p>All notable changes to this project are documented in this file. Format follows
