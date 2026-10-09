@@ -9293,6 +9293,16 @@ Release:
     installer needs `ArchiveBinariesDependOnPath`.
   - Done when: `winget install <id>` on a clean machine gives a working `uacrypt --version`, and
     `docs/CLI.md`/README list it as an install option.
+- [ ] **T-296** (Low, qa; owner 2026-10-09, 0.6.0) Shorten the Miri wall time. On 0.5.0's
+  `d8aa1f0` run, `cargo miri test (uacrypt)` took 86+ min (31 min on 0.4.0) and
+  `dstu9041_encryption_512` 80+ min still running (2 h 28 min on 0.4.0), with `PROPTEST_CASES: 1`
+  already set.
+  - Shard `uacrypt`'s Miri job by test target, as `miri-dstu-core` does (`miri.yml`, D-172).
+  - Measure which tests dominate (a guess to check, not a finding: Argon2id passphrase tests at real
+    costs in `uacrypt`'s lib tests; the masked 512-bit ladder since T-290/T-291) and give those a
+    Miri-only smaller input or split the file, without dropping what Miri checks.
+  - Done when: no Miri job exceeds ~60 min, and the set of tests run under Miri is unchanged or
+    every exclusion is listed with its reason.
 
 Every task: test-first, all four categories (happy path, security/boundary, misuse, error path);
 update `docs/CLI.md`, README quick start, both help texts, CHANGELOG `[Unreleased]`; docs-check.
@@ -9992,7 +10002,7 @@ writer onto it. Superseded in detail by the plan below.
 
 **0.6.0, in order:**
 0. Done 2026-10-09: Miri split into `miri.yml`, runs on code changes + daily (D-232).
-1. CI and test footing: T-288 (check what 0.4.0 left), T-289, T-231, T-277.
+1. CI and test footing: T-288 (check what 0.4.0 left), T-289, T-231, T-296, T-277.
 2. T-284 core stream-file codec plus capi, then one binding pass onto it; closes T-274, T-276 and
    T-275 (O-F: Java `close()` closes the sink - a behaviour change, Java package minor bump).
 3. Hygiene: T-242, T-244, T-283, T-281 (O-D: documented reserved no-op).
