@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-522a1f90.js";
+            window.path_to_searchindex_js = "searchindex-2f1b0718.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -194,7 +194,7 @@
 encryption) — in the spirit of <strong>libsodium</strong>: hard, safe defaults, hard to misuse, rather than
 OpenSSL’s flexible-but-easy-to-misconfigure API. Ships as a Rust crate (<code>dstu-core</code>), a CLI
 (<code>uacrypt</code>), and bindings for eight languages.</p>
-<!-- uacrypt-version: 0.4.0 -->
+<!-- uacrypt-version: 0.5.0 -->
 <p><strong>Pre-1.0. Not audited. Not a claim of side-channel resistance.</strong> <code>dstu-core</code>/<code>uacrypt</code> are on
 <a href="https://crates.io/crates/dstu-core">crates.io</a>; the Python, Node.js, and Ruby bindings are on
 <a href="https://pypi.org/project/dstu-core/">PyPI</a>/<a href="https://www.npmjs.com/package/dstu-core">npm</a>/
@@ -234,7 +234,10 @@ assert_eq!(opened, b"message");
 <pre><code class="language-sh">cargo install uacrypt   # or download a prebuilt binary from GitHub Releases
 uacrypt keygen --out key.bin
 uacrypt encrypt --key key.bin --in message.bin --out sealed.bin
-uacrypt decrypt --key key.bin --in sealed.bin --out message.bin
+uacrypt decrypt --key key.bin --in sealed.bin --out decrypted.bin
+tar c docs | uacrypt encrypt --key key.bin --in - --out docs.tar.enc   # - is stdin/stdout
+uacrypt encrypt --passphrase --in message.bin --out sealed.bin   # asks twice, no echo
+uacrypt decrypt --in sealed.bin --out decrypted.bin              # asks for the passphrase
 </code></pre>
 <p>See <a href="https://github.com/user137/uacrypt/blob/master/docs/CLI.md"><code>docs/CLI.md</code></a> for the full
 command reference (<code>sign</code>/<code>verify</code>, <code>box-seal</code>/<code>box-open</code>, and the lower-level <code>kalyna-block</code>/

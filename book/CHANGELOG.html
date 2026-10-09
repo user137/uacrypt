@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-522a1f90.js";
+            window.path_to_searchindex_js = "searchindex-2f1b0718.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -184,8 +184,172 @@
 <p>All notable changes to this project are documented in this file. Format follows
 <a href="https://keepachangelog.com/en/1.1.0/">Keep a Changelog</a>.</p>
 <h2 id="unreleased"><a class="header" href="#unreleased">[Unreleased]</a></h2>
-<h2 id="040---2026-10-08"><a class="header" href="#040---2026-10-08">[0.4.0] - 2026-10-08</a></h2>
+<h2 id="050---2026-10-09"><a class="header" href="#050---2026-10-09">[0.5.0] - 2026-10-09</a></h2>
+<h3 id="changed---uacrypt-cli-breaking"><a class="header" href="#changed---uacrypt-cli-breaking">Changed - <code>uacrypt</code> CLI (breaking)</a></h3>
+<ul>
+<li><strong>Exit codes are split</strong> (T-255, <code>docs/DECISIONS.md</code> D-211): 1 = the input was checked and
+rejected (authentication failure, bad signature, malformed data), 2 = usage error, 3 = a file or
+key could not be used. Previously every failure was 1.</li>
+<li><strong>Stricter command line.</strong> A repeated flag is an error instead of silently using the last value;
+<code>--key --in x</code> is a missing value, not a key path; a bare positional argument is an error.
+<code>--flag=value</code> is accepted. New <code>uacrypt help [command]</code>, and “did you mean” suggestions for
+commands, subcommands and flags. A missing <code>kalyna-*</code> subcommand is reported as such, not as a
+bogus <code>--encrypt|decrypt</code> flag.</li>
+<li><code>verify</code> prints <code>Signature OK (DSTU 4145, m=...)</code> to stderr on success (stdout stays empty).</li>
+<li>Help text: no internal decision/task numbers in the top-level and everyday-command help, an
+<code>EXIT STATUS</code> section, and <code>--iterations</code> no longer listed for everyday commands (still accepted,
+<code>docs/PERFORMANCE.md</code>). <code>keygen</code>’s “already exists” message lost its run of spaces.</li>
+<li>Library API of the <code>uacrypt</code> crate: <code>CliError::UnknownCommand</code>/<code>UnknownFlag</code> are struct variants
+with a <code>suggestion</code>; new <code>RepeatedFlag</code>/<code>MissingValue</code>/<code>FlagTakesNoValue</code>/<code>UnexpectedArgument</code>/
+<code>MissingSubcommand</code>; <code>WrongLength::what</code> is a <code>LengthOf</code> enum; <code>CliError::exit_code()</code>.</li>
+<li><strong>Typed key files</strong> (T-256, <code>docs/DECISIONS.md</code> D-212). Every key that <code>keygen</code>, <code>sign-*</code> and
+<code>box-*</code> write, and that <code>encrypt</code>/<code>decrypt</code>/<code>sign*</code>/<code>verify</code>/<code>box-*</code> read, is now one text line
+<code>&lt;kind&gt;:&lt;key hex&gt;:&lt;check&gt;</code> (<code>docs/CLI.md</code> “Key files”). A command given a key of another kind
+refuses it by name before doing any work (for example a box secret key passed to <code>box-seal</code>,
+which 0.4 could accept and seal a file nobody can open). A mistyped or edited key fails its check
+value. Verifying keys lose the 0.4 curve byte; the key line names the curve.
+<strong>Migration:</strong> raw key files from 0.4 and older are refused; convert each once with
+<code>uacrypt key-import --kind &lt;kind&gt; --in old.key --out new.key</code> (kinds: <code>symmetric</code>,
+<code>sign163-secret</code>/<code>-public</code>, <code>sign257-secret</code>/<code>-public</code>, <code>box256-secret</code>/<code>-public</code>,
+<code>box512-secret</code>/<code>-public</code>). The lower-level <code>kalyna-*</code>/<code>strumok-crypt</code>/<code>kupyna-digest</code>
+commands keep raw keys. Library API: new <code>KeyKind</code>, <code>CliError::KeyFileNotTyped</code>/
+<code>KeyFileMalformed</code>/<code>KeyCheckMismatch</code>/<code>KeyKindMismatch</code>/<code>UnknownKeyKind</code>/<code>KeyImportCurveByte</code>;
+<code>SignVerifyUnsupportedCurve</code> is gone.</li>
+<li><strong>Curve twins removed</strong> (T-257, <code>docs/DECISIONS.md</code> D-213). The curve is chosen once, by
+<code>sign-keygen</code>/<code>sign-keygen257</code> or <code>box-keygen</code>/<code>box-keygen512</code>, and every other command reads it
+from the typed key. <strong>Migration:</strong> <code>sign-pubkey257</code> -&gt; <code>sign-pubkey</code>, <code>sign257</code> -&gt; <code>sign</code>,
+<code>box-pubkey512</code> -&gt; <code>box-pubkey</code>, <code>box-seal512</code> -&gt; <code>box-seal</code>, <code>box-open512</code> -&gt; <code>box-open</code>; the
+old names fail with a usage error (exit 2) that names the replacement. File formats are
+unchanged. Library API: the <code>*257</code>/<code>*512</code> sign/box <code>parse_*</code>/<code>run_*</code> functions and
+<code>Box512*Args</code> go (<code>run_sign_keygen257_command</code>/<code>run_box512_keygen_command</code> stay, the latter now
+taking <code>BoxKeygenArgs</code>); <code>CliError::Box512*</code> merge into the <code>Box*</code> variants,
+<code>BoxOpenTruncated</code>/<code>BoxOpenFailed</code> carry the key’s curve; new <code>CliError::RemovedCommand</code>.</li>
+<li><strong>No silent overwrite</strong> (T-258, <code>docs/DECISIONS.md</code> D-214). <code>encrypt</code>, <code>decrypt</code>,
+<code>sign</code>, <code>box-seal</code>, <code>box-open</code> and every lower-level command refuse an existing output file
+(exit 3) unless given the new <code>--force</code>; in-place <code>--in</code> = <code>--out</code> needs <code>--force</code> too. A failed
+command leaves no output or temp file, and with <code>--force</code> the old file stays unchanged. An
+output naming another output or one of the command’s key inputs (<code>decrypt --key k --out k</code>) is
+a usage error, even with <code>--force</code>. <code>sign-pubkey</code>, <code>box-pubkey</code> and <code>key-import</code> of a
+public key now also never replace an existing file (they silently did, so
+<code>box-pubkey --key k --out k</code> could destroy the secret key); key-writing commands take no
+<code>--force</code>. On Unix every output file is created <code>0600</code>. <strong>Migration:</strong> scripts that rewrite the
+same output add <code>--force</code>. Library API: every non-key <code>*Args</code> gains <code>force: bool</code>; new
+<code>CliError::OutputExists</code>/<code>SameOutputPath</code>.</li>
+<li><strong><code>--force</code> never replaces a key file</strong> (T-268, <code>docs/DECISIONS.md</code> D-216). An existing <code>--out</code>
+that is a typed key file (secret or public, even a damaged one) is refused with exit 3 by every
+command, with or without <code>--force</code>; so is an existing output that cannot be read to check.
+Library API: new <code>CliError::OutputIsKeyFile</code>/<code>OutputUncheckable</code>.</li>
+<li><strong><code>hash</code> works like <code>sha256sum</code></strong> (T-259, <code>docs/DECISIONS.md</code> D-215). <code>hash --in &lt;path&gt;</code> prints
+<code>&lt;64 hex digits&gt;  &lt;path&gt;</code> to stdout instead of writing a binary digest file; <code>hash --check &lt;file&gt;</code> verifies such lines, printing <code>&lt;path&gt;: OK</code>/<code>FAILED</code> and exiting 1 if any listed file does
+not match or cannot be read. A malformed check file (strict format, at most 16 MiB) is rejected
+whole, naming the line, before anything is hashed. A path that is not UTF-8 or contains a
+control character is refused (exit 2). <strong>Migration:</strong> <code>hash --in f --out d</code> becomes
+<code>hash --in f &gt; d</code> (a text line, not 32 raw bytes); <code>hash</code> no longer takes <code>--out</code>/<code>--force</code>.
+For the old raw digest file use <code>kupyna-digest --variant 256 --in f --out d</code>. Library API:
+<code>HashArgs</code> is an enum (<code>File</code>/<code>Check</code>); new <code>CliError::MissingOneOf</code>/<code>ExclusiveFlags</code>/
+<code>HashPathUnprintable</code>/<code>HashCheckTooLarge</code>/<code>HashCheckEmpty</code>/<code>HashCheckUtf16</code>/
+<code>HashCheckMalformed</code>/<code>HashCheckFailed</code>. On Windows, create check files with PowerShell 7 or
+cmd: Windows PowerShell 5.1’s <code>&gt;</code> writes UTF-16, which <code>--check</code> refuses by name.</li>
+<li><strong>stdin and stdout via <code>-</code></strong> (T-260, <code>docs/DECISIONS.md</code> D-217). <code>--in -</code> reads stdin in
+<code>encrypt</code>, <code>decrypt</code>, <code>hash</code>, <code>sign</code>, <code>verify</code>, <code>box-seal</code>, <code>box-open</code>; <code>--out -</code> writes stdout
+in <code>encrypt</code>, <code>decrypt</code>, <code>sign</code>, <code>box-seal</code>, <code>box-open</code> and prints the public key of
+<code>sign-pubkey</code>, <code>box-pubkey</code> and public <code>key-import</code>. Binary output to a terminal is refused
+(exit 2); secret keys never go to stdout; <code>--force</code> with <code>--out -</code> is a usage error.
+<code>hash --check -</code> reads the list from stdin; a <code>-</code> line in a list is reported as FAILED, never
+read from stdin. <code>decrypt --out -</code> prints only verified chunks, and if the stream then fails it says the output
+is INCOMPLETE and exits non-zero - check the exit status (<code>set -o pipefail</code>). <strong>Migration:</strong> <code>-</code>
+is now refused by every other path flag (<code>--key</code>, <code>--sig</code>, the lower-level
+commands); a file named <code>-</code> is <code>./-</code>. <code>decrypt</code> names Windows PowerShell 5.1’s UTF-16
+redirection when a file starts with a byte-order mark. Library API: <code>Source</code>/<code>Sink</code>; the
+<code>in_path</code>/<code>out_path</code> of <code>SecretstreamArgs</code>, <code>SignArgs</code>, <code>VerifyArgs</code> (<code>in_path</code>),
+<code>BoxSealArgs</code>, <code>BoxOpenArgs</code>, and the <code>out_path</code> of <code>SignPubkeyArgs</code>, <code>BoxPubkeyArgs</code>,
+<code>KeyImportArgs</code> use them; <code>HashArgs::File</code>/<code>Check</code> hold a <code>Source</code>; new <code>CliError::StdioNotAccepted</code>/
+<code>SecretKeyToStdout</code>/<code>ForceWithStdout</code>/<code>BinaryToTerminal</code>/<code>StdoutIncomplete</code>.</li>
+<li><strong>Progress line</strong> (T-261, <code>docs/DECISIONS.md</code> D-218). <code>encrypt</code>, <code>decrypt</code>, <code>hash</code>, <code>sign</code> and
+<code>verify</code> show <code>uacrypt: 1.2 GiB / 4.0 GiB (30%)</code> on stderr for an <code>--in</code> file of 64 MiB or more,
+or a byte counter for stdin once 64 MiB have been read - only when stderr is a terminal, at most
+10 redraws a second, erased before the result or error is printed. No flag, no new dependency;
+with stderr redirected or piped nothing changes.</li>
+</ul>
+<h3 id="added"><a class="header" href="#added">Added</a></h3>
+<ul>
+<li><strong>Passphrase encryption</strong> (T-262, <code>docs/DECISIONS.md</code> D-219), like <code>age -p</code>:
+<code>encrypt --passphrase</code> asks twice on the terminal without echo, <code>encrypt --passphrase-file &lt;path&gt;</code> reads the first line of a file (for scripts); <code>decrypt</code> recognises a passphrase file by
+its first byte and asks once, or takes <code>--passphrase-file</code>. Argon2id with libsodium’s
+<code>MODERATE</code> limits (256 MiB, t=3, about a second per run); a 28-byte header (<code>0x50</code>, versions,
+costs, salt) in front of the usual stream. <code>decrypt</code> names the other kind when given a key for
+a passphrase file or the reverse. New dependency: <code>rpassword</code> 7.5.4 (+ <code>rtoolbox</code>), owner
+decision P1; <code>uacrypt</code> now enables <code>dstu-core</code>’s <code>pwhash</code> feature. Ctrl-C at the prompt on
+Linux/macOS exits by SIGINT with the terminal restored (<code>libc</code> is now a direct Unix
+dependency: SIGINT is ignored while the prompt is open, <code>uacrypt</code>’s first <code>unsafe</code>); inside
+Git Bash’s mintty window the prompt is refused - use <code>winpty</code>, another console or
+<code>--passphrase-file</code>. On Windows, Ctrl-C at the prompt puts the console input mode back before
+the process ends (T-271; <code>windows-sys</code> is now a direct Windows dependency). Library API: new
+<code>Credential</code>, <code>parse_encrypt_args</code>/<code>parse_decrypt_args</code> replace <code>parse_secretstream_args</code>,
+<code>SecretstreamArgs::key_path</code> becomes <code>credential</code>; new <code>CliError::PassphraseNoTerminal</code>/
+<code>PassphraseMintty</code>/<code>PassphraseEmpty</code>/<code>PassphraseMismatch</code>/<code>PassphraseFileInvalid</code>/
+<code>PassphraseFormatUnsupported</code>/<code>PassphraseParamsUnsupported</code>/<code>PassphraseWrong</code>/
+<code>PassphraseDerive</code>/<code>DecryptNeedsKey</code>/<code>DecryptKeyForPassphraseFile</code>/<code>PassphraseFlagOnDecrypt</code>.</li>
+<li><code>dstu_core::crypto_pwhash::derive_key</code> (libsodium’s <code>crypto_pwhash</code>: Argon2id to a 32-byte key,
+byte-identical to libsodium, vectors in <code>tests/vectors/pwhash/derive_key.json</code>),
+<code>Strength::cost</code>/<code>from_cost</code>, <code>SALT_BYTES</code>/<code>KEY_BYTES</code>, and <code>PwHashError::OutOfMemory</code>/<code>Derive</code>
+(Argon2’s memory is reserved fallibly; breaking for an exhaustive <code>match</code> on <code>PwHashError</code>). Not
+in the bindings or the C ABI yet (T-269).</li>
+</ul>
 <h3 id="security"><a class="header" href="#security">Security</a></h3>
+<ul>
+<li><strong><code>crypto_pwhash::verify_password</code> checks the hash string before running Argon2</strong> (0.5.0,
+GHSA-4644-j77c-h3hg, T-272, <code>docs/DECISIONS.md</code> D-222). It took the algorithm and costs from the string it was given,
+so a crafted string with a huge memory cost ended the calling process (an allocation abort,
+not a catchable error, also through the C ABI and every binding), and argon2d, version 0x10 and
+arbitrarily low or high costs were verified. Now only what libsodium verifies is accepted -
+<code>argon2id</code> or <code>argon2i</code>, <code>v=19</code>, exactly <code>m</code>/<code>t</code>/<code>p</code> - with memory up to 1 GiB, memory x passes
+up to the <code>Sensitive</code> preset’s, a salt of 8+ bytes and a tag of 16-64 bytes; anything else is
+<code>false</code> before any memory is allocated. Hashes from <code>hash_password</code> and libsodium still
+verify; the default costs of PHP’s <code>password_hash</code> and argon2-cffi are inside the bounds.
+Every binding now runs the shared <code>tests/vectors/pwhash/verify.json</code> cases through its own
+wrapper. The Python, npm and RubyGems packages carrying this fix are 0.3.0.</li>
+<li><strong>Kalyna-GCM/GMAC’s software GHASH no longer indexes a table with the secret key</strong> (0.5.0,
+GHSA-4644-j77c-h3hg, T-273, <code>docs/DECISIONS.md</code> D-223). On <code>no_std</code> builds and CPUs without PCLMULQDQ/PMULL, the
+field multiply read one of 16 table rows chosen by the GHASH key <code>H</code>, a cache-timing exposure
+for <code>crypto_secretbox</code>, <code>crypto_secretstream</code> and <code>crypto_box</code>. It is now a masked multiply,
+checked branch-free in release asm; output is unchanged, the software field multiply is
+1.2-1.4x slower.</li>
+<li><strong>Secret-dependent branches removed from DSTU 4145 and DSTU 9041 field arithmetic</strong> (0.5.0,
+GHSA-4644-j77c-h3hg, T-290, <code>docs/DECISIONS.md</code> D-225).
+<ul>
+<li>The bit-mask selects in the source compiled to conditional branches. They branched on operand
+bits in the software GF(2^m) multiply behind <code>crypto_sign</code>/<code>crypto_sign257</code> (<code>no_std</code> builds
+and CPUs without PCLMULQDQ/PMULL). They also branched on whether a sum was at least <code>p</code> in the
+prime-field add and reduction behind <code>crypto_box</code>/<code>crypto_box512</code>, on every platform.</li>
+<li>Every such mask now passes through a compiler barrier, checked branch-free in release asm on
+x86_64, thumbv7em, riscv32imc and aarch64. Output is unchanged.</li>
+<li><code>crypto_box</code> is about 1.57x slower and <code>crypto_box512</code> about 1.19x slower. The software
+GF(2^m) multiply is about 1.7x faster.</li>
+</ul>
+</li>
+<li><strong>Secret-dependent branches removed from 64-bit carry arithmetic on 32-bit RISC-V</strong> (0.5.0,
+GHSA-4644-j77c-h3hg, T-291, <code>docs/DECISIONS.md</code> D-226/D-227).
+<ul>
+<li>RV32 has no conditional select. On riscv32 (ESP32-C3 class, <code>no_std</code>), every carry and borrow
+in the 64-bit limb arithmetic compiled to a branch on limb data. That covered the prime-field
+add, sub and multiply behind <code>crypto_box</code>/<code>crypto_box512</code>, and the DSTU 4145 scalar add and
+multiply behind <code>crypto_sign</code>/<code>crypto_sign257</code> (<code>s = e + d*r</code>, with the signing key <code>d</code>).</li>
+<li>Carries and borrows are now computed with bitwise operations only, the same code on every
+target. Checked in release asm on x86_64, thumbv7em, riscv32imc and aarch64, and on riscv32imc
+and thumbv7em also at <code>opt-level</code> <code>s</code> and <code>z</code>. Output is unchanged.</li>
+<li><code>crypto_box</code>/<code>crypto_box512</code> are about 2x slower on x86_64 on top of T-290’s cost. Signing is
+unchanged.</li>
+<li>CI now rebuilds this release asm on every push and fails if a compiler update brings such a
+branch back (<code>cargo xtask asm-check</code>, T-292, <code>docs/DECISIONS.md</code> D-229).</li>
+</ul>
+</li>
+<li>Kalyna-XTS tweak doubling (<code>gf2m_wide</code> <code>double()</code>) now applies its reduction under a mask
+instead of an <code>if</code> on the secret top bit. The compiled code was already branch-free on x86_64
+and Cortex-M4; now the source guarantees it on every backend. Output is unchanged (T-282).</li>
+</ul>
+<h2 id="040---2026-10-08"><a class="header" href="#040---2026-10-08">[0.4.0] - 2026-10-08</a></h2>
+<h3 id="security-1"><a class="header" href="#security-1">Security</a></h3>
 <ul>
 <li><strong>Breaking wire-format change (0.4.0).</strong> <code>crypto_secretbox</code> and <code>crypto_secretstream</code> now bind
 each ciphertext’s true length into its authentication tag, and <code>crypto_secretstream</code>’s
@@ -239,7 +403,7 @@ scalar multiplication.</li>
 so it is unreachable in practice. The new <code>SecretstreamError::CounterExhausted</code> variant is
 <code>DSTU_ERR_FINALIZED</code> in the C ABI (T-245a).</li>
 </ul>
-<h3 id="added"><a class="header" href="#added">Added</a></h3>
+<h3 id="added-1"><a class="header" href="#added-1">Added</a></h3>
 <ul>
 <li>
 <p>Verifiable releases (T-252). Every GitHub Release now carries <code>SHA256SUMS</code> with a Sigstore
@@ -386,7 +550,7 @@ current-state line, pointing to <code>docs/CHANGELOG.md</code> for what changed 
 re-narrating it in the banner itself.</li>
 </ul>
 <h2 id="036---2026-08-13"><a class="header" href="#036---2026-08-13">[0.3.6] - 2026-08-13</a></h2>
-<h3 id="added-1"><a class="header" href="#added-1">Added</a></h3>
+<h3 id="added-2"><a class="header" href="#added-2">Added</a></h3>
 <ul>
 <li><code>build-ruby-gems</code>/<code>publish-rubygems</code> jobs in <code>release.yml</code> (T-164): cross-compiled RubyGems
 native gem publishing for <code>dstu_core</code> (<code>x86_64-linux</code>, <code>aarch64-linux</code>, <code>arm64-darwin</code>,
@@ -408,7 +572,7 @@ gemspec had a distinct, more serious bug caught in the same sweep: <code>README.
 publish - fixed ahead of that first publish. See <code>docs/DECISIONS.md</code> D-191.</li>
 </ul>
 <h2 id="035---2026-08-13"><a class="header" href="#035---2026-08-13">[0.3.5] - 2026-08-13</a></h2>
-<h3 id="added-2"><a class="header" href="#added-2">Added</a></h3>
+<h3 id="added-3"><a class="header" href="#added-3">Added</a></h3>
 <ul>
 <li><code>dstu-core-linux-arm64-gnu</code> - a new npm platform package for the Node.js bindings
 (<code>aarch64-unknown-linux-gnu</code>), built natively on GitHub’s <code>ubuntu-24.04-arm</code> hosted runner (GA for
@@ -459,7 +623,7 @@ lacking <code>contents: write</code> in this job, failing 401 against) <code>rel
 failed attempt before retrying (<code>registry.npmjs.org/dstu-core*</code> still 404).</li>
 </ul>
 <h2 id="032---2026-08-12"><a class="header" href="#032---2026-08-12">[0.3.2] - 2026-08-12</a></h2>
-<h3 id="added-3"><a class="header" href="#added-3">Added</a></h3>
+<h3 id="added-4"><a class="header" href="#added-4">Added</a></h3>
 <ul>
 <li><code>dstu-core</code> (Python bindings) is now genuinely live on <a href="https://pypi.org/project/dstu-core/">PyPI</a>
 0.1.0 - the 0.3.1 tag’s <code>publish-pypi</code> run actually went through (see Fixed, below), so this is
@@ -494,7 +658,7 @@ crates.io/PyPI don’t need re-publishing, just <code>dstu-core</code>/<code>uac
 <code>0.3.2</code> so <code>cargo publish</code> has something new to accept.</li>
 </ul>
 <h2 id="031---2026-08-12"><a class="header" href="#031---2026-08-12">[0.3.1] - 2026-08-12</a></h2>
-<h3 id="added-4"><a class="header" href="#added-4">Added</a></h3>
+<h3 id="added-5"><a class="header" href="#added-5">Added</a></h3>
 <ul>
 <li><code>crypto_box512</code>/<code>crypto_sign257</code>: wired into <code>dstu-core-capi</code> and all eight language bindings
 (Python/Node.js/Ruby/Java/PHP/.NET/Go/C++) - both landed in <code>dstu-core</code> itself already, in 0.3.0
@@ -528,7 +692,7 @@ still pre-1.0, still not independently audited, and the headline provisional gap
 yet confirmed against their primary DSTU texts) are unchanged by this release - see that document
 and <code>docs/DECISIONS.md</code> for the full standing caveats, repeated here exactly as prominently as
 0.2.0’s own notes did below.</p>
-<h3 id="added-5"><a class="header" href="#added-5">Added</a></h3>
+<h3 id="added-6"><a class="header" href="#added-6">Added</a></h3>
 <ul>
 <li><code>hazmat::dstu9041</code>: DSTU 9041:2020 hybrid (ECIES-style) asymmetric encryption over a twisted
 Edwards curve, <code>l(p)=256</code>/E256/1 only (D-47’s “ship the recommended curve first” precedent) -
@@ -606,7 +770,7 @@ DSTU 4145 <code>sign</code>/<code>verify</code> up ~26-32x on the dev machine (<
 <h2 id="020---2026-08-02"><a class="header" href="#020---2026-08-02">[0.2.0] - 2026-08-02</a></h2>
 <p>Second tagged release - GitHub Releases only, no crates.io publish (<code>docs/TASKS.md</code> T-17 stays
 separately gated, same posture as v0.1.0).</p>
-<h3 id="added-6"><a class="header" href="#added-6">Added</a></h3>
+<h3 id="added-7"><a class="header" href="#added-7">Added</a></h3>
 <ul>
 <li><code>crypto_sign</code>/<code>uacrypt</code>: DSTU 4145 digital-signature CLI commands - <code>sign-keygen</code>, <code>sign-pubkey</code>,
 <code>sign</code>, <code>verify</code> (<code>docs/TASKS.md</code> T-124).</li>
@@ -656,7 +820,7 @@ instead.</li>
 <p>First tagged release - GitHub Releases only (<code>docs/TASKS.md</code> T-18); not published to crates.io
 (<code>docs/TASKS.md</code> T-17 stays separately gated on an explicit owner request). Everything below predates
 this tag; there is no reconstructed per-commit history before it.</p>
-<h3 id="added-7"><a class="header" href="#added-7">Added</a></h3>
+<h3 id="added-8"><a class="header" href="#added-8">Added</a></h3>
 <ul>
 <li><code>dstu-core</code>: <code>hazmat</code> primitives for all three in-scope DSTU algorithms - Kupyna (DSTU
 7564:2014, one-shot and streaming), Kalyna (DSTU 7624:2014, single-block encrypt/decrypt across

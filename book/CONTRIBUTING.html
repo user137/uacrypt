@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-522a1f90.js";
+            window.path_to_searchindex_js = "searchindex-2f1b0718.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -361,7 +361,8 @@ audit/deny/the Java+.NET oracle harnesses, every language binding’s own build+
 (python/nodejs/ruby/php/dotnet/java/go/cpp), <code>capi</code>, the C++ static analyzers (<code>cpp-tidy</code>/
 <code>cpp-cppcheck</code>), the QEMU STM32 smoke test, and the streaming-boundedness proof - each checks its
 own tool is installed first and prints an install hint instead of a raw error if it’s missing.
-<code>docs-check</code> needs no external tool, so it’s mandatory rather than best-effort - same standing as
+It ends with a passed/skipped/FAILED table, one row per layer, and exits non-zero if any layer
+failed. A missing tool counts as skipped, not failed (T-243). <code>docs-check</code> needs no external tool, so it’s mandatory rather than best-effort - same standing as
 <code>fmt</code>/<code>build</code>/<code>test</code>/<code>clippy</code>. <code>cargo xtask book</code> builds the mdBook knowledge base this file is
 part of; <code>cargo xtask bench-compare</code> runs the uacrypt-vs-OpenSSL benchmark table
 (<code>docs/PERFORMANCE.md</code>).</p>

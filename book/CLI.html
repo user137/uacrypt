@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-522a1f90.js";
+            window.path_to_searchindex_js = "searchindex-2f1b0718.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -181,14 +181,108 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="using-uacrypt"><a class="header" href="#using-uacrypt">Using <code>uacrypt</code></a></h1>
+<p><strong>Command line rules (0.5.0, T-255).</strong> Every input is a named flag: <code>--key k</code> or <code>--key=k</code>. A flag
+given twice, a flag with no value (<code>--key --in x</code> does not make <code>--in</code> the key path), a value on a
+flag that takes none, an unknown flag and a bare positional argument are all usage errors, with a
+“did you mean” suggestion for a near-miss command, subcommand or flag. A path that really starts
+with <code>--</code> can be passed as <code>--in=--odd-name</code>. <code>uacrypt help</code> prints the overview and <code>uacrypt help &lt;command&gt;</code> the same text as <code>uacrypt &lt;command&gt; --help</code>.</p>
+<p><strong>Exit status.</strong></p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Code</th><th>Meaning</th><th>Examples</th></tr>
+</thead>
+<tbody>
+<tr><td>0</td><td>success</td><td>also <code>--help</code>, <code>help</code>, <code>--version</code></td></tr>
+<tr><td>1</td><td>the input was checked and rejected</td><td>authentication failed, bad signature, truncated or malformed ciphertext, an empty or over-long message for a mode that forbids it, a wrong-length signature or tag, a <code>hash --check</code> file that is malformed or lists a file that does not match or cannot be read</td></tr>
+<tr><td>2</td><td>usage error</td><td>unknown command or flag, missing/repeated flag, missing value, missing subcommand</td></tr>
+<tr><td>3</td><td>a file or key could not be used</td><td>missing or unreadable file, a key file of the wrong kind, damaged or not typed (see <a href="#key-files">Key files</a>), wrong-size or invalid key/nonce/IV/tweak, an <code>--out</code> that already exists (see below)</td></tr>
+</tbody>
+</table>
+</div>
+<p>A script can therefore tell “this file was forged” (1) from “I typed the command wrong” (2).</p>
+<p><strong>Existing output files (0.5.0, T-258, <code>docs/DECISIONS.md</code> D-214).</strong> No command replaces an
+existing file unless you pass <code>--force</code>; without it an existing <code>--out</code> (or <code>--nonce</code>/<code>--tag</code> on
+<code>kalyna-ccm</code>/<code>kalyna-gcm encrypt</code>) is refused with exit 3 before any work is done, and the message
+says when it is the <code>--in</code> file itself. <code>--in</code> and <code>--out</code> may name the same file (encrypt or
+decrypt in place) only with <code>--force</code>. An output naming another output or one of the command’s
+key inputs (<code>--key</code>, <code>--iv</code>, <code>--tweak</code>, or a decrypt-side <code>--nonce</code>/<code>--tag</code>) is a usage error
+(exit 2), with or without <code>--force</code>, so <code>decrypt --key k.key --out k.key --force</code> cannot replace
+the key with plaintext. The result is written to a temp file next to the
+output and renamed onto it only when the command succeeds, so a failed command leaves no output file,
+no temp file and, with <code>--force</code>, the old file unchanged. <code>--force</code> replaces a symlink at the
+output path, never the file it points to. On Unix every output file is created with mode <code>0600</code>
+(owner only), also when <code>--force</code> replaces a <code>0644</code> file; <code>chmod</code> it to share it. Key files
+(<code>*-keygen</code>, <code>sign-pubkey</code>, <code>box-pubkey</code>, <code>key-import</code>) are never replaced at all and do not
+accept <code>--force</code>: <code>box-pubkey --key box.key --out box.key</code> would otherwise destroy the secret key.
+No other command replaces an existing key file either, with or without <code>--force</code> (T-268,
+<code>docs/DECISIONS.md</code> D-216): an <code>--out</code> that starts like a typed key line (<code>UACRYPT-SECRET-...:</code>
+or <code>uacrypt-...-public:</code>) is refused with exit 3, and so is an existing output that cannot be read
+to check. Delete the file yourself if you really mean to replace it. Raw keys of the lower-level
+commands are not recognised.
+A killed process (power loss, <code>kill -9</code>) can leave an empty output file, which the next run
+refuses until you delete it or pass <code>--force</code>.</p>
+<p><strong>stdin and stdout (0.5.0, T-260, <code>docs/DECISIONS.md</code> D-217).</strong> <code>--in -</code> reads stdin in
+<code>encrypt</code>, <code>decrypt</code>, <code>hash</code>, <code>sign</code>, <code>verify</code>, <code>box-seal</code> and <code>box-open</code>; <code>--out -</code> writes stdout
+in <code>encrypt</code>, <code>decrypt</code>, <code>sign</code>, <code>box-seal</code> and <code>box-open</code>, and prints the public key line of
+<code>sign-pubkey</code>, <code>box-pubkey</code> and <code>key-import</code> (public kinds only):</p>
+<pre><code>tar c docs | uacrypt encrypt --key key.bin --in - --out docs.tar.enc
+uacrypt decrypt --key key.bin --in docs.tar.enc --out - | tar x
+uacrypt sign-pubkey --key signing.key --out -
+cat report.pdf | uacrypt hash --in -          # prints "&lt;hex&gt;  -"
+</code></pre>
+<ul>
+<li>Binary output (everything above except the public keys) is refused with exit 2 when stdout is a
+terminal - it would garble the screen. To read a decrypted text on screen, pipe it: <code>--out - | more</code>. Checked in cmd, PowerShell 7, Git Bash (mintty) and a Linux terminal.</li>
+<li>Secret keys are never written to stdout: <code>--out -</code> on every <code>*-keygen</code> command and on a secret
+<code>key-import</code> is a usage error. <code>--key</code> never reads stdin.</li>
+<li><code>hash --check -</code> reads the checksum list from stdin (like <code>sha256sum -c -</code>, same 16 MiB cap and
+grammar). A line for <code>-</code> inside any list is never read from stdin - an untrusted list must not
+consume or wait on your script’s stdin - so it is reported as <code>-: FAILED (stdin is not read from a check list ...)</code> and counts as a failure; a file really named <code>-</code> is listed as <code>./-</code>.</li>
+<li>Every other path flag (<code>--key</code>, <code>--sig</code>, <code>key-import --in</code>, and all paths of
+the lower-level <code>kalyna-*</code>/<code>kupyna-digest</code>/<code>strumok-crypt</code> commands) refuses <code>-</code> as a usage
+error, so <code>-</code> never silently names a file. A file really named <code>-</code> is <code>./-</code>.</li>
+<li><code>--force</code> with <code>--out -</code> is a usage error: there is no file to replace.</li>
+<li><strong><code>decrypt --out -</code> can print part of a message.</strong> Each chunk is written once its tag verifies,
+so nothing unauthenticated is ever printed, but a stream cut short or tampered with halfway
+prints its verified beginning before the error. The error then ends with “the output already
+written to stdout is INCOMPLETE - discard it”, and the exit status is non-zero (1 for a bad
+file, 3 if stdout itself failed). Check it: in a shell pipeline such as <code>... --out - | tar x</code>
+the pipeline’s status is <code>tar</code>’s unless you <code>set -o pipefail</code>. With <code>--out &lt;file&gt;</code> nothing is
+written unless the whole file verifies. <code>box-open</code> decrypts the whole message before printing
+anything, so it never prints part of one.</li>
+<li>Windows (measured 2026-09-24): cmd and PowerShell 7.6 passed a 100 kB <code>encrypt --out -</code> through
+<code>&gt;</code> and through <code>| uacrypt decrypt --in -</code> byte for byte. Windows PowerShell 5.1 re-encodes a
+native command’s output as text, which corrupts binary data: its <code>&gt;</code> turned a 310-byte output
+into 594 bytes starting <code>FF FE</code> (UTF-16), and its <code>|</code> fed <code>decrypt</code> data starting <code>EF</code> (a UTF-8
+byte-order mark). <code>decrypt</code> names this cause when it sees such a start. From 5.1, use
+<code>--out &lt;file&gt;</code> or <code>cmd /c "..."</code>.</li>
+<li>A closed pipe is an error, not a silent stop: <code>decrypt ... --out - | head -c 100</code> makes
+<code>decrypt</code> exit 3 with the INCOMPLETE message once <code>head</code> exits, which fails a <code>set -o pipefail</code>
+pipeline.</li>
+<li><code>box-seal</code>/<code>box-open</code> read all of stdin into memory, as they do a file (not bounded yet, T-265);
+<code>encrypt</code>/<code>decrypt</code>/<code>hash</code>/<code>sign</code>/<code>verify</code> read stdin in the same fixed-size chunks as a file.</li>
+</ul>
+<p><strong>Progress (0.5.0, T-261, <code>docs/DECISIONS.md</code> D-218).</strong> When stderr is a terminal and <code>--in</code> is
+a file of 64 MiB or more, <code>encrypt</code>, <code>decrypt</code>, <code>hash</code>, <code>sign</code> and <code>verify</code> show one line on
+stderr, such as <code>uacrypt: 1.2 GiB / 4.0 GiB (30%)</code>. It is redrawn at most 10 times a second and
+erased before the command prints its result or its error. For stdin, where the size is unknown, it
+is a byte counter (<code>uacrypt: 96.0 MiB read</code>) that appears once 64 MiB have been read. There is no
+flag: with stderr redirected or piped (<code>2&gt;file</code>, <code>2&gt;&amp;1 | ...</code>, a script, CI) nothing is printed at
+all. <code>box-seal</code>/<code>box-open</code> show none until they stop reading <code>--in</code> whole (T-265), and the
+lower-level <code>kalyna-*</code>/<code>kupyna-digest</code>/<code>strumok-crypt</code> commands never do. Known cosmetic limit:
+in <code>decrypt --out - | more</code> on a large file, the line is drawn over the pager’s screen, because
+both share the terminal (do not silence it with <code>2&gt;/dev/null</code> - that hides the INCOMPLETE warning
+too). Ctrl-C leaves the last line on screen without a newline.</p>
 <p><code>uacrypt encrypt</code>/<code>decrypt</code>/<code>hash</code> (<code>docs/TASKS.md</code> T-16, <code>docs/DECISIONS.md</code> D-52) are the real,
 misuse-resistant top-level commands — mode, nonce, and algorithm are all hardcoded, nothing to
 misconfigure:</p>
 <pre><code>cargo build -p uacrypt --release
 uacrypt keygen --out key.bin
 uacrypt encrypt --key key.bin --in message.bin --out sealed.bin
-uacrypt decrypt --key key.bin --in sealed.bin --out message.bin
-uacrypt hash --in file.bin --out digest.bin
+uacrypt decrypt --key key.bin --in sealed.bin --out decrypted.bin
+uacrypt hash --in file.bin &gt; file.bin.kupyna256
+uacrypt hash --check file.bin.kupyna256
 </code></pre>
 <p><strong><code>encrypt</code>/<code>decrypt</code> have no message-length cap and stream <code>--in</code>/<code>--out</code> in fixed-size chunks</strong> —
 as of 2026-07-25 they’re built over <code>dstu_core::crypto_secretstream</code> (<code>docs/TASKS.md</code> T-40/T-70,
@@ -198,20 +292,50 @@ longer means a correspondingly large in-memory buffer. <strong>Breaking wire-for
 prior <code>crypto_secretbox</code>-backed <code>encrypt</code> produced cannot be read by this <code>decrypt</code>, and vice versa</p>
 <ul>
 <li>acceptable pre-1.0. <code>crypto_secretbox</code> itself is unchanged and still available as a library
-primitive for whole-message use, just no longer what this CLI command uses. <code>--key</code> is a raw
-32-byte file (<code>crypto_secretstream::Key</code>’s size) — <code>uacrypt keygen --out key.bin</code> generates one from
-the OS CSPRNG (<code>docs/TASKS.md</code> T-115). Like every <code>*-keygen</code> command, it refuses to overwrite an
-existing <code>--out</code>, so a repeated run cannot destroy a key, and on Unix it writes the key with mode
+primitive for whole-message use, just no longer what this CLI command uses. <code>--key</code> is a typed
+key file (<a href="#key-files">Key files</a>) holding a 32-byte <code>crypto_secretstream::Key</code> — <code>uacrypt keygen --out key.bin</code> generates one from the OS CSPRNG (<code>docs/TASKS.md</code> T-115). Like every <code>*-keygen</code> command, it refuses to overwrite an
+existing <code>--out</code> (with no <code>--force</code> to override it), so a repeated run cannot destroy a key, and on Unix it writes the key with mode
 <code>0600</code> (T-241). <code>encrypt</code> draws a fresh random header internally on every call
 and embeds it in <code>--out</code>; there is no <code>--nonce</code>/<code>--header</code> flag to supply or reuse by mistake.
-<strong>0.4.0 changed the <code>encrypt</code>/<code>box-seal</code>/<code>box-seal512</code> file formats</strong> (T-232/T-248,
+<strong>0.4.0 changed the <code>encrypt</code>/<code>box-seal</code> file formats (both curves)</strong> (T-232/T-248,
 <code>docs/DECISIONS.md</code> D-200-D-202). Files written by 0.3.x don’t open with 0.4.0. <code>box-open</code> almost
 always reports them as a different format version; ~1 in 256 happen to start with the current
 version byte and report an authentication failure instead. Decrypt them with the release that
-wrote them, then re-encrypt.
-<strong><code>hash</code> has no such limit either</strong> — it streams <code>--in</code> from disk in fixed-size chunks regardless of
-size, fixed to Kupyna-256 (32-byte digest, no <code>--variant</code> choice).</li>
+wrote them, then re-encrypt.</li>
 </ul>
+<p><strong>A passphrase instead of a key file</strong> (0.5.0, T-262, <code>docs/DECISIONS.md</code> D-219), like <code>age -p</code>:</p>
+<pre><code>uacrypt encrypt --passphrase --in report.pdf --out report.pdf.enc   # asks twice, no echo
+uacrypt decrypt --in report.pdf.enc --out report.pdf                # asks once
+uacrypt encrypt --passphrase-file pass.txt --in report.pdf --out report.pdf.enc   # scripts
+</code></pre>
+<p><code>decrypt</code> tells a passphrase file from a key-encrypted one by its first byte and says which one
+it needs when given the other. The passphrase goes through Argon2id (<code>dstu_core::crypto_pwhash:: derive_key</code>, libsodium’s <code>crypto_pwhash</code> with its <code>MODERATE</code> limits: 256 MiB of memory, t=3), so
+each <code>encrypt</code> or <code>decrypt</code> with a passphrase takes about a second and 256 MiB on purpose; the
+streaming itself stays bounded as above. The prompt appears only when stderr is a terminal; with
+stderr redirected, pass <code>--passphrase-file</code>. In Git Bash’s mintty window the prompt is refused
+(it would go to a hidden console): use <code>winpty uacrypt ...</code>, cmd, PowerShell or Windows Terminal,
+or <code>--passphrase-file</code>. A passphrase file holds one line; a trailing newline (<code>\n</code> or <code>\r\n</code>) and a
+leading UTF-8 BOM are dropped, nothing else, and a file longer than 1024 bytes, with a second
+line, or not UTF-8 is refused. The passphrase is used as UTF-8 bytes with no Unicode
+normalisation: a letter such as <code>й</code> typed as one precomposed character and as <code>и</code> plus a combining
+mark are different passphrases. An empty passphrase is refused.</p>
+<p><strong><code>hash</code> has no such limit either</strong> — it streams <code>--in</code> from disk in fixed-size chunks regardless of
+size, fixed to Kupyna-256 (no <code>--variant</code> choice). Since 0.5.0 it works like <code>sha256sum</code> (T-259,
+<code>docs/DECISIONS.md</code> D-215): <code>hash --in &lt;path&gt;</code> prints one line, <code>&lt;64 hex digits&gt;  &lt;path&gt;</code>, to
+stdout (the path exactly as given), and writes no file. <code>hash --check &lt;file&gt;</code> reads such lines,
+hashes every listed file and prints <code>&lt;path&gt;: OK</code> or <code>&lt;path&gt;: FAILED</code>; it exits 1 if any file does
+not match or cannot be read. The check file is validated whole before anything is hashed: every
+line must be exactly <code>&lt;64 hex digits&gt;&lt;two spaces&gt;&lt;path&gt;</code> (CRLF line ends and upper-case hex are
+accepted, a blank line or GNU’s <code>*</code> binary marker is not), at most 16 MiB, or <code>--check</code> exits 1
+naming the line and checks nothing. Relative paths are resolved against the current directory, not
+the check file’s. <code>hash --in</code> refuses a path that is not UTF-8 or contains a control character
+(exit 2): it could not be read back as one line, and a terminal escape in a path would be echoed
+back by <code>--check</code>. The digests are Kupyna-256, so a <code>sha256sum</code> file reports every line as
+FAILED. On Windows, PowerShell 7 and cmd write <code>&gt;</code> as plain UTF-8; Windows PowerShell 5.1 writes it
+as UTF-16 (which <code>--check</code> names as such and refuses) and garbles non-ASCII paths even with
+<code>Out-File -Encoding utf8</code>, so from 5.1 use <code>cmd /c "uacrypt hash --in &lt;file&gt; &gt; &lt;list&gt;"</code>. One
+leading UTF-8 BOM is accepted. For a raw binary digest file (the 0.4 <code>hash --out</code> output), use
+<code>kupyna-digest --variant 256 --out</code>.</p>
 <p><code>uacrypt sign-keygen</code>/<code>sign-pubkey</code>/<code>sign</code>/<code>verify</code> (<code>docs/TASKS.md</code> T-124, <code>docs/DECISIONS.md</code> D-73) are the
 digital-signature equivalent, built over <code>dstu_core::crypto_sign</code> (DSTU 4145): a signature proves a
 file came from whoever holds the signing key and hasn’t been changed since — unlike <code>encrypt</code>, it
@@ -222,12 +346,15 @@ uacrypt sign-pubkey --key signing.key --out verifying.key
 uacrypt sign --key signing.key --in message.bin --out message.bin.sig
 uacrypt verify --key verifying.key --in message.bin --sig message.bin.sig
 </code></pre>
-<p><code>sign-keygen</code>’s output (<code>signing.key</code>, 21 raw bytes) is secret — keep it like any other private key.
-<code>sign-pubkey</code> derives the matching <code>verifying.key</code> (42 raw bytes) from it, safe to share or publish.
-<code>verify</code> prints nothing and exits <code>0</code> on a valid signature; on a tampered file, a tampered signature,
+<p><code>sign-keygen</code>’s output (<code>signing.key</code>) is secret — keep it like any other private key.
+<code>sign-pubkey</code> derives the matching <code>verifying.key</code> from it, safe to share or publish. Both are typed
+key files (<a href="#key-files">Key files</a>); <code>verify</code> reads the curve from the verifying key’s own line.
+<code>verify</code> prints <code>Signature OK (DSTU 4145, m=163)</code> (or <code>m=257</code>) to stderr, nothing to stdout, and
+exits <code>0</code> on a valid signature; on a tampered file, a tampered signature,
 or the wrong verifying key, it exits <code>1</code> with an error and writes nothing — it does not, and cannot,
 silently accept a mismatch:</p>
 <pre><code>$ uacrypt verify --key verifying.key --in message.bin --sig message.bin.sig
+Signature OK (DSTU 4145, m=163)
 $ echo $?
 0
 
@@ -237,16 +364,16 @@ uacrypt: verify: signature does not verify - message, signature, or key do not m
 $ echo $?
 1
 </code></pre>
-<p><code>uacrypt sign-keygen257</code>/<code>sign-pubkey257</code>/<code>sign257</code> (<code>docs/TASKS.md</code> T-199, <code>docs/DECISIONS.md</code>
-D-185/D-186) mirror the four commands above exactly, over DSTU 4145’s <code>m=257</code> curve instead of
-<code>m=163</code> - a separate set of commands, not a <code>--curve</code> flag, since the two produce distinct,
-incompatible key shapes. <code>m=257</code> is what real Diia-issued qualified signatures use in production
-(confirmed from an actual issued certificate) - <code>m=163</code> stays the default (<code>sign-keygen</code>) only
-because it shipped first, not because it’s recommended over <code>m=257</code>. <code>verify</code> is shared - it reads
-a curve-tag byte from <code>--key</code> and handles both curves, so there is no separate <code>verify257</code>:</p>
+<p>For DSTU 4145’s <code>m=257</code> curve (<code>docs/TASKS.md</code> T-199, <code>docs/DECISIONS.md</code> D-185), generate the
+key with <code>sign-keygen257</code> instead; the other three commands are the same. The curve is chosen once,
+at key generation, and recorded in the key: <code>sign-pubkey</code>, <code>sign</code> and <code>verify</code> read it from there
+(T-257, D-213), and <code>sign</code> writes a 66-byte signature instead of 42. <code>m=257</code> is what real
+Diia-issued qualified signatures use in production (confirmed from an actual issued certificate) -
+<code>m=163</code> is the plain <code>sign-keygen</code> only because it shipped first, not because it’s recommended
+over <code>m=257</code>:</p>
 <pre><code>uacrypt sign-keygen257 --out signing257.key
-uacrypt sign-pubkey257 --key signing257.key --out verifying257.key
-uacrypt sign257 --key signing257.key --in message.bin --out message.bin.sig257
+uacrypt sign-pubkey --key signing257.key --out verifying257.key
+uacrypt sign --key signing257.key --in message.bin --out message.bin.sig257
 uacrypt verify --key verifying257.key --in message.bin --sig message.bin.sig257
 </code></pre>
 <p><code>uacrypt box-keygen</code>/<code>box-pubkey</code>/<code>box-seal</code>/<code>box-open</code> (<code>docs/TASKS.md</code> T-178, <code>docs/DECISIONS.md</code>
@@ -256,21 +383,26 @@ the recipient’s public key — anyone can seal a message only the matching sec
 <pre><code>uacrypt box-keygen --out box.key
 uacrypt box-pubkey --key box.key --out box.pub
 uacrypt box-seal --key box.pub --in message.bin --out message.bin.box
-uacrypt box-open --key box.key --in message.bin.box --out message.bin
+uacrypt box-open --key box.key --in message.bin.box --out opened.bin
 </code></pre>
-<p><code>box-keygen</code>’s output (<code>box.key</code>, 32 raw bytes) is secret. <code>box-pubkey</code> derives the matching
-<code>box.pub</code> (32 raw bytes, the curve point’s <code>x</code>-coordinate only) from it, safe to share or publish.
+<p><code>box-keygen</code>’s output (<code>box.key</code>) is secret. <code>box-pubkey</code> derives the matching <code>box.pub</code> (the
+curve point’s <code>x</code>-coordinate only) from it, safe to share or publish. Both are typed key files
+(<a href="#key-files">Key files</a>), so <code>box-seal</code> refuses a secret key by name instead of sealing to it.
 <code>box-seal</code>/<code>box-open</code> are <strong>not memory-bounded</strong> yet — <code>--in</code> is read whole into memory, unlike
 <code>encrypt</code>/<code>decrypt</code>’s bounded-chunk streaming (see <code>crypto_box</code>’s own module doc for why).</p>
-<p><code>uacrypt box-keygen512</code>/<code>box-pubkey512</code>/<code>box-seal512</code>/<code>box-open512</code> (<code>docs/TASKS.md</code> T-193,
-<code>docs/DECISIONS.md</code> D-182) mirror the four commands above exactly, over DSTU 9041’s <code>l(p)=512</code>
-curve (E512/1) instead of <code>l(p)=256</code> - a separate set of commands, not a <code>--curve</code> flag, since the
-two produce distinct, incompatible key shapes (64-byte keys instead of 32-byte):</p>
+<p>For DSTU 9041’s <code>l(p)=512</code> curve (E512/1, <code>docs/TASKS.md</code> T-193, <code>docs/DECISIONS.md</code> D-182),
+generate the key with <code>box-keygen512</code> instead; <code>box-pubkey</code>, <code>box-seal</code> and <code>box-open</code> read the
+curve from the key (T-257, D-213). Keys are 64 bytes instead of 32, and a sealed file has 305
+bytes of overhead instead of 177. A file sealed to one curve’s key is refused by the other
+curve’s key like any other wrong key:</p>
 <pre><code>uacrypt box-keygen512 --out box512.key
-uacrypt box-pubkey512 --key box512.key --out box512.pub
-uacrypt box-seal512 --key box512.pub --in message.bin --out message.bin.box512
-uacrypt box-open512 --key box512.key --in message.bin.box512 --out message.bin
+uacrypt box-pubkey --key box512.key --out box512.pub
+uacrypt box-seal --key box512.pub --in message.bin --out message.bin.box512
+uacrypt box-open --key box512.key --in message.bin.box512 --out opened512.bin
 </code></pre>
+<p>Up to 0.4, the non-keygen commands had curve twins (<code>sign-pubkey257</code>, <code>sign257</code>, <code>box-pubkey512</code>,
+<code>box-seal512</code>, <code>box-open512</code>). They are gone in 0.5.0; each name now fails as a usage error
+(exit 2) that names the command to use instead.</p>
 <p>What exists below this level: <code>kalyna-block</code>, <code>kupyna-digest</code>, and <code>strumok-crypt</code>, all
 <code>hazmat</code>-scoped commands added for binary-level performance comparisons
 (<code>docs/PERFORMANCE.md</code>, <code>docs/DECISIONS.md</code> D-31/D-34) rather than everyday use - <code>hash</code> and
@@ -356,6 +488,8 @@ gh attestation verify uacrypt-linux-x86_64.tar.gz --repo user137/uacrypt \
 </code></pre>
 <p>In step 3, <code>--source-ref</code> accepts only an asset built from that release tag, not from a branch; put
 your version there.</p>
+<p>Step 1 needs cosign v3, or cosign v2 with <code>--new-bundle-format</code> added: the bundle is in the newer
+Sigstore bundle format, and cosign v2 without that flag fails with “bundle does not contain cert”.</p>
 <p>The binaries are built with <code>cargo auditable</code>, so <code>cargo audit bin uacrypt</code> checks the dependency
 versions compiled into a downloaded binary against the RustSec advisory database.</p>
 <h2 id="file-formats"><a class="header" href="#file-formats">File formats</a></h2>
@@ -374,16 +508,15 @@ was not yet so.</p>
 <tr><th>Command</th><th>File</th><th>Layout</th></tr>
 </thead>
 <tbody>
-<tr><td><code>keygen</code></td><td>symmetric key</td><td>32 raw bytes</td></tr>
+<tr><td><code>keygen</code></td><td>symmetric key</td><td>a key line, see <a href="#key-files">Key files</a></td></tr>
 <tr><td><code>encrypt</code></td><td>encrypted file</td><td><code>version (1) || header (32)</code>, then one or more records, each <code>chunk tag (1) || ciphertext length (4) || ciphertext || auth tag (16)</code></td></tr>
-<tr><td><code>box-keygen</code> / <code>box-pubkey</code></td><td>secret / public key</td><td>32 raw bytes each (the public key is the curve point’s <code>x</code>-coordinate)</td></tr>
-<tr><td><code>box-seal</code></td><td>sealed file</td><td><code>version (1) || KEM ciphertext (128) || header (32) || ciphertext || auth tag (16)</code>: 177 bytes of overhead</td></tr>
-<tr><td><code>box-keygen512</code> / <code>box-pubkey512</code></td><td>secret / public key</td><td>64 raw bytes each</td></tr>
-<tr><td><code>box-seal512</code></td><td>sealed file</td><td><code>version (1) || KEM ciphertext (256) || header (32) || ciphertext || auth tag (16)</code>: 305 bytes of overhead</td></tr>
-<tr><td><code>sign-keygen</code> / <code>sign-keygen257</code></td><td>signing key</td><td>the scalar <code>d</code>, big-endian: 21 / 33 raw bytes</td></tr>
-<tr><td><code>sign-pubkey</code> / <code>sign-pubkey257</code></td><td>verifying key</td><td><code>curve byte (1: 01 = m=163, 02 = m=257) || x || y</code>: 43 / 67 bytes</td></tr>
-<tr><td><code>sign</code> / <code>sign257</code></td><td>signature</td><td>42 / 66 raw bytes; <code>verify</code> picks the curve from the verifying key’s curve byte</td></tr>
-<tr><td><code>hash</code></td><td>digest</td><td>32 raw bytes (Kupyna-256)</td></tr>
+<tr><td><code>encrypt --passphrase</code> / <code>--passphrase-file</code></td><td>encrypted file</td><td><code>0x50 || 0x01 || 0x01 || m_cost KiB (4) || t_cost (4) || p_cost (1) || salt (16)</code>, then the <code>encrypt</code> layout above</td></tr>
+<tr><td><code>box-keygen</code> / <code>box-keygen512</code> / <code>box-pubkey</code></td><td>secret / public key</td><td>a key line each (the public key is the curve point’s <code>x</code>-coordinate)</td></tr>
+<tr><td><code>box-seal</code></td><td>sealed file</td><td><code>version (1) || KEM ciphertext (128, or 256 for an l(p)=512 key) || header (32) || ciphertext || auth tag (16)</code>: 177 or 305 bytes of overhead</td></tr>
+<tr><td><code>sign-keygen</code> / <code>sign-keygen257</code></td><td>signing key</td><td>a key line (the scalar <code>d</code>, big-endian)</td></tr>
+<tr><td><code>sign-pubkey</code></td><td>verifying key</td><td>a key line (<code>x || y</code>) of the signing key’s curve</td></tr>
+<tr><td><code>sign</code></td><td>signature</td><td>42 raw bytes for an m=163 key, 66 for m=257; <code>verify</code> picks the curve from the verifying key’s kind</td></tr>
+<tr><td><code>hash</code></td><td>digest line (stdout)</td><td><code>&lt;64 lower-case hex digits&gt;  &lt;path&gt;</code> and a newline (Kupyna-256); <code>kupyna-digest --out</code> writes the raw 32 or 64 bytes</td></tr>
 </tbody>
 </table>
 </div>
@@ -402,6 +535,59 @@ exactly 8192 bytes, so the chunk size is part of the format;</li>
 <li>every record’s auth tag covers its position in the stream, its chunk tag and its exact length,
 so records cannot be reordered, dropped, cut or extended.</li>
 </ul>
+<p>The passphrase header (D-219):</p>
+<ul>
+<li><code>0x50</code> marks a passphrase file (a key-encrypted file starts with its version byte, <code>2</code>), then
+the passphrase container version <code>1</code> and the KDF id <code>1</code> (Argon2id v1.3);</li>
+<li>the Argon2id costs are <code>m_cost = 262144</code> KiB, <code>t_cost = 3</code>, <code>p_cost = 1</code>; <code>decrypt</code> refuses any
+other values before running Argon2, so a changed header cannot make it allocate more memory;</li>
+<li>the stream key is Argon2id(passphrase, salt) with no secret and no associated data, 32 bytes -
+the same bytes libsodium’s <code>crypto_pwhash</code> gives, so any Argon2id library can recompute it;</li>
+<li>the header itself carries no tag: a changed salt gives a different key and the first record
+fails (reported as a wrong passphrase, or a changed file); a changed marker, version, KDF id or
+cost is refused by name.</li>
+</ul>
+<h3 id="key-files"><a class="header" href="#key-files">Key files</a></h3>
+<p>Since 0.5.0 (<code>docs/TASKS.md</code> T-256, <code>docs/DECISIONS.md</code> D-212) every key a <code>uacrypt</code> command writes
+or reads (<code>keygen</code>, <code>sign-*</code>, <code>box-*</code>, <code>encrypt</code>/<code>decrypt</code>, <code>verify</code>) is one ASCII text line:</p>
+<pre><code>&lt;prefix&gt;:&lt;key as lower-case hex&gt;:&lt;check as lower-case hex&gt;
+</code></pre>
+<p>followed by one <code>\n</code> (a <code>\r\n</code> from a Windows editor is accepted too). Nothing else is allowed: no
+spaces, no second line, no byte-order mark, no upper-case hex. The prefix names the kind:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Kind (<code>key-import --kind</code>)</th><th>Prefix</th><th>Key bytes</th><th>Made by</th></tr>
+</thead>
+<tbody>
+<tr><td><code>symmetric</code></td><td><code>UACRYPT-SECRET-SYMMETRIC</code></td><td>32</td><td><code>keygen</code></td></tr>
+<tr><td><code>sign163-secret</code> / <code>sign163-public</code></td><td><code>UACRYPT-SECRET-SIGN163</code> / <code>uacrypt-sign163-public</code></td><td>21 / 42</td><td><code>sign-keygen</code> / <code>sign-pubkey</code></td></tr>
+<tr><td><code>sign257-secret</code> / <code>sign257-public</code></td><td><code>UACRYPT-SECRET-SIGN257</code> / <code>uacrypt-sign257-public</code></td><td>33 / 66</td><td><code>sign-keygen257</code> / <code>sign-pubkey</code></td></tr>
+<tr><td><code>box256-secret</code> / <code>box256-public</code></td><td><code>UACRYPT-SECRET-BOX256</code> / <code>uacrypt-box256-public</code></td><td>32 / 32</td><td><code>box-keygen</code> / <code>box-pubkey</code></td></tr>
+<tr><td><code>box512-secret</code> / <code>box512-public</code></td><td><code>UACRYPT-SECRET-BOX512</code> / <code>uacrypt-box512-public</code></td><td>64 / 64</td><td><code>box-keygen512</code> / <code>box-pubkey</code></td></tr>
+</tbody>
+</table>
+</div>
+<p>Secret keys have an upper-case prefix so they are hard to mistake for something to share; public
+keys are short enough to paste into an email or chat. The check is the first 4 bytes of
+Kupyna-256 over <code>"uacrypt-key-v1" || 0x00 || prefix || 0x00 || key bytes</code>, so a mistyped or
+edited key is reported as damaged instead of becoming a key nobody holds. For example, the 32-byte
+key <code>00 01 .. 1f</code> as a box public key is:</p>
+<pre><code>uacrypt-box256-public:000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f:4614d28c
+</code></pre>
+<p>A command given a key of another kind stops before doing any work and names both kinds and the
+command that makes the right one (exit 3). A key file is at most a few hundred bytes; a larger
+file is refused without being read whole. The lower-level commands (<code>kalyna-*</code>, <code>strumok-crypt</code>,
+<code>kupyna-digest</code>) keep taking raw key bytes, for interop with other DSTU implementations.</p>
+<p><strong>Keys from uacrypt 0.4 or older</strong> are raw bytes and are refused with a pointer to <code>key-import</code>,
+which converts one file:</p>
+<pre><code>uacrypt key-import --kind box256-secret --in old-box.key --out box.key
+</code></pre>
+<p><code>--kind</code> is the only place a key’s kind is ever typed by hand, so the raw bytes are checked exactly
+as the commands that use them check them (a verifying key must still start with the curve byte
+0.4 wrote: <code>01</code> for m=163, <code>02</code> for m=257). <code>key-import</code> prints the new file’s check value and, for
+a secret key, the check value of its public key - compare it with the last field of the public key
+file you already shared. Like every keygen, it never overwrites an existing file.</p>
 <p><strong>Raw, uncontained outputs.</strong> <code>kalyna-gcm</code> writes the ciphertext, nonce and tag as separate raw
 files, and <code>kalyna-gmac</code> writes a bare tag. They carry no format version and no nonce binding
 (<code>kalyna-gcm</code>’s tag does not cover the nonce, D-63). For files, use <code>encrypt</code> or <code>box-seal</code>.</p>

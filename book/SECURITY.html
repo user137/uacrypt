@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-522a1f90.js";
+            window.path_to_searchindex_js = "searchindex-2f1b0718.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -213,7 +213,9 @@ output of the corresponding <code>encrypt</code>/<code>sign</code>/<code>box-sea
 byte, including framing/tag bytes, not just payload), and cross-format confusion (feeding one
 command’s output to a different command that expects a similarly-shaped file, e.g. a <code>keygen</code> key
 where a <code>box-keygen</code> key is expected - same length, different meaning) must all fail cleanly, not
-panic or silently produce wrong output.</li>
+panic or silently produce wrong output. For key files this is closed by construction since 0.5.0:
+every key file names its kind and carries a check value, and a command refuses any other kind
+by name before doing any work (T-256, <code>docs/DECISIONS.md</code> D-212).</li>
 <li><strong>No partial output on failure</strong>: a command that fails partway through must not leave a
 half-written <code>--out</code> behind for a later, unrelated read to pick up.</li>
 <li><strong><code>--in</code>==<code>--out</code> (in-place usage)</strong> must not corrupt data even when a command’s own
@@ -280,7 +282,19 @@ side-channel-resistance claim — the hardware path has no secret-indexed memory
 (fixed loop bounds, and <code>PCLMULQDQ</code>/<code>PMULL</code>’s own documented latency is operand-value-
 independent), a strict improvement over the D-19 carve-out on the axis this bullet covers, not
 a trade against it. <code>no_std</code>/embedded builds and CPUs without the feature keep running the
-original software paths (including gf2m163’s own no-array-indexing-at-all design) unchanged.</li>
+software paths (<code>gf2m_wide</code>’s replaced by T-273; see the next bullet and T-290 for <code>gf2m163</code>).</li>
+<li><strong><code>gf2m_wide</code>’s software path indexed a table with the secret GHASH operand until T-273</strong>
+(<code>docs/DECISIONS.md</code> D-223): D-184’s “never had one either” did not hold for it. It is now a
+masked multiply with a <code>black_box</code> barrier, checked branch- and index-free in release asm on
+x86_64, thumbv7em, riscv32imc and aarch64. The plain mask idiom was not: LLVM compiled it to branches,
+so a mask in source is not evidence on its own.</li>
+<li><strong>T-290 (<code>docs/DECISIONS.md</code> D-225) found the same idiom branching elsewhere, and fixed it.</strong>
+It branched on operand bits in <code>gf2m163</code>/<code>gf2m257</code>’s software multiply (<code>crypto_sign</code>) on all
+four checked targets. It also branched on <code>a+b &gt;= p</code> in <code>fp256</code>/<code>fp512</code> add and reduction
+(<code>crypto_box</code>/<code>crypto_box512</code>, every platform). All 17 mask sites in <code>hazmat</code> now use the
+barrier, and each is asm-checked on x86_64, thumbv7em, riscv32imc and aarch64.</li>
+<li><strong>Open (T-291):</strong> riscv32imc still branches in the <code>u64</code> carry lowering of the limb arithmetic,
+through a different mechanism than the mask idiom.</li>
 </ul>
 </li>
 <li>All comparisons involving secret data use <code>subtle::ConstantTimeEq</code>, never <code>==</code>.</li>
@@ -362,6 +376,8 @@ block-aligned, and round-trip tests cannot see a non-injective encoding.</li>
 <tr><td><code>getrandom</code> 0.3.4</td><td>rust-random org — the de facto standard OS-CSPRNG-access crate in the Rust ecosystem, dependency of <code>rand</code>/<code>rand_core</code> and thousands of downstream crates</td><td>Standard <code>cargo</code>/crates.io build; a small <code>build.rs</code> for backend target detection, no code generation</td><td>Not separately third-party-audited as a standalone crate; widely relied upon across the ecosystem (including by audited crates) as the standard OS-entropy access point</td><td>Clean per <code>cargo audit</code> as of 2026-07-24, <code>dstu-core</code>-side usage is <code>std</code>-gated/optional (<code>docs/DECISIONS.md</code> D-48) so it never enters a <code>no_std</code> build</td></tr>
 <tr><td><code>argon2</code> 0.5.3 (adopted, <code>pwhash</code> feature only — <code>docs/DECISIONS.md</code> D-49/D-50, T-71)</td><td>RustCrypto org (<code>password-hashes</code> monorepo) — the de facto standard Argon2 implementation in the Rust ecosystem (~40M downloads)</td><td>Standard <code>cargo</code>/crates.io build, no custom build script</td><td>Not separately third-party-audited as a standalone crate; NCC Group’s and Cure53’s RustCrypto-adjacent audits covered the AEAD/<code>xsalsa20poly1305</code> crates, not <code>password-hashes</code> — a real, disclosed gap</td><td>Clean per both the local <code>cargo audit</code> advisory DB and <code>RustSec/advisory-db</code> upstream, checked 2026-07-24</td></tr>
 <tr><td><code>rand_core</code> 0.6.4 (transitive only, via <code>argon2</code>→<code>password-hash</code>’s own default features — <code>docs/DECISIONS.md</code> D-50)</td><td>rust-random org — the de facto standard RNG-trait crate in the Rust ecosystem</td><td>Standard <code>cargo</code>/crates.io build</td><td>Not separately third-party-audited as a standalone crate</td><td>Clean per <code>cargo audit</code> as of 2026-07-24; genuinely unused by any code in this workspace (<code>SaltString::generate</code>/<code>OsRng</code> are never called), confirmed absent from every <code>no_std</code> build since <code>pwhash</code> is never enabled there</td></tr>
+<tr><td><code>rpassword</code> 7.5.4 (<code>uacrypt</code> only - <code>docs/DECISIONS.md</code> D-219, T-262, owner decision P1)</td><td>Conrad Kleinespel (single maintainer, Apache-2.0); reads a passphrase from /dev/tty or the Windows console with echo off. Not crypto code: it only hands <code>uacrypt</code> the typed bytes. <strong>Known defect (measured on the Pi, D-219):</strong> on Unix it raises SIGINT on Ctrl-C before restoring the terminal, leaving echo off; <code>uacrypt</code> ignores SIGINT around the prompt (<code>src/sigint.rs</code>, its first <code>unsafe</code>: three <code>libc</code> calls, <code>libc</code> now a direct Unix dependency) and re-raises afterwards. On Windows its Ctrl-C leaves the console input mode at <code>0x1</code> (measured, D-219); <code>uacrypt</code> saves the mode and restores it from a console Ctrl handler before the default exit (T-271, <code>windows-sys</code> now a direct Windows dependency with a subset of the same features)</td><td>Standard <code>cargo</code>/crates.io build, no build script</td><td>None known</td><td>Clean per <code>cargo audit</code> 2026-09-24. Brings <code>windows-sys</code> 0.61 into the production tree on Windows (already locked as a dev dependency) and <code>libc</code> on Unix (already locked)</td></tr>
+<tr><td><code>rtoolbox</code> 0.0.6 (transitive, via <code>rpassword</code>)</td><td>Same maintainer; “no backwards compatibility guarantees”, and <code>rpassword</code> asks for <code>0.0</code> - <code>Cargo.lock</code> pins 0.0.6, so re-check on any <code>cargo update</code></td><td>Standard <code>cargo</code>/crates.io build, no build script</td><td>None known</td><td>Clean per <code>cargo audit</code> 2026-09-24</td></tr>
 <tr><td><em>(fill in per dependency before merging)</em></td><td></td><td></td><td></td><td></td></tr>
 </tbody>
 </table>

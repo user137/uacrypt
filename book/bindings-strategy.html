@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-522a1f90.js";
+            window.path_to_searchindex_js = "searchindex-2f1b0718.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -515,7 +515,8 @@ it and weren’t retroactively re-run for it at the time; D-151’s own pass cov
 retroactively the same day it was added, see that entry.)</p>
 <ol>
 <li><input disabled="" type="checkbox"> Scaffold the binding crate/project, wired into the Cargo workspace where applicable.</li>
-<li><input disabled="" type="checkbox"> Wrap the full <code>crypto_*</code> surface, zero-config (D-116), including a <code>selftest()</code> wrapper
+<li><input disabled="" type="checkbox"> Wrap the full <code>crypto_*</code> surface (since T-262 that includes <code>crypto_pwhash::derive_key</code>,
+not yet in any binding - T-269), zero-config (D-116), including a <code>selftest()</code> wrapper
 around T-161.</li>
 <li><input disabled="" type="checkbox"> Wrap <code>crypto_secretstream</code> in the language’s idiomatic stream/pipe primitive (D-118).
 <strong>Two pitfalls found by advisor review while building T-49’s own wrapper — check both
@@ -542,7 +543,10 @@ length means accumulating gigabytes before ever failing. Also missed: rejecting 
 bytes after the <code>Final</code> chunk (silently ignored instead of erroring). Both are checks
 <code>uacrypt decrypt</code> already has (<code>CliError::SecretstreamChunkTooLarge</code>/
 <code>CliError::SecretstreamTrailingData</code>, <code>crates/uacrypt/src/lib.rs</code>) — port them explicitly
-into every language’s own reader, they don’t come for free from the wire format matching.</li>
+into every language’s own reader, they don’t come for free from the wire format matching.
+- <strong>The <code>uacrypt</code> interop test must convert its raw key first</strong> (since 0.5.0, T-256/D-212):
+<code>uacrypt encrypt</code>/<code>decrypt --key</code> read typed key files only, so the test writes the
+binding’s raw 32-byte key, runs <code>uacrypt key-import --kind symmetric --in &lt;raw&gt; --out       &lt;typed&gt;</code>, and passes the typed file to <code>uacrypt</code>. The binding’s own API keeps raw keys.</li>
 <li><input disabled="" type="checkbox"> Prebuilt-artifact packaging for the target platform(s) (D-116) — build/local-install only,
 no registry publish.</li>
 <li><input disabled="" type="checkbox"> <code>cargo xtask</code> subcommand + CI wiring (D-12).</li>

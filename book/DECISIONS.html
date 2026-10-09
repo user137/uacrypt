@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-522a1f90.js";
+            window.path_to_searchindex_js = "searchindex-2f1b0718.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -4669,6 +4669,8 @@ re-measurement pass across every mode without an inherent length cap (requested 
 to rule out any remaining per-call setup-cost noise), are in <code>docs/PERFORMANCE.md</code>’s Kalyna-XTS/Kalyna-KW
 sections and its new “10 MiB re-measurement pass” subsection.</p>
 <h2 id="d-76-continued-t-125s-own-gcmgmac-finding-root-caused-and-fixed-the-same-day"><a class="header" href="#d-76-continued-t-125s-own-gcmgmac-finding-root-caused-and-fixed-the-same-day">D-76 continued: T-125’s own GCM/GMAC finding, root-caused and fixed the same day</a></h2>
+<p><strong>Superseded 2026-09-26 by D-223 (T-273):</strong> the comb below indexed its table with the secret
+GHASH key; the production multiply is now a masked 4-bit window, and the comb is a test oracle.</p>
 <p>Requested as a direct follow-up (“continue the investigation where we still lag by a multiple”) -
 of the gaps left in this file’s first half, T-125’s own Kalyna-GCM 256-256/256-512 anomaly (~2.1-2.2x
 at 1 MiB) was the only one still genuinely multiple-fold and unexplained; the core-round-function gap
@@ -11298,6 +11300,9 @@ hardware-level claim about either path.</p>
 <code>cargo xtask clippy</code>/<code>fmt --check</code>, and the full <code>cargo xtask build</code> feature matrix (<code>--all-features</code>,
 <code>--no-default-features</code>, <code>-p dstu-core --no-default-features --features getrandom</code>) - all clean on
 both the dev machine and the (re-synced) Raspberry Pi.</p>
+<p><strong>Addendum 2026-09-26 (T-273, D-223, T-280(d)):</strong> “the software path it falls back to never had one
+either” was true for <code>gf2m163</code> and false for <code>gf2m_wide</code>, whose comb read <code>T[nibble]</code> indexed by
+the secret operand. D-223 replaced it with a masked, asm-checked multiply.</p>
 <h2 id="d-185-t-199-planned---m257-chosen-as-the-second-dstu-4145-curve-on-empirical-evidence-from-real-issued-certificates-not-a-guess-off-the-standards-own-curve-table"><a class="header" href="#d-185-t-199-planned---m257-chosen-as-the-second-dstu-4145-curve-on-empirical-evidence-from-real-issued-certificates-not-a-guess-off-the-standards-own-curve-table">D-185: T-199 (planned) - <code>m=257</code> chosen as the second DSTU 4145 curve, on empirical evidence from real issued certificates, not a guess off the standard’s own curve table</a></h2>
 <blockquote>
 <p><strong>Status (T-234, 2026-09-23):</strong> DSTU 4145-2002 annex Г lists these <code>m = 257</code> parameters (<code>A = 0</code>, <code>B</code>, <code>n</code>, <code>x^257 + x^12 + 1</code>) exactly.</p>
@@ -11913,7 +11918,7 @@ transcludes the whole README via `# uacrypt</p>
 encryption) — in the spirit of <strong>libsodium</strong>: hard, safe defaults, hard to misuse, rather than
 OpenSSL’s flexible-but-easy-to-misconfigure API. Ships as a Rust crate (<code>dstu-core</code>), a CLI
 (<code>uacrypt</code>), and bindings for eight languages.</p>
-<!-- uacrypt-version: 0.4.0 -->
+<!-- uacrypt-version: 0.5.0 -->
 <p><strong>Pre-1.0. Not audited. Not a claim of side-channel resistance.</strong> <code>dstu-core</code>/<code>uacrypt</code> are on
 <a href="https://crates.io/crates/dstu-core">crates.io</a>; the Python, Node.js, and Ruby bindings are on
 <a href="https://pypi.org/project/dstu-core/">PyPI</a>/<a href="https://www.npmjs.com/package/dstu-core">npm</a>/
@@ -11953,7 +11958,10 @@ assert_eq!(opened, b"message");
 <pre><code class="language-sh">cargo install uacrypt   # or download a prebuilt binary from GitHub Releases
 uacrypt keygen --out key.bin
 uacrypt encrypt --key key.bin --in message.bin --out sealed.bin
-uacrypt decrypt --key key.bin --in sealed.bin --out message.bin
+uacrypt decrypt --key key.bin --in sealed.bin --out decrypted.bin
+tar c docs | uacrypt encrypt --key key.bin --in - --out docs.tar.enc   # - is stdin/stdout
+uacrypt encrypt --passphrase --in message.bin --out sealed.bin   # asks twice, no echo
+uacrypt decrypt --in sealed.bin --out decrypted.bin              # asks for the passphrase
 </code></pre>
 <p>See <a href="https://github.com/user137/uacrypt/blob/master/docs/CLI.md"><code>docs/CLI.md</code></a> for the full
 command reference (<code>sign</code>/<code>verify</code>, <code>box-seal</code>/<code>box-open</code>, and the lower-level <code>kalyna-block</code>/
@@ -12803,6 +12811,1295 @@ each alert that points here. There’s no query filter this time (D-99’s appro
 catch real bugs in non-generated, non-test code, so turning them off repo-wide would lose coverage.</p>
 <p><strong>Rejected.</strong> Renaming <code>as_secret</code> in the smoke tests only to satisfy the heuristic. Not done for
 now; the owner can revisit if #86/#87 reopen.</p>
+<h2 id="d-211-t-255---uacrypt-exit-code-classes-and-strict-argument-parsing-050"><a class="header" href="#d-211-t-255---uacrypt-exit-code-classes-and-strict-argument-parsing-050">D-211: T-255 - <code>uacrypt</code> exit-code classes and strict argument parsing (0.5.0)</a></h2>
+<p><strong>Context.</strong> First task of the owner-requested CLI batch (TASKS “CLI usability and misuse
+resistance”, rule R4). Every failure exited 1, so a script could not tell a forged file from a
+typo; a repeated flag silently won last (<code>encrypt --key a --key b</code> used <code>b</code>).</p>
+<p><strong>Decision 1 - exit classes.</strong> <code>CliError::exit_code()</code> is an exhaustive match (no wildcard), so a
+new variant must be classified to compile:</p>
+<ul>
+<li>1 = the input data was checked and rejected: every authentication/tag/signature failure, every
+malformed-ciphertext error (truncated, unknown chunk tag, trailing data, unsupported version,
+bad chunk length), and data-shape errors of <code>--in</code>/<code>--sig</code>/<code>--tag</code> (<code>EmptyInput</code>,
+<code>PlaintextTooLong</code>, <code>AadTooLong</code>, <code>KwInvalidLength</code>, <code>XtsInvalidLength</code>, a wrong-length input
+block, signature or tag).</li>
+<li>2 = usage: unknown/missing/repeated flag, missing value, value on a bool flag, positional
+argument, unknown command/subcommand/variant, bad <code>--iterations</code>.</li>
+<li>3 = a file or key could not be used: I/O errors, <code>KeyFileExists</code>, RNG failure, invalid keys, an
+unsupported verifying-key curve tag, a wrong-length key/nonce/IV/tweak.</li>
+</ul>
+<p>This is broader than T-255’s own wording (1 = auth failure, bad signature, <code>--check</code> mismatch). The
+rule applied: “the program read the data and refused it” is 1; “the command line is wrong” is 2;
+“a file or key could not be used” is 3. The owner saw this interpretation before approving the plan.
+A wrong-length <code>--tag</code> is 1, not 3: it is verification input, like a signature. <code>WrongLength</code>’s
+<code>what</code> became a <code>LengthOf</code> enum (was <code>&amp;'static str</code>) so this split is itself an exhaustive match,
+not a string comparison.</p>
+<p><strong>Decision 2 - strict parsing</strong> in <code>ArgScanner::scan</code>, the one place every command parses flags:
+repeated flag, missing or empty value, value on a bool flag and a positional argument are usage
+errors; <code>--flag=value</code> is accepted. A separate value starting with <code>--</code> is treated as a forgotten
+value (<code>--key --in x</code> would otherwise use <code>--in</code> as the key path); a path that really starts with
+<code>--</code> stays reachable as <code>--in=--x</code>.</p>
+<p><strong>Decision 3 - suggestions</strong> use an own optimal-string-alignment distance (R5, no dependency),
+limit one edit per three characters (minimum one), over one <code>COMMANDS</code> table that also feeds
+<code>help &lt;command&gt;</code> (and later T-264’s completions). Unit tests check the table against <code>run</code>’s own
+dispatch arms in both directions.</p>
+<p><strong>Security note.</strong> The new <code>CliError</code> variants carry only argv strings and <code>&amp;'static str</code> flag
+names, no key material - D-210’s <code>cleartext-logging</code> reasoning still holds.</p>
+<p><strong>Rejected.</strong> Classifying <code>WrongLength</code> by its <code>what</code> string (a silent default for any new
+string); a separate <code>WrongInputLength</code> variant (touches the same call sites, less precise than
+<code>LengthOf</code>).</p>
+<h2 id="d-212-t-256---typed-key-files-for-uacrypt-050"><a class="header" href="#d-212-t-256---typed-key-files-for-uacrypt-050">D-212: T-256 - typed key files for <code>uacrypt</code> (0.5.0)</a></h2>
+<p><strong>Context.</strong> <code>uacrypt</code> key files were raw bytes, so same-length keys of different kinds were
+indistinguishable: <code>box-seal --key &lt;box SECRET key&gt;</code> succeeded whenever the 32 bytes decoded a
+curve point (2 of 6 tries in the 2026-09-23 review) and sealed a file nobody could open;
+<code>encrypt --key &lt;box secret key&gt;</code> always succeeded. Owner decisions K1 (a) and K2 (a) (TASKS “CLI
+usability and misuse resistance”, rules R1/R6/R7) fixed the shape; this entry records the details
+chosen in the approved plan.</p>
+<p><strong>Decision 1 - format.</strong> One ASCII line <code>&lt;prefix&gt;:&lt;lower-case hex key&gt;:&lt;8 hex check digits&gt;</code>, then
+one <code>\n</code> (a <code>\r\n</code> is tolerated, nothing else: no spaces, BOM, second line or upper-case hex).
+Nine kinds, one prefix each; secret prefixes are upper case (<code>UACRYPT-SECRET-BOX256</code>, age’s
+<code>AGE-SECRET-KEY-</code> convention), public ones lower case (<code>uacrypt-box256-public</code>). Full table:
+<code>docs/CLI.md</code> “Key files”. A file over 256 bytes is refused without being read whole.</p>
+<p><strong>Decision 2 - check value.</strong> First 4 bytes of Kupyna-256(<code>"uacrypt-key-v1" || 0x00 || prefix || 0x00 || key</code>). The prefix is inside the hash, so relabelling a line to another kind fails its
+check; <code>-v1</code> is the format version. 32 bits catch typos and edits, not attacks: whoever can write
+a key file can write a valid check too, which is the same trust as the key itself. Golden lines
+for all nine kinds were computed outside the code (Python builds the preimage, <code>uacrypt kupyna-digest</code> hashes it) and are pinned by <code>keyfile</code>’s unit tests and, through an independent
+encoder in <code>tests/support</code>, by <code>smoke_typed_keys.rs</code>.</p>
+<p><strong>Decision 3 - constant-time parsing (R6).</strong> Hex is encoded and decoded arithmetically, no branch
+and no table lookup on key digits (D-19 allows table lookups only for S-boxes); decoding ORs an
+error flag over every digit and tests it once. The check is compared with
+<code>subtle::ConstantTimeEq</code>, and the file text, decoded key and fixed-size key arrays are held in
+<code>zeroize::Zeroizing</code>. Branches depend only on public data: file length, prefix, separator
+positions. Errors never echo file content.</p>
+<p><strong>Decision 4 - supersedes D-186 Decision 1’s file tag.</strong> Verifying-key files no longer start with
+a curve byte; the prefix names the curve, and <code>verify</code> still takes both curves. The library stays
+untagged, as D-186 decided. <code>CliError::SignVerifyUnsupportedCurve</code> and <code>smoke_verify_key_tag.rs</code>
+are removed; the adversarial-key-file cases moved to <code>smoke_typed_keys.rs</code>.</p>
+<p><strong>Decision 5 - errors and hints.</strong> A key of another kind is <code>KeyKindMismatch</code>: it names the kind
+found, what the command needs and a hint. The other curve of the right family points to the twin
+command (<code>use uacrypt box-seal512</code>, until T-257 removes the twins); anything else points to the
+command that makes the right key. A non-typed file is <code>KeyFileNotTyped</code> with a pointer to
+<code>key-import</code>. All are exit 3 (D-211).</p>
+<p><strong>Decision 6 - <code>key-import</code> (K2 a).</strong> <code>key-import --kind &lt;kind&gt; --in &lt;raw&gt; --out &lt;typed&gt;</code> reads
+the exact 0.4 raw layout (verifying keys with their D-186 curve byte, which must match <code>--kind</code>),
+validates the bytes with the same <code>from_bytes</code> the commands use, and writes secret kinds through
+<code>write_new_secret_key</code> (never overwrites, 0600 on Unix). On stderr it prints the new file’s check
+and, for a secret key, its public key’s check, to compare with a public key already shared.</p>
+<p><strong>Fork 1 (owner, by approving the plan) - <code>subtle</code> and <code>zeroize</code> as direct <code>uacrypt</code>
+dependencies.</strong> Both were already in <code>Cargo.lock</code> through <code>dstu-core</code> (same versions,
+<code>default-features = false</code>), so R5 (“no new dependencies”) is not engaged; the alternative was a
+hand-written constant-time compare outside the project’s stated rule.</p>
+<p><strong>Fork 2 (owner, by approving the plan) - binding interop tests.</strong> The eight bindings’ secretstream
+interop tests call the real <code>uacrypt encrypt</code>/<code>decrypt</code>; each now converts its raw key with one
+<code>uacrypt key-import --kind symmetric</code> call instead of re-implementing the key format eight times.
+Test code only; no binding API or <code>dstu-core-capi</code> change, so the new-primitive binding gate does
+not fire.</p>
+<p><strong>Scope kept.</strong> <code>kalyna-*</code>, <code>strumok-crypt</code> and <code>kupyna-digest</code> keep raw keys, for interop and
+benchmarks against other DSTU implementations.</p>
+<p><strong>Rejected.</strong> A binary magic header (K1 b: not paste-able); a <code>pub</code> encoder in the <code>uacrypt</code>
+library for tests (grows the published API; the tests carry their own independent encoder
+instead); bech32 or base64 (a new dependency or more code for no gain at these lengths).</p>
+<h2 id="d-213-t-257---curve-chosen-at-key-generation-only-the-other-commands-read-it-from-the-key-050"><a class="header" href="#d-213-t-257---curve-chosen-at-key-generation-only-the-other-commands-read-it-from-the-key-050">D-213: T-257 - curve chosen at key generation only; the other commands read it from the key (0.5.0)</a></h2>
+<p><strong>Context.</strong> Owner decision K3 (a) (TASKS “CLI usability and misuse resistance”, rule R3). Up to
+0.4 every sign/box command had a curve twin (<code>sign-pubkey257</code>, <code>sign257</code>, <code>box-pubkey512</code>,
+<code>box-seal512</code>, <code>box-open512</code>), because raw key files could not say which curve they were for.
+Since D-212 every key line names its kind and curve, so the twins only repeated what the key
+already says.</p>
+<p><strong>Decision 1 - keygen keeps its twins, nothing else does.</strong> <code>sign-keygen</code>/<code>sign-keygen257</code> and
+<code>box-keygen</code>/<code>box-keygen512</code> stay separate commands; <code>sign-pubkey</code>, <code>sign</code>, <code>verify</code>, <code>box-pubkey</code>,
+<code>box-seal</code> and <code>box-open</code> take a key of either curve and dispatch on its kind. This answers D-73’s
+objection to a type flag: D-73 rejected <code>keygen --type</code> because a mistyped value silently picks
+the wrong algorithm. Key generation is the only moment a choice exists, and a separate command has
+no value to mistype. The operation commands have no flag at all: the choice is read from a key
+whose check value (D-212 Decision 2) refuses a relabelled or edited line. Everyday commands: 19 -&gt;
+14, plus <code>key-import</code>.</p>
+<p><strong>Decision 2 - removed names are usage errors.</strong> <code>REMOVED_COMMANDS</code> maps each old name to its
+replacement; <code>unknown_command()</code> turns it into <code>CliError::RemovedCommand</code> (exit 2, “<code>sign257</code> was
+removed in uacrypt 0.5 - use <code>uacrypt sign</code>, it reads the curve from the key”). One check covers
+the command itself, <code>&lt;name&gt; --help</code> and <code>help &lt;name&gt;</code>. The table is kept out of <code>COMMANDS</code>, so help,
+“did you mean” suggestions and future completions never offer the old names.</p>
+<p><strong>Decision 3 - a sealed file carries no curve id; the key decides.</strong> The <code>crypto_box</code> wire format
+(D-201/D-202) is unchanged. A file sealed to one curve and opened with the other curve’s key fails
+like any other wrong key (exit 1, nothing written). <code>BoxOpenTruncated</code>/<code>BoxOpenFailed</code> now name the
+key’s curve so the message still makes sense in that case. No heuristic guesses the curve from the
+file length.</p>
+<p><strong>Decision 4 - hints.</strong> Supersedes D-212 Decision 5’s twin clause: a wrong-kind error no longer
+points to a twin, it names the command that makes the right key, each command once (both public
+kinds are made by the same <code>sign-pubkey</code>/<code>box-pubkey</code>).</p>
+<p><strong>Code shape.</strong> <code>uacrypt</code>-only dispatch enums <code>AnySigningKey</code>/<code>AnyBoxSecret</code>/<code>AnyBoxPublic</code>, the
+same pattern as the existing <code>AnyVerifyingKey</code>. The library types stay separate and untagged
+(D-186), and no binding or <code>dstu-core-capi</code> code changes. <code>CliError::Box512*</code> merge into the <code>Box*</code>
+variants.</p>
+<p><strong>Tests.</strong> <code>smoke_curve_from_key.rs</code> compares <code>sign</code>, <code>sign-pubkey</code> and <code>box-pubkey</code> output byte for
+byte with direct <code>dstu_core</code> calls on both curves (the signing nonce is deterministic), and checks a
+CLI-sealed file against the library’s <code>open</code>, so a crossed dispatch cannot pass on self-consistency.
+It also covers cross-curve open/verify rejection, the removed names in all three forms, and the
+wrong-kind hints. The twin-name cases in the existing smoke files were converted to the base
+command with the other curve’s key. The missing-flag matrix lost its five twin rows, since it has
+one row per existing command.</p>
+<p><strong>Rejected.</strong> K3 (b), one keygen with <code>--curve</code> (the knob D-73 argued against). K3 (c), renaming
+m=163 to <code>sign-keygen163</code> (it breaks every existing script for a default nobody asked to change).
+Keeping the removed names as silent aliases (two spellings of one command, and the old names would
+stay in help and suggestions).</p>
+<h2 id="d-214-t-258---no-output-file-is-replaced-without---force-key-files-never-050"><a class="header" href="#d-214-t-258---no-output-file-is-replaced-without---force-key-files-never-050">D-214: T-258 - no output file is replaced without <code>--force</code>; key files never (0.5.0)</a></h2>
+<p><strong>Context.</strong> Owner decision O1 (a) (TASKS “CLI usability and misuse resistance”, rule R2). Up to
+0.4 <code>encrypt</code>, <code>decrypt</code>, <code>hash</code>, <code>sign</code>, <code>box-seal</code>, <code>box-open</code> and every <code>kalyna-*</code>/
+<code>kupyna-digest</code>/<code>strumok-crypt</code> command silently replaced an existing <code>--out</code>; only the keygen
+commands refused (T-241). <code>sign-pubkey</code>, <code>box-pubkey</code> and <code>key-import</code> of a public kind also wrote
+with plain <code>fs::write</code>, so <code>box-pubkey --key box.key --out box.key</code> destroyed the secret key.
+Surveyed before deciding (source read 2026-09-24): age <code>-o</code> and minisign/signify signature output
+overwrite silently; age-keygen and signify never replace a key file, with no force flag;
+minisign <code>-G</code>/<code>-R</code> refuse unless <code>-f</code>. gpg asks interactively and needs <code>--yes</code> in scripts. This
+decision is stricter than age for data outputs, on purpose, and matches signify for keys.</p>
+<p><strong>Decision 1 - one shared helper, <code>OutputFile</code>.</strong> Every non-key output goes through it. Without
+<code>--force</code> it first reserves the path with <code>create_new</code> (an empty placeholder, <code>O_CREAT|O_EXCL</code>,
+which also refuses a symlink without following it), then writes to a private temp file beside it
+and renames that onto the placeholder on success. std has no rename that refuses to replace, and a
+hard-link publish (<code>link()</code> then <code>unlink()</code>) fails on FAT/exFAT, where USB sticks with encrypted
+files live, so the placeholder is what makes the refusal atomic. With <code>--force</code> there is no
+placeholder, and the rename replaces the old file (a symlink itself, never its target). <code>Drop</code>
+removes the temp file and the placeholder unless <code>commit</code> ran, so no error path leaves output
+behind, and with <code>--force</code> the old file survives a failed decrypt. Known limit: a killed process
+leaves an empty placeholder, which the next run refuses until deleted or <code>--force</code>d.
+<code>kalyna-ccm</code>/<code>kalyna-gcm encrypt</code> commit their three outputs one after another, so a rename that
+fails after the first can leave a mismatched set (with <code>--force</code>, a new ciphertext beside the old
+tag).</p>
+<p><strong>Decision 2 - where the refusal happens.</strong> Outputs are reserved after the key files are read
+and before <code>--in</code> is read, so a wrong-kind key is still reported by name (D-212) and nothing is
+computed for an output that will be refused. <code>kalyna-ccm</code>/<code>kalyna-gcm encrypt</code> reserve <code>--nonce</code>,
+<code>--out</code> and <code>--tag</code> together up front; before, the nonce file was written before <code>--in</code> was read,
+so a failed run left a nonce file behind. On decrypt/verify <code>--nonce</code>/<code>--tag</code> are inputs and
+untouched by the policy. In place (<code>--in</code> = <code>--out</code>) needs no special case: the output exists, so
+it needs <code>--force</code>; the error says “is the same file as –in” when both paths canonicalize to the
+same file (a hard link is still refused, just without that wording).</p>
+<p><strong>Decision 3 - an output may not name another output or a key input</strong> (<code>check_outputs</code>,
+<code>SameOutputPath</code>, exit 2), with or without <code>--force</code>. Two outputs would silently replace each
+other, and <code>decrypt --key k --out k --force</code> would replace the only key for the file with its
+plaintext; without <code>--force</code> the “pass –force” hint would be wrong. Key inputs are <code>--key</code>, plus
+<code>--iv</code> (<code>strumok-crypt</code>), <code>--tweak</code> (<code>kalyna-xts</code>) and, on <code>kalyna-ccm</code>/<code>kalyna-gcm decrypt</code>,
+<code>--nonce</code>/<code>--tag</code>. Compared as <code>std::path::absolute</code> paths and, when both exist, canonicalized.
+Not covered: <code>--force</code> onto a key file this command does not read (<code>box-open --out other.key --force</code>); refusing that means sniffing the old file’s contents, left as an owner option.
+<strong>Closed by D-216 (T-268):</strong> such a file is now refused too.
+An existing directory at the output path is refused as “is a directory” (no <code>--force</code> hint;
+Windows reports it as access denied, so it is checked by path, not by error kind).</p>
+<p><strong>Decision 4 - key files are never replaced and take no <code>--force</code></strong> (owner, 2026-09-24).
+<code>write_new_secret_key</code> became <code>write_new_key_file</code> and now also writes <code>sign-pubkey</code>/<code>box-pubkey</code>/
+public <code>key-import</code> output. <code>--force</code> is not in those commands’ flag lists, so it is an unknown
+flag (exit 2), and <code>KeyFileExists</code> does not mention it.</p>
+<p><strong>Decision 5 - every output is <code>0600</code> on Unix</strong> (owner, 2026-09-24), because the temp file is
+created by <code>create_private_new</code>, also when <code>--force</code> replaces a <code>0644</code> file. Stricter than age or
+signify (which leave ciphertext and signatures to the umask), so a decrypted plaintext is never
+readable by other users; sharing a file on a multi-user host needs a <code>chmod</code>. Rejected: <code>0600</code> only
+for <code>decrypt</code>/<code>box-open</code> (a per-command classification that can drift).</p>
+<p><strong>Exit codes (D-211).</strong> <code>OutputExists</code> is 3 (a file could not be used), <code>SameOutputPath</code> is 2.</p>
+<p><strong>Tests.</strong> <code>smoke_overwrite.rs</code>: every non-key command (15 invocations, all their outputs) writes
+fresh outputs without <code>--force</code>, refuses each existing one (exit 3, file byte-identical, directory
+listing unchanged), replaces all with <code>--force</code> and leaves no temp file; in place is refused then
+round-trips with <code>--force</code>; failed decrypt/box-open/missing-input runs leave the directory
+unchanged with and without <code>--force</code>; a failing <code>kalyna-ccm encrypt</code> releases all three
+reservations; duplicate outputs; decrypt-side <code>--nonce</code>/<code>--tag</code> and verify-side <code>--tag</code> stay
+inputs; an output naming <code>--key</code>/<code>--iv</code>/decrypt-side <code>--nonce</code> is refused with and without
+<code>--force</code>, the key byte-identical; a directory output is refused, and with <code>--force</code> the failed
+rename (the commit-failure path) leaves the directory and its parent unchanged; every key-writing
+command refuses an existing file and rejects <code>--force</code>; <code>*-pubkey</code> pointed at its own secret key
+leaves it intact; help offers <code>--force</code> exactly where it is accepted. Unix-only (run on the Pi, not yet run): a symlink <code>--out</code> is refused and <code>--force</code>
+replaces the link, not its target; outputs are <code>0600</code>. Existing in-place tests (unit and smoke)
+now pass <code>--force</code> and the unit one also asserts the refusal. <code>xtask bench-compare</code> passes
+<code>--force</code> where one output path is reused across its loop, so no table row is silently dropped.</p>
+<p><strong>Rejected.</strong> O1 (b), keeping silent overwrite for non-key outputs. An interactive “Overwrite?”
+prompt like gpg (breaks scripts and pipes). A pre-check followed by a plain rename (a
+check-then-act race). Hard-link publishing (FAT/exFAT). <code>--force</code> for public keys (a mistyped
+<code>--out</code> would then still destroy a secret key).</p>
+<h2 id="d-215-t-259---hash-prints-and-checks-sha256sum-style-lines-050"><a class="header" href="#d-215-t-259---hash-prints-and-checks-sha256sum-style-lines-050">D-215: T-259 - <code>hash</code> prints and checks <code>sha256sum</code>-style lines (0.5.0)</a></h2>
+<p><strong>Context.</strong> Up to 0.4, <code>uacrypt hash --in f --out d</code> wrote a 32-byte binary Kupyna-256 digest
+file: no hex on the terminal, nothing to compare it with. T-259 (owner-approved in the 0.5.0
+batch) makes it work like <code>sha256sum</code>. The line format is GNU’s text-mode line, so the only
+decisions were how strict to be and what the exit codes are.</p>
+<p><strong>Decision 1 - output.</strong> <code>hash --in &lt;path&gt;</code> prints <code>&lt;64 lower-case hex&gt;  &lt;path&gt;\n</code> to stdout,
+the path exactly as given, and writes no file. <code>--out</code>/<code>--force</code> are gone from <code>hash</code> (a plain
+unknown-flag usage error; the CHANGELOG migration note points at <code>&gt; file</code> and at
+<code>kupyna-digest --variant 256 --out</code> for the old raw digest). One <code>--in</code> per call: T-255 made a
+repeated flag an error (R4), and a shell loop with <code>&gt;&gt;</code> covers many files. Stdout is written
+through a locked handle with <code>writeln!</code> and an explicit flush, both mapped to <code>CliError::Io</code>
+(<code>&lt;stdout&gt;</code>), so a closed pipe is exit 3, never a <code>println!</code> panic (exit 101). Digests come from
+the same bounded-memory <code>hash_file_streamed</code> that <code>sign</code>/<code>verify</code> use (D-42); <code>hash</code> no longer
+goes through <code>run_digest_command</code>.</p>
+<p><strong>Decision 2 - exactly one of <code>--in</code>/<code>--check</code>.</strong> Neither is <code>CliError::MissingOneOf</code> (“missing
+required flag: –in (or –check)”), both is <code>ExclusiveFlags</code>; both exit 2.</p>
+<p><strong>Decision 3 - the check file is untrusted input.</strong> It is read whole with a 16 MiB cap
+(<code>HASH_CHECK_LIST_MAX_BYTES</code>; about 150k lines of 100-character paths) - <code>HashCheckTooLarge</code>
+above it. It is parsed completely before anything is hashed, so a malformed file prints no
+partial <code>OK</code> lines. Grammar, per line: exactly 64 hex digits (either case), exactly two spaces, a
+non-empty UTF-8 path with no control character (<code>char::is_control</code>: C0, DEL, C1). One <code>\r</code>
+before each <code>\n</code> and a missing final <code>\n</code> are accepted; a blank line anywhere, GNU’s <code> *</code> binary
+marker, BSD <code>SHA256 (f) = ...</code> tags and GNU’s <code>\</code>-escaped names are not. Any violation is
+<code>HashCheckMalformed { line }</code> (1-based), zero lines is <code>HashCheckEmpty</code>. Rejecting control
+characters has two reasons: a newline in a path cannot round-trip through a line format, and a
+hostile check file could otherwise make <code>--check</code> echo terminal escape sequences as
+<code>&lt;path&gt;: OK</code>. For the same reason <code>hash --in</code> refuses such a path, and a non-UTF-8 one, before
+hashing (<code>HashPathUnprintable</code>, exit 2 - the argument cannot be used this way). GNU instead
+escapes names containing <code>\</code> or a newline with a leading <code>\</code>; that would mangle every Windows path,
+so it is not copied. Relative paths are resolved against the current directory, like <code>sha256sum</code>,
+not against the check file’s directory.</p>
+<p><strong>Decision 4 - exit codes (D-211).</strong> Check file missing or unreadable: 3 (<code>Io</code>). Malformed, empty
+or too large: 1 (T-255’s owner-approved reading: malformed input data is “rejected”). Any listed
+file that does not match <em>or cannot be read</em>: printed as <code>FAILED</code> / <code>FAILED (cannot read: ...)</code>,
+every line is still checked, then <code>HashCheckFailed { failed, total }</code>, exit 1 - one rule for the
+caller, as in GNU (<code>sha256sum -c</code> also exits 1 for an unreadable file). The digest comparison is
+plain <code>==</code>: a file digest is public, not a secret (the <code>subtle</code> rule covers secrets).</p>
+<p><strong>Tests.</strong> <code>tests/smoke_hash.rs</code> (11): the printed line against <code>dstu-core</code>’s one-shot
+<code>Kupyna256::digest</code> (also for an empty file), hash-then-check round trip writing no file,
+mismatch and missing file both named with <code>2 of 3</code> on stderr and exit 1, relative paths against
+the working directory, CRLF/upper-case/no final newline accepted, ten malformed second lines (and
+a non-UTF-8 one, and a blank middle line) each rejected with <code>line 2</code> and empty stdout, empty
+check file, the 16 MiB boundary (exactly at the cap is parsed, one byte over is “larger than”),
+usage errors exit 2 (incl. <code>--out</code>, <code>--force</code>, repeated <code>--in</code>), file errors exit 3 (missing,
+directory, for both flags), a Unix-only newline/escape path refusal, and (see the addendum) stdout write errors. Unit tests in <code>lib.rs</code>: <code>parse_check_list</code> accept/reject tables (pure, Miri-able), the
+multi-chunk streaming check through <code>run_hash_command</code>, parsing. <code>smoke_overwrite.rs</code>,
+<code>smoke_misuse_matrix.rs</code> and <code>smoke_golden_path.rs</code> used <code>hash --out</code> as a representative output
+command; those rows now use <code>kupyna-digest --variant 256</code> (same shared output helper), so D-214’s
+coverage is unchanged except that <code>hash</code> is no longer in its table (14 invocations, was 15).</p>
+<p><strong>Addendum - Windows shells (closing review, measured 2026-09-24).</strong> <code>hash --in звіт.pdf &gt; SUMS</code>
+then <code>--check SUMS</code> round-trips in PowerShell 7.6 (raw UTF-8 bytes, no BOM), cmd and Git Bash.
+Windows PowerShell 5.1 fails twice: its <code>&gt;</code> writes UTF-16LE with a BOM (<code>FF FE</code>), and it decodes
+native stdout through the console code page (cp866 here) before re-encoding, so even
+<code>| Out-File -Encoding utf8</code> stores a garbled Cyrillic path (with a UTF-8 BOM). uacrypt cannot undo
+the second (the bytes are already wrong), so it does not decode UTF-16 either: a leading UTF-16 BOM
+is <code>HashCheckUtf16</code> (exit 1) naming PowerShell 7 and <code>cmd /c "uacrypt hash --in &lt;f&gt; &gt; &lt;list&gt;"</code>
+(verified from 5.1 with the Cyrillic file: <code>OK</code>), and one leading UTF-8 BOM is skipped (an ASCII
+list saved by 5.1’s <code>Out-File -Encoding utf8</code>, or by Notepad, then checks). Tests:
+<code>a_cyrillic_path_round_trips</code>, <code>a_utf16_check_file_is_named_and_a_utf8_bom_is_accepted</code>, and
+parser unit cases. The racy closed-pipe test was replaced by a deterministic <code>cfg(unix)</code> one that
+points stdout at <code>/dev/full</code> and asserts exit 3 naming <code>&lt;stdout&gt;</code>.</p>
+<p><strong>Owner, 2026-09-24:</strong> accepted every choice above as it stands (“the decision is yours, go by
+best practice and the logic of the app”).</p>
+<p><strong>Rejected.</strong> Several <code>--in</code> in one call (conflicts with T-255’s repeated-flag rule; a positional
+file list conflicts with R4). GNU’s lenient mode that skips malformed lines with a warning (a
+check that silently checks less than the file lists). Resolving paths relative to the check file
+(differs from every <code>*sum</code> tool). A specific “<code>--out</code> was removed” hint for <code>hash</code> (the generic
+unknown-flag error plus the help text and CHANGELOG were judged enough; revisit if users hit it).</p>
+<h2 id="d-216-t-268---no-output-replaces-an-existing-typed-key-file-even-with---force-050"><a class="header" href="#d-216-t-268---no-output-replaces-an-existing-typed-key-file-even-with---force-050">D-216: T-268 - no output replaces an existing typed key file, even with <code>--force</code> (0.5.0)</a></h2>
+<p><strong>Context.</strong> D-214 left one gap as an owner option (Decision 3): <code>--force</code> could replace an
+existing key file that the command does not itself read, for example <code>box-open --key a.key --in f --out b.key --force</code> destroys <code>b.key</code>. A lost secret key cannot be recovered and makes everything
+encrypted to it unreadable. The owner delegated the decision on 2026-09-24 (“go by best practice,
+the logic of the app and what similar tools do”).</p>
+<p><strong>Decision - refuse it.</strong> Rule R2 already says keys are never replaced; D-214 Decision 4 applies it
+to every key-writing command, public keys included. This closes the remaining path.</p>
+<p>What similar tools do (source read 2026-09-24, not recalled): age (<code>FiloSottile/age</code> <code>main</code> @
+<code>b74dce4</code>, <code>cmd/age/age.go</code>) opens <code>-o</code> with <code>os.Create</code>, so it replaces any existing file with no
+flag at all; it refuses only an output that is one of the command’s own inputs (<code>inUseFiles</code>:
+identity, recipients and input files) - our <code>SameOutputPath</code>. <code>age-keygen</code>
+(<code>cmd/age-keygen/keygen.go</code>) opens with <code>O_EXCL</code> and never overwrites. minisign
+(<code>jedisct1/minisign</code> <code>master</code> @ <code>4ade112</code>, <code>src/minisign.c</code> <code>abort_on_existing_key_files</code>) refuses
+existing key files on <code>-G</code> unless <code>-f</code>. So peers protect a key file from key <em>generation</em>, and from
+being the same command’s own input, but none protects an unrelated key file from another
+command’s output. uacrypt is deliberately stricter: the cost is one manual delete in a rare case,
+the benefit is that no mistyped <code>--out</code> plus a habitual <code>--force</code> loses a key.</p>
+<p><strong>Detection.</strong> <code>refuse_key_file</code> in <code>OutputFile::create</code>, on both branches: with <code>--force</code> before
+the temp file is created; without it after <code>create_new</code> reports the file exists, so a key file
+gets <code>OutputIsKeyFile</code> instead of the “pass –force” hint. It applies only to an existing
+<em>regular</em> file (<code>symlink_metadata().is_file()</code>): a symlink is replaced, never followed (D-214), and
+a directory keeps its own “is a directory” path. It reads at most <code>keyfile::SNIFF_LEN</code> (25) bytes
+and <code>keyfile::sniff_kind</code> matches exactly <code>&lt;prefix&gt;:</code> of one of the nine kinds at offset 0 - never
+the key hex, never <code>keyfile::decode</code>, so no secret bytes enter memory and the constant-time rule
+(R6) is not involved. A damaged key file with an intact prefix is still protected, and so is one
+an editor re-saved with one leading UTF-8 BOM (Notepad, PowerShell 5.1’s <code>Out-File -Encoding utf8</code> - D-215’s addendum; <code>SNIFF_LEN</code> is 28 = BOM + longest prefix + <code>:</code>). A lookalike (no colon,
+other case, a leading space, two BOMs) is not a key file. <code>decode</code> itself still refuses a BOM. Both secret and public kinds are
+protected, matching Decision 4.</p>
+<p><strong>Unreadable existing output: fail closed.</strong> With or without <code>--force</code>, an existing regular file
+that cannot be opened or read is not replaced (<code>OutputUncheckable</code>, exit 3): it might be a key.
+The user deletes it themselves.</p>
+<p><strong>Errors and precedence.</strong> <code>CliError::OutputIsKeyFile { path, kind }</code> (names the kind, no key
+bytes, says <code>--force</code> does not apply) and <code>OutputUncheckable { path, message }</code>, both exit 3 (a
+file could not be used, D-211). <code>SameOutputPath</code> (exit 2, <code>--out</code> naming the command’s own key
+input) is checked earlier and still wins. In-place <code>--in k.key --out k.key --force</code> is now refused
+as a key file too: write to a new file, then delete the old one.</p>
+<p><strong>Limits.</strong> A safety net, not a security boundary. Raw keys (0.3.x/0.4 key files, and the raw keys
+of <code>kalyna-*</code>/<code>strumok-crypt</code>/<code>kupyna-digest</code>) are not recognised, and the file can change between
+the check and the rename (TOCTOU), which only matters against an attacker who can already write to
+the output directory.</p>
+<p><strong>Tests.</strong> <code>tests/smoke_key_output_guard.rs</code>: all nine kinds as <code>--out</code> of <code>encrypt</code>, <code>decrypt</code>,
+<code>sign</code>, <code>box-seal</code>, <code>box-open</code> and <code>kupyna-digest</code>, with and without <code>--force</code> - exit 3, “key
+file” and no “pass –force” on stderr, key bytes and directory listing unchanged (no temp file); a
+damaged and a BOM key file protected and five lookalikes replaced; a key file as <code>kalyna-gcm encrypt</code>’s third output (<code>--tag</code>) releases the already reserved <code>--out</code>/<code>--nonce</code> (no placeholder
+left); <code>SameOutputPath</code> still exit 2; Unix only (Pi): a
+symlink to a key file is replaced with the key intact, and a <code>0000</code> existing output is not
+replaced. Unit: <code>keyfile::sniff_kind</code> table for every kind (Miri: no UB).</p>
+<p><strong>Rejected.</strong> Protecting only secret kinds (Decision 4 already treats public keys the same, and a
+per-kind rule is one more thing to drift). A full <code>decode</code> of the old file (reads secret bytes for
+no gain). Following symlinks (contradicts D-214: the link, not the target, is replaced). Failing
+open on an unreadable file (the one case where a key could slip through).</p>
+<h2 id="d-217-t-260---stdinstdout-via---050"><a class="header" href="#d-217-t-260---stdinstdout-via---050">D-217: T-260 - stdin/stdout via <code>-</code> (0.5.0)</a></h2>
+<p><strong>Context.</strong> Owner decision S1 (a) (TASKS “CLI usability and misuse resistance”, rules R2, R4,
+R7): <code>-</code> as stdin/stdout; <code>decrypt</code> to stdout writes only verified chunks and says the output is
+INCOMPLETE if <code>Final</code> never arrives; binary output to a terminal is refused; <code>--key</code> never reads
+stdin; secret keys never go to stdout. Plan approved by the owner 2026-09-24 with the four forks
+below as recommended. Compared with age (<code>FiloSottile/age</code> <code>main</code> @ <code>b74dce4</code>, <code>cmd/age/age.go</code>,
+read 2026-09-24, not recalled).</p>
+<p><strong>Decision 1 - scope.</strong> <code>--in -</code>: <code>encrypt</code>, <code>decrypt</code>, <code>hash</code>, <code>sign</code>, <code>verify</code>, <code>box-seal</code>,
+<code>box-open</code>. Binary <code>--out -</code>: <code>encrypt</code>, <code>decrypt</code>, <code>sign</code>, <code>box-seal</code>, <code>box-open</code>. Text <code>--out -</code>
+(a public key line, also to a terminal): <code>sign-pubkey</code>, <code>box-pubkey</code>, <code>key-import</code> of a public
+kind. Only <code>--in</code> reads stdin, so no command can read it twice. Every other path flag refuses <code>-</code>
+(<code>StdioNotAccepted</code>, exit 2, message suggests <code>./-</code>): <code>--key</code>, <code>--sig</code>, <code>key-import --in</code>,
+<code>hash --check</code> and all paths of <code>kalyna-*</code>/<code>kupyna-digest</code>/<code>strumok-crypt</code> (interop and
+benchmarks keep file paths). Before, <code>-</code> silently named a file called <code>-</code> everywhere, and T-258’s
+placeholder made <code>--out -</code> create one. <code>--out -</code> on a keygen or a secret <code>key-import</code> is
+<code>SecretKeyToStdout</code> (exit 2, R7’s own wording).</p>
+<p><strong>Decision 2 - <code>-</code> becomes stdin/stdout only in the argument scanner</strong> (its <code>hash --check</code> part is
+superseded by the addendum below) (<code>ArgScanner::input</code>/
+<code>output</code>, types <code>Source</code>/<code>Sink</code>). <code>hash --check</code> builds <code>Source::File</code> for every listed path, so a
+<code>-</code> line names a file called <code>-</code>: a check list can never make uacrypt read stdin (a hostile list
+could otherwise hang a run), and D-215’s grammar is unchanged. Consequence: a <code>hash --in -</code> line
+(<code>&lt;hex&gt;  -</code>) does not check stdin later. GNU <code>sha256sum -c</code> reads stdin for <code>-</code>; that
+compatibility (and <code>--check -</code>) was surfaced to the owner and deferred.</p>
+<p><strong>Decision 3 - terminal refusal (fork 1).</strong> Binary <code>--out -</code> with a terminal stdout
+(<code>std::io::IsTerminal</code>) is <code>BinaryToTerminal</code>, exit 2, for <code>decrypt</code>/<code>box-open</code> as well as the
+always-binary outputs. It is checked after the key files are read and before any output or input
+is touched (D-214’s order), so <code>--in - --out -</code> in a bare terminal fails at once instead of
+waiting for typed input. Divergence from age, on purpose: age refuses binary to a terminal only
+for its <em>default</em> stdout and treats an explicit <code>-o -</code> as “force anyway”; uacrypt’s <code>--out</code> is
+mandatory, so <code>--out -</code> is always explicit and there is no quiet default to guard. age’s decrypt
+buffers the whole plaintext when stdout is a terminal and prints it if it is valid UTF-8 text;
+that breaks <code>decrypt</code>’s bounded memory (D-42), so reading a decrypted text on screen is
+<code>--out - | more</code>. Verified in real terminals 2026-09-24: cmd and PowerShell 7.6 consoles, Git
+Bash’s mintty (std detects the msys pty), and a Linux pty on the Pi via <code>script</code>; each refused
+with exit 2 and printed nothing, while <code>box-pubkey --out -</code> printed its line.</p>
+<p><strong>Decision 4 - partial output (S1 (a)).</strong> <code>decrypt</code> already wrote each chunk only after
+<code>PullState::pull</code> verified it, so stdout never carries unauthenticated plaintext. Any error after
+the first byte reached the stdout writer - truncation, a tampered later chunk, trailing bytes
+after <code>Final</code>, or a stdout write/flush failure - becomes <code>StdoutIncomplete(inner)</code>: the inner
+message plus “the output already written to stdout is INCOMPLETE - discard it”, and <strong>the inner
+error’s exit code</strong> (1 for a rejected file, 3 for I/O), so a script’s rules from D-211 still
+hold. A wrong key or a header-only input fails before anything is printed and is not marked.
+<code>encrypt --out -</code> writes the header first, so any encrypt failure over stdout is marked. Stdout
+goes through a 64 KiB <code>BufWriter</code> (std’s stdout is line-buffered, which flushes on every <code>0x0A</code>
+in binary data) with an explicit flush mapped to <code>Io("&lt;stdout&gt;")</code>; dropping it on the error path
+flushes verified bytes only. <code>box-open</code> decrypts the whole message before writing, so it never
+prints part of one. Documented footgun: in <code>... --out - | tar x</code> the shell reports <code>tar</code>’s status
+unless <code>set -o pipefail</code>.</p>
+<p><strong>Decision 5 - <code>--force</code> with <code>--out -</code> (fork 2)</strong> is <code>ForceWithStdout</code>, exit 2: a flag that
+cannot do anything signals a mistaken command (R4). <code>check_outputs</code>/<code>SameOutputPath</code> and the
+key-file guard (D-216) apply only to file outputs; <code>OutputFile::create</code> takes the input path as
+an <code>Option</code>, so stdin never feeds <code>std::path::absolute("-")</code> or <code>same_file</code> (which would resolve a
+real file named <code>-</code> in the working directory).</p>
+<p><strong>Decision 6 - Windows PowerShell 5.1 (fork 4, measured before building).</strong> 2026-09-24, this
+machine: <code>encrypt --out - &gt; f</code> from Windows PowerShell 5.1 turned a 310-byte output into 594 bytes
+starting <code>FF FE</code> (re-encoded as UTF-16LE), and 5.1’s <code>encrypt --out - | decrypt --in -</code> fed
+<code>decrypt</code> data starting <code>EF</code> (a UTF-8 BOM). PowerShell 7.6 <code>&gt;</code>, 7.6 <code>|</code> and cmd <code>&gt;</code>/<code>|</code> kept a
+100 kB output byte-identical and it decrypted (hash-compared). Other PowerShell 7 versions were not
+measured. <code>decrypt</code> read <code>FF</code> as a format version and blamed “uacrypt 0.3.x”, which is wrong, so
+<code>SecretstreamUnsupportedVersion</code> for <code>0xEF</code>/<code>0xFE</code>/<code>0xFF</code> (the byte-order-mark starts) now names
+text redirection and PowerShell 5.1 instead (message only, same variant and exit code 1).
+<code>box-open</code> is unchanged (its version error carries no byte).</p>
+<p><strong>Reading.</strong> stdin is read in the same fixed-size chunks as a file for <code>encrypt</code>/<code>decrypt</code>/
+<code>hash</code>/<code>sign</code>/<code>verify</code> (D-42: <code>fill_chunk</code>, <code>read_exact_or_truncated</code>, the hasher loop - which
+now also retries <code>Interrupted</code>). <code>box-seal</code>/<code>box-open</code> read stdin whole, as they read a file
+(T-265).</p>
+<p><strong>Tests.</strong> <code>tests/smoke_stdio.rs</code> (8): stdio round trip at 0, 1, 8191, 8192, 8193 and 3×8192+5
+bytes, and stdin→file / file→stdout with the same wire format; <code>sign --in -</code> byte-identical to
+<code>sign --in &lt;file&gt;</code> on both curves (deterministic nonce), <code>verify --in -</code> accepting and rejecting,
+<code>hash --in -</code> printing <code>-</code>; <code>box-seal</code>/<code>box-open</code> through stdio on both curves, <code>box-pubkey</code>/
+<code>sign-pubkey</code>/public <code>key-import</code> to stdout equal to the file output; a 3+-chunk stream truncated
+before <code>Final</code> prints exactly the three verified chunks, a tampered second chunk prints exactly
+the first, trailing data prints all - each exit 1 and INCOMPLETE - while a wrong key and a
+header-only input print nothing and are not marked, and a tampered <code>box-open</code> prints nothing;
+16 refusals (every non-stdio <code>-</code>, and <code>--force</code> with <code>--out -</code>) exit 2 with nothing printed and
+no file created, six secret-key <code>--out -</code> refusals naming “secret”; <code>./-</code> reaches a file named
+<code>-</code>; the byte-order-mark message; Unix only (Pi): stdout on <code>/dev/full</code> exits 3 naming
+<code>&lt;stdout&gt;</code> and INCOMPLETE for <code>decrypt</code> and <code>encrypt</code>. Unit: <code>refuse_binary_to_terminal</code>,
+<code>StdoutIncomplete</code> keeps the inner exit code. <code>smoke_streaming_boundedness.rs</code> (ignored, run by
+<code>cargo xtask streaming-bounded</code>): <code>encrypt</code>/<code>decrypt --in - --out -</code> over a 200 MiB stdin stay
+under the same 60 MiB peak-RSS bound as the file paths (new <code>support::uacrypt_with_peak_rss_stdio</code>
+feeds stdin from a file and writes stdout to a file; passed in release on Windows and the Pi). Measured by
+hand on the Pi: <code>decrypt --out - | head -c 100</code> exits 3 with the INCOMPLETE message
+(<code>PIPESTATUS=3 0</code>). The existing unit tests build the new <code>Source</code>/
+<code>Sink</code> fields; all other smoke files pass unchanged.</p>
+<p><strong>Addendum - <code>hash --check</code> and <code>-</code> (owner delegated, 2026-09-24: “your choice, consistent with
+the app and best practice for use and convenience”).</strong> This replaces Decision 2’s deferral.
+<code>hash --check -</code> reads the list from stdin (<code>sha256sum -c -</code> compatibility; the same 16 MiB cap,
+grammar and <code>&lt;stdin&gt;</code> in error messages). A <code>-</code> line inside a list still never reads stdin, but no
+longer silently names a file either: it is <code>-: FAILED (stdin is not read from a check list ...)</code>,
+counted in <code>HashCheckFailed</code> (exit 1), and the other lines are still checked. GNU would read stdin
+there; rejected because a list is untrusted input (D-215) and reading stdin from it could consume
+a script’s stdin or wait on a terminal, and because it matches this batch’s rule that <code>-</code> is
+never a silent file name. A file really named <code>-</code> is listed as <code>./-</code>. A <code>hash --in -</code> line
+therefore cannot be checked later from a list; hash the data again with <code>hash --in -</code>. Test:
+<code>smoke_stdio.rs</code> <code>hash_check_reads_its_list_from_stdin_but_never_a_dash_entry</code> (OK/FAILED/
+malformed/empty lists over stdin, a <code>-</code> entry failing with the other line OK and stdin unread).</p>
+<p><strong>Also decided while implementing (closing review, reported to the owner).</strong> The byte-order-mark
+hint covers <code>decrypt</code> only. The Kupyna hasher loop behind <code>hash</code>/<code>sign</code>/<code>verify</code> now retries
+<code>ErrorKind::Interrupted</code> (a pipe can return it; a file practically never does). A reader closing
+the pipe early (<code>decrypt --out - | head -c 100</code>) makes <code>decrypt</code> exit 3 with the INCOMPLETE
+message - correct per D-211, documented in <code>docs/CLI.md</code>.</p>
+<p><strong>Rejected.</strong> age’s printable-text check for a terminal (unbounded buffer). Silently ignoring
+<code>--force</code> with stdout. <code>-</code> in a check list as stdin (deferred, see Decision 2). Accepting <code>--sig -</code>
+as a second stdin input (one stdin reader per command keeps “read twice” impossible by
+construction). Keeping <code>-</code> as a literal file name on the other flags (R4: <code>--key -</code> meaning a file
+is a trap). A mark-free exit code for partial output (a new code would break D-211’s “1 = the
+input was rejected”).</p>
+<h2 id="d-218-t-261---progress-line-on-stderr-for-a-long---in-read-050"><a class="header" href="#d-218-t-261---progress-line-on-stderr-for-a-long---in-read-050">D-218: T-261 - progress line on stderr for a long <code>--in</code> read (0.5.0)</a></h2>
+<p><strong>Context.</strong> T-261: a progress indicator shown automatically only when stderr is a terminal and
+the input is large (known size &gt;= 64 MiB, or a byte counter for stdin); no flag, no dependency,
+&lt;= 10 redraws/s, cleared at the end, nothing at all when piped. Two forks went to the owner
+2026-09-24; both were answered as recommended (below).</p>
+<p><strong>Decision 1 - one hook: <code>Source::open</code>.</strong> The <code>--in</code> reader is wrapped in
+<code>progress::ProgressReader</code> (<code>crates/uacrypt/src/progress.rs</code>), so <code>encrypt</code>, <code>decrypt</code>, <code>hash</code>,
+<code>hash --check</code> (each listed file, and the list itself) and <code>sign</code>/<code>verify</code> (via
+<code>hash_file_streamed</code>) get it without touching their loops. The lower-level
+<code>kalyna-*</code>/<code>kupyna-digest</code>/<code>strumok-crypt</code> commands open their own files and are left out on
+purpose: they exist for interop and <code>bench-compare</code>, whose timings must not change.</p>
+<p><strong>Decision 2 - the decision is made once, at open.</strong> <code>wanted(stderr_is_terminal, total)</code>: stderr
+must be a terminal (<code>std::io::IsTerminal</code>), and a known size must be &gt;= 64 MiB. Otherwise <code>wrap</code>
+returns the plain reader, so a piped or redirected stderr costs nothing and receives nothing. The
+size comes from the opened file’s <code>metadata()</code> and counts only for a regular file; a FIFO or
+device (length 0 or meaningless) is treated like stdin. The percentage is clamped to 100% (a file
+growing while read) and computed in <code>u128</code>.</p>
+<p><strong>Decision 3 - stdin (owner fork 1, “after 64 MiB”).</strong> Size unknown, so a byte counter
+(<code>uacrypt: 96.0 MiB read</code>) that appears only once 64 MiB have been read; small pipes stay silent,
+like small files. Rejected: showing it from the first byte (a flash on every short
+<code>echo ... | uacrypt hash --in -</code>).</p>
+<p><strong>Decision 4 - <code>box-seal</code>/<code>box-open</code> get none (owner fork 2).</strong> They read <code>--in</code> whole before
+sealing (T-265); a line that reaches 100% and then sits through the in-memory work misleads.
+<code>Source::read_all</code> uses a new <code>open_plain</code>. Revisit with T-265.</p>
+<p><strong>Decision 5 - drawing.</strong> One short line (at most 39 columns up to 1 TiB, no file path), because
+terminal width cannot be read without a dependency and a wrapped line breaks every <code>\r</code> redraw.
+Each redraw is <code>\r</code> + line + spaces covering a longer previous line, written in one <code>write_all</code>;
+at most one per 100 ms (<code>Instant</code>). Clearing is <code>\r</code> + spaces + <code>\r</code> (no ANSI erase sequence,
+which older Windows consoles do not honour). <code>Progress</code>’s <code>Drop</code> clears, so the line is gone
+before the command prints its result (the reader is dropped inside <code>hash_file_streamed</code>,
+<code>run_secretstream_decrypt</code>, and <code>encrypt</code>’s closure, all before <code>Output::finish</code> and before
+<code>main</code> prints an error). A failing stderr write is ignored: progress never fails a command and
+never panics (no <code>eprint!</code>).</p>
+<p><strong>Also decided while implementing (reported to the owner).</strong> The <code>hash --check</code> list read goes
+through <code>open()</code> too (harmless: a list is far below 64 MiB in practice). Sizes are truncated, not
+rounded, so the line never shows more than was read. <code>hash --check</code> over several large files
+shows one unnamed line per file, erased before each <code>OK</code>/<code>FAILED</code>. Ctrl-C leaves the last line on
+screen with no newline (<code>Drop</code> does not run; no signal handler without a dependency). A pager
+reading <code>decrypt --out -</code> shares the terminal, so the line draws over its screen; documented in
+<code>docs/CLI.md</code>, not worked around (<code>2&gt;/dev/null</code> would also hide the INCOMPLETE warning). Only the
+top-level help gains a <code>PROGRESS</code> section: the per-command help and the README quick start are
+unchanged, since the line asks nothing of the user.</p>
+<p><strong>Misuse category foreclosed.</strong> No flag, no argument, no user-supplied value reaches this code;
+the only inputs are the byte count and the terminal check, both covered below.</p>
+<p><strong>Tests.</strong> <code>progress.rs</code> unit tests (14): the <code>wanted</code> decision at 64 MiB - 1 / 64 MiB / unknown /
+not a terminal; size formatting incl. <code>u64::MAX</code>; the line with and without a size; clamping and
+<code>0/0</code>; width &lt;= 40; drawing at once and clearing on drop; the stdin threshold; nothing drawn =
+nothing cleared; exactly 10 redraws over a second of 1 ms reads; a redraw 1 ms early skipped; a
+shorter line fully covering a longer one; a failing stderr never failing the read; bytes passed
+through and counted; a read error passed through with the line still cleared. Integration:
+<code>smoke_streaming_boundedness.rs</code> <code>no_progress_line_on_a_piped_stderr</code> (ignored, release): 200 MiB
+through <code>encrypt</code> from a file and <code>hash --in -</code>, stderr byte-empty; mutation-checked (with the
+terminal check removed it fails). By hand on the Pi (Linux pty via <code>script</code>, release build):
+<code>encrypt</code> of a 200 MB file drew <code>8.0 KiB / 190.7 MiB (0%)</code> onward; <code>hash --in -</code> drew nothing
+until <code>64.0 MiB read</code>, then erased the line before printing its hash; a 1 MB file drew nothing; a
+truncated <code>decrypt</code> erased the line before its error. Scoped Miri on the 14 unit tests: no UB.
+Pi <code>cargo test -p uacrypt</code> green. cmd checked 2026-09-24 in a real console window (release
+build, 200 MiB file; screen read back with PowerShell’s <code>RawUI.GetBufferContents</code> from inside the
+same console): mid-<code>encrypt</code> showed <code>uacrypt: 62.9 MiB / 200.0 MiB (31%)</code> and left an empty
+screen after; <code>type big.bin | uacrypt hash --in -</code> showed <code>uacrypt: 64.0 MiB read</code> mid-run and
+only the hash line after; a truncated <code>decrypt</code> left only its error line; a 99-byte file only its
+hash line. Not yet looked at: PowerShell 7 and mintty (<code>IsTerminal</code> itself was verified on both
+for stdout in D-217).</p>
+<h2 id="d-219-t-262---passphrase-encryption-for-encryptdecrypt-050"><a class="header" href="#d-219-t-262---passphrase-encryption-for-encryptdecrypt-050">D-219: T-262 - passphrase encryption for <code>encrypt</code>/<code>decrypt</code> (0.5.0)</a></h2>
+<p><strong>Context.</strong> T-262 (P1): the <code>age -p</code> equivalent. <code>encrypt</code> takes a passphrase instead of a key
+file, <code>decrypt</code> finds out from the file which one it needs. It is a new on-disk format, so it went
+through plan mode and an advisor review before code. Four forks were put to the owner with their
+consequences; the owner chose every recommendation (2026-09-24):</p>
+<ul>
+<li><strong>F1 (= P1) terminal reading: <code>rpassword</code> 7.5.4</strong>, not own code. Own code would have put the
+first <code>unsafe</code> into <code>uacrypt</code> (termios and Windows console FFI, ~150 lines tested per OS).
+<code>rpassword</code> adds <code>rtoolbox</code> 0.0.6 (same maintainer, pinned <code>0.0</code>, so it floats across breaking
+releases - re-check on <code>cargo update</code>) and moves <code>windows-sys</code> 0.61 from dev-only into the
+Windows production tree; <code>libc</code> was already there. Both Apache-2.0; <code>cargo deny</code>/<code>cargo audit</code>
+clean. Supply-chain rows in <code>docs/SECURITY.md</code>.</li>
+<li><strong>F2 <code>--passphrase-file &lt;path&gt;</code></strong> for scripts and tests, besides the terminal (age has only the
+terminal).</li>
+<li><strong>F3 cost: libsodium <code>MODERATE</code></strong> (Argon2id, 256 MiB, t=3, one lane), the same memory as age’s
+scrypt. <code>Sensitive</code> (1 GiB) can fail on small machines; <code>Interactive</code> (64 MiB) makes guessing
+cheaper.</li>
+<li><strong>F4 no Argon2 associated data.</strong> Plain Argon2id means <code>derive_key</code> equals libsodium’s
+<code>crypto_pwhash</code> byte for byte, which gives an independent oracle now (dual-oracle rule) and lets
+any Argon2id library read the file. With AD over the header, only Bouncy Castle could check it,
+and the core API would grow an <code>ad</code> knob (D-47).</li>
+</ul>
+<p><strong>Decision - file format.</strong></p>
+<pre><code>0x50 || 0x01 (container version) || 0x01 (KDF: Argon2id v1.3)
+  || m_cost KiB (u32 LE) || t_cost (u32 LE) || p_cost (u8) || salt (16) || &lt;v2 stream, D-208&gt;
+</code></pre>
+<ul>
+<li>The stream key is <code>crypto_pwhash::derive_key(passphrase, salt, Moderate)</code>; the unchanged D-208
+stream follows, so the existing writer and record reader are reused and the version byte stays
+bound into the stream’s key derivation.</li>
+<li><code>0x50</code> cannot be a stream version byte in use (<code>2</code>), so <code>decrypt</code> dispatches on byte 0: <code>0x50</code>
+-&gt; passphrase, <code>2</code> -&gt; key file, anything else -&gt; the existing unsupported-version error. 0.3/0.4
+builds read <code>0x50</code> as “unsupported stream format version 80”: they fail closed.</li>
+<li><code>decrypt</code> accepts exactly the costs <code>encrypt</code> writes (<code>Strength::from_cost</code> must give
+<code>Moderate</code>); anything else is refused before Argon2 runs, so a changed header cannot make it
+allocate 1 GiB or 4 GiB. Accepting the other two presets would be a speculative feature and a
+bigger allocation an attacker can ask for. The header keeps the costs so a later version can
+change them.</li>
+<li>The header carries no tag of its own: a changed salt gives another key and the first record
+fails; a changed marker/version/KDF id/cost is refused by name. A failed tag under a passphrase
+is reported as “wrong passphrase, or –in was changed” (R1).</li>
+<li>Salt: 16 bytes from the OS CSPRNG per <code>encrypt</code>.</li>
+</ul>
+<p><strong>Decision - core.</strong> <code>dstu_core::crypto_pwhash::derive_key(password, &amp;[u8; 16], Strength) -&gt; Zeroizing&lt;[u8; 32]&gt;</code>, plus <code>Strength::cost</code>/<code>from_cost</code>, <code>SALT_BYTES</code>, <code>KEY_BYTES</code>. Argon2’s
+memory is reserved with <code>try_reserve_exact</code> and passed to <code>hash_password_into_with_memory</code>, so a
+machine without 256 MiB gets <code>PwHashError::OutOfMemory</code> (exit 3 in <code>uacrypt</code>) instead of an
+abort, and the blocks are zeroized before they are freed. Two new <code>PwHashError</code> variants
+(<code>OutOfMemory</code>, <code>Derive</code>) break an exhaustive <code>match</code>; <code>dstu-core-capi</code>’s one match maps them to
+<code>DSTU_ERR_HASH_ERROR</code> (<code>hash_password</code> never returns them). <strong>Binding gate:</strong> <code>derive_key</code> is a
+new <code>crypto_*</code> function, so T-269 tracks wiring it into the 8 bindings and the C ABI; the
+passphrase file format stays <code>uacrypt</code>-only until then.</p>
+<p><strong>Decision - CLI.</strong></p>
+<ul>
+<li><code>encrypt</code>: exactly one of <code>--key</code>, <code>--passphrase</code> (terminal, asked twice), <code>--passphrase-file</code>.
+<code>decrypt</code>: <code>--key</code>, <code>--passphrase-file</code>, or neither (terminal, asked once, only if <code>--in</code> turns
+out to be a passphrase file). <code>decrypt --passphrase</code> is a usage error that explains the
+auto-detection; a key for a passphrase file, or no key for a key file, is refused by name
+(exit 2).</li>
+<li>Order: key file or passphrase file read -&gt; <code>--out</code> checks (<code>--out</code> may not name the passphrase
+file) -&gt; <code>Sink::precheck</code> (every refusal of <code>Output::create</code>, creating nothing) -&gt; <code>--in</code> opened
+-&gt; (<code>decrypt</code>: 28-byte header read from the bare input) -&gt; terminal asked, Argon2 -&gt; <strong>only then
+<code>Output::create</code></strong> -&gt; stream. A refused output or a missing input costs no typing. The plan
+had <code>Output::create</code> before the prompt; on the Pi a Ctrl-C at the prompt then left the reserved
+<code>--out</code> placeholder and its temp file behind (the process dies without <code>Drop</code>), and a rerun said
+“already exists”. The key-file path uses the same order; <code>Output::create</code> still makes the real,
+atomic decision. T-261’s progress line starts after the prompt, so it never draws over it.</li>
+<li><strong>Ctrl-C at the prompt (Unix).</strong> Measured on the Pi: <code>rpassword</code> 7.5.4 turns echo and ISIG off,
+reads Ctrl-C as a byte, and calls <code>raise(SIGINT)</code> before its <code>Drop</code> restores the terminal - the
+process died with the terminal left at <code>-echo</code>. The F1 explanation to the owner had said it
+restores echo; that was wrong, and was corrected and put to the owner as a new fork: (a) ignore
+SIGINT only while the prompt is open, (b) document <code>stty sane</code>, (c) the <code>ctrlc</code> crate. The owner
+chose (a) (2026-09-24). <code>src/sigint.rs</code>: an <code>Ignored</code> guard sets <code>SIG_IGN</code> around each
+<code>prompt_password</code> and restores the previous disposition; on <code>Interrupted</code> uacrypt re-raises
+SIGINT, so it still dies by the signal (status 130). This is <code>uacrypt</code>’s first <code>unsafe</code> (three
+<code>libc</code> calls, <code>libc</code> now a direct Unix-only dependency, already locked) - F1 still avoided the
+~150 lines of terminal FFI that own prompt code would have needed. A shell loop around
+uacrypt does not stop on this Ctrl-C: in raw mode the shell itself gets no SIGINT. Windows
+<code>rpassword</code> sets the console input mode to <code>ENABLE_PROCESSED_INPUT</code> only, so Ctrl-C there is
+handled by the system’s default handler, which ends the process before <code>Drop</code> restores the
+mode (read in its source, <code>src/windows.rs</code>). Measured 2026-09-24 (see “Windows console”
+below): the input mode is left at <code>0x1</code>. Fixed by T-271 (below).</li>
+<li>The terminal is asked only when stderr is a terminal (T-261’s predicate); otherwise exit 2
+naming <code>--passphrase-file</code>. That keeps every test deterministic: <code>rpassword</code> opens /dev/tty or
+<code>CONIN$</code> directly, so a child of an interactive shell could otherwise block on a prompt.</li>
+<li><strong>mintty (Git Bash’s window) is refused</strong> on Windows when <code>TERM_PROGRAM=mintty</code>, with a hint
+(<code>winpty uacrypt ...</code>, cmd/PowerShell/Windows Terminal, or <code>--passphrase-file</code>). <code>rpassword</code>‘s
+Windows code reads <code>CONIN$</code> with no msys handling (read in its source), and under mintty a
+Windows program’s console is hidden, so the prompt would wait where nobody can type. std’s
+<code>IsTerminal</code> still reports mintty’s pipe as a terminal, hence the environment check. Measured
+in a real mintty window (Git for Windows’ <code>mintty.exe</code>, debug build, stderr a terminal):
+<code>encrypt --passphrase</code> exits 2 within a second; the same run with <code>TERM_PROGRAM</code> unset hung
+until <code>timeout 8</code> killed it (status 124). A mintty with ConPTY enabled would be refused
+needlessly (the hint covers it).</li>
+<li>Passphrase bytes: UTF-8 exactly as typed or read, no Unicode normalisation (<code>й</code>/<code>ї</code> have
+decomposed forms; NFC would need a new dependency, R5) - documented in the help and
+<code>docs/CLI.md</code>. A passphrase file: a leading UTF-8 BOM and one trailing <code>\n</code>/<code>\r\n</code> dropped,
+spaces kept; empty, a second line (even a blank one), non-UTF-8, or over 1024 bytes (more
+likely the wrong file) refused with exit 3. An empty or mismatched terminal entry: exit 2. The
+passphrase is held in <code>Zeroizing</code> buffers (the file buffer is allocated at full size up front,
+so it never reallocates); the two entries are compared with <code>subtle</code>.</li>
+<li>Debug builds: Argon2 at 256 MiB took ~33 s per call unoptimised, too slow for the smoke tests;
+the workspace <code>Cargo.toml</code> now builds <code>argon2</code> and <code>blake2</code> with <code>opt-level = 3</code> in the dev
+profile (~1 s). Release builds are unaffected.</li>
+<li>Peak memory: a passphrase run adds Argon2’s 256 MiB for about a second before streaming starts;
+the streaming bound (D-42) is unchanged, and the bounded-memory tests stay on the key path.</li>
+</ul>
+<p><strong>Tests.</strong> Core (<code>tests/crypto_pwhash.rs</code>): three libsodium vectors (PyNaCl 1.6.2’s bundled
+libsodium, <code>crypto_pwhash_alg(ARGON2ID13, OPSLIMIT_MODERATE, MEMLIMIT_MODERATE)</code>: ASCII, Ukrainian
+UTF-8, empty password) in <code>tests/vectors/pwhash/derive_key.json</code>, the shared vector file for
+T-269; salt and strength change the key; <code>cost</code>/<code>from_cost</code> round trip and reject the rest.
+<code>uacrypt</code> unit tests (<code>passphrase.rs</code>): header round trip and rejection per field, the file rules,
+the prompt decision incl. mintty. <code>tests/smoke_passphrase.rs</code> (17, real binary): round trips
+(empty, one and several chunks, stdin to stdout); a file written by <code>uacrypt</code> decoded with
+<code>dstu-core</code> directly from the format description, and a file built from the description decrypted
+by <code>uacrypt</code>; fresh salt per run; LF/CRLF/BOM/no-newline files give the same passphrase; wrong
+passphrase (exit 1, named, no output); every header byte and the inner version byte flipped (exit
+1, no output); four unsupported cost triples refused in under 5 s; truncation inside the header;
+key vs passphrase file both ways, named; passphrase never echoed in stdout/stderr; seven flag
+combinations exit 2; no terminal -&gt; exit 2 naming <code>--passphrase-file</code>; empty/blank/BOM-only/
+two-line/non-UTF-8/oversized files exit 3; <code>--out</code> naming the passphrase file refused; a missing
+passphrase file exit 3. <code>smoke_misuse_matrix.rs</code>: <code>--key</code> is no longer a required flag of
+<code>decrypt</code>.</p>
+<p><strong>Checked by hand.</strong> Pi (Linux pty via <code>script</code>, input typed with delays): the prompt echoes
+nothing (the passphrase is absent from the transcript), <code>encrypt</code> asks twice, a mismatch exits 2
+with no output, <code>decrypt</code> asks once and decrypts, a wrong passphrase exits 1 by name, an empty one
+exits 2, <code>--in -</code> data with the passphrase from the terminal works; Ctrl-C at either prompt of
+<code>encrypt</code> and at <code>decrypt</code>’s: status 130, terminal back at <code>echo</code>, no output or temp file. mintty
+as above; the Ctrl-C and no-leftover behaviour is hand-checked only (no automated test drives a
+pty). Pi <code>cargo test -p uacrypt</code> green on the final code (after the output-order change,
+<code>sigint.rs</code> and closing <code>--in</code> before the rename); <code>cargo clippy -p uacrypt --no-deps</code> clean on the Pi’s
+Rust 1.98.1 as well. Scoped Miri on <code>passphrase.rs</code>’s 4 unit tests: no UB.</p>
+<p><strong>Windows console (measured 2026-09-24, debug build, owner request).</strong> No keys were sent to the
+desktop: a PowerShell 7 script in its own new console window started <code>uacrypt</code> (or an
+interactive <code>cmd</code>/<code>pwsh</code>) in that console, wrote the keystrokes into the console’s own input
+buffer with <code>WriteConsoleInputW</code>, sent Ctrl-C the way the system does
+(<code>GenerateConsoleCtrlEvent</code>, the script itself ignoring it), and read back <code>GetConsoleMode</code> and
+the screen buffer. Results: <code>encrypt --passphrase</code> twice -&gt; exit 0; mismatch -&gt; exit 2, no
+output; <code>decrypt</code> once -&gt; exit 0, plaintext equal; wrong passphrase -&gt; exit 1; the screen shows
+only the prompts, never a passphrase. Ctrl-C at either command’s prompt -&gt; exit
+<code>STATUS_CONTROL_C_EXIT</code>, no output or temp file left, but the console input mode is left at
+<code>0x1</code> (was <code>0x1f7</code>: echo, line input and the rest off). Inside an interactive shell: <code>cmd</code>
+resets the mode itself (<code>0x7</code>) and the next typed command echoes - no visible harm; PowerShell 7
+keeps working (PSReadLine draws its own input) but the console stays at <code>0x1</code> for programs it
+starts afterwards and after it exits. Fixed by T-271 (next paragraph). Windows Terminal and
+mintty’s <code>winpty</code> path were not tried.</p>
+<p><strong>T-271 - Windows Ctrl-C restores the console mode (2026-09-24, owner go-ahead).</strong> The Windows
+twin of fork (a): Ctrl-C there is a console event, not a signal that can be ignored, so
+<code>sigint.rs</code>’s <code>Ignored</code> guard opens <code>CONIN$</code> (never the std input handle - stdin may be a
+file), saves <code>GetConsoleMode</code> into a static <code>AtomicU64</code> (<code>u64::MAX</code> = no guard alive, one
+atomic so the handler thread never sees a half-set state), and only if that succeeded
+registers a <code>SetConsoleCtrlHandler</code> routine; <code>Drop</code> unregisters it and clears the saved mode.
+The routine opens <code>CONIN$</code> itself, sets exactly the saved mode (no hardcoded “sane” mode) and
+returns FALSE for every event, so the default handler still ends the process with
+<code>STATUS_CONTROL_C_EXIT</code>; handles are <code>OwnedHandle</code> (RAII). <code>windows-sys</code> 0.61.2 became a direct
+Windows-only dependency with a subset of <code>rpassword</code>’s features (<code>Cargo.lock</code> gained only an
+edge; <code>cargo deny</code> clean). Unit test: the routine returns FALSE for C/Break/Close. The restore
+path itself is not unit-testable (it needs a real console and a real Ctrl-C event), so it was
+measured with the same <code>WriteConsoleInputW</code> probe in a PowerShell 7 console, release build:
+Ctrl-C at <code>Passphrase:</code> and at <code>Repeat passphrase:</code> -&gt; exit <code>0xC000013A</code>, no output, mode
+<code>0x1F7</code> before and after (<code>0x1</code> while the prompt is open); a normal entry -&gt; exit 0, output
+written, mode unchanged. Control run, same probe on the pre-fix binary: mode left at <code>0x1</code>.
+<code>cargo test -p uacrypt</code> green on Windows and on the Pi (the <code>cfg</code> arms changed).</p>
+<p><strong>Found while landing this, not fixed here.</strong> Clippy 1.98.1 (the Pi’s stable; the dev machine has
+1.97.1) rejects five <code>cast_possible_truncation</code> casts in <code>dstu-core</code>’s <code>gf2m_field!</code> macro (e.g.
+<code>out[i + j] ^= prod as u64;</code>) under <code>-D warnings</code>. Existing code, untouched by T-262; since
+<code>rust-toolchain.toml</code> pins <code>stable</code>, CI hits it on any runner whose stable is 1.98 or newer.
+Tracked as T-270.</p>
+<p><strong>Addendum (2026-09-26, T-270 done).</strong> The CI claim above is wrong. All five casts are the
+low-half <code>prod as u64</code> inside the aarch64-only (PMULL) <code>poly_mul_wide_hw</code>: three from
+<code>gf2m_field!</code>’s three instantiations, one each in <code>gf2m163.rs</code>/<code>gf2m257.rs</code>. <code>rust.yml</code>’s clippy
+job runs on x86_64 only, never compiles that arm, and passed on 1.98.1 (run 35288797619). The binding
+workflows lint on arm64 macOS, but only their own crates, not the <code>dstu-core</code> path dependency.
+Observed, not only inferred: <code>bindings-python</code>’s <code>macos-latest</code> job (aarch64, rustc 1.98.1) passed
+its <code>cargo clippy --all-targets</code> on 2026-09-17 with the same casts in the code. So
+the real gap was that no CI job lints aarch64. Fix: <code>#[allow(clippy::cast_possible_truncation)]</code>
+with a comment, the same shape as the x86 sibling (D-39: resolve a lint quirk with a documented
+allow). A mask such as <code>(prod &amp; u128::from(u64::MAX)) as u64</code> was not used: it is still a cast, and
+the allow states the intent. New gate: <code>rust.yml</code> adds <code>cargo clippy --workspace --all-features --target aarch64-unknown-linux-gnu</code> (check only, needs the target’s std, no linker).</p>
+<h2 id="d-220-architecture--performance-review-2026-09-25---owner-decision-on-t-272-delegated-forks-o-ao-f"><a class="header" href="#d-220-architecture--performance-review-2026-09-25---owner-decision-on-t-272-delegated-forks-o-ao-f">D-220: Architecture &amp; performance review (2026-09-25) - owner decision on T-272, delegated forks O-A..O-F</a></h2>
+<p><strong>Owner, 2026-09-25:</strong> T-272 ships in <strong>0.5.0</strong>. The other forks were delegated to Claude:
+“the most compatibility with other software possible, but strict adherence to the standards,
+Ukrainian and foreign (NIST and others).” Tie-break order used: the standard’s text first, then
+compatibility with widely used implementations, then this project’s own rules (D-47, D-118).
+Clause numbers below come from memory and must be checked against the primary text before the
+implementing task cites them (research-before-implementation rule).</p>
+<ul>
+<li><strong>O-B(1), <code>verify_password</code> (T-272): bounded, not preset-only.</strong>
+<ul>
+<li>Accept <code>$argon2id$</code> and <code>$argon2i$</code>, <strong>version 0x13 only</strong>; reject <code>$argon2d$</code> and v=16.
+<ul>
+<li>RFC 9106 defines version 0x13 and recommends Argon2id.</li>
+<li>libsodium’s <code>crypto_pwhash_str_verify</code> verifies exactly argon2id and argon2i (older libsodium
+hashes are argon2i), so this keeps interop with it.</li>
+<li>Argon2d is rejected: RFC 9106 warns it is exposed to side channels, and libsodium does not
+support it either.</li>
+<li>v=16 (0x10) predates the RFC.</li>
+</ul>
+</li>
+<li>Parameter bounds, checked before any allocation:
+<ul>
+<li><code>p &gt;= 1</code>, <code>m &gt;= 8*p</code> KiB, <code>t &gt;= 1</code> (RFC 9106’s own minimums);</li>
+<li><code>m &lt;= 1 048 576</code> KiB, the Sensitive preset, so no single call exceeds what this crate itself
+recommends;</li>
+<li><code>t</code> and <code>p</code> capped at small fixed maxima (proposed 16 each; the implementing task confirms them
+against libsodium’s and common library defaults - PHP <code>password_hash</code> m=65536/t=4/p=1,
+argon2-cffi m=65536/t=3/p=4);</li>
+<li>salt and tag lengths within RFC 9106’s minimums (salt &gt;= 8 bytes, tag &gt;= 4 bytes).</li>
+</ul>
+</li>
+<li>Memory is reserved with <code>try_reserve_exact</code> (the <code>derive_key</code> shape), so an allocation failure is
+<code>false</code>, never an abort. The tag comparison stays constant-time.</li>
+<li>Rejected: (a) preset-only. It would refuse hashes from PHP’s <code>password_hash</code>, argon2-cffi and
+others whose defaults are not libsodium’s presets, which works against the owner’s
+compatibility goal without a standard requiring it.</li>
+</ul>
+</li>
+<li><strong>O-B(2): the fix lands on <code>ux-0.5.0</code> and ships in 0.5.0</strong>, not in the 0.4.0 security release.
+<ul>
+<li>Until 0.5.0 is released, the reproduction recipe in TASKS.md stays under the push embargo.</li>
+<li>Whether a GitHub advisory accompanies 0.5.0 is an outward-facing step, confirmed separately at
+release time. Recommended: yes, same shape as D-207’s lower-severity advisory.</li>
+</ul>
+</li>
+<li><strong>O-A, GHASH software path (T-273): constant time.</strong>
+<ul>
+<li>The project’s hard constraint forbids secret-dependent indexing outside D-19’s scope.</li>
+<li>Constant-time GHASH is the modern-implementation norm (the bitsliced/constant-time software
+GHASH in BearSSL and libsodium’s AES-GCM code, which falls back to “not supported” rather than a
+table), and NIST SP 800-38D’s security argument assumes no key leakage.</li>
+<li>Output is byte-identical, so compatibility is unaffected. Only software GHASH throughput on
+non-clmul targets drops.</li>
+<li>Technique is chosen in T-273’s plan mode (a branchless bit-serial multiply for the no-clmul case
+vs a masked 16-entry scan), with a differential test against the comb and clmul paths.</li>
+<li>D-184’s sentence gets an addendum (T-280(d)).</li>
+</ul>
+</li>
+<li><strong>O-C, stream-file framing (T-284): one core codec, staged.</strong>
+<ul>
+<li><strong>Addendum (owner, 2026-09-25, option B):</strong> the codec ships in <strong>0.6.0</strong>, not 0.5.0, so
+0.5.0 (and T-272’s fix) ships sooner. T-277’s vectors still land in 0.5.0. The merged plan is
+in <code>docs/TASKS.md</code>, “Merged 0.5.0 plan”.</li>
+<li>T-277’s shared vectors first (AP-3), then a <code>no_std</code> record codec in <code>crypto_secretstream</code> plus
+capi functions (AP-5).</li>
+<li>The bindings keep only I/O; the wire format is unchanged, so every existing file stays readable.</li>
+<li>This is D-118’s “one parser, not one per binding” applied to the file layer; T-274/T-275/T-276
+were three divergences that lived in the 9 copies.</li>
+</ul>
+</li>
+<li><strong>O-D, the <code>alloc</code> feature (T-281): keep, documented as reserved.</strong>
+<ul>
+<li>Removing it would make any build that enables it fail (Cargo “feature not found”). Keeping it
+costs nothing.</li>
+<li><code>Cargo.toml</code> and <code>CLAUDE.md</code> will say it currently enables nothing and that every allocating API
+is under <code>std</code>.</li>
+</ul>
+</li>
+<li><strong>O-E, verifying-key validation (T-285): keep the check on every verify; T-285 is closed as won’t
+do.</strong>
+<ul>
+<li>SEC 1 and NIST SP 800-56A require full validation before use, and the current code meets that.</li>
+<li>Moving it to parse time would make <code>from_uncompressed_bytes</code> fallible - a break in core, the capi
+and all 8 bindings - for a 30-40% speedup on a non-hot path.</li>
+<li>An additive validated constructor stays possible later if a real workload needs it.</li>
+</ul>
+</li>
+<li><strong>O-F, Java sink ownership (T-275): follow <code>java.io</code>’s filter-stream convention.</strong>
+<ul>
+<li><code>complete()</code> finalizes and flushes the sink, <code>flush()</code> forwards, and <code>close()</code> closes the sink
+without finalizing (D-118 still holds). This is the <code>CipherOutputStream</code>/<code>GZIPOutputStream</code>
+shape Java callers expect, and it matches .NET/Go’s default (<code>leaveOpen = false</code>).</li>
+<li><code>SecretStreamDecryptor.close()</code> closes its source the same way.</li>
+<li>No <code>leaveOpen</code> flag: <code>java.io</code> has none (callers who need one wrap the sink themselves).</li>
+<li>Nothing breaks for users - the Java binding is not published yet (T-164).</li>
+</ul>
+</li>
+</ul>
+<h2 id="d-221-merged-plan-step-1-forks-2026-09-26---delegated-to-claude"><a class="header" href="#d-221-merged-plan-step-1-forks-2026-09-26---delegated-to-claude">D-221: Merged-plan step 1 forks (2026-09-26) - delegated to Claude</a></h2>
+<p><strong>Owner, 2026-09-26:</strong> “your choice” on the five forks step 1 left open (T-270, T-288, T-289,
+T-279). Tie-break: the project’s own rules first, then safety, then compatibility.</p>
+<ul>
+<li><strong>T-288 lands on <code>master</code>, in the 0.4.0 release prep, then is cherry-picked to <code>ux-0.5.0</code>.</strong>
+<code>1c87f53</code> (T-234) is on local <code>master</code>, and <code>oracle-harness.yml</code> runs on every push to <code>master</code>,
+so the 0.4.0 push would otherwise turn it red. The fix is a test-harness change only, with no
+disclosure content, so the embargo does not stop it. Not implemented in step 1.</li>
+<li><strong>T-270 is cherry-picked to <code>master</code> in the same pass</strong> (the cast fix plus <code>rust.yml</code>’s aarch64
+cross-clippy step). The original reason, broken CI, was wrong. It still goes over because it is
+harmless and gives <code>master</code> the same aarch64 lint gate.</li>
+<li><strong>Miri in local <code>ci</code>: a deliberate skip with a message, not a run.</strong> <code>miri --workspace</code> takes
+~10 h (D-172), which is not a local gate. CI’s per-crate Miri jobs stay the gate. The standalone
+<code>cargo xtask miri [pkg]</code> probe now checks <code>cargo +nightly miri --version</code>. The old
+<code>cargo-miri --version</code> resolved to the pinned <code>stable</code> and always skipped.</li>
+<li><strong>xtask’s <code>run()</code> also removes <code>CARGO</code> for a binding directory</strong>, like <code>RUSTUP_TOOLCHAIN</code>
+(D-146). This fixes the Node E0514 inside xtask instead of a manual <code>env -u CARGO</code>. Verified:
+<code>cargo xtask nodejs</code> 95 pass / 0 fail; <code>java</code> and <code>go</code> still pass.</li>
+<li><strong>No local MSRV or aarch64 cross-clippy layer.</strong> This host has only the MSVC 1.87 toolchain, so
+an MSRV layer would always skip. The aarch64 lint needs an extra rustup target. <code>rust.yml</code>
+runs both on every push, and a duplicate local layer adds no coverage.</li>
+</ul>
+<h2 id="d-222-verify_password-bounds-t-272-2026-09-26---d-220s-o-b1-as-implemented"><a class="header" href="#d-222-verify_password-bounds-t-272-2026-09-26---d-220s-o-b1-as-implemented">D-222: <code>verify_password</code> bounds (T-272, 2026-09-26) - D-220’s O-B(1) as implemented</a></h2>
+<p><code>crypto_pwhash::verify_password</code> now checks the PHC string before any allocation and runs Argon2
+into caller-reserved memory (<code>try_reserve_exact</code>, the <code>derive_key</code> shape), comparing the tag with
+<code>subtle::ConstantTimeEq</code>. Accepted: <code>argon2id</code> or <code>argon2i</code>; <code>v=19</code> present; exactly the <code>m</code>,
+<code>t</code>, <code>p</code> parameters, each once; <code>m &lt;= 1 048 576</code> KiB; <code>m * t &lt;= 4 * 1 048 576</code> (u64); a salt of
+at least 8 bytes; a tag of 16 to 64 bytes; RFC 9106’s own minimums via <code>Params::new</code>. Everything
+else is <code>false</code>.</p>
+<p><strong>Sources checked (research-before-implementation, D-220 asked for it):</strong></p>
+<ul>
+<li>RFC 9106 §3.1 (rfc-editor.org text): p 1..2^24-1, tag &gt;= 4 bytes, m &gt;= 8p KiB, t &gt;= 1,
+“Version number v MUST be one byte 0x13”, salt only “16 bytes is RECOMMENDED” - no minimum.
+§1: Argon2d is for applications “with no threats from side-channel timing attacks”.</li>
+<li>libsodium through PyNaCl 1.6.2, probed with <code>nacl.pwhash.verify</code>: accepts argon2id/argon2i v=19,
+p=4, an 8-byte salt, t=17; refuses argon2d (<code>CryptPrefixError</code>), v=16, a 4-byte tag. Its
+argon2i presets are (t, MiB) 4/32, 6/128, 8/512; argon2id 2/64, 3/256, 4/1024.</li>
+<li><code>argon2</code> 0.5.3 / <code>password-hash</code> 0.5.0 source: <code>Params::try_from(&amp;PasswordHash)</code> also takes
+<code>keyid</code>/<code>data</code>; a missing <code>v=</code> becomes <code>Version::default()</code> (0x13); <code>Output::MIN_LENGTH</code> is 10.</li>
+</ul>
+<p><strong>Where this differs from D-220’s text (delegated, tie-break: project rules &gt; safety &gt; compat):</strong></p>
+<ol>
+<li><strong>Work bound <code>m * t</code> instead of a flat <code>t &lt;= 16</code>.</strong> <code>t &lt;= 16</code> allowed 4x the Sensitive preset’s
+work at m = 1 GiB and refused legitimate low-memory, high-<code>t</code> hashes. The product bound is never
+more than <code>Strength::Sensitive</code>, and both libsodium Sensitive presets (argon2id 1 GiB x 4,
+argon2i 512 MiB x 8) land exactly on it, so the <code>&lt;=</code> is load-bearing and unit-tested.</li>
+<li><strong>No cap on <code>p</code>.</strong> With <code>m</code> fixed, <code>p</code> changes neither memory nor work; <code>argon2</code> 0.5.3 fills
+lanes one after another; libsodium verifies any <code>p</code>; real configs set <code>p</code> to the core count.</li>
+<li><strong>Tag &gt;= 16 bytes, not &gt;= 4.</strong> libsodium itself refuses shorter tags; RFC 9106 permits 4 but
+does not require verifiers to accept it. Safety over the rare short-tag hash.</li>
+<li><strong>Citation fix:</strong> the 8-byte salt minimum is libsodium’s and the reference implementation’s
+<code>ARGON2_MIN_SALT_LENGTH</code> (and the crate’s <code>MIN_SALT_LEN</code>), not RFC 9106. It is now checked
+before allocation, not inside the hash call.</li>
+<li>Also rejected, beyond D-220’s list: a missing <code>v=</code> (libsodium reads it as 0x10; the crate read
+it as 0x13), duplicate or missing <code>m</code>/<code>t</code>/<code>p</code>, and <code>keyid</code>/<code>data</code> (never written by
+<code>hash_password</code>, refused by libsodium; <code>keyid</code> was inert and verified <code>true</code>).</li>
+</ol>
+<p><strong>Test-first evidence:</strong> each case in <code>tests/vectors/pwhash/verify.json</code> was run on the unfixed
+code in its own process: 10 of the 15 reject cases were accepted (argon2d, both v=16, 12-byte tag,
+missing <code>v=</code>, <code>keyid</code>, duplicate <code>m</code>, missing <code>p</code>), aborted (<code>m = 2^31</code>) or ran past a 30 s
+timeout (<code>t = 2^32-1</code>). The other five were already <code>false</code> for another reason (bad tag, parse
+error) and stay as misuse cases; the memory and work edges are unit-tested on <code>verify_context</code>
+directly, since a real hash at the bound costs 1 GiB. Not tested: <code>try_reserve_exact</code> failing for an
+accepted <code>m</code> (cannot be forced in a unit test), and a <code>data=</code> hash (no independent generator
+at hand; the parameter is rejected by name before use).</p>
+<p><strong>Fuzz finding (same day, before closing):</strong> the new <code>crypto_pwhash_verify</code> target (T-225, structured
+PHC strings) crashed within seconds on <code>p &gt;= 2^29</code>: <code>argon2</code> 0.5.3’s <code>Params::new</code> computes
+<code>p_cost * 8</code> before its own <code>MAX_P_COST</code> check, which is an overflow panic wherever overflow checks
+are on (debug builds, fuzz builds) and a wrapped compare that <code>MAX_P_COST</code> then catches in a plain
+release build. The unfixed <code>verify_password</code> had the same path. <code>verify_context</code> now rejects
+<code>p &gt; Params::MAX_P_COST</code> (RFC 9106’s own ceiling, 2^24-1) before calling <code>Params::new</code>; a unit
+test with <code>p = u32::MAX</code> panicked before the fix. Re-run after it: 271 303 runs in 129 s, no crash
+(Windows MSVC toolchain, <code>.claude.local.md</code>’s recipe; not yet run in CI - branch unpushed).</p>
+<h2 id="d-223-t-273---constant-time-software-multiply-in-gf2m_wide-2026-09-26---d-220s-o-a-as-implemented"><a class="header" href="#d-223-t-273---constant-time-software-multiply-in-gf2m_wide-2026-09-26---d-220s-o-a-as-implemented">D-223: T-273 - constant-time software multiply in <code>gf2m_wide</code> (2026-09-26) - D-220’s O-A as implemented</a></h2>
+<p><code>hazmat::gf2m_wide::poly_mul_wide</code> is the software GF(2^m) multiply behind Kalyna-GCM/GMAC’s GHASH,
+and so behind <code>crypto_secretbox</code>/<code>crypto_secretstream</code>/<code>crypto_box</code>, on every <code>no_std</code> build and on
+every CPU without PCLMULQDQ/PMULL. It no longer reads a table at an index taken from an operand.
+The output is byte-identical.</p>
+<p><strong>Technique (the fork D-220 left to T-273’s plan):</strong> a masked 4-bit window. For every nibble of <code>b</code>
+it reads all four rows <code>a</code>, <code>a&lt;&lt;1</code>, <code>a&lt;&lt;2</code>, <code>a&lt;&lt;3</code> (the comb’s rows 1/2/4/8) and <code>XOR</code>s each in
+under an all-ones/all-zeros mask made from the matching bit. Each <code>b</code> word is walked with constant
+shifts only. In GHASH both operands are secret: <code>b</code> is <code>H</code>, and <code>a</code> is the accumulator, which
+depends on <code>H</code> after the first block. So the property is “no branch and no memory index derived
+from either operand”. Rejected: a masked scan of all 16 comb rows per nibble. It would not leak
+either, but it costs 16 row reads per nibble against 4.</p>
+<p><strong>The mask alone was not enough (asm finding):</strong> the first version used the same
+<code>0u64.wrapping_sub(bit)</code> idiom as <code>gf2m163::poly_mul_wide</code>. It compiled to conditional branches on
+the operand bits: <code>bmi</code>/<code>bpl</code> on thumbv7em-none-eabihf, and <code>btq</code> + <code>jb</code>/<code>jns</code> on x86_64 (release
+builds). LLVM proves the mask is 0 or all-ones, turns <code>x &amp; mask</code> back into a select, and then turns
+the select into a branch. The four masks of each nibble now pass through <code>core::hint::black_box</code>,
+one barrier per nibble. After that change, the release asm of <code>poly_mul_wide</code> for all three field
+sizes contains only loop back-edges (<code>subs</code>/<code>decl</code>/<code>addi</code> of a fixed counter, or a <code>cmp</code> of the
+<code>b</code> iterator pointer) and no load indexed by operand data. This holds on x86_64,
+thumbv7em-none-eabihf, riscv32imc-unknown-none-elf and aarch64-unknown-none. riscv32imc is
+ESP32-C3, which has no <code>cmov</code> and no IT predication, so any select there would show up as a branch.
+aarch64 covers the CPUs without PMULL, which run this path (added in the closing review). <code>poly_mul_wide</code> is
+<code>#[inline(never)]</code>, so the checked symbol is the one that ships.</p>
+<ul>
+<li><code>black_box</code> is documented as best effort, not a security guarantee. The same is true of
+<code>subtle</code>’s default <code>read_volatile</code> barrier (<code>default-features = false</code> here), which would also
+cost a memory round trip per bit. The claim therefore rests on the asm check, done with rustc
+1.97.1. Repeat it after a toolchain bump: <code>RUSTFLAGS="--emit=asm -C debuginfo=0" cargo build --release -p dstu-core --lib --no-default-features --target &lt;target&gt;</code>, then read the three
+<code>poly_mul_wide</code> symbols.</li>
+<li>This is constant-time discipline, not a side-channel-resistance claim (<code>CLAUDE.md</code>).</li>
+</ul>
+<p><strong>Tests:</strong> the old comb stays as <code>poly_mul_wide_comb_reference</code> (<code>#[cfg(test)]</code>). The new
+<code>poly_mul_wide_matches_comb_reference</code> proptest and four extreme operand pairs compare against it;
+both failed on a zero stub first. <code>multiply_matches_explicit_software_path</code> still checks the
+software path against hardware clmul. The field-axiom tests and the GCM/GMAC/XTS KATs pass
+unchanged. Scoped Miri (<code>MIRIFLAGS=-Zmiri-disable-isolation</code>, <code>PROPTEST_CASES=4</code>, <code>--lib gf2m_wide</code>): 60
+passed, 0 failed, 8 ignored, 2348 s.</p>
+<p><strong>Cost:</strong> <code>isolated_timing_poly_mul_wide_constant_time_vs_comb</code> (release, x86_64 dev machine, both
+versions in one binary, two runs):</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Field</th><th>Comb (ns/op)</th><th>Constant-time (ns/op)</th><th>Ratio</th></tr>
+</thead>
+<tbody>
+<tr><td>m=128</td><td>130-134</td><td>175</td><td>1.30-1.34x</td></tr>
+<tr><td>m=256</td><td>477-481</td><td>665-668</td><td>1.39x</td></tr>
+<tr><td>m=512</td><td>2118-2125</td><td>2525-2542</td><td>1.19-1.20x</td></tr>
+</tbody>
+</table>
+</div>
+<p>There is no binary-level (D-34) number. The dev machine has PCLMULQDQ and the Pi (Cortex-A76) has
+PMULL, so <code>uacrypt</code> never runs this path on either. The slowdown is accepted under O-A.</p>
+<p><strong>Found on the way, not fixed here (T-290):</strong> the same asm pass shows a <code>btq</code> + <code>jae</code> pair in
+<code>gf2m163</code>/<code>gf2m257</code>’s <code>FieldElement::multiply</code> on x86_64 (the DSTU 4145 software path, taken
+without PCLMULQDQ), not yet traced to its source. It is the idiom this entry found unsafe on its
+own.</p>
+<h2 id="d-224-t-290-disclosure---delegated-fork-2026-09-26"><a class="header" href="#d-224-t-290-disclosure---delegated-fork-2026-09-26">D-224: T-290 disclosure - delegated fork (2026-09-26)</a></h2>
+<p>The owner delegated how T-290 (a possible operand-bit branch in <code>gf2m163</code>/<code>gf2m257</code>’s software
+multiply, published since 0.3.x) is disclosed (“on your choice”). Tie-break per the delegation rule:
+project rules, then safety, then compatibility.</p>
+<ul>
+<li><strong>Trace first.</strong> T-290 is an asm observation, not a confirmed leak. Nothing is disclosed before
+the branch is traced to its source line and shown to depend on secret data.</li>
+<li><strong>If confirmed, it follows T-272’s path (D-220 O-B(2)):</strong> fixed on <code>ux-0.5.0</code>, shipped in 0.5.0,
+covered by the same advisory as T-272, same push embargo until then. One coordinated disclosure
+instead of a second, separate one.</li>
+<li><strong>Who runs the software path:</strong> every <code>no_std</code> build (the clmul dispatch is <code>std</code>-gated), so every
+MCU signer; <code>std</code> builds on aarch64 CPUs without the optional ARMv8 Crypto Extensions (no PMULL);
+x86_64 without PCLMULQDQ; every other <code>std</code> target. x86_64/aarch64 machines with hardware clmul
+never run it.</li>
+<li><strong>Escalate back to the owner</strong> when a secret-dependent branch is confirmed on any supported target
+that runs the software path: the release decision (0.5.0 or out of band) is then the owner’s.
+(Corrected in the closing review the same day: the first wording named clmul machines, which
+never run this code, so it could not fire where it matters.)</li>
+<li><strong>Fired the same day (T-273’s closing review):</strong> on <code>aarch64-unknown-none</code> (release, rustc
+1.97.1), <code>gf2m163::FieldElement::multiply</code> compiles <code>poly_mul_wide</code>’s loop
+(<code>gf2m163.rs:159-167</code>) to <code>ldr</code> of the operand word, <code>tst</code> of the bit, and a <code>b.eq</code> that skips the
+six <code>XOR</code>s - a branch on every bit of <code>a</code>. In signing, <code>a</code> is an intermediate coordinate of the
+scalar multiplication by the secret nonce. <code>gf2m257</code> has the same loop (<code>gf2m257.rs:145-154</code>) and
+the same shape. <strong>Owner decision 2026-09-26:</strong> fix ships in 0.5.0 with T-272, under the same
+advisory and push embargo.</li>
+<li><strong>Fired again during T-290’s trace (D-225):</strong> the same idiom branches in <code>fp256</code>/<code>fp512</code>
+(<code>crypto_box</code>/<code>crypto_box512</code>), which have no hardware dispatch - every platform. Owner decision
+2026-09-26: same path (0.5.0, one widened advisory, embargo unchanged).</li>
+</ul>
+<h2 id="d-225-t-290---black_box-barrier-on-every-hazmat-mask-site-2026-09-26"><a class="header" href="#d-225-t-290---black_box-barrier-on-every-hazmat-mask-site-2026-09-26">D-225: T-290 - <code>black_box</code> barrier on every <code>hazmat</code> mask site (2026-09-26)</a></h2>
+<p><strong>Problem.</strong> <code>0u64.wrapping_sub(bit)</code> is not branch-free on its own (D-223). LLVM proves the mask
+is 0 or all-ones, turns <code>x &amp; mask</code> back into a select, and lowers the select to a branch. T-290
+traced every production mask site in <code>hazmat</code> on four targets.</p>
+<p><strong>Method.</strong> The release asm is built with <code>RUSTFLAGS="--emit=asm -C debuginfo=0" cargo build --release -p dstu-core --lib --no-default-features --target &lt;t&gt;</code> on x86_64-unknown-linux-gnu,
+thumbv7em-none-eabihf, riscv32imc-unknown-none-elf and aarch64-unknown-none, with rustc 1.97.1.
+Only real conditional jumps are counted per function:</p>
+<ul>
+<li>x86_64: <code>j&lt;cc&gt;</code> (not <code>jmp</code>);</li>
+<li>thumbv7em: <code>b&lt;cc&gt;[.w|.n]</code>, <code>cbz</code>/<code>cbnz</code>;</li>
+<li>riscv32imc: <code>beq[z]</code>/<code>bne[z]</code>/<code>blt[z|u]</code>/<code>bge[z|u]</code> and the <code>c.</code> forms;</li>
+<li>aarch64: <code>b.&lt;cc&gt;</code>, <code>cbz</code>/<code>cbnz</code>, <code>tbz</code>/<code>tbnz</code>.</li>
+</ul>
+<p><code>cmov</code>/<code>setcc</code>/<code>csel</code>/<code>cset</code>/<code>it</code> are selects, not branches, so they are not counted. The
+barrier was applied one group at a time (gf2m, fp, curve, scalar, <code>double</code>), with a rebuild of all
+four targets after each group. Each removed jump was read in the asm and named. A count delta is
+not taken as evidence on its own: counts also move when <code>black_box</code> reshapes a loop, and they did
+in <code>kalyna_xts</code>.</p>
+<p><strong>Confirmed secret-dependent branches, before the fix:</strong></p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Site</th><th>Target</th><th>Instruction</th><th>What it tests</th></tr>
+</thead>
+<tbody>
+<tr><td><code>gf2m163</code>/<code>gf2m257::poly_mul_wide</code> (inlined in <code>multiply</code>, <code>invert</code>, <code>curve257::scalar_multiply</code>, …)</td><td>x86_64</td><td><code>btq %rcx,%rbp; jae</code> over the <code>XOR</code>s</td><td>bit <code>i</code> of <code>a</code></td></tr>
+<tr><td>same</td><td>thumbv7em</td><td><code>ands r1,r3; orrs r0,r1; bne.w</code> back to the loop head</td><td>bit <code>i</code> of <code>a</code></td></tr>
+<tr><td>same</td><td>riscv32imc</td><td><code>and</code>/<code>or</code> chain, <code>beqz a0</code> over the <code>XOR</code>s</td><td>bit <code>i</code> of <code>a</code></td></tr>
+<tr><td>same</td><td>aarch64</td><td><code>tst x6,x5; b.eq</code> over six <code>eor</code>s</td><td>bit <code>i</code> of <code>a</code></td></tr>
+<tr><td><code>fp256::add</code> (<code>take_t</code> mask)</td><td>x86_64</td><td><code>cmpb $1,%bl; jne</code> around <code>addq $435</code></td><td><code>a+b &gt;= p</code></td></tr>
+<tr><td>same</td><td>thumbv7em</td><td><code>cmp r0,#1; bne</code> around <code>movw r0,#435</code></td><td><code>a+b &gt;= p</code></td></tr>
+<tr><td>same</td><td>aarch64</td><td><code>cmp w18,#1; b.ne</code> around <code>add x9,x9,#435</code></td><td><code>a+b &gt;= p</code></td></tr>
+<tr><td><code>fp256::multiply</code> (<code>conditional_sub_p</code>, inlined)</td><td>x86_64</td><td><code>jb</code>/<code>jne</code> around <code>addq $435</code></td><td>result <code>&gt;= p</code></td></tr>
+<tr><td><code>fp512::add</code></td><td>x86_64</td><td><code>jne</code> around <code>addq $875</code></td><td><code>a+b &gt;= p</code></td></tr>
+</tbody>
+</table>
+</div>
+<p>After the fp group, the jumps are also gone from every function that inlines these helpers:
+<code>fp256</code>/<code>fp512</code> <code>pow_mod</code>/<code>sqrt</code>/<code>invert</code>/<code>euler_criterion</code>, <code>curve256::ProjectivePoint::add</code>,
+<code>is_on_curve</code>, <code>point_from_x</code>, and riscv32imc <code>curve256</code>/<code>curve512::scalar_multiply</code> (25 -&gt; 2 and
+49 -&gt; 2 jumps).</p>
+<p><strong>Exposure.</strong></p>
+<ul>
+<li><strong>gf2m (DSTU 4145, <code>crypto_sign</code>/<code>crypto_sign257</code>):</strong> the software path only. That is every
+<code>no_std</code> build and every CPU without PCLMULQDQ/PMULL (D-224). <code>a</code> is an intermediate of the
+scalar multiplication by the secret nonce.</li>
+<li><strong>fp (DSTU 9041, <code>crypto_box</code>/<code>crypto_box512</code>):</strong> there is no hardware dispatch, so it is
+<strong>every build on every platform</strong>, including x86_64 desktops and the Pi. The operands are
+intermediates of the scalar multiplication by the recipient’s secret key (<code>open</code>) and by the
+ephemeral key (<code>seal</code>).</li>
+<li>Both have been published since 0.3.0.</li>
+<li><strong>Owner decision 2026-09-26</strong> (D-224’s escalation fired a second time, with this wider
+population): the fix ships in 0.5.0 together with T-272/T-290, under one advisory with the
+wider scope. The push embargo on <code>ux-0.5.0</code> is unchanged.</li>
+</ul>
+<p><strong>Traced clean, barrier added anyway:</strong></p>
+<ul>
+<li><code>curve163</code>/<code>curve257</code> <code>cswap</code>/<code>is_zero_mask</code>. The remaining jumps are the input <code>Option</code> tag,
+the fixed ladder counter, and the final “result is infinity” check, which decides the returned
+<code>None</code> (public output).</li>
+<li><code>scalar</code>/<code>scalar257</code> <code>cond_sub_if_ge</code>. Its remaining jumps are fixed loop counters
+(<code>movl $65</code> / <code>decq</code> / <code>ja</code>, <code>b.hi</code> on aarch64).</li>
+<li><code>gf2m_wide::double</code>. aarch64 already used <code>cmp x25,#0; csel ... mi</code>; riscv32imc showed only
+length and counter jumps in <code>kalyna_xts</code>.</li>
+</ul>
+<p>These are kept behind the barrier on purpose, as a tradeoff for robustness against the next
+toolchain bump: the source idiom is the same one that did branch elsewhere, and LLVM’s choice
+differs by target and version.</p>
+<p><strong>Fix.</strong> Every production <code>let mask = ...wrapping_sub(...)</code> in <code>hazmat</code>, plus the two
+<code>is_zero_mask</code> return expressions, now reads <code>core::hint::black_box(...)</code>. That is 17 sites in 9
+files; <code>gf2m_wide::poly_mul_wide</code> already had D-223’s barrier. The output is byte-identical.
+<code>black_box</code> is best effort, not a guarantee, so the claim rests on the asm check above; repeat it
+after a toolchain bump (T-292 automates it). This is constant-time discipline, not a
+side-channel-resistance claim.</p>
+<p><strong>Tests.</strong> No new behavioral test: the arithmetic is unchanged, and the constant-time property
+is not observable from a unit test, so that test category is foreclosed. The asm check stands in
+for it. The existing KATs, the sw-vs-hw clmul proptests, the Додаток Г worked examples and the
+field-axiom proptests pass unchanged (<code>cargo test -p dstu-core --all-features</code>,
+<code>cargo xtask test</code>: 146 suites green on re-run). Scoped Miri (<code>MIRIFLAGS=-Zmiri-disable-isolation</code>,
+<code>PROPTEST_CASES=4</code>, <code>--lib dstu4145 dstu9041 gf2m_wide</code>): 94 passed / 0 failed, 3868 s.</p>
+<p><strong>Cost.</strong> Release build, in-process, dev machine (x86_64, PCLMULQDQ). Internal regression
+numbers per D-34’s allowance, not a cross-implementation claim. The binary-level <code>uacrypt</code> runs
+were dominated by about 33 ms of process start with ±10 ms noise, so they could not resolve the
+change.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Operation</th><th>Before</th><th>After</th><th>Ratio</th></tr>
+</thead>
+<tbody>
+<tr><td><code>crypto_box::seal</code> / <code>open</code> (1 KiB)</td><td>303-309 / 498-516 us</td><td>478-480 / 796-802 us</td><td>1.57x</td></tr>
+<tr><td><code>crypto_box512::seal</code> / <code>open</code></td><td>2343-2351 / 3915-3989 us</td><td>2793-2794 / 4664-4864 us</td><td>1.19x</td></tr>
+<tr><td><code>crypto_sign</code> / <code>crypto_sign257</code> sign</td><td>65-67 / 178-191 us</td><td>65-66 / 175-176 us</td><td>unchanged (hw clmul)</td></tr>
+<tr><td><code>fp256::multiply</code> chain</td><td>23-34 ns</td><td>36-39 ns</td><td>about 1.5x</td></tr>
+<tr><td><code>gf2m163</code> explicit software multiply</td><td>1357-1775 ns</td><td>796-919 ns</td><td><strong>faster</strong>, about 1.7x</td></tr>
+</tbody>
+</table>
+</div>
+<p>The <code>gf2m163</code> software multiply got faster: the branch it replaced mispredicted on random operand
+bits. The <code>crypto_box</code> cost is the store/load round trip that <code>black_box</code> forces on each
+cheap field add/sub. It is accepted for now; a register-only barrier is T-293.</p>
+<p><strong>Found on the way, not fixed here (T-291):</strong> on riscv32imc, LLVM lowers the 64-bit carry and
+borrow compares in the limb arithmetic (<code>overflowing_add</code>/<code>overflowing_sub</code> on <code>u64</code>) as
+<code>beq &lt;hi_a&gt;,&lt;hi_b&gt;</code> around an <code>sltu</code>, which is a branch on whether the high 32-bit halves of two
+limbs are equal. In <code>fp256::add</code> after this fix, 5 such jumps remain, and there are more in
+<code>multiply</code>. This is a different mechanism from the mask idiom (no <code>wrapping_sub</code> mask is
+involved), so the barrier does not reach it. Scope and decisions: D-226; fix: D-227.</p>
+<h2 id="d-226-t-291---scope-disclosure-and-fix-shape-2026-09-26"><a class="header" href="#d-226-t-291---scope-disclosure-and-fix-shape-2026-09-26">D-226: T-291 - scope, disclosure and fix shape (2026-09-26)</a></h2>
+<p><strong>Trace</strong> (rustc 1.97.1, D-225’s recipe; detail in <code>docs/TASKS.md</code> T-291). RV32 base ISA has no
+conditional select, so LLVM lowers every <code>i64</code> carry/borrow compare to a branch on the high
+halves. The sources are <code>overflowing_add</code>/<code>overflowing_sub</code> and the <code>u128</code> adds in the MAC
+loops; the <code>u128</code> product itself (<code>mul</code>/<code>mulhu</code>) is branch-free. Affected on riscv32imc:
+<code>fp256</code>/<code>fp512</code> add/sub/multiply (and every function that inlines them), and DSTU 4145’s
+<code>scalar</code>/<code>scalar257</code> add and multiply, which compute <code>s = e + d*r</code> with the signing key <code>d</code>. So
+<code>crypto_box</code>/<code>crypto_box512</code> and <code>crypto_sign</code>/<code>crypto_sign257</code>, riscv32 only (ESP32-C3 class,
+<code>no_std</code>). thumbv7em/x86_64/aarch64 use carry flags; Kalyna/Kupyna/Strumok need no carry-out.</p>
+<p><strong>Owner decisions 2026-09-26</strong> (asked with per-option consequences):</p>
+<ul>
+<li><strong>Disclosure (a):</strong> fixed in 0.5.0 under the same advisory as T-272/T-290, widened to riscv32
+<code>crypto_sign</code>/<code>crypto_box</code>; the push embargo on <code>ux-0.5.0</code> is unchanged.</li>
+<li><strong>Design (1):</strong> one code path on every target: carry <code>((a &amp; b) | ((a | b) &amp; !s)) &gt;&gt; 63</code>, borrow
+<code>((!a &amp; b) | ((!a | b) &amp; d)) &gt;&gt; 63</code>, the MAC as <code>u128</code> product + two such adds. Rejected (2), a
+<code>cfg(target_pointer_width = "32")</code> path: it would run in production only where host tests never
+run it. Accepted cost: the spike’s <code>wide_mul</code> is ~2.3x slower on x86_64 (noisy, measured with a
+test run in parallel); the real <code>crypto_box</code> number is measured after the fix. T-293 may win some
+back.</li>
+<li>Fix and asm check: D-227.</li>
+</ul>
+<h2 id="d-227-t-291---bitwise-carries-in-hazmatlimb-2026-09-26"><a class="header" href="#d-227-t-291---bitwise-carries-in-hazmatlimb-2026-09-26">D-227: T-291 - bitwise carries in <code>hazmat::limb</code> (2026-09-26)</a></h2>
+<p><strong>Fix.</strong> New <code>pub(crate)</code> module <code>hazmat/limb.rs</code>: <code>adc</code>/<code>sbb</code> compute the carry/borrow-out as the
+bit-63 majority <code>((a &amp; b) | ((a | b) &amp; !s)) &gt;&gt; 63</code> / <code>((!a &amp; b) | ((!a | b) &amp; d)) &gt;&gt; 63</code> (valid
+for a carry-in of 0 or 1, <code>debug_assert</code>ed), and <code>mac(r, a, b, carry)</code> is the <code>u128</code> product plus
+two such adds (the high word cannot overflow: <code>(2^64-1)^2 + 2(2^64-1) = 2^128-1</code>). They replace
+the local <code>adc</code>/<code>sbb</code> and every <code>u128</code> sum in <code>fp256</code>/<code>fp512</code> (<code>add_limbs</code>, <code>conditional_sub_p</code>,
+<code>add</code>/<code>sub</code>, <code>mul_small</code>, <code>wide_mul</code> and its tail) and <code>scalar</code>/<code>scalar257</code> (<code>add</code>/<code>sub</code>/<code>mul</code>);
+<code>curve256</code>/<code>curve512</code> import <code>sbb</code> from <code>limb</code>. One code path on every target (D-226 design (1)).</p>
+<p><strong>No <code>black_box</code> in <code>limb.rs</code>, on purpose.</strong> This departs from D-225’s “barrier kept as a margin”
+policy: there is no compare left for LLVM to lower, and a barrier in the multiply loop would add a
+store/load per limb product. The risk is a future LLVM folding the majority formula back into an
+<code>icmp</code>. T-292’s asm check is the guard, and its matrix includes <code>opt-level</code> <code>s</code>/<code>z</code>.</p>
+<p><strong>Asm check</strong> (D-225’s recipe, rustc 1.97.1, baseline from a <code>git worktree</code> at <code>a513a66</code>):</p>
+<ul>
+<li>riscv32imc at <code>opt-level</code> 3, <code>s</code> and <code>z</code>: zero <code>beq X,Y</code> + <code>sltu _,X,Y</code> carry shapes (was 4-48
+per function), and no <code>__multi3</code>/<code>__muldi3</code> calls. At <code>z</code>, <code>limb::mac</code> and every
+<code>OUTLINED_FUNCTION_*</code> body have no jumps. Per function at O3: <code>fp256::add</code> 5 -&gt; 0,
+<code>multiply</code> 33 -&gt; 2; <code>fp512</code> add 9 -&gt; 0, sub 8 -&gt; 0, multiply 35 -&gt; 2; <code>ProjectivePoint::add</code>
+31/32 -&gt; 0; <code>scalar::multiply</code> 17 -&gt; 3, <code>scalar257::multiply</code> 52 -&gt; 5, <code>scalar257</code> <code>Add</code> 15 -&gt; 1.</li>
+<li>Read at riscv32imc O3, after filtering <code>addi r,r,k</code> + compare loop ends by script:
+<code>fp256</code>/<code>fp512</code> <code>multiply</code>, <code>scalar</code>/<code>scalar257</code> <code>multiply</code> and <code>Add</code>, <code>from_candidate_bytes</code>,
+<code>signature::sign</code>, <code>crypto_sign</code>/<code>crypto_sign257::sign_digest</code>, <code>encryption</code>/<code>encryption512</code>
+<code>decrypt</code>. What is left: loop counters, the reduction’s bit and limb indices, <code>wide_mul</code>’s tail
+index (8/16/24, no longer unrolled), shift-amount checks, <code>Option</code> tags and <code>memcmp</code> results,
+<code>from_candidate_bytes</code>’s final <code>Some</code>/<code>None</code> (public rejection of public input), the spec retry
+checks in <code>sign</code>, and <code>is_valid_scalar(e)</code> split by LLVM into two jumps on its two final
+booleans (for a valid key both are always true; an invalid key is a public error). None tests
+limb data. At <code>s</code>/<code>z</code>, read: <code>fp256</code>/<code>fp512</code> add/sub/multiply, <code>conditional_sub_p</code>,
+<code>add_limbs</code>, <code>scalar</code>/<code>scalar257</code> multiply/<code>Add</code>/<code>cond_sub_if_ge</code>, <code>is_less_than</code>: only
+counters (<code>li N</code>/<code>beqz</code>/<code>bnez</code> around outlined bodies), the bit index (<code>li 63</code>) and lengths.
+Not read: the other wrappers at <code>s</code>/<code>z</code> (<code>encrypt</code>/<code>decrypt</code>/<code>sign_digest</code>), whose inlined
+arithmetic is the functions above.</li>
+<li>thumbv7em/x86_64/aarch64: the only new jumps are <code>wide_mul</code>’s tail index in <code>fp256::multiply</code>
+(0 -&gt; 3/4) and one more counter jump in <code>scalar257::multiply</code>; read, public. thumbv7em
+<code>scalar257::multiply</code>’s four: flags from <code>subs r1,#1</code> (loop), <code>cmp r8,#43</code> (byte index), and
+<code>cmp r1,#1</code>/<code>cmp r0,#0</code> on stack-held counters, the same shape as <code>scalar::multiply</code>’s bit and
+limb counters. thumbv7em at <code>s</code>/<code>z</code>: per-function counts equal the baseline except new
+<code>OUTLINED_FUNCTION_*</code>/<code>limb::mac</code> bodies at <code>z</code>, which have no jumps.</li>
+<li>Found, outside T-291’s mechanism (counts unchanged), not read, for T-292’s per-symbol
+allowlist: <code>signature257::sign</code> (49 jumps), <code>signature::verify</code> (48), and <code>curve163</code>/<code>curve257</code>
+<code>Point::add</code> (<code>Option</code> tags and point-equality checks).</li>
+</ul>
+<p><strong>Tests.</strong> <code>limb.rs</code> tests written first and seen failing: an edge grid {0, 1, 2^63-1, 2^63,
+MAX-1, MAX} against a <code>u128</code> reference (<code>mac</code> over all four inputs, 1296 cases), the all-<code>MAX</code>
+<code>mac</code> extreme, proptests for all three, and a <code>debug_assert</code> misuse test per carry-in
+(<code>cfg(debug_assertions)</code>). The error-path category is foreclosed (pure arithmetic, no I/O). The
+existing KATs, Додаток Г worked examples and field/scalar proptests pass unchanged. Scoped Miri
+(<code>MIRIFLAGS=-Zmiri-disable-isolation</code>, <code>PROPTEST_CASES=4</code>, <code>--lib limb fp256 fp512 scalar</code>): 26
+passed / 0 failed, 452 s. <code>cargo xtask test</code>: 146 suites green.</p>
+<p><strong>Cost.</strong> Release, in-process, x86_64 dev machine, internal regression numbers per D-34’s
+allowance (two interleaved runs, a Miri run in parallel, so noisy):</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Operation</th><th>Before (T-290)</th><th>After</th><th>Ratio</th></tr>
+</thead>
+<tbody>
+<tr><td><code>crypto_box::seal</code> / <code>open</code> (1 KiB)</td><td>485-516 / 824-872 us</td><td>979-991 / 1632-1712 us</td><td>about 2x</td></tr>
+<tr><td><code>crypto_box512::seal</code> / <code>open</code></td><td>2942-3218 / 5185-5249 us</td><td>5969-6024 / 9691-9745 us</td><td>about 1.9x</td></tr>
+<tr><td><code>crypto_sign</code> / <code>crypto_sign257</code> sign</td><td>68-74 / 181-189 us</td><td>67-74 / 191-193 us</td><td>unchanged (noise)</td></tr>
+</tbody>
+</table>
+</div>
+<p>The cost is the MAC: on x86_64 <code>u128</code> sums were <code>add</code>/<code>adc</code>, the majority formula is several
+bitwise ops per carry. The owner accepted about 2x (D-226). T-293 does not reach it (no barrier
+here); any win-back needs its own plan.</p>
+<h2 id="d-228-t-294---clippy-lints-test-code-too-2026-09-26"><a class="header" href="#d-228-t-294---clippy-lints-test-code-too-2026-09-26">D-228: T-294 - clippy lints test code too (2026-09-26)</a></h2>
+<p><strong>Problem.</strong> <code>cargo clippy --workspace --all-features --all-targets -- -D warnings</code> failed with 449
+errors (379 in <code>uacrypt</code>’s lib test, the same count class on <code>master</code>). <code>xtask clippy</code> and
+<code>rust.yml</code> never passed <code>--all-targets</code>, so no test target had ever been linted, and the
+crate-level <code>#![deny(clippy::unwrap_used, clippy::expect_used)]</code> / <code>#![warn(clippy::pedantic)]</code>
+reach <code>#[cfg(test)]</code> modules.</p>
+<p><strong>Decision.</strong> A root <code>clippy.toml</code> with <code>allow-unwrap-in-tests</code>/<code>allow-expect-in-tests</code>, not a
+per-module <code>#[allow]</code>: a failing test should panic, and the production <code>deny</code> stays as it is
+(<code>#[test]</code> fns and <code>#[cfg(test)]</code> modules only; a <code>cfg(any(test, kani))</code> helper outside a test
+module is not exempt, so <code>gf2m_wide::clmul_native::clmul64_impl</code> now extracts the halves with
+<code>_mm_cvtsi128_si64</code>/<code>_mm_srli_si128</code>, like the production <code>poly_mul_wide_hw</code>). The other 49
+were fixed in the code, no new <code>allow</code>s: <code>#[ignore]</code> reasons on the timing diagnostics, their
+<code>use</code>/<code>const</code> moved to the top of the fn, <code>as_secs_f64()</code> instead of <code>as_nanos() as f64</code>,
+cast-free byte patterns (<code>(0..=u8::MAX).cycle()</code>), a <code>KeygenRun</code> type alias, <code>checked_sub</code> on an
+<code>Instant</code>, <code>enumerate()</code> loops in <code>tables.rs</code>, and one doc line starting with <code>- </code>.</p>
+<p><strong>Gate.</strong> <code>--all-targets</code> on the default, <code>small-tables</code> and <code>--all-features</code> clippy runs, in
+<code>xtask clippy</code> and <code>rust.yml</code>. Not on the <code>getrandom</code>-only run: its test code needs <code>std</code>/<code>alloc</code>
+and does not build (already noted in <code>rust.yml</code>). Not on the aarch64 cross lint yet: the target
+is not installed locally, so the change could not be checked before CI sees it.</p>
+<h2 id="d-229-t-292---cargo-xtask-asm-check-guards-the-constant-time-asm-2026-09-26"><a class="header" href="#d-229-t-292---cargo-xtask-asm-check-guards-the-constant-time-asm-2026-09-26">D-229: T-292 - <code>cargo xtask asm-check</code> guards the constant-time asm (2026-09-26)</a></h2>
+<p><strong>Problem.</strong> D-223/D-225/D-227 rest on reading release asm with one rustc (1.97.1), while
+<code>rust-toolchain.toml</code> and CI float on <code>stable</code>. <code>black_box</code> is best effort, and <code>hazmat::limb</code> has
+no barrier at all (D-227), so a toolchain bump could silently bring a secret-dependent branch back.</p>
+<p><strong>What it does</strong> (<code>xtask/src/asm_check.rs</code>). D-225’s recipe (<code>--emit=asm -C debuginfo=0</code>,
+<code>--release -p dstu-core --lib --no-default-features</code>) on x86_64-unknown-linux-gnu and
+aarch64-unknown-none at O3, and on thumbv7em-none-eabihf and riscv32imc-unknown-none-elf at O3,
+<code>s</code> and <code>z</code> (<code>CARGO_PROFILE_RELEASE_OPT_LEVEL</code>), each in its own <code>target/asm-check/opt-&lt;o&gt;</code>.</p>
+<ul>
+<li><strong>Hard rules, no exceptions:</strong> no <code>__multi3</code>/<code>__muldi3</code> call anywhere in the crate, and no
+riscv32 carry-compare shape (a two-register branch followed by <code>sltu</code> on the same pair, D-226)
+in any function of <code>dstu9041</code>/<code>dstu4145</code>/<code>gf2m_wide</code>/<code>limb</code> or any <code>OUTLINED_FUNCTION_*</code> body.
+So the functions <code>limb</code> is inlined into (<code>invert</code>, <code>pow_mod</code>, <code>to_affine</code>, …) are covered
+whether or not they have a row. The carry rule is not crate-wide because the same shape is a
+public <code>RangeInclusive</code> step in <code>kalyna_kw::wrap_with_cipher</code> (riscv32 O3, 5 hits, read); both
+rules measured crate-wide on HEAD before scoping, zero hits otherwise.</li>
+<li><strong>Zero-jump rows:</strong> 112 <code>(target, opt-level, symbol)</code> rows where a secret-data symbol has no
+conditional or indirect jump at all: fp <code>add</code>/<code>sub</code>/<code>square</code>/<code>invert</code>/<code>euler_criterion</code>/<code>sqrt</code>,
+<code>ProjectivePoint::add</code>/<code>to_affine</code>, <code>limb::mac</code>, gf2m <code>square</code>/<code>invert</code>, scalar <code>Add</code>, and at
+riscv32 <code>z</code> the summed outlined bodies - in every cell where each is a separate symbol with
+no jump. A listed symbol with any jump, missing (inlined or renamed) or matched more than once
+is a failure.</li>
+<li><strong>Fails closed:</strong> every branch-like mnemonic in the whole crate must be classified, otherwise it
+is an error. Classification per target: riscv32 every <code>b*</code>, <code>jr</code> other than <code>ra</code> (and <code>t0</code> in an
+outlined body, the outliner’s return) is indirect; thumb <code>b&lt;cc&gt;</code>/<code>bl&lt;cc&gt;</code>/<code>bx&lt;cc&gt;</code>/<code>cbz</code>,
+<code>pop&lt;cc&gt;</code>/<code>ldm&lt;cc&gt;</code> with <code>pc</code>, <code>tbb</code>/<code>tbh</code>, <code>bx</code> other than <code>lr</code>; aarch64 <code>b.&lt;cc&gt;</code>,
+<code>cbz</code>/<code>tbz</code>, <code>br</code>; x86_64 <code>j&lt;cc&gt;</code>, <code>jmp *reg</code>. Calls through a register (<code>callq *%rbx</code>,
+<code>blx r6</code>, <code>jalr</code>) are not counted: their target is a constant the compiler keeps in a register.
+<code>bx rN</code> is counted (thumb <code>z</code> uses it for tail calls, 36 in the outlined bodies, all read).</li>
+<li><strong>Symbols without a demangler</strong> (owner, 2026-09-26): a spec like <code>fp256::FieldElement::add</code> is
+matched as ordered v0 length-prefixed idents (<code>5fp256</code>, <code>12FieldElement</code>, <code>3add</code> at the end).
+No digit-boundary rule: <code>8dstu90415fp256</code> shows an ident can end in a digit. A false match is
+possible in principle and caught by the exactly-once rule.</li>
+<li><strong>Cache:</strong> a fresh build does not rewrite the <code>.s</code>, so it is not deleted; the file read is the
+one whose hash matches the newest <code>libdstu_core-*.rlib</code>.</li>
+</ul>
+<p><strong>No counts for symbols with public jumps (owner, 2026-09-26).</strong> The first version also pinned
+the exact jump count of every symbol that keeps public jumps (ladders, gf2m/fp/scalar multiply,
+<code>sign</code>, <code>decrypt</code>, …; 424 rows). The owner dropped those: a count cannot tell a public jump
+from a secret one, and every rustc release that reshapes a loop would have turned CI red and
+forced a re-read. Accepted cost: a new secret branch inside one of those symbols is not caught
+automatically, unless it is a carry shape or a <code>__multi3</code> call (hard rules) or it also shows in a
+zero-jump symbol that inlines into it. A failure under another rustc names the version change
+(<code>AUDITED_RUSTC</code>); a row is dropped only once its new jump has been read and is public.</p>
+<p><strong>Audit at rustc 1.97.1</strong> (evidence that the symbols without a row had only public jumps when
+this was written; no longer enforced). O3 rows were read in D-225/D-227, except
+<code>signature257::sign</code> on riscv32 (49): 33 are the unrolled <code>is_zero(&amp;r_bytes)</code> (r is the public
+signature half, the spec’s retry check), the rest <code>memcmp</code> against a zero constant (<code>fe_x</code>/<code>h</code>
+retry checks), the ladder result’s <code>Option</code> tag, shift-amount checks on a bit index and loop
+ends. The <code>s</code>/<code>z</code> rows (thumbv7em and riscv32imc) of every secret-data symbol were read with a
+script that sets a jump aside only when every non-constant operand (for thumb: of the flag-setting
+<code>cmp</code>/<code>subs</code>/<code>adds</code>, or the <code>cbz</code> register) is an induction variable, i.e. updated in the same
+function by <code>addi r,r,k</code> / <code>adds|subs|add|sub r,[r,]#k</code>. A first, looser filter that trusted any
+immediate compare was dropped: D-225’s thumb branch was <code>cmp r0,#1; bne</code>. Everything left was read:</p>
+<ul>
+<li>thumb: loop bounds <code>cmp rX,#32/#64/#48</code> with the offset stepped inside an outlined body at
+<code>z</code>; the <code>cmp rX,#1; b(hi)</code> cases are bit counters counting down (<code>scalar::multiply</code> 64,
+<code>sign_digest</code> 8, <code>pow_mod</code> 8; the exponent bit itself is a mask behind <code>@APP</code>, selected with
+<code>and</code>/<code>orr</code>); <code>fp::sub</code>’s <code>#435</code>/<code>#875</code> is applied as <code>and</code>, no jump; Result/<code>Option</code> tags;</li>
+<li>riscv32: pointer-loop ends (<code>E = sp+k</code> or <code>P+24</code>, <code>P</code> stepped by 8), bit counters compared with
+a loaded <code>1</code>, loop-entry guards <code>beqz R</code> right after <code>li R,N</code>, and at <code>z</code> counters stepped
+inside the called outlined body (23 of 25 checked by script to contain <code>addi R,R,k</code>; the other
+two are the input point’s <code>Option</code> tag and <code>Gf2m512</code>’s <code>li s2,16</code> nibble counter);</li>
+<li>both: shift-amount checks on a bit index, input and result <code>Option</code> tags, the ladder’s final
+“result is infinity” check (public output, D-225), <code>is_valid_scalar</code>/<code>from_candidate_bytes</code>/
+<code>point_from_x</code>/<code>parse_m_prime</code>/KW rejections, the padding check in <code>decrypt</code>, KMAC’s length
+error in <code>sign_digest</code>, and the spec retry checks in <code>sign</code>.
+The rows added after the closing review (<code>gf2m</code> <code>invert</code>, fp <code>square</code>/<code>invert</code>/<code>pow_mod</code>/<code>sqrt</code>/
+<code>euler_criterion</code>, <code>to_affine</code>, <code>encrypt</code>) went through the same filter on all
+four targets at O3 and on the 32-bit two at <code>s</code>/<code>z</code>; what was left: loop back-edges and counters,
+and in <code>encrypt</code> the two final booleans of <code>is_valid_scalar(e)</code> (<code>jns</code>/<code>js</code> on bit 63 on x86_64,
+<code>tbz</code>/<code>tbnz #63</code> on aarch64) after a branch-free borrow chain - the split D-227 already
+recorded; for a valid ephemeral key both are true, an invalid one is a public error. None of the
+jumps read tests secret data. At <code>z</code>, riscv32’s outlined bodies have no jumps and thumb’s 36 are
+<code>bx rN</code> tail calls. Count-only, not read: the public-input symbols (<code>verify</code>, <code>curve163</code>/
+<code>curve257</code> <code>Point::Add::add</code>, whose callers are the verification path only; <code>point_from_x</code>,
+which takes public input).</li>
+</ul>
+<p><strong>CI</strong> (owner choice (b), 2026-09-26): a <code>rust.yml</code> job on every push, plus an optional
+<code>xtask ci</code> layer (skipped when a target is not installed). Unverified in CI until <code>ux-0.5.0</code> is
+pushed (embargo, D-224/D-226).</p>
+<p><strong>Tests.</strong> Written first and seen failing: the parser (function bounds, comments per target,
+unterminated function), the classifier per target (including the traps above), jump counting,
+the carry shape, <code>__multi3</code>/<code>__muldi3</code>, symbol matching and exactly-once. The carry-rule scope
+test came with the closing-review fix, not before it (18 xtask tests with the existing ones).
+Error path: the missing-<code>.s</code> error was hit for real (the first version deleted the <code>.s</code> before
+building, and a cached build did not rewrite it, which is why the rlib-hash lookup exists); the
+missing-target skip was not exercised.</p>
+<p><strong>Proof it fires, simplified version</strong> (zero-jump rows + hard rules), in <code>git worktree</code>s:</p>
+<ul>
+<li><code>a513a66</code> (before T-291): 64 failures, 55 of them the riscv32 carry shape.</li>
+<li><code>d438bec</code> (before T-290): 89 failures - carry shape (T-291 not yet fixed), and the zero rows
+<code>fp256</code>/<code>fp512::add</code> (1 jump on x86_64/aarch64/thumbv7em, D-225’s <code>jne</code> around <code>addq $435</code>),
+<code>ProjectivePoint::add</code> (3; riscv32 37/32), fp <code>invert</code>/<code>sqrt</code>/<code>euler_criterion</code>, scalar <code>Add</code>.
+<strong>Not caught any more:</strong> T-290’s gf2m branch. Only the dropped count showed it
+(<code>gf2m163</code>/<code>gf2m257::multiply</code> 2 instead of 1); the gf2m zero rows (<code>square</code>, <code>invert</code>) did not
+change. This is the accepted cost above, seen on a real regression.</li>
+<li><code>7ddfb18</code> (before T-273): 89 failures, the same fp/carry ones.</li>
+</ul>
+<p><strong>Proof it fires, first version</strong> (with the counts), for the record:</p>
+<ul>
+<li><code>a513a66</code> (before T-291): 105 failures, among them the carry shape in <code>fp</code>/<code>scalar</code>/
+<code>ProjectivePoint::add</code>/<code>sign_digest</code> on riscv32 at O3/<code>s</code>/<code>z</code>, and riscv32 O3 counts equal to
+D-227’s “before” column (<code>fp256::add</code> 5, <code>multiply</code> 33, <code>fp512</code> add/sub/multiply 9/8/35,
+<code>ProjectivePoint::add</code> 31/32, <code>scalar257::multiply</code> 52).</li>
+<li><code>d438bec</code> (before T-290): 147 failures, among them the zero rows <code>fp256</code>/<code>fp512::add</code> (1 jump on
+x86_64/aarch64/thumbv7em, D-225’s <code>jne</code> around <code>addq $435</code>), <code>ProjectivePoint::add</code> (3, riscv32
+37/32), and <code>gf2m163</code>/<code>gf2m257::multiply</code> 2 instead of 1 on every O3 target with the
+<code>curve257</code> ladder at 30 instead of 4 (the inlined gf2m branch).</li>
+<li><code>7ddfb18</code> (before T-273): 171 failures; <code>poly_mul_wide</code> did not exist yet, so its rows fail as
+“no symbol”. T-273’s own bug was a secret-indexed table read, not a branch: this check does not
+see memory-access patterns at all (D-19’s documented exception is out of its scope too).</li>
+</ul>
+<h2 id="d-230-t-292-follow-up---a-gf2m-multiply-count-row-and-fmt-for-the-xtask-workspace-2026-09-26"><a class="header" href="#d-230-t-292-follow-up---a-gf2m-multiply-count-row-and-fmt-for-the-xtask-workspace-2026-09-26">D-230: T-292 follow-up - a <code>gf2m</code> <code>multiply</code> count row and <code>fmt</code> for the <code>xtask</code> workspace (2026-09-26)</a></h2>
+<p>Owner, 2026-09-26: “your choice” on both open questions from T-292’s session state. Decided by
+safety first (the delegated-forks rule), recorded here.</p>
+<p><strong>(1) Exact-count rows for <code>gf2m163</code>/<code>gf2m257</code> <code>FieldElement::multiply</code> only</strong> (<code>EXACT_JUMPS</code> in
+<code>xtask/src/asm_check.rs</code>, 16 rows: 2 symbols x 8 cells). D-229 dropped all counts, which left
+T-290’s own regression (the <code>poly_mul_wide</code> mask turning back into a per-bit branch) uncaught:
+<code>multiply</code> keeps public loop jumps, so it cannot be a zero-jump row. One symbol pair keeps D-229’s
+cost small (a rustc bump that reshapes this loop needs one re-read of one function) and covers the
+branch that has actually happened. Counts are D-229’s audited values at rustc 1.97.1 (x86_64/
+aarch64/thumb O3: 1; thumb <code>s</code>/<code>z</code>: 3; riscv32 O3: 2, <code>s</code>: 4, <code>z</code>: 5); <code>dstu-core/src</code> is unchanged
+since that audit. Any other count, a missing or an ambiguous symbol fails. Other symbols with
+public jumps stay uncounted (D-229 unchanged).</p>
+<ul>
+<li>Tests: a unit test first (<code>exact_jumps_row_fails_on_any_other_count</code>, seen failing to compile,
+then passing); real run green (112 zero-jump + 16 exact rows); mutation: dropping the
+<code>black_box</code> in <code>gf2m163::poly_mul_wide</code> fails x86_64/aarch64/thumb O3 (2 jumps, expected 1)
+and riscv32 <code>s</code> (3, expected 4).</li>
+</ul>
+<p><strong>(2) <code>cargo xtask fmt [--check]</code> and <code>rust.yml</code> also run <code>cargo fmt --manifest-path xtask/Cargo.toml --all</code>.</strong> <code>xtask</code> is its own workspace, so <code>--all</code> never reached it; that is how
+T-294’s drift got in. Checked: <code>fmt --check</code> exits 1 on a misformatted <code>xtask</code> line and 0 after
+restoring it. The <code>rust.yml</code> step is unverified in CI (embargo, D-224/D-226).</p>
+<h2 id="d-231-uapki-203-as-a-second-oracle-for-the-kalyna-gcmgmacccmcmac-vectors-2026-10-03"><a class="header" href="#d-231-uapki-203-as-a-second-oracle-for-the-kalyna-gcmgmacccmcmac-vectors-2026-10-03">D-231: UAPKI 2.0.3 as a second oracle for the Kalyna GCM/GMAC/CCM/CMAC vectors (2026-10-03)</a></h2>
+<p><strong>Context.</strong> UAPKI rewrote its GCM/GMAC/CCM to the DSTU 7624:2014 text in uapkic 2.0.3 (<code>deffe4a</code>,
+2026-09-29), after our D-207 report. Before that, BC 1.85 could not confirm partial-block CCM
+(D-204/D-205), so 21 CCM edge cases with a non-empty AAD were “std transcription only”. Owner,
+2026-10-03: add UAPKI 2.0.3 as an oracle, as a manual harness (not a CI layer).</p>
+<p><strong>Result.</strong> <code>tests/oracle-harness/uapki-kalyna-modes/</code> (C harness + Python driver, pinned to UAPKI
+<code>main</code> <code>0bf2b68</code>) runs every <code>kalyna-{gcm,gmac,ccm,cmac}</code> vector file: 78/93 identical. All 15
+differences are CCM with an empty AAD: same ciphertext, different tag, because UAPKI reads §13.2’s
+“B = G1” literally where we read <code>T(G1)</code> (D-205 (b), which BC 1.85 shares). The 21 non-empty-AAD
+CCM edge cases are now marked “std transcription + UAPKI 2.0.3”. All GCM/GMAC partial-block vectors
+(D-204) and both CMAC paths match too. Empty CMAC input is rejected by us and accepted by UAPKI, so
+no vector covers it. <code>dstu7624_self_test</code> passes on that build (annex examples, incl. XTS/KW).</p>
+<p><strong>Independence.</strong> Partial. UAPKI’s rewrite came after our report, which described only the empty
+GCM/GMAC input and empty CMAC, not CCM and not the padding/length rules. Our fixed code was never
+public (embargo), so it could not have been copied. Its comments cite the standard’s own formulas.
+Treat it as a second transcription of the same text, not as an unrelated oracle: it confirms our
+reading where the two agree, and the empty-AAD CCM case remains a reading question (D-205 (b)).</p>
 
                     </main>
 

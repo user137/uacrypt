@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-522a1f90.js";
+            window.path_to_searchindex_js = "searchindex-2f1b0718.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -541,7 +541,7 @@ doesn’t need re-deriving from the table alone next time.</p>
 <tr><td><code>crypto_sign</code> sign/verify</td><td><code>hazmat::dstu4145</code> + <code>crypto_sign</code></td><td>Done</td></tr>
 <tr><td><code>crypto_sign</code> keypair generation</td><td><code>SigningKey::generate()</code></td><td>Done (T-122, D-72)</td></tr>
 <tr><td><code>crypto_kem</code>/ML-KEM768 (post-quantum)</td><td>none</td><td>Explicitly out of scope, D-08’s spirit - recorded so it isn’t rediscovered</td></tr>
-<tr><td><code>crypto_pwhash</code> (+ <code>_str</code>/<code>_str_verify</code>)</td><td><code>crypto_pwhash</code> (Argon2id)</td><td>Done - <code>hash_password</code> already returns the same opaque-string shape as <code>_str</code></td></tr>
+<tr><td><code>crypto_pwhash</code> (+ <code>_str</code>/<code>_str_verify</code>)</td><td><code>crypto_pwhash</code> (Argon2id)</td><td>Done - <code>hash_password</code> already returns the same opaque-string shape as <code>_str</code>; <code>derive_key</code> is <code>crypto_pwhash</code> itself (T-262, D-219)</td></tr>
 <tr><td><code>crypto_kdf</code></td><td><code>crypto_kdf</code> (Kupyna-KDF)</td><td>Done</td></tr>
 <tr><td><code>crypto_kdf_hkdf_*</code> (RFC 5869 HKDF)</td><td>none</td><td>No DSTU angle - not scheduled (see stale-claim correction below)</td></tr>
 <tr><td><code>crypto_kx</code></td><td>none</td><td>Not started (T-47); the DSTU 9041 curve primitive now exists (T-177), design work not started</td></tr>

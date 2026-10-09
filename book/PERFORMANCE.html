@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-522a1f90.js";
+            window.path_to_searchindex_js = "searchindex-2f1b0718.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -476,6 +476,10 @@ without it, the key schedule is expanded once before the loop, matching <code>Ex
 library’s own key-setup-once convention) — this amortizes the one-time process startup over many
 operations rather than spawning a process per operation, which would measure OS process creation,
 not crypto.</p>
+<p>Since 0.5.0 (T-255) the everyday commands’ <code>--help</code> no longer lists <code>--iterations</code>
+(<code>sign</code>/<code>verify</code>/<code>box-seal</code>/<code>box-open</code>, either curve); the flag is still
+accepted there and still prints <code>iterations=... total_ns=... per_op_ns=... ops_per_s=...</code> to stderr.
+The lower-level <code>kalyna-*</code>/<code>kupyna-digest</code>/<code>strumok-crypt</code> help keeps documenting it.</p>
 <p><strong>Machines</strong>: both the Ryzen 5 PRO 4650U dev machine and the Raspberry Pi 5 (see “Methodology”
 above) now have <code>uacrypt</code> plus a CLI wrapper for UAPKI built; outspace’s Strumok wrapper is built
 on both too. Oliynykov’s reference C stays excluded from these tables — a deliberate, unchanged
@@ -737,6 +741,12 @@ sometimes by a wide margin (256-256: 18.12 vs. 8.33, ~2.2x) — the reverse of C
 consistent with GCM/GHASH-style field-multiplication throughput being a different bottleneck than
 CCM’s per-call allocation cost. Byte-for-byte cross-checked against the real <code>uacrypt</code> binary before
 timing (unlike CCM, GCM’s wire format matches: same-length ciphertext, tag returned separately).</p>
+<p><strong>Superseded 2026-09-26 (T-273, <code>docs/DECISIONS.md</code> D-223):</strong> the comb below indexed its table with
+the secret GHASH key and was replaced by a masked constant-time multiply, 1.2-1.4x slower on the
+multiply alone (in-process diagnostic, D-223’s table). No binary-level number: both measurement
+machines have hardware clmul, so <code>uacrypt</code> never runs the software path there. The GCM numbers
+below predate the clmul dispatch (T-198) and were measured on the comb: historical, they describe
+no current configuration.</p>
 <p><strong>Root-caused and fixed 2026-07-26, <code>docs/TASKS.md</code> T-125, <code>docs/DECISIONS.md</code> D-76</strong>: an isolated timing
 diagnostic (<code>hazmat::gf2m_wide</code>’s <code>field_axiom_tests::isolated_timing_*</code>, comparing
 <code>Gf2m*::multiply</code> in isolation against a single <code>ExpandedKey::encrypt_block</code>) measured the field
@@ -1382,6 +1392,35 @@ per call) dominating UAPKI’s own XTS throughput at scale, worse for smaller bl
 message), the opposite direction from this project’s now-fixed per-multiply cost (which no longer
 depends on block count at all, only on <code>m</code>).</p>
 <p><strong>Reproducing</strong>: <code>target/release/uacrypt kalyna-xts encrypt --variant &lt;v&gt; --key &lt;path&gt; --tweak &lt;path&gt; --in &lt;path&gt; --out &lt;path&gt; --iterations &lt;N&gt;</code>.</p>
+<p><strong>T-282 (2026-09-26): <code>double()</code>’s reduction moved from <code>if top_bit == 1</code> to a mask.</strong> A
+constant-time hygiene change, not a speed change. Release <code>uacrypt</code> before and after (the only
+difference is this change), 100 MiB random input, <code>--iterations 3</code>, runs interleaved
+before/after, 3 rounds. Machine: Ryzen 5 PRO 4650U, on AC, Windows “Balanced” plan, 1.7 GHz
+reported, the same state as the 2026-09-25 review (absolute numbers sit below this section’s
+older baselines, so compare only within these rows). MB/s per round:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variant, direction</th><th>before</th><th>after</th></tr>
+</thead>
+<tbody>
+<tr><td>128-128 encrypt</td><td>105.8 / 192.9 / 182.1</td><td>103.6 / 215.3 / 200.0</td></tr>
+<tr><td>128-128 decrypt</td><td>104.6 / 197.7 / 180.8</td><td>161.7 / 196.2 / 186.7</td></tr>
+<tr><td>256-256 encrypt</td><td>146.2 / 145.2 / 149.3</td><td>148.9 / 144.2 / 154.5</td></tr>
+<tr><td>256-256 decrypt</td><td>138.8 / 130.4 / 134.4</td><td>134.9 / 128.1 / 114.5</td></tr>
+<tr><td>512-512 encrypt</td><td>120.0 / 112.6 / 96.1</td><td>123.8 / 112.9 / 83.8</td></tr>
+<tr><td>512-512 decrypt</td><td>117.1 / 105.7 / 84.3</td><td>116.0 / 99.7 / 90.4</td></tr>
+</tbody>
+</table>
+</div>
+<p>No difference beyond the run-to-run spread, and it goes in both directions (round 1 of 128-128 is a
+warm-up outlier in both binaries). That matches the asm (<code>--emit=asm</code>, <code>Kalyna*Xts::{en,de}crypt_in_place</code>):
+both before and after are branch-free at the reduction. x86_64 uses <code>xorq</code> + <code>testq</code> + <code>cmovns</code>/<code>cmovs</code>. thumbv7em-none-eabihf
+uses <code>it mi</code> + <code>eormi</code>. After the change LLVM folds the <code>x^0</code> term into the shift itself: the top bit
+is rotated into bit 0, so the immediates become 134/1060/292 instead of 135/1061/293. The change
+makes the property hold in the source, so it no longer depends on the backend (a target without
+<code>cmov</code> or predication could have branched on the old <code>if</code>). No criterion bench exists for XTS; none
+was added.</p>
 <h3 id="10-mib-re-measurement-pass-t-125-follow-up-requested-2026-07-26"><a class="header" href="#10-mib-re-measurement-pass-t-125-follow-up-requested-2026-07-26">10 MiB re-measurement pass (T-125 follow-up, requested 2026-07-26)</a></h3>
 <p>Every mode whose input length isn’t inherently capped was re-measured at 10 MiB (<code>--iterations 50</code>)
 specifically to push past any remaining per-call setup-cost noise and confirm the numbers above are
@@ -2323,6 +2362,12 @@ is our EC math” vs. “how fast is a real seal/open call”).</p>
 <p><strong>The full-operation numbers below predate T-248 (2026-09-23).</strong> Since T-248, <code>open</code> recomputes the
 recipient’s public key (one extra scalar multiplication), so the <code>box-open</code>/<code>box-open512</code> rows are
 optimistic until they are re-measured. The raw scalar-multiplication table is unaffected.</p>
+<p><strong>All numbers in this section also predate T-290 (2026-09-26, <code>docs/DECISIONS.md</code> D-225).</strong> The
+<code>fp256</code>/<code>fp512</code> masks now pass through <code>black_box</code> so that they cannot compile to branches. That
+costs about 1.57x (<code>crypto_box</code>) and 1.19x (<code>crypto_box512</code>) per seal/open, in an in-process
+diagnostic on the dev machine. Every table here, the raw scalar-multiplication one included, is
+optimistic until re-measured. <strong>T-291 (D-227) adds about 2x more on x86_64</strong> (bitwise carries in
+<code>hazmat::limb</code>): about 3.1x (<code>crypto_box</code>) and 2.3x (<code>crypto_box512</code>) against these tables in total.</p>
 <p><strong>T-194 (2026-08-08) extends both tables to <code>crypto_box512</code>/<code>l(p)=512</code> (E512/1, T-193) alongside the
 original <code>crypto_box</code>/<code>l(p)=256</code> numbers, and both curve sizes were re-measured fresh in the same
 sitting</strong> — the <code>l(p)=256</code> numbers below are <em>not</em> T-179’s original figures spliced in; several
@@ -2497,11 +2542,13 @@ openssl cms -encrypt -binary -recip ec512.crt -aes-256-cbc -in payload.bin -out 
 openssl cms -decrypt -binary -inkey ec512.key -recip ec512.crt -in payload512.p7 -inform DER -out payload512.dec
 # uacrypt side, same payload, one process, N iterations built in:
 target/release/uacrypt box-keygen --out box256.key &amp;&amp; target/release/uacrypt box-pubkey --key box256.key --out box256.pub
-target/release/uacrypt box-keygen512 --out box512.key &amp;&amp; target/release/uacrypt box-pubkey512 --key box512.key --out box512.pub
+target/release/uacrypt box-keygen512 --out box512.key &amp;&amp; target/release/uacrypt box-pubkey --key box512.key --out box512.pub
 target/release/uacrypt box-seal --key box256.pub --in payload.bin --out payload256.box --iterations 3
 target/release/uacrypt box-open --key box256.key --in payload256.box --out payload256.unbox --iterations 3
-target/release/uacrypt box-seal512 --key box512.pub --in payload.bin --out payload512.box --iterations 3
-target/release/uacrypt box-open512 --key box512.key --in payload512.box --out payload512.unbox --iterations 3
+target/release/uacrypt box-seal --key box512.pub --in payload.bin --out payload512.box --iterations 3
+target/release/uacrypt box-open --key box512.key --in payload512.box --out payload512.unbox --iterations 3
+# (recorded with 0.4's `box-pubkey512`/`box-seal512`/`box-open512`; since 0.5.0, T-257, the plain
+# commands read the curve from the key and run the same code)
 </code></pre>
 <h4 id="where-the-gap-actually-comes-from-symmetric-layer-decomposition--t-194-follow-up-owner-requested"><a class="header" href="#where-the-gap-actually-comes-from-symmetric-layer-decomposition--t-194-follow-up-owner-requested">Where the gap actually comes from: symmetric-layer decomposition — T-194 follow-up (owner-requested)</a></h4>
 <p>The two tables above answer “how much slower” but not “at which layer” — owner-requested follow-up,
