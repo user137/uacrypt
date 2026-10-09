@@ -8412,7 +8412,7 @@ which is exactly why the divergence was never caught.
   (`kalyna-cmac`). After T-234: decide whether hazmat rejects empty input (check first that no KAT
   in `tests/vectors/` uses an empty message). Also record in `docs/ORACLES.md` that the non-aligned
   CMAC path (`0x80` + `E(1)`) has UAPKI as its only oracle, since BC throws on it.
-- [ ] **T-237** (**re-scoped 2026-09-23, optional**: BC 1.85 is documented as *not* an oracle for partial-block GCM/GMAC/CCM (D-204/D-205); the remaining value is a harness that pins `docs/COMPATIBILITY.md`'s BC column so a BC change is noticed) (oracle infra, from the BC cross-check) Vendor `org/bouncycastle/crypto/modes/
+- [ ] **T-237** (**after 1.0 (owner 2026-10-09).** **re-scoped 2026-09-23, optional**: BC 1.85 is documented as *not* an oracle for partial-block GCM/GMAC/CCM (D-204/D-205); the remaining value is a harness that pins `docs/COMPATIBILITY.md`'s BC column so a BC change is noticed) (oracle infra, from the BC cross-check) Vendor `org/bouncycastle/crypto/modes/
   KGCMBlockCipher.java` and `crypto/macs/KGMac.java` (plus the `modes/kgcm/*` multipliers if needed
   for readability) into `oracles/bouncycastle-java`, and the .NET equivalents into
   `oracles/bouncycastle-dotnet`; update the "not present" statements (`docs/DECISIONS.md` ~1991,
@@ -8660,7 +8660,7 @@ replace a DSTU primitive.
 
 ### Tasks added 2026-09-23
 
-- [ ] **T-250** (**downgraded 2026-09-23, see Owner decisions: no `migrate`, no fixtures; the 0.3.x release binaries stay available for decrypting old data**) Legacy read / migration path for data written by
+- [x] **T-250** (**closed 2026-10-09, won't do (owner): no migration.** **downgraded 2026-09-23, see Owner decisions: no `migrate`, no fixtures; the 0.3.x release binaries stay available for decrypting old data**) Legacy read / migration path for data written by
   <= 0.3.8. Deleting old binaries, or yanking before the new release can read the old format,
   would strand every file users encrypted with `uacrypt` <= 0.3.8 and every `secretbox` blob. Proposal:
   an explicit `uacrypt migrate --in old --out new` in 0.4.0 that decrypts the old format behind a
@@ -9264,7 +9264,7 @@ plan):
 - [ ] **T-269** Binding gate for T-262 and T-265, one pass: wire `crypto_pwhash::derive_key`
   and T-265's streaming `crypto_box` API into the 8 bindings and `dstu-core-capi` (shared vectors `crates/dstu-core/tests/vectors/pwhash/derive_key.json`), and
   decide whether the bindings also read/write the passphrase file format (D-219).
-- [ ] **T-263** Text output (A1), only if the owner wants it.
+- [ ] **T-263** Text output (A1), only if the owner wants it. **After 1.0 (owner 2026-10-09).**
 
 Release:
 - [ ] **T-267** After the 0.5.0 release (owner request 2026-09-24): update the site - the
@@ -9982,7 +9982,32 @@ rewritten when the codec arrives. T-277's shared vectors guard the 9 parsers unt
    - then T-267.
 
 **0.6.0:** T-284 (core stream-file codec plus capi), then one binding pass moving every reader and
-writer onto it.
+writer onto it. Superseded in detail by the plan below.
+
+### 0.6.0 / 0.7.0 plan (owner-approved 2026-10-09)
+
+0.6.0 hardens what exists; 0.7.0 adds features. Order within each release is the owner's to change.
+
+**0.6.0, in order:**
+1. CI and test footing: T-288 (check what 0.4.0 left), T-289, T-231, T-277.
+2. T-284 core stream-file codec plus capi, then one binding pass onto it; closes T-274, T-276 and
+   T-275 (O-F: Java `close()` closes the sink - a behaviour change, Java package minor bump).
+3. Hygiene: T-242, T-244, T-283, T-281 (O-D: documented reserved no-op).
+4. Docs: T-246, T-280.
+
+**0.7.0, in order:**
+1. T-265 bounded-memory `box-seal`/`box-open` (new streaming `crypto_box` API) + T-269 binding gate
+   (incl. `crypto_pwhash::derive_key`).
+2. Perf after T-265: T-286, T-287, T-293.
+3. New primitives: T-253 (`kalyna_kw_p`, opens DSTU 9041 `l(p)=384`), T-254 (Kupyna-384).
+4. T-264 shell completions and man page.
+5. T-249 second audit pass, last.
+
+**Outside the versions:** T-267 (site, right after 0.5.0), T-295 (winget, after 0.5.0), T-247
+(upstream reports, owner go-ahead only).
+
+**After 1.0 (owner 2026-10-09):** T-237 (BC harness), T-263 (text/armor output). **Closed:** T-250
+(no migration; the 0.3.x binaries stay available for decrypting old data).
 
 **Owner, 2026-10-08: 0.5.0 ships as it stands** (the day 0.4.0 shipped). Moved to 0.6.0, still
 open: T-242/T-246 leftovers, T-283, T-277, T-265 + T-287, T-286, T-264, T-269, T-274/T-275/T-276,
