@@ -9995,9 +9995,11 @@ on the Pi); `cargo xtask test` 146 suites green, `cargo clippy --workspace --all
 `.claude/disclosure-drafts/advisory_050.md`, not yet created on GitHub.
 
 **RELEASE-DAY HANDOFF (2026-10-08, saved before a context compact) - read this first.**
-- **NEXT STEP (2026-10-09):** start 0.5.0 - show the owner `.claude/disclosure-drafts/advisory_050.md`
-  (GHSA #3) for text approval, then follow the 0.5.0 bullet below. Working tree: `ux-0.5.0`, clean,
-  head = this commit; `master` = `39fdb53` = `v0.4.0`.
+- **NEXT STEP (2026-10-09):** GHSA #3 text approved, draft created: GHSA-4644-j77c-h3hg (payload
+  `.claude/disclosure-drafts/ghsa3.json`); CVE request still the owner's call. CHANGELOG finalized
+  as `[0.5.0] - 2026-10-09` (change the date if the tag slips) and cites it; `docs/CLI.md` has the
+  cosign v2 note. Next: fetch, rebuild the gh-pages marker, then the push/tag steps below.
+  `master` = `39fdb53` = `v0.4.0`.
 - **0.4.0: released and closed (2026-10-08/09).** Tag `v0.4.0` on `39fdb53` after all CI incl.
   Miri was green; release run 37761634603 green (npm needed a new `NPM_TOKEN` and one rerun).
   Live: crates.io 0.4.0, PyPI/npm/RubyGems 0.2.0 (npm without `win32-x64-msvc`, D-189). T-252

@@ -360,6 +360,9 @@ gh attestation verify uacrypt-linux-x86_64.tar.gz --repo user137/uacrypt \
 In step 3, `--source-ref` accepts only an asset built from that release tag, not from a branch; put
 your version there.
 
+Step 1 needs cosign v3, or cosign v2 with `--new-bundle-format` added: the bundle is in the newer
+Sigstore bundle format, and cosign v2 without that flag fails with "bundle does not contain cert".
+
 The binaries are built with `cargo auditable`, so `cargo audit bin uacrypt` checks the dependency
 versions compiled into a downloaded binary against the RustSec advisory database.
 

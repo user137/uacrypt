@@ -5,7 +5,9 @@ All notable changes to this project are documented in this file. Format follows
 
 ## [Unreleased]
 
-### Changed - `uacrypt` CLI, 0.5.0 (breaking, branch `ux-0.5.0`)
+## [0.5.0] - 2026-10-09
+
+### Changed - `uacrypt` CLI (breaking)
 
 - **Exit codes are split** (T-255, `docs/DECISIONS.md` D-211): 1 = the input was checked and
   rejected (authentication failure, bad signature, malformed data), 2 = usage error, 3 = a file or
@@ -121,7 +123,7 @@ All notable changes to this project are documented in this file. Format follows
 ### Security
 
 - **`crypto_pwhash::verify_password` checks the hash string before running Argon2** (0.5.0,
-  T-272, `docs/DECISIONS.md` D-222). It took the algorithm and costs from the string it was given,
+  GHSA-4644-j77c-h3hg, T-272, `docs/DECISIONS.md` D-222). It took the algorithm and costs from the string it was given,
   so a crafted string with a huge memory cost ended the calling process (an allocation abort,
   not a catchable error, also through the C ABI and every binding), and argon2d, version 0x10 and
   arbitrarily low or high costs were verified. Now only what libsodium verifies is accepted -
@@ -132,13 +134,13 @@ All notable changes to this project are documented in this file. Format follows
   Every binding now runs the shared `tests/vectors/pwhash/verify.json` cases through its own
   wrapper. The Python, npm and RubyGems packages carrying this fix are 0.3.0.
 - **Kalyna-GCM/GMAC's software GHASH no longer indexes a table with the secret key** (0.5.0,
-  T-273, `docs/DECISIONS.md` D-223). On `no_std` builds and CPUs without PCLMULQDQ/PMULL, the
+  GHSA-4644-j77c-h3hg, T-273, `docs/DECISIONS.md` D-223). On `no_std` builds and CPUs without PCLMULQDQ/PMULL, the
   field multiply read one of 16 table rows chosen by the GHASH key `H`, a cache-timing exposure
   for `crypto_secretbox`, `crypto_secretstream` and `crypto_box`. It is now a masked multiply,
   checked branch-free in release asm; output is unchanged, the software field multiply is
   1.2-1.4x slower.
 - **Secret-dependent branches removed from DSTU 4145 and DSTU 9041 field arithmetic** (0.5.0,
-  T-290, `docs/DECISIONS.md` D-225).
+  GHSA-4644-j77c-h3hg, T-290, `docs/DECISIONS.md` D-225).
   - The bit-mask selects in the source compiled to conditional branches. They branched on operand
     bits in the software GF(2^m) multiply behind `crypto_sign`/`crypto_sign257` (`no_std` builds
     and CPUs without PCLMULQDQ/PMULL). They also branched on whether a sum was at least `p` in the
@@ -148,7 +150,7 @@ All notable changes to this project are documented in this file. Format follows
   - `crypto_box` is about 1.57x slower and `crypto_box512` about 1.19x slower. The software
     GF(2^m) multiply is about 1.7x faster.
 - **Secret-dependent branches removed from 64-bit carry arithmetic on 32-bit RISC-V** (0.5.0,
-  T-291, `docs/DECISIONS.md` D-226/D-227).
+  GHSA-4644-j77c-h3hg, T-291, `docs/DECISIONS.md` D-226/D-227).
   - RV32 has no conditional select. On riscv32 (ESP32-C3 class, `no_std`), every carry and borrow
     in the 64-bit limb arithmetic compiled to a branch on limb data. That covered the prime-field
     add, sub and multiply behind `crypto_box`/`crypto_box512`, and the DSTU 4145 scalar add and
@@ -162,8 +164,7 @@ All notable changes to this project are documented in this file. Format follows
     branch back (`cargo xtask asm-check`, T-292, `docs/DECISIONS.md` D-229).
 - Kalyna-XTS tweak doubling (`gf2m_wide` `double()`) now applies its reduction under a mask
   instead of an `if` on the secret top bit. The compiled code was already branch-free on x86_64
-  and Cortex-M4; now the source guarantees it on every backend. Output is unchanged (T-282,
-  branch `ux-0.5.0`).
+  and Cortex-M4; now the source guarantees it on every backend. Output is unchanged (T-282).
 
 ## [0.4.0] - 2026-10-08
 
