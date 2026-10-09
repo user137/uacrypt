@@ -8383,7 +8383,9 @@ which is exactly why the divergence was never caught.
     -> T-248 -> uacrypt migrate (T-250) -> T-239 -> T-240 (capi only; binding signature updates in
     step 4) -> T-241 -> T-245a/b. Version 0.4.0 bump at release time, not per commit.
 - [x] **T-233** (**done 2026-10-08/09**: GHSA-j2w3-628p-qw92 and GHSA-wqmx-6fx4-jr5r published
-  2026-10-08 10:40 UTC, no CVE; RustSec PRs rustsec/advisory-db#3339/#3340 open, lint green,
+  2026-10-08 10:40 UTC, no CVE; RustSec PRs rustsec/advisory-db#3339/#3340 closed unmerged 2026-10-09 by a maintainer: the crate
+  fails RustSec's minimum notability criteria (so no RustSec PR for GHSA #3 either; retry only once
+  usage grows, then as one PR with one commit per advisory);
   `dstu-core` only - `uacrypt` named in the text; v0.4.0 release notes cite both) (F-01 follow-up,
   **owner-gated, outward-facing**) Disclosure + release for T-232:
   GitHub Security Advisory and a RUSTSEC advisory for `dstu-core`/`uacrypt`; release notes for the
@@ -10031,8 +10033,7 @@ on the Pi); `cargo xtask test` 146 suites green, `cargo clippy --workspace --all
   Live: crates.io 0.4.0, PyPI/npm/RubyGems 0.2.0 (npm without `win32-x64-msvc`, D-189). T-252
   verify commands run on the real assets: cosign `Verified OK` (cosign v2 needs
   `--new-bundle-format`; add that to `docs/CLI.md` in 0.5.0), checksums OK, attestations point at
-  `refs/tags/v0.4.0`. Advisories, RustSec and registry cleanup: T-233, T-251. Still open: watch
-  the RustSec PRs; Dependabot alert #3 (brace-expansion, dev-only npm lockfile) - merge its PR.
+  `refs/tags/v0.4.0`. Advisories, RustSec and registry cleanup: T-233, T-251. Still open: Dependabot alert #3 (brace-expansion, dev-only npm lockfile) - merge its PR.
 - **0.5.0 (`ux-0.5.0`, local only, embargo holds):** verified locally on 2026-10-08: asm-check
   (rustc 1.99: 112 zero-jump + 16 exact-count rows), the new `rust.yml` clippy steps incl. aarch64
   cross-clippy, xtask fmt/test, MSRV 1.87 build. Owner decided: GHSA #3 covers T-272, T-273,
