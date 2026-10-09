@@ -12,7 +12,7 @@ on:
 permissions:
   contents: read
 
-# A push while a previous run on the same branch is still in progress (e.g. the miri job below,
+# A push while a previous run on the same branch is still in progress (e.g. the miri jobs, now in miri.yml,
 # which can run long) now cancels the stale run instead of letting it pile up alongside the new
 # one - confirmed necessary 2026-07-23/24 after three concurrent miri runs (up to ~1h each) stacked
 # up across a few pushes in one session (docs/TASKS.md T-85's follow-up).
@@ -93,104 +93,6 @@ jobs:
       - run: cargo xtask build
       - run: cargo xtask test
 
-  miri:
-    name: cargo miri test (${{ matrix.package }})
-    runs-on: ubuntu-latest
-    # Split into a per-crate matrix (T-175/D-164) - previously one `--workspace` job/log covering
-    # all three crates, which is exactly why a stuck `dstu-core-capi` test (missing
-    # `#[cfg_attr(miri, ignore)]`, T-175) wasn't distinguishable from the rest of the run without
-    # manually picking the log apart. `fail-fast: false` so one crate's timeout/failure doesn't hide
-    # the other two crates' results in the same push.
-    # `dstu-core` itself moved out of this matrix into `miri-dstu-core` below (T-211/D-172) - its
-    # ~41-file test suite's real wall-clock total was measured (for the first time ever, via a
-    # sharded run's per-file timing) at ~9-10h, structurally unable to fit in one job even at
-    # GitHub-hosted runners' 360-min hard per-job cap. `uacrypt`/`dstu-core-capi` stay here: ~17min/
-    # ~12min respectively, comfortably one job each.
-    timeout-minutes: 360
-    strategy:
-      fail-fast: false
-      matrix:
-        package: [uacrypt, dstu-core-capi]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@nightly
-        with:
-          components: miri
-      # `+nightly` is required despite the nightly install above: rust-toolchain.toml pins
-      # `stable` repo-wide, which overrides rustup's default toolchain for any cargo invocation
-      # inside this checkout.
-      # MIRIFLAGS: proptest's failure-persistence lookup calls `getcwd`, which Miri's isolation
-      # blocks (pre-existing, cross-platform - T-81 hit the same thing on Windows dev). PROPTEST_CASES=1
-      # keeps every proptest suite in the workspace (spread across ~8 files with no shared naming
-      # convention to filter on) from making this job impractically slow under interpretation,
-      # while still exercising each one at least once under Miri rather than skipping them outright.
-      - run: cargo +nightly miri test -p ${{ matrix.package }}
-        env:
-          MIRIFLAGS: -Zmiri-disable-isolation
-          PROPTEST_CASES: 1
-
-  miri-dstu-core-discover:
-    name: discover dstu-core miri test targets
-    runs-on: ubuntu-latest
-    # Lists `crates/dstu-core/tests/*.rs` at run time so `miri-dstu-core` below always shards by
-    # whatever test files actually exist - a new test file (the next l(p) size, the next primitive)
-    # gets its own isolated shard automatically, with nobody needing to remember to add a line to
-    # this workflow (T-211/D-172). This job existing is itself the fix for the repeated-drift pattern
-    # (T-100 -> T-156 -> T-211) where a newly added EC-heavy test file kept silently reintroducing
-    # the old single-job timeout because nobody re-audited every file for `#[cfg_attr(miri,
-    # ignore)]` coverage before each push.
-    outputs:
-      targets: ${{ steps.list.outputs.targets }}
-    steps:
-      - uses: actions/checkout@v4
-      - id: list
-        run: |
-          targets=$(cd crates/dstu-core/tests && ls *.rs | sed 's/\.rs$//' | jq -R -s -c 'split("\n")[:-1]')
-          echo "targets=$targets" >> "$GITHUB_OUTPUT"
-
-  miri-dstu-core:
-    name: cargo miri test (dstu-core, ${{ matrix.target }})
-    needs: miri-dstu-core-discover
-    runs-on: ubuntu-latest
-    # One job per integration-test file (T-211/D-172) instead of one job for the whole crate -
-    # `fail-fast: false` so this run is also the first-ever real per-file timing data for this
-    # suite (the job never completed before, so no prior run could produce it). 360 min (GitHub-
-    # hosted runners' hard per-job cap) kept unchanged here for this landing rather than guessing a
-    # tighter number per shard - tighten once a full sharded run's real per-file times exist to set
-    # each shard's cap to ~2x its measured max, the same margin discipline D-103 already established
-    # for the old single-job cap.
-    timeout-minutes: 360
-    strategy:
-      fail-fast: false
-      matrix:
-        target: ${{ fromJson(needs.miri-dstu-core-discover.outputs.targets) }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@nightly
-        with:
-          components: miri
-      - run: cargo +nightly miri test -p dstu-core --test ${{ matrix.target }}
-        env:
-          MIRIFLAGS: -Zmiri-disable-isolation
-          PROPTEST_CASES: 1
-
-  miri-dstu-core-lib:
-    name: cargo miri test (dstu-core, lib)
-    runs-on: ubuntu-latest
-    # dstu-core's own unit tests (src/lib.rs and submodules) - not an integration-test file, so
-    # `miri-dstu-core-discover` above can't see it; measured at ~8.4min in the run that surfaced
-    # this whole split (T-211/D-172), kept at the same 360-min cap as its siblings for now.
-    timeout-minutes: 360
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@nightly
-        with:
-          components: miri
-      - run: cargo +nightly miri test -p dstu-core --lib
-        env:
-          MIRIFLAGS: -Zmiri-disable-isolation
-          PROPTEST_CASES: 1
-
   kani:
     name: cargo kani (gf2m163::reduce + dstu9041::fp256 proofs, D-102/T-177)
     runs-on: ubuntu-latest
@@ -225,7 +127,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@nightly
       - run: cargo install cargo-fuzz --locked
-      # Same rust-toolchain.toml override as the miri job above - `+nightly` is not optional here.
+      # Same rust-toolchain.toml override as the miri jobs in miri.yml - `+nightly` is not optional here.
       - run: cargo +nightly fuzz run ${{ matrix.target }} -- -max_total_time=60
         working-directory: crates/dstu-core
 
@@ -377,7 +279,7 @@ jobs:
       - uses: actions/checkout@v4
       # `dtolnay/rust-toolchain@1.87.0` installs 1.87.0 but does NOT make it active - this repo's
       # own `rust-toolchain.toml` pins `channel = "stable"` and silently overrides a bare `cargo`
-      # invocation regardless (the same T-85 gotcha the miri/fuzz jobs above already work around),
+      # invocation regardless (the same T-85 gotcha the miri (miri.yml) and fuzz jobs already work around),
       # so every step below says `cargo +1.87.0` explicitly.
       - uses: dtolnay/rust-toolchain@1.87.0
       # Build-only, both profiles (docs/DECISIONS.md D-69): the MSRV floor (`u64`/`usize::is_multiple_of`,

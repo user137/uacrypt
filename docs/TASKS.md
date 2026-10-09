@@ -9989,6 +9989,7 @@ writer onto it. Superseded in detail by the plan below.
 0.6.0 hardens what exists; 0.7.0 adds features. Order within each release is the owner's to change.
 
 **0.6.0, in order:**
+0. Done 2026-10-09: Miri split into `miri.yml`, runs on code changes + daily (D-232).
 1. CI and test footing: T-288 (check what 0.4.0 left), T-289, T-231, T-277.
 2. T-284 core stream-file codec plus capi, then one binding pass onto it; closes T-274, T-276 and
    T-275 (O-F: Java `close()` closes the sink - a behaviour change, Java package minor bump).

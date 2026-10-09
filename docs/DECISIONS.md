@@ -15286,3 +15286,18 @@ GCM/GMAC input and empty CMAC, not CCM and not the padding/length rules. Our fix
 public (embargo), so it could not have been copied. Its comments cite the standard's own formulas.
 Treat it as a second transcription of the same text, not as an unrelated oracle: it confirms our
 reading where the two agree, and the empty-AAD CCM case remains a reading question (D-205 (b)).
+
+## D-232: Miri runs on code changes and daily, not on every push (2026-10-09)
+
+**Decision (owner).** Miri moves out of `rust.yml` into its own `miri.yml`, which runs on a push or
+PR that touches `crates/**`, the root Cargo files, `rust-toolchain.toml` or `.cargo/**`, once a day
+(02:17 UTC) and on `workflow_dispatch`.
+
+**Why.** The Miri jobs take about two hours of runner time per push, and most pushes (docs,
+bindings, CI) change nothing Miri checks. The owner asked whether Miri could wait until the end of
+0.7.0; rejected because 0.6.0 rewrites the stream codec and the C ABI, the code where undefined
+behaviour is most likely, and a late finding would have to be bisected across two releases.
+
+**Rule kept.** Miri stays a required layer (`CLAUDE.md`). A green Miri run covering the code being
+tagged is still required before every release tag: either the latest `miri.yml` run is on or after
+the last code change, or start one with `gh workflow run miri.yml --ref master`.
