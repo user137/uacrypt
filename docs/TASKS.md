@@ -8382,7 +8382,10 @@ which is exactly why the divergence was never caught.
   - **Commit split for step 2** (proposed): fixtures -> T-238 -> T-232 core (secretbox, secretstream)
     -> T-248 -> uacrypt migrate (T-250) -> T-239 -> T-240 (capi only; binding signature updates in
     step 4) -> T-241 -> T-245a/b. Version 0.4.0 bump at release time, not per commit.
-- [ ] **T-233** (F-01 follow-up, **owner-gated, outward-facing**) Disclosure + release for T-232:
+- [x] **T-233** (**done 2026-10-08/09**: GHSA-j2w3-628p-qw92 and GHSA-wqmx-6fx4-jr5r published
+  2026-10-08 10:40 UTC, no CVE; RustSec PRs rustsec/advisory-db#3339/#3340 open, lint green,
+  `dstu-core` only - `uacrypt` named in the text; v0.4.0 release notes cite both) (F-01 follow-up,
+  **owner-gated, outward-facing**) Disclosure + release for T-232:
   GitHub Security Advisory and a RUSTSEC advisory for `dstu-core`/`uacrypt`; release notes for the
   PyPI/npm/RubyGems packages. Affected range: every published version with the GCM-based secretbox
   (`db10345`, T-37) / secretstream (`2950c62`, T-40) - confirm with `git tag --contains` on both
@@ -8666,7 +8669,13 @@ replace a DSTU primitive.
   wants it there. Tied to Q1. Tests: an old-format golden file (generated with 0.3.8 and committed)
   migrates; a V6-tampered old file migrates *with* the warning (it cannot be detected - say so);
   the new format never accepts old bytes.
-- [ ] **T-251** (**owner-gated, destructive/outward-facing - confirm every step separately**)
+- [x] **T-251** (**done 2026-10-09**, verified on the live registry APIs: crates.io `dstu-core`
+  and `uacrypt` 0.3.0-0.3.8 yanked; PyPI 0.1.0/0.1.1 yanked; npm `dstu-core` + 3 platform packages
+  `<0.2.0` deprecated with the GHSA message. **Not done, owner decision:** RubyGems `dstu_core`
+  0.1.0 - `gem yank` refuses versions older than 30 days ("contact RubyGems support"); left as is,
+  GHSA-j2w3 covers RubyGems `< 0.2.0`. GitHub banners on v0.1.0-v0.3.8 not added (owner did not
+  pick that step). Gotcha: a crates.io token needs the `yank` scope explicitly, `publish-update`
+  alone gets 403) (**owner-gated, destructive/outward-facing - confirm every step separately**)
   Registry and GitHub cleanup, **only after** 0.4.0 plus the binding releases are live (T-250 was
   downgraded, so keep the 0.3.x release assets: they are the documented way to decrypt old data). Published state as checked 2026-09-23:
   - **crates.io**: `dstu-core` and `uacrypt` 0.3.0-0.3.8, none yanked (0.1/0.2 were never
@@ -9986,18 +9995,13 @@ on the Pi); `cargo xtask test` 146 suites green, `cargo clippy --workspace --all
 `.claude/disclosure-drafts/advisory_050.md`, not yet created on GitHub.
 
 **RELEASE-DAY HANDOFF (2026-10-08, saved before a context compact) - read this first.**
-- **0.4.0 state:** `master` and `gh-pages` are pushed (owner ran the push; `master` = `39fdb53`:
-  UAPKI 2.0.3 column, CHANGELOG `[0.4.0] - 2026-10-08` with GHSA IDs and no CVE, clippy 1.99 fix,
-  Ruby Gemfile.lock 0.2.0, T-288 oracle-harness skip, two clang-tidy NOLINTs). CI on `39fdb53`: all
-  green except `rust` run 37741580319, still in its Miri jobs (no failure so far).
-  **Not done yet: tag `v0.4.0`.** Owner decision: tag only after that `rust` run is green. The tag
-  goes on `39fdb53` and publishes crates.io immediately (no approval); PyPI/npm/RubyGems wait for
-  the owner's environment approval. `NPM_TOKEN` dates from 2026-08-12 - may have expired.
-- **After the tag, in order (each outward step confirmed):** approve environments -> publish
-  GHSA-j2w3-628p-qw92 and GHSA-wqmx-6fx4-jr5r (texts final; wqmx's live text has no stray comment,
-  owner chose "no names", unchanged) -> RustSec PR -> verify live registry pages + T-252 verify
-  commands on the real assets -> T-251. Dependabot alert #3 (brace-expansion, dev-only npm
-  lockfile) - merge its PR after the release.
+- **0.4.0: released and closed (2026-10-08/09).** Tag `v0.4.0` on `39fdb53` after all CI incl.
+  Miri was green; release run 37761634603 green (npm needed a new `NPM_TOKEN` and one rerun).
+  Live: crates.io 0.4.0, PyPI/npm/RubyGems 0.2.0 (npm without `win32-x64-msvc`, D-189). T-252
+  verify commands run on the real assets: cosign `Verified OK` (cosign v2 needs
+  `--new-bundle-format`; add that to `docs/CLI.md` in 0.5.0), checksums OK, attestations point at
+  `refs/tags/v0.4.0`. Advisories, RustSec and registry cleanup: T-233, T-251. Still open: watch
+  the RustSec PRs; Dependabot alert #3 (brace-expansion, dev-only npm lockfile) - merge its PR.
 - **0.5.0 (`ux-0.5.0`, local only, embargo holds):** verified locally on 2026-10-08: asm-check
   (rustc 1.99: 112 zero-jump + 16 exact-count rows), the new `rust.yml` clippy steps incl. aarch64
   cross-clippy, xtask fmt/test, MSRV 1.87 build. Owner decided: GHSA #3 covers T-272, T-273,
