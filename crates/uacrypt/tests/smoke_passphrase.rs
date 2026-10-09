@@ -128,6 +128,10 @@ fn assert_code(r: &support::Run, code: i32, needle: &str) {
 // --- Happy path -------------------------------------------------------------------------------
 
 #[test]
+#[cfg_attr(
+    miri,
+    ignore = "spawns the real uacrypt binary - Miri cannot run a subprocess"
+)]
 fn round_trip_empty_one_chunk_and_multi_chunk() {
     let dir = TempDir::new("pp_round_trip");
     write_bytes(&dir.file("pass"), b"correct horse battery staple\n");
@@ -145,6 +149,10 @@ fn round_trip_empty_one_chunk_and_multi_chunk() {
 }
 
 #[test]
+#[cfg_attr(
+    miri,
+    ignore = "spawns the real uacrypt binary - Miri cannot run a subprocess"
+)]
 fn uacrypt_output_matches_the_format_description() {
     let dir = TempDir::new("pp_format_out");
     write_bytes(&dir.file("pass"), "пароль їжак".as_bytes());
@@ -156,6 +164,10 @@ fn uacrypt_output_matches_the_format_description() {
 }
 
 #[test]
+#[cfg_attr(
+    miri,
+    ignore = "spawns the real uacrypt binary - Miri cannot run a subprocess"
+)]
 fn a_file_built_from_the_format_description_decrypts() {
     let dir = TempDir::new("pp_format_in");
     write_bytes(&dir.file("pass"), b"hunter2 but longer");
@@ -170,6 +182,10 @@ fn a_file_built_from_the_format_description_decrypts() {
 }
 
 #[test]
+#[cfg_attr(
+    miri,
+    ignore = "spawns the real uacrypt binary - Miri cannot run a subprocess"
+)]
 fn two_encryptions_use_different_salts() {
     let dir = TempDir::new("pp_salts");
     write_bytes(&dir.file("pass"), b"same passphrase");
@@ -181,6 +197,10 @@ fn two_encryptions_use_different_salts() {
 }
 
 #[test]
+#[cfg_attr(
+    miri,
+    ignore = "spawns the real uacrypt binary - Miri cannot run a subprocess"
+)]
 fn line_ending_and_bom_do_not_change_the_passphrase() {
     let dir = TempDir::new("pp_line_endings");
     write_bytes(&dir.file("lf"), b"pass phrase\n");
@@ -198,6 +218,10 @@ fn line_ending_and_bom_do_not_change_the_passphrase() {
 }
 
 #[test]
+#[cfg_attr(
+    miri,
+    ignore = "spawns the real uacrypt binary - Miri cannot run a subprocess"
+)]
 fn stdin_to_stdout_round_trip() {
     use std::io::Write;
     use std::process::{Command, Stdio};
@@ -257,6 +281,10 @@ fn stdin_to_stdout_round_trip() {
 // --- Security & boundary ----------------------------------------------------------------------
 
 #[test]
+#[cfg_attr(
+    miri,
+    ignore = "spawns the real uacrypt binary - Miri cannot run a subprocess"
+)]
 fn wrong_passphrase_is_rejected_by_name_and_writes_nothing() {
     let dir = TempDir::new("pp_wrong");
     write_bytes(&dir.file("pass"), b"right");
@@ -269,6 +297,10 @@ fn wrong_passphrase_is_rejected_by_name_and_writes_nothing() {
 }
 
 #[test]
+#[cfg_attr(
+    miri,
+    ignore = "spawns the real uacrypt binary - Miri cannot run a subprocess"
+)]
 fn every_header_byte_is_checked() {
     let dir = TempDir::new("pp_header_flip");
     write_bytes(&dir.file("pass"), b"passphrase");
@@ -286,6 +318,10 @@ fn every_header_byte_is_checked() {
 }
 
 #[test]
+#[cfg_attr(
+    miri,
+    ignore = "spawns the real uacrypt binary - Miri cannot run a subprocess"
+)]
 fn unsupported_parameters_are_refused_before_any_argon2_work() {
     let dir = TempDir::new("pp_params");
     write_bytes(&dir.file("pass"), b"passphrase");
@@ -318,6 +354,10 @@ fn unsupported_parameters_are_refused_before_any_argon2_work() {
 }
 
 #[test]
+#[cfg_attr(
+    miri,
+    ignore = "spawns the real uacrypt binary - Miri cannot run a subprocess"
+)]
 fn truncated_header_is_rejected() {
     let dir = TempDir::new("pp_truncated");
     write_bytes(&dir.file("pass"), b"passphrase");
@@ -332,6 +372,10 @@ fn truncated_header_is_rejected() {
 }
 
 #[test]
+#[cfg_attr(
+    miri,
+    ignore = "spawns the real uacrypt binary - Miri cannot run a subprocess"
+)]
 fn key_file_and_passphrase_file_are_told_apart_by_name() {
     let dir = TempDir::new("pp_mixup");
     write_bytes(&dir.file("pass"), b"passphrase");
@@ -373,6 +417,10 @@ fn key_file_and_passphrase_file_are_told_apart_by_name() {
 }
 
 #[test]
+#[cfg_attr(
+    miri,
+    ignore = "spawns the real uacrypt binary - Miri cannot run a subprocess"
+)]
 fn passphrase_never_appears_in_output() {
     let dir = TempDir::new("pp_no_leak");
     write_bytes(&dir.file("pass"), b"Zq9-unique-passphrase");
@@ -388,6 +436,10 @@ fn passphrase_never_appears_in_output() {
 // --- Misuse -----------------------------------------------------------------------------------
 
 #[test]
+#[cfg_attr(
+    miri,
+    ignore = "spawns the real uacrypt binary - Miri cannot run a subprocess"
+)]
 fn flag_combinations_are_usage_errors() {
     let dir = TempDir::new("pp_flags");
     write_bytes(&dir.file("pass"), b"passphrase");
@@ -462,6 +514,10 @@ fn flag_combinations_are_usage_errors() {
 }
 
 #[test]
+#[cfg_attr(
+    miri,
+    ignore = "spawns the real uacrypt binary - Miri cannot run a subprocess"
+)]
 fn no_terminal_names_passphrase_file() {
     let dir = TempDir::new("pp_no_tty");
     write_bytes(&dir.file("pt"), b"message");
@@ -490,6 +546,10 @@ fn no_terminal_names_passphrase_file() {
 }
 
 #[test]
+#[cfg_attr(
+    miri,
+    ignore = "spawns the real uacrypt binary - Miri cannot run a subprocess"
+)]
 fn bad_passphrase_files_are_refused() {
     let dir = TempDir::new("pp_bad_files");
     write_bytes(&dir.file("pt"), b"message");
@@ -512,6 +572,10 @@ fn bad_passphrase_files_are_refused() {
 }
 
 #[test]
+#[cfg_attr(
+    miri,
+    ignore = "spawns the real uacrypt binary - Miri cannot run a subprocess"
+)]
 fn out_may_not_replace_the_passphrase_file() {
     let dir = TempDir::new("pp_out_is_pass");
     write_bytes(&dir.file("pass"), b"passphrase");
@@ -533,6 +597,10 @@ fn out_may_not_replace_the_passphrase_file() {
 // --- Error path -------------------------------------------------------------------------------
 
 #[test]
+#[cfg_attr(
+    miri,
+    ignore = "spawns the real uacrypt binary - Miri cannot run a subprocess"
+)]
 fn missing_passphrase_file_is_an_io_error() {
     let dir = TempDir::new("pp_missing");
     write_bytes(&dir.file("pt"), b"message");

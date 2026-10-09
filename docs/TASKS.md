@@ -9297,6 +9297,9 @@ Release:
   `d8aa1f0` run, `cargo miri test (uacrypt)` took 86+ min (31 min on 0.4.0) and
   `dstu9041_encryption_512` 80+ min still running (2 h 28 min on 0.4.0), with `PROPTEST_CASES: 1`
   already set.
+  - Found 2026-10-09: `tests/smoke_passphrase.rs` (T-262) had no `cfg_attr(miri, ignore)`, so Miri
+    ran Argon2id at the `Moderate` preset in-process; fixed in the same commit as this note. Re-measure
+    `uacrypt` after that before sharding.
   - Shard `uacrypt`'s Miri job by test target, as `miri-dstu-core` does (`miri.yml`, D-172).
   - Measure which tests dominate (a guess to check, not a finding: Argon2id passphrase tests at real
     costs in `uacrypt`'s lib tests; the masked 512-bit ladder since T-290/T-291) and give those a
