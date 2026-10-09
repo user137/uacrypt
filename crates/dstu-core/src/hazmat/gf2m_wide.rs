@@ -977,6 +977,7 @@ pub(crate) mod clmul_native {
     /// (`docs/TASKS.md` T-198).
     #[cfg(any(test, kani))]
     #[target_feature(enable = "aes")]
+    #[allow(clippy::cast_possible_truncation)] // low/high 64-bit halves of the product, by design
     unsafe fn clmul64_impl(a: u64, b: u64) -> (u64, u64) {
         let prod: u128 = vmull_p64(a, b);
         (prod as u64, (prod >> 64) as u64)
