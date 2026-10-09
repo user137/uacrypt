@@ -243,207 +243,209 @@
 <a href=#243 id=243 data-nosnippet>243</a><span class="doccomment">/// Constant-time conditional swap: swaps `a` and `b` in place when `swap == 1`, leaves both
 <a href=#244 id=244 data-nosnippet>244</a>/// unchanged when `swap == 0` - no branch, same word operations either way.
 <a href=#245 id=245 data-nosnippet>245</a></span><span class="kw">fn </span>cswap(swap: u64, a: <span class="kw-2">&amp;mut </span>FieldElement, b: <span class="kw-2">&amp;mut </span>FieldElement) {
-<a href=#246 id=246 data-nosnippet>246</a>    <span class="kw">let </span>mask = <span class="number">0u64</span>.wrapping_sub(swap);
-<a href=#247 id=247 data-nosnippet>247</a>    <span class="kw">for </span>i <span class="kw">in </span><span class="number">0</span>..<span class="number">3 </span>{
-<a href=#248 id=248 data-nosnippet>248</a>        <span class="kw">let </span>t = mask &amp; (a.<span class="number">0</span>[i] ^ b.<span class="number">0</span>[i]);
-<a href=#249 id=249 data-nosnippet>249</a>        a.<span class="number">0</span>[i] ^= t;
-<a href=#250 id=250 data-nosnippet>250</a>        b.<span class="number">0</span>[i] ^= t;
-<a href=#251 id=251 data-nosnippet>251</a>    }
-<a href=#252 id=252 data-nosnippet>252</a>}
-<a href=#253 id=253 data-nosnippet>253</a>
-<a href=#254 id=254 data-nosnippet>254</a><span class="doccomment">/// Constant-time "is this field element zero" test: an all-ones mask if so, all-zeros otherwise.
-<a href=#255 id=255 data-nosnippet>255</a>/// The standard `x | wrapping_neg(x)` top-bit branchless zero test (for any nonzero `x`, either
-<a href=#256 id=256 data-nosnippet>256</a>/// `x` or `-x` has its sign bit set in two's-complement; for `x == 0` neither does), applied to
-<a href=#257 id=257 data-nosnippet>257</a>/// the OR of all 3 limbs (any single nonzero limb makes the whole element nonzero) - `docs/
-<a href=#258 id=258 data-nosnippet>258</a>/// DECISIONS.md` D-110 (T-152).
-<a href=#259 id=259 data-nosnippet>259</a></span><span class="kw">fn </span>is_zero_mask(a: FieldElement) -&gt; u64 {
-<a href=#260 id=260 data-nosnippet>260</a>    <span class="kw">let </span>combined = a.<span class="number">0</span>[<span class="number">0</span>] | a.<span class="number">0</span>[<span class="number">1</span>] | a.<span class="number">0</span>[<span class="number">2</span>];
-<a href=#261 id=261 data-nosnippet>261</a>    <span class="kw">let </span>is_nonzero = (combined | combined.wrapping_neg()) &gt;&gt; <span class="number">63</span>;
-<a href=#262 id=262 data-nosnippet>262</a>    <span class="number">0u64</span>.wrapping_sub(<span class="number">1 </span>^ is_nonzero)
-<a href=#263 id=263 data-nosnippet>263</a>}
-<a href=#264 id=264 data-nosnippet>264</a>
-<a href=#265 id=265 data-nosnippet>265</a><span class="doccomment">/// Constant-time select: returns `if_mask` when `mask` is all-ones, `otherwise` when all-zeros -
-<a href=#266 id=266 data-nosnippet>266</a>/// same XOR-and-mask shape as `cswap`'s swap above, specialized to a one-sided select
-<a href=#267 id=267 data-nosnippet>267</a>/// (`docs/DECISIONS.md` D-110, T-152).
-<a href=#268 id=268 data-nosnippet>268</a></span><span class="kw">fn </span>select(mask: u64, if_mask: FieldElement, otherwise: FieldElement) -&gt; FieldElement {
-<a href=#269 id=269 data-nosnippet>269</a>    <span class="kw">let </span><span class="kw-2">mut </span>out = [<span class="number">0u64</span>; <span class="number">3</span>];
-<a href=#270 id=270 data-nosnippet>270</a>    <span class="kw">for </span>((out_limb, a), b) <span class="kw">in </span>out.iter_mut().zip(if_mask.<span class="number">0</span>.iter()).zip(otherwise.<span class="number">0</span>.iter()) {
-<a href=#271 id=271 data-nosnippet>271</a>        <span class="kw-2">*</span>out_limb = b ^ (mask &amp; (a ^ b));
-<a href=#272 id=272 data-nosnippet>272</a>    }
-<a href=#273 id=273 data-nosnippet>273</a>    FieldElement(out)
-<a href=#274 id=274 data-nosnippet>274</a>}
-<a href=#275 id=275 data-nosnippet>275</a>
-<a href=#276 id=276 data-nosnippet>276</a><span class="doccomment">/// López-Dahab projective point: `(X:Y:Z)` represents affine `(x, y) = (X/Z, Y/Z^2)` - **note the
-<a href=#277 id=277 data-nosnippet>277</a>/// asymmetric scaling** (`Y` by `Z^2`, not `Z`, unlike Jacobian coordinates). `Z == FieldElement::
-<a href=#278 id=278 data-nosnippet>278</a>/// ZERO` represents the point at infinity (any `X`/`Y` at that point are unconstrained - `to_affine`
-<a href=#279 id=279 data-nosnippet>279</a>/// checks `Z` first and never reads them). Used only by `verify_combine`'s default-profile fast
-<a href=#280 id=280 data-nosnippet>280</a>/// path below (`docs/DECISIONS.md` D-108) - public-data-only, never constant-time, never for a
-<a href=#281 id=281 data-nosnippet>281</a>/// secret scalar. `double`/`mixed_add` below are the explicit formulas "dbl-2005-dl"/"madd-2005-dl"
-<a href=#282 id=282 data-nosnippet>282</a>/// from the Bernstein/Lange Explicit-Formulas Database (`hyperelliptic.org/EFD/g12o/auto-shortw-
-<a href=#283 id=283 data-nosnippet>283</a>/// lopezdahab.html`), specialized to this curve's `a2 = 1` (the module's `a = 1` convention) -
-<a href=#284 id=284 data-nosnippet>284</a>/// their stated costs (4M+5S doubling, 8M+5S mixed addition) were independently re-derived by
-<a href=#285 id=285 data-nosnippet>285</a>/// listing every `multiply`/`square` call below and matched the database's own count exactly,
-<a href=#286 id=286 data-nosnippet>286</a>/// which is the actual correctness check for the transcription (this codebase has no local copy of
-<a href=#287 id=287 data-nosnippet>287</a>/// a citable textbook derivation to check against page numbers, only the differential proptest in
-<a href=#288 id=288 data-nosnippet>288</a>/// `tests/dstu4145_curve.rs` and this cost cross-check).
-<a href=#289 id=289 data-nosnippet>289</a></span><span class="attr">#[cfg(not(feature = <span class="string">"small-tables"</span>))]
-<a href=#290 id=290 data-nosnippet>290</a>#[derive(Clone, Copy)]
-<a href=#291 id=291 data-nosnippet>291</a></span><span class="kw">struct </span>ProjectivePoint {
-<a href=#292 id=292 data-nosnippet>292</a>    x: FieldElement,
-<a href=#293 id=293 data-nosnippet>293</a>    y: FieldElement,
-<a href=#294 id=294 data-nosnippet>294</a>    z: FieldElement,
-<a href=#295 id=295 data-nosnippet>295</a>}
-<a href=#296 id=296 data-nosnippet>296</a>
-<a href=#297 id=297 data-nosnippet>297</a><span class="attr">#[cfg(not(feature = <span class="string">"small-tables"</span>))]
-<a href=#298 id=298 data-nosnippet>298</a></span><span class="kw">impl </span>ProjectivePoint {
-<a href=#299 id=299 data-nosnippet>299</a>    <span class="kw">fn </span>from_affine(p: Point) -&gt; <span class="self">Self </span>{
-<a href=#300 id=300 data-nosnippet>300</a>        <span class="kw">match </span>p {
-<a href=#301 id=301 data-nosnippet>301</a>            Point::Infinity =&gt; ProjectivePoint {
-<a href=#302 id=302 data-nosnippet>302</a>                x: FieldElement::ONE,
-<a href=#303 id=303 data-nosnippet>303</a>                y: FieldElement::ONE,
-<a href=#304 id=304 data-nosnippet>304</a>                z: FieldElement::ZERO,
-<a href=#305 id=305 data-nosnippet>305</a>            },
-<a href=#306 id=306 data-nosnippet>306</a>            Point::Affine(x, y) =&gt; ProjectivePoint {
-<a href=#307 id=307 data-nosnippet>307</a>                x,
-<a href=#308 id=308 data-nosnippet>308</a>                y,
-<a href=#309 id=309 data-nosnippet>309</a>                z: FieldElement::ONE,
-<a href=#310 id=310 data-nosnippet>310</a>            },
-<a href=#311 id=311 data-nosnippet>311</a>        }
-<a href=#312 id=312 data-nosnippet>312</a>    }
-<a href=#313 id=313 data-nosnippet>313</a>
-<a href=#314 id=314 data-nosnippet>314</a>    <span class="doccomment">/// "dbl-2005-dl", `a2 = 1`: `A = Z1^2; B = b*A^2; C = X1^2; Z3 = A*C; X3 = C^2+B;
-<a href=#315 id=315 data-nosnippet>315</a>    /// Y3 = (Y1^2+Z3+B)*X3 + Z3*B` (the database's `a2*Z3` term is just `Z3` here, since `a2=1`).
-<a href=#316 id=316 data-nosnippet>316</a>    /// A point with affine `x = 0` (order-2 point) doubles to infinity automatically through this
-<a href=#317 id=317 data-nosnippet>317</a>    /// formula (`C = X1^2 = 0` forces `Z3 = A*C = 0`), matching the affine `double`'s explicit
-<a href=#318 id=318 data-nosnippet>318</a>    /// `x1 == ZERO` check above without needing a separate branch here.
-<a href=#319 id=319 data-nosnippet>319</a>    </span><span class="kw">fn </span>double(<span class="self">self</span>) -&gt; <span class="self">Self </span>{
-<a href=#320 id=320 data-nosnippet>320</a>        <span class="kw">if </span><span class="self">self</span>.z == FieldElement::ZERO {
-<a href=#321 id=321 data-nosnippet>321</a>            <span class="kw">return </span><span class="self">self</span>; <span class="comment">// doubling infinity is infinity
-<a href=#322 id=322 data-nosnippet>322</a>        </span>}
-<a href=#323 id=323 data-nosnippet>323</a>        <span class="kw">let </span>a = <span class="self">self</span>.z.square();
-<a href=#324 id=324 data-nosnippet>324</a>        <span class="kw">let </span>big_b = b().multiply(a.square());
-<a href=#325 id=325 data-nosnippet>325</a>        <span class="kw">let </span>c = <span class="self">self</span>.x.square();
-<a href=#326 id=326 data-nosnippet>326</a>        <span class="kw">let </span>z3 = a.multiply(c);
-<a href=#327 id=327 data-nosnippet>327</a>        <span class="kw">let </span>x3 = c.square() + big_b;
-<a href=#328 id=328 data-nosnippet>328</a>        <span class="kw">let </span>y3 = (<span class="self">self</span>.y.square() + z3 + big_b).multiply(x3) + z3.multiply(big_b);
-<a href=#329 id=329 data-nosnippet>329</a>        ProjectivePoint {
-<a href=#330 id=330 data-nosnippet>330</a>            x: x3,
-<a href=#331 id=331 data-nosnippet>331</a>            y: y3,
-<a href=#332 id=332 data-nosnippet>332</a>            z: z3,
-<a href=#333 id=333 data-nosnippet>333</a>        }
-<a href=#334 id=334 data-nosnippet>334</a>    }
-<a href=#335 id=335 data-nosnippet>335</a>
-<a href=#336 id=336 data-nosnippet>336</a>    <span class="doccomment">/// "madd-2005-dl", `a2 = 1`, `other` affine (`Z2 = 1`): `A = Y1+Y2*Z1^2; B = X1+X2*Z1;
-<a href=#337 id=337 data-nosnippet>337</a>    /// C = B*Z1; Z3 = C^2; D = X2*Z3; X3 = A^2+C*(A+B^2+C); Y3 = (D+X3)*(A*C+Z3)+(Y2+X2)*Z3^2`.
-<a href=#338 id=338 data-nosnippet>338</a>    /// Guarded ahead of the database's generic-case formula (which assumes neither operand is
-<a href=#339 id=339 data-nosnippet>339</a>    /// infinity and the two affine `x`-coordinates differ) for totality, not for attack
-<a href=#340 id=340 data-nosnippet>340</a>    /// resistance - `verify`'s final `r' == r` check (`signature.rs`) already closes off any
-<a href=#341 id=341 data-nosnippet>341</a>    /// benefit an attacker could get from steering the accumulator here; the guards exist because
-<a href=#342 id=342 data-nosnippet>342</a>    /// the formula is otherwise partial, on public data where an honest partial sum can
-<a href=#343 id=343 data-nosnippet>343</a>    /// structurally (if very rarely, ~2^-163) coincide with infinity or with the table point.
-<a href=#344 id=344 data-nosnippet>344</a>    </span><span class="kw">fn </span>mixed_add(<span class="self">self</span>, other: Point) -&gt; <span class="self">Self </span>{
-<a href=#345 id=345 data-nosnippet>345</a>        <span class="kw">let </span>(x2, y2) = <span class="kw">match </span>other {
-<a href=#346 id=346 data-nosnippet>346</a>            Point::Infinity =&gt; <span class="kw">return </span><span class="self">self</span>,
-<a href=#347 id=347 data-nosnippet>347</a>            Point::Affine(x, y) =&gt; (x, y),
-<a href=#348 id=348 data-nosnippet>348</a>        };
-<a href=#349 id=349 data-nosnippet>349</a>        <span class="kw">if </span><span class="self">self</span>.z == FieldElement::ZERO {
-<a href=#350 id=350 data-nosnippet>350</a>            <span class="kw">return </span>ProjectivePoint::from_affine(other);
-<a href=#351 id=351 data-nosnippet>351</a>        }
-<a href=#352 id=352 data-nosnippet>352</a>        <span class="kw">let </span>z1_sq = <span class="self">self</span>.z.square();
-<a href=#353 id=353 data-nosnippet>353</a>        <span class="kw">let </span>a = <span class="self">self</span>.y + y2.multiply(z1_sq);
-<a href=#354 id=354 data-nosnippet>354</a>        <span class="kw">let </span>b_val = <span class="self">self</span>.x + x2.multiply(<span class="self">self</span>.z);
-<a href=#355 id=355 data-nosnippet>355</a>        <span class="kw">if </span>b_val == FieldElement::ZERO {
-<a href=#356 id=356 data-nosnippet>356</a>            <span class="kw">return if </span>a == FieldElement::ZERO {
-<a href=#357 id=357 data-nosnippet>357</a>                <span class="self">self</span>.double() <span class="comment">// same point (B=0 means matching affine x; A=0 means matching y too)
-<a href=#358 id=358 data-nosnippet>358</a>            </span>} <span class="kw">else </span>{
-<a href=#359 id=359 data-nosnippet>359</a>                <span class="comment">// matching x, differing y: char-2 negation is (x, x+y) (see `Point::negate`), so
-<a href=#360 id=360 data-nosnippet>360</a>                // this is `-self` - the sum is infinity.
-<a href=#361 id=361 data-nosnippet>361</a>                </span>ProjectivePoint {
-<a href=#362 id=362 data-nosnippet>362</a>                    x: FieldElement::ONE,
-<a href=#363 id=363 data-nosnippet>363</a>                    y: FieldElement::ONE,
-<a href=#364 id=364 data-nosnippet>364</a>                    z: FieldElement::ZERO,
-<a href=#365 id=365 data-nosnippet>365</a>                }
-<a href=#366 id=366 data-nosnippet>366</a>            };
-<a href=#367 id=367 data-nosnippet>367</a>        }
-<a href=#368 id=368 data-nosnippet>368</a>        <span class="kw">let </span>c = b_val.multiply(<span class="self">self</span>.z);
-<a href=#369 id=369 data-nosnippet>369</a>        <span class="kw">let </span>z3 = c.square();
-<a href=#370 id=370 data-nosnippet>370</a>        <span class="kw">let </span>d = x2.multiply(z3);
-<a href=#371 id=371 data-nosnippet>371</a>        <span class="kw">let </span>b_sq = b_val.square();
-<a href=#372 id=372 data-nosnippet>372</a>        <span class="kw">let </span>x3 = a.square() + c.multiply(a + b_sq + c);
-<a href=#373 id=373 data-nosnippet>373</a>        <span class="kw">let </span>y3 = (d + x3).multiply(a.multiply(c) + z3) + (y2 + x2).multiply(z3.square());
-<a href=#374 id=374 data-nosnippet>374</a>        ProjectivePoint {
-<a href=#375 id=375 data-nosnippet>375</a>            x: x3,
-<a href=#376 id=376 data-nosnippet>376</a>            y: y3,
-<a href=#377 id=377 data-nosnippet>377</a>            z: z3,
-<a href=#378 id=378 data-nosnippet>378</a>        }
-<a href=#379 id=379 data-nosnippet>379</a>    }
-<a href=#380 id=380 data-nosnippet>380</a>
-<a href=#381 id=381 data-nosnippet>381</a>    <span class="doccomment">/// The one deferred inversion for the whole `verify_combine` computation: `x = X*Z^-1`,
-<a href=#382 id=382 data-nosnippet>382</a>    /// `y = Y*(Z^-1)^2` (matching the `(X/Z, Y/Z^2)` convention stated on the type itself).
-<a href=#383 id=383 data-nosnippet>383</a>    </span><span class="kw">fn </span>to_affine(<span class="self">self</span>) -&gt; Point {
-<a href=#384 id=384 data-nosnippet>384</a>        <span class="kw">if </span><span class="self">self</span>.z == FieldElement::ZERO {
-<a href=#385 id=385 data-nosnippet>385</a>            <span class="kw">return </span>Point::Infinity;
-<a href=#386 id=386 data-nosnippet>386</a>        }
-<a href=#387 id=387 data-nosnippet>387</a>        <span class="kw">let </span>z_inv = <span class="self">self</span>.z.invert();
-<a href=#388 id=388 data-nosnippet>388</a>        <span class="kw">let </span>x = <span class="self">self</span>.x.multiply(z_inv);
-<a href=#389 id=389 data-nosnippet>389</a>        <span class="kw">let </span>y = <span class="self">self</span>.y.multiply(z_inv.square());
-<a href=#390 id=390 data-nosnippet>390</a>        Point::Affine(x, y)
-<a href=#391 id=391 data-nosnippet>391</a>    }
-<a href=#392 id=392 data-nosnippet>392</a>}
-<a href=#393 id=393 data-nosnippet>393</a>
-<a href=#394 id=394 data-nosnippet>394</a><span class="doccomment">/// `s*g + r*q` via Shamir's trick (simultaneous double-and-add over both scalars, one shared
-<a href=#395 id=395 data-nosnippet>395</a>/// doubling per bit position) in projective coordinates, deferring every inversion to the single
-<a href=#396 id=396 data-nosnippet>396</a>/// one inside `to_affine` at the end - `docs/DECISIONS.md` D-108. Public data only (`g`, `s`, `q`,
-<a href=#397 id=397 data-nosnippet>397</a>/// `r` are all public in DSTU 4145 verification, per this module's own doc comment); safe to
-<a href=#398 id=398 data-nosnippet>398</a>/// branch on the scalars' actual bit lengths (skip leading zero bit-pairs) precisely because this
-<a href=#399 id=399 data-nosnippet>399</a>/// is not a secret-scalar code path, unlike `scalar_multiply`'s fixed 163 iterations.
-<a href=#400 id=400 data-nosnippet>400</a></span><span class="attr">#[cfg(not(feature = <span class="string">"small-tables"</span>))]
-<a href=#401 id=401 data-nosnippet>401</a></span><span class="kw">fn </span>shamir_double_scalar_multiply(g: Point, s: <span class="kw-2">&amp;</span>[u8; <span class="number">21</span>], q: Point, r: <span class="kw-2">&amp;</span>[u8; <span class="number">21</span>]) -&gt; Point {
-<a href=#402 id=402 data-nosnippet>402</a>    <span class="kw">let </span>g_plus_q = g + q; <span class="comment">// existing trusted affine `Point::add` - one inversion, paid once here
-<a href=#403 id=403 data-nosnippet>403</a>    </span><span class="kw">let </span>table = [Point::Infinity, q, g, g_plus_q]; <span class="comment">// index (bit_s &lt;&lt; 1) | bit_r
-<a href=#404 id=404 data-nosnippet>404</a>
-<a href=#405 id=405 data-nosnippet>405</a>    </span><span class="kw">let </span>top = (<span class="number">0</span>..<span class="number">163u32</span>)
-<a href=#406 id=406 data-nosnippet>406</a>        .rev()
-<a href=#407 id=407 data-nosnippet>407</a>        .find(|<span class="kw-2">&amp;</span>i| bit_at(s, i) != <span class="number">0 </span>|| bit_at(r, i) != <span class="number">0</span>);
-<a href=#408 id=408 data-nosnippet>408</a>    <span class="kw">let </span><span class="prelude-val">Some</span>(top) = top <span class="kw">else </span>{
-<a href=#409 id=409 data-nosnippet>409</a>        <span class="kw">return </span>Point::Infinity; <span class="comment">// s == r == 0 - not reachable via `verify`'s own guards
-<a href=#410 id=410 data-nosnippet>410</a>    </span>};
-<a href=#411 id=411 data-nosnippet>411</a>
-<a href=#412 id=412 data-nosnippet>412</a>    <span class="kw">let </span>entry_at = |i: u32| -&gt; Point {
-<a href=#413 id=413 data-nosnippet>413</a>        <span class="comment">// `bit_at` only ever returns 0 or 1, so this index is provably 0..=3 - no truncation
-<a href=#414 id=414 data-nosnippet>414</a>        // possible regardless of pointer width.
-<a href=#415 id=415 data-nosnippet>415</a>        </span><span class="attr">#[allow(clippy::cast_possible_truncation)]
-<a href=#416 id=416 data-nosnippet>416</a>        </span><span class="kw">let </span>index = ((bit_at(s, i) &lt;&lt; <span class="number">1</span>) | bit_at(r, i)) <span class="kw">as </span>usize;
-<a href=#417 id=417 data-nosnippet>417</a>        table[index]
-<a href=#418 id=418 data-nosnippet>418</a>    };
-<a href=#419 id=419 data-nosnippet>419</a>
-<a href=#420 id=420 data-nosnippet>420</a>    <span class="kw">let </span><span class="kw-2">mut </span>acc = ProjectivePoint::from_affine(entry_at(top));
-<a href=#421 id=421 data-nosnippet>421</a>    <span class="kw">for </span>i <span class="kw">in </span>(<span class="number">0</span>..top).rev() {
-<a href=#422 id=422 data-nosnippet>422</a>        acc = acc.double();
-<a href=#423 id=423 data-nosnippet>423</a>        <span class="kw">let </span>entry = entry_at(i);
-<a href=#424 id=424 data-nosnippet>424</a>        <span class="kw">if </span>entry != Point::Infinity {
-<a href=#425 id=425 data-nosnippet>425</a>            acc = acc.mixed_add(entry);
-<a href=#426 id=426 data-nosnippet>426</a>        }
-<a href=#427 id=427 data-nosnippet>427</a>    }
-<a href=#428 id=428 data-nosnippet>428</a>    acc.to_affine()
-<a href=#429 id=429 data-nosnippet>429</a>}
-<a href=#430 id=430 data-nosnippet>430</a>
-<a href=#431 id=431 data-nosnippet>431</a><span class="doccomment">/// `verify`'s `s*g + r*q` combine step - one function, two bodies, matching
-<a href=#432 id=432 data-nosnippet>432</a>/// `hazmat::tables::apply_forward_matrix`'s `small-tables` idiom exactly (no `#[cfg]` at the call
-<a href=#433 id=433 data-nosnippet>433</a>/// site in `signature.rs`). Default: the projective/Shamir fast path above. `small-tables`: today's
-<a href=#434 id=434 data-nosnippet>434</a>/// unchanged double `scalar_multiply` call - see `docs/DECISIONS.md` D-108 for why this reuses the
-<a href=#435 id=435 data-nosnippet>435</a>/// same feature Kalyna/Kupyna/Strumok use for their own big-table/small-table split, even though
-<a href=#436 id=436 data-nosnippet>436</a>/// this particular case is a code-size/audit-surface tradeoff, not a flash-`const`-table one (no
-<a href=#437 id=437 data-nosnippet>437</a>/// new `const` table is added; `{Infinity, g, q, g+q}` above is computed fresh per call).
-<a href=#438 id=438 data-nosnippet>438</a></span><span class="attr">#[cfg(not(feature = <span class="string">"small-tables"</span>))]
-<a href=#439 id=439 data-nosnippet>439</a>#[must_use]
-<a href=#440 id=440 data-nosnippet>440</a></span><span class="kw">pub fn </span>verify_combine(g: Point, s: <span class="kw-2">&amp;</span>[u8; <span class="number">21</span>], q: Point, r: <span class="kw-2">&amp;</span>[u8; <span class="number">21</span>]) -&gt; Point {
-<a href=#441 id=441 data-nosnippet>441</a>    shamir_double_scalar_multiply(g, s, q, r)
-<a href=#442 id=442 data-nosnippet>442</a>}
-<a href=#443 id=443 data-nosnippet>443</a>
-<a href=#444 id=444 data-nosnippet>444</a><span class="attr">#[cfg(feature = <span class="string">"small-tables"</span>)]
-<a href=#445 id=445 data-nosnippet>445</a>#[must_use]
-<a href=#446 id=446 data-nosnippet>446</a></span><span class="kw">pub fn </span>verify_combine(g: Point, s: <span class="kw-2">&amp;</span>[u8; <span class="number">21</span>], q: Point, r: <span class="kw-2">&amp;</span>[u8; <span class="number">21</span>]) -&gt; Point {
-<a href=#447 id=447 data-nosnippet>447</a>    g.scalar_multiply(s) + q.scalar_multiply(r)
-<a href=#448 id=448 data-nosnippet>448</a>}
+<a href=#246 id=246 data-nosnippet>246</a>    <span class="comment">// `black_box` keeps the mask from becoming a branch (D-225).
+<a href=#247 id=247 data-nosnippet>247</a>    </span><span class="kw">let </span>mask = core::hint::black_box(<span class="number">0u64</span>.wrapping_sub(swap));
+<a href=#248 id=248 data-nosnippet>248</a>    <span class="kw">for </span>i <span class="kw">in </span><span class="number">0</span>..<span class="number">3 </span>{
+<a href=#249 id=249 data-nosnippet>249</a>        <span class="kw">let </span>t = mask &amp; (a.<span class="number">0</span>[i] ^ b.<span class="number">0</span>[i]);
+<a href=#250 id=250 data-nosnippet>250</a>        a.<span class="number">0</span>[i] ^= t;
+<a href=#251 id=251 data-nosnippet>251</a>        b.<span class="number">0</span>[i] ^= t;
+<a href=#252 id=252 data-nosnippet>252</a>    }
+<a href=#253 id=253 data-nosnippet>253</a>}
+<a href=#254 id=254 data-nosnippet>254</a>
+<a href=#255 id=255 data-nosnippet>255</a><span class="doccomment">/// Constant-time "is this field element zero" test: an all-ones mask if so, all-zeros otherwise.
+<a href=#256 id=256 data-nosnippet>256</a>/// The standard `x | wrapping_neg(x)` top-bit branchless zero test (for any nonzero `x`, either
+<a href=#257 id=257 data-nosnippet>257</a>/// `x` or `-x` has its sign bit set in two's-complement; for `x == 0` neither does), applied to
+<a href=#258 id=258 data-nosnippet>258</a>/// the OR of all 3 limbs (any single nonzero limb makes the whole element nonzero) - `docs/
+<a href=#259 id=259 data-nosnippet>259</a>/// DECISIONS.md` D-110 (T-152).
+<a href=#260 id=260 data-nosnippet>260</a></span><span class="kw">fn </span>is_zero_mask(a: FieldElement) -&gt; u64 {
+<a href=#261 id=261 data-nosnippet>261</a>    <span class="kw">let </span>combined = a.<span class="number">0</span>[<span class="number">0</span>] | a.<span class="number">0</span>[<span class="number">1</span>] | a.<span class="number">0</span>[<span class="number">2</span>];
+<a href=#262 id=262 data-nosnippet>262</a>    <span class="kw">let </span>is_nonzero = (combined | combined.wrapping_neg()) &gt;&gt; <span class="number">63</span>;
+<a href=#263 id=263 data-nosnippet>263</a>    <span class="comment">// `black_box` keeps the mask from becoming a branch (D-225).
+<a href=#264 id=264 data-nosnippet>264</a>    </span>core::hint::black_box(<span class="number">0u64</span>.wrapping_sub(<span class="number">1 </span>^ is_nonzero))
+<a href=#265 id=265 data-nosnippet>265</a>}
+<a href=#266 id=266 data-nosnippet>266</a>
+<a href=#267 id=267 data-nosnippet>267</a><span class="doccomment">/// Constant-time select: returns `if_mask` when `mask` is all-ones, `otherwise` when all-zeros -
+<a href=#268 id=268 data-nosnippet>268</a>/// same XOR-and-mask shape as `cswap`'s swap above, specialized to a one-sided select
+<a href=#269 id=269 data-nosnippet>269</a>/// (`docs/DECISIONS.md` D-110, T-152).
+<a href=#270 id=270 data-nosnippet>270</a></span><span class="kw">fn </span>select(mask: u64, if_mask: FieldElement, otherwise: FieldElement) -&gt; FieldElement {
+<a href=#271 id=271 data-nosnippet>271</a>    <span class="kw">let </span><span class="kw-2">mut </span>out = [<span class="number">0u64</span>; <span class="number">3</span>];
+<a href=#272 id=272 data-nosnippet>272</a>    <span class="kw">for </span>((out_limb, a), b) <span class="kw">in </span>out.iter_mut().zip(if_mask.<span class="number">0</span>.iter()).zip(otherwise.<span class="number">0</span>.iter()) {
+<a href=#273 id=273 data-nosnippet>273</a>        <span class="kw-2">*</span>out_limb = b ^ (mask &amp; (a ^ b));
+<a href=#274 id=274 data-nosnippet>274</a>    }
+<a href=#275 id=275 data-nosnippet>275</a>    FieldElement(out)
+<a href=#276 id=276 data-nosnippet>276</a>}
+<a href=#277 id=277 data-nosnippet>277</a>
+<a href=#278 id=278 data-nosnippet>278</a><span class="doccomment">/// López-Dahab projective point: `(X:Y:Z)` represents affine `(x, y) = (X/Z, Y/Z^2)` - **note the
+<a href=#279 id=279 data-nosnippet>279</a>/// asymmetric scaling** (`Y` by `Z^2`, not `Z`, unlike Jacobian coordinates). `Z == FieldElement::
+<a href=#280 id=280 data-nosnippet>280</a>/// ZERO` represents the point at infinity (any `X`/`Y` at that point are unconstrained - `to_affine`
+<a href=#281 id=281 data-nosnippet>281</a>/// checks `Z` first and never reads them). Used only by `verify_combine`'s default-profile fast
+<a href=#282 id=282 data-nosnippet>282</a>/// path below (`docs/DECISIONS.md` D-108) - public-data-only, never constant-time, never for a
+<a href=#283 id=283 data-nosnippet>283</a>/// secret scalar. `double`/`mixed_add` below are the explicit formulas "dbl-2005-dl"/"madd-2005-dl"
+<a href=#284 id=284 data-nosnippet>284</a>/// from the Bernstein/Lange Explicit-Formulas Database (`hyperelliptic.org/EFD/g12o/auto-shortw-
+<a href=#285 id=285 data-nosnippet>285</a>/// lopezdahab.html`), specialized to this curve's `a2 = 1` (the module's `a = 1` convention) -
+<a href=#286 id=286 data-nosnippet>286</a>/// their stated costs (4M+5S doubling, 8M+5S mixed addition) were independently re-derived by
+<a href=#287 id=287 data-nosnippet>287</a>/// listing every `multiply`/`square` call below and matched the database's own count exactly,
+<a href=#288 id=288 data-nosnippet>288</a>/// which is the actual correctness check for the transcription (this codebase has no local copy of
+<a href=#289 id=289 data-nosnippet>289</a>/// a citable textbook derivation to check against page numbers, only the differential proptest in
+<a href=#290 id=290 data-nosnippet>290</a>/// `tests/dstu4145_curve.rs` and this cost cross-check).
+<a href=#291 id=291 data-nosnippet>291</a></span><span class="attr">#[cfg(not(feature = <span class="string">"small-tables"</span>))]
+<a href=#292 id=292 data-nosnippet>292</a>#[derive(Clone, Copy)]
+<a href=#293 id=293 data-nosnippet>293</a></span><span class="kw">struct </span>ProjectivePoint {
+<a href=#294 id=294 data-nosnippet>294</a>    x: FieldElement,
+<a href=#295 id=295 data-nosnippet>295</a>    y: FieldElement,
+<a href=#296 id=296 data-nosnippet>296</a>    z: FieldElement,
+<a href=#297 id=297 data-nosnippet>297</a>}
+<a href=#298 id=298 data-nosnippet>298</a>
+<a href=#299 id=299 data-nosnippet>299</a><span class="attr">#[cfg(not(feature = <span class="string">"small-tables"</span>))]
+<a href=#300 id=300 data-nosnippet>300</a></span><span class="kw">impl </span>ProjectivePoint {
+<a href=#301 id=301 data-nosnippet>301</a>    <span class="kw">fn </span>from_affine(p: Point) -&gt; <span class="self">Self </span>{
+<a href=#302 id=302 data-nosnippet>302</a>        <span class="kw">match </span>p {
+<a href=#303 id=303 data-nosnippet>303</a>            Point::Infinity =&gt; ProjectivePoint {
+<a href=#304 id=304 data-nosnippet>304</a>                x: FieldElement::ONE,
+<a href=#305 id=305 data-nosnippet>305</a>                y: FieldElement::ONE,
+<a href=#306 id=306 data-nosnippet>306</a>                z: FieldElement::ZERO,
+<a href=#307 id=307 data-nosnippet>307</a>            },
+<a href=#308 id=308 data-nosnippet>308</a>            Point::Affine(x, y) =&gt; ProjectivePoint {
+<a href=#309 id=309 data-nosnippet>309</a>                x,
+<a href=#310 id=310 data-nosnippet>310</a>                y,
+<a href=#311 id=311 data-nosnippet>311</a>                z: FieldElement::ONE,
+<a href=#312 id=312 data-nosnippet>312</a>            },
+<a href=#313 id=313 data-nosnippet>313</a>        }
+<a href=#314 id=314 data-nosnippet>314</a>    }
+<a href=#315 id=315 data-nosnippet>315</a>
+<a href=#316 id=316 data-nosnippet>316</a>    <span class="doccomment">/// "dbl-2005-dl", `a2 = 1`: `A = Z1^2; B = b*A^2; C = X1^2; Z3 = A*C; X3 = C^2+B;
+<a href=#317 id=317 data-nosnippet>317</a>    /// Y3 = (Y1^2+Z3+B)*X3 + Z3*B` (the database's `a2*Z3` term is just `Z3` here, since `a2=1`).
+<a href=#318 id=318 data-nosnippet>318</a>    /// A point with affine `x = 0` (order-2 point) doubles to infinity automatically through this
+<a href=#319 id=319 data-nosnippet>319</a>    /// formula (`C = X1^2 = 0` forces `Z3 = A*C = 0`), matching the affine `double`'s explicit
+<a href=#320 id=320 data-nosnippet>320</a>    /// `x1 == ZERO` check above without needing a separate branch here.
+<a href=#321 id=321 data-nosnippet>321</a>    </span><span class="kw">fn </span>double(<span class="self">self</span>) -&gt; <span class="self">Self </span>{
+<a href=#322 id=322 data-nosnippet>322</a>        <span class="kw">if </span><span class="self">self</span>.z == FieldElement::ZERO {
+<a href=#323 id=323 data-nosnippet>323</a>            <span class="kw">return </span><span class="self">self</span>; <span class="comment">// doubling infinity is infinity
+<a href=#324 id=324 data-nosnippet>324</a>        </span>}
+<a href=#325 id=325 data-nosnippet>325</a>        <span class="kw">let </span>a = <span class="self">self</span>.z.square();
+<a href=#326 id=326 data-nosnippet>326</a>        <span class="kw">let </span>big_b = b().multiply(a.square());
+<a href=#327 id=327 data-nosnippet>327</a>        <span class="kw">let </span>c = <span class="self">self</span>.x.square();
+<a href=#328 id=328 data-nosnippet>328</a>        <span class="kw">let </span>z3 = a.multiply(c);
+<a href=#329 id=329 data-nosnippet>329</a>        <span class="kw">let </span>x3 = c.square() + big_b;
+<a href=#330 id=330 data-nosnippet>330</a>        <span class="kw">let </span>y3 = (<span class="self">self</span>.y.square() + z3 + big_b).multiply(x3) + z3.multiply(big_b);
+<a href=#331 id=331 data-nosnippet>331</a>        ProjectivePoint {
+<a href=#332 id=332 data-nosnippet>332</a>            x: x3,
+<a href=#333 id=333 data-nosnippet>333</a>            y: y3,
+<a href=#334 id=334 data-nosnippet>334</a>            z: z3,
+<a href=#335 id=335 data-nosnippet>335</a>        }
+<a href=#336 id=336 data-nosnippet>336</a>    }
+<a href=#337 id=337 data-nosnippet>337</a>
+<a href=#338 id=338 data-nosnippet>338</a>    <span class="doccomment">/// "madd-2005-dl", `a2 = 1`, `other` affine (`Z2 = 1`): `A = Y1+Y2*Z1^2; B = X1+X2*Z1;
+<a href=#339 id=339 data-nosnippet>339</a>    /// C = B*Z1; Z3 = C^2; D = X2*Z3; X3 = A^2+C*(A+B^2+C); Y3 = (D+X3)*(A*C+Z3)+(Y2+X2)*Z3^2`.
+<a href=#340 id=340 data-nosnippet>340</a>    /// Guarded ahead of the database's generic-case formula (which assumes neither operand is
+<a href=#341 id=341 data-nosnippet>341</a>    /// infinity and the two affine `x`-coordinates differ) for totality, not for attack
+<a href=#342 id=342 data-nosnippet>342</a>    /// resistance - `verify`'s final `r' == r` check (`signature.rs`) already closes off any
+<a href=#343 id=343 data-nosnippet>343</a>    /// benefit an attacker could get from steering the accumulator here; the guards exist because
+<a href=#344 id=344 data-nosnippet>344</a>    /// the formula is otherwise partial, on public data where an honest partial sum can
+<a href=#345 id=345 data-nosnippet>345</a>    /// structurally (if very rarely, ~2^-163) coincide with infinity or with the table point.
+<a href=#346 id=346 data-nosnippet>346</a>    </span><span class="kw">fn </span>mixed_add(<span class="self">self</span>, other: Point) -&gt; <span class="self">Self </span>{
+<a href=#347 id=347 data-nosnippet>347</a>        <span class="kw">let </span>(x2, y2) = <span class="kw">match </span>other {
+<a href=#348 id=348 data-nosnippet>348</a>            Point::Infinity =&gt; <span class="kw">return </span><span class="self">self</span>,
+<a href=#349 id=349 data-nosnippet>349</a>            Point::Affine(x, y) =&gt; (x, y),
+<a href=#350 id=350 data-nosnippet>350</a>        };
+<a href=#351 id=351 data-nosnippet>351</a>        <span class="kw">if </span><span class="self">self</span>.z == FieldElement::ZERO {
+<a href=#352 id=352 data-nosnippet>352</a>            <span class="kw">return </span>ProjectivePoint::from_affine(other);
+<a href=#353 id=353 data-nosnippet>353</a>        }
+<a href=#354 id=354 data-nosnippet>354</a>        <span class="kw">let </span>z1_sq = <span class="self">self</span>.z.square();
+<a href=#355 id=355 data-nosnippet>355</a>        <span class="kw">let </span>a = <span class="self">self</span>.y + y2.multiply(z1_sq);
+<a href=#356 id=356 data-nosnippet>356</a>        <span class="kw">let </span>b_val = <span class="self">self</span>.x + x2.multiply(<span class="self">self</span>.z);
+<a href=#357 id=357 data-nosnippet>357</a>        <span class="kw">if </span>b_val == FieldElement::ZERO {
+<a href=#358 id=358 data-nosnippet>358</a>            <span class="kw">return if </span>a == FieldElement::ZERO {
+<a href=#359 id=359 data-nosnippet>359</a>                <span class="self">self</span>.double() <span class="comment">// same point (B=0 means matching affine x; A=0 means matching y too)
+<a href=#360 id=360 data-nosnippet>360</a>            </span>} <span class="kw">else </span>{
+<a href=#361 id=361 data-nosnippet>361</a>                <span class="comment">// matching x, differing y: char-2 negation is (x, x+y) (see `Point::negate`), so
+<a href=#362 id=362 data-nosnippet>362</a>                // this is `-self` - the sum is infinity.
+<a href=#363 id=363 data-nosnippet>363</a>                </span>ProjectivePoint {
+<a href=#364 id=364 data-nosnippet>364</a>                    x: FieldElement::ONE,
+<a href=#365 id=365 data-nosnippet>365</a>                    y: FieldElement::ONE,
+<a href=#366 id=366 data-nosnippet>366</a>                    z: FieldElement::ZERO,
+<a href=#367 id=367 data-nosnippet>367</a>                }
+<a href=#368 id=368 data-nosnippet>368</a>            };
+<a href=#369 id=369 data-nosnippet>369</a>        }
+<a href=#370 id=370 data-nosnippet>370</a>        <span class="kw">let </span>c = b_val.multiply(<span class="self">self</span>.z);
+<a href=#371 id=371 data-nosnippet>371</a>        <span class="kw">let </span>z3 = c.square();
+<a href=#372 id=372 data-nosnippet>372</a>        <span class="kw">let </span>d = x2.multiply(z3);
+<a href=#373 id=373 data-nosnippet>373</a>        <span class="kw">let </span>b_sq = b_val.square();
+<a href=#374 id=374 data-nosnippet>374</a>        <span class="kw">let </span>x3 = a.square() + c.multiply(a + b_sq + c);
+<a href=#375 id=375 data-nosnippet>375</a>        <span class="kw">let </span>y3 = (d + x3).multiply(a.multiply(c) + z3) + (y2 + x2).multiply(z3.square());
+<a href=#376 id=376 data-nosnippet>376</a>        ProjectivePoint {
+<a href=#377 id=377 data-nosnippet>377</a>            x: x3,
+<a href=#378 id=378 data-nosnippet>378</a>            y: y3,
+<a href=#379 id=379 data-nosnippet>379</a>            z: z3,
+<a href=#380 id=380 data-nosnippet>380</a>        }
+<a href=#381 id=381 data-nosnippet>381</a>    }
+<a href=#382 id=382 data-nosnippet>382</a>
+<a href=#383 id=383 data-nosnippet>383</a>    <span class="doccomment">/// The one deferred inversion for the whole `verify_combine` computation: `x = X*Z^-1`,
+<a href=#384 id=384 data-nosnippet>384</a>    /// `y = Y*(Z^-1)^2` (matching the `(X/Z, Y/Z^2)` convention stated on the type itself).
+<a href=#385 id=385 data-nosnippet>385</a>    </span><span class="kw">fn </span>to_affine(<span class="self">self</span>) -&gt; Point {
+<a href=#386 id=386 data-nosnippet>386</a>        <span class="kw">if </span><span class="self">self</span>.z == FieldElement::ZERO {
+<a href=#387 id=387 data-nosnippet>387</a>            <span class="kw">return </span>Point::Infinity;
+<a href=#388 id=388 data-nosnippet>388</a>        }
+<a href=#389 id=389 data-nosnippet>389</a>        <span class="kw">let </span>z_inv = <span class="self">self</span>.z.invert();
+<a href=#390 id=390 data-nosnippet>390</a>        <span class="kw">let </span>x = <span class="self">self</span>.x.multiply(z_inv);
+<a href=#391 id=391 data-nosnippet>391</a>        <span class="kw">let </span>y = <span class="self">self</span>.y.multiply(z_inv.square());
+<a href=#392 id=392 data-nosnippet>392</a>        Point::Affine(x, y)
+<a href=#393 id=393 data-nosnippet>393</a>    }
+<a href=#394 id=394 data-nosnippet>394</a>}
+<a href=#395 id=395 data-nosnippet>395</a>
+<a href=#396 id=396 data-nosnippet>396</a><span class="doccomment">/// `s*g + r*q` via Shamir's trick (simultaneous double-and-add over both scalars, one shared
+<a href=#397 id=397 data-nosnippet>397</a>/// doubling per bit position) in projective coordinates, deferring every inversion to the single
+<a href=#398 id=398 data-nosnippet>398</a>/// one inside `to_affine` at the end - `docs/DECISIONS.md` D-108. Public data only (`g`, `s`, `q`,
+<a href=#399 id=399 data-nosnippet>399</a>/// `r` are all public in DSTU 4145 verification, per this module's own doc comment); safe to
+<a href=#400 id=400 data-nosnippet>400</a>/// branch on the scalars' actual bit lengths (skip leading zero bit-pairs) precisely because this
+<a href=#401 id=401 data-nosnippet>401</a>/// is not a secret-scalar code path, unlike `scalar_multiply`'s fixed 163 iterations.
+<a href=#402 id=402 data-nosnippet>402</a></span><span class="attr">#[cfg(not(feature = <span class="string">"small-tables"</span>))]
+<a href=#403 id=403 data-nosnippet>403</a></span><span class="kw">fn </span>shamir_double_scalar_multiply(g: Point, s: <span class="kw-2">&amp;</span>[u8; <span class="number">21</span>], q: Point, r: <span class="kw-2">&amp;</span>[u8; <span class="number">21</span>]) -&gt; Point {
+<a href=#404 id=404 data-nosnippet>404</a>    <span class="kw">let </span>g_plus_q = g + q; <span class="comment">// existing trusted affine `Point::add` - one inversion, paid once here
+<a href=#405 id=405 data-nosnippet>405</a>    </span><span class="kw">let </span>table = [Point::Infinity, q, g, g_plus_q]; <span class="comment">// index (bit_s &lt;&lt; 1) | bit_r
+<a href=#406 id=406 data-nosnippet>406</a>
+<a href=#407 id=407 data-nosnippet>407</a>    </span><span class="kw">let </span>top = (<span class="number">0</span>..<span class="number">163u32</span>)
+<a href=#408 id=408 data-nosnippet>408</a>        .rev()
+<a href=#409 id=409 data-nosnippet>409</a>        .find(|<span class="kw-2">&amp;</span>i| bit_at(s, i) != <span class="number">0 </span>|| bit_at(r, i) != <span class="number">0</span>);
+<a href=#410 id=410 data-nosnippet>410</a>    <span class="kw">let </span><span class="prelude-val">Some</span>(top) = top <span class="kw">else </span>{
+<a href=#411 id=411 data-nosnippet>411</a>        <span class="kw">return </span>Point::Infinity; <span class="comment">// s == r == 0 - not reachable via `verify`'s own guards
+<a href=#412 id=412 data-nosnippet>412</a>    </span>};
+<a href=#413 id=413 data-nosnippet>413</a>
+<a href=#414 id=414 data-nosnippet>414</a>    <span class="kw">let </span>entry_at = |i: u32| -&gt; Point {
+<a href=#415 id=415 data-nosnippet>415</a>        <span class="comment">// `bit_at` only ever returns 0 or 1, so this index is provably 0..=3 - no truncation
+<a href=#416 id=416 data-nosnippet>416</a>        // possible regardless of pointer width.
+<a href=#417 id=417 data-nosnippet>417</a>        </span><span class="attr">#[allow(clippy::cast_possible_truncation)]
+<a href=#418 id=418 data-nosnippet>418</a>        </span><span class="kw">let </span>index = ((bit_at(s, i) &lt;&lt; <span class="number">1</span>) | bit_at(r, i)) <span class="kw">as </span>usize;
+<a href=#419 id=419 data-nosnippet>419</a>        table[index]
+<a href=#420 id=420 data-nosnippet>420</a>    };
+<a href=#421 id=421 data-nosnippet>421</a>
+<a href=#422 id=422 data-nosnippet>422</a>    <span class="kw">let </span><span class="kw-2">mut </span>acc = ProjectivePoint::from_affine(entry_at(top));
+<a href=#423 id=423 data-nosnippet>423</a>    <span class="kw">for </span>i <span class="kw">in </span>(<span class="number">0</span>..top).rev() {
+<a href=#424 id=424 data-nosnippet>424</a>        acc = acc.double();
+<a href=#425 id=425 data-nosnippet>425</a>        <span class="kw">let </span>entry = entry_at(i);
+<a href=#426 id=426 data-nosnippet>426</a>        <span class="kw">if </span>entry != Point::Infinity {
+<a href=#427 id=427 data-nosnippet>427</a>            acc = acc.mixed_add(entry);
+<a href=#428 id=428 data-nosnippet>428</a>        }
+<a href=#429 id=429 data-nosnippet>429</a>    }
+<a href=#430 id=430 data-nosnippet>430</a>    acc.to_affine()
+<a href=#431 id=431 data-nosnippet>431</a>}
+<a href=#432 id=432 data-nosnippet>432</a>
+<a href=#433 id=433 data-nosnippet>433</a><span class="doccomment">/// `verify`'s `s*g + r*q` combine step - one function, two bodies, matching
+<a href=#434 id=434 data-nosnippet>434</a>/// `hazmat::tables::apply_forward_matrix`'s `small-tables` idiom exactly (no `#[cfg]` at the call
+<a href=#435 id=435 data-nosnippet>435</a>/// site in `signature.rs`). Default: the projective/Shamir fast path above. `small-tables`: today's
+<a href=#436 id=436 data-nosnippet>436</a>/// unchanged double `scalar_multiply` call - see `docs/DECISIONS.md` D-108 for why this reuses the
+<a href=#437 id=437 data-nosnippet>437</a>/// same feature Kalyna/Kupyna/Strumok use for their own big-table/small-table split, even though
+<a href=#438 id=438 data-nosnippet>438</a>/// this particular case is a code-size/audit-surface tradeoff, not a flash-`const`-table one (no
+<a href=#439 id=439 data-nosnippet>439</a>/// new `const` table is added; `{Infinity, g, q, g+q}` above is computed fresh per call).
+<a href=#440 id=440 data-nosnippet>440</a></span><span class="attr">#[cfg(not(feature = <span class="string">"small-tables"</span>))]
+<a href=#441 id=441 data-nosnippet>441</a>#[must_use]
+<a href=#442 id=442 data-nosnippet>442</a></span><span class="kw">pub fn </span>verify_combine(g: Point, s: <span class="kw-2">&amp;</span>[u8; <span class="number">21</span>], q: Point, r: <span class="kw-2">&amp;</span>[u8; <span class="number">21</span>]) -&gt; Point {
+<a href=#443 id=443 data-nosnippet>443</a>    shamir_double_scalar_multiply(g, s, q, r)
+<a href=#444 id=444 data-nosnippet>444</a>}
+<a href=#445 id=445 data-nosnippet>445</a>
+<a href=#446 id=446 data-nosnippet>446</a><span class="attr">#[cfg(feature = <span class="string">"small-tables"</span>)]
+<a href=#447 id=447 data-nosnippet>447</a>#[must_use]
+<a href=#448 id=448 data-nosnippet>448</a></span><span class="kw">pub fn </span>verify_combine(g: Point, s: <span class="kw-2">&amp;</span>[u8; <span class="number">21</span>], q: Point, r: <span class="kw-2">&amp;</span>[u8; <span class="number">21</span>]) -&gt; Point {
+<a href=#449 id=449 data-nosnippet>449</a>    g.scalar_multiply(s) + q.scalar_multiply(r)
+<a href=#450 id=450 data-nosnippet>450</a>}
 </code></pre></div></section></main></body></html>

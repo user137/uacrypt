@@ -203,28 +203,30 @@
 <a href=#203 id=203 data-nosnippet>203</a>
 <a href=#204 id=204 data-nosnippet>204</a><span class="doccomment">/// Constant-time conditional swap - same shape as `curve163::cswap`, widened to 5 limbs.
 <a href=#205 id=205 data-nosnippet>205</a></span><span class="kw">fn </span>cswap(swap: u64, a: <span class="kw-2">&amp;mut </span>FieldElement, b: <span class="kw-2">&amp;mut </span>FieldElement) {
-<a href=#206 id=206 data-nosnippet>206</a>    <span class="kw">let </span>mask = <span class="number">0u64</span>.wrapping_sub(swap);
-<a href=#207 id=207 data-nosnippet>207</a>    <span class="kw">for </span>i <span class="kw">in </span><span class="number">0</span>..<span class="number">5 </span>{
-<a href=#208 id=208 data-nosnippet>208</a>        <span class="kw">let </span>t = mask &amp; (a.<span class="number">0</span>[i] ^ b.<span class="number">0</span>[i]);
-<a href=#209 id=209 data-nosnippet>209</a>        a.<span class="number">0</span>[i] ^= t;
-<a href=#210 id=210 data-nosnippet>210</a>        b.<span class="number">0</span>[i] ^= t;
-<a href=#211 id=211 data-nosnippet>211</a>    }
-<a href=#212 id=212 data-nosnippet>212</a>}
-<a href=#213 id=213 data-nosnippet>213</a>
-<a href=#214 id=214 data-nosnippet>214</a><span class="doccomment">/// Constant-time "is this field element zero" test - same shape as `curve163::is_zero_mask`,
-<a href=#215 id=215 data-nosnippet>215</a>/// widened to 5 limbs.
-<a href=#216 id=216 data-nosnippet>216</a></span><span class="kw">fn </span>is_zero_mask(a: FieldElement) -&gt; u64 {
-<a href=#217 id=217 data-nosnippet>217</a>    <span class="kw">let </span>combined = a.<span class="number">0</span>[<span class="number">0</span>] | a.<span class="number">0</span>[<span class="number">1</span>] | a.<span class="number">0</span>[<span class="number">2</span>] | a.<span class="number">0</span>[<span class="number">3</span>] | a.<span class="number">0</span>[<span class="number">4</span>];
-<a href=#218 id=218 data-nosnippet>218</a>    <span class="kw">let </span>is_nonzero = (combined | combined.wrapping_neg()) &gt;&gt; <span class="number">63</span>;
-<a href=#219 id=219 data-nosnippet>219</a>    <span class="number">0u64</span>.wrapping_sub(<span class="number">1 </span>^ is_nonzero)
-<a href=#220 id=220 data-nosnippet>220</a>}
-<a href=#221 id=221 data-nosnippet>221</a>
-<a href=#222 id=222 data-nosnippet>222</a><span class="doccomment">/// Constant-time select - same shape as `curve163::select`, widened to 5 limbs.
-<a href=#223 id=223 data-nosnippet>223</a></span><span class="kw">fn </span>select(mask: u64, if_mask: FieldElement, otherwise: FieldElement) -&gt; FieldElement {
-<a href=#224 id=224 data-nosnippet>224</a>    <span class="kw">let </span><span class="kw-2">mut </span>out = [<span class="number">0u64</span>; <span class="number">5</span>];
-<a href=#225 id=225 data-nosnippet>225</a>    <span class="kw">for </span>((out_limb, a), b) <span class="kw">in </span>out.iter_mut().zip(if_mask.<span class="number">0</span>.iter()).zip(otherwise.<span class="number">0</span>.iter()) {
-<a href=#226 id=226 data-nosnippet>226</a>        <span class="kw-2">*</span>out_limb = b ^ (mask &amp; (a ^ b));
-<a href=#227 id=227 data-nosnippet>227</a>    }
-<a href=#228 id=228 data-nosnippet>228</a>    FieldElement(out)
-<a href=#229 id=229 data-nosnippet>229</a>}
+<a href=#206 id=206 data-nosnippet>206</a>    <span class="comment">// `black_box` keeps the mask from becoming a branch (D-225).
+<a href=#207 id=207 data-nosnippet>207</a>    </span><span class="kw">let </span>mask = core::hint::black_box(<span class="number">0u64</span>.wrapping_sub(swap));
+<a href=#208 id=208 data-nosnippet>208</a>    <span class="kw">for </span>i <span class="kw">in </span><span class="number">0</span>..<span class="number">5 </span>{
+<a href=#209 id=209 data-nosnippet>209</a>        <span class="kw">let </span>t = mask &amp; (a.<span class="number">0</span>[i] ^ b.<span class="number">0</span>[i]);
+<a href=#210 id=210 data-nosnippet>210</a>        a.<span class="number">0</span>[i] ^= t;
+<a href=#211 id=211 data-nosnippet>211</a>        b.<span class="number">0</span>[i] ^= t;
+<a href=#212 id=212 data-nosnippet>212</a>    }
+<a href=#213 id=213 data-nosnippet>213</a>}
+<a href=#214 id=214 data-nosnippet>214</a>
+<a href=#215 id=215 data-nosnippet>215</a><span class="doccomment">/// Constant-time "is this field element zero" test - same shape as `curve163::is_zero_mask`,
+<a href=#216 id=216 data-nosnippet>216</a>/// widened to 5 limbs.
+<a href=#217 id=217 data-nosnippet>217</a></span><span class="kw">fn </span>is_zero_mask(a: FieldElement) -&gt; u64 {
+<a href=#218 id=218 data-nosnippet>218</a>    <span class="kw">let </span>combined = a.<span class="number">0</span>[<span class="number">0</span>] | a.<span class="number">0</span>[<span class="number">1</span>] | a.<span class="number">0</span>[<span class="number">2</span>] | a.<span class="number">0</span>[<span class="number">3</span>] | a.<span class="number">0</span>[<span class="number">4</span>];
+<a href=#219 id=219 data-nosnippet>219</a>    <span class="kw">let </span>is_nonzero = (combined | combined.wrapping_neg()) &gt;&gt; <span class="number">63</span>;
+<a href=#220 id=220 data-nosnippet>220</a>    <span class="comment">// `black_box` keeps the mask from becoming a branch (D-225).
+<a href=#221 id=221 data-nosnippet>221</a>    </span>core::hint::black_box(<span class="number">0u64</span>.wrapping_sub(<span class="number">1 </span>^ is_nonzero))
+<a href=#222 id=222 data-nosnippet>222</a>}
+<a href=#223 id=223 data-nosnippet>223</a>
+<a href=#224 id=224 data-nosnippet>224</a><span class="doccomment">/// Constant-time select - same shape as `curve163::select`, widened to 5 limbs.
+<a href=#225 id=225 data-nosnippet>225</a></span><span class="kw">fn </span>select(mask: u64, if_mask: FieldElement, otherwise: FieldElement) -&gt; FieldElement {
+<a href=#226 id=226 data-nosnippet>226</a>    <span class="kw">let </span><span class="kw-2">mut </span>out = [<span class="number">0u64</span>; <span class="number">5</span>];
+<a href=#227 id=227 data-nosnippet>227</a>    <span class="kw">for </span>((out_limb, a), b) <span class="kw">in </span>out.iter_mut().zip(if_mask.<span class="number">0</span>.iter()).zip(otherwise.<span class="number">0</span>.iter()) {
+<a href=#228 id=228 data-nosnippet>228</a>        <span class="kw-2">*</span>out_limb = b ^ (mask &amp; (a ^ b));
+<a href=#229 id=229 data-nosnippet>229</a>    }
+<a href=#230 id=230 data-nosnippet>230</a>    FieldElement(out)
+<a href=#231 id=231 data-nosnippet>231</a>}
 </code></pre></div></section></main></body></html>
