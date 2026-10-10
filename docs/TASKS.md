@@ -9269,7 +9269,9 @@ plan):
 - [ ] **T-263** Text output (A1), only if the owner wants it. **After 1.0 (owner 2026-10-09).**
 
 Release:
-- [ ] **T-267** After the 0.5.0 release (owner request 2026-09-24): update the site - the
+- [x] **T-267** (done 2026-10-10, `gh-pages` `2407177`, live on both pages; every example run on
+  0.5.0 except the interactive passphrase pair; the book already had "Key files"/`key-import`;
+  the marker was already 0.5.0) After the 0.5.0 release (owner request 2026-09-24): update the site - the
   `gh-pages` `index.html` (version marker that `docs-check` reads, and its CLI examples: typed key
   files, `key-import`, the exit codes, `hash` printing to stdout and `hash --check` instead of
   `hash --out`, and the passphrase commands `encrypt --passphrase`/`decrypt` asking, T-262) -
@@ -10045,11 +10047,10 @@ on the Pi); `cargo xtask test` 146 suites green, `cargo clippy --workspace --all
   2026-10-09 (tag landed 2026-10-10 UTC; left as is). Release notes on v0.5.0 set (owner OK).
   Yanks done 2026-10-10 (D-233, delegated to Claude), verified on the registry APIs: crates.io
   `dstu-core`/`uacrypt` 0.4.0 yanked; PyPI 0.2.0 yanked; npm `dstu-core` + 3 platform packages
-  0.2.0 deprecated; RubyGems 0.2.0 (4 platforms) yanked. **NEXT STEP (2026-10-10, before a
-  compact):** merge Dependabot PR #12 (brace-expansion, owner approved) once its checks are green -
-  rebased on `4efa6bb`; Java macOS failed on a Maven Central download (rerun of run 38030145697
-  started); SonarCloud fails on Dependabot PRs (no secrets), not a blocker. Then push the local
-  commits (D-233 + this note) and T-267 (site), T-295 (winget), 0.6.0.
+  0.2.0 deprecated; RubyGems 0.2.0 (4 platforms) yanked. Dependabot PR #12 (brace-expansion)
+  squash-merged 2026-10-10 as `8c2e9f3` (SonarCloud fails on Dependabot PRs - no secrets - not a
+  blocker); alert #3 closed as fixed. T-267 (site) done. **NEXT STEP (owner 2026-10-10):** 0.6.0
+  in the plan's order, starting with step 1 (T-288); T-295 (winget) after it.
 - **0.4.0: released and closed (2026-10-08/09).** Tag `v0.4.0` on `39fdb53` after all CI incl.
   Miri was green; release run 37761634603 green (npm needed a new `NPM_TOKEN` and one rerun).
   Live: crates.io 0.4.0, PyPI/npm/RubyGems 0.2.0 (npm without `win32-x64-msvc`, D-189). T-252
