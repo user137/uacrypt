@@ -15301,3 +15301,22 @@ behaviour is most likely, and a late finding would have to be bisected across tw
 **Rule kept.** Miri stays a required layer (`CLAUDE.md`). A green Miri run covering the code being
 tagged is still required before every release tag: either the latest `miri.yml` run is on or after
 the last code change, or start one with `gh workflow run miri.yml --ref master`.
+
+## D-233: Yank the releases GHSA-4644-j77c-h3hg covers (2026-10-10)
+
+**Decision (delegated by the owner).** Mark every still-open release that GHSA-4644-j77c-h3hg
+covers, the same way T-251 did for 0.3.x: crates.io `dstu-core` and `uacrypt` 0.4.0 yanked; PyPI
+`dstu-core` 0.2.0 yanked; npm `dstu-core` 0.2.0 and its three platform packages
+(`dstu-core-darwin-arm64`, `dstu-core-linux-x64-gnu`, `dstu-core-linux-arm64-gnu`) deprecated with
+the advisory message; RubyGems `dstu_core` 0.2.0 (4 platforms) yanked while it is still under 30
+days old. The GitHub release v0.4.0 and its assets stay.
+
+**Why.** Safety over compatibility: a yank only stops new dependency resolution, existing lockfiles
+and pinned installs keep working, and `cargo audit`/`cargo deny` warn on yanked versions even though
+RustSec has no entry. The upgrade costs little: the data format did not change, so files written by
+0.4.0 open with 0.5.0; only `uacrypt`'s key files need a one-time `key-import`. Leaving 0.4.0 as the
+newest unyanked 0.4 line would invite pinning to code with a known process abort and secret-dependent
+timing. RubyGems refuses a yank after 30 days (T-251), so waiting would lose that option there.
+
+**Rejected.** Advisory only, no yank: weaker signal for tools that read yanks but not GHSA, and
+inconsistent with T-251.

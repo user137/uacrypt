@@ -10042,9 +10042,10 @@ on the Pi); `cargo xtask test` 146 suites green, `cargo clippy --workspace --all
   platforms). Release assets checked: 18 files, `SHA256SUMS` OK, cosign v2.4.1
   `--new-bundle-format` `Verified OK`, attestations point at `refs/tags/v0.5.0`, SBOM = uacrypt
   0.5.0. GHSA-4644-j77c-h3hg published 2026-10-10 (no CVE, no RustSec PR). CHANGELOG says
-  2026-10-09 (tag landed 2026-10-10 UTC; left as is). Still open: owner decides whether to
-  yank/deprecate 0.4.x / bindings 0.2.0 (weaker case than T-251: same data format); merge the
-  Dependabot brace-expansion PR; then T-267 (site), T-295 (winget), 0.6.0.
+  2026-10-09 (tag landed 2026-10-10 UTC; left as is). Still open: yank 0.4.0 / bindings 0.2.0
+  (D-233, delegated to Claude: yes; the owner runs the token-gated commands); Dependabot
+  brace-expansion PR #12 approved for merge (rebase requested for fresh CI); then T-267 (site),
+  T-295 (winget), 0.6.0.
 - **0.4.0: released and closed (2026-10-08/09).** Tag `v0.4.0` on `39fdb53` after all CI incl.
   Miri was green; release run 37761634603 green (npm needed a new `NPM_TOKEN` and one rerun).
   Live: crates.io 0.4.0, PyPI/npm/RubyGems 0.2.0 (npm without `win32-x64-msvc`, D-189). T-252
