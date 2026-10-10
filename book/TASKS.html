@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-ad261942.js";
+            window.path_to_searchindex_js = "searchindex-5686bb77.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -10508,11 +10508,15 @@ on the Pi); <code>cargo xtask test</code> 146 suites green, <code>cargo clippy -
 <code>.claude/disclosure-drafts/advisory_050.md</code>, not yet created on GitHub.</p>
 <p><strong>RELEASE-DAY HANDOFF (2026-10-08, saved before a context compact) - read this first.</strong></p>
 <ul>
-<li><strong>NEXT STEP (2026-10-09):</strong> GHSA #3 text approved, draft created: GHSA-4644-j77c-h3hg (payload
-<code>.claude/disclosure-drafts/ghsa3.json</code>); no CVE (owner 2026-10-09, same as 0.4.0). CHANGELOG finalized
-as <code>[0.5.0] - 2026-10-09</code> (change the date if the tag slips) and cites it; <code>docs/CLI.md</code> has the
-cosign v2 note. Next: fetch, rebuild the gh-pages marker, then the push/tag steps below.
-<code>master</code> = <code>39fdb53</code> = <code>v0.4.0</code>.</li>
+<li><strong>0.5.0: released (2026-10-10).</strong> Tag <code>v0.5.0</code> on <code>cb57631</code> after all CI incl. <code>miri.yml</code> run
+37920576532 was green; release run 38028624821 green (RubyGems hit a transient “problem saving
+your gem” on the 3rd gem, one rerun). Live: crates.io 0.5.0, PyPI/npm/RubyGems 0.3.0 (all 4 gem
+platforms). Release assets checked: 18 files, <code>SHA256SUMS</code> OK, cosign v2.4.1
+<code>--new-bundle-format</code> <code>Verified OK</code>, attestations point at <code>refs/tags/v0.5.0</code>, SBOM = uacrypt
+0.5.0. GHSA-4644-j77c-h3hg published 2026-10-10 (no CVE, no RustSec PR). CHANGELOG says
+2026-10-09 (tag landed 2026-10-10 UTC; left as is). Still open: owner decides whether to
+yank/deprecate 0.4.x / bindings 0.2.0 (weaker case than T-251: same data format); merge the
+Dependabot brace-expansion PR; then T-267 (site), T-295 (winget), 0.6.0.</li>
 <li><strong>0.4.0: released and closed (2026-10-08/09).</strong> Tag <code>v0.4.0</code> on <code>39fdb53</code> after all CI incl.
 Miri was green; release run 37761634603 green (npm needed a new <code>NPM_TOKEN</code> and one rerun).
 Live: crates.io 0.4.0, PyPI/npm/RubyGems 0.2.0 (npm without <code>win32-x64-msvc</code>, D-189). T-252
