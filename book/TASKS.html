@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-5686bb77.js";
+            window.path_to_searchindex_js = "searchindex-49a46c3e.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -10514,9 +10514,14 @@ your gem” on the 3rd gem, one rerun). Live: crates.io 0.5.0, PyPI/npm/RubyGems
 platforms). Release assets checked: 18 files, <code>SHA256SUMS</code> OK, cosign v2.4.1
 <code>--new-bundle-format</code> <code>Verified OK</code>, attestations point at <code>refs/tags/v0.5.0</code>, SBOM = uacrypt
 0.5.0. GHSA-4644-j77c-h3hg published 2026-10-10 (no CVE, no RustSec PR). CHANGELOG says
-2026-10-09 (tag landed 2026-10-10 UTC; left as is). Still open: owner decides whether to
-yank/deprecate 0.4.x / bindings 0.2.0 (weaker case than T-251: same data format); merge the
-Dependabot brace-expansion PR; then T-267 (site), T-295 (winget), 0.6.0.</li>
+2026-10-09 (tag landed 2026-10-10 UTC; left as is). Release notes on v0.5.0 set (owner OK).
+Yanks done 2026-10-10 (D-233, delegated to Claude), verified on the registry APIs: crates.io
+<code>dstu-core</code>/<code>uacrypt</code> 0.4.0 yanked; PyPI 0.2.0 yanked; npm <code>dstu-core</code> + 3 platform packages
+0.2.0 deprecated; RubyGems 0.2.0 (4 platforms) yanked. <strong>NEXT STEP (2026-10-10, before a
+compact):</strong> merge Dependabot PR #12 (brace-expansion, owner approved) once its checks are green -
+rebased on <code>4efa6bb</code>; Java macOS failed on a Maven Central download (rerun of run 38030145697
+started); SonarCloud fails on Dependabot PRs (no secrets), not a blocker. Then push the local
+commits (D-233 + this note) and T-267 (site), T-295 (winget), 0.6.0.</li>
 <li><strong>0.4.0: released and closed (2026-10-08/09).</strong> Tag <code>v0.4.0</code> on <code>39fdb53</code> after all CI incl.
 Miri was green; release run 37761634603 green (npm needed a new <code>NPM_TOKEN</code> and one rerun).
 Live: crates.io 0.4.0, PyPI/npm/RubyGems 0.2.0 (npm without <code>win32-x64-msvc</code>, D-189). T-252

@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-5686bb77.js";
+            window.path_to_searchindex_js = "searchindex-49a46c3e.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -14111,6 +14111,21 @@ behaviour is most likely, and a late finding would have to be bisected across tw
 <p><strong>Rule kept.</strong> Miri stays a required layer (<code>CLAUDE.md</code>). A green Miri run covering the code being
 tagged is still required before every release tag: either the latest <code>miri.yml</code> run is on or after
 the last code change, or start one with <code>gh workflow run miri.yml --ref master</code>.</p>
+<h2 id="d-233-yank-the-releases-ghsa-4644-j77c-h3hg-covers-2026-10-10"><a class="header" href="#d-233-yank-the-releases-ghsa-4644-j77c-h3hg-covers-2026-10-10">D-233: Yank the releases GHSA-4644-j77c-h3hg covers (2026-10-10)</a></h2>
+<p><strong>Decision (delegated by the owner).</strong> Mark every still-open release that GHSA-4644-j77c-h3hg
+covers, the same way T-251 did for 0.3.x: crates.io <code>dstu-core</code> and <code>uacrypt</code> 0.4.0 yanked; PyPI
+<code>dstu-core</code> 0.2.0 yanked; npm <code>dstu-core</code> 0.2.0 and its three platform packages
+(<code>dstu-core-darwin-arm64</code>, <code>dstu-core-linux-x64-gnu</code>, <code>dstu-core-linux-arm64-gnu</code>) deprecated with
+the advisory message; RubyGems <code>dstu_core</code> 0.2.0 (4 platforms) yanked while it is still under 30
+days old. The GitHub release v0.4.0 and its assets stay.</p>
+<p><strong>Why.</strong> Safety over compatibility: a yank only stops new dependency resolution, existing lockfiles
+and pinned installs keep working, and <code>cargo audit</code>/<code>cargo deny</code> warn on yanked versions even though
+RustSec has no entry. The upgrade costs little: the data format did not change, so files written by
+0.4.0 open with 0.5.0; only <code>uacrypt</code>’s key files need a one-time <code>key-import</code>. Leaving 0.4.0 as the
+newest unyanked 0.4 line would invite pinning to code with a known process abort and secret-dependent
+timing. RubyGems refuses a yank after 30 days (T-251), so waiting would lose that option there.</p>
+<p><strong>Rejected.</strong> Advisory only, no yank: weaker signal for tools that read yanks but not GHSA, and
+inconsistent with T-251.</p>
 
                     </main>
 
