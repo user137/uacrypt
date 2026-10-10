@@ -10007,7 +10007,10 @@ writer onto it. Superseded in detail by the plan below.
 
 **0.6.0, in order:**
 0. Done 2026-10-09: Miri split into `miri.yml`, runs on code changes + daily (D-232).
-1. CI and test footing: T-288 (check what 0.4.0 left), T-289, T-231, T-296, T-277.
+1. CI and test footing: T-231 first (owner 2026-10-10: Java `MemoryLeakTest` VmRSS flake failed
+   `bindings-java` ubuntu on 2 of 3 `master` pushes that day, both docs-only - 13.3 MB and
+   9.1 MB vs the 8 MiB threshold, runs 38030887107 and 38033647045), then T-288 (check what 0.4.0
+   left), T-289, T-296, T-277.
 2. T-284 core stream-file codec plus capi, then one binding pass onto it; closes T-274, T-276 and
    T-275 (O-F: Java `close()` closes the sink - a behaviour change, Java package minor bump).
 3. Hygiene: T-242, T-244, T-283, T-281 (O-D: documented reserved no-op).
@@ -10050,7 +10053,8 @@ on the Pi); `cargo xtask test` 146 suites green, `cargo clippy --workspace --all
   0.2.0 deprecated; RubyGems 0.2.0 (4 platforms) yanked. Dependabot PR #12 (brace-expansion)
   squash-merged 2026-10-10 as `8c2e9f3` (SonarCloud fails on Dependabot PRs - no secrets - not a
   blocker); alert #3 closed as fixed. T-267 (site) done. **NEXT STEP (owner 2026-10-10):** 0.6.0
-  in the plan's order, starting with step 1 (T-288); T-295 (winget) after it.
+  in the plan's order, starting with step 1's T-231 (the Java VmRSS flake), then T-288; T-295
+  (winget) after step 1. `master` = `aeca3b8`, all CI green except that flake (rerun started).
 - **0.4.0: released and closed (2026-10-08/09).** Tag `v0.4.0` on `39fdb53` after all CI incl.
   Miri was green; release run 37761634603 green (npm needed a new `NPM_TOKEN` and one rerun).
   Live: crates.io 0.4.0, PyPI/npm/RubyGems 0.2.0 (npm without `win32-x64-msvc`, D-189). T-252
