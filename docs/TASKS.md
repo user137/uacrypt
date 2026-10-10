@@ -10036,22 +10036,15 @@ on the Pi); `cargo xtask test` 146 suites green, `cargo clippy --workspace --all
 `.claude/disclosure-drafts/advisory_050.md`, not yet created on GitHub.
 
 **RELEASE-DAY HANDOFF (2026-10-08, saved before a context compact) - read this first.**
-- **NEXT STEP (2026-10-09, before a compact):** tag `v0.5.0` on **`cb57631`** once `miri.yml` run
-  37920576532 is green (`rust` and every other workflow on `cb57631` already green; only Miri's
-  `dstu9041_encryption_512` was still running, ~2.5 h). `master` = `origin/master` = `cb57631`
-  (pushed; gh-pages marker 0.5.0 pushed too). The embargo is over (code public since the push).
-  Done today: GHSA #3 draft GHSA-4644-j77c-h3hg (payload `.claude/disclosure-drafts/ghsa3.json`),
-  no CVE (owner); CHANGELOG `[0.5.0] - 2026-10-09` cites it (change the date if the tag is later);
-  `docs/CLI.md` cosign v2 note; three CI fixes found on first push (Linux-only clippy lint,
-  `/dev/full` on macOS, aarch64 test-only clippy) and `smoke_passphrase.rs` missing its Miri
-  ignore (Miri on `uacrypt` ran 4 h+); Miri moved to `miri.yml` (D-232); RustSec PRs closed by
-  the maintainers (notability), so no RustSec PR for GHSA #3; 0.6.0/0.7.0 plan approved (below).
-  After the tag: the owner runs `! git tag -a v0.5.0 cb57631 -m "uacrypt 0.5.0" && git push origin
-  v0.5.0`; approve PyPI/npm/RubyGems environments (npm token may have expired again); verify live
-  registries + 18 release assets (cosign, attestations, `--source-ref refs/tags/v0.5.0`); publish
-  GHSA-4644-j77c-h3hg; owner decides whether to yank/deprecate 0.4.x / bindings 0.2.0 (weaker case
-  than T-251: same data format); merge the Dependabot brace-expansion PR; then T-267 (site), T-295
-  (winget), 0.6.0.
+- **0.5.0: released (2026-10-10).** Tag `v0.5.0` on `cb57631` after all CI incl. `miri.yml` run
+  37920576532 was green; release run 38028624821 green (RubyGems hit a transient "problem saving
+  your gem" on the 3rd gem, one rerun). Live: crates.io 0.5.0, PyPI/npm/RubyGems 0.3.0 (all 4 gem
+  platforms). Release assets checked: 18 files, `SHA256SUMS` OK, cosign v2.4.1
+  `--new-bundle-format` `Verified OK`, attestations point at `refs/tags/v0.5.0`, SBOM = uacrypt
+  0.5.0. GHSA-4644-j77c-h3hg published 2026-10-10 (no CVE, no RustSec PR). CHANGELOG says
+  2026-10-09 (tag landed 2026-10-10 UTC; left as is). Still open: owner decides whether to
+  yank/deprecate 0.4.x / bindings 0.2.0 (weaker case than T-251: same data format); merge the
+  Dependabot brace-expansion PR; then T-267 (site), T-295 (winget), 0.6.0.
 - **0.4.0: released and closed (2026-10-08/09).** Tag `v0.4.0` on `39fdb53` after all CI incl.
   Miri was green; release run 37761634603 green (npm needed a new `NPM_TOKEN` and one rerun).
   Live: crates.io 0.4.0, PyPI/npm/RubyGems 0.2.0 (npm without `win32-x64-msvc`, D-189). T-252
