@@ -770,31 +770,52 @@ html[data-lang="uk"] [lang="en"]{display:none;}
   <div lang="uk" class="prose"><h2>Основні дієслова CLI — і досі нічого не можна неправильно налаштувати</h2>
   <p>Режим, nonce і алгоритм зашиті наглухо — налаштовувати нічого.</p></div>
 
-<pre><code>cargo build -p uacrypt --release
+<pre><code>cargo install uacrypt   # or a prebuilt binary from GitHub Releases
 
 uacrypt keygen  --out key.bin
 uacrypt encrypt --key key.bin --in message.bin --out sealed.bin
-uacrypt decrypt --key key.bin --in sealed.bin  --out message.bin
-uacrypt hash    --in file.bin --out digest.bin
+uacrypt decrypt --key key.bin --in sealed.bin  --out decrypted.bin
+uacrypt encrypt --passphrase --in message.bin --out sealed.pw   # asks twice, no echo
+uacrypt decrypt --in sealed.pw --out decrypted.pw                # asks for the passphrase
+tar c docs | uacrypt encrypt --key key.bin --in - --out docs.tar.enc   # - is stdin/stdout
 
-uacrypt sign-keygen --out signing.key
+uacrypt hash --in file.bin &gt; file.bin.kupyna256
+uacrypt hash --check file.bin.kupyna256
+
+uacrypt sign-keygen --out signing.key   # sign-keygen257: m=257, as Diia signatures use
 uacrypt sign-pubkey --key signing.key --out verifying.key
 uacrypt sign         --key signing.key   --in message.bin --out message.bin.sig
 uacrypt verify       --key verifying.key --in message.bin --sig message.bin.sig
 
-uacrypt box-keygen --out box.key
+uacrypt box-keygen --out box.key        # box-keygen512: l(p)=512
 uacrypt box-pubkey --key box.key --out box.pub
 uacrypt box-seal   --key box.pub  --in message.bin --out sealed.box
-uacrypt box-open   --key box.key  --in sealed.box   --out message.bin</code></pre>
+uacrypt box-open   --key box.key  --in sealed.box   --out opened.bin
+
+uacrypt key-import --kind symmetric --in old-0.4.key --out key.txt   # once per raw 0.4 key</code></pre>
 
   <p lang="en"><code>encrypt</code>/<code>decrypt</code> stream the file in fixed-size chunks —
   no message-length cap, no whole-file memory buffer. Prebuilt binaries for Windows, Linux, and
   macOS (Apple Silicon) ship on every <a href="https://github.com/user137/uacrypt/releases">GitHub
   Release</a>.</p>
+  <p lang="en">Key files are typed: each one says what it is, and a key of the wrong kind is refused.
+  The curve is chosen once, by the keygen command; every other command reads it from the key. No
+  command replaces an existing file unless you pass <code>--force</code>, and key files are never
+  replaced. The exit status tells a rejected input (1) from a usage error (2) and a file or key
+  that could not be used (3). Full reference:
+  <a href="https://user137.github.io/uacrypt/book/CLI.html">the CLI guide</a>
+  (<a href="https://user137.github.io/uacrypt/book/CLI.html#key-files">key files</a>).</p>
   <p lang="uk"><code>encrypt</code>/<code>decrypt</code> читають і пишуть файл потоково,
   фіксованими блоками — без обмеження на довжину повідомлення, без буфера на весь файл у
   пам'яті. Готові бінарники для Windows, Linux і macOS (Apple Silicon) додаються до кожного
   <a href="https://github.com/user137/uacrypt/releases">GitHub Release</a>.</p>
+  <p lang="uk">Файли ключів типізовані: кожен каже, що він таке, а ключ не того виду
+  відхиляється. Криву вибирають один раз, командою keygen; решта команд бере її з ключа. Жодна
+  команда не замінює наявний файл без <code>--force</code>, а файли ключів не замінюються ніколи.
+  Код виходу відрізняє відхилені вхідні дані (1) від помилки у команді (2) і від файлу чи ключа,
+  яким не вдалося скористатися (3). Повний довідник:
+  <a href="https://user137.github.io/uacrypt/book/CLI.html">посібник з CLI</a>
+  (<a href="https://user137.github.io/uacrypt/book/CLI.html#key-files">файли ключів</a>).</p>
 </section>
 
 <section class="container">
