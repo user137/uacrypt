@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-49a46c3e.js";
+            window.path_to_searchindex_js = "searchindex-0f8a22d4.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -9629,7 +9629,9 @@ decide whether the bindings also read/write the passphrase file format (D-219).<
 </ul>
 <p>Release:</p>
 <ul>
-<li><input disabled="" type="checkbox"> <strong>T-267</strong> After the 0.5.0 release (owner request 2026-09-24): update the site - the
+<li><input disabled="" type="checkbox" checked=""> <strong>T-267</strong> (done 2026-10-10, <code>gh-pages</code> <code>2407177</code>, live on both pages; every example run on
+0.5.0 except the interactive passphrase pair; the book already had “Key files”/<code>key-import</code>;
+the marker was already 0.5.0) After the 0.5.0 release (owner request 2026-09-24): update the site - the
 <code>gh-pages</code> <code>index.html</code> (version marker that <code>docs-check</code> reads, and its CLI examples: typed key
 files, <code>key-import</code>, the exit codes, <code>hash</code> printing to stdout and <code>hash --check</code> instead of
 <code>hash --out</code>, and the passphrase commands <code>encrypt --passphrase</code>/<code>decrypt</code> asking, T-262) -
@@ -10517,11 +10519,10 @@ platforms). Release assets checked: 18 files, <code>SHA256SUMS</code> OK, cosign
 2026-10-09 (tag landed 2026-10-10 UTC; left as is). Release notes on v0.5.0 set (owner OK).
 Yanks done 2026-10-10 (D-233, delegated to Claude), verified on the registry APIs: crates.io
 <code>dstu-core</code>/<code>uacrypt</code> 0.4.0 yanked; PyPI 0.2.0 yanked; npm <code>dstu-core</code> + 3 platform packages
-0.2.0 deprecated; RubyGems 0.2.0 (4 platforms) yanked. <strong>NEXT STEP (2026-10-10, before a
-compact):</strong> merge Dependabot PR #12 (brace-expansion, owner approved) once its checks are green -
-rebased on <code>4efa6bb</code>; Java macOS failed on a Maven Central download (rerun of run 38030145697
-started); SonarCloud fails on Dependabot PRs (no secrets), not a blocker. Then push the local
-commits (D-233 + this note) and T-267 (site), T-295 (winget), 0.6.0.</li>
+0.2.0 deprecated; RubyGems 0.2.0 (4 platforms) yanked. Dependabot PR #12 (brace-expansion)
+squash-merged 2026-10-10 as <code>8c2e9f3</code> (SonarCloud fails on Dependabot PRs - no secrets - not a
+blocker); alert #3 closed as fixed. T-267 (site) done. <strong>NEXT STEP (owner 2026-10-10):</strong> 0.6.0
+in the plan’s order, starting with step 1 (T-288); T-295 (winget) after it.</li>
 <li><strong>0.4.0: released and closed (2026-10-08/09).</strong> Tag <code>v0.4.0</code> on <code>39fdb53</code> after all CI incl.
 Miri was green; release run 37761634603 green (npm needed a new <code>NPM_TOKEN</code> and one rerun).
 Live: crates.io 0.4.0, PyPI/npm/RubyGems 0.2.0 (npm without <code>win32-x64-msvc</code>, D-189). T-252
