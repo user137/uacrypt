@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-0f8a22d4.js";
+            window.path_to_searchindex_js = "searchindex-536761a3.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -10481,7 +10481,10 @@ writer onto it. Superseded in detail by the plan below.</p>
 <p><strong>0.6.0, in order:</strong>
 0. Done 2026-10-09: Miri split into <code>miri.yml</code>, runs on code changes + daily (D-232).</p>
 <ol>
-<li>CI and test footing: T-288 (check what 0.4.0 left), T-289, T-231, T-296, T-277.</li>
+<li>CI and test footing: T-231 first (owner 2026-10-10: Java <code>MemoryLeakTest</code> VmRSS flake failed
+<code>bindings-java</code> ubuntu on 2 of 3 <code>master</code> pushes that day, both docs-only - 13.3 MB and
+9.1 MB vs the 8 MiB threshold, runs 38030887107 and 38033647045), then T-288 (check what 0.4.0
+left), T-289, T-296, T-277.</li>
 <li>T-284 core stream-file codec plus capi, then one binding pass onto it; closes T-274, T-276 and
 T-275 (O-F: Java <code>close()</code> closes the sink - a behaviour change, Java package minor bump).</li>
 <li>Hygiene: T-242, T-244, T-283, T-281 (O-D: documented reserved no-op).</li>
@@ -10522,7 +10525,8 @@ Yanks done 2026-10-10 (D-233, delegated to Claude), verified on the registry API
 0.2.0 deprecated; RubyGems 0.2.0 (4 platforms) yanked. Dependabot PR #12 (brace-expansion)
 squash-merged 2026-10-10 as <code>8c2e9f3</code> (SonarCloud fails on Dependabot PRs - no secrets - not a
 blocker); alert #3 closed as fixed. T-267 (site) done. <strong>NEXT STEP (owner 2026-10-10):</strong> 0.6.0
-in the plan’s order, starting with step 1 (T-288); T-295 (winget) after it.</li>
+in the plan’s order, starting with step 1’s T-231 (the Java VmRSS flake), then T-288; T-295
+(winget) after step 1. <code>master</code> = <code>aeca3b8</code>, all CI green except that flake (rerun started).</li>
 <li><strong>0.4.0: released and closed (2026-10-08/09).</strong> Tag <code>v0.4.0</code> on <code>39fdb53</code> after all CI incl.
 Miri was green; release run 37761634603 green (npm needed a new <code>NPM_TOKEN</code> and one rerun).
 Live: crates.io 0.4.0, PyPI/npm/RubyGems 0.2.0 (npm without <code>win32-x64-msvc</code>, D-189). T-252
