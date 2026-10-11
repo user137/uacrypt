@@ -8,7 +8,6 @@
 
 #include <algorithm>
 #include <cstdint>
-#include <cstring>
 #include <istream>
 #include <memory>
 #include <ostream>
@@ -68,8 +67,9 @@ class SecretstreamKey {
 /// Encrypts writes into uacrypt encrypt's own wire format: a version byte and a
 /// kSecretstreamHeaderBytes-byte header, then tag(1) || len_u32_le(4) || ciphertext ||
 /// authTag(kSecretstreamTagBytes) records. Every record but the Final one carries exactly
-/// kSecretstreamChunkBytes bytes (part of the format since D-208). Writes to a caller-owned
-/// std::ostream& (this wrapper never opens or closes it - the idiomatic C++ shape for "any byte
+/// kSecretstreamChunkBytes bytes (part of the format since D-208). The framing is dstu-core's
+/// stream-file codec (T-284) through the C ABI; this class only buffers and writes, to a
+/// caller-owned std::ostream& (never opened or closed here - the idiomatic C++ shape for "any byte
 /// sink", D-158 point 2).
 ///
 /// Deliberately does not flush a Final chunk from the destructor - unlike a typical RAII type's
@@ -81,20 +81,20 @@ class SecretstreamKey {
 /// binding's own secretstream wrapper proves).
 class SecretStreamEncryptor {
  public:
-  /// Starts a new stream under key, writing the header to out immediately.
+  /// Starts a new stream under key, writing the version byte and header to out immediately.
   SecretStreamEncryptor(std::ostream &out, const SecretstreamKey &key)
-      : out_(&out), state_(nullptr, &dstu_secretstream_push_free) {
+      : out_(&out), enc_(nullptr, &dstu_secretstream_file_encryptor_free) {
     buffer_.resize(kSecretstreamChunkBytes);
-    std::vector<std::uint8_t> header(kSecretstreamHeaderBytes);
-    DstuPushState *state = nullptr;
-    CheckStatus(dstu_secretstream_push_init(key.native_handle(), &state, header.data()));
-    state_.reset(state);
-    WriteToStream(&kSecretstreamFormatVersion, 1);
-    WriteToStream(header.data(), header.size());
+    record_.resize(DSTU_SECRETSTREAM_MAX_RECORD_BYTES);
+    std::vector<std::uint8_t> prefix(DSTU_SECRETSTREAM_FILE_PREFIX_BYTES);
+    DstuFileEncryptor *enc = nullptr;
+    CheckStatus(dstu_secretstream_file_encryptor_new(key.native_handle(), prefix.data(), &enc));
+    enc_.reset(enc);
+    WriteToStream(prefix.data(), prefix.size());
   }
 
-  // Not movable, unlike this file's other RAII types: a defaulted move would move state_/pending_
-  // but copy bufferLen_ by value, leaving the moved-from object's buffer_.size() - bufferLen_
+  // Not movable, unlike this file's other RAII types: a defaulted move would move buffer_ but
+  // copy bufferLen_ by value, leaving the moved-from object's buffer_.size() - bufferLen_
   // invariant broken (buffer_ now empty, bufferLen_ unchanged) - a real underflow in Write() if
   // that moved-from object is ever used again. Deleting is a smaller, safer surface than writing a
   // correct custom move that also resets bufferLen_.
@@ -104,74 +104,57 @@ class SecretStreamEncryptor {
   SecretStreamEncryptor &operator=(SecretStreamEncryptor &&) = delete;
   ~SecretStreamEncryptor() = default;
 
-  /// Buffers data, encrypting and emitting a Message chunk each time kSecretstreamChunkBytes of
-  /// plaintext accumulate.
+  /// Buffers data, sealing every full kSecretstreamChunkBytes chunk that is certain not to be the
+  /// last one; the last (even a full one) waits for Finish(). Full chunks are sealed straight
+  /// from data.
   void Write(ByteView data) {
     if (completed_) {
       throw ArgumentError("this encryptor has already been Finish()ed");
     }
     const std::uint8_t *p = data.data();
     std::size_t remaining = data.size();
-    while (remaining > 0) {
-      std::size_t take = std::min(remaining, buffer_.size() - bufferLen_);
-      std::memcpy(buffer_.data() + bufferLen_, p, take);
-      bufferLen_ += take;
-      p += take;
-      remaining -= take;
-      if (bufferLen_ == buffer_.size()) {
-        FlushPendingAsMessage();
-        pending_.assign(buffer_.begin(), buffer_.end());
-        bufferLen_ = 0;
-      }
+    if (bufferLen_ + remaining <= kSecretstreamChunkBytes) {
+      std::copy_n(p, remaining, buffer_.begin() + static_cast<std::ptrdiff_t>(bufferLen_));
+      bufferLen_ += remaining;
+      return;
     }
+    if (bufferLen_ > 0) {
+      const std::size_t taken = kSecretstreamChunkBytes - bufferLen_;
+      std::copy_n(p, taken, buffer_.begin() + static_cast<std::ptrdiff_t>(bufferLen_));
+      p += taken;
+      remaining -= taken;
+      SealChunk(buffer_.data());
+      bufferLen_ = 0;
+    }
+    while (remaining > kSecretstreamChunkBytes) {
+      SealChunk(p);
+      p += kSecretstreamChunkBytes;
+      remaining -= kSecretstreamChunkBytes;
+    }
+    std::copy_n(p, remaining, buffer_.begin());
+    bufferLen_ = remaining;
   }
 
-  /// Flushes all buffered plaintext as a Final chunk and marks this encryptor complete. Must be
+  /// Writes all buffered plaintext as the Final record and marks this encryptor complete. Must be
   /// called once, on the success path - see the class doc comment for why the destructor itself
   /// never does this.
   void Finish() {
     if (completed_) {
       return;
     }
-    if (bufferLen_ > 0) {
-      FlushPendingAsMessage();
-      WriteChunk(SecretstreamTag::kFinal, ByteView(buffer_.data(), bufferLen_));
-    } else if (!pending_.empty()) {
-      std::vector<std::uint8_t> pending = std::move(pending_);
-      pending_.clear();
-      WriteChunk(SecretstreamTag::kFinal, pending);
-    } else {
-      WriteChunk(SecretstreamTag::kFinal, ByteView());
-    }
+    std::size_t recordLen = 0;
+    CheckStatus(dstu_secretstream_file_encryptor_seal_final(enc_.get(), buffer_.data(), bufferLen_, record_.data(),
+                                                             record_.size(), &recordLen));
+    WriteToStream(record_.data(), recordLen);
+    bufferLen_ = 0;
     completed_ = true;
   }
 
  private:
-  void FlushPendingAsMessage() {
-    if (pending_.empty()) {
-      return;
-    }
-    std::vector<std::uint8_t> pending = std::move(pending_);
-    pending_.clear();
-    WriteChunk(SecretstreamTag::kMessage, pending);
-  }
-
-  void WriteChunk(SecretstreamTag tag, ByteView plaintext) {
-    std::vector<std::uint8_t> ciphertext(plaintext.size());
-    std::vector<std::uint8_t> tagOut(kSecretstreamTagBytes);
-    CheckStatus(dstu_secretstream_push(state_.get(), static_cast<std::uint32_t>(tag), plaintext.data(),
-                                        plaintext.size(), ciphertext.data(), ciphertext.size(), tagOut.data()));
-
-    std::uint8_t header[5];
-    header[0] = static_cast<std::uint8_t>(tag);
-    auto len = static_cast<std::uint32_t>(plaintext.size());
-    header[1] = static_cast<std::uint8_t>(len);
-    header[2] = static_cast<std::uint8_t>(len >> 8);
-    header[3] = static_cast<std::uint8_t>(len >> 16);
-    header[4] = static_cast<std::uint8_t>(len >> 24);
-    WriteToStream(header, sizeof(header));
-    WriteToStream(ciphertext.data(), ciphertext.size());
-    WriteToStream(tagOut.data(), tagOut.size());
+  void SealChunk(const std::uint8_t *chunk) {
+    CheckStatus(dstu_secretstream_file_encryptor_seal_chunk(enc_.get(), chunk, kSecretstreamChunkBytes,
+                                                             record_.data(), record_.size()));
+    WriteToStream(record_.data(), record_.size());
   }
 
   void WriteToStream(const void *data, std::size_t len) {
@@ -185,59 +168,54 @@ class SecretStreamEncryptor {
   }
 
   std::ostream *out_;
-  std::unique_ptr<DstuPushState, void (*)(DstuPushState *)> state_;
+  std::unique_ptr<DstuFileEncryptor, void (*)(DstuFileEncryptor *)> enc_;
   std::vector<std::uint8_t> buffer_;
   std::size_t bufferLen_ = 0;
-  std::vector<std::uint8_t> pending_;
+  std::vector<std::uint8_t> record_;
   bool completed_ = false;
 };
 
 /// Decrypts a read side produced by SecretStreamEncryptor or uacrypt encrypt, from a
-/// caller-owned std::istream& (never opened or closed by this wrapper). Bounds every untrusted
-/// length-prefixed chunk-length field against kSecretstreamChunkBytes before using it to size a
-/// read, and rejects trailing bytes after the Final chunk - both checks the wire format's own
-/// framing does not provide for free (D-118's second pitfall; mirrors uacrypt's own
-/// CliError::SecretstreamChunkTooLarge/SecretstreamTrailingData).
+/// caller-owned std::istream& (never opened or closed by this wrapper). Every check - the
+/// untrusted length field, the 8 KiB rule, truncation, trailing bytes after the Final chunk - is
+/// dstu-core's stream-file codec (T-284); this class only reads, and reports the codec's own
+/// message. The Final chunk is returned only once the input is known to end right after it, so a
+/// stream with trailing data never yields its last chunk.
 class SecretStreamDecryptor {
  public:
-  /// Reads the version byte and the kSecretstreamHeaderBytes-byte header from in immediately and
-  /// re-derives the stream's initial subkey.
+  /// Reads the version byte and the kSecretstreamHeaderBytes-byte header from in immediately.
   SecretStreamDecryptor(std::istream &in, const SecretstreamKey &key)
-      : in_(&in), state_(nullptr, &dstu_secretstream_pull_free) {
-    const std::uint8_t version = ReadExactly(1)[0];
-    if (version != kSecretstreamFormatVersion) {
-      throw CryptoError("unsupported stream format version " + std::to_string(version) + " (this build reads " +
-                        std::to_string(kSecretstreamFormatVersion) + ")");
-    }
-    std::vector<std::uint8_t> header = ReadExactly(kSecretstreamHeaderBytes);
-    state_.reset(dstu_secretstream_pull_init(key.native_handle(), header.data()));
+      : in_(&in),
+        dec_(dstu_secretstream_file_decryptor_new(key.native_handle()), &dstu_secretstream_file_decryptor_free) {
+    plaintext_.resize(kSecretstreamChunkBytes);
+    Step();
+    Step();
   }
 
-  // Not movable - same reasoning as SecretStreamEncryptor: a defaulted move would move pending_
-  // but copy pendingPos_ by value, leaving a moved-from object's pending_.size() - pendingPos_
-  // invariant broken if it were ever used again after the move.
+  // Not movable - same reasoning as SecretStreamEncryptor: a defaulted move would move
+  // plaintext_ but copy pendingPos_/pendingLen_ by value, leaving a moved-from object's
+  // invariants broken if it were ever used again after the move.
   SecretStreamDecryptor(const SecretStreamDecryptor &) = delete;
   SecretStreamDecryptor &operator=(const SecretStreamDecryptor &) = delete;
   SecretStreamDecryptor(SecretStreamDecryptor &&) = delete;
   SecretStreamDecryptor &operator=(SecretStreamDecryptor &&) = delete;
   ~SecretStreamDecryptor() = default;
 
-  /// Decrypts and copies up to n bytes of plaintext into out, pulling and verifying chunks from
-  /// the input stream as needed. Returns the number of bytes written - 0 means a Final chunk was
-  /// verified and no trailing data follows (clean end of stream). Throws CryptoError if the
-  /// stream ends before a Final chunk is seen, on any authentication failure, or on trailing data
-  /// after Final.
+  /// Decrypts and copies up to n bytes of plaintext into out, feeding records from the input
+  /// stream as needed. Returns the number of bytes written - 0 means a Final chunk was verified
+  /// and no trailing data follows (clean end of stream). Throws CryptoError if the stream ends
+  /// before a Final chunk is seen, on any authentication failure, or on trailing data after
+  /// Final.
   std::size_t Read(std::uint8_t *out, std::size_t n) {
-    while (pendingPos_ == pending_.size()) {
-      if (finalized_) {
+    while (pendingPos_ == pendingLen_) {
+      if (done_) {
         return 0;
       }
-      if (!ReadNextChunk()) {
-        throw CryptoError("secretstream ended before a Final chunk was seen - the input is truncated");
-      }
+      pendingLen_ = Step();
+      pendingPos_ = 0;
     }
-    std::size_t take = std::min(n, pending_.size() - pendingPos_);
-    std::memcpy(out, pending_.data() + pendingPos_, take);
+    const std::size_t take = std::min(n, pendingLen_ - pendingPos_);
+    std::copy_n(plaintext_.begin() + static_cast<std::ptrdiff_t>(pendingPos_), take, out);
     pendingPos_ += take;
     return take;
   }
@@ -245,75 +223,49 @@ class SecretStreamDecryptor {
   /// Convenience: decrypts and returns every remaining plaintext byte.
   std::vector<std::uint8_t> ReadAll() {
     std::vector<std::uint8_t> result;
-    std::uint8_t buf[kSecretstreamChunkBytes];
-    std::size_t n;
-    while ((n = Read(buf, sizeof(buf))) > 0) {
-      result.insert(result.end(), buf, buf + n);
+    std::vector<std::uint8_t> buf(kSecretstreamChunkBytes);
+    std::size_t n = 0;
+    while ((n = Read(buf.data(), buf.size())) > 0) {
+      result.insert(result.end(), buf.begin(), buf.begin() + static_cast<std::ptrdiff_t>(n));
     }
     return result;
   }
 
  private:
-  /// Reads and decrypts the next chunk into pending_/pendingPos_. Returns false only when the
-  /// stream had no bytes at all left to start a new chunk (genuine truncation, handled by the
-  /// caller). Sets finalized_ (and checks for trailing data) once a Final chunk verifies.
-  bool ReadNextChunk() {
-    std::uint8_t tagByte = 0;
-    in_->read(reinterpret_cast<char *>(&tagByte), 1);
-    if (in_->gcount() == 0) {
-      return false;
+  /// Feeds the codec one next_len read; returns how many plaintext bytes that released into
+  /// plaintext_ (at end of input, the Final chunk's).
+  std::size_t Step() {
+    const std::size_t want = dstu_secretstream_file_decryptor_next_len(dec_.get());
+    std::vector<std::uint8_t> data(want);
+    std::size_t got = 0;
+    if (want > 0) {
+      in_->read(reinterpret_cast<char *>(data.data()), static_cast<std::streamsize>(want));
+      got = static_cast<std::size_t>(in_->gcount());
     }
-
-    std::vector<std::uint8_t> lenBytes = ReadExactly(4);
-    auto length = static_cast<std::uint32_t>(lenBytes[0]) | (static_cast<std::uint32_t>(lenBytes[1]) << 8) |
-                  (static_cast<std::uint32_t>(lenBytes[2]) << 16) | (static_cast<std::uint32_t>(lenBytes[3]) << 24);
-    if (length > kSecretstreamChunkBytes) {
-      throw CryptoError("secretstream chunk length exceeds the maximum kSecretstreamChunkBytes - the input is corrupted");
+    std::size_t len = 0;
+    DstuStatus status = DSTU_OK;
+    if (got < want) {
+      done_ = true;
+      status = dstu_secretstream_file_decryptor_finish(dec_.get(), plaintext_.data(), plaintext_.size(), &len);
+    } else {
+      status = dstu_secretstream_file_decryptor_feed(dec_.get(), data.data(), data.size(), plaintext_.data(),
+                                                     plaintext_.size(), &len);
     }
-
-    if (static_cast<SecretstreamTag>(tagByte) != SecretstreamTag::kFinal && length != kSecretstreamChunkBytes) {
-      throw CryptoError("non-final chunk of " + std::to_string(length) + " bytes, must be exactly " +
-                        std::to_string(kSecretstreamChunkBytes) + " (D-208)");
-    }
-
-    std::vector<std::uint8_t> ciphertext = ReadExactly(length);
-    std::vector<std::uint8_t> authTag = ReadExactly(kSecretstreamTagBytes);
-
-    std::vector<std::uint8_t> plaintextOut(length);
-    DstuTag outTag;
-    CheckStatus(dstu_secretstream_pull(state_.get(), tagByte, ciphertext.data(), ciphertext.size(), authTag.data(),
-                                        plaintextOut.data(), plaintextOut.size(), &outTag));
-
-    pending_ = std::move(plaintextOut);
-    pendingPos_ = 0;
-    if (static_cast<SecretstreamTag>(outTag) == SecretstreamTag::kFinal) {
-      finalized_ = true;
-      std::uint8_t probe = 0;
-      in_->read(reinterpret_cast<char *>(&probe), 1);
-      if (in_->gcount() != 0) {
-        throw CryptoError("secretstream has trailing data after its Final chunk");
+    if (status != DSTU_OK) {
+      if (const char *message = dstu_secretstream_file_decryptor_last_error(dec_.get())) {
+        throw CryptoError(message);
       }
+      CheckStatus(status);
     }
-    return true;
-  }
-
-  std::vector<std::uint8_t> ReadExactly(std::size_t n) {
-    std::vector<std::uint8_t> buf(n);
-    if (n == 0) {
-      return buf;
-    }
-    in_->read(reinterpret_cast<char *>(buf.data()), static_cast<std::streamsize>(n));
-    if (static_cast<std::size_t>(in_->gcount()) != n) {
-      throw CryptoError("secretstream ended unexpectedly mid-chunk - the input is truncated");
-    }
-    return buf;
+    return len;
   }
 
   std::istream *in_;
-  std::unique_ptr<DstuPullState, void (*)(DstuPullState *)> state_;
-  std::vector<std::uint8_t> pending_;
+  std::unique_ptr<DstuFileDecryptor, void (*)(DstuFileDecryptor *)> dec_;
+  std::vector<std::uint8_t> plaintext_;
   std::size_t pendingPos_ = 0;
-  bool finalized_ = false;
+  std::size_t pendingLen_ = 0;
+  bool done_ = false;
 };
 
 }  // namespace dstu

@@ -326,6 +326,57 @@ std::vector<std::uint8_t> FromHex(const std::string &hex) {
   return out;
 }
 
+std::string EncryptPieces(const dstu::SecretstreamKey &key, const std::vector<std::vector<std::uint8_t>> &pieces) {
+  std::ostringstream sink;
+  dstu::SecretStreamEncryptor enc(sink, key);
+  for (const auto &piece : pieces) {
+    enc.Write(piece);
+  }
+  enc.Finish();
+  return sink.str();
+}
+
+// T-276 shape: one large write and many small writes decrypt to the same plaintext; T-284: a
+// stream with trailing data never yields its Final chunk.
+void TestSecretstreamWritesAndTrailingFinal() {
+  auto key = dstu::SecretstreamKey::Generate();
+  std::vector<std::uint8_t> message(3 * dstu::kSecretstreamChunkBytes + 1234);
+  for (std::size_t i = 0; i < message.size(); i++) {
+    message[i] = static_cast<std::uint8_t>(i * 7);
+  }
+  std::vector<std::vector<std::uint8_t>> small;
+  for (std::size_t i = 0; i < message.size(); i += 1000) {
+    const std::size_t end = std::min(message.size(), i + 1000);
+    small.emplace_back(message.begin() + static_cast<std::ptrdiff_t>(i),
+                       message.begin() + static_cast<std::ptrdiff_t>(end));
+  }
+  for (const std::string &wire : {EncryptPieces(key, {message}), EncryptPieces(key, small)}) {
+    std::istringstream source(wire);
+    dstu::SecretStreamDecryptor dec(source, key);
+    CHECK(dec.ReadAll() == message, "one large write and many small writes should decrypt the same");
+  }
+
+  const std::vector<std::uint8_t> full(dstu::kSecretstreamChunkBytes, 0x41);
+  std::istringstream trailing(EncryptPieces(key, {full, ToBytes("last")}) + "x");
+  dstu::SecretStreamDecryptor dec(trailing, key);
+  std::vector<std::uint8_t> seen(dstu::kSecretstreamChunkBytes);
+  std::size_t got = 0;
+  std::string message_text;
+  try {
+    std::size_t n = 0;
+    while ((n = dec.Read(seen.data() + got, seen.size() - got)) > 0) {
+      got += n;
+      if (got == seen.size()) {
+        seen.resize(seen.size() + dstu::kSecretstreamChunkBytes);
+      }
+    }
+  } catch (const dstu::CryptoError &e) {
+    message_text = e.what();
+  }
+  CHECK(message_text.find("trailing data") != std::string::npos, "trailing data should be rejected");
+  CHECK(got == dstu::kSecretstreamChunkBytes, "the Final chunk of a stream with trailing data should not be yielded");
+}
+
 void TestSecretstreamSharedVectors() {
   std::ifstream file(DSTU_SECRETSTREAM_VECTORS);
   CHECK(file.good(), "the shared stream-file vectors should be readable");
@@ -367,9 +418,9 @@ void TestSecretstreamSharedVectors() {
     } else if (expect == "trailing_data") {
       wanted = "trailing data";
     } else if (expect == "oversized_chunk") {
-      wanted = "exceeds the maximum";
+      wanted = "chunk too large";
     } else if (expect == "unknown_tag") {
-      wanted = "invalid tag byte";
+      wanted = "unrecognized chunk tag";
     } else {
       CHECK(expect == "auth", ("unknown expect value " + expect).c_str());
     }
@@ -823,6 +874,7 @@ int main() {
     TestSecretstream();
     TestSecretstreamOversizedDeclaredChunkLength();
     TestSecretstreamSharedVectors();
+    TestSecretstreamWritesAndTrailingFinal();
     TestMemoryLeak();
 #ifdef DSTU_UACRYPT_EXE
     TestUacryptInterop();
