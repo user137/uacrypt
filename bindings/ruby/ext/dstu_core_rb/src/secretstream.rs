@@ -8,7 +8,10 @@
 use std::cell::RefCell;
 
 use crate::util::{to_array, IntoDstuError};
-use dstu_core::crypto_secretstream::{Key, PullState, PushState, Tag};
+use dstu_core::crypto_secretstream::{
+    FileDecryptor, FileEncryptor, Key, PullState, PushState, Tag, CHUNK_BYTES, FILE_PREFIX_BYTES,
+    MAX_RECORD_BYTES,
+};
 use magnus::{wrap, Error, RArray, RString, Ruby};
 
 fn tag_from_byte(ruby: &Ruby, byte: u8) -> Result<Tag, Error> {
@@ -106,6 +109,88 @@ impl SecretStreamPullState {
     }
 }
 
+/// Stream-file writer (T-284): the D-208 framing from the core codec. `secretstream.rb`'s
+/// `SecretStreamWriter` drives it and does only I/O.
+#[wrap(class = "DstuCore::SecretStreamFileEncryptor")]
+pub struct SecretStreamFileEncryptor(RefCell<FileEncryptor>, [u8; FILE_PREFIX_BYTES]);
+
+impl SecretStreamFileEncryptor {
+    fn new(ruby: &Ruby, key: RString) -> Result<Self, Error> {
+        let key = Key::from_bytes(to_array::<32>(ruby, &key.to_bytes(), "key")?);
+        let (inner, prefix) = FileEncryptor::init(&key).dstu(ruby)?;
+        Ok(Self(RefCell::new(inner), prefix))
+    }
+
+    /// The format version byte and header - write these first.
+    fn prefix(&self) -> RString {
+        Ruby::get()
+            .expect("must run on a Ruby thread")
+            .str_from_slice(&self.1)
+    }
+
+    /// Seals exactly `SECRETSTREAM_CHUNK_BYTES` bytes as one non-final record.
+    fn seal_chunk(&self, chunk: RString) -> Result<RString, Error> {
+        let ruby = Ruby::get().expect("must run on a Ruby thread");
+        let chunk = to_array::<CHUNK_BYTES>(&ruby, &chunk.to_bytes(), "chunk")?;
+        let mut record = [0u8; MAX_RECORD_BYTES];
+        self.0
+            .borrow_mut()
+            .seal_chunk(&chunk, &mut record)
+            .dstu(&ruby)?;
+        Ok(ruby.str_from_slice(&record))
+    }
+
+    /// Seals the last `0..=SECRETSTREAM_CHUNK_BYTES` bytes as the `Final` record.
+    fn seal_final(&self, last: RString) -> Result<RString, Error> {
+        let ruby = Ruby::get().expect("must run on a Ruby thread");
+        let mut record = [0u8; MAX_RECORD_BYTES];
+        let n = self
+            .0
+            .borrow_mut()
+            .seal_final(&last.to_bytes(), &mut record)
+            .dstu(&ruby)?;
+        Ok(ruby.str_from_slice(&record[..n]))
+    }
+}
+
+/// Stream-file reader (T-284): feed exactly `next_len` bytes at a time; at end of input call
+/// `finish`. Raises `DstuCore::Error` with the core's message on any format or authentication
+/// error.
+#[wrap(class = "DstuCore::SecretStreamFileDecryptor")]
+pub struct SecretStreamFileDecryptor(RefCell<FileDecryptor>);
+
+impl SecretStreamFileDecryptor {
+    fn new(ruby: &Ruby, key: RString) -> Result<Self, Error> {
+        let key = Key::from_bytes(to_array::<32>(ruby, &key.to_bytes(), "key")?);
+        Ok(Self(RefCell::new(FileDecryptor::new(&key))))
+    }
+
+    fn next_len(&self) -> usize {
+        self.0.borrow().next_len()
+    }
+
+    /// Consumes exactly `next_len` bytes; returns the plaintext of a verified non-final record,
+    /// else an empty string.
+    fn feed(&self, data: RString) -> Result<RString, Error> {
+        let ruby = Ruby::get().expect("must run on a Ruby thread");
+        let mut plaintext = vec![0u8; CHUNK_BYTES];
+        let n = self
+            .0
+            .borrow_mut()
+            .feed(&data.to_bytes(), &mut plaintext)
+            .dstu(&ruby)?;
+        Ok(ruby.str_from_slice(&plaintext[..n]))
+    }
+
+    /// End of input: returns the `Final` chunk's plaintext, or raises if the stream is truncated.
+    fn finish(&self) -> Result<RString, Error> {
+        let ruby = Ruby::get().expect("must run on a Ruby thread");
+        let mut plaintext = vec![0u8; CHUNK_BYTES];
+        let n = self.0.borrow_mut().finish(&mut plaintext).dstu(&ruby)?;
+        Ok(ruby.str_from_slice(&plaintext[..n]))
+    }
+}
+
 pub fn init(ruby: &Ruby, module: magnus::RModule) -> Result<(), Error> {
     use magnus::{function, method, prelude::*};
 
@@ -127,6 +212,24 @@ pub fn init(ruby: &Ruby, module: magnus::RModule) -> Result<(), Error> {
         method!(SecretStreamPullState::is_finalized, 0),
     )?;
     pull_state.define_method("pull", method!(SecretStreamPullState::pull, 3))?;
+
+    let file_enc = module.define_class("SecretStreamFileEncryptor", ruby.class_object())?;
+    file_enc.define_singleton_method("new", function!(SecretStreamFileEncryptor::new, 1))?;
+    file_enc.define_method("prefix", method!(SecretStreamFileEncryptor::prefix, 0))?;
+    file_enc.define_method(
+        "seal_chunk",
+        method!(SecretStreamFileEncryptor::seal_chunk, 1),
+    )?;
+    file_enc.define_method(
+        "seal_final",
+        method!(SecretStreamFileEncryptor::seal_final, 1),
+    )?;
+
+    let file_dec = module.define_class("SecretStreamFileDecryptor", ruby.class_object())?;
+    file_dec.define_singleton_method("new", function!(SecretStreamFileDecryptor::new, 1))?;
+    file_dec.define_method("next_len", method!(SecretStreamFileDecryptor::next_len, 0))?;
+    file_dec.define_method("feed", method!(SecretStreamFileDecryptor::feed, 1))?;
+    file_dec.define_method("finish", method!(SecretStreamFileDecryptor::finish, 0))?;
 
     Ok(())
 }

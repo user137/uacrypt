@@ -1,9 +1,10 @@
 # frozen_string_literal: true
 
 # `crypto_secretstream` idiomatic wrapper (docs/DECISIONS.md D-118, docs/bindings-strategy.md
-# T-160 step 3) - hides chunk/tag/header bookkeeping behind `write`/`each`, built in pure Ruby on
-# top of the low-level SecretStreamPushState/SecretStreamPullState the compiled extension already
-# exposes (step 2), rather than new Rust glue. Modeled on stdlib's own
+# T-160 step 3) - hides chunk/tag/header bookkeeping behind `write`/`each`. The framing itself
+# (record layout, length rules, Final, trailing data) is dstu-core's stream-file codec, exposed as
+# SecretStreamFileEncryptor/SecretStreamFileDecryptor (T-284); this file does only I/O. Modeled on
+# stdlib's own
 # Zlib::GzipWriter/Zlib::GzipReader - the same "wraps an IO, transforms chunks transparently"
 # shape, the closest Ruby-native precedent for this problem (matching Python's file-like object,
 # Node's stream.Transform).
@@ -23,8 +24,8 @@
 # differing encodings and fails even when the bytes match (`"привіт".b == "привіт"` is `false` in
 # Ruby) - this is a caller-side encoding-compare gotcha, not a bug in this wrapper.
 module DstuCore
-  # Matches crates/uacrypt/src/lib.rs's SECRETSTREAM_CHUNK_BYTES exactly - required for
-  # wire-format interop with `uacrypt encrypt`/`decrypt`, not an independent choice.
+  # dstu-core's crypto_secretstream::CHUNK_BYTES and wire constants (D-208); the codec enforces
+  # them, these stay as public constants.
   SECRETSTREAM_CHUNK_BYTES = 8 * 1024
   SECRETSTREAM_AUTH_TAG_BYTES = 16
   # Matches dstu-core's crypto_secretstream::FORMAT_VERSION (D-208); the shared vectors pin it.
@@ -40,9 +41,8 @@ module DstuCore
     def initialize(key, out)
       @out = out
       @out.binmode if @out.respond_to?(:binmode)
-      @push = SecretStreamPushState.new(key)
-      @out.write([SECRETSTREAM_FORMAT_VERSION].pack("C"))
-      @out.write(@push.header)
+      @enc = SecretStreamFileEncryptor.new(key)
+      @out.write(@enc.prefix)
       @buf = +""
       @closed = false
     end
@@ -65,18 +65,21 @@ module DstuCore
       @closed
     end
 
-    # Buffers `data`, pushing any now-complete 8 KiB chunks immediately. The trailing partial (or
-    # exactly-8-KiB) chunk is always held back until `close`, since only `close` knows no more
-    # data is coming - the same one-chunk-ahead reasoning `uacrypt encrypt` itself uses to tag the
-    # true last chunk `Final`, not an extra empty one after it.
+    # Buffers `data`, sealing every full 8 KiB chunk that is certain not to be the last one. The
+    # trailing partial (or exactly-8-KiB) chunk is held back until `close`, since only `close`
+    # knows no more data is coming - an exact multiple of 8 KiB must end in a full Final record
+    # (D-208). Full chunks are cut from `data` by offset, so one large write costs linear time
+    # (T-276).
     def write(data)
       raise IOError, "closed stream" if @closed
 
-      @buf << data.b
-      while @buf.bytesize > SECRETSTREAM_CHUNK_BYTES
-        push_chunk(SECRETSTREAM_TAG_MESSAGE, @buf.byteslice(0, SECRETSTREAM_CHUNK_BYTES))
-        @buf = @buf.byteslice(SECRETSTREAM_CHUNK_BYTES..) || +""
+      data = data.b
+      pos = top_up_buffer(data)
+      while data.bytesize - pos > SECRETSTREAM_CHUNK_BYTES
+        @out.write(@enc.seal_chunk(data.byteslice(pos, SECRETSTREAM_CHUNK_BYTES)))
+        pos += SECRETSTREAM_CHUNK_BYTES
       end
+      @buf << data.byteslice(pos..)
       data.bytesize
     end
 
@@ -87,19 +90,27 @@ module DstuCore
     def close
       return if @closed
 
-      push_chunk(SECRETSTREAM_TAG_FINAL, @buf)
+      @out.write(@enc.seal_final(@buf))
       @buf = +""
       @closed = true
     end
 
     private
 
-    def push_chunk(tag, data)
-      ciphertext, auth_tag = @push.push(tag, data)
-      @out.write([tag].pack("C"))
-      @out.write([data.bytesize].pack("V"))
-      @out.write(ciphertext)
-      @out.write(auth_tag)
+    # Adds `data` to the held-back chunk if it all fits; otherwise tops that chunk up to a full one
+    # and seals it, since more data follows. Returns how many bytes of `data` it consumed.
+    def top_up_buffer(data)
+      return 0 if @buf.empty?
+
+      if @buf.bytesize + data.bytesize <= SECRETSTREAM_CHUNK_BYTES
+        @buf << data
+        return data.bytesize
+      end
+      taken = SECRETSTREAM_CHUNK_BYTES - @buf.bytesize
+      @buf << data.byteslice(0, taken)
+      @out.write(@enc.seal_chunk(@buf))
+      @buf = +""
+      taken
     end
   end
 
@@ -119,14 +130,10 @@ module DstuCore
     def initialize(key, inp)
       @inp = inp
       @inp.binmode if @inp.respond_to?(:binmode)
-      version = read_exact(1, "format version").unpack1("C")
-      if version != SECRETSTREAM_FORMAT_VERSION
-        raise DstuCore::Error,
-              "unsupported stream format version #{version} (this build reads #{SECRETSTREAM_FORMAT_VERSION})"
-      end
-      header = read_exact(32, "header")
-      @pull = SecretStreamPullState.new(key, header)
+      @dec = SecretStreamFileDecryptor.new(key)
       @done = false
+      # The version byte and header, read now so a wrong version fails at construction.
+      2.times { step }
     end
 
     def self.open(key, inp)
@@ -137,7 +144,10 @@ module DstuCore
     def each
       return enum_for(:each) unless block_given?
 
-      yield next_chunk until @done
+      until @done
+        plaintext = step
+        yield plaintext unless plaintext.empty?
+      end
     end
 
     def read_all
@@ -149,38 +159,20 @@ module DstuCore
 
     private
 
-    def next_chunk
-      tag_byte = read_exact(1, "chunk tag").unpack1("C")
-      chunk_len = read_exact(4, "chunk length").unpack1("V")
-      # `chunk_len` is untrusted wire input, read before any tag verification - reject an
-      # oversized declared length before acting on it (`read_exact` would otherwise try to
-      # accumulate up to `chunk_len` bytes from `inp`, which for a socket/pipe could mean
-      # gigabytes before ever failing). Matches `uacrypt decrypt`'s own
-      # `CliError::SecretstreamChunkTooLarge` bound (`crates/uacrypt/src/lib.rs`).
-      if chunk_len > SECRETSTREAM_CHUNK_BYTES
-        raise DstuCore::Error,
-              "secretstream chunk too large: declared #{chunk_len} bytes, max #{SECRETSTREAM_CHUNK_BYTES}"
-      end
-      if tag_byte != SECRETSTREAM_TAG_FINAL && chunk_len != SECRETSTREAM_CHUNK_BYTES
-        raise DstuCore::Error,
-              "non-final chunk of #{chunk_len} bytes, must be exactly #{SECRETSTREAM_CHUNK_BYTES} (D-208)"
-      end
-      ciphertext = read_exact(chunk_len, "chunk ciphertext")
-      auth_tag = read_exact(SECRETSTREAM_AUTH_TAG_BYTES, "chunk auth tag")
-      tag, plaintext = @pull.pull(tag_byte, ciphertext, auth_tag)
-      if tag == SECRETSTREAM_TAG_FINAL
-        # Matches `uacrypt decrypt`'s own `CliError::SecretstreamTrailingData` check - reject
-        # bytes remaining after `Final` rather than silently ignoring them. Checked before
-        # `plaintext` is returned, so a trailing-data stream never yields this last chunk either
-        # via `each` or `read_all`.
-        raise DstuCore::Error, "trailing data after the secretstream's Final chunk" if @inp.read(1)
-
+    # Feeds the codec one `next_len` read: the plaintext that read released (possibly empty), or
+    # at end of input the Final chunk's (after which the stream is done).
+    def step
+      want = @dec.next_len
+      data = read_up_to(want)
+      if data.bytesize < want
         @done = true
+        return @dec.finish
       end
-      plaintext
+      @dec.feed(data)
     end
 
-    def read_exact(size, what)
+    # Reads until `size` bytes arrived or `inp` ended; a short result means end of input.
+    def read_up_to(size)
       pieces = []
       remaining = size
       while remaining.positive?
@@ -190,12 +182,7 @@ module DstuCore
         pieces << piece
         remaining -= piece.bytesize
       end
-      data = pieces.join
-      if data.bytesize != size
-        raise DstuCore::Error, "truncated secretstream: expected #{size} bytes for #{what}, got #{data.bytesize}"
-      end
-
-      data
+      pieces.join.b
     end
   end
 end

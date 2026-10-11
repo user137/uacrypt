@@ -157,7 +157,7 @@ RSpec.describe "DstuCore secretstream" do
     "unsupported_version" => /unsupported stream format version/,
     "bad_chunk_length" => /non-final chunk/,
     "truncated" => /truncated/,
-    "auth" => /./,
+    "auth" => /authentication failed/,
     "trailing_data" => /trailing data/,
     "oversized_chunk" => /chunk too large/,
     "unknown_tag" => /unrecognized chunk tag/
@@ -204,5 +204,31 @@ RSpec.describe "DstuCore secretstream" do
     writer.write("data")
     writer.close
     expect { writer.write("more data") }.to raise_error(IOError)
+  end
+
+  it "gives the same plaintext for one large write and many small writes (T-276 shape)" do
+    key = DstuCore.secretstream_keygen
+    message = Random.new(1).bytes((3 * DstuCore::SECRETSTREAM_CHUNK_BYTES) + 1234)
+    big = StringIO.new
+    DstuCore::SecretStreamWriter.open(key, big) { |w| w.write(message) }
+    small = StringIO.new
+    DstuCore::SecretStreamWriter.open(key, small) do |w|
+      (0...message.bytesize).step(1000) { |i| w.write(message.byteslice(i, 1000)) }
+    end
+    [big, small].each do |io|
+      io.rewind
+      expect(DstuCore::SecretStreamReader.open(key, io, &:read_all)).to eq(message)
+    end
+  end
+
+  it "never yields the Final chunk of a stream with trailing data (T-284)" do
+    key = DstuCore.secretstream_keygen
+    full = "A" * DstuCore::SECRETSTREAM_CHUNK_BYTES
+    out = StringIO.new
+    DstuCore::SecretStreamWriter.open(key, out) { |w| w.write("#{full}last") }
+    seen = []
+    reader = DstuCore::SecretStreamReader.new(key, StringIO.new("#{out.string}x"))
+    expect { reader.each { |chunk| seen << chunk } }.to raise_error(DstuCore::Error, /trailing data/)
+    expect(seen).to eq([full.b])
   end
 end
