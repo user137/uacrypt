@@ -14,7 +14,7 @@ stay in whatever language they already use.
 ## Commands
 
 ```bash
-cargo xtask ci            # mandatory checks (incl. docs-check) + best-effort miri/kani/book/fuzz/audit/deny/oracle harnesses/every language binding's own build+test/capi/cpp static analyzers/qemu-stm32/streaming-bounded
+cargo xtask ci            # mandatory checks + best-effort layers (miri/kani/book/fuzz/audit/deny/oracles/bindings/capi/qemu...); ends with a passed/skipped/FAILED table, exit 1 if any layer failed
 cargo xtask canary         # cargo update (fresh dependency resolution) then build+test - drift probe behind .github/workflows/canary.yml (T-226)
 cargo xtask build          # both feature-set builds
 cargo xtask test           # full test suite
@@ -112,8 +112,8 @@ canonical source (`docs/TASKS.md`/`docs/DECISIONS.md`) — this section states c
     `version||nonce||ciphertext||tag`, no caller AAD; internal AAD `version||nonce||ct_len` binds the
     nonce (D-63) and the true length (defence in depth since D-204; D-200/D-202).
     No message-length cap (T-37/D-51).
-  - `crypto_generichash`/`crypto_auth`/`crypto_kdf` — Kupyna hash/KMAC/KDF wrappers, only the
-    256-bit variant exposed, opaque `Zeroize`-on-drop key types (T-105/D-66).
+  - `crypto_generichash`/`crypto_auth`/`crypto_kdf` — Kupyna hash/KMAC/KDF wrappers (hash also
+    re-exports Kupyna-512; MAC/KDF 256-bit only), `Zeroize`-on-drop key types (T-105/D-66).
   - `crypto_stream` (`encrypt`/`decrypt`/`Key`) — `Strumok256` only, hidden internal IV, **no
     authentication** (`decrypt` never fails on tampered input) — hence `encrypt`/`decrypt` naming,
     not `seal`/`open` (T-106/D-67).
@@ -158,9 +158,9 @@ own Phase 3.)
 
 Official test vectors are extracted and verified for Kalyna, Kupyna, DSTU 4145, and Strumok
 (`crates/dstu-core/tests/vectors/{kalyna,kupyna,dstu4145,strumok}/*.json` — see `docs/ORACLES.md`
-for provenance/format) and additionally run against real Bouncy Castle (Java/.NET, published
-packages, not vendored clones) in `tests/oracle-harness/{java,dotnet}/` — see `docs/TASKS.md`
-"Infrastructure". Strumok's vectors are confirmed against the primary DSTU 8845:2019 text itself
+for provenance/format) and run against real Bouncy Castle (Java/.NET packages) in
+`tests/oracle-harness/{java,dotnet}/` - for GCM/GMAC only on block-aligned input, where BC and
+the standard agree (T-237/T-246). Strumok's vectors are confirmed against the primary DSTU 8845:2019 text itself
 (Додаток Д, a genuine library scan) — D-15/D-16/D-104/D-197; its `Tᵢ[a]`/`Mulα`/`Mulα⁻¹` constant
 tables were spot-checked against the same scan (D-198, zero mismatches on ~100 sampled entries);
 the S-box was out of scope for that check (already cross-checked via Kalyna/Kupyna's own real

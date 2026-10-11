@@ -194,3 +194,33 @@ attack closes the gap to the full round count for either cipher.
 ## Reporting vulnerabilities
 
 Private disclosure only — GitHub Security Advisories. Never a public issue.
+
+## Standards baseline (what fixes and the release pipeline cite/follow)
+
+Moved here from `docs/TASKS.md` (T-246, 2026-10-11). The task column names the
+work each row governed when the table was written.
+
+Owner request 2026-09-23: the standards the constructions and the binary should follow. Each row
+names the task it governs; the implementing task cites the clause in its own `D-` entry.
+**Clause numbers below were written from memory - confirm each against the primary document before it
+goes into a `D-` entry** (research-before-implementation rule). International references are used only as tie-breakers where DSTU is silent (D-47), never to
+replace a DSTU primitive.
+
+| Area | Standard / reference | What we take from it | Task |
+|---|---|---|---|
+| secretbox interface | RFC 5116 (AEAD interface), §2.1-2.2 | AEAD inputs/outputs, and "the entire ciphertext is authenticated" including its length | T-232 |
+| secretbox nonce | NIST SP 800-38D §8.2-8.3 (IV uniqueness, random-IV bound) | justifies keeping the 256-bit random nonce over 96 bits | T-232 |
+| length binding | NIST SP 800-38D §7.1 step 5 (`len(A) ‖ len(C)` - true lengths) | why the padded-length field is non-injective; target property for our AAD | T-232, T-235 |
+| secretstream | Hoang, Reyhanitabar, Rogaway, Vizar, "Online Authenticated-Encryption and its Nonce-Reuse Misuse-Resistance" (CRYPTO 2015, STREAM); libsodium `crypto_secretstream` spec | per-segment nonce = counter, last-segment flag, truncation/reorder resistance | T-232 |
+| crypto_box | RFC 9180 (HPKE) §4.1, §5.1 (`kem_context = enc ‖ pkR`, key schedule binds `info`) | bind `kem_ct ‖ recipient_pk` into the key derivation | T-248 |
+| KDF shape | NIST SP 800-108r1 §4.4 (KDF using KMAC), SP 800-56C r2 (context/`FixedInfo`) | KMAC-based KDF with an explicit context string - analogy for Kupyna-KMAC (DSTU 7564), no HKDF | T-248 |
+| keygen uniformity | FIPS 186-5 Appendix A.2.2 (key pair generation by testing candidates) | rejection sampling over the full `[1, n-1]` | T-239 |
+| public-key validation | SEC 1 v2 §3.2.2.1; NIST SP 800-56A r3 §5.6.2.3.3 (full validation incl. `n*Q = O`) | m=163 full validation | T-245b |
+| constant time / zeroization | ISO/IEC 19790 / FIPS 140-3 SSP zeroization (informational, not a certification claim); CWE-208, CWE-226 | what "zeroized" and "no timing leak" mean for review | T-242 |
+| FFI UB | CWE-758 (reliance on undefined behavior), Rust reference "invalid enum discriminant" | `u32` at the boundary | T-240 |
+| CLI file handling | CWE-377 (insecure temp file), CWE-59 (link following), CWE-732 (permissions), CWE-367 (TOCTOU); POSIX `open(O_CREAT | O_EXCL | O_NOFOLLOW)` | `create_new`, random temp name, `0o600` | T-241 |
+| release artifacts | SLSA v1.0 Build L2/L3 provenance (GitHub `actions/attest-build-provenance`); signed SHA-256 checksums (Sigstore/cosign or minisign) | verifiable `uacrypt` binaries and binding artefacts | T-252 |
+| dependency transparency | CycloneDX or SPDX SBOM; `cargo auditable` (embeds the dependency list in the binary); `cargo build --locked` | an SBOM per release, and auditable binaries (`cargo audit bin`) | T-252 |
+| disclosure | ISO/IEC 29147 (vulnerability disclosure) + ISO/IEC 30111 (handling); GitHub Security Advisories; RustSec advisory-db | the process T-233 follows | T-233 |
+| project hygiene | OpenSSF Scorecard; OpenSSF Best Practices badge | periodic self-check of CI/release posture | T-252 |
+| key commitment (open question, not a finding) | Albertini et al., "How to Abuse and Fix Authenticated Encryption Without Key Commitment" (USENIX Security 2022) | Kalyna-GCM, like GCM, is not key-committing; relevant only if a caller tries multiple keys on one ciphertext | T-249 |

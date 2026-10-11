@@ -92,7 +92,8 @@ use zeroize::Zeroize;
 /// file) - `crypto_sign::VerifyingKey`/`crypto_sign257::VerifyingKey`'s own `to_uncompressed_bytes`
 /// stay untagged fixed-width encodings (42/66 bytes), matching how they already worked before this
 /// enum existed; a caller that wants a self-describing blob prepends the matching [`CurveId`] byte
-/// itself, exactly as `uacrypt`'s own `sign-pubkey`/`verify` commands do.
+/// itself. `uacrypt` used to (0.3.x verifying-key files); since its typed key files (T-256) only
+/// `key-import` reads that byte, from such old files.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
 pub enum CurveId {

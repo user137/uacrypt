@@ -8551,7 +8551,7 @@ which is exactly why the divergence was never caught.
   - **(b)** m=163 `verify` now checks `!is_on_curve || n*q != O`, replacing the `x == 0` check. The
     red test `order_2n_public_key_is_rejected` uses `Q + T2`, built via `verify_combine`, with a
     genuine even-`r` signature: it verified before the fix and is rejected after it. See D-203.
-- [ ] **T-246** (audit area 10, docs) Correct the claims the audit disproved, each in the file that
+- [x] **T-246** (audit area 10, docs) **Done 2026-10-11:** the secretstream/secretbox fail-closed claim holds since T-232; D-56's proptest claim is corrected in D-200; the `crypto_sign257` rejection comment was fixed with T-239; `kupyna_kdf`'s `.expect` inside `macro_rules!` (the crate-level deny does not reach it) is now the let-else shape; `CLAUDE.md` scopes the BC cross-check to block-aligned GCM/GMAC; the Standards baseline table moved to `docs/SECURITY.md`. Correct the claims the audit disproved, each in the file that
   owns it: the `crypto_secretstream.rs`/`crypto_secretbox.rs` module docs ("a tampered chunk ... fail
   closed" - true only after T-232); D-56's "covered by the proptest round-trip" (add a new `D-`
   entry recording the non-injectivity and the BC divergence, don't rewrite D-56); the
@@ -8642,32 +8642,9 @@ map onto existing tasks - no duplicates created. Verdicts:
 - Where Gemini leans on the open questions (not decisions): Q1 - assumes no external-format
   compatibility; Q3 - favours `n*Q == O`; Q4/O-3 - favours the KEM binding.
 
-### Standards baseline (what each fix and the release pipeline should cite/follow)
+### Standards baseline
 
-Owner request 2026-09-23: the standards the constructions and the binary should follow. Each row
-names the task it governs; the implementing task cites the clause in its own `D-` entry.
-**Clause numbers below were written from memory - confirm each against the primary document before it
-goes into a `D-` entry** (research-before-implementation rule). International references are used only as tie-breakers where DSTU is silent (D-47), never to
-replace a DSTU primitive.
-
-| Area | Standard / reference | What we take from it | Task |
-|---|---|---|---|
-| secretbox interface | RFC 5116 (AEAD interface), §2.1-2.2 | AEAD inputs/outputs, and "the entire ciphertext is authenticated" including its length | T-232 |
-| secretbox nonce | NIST SP 800-38D §8.2-8.3 (IV uniqueness, random-IV bound) | justifies keeping the 256-bit random nonce over 96 bits | T-232 |
-| length binding | NIST SP 800-38D §7.1 step 5 (`len(A) ‖ len(C)` - true lengths) | why the padded-length field is non-injective; target property for our AAD | T-232, T-235 |
-| secretstream | Hoang, Reyhanitabar, Rogaway, Vizar, "Online Authenticated-Encryption and its Nonce-Reuse Misuse-Resistance" (CRYPTO 2015, STREAM); libsodium `crypto_secretstream` spec | per-segment nonce = counter, last-segment flag, truncation/reorder resistance | T-232 |
-| crypto_box | RFC 9180 (HPKE) §4.1, §5.1 (`kem_context = enc ‖ pkR`, key schedule binds `info`) | bind `kem_ct ‖ recipient_pk` into the key derivation | T-248 |
-| KDF shape | NIST SP 800-108r1 §4.4 (KDF using KMAC), SP 800-56C r2 (context/`FixedInfo`) | KMAC-based KDF with an explicit context string - analogy for Kupyna-KMAC (DSTU 7564), no HKDF | T-248 |
-| keygen uniformity | FIPS 186-5 Appendix A.2.2 (key pair generation by testing candidates) | rejection sampling over the full `[1, n-1]` | T-239 |
-| public-key validation | SEC 1 v2 §3.2.2.1; NIST SP 800-56A r3 §5.6.2.3.3 (full validation incl. `n*Q = O`) | m=163 full validation | T-245b |
-| constant time / zeroization | ISO/IEC 19790 / FIPS 140-3 SSP zeroization (informational, not a certification claim); CWE-208, CWE-226 | what "zeroized" and "no timing leak" mean for review | T-242 |
-| FFI UB | CWE-758 (reliance on undefined behavior), Rust reference "invalid enum discriminant" | `u32` at the boundary | T-240 |
-| CLI file handling | CWE-377 (insecure temp file), CWE-59 (link following), CWE-732 (permissions), CWE-367 (TOCTOU); POSIX `open(O_CREAT | O_EXCL | O_NOFOLLOW)` | `create_new`, random temp name, `0o600` | T-241 |
-| release artifacts | SLSA v1.0 Build L2/L3 provenance (GitHub `actions/attest-build-provenance`); signed SHA-256 checksums (Sigstore/cosign or minisign) | verifiable `uacrypt` binaries and binding artefacts | T-252 |
-| dependency transparency | CycloneDX or SPDX SBOM; `cargo auditable` (embeds the dependency list in the binary); `cargo build --locked` | an SBOM per release, and auditable binaries (`cargo audit bin`) | T-252 |
-| disclosure | ISO/IEC 29147 (vulnerability disclosure) + ISO/IEC 30111 (handling); GitHub Security Advisories; RustSec advisory-db | the process T-233 follows | T-233 |
-| project hygiene | OpenSSF Scorecard; OpenSSF Best Practices badge | periodic self-check of CI/release posture | T-252 |
-| key commitment (open question, not a finding) | Albertini et al., "How to Abuse and Fix Authenticated Encryption Without Key Commitment" (USENIX Security 2022) | Kalyna-GCM, like GCM, is not key-committing; relevant only if a caller tries multiple keys on one ciphertext | T-249 |
+Moved to `docs/SECURITY.md` "Standards baseline" (T-246, 2026-10-11): policy lives there.
 
 ### Tasks added 2026-09-23
 
@@ -9652,7 +9629,7 @@ points at the machine state rather than a GCM-specific regression, but that is n
     so the summary table shows them.
   - Tests: run `cargo xtask ci` with one of those toolchains missing and confirm it is reported as
     skipped, not passed (T-243's tri-state). Effort S. Depends on T-243.
-- [ ] **T-280** (Low, docs, **Confirmed** by reading; depends: T-279 for (a), T-273 for (d))
+- [x] **T-280** (Low, docs, **Confirmed** by reading; depends: T-279 for (a), T-273 for (d)) **Done 2026-10-11:** (a) CLAUDE.md's `ci` line; (b) the generichash claim; (c) `CurveId`'s doc; (e) a `const _` block now evaluates all three presets at compile time, so the doc's claim is true.
   Claims this audit found false or stale, each in its owning file. Pair
   every `CLAUDE.md` addition with a deletion.
   - (a) `CLAUDE.md` Commands: "every language binding's own build+test" (after T-279 lands, or

@@ -32,8 +32,12 @@ macro_rules! kdf_variant {
                 let mut message = [0u8; 16];
                 message[..8].copy_from_slice(context);
                 message[8..].copy_from_slice(&subkey_id.to_le_bytes());
-                <$kmac>::mac(master_key, &message)
-                    .expect("master_key's length always matches this KMAC variant's mac_len")
+                // T-246: not `.expect` - the crate denies it, and the lint does not reach inside
+                // this macro, so the claim held only by convention.
+                let Ok(subkey) = <$kmac>::mac(master_key, &message) else {
+                    unreachable!("master_key's length always matches this KMAC variant's mac_len")
+                };
+                subkey
             }
         }
     };

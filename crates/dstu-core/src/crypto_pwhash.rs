@@ -50,6 +50,14 @@ pub enum Strength {
     Sensitive,
 }
 
+// T-280(e): every preset's `params()` evaluated by the compiler - a bad hardcoded preset is a
+// build error.
+const _: () = {
+    let _ = Strength::Interactive.params();
+    let _ = Strength::Moderate.params();
+    let _ = Strength::Sensitive.params();
+};
+
 impl Strength {
     /// `(m_cost in KiB, t_cost)` - libsodium's own `OPSLIMIT`/`MEMLIMIT_*` constants
     /// (`crypto_pwhash_argon2id.h`), `MEMLIMIT` converted from bytes to KiB. `p_cost` is fixed at
@@ -62,9 +70,9 @@ impl Strength {
         }
     }
 
-    /// Builds the actual `argon2::Params` for this preset. A `const fn`: an invalid preset would
-    /// be a compile-time error, not a runtime one - these three presets are the only values this
-    /// type can hold, so validity is closed over at compile time rather than checked per call.
+    /// Builds the actual `argon2::Params` for this preset. The `const _` block below evaluates
+    /// all three presets at compile time (T-280(e)), so an invalid preset fails the build instead
+    /// of reaching the `panic!` at run time.
     const fn params(self) -> Params {
         let (m_cost, t_cost) = self.m_and_t_cost();
         match Params::new(m_cost, t_cost, 1, None) {
