@@ -59,6 +59,16 @@ pub(crate) fn guard_bool(f: impl FnOnce() -> bool) -> bool {
     panic::catch_unwind(AssertUnwindSafe(f)).unwrap_or(false)
 }
 
+/// Same as [`guard_status`] for a function returning a size - a caught panic yields 0.
+pub(crate) fn guard_usize(f: impl FnOnce() -> usize) -> usize {
+    panic::catch_unwind(AssertUnwindSafe(f)).unwrap_or(0)
+}
+
+/// Same as [`guard_ptr`] for a borrowed `const` pointer - a caught panic yields NULL.
+pub(crate) fn guard_const_ptr<T>(f: impl FnOnce() -> *const T) -> *const T {
+    panic::catch_unwind(AssertUnwindSafe(f)).unwrap_or(std::ptr::null())
+}
+
 /// Same as [`guard_status`] for a `void`-returning function - a caught panic leaves whatever
 /// output buffer the function was about to write untouched; there is no channel to report
 /// anything through.

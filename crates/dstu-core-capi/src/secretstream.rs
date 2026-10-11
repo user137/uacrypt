@@ -6,9 +6,14 @@
 
 use crate::error::DstuStatus;
 use crate::util::{
-    guard_bool, guard_ptr, guard_status, guard_void, slice_from_raw, slice_from_raw_mut,
+    guard_bool, guard_const_ptr, guard_ptr, guard_status, guard_usize, guard_void, slice_from_raw,
+    slice_from_raw_mut,
 };
-use dstu_core::crypto_secretstream::{Key, PullState, PushState, SecretstreamError, Tag};
+use dstu_core::crypto_secretstream::{
+    FileDecryptor, FileEncryptor, FileError, Key, PullState, PushState, SecretstreamError, Tag,
+    CHUNK_BYTES, MAX_RECORD_BYTES, RECORD_OVERHEAD_BYTES,
+};
+use std::ffi::{c_char, CString};
 
 pub const DSTU_SECRETSTREAM_KEY_BYTES: usize = 32;
 pub const DSTU_SECRETSTREAM_HEADER_BYTES: usize = 32;
@@ -367,6 +372,334 @@ pub unsafe extern "C" fn dstu_secretstream_pull_free(state: *mut DstuPullState) 
     guard_void(|| {
         if !state.is_null() {
             drop(unsafe { Box::from_raw(state) });
+        }
+    })
+}
+
+/// Plaintext bytes in every non-final stream-file record (T-284, D-208).
+/// Literal values (cbindgen cannot evaluate a path); `ffi_secretstream_file.rs` checks they
+/// equal the core's.
+pub const DSTU_SECRETSTREAM_CHUNK_BYTES: usize = 8192;
+/// A stream file's first bytes: the format version byte plus the 32-byte header.
+pub const DSTU_SECRETSTREAM_FILE_PREFIX_BYTES: usize = 33;
+/// A record's bytes beyond its ciphertext: tag byte, 4-byte length, auth tag.
+pub const DSTU_SECRETSTREAM_RECORD_OVERHEAD_BYTES: usize = 21;
+/// The longest record: a full chunk plus the record overhead.
+pub const DSTU_SECRETSTREAM_MAX_RECORD_BYTES: usize = 8213;
+
+fn file_status(err: &FileError) -> DstuStatus {
+    match err {
+        FileError::UnsupportedVersion(_) => DstuStatus::DSTU_ERR_UNSUPPORTED_VERSION,
+        FileError::Truncated => DstuStatus::DSTU_ERR_TRUNCATED,
+        FileError::ChunkTooLarge(_) => DstuStatus::DSTU_ERR_CHUNK_TOO_LARGE,
+        FileError::BadChunkLength(_) => DstuStatus::DSTU_ERR_BAD_CHUNK_LENGTH,
+        FileError::UnknownTag => DstuStatus::DSTU_ERR_UNKNOWN_TAG,
+        FileError::TrailingData => DstuStatus::DSTU_ERR_TRAILING_DATA,
+        FileError::Auth => DstuStatus::DSTU_ERR_TAG_MISMATCH,
+        FileError::Finished | FileError::CounterExhausted => DstuStatus::DSTU_ERR_FINALIZED,
+        FileError::InvalidLength => DstuStatus::DSTU_ERR_INVALID_LENGTH,
+        FileError::Random(_) => DstuStatus::DSTU_ERR_RANDOM,
+    }
+}
+
+/// Opaque stream-file writer (T-284): the D-208 framing over a push state.
+pub struct DstuFileEncryptor(FileEncryptor);
+
+/// Starts a stream file under `key` with a fresh random header. Writes the
+/// `DSTU_SECRETSTREAM_FILE_PREFIX_BYTES`-byte prefix (write it first) to `prefix_out`. Returns
+/// `DSTU_OK`, `DSTU_ERR_RANDOM` or `DSTU_ERR_NULL_POINTER`.
+///
+/// # Safety
+///
+/// `key`/`out` must be valid and non-null; `prefix_out` must be valid for writes of
+/// `DSTU_SECRETSTREAM_FILE_PREFIX_BYTES` bytes when non-null.
+#[no_mangle]
+pub unsafe extern "C" fn dstu_secretstream_file_encryptor_new(
+    key: *const DstuSecretstreamKey,
+    prefix_out: *mut u8,
+    out: *mut *mut DstuFileEncryptor,
+) -> DstuStatus {
+    guard_status(|| {
+        if key.is_null() || prefix_out.is_null() || out.is_null() {
+            return DstuStatus::DSTU_ERR_NULL_POINTER;
+        }
+        match FileEncryptor::init(&unsafe { &*key }.0) {
+            Ok((enc, prefix)) => {
+                unsafe { std::slice::from_raw_parts_mut(prefix_out, prefix.len()) }
+                    .copy_from_slice(&prefix);
+                unsafe { *out = Box::into_raw(Box::new(DstuFileEncryptor(enc))) };
+                DstuStatus::DSTU_OK
+            }
+            Err(e) => file_status(&e),
+        }
+    })
+}
+
+/// Seals one full non-final chunk: `chunk_len` must be `DSTU_SECRETSTREAM_CHUNK_BYTES`
+/// (`DSTU_ERR_INVALID_LENGTH`), `record_out_cap` at least `DSTU_SECRETSTREAM_MAX_RECORD_BYTES`
+/// (`DSTU_ERR_BUFFER_TOO_SMALL`). On `DSTU_OK` the first `DSTU_SECRETSTREAM_MAX_RECORD_BYTES`
+/// bytes of `record_out` are the record. `DSTU_ERR_FINALIZED` after `_seal_final`.
+///
+/// # Safety
+///
+/// `enc` must be a valid encryptor; `chunk` valid for reads of `chunk_len` bytes and
+/// `record_out` for writes of `record_out_cap` bytes when non-null and their lengths are nonzero.
+#[no_mangle]
+pub unsafe extern "C" fn dstu_secretstream_file_encryptor_seal_chunk(
+    enc: *mut DstuFileEncryptor,
+    chunk: *const u8,
+    chunk_len: usize,
+    record_out: *mut u8,
+    record_out_cap: usize,
+) -> DstuStatus {
+    guard_status(|| {
+        if enc.is_null() {
+            return DstuStatus::DSTU_ERR_NULL_POINTER;
+        }
+        let Some(chunk) = (unsafe { slice_from_raw(chunk, chunk_len) }) else {
+            return DstuStatus::DSTU_ERR_NULL_POINTER;
+        };
+        let Some(record_out) = (unsafe { slice_from_raw_mut(record_out, record_out_cap) }) else {
+            return DstuStatus::DSTU_ERR_NULL_POINTER;
+        };
+        let Ok(chunk) = <&[u8; CHUNK_BYTES]>::try_from(chunk) else {
+            return DstuStatus::DSTU_ERR_INVALID_LENGTH;
+        };
+        let Some(Ok(record)) = record_out
+            .get_mut(..MAX_RECORD_BYTES)
+            .map(<&mut [u8; MAX_RECORD_BYTES]>::try_from)
+        else {
+            return DstuStatus::DSTU_ERR_BUFFER_TOO_SMALL;
+        };
+        match unsafe { &mut *enc }.0.seal_chunk(chunk, record) {
+            Ok(()) => DstuStatus::DSTU_OK,
+            Err(e) => file_status(&e),
+        }
+    })
+}
+
+/// Seals the last `0..=DSTU_SECRETSTREAM_CHUNK_BYTES` bytes as the `Final` record
+/// (`DSTU_ERR_INVALID_LENGTH` if longer). `record_out_cap` must be at least `last_len +
+/// DSTU_SECRETSTREAM_RECORD_OVERHEAD_BYTES` (`DSTU_ERR_BUFFER_TOO_SMALL`); the record's length is
+/// written to `*record_len`. `DSTU_ERR_FINALIZED` if called twice.
+///
+/// # Safety
+///
+/// `enc`/`record_len` must be valid and non-null; `last` valid for reads of `last_len` bytes and
+/// `record_out` for writes of `record_out_cap` bytes when non-null and their lengths are nonzero.
+#[no_mangle]
+pub unsafe extern "C" fn dstu_secretstream_file_encryptor_seal_final(
+    enc: *mut DstuFileEncryptor,
+    last: *const u8,
+    last_len: usize,
+    record_out: *mut u8,
+    record_out_cap: usize,
+    record_len: *mut usize,
+) -> DstuStatus {
+    guard_status(|| {
+        if enc.is_null() || record_len.is_null() {
+            return DstuStatus::DSTU_ERR_NULL_POINTER;
+        }
+        let Some(last) = (unsafe { slice_from_raw(last, last_len) }) else {
+            return DstuStatus::DSTU_ERR_NULL_POINTER;
+        };
+        let Some(record_out) = (unsafe { slice_from_raw_mut(record_out, record_out_cap) }) else {
+            return DstuStatus::DSTU_ERR_NULL_POINTER;
+        };
+        if last.len() > CHUNK_BYTES {
+            return DstuStatus::DSTU_ERR_INVALID_LENGTH;
+        }
+        if record_out.len() < last.len() + RECORD_OVERHEAD_BYTES {
+            return DstuStatus::DSTU_ERR_BUFFER_TOO_SMALL;
+        }
+        match unsafe { &mut *enc }.0.seal_final(last, record_out) {
+            Ok(n) => {
+                unsafe { *record_len = n };
+                DstuStatus::DSTU_OK
+            }
+            Err(e) => file_status(&e),
+        }
+    })
+}
+
+/// Frees a stream-file encryptor. NULL is a no-op.
+///
+/// # Safety
+///
+/// `enc` must be NULL or a pointer from `dstu_secretstream_file_encryptor_new`, not already
+/// freed.
+#[no_mangle]
+pub unsafe extern "C" fn dstu_secretstream_file_encryptor_free(enc: *mut DstuFileEncryptor) {
+    guard_void(|| {
+        if !enc.is_null() {
+            drop(unsafe { Box::from_raw(enc) });
+        }
+    })
+}
+
+/// Opaque stream-file reader (T-284). Contract: read exactly `_next_len` bytes and `_feed` them;
+/// if the input ends first, call `_finish`. After a format or authentication error every later
+/// call returns `DSTU_ERR_FINALIZED`, and `_last_error` gives the core's message.
+pub struct DstuFileDecryptor {
+    inner: FileDecryptor,
+    last_error: Option<CString>,
+}
+
+impl DstuFileDecryptor {
+    fn record(&mut self, result: Result<usize, FileError>, len_out: *mut usize) -> DstuStatus {
+        match result {
+            Ok(n) => {
+                unsafe { *len_out = n };
+                DstuStatus::DSTU_OK
+            }
+            Err(e) => {
+                if self.last_error.is_none() && !matches!(e, FileError::InvalidLength) {
+                    self.last_error = CString::new(e.to_string()).ok();
+                }
+                file_status(&e)
+            }
+        }
+    }
+}
+
+/// Starts reading a stream file under `key`. Returns NULL if `key` is NULL.
+///
+/// # Safety
+///
+/// `key` must be NULL or a valid key handle.
+#[no_mangle]
+pub unsafe extern "C" fn dstu_secretstream_file_decryptor_new(
+    key: *const DstuSecretstreamKey,
+) -> *mut DstuFileDecryptor {
+    guard_ptr(|| {
+        if key.is_null() {
+            return std::ptr::null_mut();
+        }
+        Box::into_raw(Box::new(DstuFileDecryptor {
+            inner: FileDecryptor::new(&unsafe { &*key }.0),
+            last_error: None,
+        }))
+    })
+}
+
+/// How many bytes `_feed` wants next; 0 once finished or failed, and for NULL.
+///
+/// # Safety
+///
+/// `dec` must be NULL or a valid decryptor.
+#[no_mangle]
+pub unsafe extern "C" fn dstu_secretstream_file_decryptor_next_len(
+    dec: *const DstuFileDecryptor,
+) -> usize {
+    guard_usize(|| {
+        if dec.is_null() {
+            return 0;
+        }
+        unsafe { &*dec }.inner.next_len()
+    })
+}
+
+/// Consumes exactly `_next_len` bytes (`DSTU_ERR_INVALID_LENGTH` otherwise, and the call is
+/// ignored). `plaintext_out_cap` must be at least `DSTU_SECRETSTREAM_CHUNK_BYTES`
+/// (`DSTU_ERR_BUFFER_TOO_SMALL`). On `DSTU_OK`, `*plaintext_len` plaintext bytes (0 unless a
+/// non-final record just verified) are at the start of `plaintext_out`.
+///
+/// # Safety
+///
+/// `dec`/`plaintext_len` must be valid and non-null; `input` valid for reads of `input_len` bytes
+/// and `plaintext_out` for writes of `plaintext_out_cap` bytes when non-null and nonzero.
+#[no_mangle]
+pub unsafe extern "C" fn dstu_secretstream_file_decryptor_feed(
+    dec: *mut DstuFileDecryptor,
+    input: *const u8,
+    input_len: usize,
+    plaintext_out: *mut u8,
+    plaintext_out_cap: usize,
+    plaintext_len: *mut usize,
+) -> DstuStatus {
+    guard_status(|| {
+        if dec.is_null() || plaintext_len.is_null() {
+            return DstuStatus::DSTU_ERR_NULL_POINTER;
+        }
+        let Some(input) = (unsafe { slice_from_raw(input, input_len) }) else {
+            return DstuStatus::DSTU_ERR_NULL_POINTER;
+        };
+        let Some(plaintext_out) = (unsafe { slice_from_raw_mut(plaintext_out, plaintext_out_cap) })
+        else {
+            return DstuStatus::DSTU_ERR_NULL_POINTER;
+        };
+        if plaintext_out.len() < CHUNK_BYTES {
+            return DstuStatus::DSTU_ERR_BUFFER_TOO_SMALL;
+        }
+        let dec = unsafe { &mut *dec };
+        let result = dec.inner.feed(input, plaintext_out);
+        dec.record(result, plaintext_len)
+    })
+}
+
+/// Call when the input ended before `_next_len` bytes arrived. `DSTU_ERR_TRUNCATED` if no
+/// `Final` record verified; otherwise `DSTU_OK` with the `Final` chunk's plaintext
+/// (`*plaintext_len` bytes) in `plaintext_out`. Same buffer rules as `_feed`.
+///
+/// # Safety
+///
+/// As `dstu_secretstream_file_decryptor_feed`.
+#[no_mangle]
+pub unsafe extern "C" fn dstu_secretstream_file_decryptor_finish(
+    dec: *mut DstuFileDecryptor,
+    plaintext_out: *mut u8,
+    plaintext_out_cap: usize,
+    plaintext_len: *mut usize,
+) -> DstuStatus {
+    guard_status(|| {
+        if dec.is_null() || plaintext_len.is_null() {
+            return DstuStatus::DSTU_ERR_NULL_POINTER;
+        }
+        let Some(plaintext_out) = (unsafe { slice_from_raw_mut(plaintext_out, plaintext_out_cap) })
+        else {
+            return DstuStatus::DSTU_ERR_NULL_POINTER;
+        };
+        if plaintext_out.len() < CHUNK_BYTES {
+            return DstuStatus::DSTU_ERR_BUFFER_TOO_SMALL;
+        }
+        let dec = unsafe { &mut *dec };
+        let result = dec.inner.finish(plaintext_out);
+        dec.record(result, plaintext_len)
+    })
+}
+
+/// The core's message for the error that failed this decryptor (NUL-terminated, owned by the
+/// handle, valid until it is freed), or NULL if it has not failed (or `dec` is NULL).
+///
+/// # Safety
+///
+/// `dec` must be NULL or a valid decryptor.
+#[no_mangle]
+pub unsafe extern "C" fn dstu_secretstream_file_decryptor_last_error(
+    dec: *const DstuFileDecryptor,
+) -> *const c_char {
+    guard_const_ptr(|| {
+        if dec.is_null() {
+            return std::ptr::null();
+        }
+        unsafe { &*dec }
+            .last_error
+            .as_ref()
+            .map_or(std::ptr::null(), |m| m.as_ptr())
+    })
+}
+
+/// Frees a stream-file decryptor. NULL is a no-op.
+///
+/// # Safety
+///
+/// `dec` must be NULL or a pointer from `dstu_secretstream_file_decryptor_new`, not already
+/// freed.
+#[no_mangle]
+pub unsafe extern "C" fn dstu_secretstream_file_decryptor_free(dec: *mut DstuFileDecryptor) {
+    guard_void(|| {
+        if !dec.is_null() {
+            drop(unsafe { Box::from_raw(dec) });
         }
     })
 }

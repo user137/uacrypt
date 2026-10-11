@@ -49,4 +49,10 @@ pub enum DstuStatus {
     /// An integer argument that stands for one of this header's enum constants (a `DSTU_TAG_*` or
     /// `DSTU_PWHASH_*` value) is outside that enum's range.
     DSTU_ERR_INVALID_ARGUMENT = 14,
+    /// Stream file (T-284): a record declares more than `DSTU_SECRETSTREAM_CHUNK_BYTES` bytes.
+    DSTU_ERR_CHUNK_TOO_LARGE = 15,
+    /// Stream file: a non-final record is not exactly `DSTU_SECRETSTREAM_CHUNK_BYTES` long.
+    DSTU_ERR_BAD_CHUNK_LENGTH = 16,
+    /// Stream file: bytes follow the `Final` record.
+    DSTU_ERR_TRAILING_DATA = 17,
 }

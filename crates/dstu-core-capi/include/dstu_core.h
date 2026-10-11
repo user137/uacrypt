@@ -69,6 +69,28 @@
 
 #define DSTU_SECRETSTREAM_TAG_BYTES 16
 
+/**
+ * Plaintext bytes in every non-final stream-file record (T-284, D-208).
+ * Literal values (cbindgen cannot evaluate a path); `ffi_secretstream_file.rs` checks they
+ * equal the core's.
+ */
+#define DSTU_SECRETSTREAM_CHUNK_BYTES 8192
+
+/**
+ * A stream file's first bytes: the format version byte plus the 32-byte header.
+ */
+#define DSTU_SECRETSTREAM_FILE_PREFIX_BYTES 33
+
+/**
+ * A record's bytes beyond its ciphertext: tag byte, 4-byte length, auth tag.
+ */
+#define DSTU_SECRETSTREAM_RECORD_OVERHEAD_BYTES 21
+
+/**
+ * The longest record: a full chunk plus the record overhead.
+ */
+#define DSTU_SECRETSTREAM_MAX_RECORD_BYTES 8213
+
 #define DSTU_SIGN_PRIVATE_KEY_BYTES 21
 
 #define DSTU_SIGN_PUBLIC_KEY_BYTES 42
@@ -161,6 +183,18 @@ typedef enum {
    * `DSTU_PWHASH_*` value) is outside that enum's range.
    */
   DSTU_ERR_INVALID_ARGUMENT = 14,
+  /**
+   * Stream file (T-284): a record declares more than `DSTU_SECRETSTREAM_CHUNK_BYTES` bytes.
+   */
+  DSTU_ERR_CHUNK_TOO_LARGE = 15,
+  /**
+   * Stream file: a non-final record is not exactly `DSTU_SECRETSTREAM_CHUNK_BYTES` long.
+   */
+  DSTU_ERR_BAD_CHUNK_LENGTH = 16,
+  /**
+   * Stream file: bytes follow the `Final` record.
+   */
+  DSTU_ERR_TRAILING_DATA = 17,
 } DstuStatus;
 
 /**
@@ -210,6 +244,18 @@ typedef struct DstuBoxPublicKey DstuBoxPublicKey;
  * wrapped `SecretKey`'s own `Zeroize`-on-`Drop` impl.
  */
 typedef struct DstuBoxSecretKey DstuBoxSecretKey;
+
+/**
+ * Opaque stream-file reader (T-284). Contract: read exactly `_next_len` bytes and `_feed` them;
+ * if the input ends first, call `_finish`. After a format or authentication error every later
+ * call returns `DSTU_ERR_FINALIZED`, and `_last_error` gives the core's message.
+ */
+typedef struct DstuFileDecryptor DstuFileDecryptor;
+
+/**
+ * Opaque stream-file writer (T-284): the D-208 framing over a push state.
+ */
+typedef struct DstuFileEncryptor DstuFileEncryptor;
 
 /**
  * Opaque `crypto_kdf` master-key handle. `dstu_kdf_master_key_free`'s `Box::from_raw` fires the
@@ -1060,6 +1106,140 @@ DstuStatus dstu_secretstream_pull(DstuPullState *state,
  */
 
 void dstu_secretstream_pull_free(DstuPullState *state);
+
+/**
+ * Starts a stream file under `key` with a fresh random header. Writes the
+ * `DSTU_SECRETSTREAM_FILE_PREFIX_BYTES`-byte prefix (write it first) to `prefix_out`. Returns
+ * `DSTU_OK`, `DSTU_ERR_RANDOM` or `DSTU_ERR_NULL_POINTER`.
+ *
+ * # Safety
+ *
+ * `key`/`out` must be valid and non-null; `prefix_out` must be valid for writes of
+ * `DSTU_SECRETSTREAM_FILE_PREFIX_BYTES` bytes when non-null.
+ */
+
+DstuStatus dstu_secretstream_file_encryptor_new(const DstuSecretstreamKey *key,
+                                                uint8_t *prefix_out,
+                                                DstuFileEncryptor **out);
+
+/**
+ * Seals one full non-final chunk: `chunk_len` must be `DSTU_SECRETSTREAM_CHUNK_BYTES`
+ * (`DSTU_ERR_INVALID_LENGTH`), `record_out_cap` at least `DSTU_SECRETSTREAM_MAX_RECORD_BYTES`
+ * (`DSTU_ERR_BUFFER_TOO_SMALL`). On `DSTU_OK` the first `DSTU_SECRETSTREAM_MAX_RECORD_BYTES`
+ * bytes of `record_out` are the record. `DSTU_ERR_FINALIZED` after `_seal_final`.
+ *
+ * # Safety
+ *
+ * `enc` must be a valid encryptor; `chunk` valid for reads of `chunk_len` bytes and
+ * `record_out` for writes of `record_out_cap` bytes when non-null and their lengths are nonzero.
+ */
+
+DstuStatus dstu_secretstream_file_encryptor_seal_chunk(DstuFileEncryptor *enc,
+                                                       const uint8_t *chunk,
+                                                       size_t chunk_len,
+                                                       uint8_t *record_out,
+                                                       size_t record_out_cap);
+
+/**
+ * Seals the last `0..=DSTU_SECRETSTREAM_CHUNK_BYTES` bytes as the `Final` record
+ * (`DSTU_ERR_INVALID_LENGTH` if longer). `record_out_cap` must be at least `last_len +
+ * DSTU_SECRETSTREAM_RECORD_OVERHEAD_BYTES` (`DSTU_ERR_BUFFER_TOO_SMALL`); the record's length is
+ * written to `*record_len`. `DSTU_ERR_FINALIZED` if called twice.
+ *
+ * # Safety
+ *
+ * `enc`/`record_len` must be valid and non-null; `last` valid for reads of `last_len` bytes and
+ * `record_out` for writes of `record_out_cap` bytes when non-null and their lengths are nonzero.
+ */
+
+DstuStatus dstu_secretstream_file_encryptor_seal_final(DstuFileEncryptor *enc,
+                                                       const uint8_t *last,
+                                                       size_t last_len,
+                                                       uint8_t *record_out,
+                                                       size_t record_out_cap,
+                                                       size_t *record_len);
+
+/**
+ * Frees a stream-file encryptor. NULL is a no-op.
+ *
+ * # Safety
+ *
+ * `enc` must be NULL or a pointer from `dstu_secretstream_file_encryptor_new`, not already
+ * freed.
+ */
+ void dstu_secretstream_file_encryptor_free(DstuFileEncryptor *enc);
+
+/**
+ * Starts reading a stream file under `key`. Returns NULL if `key` is NULL.
+ *
+ * # Safety
+ *
+ * `key` must be NULL or a valid key handle.
+ */
+ DstuFileDecryptor *dstu_secretstream_file_decryptor_new(const DstuSecretstreamKey *key);
+
+/**
+ * How many bytes `_feed` wants next; 0 once finished or failed, and for NULL.
+ *
+ * # Safety
+ *
+ * `dec` must be NULL or a valid decryptor.
+ */
+ size_t dstu_secretstream_file_decryptor_next_len(const DstuFileDecryptor *dec);
+
+/**
+ * Consumes exactly `_next_len` bytes (`DSTU_ERR_INVALID_LENGTH` otherwise, and the call is
+ * ignored). `plaintext_out_cap` must be at least `DSTU_SECRETSTREAM_CHUNK_BYTES`
+ * (`DSTU_ERR_BUFFER_TOO_SMALL`). On `DSTU_OK`, `*plaintext_len` plaintext bytes (0 unless a
+ * non-final record just verified) are at the start of `plaintext_out`.
+ *
+ * # Safety
+ *
+ * `dec`/`plaintext_len` must be valid and non-null; `input` valid for reads of `input_len` bytes
+ * and `plaintext_out` for writes of `plaintext_out_cap` bytes when non-null and nonzero.
+ */
+
+DstuStatus dstu_secretstream_file_decryptor_feed(DstuFileDecryptor *dec,
+                                                 const uint8_t *input,
+                                                 size_t input_len,
+                                                 uint8_t *plaintext_out,
+                                                 size_t plaintext_out_cap,
+                                                 size_t *plaintext_len);
+
+/**
+ * Call when the input ended before `_next_len` bytes arrived. `DSTU_ERR_TRUNCATED` if no
+ * `Final` record verified; otherwise `DSTU_OK` with the `Final` chunk's plaintext
+ * (`*plaintext_len` bytes) in `plaintext_out`. Same buffer rules as `_feed`.
+ *
+ * # Safety
+ *
+ * As `dstu_secretstream_file_decryptor_feed`.
+ */
+
+DstuStatus dstu_secretstream_file_decryptor_finish(DstuFileDecryptor *dec,
+                                                   uint8_t *plaintext_out,
+                                                   size_t plaintext_out_cap,
+                                                   size_t *plaintext_len);
+
+/**
+ * The core's message for the error that failed this decryptor (NUL-terminated, owned by the
+ * handle, valid until it is freed), or NULL if it has not failed (or `dec` is NULL).
+ *
+ * # Safety
+ *
+ * `dec` must be NULL or a valid decryptor.
+ */
+ const char *dstu_secretstream_file_decryptor_last_error(const DstuFileDecryptor *dec);
+
+/**
+ * Frees a stream-file decryptor. NULL is a no-op.
+ *
+ * # Safety
+ *
+ * `dec` must be NULL or a pointer from `dstu_secretstream_file_decryptor_new`, not already
+ * freed.
+ */
+ void dstu_secretstream_file_decryptor_free(DstuFileDecryptor *dec);
 
 /**
  * Re-verifies one official test vector per primitive (Kalyna, Kupyna, Strumok, DSTU 4145)
