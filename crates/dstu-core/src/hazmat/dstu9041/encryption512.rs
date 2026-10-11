@@ -21,6 +21,7 @@ use super::message512::{
     build_m_prime, encode_l_m_tilde, format_m_tilde, kw_plaintext_from_m_prime, parse_m_prime,
 };
 use crate::hazmat::kalyna_kw::Kalyna512_512Kw;
+use zeroize::Zeroizing;
 
 /// Hash function identifier for Kupyna-256 (clause 5.7's `i_H` registry - only one value is wired
 /// up by this module, matching the worked example's own `hash_function_id_hex: "01"`).
@@ -58,15 +59,15 @@ pub fn encrypt(
     let m_tilde =
         format_m_tilde(message, message_bits).map_err(|_| EncryptError::InvalidMessage)?;
     let l_m_tilde = encode_l_m_tilde(message_bits);
-    let m_prime = build_m_prime(HASH_ID_KUPYNA256, &m_tilde, &l_m_tilde);
+    let m_prime = Zeroizing::new(build_m_prime(HASH_ID_KUPYNA256, &m_tilde, &l_m_tilde));
 
     let r_point = base_point().scalar_multiply(epsilon);
     let r_bytes = r_point.x.to_be_bytes();
 
-    let t_point = q.scalar_multiply(epsilon);
-    let kappa = t_point.x.to_be_bytes();
+    let t_point = Zeroizing::new(q.scalar_multiply(epsilon));
+    let kappa = Zeroizing::new(t_point.x.to_be_bytes());
 
-    let kw_plaintext = kw_plaintext_from_m_prime(&m_prime);
+    let kw_plaintext = Zeroizing::new(kw_plaintext_from_m_prime(&m_prime));
     let mut t = [0u8; 192];
     // Unreachable in practice: `kw_plaintext` is always exactly 128 bytes by construction, and `t`
     // is always exactly 192 bytes - the only failure `wrap` can report (`KwError::InvalidLength`)
@@ -74,7 +75,7 @@ pub fn encrypt(
     // instead of `.expect()`-ing (this crate denies `unwrap`/`expect` in library code) so this
     // stays provably panic-free rather than "correct by inspection only" - same reasoning
     // `encryption.rs::encrypt` already documents for its own `l(p)=256` case.
-    Kalyna512_512Kw::wrap(&kappa, &kw_plaintext, &mut t)
+    Kalyna512_512Kw::wrap(&kappa, &kw_plaintext[..], &mut t)
         .map_err(|_| EncryptError::InvalidMessage)?;
 
     let mut ciphertext = [0u8; 256];
@@ -107,13 +108,13 @@ pub fn decrypt(ciphertext: &[u8; 256], e: &[u8; 64]) -> Result<([u8; 53], usize)
     let r_prime = point_from_x(r_field).ok_or(DecryptError::InvalidCiphertext)?;
 
     // Steps 7-8: T' = e*R'; kappa = x_T'.
-    let t_prime = r_prime.scalar_multiply(e);
-    let kappa = t_prime.x.to_be_bytes();
+    let t_prime = Zeroizing::new(r_prime.scalar_multiply(e));
+    let kappa = Zeroizing::new(t_prime.x.to_be_bytes());
 
     // Step 9: unwrap. kalyna_kw's own checksum (D-55) already constant-time-compares its trailing
     // block.
-    let mut recovered = [0u8; 128];
-    Kalyna512_512Kw::unwrap(&kappa, &ciphertext[64..], &mut recovered)
+    let mut recovered = Zeroizing::new([0u8; 128]);
+    Kalyna512_512Kw::unwrap(&kappa, &ciphertext[64..], &mut recovered[..])
         .map_err(|_| DecryptError::InvalidCiphertext)?;
 
     // The empirical "M' || 0x00*64" quirk, mirrored on decrypt: verify the appended block came
@@ -126,7 +127,7 @@ pub fn decrypt(ciphertext: &[u8; 256], e: &[u8; 64]) -> Result<([u8; 53], usize)
         return Err(DecryptError::InvalidCiphertext);
     }
 
-    let mut m_prime = [0u8; 64];
+    let mut m_prime = Zeroizing::new([0u8; 64]);
     m_prime.copy_from_slice(&recovered[..64]);
 
     // Steps 10-17: parsed internally (hash + zero-padding checks, both constant-time - see

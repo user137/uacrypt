@@ -15425,3 +15425,22 @@ rewritten to work through raw pointers; too large and risky for 0.6.0, possible 
 `ptr::write_bytes` plus a compiler fence, which cross-language LTO may remove. Tests:
 `tests/ffi_overlap.rs` (refused in-place seal and codec feed, untouched output of a void hash,
 adjacent halves accepted), clean under Miri.
+
+## D-237: Secret-hygiene batch (T-242, 2026-10-11)
+
+**Done.** Wiped on every return path (`Zeroizing`): DSTU 9041's `kappa`, `T`/`T'`, `M'`, the
+KW plaintext and the unwrapped `recovered` block (both curve sizes; `FieldElement`/`Point` derive
+`Zeroize` for that); the KMAC output that seeds the DSTU 4145 signing nonce (`crypto_sign`,
+`crypto_sign257`); Kupyna-KMAC's padded key and full-width output; Kalyna-KW's `b` array; the capi
+`*_key_from_bytes` stack copies of secret keys (9 functions). `uacrypt`'s `key_bytes`/`key_arr`
+were already `Zeroizing` since 0.5.0's typed key files. `SigningKey::from_bytes` (both curves) now
+uses the borrow-based `Scalar::from_candidate_bytes` range check instead of `iter().all(== 0)` plus
+a byte-wise `>=` that exits at the first differing byte of `d`; that helper's zero test is an OR
+fold, not an array `!=`, and it is no longer feature-gated. `Scalar`/`Scalar257` and the GF(2^m)
+and F_p field elements print `Type(<redacted>)` instead of their limbs (manual `Debug`, so `Point`
+and test assertions still compile).
+
+**Verification is review only (finding, not a test).** Whether memory was wiped is not observable
+from safe Rust, and a test that reads freed memory would be UB; `Zeroizing`'s `Drop` is the
+mechanism and the review is the evidence, the same "foreclosed by type/review" convention as
+earlier `D-` findings. The `Debug` redaction is tested (`tests/debug_redaction.rs`).

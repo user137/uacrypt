@@ -20,8 +20,15 @@ use zeroize::Zeroize;
 // `sign`/`verify` signatures) - `ZeroizeOnDrop`'s `Drop` impl is incompatible with `Copy` (E0184).
 // Callers holding a `Scalar` they want zeroized on drop (e.g. `crypto_sign::SigningKey`) call
 // `.zeroize()` explicitly instead.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Zeroize)]
+// T-242: no derived `Debug` - a `Scalar` holds the signing key `d` or the nonce `e`.
+#[derive(Clone, Copy, PartialEq, Eq, Zeroize)]
 pub struct Scalar([u64; 3]);
+
+impl core::fmt::Debug for Scalar {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str("Scalar(<redacted>)")
+    }
+}
 
 impl Scalar {
     /// Builds a scalar from a big-endian byte slice (up to 21 bytes). The caller must ensure the
@@ -61,17 +68,13 @@ impl Scalar {
     /// add a data-dependent-branch timing signal beyond the "how many draws until one was
     /// accepted" every rejection-sampling scheme inherently has.
     ///
-    /// Gated the same way its only caller (`crypto_sign::SigningKey::generate`) is: needs
-    /// `crate::randombytes` to draw candidates in the first place (`std` or the narrower
-    /// `getrandom` feature, `docs/TASKS.md` T-123/`docs/DECISIONS.md` D-74) - a build with neither has no way
-    /// to call this, so it would otherwise be dead code there.
-    #[cfg(any(feature = "std", feature = "getrandom"))]
+    /// Also `SigningKey::from_bytes`'s range check since T-242, so it is not feature-gated.
     #[must_use]
     pub(crate) fn from_candidate_bytes(bytes: &[u8; 21]) -> Option<Self> {
         let limbs = limbs_from_be_bytes(bytes);
         let (_, borrow) = sub3(limbs, Self::n());
         let in_range = borrow == 1; // borrow == 1 <=> limbs < n
-        let nonzero = limbs != [0, 0, 0];
+        let nonzero = limbs.iter().fold(0, |acc, &l| acc | l) != 0;
         (in_range && nonzero).then_some(Scalar(limbs))
     }
 

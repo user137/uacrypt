@@ -52,6 +52,9 @@ All notable changes to this project are documented in this file. Format follows
   2^61 - 1 bytes with `InvalidLength`; Kupyna and Kupyna-KMAC compute the 96-bit length field in
   `u128`. No real input reaches either bound.
 - The `alloc` feature is documented as reserved: it enables nothing (T-281).
+- Secret hygiene (T-242, D-237): more intermediates are wiped (DSTU 9041 `kappa`/`T`/`M'`, the
+  signing-nonce KMAC output, KMAC and KW buffers, capi key copies); `SigningKey::from_bytes` checks
+  `d`'s range without a byte-wise early exit; scalars and field elements print `<redacted>`.
 
 ## [0.5.0] - 2026-10-09
 

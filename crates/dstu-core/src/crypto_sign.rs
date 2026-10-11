@@ -72,7 +72,7 @@
 //! assert!(!other_key.verifying_key().verify(message, &signature));
 //! ```
 
-use crate::hazmat::dstu4145::curve163::{self, Point};
+use crate::hazmat::dstu4145::curve163::Point;
 use crate::hazmat::dstu4145::gf2m163::FieldElement;
 use crate::hazmat::dstu4145::scalar::Scalar;
 use crate::hazmat::dstu4145::signature;
@@ -170,11 +170,9 @@ impl SigningKey {
     /// does not validate, by its own documented convention).
     #[must_use]
     pub fn from_bytes(d: &[u8; 21]) -> Option<Self> {
-        let n = curve163::order();
-        if d.iter().all(|&b| b == 0) || d >= &n {
-            return None;
-        }
-        Some(SigningKey(Scalar::from_be_bytes(d)))
+        // T-242: the borrow-based range check, not a byte-wise `>=` that exits at the first
+        // differing byte of the secret `d`.
+        Scalar::from_candidate_bytes(d).map(SigningKey)
     }
 
     /// Generates a fresh signing key from the OS CSPRNG - libsodium's `crypto_sign_keypair()`
@@ -303,9 +301,12 @@ fn derive_nonce(d: Scalar, hash: &[u8; 32], counter: u8) -> Scalar {
     message[..32].copy_from_slice(hash);
     message[32] = counter;
 
-    let Ok(mac) = Kupyna256Kmac::mac(&key, &message) else {
+    let Ok(mut mac) = Kupyna256Kmac::mac(&key, &message) else {
         unreachable!("key is always exactly 32 bytes, Kupyna256Kmac's required length")
     };
     key.zeroize();
-    Scalar::reduce_wide_bytes(&mac)
+    let nonce = Scalar::reduce_wide_bytes(&mac);
+    // T-242: the KMAC output is the nonce's whole source.
+    mac.zeroize();
+    nonce
 }

@@ -22,8 +22,15 @@
 
 /// An element of GF(2^163): 3 little-endian 64-bit limbs. Bits 163..192 (the unused top 29 bits
 /// of the last limb) are always zero - every constructor and operation below maintains this.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+// T-242: no derived `Debug` - a field element can carry secret-derived values.
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub struct FieldElement(pub(crate) [u64; 3]);
+
+impl core::fmt::Debug for FieldElement {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str("FieldElement(<redacted>)")
+    }
+}
 
 impl core::ops::Add for FieldElement {
     type Output = Self;

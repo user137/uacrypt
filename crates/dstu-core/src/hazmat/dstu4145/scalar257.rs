@@ -8,8 +8,15 @@ use crate::hazmat::limb::{adc, mac, sbb};
 use zeroize::Zeroize;
 
 // Not `ZeroizeOnDrop` - see `scalar::Scalar`'s own comment on why (`Copy` + `Drop` is E0184).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Zeroize)]
+// T-242: no derived `Debug` - a `Scalar` holds the signing key `d` or the nonce `e`.
+#[derive(Clone, Copy, PartialEq, Eq, Zeroize)]
 pub struct Scalar([u64; 5]);
+
+impl core::fmt::Debug for Scalar {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str("Scalar(<redacted>)")
+    }
+}
 
 impl Scalar {
     /// Builds a scalar from a big-endian byte slice (up to 33 bytes). The caller must ensure the
@@ -49,13 +56,12 @@ impl Scalar {
     /// accordingly (top byte to `0`, second byte to its low bit) to keep the rejection rate near
     /// 50%, mirroring `crypto_sign`'s own masking for `m=163`'s order (`docs/DECISIONS.md` D-186
     /// Decision 5, resolved).
-    #[cfg(any(feature = "std", feature = "getrandom"))]
     #[must_use]
     pub(crate) fn from_candidate_bytes(bytes: &[u8; 33]) -> Option<Self> {
         let limbs = limbs_from_be_bytes(bytes);
         let (_, borrow) = sub5(limbs, Self::n());
         let in_range = borrow == 1; // borrow == 1 <=> limbs < n
-        let nonzero = limbs != [0, 0, 0, 0, 0];
+        let nonzero = limbs.iter().fold(0, |acc, &l| acc | l) != 0;
         (in_range && nonzero).then_some(Scalar(limbs))
     }
 

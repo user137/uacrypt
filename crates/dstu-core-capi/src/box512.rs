@@ -71,7 +71,8 @@ pub unsafe extern "C" fn dstu_box512_secretkey_from_bytes(
         if bytes.is_null() || out.is_null() {
             return DstuStatus::DSTU_ERR_NULL_POINTER;
         }
-        let mut arr = [0u8; DSTU_BOX512_SECRETKEY_BYTES];
+        // T-242: the stack copy of the key is wiped when this returns.
+        let mut arr = zeroize::Zeroizing::new([0u8; DSTU_BOX512_SECRETKEY_BYTES]);
         arr.copy_from_slice(unsafe {
             std::slice::from_raw_parts(bytes, DSTU_BOX512_SECRETKEY_BYTES)
         });

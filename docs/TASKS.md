@@ -8505,7 +8505,7 @@ which is exactly why the divergence was never caught.
     unreachable (SSH timeout). Run them on the Pi or in Linux CI before the release.
   - Public keys and signatures still overwrite. They are not secret, and the owner decision covered
     keys only.
-- [ ] **T-242** (audit F-07/F-08/F-14, Low) Secret-hygiene batch. Not zeroized: `kappa`,
+- [x] **T-242** (audit F-07/F-08/F-14, Low) Secret-hygiene batch. **Done 2026-10-11 (D-237).** Not zeroized: `kappa`,
   `t_point`/`t_prime`, `m_prime`, `kw_plaintext`, `recovered` in `hazmat/dstu9041/encryption.rs`
   (~90, ~135, ~139) and `encryption512.rs`; the KMAC output `mac` (the signing nonce source) in
   `derive_nonce` (`crypto_sign.rs` ~306, `crypto_sign257.rs` ~233); `padded_key` and `full` in

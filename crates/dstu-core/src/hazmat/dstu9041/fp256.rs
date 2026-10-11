@@ -47,8 +47,16 @@ const P_PLUS_3_OVER_8: [u8; 32] = [
     0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xCA,
 ];
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+// T-242: no derived `Debug` - a field element can be a secret intermediate (`kappa`'s source);
+// the manual impl below never prints its value.
+#[derive(Clone, Copy, PartialEq, Eq, zeroize::Zeroize)]
 pub struct FieldElement([u64; 4]);
+
+impl core::fmt::Debug for FieldElement {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str("FieldElement(<redacted>)")
+    }
+}
 
 #[inline]
 #[allow(clippy::needless_range_loop)]

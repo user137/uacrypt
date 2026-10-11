@@ -48,7 +48,7 @@ pub(crate) fn curve_d() -> FieldElement {
     FieldElement::from_be_bytes(&bytes)
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, zeroize::Zeroize)]
 pub struct Point {
     pub x: FieldElement,
     pub y: FieldElement,

@@ -55,7 +55,8 @@ pub unsafe extern "C" fn dstu_sign_key_from_bytes(
         if d.is_null() || out.is_null() {
             return DstuStatus::DSTU_ERR_NULL_POINTER;
         }
-        let mut bytes = [0u8; DSTU_SIGN_PRIVATE_KEY_BYTES];
+        // T-242: the stack copy of the key is wiped when this returns.
+        let mut bytes = zeroize::Zeroizing::new([0u8; DSTU_SIGN_PRIVATE_KEY_BYTES]);
         bytes
             .copy_from_slice(unsafe { std::slice::from_raw_parts(d, DSTU_SIGN_PRIVATE_KEY_BYTES) });
         match SigningKey::from_bytes(&bytes) {

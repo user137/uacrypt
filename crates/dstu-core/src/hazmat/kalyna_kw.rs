@@ -120,7 +120,8 @@ macro_rules! kalyna_kw_variant {
                 let mut big_b = [0u8; $half_bytes];
                 big_b.copy_from_slice(&plaintext[..$half_bytes]);
 
-                let mut b = [[0u8; $half_bytes]; MAX_B_SLOTS];
+                // T-242: holds key-wrapped secret material; wiped on every return path.
+                let mut b = zeroize::Zeroizing::new([[0u8; $half_bytes]; MAX_B_SLOTS]);
                 let mut off = $half_bytes;
                 let mut idx = 0;
                 while off < plaintext.len() {
@@ -205,7 +206,8 @@ macro_rules! kalyna_kw_variant {
                 let mut big_b = [0u8; $half_bytes];
                 big_b.copy_from_slice(&ciphertext[..$half_bytes]);
 
-                let mut b = [[0u8; $half_bytes]; MAX_B_SLOTS];
+                // T-242: holds key-wrapped secret material; wiped on every return path.
+                let mut b = zeroize::Zeroizing::new([[0u8; $half_bytes]; MAX_B_SLOTS]);
                 let mut off = $half_bytes;
                 for idx in 0..(n - 1) {
                     b[idx].copy_from_slice(&ciphertext[off..off + $half_bytes]);

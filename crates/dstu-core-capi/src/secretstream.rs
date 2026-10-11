@@ -95,11 +95,12 @@ pub unsafe extern "C" fn dstu_secretstream_key_from_bytes(
         if key.is_null() {
             return std::ptr::null_mut();
         }
-        let mut bytes = [0u8; DSTU_SECRETSTREAM_KEY_BYTES];
+        // T-242: the stack copy of the key is wiped when this returns.
+        let mut bytes = zeroize::Zeroizing::new([0u8; DSTU_SECRETSTREAM_KEY_BYTES]);
         bytes.copy_from_slice(unsafe {
             std::slice::from_raw_parts(key, DSTU_SECRETSTREAM_KEY_BYTES)
         });
-        Box::into_raw(Box::new(DstuSecretstreamKey(Key::from_bytes(bytes))))
+        Box::into_raw(Box::new(DstuSecretstreamKey(Key::from_bytes(*bytes))))
     })
 }
 

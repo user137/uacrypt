@@ -54,6 +54,8 @@ fn kmac_generic(
     // holds for 32+13<=64, 48+13<=128, 64+13<=128 - not a coincidence, the same margin the
     // official vectors themselves rely on).
     let (padded_key, padded_key_len) = kupyna_padding(key, bits(key.len()), block_bytes);
+    // T-242: the padded copy of the key is wiped as soon as it is absorbed.
+    let padded_key = zeroize::Zeroizing::new(padded_key);
     core.update(&padded_key[..padded_key_len]);
 
     // M, raw - contributes to `core`'s own running `total_len` normally, same as any other
@@ -92,8 +94,14 @@ macro_rules! kmac_variant {
             ///
             /// Returns `Err(KmacError::WrongKeyLength)` if `key.len() != $mac_len`.
             pub fn mac(key: &[u8], message: &[u8]) -> Result<[u8; $mac_len], KmacError> {
-                let full =
-                    kmac_generic(key, message, $columns, $rounds, $last_row_shift, $mac_len)?;
+                let full = zeroize::Zeroizing::new(kmac_generic(
+                    key,
+                    message,
+                    $columns,
+                    $rounds,
+                    $last_row_shift,
+                    $mac_len,
+                )?);
                 let mut out = [0u8; $mac_len];
                 out.copy_from_slice(&full[..$mac_len]);
                 Ok(out)
