@@ -7,7 +7,10 @@
 //! reachable, not make it pretty yet.
 
 use crate::util::{to_array, IntoDstuError};
-use dstu_core::crypto_secretstream::{Key, PullState, PushState, Tag};
+use dstu_core::crypto_secretstream::{
+    FileDecryptor, FileEncryptor, Key, PullState, PushState, Tag, CHUNK_BYTES, FILE_PREFIX_BYTES,
+    MAX_RECORD_BYTES,
+};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
@@ -97,5 +100,88 @@ impl SecretStreamPullState {
             .pull(tag_byte, ciphertext, auth_tag, &mut plaintext)
             .dstu()?;
         Ok((tag.to_byte(), plaintext))
+    }
+}
+
+/// Stream-file writer (T-284): the D-208 framing from the core codec. `secretstream.py`'s
+/// `SecretStreamEncryptor` drives it and does only I/O.
+#[pyclass]
+pub struct SecretStreamFileEncryptor {
+    inner: FileEncryptor,
+    prefix: [u8; FILE_PREFIX_BYTES],
+}
+
+#[pymethods]
+impl SecretStreamFileEncryptor {
+    #[new]
+    fn new(key: &[u8]) -> PyResult<Self> {
+        let key = Key::from_bytes(to_array::<32>(key, "key")?);
+        let (inner, prefix) = FileEncryptor::init(&key).dstu()?;
+        Ok(Self { inner, prefix })
+    }
+
+    /// The format version byte and header - write these first.
+    #[getter]
+    fn prefix(&self) -> Vec<u8> {
+        self.prefix.to_vec()
+    }
+
+    /// Seals exactly `CHUNK_BYTES` bytes as one non-final record.
+    fn seal_chunk(&mut self, chunk: &[u8]) -> PyResult<Vec<u8>> {
+        let chunk = to_array::<CHUNK_BYTES>(chunk, "chunk")?;
+        let mut record = vec![0u8; MAX_RECORD_BYTES];
+        let Ok(out) = <&mut [u8; MAX_RECORD_BYTES]>::try_from(record.as_mut_slice()) else {
+            unreachable!("record is MAX_RECORD_BYTES long")
+        };
+        self.inner.seal_chunk(&chunk, out).dstu()?;
+        Ok(record)
+    }
+
+    /// Seals the last `0..=CHUNK_BYTES` bytes as the `Final` record.
+    fn seal_final(&mut self, last: &[u8]) -> PyResult<Vec<u8>> {
+        let mut record = vec![0u8; MAX_RECORD_BYTES];
+        let n = self.inner.seal_final(last, &mut record).dstu()?;
+        record.truncate(n);
+        Ok(record)
+    }
+}
+
+/// Stream-file reader (T-284): read exactly `next_len()` bytes and `feed` them; at end of input
+/// call `finish()`. Raises `DstuError` with the core's message on any format or authentication
+/// error.
+#[pyclass]
+pub struct SecretStreamFileDecryptor {
+    inner: FileDecryptor,
+}
+
+#[pymethods]
+impl SecretStreamFileDecryptor {
+    #[new]
+    fn new(key: &[u8]) -> PyResult<Self> {
+        let key = Key::from_bytes(to_array::<32>(key, "key")?);
+        Ok(Self {
+            inner: FileDecryptor::new(&key),
+        })
+    }
+
+    fn next_len(&self) -> usize {
+        self.inner.next_len()
+    }
+
+    /// Consumes exactly `next_len()` bytes; returns the plaintext of a verified non-final
+    /// record, else empty bytes.
+    fn feed(&mut self, data: &[u8]) -> PyResult<Vec<u8>> {
+        let mut plaintext = vec![0u8; CHUNK_BYTES];
+        let n = self.inner.feed(data, &mut plaintext).dstu()?;
+        plaintext.truncate(n);
+        Ok(plaintext)
+    }
+
+    /// End of input: returns the `Final` chunk's plaintext, or raises if the stream is truncated.
+    fn finish(&mut self) -> PyResult<Vec<u8>> {
+        let mut plaintext = vec![0u8; CHUNK_BYTES];
+        let n = self.inner.finish(&mut plaintext).dstu()?;
+        plaintext.truncate(n);
+        Ok(plaintext)
     }
 }

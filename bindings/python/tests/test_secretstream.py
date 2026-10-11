@@ -224,7 +224,7 @@ _EXPECTED_MESSAGE = {
     "unsupported_version": "unsupported stream format version",
     "bad_chunk_length": "non-final chunk",
     "truncated": "truncated",
-    "auth": "",
+    "auth": "authentication failed",
     "trailing_data": "trailing data",
     "oversized_chunk": "chunk too large",
     "unknown_tag": "unrecognized chunk tag",
@@ -254,3 +254,30 @@ def test_encryptor_writes_the_format_version_first() -> None:
     with d.SecretStreamEncryptor(d.secretstream_keygen(), out) as enc:
         enc.write(b"x")
     assert out.getvalue()[0] == 2
+
+
+def test_one_large_write_equals_many_small_writes() -> None:
+    """T-276's shape: one write of the whole message and many small writes give files that
+    decrypt to the same plaintext, and the large write is cut by offset (linear time)."""
+    key = d.secretstream_keygen()
+    message = bytes(range(256)) * (3 * 8192 // 256 + 7)
+    big, small = io.BytesIO(), io.BytesIO()
+    with d.SecretStreamEncryptor(key, big) as enc:
+        enc.write(message)
+    with d.SecretStreamEncryptor(key, small) as enc:
+        for i in range(0, len(message), 1000):
+            enc.write(message[i : i + 1000])
+    for data in (big.getvalue(), small.getvalue()):
+        assert d.SecretStreamDecryptor(key, io.BytesIO(data)).read_all() == message
+
+
+def test_trailing_data_never_yields_the_final_chunk() -> None:
+    """T-284: the Final chunk's plaintext is released only once the input ends right after it."""
+    key = d.secretstream_keygen()
+    out = io.BytesIO()
+    with d.SecretStreamEncryptor(key, out) as enc:
+        enc.write(b"A" * 8192 + b"last")
+    dec = d.SecretStreamDecryptor(key, io.BytesIO(out.getvalue() + b"x"))
+    assert next(dec) == b"A" * 8192
+    with pytest.raises(d.DstuError, match="trailing data"):
+        next(dec)

@@ -61,6 +61,8 @@ fn _dstu_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(secretstream::secretstream_keygen, m)?)?;
     m.add_class::<secretstream::SecretStreamPushState>()?;
     m.add_class::<secretstream::SecretStreamPullState>()?;
+    m.add_class::<secretstream::SecretStreamFileEncryptor>()?;
+    m.add_class::<secretstream::SecretStreamFileDecryptor>()?;
     m.add("SECRETSTREAM_TAG_MESSAGE", 0x00u8)?;
     m.add("SECRETSTREAM_TAG_PUSH", 0x01u8)?;
     m.add("SECRETSTREAM_TAG_REKEY", 0x02u8)?;

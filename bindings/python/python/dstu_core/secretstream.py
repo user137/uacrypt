@@ -1,7 +1,7 @@
 """File-like `crypto_secretstream` pipeline (docs/DECISIONS.md D-118, docs/bindings-strategy.md
-T-49 step 3) - hides chunk/tag/counter bookkeeping behind write()/iterate, built in pure Python on
-top of the low-level SecretStreamPushState/SecretStreamPullState the compiled extension already
-exposes (step 2), rather than new Rust glue.
+T-49 step 3) - hides chunk/tag/counter bookkeeping behind write()/iterate. The framing itself
+(record layout, length rules, Final, trailing data) is dstu-core's stream-file codec, exposed as
+SecretStreamFileEncryptor/SecretStreamFileDecryptor (T-284); this module does only I/O.
 
 **Wire format matches `uacrypt encrypt`/`decrypt` exactly**
 (crates/uacrypt/src/lib.rs's `run_secretstream_encrypt`/`run_secretstream_decrypt`, D-68):
@@ -16,22 +16,11 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from ._dstu_core import (
-    SECRETSTREAM_TAG_FINAL,
-    SECRETSTREAM_TAG_MESSAGE,
-    DstuError,
-    SecretStreamPullState,
-    SecretStreamPushState,
-)
+from ._dstu_core import SecretStreamFileDecryptor, SecretStreamFileEncryptor
 
-# Matches crates/uacrypt/src/lib.rs's SECRETSTREAM_CHUNK_BYTES exactly - required for wire-format
-# interop with `uacrypt encrypt`/`decrypt`, not an independent choice.
+# dstu-core's `crypto_secretstream::CHUNK_BYTES` (D-208): the codec seals and checks it; this
+# module only needs it to cut the caller's data into chunks.
 _CHUNK_BYTES = 8 * 1024
-
-_AUTH_TAG_BYTES = 16
-
-# Matches dstu-core's `crypto_secretstream::FORMAT_VERSION` (D-208); the shared vectors pin it.
-_FORMAT_VERSION = 2
 
 
 class _Writable(Protocol):
@@ -54,39 +43,42 @@ class SecretStreamEncryptor:
 
     def __init__(self, key: bytes, out: _Writable) -> None:
         self._out = out
-        self._push = SecretStreamPushState(key)
-        self._out.write(bytes([_FORMAT_VERSION]))
-        self._out.write(self._push.header)
+        self._enc = SecretStreamFileEncryptor(key)
+        self._out.write(self._enc.prefix)
         self._buf = bytearray()
         self._closed = False
 
-    def _push_chunk(self, tag: int, data: bytes) -> None:
-        ciphertext, auth_tag = self._push.push(tag, data)
-        self._out.write(bytes([tag]))
-        self._out.write(len(data).to_bytes(4, "little"))
-        self._out.write(ciphertext)
-        self._out.write(auth_tag)
-
     def write(self, data: bytes) -> int:
-        """Buffers `data`, pushing any now-complete 8 KiB chunks immediately. The trailing partial
-        (or exactly-8-KiB) chunk is always held back until `close()`, since only `close()` knows
-        no more data is coming - the same one-chunk-ahead reasoning `uacrypt encrypt` itself uses
-        to tag the true last chunk `Final`, not an extra empty one after it."""
+        """Buffers `data`, sealing every full 8 KiB chunk that is certain not to be the last one.
+        The trailing partial (or exactly-8-KiB) chunk is held back until `close()`, since only
+        `close()` knows no more data is coming - an exact multiple of 8 KiB must end in a full
+        Final record, not an extra empty one (D-208). Full chunks are cut from `data` by offset,
+        so one large write costs linear time (T-276)."""
         if self._closed:
             raise ValueError("write to closed SecretStreamEncryptor")
-        self._buf.extend(data)
-        while len(self._buf) > _CHUNK_BYTES:
-            chunk = bytes(self._buf[:_CHUNK_BYTES])
-            del self._buf[:_CHUNK_BYTES]
-            self._push_chunk(SECRETSTREAM_TAG_MESSAGE, chunk)
-        return len(data)
+        view = memoryview(data)
+        size = len(view)
+        if len(self._buf) + size <= _CHUNK_BYTES:
+            self._buf.extend(view)
+            return size
+        pos = 0
+        if self._buf:
+            pos = _CHUNK_BYTES - len(self._buf)
+            self._buf.extend(view[:pos])
+            self._out.write(self._enc.seal_chunk(bytes(self._buf)))
+            self._buf.clear()
+        while size - pos > _CHUNK_BYTES:
+            self._out.write(self._enc.seal_chunk(bytes(view[pos : pos + _CHUNK_BYTES])))
+            pos += _CHUNK_BYTES
+        self._buf.extend(view[pos:])
+        return size
 
     def close(self) -> None:
         """Flushes any buffered bytes as the stream's Final chunk. Idempotent - safe to call more
         than once, matching normal Python file-object `close()` semantics."""
         if self._closed:
             return
-        self._push_chunk(SECRETSTREAM_TAG_FINAL, bytes(self._buf))
+        self._out.write(self._enc.seal_final(bytes(self._buf)))
         self._buf.clear()
         self._closed = True
 
@@ -106,7 +98,8 @@ class SecretStreamEncryptor:
             self.close()
 
 
-def _read_exact(inp: _Readable, size: int, what: str) -> bytes:
+def _read_up_to(inp: _Readable, size: int) -> bytes:
+    """Reads until `size` bytes arrived or `inp` ended; a short result means end of input."""
     pieces = []
     remaining = size
     while remaining > 0:
@@ -115,12 +108,7 @@ def _read_exact(inp: _Readable, size: int, what: str) -> bytes:
             break
         pieces.append(piece)
         remaining -= len(piece)
-    data = b"".join(pieces)
-    if len(data) != size:
-        raise DstuError(
-            f"truncated secretstream: expected {size} bytes for {what}, got {len(data)}"
-        )
-    return data
+    return b"".join(pieces)
 
 
 class SecretStreamDecryptor:
@@ -137,49 +125,32 @@ class SecretStreamDecryptor:
     """
 
     def __init__(self, key: bytes, inp: _Readable) -> None:
-        version = _read_exact(inp, 1, "format version")[0]
-        if version != _FORMAT_VERSION:
-            raise DstuError(
-                f"unsupported stream format version {version} (this build reads {_FORMAT_VERSION})"
-            )
-        header = _read_exact(inp, 32, "header")
         self._inp = inp
-        self._pull = SecretStreamPullState(key, header)
+        self._dec = SecretStreamFileDecryptor(key)
         self._done = False
+        # The version byte and header, read now so a wrong version fails at construction.
+        for _ in range(2):
+            self._step()
+
+    def _step(self) -> bytes:
+        """Feeds the codec one `next_len()` read: the plaintext that read released (possibly
+        empty), or at end of input the Final chunk's (after which the stream is done)."""
+        want = self._dec.next_len()
+        data = _read_up_to(self._inp, want)
+        if len(data) < want:
+            self._done = True
+            return self._dec.finish()
+        return self._dec.feed(data)
 
     def __iter__(self) -> SecretStreamDecryptor:
         return self
 
     def __next__(self) -> bytes:
-        if self._done:
-            raise StopIteration
-        tag_byte = _read_exact(self._inp, 1, "chunk tag")[0]
-        chunk_len = int.from_bytes(_read_exact(self._inp, 4, "chunk length"), "little")
-        # `chunk_len` is untrusted wire input, read before any tag verification - reject an
-        # oversized declared length before acting on it (`_read_exact` would otherwise try to
-        # accumulate up to `chunk_len` bytes from `inp`, which for a socket/pipe `_Readable` could
-        # mean gigabytes before ever failing). Matches `uacrypt decrypt`'s own
-        # `CliError::SecretstreamChunkTooLarge` bound (`crates/uacrypt/src/lib.rs`).
-        if chunk_len > _CHUNK_BYTES:
-            raise DstuError(
-                f"secretstream chunk too large: declared {chunk_len} bytes, max {_CHUNK_BYTES}"
-            )
-        if tag_byte != SECRETSTREAM_TAG_FINAL and chunk_len != _CHUNK_BYTES:
-            raise DstuError(
-                f"non-final chunk of {chunk_len} bytes, must be exactly {_CHUNK_BYTES} (D-208)"
-            )
-        ciphertext = _read_exact(self._inp, chunk_len, "chunk ciphertext")
-        auth_tag = _read_exact(self._inp, _AUTH_TAG_BYTES, "chunk auth tag")
-        tag, plaintext = self._pull.pull(tag_byte, ciphertext, auth_tag)
-        if tag == SECRETSTREAM_TAG_FINAL:
-            # Matches `uacrypt decrypt`'s own `CliError::SecretstreamTrailingData` check - reject
-            # bytes remaining after `Final` rather than silently ignoring them. Checked before
-            # `plaintext` is returned, so a trailing-data stream never yields this last chunk
-            # either via iteration or `read_all()`.
-            if self._inp.read(1):
-                raise DstuError("trailing data after the secretstream's Final chunk")
-            self._done = True
-        return plaintext
+        while not self._done:
+            plaintext = self._step()
+            if plaintext:
+                return plaintext
+        raise StopIteration
 
     def read_all(self) -> bytes:
         return b"".join(self)
