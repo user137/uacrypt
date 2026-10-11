@@ -10097,6 +10097,13 @@ on the Pi); `cargo xtask test` 146 suites green, `cargo clippy --workspace --all
   **2026-10-11:** step 1 done except T-231's .NET half and T-296's CI timing (T-288/T-289/T-277
   closed, T-231 Java fixed, D-234). Owner: T-295 moves after the 0.6.0 release; the owner wants
   0.6.0 carried through to the version bump and tag. Step 2 (T-284) plan approved - see T-284.
+  **2026-10-11, later:** step 2 done (T-284/T-274/T-275/T-276, D-235; Pi: all 9 layers green);
+  step 3 T-281/T-283 done, T-242/T-244 open. Local commits from `586ff90` to `8230c1a`
+  unpushed. **Release pitfalls for 0.6.0:** bump `dstu-core` 0.5.0 -> 0.6.0 together with every
+  `path = ..., version = "0.5.0"` requirement (uacrypt, capi, the 5 direct-Rust binding
+  `Cargo.toml`s); Python/Node/Ruby (published 0.3.0) need a minor bump to 0.4.0 - their reader
+  messages changed and a stream with trailing data no longer yields its Final chunk; Java is
+  0.2.0 already; a green Miri run on the tagged commit (D-232).
 - **0.4.0: released and closed (2026-10-08/09).** Tag `v0.4.0` on `39fdb53` after all CI incl.
   Miri was green; release run 37761634603 green (npm needed a new `NPM_TOKEN` and one rerun).
   Live: crates.io 0.4.0, PyPI/npm/RubyGems 0.2.0 (npm without `win32-x64-msvc`, D-189). T-252
