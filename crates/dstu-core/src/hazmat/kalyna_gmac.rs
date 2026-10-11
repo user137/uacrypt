@@ -105,8 +105,9 @@ macro_rules! kalyna_gmac_variant {
                 if message.is_empty() {
                     return Err(GmacError::EmptyMessage);
                 }
-                #[allow(clippy::cast_possible_truncation)] // realistic lengths fit u64 trivially
-                let bit_len = (message.len() as u64) * 8;
+                let Some(bit_len) = super::checked_bit_len(message.len()) else {
+                    return Err(GmacError::InvalidLength);
+                };
                 Ok(Self::mac_with_bit_len(cipher, message, bit_len))
             }
 

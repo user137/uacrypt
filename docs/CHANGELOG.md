@@ -5,6 +5,47 @@ All notable changes to this project are documented in this file. Format follows
 
 ## [Unreleased]
 
+### Added
+
+- **`dstu-core`: one stream-file codec**, `crypto_secretstream::FileEncryptor`/`FileDecryptor`
+  (T-284, `docs/DECISIONS.md` D-235): the `uacrypt encrypt` file format (D-208) implemented once,
+  `no_std`. Reading takes exactly `next_len()` bytes per `feed` and an explicit `finish()` at end
+  of input. New constants `CHUNK_BYTES`, `FILE_PREFIX_BYTES`, `RECORD_OVERHEAD_BYTES`,
+  `MAX_RECORD_BYTES`; new `FileError`. The wire format is unchanged.
+- **C ABI:** `dstu_secretstream_file_encryptor_*`/`dstu_secretstream_file_decryptor_*`
+  (including `_last_error`), statuses `DSTU_ERR_CHUNK_TOO_LARGE` (15),
+  `DSTU_ERR_BAD_CHUNK_LENGTH` (16), `DSTU_ERR_TRAILING_DATA` (17).
+- New fuzz target `crypto_secretstream_file`.
+
+### Changed
+
+- `uacrypt` and all 8 language bindings read and write stream files through the codec. Their
+  error messages for a malformed file are now the core's, the same in every language.
+- **A stream with bytes after its `Final` chunk no longer yields that chunk anywhere**:
+  `uacrypt decrypt --out -` and the Node.js reader used to print or emit it before finding the
+  extra bytes.
+- **Java binding 0.2.0** (T-275): `SecretStreamEncryptor.complete()` flushes the sink, `flush()`
+  forwards, and `close()` closes the sink (`SecretStreamDecryptor.close()` closes its source), as
+  `java.io` filter streams do. `close()` still never writes the `Final` chunk.
+
+### Fixed
+
+- One large write into a stream writer took quadratic time in Java and PHP (T-276; 16 MiB took
+  5-8 s), and the same buffer shape existed in Python and Ruby. Every writer now seals full
+  chunks straight from the caller's buffer.
+- The PHP stream writer ignored failed or short `fwrite()` calls (only a notice), so a full disk
+  produced a corrupt file without an error (T-274). It now throws.
+- The Java reader printed a declared length of `0xFFFFFFFF` as "-1 bytes" (T-277).
+- `cargo xtask python` ran a PATH `pytest` that tested a stale installed package instead of the
+  fresh `maturin develop` build (T-289).
+
+### Internal
+
+- Shared stream-file vectors grew from 7 to 15 cases (T-277): data after `Final`, oversized
+  lengths, no `Final`, cuts inside a record, an unknown tag, a tampered tag.
+- The Java leak test measures native memory only (T-231, D-234); the slowest Miri file runs as 6
+  shards (T-296).
+
 ## [0.5.0] - 2026-10-09
 
 ### Changed - `uacrypt` CLI (breaking)

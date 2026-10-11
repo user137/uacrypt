@@ -15353,3 +15353,49 @@ control. No threshold change without a control that discriminates.
 **Rejected.** Raising the threshold (hides the flake and still cannot see a leak); one surefire
 execution only for the leak test (`-Dtest=MemoryLeakTest` would then run it twice, once on the
 default heap).
+
+## D-235: One stream-file codec in dstu-core, every reader and writer on it (T-284, 2026-10-11)
+
+**Decision (owner O-C(b), D-220; plan approved 2026-10-11).** The D-208 stream-file framing lives
+once, in `crypto_secretstream`: `FileEncryptor` (`init` gives the 33-byte prefix, `seal_chunk`
+takes `&[u8; 8192]`, `seal_final` the last `0..=8192` bytes) and `FileDecryptor`. `uacrypt` and all
+8 bindings drive it (Python/Node/Ruby/PHP/Java through new native classes, .NET/Go/C++ through
+`dstu_secretstream_file_*` in the capi) and keep only their language's I/O. The wire format is
+unchanged: the 15 shared vectors (T-277) pass through every reader before and after.
+
+**Reader contract.** `next_len()` says how many bytes `feed` takes next; `feed` must get exactly
+that many (another length is a caller error, not EOF). End of input is an explicit `finish()`:
+`Truncated` before a verified `Final`, otherwise it releases the `Final` record's plaintext. EOF is
+never inferred from a short slice, because a pipe or socket legitimately returns short reads. After
+`Final`, `next_len()` is 1 and any byte fed is `TrailingData`. After an error every call fails
+(`Finished`). The decryptor holds the `Final` plaintext in an 8 KiB buffer; a `no_std`/MCU caller
+that cannot afford it keeps the raw `PullState`.
+
+**Behaviour change: the `Final` chunk is released only once the input is known to end there.**
+Before, `uacrypt decrypt --out -` and the Node reader emitted the `Final` chunk and only then found
+trailing bytes (Python, Ruby, PHP, Java, .NET, Go and C++ probed first). Now no consumer yields the
+last chunk of a stream with bytes appended (`docs/CLI.md`).
+
+**Messages.** Every reader reports the core's `FileError` text, so the per-binding wordings T-277
+mapped are gone: "chunk too large", "non-final chunk", "unrecognized chunk tag", "trailing data",
+"truncated", "authentication failed", "unsupported stream format version". The capi keeps the
+failing error's message per decryptor (`dstu_secretstream_file_decryptor_last_error`) instead of
+the planned static `dstu_status_message`: a status code loses the declared length and version the
+core's message carries. New statuses 15-17 (`DSTU_ERR_CHUNK_TOO_LARGE`,
+`DSTU_ERR_BAD_CHUNK_LENGTH`, `DSTU_ERR_TRAILING_DATA`), appended.
+
+**Writers.** Each holds back at most one chunk (an exact multiple of 8 KiB must end in a full
+`Final`) and seals full chunks straight from the caller's buffer by offset. That fixes T-276 (Java:
+64 MiB in about a second; PHP on the Pi, release build: 16 MiB in one write 232 ms, was 5245 ms)
+and the same quadratic shape in Python (`del buf[:8192]`) and Ruby (`byteslice` of the rest). The
+Java JNI call copies only the chunk (`GetByteArrayRegion`), not the whole array. PHP checks every
+`fwrite` and throws on a failed or short write (T-274). Java follows `java.io`'s filter-stream
+convention (O-F, T-275): `complete()` writes `Final` and flushes, `flush()` forwards, `close()`
+closes the sink (the decryptor's closes its source) and never finalizes; the Java package goes to
+0.2.0.
+
+**Tests.** Core: vectors by error class, boundary round trips, an independent decode with the raw
+`PullState`, misuse, proptests, Miri; fuzz target `crypto_secretstream_file`. capi: vectors by
+status and message, nulls, undersized buffers, failed state. Each binding: the shared vectors, one
+large write vs many small, trailing data never yields `Final`; Java and PHP add the T-274/T-275
+regressions.

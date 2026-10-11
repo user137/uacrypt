@@ -14,6 +14,12 @@
 //! Full construction cited step-by-step in `docs/pseudocode/kupyna-kmac.md`.
 
 use super::kupyna::{kupyna_padding, KupynaCore};
+
+/// A byte count in bits, for Kupyna's 96-bit length field (T-283). In u128: a `usize` is at most
+/// 64 bits on every Rust target, so the multiply cannot overflow.
+fn bits(bytes: usize) -> u128 {
+    (bytes as u128) * 8
+}
 use subtle::ConstantTimeEq;
 use zeroize::Zeroize;
 
@@ -47,8 +53,7 @@ fn kmac_generic(
     // PAD(K): always exactly one block for all three MAC sizes (key.len() + 13 <= block_bytes
     // holds for 32+13<=64, 48+13<=128, 64+13<=128 - not a coincidence, the same margin the
     // official vectors themselves rely on).
-    #[allow(clippy::cast_possible_truncation)] // key.len() is 32/48/64, always << u64::MAX
-    let (padded_key, padded_key_len) = kupyna_padding(key, (key.len() as u64) * 8, block_bytes);
+    let (padded_key, padded_key_len) = kupyna_padding(key, bits(key.len()), block_bytes);
     core.update(&padded_key[..padded_key_len]);
 
     // M, raw - contributes to `core`'s own running `total_len` normally, same as any other
@@ -59,9 +64,7 @@ fn kmac_generic(
     // the length field - `message.len()`'s tail may already be sitting in `core`'s internal
     // buffer from the `update(message)` call above, so only the *new* suffix bytes (from the
     // already-buffered length onward) are fed in, or `update` would double-count them.
-    #[allow(clippy::cast_possible_truncation)] // message.len() here is always << u64::MAX
-    let (pad_m, pad_m_len) =
-        kupyna_padding(core.buffered(), (message.len() as u64) * 8, block_bytes);
+    let (pad_m, pad_m_len) = kupyna_padding(core.buffered(), bits(message.len()), block_bytes);
     let already_buffered = core.buffered().len();
     core.update(&pad_m[already_buffered..pad_m_len]);
 

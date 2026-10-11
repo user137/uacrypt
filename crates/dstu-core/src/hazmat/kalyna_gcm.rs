@@ -136,7 +136,13 @@ macro_rules! kalyna_gcm_variant {
             /// Computes the full-block-length authentication tag over `aad` and `ciphertext` -
             /// see the module doc comment's divergences 2 and 3. Callers truncate to their chosen
             /// `q` themselves (a pure truncation of this value, per the source construction).
-            fn compute_tag(&self, aad: &[u8], ciphertext: &[u8]) -> [u8; $block_bytes] {
+            fn compute_tag(
+                &self,
+                aad: &[u8],
+                ciphertext: &[u8],
+                aad_len_bits: u64,
+                ct_len_bits: u64,
+            ) -> [u8; $block_bytes] {
                 let h_key = <$gf>::from_le_bytes(&self.key.encrypt_block(&[0u8; $block_bytes]));
                 let acc = Self::absorb_padded(<$gf>::ZERO, h_key, aad);
                 let acc = Self::absorb_padded(acc, h_key, ciphertext);
@@ -144,10 +150,6 @@ macro_rules! kalyna_gcm_variant {
                 // Length block: true AAD bit-length (low half), true ciphertext bit-length (high
                 // half), both little-endian u64 - divergence 3, §12.2 `lambda_o || lambda_C`.
                 let mut length_block = [0u8; $block_bytes];
-                #[allow(clippy::cast_possible_truncation)] // realistic lengths fit u64 trivially
-                let aad_len_bits = (aad.len() as u64) * 8;
-                #[allow(clippy::cast_possible_truncation)]
-                let ct_len_bits = (ciphertext.len() as u64) * 8;
                 length_block[..8].copy_from_slice(&aad_len_bits.to_le_bytes());
                 length_block[$half_bytes..$half_bytes + 8].copy_from_slice(&ct_len_bits.to_le_bytes());
 
@@ -185,8 +187,14 @@ macro_rules! kalyna_gcm_variant {
                 if aad.is_empty() && plaintext.is_empty() {
                     return Err(GcmError::EmptyInput);
                 }
+                let (Some(aad_bits), Some(ct_bits)) = (
+                    super::checked_bit_len(aad.len()),
+                    super::checked_bit_len(plaintext.len()),
+                ) else {
+                    return Err(GcmError::InvalidLength);
+                };
                 self.apply_keystream(iv, plaintext, ciphertext_out);
-                Ok(self.compute_tag(aad, ciphertext_out))
+                Ok(self.compute_tag(aad, ciphertext_out, aad_bits, ct_bits))
             }
 
             /// Verifies `tag` (the caller's chosen `q` bytes, between 8 and one full block) over
@@ -214,8 +222,14 @@ macro_rules! kalyna_gcm_variant {
                 if aad.is_empty() && ciphertext.is_empty() {
                     return Err(GcmError::EmptyInput);
                 }
+                let (Some(aad_bits), Some(ct_bits)) = (
+                    super::checked_bit_len(aad.len()),
+                    super::checked_bit_len(ciphertext.len()),
+                ) else {
+                    return Err(GcmError::InvalidLength);
+                };
 
-                let expected = self.compute_tag(aad, ciphertext);
+                let expected = self.compute_tag(aad, ciphertext, aad_bits, ct_bits);
                 if !bool::from(expected[..tag.len()].ct_eq(tag)) {
                     plaintext_out.fill(0);
                     return Err(GcmError::TagMismatch);

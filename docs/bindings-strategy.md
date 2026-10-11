@@ -376,10 +376,14 @@ retroactively the same day it was added, see that entry.)
          read, with no upper bound — for a file this just hits EOF, but the language's own
          file-like abstraction may also have to accept a socket/pipe, where an oversized declared
          length means accumulating gigabytes before ever failing. Also missed: rejecting trailing
-         bytes after the `Final` chunk (silently ignored instead of erroring). Both are checks
-         `uacrypt decrypt` already has (`CliError::SecretstreamChunkTooLarge`/
-         `CliError::SecretstreamTrailingData`, `crates/uacrypt/src/lib.rs`) — port them explicitly
-         into every language's own reader, they don't come for free from the wire format matching.
+         bytes after the `Final` chunk (silently ignored instead of erroring). **Since T-284
+         (0.6.0) no binding parses the format itself:** every reader and writer drives the core
+         codec (`crypto_secretstream::FileEncryptor`/`FileDecryptor`, or the capi's
+         `dstu_secretstream_file_*` for .NET/Go/C++), which owns all these checks. A binding reads
+         exactly `next_len()` bytes per `feed`, calls `finish()` at end of input, and seals full
+         chunks from the caller's buffer by offset (T-276); its errors are the core's messages.
+         Every sink write is checked (T-274). Java's sink follows `java.io`'s filter-stream
+         convention: `complete()` flushes, `close()` closes the sink without finalizing (T-275).
        - **The `uacrypt` interop test must convert its raw key first** (since 0.5.0, T-256/D-212):
          `uacrypt encrypt`/`decrypt --key` read typed key files only, so the test writes the
          binding's raw 32-byte key, runs `uacrypt key-import --kind symmetric --in <raw> --out

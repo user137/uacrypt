@@ -317,7 +317,7 @@ fn h_to_array<const COLUMNS: usize>(h: &[[u8; ROWS]; MAX_COLUMNS]) -> [[u8; ROWS
 /// three. Returns the padding buffer and how many of its bytes are actually used.
 pub(crate) fn kupyna_padding(
     prefix: &[u8],
-    msg_bits: u64,
+    msg_bits: u128,
     block_bytes: usize,
 ) -> ([u8; 2 * MAX_BLOCK_BYTES], usize) {
     let mut tail = [0u8; 2 * MAX_BLOCK_BYTES];
@@ -328,8 +328,9 @@ pub(crate) fn kupyna_padding(
     let used = pos + 12;
     let zero_bytes = (block_bytes - (used % block_bytes)) % block_bytes;
     pos += zero_bytes;
-    tail[pos..pos + 8].copy_from_slice(&msg_bits.to_le_bytes());
-    pos += 12; // upper 4 bytes of the 96-bit length field stay zero (message lengths fit in u64 bits)
+    // The 96-bit length field: the low 12 bytes of `msg_bits` (callers pass at most 2^67 bits).
+    tail[pos..pos + 12].copy_from_slice(&msg_bits.to_le_bytes()[..12]);
+    pos += 12;
     (tail, pos)
 }
 
@@ -451,7 +452,8 @@ impl KupynaCore {
         // Padding: buffered tail || 0x80 || zero bytes || 96-bit little-endian length, sized to
         // fill whole block(s) - equivalent to the spec's bit-level `d = (-N-97) mod l` formula for
         // byte-aligned N (see docs/DECISIONS.md D-10 for the derivation).
-        let msg_bits: u64 = self.total_len * 8;
+        // T-283: in u128, so the multiply cannot overflow (a u64 byte count is under 2^67 bits).
+        let msg_bits = u128::from(self.total_len) * 8;
         let (tail, pos) = kupyna_padding(&self.buffer[..self.buffer_len], msg_bits, block_bytes);
 
         let tail_blocks = pos / block_bytes;
