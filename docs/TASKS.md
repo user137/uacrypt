@@ -7689,7 +7689,9 @@ Phase 2+ and none currently in flight).
   (normal 0.36-0.44 MB pass, never-close control 3.05 MB fails). Still to do: read the real
   growth on CI's x86_64 log after the push. **.NET still open:** the Pi does not reproduce it
   (0.08-1.4 MB over 6 runs), and `SafeHandle` finalizers make "never Dispose" no leak control -
-  next step is CI-side data (the probe line from D-234's method) before any change. First
+  next step is CI-side data (the probe line from D-234's method) before any change.
+  **Owner 2026-10-11: the .NET half moves to 0.7.0** (does not hold 0.6.0). The .NET test now
+  logs VmRSS growth and managed committed bytes on every run (CI's detailed logger shows it). First
   entry here (written after a single observed failure on `43ce442`) called this "a single isolated
   failure, not a regression" - wrong, corrected the next day after a second failure landed on the
   very next `bindings-dotnet`-touching push (`0c50eec`) prompted a deeper check: `gh run list
@@ -10056,6 +10058,7 @@ writer onto it. Superseded in detail by the plan below.
 4. Docs: T-246, T-280.
 
 **0.7.0, in order:**
+0. T-231's .NET half (owner 2026-10-11): read the logged growth from CI runs first.
 1. T-265 bounded-memory `box-seal`/`box-open` (new streaming `crypto_box` API) + T-269 binding gate
    (incl. `crypto_pwhash::derive_key`).
 2. Perf after T-265: T-286, T-287, T-293.

@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using DstuCore;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace DstuCore.Tests;
 
@@ -32,6 +33,13 @@ namespace DstuCore.Tests;
 /// </summary>
 public class MemoryLeakTests
 {
+    private readonly ITestOutputHelper _output;
+
+    public MemoryLeakTests(ITestOutputHelper output)
+    {
+        _output = output;
+    }
+
     private static long CurrentVmRssBytes()
     {
         foreach (var line in File.ReadLines("/proc/self/status"))
@@ -95,6 +103,7 @@ public class MemoryLeakTests
         GC.WaitForPendingFinalizers();
         GC.Collect();
         long before = CurrentVmRssBytes();
+        long committedBefore = GC.GetGCMemoryInfo().TotalCommittedBytes;
 
         RunLoop(key, boxSecret, boxPublic, n);
 
@@ -103,6 +112,10 @@ public class MemoryLeakTests
         GC.Collect();
         long after = CurrentVmRssBytes();
         long growth = after - before;
+        // T-231: logged on every run (CI uses the detailed console logger) so a future failure,
+        // or a pass, carries the real growth on CI's platform - data the Pi cannot reproduce.
+        _output.WriteLine($"MemoryLeakTests: VmRSS grew by {growth} bytes over {n} iterations (threshold {maxAcceptableGrowthBytes}); " +
+            $"managed committed {GC.GetGCMemoryInfo().TotalCommittedBytes - committedBefore} bytes");
         Assert.True(
             growth < maxAcceptableGrowthBytes,
             $"VmRSS grew by {growth} bytes over {n} iterations (threshold {maxAcceptableGrowthBytes}) - possible native handle leak");
