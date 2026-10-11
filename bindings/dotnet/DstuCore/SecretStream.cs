@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using DstuCore.Native;
 
 namespace DstuCore;
@@ -46,7 +47,9 @@ public sealed class SecretstreamKey : IDisposable
 /// Encrypts a write-side <see cref="System.IO.Stream"/> into <c>uacrypt encrypt</c>'s own wire
 /// format: a version byte and a 32-byte header, then <c>tag(1) || len_u32_le(4) || ciphertext ||
 /// authTag(16)</c> records. Every record but the <c>Final</c> one carries exactly
-/// <see cref="DstuConstants.SecretstreamChunkBytes"/> bytes (part of the format since D-208).
+/// <see cref="DstuConstants.SecretstreamChunkBytes"/> bytes (part of the format since D-208). The
+/// framing is dstu-core's stream-file codec (T-284) through the C ABI; this class only buffers and
+/// writes.
 ///
 /// <para><b>Deliberately does not flush a <see cref="SecretStreamTag.Final"/> chunk from
 /// <see cref="Dispose"/></b> - unlike <c>CryptoStream</c>/<c>GZipStream</c>'s own close-flushes
@@ -58,11 +61,12 @@ public sealed class SecretstreamKey : IDisposable
 /// </summary>
 public sealed class SecretStreamEncryptStream : Stream
 {
+    private const int ChunkBytes = DstuConstants.SecretstreamChunkBytes;
     private readonly Stream _inner;
     private readonly bool _leaveOpen;
-    private readonly PushStateHandle _state;
-    private readonly byte[] _buffer = new byte[DstuConstants.SecretstreamChunkBytes];
-    private byte[]? _pendingChunk;
+    private readonly FileEncryptorHandle _enc;
+    private readonly byte[] _buffer = new byte[ChunkBytes];
+    private readonly byte[] _record = new byte[DstuConstants.SecretstreamMaxRecordBytes];
     private int _bufferLen;
     private bool _completed;
 
@@ -72,10 +76,9 @@ public sealed class SecretStreamEncryptStream : Stream
         ArgumentNullException.ThrowIfNull(key);
         _inner = inner;
         _leaveOpen = leaveOpen;
-        var header = new byte[DstuConstants.SecretstreamHeaderBytes];
-        NativeStatus.ThrowIfError(NativeMethods.dstu_secretstream_push_init(key.Handle, out _state, header));
-        _inner.WriteByte(DstuConstants.SecretstreamFormatVersion);
-        _inner.Write(header, 0, header.Length);
+        var prefix = new byte[DstuConstants.SecretstreamFilePrefixBytes];
+        NativeStatus.ThrowIfError(NativeMethods.dstu_secretstream_file_encryptor_new(key.Handle, prefix, out _enc));
+        _inner.Write(prefix, 0, prefix.Length);
     }
 
     public override bool CanRead => false;
@@ -94,36 +97,52 @@ public sealed class SecretStreamEncryptStream : Stream
     public override void SetLength(long value) => throw new NotSupportedException();
     public override void Flush() => _inner.Flush();
 
+    /// <summary>Buffers the bytes, sealing every full chunk that is certain not to be the last
+    /// one; the last (even a full one) waits for <see cref="Complete"/>. Full chunks are sealed
+    /// straight from <paramref name="buffer"/>.</summary>
     public override void Write(byte[] buffer, int offset, int count)
     {
         ArgumentNullException.ThrowIfNull(buffer);
+        ArgumentOutOfRangeException.ThrowIfNegative(offset);
+        ArgumentOutOfRangeException.ThrowIfNegative(count);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(count, buffer.Length - offset);
         if (_completed)
         {
             throw new InvalidOperationException("this stream has already been Complete()d");
         }
 
-        var pos = offset;
-        var remaining = count;
-        while (remaining > 0)
+        if (_bufferLen + count <= ChunkBytes)
         {
-            var take = Math.Min(remaining, _buffer.Length - _bufferLen);
-            Array.Copy(buffer, pos, _buffer, _bufferLen, take);
-            _bufferLen += take;
-            pos += take;
-            remaining -= take;
-            if (_bufferLen == _buffer.Length)
-            {
-                FlushPendingAsMessage();
-                _pendingChunk = (byte[])_buffer.Clone();
-                _bufferLen = 0;
-            }
+            Array.Copy(buffer, offset, _buffer, _bufferLen, count);
+            _bufferLen += count;
+            return;
         }
+
+        var pos = offset;
+        var end = offset + count;
+        if (_bufferLen > 0)
+        {
+            var taken = ChunkBytes - _bufferLen;
+            Array.Copy(buffer, pos, _buffer, _bufferLen, taken);
+            pos += taken;
+            SealChunk(_buffer);
+            _bufferLen = 0;
+        }
+
+        while (end - pos > ChunkBytes)
+        {
+            SealChunk(buffer.AsSpan(pos, ChunkBytes));
+            pos += ChunkBytes;
+        }
+
+        Array.Copy(buffer, pos, _buffer, 0, end - pos);
+        _bufferLen = end - pos;
     }
 
-    /// <summary>Flushes all buffered plaintext as a <see cref="SecretStreamTag.Final"/> chunk and
-    /// marks this stream complete. Must be called once, on the success path, before
-    /// <c>Dispose()</c> - see the class doc comment for why <c>Dispose()</c> itself
-    /// never does this.</summary>
+    /// <summary>Writes all buffered plaintext as the <see cref="SecretStreamTag.Final"/> record,
+    /// flushes, and marks this stream complete. Must be called once, on the success path, before
+    /// <c>Dispose()</c> - see the class doc comment for why <c>Dispose()</c> itself never does
+    /// this.</summary>
     public void Complete()
     {
         if (_completed)
@@ -131,58 +150,26 @@ public sealed class SecretStreamEncryptStream : Stream
             return;
         }
 
-        if (_bufferLen > 0)
-        {
-            FlushPendingAsMessage();
-            WriteChunk(SecretStreamTag.Final, _buffer, _bufferLen);
-        }
-        else if (_pendingChunk is { } pending)
-        {
-            WriteChunk(SecretStreamTag.Final, pending, pending.Length);
-            _pendingChunk = null;
-        }
-        else
-        {
-            WriteChunk(SecretStreamTag.Final, [], 0);
-        }
-
+        NativeStatus.ThrowIfError(NativeMethods.dstu_secretstream_file_encryptor_seal_final(
+            _enc, _buffer.AsSpan(0, _bufferLen), (nuint)_bufferLen, _record, (nuint)_record.Length, out var recordLen));
+        _inner.Write(_record, 0, (int)recordLen);
+        _bufferLen = 0;
         _completed = true;
         _inner.Flush();
     }
 
-    private void FlushPendingAsMessage()
+    private void SealChunk(ReadOnlySpan<byte> chunk)
     {
-        if (_pendingChunk is { } pending)
-        {
-            WriteChunk(SecretStreamTag.Message, pending, pending.Length);
-            _pendingChunk = null;
-        }
-    }
-
-    private void WriteChunk(SecretStreamTag tag, byte[] plaintext, int len)
-    {
-        var pt = len == plaintext.Length ? plaintext : plaintext[..len];
-        var ciphertext = new byte[len];
-        var tagOut = new byte[DstuConstants.SecretstreamTagBytes];
-        NativeStatus.ThrowIfError(NativeMethods.dstu_secretstream_push(_state, tag, pt, (nuint)len, ciphertext, (nuint)len, tagOut));
-
-        _inner.WriteByte((byte)tag);
-        var lenBytes = BitConverter.GetBytes((uint)len);
-        if (!BitConverter.IsLittleEndian)
-        {
-            Array.Reverse(lenBytes);
-        }
-
-        _inner.Write(lenBytes, 0, 4);
-        _inner.Write(ciphertext, 0, len);
-        _inner.Write(tagOut, 0, tagOut.Length);
+        NativeStatus.ThrowIfError(NativeMethods.dstu_secretstream_file_encryptor_seal_chunk(
+            _enc, chunk, (nuint)chunk.Length, _record, (nuint)_record.Length));
+        _inner.Write(_record, 0, _record.Length);
     }
 
     protected override void Dispose(bool disposing)
     {
         if (disposing)
         {
-            _state.Dispose();
+            _enc.Dispose();
             if (!_leaveOpen)
             {
                 _inner.Dispose();
@@ -195,20 +182,21 @@ public sealed class SecretStreamEncryptStream : Stream
 
 /// <summary>
 /// Decrypts a read-side <see cref="System.IO.Stream"/> produced by
-/// <see cref="SecretStreamEncryptStream"/> or <c>uacrypt encrypt</c>. Bounds every untrusted
-/// length-prefixed <c>chunkLen</c> field against <see cref="DstuConstants.SecretstreamChunkBytes"/>
-/// before using it to size a read, and rejects trailing bytes after the <c>Final</c> chunk - both
-/// checks the wire format's own framing does not provide for free (D-118's second pitfall; mirrors
-/// <c>uacrypt</c>'s own <c>CliError::SecretstreamChunkTooLarge</c>/<c>SecretstreamTrailingData</c>).
+/// <see cref="SecretStreamEncryptStream"/> or <c>uacrypt encrypt</c>. Every check - the untrusted
+/// length field, the 8 KiB rule, truncation, trailing bytes after the <c>Final</c> chunk - is
+/// dstu-core's stream-file codec (T-284); this class only reads, and reports the codec's own
+/// message. The <c>Final</c> chunk is returned only once the input is known to end right after
+/// it, so a stream with trailing data never yields its last chunk.
 /// </summary>
 public sealed class SecretStreamDecryptStream : Stream
 {
     private readonly Stream _inner;
     private readonly bool _leaveOpen;
-    private readonly PullStateHandle _state;
-    private byte[] _pendingPlaintext = [];
+    private readonly FileDecryptorHandle _dec;
+    private readonly byte[] _plaintext = new byte[DstuConstants.SecretstreamChunkBytes];
     private int _pendingPos;
-    private bool _finalized;
+    private int _pendingLen;
+    private bool _done;
 
     public SecretStreamDecryptStream(Stream inner, SecretstreamKey key, bool leaveOpen = false)
     {
@@ -216,15 +204,18 @@ public sealed class SecretStreamDecryptStream : Stream
         ArgumentNullException.ThrowIfNull(key);
         _inner = inner;
         _leaveOpen = leaveOpen;
-        var version = ReadExactly(1)[0];
-        if (version != DstuConstants.SecretstreamFormatVersion)
+        _dec = NativeMethods.dstu_secretstream_file_decryptor_new(key.Handle);
+        try
         {
-            throw new DstuException(
-                $"unsupported stream format version {version} (this build reads {DstuConstants.SecretstreamFormatVersion})");
+            // The version byte and header, read now so a wrong version fails at construction.
+            Step();
+            Step();
         }
-
-        var header = ReadExactly(DstuConstants.SecretstreamHeaderBytes);
-        _state = NativeMethods.dstu_secretstream_pull_init(key.Handle, header);
+        catch
+        {
+            _dec.Dispose();
+            throw;
+        }
     }
 
     public override bool CanRead => true;
@@ -248,96 +239,74 @@ public sealed class SecretStreamDecryptStream : Stream
     public override int Read(byte[] buffer, int offset, int count)
     {
         ArgumentNullException.ThrowIfNull(buffer);
-        if (_pendingPos == _pendingPlaintext.Length)
+        while (_pendingPos == _pendingLen)
         {
-            if (_finalized || !ReadNextChunk())
+            if (_done)
             {
-                if (!_finalized)
-                {
-                    throw new DstuException("secretstream ended before a Final chunk was seen - the input is truncated");
-                }
-
                 return 0;
             }
+
+            _pendingLen = Step();
+            _pendingPos = 0;
         }
 
-        var available = _pendingPlaintext.Length - _pendingPos;
-        var toCopy = Math.Min(available, count);
-        Array.Copy(_pendingPlaintext, _pendingPos, buffer, offset, toCopy);
+        var toCopy = Math.Min(_pendingLen - _pendingPos, count);
+        Array.Copy(_plaintext, _pendingPos, buffer, offset, toCopy);
         _pendingPos += toCopy;
         return toCopy;
     }
 
-    private bool ReadNextChunk()
+    /// <summary>Feeds the codec one <c>next_len</c> read; returns how many plaintext bytes that
+    /// released into <c>_plaintext</c> (at end of input, the <c>Final</c> chunk's).</summary>
+    private int Step()
     {
-        var tagByte = _inner.ReadByte();
-        if (tagByte < 0)
+        var want = (int)NativeMethods.dstu_secretstream_file_decryptor_next_len(_dec);
+        var data = new byte[want];
+        var got = 0;
+        while (got < want)
         {
-            return false;
-        }
-
-        var lenBytes = ReadExactly(4);
-        if (!BitConverter.IsLittleEndian)
-        {
-            Array.Reverse(lenBytes);
-        }
-
-        var len = BitConverter.ToUInt32(lenBytes);
-        if (len > DstuConstants.SecretstreamChunkBytes)
-        {
-            throw new DstuException(
-                $"secretstream chunk length {len} exceeds the maximum {DstuConstants.SecretstreamChunkBytes} bytes - the input is corrupted");
-        }
-
-        if (tagByte != (int)SecretStreamTag.Final && len != DstuConstants.SecretstreamChunkBytes)
-        {
-            throw new DstuException(
-                $"non-final chunk of {len} bytes, must be exactly {DstuConstants.SecretstreamChunkBytes} (D-208)");
-        }
-
-        var ciphertext = ReadExactly((int)len);
-        var authTag = ReadExactly(DstuConstants.SecretstreamTagBytes);
-        var plaintextOut = new byte[len];
-        NativeStatus.ThrowIfError(NativeMethods.dstu_secretstream_pull(
-            _state, (byte)tagByte, ciphertext, len, authTag, plaintextOut, len, out var outTag));
-
-        _pendingPlaintext = plaintextOut;
-        _pendingPos = 0;
-        if (outTag == SecretStreamTag.Final)
-        {
-            _finalized = true;
-            if (_inner.ReadByte() != -1)
-            {
-                throw new DstuException("secretstream has trailing data after its Final chunk");
-            }
-        }
-
-        return true;
-    }
-
-    private byte[] ReadExactly(int n)
-    {
-        var buf = new byte[n];
-        var read = 0;
-        while (read < n)
-        {
-            var r = _inner.Read(buf, read, n - read);
+            var r = _inner.Read(data, got, want - got);
             if (r == 0)
             {
-                throw new DstuException("secretstream ended unexpectedly mid-chunk - the input is truncated");
+                break;
             }
 
-            read += r;
+            got += r;
         }
 
-        return buf;
+        nuint len;
+        DstuStatus status;
+        if (got < want)
+        {
+            _done = true;
+            status = NativeMethods.dstu_secretstream_file_decryptor_finish(
+                _dec, _plaintext, (nuint)_plaintext.Length, out len);
+        }
+        else
+        {
+            status = NativeMethods.dstu_secretstream_file_decryptor_feed(
+                _dec, data, (nuint)want, _plaintext, (nuint)_plaintext.Length, out len);
+        }
+
+        if (status != DstuStatus.Ok)
+        {
+            var message = NativeMethods.dstu_secretstream_file_decryptor_last_error(_dec);
+            if (message != IntPtr.Zero)
+            {
+                throw new DstuException(Marshal.PtrToStringUTF8(message)!);
+            }
+
+            NativeStatus.ThrowIfError(status);
+        }
+
+        return (int)len;
     }
 
     protected override void Dispose(bool disposing)
     {
         if (disposing)
         {
-            _state.Dispose();
+            _dec.Dispose();
             if (!_leaveOpen)
             {
                 _inner.Dispose();

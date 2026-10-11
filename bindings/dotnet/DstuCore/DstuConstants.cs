@@ -47,6 +47,13 @@ public static class DstuConstants
     /// <c>crypto_secretstream::FORMAT_VERSION</c> (D-208); the shared vectors pin it.</summary>
     public const byte SecretstreamFormatVersion = 2;
 
+    /// <summary>A stream file's first bytes: the format version byte plus the 32-byte header
+    /// (T-284).</summary>
+    public const int SecretstreamFilePrefixBytes = 33;
+
+    /// <summary>The longest stream-file record: a full chunk plus tag, length and auth tag.</summary>
+    public const int SecretstreamMaxRecordBytes = 8213;
+
     public const int SignPrivateKeyBytes = 21;
     public const int SignPublicKeyBytes = 42;
     public const int SignSignatureBytes = 42;

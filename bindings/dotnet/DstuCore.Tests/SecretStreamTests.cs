@@ -159,7 +159,7 @@ public sealed class SecretStreamTests
         BitConverter.GetBytes(0xFFFFFFFFu).CopyTo(malicious, 34);
         using var dec = new SecretStreamDecryptStream(new MemoryStream(malicious), key);
         var ex = Assert.Throws<DstuException>(() => dec.CopyTo(new MemoryStream()));
-        Assert.Contains("exceeds the maximum", ex.Message);
+        Assert.Contains("chunk too large", ex.Message);
     }
 
     [Fact]
@@ -241,9 +241,9 @@ public sealed class SecretStreamTests
             "bad_chunk_length" => "non-final chunk",
             "truncated" => "truncated",
             "trailing_data" => "trailing data",
-            "oversized_chunk" => "exceeds the maximum",
-            "unknown_tag" => "invalid tag byte",
-            "auth" => string.Empty,
+            "oversized_chunk" => "chunk too large",
+            "unknown_tag" => "unrecognized chunk tag",
+            "auth" => "authentication failed",
             _ => throw new InvalidOperationException($"unknown expect value {expect}"),
         };
         var ex = Assert.Throws<DstuException>(() =>
@@ -252,6 +252,63 @@ public sealed class SecretStreamTests
             dec.CopyTo(new MemoryStream());
         });
         Assert.Contains(wanted, ex.Message);
+    }
+
+    /// <summary>T-276 shape: one large write and many small writes decrypt to the same
+    /// plaintext.</summary>
+    [Fact]
+    public void OneLargeWriteEqualsManySmallWrites()
+    {
+        using var key = SecretstreamKey.Generate();
+        var message = RandomNumberGenerator.GetBytes((3 * DstuConstants.SecretstreamChunkBytes) + 1234);
+        using var big = new MemoryStream();
+        using (var enc = new SecretStreamEncryptStream(big, key, leaveOpen: true))
+        {
+            enc.Write(message, 0, message.Length);
+            enc.Complete();
+        }
+
+        using var small = new MemoryStream();
+        using (var enc = new SecretStreamEncryptStream(small, key, leaveOpen: true))
+        {
+            for (var i = 0; i < message.Length; i += 1000)
+            {
+                enc.Write(message, i, Math.Min(1000, message.Length - i));
+            }
+
+            enc.Complete();
+        }
+
+        foreach (var file in new[] { big, small })
+        {
+            file.Position = 0;
+            using var dec = new SecretStreamDecryptStream(file, key, leaveOpen: true);
+            using var output = new MemoryStream();
+            dec.CopyTo(output);
+            Assert.Equal(message, output.ToArray());
+        }
+    }
+
+    /// <summary>T-284: a stream with trailing data never yields its Final chunk.</summary>
+    [Fact]
+    public void TrailingDataNeverYieldsTheFinalChunk()
+    {
+        using var key = SecretstreamKey.Generate();
+        using var file = new MemoryStream();
+        using (var enc = new SecretStreamEncryptStream(file, key, leaveOpen: true))
+        {
+            enc.Write(new byte[DstuConstants.SecretstreamChunkBytes], 0, DstuConstants.SecretstreamChunkBytes);
+            enc.Write([1, 2, 3, 4], 0, 4);
+            enc.Complete();
+        }
+
+        file.WriteByte(0x78);
+        file.Position = 0;
+        using var dec = new SecretStreamDecryptStream(file, key);
+        var seen = new MemoryStream();
+        var ex = Assert.Throws<DstuException>(() => dec.CopyTo(seen));
+        Assert.Contains("trailing data", ex.Message);
+        Assert.Equal(DstuConstants.SecretstreamChunkBytes, seen.Length);
     }
 
     [Fact]

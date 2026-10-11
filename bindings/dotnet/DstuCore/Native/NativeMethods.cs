@@ -269,6 +269,53 @@ internal static partial class NativeMethods
     [return: MarshalAs(UnmanagedType.U1)]
     internal static partial bool dstu_secretstream_pull_is_finalized(PullStateHandle state);
 
+    // ---- crypto_secretstream stream-file codec (T-284) ----
+
+    [LibraryImport(LibName)]
+    internal static partial DstuStatus dstu_secretstream_file_encryptor_new(
+        SecretstreamKeyHandle key, byte[] prefixOut, out FileEncryptorHandle handle);
+
+    [LibraryImport(LibName)]
+    internal static partial DstuStatus dstu_secretstream_file_encryptor_seal_chunk(
+        FileEncryptorHandle enc, ReadOnlySpan<byte> chunk, nuint chunkLen, byte[] recordOut, nuint recordOutCap);
+
+    [LibraryImport(LibName)]
+    internal static partial DstuStatus dstu_secretstream_file_encryptor_seal_final(
+        FileEncryptorHandle enc,
+        ReadOnlySpan<byte> last,
+        nuint lastLen,
+        byte[] recordOut,
+        nuint recordOutCap,
+        out nuint recordLen);
+
+    [LibraryImport(LibName)]
+    internal static partial void dstu_secretstream_file_encryptor_free(IntPtr enc);
+
+    [LibraryImport(LibName)]
+    internal static partial FileDecryptorHandle dstu_secretstream_file_decryptor_new(SecretstreamKeyHandle key);
+
+    [LibraryImport(LibName)]
+    internal static partial nuint dstu_secretstream_file_decryptor_next_len(FileDecryptorHandle dec);
+
+    [LibraryImport(LibName)]
+    internal static partial DstuStatus dstu_secretstream_file_decryptor_feed(
+        FileDecryptorHandle dec,
+        byte[] input,
+        nuint inputLen,
+        byte[] plaintextOut,
+        nuint plaintextOutCap,
+        out nuint plaintextLen);
+
+    [LibraryImport(LibName)]
+    internal static partial DstuStatus dstu_secretstream_file_decryptor_finish(
+        FileDecryptorHandle dec, byte[] plaintextOut, nuint plaintextOutCap, out nuint plaintextLen);
+
+    [LibraryImport(LibName)]
+    internal static partial IntPtr dstu_secretstream_file_decryptor_last_error(FileDecryptorHandle dec);
+
+    [LibraryImport(LibName)]
+    internal static partial void dstu_secretstream_file_decryptor_free(IntPtr dec);
+
     [LibraryImport(LibName)]
     internal static partial DstuStatus dstu_secretstream_pull(
         PullStateHandle state,

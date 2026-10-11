@@ -41,6 +41,12 @@ internal static class NativeStatus
                 throw new ArgumentException("an enum argument is outside its valid range (e.g. an unknown pwhash strength)");
             case DstuStatus.ErrUnsupportedVersion:
                 throw new DstuException("sealed blob has an unsupported format version - written by an older or newer release");
+            case DstuStatus.ErrChunkTooLarge:
+                throw new DstuException("secretstream chunk too large - the input is corrupted");
+            case DstuStatus.ErrBadChunkLength:
+                throw new DstuException("non-final chunk of the wrong length - the input is corrupted");
+            case DstuStatus.ErrTrailingData:
+                throw new DstuException("trailing data after the secretstream's Final chunk");
             case DstuStatus.ErrBufferTooSmall:
             case DstuStatus.ErrNullPointer:
             case DstuStatus.ErrInvalidLength:

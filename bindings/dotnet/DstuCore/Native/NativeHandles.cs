@@ -110,6 +110,24 @@ internal sealed class PullStateHandle : DstuNativeHandle
     }
 }
 
+internal sealed class FileEncryptorHandle : DstuNativeHandle
+{
+    protected override bool ReleaseHandle()
+    {
+        NativeMethods.dstu_secretstream_file_encryptor_free(handle);
+        return true;
+    }
+}
+
+internal sealed class FileDecryptorHandle : DstuNativeHandle
+{
+    protected override bool ReleaseHandle()
+    {
+        NativeMethods.dstu_secretstream_file_decryptor_free(handle);
+        return true;
+    }
+}
+
 internal sealed class SecretboxKeyHandle : DstuNativeHandle
 {
     protected override bool ReleaseHandle()

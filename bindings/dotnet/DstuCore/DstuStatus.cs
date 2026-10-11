@@ -22,6 +22,9 @@ internal enum DstuStatus
     ErrPanic = 12,
     ErrUnsupportedVersion = 13,
     ErrInvalidArgument = 14,
+    ErrChunkTooLarge = 15,
+    ErrBadChunkLength = 16,
+    ErrTrailingData = 17,
 }
 
 /// <summary>Argon2id cost preset - mirrors <c>DstuPwhashStrength</c> in <c>dstu_core.h</c>, and
