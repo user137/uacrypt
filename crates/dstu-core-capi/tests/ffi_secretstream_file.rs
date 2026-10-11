@@ -327,7 +327,7 @@ fn undersized_buffers_and_wrong_lengths_are_rejected_before_any_work() {
         unsafe {
             dstu_secretstream_file_encryptor_seal_final(
                 enc,
-                chunk.as_ptr(),
+                vec![0u8; DSTU_SECRETSTREAM_CHUNK_BYTES + 1].as_ptr(),
                 DSTU_SECRETSTREAM_CHUNK_BYTES + 1,
                 record.as_mut_ptr(),
                 record.len(),
