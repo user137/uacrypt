@@ -126,6 +126,12 @@ use crate::hazmat::kupyna_kmac::Kupyna256Kmac;
 use core::fmt;
 use zeroize::Zeroize;
 
+mod file;
+pub use file::{
+    FileDecryptor, FileEncryptor, FileError, CHUNK_BYTES, FILE_PREFIX_BYTES, MAX_RECORD_BYTES,
+    RECORD_OVERHEAD_BYTES,
+};
+
 const TAG_LEN: usize = 16;
 const REKEY_CONTEXT: &[u8] = b"DSTU-secretstream-rekey";
 

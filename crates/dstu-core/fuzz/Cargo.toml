@@ -86,6 +86,13 @@ doc = false
 bench = false
 
 [[bin]]
+name = "crypto_secretstream_file"
+path = "fuzz_targets/crypto_secretstream_file.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "crypto_pwhash_verify"
 path = "fuzz_targets/crypto_pwhash_verify.rs"
 test = false

@@ -9879,6 +9879,15 @@ points at the machine state rather than a GCM-specific regression, but that is n
   - Tests under (b): T-277's vectors against the codec, a fuzz target for the parser (three-place
     sync), and all 9 existing suites unchanged.
   - Effort: (a) S-M, (b) L; (b) needs plan mode + advisor (new public API plus capi).
+  - **Plan approved 2026-10-11 (owner, plan mode + advisor):** `crypto_secretstream` gains
+    `FileEncryptor` (`init` -> 33-byte prefix, `seal_chunk(&[u8; 8192])`, `seal_final(<= 8192)`)
+    and `FileDecryptor` (`next_len()`, `feed(exactly next_len bytes)`, explicit `finish()` at
+    EOF: `Truncated` before a verified `Final`, otherwise it releases the held `Final`
+    plaintext - so a trailing-data stream never yields its last chunk), `FileError` with the
+    shared phrases. capi: `dstu_secretstream_file_{encryptor,decryptor}_*`, new statuses 15-17
+    (`CHUNK_TOO_LARGE`/`BAD_CHUNK_LENGTH`/`TRAILING_DATA`), `dstu_status_message`. Order: core +
+    tests, fuzz target, uacrypt, capi, then Python, Node, Ruby, Java (+T-275/T-276), .NET, Go,
+    C++, PHP (+T-274/T-276), Pi, docs (D-235). Wire format unchanged.
 - [x] **T-285** (**closed 2026-09-25 as won't do - O-E, D-220: the per-verify check stays, no API
   break**) (Low, perf, **Plausible** - cost split measured; depends: O-E, T-278) DSTU 4145
   `verify` re-validates the public key (`n*Q == O`, D-185/D-203) on every call
