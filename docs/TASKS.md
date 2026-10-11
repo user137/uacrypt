@@ -9295,7 +9295,15 @@ Release:
     installer needs `ArchiveBinariesDependOnPath`.
   - Done when: `winget install <id>` on a clean machine gives a working `uacrypt --version`, and
     `docs/CLI.md`/README list it as an install option.
-- [ ] **T-296** (Low, qa; owner 2026-10-09, 0.6.0) Shorten the Miri wall time. On 0.5.0's
+- [ ] **T-296** (Low, qa; owner 2026-10-09, 0.6.0) **2026-10-11: sharded, awaiting the first CI
+  timing.** The 2026-10-11 scheduled run (`38126105866`) re-measured after the `smoke_passphrase`
+  fix: `uacrypt` 27 min, `dstu-core-capi` 20 min, every `dstu-core` file under 60 min except
+  `dstu9041_encryption_512` (~3 h; next `dstu9041_curve_512` 55 min, `crypto_box512` 50 min).
+  `miri.yml`'s discover step now emits `{target, shard, shards}` entries; a file listed in its
+  `SHARDS` map (only `dstu9041_encryption_512`, 6 shards) runs as that many jobs, each listing the
+  file's tests and running every n-th name with `--exact`, so each test lands in exactly one shard
+  and the set under Miri is unchanged (an empty shard fails). Close once a run shows every job
+  under ~60 min. On 0.5.0's
   `d8aa1f0` run, `cargo miri test (uacrypt)` took 86+ min (31 min on 0.4.0) and
   `dstu9041_encryption_512` 80+ min still running (2 h 28 min on 0.4.0), with `PROPTEST_CASES: 1`
   already set.
@@ -9573,7 +9581,15 @@ points at the machine state rather than a GCM-specific regression, but that is n
 
 ### Test gaps
 
-- [ ] **T-277** (Low, test-gap, **Confirmed** by reading the file; depends: none) The shared
+- [x] **T-277** (Low, test-gap, **Confirmed** by reading the file; depends: none) **Done
+  2026-10-11:** the generator adds 8 cases (15 in all) and three error classes (`trailing_data`,
+  `oversized_chunk`, `unknown_tag`; a cut inside a record or a missing `Final` is `truncated`, the
+  tampered tag `auth`). All 9 runners assert the class by message and now refuse an unknown
+  `expect` (the .NET/Go/Java/C++ runners used to match any message for one). The unknown tag sits on
+  a full 8192-byte record, so the tag check itself is what rejects it, not the length rule. Every
+  reader already rejected all 8; the one defect found was cosmetic: Java printed `0xFFFFFFFF` as
+  "declared -1 bytes" (fixed). Messages still differ per binding - T-284's codec unifies them.
+  The shared
   stream-file vectors
   (`crates/dstu-core/tests/vectors/secretstream-file/v2.json`, D-208) have 3 positive and 4 negative
   cases: `bad_version`, `short_non_final`, `v1_0_3_8`, `version_only`.
@@ -9674,7 +9690,9 @@ points at the machine state rather than a GCM-specific regression, but that is n
   - Direction: `checked_mul` into the modules' existing `InvalidLength`, or a length bound tied to
     DSTU 7624 annex Г's per-key limits (`docs/SECURITY.md`).
   - Tests: Misuse, a unit test on the helper, since no real slice can reach it. Effort S.
-- [ ] **T-288** (Medium, qa, **Confirmed** 2026-09-26 by the first T-243 `ci` run; depends: none)
+- [x] **T-288** (Medium, qa, **Confirmed** 2026-09-26 by the first T-243 `ci` run; depends: none)
+  **Done in 0.4.0 (`39fdb53`):** both harnesses skip a vector file without `hash_bits`;
+  `oracle-harness` green on `master` since (rechecked 2026-10-11 on `33f0559`).
   Both Bouncy Castle oracle harnesses fail on Kupyna. `tests/oracle-harness/dotnet/Program.cs:83`
   (and the Java twin) read `hash_bits` from every file in `crates/dstu-core/tests/vectors/kupyna/`,
   and T-234's (`1c87f53`) bit-length annex Б file has a different schema. Java: `missing int field
@@ -9685,7 +9703,7 @@ points at the machine state rather than a GCM-specific regression, but that is n
   with the T-270 cherry-pick, then cherry-pick it to `ux-0.5.0`. Direction: skip (or handle) the
   bit-length file by its `algorithm` field; first check whether BC can express bit-length messages
   at all. Effort S.
-- [ ] **T-289** (Low, qa - local gate, **Confirmed** 2026-09-26, same run; depends: none) Three
+- [x] **T-289** (Low, qa - local gate, **Confirmed** 2026-09-26, same run; depends: none) Three
   binding layers fail locally for reasons that live on this machine, not in the bindings; before
   T-243 they were hidden:
   - ~~`nodejs`: E0514, because the napi CLI inherits `CARGO` from the `cargo xtask` process~~
@@ -9700,7 +9718,12 @@ points at the machine state rather than a GCM-specific regression, but that is n
   - ~~`miri` always skipped because of a wrong probe~~ **Decided 2026-09-26 (D-221):** `ci` skips
     Miri on purpose, with a message (~10 h, D-172; CI's per-crate jobs are the gate). The
     `cargo xtask miri [pkg]` probe now uses `cargo +nightly miri --version`.
-  - Still open (machine setup, not code): `python`, `ruby`, `cpp` above.
+  - ~~Still open (machine setup, not code): `python`, `ruby`, `cpp` above.~~ **Done 2026-10-11:**
+    `python` was partly code: `maturin develop` installs into `bindings/python/.venv`, but `xtask`
+    ran the PATH `pytest`, so it never tested the fresh build; `python()` now runs pytest from that
+    venv when it exists (122 passed; the stale global 0.1.1 is uninstalled). `ruby` (123 examples,
+    0 failures) and `cpp` pass from PowerShell with the env recipe in `.claude.local.md`
+    (`LIBCLANG_PATH` plus MSYS2 `ucrt64\bin` and `usr\bin` on PATH).
 - [x] **T-290** (Medium, arch, **security-flagged**, **embargo-sensitive**; found by T-273's asm
   pass, not yet traced; depends: none) The `0u64.wrapping_sub(bit)` mask idiom is not
   branch-free by itself: in T-273 LLVM turned it into `bmi`/`bpl` (thumbv7em) and `btq`+`jb`

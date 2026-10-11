@@ -704,6 +704,29 @@ fn python() -> bool {
         return false;
     }
     let dir = Path::new("bindings/python");
+    // `maturin develop` installs into `bindings/python/.venv` when it exists, so pytest must run
+    // from that venv too; a PATH `pytest` imports whatever `dstu_core` the global site-packages
+    // holds (a stale PyPI 0.1.1 here, T-289) or none at all.
+    let venv_python =
+        std::env::current_dir()
+            .unwrap_or_default()
+            .join(dir)
+            .join(if cfg!(windows) {
+                ".venv/Scripts/python.exe"
+            } else {
+                ".venv/bin/python"
+            });
+    let pytest_ok = || {
+        if venv_python.is_file() {
+            run(
+                &venv_python.to_string_lossy(),
+                &["-m", "pytest", "-ra"],
+                Some(dir),
+            )
+        } else {
+            run("pytest", &["-ra"], Some(dir))
+        }
+    };
     run("cargo", &["build", "-p", "uacrypt", "--release"], None)
         && run("cargo", &["fmt", "--all", "--", "--check"], Some(dir))
         && run(
@@ -712,7 +735,7 @@ fn python() -> bool {
             Some(dir),
         )
         && run("maturin", &["develop", "--release"], Some(dir))
-        && run("pytest", &["-ra"], Some(dir))
+        && pytest_ok()
         && run("ruff", &["check", "."], Some(dir))
         && run("ruff", &["format", "--check", "."], Some(dir))
 }

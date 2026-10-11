@@ -87,13 +87,19 @@ jobs:
       targets: ${{ steps.list.outputs.targets }}
     steps:
       - uses: actions/checkout@v4
+      # T-296: a file listed in SHARDS runs as that many jobs, each taking every n-th test name
+      # (see the run step below), so no single job passes ~60 min. Measured 2026-10-11:
+      # dstu9041_encryption_512 took ~3 h in one job; every other file finished under 60 min.
       - id: list
+        env:
+          SHARDS: '{"dstu9041_encryption_512": 6}'
         run: |
-          targets=$(cd crates/dstu-core/tests && ls *.rs | sed 's/\.rs$//' | jq -R -s -c 'split("\n")[:-1]')
+          targets=$(cd crates/dstu-core/tests && ls *.rs | sed 's/\.rs$//' | jq -R -s -c --argjson shards "$SHARDS" \
+            'split("\n")[:-1] | map(. as $t | ($shards[$t] // 1) as $n | range($n) | {target: $t, shard: ., shards: $n, name: (if $n > 1 then "\($t) \(. + 1)/\($n)" else $t end)})')
           echo "targets=$targets" >> "$GITHUB_OUTPUT"
 
   miri-dstu-core:
-    name: cargo miri test (dstu-core, ${{ matrix.target }})
+    name: cargo miri test (dstu-core, ${{ matrix.t.name }})
     needs: miri-dstu-core-discover
     runs-on: ubuntu-latest
     # One job per integration-test file (T-211/D-172) instead of one job for the whole crate -
@@ -107,14 +113,33 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: ${{ fromJson(needs.miri-dstu-core-discover.outputs.targets) }}
+        t: ${{ fromJson(needs.miri-dstu-core-discover.outputs.targets) }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@nightly
         with:
           components: miri
-      - run: cargo +nightly miri test -p dstu-core --test ${{ matrix.target }}
+      # A sharded file lists its tests (ignored ones included, so the split does not depend on
+      # cfg(miri)), keeps every `shards`-th name starting at `shard`, and runs those by exact name.
+      # Each name lands in exactly one shard, so the set of tests run under Miri is unchanged.
+      - shell: bash
+        run: |
+          if [ "$SHARDS" -eq 1 ]; then
+            cargo +nightly miri test -p dstu-core --test "$TARGET"
+            exit
+          fi
+          mapfile -t names < <(cargo +nightly miri test -p dstu-core --test "$TARGET" -- --list --format terse \
+            | sed -n 's/: test$//p' | awk -v n="$SHARDS" -v k="$SHARD" '(NR - 1) % n == k')
+          if [ "${#names[@]}" -eq 0 ]; then
+            echo "shard $SHARD/$SHARDS of $TARGET has no tests"
+            exit 1
+          fi
+          printf 'shard %s/%s runs: %s\n' "$SHARD" "$SHARDS" "${names[*]}"
+          cargo +nightly miri test -p dstu-core --test "$TARGET" -- --exact "${names[@]}"
         env:
+          TARGET: ${{ matrix.t.target }}
+          SHARD: ${{ matrix.t.shard }}
+          SHARDS: ${{ matrix.t.shards }}
           MIRIFLAGS: -Zmiri-disable-isolation
           PROPTEST_CASES: 1
 
