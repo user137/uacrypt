@@ -2,9 +2,10 @@
 
 /**
  * Idiomatic `crypto_secretstream` pipeline (docs/DECISIONS.md D-118, docs/bindings-strategy.md
- * T-50 step 3) - hides chunk/tag/length-prefix bookkeeping behind a `stream.Transform` pair, built
- * in pure JS on top of the low-level SecretStreamPushState/SecretStreamPullState the native addon
- * already exposes (step 2), rather than new Rust glue. Mirrors
+ * T-50 step 3) - hides chunk/tag/length-prefix bookkeeping behind a `stream.Transform` pair. The
+ * framing itself (record layout, length rules, Final, trailing data) is dstu-core's stream-file
+ * codec, exposed as SecretStreamFileEncryptor/SecretStreamFileDecryptor (T-284); this module only
+ * buffers. Mirrors
  * bindings/python/python/dstu_core/secretstream.py's own design exactly (see D-118's two
  * standing pitfalls this port re-checks below).
  *
@@ -19,12 +20,9 @@
 const { Transform } = require('node:stream');
 const native = require('../native/index.js');
 
-// Matches crates/uacrypt/src/lib.rs's SECRETSTREAM_CHUNK_BYTES exactly - required for wire-format
-// interop with `uacrypt encrypt`/`decrypt`, not an independent choice.
+// dstu-core's crypto_secretstream::CHUNK_BYTES (D-208): the codec seals and checks it; this module
+// only needs it to cut input into chunks.
 const CHUNK_BYTES = 8 * 1024;
-const AUTH_TAG_BYTES = 16;
-// Matches dstu-core's crypto_secretstream::FORMAT_VERSION (D-208); the shared vectors pin it.
-const FORMAT_VERSION = 2;
 
 /**
  * Write-only Transform: buffers input and pushes each full 8 KiB chunk downstream as it fills,
@@ -44,27 +42,23 @@ const FORMAT_VERSION = 2;
 class SecretStreamEncryptor extends Transform {
   constructor(key, options) {
     super(options);
-    this._pushState = new native.SecretStreamPushState(key);
+    this._enc = new native.SecretStreamFileEncryptor(key);
     this._buf = Buffer.alloc(0);
-    this.push(Buffer.concat([Buffer.from([FORMAT_VERSION]), this._pushState.header]));
-  }
-
-  _pushChunk(tag, data) {
-    const { ciphertext, authTag } = this._pushState.push(tag, data);
-    const lenBuf = Buffer.alloc(4);
-    lenBuf.writeUInt32LE(data.length, 0);
-    this.push(Buffer.concat([Buffer.from([tag]), lenBuf, ciphertext, authTag]));
+    this.push(this._enc.prefix);
   }
 
   _transform(chunk, _encoding, callback) {
     this._buf = Buffer.concat([this._buf, chunk]);
     let err;
     try {
-      while (this._buf.length > CHUNK_BYTES) {
-        const piece = this._buf.subarray(0, CHUNK_BYTES);
-        this._buf = this._buf.subarray(CHUNK_BYTES);
-        this._pushChunk(native.SECRETSTREAM_TAG_MESSAGE, piece);
+      // Hold back the last chunk (even a full one) until _flush: only then is it known to be the
+      // Final one (an exact multiple of 8 KiB ends in a full Final record, D-208).
+      let pos = 0;
+      while (this._buf.length - pos > CHUNK_BYTES) {
+        this.push(this._enc.sealChunk(this._buf.subarray(pos, pos + CHUNK_BYTES)));
+        pos += CHUNK_BYTES;
       }
+      this._buf = this._buf.subarray(pos);
     } catch (e) {
       err = e;
     }
@@ -79,7 +73,7 @@ class SecretStreamEncryptor extends Transform {
   _flush(callback) {
     let err;
     try {
-      this._pushChunk(native.SECRETSTREAM_TAG_FINAL, this._buf);
+      this.push(this._enc.sealFinal(this._buf));
       this._buf = Buffer.alloc(0);
     } catch (e) {
       err = e;
@@ -94,29 +88,29 @@ class SecretStreamEncryptor extends Transform {
  * failure or truncation - a dropped/tampered/reordered chunk, or a stream that ends before a
  * Final chunk, both fail closed rather than yielding wrong plaintext.
  *
- * D-118 pitfall check #2: `chunkLen` is untrusted wire input, read before any tag verification -
- * rejected here the moment it is parsed (before ever buffering up to its declared length), the
- * same `CliError::SecretstreamChunkTooLarge` bound `uacrypt decrypt` enforces
- * (crates/uacrypt/src/lib.rs) and Python's own reader re-checked (T-49 step 3). Bytes remaining
- * after the Final chunk are rejected too (`CliError::SecretstreamTrailingData`'s equivalent),
- * checked both as more input arrives (`_transform`) and at end-of-stream (`_flush`) so trailing
- * data appended in the same write as the Final chunk, or arriving in a later write, is caught
- * either way - not just the case naive testing would think to check first.
+ * D-118 pitfall check #2: the untrusted length field, the 8 KiB rule, trailing data after Final
+ * and truncation are all the codec's checks (T-284); this class only collects `nextLen()` bytes
+ * at a time. A Final chunk's plaintext is pushed only in `_flush`, once the input is known to end
+ * right after it.
  */
 class SecretStreamDecryptor extends Transform {
   constructor(key, options) {
     super(options);
-    this._key = key;
-    this._pullState = null;
+    this._dec = new native.SecretStreamFileDecryptor(key);
     this._buf = Buffer.alloc(0);
-    this._done = false;
   }
 
   _transform(chunk, _encoding, callback) {
     this._buf = Buffer.concat([this._buf, chunk]);
     let err;
     try {
-      this._drain();
+      let pos = 0;
+      for (let want = this._dec.nextLen(); this._buf.length - pos >= want; want = this._dec.nextLen()) {
+        const plaintext = this._dec.feed(this._buf.subarray(pos, pos + want));
+        pos += want;
+        if (plaintext.length > 0) this.push(plaintext);
+      }
+      this._buf = this._buf.subarray(pos);
     } catch (e) {
       err = e;
     }
@@ -124,57 +118,11 @@ class SecretStreamDecryptor extends Transform {
     process.nextTick(callback, err);
   }
 
-  _drain() {
-    if (!this._pullState) {
-      if (this._buf.length >= 1 && this._buf[0] !== FORMAT_VERSION) {
-        throw new Error(`unsupported stream format version ${this._buf[0]} (this build reads ${FORMAT_VERSION})`);
-      }
-      if (this._buf.length < 33) return;
-      const header = this._buf.subarray(1, 33);
-      this._buf = this._buf.subarray(33);
-      this._pullState = new native.SecretStreamPullState(this._key, header);
-    }
-    for (;;) {
-      if (this._done) {
-        if (this._buf.length > 0) {
-          throw new Error('trailing data after the secretstream Final chunk');
-        }
-        return;
-      }
-      if (this._buf.length < 5) return;
-      const tagByte = this._buf[0];
-      const chunkLen = this._buf.readUInt32LE(1);
-      if (chunkLen > CHUNK_BYTES) {
-        throw new Error(`secretstream chunk too large: declared ${chunkLen} bytes, max ${CHUNK_BYTES}`);
-      }
-      if (tagByte !== native.SECRETSTREAM_TAG_FINAL && chunkLen !== CHUNK_BYTES) {
-        throw new Error(`non-final chunk of ${chunkLen} bytes, must be exactly ${CHUNK_BYTES} (D-208)`);
-      }
-      const recordLen = 5 + chunkLen + AUTH_TAG_BYTES;
-      if (this._buf.length < recordLen) return;
-      const ciphertext = this._buf.subarray(5, 5 + chunkLen);
-      const authTag = this._buf.subarray(5 + chunkLen, recordLen);
-      this._buf = this._buf.subarray(recordLen);
-      const { tag, plaintext } = this._pullState.pull(tagByte, ciphertext, authTag);
-      this.push(plaintext);
-      if (tag === native.SECRETSTREAM_TAG_FINAL) {
-        this._done = true;
-      }
-    }
-  }
-
   _flush(callback) {
     let err;
     try {
-      if (!this._pullState) {
-        throw new Error('truncated secretstream: missing header');
-      }
-      if (!this._done) {
-        throw new Error('truncated secretstream: stream ended before a Final chunk');
-      }
-      if (this._buf.length > 0) {
-        throw new Error('trailing data after the secretstream Final chunk');
-      }
+      const plaintext = this._dec.finish();
+      if (plaintext.length > 0) this.push(plaintext);
     } catch (e) {
       err = e;
     }

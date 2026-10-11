@@ -182,7 +182,7 @@ const EXPECTED_MESSAGE = {
   unsupported_version: /unsupported stream format version/,
   bad_chunk_length: /non-final chunk/,
   truncated: /truncated/,
-  auth: /./,
+  auth: /authentication failed/,
   trailing_data: /trailing data/,
   oversized_chunk: /chunk too large/,
   unknown_tag: /unrecognized chunk tag/,
@@ -212,4 +212,30 @@ test('a truncated 8-byte auth tag is rejected (T-238)', () => {
   const { ciphertext, authTag } = push.push(dstu.SECRETSTREAM_TAG_FINAL, Buffer.from('secret'));
   const pull = new dstu.SecretStreamPullState(key, push.header);
   assert.throws(() => pull.pull(dstu.SECRETSTREAM_TAG_FINAL, ciphertext, authTag.subarray(0, 8)));
+});
+
+test('one large write equals many small writes (T-276 shape)', async () => {
+  const key = dstu.secretstreamKeygen();
+  const message = require('node:crypto').randomBytes(3 * 8192 + 1234);
+  const big = await encryptAll(key, message);
+  const pieces = [];
+  for (let i = 0; i < message.length; i += 1000) pieces.push(message.subarray(i, i + 1000));
+  const small = await runThrough(new dstu.SecretStreamEncryptor(key), pieces);
+  assert.deepStrictEqual(await decryptAll(key, big), message);
+  assert.deepStrictEqual(await decryptAll(key, small), message);
+});
+
+test('trailing data never yields the Final chunk (T-284)', async () => {
+  const key = dstu.secretstreamKeygen();
+  const full = Buffer.alloc(8192, 0x41);
+  const file = await encryptAll(key, Buffer.concat([full, Buffer.from('last')]));
+  const dec = new dstu.SecretStreamDecryptor(key);
+  const seen = [];
+  dec.on('data', (c) => seen.push(c));
+  const failed = new Promise((resolve) => dec.once('error', resolve));
+  dec.write(Buffer.concat([file, Buffer.from('x')]));
+  dec.end();
+  const err = await failed;
+  assert.match(err.message, /trailing data/);
+  assert.deepStrictEqual(Buffer.concat(seen), full);
 });

@@ -8,7 +8,10 @@
 //! scope exactly.
 
 use crate::util::{to_array, IntoDstuError};
-use dstu_core::crypto_secretstream::{Key, PullState, PushState, Tag};
+use dstu_core::crypto_secretstream::{
+    FileDecryptor, FileEncryptor, Key, PullState, PushState, Tag, CHUNK_BYTES, FILE_PREFIX_BYTES,
+    MAX_RECORD_BYTES,
+};
 use napi::bindgen_prelude::Buffer;
 use napi::{Error, Result};
 use napi_derive::napi;
@@ -128,5 +131,93 @@ impl SecretStreamPullState {
             tag: tag.to_byte(),
             plaintext: Buffer::from(plaintext),
         })
+    }
+}
+
+/// Stream-file writer (T-284): the D-208 framing from the core codec. `js/secretstream.js`'s
+/// `SecretStreamEncryptor` drives it and does only buffering.
+#[napi]
+pub struct SecretStreamFileEncryptor {
+    inner: FileEncryptor,
+    prefix: [u8; FILE_PREFIX_BYTES],
+}
+
+#[napi]
+impl SecretStreamFileEncryptor {
+    #[napi(constructor)]
+    pub fn new(key: Buffer) -> Result<Self> {
+        let key = Key::from_bytes(to_array::<32>(&key, "key")?);
+        let (inner, prefix) = FileEncryptor::init(&key).dstu()?;
+        Ok(Self { inner, prefix })
+    }
+
+    /// The format version byte and header - write these first.
+    #[napi(getter)]
+    pub fn prefix(&self) -> Buffer {
+        Buffer::from(self.prefix.to_vec())
+    }
+
+    /// Seals exactly `CHUNK_BYTES` bytes as one non-final record.
+    #[napi(js_name = "sealChunk")]
+    pub fn seal_chunk(&mut self, chunk: Buffer) -> Result<Buffer> {
+        let chunk = to_array::<CHUNK_BYTES>(&chunk, "chunk")?;
+        let mut record = vec![0u8; MAX_RECORD_BYTES];
+        let Ok(out) = <&mut [u8; MAX_RECORD_BYTES]>::try_from(record.as_mut_slice()) else {
+            unreachable!("record is MAX_RECORD_BYTES long")
+        };
+        self.inner.seal_chunk(&chunk, out).dstu()?;
+        Ok(Buffer::from(record))
+    }
+
+    /// Seals the last `0..=CHUNK_BYTES` bytes as the `Final` record.
+    #[napi(js_name = "sealFinal")]
+    pub fn seal_final(&mut self, last: Buffer) -> Result<Buffer> {
+        let mut record = vec![0u8; MAX_RECORD_BYTES];
+        let n = self.inner.seal_final(&last, &mut record).dstu()?;
+        record.truncate(n);
+        Ok(Buffer::from(record))
+    }
+}
+
+/// Stream-file reader (T-284): feed exactly `nextLen()` bytes at a time; at end of input call
+/// `finish()`. Throws with the core's message on any format or authentication error.
+#[napi]
+pub struct SecretStreamFileDecryptor {
+    inner: FileDecryptor,
+}
+
+#[napi]
+impl SecretStreamFileDecryptor {
+    #[napi(constructor)]
+    pub fn new(key: Buffer) -> Result<Self> {
+        let key = Key::from_bytes(to_array::<32>(&key, "key")?);
+        Ok(Self {
+            inner: FileDecryptor::new(&key),
+        })
+    }
+
+    #[napi(js_name = "nextLen")]
+    pub fn next_len(&self) -> u32 {
+        // At most CHUNK_BYTES + 16, always far below u32::MAX.
+        u32::try_from(self.inner.next_len()).unwrap_or(u32::MAX)
+    }
+
+    /// Consumes exactly `nextLen()` bytes; returns the plaintext of a verified non-final record,
+    /// else an empty buffer.
+    #[napi]
+    pub fn feed(&mut self, data: Buffer) -> Result<Buffer> {
+        let mut plaintext = vec![0u8; CHUNK_BYTES];
+        let n = self.inner.feed(&data, &mut plaintext).dstu()?;
+        plaintext.truncate(n);
+        Ok(Buffer::from(plaintext))
+    }
+
+    /// End of input: returns the `Final` chunk's plaintext, or throws if the stream is truncated.
+    #[napi]
+    pub fn finish(&mut self) -> Result<Buffer> {
+        let mut plaintext = vec![0u8; CHUNK_BYTES];
+        let n = self.inner.finish(&mut plaintext).dstu()?;
+        plaintext.truncate(n);
+        Ok(Buffer::from(plaintext))
     }
 }
