@@ -4,8 +4,6 @@ package dstu
 import "C"
 
 import (
-	"encoding/binary"
-	"fmt"
 	"io"
 )
 
@@ -62,7 +60,8 @@ func (k *SecretstreamKey) Close() error {
 // SecretStreamEncryptWriter encrypts writes into uacrypt encrypt's own wire format: a version byte
 // and a 32-byte header, then tag(1) || len_u32_le(4) || ciphertext || authTag(16) records. Every
 // record but the Final one carries exactly SecretstreamChunkBytes bytes (part of the format since
-// D-208).
+// D-208). The framing is dstu-core's stream-file codec (T-284) through the C ABI; this type only
+// buffers and writes.
 //
 // Deliberately does not flush a Final chunk from Close - unlike a typical io.WriteCloser's
 // close-flushes convention. Call Complete explicitly once all plaintext has been written; a
@@ -76,124 +75,106 @@ func (k *SecretstreamKey) Close() error {
 type SecretStreamEncryptWriter struct {
 	inner       io.Writer
 	innerCloser io.Closer
-	state       *C.DstuPushState
+	enc         *C.DstuFileEncryptor
 	buffer      [SecretstreamChunkBytes]byte
 	bufferLen   int
-	pending     []byte
+	record      [secretstreamMaxRecordBytes]byte
 	completed   bool
 }
 
-// NewSecretStreamEncryptWriter starts a new stream under key, writing the header to inner
-// immediately. If inner implements io.Closer, Close closes it too unless leaveOpen is true.
+// The C ABI's DSTU_SECRETSTREAM_FILE_PREFIX_BYTES / DSTU_SECRETSTREAM_MAX_RECORD_BYTES.
+const (
+	secretstreamFilePrefixBytes = 33
+	secretstreamMaxRecordBytes  = 8213
+)
+
+// NewSecretStreamEncryptWriter starts a new stream under key, writing the version byte and header
+// to inner immediately. If inner implements io.Closer, Close closes it too unless leaveOpen is
+// true.
 func NewSecretStreamEncryptWriter(inner io.Writer, key *SecretstreamKey, leaveOpen bool) (*SecretStreamEncryptWriter, error) {
-	header := make([]byte, SecretstreamHeaderBytes)
-	headerPtr, _ := cBytes(header)
-	var state *C.DstuPushState
-	if err := statusError(C.dstu_secretstream_push_init(key.ptr, &state, headerPtr)); err != nil {
+	prefix := make([]byte, secretstreamFilePrefixBytes)
+	prefixPtr, _ := cBytes(prefix)
+	var enc *C.DstuFileEncryptor
+	if err := statusError(C.dstu_secretstream_file_encryptor_new(key.ptr, prefixPtr, &enc)); err != nil {
 		return nil, err
 	}
-	if _, err := inner.Write(append([]byte{SecretstreamFormatVersion}, header...)); err != nil {
-		C.dstu_secretstream_push_free(state)
+	if _, err := inner.Write(prefix); err != nil {
+		C.dstu_secretstream_file_encryptor_free(enc)
 		return nil, err
 	}
-	w := &SecretStreamEncryptWriter{inner: inner, state: state}
+	w := &SecretStreamEncryptWriter{inner: inner, enc: enc}
 	if closer, ok := inner.(io.Closer); ok && !leaveOpen {
 		w.innerCloser = closer
 	}
 	return w, nil
 }
 
-// Write buffers p, encrypting and emitting a Message chunk each time SecretstreamChunkBytes of
-// plaintext accumulate.
+// Write buffers p, sealing every full SecretstreamChunkBytes chunk that is certain not to be the
+// last one; the last (even a full one) waits for Complete. Full chunks are sealed straight from p.
 func (w *SecretStreamEncryptWriter) Write(p []byte) (int, error) {
 	if w.completed {
 		return 0, &ArgumentError{"this writer has already been Complete()d"}
 	}
-	written := 0
-	for len(p) > 0 {
-		take := copy(w.buffer[w.bufferLen:], p)
-		w.bufferLen += take
-		p = p[take:]
-		written += take
-		if w.bufferLen == len(w.buffer) {
-			if err := w.flushPendingAsMessage(); err != nil {
-				return written, err
-			}
-			w.pending = append([]byte(nil), w.buffer[:]...)
-			w.bufferLen = 0
-		}
+	total := len(p)
+	if w.bufferLen+len(p) <= SecretstreamChunkBytes {
+		w.bufferLen += copy(w.buffer[w.bufferLen:], p)
+		return total, nil
 	}
-	return written, nil
+	if w.bufferLen > 0 {
+		taken := copy(w.buffer[w.bufferLen:], p)
+		p = p[taken:]
+		if err := w.sealChunk(w.buffer[:]); err != nil {
+			return total - len(p), err
+		}
+		w.bufferLen = 0
+	}
+	for len(p) > SecretstreamChunkBytes {
+		if err := w.sealChunk(p[:SecretstreamChunkBytes]); err != nil {
+			return total - len(p), err
+		}
+		p = p[SecretstreamChunkBytes:]
+	}
+	w.bufferLen = copy(w.buffer[:], p)
+	return total, nil
 }
 
-// Complete flushes all buffered plaintext as a Final chunk and marks this writer complete. Must
+// Complete writes all buffered plaintext as the Final record and marks this writer complete. Must
 // be called once, on the success path, before Close - see the type doc comment for why Close
 // itself never does this.
 func (w *SecretStreamEncryptWriter) Complete() error {
 	if w.completed {
 		return nil
 	}
-	switch {
-	case w.bufferLen > 0:
-		if err := w.flushPendingAsMessage(); err != nil {
-			return err
-		}
-		if err := w.writeChunk(TagFinal, w.buffer[:w.bufferLen]); err != nil {
-			return err
-		}
-	case w.pending != nil:
-		pending := w.pending
-		w.pending = nil
-		if err := w.writeChunk(TagFinal, pending); err != nil {
-			return err
-		}
-	default:
-		if err := w.writeChunk(TagFinal, nil); err != nil {
-			return err
-		}
+	lastPtr, lastLen := cBytes(w.buffer[:w.bufferLen])
+	recordPtr, recordCap := cBytes(w.record[:])
+	var recordLen C.size_t
+	if err := statusError(C.dstu_secretstream_file_encryptor_seal_final(w.enc, lastPtr, lastLen, recordPtr, recordCap, &recordLen)); err != nil {
+		return err
 	}
+	if _, err := w.inner.Write(w.record[:recordLen]); err != nil {
+		return err
+	}
+	w.bufferLen = 0
 	w.completed = true
 	return nil
 }
 
-func (w *SecretStreamEncryptWriter) flushPendingAsMessage() error {
-	if w.pending == nil {
-		return nil
-	}
-	pending := w.pending
-	w.pending = nil
-	return w.writeChunk(TagMessage, pending)
-}
-
-func (w *SecretStreamEncryptWriter) writeChunk(tag SecretstreamTag, plaintext []byte) error {
-	ciphertext := make([]byte, len(plaintext))
-	tagOut := make([]byte, SecretstreamTagBytes)
-	ptPtr, ptLen := cBytes(plaintext)
-	ctPtr, ctLen := cBytes(ciphertext)
-	tagOutPtr, _ := cBytes(tagOut)
-	if err := statusError(C.dstu_secretstream_push(w.state, C.uint32_t(tag), ptPtr, ptLen, ctPtr, ctLen, tagOutPtr)); err != nil {
+func (w *SecretStreamEncryptWriter) sealChunk(chunk []byte) error {
+	chunkPtr, chunkLen := cBytes(chunk)
+	recordPtr, recordCap := cBytes(w.record[:])
+	if err := statusError(C.dstu_secretstream_file_encryptor_seal_chunk(w.enc, chunkPtr, chunkLen, recordPtr, recordCap)); err != nil {
 		return err
 	}
-
-	var header [5]byte
-	header[0] = byte(tag)
-	binary.LittleEndian.PutUint32(header[1:], uint32(len(plaintext)))
-	if _, err := w.inner.Write(header[:]); err != nil {
-		return err
-	}
-	if _, err := w.inner.Write(ciphertext); err != nil {
-		return err
-	}
-	_, err := w.inner.Write(tagOut)
+	_, err := w.inner.Write(w.record[:])
 	return err
 }
 
 // Close releases the underlying native state and, unless leaveOpen was set, closes inner. Safe
 // to call more than once. Never emits a Final chunk - see the type doc comment.
 func (w *SecretStreamEncryptWriter) Close() error {
-	if w.state != nil {
-		C.dstu_secretstream_push_free(w.state)
-		w.state = nil
+	if w.enc != nil {
+		C.dstu_secretstream_file_encryptor_free(w.enc)
+		w.enc = nil
 	}
 	if w.innerCloser != nil {
 		closer := w.innerCloser
@@ -204,135 +185,93 @@ func (w *SecretStreamEncryptWriter) Close() error {
 }
 
 // SecretStreamDecryptReader decrypts a read side produced by SecretStreamEncryptWriter or
-// uacrypt encrypt. Bounds every untrusted length-prefixed chunk-length field against
-// SecretstreamChunkBytes before using it to size a read, and rejects trailing bytes after the
-// Final chunk - both checks the wire format's own framing does not provide for free (D-118's
-// second pitfall; mirrors uacrypt's own CliError::SecretstreamChunkTooLarge/
-// SecretstreamTrailingData).
+// uacrypt encrypt. Every check - the untrusted length field, the 8 KiB rule, truncation, trailing
+// bytes after the Final chunk - is dstu-core's stream-file codec (T-284); this type only reads,
+// and reports the codec's own message. The Final chunk is returned only once the input is known
+// to end right after it, so a stream with trailing data never yields its last chunk.
 //
 // No runtime.SetFinalizer backstop - see AuthKey's own doc comment for why: Close() is the only
 // way to free (and here, the only thing that closes inner too).
 type SecretStreamDecryptReader struct {
 	inner       io.Reader
 	innerCloser io.Closer
-	state       *C.DstuPullState
-	pending     []byte
+	dec         *C.DstuFileDecryptor
+	plaintext   [SecretstreamChunkBytes]byte
 	pendingPos  int
-	finalized   bool
+	pendingLen  int
+	done        bool
 }
 
-// NewSecretStreamDecryptReader reads the version byte and the 32-byte header from inner immediately
-// and re-derives the stream's initial subkey. If inner implements io.Closer, Close closes it too unless leaveOpen is
-// true.
+// NewSecretStreamDecryptReader reads the version byte and the 32-byte header from inner
+// immediately. If inner implements io.Closer, Close closes it too unless leaveOpen is true.
 func NewSecretStreamDecryptReader(inner io.Reader, key *SecretstreamKey, leaveOpen bool) (*SecretStreamDecryptReader, error) {
-	version, err := readExactly(inner, 1)
-	if err != nil {
-		return nil, err
+	r := &SecretStreamDecryptReader{inner: inner, dec: C.dstu_secretstream_file_decryptor_new(key.ptr)}
+	for i := 0; i < 2; i++ {
+		if _, err := r.step(); err != nil {
+			C.dstu_secretstream_file_decryptor_free(r.dec)
+			return nil, err
+		}
 	}
-	if version[0] != SecretstreamFormatVersion {
-		return nil, &CryptoError{fmt.Sprintf("unsupported stream format version %d (this build reads %d)", version[0], SecretstreamFormatVersion)}
-	}
-	header, err := readExactly(inner, SecretstreamHeaderBytes)
-	if err != nil {
-		return nil, err
-	}
-	headerPtr, _ := cBytes(header)
-	state := C.dstu_secretstream_pull_init(key.ptr, headerPtr)
-	r := &SecretStreamDecryptReader{inner: inner, state: state}
 	if closer, ok := inner.(io.Closer); ok && !leaveOpen {
 		r.innerCloser = closer
 	}
 	return r, nil
 }
 
-// Read decrypts and copies plaintext into p, pulling and verifying chunks from inner as needed.
-// Loops past an empty chunk (a Final chunk with no trailing plaintext) rather than returning
-// (0, nil) for it - io.Reader's contract discourages a no-data, no-error return.
+// Read decrypts and copies plaintext into p, feeding records from inner as needed. Loops past a
+// read that released no plaintext rather than returning (0, nil) - io.Reader's contract
+// discourages a no-data, no-error return.
 func (r *SecretStreamDecryptReader) Read(p []byte) (int, error) {
-	for r.pendingPos == len(r.pending) {
-		ok, err := r.readNextChunk()
+	for r.pendingPos == r.pendingLen {
+		if r.done {
+			return 0, io.EOF
+		}
+		n, err := r.step()
 		if err != nil {
 			return 0, err
 		}
-		if !ok {
-			if !r.finalized {
-				return 0, &CryptoError{"secretstream ended before a Final chunk was seen - the input is truncated"}
-			}
-			return 0, io.EOF
-		}
+		r.pendingLen = n
+		r.pendingPos = 0
 	}
-	n := copy(p, r.pending[r.pendingPos:])
+	n := copy(p, r.plaintext[r.pendingPos:r.pendingLen])
 	r.pendingPos += n
 	return n, nil
 }
 
-func (r *SecretStreamDecryptReader) readNextChunk() (bool, error) {
-	tagByte := make([]byte, 1)
-	n, err := io.ReadFull(r.inner, tagByte)
-	if n == 0 && err != nil {
-		return false, nil
+// step feeds the codec one next_len read and returns how many plaintext bytes that released into
+// r.plaintext (at end of input, the Final chunk's).
+func (r *SecretStreamDecryptReader) step() (int, error) {
+	want := int(C.dstu_secretstream_file_decryptor_next_len(r.dec))
+	data := make([]byte, want)
+	got, err := io.ReadFull(r.inner, data)
+	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
+		return 0, err
 	}
-	if err != nil {
-		return false, &CryptoError{"secretstream ended unexpectedly mid-chunk - the input is truncated"}
+	outPtr, outCap := cBytes(r.plaintext[:])
+	var n C.size_t
+	var status C.DstuStatus
+	if got < want {
+		r.done = true
+		status = C.dstu_secretstream_file_decryptor_finish(r.dec, outPtr, outCap, &n)
+	} else {
+		dataPtr, dataLen := cBytes(data)
+		status = C.dstu_secretstream_file_decryptor_feed(r.dec, dataPtr, dataLen, outPtr, outCap, &n)
 	}
-
-	lenBytes, err := readExactly(r.inner, 4)
-	if err != nil {
-		return false, err
-	}
-	length := binary.LittleEndian.Uint32(lenBytes)
-	if length > SecretstreamChunkBytes {
-		return false, &CryptoError{"secretstream chunk length exceeds the maximum SecretstreamChunkBytes - the input is corrupted"}
-	}
-
-	if SecretstreamTag(tagByte[0]) != TagFinal && length != SecretstreamChunkBytes {
-		return false, &CryptoError{fmt.Sprintf("non-final chunk of %d bytes, must be exactly %d (D-208)", length, SecretstreamChunkBytes)}
-	}
-
-	ciphertext, err := readExactly(r.inner, int(length))
-	if err != nil {
-		return false, err
-	}
-	authTag, err := readExactly(r.inner, SecretstreamTagBytes)
-	if err != nil {
-		return false, err
-	}
-
-	plaintextOut := make([]byte, length)
-	ctPtr, ctLen := cBytes(ciphertext)
-	authPtr, _ := cBytes(authTag)
-	ptPtr, ptLen := cBytes(plaintextOut)
-	var outTag C.DstuTag
-	if err := statusError(C.dstu_secretstream_pull(r.state, C.uint8_t(tagByte[0]), ctPtr, ctLen, authPtr, ptPtr, ptLen, &outTag)); err != nil {
-		return false, err
-	}
-
-	r.pending = plaintextOut
-	r.pendingPos = 0
-	if SecretstreamTag(outTag) == TagFinal {
-		r.finalized = true
-		var trailing [1]byte
-		if n, _ := r.inner.Read(trailing[:]); n != 0 {
-			return false, &CryptoError{"secretstream has trailing data after its Final chunk"}
+	if status != C.DSTU_OK {
+		if msg := C.dstu_secretstream_file_decryptor_last_error(r.dec); msg != nil {
+			return 0, &CryptoError{C.GoString(msg)}
 		}
+		return 0, statusError(status)
 	}
-	return true, nil
-}
-
-func readExactly(r io.Reader, n int) ([]byte, error) {
-	buf := make([]byte, n)
-	if _, err := io.ReadFull(r, buf); err != nil {
-		return nil, &CryptoError{"secretstream ended unexpectedly mid-chunk - the input is truncated"}
-	}
-	return buf, nil
+	return int(n), nil
 }
 
 // Close releases the underlying native state and, unless leaveOpen was set, closes inner. Safe
 // to call more than once.
 func (r *SecretStreamDecryptReader) Close() error {
-	if r.state != nil {
-		C.dstu_secretstream_pull_free(r.state)
-		r.state = nil
+	if r.dec != nil {
+		C.dstu_secretstream_file_decryptor_free(r.dec)
+		r.dec = nil
 	}
 	if r.innerCloser != nil {
 		closer := r.innerCloser

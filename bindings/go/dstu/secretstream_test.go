@@ -330,10 +330,10 @@ func TestSecretstreamSharedStreamFileVectors(t *testing.T) {
 		"unsupported_version": "unsupported stream format version",
 		"bad_chunk_length":    "non-final chunk",
 		"truncated":           "truncated",
-		"auth":                "",
+		"auth":                "authentication failed",
 		"trailing_data":       "trailing data",
-		"oversized_chunk":     "exceeds the maximum",
-		"unknown_tag":         "invalid tag byte",
+		"oversized_chunk":     "chunk too large",
+		"unknown_tag":         "unrecognized chunk tag",
 	}
 	for _, c := range vectors.Cases {
 		t.Run(c.Name, func(t *testing.T) {
@@ -387,5 +387,62 @@ func TestSecretstreamWriterWritesTheFormatVersionFirst(t *testing.T) {
 	}
 	if out.Bytes()[0] != SecretstreamFormatVersion {
 		t.Fatalf("first byte = %d, want %d", out.Bytes()[0], SecretstreamFormatVersion)
+	}
+}
+
+func encryptWith(t *testing.T, key *SecretstreamKey, writes ...[]byte) []byte {
+	t.Helper()
+	var out bytes.Buffer
+	w, err := NewSecretStreamEncryptWriter(&out, key, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range writes {
+		if _, err := w.Write(p); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := w.Complete(); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return out.Bytes()
+}
+
+// TestSecretstreamOneLargeWriteEqualsManySmallWrites (T-276 shape): one large write and many
+// small writes decrypt to the same plaintext.
+func TestSecretstreamOneLargeWriteEqualsManySmallWrites(t *testing.T) {
+	key, _ := GenerateSecretstreamKey()
+	defer key.Close()
+	message := make([]byte, 3*SecretstreamChunkBytes+1234)
+	for i := range message {
+		message[i] = byte(i * 7)
+	}
+	var pieces [][]byte
+	for i := 0; i < len(message); i += 1000 {
+		pieces = append(pieces, message[i:min(i+1000, len(message))])
+	}
+	for _, file := range [][]byte{encryptWith(t, key, message), encryptWith(t, key, pieces...)} {
+		got, err := decryptShared(file, key)
+		if err != nil || !bytes.Equal(got, message) {
+			t.Fatalf("round trip failed: err=%v", err)
+		}
+	}
+}
+
+// TestSecretstreamTrailingDataNeverYieldsTheFinalChunk (T-284).
+func TestSecretstreamTrailingDataNeverYieldsTheFinalChunk(t *testing.T) {
+	key, _ := GenerateSecretstreamKey()
+	defer key.Close()
+	full := bytes.Repeat([]byte{0x41}, SecretstreamChunkBytes)
+	file := append(encryptWith(t, key, full, []byte("last")), 'x')
+	got, err := decryptShared(file, key)
+	if err == nil || !strings.Contains(err.Error(), "trailing data") {
+		t.Fatalf("expected a trailing-data error, got %v", err)
+	}
+	if !bytes.Equal(got, full) {
+		t.Fatalf("got %d plaintext bytes, want only the first full chunk", len(got))
 	}
 }

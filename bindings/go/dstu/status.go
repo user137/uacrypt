@@ -51,6 +51,12 @@ func statusError(status C.DstuStatus) error {
 		return &ArgumentError{"invalid key material (e.g. a DSTU 4145 scalar that is zero or >= the curve order)"}
 	case C.DSTU_ERR_UNSUPPORTED_VERSION:
 		return &CryptoError{"sealed blob has an unsupported format version - written by an older or newer release"}
+	case C.DSTU_ERR_CHUNK_TOO_LARGE:
+		return &CryptoError{"secretstream chunk too large - the input is corrupted"}
+	case C.DSTU_ERR_BAD_CHUNK_LENGTH:
+		return &CryptoError{"non-final chunk of the wrong length - the input is corrupted"}
+	case C.DSTU_ERR_TRAILING_DATA:
+		return &CryptoError{"trailing data after the secretstream's Final chunk"}
 	case C.DSTU_ERR_INVALID_ARGUMENT:
 		return &ArgumentError{"an enum argument is outside its valid range (e.g. an unknown pwhash strength)"}
 	default: // ErrBufferTooSmall, ErrNullPointer, ErrInvalidLength, ErrPanic
