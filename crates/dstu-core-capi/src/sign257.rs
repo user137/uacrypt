@@ -18,7 +18,7 @@
 //! the verify equation, never trusted before it.
 
 use crate::error::DstuStatus;
-use crate::util::{guard_bool, guard_ptr, guard_status, guard_void, slice_from_raw};
+use crate::util::{guard_bool, guard_ptr, guard_status, guard_void, overlaps, slice_from_raw};
 use dstu_core::crypto_sign257::{Signature, SigningKey, VerifyingKey};
 
 pub const DSTU_SIGN257_PRIVATE_KEY_BYTES: usize = 33;
@@ -219,6 +219,14 @@ pub unsafe extern "C" fn dstu_sign257(
     sig_out: *mut u8,
 ) {
     guard_void(|| {
+        if overlaps(
+            message.cast::<u8>(),
+            message_len,
+            sig_out.cast_const().cast::<u8>(),
+            DSTU_SIGN257_SIGNATURE_BYTES,
+        ) {
+            return;
+        }
         if key.is_null() || sig_out.is_null() {
             return;
         }
@@ -248,6 +256,14 @@ pub unsafe extern "C" fn dstu_sign257_digest(
     sig_out: *mut u8,
 ) {
     guard_void(|| {
+        if overlaps(
+            digest.cast::<u8>(),
+            DSTU_SIGN257_DIGEST_BYTES,
+            sig_out.cast_const().cast::<u8>(),
+            DSTU_SIGN257_SIGNATURE_BYTES,
+        ) {
+            return;
+        }
         if key.is_null() || digest.is_null() || sig_out.is_null() {
             return;
         }

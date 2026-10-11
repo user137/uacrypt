@@ -30,6 +30,9 @@ All notable changes to this project are documented in this file. Format follows
 
 ### Fixed
 
+- **C ABI: overlapping input and output buffers are refused** (T-244, D-236): a function returning
+  `DstuStatus` gives `DSTU_ERR_INVALID_ARGUMENT`, a `void` one writes nothing. In-place calls were
+  undefined behaviour. `dstu_memzero` now uses volatile writes (`zeroize`).
 - One large write into a stream writer took quadratic time in Java and PHP (T-276; 16 MiB took
   5-8 s), and the same buffer shape existed in Python and Ruby. Every writer now seals full
   chunks straight from the caller's buffer.

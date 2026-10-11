@@ -5,7 +5,7 @@
 //! carve-out).
 
 use crate::error::DstuStatus;
-use crate::util::{guard_ptr, guard_status, guard_void, slice_from_raw};
+use crate::util::{guard_ptr, guard_status, guard_void, overlaps, slice_from_raw};
 use dstu_core::crypto_auth::{verify, Key};
 
 pub const DSTU_AUTH_KEY_BYTES: usize = 32;
@@ -102,6 +102,14 @@ pub unsafe extern "C" fn dstu_auth(
     tag_out: *mut u8,
 ) {
     guard_void(|| {
+        if overlaps(
+            message.cast::<u8>(),
+            message_len,
+            tag_out.cast_const().cast::<u8>(),
+            DSTU_AUTH_TAG_BYTES,
+        ) {
+            return;
+        }
         if key.is_null() || tag_out.is_null() {
             return;
         }

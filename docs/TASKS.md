@@ -8528,7 +8528,7 @@ which is exactly why the divergence was never caught.
   actually *fail*, not only when a tool is missing. GitHub CI is unaffected (separate jobs). Fix: a
   tri-state per optional layer (passed / skipped-missing-tool / failed), non-zero exit on "failed",
   and a summary table.
-- [ ] **T-244** (audit F-10/F-11, Low) C ABI. (a) `dstu_memzero` (`capi/util.rs:88`) uses
+- [x] **T-244** (audit F-10/F-11, Low) C ABI. **Done 2026-10-11 (D-236, owner chose "refuse"):** overlap refused in 22 functions, rule in the header; `dstu_memzero` via `zeroize`; `tests/ffi_overlap.rs` Miri-clean. (a) `dstu_memzero` (`capi/util.rs:88`) uses
   `ptr::write_bytes` + `compiler_fence` - not a volatile write; under cross-language LTO the store
   can be elided. Use `zeroize` on the slice. (b) `include/dstu_core.h` never states that
   input/output buffers must not alias (only `util.rs:32` does); libsodium explicitly allows in-place

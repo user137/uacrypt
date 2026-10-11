@@ -223,7 +223,7 @@ fn null_pointers_are_rejected() {
         unsafe {
             dstu_secretstream_file_decryptor_feed(
                 ptr::null_mut(),
-                out.as_ptr(),
+                prefix.as_ptr(),
                 1,
                 out.as_mut_ptr(),
                 out.len(),
@@ -259,7 +259,7 @@ fn null_pointers_are_rejected() {
         unsafe {
             dstu_secretstream_file_decryptor_feed(
                 dec,
-                out.as_ptr(),
+                prefix.as_ptr(),
                 1,
                 out.as_mut_ptr(),
                 out.len(),

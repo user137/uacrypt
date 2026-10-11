@@ -6,8 +6,8 @@
 
 use crate::error::DstuStatus;
 use crate::util::{
-    guard_bool, guard_const_ptr, guard_ptr, guard_status, guard_usize, guard_void, slice_from_raw,
-    slice_from_raw_mut,
+    guard_bool, guard_const_ptr, guard_ptr, guard_status, guard_usize, guard_void, overlaps,
+    slice_from_raw, slice_from_raw_mut,
 };
 use dstu_core::crypto_secretstream::{
     FileDecryptor, FileEncryptor, FileError, Key, PullState, PushState, SecretstreamError, Tag,
@@ -215,6 +215,24 @@ pub unsafe extern "C" fn dstu_secretstream_push(
     tag_out: *mut u8,
 ) -> DstuStatus {
     guard_status(|| {
+        if overlaps(
+            plaintext.cast::<u8>(),
+            plaintext_len,
+            ciphertext_out.cast_const().cast::<u8>(),
+            ciphertext_out_len,
+        ) || overlaps(
+            plaintext.cast::<u8>(),
+            plaintext_len,
+            tag_out.cast_const().cast::<u8>(),
+            DSTU_SECRETSTREAM_TAG_BYTES,
+        ) || overlaps(
+            ciphertext_out.cast::<u8>(),
+            ciphertext_out_len,
+            tag_out.cast_const().cast::<u8>(),
+            DSTU_SECRETSTREAM_TAG_BYTES,
+        ) {
+            return DstuStatus::DSTU_ERR_INVALID_ARGUMENT;
+        }
         if state.is_null() || tag_out.is_null() {
             return DstuStatus::DSTU_ERR_NULL_POINTER;
         }
@@ -333,6 +351,19 @@ pub unsafe extern "C" fn dstu_secretstream_pull(
     tag_out: *mut DstuTag,
 ) -> DstuStatus {
     guard_status(|| {
+        if overlaps(
+            ciphertext.cast::<u8>(),
+            ciphertext_len,
+            plaintext_out.cast_const().cast::<u8>(),
+            plaintext_out_len,
+        ) || overlaps(
+            auth_tag.cast::<u8>(),
+            DSTU_SECRETSTREAM_TAG_BYTES,
+            plaintext_out.cast_const().cast::<u8>(),
+            plaintext_out_len,
+        ) {
+            return DstuStatus::DSTU_ERR_INVALID_ARGUMENT;
+        }
         if state.is_null() || auth_tag.is_null() || tag_out.is_null() {
             return DstuStatus::DSTU_ERR_NULL_POINTER;
         }
@@ -453,6 +484,14 @@ pub unsafe extern "C" fn dstu_secretstream_file_encryptor_seal_chunk(
     record_out_cap: usize,
 ) -> DstuStatus {
     guard_status(|| {
+        if overlaps(
+            chunk.cast::<u8>(),
+            chunk_len,
+            record_out.cast_const().cast::<u8>(),
+            record_out_cap,
+        ) {
+            return DstuStatus::DSTU_ERR_INVALID_ARGUMENT;
+        }
         if enc.is_null() {
             return DstuStatus::DSTU_ERR_NULL_POINTER;
         }
@@ -497,6 +536,14 @@ pub unsafe extern "C" fn dstu_secretstream_file_encryptor_seal_final(
     record_len: *mut usize,
 ) -> DstuStatus {
     guard_status(|| {
+        if overlaps(
+            last.cast::<u8>(),
+            last_len,
+            record_out.cast_const().cast::<u8>(),
+            record_out_cap,
+        ) {
+            return DstuStatus::DSTU_ERR_INVALID_ARGUMENT;
+        }
         if enc.is_null() || record_len.is_null() {
             return DstuStatus::DSTU_ERR_NULL_POINTER;
         }
@@ -618,6 +665,14 @@ pub unsafe extern "C" fn dstu_secretstream_file_decryptor_feed(
     plaintext_len: *mut usize,
 ) -> DstuStatus {
     guard_status(|| {
+        if overlaps(
+            input.cast::<u8>(),
+            input_len,
+            plaintext_out.cast_const().cast::<u8>(),
+            plaintext_out_cap,
+        ) {
+            return DstuStatus::DSTU_ERR_INVALID_ARGUMENT;
+        }
         if dec.is_null() || plaintext_len.is_null() {
             return DstuStatus::DSTU_ERR_NULL_POINTER;
         }

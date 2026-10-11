@@ -4,7 +4,11 @@
  * C ABI for dstu-core (Ukrainian DSTU cryptographic standards - Kalyna, Kupyna, Strumok, DSTU
  * 4145). Pre-release and provisional - see docs/SECURITY.md and docs/DECISIONS.md in the project
  * repository (https://github.com/user137/uacrypt) for the full threat model and per-construction
- * status. */
+ * status.
+ *
+ * Buffers: an input and an output buffer of one call must not overlap - no in-place use (T-244).
+ * A function returning DstuStatus refuses overlap with DSTU_ERR_INVALID_ARGUMENT before reading
+ * or writing anything; a void function returns without writing, as it does for NULL. */
 
 #ifndef DSTU_CORE_H
 #define DSTU_CORE_H

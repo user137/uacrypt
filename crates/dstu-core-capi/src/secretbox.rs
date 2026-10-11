@@ -4,7 +4,9 @@
 //! write on `DSTU_ERR_BUFFER_TOO_SMALL`.
 
 use crate::error::DstuStatus;
-use crate::util::{guard_ptr, guard_status, guard_void, slice_from_raw, slice_from_raw_mut};
+use crate::util::{
+    guard_ptr, guard_status, guard_void, overlaps, slice_from_raw, slice_from_raw_mut,
+};
 use dstu_core::crypto_secretbox::{open, seal, SecretKey, SecretboxError};
 
 pub const DSTU_SECRETBOX_KEY_BYTES: usize = 32;
@@ -110,6 +112,14 @@ pub unsafe extern "C" fn dstu_secretbox_seal(
     sealed_len_out: *mut usize,
 ) -> DstuStatus {
     guard_status(|| {
+        if overlaps(
+            plaintext.cast::<u8>(),
+            plaintext_len,
+            sealed_out.cast_const().cast::<u8>(),
+            sealed_out_cap,
+        ) {
+            return DstuStatus::DSTU_ERR_INVALID_ARGUMENT;
+        }
         if key.is_null() || sealed_len_out.is_null() {
             return DstuStatus::DSTU_ERR_NULL_POINTER;
         }
@@ -159,6 +169,14 @@ pub unsafe extern "C" fn dstu_secretbox_open(
     plaintext_len_out: *mut usize,
 ) -> DstuStatus {
     guard_status(|| {
+        if overlaps(
+            sealed.cast::<u8>(),
+            sealed_len,
+            plaintext_out.cast_const().cast::<u8>(),
+            plaintext_out_cap,
+        ) {
+            return DstuStatus::DSTU_ERR_INVALID_ARGUMENT;
+        }
         if key.is_null() || plaintext_len_out.is_null() {
             return DstuStatus::DSTU_ERR_NULL_POINTER;
         }

@@ -11,7 +11,9 @@
 //! must not reopen that distinction.
 
 use crate::error::DstuStatus;
-use crate::util::{guard_ptr, guard_status, guard_void, slice_from_raw, slice_from_raw_mut};
+use crate::util::{
+    guard_ptr, guard_status, guard_void, overlaps, slice_from_raw, slice_from_raw_mut,
+};
 use dstu_core::crypto_box512::{open, seal, OpenError, PublicKey, SealError, SecretKey};
 
 pub const DSTU_BOX512_SECRETKEY_BYTES: usize = 64;
@@ -232,6 +234,14 @@ pub unsafe extern "C" fn dstu_box512_seal(
     sealed_len_out: *mut usize,
 ) -> DstuStatus {
     guard_status(|| {
+        if overlaps(
+            message.cast::<u8>(),
+            message_len,
+            sealed_out.cast_const().cast::<u8>(),
+            sealed_out_cap,
+        ) {
+            return DstuStatus::DSTU_ERR_INVALID_ARGUMENT;
+        }
         if recipient.is_null() || sealed_len_out.is_null() {
             return DstuStatus::DSTU_ERR_NULL_POINTER;
         }
@@ -281,6 +291,14 @@ pub unsafe extern "C" fn dstu_box512_open(
     plaintext_len_out: *mut usize,
 ) -> DstuStatus {
     guard_status(|| {
+        if overlaps(
+            sealed.cast::<u8>(),
+            sealed_len,
+            plaintext_out.cast_const().cast::<u8>(),
+            plaintext_out_cap,
+        ) {
+            return DstuStatus::DSTU_ERR_INVALID_ARGUMENT;
+        }
         if secret.is_null() || plaintext_len_out.is_null() {
             return DstuStatus::DSTU_ERR_NULL_POINTER;
         }

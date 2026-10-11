@@ -15402,3 +15402,26 @@ closes the sink (the decryptor's closes its source) and never finalizes; the Jav
 status and message, nulls, undersized buffers, failed state. Each binding: the shared vectors, one
 large write vs many small, trailing data never yields `Final`; Java and PHP add the T-274/T-275
 regressions.
+
+## D-236: The C ABI refuses overlapping input and output buffers (T-244, 2026-10-11)
+
+**Decision (owner, 2026-10-11, of three options).** Every capi function that takes both an input
+and an output buffer checks, before forming any slice, whether they share a byte
+(`util::overlaps`, an address comparison that never dereferences). A function returning
+`DstuStatus` returns `DSTU_ERR_INVALID_ARGUMENT`; a `void` one (`dstu_auth`, `dstu_generichash_*`,
+`dstu_kdf_derive_subkey`, `dstu_sign*`) returns without writing, its existing convention for NULL,
+since changing its return type would break the ABI. 22 functions, including the new
+`dstu_secretstream_file_*` ones and `dstu_secretstream_push`'s two outputs against each other. The
+generated header states the rule.
+
+**Why.** A `&[u8]` and a `&mut [u8]` over the same bytes is undefined behaviour in Rust, and
+libsodium allows in-place calls, so C callers will try them. Refusing makes the misuse a defined
+error instead of UB.
+
+**Rejected.** Documenting only (UB stays reachable); supporting in-place use (every function
+rewritten to work through raw pointers; too large and risky for 0.6.0, possible later).
+
+**Also (T-244(a)).** `dstu_memzero` now uses `zeroize` (volatile writes) instead of
+`ptr::write_bytes` plus a compiler fence, which cross-language LTO may remove. Tests:
+`tests/ffi_overlap.rs` (refused in-place seal and codec feed, untouched output of a void hash,
+adjacent halves accepted), clean under Miri.

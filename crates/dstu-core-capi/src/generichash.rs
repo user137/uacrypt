@@ -5,7 +5,7 @@
 //! `pyclass` wrapper precedent, D-148's own file-layout note).
 
 use crate::error::DstuStatus;
-use crate::util::{guard_ptr, guard_status, guard_void, slice_from_raw};
+use crate::util::{guard_ptr, guard_status, guard_void, overlaps, slice_from_raw};
 use dstu_core::crypto_generichash::{Kupyna256, Kupyna256Hasher, Kupyna512, Kupyna512Hasher};
 
 pub const DSTU_GENERICHASH_256_BYTES: usize = 32;
@@ -25,6 +25,14 @@ pub unsafe extern "C" fn dstu_generichash_256(
     out: *mut u8,
 ) {
     guard_void(|| {
+        if overlaps(
+            message.cast::<u8>(),
+            message_len,
+            out.cast_const().cast::<u8>(),
+            DSTU_GENERICHASH_256_BYTES,
+        ) {
+            return;
+        }
         if out.is_null() {
             return;
         }
@@ -51,6 +59,14 @@ pub unsafe extern "C" fn dstu_generichash_512(
     out: *mut u8,
 ) {
     guard_void(|| {
+        if overlaps(
+            message.cast::<u8>(),
+            message_len,
+            out.cast_const().cast::<u8>(),
+            DSTU_GENERICHASH_512_BYTES,
+        ) {
+            return;
+        }
         if out.is_null() {
             return;
         }

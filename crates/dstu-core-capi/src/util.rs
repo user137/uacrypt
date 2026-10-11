@@ -40,6 +40,20 @@ pub(crate) unsafe fn slice_from_raw_mut<'a>(ptr: *mut u8, len: usize) -> Option<
     Some(unsafe { std::slice::from_raw_parts_mut(ptr, len) })
 }
 
+/// T-244: whether the byte ranges `[a, a + a_len)` and `[b, b + b_len)` share any byte. Compares
+/// addresses only and never dereferences, so it is safe on any pointers; an empty or NULL range
+/// never overlaps. Every function taking both an input and an output buffer checks this before
+/// forming any slice - a `&[u8]` and a `&mut [u8]` over the same bytes is undefined behaviour in
+/// Rust, and libsodium users expect in-place calls to work. A status-returning function returns
+/// `DSTU_ERR_INVALID_ARGUMENT`; a `void` one returns without writing, as it does for NULL.
+pub(crate) fn overlaps(a: *const u8, a_len: usize, b: *const u8, b_len: usize) -> bool {
+    if a.is_null() || b.is_null() || a_len == 0 || b_len == 0 {
+        return false;
+    }
+    let (a, b) = (a.addr(), b.addr());
+    a < b.saturating_add(b_len) && b < a.saturating_add(a_len)
+}
+
 /// Wraps a `DstuStatus`-returning function body in `catch_unwind` - a caught panic becomes
 /// `DSTU_ERR_PANIC` instead of unwinding across the `extern "C"` boundary (which aborts the
 /// caller's whole process outright since Rust 1.81).
@@ -94,9 +108,8 @@ pub unsafe extern "C" fn dstu_memzero(buf: *mut core::ffi::c_void, len: usize) {
         if buf.is_null() || len == 0 {
             return;
         }
-        unsafe {
-            std::ptr::write_bytes(buf.cast::<u8>(), 0, len);
-        }
-        std::sync::atomic::compiler_fence(std::sync::atomic::Ordering::SeqCst);
+        // T-244(a): `zeroize`'s volatile writes, which no optimizer (cross-language LTO included)
+        // may drop; a plain `write_bytes` plus a compiler fence does not guarantee that.
+        zeroize::Zeroize::zeroize(unsafe { std::slice::from_raw_parts_mut(buf.cast::<u8>(), len) });
     });
 }

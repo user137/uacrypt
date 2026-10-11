@@ -3,7 +3,7 @@
 //! `dstu-core` (turned on unconditionally in `Cargo.toml`, matching Python's own precedent).
 
 use crate::error::DstuStatus;
-use crate::util::{guard_bool, guard_status, slice_from_raw};
+use crate::util::{guard_bool, guard_status, overlaps, slice_from_raw};
 use dstu_core::crypto_pwhash::{hash_password, verify_password, PwHashError, Strength};
 use std::ffi::CStr;
 use std::os::raw::c_char;
@@ -54,6 +54,14 @@ pub unsafe extern "C" fn dstu_pwhash_hash_password(
     out: *mut c_char,
 ) -> DstuStatus {
     guard_status(|| {
+        if overlaps(
+            password.cast::<u8>(),
+            password_len,
+            out.cast_const().cast::<u8>(),
+            DSTU_PWHASH_STRBYTES,
+        ) {
+            return DstuStatus::DSTU_ERR_INVALID_ARGUMENT;
+        }
         let Some(strength) = strength_from_raw(strength) else {
             return DstuStatus::DSTU_ERR_INVALID_ARGUMENT;
         };

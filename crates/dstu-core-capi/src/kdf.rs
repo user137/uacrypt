@@ -2,7 +2,7 @@
 //! `dstu_kdf_derive_subkey` is infallible (fixed-length arrays in, fixed-length array out).
 
 use crate::error::DstuStatus;
-use crate::util::{guard_ptr, guard_status, guard_void};
+use crate::util::{guard_ptr, guard_status, guard_void, overlaps};
 use dstu_core::crypto_kdf::MasterKey;
 
 pub const DSTU_KDF_KEY_BYTES: usize = 32;
@@ -103,6 +103,14 @@ pub unsafe extern "C" fn dstu_kdf_derive_subkey(
     out: *mut u8,
 ) {
     guard_void(|| {
+        if overlaps(
+            context.cast::<u8>(),
+            DSTU_KDF_CONTEXT_BYTES,
+            out.cast_const().cast::<u8>(),
+            DSTU_KDF_SUBKEY_BYTES,
+        ) {
+            return;
+        }
         if key.is_null() || context.is_null() || out.is_null() {
             return;
         }
