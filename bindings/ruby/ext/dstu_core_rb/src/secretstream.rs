@@ -4,6 +4,10 @@
 //! the Rust API's own `Tag::to_byte`/`Tag::from_byte` wire convention) - a more idiomatic Ruby
 //! `IO`-like wrapper is deliberately deferred to a later step (`docs/bindings-strategy.md` T-160
 //! step 3), so this step only has to prove the full surface is reachable, not make it pretty yet.
+//!
+//! Also the stream-file codec classes (T-284, D-235): the idiomatic stream wrapper drives
+//! `FileEncryptor`/`FileDecryptor` through them and does only I/O; it no longer parses the
+//! file format itself.
 
 use std::cell::RefCell;
 

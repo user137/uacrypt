@@ -138,6 +138,10 @@ fn constants_match_the_core() {
 }
 
 #[test]
+#[cfg_attr(
+    miri,
+    ignore = "bulk Kalyna-GCM over multi-KiB inputs is hours under Miri; the codec has no unsafe and the small-input tests below still run under it (T-296)"
+)]
 fn shared_vectors_give_their_status_and_message() {
     let key = key_from(&decode_hex(field(VECTORS, "key_hex")));
     let mut count = 0;
@@ -178,6 +182,10 @@ fn shared_vectors_give_their_status_and_message() {
 }
 
 #[test]
+#[cfg_attr(
+    miri,
+    ignore = "bulk Kalyna-GCM over multi-KiB inputs is hours under Miri; the codec has no unsafe and the small-input tests below still run under it (T-296)"
+)]
 fn round_trips_across_chunk_boundaries() {
     let mut key = ptr::null_mut();
     assert_eq!(

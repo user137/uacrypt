@@ -1,12 +1,15 @@
 //! `crypto_secretstream` wrapper - see [`dstu_core::crypto_secretstream`] for the underlying
 //! chunked/streaming AEAD construction. This is a direct, function-for-function wrapper of the
 //! Rust `PushState`/`PullState` API (matching `bindings/python/src/secretstream.rs`'s own step-2
-//! split) - the idiomatic `InputStream`/`OutputStream` pair is pure Java, built in step 3 on top
-//! of this raw surface, not new Rust glue.
+//! split); the idiomatic `InputStream`/`OutputStream` pair uses the codec functions below.
 //!
 //! JNI has no native multi-value return, so `push`/`pull` each concatenate their two logical
 //! outputs into one `byte[]`: `push` returns `ciphertext || authTag` (the 16-byte tag is a fixed,
 //! known length, so the Java side splits it back out); `pull` returns `tagByte(1) || plaintext`.
+//!
+//! Also the stream-file codec classes (T-284, D-235): the idiomatic stream wrapper drives
+//! `FileEncryptor`/`FileDecryptor` through them and does only I/O; it no longer parses the
+//! file format itself.
 
 use crate::util::{guard, to_array, Failure, IntoCrypto};
 use dstu_core::crypto_secretstream::{

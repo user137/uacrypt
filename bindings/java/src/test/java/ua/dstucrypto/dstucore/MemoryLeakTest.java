@@ -76,6 +76,9 @@ class MemoryLeakTest {
         Thread.sleep(200);
         long after = currentVmRssBytes();
         long growth = after - before;
+        // T-231: printed on every run so CI logs carry the real growth per platform.
+        System.out.println("MemoryLeakTest: VmRSS grew by " + growth + " bytes over " + n
+                + " iterations (threshold " + maxAcceptableGrowthBytes + ")");
         assertTrue(
                 growth < maxAcceptableGrowthBytes,
                 "VmRSS grew by " + growth + " bytes over " + n + " iterations "

@@ -1,6 +1,6 @@
-//! `crypto_secretstream` C ABI (`dstu_core::crypto_secretstream`) - raw push/pull only, matching
-//! the Rust API 1:1 (no idiomatic-C stream wrapper - that is a later consumer's job, per D-148/
-//! `docs/bindings-strategy.md`'s own note that this crate has no idiomatic-language step). `tag_byte`
+//! `crypto_secretstream` C ABI (`dstu_core::crypto_secretstream`) - raw push/pull matching the Rust
+//! API 1:1, plus the stream-file codec (`dstu_secretstream_file_*`, T-284/D-235) that .NET/Go/C++
+//! drive for the file format. No idiomatic-C stream wrapper (a later consumer's job, D-148). `tag_byte`
 //! passed into `dstu_secretstream_pull` is untrusted wire input - see the wrapped Rust module's own
 //! doc comment for why it is folded into the AAD verified against `auth_tag`.
 

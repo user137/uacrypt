@@ -83,6 +83,10 @@ fn constants_match_the_wire_format() {
 }
 
 #[test]
+#[cfg_attr(
+    miri,
+    ignore = "bulk Kalyna-GCM over multi-KiB inputs is hours under Miri; the codec has no unsafe and the small-input tests below still run under it (T-296)"
+)]
 fn every_shared_vector_decrypts_or_fails_with_its_class() {
     let key = vector_key();
     let mut count = 0;
@@ -145,6 +149,10 @@ fn error_messages_carry_the_shared_phrases() {
 }
 
 #[test]
+#[cfg_attr(
+    miri,
+    ignore = "bulk Kalyna-GCM over multi-KiB inputs is hours under Miri; the codec has no unsafe and the small-input tests below still run under it (T-296)"
+)]
 fn round_trips_at_the_chunk_boundaries() {
     let key = Key::generate().unwrap();
     for len in [
@@ -163,6 +171,10 @@ fn round_trips_at_the_chunk_boundaries() {
 }
 
 #[test]
+#[cfg_attr(
+    miri,
+    ignore = "bulk Kalyna-GCM over multi-KiB inputs is hours under Miri; the codec has no unsafe and the small-input tests below still run under it (T-296)"
+)]
 fn an_exact_multiple_ends_in_a_full_final_record() {
     let key = Key::generate().unwrap();
     let file = encrypt_all(&key, &pattern(2 * CHUNK_BYTES));
@@ -176,6 +188,10 @@ fn an_exact_multiple_ends_in_a_full_final_record() {
 /// A second, independent decoder over the raw `PullState`: the codec writes exactly D-208's
 /// format, not something only the codec itself reads back.
 #[test]
+#[cfg_attr(
+    miri,
+    ignore = "bulk Kalyna-GCM over multi-KiB inputs is hours under Miri; the codec has no unsafe and the small-input tests below still run under it (T-296)"
+)]
 fn encryptor_output_decodes_with_the_raw_pull_state() {
     let key = Key::generate().unwrap();
     let plaintext = pattern(CHUNK_BYTES + 100);
@@ -252,7 +268,7 @@ fn feed_with_a_length_other_than_next_len_is_a_caller_error() {
 #[test]
 fn a_short_plaintext_buffer_is_rejected_before_any_work() {
     let key = Key::generate().unwrap();
-    let file = encrypt_all(&key, &pattern(2 * CHUNK_BYTES));
+    let file = encrypt_all(&key, b"x");
     let mut dec = FileDecryptor::new(&key);
     let mut small = vec![0u8; CHUNK_BYTES - 1];
     assert!(matches!(
@@ -283,7 +299,7 @@ fn calls_after_finish_are_refused() {
 #[test]
 fn a_failed_decryptor_stays_failed() {
     let key = Key::generate().unwrap();
-    let mut file = encrypt_all(&key, &pattern(2 * CHUNK_BYTES));
+    let mut file = encrypt_all(&key, &pattern(100));
     file[FILE_PREFIX_BYTES + 10] ^= 1;
     let mut dec = FileDecryptor::new(&key);
     let mut out = vec![0u8; CHUNK_BYTES];
@@ -342,6 +358,7 @@ fn a_wrong_key_fails_authentication() {
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(16))]
     #[test]
+    #[cfg_attr(miri, ignore = "bulk Kalyna-GCM over multi-KiB inputs is hours under Miri; the codec has no unsafe and the small-input tests below still run under it (T-296)")]
     fn any_length_round_trips(len in 0usize..(3 * CHUNK_BYTES + 64)) {
         let key = Key::generate().unwrap();
         let plaintext = pattern(len);
@@ -351,6 +368,7 @@ proptest! {
 
     /// Cutting a valid file anywhere short of its end is always `Truncated`, never accepted.
     #[test]
+    #[cfg_attr(miri, ignore = "bulk Kalyna-GCM over multi-KiB inputs is hours under Miri; the codec has no unsafe and the small-input tests below still run under it (T-296)")]
     fn any_cut_is_truncated(len in 0usize..(2 * CHUNK_BYTES + 64), cut_seed in any::<u32>()) {
         let key = Key::generate().unwrap();
         let file = encrypt_all(&key, &pattern(len));

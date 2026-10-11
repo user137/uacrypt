@@ -15382,7 +15382,10 @@ mapped are gone: "chunk too large", "non-final chunk", "unrecognized chunk tag",
 failing error's message per decryptor (`dstu_secretstream_file_decryptor_last_error`) instead of
 the planned static `dstu_status_message`: a status code loses the declared length and version the
 core's message carries. New statuses 15-17 (`DSTU_ERR_CHUNK_TOO_LARGE`,
-`DSTU_ERR_BAD_CHUNK_LENGTH`, `DSTU_ERR_TRAILING_DATA`), appended.
+`DSTU_ERR_BAD_CHUNK_LENGTH`, `DSTU_ERR_TRAILING_DATA`), appended. `FileError` is not
+`#[non_exhaustive]` and its `Random` variant is gated on `std`/`getrandom`, like
+`SecretstreamError`'s: intended, since only `FileEncryptor::init` draws randomness and it exists
+only under the same features.
 
 **Writers.** Each holds back at most one chunk (an exact multiple of 8 KiB must end in a full
 `Final`) and seals full chunks straight from the caller's buffer by offset. That fixes T-276 (Java:

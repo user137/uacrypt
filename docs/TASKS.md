@@ -9885,7 +9885,7 @@ points at the machine state rather than a GCM-specific regression, but that is n
     EOF: `Truncated` before a verified `Final`, otherwise it releases the held `Final`
     plaintext - so a trailing-data stream never yields its last chunk), `FileError` with the
     shared phrases. capi: `dstu_secretstream_file_{encryptor,decryptor}_*`, new statuses 15-17
-    (`CHUNK_TOO_LARGE`/`BAD_CHUNK_LENGTH`/`TRAILING_DATA`), `dstu_status_message`. Order: core +
+    (`CHUNK_TOO_LARGE`/`BAD_CHUNK_LENGTH`/`TRAILING_DATA`), per-decryptor `_last_error` (replaced the planned `dstu_status_message`, D-235). Order: core +
     tests, fuzz target, uacrypt, capi, then Python, Node, Ruby, Java (+T-275/T-276), .NET, Go,
     C++, PHP (+T-274/T-276), Pi, docs (D-235). Wire format unchanged.
 - [x] **T-285** (**closed 2026-09-25 as won't do - O-E, D-220: the per-verify check stays, no API
