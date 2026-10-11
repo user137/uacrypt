@@ -1,5 +1,7 @@
 package ua.dstucrypto.dstucore;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -7,36 +9,42 @@ import java.io.InputStream;
 /**
  * Read-only, streaming {@code crypto_secretstream} pipeline - the decrypting counterpart of
  * {@link SecretStreamEncryptor}. Reads and decrypts one chunk from the underlying stream at a
- * time. Throws {@link DstuException} on authentication failure or truncation - a
- * dropped/tampered/reordered chunk, or a stream that ends before a {@code Final} chunk, both fail
- * closed rather than yielding wrong plaintext.
+ * time. Throws {@link DstuException} on authentication failure, truncation or a malformed file -
+ * a dropped/tampered/reordered chunk, or a stream that ends before a {@code Final} chunk, fails
+ * closed rather than yielding wrong plaintext. The checks are dstu-core's stream-file codec
+ * (T-284); this class only reads. The {@code Final} chunk is returned only once the input is
+ * known to end right after it, so a stream with trailing data never yields its last chunk.
  *
- * <p>Unlike {@code bindings/python}'s own decryptor, {@link #close} here is <strong>not</strong> a
- * no-op: Python's {@code PullState} is a garbage-collected {@code #[pyclass]} object with nothing
- * for the caller to release explicitly, but this binding's {@link SecretStreamPullState} holds a
- * native handle (D-153's hand-rolled equivalent of a framework-generated wrapper) that must be
- * freed - {@code close()} does that here.
+ * <p>{@link #close} releases the native handle and closes the source ({@code java.io}'s
+ * filter-stream convention, D-220 O-F).
  */
 public final class SecretStreamDecryptor extends InputStream {
+    static {
+        NativeLoader.ensureLoaded();
+    }
+
     private static final int CHUNK_BYTES = SecretStreamEncryptor.CHUNK_BYTES;
-    private static final int AUTH_TAG_BYTES = 16;
 
     private final InputStream in;
-    private final SecretStreamPullState pull;
+    private long handle;
     private byte[] currentChunk = new byte[0];
     private int currentChunkPos = 0;
     private boolean done = false;
     private boolean closed = false;
 
+    @SuppressFBWarnings(value = "EI_EXPOSE_REP2", justification = "streaming decryptor must retain the caller's source to read from it, same as java.io.FilterInputStream")
     public SecretStreamDecryptor(byte[] key, InputStream in) throws IOException {
         this.in = in;
-        int version = readExact(in, 1, "format version")[0] & 0xFF;
-        if (version != SecretStreamEncryptor.FORMAT_VERSION) {
-            throw new DstuException("unsupported stream format version " + version
-                    + " (this build reads " + SecretStreamEncryptor.FORMAT_VERSION + ")");
+        this.handle = nativeNew(key);
+        try {
+            // The version byte and header, read now so a wrong version fails at construction.
+            step();
+            step();
+        } catch (IOException | RuntimeException e) {
+            nativeFree(handle);
+            handle = 0;
+            throw e;
         }
-        byte[] header = readExact(in, 32, "header");
-        this.pull = new SecretStreamPullState(key, header);
     }
 
     @Override
@@ -48,6 +56,9 @@ public final class SecretStreamDecryptor extends InputStream {
 
     @Override
     public int read(byte[] b, int off, int len) throws IOException {
+        if (closed) {
+            throw new IllegalStateException("SecretStreamDecryptor already closed");
+        }
         if (len == 0) {
             return 0;
         }
@@ -55,7 +66,7 @@ public final class SecretStreamDecryptor extends InputStream {
             if (done) {
                 return -1;
             }
-            currentChunk = readNextChunk();
+            currentChunk = step();
             currentChunkPos = 0;
         }
         int n = Math.min(len, currentChunk.length - currentChunkPos);
@@ -64,54 +75,26 @@ public final class SecretStreamDecryptor extends InputStream {
         return n;
     }
 
-    private byte[] readNextChunk() throws IOException {
-        int tagByte = readExact(in, 1, "chunk tag")[0] & 0xFF;
-        byte[] lenBytes = readExact(in, 4, "chunk length");
-        int chunkLen = (lenBytes[0] & 0xFF)
-                | ((lenBytes[1] & 0xFF) << 8)
-                | ((lenBytes[2] & 0xFF) << 16)
-                | ((lenBytes[3] & 0xFF) << 24);
-        // `chunkLen` is untrusted wire input, read before any tag verification - reject an
-        // oversized declared length before acting on it, matching `uacrypt decrypt`'s own
-        // `CliError::SecretstreamChunkTooLarge` bound.
-        if (chunkLen < 0 || chunkLen > CHUNK_BYTES) {
-            throw new DstuException(
-                    "secretstream chunk too large: declared " + Integer.toUnsignedLong(chunkLen) + " bytes, max "
-                            + CHUNK_BYTES);
-        }
-        if (tagByte != SecretStreamTag.FINAL.ordinal() && chunkLen != CHUNK_BYTES) {
-            throw new DstuException("non-final chunk of " + chunkLen + " bytes, must be exactly "
-                    + CHUNK_BYTES + " (D-208)");
-        }
-        byte[] ciphertext = readExact(in, chunkLen, "chunk ciphertext");
-        byte[] authTag = readExact(in, AUTH_TAG_BYTES, "chunk auth tag");
-        SecretStreamPullResult result = pull.pull(tagByte, ciphertext, authTag);
-        if (result.tag() == SecretStreamTag.FINAL) {
-            // Matches `uacrypt decrypt`'s own `CliError::SecretstreamTrailingData` check - reject
-            // bytes remaining after `Final` rather than silently ignoring them.
-            if (in.read() != -1) {
-                throw new DstuException("trailing data after the secretstream's Final chunk");
-            }
-            done = true;
-        }
-        return result.plaintext();
-    }
-
-    private static byte[] readExact(InputStream in, int size, String what) throws IOException {
-        byte[] data = new byte[size];
-        int total = 0;
-        while (total < size) {
-            int n = in.read(data, total, size - total);
+    /**
+     * Feeds the codec one {@code nextLen} read: the plaintext that read released (possibly
+     * empty), or at end of input the {@code Final} chunk's (after which the stream is done).
+     */
+    private byte[] step() throws IOException {
+        int want = nativeNextLen(handle);
+        byte[] data = new byte[want];
+        int got = 0;
+        while (got < want) {
+            int n = in.read(data, got, want - got);
             if (n == -1) {
                 break;
             }
-            total += n;
+            got += n;
         }
-        if (total != size) {
-            throw new DstuException(
-                    "truncated secretstream: expected " + size + " bytes for " + what + ", got " + total);
+        if (got < want) {
+            done = true;
+            return nativeFinish(handle);
         }
-        return data;
+        return nativeFeed(handle, data);
     }
 
     /** Reads and decrypts the entire remaining stream, bounded only by available memory. */
@@ -125,13 +108,25 @@ public final class SecretStreamDecryptor extends InputStream {
         return out.toByteArray();
     }
 
-    /** Releases the native pull-state handle. */
+    /** Releases the native handle and closes the source. */
     @Override
     public void close() throws IOException {
         if (closed) {
             return;
         }
         closed = true;
-        pull.close();
+        nativeFree(handle);
+        handle = 0;
+        in.close();
     }
+
+    private static native long nativeNew(byte[] key);
+
+    private static native int nativeNextLen(long handle);
+
+    private static native byte[] nativeFeed(long handle, byte[] data);
+
+    private static native byte[] nativeFinish(long handle);
+
+    private static native void nativeFree(long handle);
 }

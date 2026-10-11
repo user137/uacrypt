@@ -7,8 +7,12 @@ import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.ByteArrayInputStream;
+import java.io.BufferedOutputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.FilterInputStream;
+import java.io.FilterOutputStream;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -284,7 +288,7 @@ class SecretStreamTest {
         } else if (c.expect.equals("unknown_tag")) {
             wanted = "unrecognized chunk tag";
         } else if (c.expect.equals("auth")) {
-            wanted = "";
+            wanted = "authentication failed";
         } else {
             throw new IllegalStateException("unknown expect value " + c.expect);
         }
@@ -336,5 +340,139 @@ class SecretStreamTest {
         enc.write("data".getBytes("UTF-8"));
         enc.close();
         assertThrows(IllegalStateException.class, () -> enc.write("more data".getBytes("UTF-8")));
+    }
+
+    /** T-275: a buffered sink in try-with-resources gets the whole stream, because complete() flushes. */
+    @Test
+    void completeFlushesABufferedSink(@org.junit.jupiter.api.io.TempDir Path dir) throws Exception {
+        byte[] key = SecretStream.keygen();
+        Path p = dir.resolve("out.bin");
+        try (SecretStreamEncryptor enc = new SecretStreamEncryptor(key,
+                new BufferedOutputStream(Files.newOutputStream(p)))) {
+            enc.write(new byte[20000]);
+            enc.complete();
+        }
+        assertEquals(20096, Files.size(p));
+        try (SecretStreamDecryptor dec = new SecretStreamDecryptor(key, Files.newInputStream(p))) {
+            assertArrayEquals(new byte[20000], dec.readAll());
+        }
+    }
+
+    /** T-275 error path: a sink whose flush fails surfaces from complete(). */
+    @Test
+    void completeSurfacesAFailingFlush() throws Exception {
+        OutputStream failingFlush = new FilterOutputStream(new ByteArrayOutputStream()) {
+            @Override
+            public void flush() throws IOException {
+                throw new IOException("disk full");
+            }
+        };
+        SecretStreamEncryptor enc = new SecretStreamEncryptor(SecretStream.keygen(), failingFlush);
+        enc.write("x".getBytes(StandardCharsets.UTF_8));
+        IOException e = assertThrows(IOException.class, enc::complete);
+        assertEquals("disk full", e.getMessage());
+        // close() closes the sink, and FilterOutputStream.close() flushes first.
+        assertThrows(IOException.class, enc::close);
+    }
+
+    /** D-220 O-F: close() closes the sink and the source, as java.io filter streams do. */
+    @Test
+    void closeClosesTheSinkAndTheSource() throws Exception {
+        boolean[] closed = new boolean[2];
+        byte[] key = SecretStream.keygen();
+        ByteArrayOutputStream sink = new ByteArrayOutputStream();
+        try (SecretStreamEncryptor enc = new SecretStreamEncryptor(key, new FilterOutputStream(sink) {
+            @Override
+            public void close() throws IOException {
+                closed[0] = true;
+                super.close();
+            }
+        })) {
+            enc.write("x".getBytes(StandardCharsets.UTF_8));
+            enc.complete();
+        }
+        assertTrue(closed[0], "the encryptor's close() closes its sink");
+        try (SecretStreamDecryptor dec = new SecretStreamDecryptor(key,
+                new FilterInputStream(new ByteArrayInputStream(sink.toByteArray())) {
+                    @Override
+                    public void close() throws IOException {
+                        closed[1] = true;
+                        super.close();
+                    }
+                })) {
+            assertArrayEquals("x".getBytes(StandardCharsets.UTF_8), dec.readAll());
+        }
+        assertTrue(closed[1], "the decryptor's close() closes its source");
+    }
+
+    /** T-276: one 64 MiB write is linear (it took ~30 s per 16 MiB when it was quadratic). */
+    @Test
+    void oneLargeWriteIsLinear() throws Exception {
+        byte[] message = new byte[64 << 20];
+        OutputStream discard = new OutputStream() {
+            @Override
+            public void write(int b) {
+            }
+
+            @Override
+            public void write(byte[] b, int off, int len) {
+            }
+        };
+        long start = System.nanoTime();
+        try (SecretStreamEncryptor enc = new SecretStreamEncryptor(SecretStream.keygen(), discard)) {
+            enc.write(message);
+            enc.complete();
+        }
+        long seconds = (System.nanoTime() - start) / 1_000_000_000L;
+        assertTrue(seconds < 60, "64 MiB took " + seconds + " s");
+    }
+
+    /** T-276: one large write and many small writes decrypt to the same plaintext. */
+    @Test
+    void oneLargeWriteEqualsManySmallWrites() throws Exception {
+        byte[] key = SecretStream.keygen();
+        byte[] message = randomBytes(3 * 8192 + 1234);
+        ByteArrayOutputStream big = new ByteArrayOutputStream();
+        try (SecretStreamEncryptor enc = new SecretStreamEncryptor(key, big)) {
+            enc.write(message);
+            enc.complete();
+        }
+        ByteArrayOutputStream small = new ByteArrayOutputStream();
+        try (SecretStreamEncryptor enc = new SecretStreamEncryptor(key, small)) {
+            for (int i = 0; i < message.length; i += 1000) {
+                enc.write(message, i, Math.min(1000, message.length - i));
+            }
+            enc.complete();
+        }
+        for (ByteArrayOutputStream file : Arrays.asList(big, small)) {
+            try (SecretStreamDecryptor dec = new SecretStreamDecryptor(key, new ByteArrayInputStream(file.toByteArray()))) {
+                assertArrayEquals(message, dec.readAll());
+            }
+        }
+    }
+
+    /** T-284: a stream with trailing data never yields its Final chunk. */
+    @Test
+    void trailingDataNeverYieldsTheFinalChunk() throws Exception {
+        byte[] key = SecretStream.keygen();
+        ByteArrayOutputStream file = new ByteArrayOutputStream();
+        try (SecretStreamEncryptor enc = new SecretStreamEncryptor(key, file)) {
+            enc.write(new byte[8192]);
+            enc.write("last".getBytes(StandardCharsets.UTF_8));
+            enc.complete();
+        }
+        file.write('x');
+        ByteArrayOutputStream seen = new ByteArrayOutputStream();
+        try (SecretStreamDecryptor dec = new SecretStreamDecryptor(key, new ByteArrayInputStream(file.toByteArray()))) {
+            byte[] buf = new byte[100];
+            DstuException e = assertThrows(DstuException.class, () -> {
+                int n;
+                while ((n = dec.read(buf)) != -1) {
+                    seen.write(buf, 0, n);
+                }
+            });
+            assertTrue(e.getMessage().contains("trailing data"), e.getMessage());
+        }
+        assertEquals(8192, seen.size());
     }
 }
