@@ -67,7 +67,8 @@ cat report.pdf | uacrypt hash --in -          # prints "<hex>  -"
 - `--force` with `--out -` is a usage error: there is no file to replace.
 - **`decrypt --out -` can print part of a message.** Each chunk is written once its tag verifies,
   so nothing unauthenticated is ever printed, but a stream cut short or tampered with halfway
-  prints its verified beginning before the error. The error then ends with "the output already
+  prints its verified beginning before the error. The last chunk is printed only once the input
+  is known to end right after it, so a file with extra bytes appended never prints its end. The error then ends with "the output already
   written to stdout is INCOMPLETE - discard it", and the exit status is non-zero (1 for a bad
   file, 3 if stdout itself failed). Check it: in a shell pipeline such as `... --out - | tar x`
   the pipeline's status is `tar`'s unless you `set -o pipefail`. With `--out <file>` nothing is

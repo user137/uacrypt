@@ -776,6 +776,28 @@ impl From<dstu_core::hazmat::kalyna_ccm::CcmError> for CliError {
     }
 }
 
+impl From<dstu_core::crypto_secretstream::FileError> for CliError {
+    fn from(err: dstu_core::crypto_secretstream::FileError) -> Self {
+        use dstu_core::crypto_secretstream::FileError;
+        match err {
+            FileError::UnsupportedVersion(v) => Self::SecretstreamUnsupportedVersion(v),
+            FileError::Truncated => Self::SecretstreamTruncated,
+            FileError::ChunkTooLarge(_) => Self::SecretstreamChunkTooLarge,
+            FileError::BadChunkLength(_) => Self::SecretstreamBadChunkLength,
+            FileError::UnknownTag => Self::SecretstreamUnknownTag,
+            FileError::TrailingData => Self::SecretstreamTrailingData,
+            FileError::Auth => Self::SecretstreamVerifyFailed,
+            FileError::Random(e) => Self::Random(e.to_string()),
+            FileError::InvalidLength | FileError::Finished | FileError::CounterExhausted => {
+                unreachable!(
+                    "uacrypt feeds exactly next_len() bytes into CHUNK_BYTES buffers, stops at \
+                     the first error or finish, and cannot reach 2^64 - 1 chunks of 8 KiB"
+                )
+            }
+        }
+    }
+}
+
 impl From<dstu_core::crypto_secretstream::SecretstreamError> for CliError {
     fn from(err: dstu_core::crypto_secretstream::SecretstreamError) -> Self {
         use dstu_core::crypto_secretstream::SecretstreamError;
@@ -2043,15 +2065,14 @@ pub fn run_xts_command(decrypt: bool, args: &XtsArgs) -> Result<(), CliError> {
 }
 
 const SECRETSTREAM_KEY_LEN: usize = 32;
+#[cfg(test)]
 const SECRETSTREAM_HEADER_LEN: usize = 32;
+#[cfg(test)]
 const SECRETSTREAM_TAG_LEN: usize = 16;
 
-/// Plaintext bytes per record in the `encrypt` file format. It is part of the wire format (D-208):
-/// every non-`Final` record is exactly this long and the `Final` one at most this long, `decrypt`
-/// rejects anything else, and the 8 language bindings' readers and writers use the same number.
-/// Changing it therefore needs a new format version, not just a rebuild. It also bounds peak
-/// memory on both sides, independent of `--in`'s size (D-42).
-const SECRETSTREAM_CHUNK_BYTES: usize = 8 * 1024;
+/// Plaintext bytes per record in the `encrypt` file format (D-208), owned by the core codec
+/// (T-284). It also bounds peak memory on both sides, independent of `--in`'s size (D-42).
+const SECRETSTREAM_CHUNK_BYTES: usize = dstu_core::crypto_secretstream::CHUNK_BYTES;
 
 /// What `encrypt`/`decrypt` derive the stream key from (T-262, `docs/DECISIONS.md` D-219).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -2720,45 +2741,37 @@ fn write_secretstream_file(
     source: &Source,
     out: &mut impl WriteOutput,
 ) -> Result<(), CliError> {
-    use dstu_core::crypto_secretstream::{PushState, Tag, FORMAT_VERSION};
+    use dstu_core::crypto_secretstream::{FileEncryptor, CHUNK_BYTES, MAX_RECORD_BYTES};
 
-    let (mut push, header) = PushState::init(key)?;
-    out.write_all(&[FORMAT_VERSION])?;
-    out.write_all(&header)?;
+    let (mut enc, prefix) = FileEncryptor::init(key)?;
+    out.write_all(&prefix)?;
 
     let mut read_chunk = |buf: &mut [u8]| -> Result<usize, CliError> {
         fill_chunk(input, buf).map_err(|e| source.io_error(&e))
     };
 
-    let mut cur = vec![0u8; SECRETSTREAM_CHUNK_BYTES];
+    let mut record = vec![0u8; MAX_RECORD_BYTES];
+    let mut cur = vec![0u8; CHUNK_BYTES];
     let mut cur_len = read_chunk(&mut cur)?;
     loop {
-        let mut next = vec![0u8; SECRETSTREAM_CHUNK_BYTES];
+        let mut next = vec![0u8; CHUNK_BYTES];
         let next_len = read_chunk(&mut next)?;
-        let tag = if next_len == 0 {
-            Tag::Final
-        } else {
-            Tag::Message
-        };
-
-        let mut ciphertext = vec![0u8; cur_len];
-        let auth_tag = push.push(tag, &cur[..cur_len], &mut ciphertext)?;
-
-        #[allow(clippy::cast_possible_truncation)]
-        // cur_len <= SECRETSTREAM_CHUNK_BYTES, always << u32::MAX
-        let chunk_len = cur_len as u32;
-        out.write_all(&[tag.to_byte()])?;
-        out.write_all(&chunk_len.to_le_bytes())?;
-        out.write_all(&ciphertext)?;
-        out.write_all(&auth_tag)?;
-
         if next_len == 0 {
-            break;
+            let n = enc.seal_final(&cur[..cur_len], &mut record)?;
+            out.write_all(&record[..n])?;
+            return Ok(());
         }
+        let (Ok(chunk), Ok(full_record)) = (
+            <&[u8; CHUNK_BYTES]>::try_from(&cur[..cur_len]),
+            <&mut [u8; MAX_RECORD_BYTES]>::try_from(record.as_mut_slice()),
+        ) else {
+            unreachable!("fill_chunk returns a short chunk only at the end of the input")
+        };
+        enc.seal_chunk(chunk, full_record)?;
+        out.write_all(&record)?;
         cur = next;
         cur_len = next_len;
     }
-    Ok(())
 }
 
 /// The stream key `encrypt`/`decrypt` use, once `--key` or `--passphrase-file` is read.
@@ -2867,50 +2880,23 @@ fn decrypt_stream_records(
     source: &Source,
     out: &mut Output,
 ) -> Result<(), CliError> {
-    use dstu_core::crypto_secretstream::{PullState, Tag};
+    use dstu_core::crypto_secretstream::{FileDecryptor, CHUNK_BYTES, MAX_RECORD_BYTES};
 
-    if version != dstu_core::crypto_secretstream::FORMAT_VERSION {
-        return Err(CliError::SecretstreamUnsupportedVersion(version));
-    }
-    let mut header = [0u8; SECRETSTREAM_HEADER_LEN];
-    read_exact_or_truncated(in_file, &mut header, source)?;
-    let mut pull = PullState::init(key, &header);
-
+    let mut dec = FileDecryptor::new(key);
+    let mut plaintext = vec![0u8; CHUNK_BYTES];
+    let mut buf = vec![0u8; MAX_RECORD_BYTES];
+    dec.feed(&[version], &mut plaintext)?;
     loop {
-        let mut prefix = [0u8; 5];
-        read_exact_or_truncated(in_file, &mut prefix, source)?;
-        let tag_byte = prefix[0];
-        let chunk_len = u32::from_le_bytes([prefix[1], prefix[2], prefix[3], prefix[4]]) as usize;
-        if chunk_len > SECRETSTREAM_CHUNK_BYTES {
-            return Err(CliError::SecretstreamChunkTooLarge);
+        let want = dec.next_len();
+        let got = fill_chunk(in_file, &mut buf[..want]).map_err(|e| source.io_error(&e))?;
+        if got < want {
+            let n = dec.finish(&mut plaintext)?;
+            out.write_all(&plaintext[..n])?;
+            return Ok(());
         }
-        let Some(declared) = Tag::from_byte(tag_byte) else {
-            return Err(CliError::SecretstreamUnknownTag);
-        };
-        if declared != Tag::Final && chunk_len != SECRETSTREAM_CHUNK_BYTES {
-            return Err(CliError::SecretstreamBadChunkLength);
-        }
-
-        let mut ciphertext = vec![0u8; chunk_len];
-        read_exact_or_truncated(in_file, &mut ciphertext, source)?;
-        let mut auth_tag = [0u8; SECRETSTREAM_TAG_LEN];
-        read_exact_or_truncated(in_file, &mut auth_tag, source)?;
-
-        let mut plaintext = vec![0u8; chunk_len];
-        let tag = pull.pull(tag_byte, &ciphertext, &auth_tag, &mut plaintext)?;
-        out.write_all(&plaintext)?;
-
-        if tag == Tag::Final {
-            break;
-        }
+        let n = dec.feed(&buf[..want], &mut plaintext)?;
+        out.write_all(&plaintext[..n])?;
     }
-
-    let mut probe = [0u8; 1];
-    let trailing = in_file.read(&mut probe).map_err(|e| source.io_error(&e))?;
-    if trailing != 0 {
-        return Err(CliError::SecretstreamTrailingData);
-    }
-    Ok(())
 }
 
 /// Runs `encrypt`/`decrypt` over `dstu_core::crypto_secretstream` (T-40/T-70, `docs/DECISIONS.md` D-68 -

@@ -311,12 +311,13 @@ fn a_failing_decrypt_to_stdout_prints_only_verified_chunks_and_says_incomplete()
     assert_eq!(r.stdout, &plain[..CHUNK]);
     assert!(r.stderr.contains("INCOMPLETE"), "{}", r.stderr);
 
-    // Trailing bytes after Final: everything was printed, and it still says discard it.
+    // Trailing bytes after Final: the Final chunk is held until the input is known to end there
+    // (T-284), so only the three full chunks were printed, and it says discard them.
     let mut trailing = ct.clone();
     trailing.push(0);
     let r = decrypt(&trailing, "k.key");
     assert_eq!(r.code, Some(1), "{}", r.stderr);
-    assert_eq!(r.stdout, plain);
+    assert_eq!(r.stdout, &plain[..3 * CHUNK]);
     assert!(r.stderr.contains("INCOMPLETE"), "{}", r.stderr);
 
     // Nothing verifies under the wrong key: empty stdout and no INCOMPLETE.
