@@ -28,6 +28,8 @@ all-features = true
 default = ["std"]
 std = ["getrandom"]
 getrandom = ["dep:getrandom"]
+# Reserved (T-281, docs/DECISIONS.md D-220 O-D): enables nothing today. Every allocating API is
+# under `std`. Kept so a build that already names it keeps working.
 alloc = []
 # Resource profile for constrained targets (docs/DECISIONS.md D-35/D-38): swaps the fused S-box+MDS
 # lookup tables (~86 KB of `const` data) for the pre-D-26/D-27 gf_mul-based path (~6 KB) at the

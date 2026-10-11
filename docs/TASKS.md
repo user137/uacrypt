@@ -9510,7 +9510,7 @@ points at the machine state rather than a GCM-specific regression, but that is n
 
 ### Binding correctness
 
-- [ ] **T-274** (Medium, arch - error path, **Confirmed**; depends: none) PHP `DstuCoreSecretStreamWriter` never checks
+- [x] **T-274** (Medium, arch - error path, **Confirmed**; depends: none) **Done 2026-10-11 (D-235):** every `fwrite` checked, a failed or short write throws; tests with a read-only sink and a short-write stream wrapper (Pi). PHP `DstuCoreSecretStreamWriter` never checks
   `fwrite()`'s return value: the header write in `__construct` and the four writes in `pushChunk`
   (`bindings/php/lib/DstuCoreSecretStream.php`, lines 121-124 in the synced copy). A failed or short
   write only raises `E_NOTICE`, and `write()`/`close()` return normally. The caller believes the
@@ -9527,8 +9527,8 @@ points at the machine state rather than a GCM-specific regression, but that is n
   - Tests: Error path (read-only stream, and a user stream wrapper whose `stream_write` returns 0)
     raises and writes no `Final`; happy path unchanged. Effort S. Do it with T-276's PHP half (same
     file).
-- [ ] **T-275** (Medium, arch - API/error path, **Confirmed**; depends: O-F for the `close()`
-  half only) Java `SecretStreamEncryptor.complete()` never flushes its sink, and `close()`
+- [x] **T-275** (Medium, arch - API/error path, **Confirmed**; depends: O-F for the `close()`
+  half only) **Done 2026-10-11 (D-235, O-F):** `complete()` flushes, `close()` closes the sink/source without finalizing; Java package 0.2.0; the buffered-sink recipe and a failing `flush()` are tests. Java `SecretStreamEncryptor.complete()` never flushes its sink, and `close()`
   neither flushes nor closes it
   (`bindings/java/src/main/java/ua/dstucrypto/dstucore/SecretStreamEncryptor.java:101`
   `complete()`, `:112` `close()`). So the natural
@@ -9555,7 +9555,7 @@ points at the machine state rather than a GCM-specific regression, but that is n
   - Tests: the recipe above as a regression test (bytes on disk == complete length, decrypt
     succeeds); Error path (a sink whose `flush()` throws surfaces from `complete()`). Effort S. Do it
     with T-276's Java half.
-- [ ] **T-276** (Medium, perf, **Confirmed**; depends: none) Quadratic write buffering in the
+- [x] **T-276** (Medium, perf, **Confirmed**; depends: none) **Done 2026-10-11 (D-235):** offset-based chunking in every writer (Python and Ruby had the same shape); Java 64 MiB in ~1 s, PHP 16 MiB 232 ms on the Pi release build (was 5245 ms). Quadratic write buffering in the
   Java and PHP stream writers (Java: the same jar as T-275; PHP: the Pi copy, md5-matched).
   - Java `write(byte[], int, int)` runs `buffer.toByteArray()` plus two `Arrays.copyOfRange` plus a
     rewrite of the remainder for every 8 KiB it emits. PHP `write()` runs `substr($this->buf, 8192)`
@@ -9668,7 +9668,7 @@ points at the machine state rather than a GCM-specific regression, but that is n
   - (e) `crypto_pwhash::Strength::params`'s doc says "an invalid preset would be a compile-time
     error". It is a `const fn` called at run time; make that true with `const _: () = { ... }`
     assertions for the three presets, or correct the sentence. Effort S.
-- [ ] **T-281** (Low, arch, **Confirmed** by grep; depends: O-D) The public `alloc` Cargo
+- [x] **T-281** (Low, arch, **Confirmed** by grep; depends: O-D) **Done 2026-10-11 (O-D):** `Cargo.toml`, `CLAUDE.md` and README say `alloc` is a reserved no-op. The public `alloc` Cargo
   feature (`crates/dstu-core/Cargo.toml`,
   `alloc = []`) does nothing: no `cfg(feature = "alloc")` exists anywhere in `crates/dstu-core/src`.
   `CLAUDE.md` still presents `std`/`alloc`/`no_std` as the feature set (D-01).
@@ -9687,8 +9687,8 @@ points at the machine state rather than a GCM-specific regression, but that is n
   - Direction: mask form (`let mask = 0u64.wrapping_sub(top_bit)`, XOR the constant under `mask`);
     re-check the asm on x86_64 and `thumbv7em-none-eabihf`.
   - Tests: the existing `double_matches_general_multiply_by_two` proptest and XTS KATs. Effort S.
-- [ ] **T-283** (Low, arch - bounds hygiene, **Confirmed** by reading, unreachable in practice;
-  depends: none) Bit-length conversions `(len as u64) * 8` are unchecked:
+- [x] **T-283** (Low, arch - bounds hygiene, **Confirmed** by reading, unreachable in practice;
+  depends: none) **Done 2026-10-11:** GCM/GMAC use `hazmat::checked_bit_len` (`None` past 2^61-1 bytes -> the existing `InvalidLength`, checked before any output; unit-tested); Kupyna and KMAC compute the 96-bit length field in `u128`, so the multiply cannot overflow and the field is now exact to the standard's limit. The stale `#[allow]`s are gone. Bit-length conversions `(len as u64) * 8` are unchecked:
   `kalyna_gcm.rs:148,150`, `kalyna_gmac.rs:109`, `kupyna_kmac.rs:51,64`, and `KupynaCore::finalize`'s
   `self.total_len * 8`.
   - They overflow only past 2^61 bytes, which is not reachable in practice, but that is not provable
@@ -9864,7 +9864,7 @@ points at the machine state rather than a GCM-specific regression, but that is n
 
 ### Architecture (owner decision first)
 
-- [ ] **T-284** (Medium, arch, **Confirmed** by reading all 9 copies; depends: O-C, T-277) The stream-file framing is implemented 9 times: uacrypt's
+- [x] **T-284** (Medium, arch, **Confirmed** by reading all 9 copies; depends: O-C, T-277) **Done 2026-10-11 (D-235):** core codec + capi, uacrypt and all 8 bindings on it, fuzz target `crypto_secretstream_file`; Pi step 10 for every binding. The stream-file framing is implemented 9 times: uacrypt's
   `write_secretstream_file`/`decrypt_stream_records` plus one writer and one reader per binding.
   That framing is the version byte, header, `tag || len_le32 || ct || tag16` records, the
   exact-8192 non-final rule, the length bound, the missing-`Final` check and the trailing-data

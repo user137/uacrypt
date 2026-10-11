@@ -45,6 +45,10 @@ All notable changes to this project are documented in this file. Format follows
   lengths, no `Final`, cuts inside a record, an unknown tag, a tampered tag.
 - The Java leak test measures native memory only (T-231, D-234); the slowest Miri file runs as 6
   shards (T-296).
+- Bit-length arithmetic is overflow-checked (T-283): Kalyna GCM/GMAC refuse a length past
+  2^61 - 1 bytes with `InvalidLength`; Kupyna and Kupyna-KMAC compute the 96-bit length field in
+  `u128`. No real input reaches either bound.
+- The `alloc` feature is documented as reserved: it enables nothing (T-281).
 
 ## [0.5.0] - 2026-10-09
 

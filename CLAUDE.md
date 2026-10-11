@@ -51,7 +51,7 @@ just the modules that existed when each binding first landed. **`crypto_box512`/
 (below, T-193/T-199) were added to all eight bindings plus `dstu-core-capi` 2026-08-09/10, T-204**
 — every binding wraps the full `crypto_*` surface again as of that date.
 
-**`crates/dstu-core`** — the library (`std`/`alloc`/`no_std` feature flags, D-01). All primitives
+**`crates/dstu-core`** — the library (`std`/`no_std`, D-01; `alloc` is a reserved no-op, T-281). All primitives
 below are test-first and pass `cargo test`/`clippy -D warnings`/`fmt --check`/the `no_std` build/
 `cargo miri test`. For full history and rationale of any item below, its cited `T-XX`/`D-XX` is the
 canonical source (`docs/TASKS.md`/`docs/DECISIONS.md`) — this section states current state only.
@@ -119,8 +119,8 @@ canonical source (`docs/TASKS.md`/`docs/DECISIONS.md`) — this section states c
     not `seal`/`open` (T-106/D-67).
   - `crypto_secretstream` (`PushState`/`PullState`/`Key`/`Tag`) — chunked AEAD, chunk AAD
     `counter||tag||ct_len` (D-200), 16-byte tag only (T-238), versioned header-derived subkeys +
-    one-way `Rekey`; stream file = version byte + exact 8 KiB non-final records, shared vectors
-    (D-208); no oracle: property/tamper tests (T-40/T-70/D-68).
+    one-way `Rekey`; stream file (D-208) = one codec, `FileEncryptor`/`FileDecryptor` (+ capi),
+    that uacrypt and all 8 bindings drive (T-284/D-235); no oracle: property/tamper tests.
   - `crypto_box` (`seal`/`open`/`SecretKey`/`PublicKey`) — public-key encryption over
     `hazmat::dstu9041` (`l(p)=256`), hybrid via KDF (a random seed sealed asymmetrically,
     keyed into `Kupyna256Kmac` over `kem_ct||recipient_pk` (D-201), then secretstream encrypts);

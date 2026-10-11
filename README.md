@@ -91,7 +91,8 @@ those three. See `docs/bindings-strategy.md` for the per-binding design rational
 
 ## Embedded / `no_std` targets
 
-`dstu-core` is `no_std`-compatible from day one (`std`/`alloc`/`no_std` feature flags), and
+`dstu-core` is `no_std`-compatible from day one (`std` on by default, off for `no_std`; the `alloc`
+feature is reserved and enables nothing yet), and
 cross-compiles clean for real microcontroller targets (STM32 Cortex-M, ESP32-class RISC-V) with no
 custom toolchain. That's a compilation claim, not a real-hardware validation or a side-channel
 resistance claim — see `docs/SECURITY.md` for the full threat model.
