@@ -13,7 +13,10 @@ use ext_php_rs::{
 };
 
 use crate::{error::IntoDstuException, util::to_array};
-use dstu_core::crypto_secretstream::{Key, PullState, PushState, Tag};
+use dstu_core::crypto_secretstream::{
+    FileDecryptor, FileEncryptor, Key, PullState, PushState, Tag, CHUNK_BYTES, FILE_PREFIX_BYTES,
+    MAX_RECORD_BYTES,
+};
 
 fn tag_from_byte(byte: u8) -> Result<Tag, PhpException> {
     Tag::from_byte(byte).ok_or_else(|| {
@@ -122,6 +125,84 @@ impl SecretStreamPullState {
     }
 }
 
+/// Stream-file writer (T-284): the D-208 framing from the core codec.
+/// `lib/DstuCoreSecretStream.php`'s `DstuCoreSecretStreamWriter` drives it and does only I/O.
+#[php_class]
+#[php(name = "DstuCoreSecretStreamFileEncryptor")]
+pub struct SecretStreamFileEncryptor(RefCell<FileEncryptor>, [u8; FILE_PREFIX_BYTES]);
+
+#[php_impl]
+#[php(change_method_case = "snake_case")]
+impl SecretStreamFileEncryptor {
+    pub fn __construct(key: Binary<u8>) -> Result<Self, PhpException> {
+        let key = Key::from_bytes(to_array::<32>(&key, "key")?);
+        let (inner, prefix) = FileEncryptor::init(&key).dstu()?;
+        Ok(Self(RefCell::new(inner), prefix))
+    }
+
+    /// The format version byte and header - write these first.
+    pub fn prefix(&self) -> Binary<u8> {
+        Binary::from(self.1.to_vec())
+    }
+
+    /// Seals exactly `CHUNK_BYTES` bytes as one non-final record.
+    pub fn seal_chunk(&self, chunk: Binary<u8>) -> Result<Binary<u8>, PhpException> {
+        let chunk = to_array::<CHUNK_BYTES>(&chunk, "chunk")?;
+        let mut record = vec![0u8; MAX_RECORD_BYTES];
+        let Ok(out) = <&mut [u8; MAX_RECORD_BYTES]>::try_from(record.as_mut_slice()) else {
+            unreachable!("record is MAX_RECORD_BYTES long")
+        };
+        self.0.borrow_mut().seal_chunk(&chunk, out).dstu()?;
+        Ok(Binary::from(record))
+    }
+
+    /// Seals the last `0..=CHUNK_BYTES` bytes as the `Final` record.
+    pub fn seal_final(&self, last: Binary<u8>) -> Result<Binary<u8>, PhpException> {
+        let mut record = vec![0u8; MAX_RECORD_BYTES];
+        let n = self.0.borrow_mut().seal_final(&last, &mut record).dstu()?;
+        record.truncate(n);
+        Ok(Binary::from(record))
+    }
+}
+
+/// Stream-file reader (T-284): feed exactly `next_len()` bytes at a time; at end of input call
+/// `finish()`. Throws `DstuCoreException` with the core's message on any format or
+/// authentication error.
+#[php_class]
+#[php(name = "DstuCoreSecretStreamFileDecryptor")]
+pub struct SecretStreamFileDecryptor(RefCell<FileDecryptor>);
+
+#[php_impl]
+#[php(change_method_case = "snake_case")]
+impl SecretStreamFileDecryptor {
+    pub fn __construct(key: Binary<u8>) -> Result<Self, PhpException> {
+        let key = Key::from_bytes(to_array::<32>(&key, "key")?);
+        Ok(Self(RefCell::new(FileDecryptor::new(&key))))
+    }
+
+    pub fn next_len(&self) -> u32 {
+        // At most CHUNK_BYTES + 16.
+        u32::try_from(self.0.borrow().next_len()).unwrap_or(u32::MAX)
+    }
+
+    /// Consumes exactly `next_len()` bytes; returns the plaintext of a verified non-final record,
+    /// else an empty string.
+    pub fn feed(&self, data: Binary<u8>) -> Result<Binary<u8>, PhpException> {
+        let mut plaintext = vec![0u8; CHUNK_BYTES];
+        let n = self.0.borrow_mut().feed(&data, &mut plaintext).dstu()?;
+        plaintext.truncate(n);
+        Ok(Binary::from(plaintext))
+    }
+
+    /// End of input: returns the `Final` chunk's plaintext, or throws if the stream is truncated.
+    pub fn finish(&self) -> Result<Binary<u8>, PhpException> {
+        let mut plaintext = vec![0u8; CHUNK_BYTES];
+        let n = self.0.borrow_mut().finish(&mut plaintext).dstu()?;
+        plaintext.truncate(n);
+        Ok(Binary::from(plaintext))
+    }
+}
+
 /// Registers this module's functions and classes - see `secretbox::register`'s doc comment for
 /// why each module registers its own functions.
 pub fn register(module: ModuleBuilder) -> ModuleBuilder {
@@ -129,4 +210,6 @@ pub fn register(module: ModuleBuilder) -> ModuleBuilder {
         .function(wrap_function!(dstu_core_secretstream_keygen))
         .class::<SecretStreamPushState>()
         .class::<SecretStreamPullState>()
+        .class::<SecretStreamFileEncryptor>()
+        .class::<SecretStreamFileDecryptor>()
 }

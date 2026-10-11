@@ -68,6 +68,48 @@ class DstuCoreSecretStreamPullState
     }
 }
 
+/** Stream-file writer (T-284): the core codec's framing. */
+class DstuCoreSecretStreamFileEncryptor
+{
+    public function __construct(string $key) {}
+
+    public function prefix(): string
+    {
+        return '';
+    }
+
+    public function seal_chunk(string $chunk): string
+    {
+        return '';
+    }
+
+    public function seal_final(string $last): string
+    {
+        return '';
+    }
+}
+
+/** Stream-file reader (T-284): feed next_len() bytes at a time, finish() at end of input. */
+class DstuCoreSecretStreamFileDecryptor
+{
+    public function __construct(string $key) {}
+
+    public function next_len(): int
+    {
+        return 0;
+    }
+
+    public function feed(string $data): string
+    {
+        return '';
+    }
+
+    public function finish(): string
+    {
+        return '';
+    }
+}
+
 // --- crypto_sign (DSTU 4145 m=163) ---
 function dstu_core_sign_keygen(): string {}
 function dstu_core_sign_verifying_key(string $signing_key): string {}

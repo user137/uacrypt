@@ -5,8 +5,9 @@ declare(strict_types=1);
 /**
  * `crypto_secretstream` idiomatic wrapper (docs/DECISIONS.md D-118, D-143;
  * docs/bindings-strategy.md T-159 step 3) - hides chunk/tag/header bookkeeping behind
- * write()/read(), built in pure PHP on top of the low-level DstuCoreSecretStreamPushState/
- * PullState the compiled extension already exposes (step 2), rather than new Rust glue.
+ * write()/read(). The framing itself (record layout, length rules, Final, trailing data) is
+ * dstu-core's stream-file codec, exposed as DstuCoreSecretStreamFileEncryptor/
+ * DstuCoreSecretStreamFileDecryptor (T-284); this file does only I/O.
  *
  * A native PHP stream filter (`stream_filter_register`/`php_user_filter`) was investigated
  * first (docs/DECISIONS.md D-143 has the detail) and rejected: that framework has no clean hook
@@ -42,7 +43,7 @@ final class DstuCoreSecretStreamWriter
 
     /** @var resource */
     private $out;
-    private DstuCoreSecretStreamPushState $push;
+    private DstuCoreSecretStreamFileEncryptor $enc;
     private string $buf = '';
     private bool $closed = false;
 
@@ -50,8 +51,8 @@ final class DstuCoreSecretStreamWriter
     public function __construct($key, $out)
     {
         $this->out = $out;
-        $this->push = new DstuCoreSecretStreamPushState($key);
-        fwrite($this->out, chr(self::FORMAT_VERSION) . $this->push->header());
+        $this->enc = new DstuCoreSecretStreamFileEncryptor($key);
+        $this->writeAll($this->enc->prefix());
     }
 
     /**
@@ -80,10 +81,11 @@ final class DstuCoreSecretStreamWriter
     }
 
     /**
-     * Buffers $data, pushing any now-complete 8 KiB chunks immediately. The trailing partial (or
-     * exactly-8-KiB) chunk is always held back until close(), since only close() knows no more
-     * data is coming - the same one-chunk-ahead reasoning `uacrypt encrypt` itself uses to tag the
-     * true last chunk Final, not an extra empty one after it.
+     * Buffers $data, sealing every full 8 KiB chunk that is certain not to be the last one. The
+     * trailing partial (or exactly-8-KiB) chunk is held back until close(), since only close()
+     * knows no more data is coming - an exact multiple of 8 KiB must end in a full Final record
+     * (D-208). Full chunks are cut from $data by offset, so one large write costs linear time
+     * (T-276).
      */
     public function write(string $data): int
     {
@@ -91,17 +93,19 @@ final class DstuCoreSecretStreamWriter
             dstu_core_throw_error('cannot write to a closed stream');
         }
 
-        $this->buf .= $data;
-        while (strlen($this->buf) > self::CHUNK_BYTES) {
-            $this->pushChunk(DSTU_CORE_SECRETSTREAM_TAG_MESSAGE, substr($this->buf, 0, self::CHUNK_BYTES));
-            $this->buf = substr($this->buf, self::CHUNK_BYTES);
+        $size = strlen($data);
+        $pos = $this->topUpBuffer($data);
+        while ($size - $pos > self::CHUNK_BYTES) {
+            $this->writeAll($this->enc->seal_chunk(substr($data, $pos, self::CHUNK_BYTES)));
+            $pos += self::CHUNK_BYTES;
         }
+        $this->buf .= substr($data, $pos);
 
-        return strlen($data);
+        return $size;
     }
 
     /**
-     * Flushes any buffered bytes as the stream's Final chunk. Idempotent - safe to call more than
+     * Writes any buffered bytes as the stream's Final record. Idempotent - safe to call more than
      * once, matching normal PHP resource-close semantics.
      */
     public function close(): void
@@ -110,18 +114,44 @@ final class DstuCoreSecretStreamWriter
             return;
         }
 
-        $this->pushChunk(DSTU_CORE_SECRETSTREAM_TAG_FINAL, $this->buf);
+        $this->writeAll($this->enc->seal_final($this->buf));
         $this->buf = '';
         $this->closed = true;
     }
 
-    private function pushChunk(int $tag, string $data): void
+    /**
+     * Adds $data to the held-back chunk if it all fits; otherwise tops that chunk up to a full one
+     * and seals it, since more data follows. Returns how many bytes of $data it consumed.
+     */
+    private function topUpBuffer(string $data): int
     {
-        [$ciphertext, $authTag] = $this->push->push($tag, $data);
-        fwrite($this->out, pack('C', $tag));
-        fwrite($this->out, pack('V', strlen($data)));
-        fwrite($this->out, $ciphertext);
-        fwrite($this->out, $authTag);
+        if ($this->buf === '') {
+            return 0;
+        }
+        if (strlen($this->buf) + strlen($data) <= self::CHUNK_BYTES) {
+            $this->buf .= $data;
+
+            return strlen($data);
+        }
+        $taken = self::CHUNK_BYTES - strlen($this->buf);
+        $this->writeAll($this->enc->seal_chunk($this->buf . substr($data, 0, $taken)));
+        $this->buf = '';
+
+        return $taken;
+    }
+
+    /**
+     * T-274: a failed or short write throws instead of leaving a corrupt stream behind a normal
+     * return (fwrite() alone only raises a notice). The notice itself is suppressed: this
+     * exception replaces it. Nothing more is written after a failure, so no Final follows it.
+     */
+    private function writeAll(string $bytes): void
+    {
+        $written = @fwrite($this->out, $bytes);
+        if ($written !== strlen($bytes)) {
+            $got = $written === false ? 'failed' : "wrote {$written} of " . strlen($bytes) . ' bytes';
+            dstu_core_throw_error("secretstream: write to the output stream {$got}");
+        }
     }
 }
 
@@ -141,11 +171,9 @@ final class DstuCoreSecretStreamWriter
  */
 final class DstuCoreSecretStreamReader implements Iterator
 {
-    private const AUTH_TAG_BYTES = 16;
-
     /** @var resource */
     private $inp;
-    private DstuCoreSecretStreamPullState $pull;
+    private DstuCoreSecretStreamFileDecryptor $dec;
     private bool $done = false;
     private bool $started = false;
     private bool $hasCurrent = false;
@@ -156,14 +184,10 @@ final class DstuCoreSecretStreamReader implements Iterator
     public function __construct($key, $inp)
     {
         $this->inp = $inp;
-        $version = ord($this->readExact(1, 'format version'));
-        if ($version !== DstuCoreSecretStreamWriter::FORMAT_VERSION) {
-            dstu_core_throw_error(
-                "unsupported stream format version {$version} (this build reads " . DstuCoreSecretStreamWriter::FORMAT_VERSION . ')'
-            );
-        }
-        $header = $this->readExact(32, 'header');
-        $this->pull = new DstuCoreSecretStreamPullState($key, $header);
+        $this->dec = new DstuCoreSecretStreamFileDecryptor($key);
+        // The version byte and header, read now so a wrong version fails at construction.
+        $this->step();
+        $this->step();
     }
 
     /** @param resource $inp */
@@ -213,73 +237,46 @@ final class DstuCoreSecretStreamReader implements Iterator
         $this->advance();
     }
 
-    // Yields the current chunk, marking `$done` on the *same* call that yields the Final chunk -
-    // `hasCurrent` stays true for that last chunk so `foreach` still processes it; only the
-    // *following* `advance()` call (triggered by `foreach`'s own `next()`) sees `$done` and clears
-    // `hasCurrent`, ending iteration. Standard forward-only-iterator shape.
+    // Steps the codec until a read releases plaintext, or the stream ends. `hasCurrent` stays true
+    // for the last chunk so `foreach` still processes it; the following advance() sees `$done`
+    // and ends iteration.
     private function advance(): void
     {
-        if ($this->done) {
-            $this->hasCurrent = false;
-            $this->current = null;
+        while (!$this->done) {
+            $plaintext = $this->step();
+            if ($plaintext !== '') {
+                $this->index++;
+                $this->current = $plaintext;
+                $this->hasCurrent = true;
 
-            return;
-        }
-
-        $tagByte = ord($this->readExact(1, 'chunk tag'));
-        $chunkLen = unpack('V', $this->readExact(4, 'chunk length'))[1];
-        // $chunkLen is untrusted wire input, read before any tag verification - reject an
-        // oversized declared length before acting on it (matches `uacrypt decrypt`'s own
-        // CliError::SecretstreamChunkTooLarge bound, crates/uacrypt/src/lib.rs).
-        if ($chunkLen > DstuCoreSecretStreamWriter::CHUNK_BYTES) {
-            dstu_core_throw_error(
-                "secretstream chunk too large: declared {$chunkLen} bytes, max " . DstuCoreSecretStreamWriter::CHUNK_BYTES
-            );
-        }
-        if ($tagByte !== DSTU_CORE_SECRETSTREAM_TAG_FINAL && $chunkLen !== DstuCoreSecretStreamWriter::CHUNK_BYTES) {
-            dstu_core_throw_error(
-                "non-final chunk of {$chunkLen} bytes, must be exactly " . DstuCoreSecretStreamWriter::CHUNK_BYTES . ' (D-208)'
-            );
-        }
-        $ciphertext = $this->readExact($chunkLen, 'chunk ciphertext');
-        $authTag = $this->readExact(self::AUTH_TAG_BYTES, 'chunk auth tag');
-        [$tag, $plaintext] = $this->pull->pull($tagByte, $ciphertext, $authTag);
-
-        if ($tag === DSTU_CORE_SECRETSTREAM_TAG_FINAL) {
-            // Matches `uacrypt decrypt`'s own CliError::SecretstreamTrailingData check - reject
-            // bytes remaining after Final rather than silently ignoring them. A single fread()
-            // call: EOF returns '' or false, either way meaning "no trailing data."
-            $trailing = fread($this->inp, 1);
-            if ($trailing !== false && $trailing !== '') {
-                dstu_core_throw_error("trailing data after the secretstream's Final chunk");
+                return;
             }
-            $this->done = true;
         }
-
-        $this->index++;
-        $this->current = $plaintext;
-        $this->hasCurrent = true;
+        $this->hasCurrent = false;
+        $this->current = null;
     }
 
-    private function readExact(int $size, string $what): string
+    /**
+     * Feeds the codec one next_len() read: the plaintext that read released (possibly empty), or
+     * at end of input the Final chunk's (after which the stream is done).
+     */
+    private function step(): string
     {
-        if ($size === 0) {
-            return '';
-        }
+        $want = $this->dec->next_len();
         $data = '';
-        $remaining = $size;
-        while ($remaining > 0) {
-            $piece = fread($this->inp, $remaining);
+        while (strlen($data) < $want) {
+            $piece = fread($this->inp, $want - strlen($data));
             if ($piece === false || $piece === '') {
                 break;
             }
             $data .= $piece;
-            $remaining -= strlen($piece);
         }
-        if (strlen($data) !== $size) {
-            dstu_core_throw_error("truncated secretstream: expected {$size} bytes for {$what}, got " . strlen($data));
+        if (strlen($data) < $want) {
+            $this->done = true;
+
+            return $this->dec->finish();
         }
 
-        return $data;
+        return $this->dec->feed($data);
     }
 }

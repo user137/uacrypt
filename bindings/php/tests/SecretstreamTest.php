@@ -232,7 +232,7 @@ final class SecretstreamTest extends TestCase
             'unsupported_version' => '/unsupported stream format version/',
             'bad_chunk_length' => '/non-final chunk/',
             'truncated' => '/truncated/',
-            'auth' => '/./',
+            'auth' => '/authentication failed/',
             'trailing_data' => '/trailing data/',
             'oversized_chunk' => '/chunk too large/',
             'unknown_tag' => '/unrecognized chunk tag/',
@@ -277,5 +277,105 @@ final class SecretstreamTest extends TestCase
         $writer->close();
         $this->expectException(DstuCoreException::class);
         $writer->write('more data');
+    }
+
+    /** T-274: a sink that refuses writes makes the writer throw, not return normally. */
+    public function testAReadOnlySinkThrows(): void
+    {
+        $path = tempnam(sys_get_temp_dir(), 'dstu');
+        $readOnly = fopen($path, 'rb');
+        try {
+            $this->expectException(DstuCoreException::class);
+            $this->expectExceptionMessageMatches('/write to the output stream/');
+            new DstuCoreSecretStreamWriter(dstu_core_secretstream_keygen(), $readOnly);
+        } finally {
+            fclose($readOnly);
+            unlink($path);
+        }
+    }
+
+    /** T-274: a short write throws and no Final record follows it. */
+    public function testAShortWriteThrowsAndWritesNoFinal(): void
+    {
+        DstuCoreShortWriteStream::$accepted = '';
+        DstuCoreShortWriteStream::$limit = 33;
+        if (!in_array('dstushort', stream_get_wrappers(), true)) {
+            stream_wrapper_register('dstushort', DstuCoreShortWriteStream::class);
+        }
+        $out = fopen('dstushort://sink', 'wb');
+        $writer = new DstuCoreSecretStreamWriter(dstu_core_secretstream_keygen(), $out);
+        try {
+            $writer->write(str_repeat('x', 20000));
+            $this->fail('a short write must throw');
+        } catch (DstuCoreException $e) {
+            $this->assertStringContainsString('write to the output stream', $e->getMessage());
+        }
+        $this->assertSame(33, strlen(DstuCoreShortWriteStream::$accepted));
+    }
+
+    /** T-276 shape: one large write decrypts like many small writes (timing: D-235, release build). */
+    public function testOneLargeWriteEqualsManySmallWrites(): void
+    {
+        $key = dstu_core_secretstream_keygen();
+        $message = random_bytes(3 * DstuCoreSecretStreamWriter::CHUNK_BYTES + 1234);
+        $big = self::memoryStream();
+        DstuCoreSecretStreamWriter::withStream($key, $big, fn ($w) => $w->write($message));
+        $small = self::memoryStream();
+        DstuCoreSecretStreamWriter::withStream($key, $small, function ($w) use ($message) {
+            foreach (str_split($message, 1000) as $piece) {
+                $w->write($piece);
+            }
+        });
+        foreach ([$big, $small] as $file) {
+            rewind($file);
+            $this->assertSame($message, DstuCoreSecretStreamReader::withStream($key, $file, fn ($r) => $r->readAll()));
+        }
+    }
+
+    /** T-284: a stream with trailing data never yields its Final chunk. */
+    public function testTrailingDataNeverYieldsTheFinalChunk(): void
+    {
+        $key = dstu_core_secretstream_keygen();
+        $full = str_repeat('A', DstuCoreSecretStreamWriter::CHUNK_BYTES);
+        $out = self::memoryStream();
+        DstuCoreSecretStreamWriter::withStream($key, $out, fn ($w) => $w->write($full . 'last'));
+        rewind($out);
+        $in = self::memoryStream(stream_get_contents($out) . 'x');
+        $seen = [];
+        try {
+            foreach (new DstuCoreSecretStreamReader($key, $in) as $chunk) {
+                $seen[] = $chunk;
+            }
+            $this->fail('trailing data must be rejected');
+        } catch (DstuCoreException $e) {
+            $this->assertStringContainsString('trailing data', $e->getMessage());
+        }
+        $this->assertSame([$full], $seen);
+    }
+}
+
+/** A stream wrapper that accepts the first $limit bytes, then refuses every write (T-274). */
+final class DstuCoreShortWriteStream
+{
+    public static string $accepted = '';
+    public static int $limit = 0;
+    /** @var resource|null */
+    public $context;
+
+    public function stream_open(string $path, string $mode, int $options, ?string &$openedPath): bool
+    {
+        return true;
+    }
+
+    public function stream_write(string $data): int
+    {
+        $room = self::$limit - strlen(self::$accepted);
+        if ($room <= 0) {
+            return 0;
+        }
+        $taken = substr($data, 0, $room);
+        self::$accepted .= $taken;
+
+        return strlen($taken);
     }
 }
