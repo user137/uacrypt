@@ -240,7 +240,11 @@ public sealed class SecretStreamTests
             "unsupported_version" => "unsupported stream format version",
             "bad_chunk_length" => "non-final chunk",
             "truncated" => "truncated",
-            _ => string.Empty,
+            "trailing_data" => "trailing data",
+            "oversized_chunk" => "exceeds the maximum",
+            "unknown_tag" => "invalid tag byte",
+            "auth" => string.Empty,
+            _ => throw new InvalidOperationException($"unknown expect value {expect}"),
         };
         var ex = Assert.Throws<DstuException>(() =>
         {

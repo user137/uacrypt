@@ -253,7 +253,7 @@ class SecretStreamTest {
         while (m.find()) {
             cases.add(new SharedCase(m.group(1), m.group(2), unhex(m.group(3)), unhex(m.group(4))));
         }
-        assertEquals(7, cases.size(), "shared vector file is incomplete");
+        assertEquals(15, cases.size(), "shared vector file is incomplete");
         return cases;
     }
 
@@ -277,8 +277,16 @@ class SecretStreamTest {
             wanted = "non-final chunk";
         } else if (c.expect.equals("truncated")) {
             wanted = "truncated";
-        } else {
+        } else if (c.expect.equals("trailing_data")) {
+            wanted = "trailing data";
+        } else if (c.expect.equals("oversized_chunk")) {
+            wanted = "chunk too large";
+        } else if (c.expect.equals("unknown_tag")) {
+            wanted = "unrecognized chunk tag";
+        } else if (c.expect.equals("auth")) {
             wanted = "";
+        } else {
+            throw new IllegalStateException("unknown expect value " + c.expect);
         }
         DstuException e = assertThrows(DstuException.class, () -> {
             try (SecretStreamDecryptor dec = new SecretStreamDecryptor(key, new ByteArrayInputStream(c.file))) {

@@ -183,6 +183,9 @@ const EXPECTED_MESSAGE = {
   bad_chunk_length: /non-final chunk/,
   truncated: /truncated/,
   auth: /./,
+  trailing_data: /trailing data/,
+  oversized_chunk: /chunk too large/,
+  unknown_tag: /unrecognized chunk tag/,
 };
 
 for (const c of SHARED_VECTORS.cases) {
@@ -192,6 +195,7 @@ for (const c of SHARED_VECTORS.cases) {
     if (c.expect === 'ok') {
       assert.deepStrictEqual(await decryptAll(key, file), Buffer.from(c.plaintext_hex, 'hex'));
     } else {
+      assert.ok(EXPECTED_MESSAGE[c.expect], `unknown expect value ${c.expect}`);
       await assert.rejects(() => decryptAll(key, file), EXPECTED_MESSAGE[c.expect]);
     }
   });

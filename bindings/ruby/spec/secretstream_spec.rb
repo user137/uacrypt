@@ -157,7 +157,10 @@ RSpec.describe "DstuCore secretstream" do
     "unsupported_version" => /unsupported stream format version/,
     "bad_chunk_length" => /non-final chunk/,
     "truncated" => /truncated/,
-    "auth" => /./
+    "auth" => /./,
+    "trailing_data" => /trailing data/,
+    "oversized_chunk" => /chunk too large/,
+    "unknown_tag" => /unrecognized chunk tag/
   }
   shared["cases"].each do |c|
     it "handles the shared stream-file vector #{c['name']}" do

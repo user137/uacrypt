@@ -48,6 +48,9 @@ fn expected_message(expect: &str) -> &'static str {
         "bad_chunk_length" => "non-final chunk",
         "truncated" => "truncated",
         "auth" => "authentication failed",
+        "trailing_data" => "after the final chunk",
+        "oversized_chunk" => "exceeds this build's maximum chunk size",
+        "unknown_tag" => "unrecognized chunk tag",
         other => panic!("unknown expect value {other}"),
     }
 }
@@ -67,7 +70,7 @@ fn every_shared_vector_decrypts_or_fails_as_specified() {
         &decode_hex(field(VECTORS, "key_hex")),
     );
     let all = cases();
-    assert_eq!(all.len(), 7, "fixture is incomplete");
+    assert_eq!(all.len(), 15, "fixture is incomplete");
     for case in all {
         let in_path = dir.file(&format!("{}.enc", case.name));
         let out_path = dir.file(&format!("{}.out", case.name));

@@ -233,7 +233,11 @@ final class SecretstreamTest extends TestCase
             'bad_chunk_length' => '/non-final chunk/',
             'truncated' => '/truncated/',
             'auth' => '/./',
+            'trailing_data' => '/trailing data/',
+            'oversized_chunk' => '/chunk too large/',
+            'unknown_tag' => '/unrecognized chunk tag/',
         ];
+        $this->assertArrayHasKey($case['expect'], $messages, "unknown expect value {$case['expect']}");
         $this->expectException(DstuCoreException::class);
         $this->expectExceptionMessageMatches($messages[$case['expect']]);
         DstuCoreSecretStreamReader::withStream($key, $in, fn ($r) => $r->readAll());

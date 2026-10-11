@@ -76,7 +76,8 @@ public final class SecretStreamDecryptor extends InputStream {
         // `CliError::SecretstreamChunkTooLarge` bound.
         if (chunkLen < 0 || chunkLen > CHUNK_BYTES) {
             throw new DstuException(
-                    "secretstream chunk too large: declared " + chunkLen + " bytes, max " + CHUNK_BYTES);
+                    "secretstream chunk too large: declared " + Integer.toUnsignedLong(chunkLen) + " bytes, max "
+                            + CHUNK_BYTES);
         }
         if (tagByte != SecretStreamTag.FINAL.ordinal() && chunkLen != CHUNK_BYTES) {
             throw new DstuException("non-final chunk of " + chunkLen + " bytes, must be exactly "

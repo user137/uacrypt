@@ -225,6 +225,9 @@ _EXPECTED_MESSAGE = {
     "bad_chunk_length": "non-final chunk",
     "truncated": "truncated",
     "auth": "",
+    "trailing_data": "trailing data",
+    "oversized_chunk": "chunk too large",
+    "unknown_tag": "unrecognized chunk tag",
 }
 
 

@@ -77,8 +77,27 @@ fn generate() {
     let mut bad_version = valid.clone();
     bad_version[0] = 3;
 
-    let cases: [(&str, &str, Vec<u8>, Vec<u8>); 7] = [
-        ("valid", "ok", valid, valid_pt),
+    // T-277: the rejections every reader hand-rolls. Offsets into `valid`: version (1) + header,
+    // then the first record `tag (1) || len (4) || ct (8192) || auth tag (16)`.
+    let empty = frame(&[(Tag::Final, &[])]);
+    let header_end = empty.len() - (1 + 4 + 16);
+    let first_record_end = header_end + 1 + 4 + CHUNK_BYTES + 16;
+    let mut trailing = empty.clone();
+    trailing.push(0);
+    let mut len_8193_final = empty[..header_end].to_vec();
+    len_8193_final.push(Tag::Final.to_byte());
+    len_8193_final.extend_from_slice(&8193u32.to_le_bytes());
+    len_8193_final.extend_from_slice(&[0u8; 8193 + 16]);
+    let mut len_max_message = empty[..header_end].to_vec();
+    len_max_message.push(Tag::Message.to_byte());
+    len_max_message.extend_from_slice(&u32::MAX.to_le_bytes());
+    let mut unknown_tag = valid.clone();
+    unknown_tag[header_end] = 0x04;
+    let mut tampered_tag = valid.clone();
+    *tampered_tag.last_mut().unwrap() ^= 1;
+
+    let cases: [(&str, &str, Vec<u8>, Vec<u8>); 15] = [
+        ("valid", "ok", valid.clone(), valid_pt),
         ("valid_empty", "ok", frame(&[(Tag::Final, &[])]), Vec::new()),
         (
             "valid_exact_multiple",
@@ -108,6 +127,44 @@ fn generate() {
             vec![FORMAT_VERSION],
             Vec::new(),
         ),
+        (
+            "trailing_after_final",
+            "trailing_data",
+            trailing,
+            Vec::new(),
+        ),
+        (
+            "len_8193_final",
+            "oversized_chunk",
+            len_8193_final,
+            Vec::new(),
+        ),
+        (
+            "len_ffffffff_message",
+            "oversized_chunk",
+            len_max_message,
+            Vec::new(),
+        ),
+        (
+            "missing_final",
+            "truncated",
+            valid[..first_record_end].to_vec(),
+            Vec::new(),
+        ),
+        (
+            "truncated_in_ciphertext",
+            "truncated",
+            valid[..header_end + 1 + 4 + 100].to_vec(),
+            Vec::new(),
+        ),
+        (
+            "truncated_in_tag",
+            "truncated",
+            valid[..first_record_end - 8].to_vec(),
+            Vec::new(),
+        ),
+        ("unknown_tag_byte", "unknown_tag", unknown_tag, Vec::new()),
+        ("tampered_auth_tag", "auth", tampered_tag, Vec::new()),
     ];
 
     let mut json = String::from("{\n");
@@ -116,8 +173,11 @@ fn generate() {
          crates/uacrypt/tests/gen_secretstream_file_vectors.rs over crypto_secretstream::PushState. \
          v1_0_3_8 is a real file from uacrypt 0.3.8 (tag v0.3.8) under the same key and the same \
          (i*31+7) mod 256 plaintext as valid; short_non_final carries genuinely valid tags, so \
-         rejecting it proves the exact-8192 rule, not authentication. expect: ok | \
-         unsupported_version | bad_chunk_length | truncated | auth.\",\n",
+         rejecting it proves the exact-8192 rule, not authentication. The cases after version_only \
+         (T-277) pin the other rejections: data after Final, a length above 8192, no Final, a cut \
+         inside a record, an unknown tag byte, a tampered auth tag. expect: ok | \
+         unsupported_version | bad_chunk_length | truncated | auth | trailing_data | \
+         oversized_chunk | unknown_tag.\",\n",
     );
     let _ = writeln!(json, "  \"format_version\": {FORMAT_VERSION},");
     let _ = writeln!(json, "  \"chunk_bytes\": {CHUNK_BYTES},");

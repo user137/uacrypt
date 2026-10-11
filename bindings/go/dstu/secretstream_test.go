@@ -331,9 +331,15 @@ func TestSecretstreamSharedStreamFileVectors(t *testing.T) {
 		"bad_chunk_length":    "non-final chunk",
 		"truncated":           "truncated",
 		"auth":                "",
+		"trailing_data":       "trailing data",
+		"oversized_chunk":     "exceeds the maximum",
+		"unknown_tag":         "invalid tag byte",
 	}
 	for _, c := range vectors.Cases {
 		t.Run(c.Name, func(t *testing.T) {
+			if _, known := wanted[c.Expect]; !known && c.Expect != "ok" {
+				t.Fatalf("unknown expect value %q", c.Expect)
+			}
 			key, err := SecretstreamKeyFromBytes(keyBytes)
 			if err != nil {
 				t.Fatal(err)

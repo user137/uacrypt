@@ -364,10 +364,18 @@ void TestSecretstreamSharedVectors() {
       wanted = "non-final chunk";
     } else if (expect == "truncated") {
       wanted = "truncated";
+    } else if (expect == "trailing_data") {
+      wanted = "trailing data";
+    } else if (expect == "oversized_chunk") {
+      wanted = "exceeds the maximum";
+    } else if (expect == "unknown_tag") {
+      wanted = "invalid tag byte";
+    } else {
+      CHECK(expect == "auth", ("unknown expect value " + expect).c_str());
     }
     CHECK(!message.empty() && message.find(wanted) != std::string::npos, name.c_str());
   }
-  CHECK(cases == 7, "the shared vector file should hold 7 cases");
+  CHECK(cases == 15, "the shared vector file should hold 15 cases");
 
   std::ostringstream sink;
   dstu::SecretStreamEncryptor enc(sink, key);
