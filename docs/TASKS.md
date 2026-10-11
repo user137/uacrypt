@@ -7682,7 +7682,14 @@ Phase 2+ and none currently in flight).
   and the follow-up fixes.
 
 - [ ] **T-231** (2026-09-17, corrected 2026-09-18) **Investigate recurring VmRSS-threshold failure
-  in `bindings-dotnet`'s `MemoryLeakTests.SecretstreamAndBoxLoopDoesNotLeak` (T-213).** First
+  in `bindings-dotnet`'s `MemoryLeakTests.SecretstreamAndBoxLoopDoesNotLeak` (T-213).**
+  **2026-10-11, Java half done (D-234):** the same test in `bindings-java` started failing after
+  0.5.0; measured on the Pi it is JVM heap growth, not a leak, and the old 8 MiB test could not
+  see a real leak either. Fixed: fixed pre-touched heap for the Java test fork, threshold 1 MiB
+  (normal 0.36-0.44 MB pass, never-close control 3.05 MB fails). Still to do: read the real
+  growth on CI's x86_64 log after the push. **.NET still open:** the Pi does not reproduce it
+  (0.08-1.4 MB over 6 runs), and `SafeHandle` finalizers make "never Dispose" no leak control -
+  next step is CI-side data (the probe line from D-234's method) before any change. First
   entry here (written after a single observed failure on `43ce442`) called this "a single isolated
   failure, not a regression" - wrong, corrected the next day after a second failure landed on the
   very next `bindings-dotnet`-touching push (`0c50eec`) prompted a deeper check: `gh run list
@@ -10047,7 +10054,7 @@ writer onto it. Superseded in detail by the plan below.
 4. T-264 shell completions and man page.
 5. T-249 second audit pass, last.
 
-**Outside the versions:** T-267 (site, right after 0.5.0), T-295 (winget, after 0.5.0), T-247
+**Outside the versions:** T-267 (site, right after 0.5.0), T-295 (winget, after the 0.6.0 release - owner 2026-10-11), T-247
 (upstream reports, owner go-ahead only).
 
 **After 1.0 (owner 2026-10-09):** T-237 (BC harness), T-263 (text/armor output). **Closed:** T-250
@@ -10078,6 +10085,9 @@ on the Pi); `cargo xtask test` 146 suites green, `cargo clippy --workspace --all
   blocker); alert #3 closed as fixed. T-267 (site) done. **NEXT STEP (owner 2026-10-10):** 0.6.0
   in the plan's order, starting with step 1's T-231 (the Java VmRSS flake), then T-288; T-295
   (winget) after step 1. `master` = `aeca3b8`, all CI green except that flake (rerun started).
+  **2026-10-11:** step 1 done except T-231's .NET half and T-296's CI timing (T-288/T-289/T-277
+  closed, T-231 Java fixed, D-234). Owner: T-295 moves after the 0.6.0 release; the owner wants
+  0.6.0 carried through to the version bump and tag. Step 2 (T-284) plan approved - see T-284.
 - **0.4.0: released and closed (2026-10-08/09).** Tag `v0.4.0` on `39fdb53` after all CI incl.
   Miri was green; release run 37761634603 green (npm needed a new `NPM_TOKEN` and one rerun).
   Live: crates.io 0.4.0, PyPI/npm/RubyGems 0.2.0 (npm without `win32-x64-msvc`, D-189). T-252

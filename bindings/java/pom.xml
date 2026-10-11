@@ -108,6 +108,12 @@
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
         <version>3.2.5</version>
+        <!-- T-231: MemoryLeakTest reads VmRSS, which also counts JVM heap pages first touched
+             during its loop (6-8 MB on a default heap, measured on the Pi, flat in N - not a
+             leak). A fixed, pre-touched heap leaves only native growth in VmRSS. -->
+        <configuration>
+          <argLine>-Xms512m -Xmx512m -XX:+AlwaysPreTouch</argLine>
+        </configuration>
       </plugin>
       <!-- T-208: this binding's own static analyzer - a bug-pattern detector (the real `clippy`
            analog), not a style-only tool like Checkstyle, matched to this binding's actual risk

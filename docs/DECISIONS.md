@@ -15320,3 +15320,36 @@ timing. RubyGems refuses a yank after 30 days (T-251), so waiting would lose tha
 
 **Rejected.** Advisory only, no yank: weaker signal for tools that read yanks but not GHSA, and
 inconsistent with T-251.
+
+## D-234: Java leak test measures native growth only - fixed, pre-touched heap, 1 MiB (2026-10-11)
+
+**Finding (T-231).** `bindings-java`'s `MemoryLeakTest` failed on 2 of 3 `master` pushes on
+2026-10-10 (VmRSS growth 13.3 MB and 9.1 MB vs 8 MiB). Since 0.5.0 the test runs 3-4x longer
+(68-80 s, the constant-time field arithmetic), which is when it started failing. Measured on the Pi
+(aarch64, JDK 17, N = 20000 unless noted):
+
+| Heap | Loop | VmRSS growth |
+|---|---|---|
+| default | normal (5 runs) | 5.8-8.2 MB |
+| default | normal, N = 40000 | 7.4 MB |
+| default | never closes its states | 8.6 MB |
+| `-Xms512m -Xmx512m -XX:+AlwaysPreTouch` | normal (N 20000/40000) | 0.13-0.44 MB |
+| same | never closes its states | 2.75-3.05 MB |
+
+On a default heap the growth is heap pages first touched during the loop: it does not grow with N,
+and a real leak is indistinguishable from a pass. So there was no native leak, and the old test
+could not have caught one.
+
+**Decision.** The Java test fork runs with a fixed, pre-touched heap (surefire `argLine` in
+`bindings/java/pom.xml`, for the whole fork: no other Java test depends on heap size), and the
+threshold drops from 8 MiB to 1 MiB - 2.4x above the highest normal run, 2.6x below the leak
+control. The committed config was rerun on the Pi: 3 normal runs pass, the leak control fails.
+
+**Not changed.** `bindings-dotnet`'s test (T-231's original subject: 4 of 97 runs, ~64 MB growth on
+CI x86_64). The Pi does not reproduce it (6 runs, 0.08-1.4 MB, managed committed bytes flat), and
+.NET's handles are `SafeHandle`s, so an undisposed loop is freed by finalizers and is no leak
+control. No threshold change without a control that discriminates.
+
+**Rejected.** Raising the threshold (hides the flake and still cannot see a leak); one surefire
+execution only for the leak test (`-Dtest=MemoryLeakTest` would then run it twice, once on the
+default heap).

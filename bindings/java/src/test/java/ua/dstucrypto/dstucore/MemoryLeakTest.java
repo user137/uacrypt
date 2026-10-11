@@ -55,9 +55,11 @@ class MemoryLeakTest {
 
         int warmup = 2000;
         int n = 20000;
-        // Comfortable margin above normal JVM/JIT/GC churn but far below what N leaked handles
-        // (each holding at least a few dozen bytes of native Rust state) would show at this scale.
-        long maxAcceptableGrowthBytes = 8L * 1024 * 1024;
+        // T-231, measured on the Pi (aarch64, JDK 17): with the fixed, pre-touched heap pom.xml
+        // gives this fork, normal growth is 0.13-0.26 MB and a loop that never closes its states
+        // grows 2.75 MB. On a default heap both read 6-8.6 MB (heap pages touched during the loop),
+        // so the old 8 MiB threshold could not tell a leak from a pass and flaked on CI.
+        long maxAcceptableGrowthBytes = 1L * 1024 * 1024;
 
         byte[] key = SecretStream.keygen();
         byte[] boxSecret = Box.keygen();
