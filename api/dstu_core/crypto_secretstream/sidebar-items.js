@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"constant":["FORMAT_VERSION"],"enum":["SecretstreamError","Tag"],"struct":["Key","PullState","PushState"]};
+window.SIDEBAR_ITEMS = {"constant":["CHUNK_BYTES","FILE_PREFIX_BYTES","FORMAT_VERSION","MAX_RECORD_BYTES","RECORD_OVERHEAD_BYTES"],"enum":["FileError","SecretstreamError","Tag"],"struct":["FileDecryptor","FileEncryptor","Key","PullState","PushState"]};
