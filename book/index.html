@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-536761a3.js";
+            window.path_to_searchindex_js = "searchindex-fd746d70.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -269,7 +269,8 @@ full per-language docs; the <strong>Package column</strong> is where you’d act
 .NET, Go, and C++ bindings link against directly — usable from any language with a C FFI, not just
 those three. See <code>docs/bindings-strategy.md</code> for the per-binding design rationale.</p>
 <h2 id="embedded--no_std-targets"><a class="header" href="#embedded--no_std-targets">Embedded / <code>no_std</code> targets</a></h2>
-<p><code>dstu-core</code> is <code>no_std</code>-compatible from day one (<code>std</code>/<code>alloc</code>/<code>no_std</code> feature flags), and
+<p><code>dstu-core</code> is <code>no_std</code>-compatible from day one (<code>std</code> on by default, off for <code>no_std</code>; the <code>alloc</code>
+feature is reserved and enables nothing yet), and
 cross-compiles clean for real microcontroller targets (STM32 Cortex-M, ESP32-class RISC-V) with no
 custom toolchain. That’s a compilation claim, not a real-hardware validation or a side-channel
 resistance claim — see <code>docs/SECURITY.md</code> for the full threat model.</p>

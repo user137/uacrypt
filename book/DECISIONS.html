@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-536761a3.js";
+            window.path_to_searchindex_js = "searchindex-fd746d70.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -11993,7 +11993,8 @@ full per-language docs; the <strong>Package column</strong> is where you’d act
 .NET, Go, and C++ bindings link against directly — usable from any language with a C FFI, not just
 those three. See <code>docs/bindings-strategy.md</code> for the per-binding design rationale.</p>
 <h2 id="embedded--no_std-targets"><a class="header" href="#embedded--no_std-targets">Embedded / <code>no_std</code> targets</a></h2>
-<p><code>dstu-core</code> is <code>no_std</code>-compatible from day one (<code>std</code>/<code>alloc</code>/<code>no_std</code> feature flags), and
+<p><code>dstu-core</code> is <code>no_std</code>-compatible from day one (<code>std</code> on by default, off for <code>no_std</code>; the <code>alloc</code>
+feature is reserved and enables nothing yet), and
 cross-compiles clean for real microcontroller targets (STM32 Cortex-M, ESP32-class RISC-V) with no
 custom toolchain. That’s a compilation claim, not a real-hardware validation or a side-channel
 resistance claim — see <code>docs/SECURITY.md</code> for the full threat model.</p>
@@ -14126,6 +14127,115 @@ newest unyanked 0.4 line would invite pinning to code with a known process abort
 timing. RubyGems refuses a yank after 30 days (T-251), so waiting would lose that option there.</p>
 <p><strong>Rejected.</strong> Advisory only, no yank: weaker signal for tools that read yanks but not GHSA, and
 inconsistent with T-251.</p>
+<h2 id="d-234-java-leak-test-measures-native-growth-only---fixed-pre-touched-heap-1-mib-2026-10-11"><a class="header" href="#d-234-java-leak-test-measures-native-growth-only---fixed-pre-touched-heap-1-mib-2026-10-11">D-234: Java leak test measures native growth only - fixed, pre-touched heap, 1 MiB (2026-10-11)</a></h2>
+<p><strong>Finding (T-231).</strong> <code>bindings-java</code>’s <code>MemoryLeakTest</code> failed on 2 of 3 <code>master</code> pushes on
+2026-10-10 (VmRSS growth 13.3 MB and 9.1 MB vs 8 MiB). Since 0.5.0 the test runs 3-4x longer
+(68-80 s, the constant-time field arithmetic), which is when it started failing. Measured on the Pi
+(aarch64, JDK 17, N = 20000 unless noted):</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Heap</th><th>Loop</th><th>VmRSS growth</th></tr>
+</thead>
+<tbody>
+<tr><td>default</td><td>normal (5 runs)</td><td>5.8-8.2 MB</td></tr>
+<tr><td>default</td><td>normal, N = 40000</td><td>7.4 MB</td></tr>
+<tr><td>default</td><td>never closes its states</td><td>8.6 MB</td></tr>
+<tr><td><code>-Xms512m -Xmx512m -XX:+AlwaysPreTouch</code></td><td>normal (N 20000/40000)</td><td>0.13-0.44 MB</td></tr>
+<tr><td>same</td><td>never closes its states</td><td>2.75-3.05 MB</td></tr>
+</tbody>
+</table>
+</div>
+<p>On a default heap the growth is heap pages first touched during the loop: it does not grow with N,
+and a real leak is indistinguishable from a pass. So there was no native leak, and the old test
+could not have caught one.</p>
+<p><strong>Decision.</strong> The Java test fork runs with a fixed, pre-touched heap (surefire <code>argLine</code> in
+<code>bindings/java/pom.xml</code>, for the whole fork: no other Java test depends on heap size), and the
+threshold drops from 8 MiB to 1 MiB - 2.4x above the highest normal run, 2.6x below the leak
+control. The committed config was rerun on the Pi: 3 normal runs pass, the leak control fails.</p>
+<p><strong>Not changed.</strong> <code>bindings-dotnet</code>’s test (T-231’s original subject: 4 of 97 runs, ~64 MB growth on
+CI x86_64). The Pi does not reproduce it (6 runs, 0.08-1.4 MB, managed committed bytes flat), and
+.NET’s handles are <code>SafeHandle</code>s, so an undisposed loop is freed by finalizers and is no leak
+control. No threshold change without a control that discriminates.</p>
+<p><strong>Rejected.</strong> Raising the threshold (hides the flake and still cannot see a leak); one surefire
+execution only for the leak test (<code>-Dtest=MemoryLeakTest</code> would then run it twice, once on the
+default heap).</p>
+<h2 id="d-235-one-stream-file-codec-in-dstu-core-every-reader-and-writer-on-it-t-284-2026-10-11"><a class="header" href="#d-235-one-stream-file-codec-in-dstu-core-every-reader-and-writer-on-it-t-284-2026-10-11">D-235: One stream-file codec in dstu-core, every reader and writer on it (T-284, 2026-10-11)</a></h2>
+<p><strong>Decision (owner O-C(b), D-220; plan approved 2026-10-11).</strong> The D-208 stream-file framing lives
+once, in <code>crypto_secretstream</code>: <code>FileEncryptor</code> (<code>init</code> gives the 33-byte prefix, <code>seal_chunk</code>
+takes <code>&amp;[u8; 8192]</code>, <code>seal_final</code> the last <code>0..=8192</code> bytes) and <code>FileDecryptor</code>. <code>uacrypt</code> and all
+8 bindings drive it (Python/Node/Ruby/PHP/Java through new native classes, .NET/Go/C++ through
+<code>dstu_secretstream_file_*</code> in the capi) and keep only their language’s I/O. The wire format is
+unchanged: the 15 shared vectors (T-277) pass through every reader before and after.</p>
+<p><strong>Reader contract.</strong> <code>next_len()</code> says how many bytes <code>feed</code> takes next; <code>feed</code> must get exactly
+that many (another length is a caller error, not EOF). End of input is an explicit <code>finish()</code>:
+<code>Truncated</code> before a verified <code>Final</code>, otherwise it releases the <code>Final</code> record’s plaintext. EOF is
+never inferred from a short slice, because a pipe or socket legitimately returns short reads. After
+<code>Final</code>, <code>next_len()</code> is 1 and any byte fed is <code>TrailingData</code>. After an error every call fails
+(<code>Finished</code>). The decryptor holds the <code>Final</code> plaintext in an 8 KiB buffer; a <code>no_std</code>/MCU caller
+that cannot afford it keeps the raw <code>PullState</code>.</p>
+<p><strong>Behaviour change: the <code>Final</code> chunk is released only once the input is known to end there.</strong>
+Before, <code>uacrypt decrypt --out -</code> and the Node reader emitted the <code>Final</code> chunk and only then found
+trailing bytes (Python, Ruby, PHP, Java, .NET, Go and C++ probed first). Now no consumer yields the
+last chunk of a stream with bytes appended (<code>docs/CLI.md</code>).</p>
+<p><strong>Messages.</strong> Every reader reports the core’s <code>FileError</code> text, so the per-binding wordings T-277
+mapped are gone: “chunk too large”, “non-final chunk”, “unrecognized chunk tag”, “trailing data”,
+“truncated”, “authentication failed”, “unsupported stream format version”. The capi keeps the
+failing error’s message per decryptor (<code>dstu_secretstream_file_decryptor_last_error</code>) instead of
+the planned static <code>dstu_status_message</code>: a status code loses the declared length and version the
+core’s message carries. New statuses 15-17 (<code>DSTU_ERR_CHUNK_TOO_LARGE</code>,
+<code>DSTU_ERR_BAD_CHUNK_LENGTH</code>, <code>DSTU_ERR_TRAILING_DATA</code>), appended. <code>FileError</code> is not
+<code>#[non_exhaustive]</code> and its <code>Random</code> variant is gated on <code>std</code>/<code>getrandom</code>, like
+<code>SecretstreamError</code>’s: intended, since only <code>FileEncryptor::init</code> draws randomness and it exists
+only under the same features.</p>
+<p><strong>Writers.</strong> Each holds back at most one chunk (an exact multiple of 8 KiB must end in a full
+<code>Final</code>) and seals full chunks straight from the caller’s buffer by offset. That fixes T-276 (Java:
+64 MiB in about a second; PHP on the Pi, release build: 16 MiB in one write 232 ms, was 5245 ms)
+and the same quadratic shape in Python (<code>del buf[:8192]</code>) and Ruby (<code>byteslice</code> of the rest). The
+Java JNI call copies only the chunk (<code>GetByteArrayRegion</code>), not the whole array. PHP checks every
+<code>fwrite</code> and throws on a failed or short write (T-274). Java follows <code>java.io</code>’s filter-stream
+convention (O-F, T-275): <code>complete()</code> writes <code>Final</code> and flushes, <code>flush()</code> forwards, <code>close()</code>
+closes the sink (the decryptor’s closes its source) and never finalizes; the Java package goes to
+0.2.0.</p>
+<p><strong>Tests.</strong> Core: vectors by error class, boundary round trips, an independent decode with the raw
+<code>PullState</code>, misuse, proptests, Miri; fuzz target <code>crypto_secretstream_file</code>. capi: vectors by
+status and message, nulls, undersized buffers, failed state. Each binding: the shared vectors, one
+large write vs many small, trailing data never yields <code>Final</code>; Java and PHP add the T-274/T-275
+regressions.</p>
+<h2 id="d-236-the-c-abi-refuses-overlapping-input-and-output-buffers-t-244-2026-10-11"><a class="header" href="#d-236-the-c-abi-refuses-overlapping-input-and-output-buffers-t-244-2026-10-11">D-236: The C ABI refuses overlapping input and output buffers (T-244, 2026-10-11)</a></h2>
+<p><strong>Decision (owner, 2026-10-11, of three options).</strong> Every capi function that takes both an input
+and an output buffer checks, before forming any slice, whether they share a byte
+(<code>util::overlaps</code>, an address comparison that never dereferences). A function returning
+<code>DstuStatus</code> returns <code>DSTU_ERR_INVALID_ARGUMENT</code>; a <code>void</code> one (<code>dstu_auth</code>, <code>dstu_generichash_*</code>,
+<code>dstu_kdf_derive_subkey</code>, <code>dstu_sign*</code>) returns without writing, its existing convention for NULL,
+since changing its return type would break the ABI. 22 functions, including the new
+<code>dstu_secretstream_file_*</code> ones and <code>dstu_secretstream_push</code>’s two outputs against each other. The
+generated header states the rule.</p>
+<p><strong>Why.</strong> A <code>&amp;[u8]</code> and a <code>&amp;mut [u8]</code> over the same bytes is undefined behaviour in Rust, and
+libsodium allows in-place calls, so C callers will try them. Refusing makes the misuse a defined
+error instead of UB.</p>
+<p><strong>Rejected.</strong> Documenting only (UB stays reachable); supporting in-place use (every function
+rewritten to work through raw pointers; too large and risky for 0.6.0, possible later).</p>
+<p><strong>Also (T-244(a)).</strong> <code>dstu_memzero</code> now uses <code>zeroize</code> (volatile writes) instead of
+<code>ptr::write_bytes</code> plus a compiler fence, which cross-language LTO may remove. Tests:
+<code>tests/ffi_overlap.rs</code> (refused in-place seal and codec feed, untouched output of a void hash,
+adjacent halves accepted), clean under Miri.</p>
+<h2 id="d-237-secret-hygiene-batch-t-242-2026-10-11"><a class="header" href="#d-237-secret-hygiene-batch-t-242-2026-10-11">D-237: Secret-hygiene batch (T-242, 2026-10-11)</a></h2>
+<p><strong>Done.</strong> Wiped on every return path (<code>Zeroizing</code>): DSTU 9041’s <code>kappa</code>, <code>T</code>/<code>T'</code>, <code>M'</code>, the
+KW plaintext and the unwrapped <code>recovered</code> block (both curve sizes; <code>FieldElement</code>/<code>Point</code> derive
+<code>Zeroize</code> for that); the KMAC output that seeds the DSTU 4145 signing nonce (<code>crypto_sign</code>,
+<code>crypto_sign257</code>); Kupyna-KMAC’s padded key and full-width output; Kalyna-KW’s <code>b</code> array; the capi
+<code>*_key_from_bytes</code> stack copies of secret keys (9 functions). <code>uacrypt</code>’s <code>key_bytes</code>/<code>key_arr</code>
+were already <code>Zeroizing</code> since 0.5.0’s typed key files. <code>SigningKey::from_bytes</code> (both curves) now
+uses the borrow-based <code>Scalar::from_candidate_bytes</code> range check instead of <code>iter().all(== 0)</code> plus
+a byte-wise <code>&gt;=</code> that exits at the first differing byte of <code>d</code>; that helper’s zero test is an OR
+fold, not an array <code>!=</code>, and it is no longer feature-gated. <code>Scalar</code>/<code>Scalar257</code> and the GF(2^m)
+and F_p field elements print <code>Type(&lt;redacted&gt;)</code> instead of their limbs (manual <code>Debug</code>, so <code>Point</code>
+and test assertions still compile).</p>
+<p><strong>Verification is review only (finding, not a test).</strong> Whether memory was wiped is not observable
+from safe Rust, and a test that reads freed memory would be UB; <code>Zeroizing</code>’s <code>Drop</code> is the
+mechanism and the review is the evidence, the same “foreclosed by type/review” convention as
+earlier <code>D-</code> findings. The <code>Debug</code> redaction is tested (<code>tests/debug_redaction.rs</code>).</p>
 
                     </main>
 

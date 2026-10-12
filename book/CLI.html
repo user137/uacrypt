@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-536761a3.js";
+            window.path_to_searchindex_js = "searchindex-fd746d70.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -245,7 +245,8 @@ error, so <code>-</code> never silently names a file. A file really named <code>
 <li><code>--force</code> with <code>--out -</code> is a usage error: there is no file to replace.</li>
 <li><strong><code>decrypt --out -</code> can print part of a message.</strong> Each chunk is written once its tag verifies,
 so nothing unauthenticated is ever printed, but a stream cut short or tampered with halfway
-prints its verified beginning before the error. The error then ends with “the output already
+prints its verified beginning before the error. The last chunk is printed only once the input
+is known to end right after it, so a file with extra bytes appended never prints its end. The error then ends with “the output already
 written to stdout is INCOMPLETE - discard it”, and the exit status is non-zero (1 for a bad
 file, 3 if stdout itself failed). Check it: in a shell pipeline such as <code>... --out - | tar x</code>
 the pipeline’s status is <code>tar</code>’s unless you <code>set -o pipefail</code>. With <code>--out &lt;file&gt;</code> nothing is

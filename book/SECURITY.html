@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-536761a3.js";
+            window.path_to_searchindex_js = "searchindex-fd746d70.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -384,6 +384,39 @@ block-aligned, and round-trip tests cannot see a non-injective encoding.</li>
 </div>
 <h2 id="reporting-vulnerabilities"><a class="header" href="#reporting-vulnerabilities">Reporting vulnerabilities</a></h2>
 <p>Private disclosure only — GitHub Security Advisories. Never a public issue.</p>
+<h2 id="standards-baseline-what-fixes-and-the-release-pipeline-citefollow"><a class="header" href="#standards-baseline-what-fixes-and-the-release-pipeline-citefollow">Standards baseline (what fixes and the release pipeline cite/follow)</a></h2>
+<p>Moved here from <code>docs/TASKS.md</code> (T-246, 2026-10-11). The task column names the
+work each row governed when the table was written.</p>
+<p>Owner request 2026-09-23: the standards the constructions and the binary should follow. Each row
+names the task it governs; the implementing task cites the clause in its own <code>D-</code> entry.
+<strong>Clause numbers below were written from memory - confirm each against the primary document before it
+goes into a <code>D-</code> entry</strong> (research-before-implementation rule). International references are used only as tie-breakers where DSTU is silent (D-47), never to
+replace a DSTU primitive.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Area</th><th>Standard / reference</th><th>What we take from it</th><th>Task</th></tr>
+</thead>
+<tbody>
+<tr><td>secretbox interface</td><td>RFC 5116 (AEAD interface), §2.1-2.2</td><td>AEAD inputs/outputs, and “the entire ciphertext is authenticated” including its length</td><td>T-232</td></tr>
+<tr><td>secretbox nonce</td><td>NIST SP 800-38D §8.2-8.3 (IV uniqueness, random-IV bound)</td><td>justifies keeping the 256-bit random nonce over 96 bits</td><td>T-232</td></tr>
+<tr><td>length binding</td><td>NIST SP 800-38D §7.1 step 5 (<code>len(A) ‖ len(C)</code> - true lengths)</td><td>why the padded-length field is non-injective; target property for our AAD</td><td>T-232, T-235</td></tr>
+<tr><td>secretstream</td><td>Hoang, Reyhanitabar, Rogaway, Vizar, “Online Authenticated-Encryption and its Nonce-Reuse Misuse-Resistance” (CRYPTO 2015, STREAM); libsodium <code>crypto_secretstream</code> spec</td><td>per-segment nonce = counter, last-segment flag, truncation/reorder resistance</td><td>T-232</td></tr>
+<tr><td>crypto_box</td><td>RFC 9180 (HPKE) §4.1, §5.1 (<code>kem_context = enc ‖ pkR</code>, key schedule binds <code>info</code>)</td><td>bind <code>kem_ct ‖ recipient_pk</code> into the key derivation</td><td>T-248</td></tr>
+<tr><td>KDF shape</td><td>NIST SP 800-108r1 §4.4 (KDF using KMAC), SP 800-56C r2 (context/<code>FixedInfo</code>)</td><td>KMAC-based KDF with an explicit context string - analogy for Kupyna-KMAC (DSTU 7564), no HKDF</td><td>T-248</td></tr>
+<tr><td>keygen uniformity</td><td>FIPS 186-5 Appendix A.2.2 (key pair generation by testing candidates)</td><td>rejection sampling over the full <code>[1, n-1]</code></td><td>T-239</td></tr>
+<tr><td>public-key validation</td><td>SEC 1 v2 §3.2.2.1; NIST SP 800-56A r3 §5.6.2.3.3 (full validation incl. <code>n*Q = O</code>)</td><td>m=163 full validation</td><td>T-245b</td></tr>
+<tr><td>constant time / zeroization</td><td>ISO/IEC 19790 / FIPS 140-3 SSP zeroization (informational, not a certification claim); CWE-208, CWE-226</td><td>what “zeroized” and “no timing leak” mean for review</td><td>T-242</td></tr>
+<tr><td>FFI UB</td><td>CWE-758 (reliance on undefined behavior), Rust reference “invalid enum discriminant”</td><td><code>u32</code> at the boundary</td><td>T-240</td></tr>
+<tr><td>CLI file handling</td><td>CWE-377 (insecure temp file), CWE-59 (link following), CWE-732 (permissions), CWE-367 (TOCTOU); POSIX `open(O_CREAT</td><td>O_EXCL</td><td>O_NOFOLLOW)`</td></tr>
+<tr><td>release artifacts</td><td>SLSA v1.0 Build L2/L3 provenance (GitHub <code>actions/attest-build-provenance</code>); signed SHA-256 checksums (Sigstore/cosign or minisign)</td><td>verifiable <code>uacrypt</code> binaries and binding artefacts</td><td>T-252</td></tr>
+<tr><td>dependency transparency</td><td>CycloneDX or SPDX SBOM; <code>cargo auditable</code> (embeds the dependency list in the binary); <code>cargo build --locked</code></td><td>an SBOM per release, and auditable binaries (<code>cargo audit bin</code>)</td><td>T-252</td></tr>
+<tr><td>disclosure</td><td>ISO/IEC 29147 (vulnerability disclosure) + ISO/IEC 30111 (handling); GitHub Security Advisories; RustSec advisory-db</td><td>the process T-233 follows</td><td>T-233</td></tr>
+<tr><td>project hygiene</td><td>OpenSSF Scorecard; OpenSSF Best Practices badge</td><td>periodic self-check of CI/release posture</td><td>T-252</td></tr>
+<tr><td>key commitment (open question, not a finding)</td><td>Albertini et al., “How to Abuse and Fix Authenticated Encryption Without Key Commitment” (USENIX Security 2022)</td><td>Kalyna-GCM, like GCM, is not key-committing; relevant only if a caller tries multiple keys on one ciphertext</td><td>T-249</td></tr>
+</tbody>
+</table>
+</div>
 
                     </main>
 

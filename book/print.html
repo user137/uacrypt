@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-536761a3.js";
+            window.path_to_searchindex_js = "searchindex-fd746d70.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -267,7 +267,8 @@ full per-language docs; the <strong>Package column</strong> is where you’d act
 .NET, Go, and C++ bindings link against directly — usable from any language with a C FFI, not just
 those three. See <code>docs/bindings-strategy.md</code> for the per-binding design rationale.</p>
 <h2 id="embedded--no_std-targets"><a class="header" href="#embedded--no_std-targets">Embedded / <code>no_std</code> targets</a></h2>
-<p><code>dstu-core</code> is <code>no_std</code>-compatible from day one (<code>std</code>/<code>alloc</code>/<code>no_std</code> feature flags), and
+<p><code>dstu-core</code> is <code>no_std</code>-compatible from day one (<code>std</code> on by default, off for <code>no_std</code>; the <code>alloc</code>
+feature is reserved and enables nothing yet), and
 cross-compiles clean for real microcontroller targets (STM32 Cortex-M, ESP32-class RISC-V) with no
 custom toolchain. That’s a compilation claim, not a real-hardware validation or a side-channel
 resistance claim — see <code>docs/SECURITY.md</code> for the full threat model.</p>
@@ -356,7 +357,8 @@ error, so <code>-</code> never silently names a file. A file really named <code>
 <li><code>--force</code> with <code>--out -</code> is a usage error: there is no file to replace.</li>
 <li><strong><code>decrypt --out -</code> can print part of a message.</strong> Each chunk is written once its tag verifies,
 so nothing unauthenticated is ever printed, but a stream cut short or tampered with halfway
-prints its verified beginning before the error. The error then ends with “the output already
+prints its verified beginning before the error. The last chunk is printed only once the input
+is known to end right after it, so a file with extra bytes appended never prints its end. The error then ends with “the output already
 written to stdout is INCOMPLETE - discard it”, and the exit status is non-zero (1 for a bad
 file, 3 if stdout itself failed). Check it: in a shell pipeline such as <code>... --out - | tar x</code>
 the pipeline’s status is <code>tar</code>’s unless you <code>set -o pipefail</code>. With <code>--out &lt;file&gt;</code> nothing is
@@ -5559,7 +5561,8 @@ full per-language docs; the <strong>Package column</strong> is where you’d act
 .NET, Go, and C++ bindings link against directly — usable from any language with a C FFI, not just
 those three. See <code>docs/bindings-strategy.md</code> for the per-binding design rationale.</p>
 <h2 id="embedded--no_std-targets-1"><a class="header" href="#embedded--no_std-targets-1">Embedded / <code>no_std</code> targets</a></h2>
-<p><code>dstu-core</code> is <code>no_std</code>-compatible from day one (<code>std</code>/<code>alloc</code>/<code>no_std</code> feature flags), and
+<p><code>dstu-core</code> is <code>no_std</code>-compatible from day one (<code>std</code> on by default, off for <code>no_std</code>; the <code>alloc</code>
+feature is reserved and enables nothing yet), and
 cross-compiles clean for real microcontroller targets (STM32 Cortex-M, ESP32-class RISC-V) with no
 custom toolchain. That’s a compilation claim, not a real-hardware validation or a side-channel
 resistance claim — see <code>docs/SECURITY.md</code> for the full threat model.</p>
@@ -8583,7 +8586,16 @@ and the follow-up fixes.</p>
 </li>
 <li>
 <p><input disabled="" type="checkbox"> <strong>T-231</strong> (2026-09-17, corrected 2026-09-18) <strong>Investigate recurring VmRSS-threshold failure
-in <code>bindings-dotnet</code>’s <code>MemoryLeakTests.SecretstreamAndBoxLoopDoesNotLeak</code> (T-213).</strong> First
+in <code>bindings-dotnet</code>’s <code>MemoryLeakTests.SecretstreamAndBoxLoopDoesNotLeak</code> (T-213).</strong>
+<strong>2026-10-11, Java half done (D-234):</strong> the same test in <code>bindings-java</code> started failing after
+0.5.0; measured on the Pi it is JVM heap growth, not a leak, and the old 8 MiB test could not
+see a real leak either. Fixed: fixed pre-touched heap for the Java test fork, threshold 1 MiB
+(normal 0.36-0.44 MB pass, never-close control 3.05 MB fails). Still to do: read the real
+growth on CI’s x86_64 log after the push. <strong>.NET still open:</strong> the Pi does not reproduce it
+(0.08-1.4 MB over 6 runs), and <code>SafeHandle</code> finalizers make “never Dispose” no leak control -
+next step is CI-side data (the probe line from D-234’s method) before any change.
+<strong>Owner 2026-10-11: the .NET half moves to 0.7.0</strong> (does not hold 0.6.0). The .NET test now
+logs VmRSS growth and managed committed bytes on every run (CI’s detailed logger shows it). First
 entry here (written after a single observed failure on <code>43ce442</code>) called this “a single isolated
 failure, not a regression” - wrong, corrected the next day after a second failure landed on the
 very next <code>bindings-dotnet</code>-touching push (<code>0c50eec</code>) prompted a deeper check: <code>gh run list --workflow bindings-dotnet.yml --limit 100</code> shows <strong>4 failures out of 97 runs (~4%)</strong>, not 1 -
@@ -9415,7 +9427,7 @@ unreachable (SSH timeout). Run them on the Pi or in Linux CI before the release.
 keys only.</li>
 </ul>
 </li>
-<li><input disabled="" type="checkbox"> <strong>T-242</strong> (audit F-07/F-08/F-14, Low) Secret-hygiene batch. Not zeroized: <code>kappa</code>,
+<li><input disabled="" type="checkbox" checked=""> <strong>T-242</strong> (audit F-07/F-08/F-14, Low) Secret-hygiene batch. <strong>Done 2026-10-11 (D-237).</strong> Not zeroized: <code>kappa</code>,
 <code>t_point</code>/<code>t_prime</code>, <code>m_prime</code>, <code>kw_plaintext</code>, <code>recovered</code> in <code>hazmat/dstu9041/encryption.rs</code>
 (~90, ~135, ~139) and <code>encryption512.rs</code>; the KMAC output <code>mac</code> (the signing nonce source) in
 <code>derive_nonce</code> (<code>crypto_sign.rs</code> ~306, <code>crypto_sign257.rs</code> ~233); <code>padded_key</code> and <code>full</code> in
@@ -9441,7 +9453,7 @@ tri-state per optional layer (passed / skipped-missing-tool / failed), non-zero 
 and a summary table.</li>
 </ul>
 </li>
-<li><input disabled="" type="checkbox"> <strong>T-244</strong> (audit F-10/F-11, Low) C ABI. (a) <code>dstu_memzero</code> (<code>capi/util.rs:88</code>) uses
+<li><input disabled="" type="checkbox" checked=""> <strong>T-244</strong> (audit F-10/F-11, Low) C ABI. <strong>Done 2026-10-11 (D-236, owner chose “refuse”):</strong> overlap refused in 22 functions, rule in the header; <code>dstu_memzero</code> via <code>zeroize</code>; <code>tests/ffi_overlap.rs</code> Miri-clean. (a) <code>dstu_memzero</code> (<code>capi/util.rs:88</code>) uses
 <code>ptr::write_bytes</code> + <code>compiler_fence</code> - not a volatile write; under cross-language LTO the store
 can be elided. Use <code>zeroize</code> on the slice. (b) <code>include/dstu_core.h</code> never states that
 input/output buffers must not alias (only <code>util.rs:32</code> does); libsodium explicitly allows in-place
@@ -9467,7 +9479,7 @@ red test <code>order_2n_public_key_is_rejected</code> uses <code>Q + T2</code>, 
 genuine even-<code>r</code> signature: it verified before the fix and is rejected after it. See D-203.</li>
 </ul>
 </li>
-<li><input disabled="" type="checkbox"> <strong>T-246</strong> (audit area 10, docs) Correct the claims the audit disproved, each in the file that
+<li><input disabled="" type="checkbox" checked=""> <strong>T-246</strong> (audit area 10, docs) <strong>Done 2026-10-11:</strong> the secretstream/secretbox fail-closed claim holds since T-232; D-56’s proptest claim is corrected in D-200; the <code>crypto_sign257</code> rejection comment was fixed with T-239; <code>kupyna_kdf</code>’s <code>.expect</code> inside <code>macro_rules!</code> (the crate-level deny does not reach it) is now the let-else shape; <code>CLAUDE.md</code> scopes the BC cross-check to block-aligned GCM/GMAC; the Standards baseline table moved to <code>docs/SECURITY.md</code>. Correct the claims the audit disproved, each in the file that
 owns it: the <code>crypto_secretstream.rs</code>/<code>crypto_secretbox.rs</code> module docs (“a tampered chunk … fail
 closed” - true only after T-232); D-56’s “covered by the proptest round-trip” (add a new <code>D-</code>
 entry recording the non-injectivity and the BC divergence, don’t rewrite D-56); the
@@ -9561,37 +9573,8 @@ T-242..T-245a, T-249.</li>
 <li>Where Gemini leans on the open questions (not decisions): Q1 - assumes no external-format
 compatibility; Q3 - favours <code>n*Q == O</code>; Q4/O-3 - favours the KEM binding.</li>
 </ul>
-<h3 id="standards-baseline-what-each-fix-and-the-release-pipeline-should-citefollow"><a class="header" href="#standards-baseline-what-each-fix-and-the-release-pipeline-should-citefollow">Standards baseline (what each fix and the release pipeline should cite/follow)</a></h3>
-<p>Owner request 2026-09-23: the standards the constructions and the binary should follow. Each row
-names the task it governs; the implementing task cites the clause in its own <code>D-</code> entry.
-<strong>Clause numbers below were written from memory - confirm each against the primary document before it
-goes into a <code>D-</code> entry</strong> (research-before-implementation rule). International references are used only as tie-breakers where DSTU is silent (D-47), never to
-replace a DSTU primitive.</p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Area</th><th>Standard / reference</th><th>What we take from it</th><th>Task</th></tr>
-</thead>
-<tbody>
-<tr><td>secretbox interface</td><td>RFC 5116 (AEAD interface), §2.1-2.2</td><td>AEAD inputs/outputs, and “the entire ciphertext is authenticated” including its length</td><td>T-232</td></tr>
-<tr><td>secretbox nonce</td><td>NIST SP 800-38D §8.2-8.3 (IV uniqueness, random-IV bound)</td><td>justifies keeping the 256-bit random nonce over 96 bits</td><td>T-232</td></tr>
-<tr><td>length binding</td><td>NIST SP 800-38D §7.1 step 5 (<code>len(A) ‖ len(C)</code> - true lengths)</td><td>why the padded-length field is non-injective; target property for our AAD</td><td>T-232, T-235</td></tr>
-<tr><td>secretstream</td><td>Hoang, Reyhanitabar, Rogaway, Vizar, “Online Authenticated-Encryption and its Nonce-Reuse Misuse-Resistance” (CRYPTO 2015, STREAM); libsodium <code>crypto_secretstream</code> spec</td><td>per-segment nonce = counter, last-segment flag, truncation/reorder resistance</td><td>T-232</td></tr>
-<tr><td>crypto_box</td><td>RFC 9180 (HPKE) §4.1, §5.1 (<code>kem_context = enc ‖ pkR</code>, key schedule binds <code>info</code>)</td><td>bind <code>kem_ct ‖ recipient_pk</code> into the key derivation</td><td>T-248</td></tr>
-<tr><td>KDF shape</td><td>NIST SP 800-108r1 §4.4 (KDF using KMAC), SP 800-56C r2 (context/<code>FixedInfo</code>)</td><td>KMAC-based KDF with an explicit context string - analogy for Kupyna-KMAC (DSTU 7564), no HKDF</td><td>T-248</td></tr>
-<tr><td>keygen uniformity</td><td>FIPS 186-5 Appendix A.2.2 (key pair generation by testing candidates)</td><td>rejection sampling over the full <code>[1, n-1]</code></td><td>T-239</td></tr>
-<tr><td>public-key validation</td><td>SEC 1 v2 §3.2.2.1; NIST SP 800-56A r3 §5.6.2.3.3 (full validation incl. <code>n*Q = O</code>)</td><td>m=163 full validation</td><td>T-245b</td></tr>
-<tr><td>constant time / zeroization</td><td>ISO/IEC 19790 / FIPS 140-3 SSP zeroization (informational, not a certification claim); CWE-208, CWE-226</td><td>what “zeroized” and “no timing leak” mean for review</td><td>T-242</td></tr>
-<tr><td>FFI UB</td><td>CWE-758 (reliance on undefined behavior), Rust reference “invalid enum discriminant”</td><td><code>u32</code> at the boundary</td><td>T-240</td></tr>
-<tr><td>CLI file handling</td><td>CWE-377 (insecure temp file), CWE-59 (link following), CWE-732 (permissions), CWE-367 (TOCTOU); POSIX `open(O_CREAT</td><td>O_EXCL</td><td>O_NOFOLLOW)`</td></tr>
-<tr><td>release artifacts</td><td>SLSA v1.0 Build L2/L3 provenance (GitHub <code>actions/attest-build-provenance</code>); signed SHA-256 checksums (Sigstore/cosign or minisign)</td><td>verifiable <code>uacrypt</code> binaries and binding artefacts</td><td>T-252</td></tr>
-<tr><td>dependency transparency</td><td>CycloneDX or SPDX SBOM; <code>cargo auditable</code> (embeds the dependency list in the binary); <code>cargo build --locked</code></td><td>an SBOM per release, and auditable binaries (<code>cargo audit bin</code>)</td><td>T-252</td></tr>
-<tr><td>disclosure</td><td>ISO/IEC 29147 (vulnerability disclosure) + ISO/IEC 30111 (handling); GitHub Security Advisories; RustSec advisory-db</td><td>the process T-233 follows</td><td>T-233</td></tr>
-<tr><td>project hygiene</td><td>OpenSSF Scorecard; OpenSSF Best Practices badge</td><td>periodic self-check of CI/release posture</td><td>T-252</td></tr>
-<tr><td>key commitment (open question, not a finding)</td><td>Albertini et al., “How to Abuse and Fix Authenticated Encryption Without Key Commitment” (USENIX Security 2022)</td><td>Kalyna-GCM, like GCM, is not key-committing; relevant only if a caller tries multiple keys on one ciphertext</td><td>T-249</td></tr>
-</tbody>
-</table>
-</div>
+<h3 id="standards-baseline"><a class="header" href="#standards-baseline">Standards baseline</a></h3>
+<p>Moved to <code>docs/SECURITY.md</code> “Standards baseline” (T-246, 2026-10-11): policy lives there.</p>
 <h3 id="tasks-added-2026-09-23"><a class="header" href="#tasks-added-2026-09-23">Tasks added 2026-09-23</a></h3>
 <ul>
 <li>
@@ -10246,7 +10229,15 @@ installer needs <code>ArchiveBinariesDependOnPath</code>.</li>
 <code>docs/CLI.md</code>/README list it as an install option.</li>
 </ul>
 </li>
-<li><input disabled="" type="checkbox"> <strong>T-296</strong> (Low, qa; owner 2026-10-09, 0.6.0) Shorten the Miri wall time. On 0.5.0’s
+<li><input disabled="" type="checkbox"> <strong>T-296</strong> (Low, qa; owner 2026-10-09, 0.6.0) <strong>2026-10-11: sharded, awaiting the first CI
+timing.</strong> The 2026-10-11 scheduled run (<code>38126105866</code>) re-measured after the <code>smoke_passphrase</code>
+fix: <code>uacrypt</code> 27 min, <code>dstu-core-capi</code> 20 min, every <code>dstu-core</code> file under 60 min except
+<code>dstu9041_encryption_512</code> (~3 h; next <code>dstu9041_curve_512</code> 55 min, <code>crypto_box512</code> 50 min).
+<code>miri.yml</code>’s discover step now emits <code>{target, shard, shards}</code> entries; a file listed in its
+<code>SHARDS</code> map (only <code>dstu9041_encryption_512</code>, 6 shards) runs as that many jobs, each listing the
+file’s tests and running every n-th name with <code>--exact</code>, so each test lands in exactly one shard
+and the set under Miri is unchanged (an empty shard fails). Close once a run shows every job
+under ~60 min. On 0.5.0’s
 <code>d8aa1f0</code> run, <code>cargo miri test (uacrypt)</code> took 86+ min (31 min on 0.4.0) and
 <code>dstu9041_encryption_512</code> 80+ min still running (2 h 28 min on 0.4.0), with <code>PROPTEST_CASES: 1</code>
 already set.
@@ -10453,7 +10444,7 @@ existing field-axiom tests; GCM/GMAC KATs unchanged; dudect-style timing is not 
 </ul>
 <h3 id="binding-correctness"><a class="header" href="#binding-correctness">Binding correctness</a></h3>
 <ul>
-<li><input disabled="" type="checkbox"> <strong>T-274</strong> (Medium, arch - error path, <strong>Confirmed</strong>; depends: none) PHP <code>DstuCoreSecretStreamWriter</code> never checks
+<li><input disabled="" type="checkbox" checked=""> <strong>T-274</strong> (Medium, arch - error path, <strong>Confirmed</strong>; depends: none) <strong>Done 2026-10-11 (D-235):</strong> every <code>fwrite</code> checked, a failed or short write throws; tests with a read-only sink and a short-write stream wrapper (Pi). PHP <code>DstuCoreSecretStreamWriter</code> never checks
 <code>fwrite()</code>’s return value: the header write in <code>__construct</code> and the four writes in <code>pushChunk</code>
 (<code>bindings/php/lib/DstuCoreSecretStream.php</code>, lines 121-124 in the synced copy). A failed or short
 write only raises <code>E_NOTICE</code>, and <code>write()</code>/<code>close()</code> return normally. The caller believes the
@@ -10471,8 +10462,8 @@ raises and writes no <code>Final</code>; happy path unchanged. Effort S. Do it w
 file).</li>
 </ul>
 </li>
-<li><input disabled="" type="checkbox"> <strong>T-275</strong> (Medium, arch - API/error path, <strong>Confirmed</strong>; depends: O-F for the <code>close()</code>
-half only) Java <code>SecretStreamEncryptor.complete()</code> never flushes its sink, and <code>close()</code>
+<li><input disabled="" type="checkbox" checked=""> <strong>T-275</strong> (Medium, arch - API/error path, <strong>Confirmed</strong>; depends: O-F for the <code>close()</code>
+half only) <strong>Done 2026-10-11 (D-235, O-F):</strong> <code>complete()</code> flushes, <code>close()</code> closes the sink/source without finalizing; Java package 0.2.0; the buffered-sink recipe and a failing <code>flush()</code> are tests. Java <code>SecretStreamEncryptor.complete()</code> never flushes its sink, and <code>close()</code>
 neither flushes nor closes it
 (<code>bindings/java/src/main/java/ua/dstucrypto/dstucore/SecretStreamEncryptor.java:101</code>
 <code>complete()</code>, <code>:112</code> <code>close()</code>). So the natural
@@ -10501,7 +10492,7 @@ succeeds); Error path (a sink whose <code>flush()</code> throws surfaces from <c
 with T-276’s Java half.</li>
 </ul>
 </li>
-<li><input disabled="" type="checkbox"> <strong>T-276</strong> (Medium, perf, <strong>Confirmed</strong>; depends: none) Quadratic write buffering in the
+<li><input disabled="" type="checkbox" checked=""> <strong>T-276</strong> (Medium, perf, <strong>Confirmed</strong>; depends: none) <strong>Done 2026-10-11 (D-235):</strong> offset-based chunking in every writer (Python and Ruby had the same shape); Java 64 MiB in ~1 s, PHP 16 MiB 232 ms on the Pi release build (was 5245 ms). Quadratic write buffering in the
 Java and PHP stream writers (Java: the same jar as T-275; PHP: the Pi copy, md5-matched).
 <ul>
 <li>
@@ -10552,7 +10543,15 @@ binding. Risk: the one-chunk-ahead <code>Final</code> rule (an exact multiple of
 </ul>
 <h3 id="test-gaps"><a class="header" href="#test-gaps">Test gaps</a></h3>
 <ul>
-<li><input disabled="" type="checkbox"> <strong>T-277</strong> (Low, test-gap, <strong>Confirmed</strong> by reading the file; depends: none) The shared
+<li><input disabled="" type="checkbox" checked=""> <strong>T-277</strong> (Low, test-gap, <strong>Confirmed</strong> by reading the file; depends: none) <strong>Done
+2026-10-11:</strong> the generator adds 8 cases (15 in all) and three error classes (<code>trailing_data</code>,
+<code>oversized_chunk</code>, <code>unknown_tag</code>; a cut inside a record or a missing <code>Final</code> is <code>truncated</code>, the
+tampered tag <code>auth</code>). All 9 runners assert the class by message and now refuse an unknown
+<code>expect</code> (the .NET/Go/Java/C++ runners used to match any message for one). The unknown tag sits on
+a full 8192-byte record, so the tag check itself is what rejects it, not the length rule. Every
+reader already rejected all 8; the one defect found was cosmetic: Java printed <code>0xFFFFFFFF</code> as
+“declared -1 bytes” (fixed). Messages still differ per binding - T-284’s codec unifies them.
+The shared
 stream-file vectors
 (<code>crates/dstu-core/tests/vectors/secretstream-file/v2.json</code>, D-208) have 3 positive and 4 negative
 cases: <code>bad_version</code>, <code>short_non_final</code>, <code>v1_0_3_8</code>, <code>version_only</code>.
@@ -10614,7 +10613,7 @@ so the summary table shows them.</li>
 skipped, not passed (T-243’s tri-state). Effort S. Depends on T-243.</li>
 </ul>
 </li>
-<li><input disabled="" type="checkbox"> <strong>T-280</strong> (Low, docs, <strong>Confirmed</strong> by reading; depends: T-279 for (a), T-273 for (d))
+<li><input disabled="" type="checkbox" checked=""> <strong>T-280</strong> (Low, docs, <strong>Confirmed</strong> by reading; depends: T-279 for (a), T-273 for (d)) <strong>Done 2026-10-11:</strong> (a) CLAUDE.md’s <code>ci</code> line; (b) the generichash claim; (c) <code>CurveId</code>’s doc; (e) a <code>const _</code> block now evaluates all three presets at compile time, so the doc’s claim is true.
 Claims this audit found false or stale, each in its owning file. Pair
 every <code>CLAUDE.md</code> addition with a deletion.
 <ul>
@@ -10635,7 +10634,7 @@ error”. It is a <code>const fn</code> called at run time; make that true with 
 assertions for the three presets, or correct the sentence. Effort S.</li>
 </ul>
 </li>
-<li><input disabled="" type="checkbox"> <strong>T-281</strong> (Low, arch, <strong>Confirmed</strong> by grep; depends: O-D) The public <code>alloc</code> Cargo
+<li><input disabled="" type="checkbox" checked=""> <strong>T-281</strong> (Low, arch, <strong>Confirmed</strong> by grep; depends: O-D) <strong>Done 2026-10-11 (O-D):</strong> <code>Cargo.toml</code>, <code>CLAUDE.md</code> and README say <code>alloc</code> is a reserved no-op. The public <code>alloc</code> Cargo
 feature (<code>crates/dstu-core/Cargo.toml</code>,
 <code>alloc = []</code>) does nothing: no <code>cfg(feature = "alloc")</code> exists anywhere in <code>crates/dstu-core/src</code>.
 <code>CLAUDE.md</code> still presents <code>std</code>/<code>alloc</code>/<code>no_std</code> as the feature set (D-01).
@@ -10660,8 +10659,8 @@ re-check the asm on x86_64 and <code>thumbv7em-none-eabihf</code>.</li>
 <li>Tests: the existing <code>double_matches_general_multiply_by_two</code> proptest and XTS KATs. Effort S.</li>
 </ul>
 </li>
-<li><input disabled="" type="checkbox"> <strong>T-283</strong> (Low, arch - bounds hygiene, <strong>Confirmed</strong> by reading, unreachable in practice;
-depends: none) Bit-length conversions <code>(len as u64) * 8</code> are unchecked:
+<li><input disabled="" type="checkbox" checked=""> <strong>T-283</strong> (Low, arch - bounds hygiene, <strong>Confirmed</strong> by reading, unreachable in practice;
+depends: none) <strong>Done 2026-10-11:</strong> GCM/GMAC use <code>hazmat::checked_bit_len</code> (<code>None</code> past 2^61-1 bytes -&gt; the existing <code>InvalidLength</code>, checked before any output; unit-tested); Kupyna and KMAC compute the 96-bit length field in <code>u128</code>, so the multiply cannot overflow and the field is now exact to the standard’s limit. The stale <code>#[allow]</code>s are gone. Bit-length conversions <code>(len as u64) * 8</code> are unchecked:
 <code>kalyna_gcm.rs:148,150</code>, <code>kalyna_gmac.rs:109</code>, <code>kupyna_kmac.rs:51,64</code>, and <code>KupynaCore::finalize</code>’s
 <code>self.total_len * 8</code>.
 <ul>
@@ -10673,7 +10672,9 @@ DSTU 7624 annex Г’s per-key limits (<code>docs/SECURITY.md</code>).</li>
 <li>Tests: Misuse, a unit test on the helper, since no real slice can reach it. Effort S.</li>
 </ul>
 </li>
-<li><input disabled="" type="checkbox"> <strong>T-288</strong> (Medium, qa, <strong>Confirmed</strong> 2026-09-26 by the first T-243 <code>ci</code> run; depends: none)
+<li><input disabled="" type="checkbox" checked=""> <strong>T-288</strong> (Medium, qa, <strong>Confirmed</strong> 2026-09-26 by the first T-243 <code>ci</code> run; depends: none)
+<strong>Done in 0.4.0 (<code>39fdb53</code>):</strong> both harnesses skip a vector file without <code>hash_bits</code>;
+<code>oracle-harness</code> green on <code>master</code> since (rechecked 2026-10-11 on <code>33f0559</code>).
 Both Bouncy Castle oracle harnesses fail on Kupyna. <code>tests/oracle-harness/dotnet/Program.cs:83</code>
 (and the Java twin) read <code>hash_bits</code> from every file in <code>crates/dstu-core/tests/vectors/kupyna/</code>,
 and T-234’s (<code>1c87f53</code>) bit-length annex Б file has a different schema. Java: <code>missing int field "hash_bits"</code>; .NET: <code>KeyNotFoundException</code>. <strong>0.4.0 impact:</strong> <code>1c87f53</code> is on local <code>master</code>
@@ -10683,7 +10684,7 @@ but not pushed (<code>origin/master</code> is <code>f8bf046</code>, the last gre
 with the T-270 cherry-pick, then cherry-pick it to <code>ux-0.5.0</code>. Direction: skip (or handle) the
 bit-length file by its <code>algorithm</code> field; first check whether BC can express bit-length messages
 at all. Effort S.</li>
-<li><input disabled="" type="checkbox"> <strong>T-289</strong> (Low, qa - local gate, <strong>Confirmed</strong> 2026-09-26, same run; depends: none) Three
+<li><input disabled="" type="checkbox" checked=""> <strong>T-289</strong> (Low, qa - local gate, <strong>Confirmed</strong> 2026-09-26, same run; depends: none) Three
 binding layers fail locally for reasons that live on this machine, not in the bindings; before
 T-243 they were hidden:
 <ul>
@@ -10699,7 +10700,12 @@ started from Git Bash; the same <code>ctest</code> passes from PowerShell (the M
 <li><del><code>miri</code> always skipped because of a wrong probe</del> <strong>Decided 2026-09-26 (D-221):</strong> <code>ci</code> skips
 Miri on purpose, with a message (~10 h, D-172; CI’s per-crate jobs are the gate). The
 <code>cargo xtask miri [pkg]</code> probe now uses <code>cargo +nightly miri --version</code>.</li>
-<li>Still open (machine setup, not code): <code>python</code>, <code>ruby</code>, <code>cpp</code> above.</li>
+<li><del>Still open (machine setup, not code): <code>python</code>, <code>ruby</code>, <code>cpp</code> above.</del> <strong>Done 2026-10-11:</strong>
+<code>python</code> was partly code: <code>maturin develop</code> installs into <code>bindings/python/.venv</code>, but <code>xtask</code>
+ran the PATH <code>pytest</code>, so it never tested the fresh build; <code>python()</code> now runs pytest from that
+venv when it exists (122 passed; the stale global 0.1.1 is uninstalled). <code>ruby</code> (123 examples,
+0 failures) and <code>cpp</code> pass from PowerShell with the env recipe in <code>.claude.local.md</code>
+(<code>LIBCLANG_PATH</code> plus MSYS2 <code>ucrt64\bin</code> and <code>usr\bin</code> on PATH).</li>
 </ul>
 </li>
 <li><input disabled="" type="checkbox" checked=""> <strong>T-290</strong> (Medium, arch, <strong>security-flagged</strong>, <strong>embargo-sensitive</strong>; found by T-273’s asm
@@ -10847,7 +10853,7 @@ secretstream/box subkey derivation. Also the capi plaintext <code>Vec</code> Not
 </ul>
 <h3 id="architecture-owner-decision-first"><a class="header" href="#architecture-owner-decision-first">Architecture (owner decision first)</a></h3>
 <ul>
-<li><input disabled="" type="checkbox"> <strong>T-284</strong> (Medium, arch, <strong>Confirmed</strong> by reading all 9 copies; depends: O-C, T-277) The stream-file framing is implemented 9 times: uacrypt’s
+<li><input disabled="" type="checkbox" checked=""> <strong>T-284</strong> (Medium, arch, <strong>Confirmed</strong> by reading all 9 copies; depends: O-C, T-277) <strong>Done 2026-10-11 (D-235):</strong> core codec + capi, uacrypt and all 8 bindings on it, fuzz target <code>crypto_secretstream_file</code>; Pi step 10 for every binding. The stream-file framing is implemented 9 times: uacrypt’s
 <code>write_secretstream_file</code>/<code>decrypt_stream_records</code> plus one writer and one reader per binding.
 That framing is the version byte, header, <code>tag || len_le32 || ct || tag16</code> records, the
 exact-8192 non-final rule, the length bound, the missing-<code>Final</code> check and the trailing-data
@@ -10863,6 +10869,15 @@ capi functions for it, so bindings keep only their language’s I/O.</li>
 <li>Tests under (b): T-277’s vectors against the codec, a fuzz target for the parser (three-place
 sync), and all 9 existing suites unchanged.</li>
 <li>Effort: (a) S-M, (b) L; (b) needs plan mode + advisor (new public API plus capi).</li>
+<li><strong>Plan approved 2026-10-11 (owner, plan mode + advisor):</strong> <code>crypto_secretstream</code> gains
+<code>FileEncryptor</code> (<code>init</code> -&gt; 33-byte prefix, <code>seal_chunk(&amp;[u8; 8192])</code>, <code>seal_final(&lt;= 8192)</code>)
+and <code>FileDecryptor</code> (<code>next_len()</code>, <code>feed(exactly next_len bytes)</code>, explicit <code>finish()</code> at
+EOF: <code>Truncated</code> before a verified <code>Final</code>, otherwise it releases the held <code>Final</code>
+plaintext - so a trailing-data stream never yields its last chunk), <code>FileError</code> with the
+shared phrases. capi: <code>dstu_secretstream_file_{encryptor,decryptor}_*</code>, new statuses 15-17
+(<code>CHUNK_TOO_LARGE</code>/<code>BAD_CHUNK_LENGTH</code>/<code>TRAILING_DATA</code>), per-decryptor <code>_last_error</code> (replaced the planned <code>dstu_status_message</code>, D-235). Order: core +
+tests, fuzz target, uacrypt, capi, then Python, Node, Ruby, Java (+T-275/T-276), .NET, Go,
+C++, PHP (+T-274/T-276), Pi, docs (D-235). Wire format unchanged.</li>
 </ul>
 </li>
 <li><input disabled="" type="checkbox" checked=""> <strong>T-285</strong> (<strong>closed 2026-09-25 as won’t do - O-E, D-220: the per-verify check stays, no API
@@ -11078,7 +11093,8 @@ T-275 (O-F: Java <code>close()</code> closes the sink - a behaviour change, Java
 <li>Hygiene: T-242, T-244, T-283, T-281 (O-D: documented reserved no-op).</li>
 <li>Docs: T-246, T-280.</li>
 </ol>
-<p><strong>0.7.0, in order:</strong></p>
+<p><strong>0.7.0, in order:</strong>
+0. T-231’s .NET half (owner 2026-10-11): read the logged growth from CI runs first.</p>
 <ol>
 <li>T-265 bounded-memory <code>box-seal</code>/<code>box-open</code> (new streaming <code>crypto_box</code> API) + T-269 binding gate
 (incl. <code>crypto_pwhash::derive_key</code>).</li>
@@ -11087,7 +11103,7 @@ T-275 (O-F: Java <code>close()</code> closes the sink - a behaviour change, Java
 <li>T-264 shell completions and man page.</li>
 <li>T-249 second audit pass, last.</li>
 </ol>
-<p><strong>Outside the versions:</strong> T-267 (site, right after 0.5.0), T-295 (winget, after 0.5.0), T-247
+<p><strong>Outside the versions:</strong> T-267 (site, right after 0.5.0), T-295 (winget, after the 0.6.0 release - owner 2026-10-11), T-247
 (upstream reports, owner go-ahead only).</p>
 <p><strong>After 1.0 (owner 2026-10-09):</strong> T-237 (BC harness), T-263 (text/armor output). <strong>Closed:</strong> T-250
 (no migration; the 0.3.x binaries stay available for decrypting old data).</p>
@@ -11114,7 +11130,17 @@ Yanks done 2026-10-10 (D-233, delegated to Claude), verified on the registry API
 squash-merged 2026-10-10 as <code>8c2e9f3</code> (SonarCloud fails on Dependabot PRs - no secrets - not a
 blocker); alert #3 closed as fixed. T-267 (site) done. <strong>NEXT STEP (owner 2026-10-10):</strong> 0.6.0
 in the plan’s order, starting with step 1’s T-231 (the Java VmRSS flake), then T-288; T-295
-(winget) after step 1. <code>master</code> = <code>aeca3b8</code>, all CI green except that flake (rerun started).</li>
+(winget) after step 1. <code>master</code> = <code>aeca3b8</code>, all CI green except that flake (rerun started).
+<strong>2026-10-11:</strong> step 1 done except T-231’s .NET half and T-296’s CI timing (T-288/T-289/T-277
+closed, T-231 Java fixed, D-234). Owner: T-295 moves after the 0.6.0 release; the owner wants
+0.6.0 carried through to the version bump and tag. Step 2 (T-284) plan approved - see T-284.
+<strong>2026-10-11, later:</strong> step 2 done (T-284/T-274/T-275/T-276, D-235; Pi: all 9 layers green);
+step 3 T-281/T-283 done, T-242/T-244 open. Local commits from <code>586ff90</code> to <code>8230c1a</code>
+unpushed. <strong>Release pitfalls for 0.6.0:</strong> bump <code>dstu-core</code> 0.5.0 -&gt; 0.6.0 together with every
+<code>path = ..., version = "0.5.0"</code> requirement (uacrypt, capi, the 5 direct-Rust binding
+<code>Cargo.toml</code>s); Python/Node/Ruby (published 0.3.0) need a minor bump to 0.4.0 - their reader
+messages changed and a stream with trailing data no longer yields its Final chunk; Java is
+0.2.0 already; a green Miri run on the tagged commit (D-232).</li>
 <li><strong>0.4.0: released and closed (2026-10-08/09).</strong> Tag <code>v0.4.0</code> on <code>39fdb53</code> after all CI incl.
 Miri was green; release run 37761634603 green (npm needed a new <code>NPM_TOKEN</code> and one rerun).
 Live: crates.io 0.4.0, PyPI/npm/RubyGems 0.2.0 (npm without <code>win32-x64-msvc</code>, D-189). T-252
@@ -11521,7 +11547,7 @@ need <code>std</code> unconditionally, same reason <code>crypto_secretbox</code>
 <tr><td><code>crypto_auth</code>/<code>crypto_onetimeauth</code></td><td><code>dstu_core::crypto_auth</code> (<code>auth</code>/<code>verify</code>/<code>Key</code>, over <code>hazmat::kupyna_kmac::Kupyna256Kmac</code> only) + <code>hazmat::kupyna_kmac</code> (<code>Kupyna256Kmac</code>/<code>Kupyna384Kmac</code>/<code>Kupyna512Kmac</code>, all three sizes)</td><td><strong>Implemented, provisional</strong> — Kupyna-based KMAC, both UAPKI’s and Bouncy Castle’s constructions read and cross-checked byte-for-byte on all three sizes, not confirmed against the primary DSTU 7564:2014 text. High-level wrapper added <code>docs/TASKS.md</code> T-105/<code>docs/DECISIONS.md</code> D-66: only the 256-bit size is exposed (D-47’s “delete the knob”), key is an opaque <code>Zeroize</code>-on-drop <code>Key</code> type, which also forecloses <code>WrongKeyLength</code> at this layer. See D-44/D-66 in <code>docs/DECISIONS.md</code>.</td></tr>
 <tr><td><code>crypto_kdf</code></td><td><code>dstu_core::crypto_kdf</code> (<code>MasterKey::derive_subkey</code>, over <code>hazmat::kupyna_kdf::Kupyna256Kdf</code> only) + <code>hazmat::kupyna_kdf</code> (<code>Kupyna256Kdf</code>/<code>Kupyna384Kdf</code>/<code>Kupyna512Kdf</code>, all three sizes)</td><td><strong>Implemented</strong> — modeled after libsodium’s <code>crypto_kdf_derive_from_key</code> shape over <code>hazmat::kupyna_kmac</code>, not full RFC 5869 HKDF. No DSTU standard or reference implementation exists for this construction, so unlike the rest of this table’s “provisional” rows, there is no oracle vector at all, ever. High-level wrapper added <code>docs/TASKS.md</code> T-105/<code>docs/DECISIONS.md</code> D-66, same “delete the knob” / opaque <code>Zeroize</code>-on-drop key shape as <code>crypto_auth</code> above. See D-45/D-66 in <code>docs/DECISIONS.md</code>.</td></tr>
 <tr><td><code>crypto_kx</code></td><td><em>(future construction over <code>hazmat::dstu4145</code>/<code>dstu9041</code>)</em></td><td>Both curve implementations now exist (<code>l(p)=256</code>/163-bit only) — this construction itself still not designed or started.</td></tr>
-<tr><td><code>crypto_secretstream</code></td><td><code>dstu_core::crypto_secretstream</code> (<code>PushState</code>/<code>PullState</code>/<code>Key</code>/<code>Tag</code>), over <code>hazmat::kalyna_gcm::Kalyna256_256Gcm</code> + <code>hazmat::kupyna_kmac::Kupyna256Kmac</code></td><td><strong>Implemented, provisional</strong> (<code>docs/TASKS.md</code> T-40/T-70, <code>docs/DECISIONS.md</code> D-68) — a from-scratch tag-per-chunk framing (full <code>MESSAGE</code>/<code>PUSH</code>/<code>REKEY</code>/<code>FINAL</code> set, libsodium’s <code>crypto_secretstream_xchacha20poly1305</code> shape per D-47’s tie-breaker since no DSTU streaming-AEAD standard exists), not the Strumok/Kalyna-CTR sketch this table originally guessed. Caller-buffer, <code>no_std</code>-capable API (per-item <code>std</code> gating). No oracle vector exists for this construction, ever (same posture as <code>crypto_kdf</code>, D-45) — verified by property/tamper/misuse tests only. Inherits <code>hazmat::kalyna_gcm</code>’s D-56 not-primary-confirmed status. <code>uacrypt encrypt</code>/<code>decrypt</code> rewired onto it the same session, a breaking wire-format change from the prior <code>crypto_secretbox</code>-backed blob format.</td></tr>
+<tr><td><code>crypto_secretstream</code></td><td><code>dstu_core::crypto_secretstream</code> (<code>PushState</code>/<code>PullState</code>/<code>Key</code>/<code>Tag</code>), over <code>hazmat::kalyna_gcm::Kalyna256_256Gcm</code> + <code>hazmat::kupyna_kmac::Kupyna256Kmac</code></td><td><strong>Implemented, provisional</strong> (<code>docs/TASKS.md</code> T-40/T-70, <code>docs/DECISIONS.md</code> D-68) — a from-scratch tag-per-chunk framing (full <code>MESSAGE</code>/<code>PUSH</code>/<code>REKEY</code>/<code>FINAL</code> set, libsodium’s <code>crypto_secretstream_xchacha20poly1305</code> shape per D-47’s tie-breaker since no DSTU streaming-AEAD standard exists), not the Strumok/Kalyna-CTR sketch this table originally guessed. Caller-buffer, <code>no_std</code>-capable API (per-item <code>std</code> gating). No oracle vector exists for this construction, ever (same posture as <code>crypto_kdf</code>, D-45) — verified by property/tamper/misuse tests only. Inherits <code>hazmat::kalyna_gcm</code>’s D-56 not-primary-confirmed status. <code>uacrypt encrypt</code>/<code>decrypt</code> rewired onto it the same session, a breaking wire-format change from the prior <code>crypto_secretbox</code>-backed blob format. The stream-file format (D-208) is one codec, <code>FileEncryptor</code>/<code>FileDecryptor</code> (<code>next_len</code>/<code>feed</code>/<code>finish</code>, <code>FileError</code>), also in the C ABI, that uacrypt and all 8 bindings drive (T-284, D-235).</td></tr>
 <tr><td><code>crypto_pwhash</code></td><td><code>dstu_core::crypto_pwhash</code> (<code>hash_password</code>/<code>verify_password</code>/<code>Strength</code>)</td><td><strong>Done</strong> (T-71, D-49/D-50) — not DSTU, plain Argon2id over the <code>argon2</code> crate, dedicated <code>pwhash</code> feature (off by default). <code>Strength::{Interactive,Moderate,Sensitive}</code> mirror libsodium’s own <code>OPSLIMIT</code>/<code>MEMLIMIT_*</code> presets exactly, cited to its C source. <code>derive_key</code> (libsodium’s <code>crypto_pwhash</code> key derivation, byte-identical to it) backs <code>uacrypt encrypt --passphrase</code> (T-262, D-219). <code>verify_password</code> accepts only argon2id/argon2i v=19 within the Sensitive preset’s memory and work, checked before any allocation (T-272, D-222).</td></tr>
 <tr><td><code>randombytes</code></td><td><code>dstu_core::randombytes::randombytes_buf</code></td><td><strong>Done</strong> (T-72, D-48) — <code>std</code>-gated over an optional <code>getrandom</code> dependency, absent from <code>no_std</code>/<code>alloc</code>/<code>small-tables</code> builds.</td></tr>
 </tbody>
@@ -12764,10 +12790,14 @@ copy the encoder’s happy path.</strong> Python’s decoder read the wire <code
 read, with no upper bound — for a file this just hits EOF, but the language’s own
 file-like abstraction may also have to accept a socket/pipe, where an oversized declared
 length means accumulating gigabytes before ever failing. Also missed: rejecting trailing
-bytes after the <code>Final</code> chunk (silently ignored instead of erroring). Both are checks
-<code>uacrypt decrypt</code> already has (<code>CliError::SecretstreamChunkTooLarge</code>/
-<code>CliError::SecretstreamTrailingData</code>, <code>crates/uacrypt/src/lib.rs</code>) — port them explicitly
-into every language’s own reader, they don’t come for free from the wire format matching.
+bytes after the <code>Final</code> chunk (silently ignored instead of erroring). <strong>Since T-284
+(0.6.0) no binding parses the format itself:</strong> every reader and writer drives the core
+codec (<code>crypto_secretstream::FileEncryptor</code>/<code>FileDecryptor</code>, or the capi’s
+<code>dstu_secretstream_file_*</code> for .NET/Go/C++), which owns all these checks. A binding reads
+exactly <code>next_len()</code> bytes per <code>feed</code>, calls <code>finish()</code> at end of input, and seals full
+chunks from the caller’s buffer by offset (T-276); its errors are the core’s messages.
+Every sink write is checked (T-274). Java’s sink follows <code>java.io</code>’s filter-stream
+convention: <code>complete()</code> flushes, <code>close()</code> closes the sink without finalizing (T-275).
 - <strong>The <code>uacrypt</code> interop test must convert its raw key first</strong> (since 0.5.0, T-256/D-212):
 <code>uacrypt encrypt</code>/<code>decrypt --key</code> read typed key files only, so the test writes the
 binding’s raw 32-byte key, runs <code>uacrypt key-import --kind symmetric --in &lt;raw&gt; --out       &lt;typed&gt;</code>, and passes the typed file to <code>uacrypt</code>. The binding’s own API keeps raw keys.</li>
@@ -13725,6 +13755,39 @@ block-aligned, and round-trip tests cannot see a non-injective encoding.</li>
 </div>
 <h2 id="reporting-vulnerabilities"><a class="header" href="#reporting-vulnerabilities">Reporting vulnerabilities</a></h2>
 <p>Private disclosure only — GitHub Security Advisories. Never a public issue.</p>
+<h2 id="standards-baseline-what-fixes-and-the-release-pipeline-citefollow"><a class="header" href="#standards-baseline-what-fixes-and-the-release-pipeline-citefollow">Standards baseline (what fixes and the release pipeline cite/follow)</a></h2>
+<p>Moved here from <code>docs/TASKS.md</code> (T-246, 2026-10-11). The task column names the
+work each row governed when the table was written.</p>
+<p>Owner request 2026-09-23: the standards the constructions and the binary should follow. Each row
+names the task it governs; the implementing task cites the clause in its own <code>D-</code> entry.
+<strong>Clause numbers below were written from memory - confirm each against the primary document before it
+goes into a <code>D-</code> entry</strong> (research-before-implementation rule). International references are used only as tie-breakers where DSTU is silent (D-47), never to
+replace a DSTU primitive.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Area</th><th>Standard / reference</th><th>What we take from it</th><th>Task</th></tr>
+</thead>
+<tbody>
+<tr><td>secretbox interface</td><td>RFC 5116 (AEAD interface), §2.1-2.2</td><td>AEAD inputs/outputs, and “the entire ciphertext is authenticated” including its length</td><td>T-232</td></tr>
+<tr><td>secretbox nonce</td><td>NIST SP 800-38D §8.2-8.3 (IV uniqueness, random-IV bound)</td><td>justifies keeping the 256-bit random nonce over 96 bits</td><td>T-232</td></tr>
+<tr><td>length binding</td><td>NIST SP 800-38D §7.1 step 5 (<code>len(A) ‖ len(C)</code> - true lengths)</td><td>why the padded-length field is non-injective; target property for our AAD</td><td>T-232, T-235</td></tr>
+<tr><td>secretstream</td><td>Hoang, Reyhanitabar, Rogaway, Vizar, “Online Authenticated-Encryption and its Nonce-Reuse Misuse-Resistance” (CRYPTO 2015, STREAM); libsodium <code>crypto_secretstream</code> spec</td><td>per-segment nonce = counter, last-segment flag, truncation/reorder resistance</td><td>T-232</td></tr>
+<tr><td>crypto_box</td><td>RFC 9180 (HPKE) §4.1, §5.1 (<code>kem_context = enc ‖ pkR</code>, key schedule binds <code>info</code>)</td><td>bind <code>kem_ct ‖ recipient_pk</code> into the key derivation</td><td>T-248</td></tr>
+<tr><td>KDF shape</td><td>NIST SP 800-108r1 §4.4 (KDF using KMAC), SP 800-56C r2 (context/<code>FixedInfo</code>)</td><td>KMAC-based KDF with an explicit context string - analogy for Kupyna-KMAC (DSTU 7564), no HKDF</td><td>T-248</td></tr>
+<tr><td>keygen uniformity</td><td>FIPS 186-5 Appendix A.2.2 (key pair generation by testing candidates)</td><td>rejection sampling over the full <code>[1, n-1]</code></td><td>T-239</td></tr>
+<tr><td>public-key validation</td><td>SEC 1 v2 §3.2.2.1; NIST SP 800-56A r3 §5.6.2.3.3 (full validation incl. <code>n*Q = O</code>)</td><td>m=163 full validation</td><td>T-245b</td></tr>
+<tr><td>constant time / zeroization</td><td>ISO/IEC 19790 / FIPS 140-3 SSP zeroization (informational, not a certification claim); CWE-208, CWE-226</td><td>what “zeroized” and “no timing leak” mean for review</td><td>T-242</td></tr>
+<tr><td>FFI UB</td><td>CWE-758 (reliance on undefined behavior), Rust reference “invalid enum discriminant”</td><td><code>u32</code> at the boundary</td><td>T-240</td></tr>
+<tr><td>CLI file handling</td><td>CWE-377 (insecure temp file), CWE-59 (link following), CWE-732 (permissions), CWE-367 (TOCTOU); POSIX `open(O_CREAT</td><td>O_EXCL</td><td>O_NOFOLLOW)`</td></tr>
+<tr><td>release artifacts</td><td>SLSA v1.0 Build L2/L3 provenance (GitHub <code>actions/attest-build-provenance</code>); signed SHA-256 checksums (Sigstore/cosign or minisign)</td><td>verifiable <code>uacrypt</code> binaries and binding artefacts</td><td>T-252</td></tr>
+<tr><td>dependency transparency</td><td>CycloneDX or SPDX SBOM; <code>cargo auditable</code> (embeds the dependency list in the binary); <code>cargo build --locked</code></td><td>an SBOM per release, and auditable binaries (<code>cargo audit bin</code>)</td><td>T-252</td></tr>
+<tr><td>disclosure</td><td>ISO/IEC 29147 (vulnerability disclosure) + ISO/IEC 30111 (handling); GitHub Security Advisories; RustSec advisory-db</td><td>the process T-233 follows</td><td>T-233</td></tr>
+<tr><td>project hygiene</td><td>OpenSSF Scorecard; OpenSSF Best Practices badge</td><td>periodic self-check of CI/release posture</td><td>T-252</td></tr>
+<tr><td>key commitment (open question, not a finding)</td><td>Albertini et al., “How to Abuse and Fix Authenticated Encryption Without Key Commitment” (USENIX Security 2022)</td><td>Kalyna-GCM, like GCM, is not key-committing; relevant only if a caller tries multiple keys on one ciphertext</td><td>T-249</td></tr>
+</tbody>
+</table>
+</div>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="docsoraclesmd"><a class="header" href="#docsoraclesmd">docs/ORACLES.md</a></h1>
 <p>Which sources this project trusts for verifying correctness, how much, and why — and where
@@ -30479,7 +30542,8 @@ full per-language docs; the <strong>Package column</strong> is where you’d act
 .NET, Go, and C++ bindings link against directly — usable from any language with a C FFI, not just
 those three. See <code>docs/bindings-strategy.md</code> for the per-binding design rationale.</p>
 <h2 id="embedded--no_std-targets-2"><a class="header" href="#embedded--no_std-targets-2">Embedded / <code>no_std</code> targets</a></h2>
-<p><code>dstu-core</code> is <code>no_std</code>-compatible from day one (<code>std</code>/<code>alloc</code>/<code>no_std</code> feature flags), and
+<p><code>dstu-core</code> is <code>no_std</code>-compatible from day one (<code>std</code> on by default, off for <code>no_std</code>; the <code>alloc</code>
+feature is reserved and enables nothing yet), and
 cross-compiles clean for real microcontroller targets (STM32 Cortex-M, ESP32-class RISC-V) with no
 custom toolchain. That’s a compilation claim, not a real-hardware validation or a side-channel
 resistance claim — see <code>docs/SECURITY.md</code> for the full threat model.</p>
@@ -32612,11 +32676,171 @@ newest unyanked 0.4 line would invite pinning to code with a known process abort
 timing. RubyGems refuses a yank after 30 days (T-251), so waiting would lose that option there.</p>
 <p><strong>Rejected.</strong> Advisory only, no yank: weaker signal for tools that read yanks but not GHSA, and
 inconsistent with T-251.</p>
+<h2 id="d-234-java-leak-test-measures-native-growth-only---fixed-pre-touched-heap-1-mib-2026-10-11"><a class="header" href="#d-234-java-leak-test-measures-native-growth-only---fixed-pre-touched-heap-1-mib-2026-10-11">D-234: Java leak test measures native growth only - fixed, pre-touched heap, 1 MiB (2026-10-11)</a></h2>
+<p><strong>Finding (T-231).</strong> <code>bindings-java</code>’s <code>MemoryLeakTest</code> failed on 2 of 3 <code>master</code> pushes on
+2026-10-10 (VmRSS growth 13.3 MB and 9.1 MB vs 8 MiB). Since 0.5.0 the test runs 3-4x longer
+(68-80 s, the constant-time field arithmetic), which is when it started failing. Measured on the Pi
+(aarch64, JDK 17, N = 20000 unless noted):</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Heap</th><th>Loop</th><th>VmRSS growth</th></tr>
+</thead>
+<tbody>
+<tr><td>default</td><td>normal (5 runs)</td><td>5.8-8.2 MB</td></tr>
+<tr><td>default</td><td>normal, N = 40000</td><td>7.4 MB</td></tr>
+<tr><td>default</td><td>never closes its states</td><td>8.6 MB</td></tr>
+<tr><td><code>-Xms512m -Xmx512m -XX:+AlwaysPreTouch</code></td><td>normal (N 20000/40000)</td><td>0.13-0.44 MB</td></tr>
+<tr><td>same</td><td>never closes its states</td><td>2.75-3.05 MB</td></tr>
+</tbody>
+</table>
+</div>
+<p>On a default heap the growth is heap pages first touched during the loop: it does not grow with N,
+and a real leak is indistinguishable from a pass. So there was no native leak, and the old test
+could not have caught one.</p>
+<p><strong>Decision.</strong> The Java test fork runs with a fixed, pre-touched heap (surefire <code>argLine</code> in
+<code>bindings/java/pom.xml</code>, for the whole fork: no other Java test depends on heap size), and the
+threshold drops from 8 MiB to 1 MiB - 2.4x above the highest normal run, 2.6x below the leak
+control. The committed config was rerun on the Pi: 3 normal runs pass, the leak control fails.</p>
+<p><strong>Not changed.</strong> <code>bindings-dotnet</code>’s test (T-231’s original subject: 4 of 97 runs, ~64 MB growth on
+CI x86_64). The Pi does not reproduce it (6 runs, 0.08-1.4 MB, managed committed bytes flat), and
+.NET’s handles are <code>SafeHandle</code>s, so an undisposed loop is freed by finalizers and is no leak
+control. No threshold change without a control that discriminates.</p>
+<p><strong>Rejected.</strong> Raising the threshold (hides the flake and still cannot see a leak); one surefire
+execution only for the leak test (<code>-Dtest=MemoryLeakTest</code> would then run it twice, once on the
+default heap).</p>
+<h2 id="d-235-one-stream-file-codec-in-dstu-core-every-reader-and-writer-on-it-t-284-2026-10-11"><a class="header" href="#d-235-one-stream-file-codec-in-dstu-core-every-reader-and-writer-on-it-t-284-2026-10-11">D-235: One stream-file codec in dstu-core, every reader and writer on it (T-284, 2026-10-11)</a></h2>
+<p><strong>Decision (owner O-C(b), D-220; plan approved 2026-10-11).</strong> The D-208 stream-file framing lives
+once, in <code>crypto_secretstream</code>: <code>FileEncryptor</code> (<code>init</code> gives the 33-byte prefix, <code>seal_chunk</code>
+takes <code>&amp;[u8; 8192]</code>, <code>seal_final</code> the last <code>0..=8192</code> bytes) and <code>FileDecryptor</code>. <code>uacrypt</code> and all
+8 bindings drive it (Python/Node/Ruby/PHP/Java through new native classes, .NET/Go/C++ through
+<code>dstu_secretstream_file_*</code> in the capi) and keep only their language’s I/O. The wire format is
+unchanged: the 15 shared vectors (T-277) pass through every reader before and after.</p>
+<p><strong>Reader contract.</strong> <code>next_len()</code> says how many bytes <code>feed</code> takes next; <code>feed</code> must get exactly
+that many (another length is a caller error, not EOF). End of input is an explicit <code>finish()</code>:
+<code>Truncated</code> before a verified <code>Final</code>, otherwise it releases the <code>Final</code> record’s plaintext. EOF is
+never inferred from a short slice, because a pipe or socket legitimately returns short reads. After
+<code>Final</code>, <code>next_len()</code> is 1 and any byte fed is <code>TrailingData</code>. After an error every call fails
+(<code>Finished</code>). The decryptor holds the <code>Final</code> plaintext in an 8 KiB buffer; a <code>no_std</code>/MCU caller
+that cannot afford it keeps the raw <code>PullState</code>.</p>
+<p><strong>Behaviour change: the <code>Final</code> chunk is released only once the input is known to end there.</strong>
+Before, <code>uacrypt decrypt --out -</code> and the Node reader emitted the <code>Final</code> chunk and only then found
+trailing bytes (Python, Ruby, PHP, Java, .NET, Go and C++ probed first). Now no consumer yields the
+last chunk of a stream with bytes appended (<code>docs/CLI.md</code>).</p>
+<p><strong>Messages.</strong> Every reader reports the core’s <code>FileError</code> text, so the per-binding wordings T-277
+mapped are gone: “chunk too large”, “non-final chunk”, “unrecognized chunk tag”, “trailing data”,
+“truncated”, “authentication failed”, “unsupported stream format version”. The capi keeps the
+failing error’s message per decryptor (<code>dstu_secretstream_file_decryptor_last_error</code>) instead of
+the planned static <code>dstu_status_message</code>: a status code loses the declared length and version the
+core’s message carries. New statuses 15-17 (<code>DSTU_ERR_CHUNK_TOO_LARGE</code>,
+<code>DSTU_ERR_BAD_CHUNK_LENGTH</code>, <code>DSTU_ERR_TRAILING_DATA</code>), appended. <code>FileError</code> is not
+<code>#[non_exhaustive]</code> and its <code>Random</code> variant is gated on <code>std</code>/<code>getrandom</code>, like
+<code>SecretstreamError</code>’s: intended, since only <code>FileEncryptor::init</code> draws randomness and it exists
+only under the same features.</p>
+<p><strong>Writers.</strong> Each holds back at most one chunk (an exact multiple of 8 KiB must end in a full
+<code>Final</code>) and seals full chunks straight from the caller’s buffer by offset. That fixes T-276 (Java:
+64 MiB in about a second; PHP on the Pi, release build: 16 MiB in one write 232 ms, was 5245 ms)
+and the same quadratic shape in Python (<code>del buf[:8192]</code>) and Ruby (<code>byteslice</code> of the rest). The
+Java JNI call copies only the chunk (<code>GetByteArrayRegion</code>), not the whole array. PHP checks every
+<code>fwrite</code> and throws on a failed or short write (T-274). Java follows <code>java.io</code>’s filter-stream
+convention (O-F, T-275): <code>complete()</code> writes <code>Final</code> and flushes, <code>flush()</code> forwards, <code>close()</code>
+closes the sink (the decryptor’s closes its source) and never finalizes; the Java package goes to
+0.2.0.</p>
+<p><strong>Tests.</strong> Core: vectors by error class, boundary round trips, an independent decode with the raw
+<code>PullState</code>, misuse, proptests, Miri; fuzz target <code>crypto_secretstream_file</code>. capi: vectors by
+status and message, nulls, undersized buffers, failed state. Each binding: the shared vectors, one
+large write vs many small, trailing data never yields <code>Final</code>; Java and PHP add the T-274/T-275
+regressions.</p>
+<h2 id="d-236-the-c-abi-refuses-overlapping-input-and-output-buffers-t-244-2026-10-11"><a class="header" href="#d-236-the-c-abi-refuses-overlapping-input-and-output-buffers-t-244-2026-10-11">D-236: The C ABI refuses overlapping input and output buffers (T-244, 2026-10-11)</a></h2>
+<p><strong>Decision (owner, 2026-10-11, of three options).</strong> Every capi function that takes both an input
+and an output buffer checks, before forming any slice, whether they share a byte
+(<code>util::overlaps</code>, an address comparison that never dereferences). A function returning
+<code>DstuStatus</code> returns <code>DSTU_ERR_INVALID_ARGUMENT</code>; a <code>void</code> one (<code>dstu_auth</code>, <code>dstu_generichash_*</code>,
+<code>dstu_kdf_derive_subkey</code>, <code>dstu_sign*</code>) returns without writing, its existing convention for NULL,
+since changing its return type would break the ABI. 22 functions, including the new
+<code>dstu_secretstream_file_*</code> ones and <code>dstu_secretstream_push</code>’s two outputs against each other. The
+generated header states the rule.</p>
+<p><strong>Why.</strong> A <code>&amp;[u8]</code> and a <code>&amp;mut [u8]</code> over the same bytes is undefined behaviour in Rust, and
+libsodium allows in-place calls, so C callers will try them. Refusing makes the misuse a defined
+error instead of UB.</p>
+<p><strong>Rejected.</strong> Documenting only (UB stays reachable); supporting in-place use (every function
+rewritten to work through raw pointers; too large and risky for 0.6.0, possible later).</p>
+<p><strong>Also (T-244(a)).</strong> <code>dstu_memzero</code> now uses <code>zeroize</code> (volatile writes) instead of
+<code>ptr::write_bytes</code> plus a compiler fence, which cross-language LTO may remove. Tests:
+<code>tests/ffi_overlap.rs</code> (refused in-place seal and codec feed, untouched output of a void hash,
+adjacent halves accepted), clean under Miri.</p>
+<h2 id="d-237-secret-hygiene-batch-t-242-2026-10-11"><a class="header" href="#d-237-secret-hygiene-batch-t-242-2026-10-11">D-237: Secret-hygiene batch (T-242, 2026-10-11)</a></h2>
+<p><strong>Done.</strong> Wiped on every return path (<code>Zeroizing</code>): DSTU 9041’s <code>kappa</code>, <code>T</code>/<code>T'</code>, <code>M'</code>, the
+KW plaintext and the unwrapped <code>recovered</code> block (both curve sizes; <code>FieldElement</code>/<code>Point</code> derive
+<code>Zeroize</code> for that); the KMAC output that seeds the DSTU 4145 signing nonce (<code>crypto_sign</code>,
+<code>crypto_sign257</code>); Kupyna-KMAC’s padded key and full-width output; Kalyna-KW’s <code>b</code> array; the capi
+<code>*_key_from_bytes</code> stack copies of secret keys (9 functions). <code>uacrypt</code>’s <code>key_bytes</code>/<code>key_arr</code>
+were already <code>Zeroizing</code> since 0.5.0’s typed key files. <code>SigningKey::from_bytes</code> (both curves) now
+uses the borrow-based <code>Scalar::from_candidate_bytes</code> range check instead of <code>iter().all(== 0)</code> plus
+a byte-wise <code>&gt;=</code> that exits at the first differing byte of <code>d</code>; that helper’s zero test is an OR
+fold, not an array <code>!=</code>, and it is no longer feature-gated. <code>Scalar</code>/<code>Scalar257</code> and the GF(2^m)
+and F_p field elements print <code>Type(&lt;redacted&gt;)</code> instead of their limbs (manual <code>Debug</code>, so <code>Point</code>
+and test assertions still compile).</p>
+<p><strong>Verification is review only (finding, not a test).</strong> Whether memory was wiped is not observable
+from safe Rust, and a test that reads freed memory would be UB; <code>Zeroizing</code>’s <code>Drop</code> is the
+mechanism and the review is the evidence, the same “foreclosed by type/review” convention as
+earlier <code>D-</code> findings. The <code>Debug</code> redaction is tested (<code>tests/debug_redaction.rs</code>).</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="changelog"><a class="header" href="#changelog">Changelog</a></h1>
 <p>All notable changes to this project are documented in this file. Format follows
 <a href="https://keepachangelog.com/en/1.1.0/">Keep a Changelog</a>.</p>
 <h2 id="unreleased"><a class="header" href="#unreleased">[Unreleased]</a></h2>
+<h3 id="added"><a class="header" href="#added">Added</a></h3>
+<ul>
+<li><strong><code>dstu-core</code>: one stream-file codec</strong>, <code>crypto_secretstream::FileEncryptor</code>/<code>FileDecryptor</code>
+(T-284, <code>docs/DECISIONS.md</code> D-235): the <code>uacrypt encrypt</code> file format (D-208) implemented once,
+<code>no_std</code>. Reading takes exactly <code>next_len()</code> bytes per <code>feed</code> and an explicit <code>finish()</code> at end
+of input. New constants <code>CHUNK_BYTES</code>, <code>FILE_PREFIX_BYTES</code>, <code>RECORD_OVERHEAD_BYTES</code>,
+<code>MAX_RECORD_BYTES</code>; new <code>FileError</code>. The wire format is unchanged.</li>
+<li><strong>C ABI:</strong> <code>dstu_secretstream_file_encryptor_*</code>/<code>dstu_secretstream_file_decryptor_*</code>
+(including <code>_last_error</code>), statuses <code>DSTU_ERR_CHUNK_TOO_LARGE</code> (15),
+<code>DSTU_ERR_BAD_CHUNK_LENGTH</code> (16), <code>DSTU_ERR_TRAILING_DATA</code> (17).</li>
+<li>New fuzz target <code>crypto_secretstream_file</code>.</li>
+</ul>
+<h3 id="changed"><a class="header" href="#changed">Changed</a></h3>
+<ul>
+<li><code>uacrypt</code> and all 8 language bindings read and write stream files through the codec. Their
+error messages for a malformed file are now the core’s, the same in every language.</li>
+<li><strong>A stream with bytes after its <code>Final</code> chunk no longer yields that chunk anywhere</strong>:
+<code>uacrypt decrypt --out -</code> and the Node.js reader used to print or emit it before finding the
+extra bytes.</li>
+<li><strong>Java binding 0.2.0</strong> (T-275): <code>SecretStreamEncryptor.complete()</code> flushes the sink, <code>flush()</code>
+forwards, and <code>close()</code> closes the sink (<code>SecretStreamDecryptor.close()</code> closes its source), as
+<code>java.io</code> filter streams do. <code>close()</code> still never writes the <code>Final</code> chunk.</li>
+</ul>
+<h3 id="fixed"><a class="header" href="#fixed">Fixed</a></h3>
+<ul>
+<li><strong>C ABI: overlapping input and output buffers are refused</strong> (T-244, D-236): a function returning
+<code>DstuStatus</code> gives <code>DSTU_ERR_INVALID_ARGUMENT</code>, a <code>void</code> one writes nothing. In-place calls were
+undefined behaviour. <code>dstu_memzero</code> now uses volatile writes (<code>zeroize</code>).</li>
+<li>One large write into a stream writer took quadratic time in Java and PHP (T-276; 16 MiB took
+5-8 s), and the same buffer shape existed in Python and Ruby. Every writer now seals full
+chunks straight from the caller’s buffer.</li>
+<li>The PHP stream writer ignored failed or short <code>fwrite()</code> calls (only a notice), so a full disk
+produced a corrupt file without an error (T-274). It now throws.</li>
+<li>The Java reader printed a declared length of <code>0xFFFFFFFF</code> as “-1 bytes” (T-277).</li>
+<li><code>cargo xtask python</code> ran a PATH <code>pytest</code> that tested a stale installed package instead of the
+fresh <code>maturin develop</code> build (T-289).</li>
+</ul>
+<h3 id="internal"><a class="header" href="#internal">Internal</a></h3>
+<ul>
+<li>Shared stream-file vectors grew from 7 to 15 cases (T-277): data after <code>Final</code>, oversized
+lengths, no <code>Final</code>, cuts inside a record, an unknown tag, a tampered tag.</li>
+<li>The Java leak test measures native memory only (T-231, D-234); the slowest Miri file runs as 6
+shards (T-296).</li>
+<li>Bit-length arithmetic is overflow-checked (T-283): Kalyna GCM/GMAC refuse a length past
+2^61 - 1 bytes with <code>InvalidLength</code>; Kupyna and Kupyna-KMAC compute the 96-bit length field in
+<code>u128</code>. No real input reaches either bound.</li>
+<li>The <code>alloc</code> feature is documented as reserved: it enables nothing (T-281).</li>
+<li>Secret hygiene (T-242, D-237): more intermediates are wiped (DSTU 9041 <code>kappa</code>/<code>T</code>/<code>M'</code>, the
+signing-nonce KMAC output, KMAC and KW buffers, capi key copies); <code>SigningKey::from_bytes</code> checks
+<code>d</code>’s range without a byte-wise early exit; scalars and field elements print <code>&lt;redacted&gt;</code>.</li>
+</ul>
 <h2 id="050---2026-10-09"><a class="header" href="#050---2026-10-09">[0.5.0] - 2026-10-09</a></h2>
 <h3 id="changed---uacrypt-cli-breaking"><a class="header" href="#changed---uacrypt-cli-breaking">Changed - <code>uacrypt</code> CLI (breaking)</a></h3>
 <ul>
@@ -32704,7 +32928,7 @@ or a byte counter for stdin once 64 MiB have been read - only when stderr is a t
 10 redraws a second, erased before the result or error is printed. No flag, no new dependency;
 with stderr redirected or piped nothing changes.</li>
 </ul>
-<h3 id="added"><a class="header" href="#added">Added</a></h3>
+<h3 id="added-1"><a class="header" href="#added-1">Added</a></h3>
 <ul>
 <li><strong>Passphrase encryption</strong> (T-262, <code>docs/DECISIONS.md</code> D-219), like <code>age -p</code>:
 <code>encrypt --passphrase</code> asks twice on the terminal without echo, <code>encrypt --passphrase-file &lt;path&gt;</code> reads the first line of a file (for scripts); <code>decrypt</code> recognises a passphrase file by
@@ -32836,7 +33060,7 @@ scalar multiplication.</li>
 so it is unreachable in practice. The new <code>SecretstreamError::CounterExhausted</code> variant is
 <code>DSTU_ERR_FINALIZED</code> in the C ABI (T-245a).</li>
 </ul>
-<h3 id="added-1"><a class="header" href="#added-1">Added</a></h3>
+<h3 id="added-2"><a class="header" href="#added-2">Added</a></h3>
 <ul>
 <li>
 <p>Verifiable releases (T-252). Every GitHub Release now carries <code>SHA256SUMS</code> with a Sigstore
@@ -32865,7 +33089,7 @@ before a human notices. Escalates to a GitHub Issue only after 3 consecutive sch
 (self-closes once green again). See <code>docs/DECISIONS.md</code> D-196.</p>
 </li>
 </ul>
-<h3 id="fixed"><a class="header" href="#fixed">Fixed</a></h3>
+<h3 id="fixed-1"><a class="header" href="#fixed-1">Fixed</a></h3>
 <ul>
 <li>
 <p>v0.3.8’s RubyGems publish (Ruby bindings, <code>dstu_core</code>) actually completed - blocked by a pending
@@ -32882,7 +33106,7 @@ was stated. <code>docs/CLI.md</code> was also missing 9 of <code>uacrypt</code>�
 full finding-class breakdown.</p>
 </li>
 </ul>
-<h3 id="changed"><a class="header" href="#changed">Changed</a></h3>
+<h3 id="changed-1"><a class="header" href="#changed-1">Changed</a></h3>
 <ul>
 <li>
 <p><strong>Breaking: Kalyna GCM, GMAC, CCM and CMAC now follow the DSTU 7624:2014 text</strong> (checked against
@@ -32952,7 +33176,7 @@ status blurb the README pass above hadn’t reached. See <code>docs/DECISIONS.md
 </li>
 </ul>
 <h2 id="038---2026-08-13"><a class="header" href="#038---2026-08-13">[0.3.8] - 2026-08-13</a></h2>
-<h3 id="fixed-1"><a class="header" href="#fixed-1">Fixed</a></h3>
+<h3 id="fixed-2"><a class="header" href="#fixed-2">Fixed</a></h3>
 <ul>
 <li><code>publish to RubyGems</code> failed instantly on v0.3.7’s real release run (after all four
 <code>build-ruby-gems</code> platforms passed): <code>rubygems/configure-rubygems-credentials@v1</code> doesn’t exist
@@ -32964,7 +33188,7 @@ for this same step (<code>v2.1.0</code>). See <code>docs/DECISIONS.md</code> D-1
 </li>
 </ul>
 <h2 id="037---2026-08-13"><a class="header" href="#037---2026-08-13">[0.3.7] - 2026-08-13</a></h2>
-<h3 id="fixed-2"><a class="header" href="#fixed-2">Fixed</a></h3>
+<h3 id="fixed-3"><a class="header" href="#fixed-3">Fixed</a></h3>
 <ul>
 <li>Root <code>README.md</code>’s “Language bindings” table and the website’s “Bindings” section both still
 said “not published to any package registry” and linked only this repo’s own README, even though
@@ -32983,7 +33207,7 @@ current-state line, pointing to <code>docs/CHANGELOG.md</code> for what changed 
 re-narrating it in the banner itself.</li>
 </ul>
 <h2 id="036---2026-08-13"><a class="header" href="#036---2026-08-13">[0.3.6] - 2026-08-13</a></h2>
-<h3 id="added-2"><a class="header" href="#added-2">Added</a></h3>
+<h3 id="added-3"><a class="header" href="#added-3">Added</a></h3>
 <ul>
 <li><code>build-ruby-gems</code>/<code>publish-rubygems</code> jobs in <code>release.yml</code> (T-164): cross-compiled RubyGems
 native gem publishing for <code>dstu_core</code> (<code>x86_64-linux</code>, <code>aarch64-linux</code>, <code>arm64-darwin</code>,
@@ -32991,7 +33215,7 @@ native gem publishing for <code>dstu_core</code> (<code>x86_64-linux</code>, <co
 pre-registered pending publisher. Dormant behind the <code>rubygems</code> GitHub Environment approval
 gate until the next tag. See <code>docs/DECISIONS.md</code> D-190.</li>
 </ul>
-<h3 id="fixed-3"><a class="header" href="#fixed-3">Fixed</a></h3>
+<h3 id="fixed-4"><a class="header" href="#fixed-4">Fixed</a></h3>
 <ul>
 <li>The already-live PyPI and npm package pages (<code>dstu-core</code>) still had README/description text
 written pre-publish, claiming “provisional, not yet published” and offering only from-source
@@ -33005,13 +33229,13 @@ gemspec had a distinct, more serious bug caught in the same sweep: <code>README.
 publish - fixed ahead of that first publish. See <code>docs/DECISIONS.md</code> D-191.</li>
 </ul>
 <h2 id="035---2026-08-13"><a class="header" href="#035---2026-08-13">[0.3.5] - 2026-08-13</a></h2>
-<h3 id="added-3"><a class="header" href="#added-3">Added</a></h3>
+<h3 id="added-4"><a class="header" href="#added-4">Added</a></h3>
 <ul>
 <li><code>dstu-core-linux-arm64-gnu</code> - a new npm platform package for the Node.js bindings
 (<code>aarch64-unknown-linux-gnu</code>), built natively on GitHub’s <code>ubuntu-24.04-arm</code> hosted runner (GA for
 public repos since 2025-08-07), no cross-compile toolchain needed.</li>
 </ul>
-<h3 id="fixed-4"><a class="header" href="#fixed-4">Fixed</a></h3>
+<h3 id="fixed-5"><a class="header" href="#fixed-5">Fixed</a></h3>
 <ul>
 <li>v0.3.4’s npm publish (with the idempotency fix from that release) correctly skipped the two
 already-published platform packages and reached <code>dstu-core-win32-x64-msvc</code>, but that package hit
@@ -33024,7 +33248,7 @@ this class of npm block (contacting npm support - renaming doesn’t, per a real
 what un-defers it once support clears the name.</li>
 </ul>
 <h2 id="034---2026-08-13"><a class="header" href="#034---2026-08-13">[0.3.4] - 2026-08-13</a></h2>
-<h3 id="fixed-5"><a class="header" href="#fixed-5">Fixed</a></h3>
+<h3 id="fixed-6"><a class="header" href="#fixed-6">Fixed</a></h3>
 <ul>
 <li>v0.3.3’s npm publish got past the provenance/access fix but hit npm’s own spam-detection
 heuristic on the 3rd platform subpackage (<code>dstu-core-win32-x64-msvc</code>) after two succeeded
@@ -33042,7 +33266,7 @@ npm’s external spam heuristic and rate limits are outside this workflow’s co
 wherever the previous attempt stopped.</li>
 </ul>
 <h2 id="033---2026-08-12"><a class="header" href="#033---2026-08-12">[0.3.3] - 2026-08-12</a></h2>
-<h3 id="fixed-6"><a class="header" href="#fixed-6">Fixed</a></h3>
+<h3 id="fixed-7"><a class="header" href="#fixed-7">Fixed</a></h3>
 <ul>
 <li><code>publish-npm</code>’s <code>napi prepublish</code> step failed publishing every platform subpackage
 (<code>Can't generate provenance for new or private package, you must set access to public</code>) - <code>npm publish --provenance</code> refuses to guess the intended access level for a package that’s never been
@@ -33056,13 +33280,13 @@ lacking <code>contents: write</code> in this job, failing 401 against) <code>rel
 failed attempt before retrying (<code>registry.npmjs.org/dstu-core*</code> still 404).</li>
 </ul>
 <h2 id="032---2026-08-12"><a class="header" href="#032---2026-08-12">[0.3.2] - 2026-08-12</a></h2>
-<h3 id="added-4"><a class="header" href="#added-4">Added</a></h3>
+<h3 id="added-5"><a class="header" href="#added-5">Added</a></h3>
 <ul>
 <li><code>dstu-core</code> (Python bindings) is now genuinely live on <a href="https://pypi.org/project/dstu-core/">PyPI</a>
 0.1.0 - the 0.3.1 tag’s <code>publish-pypi</code> run actually went through (see Fixed, below), so this is
 the first release to reflect that as real instead of “prepared, not yet live.”</li>
 </ul>
-<h3 id="fixed-7"><a class="header" href="#fixed-7">Fixed</a></h3>
+<h3 id="fixed-8"><a class="header" href="#fixed-8">Fixed</a></h3>
 <ul>
 <li><code>environment: pypi</code>/<code>npm</code> in <code>release.yml</code> were referenced but never actually protected -
 GitHub auto-creates an environment with zero protection rules the first time a workflow
@@ -33091,7 +33315,7 @@ crates.io/PyPI don’t need re-publishing, just <code>dstu-core</code>/<code>uac
 <code>0.3.2</code> so <code>cargo publish</code> has something new to accept.</li>
 </ul>
 <h2 id="031---2026-08-12"><a class="header" href="#031---2026-08-12">[0.3.1] - 2026-08-12</a></h2>
-<h3 id="added-5"><a class="header" href="#added-5">Added</a></h3>
+<h3 id="added-6"><a class="header" href="#added-6">Added</a></h3>
 <ul>
 <li><code>crypto_box512</code>/<code>crypto_sign257</code>: wired into <code>dstu-core-capi</code> and all eight language bindings
 (Python/Node.js/Ruby/Java/PHP/.NET/Go/C++) - both landed in <code>dstu-core</code> itself already, in 0.3.0
@@ -33108,7 +33332,7 @@ Packagist is deliberately not part of this pass -
 <code>bindings/php</code> is a compiled <code>ext-php-rs</code> extension, and Packagist only distributes Composer
 (PHP-source) packages (<code>docs/DECISIONS.md</code> D-144).</li>
 </ul>
-<h3 id="fixed-8"><a class="header" href="#fixed-8">Fixed</a></h3>
+<h3 id="fixed-9"><a class="header" href="#fixed-9">Fixed</a></h3>
 <ul>
 <li><code>docs/TASKS.md</code> T-17 and <code>CLAUDE.md</code>’s “MVP scope” both still read “not started” for the
 crates.io publish that actually happened at 0.3.0 above - corrected to reflect reality
@@ -33125,7 +33349,7 @@ still pre-1.0, still not independently audited, and the headline provisional gap
 yet confirmed against their primary DSTU texts) are unchanged by this release - see that document
 and <code>docs/DECISIONS.md</code> for the full standing caveats, repeated here exactly as prominently as
 0.2.0’s own notes did below.</p>
-<h3 id="added-6"><a class="header" href="#added-6">Added</a></h3>
+<h3 id="added-7"><a class="header" href="#added-7">Added</a></h3>
 <ul>
 <li><code>hazmat::dstu9041</code>: DSTU 9041:2020 hybrid (ECIES-style) asymmetric encryption over a twisted
 Edwards curve, <code>l(p)=256</code>/E256/1 only (D-47’s “ship the recommended curve first” precedent) -
@@ -33174,7 +33398,7 @@ measurement can actually detect unbounded growth. <code>#[ignore]</code>d by def
 5 minutes and was killed before finishing); wired into <code>cargo xtask ci</code>’s optional layers and a
 new CI job matrixed across all three OSes (<code>docs/TASKS.md</code> T-200).</li>
 </ul>
-<h3 id="fixed-9"><a class="header" href="#fixed-9">Fixed</a></h3>
+<h3 id="fixed-10"><a class="header" href="#fixed-10">Fixed</a></h3>
 <ul>
 <li><code>crypto_sign</code>/<code>hazmat::dstu4145</code> (<code>m=163</code>): <code>VerifyingKey::from_uncompressed_bytes</code> accepted a
 caller-supplied public key with no on-curve check, and <code>verify</code> never validated its own <code>q</code>
@@ -33190,7 +33414,7 @@ streaming path opened <code>--out</code> via <code>File::create</code> (truncati
 Found by T-200’s own <code>--in</code>==<code>--out</code> smoke-test probe of the real binary, fixed with the same
 temp-file-then-rename discipline <code>encrypt</code>/<code>decrypt</code> already use (<code>docs/DECISIONS.md</code> D-187).</li>
 </ul>
-<h3 id="changed-1"><a class="header" href="#changed-1">Changed</a></h3>
+<h3 id="changed-2"><a class="header" href="#changed-2">Changed</a></h3>
 <ul>
 <li><code>hazmat::gf2m_wide</code>/<code>hazmat::dstu4145::gf2m163</code>: <code>multiply()</code> now dispatches to a hardware
 carry-less-multiply implementation (<code>PCLMULQDQ</code>/<code>PMULL</code>) at runtime when the CPU supports it and
@@ -33203,7 +33427,7 @@ DSTU 4145 <code>sign</code>/<code>verify</code> up ~26-32x on the dev machine (<
 <h2 id="020---2026-08-02"><a class="header" href="#020---2026-08-02">[0.2.0] - 2026-08-02</a></h2>
 <p>Second tagged release - GitHub Releases only, no crates.io publish (<code>docs/TASKS.md</code> T-17 stays
 separately gated, same posture as v0.1.0).</p>
-<h3 id="added-7"><a class="header" href="#added-7">Added</a></h3>
+<h3 id="added-8"><a class="header" href="#added-8">Added</a></h3>
 <ul>
 <li><code>crypto_sign</code>/<code>uacrypt</code>: DSTU 4145 digital-signature CLI commands - <code>sign-keygen</code>, <code>sign-pubkey</code>,
 <code>sign</code>, <code>verify</code> (<code>docs/TASKS.md</code> T-124).</li>
@@ -33216,14 +33440,14 @@ checked exhaustively over all 2^384 possible inputs (T-145).</li>
 <li>CodeQL advanced-setup CI migration, explicit least-privilege CI permissions (T-143); SonarCloud
 static analysis wired into CI (T-140).</li>
 </ul>
-<h3 id="fixed-10"><a class="header" href="#fixed-10">Fixed</a></h3>
+<h3 id="fixed-11"><a class="header" href="#fixed-11">Fixed</a></h3>
 <ul>
 <li>DSTU 4145 <code>scalar_multiply</code> returned a wrong result for scalars at/near the curve’s own group
 order - reachable in-contract at exactly one boundary value (<code>k == n-1</code>). No forgery risk
 (confirmed via an independent Bouncy Castle cross-check), but a genuine correctness bug every
 <code>sign</code>/<code>verify</code> call went through. See <code>docs/DECISIONS.md</code> D-110.</li>
 </ul>
-<h3 id="changed-2"><a class="header" href="#changed-2">Changed</a></h3>
+<h3 id="changed-3"><a class="header" href="#changed-3">Changed</a></h3>
 <ul>
 <li>Performance: DSTU 4145 <code>sign</code> ~2.6x faster, <code>verify</code> ~4.4x faster (cumulative) - bit-interleave
 GF(2^163) squaring and an Itoh-Tsujii addition-chain field inversion, plus a projective/Shamir’s-
@@ -33253,7 +33477,7 @@ instead.</li>
 <p>First tagged release - GitHub Releases only (<code>docs/TASKS.md</code> T-18); not published to crates.io
 (<code>docs/TASKS.md</code> T-17 stays separately gated on an explicit owner request). Everything below predates
 this tag; there is no reconstructed per-commit history before it.</p>
-<h3 id="added-8"><a class="header" href="#added-8">Added</a></h3>
+<h3 id="added-9"><a class="header" href="#added-9">Added</a></h3>
 <ul>
 <li><code>dstu-core</code>: <code>hazmat</code> primitives for all three in-scope DSTU algorithms - Kupyna (DSTU
 7564:2014, one-shot and streaming), Kalyna (DSTU 7624:2014, single-block encrypt/decrypt across
@@ -33277,7 +33501,7 @@ profile for constrained targets. Cross-compilation confirmed for <code>thumbv7em
 <li>Official DSTU test vectors for Kalyna, Kupyna, and DSTU 4145; dual-oracle verification
 (Bouncy Castle Java/.NET harnesses) for Kalyna and Kupyna.</li>
 </ul>
-<h3 id="changed-3"><a class="header" href="#changed-3">Changed</a></h3>
+<h3 id="changed-4"><a class="header" href="#changed-4">Changed</a></h3>
 <ul>
 <li><code>uacrypt encrypt</code>/<code>decrypt</code>’s on-disk wire format changed twice pre-release: originally a
 single-shot <code>crypto_secretbox</code> blob (255-byte cap), then migrated to uncapped <code>crypto_secretbox</code>
