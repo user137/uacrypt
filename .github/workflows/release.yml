@@ -47,6 +47,9 @@ jobs:
             asset_name: uacrypt-macos-aarch64.tar.gz
           - os: windows-latest
             asset_name: uacrypt-windows-x86_64.zip
+            # Static CRT: no VCRUNTIME140.dll, so the zip runs on a Windows without the VC++
+            # redistributable and winget needs no VCRedist dependency (T-295, D-238).
+            rustflags: -C target-feature=+crt-static
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -56,6 +59,14 @@ jobs:
       # the committed Cargo.lock.
       - run: cargo install cargo-auditable --locked --version 0.7.6
       - run: cargo auditable build -p uacrypt --release --locked
+        env:
+          RUSTFLAGS: ${{ matrix.rustflags }}
+      - name: Check static CRT (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $exe = [IO.File]::ReadAllBytes("target/release/uacrypt.exe")
+          if ([Text.Encoding]::ASCII.GetString($exe).Contains('VCRUNTIME140')) { throw "uacrypt.exe imports VCRUNTIME140.dll" }
       - name: Package (Unix)
         if: runner.os != 'Windows'
         run: |

@@ -15444,3 +15444,21 @@ and test assertions still compile).
 from safe Rust, and a test that reads freed memory would be UB; `Zeroizing`'s `Drop` is the
 mechanism and the review is the evidence, the same "foreclosed by type/review" convention as
 earlier `D-` findings. The `Debug` redaction is tested (`tests/debug_redaction.rs`).
+
+## D-238: Windows release binary links the CRT statically; winget gets 0.6.0 with a VCRedist dependency (T-295, 2026-10-15)
+
+Owner delegated the choice. `uacrypt.exe` up to 0.6.0 is built with the MSVC default (dynamic CRT)
+and imports `VCRUNTIME140.dll`, so the plain release zip fails to start on a Windows without the
+VC++ 2015+ redistributable. `release.yml` now builds the Windows binary with
+`-C target-feature=+crt-static` and fails the build if `uacrypt.exe` still names `VCRUNTIME140`.
+Checked locally on the MSVC target: the static build imports only system DLLs (`kernel32`,
+`ntdll`, `bcryptprimitives`, `api-ms-win-core-synch`), is 1 161 216 bytes against 1 063 936, and a
+3 MB keygen/encrypt/decrypt round trip matches. This is the usual choice for Rust CLI release
+binaries; the CRT is then frozen into each release, which is acceptable for a binary that is
+rebuilt every release anyway.
+
+The winget manifest for 0.6.0 (already released, dynamic CRT) declares
+`Microsoft.VCRedist.2015+.x64` as a package dependency so `winget install` works now; the
+manifest for the first statically linked release drops it. Rejected: holding winget until 0.7.0
+(delays the install path for no safety gain) and shipping the 0.6.0 manifest without the
+dependency (breaks on clean machines).

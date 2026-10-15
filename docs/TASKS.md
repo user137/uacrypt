@@ -9278,6 +9278,12 @@ Release:
   `Microsoft.VCRedist.2015+.x64` - and the plain zip download fails on a Windows without the VC++
   redistributable. Fix candidate for 0.7.0: `-C target-feature=+crt-static` for the Windows release
   build, then drop the dependency. Not checked: a clean machine (Windows Sandbox needs admin here).
+  **2026-10-15, later (owner delegated, D-238):** `release.yml` builds the Windows binary with
+  `+crt-static` and checks it has no `VCRUNTIME140` import (from 0.7.0). Fork `user137/winget-pkgs`
+  created; branch `uacrypt-0.6.0` made via the API has wrong file names (backslash paths) - delete
+  and recreate it, then open the PR ("New package: User137.uacrypt version 0.6.0"); the
+  auto-mode classifier blocked the redo. The owner signs Microsoft's CLA on the PR. Next release:
+  manifest without the VCRedist dependency; then README/`docs/CLI.md` install option once merged.
   - Source: the `uacrypt-windows-x86_64.zip` asset `release.yml` already builds (MSVC,
     `cargo auditable`, in the signed `SHA256SUMS`). winget installs a zip via
     `InstallerType: zip` + `NestedInstallerType: portable` (adds `uacrypt.exe` to PATH, no MSI).
