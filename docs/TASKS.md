@@ -7687,7 +7687,10 @@ Phase 2+ and none currently in flight).
   0.5.0; measured on the Pi it is JVM heap growth, not a leak, and the old 8 MiB test could not
   see a real leak either. Fixed: fixed pre-touched heap for the Java test fork, threshold 1 MiB
   (normal 0.36-0.44 MB pass, never-close control 3.05 MB fails). Still to do: read the real
-  growth on CI's x86_64 log after the push. **.NET still open:** the Pi does not reproduce it
+  growth on CI's x86_64 log after the push. **First CI reading (2026-10-12, run `38203478438`,
+  ubuntu x86_64): -6.3 MB** - VmRSS shrank, so CI noise is megabytes, not the Pi's 0.1-0.4 MB.
+  Watch the next runs: if the noise also goes positive, 1 MiB can flake and the method needs a
+  rethink (0.7.0, with the .NET half). **.NET still open:** the Pi does not reproduce it
   (0.08-1.4 MB over 6 runs), and `SafeHandle` finalizers make "never Dispose" no leak control -
   next step is CI-side data (the probe line from D-234's method) before any change.
   **Owner 2026-10-11: the .NET half moves to 0.7.0** (does not hold 0.6.0). The .NET test now
@@ -9281,7 +9284,12 @@ Release:
     installer needs `ArchiveBinariesDependOnPath`.
   - Done when: `winget install <id>` on a clean machine gives a working `uacrypt --version`, and
     `docs/CLI.md`/README list it as an install option.
-- [ ] **T-296** (Low, qa; owner 2026-10-09, 0.6.0) **2026-10-11: sharded, awaiting the first CI
+- [x] **T-296** (Low, qa; owner 2026-10-09, 0.6.0) **Done 2026-10-12:** Miri run `38228156411`
+  on `995198e`: 54/54 green, longest job `uacrypt` 49.8 min, the 6 `dstu9041_encryption_512`
+  shards 31-41 min (was ~3 h in one job). Excluded under Miri (bulk Kalyna-GCM, no unsafe in the
+  codec): the codec's vector sweep, boundary round trips, exact-multiple, raw-PullState decode and
+  two proptests (`tests/crypto_secretstream_file.rs`), and capi's vector sweep and round trips
+  (`tests/ffi_secretstream_file.rs`). **2026-10-11: sharded, awaiting the first CI
   timing.** The 2026-10-11 scheduled run (`38126105866`) re-measured after the `smoke_passphrase`
   fix: `uacrypt` 27 min, `dstu-core-capi` 20 min, every `dstu-core` file under 60 min except
   `dstu9041_encryption_512` (~3 h; next `dstu9041_curve_512` 55 min, `crypto_box512` 50 min).
@@ -10084,6 +10092,16 @@ on the Pi); `cargo xtask test` 146 suites green, `cargo clippy --workspace --all
   `Cargo.toml`s); Python/Node/Ruby (published 0.3.0) need a minor bump to 0.4.0 - their reader
   messages changed and a stream with trailing data no longer yields its Final chunk; Java is
   0.2.0 already; a green Miri run on the tagged commit (D-232).
+  **2026-10-13: 0.6.0 RELEASED.** Tag `v0.6.0` on `8b2bde2` (CI green; Miri 54/54 on `995198e`,
+  the last code change); release run `38344100108` green, owner approved PyPI/npm/RubyGems. Live:
+  crates.io `dstu-core`/`uacrypt` 0.6.0; PyPI/npm `dstu-core` 0.4.0 (npm win32 platform package
+  still absent, D-189); RubyGems `dstu_core` 0.4.0 (4 platforms); GitHub Release v0.6.0 (18
+  assets, notes replaced with the curated text, owner OK). gh-pages marker 0.6.0 (`7fe78d0`).
+  **Bump pitfall found:** `bindings/ruby/Gemfile.lock` records the path gem's version (frozen in
+  CI) - bump it with `version.rb` (fixed in `8b2bde2`); also `bindings/nodejs/package-lock.json`.
+  **NEXT:** T-295 (winget, owner: after 0.6.0), then the 0.7.0 plan (T-231 .NET first).
+  Not pushed yet: this state commit. Leftover dir `C:/Users/Pa/Projects/uacrypt-ghpages` and
+  `.git/worktrees/uacrypt-ghpages` could not be deleted (Permission denied) - remove by hand.
 - **0.4.0: released and closed (2026-10-08/09).** Tag `v0.4.0` on `39fdb53` after all CI incl.
   Miri was green; release run 37761634603 green (npm needed a new `NPM_TOKEN` and one rerun).
   Live: crates.io 0.4.0, PyPI/npm/RubyGems 0.2.0 (npm without `win32-x64-msvc`, D-189). T-252
