@@ -437,6 +437,14 @@ fn file_status(err: &FileError) -> DstuStatus {
 /// Opaque stream-file writer (T-284): the D-208 framing over a push state.
 pub struct DstuFileEncryptor(FileEncryptor);
 
+impl DstuFileEncryptor {
+    /// For `dstu_box_seal_stream`/`dstu_box512_seal_stream` (T-265), which start the stream under
+    /// a key that never leaves the core.
+    pub(crate) fn from_core(enc: FileEncryptor) -> Self {
+        DstuFileEncryptor(enc)
+    }
+}
+
 /// Starts a stream file under `key` with a fresh random header. Writes the
 /// `DSTU_SECRETSTREAM_FILE_PREFIX_BYTES`-byte prefix (write it first) to `prefix_out`. Returns
 /// `DSTU_OK`, `DSTU_ERR_RANDOM` or `DSTU_ERR_NULL_POINTER`.
@@ -594,6 +602,14 @@ pub struct DstuFileDecryptor {
 }
 
 impl DstuFileDecryptor {
+    /// For `dstu_box_open_stream`/`dstu_box512_open_stream` (T-265).
+    pub(crate) fn from_core(inner: FileDecryptor) -> Self {
+        DstuFileDecryptor {
+            inner,
+            last_error: None,
+        }
+    }
+
     fn record(&mut self, result: Result<usize, FileError>, len_out: *mut usize) -> DstuStatus {
         match result {
             Ok(n) => {

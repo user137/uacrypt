@@ -459,13 +459,14 @@ static void test_box(void) {
 
   const char *message = "a message for the public key's holder only";
   size_t message_len = strlen(message);
-  size_t sealed_cap = message_len + DSTU_BOX_SEAL_OVERHEAD;
+  size_t sealed_cap = 0;
+  CHECK(dstu_box_sealed_len(message_len, &sealed_cap) == DSTU_OK, "box sealed_len should succeed");
   uint8_t *sealed = malloc(sealed_cap);
   size_t sealed_len = 0;
   CHECK(dstu_box_seal(public_key, (const uint8_t *)message, message_len, sealed, sealed_cap, &sealed_len) ==
             DSTU_OK,
         "seal should succeed with an exactly-sized buffer");
-  CHECK(sealed_len == sealed_cap, "sealed_len should equal message_len + DSTU_BOX_SEAL_OVERHEAD exactly");
+  CHECK(sealed_len == sealed_cap, "sealed_len should equal dstu_box_sealed_len exactly");
 
   uint8_t *opened = malloc(message_len);
   size_t opened_len = 0;
@@ -507,7 +508,7 @@ static void test_box(void) {
   uint8_t small_out[4];
   size_t small_len = 0;
   CHECK(dstu_box_open(secret, sealed, 4, small_out, sizeof(small_out), &small_len) == DSTU_ERR_TRUNCATED,
-        "open should reject input shorter than DSTU_BOX_SEAL_OVERHEAD");
+        "open should reject input shorter than DSTU_BOX_OPEN_MIN_OVERHEAD");
 
   /* misuse: undersized output buffer on seal - checked before any crypto work runs */
   uint8_t tiny[4];
@@ -549,13 +550,14 @@ static void test_box512(void) {
 
   const char *message = "a message for the public key's holder only";
   size_t message_len = strlen(message);
-  size_t sealed_cap = message_len + DSTU_BOX512_SEAL_OVERHEAD;
+  size_t sealed_cap = 0;
+  CHECK(dstu_box512_sealed_len(message_len, &sealed_cap) == DSTU_OK, "box512 sealed_len should succeed");
   uint8_t *sealed = malloc(sealed_cap);
   size_t sealed_len = 0;
   CHECK(dstu_box512_seal(public_key, (const uint8_t *)message, message_len, sealed, sealed_cap, &sealed_len) ==
             DSTU_OK,
         "box512 seal should succeed with an exactly-sized buffer");
-  CHECK(sealed_len == sealed_cap, "sealed_len should equal message_len + DSTU_BOX512_SEAL_OVERHEAD exactly");
+  CHECK(sealed_len == sealed_cap, "sealed_len should equal dstu_box512_sealed_len exactly");
 
   uint8_t *opened = malloc(message_len);
   size_t opened_len = 0;
@@ -597,7 +599,7 @@ static void test_box512(void) {
   uint8_t small_out[4];
   size_t small_len = 0;
   CHECK(dstu_box512_open(secret, sealed, 4, small_out, sizeof(small_out), &small_len) == DSTU_ERR_TRUNCATED,
-        "box512 open should reject input shorter than DSTU_BOX512_SEAL_OVERHEAD");
+        "box512 open should reject input shorter than DSTU_BOX512_OPEN_MIN_OVERHEAD");
 
   /* misuse: undersized output buffer on seal - checked before any crypto work runs */
   uint8_t tiny[4];

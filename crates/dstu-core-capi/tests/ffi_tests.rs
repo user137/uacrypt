@@ -869,7 +869,7 @@ fn box_seal_open_round_trip_tamper_rejection_and_undersized_buffers() {
     assert!(!public_ptr.is_null());
 
     let message = b"a message for the public key's holder only";
-    let mut sealed = vec![0u8; message.len() + DSTU_BOX_SEAL_OVERHEAD];
+    let mut sealed = vec![0u8; message.len() + DSTU_BOX_OPEN_MIN_OVERHEAD];
     let mut sealed_len = 0usize;
     assert_eq!(
         unsafe {
@@ -884,10 +884,9 @@ fn box_seal_open_round_trip_tamper_rejection_and_undersized_buffers() {
         },
         DstuStatus::DSTU_OK
     );
-    // Self-check: DSTU_BOX_SEAL_OVERHEAD is a hand-maintained constant mirroring dstu-core's own
-    // private wire-format constants (they aren't exported) - verify it against a real seal call
-    // rather than trusting the two never drift apart silently.
-    assert_eq!(sealed_len, message.len() + DSTU_BOX_SEAL_OVERHEAD);
+    // Self-check: a message shorter than one chunk seals to exactly message + DSTU_BOX_OPEN_MIN_OVERHEAD
+    // (one Final record, T-265) - checked against a real seal call, not trusted by hand.
+    assert_eq!(sealed_len, message.len() + DSTU_BOX_OPEN_MIN_OVERHEAD);
 
     let mut opened = vec![0u8; message.len()];
     let mut opened_len = 0usize;
@@ -1105,7 +1104,7 @@ fn box512_seal_open_round_trip_tamper_rejection_and_undersized_buffers() {
     assert!(!public_ptr.is_null());
 
     let message = b"a message for the public key's holder only";
-    let mut sealed = vec![0u8; message.len() + DSTU_BOX512_SEAL_OVERHEAD];
+    let mut sealed = vec![0u8; message.len() + DSTU_BOX512_OPEN_MIN_OVERHEAD];
     let mut sealed_len = 0usize;
     assert_eq!(
         unsafe {
@@ -1120,10 +1119,9 @@ fn box512_seal_open_round_trip_tamper_rejection_and_undersized_buffers() {
         },
         DstuStatus::DSTU_OK
     );
-    // Self-check: DSTU_BOX512_SEAL_OVERHEAD is a hand-maintained constant mirroring dstu-core's
-    // own private wire-format constants (they aren't exported) - verify it against a real seal
-    // call rather than trusting the two never drift apart silently.
-    assert_eq!(sealed_len, message.len() + DSTU_BOX512_SEAL_OVERHEAD);
+    // Self-check: a message shorter than one chunk seals to exactly message + DSTU_BOX512_OPEN_MIN_OVERHEAD
+    // (one Final record, T-265) - checked against a real seal call, not trusted by hand.
+    assert_eq!(sealed_len, message.len() + DSTU_BOX512_OPEN_MIN_OVERHEAD);
 
     let mut opened = vec![0u8; message.len()];
     let mut opened_len = 0usize;

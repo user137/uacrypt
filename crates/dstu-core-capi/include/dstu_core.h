@@ -26,22 +26,44 @@
 #define DSTU_BOX512_PUBLICKEY_BYTES 64
 
 /**
- * `version (1) || dstu9041_ciphertext (256) || secretstream_header (32) || tag (16)` - the fixed part of
- * `seal`'s wire format (`crypto_box512`'s own module doc), added to `message_len` for `seal`'s
- * required output capacity, and the exact minimum length `open` accepts.
+ * The smallest sealed message (T-265, D-239: format v3, `version (1) || KEM ciphertext (256) ||
+ * stream file` with one empty `Final` record). `dstu_box512_open`'s plaintext is at most `sealed_len -
+ * DSTU_BOX512_OPEN_MIN_OVERHEAD` bytes; `dstu_box512_sealed_len` gives `dstu_box512_seal`'s exact output size.
+ * Replaces `DSTU_BOX512_SEAL_OVERHEAD` (305), whose one-chunk format v2 is gone from the C ABI.
  */
-#define DSTU_BOX512_SEAL_OVERHEAD 305
+#define DSTU_BOX512_OPEN_MIN_OVERHEAD 311
+
+/**
+ * The bytes `dstu_box512_seal_stream` writes first: the box prefix and the stream file's own prefix.
+ */
+#define DSTU_BOX512_SEAL_STREAM_PREFIX_BYTES 290
+
+/**
+ * The bytes `dstu_box512_open_stream` reads: the version byte and the KEM ciphertext.
+ */
+#define DSTU_BOX512_OPEN_STREAM_PREFIX_BYTES 257
 
 #define DSTU_BOX_SECRETKEY_BYTES 32
 
 #define DSTU_BOX_PUBLICKEY_BYTES 32
 
 /**
- * `version (1) || dstu9041_ciphertext (128) || secretstream_header (32) || tag (16)` - the fixed part of
- * `seal`'s wire format (`crypto_box`'s own module doc), added to `message_len` for `seal`'s
- * required output capacity, and the exact minimum length `open` accepts.
+ * The smallest sealed message (T-265, D-239: format v3, `version (1) || KEM ciphertext (128) ||
+ * stream file` with one empty `Final` record). `dstu_box_open`'s plaintext is at most `sealed_len -
+ * DSTU_BOX_OPEN_MIN_OVERHEAD` bytes; `dstu_box_sealed_len` gives `dstu_box_seal`'s exact output size.
+ * Replaces `DSTU_BOX_SEAL_OVERHEAD` (177), whose one-chunk format v2 is gone from the C ABI.
  */
-#define DSTU_BOX_SEAL_OVERHEAD 177
+#define DSTU_BOX_OPEN_MIN_OVERHEAD 183
+
+/**
+ * The bytes `dstu_box_seal_stream` writes first: the box prefix and the stream file's own prefix.
+ */
+#define DSTU_BOX_SEAL_STREAM_PREFIX_BYTES 162
+
+/**
+ * The bytes `dstu_box_open_stream` reads: the version byte and the KEM ciphertext.
+ */
+#define DSTU_BOX_OPEN_STREAM_PREFIX_BYTES 129
 
 #define DSTU_GENERICHASH_256_BYTES 32
 
@@ -493,12 +515,11 @@ void dstu_box512_secretkey_free(DstuBox512SecretKey *key);
 void dstu_box512_publickey_free(DstuBox512PublicKey *key);
 
 /**
- * Encrypts `message` (any length) to `recipient`, drawing a fresh random seed and ephemeral key
- * internally - **not memory-bounded**, same caveat as `crypto_box`'s own `dstu_box_seal`: the
- * whole message is read from `message`/held in `sealed_out`, never chunked. `sealed_out` must
- * have capacity >= `message_len + DSTU_BOX512_SEAL_OVERHEAD` - checked before any crypto work
- * runs; `DSTU_ERR_BUFFER_TOO_SMALL` if not. On `DSTU_OK`, `*sealed_len_out == message_len +
- * DSTU_BOX512_SEAL_OVERHEAD` exactly.
+ * Encrypts `message` (any length) to `recipient` in one call (format v3, T-265) - the whole
+ * message is read from `message` and held in `sealed_out`; `dstu_box512_seal_stream` is the
+ * bounded-memory form. `sealed_out` must have capacity >= `dstu_box512_sealed_len(message_len)` -
+ * checked before any crypto work runs; `DSTU_ERR_BUFFER_TOO_SMALL` if not. On `DSTU_OK`,
+ * `*sealed_len_out` is exactly that length.
  *
  * # Safety
  *
@@ -515,14 +536,16 @@ DstuStatus dstu_box512_seal(const DstuBox512PublicKey *recipient,
                             size_t *sealed_len_out);
 
 /**
- * Decrypts `sealed` (as produced by [`dstu_box512_seal`]) under `secret` - **not
- * memory-bounded**, same caveat as [`dstu_box512_seal`]. `sealed_len < DSTU_BOX512_SEAL_OVERHEAD`
- * -> `DSTU_ERR_TRUNCATED`. `plaintext_out` must have capacity >= `sealed_len -
- * DSTU_BOX512_SEAL_OVERHEAD` - checked before any crypto work runs; `DSTU_ERR_BUFFER_TOO_SMALL` if
- * not. On `DSTU_OK`, `*plaintext_len_out == sealed_len - DSTU_BOX512_SEAL_OVERHEAD` exactly. On
- * `DSTU_ERR_TAG_MISMATCH` (wrong key, or any tampered wire segment - deliberately not
- * distinguished further, see this module's own top doc comment), `plaintext_out` is left zeroed,
- * never partially-trusted plaintext.
+ * Decrypts `sealed` (format v3, from [`dstu_box512_seal`] or [`dstu_box512_seal_stream`]) under `secret`
+ * in one call - `dstu_box512_open_stream` is the bounded-memory form. `plaintext_out` must have
+ * capacity >= `sealed_len - DSTU_BOX512_OPEN_MIN_OVERHEAD` (0 when `sealed_len` is smaller) - checked
+ * before any crypto work runs; `DSTU_ERR_BUFFER_TOO_SMALL` if not. On `DSTU_OK`,
+ * `*plaintext_len_out` is the plaintext length, at most that capacity (the record framing makes
+ * it shorter for multi-chunk messages). `DSTU_ERR_UNSUPPORTED_VERSION` for a blob whose first byte
+ * is not 3 (the 0.4-0.6 format included, D-239); `DSTU_ERR_TRUNCATED` if it is too short or its
+ * stream ends early. On `DSTU_ERR_TAG_MISMATCH` (wrong key, or any tampered wire segment -
+ * deliberately not distinguished further, see this module's own top doc comment), `plaintext_out`
+ * is left zeroed, never partially-trusted plaintext.
  *
  * # Safety
  *
@@ -537,6 +560,53 @@ DstuStatus dstu_box512_open(const DstuBox512SecretKey *secret,
                             uint8_t *plaintext_out,
                             size_t plaintext_out_cap,
                             size_t *plaintext_len_out);
+
+/**
+ * Writes `dstu_box512_seal`'s exact output length for a `message_len`-byte message to `*len_out`.
+ * Returns `DSTU_OK`, `DSTU_ERR_INVALID_LENGTH` if it would overflow `size_t`, or
+ * `DSTU_ERR_NULL_POINTER`.
+ *
+ * # Safety
+ *
+ * `len_out` must be NULL or valid for a write.
+ */
+ DstuStatus dstu_box512_sealed_len(size_t message_len, size_t *len_out);
+
+/**
+ * Starts sealing a message of any length to `recipient` with bounded memory (T-265): writes the
+ * `DSTU_BOX512_SEAL_STREAM_PREFIX_BYTES`-byte prefix (write it first) to `prefix_out` and a stream-file
+ * encryptor to `*out` - drive it with `dstu_secretstream_file_encryptor_seal_chunk`/`_seal_final`
+ * and free it with `dstu_secretstream_file_encryptor_free`. The output is what `dstu_box512_seal`
+ * returns. Returns `DSTU_OK`, `DSTU_ERR_RANDOM` or `DSTU_ERR_NULL_POINTER`.
+ *
+ * # Safety
+ *
+ * `recipient` must be NULL or a valid public-key handle; `prefix_out` must be NULL or valid for
+ * writes of `DSTU_BOX512_SEAL_STREAM_PREFIX_BYTES` bytes; `out` must be NULL or valid for a write.
+ */
+
+DstuStatus dstu_box512_seal_stream(const DstuBox512PublicKey *recipient,
+                                   uint8_t *prefix_out,
+                                   DstuFileEncryptor **out);
+
+/**
+ * Starts opening a sealed message with bounded memory (T-265): `prefix` is its first
+ * `DSTU_BOX512_OPEN_STREAM_PREFIX_BYTES` bytes. On `DSTU_OK`, `*out` is a stream-file decryptor for
+ * everything after them - drive it with `dstu_secretstream_file_decryptor_next_len`/`_feed`/
+ * `_finish` and free it with `dstu_secretstream_file_decryptor_free`. Returns
+ * `DSTU_ERR_UNSUPPORTED_VERSION` if `prefix` does not start with 3 (checked before `secret` is
+ * used), `DSTU_ERR_TAG_MISMATCH` if the KEM ciphertext does not open under `secret`, or
+ * `DSTU_ERR_NULL_POINTER`; `*out` is not written on failure.
+ *
+ * # Safety
+ *
+ * `secret` must be NULL or a valid secret-key handle; `prefix` must be NULL or valid for reads of
+ * `DSTU_BOX512_OPEN_STREAM_PREFIX_BYTES` bytes; `out` must be NULL or valid for a write.
+ */
+
+DstuStatus dstu_box512_open_stream(const DstuBox512SecretKey *secret,
+                                   const uint8_t *prefix,
+                                   DstuFileDecryptor **out);
 
 /**
  * Generates a fresh secret key from the OS CSPRNG. Returns `DSTU_OK` (writing `*out`) or
@@ -629,12 +699,11 @@ void dstu_box_secretkey_free(DstuBoxSecretKey *key);
 void dstu_box_publickey_free(DstuBoxPublicKey *key);
 
 /**
- * Encrypts `message` (any length) to `recipient`, drawing a fresh random seed and ephemeral key
- * internally - **not memory-bounded**, matching `uacrypt box-seal`'s own documented limitation
- * (D-42/D-169): the whole message is read from `message`/held in `sealed_out`, never chunked.
- * `sealed_out` must have capacity >= `message_len + DSTU_BOX_SEAL_OVERHEAD` - checked before any
- * crypto work runs; `DSTU_ERR_BUFFER_TOO_SMALL` if not. On `DSTU_OK`,
- * `*sealed_len_out == message_len + DSTU_BOX_SEAL_OVERHEAD` exactly.
+ * Encrypts `message` (any length) to `recipient` in one call (format v3, T-265) - the whole
+ * message is read from `message` and held in `sealed_out`; `dstu_box_seal_stream` is the
+ * bounded-memory form. `sealed_out` must have capacity >= `dstu_box_sealed_len(message_len)` -
+ * checked before any crypto work runs; `DSTU_ERR_BUFFER_TOO_SMALL` if not. On `DSTU_OK`,
+ * `*sealed_len_out` is exactly that length.
  *
  * # Safety
  *
@@ -651,14 +720,16 @@ DstuStatus dstu_box_seal(const DstuBoxPublicKey *recipient,
                          size_t *sealed_len_out);
 
 /**
- * Decrypts `sealed` (as produced by [`dstu_box_seal`]) under `secret` - **not memory-bounded**,
- * same caveat as [`dstu_box_seal`]. `sealed_len < DSTU_BOX_SEAL_OVERHEAD` ->
- * `DSTU_ERR_TRUNCATED`. `plaintext_out` must have capacity >= `sealed_len -
- * DSTU_BOX_SEAL_OVERHEAD` - checked before any crypto work runs; `DSTU_ERR_BUFFER_TOO_SMALL` if
- * not. On `DSTU_OK`, `*plaintext_len_out == sealed_len - DSTU_BOX_SEAL_OVERHEAD` exactly. On
- * `DSTU_ERR_TAG_MISMATCH` (wrong key, or any tampered wire segment - deliberately not
- * distinguished further, see this module's own top doc comment), `plaintext_out` is left zeroed,
- * never partially-trusted plaintext.
+ * Decrypts `sealed` (format v3, from [`dstu_box_seal`] or [`dstu_box_seal_stream`]) under `secret`
+ * in one call - `dstu_box_open_stream` is the bounded-memory form. `plaintext_out` must have
+ * capacity >= `sealed_len - DSTU_BOX_OPEN_MIN_OVERHEAD` (0 when `sealed_len` is smaller) - checked
+ * before any crypto work runs; `DSTU_ERR_BUFFER_TOO_SMALL` if not. On `DSTU_OK`,
+ * `*plaintext_len_out` is the plaintext length, at most that capacity (the record framing makes
+ * it shorter for multi-chunk messages). `DSTU_ERR_UNSUPPORTED_VERSION` for a blob whose first byte
+ * is not 3 (the 0.4-0.6 format included, D-239); `DSTU_ERR_TRUNCATED` if it is too short or its
+ * stream ends early. On `DSTU_ERR_TAG_MISMATCH` (wrong key, or any tampered wire segment -
+ * deliberately not distinguished further, see this module's own top doc comment), `plaintext_out`
+ * is left zeroed, never partially-trusted plaintext.
  *
  * # Safety
  *
@@ -673,6 +744,53 @@ DstuStatus dstu_box_open(const DstuBoxSecretKey *secret,
                          uint8_t *plaintext_out,
                          size_t plaintext_out_cap,
                          size_t *plaintext_len_out);
+
+/**
+ * Writes `dstu_box_seal`'s exact output length for a `message_len`-byte message to `*len_out`.
+ * Returns `DSTU_OK`, `DSTU_ERR_INVALID_LENGTH` if it would overflow `size_t`, or
+ * `DSTU_ERR_NULL_POINTER`.
+ *
+ * # Safety
+ *
+ * `len_out` must be NULL or valid for a write.
+ */
+ DstuStatus dstu_box_sealed_len(size_t message_len, size_t *len_out);
+
+/**
+ * Starts sealing a message of any length to `recipient` with bounded memory (T-265): writes the
+ * `DSTU_BOX_SEAL_STREAM_PREFIX_BYTES`-byte prefix (write it first) to `prefix_out` and a stream-file
+ * encryptor to `*out` - drive it with `dstu_secretstream_file_encryptor_seal_chunk`/`_seal_final`
+ * and free it with `dstu_secretstream_file_encryptor_free`. The output is what `dstu_box_seal`
+ * returns. Returns `DSTU_OK`, `DSTU_ERR_RANDOM` or `DSTU_ERR_NULL_POINTER`.
+ *
+ * # Safety
+ *
+ * `recipient` must be NULL or a valid public-key handle; `prefix_out` must be NULL or valid for
+ * writes of `DSTU_BOX_SEAL_STREAM_PREFIX_BYTES` bytes; `out` must be NULL or valid for a write.
+ */
+
+DstuStatus dstu_box_seal_stream(const DstuBoxPublicKey *recipient,
+                                uint8_t *prefix_out,
+                                DstuFileEncryptor **out);
+
+/**
+ * Starts opening a sealed message with bounded memory (T-265): `prefix` is its first
+ * `DSTU_BOX_OPEN_STREAM_PREFIX_BYTES` bytes. On `DSTU_OK`, `*out` is a stream-file decryptor for
+ * everything after them - drive it with `dstu_secretstream_file_decryptor_next_len`/`_feed`/
+ * `_finish` and free it with `dstu_secretstream_file_decryptor_free`. Returns
+ * `DSTU_ERR_UNSUPPORTED_VERSION` if `prefix` does not start with 3 (checked before `secret` is
+ * used), `DSTU_ERR_TAG_MISMATCH` if the KEM ciphertext does not open under `secret`, or
+ * `DSTU_ERR_NULL_POINTER`; `*out` is not written on failure.
+ *
+ * # Safety
+ *
+ * `secret` must be NULL or a valid secret-key handle; `prefix` must be NULL or valid for reads of
+ * `DSTU_BOX_OPEN_STREAM_PREFIX_BYTES` bytes; `out` must be NULL or valid for a write.
+ */
+
+DstuStatus dstu_box_open_stream(const DstuBoxSecretKey *secret,
+                                const uint8_t *prefix,
+                                DstuFileDecryptor **out);
 
 /**
  * One-shot Kupyna-256 digest of `message`. A NULL `message` with `message_len > 0`, or a NULL

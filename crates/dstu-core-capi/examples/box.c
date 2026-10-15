@@ -29,7 +29,10 @@ int main(void) {
 
   const char *message = "a message for the public key's holder only";
   size_t message_len = strlen(message);
-  size_t sealed_cap = message_len + DSTU_BOX_SEAL_OVERHEAD;
+  size_t sealed_cap = 0;
+  if (dstu_box_sealed_len(message_len, &sealed_cap) != DSTU_OK) {
+    die("sealed_len failed");
+  }
   uint8_t *sealed = malloc(sealed_cap);
   size_t sealed_len = 0;
   if (dstu_box_seal(public_key, (const uint8_t *)message, message_len, sealed, sealed_cap, &sealed_len) !=

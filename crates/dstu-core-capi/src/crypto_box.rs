@@ -13,17 +13,26 @@
 //! it by inventing a differently-named status that a caller could branch on.
 
 use crate::error::DstuStatus;
+use crate::secretstream::{DstuFileDecryptor, DstuFileEncryptor};
 use crate::util::{
     guard_ptr, guard_status, guard_void, overlaps, slice_from_raw, slice_from_raw_mut,
 };
-use dstu_core::crypto_box::{open, seal, OpenError, PublicKey, SealError, SecretKey};
+use dstu_core::crypto_box::{
+    open, open_stream, seal, seal_stream, sealed_len, OpenError, PublicKey, SealError, SecretKey,
+    OPEN_STREAM_PREFIX_BYTES,
+};
 
 pub const DSTU_BOX_SECRETKEY_BYTES: usize = 32;
 pub const DSTU_BOX_PUBLICKEY_BYTES: usize = 32;
-/// `version (1) || dstu9041_ciphertext (128) || secretstream_header (32) || tag (16)` - the fixed part of
-/// `seal`'s wire format (`crypto_box`'s own module doc), added to `message_len` for `seal`'s
-/// required output capacity, and the exact minimum length `open` accepts.
-pub const DSTU_BOX_SEAL_OVERHEAD: usize = 177;
+/// The smallest sealed message (T-265, D-239: format v3, `version (1) || KEM ciphertext (128) ||
+/// stream file` with one empty `Final` record). `dstu_box_open`'s plaintext is at most `sealed_len -
+/// DSTU_BOX_OPEN_MIN_OVERHEAD` bytes; `dstu_box_sealed_len` gives `dstu_box_seal`'s exact output size.
+/// Replaces `DSTU_BOX_SEAL_OVERHEAD` (177), whose one-chunk format v2 is gone from the C ABI.
+pub const DSTU_BOX_OPEN_MIN_OVERHEAD: usize = 183;
+/// The bytes `dstu_box_seal_stream` writes first: the box prefix and the stream file's own prefix.
+pub const DSTU_BOX_SEAL_STREAM_PREFIX_BYTES: usize = 162;
+/// The bytes `dstu_box_open_stream` reads: the version byte and the KEM ciphertext.
+pub const DSTU_BOX_OPEN_STREAM_PREFIX_BYTES: usize = 129;
 
 /// Opaque `crypto_box` secret-key handle. `dstu_box_secretkey_free`'s `Box::from_raw` fires the
 /// wrapped `SecretKey`'s own `Zeroize`-on-`Drop` impl.
@@ -206,12 +215,11 @@ pub unsafe extern "C" fn dstu_box_publickey_free(key: *mut DstuBoxPublicKey) {
     })
 }
 
-/// Encrypts `message` (any length) to `recipient`, drawing a fresh random seed and ephemeral key
-/// internally - **not memory-bounded**, matching `uacrypt box-seal`'s own documented limitation
-/// (D-42/D-169): the whole message is read from `message`/held in `sealed_out`, never chunked.
-/// `sealed_out` must have capacity >= `message_len + DSTU_BOX_SEAL_OVERHEAD` - checked before any
-/// crypto work runs; `DSTU_ERR_BUFFER_TOO_SMALL` if not. On `DSTU_OK`,
-/// `*sealed_len_out == message_len + DSTU_BOX_SEAL_OVERHEAD` exactly.
+/// Encrypts `message` (any length) to `recipient` in one call (format v3, T-265) - the whole
+/// message is read from `message` and held in `sealed_out`; `dstu_box_seal_stream` is the
+/// bounded-memory form. `sealed_out` must have capacity >= `dstu_box_sealed_len(message_len)` -
+/// checked before any crypto work runs; `DSTU_ERR_BUFFER_TOO_SMALL` if not. On `DSTU_OK`,
+/// `*sealed_len_out` is exactly that length.
 ///
 /// # Safety
 ///
@@ -242,7 +250,9 @@ pub unsafe extern "C" fn dstu_box_seal(
         let Some(message) = (unsafe { slice_from_raw(message, message_len) }) else {
             return DstuStatus::DSTU_ERR_NULL_POINTER;
         };
-        let required = message_len + DSTU_BOX_SEAL_OVERHEAD;
+        let Some(required) = sealed_len(message_len) else {
+            return DstuStatus::DSTU_ERR_BUFFER_TOO_SMALL;
+        };
         if sealed_out_cap < required {
             return DstuStatus::DSTU_ERR_BUFFER_TOO_SMALL;
         }
@@ -261,14 +271,16 @@ pub unsafe extern "C" fn dstu_box_seal(
     })
 }
 
-/// Decrypts `sealed` (as produced by [`dstu_box_seal`]) under `secret` - **not memory-bounded**,
-/// same caveat as [`dstu_box_seal`]. `sealed_len < DSTU_BOX_SEAL_OVERHEAD` ->
-/// `DSTU_ERR_TRUNCATED`. `plaintext_out` must have capacity >= `sealed_len -
-/// DSTU_BOX_SEAL_OVERHEAD` - checked before any crypto work runs; `DSTU_ERR_BUFFER_TOO_SMALL` if
-/// not. On `DSTU_OK`, `*plaintext_len_out == sealed_len - DSTU_BOX_SEAL_OVERHEAD` exactly. On
-/// `DSTU_ERR_TAG_MISMATCH` (wrong key, or any tampered wire segment - deliberately not
-/// distinguished further, see this module's own top doc comment), `plaintext_out` is left zeroed,
-/// never partially-trusted plaintext.
+/// Decrypts `sealed` (format v3, from [`dstu_box_seal`] or [`dstu_box_seal_stream`]) under `secret`
+/// in one call - `dstu_box_open_stream` is the bounded-memory form. `plaintext_out` must have
+/// capacity >= `sealed_len - DSTU_BOX_OPEN_MIN_OVERHEAD` (0 when `sealed_len` is smaller) - checked
+/// before any crypto work runs; `DSTU_ERR_BUFFER_TOO_SMALL` if not. On `DSTU_OK`,
+/// `*plaintext_len_out` is the plaintext length, at most that capacity (the record framing makes
+/// it shorter for multi-chunk messages). `DSTU_ERR_UNSUPPORTED_VERSION` for a blob whose first byte
+/// is not 3 (the 0.4-0.6 format included, D-239); `DSTU_ERR_TRUNCATED` if it is too short or its
+/// stream ends early. On `DSTU_ERR_TAG_MISMATCH` (wrong key, or any tampered wire segment -
+/// deliberately not distinguished further, see this module's own top doc comment), `plaintext_out`
+/// is left zeroed, never partially-trusted plaintext.
 ///
 /// # Safety
 ///
@@ -299,10 +311,7 @@ pub unsafe extern "C" fn dstu_box_open(
         let Some(sealed) = (unsafe { slice_from_raw(sealed, sealed_len) }) else {
             return DstuStatus::DSTU_ERR_NULL_POINTER;
         };
-        if sealed_len < DSTU_BOX_SEAL_OVERHEAD {
-            return DstuStatus::DSTU_ERR_TRUNCATED;
-        }
-        let required = sealed_len - DSTU_BOX_SEAL_OVERHEAD;
+        let required = sealed_len.saturating_sub(DSTU_BOX_OPEN_MIN_OVERHEAD);
         if plaintext_out_cap < required {
             return DstuStatus::DSTU_ERR_BUFFER_TOO_SMALL;
         }
@@ -322,7 +331,103 @@ pub unsafe extern "C" fn dstu_box_open(
                 DstuStatus::DSTU_ERR_TAG_MISMATCH
             }
             Err(OpenError::UnsupportedVersion) => DstuStatus::DSTU_ERR_UNSUPPORTED_VERSION,
-            Err(OpenError::Truncated) => unreachable!("checked sealed_len above"),
+            Err(OpenError::Truncated) => DstuStatus::DSTU_ERR_TRUNCATED,
+        }
+    })
+}
+
+/// Writes `dstu_box_seal`'s exact output length for a `message_len`-byte message to `*len_out`.
+/// Returns `DSTU_OK`, `DSTU_ERR_INVALID_LENGTH` if it would overflow `size_t`, or
+/// `DSTU_ERR_NULL_POINTER`.
+///
+/// # Safety
+///
+/// `len_out` must be NULL or valid for a write.
+#[no_mangle]
+pub unsafe extern "C" fn dstu_box_sealed_len(
+    message_len: usize,
+    len_out: *mut usize,
+) -> DstuStatus {
+    guard_status(|| {
+        if len_out.is_null() {
+            return DstuStatus::DSTU_ERR_NULL_POINTER;
+        }
+        match sealed_len(message_len) {
+            Some(len) => {
+                unsafe { *len_out = len };
+                DstuStatus::DSTU_OK
+            }
+            None => DstuStatus::DSTU_ERR_INVALID_LENGTH,
+        }
+    })
+}
+
+/// Starts sealing a message of any length to `recipient` with bounded memory (T-265): writes the
+/// `DSTU_BOX_SEAL_STREAM_PREFIX_BYTES`-byte prefix (write it first) to `prefix_out` and a stream-file
+/// encryptor to `*out` - drive it with `dstu_secretstream_file_encryptor_seal_chunk`/`_seal_final`
+/// and free it with `dstu_secretstream_file_encryptor_free`. The output is what `dstu_box_seal`
+/// returns. Returns `DSTU_OK`, `DSTU_ERR_RANDOM` or `DSTU_ERR_NULL_POINTER`.
+///
+/// # Safety
+///
+/// `recipient` must be NULL or a valid public-key handle; `prefix_out` must be NULL or valid for
+/// writes of `DSTU_BOX_SEAL_STREAM_PREFIX_BYTES` bytes; `out` must be NULL or valid for a write.
+#[no_mangle]
+pub unsafe extern "C" fn dstu_box_seal_stream(
+    recipient: *const DstuBoxPublicKey,
+    prefix_out: *mut u8,
+    out: *mut *mut DstuFileEncryptor,
+) -> DstuStatus {
+    guard_status(|| {
+        if recipient.is_null() || prefix_out.is_null() || out.is_null() {
+            return DstuStatus::DSTU_ERR_NULL_POINTER;
+        }
+        match seal_stream(&unsafe { &*recipient }.0) {
+            Ok((enc, prefix)) => {
+                unsafe { std::slice::from_raw_parts_mut(prefix_out, prefix.len()) }
+                    .copy_from_slice(&prefix);
+                unsafe { *out = Box::into_raw(Box::new(DstuFileEncryptor::from_core(enc))) };
+                DstuStatus::DSTU_OK
+            }
+            Err(SealError::Random(_)) => DstuStatus::DSTU_ERR_RANDOM,
+        }
+    })
+}
+
+/// Starts opening a sealed message with bounded memory (T-265): `prefix` is its first
+/// `DSTU_BOX_OPEN_STREAM_PREFIX_BYTES` bytes. On `DSTU_OK`, `*out` is a stream-file decryptor for
+/// everything after them - drive it with `dstu_secretstream_file_decryptor_next_len`/`_feed`/
+/// `_finish` and free it with `dstu_secretstream_file_decryptor_free`. Returns
+/// `DSTU_ERR_UNSUPPORTED_VERSION` if `prefix` does not start with 3 (checked before `secret` is
+/// used), `DSTU_ERR_TAG_MISMATCH` if the KEM ciphertext does not open under `secret`, or
+/// `DSTU_ERR_NULL_POINTER`; `*out` is not written on failure.
+///
+/// # Safety
+///
+/// `secret` must be NULL or a valid secret-key handle; `prefix` must be NULL or valid for reads of
+/// `DSTU_BOX_OPEN_STREAM_PREFIX_BYTES` bytes; `out` must be NULL or valid for a write.
+#[no_mangle]
+pub unsafe extern "C" fn dstu_box_open_stream(
+    secret: *const DstuBoxSecretKey,
+    prefix: *const u8,
+    out: *mut *mut DstuFileDecryptor,
+) -> DstuStatus {
+    guard_status(|| {
+        if secret.is_null() || prefix.is_null() || out.is_null() {
+            return DstuStatus::DSTU_ERR_NULL_POINTER;
+        }
+        let mut prefix_bytes = [0u8; OPEN_STREAM_PREFIX_BYTES];
+        prefix_bytes.copy_from_slice(unsafe {
+            std::slice::from_raw_parts(prefix, OPEN_STREAM_PREFIX_BYTES)
+        });
+        match open_stream(&prefix_bytes, &unsafe { &*secret }.0) {
+            Ok(dec) => {
+                unsafe { *out = Box::into_raw(Box::new(DstuFileDecryptor::from_core(dec))) };
+                DstuStatus::DSTU_OK
+            }
+            Err(OpenError::UnsupportedVersion) => DstuStatus::DSTU_ERR_UNSUPPORTED_VERSION,
+            Err(OpenError::InvalidCiphertext) => DstuStatus::DSTU_ERR_TAG_MISMATCH,
+            Err(OpenError::Truncated) => DstuStatus::DSTU_ERR_TRUNCATED,
         }
     })
 }
