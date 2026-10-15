@@ -9287,6 +9287,14 @@ Release:
   **Update, same day:** the broken branch was deleted by the owner; the PR was opened with
   `wingetcreate submit` (owner-approved): microsoft/winget-pkgs#453396. Waiting on the owner's
   CLA reply, then the winget validation pipeline and moderator review.
+  **State at /clear (2026-10-15 evening):** CLA accepted (`license/cla` success); the winget
+  validation pipeline started, no step finished yet. Check with `gh pr view 453396 -R
+  microsoft/winget-pkgs --json labels,comments,statusCheckRollup`; fix any validation failure in
+  `.claude/winget/manifests/` (gitignored local copy) and push to the PR branch on
+  `user137/winget-pkgs`. CI on `b5928f5`: all green except `rust`/`bindings-java` still running.
+  Next after the merge: README/`docs/CLI.md` install option; at 0.7.0 the `release.yml`
+  `workflow_dispatch` dry run for the static-CRT Windows build (D-238), then a manifest without
+  the VCRedist dependency. Then the 0.7.0 plan (T-231 .NET first).
   - Source: the `uacrypt-windows-x86_64.zip` asset `release.yml` already builds (MSVC,
     `cargo auditable`, in the signed `SHA256SUMS`). winget installs a zip via
     `InstallerType: zip` + `NestedInstallerType: portable` (adds `uacrypt.exe` to PATH, no MSI).
