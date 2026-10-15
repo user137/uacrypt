@@ -5,6 +5,11 @@ All notable changes to this project are documented in this file. Format follows
 
 ## [Unreleased]
 
+### Changed
+
+- **Windows release binary links the C runtime statically** (T-295, `docs/DECISIONS.md` D-238):
+  `uacrypt.exe` no longer needs the Visual C++ redistributable (`VCRUNTIME140.dll`).
+
 ## [0.6.0] - 2026-10-11
 
 ### Added
