@@ -9284,6 +9284,9 @@ Release:
   and recreate it, then open the PR ("New package: User137.uacrypt version 0.6.0"); the
   auto-mode classifier blocked the redo. The owner signs Microsoft's CLA on the PR. Next release:
   manifest without the VCRedist dependency; then README/`docs/CLI.md` install option once merged.
+  **Update, same day:** the broken branch was deleted by the owner; the PR was opened with
+  `wingetcreate submit` (owner-approved): microsoft/winget-pkgs#453396. Waiting on the owner's
+  CLA reply, then the winget validation pipeline and moderator review.
   - Source: the `uacrypt-windows-x86_64.zip` asset `release.yml` already builds (MSVC,
     `cargo auditable`, in the signed `SHA256SUMS`). winget installs a zip via
     `InstallerType: zip` + `NestedInstallerType: portable` (adds `uacrypt.exe` to PATH, no MSI).
