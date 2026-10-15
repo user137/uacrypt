@@ -80,9 +80,9 @@ const HEADER_LEN: usize = 32;
 const TAG_LEN: usize = 16;
 /// Wire-format version, the sealed blob's first byte (T-265, D-239: a D-208 stream file follows
 /// the KEM ciphertext).
-const FORMAT_VERSION: u8 = 3;
+pub const FORMAT_VERSION: u8 = 3;
 /// The one-chunk format 0.4-0.6 wrote (T-232/T-248), read only by [`open_v2_legacy`].
-const LEGACY_FORMAT_VERSION: u8 = 2;
+pub const LEGACY_FORMAT_VERSION: u8 = 2;
 /// `version || kem_ciphertext` - everything in front of the stream file.
 const PREFIX_LEN: usize = 1 + KEM_CIPHERTEXT_LEN;
 /// The bytes [`open_stream`] takes: the version byte and the KEM ciphertext.

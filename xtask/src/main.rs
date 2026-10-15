@@ -106,7 +106,7 @@ fn print_usage() {
          \x20 cpp-cppcheck   cppcheck over bindings/cpp (warning/performance/portability, complementary to cpp-tidy, T-208)\n\
          \x20 asm-check      dstu-core release asm on x86_64/aarch64/thumbv7em/riscv32imc (O3, s/z on the 32-bit two): no riscv32 carry-compare shape or __multi3 call, no jump in the listed symbols (T-292, D-229)\n\
          \x20 qemu-stm32     run firmware/qemu-stm32-smoketest under QEMU's netduinoplus2 (Cortex-M4F), no real hardware needed (T-170)\n\
-         \x20 streaming-bounded  release-build proof that encrypt/decrypt/kupyna-digest/strumok-crypt stay memory-bounded on a large file (D-42, T-200) - #[ignore]d by default in a plain `cargo test` since debug-profile crypto over a large file is too slow for that"
+         \x20 streaming-bounded  release-build proof that encrypt/decrypt/box-seal/box-open/kupyna-digest/strumok-crypt stay memory-bounded on a large file (D-42, T-200) - #[ignore]d by default in a plain `cargo test` since debug-profile crypto over a large file is too slow for that"
     );
 }
 

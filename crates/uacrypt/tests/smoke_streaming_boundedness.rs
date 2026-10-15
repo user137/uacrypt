@@ -1,16 +1,17 @@
 //! T-200: proves D-42's streaming-boundedness claim ("a `hazmat` streaming API existing does not
 //! make the `uacrypt` command wrapping it memory-bounded") at the real process boundary, for the
-//! commands that claim it - `kupyna-digest`/`hash`, `strumok-crypt`, `encrypt`/`decrypt` - rather
+//! commands that claim it - `kupyna-digest`/`hash`, `strumok-crypt`, `encrypt`/`decrypt`,
+//! `box-seal`/`box-open` (T-265) - rather
 //! than leaving it asserted only in a doc comment. Spawns the real binary against a genuinely large
 //! file and samples its actual OS-reported resident memory (`support::uacrypt_with_peak_rss`) while
 //! it runs.
 //!
-//! Includes a deliberate control case: `box-seal`, whose own `--help` text (`BOX_SEAL_HELP`)
-//! already says plainly "Not memory-bounded: `--in` is read whole into memory." If the measurement
-//! methodology here could not tell that apart from a genuinely bounded command, the "streaming
-//! commands stayed low" result below would mean nothing - it could just be an insensitive
-//! measurement. `box_seal_is_not_memory_bounded_control_case` proves the opposite: peak RSS visibly
-//! grows with `--in`'s size for a command that really does buffer it all.
+//! Includes a deliberate control case: `box-seal --iterations 2`, the benchmark path that reads
+//! `--in` whole into memory to time `seal` on it. If the measurement methodology here could not
+//! tell that apart from a genuinely bounded command, the "streaming commands stayed low" result
+//! below would mean nothing - it could just be an insensitive measurement.
+//! `box_seal_benchmark_is_not_memory_bounded_control_case` proves the opposite: peak RSS visibly
+//! grows with `--in`'s size for a path that really does buffer it all.
 
 mod support;
 use support::{
@@ -206,12 +207,61 @@ fn no_progress_line_on_a_piped_stderr() {
     assert_eq!(r.stderr, "", "hash from stdin");
 }
 
-/// Control case (see module doc): `box-seal` is documented as reading `--in` whole into memory.
+/// T-265: `box-seal`/`box-open` stream the D-208 records after the box prefix, both curves.
+#[test]
+#[ignore = "expensive: writes large fixture files and needs a release build for realistic timing/memory numbers - run via cargo xtask streaming-bounded, not a plain cargo test"]
+fn box_seal_and_box_open_stay_memory_bounded_on_a_large_file() {
+    let dir = TempDir::new("bound_box");
+    let input = dir.file("large.bin");
+    write_large_file(&input, LARGE_FILE_BYTES);
+    for keygen in ["box-keygen", "box-keygen512"] {
+        let secret = dir.file(&format!("{keygen}.key"));
+        let public = dir.file(&format!("{keygen}.pub"));
+        let sealed = dir.file(&format!("{keygen}.box"));
+        let opened = dir.file(&format!("{keygen}.out"));
+        assert!(uacrypt([keygen, "--out", secret.to_str().unwrap()]).success());
+        assert!(uacrypt([
+            "box-pubkey",
+            "--key",
+            secret.to_str().unwrap(),
+            "--out",
+            public.to_str().unwrap(),
+        ])
+        .success());
+        for (command, key, from, to) in [
+            ("box-seal", &public, &input, &sealed),
+            ("box-open", &secret, &sealed, &opened),
+        ] {
+            let (r, peak) = uacrypt_with_peak_rss([
+                command,
+                "--key",
+                key.to_str().unwrap(),
+                "--in",
+                from.to_str().unwrap(),
+                "--out",
+                to.to_str().unwrap(),
+            ]);
+            ok(&r);
+            if let Some(peak) = peak {
+                assert!(
+                    peak < BOUNDED_THRESHOLD_BYTES,
+                    "{keygen} {command}: peak RSS {peak} bytes for a {LARGE_FILE_BYTES}-byte input"
+                );
+            }
+        }
+        assert_eq!(
+            std::fs::metadata(&opened).unwrap().len(),
+            LARGE_FILE_BYTES as u64
+        );
+    }
+}
+
+/// Control case (see module doc): `box-seal --iterations 2` reads `--in` whole into memory.
 /// Peak RSS must visibly grow with `--in`'s size here, proving the measurement methodology above
 /// can actually detect unbounded memory use rather than being uniformly insensitive.
 #[test]
 #[ignore = "expensive: writes large fixture files and needs a release build for realistic timing/memory numbers - run via cargo xtask streaming-bounded, not a plain cargo test"]
-fn box_seal_is_not_memory_bounded_control_case() {
+fn box_seal_benchmark_is_not_memory_bounded_control_case() {
     const SMALL_BYTES: usize = 40 * 1024 * 1024;
     const LARGE_BYTES: usize = 180 * 1024 * 1024;
 
@@ -233,6 +283,8 @@ fn box_seal_is_not_memory_bounded_control_case() {
     write_large_file(&small_in, SMALL_BYTES);
     let (r, small_peak) = uacrypt_with_peak_rss([
         "box-seal",
+        "--iterations",
+        "2",
         "--key",
         public.to_str().unwrap(),
         "--in",
@@ -247,6 +299,8 @@ fn box_seal_is_not_memory_bounded_control_case() {
     write_large_file(&large_in, LARGE_BYTES);
     let (r, large_peak) = uacrypt_with_peak_rss([
         "box-seal",
+        "--iterations",
+        "2",
         "--key",
         public.to_str().unwrap(),
         "--in",
@@ -264,7 +318,7 @@ fn box_seal_is_not_memory_bounded_control_case() {
     };
     assert!(
         large_peak > small_peak,
-        "box-seal's peak RSS did not grow with --in's size (small={small_peak}, large={large_peak}) \
+        "box-seal --iterations's peak RSS did not grow with --in's size (small={small_peak}, large={large_peak}) \
          - this run cannot confirm the bounded-memory results above are a real measurement"
     );
     assert!(

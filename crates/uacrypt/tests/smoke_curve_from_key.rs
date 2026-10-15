@@ -116,14 +116,14 @@ fn box_commands_follow_the_key_curve_and_match_the_library() {
             "UACRYPT-SECRET-BOX256",
             "uacrypt-box256-public",
             32,
-            177,
+            183,
         ),
         (
             "box-keygen512",
             "UACRYPT-SECRET-BOX512",
             "uacrypt-box512-public",
             64,
-            305,
+            311,
         ),
     ] {
         let sk = dir.file(&format!("{keygen}.key"));

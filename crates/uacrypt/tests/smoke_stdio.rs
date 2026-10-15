@@ -332,7 +332,8 @@ fn a_failing_decrypt_to_stdout_prints_only_verified_chunks_and_says_incomplete()
     assert!(r.stdout.is_empty());
     assert!(!r.stderr.contains("INCOMPLETE"), "{}", r.stderr);
 
-    // box-open decrypts whole before printing: a tampered file prints nothing.
+    // box-open streams like decrypt (T-265): a tampered Final record prints only the verified
+    // full chunks before it, and says to discard them.
     keygen(&dir, "box-keygen", "b.key");
     ok(&run(
         &dir.0,
@@ -354,7 +355,8 @@ fn a_failing_decrypt_to_stdout_prints_only_verified_chunks_and_says_incomplete()
         &bad,
     );
     assert_eq!(r.code, Some(1), "{}", r.stderr);
-    assert!(r.stdout.is_empty());
+    assert_eq!(r.stdout, &plain[..3 * CHUNK]);
+    assert!(r.stderr.contains("INCOMPLETE"), "{}", r.stderr);
 }
 
 #[test]

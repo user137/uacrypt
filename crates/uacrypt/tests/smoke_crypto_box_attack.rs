@@ -27,8 +27,8 @@
 //! here.
 //!
 //! **Wire format** (`crypto_box.rs`'s `seal`/`open`, confirmed by reading both, not assumed):
-//! `[version: 1][kem_ciphertext: 128 bytes][secretstream header: 32][ciphertext: N][auth tag: 16]`
-//! (the version byte since T-232/D-202). The KEM ciphertext's own first 32 bytes are `r`
+//! `[version: 1 (3)][kem_ciphertext: 128 bytes][D-208 stream file]` (the version byte since
+//! T-232/D-202, format 3 since T-265/D-239). The KEM ciphertext's own first 32 bytes are `r`
 //! (`hazmat::dstu9041::encryption::encrypt`'s `ciphertext[..32] = r_bytes`), i.e. file bytes
 //! `[1..33]` - the exact field this attack overwrites. Overwriting from byte 0 would hit the
 //! version byte and fail on `UnsupportedVersion` without ever reaching the `r` check.
@@ -103,8 +103,8 @@ fn box_open_rejects_r_equals_p_minus_one_order_two_point() {
         "a real sealed file must be at least 33 bytes (version byte + the r field)"
     );
     assert_eq!(
-        tampered[0], 2,
-        "sealed file must start with format version 2"
+        tampered[0], 3,
+        "sealed file must start with format version 3"
     );
     tampered[1..33].copy_from_slice(&r_bytes);
     support::write_bytes(&sealed, &tampered);
@@ -161,7 +161,7 @@ fn box_open_reports_an_unsupported_format_version() {
     assert!(uacrypt(["box-seal", "--key", p, "--in", m, "--out", c]).success());
 
     let mut other = support::read_bytes(&sealed);
-    other[0] = 3;
+    other[0] = 4;
     support::write_bytes(&sealed, &other);
 
     let r = uacrypt(["box-open", "--key", s, "--in", c, "--out", o]);

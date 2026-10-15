@@ -2423,8 +2423,9 @@ impl Source {
         }
     }
 
-    /// Reads the whole input - only for `box-seal`/`box-open`, which are not bounded yet (T-265).
-    /// No progress line: it would reach 100% and then sit through the in-memory seal (D-218).
+    /// Reads the whole input - only for the `box-seal`/`box-open` `--iterations` benchmark paths
+    /// (T-265). No progress line: it would reach 100% and then sit through the in-memory seal
+    /// (D-218).
     fn read_all(&self) -> Result<Vec<u8>, CliError> {
         use std::io::Read;
         let mut bytes = Vec::new();
@@ -2741,10 +2742,20 @@ fn write_secretstream_file(
     source: &Source,
     out: &mut impl WriteOutput,
 ) -> Result<(), CliError> {
-    use dstu_core::crypto_secretstream::{FileEncryptor, CHUNK_BYTES, MAX_RECORD_BYTES};
-
-    let (mut enc, prefix) = FileEncryptor::init(key)?;
+    let (mut enc, prefix) = dstu_core::crypto_secretstream::FileEncryptor::init(key)?;
     out.write_all(&prefix)?;
+    write_stream_records(&mut enc, input, source, out)
+}
+
+/// Writes one record per [`SECRETSTREAM_CHUNK_BYTES`] of `input` through an encryptor whose prefix
+/// is already written - shared by `encrypt` and `box-seal` (T-265).
+fn write_stream_records(
+    enc: &mut dstu_core::crypto_secretstream::FileEncryptor,
+    input: &mut impl std::io::Read,
+    source: &Source,
+    out: &mut impl WriteOutput,
+) -> Result<(), CliError> {
+    use dstu_core::crypto_secretstream::{CHUNK_BYTES, MAX_RECORD_BYTES};
 
     let mut read_chunk = |buf: &mut [u8]| -> Result<usize, CliError> {
         fill_chunk(input, buf).map_err(|e| source.io_error(&e))
@@ -2856,7 +2867,16 @@ fn run_secretstream_decrypt(
     };
     let mut out = create()?;
     let mut input = progress::wrap(raw, total);
-    let result = match decrypt_stream_records(&key, first[0], &mut input, source, &mut out) {
+    let mut dec = dstu_core::crypto_secretstream::FileDecryptor::new(&key);
+    let fed = dec
+        .feed(
+            &first,
+            &mut [0u8; dstu_core::crypto_secretstream::CHUNK_BYTES],
+        )
+        .map_err(CliError::from);
+    let result = match fed
+        .and_then(|_| decrypt_stream_records(&mut dec, &mut input, source, &mut out))
+    {
         Err(CliError::SecretstreamVerifyFailed) if by_passphrase => Err(CliError::PassphraseWrong),
         other => other,
     };
@@ -2864,8 +2884,8 @@ fn run_secretstream_decrypt(
     out.finish(result)
 }
 
-/// Decrypts a stream file (D-208) whose version byte `version` was already read from `in_file`,
-/// using [`dstu_core::crypto_secretstream::PullState`], writing each
+/// Decrypts the rest of a stream file (D-208) through `dec`, which already consumed whatever came
+/// before `in_file`'s position (`decrypt`: the version byte; `box-open`: the box prefix), writing each
 /// chunk only after its tag verifies (a file `--out` is renamed into place only on success; stdout
 /// cannot be taken back, see [`Output::finish`]). It checks the format version
 /// byte first, and that every non-`Final` record is exactly [`SECRETSTREAM_CHUNK_BYTES`] long
@@ -2874,18 +2894,15 @@ fn run_secretstream_decrypt(
 /// trailing bytes - both an early EOF (no `Final` ever seen, via [`read_exact_or_truncated`]) and
 /// leftover bytes after `Final` are rejected, not silently accepted.
 fn decrypt_stream_records(
-    key: &dstu_core::crypto_secretstream::Key,
-    version: u8,
+    dec: &mut dstu_core::crypto_secretstream::FileDecryptor,
     in_file: &mut impl std::io::Read,
     source: &Source,
     out: &mut Output,
 ) -> Result<(), CliError> {
-    use dstu_core::crypto_secretstream::{FileDecryptor, CHUNK_BYTES, MAX_RECORD_BYTES};
+    use dstu_core::crypto_secretstream::{CHUNK_BYTES, MAX_RECORD_BYTES};
 
-    let mut dec = FileDecryptor::new(key);
     let mut plaintext = vec![0u8; CHUNK_BYTES];
     let mut buf = vec![0u8; MAX_RECORD_BYTES];
-    dec.feed(&[version], &mut plaintext)?;
     loop {
         let want = dec.next_len();
         let got = fill_chunk(in_file, &mut buf[..want]).map_err(|e| source.io_error(&e))?;
@@ -3930,6 +3947,19 @@ enum AnyBoxSecret {
     L512(dstu_core::crypto_box512::SecretKey),
 }
 
+/// Maps a `crypto_box`/`crypto_box512` `OpenError` to `box-open`'s error for `curve`.
+macro_rules! box_open_error {
+    ($module:ident, $curve:expr) => {
+        |e| match e {
+            dstu_core::$module::OpenError::Truncated => CliError::BoxOpenTruncated($curve),
+            dstu_core::$module::OpenError::InvalidCiphertext => CliError::BoxOpenFailed($curve),
+            dstu_core::$module::OpenError::UnsupportedVersion => {
+                CliError::BoxOpenUnsupportedVersion
+            }
+        }
+    };
+}
+
 /// A `crypto_box` public key of either curve; the key file's kind decides which (T-257, D-213).
 enum AnyBoxPublic {
     L256(dstu_core::crypto_box::PublicKey),
@@ -3955,31 +3985,61 @@ impl AnyBoxSecret {
         }
     }
 
-    fn open(&self, sealed: &[u8]) -> Result<Vec<u8>, CliError> {
+    /// `open` (v3, the `--iterations` benchmark path) and `open_v2_legacy` (0.4-0.6 files).
+    fn open(&self, sealed: &[u8], legacy: bool) -> Result<Vec<u8>, CliError> {
         let curve = self.curve_label();
         match self {
-            AnyBoxSecret::L256(k) => dstu_core::crypto_box::open(sealed, k).map_err(|e| match e {
-                dstu_core::crypto_box::OpenError::Truncated => CliError::BoxOpenTruncated(curve),
-                dstu_core::crypto_box::OpenError::InvalidCiphertext => {
-                    CliError::BoxOpenFailed(curve)
-                }
-                dstu_core::crypto_box::OpenError::UnsupportedVersion => {
-                    CliError::BoxOpenUnsupportedVersion
-                }
-            }),
-            AnyBoxSecret::L512(k) => {
-                dstu_core::crypto_box512::open(sealed, k).map_err(|e| match e {
-                    dstu_core::crypto_box512::OpenError::Truncated => {
-                        CliError::BoxOpenTruncated(curve)
-                    }
-                    dstu_core::crypto_box512::OpenError::InvalidCiphertext => {
-                        CliError::BoxOpenFailed(curve)
-                    }
-                    dstu_core::crypto_box512::OpenError::UnsupportedVersion => {
-                        CliError::BoxOpenUnsupportedVersion
-                    }
-                })
+            AnyBoxSecret::L256(k) => if legacy {
+                dstu_core::crypto_box::open_v2_legacy(sealed, k)
+            } else {
+                dstu_core::crypto_box::open(sealed, k)
             }
+            .map_err(box_open_error!(crypto_box, curve)),
+            AnyBoxSecret::L512(k) => if legacy {
+                dstu_core::crypto_box512::open_v2_legacy(sealed, k)
+            } else {
+                dstu_core::crypto_box512::open(sealed, k)
+            }
+            .map_err(box_open_error!(crypto_box512, curve)),
+        }
+    }
+
+    /// The bytes [`Self::open_stream`] takes: the format version byte and the KEM ciphertext.
+    fn open_stream_prefix_len(&self) -> usize {
+        match self {
+            AnyBoxSecret::L256(_) => dstu_core::crypto_box::OPEN_STREAM_PREFIX_BYTES,
+            AnyBoxSecret::L512(_) => dstu_core::crypto_box512::OPEN_STREAM_PREFIX_BYTES,
+        }
+    }
+
+    /// Opens the KEM half of a v3 file (T-265); `prefix` is exactly
+    /// [`Self::open_stream_prefix_len`] bytes.
+    fn open_stream(
+        &self,
+        prefix: &[u8],
+    ) -> Result<dstu_core::crypto_secretstream::FileDecryptor, CliError> {
+        let curve = self.curve_label();
+        match self {
+            AnyBoxSecret::L256(k) => dstu_core::crypto_box::open_stream(&key_array(prefix), k)
+                .map_err(box_open_error!(crypto_box, curve)),
+            AnyBoxSecret::L512(k) => dstu_core::crypto_box512::open_stream(&key_array(prefix), k)
+                .map_err(box_open_error!(crypto_box512, curve)),
+        }
+    }
+
+    /// A stream-file error inside a box file, in `box-open`'s own words: a cut file is truncated,
+    /// any other format or authentication error is "authentication failed" (the core's error
+    /// collapsing, D-169); I/O errors pass through.
+    fn stream_error(&self, err: CliError) -> CliError {
+        match err {
+            CliError::SecretstreamTruncated => CliError::BoxOpenTruncated(self.curve_label()),
+            CliError::SecretstreamVerifyFailed
+            | CliError::SecretstreamUnsupportedVersion(_)
+            | CliError::SecretstreamChunkTooLarge
+            | CliError::SecretstreamBadChunkLength
+            | CliError::SecretstreamUnknownTag
+            | CliError::SecretstreamTrailingData => CliError::BoxOpenFailed(self.curve_label()),
+            other => other,
         }
     }
 }
@@ -3991,6 +4051,20 @@ impl AnyBoxPublic {
                 dstu_core::crypto_box::seal(message, k).map_err(|e| CliError::Random(e.to_string()))
             }
             AnyBoxPublic::L512(k) => dstu_core::crypto_box512::seal(message, k)
+                .map_err(|e| CliError::Random(e.to_string())),
+        }
+    }
+
+    /// Starts a v3 file (T-265): the record encryptor and the prefix to write first.
+    fn seal_stream(
+        &self,
+    ) -> Result<(dstu_core::crypto_secretstream::FileEncryptor, Vec<u8>), CliError> {
+        match self {
+            AnyBoxPublic::L256(k) => dstu_core::crypto_box::seal_stream(k)
+                .map(|(enc, prefix)| (enc, prefix.to_vec()))
+                .map_err(|e| CliError::Random(e.to_string())),
+            AnyBoxPublic::L512(k) => dstu_core::crypto_box512::seal_stream(k)
+                .map(|(enc, prefix)| (enc, prefix.to_vec()))
                 .map_err(|e| CliError::Random(e.to_string())),
         }
     }
@@ -4143,57 +4217,73 @@ pub fn parse_box_seal_args(args: &[String]) -> Result<BoxSealArgs, CliError> {
 }
 
 /// Runs `box-seal`: reads a recipient public key of either curve from `--key` and encrypts `--in`
-/// to it (`crypto_box::seal` or `crypto_box512::seal`, by the key's kind, T-257).
+/// to it (`crypto_box` or `crypto_box512`, by the key's kind, T-257) as a format-v3 file (T-265,
+/// D-239): the box prefix, then [`SECRETSTREAM_CHUNK_BYTES`]-sized records through
+/// [`write_stream_records`] - memory-bounded like `encrypt`, whatever `--in`'s size.
 ///
-/// **Not memory-bounded** (D-42 note, deliberate rather than overlooked): `crypto_box::seal`
-/// itself takes `message: &[u8]` - a genuinely chunked `seal_stream` would need its own library
-/// addition first (see `crypto_box`'s own module doc, "Hybrid via KDF" section), so `--in` is read
-/// whole into memory here, unlike `encrypt`/`decrypt`'s bounded-chunk streaming.
-///
-/// `iterations > 1` is the D-34/T-179 benchmark path (`docs/PERFORMANCE.md`): unlike `sign`
-/// (deterministic nonce, bit-identical every call), each `seal` call draws fresh randomness
-/// internally (a new seed and ephemeral scalar), so this measures real per-call throughput
-/// including that cost - not a cached-schedule shortcut to avoid (D-80's concern doesn't apply
-/// here, there is no schedule to cache). Only the last iteration's output is written to `--out`.
+/// `iterations > 1` is the D-34/T-179 benchmark path (`docs/PERFORMANCE.md`): `--in` is read whole
+/// and sealed in memory that many times. Unlike `sign` (deterministic nonce, bit-identical every
+/// call), each `seal` call draws fresh randomness internally (a new seed and ephemeral scalar), so
+/// this measures real per-call throughput including that cost - not a cached-schedule shortcut to
+/// avoid (D-80's concern doesn't apply here, there is no schedule to cache). Only the last
+/// iteration's output is written to `--out`.
 ///
 /// # Errors
 ///
 /// Returns [`CliError::Io`] if `--key`/`--in` can't be read or `--out` can't be written, a key-file
 /// error if `--key` isn't a box public-key line, [`CliError::BoxKeyInvalid`] if its bytes aren't a
 /// valid public key, or [`CliError::Random`] if the OS CSPRNG fails.
-#[allow(clippy::cast_precision_loss)] // human-readable ops/s diagnostic, not exact at any realistic count
 pub fn run_box_seal_command(args: &BoxSealArgs) -> Result<(), CliError> {
     let public = read_box_public_key(&args.key_path, "box-seal")?;
     args.out_path.check_against(&[("--key", &args.key_path)])?;
+    if args.iterations > 1 {
+        return run_box_seal_benchmark(&public, args);
+    }
+    args.out_path.precheck(&args.in_path, args.force)?;
+    let mut input = args.in_path.open()?;
+    let mut out = Output::create(&args.out_path, &args.in_path, args.force)?;
+    let result = public.seal_stream().and_then(|(mut enc, prefix)| {
+        out.write_all(&prefix)?;
+        write_stream_records(&mut enc, &mut input, &args.in_path, &mut out)
+    });
+    // Closed before the rename: an in-place `--force` must not rename over an open `--in`.
+    drop(input);
+    out.finish(result)
+}
+
+/// `box-seal --iterations N`: `--in` sealed in memory N times, timed (see
+/// [`run_box_seal_command`]).
+#[allow(clippy::cast_precision_loss)] // human-readable ops/s diagnostic, not exact at any realistic count
+fn run_box_seal_benchmark(public: &AnyBoxPublic, args: &BoxSealArgs) -> Result<(), CliError> {
     let mut out = Output::create(&args.out_path, &args.in_path, args.force)?;
     let message = args.in_path.read_all()?;
-    let iterations = args.iterations.max(1);
 
     let start = Instant::now();
     let mut sealed = public.seal(&message)?;
-    for _ in 1..iterations {
+    for _ in 1..args.iterations {
         sealed = public.seal(&message)?;
     }
     let elapsed = start.elapsed();
 
     let written = out.write_all(&sealed);
     out.finish(written)?;
-
-    if args.iterations > 1 {
-        let per_op_ns = elapsed.as_nanos() / u128::from(args.iterations);
-        let ops_per_s = if per_op_ns == 0 {
-            0.0
-        } else {
-            1e9 / (per_op_ns as f64)
-        };
-        eprintln!(
-            "iterations={} total_ns={} per_op_ns={per_op_ns} ops_per_s={ops_per_s:.2}",
-            args.iterations,
-            elapsed.as_nanos(),
-        );
-    }
-
+    report_iterations(args.iterations, elapsed);
     Ok(())
+}
+
+/// The `iterations=... ops_per_s=...` line the `--iterations` benchmark paths print.
+#[allow(clippy::cast_precision_loss)] // human-readable ops/s diagnostic, not exact at any realistic count
+fn report_iterations(iterations: u32, elapsed: std::time::Duration) {
+    let per_op_ns = elapsed.as_nanos() / u128::from(iterations);
+    let ops_per_s = if per_op_ns == 0 {
+        0.0
+    } else {
+        1e9 / (per_op_ns as f64)
+    };
+    eprintln!(
+        "iterations={iterations} total_ns={} per_op_ns={per_op_ns} ops_per_s={ops_per_s:.2}",
+        elapsed.as_nanos(),
+    );
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -4231,52 +4321,92 @@ pub fn parse_box_open_args(args: &[String]) -> Result<BoxOpenArgs, CliError> {
 }
 
 /// Runs `box-open`: reads a secret key of either curve from `--key` and decrypts `--in`
-/// (`crypto_box::open` or `crypto_box512::open`, by the key's kind, T-257) - see [`run_box_seal_command`]'s doc comment for the same
-/// not-memory-bounded caveat.
+/// (`crypto_box` or `crypto_box512`, by the key's kind, T-257). `--in`'s first byte picks the
+/// format (T-265, D-239): 3 is streamed through `open_stream` and [`decrypt_stream_records`] -
+/// memory-bounded, each record written only once it verifies; 2 is a file from uacrypt 0.4-0.6,
+/// read whole and opened with `open_v2_legacy` (owner decision 2026-10-15); anything else is
+/// refused before the key is used.
 ///
-/// `iterations > 1` is the D-34/T-179 benchmark path: `open` is deterministic given the same
-/// input, so every iteration reproduces the identical output - only the decrypt call itself is
-/// timed in a loop, key/ciphertext parsed once outside it (D-80's cached-schedule discipline).
+/// `iterations > 1` is the D-34/T-179 benchmark path: `--in` (format 3) is read whole and `open`
+/// is timed in a loop - deterministic given the same input, key/ciphertext parsed once outside it
+/// (D-80's cached-schedule discipline).
 ///
 /// # Errors
 ///
 /// Returns [`CliError::Io`] if `--key`/`--in` can't be read or `--out` can't be written, a key-file
 /// error if `--key` isn't a box secret-key line, [`CliError::BoxKeyInvalid`] if its bytes aren't a
-/// valid secret key, [`CliError::BoxOpenTruncated`] if `--in` is too short to be real `box-seal`
-/// output for the key's curve, or [`CliError::BoxOpenFailed`] for any other authentication failure
-/// (including a file sealed to the other curve).
-#[allow(clippy::cast_precision_loss)] // human-readable ops/s diagnostic, not exact at any realistic count
+/// valid secret key, [`CliError::BoxOpenUnsupportedVersion`] for an unknown format byte,
+/// [`CliError::BoxOpenTruncated`] if `--in` ends before the end of real `box-seal` output, or
+/// [`CliError::BoxOpenFailed`] for any other authentication or format failure (including a file
+/// sealed to the other curve). A file `--out` is left untouched on every error.
 pub fn run_box_open_command(args: &BoxOpenArgs) -> Result<(), CliError> {
     let secret = read_box_secret_key(&args.key_path, "box-open")?;
     args.out_path.check_against(&[("--key", &args.key_path)])?;
+    if args.iterations > 1 {
+        return run_box_open_benchmark(&secret, args);
+    }
+    args.out_path.precheck(&args.in_path, args.force)?;
+    let source = &args.in_path;
+    let (mut raw, total) = source.open_sized()?;
+    let mut prefix = vec![0u8; secret.open_stream_prefix_len()];
+    let got = fill_chunk(&mut raw, &mut prefix[..1]).map_err(|e| source.io_error(&e))?;
+    if got == 0 {
+        return Err(CliError::BoxOpenTruncated(secret.curve_label()));
+    }
+    if prefix[0] == dstu_core::crypto_box::LEGACY_FORMAT_VERSION {
+        return run_box_open_legacy(&secret, prefix[0], raw, args);
+    }
+    if prefix[0] != dstu_core::crypto_box::FORMAT_VERSION {
+        return Err(CliError::BoxOpenUnsupportedVersion);
+    }
+    let got = fill_chunk(&mut raw, &mut prefix[1..]).map_err(|e| source.io_error(&e))?;
+    if got < prefix.len() - 1 {
+        return Err(CliError::BoxOpenTruncated(secret.curve_label()));
+    }
+    let mut dec = secret.open_stream(&prefix)?;
+
+    let mut out = Output::create(&args.out_path, source, args.force)?;
+    let mut input = progress::wrap(raw, total);
+    let result = decrypt_stream_records(&mut dec, &mut input, source, &mut out)
+        .map_err(|e| secret.stream_error(e));
+    drop(input);
+    out.finish(result)
+}
+
+/// `box-open` of a file from uacrypt 0.4-0.6 (format 2, one chunk): read whole, then
+/// `open_v2_legacy` - not memory-bounded, kept only so those files still open (D-239).
+fn run_box_open_legacy(
+    secret: &AnyBoxSecret,
+    version: u8,
+    mut raw: Box<dyn std::io::Read>,
+    args: &BoxOpenArgs,
+) -> Result<(), CliError> {
+    let mut sealed = vec![version];
+    raw.read_to_end(&mut sealed)
+        .map_err(|e| args.in_path.io_error(&e))?;
+    drop(raw);
+    let opened = zeroize::Zeroizing::new(secret.open(&sealed, true)?);
+    let mut out = Output::create(&args.out_path, &args.in_path, args.force)?;
+    let written = out.write_all(&opened);
+    out.finish(written)
+}
+
+/// `box-open --iterations N`: `open` timed N times over `--in` read whole (see
+/// [`run_box_open_command`]).
+fn run_box_open_benchmark(secret: &AnyBoxSecret, args: &BoxOpenArgs) -> Result<(), CliError> {
     let mut out = Output::create(&args.out_path, &args.in_path, args.force)?;
     let sealed = args.in_path.read_all()?;
-    let iterations = args.iterations.max(1);
 
     let start = Instant::now();
-    let mut opened = secret.open(&sealed)?;
-    for _ in 1..iterations {
-        opened = secret.open(&sealed)?;
+    let mut opened = secret.open(&sealed, false)?;
+    for _ in 1..args.iterations {
+        opened = secret.open(&sealed, false)?;
     }
     let elapsed = start.elapsed();
 
     let written = out.write_all(&opened);
     out.finish(written)?;
-
-    if args.iterations > 1 {
-        let per_op_ns = elapsed.as_nanos() / u128::from(args.iterations);
-        let ops_per_s = if per_op_ns == 0 {
-            0.0
-        } else {
-            1e9 / (per_op_ns as f64)
-        };
-        eprintln!(
-            "iterations={} total_ns={} per_op_ns={per_op_ns} ops_per_s={ops_per_s:.2}",
-            args.iterations,
-            elapsed.as_nanos(),
-        );
-    }
-
+    report_iterations(args.iterations, elapsed);
     Ok(())
 }
 
@@ -4911,13 +5041,12 @@ the recipient's public key - anyone can seal a message only the matching secret 
 a fresh random seed asymmetrically (dstu_core::crypto_box or crypto_box512, whichever curve --key
 is), derives a symmetric key from it, and encrypts --in with that key.
 
-Not memory-bounded: --in is read whole into memory (unlike `encrypt`'s bounded-chunk streaming) -
-fine for typical messages/keys, not recommended for very large files yet.
+Streamed in bounded memory chunks like `encrypt`, whatever --in's size.
 
 OUTPUT FORMAT:
-    version (1, currently 2) || KEM ciphertext (128 for an l(p)=256 key, 256 for l(p)=512) ||
-    header (32) || ciphertext (same length as --in) || auth tag (16) - 177 or 305 bytes of
-    overhead. See docs/CLI.md 'File formats'.
+    version (1, currently 3) || KEM ciphertext (128 for an l(p)=256 key, 256 for l(p)=512) ||
+    the `encrypt` stream format (version, header, then 21 bytes of framing per started 8 KiB of
+    --in) - 183 or 311 bytes for an --in under 8 KiB. See docs/CLI.md 'File formats'.
 
 USAGE:
     uacrypt box-seal --key <path> --in <path> --out <path> [--force]
@@ -4935,9 +5064,10 @@ EXAMPLE:
 const BOX_OPEN_HELP: &str = "\
 uacrypt box-open - decrypt a file produced by `box-seal`, using the matching secret key.
 
-A wrong key (including one of the other curve) or a tampered/truncated file is rejected with an
-error before anything is written to --out (a file or stdout), rather than producing wrong
-plaintext.
+Streamed in bounded memory chunks and authenticated: a wrong key (including one of the other
+curve) or a tampered/truncated file is rejected with an error before anything is written to an
+--out file, rather than producing wrong plaintext. Files sealed by uacrypt 0.4-0.6 still open, but
+are read whole into memory.
 
 USAGE:
     uacrypt box-open --key <path> --in <path> --out <path> [--force]
@@ -8827,8 +8957,9 @@ mod tests {
         .expect("box-seal should succeed");
 
         let sealed_bytes = std::fs::read(dir.file("msg.box")).expect("read sealed output");
-        assert_eq!(sealed_bytes.len(), 1 + 128 + 32 + 32 + 16); // version + KEM + header + message + tag
-        assert_eq!(sealed_bytes[0], CONTAINER_FORMAT_VERSION);
+        // version + KEM + stream version + header + record head + message + tag (T-265, D-239)
+        assert_eq!(sealed_bytes.len(), 1 + 128 + 1 + 32 + 5 + 32 + 16);
+        assert_eq!(sealed_bytes[0], dstu_core::crypto_box::FORMAT_VERSION);
         let pub_text = std::fs::read(dir.file("box.pub")).expect("read public key");
         assert_eq!(
             keyfile::decode(&pub_text).map(|(kind, _)| kind),
@@ -8985,18 +9116,139 @@ mod tests {
             out_path: dir.file("box.key"),
         })
         .expect("box-keygen should succeed");
-        std::fs::write(dir.file("msg.box"), [0u8; 10]).expect("write short input");
-
-        assert_eq!(
+        let open = |bytes: &[u8]| {
+            std::fs::write(dir.file("msg.box"), bytes).expect("write short input");
             run_box_open_command(&BoxOpenArgs {
                 key_path: dir.file("box.key"),
                 in_path: Source::File(dir.file("msg.box")),
                 out_path: Sink::File(dir.file("msg.out")),
                 iterations: 1,
                 force: false,
-            }),
-            Err(CliError::BoxOpenTruncated("l(p)=256"))
+            })
+        };
+        let mut short = [0u8; 10];
+        short[0] = dstu_core::crypto_box::FORMAT_VERSION;
+        assert_eq!(open(&short), Err(CliError::BoxOpenTruncated("l(p)=256")));
+        assert_eq!(open(&[]), Err(CliError::BoxOpenTruncated("l(p)=256")));
+        assert_eq!(open(&[0u8; 10]), Err(CliError::BoxOpenUnsupportedVersion));
+        assert!(!dir.file("msg.out").exists());
+    }
+
+    /// T-265 (D-239): a file the real uacrypt 0.6.0 binary sealed (format 2) still opens, through
+    /// the legacy path; the shared fixture also pins the key-file line.
+    #[cfg_attr(
+        miri,
+        ignore = "dstu9041's 256-iteration scalar-multiply ladders are too slow to interpret under Miri - see docs/TASKS.md T-100/T-177"
+    )]
+    #[test]
+    fn box_open_reads_a_uacrypt_0_6_0_file() {
+        const LEGACY: &str = include_str!("../../dstu-core/tests/vectors/box/legacy_v2.json");
+        let field = |key: &str| {
+            let pattern = format!("\"{key}\": \"");
+            let start = LEGACY.find(&pattern).expect("field") + pattern.len();
+            &LEGACY[start..start + LEGACY[start..].find('"').expect("end quote")]
+        };
+        let hex = |s: &str| -> Vec<u8> {
+            (0..s.len())
+                .step_by(2)
+                .map(|i| u8::from_str_radix(&s[i..i + 2], 16).expect("hex"))
+                .collect()
+        };
+        let dir = TempDir::new("box_legacy_0_6_0");
+        for (key_field, sealed_field) in [
+            ("box256_secret_key_file", "box256_sealed_hex"),
+            ("box512_secret_key_file", "box512_sealed_hex"),
+        ] {
+            std::fs::write(
+                dir.file("box.key"),
+                format!(
+                    "{}
+",
+                    field(key_field)
+                ),
+            )
+            .expect("write key");
+            std::fs::write(dir.file("msg.box"), hex(field(sealed_field))).expect("write sealed");
+            let _ = std::fs::remove_file(dir.file("msg.out"));
+            run_box_open_command(&BoxOpenArgs {
+                key_path: dir.file("box.key"),
+                in_path: Source::File(dir.file("msg.box")),
+                out_path: Sink::File(dir.file("msg.out")),
+                iterations: 1,
+                force: false,
+            })
+            .expect("a uacrypt 0.6.0 file opens");
+            let expected: Vec<u8> = (0..20000usize)
+                .map(|i| u8::try_from((i * 31 + 7) % 256).expect("byte"))
+                .collect();
+            assert_eq!(std::fs::read(dir.file("msg.out")).expect("read"), expected);
+        }
+    }
+
+    /// T-265: a multi-record file round-trips, and a tampered record in the middle leaves no
+    /// `--out` behind (D-65) even though earlier records verified.
+    #[cfg_attr(
+        miri,
+        ignore = "dstu9041's 256-iteration scalar-multiply ladders are too slow to interpret under Miri - see docs/TASKS.md T-100/T-177"
+    )]
+    #[test]
+    fn box_seal_open_streams_records_and_fails_closed_mid_stream() {
+        let dir = TempDir::new("box_stream_records");
+        run_box_keygen512_then_pubkey(&dir);
+        let message: Vec<u8> = (0..3 * SECRETSTREAM_CHUNK_BYTES + 7)
+            .map(|i| u8::try_from(i % 251).expect("byte"))
+            .collect();
+        std::fs::write(dir.file("msg.txt"), &message).expect("write message");
+        run_box_seal_command(&BoxSealArgs {
+            key_path: dir.file("box.pub"),
+            in_path: Source::File(dir.file("msg.txt")),
+            out_path: Sink::File(dir.file("msg.box")),
+            iterations: 1,
+            force: false,
+        })
+        .expect("box-seal");
+        let sealed = std::fs::read(dir.file("msg.box")).expect("read sealed");
+        assert_eq!(
+            Some(sealed.len()),
+            dstu_core::crypto_box512::sealed_len(message.len())
         );
+        let open = || {
+            run_box_open_command(&BoxOpenArgs {
+                key_path: dir.file("box.key"),
+                in_path: Source::File(dir.file("msg.box")),
+                out_path: Sink::File(dir.file("msg.out")),
+                iterations: 1,
+                force: false,
+            })
+        };
+        open().expect("box-open");
+        assert_eq!(std::fs::read(dir.file("msg.out")).expect("read"), message);
+        std::fs::remove_file(dir.file("msg.out")).expect("remove");
+
+        let mut tampered = sealed.clone();
+        let second_record = dstu_core::crypto_box512::SEAL_STREAM_PREFIX_BYTES
+            + dstu_core::crypto_secretstream::MAX_RECORD_BYTES
+            + 10;
+        tampered[second_record] ^= 1;
+        std::fs::write(dir.file("msg.box"), &tampered).expect("write tampered");
+        assert_eq!(open(), Err(CliError::BoxOpenFailed("l(p)=512")));
+        assert!(!dir.file("msg.out").exists(), "no partial output");
+
+        std::fs::write(dir.file("msg.box"), &sealed[..sealed.len() - 1]).expect("write cut");
+        assert_eq!(open(), Err(CliError::BoxOpenTruncated("l(p)=512")));
+        assert!(!dir.file("msg.out").exists(), "no partial output");
+    }
+
+    fn run_box_keygen512_then_pubkey(dir: &TempDir) {
+        run_box512_keygen_command(&BoxKeygenArgs {
+            out_path: dir.file("box.key"),
+        })
+        .expect("box-keygen512");
+        run_box_pubkey_command(&BoxPubkeyArgs {
+            key_path: dir.file("box.key"),
+            out_path: Sink::File(dir.file("box.pub")),
+        })
+        .expect("box-pubkey");
     }
 
     #[test]
