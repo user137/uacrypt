@@ -349,3 +349,59 @@ impl FileDecryptor {
         self.final_len = 0;
     }
 }
+
+/// Appends the records for an in-memory `plaintext` to `out` - the writer contract above, for the
+/// one-shot `crypto_box::seal`/`crypto_box512::seal` (T-265).
+#[cfg(feature = "std")]
+pub(crate) fn seal_all(
+    enc: &mut FileEncryptor,
+    plaintext: &[u8],
+    out: &mut Vec<u8>,
+) -> Result<(), FileError> {
+    let mut record = [0u8; MAX_RECORD_BYTES];
+    let mut rest = plaintext;
+    while rest.len() > CHUNK_BYTES {
+        let (chunk, tail) = rest.split_at(CHUNK_BYTES);
+        let Ok(chunk) = <&[u8; CHUNK_BYTES]>::try_from(chunk) else {
+            return Err(FileError::InvalidLength);
+        };
+        enc.seal_chunk(chunk, &mut record)?;
+        out.extend_from_slice(&record);
+        rest = tail;
+    }
+    let n = enc.seal_final(rest, &mut record)?;
+    out.extend_from_slice(&record[..n]);
+    Ok(())
+}
+
+/// Reads an in-memory stream file to its end - the reader contract above, for the one-shot
+/// `crypto_box::open`/`crypto_box512::open` (T-265). On any error the plaintext gathered so far is
+/// zeroized before it is dropped (D-65); its capacity is reserved up front so no reallocation
+/// leaves a copy behind.
+#[cfg(feature = "std")]
+pub(crate) fn open_all(dec: &mut FileDecryptor, file: &[u8]) -> Result<Vec<u8>, FileError> {
+    let mut chunk = [0u8; CHUNK_BYTES];
+    let mut plaintext = Vec::with_capacity(file.len());
+    let mut pos = 0;
+    let result = loop {
+        let want = dec.next_len();
+        let Some(input) = file.get(pos..pos + want) else {
+            break dec.finish(&mut chunk).map(|n| {
+                plaintext.extend_from_slice(&chunk[..n]);
+            });
+        };
+        match dec.feed(input, &mut chunk) {
+            Ok(n) => plaintext.extend_from_slice(&chunk[..n]),
+            Err(e) => break Err(e),
+        }
+        pos += want;
+    };
+    chunk.zeroize();
+    match result {
+        Ok(()) => Ok(plaintext),
+        Err(e) => {
+            plaintext.as_mut_slice().zeroize();
+            Err(e)
+        }
+    }
+}

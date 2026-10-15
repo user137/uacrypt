@@ -34,15 +34,17 @@
 //!
 //! Same posture as [`crate::crypto_box`] - [`OpenError`] deliberately does not distinguish a KEM
 //! failure from a secretstream tag failure (D-56/D-63 precedent); only [`OpenError::Truncated`]
-//! and [`OpenError::UnsupportedVersion`] stay separate. Wire format: `version (1 byte, currently
-//! 2) || dstu9041_ciphertext (256 bytes) || secretstream_header (32 bytes) || ciphertext
-//! (message.len() bytes) || tag (16 bytes)`. The stream key is `Kupyna256Kmac(key = seed,
-//! message = b"cryptbx5" || version || kem_ciphertext || recipient_public_key)` - the same
+//! and [`OpenError::UnsupportedVersion`] stay separate. Wire format (version 3, T-265/D-239):
+//! `version (1 byte, 3) || dstu9041_ciphertext (256 bytes) || <D-208 stream file>`, written and
+//! read by [`seal_stream`]/[`open_stream`] (bounded memory) or [`seal`]/[`open`] (one call); the
+//! one-chunk version 2 of 0.4-0.6 is read only by [`open_v2_legacy`]. The stream key is
+//! `Kupyna256Kmac(key = seed, message = b"cryptbx5" || version || kem_ciphertext ||
+//! recipient_public_key)` - the same
 //! RFC 9180 §4.1 `kem_context` binding as [`crate::crypto_box`] (T-248, `docs/DECISIONS.md`
 //! D-201).
 //!
 //! A `box-open`-length-valid `l(p)=512` sealed blob also clears [`crate::crypto_box::open`]'s own
-//! `MIN_LEN` check (177 bytes) and vice versa - both fall through to their own
+//! minimum-length check (183 bytes) - it falls through to its own
 //! `InvalidCiphertext`/authentication-failure path rather than a distinct "wrong curve size"
 //! error. Defensible under the shared error-collapsing posture (recorded here, not left to be
 //! found by surprise): a curve-size mismatch is just another way for the KEM decrypt to fail.
@@ -53,7 +55,10 @@
 //! composite; verified by property/tamper/misuse tests only (`tests/crypto_box512.rs`).
 //! `hazmat::dstu9041::encryption512` itself remains verified against Додаток Г.3 (T-192).
 
-use crate::crypto_secretstream::{Key, PullState, PushState, SecretstreamError, Tag};
+use crate::crypto_secretstream::{
+    open_all, seal_all, FileDecryptor, FileEncryptor, FileError, Key, PullState, Tag, CHUNK_BYTES,
+    FILE_PREFIX_BYTES, RECORD_OVERHEAD_BYTES,
+};
 use crate::hazmat::dstu9041::curve512::{base_point, is_valid_scalar, point_from_x, Point};
 use crate::hazmat::dstu9041::encryption512::{
     decrypt as dstu9041_decrypt, encrypt as dstu9041_encrypt,
@@ -73,10 +78,20 @@ const SEED_BITS: usize = SEED_LEN * 8;
 const KEM_CIPHERTEXT_LEN: usize = 256;
 const HEADER_LEN: usize = 32;
 const TAG_LEN: usize = 16;
-/// Wire-format version, the sealed blob's first byte (T-232/T-248; 0.3.x blobs had none).
-const FORMAT_VERSION: u8 = 2;
-/// `version || kem_ciphertext` - everything in front of the secretstream header.
+/// Wire-format version, the sealed blob's first byte (T-265, D-239: a D-208 stream file follows
+/// the KEM ciphertext).
+const FORMAT_VERSION: u8 = 3;
+/// The one-chunk format 0.4-0.6 wrote (T-232/T-248), read only by [`open_v2_legacy`].
+const LEGACY_FORMAT_VERSION: u8 = 2;
+/// `version || kem_ciphertext` - everything in front of the stream file.
 const PREFIX_LEN: usize = 1 + KEM_CIPHERTEXT_LEN;
+/// The bytes [`open_stream`] takes: the version byte and the KEM ciphertext.
+pub const OPEN_STREAM_PREFIX_BYTES: usize = PREFIX_LEN;
+/// The bytes [`seal_stream`] returns to write first: [`OPEN_STREAM_PREFIX_BYTES`], then the stream
+/// file's own version byte and header.
+pub const SEAL_STREAM_PREFIX_BYTES: usize = PREFIX_LEN + FILE_PREFIX_BYTES;
+/// The shortest sealed message: the prefix and one empty `Final` record.
+const MIN_SEALED_LEN: usize = SEAL_STREAM_PREFIX_BYTES + RECORD_OVERHEAD_BYTES;
 const PUBLIC_KEY_LEN: usize = 64;
 /// Domain-separation label for the stream-key derivation - distinct from `crypto_box`'s own label.
 const KDF_LABEL: &[u8; 8] = b"cryptbx5";
@@ -86,16 +101,18 @@ const KDF_MESSAGE_LEN: usize = KDF_LABEL.len() + 1 + KEM_CIPHERTEXT_LEN + PUBLIC
 /// kem_ciphertext || recipient_public_key)`, binding the KEM ciphertext and the recipient into
 /// the key - RFC 9180 §4.1's DHKEM `kem_context = concat(enc, pkRm)` (T-248, `docs/DECISIONS.md`
 /// D-201). A plain `Kupyna256Kdf::derive_subkey` can't carry this: its context is a fixed 8 bytes.
+/// `version` is the wire format's, so a v2 and a v3 blob never share a stream key (D-239).
 fn stream_key(
     seed: &[u8; 32],
     kem_ciphertext: &[u8; KEM_CIPHERTEXT_LEN],
     recipient: &[u8; PUBLIC_KEY_LEN],
+    version: u8,
 ) -> Key {
     let mut message = [0u8; KDF_MESSAGE_LEN];
     let (label, rest) = message.split_at_mut(KDF_LABEL.len());
     label.copy_from_slice(KDF_LABEL);
-    let (version, rest) = rest.split_at_mut(1);
-    version[0] = FORMAT_VERSION;
+    let (version_byte, rest) = rest.split_at_mut(1);
+    version_byte[0] = version;
     let (kem, pk) = rest.split_at_mut(KEM_CIPHERTEXT_LEN);
     kem.copy_from_slice(kem_ciphertext);
     pk.copy_from_slice(recipient);
@@ -132,8 +149,8 @@ impl From<RandomError> for SealError {
 /// `crypto_box512` can fail while opening for reasons beyond a wrong key.
 #[derive(Debug)]
 pub enum OpenError {
-    /// `sealed` is shorter than a version byte, a KEM ciphertext, a secretstream header and a tag
-    /// (305 bytes) - too short to have ever been produced by [`seal`].
+    /// `sealed` is shorter than the prefix and one empty record (311 bytes; 305 for
+    /// [`open_v2_legacy`]), or its stream ends before a verified `Final` record - it was cut.
     Truncated,
     /// `sealed` starts with a format version byte this build does not read - a blob from an older
     /// or newer wire format. The byte is public, so this reveals nothing about the key.
@@ -238,17 +255,22 @@ impl PublicKey {
     }
 }
 
-/// Encrypts `message` (any length) to `recipient`, drawing a fresh random seed and ephemeral key
-/// internally - see the module doc's "Seed width" section.
-///
-/// # Errors
-///
-/// Returns [`SealError::Random`] if the OS CSPRNG fails - the only way this can fail.
-pub fn seal(message: &[u8], recipient: &PublicKey) -> Result<Vec<u8>, SealError> {
+/// The KEM half of every sealing entry point: a fresh random 32-byte seed wrapped to `recipient`
+/// under a fresh ephemeral key, and the stream key derived from it for wire format `version` -
+/// see the module doc's "Seed width" section.
+fn encapsulate(
+    recipient: &PublicKey,
+    version: u8,
+) -> Result<([u8; KEM_CIPHERTEXT_LEN], Key), RandomError> {
     let mut seed = [0u8; SEED_LEN];
     randombytes_buf(&mut seed)?;
-
-    let mut epsilon = random_valid_scalar()?;
+    let mut epsilon = match random_valid_scalar() {
+        Ok(epsilon) => epsilon,
+        Err(e) => {
+            seed.zeroize();
+            return Err(e);
+        }
+    };
     // Unreachable in practice: `seed` is always exactly SEED_LEN bytes at message_bits=SEED_BITS
     // (can't trigger `InvalidMessage`), and `epsilon` is already validated by
     // `random_valid_scalar` (can't trigger `InvalidEphemeralKey`).
@@ -257,48 +279,171 @@ pub fn seal(message: &[u8], recipient: &PublicKey) -> Result<Vec<u8>, SealError>
     };
     epsilon.zeroize();
 
-    let key = stream_key(&seed, &kem_ciphertext, &recipient.to_bytes());
+    let key = stream_key(&seed, &kem_ciphertext, &recipient.to_bytes(), version);
     seed.zeroize();
-
-    let (mut push, header) = match PushState::init(&key) {
-        Ok(ok) => ok,
-        Err(SecretstreamError::Random(e)) => return Err(SealError::Random(e)),
-        // `PushState::init`'s only documented failure mode is the OS CSPRNG call for its header -
-        // see `crypto_secretstream::SecretstreamError`'s own doc comment.
-        Err(_) => unreachable!("PushState::init only ever fails via SecretstreamError::Random"),
-    };
-
-    let mut ciphertext = vec![0u8; message.len()];
-    let Ok(tag) = push.push(Tag::Final, message, &mut ciphertext) else {
-        unreachable!(
-            "ciphertext.len() == message.len() by construction; stream freshly initialized, \
-             never finalized yet"
-        )
-    };
-
-    let mut out = Vec::with_capacity(PREFIX_LEN + HEADER_LEN + ciphertext.len() + TAG_LEN);
-    out.push(FORMAT_VERSION);
-    out.extend_from_slice(&kem_ciphertext);
-    out.extend_from_slice(&header);
-    out.extend_from_slice(&ciphertext);
-    out.extend_from_slice(&tag);
-    Ok(out)
+    Ok((kem_ciphertext, key))
 }
 
-/// Decrypts `sealed` (as produced by [`seal`]) under `secret`.
+/// The KEM half of every opening entry point: recovers the seed under `secret` and derives the
+/// stream key for wire format `version`. Every failure is [`OpenError::InvalidCiphertext`].
+fn decapsulate(
+    kem_ciphertext: &[u8; KEM_CIPHERTEXT_LEN],
+    secret: &SecretKey,
+    version: u8,
+) -> Result<Key, OpenError> {
+    let (mut m_tilde, bit_len) =
+        dstu9041_decrypt(kem_ciphertext, &secret.0).map_err(|_| OpenError::InvalidCiphertext)?;
+    // Defense in depth: an honestly-sealed ciphertext always has bit_len == SEED_BITS (the hash
+    // check inside `decrypt` already makes forging a different-but-valid bit_length as hard as a
+    // Kupyna-256 preimage), but this is never trusted blindly.
+    if bit_len != SEED_BITS {
+        m_tilde.zeroize();
+        return Err(OpenError::InvalidCiphertext);
+    }
+    let mut seed = [0u8; SEED_LEN];
+    seed.copy_from_slice(&m_tilde[m_tilde.len() - SEED_LEN..]);
+    m_tilde.zeroize();
+
+    let key = stream_key(
+        &seed,
+        kem_ciphertext,
+        &secret.public_key().to_bytes(),
+        version,
+    );
+    seed.zeroize();
+    Ok(key)
+}
+
+/// Starts sealing a message of any length to `recipient` as a stream (T-265): returns the
+/// [`FileEncryptor`] for its records and the [`SEAL_STREAM_PREFIX_BYTES`]-byte prefix to write
+/// first. Drive the encryptor as the stream-file codec documents (every full
+/// [`CHUNK_BYTES`] chunk with `seal_chunk`, the last `0..=CHUNK_BYTES` bytes with `seal_final`);
+/// the bytes are then exactly what [`seal`] returns, and [`open`]/[`open_stream`] read them. The
+/// stream key never leaves the library.
 ///
 /// # Errors
 ///
-/// Returns [`OpenError::Truncated`] if `sealed` is shorter than the minimum possible length,
-/// [`OpenError::UnsupportedVersion`] if its first byte is not this build's format version, or
-/// [`OpenError::InvalidCiphertext`] for any other failure - see the module doc's "Error collapsing"
-/// section.
+/// Returns [`SealError::Random`] if the OS CSPRNG fails - the only way this can fail.
+pub fn seal_stream(
+    recipient: &PublicKey,
+) -> Result<(FileEncryptor, [u8; SEAL_STREAM_PREFIX_BYTES]), SealError> {
+    let (kem_ciphertext, key) = encapsulate(recipient, FORMAT_VERSION)?;
+    let (enc, file_prefix) = match FileEncryptor::init(&key) {
+        Ok(ok) => ok,
+        Err(FileError::Random(e)) => return Err(SealError::Random(e)),
+        // `FileEncryptor::init`'s only failure mode is the OS CSPRNG call for its header.
+        Err(_) => unreachable!("FileEncryptor::init only ever fails via FileError::Random"),
+    };
+    let mut prefix = [0u8; SEAL_STREAM_PREFIX_BYTES];
+    prefix[0] = FORMAT_VERSION;
+    prefix[1..PREFIX_LEN].copy_from_slice(&kem_ciphertext);
+    prefix[PREFIX_LEN..].copy_from_slice(&file_prefix);
+    Ok((enc, prefix))
+}
+
+/// Starts opening a message sealed by [`seal`] or [`seal_stream`] (T-265): `prefix` is its first
+/// [`OPEN_STREAM_PREFIX_BYTES`] bytes. Feed the returned [`FileDecryptor`] everything after them,
+/// as the stream-file codec documents: a record's plaintext comes out only once it verifies, the
+/// `Final` record's only from `finish`, once the input is known to end there.
+///
+/// # Errors
+///
+/// Returns [`OpenError::UnsupportedVersion`] if `prefix` does not start with this format's version
+/// byte (checked before `secret` is used), or [`OpenError::InvalidCiphertext`] if the KEM
+/// ciphertext does not open under `secret`.
+pub fn open_stream(
+    prefix: &[u8; OPEN_STREAM_PREFIX_BYTES],
+    secret: &SecretKey,
+) -> Result<FileDecryptor, OpenError> {
+    if prefix[0] != FORMAT_VERSION {
+        return Err(OpenError::UnsupportedVersion);
+    }
+    let mut kem_ciphertext = [0u8; KEM_CIPHERTEXT_LEN];
+    kem_ciphertext.copy_from_slice(&prefix[1..]);
+    let key = decapsulate(&kem_ciphertext, secret, FORMAT_VERSION)?;
+    Ok(FileDecryptor::new(&key))
+}
+
+/// The exact length [`seal`] returns for a `message_len`-byte message, or `None` if it overflows
+/// `usize`: the prefix, the message, and one record overhead per started [`CHUNK_BYTES`] chunk -
+/// at least one, since an empty message is one empty `Final` record.
+#[must_use]
+pub fn sealed_len(message_len: usize) -> Option<usize> {
+    let records = message_len.div_ceil(CHUNK_BYTES).max(1);
+    records
+        .checked_mul(RECORD_OVERHEAD_BYTES)?
+        .checked_add(message_len)?
+        .checked_add(SEAL_STREAM_PREFIX_BYTES)
+}
+
+/// Encrypts `message` (any length) to `recipient`, drawing a fresh random seed and ephemeral key
+/// internally - see the module doc's "Seed width" section. The in-memory form of
+/// [`seal_stream`]; the result is [`sealed_len`]`(message.len())` bytes.
+///
+/// # Errors
+///
+/// Returns [`SealError::Random`] if the OS CSPRNG fails - the only way this can fail.
+pub fn seal(message: &[u8], recipient: &PublicKey) -> Result<Vec<u8>, SealError> {
+    let (mut enc, prefix) = seal_stream(recipient)?;
+    let mut out = Vec::with_capacity(sealed_len(message.len()).unwrap_or(0));
+    out.extend_from_slice(&prefix);
+    if seal_all(&mut enc, message, &mut out).is_err() {
+        unreachable!(
+            "a fresh encryptor over an in-memory message: never finalized, chunks exact by \
+             construction, far below the record counter's limit"
+        )
+    }
+    Ok(out)
+}
+
+/// Decrypts `sealed` (as produced by [`seal`] or [`seal_stream`]) under `secret` - the in-memory
+/// form of [`open_stream`]. Partially decrypted plaintext is zeroized before an error returns.
+///
+/// # Errors
+///
+/// Returns [`OpenError::UnsupportedVersion`] if `sealed`'s first byte is not this build's format
+/// version (a blob from 0.4-0.6 included - see [`open_v2_legacy`]), [`OpenError::Truncated`] if
+/// it is shorter than the minimum possible length or its stream ends before a verified `Final`
+/// record, or [`OpenError::InvalidCiphertext`] for any other failure - see the module doc's
+/// "Error collapsing" section.
 pub fn open(sealed: &[u8], secret: &SecretKey) -> Result<Vec<u8>, OpenError> {
+    let Some(&version) = sealed.first() else {
+        return Err(OpenError::Truncated);
+    };
+    if version != FORMAT_VERSION {
+        return Err(OpenError::UnsupportedVersion);
+    }
+    if sealed.len() < MIN_SEALED_LEN {
+        return Err(OpenError::Truncated);
+    }
+    let (prefix, file) = sealed.split_at(PREFIX_LEN);
+    let Ok(prefix) = <&[u8; PREFIX_LEN]>::try_from(prefix) else {
+        return Err(OpenError::Truncated);
+    };
+    let mut dec = open_stream(prefix, secret)?;
+    open_all(&mut dec, file).map_err(|e| match e {
+        FileError::Truncated => OpenError::Truncated,
+        _ => OpenError::InvalidCiphertext,
+    })
+}
+
+/// Decrypts a blob in the one-chunk format 0.4-0.6 wrote (version byte 2: `version || kem
+/// ciphertext (256) || secretstream header (32) || ciphertext || tag (16)`). It exists for
+/// `uacrypt box-open`, which still opens files sealed before T-265 (owner decision 2026-10-15,
+/// D-239); it is not memory-bounded and not wired into the C ABI or any binding. [`seal`] never
+/// writes this format.
+///
+/// # Errors
+///
+/// Returns [`OpenError::Truncated`] if `sealed` is shorter than 305 bytes,
+/// [`OpenError::UnsupportedVersion`] if its first byte is not 2, or
+/// [`OpenError::InvalidCiphertext`] for any other failure.
+pub fn open_v2_legacy(sealed: &[u8], secret: &SecretKey) -> Result<Vec<u8>, OpenError> {
     const MIN_LEN: usize = PREFIX_LEN + HEADER_LEN + TAG_LEN;
     if sealed.len() < MIN_LEN {
         return Err(OpenError::Truncated);
     }
-    if sealed[0] != FORMAT_VERSION {
+    if sealed[0] != LEGACY_FORMAT_VERSION {
         return Err(OpenError::UnsupportedVersion);
     }
 
@@ -311,24 +456,7 @@ pub fn open(sealed: &[u8], secret: &SecretKey) -> Result<Vec<u8>, OpenError> {
     let ciphertext = &sealed[ciphertext_start..ciphertext_start + ciphertext_len];
     let tag = &sealed[ciphertext_start + ciphertext_len..];
 
-    let (m_tilde, bit_len) =
-        dstu9041_decrypt(&kem_ciphertext, &secret.0).map_err(|_| OpenError::InvalidCiphertext)?;
-    // Defense in depth: an honestly-sealed ciphertext always has bit_len == SEED_BITS (the hash
-    // check inside `decrypt` already makes forging a different-but-valid bit_length as hard as a
-    // Kupyna-256 preimage), but this is never trusted blindly.
-    if bit_len != SEED_BITS {
-        let mut m_tilde = m_tilde;
-        m_tilde.zeroize();
-        return Err(OpenError::InvalidCiphertext);
-    }
-    let mut seed = [0u8; SEED_LEN];
-    seed.copy_from_slice(&m_tilde[m_tilde.len() - SEED_LEN..]);
-    let mut m_tilde = m_tilde;
-    m_tilde.zeroize();
-
-    let key = stream_key(&seed, &kem_ciphertext, &secret.public_key().to_bytes());
-    seed.zeroize();
-
+    let key = decapsulate(&kem_ciphertext, secret, LEGACY_FORMAT_VERSION)?;
     let mut pull = PullState::init(&key, &header);
     let mut plaintext = vec![0u8; ciphertext_len];
     pull.pull(Tag::Final.to_byte(), ciphertext, tag, &mut plaintext)
@@ -348,13 +476,13 @@ mod tests {
         let seed = [0x11u8; 32];
         let kem = [0x22u8; KEM_CIPHERTEXT_LEN];
         let pk = [0x33u8; PUBLIC_KEY_LEN];
-        let base = *stream_key(&seed, &kem, &pk).as_bytes();
+        let base = *stream_key(&seed, &kem, &pk, FORMAT_VERSION).as_bytes();
 
         for i in [0, KEM_CIPHERTEXT_LEN / 2, KEM_CIPHERTEXT_LEN - 1] {
             let mut kem2 = kem;
             kem2[i] ^= 1;
             assert_ne!(
-                *stream_key(&seed, &kem2, &pk).as_bytes(),
+                *stream_key(&seed, &kem2, &pk, FORMAT_VERSION).as_bytes(),
                 base,
                 "kem byte {i}"
             );
@@ -363,14 +491,33 @@ mod tests {
             let mut pk2 = pk;
             pk2[i] ^= 1;
             assert_ne!(
-                *stream_key(&seed, &kem, &pk2).as_bytes(),
+                *stream_key(&seed, &kem, &pk2, FORMAT_VERSION).as_bytes(),
                 base,
                 "pk byte {i}"
             );
         }
         let mut seed2 = seed;
         seed2[0] ^= 1;
-        assert_ne!(*stream_key(&seed2, &kem, &pk).as_bytes(), base);
-        assert_eq!(*stream_key(&seed, &kem, &pk).as_bytes(), base);
+        assert_ne!(
+            *stream_key(&seed2, &kem, &pk, FORMAT_VERSION).as_bytes(),
+            base
+        );
+        assert_eq!(
+            *stream_key(&seed, &kem, &pk, FORMAT_VERSION).as_bytes(),
+            base
+        );
+    }
+
+    /// D-239: the format version is bound into the key, so a v2 and a v3 blob over the same KEM
+    /// output never share a stream key.
+    #[test]
+    fn stream_key_separates_the_format_versions() {
+        let seed = [0x11u8; 32];
+        let kem = [0x22u8; KEM_CIPHERTEXT_LEN];
+        let pk = [0x33u8; PUBLIC_KEY_LEN];
+        assert_ne!(
+            *stream_key(&seed, &kem, &pk, FORMAT_VERSION).as_bytes(),
+            *stream_key(&seed, &kem, &pk, LEGACY_FORMAT_VERSION).as_bytes()
+        );
     }
 }

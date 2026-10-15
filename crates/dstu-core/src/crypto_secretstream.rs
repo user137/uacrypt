@@ -127,6 +127,8 @@ use core::fmt;
 use zeroize::Zeroize;
 
 mod file;
+#[cfg(feature = "std")]
+pub(crate) use file::{open_all, seal_all};
 pub use file::{
     FileDecryptor, FileEncryptor, FileError, CHUNK_BYTES, FILE_PREFIX_BYTES, MAX_RECORD_BYTES,
     RECORD_OVERHEAD_BYTES,

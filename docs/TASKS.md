@@ -9266,6 +9266,16 @@ plan):
   generated from the same command table the parser uses.
 - [ ] **T-265** Bounded-memory `box-seal`/`box-open` (today they read `--in` whole). Needs a
   multi-chunk `crypto_box` stream API in `dstu-core` -> the new-primitive binding gate applies.
+  **Plan approved 2026-10-15 (plan mode + advisor; D-239 to write):** format v3 = `0x03 ||
+  kem_ct || <D-208 stream file>` (the D-219 container shape; KDF version byte 3), one written
+  format: `seal`/`open` write/read v3 only in the core, capi and all 8 bindings; `open_v2_legacy`
+  in `dstu-core`, called only by `uacrypt box-open` (owner: v2 files still open in the CLI, read
+  whole). Core: `seal_stream`/`open_stream` returning the codec's `FileEncryptor`/`FileDecryptor`,
+  `sealed_len`. Phases: 0 v2 fixtures from today's code -> 1 core (test-first, 4 categories +
+  active attack, shared vectors `tests/vectors/box/`) -> 2 capi (`dstu_box_seal_stream`/
+  `_open_stream`/`_sealed_len`, `DSTU_BOX_SEAL_OVERHEAD` -> `DSTU_BOX_OPEN_MIN_OVERHEAD`, open
+  length becomes "at most") -> 3 CLI (bounded, byte-0 dispatch) -> 4 C++/.NET/Go seal sizing and
+  open truncation (break-fix; full streaming in the bindings stays T-269) -> docs.
 - [ ] **T-269** Binding gate for T-262 and T-265, one pass: wire `crypto_pwhash::derive_key`
   and T-265's streaming `crypto_box` API into the 8 bindings and `dstu-core-capi` (shared vectors `crates/dstu-core/tests/vectors/pwhash/derive_key.json`), and
   decide whether the bindings also read/write the passphrase file format (D-219).
