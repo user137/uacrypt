@@ -178,8 +178,8 @@ void TestBox() {
   auto publicKey = secretKey.Public();
   const std::string message = "a message for the public key's holder only";
   auto sealed = publicKey.Seal(ToBytes(message));
-  CHECK(sealed.size() == message.size() + dstu::kBoxSealOverhead,
-        "sealed size should equal message size + DSTU_BOX_SEAL_OVERHEAD exactly");
+  CHECK(sealed.size() == message.size() + dstu::kBoxOpenMinOverhead,
+        "a message under 8 KiB should seal to its size + DSTU_BOX_OPEN_MIN_OVERHEAD exactly");
 
   auto opened = secretKey.Open(sealed);
   CHECK(opened == ToBytes(message), "opened plaintext should match the original message");
@@ -193,7 +193,14 @@ void TestBox() {
         "Open should reject the correct sealed message under the wrong secret key");
 
   CHECK(Throws<dstu::CryptoError>([&] { secretKey.Open(std::vector<std::uint8_t>{1, 2, 3}); }),
-        "Open should reject input shorter than DSTU_BOX_SEAL_OVERHEAD");
+        "Open should reject input shorter than DSTU_BOX_OPEN_MIN_OVERHEAD");
+
+  // T-265: a multi-record message opens to exactly its own bytes, no trailing padding.
+  std::vector<std::uint8_t> large(20000);
+  for (std::size_t i = 0; i < large.size(); i++) {
+    large[i] = static_cast<std::uint8_t>(i % 251);
+  }
+  CHECK(secretKey.Open(publicKey.Seal(large)) == large, "a multi-record message should round-trip exactly");
 
   CHECK(Throws<dstu::ArgumentError>([&] { dstu::BoxSecretKey::FromBytes(std::vector<std::uint8_t>(32, 0)); }),
         "BoxSecretKey::FromBytes should reject a zero scalar");
@@ -206,8 +213,8 @@ void TestBox512() {
   auto publicKey = secretKey.Public();
   const std::string message = "a message for the public key's holder only";
   auto sealed = publicKey.Seal(ToBytes(message));
-  CHECK(sealed.size() == message.size() + dstu::kBox512SealOverhead,
-        "sealed size should equal message size + DSTU_BOX512_SEAL_OVERHEAD exactly");
+  CHECK(sealed.size() == message.size() + dstu::kBox512OpenMinOverhead,
+        "a message under 8 KiB should seal to its size + DSTU_BOX512_OPEN_MIN_OVERHEAD exactly");
 
   auto opened = secretKey.Open(sealed);
   CHECK(opened == ToBytes(message), "opened plaintext should match the original message");
@@ -221,7 +228,14 @@ void TestBox512() {
         "Open should reject the correct sealed message under the wrong secret key");
 
   CHECK(Throws<dstu::CryptoError>([&] { secretKey.Open(std::vector<std::uint8_t>{1, 2, 3}); }),
-        "Open should reject input shorter than DSTU_BOX512_SEAL_OVERHEAD");
+        "Open should reject input shorter than DSTU_BOX512_OPEN_MIN_OVERHEAD");
+
+  // T-265: a multi-record message opens to exactly its own bytes, no trailing padding.
+  std::vector<std::uint8_t> large(20000);
+  for (std::size_t i = 0; i < large.size(); i++) {
+    large[i] = static_cast<std::uint8_t>(i % 251);
+  }
+  CHECK(secretKey.Open(publicKey.Seal(large)) == large, "a multi-record message should round-trip exactly");
 
   CHECK(Throws<dstu::ArgumentError>([&] { dstu::Box512SecretKey::FromBytes(std::vector<std::uint8_t>(64, 0)); }),
         "Box512SecretKey::FromBytes should reject a zero scalar");

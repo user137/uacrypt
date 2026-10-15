@@ -59,10 +59,10 @@ class Box512SecretKey {
   /// fails (wrong key, or any tampered wire segment - deliberately not distinguished further, see
   /// dstu_core::crypto_box512::OpenError's own doc comment) or sealed is too short to be valid.
   std::vector<std::uint8_t> Open(ByteView sealed) const {
-    if (sealed.size() < kBox512SealOverhead) {
+    if (sealed.size() < kBox512OpenMinOverhead) {
       throw CryptoError("input is shorter than the minimum valid length for this construction");
     }
-    std::vector<std::uint8_t> plaintextOut(sealed.size() - kBox512SealOverhead);
+    std::vector<std::uint8_t> plaintextOut(sealed.size() - kBox512OpenMinOverhead);
     std::size_t plaintextLen = 0;
     CheckStatus(dstu_box512_open(ptr_.get(), sealed.data(), sealed.size(), plaintextOut.data(),
                                   plaintextOut.size(), &plaintextLen));
@@ -110,7 +110,9 @@ class Box512PublicKey {
   /// Encrypts message (any length) to the holder of this public key, drawing a fresh random seed
   /// and ephemeral key internally.
   std::vector<std::uint8_t> Seal(ByteView message) const {
-    std::vector<std::uint8_t> sealedOut(message.size() + kBox512SealOverhead);
+    std::size_t sealedCap = 0;
+    CheckStatus(dstu_box512_sealed_len(message.size(), &sealedCap));
+    std::vector<std::uint8_t> sealedOut(sealedCap);
     std::size_t sealedLen = 0;
     CheckStatus(dstu_box512_seal(ptr_.get(), message.data(), message.size(), sealedOut.data(),
                                   sealedOut.size(), &sealedLen));
