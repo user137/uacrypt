@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-b2d1970f.js";
+            window.path_to_searchindex_js = "searchindex-18ea822f.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -8591,7 +8591,10 @@ in <code>bindings-dotnet</code>’s <code>MemoryLeakTests.SecretstreamAndBoxLoop
 0.5.0; measured on the Pi it is JVM heap growth, not a leak, and the old 8 MiB test could not
 see a real leak either. Fixed: fixed pre-touched heap for the Java test fork, threshold 1 MiB
 (normal 0.36-0.44 MB pass, never-close control 3.05 MB fails). Still to do: read the real
-growth on CI’s x86_64 log after the push. <strong>.NET still open:</strong> the Pi does not reproduce it
+growth on CI’s x86_64 log after the push. <strong>First CI reading (2026-10-12, run <code>38203478438</code>,
+ubuntu x86_64): -6.3 MB</strong> - VmRSS shrank, so CI noise is megabytes, not the Pi’s 0.1-0.4 MB.
+Watch the next runs: if the noise also goes positive, 1 MiB can flake and the method needs a
+rethink (0.7.0, with the .NET half). <strong>.NET still open:</strong> the Pi does not reproduce it
 (0.08-1.4 MB over 6 runs), and <code>SafeHandle</code> finalizers make “never Dispose” no leak control -
 next step is CI-side data (the probe line from D-234’s method) before any change.
 <strong>Owner 2026-10-11: the .NET half moves to 0.7.0</strong> (does not hold 0.6.0). The .NET test now
@@ -10229,7 +10232,12 @@ installer needs <code>ArchiveBinariesDependOnPath</code>.</li>
 <code>docs/CLI.md</code>/README list it as an install option.</li>
 </ul>
 </li>
-<li><input disabled="" type="checkbox"> <strong>T-296</strong> (Low, qa; owner 2026-10-09, 0.6.0) <strong>2026-10-11: sharded, awaiting the first CI
+<li><input disabled="" type="checkbox" checked=""> <strong>T-296</strong> (Low, qa; owner 2026-10-09, 0.6.0) <strong>Done 2026-10-12:</strong> Miri run <code>38228156411</code>
+on <code>995198e</code>: 54/54 green, longest job <code>uacrypt</code> 49.8 min, the 6 <code>dstu9041_encryption_512</code>
+shards 31-41 min (was ~3 h in one job). Excluded under Miri (bulk Kalyna-GCM, no unsafe in the
+codec): the codec’s vector sweep, boundary round trips, exact-multiple, raw-PullState decode and
+two proptests (<code>tests/crypto_secretstream_file.rs</code>), and capi’s vector sweep and round trips
+(<code>tests/ffi_secretstream_file.rs</code>). <strong>2026-10-11: sharded, awaiting the first CI
 timing.</strong> The 2026-10-11 scheduled run (<code>38126105866</code>) re-measured after the <code>smoke_passphrase</code>
 fix: <code>uacrypt</code> 27 min, <code>dstu-core-capi</code> 20 min, every <code>dstu-core</code> file under 60 min except
 <code>dstu9041_encryption_512</code> (~3 h; next <code>dstu9041_curve_512</code> 55 min, <code>crypto_box512</code> 50 min).
@@ -11140,7 +11148,17 @@ unpushed. <strong>Release pitfalls for 0.6.0:</strong> bump <code>dstu-core</cod
 <code>path = ..., version = "0.5.0"</code> requirement (uacrypt, capi, the 5 direct-Rust binding
 <code>Cargo.toml</code>s); Python/Node/Ruby (published 0.3.0) need a minor bump to 0.4.0 - their reader
 messages changed and a stream with trailing data no longer yields its Final chunk; Java is
-0.2.0 already; a green Miri run on the tagged commit (D-232).</li>
+0.2.0 already; a green Miri run on the tagged commit (D-232).
+<strong>2026-10-13: 0.6.0 RELEASED.</strong> Tag <code>v0.6.0</code> on <code>8b2bde2</code> (CI green; Miri 54/54 on <code>995198e</code>,
+the last code change); release run <code>38344100108</code> green, owner approved PyPI/npm/RubyGems. Live:
+crates.io <code>dstu-core</code>/<code>uacrypt</code> 0.6.0; PyPI/npm <code>dstu-core</code> 0.4.0 (npm win32 platform package
+still absent, D-189); RubyGems <code>dstu_core</code> 0.4.0 (4 platforms); GitHub Release v0.6.0 (18
+assets, notes replaced with the curated text, owner OK). gh-pages marker 0.6.0 (<code>7fe78d0</code>).
+<strong>Bump pitfall found:</strong> <code>bindings/ruby/Gemfile.lock</code> records the path gem’s version (frozen in
+CI) - bump it with <code>version.rb</code> (fixed in <code>8b2bde2</code>); also <code>bindings/nodejs/package-lock.json</code>.
+<strong>NEXT:</strong> T-295 (winget, owner: after 0.6.0), then the 0.7.0 plan (T-231 .NET first).
+Not pushed yet: this state commit. Leftover dir <code>C:/Users/Pa/Projects/uacrypt-ghpages</code> and
+<code>.git/worktrees/uacrypt-ghpages</code> could not be deleted (Permission denied) - remove by hand.</li>
 <li><strong>0.4.0: released and closed (2026-10-08/09).</strong> Tag <code>v0.4.0</code> on <code>39fdb53</code> after all CI incl.
 Miri was green; release run 37761634603 green (npm needed a new <code>NPM_TOKEN</code> and one rerun).
 Live: crates.io 0.4.0, PyPI/npm/RubyGems 0.2.0 (npm without <code>win32-x64-msvc</code>, D-189). T-252
