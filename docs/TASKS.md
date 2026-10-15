@@ -7694,7 +7694,21 @@ Phase 2+ and none currently in flight).
   (0.08-1.4 MB over 6 runs), and `SafeHandle` finalizers make "never Dispose" no leak control -
   next step is CI-side data (the probe line from D-234's method) before any change.
   **Owner 2026-10-11: the .NET half moves to 0.7.0** (does not hold 0.6.0). The .NET test now
-  logs VmRSS growth and managed committed bytes on every run (CI's detailed logger shows it). First
+  logs VmRSS growth and managed committed bytes on every run (CI's detailed logger shows it).
+  **2026-10-15, CI data read (0.7.0 step 0):** five logged passes (`01d097c`..`b5928f5`): VmRSS
+  +2.95..3.35 MB, managed committed +2.68..3.01 MB - the native remainder (0.14-0.67 MB over 20000
+  iterations) scatters ~5x run to run, which a deterministic per-iteration handle leak would not.
+  The "4 of 97" mixes two setups: `1ddf82c`/`707914e` ran before `fdddbb2` isolated the test into
+  its own process; after isolation only 2 failures (`43ce442`, `0c50eec`, 2026-09-17, ~25 min
+  apart, docs-only commits), ~20 green runs since. Same image (`ubuntu-24.04` 20260907.300.1) for
+  both failures and the pass between them; every ~62 MiB failure (3 of 3) ran in Azure
+  `centralus`, the 12.7 MB one in `northcentralus`; `centralus` also has a pass (`1cd9260`) - points
+  at host-dependent GC/allocator sizing, not proven. Unknown: whether those 62 MiB were managed or
+  native (no committed-bytes log then). massif/heaptrack not possible here (no WSL/Docker; the Pi
+  does not reproduce) - deviation from the step below. **Owner chose logging only (2026-10-15):**
+  the test now also logs VmRSS/managed committed at n/2 (a leak grows linearly, retention levels
+  off), server GC and CPU count; the CI step echoes the CPU model. Threshold unchanged. Pi check:
+  passes, n/2 +1.43 MB, n -1.77..+1.85 MB. Next: read the line on the next failure, then decide. First
   entry here (written after a single observed failure on `43ce442`) called this "a single isolated
   failure, not a regression" - wrong, corrected the next day after a second failure landed on the
   very next `bindings-dotnet`-touching push (`0c50eec`) prompted a deeper check: `gh run list
@@ -9295,6 +9309,9 @@ Release:
   Next after the merge: README/`docs/CLI.md` install option; at 0.7.0 the `release.yml`
   `workflow_dispatch` dry run for the static-CRT Windows build (D-238), then a manifest without
   the VCRedist dependency. Then the 0.7.0 plan (T-231 .NET first).
+  **2026-10-15, later:** validation pipeline steps 01-10 all SUCCESS (incl. 08 Installation
+  Validation), labels `Azure-Pipeline-Passed`/`Validation-Completed`; a stale `Needs-CLA` label
+  remains although `license/cla` is green. Waiting on moderator review/merge.
   - Source: the `uacrypt-windows-x86_64.zip` asset `release.yml` already builds (MSVC,
     `cargo auditable`, in the signed `SHA256SUMS`). winget installs a zip via
     `InstallerType: zip` + `NestedInstallerType: portable` (adds `uacrypt.exe` to PATH, no MSI).

@@ -49,7 +49,10 @@ jobs:
       - name: dotnet test - MemoryLeakTests in isolation (T-213, avoid cross-test VmRSS noise)
         working-directory: bindings/dotnet/DstuCore.Tests
         shell: bash
-        run: dotnet test --filter "FullyQualifiedName~MemoryLeakTests" --logger "console;verbosity=detailed"
+        # T-231: log the host CPU next to the test's own growth line.
+        run: |
+          grep -m1 "model name" /proc/cpuinfo || true
+          dotnet test --filter "FullyQualifiedName~MemoryLeakTests" --logger "console;verbosity=detailed"
       - name: dotnet test (fail if the interop test was silently skipped)
         working-directory: bindings/dotnet/DstuCore.Tests
         shell: bash

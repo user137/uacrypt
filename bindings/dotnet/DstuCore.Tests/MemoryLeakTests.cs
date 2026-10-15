@@ -105,7 +105,15 @@ public class MemoryLeakTests
         long before = CurrentVmRssBytes();
         long committedBefore = GC.GetGCMemoryInfo().TotalCommittedBytes;
 
-        RunLoop(key, boxSecret, boxPublic, n);
+        // T-231: a midpoint reading tells a leak (grows linearly) from allocator/GC retention
+        // (levels off) on the next CI failure.
+        RunLoop(key, boxSecret, boxPublic, n / 2);
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+        long mid = CurrentVmRssBytes();
+        long committedMid = GC.GetGCMemoryInfo().TotalCommittedBytes;
+        RunLoop(key, boxSecret, boxPublic, n - n / 2);
 
         GC.Collect();
         GC.WaitForPendingFinalizers();
@@ -115,7 +123,9 @@ public class MemoryLeakTests
         // T-231: logged on every run (CI uses the detailed console logger) so a future failure,
         // or a pass, carries the real growth on CI's platform - data the Pi cannot reproduce.
         _output.WriteLine($"MemoryLeakTests: VmRSS grew by {growth} bytes over {n} iterations (threshold {maxAcceptableGrowthBytes}); " +
-            $"managed committed {GC.GetGCMemoryInfo().TotalCommittedBytes - committedBefore} bytes");
+            $"managed committed {GC.GetGCMemoryInfo().TotalCommittedBytes - committedBefore} bytes; " +
+            $"at n/2: VmRSS {mid - before}, managed committed {committedMid - committedBefore}; " +
+            $"server GC {System.Runtime.GCSettings.IsServerGC}, {Environment.ProcessorCount} CPUs");
         Assert.True(
             growth < maxAcceptableGrowthBytes,
             $"VmRSS grew by {growth} bytes over {n} iterations (threshold {maxAcceptableGrowthBytes}) - possible native handle leak");
