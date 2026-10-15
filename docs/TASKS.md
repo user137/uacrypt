@@ -9269,6 +9269,15 @@ Release:
 - [ ] **T-295** Publish the `uacrypt` Windows binary to winget (owner request 2026-10-08), so
   `winget install uacrypt` works. Not started; the "Homebrew / Scoop / winget" track noted under
   T-209's gate, opened for winget only.
+  **2026-10-15, manifests drafted and tested locally (PR not opened - owner step):** id
+  `User137.uacrypt` is free in `microsoft/winget-pkgs`; three manifests (schema 1.12.0, modelled on
+  the live `UPX.UPX` portable zip) against the v0.6.0 asset (SHA256 `3C1C895B...E16E9E`, matches
+  `SHA256SUMS`); `winget validate` OK; `winget install --manifest` (winget 1.29) here: hash
+  verified, alias `uacrypt` added, `uacrypt --version` = 0.6.0, uninstall clean. **Finding:** the
+  MSVC `uacrypt.exe` imports `VCRUNTIME140.dll` (no `+crt-static`), so the manifest declares
+  `Microsoft.VCRedist.2015+.x64` - and the plain zip download fails on a Windows without the VC++
+  redistributable. Fix candidate for 0.7.0: `-C target-feature=+crt-static` for the Windows release
+  build, then drop the dependency. Not checked: a clean machine (Windows Sandbox needs admin here).
   - Source: the `uacrypt-windows-x86_64.zip` asset `release.yml` already builds (MSVC,
     `cargo auditable`, in the signed `SHA256SUMS`). winget installs a zip via
     `InstallerType: zip` + `NestedInstallerType: portable` (adds `uacrypt.exe` to PATH, no MSI).
