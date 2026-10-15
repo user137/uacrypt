@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-18ea822f.js";
+            window.path_to_searchindex_js = "searchindex-0bcf2a55.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -9624,6 +9624,21 @@ on the live site.</li>
 <li><input disabled="" type="checkbox"> <strong>T-295</strong> Publish the <code>uacrypt</code> Windows binary to winget (owner request 2026-10-08), so
 <code>winget install uacrypt</code> works. Not started; the “Homebrew / Scoop / winget” track noted under
 T-209’s gate, opened for winget only.
+<strong>2026-10-15, manifests drafted and tested locally (PR not opened - owner step):</strong> id
+<code>User137.uacrypt</code> is free in <code>microsoft/winget-pkgs</code>; three manifests (schema 1.12.0, modelled on
+the live <code>UPX.UPX</code> portable zip) against the v0.6.0 asset (SHA256 <code>3C1C895B...E16E9E</code>, matches
+<code>SHA256SUMS</code>); <code>winget validate</code> OK; <code>winget install --manifest</code> (winget 1.29) here: hash
+verified, alias <code>uacrypt</code> added, <code>uacrypt --version</code> = 0.6.0, uninstall clean. <strong>Finding:</strong> the
+MSVC <code>uacrypt.exe</code> imports <code>VCRUNTIME140.dll</code> (no <code>+crt-static</code>), so the manifest declares
+<code>Microsoft.VCRedist.2015+.x64</code> - and the plain zip download fails on a Windows without the VC++
+redistributable. Fix candidate for 0.7.0: <code>-C target-feature=+crt-static</code> for the Windows release
+build, then drop the dependency. Not checked: a clean machine (Windows Sandbox needs admin here).
+<strong>2026-10-15, later (owner delegated, D-238):</strong> <code>release.yml</code> builds the Windows binary with
+<code>+crt-static</code> and checks it has no <code>VCRUNTIME140</code> import (from 0.7.0). Fork <code>user137/winget-pkgs</code>
+created; branch <code>uacrypt-0.6.0</code> made via the API has wrong file names (backslash paths) - delete
+and recreate it, then open the PR (“New package: User137.uacrypt version 0.6.0”); the
+auto-mode classifier blocked the redo. The owner signs Microsoft’s CLA on the PR. Next release:
+manifest without the VCRedist dependency; then README/<code>docs/CLI.md</code> install option once merged.
 <ul>
 <li>Source: the <code>uacrypt-windows-x86_64.zip</code> asset <code>release.yml</code> already builds (MSVC,
 <code>cargo auditable</code>, in the signed <code>SHA256SUMS</code>). winget installs a zip via

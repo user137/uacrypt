@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-18ea822f.js";
+            window.path_to_searchindex_js = "searchindex-0bcf2a55.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -14236,6 +14236,21 @@ and test assertions still compile).</p>
 from safe Rust, and a test that reads freed memory would be UB; <code>Zeroizing</code>’s <code>Drop</code> is the
 mechanism and the review is the evidence, the same “foreclosed by type/review” convention as
 earlier <code>D-</code> findings. The <code>Debug</code> redaction is tested (<code>tests/debug_redaction.rs</code>).</p>
+<h2 id="d-238-windows-release-binary-links-the-crt-statically-winget-gets-060-with-a-vcredist-dependency-t-295-2026-10-15"><a class="header" href="#d-238-windows-release-binary-links-the-crt-statically-winget-gets-060-with-a-vcredist-dependency-t-295-2026-10-15">D-238: Windows release binary links the CRT statically; winget gets 0.6.0 with a VCRedist dependency (T-295, 2026-10-15)</a></h2>
+<p>Owner delegated the choice. <code>uacrypt.exe</code> up to 0.6.0 is built with the MSVC default (dynamic CRT)
+and imports <code>VCRUNTIME140.dll</code>, so the plain release zip fails to start on a Windows without the
+VC++ 2015+ redistributable. <code>release.yml</code> now builds the Windows binary with
+<code>-C target-feature=+crt-static</code> and fails the build if <code>uacrypt.exe</code> still names <code>VCRUNTIME140</code>.
+Checked locally on the MSVC target: the static build imports only system DLLs (<code>kernel32</code>,
+<code>ntdll</code>, <code>bcryptprimitives</code>, <code>api-ms-win-core-synch</code>), is 1 161 216 bytes against 1 063 936, and a
+3 MB keygen/encrypt/decrypt round trip matches. This is the usual choice for Rust CLI release
+binaries; the CRT is then frozen into each release, which is acceptable for a binary that is
+rebuilt every release anyway.</p>
+<p>The winget manifest for 0.6.0 (already released, dynamic CRT) declares
+<code>Microsoft.VCRedist.2015+.x64</code> as a package dependency so <code>winget install</code> works now; the
+manifest for the first statically linked release drops it. Rejected: holding winget until 0.7.0
+(delays the install path for no safety gain) and shipping the 0.6.0 manifest without the
+dependency (breaks on clean machines).</p>
 
                     </main>
 
